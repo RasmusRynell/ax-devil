@@ -235,8 +235,10 @@ describe("video viewer", () => {
       answer(ready);
       fireEvent.click(screen.getByRole("button", { name: "GT: settings" }));
       const before = sent.length;
+      fireEvent.click(screen.getByRole("tab", { name: "Filter" }));
       fireEvent.click(screen.getByRole("checkbox", { name: "Pedestrian" }));
       expect(sent).toHaveLength(before);
+      fireEvent.click(screen.getByRole("tab", { name: "Timing" }));
       fireEvent.click(screen.getByRole("switch", { name: "Sticky" }));
       expect(sent.at(-1)).toEqual({
         type: "LanePolicy",

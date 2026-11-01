@@ -22,6 +22,8 @@ export interface StringLookup {
   decode(id: number, out: CodePoints): void;
   /** The CRC-32 (IEEE) of the UTF-8 bytes of string `id`, unsigned. */
   crc32(id: number): number;
+  /** String `id` as text. Allocates: for picking and the inspector, not the per-frame path. */
+  string(id: number): string;
 }
 
 /** One attribute of the primary classification, as a column over the rows. */

@@ -131,7 +131,8 @@ pub(super) async fn open_video<T: Send + 'static>(
                 Some(Ok(
                     ClientMessage::Want(_)
                     | ClientMessage::LanePolicy { .. }
-                    | ClientMessage::Catalog { .. },
+                    | ClientMessage::Catalog { .. }
+                    | ClientMessage::Inspect { .. },
                 )) => {}
                 Some(Err(error)) => return Err(End::Failed(error)),
                 Some(Ok(ClientMessage::Open { .. })) => {

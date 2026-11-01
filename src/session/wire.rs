@@ -82,6 +82,7 @@ fn intake(new: &NewItem, handlers: &Handlers) -> Result<WorkspaceItem, foundatio
                 .map(|overlay| NewOverlay {
                     path: overlay.path.clone().into(),
                     handler: overlay.handler.clone(),
+                    label: overlay.label.clone(),
                 })
                 .collect();
             workspace::intake::video(Path::new(path), &overlays, handlers)

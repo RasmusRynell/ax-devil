@@ -5,7 +5,12 @@ use std::{sync::Arc, thread};
 use overlay_sync::MatchPolicy;
 use playback::{Rank, Want};
 
-use crate::{OverlayEvent, state::Shared};
+use scene_store::Track;
+
+use crate::{
+    OverlayEvent,
+    state::{Load, Shared},
+};
 
 /// One viewer's overlays: loads sources and encodes their samples on threads of their own.
 ///
@@ -90,6 +95,26 @@ impl ViewerOverlays {
                 None => notified.await,
             }
         }
+    }
+
+    /// The track of a sample this viewer holds, and the frame the sample ranks by: only for a ready source of
+    /// `data_revision` whose `sample` was sent and is still counted as held, inside the sample window. Anything else
+    /// is `None`, so the viewer's authority bounds what an inspection may read.
+    pub fn inspect_target(
+        &self,
+        source: u16,
+        data_revision: u32,
+        sample: u64,
+    ) -> Option<(Arc<Track>, u64)> {
+        let state = self.shared.lock();
+        let slot = state.sources.get(usize::from(source))?;
+        let Load::Ready(track) = &slot.load else {
+            return None;
+        };
+        if state.closed || slot.data_revision != data_revision || !slot.sent.contains_key(&sample) {
+            return None;
+        }
+        Some((track.clone(), *slot.window.get(&sample)?))
     }
 
     /// Cancels loads in progress and joins the threads on a thread of their own, so the caller never waits for a

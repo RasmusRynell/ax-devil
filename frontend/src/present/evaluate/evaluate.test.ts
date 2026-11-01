@@ -13,7 +13,6 @@ import { EvalReport } from "./report";
 function compile(layers: unknown[], vars: Record<string, unknown> = {}): CompiledCatalog {
   const result = compileCatalogDocument({
     schema: 4,
-    id: "t",
     name: "t",
     description: "t",
     vars,

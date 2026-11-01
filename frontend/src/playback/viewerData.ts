@@ -3,16 +3,21 @@
 import { Catalogs } from "./catalogs";
 import { FrameMaps } from "./data/FrameMaps";
 import { SampleStore } from "./data/SampleStore";
+import { Inspections } from "./inspection";
+import { LaneCatalogs } from "./laneCatalog";
 import { LaneData } from "./laneData";
 import type { LaneFrame, Surface } from "./contract";
-import type { LaneSet } from "./lanes";
+import type { LaneSet, LaneState } from "./lanes";
 import type {
   ClientMessage,
   FrameMapEnvelope,
+  LaneInfo,
   SampleEnvelope,
   ServerMessage,
   VideoFrame,
 } from "./protocol";
+
+type Opened = Extract<ServerMessage, { type: "Opened" }>;
 
 /** The revision of a source that has not said it is ready: no Frame Map run carries it. */
 const NOT_READY = -1;
@@ -21,16 +26,22 @@ export class ViewerData {
   readonly #lanes: LaneSet;
   samples = new SampleStore(0);
   readonly catalogs: Catalogs;
+  readonly inspections: Inspections;
+  readonly #laneCatalogs: LaneCatalogs;
+  /** The built-in default catalog, which a lane draws with when its own has failed and it has no other. */
+  #fallback = "";
   #maps: FrameMaps | undefined;
   #frameCount = 0;
   #draw: LaneData | undefined;
   /** The lanes that waited for data on the frame last composed. */
   #waiting: number[] = [];
 
-  /** `send` asks the backend for a catalog document. */
+  /** `send` asks the backend for a catalog document or an object's fields. */
   constructor(lanes: LaneSet, send: (message: ClientMessage) => void) {
     this.#lanes = lanes;
     this.catalogs = new Catalogs((id) => send({ type: "Catalog", id }));
+    this.#laneCatalogs = new LaneCatalogs(this.catalogs, () => this.#fallback);
+    this.inspections = new Inspections(send);
   }
 
   get draw(): LaneData | undefined {
@@ -52,7 +63,7 @@ export class ViewerData {
     });
     this.#waiting = waiting;
     surface?.present(video, frames);
-    let changed = false;
+    let changed = this.inspections.follow(frames);
     this.#lanes.states.forEach((_, lane) => {
       changed = this.#lanes.setPending(lane, waiting.includes(lane)) || changed;
     });
@@ -69,7 +80,7 @@ export class ViewerData {
     this.samples = new SampleStore(dataBytes);
     this.#frameCount = frameCount;
     this.#maps = new FrameMaps(frameCount);
-    this.#draw = new LaneData(this.#lanes, this.samples, this.#maps, this.catalogs);
+    this.#draw = new LaneData(this.#lanes, this.samples, this.#maps, this.#laneCatalogs);
     this.sync();
   }
 
@@ -81,9 +92,29 @@ export class ViewerData {
     this.samples.clear();
   }
 
-  /** A new connection: requests the old one never answered are asked again. */
-  reconnect(): void {
-    this.catalogs.reconnect();
+  /** The backend opened the entry: what the old connection was asked is asked again, and lanes that changed forget their catalog. */
+  reopen(opened: Opened, before: readonly LaneState[]): void {
+    this.#fallback = opened.lane_defaults.catalog;
+    this.catalogs.open(opened.catalogs);
+    this.inspections.reconnect();
+    opened.lanes.forEach((lane: LaneInfo, index) => {
+      if (before[index]?.label !== lane.label || before[index]?.source !== lane.source)
+        this.#laneCatalogs.forget(index);
+    });
+  }
+
+  /**
+   * A catalog document or the listing of catalogs arrived. Reports whether a lane may look different: the caller
+   * draws the shown frame again.
+   */
+  receiveCatalogs(message: Extract<ServerMessage, { type: "Catalog" | "Catalogs" }>): boolean {
+    if (message.type === "Catalogs") this.catalogs.list(message.catalogs);
+    else if (
+      !this.catalogs.receive(message.id, message.revision, message.document, message.problem)
+    )
+      return false;
+    this.catalogProblems();
+    return true;
   }
 
   /** Whether a run of a lane's map lies inside the video. */
@@ -118,14 +149,23 @@ export class ViewerData {
     this.catalogProblems();
   }
 
-  /** What one frame's items take, at most: the mean item size of every shown lane's source; null without such a lane. */
+  /**
+   * What one frame's items take, at most: the mean item size of every source a shown lane draws, each counted once
+   * however many lanes show it; null without such a lane.
+   */
   sampleBytes(): number | null {
-    let bytes: number | null = null;
-    this.#lanes.states.forEach((_, lane) => {
+    const bySource = new Map<number, number>();
+    this.#lanes.states.forEach((state, lane) => {
       const ready = this.#lanes.awaited(lane);
-      if (ready) bytes = (bytes ?? 0) + ready.mean_sample_bytes;
+      if (ready && state.source !== null)
+        bySource.set(
+          state.source,
+          Math.max(bySource.get(state.source) ?? 0, ready.mean_sample_bytes),
+        );
     });
-    return bytes;
+    return bySource.size === 0
+      ? null
+      : [...bySource.values()].reduce((sum, bytes) => sum + bytes, 0);
   }
 
   /**
@@ -145,12 +185,19 @@ export class ViewerData {
     });
   }
 
-  /** Why each lane's catalog is not the chosen one, asking for the catalogs not yet asked for. */
+  /** Why each lane's catalog is not the chosen one and what the catalog it draws with offers, asking for catalogs not yet asked for. */
   catalogProblems(): void {
     this.#lanes.states.forEach((state, lane) => {
       if (state.source === null) return;
-      const entry = this.catalogs.get(state.settings.catalog);
-      this.#lanes.setCatalogProblem(lane, entry.state === "ready" ? entry.problem : undefined);
+      const { catalog, problem } = this.#laneCatalogs.resolve(lane, state.settings.catalog);
+      this.#lanes.setCatalogProblem(lane, problem);
+      const held = this.#lanes.states[lane].look;
+      const same = held?.themes === catalog?.themes && held?.features === catalog?.features;
+      if (!same)
+        this.#lanes.setLook(
+          lane,
+          catalog && { themes: catalog.themes, features: catalog.features },
+        );
     });
   }
 }

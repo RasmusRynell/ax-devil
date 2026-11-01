@@ -5,7 +5,6 @@
 use super::{End, Flow, Outgoing, items, stream::Setup, text};
 use api_types::{
     Audience,
-    catalogs::CatalogInfoWire,
     playback::{
         ClockWire, FilterOptionInfo, LaneDefaultsWire, LaneInfo, LanePolicyWire, LaneStatusWire,
         MAX_DATA_WINDOW_FRAMES, ServerMessage, StickyWire, WarningInfo,
@@ -13,7 +12,7 @@ use api_types::{
     project,
 };
 use axum::extract::ws::Message;
-use catalogs::{CatalogId, Library};
+use catalogs::Library;
 use foundation::{ErrorCode, HostPath, MediaTime, Timeline, UserError};
 use overlay_sync::{MatchPolicy, Sticky, Tolerance};
 use overlays::{LaneStatus, OverlayEvent, OverlayService, ViewerOverlays};
@@ -24,15 +23,11 @@ use workspace::Entry;
 
 /// How long a kept sample may stay, at most, in milliseconds.
 const MAX_STICKY_TIMEOUT_MS: u32 = 100_000;
-/// How many distinct catalog requests may wait for their answer; the rest are dropped.
-const MAX_PENDING_CATALOGS: usize = 64;
 
 /// What a viewer's lanes have to send.
 pub(super) enum LaneEvent {
     /// A lane policy the viewer sent that cannot be applied.
     Problem(u16, String),
-    /// A catalog the viewer asked for, by id.
-    Catalog(String),
     /// What the overlays reported.
     Overlay(OverlayEvent),
     /// The overlays closed on their own, which leaves the video playing without them.
@@ -44,7 +39,6 @@ pub(super) enum LaneEvent {
 /// The lanes of one viewer's entry and the overlays that draw them.
 pub(super) struct Lanes {
     overlays: ViewerOverlays,
-    catalogs: Library,
     /// Whether the overlays still report.
     live: bool,
     count: usize,
@@ -54,8 +48,6 @@ pub(super) struct Lanes {
     abandoned: Vec<u16>,
     /// The newest unsent complaint about each lane's policy; a lane's next policy replaces it.
     problems: BTreeMap<u16, String>,
-    /// The catalog ids the viewer asked for and has not been answered.
-    requested: BTreeSet<String>,
     /// The data window the overlays were last given.
     window: Option<Want>,
     audience: Audience,
@@ -64,6 +56,11 @@ pub(super) struct Lanes {
 }
 
 impl Lanes {
+    /// The viewer's overlays, which answer inspections.
+    pub(super) fn overlays(&self) -> &ViewerOverlays {
+        &self.overlays
+    }
+
     /// Starts loading the overlays of `entry`, one lane each, or the one plain lane of an entry without overlays.
     /// Nothing is sent until the lanes [`follow`](Self::follow) a window and a lane subscribes.
     pub(super) fn open(setup: &Setup, timeline: Timeline, location: HostPath) -> Self {
@@ -72,7 +69,6 @@ impl Lanes {
             data_bytes,
             audience,
             size,
-            library,
             overlays,
             ..
         } = *setup;
@@ -89,13 +85,11 @@ impl Lanes {
         let count = sources.len();
         Self {
             overlays: overlays.open_viewer(sources, timeline, size, data_bytes),
-            catalogs: library.clone(),
             live: true,
             count,
             working,
             abandoned: Vec::new(),
             problems: BTreeMap::new(),
-            requested: BTreeSet::new(),
             window: None,
             audience,
             location,
@@ -155,23 +149,12 @@ impl Lanes {
         Ok(())
     }
 
-    /// Queues the answer to a request for the catalog `id`. Asking again before the answer collapses, and requests
-    /// beyond [`MAX_PENDING_CATALOGS`] distinct ids are dropped.
-    pub(super) fn catalog(&mut self, id: String) {
-        if self.requested.len() < MAX_PENDING_CATALOGS {
-            self.requested.insert(id);
-        }
-    }
-
-    /// The next thing the lanes have to send: complaints and answers first, then what the overlays report, which is
+    /// The next thing the lanes have to send: complaints first, then what the overlays report, which is
     /// nearest the playhead and goes only while its rank is at most `frame_rank`, the rank of the video frame
     /// waiting. Waits while there is nothing.
     pub(super) async fn next(&mut self, frame_rank: Option<Rank>) -> LaneEvent {
         if let Some((lane, reason)) = self.problems.pop_first() {
             return LaneEvent::Problem(lane, reason);
-        }
-        if let Some(id) = self.requested.pop_first() {
-            return LaneEvent::Catalog(id);
         }
         if let Some(lane) = self.abandoned.pop() {
             return LaneEvent::Abandoned(lane);
@@ -196,7 +179,6 @@ impl Lanes {
         match event {
             LaneEvent::Problem(lane, reason)
             | LaneEvent::Overlay(OverlayEvent::Problem { lane, reason }) => problem(lane, reason),
-            LaneEvent::Catalog(id) => Some(self.catalog_reply(id)),
             LaneEvent::Overlay(OverlayEvent::Status { lane, status }) => {
                 if matches!(status, LaneStatus::Failed(_)) {
                     self.working.remove(&lane);
@@ -248,17 +230,6 @@ impl Lanes {
         }
     }
 
-    /// The answer for `id`: the document, or none when no catalog is served under it.
-    fn catalog_reply(&self, id: String) -> Outgoing {
-        let document = CatalogId::parse(&id).and_then(|parsed| self.catalogs.document(&parsed));
-        text(&ServerMessage::Catalog {
-            revision: u32::from(document.is_some()),
-            document: document.map(str::to_owned),
-            id,
-        })
-        .into()
-    }
-
     fn status(&self, lane: u16, status: LaneStatus) -> Outgoing {
         text(&ServerMessage::LaneStatus {
             lane,
@@ -295,19 +266,6 @@ pub(super) fn lane_defaults(service: &OverlayService, catalogs: &Library) -> Lan
         catalog: catalogs.default_id().to_string(),
         policy: policy_wire(&service.lane_defaults()),
     }
-}
-
-/// The catalogs a lane may draw with, as the viewer is told them.
-pub(super) fn catalog_infos(catalogs: &Library) -> Vec<CatalogInfoWire> {
-    catalogs
-        .documents()
-        .into_iter()
-        .map(|info| CatalogInfoWire {
-            id: info.id.to_string(),
-            name: info.name,
-            description: info.description,
-        })
-        .collect()
 }
 
 /// The data window of a viewer: `data` frames ahead and behind the playhead of `applied`, no more than it keeps frames

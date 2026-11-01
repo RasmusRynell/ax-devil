@@ -37,6 +37,9 @@ function viewerOwnsPlainKeys(target: EventTarget | null): boolean {
   return !typing && (target === document.body || target.closest("main") !== null);
 }
 
+/** The setting behind the View menu's check for pointing at objects. */
+const OBJECT_DETAILS = "overlays.object_details";
+
 type Dialog = "settings" | "shortcuts" | "quick-setup" | "add-video" | "add-playlist";
 
 /**
@@ -52,7 +55,7 @@ export function Shell() {
   const [checked, setChecked] = useState<ReadonlySet<string>>(new Set());
   const [notice, setNotice] = useState<string | null>(null);
   const [viewerActions, setViewerActions] = useState<ViewerActions>(NO_ACTIONS);
-  const { values, shortcuts, restart } = useSettings();
+  const { values, shortcuts, restart, save } = useSettings();
   // Quick Setup configures the server, so only someone who may configure it is offered it.
   const configures = useGrants().includes("configuration");
   // Settings arrive before the shell renders, so a first run is known here.
@@ -101,13 +104,18 @@ export function Shell() {
     ...(configures && { "quick-setup": () => setDialog("quick-setup") }),
     "add-video": addVideo,
     "add-playlist": () => setDialog("add-playlist"),
+    "object-details": () =>
+      void save({
+        values: { ...values, [OBJECT_DETAILS]: values[OBJECT_DETAILS] !== true },
+        shortcuts,
+      }),
   };
   // A modal dialog owns the keyboard and the window: no command, from a shortcut or a menu, runs while one is open.
   const find = (id: string) =>
     dialog || !allowed[scopeOf(id)] ? undefined : (actions[id] ?? viewerActions[id]);
   const run = (id: string) => find(id)?.();
   const select = (item: MenuCommand) => {
-    if (item.kind === "check")
+    if (item.kind === "check" && item.id !== "object-details")
       setChecked((now) => {
         const next = new Set(now);
         if (!next.delete(item.id)) next.add(item.id);
@@ -155,7 +163,9 @@ export function Shell() {
       <div className="flex h-screen flex-col">
         <h1 className="sr-only">ax-devil</h1>
         <TitleBar
-          checked={checked}
+          checked={
+            values[OBJECT_DETAILS] === true ? new Set([...checked, "object-details"]) : checked
+          }
           wired={new Set([...Object.keys(actions), ...Object.keys(viewerActions)])}
           onSelect={select}
           onStartSharing={startSharing}

@@ -1,12 +1,13 @@
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import type { PlaybackView } from "./view";
+import { INITIAL_VIEW, type PlaybackView } from "./view";
 import { Transport } from "./Transport";
 
 afterEach(cleanup);
 
-const view = (change: Partial<PlaybackView> = {}) => ({
-  status: "ready" as const,
+const view = (change: Partial<PlaybackView> = {}): PlaybackView => ({
+  ...INITIAL_VIEW,
+  status: "ready",
   progress: 1,
   frameCount: 100,
   playing: false,

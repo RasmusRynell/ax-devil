@@ -54,16 +54,20 @@ export class LanePresenter {
   readonly quads = new LaneQuads();
   /** What evaluation and layout left out. */
   readonly report = new EvalReport();
+  /**
+   * The rows the lane's class mask and filter kept, as of the last evaluation. What features hide or the catalog does
+   * not draw is not removed here, so those rows can still be picked and inspected.
+   */
+  readonly rows = new RowSet();
   /** Evaluations and layouts run, to see what a call cost. */
   evaluations = 0;
   layouts = 0;
-  private readonly rows = new RowSet();
   private readonly marks = new MarkBuffer();
   private readonly sink = new QuadSink(this.quads);
   private readonly layouter: Layouter;
   /** What the marks were evaluated from, copied: the caller may change its input in place. */
   private catalogUid = -1;
-  private sample: SampleView | null = null;
+  private evaluated: SampleView | null = null;
   private hidden = 0;
   private theme: string | null = null;
   private filter: CompiledFilter | null = null;
@@ -74,6 +78,11 @@ export class LanePresenter {
 
   constructor(private readonly text: TextSource) {
     this.layouter = new Layouter(text);
+  }
+
+  /** The sample the rows and quads were made from, null before the first `present`. */
+  get sample(): SampleView | null {
+    return this.evaluated;
   }
 
   /** The lane's quads for `input` shown as `view`. */
@@ -99,7 +108,7 @@ export class LanePresenter {
   private sameData(input: LaneInput): boolean {
     return (
       this.catalogUid === input.catalog.uid &&
-      this.sample === input.sample &&
+      this.evaluated === input.sample &&
       this.hidden === input.style.hidden &&
       this.theme === input.style.theme &&
       this.filter === input.filter &&
@@ -112,7 +121,7 @@ export class LanePresenter {
   private evaluate(input: LaneInput): void {
     this.evaluations++;
     this.catalogUid = input.catalog.uid;
-    this.sample = input.sample;
+    this.evaluated = input.sample;
     this.hidden = input.style.hidden;
     this.theme = input.style.theme;
     this.filter = input.filter;

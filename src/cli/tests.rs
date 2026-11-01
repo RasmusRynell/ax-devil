@@ -221,10 +221,40 @@ fn catalog_commands_list_the_built_ins_and_check_a_file_with_its_problems_locate
     assert!(parse(&["catalog"]).is_err());
     assert!(parse(&["catalog", "check"]).is_err());
 
-    let listing = catalog::run(&CatalogCommand::List);
+    let catalogs = tempfile::tempdir().unwrap();
+    std::fs::write(
+        catalogs.path().join("night.json"),
+        r#"{"name":"Night","description":"Dark"}"#,
+    )
+    .unwrap();
+    let folder = || Ok(catalogs.path().to_path_buf());
+    let listing = catalog::run(&CatalogCommand::List, folder());
     assert!(listing.ok);
-    assert_eq!(listing.text.lines().count(), 6);
+    assert_eq!(listing.text.lines().count(), 7);
     assert!(listing.text.starts_with("built-in:standard"));
+    assert!(
+        listing.text.ends_with("user:night.json    Night: Dark\n"),
+        "{}",
+        listing.text
+    );
+    let unknown = catalog::run(&CatalogCommand::List, Err("no home".into()));
+    assert!(!unknown.ok);
+    assert!(unknown.text.contains("no home"));
+    // A user catalog is checked by its id, in the folder, without the settings.
+    let checked = |file: &str, folder| catalog::checked_file(std::path::Path::new(file), folder);
+    assert_eq!(
+        checked("user:night.json", folder()),
+        Ok(catalogs.path().join("night.json"))
+    );
+    assert!(checked("user:night.json", Err("no home".into())).is_err());
+    assert_eq!(
+        checked("night.json", Err("no home".into())),
+        Ok("night.json".into())
+    );
+    assert_eq!(
+        checked("user:../night.json", folder()),
+        Ok("user:../night.json".into())
+    );
 
     // The checker is the frontend's compiler, run in Electron-as-Node from the checkout's desktop folder.
     let desktop = std::path::Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/desktop"));
@@ -233,11 +263,7 @@ fn catalog_commands_list_the_built_ins_and_check_a_file_with_its_problems_locate
     std::fs::write(&good, include_str!("../../assets/catalogs/minimal.v4.json")).unwrap();
     let report = catalog::check_in(desktop, &good).unwrap();
     assert!(report.ok, "{}", report.text);
-    assert!(
-        report.text.contains("Minimal (built-in:minimal)"),
-        "{}",
-        report.text
-    );
+    assert!(report.text.contains("Minimal"), "{}", report.text);
 
     let bad = folder.path().join("bad.json");
     std::fs::write(
@@ -256,7 +282,7 @@ fn catalog_commands_list_the_built_ins_and_check_a_file_with_its_problems_locate
         report.text
     );
     assert!(
-        report.text.contains("  18:"),
+        report.text.contains("  17:"),
         "line and column: {}",
         report.text
     );

@@ -15,13 +15,17 @@ pub struct NewOverlay {
     pub path: PathBuf,
     /// The decoder handler id; `None` picks the only decoder for the file's extension.
     pub handler: Option<String>,
+    /// The lane's name; `None` names it after the file, numbered ` (2)`, ` (3)` when an earlier overlay of the same
+    /// video is the same file, so one file can be shown under several catalogs, filters or themes.
+    pub label: Option<String>,
 }
 
 /// Builds the item for the video file at `path`, with `overlays` drawn on it. The paths are made absolute, so the
 /// item means the same files whatever the working folder; whether they exist is for resolving to say.
 ///
 /// An overlay without a handler gets the only decoder for its extension; the error names the candidates when
-/// several read it, and the file when none does. A named handler must be one the app knows.
+/// several read it, and the file when none does. A named handler must be one the app knows. Every overlay is a lane
+/// with a name of its own: two lanes may read one file, but not carry one name.
 pub fn video(
     path: &Path,
     overlays: &[NewOverlay],
@@ -35,10 +39,12 @@ pub fn video(
     if label.is_empty() {
         return Err(invalid("The path does not name a file"));
     }
-    let overlays = overlays
-        .iter()
-        .map(|overlay| overlay_recipe(overlay, handlers))
-        .collect::<Result<_, _>>()?;
+    let mut recipes: Vec<OverlayRecipe> = Vec::with_capacity(overlays.len());
+    for overlay in overlays {
+        let recipe = overlay_recipe(overlay, &recipes, handlers)?;
+        recipes.push(recipe);
+    }
+    let overlays = recipes;
     Ok(WorkspaceItem {
         id: ItemId::generate(),
         label,
@@ -49,7 +55,11 @@ pub fn video(
     })
 }
 
-fn overlay_recipe(overlay: &NewOverlay, handlers: &Handlers) -> Result<OverlayRecipe, UserError> {
+fn overlay_recipe(
+    overlay: &NewOverlay,
+    earlier: &[OverlayRecipe],
+    handlers: &Handlers,
+) -> Result<OverlayRecipe, UserError> {
     let refuse =
         |code, reason: String| UserError::new(code, reason).at(HostPath::new(&overlay.path));
     let path = std::path::absolute(&overlay.path)
@@ -95,9 +105,21 @@ fn overlay_recipe(overlay: &NewOverlay, handlers: &Handlers) -> Result<OverlayRe
             }
         }
     };
+    let path = HostPath::new(path);
+    let label = match overlay.label.as_deref().map(str::trim) {
+        Some(label) if !label.is_empty() => label.to_owned(),
+        _ => {
+            let name = file_name(path.as_path());
+            match earlier.iter().filter(|other| other.path == path).count() {
+                0 => name,
+                repeats => format!("{name} ({})", repeats + 1),
+            }
+        }
+    };
     Ok(OverlayRecipe {
-        path: HostPath::new(path),
+        path,
         handler,
+        label,
     })
 }
 
@@ -209,6 +231,7 @@ mod tests {
         NewOverlay {
             path: path.to_owned(),
             handler: handler.map(str::to_owned),
+            label: None,
         }
     }
 
@@ -308,6 +331,37 @@ mod tests {
             "{twice:?}"
         );
         assert!(twice.reason.ends_with("gt.txt"), "{twice}");
+    }
+
+    #[test]
+    fn one_file_may_be_several_lanes_named_by_the_caller_or_numbered_from_the_file_name() {
+        let handlers = Handlers::built_in();
+        let labelled = |label: &str| NewOverlay {
+            label: Some(label.to_owned()),
+            ..overlay(Path::new("gt.txt"), None)
+        };
+        let lanes = |overlays: &[NewOverlay]| {
+            video(Path::new("gate.mp4"), overlays, &handlers).map(|item| {
+                let Recipe::Video(recipe) = item.recipe else {
+                    panic!("a video item has a video recipe");
+                };
+                recipe
+                    .overlays
+                    .into_iter()
+                    .map(|overlay| overlay.label)
+                    .collect::<Vec<_>>()
+            })
+        };
+        let plain = overlay(Path::new("gt.txt"), None);
+
+        assert_eq!(
+            lanes(&[plain.clone(), plain.clone(), plain.clone()]).unwrap(),
+            ["gt.txt", "gt.txt (2)", "gt.txt (3)"]
+        );
+        assert_eq!(
+            lanes(&[plain.clone(), labelled(" Night "), labelled("Day")]).unwrap(),
+            ["gt.txt", "Night", "Day"]
+        );
     }
 
     fn mot_folder(sequences: &[&str]) -> tempfile::TempDir {

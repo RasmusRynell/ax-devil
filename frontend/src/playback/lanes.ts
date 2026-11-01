@@ -1,7 +1,13 @@
 /** The lanes of a viewer's entry: what each shows, how the user has set it, and what the backend says about it. */
 
-import type { LaneSettings, LaneState } from "./contract";
-import type { ClientMessage, LaneDefaultsWire, LaneInfo, LaneStatusWire } from "./protocol";
+import type { CatalogLook, LaneSettings, LaneState } from "./contract";
+import type {
+  CatalogInfoWire,
+  ClientMessage,
+  LaneDefaultsWire,
+  LaneInfo,
+  LaneStatusWire,
+} from "./protocol";
 
 export type { LaneSettings, LaneState } from "./contract";
 
@@ -18,12 +24,32 @@ const sameSent = (a: LaneSettings, b: LaneSettings): boolean =>
 /** What changes the marks the lane draws from a sample, not which sample it is. */
 function sameStyle(a: LaneSettings, b: LaneSettings): boolean {
   const keys = new Set([...Object.keys(a.filter), ...Object.keys(b.filter)]);
-  return a.catalog === b.catalog && [...keys].every((key) => a.filter[key] === b.filter[key]);
+  return (
+    a.catalog === b.catalog &&
+    a.theme === b.theme &&
+    a.hidden === b.hidden &&
+    a.expression === b.expression &&
+    [...keys].every((key) => a.filter[key] === b.filter[key])
+  );
+}
+
+/** What new lanes start with: the Personal default catalog when the backend lists it, else the backend's own. */
+export function startWith(
+  defaults: LaneDefaultsWire,
+  catalogs: readonly CatalogInfoWire[],
+  personal: string | null | undefined,
+): LaneDefaultsWire {
+  return personal && catalogs.some((catalog) => catalog.id === personal)
+    ? { ...defaults, catalog: personal }
+    : defaults;
 }
 
 const settingsOf = ({ catalog, policy }: LaneDefaultsWire): LaneSettings => ({
   catalog,
+  theme: null,
+  hidden: 0,
   filter: {},
+  expression: "",
   tolerance_ms: policy.tolerance_ms,
   sticky: { ...policy.sticky, opacity: 1 },
   visible: true,
@@ -51,11 +77,15 @@ export class LaneSet {
   }
 
   /**
-   * Starts the lanes `Opened` describes. A reconnection to the same lanes keeps what the user set. Every lane with a
-   * source gets a new policy revision and its `LanePolicy`, which is also what subscribes it: backend lanes start
-   * unsubscribed.
+   * Starts the lanes `Opened` describes. A reconnection to the same lanes keeps what the user set; new lanes start
+   * from `seeds` by position (the lanes of the entry before), else from `defaults`. Every lane with a source gets a
+   * new policy revision and its `LanePolicy`, which is also what subscribes it: backend lanes start unsubscribed.
    */
-  open(lanes: readonly LaneInfo[], defaults: LaneDefaultsWire): ClientMessage[] {
+  open(
+    lanes: readonly LaneInfo[],
+    defaults: LaneDefaultsWire,
+    seeds: readonly LaneSettings[] = [],
+  ): ClientMessage[] {
     const before = this.#states;
     const same =
       before.length === lanes.length &&
@@ -64,7 +94,7 @@ export class LaneSet {
     this.#styles = lanes.map((_, i) => (same ? (this.#styles[i] ?? 0) : 0));
     this.#states = lanes.map((lane, index) => {
       const kept = same ? before[index] : undefined;
-      const settings = kept?.settings ?? settingsOf(defaults);
+      const settings = kept?.settings ?? seeds[index] ?? settingsOf(defaults);
       let policyRevision = kept?.policyRevision ?? 0;
       if (lane.source !== null) {
         policyRevision++;
@@ -99,6 +129,11 @@ export class LaneSet {
     );
   }
 
+  /** What the catalog the lane draws with offers its menu; `undefined` when the lane has none. */
+  setLook(lane: number, look: CatalogLook | undefined): boolean {
+    return this.#replace(lane, (state) => (state.look === look ? state : { ...state, look }));
+  }
+
   /** Whether the lane waits for data of the frame on screen. */
   setPending(lane: number, pending: boolean): boolean {
     return this.#replace(lane, (state) =>
@@ -127,6 +162,17 @@ export class LaneSet {
       problem: sent ? undefined : state.problem,
     }));
     return sent ? this.#policy(lane, policyRevision, settings) : undefined;
+  }
+
+  /** Gives every other lane with a source the settings of `from` but its visibility; the policies to send. */
+  copyFrom(from: number): ClientMessage[] {
+    const state = this.#states[from];
+    if (!state) return [];
+    const { visible: _visible, ...copied } = state.settings;
+    return this.#states.flatMap((other, lane) => {
+      const message = lane === from || other.source === null ? undefined : this.set(lane, copied);
+      return message ? [message] : [];
+    });
   }
 
   #policy(lane: number, revision: number, settings: LaneSettings): ClientMessage {

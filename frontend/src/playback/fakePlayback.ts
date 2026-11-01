@@ -3,7 +3,7 @@ import { opened as openedMessage } from "./fakeOpened";
 import { catalogDocument, mapBytes, sampleBytes } from "./fakeData";
 import type { LaneFrame } from "./contract";
 import { PlaybackSession } from "./session";
-import type { PlaybackIntent } from "./sessionDeps";
+import type { PlaybackIntent, SessionDeps } from "./sessionDeps";
 import type {
   ClientMessage,
   LaneInfo,
@@ -42,7 +42,10 @@ export const opened = (frames = 10, lanes?: LaneInfo[]): ServerMessage =>
   openedMessage(frames, FRAME_BYTES, lanes);
 
 /** A session against a fake server, a fake display refresh and a fake clock, with a window of ten frames. */
-export async function setup(resume?: { frame: number; speed: number }) {
+export async function setup(
+  resume?: { frame: number; speed: number },
+  deps: Partial<SessionDeps> = {},
+) {
   const sent: ClientMessage[] = [];
   const intents: PlaybackIntent[] = [];
   let tickets = 0;
@@ -75,6 +78,7 @@ export async function setup(resume?: { frame: number; speed: number }) {
     },
     budgetBytes: 10 * FRAME_BYTES,
     resume,
+    ...deps,
   });
   session.setSurface({
     present: (frame, lanes) => {
@@ -120,7 +124,7 @@ export async function setup(resume?: { frame: number; speed: number }) {
       id = "built-in:standard",
       document: string | null = catalogDocument(),
       revision = 1,
-    ) => server.say({ type: "Catalog", id, revision, document }),
+    ) => server.say({ type: "Catalog", id, revision, document, problem: null }),
   };
   /** One display refresh after `ms` milliseconds. */
   const refresh = (ms = 0) => {

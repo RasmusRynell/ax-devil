@@ -24,7 +24,7 @@ function viewer() {
   const data = new ViewerData(lanes, () => {});
   data.open(10_000, 10 ** 9);
   data.refresh();
-  data.catalogs.receive(LANE_DEFAULTS.catalog, 1, catalogDocument());
+  data.catalogs.receive(LANE_DEFAULTS.catalog, 1, catalogDocument(), null);
   const map = (first: number, samples: number[]) =>
     data.addMap({
       kind: "map",
@@ -96,5 +96,101 @@ describe("viewer data", () => {
     expect(data.samples.count).toBe(0);
     data.addSample({ kind: "sample", source: 0, dataRevision: 2, sample: 1, item: item() });
     expect(data.samples.count).toBe(1);
+  });
+
+  it("counts the items of a source once however many lanes show it, so two lanes do not halve the data window", () => {
+    const lanes = new LaneSet();
+    lanes.open(
+      [
+        { label: "a", source: 0 },
+        { label: "b", source: 0 },
+        { label: "c", source: 1 },
+      ],
+      LANE_DEFAULTS,
+    );
+    const data = new ViewerData(lanes, () => {});
+    expect(data.sampleBytes()).toBeNull();
+    lanes.setStatus(0, READY);
+    lanes.setStatus(1, READY);
+    expect(data.sampleBytes()).toBe(2024);
+    lanes.setStatus(2, { ...READY, mean_sample_bytes: 100 });
+    expect(data.sampleBytes()).toBe(2124);
+    lanes.set(0, { visible: false });
+    expect(data.sampleBytes()).toBe(2124);
+    lanes.set(1, { visible: false });
+    expect(data.sampleBytes()).toBe(100);
+  });
+
+  it("draws one held sample in two lanes, each under its own map and look", () => {
+    const lanes = new LaneSet();
+    lanes.open(
+      [
+        { label: "a", source: 0 },
+        { label: "b", source: 0 },
+      ],
+      LANE_DEFAULTS,
+    );
+    lanes.setStatus(0, READY);
+    lanes.setStatus(1, READY);
+    const data = new ViewerData(lanes, () => {});
+    data.open(10, 10 ** 9);
+    data.refresh();
+    data.catalogs.receive(LANE_DEFAULTS.catalog, 1, catalogDocument(), null);
+    data.window(0, 9);
+    data.addSample({ kind: "sample", source: 0, dataRevision: 1, sample: 0, item: item() });
+    const map = (lane: number, cells: number[]) =>
+      data.addMap({
+        kind: "map",
+        lane,
+        policyRevision: 1,
+        dataRevision: 1,
+        first: 0,
+        samples: Int32Array.from(cells),
+        kinds: new Uint8Array(cells.length),
+      });
+    map(0, [0, -1]);
+    map(1, [0, 0]);
+    lanes.set(1, { theme: "night", hidden: 1 });
+    const at = (lane: number, frame: number) => data.draw?.at(lane, frame);
+    expect([at(0, 0)?.state, at(1, 0)?.state]).toEqual(["draw", "draw"]);
+    expect(at(0, 1)?.state).toBe("none");
+    expect(at(1, 1)?.state).toBe("draw");
+    const [first, second] = [at(0, 0), at(1, 0)];
+    if (first?.state !== "draw" || second?.state !== "draw") throw new Error("not drawn");
+    expect(first.frame.columns).toBe(second.frame.columns);
+    expect([first.frame.theme, first.frame.hidden]).toEqual([null, 0]);
+    expect([second.frame.theme, second.frame.hidden]).toEqual(["night", 1]);
+    expect(second.frame.styleRevision).not.toBe(first.frame.styleRevision);
+  });
+
+  it("applies a lane's expression only if it compiles, and never draws nothing for a catalog that failed", () => {
+    const { lanes, data, map, sample } = viewer();
+    data.window(0, 9);
+    map(0, [0]);
+    sample(0);
+    const frame = () => {
+      const drawn = data.draw?.at(0, 0);
+      if (drawn?.state !== "draw") throw new Error("not drawn");
+      return drawn.frame;
+    };
+    expect(frame().filter).toBeNull();
+    lanes.set(0, { expression: "score >= 0.4" });
+    const filter = frame().filter;
+    expect(filter?.test).not.toBeNull();
+    expect(frame().filter).toBe(filter);
+    lanes.set(0, { expression: "score >=" });
+    expect(frame().filter).toBeNull();
+    lanes.set(0, { catalog: "user:broken.json" });
+    data.refresh();
+    data.receiveCatalogs({
+      type: "Catalog",
+      id: "user:broken.json",
+      revision: 1,
+      document: '{"schema": 4}',
+      problem: null,
+    });
+    expect(data.draw?.at(0, 0).state).toBe("draw");
+    expect(lanes.states[0].catalogProblem).toContain("/");
+    expect(lanes.states[0].look).toBeDefined();
   });
 });

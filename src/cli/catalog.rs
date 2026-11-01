@@ -2,11 +2,11 @@
 //! log file.
 
 use super::{CatalogCommand, args, desktop};
-use catalogs::Library;
+use catalogs::{CatalogId, Library};
 use handlers::Handlers;
 use std::{
     fmt::Write,
-    path::Path,
+    path::{Path, PathBuf},
     process::{Command as Process, ExitCode},
 };
 
@@ -41,15 +41,34 @@ impl Report {
     }
 }
 
-/// What a `catalog` subcommand prints.
-pub fn run(command: &CatalogCommand) -> Report {
+/// What a `catalog` subcommand prints. `folder` is the user's catalog folder, or why it is not known; a command
+/// that does not read it works without it.
+pub fn run(command: &CatalogCommand, folder: Result<PathBuf, String>) -> Report {
+    let failed = |reason: String| Report {
+        text: format!("{reason}\n"),
+        ok: false,
+    };
     match command {
-        CatalogCommand::List => list(&Library::built_in()),
-        CatalogCommand::Check { file } => check(file),
+        CatalogCommand::List => match folder {
+            Ok(folder) => list(&Library::with_folder(folder)),
+            Err(reason) => failed(reason),
+        },
+        CatalogCommand::Check { file } => match checked_file(file, folder) {
+            Ok(path) => check(&path),
+            Err(reason) => failed(reason),
+        },
     }
 }
 
-/// `catalog list`: the built-in catalogs the app serves, one per line.
+/// The file `catalog check` reads: `file` itself, or the file of the user's folder that `user:<file name>` names.
+pub fn checked_file(file: &Path, folder: Result<PathBuf, String>) -> Result<PathBuf, String> {
+    match file.to_str().and_then(CatalogId::parse) {
+        Some(CatalogId::User(name)) => folder.map(|folder| folder.join(name)),
+        _ => Ok(file.to_path_buf()),
+    }
+}
+
+/// `catalog list`: the catalogs the app serves, one per line.
 pub fn list(library: &Library) -> Report {
     let infos = library.documents();
     let width = infos

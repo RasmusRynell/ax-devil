@@ -15,6 +15,7 @@ use ax_devil::{
     video_sources::VideoSources,
 };
 use axum::Router;
+use catalogs::Library;
 use clap::{Args, Parser, Subcommand, ValueHint};
 use foundation::{Location, UserError};
 use handlers::Handlers;
@@ -125,11 +126,11 @@ enum Command {
 /// What `catalog` was asked to do.
 #[derive(Subcommand)]
 enum CatalogCommand {
-    /// List the built-in catalogs.
+    /// List the built-in catalogs and the files of the user's catalog folder.
     List,
     /// Validate a catalog file; every problem is listed with its JSON location.
     Check {
-        /// The catalog file.
+        /// The catalog file, or a catalog of the user's folder as `user:<file name>`.
         #[arg(value_name = "FILE", value_hint = ValueHint::FilePath)]
         file: PathBuf,
     },
@@ -166,7 +167,19 @@ pub async fn run() -> ExitCode {
     // These commands only print: no logging, settings file or port.
     match &command {
         Some(Command::ListHandlers) => return catalog::Report::listing(&handlers).print(),
-        Some(Command::Catalog(catalog)) => return catalog::run(catalog).print(),
+        Some(Command::Catalog(catalog)) => {
+            let folder = Paths::resolve(
+                &|name| std::env::var_os(name),
+                global.config,
+                global.cache_dir,
+            )
+            .and_then(|paths| {
+                settings::Settings::load(&paths.config_file)
+                    .map(|settings| catalog_folder(&paths, &settings))
+                    .map_err(|error| error.to_string())
+            });
+            return catalog::run(catalog, folder).print();
+        }
         _ => {}
     }
     let paths = Paths::resolve(
@@ -214,6 +227,7 @@ fn launch_items(
                 .map(|(position, path)| NewOverlay {
                     path,
                     handler: handler_type.get(position).cloned(),
+                    label: None,
                 })
                 .collect();
             workspace::intake::video(&video, &overlays, handlers)
@@ -236,9 +250,15 @@ fn describe(error: &UserError) -> String {
     }
 }
 
+/// The folder of the user's render catalogs: the `storage.catalog_dir` setting, else the standard folder.
+fn catalog_folder(paths: &Paths, settings: &settings::Settings) -> PathBuf {
+    paths.catalog_dir(settings.state().folder("storage.catalog_dir"))
+}
+
 /// What both backends start from: the services their routes are adapters over, and the stop signal.
 struct Services {
     settings: Arc<settings::Settings>,
+    catalogs: Library,
     launch: Arc<LaunchQueue>,
     videos: Arc<VideoSources>,
     handlers: Handlers,
@@ -259,6 +279,9 @@ impl Services {
         let cache_dir = paths.cache_dir(settings.state().folder("storage.cache_dir"));
         tracing::info!("Caching in {}", cache_dir.display());
         let videos = video_cache::start(&settings, &cache_dir);
+        let catalog_dir = catalog_folder(paths, &settings);
+        tracing::info!("Reading user catalogs from {}", catalog_dir.display());
+        let catalogs = Library::with_folder(catalog_dir);
         let (stop, _) = watch::channel(false);
         let stop_on_ctrl_c = stop.clone();
         tokio::spawn(async move {
@@ -267,6 +290,7 @@ impl Services {
         });
         Ok(Self {
             settings,
+            catalogs,
             launch: Arc::new(LaunchQueue::new(items)),
             videos,
             handlers,
@@ -286,6 +310,7 @@ impl Services {
             &self.cache_dir,
         )
         .with_launch(Arc::clone(&self.launch))
+        .with_catalogs(self.catalogs.clone())
     }
 
     /// Serves `router` until the stop signal, giving connections [`SHUTDOWN_GRACE`] to close, then ends every viewer

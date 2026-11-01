@@ -1,6 +1,8 @@
 // @vitest-environment node
 import { describe, expect, it } from "vite-plus/test";
+import type { SampleView } from "../present";
 import { catalogDocument, EMPTY, NONE } from "./fakeData";
+import { LANE_SETTINGS } from "./fakeOpened";
 import { flush, opened, setup, type OpenedMessage } from "./fakePlayback";
 import type { ClientMessage, LaneInfo, LaneStatusWire } from "./protocol";
 
@@ -74,7 +76,7 @@ describe("lanes", () => {
     ]);
   });
 
-  it("asks for each catalog once, however many lanes use it, and keeps it across a reconnection", async () => {
+  it("asks for each catalog once, however many lanes use it, and asks again on a reconnection to be pushed its changes", async () => {
     const { session, server, sent, retries } = await setup();
     server.open(10, TWO_LANES);
     expect(catalogs(sent)).toEqual([{ type: "Catalog", id: "built-in:standard" }]);
@@ -88,7 +90,114 @@ describe("lanes", () => {
     retries[0].run();
     await flush();
     server.open(10, TWO_LANES);
-    expect(catalogs(sent).map((m) => m.id)).toEqual(["built-in:standard", "built-in:classic"]);
+    expect(catalogs(sent).map((m) => m.id)).toEqual([
+      "built-in:standard",
+      "built-in:classic",
+      "built-in:standard",
+      "built-in:classic",
+    ]);
+  });
+
+  it("recompiles a pushed catalog, keeps the last good one while a push fails, and takes a restarted backend's lower revision", async () => {
+    const { session, server, drawn } = await shown();
+    const name = () => drawn.at(-1)?.lanes[0]?.catalog.name;
+    const problem = () => session.getSnapshot().lanes[0].catalogProblem;
+    expect(name()).toBe("Standard");
+    server.catalog("built-in:standard", catalogDocument("classic"), 2);
+    expect([name(), problem()]).toEqual(["Classic", undefined]);
+    server.catalog("built-in:standard", '{"schema": 4}', 3);
+    expect(name()).toBe("Classic");
+    expect(problem()).toMatch(/\(\d+:\d+\)/);
+    server.catalog("built-in:standard", catalogDocument(), 1);
+    expect([name(), problem()]).toEqual(["Standard", undefined]);
+    server.catalog("built-in:standard", null, 0);
+    expect([name(), problem()]).toEqual(["Standard", "There is no catalog built-in:standard"]);
+  });
+
+  it("lists the catalogs the backend pushes", async () => {
+    const { session, server } = await setup();
+    server.open(10, [DPM]);
+    const listing = [{ id: "user:night.json", name: "Night", description: "" }];
+    server.say({ type: "Catalogs", catalogs: listing });
+    expect(session.getSnapshot().catalogs).toEqual(listing);
+  });
+
+  it("never leaves a lane without a catalog: one that fails draws with the lane's last, else the default", async () => {
+    const { session, server, drawn } = await shown();
+    session.setLane(0, { catalog: "user:broken.json" });
+    server.catalog("user:broken.json", '{"schema": 4}');
+    expect(drawn.at(-1)?.lanes[0]?.catalog.name).toBe("Standard");
+    expect(session.getSnapshot().lanes[0].catalogProblem).toBeDefined();
+    session.setLane(0, { catalog: "user:other.json" });
+    server.catalog("user:other.json", null, 0);
+    expect(drawn.at(-1)?.lanes[0]?.catalog.name).toBe("Standard");
+    expect(session.getSnapshot().lanes[0].catalogProblem).toContain("user:other.json");
+  });
+
+  it("starts lanes with the Personal default catalog when listed, and with the entry before's settings by position", async () => {
+    const night = { id: "user:night.json", name: "Night", description: "" };
+    const withNight = { ...(opened(10, TWO_LANES) as OpenedMessage), catalogs: [night] };
+    const personal = await setup(undefined, { defaultCatalog: () => night.id });
+    personal.server.say(withNight);
+    expect(personal.session.laneSettings().map((lane) => lane.catalog)).toEqual([
+      night.id,
+      night.id,
+    ]);
+
+    const unlisted = await setup(undefined, { defaultCatalog: () => "user:gone.json" });
+    unlisted.server.say(withNight);
+    expect(unlisted.session.laneSettings().map((lane) => lane.catalog)).toEqual([
+      "built-in:standard",
+      "built-in:standard",
+    ]);
+
+    const seed = { ...LANE_SETTINGS, theme: "dusk", hidden: 2, tolerance_ms: null };
+    const seeded = await setup(undefined, { defaultCatalog: () => night.id, lanes: [seed] });
+    seeded.server.say(withNight);
+    expect(seeded.session.laneSettings()).toEqual([seed, { ...LANE_SETTINGS, catalog: night.id }]);
+    expect(policies(seeded.sent)[0]).toMatchObject({ lane: 0, policy: { tolerance_ms: null } });
+  });
+
+  it("gives the other lanes a lane's settings but its visibility, as one policy each", async () => {
+    const { session, server, sent } = await setup();
+    server.open(10, TWO_LANES);
+    session.setLane(1, { visible: false });
+    session.setLane(0, { sticky: { enabled: true, timeout_ms: 500, opacity: 0.5 }, theme: "dusk" });
+    const before = policies(sent).length;
+    session.applyToAll(0);
+    expect(policies(sent).slice(before)).toMatchObject([
+      { lane: 1, subscribed: false, policy: { sticky: { enabled: true, timeout_ms: 500 } } },
+    ]);
+    expect(session.laneSettings()[1]).toMatchObject({ theme: "dusk", visible: false });
+    expect(session.getSnapshot().lanes[1].settings.sticky.opacity).toBe(0.5);
+  });
+
+  it("selects an object of the shown sample, asks the backend for its fields, and clears the selection", async () => {
+    const { session, server, sent, drawn } = await shown();
+    const columns = drawn.at(-1)?.lanes[0]?.columns as SampleView;
+    const entity = columns.strings.string(columns.entityId[0]);
+    const selection = { lane: 0, source: 0, entity };
+    session.select(selection);
+    expect(session.getSnapshot()).toMatchObject({
+      selection,
+      inspection: { state: "loading", summary: { entity } },
+    });
+    expect(sent.filter((message) => message.type === "Inspect")).toEqual([
+      { type: "Inspect", source: 0, data_revision: 1, sample: 0, entity },
+    ]);
+    server.say({
+      type: "Inspected",
+      source: 0,
+      data_revision: 1,
+      sample: 0,
+      entity,
+      inspection: { state: "Found", fields: [], truncated: false },
+    });
+    expect(session.getSnapshot().inspection.state).toBe("ready");
+    session.select({ ...selection, entity: "no such object" });
+    expect(session.getSnapshot().inspection.state).toBe("absent");
+    session.select(null);
+    expect(session.getSnapshot()).toMatchObject({ selection: null, inspection: { state: "none" } });
   });
 
   it("sizes the data window of a Want from what the shown lanes' items weigh", async () => {

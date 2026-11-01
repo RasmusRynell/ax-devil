@@ -96,7 +96,6 @@ export function catalogSchema(): Json {
     title: "ax-devil render catalog",
     ...shape(ROOT.required, {
       schema: { const: CATALOG_SCHEMA },
-      id: { type: "string" },
       name: { type: "string" },
       description: { type: "string" },
       origin: { type: "string" },

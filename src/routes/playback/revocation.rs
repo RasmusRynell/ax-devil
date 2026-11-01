@@ -272,7 +272,7 @@ async fn a_viewer_made_a_follower_gets_no_frame_or_data_outside_the_presenters_w
     let mut session = opened.session;
     let handlers = handlers::Handlers::built_in();
     let service = OverlayService::new(scene_store::TrackRegistry::new(handlers, None));
-    let library = catalogs::Library::built_in();
+    let library = ::catalogs::Library::built_in();
     let (holder, authority) = watch::channel(Authority::default());
     let gate = Gate::new(authority, || 0);
     let (_stop, mut closing) = watch::channel(false);

@@ -1,6 +1,5 @@
 {
   "schema": 4,
-  "id": "built-in:tracking",
   "name": "Tracking",
   "description": "For debugging tracking: thin high-contrast boxes in a color picked from each object's id and a small id, so box changes and id switches between frames stand out. No class names, scores or confidence.",
   "vars": {

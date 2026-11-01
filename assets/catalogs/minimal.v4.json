@@ -1,6 +1,5 @@
 {
   "schema": 4,
-  "id": "built-in:minimal",
   "name": "Minimal",
   "description": "For crowds: thin boxes in the class color and nothing else. Hover an object for its details.",
   "vars": {

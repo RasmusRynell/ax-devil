@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { Hidden } from "../viewer/hidden";
+import type { Picked, Selection, Viewport } from "./contract";
 import { LaneChip } from "./LaneChip";
+import type { Geometry } from "./renderer";
 import type { PlaybackSession } from "./session";
 import type { PlaybackView } from "./view";
 import { VideoCanvas, type LaneLayout } from "./VideoCanvas";
@@ -63,6 +65,12 @@ export function LaneGrid({
   entry,
   hidden,
   onHide,
+  viewport,
+  onViewport,
+  objectDetails,
+  onHover,
+  onSelect,
+  onDrawn,
 }: {
   session: PlaybackSession;
   view: PlaybackView;
@@ -74,6 +82,15 @@ export function LaneGrid({
   hidden: Hidden;
   /** Hides a lane by its label; absent for a seat that may not change the workspace. */
   onHide?: (label: string) => void;
+  /** The zoom and pan of every lane's picture; see `VideoCanvas` for the gestures that ask to change it. */
+  viewport?: Viewport;
+  onViewport?: (viewport: Viewport) => void;
+  /** Whether pointing at an object reports it (hover and click); on unless false. */
+  objectDetails?: boolean;
+  onHover?: (picked: Picked | null) => void;
+  onSelect?: (selection: Selection) => void;
+  /** Called after every draw with the pictures' geometry, to place outlines over the objects. */
+  onDrawn?: (geometry: Geometry) => void;
 }) {
   const [box, size] = useSize();
   const { lanes } = view;
@@ -90,17 +107,33 @@ export function LaneGrid({
   }, [session, lanes, shown]);
   return (
     <div ref={box} className="absolute inset-0 flex">
-      <VideoCanvas session={session} label={name} anchor={anchor} cells={cells} />
+      <VideoCanvas
+        session={session}
+        label={name}
+        anchor={anchor}
+        cells={cells}
+        viewport={viewport}
+        onViewport={onViewport}
+        objectDetails={objectDetails}
+        onHover={onHover}
+        onSelect={onSelect}
+        onDrawn={onDrawn}
+      />
       {cells.map(({ lane: index, rect }) => (
         <div
           key={lanes[index].label}
-          className="absolute p-s"
+          className="pointer-events-none absolute p-s *:pointer-events-auto"
           style={{ left: rect.x, top: rect.y, maxWidth: rect.width }}
         >
           <LaneChip
             lane={lanes[index]}
             catalogs={view.catalogs}
             onChange={(change) => session.setLane(index, change)}
+            onApplyAll={
+              lanes.filter((lane) => lane.source !== null).length > 1
+                ? () => session.applyToAll(index)
+                : undefined
+            }
             onHide={onHide && (() => onHide(lanes[index].label))}
           />
         </div>

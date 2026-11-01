@@ -1,17 +1,23 @@
-import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import type { ContentInfo, ContentRef, EntryInfo } from "../generated/api";
 import { Icon } from "../kit/Icon";
+import { useSettings } from "../settings";
 import { useCan, useFollowing, useServerClock, useStream, useView } from "../session/session";
 import { useViewerActions } from "../viewer/actions";
 import { NOTHING_HIDDEN, type Hidden } from "../viewer/hidden";
 import { NoticeList } from "./LaneChip";
 import { LaneGrid } from "./LaneGrid";
 import { Popover } from "../kit/Popover";
+import type { LaneSettings, Viewport } from "./contract";
+import { Inspector } from "./Inspector";
+import { ObjectLayer, type ObjectLayerHandle } from "./ObjectLayer";
+import type { Geometry } from "./renderer";
 import { PlaybackSession } from "./session";
 import type { PlaybackIntent, ResumeState } from "./sessionDeps";
 import { connectWorker } from "./connect";
 import { Transport } from "./Transport";
 import type { PlaybackView } from "./view";
+import { FIT, ZOOM_STEP } from "./viewport";
 import type { Connect } from "./wire";
 
 /** What the pane says while the video is not ready: indexing with its progress, reconnecting, or why it failed. */
@@ -62,6 +68,8 @@ function Playback({
   hidden,
   canChange,
   onHideLane,
+  viewport,
+  onViewport,
 }: {
   session: PlaybackSession;
   item: string;
@@ -70,14 +78,45 @@ function Playback({
   hidden: Hidden;
   canChange: boolean;
   onHideLane?: (label: string) => void;
+  viewport: Viewport;
+  onViewport: (viewport: Viewport) => void;
 }) {
   const view = useSyncExternalStore(session.subscribe, session.getSnapshot);
+  const objectDetails = useSettings().values["overlays.object_details"] === true;
   const pane = useRef<HTMLDivElement>(null);
+  const objects = useRef<ObjectLayerHandle>(null);
+  const geometry = useRef<Geometry | null>(null);
+  const shownViewport = useRef(viewport);
+  shownViewport.current = viewport;
   // A viewer that opens takes the keyboard, so its shortcuts work at once.
   useEffect(() => pane.current?.focus({ preventScroll: true }), []);
+  // Pointing at objects is switched off: nothing stays selected.
+  useEffect(() => {
+    if (!objectDetails) session.select(null);
+  }, [session, objectDetails]);
+  const zoom = useCallback(
+    (factor: number) => {
+      const next = geometry.current?.zoomAt(shownViewport.current, factor);
+      if (!next || next === shownViewport.current) return;
+      shownViewport.current = next;
+      onViewport(next);
+    },
+    [onViewport],
+  );
+  const hover = useCallback(
+    (picked: Parameters<ObjectLayerHandle["hover"]>[0]) => objects.current?.hover(picked),
+    [],
+  );
+  const drawn = useCallback((next: Geometry) => {
+    geometry.current = next;
+    objects.current?.drawn(next);
+  }, []);
   useViewerActions(
     useMemo(
       () => ({
+        "zoom-in": () => zoom(ZOOM_STEP),
+        "zoom-out": () => zoom(1 / ZOOM_STEP),
+        "zoom-reset": () => onViewport(FIT),
         "play-pause": () => session.togglePlay(),
         "step-forward": () => session.step(1),
         "step-back": () => session.step(-1),
@@ -86,40 +125,61 @@ function Playback({
         "speed-up": () => session.stepSpeed(1),
         "speed-down": () => session.stepSpeed(-1),
       }),
-      [session],
+      [session, zoom, onViewport],
     ),
   );
   return (
     <div
       ref={pane}
       tabIndex={-1}
-      className="flex min-h-0 flex-1 flex-col bg-canvas text-on-canvas outline-none"
+      data-popover-bounds=""
+      className="relative flex min-h-0 flex-1 flex-col bg-canvas text-on-canvas outline-none @container"
+      onKeyDown={(event) => {
+        if (event.key === "Escape" && !event.ctrlKey && !event.altKey && !event.metaKey)
+          session.select(null);
+      }}
     >
       {view.status === "ready" ? (
         <>
-          <div className="relative min-h-0 flex-1">
-            <LaneGrid
-              session={session}
-              view={view}
-              name={name}
-              anchor={`frame:${item}`}
-              entry={entry}
-              hidden={hidden}
-              onHide={onHideLane}
-            />
-            {view.warnings.length > 0 && (
-              <div className="absolute top-0 right-0 p-s">
-                <div className="rounded-control bg-canvas-scrim">
-                  <Popover
-                    onCanvas
-                    label={`${name}: warnings`}
-                    trigger={<Icon name="triangle-alert" />}
-                    className="size-row justify-center"
-                  >
-                    <NoticeList notices={view.warnings.map((problem) => ({ problem }))} />
-                  </Popover>
+          <div className="flex min-h-0 flex-1">
+            <div className="relative min-h-0 min-w-0 flex-1">
+              <LaneGrid
+                session={session}
+                view={view}
+                name={name}
+                anchor={`frame:${item}`}
+                entry={entry}
+                hidden={hidden}
+                onHide={onHideLane}
+                viewport={viewport}
+                onViewport={onViewport}
+                objectDetails={objectDetails}
+                onHover={hover}
+                onSelect={(selection) => session.select(selection)}
+                onDrawn={drawn}
+              />
+              <ObjectLayer
+                selection={view.selection}
+                objectDetails={objectDetails}
+                handle={objects}
+              />
+              {view.warnings.length > 0 && (
+                <div className="absolute top-0 right-0 p-s">
+                  <div className="rounded-control bg-canvas-scrim">
+                    <Popover
+                      onCanvas
+                      label={`${name}: warnings`}
+                      trigger={<Icon name="triangle-alert" />}
+                      className="size-row justify-center"
+                    >
+                      <NoticeList notices={view.warnings.map((problem) => ({ problem }))} />
+                    </Popover>
+                  </div>
                 </div>
-              </div>
+              )}
+            </div>
+            {objectDetails && view.inspection.state !== "none" && (
+              <Inspector inspection={view.inspection} onClose={() => session.select(null)} />
             )}
           </div>
           <Transport controls={session} view={view} disabled={!canChange} />
@@ -183,9 +243,16 @@ export function VideoViewer({
   const following = useFollowing();
   const clock = useServerClock();
   const [session, setSession] = useState<PlaybackSession | null>(null);
+  // How the pictures are zoomed belongs to the viewer, so it stays across entries and reconnections.
+  const [viewport, setViewport] = useState<Viewport>(FIT);
+  const { values } = useSettings();
+  // The lane settings of the entry that closed, which the next entry's lanes start from.
+  const priorLanes = useRef<readonly LaneSettings[]>([]);
   // The effect that creates the session reads these as they are then, and must not restart when they change.
   const latest = useRef({ intent, canChange, following, clock });
   latest.current = { intent, canChange, following, clock };
+  const defaultCatalog = useRef(values["overlays.default_catalog"]);
+  defaultCatalog.current = values["overlays.default_catalog"];
   // Where each entry was left, for the session that replaces the one that closed. The published intent still names the
   // last anchor when the replacement starts, so reading it there would reopen at the frame playback began from.
   const own = useRef<EntryMemory>(new Map());
@@ -218,6 +285,8 @@ export function VideoViewer({
       ticket,
       connect,
       resume: start,
+      lanes: priorLanes.current,
+      defaultCatalog: () => String(defaultCatalog.current) || null,
       onIntent: publish,
       now: () => performance.now(),
       frame: (callback) => {
@@ -235,6 +304,8 @@ export function VideoViewer({
     return () => {
       // Shown again later, the viewer opens where it was left, paused.
       const { frame, speed } = created.resumeState();
+      const lanes = created.laneSettings();
+      if (lanes.length > 0) priorLanes.current = lanes;
       created.close();
       // A window that follows has not chosen anything, so leaving does not make it explore.
       if (!latest.current.following) {
@@ -258,6 +329,8 @@ export function VideoViewer({
         hidden={hidden}
         canChange={canChange}
         onHideLane={onHideLane}
+        viewport={viewport}
+        onViewport={setViewport}
       />
     )
   );

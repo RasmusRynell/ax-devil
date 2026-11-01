@@ -41,6 +41,78 @@ async function setView(window, [width, height], zoom) {
   );
 }
 
+// The window as drawn: its pixels (device pixels, four bytes each) and the device pixels per CSS pixel.
+async function capture(window) {
+  const { js } = page(window);
+  await frames({ js });
+  const image = await window.webContents.capturePage();
+  const { width, height } = image.getSize();
+  return { bitmap: image.toBitmap(), width, height, scale: width / (await js("innerWidth")) };
+}
+
+// Whether a captured pixel carries colour: the grey picture, white text and dark name tags do not.
+function colourful({ bitmap, width }, x, y) {
+  const at = (y * width + x) * 4;
+  return Math.max(...bitmap.subarray(at, at + 3)) - Math.min(...bitmap.subarray(at, at + 3)) >= 80;
+}
+
+// The frame number the transport shows.
+const SHOWN = `Number.parseInt(document.querySelector("output[aria-label=Frame]")?.textContent ?? "")`;
+
+// Pauses and steps the viewer to this frame.
+async function goToFrame(window, target) {
+  const { js, wait } = page(window);
+  await js("document.querySelector('[aria-label=Pause]')?.click()");
+  for (;;) {
+    const at = await js(SHOWN);
+    if (at === target) return;
+    await js(
+      `document.querySelector('[aria-label="${at < target ? "Forward" : "Back"} 1 frame"]').click()`,
+    );
+    await wait(`${SHOWN} !== ${at}`);
+  }
+}
+
+// The lane cells on screen, from the name tags the grid places at each cell's corner: each is the part of the grid
+// from its tag to the next tag across and down. The canvas's own box fills the grid and is not a tag.
+const laneCells = (window) =>
+  page(window).js(`(() => {
+    const grid = document.querySelector('canvas').parentElement.parentElement;
+    const tags = [...grid.querySelectorAll(':scope > div.absolute:not(.inset-0)')].map((tag) => ({
+      label: tag.querySelector('span').textContent,
+      ...tag.getBoundingClientRect().toJSON(),
+    }));
+    const end = grid.getBoundingClientRect();
+    const next = (values, value, limit) => Math.min(limit, ...values.filter((other) => other > value + 1));
+    return tags.map((tag) => ({
+      label: tag.label,
+      x: tag.left,
+      y: tag.top,
+      right: next(tags.map((other) => other.left), tag.left, end.right),
+      bottom: next(tags.map((other) => other.top), tag.top, end.bottom),
+    }));
+  })()`);
+
+// How many pixels of a lane cell carry colour.
+async function colourCount(window, cell) {
+  const shot = await capture(window);
+  let count = 0;
+  for (let y = Math.round(cell.y * shot.scale); y < Math.round(cell.bottom * shot.scale); y++)
+    for (let x = Math.round(cell.x * shot.scale); x < Math.round(cell.right * shot.scale); x++)
+      if (colourful(shot, x, y)) count++;
+  return count;
+}
+
+// A real mouse pointer at a CSS pixel of the page (the window's coordinates are the page's times its zoom).
+async function moveTo(window, x, y) {
+  const zoom = window.webContents.getZoomFactor();
+  window.webContents.sendInputEvent({
+    type: "mouseMove",
+    x: Math.round(x * zoom),
+    y: Math.round(y * zoom),
+  });
+}
+
 // A button in the sidebar, by its text.
 const button = (label) =>
   `[...document.querySelectorAll('aside button')].find((b) => b.textContent === '${label}')`;
@@ -87,12 +159,19 @@ async function until(find, what) {
 module.exports = {
   SCREENSHOTS,
   button,
+  capture,
   center,
+  colourCount,
+  colourful,
   click,
   delay,
   frames,
+  goToFrame,
+  laneCells,
+  moveTo,
   page,
   reload,
+  SHOWN,
   setView,
   tag,
   until,

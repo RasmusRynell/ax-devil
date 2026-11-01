@@ -13,13 +13,13 @@ import {
   type ClockIntent,
   type FrameSource,
 } from "./clock";
-import type { LaneControl, LaneSettings, Surface } from "./contract";
+import type { LaneControl, LaneSettings, Selection, Surface } from "./contract";
 import { dataWindow, sampleBudgetBytes } from "./data/dataWindow";
 import { FrameFailures } from "./failures";
 import { FrameBuffer, windowSize } from "./FrameBuffer";
 import { DataWait, displaySource } from "./frameSource";
 import { WantPlanner, sameWant } from "./direction";
-import { LaneSet } from "./lanes";
+import { LaneSet, startWith } from "./lanes";
 import {
   PLAYBACK_PROTOCOL,
   type Envelope,
@@ -28,7 +28,7 @@ import {
   type Want,
 } from "./protocol";
 import { BUFFER_BUDGET_BYTES, type ResumeState, type SessionDeps } from "./sessionDeps";
-import { INITIAL_VIEW, sameView, type PlaybackView } from "./view";
+import { INITIAL_VIEW, buildView, sameView, type PlaybackView } from "./view";
 import { ViewerData } from "./viewerData";
 import type { Connection, Incoming } from "./wire";
 
@@ -152,6 +152,24 @@ export class PlaybackSession implements LaneControl {
     this.#changed();
   }
 
+  /** Gives every other lane of this viewer the settings of `lane`, but its visibility. */
+  applyToAll(lane: number): void {
+    this.#lanes.copyFrom(lane).forEach((message) => this.#connection?.send(message));
+    this.#data.refresh();
+    this.represent();
+    this.#changed();
+  }
+
+  /** The settings of every lane by position, which the next entry's lanes start from. */
+  laneSettings(): readonly LaneSettings[] {
+    return this.#lanes.states.map((lane) => lane.settings);
+  }
+
+  /** Selects an object (`null`: none) for the inspector. Selection is this viewer's own and never reaches the backend. */
+  select(selection: Selection): void {
+    if (this.#data.inspections.select(selection)) this.#publish();
+  }
+
   play(): void {
     const clock = this.#clock;
     if (!clock || clock.playing) return;
@@ -249,7 +267,6 @@ export class PlaybackSession implements LaneControl {
     const attempt = {};
     this.#attempt = attempt;
     this.#opened = undefined;
-    this.#data.reconnect();
     const current = () => this.#attempt === attempt && !this.#closed;
     this.#deps.ticket().then(
       (ticket) => {
@@ -299,9 +316,16 @@ export class PlaybackSession implements LaneControl {
           "playback",
         );
       this.#opened = message;
+      const before = this.#lanes.states;
+      const defaults = startWith(
+        message.lane_defaults,
+        message.catalogs,
+        this.#deps.defaultCatalog?.(),
+      );
       this.#lanes
-        .open(message.lanes, message.lane_defaults)
+        .open(message.lanes, defaults, this.#deps.lanes)
         .forEach((m) => this.#connection?.send(m));
+      this.#data.reopen(message, before);
       this.#data.refresh();
     } else if (message.type === "LaneStatus") {
       if (this.#lanes.setStatus(message.lane, message.status)) {
@@ -309,11 +333,13 @@ export class PlaybackSession implements LaneControl {
         this.represent();
         this.#arm();
       }
-    } else if (message.type === "Catalog") {
-      if (this.#data.catalogs.receive(message.id, message.revision, message.document)) {
-        this.#data.catalogProblems();
+    } else if (message.type === "Catalog" || message.type === "Catalogs") {
+      if (this.#data.receiveCatalogs(message)) {
+        this.represent();
         this.#onData();
       }
+    } else if (message.type === "Inspected") {
+      this.#data.inspections.receive(message);
     } else if (message.type === "DataWindow") {
       this.#data.window(message.first, message.last);
     } else if (message.type === "Evict") {
@@ -480,28 +506,19 @@ export class PlaybackSession implements LaneControl {
   }
 
   #publish(): void {
-    const clock = this.#clock;
-    const shown = clock?.info();
-    const playhead = clock?.playhead ?? 0;
-    // The failure the screen is waiting on: the latest failed frame at or before the playhead that was not passed.
-    const failed = this.#failures.latestAtOrBefore(playhead);
-    const frameError = failed && failed.sequenceId > (shown?.sequenceId ?? -1) ? failed : undefined;
-    const view: PlaybackView = {
+    const view = buildView({
       status: this.#status,
       progress: this.#progress,
       failure: this.#failure,
-      frameCount: this.#status === "ready" ? this.#frameCount : 0,
-      playing: clock?.playing ?? false,
+      frameCount: this.#frameCount,
       speed: this.#speed,
-      playhead,
-      shown,
-      frameError,
+      clock: this.#clock,
+      failures: this.#failures,
       lanes: this.#lanes.states,
-      catalogs: this.#opened?.catalogs ?? INITIAL_VIEW.catalogs,
-      width: this.#opened?.width ?? 0,
-      height: this.#opened?.height ?? 0,
-      warnings: this.#opened?.warnings ?? INITIAL_VIEW.warnings,
-    };
+      catalogs: this.#data.catalogs.listing,
+      opened: this.#opened,
+      inspection: this.#data.inspections.view,
+    });
     if (sameView(view, this.#view)) return;
     this.#view = view;
     this.#listeners.forEach((listener) => listener());

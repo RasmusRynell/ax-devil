@@ -865,7 +865,11 @@ path: string,
 /**
  * The decoder handler id; the only decoder for the file's extension when absent.
  */
-handler: string | null, };
+handler: string | null, 
+/**
+ * The lane's name; the file name when absent, numbered ` (2)`, ` (3)` when the video already shows the file.
+ */
+label: string | null, };
 
 /**
  * An entry or lane to hide or show.
@@ -1172,6 +1176,50 @@ data_revision: number,
 mean_sample_bytes: number, } | { "status": "Failed" } & ErrorWire;
 
 /**
+ * Where in the inspector a field is listed; the variants are in display order.
+ */
+export type FieldGroupWire = "classification" | "motion" | "geometry" | "debug" | "raw";
+
+/**
+ * Who produced a field in the Debug group.
+ */
+export type FieldOriginWire = "source" | "decoder";
+
+/**
+ * One leaf of an object's data.
+ */
+export type FieldWire = { 
+/**
+ * The section the field is listed in.
+ */
+group: FieldGroupWire, 
+/**
+ * Who produced the field; only in the Debug group.
+ */
+origin?: FieldOriginWire, 
+/**
+ * The field's place in the data; a list index is its decimal digits.
+ */
+path: Array<string>, 
+/**
+ * The leaf: a number, text, true or false, or `null`.
+ */
+value: null | boolean | number | string, };
+
+/**
+ * What the backend knows of one object of one sample.
+ */
+export type InspectionWire = { "state": "Found", 
+/**
+ * At most 4096; a text is cut at 4096 characters.
+ */
+fields: Array<FieldWire>, 
+/**
+ * Whether fields were left out or a text was cut.
+ */
+truncated: boolean, } | { "state": "Absent" } | { "state": "Unavailable" };
+
+/**
  * What the frontend sends.
  */
 export type ClientMessage = { "type": "Open", 
@@ -1207,7 +1255,23 @@ subscribed: boolean, } | { "type": "Catalog",
 /**
  * The catalog id, such as `built-in:standard`.
  */
-id: string, } | { "type": "Close" };
+id: string, } | { "type": "Inspect", 
+/**
+ * The viewer's source id, `LaneInfo::source`.
+ */
+source: number, 
+/**
+ * The source revision the sample belongs to.
+ */
+data_revision: number, 
+/**
+ * The sample's index in its source.
+ */
+sample: number, 
+/**
+ * The object's id; at most 1024 bytes.
+ */
+entity: string, } | { "type": "Close" };
 
 /**
  * What the backend sends as text. `Opened` is followed by a Timeline envelope.
@@ -1282,9 +1346,37 @@ id: string,
  */
 revision: number, 
 /**
- * The catalog document, or `null` when no such catalog exists.
+ * The catalog document, or `null` when no such catalog exists or it cannot be served.
  */
-document: string | null, } | { "type": "FrameError", 
+document: string | null, 
+/**
+ * Why an existing catalog cannot be served (too large, unreadable, not text); `null` otherwise.
+ */
+problem: string | null, } | { "type": "Catalogs", 
+/**
+ * Built-ins first and Standard first among them, then the user's.
+ */
+catalogs: Array<CatalogInfoWire>, } | { "type": "Inspected", 
+/**
+ * The requested source.
+ */
+source: number, 
+/**
+ * The requested revision.
+ */
+data_revision: number, 
+/**
+ * The requested sample.
+ */
+sample: number, 
+/**
+ * The requested object.
+ */
+entity: string, 
+/**
+ * What the backend knows of it.
+ */
+inspection: InspectionWire, } | { "type": "FrameError", 
 /**
  * The frame that failed.
  */
@@ -1330,7 +1422,7 @@ samples: Array<number>, } | { "type": "Error" } & ErrorWire;
 /**
  * Raised when the messages or the envelope change in a way an older frontend cannot read.
  */
-export const PLAYBACK_PROTOCOL = 4;
+export const PLAYBACK_PROTOCOL = 5;
 
 /**
  * "AXDV" read as a little-endian u32.

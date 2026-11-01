@@ -1,7 +1,8 @@
 import { act, cleanup, screen } from "@testing-library/react";
 import { useMemo } from "react";
 import { afterEach, beforeEach, vi } from "vite-plus/test";
-import type { EntryInfo } from "../generated/api";
+import { FakeSettings } from "../fakeSettings";
+import type { EntryInfo, SettingsState } from "../generated/api";
 import { FakeSocket } from "../session/fakeSession";
 import { useDoc, useView } from "../session/session";
 import { opened } from "./fakeOpened";
@@ -63,12 +64,15 @@ export function Viewer({
   lanes,
   entryId,
   onHideLane,
+  settings,
 }: {
   sent: ClientMessage[];
   lanes?: LaneInfo[];
   /** Shows this entry whatever the view names. */
   entryId?: string;
   onHideLane?: (label: string) => void;
+  /** The settings the viewer reads; the defaults without. */
+  settings?: SettingsState;
 }) {
   // One connect for the life of the viewer: a new one would restart playback by itself.
   const connect = useMemo<Connect>(() => open(sent, lanes), [sent, lanes]);
@@ -76,13 +80,15 @@ export function Viewer({
   const entry = ENTRIES[entryId ?? viewers.a?.entry ?? "content-a"];
   // The viewer opens once the Doc has its item, as the shell does.
   return useDoc()?.workspace.items.length ? (
-    <VideoViewer
-      item="a"
-      content={content}
-      entry={entry}
-      connect={connect}
-      onHideLane={onHideLane}
-    />
+    <FakeSettings state={settings}>
+      <VideoViewer
+        item="a"
+        content={content}
+        entry={entry}
+        connect={connect}
+        onHideLane={onHideLane}
+      />
+    </FakeSettings>
   ) : null;
 }
 

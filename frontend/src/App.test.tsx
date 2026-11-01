@@ -217,6 +217,7 @@ describe("access", () => {
     expect(sent.values).toEqual({
       "playback.video_cache": "auto",
       "storage.cache_dir": "/var/cache",
+      "storage.catalog_dir": "",
     });
     expect(JSON.parse(window.localStorage.getItem("ax-devil.preferences") ?? "{}")).toMatchObject({
       values: { "ui.theme": "light" },

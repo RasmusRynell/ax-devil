@@ -1,5 +1,6 @@
 /** What a playback session is given, and what it reports of the clock. */
 
+import type { LaneSettings } from "./contract";
 import type { Connect } from "./wire";
 
 /** What one viewer may hold of decoded frames: it divides into the window the backend is asked to fill. */
@@ -16,6 +17,10 @@ export interface SessionDeps {
   /** Calls back once after `ms`; returns the way to cancel. */
   after: (callback: () => void, ms: number) => () => void;
   budgetBytes?: number;
+  /** The Personal default catalog id, or `null` for the built-in default; read when the lanes open. */
+  defaultCatalog?: () => string | null;
+  /** The lane settings of the entry before this one, by lane position: this entry's lanes start from them. */
+  lanes?: readonly LaneSettings[];
   /** Where an earlier session of this video left off: this one opens there, paused, at that speed. */
   resume?: ResumeState;
   /** Told what the clock is doing after every change the viewer makes: the intent a presenter publishes. */

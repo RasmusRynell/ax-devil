@@ -1,6 +1,5 @@
 {
   "schema": 4,
-  "id": "built-in:classic",
   "name": "Classic",
   "description": "The original ax-devil look: the id above each box and the class below it, a score bar, a movement symbol, color swatches and badges inside the box.",
   "vars": {

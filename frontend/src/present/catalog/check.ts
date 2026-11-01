@@ -11,8 +11,7 @@ export interface CheckReport {
 export function checkCatalog(source: string, label: string): CheckReport {
   const result = compileCatalog(source);
   if (result.ok) {
-    const { name, id } = result.catalog;
-    return { ok: true, text: `${label}: ${name} (${id})\n` };
+    return { ok: true, text: `${label}: ${result.catalog.name}\n` };
   }
   const found = result.diagnostics
     .map((diagnostic) => ({ diagnostic, at: locate(diagnostic, source) }))

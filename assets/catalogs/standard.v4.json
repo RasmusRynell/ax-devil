@@ -1,6 +1,5 @@
 {
   "schema": 4,
-  "id": "built-in:standard",
   "name": "Standard",
   "description": "The everyday default: thin boxes in the class color, the id on a tab at the top and the score on a tab at the bottom.",
   "vars": {

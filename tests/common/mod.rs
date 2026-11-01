@@ -89,23 +89,28 @@ impl Added {
 
 impl Backend {
     pub async fn start() -> Self {
-        Self::start_with(false).await
+        Self::start_with(false, None).await
     }
 
     /// A backend and viewers whose sockets hold only a few kilobytes, so a viewer that stops reading backs the
     /// backend up after a few frames.
     pub async fn start_squeezed() -> Self {
-        Self::start_with(true).await
+        Self::start_with(true, None).await
     }
 
-    async fn start_with(squeezed: bool) -> Self {
+    /// A backend whose catalogs are `catalogs`, which the test polls itself with `rescan`.
+    pub async fn start_with_catalogs(catalogs: catalogs::Library) -> Self {
+        Self::start_with(false, Some(catalogs)).await
+    }
+
+    async fn start_with(squeezed: bool, catalogs: Option<catalogs::Library>) -> Self {
         let folder = tempfile::tempdir().unwrap();
         let settings = settings::Settings::load(&folder.path().join("default.json")).unwrap();
         let registry = Registry::new(CachePool::new(256 * MIB));
         let cache = folder.path().join("cache");
         let videos = Arc::new(VideoSources::new(registry, &cache));
         let (stop, stopping) = tokio::sync::watch::channel(false);
-        let state = AppState::new(
+        let mut state = AppState::new(
             Arc::new(settings),
             Policy::Local,
             videos.clone(),
@@ -113,6 +118,9 @@ impl Backend {
             Handlers::built_in(),
             &cache,
         );
+        if let Some(catalogs) = catalogs {
+            state.catalogs = Arc::new(catalogs);
+        }
         let router = app(state.clone());
         let socket = tokio::net::TcpSocket::new_v4().unwrap();
         if squeezed {
@@ -151,6 +159,7 @@ impl Backend {
             .map(|path| NewOverlay {
                 path: path.clone(),
                 handler: None,
+                label: None,
             })
             .collect();
         let item = workspace::intake::video(path, &overlays, &Handlers::built_in()).unwrap();

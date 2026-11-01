@@ -6,7 +6,7 @@ export {
 } from "./catalog/compile";
 export { locate, type Position } from "./catalog/locate";
 export { computeVars, themeIndex } from "./catalog/program";
-export type { CompiledCatalog, LayerSpec, MarkSpec } from "./catalog/types";
+export { FEATURES, type CompiledCatalog, type LayerSpec, type MarkSpec } from "./catalog/types";
 export type { Diagnostic, DiagnosticCode } from "./expr/diagnostic";
 export {
   compileFilter,
@@ -21,8 +21,9 @@ export { CodePoints } from "./expr/codePoints";
 export { type EvalStyle, evaluate } from "./evaluate/evaluate";
 export { EvalReport } from "./evaluate/report";
 export { Layouter } from "./layout/layout";
-export type { LayoutView } from "./layout/sink";
+export type { LayoutView, Region } from "./layout/sink";
 export { LanePresenter, type LaneInput } from "./lane";
+export { pick, type Pick } from "./pick/pick";
 export { MarkBuffer } from "./marks/buffer";
 export { LaneQuads } from "./quads/lane";
 export { QuadSink } from "./quads/quadSink";

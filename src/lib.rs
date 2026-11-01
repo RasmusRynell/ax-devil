@@ -32,8 +32,8 @@ use session::{GRACE, LaunchQueue, Sessions};
 use sessions::session::OnRuntime;
 use settings::Scope;
 use share::Hosting;
-use std::{collections::BTreeMap, path::Path, sync::Arc};
-use tokio::sync::watch;
+use std::{collections::BTreeMap, path::Path, sync::Arc, time::Duration};
+use tokio::{sync::watch, time::MissedTickBehavior};
 
 pub use routes::window::Windows;
 
@@ -43,6 +43,10 @@ pub use routes::window::Windows;
 // The frontend build creates the folder; checks that compile without it serve nothing.
 #[allow_missing = true]
 struct Assets;
+
+/// How often the user's catalog folder is looked at. A saved catalog reaches a lane after two of these, the second
+/// being the one that found it unchanged.
+const CATALOG_POLL: Duration = Duration::from_millis(500);
 
 /// What every route can reach: the services it is an adapter over, who is asking, the socket limits, and the sessions.
 #[derive(Clone)]
@@ -57,7 +61,7 @@ pub struct AppState {
     pub videos: Arc<video_sources::VideoSources>,
     /// Opens the overlays of viewers.
     pub overlays: Arc<OverlayService>,
-    /// The render catalogs, listed to every viewer and served on request.
+    /// The render catalogs, listed to every viewer and served on request; see [`AppState::with_catalogs`].
     pub catalogs: Arc<Library>,
     /// Turns true when the backend is stopping: long-lived connections, such as the playback and session sockets,
     /// end.
@@ -135,6 +139,30 @@ impl AppState {
     #[must_use]
     pub fn with_windows(mut self, file: std::path::PathBuf) -> Self {
         self.windows = Some(Arc::new(Windows::new(file)));
+        self
+    }
+
+    /// The same state serving `catalogs`, whose folder is polled until the backend stops. Must be called inside a
+    /// Tokio runtime.
+    #[must_use]
+    pub fn with_catalogs(mut self, catalogs: Library) -> Self {
+        let polled = catalogs.clone();
+        let mut stopping = self.stopping.clone();
+        tokio::spawn(async move {
+            let mut tick = tokio::time::interval(CATALOG_POLL);
+            tick.set_missed_tick_behavior(MissedTickBehavior::Skip);
+            loop {
+                tokio::select! {
+                    _ = tick.tick() => {
+                        let library = polled.clone();
+                        // Reading the folder blocks.
+                        let _ = tokio::task::spawn_blocking(move || library.rescan()).await;
+                    }
+                    () = async { let _ = stopping.wait_for(|stopping| *stopping).await; } => return,
+                }
+            }
+        });
+        self.catalogs = Arc::new(catalogs);
         self
     }
 
@@ -439,6 +467,42 @@ mod tests {
         assert_eq!(
             test.send(window("GET", "main", "")).await.0,
             StatusCode::NO_CONTENT
+        );
+    }
+
+    #[tokio::test]
+    async fn catalogs_are_polled_in_the_background_so_a_file_that_appears_is_listed() {
+        let folder = tempfile::tempdir().unwrap();
+        let catalog_dir = folder.path().join("catalogs");
+        std::fs::create_dir(&catalog_dir).unwrap();
+        let library = Library::with_folder(catalog_dir.clone());
+        let settings = Arc::new(settings::Settings::load(&folder.path().join("s.json")).unwrap());
+        let cache = folder.path().join("cache");
+        let videos = crate::video_cache::start(&settings, &cache);
+        let (_stop, stopping) = watch::channel(false);
+        let state = AppState::new(
+            settings,
+            Policy::Local,
+            videos,
+            stopping,
+            handlers::Handlers::built_in(),
+            &cache,
+        )
+        .with_catalogs(library.clone());
+        let mut changes = library.changes();
+
+        std::fs::write(catalog_dir.join("night.json"), "{}").unwrap();
+
+        tokio::time::timeout(Duration::from_secs(10), changes.changed())
+            .await
+            .expect("the poller finds the file")
+            .unwrap();
+        assert!(
+            state
+                .catalogs
+                .documents()
+                .iter()
+                .any(|info| info.id.to_string() == "user:night.json")
         );
     }
 }

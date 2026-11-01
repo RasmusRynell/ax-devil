@@ -1,4 +1,5 @@
 use super::*;
+use crate::inspect::{FieldGroupWire, FieldOriginWire, FieldWire};
 use serde_json::json;
 
 #[test]
@@ -69,10 +70,81 @@ fn messages_use_the_names_the_frontend_parses() {
         id: "built-in:standard".into(),
         revision: 1,
         document: None,
+        problem: Some("too large".into()),
     };
     assert_eq!(
         serde_json::to_value(&reply).unwrap(),
-        json!({"type": "Catalog", "id": "built-in:standard", "revision": 1, "document": null})
+        json!({
+            "type": "Catalog", "id": "built-in:standard", "revision": 1, "document": null, "problem": "too large"
+        })
+    );
+}
+
+#[test]
+fn inspection_and_catalog_listing_use_the_names_the_frontend_parses() {
+    let inspect =
+        json!({"type": "Inspect", "source": 1, "data_revision": 2, "sample": 3, "entity": "7"});
+    assert_eq!(
+        serde_json::from_value::<ClientMessage>(inspect).unwrap(),
+        ClientMessage::Inspect {
+            source: 1,
+            data_revision: 2,
+            sample: 3,
+            entity: "7".into()
+        }
+    );
+    let found = ServerMessage::Inspected {
+        source: 1,
+        data_revision: 2,
+        sample: 3,
+        entity: "7".into(),
+        inspection: InspectionWire::Found {
+            fields: vec![
+                FieldWire {
+                    group: FieldGroupWire::Debug,
+                    origin: Some(FieldOriginWire::Source),
+                    path: vec!["tags".into(), "0".into()],
+                    value: json!("x"),
+                },
+                FieldWire {
+                    group: FieldGroupWire::Classification,
+                    origin: None,
+                    path: vec!["class".into()],
+                    value: json!(null),
+                },
+            ],
+            truncated: false,
+        },
+    };
+    assert_eq!(
+        serde_json::to_value(&found).unwrap(),
+        json!({
+            "type": "Inspected", "source": 1, "data_revision": 2, "sample": 3, "entity": "7",
+            "inspection": {"state": "Found", "truncated": false, "fields": [
+                {"group": "debug", "origin": "source", "path": ["tags", "0"], "value": "x"},
+                {"group": "classification", "path": ["class"], "value": null}
+            ]}
+        })
+    );
+    for (inspection, state) in [
+        (InspectionWire::Absent, "Absent"),
+        (InspectionWire::Unavailable, "Unavailable"),
+    ] {
+        assert_eq!(
+            serde_json::to_value(inspection).unwrap(),
+            json!({ "state": state })
+        );
+    }
+    let listing = ServerMessage::Catalogs {
+        catalogs: vec![CatalogInfoWire {
+            id: "user:mine.json".into(),
+            name: "Mine".into(),
+            description: String::new(),
+        }],
+    };
+    assert_eq!(
+        serde_json::to_value(&listing).unwrap(),
+        json!({"type": "Catalogs", "catalogs": [{"id": "user:mine.json", "name": "Mine", "description": ""}]})
     );
 }
 
@@ -113,7 +185,7 @@ fn opened_and_lane_status_carry_the_source_and_data_revision() {
         }],
     };
     let json = serde_json::to_value(&opened).unwrap();
-    assert_eq!(json["protocol"], 4);
+    assert_eq!(json["protocol"], 5);
     assert_eq!(json["catalogs"][0]["id"], "built-in:standard");
     assert_eq!(
         json["lanes"],

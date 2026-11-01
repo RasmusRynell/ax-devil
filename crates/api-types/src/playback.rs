@@ -42,7 +42,7 @@
 //! failed source, and a Frame Map cell only outside the last `DataWindow` or on a revision change. `Open.data_bytes`
 //! bounds the Sample Items the backend keeps sent.
 
-use crate::{ErrorWire, catalogs::CatalogInfoWire};
+use crate::{ErrorWire, catalogs::CatalogInfoWire, inspect::InspectionWire};
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
@@ -57,7 +57,7 @@ macro_rules! constants {
 
 constants! {
     /// Raised when the messages or the envelope change in a way an older frontend cannot read.
-    PLAYBACK_PROTOCOL: u32 = 4;
+    PLAYBACK_PROTOCOL: u32 = 5;
     /// "AXDV" read as a little-endian u32.
     ENVELOPE_MAGIC: u32 = 0x5644_5841;
     /// The envelope format version, byte 4.
@@ -272,6 +272,18 @@ pub enum ClientMessage {
         /// The catalog id, such as `built-in:standard`.
         id: String,
     },
+    /// Asks for every field of one object of a Sample Item the viewer holds; the answer is `Inspected`. A newer
+    /// request replaces one not started yet.
+    Inspect {
+        /// The viewer's source id, `LaneInfo::source`.
+        source: u16,
+        /// The source revision the sample belongs to.
+        data_revision: u32,
+        /// The sample's index in its source.
+        sample: u32,
+        /// The object's id; at most 1024 bytes.
+        entity: String,
+    },
     /// Ends the session and releases the source.
     Close,
 }
@@ -332,8 +344,28 @@ pub enum ServerMessage {
         id: String,
         /// Counts the document's changes; 0 when there is no such catalog.
         revision: u32,
-        /// The catalog document, or `null` when no such catalog exists.
+        /// The catalog document, or `null` when no such catalog exists or it cannot be served.
         document: Option<String>,
+        /// Why an existing catalog cannot be served (too large, unreadable, not text); `null` otherwise.
+        problem: Option<String>,
+    },
+    /// The catalogs a lane may draw with changed: the whole list, as in `Opened.catalogs`.
+    Catalogs {
+        /// Built-ins first and Standard first among them, then the user's.
+        catalogs: Vec<CatalogInfoWire>,
+    },
+    /// The answer to an `Inspect` request.
+    Inspected {
+        /// The requested source.
+        source: u16,
+        /// The requested revision.
+        data_revision: u32,
+        /// The requested sample.
+        sample: u32,
+        /// The requested object.
+        entity: String,
+        /// What the backend knows of it.
+        inspection: InspectionWire,
     },
     /// One frame could not be decoded; the others are fine. The viewer names the frame itself, so the error is only
     /// the cause.

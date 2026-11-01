@@ -1,7 +1,7 @@
 // @vitest-environment node
 import { describe, expect, it } from "vite-plus/test";
 import { LANE_DEFAULTS } from "./fakeOpened";
-import { LaneSet } from "./lanes";
+import { LaneSet, startWith } from "./lanes";
 import type { LaneStatusWire } from "./protocol";
 
 const ready: LaneStatusWire = {
@@ -75,5 +75,67 @@ describe("lanes", () => {
     expect(lanes.states[0].status).toEqual({ status: "Loading" });
     lanes.open([{ label: "other", source: 0 }], LANE_DEFAULTS);
     expect(lanes.states[0]).toMatchObject({ policyRevision: 1, settings: { visible: true } });
+  });
+
+  it("treats theme, hidden features and the expression as looks: a new style, no policy", () => {
+    const lanes = opened();
+    for (const change of [{ theme: "night" }, { hidden: 0b101 }, { expression: "score > 0.4" }]) {
+      const before = lanes.styleRevision(0);
+      expect(lanes.set(0, change)).toBeUndefined();
+      expect(lanes.styleRevision(0)).toBe(before + 1);
+      expect(lanes.set(0, change)).toBeUndefined();
+      expect(lanes.styleRevision(0)).toBe(before + 1);
+    }
+    expect(lanes.states[0].policyRevision).toBe(1);
+  });
+
+  it("starts new lanes from the seeds by position, else the defaults, and a reconnection from what the user set", () => {
+    const seeds = [{ ...opened().states[0].settings, theme: "night", visible: false }];
+    const lanes = new LaneSet();
+    lanes.open(LANES, LANE_DEFAULTS, seeds);
+    expect(lanes.states.map((lane) => lane.settings.theme)).toEqual(["night", null]);
+    expect(lanes.states[0].settings.visible).toBe(false);
+    lanes.set(0, { theme: "day" });
+    lanes.open(LANES, LANE_DEFAULTS, seeds);
+    expect(lanes.states[0].settings.theme).toBe("day");
+  });
+
+  it("copies a lane's settings but its visibility to the other lanes with a source", () => {
+    const lanes = new LaneSet();
+    lanes.open(
+      [
+        { label: "a", source: 0 },
+        { label: "b", source: 1 },
+        { label: "v", source: null },
+        { label: "c", source: 2 },
+      ],
+      LANE_DEFAULTS,
+    );
+    lanes.set(1, { visible: false });
+    lanes.set(0, {
+      catalog: "user:a.json",
+      theme: "night",
+      expression: "score > 0.4",
+      filter: { car: false },
+      tolerance_ms: null,
+    });
+    const messages = lanes.copyFrom(0);
+    expect(messages).toMatchObject([
+      { lane: 1, revision: 3, subscribed: false, policy: { tolerance_ms: null } },
+      { lane: 3, revision: 2, subscribed: true, policy: { tolerance_ms: null } },
+    ]);
+    const [a, b, plain, c] = lanes.states.map((lane) => lane.settings);
+    expect(b).toEqual({ ...a, visible: false });
+    expect(c).toEqual(a);
+    expect(plain.catalog).toBe(LANE_DEFAULTS.catalog);
+    expect(lanes.copyFrom(7)).toEqual([]);
+  });
+
+  it("starts with the Personal default catalog only when the backend lists it", () => {
+    const listed = [{ id: "user:a.json", name: "A", description: "" }];
+    expect(startWith(LANE_DEFAULTS, listed, "user:a.json").catalog).toBe("user:a.json");
+    expect(startWith(LANE_DEFAULTS, listed, "user:gone.json")).toBe(LANE_DEFAULTS);
+    expect(startWith(LANE_DEFAULTS, listed, "")).toBe(LANE_DEFAULTS);
+    expect(startWith(LANE_DEFAULTS, listed, null)).toBe(LANE_DEFAULTS);
   });
 });

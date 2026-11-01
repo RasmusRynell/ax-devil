@@ -1,6 +1,5 @@
 {
   "schema": 4,
-  "id": "built-in:chunky",
   "name": "Chunky",
   "description": "Standard drawn bold, for screens seen from a distance or small previews: thick boxes and large tabs.",
   "vars": {

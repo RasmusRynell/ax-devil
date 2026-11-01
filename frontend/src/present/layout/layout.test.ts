@@ -20,7 +20,6 @@ import type { Region } from "./sink";
 const compile = (layers: unknown[]): CompiledCatalog => {
   const result = compileCatalogDocument({
     schema: 4,
-    id: "t",
     name: "t",
     description: "t",
     layers,

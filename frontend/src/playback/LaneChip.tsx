@@ -63,18 +63,20 @@ export function NoticeList({ notices }: { notices: readonly Notice[] }) {
 /**
  * The name tag over a lane's top-left corner: its label, that it is loading, a button for what there is to report,
  * and the button that opens the lane's menu. A lane without a source has neither warnings nor settings.
- * Without `onHide` the menu cannot hide the lane.
+ * Without `onHide` the menu cannot hide the lane, without `onApplyAll` it cannot copy to the others.
  */
 export function LaneChip({
   lane,
   catalogs,
   onChange,
   onHide,
+  onApplyAll,
 }: {
   lane: LaneState;
   catalogs: readonly CatalogInfoWire[];
   onChange: (change: Partial<LaneSettings>) => void;
   onHide?: () => void;
+  onApplyAll?: () => void;
 }) {
   const notices = laneNotices(lane);
   const loading = lane.pending || (lane.status !== "plain" && lane.status.status === "Loading");
@@ -108,6 +110,13 @@ export function LaneChip({
               lane={lane}
               catalogs={catalogs}
               onChange={onChange}
+              onApplyAll={
+                onApplyAll &&
+                (() => {
+                  close();
+                  onApplyAll();
+                })
+              }
               onHide={
                 onHide &&
                 (() => {

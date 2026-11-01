@@ -1,5 +1,6 @@
-import { afterEach, describe, expect, it } from "vite-plus/test";
+import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { FakeSettings } from "../fakeSettings";
 import type { LaneStatusWire } from "../generated/api";
 import { LANE_SETTINGS } from "./fakeOpened";
 import { LaneChip } from "./LaneChip";
@@ -37,6 +38,24 @@ describe("lane chip", () => {
     expect(show({})?.textContent).toBe("Loading…");
     expect(show({ status: READY })).toBeNull();
     expect(show({ status: READY, pending: true })).not.toBeNull();
+  });
+
+  it("copies the lane's settings to the others from its menu, which closes", () => {
+    const onApplyAll = vi.fn();
+    render(
+      <FakeSettings>
+        <LaneChip
+          lane={lane({ status: READY })}
+          catalogs={[]}
+          onChange={() => {}}
+          onApplyAll={onApplyAll}
+        />
+      </FakeSettings>,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "DET: settings" }));
+    fireEvent.click(screen.getByRole("button", { name: "Apply to all lanes" }));
+    expect(onApplyAll).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole("dialog")).toBeNull();
   });
 
   it("lists why the chosen catalog is not used among the lane's notices", () => {

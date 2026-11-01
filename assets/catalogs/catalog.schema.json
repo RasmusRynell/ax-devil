@@ -5,7 +5,6 @@
   "additionalProperties": false,
   "required": [
     "schema",
-    "id",
     "name",
     "description",
     "layers"
@@ -13,9 +12,6 @@
   "properties": {
     "schema": {
       "const": 4
-    },
-    "id": {
-      "type": "string"
     },
     "name": {
       "type": "string"

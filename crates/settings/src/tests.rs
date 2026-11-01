@@ -8,7 +8,10 @@ fn values(theme: &str) -> BTreeMap<String, Value> {
         ("ui.theme".into(), json!(theme)),
         ("ui.quick_setup_done".into(), json!(true)),
         ("playback.video_cache".into(), json!("auto")),
+        ("overlays.object_details".into(), json!(true)),
+        ("overlays.default_catalog".into(), json!("")),
         ("storage.cache_dir".into(), json!("")),
+        ("storage.catalog_dir".into(), json!("")),
     ])
 }
 

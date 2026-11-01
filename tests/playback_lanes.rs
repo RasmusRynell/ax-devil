@@ -134,6 +134,7 @@ async fn a_catalog_is_fetched_by_id_and_one_that_is_not_served_answers_with_none
                 id,
                 revision,
                 document,
+                ..
             }) => {
                 answers.insert(id, (revision, document));
             }
@@ -145,8 +146,8 @@ async fn a_catalog_is_fetched_by_id_and_one_that_is_not_served_answers_with_none
     assert_eq!(*revision, 1);
     let document: serde_json::Value = serde_json::from_str(document.as_ref().unwrap()).unwrap();
     assert_eq!(
-        (document["schema"].as_u64(), document["id"].as_str()),
-        (Some(4), Some("built-in:standard"))
+        (document["schema"].as_u64(), document["name"].as_str()),
+        (Some(4), Some("Standard"))
     );
     for unserved in ["user:night.json", "nope"] {
         assert_eq!(answers[unserved], (0, None), "{unserved}");
@@ -321,6 +322,84 @@ async fn a_lane_reports_its_load_then_sends_its_maps_and_each_mapped_sample_once
     .await;
     assert_eq!(seen.evicted, [0, 1, 2]);
     viewer.frames(40..=43).await;
+}
+
+#[tokio::test]
+async fn one_file_shown_twice_is_two_lanes_with_their_own_policies_on_one_source() {
+    let backend = Backend::start().await;
+    let gt = backend.folder.path().join("gt.txt");
+    std::fs::write(
+        &gt,
+        "1,1,10,10,20,20,1,1,1\n2,1,12,10,20,20,1,1,1\n3,1,14,10,20,20,1,1,1\n",
+    )
+    .unwrap();
+    let id = backend
+        .add_with_overlays(&fixture("cfr_h264_gop10_bf2.mp4"), &[gt.clone(), gt])
+        .await;
+    let mut viewer = backend.viewer().await;
+    viewer.open(&id.ticket(), None).await;
+    let video = viewer.opened().await;
+    assert_eq!(
+        video.lanes,
+        [
+            LaneInfo {
+                label: "gt.txt".into(),
+                source: Some(0),
+            },
+            LaneInfo {
+                label: "gt.txt (2)".into(),
+                source: Some(0),
+            },
+        ]
+    );
+
+    viewer.want(0, 5, 0, Direction::Forward).await;
+    let ready = settled_lanes(&mut viewer, 2).await;
+    assert!(
+        ready.values().all(|status| status.contains("Ready")),
+        "{ready:?}"
+    );
+    viewer
+        .send(&lane_policy(0, 1, policy(None, None), true))
+        .await;
+    viewer
+        .send(&lane_policy(1, 1, policy(Some(50), None), true))
+        .await;
+
+    let mut samples = BTreeMap::<(u16, u64), u32>::new();
+    let mut maps = BTreeMap::<(u16, u64), u32>::new();
+    while samples.len() < 3
+        || !(0..2).all(|lane| (0..=5).all(|frame| maps.contains_key(&(lane, frame))))
+    {
+        match viewer.next().await {
+            Event::Sample(sample) => {
+                *samples.entry((sample.source, sample.sample)).or_default() += 1;
+            }
+            Event::Map(map) => {
+                assert_eq!(map.policy, 1);
+                for (k, cell) in map.samples.iter().enumerate() {
+                    maps.insert((map.lane, map.first + k as u64), *cell);
+                }
+            }
+            Event::Message(ServerMessage::DataWindow { .. }) | Event::Frame(_) => {}
+            _ => panic!("expected the lanes' data and maps"),
+        }
+    }
+    assert_eq!(
+        samples
+            .keys()
+            .map(|(source, _)| *source)
+            .collect::<Vec<_>>(),
+        [0, 0, 0],
+        "both lanes draw one source: its samples are sent once"
+    );
+    assert!(samples.values().all(|sent| *sent == 1));
+    for lane in 0..2 {
+        assert_eq!(
+            (0..3).map(|frame| maps[&(lane, frame)]).collect::<Vec<_>>(),
+            [0, 1, 2]
+        );
+    }
 }
 
 /// Every lane status `viewer` is sent until each of `lanes` lanes has one that is not `Loading`, as JSON text.

@@ -6,6 +6,7 @@ const NO_STRINGS: StringLookup = {
   equals: () => false,
   decode: () => undefined,
   crc32: () => 0,
+  string: () => "",
 };
 
 const encoder = new TextEncoder();

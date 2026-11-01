@@ -7,8 +7,8 @@
 //!
 //! A ticket that is unknown, used, expired or not parseable closes the socket with 4401 and nothing else: the viewer
 //! learns nothing about why. After that the order of what a viewer receives is `Indexing`*, `Opened`, the Timeline
-//! envelope, then frame envelopes, `FrameError`s, `LaneStatus`es, `LaneProblem`s, `Catalog` answers, `DataWindow`s,
-//! `Evict`s and Sample and FrameMap envelopes as they are ready. Notices go first, then the `DataWindow` and the
+//! envelope, then frame envelopes, `FrameError`s, `LaneStatus`es, `LaneProblem`s, `Catalog` answers and pushes,
+//! `Catalogs` lists, `DataWindow`s, `Evict`s and Sample and FrameMap envelopes as they are ready. Notices go first, then the `DataWindow` and the
 //! `Evict`s, which are never held back or dropped for a frame; a Sample or FrameMap goes after them, and before a
 //! frame when its rank (`playback::rank` of the frame it is for) is at most the rank of the frame waiting, so data
 //! wins ties and the frames nearest the playhead are not held up by data far from it. `Error` is last: the socket closes after it. Errors,
@@ -22,8 +22,10 @@
 //! the new bounds is dropped instead of sent; dropped data is offered again if the window still needs it. Once the authority is revoked the session ends at once, also while the video
 //! is being indexed, its overlays stop, a message still queued is dropped and the socket closes with code 4403.
 
+mod catalogs;
 mod envelope;
 mod gate;
+mod inspect;
 mod items;
 mod lanes;
 mod open;

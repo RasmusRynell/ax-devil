@@ -8,8 +8,11 @@ export const DEFAULT_SETTINGS: SettingsState = {
   values: {
     "ui.theme": "auto",
     "ui.quick_setup_done": true,
+    "overlays.object_details": true,
+    "overlays.default_catalog": "",
     "playback.video_cache": "auto",
     "storage.cache_dir": "",
+    "storage.catalog_dir": "",
   },
   shortcuts: Object.fromEntries(
     COMMANDS.map((command) => [command.id, command.key]),

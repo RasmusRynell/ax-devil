@@ -61,7 +61,7 @@ class CatalogCompiler {
       );
       return this.failed();
     }
-    const [id, name, description] = (["id", "name", "description"] as const).map((key) =>
+    const [name, description] = (["name", "description"] as const).map((key) =>
       key in root ? stringAt(root[key], pointerTo("", key), this.diag) : null,
     );
     const origin = "origin" in root ? stringAt(root.origin, "/origin", this.diag) : null;
@@ -76,14 +76,12 @@ class CatalogCompiler {
     if (this.diag.list.length > 0) return this.failed();
     const programs = lowerVars(order, this.session, this.themes.length);
     this.session.finish();
-    if (this.diag.list.length > 0 || id === null || name === null || description === null)
-      return this.failed();
+    if (this.diag.list.length > 0 || name === null || description === null) return this.failed();
     this.session.unit.ctx.configure(stride, this.ruleCount);
     return {
       ok: true,
       catalog: {
         uid: nextUid++,
-        id,
         name,
         description,
         origin,

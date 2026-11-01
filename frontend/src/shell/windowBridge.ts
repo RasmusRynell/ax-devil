@@ -18,6 +18,8 @@ export interface WindowBridge {
   connect(target: string, password?: string): Promise<void>;
   /** Replaces this window with one on the local backend; only a remote page may ask. */
   disconnect(): Promise<void>;
+  /** The page zoom factor (1 is 100%), read when asked. */
+  zoomFactor?(): number;
 }
 
 declare global {

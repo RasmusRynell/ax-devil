@@ -11,7 +11,10 @@ export const LANE_DEFAULTS: LaneDefaultsWire = {
 /** A lane's settings as the user has not touched them. */
 export const LANE_SETTINGS: LaneSettings = {
   catalog: LANE_DEFAULTS.catalog,
+  theme: null,
+  hidden: 0,
   filter: {},
+  expression: "",
   tolerance_ms: LANE_DEFAULTS.policy.tolerance_ms,
   sticky: { ...LANE_DEFAULTS.policy.sticky, opacity: 1 },
   visible: true,

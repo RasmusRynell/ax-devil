@@ -51,7 +51,6 @@ describe("rules and variables", () => {
   it("lets a theme replace a default but not a rule", () => {
     const text = JSON.stringify({
       schema: 4,
-      id: "t",
       name: "T",
       description: "d",
       vars: { color: "#111111" },
@@ -76,7 +75,6 @@ describe("rules and variables", () => {
     const catalog = compiled(
       JSON.stringify({
         schema: 4,
-        id: "t",
         name: "T",
         description: "d",
         vars: { who: null, move: null },
@@ -104,7 +102,6 @@ describe("rules and variables", () => {
   it("keeps text, lengths and strings in variables", () => {
     const text = JSON.stringify({
       schema: 4,
-      id: "t",
       name: "T",
       description: "d",
       vars: { tag: null, line: "1px", kind: null },
@@ -198,7 +195,6 @@ describe("colour lists drive Classic's swatches", () => {
 describe("every compile error is located in the document", () => {
   const base = {
     schema: 4,
-    id: "t",
     name: "T",
     description: "d",
     vars: { x: 0 },
@@ -299,7 +295,7 @@ describe("every compile error is located in the document", () => {
   });
 
   it("points into strings that contain escapes", () => {
-    const text = String.raw`{"schema":4,"id":"t","name":"T","description":"d","vars":{"x":0},"rules":[{"when":"'\u00e9' == \"a\" && scor","set":{"x":1}}],"layers":[]}`;
+    const text = String.raw`{"schema":4,"name":"T","description":"d","vars":{"x":0},"rules":[{"when":"'\u00e9' == \"a\" && scor","set":{"x":1}}],"layers":[]}`;
     const result = compileCatalog(text);
     if (result.ok) throw new Error("compiled");
     const found = result.diagnostics.find((d) => d.code === "unknown-name");

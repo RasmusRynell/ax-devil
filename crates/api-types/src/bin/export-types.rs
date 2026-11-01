@@ -14,7 +14,7 @@ macro_rules! declarations {
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     use ::playback::ClockIntent;
     use api_types::{
-        catalogs::*, content::*, handlers::*, playback::*, window::*, workspace::*, *,
+        catalogs::*, content::*, handlers::*, inspect::*, playback::*, window::*, workspace::*, *,
     };
     use foundation::ErrorCode;
     use sessions::{
@@ -91,6 +91,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         FilterOptionInfo,
         WarningInfo,
         LaneStatusWire,
+        FieldGroupWire,
+        FieldOriginWire,
+        FieldWire,
+        InspectionWire,
         ClientMessage,
         ServerMessage,
     ];

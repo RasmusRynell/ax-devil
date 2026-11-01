@@ -1,8 +1,8 @@
 /** What each lane draws on a frame: the sample its Frame Map assigns to it, or the reason there is none yet. */
 
-import type { ClassMask } from "../present";
+import { compileFilter, type ClassMask, type CompiledFilter } from "../present";
 import type { LaneFrame } from "./contract";
-import type { Catalogs } from "./catalogs";
+import type { LaneCatalogs } from "./laneCatalog";
 import type { FrameMaps } from "./data/FrameMaps";
 import { UNKNOWN } from "./data/FrameMaps";
 import type { SampleStore } from "./data/SampleStore";
@@ -33,11 +33,13 @@ export class LaneData {
   readonly #lanes: LaneSet;
   readonly #samples: SampleStore;
   readonly #maps: FrameMaps;
-  readonly #catalogs: Catalogs;
+  readonly #catalogs: LaneCatalogs;
+  /** The frame filter of each lane, compiled again only when its expression changes. */
+  readonly #filters = new Map<number, { expression: string; filter: CompiledFilter | null }>();
   /** The class mask of each lane, made again only when its options or toggles are replaced. */
   readonly #masks = new Map<number, { ready: ReadyStatus; filter: object; mask: ClassMask }>();
 
-  constructor(lanes: LaneSet, samples: SampleStore, maps: FrameMaps, catalogs: Catalogs) {
+  constructor(lanes: LaneSet, samples: SampleStore, maps: FrameMaps, catalogs: LaneCatalogs) {
     this.#lanes = lanes;
     this.#samples = samples;
     this.#maps = maps;
@@ -55,9 +57,9 @@ export class LaneData {
     if (cell < 0) return NONE;
     const columns = this.#samples.get(source, cell);
     if (!columns) return PENDING;
-    const entry = this.#catalogs.get(state.settings.catalog);
-    if (entry.state === "loading") return PENDING;
-    if (!entry.catalog) return NONE;
+    const chosen = this.#catalogs.resolve(lane, state.settings.catalog);
+    if (chosen.pending) return PENDING;
+    if (!chosen.catalog) return NONE;
     return {
       state: "draw",
       frame: {
@@ -65,12 +67,12 @@ export class LaneData {
         dataRevision: ready.data_revision,
         sample: cell,
         columns,
-        catalog: entry.catalog,
+        catalog: chosen.catalog,
         styleRevision: this.#lanes.styleRevision(lane),
         classMask: this.#mask(lane, ready, state.settings.filter),
-        filter: null,
-        hidden: 0,
-        theme: null,
+        filter: this.#filter(lane, state.settings.expression),
+        hidden: state.settings.hidden,
+        theme: state.settings.theme,
         opacity:
           this.#maps.kind(lane, frame) === MATCH_RETAINED ? state.settings.sticky.opacity : 1,
       },
@@ -80,6 +82,16 @@ export class LaneData {
   /** Whether no shown lane waits for data of `frame`. */
   ready(frame: number): boolean {
     return this.#lanes.states.every((_, lane) => this.at(lane, frame).state !== "pending");
+  }
+
+  /** The lane's filter; an expression that does not compile filters nothing, as the menu applies only ones that do. */
+  #filter(lane: number, expression: string): CompiledFilter | null {
+    const held = this.#filters.get(lane);
+    if (held?.expression === expression) return held.filter;
+    const result = compileFilter(expression);
+    const filter = result.ok && result.filter.test ? result.filter : null;
+    this.#filters.set(lane, { expression, filter });
+    return filter;
   }
 
   #mask(lane: number, ready: ReadyStatus, filter: Record<string, boolean>): ClassMask {

@@ -1,8 +1,10 @@
 /** What a playback session shows the UI: one immutable snapshot that is replaced only when something in it changed. */
 
-import type { FrameInfo } from "./clock";
+import type { FrameInfo, PlaybackClock } from "./clock";
+import type { InspectionView, Selection } from "./contract";
+import type { FrameFailures } from "./failures";
 import type { LaneState } from "./lanes";
-import type { CatalogInfoWire } from "./protocol";
+import type { CatalogInfoWire, ServerMessage } from "./protocol";
 
 export type PlaybackView = {
   status: "connecting" | "indexing" | "ready" | "reconnecting" | "failed";
@@ -21,8 +23,12 @@ export type PlaybackView = {
   frameError?: { sequenceId: number; reason: string };
   /** The lanes of the entry, empty until the backend has described the video. */
   lanes: readonly LaneState[];
-  /** The catalogs a lane may draw with, as the backend listed them when it opened the entry. */
+  /** The catalogs a lane may draw with, as the backend last listed them. */
   catalogs: readonly CatalogInfoWire[];
+  /** The object the user selected, or `null`. */
+  selection: Selection;
+  /** What the inspector shows of the selection. */
+  inspection: InspectionView;
   /** The video's frame size in pixels; 0 until it is described. */
   width: number;
   height: number;
@@ -40,6 +46,8 @@ export const INITIAL_VIEW: PlaybackView = {
   playhead: 0,
   lanes: [],
   catalogs: [],
+  selection: null,
+  inspection: { state: "none" },
   width: 0,
   height: 0,
   warnings: [],
@@ -62,6 +70,50 @@ export const sameView = (a: PlaybackView, b: PlaybackView): boolean =>
   a.frameError?.reason === b.frameError?.reason &&
   a.lanes === b.lanes &&
   a.catalogs === b.catalogs &&
+  a.inspection === b.inspection &&
   a.width === b.width &&
   a.height === b.height &&
   a.warnings === b.warnings;
+
+/** What the session knows when it publishes a view. */
+export type ViewParts = {
+  status: PlaybackView["status"];
+  progress: number;
+  failure: PlaybackView["failure"];
+  frameCount: number;
+  speed: number;
+  clock: PlaybackClock | undefined;
+  failures: FrameFailures;
+  lanes: readonly LaneState[];
+  catalogs: readonly CatalogInfoWire[];
+  opened: Extract<ServerMessage, { type: "Opened" }> | undefined;
+  inspection: InspectionView;
+};
+
+/** The view of the session's state now. */
+export function buildView(parts: ViewParts): PlaybackView {
+  const { clock, opened, inspection } = parts;
+  const shown = clock?.info();
+  const playhead = clock?.playhead ?? 0;
+  // The failure the screen is waiting on: the latest failed frame at or before the playhead that was not passed.
+  const failed = parts.failures.latestAtOrBefore(playhead);
+  const frameError = failed && failed.sequenceId > (shown?.sequenceId ?? -1) ? failed : undefined;
+  return {
+    status: parts.status,
+    progress: parts.progress,
+    failure: parts.failure,
+    frameCount: parts.status === "ready" ? parts.frameCount : 0,
+    playing: clock?.playing ?? false,
+    speed: parts.speed,
+    playhead,
+    shown,
+    frameError,
+    lanes: parts.lanes,
+    catalogs: parts.catalogs,
+    selection: inspection.state === "none" ? null : inspection.selection,
+    inspection,
+    width: opened?.width ?? 0,
+    height: opened?.height ?? 0,
+    warnings: opened?.warnings ?? INITIAL_VIEW.warnings,
+  };
+}

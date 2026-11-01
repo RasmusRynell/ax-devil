@@ -9,8 +9,8 @@ export interface Shape {
 
 /** The document root. */
 export const ROOT: Shape = {
-  allowed: ["schema", "id", "name", "description", "origin", "vars", "themes", "rules", "layers"],
-  required: ["schema", "id", "name", "description", "layers"],
+  allowed: ["schema", "name", "description", "origin", "vars", "themes", "rules", "layers"],
+  required: ["schema", "name", "description", "layers"],
 };
 
 /** A rule: a condition and the variables it sets. */

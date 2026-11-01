@@ -123,9 +123,8 @@ export interface VarProgram {
 
 /** A catalog ready to evaluate: no expression is parsed again. */
 export interface CompiledCatalog {
-  /** Unique per compile, so caches keyed by it never confuse two compiles of one id. */
+  /** Unique per compile, so caches keyed by it never confuse two compiles of one catalog. */
   readonly uid: number;
-  readonly id: string;
   readonly name: string;
   readonly description: string;
   readonly origin: string | null;

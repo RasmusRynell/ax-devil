@@ -3,8 +3,11 @@
 //! Maps, nearest the playhead first, interleaved with the frames by the same rank.
 
 use super::{
-    End, Flow, Incoming, Outbox, Outgoing, envelope,
+    End, Flow, Incoming, Outbox, Outgoing,
+    catalogs::CatalogFeed,
+    envelope,
     gate::Gate,
+    inspect::Inspections,
     lanes::{self, LaneEvent, Lanes},
     next_client, stopped, text,
 };
@@ -55,6 +58,8 @@ pub(super) struct Setup<'a> {
 
 /// What the session sends next: notices first, then whichever of a lane's data and the next frame ranks first.
 enum Next {
+    Catalog(Outgoing),
+    Inspection(Outgoing),
     Lane(LaneEvent),
     /// `None` when the session or its source closed.
     Delivery(Option<Delivery>),
@@ -65,6 +70,8 @@ struct Playing<'a, I> {
     session: &'a mut Session,
     gate: Gate,
     lanes: Lanes,
+    catalogs: CatalogFeed,
+    inspections: Inspections,
     incoming: &'a mut I,
     outbox: &'a Outbox,
     closing: &'a mut watch::Receiver<bool>,
@@ -94,6 +101,7 @@ pub(super) async fn stream(
     let location = video_location(&setup.entry.video);
     gate.open(timeline.clone());
     let lanes = Lanes::open(&setup, timeline.clone(), location.clone());
+    let catalogs = CatalogFeed::new(setup.library);
     let opened = text(&ServerMessage::Opened {
         protocol: PLAYBACK_PROTOCOL,
         frame_count: timeline.len(),
@@ -108,13 +116,15 @@ pub(super) async fn stream(
         },
         lanes: lanes.infos(setup.entry),
         lane_defaults: lanes::lane_defaults(setup.overlays, setup.library),
-        catalogs: lanes::catalog_infos(setup.library),
+        catalogs: catalogs.listing(),
     });
     // The overlays stop with `Playing`, which goes when the session ends, a revoked one included.
     let mut playing = Playing {
         session,
         gate,
         lanes,
+        catalogs,
+        inspections: Inspections::default(),
         incoming,
         outbox,
         closing,
@@ -173,7 +183,17 @@ impl<I: Incoming> Playing<'_, I> {
                 subscribed,
             })) => self.lanes.policy(lane, revision, policy, subscribed),
             Some(Ok(ClientMessage::Catalog { id })) => {
-                self.lanes.catalog(id);
+                self.catalogs.ask(id);
+                Ok(())
+            }
+            Some(Ok(ClientMessage::Inspect {
+                source,
+                data_revision,
+                sample,
+                entity,
+            })) => {
+                self.inspections
+                    .ask(self.lanes.overlays(), source, data_revision, sample, entity);
                 Ok(())
             }
             Some(Ok(ClientMessage::Open { .. })) => Err(End::Failed(UserError::new(
@@ -219,7 +239,12 @@ impl<I: Incoming> Playing<'_, I> {
                 reserved = outbox.reserve(), if room.is_none() => {
                     room = Some(reserved.map_err(|_| End::Closed)?);
                 }
-                next = next(self.session, &mut self.lanes), if room.is_some() => {
+                next = next(
+                    self.session,
+                    &mut self.catalogs,
+                    &mut self.inspections,
+                    &mut self.lanes,
+                ), if room.is_some() => {
                     if let Some(message) = self.encode(next)?
                         && let Some(room) = room.take()
                     {
@@ -236,6 +261,7 @@ impl<I: Incoming> Playing<'_, I> {
     /// The message for what the session produced, if it is one.
     fn encode(&mut self, next: Next) -> Flow<Option<Outgoing>> {
         match next {
+            Next::Catalog(message) | Next::Inspection(message) => Ok(Some(message)),
             Next::Lane(event) => Ok(self.lanes.encode(event)),
             Next::Delivery(delivery) => {
                 let delivery = delivery.ok_or(End::Closed)?;
@@ -252,13 +278,20 @@ impl<I: Incoming> Playing<'_, I> {
     }
 }
 
-/// The next thing to send: the lanes' notices, then their data or the next frame, whichever ranks first, the data
+/// The next thing to send: the catalogs' and inspections' messages and the lanes' notices, then their data or the next frame, whichever ranks first, the data
 /// first on a tie. The lanes hold an item back while a frame ranks before it; the rank is read again whenever this
 /// is called, which is after every message sent and every message of the viewer.
-async fn next(session: &mut Session, lanes: &mut Lanes) -> Next {
+async fn next(
+    session: &mut Session,
+    catalogs: &mut CatalogFeed,
+    inspections: &mut Inspections,
+    lanes: &mut Lanes,
+) -> Next {
     let rank = session.next_rank();
     tokio::select! {
         biased;
+        message = catalogs.next() => Next::Catalog(message),
+        message = inspections.next() => Next::Inspection(message),
         event = lanes.next(rank) => Next::Lane(event),
         delivery = session.next_delivery() => Next::Delivery(delivery),
     }

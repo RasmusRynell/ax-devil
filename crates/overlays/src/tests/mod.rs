@@ -1,6 +1,7 @@
 //! Tests of the data feed through real MOT files, with track loads that the tests can hold or break.
 
 mod delivery;
+mod inspect;
 mod retention;
 mod statuses;
 mod viewer_model;

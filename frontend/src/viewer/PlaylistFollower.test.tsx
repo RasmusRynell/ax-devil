@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { act, cleanup, render, screen } from "@testing-library/react";
+import { FakeSettings } from "../fakeSettings";
 import { opened } from "../playback/fakeOpened";
 import type { Incoming } from "../playback/wire";
 import { entry, FakeSocket, playlist } from "../session/fakeSession";
@@ -66,7 +67,9 @@ async function follow() {
   );
   render(
     <SessionProvider>
-      <Host />
+      <FakeSettings>
+        <Host />
+      </FakeSettings>
     </SessionProvider>,
   );
   await screen.findByRole("slider", { name: "Timeline" });

@@ -5,10 +5,13 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs/promises");
 const path = require("node:path");
 const fit = require("./fit.cjs");
-const { SCREENSHOTS, delay, frames, page, setView } = require("./smoke-kit.cjs");
+const { overlays } = require("./smoke-overlays.cjs");
+const { panels } = require("./smoke-panels.cjs");
+const { twice } = require("./smoke-twice.cjs");
+const kit = require("./smoke-kit.cjs");
+const { SCREENSHOTS, SHOWN, delay, frames, page, setView } = kit;
 
 const DATASET = path.resolve(__dirname, "../fixtures/datasets/mot");
-const SHOWN = `Number.parseInt(document.querySelector("output[aria-label=Frame]")?.textContent ?? "")`;
 const THEMES_AND_ZOOMS = [
   ["light", 1],
   ["dark", 1],
@@ -92,54 +95,13 @@ module.exports.playlist = async (window) => {
   await clickButton("Add");
   await wait("!document.querySelector('dialog')");
 
-  // The lane cells on screen, from the name tags the grid places at each cell's corner (the pointer anchors beside them are hidden from assistive technology).
-  const laneCells = () =>
-    js(`(() => {
-      const grid = document.querySelector('canvas').parentElement;
-      const tags = [...grid.querySelectorAll(':scope > div.absolute:not([aria-hidden])')].map((tag) => ({
-        label: tag.querySelector('span').textContent,
-        ...tag.getBoundingClientRect().toJSON(),
-      }));
-      const end = grid.getBoundingClientRect();
-      const next = (values, value, limit) => Math.min(limit, ...values.filter((other) => other > value + 1));
-      return tags.map((tag) => ({
-        label: tag.label,
-        x: tag.left,
-        y: tag.top,
-        right: next(tags.map((other) => other.left), tag.left, end.right),
-        bottom: next(tags.map((other) => other.top), tag.top, end.bottom),
-      }));
-    })()`);
-  // Pixels of a lane cell that carry colour: the grey picture, the white text and the dark name tags do not.
-  const colourful = async (cell) => {
-    await frames({ js });
-    const image = await window.webContents.capturePage();
-    const scale = image.getSize().width / (await js("innerWidth"));
-    const bitmap = image.toBitmap();
-    let count = 0;
-    for (let y = Math.round(cell.y * scale); y < Math.round(cell.bottom * scale); y++)
-      for (let x = Math.round(cell.x * scale); x < Math.round(cell.right * scale); x++) {
-        const at = (y * image.getSize().width + x) * 4;
-        const channels = [bitmap[at], bitmap[at + 1], bitmap[at + 2]];
-        if (Math.max(...channels) - Math.min(...channels) >= 80) count++;
-      }
-    return count;
-  };
-  const goToFrame = async (target) => {
-    await js("document.querySelector('[aria-label=Pause]')?.click()");
-    for (;;) {
-      const at = await js(SHOWN);
-      if (at === target) return;
-      await js(
-        `document.querySelector('[aria-label="${at < target ? "Forward" : "Back"} 1 frame"]').click()`,
-      );
-      await wait(`${SHOWN} !== ${at}`);
-    }
-  };
+  const laneCells = () => kit.laneCells(window);
+  const colourful = (cell) => kit.colourCount(window, cell);
+  const goToFrame = (target) => kit.goToFrame(window, target);
   const showEntry = async (label, lanes) => {
     await wait(`document.querySelector('[aria-label="Entry: ${label}"]')`);
     await wait(
-      `document.querySelectorAll('canvas ~ div.absolute:not([aria-hidden])').length === ${lanes}`,
+      `document.querySelectorAll('canvas')[0]?.parentElement.parentElement.querySelectorAll(':scope > div.absolute:not(.inset-0)').length === ${lanes}`,
     );
     await wait(`${SHOWN} >= 0`);
   };
@@ -205,6 +167,13 @@ module.exports.playlist = async (window) => {
   window.setSize(1100, 720);
   await js("document.querySelector('[aria-label=Workspace]').click()");
 
+  // The pointer, theme and zoom scenarios run on MINI-02's one lane, on frame 0.
+  await js("document.querySelector('[aria-label=\"Previous entry\"]').click()");
+  await showEntry("MINI-02", 1);
+  await goToFrame(0);
+  const { point } = await overlays(window, { setTheme });
+  await panels(window, { setTheme, shoot, showEntry, point });
+
   // The playlist's tab closes, which leaves the video as the one open item for the scenarios that follow.
   await js(
     "[...document.querySelectorAll('[aria-label^=\"Close \"]')].find((b) => !b.ariaLabel.endsWith('.mp4')).click()",
@@ -212,4 +181,7 @@ module.exports.playlist = async (window) => {
   await wait(
     "[...document.querySelectorAll('[role=tab]')].map((tab) => tab.textContent).join() === 'long_gop_h264.mp4'",
   );
+
+  // One overlay file given twice is two lanes, in a window of its own on another backend.
+  await twice();
 };

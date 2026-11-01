@@ -1,11 +1,20 @@
 // @vitest-environment node
-import { describe, expect, it } from "vite-plus/test";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { builtIn } from "../present/canonical/render";
-import { syntheticSample } from "../present/fixtures";
-import { AtlasFull, type FontHandle, type Glyph } from "../present";
+import { fullSample, syntheticSample } from "../present/fixtures";
+import { AtlasFull, compileFilter, type FontHandle, type Glyph } from "../present";
+import type { CompiledFilter, SampleView } from "../present";
 import { FakeText } from "../present/text/fakeSource";
 import type { LaneFrame } from "./contract";
-import { LaneLayouts, type PlacedLane } from "./laneLayouts";
+import { describeRow, LaneLayouts, type PlacedLane } from "./laneLayouts";
+
+// No page here: the shell's bridge is a field of a stand-in window.
+const page: { axDevilWindow?: { zoomFactor: () => number } } = {};
+beforeEach(() => vi.stubGlobal("window", page));
+afterEach(() => {
+  delete page.axDevilWindow;
+  vi.unstubAllGlobals();
+});
 
 /** A page that is full after `room` glyph lookups, until reset. */
 class SmallPage extends FakeText {
@@ -21,23 +30,26 @@ class SmallPage extends FakeText {
   }
 }
 
-const lane = (index: number, variant: number): PlacedLane => {
-  const sample = syntheticSample(20, variant);
-  const frame: LaneFrame = {
-    source: index,
-    dataRevision: 1,
-    sample: 0,
-    columns: sample,
-    catalog: builtIn("standard"),
-    styleRevision: 0,
-    classMask: { enabled: new Uint32Array(sample.maskWords), options: 0 },
-    filter: null,
-    hidden: 0,
-    theme: null,
-    opacity: 1,
-  };
-  return { lane: index, frame, view: { width: 1280, height: 720, dpr: 1 } };
-};
+const frameOf = (sample: SampleView, overrides: Partial<LaneFrame> = {}): LaneFrame => ({
+  source: 0,
+  dataRevision: 1,
+  sample: 0,
+  columns: sample,
+  catalog: builtIn("standard"),
+  styleRevision: 0,
+  classMask: { enabled: new Uint32Array(sample.maskWords), options: 0 },
+  filter: null,
+  hidden: 0,
+  theme: null,
+  opacity: 1,
+  ...overrides,
+});
+
+const lane = (index: number, variant: number): PlacedLane => ({
+  lane: index,
+  frame: frameOf(syntheticSample(20, variant), { source: index }),
+  view: { width: 1280, height: 720, dpr: 1 },
+});
 
 describe("lane layouts", () => {
   it("lays out an earlier lane again when a later one starts a new atlas page", () => {
@@ -54,5 +66,62 @@ describe("lane layouts", () => {
     // The first lane was laid out twice (before and after the reset), the second once.
     expect(drawings.map((drawing) => drawing?.version)).toEqual([2, 1]);
     expect(layouts.layOut([first, second]).map((drawing) => drawing?.version)).toEqual([2, 1]);
+  });
+
+  it("lays out again when the page zoom changes, so px lengths keep their size on screen", () => {
+    const layouts = new LaneLayouts(new FakeText());
+    const placed = lane(0, 0);
+    const version = () => layouts.layOut([placed])[0]?.version;
+    expect(version()).toBe(1);
+    expect(version()).toBe(1);
+    page.axDevilWindow = { zoomFactor: () => 2 };
+    expect(version()).toBe(2);
+    expect(version()).toBe(2);
+  });
+
+  describe("objects", () => {
+    const sample = fullSample([
+      { id: "t7", class: "car", score: 0.8234, confidence: 0.9, box: [0.1, 0.1, 0.5, 0.5] },
+      { id: "t9", box: [0.6, 0.6, 0.9, 0.9] },
+    ]);
+    const place = (overrides: Partial<LaneFrame> = {}): PlacedLane => ({
+      lane: 0,
+      frame: frameOf(sample, overrides),
+      view: { width: 1000, height: 500, dpr: 1 },
+    });
+    const filterOut = (expression: string): CompiledFilter => {
+      const result = compileFilter(expression);
+      if (!result.ok) throw new Error("the filter does not compile");
+      return result.filter;
+    };
+
+    it("picks and finds a row of the lane's last sample, also with every feature hidden", () => {
+      const layouts = new LaneLayouts(new FakeText());
+      layouts.layOut([place({ hidden: 0xffff })]);
+      expect(layouts.pick(0, 0.3, 0.3)?.row).toBe(0);
+      expect(layouts.pick(0, 0.55, 0.3)).toBeNull();
+      expect(layouts.find(0, "t9")?.row).toBe(1);
+      expect(layouts.find(0, "t1")).toBeNull();
+      expect(layouts.pick(1, 0.3, 0.3)).toBeNull();
+    });
+
+    it("does not pick or find what the filter dropped", () => {
+      const layouts = new LaneLayouts(new FakeText());
+      layouts.layOut([place({ filter: filterOut("score > 0.5") })]);
+      expect(layouts.pick(0, 0.3, 0.3)?.row).toBe(0);
+      expect(layouts.find(0, "t9")).toBeNull();
+      layouts.layOut([place({ filter: filterOut("score > 2") })]);
+      expect(layouts.pick(0, 0.3, 0.3)).toBeNull();
+      expect(layouts.find(0, "t7")).toBeNull();
+    });
+
+    it("describes a row as the id and class, then the facts the decoder gave", () => {
+      expect(describeRow(sample, 0)).toEqual({
+        entity: "t7",
+        label: "t7 car",
+        detail: "score 0.82 · confidence 0.9",
+      });
+      expect(describeRow(sample, 1)).toEqual({ entity: "t9", label: "t9", detail: "" });
+    });
   });
 });
