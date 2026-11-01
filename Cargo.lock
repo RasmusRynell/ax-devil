@@ -84,14 +84,22 @@ dependencies = [
  "api-types",
  "axum",
  "bytes",
+ "catalogs",
  "clap",
+ "drawing",
  "foundation",
  "futures-util",
+ "handlers",
  "logging",
  "media",
  "mime_guess",
+ "overlay-sync",
+ "overlays",
  "playback",
+ "playlist-resolvers",
  "rust-embed",
+ "scene",
+ "scene-store",
  "serde_json",
  "settings",
  "tempfile",
@@ -219,6 +227,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "fc652a48c352aef3ea3aed32080501cf3ef6ed5da78602a020c991775b0aff04"
 
 [[package]]
+name = "catalogs"
+version = "0.1.0"
+dependencies = [
+ "foundation",
+ "render-catalog",
+ "tempfile",
+]
+
+[[package]]
 name = "cc"
 version = "1.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -295,6 +312,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1c133bc6a41be0d194c306b5506d15e6feeea7b1d6604bd3f8310dfb2ca96486"
 
 [[package]]
+name = "cobs"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0fa961b519f0b462e3a3b4a34b64d119eeaca1d59af726fe450bbba07a9fc0a1"
+dependencies = [
+ "thiserror",
+]
+
+[[package]]
 name = "colorchoice"
 version = "1.0.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -322,6 +348,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5ca28b0ae3115b884660db4118d803791fd6756b6e88f39c0f3f7859060d7566"
 dependencies = [
  "libc",
+]
+
+[[package]]
+name = "crc32fast"
+version = "1.5.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0ba106e844045ddc02c20768ac4b0b7cb45f2cc2ecbd833ac9f5dacb183c2055"
+dependencies = [
+ "cfg-if",
 ]
 
 [[package]]
@@ -369,6 +404,25 @@ dependencies = [
  "const-oid",
  "crypto-common 0.2.2",
 ]
+
+[[package]]
+name = "drawing"
+version = "0.1.0"
+dependencies = [
+ "serde_json",
+]
+
+[[package]]
+name = "embedded-io"
+version = "0.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ef1a6892d9eef45c8fa6b9e0086428a2cca8491aca8f787c534a3d6d0bcb3ced"
+
+[[package]]
+name = "embedded-io"
+version = "0.6.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "edd0f118536f44f5ccd48bcb8b111bdc3de888b58c74639dfb034a357d0f206d"
 
 [[package]]
 name = "errno"
@@ -502,6 +556,16 @@ name = "glob"
 version = "0.3.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e4eba85ea1d0a966a983acd07deee566e67395d2d96b6fb39e62b5a833f1eb0b"
+
+[[package]]
+name = "handlers"
+version = "0.1.0"
+dependencies = [
+ "foundation",
+ "playlist-resolvers",
+ "scene",
+ "scene-decoders",
+]
 
 [[package]]
 name = "heck"
@@ -768,6 +832,35 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "384b8ab6d37215f3c5301a95a4accb5d64aa607f1fcb26a11b5303878451b4fe"
 
 [[package]]
+name = "overlay-sync"
+version = "0.1.0"
+dependencies = [
+ "foundation",
+ "scene",
+]
+
+[[package]]
+name = "overlays"
+version = "0.1.0"
+dependencies = [
+ "catalogs",
+ "drawing",
+ "foundation",
+ "handlers",
+ "overlay-sync",
+ "playback",
+ "playlist-resolvers",
+ "render-catalog",
+ "scene",
+ "scene-decoders",
+ "scene-store",
+ "serde_json",
+ "tempfile",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
 name = "percent-encoding"
 version = "2.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -796,6 +889,28 @@ dependencies = [
 ]
 
 [[package]]
+name = "playlist-resolvers"
+version = "0.1.0"
+dependencies = [
+ "foundation",
+ "serde_json",
+ "tempfile",
+ "tracing",
+]
+
+[[package]]
+name = "postcard"
+version = "1.1.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6764c3b5dd454e283a30e6dfe78e9b31096d9e32036b5d1eaac7a6119ccb9a24"
+dependencies = [
+ "cobs",
+ "embedded-io 0.4.0",
+ "embedded-io 0.6.1",
+ "serde",
+]
+
+[[package]]
 name = "ppv-lite86"
 version = "0.2.21"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -811,6 +926,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "985e7ec9bb745e6ce6535b544d84d6cd6f7ad8bd711c398938ae983b91a766d9"
 dependencies = [
  "unicode-ident",
+]
+
+[[package]]
+name = "quick-xml"
+version = "0.42.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "41b1177fdf999d2321d3fb46ff47159d9c1fb9ad66a4879f8c50a0b504615e9b"
+dependencies = [
+ "memchr",
 ]
 
 [[package]]
@@ -893,6 +1017,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d6f6ff9a378485b298a5286656da665ba74413d36db0979633275d2e708145d4"
 
 [[package]]
+name = "render-catalog"
+version = "0.1.0"
+dependencies = [
+ "crc32fast",
+ "drawing",
+ "scene",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "rust-embed"
 version = "8.13.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -965,6 +1100,47 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "93fc1dc3aaa9bfed95e02e6eadabb4baf7e3078b0bd1b4d7b6b0b68378900502"
 dependencies = [
  "winapi-util",
+]
+
+[[package]]
+name = "scene"
+version = "0.1.0"
+dependencies = [
+ "bytes",
+ "foundation",
+ "postcard",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "scene-decoders"
+version = "0.1.0"
+dependencies = [
+ "foundation",
+ "memchr",
+ "quick-xml",
+ "scene",
+ "serde_json",
+]
+
+[[package]]
+name = "scene-store"
+version = "0.1.0"
+dependencies = [
+ "crc32fast",
+ "foundation",
+ "handlers",
+ "overlay-sync",
+ "playlist-resolvers",
+ "postcard",
+ "scene",
+ "scene-decoders",
+ "serde",
+ "serde_json",
+ "sha2",
+ "tempfile",
+ "tracing",
 ]
 
 [[package]]
@@ -1543,6 +1719,9 @@ name = "workspace"
 version = "0.1.0"
 dependencies = [
  "foundation",
+ "handlers",
+ "playlist-resolvers",
+ "serde_json",
  "tempfile",
  "uuid",
 ]
@@ -1552,6 +1731,8 @@ name = "workspace-store"
 version = "0.1.0"
 dependencies = [
  "foundation",
+ "handlers",
+ "serde_json",
  "tempfile",
  "tokio",
  "workspace",

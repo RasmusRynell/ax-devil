@@ -13,10 +13,20 @@ layer = "entry"
 [workspace]
 members = [
   "crates/api-types",
+  "crates/catalogs",
+  "crates/drawing",
   "crates/foundation",
+  "crates/handlers",
   "crates/logging",
   "crates/media",
+  "crates/overlay-sync",
+  "crates/overlays",
   "crates/playback",
+  "crates/playlist-resolvers",
+  "crates/render-catalog",
+  "crates/scene",
+  "crates/scene-decoders",
+  "crates/scene-store",
   "crates/settings",
   "crates/workspace",
   "crates/workspace-store",
@@ -31,17 +41,32 @@ publish = false
 
 [workspace.dependencies]
 bytes = "1"
+crc32fast = "1"
+memchr = "2"
+postcard = { version = "1", default-features = false, features = ["use-std"] }
+quick-xml = "0.42"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+sha2 = "0.11"
 tokio = "1"
 ts-rs = "11"
 tracing = "0.1"
 tracing-subscriber = "0.3"
 api-types = { path = "crates/api-types" }
+catalogs = { path = "crates/catalogs" }
+drawing = { path = "crates/drawing" }
 foundation = { path = "crates/foundation" }
+handlers = { path = "crates/handlers" }
 logging = { path = "crates/logging" }
 media = { path = "crates/media" }
+overlay-sync = { path = "crates/overlay-sync" }
+overlays = { path = "crates/overlays" }
 playback = { path = "crates/playback" }
+playlist-resolvers = { path = "crates/playlist-resolvers" }
+render-catalog = { path = "crates/render-catalog" }
+scene = { path = "crates/scene" }
+scene-decoders = { path = "crates/scene-decoders" }
+scene-store = { path = "crates/scene-store" }
 settings = { path = "crates/settings" }
 workspace = { path = "crates/workspace" }
 workspace-store = { path = "crates/workspace-store" }
@@ -66,12 +91,20 @@ embed-assets = ["dep:rust-embed", "dep:mime_guess"]
 api-types.workspace = true
 axum = { version = "0.8", features = ["ws"] }
 bytes.workspace = true
+catalogs.workspace = true
 clap = { version = "4", features = ["derive"] }
+drawing.workspace = true
 foundation.workspace = true
 futures-util = { version = "0.3", default-features = false, features = ["sink", "std"] }
+handlers.workspace = true
 logging.workspace = true
 media.workspace = true
+overlay-sync.workspace = true
+overlays.workspace = true
 playback.workspace = true
+playlist-resolvers.workspace = true
+scene.workspace = true
+scene-store.workspace = true
 serde_json.workspace = true
 settings.workspace = true
 tokio-stream = { version = "0.1", features = ["sync"] }
