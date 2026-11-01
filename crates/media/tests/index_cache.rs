@@ -5,7 +5,7 @@ mod common;
 
 use common::fixture;
 use foundation::{CancelToken, Interrupt};
-use media::FrameIndex;
+use media::{FrameIndex, VideoInput};
 use std::fs;
 use std::path::{Path, PathBuf};
 use tempfile::TempDir;
@@ -31,9 +31,12 @@ fn setup(name: &str) -> Setup {
 /// The result of indexing, and the progress values reported on the way.
 fn load(video: &Path, cache: &Path) -> (FrameIndex, Vec<f32>) {
     let mut reported = Vec::new();
-    let index = FrameIndex::load_or_build(video, Some(cache), &CancelToken::new(), &mut |p| {
-        reported.push(p)
-    });
+    let index = FrameIndex::load_or_build(
+        &VideoInput::File(video.to_path_buf()),
+        Some(cache),
+        &CancelToken::new(),
+        &mut |p| reported.push(p),
+    );
     (
         index.unwrap_or_else(|e| panic!("did not index: {e:?}")),
         reported,
@@ -146,15 +149,19 @@ fn a_cache_file_of_a_video_that_changed_is_ignored() {
 fn a_video_replaced_during_the_build_is_not_saved() {
     let s = setup("cfr_h264_gop10_bf2.mp4");
     let mut replaced = false;
-    let index =
-        FrameIndex::load_or_build(&s.video, Some(&s.cache), &CancelToken::new(), &mut |_| {
+    let index = FrameIndex::load_or_build(
+        &VideoInput::File(s.video.clone()),
+        Some(&s.cache),
+        &CancelToken::new(),
+        &mut |_| {
             if !replaced {
                 replaced = true;
                 let mut bytes = fs::read(&s.video).expect("read");
                 bytes.push(0);
                 fs::write(&s.video, bytes).expect("replace while indexing");
             }
-        });
+        },
+    );
     assert!(index.is_ok(), "the build itself still finishes");
     assert!(replaced);
     assert!(
@@ -175,8 +182,12 @@ fn a_video_replaced_during_the_build_is_not_saved() {
 fn a_cancelled_build_saves_nothing() {
     let s = setup("cfr_h264_gop10_bf2.mp4");
     let cancel = CancelToken::new();
-    let result =
-        FrameIndex::load_or_build(&s.video, Some(&s.cache), &cancel, &mut |_| cancel.cancel());
+    let result = FrameIndex::load_or_build(
+        &VideoInput::File(s.video.clone()),
+        Some(&s.cache),
+        &cancel,
+        &mut |_| cancel.cancel(),
+    );
     assert!(matches!(result, Err(Interrupt::Cancelled)));
     assert!(index_files(&s.cache).is_empty());
 }

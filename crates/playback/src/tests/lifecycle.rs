@@ -2,9 +2,8 @@ use crate::Direction::Forward;
 use crate::session::Pull;
 use crate::testing::{Fixture, Log, block_on, deliveries, factory, poll_now, spec, want};
 use crate::worker::Step;
-use crate::{CachePool, DecoderFactory, Delivery, Registry, Session};
+use crate::{CachePool, DecoderFactory, Delivery, Registry, Session, SourceKey};
 use foundation::{CancelToken, UserError};
-use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex, mpsc};
 use std::time::Duration;
@@ -12,8 +11,8 @@ use std::time::Duration;
 /// Generous only so a broken test fails instead of hanging; no test asserts how long anything takes.
 const FAILSAFE: Duration = Duration::from_secs(30);
 
-fn crate_file(name: &str) -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR")).join(name)
+fn key(name: &str) -> SourceKey {
+    SourceKey(name.to_string())
 }
 
 #[test]
@@ -60,20 +59,16 @@ fn closing_stops_the_worker_at_the_next_frame_and_returns_the_share_at_once() {
 }
 
 #[test]
-fn sessions_of_one_file_share_one_source_and_the_last_one_out_returns_the_share() {
+fn sessions_of_one_key_share_one_source_and_the_last_one_out_returns_the_share() {
     let pool = CachePool::new(1000);
     let registry = Registry::new(Arc::clone(&pool));
     let log = Arc::new(Log::default());
-    let open = |path: &Path| {
-        registry
-            .open(path, spec(60, 10), factory(&log, 60))
-            .unwrap()
-    };
+    let open = |key: &SourceKey| registry.open(key, spec(60, 10), factory(&log, 60)).unwrap();
 
-    let first = open(&crate_file("Cargo.toml"));
-    let alias = open(&crate_file("src/../Cargo.toml"));
-    assert_eq!(pool.source_count(), 1, "one canonical path, one source");
-    let other = open(&crate_file("src/lib.rs"));
+    let first = open(&key("a"));
+    let alias = open(&key("a"));
+    assert_eq!(pool.source_count(), 1, "one key, one source");
+    let other = open(&key("b"));
     assert_eq!(pool.source_count(), 2);
 
     drop(first);
@@ -84,7 +79,7 @@ fn sessions_of_one_file_share_one_source_and_the_last_one_out_returns_the_share(
     );
     drop(alias);
     assert_eq!(pool.source_count(), 1);
-    assert!(registry.attach(&crate_file("Cargo.toml")).is_none());
+    assert!(registry.attach(&key("a")).is_none());
 
     drop(other);
     assert!(registry.wait_retired(FAILSAFE));
@@ -105,15 +100,11 @@ fn a_stuck_decoder_blocks_neither_its_own_close_nor_another_source() {
         }
     });
     let stuck = registry
-        .open(
-            &crate_file("Cargo.toml"),
-            spec(60, 10),
-            factory(&stuck_log, 60),
-        )
+        .open(&key("a"), spec(60, 10), factory(&stuck_log, 60))
         .unwrap();
     let mut healthy = registry
         .open(
-            &crate_file("src/lib.rs"),
+            &key("b"),
             spec(60, 10),
             factory(&Arc::new(Log::default()), 60),
         )
@@ -206,15 +197,15 @@ fn a_viewer_who_joined_before_the_last_other_left_keeps_a_working_source() {
 fn a_file_reopened_right_after_its_last_viewer_left_gets_a_fresh_working_source() {
     let registry = Registry::new(CachePool::new(1000));
     let log = Arc::new(Log::default());
-    let path = crate_file("Cargo.toml");
+    let video = key("a");
     let first = registry
-        .open(&path, spec(60, 10), factory(&log, 60))
+        .open(&video, spec(60, 10), factory(&log, 60))
         .unwrap();
     drop(first);
-    assert!(registry.attach(&path).is_none());
+    assert!(registry.attach(&video).is_none());
 
     let mut second = registry
-        .open(&path, spec(60, 10), factory(&log, 60))
+        .open(&video, spec(60, 10), factory(&log, 60))
         .unwrap();
     second.want(want(0, 3, 0, Forward));
     let got = block_on(second.next_delivery(), FAILSAFE).expect("the fresh source delivers");
@@ -227,14 +218,14 @@ fn a_file_reopened_right_after_its_last_viewer_left_gets_a_fresh_working_source(
 fn a_session_reports_the_spec_of_the_source_it_joined_never_a_stale_one() {
     let registry = Registry::new(CachePool::new(1000));
     let log = Arc::new(Log::default());
-    let path = crate_file("Cargo.toml");
+    let video = key("a");
 
     let first = registry
-        .open(&path, spec(60, 10), factory(&log, 60))
+        .open(&video, spec(60, 10), factory(&log, 60))
         .unwrap();
     // Two openers racing for one file end up on one source: the second's spec is not the source's.
     let second = registry
-        .open(&path, spec(30, 5), factory(&log, 30))
+        .open(&video, spec(30, 5), factory(&log, 30))
         .unwrap();
     assert_eq!(second.spec().timeline.len(), 60);
     let retained = first.spec().clone();
@@ -242,7 +233,7 @@ fn a_session_reports_the_spec_of_the_source_it_joined_never_a_stale_one() {
     drop(second);
 
     let reopened = registry
-        .open(&path, spec(30, 5), factory(&log, 30))
+        .open(&video, spec(30, 5), factory(&log, 30))
         .unwrap();
     assert_eq!(
         retained.timeline.len(),
@@ -255,7 +246,7 @@ fn a_session_reports_the_spec_of_the_source_it_joined_never_a_stale_one() {
         "the new session has the new recording"
     );
     assert_eq!(reopened.spec().keyframes.as_slice().len(), 6);
-    let attached = registry.attach(&path).unwrap();
+    let attached = registry.attach(&video).unwrap();
     assert_eq!(attached.spec().timeline.len(), 30);
 }
 

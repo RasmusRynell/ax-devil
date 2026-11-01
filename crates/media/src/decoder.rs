@@ -1,16 +1,16 @@
 //! The decoder: one file handle and codec context that turns positions of the frame index into frames.
 
 use crate::convert::Converter;
-use crate::ffi;
 use crate::index::FrameIndex;
+use crate::input::VideoInput;
+use crate::reader::Reader;
+use crate::sequence::ImageFiles;
 use crate::source;
-use ffmpeg_next::Packet;
 use ffmpeg_next::decoder;
 use ffmpeg_next::error::EAGAIN;
-use ffmpeg_next::format::context::Input;
 use ffmpeg_next::frame::Video;
 use foundation::{CancelToken, FrameFailure, Interrupt, UserError, VideoFrame};
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::sync::Arc;
 use tracing::{debug, warn};
 
@@ -31,14 +31,15 @@ const MAX_DRAIN_FAILURES: usize = 64;
 /// One decoded frame with its sequence id, before it is due.
 type Decoded = (u64, Video);
 
-/// One file handle and codec context. `Send` but not `Sync`: it belongs to exactly one worker.
+/// One packet source and codec context. `Send` but not `Sync`: it belongs to exactly one worker.
 ///
 /// Frames come out in presentation order. The codec's output is matched to the index by timestamp, so everything
 /// the decoder returns carries the identity the index gave that frame.
 pub struct Decoder {
+    /// What errors name: the file, or an image sequence's pattern.
     path: PathBuf,
     index: Arc<FrameIndex>,
-    input: Input,
+    reader: Reader,
     codec: decoder::Video,
     converter: Converter,
     position: Option<u64>,
@@ -52,26 +53,28 @@ pub struct Decoder {
 }
 
 impl Decoder {
-    /// Opens `path`, which `index` must describe. `threads` is the number of FFmpeg decode threads; 0 lets FFmpeg
-    /// choose. Fails when the file is no longer the one that was indexed.
+    /// Opens `input`, which `index` must describe. `threads` is the number of FFmpeg decode threads; 0 lets FFmpeg
+    /// choose. Fails when the file is no longer the one that was indexed. An image sequence is read file by file:
+    /// every frame is a keyframe, and an image that cannot be read costs only its own frame.
     ///
     /// `cancel` interrupts opening and every later read and seek that FFmpeg can interrupt (see
     /// [`FrameIndex::load_or_build`]). Opening then returns [`Interrupt::Cancelled`]. A decoder whose token was
     /// cancelled reports the end of the stream: `seek_to_keyframe` succeeds without moving, `position` is `None`
     /// and `next_frame` returns `Ok(None)`.
     pub fn open(
-        path: &Path,
+        input: &VideoInput,
         index: Arc<FrameIndex>,
         threads: usize,
         cancel: CancelToken,
     ) -> Result<Decoder, Interrupt<UserError>> {
-        if !index.describes(path) {
+        let path = input.location();
+        if !index.describes(input) {
             return Err(Interrupt::Failed(source::error(
                 "The video changed after it was indexed; open it again",
                 path,
             )));
         }
-        let opened = source::open(path, &cancel)?;
+        let opened = source::open_input(input, &cancel)?;
         if opened.stream != index.stream() {
             return Err(Interrupt::Failed(source::error(
                 "The video's streams changed after it was indexed",
@@ -79,10 +82,20 @@ impl Decoder {
             )));
         }
         let codec = source::open_decoder(&opened, threads, path).map_err(Interrupt::Failed)?;
+        let reader = match input {
+            VideoInput::File(_) => Reader::Container {
+                input: opened.input,
+                stream: opened.stream,
+            },
+            VideoInput::ImageSequence(sequence) => Reader::Images(
+                ImageFiles::new(sequence)
+                    .map_err(|reason| Interrupt::Failed(source::error(reason, path)))?,
+            ),
+        };
         Ok(Decoder {
             path: path.to_path_buf(),
             index,
-            input: opened.input,
+            reader,
             codec,
             converter: Converter::default(),
             position: Some(0),
@@ -116,7 +129,8 @@ impl Decoder {
             .ok()
             .and_then(|_| self.index.pts(keyframe))
             .ok_or_else(|| self.error(format!("Frame {keyframe} is not a keyframe")))?;
-        ffi::seek_to_pts(&mut self.input, self.index.stream(), pts)
+        self.reader
+            .seek(keyframe, pts)
             .map_err(|e| self.error(format!("The video cannot seek to frame {keyframe}: {e}")))?;
         self.codec.flush();
         self.feed = Feed::Reading;
@@ -205,15 +219,14 @@ impl Decoder {
 
     /// Sends the next packet of the video stream to the codec, or the end of the stream.
     fn read_packet(&mut self) {
-        let mut packet = Packet::empty();
-        match packet.read(&mut self.input) {
-            Ok(()) if packet.stream() == self.index.stream() => {
+        match self.reader.read(&self.cancel) {
+            Ok(Some(packet)) => {
                 if let Err(error) = self.codec.send_packet(&packet) {
                     debug!(path = %self.path.display(), %error, "the codec rejected a packet");
                     self.last_error = Some(error.to_string());
                 }
             }
-            Ok(()) => {}
+            Ok(None) => {}
             Err(error) => {
                 if !matches!(error, ffmpeg_next::Error::Eof) && !self.cancel.is_cancelled() {
                     warn!(path = %self.path.display(), %error, "reading the video stopped early");
@@ -255,10 +268,14 @@ impl Decoder {
     /// example "its data is damaged": the viewer says which frame it is about.
     fn failure(&mut self, next: u64, reason: &str) -> FrameFailure {
         self.position = Some(next + 1);
-        let detail = self.last_error.as_deref().unwrap_or(reason);
+        let detail = self
+            .reader
+            .failure_of(next)
+            .or_else(|| self.last_error.clone())
+            .unwrap_or_else(|| reason.to_string());
         FrameFailure {
             sequence_id: next,
-            error: self.error(detail.to_string()),
+            error: self.error(detail),
         }
     }
 

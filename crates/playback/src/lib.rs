@@ -1,6 +1,6 @@
 //! Playback policy: which frames to decode and keep around each viewer's playhead, and their delivery.
 //!
-//! A [`Registry`] holds one source per video file. A source has its equal share of the [`CachePool`] allowance,
+//! A [`Registry`] holds one source per video. A source has its equal share of the [`CachePool`] allowance,
 //! [`DECODE_WORKERS`] decode threads that each own a [`SpanDecoder`], and a job board: every [`Want`] of every
 //! [`Session`] replans the spans to decode, and workers abandon spans the new plan no longer wants at the next frame.
 //! Frames reach a viewer by pull: [`Session::next_delivery`]. Nothing here reads a clock.
@@ -26,10 +26,10 @@ mod tests;
 pub use cache::CachePool;
 pub(crate) use cache::SourceCache;
 pub use decoder::{DecoderFactory, SourceSpec, SpanDecoder};
-pub(crate) use frames::FrameSet;
+pub use frames::FrameSet;
 pub(crate) use plan::Span;
 pub use plan::{Direction, Want};
-pub use registry::Registry;
+pub use registry::{Registry, SourceKey};
 pub use session::{Delivery, Session};
 pub use source::DECODE_WORKERS;
 

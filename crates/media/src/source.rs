@@ -2,6 +2,8 @@
 
 use crate::VideoInfo;
 use crate::convert::{color_desc, delivered_format};
+use crate::input::VideoInput;
+use ffmpeg_next::Dictionary;
 use ffmpeg_next::codec::{self, threading};
 use ffmpeg_next::decoder;
 use ffmpeg_next::format::context::Input;
@@ -25,24 +27,60 @@ pub(crate) fn error(reason: impl Into<String>, path: &Path) -> UserError {
     UserError::new(reason, path.display().to_string())
 }
 
-/// Opens `path` and picks its best video stream. FFmpeg polls `cancel` while it opens the file and on every later
+/// Opens `input` and picks its best video stream. FFmpeg polls `cancel` while it opens the file and on every later
 /// read of the returned input, and stops with an error when it is cancelled; that error is reported as
 /// [`Interrupt::Cancelled`]. FFmpeg can only poll where it waits in its own code: a blocking system call, such as a
 /// read from a hung network mount, is not interrupted.
-pub(crate) fn open(path: &Path, cancel: &CancelToken) -> Result<Opened, Interrupt<UserError>> {
+///
+/// An image sequence is opened through the `image2` demuxer at its first image, which tells the decoder what the
+/// images are; the demuxer is not used to read the frames (see [`crate::sequence`]).
+pub(crate) fn open_input(
+    video: &VideoInput,
+    cancel: &CancelToken,
+) -> Result<Opened, Interrupt<UserError>> {
     static INIT: Once = Once::new();
     INIT.call_once(|| {
         // Failures reach the caller as values, so FFmpeg's own log to stderr stays off.
         log::set_level(Level::Quiet);
     });
     let token = cancel.clone();
-    let input = format::input_with_interrupt(path, move || token.is_cancelled()).map_err(|e| {
+    let path = video.location();
+    let opened = match video {
+        VideoInput::File(path) => format::input_with_interrupt(path, move || token.is_cancelled()),
+        VideoInput::ImageSequence(sequence) => {
+            let mut options = Dictionary::new();
+            options.set(
+                "framerate",
+                &format!(
+                    "{}/{}",
+                    sequence.frame_rate.num(),
+                    sequence.frame_rate.den()
+                ),
+            );
+            options.set("start_number", &sequence.start_number.to_string());
+            options.set("pattern_type", "sequence");
+            format::input_with_interrupt_and_dictionary(path, move || token.is_cancelled(), options)
+        }
+    };
+    let input = opened.map_err(|e| {
         cancel.check().err().map_or_else(
-            || Interrupt::Failed(error(format!("The file is not a video: {e}"), path)),
+            || {
+                let what = match video {
+                    VideoInput::File(_) => "The file is not a video",
+                    VideoInput::ImageSequence(_) => "The first image cannot be opened",
+                };
+                Interrupt::Failed(error(format!("{what}: {e}"), path))
+            },
             Interrupt::from,
         )
     })?;
     cancel.check()?;
+    if matches!(video, VideoInput::ImageSequence(_)) && input.format().name() != "image2" {
+        return Err(Interrupt::Failed(error(
+            "The first image is not a picture FFmpeg reads as an image sequence",
+            path,
+        )));
+    }
     let Some(stream) = input.streams().best(Type::Video).filter(|stream| {
         !stream
             .disposition()
@@ -66,6 +104,11 @@ pub(crate) fn open(path: &Path, cancel: &CancelToken) -> Result<Opened, Interrup
         stream,
         time_base: (rate.numerator(), rate.denominator()),
     })
+}
+
+/// Opens the video file at `path`; see [`open_input`].
+pub(crate) fn open(path: &Path, cancel: &CancelToken) -> Result<Opened, Interrupt<UserError>> {
+    open_input(&VideoInput::File(path.to_path_buf()), cancel)
 }
 
 /// Opens a decoder for the video stream with `threads` frame-parallel decode threads; 0 lets FFmpeg choose.

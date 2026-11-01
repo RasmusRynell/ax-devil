@@ -1,10 +1,9 @@
-//! Sources shared by every viewer of the same file.
+//! Sources shared by every viewer of the same video.
 
 use crate::source::{DECODE_WORKERS, Source};
 use crate::{CachePool, DecoderFactory, Session, SourceSpec, lock};
 use foundation::UserError;
 use std::collections::HashMap;
-use std::path::{Path, PathBuf};
 use std::sync::{Arc, Condvar, Mutex, Weak};
 use std::time::Duration;
 
@@ -33,7 +32,7 @@ impl Drop for Running {
 
 struct Shared {
     pool: Arc<CachePool>,
-    sources: Mutex<HashMap<PathBuf, Weak<Source>>>,
+    sources: Mutex<HashMap<SourceKey, Weak<Source>>>,
     retired: Arc<Retired>,
 }
 
@@ -53,20 +52,15 @@ impl Shared {
     }
 }
 
-/// Open sources keyed by canonical path, which the registry works out itself, once per call. Viewers of one file
-/// share its decoders, its cache share and its frames. Errors the registry and its sources raise carry that path as
-/// their location.
+/// The identity of a video, which the caller works out: viewers whose keys are equal share one source. It is also
+/// the location the errors of the registry and its sources carry, so it should name the video to a user, such as
+/// the canonical path of a file.
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub struct SourceKey(pub String);
+
+/// Open sources keyed by [`SourceKey`]. Viewers of one video share its decoders, its cache share and its frames.
 pub struct Registry {
     shared: Arc<Shared>,
-}
-
-fn canonical(path: &Path) -> Result<PathBuf, UserError> {
-    std::fs::canonicalize(path).map_err(|error| {
-        UserError::new(
-            format!("Cannot open the video: {error}"),
-            path.display().to_string(),
-        )
-    })
 }
 
 impl Registry {
@@ -81,34 +75,31 @@ impl Registry {
         }
     }
 
-    /// A new viewer of `path` when it is already open.
-    pub fn attach(&self, path: &Path) -> Option<Session> {
-        let key = canonical(path).ok()?;
-        let source = lock(&self.shared.sources).get(&key)?.upgrade()?;
+    /// A new viewer of the video `key` when it is already open.
+    pub fn attach(&self, key: &SourceKey) -> Option<Session> {
+        let source = lock(&self.shared.sources).get(key)?.upgrade()?;
         Session::join(&source)
     }
 
-    /// A viewer of `path`. Opens the source, starting its decode workers, unless it is already open, in which
-    /// case `spec` and `factory` are ignored and the viewer joins the open one: of two openers racing for the same
-    /// file, both end up on one source. The session's [`Session::spec`] says which spec the source has.
+    /// A viewer of the video `key`. Opens the source, starting its decode workers, unless it is already open, in
+    /// which case `spec` and `factory` are ignored and the viewer joins the open one: of two openers racing for the
+    /// same video, both end up on one source. The session's [`Session::spec`] says which spec the source has.
     pub fn open(
         &self,
-        path: &Path,
+        key: &SourceKey,
         spec: SourceSpec,
         factory: DecoderFactory,
     ) -> Result<Session, UserError> {
-        let key = canonical(path)?;
         let (source, session) = {
             let mut sources = lock(&self.shared.sources);
             if let Some(session) = sources
-                .get(&key)
+                .get(key)
                 .and_then(Weak::upgrade)
                 .and_then(|source| Session::join(&source))
             {
                 return Ok(session);
             }
-            let location = key.display().to_string();
-            let source = Source::new(spec, factory, self.shared.pool.add_source(), location);
+            let source = Source::new(spec, factory, self.shared.pool.add_source(), key.0.clone());
             let me = Arc::downgrade(&source);
             let registry = Arc::downgrade(&self.shared);
             let own_key = key.clone();
@@ -124,19 +115,14 @@ impl Registry {
                 }
                 shared.poke_all();
             }));
-            sources.insert(key, Arc::downgrade(&source));
+            sources.insert(key.clone(), Arc::downgrade(&source));
             let session = Session::join(&source);
             (source, session)
         };
         // Outside the registry lock: a failed start closes the source, which takes that lock.
         self.spawn_workers(&source)?;
         self.shared.poke_all();
-        session.ok_or_else(|| {
-            UserError::new(
-                "The video was closed while opening",
-                path.display().to_string(),
-            )
-        })
+        session.ok_or_else(|| UserError::new("The video was closed while opening", key.0.as_str()))
     }
 
     fn spawn_workers(&self, source: &Arc<Source>) -> Result<(), UserError> {

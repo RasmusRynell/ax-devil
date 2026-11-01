@@ -4,7 +4,7 @@
 
 mod common;
 
-use common::{assert_explained, expected_luma, fixture, flat_luma, index_of, open, read_all};
+use common::{assert_explained, expected_luma, file, fixture, flat_luma, index_of, open, read_all};
 use foundation::{CancelToken, Interrupt, PixelFormat, VideoFrame};
 use media::{FrameIndex, ScanKind};
 
@@ -33,7 +33,7 @@ fn frames_come_in_display_order_with_the_identity_of_the_index() {
     for (name, count, interval) in LUMA_FIXTURES {
         let path = fixture(name);
         let index = index_of(&path);
-        assert_eq!(index.scan(), ScanKind::Packet, "{name}");
+        assert_eq!(index.scan(), Some(ScanKind::Packet), "{name}");
         assert_eq!(index.timeline().len(), count, "{name}");
         let keyframes: Vec<u64> = (0..count).step_by(interval as usize).collect();
         assert_eq!(index.keyframes().as_slice(), keyframes, "{name}");
@@ -158,7 +158,7 @@ fn a_missing_file_and_a_file_that_is_not_a_video_fail_at_open_with_a_reason_and_
     let not_video = fixture("not_video.mp4");
     for path in [&missing, &not_video] {
         let Err(Interrupt::Failed(error)) =
-            FrameIndex::load_or_build(path, None, &CancelToken::new(), &mut |_| {})
+            FrameIndex::load_or_build(&file(path), None, &CancelToken::new(), &mut |_| {})
         else {
             panic!("{} should fail to index", path.display());
         };

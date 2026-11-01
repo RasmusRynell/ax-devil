@@ -3,7 +3,7 @@
 #![allow(dead_code)] // Each test file uses a part of this.
 
 use foundation::{CancelToken, FrameFailure, UserError, VideoFrame};
-use media::{Decoder, FrameIndex};
+use media::{Decoder, FrameIndex, VideoInput};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
@@ -14,16 +14,31 @@ pub fn fixture(name: &str) -> PathBuf {
         .join(name)
 }
 
-/// Builds the index of `path` without any cache.
-pub fn index_of(path: &Path) -> Arc<FrameIndex> {
-    let index = FrameIndex::load_or_build(path, None, &CancelToken::new(), &mut |_| {});
-    Arc::new(index.unwrap_or_else(|e| panic!("{} did not index: {e:?}", path.display())))
+/// A video file as a decoder input.
+pub fn file(path: &Path) -> VideoInput {
+    VideoInput::File(path.to_path_buf())
 }
 
-/// Opens a decoder with `threads` decode threads.
+/// Builds the index of the video file `path` without any cache.
+pub fn index_of(path: &Path) -> Arc<FrameIndex> {
+    index_of_input(&file(path))
+}
+
+/// Builds the index of `input` without any cache.
+pub fn index_of_input(input: &VideoInput) -> Arc<FrameIndex> {
+    let index = FrameIndex::load_or_build(input, None, &CancelToken::new(), &mut |_| {});
+    Arc::new(index.unwrap_or_else(|e| panic!("{input:?} did not index: {e:?}")))
+}
+
+/// Opens a decoder on the video file `path` with `threads` decode threads.
 pub fn open(path: &Path, index: &Arc<FrameIndex>, threads: usize) -> Decoder {
-    Decoder::open(path, index.clone(), threads, CancelToken::new())
-        .unwrap_or_else(|e| panic!("{} did not open: {e:?}", path.display()))
+    open_input(&file(path), index, threads)
+}
+
+/// Opens a decoder on `input` with `threads` decode threads.
+pub fn open_input(input: &VideoInput, index: &Arc<FrameIndex>, threads: usize) -> Decoder {
+    Decoder::open(input, index.clone(), threads, CancelToken::new())
+        .unwrap_or_else(|e| panic!("{input:?} did not open: {e:?}"))
 }
 
 /// Every result of `next_frame` until the end of the stream.

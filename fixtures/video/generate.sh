@@ -57,3 +57,11 @@ ffmpeg "${GLOBAL[@]}" -f lavfi -i "$(rgb 18x16)" "${PLAIN[@]}" -frames:v 4 \
   -vf "scale=out_color_matrix=bt709:out_range=tv,format=yuv444p10le" -c:v libx264 -qp 0 \
   -colorspace bt709 -color_primaries bt709 -color_trc bt709 -color_range tv yuv444p10_w18.mkv
 ffmpeg "${GLOBAL[@]}" -f lavfi -i "$(rgb 16x16)" "${PLAIN[@]}" -frames:v 4 -c:v rawvideo -pix_fmt rgb24 rgb24_w16.nut
+
+# An image sequence: 12 JPEGs, 64x48, numbered from 1 as %06d.jpg, image k showing frame k - 1 of the luma scheme
+# above (full-range JPEG, quality 1, so the flat luma survives). Playback gives them a frame rate; the files hold none.
+mkdir -p seq
+rm -f seq/*.jpg
+ffmpeg "${GLOBAL[@]}" -f lavfi \
+  -i "$(luma 64x48 30),setparams=range=pc,format=yuvj420p" "${PLAIN[@]}" -frames:v 12 \
+  -c:v mjpeg -pix_fmt yuvj420p -q:v 1 -start_number 1 seq/%06d.jpg

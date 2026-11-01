@@ -3,12 +3,15 @@
 //! It is read from a cache file when a valid one exists. Otherwise it is built by reading the container's packets
 //! without decoding, and by decoding every frame only when a packet lacks a timestamp or two share one.
 
+mod images;
 mod scan;
 #[cfg(test)]
 mod tests;
 
 use crate::fingerprint::Fingerprint;
 use crate::index_file::{self, Stored};
+use crate::input::VideoInput;
+use crate::sequence::Numbering;
 use crate::source::{self, Opened};
 use foundation::{
     CancelToken, ColorDesc, Interrupt, Keyframes, MediaTime, PixelFormat, Timeline, UserError,
@@ -47,21 +50,52 @@ impl VideoInfo {
     }
 }
 
-/// The index of one video file.
+/// What the timeline was made from.
+enum Origin {
+    /// A file's packets, as saved in the cache file.
+    Packets(Stored),
+    /// An image sequence's frame rate: nothing was read but the first image.
+    Images {
+        /// The video stream of the first image, which the decoder opens its codec from.
+        stream: usize,
+        /// The first image when it was indexed.
+        first: Fingerprint,
+    },
+}
+
+/// The index of one video: a file, or an image sequence.
 pub struct FrameIndex {
-    stored: Stored,
+    origin: Origin,
     timeline: Timeline,
     keyframes: Keyframes,
     info: VideoInfo,
+    warnings: Vec<String>,
 }
 
 impl FrameIndex {
-    /// Loads the valid cache file under `cache_dir`, or builds the index and saves it there. A source that changed
-    /// while it was being read is never saved. `cache_dir = None` never reads or writes a cache.
+    /// For a file: loads the valid cache file under `cache_dir`, or builds the index and saves it there. A source
+    /// that changed while it was being read is never saved. `cache_dir = None` never reads or writes a cache.
     ///
     /// `progress` gets values from 0.0 to 1.0 while building and is not called when the cache is used. A build that
     /// falls back to decoding starts counting again from 0.0.
+    ///
+    /// For an image sequence: nothing is scanned and nothing is cached, `cache_dir` and `progress` are not used.
+    /// Frame `i` is shown at `frame_rate.time_of(i)` and every frame is a keyframe. The picture size and layout are
+    /// those of the first image. The last image is only checked to exist, which [`warnings`](Self::warnings) says
+    /// when it does not.
     pub fn load_or_build(
+        input: &VideoInput,
+        cache_dir: Option<&Path>,
+        cancel: &CancelToken,
+        progress: &mut dyn FnMut(f32),
+    ) -> Result<FrameIndex, Interrupt<UserError>> {
+        match input {
+            VideoInput::File(path) => Self::of_file(path, cache_dir, cancel, progress),
+            VideoInput::ImageSequence(sequence) => Self::of_sequence(sequence, cancel),
+        }
+    }
+
+    fn of_file(
         path: &Path,
         cache_dir: Option<&Path>,
         cancel: &CancelToken,
@@ -122,10 +156,10 @@ impl FrameIndex {
             ))
         })?;
         progress(1.0);
-        if let Some(cache_file) = &cache_file {
+        if let (Some(cache_file), Origin::Packets(stored)) = (&cache_file, &index.origin) {
             // A source that changed during the scan may have been read half old, half new.
             if Fingerprint::of_path(path).is_ok_and(|now| now == fingerprint) {
-                if let Err(e) = index_file::save(cache_file, &index.stored) {
+                if let Err(e) = index_file::save(cache_file, stored) {
                     warn!(file = %cache_file.display(), error = %e, "could not save the frame index");
                 }
             } else {
@@ -150,36 +184,65 @@ impl FrameIndex {
         &self.info
     }
 
-    /// How this index was built.
-    pub fn scan(&self) -> ScanKind {
-        self.stored.scan
+    /// How the index of a file was built; `None` for an image sequence, which is not scanned.
+    pub fn scan(&self) -> Option<ScanKind> {
+        match &self.origin {
+            Origin::Packets(stored) => Some(stored.scan),
+            Origin::Images { .. } => None,
+        }
+    }
+
+    /// What is worth telling the user about the video's frames, such as an image that is missing at the end.
+    pub fn warnings(&self) -> &[String] {
+        &self.warnings
     }
 
     /// The video stream the index describes.
     pub(crate) fn stream(&self) -> usize {
-        self.stored.stream as usize
+        match &self.origin {
+            Origin::Packets(stored) => stored.stream as usize,
+            Origin::Images { stream, .. } => *stream,
+        }
     }
 
-    /// The pts of frame `sequence_id`, in the stream's time base.
+    /// The pts of frame `sequence_id`, in the stream's time base. An image sequence's pts is the sequence id.
     pub(crate) fn pts(&self, sequence_id: u64) -> Option<i64> {
-        self.stored
-            .pts
-            .get(usize::try_from(sequence_id).ok()?)
-            .copied()
+        match &self.origin {
+            Origin::Packets(stored) => stored.pts.get(usize::try_from(sequence_id).ok()?).copied(),
+            Origin::Images { .. } => (sequence_id < self.timeline.len())
+                .then(|| i64::try_from(sequence_id).ok())
+                .flatten(),
+        }
     }
 
     /// The sequence id of the frame with this pts.
     pub(crate) fn sequence_id(&self, pts: i64) -> Option<u64> {
-        self.stored
-            .pts
-            .binary_search(&pts)
-            .ok()
-            .map(|index| index as u64)
+        match &self.origin {
+            Origin::Packets(stored) => stored
+                .pts
+                .binary_search(&pts)
+                .ok()
+                .map(|index| index as u64),
+            Origin::Images { .. } => u64::try_from(pts)
+                .ok()
+                .filter(|sequence_id| *sequence_id < self.timeline.len()),
+        }
     }
 
-    /// Whether the file at `path` is still the one that was indexed.
-    pub(crate) fn describes(&self, path: &Path) -> bool {
-        Fingerprint::of_path(path).is_ok_and(|now| now == self.stored.fingerprint)
+    /// Whether `input` is still what was indexed: the same file, or for a sequence the same first image.
+    pub(crate) fn describes(&self, input: &VideoInput) -> bool {
+        match (&self.origin, input) {
+            (Origin::Packets(stored), VideoInput::File(path)) => {
+                Fingerprint::of_path(path).is_ok_and(|now| now == stored.fingerprint)
+            }
+            (Origin::Images { first, .. }, VideoInput::ImageSequence(sequence)) => {
+                Numbering::parse(&sequence.pattern).is_ok_and(|numbering| {
+                    let path = numbering.path(u64::from(sequence.start_number));
+                    Fingerprint::of_path(&path).is_ok_and(|now| now == *first)
+                })
+            }
+            _ => false,
+        }
     }
 
     /// Validates stored values against the file just opened and builds the index from them.
@@ -197,10 +260,11 @@ impl FrameIndex {
         }
         let (timeline, keyframes) = times_of(&stored)?;
         Ok(Self {
-            stored,
+            origin: Origin::Packets(stored),
             timeline,
             keyframes,
             info: info.clone(),
+            warnings: Vec::new(),
         })
     }
 }

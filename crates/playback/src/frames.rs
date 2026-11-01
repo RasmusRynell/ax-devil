@@ -3,7 +3,7 @@ use std::ops::RangeInclusive;
 /// A set of frame numbers kept as sorted, disjoint inclusive ranges, so a cache holding thousands of consecutive
 /// frames is a handful of ranges.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub(crate) struct FrameSet {
+pub struct FrameSet {
     ranges: Vec<RangeInclusive<u64>>,
 }
 
