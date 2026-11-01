@@ -25,9 +25,8 @@ implementing module closes.
   names such as an expanded host are never stored or saved.
 - An item that fails to resolve stays in the Workspace with its resolution error recorded. An item the file format
   cannot read always fails to resolve and is saved back unchanged.
-- Each overlay source spec owns its overlay source kind; overlay content and lanes derive the kind from the spec.
-- Seekable video accepts file overlays. Live video accepts at most one RTSP, MQTT or DataHub WebSocket overlay, chosen
-  explicitly as a typed mode; config and CLI strings are converted at their boundaries.
+- Seekable video accepts file overlays; live video accepts at most one RTSP, MQTT or DataHub WebSocket overlay, chosen
+  as a typed mode.
 - Every playlist lane references Seekable Video Content. Playlists are offline workflows.
 - One intake validates decoder selections and live connection settings for every video and live stream opened through
   a dialog, the CLI or a file drop. Playlists from a resolver enter as built; the resolver owns their validity.
@@ -35,7 +34,7 @@ implementing module closes.
 ## Coordinates
 
 - Bounding boxes, polygons and points use normalized `[0,1]` image space. Catalog lengths resolve against the lane's
-  cell, not source-video dimensions.
+  cell, not source-video dimensions; a length in pixels keeps its size on screen under page zoom.
 
 ## Display Rendering
 
@@ -60,8 +59,9 @@ implementing module closes.
 - A lane draws only the marks of the sample its Frame Map assigns to the frame, never another's. In play a
   lane without data shows a loading state and the video is not held; after a seek or step the frame waits up to
   about 250 ms for ready lanes; export always waits. Loading, failed and hidden lanes never hold a frame back.
-- Sample Items and Frame Maps pass the authority gate of the frame they rank with and cover the window it allowed,
-  never the viewer's raw request. The backend alone decides what a viewer holds: evictions and the map window (never
+- Sample Items, Frame Maps and inspections pass the authority gate of the frame they rank with; items and maps cover
+  the window it allowed, never the viewer's raw request. An inspection is answered only for a sample the viewer holds,
+  else as unavailable, ungated. The backend alone decides what a viewer holds: evictions and the map window (never
   gated), within its byte budget.
 
 ## Frame Identity
@@ -113,8 +113,8 @@ implementing module closes.
 
 ## Workspace And Viewers
 
-- Open, focused, pinned, on-screen and live-status facts about viewers come from the hosted viewers; they are not
-  copied into parallel state records.
+- Open, focused, pinned, on-screen and live-status facts about viewers come from the hosted viewers, never from
+  parallel state records.
 - Viewer navigation reads Hidden state through a read-only query of the Doc, never by commanding it.
 - The Doc holds the current Workspace, each item's resolution, Hidden refs and open items, and changes only by a
   command applied under its Session's lock; a refused command changes nothing, and each change reaches every seat as
@@ -125,9 +125,9 @@ implementing module closes.
 - Every item is listed: an item that failed to resolve is one unavailable row that shows its reason and never opens;
   an item still resolving is one pending row that opens nothing.
 - Items resolve off the UI thread and the lock; a result commits only while its item still waits on that attempt.
-- Only adding items opens a viewer. Opening or creating a Workspace lists its items and opens and connects nothing.
+- Only adding items opens a viewer. Opening or creating a Workspace lists its items and connects nothing.
 - Nothing prompts on launch, open, New or quit: a Workspace with unsaved edits has one recovery copy, never its own
-  file, that exists exactly while the edits do and is deleted when they are saved or discarded.
+  file, that exists exactly while the edits do.
 
 ## Sidebar
 
@@ -135,7 +135,6 @@ implementing module closes.
 - A Workspace-zone view is the whole Workspace or one part of it: it lists the Workspace's own items and offers ways
   to add to them, and keeps no data of its own beyond what the Workspace file saves.
 - An app-zone view is about the application and never shows Workspace content.
-- Bookmarks and review marks apply to local videos and playlists, never to live streams.
 - A sidebar view adds nothing to the viewer area; opening content from a view goes through the Workspace's one
   open-content path.
 
@@ -161,7 +160,7 @@ implementing module closes.
   for retiring sources within one deadline, so transport cleanup such as removing temporary device configuration
   completes.
 - Live sources report failures they retry themselves (reconnecting) and failures needing a manual retry (error), each
-  with a reason; the viewer shows both, never only the logs.
+  with a reason the viewer shows, never only the logs.
 - Memory management never pauses frame delivery.
 
 ## Synchronization
@@ -222,7 +221,8 @@ implementing module closes.
 ## Rendering
 
 - The frontend evaluates, lays out and picks per lane; the backend never evaluates a catalog or rasterizes. Evaluation
-  turns a Sample Item into Marks; layout and painting read only Marks.
+  turns a Sample Item into Marks; layout and painting read only Marks. A viewer's viewport (one for all its lanes) and
+  selection (an entity id, shown in every lane of its source, kept across seeks) are client view state, never sent.
 - Overlay draw order is the catalog's layer order; inside a layer, rows in sample order, each row's marks in listed
   order.
 - A mark whose evaluation fails at runtime (a null required field, a non-finite result, an invalid length
@@ -233,8 +233,8 @@ implementing module closes.
   built-in catalog records it as its origin; that is shown, never acted on.
 - The default catalog is the only catalog choice remembered across restarts. Overlay visibility belongs to each view
   or lane, independently of filters and catalog authoring; hiding a feature keeps its inspection and hover data.
-- A failed catalog load or reload keeps the last compiled catalog in use and reports the error; a view is never left
-  without a catalog.
+- A failed catalog load or reload keeps the lane's last drawn catalog in use and reports the error; a lane is never
+  left without a catalog.
 
 ## Settings And Shortcuts
 

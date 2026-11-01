@@ -83,8 +83,8 @@ object and frame by frame, and for comparing results side by side. Take the pitc
 
 OF-02 follows D19: compare several overlay results against the same recording with one clock. Acceptance: lanes
 with different annotation coverage stay aligned when playing, seeking and stepping through a variable-frame-rate
-video, and switching playlist entries changes their shared video. Each lane keeps its own catalog, filter, theme, zoom
-and aspect, also when two lanes show one overlay source (D24). OF-08 separately accepts export with that timing.
+video, and switching playlist entries changes their shared video. Each lane keeps its own catalog, filter and theme,
+also when two lanes show one overlay source (D24); zoom and pan are the viewer's (D31). OF-08 separately accepts export with that timing.
 Synchronized comparison of different recordings from the reference is a recorded reduction, not satisfied by
 independent viewers (see the OF-02 deviation in the new-tree `docs/parity.md`).
 

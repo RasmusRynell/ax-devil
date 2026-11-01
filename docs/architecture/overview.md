@@ -70,7 +70,7 @@ The backend supplies data and does the work every lane and session shares; the f
 overlay file is decoded once into an on-disk artifact that every viewer opening it shares (`scene-store`); memory holds
 the sample keys and a bounded cache of Scenes. On the playback socket `overlays` sends two kinds of items. A Sample Item
 is the immutable, per-source encoding of one sample: its latest observations as typed columns and a class mask from the
-decoder's filter policy, with history, source data and debug data fetched on demand. A Frame Map is per lane: which
+decoder's filter policy; the rest of an entity's fields (history, source data, debug data) come from one `Inspect` request, answered only for a sample the viewer holds and gated like data. A Frame Map is per lane: which
 sample belongs to each frame, as `overlay-sync` selects it under the lane's Lane Policy (tolerance, sticky, whether the
 lane is shown). Items and maps rank with the video frames by the same playhead rule and pass the same authority gate.
 They travel inside the sample window: per source, the samples that subscribed lanes' Frame Maps assign to the frames of
@@ -79,10 +79,11 @@ tells the viewer its data window and every sample it stops holding, within a byt
 opens; the viewer evicts only on that word. Revisions drop stale items, so there are no acknowledgements or per-seek
 epochs.
 
-Per lane, `frontend/src/present/` compiles the lane's catalog document (served over the socket, built-in or user),
-filters rows, evaluates Marks from the Sample Item, lays them out for the lane's cell with zoom, pan and aspect, and
-paints them through one WebGL2 context per viewer. A lane's Lane Style (catalog, filters, theme, opacity, zoom, pan)
-stays in the client and its Lane Policy in its socket; neither is shared with followers. Export and `catalog render`
+Per lane, `frontend/src/present/` compiles the lane's catalog document (served over the socket, built-in or user; a
+changed user file is pushed to the sockets that asked for it), filters rows, evaluates Marks from the Sample Item, lays
+them out for the lane's cell, and paints them through one WebGL2 context per viewer. A lane's Lane Style (catalog,
+theme, hidden features, filters, sticky opacity) stays in the client and its Lane Policy in its socket; neither is
+shared with followers. The viewer's viewport and selection are client state; picking runs over the lane's filtered rows. Export and `catalog render`
 will run the same code in an offscreen Electron page, and Rust will freeze their inputs and encode the frames (S6).
 `catalog check` runs the compiler in Electron-as-Node from a bundle `make` builds with the frontend
 (`desktop/generated/catalog-check.cjs`).
