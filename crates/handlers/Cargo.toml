@@ -1,0 +1,19 @@
+[package]
+name = "handlers"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[package.metadata.ax-devil]
+layer = "domain"
+
+[lints]
+workspace = true
+
+[dependencies]
+foundation.workspace = true
+playlist-resolvers.workspace = true
+scene.workspace = true
+scene-decoders.workspace = true

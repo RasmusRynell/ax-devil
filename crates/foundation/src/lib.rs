@@ -9,4 +9,4 @@ mod time;
 pub use cancel::{CancelToken, Cancelled, Interrupt};
 pub use error::UserError;
 pub use frame::{ColorDesc, FrameFailure, FrameLayout, Matrix, PixelFormat, Plane, VideoFrame};
-pub use time::{FrameId, Keyframes, MediaTime, Timeline, TimelineError};
+pub use time::{FrameId, FrameRate, FrameSize, Keyframes, MediaTime, Timeline, TimelineError};

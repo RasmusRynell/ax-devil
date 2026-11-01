@@ -44,6 +44,84 @@ impl MediaTime {
     }
 }
 
+/// Frames per second as an exact ratio, both parts positive and in lowest terms.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct FrameRate {
+    num: u32,
+    den: u32,
+}
+
+impl FrameRate {
+    /// The rate `num / den`; `None` when either is 0.
+    pub fn new(num: u32, den: u32) -> Option<Self> {
+        if num == 0 || den == 0 {
+            return None;
+        }
+        let divisor = gcd(num, den);
+        Some(Self {
+            num: num / divisor,
+            den: den / divisor,
+        })
+    }
+
+    /// Parses `30`, `29.97` or `30000/1001` exactly: decimal digits become a power-of-ten denominator. `None` for
+    /// anything else, zero, or a value that does not fit.
+    pub fn parse(text: &str) -> Option<Self> {
+        let text = text.trim();
+        if let Some((num, den)) = text.split_once('/') {
+            return Self::new(digits(num)?.try_into().ok()?, digits(den)?.try_into().ok()?);
+        }
+        let (whole, fraction) = text.split_once('.').unwrap_or((text, ""));
+        let den = 10u64.checked_pow(u32::try_from(fraction.len()).ok()?)?;
+        let num = digits(&format!("{whole}{fraction}"))?;
+        Self::new(num.try_into().ok()?, den.try_into().ok()?)
+    }
+
+    /// Frames per second, numerator.
+    pub fn num(self) -> u32 {
+        self.num
+    }
+
+    /// Frames per second, denominator.
+    pub fn den(self) -> u32 {
+        self.den
+    }
+
+    /// Time of frame `index`: `index * den / num` seconds as microseconds, ties to even like every other
+    /// [`MediaTime::from_ticks`] time. `None` when it does not fit.
+    pub fn time_of(self, index: u64) -> Option<MediaTime> {
+        MediaTime::from_ticks(
+            i64::try_from(index).ok()?,
+            i64::from(self.den),
+            i64::from(self.num),
+        )
+    }
+}
+
+/// Only ASCII digits, as a number; `None` when empty, not digits, or too large.
+fn digits(text: &str) -> Option<u64> {
+    if text.is_empty() || !text.bytes().all(|byte| byte.is_ascii_digit()) {
+        return None;
+    }
+    text.parse().ok()
+}
+
+fn gcd(mut a: u32, mut b: u32) -> u32 {
+    while b != 0 {
+        (a, b) = (b, a % b);
+    }
+    a
+}
+
+/// Width and height of a decoded picture in pixels.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct FrameSize {
+    /// Pixels across.
+    pub width: u32,
+    /// Pixels down.
+    pub height: u32,
+}
+
 /// Which frame of a video: its place in presentation order and its time.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct FrameId {
@@ -409,6 +487,53 @@ mod tests {
                 "{ids:?}"
             );
         }
+    }
+
+    #[test]
+    fn frame_rates_parse_exactly_and_place_frames_on_a_grid() {
+        // (text, (num, den)); None when the text is not a positive rate.
+        let cases = [
+            ("30", Some((30, 1))),
+            ("25.0", Some((25, 1))),
+            ("29.97", Some((2997, 100))),
+            ("0.5", Some((1, 2))),
+            (".5", Some((1, 2))),
+            ("30000/1001", Some((30000, 1001))),
+            ("60/2", Some((30, 1))),
+            (" 24 ", Some((24, 1))),
+            ("0", None),
+            ("30/0", None),
+            ("", None),
+            (".", None),
+            ("-30", None),
+            ("1e3", None),
+            ("1.2.3", None),
+            ("4294967296", None),
+        ];
+        for (text, expected) in cases {
+            let parsed = FrameRate::parse(text).map(|rate| (rate.num(), rate.den()));
+            assert_eq!(parsed, expected, "{text:?}");
+        }
+
+        // (rate, frame, µs); ties to even, like container timestamps.
+        let times = [
+            ("30", 0, 0),
+            ("30", 1, 33_333),
+            ("30", 3, 100_000),
+            ("30000/1001", 30, 1_001_000),
+            ("30000/1001", 1, 33_367),
+            ("0.5", 3, 6_000_000),
+        ];
+        for (text, index, us) in times {
+            let rate = FrameRate::parse(text).expect("a valid rate");
+            assert_eq!(
+                rate.time_of(index),
+                Some(MediaTime(us)),
+                "{text} frame {index}"
+            );
+        }
+        assert_eq!(FrameRate::new(0, 1), None);
+        assert_eq!(FrameRate::new(60, 2), FrameRate::new(30, 1));
     }
 
     fn times_of(us: &[i64]) -> Vec<MediaTime> {
