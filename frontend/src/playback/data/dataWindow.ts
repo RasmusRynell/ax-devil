@@ -25,5 +25,6 @@ export function dataWindow(
   return { data_ahead, data_behind: Math.min(behind, frames - 1 - data_ahead) };
 }
 
-/** The most Sample Items may take whatever the maps say: twice what the data window is sized for. */
-export const sampleCapBytes = (budgetBytes: number): number => 2 * DATA_SHARE * budgetBytes;
+/** The most bytes of Sample Items the viewer holds at once: what the data window is sized for. The backend keeps to it. */
+export const sampleBudgetBytes = (budgetBytes: number): number =>
+  Math.floor(DATA_SHARE * budgetBytes);

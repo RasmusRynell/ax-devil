@@ -87,25 +87,25 @@ impl Gate {
     }
 
     /// Whether the viewer may be sent every one of `frames` now. What a viewer may have is one run of frames, so
-    /// the ends decide.
+    /// the ends decide, both against the one authority and clock this reads.
     pub(super) fn admits(&self, frames: &RangeInclusive<u64>) -> bool {
-        self.admits_frame(*frames.start()) && self.admits_frame(*frames.end())
-    }
-
-    fn admits_frame(&self, frame: u64) -> bool {
         let Some(timeline) = self.timeline.get() else {
             return false;
         };
         let authority = *self.authority.borrow();
-        let one = Want {
-            playhead: frame,
-            ahead: 0,
-            behind: 0,
-            direction: Direction::Forward,
-            priority: Priority::default(),
+        let now = (self.now_us)();
+        let admits = |frame| {
+            let one = Want {
+                playhead: frame,
+                ahead: 0,
+                behind: 0,
+                direction: Direction::Forward,
+                priority: Priority::default(),
+            };
+            clamp_demand(&authority, timeline, now, one)
+                .is_some_and(|allowed| allowed.playhead == frame)
         };
-        clamp_demand(&authority, timeline, (self.now_us)(), one)
-            .is_some_and(|allowed| allowed.playhead == frame)
+        admits(*frames.start()) && admits(*frames.end())
     }
 
     /// Records data the writer dropped, and wakes [`changed`](Self::changed) so the stream gives it back.

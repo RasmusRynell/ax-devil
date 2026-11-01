@@ -2,14 +2,17 @@
 
 import { Catalogs } from "./catalogs";
 import { FrameMaps } from "./data/FrameMaps";
-import { sampleCapBytes } from "./data/dataWindow";
 import { SampleStore } from "./data/SampleStore";
-import { sampleWindow } from "./data/sampleWindow";
-import { windowRange } from "./FrameBuffer";
 import { LaneData } from "./laneData";
 import type { LaneFrame, Surface } from "./contract";
 import type { LaneSet } from "./lanes";
-import type { ClientMessage, FrameMapEnvelope, SampleEnvelope, VideoFrame, Want } from "./protocol";
+import type {
+  ClientMessage,
+  FrameMapEnvelope,
+  SampleEnvelope,
+  ServerMessage,
+  VideoFrame,
+} from "./protocol";
 
 /** The revision of a source that has not said it is ready: no Frame Map run carries it. */
 const NOT_READY = -1;
@@ -61,9 +64,9 @@ export class ViewerData {
     return this.#waiting.some((lane) => this.#draw?.at(lane, frame).state !== "pending");
   }
 
-  /** Starts holding maps for a video of `frameCount` frames, and samples within a cap sized from the buffer budget. */
-  open(frameCount: number, budgetBytes: number): void {
-    this.samples = new SampleStore(sampleCapBytes(budgetBytes));
+  /** Starts holding maps for a video of `frameCount` frames, and at most `dataBytes` of samples, as stated to the backend. */
+  open(frameCount: number, dataBytes: number): void {
+    this.samples = new SampleStore(dataBytes);
     this.#frameCount = frameCount;
     this.#maps = new FrameMaps(frameCount);
     this.#draw = new LaneData(this.#lanes, this.samples, this.#maps, this.catalogs);
@@ -99,10 +102,19 @@ export class ViewerData {
     return this.#maps?.add(lane, policyRevision, dataRevision, first, samples, kinds) ?? false;
   }
 
-  /** The lanes changed: their revisions, the data window and their catalogs are taken up again. */
-  refresh(want: Want | undefined): void {
+  /** Drops the samples the backend says it no longer counts as held. */
+  evict({ source, data_revision, samples }: Extract<ServerMessage, { type: "Evict" }>): void {
+    this.samples.evict(source, data_revision, samples);
+  }
+
+  /** The backend applied the data window `first..last`: Frame Map cells outside it are dropped, and later runs are cut to it. */
+  window(first: number, last: number): void {
+    this.#maps?.retain(first, last);
+  }
+
+  /** The lanes changed: their revisions and catalogs are taken up again. */
+  refresh(): void {
     this.sync();
-    this.retain(want);
     this.catalogProblems();
   }
 
@@ -116,48 +128,21 @@ export class ViewerData {
     return bytes;
   }
 
-  /** Tells the maps and the sample store which revisions each lane's and source's data must carry. */
+  /**
+   * Tells the maps and the sample store which revisions each lane's and source's data must carry. A source that
+   * failed holds no sample, as the backend forgets what it sent; one that is loading again keeps its samples until
+   * the next revision is ready.
+   */
   sync(): void {
     this.#lanes.states.forEach((state, lane) => {
       if (state.source === null) return;
       const ready =
         state.status !== "plain" && state.status.status === "Ready" ? state.status : undefined;
       if (ready) this.samples.setRevision(state.source, ready.data_revision);
+      else if (state.status !== "plain" && state.status.status === "Failed")
+        this.samples.setRevision(state.source, NOT_READY);
       this.#maps?.setRevisions(lane, state.policyRevision, ready?.data_revision ?? NOT_READY);
     });
-  }
-
-  /**
-   * Keeps the maps of the data window of `want`, and the samples the maps held select inside it, most urgent first.
-   * The backend sends only the part of the window its authority allows, so the maps are often incomplete; a sample
-   * no held map names is dropped all the same, as the backend forgets it when its frames leave the window, and
-   * what the cap cannot hold goes least urgent first.
-   */
-  retain(want: Want | undefined): void {
-    const maps = this.#maps;
-    if (!want || !maps) return;
-    const { playhead, direction } = want;
-    const { low, high } = windowRange(
-      { playhead, ahead: want.data_ahead, behind: want.data_behind },
-      this.#frameCount,
-    );
-    maps.retain(low, high);
-    // The shown lanes of each source; a source without any keeps no sample.
-    const shown = new Map<number, number[]>();
-    this.#lanes.states.forEach((state, lane) => {
-      if (state.source === null) return;
-      const lanes = shown.get(state.source) ?? [];
-      if (this.#lanes.awaited(lane)) lanes.push(lane);
-      shown.set(state.source, lanes);
-    });
-    for (const [source, lanes] of shown) {
-      const cells = lanes.map(() => new Int32Array(high - low + 1));
-      lanes.forEach((lane, i) => maps.window(lane, low, cells[i]));
-      this.samples.retain(
-        source,
-        sampleWindow(cells, low, playhead, direction).map(([sample]) => sample),
-      );
-    }
   }
 
   /** Why each lane's catalog is not the chosen one, asking for the catalogs not yet asked for. */

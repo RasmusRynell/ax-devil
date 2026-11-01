@@ -56,6 +56,9 @@ pub struct SampleItem {
     pub sample: u64,
     /// The frame the item ranks by: of the frames in the data window that map to the sample, the most urgent.
     pub frame: u64,
+    /// Identifies this send of the sample, so that handing back an older send does not undo a newer one. Not on the
+    /// wire.
+    pub serial: u64,
     /// The encoded item (`scene::serial::columns`).
     pub item: Arc<[u8]>,
 }
@@ -111,4 +114,21 @@ pub enum OverlayEvent {
     Sample(SampleItem),
     /// A run of a Frame Map.
     Map(MapRun),
+    /// The frames the viewer keeps Frame Map cells for from now on: the data window applied. Precedes every run
+    /// selected for it.
+    Window {
+        /// The first frame.
+        first: u64,
+        /// The last frame, inclusive.
+        last: u64,
+    },
+    /// The viewer no longer holds these samples (ascending); the backend stopped counting them as sent.
+    Evict {
+        /// The viewer's id of the source.
+        source: u16,
+        /// The source revision the samples belong to.
+        data_revision: u32,
+        /// The sample indices.
+        samples: Vec<u32>,
+    },
 }

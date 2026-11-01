@@ -6,7 +6,8 @@
 //! pick what to send next in `pull`.
 
 use std::{
-    collections::{BTreeMap, BTreeSet, HashSet, VecDeque},
+    collections::{BTreeMap, HashSet, VecDeque},
+    ops::RangeInclusive,
     sync::{Arc, Condvar, Mutex, MutexGuard, PoisonError},
 };
 
@@ -86,6 +87,14 @@ pub(crate) struct State {
     pub(crate) sources: Vec<Source>,
     /// Statuses and problems, delivered before any item.
     notices: VecDeque<OverlayEvent>,
+    /// The most bytes of Sample Items the viewer holds at once.
+    pub(crate) budget: u64,
+    /// The serial of the next Sample Item sent.
+    pub(crate) next_serial: u64,
+    /// The data window not yet told to the consumer; only the latest matters.
+    pub(crate) window_notice: Option<RangeInclusive<u64>>,
+    /// The data window of the last want.
+    pub(crate) applied: Option<RangeInclusive<u64>>,
     /// The revision the next finished load gets; starts at 1.
     next_revision: u32,
 }
@@ -118,26 +127,28 @@ pub(crate) struct Source {
     pub(crate) data_revision: u32,
     /// The sample window: each sample the subscribed lanes need, with the frame it ranks by.
     pub(crate) window: BTreeMap<u64, u64>,
-    /// Samples sent or waiting in `ready`. Leaving the window forgets them.
-    pub(crate) claimed: BTreeSet<u64>,
-    /// Encoded and not yet delivered; each is also in `claimed`.
+    /// Samples the viewer holds, as far as the backend counts: sent, and not told to drop.
+    pub(crate) sent: BTreeMap<u64, Held>,
+    /// Samples the viewer still holds that the backend has stopped counting; its `Evict` is not sent yet. A sample
+    /// that returns to the window before then is counted again.
+    pub(crate) evicting: BTreeMap<u64, Held>,
+    /// Encoded and not yet sent; in none of `sent` and `evicting`.
     pub(crate) ready: Vec<(u64, Arc<[u8]>)>,
 }
 
-impl Source {
-    /// Forgets that `sample` was sent, unless it still waits in `ready`; the encoder offers it again while it is in
-    /// the sample window.
-    pub(crate) fn unclaim(&mut self, sample: u64) {
-        if !self.ready.iter().any(|(held, _)| *held == sample) {
-            self.claimed.remove(&sample);
-        }
-    }
+/// One send of a sample.
+#[derive(Clone, Copy)]
+pub(crate) struct Held {
+    /// Identifies the send, so handing back an older one does not undo a newer one.
+    pub(crate) serial: u64,
+    /// The size of the item.
+    pub(crate) bytes: u64,
 }
 
 impl State {
     /// A viewer with one lane per entry of `lanes`; lanes on the same file share a source, and each source starts
     /// loading.
-    pub(crate) fn new(lanes: Vec<Option<OverlayRef>>, last_frame: u64) -> Self {
+    pub(crate) fn new(lanes: Vec<Option<OverlayRef>>, last_frame: u64, budget: u64) -> Self {
         let mut sources: Vec<Source> = Vec::new();
         let mut notices = VecDeque::new();
         let lanes = lanes
@@ -161,7 +172,8 @@ impl State {
                             load: Load::Loading,
                             data_revision: 0,
                             window: BTreeMap::new(),
-                            claimed: BTreeSet::new(),
+                            sent: BTreeMap::new(),
+                            evicting: BTreeMap::new(),
                             ready: Vec::new(),
                         });
                         sources.len() - 1
@@ -184,6 +196,10 @@ impl State {
             lanes,
             sources,
             notices,
+            budget,
+            next_serial: 0,
+            window_notice: None,
+            applied: None,
             next_revision: 1,
         }
     }
@@ -208,9 +224,11 @@ impl State {
 
     fn fail(&mut self, source: usize, error: &UserError) {
         self.sources[source].load = Load::Failed;
-        self.sources[source].window.clear();
-        self.sources[source].claimed.clear();
-        self.sources[source].ready.clear();
+        let slot = &mut self.sources[source];
+        slot.window.clear();
+        slot.sent.clear();
+        slot.evicting.clear();
+        slot.ready.clear();
         for lane in self.lanes_of(source).collect::<Vec<_>>() {
             self.lanes[lane].window = LaneWindow::default();
             self.push_notice(OverlayEvent::Status {
@@ -255,7 +273,9 @@ impl State {
         let slot = &mut self.sources[source];
         slot.load = Load::Ready(track);
         slot.data_revision = data_revision;
-        slot.claimed.clear();
+        // The viewer drops the old revision's samples on Ready, so an Evict still pending is of no use.
+        slot.sent.clear();
+        slot.evicting.clear();
         slot.ready.clear();
         for lane in self.lanes_of(source).collect::<Vec<_>>() {
             let slot = &mut self.lanes[lane];
@@ -285,7 +305,9 @@ impl State {
         };
         if slot.data_revision != data_revision
             || !slot.window.contains_key(&sample)
-            || !slot.claimed.insert(sample)
+            || slot.sent.contains_key(&sample)
+            || slot.evicting.contains_key(&sample)
+            || slot.ready.iter().any(|(held, _)| *held == sample)
         {
             return;
         }
@@ -298,16 +320,24 @@ impl State {
     }
 
     /// Takes back an event the consumer did not deliver, so what the viewer still needs of it is offered again: a
-    /// sample is encoded and sent again, a map run's frames are sent again with the samples they name. An event of
-    /// another revision is of no concern any more.
+    /// sample is encoded and sent again, a map run's frames are sent again. A sample counts only if it is still the
+    /// send that was handed back (its serial), and an event of another revision is of no concern any more.
     pub(crate) fn undelivered(&mut self, event: &OverlayEvent) {
         match event {
             OverlayEvent::Sample(item) => {
                 let Some(slot) = self.sources.get_mut(usize::from(item.source)) else {
                     return;
                 };
-                if slot.data_revision == item.data_revision {
-                    slot.unclaim(item.sample);
+                if slot.data_revision != item.data_revision {
+                    return;
+                }
+                for held in [&mut slot.sent, &mut slot.evicting] {
+                    if held
+                        .get(&item.sample)
+                        .is_some_and(|held| held.serial == item.serial)
+                    {
+                        held.remove(&item.sample);
+                    }
                 }
             }
             OverlayEvent::Map(run) => {
@@ -323,12 +353,11 @@ impl State {
                     return;
                 }
                 lane.maps_sent.remove_range(&run.frames());
-                // The viewer drops a sample no map it holds names, so the ones this run named come again too.
-                for &cell in run.samples.iter().filter(|&&cell| cell < FIRST_NON_SAMPLE) {
-                    slot.unclaim(u64::from(cell));
-                }
             }
-            OverlayEvent::Status { .. } | OverlayEvent::Problem { .. } => {}
+            OverlayEvent::Status { .. }
+            | OverlayEvent::Problem { .. }
+            | OverlayEvent::Window { .. }
+            | OverlayEvent::Evict { .. } => {}
         }
     }
 
@@ -363,13 +392,20 @@ impl State {
     }
 
     /// The sample item of an encoded sample as the consumer gets it.
-    pub(crate) fn sample_item(&self, source: usize, sample: u64, item: Arc<[u8]>) -> SampleItem {
+    pub(crate) fn sample_item(
+        &self,
+        source: usize,
+        sample: u64,
+        serial: u64,
+        item: Arc<[u8]>,
+    ) -> SampleItem {
         let slot = &self.sources[source];
         SampleItem {
             source: lane_id(source),
             data_revision: slot.data_revision,
             sample,
             frame: slot.window.get(&sample).copied().unwrap_or_default(),
+            serial,
             item,
         }
     }

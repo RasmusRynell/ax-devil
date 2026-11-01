@@ -75,8 +75,9 @@ sample belongs to each frame, as `overlay-sync` selects it under the lane's Lane
 lane is shown). Items and maps rank with the video frames by the same playhead rule and pass the same authority gate.
 They travel inside the sample window: per source, the samples that subscribed lanes' Frame Maps assign to the frames of
 the data window, never wider than the frame window and sized from a share of the viewer's frame budget. The backend
-sends exactly those and the frontend evicts only others; the rule is implemented in Rust and TypeScript and tested
-against one shared fixture. Revisions drop stale items, so there are no acknowledgements or per-seek epochs.
+tells the viewer its data window and every sample it stops holding, within a byte budget the viewer sets when it
+opens; the viewer evicts only on that word. Revisions drop stale items, so there are no acknowledgements or per-seek
+epochs.
 
 Per lane, `frontend/src/present/` compiles the lane's catalog document (served over the socket, built-in or user),
 filters rows, evaluates Marks from the Sample Item, lays them out for the lane's cell with zoom, pan and aspect, and

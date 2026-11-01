@@ -1182,7 +1182,12 @@ ticket: string,
 /**
  * The frame to show, paused; the first frame when absent.
  */
-start_frame?: number, } | { "type": "Want" } & Want | { "type": "LanePolicy", 
+start_frame?: number, 
+/**
+ * The most bytes of Sample Items the viewer holds at once, fixed for the stream. The backend never has more
+ * than this sent, except one item larger than it alone.
+ */
+data_bytes: number, } | { "type": "Want" } & Want | { "type": "LanePolicy", 
 /**
  * The lane's position in `Opened.lanes`.
  */
@@ -1300,7 +1305,27 @@ reason?: string,
  * What it is about, such as the file path or the settings field key. Only for an audience with host details,
  * and only when it is about something.
  */
-location?: string, } | { "type": "Error" } & ErrorWire;
+location?: string, } | { "type": "DataWindow", 
+/**
+ * The first frame.
+ */
+first: number, 
+/**
+ * The last frame.
+ */
+last: number, } | { "type": "Evict", 
+/**
+ * The viewer's source id, `LaneInfo::source`.
+ */
+source: number, 
+/**
+ * The source revision the samples belong to.
+ */
+data_revision: number, 
+/**
+ * The sample indices, ascending and distinct.
+ */
+samples: Array<number>, } | { "type": "Error" } & ErrorWire;
 
 /**
  * Raised when the messages or the envelope change in a way an older frontend cannot read.

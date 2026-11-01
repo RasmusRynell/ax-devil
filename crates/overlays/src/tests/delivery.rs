@@ -5,7 +5,7 @@ use std::{fs, time::Duration};
 use foundation::CancelToken;
 use playback::Rank;
 
-use super::{Env, cells, quiet, sample_ids, settle, shown, timeline, until_ready, want};
+use super::{Env, cells, next, quiet, sample_ids, settle, shown, timeline, until_ready, want};
 use crate::{
     LaneStatus, OverlayEvent, ViewerOverlays,
     state::{READY_PER_SOURCE, State},
@@ -32,12 +32,21 @@ async fn an_unsubscribed_lane_gets_nothing() {
     let mut viewer = env.open(vec![Some(env.mot("a.txt", 0..10))], 10);
     until_ready(&mut viewer, &[0]).await;
     viewer.want(want(5, 2, 2));
+    assert!(matches!(
+        next(&mut viewer).await,
+        OverlayEvent::Window { first: 3, last: 7 }
+    ));
     assert!(quiet(&mut viewer).await);
 
     viewer.set_policy(0, 1, shown().0, true);
     assert!(!settle(&mut viewer).await.maps.is_empty());
     viewer.set_policy(0, 2, shown().0, false);
-    assert!(quiet(&mut viewer).await, "hiding stops the lane");
+    let hidden = settle(&mut viewer).await;
+    assert!(
+        hidden.maps.is_empty() && hidden.samples.is_empty(),
+        "hiding stops the lane"
+    );
+    assert!(!hidden.evicts.is_empty(), "and frees what it held");
 }
 
 #[tokio::test]
@@ -83,7 +92,12 @@ async fn data_goes_only_up_to_the_rank_of_the_waiting_frame_and_wins_ties() {
     let mut viewer = shown_viewer(&env, 20).await;
     viewer.want(want(10, 2, 2));
 
-    // A frame at the playhead waits: the playhead's map and sample tie with it and go first.
+    // A frame at the playhead waits: the window is told whatever the rank, and the playhead's map and sample tie
+    // with the frame and go first.
+    assert!(matches!(
+        next_within(&mut viewer, (0, 0)).await,
+        Some(OverlayEvent::Window { first: 8, last: 12 })
+    ));
     let Some(OverlayEvent::Map(run)) = next_within(&mut viewer, (0, 0)).await else {
         panic!("the map ties with the frame");
     };
@@ -115,6 +129,11 @@ async fn a_sample_that_leaves_the_window_and_returns_is_sent_again_with_its_map(
     let stepped = settle(&mut viewer).await;
     assert_eq!(sample_ids(&stepped), [13]);
     assert_eq!(cells(&stepped, 0), [(13, 13)]);
+    assert_eq!(
+        stepped.evicts,
+        [(0, vec![8])],
+        "the sample that left is evicted"
+    );
 
     // Away and back.
     viewer.want(want(19, 2, 0));
@@ -126,7 +145,7 @@ async fn a_sample_that_leaves_the_window_and_returns_is_sent_again_with_its_map(
 }
 
 #[tokio::test]
-async fn lanes_on_one_file_share_a_source_and_a_policy_change_resends_its_maps_and_samples() {
+async fn lanes_on_one_file_share_a_source_and_a_policy_change_resends_only_its_maps() {
     let env = Env::new();
     let overlay = env.mot("a.txt", 0..10);
     let mut viewer = env.open(vec![Some(overlay.clone()), Some(overlay)], 10);
@@ -146,11 +165,10 @@ async fn lanes_on_one_file_share_a_source_and_a_policy_change_resends_its_maps_a
     assert_eq!(cells(&sent, 0), cells(&sent, 1));
     assert_eq!(cells(&sent, 0).len(), 4);
 
-    // The viewer keeps only the samples the maps it holds name, and holds no map of the new revision yet: the
-    // samples go again with the maps, under the new revision.
+    // The viewer keeps its samples until told otherwise: only the maps go again, under the new revision.
     viewer.set_policy(1, 2, shown().0, true);
     let again = settle(&mut viewer).await;
-    assert_eq!(sample_ids(&again), [4, 5, 6, 3]);
+    assert!(again.samples.is_empty() && again.evicts.is_empty());
     assert_eq!(cells(&again, 1), cells(&sent, 1));
     assert!(
         again
@@ -159,10 +177,12 @@ async fn lanes_on_one_file_share_a_source_and_a_policy_change_resends_its_maps_a
             .all(|run| run.lane == 1 && run.policy_revision == 2)
     );
 
-    // Hiding one lane sends the samples the other still needs again, for the window it has now.
+    // Hiding one lane changes nothing for the other, and the window moves on: only what enters is sent.
     viewer.set_policy(1, 3, shown().0, false);
     viewer.want(want(5, 1, 2));
-    assert_eq!(sample_ids(&settle(&mut viewer).await), [5, 6, 7, 4]);
+    let moved = settle(&mut viewer).await;
+    assert_eq!(sample_ids(&moved), [7]);
+    assert_eq!(moved.evicts, [(0, vec![3])]);
 }
 
 #[tokio::test]
@@ -173,13 +193,13 @@ async fn data_the_consumer_did_not_deliver_comes_again_while_the_window_holds_it
     let sent = settle(&mut viewer).await;
     assert_eq!(sample_ids(&sent), [10, 11, 12, 9, 8]);
 
-    // The writer dropped the map run and the sample of the playhead: the run's frames and the samples it names come
-    // again, and the sample dropped alone with them.
+    // The writer dropped the map run and the sample of the playhead: the run's frames come again, the sample too,
+    // and no other.
     viewer.undelivered(&OverlayEvent::Map(sent.maps[0].clone()));
     viewer.undelivered(&OverlayEvent::Sample(sent.samples[0].clone()));
     let again = settle(&mut viewer).await;
     assert_eq!(cells(&again, 0), cells(&sent, 0));
-    assert_eq!(sample_ids(&again), [10, 11, 12, 9, 8]);
+    assert_eq!(sample_ids(&again), [10]);
 
     // A sample the window no longer needs does not come back.
     viewer.want(want(19, 0, 0));
@@ -264,7 +284,7 @@ async fn a_new_load_takes_a_new_revision_and_starts_every_set_from_empty() {
         .expect("opens");
     let timeline = timeline(10);
     let item = track.item(4).expect("item");
-    let mut state = State::new(vec![Some(overlay)], 9);
+    let mut state = State::new(vec![Some(overlay)], 9, super::SAMPLE_BUDGET);
     state.finish_load(0, Ok((track.clone(), 100)), &timeline);
     state.set_want(want(4, 1, 1), &timeline);
     state.set_policy(0, 1, shown().0, true, &timeline);
@@ -278,6 +298,7 @@ async fn a_new_load_takes_a_new_revision_and_starts_every_set_from_empty() {
                 status: LaneStatus::Ready(_),
                 ..
             },
+            OverlayEvent::Window { first: 3, last: 5 },
             OverlayEvent::Map(_),
             OverlayEvent::Sample(_)
         ]
@@ -294,7 +315,7 @@ async fn a_new_load_takes_a_new_revision_and_starts_every_set_from_empty() {
         OverlayEvent::Map(run),
     ] = &second[..]
     else {
-        panic!("a new status and the maps again, no sample: {second:?}");
+        panic!("a new status and the maps again, no sample and no eviction: {second:?}");
     };
     assert_eq!(
         (ready.data_revision, run.data_revision, run.policy_revision),

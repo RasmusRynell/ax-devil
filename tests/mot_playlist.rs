@@ -91,7 +91,6 @@ impl Lanes {
                     self.status.insert(lane, status);
                 }
                 Event::Sample(sample) => {
-                    // A policy change sends the samples its maps name again.
                     self.items
                         .insert((sample.source, sample.sample), sample.rows);
                 }
@@ -101,7 +100,8 @@ impl Lanes {
                             .insert((map.lane, map.policy, map.first + k as u64), *cell);
                     }
                 }
-                Event::Frame(_) => {}
+                Event::Message(ServerMessage::DataWindow { .. } | ServerMessage::Evict { .. })
+                | Event::Frame(_) => {}
                 _ => panic!("expected lane statuses, data and frames"),
             }
         }

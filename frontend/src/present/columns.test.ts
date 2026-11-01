@@ -52,6 +52,41 @@ function text(view: SampleView, id: number): string | null {
   return id < 0 ? null : view.strings.string(id);
 }
 
+/**
+ * An item in the encoder's layout with `rows` rows (every value 0) and `attributes` string attributes: the first
+ * `laidOut` have a column of their own, the rest point at the entity ids' bytes.
+ */
+function itemWith(rows: number, attributes: number, laidOut: number): ArrayBuffer {
+  const strings = ["moving", "stationary", "unknown"].map((name) => new TextEncoder().encode(name));
+  const stringBytes = strings.reduce((n, text) => n + text.length, 0);
+  const align = (n: number): number => Math.ceil(n / 8) * 8;
+  const header = 31 * 4;
+  const sizes = [rows * 4, rows * 16, rows * 8, 0, rows, rows * 8, rows * 4, rows * 8, rows * 8, 0];
+  sizes.push(attributes * 12, 0, 0, 0, 0, 0, 0, 16, stringBytes);
+  let cursor = align(header);
+  const columns = Array.from({ length: laidOut }, () => {
+    const at = cursor;
+    cursor = align(cursor + rows * 4);
+    return at;
+  });
+  const sections = sizes.map((size) => {
+    const at = cursor;
+    cursor = align(cursor + size);
+    return at;
+  });
+  const words = new Uint32Array(cursor / 4);
+  words.set([0x4953_5841, 1, rows, 0, 0, 0, attributes, 0, 3, 3, 3, stringBytes, ...sections]);
+  const index = sections[10] / 4;
+  for (let i = 0; i < attributes; i++) words.set([0, 2, columns[i] ?? sections[0]], index + i * 3);
+  const offsets = sections[17] / 4;
+  words.set([0, 6, 16, stringBytes], offsets);
+  new Uint8Array(words.buffer).set(
+    strings.flatMap((text) => [...text]),
+    sections[18],
+  );
+  return words.buffer;
+}
+
 describe("readSample", () => {
   it("reads every golden as the oracle Scene it was encoded from", () => {
     const all = goldens();
@@ -193,5 +228,25 @@ describe("readSample", () => {
         }),
       ),
     ).toThrowError(SampleFormatError);
+  });
+
+  it("refuses columns that share bytes, so the checks of a column cost no more than the item is long", () => {
+    // 5000 rows, and the columns of 10000 attributes all the entity ids' bytes: 50 million cells for 425 KB.
+    expect(readSample(itemWith(5000, 2, 2)).attrs).toHaveLength(2);
+    const aliased = itemWith(5000, 10_000, 0);
+    expect(aliased.byteLength).toBeLessThan(500_000);
+    expect(() => readSample(aliased)).toThrowError(SampleFormatError);
+    expect(() => readSample(itemWith(3, 2, 1))).toThrowError(SampleFormatError);
+
+    // Sections that overlap or are out of header order.
+    const golden = bytes("items/classes.bin");
+    const overlapped = (section: number, onto: number): ArrayBuffer => {
+      const copy = golden.slice(0);
+      const words = new Uint32Array(copy);
+      words[12 + section] = words[12 + onto];
+      return copy;
+    };
+    expect(() => readSample(overlapped(1, 0))).toThrowError(SampleFormatError);
+    expect(() => readSample(overlapped(0, 1))).toThrowError(SampleFormatError);
   });
 });

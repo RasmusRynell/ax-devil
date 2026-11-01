@@ -39,6 +39,9 @@ impl OverlayService {
     /// Starts loading every source in the background; a lane without an overlay never gets a status. Lanes on the
     /// same file (same path, handler and options) share one source, loaded and sent once.
     ///
+    /// `sample_budget` is the most bytes of Sample Items the viewer holds at once: the viewer never has more sent, but
+    /// one item larger than it alone.
+    ///
     /// Each source loads, then encodes, on its own thread (loads share decoding through the track registry), so
     /// nothing here blocks the caller. Lanes past `u16::MAX` are not opened.
     pub fn open_viewer(
@@ -46,9 +49,10 @@ impl OverlayService {
         mut lanes: Vec<Option<OverlayRef>>,
         timeline: Timeline,
         frame_size: FrameSize,
+        sample_budget: u64,
     ) -> ViewerOverlays {
         lanes.truncate(usize::from(u16::MAX));
-        let state = State::new(lanes, timeline.last());
+        let state = State::new(lanes, timeline.last(), sample_budget);
         let lane_sources: Vec<Option<u16>> = state
             .lanes
             .iter()

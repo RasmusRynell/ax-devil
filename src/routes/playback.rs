@@ -1,4 +1,4 @@
-//! The playback WebSocket, one per viewer: its first message, within 5 seconds, is `Open{ticket, start_frame}`. The
+//! The playback WebSocket, one per viewer: its first message, within 5 seconds, is `Open`. The
 //! ticket comes from the Session socket and is spent once into a stream lease, which names the entry, says what the
 //! viewer may ask for and tells when that ends. The route opens the entry's video and overlays, tells the viewer
 //! about them, applies the viewer's windows and lane policies and sends the frames in the windows and the lanes'
@@ -7,10 +7,11 @@
 //!
 //! A ticket that is unknown, used, expired or not parseable closes the socket with 4401 and nothing else: the viewer
 //! learns nothing about why. After that the order of what a viewer receives is `Indexing`*, `Opened`, the Timeline
-//! envelope, then frame envelopes, `FrameError`s, `LaneStatus`es, `LaneProblem`s, `Catalog` answers and Sample and
-//! FrameMap envelopes as they are ready. Notices go first; a Sample or FrameMap goes before a frame when its rank
-//! (`playback::rank` of the frame it is for) is at most the rank of the frame waiting, so data wins ties and the
-//! frames nearest the playhead are not held up by data far from it. `Error` is last: the socket closes after it. Errors,
+//! envelope, then frame envelopes, `FrameError`s, `LaneStatus`es, `LaneProblem`s, `Catalog` answers, `DataWindow`s,
+//! `Evict`s and Sample and FrameMap envelopes as they are ready. Notices go first, then the `DataWindow` and the
+//! `Evict`s, which are never held back or dropped for a frame; a Sample or FrameMap goes after them, and before a
+//! frame when its rank (`playback::rank` of the frame it is for) is at most the rank of the frame waiting, so data
+//! wins ties and the frames nearest the playhead are not held up by data far from it. `Error` is last: the socket closes after it. Errors,
 //! warnings and lane problems carry the host's paths and reasons only for the owner of a session that holds the
 //! files grant. The viewer is not sent anything until the previous message has gone to the socket, and at most one
 //! more message waits behind it.
@@ -77,6 +78,15 @@ pub(crate) async fn upgrade(
         .on_upgrade(move |socket| serve(state, socket, slot))
 }
 
+/// What the viewer's `Open` asks for besides the stream.
+#[derive(Clone, Copy)]
+struct Opening {
+    /// The frame to show first.
+    start_frame: Option<u64>,
+    /// The most bytes of Sample Items the viewer holds at once.
+    data_bytes: u64,
+}
+
 /// What a viewer sends: the read half of its socket.
 trait Incoming: Stream<Item = Result<Message, axum::Error>> + Unpin {}
 
@@ -136,7 +146,7 @@ async fn serve(state: AppState, socket: WebSocket, mut slot: Slot) {
         opened = open_ticket(&state, &mut slot, &mut incoming) => opened,
         () = stopped(&mut closing) => return,
     };
-    let (lease, start_frame) = match opened {
+    let (lease, opening) = match opened {
         Ok(opened) => opened,
         Err(ended) => return refuse(&mut sink, ended).await,
     };
@@ -150,7 +160,7 @@ async fn serve(state: AppState, socket: WebSocket, mut slot: Slot) {
     let ended = open::run(
         &state,
         &lease,
-        start_frame,
+        opening,
         audience,
         &mut incoming,
         &outbox,
@@ -180,16 +190,23 @@ async fn open_ticket(
     state: &AppState,
     slot: &mut Slot,
     incoming: &mut impl Incoming,
-) -> Flow<(StreamLease, Option<u64>)> {
+) -> Flow<(StreamLease, Opening)> {
     let first = timeout(FIRST_MESSAGE_TIMEOUT, next_client(incoming))
         .await
         .map_err(|_| End::Closed)?;
     slot.hello_received();
-    let (ticket, start_frame) = match first {
+    let (ticket, opening) = match first {
         Some(Ok(ClientMessage::Open {
             ticket,
             start_frame,
-        })) => (ticket, start_frame),
+            data_bytes,
+        })) => (
+            ticket,
+            Opening {
+                start_frame,
+                data_bytes,
+            },
+        ),
         Some(Err(error)) => return Err(End::Failed(error)),
         Some(Ok(_)) => {
             return Err(End::Failed(UserError::new(
@@ -207,7 +224,7 @@ async fn open_ticket(
             tracing::debug!("A playback socket's ticket was refused: {refusal}");
             End::Refused
         })?;
-    Ok((lease, start_frame))
+    Ok((lease, opening))
 }
 
 /// Ends a socket that never got a stream: a ticket that is not valid closes it with 4401, a protocol error is

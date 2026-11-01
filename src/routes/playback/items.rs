@@ -87,6 +87,7 @@ mod tests {
             data_revision: 7,
             sample: 42,
             frame: 0,
+            serial: 0,
             item: item.into(),
         });
         golden("sample.bin", &sample);

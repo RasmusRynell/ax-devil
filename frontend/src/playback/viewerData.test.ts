@@ -1,9 +1,9 @@
 // @vitest-environment node
 import { describe, expect, it } from "vite-plus/test";
-import { item } from "./fakeData";
+import { catalogDocument, item } from "./fakeData";
 import { LANE_DEFAULTS } from "./fakeOpened";
 import { LaneSet } from "./lanes";
-import type { LaneStatusWire, Want } from "./protocol";
+import type { LaneStatusWire } from "./protocol";
 import { ViewerData } from "./viewerData";
 
 const READY: LaneStatusWire = {
@@ -16,51 +16,85 @@ const READY: LaneStatusWire = {
   mean_sample_bytes: 2024,
 };
 
-describe("viewer data", () => {
-  it("keeps what a follower's maps select however little of its window the backend may send", () => {
-    // The follower asks for 100 frames either side of the presenter but is authorized for four, so the maps of
-    // the rest never come and the window is never complete.
-    const lanes = new LaneSet();
-    lanes.open([{ label: "DPM", source: 0 }], LANE_DEFAULTS);
-    lanes.setStatus(0, READY);
-    const data = new ViewerData(lanes, () => {});
-    data.open(10_000, 10 ** 10);
-    data.sync();
-    const want = (playhead: number): Want => ({
-      playhead,
-      ahead: 100,
-      behind: 100,
-      direction: "forward",
-      data_ahead: 100,
-      data_behind: 100,
+/** One subscribed lane of source 0 whose catalog has arrived. */
+function viewer() {
+  const lanes = new LaneSet();
+  lanes.open([{ label: "DPM", source: 0 }], LANE_DEFAULTS);
+  lanes.setStatus(0, READY);
+  const data = new ViewerData(lanes, () => {});
+  data.open(10_000, 10 ** 9);
+  data.refresh();
+  data.catalogs.receive(LANE_DEFAULTS.catalog, 1, catalogDocument());
+  const map = (first: number, samples: number[]) =>
+    data.addMap({
+      kind: "map",
+      lane: 0,
+      policyRevision: 1,
+      dataRevision: 1,
+      first,
+      samples: Int32Array.from(samples),
+      kinds: new Uint8Array(samples.length),
     });
-    for (let playhead = 100; playhead < 400; playhead++) {
-      data.retain(want(playhead));
-      const first = playhead - 4;
-      // The nine frames around the presenter: one sample each, the sample being the frame.
-      data.addMap({
-        kind: "map",
-        lane: 0,
-        policyRevision: 1,
-        dataRevision: 1,
-        first,
-        samples: Int32Array.from({ length: 9 }, (_, k) => first + k),
-        kinds: new Uint8Array(9),
-      });
-      for (let k = 0; k < 9; k++)
-        data.addSample({
-          kind: "sample",
-          source: 0,
-          dataRevision: 1,
-          sample: first + k,
-          item: item(),
-        });
-      data.retain(want(playhead));
-    }
-    // What is held follows the requested window (201 frames), not the 300 frames the presenter has been through.
-    expect(data.samples.bytes).toBeLessThanOrEqual(201 * item().length);
-    expect(data.samples.get(0, 395)).toBeDefined();
-    expect(data.samples.get(0, 330)).toBeDefined();
-    expect(data.samples.get(0, 120)).toBeUndefined();
+  const sample = (index: number) =>
+    data.addSample({ kind: "sample", source: 0, dataRevision: 1, sample: index, item: item() });
+  const state = (frame: number) => data.draw?.at(0, frame).state;
+  return { lanes, data, map, sample, state };
+}
+
+describe("viewer data", () => {
+  it("draws a sticky sample across a seek to a window that shares no frame with the old one", () => {
+    const { data, map, sample, state } = viewer();
+    data.window(0, 20);
+    map(0, [0, 0, 0]);
+    sample(0);
+    expect(state(1)).toBe("draw");
+    // The seek: the backend moves the window, the old cells go, and it sends no Evict for a sample the new
+    // window still selects.
+    data.window(9, 11);
+    expect(state(1)).toBe("pending");
+    expect(data.samples.get(0, 0)).toBeDefined();
+    map(9, [0, 0, 0]);
+    expect(state(10)).toBe("draw");
+  });
+
+  it("drops the map cells outside the data window and keeps the samples until they are evicted", () => {
+    // A follower asks for far more than it is allowed: only the window the backend applied counts.
+    const { data, map, sample, state } = viewer();
+    data.window(100, 104);
+    expect(
+      map(
+        90,
+        Array.from({ length: 20 }, (_, k) => 90 + k),
+      ),
+    ).toBe(true);
+    expect([95, 100, 104, 105].map(state)).toEqual(["pending", "pending", "pending", "pending"]);
+    for (let k = 100; k <= 104; k++) sample(k);
+    expect([95, 100, 104, 105].map(state)).toEqual(["pending", "draw", "draw", "pending"]);
+
+    data.window(102, 104);
+    expect([100, 102].map(state)).toEqual(["pending", "draw"]);
+    expect(data.samples.get(0, 100)).toBeDefined();
+    data.evict({ type: "Evict", source: 0, data_revision: 2, samples: [102] });
+    expect(data.samples.get(0, 102)).toBeDefined();
+    data.evict({ type: "Evict", source: 0, data_revision: 1, samples: [102] });
+    expect(state(102)).toBe("pending");
+    expect(data.samples.get(0, 102)).toBeUndefined();
+  });
+
+  it("holds no sample of a source that failed, and takes up a new revision", () => {
+    const { lanes, data, sample } = viewer();
+    sample(0);
+    lanes.setStatus(0, { status: "Loading" });
+    data.refresh();
+    expect(data.samples.get(0, 0)).toBeDefined();
+    lanes.setStatus(0, { status: "Failed", code: "OverlayInvalid", params: {}, reason: "bad" });
+    data.refresh();
+    expect(data.samples.count).toBe(0);
+    lanes.setStatus(0, { ...READY, data_revision: 2 });
+    data.refresh();
+    sample(1);
+    expect(data.samples.count).toBe(0);
+    data.addSample({ kind: "sample", source: 0, dataRevision: 2, sample: 1, item: item() });
+    expect(data.samples.count).toBe(1);
   });
 });

@@ -34,8 +34,8 @@ impl ViewerOverlays {
         &self.sources
     }
 
-    /// Replaces a lane's policy under `revision`: its Frame Map is selected and sent again, with the samples of its
-    /// source. `matching: None` is a policy the caller refused: the lane keeps its previous
+    /// Replaces a lane's policy under `revision`: its Frame Map is selected and sent again; the samples the viewer
+    /// holds stay until evicted. `matching: None` is a policy the caller refused: the lane keeps its previous
     /// matching but adopts `revision` and `subscribed`. A plain lane, or one past the last lane, is ignored.
     pub fn set_policy(
         &self,
@@ -56,8 +56,8 @@ impl ViewerOverlays {
     }
 
     /// Moves the data window: the playhead and direction the viewer's gate applied, with `ahead` and `behind` the
-    /// data frames. Applied in order: maps and samples that leave the window are forgotten and sent again when they
-    /// return.
+    /// data frames. Applied in order: the window is told to the viewer, maps that leave it are forgotten and sent
+    /// again when they return, and samples that leave it are evicted.
     pub fn want(&self, window: Want) {
         self.shared
             .update(|state| state.set_want(window, &self.shared.timeline));
@@ -69,10 +69,10 @@ impl ViewerOverlays {
         self.shared.update(|state| state.undelivered(event));
     }
 
-    /// The next event: statuses and problems first, then the most urgent map run or sample, nearest the playhead
-    /// first and maps before samples. An item goes only if its rank is at most `frame_rank`, the rank of the video
-    /// frame waiting (`None`: no frame waits), so the data wins ties. Waits while there is nothing; `None` once the
-    /// viewer is closed.
+    /// The next event: statuses and problems first, then the data window and the evictions, then the most urgent
+    /// map run or sample, nearest the playhead first and maps before samples. A map run or sample goes only if its
+    /// rank is at most `frame_rank`, the rank of the video frame waiting (`None`: no frame waits), so the data wins
+    /// ties. Waits while there is nothing; `None` once the viewer is closed.
     pub async fn next_event(&mut self, frame_rank: Option<Rank>) -> Option<OverlayEvent> {
         loop {
             let notified = self.shared.wake.notified();

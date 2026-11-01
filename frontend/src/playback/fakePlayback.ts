@@ -2,7 +2,8 @@
 import { opened as openedMessage } from "./fakeOpened";
 import { catalogDocument, mapBytes, sampleBytes } from "./fakeData";
 import type { LaneFrame } from "./contract";
-import { PlaybackSession, type PlaybackIntent } from "./session";
+import { PlaybackSession } from "./session";
+import type { PlaybackIntent } from "./sessionDeps";
 import type {
   ClientMessage,
   LaneInfo,
@@ -107,6 +108,8 @@ export async function setup(resume?: { frame: number; speed: number }) {
       const incoming = decode(sampleBytes(fields));
       if (incoming) deliver(incoming);
     },
+    /** The data window the backend applied: the frames Frame Map cells are kept for, inclusive. */
+    window: (first: number, last: number) => server.say({ type: "DataWindow", first, last }),
     /** A run of a lane's Frame Map. */
     map: (fields: Parameters<typeof mapBytes>[0]) => {
       const incoming = decode(mapBytes(fields));

@@ -12,12 +12,17 @@ use playback::{Authority, CachePool, ClockIntent, Registry};
 use std::{
     collections::BTreeSet,
     path::Path,
-    sync::{Arc, Mutex},
+    sync::{
+        Arc, Mutex,
+        atomic::{AtomicI64, Ordering},
+    },
 };
 use tokio::sync::{Semaphore, oneshot};
 use workspace::{ContentId, Entry, OverlayRef, VideoRef};
 
 const WAIT: Duration = Duration::from_secs(20);
+/// A tenth of the viewer's default 512 MiB frame budget.
+const SAMPLE_BUDGET: u64 = 53_687_091;
 
 #[tokio::test]
 async fn revoking_while_the_index_is_built_cancels_it_and_ends_the_session() {
@@ -201,6 +206,34 @@ async fn a_map_run_queued_with_a_frame_outside_a_narrowed_authority_is_dropped_w
     assert_eq!(handed_back.frames(), 8..=16);
 }
 
+#[test]
+fn a_run_is_admitted_against_one_reading_of_the_clock_and_the_authority() {
+    // A playing follower of frame 0: 0 to 200 at t = 0, 200 to 500 at t = 3 s. Every read of the clock moves it on.
+    let (_holder, authority) = watch::channel(Authority::Follow {
+        intent: ClockIntent {
+            frame: 0,
+            playing: true,
+            speed_centi: 100,
+            at_us: 0,
+        },
+    });
+    let reads = Arc::new(AtomicI64::new(0));
+    let gate = Gate::new(authority, {
+        let reads = reads.clone();
+        move || reads.fetch_add(1, Ordering::SeqCst) * 3_000_000
+    });
+    gate.open(Timeline::new((0..1000).map(|n| MediaTime::from_us(n * 10_000)).collect()).unwrap());
+
+    // Frame 100 is allowed only at t = 0 and frame 400 only at t = 3 s: no one reading allows both.
+    assert!(!gate.admits(&(100..=400)));
+    assert_eq!(reads.load(Ordering::SeqCst), 1);
+    // A sample is one frame, judged by one read as well: at t = 3 s frame 100 is behind, at t = 6 s (500 to 800) 600
+    // is inside.
+    assert!(!gate.admits(&(100..=100)));
+    assert!(gate.admits(&(600..=600)));
+    assert_eq!(reads.load(Ordering::SeqCst), 3);
+}
+
 /// The fixture video with one lane whose ground truth covers every frame, so each frame in a window has an overlay.
 fn entry_with_a_lane(folder: &Path) -> Entry {
     let gt = folder.join("gt.txt");
@@ -251,6 +284,7 @@ async fn a_viewer_made_a_follower_gets_no_frame_or_data_outside_the_presenters_w
     let setup = stream::Setup {
         entry: &entry,
         start_frame: Some(60),
+        data_bytes: SAMPLE_BUDGET,
         audience: Audience::HOST,
         size: FrameSize {
             width: 64,
@@ -335,9 +369,21 @@ async fn a_viewer_made_a_follower_gets_no_frame_or_data_outside_the_presenters_w
         queue.recv().await.unwrap();
         let mut unmapped = BTreeSet::from_iter(6..=14);
         let mut unsent = BTreeSet::from_iter(6..=14);
+        let mut told = false;
         while !(unmapped.is_empty() && unsent.is_empty()) {
             let sent = queue.recv().await.unwrap();
             let Some(frames) = &sent.frames else {
+                // The window told to the viewer is inside the presenter's; it and the evictions are not gated.
+                if let Message::Text(body) = &sent.message
+                    && let Ok(ServerMessage::DataWindow { first, last }) =
+                        serde_json::from_str(body)
+                {
+                    assert!(
+                        (6..=14).contains(&first) && (6..=14).contains(&last),
+                        "the data window {first}..={last} is outside the presenter's window"
+                    );
+                    told = true;
+                }
                 continue;
             };
             assert!(
@@ -363,6 +409,7 @@ async fn a_viewer_made_a_follower_gets_no_frame_or_data_outside_the_presenters_w
                 left.remove(&covered);
             }
         }
+        assert!(told, "the window the lane follows is told before its maps");
         holder.send_replace(Authority::Revoked);
     };
     let (ended, ()) = tokio::time::timeout(WAIT, async { tokio::join!(streaming, watching) })

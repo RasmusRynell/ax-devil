@@ -39,6 +39,8 @@ pub(super) struct Setup<'a> {
     pub(super) entry: &'a Entry,
     /// The frame the viewer opened on.
     pub(super) start_frame: Option<u64>,
+    /// The most bytes of Sample Items the viewer holds at once.
+    pub(super) data_bytes: u64,
     /// What the viewer may learn from an error, a warning or a lane problem.
     pub(super) audience: Audience,
     /// The size of the decoded pictures.
@@ -91,15 +93,7 @@ pub(super) async fn stream(
     let last = timeline.last();
     let location = video_location(&setup.entry.video);
     gate.open(timeline.clone());
-    let lanes = Lanes::open(
-        setup.overlays,
-        setup.library,
-        setup.entry,
-        timeline.clone(),
-        setup.size,
-        setup.audience,
-        location.clone(),
-    );
+    let lanes = Lanes::open(&setup, timeline.clone(), location.clone());
     let opened = text(&ServerMessage::Opened {
         protocol: PLAYBACK_PROTOCOL,
         frame_count: timeline.len(),

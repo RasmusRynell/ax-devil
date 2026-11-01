@@ -1,7 +1,9 @@
 //! Tests of the data feed through real MOT files, with track loads that the tests can hold or break.
 
 mod delivery;
+mod retention;
 mod statuses;
+mod viewer_model;
 
 use std::{
     fs,
@@ -25,6 +27,9 @@ use crate::{
     LaneStatus, MapRun, OverlayEvent, OverlayService, SampleItem, ViewerOverlays,
     sources::TrackSource,
 };
+
+/// A tenth of the viewer's default 512 MiB frame budget.
+pub(super) const SAMPLE_BUDGET: u64 = 53_687_091;
 
 pub(super) const SIZE: FrameSize = FrameSize {
     width: 1920,
@@ -124,7 +129,8 @@ impl Env {
     }
 
     pub(super) fn open(&self, lanes: Vec<Option<OverlayRef>>, frames: u64) -> ViewerOverlays {
-        self.service.open_viewer(lanes, timeline(frames), SIZE)
+        self.service
+            .open_viewer(lanes, timeline(frames), SIZE, SAMPLE_BUDGET)
     }
 }
 
@@ -197,6 +203,10 @@ pub(super) struct Sent {
     pub(super) maps: Vec<MapRun>,
     pub(super) samples: Vec<SampleItem>,
     pub(super) problems: Vec<(u16, String)>,
+    /// The data windows told, as `(first, last)`.
+    pub(super) windows: Vec<(u64, u64)>,
+    /// The samples evicted, as `(source, samples)`.
+    pub(super) evicts: Vec<(u16, Vec<u32>)>,
     /// `"map"` or `"sample"` in arrival order.
     pub(super) order: Vec<&'static str>,
 }
@@ -217,6 +227,10 @@ pub(super) async fn settle(viewer: &mut ViewerOverlays) -> Sent {
                 sent.samples.push(item);
             }
             OverlayEvent::Problem { lane, reason } => sent.problems.push((lane, reason)),
+            OverlayEvent::Window { first, last } => sent.windows.push((first, last)),
+            OverlayEvent::Evict {
+                source, samples, ..
+            } => sent.evicts.push((source, samples)),
             OverlayEvent::Status { .. } => {}
         }
     }

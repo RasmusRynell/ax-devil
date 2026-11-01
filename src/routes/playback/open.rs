@@ -2,7 +2,7 @@
 //! session then streams.
 
 use super::{
-    End, Flow, Incoming, Outbox,
+    End, Flow, Incoming, Opening, Outbox,
     gate::Gate,
     next_client, stopped,
     stream::{self, Setup},
@@ -28,7 +28,7 @@ const PROGRESS_STEP: f32 = 0.01;
 pub(super) async fn run(
     state: &AppState,
     lease: &StreamLease,
-    start_frame: Option<u64>,
+    opening: Opening,
     audience: Audience,
     incoming: &mut impl Incoming,
     outbox: &Outbox,
@@ -55,7 +55,8 @@ pub(super) async fn run(
     } = opened;
     let setup = Setup {
         entry,
-        start_frame,
+        start_frame: opening.start_frame,
+        data_bytes: opening.data_bytes,
         audience,
         size,
         warnings,

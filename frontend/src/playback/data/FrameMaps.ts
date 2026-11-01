@@ -20,7 +20,7 @@ const newPage = (): Page => ({
 
 /**
  * The maps of every lane, in pages of 256 frames made when a run is written and dropped when the window leaves them.
- * A run is kept only for the revisions the lane currently expects and only inside the window, so what is held is
+ * A run is kept only for the revisions the lane currently expects and only inside the data window the backend applied, so what is held is
  * bounded by the window, not by the video.
  */
 export class FrameMaps {
@@ -75,11 +75,6 @@ export class FrameMaps {
   kind(lane: number, frame: number): number {
     const page = this.#lanes.get(lane)?.pages.get(Math.floor(frame / FRAME_MAP_RUN_FRAMES));
     return page ? page.kinds[frame % FRAME_MAP_RUN_FRAMES] : 0;
-  }
-
-  /** Copies the lane's cells of `first..first + out.length - 1` into `out`; a frame it holds no cell for is `UNKNOWN`. */
-  window(lane: number, first: number, out: Int32Array): void {
-    for (let k = 0; k < out.length; k++) out[k] = this.at(lane, first + k);
   }
 
   /** Forgets every cell outside `low..high`, for all lanes, and keeps accepting only that range. */

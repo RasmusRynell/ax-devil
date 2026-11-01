@@ -14,7 +14,7 @@ import {
   type FrameSource,
 } from "./clock";
 import type { LaneControl, LaneSettings, Surface } from "./contract";
-import { dataWindow } from "./data/dataWindow";
+import { dataWindow, sampleBudgetBytes } from "./data/dataWindow";
 import { FrameFailures } from "./failures";
 import { FrameBuffer, windowSize } from "./FrameBuffer";
 import { DataWait, displaySource } from "./frameSource";
@@ -27,47 +27,22 @@ import {
   type VideoFrame,
   type Want,
 } from "./protocol";
+import { BUFFER_BUDGET_BYTES, type ResumeState, type SessionDeps } from "./sessionDeps";
 import { INITIAL_VIEW, sameView, type PlaybackView } from "./view";
 import { ViewerData } from "./viewerData";
-import type { Connect, Connection, Incoming } from "./wire";
+import type { Connection, Incoming } from "./wire";
 
 export type { Surface } from "./contract";
 
-/** What one viewer may hold of decoded frames: it divides into the window the backend is asked to fill. */
-export const BUFFER_BUDGET_BYTES = 512 * 1024 * 1024;
 /** Waits between reconnection attempts; the last one repeats. */
 const RETRY_MS = [500, 1000, 2000, 4000, 8000];
 /**
- * The close codes that end a stream for good, with what the viewer says: asking again would be refused, or the
- * backend ended the stream on purpose. Any other close is a lost connection that is worth another try.
+ * Close codes that end a stream for good, with what the viewer says; other closes are retried.
  */
 const ENDED: Record<number, string> = {
   4401: "The backend refused this video stream.",
   4403: "This video stream was ended: access to it was withdrawn.",
 };
-
-export interface SessionDeps {
-  /** A ticket for one socket: the first message of every connection spends one. Rejects when it cannot get one. */
-  ticket: () => Promise<string>;
-  connect: Connect;
-  /** Monotonic milliseconds. */
-  now: () => number;
-  /** Calls back once at the next display refresh; returns the way to cancel. */
-  frame: (callback: () => void) => () => void;
-  /** Calls back once after `ms`; returns the way to cancel. */
-  after: (callback: () => void, ms: number) => () => void;
-  budgetBytes?: number;
-  /** Where an earlier session of this video left off: this one opens there, paused, at that speed. */
-  resume?: ResumeState;
-  /** Told what the clock is doing after every change the viewer makes: the intent a presenter publishes. */
-  onIntent?: (intent: PlaybackIntent) => void;
-}
-
-/** What the viewer asked the clock to do: the position it is on and whether it runs, at what speed. */
-export type PlaybackIntent = { frame: number; playing: boolean; speed: number };
-
-/** What carries a video's viewing from one session to the next, across a reconnection or a viewer shown again. */
-export type ResumeState = { frame: number; speed: number };
 
 export class PlaybackSession implements LaneControl {
   readonly #deps: SessionDeps;
@@ -172,7 +147,7 @@ export class PlaybackSession implements LaneControl {
   setLane(lane: number, change: Partial<LaneSettings>): void {
     const message = this.#lanes.set(lane, change);
     if (message) this.#connection?.send(message);
-    this.#data.refresh(this.#lastWant);
+    this.#data.refresh();
     this.represent();
     this.#changed();
   }
@@ -282,7 +257,12 @@ export class PlaybackSession implements LaneControl {
         this.#connection = this.#deps.connect((incoming) => {
           if (current()) this.#onIncoming(incoming);
         });
-        this.#connection.send({ type: "Open", ticket, start_frame: this.#resumeAt });
+        this.#connection.send({
+          type: "Open",
+          ticket,
+          start_frame: this.#resumeAt,
+          data_bytes: sampleBudgetBytes(this.#budget),
+        });
       },
       (error: unknown) => {
         if (!current()) return;
@@ -322,10 +302,10 @@ export class PlaybackSession implements LaneControl {
       this.#lanes
         .open(message.lanes, message.lane_defaults)
         .forEach((m) => this.#connection?.send(m));
-      this.#data.refresh(this.#lastWant);
+      this.#data.refresh();
     } else if (message.type === "LaneStatus") {
       if (this.#lanes.setStatus(message.lane, message.status)) {
-        this.#data.refresh(this.#lastWant);
+        this.#data.refresh();
         this.represent();
         this.#arm();
       }
@@ -334,6 +314,10 @@ export class PlaybackSession implements LaneControl {
         this.#data.catalogProblems();
         this.#onData();
       }
+    } else if (message.type === "DataWindow") {
+      this.#data.window(message.first, message.last);
+    } else if (message.type === "Evict") {
+      this.#data.evict(message);
     } else if (message.type === "LaneProblem") {
       this.#lanes.setProblem(message.lane, message.reason);
     } else if (message.type === "FrameError") {
@@ -361,10 +345,7 @@ export class PlaybackSession implements LaneControl {
     } else if (this.#clock) {
       if (!this.#data.fits(envelope))
         return this.#unreadable("a frame map run reaches past the last frame");
-      if (this.#data.addMap(envelope)) {
-        this.#data.retain(this.#lastWant);
-        this.#onData();
-      }
+      if (this.#data.addMap(envelope)) this.#onData();
     }
   }
 
@@ -391,7 +372,7 @@ export class PlaybackSession implements LaneControl {
     if (times.length === 0 || times.length !== opened.frame_count || opened.frame_bytes <= 0)
       return this.#fail("The backend described the video inconsistently", "playback");
     this.#buffer = new FrameBuffer<VideoFrame>(this.#budget, times.length);
-    this.#data.open(times.length, this.#budget);
+    this.#data.open(times.length, sampleBudgetBytes(this.#budget));
     this.#planner = new WantPlanner(windowSize(this.#budget, opened.frame_bytes));
     this.#times = times;
     this.#clock = new PlaybackClock(times, this.#deps.now, this.#resumeAt ?? 0);
@@ -460,7 +441,6 @@ export class PlaybackSession implements LaneControl {
     if (sameWant(this.#lastWant, want)) return;
     this.#lastWant = want;
     buffer.setWindow(want);
-    this.#data.retain(want);
     this.#connection?.send({ type: "Want", ...want });
   }
 

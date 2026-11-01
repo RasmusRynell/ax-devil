@@ -49,6 +49,10 @@ struct Seen {
     /// By policy revision and frame: the sample cell, the kind, and the data revision the run was made under.
     maps: BTreeMap<(u32, u64), (u32, u8, u32)>,
     problems: Vec<String>,
+    /// The data windows told, in order.
+    windows: Vec<(u64, u64)>,
+    /// The samples told to drop, in order.
+    evicted: Vec<u32>,
 }
 
 impl Seen {
@@ -64,6 +68,14 @@ impl Seen {
                 Event::Message(ServerMessage::LaneProblem { lane: 0, reason }) => {
                     self.problems.push(reason);
                 }
+                Event::Message(ServerMessage::DataWindow { first, last }) => {
+                    self.windows.push((first, last));
+                }
+                Event::Message(ServerMessage::Evict {
+                    source: 0,
+                    data_revision: 1,
+                    samples,
+                }) => self.evicted.extend(samples),
                 Event::Sample(sample) => {
                     assert_eq!(sample.source, 0);
                     *self.samples.entry(sample.sample).or_default() += 1;
@@ -269,34 +281,45 @@ async fn a_lane_reports_its_load_then_sends_its_maps_and_each_mapped_sample_once
         [1, 1, 1]
     );
 
-    // Another policy resends the maps under its revision, and the samples they name: the viewer holds only what its
-    // maps name, and has none of the new revision yet.
-    let resent = |seen: &Seen, times| seen.samples.values().all(|&sent| sent == times);
+    // The data window was told before the maps it holds frames for.
+    assert_eq!(seen.windows.last(), Some(&(0, 5)));
+    assert!(seen.evicted.is_empty(), "nothing left the window");
+
+    // Another policy resends the maps under its revision. The viewer keeps its samples until told otherwise.
     viewer
         .send(&lane_policy(0, 2, policy(Some(50), None), true))
         .await;
-    seen.read_until(&mut viewer, |seen| seen.mapped(2) && resent(seen, 2))
-        .await;
+    seen.read_until(&mut viewer, |seen| seen.mapped(2)).await;
     assert_eq!(seen.maps[&(2, 1)].0, 1);
 
     // A policy that cannot be applied is reported; the lane keeps its matching and the maps carry the new revision.
     viewer
         .send(&lane_policy(0, 3, policy(None, Some(100_001)), true))
         .await;
-    seen.read_until(&mut viewer, |seen| seen.mapped(3) && resent(seen, 3))
-        .await;
+    seen.read_until(&mut viewer, |seen| seen.mapped(3)).await;
     assert!(
         seen.problems[0].contains("100 seconds"),
         "{:?}",
         seen.problems
     );
     assert_eq!(seen.maps[&(3, 1)].0, 1);
+    assert_eq!(
+        seen.samples.values().copied().collect::<Vec<_>>(),
+        [1, 1, 1],
+        "no sample was sent again"
+    );
 
-    // Unsubscribing stops the data: only frames arrive for the window that follows.
+    // Unsubscribing stops the data and frees what the viewer holds; the window that follows is told, then only
+    // frames arrive for it.
     viewer
         .send(&lane_policy(0, 4, policy(None, None), false))
         .await;
     viewer.want(40, 3, 0, Direction::Forward).await;
+    seen.read_until(&mut viewer, |seen| {
+        seen.evicted.len() == 3 && seen.windows.last() == Some(&(40, 43))
+    })
+    .await;
+    assert_eq!(seen.evicted, [0, 1, 2]);
     viewer.frames(40..=43).await;
 }
 
@@ -309,6 +332,7 @@ async fn settled_lanes(viewer: &mut Viewer, lanes: u16) -> BTreeMap<u16, String>
                 status: LaneStatusWire::Loading,
                 ..
             })
+            | Event::Message(ServerMessage::DataWindow { .. } | ServerMessage::Evict { .. })
             | Event::Frame(_)
             | Event::Sample(_)
             | Event::Map(_) => {}

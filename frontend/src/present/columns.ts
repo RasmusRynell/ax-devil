@@ -242,16 +242,46 @@ export function readSample(buffer: ArrayBuffer | Uint8Array): SampleView {
     stringBytes,
   ] = [2, 3, 4, 5, 6, 7, 8, 9, 10, 11].map(word);
 
-  /** The absolute byte offset of `size` bytes at `offset`, which must lie in the item and start on a multiple of 8. */
-  const place = (offset: number, size: number): number => {
-    if (offset % 8 !== 0 || offset < HEADER_BYTES || offset + size > length)
-      throw new SampleFormatError("a section lies outside the item");
+  /** The absolute byte offset of `size` bytes at `offset`: on a multiple of 8, from `from` to at most `limit`. */
+  const place = (offset: number, size: number, from: number, limit: number): number => {
+    if (offset % 8 !== 0 || offset < from || offset + size > limit)
+      throw new SampleFormatError("a section lies outside its place in the item");
     return base + offset;
   };
-  const at = (section: number, size: number): number => place(word(HEADER_WORDS + section), size);
+  // The encoder writes the attribute columns, then the sections in header order, each from the end of the last. Any
+  // other layout aliases bytes, and a scan of an alias costs more than the item is long.
+  const sizes: Record<keyof typeof S, number> = {
+    entityId: rows * 4,
+    box: rows * 16,
+    polyIndex: rows * 8,
+    polyPoints: points * 8,
+    motion: rows,
+    velocity: rows * 8,
+    class: rows * 4,
+    score: rows * 8,
+    confidence: rows * 8,
+    classMask: rows * maskWords * 4,
+    attrIndex: attributes * 12,
+    colorRgba: colors * 4,
+    colorScore: colors * 8,
+    colorName: colors * 4,
+    relKind: relations * 4,
+    relSource: relations * 4,
+    relTarget: relations * 4,
+    stringOffsets: (strings + 1) * 4,
+    stringBytes,
+  };
+  let used = HEADER_BYTES;
+  const starts = (Object.keys(S) as (keyof typeof S)[]).map((name) => {
+    const offset = word(HEADER_WORDS + S[name]);
+    const start = place(offset, sizes[name], used, length);
+    used = offset + sizes[name];
+    return start;
+  });
+  const at = (section: number): number => starts[section];
 
-  const stringOffsets = new Uint32Array(data, at(S.stringOffsets, (strings + 1) * 4), strings + 1);
-  const stringData = new Uint8Array(data, at(S.stringBytes, stringBytes), stringBytes);
+  const stringOffsets = new Uint32Array(data, at(S.stringOffsets), strings + 1);
+  const stringData = new Uint8Array(data, at(S.stringBytes), stringBytes);
   if (
     stringOffsets[0] !== 0 ||
     stringOffsets[strings] !== stringBytes ||
@@ -282,15 +312,18 @@ export function readSample(buffer: ArrayBuffer | Uint8Array): SampleView {
         throw new SampleFormatError(`${what} refers to ${cell}, which the item does not have`);
   };
 
-  const index = new Uint32Array(data, at(S.attrIndex, attributes * 12), attributes * 3);
+  const index = new Uint32Array(data, at(S.attrIndex), attributes * 3);
   const attrs: AttrColumn[] = [];
+  let columnsEnd = HEADER_BYTES;
   let colorsUsed = 0;
   for (let i = 0; i < attributes; i++) {
     const [name, kind, offset] = [index[i * 3], index[i * 3 + 1], index[i * 3 + 2]];
     if (kind > AttrKind.Colors)
       throw new SampleFormatError(`attribute kind ${kind} is not read here`);
     if (name >= strings) throw new SampleFormatError("an attribute name is not in the item");
-    const cells = place(offset, rows * ATTR_CELL_BYTES[kind]);
+    const size = rows * ATTR_CELL_BYTES[kind];
+    const cells = place(offset, size, columnsEnd, word(HEADER_WORDS + S.entityId));
+    columnsEnd = offset + size;
     const column: AttrColumn = {
       name,
       kind: kind as AttrKind,
@@ -313,7 +346,7 @@ export function readSample(buffer: ArrayBuffer | Uint8Array): SampleView {
     attrs.push(column);
   }
 
-  const polyIndex = new Uint32Array(data, at(S.polyIndex, rows * 8), rows * 2);
+  const polyIndex = new Uint32Array(data, at(S.polyIndex), rows * 2);
   // The outlines are stored one after the other, so what they hold in all cannot exceed the points.
   let pointsUsed = 0;
   for (let row = 0; row < rows; row++) {
@@ -326,26 +359,26 @@ export function readSample(buffer: ArrayBuffer | Uint8Array): SampleView {
   const view: SampleView = {
     rows,
     relationCount: relations,
-    entityId: new Int32Array(data, at(S.entityId, rows * 4), rows),
-    box: new Float32Array(data, at(S.box, rows * 16), rows * 4),
+    entityId: new Int32Array(data, at(S.entityId), rows),
+    box: new Float32Array(data, at(S.box), rows * 4),
     polyIndex,
-    polyPoints: new Float32Array(data, at(S.polyPoints, points * 8), points * 2),
-    motion: new Uint8Array(data, at(S.motion, rows), rows),
-    velocity: new Float32Array(data, at(S.velocity, rows * 8), rows * 2),
-    classId: new Int32Array(data, at(S.class, rows * 4), rows),
-    score: new Float64Array(data, at(S.score, rows * 8), rows),
-    confidence: new Float64Array(data, at(S.confidence, rows * 8), rows),
+    polyPoints: new Float32Array(data, at(S.polyPoints), points * 2),
+    motion: new Uint8Array(data, at(S.motion), rows),
+    velocity: new Float32Array(data, at(S.velocity), rows * 2),
+    classId: new Int32Array(data, at(S.class), rows),
+    score: new Float64Array(data, at(S.score), rows),
+    confidence: new Float64Array(data, at(S.confidence), rows),
     maskWords,
-    classMask: new Uint32Array(data, at(S.classMask, rows * maskWords * 4), rows * maskWords),
+    classMask: new Uint32Array(data, at(S.classMask), rows * maskWords),
     attrs,
     colors: {
-      rgba: new Uint32Array(data, at(S.colorRgba, colors * 4), colors),
-      score: new Float64Array(data, at(S.colorScore, colors * 8), colors),
-      name: new Int32Array(data, at(S.colorName, colors * 4), colors),
+      rgba: new Uint32Array(data, at(S.colorRgba), colors),
+      score: new Float64Array(data, at(S.colorScore), colors),
+      name: new Int32Array(data, at(S.colorName), colors),
     },
-    relKind: new Int32Array(data, at(S.relKind, relations * 4), relations),
-    relSource: new Int32Array(data, at(S.relSource, relations * 4), relations),
-    relTarget: new Int32Array(data, at(S.relTarget, relations * 4), relations),
+    relKind: new Int32Array(data, at(S.relKind), relations),
+    relSource: new Int32Array(data, at(S.relSource), relations),
+    relTarget: new Int32Array(data, at(S.relTarget), relations),
     strings: table,
   };
   refs(view.entityId, strings, "an entity id");

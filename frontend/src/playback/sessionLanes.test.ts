@@ -26,6 +26,7 @@ async function shown() {
   t.server.status(0, READY);
   t.server.frames(0, 1, 2, 3);
   t.refresh();
+  t.server.window(0, 9);
   t.server.map({ cells: [0, 0, NONE, EMPTY], kinds: [0, 2, 0, 0] });
   t.server.sample();
   t.refresh();
@@ -119,6 +120,7 @@ describe("lanes", () => {
     expect(presented).toEqual([0]);
     expect(drawn.at(-1)?.lanes).toEqual([undefined]);
     expect(session.getSnapshot().lanes[0].pending).toBe(true);
+    server.window(0, 9);
     server.map({ cells: [0] });
     server.sample();
     expect(drawn).toHaveLength(1);
@@ -159,12 +161,29 @@ describe("lanes", () => {
     expect(session.getSnapshot().lanes[0]).toMatchObject({ pending: true, policyRevision: 2 });
     server.map({ cells: [0, 0], policyRevision: 1 });
     expect(drawn.at(-1)?.lanes).toEqual([undefined]);
-    // The maps of the new revision select no sample the viewer still holds: the backend sends its items again.
+    // The viewer still holds the sample, as no Evict came: the new maps are all the lane waits for.
     server.map({ cells: [0, 0], policyRevision: 2 });
+    expect(drawn.at(-1)?.lanes[0]).toMatchObject({ sample: 0 });
+    expect(session.getSnapshot().lanes[0].pending).toBe(false);
+  });
+
+  it("keeps the map cells inside the data window and the samples until the backend evicts them", async () => {
+    const { session, server, drawn } = await shown();
+    server.say({ type: "Evict", source: 0, data_revision: 7, samples: [0] });
+    session.represent();
+    expect(drawn.at(-1)?.lanes[0]).toMatchObject({ sample: 0 });
+    server.window(2, 3);
+    session.represent();
+    expect(drawn.at(-1)?.lanes).toEqual([undefined]);
+    server.window(0, 3);
+    server.map({ cells: [0, 0, NONE, EMPTY] });
+    session.represent();
+    expect(drawn.at(-1)?.lanes[0]).toMatchObject({ sample: 0 });
+    server.say({ type: "Evict", source: 0, data_revision: 1, samples: [0] });
+    session.represent();
     expect(drawn.at(-1)?.lanes).toEqual([undefined]);
     server.sample();
     expect(drawn.at(-1)?.lanes[0]).toMatchObject({ sample: 0 });
-    expect(session.getSnapshot().lanes[0].pending).toBe(false);
   });
 
   it("is never held up by a lane that is loading, failed, hidden or plain", async () => {

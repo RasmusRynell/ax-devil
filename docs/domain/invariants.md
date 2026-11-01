@@ -50,18 +50,19 @@ implementing module closes.
 
 ## Offline Delivery
 
-- A viewer keeps exactly the frames inside the window of its last report and evicts the rest. The window size is
-  `floor(buffer budget / frame bytes)`, fixed per video, so a viewer never evicts inside its own window.
+- A viewer keeps exactly the frames inside the window of its last report and evicts the rest. The window is
+  `floor(buffer budget / frame bytes)` frames, fixed per video, so the viewer never evicts inside it.
 - The backend applies every window report to its record of what a viewer holds, in order, never coalesced; only
   scheduling uses the newest. A frame that leaves the window and returns is sent again.
 - A frame's bytes depend only on its identity, so a viewer keeps any arrival inside its window.
-- A viewer shows exactly one video: its lanes share that video's frames and clock, frames travel once per viewer, and
-  only overlay data is per source or lane.
-- A lane draws only the marks of the sample its Frame Map assigns to the frame, never another's. During play a
+- A viewer shows one video: its lanes share its frames and clock, frames travel once per viewer, and only overlay
+  data is per source or lane.
+- A lane draws only the marks of the sample its Frame Map assigns to the frame, never another's. In play a
   lane without data shows a loading state and the video is not held; after a seek or step the frame waits up to
   about 250 ms for ready lanes; export always waits. Loading, failed and hidden lanes never hold a frame back.
-- Sample Items and Frame Maps pass the same authority gate as the frame they rank with and cover the window it
-  allowed, never the viewer's raw request.
+- Sample Items and Frame Maps pass the authority gate of the frame they rank with and cover the window it allowed,
+  never the viewer's raw request. The backend alone decides what a viewer holds: evictions and the map window (never
+  gated), within its byte budget.
 
 ## Frame Identity
 

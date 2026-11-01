@@ -35,6 +35,8 @@ use workspace_store::{DocCommand, Resolution};
 /// Bounds every wait, so a broken backend fails the test instead of hanging it.
 pub const WAIT: Duration = Duration::from_secs(20);
 const SQUEEZED_BUFFER: u32 = 4096;
+/// A tenth of the viewer's default 512 MiB frame budget, what `open` offers for Sample Items.
+pub const SAMPLE_BUDGET: u64 = 53_687_091;
 pub const MIB: usize = 1024 * 1024;
 
 pub fn fixture(name: &str) -> PathBuf {
@@ -434,6 +436,7 @@ impl Viewer {
         self.send(&ClientMessage::Open {
             ticket: ticket.to_owned(),
             start_frame,
+            data_bytes: SAMPLE_BUDGET,
         })
         .await;
     }

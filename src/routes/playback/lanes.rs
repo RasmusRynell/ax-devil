@@ -2,7 +2,7 @@
 //! and their wire forms. A policy that cannot be applied, and a lane's problems, are told only to an audience with
 //! host details; the lane keeps its last matching, adopts the new revision and the session goes on.
 
-use super::{End, Flow, Outgoing, items, text};
+use super::{End, Flow, Outgoing, items, stream::Setup, text};
 use api_types::{
     Audience,
     catalogs::CatalogInfoWire,
@@ -14,7 +14,7 @@ use api_types::{
 };
 use axum::extract::ws::Message;
 use catalogs::{CatalogId, Library};
-use foundation::{ErrorCode, FrameSize, HostPath, MediaTime, Timeline, UserError};
+use foundation::{ErrorCode, HostPath, MediaTime, Timeline, UserError};
 use overlay_sync::{MatchPolicy, Sticky, Tolerance};
 use overlays::{LaneStatus, OverlayEvent, OverlayService, ViewerOverlays};
 use playback::{Rank, Want};
@@ -66,15 +66,16 @@ pub(super) struct Lanes {
 impl Lanes {
     /// Starts loading the overlays of `entry`, one lane each, or the one plain lane of an entry without overlays.
     /// Nothing is sent until the lanes [`follow`](Self::follow) a window and a lane subscribes.
-    pub(super) fn open(
-        service: &OverlayService,
-        catalogs: &Library,
-        entry: &Entry,
-        timeline: Timeline,
-        size: FrameSize,
-        audience: Audience,
-        location: HostPath,
-    ) -> Self {
+    pub(super) fn open(setup: &Setup, timeline: Timeline, location: HostPath) -> Self {
+        let Setup {
+            entry,
+            data_bytes,
+            audience,
+            size,
+            library,
+            overlays,
+            ..
+        } = *setup;
         let sources: Vec<_> = if entry.overlays.is_empty() {
             vec![None]
         } else {
@@ -87,8 +88,8 @@ impl Lanes {
             .collect();
         let count = sources.len();
         Self {
-            overlays: service.open_viewer(sources, timeline, size),
-            catalogs: catalogs.clone(),
+            overlays: overlays.open_viewer(sources, timeline, size, data_bytes),
+            catalogs: library.clone(),
             live: true,
             count,
             working,
@@ -212,6 +213,22 @@ impl Lanes {
                 frames: Some(run.frames()),
                 data: Some(OverlayEvent::Map(run)),
             }),
+            // Control messages are never gated: they name nothing the authority did not allow when it was chosen.
+            LaneEvent::Overlay(OverlayEvent::Window { first, last }) => {
+                Some(text(&ServerMessage::DataWindow { first, last }).into())
+            }
+            LaneEvent::Overlay(OverlayEvent::Evict {
+                source,
+                data_revision,
+                samples,
+            }) => Some(
+                text(&ServerMessage::Evict {
+                    source,
+                    data_revision,
+                    samples,
+                })
+                .into(),
+            ),
             LaneEvent::Ended => {
                 tracing::warn!(
                     "The overlays of {} stopped; the video goes on",

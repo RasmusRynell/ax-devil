@@ -37,6 +37,10 @@
 //! 40 u32 count (1 to 256) | 44 u32 reserved
 //! 48 u32 sample[count] (a sample index, FRAME_MAP_NONE or FRAME_MAP_EMPTY) | u8 kind[count] (MATCH_*)
 //! ```
+//!
+//! The backend alone decides what the viewer holds: it drops a Sample Item only on `Evict`, a new data revision or a
+//! failed source, and a Frame Map cell only outside the last `DataWindow` or on a revision change. `Open.data_bytes`
+//! bounds the Sample Items the backend keeps sent.
 
 use crate::{ErrorWire, catalogs::CatalogInfoWire};
 use serde::{Deserialize, Serialize};
@@ -245,6 +249,10 @@ pub enum ClientMessage {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         #[ts(type = "number", optional)]
         start_frame: Option<u64>,
+        /// The most bytes of Sample Items the viewer holds at once, fixed for the stream. The backend never has more
+        /// than this sent, except one item larger than it alone.
+        #[ts(type = "number")]
+        data_bytes: u64,
     },
     /// Replaces the viewer's window.
     Want(Want),
@@ -338,154 +346,29 @@ pub enum ServerMessage {
         #[ts(flatten)]
         error: ErrorWire,
     },
+    /// The frames the viewer keeps Frame Map cells for from now on, inclusive: the data window the backend applied.
+    /// Precedes every Frame Map run selected for it.
+    DataWindow {
+        /// The first frame.
+        #[ts(type = "number")]
+        first: u64,
+        /// The last frame.
+        #[ts(type = "number")]
+        last: u64,
+    },
+    /// The viewer no longer holds these samples of the source. Ignored for another data revision; a sample not held
+    /// is ignored.
+    Evict {
+        /// The viewer's source id, `LaneInfo::source`.
+        source: u16,
+        /// The source revision the samples belong to.
+        data_revision: u32,
+        /// The sample indices, ascending and distinct.
+        samples: Vec<u32>,
+    },
     /// The session cannot go on and ends.
     Error(ErrorWire),
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use serde_json::json;
-
-    #[test]
-    fn messages_use_the_names_the_frontend_parses() {
-        let open = ClientMessage::Open {
-            ticket: "t1".into(),
-            start_frame: None,
-        };
-        assert_eq!(
-            serde_json::to_value(&open).unwrap(),
-            json!({"type": "Open", "ticket": "t1"})
-        );
-        let want = json!({
-            "type": "Want", "playhead": 7, "ahead": 20, "behind": 5, "direction": "backward",
-            "data_ahead": 30, "data_behind": 10
-        });
-        assert!(matches!(
-            serde_json::from_value(want).unwrap(),
-            ClientMessage::Want(Want {
-                playhead: 7,
-                direction: Direction::Backward,
-                data_ahead: 30,
-                data_behind: 10,
-                ..
-            })
-        ));
-        let policy = ClientMessage::LanePolicy {
-            lane: 1,
-            revision: 2,
-            policy: LanePolicyWire {
-                tolerance_ms: None,
-                sticky: StickyWire {
-                    enabled: true,
-                    timeout_ms: Some(2050),
-                },
-            },
-            subscribed: true,
-        };
-        assert_eq!(
-            serde_json::to_value(&policy).unwrap(),
-            json!({
-                "type": "LanePolicy", "lane": 1, "revision": 2, "subscribed": true,
-                "policy": {"tolerance_ms": null, "sticky": {"enabled": true, "timeout_ms": 2050}}
-            })
-        );
-        let catalog = json!({"type": "Catalog", "id": "built-in:standard"});
-        assert_eq!(
-            serde_json::from_value::<ClientMessage>(catalog.clone()).unwrap(),
-            ClientMessage::Catalog {
-                id: "built-in:standard".into()
-            }
-        );
-        let reply = ServerMessage::Catalog {
-            id: "built-in:standard".into(),
-            revision: 1,
-            document: None,
-        };
-        assert_eq!(
-            serde_json::to_value(&reply).unwrap(),
-            json!({"type": "Catalog", "id": "built-in:standard", "revision": 1, "document": null})
-        );
-    }
-
-    #[test]
-    fn opened_and_lane_status_carry_the_source_and_data_revision() {
-        let opened = ServerMessage::Opened {
-            protocol: PLAYBACK_PROTOCOL,
-            frame_count: 90,
-            duration_us: 3_000_000,
-            frame_bytes: 4608,
-            width: 64,
-            height: 48,
-            warnings: Vec::new(),
-            lanes: vec![
-                LaneInfo {
-                    label: "gate.mp4".into(),
-                    source: None,
-                },
-                LaneInfo {
-                    label: "a.txt".into(),
-                    source: Some(0),
-                },
-            ],
-            lane_defaults: LaneDefaultsWire {
-                catalog: "built-in:standard".into(),
-                policy: LanePolicyWire {
-                    tolerance_ms: Some(50),
-                    sticky: StickyWire {
-                        enabled: false,
-                        timeout_ms: Some(2050),
-                    },
-                },
-            },
-            catalogs: vec![CatalogInfoWire {
-                id: "built-in:standard".into(),
-                name: "Standard".into(),
-                description: String::new(),
-            }],
-        };
-        let json = serde_json::to_value(&opened).unwrap();
-        assert_eq!(json["protocol"], 4);
-        assert_eq!(json["catalogs"][0]["id"], "built-in:standard");
-        assert_eq!(
-            json["lanes"],
-            json!([{"label": "gate.mp4", "source": null}, {"label": "a.txt", "source": 0}])
-        );
-        assert_eq!(json["lane_defaults"]["catalog"], "built-in:standard");
-        assert_eq!(
-            json["lane_defaults"]["policy"]["sticky"]["timeout_ms"],
-            2050
-        );
-        let ready = ServerMessage::LaneStatus {
-            lane: 1,
-            status: LaneStatusWire::Ready {
-                clock: ClockWire::Frame,
-                filter: Vec::new(),
-                warnings: Vec::new(),
-                samples: 6,
-                data_revision: 1,
-                mean_sample_bytes: 812,
-            },
-        };
-        assert_eq!(
-            serde_json::to_value(&ready).unwrap(),
-            json!({"type": "LaneStatus", "lane": 1, "status": {
-                "status": "Ready", "clock": "frame", "filter": [], "warnings": [], "samples": 6,
-                "data_revision": 1, "mean_sample_bytes": 812
-            }})
-        );
-        let failed = ServerMessage::LaneStatus {
-            lane: 1,
-            status: LaneStatusWire::Failed(ErrorWire {
-                code: foundation::ErrorCode::OverlayInvalid,
-                params: crate::ErrorParams::default(),
-                reason: None,
-                location: None,
-            }),
-        };
-        assert_eq!(
-            serde_json::to_value(&failed).unwrap(),
-            json!({"type": "LaneStatus", "lane": 1, "status": {"status": "Failed", "code": "OverlayInvalid", "params": {}}})
-        );
-    }
-}
+mod tests;

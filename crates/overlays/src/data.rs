@@ -2,8 +2,9 @@
 //!
 //! The data window is the playhead with `ahead` and `behind` frames of the viewer's `want`, clamped to the video.
 //! Every change of the want, of a lane's policy or of a load recomputes the lane maps of the window (one
-//! [`overlay_sync::select`] per new frame) and the sample window of each source ([`crate::sample_window`]), then
-//! forgets what left them, so it is sent again when it returns.
+//! [`overlay_sync::select`] per new frame) and the sample window of each source ([`crate::sample_window`]). Maps that
+//! left the window are forgotten and sent again when they return; samples that left it are told to the viewer as
+//! evictions (see `pull`), and are sent again when they return after that.
 
 use std::{collections::BTreeMap, ops::RangeInclusive};
 
@@ -31,7 +32,7 @@ impl LaneWindow {
     }
 
     /// The cell of `frame`, if the window holds it.
-    fn cell(&self, frame: u64) -> Option<(u32, u8)> {
+    pub(crate) fn cell(&self, frame: u64) -> Option<(u32, u8)> {
         let at = usize::try_from(frame.checked_sub(self.first)?).ok()?;
         Some((*self.samples.get(at)?, self.kinds[at]))
     }
@@ -91,21 +92,25 @@ impl State {
     }
 
     /// Applies the data window: maps and samples that left it are forgotten, so they are sent again when they
-    /// return.
+    /// return. A window that differs from the last one is told to the viewer, if it has overlays.
     pub(crate) fn set_want(&mut self, want: Want, timeline: &Timeline) {
         self.want = Some(want);
         let Some((_, window)) = self.window() else {
             return;
         };
+        if !self.sources.is_empty() && self.applied.as_ref() != Some(&window) {
+            self.applied = Some(window.clone());
+            self.window_notice = Some(window.clone());
+        }
         for lane in &mut self.lanes {
             lane.maps_sent.retain_within(&window);
         }
         self.refresh(timeline);
     }
 
-    /// Replaces a lane's policy under a new revision: its maps are selected and sent again, and so are the samples
-    /// its old map named, because the viewer keeps only the samples the maps it holds name and holds none of the
-    /// new revision yet. A plain lane, or one past the last lane, is ignored.
+    /// Replaces a lane's policy under a new revision: its maps are selected and sent again. The viewer keeps its
+    /// samples until told to drop them, so only the samples the new maps need and it lacks are sent. A plain lane,
+    /// or one past the last lane, is ignored.
     pub(crate) fn set_policy(
         &mut self,
         lane: usize,
@@ -123,23 +128,12 @@ impl State {
             slot.policy.matching = matching;
         }
         slot.maps_sent.clear();
-        if let Some(source) = slot.source {
-            // The viewer forgets this lane's map and with it the samples only that map named: they are sent again.
-            let source = &mut self.sources[source];
-            for &cell in slot
-                .window
-                .samples
-                .iter()
-                .filter(|&&cell| cell < FIRST_NON_SAMPLE)
-            {
-                source.unclaim(u64::from(cell));
-            }
-        }
         slot.window = LaneWindow::default();
         self.refresh(timeline);
     }
 
-    /// Recomputes the lane maps and sample windows for the current want and forgets the samples that left theirs.
+    /// Recomputes the lane maps and sample windows for the current want. A sent sample that left its window is to be
+    /// evicted; one waiting for its eviction that returned is counted as sent again, as the viewer still holds it.
     pub(crate) fn refresh(&mut self, timeline: &Timeline) {
         let Some((want, range)) = self.window() else {
             return;
@@ -183,9 +177,28 @@ impl State {
             source.window = sample_window(&maps, *range.start(), want.playhead, want.direction)
                 .into_iter()
                 .collect::<BTreeMap<_, _>>();
-            source
-                .claimed
-                .retain(|sample| source.window.contains_key(sample));
+            let leaving: Vec<u64> = source
+                .sent
+                .keys()
+                .filter(|sample| !source.window.contains_key(sample))
+                .copied()
+                .collect();
+            for sample in leaving {
+                if let Some(held) = source.sent.remove(&sample) {
+                    source.evicting.insert(sample, held);
+                }
+            }
+            let returning: Vec<u64> = source
+                .evicting
+                .keys()
+                .filter(|sample| source.window.contains_key(sample))
+                .copied()
+                .collect();
+            for sample in returning {
+                if let Some(held) = source.evicting.remove(&sample) {
+                    source.sent.insert(sample, held);
+                }
+            }
             source
                 .ready
                 .retain(|(sample, _)| source.window.contains_key(sample));
