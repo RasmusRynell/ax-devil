@@ -16,9 +16,9 @@ use sessions::Secret;
 use std::{
     io::{BufRead, BufReader, Read},
     net::{IpAddr, Ipv4Addr},
-    process::{Command, Stdio},
+    process::{Command, ExitStatus, Stdio},
     sync::{Arc, mpsc},
-    time::Duration,
+    time::{Duration, Instant},
 };
 use tokio::sync::watch;
 use tower::ServiceExt;
@@ -284,8 +284,9 @@ fn behind_a_proxy_only_the_totals_bind() {
     drop(open);
 }
 
-/// Starts `serve --port 0` with its own home and returns what it prints to stdout and stderr in the first seconds.
-fn serve_output(extra: &[&str]) -> (Vec<String>, String, bool) {
+/// Starts `serve --port 0` with its own home and returns what it prints to stdout and stderr, and how it ended: its
+/// exit status, or `None` when it was still running once it had announced its URL and was killed.
+fn serve_output(extra: &[&str]) -> (Vec<String>, String, Option<ExitStatus>) {
     let home = tempfile::tempdir().unwrap();
     let mut child = Command::new(env!("CARGO_BIN_EXE_ax-devil"))
         .args(["serve", "--port", "0"])
@@ -314,9 +315,24 @@ fn serve_output(extra: &[&str]) -> (Vec<String>, String, bool) {
             break;
         }
     }
-    let running = child.try_wait().unwrap().is_none();
-    child.kill().unwrap();
-    child.wait().unwrap();
+    // Closed stdout comes before the exit is reapable, so a start that failed is waited for, not sampled.
+    let deadline = Instant::now() + Duration::from_secs(20);
+    let mut exit = child.try_wait().unwrap();
+    while exit.is_none()
+        && printed
+            .last()
+            .is_none_or(|line| !line.starts_with("ax-devil: "))
+    {
+        if Instant::now() > deadline {
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(10));
+        exit = child.try_wait().unwrap();
+    }
+    if exit.is_none() {
+        child.kill().unwrap();
+        child.wait().unwrap();
+    }
     let mut log = String::new();
     child
         .stderr
@@ -324,19 +340,20 @@ fn serve_output(extra: &[&str]) -> (Vec<String>, String, bool) {
         .unwrap()
         .read_to_string(&mut log)
         .unwrap();
-    (printed, log, running)
+    (printed, log, exit)
 }
 
 #[test]
 fn serve_prints_a_generated_password_and_warns_about_plain_http_off_loopback() {
     if !cfg!(feature = "embed-assets") {
-        let (printed, log, running) = serve_output(&[]);
-        assert!(!running && printed.is_empty());
+        let (printed, log, exit) = serve_output(&[]);
+        assert!(exit.is_some_and(|status| !status.success()), "{log}");
+        assert!(printed.is_empty(), "{printed:?}");
         assert!(log.contains("make build"), "{log}");
         return;
     }
-    let (printed, log, running) = serve_output(&["--bind", "0.0.0.0"]);
-    assert!(running, "{log}");
+    let (printed, log, exit) = serve_output(&["--bind", "0.0.0.0"]);
+    assert!(exit.is_none(), "{log}");
     let password = printed[0]
         .strip_prefix("ax-devil server password: ")
         .unwrap();
