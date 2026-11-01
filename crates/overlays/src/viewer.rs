@@ -34,8 +34,8 @@ impl ViewerOverlays {
         &self.sources
     }
 
-    /// Replaces a lane's policy under `revision`: its Frame Map is selected and sent again, its samples only where
-    /// the new map needs others. `matching: None` is a policy the caller refused: the lane keeps its previous
+    /// Replaces a lane's policy under `revision`: its Frame Map is selected and sent again, with the samples of its
+    /// source. `matching: None` is a policy the caller refused: the lane keeps its previous
     /// matching but adopts `revision` and `subscribed`. A plain lane, or one past the last lane, is ignored.
     pub fn set_policy(
         &self,
@@ -61,6 +61,12 @@ impl ViewerOverlays {
     pub fn want(&self, window: Want) {
         self.shared
             .update(|state| state.set_want(window, &self.shared.timeline));
+    }
+
+    /// Takes back an event the consumer was to deliver but did not (the viewer's authority no longer reached it): what
+    /// the viewer still needs of it is offered again by [`next_event`](Self::next_event), within the current window.
+    pub fn undelivered(&self, event: &OverlayEvent) {
+        self.shared.update(|state| state.undelivered(event));
     }
 
     /// The next event: statuses and problems first, then the most urgent map run or sample, nearest the playhead

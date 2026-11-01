@@ -24,3 +24,6 @@ export function dataWindow(
   const data_ahead = Math.min(ahead, Math.round(((frames - 1) * ahead) / (ahead + behind)));
   return { data_ahead, data_behind: Math.min(behind, frames - 1 - data_ahead) };
 }
+
+/** The most Sample Items may take whatever the maps say: twice what the data window is sized for. */
+export const sampleCapBytes = (budgetBytes: number): number => 2 * DATA_SHARE * budgetBytes;

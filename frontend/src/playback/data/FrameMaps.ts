@@ -77,14 +77,9 @@ export class FrameMaps {
     return page ? page.kinds[frame % FRAME_MAP_RUN_FRAMES] : 0;
   }
 
-  /** Copies the lane's cells of `first..first + out.length - 1` into `out`; false when any is `UNKNOWN`. */
-  window(lane: number, first: number, out: Int32Array): boolean {
-    for (let k = 0; k < out.length; k++) {
-      const cell = this.at(lane, first + k);
-      if (cell === UNKNOWN) return false;
-      out[k] = cell;
-    }
-    return true;
+  /** Copies the lane's cells of `first..first + out.length - 1` into `out`; a frame it holds no cell for is `UNKNOWN`. */
+  window(lane: number, first: number, out: Int32Array): void {
+    for (let k = 0; k < out.length; k++) out[k] = this.at(lane, first + k);
   }
 
   /** Forgets every cell outside `low..high`, for all lanes, and keeps accepting only that range. */

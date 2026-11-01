@@ -153,10 +153,14 @@ impl<I: Incoming> Playing<'_, I> {
         Ok(())
     }
 
-    /// Judges the viewer's last want again, after the authority changed or as the presenter's clock moves.
+    /// Judges the viewer's last want again, after the authority changed or as the presenter's clock moves, then
+    /// gives the overlays back the data the writer dropped, which they offer again inside the window now.
     fn refresh(&mut self) -> Flow<()> {
         self.gate.refresh(self.session)?;
         self.lanes.follow(self.gate.applied(), self.data);
+        for event in self.gate.take_rejected() {
+            self.lanes.undelivered(&event);
+        }
         Ok(())
     }
 
@@ -277,10 +281,10 @@ fn encode(
     match delivery {
         Delivery::Frame(frame) => {
             let sequence_id = frame.id().sequence_id;
-            Ok(Outgoing {
-                message: Message::Binary(envelope::video_frame(&frame, sequence_id == last)),
-                frame: Some(sequence_id),
-            })
+            Ok(Outgoing::frame(
+                Message::Binary(envelope::video_frame(&frame, sequence_id == last)),
+                sequence_id,
+            ))
         }
         Delivery::Failure(failure) => {
             // A video with many bad frames would flood the log: the first is a warning, the rest are for diagnosis.
@@ -301,13 +305,13 @@ fn encode(
                     error.reason
                 );
             }
-            Ok(Outgoing {
-                message: text(&ServerMessage::FrameError {
+            Ok(Outgoing::frame(
+                text(&ServerMessage::FrameError {
                     sequence_id: failure.sequence_id,
                     error: project(&failure.error, audience),
                 }),
-                frame: Some(failure.sequence_id),
-            })
+                failure.sequence_id,
+            ))
         }
         Delivery::Failed(mut error) => {
             if error.location.is_none() {

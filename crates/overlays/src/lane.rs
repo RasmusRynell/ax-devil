@@ -1,6 +1,6 @@
 //! The vocabulary of a viewer's lanes: how a lane selects samples, where its load stands and what the feed produces.
 
-use std::sync::Arc;
+use std::{ops::RangeInclusive, sync::Arc};
 
 use foundation::UserError;
 use overlay_sync::MatchPolicy;
@@ -77,6 +77,16 @@ pub struct MapRun {
     pub kinds: Vec<u8>,
     /// The frame the run ranks by: the one nearest the playhead.
     pub frame: u64,
+}
+
+impl MapRun {
+    /// The frames the run covers.
+    pub fn frames(&self) -> RangeInclusive<u64> {
+        self.first
+            ..=self
+                .first
+                .saturating_add(self.samples.len().saturating_sub(1) as u64)
+    }
 }
 
 /// What a viewer's overlays report.

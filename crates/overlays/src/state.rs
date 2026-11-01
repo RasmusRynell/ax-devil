@@ -124,6 +124,16 @@ pub(crate) struct Source {
     pub(crate) ready: Vec<(u64, Arc<[u8]>)>,
 }
 
+impl Source {
+    /// Forgets that `sample` was sent, unless it still waits in `ready`; the encoder offers it again while it is in
+    /// the sample window.
+    pub(crate) fn unclaim(&mut self, sample: u64) {
+        if !self.ready.iter().any(|(held, _)| *held == sample) {
+            self.claimed.remove(&sample);
+        }
+    }
+}
+
 impl State {
     /// A viewer with one lane per entry of `lanes`; lanes on the same file share a source, and each source starts
     /// loading.
@@ -284,6 +294,41 @@ impl State {
             for lane in self.lanes_of(source).collect::<Vec<_>>() {
                 self.report(lane, reason.clone());
             }
+        }
+    }
+
+    /// Takes back an event the consumer did not deliver, so what the viewer still needs of it is offered again: a
+    /// sample is encoded and sent again, a map run's frames are sent again with the samples they name. An event of
+    /// another revision is of no concern any more.
+    pub(crate) fn undelivered(&mut self, event: &OverlayEvent) {
+        match event {
+            OverlayEvent::Sample(item) => {
+                let Some(slot) = self.sources.get_mut(usize::from(item.source)) else {
+                    return;
+                };
+                if slot.data_revision == item.data_revision {
+                    slot.unclaim(item.sample);
+                }
+            }
+            OverlayEvent::Map(run) => {
+                let Some(lane) = self.lanes.get_mut(usize::from(run.lane)) else {
+                    return;
+                };
+                let Some(source) = lane.source.filter(|_| lane.revision == run.policy_revision)
+                else {
+                    return;
+                };
+                let slot = &mut self.sources[source];
+                if slot.data_revision != run.data_revision {
+                    return;
+                }
+                lane.maps_sent.remove_range(&run.frames());
+                // The viewer drops a sample no map it holds names, so the ones this run named come again too.
+                for &cell in run.samples.iter().filter(|&&cell| cell < FIRST_NON_SAMPLE) {
+                    slot.unclaim(u64::from(cell));
+                }
+            }
+            OverlayEvent::Status { .. } | OverlayEvent::Problem { .. } => {}
         }
     }
 

@@ -2,6 +2,7 @@
 
 import { Catalogs } from "./catalogs";
 import { FrameMaps } from "./data/FrameMaps";
+import { sampleCapBytes } from "./data/dataWindow";
 import { SampleStore } from "./data/SampleStore";
 import { sampleWindow } from "./data/sampleWindow";
 import { windowRange } from "./FrameBuffer";
@@ -15,7 +16,7 @@ const NOT_READY = -1;
 
 export class ViewerData {
   readonly #lanes: LaneSet;
-  readonly samples = new SampleStore();
+  samples = new SampleStore(0);
   readonly catalogs: Catalogs;
   #maps: FrameMaps | undefined;
   #frameCount = 0;
@@ -60,8 +61,9 @@ export class ViewerData {
     return this.#waiting.some((lane) => this.#draw?.at(lane, frame).state !== "pending");
   }
 
-  /** Starts holding maps for a video of `frameCount` frames. */
-  open(frameCount: number): void {
+  /** Starts holding maps for a video of `frameCount` frames, and samples within a cap sized from the buffer budget. */
+  open(frameCount: number, budgetBytes: number): void {
+    this.samples = new SampleStore(sampleCapBytes(budgetBytes));
     this.#frameCount = frameCount;
     this.#maps = new FrameMaps(frameCount);
     this.#draw = new LaneData(this.#lanes, this.samples, this.#maps, this.catalogs);
@@ -126,8 +128,10 @@ export class ViewerData {
   }
 
   /**
-   * Keeps the maps of the data window of `want`, and the samples those maps select once all of them are held (the
-   * backend sends exactly those, so a sample outside them is one it believes the viewer dropped).
+   * Keeps the maps of the data window of `want`, and the samples the maps held select inside it, most urgent first.
+   * The backend sends only the part of the window its authority allows, so the maps are often incomplete; a sample
+   * no held map names is dropped all the same, as the backend forgets it when its frames leave the window, and
+   * what the cap cannot hold goes least urgent first.
    */
   retain(want: Want | undefined): void {
     const maps = this.#maps;
@@ -148,12 +152,10 @@ export class ViewerData {
     });
     for (const [source, lanes] of shown) {
       const cells = lanes.map(() => new Int32Array(high - low + 1));
-      const complete = lanes.every((lane, i) => maps.window(lane, low, cells[i]));
+      lanes.forEach((lane, i) => maps.window(lane, low, cells[i]));
       this.samples.retain(
         source,
-        complete
-          ? new Set(sampleWindow(cells, low, playhead, direction).map(([sample]) => sample))
-          : null,
+        sampleWindow(cells, low, playhead, direction).map(([sample]) => sample),
       );
     }
   }

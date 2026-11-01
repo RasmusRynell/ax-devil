@@ -103,8 +103,9 @@ impl State {
         self.refresh(timeline);
     }
 
-    /// Replaces a lane's policy under a new revision: its maps are selected and sent again, its samples only where
-    /// the new maps need others. A plain lane, or one past the last lane, is ignored.
+    /// Replaces a lane's policy under a new revision: its maps are selected and sent again, and so are the samples
+    /// its old map named, because the viewer keeps only the samples the maps it holds name and holds none of the
+    /// new revision yet. A plain lane, or one past the last lane, is ignored.
     pub(crate) fn set_policy(
         &mut self,
         lane: usize,
@@ -122,6 +123,18 @@ impl State {
             slot.policy.matching = matching;
         }
         slot.maps_sent.clear();
+        if let Some(source) = slot.source {
+            // The viewer forgets this lane's map and with it the samples only that map named: they are sent again.
+            let source = &mut self.sources[source];
+            for &cell in slot
+                .window
+                .samples
+                .iter()
+                .filter(|&&cell| cell < FIRST_NON_SAMPLE)
+            {
+                source.unclaim(u64::from(cell));
+            }
+        }
         slot.window = LaneWindow::default();
         self.refresh(timeline);
     }

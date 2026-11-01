@@ -91,11 +91,9 @@ impl Lanes {
                     self.status.insert(lane, status);
                 }
                 Event::Sample(sample) => {
-                    let key = (sample.source, sample.sample);
-                    assert!(
-                        self.items.insert(key, sample.rows).is_none(),
-                        "sample {key:?} was sent twice"
-                    );
+                    // A policy change sends the samples its maps name again.
+                    self.items
+                        .insert((sample.source, sample.sample), sample.rows);
                 }
                 Event::Map(map) => {
                     for (k, cell) in map.samples.iter().enumerate() {

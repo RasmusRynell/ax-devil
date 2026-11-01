@@ -29,6 +29,7 @@ export const Motion = { None: 0, Moving: 1, Stationary: 2, Unknown: 3 } as const
 export const MOTION_STATES = ["moving", "stationary", "unknown"] as const;
 
 const encoder = new TextEncoder();
+const strict = new TextDecoder("utf-8", { fatal: true });
 
 const CRC_TABLE = Uint32Array.from({ length: 256 }, (_, n) => {
   let c = n;
@@ -259,35 +260,75 @@ export function readSample(buffer: ArrayBuffer | Uint8Array): SampleView {
     vocab > strings
   )
     throw new SampleFormatError("the string table is inconsistent");
+  // An offset out of order or past the bytes would make a string decode far beyond the item.
+  for (let i = 0; i < strings; i++)
+    if (stringOffsets[i] > stringOffsets[i + 1])
+      throw new SampleFormatError("the string offsets are not in order");
+  try {
+    strict.decode(stringData);
+  } catch {
+    throw new SampleFormatError("the string table is not UTF-8");
+  }
   const table = new StringTable(stringOffsets, stringData, states, vocab);
   MOTION_STATES.forEach((name, id) => {
     if (!table.equals(id, encoder.encode(name)))
       throw new SampleFormatError("the string table does not start with the motion states");
   });
 
+  /** Throws unless every cell of `cells` is -1 or below `limit`. */
+  const refs = (cells: Int32Array, limit: number, what: string): void => {
+    for (const cell of cells)
+      if (cell < -1 || cell >= limit)
+        throw new SampleFormatError(`${what} refers to ${cell}, which the item does not have`);
+  };
+
   const index = new Uint32Array(data, at(S.attrIndex, attributes * 12), attributes * 3);
   const attrs: AttrColumn[] = [];
+  let colorsUsed = 0;
   for (let i = 0; i < attributes; i++) {
     const [name, kind, offset] = [index[i * 3], index[i * 3 + 1], index[i * 3 + 2]];
     if (kind > AttrKind.Colors)
       throw new SampleFormatError(`attribute kind ${kind} is not read here`);
+    if (name >= strings) throw new SampleFormatError("an attribute name is not in the item");
     const cells = place(offset, rows * ATTR_CELL_BYTES[kind]);
-    attrs.push({
+    const column: AttrColumn = {
       name,
       kind: kind as AttrKind,
       bool: kind === AttrKind.Bool ? new Uint8Array(data, cells, rows) : undefined,
       number: kind === AttrKind.Number ? new Float64Array(data, cells, rows) : undefined,
       id: kind === AttrKind.String ? new Int32Array(data, cells, rows) : undefined,
       span: kind === AttrKind.Colors ? new Int32Array(data, cells, rows * 2) : undefined,
-    });
+    };
+    if (column.id) refs(column.id, strings, "an attribute value");
+    if (column.span) {
+      // Each colour belongs to one list, so the lists of all columns together cannot hold more than there are.
+      for (let row = 0; row < rows; row++) {
+        const [first, count] = [column.span[row * 2], column.span[row * 2 + 1]];
+        if (first === -1) continue;
+        colorsUsed += count;
+        if (first < 0 || count < 0 || first + count > colors || colorsUsed > colors)
+          throw new SampleFormatError("a colour list lies outside the item's colours");
+      }
+    }
+    attrs.push(column);
   }
 
-  return {
+  const polyIndex = new Uint32Array(data, at(S.polyIndex, rows * 8), rows * 2);
+  // The outlines are stored one after the other, so what they hold in all cannot exceed the points.
+  let pointsUsed = 0;
+  for (let row = 0; row < rows; row++) {
+    if (polyIndex[row * 2] !== pointsUsed)
+      throw new SampleFormatError("the outlines are not stored in order");
+    pointsUsed += polyIndex[row * 2 + 1];
+    if (pointsUsed > points) throw new SampleFormatError("an outline reaches past the points");
+  }
+
+  const view: SampleView = {
     rows,
     relationCount: relations,
     entityId: new Int32Array(data, at(S.entityId, rows * 4), rows),
     box: new Float32Array(data, at(S.box, rows * 16), rows * 4),
-    polyIndex: new Uint32Array(data, at(S.polyIndex, rows * 8), rows * 2),
+    polyIndex,
     polyPoints: new Float32Array(data, at(S.polyPoints, points * 8), points * 2),
     motion: new Uint8Array(data, at(S.motion, rows), rows),
     velocity: new Float32Array(data, at(S.velocity, rows * 8), rows * 2),
@@ -307,4 +348,11 @@ export function readSample(buffer: ArrayBuffer | Uint8Array): SampleView {
     relTarget: new Int32Array(data, at(S.relTarget, relations * 4), relations),
     strings: table,
   };
+  refs(view.entityId, strings, "an entity id");
+  refs(view.classId, strings, "a class");
+  refs(view.colors.name, strings, "a colour name");
+  refs(view.relKind, strings, "a relation kind");
+  refs(view.relSource, rows, "a relation source");
+  refs(view.relTarget, rows, "a relation target");
+  return view;
 }

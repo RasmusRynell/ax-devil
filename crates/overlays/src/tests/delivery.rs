@@ -126,7 +126,7 @@ async fn a_sample_that_leaves_the_window_and_returns_is_sent_again_with_its_map(
 }
 
 #[tokio::test]
-async fn lanes_on_one_file_share_a_source_and_a_policy_change_resends_only_the_maps() {
+async fn lanes_on_one_file_share_a_source_and_a_policy_change_resends_its_maps_and_samples() {
     let env = Env::new();
     let overlay = env.mot("a.txt", 0..10);
     let mut viewer = env.open(vec![Some(overlay.clone()), Some(overlay)], 10);
@@ -146,10 +146,11 @@ async fn lanes_on_one_file_share_a_source_and_a_policy_change_resends_only_the_m
     assert_eq!(cells(&sent, 0), cells(&sent, 1));
     assert_eq!(cells(&sent, 0).len(), 4);
 
-    // The new maps need the samples the viewer holds: nothing but the maps goes, under the new revision.
+    // The viewer keeps only the samples the maps it holds name, and holds no map of the new revision yet: the
+    // samples go again with the maps, under the new revision.
     viewer.set_policy(1, 2, shown().0, true);
     let again = settle(&mut viewer).await;
-    assert!(again.samples.is_empty());
+    assert_eq!(sample_ids(&again), [4, 5, 6, 3]);
     assert_eq!(cells(&again, 1), cells(&sent, 1));
     assert!(
         again
@@ -158,10 +159,33 @@ async fn lanes_on_one_file_share_a_source_and_a_policy_change_resends_only_the_m
             .all(|run| run.lane == 1 && run.policy_revision == 2)
     );
 
-    // Hiding one lane keeps the samples the other still needs.
+    // Hiding one lane sends the samples the other still needs again, for the window it has now.
     viewer.set_policy(1, 3, shown().0, false);
     viewer.want(want(5, 1, 2));
-    assert_eq!(sample_ids(&settle(&mut viewer).await), [7]);
+    assert_eq!(sample_ids(&settle(&mut viewer).await), [5, 6, 7, 4]);
+}
+
+#[tokio::test]
+async fn data_the_consumer_did_not_deliver_comes_again_while_the_window_holds_it() {
+    let env = Env::new();
+    let mut viewer = shown_viewer(&env, 20).await;
+    viewer.want(want(10, 2, 2));
+    let sent = settle(&mut viewer).await;
+    assert_eq!(sample_ids(&sent), [10, 11, 12, 9, 8]);
+
+    // The writer dropped the map run and the sample of the playhead: the run's frames and the samples it names come
+    // again, and the sample dropped alone with them.
+    viewer.undelivered(&OverlayEvent::Map(sent.maps[0].clone()));
+    viewer.undelivered(&OverlayEvent::Sample(sent.samples[0].clone()));
+    let again = settle(&mut viewer).await;
+    assert_eq!(cells(&again, 0), cells(&sent, 0));
+    assert_eq!(sample_ids(&again), [10, 11, 12, 9, 8]);
+
+    // A sample the window no longer needs does not come back.
+    viewer.want(want(19, 0, 0));
+    settle(&mut viewer).await;
+    viewer.undelivered(&OverlayEvent::Sample(sent.samples[0].clone()));
+    assert!(quiet(&mut viewer).await);
 }
 
 #[tokio::test]

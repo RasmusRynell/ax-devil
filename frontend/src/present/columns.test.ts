@@ -155,4 +155,43 @@ describe("readSample", () => {
     ];
     for (const bad of refused) expect(() => readSample(bad)).toThrow(SampleFormatError);
   });
+
+  it("refuses references inside the item that point nowhere, instead of decoding or drawing them", () => {
+    const golden = bytes("items/classes.bin");
+    const words = new Uint32Array(golden);
+    const section = (n: number): number => words[12 + n] / 4;
+    const damaged = (change: (w: Uint32Array) => void): ArrayBuffer => {
+      const copy = golden.slice(0);
+      change(new Uint32Array(copy));
+      return copy;
+    };
+    expect(() => readSample(golden)).not.toThrow();
+    // An end offset of a middle string far past the bytes: it once decoded a million code points.
+    expect(() => readSample(damaged((w) => (w[section(17) + 21] = 1_000_000)))).toThrowError(
+      SampleFormatError,
+    );
+    // A string offset that goes back.
+    expect(() =>
+      readSample(damaged((w) => (w[section(17) + 5] = w[section(17) + 4] - 1))),
+    ).toThrowError(SampleFormatError);
+    // An entity or a class the item does not have, and an outline outside the points.
+    for (const [n, value] of [
+      [0, 99_999],
+      [6, 99_999],
+      [2, 99_999],
+    ]) {
+      expect(() => readSample(damaged((w) => (w[section(n)] = value)))).toThrowError(
+        SampleFormatError,
+      );
+    }
+    // Bytes that are not UTF-8 in the string table.
+    expect(() =>
+      readSample(
+        damaged((w) => {
+          const bytes = new Uint8Array(w.buffer);
+          bytes[section(18) * 4 + 30] = 0xff;
+        }),
+      ),
+    ).toThrowError(SampleFormatError);
+  });
 });

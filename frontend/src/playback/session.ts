@@ -391,7 +391,7 @@ export class PlaybackSession implements LaneControl {
     if (times.length === 0 || times.length !== opened.frame_count || opened.frame_bytes <= 0)
       return this.#fail("The backend described the video inconsistently", "playback");
     this.#buffer = new FrameBuffer<VideoFrame>(this.#budget, times.length);
-    this.#data.open(times.length);
+    this.#data.open(times.length, this.#budget);
     this.#planner = new WantPlanner(windowSize(this.#budget, opened.frame_bytes));
     this.#times = times;
     this.#clock = new PlaybackClock(times, this.#deps.now, this.#resumeAt ?? 0);

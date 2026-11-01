@@ -159,7 +159,10 @@ describe("lanes", () => {
     expect(session.getSnapshot().lanes[0]).toMatchObject({ pending: true, policyRevision: 2 });
     server.map({ cells: [0, 0], policyRevision: 1 });
     expect(drawn.at(-1)?.lanes).toEqual([undefined]);
+    // The maps of the new revision select no sample the viewer still holds: the backend sends its items again.
     server.map({ cells: [0, 0], policyRevision: 2 });
+    expect(drawn.at(-1)?.lanes).toEqual([undefined]);
+    server.sample();
     expect(drawn.at(-1)?.lanes[0]).toMatchObject({ sample: 0 });
     expect(session.getSnapshot().lanes[0].pending).toBe(false);
   });

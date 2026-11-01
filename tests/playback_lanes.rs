@@ -267,22 +267,22 @@ async fn a_lane_reports_its_load_then_sends_its_maps_and_each_mapped_sample_once
         [1, 1, 1]
     );
 
-    // Another policy resends the maps under its revision, and no sample the lane already holds.
+    // Another policy resends the maps under its revision, and the samples they name: the viewer holds only what its
+    // maps name, and has none of the new revision yet.
+    let resent = |seen: &Seen, times| seen.samples.values().all(|&sent| sent == times);
     viewer
         .send(&lane_policy(0, 2, policy(Some(50), None), true))
         .await;
-    seen.read_until(&mut viewer, |seen| seen.mapped(2)).await;
+    seen.read_until(&mut viewer, |seen| seen.mapped(2) && resent(seen, 2))
+        .await;
     assert_eq!(seen.maps[&(2, 1)].0, 1);
-    assert_eq!(
-        seen.samples.values().copied().collect::<Vec<_>>(),
-        [1, 1, 1]
-    );
 
     // A policy that cannot be applied is reported; the lane keeps its matching and the maps carry the new revision.
     viewer
         .send(&lane_policy(0, 3, policy(None, Some(100_001)), true))
         .await;
-    seen.read_until(&mut viewer, |seen| seen.mapped(3)).await;
+    seen.read_until(&mut viewer, |seen| seen.mapped(3) && resent(seen, 3))
+        .await;
     assert!(
         seen.problems[0].contains("100 seconds"),
         "{:?}",

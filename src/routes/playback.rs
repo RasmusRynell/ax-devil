@@ -17,8 +17,8 @@
 //!
 //! What a viewer may ask for, and every frame, Sample Item and Frame Map it is sent, is bounded by its lease's `Authority` as
 //! it is now (`gate`): when the authority changes or the presenter's clock moves, what the viewer asked is judged
-//! again at once, the data follows the window the gate allowed, and a frame or data message queued outside the new
-//! bounds is dropped instead of sent. Once the authority is revoked the session ends at once, also while the video
+//! again at once, the data follows the window the gate allowed, and a frame or data message queued with any frame outside
+//! the new bounds is dropped instead of sent; dropped data is offered again if the window still needs it. Once the authority is revoked the session ends at once, also while the video
 //! is being indexed, its overlays stop, a message still queued is dropped and the socket closes with code 4403.
 
 mod envelope;
@@ -44,8 +44,9 @@ use axum::{
 use foundation::{ErrorCode, UserError};
 use futures_util::{Sink, SinkExt, Stream, StreamExt};
 use gate::Gate;
+use overlays::OverlayEvent;
 use sessions::session::{StreamLease, Ticket};
-use std::{net::SocketAddr, time::Duration};
+use std::{net::SocketAddr, ops::RangeInclusive, time::Duration};
 use tokio::{
     sync::{mpsc, watch},
     task::JoinHandle,
@@ -95,18 +96,32 @@ enum End {
 
 type Flow<T> = Result<T, End>;
 
-/// A message for the viewer. A frame, or data ranked by a frame (a sample or a map run), says which frame it is, so
-/// the writer can drop it once the viewer's authority no longer reaches that frame.
+/// A message for the viewer. A frame, or the data of frames (a sample for the frame it ranks by, a map run for the
+/// frames it covers), says which, so the writer can drop it once the viewer's authority no longer reaches all of
+/// them. Dropped data is told to the gate, which hands it back to the overlays to offer again.
 struct Outgoing {
     message: Message,
-    frame: Option<u64>,
+    frames: Option<RangeInclusive<u64>>,
+    data: Option<OverlayEvent>,
+}
+
+impl Outgoing {
+    /// A frame, or what is about one.
+    fn frame(message: Message, frame: u64) -> Self {
+        Self {
+            message,
+            frames: Some(frame..=frame),
+            data: None,
+        }
+    }
 }
 
 impl From<Message> for Outgoing {
     fn from(message: Message) -> Self {
         Self {
             message,
-            frame: None,
+            frames: None,
+            data: None,
         }
     }
 }
@@ -221,18 +236,27 @@ async fn refuse<S: Sink<Message> + Unpin>(sink: &mut S, ended: End) {
 
 /// Owns the socket's write half, so the session loop keeps reading while a large frame is being written. Whatever is
 /// queued when the authority is revoked is dropped, not sent, and the socket closes with the revoked code. A queued
-/// frame the authority no longer reaches is dropped too.
+/// frame, sample or map run the authority no longer reaches is dropped too, and the overlays are told to offer it
+/// again if the viewer still needs it.
 fn spawn_writer<S>(mut sink: S, gate: Gate) -> (Outbox, JoinHandle<()>)
 where
     S: Sink<Message> + Unpin + Send + 'static,
 {
     let (outbox, mut queue) = mpsc::channel::<Outgoing>(1);
     let writer = tokio::spawn(async move {
-        while let Some(Outgoing { message, frame }) = queue.recv().await {
+        while let Some(Outgoing {
+            message,
+            frames,
+            data,
+        }) = queue.recv().await
+        {
             if gate.is_revoked() {
                 break;
             }
-            if frame.is_some_and(|frame| !gate.admits(frame)) {
+            if frames.is_some_and(|frames| !gate.admits(&frames)) {
+                if let Some(data) = data {
+                    gate.reject(data);
+                }
                 continue;
             }
             if sink.send(message).await.is_err() {

@@ -7,7 +7,7 @@ use api_types::playback::{Direction, LanePolicyWire, StickyWire, Want as WireWan
 use foundation::{CancelToken, FrameSize, HostPath, Interrupt, MediaTime, Timeline};
 use futures_util::{sink, stream as streams};
 use open::open_video;
-use overlays::OverlayService;
+use overlays::{MapRun, OverlayEvent, OverlayService};
 use playback::{Authority, CachePool, ClockIntent, Registry};
 use std::{
     collections::BTreeSet,
@@ -128,10 +128,7 @@ async fn a_frame_queued_outside_a_narrowed_authority_is_dropped_and_the_rest_sti
         }
     }));
     let (outbox, writer) = spawn_writer(socket, gate);
-    let frame = |id: u8| Outgoing {
-        message: Message::Binary(vec![id].into()),
-        frame: Some(u64::from(id)),
-    };
+    let frame = |id: u8| Outgoing::frame(Message::Binary(vec![id].into()), u64::from(id));
 
     outbox.send(frame(60)).await.unwrap();
     // Frame 60 is with the socket, frame 61 waits behind it, and then the viewer is made a follower of frame 10.
@@ -149,6 +146,59 @@ async fn a_frame_queued_outside_a_narrowed_authority_is_dropped_and_the_rest_sti
         [sent(60), sent(12), Message::text("progress")],
         "frame 60 was already with the socket; frame 61 was not and is not within four frames of 10"
     );
+}
+
+#[tokio::test]
+async fn a_map_run_queued_with_a_frame_outside_a_narrowed_authority_is_dropped_whole_and_handed_back()
+ {
+    let (holder, authority) = watch::channel(Authority::default());
+    let gate = Gate::new(authority, || 0);
+    gate.open(Timeline::new((0..90).map(|n| MediaTime::from_us(n * 33_333)).collect()).unwrap());
+    let delivered = Arc::new(Mutex::new(Vec::new()));
+    let socket = Box::pin(sink::unfold((), {
+        let delivered = delivered.clone();
+        move |(), message: Message| {
+            let delivered = delivered.clone();
+            async move {
+                delivered.lock().unwrap().push(message);
+                Ok::<(), ()>(())
+            }
+        }
+    }));
+    let (outbox, writer) = spawn_writer(socket, gate.clone());
+    let run = |first: u64| {
+        let run = MapRun {
+            lane: 0,
+            policy_revision: 1,
+            data_revision: 1,
+            first,
+            samples: vec![0; 9],
+            kinds: vec![0; 9],
+            frame: 10,
+        };
+        Outgoing {
+            message: Message::Binary(vec![first as u8].into()),
+            frames: Some(run.frames()),
+            data: Some(OverlayEvent::Map(run)),
+        }
+    };
+
+    // A follower of frame 10 may have 6 to 14. The run of 6 to 14 is its own; the run of 8 to 16 is ranked by
+    // frame 10, which it may have, but reaches frames it may not.
+    holder.send_replace(paused_on(10));
+    outbox.send(run(6)).await.unwrap();
+    outbox.send(run(8)).await.unwrap();
+    drop(outbox);
+    tokio::time::timeout(WAIT, writer).await.unwrap().unwrap();
+
+    assert_eq!(
+        *delivered.lock().unwrap(),
+        [Message::Binary(vec![6].into())]
+    );
+    let [OverlayEvent::Map(handed_back)] = &gate.take_rejected()[..] else {
+        panic!("the dropped run is handed back");
+    };
+    assert_eq!(handed_back.frames(), 8..=16);
 }
 
 /// The fixture video with one lane whose ground truth covers every frame, so each frame in a window has an overlay.
@@ -264,7 +314,12 @@ async fn a_viewer_made_a_follower_gets_no_frame_or_data_outside_the_presenters_w
         // While the viewer explores, the lane's data comes for frames far from where it will follow.
         loop {
             let sent = queue.recv().await.unwrap();
-            if is_data(&sent) && sent.frame.is_some_and(|frame| frame > 20) {
+            if is_data(&sent)
+                && sent
+                    .frames
+                    .as_ref()
+                    .is_some_and(|frames| *frames.end() > 20)
+            {
                 break;
             }
         }
@@ -282,12 +337,12 @@ async fn a_viewer_made_a_follower_gets_no_frame_or_data_outside_the_presenters_w
         let mut unsent = BTreeSet::from_iter(6..=14);
         while !(unmapped.is_empty() && unsent.is_empty()) {
             let sent = queue.recv().await.unwrap();
-            let Some(frame) = sent.frame else {
+            let Some(frames) = &sent.frames else {
                 continue;
             };
             assert!(
-                (6..=14).contains(&frame),
-                "frame {frame} is outside the presenter's window"
+                (6..=14).contains(frames.start()) && (6..=14).contains(frames.end()),
+                "frames {frames:?} are outside the presenter's window"
             );
             let Message::Binary(bytes) = &sent.message else {
                 continue;

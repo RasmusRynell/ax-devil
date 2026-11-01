@@ -115,6 +115,11 @@ impl Lanes {
         }
     }
 
+    /// Takes back data the writer dropped, which the overlays send again while the viewer's window still needs it.
+    pub(super) fn undelivered(&self, event: &OverlayEvent) {
+        self.overlays.undelivered(event);
+    }
+
     /// Gives a lane the policy the viewer asked for. One that cannot be applied is reported as a `LaneProblem`; the
     /// lane keeps its matching but adopts `revision` and `subscribed`, so the maps it sends carry the revision the
     /// viewer waits for. A plain lane ignores it; a lane the entry does not have ends the session.
@@ -179,8 +184,9 @@ impl Lanes {
         }
     }
 
-    /// The message for `event`, if the viewer is to be told. A sample or a map run names the frame it ranks by, so
-    /// the gate drops it like the frame once the viewer's authority no longer reaches it.
+    /// The message for `event`, if the viewer is to be told. A sample names the frame it ranks by and a map run the
+    /// frames it covers, so the writer drops it like a frame once the viewer's authority no longer reaches all of
+    /// them.
     pub(super) fn encode(&mut self, event: LaneEvent) -> Option<Outgoing> {
         let host_details = self.audience.host_details;
         let problem = |lane, reason| {
@@ -198,11 +204,13 @@ impl Lanes {
             }
             LaneEvent::Overlay(OverlayEvent::Sample(sample)) => Some(Outgoing {
                 message: Message::Binary(items::sample(&sample)),
-                frame: Some(sample.frame),
+                frames: Some(sample.frame..=sample.frame),
+                data: Some(OverlayEvent::Sample(sample)),
             }),
             LaneEvent::Overlay(OverlayEvent::Map(run)) => Some(Outgoing {
                 message: Message::Binary(items::frame_map(&run)),
-                frame: Some(run.frame),
+                frames: Some(run.frames()),
+                data: Some(OverlayEvent::Map(run)),
             }),
             LaneEvent::Ended => {
                 tracing::warn!(

@@ -8,7 +8,7 @@ import { SampleStore } from "./SampleStore";
 
 describe("sample store", () => {
   it("keeps items of the source's revision and drops those of another", () => {
-    const store = new SampleStore();
+    const store = new SampleStore(1 << 20);
     store.add(0, 1, 4, item());
     expect(store.get(0, 4)).toBeUndefined();
     store.setRevision(0, 1);
@@ -22,23 +22,24 @@ describe("sample store", () => {
     expect(store.bytes).toBe(0);
   });
 
-  it("evicts to the window only once the window is known, and then refuses what is outside it", () => {
-    const store = new SampleStore();
+  it("keeps the wanted items that fit the cap, most urgent first, and drops the rest", () => {
+    const store = new SampleStore(item().length * 2);
     store.setRevision(0, 1);
-    for (const sample of [1, 2, 3]) store.add(0, 1, sample, item());
-    store.retain(0, null);
-    expect([1, 2, 3].map((s) => store.get(0, s) !== undefined)).toEqual([true, true, true]);
-    store.retain(0, new Set([2]));
-    expect([1, 2, 3].map((s) => store.get(0, s) !== undefined)).toEqual([false, true, false]);
-    store.add(0, 1, 3, item());
-    expect(store.get(0, 3)).toBeUndefined();
-    store.retain(0, null);
-    store.add(0, 1, 3, item());
-    expect(store.get(0, 3)).toBeDefined();
+    for (const sample of [1, 2, 3, 4]) store.add(0, 1, sample, item());
+    store.retain(0, [3, 1, 2]);
+    expect([1, 2, 3, 4].map((s) => store.get(0, s) !== undefined)).toEqual([
+      true,
+      false,
+      true,
+      false,
+    ]);
+    expect(store.bytes).toBe(item().length * 2);
+    store.retain(0, []);
+    expect(store.bytes).toBe(0);
   });
 
   it("reports an item it cannot read and does not keep it", () => {
-    const store = new SampleStore();
+    const store = new SampleStore(1 << 20);
     store.setRevision(0, 1);
     expect(store.add(0, 1, 0, new Uint8Array(64))).toEqual(expect.any(String));
     expect(store.get(0, 0)).toBeUndefined();
@@ -70,9 +71,10 @@ describe("frame maps", () => {
     maps.retain(0, 100);
     maps.add(0, 1, 1, 10, cells, kinds);
     const out = new Int32Array(4);
-    expect(maps.window(0, 10, out)).toBe(true);
+    maps.window(0, 10, out);
     expect([...out]).toEqual([3, 3, -1, -2]);
-    expect(maps.window(0, 9, out)).toBe(false);
+    maps.window(0, 9, out);
+    expect([...out]).toEqual([UNKNOWN, 3, 3, -1]);
     maps.retain(12, 100);
     expect([maps.at(0, 11), maps.at(0, 12)]).toEqual([UNKNOWN, -1]);
     maps.setRevisions(0, 2, 1);
