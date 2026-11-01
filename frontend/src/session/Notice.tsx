@@ -36,8 +36,11 @@ export function EndedScreen({ why }: { why: Ending }) {
   );
 }
 
-/** Asks for the server password again and loads the page anew with it, so everything is fetched under the new one. */
-function PasswordDialog({ onClose }: { onClose: () => void }) {
+/**
+ * Asks for the server password and loads the page anew with it, so everything is fetched under the new one. Without
+ * `onClose` there is nothing to go back to: the page cannot be used before a password is given.
+ */
+function PasswordDialog({ onClose }: { onClose?: () => void }) {
   const [password, setPassword] = useState("");
   const [failure, setFailure] = useState<string | null>(null);
   const ok = () => {
@@ -110,6 +113,9 @@ export function Banner({ connection, ownerAway, ended, onDismiss }: Props) {
       {text}
       {ended === "invalid" && remote ? (
         <RejectedPassword />
+      ) : ended === "refused" && !credential() ? (
+        // A server that has a password turns away a visit that brings none, and Dismiss would only visit again.
+        <PasswordDialog />
       ) : (
         ended && <Button onClick={onDismiss}>Dismiss</Button>
       )}

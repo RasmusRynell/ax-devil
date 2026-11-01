@@ -62,3 +62,46 @@ describe("a server that turned the password down", () => {
     expect(reload).toHaveBeenCalledOnce();
   });
 });
+
+describe("a browser that opened a server with a password", () => {
+  beforeEach(() => window.sessionStorage.clear());
+
+  const open = () =>
+    render(
+      <GrantsContext.Provider value={[]}>
+        <SessionProvider>
+          <p>app</p>
+        </SessionProvider>
+      </GrantsContext.Provider>,
+    );
+
+  it("asks for the password, and is let in once it gives the right one", async () => {
+    open();
+    await act(async () => {});
+    expect(screen.queryByRole("button", { name: "Dismiss" })).toBeNull();
+    fireEvent.change(screen.getByLabelText("Password"), { target: { value: "right" } });
+    fireEvent.click(screen.getByRole("button", { name: "OK" }));
+    expect(reload).toHaveBeenCalledOnce();
+
+    // The page loads again with the password it now holds.
+    cleanup();
+    FakeSocket.sockets = [];
+    open();
+    await act(async () => {});
+    expect(screen.getByText("app")).toBeTruthy();
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+
+  it("asks nothing of a join link that was turned away", async () => {
+    const room = FakeSocket.host();
+    window.sessionStorage.setItem(
+      "ax-devil.credential",
+      JSON.stringify({ kind: "join", session: room.id, secret: room.secret }),
+    );
+    open();
+    await act(async () => {});
+    act(() => FakeSocket.latest.endWith(1008));
+    expect((await screen.findByRole("alert")).textContent).toContain("refused");
+    expect(screen.queryByLabelText("Password")).toBeNull();
+  });
+});

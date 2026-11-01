@@ -11,20 +11,21 @@ export function useViewers(): { items: readonly ItemState[]; active: ItemState |
 }
 
 /**
- * Keeps a viewer in front for a window that decides what it shows and may open them: when the Doc has a viewer
- * open that the window has not shown yet it comes to the front, and when the front one closed the last one does.
- * A following or watching window shows whatever the presenter's view says.
+ * Keeps a viewer in front for a window that decides what it shows: when the front one closed, the last open one
+ * takes its place. A window that may also open viewers brings one it has not shown yet to the front. A following or
+ * watching window shows whatever the presenter's view says.
  */
 export function useFrontViewer(): void {
   const { items, active } = useViewers();
   const setView = useSetView();
-  const content = useCan("content");
+  const decides = useCan("view");
+  const opens = useCan("content");
   const following = useFollowing();
   const front = active?.id;
   useEffect(() => {
-    if (!content || following) return;
+    if (!decides || following) return;
     setView((shown) => {
-      const fresh = items.filter((item) => !shown.viewers[item.id]);
+      const fresh = opens ? items.filter((item) => !shown.viewers[item.id]) : [];
       const shownFront = items.some((item) => item.id === shown.active)
         ? shown.active
         : items.at(-1)?.id;
@@ -33,5 +34,5 @@ export function useFrontViewer(): void {
       const opened = Object.fromEntries(fresh.map((item) => [item.id, {}]));
       return { ...shown, active, viewers: { ...shown.viewers, ...opened } };
     });
-  }, [content, following, items, front, setView]);
+  }, [decides, opens, following, items, front, setView]);
 }

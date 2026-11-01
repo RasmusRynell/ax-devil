@@ -111,6 +111,32 @@ describe("video viewer", () => {
     expect(screen.getByRole("button", { name: "Play" })).toBeTruthy();
   });
 
+  it("picks up a clock the accepted intent still has running when the owner reloads", async () => {
+    // The page reloaded while playing frame 10 of "a" 400 ms (10 frames) of backend time ago.
+    window.sessionStorage.removeItem("ax-devil.credential");
+    const serverNow = 10_000 * 1000 + FakeSocket.clockOffsetUs;
+    render(
+      <SessionProvider store={new SessionStore({ now: () => 10_000 })}>
+        <Viewer sent={[]} />
+      </SessionProvider>,
+    );
+    await act(async () => {});
+    const room = FakeSocket.rooms.get("room-1")!;
+    room.presenter = {
+      ...room.presenter,
+      viewers: {
+        a: { clock: { frame: 10, playing: true, speedCenti: 100, atUs: serverNow - 400_000 } },
+      },
+    };
+    act(() => room.setItems([video("a")]));
+    expect((await slider()).value).toBe("20");
+    expect(screen.getByRole("button", { name: "Pause" })).toBeTruthy();
+    // The watchers' clock is right as it stands: nothing to correct.
+    flushFrames();
+    expect(viewsSent()).toHaveLength(0);
+    expect(room.presenter.viewers.a?.clock).toMatchObject({ playing: true });
+  });
+
   describe("when the session resumes", () => {
     /** Opens the viewer, then drops the session's socket and lets it reconnect, with tickets refused or not. */
     async function resume(refused = false) {

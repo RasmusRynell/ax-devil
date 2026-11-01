@@ -160,6 +160,9 @@ export function VideoViewer({
     const carried = left.current?.item === item ? left.current : undefined;
     left.current = undefined;
     const start = carried ?? (anchor && { frame: anchor.frame, speed: anchor.speedCenti / 100 });
+    // A window that reloads and takes its seat back finds its clock still running in the accepted intent, which
+    // the watchers keep following: it picks the clock up where it is by now, as a following window does.
+    const running = !carried && !latest.current.following && anchor?.playing ? anchor : undefined;
     const created = new PlaybackSession({
       ticket,
       connect,
@@ -176,6 +179,7 @@ export function VideoViewer({
       },
     });
     created.start();
+    if (running) created.follow(running, () => latest.current.clock.nowUs() ?? running.atUs);
     setSession(created);
     return () => {
       // Shown again later, the viewer opens where it was left, paused.

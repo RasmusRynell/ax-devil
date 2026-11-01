@@ -315,6 +315,41 @@ describe("a watcher", () => {
     ).toBe(true);
   });
 
+  /** A watcher of a session whose Doc has "a" and "b" open and whose presenter shows "a". */
+  async function watchAB(access: "watch" | "explore") {
+    const room = FakeSocket.host(access);
+    room.setItems([video("a"), video("b")]);
+    room.publish({
+      sidebar: { view: "workspace", open: true },
+      active: "a",
+      viewers: { a: {}, b: {} },
+    });
+    window.sessionStorage.setItem(
+      "ax-devil.credential",
+      JSON.stringify({ kind: "join", session: room.id, secret: room.secret }),
+    );
+    await showShell({ grants: ["sessions"] });
+    return room;
+  }
+  const selected = () =>
+    screen.queryAllByRole("tab", { selected: true }).map((tab) => tab.textContent);
+
+  it("that explores keeps a video in view when the owner closes the one it was on", async () => {
+    const room = await watchAB("explore");
+    fireEvent.click(screen.getByRole("tab", { name: "b.mp4" }));
+    fireEvent.click(screen.getByRole("tab", { name: "a.mp4" }));
+    expect(selected()).toEqual(["a.mp4"]);
+    act(() => room.setItems([video("a", false), video("b")]));
+    expect(selected()).toEqual(["b.mp4"]);
+  });
+
+  it("that follows leaves choosing to the presenter when the one shown closes", async () => {
+    const room = await watchAB("explore");
+    act(() => room.setItems([video("a", false), video("b")]));
+    expect(selected()).toEqual([]);
+    expect(FakeSocket.latest.received.filter((message) => message.type === "view")).toEqual([]);
+  });
+
   it("cannot add a video from the host's files when it may only edit", async () => {
     const room = FakeSocket.host("edit");
     window.sessionStorage.setItem(

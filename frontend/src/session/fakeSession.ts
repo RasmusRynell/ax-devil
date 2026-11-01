@@ -347,12 +347,11 @@ export class FakeSocket {
   private admit(message: SessionClientMessage) {
     if (message.type !== "hello") return this.endWith(1007);
     const { auth, resume } = message;
-    if (
-      !resume &&
-      auth.type !== "join" &&
-      auth.serverPassword !== (FakeSocket.serverPassword ?? undefined)
-    )
-      return this.endWith(4401);
+    if (!resume && auth.type !== "join" && FakeSocket.serverPassword !== null) {
+      // Not allowed without a password, invalid with a wrong one, as the real backend closes.
+      if (auth.serverPassword === undefined) return this.endWith(1008);
+      if (auth.serverPassword !== FakeSocket.serverPassword) return this.endWith(4401);
+    }
     let room: Room | undefined;
     let seat: Seat | undefined;
     if (resume) {
