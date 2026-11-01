@@ -1,4 +1,4 @@
-import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vite-plus/test";
 import { FakeSocket, video } from "../session/fakeSession";
 import { SessionProvider } from "../session/session";
@@ -173,16 +173,22 @@ describe("video viewer", () => {
     return room;
   }
 
+  /** The stream can open before the backend's clock has answered; the follower then moves on to the right frame. */
+  const settled = async (frame: string) => {
+    const thumb = await slider();
+    await waitFor(() => expect(thumb.value).toBe(frame));
+  };
+
   it("follows the presenter's clock by the backend's time, and a watcher has no controls of its own", async () => {
     follower("watch");
-    expect((await slider()).value).toBe("20");
+    await settled("20");
     expect(screen.getByRole("button", { name: "Pause" })).toBeTruthy();
     expect((await slider()).disabled).toBe(true);
   });
 
   it("publishes a seek made while following, so the seat explores, and never the presenter's own clock", async () => {
     const room = follower("explore");
-    expect((await slider()).value).toBe("20");
+    await settled("20");
     flushFrames();
     // The presenter's clock drives this window; none of it goes back.
     expect(viewsSent()).toHaveLength(0);
