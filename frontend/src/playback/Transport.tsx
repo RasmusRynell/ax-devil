@@ -20,13 +20,22 @@ function timecode(us: number): string {
 const BUTTON = "size-row rounded-control";
 
 /** The speed field: edits commit as they become a number; leaving it shows the speed the session settled on. */
-function SpeedField({ speed, onChange }: { speed: number; onChange: (speed: number) => void }) {
+function SpeedField({
+  speed,
+  disabled,
+  onChange,
+}: {
+  speed: number;
+  disabled: boolean;
+  onChange: (speed: number) => void;
+}) {
   const [draft, setDraft] = useState<string | null>(null);
   return (
     <label data-cursor-id="transport:speed" className="flex items-center">
       <span className="sr-only">Speed</span>
       <input
         type="number"
+        disabled={disabled}
         max={MAX_SPEED}
         step={0.1}
         value={draft ?? String(speed)}
@@ -48,6 +57,8 @@ interface Props {
   view: PlaybackView;
   /** Whether the controls show; hidden controls stay in the page for the keyboard. */
   visible: boolean;
+  /** For a seat that may not change what the window shows: the controls report the video and do nothing. */
+  disabled?: boolean;
 }
 
 /**
@@ -55,7 +66,7 @@ interface Props {
  * frame on screen, and the speed. The frame count and time describe the frame shown, the seek bar the position asked
  * for. A frame that failed to decode says why.
  */
-export function Transport({ controls, view, visible }: Props) {
+export function Transport({ controls, view, visible, disabled = false }: Props) {
   const last = view.frameCount - 1;
   const { shown, playing, frameError } = view;
   return (
@@ -75,6 +86,7 @@ export function Transport({ controls, view, visible }: Props) {
         min={0}
         max={last}
         step={1}
+        disabled={disabled}
         value={view.playhead}
         onChange={(event) => controls.seek(event.target.valueAsNumber)}
         className="m-0 h-icon w-full accent-on-canvas"
@@ -85,6 +97,7 @@ export function Transport({ controls, view, visible }: Props) {
           icon={playing ? "pause" : "play"}
           label={playing ? "Pause" : "Play"}
           data-cursor-id="transport:play"
+          disabled={disabled}
           onClick={() => controls.togglePlay()}
           className={BUTTON}
         />
@@ -93,6 +106,7 @@ export function Transport({ controls, view, visible }: Props) {
           icon="step-back"
           label="Back 1 frame"
           data-cursor-id="transport:step-back"
+          disabled={disabled}
           onClick={() => controls.step(-1)}
           className={BUTTON}
         />
@@ -101,6 +115,7 @@ export function Transport({ controls, view, visible }: Props) {
           icon="step-forward"
           label="Forward 1 frame"
           data-cursor-id="transport:step-forward"
+          disabled={disabled}
           onClick={() => controls.step(1)}
           className={BUTTON}
         />
@@ -111,7 +126,11 @@ export function Transport({ controls, view, visible }: Props) {
         <output aria-label="Time" className="px-xs tabular-nums">
           {shown ? timecode(shown.timestampUs) : "…"}
         </output>
-        <SpeedField speed={view.speed} onChange={(speed) => controls.setSpeed(speed)} />
+        <SpeedField
+          speed={view.speed}
+          disabled={disabled}
+          onChange={(speed) => controls.setSpeed(speed)}
+        />
       </div>
     </div>
   );

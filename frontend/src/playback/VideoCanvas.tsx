@@ -14,11 +14,21 @@ function devicePixels(entry: ResizeObserverEntry): [number, number] {
 
 /**
  * The picture the session presents, fitted into the space it is given and drawn at the screen's pixel density. A
- * browser without WebGL2 says so instead.
+ * browser without WebGL2 says so instead. `anchor` is the `data-cursor-id` of an element laid exactly over the
+ * picture, not the bars around it, so another window's pointer lands on the same image pixel at any window size.
  */
-export function VideoCanvas({ session, label }: { session: PlaybackSession; label: string }) {
+export function VideoCanvas({
+  session,
+  label,
+  anchor,
+}: {
+  session: PlaybackSession;
+  label: string;
+  anchor: string;
+}) {
   const canvas = useRef<HTMLCanvasElement>(null);
   const [unavailable, setUnavailable] = useState<string | null>(null);
+  const [picture, setPicture] = useState<{ width: number; height: number } | null>(null);
   useEffect(() => {
     const element = canvas.current;
     if (!element) return;
@@ -29,7 +39,18 @@ export function VideoCanvas({ session, label }: { session: PlaybackSession; labe
       if (error instanceof RendererUnavailable) return setUnavailable(error.message);
       throw error;
     }
-    session.setSurface(renderer);
+    // The picture's size comes with its frames; the renderer fits it into the canvas.
+    const attach = (drawing: VideoRenderer) =>
+      session.setSurface({
+        present: (frame) => {
+          drawing.present(frame);
+          const { width, height } = frame;
+          setPicture((now) =>
+            now?.width === width && now.height === height ? now : { width, height },
+          );
+        },
+      });
+    attach(renderer);
     const observer = new ResizeObserver(([entry]) => {
       const [width, height] = devicePixels(entry);
       renderer.resize(width, height);
@@ -39,7 +60,7 @@ export function VideoCanvas({ session, label }: { session: PlaybackSession; labe
     const lost = (event: Event) => event.preventDefault();
     const restored = () => {
       renderer = new VideoRenderer(element);
-      session.setSurface(renderer);
+      attach(renderer);
       renderer.resize(element.width, element.height);
       session.represent();
     };
@@ -60,6 +81,23 @@ export function VideoCanvas({ session, label }: { session: PlaybackSession; labe
       </p>
     );
   return (
-    <canvas ref={canvas} role="img" aria-label={label} className="absolute inset-0 size-full" />
+    <>
+      <canvas ref={canvas} role="img" aria-label={label} className="absolute inset-0 size-full" />
+      {picture && (
+        <div
+          aria-hidden
+          className="pointer-events-none absolute inset-0 flex items-center justify-center [container-type:size]"
+        >
+          <div
+            data-cursor-id={anchor}
+            className="pointer-events-auto"
+            style={{
+              aspectRatio: `${picture.width} / ${picture.height}`,
+              width: `min(100cqw, calc(100cqh * ${picture.width} / ${picture.height}))`,
+            }}
+          />
+        </div>
+      )}
+    </>
   );
 }

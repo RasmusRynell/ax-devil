@@ -1,7 +1,7 @@
 import { Button } from "../kit/Button";
 import { useServerKind } from "../shell/windowBridge";
-import type { SessionApi } from "./session";
 import type { Ending } from "./connection";
+import type { SessionState } from "./store";
 
 /** What each way a session or a connection can end says to the person in it. */
 export const ENDINGS: Record<Ending, string> = {
@@ -33,7 +33,7 @@ export function EndedScreen({ why }: { why: Ending }) {
 }
 
 interface Props {
-  connection: SessionApi["connection"];
+  connection: SessionState["connection"];
   ownerAway: boolean;
   ended: Ending | null;
   onDismiss: () => void;

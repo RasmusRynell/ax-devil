@@ -22,12 +22,12 @@ Shared language for ax-devil's inspection workspace. Code, docs and UI use these
 | Playlist Item | A Workspace Item holding a playlist resolver id and that resolver's settings. | Resolved playlist |
 | Bookmark | A frame of a local video or playlist entry that the user marked while reviewing, with a kind and an optional note; saved in the Workspace with each Bookmark Target's reviewed mark. Never on live streams. | Marker, annotation, flag |
 | Bookmark Target | What is reviewed: a Video Item, or one entry of a Playlist Item named by its label. | Entry index, content id |
-| Session | What one Owner chose to share, held by one backend until it ends. Private by default; Sessions of one backend are isolated from each other. | Room, window |
+| Session | What one window shows, held by one backend from the window's first connect until it ends; every window has one. Private until its Owner uses Start sharing (Stop sharing makes it private again); Sessions of one backend are isolated from each other. | Room, window |
 | Owner | Whoever created a Session and the only one who can change what it shows. | Host, presenter |
 | Watcher | Anyone else in a Session: Following shows the Presenter View, Exploring shows its own view of what the Owner has open. | Viewer, guest, spectator |
 | Presenter View | The view state the Owner publishes. | Shared screen |
 | Join Link | A URL whose secret admits its holder to one Session only. | Invite, share link |
-| Server Password | The secret that lets someone use a remote server itself: create and watch Sessions, change its Server settings. | Login, token |
+| Server Password | The secret that lets someone use a remote server itself: own and watch Sessions, add its videos, change its Server settings. | Login, token |
 | Sidebar View | What the sidebar shows, chosen from the activity bar: the Workspace or one part of it (top zone), or something about the application (bottom zone). | Panel, tab, page |
 | Content | What a Workspace Item resolves to: Seekable Video, Live Video, or Playlist Content. Rebuilt on every resolution, never saved. | Startup content, resolved item |
 | Viewer | An open inspection surface hosted by the Workspace: the user-facing name for a Viewer Widget. | Player, pane, runtime bucket |

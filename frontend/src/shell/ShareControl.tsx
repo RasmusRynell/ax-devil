@@ -5,7 +5,7 @@ import { Icon } from "../kit/Icon";
 import { Menu, type MenuEntry } from "../kit/Menu";
 import { Popup } from "../kit/Popup";
 import { presenceColor } from "../session/Presence";
-import { useParticipants, useSession } from "../session/session";
+import { useCommand, useParticipants, useSession } from "../session/session";
 
 /** How many participants show as avatars; the rest are counted. */
 const AVATARS = 3;
@@ -23,13 +23,13 @@ function openableLink(own: string | null): string | null {
 }
 
 /**
- * The title bar's share entry. Private: one Share button that opens the Sessions view. In a session: who is in it,
- * for a watcher whose presentation it is and, while exploring, the way back to it, and a menu with the two cursor
- * options and the way out. Everything here belongs to this window alone, so it works for a watcher too.
+ * The title bar's share entry. Not shared: "Start sharing". Shared, or a watcher: who is in the Session, for a
+ * watcher whose presentation it is and, while exploring, the way back to it, and a menu with the two cursor options
+ * and the way out. Everything here belongs to this window alone, so it works for a watcher too.
  */
-export function ShareControl({ onShare }: { onShare: () => void }) {
-  const { state, session, snapshot, cursorOptions, setCursorOptions, stop, leave, follow } =
-    useSession();
+export function ShareControl({ onStartSharing }: { onStartSharing: () => void }) {
+  const { state, session, mode, cursorOptions, setCursorOptions, leave, follow } = useSession();
+  const command = useCommand();
   const { participants } = useParticipants();
   const sessions = useGrants().includes("sessions");
   const [open, setOpen] = useState(false);
@@ -40,14 +40,14 @@ export function ShareControl({ onShare }: { onShare: () => void }) {
   if (state === "none")
     return sessions ? (
       <div className={wrap}>
-        <Button icon="users" data-cursor-id="share" className="h-row py-0" onClick={onShare}>
-          Share
+        <Button icon="users" data-cursor-id="share" className="h-row py-0" onClick={onStartSharing}>
+          <span className="max-sm:sr-only">Start sharing</span>
         </Button>
       </div>
     ) : null;
 
   const owner = state === "owner";
-  const presenter = participants.find((participant) => participant.id === snapshot?.owner);
+  const presenter = participants.find((participant) => participant.role === "owner");
   const inApp = window.axDevilWindow ? null : openableLink(session?.link ?? null);
   const openInApp: MenuEntry[] = inApp
     ? [{ kind: "action", id: "open-in-app", label: "Open in app" }]
@@ -69,7 +69,8 @@ export function ShareControl({ onShare }: { onShare: () => void }) {
     else {
       setOpen(false);
       if (id === "open-in-app" && inApp) window.location.assign(appLink(inApp));
-      else if (owner) stop();
+      else if (owner)
+        void command({ type: "control", control: { type: "stop" } }).catch(() => undefined);
       else leave();
     }
   };
@@ -83,8 +84,13 @@ export function ShareControl({ onShare }: { onShare: () => void }) {
           Presenting: <span className="text-fg">{presenter.name}</span>
         </span>
       )}
-      {!owner && snapshot?.mode === "exploring" && (
-        <Button icon="eye" data-cursor-id="share:follow" className="h-row py-0" onClick={follow}>
+      {!owner && mode === "exploring" && (
+        <Button
+          icon="eye"
+          data-cursor-id="share:follow"
+          className="h-row py-0"
+          onClick={() => void follow().catch(() => undefined)}
+        >
           <span className="max-sm:sr-only">Follow presenter</span>
         </Button>
       )}

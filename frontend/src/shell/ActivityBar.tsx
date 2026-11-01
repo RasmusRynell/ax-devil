@@ -1,6 +1,6 @@
 import { scopeOf } from "../commands";
 import { IconButton } from "../kit/IconButton";
-import { useAllowed } from "../session/view";
+import { useAllowed } from "../session/session";
 import { ACTIVITY, type ActivityItem } from "./views";
 
 interface Props {

@@ -18,6 +18,10 @@ const page = (window) => {
   return { js, wait };
 };
 
+// Waits until the window has drawn the state it is in.
+const frames = (driver) =>
+  driver.js("new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done)))");
+
 // A button in the sidebar, by its text.
 const button = (label) =>
   `[...document.querySelectorAll('aside button')].find((b) => b.textContent === '${label}')`;
@@ -67,6 +71,7 @@ module.exports = {
   center,
   click,
   delay,
+  frames,
   page,
   reload,
   tag,

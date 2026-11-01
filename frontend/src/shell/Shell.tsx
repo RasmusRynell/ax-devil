@@ -5,13 +5,10 @@ import type { MenuCommand } from "../kit/Menu";
 import { matchesShortcut } from "../kit/shortcut";
 import type { Scopes } from "../session/cursor";
 import { Presence } from "../session/Presence";
-import { useSession } from "../session/session";
-import { useAllowed, useViewState } from "../session/view";
+import { useAllowed, useCommand, useView } from "../session/session";
 import { NO_ACTIONS, ViewerActionsContext, type ViewerActions } from "../viewer/actions";
+import { useFrontViewer, useViewers } from "../viewer/useViewers";
 import { ViewerHost } from "../viewer/ViewerHost";
-import { addVideos } from "../workspace/client";
-import type { WorkspaceView } from "../workspace/store";
-import { useWorkspace } from "../workspace/WorkspaceProvider";
 import { ActivityBar } from "./ActivityBar";
 import { Banner } from "./Banner";
 import { TitleBar } from "./TitleBar";
@@ -34,21 +31,15 @@ function viewerOwnsPlainKeys(target: EventTarget | null): boolean {
 }
 
 /**
- * The application layout: menu bar over the activity bar, sidebar and central area. A watcher has no workspace (the
- * backend does not share it yet), so it gets the layout with the welcome area only.
+ * The application layout: menu bar over the activity bar, sidebar and central area. What the window shows comes from
+ * the session's view, so a watcher that follows the presenter shows the presenter's.
  */
 export function Shell() {
-  return useSession().state === "watcher" ? <Layout workspace={null} /> : <Owned />;
-}
-
-function Owned() {
-  return <Layout workspace={useWorkspace().view} />;
-}
-
-function Layout({ workspace }: { workspace: WorkspaceView | null }) {
-  const { state: view, set: setView } = useViewState();
+  const [sidebar, setSidebar] = useView("sidebar");
+  const { active } = useViewers();
+  useFrontViewer();
   const allowed = useAllowed();
-  const { sidebarView, sidebarOpen } = view;
+  const command = useCommand();
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [checked, setChecked] = useState<ReadonlySet<string>>(new Set());
   const [notice, setNotice] = useState<string | null>(null);
@@ -59,14 +50,33 @@ function Layout({ workspace }: { workspace: WorkspaceView | null }) {
     if (!bridge) return setNotice("Adding a video needs the ax-devil desktop app");
     bridge
       .pickVideos()
-      .then((paths) => (paths.length ? addVideos(paths) : null))
-      .then(setNotice)
+      .then((paths) =>
+        paths.length
+          ? command({
+              type: "content",
+              command: {
+                type: "addItems",
+                items: paths.map((path) => ({ type: "Video" as const, path })),
+                open: true,
+              },
+            })
+          : undefined,
+      )
+      .then(() => setNotice(null))
       .catch((error: unknown) => setNotice(error instanceof Error ? error.message : String(error)));
+  };
+
+  const startSharing = () => {
+    setSidebar({ view: "sessions", open: true });
+    command({ type: "control", control: { type: "share", access: "watch" } }).then(
+      () => setNotice(null),
+      (error: unknown) => setNotice(error instanceof Error ? error.message : String(error)),
+    );
   };
 
   // Commands with behavior; every other command is a placeholder that does nothing yet. The open viewer adds its own.
   const actions: Record<string, () => void> = {
-    sidebar: () => setView({ ...view, sidebarOpen: !sidebarOpen }),
+    sidebar: () => setSidebar({ ...sidebar, open: !sidebar.open }),
     settings: () => setSettingsOpen(true),
     "add-video": addVideo,
   };
@@ -84,11 +94,11 @@ function Layout({ workspace }: { workspace: WorkspaceView | null }) {
   };
   const activate = (item: ActivityItem) => {
     if (item.opens === "command") run(item.id);
-    else if (sidebarOpen && sidebarView === item.id) setView({ ...view, sidebarOpen: false });
-    else setView({ sidebarView: item.id as SidebarView, sidebarOpen: true });
+    else if (sidebar.open && sidebar.view === item.id) setSidebar({ ...sidebar, open: false });
+    else setSidebar({ view: item.id as SidebarView, open: true });
   };
   // What each region of this window shows, so a cursor lands by region only where the same thing is shown.
-  const scopes: Scopes = { sidebar: sidebarView, main: workspace?.active ?? "welcome" };
+  const scopes: Scopes = { sidebar: sidebar.view, main: active?.id ?? "welcome" };
 
   useEffect(() => {
     /** The command this key press runs, if the shell handles it. */
@@ -125,24 +135,21 @@ function Layout({ workspace }: { workspace: WorkspaceView | null }) {
           checked={checked}
           wired={new Set([...Object.keys(actions), ...Object.keys(viewerActions)])}
           onSelect={select}
-          onShare={() => setView({ sidebarView: "sessions", sidebarOpen: true })}
+          onStartSharing={startSharing}
         />
         {notice && (
           <Banner role="alert" onDismiss={() => setNotice(null)}>
             {notice}
           </Banner>
         )}
-        {workspace?.connection === "lost" && (
-          <Banner role="status">Connection to the backend lost. Reconnecting…</Banner>
-        )}
         <div className="flex min-h-0 flex-1 flex-col sm:flex-row">
-          <ActivityBar active={sidebarOpen ? sidebarView : null} onSelect={activate} />
-          {sidebarOpen && <Sidebar view={sidebarView} onRun={run} />}
+          <ActivityBar active={sidebar.open ? sidebar.view : null} onSelect={activate} />
+          {sidebar.open && <Sidebar view={sidebar.view} onRun={run} />}
           <main
             data-cursor-region="main"
-            className={`flex min-h-0 min-w-0 flex-1 overflow-auto ${sidebarOpen ? "max-sm:hidden" : ""}`}
+            className={`flex min-h-0 min-w-0 flex-1 overflow-auto ${sidebar.open ? "max-sm:hidden" : ""}`}
           >
-            {workspace?.active ? <ViewerHost /> : <Welcome onRun={run} />}
+            {active ? <ViewerHost /> : <Welcome onRun={run} />}
           </main>
         </div>
         <Presence scopes={scopes} />

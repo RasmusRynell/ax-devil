@@ -4,19 +4,9 @@ import { adoptFragment, credential } from "./access";
 import { App } from "./App";
 import { apiFetch } from "./api";
 import type { Settings } from "./generated/api";
-import { FakeSocket } from "./session/fakeBackend";
+import { FakeSocket } from "./session/fakeSession";
 
 beforeEach(() => vi.stubGlobal("WebSocket", FakeSocket));
-
-beforeEach(() => {
-  // The workspace's event stream, which this suite leaves silent.
-  vi.stubGlobal(
-    "EventSource",
-    class {
-      close() {}
-    },
-  );
-});
 
 afterEach(() => {
   cleanup();

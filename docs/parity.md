@@ -29,7 +29,7 @@ with the test that proves it.
 
 | ID | Feature | P | Status | Test | Notes |
 |----|---------|---|--------|------|-------|
-| AC-01 | Add Video with any number of overlays; decoder picked by extension | M | in progress | `tests/local_video.rs`, `desktop/args.test.cjs`, `frontend/src/shell/Shell.test.tsx` | Video only, no overlays (M2). `local --video` and File > Add Video (the shell shows the file dialog, the frontend posts the paths) share the intake; the native dialog itself has no automated test |
+| AC-01 | Add Video with any number of overlays; decoder picked by extension | M | in progress | `tests/local_video.rs`, `desktop/args.test.cjs`, `frontend/src/shell/Shell.test.tsx` | Video only, no overlays (M2). `local --video` and File > Add Video (the shell shows the file dialog, the frontend sends the paths as a Session command) share the intake; the native dialog itself has no automated test |
 | AC-02 | Drop video files on the window | M | todo |  |  |
 | AC-03 | Add Live Stream with analytics discovery | M | todo |  |  |
 | AC-04 | Add Playlist through a resolver form | M | todo |  |  |
@@ -136,7 +136,7 @@ The decisions taken with the owner, with their reasons, are in
 | ID | Feature | P | Status | Test | Notes |
 |----|---------|---|--------|------|-------|
 | DT-01 | Isolated GUI test environment for agents and CI | M | in progress | `make tests-desktop` | `scripts/isolated`: private home and display, user-file guard; Linux |
-| DT-02 | UI screenshot harness | M | in progress | `make tests-desktop` | `desktop/smoke.cjs`: main window, View menu and Settings dialog in light and dark, at the window minimum and 200% zoom; other windows land with M8 |
+| DT-02 | UI screenshot harness | M | in progress | `make tests-desktop` | `desktop/smoke.cjs`: main window, View menu and Settings dialog in light and dark, at the window minimum and 200% zoom, plus a video and a sharing scenario; other windows land with M8 |
 | DT-03 | Rendering benchmarks with A/B against a ref | S | todo |  |  |
 | DT-04 | Timestamp alignment report | S | todo |  |  |
 | DT-05 | Release check in clean environments | S | todo |  |  |

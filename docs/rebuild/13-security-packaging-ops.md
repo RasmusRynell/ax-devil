@@ -47,7 +47,7 @@ Owns who may reach a backend and the limits that keep one peer or crowd from usi
 
 - Shared listeners grant nothing by cookie or IP address: every credential is a bearer secret (128 random bits,
   compared in constant time), so a rebound DNS name or a cross-site page gains nothing. Only the Local listener checks
-  Host (a loopback name) and Origin (absent or equal to Host).
+  Host (a loopback name) and Origin (absent, or `http://` and the Host in full).
 - A secret travels in the URL fragment (`#join=`, `#password=`), which the page moves to `sessionStorage`, then in
   `Authorization: Bearer` on HTTP and in `Hello` on the socket. Never in a query string or a log.
 - Every response on every listener carries `frame-ancestors 'none'`, `default-src 'self'` and `img-src 'self' data:`
@@ -64,13 +64,32 @@ Owns who may reach a backend and the limits that keep one peer or crowd from usi
 | Sockets still waiting for `Hello`, all / per IP | 64 / 4, and `Hello` within 5 s |
 | Frame, message | 16 KiB, 64 KiB |
 | Sessions per server, seats per Session | 64, 32 |
+| Streams per seat, per Session | 8, 64 |
 | Liveness | The server pings every 10 s; 25 s of silence is a disconnect and starts the 30 s grace |
 | Sending | Each send has a 10 s deadline; a timeout is a disconnect |
-| Per seat | Cursors 60/s, the excess dropped; every other message 10/s, the excess closes the socket |
+| Per seat | Cursors 60/s, the excess dropped; views 60/s, only the latest kept; commands 10/s, the excess closes the socket |
 
-A close the server chose is final and the client stops: 1007 invalid message, 1008 not allowed for the role, 1009
-too big, 1013 full, 4401 invalid password or link, 4404 session ended or unknown, 4409 seat replaced (the Session is
-open in another tab), 4429 too many messages. A lost connection reconnects.
+A close the server chose is final and the client stops: 1007 invalid message, 1008 not allowed, 1009 too big, 1013
+full, 4401 invalid password or link, 4404 session ended or unknown, 4409 seat replaced (the Session is open in another
+tab), 4429 too many commands. A lost connection reconnects. The playback socket closes with 4401 for a ticket that is
+not valid and 4403 when its authority is revoked.
+
+### Known limits
+
+Documented, not fixed.
+
+- **The machine is the trust boundary.** Any process that can reach the Local listener, other OS users included, is
+  the local owner: it can drive the owner's Sessions and read the files the app can. The Host and Origin checks defend
+  against browsers and DNS rebinding; they do not authenticate a person. A per-launch credential is the known fix and
+  is not implemented. The launch queue is likewise not tied to a launch, so a second `local --video` reaches
+  whichever Local Session takes it first.
+- **Remote video is raw.** A remote watcher receives raw frames, about 93 MB/s per 1080p30 viewer, so remote watching
+  suits the same machine or a fast LAN and a few watchers. Compressed delivery is future work.
+- **Edit access has no UI.** The backend supports an `Edit` access row for editing together, but nothing exposes it,
+  and an Edit watcher sees only the Owner's open items, so it cannot reopen one the Owner closed.
+- **Private computation is reserved.** `Use::Compute` in `authorize` refuses everything until a feature defines who
+  may compute what ([sessions README](../../crates/sessions/README.md)).
+- **Snapshot cost is unmeasured** at 32 seats under 30 Hz scrubbing.
 
 ## Plugin trust (MUST)
 

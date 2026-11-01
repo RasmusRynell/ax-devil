@@ -1,275 +1,229 @@
 import {
   createContext,
+  useCallback,
   useContext,
   useEffect,
   useMemo,
-  useRef,
   useState,
   useSyncExternalStore,
   type ReactNode,
 } from "react";
+import type { Scope } from "../commands";
 import { credential } from "../access";
 import type {
+  Access,
   CursorOptions,
   CursorPoint,
+  DocWire,
   SeatInfo,
-  ShareClientMessage,
-  ShareServerMessage,
-  ShareSnapshot,
-  ViewState,
+  SeatMode,
+  SessionCommand,
+  StreamKey,
+  View,
 } from "../generated/api";
-import { connect, type Connection, type Ending, type Entry, type Status } from "./connection";
 import { Banner, EndedScreen } from "./Notice";
+import { SessionStore, type SessionState } from "./store";
+import { canDo } from "./views";
 
-/** The tab's seat (its session and resume token), so a reload within the grace period takes it back. Another tab has its own. */
-const STORED_SEAT = "ax-devil.seat";
+const StoreContext = createContext<SessionStore | null>(null);
 
-export interface SessionApi {
-  /** `none` until a session's first snapshot has arrived: private is the default and needs no connection. */
-  state: "none" | "owner" | "watcher";
-  /** Where the connection is; `idle` while there is none. */
-  connection: "idle" | Status["state"];
-  /** Why the last session ended for this tab, until it is dismissed. */
-  ended: Ending | null;
-  /** The session this tab is in, and its join link when the backend can be reached by other machines. */
-  session: { id: string; you: number; link: string | null } | null;
-  /** What this tab last heard of its session; frozen while the connection is down. */
-  snapshot: ShareSnapshot | null;
-  cursorOptions: CursorOptions;
-  /** Starts a session and owns it. */
-  create: () => void;
-  /** Joins the session a join link opens: its `<id>.<secret>`, or the whole link. */
-  joinLink: (link: string) => void;
-  /** Watches the session `id`, with the Sessions grant. */
-  watch: (id: string) => void;
-  /** The owner's way out, which ends the session for everyone. */
-  stop: () => void;
-  /** A watcher's way out. */
-  leave: () => void;
-  /** Forgets the notice about how the last session ended. */
-  dismiss: () => void;
-  /** Owner: whether watchers may explore on their own. */
-  setExplore: (explore: boolean) => void;
-  /** Owner: invalidates the join link and gets a new one. */
-  regenerateLink: () => void;
-  /** Watcher: shows its own view of what the owner has open. */
-  explore: () => void;
-  /** Exploring watcher: goes back to the presenter's view. */
-  follow: () => void;
-  setCursorOptions: (options: CursorOptions) => void;
-  /** Tells the others where this cursor is, or `null` when it left the window. */
-  moveCursor: (at: CursorPoint | null) => void;
-  /** Owner: shows `state` to everyone following. */
-  publish: (state: ViewState) => void;
-  /** Exploring watcher: shows `state` in this seat's own view; `seq` counts these edits. */
-  setView: (state: ViewState, seq: number) => void;
+function useStore(): SessionStore {
+  const store = useContext(StoreContext);
+  if (!store) throw new Error("the session hooks need a SessionProvider");
+  return store;
 }
 
-/** The other participants' cursors. Held outside React state so a moving cursor never re-renders the shell. */
-class Cursors {
-  private current: ReadonlyMap<number, CursorPoint> = new Map();
-  private listeners = new Set<() => void>();
-
-  subscribe = (listener: () => void) => {
-    this.listeners.add(listener);
-    return () => void this.listeners.delete(listener);
-  };
-  snapshot = () => this.current;
-
-  /** Moves a participant's cursor, or removes it. */
-  set(participant: number, at: CursorPoint | null) {
-    const next = new Map(this.current);
-    if (at) next.set(participant, at);
-    else next.delete(participant);
-    this.replace(next);
-  }
-  /** Drops the cursors of everyone not in `participants`. */
-  keepOnly(participants: readonly number[]) {
-    const kept = [...this.current].filter(([id]) => participants.includes(id));
-    if (kept.length !== this.current.size) this.replace(new Map(kept));
-  }
-  private replace(next: ReadonlyMap<number, CursorPoint>) {
-    this.current = next;
-    this.listeners.forEach((listener) => listener());
-  }
-}
-
-interface Context extends SessionApi {
-  cursors: Cursors;
-}
-
-interface Seat {
-  id: string;
-  you: number;
-  link: string | null;
-  role: "owner" | "watcher";
-}
-
-const SessionContext = createContext<Context | null>(null);
-
-/** The id and secret of a join link pasted whole or as `<id>.<secret>`. */
-const linkOf = (text: string) => decodeURIComponent(text.trim().replace(/^.*#join=/, ""));
-
-interface StoredSeat {
-  session: string;
-  token: string;
-}
-
-function storedSeat(): StoredSeat | null {
-  const stored = window.sessionStorage.getItem(STORED_SEAT);
-  return stored ? (JSON.parse(stored) as StoredSeat) : null;
+/** A part of the session's state; the component renders again only when that part changes. */
+function useSelect<T>(select: (state: SessionState) => T): T {
+  const store = useStore();
+  return useSyncExternalStore(store.subscribe, () => select(store.getSnapshot()));
 }
 
 /**
- * The tab's session. Nothing is connected until the user creates or joins one (or opens a join link, or reloads a
- * tab that was in one); then one WebSocket carries it, keeps it through drops and reports why it ended. The state
- * is `none | owner | watcher`; what each of them may change is decided in `view.ts`.
+ * The window's own Session, connected for as long as it is mounted. A browser that opened a join link has nothing
+ * but that session: it waits for it, and says when it is over. Tests pass their own store.
  */
-export function SessionProvider({ children }: { children: ReactNode }) {
-  const [identity, setIdentity] = useState<Seat | null>(null);
-  const [snapshot, setSnapshot] = useState<ShareSnapshot | null>(null);
-  const [status, setStatus] = useState<Status | null>(null);
-  const [cursorOptions, setOptions] = useState<CursorOptions>({ show: true, share: true });
-  const [cursors] = useState(() => new Cursors());
-  const connection = useRef<Connection | null>(null);
-  const options = useRef(cursorOptions);
+export function SessionProvider({
+  store: given,
+  children,
+}: {
+  store?: SessionStore;
+  children: ReactNode;
+}) {
+  const [store] = useState(() => given ?? new SessionStore());
   const viewer = useMemo(() => credential()?.kind === "join", []);
-
-  const api = useMemo(() => {
-    const clear = () => {
-      window.sessionStorage.removeItem(STORED_SEAT);
-      setIdentity(null);
-      setSnapshot(null);
-      cursors.keepOnly([]);
-    };
-    const onMessage = (message: ShareServerMessage) => {
-      if (message.type === "welcome") {
-        const seat: StoredSeat = { session: message.session, token: message.resume };
-        window.sessionStorage.setItem(STORED_SEAT, JSON.stringify(seat));
-        setIdentity({
-          id: message.session,
-          you: message.you,
-          link: message.link,
-          role: message.role,
-        });
-      } else if (message.type === "snapshot") {
-        cursors.keepOnly(message.participants.map((participant) => participant.id));
-        setSnapshot(message);
-      } else if (message.type === "cursor") cursors.set(message.participant, message.at);
-      else if (message.type === "link") setIdentity((now) => now && { ...now, link: message.url });
-    };
-    const begin = (entry: Entry | null, resume?: string) => {
-      connection.current?.close();
-      clear();
-      setStatus({ state: "connecting" });
-      const held = credential();
-      connection.current = connect({
-        entry,
-        resume,
-        password: held?.kind === "password" ? held.password : undefined,
-        cursors: () => options.current,
-        onMessage,
-        onStatus: (next) => {
-          setStatus(next);
-          if (next.state === "ended") {
-            connection.current = null;
-            clear();
-          }
-        },
-      });
-    };
-    const send = (message: ShareClientMessage) => connection.current?.send(message);
-    const leave = () => {
-      send({ type: "leave" });
-      connection.current?.close();
-      connection.current = null;
-      clear();
-      setStatus(null);
-    };
-    return {
-      cursors,
-      begin,
-      create: () => begin({ kind: "create" }),
-      joinLink: (link: string) => begin({ kind: "join", link: linkOf(link) }),
-      watch: (session: string) => begin({ kind: "watch", session }),
-      stop: leave,
-      leave,
-      dismiss: () => setStatus((now) => (now?.state === "ended" ? null : now)),
-      setExplore: (explore: boolean) => send({ type: "setOptions", explore }),
-      regenerateLink: () => send({ type: "regenerateLink" }),
-      explore: () => send({ type: "explore" }),
-      follow: () => send({ type: "follow" }),
-      setCursorOptions: (next: CursorOptions) => {
-        options.current = next;
-        setOptions(next);
-        send({ type: "cursorOptions", ...next });
-      },
-      moveCursor: (at: CursorPoint | null) => send({ type: "cursor", at }),
-      publish: (state: ViewState) => send({ type: "publish", state }),
-      setView: (state: ViewState, seq: number) => send({ type: "setView", state, seq }),
-    };
-  }, [cursors]);
-
-  // A join link in the address, or a seat a reload left behind, connects without being asked. The seat is taken
-  // back only when it is in the session the link names; a link to another session is joined as a new seat.
   useEffect(() => {
-    const held = credential();
-    const seat = storedSeat();
-    const entry: Entry | null =
-      held?.kind === "join" ? { kind: "join", link: `${held.session}.${held.secret}` } : null;
-    const resume = seat && (!held || held.kind !== "join" || held.session === seat.session);
-    if (entry || resume) api.begin(entry, resume ? seat.token : undefined);
-    return () => {
-      connection.current?.close();
-      connection.current = null;
-    };
-  }, [api]);
-
-  const live = identity && snapshot;
-  const { begin: _begin, ...actions } = api;
-  const value: Context = {
-    ...actions,
-    state: live ? identity.role : "none",
-    connection: status?.state ?? "idle",
-    ended: status?.state === "ended" ? status.why : null,
-    session: identity,
-    snapshot,
-    cursorOptions,
-  };
-  // A browser that opened a join link has nothing but that session: wait for it, and say when it is over. The first
-  // render is still `idle`, before the connection has begun.
-  if (viewer && !live && (value.connection === "idle" || value.connection === "connecting"))
-    return <main aria-busy="true" className="flex h-screen items-center justify-center" />;
-  if (viewer && value.ended) return <EndedScreen why={value.ended} />;
+    store.start();
+    return () => store.stop();
+  }, [store]);
+  const connection = useSyncExternalStore(store.subscribe, () => store.getSnapshot().connection);
+  const ended = useSyncExternalStore(store.subscribe, () => store.getSnapshot().ended);
+  const seated = useSyncExternalStore(store.subscribe, () => store.getSnapshot().seat !== null);
+  const ownerAway = useSyncExternalStore(
+    store.subscribe,
+    () => store.getSnapshot().roster.find((seat) => seat.role === "owner")?.present === false,
+  );
+  if (viewer && ended) return <EndedScreen why={ended} />;
   return (
-    <SessionContext.Provider value={value}>
-      {children}
+    <StoreContext.Provider value={store}>
+      {seated || ended ? (
+        children
+      ) : (
+        <main aria-busy="true" className="flex h-screen items-center justify-center" />
+      )}
       <Banner
-        connection={value.connection}
-        ownerAway={snapshot?.ownerPresent === false}
-        ended={value.ended}
-        onDismiss={api.dismiss}
+        connection={connection}
+        ownerAway={ownerAway}
+        ended={ended}
+        onDismiss={() => store.dismiss()}
       />
-    </SessionContext.Provider>
+    </StoreContext.Provider>
   );
 }
 
-/** The tab's session and the actions on it; only inside a `SessionProvider`. */
-export function useSession(): SessionApi {
-  const context = useContext(SessionContext);
-  if (!context) throw new Error("useSession needs a SessionProvider");
-  return context;
+/** What the Doc holds, as this seat may see it; `null` until the first one has arrived. */
+export function useDoc(): DocWire | null {
+  return useSelect((state) => state.doc);
 }
 
-/** Everyone in the session, and which of them is this tab; empty outside a session. */
+/** Changes several parts of what the window shows in one step; see `useView`. */
+export function useSetView(): (change: (shown: View) => View) => void {
+  const store = useStore();
+  return useCallback((change) => store.setView(change), [store]);
+}
+
+/**
+ * One part of what the window shows (`sidebar`, `active` or `viewers`) and the way to change it. A change shows at
+ * once and is settled by the backend later; a change the backend refuses stops showing.
+ */
+export function useView<K extends keyof View>(
+  key: K,
+): readonly [View[K], (next: View[K] | ((current: View[K]) => View[K])) => void] {
+  const setView = useSetView();
+  const value = useSelect((state) => state.view[key]);
+  const set = useCallback(
+    (next: View[K] | ((current: View[K]) => View[K])) =>
+      setView((shown) => {
+        const current = shown[key];
+        const changed = typeof next === "function" ? next(current) : next;
+        return changed === current ? shown : { ...shown, [key]: changed };
+      }),
+    [setView, key],
+  );
+  return [value, set];
+}
+
+/** Whether the window shows the presenter's view and nothing of its own. */
+export function useFollowing(): boolean {
+  return useSelect((state) => state.following);
+}
+
+/** Whether this seat may change things of this scope; the backend decides again when it is asked. */
+export function useCan(scope: Scope): boolean {
+  return useSelect((state) => canDo(state.seat?.access ?? null, scope));
+}
+
+/** Which scopes of commands work for this window; the others are shown disabled. */
+export function useAllowed(): Record<Scope, boolean> {
+  const content = useCan("content");
+  const view = useCan("view");
+  return useMemo(() => ({ content, view, app: true }), [content, view]);
+}
+
+/** Asks the backend for a change. The promise rejects with `CommandRefused` when the backend refuses it. */
+export function useCommand(): (command: SessionCommand) => Promise<void> {
+  const store = useStore();
+  return useCallback((command) => store.command(command), [store]);
+}
+
+/**
+ * The way to get a ticket for a stream, for the playback socket's first message. A ticket works once, so every
+ * connection asks again. `key` must be the same object between renders for as long as it names the same stream.
+ */
+export function useStream(key: StreamKey): () => Promise<string> {
+  const store = useStore();
+  return useCallback(() => store.requestTicket(key), [store, key]);
+}
+
+/** The backend's clock, for following a presenter: `nowUs` is undefined until it has answered. */
+export function useServerClock(): { synced: boolean; nowUs: () => number | undefined } {
+  const store = useStore();
+  const synced = useSelect((state) => state.synced);
+  return useMemo(() => ({ synced, nowUs: () => store.serverNowUs() }), [store, synced]);
+}
+
+/** What the controls around the session need: where the connection is, what this seat is, and the ways out. */
+export interface SessionApi {
+  /** `none` while the Session is not shared, `owner` while it is, `watcher` in someone else's. */
+  state: "none" | "owner" | "watcher";
+  /** Where the connection is. */
+  connection: SessionState["connection"];
+  /** Why the last session ended for this window, until it is dismissed. */
+  ended: SessionState["ended"];
+  /** The Session this window is in, and its join link when it is shared and this backend can be reached. */
+  session: { id: string; you: number; link: string | null } | null;
+  /** What watchers may do while sharing is on. */
+  sharing: Access | null;
+  /** Whether the window follows the presenter or explores. */
+  mode: SeatMode | null;
+  cursorOptions: CursorOptions;
+  /** Leaves this window's Session for someone else's, with the Sessions grant. */
+  watch: (session: string) => void;
+  /** Leaves this window's Session for the one a join link opens. */
+  joinLink: (link: string) => void;
+  /** A watcher's way out, to a Session of its own. */
+  leave: () => void;
+  /** Forgets the notice about how the last session ended. */
+  dismiss: () => void;
+  /** Exploring watcher: goes back to the presenter's view. */
+  follow: () => Promise<void>;
+  setCursorOptions: (options: CursorOptions) => void;
+  /** Tells the others where this cursor is, or `null` when it left the window. */
+  moveCursor: (at: CursorPoint | null) => void;
+}
+
+/** The window's session and the actions on it. */
+export function useSession(): SessionApi {
+  const store = useStore();
+  const access = useSelect((state) => state.seat?.access ?? null);
+  const sharing = useSelect((state) => state.seat?.sharing?.access ?? null);
+  const link = useSelect((state) => state.seat?.sharing?.link ?? null);
+  const mode = useSelect((state) => state.seat?.mode ?? null);
+  const id = useSelect((state) => state.session);
+  const you = useSelect((state) => state.you);
+  const connection = useSelect((state) => state.connection);
+  const ended = useSelect((state) => state.ended);
+  const cursorOptions = useSelect((state) => state.cursorOptions);
+  return useMemo(
+    () => ({
+      state: access === "owner" ? (sharing ? "owner" : "none") : access ? "watcher" : "none",
+      connection,
+      ended,
+      session: id !== null && you !== null ? { id, you, link } : null,
+      sharing,
+      mode,
+      cursorOptions,
+      watch: (session) => store.watch(session),
+      joinLink: (text) => store.joinLink(text),
+      leave: () => store.leave(),
+      dismiss: () => store.dismiss(),
+      follow: () => store.follow(),
+      setCursorOptions: (options) => store.setCursorOptions(options),
+      moveCursor: (at) => store.moveCursor(at),
+    }),
+    [store, access, sharing, link, mode, id, you, connection, ended, cursorOptions],
+  );
+}
+
+/** Everyone in the Session, and which of them is this window. */
 export function useParticipants(): { you: number | null; participants: readonly SeatInfo[] } {
-  const { session, snapshot } = useSession();
-  return { you: session?.you ?? null, participants: snapshot?.participants ?? [] };
+  const you = useSelect((state) => state.you);
+  const participants = useSelect((state) => state.roster);
+  return { you, participants };
 }
 
 /** The other participants' cursors by participant id, replaced on every move. */
 export function useCursors(): ReadonlyMap<number, CursorPoint> {
-  const context = useContext(SessionContext);
-  if (!context) throw new Error("useCursors needs a SessionProvider");
-  return useSyncExternalStore(context.cursors.subscribe, context.cursors.snapshot);
+  const { cursors } = useStore();
+  return useSyncExternalStore(cursors.subscribe, cursors.snapshot);
 }

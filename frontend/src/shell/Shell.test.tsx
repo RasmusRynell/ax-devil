@@ -1,10 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { FakeSocket } from "../session/fakeBackend";
+import { FakeSocket, video } from "../session/fakeSession";
 import { SessionProvider } from "../session/session";
 import { useViewerActions } from "../viewer/actions";
-import { fakeWorkspace, resolved, video } from "../workspace/fakeEvents";
-import { WorkspaceProvider } from "../workspace/WorkspaceProvider";
 import { Shell } from "./Shell";
 import type { WindowBridge } from "./windowBridge";
 
@@ -33,18 +31,15 @@ afterEach(() => {
   delete window.axDevilWindow;
 });
 
-/** The shell inside its session and a fake workspace, shown once the backend has put the client in one. */
+/** The shell in the window's own Session, shown once the backend has seated it. */
 async function renderShell() {
-  const workspace = fakeWorkspace();
   render(
     <SessionProvider>
-      <WorkspaceProvider store={workspace.store}>
-        <Shell />
-      </WorkspaceProvider>
+      <Shell />
     </SessionProvider>,
   );
   await screen.findByRole("heading", { name: "ax-devil" });
-  return workspace;
+  return FakeSocket.rooms.get("room-1")!;
 }
 
 describe("menu bar", () => {
@@ -112,40 +107,49 @@ describe("add video", () => {
       onMaximizedChange: () => () => {},
     } satisfies WindowBridge;
   };
+  const commands = () => FakeSocket.latest.received.filter((message) => message.type === "command");
 
-  it("posts the chosen files with a viewer wanted, and says why the backend refused them", async () => {
+  it("asks for the chosen files with a viewer wanted, and says why the backend refused them", async () => {
     chooses(["/clips/a.mp4", "/clips/b.txt"]);
-    const fetchMock = vi.fn(async () => ({
-      ok: false,
-      status: 422,
-      json: async () => ({ reason: "b.txt is not a video", location: "/clips/b.txt" }),
-    }));
-    vi.stubGlobal("fetch", fetchMock);
     await renderShell();
+    FakeSocket.latest.defer = true;
     fireEvent.click(screen.getByRole("menuitem", { name: "File" }));
     fireEvent.click(screen.getByRole("menuitem", { name: /Add Video/ }));
-    expect((await screen.findByRole("alert")).textContent).toContain("b.txt is not a video");
-    const [url, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
-    expect(url).toBe("/api/workspace/items");
-    expect(JSON.parse(init.body as string)).toEqual({
-      items: [
-        { type: "Video", path: "/clips/a.mp4" },
-        { type: "Video", path: "/clips/b.txt" },
-      ],
-      open: true,
-    });
+    await act(async () => {});
+    expect(commands()).toMatchObject([
+      {
+        cmd: {
+          type: "content",
+          command: {
+            type: "addItems",
+            items: [
+              { type: "Video", path: "/clips/a.mp4" },
+              { type: "Video", path: "/clips/b.txt" },
+            ],
+            open: true,
+          },
+        },
+      },
+    ]);
+    const seq = commands()[0]!.seq;
+    await act(async () =>
+      FakeSocket.latest.emit({
+        type: "ack",
+        seq,
+        outcome: { status: "refused", code: "Invalid" },
+      }),
+    );
+    expect(screen.getByRole("alert").textContent).toContain("cannot open");
     fireEvent.click(screen.getByRole("button", { name: "Dismiss" }));
     expect(screen.queryByRole("alert")).toBeNull();
   });
 
   it("sends nothing when the dialog is cancelled", async () => {
     chooses([]);
-    const fetchMock = vi.fn();
-    vi.stubGlobal("fetch", fetchMock);
     await renderShell();
     fireEvent.keyDown(document, { key: "n", ctrlKey: true });
     await act(async () => {});
-    expect(fetchMock).not.toHaveBeenCalled();
+    expect(commands()).toEqual([]);
     expect(screen.queryByRole("alert")).toBeNull();
   });
 
@@ -158,8 +162,8 @@ describe("add video", () => {
 
 describe("viewer shortcuts", () => {
   async function openViewer() {
-    const workspace = await renderShell();
-    act(() => workspace.source().send([video("a", true, resolved("a"))]));
+    const room = await renderShell();
+    act(() => room.setItems([video("a")]));
   }
 
   it("reach the open viewer, repeat only where the command says so, and leave text fields alone", async () => {
@@ -183,18 +187,28 @@ describe("viewer shortcuts", () => {
 });
 
 describe("a watcher", () => {
-  it("gets the welcome shell without a workspace", async () => {
+  it("shows the presenter's window and cannot add to it", async () => {
     const room = FakeSocket.host();
-    const join = { kind: "join", session: room.id, secret: room.secret };
-    window.sessionStorage.setItem("ax-devil.credential", JSON.stringify(join));
-    // No WorkspaceProvider: a watcher's shell must not ask for one.
+    room.setItems([video("a")]);
+    room.publish({
+      sidebar: { view: "live", open: true },
+      active: "a",
+      viewers: { a: {} },
+    });
+    window.sessionStorage.setItem(
+      "ax-devil.credential",
+      JSON.stringify({ kind: "join", session: room.id, secret: room.secret }),
+    );
     render(
       <SessionProvider>
         <Shell />
       </SessionProvider>,
     );
     await screen.findByRole("heading", { name: "ax-devil" });
-    for (const add of screen.getAllByRole("button", { name: /Add Video/ }))
-      expect((add as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.getByRole("heading", { name: "Live" })).toBeTruthy();
+    expect(screen.getByRole("tab", { name: "a.mp4" }).getAttribute("aria-selected")).toBe("true");
+    expect(
+      (screen.getByRole("button", { name: "Close a.mp4" }) as HTMLButtonElement).disabled,
+    ).toBe(true);
   });
 });

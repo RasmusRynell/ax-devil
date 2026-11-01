@@ -1,9 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import type { CursorPoint } from "../generated/api";
-import { FakeSocket } from "./fakeBackend";
+import { FakeSocket } from "./fakeSession";
 import { Presence } from "./Presence";
-import { SessionProvider, useSession } from "./session";
+import { SessionProvider } from "./session";
 
 /** Where the region and the one element in it sit in this window; jsdom does no layout. */
 const BOXES: Record<string, [left: number, top: number, width: number, height: number]> = {
@@ -42,24 +42,21 @@ afterEach(() => {
   frames = [];
 });
 
-function JoinNow({ link }: { link: string }) {
-  const { joinLink } = useSession();
-  return <button onClick={() => joinLink(link)}>Join</button>;
-}
-
 /** A watcher in someone else's session, with a region holding one element. */
 async function watching() {
   const room = FakeSocket.host();
+  window.sessionStorage.setItem(
+    "ax-devil.credential",
+    JSON.stringify({ kind: "join", session: room.id, secret: room.secret }),
+  );
   render(
     <SessionProvider>
       <div data-cursor-region="main">
         <p data-cursor-id="box">Main</p>
       </div>
       <Presence scopes={{ main: "welcome" }} />
-      <JoinNow link={room.link} />
     </SessionProvider>,
   );
-  fireEvent.click(screen.getByRole("button", { name: "Join" }));
   await screen.findByText("Main");
   await act(() => Promise.resolve());
   return FakeSocket.latest;

@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { menusFor } from "../commands";
 import { Menu, type MenuCommand } from "../kit/Menu";
-import { useAllowed } from "../session/view";
+import { useAllowed } from "../session/session";
 
 interface Props {
   checked: ReadonlySet<string>;

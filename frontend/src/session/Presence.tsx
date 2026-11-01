@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useReducer, useRef, useState } from "react";
 import { Icon } from "../kit/Icon";
 import { cursorPointAt, placeCursor, type Scopes } from "./cursor";
-import { useCursors, useSession } from "./session";
+import { useCursors, useParticipants, useSession } from "./session";
 
 /** How many `--presence-N` colors tokens.css defines. */
 const PRESENCE_COLORS = 8;
@@ -59,14 +59,16 @@ type Spots = ReadonlyMap<number, { x: number; y: number }>;
  * Shows the other participants' cursors over the window and sends this one's, as the two cursor options allow. A
  * cursor lands inside the element the sender pointed at, or by region where this window shows the same thing, and
  * is hidden where neither exists here. Positions are measured after layout, and again on scroll, resize and every
- * snapshot, because any of them can move the element. Nothing above this component re-renders when a cursor moves.
+ * cursor move, because any of them can move the element. Nothing above this component re-renders when a cursor moves.
  */
 export function Presence({ scopes }: { scopes: Scopes }) {
-  const { state, snapshot, cursorOptions } = useSession();
+  const { cursorOptions } = useSession();
+  const { participants } = useParticipants();
   const cursors = useCursors();
   const [, measureAgain] = useReducer((count: number) => count + 1, 0);
   const [spots, setSpots] = useState<Spots>(new Map());
-  const inSession = state !== "none";
+  // Alone in the Session there is nobody to show a cursor to or to see one of.
+  const inSession = participants.length > 1;
   useSendCursor(scopes, inSession && cursorOptions.share);
 
   useEffect(() => {
@@ -100,9 +102,7 @@ export function Presence({ scopes }: { scopes: Scopes }) {
     if (!same) setSpots(next);
   });
 
-  const people = new Map(
-    (snapshot?.participants ?? []).map((participant) => [participant.id, participant]),
-  );
+  const people = new Map(participants.map((participant) => [participant.id, participant]));
   return (
     <div aria-hidden className="pointer-events-none fixed inset-0 z-50 overflow-hidden">
       {[...spots].map(([id, spot]) => {

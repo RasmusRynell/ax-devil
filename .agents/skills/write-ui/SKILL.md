@@ -60,7 +60,8 @@ project state owned by the backend, never own it, and never do file, network or 
   `data-cursor-region`; give an element that should show it a stable id. Popups and dialogs are regions of their own
   that share no pointer, so they get none. Names: `menu:<label>`, `activity:<view>`, `window:<control>`,
   `title:drag`, `row:<id>`, `sidebar:<id>`, `tab:<item>`, `tab-close:<item>`,
-  `transport:<control>` (seek, play, step-back, step-forward, speed), `share…`, `session…`, `sessions:…`. The main
+  `transport:<control>` (seek, play, step-back, step-forward, speed), `frame:<item>` (laid exactly over a video's
+  picture, so a pointer lands on the same image pixel in every window size), `share…`, `session…`, `sessions:…`. The main
   region's cursor scope is the active item id, or `welcome` without one. Characters inside a truncated label
   are not tracked.
 - **A new user preference** is a row in the settings table ([08](../../../docs/rebuild/08-settings-cli.md#settings-model)),

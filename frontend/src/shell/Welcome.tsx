@@ -1,7 +1,7 @@
 import { command, scopeOf } from "../commands";
 import { KeyChips } from "../kit/KeyChips";
 import { RowList, type Row } from "../kit/RowList";
-import { useAllowed } from "../session/view";
+import { useAllowed } from "../session/session";
 
 const GROUPS: readonly { heading: string; ids: readonly string[] }[] = [
   { heading: "Open", ids: ["open-workspace", "add-video", "add-live-stream", "add-playlist"] },

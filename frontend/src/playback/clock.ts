@@ -24,6 +24,26 @@ export function atOrBefore(times: Float64Array, timeUs: number): number {
   return low;
 }
 
+/** What a presenter says the Session's clock is doing; `atUs` is the presenter's stamp in server time (µs). */
+export interface ClockIntent {
+  frame: number;
+  playing: boolean;
+  /** Speed in hundredths: 100 is real time. */
+  speedCenti: number;
+  atUs: number;
+}
+
+/**
+ * The frame a follower shows at `nowServerUs` (server µs): the intent's frame while paused, otherwise the frame due
+ * after the time elapsed since `atUs`, at the intent's speed. Always inside the video.
+ */
+export function followFrame(times: Float64Array, intent: ClockIntent, nowServerUs: number): number {
+  const anchor = Math.min(times.length - 1, Math.max(0, intent.frame));
+  if (!intent.playing) return anchor;
+  const elapsedUs = (nowServerUs - intent.atUs) * (intent.speedCenti / 100);
+  return atOrBefore(times, times[anchor] + elapsedUs);
+}
+
 /** What the clock needs to know about the buffered frames. */
 export interface FrameSource {
   has(sequenceId: number): boolean;

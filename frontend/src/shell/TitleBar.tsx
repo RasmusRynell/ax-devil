@@ -9,12 +9,12 @@ interface Props {
   /** The commands that do something today; the menus show only these. */
   wired: ReadonlySet<string>;
   onSelect: (command: MenuCommand) => void;
-  /** Opens the Sessions view. */
-  onShare: () => void;
+  /** Starts sharing the window's Session and shows the Sessions view. */
+  onStartSharing: () => void;
 }
 
 /** The window's top bar: title, menus, an empty stretch that drags the window, the share entry and the window controls. */
-export function TitleBar({ checked, wired, onSelect, onShare }: Props) {
+export function TitleBar({ checked, wired, onSelect, onStartSharing }: Props) {
   return (
     <header
       data-cursor-region="titleBar"
@@ -32,7 +32,7 @@ export function TitleBar({ checked, wired, onSelect, onShare }: Props) {
         className="h-full min-w-0 flex-1"
         onDoubleClick={() => window.axDevilWindow?.toggleMaximize()}
       />
-      <ShareControl onShare={onShare} />
+      <ShareControl onStartSharing={onStartSharing} />
       <WindowControls />
     </header>
   );

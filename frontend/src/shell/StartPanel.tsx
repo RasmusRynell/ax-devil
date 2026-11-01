@@ -1,7 +1,7 @@
 import { command, scopeOf } from "../commands";
 import { Button } from "../kit/Button";
 import type { IconName } from "../kit/icons";
-import { useAllowed } from "../session/view";
+import { useAllowed } from "../session/session";
 
 const OPEN: readonly [id: string, icon: IconName][] = [
   ["open-workspace", "folder"],

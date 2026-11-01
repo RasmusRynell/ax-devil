@@ -1,6 +1,7 @@
 // @vitest-environment node
 import { describe, expect, it } from "vite-plus/test";
-import { PlaybackSession } from "./session";
+import { CommandRefused } from "../errors";
+import { PlaybackSession, type PlaybackIntent } from "./session";
 import {
   PLAYBACK_PROTOCOL,
   type ClientMessage,
@@ -10,6 +11,9 @@ import {
 import type { Incoming } from "./wire";
 
 const FRAME_BYTES = 100;
+
+/** Lets the ticket the session asked for arrive, so it can open its socket. */
+const flush = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
 
 function videoFrame(sequenceId: number): VideoFrame {
   const empty = new Uint8Array(0);
@@ -38,8 +42,11 @@ const opened = (frames = 10): ServerMessage => ({
 });
 
 /** A session against a fake server, a fake display refresh and a fake clock, with a window of ten frames. */
-function setup(resume?: { frame: number; speed: number }) {
+async function setup(resume?: { frame: number; speed: number }) {
   const sent: ClientMessage[] = [];
+  const intents: PlaybackIntent[] = [];
+  let tickets = 0;
+  let ticket: () => Promise<string> = async () => `ticket-${++tickets}`;
   const presented: number[] = [];
   const time = { now: 1000 };
   const refreshes: (() => void)[] = [];
@@ -47,7 +54,9 @@ function setup(resume?: { frame: number; speed: number }) {
   let deliver: (incoming: Incoming) => void = () => {};
   let connections = 0;
   let closedConnections = 0;
-  const session = new PlaybackSession("video-1", {
+  const session = new PlaybackSession({
+    ticket: () => ticket(),
+    onIntent: (intent) => intents.push(intent),
     connect: (onIncoming) => {
       connections++;
       deliver = onIncoming;
@@ -95,10 +104,13 @@ function setup(resume?: { frame: number; speed: number }) {
   };
   const wants = () => sent.filter((message) => message.type === "Want");
   session.start();
+  await flush();
   return {
     session,
     server,
     sent,
+    intents,
+    tickets: (next: () => Promise<string>) => (ticket = next),
     presented,
     refresh,
     wants,
@@ -110,9 +122,9 @@ function setup(resume?: { frame: number; speed: number }) {
 }
 
 describe("opening", () => {
-  it("asks for the video, shows indexing, then shows the first frame paused", () => {
-    const { session, server, sent, presented, refresh } = setup();
-    expect(sent).toEqual([{ type: "Open", content_id: "video-1" }]);
+  it("asks for the video, shows indexing, then shows the first frame paused", async () => {
+    const { session, server, sent, presented, refresh } = await setup();
+    expect(sent).toEqual([{ type: "Open", ticket: "ticket-1" }]);
     server.say({ type: "Indexing", progress: 0.4 });
     expect(session.getSnapshot()).toMatchObject({ status: "indexing", progress: 0.4 });
 
@@ -127,9 +139,15 @@ describe("opening", () => {
     });
   });
 
-  it("reports the backend's error and neither retries nor draws", () => {
-    const { session, server, retries, refreshes } = setup();
-    server.say({ type: "Error", reason: "not a video", location: "/clips/a.mp4" });
+  it("reports the backend's error and neither retries nor draws", async () => {
+    const { session, server, retries, refreshes } = await setup();
+    server.say({
+      type: "Error",
+      code: "NotAVideo",
+      params: {},
+      reason: "not a video",
+      location: "/clips/a.mp4",
+    });
     server.drop();
     expect(session.getSnapshot()).toMatchObject({
       status: "failed",
@@ -139,8 +157,8 @@ describe("opening", () => {
     expect(refreshes).toEqual([]);
   });
 
-  it("refuses a backend that speaks another protocol", () => {
-    const { session, server } = setup();
+  it("refuses a backend that speaks another protocol", async () => {
+    const { session, server } = await setup();
     server.say({
       ...(opened() as Extract<ServerMessage, { type: "Opened" }>),
       protocol: PLAYBACK_PROTOCOL + 1,
@@ -150,9 +168,9 @@ describe("opening", () => {
 });
 
 describe("resuming", () => {
-  it("opens where an earlier session left off, paused, at the speed it had", () => {
-    const { session, server, sent, presented, refresh } = setup({ frame: 7, speed: 2 });
-    expect(sent).toEqual([{ type: "Open", content_id: "video-1", start_frame: 7 }]);
+  it("opens where an earlier session left off, paused, at the speed it had", async () => {
+    const { session, server, sent, presented, refresh } = await setup({ frame: 7, speed: 2 });
+    expect(sent).toEqual([{ type: "Open", ticket: "ticket-1", start_frame: 7 }]);
     server.open();
     server.frames(7);
     refresh();
@@ -165,8 +183,8 @@ describe("resuming", () => {
 });
 
 describe("what the window asks for and keeps", () => {
-  it("reports the window split by direction, and keeps only frames inside it", () => {
-    const { session, server, wants, presented, refresh } = setup();
+  it("reports the window split by direction, and keeps only frames inside it", async () => {
+    const { session, server, wants, presented, refresh } = await setup();
     server.open();
     expect(wants()).toEqual([
       { type: "Want", playhead: 0, ahead: 4, behind: 5, direction: "forward" },
@@ -185,8 +203,8 @@ describe("what the window asks for and keeps", () => {
     expect(presented.at(-1)).toBe(6);
   });
 
-  it("asks for no display refreshes while paused and idle, and again when something changes", () => {
-    const { session, server, refresh, refreshes } = setup();
+  it("asks for no display refreshes while paused and idle, and again when something changes", async () => {
+    const { session, server, refresh, refreshes } = await setup();
     server.open();
     expect(refreshes).toHaveLength(0);
     server.frames(0);
@@ -207,8 +225,8 @@ describe("what the window asks for and keeps", () => {
     expect(refreshes).toHaveLength(0);
   });
 
-  it("collapses rapid steps to the latest target in one request", () => {
-    const { session, server, wants, refresh } = setup();
+  it("collapses rapid steps to the latest target in one request", async () => {
+    const { session, server, wants, refresh } = await setup();
     server.open();
     server.frames(0);
     refresh();
@@ -223,8 +241,8 @@ describe("what the window asks for and keeps", () => {
 });
 
 describe("playing to the end", () => {
-  it("finishes on the last frame and plays again from the start", () => {
-    const { session, server, presented, refresh, refreshes } = setup();
+  it("finishes on the last frame and plays again from the start", async () => {
+    const { session, server, presented, refresh, refreshes } = await setup();
     server.open(3);
     server.frames(0, 1, 2);
     refresh();
@@ -243,11 +261,17 @@ describe("playing to the end", () => {
 });
 
 describe("frames that failed to decode", () => {
-  it("shows the reason while the screen waits on the frame, and moves on when the next frame is stepped to", () => {
-    const { session, server, refresh } = setup();
+  it("shows the reason while the screen waits on the frame, and moves on when the next frame is stepped to", async () => {
+    const { session, server, refresh } = await setup();
     server.open();
     server.frames(0, 1, 3);
-    server.say({ type: "FrameError", sequence_id: 2, reason: "corrupt slice" });
+    server.say({
+      type: "FrameError",
+      sequence_id: 2,
+      code: "DecodeFailed",
+      params: {},
+      reason: "corrupt slice",
+    });
     refresh();
     session.seek(2);
     refresh();
@@ -263,11 +287,17 @@ describe("frames that failed to decode", () => {
     });
   });
 
-  it("finishes playing when the last frame failed instead of waiting for it", () => {
-    const { session, server, refresh } = setup();
+  it("finishes playing when the last frame failed instead of waiting for it", async () => {
+    const { session, server, refresh } = await setup();
     server.open(3);
     server.frames(0, 1);
-    server.say({ type: "FrameError", sequence_id: 2, reason: "truncated" });
+    server.say({
+      type: "FrameError",
+      sequence_id: 2,
+      code: "DecodeFailed",
+      params: {},
+      reason: "truncated",
+    });
     refresh();
     session.play();
     refresh();
@@ -277,8 +307,8 @@ describe("frames that failed to decode", () => {
 });
 
 describe("connection loss and closing", () => {
-  it("reconnects where it left off, paused, and keeps the speed", () => {
-    const { session, server, sent, retries, refreshes, refresh, connections } = setup();
+  it("reconnects where it left off, paused, and keeps the speed", async () => {
+    const { session, server, sent, retries, refreshes, refresh, connections } = await setup();
     server.open();
     server.frames(0, 1, 2, 3);
     refresh();
@@ -291,8 +321,10 @@ describe("connection loss and closing", () => {
     expect(retries).toHaveLength(1);
 
     retries[0].run();
+    await flush();
     expect(connections()).toBe(2);
-    expect(sent.at(-1)).toEqual({ type: "Open", content_id: "video-1", start_frame: 3 });
+    // A ticket works once: the new connection spends a new one.
+    expect(sent.at(-1)).toEqual({ type: "Open", ticket: "ticket-2", start_frame: 3 });
     server.open();
     server.frames(3);
     refresh();
@@ -304,9 +336,9 @@ describe("connection loss and closing", () => {
     });
   });
 
-  it("tells the backend, stops drawing and ignores the socket after close", () => {
+  it("tells the backend, stops drawing and ignores the socket after close", async () => {
     const { session, server, sent, presented, refresh, refreshes, retries, closedConnections } =
-      setup();
+      await setup();
     server.open();
     session.close();
     expect(sent.at(-1)).toEqual({ type: "Close" });
@@ -317,5 +349,51 @@ describe("connection loss and closing", () => {
     refresh();
     expect(presented).toEqual([]);
     expect(retries).toEqual([]);
+  });
+});
+
+describe("tickets", () => {
+  it("fails when the backend refuses the ticket, and tries again when the session is only offline", async () => {
+    const refused = await setup();
+    refused.tickets(() => Promise.reject(new CommandRefused("ContentUnavailable")));
+    refused.server.drop();
+    refused.retries[0].run();
+    await flush();
+    expect(refused.session.getSnapshot()).toMatchObject({ status: "failed" });
+    // Only the retry that asked is there: no other was scheduled.
+    expect(refused.retries).toHaveLength(1);
+
+    const offline = await setup();
+    offline.tickets(() => Promise.reject(new Error("The connection is down.")));
+    offline.server.drop();
+    offline.retries[0].run();
+    await flush();
+    expect(offline.session.getSnapshot().status).toBe("reconnecting");
+    expect(offline.retries).toHaveLength(2);
+  });
+});
+
+describe("following a presenter", () => {
+  const intent = { frame: 2, playing: true, speedCenti: 200, atUs: 0 };
+
+  it("puts the clock where the presenter's is by now, at its speed, and keeps in step across a reconnection", async () => {
+    const { session, server, intents, retries, refresh } = await setup();
+    server.open();
+    server.frames(0);
+    refresh();
+    // 120 ms after the intent, at twice the speed: 240 ms on from frame 2 (80 ms) is frame 8.
+    session.follow(intent, () => 120_000);
+    expect(session.getSnapshot()).toMatchObject({ playing: true, speed: 2, playhead: 8 });
+    session.follow({ ...intent, frame: 5, playing: false }, () => 9_000_000);
+    expect(session.getSnapshot()).toMatchObject({ playing: false, playhead: 5 });
+    // A follower does not publish; only what its own viewer does becomes an intent.
+    expect(intents).toEqual([]);
+
+    session.follow(intent, () => 120_000);
+    server.drop();
+    retries[0].run();
+    await flush();
+    server.open();
+    expect(session.getSnapshot()).toMatchObject({ playing: true, playhead: 8 });
   });
 });

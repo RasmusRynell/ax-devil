@@ -1,13 +1,13 @@
 import type {
   CursorOptions,
-  ShareAccess,
-  ShareClientMessage,
-  ShareServerMessage,
+  SessionAuth,
+  SessionClientMessage,
+  SessionServerMessage,
 } from "../generated/api";
 
 /** How a client asks to be seated the first time. */
 export type Entry =
-  | { kind: "create" }
+  | { kind: "own" }
   | { kind: "watch"; session: string }
   /** `link` is the join link's `<id>.<secret>`. */
   | { kind: "join"; link: string };
@@ -40,13 +40,13 @@ export interface ConnectionOptions {
   password?: string;
   /** The cursor choices to seat with; read again on every reconnect. */
   cursors: () => CursorOptions;
-  onMessage: (message: ShareServerMessage) => void;
+  onMessage: (message: SessionServerMessage) => void;
   onStatus: (status: Status) => void;
 }
 
 export interface Connection {
-  /** Sends while the socket is open; a message sent while offline is dropped. */
-  send: (message: ShareClientMessage) => void;
+  /** Sends while the socket is open and reports whether it did; a message sent while offline is dropped. */
+  send: (message: SessionClientMessage) => boolean;
   /** Ends the connection without telling the session; the seat stays for its grace period. */
   close: () => void;
 }
@@ -68,19 +68,20 @@ const TERMINAL: Record<number, Ending> = {
 };
 
 function socketUrl(): string {
-  const url = new URL("/api/share/socket", window.location.href);
+  const url = new URL("/api/session", window.location.href);
   url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
   return url.href;
 }
 
-function entryAccess(entry: Entry): ShareAccess {
-  if (entry.kind === "create") return { type: "create" };
-  if (entry.kind === "watch") return { type: "watch", session: entry.session };
+function authOf(entry: Entry | null, serverPassword?: string): SessionAuth {
+  // A resume needs no way in: the token alone is the credential.
+  if (!entry || entry.kind === "own") return { type: "own", serverPassword };
+  if (entry.kind === "watch") return { type: "watch", session: entry.session, serverPassword };
   return { type: "join", link: entry.link };
 }
 
 /**
- * Opens the share socket and keeps it: `Hello` first, then `Resume` with the token each `Welcome` brings after
+ * Opens the Session socket and keeps it: `Hello` first, then `Hello` with the token each `Welcome` brings after
  * every drop, with growing pauses. A server that says nothing for [`SILENCE_MS`] counts as gone. Close codes 4401,
  * 4404, 4409, 4429 and 1013 and a session's `Ended` message are final and reported once through `onStatus`.
  */
@@ -123,15 +124,11 @@ export function connect(options: ConnectionOptions): Connection {
       }, SILENCE_MS);
     };
     current.onopen = () => {
-      // Only a resuming connection can lack an entry.
-      const access: ShareAccess = token
-        ? { type: "resume", token }
-        : entryAccess(options.entry as Entry);
-      const hello: ShareClientMessage = {
+      const hello: SessionClientMessage = {
         type: "hello",
-        access,
+        auth: authOf(options.entry, options.password),
+        resume: token,
         cursors: options.cursors(),
-        ...(options.password && { serverPassword: options.password }),
       };
       current.send(JSON.stringify(hello));
       listen();
@@ -139,7 +136,7 @@ export function connect(options: ConnectionOptions): Connection {
     current.onmessage = (event: MessageEvent<string>) => {
       if (socket !== current || over) return;
       listen();
-      const message = JSON.parse(event.data) as ShareServerMessage;
+      const message = JSON.parse(event.data) as SessionServerMessage;
       if (message.type === "welcome") {
         token = message.resume;
         seated = true;
@@ -167,7 +164,9 @@ export function connect(options: ConnectionOptions): Connection {
   open();
   return {
     send: (message) => {
-      if (socket?.readyState === WebSocket.OPEN) socket.send(JSON.stringify(message));
+      if (socket?.readyState !== WebSocket.OPEN) return false;
+      socket.send(JSON.stringify(message));
+      return true;
     },
     close: () => {
       over = true;
