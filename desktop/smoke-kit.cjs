@@ -22,6 +22,25 @@ const page = (window) => {
 const frames = (driver) =>
   driver.js("new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done)))");
 
+// Sizes a window and zooms its page, then waits until the page reports the geometry the fit checks assume: the window's
+// size divided by the zoom, in CSS pixels. Both changes reach the page some time after the calls return, and below 640
+// CSS pixels the layout changes (the sidebar fills the window), so measuring earlier sees an intermediate layout.
+async function setView(window, [width, height], zoom) {
+  const { js } = page(window);
+  window.setSize(width, height);
+  window.webContents.setZoomFactor(zoom);
+  const expected = [width / zoom, height / zoom];
+  let seen = [];
+  for (let i = 0; i < 100; i++) {
+    seen = await js("[innerWidth, innerHeight]");
+    if (seen.every((size, axis) => Math.abs(size - expected[axis]) <= 1)) return frames({ js });
+    await delay(100);
+  }
+  throw new Error(
+    `Timed out: the page must be ${expected.join("x")} CSS pixels at ${width}x${height} and ${zoom * 100}% zoom, but is ${seen.join("x")}`,
+  );
+}
+
 // A button in the sidebar, by its text.
 const button = (label) =>
   `[...document.querySelectorAll('aside button')].find((b) => b.textContent === '${label}')`;
@@ -74,6 +93,7 @@ module.exports = {
   frames,
   page,
   reload,
+  setView,
   tag,
   until,
   watchCsp,

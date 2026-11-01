@@ -5,7 +5,7 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs/promises");
 const path = require("node:path");
 const fit = require("./fit.cjs");
-const { SCREENSHOTS, delay, frames, page } = require("./smoke-kit.cjs");
+const { SCREENSHOTS, delay, frames, page, setView } = require("./smoke-kit.cjs");
 
 const DATASET = path.resolve(__dirname, "../fixtures/datasets/mot");
 const SHOWN = `Number.parseInt(document.querySelector("output[aria-label=Frame]")?.textContent ?? "")`;
@@ -71,9 +71,8 @@ module.exports.playlist = async (window) => {
   };
 
   // The dialog at the smallest window, then Add at the normal size.
-  window.setSize(640, 480);
   for (const [theme, zoom] of THEMES_AND_ZOOMS) {
-    window.webContents.setZoomFactor(zoom);
+    await setView(window, [640, 480], zoom);
     await setTheme(theme);
     await openAddPlaylist();
     await shoot(`add-playlist-${theme}${zoom === 1 ? "" : "-200"}.png`);
@@ -189,10 +188,10 @@ module.exports.playlist = async (window) => {
   }
 
   // The smallest window, at normal zoom and 200%, with the sidebar closed: the lanes still fit and still draw.
-  window.setSize(640, 480);
+  await setView(window, [640, 480], 1);
   await js("document.querySelector('[aria-label=Workspace]').click()");
   for (const [theme, zoom] of THEMES_AND_ZOOMS) {
-    window.webContents.setZoomFactor(zoom);
+    await setView(window, [640, 480], zoom);
     await setTheme(theme);
     await expectOverlays(entries[1].lanes);
     await shoot(`playlist-min-${theme}${zoom === 1 ? "" : "-200"}.png`);

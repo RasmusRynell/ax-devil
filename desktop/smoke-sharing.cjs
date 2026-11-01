@@ -14,6 +14,7 @@ const {
   frames,
   page,
   reload,
+  setView,
   tag,
   until: waitFor,
   watchCsp,
@@ -48,9 +49,7 @@ module.exports.sharing = async (window, shell, ownerCsp) => {
   // The page must fit the smallest window at 200% zoom in this state; the picture is kept for review.
   const fitsAtMinimum = async (win, driver, name) => {
     const bounds = win.getBounds();
-    win.setSize(640, 480);
-    win.webContents.setZoomFactor(2);
-    await frames(driver);
+    await setView(win, [640, 480], 2);
     assert.deepEqual(
       await driver.js(`(${fit.page.toString()})()`),
       [],

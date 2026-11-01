@@ -4,7 +4,7 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs/promises");
 const path = require("node:path");
 const fit = require("./fit.cjs");
-const { SCREENSHOTS, button, page, reload, until, watchCsp } = require("./smoke-kit.cjs");
+const { SCREENSHOTS, button, page, reload, setView, until, watchCsp } = require("./smoke-kit.cjs");
 const { playlist } = require("./smoke-playlist.cjs");
 const { remote } = require("./smoke-remote.cjs");
 const { sharing } = require("./smoke-sharing.cjs");
@@ -37,7 +37,6 @@ module.exports = async (window, shell) => {
 
   // The isolated home is a first run, so Quick Setup is open: check it in the smallest window, then Done closes it.
   const size = window.getSize();
-  window.setSize(640, 480);
   await wait("document.querySelector('dialog[open] h2')?.textContent === 'Quick Setup'");
   for (const [theme, zoom] of [
     ["light", 1],
@@ -45,7 +44,7 @@ module.exports = async (window, shell) => {
     ["light", 2],
     ["dark", 2],
   ]) {
-    window.webContents.setZoomFactor(zoom);
+    await setView(window, [640, 480], zoom);
     nativeTheme.themeSource = theme;
     await wait(`matchMedia('(prefers-color-scheme: ${theme})').matches`);
     await frame();
@@ -86,7 +85,6 @@ module.exports = async (window, shell) => {
   await wait("window.devicePixelRatio === 1");
 
   // The smallest window, at normal zoom and at 200%: the View menu, then the Settings and Keyboard Shortcuts dialogs, in both themes.
-  window.setSize(640, 480);
   const openShortcuts = async () => {
     await js(
       "document.querySelector('[role=menu]') && document.querySelector('[aria-expanded=true]').click()",
@@ -105,7 +103,7 @@ module.exports = async (window, shell) => {
     ["light", 2],
     ["dark", 2],
   ]) {
-    window.webContents.setZoomFactor(zoom);
+    await setView(window, [640, 480], zoom);
     const suffix = zoom === 1 ? "" : "-200";
     nativeTheme.themeSource = theme;
     await wait(`matchMedia('(prefers-color-scheme: ${theme})').matches`);
