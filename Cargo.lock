@@ -90,7 +90,6 @@ dependencies = [
  "bytes",
  "catalogs",
  "clap",
- "drawing",
  "foundation",
  "futures-util",
  "handlers",
@@ -235,8 +234,6 @@ checksum = "fc652a48c352aef3ea3aed32080501cf3ef6ed5da78602a020c991775b0aff04"
 name = "catalogs"
 version = "0.1.0"
 dependencies = [
- "foundation",
- "render-catalog",
  "serde",
  "serde_json",
 ]
@@ -409,13 +406,6 @@ dependencies = [
  "block-buffer 0.12.1",
  "const-oid",
  "crypto-common 0.2.2",
-]
-
-[[package]]
-name = "drawing"
-version = "0.1.0"
-dependencies = [
- "serde_json",
 ]
 
 [[package]]
@@ -1024,17 +1014,6 @@ name = "regex-syntax"
 version = "0.8.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d6f6ff9a378485b298a5286656da665ba74413d36db0979633275d2e708145d4"
-
-[[package]]
-name = "render-catalog"
-version = "0.1.0"
-dependencies = [
- "crc32fast",
- "drawing",
- "scene",
- "serde",
- "serde_json",
-]
 
 [[package]]
 name = "rust-embed"

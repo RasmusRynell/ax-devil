@@ -102,7 +102,7 @@ The decisions taken with the owner, with their reasons, are in
 
 | ID | Feature | P | Status | Test | Notes |
 |----|---------|---|--------|------|-------|
-| RC-01 | Catalog language (schema v4) and the six built-ins | M | done | `frontend/src/present/oracle.test.ts`, `frontend/src/present/catalog/{catalog,schema}.test.ts`, `crates/catalogs` tests | All six match the reference on the oracle sheets without exceptions. The JSON Schema for editors is generated from the compiler's tables (`assets/catalogs/catalog.schema.json`); the Rust v3 path goes in S3 (D25) |
+| RC-01 | Catalog language (schema v4) and the six built-ins | M | done | `frontend/src/present/oracle.test.ts`, `frontend/src/present/catalog/{catalog,schema}.test.ts`, `crates/catalogs` tests | All six match the reference on the oracle sheets without exceptions. The JSON Schema for editors is generated from the compiler's tables (`assets/catalogs/catalog.schema.json`) |
 | RC-02 | Per-view selection, Apply to all, Use as default, hot reload | M | in progress | `frontend/src/playback/LaneMenu.test.tsx`, `tests/playback_lanes.rs` | A lane picks one of the built-ins from its menu, listed in `Opened`; a catalog that fails keeps the last one. Left: Apply to all, Use as default, user catalogs and hot reload |
 | RC-03 | Catalog viewer window with seeded sheets, New copy, Delete | M | todo |  |  |
 | RC-04 | `catalog list/check/render/new/use/reference` | M | in progress | `src/cli/tests.rs` | `catalog list` and `catalog check`, which runs the frontend's compiler in Electron-as-Node (D23); the others are not built |
@@ -155,7 +155,7 @@ The decisions taken with the owner, with their reasons, are in
 |----|---------|---|--------|------|-------|
 | DT-01 | Isolated GUI test environment for agents and CI | M | in progress | `make tests-desktop` | `scripts/isolated`: private home and display, user-file guard; Linux |
 | DT-02 | UI screenshot harness | M | in progress | `make tests-desktop` | `desktop/smoke*.cjs`: main window, View menu, Quick Setup, the Settings (including Storage) and Shortcuts dialogs, the Add Playlist dialog, and the fixture playlist's lanes (overlay pixels asserted) in light and dark, at the window minimum and 200% zoom, plus a video and a sharing scenario; other windows land with M8 |
-| DT-03 | Rendering benchmarks with A/B against a ref | S | in progress | `make bench` | `render-catalog` and `overlays` benches on a 650-box frame; numbers on stdout, nothing asserted and no A/B against a ref |
+| DT-03 | Rendering benchmarks with A/B against a ref | S | in progress | `make bench` | `overlays` bench of the Sample Item encoder; numbers on stdout, nothing asserted and no A/B against a ref |
 | DT-04 | Timestamp alignment report | S | todo |  |  |
 | DT-05 | Release check in clean environments | S | todo |  |  |
 | DT-06 | Demo recorder | S | todo |  |  |

@@ -49,7 +49,6 @@ Shared language for ax-devil's inspection workspace. Code, docs and UI use these
 | Lane Policy | What the backend needs to select samples for a lane: matching tolerance, sticky and whether the lane is shown. Revisioned and sent by the client. | Lane style, lane view |
 | Lane Style | What only the client needs to present a lane: catalog, filter choices, theme, opacity, zoom, pan and aspect. Never sent to the backend. | Lane policy, lane view |
 | Marks | The boxes, lines, circles, points, paths and labels a catalog produces from a Sample Item in a lane, laid out and painted by the frontend. | Drawing Instruction, Prepared Drawing |
-| Draw Recipe | Catalog-owned entity or relation rendering logic that emits Marks. | Object renderer, type switch |
 
 ## Relationships
 
@@ -63,5 +62,4 @@ Shared language for ax-devil's inspection workspace. Code, docs and UI use these
 - Use **Seekable Video Content** for the Workspace description and "seekable source" only for the runtime source opened from it.
 - Use **Frame Display** for the reusable display shell and **Video Viewer** for the workflow that owns media behavior.
 - Use **Overlay Content** for companion data, **Sample Item** and **Frame Map** for what the backend sends, and **Marks** for what the frontend draws. Use **Lane Policy** for what the backend must know and **Lane Style** for what only the client holds.
-- Use **Scene Render Catalog** for task-selected rendering setups that own templates and catalog-defined recipes.
-- Use **Draw Recipe** for catalog-owned entity rendering behavior. Classification strings are decoder evidence; recipe selection is Scene Render Catalog policy.
+- Use **Scene Render Catalog** for the rules and layers that decide how a Sample Item becomes Marks. Classification strings are decoder evidence; which rule matches is catalog policy.

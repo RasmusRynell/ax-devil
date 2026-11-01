@@ -2,7 +2,7 @@
 
 use std::fmt;
 
-use crate::built_in::BUILT_INS;
+use crate::built_in::DOCUMENTS;
 
 /// Which catalog: one shipped with the app, or a file in the user's catalog folder.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
@@ -18,10 +18,10 @@ impl CatalogId {
     /// for a user file name that is empty or names a path.
     pub fn parse(text: &str) -> Option<Self> {
         match text.split_once(':')? {
-            ("built-in", name) => BUILT_INS
+            ("built-in", name) => DOCUMENTS
                 .iter()
-                .find(|built_in| built_in.name == name)
-                .map(|built_in| Self::BuiltIn(built_in.name)),
+                .find(|(served, _)| *served == name)
+                .map(|(served, _)| Self::BuiltIn(served)),
             ("user", file) if is_file_name(file) => Some(Self::User(file.to_owned())),
             _ => None,
         }
@@ -49,13 +49,10 @@ mod tests {
 
     #[test]
     fn ids_are_read_against_the_catalogs_the_app_ships_and_print_the_way_they_are_read() {
-        for built_in in &BUILT_INS {
-            let id = CatalogId::parse(&format!("built-in:{}", built_in.name));
-            assert_eq!(id, Some(CatalogId::BuiltIn(built_in.name)));
-            assert_eq!(
-                id.unwrap().to_string(),
-                format!("built-in:{}", built_in.name)
-            );
+        for (name, _) in &DOCUMENTS {
+            let id = CatalogId::parse(&format!("built-in:{}", name));
+            assert_eq!(id, Some(CatalogId::BuiltIn(name)));
+            assert_eq!(id.unwrap().to_string(), format!("built-in:{}", name));
         }
         let user = CatalogId::parse("user:night.json");
         assert_eq!(user, Some(CatalogId::User("night.json".into())));

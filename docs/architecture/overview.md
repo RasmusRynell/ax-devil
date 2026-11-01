@@ -87,8 +87,6 @@ will run the same code in an offscreen Electron page, and Rust will freeze their
 `catalog check` runs the compiler in Electron-as-Node from a bundle `make` builds with the frontend
 (`desktop/generated/catalog-check.cjs`).
 
-The Rust render path (`render-catalog`, `drawing`, the v3 catalog compile) is unused by playback and goes in slice S3.
-
 ## Layers
 
 Dependencies point down only. Numbers are the layers of [02](../rebuild/02-architecture.md#layers-and-dependency-direction).

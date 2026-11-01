@@ -18,7 +18,7 @@ help:
 	  '  build       Build the release app with the frontend embedded; do not launch' \
 	  '  tests       Run all test suites' \
 	  '  check       Run every static check and all test suites' \
-	  '  bench       Run the Rust benchmarks (catalog render, lane frame); numbers on stdout' \
+	  '  bench       Run the Rust benchmarks (sample item encode); numbers on stdout' \
 	  '  bench-present  Time the frontend presentation path in plain Node (AX_BENCH_SIZES, _CATALOGS, _MODES, _REPEAT)' \
 	  '  check-fast  Run the static checks, file-size check on changed files only; no tests' \
 	  '  format      Format Rust and TypeScript/JavaScript, and apply lint fixes' \
@@ -85,9 +85,9 @@ tests-desktop: build desktop/node_modules/.electron-ready
 
 tests: tests-frontend tests-backend tests-integration tests-desktop
 
-# Timed with std::time::Instant on a MOT20-like frame; numbers go to stdout, nothing is asserted.
+# Timed with std::time::Instant; numbers go to stdout, nothing is asserted.
 bench:
-	$(ISOLATED) $(CARGO) bench --locked -p render-catalog -p overlays
+	$(ISOLATED) $(CARGO) bench --locked -p overlays
 
 # Plain Node, no test runner: p50/p95 per catalog, object count and mode; AX_BENCH_* narrow it (frontend/src/present/runBench.ts).
 bench-present: node_modules/.installed

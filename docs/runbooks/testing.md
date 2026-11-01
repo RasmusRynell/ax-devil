@@ -11,7 +11,7 @@ make tests-frontend TEST=App       # React component tests (Vitest, jsdom); TEST
 make tests-backend TEST=info       # Rust tests, without and with the embedded frontend
 make tests-integration             # Development supervisor (starts the services, stops the whole tree) and the desktop's argument forwarding
 make tests-desktop                 # Electron app on a private display; screenshots in artifacts/screenshots/
-make bench                         # Rust benchmarks (catalog render, lane frame); numbers on stdout, nothing asserted
+make bench                         # Rust benchmarks (sample item encode); numbers on stdout, nothing asserted
 make check                         # Every static check, then every suite
 make check-fast                    # Static checks only, file-size check on changed files only
 ```
