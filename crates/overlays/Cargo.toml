@@ -1,0 +1,38 @@
+[package]
+name = "overlays"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[package.metadata.ax-devil]
+layer = "services"
+
+[lints]
+workspace = true
+
+[dependencies]
+catalogs.workspace = true
+drawing.workspace = true
+foundation.workspace = true
+overlay-sync.workspace = true
+playback.workspace = true
+playlist-resolvers.workspace = true
+render-catalog.workspace = true
+scene.workspace = true
+scene-decoders.workspace = true
+scene-store.workspace = true
+tokio = { workspace = true, features = ["sync"] }
+tracing.workspace = true
+
+[dev-dependencies]
+handlers.workspace = true
+serde_json.workspace = true
+tempfile = "3"
+tokio = { workspace = true, features = ["macros", "rt", "time"] }
+
+# Timed with std::time::Instant; run with `cargo bench -p overlays`.
+[[bench]]
+name = "lane_frame"
+harness = false

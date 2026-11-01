@@ -12,7 +12,9 @@ macro_rules! declarations {
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    use api_types::{playback::*, window::*, workspace::*, *};
+    use api_types::{
+        catalogs::*, content::*, handlers::*, playback::*, window::*, workspace::*, *,
+    };
     let mut sections = declarations![
         AppInfo,
         SettingsState,
@@ -22,12 +24,37 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         WorkspaceState,
         ItemState,
         ResolutionState,
+        RowInfo,
+        RowKindWire,
+        RowStatusInfo,
         ContentInfo,
+        EntryInfo,
         NewItem,
+        NewOverlayWire,
         AddItemsRequest,
+        AddPlaylistRequest,
+        HiddenTarget,
+        HiddenRequest,
         ServerEvent,
+        HandlersInfo,
+        DecoderInfo,
+        ResolverInfo,
+        FieldInfo,
+        FieldKindWire,
+        ScanRequest,
+        ChoiceInfo,
+        CatalogsInfo,
+        CatalogInfoWire,
         Direction,
         Want,
+        LaneViewWire,
+        StickyWire,
+        TargetWire,
+        LaneInfo,
+        ClockWire,
+        FilterOptionInfo,
+        WarningInfo,
+        LaneStatusWire,
         ClientMessage,
         ServerMessage,
     ];

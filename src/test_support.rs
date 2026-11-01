@@ -23,9 +23,16 @@ impl TestApp {
         let settings = settings::Settings::load(&folder.path().join("default.json")).unwrap();
         let videos = crate::video_cache::start(&settings, &folder.path().join("cache"));
         let (stop, stopping) = tokio::sync::watch::channel(false);
+        let handlers = handlers::Handlers::built_in();
+        let catalogs = catalogs::Library::built_in();
+        let tracks =
+            scene_store::TrackRegistry::new(handlers.clone(), Some(&folder.path().join("cache")));
         let router = app(AppState {
             settings: Arc::new(settings),
-            store: workspace_store::Store::new(tokio::runtime::Handle::current()),
+            store: workspace_store::Store::new(tokio::runtime::Handle::current(), handlers.clone()),
+            handlers,
+            overlays: overlays::OverlayService::new(tracks, catalogs.clone()),
+            catalogs,
             windows: Arc::new(crate::Windows::new(folder.path().join("windows.json"))),
             videos,
             stopping,

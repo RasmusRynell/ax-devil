@@ -1,5 +1,8 @@
 //! Types the backend sends to the frontend, exported to TypeScript by `export-types`.
 
+pub mod catalogs;
+pub mod content;
+pub mod handlers;
 pub mod playback;
 pub mod window;
 pub mod workspace;
@@ -9,7 +12,7 @@ use std::collections::BTreeMap;
 use ts_rs::TS;
 
 /// Raised when a route changes in a way an older desktop shell or frontend cannot use.
-pub const API_VERSION: u32 = 2;
+pub const API_VERSION: u32 = 3;
 
 /// Identifies a running backend, so the desktop shell and the development supervisor reuse only a compatible one.
 #[derive(Serialize, TS)]

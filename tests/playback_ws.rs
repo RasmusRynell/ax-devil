@@ -4,12 +4,18 @@
 
 mod common;
 
-use api_types::playback::{ClientMessage, Direction, ServerMessage};
-use common::{Backend, Event, MIB, fixture, luma};
+use api_types::playback::{
+    ClientMessage, Direction, LaneInfo, LaneStatusWire, LaneViewWire, ServerMessage, StickyWire,
+    TargetWire,
+};
+use common::{Backend, Event, MIB, Overlay, Viewer, fixture, luma};
 use foundation::{CancelToken, Interrupt};
 use playback::DECODE_WORKERS;
 use playback::{Delivery, Want};
-use std::{collections::BTreeSet, time::Duration};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    time::Duration,
+};
 
 #[tokio::test]
 async fn opening_a_video_describes_it_then_sends_its_timeline_and_the_first_frame() {
@@ -271,11 +277,11 @@ async fn a_cancelled_index_build_opens_nothing_and_saves_nothing() {
     let cancel = CancelToken::new();
 
     // The build reports 0.0 before it reads anything, so this cancels it before its first packet.
-    let result = backend
-        .videos
-        .open(&fixture("cfr_h264_gop10_bf2.mp4"), &cancel, &mut |_| {
-            cancel.cancel()
-        });
+    let result = backend.videos.open(
+        &workspace::VideoRef::File(fixture("cfr_h264_gop10_bf2.mp4")),
+        &cancel,
+        &mut |_| cancel.cancel(),
+    );
 
     assert!(matches!(result, Err(Interrupt::Cancelled)));
     assert_eq!(backend.videos.registry().running_workers(), 0);
@@ -330,7 +336,8 @@ async fn a_file_that_changed_while_it_was_indexed_fails_the_whole_source_naming_
     // The index build reports its start after it took the file's identity: touching the file then makes every
     // decoder the source opens afterwards refuse it.
     let mut session = tokio::task::spawn_blocking(move || {
-        videos.open(&path, &CancelToken::new(), &mut |_| {
+        let video = workspace::VideoRef::File(path.clone());
+        videos.open(&video, &CancelToken::new(), &mut |_| {
             let touched = std::time::SystemTime::now() + Duration::from_secs(60);
             let file = std::fs::File::options().write(true).open(&path).unwrap();
             file.set_modified(touched).unwrap();
@@ -338,7 +345,8 @@ async fn a_file_that_changed_while_it_was_indexed_fails_the_whole_source_naming_
     })
     .await
     .unwrap()
-    .unwrap_or_else(|_| panic!("the source opens"));
+    .unwrap_or_else(|_| panic!("the source opens"))
+    .session;
     session.want(Want {
         playhead: 0,
         ahead: 4,
@@ -382,4 +390,138 @@ async fn opening_again_after_the_recording_changed_describes_the_recording_now_a
     assert_eq!(described.frame_count, 180);
     assert_eq!(described.times.len(), 180);
     second.frames(0..=0).await;
+}
+
+fn lane_view(catalog: &str, revision: u32, width: u32) -> ClientMessage {
+    ClientMessage::LaneView {
+        lane: 0,
+        revision,
+        view: LaneViewWire {
+            catalog: catalog.into(),
+            filter: BTreeMap::new(),
+            tolerance_ms: None,
+            sticky: StickyWire {
+                enabled: false,
+                timeout_ms: None,
+                opacity: 1.0,
+            },
+            target: TargetWire {
+                width,
+                height: width * 3 / 4,
+            },
+            visible: true,
+        },
+    }
+}
+
+/// Reads until the lane complains, skipping frames and overlays.
+async fn lane_problem(viewer: &mut Viewer) -> String {
+    loop {
+        match viewer.next().await {
+            Event::Message(ServerMessage::LaneProblem { lane: 0, reason }) => return reason,
+            Event::Frame(_) | Event::Overlay(_) => {}
+            Event::Message(ServerMessage::LaneStatus { .. }) => {}
+            _ => panic!("expected a LaneProblem"),
+        }
+    }
+}
+
+/// Reads until the lane is ready and every frame of 0..=5 has an overlay made for `revision`.
+async fn collect(
+    viewer: &mut Viewer,
+    revision: u32,
+    ready: &mut Option<LaneStatusWire>,
+) -> BTreeMap<u64, Overlay> {
+    let mut overlays = BTreeMap::new();
+    while ready.is_none() || overlays.len() < 6 {
+        match viewer.next().await {
+            Event::Message(ServerMessage::LaneStatus {
+                lane: 0,
+                status: status @ LaneStatusWire::Ready { .. },
+            }) => *ready = Some(status),
+            Event::Message(ServerMessage::LaneStatus { .. }) | Event::Frame(_) => {}
+            Event::Overlay(overlay) if overlay.revision == revision => {
+                overlays.insert(overlay.sequence_id, overlay);
+            }
+            Event::Overlay(_) => {}
+            _ => panic!("expected the lane's status, overlays and frames"),
+        }
+    }
+    overlays
+}
+
+#[tokio::test]
+async fn a_lane_view_naming_an_unknown_catalog_is_reported_and_the_session_goes_on() {
+    let backend = Backend::start().await;
+    let id = backend.add(&fixture("cfr_h264_gop10_bf2.mp4")).await;
+    let mut viewer = backend.viewer().await;
+    viewer.open(&id, None).await;
+    let video = viewer.opened().await;
+    assert_eq!(video.lanes.len(), 1);
+
+    viewer.send(&lane_view("built-in:nope", 1, 640)).await;
+    let reason = lane_problem(&mut viewer).await;
+    assert!(reason.contains("built-in:nope"), "{reason}");
+
+    viewer.want(40, 3, 0, Direction::Forward).await;
+    viewer.frames(40..=43).await;
+}
+
+#[tokio::test]
+async fn a_lane_reports_its_load_then_sends_an_overlay_per_frame_for_the_view_it_was_made_for() {
+    let backend = Backend::start().await;
+    let gt = backend.folder.path().join("gt.txt");
+    // Video frames 0 to 2 have a box; the file is dense, so the others are covered with nothing.
+    std::fs::write(
+        &gt,
+        "1,1,10,10,20,20,1,1,1\n2,1,12,10,20,20,1,1,1\n3,1,14,10,20,20,1,1,1\n",
+    )
+    .unwrap();
+    let id = backend
+        .add_with_overlays(&fixture("cfr_h264_gop10_bf2.mp4"), &[gt])
+        .await;
+    let mut viewer = backend.viewer().await;
+    viewer.open(&id, None).await;
+    let video = viewer.opened().await;
+    let lane = LaneInfo {
+        label: "gt.txt".into(),
+        has_overlay: true,
+    };
+    assert_eq!(video.lanes, [lane]);
+
+    let mut ready = None;
+    viewer.want(0, 5, 0, Direction::Forward).await;
+    let overlays = collect(&mut viewer, 0, &mut ready).await;
+
+    let Some(LaneStatusWire::Ready {
+        samples, filter, ..
+    }) = ready.clone()
+    else {
+        panic!("the lane is ready");
+    };
+    assert_eq!(samples, 3);
+    assert!(filter.iter().any(|option| option.id == "show_person"));
+    for (frame, overlay) in &overlays {
+        assert_eq!((overlay.lane, overlay.target), (0, (1280, 720)));
+        assert_eq!(overlay.timestamp_us as f64, video.times[*frame as usize]);
+        assert_eq!(
+            overlay.matched,
+            if *frame < 3 { 1 } else { 4 },
+            "frame {frame}"
+        );
+        assert_eq!(overlay.opacity, 1.0);
+    }
+    assert!(
+        overlays[&4].sections.is_empty(),
+        "a covered frame with nothing draws nothing"
+    );
+
+    // A new view resends the window made for it.
+    viewer.send(&lane_view("built-in:tracking", 3, 800)).await;
+    let resent = collect(&mut viewer, 3, &mut ready).await;
+    assert!(resent.values().all(|overlay| overlay.target == (800, 600)));
+
+    // A catalog the library lacks is reported by the lane's overlays; the lane stays ready.
+    viewer.send(&lane_view("user:missing.json", 4, 800)).await;
+    assert!(lane_problem(&mut viewer).await.contains("missing.json"));
 }

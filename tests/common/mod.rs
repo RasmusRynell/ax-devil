@@ -1,6 +1,8 @@
 //! The playback tests' backend, viewer and envelope reader.
+// Each suite that includes this module uses its own part of it.
+#![allow(dead_code)]
 
-use api_types::playback::{ClientMessage, Direction, ServerMessage, Want};
+use api_types::playback::{ClientMessage, Direction, LaneInfo, ServerMessage, Want};
 use ax_devil::{AppState, app, video_sources::VideoSources};
 use futures_util::{SinkExt, StreamExt};
 use playback::{CachePool, Registry};
@@ -20,6 +22,9 @@ use workspace_store::{Resolution, Store};
 pub const WAIT: Duration = Duration::from_secs(20);
 const SQUEEZED_BUFFER: u32 = 4096;
 pub const MIB: usize = 1024 * 1024;
+const BOXES_TAG: u16 = 2;
+/// x, y, width, height and paint, four bytes each.
+const BOX_BYTES: usize = 20;
 
 pub fn fixture(name: &str) -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -58,9 +63,15 @@ impl Backend {
         let registry = Registry::new(CachePool::new(256 * MIB));
         let videos = Arc::new(VideoSources::new(registry, &folder.path().join("cache")));
         let (stop, stopping) = tokio::sync::watch::channel(false);
-        let store = Store::new(tokio::runtime::Handle::current());
+        let handlers = handlers::Handlers::built_in();
+        let catalogs = catalogs::Library::built_in();
+        let tracks = scene_store::TrackRegistry::new(handlers.clone(), None);
+        let store = Store::new(tokio::runtime::Handle::current(), handlers.clone());
         let router = app(AppState {
             settings: Arc::new(settings),
+            handlers,
+            overlays: overlays::OverlayService::new(tracks, catalogs.clone()),
+            catalogs,
             store: store.clone(),
             windows: Arc::new(ax_devil::Windows::new(folder.path().join("windows.json"))),
             videos: videos.clone(),
@@ -87,7 +98,20 @@ impl Backend {
 
     /// Adds the video to the workspace and returns the id of its Content once it resolved.
     pub async fn add(&self, path: &Path) -> String {
-        let item = workspace::intake::video(path).unwrap();
+        self.add_with_overlays(path, &[]).await
+    }
+
+    /// Like [`Backend::add`], with one lane per overlay file, each read by the decoder its extension names.
+    pub async fn add_with_overlays(&self, path: &Path, overlays: &[PathBuf]) -> String {
+        let overlays: Vec<_> = overlays
+            .iter()
+            .map(|path| workspace::intake::NewOverlay {
+                path: path.clone(),
+                handler: None,
+            })
+            .collect();
+        let item =
+            workspace::intake::video(path, &overlays, &handlers::Handlers::built_in()).unwrap();
         let id = item.id;
         self.store.add_items(vec![item], false);
         let mut changes = self.store.subscribe();
@@ -168,9 +192,24 @@ pub fn u64_at(bytes: &[u8], at: usize) -> u64 {
     u64::from_le_bytes(bytes[at..at + 8].try_into().unwrap())
 }
 
+/// One Overlay envelope: the head and the overlay header, and the tags of the sections in order.
+pub struct Overlay {
+    pub sequence_id: u64,
+    pub timestamp_us: i64,
+    pub lane: u16,
+    pub matched: u8,
+    pub revision: u32,
+    pub opacity: f32,
+    pub target: (u32, u32),
+    pub sections: Vec<u16>,
+    /// The records of the BOXES section; 0 when the overlay has none.
+    pub boxes: usize,
+}
+
 pub enum Event {
     Message(ServerMessage),
     Frame(Frame),
+    Overlay(Overlay),
     Timeline(Vec<f64>),
     Closed,
 }
@@ -201,6 +240,31 @@ pub fn parse_envelope(bytes: &[u8]) -> Event {
                 planes,
             })
         }
+        2 => {
+            assert_eq!(payload_at, 64);
+            let count = u32_at(bytes, 56);
+            let (mut sections, mut boxes, mut at) = (Vec::new(), 0, 64);
+            for _ in 0..count {
+                let tag = u16::from_le_bytes([bytes[at], bytes[at + 1]]);
+                if tag == BOXES_TAG {
+                    boxes = u32_at(bytes, at + 4) as usize / BOX_BYTES;
+                }
+                sections.push(tag);
+                at = (at + 8 + u32_at(bytes, at + 4) as usize).next_multiple_of(8);
+            }
+            assert_eq!(at, bytes.len(), "the message is exactly its sections");
+            Event::Overlay(Overlay {
+                sequence_id: u64_at(bytes, 8),
+                timestamp_us: u64_at(bytes, 16) as i64,
+                lane: u16::from_le_bytes([bytes[28], bytes[29]]),
+                matched: bytes[30],
+                revision: u32_at(bytes, 32),
+                opacity: f32::from_bits(u32_at(bytes, 36)),
+                target: (u32_at(bytes, 40), u32_at(bytes, 44)),
+                sections,
+                boxes,
+            })
+        }
         3 => {
             assert_eq!(payload_at, 32);
             Event::Timeline(
@@ -218,6 +282,7 @@ pub fn parse_envelope(bytes: &[u8]) -> Event {
 
 /// What `Opened` says about a video, and the Timeline that follows it.
 pub struct Described {
+    pub lanes: Vec<LaneInfo>,
     pub frame_count: u64,
     pub frame_bytes: u64,
     pub duration_us: i64,
@@ -308,7 +373,7 @@ impl Viewer {
     /// Reads `Indexing` progress, then `Opened`, then the Timeline envelope, which must come right after it.
     pub async fn opened(&mut self) -> Described {
         let mut progress = Vec::new();
-        let (frame_count, frame_bytes, duration_us) = loop {
+        let (frame_count, frame_bytes, duration_us, lanes) = loop {
             match self.next().await {
                 Event::Message(ServerMessage::Indexing { progress: value }) => progress.push(value),
                 Event::Message(ServerMessage::Opened {
@@ -316,9 +381,11 @@ impl Viewer {
                     frame_count,
                     duration_us,
                     frame_bytes,
+                    lanes,
+                    ..
                 }) => {
-                    assert_eq!(protocol, 1);
-                    break (frame_count, frame_bytes, duration_us);
+                    assert_eq!(protocol, 2);
+                    break (frame_count, frame_bytes, duration_us, lanes);
                 }
                 _ => panic!("expected Indexing or Opened"),
             }
@@ -332,6 +399,7 @@ impl Viewer {
             panic!("the Timeline envelope must follow Opened");
         };
         Described {
+            lanes,
             frame_count,
             frame_bytes,
             duration_us,

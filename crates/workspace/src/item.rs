@@ -1,5 +1,10 @@
-use crate::content::{Content, ContentId, FileVideoSource, SeekableVideoContent};
-use foundation::UserError;
+use crate::content::{
+    Content, ContentId, Entry, OverlayRef, SeekableVideoContent, VideoRef, check_unique_lanes,
+    playlist_content,
+};
+use foundation::{CancelToken, Interrupt, UserError};
+use handlers::Handlers;
+use playlist_resolvers::Settings;
 use std::{
     fmt, fs, io,
     path::{Path, PathBuf},
@@ -23,18 +28,40 @@ impl fmt::Display for ItemId {
     }
 }
 
-/// A video file to open.
+/// A video file to open, with the overlay files drawn on it.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct VideoRecipe {
     /// The video file, absolute.
     pub video: PathBuf,
+    /// The overlay files, each shown as its own lane.
+    pub overlays: Vec<OverlayRecipe>,
 }
 
-/// What an item was made from, and how to rebuild its Content. Overlay files join the video recipe later.
+/// An overlay file and the decoder that reads it.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct OverlayRecipe {
+    /// The overlay file, absolute.
+    pub path: PathBuf,
+    /// The decoder handler id.
+    pub handler: String,
+}
+
+/// A playlist resolver and the settings it resolves.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct PlaylistRecipe {
+    /// The resolver id.
+    pub resolver: String,
+    /// The settings the resolver's schema declares.
+    pub settings: Settings,
+}
+
+/// What an item was made from, and how to rebuild its Content.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Recipe {
-    /// A video file.
+    /// A video file with overlays.
     Video(VideoRecipe),
+    /// A playlist from a resolver.
+    Playlist(PlaylistRecipe),
 }
 
 /// One thing the user added to the workspace.
@@ -51,23 +78,77 @@ pub struct WorkspaceItem {
 impl Recipe {
     /// Builds the Content of the item `item`. Reads the file system, so callers keep it off the UI's executor.
     ///
-    /// A video recipe only checks that its path is a readable regular file: opening the media is the viewer's job,
-    /// so a file that is not a video resolves here and fails when the viewer opens it.
-    pub fn resolve(&self, item: &ItemId) -> Result<Content, UserError> {
+    /// A video recipe checks that its path is a readable regular file, and each overlay that its decoder is known and
+    /// its file readable; opening the media is the viewer's job, so a file that is not a video resolves here and
+    /// fails when the viewer opens it. Each overlay is a lane labelled with its file name, so two overlays with the
+    /// same file name fail.
+    ///
+    /// A playlist recipe asks its resolver, then checks that entry names and the lane names within each entry are
+    /// unique, since they are the identity of entries and lanes. Resolving twice gives the same ids.
+    pub fn resolve(
+        &self,
+        item: &ItemId,
+        handlers: &Handlers,
+        cancel: &CancelToken,
+    ) -> Result<Content, Interrupt<UserError>> {
+        cancel.check()?;
         match self {
             Recipe::Video(recipe) => {
-                check_readable_file(&recipe.video)?;
-                Ok(Content::SeekableVideo(SeekableVideoContent {
-                    id: ContentId::of_item(item),
-                    item_id: *item,
-                    display_name: file_name(&recipe.video),
-                    source: FileVideoSource {
-                        path: recipe.video.clone(),
-                    },
-                }))
+                resolve_video(recipe, item, handlers).map_err(Interrupt::Failed)
+            }
+            Recipe::Playlist(recipe) => {
+                let resolver = handlers.resolver(&recipe.resolver).ok_or_else(|| {
+                    Interrupt::Failed(UserError::new(
+                        "No such playlist resolver",
+                        recipe.resolver.clone(),
+                    ))
+                })?;
+                resolver
+                    .schema()
+                    .validate(&recipe.settings)
+                    .map_err(Interrupt::Failed)?;
+                let resolved = resolver.resolve(&recipe.settings, cancel)?;
+                playlist_content(item, resolved)
+                    .map(Content::Playlist)
+                    .map_err(Interrupt::Failed)
             }
         }
     }
+}
+
+fn resolve_video(
+    recipe: &VideoRecipe,
+    item: &ItemId,
+    handlers: &Handlers,
+) -> Result<Content, UserError> {
+    check_readable_file(&recipe.video)?;
+    let mut overlays = Vec::with_capacity(recipe.overlays.len());
+    for overlay in &recipe.overlays {
+        if handlers.file_decoder(&overlay.handler).is_none() {
+            return Err(UserError::new(
+                format!("No overlay format \"{}\"", overlay.handler),
+                overlay.path.display().to_string(),
+            ));
+        }
+        check_readable_file(&overlay.path)?;
+        overlays.push(OverlayRef {
+            label: file_name(&overlay.path),
+            path: overlay.path.clone(),
+            handler: overlay.handler.clone(),
+            options: Settings::new(),
+        });
+    }
+    let entry = Entry {
+        id: ContentId::of_item(item),
+        label: file_name(&recipe.video),
+        video: VideoRef::File(recipe.video.clone()),
+        overlays,
+    };
+    check_unique_lanes(&entry)?;
+    Ok(Content::SeekableVideo(SeekableVideoContent {
+        item_id: *item,
+        entry,
+    }))
 }
 
 /// The last component of `path` as text; empty when there is none.

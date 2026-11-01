@@ -38,6 +38,15 @@ void test("playback may not depend on media, even as a sibling in the same layer
   assert.match(problems[0], /playback depends on media/);
 });
 
+void test("the drawing contract may not depend on scene", () => {
+  const problems = problemsOf([
+    { name: "scene", layer: "domain" },
+    { name: "drawing", layer: "domain", deps: ["scene"] },
+  ]);
+  assert.equal(problems.length, 1);
+  assert.match(problems[0], /drawing depends on scene/);
+});
+
 void test("only media may depend on ffmpeg-next", () => {
   const problems = problemsOf([
     { name: "media", layer: "services", deps: ["ffmpeg-next"] },

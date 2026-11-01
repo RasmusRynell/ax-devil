@@ -1,46 +1,15 @@
 //! Starts the backend on 127.0.0.1:$PORT (default 7330) and stops it on Ctrl+C.
 
+mod cli;
 mod paths;
 
-use clap::{Parser, Subcommand};
-use std::{
-    error::Error, future::IntoFuture, path::PathBuf, process::ExitCode, sync::Arc, time::Duration,
-};
+use std::{error::Error, future::IntoFuture, process::ExitCode, sync::Arc, time::Duration};
 
 /// How long open connections, such as the event stream, get to close after Ctrl+C before the backend exits anyway.
 const SHUTDOWN_GRACE: Duration = Duration::from_secs(2);
 
 /// How long the runtime waits for blocking work, such as indexing a video, once everything else has stopped.
 const RUNTIME_GRACE: Duration = Duration::from_secs(1);
-
-/// Desktop app for inspecting Axis camera streams, offline video, and analytics overlays.
-#[derive(Parser)]
-#[command(version)]
-struct Cli {
-    /// Use this settings file instead of $XDG_CONFIG_HOME/ax-devil/settings.json (~/.config/ax-devil/settings.json).
-    #[arg(long, value_name = "PATH")]
-    config: Option<PathBuf>,
-    /// Keep caches in this folder instead of $XDG_CACHE_HOME/ax-devil (~/.cache/ax-devil).
-    #[arg(long, value_name = "PATH")]
-    cache_dir: Option<PathBuf>,
-    /// How much to log.
-    #[arg(long, value_name = "DEBUG|INFO|WARNING|ERROR", default_value = "INFO")]
-    log_level: logging::Level,
-    #[command(subcommand)]
-    command: Option<Command>,
-}
-
-#[derive(Subcommand)]
-enum Command {
-    /// Open an offline video file in a new Untitled workspace.
-    ///
-    /// A file that cannot be read stays listed in the workspace, with the reason.
-    Local {
-        /// The video file.
-        #[arg(long, value_name = "PATH")]
-        video: PathBuf,
-    },
-}
 
 fn main() -> ExitCode {
     match ax_devil::runtime::run(run(), RUNTIME_GRACE) {
@@ -57,28 +26,54 @@ fn main() -> ExitCode {
 }
 
 async fn run() -> ExitCode {
-    let cli = Cli::parse();
+    let handlers = handlers::Handlers::built_in();
+    let invocation = cli::parse(&handlers);
+    let opens = match invocation.action {
+        cli::Action::ListHandlers => {
+            // The command exists to print; it starts no logging and no server.
+            #[allow(clippy::print_stdout)]
+            {
+                print!("{}", cli::handlers_listing(&handlers));
+            }
+            return ExitCode::SUCCESS;
+        }
+        cli::Action::Catalog(command) => {
+            let report = cli::run_catalog(&command);
+            // Like `list-handlers`, these commands exist to print.
+            #[allow(clippy::print_stdout, clippy::print_stderr)]
+            {
+                if report.ok {
+                    print!("{}", report.text);
+                } else {
+                    eprint!("{}", report.text);
+                }
+            }
+            return if report.ok {
+                ExitCode::SUCCESS
+            } else {
+                ExitCode::FAILURE
+            };
+        }
+        cli::Action::Serve(opens) => opens,
+    };
     let env = |name: &str| std::env::var_os(name);
-    let paths = match paths::Paths::resolve(&env, cli.config, cli.cache_dir) {
+    let paths = match paths::Paths::resolve(&env, invocation.config, invocation.cache_dir) {
         Ok(paths) => paths,
         Err(error) => {
-            logging::init(cli.log_level, None);
+            logging::init(invocation.log_level, None);
             tracing::error!("{error}");
             return ExitCode::FAILURE;
         }
     };
-    logging::init(cli.log_level, Some(&paths.log_file));
-    let items = match &cli.command {
-        None => Vec::new(),
-        Some(Command::Local { video }) => match workspace::intake::video(video) {
-            Ok(item) => vec![item],
-            Err(error) => {
-                tracing::error!("{}: {}", error.location, error.reason);
-                return ExitCode::FAILURE;
-            }
-        },
+    logging::init(invocation.log_level, Some(&paths.log_file));
+    let items = match opens.into_items(&handlers) {
+        Ok(items) => items,
+        Err(error) => {
+            tracing::error!("{}: {}", error.location, error.reason);
+            return ExitCode::FAILURE;
+        }
     };
-    match serve(&paths, items).await {
+    match serve(&paths, handlers, items).await {
         Ok(()) => ExitCode::SUCCESS,
         Err(error) => {
             tracing::error!("{error}");
@@ -89,6 +84,7 @@ async fn run() -> ExitCode {
 
 async fn serve(
     paths: &paths::Paths,
+    handlers: handlers::Handlers,
     items: Vec<workspace::WorkspaceItem>,
 ) -> Result<(), Box<dyn Error>> {
     let config = &paths.config_file;
@@ -97,7 +93,10 @@ async fn serve(
     let cache_dir = paths.cache_dir(settings.state().folder("storage.cache_dir"));
     tracing::info!("Caching in {}", cache_dir.display());
     let videos = ax_devil::video_cache::start(&settings, &cache_dir);
-    let store = workspace_store::Store::new(tokio::runtime::Handle::current());
+    let store = workspace_store::Store::new(tokio::runtime::Handle::current(), handlers.clone());
+    let catalogs = catalogs::Library::built_in();
+    let tracks = scene_store::TrackRegistry::new(handlers.clone(), Some(&cache_dir));
+    let overlays = overlays::OverlayService::new(tracks, catalogs.clone());
     store.add_items(items, true);
     let port = std::env::var("PORT")
         .unwrap_or_else(|_| "7330".into())
@@ -120,7 +119,10 @@ async fn serve(
         listener,
         ax_devil::app(ax_devil::AppState {
             settings,
+            handlers,
             store,
+            overlays,
+            catalogs,
             windows: Arc::new(ax_devil::Windows::new(paths.window_file.clone())),
             videos: Arc::clone(&videos),
             // Open playback sockets end when this turns true, so they cannot hold the shutdown or keep

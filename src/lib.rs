@@ -30,12 +30,18 @@ struct Assets;
 pub struct AppState {
     /// The settings service.
     pub settings: Arc<settings::Settings>,
+    /// The decoders and playlist resolvers the app knows.
+    pub handlers: handlers::Handlers,
     /// The workspace store.
     pub store: workspace_store::Store,
     /// The saved window positions.
     pub windows: Arc<Windows>,
     /// The open videos, which the playback socket draws its viewers from.
     pub videos: Arc<video_sources::VideoSources>,
+    /// Opens the overlays of viewers.
+    pub overlays: overlays::OverlayService,
+    /// The render catalogs.
+    pub catalogs: catalogs::Library,
     /// Turns true when the backend is stopping: long-lived connections, such as the playback sockets, end.
     pub stopping: tokio::sync::watch::Receiver<bool>,
 }
@@ -46,6 +52,8 @@ pub fn app(state: AppState) -> Router {
         .route("/api/info", get(info))
         .route("/api/settings", get(get_settings).put(put_settings))
         .merge(routes::window::router())
+        .merge(routes::catalogs::router())
+        .merge(routes::handlers::router())
         .merge(routes::workspace::router())
         .merge(routes::playback::router())
         .fallback(asset)

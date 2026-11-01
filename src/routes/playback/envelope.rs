@@ -10,7 +10,7 @@ use bytes::{BufMut, Bytes, BytesMut};
 use foundation::{FrameId, Matrix, MediaTime, PixelFormat, Timeline, VideoFrame};
 
 /// The fixed head every envelope starts with.
-fn head(out: &mut BytesMut, kind: u8, payload_at: u16, id: FrameId, flags: u32) {
+pub(super) fn head(out: &mut BytesMut, kind: u8, payload_at: u16, id: FrameId, flags: u32) {
     out.put_u32_le(ENVELOPE_MAGIC);
     out.put_u8(ENVELOPE_VERSION);
     out.put_u8(kind);

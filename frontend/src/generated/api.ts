@@ -109,7 +109,11 @@ name: string | null,
 /**
  * Every item in the order it was added.
  */
-items: Array<ItemState>, };
+items: Array<ItemState>, 
+/**
+ * The sidebar tree flattened: each item, its entries and their lanes, in tree order.
+ */
+rows: Array<RowInfo>, };
 
 /**
  * One workspace item and how far it has resolved.
@@ -151,6 +155,49 @@ reason: string,
 location: string, };
 
 /**
+ * One row of the workspace tree.
+ */
+export type RowInfo = { 
+/**
+ * Names the row for as long as what it stands for exists.
+ */
+key: string, 
+/**
+ * What the row stands for.
+ */
+kind: RowKindWire, 
+/**
+ * What the user reads.
+ */
+label: string, 
+/**
+ * Whether it can be opened.
+ */
+status: RowStatusInfo, 
+/**
+ * Whether the user hid it.
+ */
+hidden: boolean, 
+/**
+ * The entry that opening the row opens, by the id the playback socket takes.
+ */
+entry: string | null, };
+
+/**
+ * What a row stands for.
+ */
+export type RowKindWire = "item" | "entry" | "lane";
+
+/**
+ * Whether what a row stands for can be opened.
+ */
+export type RowStatusInfo = { "status": "Pending" } | { "status": "Unavailable", 
+/**
+ * Why, in words for the user.
+ */
+reason: string, } | { "status": "Ready" };
+
+/**
  * Content by kind. Viewers register by kind.
  */
 export type ContentInfo = { "kind": "SeekableVideo", 
@@ -161,7 +208,40 @@ id: string,
 /**
  * The name the viewer shows.
  */
-display_name: string, };
+display_name: string, 
+/**
+ * The one entry: the video and its lanes.
+ */
+entry: EntryInfo, } | { "kind": "Playlist", 
+/**
+ * Names the Content.
+ */
+id: string, 
+/**
+ * The name the viewer shows.
+ */
+display_name: string, 
+/**
+ * The entries in playlist order.
+ */
+entries: Array<EntryInfo>, };
+
+/**
+ * One video and its lanes: what a viewer opens.
+ */
+export type EntryInfo = { 
+/**
+ * Names the entry; the playback socket opens it by this id.
+ */
+id: string, 
+/**
+ * The name rows and viewers show.
+ */
+label: string, 
+/**
+ * The lane names, in order.
+ */
+lanes: Array<string>, };
 
 /**
  * What the user asked to add; the intake turns each into an item.
@@ -170,7 +250,36 @@ export type NewItem = { "type": "Video",
 /**
  * The file; a relative path is relative to the backend's working folder.
  */
-path: string, };
+path: string, 
+/**
+ * The overlay files, each shown as its own lane.
+ */
+overlays: Array<NewOverlayWire>, } | { "type": "Playlist", 
+/**
+ * The resolver id.
+ */
+resolver: string, 
+/**
+ * The settings the resolver's schema declares.
+ */
+settings: Record<string, unknown>, 
+/**
+ * The row's label; the resolver's name when absent.
+ */
+label: string | null, };
+
+/**
+ * An overlay file to add to a video.
+ */
+export type NewOverlayWire = { 
+/**
+ * The file.
+ */
+path: string, 
+/**
+ * The decoder handler id; the only decoder for the file's extension when absent.
+ */
+handler: string | null, };
 
 /**
  * The body of `POST /api/workspace/items`. The intake checks every entry first: if any is refused, nothing is added.
@@ -186,9 +295,197 @@ items: Array<NewItem>,
 open: boolean, };
 
 /**
+ * The body of `POST /api/workspace/playlists`: resolves the playlist first and adds it only when it resolves.
+ */
+export type AddPlaylistRequest = { 
+/**
+ * The resolver id.
+ */
+resolver: string, 
+/**
+ * The settings the resolver's schema declares.
+ */
+settings: Record<string, unknown>, 
+/**
+ * The row's label; the resolver's name when absent.
+ */
+label: string | null, };
+
+/**
+ * An entry or lane to hide or show.
+ */
+export type HiddenTarget = { 
+/**
+ * The entry, by its content id.
+ */
+entry: string, 
+/**
+ * The lane's label; the whole entry when absent.
+ */
+lane: string | null, };
+
+/**
+ * The body of `POST /api/workspace/hidden`.
+ */
+export type HiddenRequest = { 
+/**
+ * What to hide or show.
+ */
+target: HiddenTarget, 
+/**
+ * Whether it is hidden afterwards.
+ */
+hidden: boolean, };
+
+/**
  * What `GET /api/events` streams, one per server-sent event, starting with the current state on connect.
  */
 export type ServerEvent = { "type": "Workspace" } & WorkspaceState;
+
+/**
+ * The body of `GET /api/handlers`.
+ */
+export type HandlersInfo = { 
+/**
+ * The overlay file decoders.
+ */
+decoders: Array<DecoderInfo>, 
+/**
+ * The playlist resolvers.
+ */
+resolvers: Array<ResolverInfo>, };
+
+/**
+ * An overlay file decoder.
+ */
+export type DecoderInfo = { 
+/**
+ * The handler id that selects the decoder.
+ */
+handler: string, 
+/**
+ * What the user reads.
+ */
+display_name: string, 
+/**
+ * The file extensions it reads: lowercase, with the dot.
+ */
+extensions: Array<string>, };
+
+/**
+ * A playlist resolver and the form its settings take.
+ */
+export type ResolverInfo = { 
+/**
+ * The id the resolver is named by.
+ */
+id: string, 
+/**
+ * What the user reads.
+ */
+display_name: string, 
+/**
+ * One sentence on what the resolver does.
+ */
+description: string, 
+/**
+ * The settings, in the order they are shown.
+ */
+fields: Array<FieldInfo>, };
+
+/**
+ * One setting of a resolver.
+ */
+export type FieldInfo = { 
+/**
+ * The key in the settings.
+ */
+key: string, 
+/**
+ * What the user reads.
+ */
+label: string, 
+/**
+ * What kind of value it holds, and so which control it gets.
+ */
+kind: FieldKindWire, 
+/**
+ * Whether resolving fails without it.
+ */
+required: boolean, };
+
+/**
+ * What kind of value a setting holds.
+ */
+export type FieldKindWire = { "kind": "Folder" } | { "kind": "File", 
+/**
+ * Lowercase, with the dot.
+ */
+extensions: Array<string>, } | { "kind": "Text" } | { "kind": "Handler" } | { "kind": "Scan", 
+/**
+ * The settings the scan reads, whose change invalidates its result.
+ */
+depends_on: Array<string>, };
+
+/**
+ * The body of `POST /api/resolvers/{id}/scan`.
+ */
+export type ScanRequest = { 
+/**
+ * The `Scan` field to find values for.
+ */
+field: string, 
+/**
+ * The settings entered so far.
+ */
+settings: Record<string, unknown>, };
+
+/**
+ * One value a scan found.
+ */
+export type ChoiceInfo = { 
+/**
+ * What is stored in the settings.
+ */
+value: string, 
+/**
+ * What the user reads.
+ */
+label: string, 
+/**
+ * A second line about the value; may be empty.
+ */
+detail: string, };
+
+/**
+ * The body of `GET /api/catalogs`.
+ */
+export type CatalogsInfo = { 
+/**
+ * The catalogs, built-ins first and Standard first among them.
+ */
+catalogs: Array<CatalogInfoWire>, 
+/**
+ * The id a new lane starts with.
+ */
+default: string, };
+
+/**
+ * One catalog the picker offers.
+ */
+export type CatalogInfoWire = { 
+/**
+ * The id, such as `built-in:standard`.
+ */
+id: string, 
+/**
+ * What the user reads.
+ */
+name: string, 
+/**
+ * What the catalog is for.
+ */
+description: string, };
 
 /**
  * How a viewer steps through the video.
@@ -218,6 +515,150 @@ behind: number,
 direction: Direction, };
 
 /**
+ * How one lane shows its overlay.
+ */
+export type LaneViewWire = { 
+/**
+ * The catalog id, such as `built-in:standard`.
+ */
+catalog: string, 
+/**
+ * The class filter toggles by option id; options not listed keep their default.
+ */
+filter: Record<string, boolean>, 
+/**
+ * How far back a time-keyed sample may be, in milliseconds; `null` is exact.
+ */
+tolerance_ms: number | null, 
+/**
+ * Whether old samples stay on screen.
+ */
+sticky: StickyWire, 
+/**
+ * The lane's displayed image size.
+ */
+target: TargetWire, 
+/**
+ * Whether the lane is shown.
+ */
+visible: boolean, };
+
+/**
+ * Keeping the last sample on screen while no sample matches.
+ */
+export type StickyWire = { 
+/**
+ * Whether samples are kept.
+ */
+enabled: boolean, 
+/**
+ * How old a kept sample may be, in milliseconds, at most 100000; `null` is without limit.
+ */
+timeout_ms: number | null, 
+/**
+ * How opaque a kept sample is drawn, 0 to 1.
+ */
+opacity: number, };
+
+/**
+ * A displayed image size in CSS pixels.
+ */
+export type TargetWire = { 
+/**
+ * Width in CSS pixels.
+ */
+width: number, 
+/**
+ * Height in CSS pixels.
+ */
+height: number, };
+
+/**
+ * One lane of the opened entry.
+ */
+export type LaneInfo = { 
+/**
+ * The lane's name.
+ */
+label: string, 
+/**
+ * Whether the lane has an overlay file; the lane of an entry without overlays is plain.
+ */
+has_overlay: boolean, };
+
+/**
+ * The clock a lane's samples are on.
+ */
+export type ClockWire = "frame" | "timestamp";
+
+/**
+ * One class filter a lane offers.
+ */
+export type FilterOptionInfo = { 
+/**
+ * Stable id, such as `show_car`.
+ */
+id: string, 
+/**
+ * What the user reads.
+ */
+label: string, 
+/**
+ * Whether the filter starts switched on.
+ */
+default_enabled: boolean, };
+
+/**
+ * A problem that did not stop an overlay from loading.
+ */
+export type WarningInfo = { 
+/**
+ * What happened.
+ */
+problem: string, 
+/**
+ * The first reasons.
+ */
+reasons: Array<string>, 
+/**
+ * What the user can expect as a result.
+ */
+consequence: string, 
+/**
+ * Whether more reasons exist than are listed.
+ */
+more_reasons: boolean, };
+
+/**
+ * Where a lane's load stands.
+ */
+export type LaneStatusWire = { "status": "Loading" } | { "status": "Ready", 
+/**
+ * The clock the file's samples are on.
+ */
+clock: ClockWire, 
+/**
+ * The class filters the file's content calls for.
+ */
+filter: Array<FilterOptionInfo>, 
+/**
+ * Problems the decoder reported.
+ */
+warnings: Array<WarningInfo>, 
+/**
+ * How many samples the file has.
+ */
+samples: number, } | { "status": "Failed", 
+/**
+ * What went wrong, in words for the user.
+ */
+reason: string, 
+/**
+ * What it is about, such as the file path.
+ */
+location: string, };
+
+/**
  * What the frontend sends.
  */
 export type ClientMessage = { "type": "Open", 
@@ -228,7 +669,19 @@ content_id: string,
 /**
  * The frame to show, paused; the first frame when absent.
  */
-start_frame?: number, } | { "type": "Want" } & Want | { "type": "Close" };
+start_frame?: number, } | { "type": "Want" } & Want | { "type": "LaneView", 
+/**
+ * The lane's position in `Opened.lanes`.
+ */
+lane: number, 
+/**
+ * Counts the lane's changes; overlays carry the revision they were made for.
+ */
+revision: number, 
+/**
+ * The new view.
+ */
+view: LaneViewWire, } | { "type": "Close" };
 
 /**
  * What the backend sends as text. `Opened` is followed by a Timeline envelope.
@@ -253,7 +706,43 @@ duration_us: number,
 /**
  * Total payload bytes of one frame: the sum of its plane lengths (planes are tightly packed).
  */
-frame_bytes: number, } | { "type": "FrameError", 
+frame_bytes: number, 
+/**
+ * Width of the decoded frames in pixels.
+ */
+width: number, 
+/**
+ * Height of the decoded frames in pixels.
+ */
+height: number, 
+/**
+ * Problems with the video that did not stop it from opening.
+ */
+warnings: Array<string>, 
+/**
+ * The lanes of the entry, in order.
+ */
+lanes: Array<LaneInfo>, 
+/**
+ * The view every lane starts with.
+ */
+lane_defaults: LaneViewWire, } | { "type": "LaneStatus", 
+/**
+ * The lane's position in `Opened.lanes`.
+ */
+lane: number, 
+/**
+ * Where the load stands.
+ */
+status: LaneStatusWire, } | { "type": "LaneProblem", 
+/**
+ * The lane's position in `Opened.lanes`.
+ */
+lane: number, 
+/**
+ * What went wrong, in words for the user.
+ */
+reason: string, } | { "type": "FrameError", 
 /**
  * The frame that failed.
  */
@@ -274,7 +763,7 @@ location: string, };
 /**
  * Raised when the messages or the envelope change in a way an older frontend cannot read.
  */
-export const PLAYBACK_PROTOCOL = 1;
+export const PLAYBACK_PROTOCOL = 2;
 
 /**
  * "AXDV" read as a little-endian u32.
@@ -307,7 +796,7 @@ export const VIDEO_FRAME_HEADER_BYTES = 64;
 export const KIND_VIDEO_FRAME = 1;
 
 /**
- * Envelope kind: overlay data of one lane for a frame; reserved for M2, receivers ignore it.
+ * Envelope kind: the Drawing Instructions of one lane for a frame and a view revision.
  */
 export const KIND_OVERLAY = 2;
 
@@ -350,3 +839,103 @@ export const MATRIX_BT601 = 0;
  * Video header matrix byte: BT.709 YUV to RGB.
  */
 export const MATRIX_BT709 = 1;
+
+/**
+ * Where the sections of an Overlay start: the head plus the overlay header.
+ */
+export const OVERLAY_HEADER_BYTES = 64;
+
+/**
+ * Overlay match byte: nothing to draw.
+ */
+export const OVERLAY_MATCH_NONE = 0;
+
+/**
+ * Overlay match byte: the sample is the frame's own.
+ */
+export const OVERLAY_MATCH_EXACT = 1;
+
+/**
+ * Overlay match byte: an earlier sample within the tolerance.
+ */
+export const OVERLAY_MATCH_TOLERATED = 2;
+
+/**
+ * Overlay match byte: an older sample kept by sticky.
+ */
+export const OVERLAY_MATCH_RETAINED = 3;
+
+/**
+ * Overlay match byte: the file covers the frame with nothing.
+ */
+export const OVERLAY_MATCH_EMPTY = 4;
+
+/**
+ * Overlay section tag: the shared paints.
+ */
+export const OVERLAY_TAG_PAINTS = 1;
+
+/**
+ * Overlay section tag: boxes.
+ */
+export const OVERLAY_TAG_BOXES = 2;
+
+/**
+ * Overlay section tag: lines.
+ */
+export const OVERLAY_TAG_LINES = 3;
+
+/**
+ * Overlay section tag: circles.
+ */
+export const OVERLAY_TAG_CIRCLES = 4;
+
+/**
+ * Overlay section tag: points.
+ */
+export const OVERLAY_TAG_POINTS = 5;
+
+/**
+ * Overlay section tag: the points of every polygon and polyline.
+ */
+export const OVERLAY_TAG_PATH_POINTS = 6;
+
+/**
+ * Overlay section tag: polygons.
+ */
+export const OVERLAY_TAG_POLYGONS = 7;
+
+/**
+ * Overlay section tag: polylines.
+ */
+export const OVERLAY_TAG_POLYLINES = 8;
+
+/**
+ * Overlay section tag: texts.
+ */
+export const OVERLAY_TAG_TEXTS = 9;
+
+/**
+ * Overlay section tag: the shared label styles.
+ */
+export const OVERLAY_TAG_LABEL_STYLES = 10;
+
+/**
+ * Overlay section tag: labels.
+ */
+export const OVERLAY_TAG_LABELS = 11;
+
+/**
+ * Overlay section tag: the runs of every label.
+ */
+export const OVERLAY_TAG_RUNS = 12;
+
+/**
+ * Overlay section tag: the strings every text refers to.
+ */
+export const OVERLAY_TAG_STRINGS = 13;
+
+/**
+ * Overlay section tags from here up are reserved (64 is the hit targets); receivers skip unknown tags.
+ */
+export const OVERLAY_TAG_RESERVED = 64;

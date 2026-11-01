@@ -191,6 +191,18 @@ export const COMMANDS = [
     "repeats": true
   },
   {
+    "id": "previous-entry",
+    "label": "Previous Playlist Entry",
+    "key": "Ctrl+Left",
+    "repeats": false
+  },
+  {
+    "id": "next-entry",
+    "label": "Next Playlist Entry",
+    "key": "Ctrl+Right",
+    "repeats": false
+  },
+  {
     "id": "speed-up",
     "label": "Playback Speed Up",
     "key": "]",

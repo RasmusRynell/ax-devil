@@ -77,6 +77,18 @@ pub const COMMANDS: &[Command] = &[
         true,
     ),
     command("step-back-10", "Step Back 10 Frames", Some("Left"), true),
+    command(
+        "previous-entry",
+        "Previous Playlist Entry",
+        Some("Ctrl+Left"),
+        false,
+    ),
+    command(
+        "next-entry",
+        "Next Playlist Entry",
+        Some("Ctrl+Right"),
+        false,
+    ),
     command("speed-up", "Playback Speed Up", Some("]"), true),
     command("speed-down", "Playback Speed Down", Some("["), true),
     command("lane-names", "Show Lane Names", None, false),
