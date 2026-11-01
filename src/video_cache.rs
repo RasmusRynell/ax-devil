@@ -3,7 +3,6 @@
 
 use crate::video_sources::VideoSources;
 use playback::{CachePool, Registry};
-use serde_json::Value;
 use settings::{Settings, State};
 use std::path::Path;
 use std::sync::Arc;
@@ -28,19 +27,9 @@ pub enum VideoCache {
 }
 
 impl VideoCache {
-    /// The setting in `state`. The settings service only holds values that fit the setting, so anything else is a
-    /// version mismatch that is logged and read as `auto`.
+    /// The setting in `state`.
     fn of(state: &State) -> Self {
-        match state.values().remove(SETTING) {
-            Some(Value::String(name)) if name == "auto" => Self::Auto,
-            Some(Value::Number(number)) if number.is_u64() => {
-                Self::Mib(number.as_u64().unwrap_or_default())
-            }
-            other => {
-                tracing::warn!("Unexpected {SETTING}: {other:?}; using auto");
-                Self::Auto
-            }
-        }
+        state.auto_or_whole(SETTING).map_or(Self::Auto, Self::Mib)
     }
 }
 
@@ -144,10 +133,13 @@ mod tests {
             folder.path(),
         ));
         let task = follow(&settings, videos, Some(4 * GIB));
-        let save = |cache: Value| {
-            let mut all = settings.state().values();
-            all.insert(SETTING.into(), cache);
-            settings.replace(&all).unwrap();
+        let save = |cache: serde_json::Value| {
+            let mut values = settings.state().values();
+            values.insert(SETTING.into(), cache);
+            let shortcuts = Default::default();
+            settings
+                .replace(&settings::Change { values, shortcuts })
+                .unwrap();
         };
         let resized = async |expected: u64| {
             while pool.allowance() as u64 != expected {

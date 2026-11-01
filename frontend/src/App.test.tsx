@@ -1,7 +1,8 @@
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vite-plus/test";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { App } from "./App";
-import type { Settings } from "./generated/api";
+import { DEFAULT_SETTINGS } from "./fakeSettings";
+import type { SettingsChange, SettingsState } from "./generated/api";
 
 beforeAll(() => {
   // jsdom does not implement modal dialogs.
@@ -26,24 +27,20 @@ afterEach(() => {
   delete document.documentElement.dataset.theme;
 });
 
-const stored: Settings = {
-  "ui.theme": "dark",
-  "ui.quick_setup_done": true,
+const dark: SettingsState = {
+  ...DEFAULT_SETTINGS,
+  values: { ...DEFAULT_SETTINGS.values, "ui.theme": "dark" },
 };
 
-/** A backend with the given stored settings; a PUT replaces them, as the real one does. */
-function backend(settings: Settings = stored, putStatus = 200) {
+/** A backend with the given settings; a PUT replaces them, as the real one does, or is refused with `refuse`. */
+function backend(settings = dark, refuse?: { reason: string; location: string }) {
   let current = settings;
   const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
-    if (url === "/api/info") return { ok: true, json: async () => ({ app: "ax-devil", api: 1 }) };
+    if (url === "/api/info") return { ok: true, json: async () => ({ app: "ax-devil", api: 2 }) };
     if (init?.method === "PUT") {
-      if (putStatus !== 200)
-        return {
-          ok: false,
-          status: putStatus,
-          json: async () => ({ reason: "no such theme", location: "ui.theme" }),
-        };
-      current = JSON.parse(init.body as string) as Settings;
+      if (refuse) return { ok: false, status: 422, json: async () => refuse };
+      const change = JSON.parse(init.body as string) as SettingsChange;
+      current = { ...current, ...change, restart: ["playback.video_cache"] };
     }
     return { ok: true, json: async () => current };
   });
@@ -72,7 +69,7 @@ describe("app shell", () => {
       "fetch",
       vi.fn(async (url: string) =>
         url === "/api/info"
-          ? { ok: true, json: async () => ({ app: "ax-devil", api: 1 }) }
+          ? { ok: true, json: async () => ({ app: "ax-devil", api: 2 }) }
           : {
               ok: false,
               status: 500,
@@ -84,7 +81,7 @@ describe("app shell", () => {
     expect((await screen.findByRole("alert")).textContent).toContain("settings file unreadable");
   });
 
-  it("stores the Settings dialog choice through the backend and applies it live", async () => {
+  it("stores the Settings dialog choice through the backend, applies it live and announces a pending restart", async () => {
     const fetchMock = backend();
     render(<App />);
     fireEvent.click(await screen.findByRole("button", { name: "Settings" }));
@@ -93,17 +90,20 @@ describe("app shell", () => {
     await waitFor(() => expect(document.documentElement.dataset.theme).toBe("light"));
     const put = fetchMock.mock.calls.find(([, init]) => init?.method === "PUT");
     expect(JSON.parse(put?.[1]?.body as string)).toEqual({
-      "ui.theme": "light",
-      "ui.quick_setup_done": true,
+      values: { ...dark.values, "ui.theme": "light" },
+      shortcuts: dark.shortcuts,
     });
+    expect((await screen.findByRole("status")).textContent).toContain("Memory for video caching");
   });
 
-  it("keeps the dialog open and says why when the backend refuses the settings", async () => {
-    backend(stored, 422);
+  it("keeps the dialog open and says why at the value the backend refused", async () => {
+    backend(dark, { reason: "no such theme", location: "ui.theme" });
     render(<App />);
     fireEvent.click(await screen.findByRole("button", { name: "Settings" }));
     fireEvent.click(await screen.findByRole("button", { name: "OK" }));
-    expect((await screen.findByRole("alert")).textContent).toContain("no such theme");
+    const alert = await screen.findByRole("alert");
+    expect(alert.textContent).toContain("no such theme");
+    expect(within(alert.parentElement as HTMLElement).getByLabelText("Theme")).toBeTruthy();
     expect(document.documentElement.dataset.theme).toBe("dark");
   });
 
@@ -114,13 +114,14 @@ describe("app shell", () => {
       "fetch",
       vi.fn(async (url: string, init?: RequestInit) => {
         if (url === "/api/info")
-          return { ok: true, json: async () => ({ app: "ax-devil", api: 1 }) };
-        if (init?.method !== "PUT") return { ok: true, json: async () => stored };
+          return { ok: true, json: async () => ({ app: "ax-devil", api: 2 }) };
+        if (init?.method !== "PUT") return { ok: true, json: async () => dark };
         puts.push(init.body as string);
         await new Promise<void>((resolve) => {
           finish = resolve;
         });
-        return { ok: true, json: async () => JSON.parse(init.body as string) as Settings };
+        const change = JSON.parse(init.body as string) as SettingsChange;
+        return { ok: true, json: async () => ({ ...dark, ...change }) };
       }),
     );
     render(<App />);

@@ -118,11 +118,11 @@ The decisions taken with the owner, with their reasons, are in
 
 | ID | Feature | P | Status | Test | Notes |
 |----|---------|---|--------|------|-------|
-| ST-01 | Settings dialog pages; restart marker | M | in progress | `App.test.tsx` | General page only (theme); the table declares `live` and `label`, and `playback.video_cache` has no field yet |
+| ST-01 | Settings dialog pages; restart marker | M | in progress | `frontend/src/shell/SettingsDialog.test.tsx`, `Shell.test.tsx` | Done: the dialog is generated from the settings table (pages, sections, `live` restart marker), and the restart banner shows after a save (nothing triggers it yet; no setting is restart-only). Remaining: rows for the other settings as their features land, Quick Setup (ST-02), and the plaintext warning (ST-06) |
 | ST-02 | Quick Setup on first start | M | todo |  |  |
 | ST-03 | Theme (light, dark, auto), applied live; no text-size setting, zoom is the browser's | M | done | `crates/settings` tests, `App.test.tsx` | Stored through `/api/settings`; the frontend applies the theme live |
-| ST-04 | `$VARIABLE` references | M | todo |  |  |
-| ST-05 | Keyboard shortcuts, dialog, override persistence | M | todo |  |  |
+| ST-04 | `$VARIABLE` references | M | in progress | `crates/settings` tests | Backend done: rows with `env` store the reference and expand it where used, and `plaintext` lists literal secrets; no setting takes one yet |
+| ST-05 | Keyboard shortcuts, dialog, override persistence | M | done | `crates/settings` tests, `frontend/src/shell/ShortcutsDialog.test.tsx`, `Shell.test.tsx` | Command table, override-only storage, conflict and reserved-key checks, the Shortcuts dialog and live key handling |
 | ST-06 | Workspace credential references expand only for their bound host or a confirmed one; warn before saving a literal password (new) | M | todo |  |  |
 | AP-01 | Uncaught errors logged; continue or close | M | todo |  |  |
 | AP-02 | Restart from inside the app | M | todo |  |  |

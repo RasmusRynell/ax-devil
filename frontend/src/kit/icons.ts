@@ -10,12 +10,15 @@ import palette from "../../../assets/icons/palette.svg";
 import pause from "../../../assets/icons/pause.svg";
 import play from "../../../assets/icons/play.svg";
 import plug from "../../../assets/icons/plug.svg";
+import rotateCcw from "../../../assets/icons/rotate-ccw.svg";
+import rotateCw from "../../../assets/icons/rotate-cw.svg";
 import search from "../../../assets/icons/search.svg";
 import settings from "../../../assets/icons/settings.svg";
 import square from "../../../assets/icons/square.svg";
 import squarePlay from "../../../assets/icons/square-play.svg";
 import stepBack from "../../../assets/icons/step-back.svg";
 import stepForward from "../../../assets/icons/step-forward.svg";
+import triangleAlert from "../../../assets/icons/triangle-alert.svg";
 import video from "../../../assets/icons/video.svg";
 import x from "../../../assets/icons/x.svg";
 
@@ -33,12 +36,15 @@ export const ICONS = {
   pause,
   play,
   plug,
+  "rotate-ccw": rotateCcw,
+  "rotate-cw": rotateCw,
   search,
   settings,
   square,
   "square-play": squarePlay,
   "step-back": stepBack,
   "step-forward": stepForward,
+  "triangle-alert": triangleAlert,
   video,
   x,
 } as const;

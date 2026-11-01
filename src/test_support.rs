@@ -26,6 +26,7 @@ impl TestApp {
         let router = app(AppState {
             settings: Arc::new(settings),
             store: workspace_store::Store::new(tokio::runtime::Handle::current()),
+            windows: Arc::new(crate::Windows::new(folder.path().join("windows.json"))),
             videos,
             stopping,
         });

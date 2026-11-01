@@ -62,6 +62,7 @@ impl Backend {
         let router = app(AppState {
             settings: Arc::new(settings),
             store: store.clone(),
+            windows: Arc::new(ax_devil::Windows::new(folder.path().join("windows.json"))),
             videos: videos.clone(),
             stopping,
         });

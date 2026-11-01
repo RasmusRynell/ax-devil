@@ -43,7 +43,7 @@ module.exports = async (window) => {
   press("0");
   await wait("window.devicePixelRatio === 1");
 
-  // The smallest window, at normal zoom and at 200%: the View menu, then the Settings dialog, in both themes.
+  // The smallest window, at normal zoom and at 200%: the View menu, then the Settings and Keyboard Shortcuts dialogs, in both themes.
   window.setSize(640, 480);
   const frame = () =>
     js("new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done)))");
@@ -52,6 +52,18 @@ module.exports = async (window) => {
     await fs.writeFile(
       path.join(SCREENSHOTS, name),
       (await window.webContents.capturePage()).toPNG(),
+    );
+  };
+  const openShortcuts = async () => {
+    await js(
+      "document.querySelector('[role=menu]') && document.querySelector('[aria-expanded=true]').click()",
+    );
+    await js(
+      "[...document.querySelectorAll('[data-top]')].find((b) => b.textContent === 'File').click()",
+    );
+    await wait("document.querySelector('[role=menu]')");
+    await js(
+      "[...document.querySelectorAll('[role=menuitem]')].find((b) => b.textContent.startsWith('Keyboard Shortcuts')).click()",
     );
   };
   for (const [theme, zoom] of [
@@ -72,7 +84,7 @@ module.exports = async (window) => {
     // With the sidebar open, then closed (the welcome area shows).
     for (const sidebar of ["open", "closed"]) {
       assert.deepEqual(
-        await js(`(${fit.toString()})()`),
+        await js(`(${fit.page.toString()})()`),
         [],
         `The page must fit the 640x480 window at ${zoom * 100}% zoom, sidebar ${sidebar}`,
       );
@@ -85,13 +97,29 @@ module.exports = async (window) => {
     );
     await wait("document.querySelector('[role=menu]')");
     await shoot(`menu-${theme}${suffix}.png`);
-    await js("document.querySelector('[aria-label=Settings]').click()");
-    await wait("document.querySelector('dialog[open]')");
-    await shoot(`settings-${theme}${suffix}.png`);
-    await js(
-      "[...document.querySelectorAll('dialog button')].find((b) => b.textContent === 'Cancel').click()",
-    );
-    await wait("!document.querySelector('dialog')");
+    for (const { name, open } of [
+      {
+        name: "settings",
+        open: () => js("document.querySelector('[aria-label=Settings]').click()"),
+      },
+      { name: "shortcuts", open: openShortcuts },
+    ]) {
+      await js(
+        "document.querySelector('[role=menu]') && document.querySelector('[aria-expanded=true]').click()",
+      );
+      await open();
+      await wait("document.querySelector('dialog[open]')");
+      assert.deepEqual(
+        await js(`(${fit.dialog.toString()})()`),
+        [],
+        `The ${name} dialog must fit the 640x480 window at ${zoom * 100}% zoom`,
+      );
+      await shoot(`${name}-${theme}${suffix}.png`);
+      await js(
+        "[...document.querySelectorAll('dialog button')].find((b) => b.textContent === 'Cancel').click()",
+      );
+      await wait("!document.querySelector('dialog')");
+    }
   }
 
   // A real video through the real backend: the canvas shows a picture, and stepping changes it.

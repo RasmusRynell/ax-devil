@@ -1,107 +1,108 @@
-import type { MenuCommand, MenuEntry } from "./kit/Menu";
+import { COMMANDS, type CommandId } from "./generated/settings";
+import type { MenuEntry } from "./kit/Menu";
 
-const SEPARATOR: MenuEntry = { kind: "separator" };
-const action = (id: string, label: string, shortcut?: string, repeats = false): MenuEntry => ({
-  kind: "action",
-  id,
+/** What the backend knows of a command: its label, default key and whether holding the key repeats it. */
+export type Command = (typeof COMMANDS)[number];
+
+/** The command with this id. */
+export function command(id: CommandId): Command {
+  const found = COMMANDS.find((candidate) => candidate.id === id);
+  if (!found) throw new Error(`unknown command ${id}`);
+  return found;
+}
+
+/** The effective key of every command, as the backend reports it. */
+export type Shortcuts = Record<CommandId, string | null>;
+
+type Layout =
+  | { kind: "separator" }
+  | { kind: "action" | "check"; id: CommandId }
+  | { kind: "submenu"; label: string; items: readonly Layout[] };
+
+const SEPARATOR: Layout = { kind: "separator" };
+const action = (id: CommandId): Layout => ({ kind: "action", id });
+const check = (id: CommandId): Layout => ({ kind: "check", id });
+const submenu = (label: string, items: readonly Layout[]): Layout => ({
+  kind: "submenu",
   label,
-  shortcut,
-  repeats,
-});
-const check = (id: string, label: string, shortcut?: string): MenuEntry => ({
-  kind: "check",
-  id,
-  label,
-  shortcut,
+  items,
 });
 
-/**
- * The menu bar and every command's label and shortcut, in one table. The shortcut handling and the later shortcuts
- * dialog read the same table, so a key is never defined twice.
- */
-export const MENUS: readonly { label: string; entries: readonly MenuEntry[] }[] = [
+/** The menu bar's layout: which commands sit in which menu. Labels, keys and repeat come from the backend. */
+export const MENUS: readonly { label: string; items: readonly Layout[] }[] = [
   {
     label: "File",
-    entries: [
-      action("new-workspace", "New Workspace"),
-      action("open-workspace", "Open Workspace", "Ctrl+O"),
-      {
-        kind: "submenu",
-        label: "Open Recent",
-        items: [{ kind: "action", id: "recent-none", label: "None", disabled: true }],
-      },
-      action("save-workspace", "Save Workspace", "Ctrl+S"),
-      action("save-workspace-as", "Save Workspace As", "Ctrl+Shift+S"),
+    items: [
+      action("new-workspace"),
+      action("open-workspace"),
+      submenu("Open Recent", []),
+      action("save-workspace"),
+      action("save-workspace-as"),
       SEPARATOR,
-      action("add-video", "Add Video", "Ctrl+N"),
-      action("add-live-stream", "Add Live Stream", "Ctrl+L"),
-      action("add-playlist", "Add Playlist", "Ctrl+Shift+N"),
+      action("add-video"),
+      action("add-live-stream"),
+      action("add-playlist"),
       SEPARATOR,
-      action("keyboard-shortcuts", "Keyboard Shortcuts", "Ctrl+K"),
-      action("settings", "Settings", "Ctrl+,"),
+      action("keyboard-shortcuts"),
+      action("settings"),
       SEPARATOR,
-      action("exit", "Exit", "Ctrl+Q"),
+      action("exit"),
     ],
   },
   {
     label: "View",
-    entries: [
-      action("fullscreen", "Toggle Fullscreen", "F11"),
-      action("lane-fullscreen", "Toggle Lane Fullscreen", "F"),
-      action("media-tools", "Media Tools Panel", "Ctrl+B"),
-      action("sidebar", "Sidebar", "Ctrl+\\"),
-      {
-        kind: "submenu",
-        label: "Playback",
-        items: [
-          action("play-pause", "Play / Pause", "Space"),
-          SEPARATOR,
-          action("step-forward", "Step Forward 1 Frame", ".", true),
-          action("step-back", "Step Back 1 Frame", ",", true),
-          action("step-forward-10", "Step Forward 10 Frames", "Right", true),
-          action("step-back-10", "Step Back 10 Frames", "Left", true),
-          SEPARATOR,
-          action("speed-up", "Playback Speed Up", "]", true),
-          action("speed-down", "Playback Speed Down", "[", true),
-        ],
-      },
+    items: [
+      action("fullscreen"),
+      action("lane-fullscreen"),
+      action("media-tools"),
+      action("sidebar"),
+      submenu("Playback", [
+        action("play-pause"),
+        SEPARATOR,
+        action("step-forward"),
+        action("step-back"),
+        action("step-forward-10"),
+        action("step-back-10"),
+        SEPARATOR,
+        action("speed-up"),
+        action("speed-down"),
+      ]),
       SEPARATOR,
-      check("lane-names", "Show Lane Names"),
-      check("object-details", "Object Hover and Click Details"),
-      action("info-overlay", "Toggle Info Overlay", "I"),
+      check("lane-names"),
+      check("object-details"),
+      action("info-overlay"),
       SEPARATOR,
-      action("add-bookmark", "Add Bookmark", "M"),
-      action("export-video", "Export Video", "Ctrl+E"),
+      action("add-bookmark"),
+      action("export-video"),
       SEPARATOR,
-      action("render-catalogs", "Render Catalogs", "Ctrl+R"),
+      action("render-catalogs"),
     ],
   },
   {
     label: "Debug",
-    entries: [
-      action("debug-metrics", "Debug Metrics", "Ctrl+D"),
-      action("plugins", "Plugins"),
-      SEPARATOR,
-      check("collect-metrics", "Collect Debug Metrics"),
-    ],
+    items: [action("debug-metrics"), action("plugins"), SEPARATOR, check("collect-metrics")],
   },
-  { label: "Help", entries: [action("quick-setup", "Quick Setup"), action("about", "About")] },
+  { label: "Help", items: [action("quick-setup"), action("about")] },
 ];
 
-function flatten(entries: readonly MenuEntry[]): MenuCommand[] {
-  return entries.flatMap((entry) =>
-    entry.kind === "separator" ? [] : entry.kind === "submenu" ? flatten(entry.items) : [entry],
-  );
-}
-
-/** Every command by id. */
-export const COMMANDS: ReadonlyMap<string, MenuCommand> = new Map(
-  MENUS.flatMap((menu) => flatten(menu.entries)).map((command) => [command.id, command]),
-);
-
-/** The command with this id; an unknown id is a programming error. */
-export function command(id: string): MenuCommand {
-  const found = COMMANDS.get(id);
-  if (!found) throw new Error(`unknown command ${id}`);
-  return found;
+/** The menu panel entries for a layout, each command with its label and its key in `shortcuts`. */
+export function menuEntries(items: readonly Layout[], shortcuts: Shortcuts): MenuEntry[] {
+  return items.map((item): MenuEntry => {
+    if (item.kind === "separator") return item;
+    if (item.kind === "submenu")
+      return {
+        kind: "submenu",
+        label: item.label,
+        items: item.items.length
+          ? menuEntries(item.items, shortcuts)
+          : [{ kind: "action", id: "none", label: "None", disabled: true }],
+      };
+    const { label } = command(item.id);
+    return {
+      kind: item.kind,
+      id: item.id,
+      label,
+      shortcut: shortcuts[item.id] ?? undefined,
+    };
+  });
 }

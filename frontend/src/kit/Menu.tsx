@@ -9,8 +9,6 @@ export type MenuEntry =
       label: string;
       shortcut?: string;
       disabled?: boolean;
-      /** Whether holding the key repeats the command. */
-      repeats?: boolean;
     }
   | { kind: "submenu"; label: string; items: readonly MenuEntry[] };
 

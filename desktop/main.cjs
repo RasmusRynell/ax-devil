@@ -1,10 +1,11 @@
-const { app, BrowserWindow, dialog, ipcMain } = require("electron");
+const { app, BrowserWindow, dialog, ipcMain, screen } = require("electron");
 const { spawn } = require("node:child_process");
 const { createInterface } = require("node:readline");
 const path = require("node:path");
 
 const { backendArgs, userArgs } = require("./args.cjs");
-const { apiVersion } = require("./generated/api.json");
+const { apiVersion, reserved } = require("./generated/api.json");
+const { windowBounds } = require("./window-state.cjs");
 
 const smoke = process.argv.includes("--smoke-test");
 // The smoke test always starts its own release backend and never attaches to a running session.
@@ -26,7 +27,11 @@ const VIDEO_EXTENSIONS = ["mp4", "avi", "mkv", "mov"];
 // Electron's own data (Chromium profile, crash dumps) is browser state, not ax-devil data: the backend owns the
 // app's folders, so keep Electron out of them.
 app.setPath("userData", path.join(app.getPath("cache"), "ax-devil-chromium"));
+// Zoom keys the app handles itself (the backend refuses them as shortcuts), by the key that triggers them.
+const ZOOM_STEPS = { "=": 0.5, "+": 0.5, "-": -0.5, 0: null };
 let backend;
+let backendOrigin;
+let windowState;
 let stopping = false;
 let stopped = false;
 let exitCode = 0;
@@ -90,11 +95,42 @@ function fail(error) {
   app.quit();
 }
 
+// The saved window, or nothing when there is none or the backend does not answer; the window then opens at defaults.
+async function loadWindowState() {
+  try {
+    const response = await fetch(`${backendOrigin}/api/windows/main`, {
+      signal: AbortSignal.timeout(1000),
+    });
+    return response.status === 200 ? await response.json() : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+// Saves the window before the backend stops; a failure only costs the next start its position.
+async function saveWindowState() {
+  if (!windowState) return;
+  try {
+    await fetch(`${backendOrigin}/api/windows/main`, {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(windowState),
+      signal: AbortSignal.timeout(1000),
+    });
+  } catch (error) {
+    console.error(`Could not save the window position: ${error.message}`);
+  }
+}
+
 app.on("before-quit", (event) => {
   if (stopped) return;
   event.preventDefault();
   if (stopping) return;
   stopping = true;
+  void saveWindowState().then(stopBackend);
+});
+
+function stopBackend() {
   const finish = () => {
     stopped = true;
     app.exit(exitCode);
@@ -106,7 +142,7 @@ app.on("before-quit", (event) => {
     finish();
   });
   backend.kill("SIGINT");
-});
+}
 app.on("window-all-closed", () => app.quit());
 process.on("SIGINT", () => app.quit());
 process.on("SIGTERM", () => app.quit());
@@ -114,13 +150,17 @@ process.on("SIGTERM", () => app.quit());
 app
   .whenReady()
   .then(async () => {
-    const backendOrigin = await startBackend();
+    backendOrigin = await startBackend();
     const origin = devUrl || backendOrigin;
     if (!/^http:\/\/127\.0\.0\.1:\d+$/.test(origin)) throw new Error("Invalid local desktop URL");
+    // The smoke test screenshots the default window, whatever an earlier run left.
+    const saved = smoke ? undefined : await loadWindowState();
     const window = new BrowserWindow({
       title: "ax-devil",
-      width: 1280,
-      height: 800,
+      ...windowBounds(
+        saved,
+        screen.getAllDisplays().map((display) => display.workArea),
+      ),
       minWidth: 640,
       minHeight: 480,
       // The page draws its own title bar and window controls (see preload.cjs).
@@ -132,6 +172,14 @@ app
         preload: path.join(__dirname, "preload.cjs"),
       },
     });
+    if (saved?.maximized) window.maximize();
+    // The normal bounds are kept apart from the maximized state, so a maximized window restores to its own size.
+    const remember = () => {
+      if (!smoke && !window.isDestroyed())
+        windowState = { ...window.getNormalBounds(), maximized: window.isMaximized() };
+    };
+    for (const event of ["resize", "move", "maximize", "unmaximize", "close"])
+      window.on(event, remember);
     const sendMaximized = () => window.webContents.send("window:maximized", window.isMaximized());
     window.on("maximize", sendMaximized);
     window.on("unmaximize", sendMaximized);
@@ -154,11 +202,10 @@ app
     // There is no application menu, so zoom is handled here; Chromium remembers it per host.
     window.webContents.on("before-input-event", (event, input) => {
       if (input.type !== "keyDown" || !input.control || input.alt) return;
+      const step = ZOOM_STEPS[input.key];
+      if (step === undefined || !reserved.includes(`Ctrl+${input.key}`)) return;
       const zoom = window.webContents;
-      if (input.key === "=" || input.key === "+") zoom.setZoomLevel(zoom.getZoomLevel() + 0.5);
-      else if (input.key === "-") zoom.setZoomLevel(zoom.getZoomLevel() - 0.5);
-      else if (input.key === "0") zoom.setZoomLevel(0);
-      else return;
+      zoom.setZoomLevel(step === null ? 0 : zoom.getZoomLevel() + step);
       event.preventDefault();
     });
     window.webContents.setWindowOpenHandler(() => ({ action: "deny" }));

@@ -1,5 +1,7 @@
 //! Starts the backend on 127.0.0.1:$PORT (default 7330) and stops it on Ctrl+C.
 
+mod paths;
+
 use clap::{Parser, Subcommand};
 use std::{
     error::Error,
@@ -20,10 +22,10 @@ const RUNTIME_GRACE: Duration = Duration::from_secs(1);
 #[derive(Parser)]
 #[command(version)]
 struct Cli {
-    /// Use this configuration file instead of ~/.ax_devil/configs/default.json.
+    /// Use this settings file instead of $XDG_CONFIG_HOME/ax-devil/settings.json (~/.config/ax-devil/settings.json).
     #[arg(long, value_name = "PATH")]
     config: Option<PathBuf>,
-    /// Keep caches in this folder instead of ~/.ax_devil/cache.
+    /// Keep caches in this folder instead of $XDG_CACHE_HOME/ax-devil (~/.cache/ax-devil).
     #[arg(long, value_name = "PATH")]
     cache_dir: Option<PathBuf>,
     /// How much to log.
@@ -61,16 +63,16 @@ fn main() -> ExitCode {
 
 async fn run() -> ExitCode {
     let cli = Cli::parse();
-    let Some(home) = std::env::home_dir().map(|home| home.join(".ax_devil")) else {
-        logging::init(cli.log_level, None);
-        tracing::error!("Cannot find the home folder");
-        return ExitCode::FAILURE;
+    let env = |name: &str| std::env::var_os(name);
+    let paths = match paths::Paths::resolve(&env, cli.config, cli.cache_dir) {
+        Ok(paths) => paths,
+        Err(error) => {
+            logging::init(cli.log_level, None);
+            tracing::error!("{error}");
+            return ExitCode::FAILURE;
+        }
     };
-    logging::init(cli.log_level, Some(&home.join("logs/ax-devil.log")));
-    let config = cli
-        .config
-        .unwrap_or_else(|| home.join("configs/default.json"));
-    let cache_dir = cli.cache_dir.unwrap_or_else(|| home.join("cache"));
+    logging::init(cli.log_level, Some(&paths.log_file));
     let items = match &cli.command {
         None => Vec::new(),
         Some(Command::Local { video }) => match workspace::intake::video(video) {
@@ -81,7 +83,14 @@ async fn run() -> ExitCode {
             }
         },
     };
-    match serve(&config, cache_dir, items).await {
+    match serve(
+        &paths.config_file,
+        paths.cache_dir,
+        paths.window_file,
+        items,
+    )
+    .await
+    {
         Ok(()) => ExitCode::SUCCESS,
         Err(error) => {
             tracing::error!("{error}");
@@ -93,6 +102,7 @@ async fn run() -> ExitCode {
 async fn serve(
     config: &Path,
     cache_dir: PathBuf,
+    windows: PathBuf,
     items: Vec<workspace::WorkspaceItem>,
 ) -> Result<(), Box<dyn Error>> {
     let settings = Arc::new(settings::Settings::load(config)?);
@@ -122,6 +132,7 @@ async fn serve(
         ax_devil::app(ax_devil::AppState {
             settings,
             store,
+            windows: Arc::new(ax_devil::Windows::new(windows)),
             videos: Arc::clone(&videos),
             // Open playback sockets end when this turns true, so they cannot hold the shutdown or keep
             // decoders running.

@@ -1,0 +1,27 @@
+import type { ReactNode } from "react";
+import type { SettingsState } from "./generated/api";
+import { COMMANDS } from "./generated/settings";
+import { SettingsContext, type SettingsApi } from "./settings";
+
+/** The state of a backend with no changes: every default, every command on its default key. */
+export const DEFAULT_SETTINGS: SettingsState = {
+  values: { "ui.theme": "auto", "ui.quick_setup_done": false, "playback.video_cache": "auto" },
+  shortcuts: Object.fromEntries(
+    COMMANDS.map((command) => [command.id, command.key]),
+  ) as SettingsState["shortcuts"],
+  restart: [],
+  plaintext: [],
+};
+
+/** Provides settings to a component under test without a backend. */
+export function FakeSettings({
+  state = DEFAULT_SETTINGS,
+  save = () => Promise.resolve(null),
+  children,
+}: {
+  state?: SettingsState;
+  save?: SettingsApi["save"];
+  children: ReactNode;
+}) {
+  return <SettingsContext.Provider value={{ ...state, save }}>{children}</SettingsContext.Provider>;
+}

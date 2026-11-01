@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from "react";
-import { COMMANDS } from "../commands";
 import type { MenuCommand } from "../kit/Menu";
-import { matchesShortcut } from "../kit/shortcut";
+import { shortcutOf } from "../kit/shortcut";
+import { COMMANDS, SETTINGS } from "../generated/settings";
+import { useSettings } from "../settings";
 import { ViewerActionsContext, type ViewerActions } from "../viewer/actions";
 import { ViewerHost } from "../viewer/ViewerHost";
 import { addVideos } from "../workspace/client";
@@ -10,6 +11,7 @@ import { ActivityBar } from "./ActivityBar";
 import { Banner } from "./Banner";
 import { TitleBar } from "./TitleBar";
 import { SettingsDialog } from "./SettingsDialog";
+import { ShortcutsDialog } from "./ShortcutsDialog";
 import { Sidebar } from "./Sidebar";
 import { Welcome } from "./Welcome";
 import type { ActivityItem, ViewId } from "./views";
@@ -31,10 +33,11 @@ function viewerOwnsPlainKeys(target: EventTarget | null): boolean {
 export function Shell() {
   const [view, setView] = useState<ViewId>("workspace");
   const [sidebarOpen, setSidebarOpen] = useState(true);
-  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [dialog, setDialog] = useState<"settings" | "shortcuts" | null>(null);
   const [checked, setChecked] = useState<ReadonlySet<string>>(new Set());
   const [notice, setNotice] = useState<string | null>(null);
   const { view: workspace } = useWorkspace();
+  const { shortcuts, restart } = useSettings();
   const viewerActions = useRef<ViewerActions>({});
 
   const addVideo = () => {
@@ -50,7 +53,8 @@ export function Shell() {
   // Commands with behavior; every other command is a placeholder that does nothing yet. The open viewer adds its own.
   const actions: Record<string, () => void> = {
     sidebar: () => setSidebarOpen((open) => !open),
-    settings: () => setSettingsOpen(true),
+    settings: () => setDialog("settings"),
+    "keyboard-shortcuts": () => setDialog("shortcuts"),
     "add-video": addVideo,
   };
   const find = (id: string) => actions[id] ?? viewerActions.current[id];
@@ -76,9 +80,9 @@ export function Shell() {
   useEffect(() => {
     /** The command this key press runs, if the shell handles it. */
     const handled = (event: KeyboardEvent) => {
-      const match = [...COMMANDS.values()].find(
-        (item) => item.shortcut && find(item.id) && matchesShortcut(event, item.shortcut),
-      );
+      const pressed = shortcutOf(event);
+      const match =
+        pressed && COMMANDS.find((item) => shortcuts[item.id] === pressed && find(item.id));
       const plain = !event.ctrlKey && !event.altKey && !event.metaKey;
       return match && !(plain && !viewerOwnsPlainKeys(event.target)) ? match : undefined;
     };
@@ -110,6 +114,12 @@ export function Shell() {
             {notice}
           </Banner>
         )}
+        {restart.length > 0 && (
+          <Banner role="status">
+            Restart ax-devil to apply{" "}
+            {restart.map((key) => SETTINGS.find((row) => row.key === key)?.label).join(", ")}
+          </Banner>
+        )}
         {workspace.connection === "lost" && (
           <Banner role="status">Connection to the backend lost. Reconnecting…</Banner>
         )}
@@ -122,7 +132,8 @@ export function Shell() {
             {workspace.active ? <ViewerHost /> : <Welcome onRun={run} />}
           </main>
         </div>
-        {settingsOpen && <SettingsDialog onClose={() => setSettingsOpen(false)} />}
+        {dialog === "settings" && <SettingsDialog onClose={() => setDialog(null)} />}
+        {dialog === "shortcuts" && <ShortcutsDialog onClose={() => setDialog(null)} />}
       </div>
     </ViewerActionsContext.Provider>
   );

@@ -6,34 +6,37 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import type { ApiError, Settings } from "./generated/api";
+import type { ApiError, SettingsChange, SettingsState } from "./generated/api";
 
-export const THEMES = ["auto", "light", "dark"] as const;
-export type Theme = (typeof THEMES)[number];
-
-interface SettingsApi {
-  theme: Theme;
-  /** Stores *next* through the backend and shows what it returns; resolves to the refusal reason, else null. */
-  save: (next: Theme) => Promise<string | null>;
+export interface SettingsApi extends SettingsState {
+  /**
+   * Stores *change* through the backend and shows what it returns; resolves to the refusal (its `location` is a
+   * setting key or `shortcuts.<id>`, empty when the backend could not be reached), else null.
+   */
+  save: (change: SettingsChange) => Promise<ApiError | null>;
 }
 
 type Load =
   | { state: "loading" }
-  | { state: "ready"; stored: Settings }
+  | { state: "ready"; stored: SettingsState }
   | { state: "failed"; reason: string };
 
-const SettingsContext = createContext<SettingsApi | null>(null);
+/** Provided by `SettingsProvider`; tests provide their own value. */
+export const SettingsContext = createContext<SettingsApi | null>(null);
 
-async function request(init?: RequestInit): Promise<Settings> {
+async function request(init?: RequestInit): Promise<SettingsState> {
   const response = await fetch("/api/settings", init);
   if (!response.ok) {
     const error = (await response.json().catch(() => null)) as ApiError | null;
-    throw new Error(error?.reason ?? `the backend answered ${response.status}`);
+    throw error ?? { reason: `the backend answered ${response.status}`, location: "" };
   }
-  return (await response.json()) as Settings;
+  return (await response.json()) as SettingsState;
 }
 
-const reasonOf = (error: unknown) => (error instanceof Error ? error.message : String(error));
+const refusalOf = (error: unknown): ApiError =>
+  typeof error === "object" && error !== null && "reason" in error
+    ? (error as ApiError)
+    : { reason: error instanceof Error ? error.message : String(error), location: "" };
 
 /**
  * The backend's stored settings are the only copy. Children render once they arrive, with the theme
@@ -48,14 +51,14 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
         if (current) setLoad({ state: "ready", stored });
       })
       .catch((error: unknown) => {
-        if (current) setLoad({ state: "failed", reason: reasonOf(error) });
+        if (current) setLoad({ state: "failed", reason: refusalOf(error).reason });
       });
     return () => {
       current = false;
     };
   }, []);
   const stored = load.state === "ready" ? load.stored : null;
-  const theme = stored?.["ui.theme"] as Theme | undefined;
+  const theme = stored?.values["ui.theme"] as string | undefined;
   useLayoutEffect(() => {
     // tokens.css selects the color scheme from this attribute.
     if (theme) document.documentElement.dataset.theme = theme;
@@ -63,25 +66,27 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
 
   if (load.state === "failed")
     return <p role="alert">ax-devil cannot read its settings: {load.reason}</p>;
-  if (!stored || !theme) return <main aria-busy="true" />;
+  if (!stored) return <main aria-busy="true" />;
 
-  const save = async (next: Theme) => {
+  const save = async (change: SettingsChange) => {
     try {
       const replaced = await request({
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...stored, "ui.theme": next }),
+        body: JSON.stringify(change),
       });
       setLoad({ state: "ready", stored: replaced });
       return null;
     } catch (error) {
-      return reasonOf(error);
+      return refusalOf(error);
     }
   };
-  return <SettingsContext.Provider value={{ theme, save }}>{children}</SettingsContext.Provider>;
+  return (
+    <SettingsContext.Provider value={{ ...stored, save }}>{children}</SettingsContext.Provider>
+  );
 }
 
-/** The applied theme, and the way to store new ones; only inside a `SettingsProvider`. */
+/** The stored settings, the effective shortcuts, and the way to store new ones; only inside a `SettingsProvider`. */
 export function useSettings(): SettingsApi {
   const settings = useContext(SettingsContext);
   if (!settings) throw new Error("useSettings needs a SettingsProvider");

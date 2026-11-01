@@ -32,7 +32,10 @@ export function Dialog({ title, children, onOk, onCancel, busy = false }: Props)
       }}
       className="m-auto max-h-full max-w-full overflow-auto rounded-popup border border-line-strong bg-popup p-0 text-fg backdrop:bg-scrim"
     >
-      <form onSubmit={submit} className="flex flex-col gap-l p-xl">
+      <form
+        onSubmit={submit}
+        className="flex max-h-[calc(100vh-var(--spacing-s))] flex-col gap-l p-xl"
+      >
         <h2 id={titleId} className="m-0 text-heading font-semibold">
           {title}
         </h2>

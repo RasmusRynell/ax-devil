@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "settings": {
+    "ui.theme": "dark",
+    "ui.quick_setup_done": true,
+    "playback.video_cache": 512,
+    "ui.from_a_later_release": 3
+  },
+  "shortcuts": {
+    "save-workspace": "ctrl+alt+s",
+    "exit": null,
+    "command-from-a-later-release": "Ctrl+J"
+  },
+  "section_from_a_later_release": { "a": 1 }
+}

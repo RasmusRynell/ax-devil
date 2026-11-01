@@ -1,8 +1,9 @@
 import { command } from "../commands";
 import { Button } from "../kit/Button";
+import type { CommandId } from "../generated/settings";
 import type { IconName } from "../kit/icons";
 
-const OPEN: readonly [id: string, icon: IconName][] = [
+const OPEN: readonly [id: CommandId, icon: IconName][] = [
   ["open-workspace", "folder"],
   ["add-video", "square-play"],
   ["add-live-stream", "video"],

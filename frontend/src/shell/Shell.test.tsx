@@ -1,7 +1,9 @@
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { MENUS } from "../commands";
+import type { CommandId } from "../generated/settings";
 import { useViewerActions } from "../viewer/actions";
+import { DEFAULT_SETTINGS, FakeSettings } from "../fakeSettings";
 import { fakeWorkspace, resolved, video } from "../workspace/fakeEvents";
 import { WorkspaceProvider } from "../workspace/WorkspaceProvider";
 import { Shell } from "./Shell";
@@ -20,12 +22,15 @@ vi.mock("../playback/VideoViewer", () => ({
   },
 }));
 
-function renderShell() {
+function renderShell(shortcuts: Partial<Record<CommandId, string | null>> = {}) {
   const workspace = fakeWorkspace();
+  const state = { ...DEFAULT_SETTINGS, shortcuts: { ...DEFAULT_SETTINGS.shortcuts, ...shortcuts } };
   const shell = render(
-    <WorkspaceProvider store={workspace.store}>
-      <Shell />
-    </WorkspaceProvider>,
+    <FakeSettings state={state}>
+      <WorkspaceProvider store={workspace.store}>
+        <Shell />
+      </WorkspaceProvider>
+    </FakeSettings>,
   );
   return { ...shell, workspace };
 }
@@ -158,8 +163,8 @@ describe("add video", () => {
 });
 
 describe("viewer shortcuts", () => {
-  function openViewer() {
-    const { workspace } = renderShell();
+  function openViewer(shortcuts?: Parameters<typeof renderShell>[0]) {
+    const { workspace } = renderShell(shortcuts);
     act(() => workspace.source().send([video("a", true, resolved("a"))]));
   }
 
@@ -173,6 +178,14 @@ describe("viewer shortcuts", () => {
     expect(playback.step).toHaveBeenCalledTimes(2);
     fireEvent.keyDown(screen.getByRole("spinbutton", { name: "Speed" }), { key: "." });
     expect(playback.step).toHaveBeenCalledTimes(2);
+  });
+
+  it("follow the user's own key, and the default key no longer runs the command", () => {
+    openViewer({ "play-pause": "Ctrl+J" });
+    fireEvent.keyDown(document.body, { key: " " });
+    expect(playback.togglePlay).not.toHaveBeenCalled();
+    fireEvent.keyDown(document.body, { key: "j", ctrlKey: true });
+    expect(playback.togglePlay).toHaveBeenCalledTimes(1);
   });
 
   it("do nothing, and leave the key alone, while no viewer is open", () => {

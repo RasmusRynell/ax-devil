@@ -244,4 +244,11 @@ the module that implements it adds one.
   which follow the newly saved folder.
 - Settings live in one immutable state replaced whole; consumers subscribe to changes, never poll.
 - On/off overlay preferences are one closed set; adding a member adds it to the View menu, Settings and the config.
-- All shortcuts are defined in one table; persistence is override-only, so no overrides means all defaults apply.
+- All shortcuts are defined in one table; persistence is override-only, so no overrides means all defaults apply. An
+  override wins over any default with the same key, which becomes unbound.
+- Settings are personal: nothing created from them (workspaces, videos, layouts) refers back to them or embeds a value,
+  a `$VARIABLE` reference or a credential; they only supply defaults when something is created. Only shortcuts are
+  read live.
+- A settings file this build cannot read (newer, malformed, or holding an invalid value) stops startup with an error
+  naming the file and key. File format, migration and backups are owned by
+  [`crates/settings/README.md`](../../crates/settings/README.md).

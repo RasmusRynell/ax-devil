@@ -1,1 +1,9 @@
-{ "apiVersion": 1 }
+{
+  "apiVersion": 2,
+  "reserved": [
+    "Ctrl+=",
+    "Ctrl++",
+    "Ctrl+-",
+    "Ctrl+0"
+  ]
+}
