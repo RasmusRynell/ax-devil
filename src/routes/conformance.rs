@@ -69,7 +69,7 @@ fn router(listener: Listener) -> (Router, tempfile::TempDir, tokio::sync::watch:
         Listener::Local => Policy::Local,
         Listener::Lan => Policy::Shared { password: None },
         Listener::Server => Policy::Shared {
-            password: Some(Secret::chosen(PASSWORD.into())),
+            password: Some(Secret::chosen(PASSWORD.into()).unwrap()),
         },
     };
     let state = AppState::new(Arc::new(settings), policy, videos, stopping);

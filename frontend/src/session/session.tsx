@@ -140,10 +140,14 @@ export function useCommand(): (command: SessionCommand) => Promise<void> {
 /**
  * The way to get a ticket for a stream, for the playback socket's first message. A ticket works once, so every
  * connection asks again. `key` must be the same object between renders for as long as it names the same stream.
+ * The function changes when the backend seats the window again, which ends the streams opened before: whoever opened
+ * one starts over, and the backend decides again whether the window may.
  */
 export function useStream(key: ContentRef): () => Promise<string> {
   const store = useStore();
-  return useCallback(() => store.requestTicket(key), [store, key]);
+  const seatings = useSelect((state) => state.seatings);
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- `seatings` only gives the function a new identity.
+  return useCallback(() => store.requestTicket(key), [store, key, seatings]);
 }
 
 /** The backend's clock, for following a presenter: `nowUs` is undefined until it has answered. */

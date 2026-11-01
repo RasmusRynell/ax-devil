@@ -121,8 +121,14 @@ export class FakeSocket {
   static tokens = 0;
   /** The backend's clock minus the client's, in microseconds. */
   static clockOffsetUs = 5_000_000;
+  /** While true, the backend refuses every stream ticket, as it does for content the Doc no longer lets the seat play. */
+  static refuseTickets = false;
+  /** The server password the fake backend asks of a caller who is not joining by a link; null for a server without one. */
+  static serverPassword: string | null = null;
 
   static reset() {
+    FakeSocket.refuseTickets = false;
+    FakeSocket.serverPassword = null;
     FakeSocket.sockets = [];
     FakeSocket.rooms.clear();
     FakeSocket.clockOffsetUs = 5_000_000;
@@ -303,12 +309,14 @@ export class FakeSocket {
     const refuse = () =>
       this.emit({ type: "ack", seq, outcome: { status: "refused", code: "NotAllowed" } });
     if (cmd.type === "requestTicket")
-      return this.emit({
-        type: "ticket",
-        seq,
-        ticket: `ticket-${++FakeSocket.tokens}`,
-        expiresMs: 10_000,
-      });
+      return FakeSocket.refuseTickets
+        ? refuse()
+        : this.emit({
+            type: "ticket",
+            seq,
+            ticket: `ticket-${++FakeSocket.tokens}`,
+            expiresMs: 10_000,
+          });
     if (cmd.type === "follow") seat.view = null;
     else if (cmd.type === "control") {
       if (!seat.owner) return refuse();
@@ -339,6 +347,12 @@ export class FakeSocket {
   private admit(message: SessionClientMessage) {
     if (message.type !== "hello") return this.endWith(1007);
     const { auth, resume } = message;
+    if (
+      !resume &&
+      auth.type !== "join" &&
+      auth.serverPassword !== (FakeSocket.serverPassword ?? undefined)
+    )
+      return this.endWith(4401);
     let room: Room | undefined;
     let seat: Seat | undefined;
     if (resume) {

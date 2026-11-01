@@ -3,21 +3,29 @@
 const { BrowserWindow, dialog, ipcMain } = require("electron");
 const path = require("node:path");
 
+const { reserved } = require("./generated/api.json");
+const { windowBounds } = require("./window-state.cjs");
+
 // Video files the Add Video dialog offers; the backend's intake takes any path, the viewer judges the media.
 const VIDEO_EXTENSIONS = ["mp4", "avi", "mkv", "mov"];
+
+// Zoom keys the shell handles itself (the backend refuses them as shortcuts), by the key that triggers them.
+const ZOOM_STEPS = { "=": 0.5, "+": 0.5, "-": -0.5, 0: null };
 
 // Window contents -> { origin, remote }; `remote` is a page served by another machine's backend.
 const trusted = new WeakMap();
 
 /**
  * Opens a window on `origin` and resolves once its page has loaded; `url` (default: the origin) is what it loads.
- * A failed load destroys the window and rejects.
+ * `bounds` is its position and size (default: the standard size). A failed load destroys the window and rejects.
  */
-async function openWindow(origin, { url = origin, remote = false, fatal }) {
+async function openWindow(
+  origin,
+  { url = origin, remote = false, fatal, bounds = windowBounds(undefined, []) },
+) {
   const window = new BrowserWindow({
     title: "ax-devil",
-    width: 1280,
-    height: 800,
+    ...bounds,
     minWidth: 640,
     minHeight: 480,
     // The page draws its own title bar and window controls (see preload.cjs).
@@ -37,11 +45,9 @@ async function openWindow(origin, { url = origin, remote = false, fatal }) {
   // There is no application menu, so zoom is handled here; Chromium remembers it per host.
   contents.on("before-input-event", (event, input) => {
     if (input.type !== "keyDown" || !input.control || input.alt) return;
-    if (input.key === "=" || input.key === "+")
-      contents.setZoomLevel(contents.getZoomLevel() + 0.5);
-    else if (input.key === "-") contents.setZoomLevel(contents.getZoomLevel() - 0.5);
-    else if (input.key === "0") contents.setZoomLevel(0);
-    else return;
+    const step = ZOOM_STEPS[input.key];
+    if (step === undefined || !reserved.includes(`Ctrl+${input.key}`)) return;
+    contents.setZoomLevel(step === null ? 0 : contents.getZoomLevel() + step);
     event.preventDefault();
   });
   contents.setWindowOpenHandler(() => ({ action: "deny" }));
@@ -110,6 +116,13 @@ function installIpc({ connect, disconnect }) {
       filters: [{ name: "Video files", extensions: VIDEO_EXTENSIONS }],
     });
     return chosen.canceled ? [] : chosen.filePaths;
+  });
+  // The chosen absolute path, null when the dialog is cancelled; the page saves it through the settings. Only the
+  // local backend's page may browse this machine's folders.
+  handle("settings:pick-folder", async ({ remote, window }) => {
+    if (remote) throw new Error("Not allowed");
+    const chosen = await dialog.showOpenDialog(window, { properties: ["openDirectory"] });
+    return chosen.canceled ? null : chosen.filePaths[0];
   });
   handle("window:connect", ({ remote, window }, target, password) => {
     if (remote) throw new Error("Not allowed");

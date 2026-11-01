@@ -24,6 +24,44 @@ module.exports = async (window, shell) => {
   ownerCsp.length = 0;
 
   await fs.mkdir(SCREENSHOTS, { recursive: true });
+  const frame = () =>
+    js("new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done)))");
+  const shoot = async (name) => {
+    await frame();
+    await fs.writeFile(
+      path.join(SCREENSHOTS, name),
+      (await window.webContents.capturePage()).toPNG(),
+    );
+  };
+
+  // The isolated home is a first run, so Quick Setup is open: check it in the smallest window, then Done closes it.
+  const size = window.getSize();
+  window.setSize(640, 480);
+  await wait("document.querySelector('dialog[open] h2')?.textContent === 'Quick Setup'");
+  for (const [theme, zoom] of [
+    ["light", 1],
+    ["dark", 1],
+    ["light", 2],
+    ["dark", 2],
+  ]) {
+    window.webContents.setZoomFactor(zoom);
+    nativeTheme.themeSource = theme;
+    await wait(`matchMedia('(prefers-color-scheme: ${theme})').matches`);
+    await frame();
+    assert.deepEqual(
+      await js(`(${fit.dialog.toString()})()`),
+      [],
+      `Quick Setup must fit the 640x480 window at ${zoom * 100}% zoom`,
+    );
+    await shoot(`quick-setup-${theme}${zoom === 1 ? "" : "-200"}.png`);
+  }
+  window.webContents.setZoomFactor(1);
+  await js(
+    "[...document.querySelectorAll('dialog button')].find((b) => b.textContent === 'Done').click()",
+  );
+  await wait("!document.querySelector('dialog')");
+  window.setSize(...size);
+
   const backgrounds = {};
   for (const theme of ["light", "dark"]) {
     nativeTheme.themeSource = theme;
@@ -46,15 +84,18 @@ module.exports = async (window, shell) => {
   press("0");
   await wait("window.devicePixelRatio === 1");
 
-  // The smallest window, at normal zoom and at 200%: the View menu, then the Settings dialog, in both themes.
+  // The smallest window, at normal zoom and at 200%: the View menu, then the Settings and Keyboard Shortcuts dialogs, in both themes.
   window.setSize(640, 480);
-  const frame = () =>
-    js("new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done)))");
-  const shoot = async (name) => {
-    await frame();
-    await fs.writeFile(
-      path.join(SCREENSHOTS, name),
-      (await window.webContents.capturePage()).toPNG(),
+  const openShortcuts = async () => {
+    await js(
+      "document.querySelector('[role=menu]') && document.querySelector('[aria-expanded=true]').click()",
+    );
+    await js(
+      "[...document.querySelectorAll('[data-top]')].find((b) => b.textContent === 'File').click()",
+    );
+    await wait("document.querySelector('[role=menu]')");
+    await js(
+      "[...document.querySelectorAll('[role=menuitem]')].find((b) => b.textContent.startsWith('Keyboard Shortcuts')).click()",
     );
   };
   for (const [theme, zoom] of [
@@ -75,7 +116,7 @@ module.exports = async (window, shell) => {
     // With the sidebar open, then closed (the welcome area shows).
     for (const sidebar of ["open", "closed"]) {
       assert.deepEqual(
-        await js(`(${fit.toString()})()`),
+        await js(`(${fit.page.toString()})()`),
         [],
         `The page must fit the 640x480 window at ${zoom * 100}% zoom, sidebar ${sidebar}`,
       );
@@ -86,7 +127,7 @@ module.exports = async (window, shell) => {
     await js("document.querySelector('[aria-label=Sessions]').click()");
     await wait(button("Start sharing"));
     assert.deepEqual(
-      await js(`(${fit.toString()})()`),
+      await js(`(${fit.page.toString()})()`),
       [],
       `The Sessions view must fit the 640x480 window at ${zoom * 100}% zoom`,
     );
@@ -96,7 +137,7 @@ module.exports = async (window, shell) => {
     window.webContents.insertText("http://192.168.100.200:7340");
     await wait("document.querySelector('dialog[open] input[type=password]')");
     assert.deepEqual(
-      await js(`(${fit.toString()})()`),
+      await js(`(${fit.page.toString()})()`),
       [],
       `The Connect dialog must fit the 640x480 window at ${zoom * 100}% zoom`,
     );
@@ -110,7 +151,7 @@ module.exports = async (window, shell) => {
       await js(`${button("Start sharing")}.click()`);
       await wait("document.querySelector('aside input[aria-label=\"Join link\"]')");
       assert.deepEqual(
-        await js(`(${fit.toString()})()`),
+        await js(`(${fit.page.toString()})()`),
         [],
         "An owner's Sessions view must fit the 640x480 window at 200% zoom",
       );
@@ -124,13 +165,39 @@ module.exports = async (window, shell) => {
     );
     await wait("document.querySelector('[role=menu]')");
     await shoot(`menu-${theme}${suffix}.png`);
-    await js("document.querySelector('[aria-label=Settings]').click()");
-    await wait("document.querySelector('dialog[open]')");
-    await shoot(`settings-${theme}${suffix}.png`);
-    await js(
-      "[...document.querySelectorAll('dialog button')].find((b) => b.textContent === 'Cancel').click()",
-    );
-    await wait("!document.querySelector('dialog')");
+    for (const { name, open } of [
+      {
+        name: "settings",
+        open: () => js("document.querySelector('[aria-label=Settings]').click()"),
+      },
+      {
+        name: "settings-storage",
+        open: async () => {
+          await js("document.querySelector('[aria-label=Settings]').click()");
+          await wait("document.querySelector('dialog[open]')");
+          await js(
+            "[...document.querySelectorAll('[role=tab]')].find((b) => b.textContent === 'Storage').click()",
+          );
+        },
+      },
+      { name: "shortcuts", open: openShortcuts },
+    ]) {
+      await js(
+        "document.querySelector('[role=menu]') && document.querySelector('[aria-expanded=true]').click()",
+      );
+      await open();
+      await wait("document.querySelector('dialog[open]')");
+      assert.deepEqual(
+        await js(`(${fit.dialog.toString()})()`),
+        [],
+        `The ${name} dialog must fit the 640x480 window at ${zoom * 100}% zoom`,
+      );
+      await shoot(`${name}-${theme}${suffix}.png`);
+      await js(
+        "[...document.querySelectorAll('dialog button')].find((b) => b.textContent === 'Cancel').click()",
+      );
+      await wait("!document.querySelector('dialog')");
+    }
   }
 
   await video(window);

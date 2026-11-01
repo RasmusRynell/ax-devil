@@ -1,4 +1,5 @@
-import type { MenuCommand, MenuEntry } from "./kit/Menu";
+import { COMMANDS, type CommandId } from "./generated/settings";
+import type { MenuEntry } from "./kit/Menu";
 
 /**
  * What a command needs of the seat, as the backend's `Can` names it: `host` (read the host's files), `content` (change
@@ -6,114 +7,129 @@ import type { MenuCommand, MenuEntry } from "./kit/Menu";
  */
 export type Scope = "host" | "content" | "view" | "app";
 
-const SEPARATOR: MenuEntry = { kind: "separator" };
-const scopes = new Map<string, Scope>();
-const entry =
-  (kind: "action" | "check") =>
-  (scope: Scope, id: string, label: string, shortcut?: string, repeats = false) => {
-    scopes.set(id, scope);
-    return { kind, id, label, shortcut, repeats } satisfies MenuEntry;
-  };
-const action = entry("action");
-const check = entry("check");
+/** What the backend knows of a command: its label, default key and whether holding the key repeats it. */
+export type Command = (typeof COMMANDS)[number];
 
-/**
- * The menu bar and every command's label and shortcut, in one table. The shortcut handling and the later shortcuts
- * dialog read the same table, so a key is never defined twice.
- */
-export const MENUS: readonly { label: string; entries: readonly MenuEntry[] }[] = [
-  {
-    label: "File",
-    entries: [
-      action("content", "new-workspace", "New Workspace"),
-      action("host", "open-workspace", "Open Workspace", "Ctrl+O"),
-      {
-        kind: "submenu",
-        label: "Open Recent",
-        items: [{ ...action("content", "recent-none", "None"), disabled: true }],
-      },
-      action("content", "save-workspace", "Save Workspace", "Ctrl+S"),
-      action("content", "save-workspace-as", "Save Workspace As", "Ctrl+Shift+S"),
-      SEPARATOR,
-      action("host", "add-video", "Add Video", "Ctrl+N"),
-      action("content", "add-live-stream", "Add Live Stream", "Ctrl+L"),
-      action("host", "add-playlist", "Add Playlist", "Ctrl+Shift+N"),
-      SEPARATOR,
-      action("app", "keyboard-shortcuts", "Keyboard Shortcuts", "Ctrl+K"),
-      action("app", "settings", "Settings", "Ctrl+,"),
-      SEPARATOR,
-      action("app", "exit", "Exit", "Ctrl+Q"),
-    ],
-  },
-  {
-    label: "View",
-    entries: [
-      action("app", "fullscreen", "Toggle Fullscreen", "F11"),
-      action("view", "lane-fullscreen", "Toggle Lane Fullscreen", "F"),
-      action("view", "media-tools", "Media Tools Panel", "Ctrl+B"),
-      action("view", "sidebar", "Sidebar", "Ctrl+\\"),
-      {
-        kind: "submenu",
-        label: "Playback",
-        items: [
-          action("view", "play-pause", "Play / Pause", "Space"),
-          SEPARATOR,
-          action("view", "step-forward", "Step Forward 1 Frame", ".", true),
-          action("view", "step-back", "Step Back 1 Frame", ",", true),
-          action("view", "step-forward-10", "Step Forward 10 Frames", "Right", true),
-          action("view", "step-back-10", "Step Back 10 Frames", "Left", true),
-          SEPARATOR,
-          action("view", "speed-up", "Playback Speed Up", "]", true),
-          action("view", "speed-down", "Playback Speed Down", "[", true),
-        ],
-      },
-      SEPARATOR,
-      check("view", "lane-names", "Show Lane Names"),
-      check("view", "object-details", "Object Hover and Click Details"),
-      action("view", "info-overlay", "Toggle Info Overlay", "I"),
-      SEPARATOR,
-      action("content", "add-bookmark", "Add Bookmark", "M"),
-      action("content", "export-video", "Export Video", "Ctrl+E"),
-      SEPARATOR,
-      action("content", "render-catalogs", "Render Catalogs", "Ctrl+R"),
-    ],
-  },
-  {
-    label: "Debug",
-    entries: [
-      action("app", "debug-metrics", "Debug Metrics", "Ctrl+D"),
-      action("content", "plugins", "Plugins"),
-      SEPARATOR,
-      check("app", "collect-metrics", "Collect Debug Metrics"),
-    ],
-  },
-  {
-    label: "Help",
-    entries: [action("app", "quick-setup", "Quick Setup"), action("app", "about", "About")],
-  },
-];
-
-function flatten(entries: readonly MenuEntry[]): MenuCommand[] {
-  return entries.flatMap((entry) =>
-    entry.kind === "separator" ? [] : entry.kind === "submenu" ? flatten(entry.items) : [entry],
-  );
-}
-
-/** Every command by id. */
-export const COMMANDS: ReadonlyMap<string, MenuCommand> = new Map(
-  MENUS.flatMap((menu) => flatten(menu.entries)).map((command) => [command.id, command]),
-);
-
-/** The command with this id; an unknown id is a programming error. */
-export function command(id: string): MenuCommand {
-  const found = COMMANDS.get(id);
+/** The command with this id. */
+export function command(id: CommandId): Command {
+  const found = COMMANDS.find((candidate) => candidate.id === id);
   if (!found) throw new Error(`unknown command ${id}`);
   return found;
 }
 
+/** The effective key of every command, as the backend reports it. */
+export type Shortcuts = Record<CommandId, string | null>;
+
+/** What each command needs of the seat. */
+const SCOPES: Record<CommandId, Scope> = {
+  "new-workspace": "content",
+  "open-workspace": "host",
+  "save-workspace": "content",
+  "save-workspace-as": "content",
+  "add-video": "host",
+  "add-live-stream": "content",
+  "add-playlist": "host",
+  "keyboard-shortcuts": "app",
+  settings: "app",
+  exit: "app",
+  fullscreen: "app",
+  "lane-fullscreen": "view",
+  "media-tools": "view",
+  sidebar: "view",
+  "play-pause": "view",
+  "step-forward": "view",
+  "step-back": "view",
+  "step-forward-10": "view",
+  "step-back-10": "view",
+  "speed-up": "view",
+  "speed-down": "view",
+  "lane-names": "view",
+  "object-details": "view",
+  "info-overlay": "view",
+  "add-bookmark": "content",
+  "export-video": "content",
+  "render-catalogs": "content",
+  "debug-metrics": "app",
+  plugins: "content",
+  "collect-metrics": "app",
+  "quick-setup": "app",
+  about: "app",
+};
+
+type Layout =
+  | { kind: "separator" }
+  | { kind: "action" | "check"; id: CommandId }
+  | { kind: "submenu"; label: string; items: readonly Layout[] };
+
+const SEPARATOR: Layout = { kind: "separator" };
+const action = (id: CommandId): Layout => ({ kind: "action", id });
+const check = (id: CommandId): Layout => ({ kind: "check", id });
+const submenu = (label: string, items: readonly Layout[]): Layout => ({
+  kind: "submenu",
+  label,
+  items,
+});
+
+/** The menu bar's layout: which commands sit in which menu. Labels, keys and repeat come from the backend. */
+export const MENUS: readonly { label: string; items: readonly Layout[] }[] = [
+  {
+    label: "File",
+    items: [
+      action("new-workspace"),
+      action("open-workspace"),
+      submenu("Open Recent", []),
+      action("save-workspace"),
+      action("save-workspace-as"),
+      SEPARATOR,
+      action("add-video"),
+      action("add-live-stream"),
+      action("add-playlist"),
+      SEPARATOR,
+      action("keyboard-shortcuts"),
+      action("settings"),
+      SEPARATOR,
+      action("exit"),
+    ],
+  },
+  {
+    label: "View",
+    items: [
+      action("fullscreen"),
+      action("lane-fullscreen"),
+      action("media-tools"),
+      action("sidebar"),
+      submenu("Playback", [
+        action("play-pause"),
+        SEPARATOR,
+        action("step-forward"),
+        action("step-back"),
+        action("step-forward-10"),
+        action("step-back-10"),
+        SEPARATOR,
+        action("speed-up"),
+        action("speed-down"),
+      ]),
+      SEPARATOR,
+      check("lane-names"),
+      check("object-details"),
+      action("info-overlay"),
+      SEPARATOR,
+      action("add-bookmark"),
+      action("export-video"),
+      SEPARATOR,
+      action("render-catalogs"),
+    ],
+  },
+  {
+    label: "Debug",
+    items: [action("debug-metrics"), action("plugins"), SEPARATOR, check("collect-metrics")],
+  },
+  { label: "Help", items: [action("quick-setup"), action("about")] },
+];
+
 /** The scope of the command `id`; an unknown id is a programming error. */
 export function scopeOf(id: string): Scope {
-  const found = scopes.get(id);
+  const found = (SCOPES as Record<string, Scope | undefined>)[id];
   if (!found) throw new Error(`unknown command ${id}`);
   return found;
 }
@@ -130,26 +146,35 @@ function tidy(entries: readonly MenuEntry[]): MenuEntry[] {
 }
 
 /**
- * The menus as this window shows them: only the `wired` commands (those that do something today), each disabled
- * outside the `allowed` scopes. A menu left with nothing drops out.
+ * The menus as this window shows them: only the `wired` commands (those that do something today), each with its
+ * label and its key in `shortcuts`, and disabled outside the `allowed` scopes. A menu left with nothing drops out.
  */
 export function menusFor(
   allowed: Record<Scope, boolean>,
   wired: ReadonlySet<string>,
-): typeof MENUS {
-  const restrict = (entries: readonly MenuEntry[]): MenuEntry[] =>
+  shortcuts: Shortcuts,
+): { label: string; entries: MenuEntry[] }[] {
+  const build = (items: readonly Layout[]): MenuEntry[] =>
     tidy(
-      entries.flatMap((item): MenuEntry[] => {
+      items.flatMap((item): MenuEntry[] => {
         if (item.kind === "separator") return [item];
         if (item.kind === "submenu") {
-          const items = restrict(item.items);
-          return items.length > 0 ? [{ ...item, items }] : [];
+          const entries = build(item.items);
+          return entries.length > 0 ? [{ kind: "submenu", label: item.label, items: entries }] : [];
         }
         if (!wired.has(item.id)) return [];
-        return [allowed[scopeOf(item.id)] ? item : { ...item, disabled: true }];
+        return [
+          {
+            kind: item.kind,
+            id: item.id,
+            label: command(item.id).label,
+            shortcut: shortcuts[item.id] ?? undefined,
+            disabled: !allowed[SCOPES[item.id]],
+          },
+        ];
       }),
     );
-  return MENUS.map((menu) => ({ ...menu, entries: restrict(menu.entries) })).filter(
+  return MENUS.map((menu) => ({ label: menu.label, entries: build(menu.items) })).filter(
     (menu) => menu.entries.length > 0,
   );
 }

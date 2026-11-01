@@ -60,7 +60,7 @@
   --spacing-activity: calc(var(--spacing-icon) * 2);
   --spacing-sidebar: 34ch;
   --spacing-welcome: 40ch;
-  --spacing-field: 40ch;
+  --spacing-field: 24ch;
 }
 
 /* Strokes: the accent edge of a selected tab or view, and the keyboard focus ring (inset where an edge would clip it). */

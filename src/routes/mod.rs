@@ -6,6 +6,7 @@
 //! Which setting rows or sessions a caller may see is decided by the handler from its [`Principal`](crate::access).
 
 pub mod playback;
+pub mod window;
 
 #[cfg(test)]
 mod conformance;
@@ -44,6 +45,8 @@ pub(crate) struct Route {
 const EVERY: &[Listener] = &[Listener::Local, Listener::Lan, Listener::Server];
 /// Listeners whose callers can be the person at this machine or hold the server password.
 const MEMBERS: &[Listener] = &[Listener::Local, Listener::Server];
+/// The desktop's own files: window positions belong to this machine, so no other listener serves them.
+const LOCAL: &[Listener] = &[Listener::Local];
 
 /// Every route the backend mounts.
 pub(crate) const ROUTES: &[Route] = &[
@@ -67,6 +70,20 @@ pub(crate) const ROUTES: &[Route] = &[
         listeners: MEMBERS,
         who: Who::Settings,
         handler: |method| on(method, crate::put_settings),
+    },
+    Route {
+        method: MethodFilter::GET,
+        path: "/api/windows/{name}",
+        listeners: LOCAL,
+        who: Who::Preferences,
+        handler: |method| on(method, window::get),
+    },
+    Route {
+        method: MethodFilter::PUT,
+        path: "/api/windows/{name}",
+        listeners: LOCAL,
+        who: Who::Preferences,
+        handler: |method| on(method, window::put),
     },
     Route {
         method: MethodFilter::GET,

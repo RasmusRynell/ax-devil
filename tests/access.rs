@@ -42,7 +42,7 @@ fn router(policy: Policy) -> (Router, Keep) {
 
 fn shared(password: &str) -> Policy {
     Policy::Shared {
-        password: Some(Secret::chosen(password.into())),
+        password: Some(Secret::chosen(password.into()).unwrap()),
     }
 }
 
@@ -162,21 +162,57 @@ async fn a_server_answers_settings_and_sessions_only_to_the_password() {
         send(&app, "GET", "/api/sessions", &right, "").await.0,
         StatusCode::OK
     );
-    // The password holder sees and replaces the Server settings, and may not touch a Personal one.
-    let cache = json!({"playback.video_cache": "auto"});
+    // The password holder sees and replaces the Server settings, and may touch neither a Personal setting nor a
+    // shortcut.
+    let server = json!({"playback.video_cache": "auto", "storage.cache_dir": ""});
     let (status, settings) = send(&app, "GET", "/api/settings", &right, "").await;
-    assert_eq!((status, settings), (StatusCode::OK, cache.clone()));
     assert_eq!(
-        send(&app, "PUT", "/api/settings", &right, &cache.to_string())
-            .await
-            .0,
+        (status, settings),
+        (
+            StatusCode::OK,
+            json!({"values": server, "shortcuts": {}, "restart": []})
+        )
+    );
+    let change = |values: serde_json::Value, shortcuts: serde_json::Value| {
+        json!({"values": values, "shortcuts": shortcuts}).to_string()
+    };
+    assert_eq!(
+        send(
+            &app,
+            "PUT",
+            "/api/settings",
+            &right,
+            &change(server.clone(), json!({}))
+        )
+        .await
+        .0,
         StatusCode::OK
     );
-    let theme = r#"{"ui.theme":"dark"}"#;
-    let (status, error) = send(&app, "PUT", "/api/settings", &right, theme).await;
+    let mut with_theme = server.clone();
+    with_theme["ui.theme"] = json!("dark");
+    let (status, error) = send(
+        &app,
+        "PUT",
+        "/api/settings",
+        &right,
+        &change(with_theme, json!({})),
+    )
+    .await;
     assert_eq!(
         (status, &error["location"]),
         (StatusCode::FORBIDDEN, &json!("ui.theme"))
+    );
+    let (status, error) = send(
+        &app,
+        "PUT",
+        "/api/settings",
+        &right,
+        &change(server, json!({"exit": null})),
+    )
+    .await;
+    assert_eq!(
+        (status, &error["location"]),
+        (StatusCode::FORBIDDEN, &json!("shortcuts.exit"))
     );
 }
 

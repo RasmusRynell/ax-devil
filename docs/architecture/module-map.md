@@ -5,8 +5,9 @@ Where code and files belong. Layers and the dependency rule are in the [overview
 | Path | Owns |
 |------|------|
 | `src/main.rs`, `src/cli.rs`, `src/runtime.rs` | Backend startup and shutdown and the command line (the local backend, `local --video`, `serve`, `app`); prints the readiness line the shell and supervisor wait for |
+| `src/paths.rs` | Where the settings file, caches, logs and window state live: the XDG folders, or the command-line overrides |
 | `src/lib.rs` | The backend's two entry points (`app`, `lan_app`), the state every route reaches, settings and info handlers, the embedded frontend |
-| `src/routes/` | The route table and the playback WebSocket (redeems a ticket into a stream lease and enforces its authority): adapters over the services, no logic |
+| `src/routes/` | The route table, the window-position routes and the playback WebSocket (redeems a ticket into a stream lease and enforces its authority): adapters over the services, no logic |
 | `src/video_sources.rs`, `src/video_cache.rs` | Where `media` meets `playback` (the decoder adapter, opening viewers on files) and how the `playback.video_cache` setting sizes the cache |
 | `src/access.rs` | Principals and grants, the Local guard, security headers, socket admission limits |
 | `src/share.rs` | Where other machines reach the backend: join-link base, the desktop's listener for them while a session is shared, the development-build refusal |
@@ -18,7 +19,8 @@ Where code and files belong. Layers and the dependency rule are in the [overview
 | `crates/playback/` | Layer 3: what to decode and cache around each viewer's playhead, and its delivery; never depends on `media` ([README](../../crates/playback/README.md)) |
 | `crates/workspace-store/` | Layer 3: the workspace's state and its pure transitions (apply a command, complete a resolution); whoever holds a state decides where it lives |
 | `crates/sessions/` | The Session service: state, transitions, authorization, tickets and jobs, generic over the cursor type; services layer, knows no message of the wire (the plain data it shares, such as a view, derives its own wire form) |
-| `crates/api-types/` | Rust types sent to the frontend and the API version; `export-types` writes them to `frontend/src/generated/api.ts` and the version to `desktop/generated/api.json`; `session.rs` is the Session socket's wire protocol; plain data that already has an owning crate is not redefined here |
+| `crates/settings/` | Layer 3: the settings file, its declared settings (each Personal or Server) and shortcuts, and the window-state file ([README](../../crates/settings/README.md)) |
+| `crates/api-types/` | Rust types sent to the frontend and the API version; `export-types` writes them and the settings and command tables to `frontend/src/generated/`, and the versions and reserved keys to `desktop/generated/api.json`; `session.rs` is the Session socket's wire protocol; plain data that already has an owning crate is not redefined here |
 | `frontend/src/` | The UI. Components and their tests sit side by side |
 | `frontend/src/playback/`, `viewer/`, `viewers.ts` | The playback session (clock, frame buffer, renderer), the viewer host, and the viewer registry keyed by Content kind |
 | `frontend/src/session/` | The session client: the socket and its store (the Doc, each seat's view, commands), cursors and presence |

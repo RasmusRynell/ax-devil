@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { PASSWORD_RULE, sendable } from "../access";
 import { Dialog } from "../kit/Dialog";
 import { TextField } from "../kit/Fields";
 import "./windowBridge";
@@ -36,6 +37,10 @@ export function ConnectDialog({ onClose }: { onClose: () => void }) {
       setFailure("Enter a server address or a join link.");
       return;
     }
+    if (plain && password && !sendable(password)) {
+      setFailure(`That password cannot be used. ${PASSWORD_RULE}`);
+      return;
+    }
     setBusy(true);
     try {
       await window.axDevilWindow?.connect(target.trim(), plain && password ? password : undefined);
@@ -55,9 +60,7 @@ export function ConnectDialog({ onClose }: { onClose: () => void }) {
           setFailure(null);
         }}
       />
-      {plain && (
-        <TextField label="Password" type="password" value={password} onChange={setPassword} />
-      )}
+      {plain && <TextField label="Password" masked value={password} onChange={setPassword} />}
       {failure && (
         <p role="alert" className="m-0">
           {failure}

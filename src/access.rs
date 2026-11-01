@@ -128,6 +128,8 @@ pub enum Who {
     /// A caller who may read or change at least one kind of setting; the handler narrows it with
     /// [`Principal::scopes`].
     Settings,
+    /// A caller who holds the `Preferences` grant: the person at this machine.
+    Preferences,
     /// A caller who holds the `Sessions` grant.
     Sessions,
     /// A WebSocket upgrade: the socket limits admit it and the first message authenticates it: `Hello` on the
@@ -141,6 +143,7 @@ impl Who {
         match self {
             Self::Public | Self::Upgrade => true,
             Self::Settings => !principal.scopes().is_empty(),
+            Self::Preferences => principal.grants().contains(&Grant::Preferences),
             Self::Sessions => principal.grants().contains(&Grant::Sessions),
         }
     }

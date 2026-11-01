@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { useMemo } from "react";
 import { FakeSocket, video } from "../session/fakeSession";
 import { SessionProvider, useDoc } from "../session/session";
 import { SessionStore } from "../session/store";
@@ -37,7 +38,16 @@ const content = {
 
 /** The video viewer on a fake playback socket that opens a 100-frame video as soon as it is asked. */
 function Viewer({ sent }: { sent: ClientMessage[] }) {
-  const connect: Connect = (onIncoming) => {
+  // One connect for the life of the viewer: a new one would restart playback by itself.
+  const connect = useMemo<Connect>(() => open(sent), [sent]);
+  // The viewer opens once the Doc has its item, as the shell does.
+  return useDoc()?.workspace.items.length ? (
+    <VideoViewer item="a" content={content} connect={connect} />
+  ) : null;
+}
+
+function open(sent: ClientMessage[]): Connect {
+  return (onIncoming) => {
     const say = (incoming: Incoming) => act(() => onIncoming(incoming));
     return {
       send: (message) => {
@@ -59,10 +69,6 @@ function Viewer({ sent }: { sent: ClientMessage[] }) {
       close: () => {},
     };
   };
-  // The viewer opens once the Doc has its item, as the shell does.
-  return useDoc()?.workspace.items.length ? (
-    <VideoViewer item="a" content={content} connect={connect} />
-  ) : null;
 }
 
 const slider = () => screen.findByRole("slider", { name: "Timeline" }) as Promise<HTMLInputElement>;
@@ -102,6 +108,47 @@ describe("video viewer", () => {
     expect(speed().value).toBe("2.5");
     expect(sent[0]).toMatchObject({ type: "Open", start_frame: 37 });
     expect(screen.getByRole("button", { name: "Play" })).toBeTruthy();
+  });
+
+  describe("when the session resumes", () => {
+    /** Opens the viewer, then drops the session's socket and lets it reconnect, with tickets refused or not. */
+    async function resume(refused = false) {
+      const sent: ClientMessage[] = [];
+      render(
+        <SessionProvider>
+          <Viewer sent={sent} />
+        </SessionProvider>,
+      );
+      await act(async () => {});
+      act(() => FakeSocket.rooms.get("room-1")!.setItems([video("a")]));
+      await slider();
+      vi.useFakeTimers();
+      FakeSocket.refuseTickets = refused;
+      act(() => FakeSocket.latest.drop());
+      await act(() => vi.advanceTimersByTimeAsync(60_000));
+      return sent;
+    }
+    const opens = (sent: ClientMessage[]) => sent.filter((message) => message.type === "Open");
+    const ticketRequests = () =>
+      FakeSocket.sockets
+        .flatMap((socket) => socket.received)
+        .filter((m) => m.type === "command" && m.cmd.type === "requestTicket");
+
+    it("opens a fresh stream, because the streams of the earlier seating are ended", async () => {
+      const sent = await resume();
+      expect(opens(sent)).toHaveLength(2);
+      expect(new Set(opens(sent).map((open) => open.ticket)).size).toBe(2);
+      expect(screen.getByRole("slider", { name: "Timeline" })).toBeTruthy();
+      vi.useRealTimers();
+    });
+
+    it("stays failed, asking once, when the backend no longer lets the seat play it", async () => {
+      const sent = await resume(true);
+      expect(opens(sent)).toHaveLength(1);
+      expect(ticketRequests()).toHaveLength(2);
+      expect(screen.queryByRole("slider", { name: "Timeline" })).toBeNull();
+      vi.useRealTimers();
+    });
   });
 
   /** A window that joined a session whose presenter plays frame 10 of "a" (400 ms in) 400 ms of backend time ago. */

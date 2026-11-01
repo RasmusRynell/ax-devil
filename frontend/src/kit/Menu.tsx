@@ -9,8 +9,6 @@ export type MenuEntry =
       label: string;
       shortcut?: string;
       disabled?: boolean;
-      /** Whether holding the key repeats the command. */
-      repeats?: boolean;
       /** Why it is disabled, shown as its tooltip. */
       reason?: string;
     }

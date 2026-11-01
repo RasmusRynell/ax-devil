@@ -1,27 +1,38 @@
 //! The settings service: loads the config file, validates changes, saves them atomically and holds the one
 //! immutable state. Domain code takes settings as values; only the bootstrap wires this service in.
 //!
-//! The config file is nested JSON (`ui.theme` is `{"ui": {"theme": ...}}`). Keys this version does not declare are
-//! logged at load and kept when the file is saved, so another version's settings survive.
+//! Settings supply defaults at the moment something is created and the value is copied in; nothing created from them
+//! refers back to the file. Only shortcuts are read live. Each setting has a [`Scope`], which decides which of them
+//! a person may read and change when several share one backend. See the README for the file format and how to
+//! change it.
 //!
 //! A change reaches subscribers as the new state, replaced whole; a subscriber that is busy sees only the newest.
 
+mod env;
+mod file;
+mod kind;
+mod migrate;
+pub mod shortcuts;
 mod table;
+pub mod window;
 
+pub use kind::Kind;
+pub use migrate::VERSION;
 use serde_json::{Map, Value};
 use std::{
     collections::BTreeMap,
-    fmt, fs, io,
+    fmt,
     path::{Path, PathBuf},
     sync::{Arc, Mutex, PoisonError},
 };
-pub use table::{Kind, MASK, Scope, Setting, TABLE};
+pub use table::{MASK, Scope, Setting, TABLE};
 use tokio::sync::watch;
 
-/// Why settings could not be loaded, validated or saved; the reason is meant for the user.
+/// Why settings could not be loaded, validated or saved; the reason is meant for the user and never contains a
+/// setting's value.
 #[derive(Debug)]
 pub struct Error {
-    /// The setting key or file path the reason is about.
+    /// The setting key (`ui.theme`, `shortcuts.exit`) or file path the reason is about.
     pub location: String,
     /// What is wrong.
     pub reason: String,
@@ -37,80 +48,258 @@ impl fmt::Display for Error {
 
 impl std::error::Error for Error {}
 
-/// One immutable snapshot of every declared setting, replaced whole.
-#[derive(Debug)]
+/// Looks up an environment variable by name.
+type Lookup = Arc<dyn Fn(&str) -> Option<String> + Send + Sync>;
+
+/// A full replacement of the settings and shortcuts a person may change (see [`Settings::replace`]). The file stores
+/// only what differs from the defaults.
+#[derive(Clone, Debug)]
+pub struct Change {
+    /// Every setting in the changed scopes by dotted key, references unresolved. A masked secret keeps its value.
+    pub values: BTreeMap<String, Value>,
+    /// The key of every command, `None` when unbound; empty unless [`Scope::Personal`] is changed.
+    pub shortcuts: BTreeMap<String, Option<String>>,
+}
+
+/// One immutable snapshot of every declared setting and shortcut, replaced whole.
 pub struct State {
-    document: Value,
+    table: &'static [Setting],
+    lookup: Lookup,
+    version: u64,
+    values: BTreeMap<String, Value>,
+    /// The validated shortcut overrides of known commands, in canonical form.
+    overrides: BTreeMap<String, Option<String>>,
+    /// What the file holds: only values that differ from the default, plus everything this version does not know.
+    document: Map<String, Value>,
+}
+
+impl fmt::Debug for State {
+    fn fmt(&self, out: &mut fmt::Formatter<'_>) -> fmt::Result {
+        out.debug_struct("State").finish_non_exhaustive()
+    }
 }
 
 impl State {
-    /// The settings in `scopes` by dotted key, such as `ui.theme`, as shown to a person: literal secrets are masked.
+    /// Validates `rest` (a settings file without its `version`) and normalizes it.
+    fn build(
+        version: u64,
+        rest: &Map<String, Value>,
+        table: &'static [Setting],
+        lookup: &Lookup,
+    ) -> Result<Self, Error> {
+        let invalid = |location: &str, reason: &str| Error {
+            location: location.to_owned(),
+            reason: reason.to_owned(),
+            invalid: true,
+        };
+        let object = |name: &str| match rest.get(name) {
+            None => Ok(Map::new()),
+            Some(Value::Object(map)) => Ok(map.clone()),
+            Some(_) => Err(invalid(name, "expected an object")),
+        };
+        let mut stored = object("settings")?;
+        let mut values = BTreeMap::new();
+        let mut settings = Map::new();
+        for setting in table {
+            let value = stored
+                .remove(setting.key)
+                .unwrap_or_else(|| setting.kind.default_value());
+            setting
+                .check(&value, &**lookup)
+                .map_err(|reason| invalid(setting.key, &reason))?;
+            if value != setting.kind.default_value() {
+                settings.insert(setting.key.to_owned(), value.clone());
+            }
+            values.insert(setting.key.to_owned(), value);
+        }
+        settings.append(&mut stored);
+
+        let mut stored = object("shortcuts")?;
+        let mut known = BTreeMap::new();
+        for command in shortcuts::COMMANDS {
+            match stored.remove(command.id) {
+                None => {}
+                Some(Value::String(key)) => {
+                    known.insert(command.id.to_owned(), Some(key));
+                }
+                Some(Value::Null) => {
+                    known.insert(command.id.to_owned(), None);
+                }
+                Some(_) => {
+                    return Err(invalid(
+                        &format!("shortcuts.{}", command.id),
+                        "expected a key or null",
+                    ));
+                }
+            }
+        }
+        let bound: BTreeMap<String, Option<String>> = shortcuts::effective(&known)
+            .into_iter()
+            .map(|(id, key)| (id.to_owned(), key))
+            .collect();
+        let overrides = shortcuts::overrides_from(&bound)?;
+        let mut shortcut_entries = Map::new();
+        for (id, key) in &overrides {
+            shortcut_entries.insert(id.clone(), key.clone().map_or(Value::Null, Value::String));
+        }
+        shortcut_entries.append(&mut stored);
+
+        let mut document = rest.clone();
+        document.insert("settings".into(), Value::Object(settings));
+        document.insert("shortcuts".into(), Value::Object(shortcut_entries));
+        Ok(Self {
+            table,
+            lookup: Arc::clone(lookup),
+            version,
+            values,
+            overrides,
+            document,
+        })
+    }
+
+    /// What this version does not know and keeps: top-level keys, settings and command ids.
+    fn unknown(&self) -> Vec<String> {
+        let mut found: Vec<String> = Vec::new();
+        for (name, value) in &self.document {
+            match (name.as_str(), value) {
+                ("settings" | "shortcuts", Value::Object(entries)) => {
+                    found.extend(entries.keys().filter_map(|key| {
+                        let known = if name == "settings" {
+                            self.table.iter().any(|setting| setting.key == key)
+                        } else {
+                            self.overrides.contains_key(key)
+                                || shortcuts::COMMANDS.iter().any(|command| command.id == key)
+                        };
+                        (!known).then(|| format!("{name}.{key}"))
+                    }));
+                }
+                _ => found.push(name.clone()),
+            }
+        }
+        found
+    }
+
+    /// The settings in `scopes` by dotted key, such as `ui.theme`, with the default when the file has none, as shown
+    /// to a person: a `$NAME` reference as written, a literal secret masked. See [`resolved`](Self::resolved) for
+    /// the value as it is used.
     pub fn values(&self, scopes: &[Scope]) -> BTreeMap<String, Value> {
-        TABLE
+        self.table
             .iter()
             .filter(|setting| scopes.contains(&setting.scope))
             .filter_map(|setting| {
-                let value = self.document.pointer(&pointer(setting.key))?;
+                let value = self.values.get(setting.key)?;
                 Some((setting.key.to_owned(), setting.shown(value)))
             })
             .collect()
     }
+
+    /// The key of every command once the user's overrides apply; `None` when unbound. Shortcuts belong to
+    /// [`Scope::Personal`].
+    pub fn shortcuts(&self) -> BTreeMap<&'static str, Option<String>> {
+        shortcuts::effective(&self.overrides)
+    }
+
+    /// The value of the declared setting `key` as it is used: a `$NAME` reference in a setting that takes them is
+    /// replaced by the variable's value, empty when it is unset.
+    pub fn resolved(&self, key: &str) -> Option<Value> {
+        let setting = self.table.iter().find(|setting| setting.key == key)?;
+        let value = self.values.get(key)?;
+        Some(if setting.env {
+            env::resolve(value, &*self.lookup)
+        } else {
+            value.clone()
+        })
+    }
+
+    /// The folder a setting of kind `Folder` holds; `None` when it is empty (the standard folder) or `key` is not such
+    /// a setting.
+    pub fn folder(&self, key: &str) -> Option<PathBuf> {
+        let path = self.values.get(key)?.as_str()?;
+        (!path.is_empty()).then(|| PathBuf::from(path))
+    }
+
+    /// The number a setting of kind `AutoOrWhole` holds; `None` for `auto`, or when `key` is not such a setting.
+    pub fn auto_or_whole(&self, key: &str) -> Option<u64> {
+        self.values.get(key)?.as_u64()
+    }
+}
+
+/// The keys of the settings that do not apply live and differ between `started` (the state the app started with) and
+/// `now`: a restart is needed for them.
+pub fn restart_pending(started: &State, now: &State) -> Vec<&'static str> {
+    now.table
+        .iter()
+        .filter(|setting| {
+            !setting.live && started.values.get(setting.key) != now.values.get(setting.key)
+        })
+        .map(|setting| setting.key)
+        .collect()
 }
 
 /// The settings service for one config file.
 pub struct Settings {
     path: PathBuf,
+    started: Arc<State>,
     state: watch::Sender<Arc<State>>,
     /// Held while a change is validated, saved and published, so changes apply one at a time.
     writing: Mutex<()>,
 }
 
 impl Settings {
-    /// Loads the config at `path`. A missing file gives the defaults and is created on the first save; a value that
-    /// does not fit its setting is logged and replaced by the default; an unreadable or malformed file is an error.
+    /// Loads the config at `path`. A missing file gives the defaults and is created on the first save. An older file
+    /// is copied to `<name>.v<N>.json`, migrated and written back. A file that is malformed, has no integer
+    /// `version`, is newer than this build, or holds a known setting or shortcut that does not validate is an
+    /// error naming the file and the key. Keys this version does not know are logged and kept.
     pub fn load(path: &Path) -> Result<Self, Error> {
-        let fail = |reason: String| Error {
-            location: path.display().to_string(),
-            reason,
-            invalid: false,
+        Self::open(
+            path,
+            TABLE,
+            migrate::MIGRATIONS,
+            Arc::new(|name| std::env::var(name).ok()),
+        )
+    }
+
+    fn open(
+        path: &Path,
+        table: &'static [Setting],
+        chain: &[migrate::Migration],
+        lookup: Lookup,
+    ) -> Result<Self, Error> {
+        let current = chain.len() as u64 + 1;
+        let (state, migrated) = match file::read(path, current)? {
+            None => (State::build(current, &Map::new(), table, &lookup), false),
+            Some(mut read) => {
+                let from = read.version;
+                if from < current {
+                    file::backup(path, from, &read.bytes)?;
+                    migrate::migrate(&mut read.document, from, chain).map_err(|reason| {
+                        file::fail(path, format!("cannot migrate the file: {reason}"))
+                    })?;
+                }
+                (
+                    State::build(current, &read.document, table, &lookup),
+                    from < current,
+                )
+            }
         };
-        let mut document = match fs::read_to_string(path) {
-            Ok(text) => match serde_json::from_str::<Value>(&text) {
-                Ok(document) if document.is_object() => document,
-                Ok(_) => return Err(fail("not a JSON object".into())),
-                Err(error) => return Err(fail(error.to_string())),
-            },
-            Err(error) if error.kind() == io::ErrorKind::NotFound => Value::Object(Map::new()),
-            Err(error) => return Err(fail(error.to_string())),
-        };
-        let unknown = unknown_keys(&document);
+        let state = state
+            .map_err(|error| file::fail(path, format!("{}: {}", error.location, error.reason)))?;
+        let unknown = state.unknown();
         if !unknown.is_empty() {
-            tracing::debug!(
-                "Config {} has keys this version ignores and keeps: {}",
+            tracing::warn!(
+                "Config {} has entries this version does not know and keeps: {}",
                 path.display(),
                 unknown.join(", ")
             );
         }
-        for setting in TABLE {
-            let value = match document.pointer(&pointer(setting.key)) {
-                None => setting.default_value(),
-                Some(value) => match setting.validate(value) {
-                    Ok(()) => continue,
-                    Err(reason) => {
-                        tracing::warn!(
-                            "Config {}: {}: {reason}; using the default",
-                            path.display(),
-                            setting.key
-                        );
-                        setting.default_value()
-                    }
-                },
-            };
-            set(&mut document, setting.key, value);
+        if migrated {
+            file::write(path, state.version, &state.document)?;
         }
+        let started = Arc::new(state);
         Ok(Self {
             path: path.to_owned(),
-            state: watch::Sender::new(Arc::new(State { document })),
+            state: watch::Sender::new(Arc::clone(&started)),
+            started,
             writing: Mutex::new(()),
         })
     }
@@ -120,288 +309,106 @@ impl Settings {
         self.state.borrow().clone()
     }
 
+    /// The keys of the settings in `scopes` changed since the app started that only apply after a restart.
+    pub fn restart_pending(&self, scopes: &[Scope]) -> Vec<&'static str> {
+        let state = self.state();
+        let mut keys = restart_pending(&self.started, &state);
+        keys.retain(|key| {
+            state
+                .table
+                .iter()
+                .any(|setting| setting.key == *key && scopes.contains(&setting.scope))
+        });
+        keys
+    }
+
     /// A receiver that holds the current state and is woken by every successful [`replace`](Self::replace).
     pub fn subscribe(&self) -> watch::Receiver<Arc<State>> {
         self.state.subscribe()
     }
 
-    /// Replaces every setting in `scopes` with `values`, which must hold exactly their keys; a masked secret keeps
-    /// its stored value. Validates all, writes the file atomically, then swaps the state; on any failure nothing
-    /// changes. Settings in other scopes are left as they are.
-    pub fn replace(
-        &self,
-        scopes: &[Scope],
-        values: &BTreeMap<String, Value>,
-    ) -> Result<Arc<State>, Error> {
+    /// Replaces every setting in `scopes`, and the shortcuts when `scopes` holds [`Scope::Personal`], with `change`,
+    /// which must hold exactly those settings and only known commands; a masked secret keeps its stored value.
+    /// Validates all, writes the file atomically with only what differs from the defaults (and keeps what this
+    /// version does not know and the settings of other scopes), then swaps the state; on any failure nothing changes.
+    pub fn replace(&self, scopes: &[Scope], change: &Change) -> Result<Arc<State>, Error> {
+        let _writing = self.writing.lock().unwrap_or_else(PoisonError::into_inner);
+        let current = self.state();
         let invalid = |location: &str, reason: &str| Error {
             location: location.to_owned(),
             reason: reason.to_owned(),
             invalid: true,
         };
         let chosen = || {
-            TABLE
+            current
+                .table
                 .iter()
                 .filter(|setting| scopes.contains(&setting.scope))
         };
-        if let Some(key) = values
+        if let Some(key) = change
+            .values
             .keys()
             .find(|key| !chosen().any(|setting| setting.key == key.as_str()))
         {
             return Err(invalid(key, "unknown setting"));
         }
-        let _writing = self.writing.lock().unwrap_or_else(PoisonError::into_inner);
-        let mut document = self.state().document.clone();
+        let mut values = current.values.clone();
         for setting in chosen() {
-            let value = values
+            let value = change
+                .values
                 .get(setting.key)
                 .ok_or_else(|| invalid(setting.key, "missing"))?;
-            setting
-                .validate(value)
-                .map_err(|reason| invalid(setting.key, &reason))?;
             if !setting.is_masked(value) {
-                set(&mut document, setting.key, value.clone());
+                values.insert(setting.key.to_owned(), value.clone());
             }
         }
-        write_atomically(&self.path, &document).map_err(|error| Error {
-            location: self.path.display().to_string(),
-            reason: error.to_string(),
-            invalid: false,
-        })?;
-        let state = Arc::new(State { document });
+        let overrides = if scopes.contains(&Scope::Personal) {
+            shortcuts::overrides_from(&change.shortcuts)?
+        } else if let Some(id) = change.shortcuts.keys().next() {
+            return Err(invalid(&format!("shortcuts.{id}"), "not yours to change"));
+        } else {
+            current.overrides.clone()
+        };
+
+        let mut rest = current.document.clone();
+        let mut settings = Map::from_iter(values);
+        if let Some(Value::Object(kept)) = rest.get("settings") {
+            settings.extend(
+                kept.iter()
+                    .filter(|(key, _)| !current.values.contains_key(*key))
+                    .map(|(k, v)| (k.clone(), v.clone())),
+            );
+        }
+        let mut shortcut_entries = Map::new();
+        if let Some(Value::Object(kept)) = rest.get("shortcuts") {
+            let unknown = kept.iter().filter(|(id, _)| {
+                !shortcuts::COMMANDS
+                    .iter()
+                    .any(|command| command.id == id.as_str())
+            });
+            shortcut_entries.extend(unknown.map(|(k, v)| (k.clone(), v.clone())));
+        }
+        shortcut_entries.extend(
+            overrides
+                .into_iter()
+                .map(|(id, key)| (id, key.map_or(Value::Null, Value::String))),
+        );
+        rest.insert("settings".into(), Value::Object(settings));
+        rest.insert("shortcuts".into(), Value::Object(shortcut_entries));
+
+        let state = Arc::new(State::build(
+            current.version,
+            &rest,
+            current.table,
+            &current.lookup,
+        )?);
+        file::write(&self.path, state.version, &state.document)?;
         self.state.send_replace(Arc::clone(&state));
         Ok(state)
     }
 }
 
-fn pointer(key: &str) -> String {
-    format!("/{}", key.replace('.', "/"))
-}
-
-/// Sets the dotted `key`, replacing any non-object in the way.
-fn set(document: &mut Value, key: &str, value: Value) {
-    let mut node = document;
-    for part in key.split('.') {
-        if !node.is_object() {
-            *node = Value::Object(Map::new());
-        }
-        node = &mut node[part];
-    }
-    *node = value;
-}
-
-/// Dotted paths of every leaf of `document` that the table does not declare.
-fn unknown_keys(document: &Value) -> Vec<String> {
-    fn walk(prefix: &str, node: &Value, found: &mut Vec<String>) {
-        match node {
-            Value::Object(map) if !map.is_empty() => {
-                for (name, child) in map {
-                    let path = if prefix.is_empty() {
-                        name.clone()
-                    } else {
-                        format!("{prefix}.{name}")
-                    };
-                    walk(&path, child, found);
-                }
-            }
-            _ if prefix.is_empty() || TABLE.iter().any(|setting| setting.key == prefix) => {}
-            _ => found.push(prefix.to_owned()),
-        }
-    }
-    let mut found = Vec::new();
-    walk("", document, &mut found);
-    found
-}
-
-/// Writes the document to a new, uniquely named file next to `path` (created exclusively, so it never follows an
-/// existing link) and renames it into place, so a crash never leaves half a file.
-fn write_atomically(path: &Path, document: &Value) -> io::Result<()> {
-    let folder = path.parent().unwrap_or_else(|| Path::new("."));
-    fs::create_dir_all(folder)?;
-    let mut text = serde_json::to_string_pretty(document).map_err(io::Error::other)?;
-    text.push('\n');
-    let mut file = tempfile::NamedTempFile::new_in(folder)?;
-    io::Write::write_all(&mut file, text.as_bytes())?;
-    file.as_file().sync_all()?;
-    file.persist(path).map_err(|error| error.error)?;
-    Ok(())
-}
-
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use serde_json::json;
-
-    fn values(theme: &str) -> BTreeMap<String, Value> {
-        BTreeMap::from([
-            ("ui.theme".into(), json!(theme)),
-            ("ui.quick_setup_done".into(), json!(true)),
-            ("playback.video_cache".into(), json!("auto")),
-        ])
-    }
-
-    #[test]
-    fn every_default_is_valid_for_its_own_setting() {
-        for setting in TABLE {
-            assert_eq!(
-                setting.validate(&setting.default_value()),
-                Ok(()),
-                "{}",
-                setting.key
-            );
-        }
-    }
-
-    #[test]
-    fn a_saved_change_survives_a_restart_and_keeps_keys_from_other_versions() {
-        let folder = tempfile::tempdir().unwrap();
-        let path = folder.path().join("configs/default.json");
-        fs::create_dir_all(path.parent().unwrap()).unwrap();
-        fs::write(
-            &path,
-            r#"{"ui": {"theme": "sepia", "text_size": "large", "window": {"custom_frame": true}}, "shortcuts": {}}"#,
-        )
-        .unwrap();
-
-        let settings = Settings::load(&path).unwrap();
-        assert_eq!(
-            settings.state().values(&Scope::ALL)["ui.theme"],
-            "auto",
-            "an invalid value falls back to the default"
-        );
-
-        settings.replace(&Scope::ALL, &values("dark")).unwrap();
-        let saved: Value = serde_json::from_str(&fs::read_to_string(&path).unwrap()).unwrap();
-        assert_eq!(saved["ui"]["window"]["custom_frame"], true);
-        assert_eq!(
-            saved["ui"]["text_size"], "large",
-            "a removed setting stays in the file"
-        );
-        assert_eq!(saved["shortcuts"], json!({}));
-        assert_eq!(
-            Settings::load(&path).unwrap().state().values(&Scope::ALL),
-            values("dark")
-        );
-        assert_eq!(
-            fs::read_dir(path.parent().unwrap()).unwrap().count(),
-            1,
-            "no temporary file is left behind"
-        );
-    }
-
-    #[cfg(unix)]
-    #[test]
-    fn saving_never_writes_through_a_link_left_at_the_old_temporary_name() {
-        let folder = tempfile::tempdir().unwrap();
-        let path = folder.path().join("default.json");
-        let victim = folder.path().join("victim.txt");
-        fs::write(&victim, "keep").unwrap();
-        std::os::unix::fs::symlink(&victim, folder.path().join("default.json.tmp")).unwrap();
-
-        Settings::load(&path)
-            .unwrap()
-            .replace(&Scope::ALL, &values("dark"))
-            .unwrap();
-
-        assert_eq!(fs::read_to_string(&victim).unwrap(), "keep");
-        assert!(path.exists());
-    }
-
-    #[test]
-    fn a_rejected_replace_changes_neither_state_nor_file() {
-        let folder = tempfile::tempdir().unwrap();
-        let path = folder.path().join("default.json");
-        let settings = Settings::load(&path).unwrap();
-
-        let error = settings.replace(&Scope::ALL, &values("neon")).unwrap_err();
-        assert_eq!(error.location, "ui.theme");
-        assert!(error.invalid);
-        let mut unknown = values("dark");
-        unknown.insert("ui.zoom".into(), json!(2));
-        assert_eq!(
-            settings
-                .replace(&Scope::ALL, &unknown)
-                .unwrap_err()
-                .location,
-            "ui.zoom"
-        );
-        let mut missing = values("dark");
-        missing.remove("ui.quick_setup_done");
-        assert_eq!(
-            settings
-                .replace(&Scope::ALL, &missing)
-                .unwrap_err()
-                .location,
-            "ui.quick_setup_done"
-        );
-
-        assert_eq!(settings.state().values(&Scope::ALL)["ui.theme"], "auto");
-        assert!(!path.exists());
-    }
-
-    #[test]
-    fn the_video_cache_is_auto_or_whole_mib_in_range_and_a_saved_number_survives_a_restart() {
-        let folder = tempfile::tempdir().unwrap();
-        let path = folder.path().join("default.json");
-        let settings = Settings::load(&path).unwrap();
-        assert_eq!(
-            settings.state().values(&Scope::ALL)["playback.video_cache"],
-            "auto"
-        );
-        let with = |cache: Value| {
-            let mut all = values("dark");
-            all.insert("playback.video_cache".into(), cache);
-            all
-        };
-
-        for rejected in [
-            json!(255),
-            json!(1048577),
-            json!(512.5),
-            json!("512"),
-            json!(true),
-        ] {
-            let error = settings.replace(&Scope::ALL, &with(rejected)).unwrap_err();
-            assert_eq!(error.location, "playback.video_cache");
-        }
-        settings.replace(&Scope::ALL, &with(json!(512))).unwrap();
-        assert_eq!(
-            Settings::load(&path).unwrap().state().values(&Scope::ALL)["playback.video_cache"],
-            512
-        );
-        settings.replace(&Scope::ALL, &with(json!("auto"))).unwrap();
-        assert_eq!(
-            settings.state().values(&Scope::ALL)["playback.video_cache"],
-            "auto"
-        );
-    }
-
-    #[test]
-    fn subscribers_see_each_saved_change_and_nothing_for_a_rejected_one() {
-        let folder = tempfile::tempdir().unwrap();
-        let settings = Settings::load(&folder.path().join("default.json")).unwrap();
-        let mut changes = settings.subscribe();
-        assert!(!changes.has_changed().unwrap());
-
-        settings.replace(&Scope::ALL, &values("neon")).unwrap_err();
-        assert!(
-            !changes.has_changed().unwrap(),
-            "a rejected change is not announced"
-        );
-
-        settings.replace(&Scope::ALL, &values("dark")).unwrap();
-        assert!(changes.has_changed().unwrap());
-        assert_eq!(
-            changes.borrow_and_update().values(&Scope::ALL)["ui.theme"],
-            "dark"
-        );
-    }
-
-    #[test]
-    fn a_malformed_file_is_an_error_naming_the_file() {
-        let folder = tempfile::tempdir().unwrap();
-        let path = folder.path().join("default.json");
-        fs::write(&path, "[1, 2").unwrap();
-        let error = Settings::load(&path).err().unwrap();
-        assert_eq!(error.location, path.display().to_string());
-    }
-}
+mod scope_tests;
+#[cfg(test)]
+mod tests;

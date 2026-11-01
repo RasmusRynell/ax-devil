@@ -1,6 +1,6 @@
 // The desktop shell's lifecycle: which windows exist and how they move between the local backend and another
 // machine's server. Backend, window, link and remote details live in their own modules.
-const { app, BrowserWindow, dialog } = require("electron");
+const { app, BrowserWindow, dialog, screen } = require("electron");
 const path = require("node:path");
 
 const { backendArgs, parseLaunch, userArgs } = require("./args.cjs");
@@ -8,6 +8,7 @@ const { createBackend } = require("./backend.cjs");
 const { confirmLink, linkTarget, singleInstance } = require("./links.cjs");
 const { askAfterFailure, parseTarget, verifyServer } = require("./remote.cjs");
 const { installIpc, localWindows, openWindow } = require("./window.cjs");
+const { windowBounds } = require("./window-state.cjs");
 
 const smoke = process.argv.includes("--smoke-test");
 // The smoke test always starts its own release backend and never attaches to a running session.
@@ -27,6 +28,10 @@ if (smoke) {
 // Electron's own data (Chromium profile, crash dumps) is browser state, not ax-devil data: the backend owns the
 // app's folders, so keep Electron out of them.
 app.setPath("userData", path.join(app.getPath("cache"), "ax-devil-chromium"));
+// The first local window of this run is remembered: where it was and how big, as the backend keeps it.
+let localOrigin;
+let remembered;
+let windowState;
 let stopping = false;
 let stopped = false;
 let exitCode = 0;
@@ -58,6 +63,8 @@ const backend = createBackend({
 function fail(error) {
   console.error(error);
   exitCode = 1;
+  // Already quitting: the dialog would only report that quitting stopped what was starting.
+  if (stopping) return;
   if (!smoke) dialog.showErrorBox("ax-devil could not continue", String(error));
   app.quit();
 }
@@ -71,12 +78,63 @@ function adopt(window, replace) {
   return window;
 }
 
-// Opens a window on the local backend, starting it when it is not running yet.
+// The saved window, or nothing when there is none or the backend does not answer; the window then opens at defaults.
+async function loadWindowState() {
+  try {
+    const response = await fetch(`${localOrigin}/api/windows/main`, {
+      signal: AbortSignal.timeout(1000),
+    });
+    return response.status === 200 ? await response.json() : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+// Saves the window before the backend stops; a failure only costs the next start its position.
+async function saveWindowState() {
+  if (!windowState) return;
+  try {
+    await fetch(`${localOrigin}/api/windows/main`, {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(windowState),
+      signal: AbortSignal.timeout(1000),
+    });
+  } catch (error) {
+    console.error(`Could not save the window position: ${error.message}`);
+  }
+}
+
+// Keeps `window`'s position for the next start. The normal bounds are kept apart from the maximized state, so a
+// maximized window restores to its own size.
+function remember(window) {
+  const update = () => {
+    if (!window.isDestroyed())
+      windowState = { ...window.getNormalBounds(), maximized: window.isMaximized() };
+  };
+  for (const event of ["resize", "move", "maximize", "unmaximize", "close"])
+    window.on(event, update);
+}
+
+// Opens a window on the local backend, starting it when it is not running yet. The first one of a run opens where
+// it was last closed; the smoke test always opens at the defaults.
 async function showLocal(replace) {
-  const backendOrigin = await backend.ensure();
-  const origin = devUrl || backendOrigin;
+  localOrigin = await backend.ensure();
+  const origin = devUrl || localOrigin;
   if (!/^http:\/\/127\.0\.0\.1:\d+$/.test(origin)) throw new Error("Invalid local desktop URL");
-  return adopt(await openWindow(origin, { fatal: fail }), replace);
+  const first = !replace && !smoke && !remembered;
+  const saved = first ? await loadWindowState() : undefined;
+  const bounds = windowBounds(
+    saved,
+    screen.getAllDisplays().map((display) => display.workArea),
+  );
+  const window = adopt(await openWindow(origin, { fatal: fail, bounds }), replace);
+  if (first) {
+    remembered = true;
+    if (saved?.maximized) window.maximize();
+    remember(window);
+  }
+  return window;
 }
 
 // Opens a window on another machine's server (a server address or a join link) with no local backend involved.
@@ -167,10 +225,12 @@ app.on("before-quit", (event) => {
   event.preventDefault();
   if (stopping) return;
   stopping = true;
-  void backend.stop().then(() => {
-    stopped = true;
-    app.exit(exitCode);
-  });
+  void saveWindowState()
+    .then(() => backend.stop())
+    .then(() => {
+      stopped = true;
+      app.exit(exitCode);
+    });
 });
 app.on("window-all-closed", () => {
   if (recovering === 0) app.quit();

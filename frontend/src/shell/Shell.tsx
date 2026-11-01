@@ -1,18 +1,23 @@
 import { useEffect, useState } from "react";
-import { COMMANDS, scopeOf } from "../commands";
+import { useGrants } from "../access";
+import { scopeOf } from "../commands";
 import type { SidebarView } from "../generated/api";
+import { COMMANDS, SETTINGS } from "../generated/settings";
 import type { MenuCommand } from "../kit/Menu";
-import { matchesShortcut } from "../kit/shortcut";
+import { shortcutOf } from "../kit/shortcut";
 import type { Scopes } from "../session/cursor";
 import { Presence } from "../session/Presence";
 import { useAllowed, useCommand, useView } from "../session/session";
+import { useSettings } from "../settings";
 import { NO_ACTIONS, ViewerActionsContext, type ViewerActions } from "../viewer/actions";
 import { useFrontViewer, useViewers } from "../viewer/useViewers";
 import { ViewerHost } from "../viewer/ViewerHost";
 import { ActivityBar } from "./ActivityBar";
 import { Banner } from "./Banner";
 import { TitleBar } from "./TitleBar";
+import { QuickSetupDialog } from "./QuickSetupDialog";
 import { SettingsDialog } from "./SettingsDialog";
+import { ShortcutsDialog } from "./ShortcutsDialog";
 import { Sidebar } from "./Sidebar";
 import { Welcome } from "./Welcome";
 import type { ActivityItem } from "./views";
@@ -30,6 +35,8 @@ function viewerOwnsPlainKeys(target: EventTarget | null): boolean {
   return !typing && (target === document.body || target.closest("main") !== null);
 }
 
+type Dialog = "settings" | "shortcuts" | "quick-setup";
+
 /**
  * The application layout: menu bar over the activity bar, sidebar and central area. What the window shows comes from
  * the session's view, so a watcher that follows the presenter shows the presenter's.
@@ -40,10 +47,18 @@ export function Shell() {
   useFrontViewer();
   const allowed = useAllowed();
   const command = useCommand();
-  const [settingsOpen, setSettingsOpen] = useState(false);
   const [checked, setChecked] = useState<ReadonlySet<string>>(new Set());
   const [notice, setNotice] = useState<string | null>(null);
   const [viewerActions, setViewerActions] = useState<ViewerActions>(NO_ACTIONS);
+  const { values, shortcuts, restart } = useSettings();
+  // Quick Setup configures the server, so only someone who may configure it is offered it.
+  const configures = useGrants().includes("configuration");
+  // Settings arrive before the shell renders, so a first run is known here.
+  const [dialog, setDialog] = useState<Dialog | null>(
+    configures && values["ui.quick_setup_done"] === false ? "quick-setup" : null,
+  );
+  // A late close of one dialog cannot dismiss another that has opened since.
+  const closer = (which: Dialog) => () => setDialog((now) => (now === which ? null : now));
 
   const addVideo = () => {
     const bridge = window.axDevilWindow;
@@ -77,11 +92,14 @@ export function Shell() {
   // Commands with behavior; every other command is a placeholder that does nothing yet. The open viewer adds its own.
   const actions: Record<string, () => void> = {
     sidebar: () => setSidebar({ ...sidebar, open: !sidebar.open }),
-    settings: () => setSettingsOpen(true),
+    settings: () => setDialog("settings"),
+    "keyboard-shortcuts": () => setDialog("shortcuts"),
+    ...(configures && { "quick-setup": () => setDialog("quick-setup") }),
     "add-video": addVideo,
   };
+  // A modal dialog owns the keyboard and the window: no command, from a shortcut or a menu, runs while one is open.
   const find = (id: string) =>
-    allowed[scopeOf(id)] ? (actions[id] ?? viewerActions[id]) : undefined;
+    dialog || !allowed[scopeOf(id)] ? undefined : (actions[id] ?? viewerActions[id]);
   const run = (id: string) => find(id)?.();
   const select = (item: MenuCommand) => {
     if (item.kind === "check")
@@ -103,9 +121,9 @@ export function Shell() {
   useEffect(() => {
     /** The command this key press runs, if the shell handles it. */
     const handled = (event: KeyboardEvent) => {
-      const match = [...COMMANDS.values()].find(
-        (item) => item.shortcut && find(item.id) && matchesShortcut(event, item.shortcut),
-      );
+      const pressed = shortcutOf(event);
+      const match =
+        pressed && COMMANDS.find((item) => shortcuts[item.id] === pressed && find(item.id));
       const plain = !event.ctrlKey && !event.altKey && !event.metaKey;
       return match && !(plain && !viewerOwnsPlainKeys(event.target)) ? match : undefined;
     };
@@ -142,6 +160,12 @@ export function Shell() {
             {notice}
           </Banner>
         )}
+        {restart.length > 0 && (
+          <Banner role="status">
+            Restart ax-devil to apply{" "}
+            {restart.map((key) => SETTINGS.find((row) => row.key === key)?.label).join(", ")}
+          </Banner>
+        )}
         <div className="flex min-h-0 flex-1 flex-col sm:flex-row">
           <ActivityBar active={sidebar.open ? sidebar.view : null} onSelect={activate} />
           {sidebar.open && <Sidebar view={sidebar.view} onRun={run} />}
@@ -153,7 +177,9 @@ export function Shell() {
           </main>
         </div>
         <Presence scopes={scopes} />
-        {settingsOpen && <SettingsDialog onClose={() => setSettingsOpen(false)} />}
+        {dialog === "settings" && <SettingsDialog onClose={closer("settings")} />}
+        {dialog === "quick-setup" && <QuickSetupDialog onClose={closer("quick-setup")} />}
+        {dialog === "shortcuts" && <ShortcutsDialog onClose={closer("shortcuts")} />}
       </div>
     </ViewerActionsContext.Provider>
   );

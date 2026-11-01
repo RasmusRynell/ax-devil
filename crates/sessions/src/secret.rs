@@ -100,9 +100,16 @@ impl Secret {
         Self(hex(&random::<16>()))
     }
 
-    /// A secret the operator chose, which can be any text.
-    pub fn chosen(text: String) -> Self {
-        Self(text)
+    /// A secret the operator chose. It travels in an `Authorization: Bearer` header, which a browser can only send
+    /// as printable ASCII without spaces (0x21 to 0x7E); anything else is refused with the reason.
+    pub fn chosen(text: String) -> Result<Self, String> {
+        if text.is_empty() || !text.bytes().all(|byte| (0x21..=0x7E).contains(&byte)) {
+            return Err(
+                "a password may only use printable ASCII characters without spaces (! to ~), and not be empty"
+                    .into(),
+            );
+        }
+        Ok(Self(text))
     }
 
     /// Compares without stopping at the first difference, so timing says nothing about how much matched. The length
@@ -170,5 +177,18 @@ impl FromStr for JoinLink {
             session: session.parse()?,
             secret: secret.parse()?,
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_chosen_password_must_be_sendable_in_a_header() {
+        assert!(Secret::chosen("correct-horse_7!".into()).is_ok());
+        for refused in ["秘密", "trailing ", " leading", "inner space", "tab\t", ""] {
+            assert!(Secret::chosen(refused.into()).is_err(), "{refused:?}");
+        }
     }
 }

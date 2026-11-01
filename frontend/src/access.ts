@@ -38,6 +38,17 @@ export function adoptFragment(): void {
   window.history.replaceState(window.history.state, "", `${pathname}${search}`);
 }
 
+/** What a server password may be made of: printable ASCII without spaces, which an HTTP header carries as it is. */
+export const PASSWORD_RULE = "Use printable ASCII characters without spaces.";
+
+/** Whether a server password can travel in the `Authorization` header unchanged; the server accepts no other. */
+export const sendable = (password: string): boolean => /^[\x21-\x7e]+$/.test(password);
+
+/** Replaces the server password this tab holds. */
+export function holdPassword(password: string): void {
+  window.sessionStorage.setItem(STORED, JSON.stringify({ kind: "password", password }));
+}
+
 /** The credential this tab holds, if any. */
 export function credential(): Credential | null {
   const stored = window.sessionStorage.getItem(STORED);

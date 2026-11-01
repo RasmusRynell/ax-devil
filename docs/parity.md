@@ -57,7 +57,7 @@ with the test that proves it.
 | OF-03 | Playlists of entries and lanes; next/previous entry | M | todo |  |  |
 | OF-04 | Timestamp matching, sequence-keyed files, sticky overlays | M | todo |  |  |
 | OF-05 | Timing and alignment diagnostics per lane | M | todo |  |  |
-| OF-06 | Decoded-frame cache under one memory allowance | M | in progress | `crates/playback/src/tests/{cache,planner,decode,delivery}.rs`, `tests/playback_ws.rs`, `src/video_cache.rs`, `crates/settings` tests | Allowance, equal shares, eviction, live resize and uncached oversized frames work. Left: the cache marks on the timeline (M4) and a field for `playback.video_cache` in the Settings dialog; next-entry warm-up is OF-07 |
+| OF-06 | Decoded-frame cache under one memory allowance | M | in progress | `crates/playback/src/tests/{cache,planner,decode,delivery}.rs`, `tests/playback_ws.rs`, `src/video_cache.rs`, `crates/settings` tests | Allowance, equal shares, eviction, live resize and uncached oversized frames work. Left: the cache marks on the timeline (M4); next-entry warm-up is OF-07 |
 | OF-07 | Prepare next playlist entry in the background | S | todo |  |  |
 | OF-08 | Export with overlays: lane selection, quality presets, cancellable | M | todo |  |  |
 
@@ -118,12 +118,12 @@ The decisions taken with the owner, with their reasons, are in
 
 | ID | Feature | P | Status | Test | Notes |
 |----|---------|---|--------|------|-------|
-| ST-01 | Settings dialog pages; restart marker | M | in progress | `App.test.tsx` | General page only (theme); the table declares `live` and `label`, and `playback.video_cache` has no field yet |
-| ST-02 | Quick Setup on first start | M | todo |  |  |
+| ST-01 | Settings dialog pages; restart marker | M | in progress | `frontend/src/shell/SettingsDialog.test.tsx`, `Shell.test.tsx` | Done: the dialog is generated from the settings table (pages, sections, `live` restart marker), with rows `ui.theme`, `ui.quick_setup_done`, `playback.video_cache` and `storage.cache_dir` (a folder field with Browse; the restart banner shows after a save). Remaining: the other settings, each with its consumer in M4/M5 |
+| ST-02 | Quick Setup on first start | M | done | `frontend/src/shell/QuickSetupDialog.test.tsx`, `Shell.test.tsx` | Built from the rows marked `quick_setup` (the theme; the camera protocol joins in M5), opens on the first run and from Help, and each pick is stored live |
 | ST-03 | Theme (light, dark, auto), applied live; no text-size setting, zoom is the browser's | M | done | `crates/settings` tests, `App.test.tsx` | Stored through `/api/settings`; the frontend applies the theme live |
-| ST-04 | `$VARIABLE` references | M | todo |  |  |
-| ST-05 | Keyboard shortcuts, dialog, override persistence | M | todo |  |  |
-| ST-06 | Workspace credential references expand only for their bound host or a confirmed one; warn before saving a literal password (new) | M | todo |  |  |
+| ST-04 | `$VARIABLE` references | M | in progress | `crates/settings` tests | Backend done: rows with `env` store the reference and expand it where used; no setting takes one yet |
+| ST-05 | Keyboard shortcuts, dialog, override persistence | M | done | `crates/settings` tests, `frontend/src/shell/ShortcutsDialog.test.tsx`, `Shell.test.tsx` | Command table, override-only storage, conflict and reserved-key checks, the Shortcuts dialog and live key handling |
+| ST-06 | Workspace credential references expand only for their bound host or a confirmed one; warn before saving a literal password (new) | M | in progress | `frontend/src/shell/SettingsDialog.test.tsx` | The Settings dialog warns under a secret field holding a literal (tested against a mocked secret row). Left: the first real secret row, `defaults.device.password`, and the workspace half, both in M5 |
 | AP-01 | Uncaught errors logged; continue or close | M | todo |  |  |
 | AP-02 | Restart from inside the app | M | todo |  |  |
 | AP-03 | `clear-cache` | S | todo |  |  |
@@ -131,12 +131,18 @@ The decisions taken with the owner, with their reasons, are in
 | AP-05 | Custom window frame: in-page title bar with window controls | S | done | `shell/WindowControls.test.tsx` | Frameless Electron window; dragging and maximize on a real window manager are unverified |
 | AP-06 | Open logs folder / copy diagnostics (new) | S | todo |  |  |
 
+### Settings and application: deviations
+
+| Row | Deviation | Reason |
+|-----|-----------|--------|
+| ST-01 | `storage.cache_dir` takes no `$NAME` reference; [08](rebuild/08-settings-cli.md) asked for references in storage fields | Settings are personal to the user and Browse yields an absolute path; a reference would have to resolve before the first window opens |
+
 ## Developer tooling
 
 | ID | Feature | P | Status | Test | Notes |
 |----|---------|---|--------|------|-------|
 | DT-01 | Isolated GUI test environment for agents and CI | M | in progress | `make tests-desktop` | `scripts/isolated`: private home and display, user-file guard; Linux |
-| DT-02 | UI screenshot harness | M | in progress | `make tests-desktop` | `desktop/smoke.cjs`: main window, View menu and Settings dialog in light and dark, at the window minimum and 200% zoom, plus a video and a sharing scenario; other windows land with M8 |
+| DT-02 | UI screenshot harness | M | in progress | `make tests-desktop` | `desktop/smoke.cjs`: main window, View menu, Quick Setup, and the Settings (including Storage) and Shortcuts dialogs in light and dark, at the window minimum and 200% zoom, plus a video and a sharing scenario; other windows land with M8 |
 | DT-03 | Rendering benchmarks with A/B against a ref | S | todo |  |  |
 | DT-04 | Timestamp alignment report | S | todo |  |  |
 | DT-05 | Release check in clean environments | S | todo |  |  |

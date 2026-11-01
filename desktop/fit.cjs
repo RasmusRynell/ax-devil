@@ -1,5 +1,7 @@
-// Fit check run inside the page by the smoke test: returns what does not fit the window, as readable strings.
-module.exports = function fit() {
+// Fit checks run inside the page by the smoke test: each returns what does not fit the window, as readable strings.
+
+/** The page with nothing open. */
+function page() {
   const problems = [];
   const root = document.documentElement;
   if (root.scrollWidth > root.clientWidth || document.body.scrollWidth > root.clientWidth)
@@ -59,4 +61,60 @@ module.exports = function fit() {
     }
   }
   return problems;
-};
+}
+
+/**
+ * The open dialog: it must fit the window without scrolling itself (a list inside it may scroll), and its title,
+ * labels and controls must not be clipped sideways, so the footer buttons stay reachable.
+ */
+function dialog() {
+  const problems = [];
+  const box = document.querySelector("dialog[open]");
+  const form = box.querySelector("form");
+  const bounds = box.getBoundingClientRect();
+  if (
+    bounds.left < -1 ||
+    bounds.right > innerWidth + 1 ||
+    bounds.top < -1 ||
+    bounds.bottom > innerHeight + 1
+  )
+    problems.push("dialog outside the window");
+  if (box.scrollWidth > box.clientWidth + 1 || box.scrollHeight > box.clientHeight + 1)
+    problems.push("dialog scrolls itself");
+  const inside = (rect, outer) => rect.left >= outer.left - 1 && rect.right <= outer.right + 1;
+
+  // Every row, scrolled into view or not: no text or control sticks out of the dialog or is cut off by its own box.
+  const walker = document.createTreeWalker(form, NodeFilter.SHOW_TEXT);
+  for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+    if (!node.textContent.trim()) continue;
+    const range = document.createRange();
+    range.selectNodeContents(node);
+    const rect = range.getBoundingClientRect();
+    // Options of a closed select have no box of their own.
+    if (rect.width && !inside(rect, bounds))
+      problems.push(`text outside the dialog: "${node.textContent.trim()}"`);
+  }
+  for (const element of form.querySelectorAll("*")) {
+    const rect = element.getBoundingClientRect();
+    if (rect.width && !inside(rect, bounds))
+      problems.push(
+        `outside the dialog: "${(element.ariaLabel || element.textContent).trim().slice(0, 30)}"`,
+      );
+    if (element.clientWidth > 2 && element.scrollWidth > element.clientWidth + 1)
+      problems.push(`cut off: "${element.textContent.trim().slice(0, 30)}"`);
+  }
+
+  // The footer buttons are on screen and nothing covers them.
+  for (const button of [...form.querySelectorAll("button")].slice(-2)) {
+    const rect = button.getBoundingClientRect();
+    const top = document.elementFromPoint(
+      (rect.left + rect.right) / 2,
+      (rect.top + rect.bottom) / 2,
+    );
+    if (rect.bottom > innerHeight + 1 || !button.contains(top))
+      problems.push(`footer button unreachable: ${button.textContent}`);
+  }
+  return problems;
+}
+
+module.exports = { page, dialog };

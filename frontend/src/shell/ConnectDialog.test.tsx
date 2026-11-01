@@ -48,4 +48,17 @@ describe("connect dialog", () => {
     submit();
     expect((await screen.findByRole("alert")).textContent).toBe("nope is not a web address.");
   });
+
+  it("says before connecting that a password the server's header cannot carry is no use", () => {
+    const connect = vi.fn<WindowBridge["connect"]>().mockResolvedValue(undefined);
+    connectWith(connect);
+    render(<ConnectDialog onClose={() => {}} />);
+    type("Server address or join link", "http://host:7340");
+    for (const password of ["秘密", " hunter2", "hunter2 "]) {
+      type("Password", password);
+      submit();
+      expect(screen.getByRole("alert").textContent).toContain("cannot be used");
+    }
+    expect(connect).not.toHaveBeenCalled();
+  });
 });

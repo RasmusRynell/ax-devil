@@ -43,6 +43,11 @@ export interface SessionState {
   following: boolean;
   /** Whether the backend's clock is known well enough to follow the presenter's. */
   synced: boolean;
+  /**
+   * How many times the backend has seated this window, first connection and every resume alike. A playback stream is
+   * granted to one of them: a stream opened under an earlier one is ended.
+   */
+  seatings: number;
 }
 
 export interface SessionDeps {
@@ -89,6 +94,7 @@ export class SessionStore {
     view: EMPTY_VIEW,
     following: false,
     synced: false,
+    seatings: 0,
   };
   #connection: Connection | null = null;
   #doc: { rev: number; wire: DocWire } | null = null;
@@ -368,7 +374,12 @@ export class SessionStore {
       this.#pending = null;
       this.#sent = this.#seq;
     }
-    this.#state = { ...this.#state, session: message.session, you: message.seat };
+    this.#state = {
+      ...this.#state,
+      session: message.session,
+      you: message.seat,
+      seatings: this.#state.seatings + 1,
+    };
     this.#syncLeft = SYNC_BURST;
     this.#ping();
     for (const { resolve } of this.#waiters.splice(0)) resolve();

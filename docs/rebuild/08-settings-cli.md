@@ -17,8 +17,8 @@ and `ax-devil <command> --help` run from a worktree at the reference commit.
   newly saved folder.
 - **MUST** let changed defaults prefill only new items; environment preferences (connection timeout) are read when
   used and never stored on items.
-- **MUST** accept `$NAME` references in connection, analytics, network-scan and storage fields and keep them as
-  written. On save, validate numeric and storage references; leave connection text and credential references
+- **MUST** accept `$NAME` references in connection, analytics and network-scan fields and keep them as
+  written. On save, validate numeric references; leave connection text and credential references
   unresolved until used (`docs/settings.md`). Stronger validation is an owner-approved change. Mask literal passwords,
   show references. CLI options override config and environment for one launch. Credentials and the expansion
   rules: [13](13-security-packaging-ops.md#credentials), [13](13-security-packaging-ops.md#threat-model).

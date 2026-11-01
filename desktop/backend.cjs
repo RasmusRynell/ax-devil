@@ -21,18 +21,23 @@ async function fetchInfo(base, timeoutMs) {
 
 /**
  * Starts an ax-devil process and resolves, once it prints its readiness line, with the child and its origin.
- * `onExit` runs when the process ends after that.
+ * `onSpawn` gets the child the moment it exists, so the caller can stop it while it is still starting; a startup
+ * that times out kills it. `onExit` runs when the process ends after the readiness line. `spawner` is a test seam.
  */
-function startProcess(args, env, onExit) {
+function startProcess(args, env, onExit, { onSpawn = () => {}, spawner = spawn } = {}) {
   const executable = path.resolve(__dirname, "../target/release/ax-devil");
-  const child = spawn(executable, args, {
+  const child = spawner(executable, args, {
     env: { ...process.env, ...env },
     stdio: ["ignore", "pipe", "pipe"],
   });
+  onSpawn(child);
   child.stderr.on("data", (data) => process.stderr.write(data));
   let ready = false;
   return new Promise((resolve, reject) => {
-    const timer = setTimeout(() => reject(new Error("Backend startup timed out")), 10000);
+    const timer = setTimeout(() => {
+      child.kill("SIGKILL");
+      reject(new Error("Backend startup timed out"));
+    }, 10000);
     child.once("error", (error) => {
       clearTimeout(timer);
       reject(error);
@@ -55,11 +60,11 @@ function startProcess(args, env, onExit) {
 
 /**
  * The local backend, started lazily by `ensure()`. A backend found on the port is reused and left running;
- * one this module started gets SIGINT on `stop()`, then SIGKILL after 3 seconds.
+ * one this module started gets SIGINT on `stop()`, then SIGKILL after 3 seconds, also while it is still starting.
  * `onUnexpectedExit` runs when an owned backend ends without `stop()`. `args` are the command-line arguments for
- * a backend this module starts.
+ * a backend this module starts; `spawner` is a test seam.
  */
-function createBackend({ port, devUrl, args = [], onUnexpectedExit }) {
+function createBackend({ port, devUrl, args = [], onUnexpectedExit, spawner }) {
   let child;
   let origin;
   let stopping = false;
@@ -91,12 +96,23 @@ function createBackend({ port, devUrl, args = [], onUnexpectedExit }) {
         console.error(`Ignoring the command line: the backend on port ${port} is already running.`);
       return reused;
     }
-    const started = await startProcess(args, { PORT: port }, (reason) => {
-      child = undefined;
-      origin = undefined;
-      if (!stopping) onUnexpectedExit(new Error(`Backend exited unexpectedly: ${reason}`));
-    });
-    child = started.child;
+    if (stopping) throw new Error("Backend stopped during startup");
+    const started = await startProcess(
+      args,
+      { PORT: port },
+      (reason) => {
+        child = undefined;
+        origin = undefined;
+        if (!stopping) onUnexpectedExit(new Error(`Backend exited unexpectedly: ${reason}`));
+      },
+      {
+        // Recorded at once, so a stop during startup reaches the process.
+        onSpawn: (spawned) => {
+          child = spawned;
+        },
+        spawner,
+      },
+    );
     return started.origin;
   }
 
@@ -109,19 +125,26 @@ function createBackend({ port, devUrl, args = [], onUnexpectedExit }) {
       });
       return origin;
     },
-    /** Stops the backend this module started; one it only reused keeps running. */
+    /**
+     * Stops the backend this module started, also one that is still starting; one it only reused keeps running.
+     * Resolves once the process has ended and the startup, if any, has settled.
+     */
     stop() {
       stopping = true;
+      const starting = origin?.catch(() => undefined);
       const owned = child;
-      if (!owned || owned.exitCode !== null || owned.signalCode !== null) return Promise.resolve();
-      return new Promise((resolve) => {
-        const timer = setTimeout(() => owned.kill("SIGKILL"), 3000);
-        owned.once("exit", () => {
-          clearTimeout(timer);
-          resolve();
-        });
-        owned.kill("SIGINT");
-      });
+      const ended =
+        !owned || owned.exitCode !== null || owned.signalCode !== null
+          ? Promise.resolve()
+          : new Promise((resolve) => {
+              const timer = setTimeout(() => owned.kill("SIGKILL"), 3000);
+              owned.once("exit", () => {
+                clearTimeout(timer);
+                resolve();
+              });
+              owned.kill("SIGINT");
+            });
+      return Promise.all([starting, ended]).then(() => undefined);
     },
   };
 }

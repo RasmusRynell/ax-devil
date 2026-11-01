@@ -134,6 +134,8 @@ export class PlaybackSession {
   /** The frame to open on after a lost connection. */
   #resumeAt: number | undefined;
   #retries = 0;
+  /** Set when a lost connection took a running clock: the reopened one is paused, so the viewer's intent is stale. */
+  #stoppedByLoss = false;
   #cancelFrame: (() => void) | undefined;
   #cancelRetry: (() => void) | undefined;
   #closed = false;
@@ -359,6 +361,9 @@ export class PlaybackSession {
     this.#retries = 0;
     this.#frameCount = opened.frame_count;
     this.#applyFollowed();
+    // The reopened clock is paused: tell the presenter's followers where this viewer really is now.
+    if (this.#stoppedByLoss && !this.#followed) this.#intend();
+    this.#stoppedByLoss = false;
     this.#sendWant();
     this.#publish();
   }
@@ -418,6 +423,7 @@ export class PlaybackSession {
   /** The socket closed on its own: drop the video and open again where it left off, paused. */
   #lose(): void {
     this.#resumeAt = this.#clock?.playhead ?? this.#resumeAt;
+    this.#stoppedByLoss ||= this.#clock?.playing ?? false;
     this.#releaseVideo();
     this.#connection = undefined;
     this.#status = "reconnecting";

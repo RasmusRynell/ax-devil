@@ -14,6 +14,8 @@ Committed test inputs, shared by Rust and frontend tests. Each one records where
 | `video/truncated.mp4` | `cfr_h264_gop10_bf2.mp4` with its last 30 bytes cut off by `generate.sh` | Generated for this repository (MIT) |
 | `video/not_video.mp4` | A line of text named like a video, written by `generate.sh` | Generated for this repository (MIT) |
 | `video/yuv444p10_w18.mkv`, `video/rgb24_w16.nut` | Same generator: four frames of one flat colour as 10-bit 4:4:4 BT.709 at width 18, and as raw RGB24 at width 16 | Generated for this repository (MIT) |
+| `settings/v1.json` | Settings file as version 1 wrote it, with entries a later version does not know; every `v<N>.json` must still load (`crates/settings/README.md`) | Generated for this repository (MIT) |
+| `shortcuts/keys.json` | Shortcut spellings and their canonical form or rejection, read by `crates/settings` and `frontend/src/kit/shortcut.test.ts` | Generated for this repository (MIT) |
 
 Frame N of each luma-coded video is flat with luma (7 N) mod 256 (see the header of `video/generate.sh`), so a test
 can tell which frame it decoded. Regenerate with `fixtures/video/generate.sh`; it needs FFmpeg with libx264 and

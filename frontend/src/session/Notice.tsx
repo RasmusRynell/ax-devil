@@ -1,4 +1,8 @@
+import { useState } from "react";
+import { credential, holdPassword, PASSWORD_RULE, sendable } from "../access";
 import { Button } from "../kit/Button";
+import { Dialog } from "../kit/Dialog";
+import { TextField } from "../kit/Fields";
 import { useServerKind } from "../shell/windowBridge";
 import type { Ending } from "./connection";
 import type { SessionState } from "./store";
@@ -32,6 +36,52 @@ export function EndedScreen({ why }: { why: Ending }) {
   );
 }
 
+/** Asks for the server password again and loads the page anew with it, so everything is fetched under the new one. */
+function PasswordDialog({ onClose }: { onClose: () => void }) {
+  const [password, setPassword] = useState("");
+  const [failure, setFailure] = useState<string | null>(null);
+  const ok = () => {
+    if (!sendable(password)) return setFailure(`That password cannot be used. ${PASSWORD_RULE}`);
+    holdPassword(password);
+    window.location.reload();
+  };
+  return (
+    <Dialog title="Server password" onOk={ok} onCancel={onClose}>
+      <TextField
+        label="Password"
+        masked
+        value={password}
+        onChange={(text) => {
+          setPassword(text);
+          setFailure(null);
+        }}
+      />
+      {failure && (
+        <p role="alert" className="m-0">
+          {failure}
+        </p>
+      )}
+    </Dialog>
+  );
+}
+
+/**
+ * What a desktop window on another machine's server offers once that server turned its password down. Dismissing
+ * would try the same password again, so the way out is a new password or back to the local backend.
+ */
+function RejectedPassword() {
+  const [asking, setAsking] = useState(false);
+  return (
+    <>
+      {credential()?.kind === "password" && (
+        <Button onClick={() => setAsking(true)}>Change password</Button>
+      )}
+      <Button onClick={() => void window.axDevilWindow?.disconnect()}>Disconnect</Button>
+      {asking && <PasswordDialog onClose={() => setAsking(false)} />}
+    </>
+  );
+}
+
 interface Props {
   connection: SessionState["connection"];
   ownerAway: boolean;
@@ -41,6 +91,7 @@ interface Props {
 
 /** The bar along the bottom that says the session is not as it should be; absent while all is well. */
 export function Banner({ connection, ownerAway, ended, onDismiss }: Props) {
+  const remote = useServerKind() === "remote";
   const text = ended
     ? ENDINGS[ended]
     : connection === "connecting"
@@ -57,7 +108,11 @@ export function Banner({ connection, ownerAway, ended, onDismiss }: Props) {
       className="fixed inset-x-0 bottom-0 z-40 flex items-center justify-center gap-m border-t border-line bg-popup p-s"
     >
       {text}
-      {ended && <Button onClick={onDismiss}>Dismiss</Button>}
+      {ended === "invalid" && remote ? (
+        <RejectedPassword />
+      ) : (
+        ended && <Button onClick={onDismiss}>Dismiss</Button>
+      )}
     </div>
   );
 }

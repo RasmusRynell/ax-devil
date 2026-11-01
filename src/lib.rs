@@ -11,7 +11,7 @@ pub mod video_cache;
 pub mod video_sources;
 
 use access::{Admission, Limits, Policy, Principal};
-use api_types::{API_VERSION, ApiError, AppInfo, SHELL_API, Settings as SettingsBody};
+use api_types::{API_VERSION, ApiError, AppInfo, SHELL_API, SettingsChange, SettingsState};
 use axum::{
     Json, Router,
     extract::{FromRef, State},
@@ -26,9 +26,12 @@ use axum::{
 use routes::Listener;
 use session::{GRACE, LaunchQueue, Sessions};
 use sessions::session::OnRuntime;
+use settings::Scope;
 use share::Hosting;
-use std::sync::Arc;
+use std::{collections::BTreeMap, sync::Arc};
 use tokio::sync::watch;
+
+pub use routes::window::Windows;
 
 #[cfg(feature = "embed-assets")]
 #[derive(rust_embed::RustEmbed)]
@@ -42,6 +45,8 @@ struct Assets;
 pub struct AppState {
     /// The settings service; a route reads and writes only the scopes its caller is granted.
     pub settings: Arc<settings::Settings>,
+    /// Where the saved window positions are, when this backend keeps any; see [`AppState::with_windows`].
+    windows: Option<Arc<Windows>>,
     /// The open videos, which the playback socket draws its viewers from.
     pub videos: Arc<video_sources::VideoSources>,
     /// Turns true when the backend is stopping: long-lived connections, such as the playback and session sockets,
@@ -79,6 +84,7 @@ impl AppState {
             settings,
             videos,
             stopping,
+            windows: None,
             policy: Arc::new(policy),
             admission: Arc::new(Admission::new(limits)),
             sessions: Sessions::new(GRACE, Arc::new(OnRuntime(runtime))),
@@ -98,6 +104,13 @@ impl AppState {
     #[must_use]
     pub fn with_launch(mut self, launch: Arc<LaunchQueue>) -> Self {
         self.launch = launch;
+        self
+    }
+
+    /// The same state with window positions saved in `file`, which need not exist yet.
+    #[must_use]
+    pub fn with_windows(mut self, file: std::path::PathBuf) -> Self {
+        self.windows = Some(Arc::new(Windows::new(file)));
         self
     }
 
@@ -146,56 +159,95 @@ pub fn app(state: AppState) -> Router {
     router.layer(from_fn(access::security_headers))
 }
 
-pub(crate) async fn get_settings(
+/// What `principal` may read of the settings: its scopes' values, the shortcuts when it holds the `preferences`
+/// grant, and which of those need a restart.
+fn snapshot(
+    settings: &settings::Settings,
+    state: &settings::State,
     principal: Principal,
-    State(state): State<AppState>,
-) -> Json<SettingsBody> {
-    Json(SettingsBody(
-        state.settings.state().values(&principal.scopes()),
-    ))
+) -> SettingsState {
+    let scopes = principal.scopes();
+    let shortcuts = if scopes.contains(&Scope::Personal) {
+        state
+            .shortcuts()
+            .into_iter()
+            .map(|(id, key)| (id.to_owned(), key))
+            .collect()
+    } else {
+        BTreeMap::new()
+    };
+    SettingsState {
+        values: state.values(&scopes),
+        shortcuts,
+        restart: settings
+            .restart_pending(&scopes)
+            .into_iter()
+            .map(str::to_owned)
+            .collect(),
+    }
 }
 
-/// Replaces every setting the caller may change; a rejected or unsaved change leaves the stored state as it was.
+pub(crate) async fn get_settings(
+    principal: Principal,
+    State(AppState { settings, .. }): State<AppState>,
+) -> Json<SettingsState> {
+    Json(snapshot(&settings, &settings.state(), principal))
+}
+
+/// Replaces every setting and shortcut the caller may change; a rejected or unsaved change leaves the stored state
+/// as it was.
 pub(crate) async fn put_settings(
     principal: Principal,
-    State(state): State<AppState>,
-    Json(body): Json<SettingsBody>,
-) -> Result<Json<SettingsBody>, (StatusCode, Json<ApiError>)> {
+    State(AppState { settings, .. }): State<AppState>,
+    Json(body): Json<SettingsChange>,
+) -> Result<Json<SettingsState>, (StatusCode, Json<ApiError>)> {
     let scopes = principal.scopes();
-    if let Some(key) = body.0.keys().find(|key| {
+    let not_yours = |location: &str| {
+        failure(
+            StatusCode::FORBIDDEN,
+            location,
+            "this setting is not yours to change".into(),
+        )
+    };
+    if let Some(key) = body.values.keys().find(|key| {
         settings::TABLE
             .iter()
             .any(|setting| setting.key == key.as_str() && !scopes.contains(&setting.scope))
     }) {
-        return Err(failure(
-            StatusCode::FORBIDDEN,
-            key,
-            "this setting is not yours to change".into(),
-        ));
+        return Err(not_yours(key));
     }
-    let settings = state.settings;
+    if !scopes.contains(&Scope::Personal)
+        && let Some(id) = body.shortcuts.keys().next()
+    {
+        return Err(not_yours(&format!("shortcuts.{id}")));
+    }
+    let change = settings::Change {
+        values: body.values,
+        shortcuts: body.shortcuts,
+    };
     // The file write blocks, so it stays off the async workers.
-    let saved = tokio::task::spawn_blocking(move || settings.replace(&scopes, &body.0))
-        .await
-        .map_err(|error| {
-            failure(
-                StatusCode::INTERNAL_SERVER_ERROR,
-                "settings",
-                error.to_string(),
-            )
-        })?;
-    match saved {
-        Ok(state) => Ok(Json(SettingsBody(state.values(&principal.scopes())))),
-        Err(error) => {
-            let status = if error.invalid {
-                StatusCode::UNPROCESSABLE_ENTITY
-            } else {
-                tracing::error!("Cannot save settings: {error}");
-                StatusCode::INTERNAL_SERVER_ERROR
-            };
-            Err(failure(status, &error.location, error.reason))
-        }
-    }
+    let saved = tokio::task::spawn_blocking(move || {
+        settings
+            .replace(&scopes, &change)
+            .map(|state| snapshot(&settings, &state, principal))
+    })
+    .await
+    .map_err(|error| {
+        failure(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "settings",
+            error.to_string(),
+        )
+    })?;
+    saved.map(Json).map_err(|error| {
+        let status = if error.invalid {
+            StatusCode::UNPROCESSABLE_ENTITY
+        } else {
+            tracing::error!("Cannot save settings: {error}");
+            StatusCode::INTERNAL_SERVER_ERROR
+        };
+        failure(status, &error.location, error.reason)
+    })
 }
 
 pub(crate) fn failure(
@@ -286,31 +338,83 @@ mod tests {
         assert_eq!(info["development"], !cfg!(feature = "embed-assets"));
     }
 
+    fn get_settings_request() -> Request<Body> {
+        Request::builder()
+            .uri("/api/settings")
+            .body(Body::empty())
+            .unwrap()
+    }
+
     #[tokio::test]
     async fn settings_are_replaced_whole_and_a_rejected_change_leaves_them_as_they_were() {
         let test = TestApp::new();
-        let all = |theme: &str| {
-            format!(
-                r#"{{"ui.theme":"{theme}","ui.quick_setup_done":true,"playback.video_cache":"auto"}}"#
-            )
-        };
+        let (_, body) = test.send(get_settings_request()).await;
+        let mut change = json(&body);
+        assert_eq!(change["restart"], serde_json::json!([]));
+        assert_eq!(change["shortcuts"]["save-workspace"], "Ctrl+S");
+        change["values"]["ui.theme"] = "dark".into();
+        change["shortcuts"]["save-workspace"] = "Ctrl+Alt+S".into();
+        change["shortcuts"]["exit"] = serde_json::Value::Null;
+        let body = change.to_string();
 
-        let (status, body) = test.send(put(&all("dark"))).await;
+        let (status, saved) = test.send(put(&body)).await;
         assert_eq!(status, StatusCode::OK);
-        assert_eq!(json(&body), json(all("dark").as_bytes()));
+        assert_eq!(json(&saved)["values"]["ui.theme"], "dark");
+        let (_, read) = test.send(get_settings_request()).await;
+        assert_eq!(json(&read), json(&saved));
+        assert_eq!(json(&read)["shortcuts"]["exit"], serde_json::Value::Null);
 
-        let (status, body) = test.send(put(&all("neon"))).await;
+        let bad_theme = body.replace("\"dark\"", "\"neon\"");
+        let (status, error) = test.send(put(&bad_theme)).await;
         assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
-        assert_eq!(json(&body)["location"], "ui.theme");
+        assert_eq!(json(&error)["location"], "ui.theme");
+        let taken = body.replace("\"Ctrl+Alt+S\"", "\"Ctrl+O\"");
+        let (status, error) = test.send(put(&taken)).await;
+        assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+        assert_eq!(json(&error)["location"], "shortcuts.save-workspace");
 
-        let (_, body) = test
-            .send(
-                Request::builder()
-                    .uri("/api/settings")
-                    .body(Body::empty())
-                    .unwrap(),
-            )
-            .await;
-        assert_eq!(json(&body), json(all("dark").as_bytes()));
+        let (_, after) = test.send(get_settings_request()).await;
+        assert_eq!(json(&after), json(&saved));
+    }
+
+    #[tokio::test]
+    async fn a_window_is_saved_beside_the_others_and_a_corrupt_file_is_no_window() {
+        let test = TestApp::new();
+        let window = |method: &str, name: &str, body: &str| {
+            Request::builder()
+                .method(method)
+                .uri(format!("/api/windows/{name}"))
+                .header("content-type", "application/json")
+                .body(Body::from(body.to_owned()))
+                .unwrap()
+        };
+        let main = r#"{"x":-20,"y":30,"width":1280,"height":800,"maximized":true}"#;
+
+        assert_eq!(
+            test.send(window("GET", "main", "")).await.0,
+            StatusCode::NO_CONTENT
+        );
+        assert_eq!(
+            test.send(window("PUT", "main", main)).await.0,
+            StatusCode::NO_CONTENT
+        );
+        let other = r#"{"x":0,"y":0,"width":300,"height":200,"maximized":false}"#;
+        assert_eq!(
+            test.send(window("PUT", "tools-panel", other)).await.0,
+            StatusCode::NO_CONTENT
+        );
+        let (status, body) = test.send(window("GET", "main", "")).await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(json(&body), json(main.as_bytes()));
+        assert_eq!(
+            test.send(window("PUT", "Main_1", main)).await.0,
+            StatusCode::UNPROCESSABLE_ENTITY
+        );
+
+        std::fs::write(test._folder.path().join("windows.json"), "{ not json").unwrap();
+        assert_eq!(
+            test.send(window("GET", "main", "")).await.0,
+            StatusCode::NO_CONTENT
+        );
     }
 }

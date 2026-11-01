@@ -1,6 +1,6 @@
-// The only bridge from the page to the shell: the in-page title bar's window controls, the native dialog that adds
-// videos, and moving the window between the local backend and another machine's server. Main answers only a window's
-// trusted page.
+// The only bridge from the page to the shell: the in-page title bar's window controls, the native dialogs that add
+// videos and choose a folder, and moving the window between the local backend and another machine's server. Main
+// answers only a window's trusted page.
 const { contextBridge, ipcRenderer } = require("electron");
 
 contextBridge.exposeInMainWorld("axDevilWindow", {
@@ -9,6 +9,8 @@ contextBridge.exposeInMainWorld("axDevilWindow", {
   close: () => ipcRenderer.send("window:close"),
   // Opens the native file dialog; resolves to the chosen absolute paths, none when it is cancelled.
   pickVideos: () => ipcRenderer.invoke("workspace:pick-videos"),
+  // Opens the native folder dialog; resolves to the chosen absolute path, null when it is cancelled.
+  pickFolder: () => ipcRenderer.invoke("settings:pick-folder"),
   // Reports the current state at once and every change after; returns the way to stop listening.
   onMaximizedChange: (listener) => {
     const changed = (_event, maximized) => listener(maximized);

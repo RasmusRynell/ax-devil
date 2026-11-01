@@ -1,5 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { GrantsContext } from "../access";
+import { DEFAULT_SETTINGS, FakeSettings } from "../fakeSettings";
+import type { Grant } from "../generated/api";
+import type { CommandId } from "../generated/settings";
 import { FakeSocket, video } from "../session/fakeSession";
 import { SessionProvider } from "../session/session";
 import { useViewerActions } from "../viewer/actions";
@@ -31,16 +35,37 @@ afterEach(() => {
   delete window.axDevilWindow;
 });
 
-/** The shell in the window's own Session, shown once the backend has seated it. */
-async function renderShell() {
+/** The shell under the given settings, grants and Session (the window's own by default), once it is seated. */
+async function showShell({
+  shortcuts = {},
+  values = {},
+  grants = ["configuration"],
+}: {
+  shortcuts?: Partial<Record<CommandId, string | null>>;
+  values?: Partial<typeof DEFAULT_SETTINGS.values>;
+  grants?: Grant[];
+} = {}) {
+  const state = {
+    ...DEFAULT_SETTINGS,
+    values: { ...DEFAULT_SETTINGS.values, ...values },
+    shortcuts: { ...DEFAULT_SETTINGS.shortcuts, ...shortcuts },
+  };
   render(
-    <SessionProvider>
-      <Shell />
-    </SessionProvider>,
+    <GrantsContext.Provider value={grants}>
+      <FakeSettings state={state}>
+        <SessionProvider>
+          <Shell />
+        </SessionProvider>
+      </FakeSettings>
+    </GrantsContext.Provider>,
   );
   await screen.findByRole("heading", { name: "ax-devil" });
-  return FakeSocket.rooms.get("room-1")!;
 }
+
+const renderShell = async (options?: Parameters<typeof showShell>[0]) => {
+  await showShell(options);
+  return FakeSocket.rooms.get("room-1")!;
+};
 
 describe("menu bar", () => {
   it("lists only the menus with a working command, each with its shortcut", async () => {
@@ -48,6 +73,7 @@ describe("menu bar", () => {
     expect(screen.getAllByRole("menuitem").map((item) => item.textContent)).toEqual([
       "File",
       "View",
+      "Help",
     ]);
     fireEvent.click(screen.getByRole("menuitem", { name: "File" }));
     expect(screen.getAllByRole("menuitem").map((item) => item.textContent)).toContain(
@@ -79,6 +105,33 @@ describe("menu bar", () => {
   });
 });
 
+describe("quick setup", () => {
+  it("opens on the first run only, and again from the Help menu", async () => {
+    await renderShell();
+    expect(screen.queryByRole("dialog", { name: "Quick Setup" })).toBeNull();
+    fireEvent.click(screen.getByRole("menuitem", { name: "Help" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Quick Setup" }));
+    expect(screen.getByRole("dialog", { name: "Quick Setup" })).toBeTruthy();
+
+    cleanup();
+    await renderShell({ values: { "ui.quick_setup_done": false } });
+    expect(screen.getByRole("dialog", { name: "Quick Setup" })).toBeTruthy();
+  });
+
+  it("is not offered to someone who may not configure the server", async () => {
+    await renderShell({ grants: ["sessions"], values: { "ui.quick_setup_done": false } });
+    expect(screen.queryByRole("dialog", { name: "Quick Setup" })).toBeNull();
+    expect(screen.queryByRole("menuitem", { name: "Help" })).toBeNull();
+  });
+
+  it("keeps the shortcuts of other dialogs from replacing it", async () => {
+    await renderShell({ values: { "ui.quick_setup_done": false } });
+    fireEvent.keyDown(document.body, { key: ",", ctrlKey: true });
+    expect(screen.queryByRole("dialog", { name: "Settings" })).toBeNull();
+    expect(screen.getByRole("dialog", { name: "Quick Setup" })).toBeTruthy();
+  });
+});
+
 describe("sidebar", () => {
   it("hides from the View menu and from the shortcut, and from the active view's button", async () => {
     await renderShell();
@@ -104,6 +157,7 @@ describe("add video", () => {
       pickVideos: () => Promise.resolve(paths),
       connect: () => Promise.resolve(),
       disconnect: () => Promise.resolve(),
+      pickFolder: () => Promise.resolve(null),
       onMaximizedChange: () => () => {},
     } satisfies WindowBridge;
   };
@@ -161,8 +215,8 @@ describe("add video", () => {
 });
 
 describe("viewer shortcuts", () => {
-  async function openViewer() {
-    const room = await renderShell();
+  async function openViewer(shortcuts?: Partial<Record<CommandId, string | null>>) {
+    const room = await renderShell({ shortcuts });
     act(() => room.setItems([video("a")]));
   }
 
@@ -176,6 +230,14 @@ describe("viewer shortcuts", () => {
     expect(playback.step).toHaveBeenCalledTimes(2);
     fireEvent.keyDown(screen.getByRole("spinbutton", { name: "Speed" }), { key: "." });
     expect(playback.step).toHaveBeenCalledTimes(2);
+  });
+
+  it("follow the user's own key, and the default key no longer runs the command", async () => {
+    await openViewer({ "play-pause": "Ctrl+J" });
+    fireEvent.keyDown(document.body, { key: " " });
+    expect(playback.togglePlay).not.toHaveBeenCalled();
+    fireEvent.keyDown(document.body, { key: "j", ctrlKey: true });
+    expect(playback.togglePlay).toHaveBeenCalledTimes(1);
   });
 
   it("do nothing, and leave the key alone, while no viewer is open", async () => {
@@ -199,12 +261,7 @@ describe("a watcher", () => {
       "ax-devil.credential",
       JSON.stringify({ kind: "join", session: room.id, secret: room.secret }),
     );
-    render(
-      <SessionProvider>
-        <Shell />
-      </SessionProvider>,
-    );
-    await screen.findByRole("heading", { name: "ax-devil" });
+    await showShell({ grants: ["sessions"] });
     expect(screen.getByRole("heading", { name: "Live" })).toBeTruthy();
     expect(screen.getByRole("tab", { name: "a.mp4" }).getAttribute("aria-selected")).toBe("true");
     expect(
@@ -218,12 +275,7 @@ describe("a watcher", () => {
       "ax-devil.credential",
       JSON.stringify({ kind: "join", session: room.id, secret: room.secret }),
     );
-    render(
-      <SessionProvider>
-        <Shell />
-      </SessionProvider>,
-    );
-    await screen.findByRole("heading", { name: "ax-devil" });
+    await showShell({ grants: ["sessions"] });
     const add = screen.getAllByRole("button", { name: "Add Video" });
     expect(add.every((button) => (button as HTMLButtonElement).disabled)).toBe(true);
   });

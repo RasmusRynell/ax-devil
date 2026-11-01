@@ -1,6 +1,7 @@
 //! The command line: the local backend (bare `ax-devil`, or `local` to open a video), `serve` for other machines, and
 //! `app`, which opens the desktop shell.
 
+use crate::paths::Paths;
 use ax_devil::{
     AppState,
     access::{Limits, Policy},
@@ -27,17 +28,18 @@ use tokio::sync::watch;
 /// How long open connections, such as the sockets, get to close after Ctrl+C before the backend exits anyway.
 const SHUTDOWN_GRACE: Duration = Duration::from_secs(2);
 
-/// The environment variable that sets the server password for `serve`.
+/// The environment variable that sets the server password for `serve`: printable ASCII without spaces, because a
+/// browser can send nothing else in a header. Unset or empty, a random password is generated.
 const PASSWORD_VARIABLE: &str = "AX_DEVIL_SERVER_PASSWORD";
 
 /// Desktop app for inspecting Axis camera streams, offline video, and analytics overlays.
 #[derive(Parser)]
 #[command(version)]
 struct Cli {
-    /// Use this configuration file instead of ~/.ax_devil/configs/default.json.
+    /// Use this settings file instead of $XDG_CONFIG_HOME/ax-devil/settings.json (~/.config/ax-devil/settings.json).
     #[arg(long, global = true, value_name = "PATH")]
     config: Option<PathBuf>,
-    /// Keep caches in this folder instead of ~/.ax_devil/cache.
+    /// Keep caches in this folder instead of $XDG_CACHE_HOME/ax-devil (~/.cache/ax-devil).
     #[arg(long, global = true, value_name = "PATH")]
     cache_dir: Option<PathBuf>,
     /// How much to log.
@@ -71,6 +73,8 @@ enum Command {
         video: PathBuf,
     },
     /// Serve the app to other machines, protected by a server password.
+    ///
+    /// AX_DEVIL_SERVER_PASSWORD chooses the password (printable ASCII, no spaces); otherwise one is generated.
     Serve(ServeArgs),
     /// Open the desktop app, optionally on another machine's server.
     App(AppArgs),
@@ -100,49 +104,24 @@ struct AppArgs {
     server: Option<String>,
 }
 
-/// Where the backend keeps its configuration and caches.
-struct Folders {
-    config: PathBuf,
-    cache: PathBuf,
-}
-
-impl Folders {
-    /// The folders the command line names, and `~/.ax_devil` for the rest; `None` when the home folder is needed
-    /// and unknown.
-    fn resolve(
-        home: Option<PathBuf>,
-        config: Option<PathBuf>,
-        cache: Option<PathBuf>,
-    ) -> Option<Self> {
-        match (config, cache, home) {
-            (Some(config), Some(cache), _) => Some(Self { config, cache }),
-            (config, cache, Some(home)) => Some(Self {
-                config: config.unwrap_or_else(|| home.join("configs/default.json")),
-                cache: cache.unwrap_or_else(|| home.join("cache")),
-            }),
-            _ => None,
-        }
-    }
-}
-
 /// Runs the command the user gave.
 pub async fn run() -> ExitCode {
     let cli = Cli::parse();
-    let home = std::env::home_dir().map(|home| home.join(".ax_devil"));
+    let paths = Paths::resolve(&|name| std::env::var_os(name), cli.config, cli.cache_dir);
     let launcher = matches!(cli.command, Some(Command::App(_)));
-    let log_file = home.as_ref().map(|home| home.join("logs/ax-devil.log"));
-    logging::init(cli.log_level, log_file.as_deref().filter(|_| !launcher));
+    let log_file = paths.as_ref().ok().map(|paths| paths.log_file.as_path());
+    logging::init(cli.log_level, log_file.filter(|_| !launcher));
     let result = match cli.command {
         Some(Command::App(args)) => launch(&args),
-        command => match Folders::resolve(home, cli.config, cli.cache_dir) {
-            None => Err("Cannot find the home folder".into()),
-            Some(folders) => match command {
-                Some(Command::Serve(args)) => serve(&folders, args).await,
+        command => match paths {
+            Err(error) => Err(error.into()),
+            Ok(paths) => match command {
+                Some(Command::Serve(args)) => serve(&paths, args).await,
                 Some(Command::Local { video }) => match workspace::intake::video(&video) {
-                    Ok(item) => host_desktop(&folders, cli.share_address, vec![item]).await,
+                    Ok(item) => host_desktop(&paths, cli.share_address, vec![item]).await,
                     Err(error) => Err(format!("{}: {}", video.display(), error.reason).into()),
                 },
-                _ => host_desktop(&folders, cli.share_address, Vec::new()).await,
+                _ => host_desktop(&paths, cli.share_address, Vec::new()).await,
             },
         },
     };
@@ -163,13 +142,12 @@ struct Services {
 impl Services {
     /// Loads the settings, starts the video cache and queues `items` for the first Local session. Ctrl+C turns the
     /// stop signal on.
-    fn start(
-        folders: &Folders,
-        items: Vec<workspace::WorkspaceItem>,
-    ) -> Result<Self, Box<dyn Error>> {
-        let settings = Arc::new(settings::Settings::load(&folders.config)?);
-        tracing::info!("Loaded settings from {}", folders.config.display());
-        let videos = video_cache::start(&settings, &folders.cache);
+    fn start(paths: &Paths, items: Vec<workspace::WorkspaceItem>) -> Result<Self, Box<dyn Error>> {
+        let settings = Arc::new(settings::Settings::load(&paths.config_file)?);
+        tracing::info!("Loaded settings from {}", paths.config_file.display());
+        let cache_dir = paths.cache_dir(settings.state().folder("storage.cache_dir"));
+        tracing::info!("Caching in {}", cache_dir.display());
+        let videos = video_cache::start(&settings, &cache_dir);
         let (stop, _) = watch::channel(false);
         let stop_on_ctrl_c = stop.clone();
         tokio::spawn(async move {
@@ -235,18 +213,20 @@ impl Services {
 
 /// The backend for the desktop shell and development: loopback only, on `$PORT` (default 7330).
 async fn host_desktop(
-    folders: &Folders,
+    paths: &Paths,
     share_address: SocketAddr,
     items: Vec<workspace::WorkspaceItem>,
 ) -> Result<ExitCode, Box<dyn Error>> {
-    let services = Services::start(folders, items)?;
+    let services = Services::start(paths, items)?;
     let port = std::env::var("PORT")
         .unwrap_or_else(|_| "7330".into())
         .parse::<u16>()?;
     let listener = tokio::net::TcpListener::bind(("127.0.0.1", port)).await?;
     // The desktop shell and the development supervisor wait for this exact line.
     announce(&[format!("ax-devil: http://{}", listener.local_addr()?)]);
-    let state = services.state(Policy::Local);
+    let state = services
+        .state(Policy::Local)
+        .with_windows(paths.window_file.clone());
     // The listener for other machines serves the sessions of this state and opens when one starts sharing.
     let hosting = Hosting::Lan(ShareListener::new(share_address, &state));
     services
@@ -256,15 +236,17 @@ async fn host_desktop(
 }
 
 /// The backend for other machines. It reads the same settings file, but only the Server settings are reachable.
-async fn serve(folders: &Folders, args: ServeArgs) -> Result<ExitCode, Box<dyn Error>> {
+async fn serve(paths: &Paths, args: ServeArgs) -> Result<ExitCode, Box<dyn Error>> {
     share::refuse_development_build().map_err(|reason| format!("serve: {reason}"))?;
-    let services = Services::start(folders, Vec::new())?;
+    let services = Services::start(paths, Vec::new())?;
     let chosen = std::env::var(PASSWORD_VARIABLE)
         .ok()
         .filter(|text| !text.is_empty());
     let generated = chosen.is_none();
     let password = match chosen {
-        Some(text) => Secret::chosen(text),
+        Some(text) => {
+            Secret::chosen(text).map_err(|reason| format!("{PASSWORD_VARIABLE}: {reason}"))?
+        }
         None => Secret::generate(),
     };
     let listener = tokio::net::TcpListener::bind((args.bind, args.port)).await?;

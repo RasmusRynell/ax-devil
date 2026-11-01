@@ -1,4 +1,4 @@
-import type { LabelHTMLAttributes } from "react";
+import { useId, type LabelHTMLAttributes, type ReactNode } from "react";
 import { Icon } from "./Icon";
 
 /** A search input with a leading icon; the placeholder doubles as its accessible name. */
@@ -16,53 +16,34 @@ export function SearchField({ placeholder }: { placeholder: string }) {
   );
 }
 
+const FIELD = "flex items-center justify-between gap-xl";
+const INPUT =
+  "h-row rounded-control border border-line-strong bg-popup px-s text-fg focus:border-accent focus:outline-none";
+
 interface SelectProps<T extends string> {
-  label: string;
+  label: ReactNode;
   value: T;
-  options: readonly T[];
+  /** Each choice as `[value, label]`. */
+  options: readonly (readonly [T, string])[];
   onChange: (value: T) => void;
 }
 
-/** A labelled drop-down over a closed set; options show with a capital first letter. */
+/** A labelled drop-down over a closed set. */
 export function Select<T extends string>({ label, value, options, onChange }: SelectProps<T>) {
   return (
-    <label className="flex items-center justify-between gap-xl">
+    <label className={FIELD}>
       {label}
       <select
         value={value}
         onChange={(event) => onChange(event.target.value as T)}
-        className="h-row rounded-control border border-line-strong bg-popup px-s text-fg focus:border-accent focus:outline-none"
+        className={INPUT}
       >
-        {options.map((option) => (
+        {options.map(([option, name]) => (
           <option key={option} value={option}>
-            {option.charAt(0).toUpperCase() + option.slice(1)}
+            {name}
           </option>
         ))}
       </select>
-    </label>
-  );
-}
-
-interface TextFieldProps {
-  label: string;
-  value: string;
-  onChange: (value: string) => void;
-  type?: "text" | "password";
-}
-
-/** A labelled single-line input with its label above, as wide as its container up to a readable width. */
-export function TextField({ label, value, onChange, type = "text" }: TextFieldProps) {
-  return (
-    <label className="flex flex-col gap-s">
-      {label}
-      <input
-        type={type}
-        value={value}
-        onChange={(event) => onChange(event.target.value)}
-        autoComplete="off"
-        spellCheck={false}
-        className="h-row w-field max-w-full rounded-control border border-line-strong bg-transparent px-m text-fg focus:border-accent focus:outline-none"
-      />
     </label>
   );
 }
@@ -71,22 +52,61 @@ interface CheckboxProps extends Omit<
   LabelHTMLAttributes<HTMLLabelElement>,
   "onChange" | "children"
 > {
-  label: string;
+  label: ReactNode;
   checked: boolean;
   onChange: (checked: boolean) => void;
 }
 
-/** A labelled check box; extra attributes go on its label, so the whole row is one target. */
+/** A labelled on/off box; extra attributes go on its label, so the whole row is one target. */
 export function Checkbox({ label, checked, onChange, className = "", ...rest }: CheckboxProps) {
   return (
-    <label className={`flex min-h-row items-center gap-m px-m py-xs ${className}`} {...rest}>
+    <label className={`${FIELD} ${className}`} {...rest}>
+      {label}
       <input
         type="checkbox"
         checked={checked}
         onChange={(event) => onChange(event.target.checked)}
-        className="size-icon shrink-0 accent-accent"
+        className="size-icon accent-accent"
       />
-      {label}
     </label>
+  );
+}
+
+/** A labelled text box; `masked` hides what is typed, `action` sits after the box, `describedBy` names a note about it. */
+export function TextField({
+  label,
+  value,
+  masked = false,
+  describedBy,
+  action,
+  onChange,
+}: {
+  label: ReactNode;
+  value: string;
+  masked?: boolean;
+  describedBy?: string;
+  action?: ReactNode;
+  onChange: (value: string) => void;
+}) {
+  const id = useId();
+  return (
+    <div className={FIELD}>
+      <label htmlFor={id} className="contents">
+        {label}
+      </label>
+      <span className="flex min-w-0 items-center gap-s">
+        <input
+          id={id}
+          type={masked ? "password" : "text"}
+          value={value}
+          autoComplete="off"
+          spellCheck={false}
+          aria-describedby={describedBy}
+          onChange={(event) => onChange(event.target.value)}
+          className={`${INPUT} min-w-0 w-field`}
+        />
+        {action}
+      </span>
+    </div>
   );
 }

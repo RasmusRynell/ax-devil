@@ -51,7 +51,11 @@ module.exports.sharing = async (window, shell, ownerCsp) => {
     win.setSize(640, 480);
     win.webContents.setZoomFactor(2);
     await frames(driver);
-    assert.deepEqual(await driver.js(`(${fit.toString()})()`), [], `${name} must fit at 200% zoom`);
+    assert.deepEqual(
+      await driver.js(`(${fit.page.toString()})()`),
+      [],
+      `${name} must fit at 200% zoom`,
+    );
     await shootBoth(`${name}-200`, [["", win, driver]]);
     win.webContents.setZoomFactor(1);
     win.setBounds(bounds);

@@ -24,12 +24,10 @@ impl TestApp {
         let settings = settings::Settings::load(&folder.path().join("default.json")).unwrap();
         let videos = crate::video_cache::start(&settings, &folder.path().join("cache"));
         let (stop, stopping) = tokio::sync::watch::channel(false);
-        let router = app(AppState::new(
-            Arc::new(settings),
-            Policy::Local,
-            videos,
-            stopping,
-        ));
+        let router = app(
+            AppState::new(Arc::new(settings), Policy::Local, videos, stopping)
+                .with_windows(folder.path().join("windows.json")),
+        );
         Self {
             router,
             _stop: stop,

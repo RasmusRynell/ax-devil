@@ -28,7 +28,7 @@ async fn serve(folder: &Path) -> String {
     // Kept by the server task, so the backend never sees its stop signal.
     let (stop, stopping) = tokio::sync::watch::channel(false);
     let policy = Policy::Shared {
-        password: Some(Secret::chosen(PASSWORD.into())),
+        password: Some(Secret::chosen(PASSWORD.into()).unwrap()),
     };
     let state = AppState::new(Arc::new(settings), policy, videos, stopping)
         .with_hosting(Hosting::Server(LinkBase::for_listener(None, address)));

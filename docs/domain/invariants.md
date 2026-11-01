@@ -237,7 +237,7 @@ the module that implements it adds one.
 
 ## Settings And Shortcuts
 
-- Domain code takes settings as values; only the settings service, wired at bootstrap, reads and writes them.
+- Domain code takes settings as values; only the settings service reads and writes them.
 - Settings apply on OK. Settings that need a restart carry one shared marker, and saving one offers to restart after
   the exit-time saves. Quick Setup is the one exception.
 - Saves validate every editable field, replace the configuration atomically, and only then notify; a failed save
@@ -245,7 +245,11 @@ the module that implements it adds one.
   which follow the newly saved folder.
 - Settings live in one immutable state replaced whole; consumers subscribe to changes, never poll.
 - Each settings row is Personal (how my app behaves) or Server (what the server works with). A client without the
-  `preferences` grant keeps Personal settings in its browser's `localStorage`. A masked secret sent back means
-  unchanged: the stored value stays.
+  `preferences` grant keeps Personal settings in its browser. A masked secret sent back means unchanged.
 - On/off overlay preferences are one closed set; adding a member adds it to the View menu, Settings and the config.
-- All shortcuts are defined in one table; persistence is override-only, so no overrides means all defaults apply.
+- All shortcuts are defined in one table; persistence is override-only, so no overrides means all defaults apply. An
+  override wins over any default with the same key, which becomes unbound.
+- Settings are defaults, not references: nothing created from them refers back to them or embeds a value or a
+  credential.
+- A settings file this build cannot read stops startup with an error naming the file and key; format and migration:
+  [`crates/settings/README.md`](../../crates/settings/README.md).

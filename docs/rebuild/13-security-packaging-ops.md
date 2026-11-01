@@ -50,6 +50,8 @@ Owns who may reach a backend and the limits that keep one peer or crowd from usi
   Host (a loopback name) and Origin (absent, or `http://` and the Host in full).
 - A secret travels in the URL fragment (`#join=`, `#password=`), which the page moves to `sessionStorage`, then in
   `Authorization: Bearer` on HTTP and in `Hello` on the socket. Never in a query string or a log.
+- A chosen server password (`AX_DEVIL_SERVER_PASSWORD`) is printable ASCII without spaces, since a browser cannot send
+  anything else in a header; `serve` refuses to start otherwise.
 - Every response on every listener carries `frame-ancestors 'none'`, `default-src 'self'` and `img-src 'self' data:`
   (small icons are inlined as `data:` images), and `X-Frame-Options: DENY`. The smoke test asserts the release app
   breaks none of it.

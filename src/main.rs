@@ -1,6 +1,7 @@
 //! Starts ax-devil as the command line says; see `cli.rs`.
 
 mod cli;
+mod paths;
 
 use std::{process::ExitCode, time::Duration};
 

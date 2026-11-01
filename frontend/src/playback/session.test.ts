@@ -336,6 +336,23 @@ describe("connection loss and closing", () => {
     });
   });
 
+  it("publishes the paused position when a playing presenter reconnects, so followers stop with it", async () => {
+    const { session, server, retries, intents, refresh } = await setup();
+    server.open();
+    server.frames(0, 1, 2, 3);
+    refresh();
+    session.play();
+    expect(intents.at(-1)).toMatchObject({ playing: true });
+    server.drop();
+    retries[0].run();
+    await flush();
+    server.open();
+    server.frames(0, 1, 2, 3);
+    refresh();
+    expect(session.getSnapshot().playing).toBe(false);
+    expect(intents.at(-1)).toMatchObject({ playing: false });
+  });
+
   it("ends for good when the backend refuses or revokes the stream, without asking for another ticket", async () => {
     for (const code of [4401, 4403]) {
       const { session, server, tickets, retries, connections } = await setup();

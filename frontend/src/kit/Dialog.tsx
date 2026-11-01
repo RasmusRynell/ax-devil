@@ -5,13 +5,15 @@ interface Props {
   title: string;
   children: ReactNode;
   onOk: () => void;
-  onCancel: () => void;
+  /** Without it the dialog has only OK, and Escape runs OK. */
+  onCancel?: () => void;
+  okLabel?: string;
   /** While true, OK is disabled, so the action cannot run twice. */
   busy?: boolean;
 }
 
 /** A modal dialog with OK and Cancel. Enter runs OK and Escape cancels; the browser traps focus inside. */
-export function Dialog({ title, children, onOk, onCancel, busy = false }: Props) {
+export function Dialog({ title, children, onOk, onCancel, okLabel = "OK", busy = false }: Props) {
   const dialog = useRef<HTMLDialogElement>(null);
   const titleId = useId();
   useEffect(() => {
@@ -29,19 +31,23 @@ export function Dialog({ title, children, onOk, onCancel, busy = false }: Props)
       data-cursor-region="popup"
       onCancel={(event) => {
         event.preventDefault();
-        onCancel();
+        if (onCancel) onCancel();
+        else if (!busy) onOk();
       }}
       className="m-auto max-h-full max-w-full overflow-auto rounded-popup border border-line-strong bg-popup p-0 text-fg backdrop:bg-scrim"
     >
-      <form onSubmit={submit} className="flex flex-col gap-l p-xl">
+      <form
+        onSubmit={submit}
+        className="flex max-h-[calc(100vh-var(--spacing-s))] flex-col gap-l p-xl"
+      >
         <h2 id={titleId} className="m-0 text-heading font-semibold">
           {title}
         </h2>
         {children}
         <div className="flex justify-end gap-m">
-          <Button onClick={onCancel}>Cancel</Button>
+          {onCancel && <Button onClick={onCancel}>Cancel</Button>}
           <Button type="submit" disabled={busy}>
-            OK
+            {okLabel}
           </Button>
         </div>
       </form>

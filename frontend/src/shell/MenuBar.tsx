@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { menusFor } from "../commands";
 import { Menu, type MenuCommand } from "../kit/Menu";
 import { useAllowed } from "../session/session";
+import { useSettings } from "../settings";
 
 interface Props {
   checked: ReadonlySet<string>;
@@ -16,7 +17,7 @@ const FIRST_ITEM = '[role="menu"] [role^="menuitem"]:not(:disabled)';
  * hovering another menu while one is open switches to it.
  */
 export function MenuBar({ checked, wired, onSelect }: Props) {
-  const menus = menusFor(useAllowed(), wired);
+  const menus = menusFor(useAllowed(), wired, useSettings().shortcuts);
   const [open, setOpen] = useState<number | null>(null);
   // Only one menu button is a Tab stop, so Tab leaves the bar instead of walking through it.
   const [tabStop, setTabStop] = useState(0);

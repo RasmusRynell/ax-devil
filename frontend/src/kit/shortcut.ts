@@ -10,24 +10,44 @@ export function keyParts(shortcut: string): string[] {
 
 /** The names a shortcut gives keys whose `event.key` is not a readable character. */
 const KEY_NAMES: Record<string, string> = {
-  " ": "space",
-  arrowleft: "left",
-  arrowright: "right",
-  arrowup: "up",
-  arrowdown: "down",
+  " ": "Space",
+  ArrowLeft: "Left",
+  ArrowRight: "Right",
+  ArrowUp: "Up",
+  ArrowDown: "Down",
 };
 
-/** Whether a key press is this shortcut. Shift is only compared for letters and function keys. */
-export function matchesShortcut(event: KeyboardEvent, shortcut: string): boolean {
-  const parts = keyParts(shortcut);
-  const key = parts[parts.length - 1] ?? "";
-  const has = (modifier: string) => parts.slice(0, -1).includes(modifier);
-  const symbol = key.length === 1 && !/[a-z0-9]/i.test(key);
-  const pressed = event.key.toLowerCase();
-  return (
-    (KEY_NAMES[pressed] ?? pressed) === key.toLowerCase() &&
-    event.ctrlKey === has("Ctrl") &&
-    event.altKey === has("Alt") &&
-    (symbol || event.shiftKey === has("Shift"))
-  );
+const NAMED_KEYS = new Set([
+  "Enter",
+  "Escape",
+  "Tab",
+  "Backspace",
+  "Delete",
+  "Insert",
+  "Home",
+  "End",
+  "PageUp",
+  "PageDown",
+]);
+
+/**
+ * The shortcut a key press is, in the canonical form the backend stores (`Ctrl+Alt+Shift+<key>`, letters upper case),
+ * or null while it is not a complete shortcut: a modifier alone, Meta, or a key the grammar has no name for.
+ * Shift is left out for symbol keys, whose `event.key` already is the shifted character.
+ */
+export function shortcutOf(event: KeyboardEvent): string | null {
+  const name = KEY_NAMES[event.key] ?? event.key;
+  const symbol = name.length === 1 && !/[a-z0-9]/i.test(name);
+  const known =
+    NAMED_KEYS.has(name) ||
+    KEY_NAMES[event.key] !== undefined ||
+    /^F([1-9]|1\d|2[0-4])$/.test(name) ||
+    (name.length === 1 && /[\x21-\x7e]/.test(name));
+  if (event.metaKey || !known) return null;
+  const modifiers = [
+    event.ctrlKey && "Ctrl",
+    event.altKey && "Alt",
+    event.shiftKey && !symbol && "Shift",
+  ].filter(Boolean);
+  return [...modifiers, name.length === 1 ? name.toUpperCase() : name].join("+");
 }

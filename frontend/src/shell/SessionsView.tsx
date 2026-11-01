@@ -177,6 +177,7 @@ export function SessionsView() {
                   void control({ type: "setAccess", access: explore ? "explore" : "watch" })
                 }
                 data-cursor-id="sessions:explore"
+                className="min-h-row px-m"
               />
             </>
           )}
