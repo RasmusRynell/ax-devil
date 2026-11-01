@@ -6,7 +6,7 @@ import { Kind, Len, type MarkPlan, programOf } from "../marks/plan";
 import { AtlasFull, type TextSource } from "../text/source";
 import { Labels } from "./labels";
 import { Resolver } from "./resolver";
-import type { LayoutView, PrimitiveSink } from "./sink";
+import type { LayoutView, PrimitiveSink, Region } from "./sink";
 
 /** A pinned rect or a plain one, in target pixels. */
 interface Rect {
@@ -15,6 +15,23 @@ interface Rect {
   w: number;
   h: number;
 }
+
+/** Pixels past a mark's geometry that its quads still cover: the edge antialiasing and snapping to device pixels. */
+const EDGE_SLACK = 2;
+
+/** The lengths that can move a box, bar or circle outside its reference rect. */
+const BOX_REACH = [
+  Len.W,
+  Len.H,
+  Len.Dx,
+  Len.Dy,
+  Len.Outset,
+  Len.R,
+  Len.MarginTop,
+  Len.MarginRight,
+  Len.MarginBottom,
+  Len.MarginLeft,
+];
 
 /**
  * Turns the evaluated marks of a lane into primitives for a displayed image size: resolves lengths, pins and outsets
@@ -25,7 +42,6 @@ export class Layouter {
   private readonly labels: Labels;
   private readonly rect: Rect = { x: 0, y: 0, w: 0, h: 0 };
   private readonly head = new Float32Array(6);
-  private catalog: CompiledCatalog | null = null;
   private report: EvalReport | null = null;
 
   constructor(private readonly text: TextSource) {
@@ -45,10 +61,6 @@ export class Layouter {
     sink: PrimitiveSink,
     report: EvalReport | null = null,
   ): void {
-    if (catalog !== this.catalog) {
-      this.catalog = catalog;
-      this.labels.reset(programOf(catalog).marks.length);
-    }
     this.report = report;
     try {
       this.pass(marks, catalog, cols, view, sink);
@@ -62,6 +74,8 @@ export class Layouter {
         this.pass(marks, catalog, cols, view, sink);
       } finally {
         text.dropOverflow = dropping;
+        // Runs measured while glyphs were dropped lack some; the next pass measures them again.
+        this.labels.discardRuns();
       }
     }
   }
@@ -74,7 +88,8 @@ export class Layouter {
     sink: PrimitiveSink,
   ): void {
     const program = programOf(catalog);
-    this.sizes.view(view.width, view.height, view.zoom);
+    this.labels.begin(program);
+    this.sizes.view(view.width, view.height, view.zoom, program);
     this.sizes.nums = marks.nums;
     sink.begin();
     let at = 0;
@@ -106,8 +121,9 @@ export class Layouter {
     // A line has no reference rect; its bounding box stands in for the gate and for `box.*` lengths.
     if (plan.kind === Kind.Line) sizes.box(Math.abs(r - l), Math.abs(b - t));
     else sizes.box(r - l, b - t);
-    if (plan.len[Len.MinSize].present && !(sizes.boxMin > sizes.length(plan.len[Len.MinSize])))
-      return;
+    if (plan.len[Len.MinSize].present && !(sizes.boxMin > sizes.of(plan, Len.MinSize))) return;
+    const visible = view.visible;
+    if (visible && this.outside(plan, marks, record, l, t, r, b, visible, view.dpr)) return;
     let ok: boolean;
     switch (plan.kind) {
       case Kind.Box:
@@ -135,6 +151,49 @@ export class Layouter {
     if (!ok && this.report) this.report.skipped[plan.index]++;
   }
 
+  /**
+   * Whether nothing of the record can reach `visible`: its reference rect (`l`, `t`, `r`, `b`) grown by everything that
+   * can push the mark outside it, summed without regard to sign so the bound is safe. False when a length is unusable,
+   * so the layout reports it, and for polygons, whose extent is not worth finding out.
+   */
+  private outside(
+    plan: MarkPlan,
+    marks: MarkBuffer,
+    record: number,
+    l: number,
+    t: number,
+    r: number,
+    b: number,
+    visible: Region,
+    dpr: number,
+  ): boolean {
+    const sizes = this.sizes;
+    let reach: number;
+    switch (plan.kind) {
+      case Kind.Polygon:
+        return false;
+      case Kind.Text:
+      case Kind.Label:
+        reach = this.labels.reach(plan, marks, record, dpr);
+        break;
+      case Kind.Arrow:
+        reach = sizes.of(plan, Len.Max) + sizes.of(plan, Len.Head) + sizes.of(plan, Len.HeadWidth);
+        break;
+      default:
+        reach = 0;
+        for (const i of BOX_REACH) reach += Math.abs(sizes.of(plan, i));
+        break;
+    }
+    reach += sizes.of(plan, Len.Width) + EDGE_SLACK;
+    if (!(reach >= 0)) return false;
+    return (
+      Math.max(l, r) + reach < visible.left ||
+      Math.min(l, r) - reach > visible.right ||
+      Math.max(t, b) + reach < visible.top ||
+      Math.min(t, b) - reach > visible.bottom
+    );
+  }
+
   /** The mark's rect, pinned inside the reference rect or the reference rect grown by its outset; false if lengths are unusable. */
   private place(
     plan: MarkPlan,
@@ -146,30 +205,22 @@ export class Layouter {
   ): boolean {
     const sizes = this.sizes;
     const len = plan.len;
-    const dx = sizes.length(len[Len.Dx]);
-    const dy = sizes.length(len[Len.Dy]);
+    const dx = sizes.of(plan, Len.Dx);
+    const dy = sizes.of(plan, Len.Dy);
     const rect = this.rect;
     if (plan.pin) {
       const ax = plan.pin[0];
       const ay = plan.pin[1];
-      const top = sizes.length(len[Len.MarginTop]);
-      const right = sizes.length(len[Len.MarginRight]);
-      const bottom = sizes.length(len[Len.MarginBottom]);
-      const left = sizes.length(len[Len.MarginLeft]);
+      const top = sizes.of(plan, Len.MarginTop);
+      const right = sizes.of(plan, Len.MarginRight);
+      const bottom = sizes.of(plan, Len.MarginBottom);
+      const left = sizes.of(plan, Len.MarginLeft);
       const innerW = r - l - left - right;
       const innerH = b - t - top - bottom;
       const w =
-        circle > 0
-          ? 2 * circle
-          : len[Len.W].present
-            ? sizes.length(len[Len.W])
-            : Math.max(0, innerW);
+        circle > 0 ? 2 * circle : len[Len.W].present ? sizes.of(plan, Len.W) : Math.max(0, innerW);
       const h =
-        circle > 0
-          ? 2 * circle
-          : len[Len.H].present
-            ? sizes.length(len[Len.H])
-            : Math.max(0, innerH);
+        circle > 0 ? 2 * circle : len[Len.H].present ? sizes.of(plan, Len.H) : Math.max(0, innerH);
       if (
         !(
           top >= 0 &&
@@ -189,7 +240,7 @@ export class Layouter {
       rect.h = h;
       return Number.isFinite(rect.x + rect.y + w + h);
     }
-    const outset = sizes.length(len[Len.Outset]);
+    const outset = sizes.of(plan, Len.Outset);
     if (!(outset === outset && dx === dx && dy === dy)) return false;
     let x = l;
     let y = t;
@@ -219,7 +270,7 @@ export class Layouter {
   /** Stroke colour and width of the record as the sink takes them: width 0 and colour 0 when there is no stroke. */
   private stroke(plan: MarkPlan, marks: MarkBuffer, base: number): number {
     const flags = marks.words[base + Rec.Flags];
-    const width = this.sizes.length(plan.len[Len.Width]);
+    const width = this.sizes.of(plan, Len.Width);
     return (flags & Flag.Stroke) !== 0 ? width : 0;
   }
 
@@ -235,7 +286,7 @@ export class Layouter {
   ): boolean {
     if (!this.place(plan, l, t, r, b, 0)) return false;
     const width = this.stroke(plan, marks, base);
-    const radius = this.sizes.length(plan.len[Len.Radius]);
+    const radius = this.sizes.of(plan, Len.Radius);
     if (!(width >= 0 && radius >= 0)) return false;
     const { x, y, w, h } = this.rect;
     if (!(w > 0 && h > 0)) return true;
@@ -265,7 +316,7 @@ export class Layouter {
     b: number,
     sink: PrimitiveSink,
   ): boolean {
-    const radius = this.sizes.length(plan.len[Len.R]);
+    const radius = this.sizes.of(plan, Len.R);
     const width = this.stroke(plan, marks, base);
     if (!(radius >= 0 && width >= 0) || !this.place(plan, l, t, r, b, radius)) return false;
     if (!(radius > 0)) return true;
@@ -381,12 +432,11 @@ export class Layouter {
     sink: PrimitiveSink,
   ): boolean {
     const sizes = this.sizes;
-    const len = plan.len;
-    const gain = sizes.length(len[Len.Gain]);
-    const maximum = sizes.length(len[Len.Max]);
-    const headLength = sizes.length(len[Len.Head]);
-    const half = sizes.length(len[Len.HeadWidth]);
-    const threshold = sizes.length(len[Len.MinSpeed]);
+    const gain = sizes.of(plan, Len.Gain);
+    const maximum = sizes.of(plan, Len.Max);
+    const headLength = sizes.of(plan, Len.Head);
+    const half = sizes.of(plan, Len.HeadWidth);
+    const threshold = sizes.of(plan, Len.MinSpeed);
     const width = this.stroke(plan, marks, base);
     if (
       !(gain >= 0 && maximum >= 0 && headLength >= 0 && half >= 0 && threshold >= 0 && width >= 0)

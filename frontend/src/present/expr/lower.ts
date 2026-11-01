@@ -25,6 +25,8 @@ export interface VarSlot {
   readonly register: number;
   /** For lengths: the basis and clamping every assignment agrees on; set when the variable is lowered. */
   length: { readonly basis: CLength["basis"]; readonly clamped: boolean } | null;
+  /** What the variable is for every row and theme when no rule or theme can change it; reads compile to this. */
+  constant: Compiled | null;
 }
 
 const ATTR_KINDS: Readonly<Partial<Record<ExprType, AttrKindValue>>> = {
@@ -161,6 +163,7 @@ export class Lowerer {
     const ctx = this.ctx;
     const slot = this.vars.get(node.name);
     if (!slot) return this.fail(node, `unknown variable '${node.name}'`, "unknown-name");
+    if (slot.constant) return slot.constant;
     const at = slot.register;
     const reg = (offset: number): Scalar =>
       dynamic((row) => ctx.regs[row * ctx.stride + at + offset]);

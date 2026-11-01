@@ -1,30 +1,35 @@
-//! The overlay pipeline of a viewer: one lane per overlay file, each turning the Scene of a video frame into Drawing
-//! Instructions for the user's catalog and filters.
+//! The overlay data feed of a viewer: it loads each overlay file once and sends what the frontend needs to draw
+//! it, as Sample Items and Frame Maps. It never evaluates a catalog, filters for display or draws; presentation is
+//! `frontend/src/present/`.
 //!
-//! [`OverlayService::open_viewer`] gives a [`ViewerOverlays`]. The viewer follows the video's window ([`Want`]): for
-//! every shown lane and every frame in the window it looks the sample up ([`overlay_sync::select`]), filters its
-//! Scene and draws it with the lane's catalog, once per residency of the frame in the window and once per view
-//! revision. [`prepare_lane_frame`] is that step on its own, which export reuses.
+//! [`OverlayService::open_viewer`] gives a [`ViewerOverlays`]. Lanes on the same file share a source: its track is
+//! loaded once and each of its samples is encoded once (`scene-store` caches the encoding across viewers) and sent
+//! once. A lane adds only its Frame Map, which `overlay-sync` selects under the lane's [`LanePolicy`]. The viewer
+//! follows the data window of the video's [`Want`]: maps and samples go only inside it, the samples as
+//! [`sample_window`] defines, nearest the playhead first, and a sample or map that leaves the window is sent again
+//! when it returns.
 //!
-//! One worker thread prepares frames and compiles catalogs; one thread per overlay file loads its track. The state
-//! they share is bounded by construction (see `state`): a want updates the window in place and the worker derives
-//! its next job from it, so there is no queue of wants or frames to grow. A lane whose catalog cannot be drawn still
-//! sends empty drawings for its frames, and a failed lane sends nothing, so neither holds the video back.
+//! One thread per source loads the track and then encodes; the state they share is bounded by construction (see
+//! `state`): a want updates the windows in place, the encoders derive their next sample from them, and at most four
+//! encoded items per source wait for the consumer. A sample that cannot be read goes as an empty item with a
+//! problem, so no lane waits for it forever; a failed source sends nothing.
 //!
 //! [`Want`]: playback::Want
 
+mod data;
 mod lane;
-mod prepare;
+mod pull;
 mod service;
 mod sources;
 mod state;
 mod viewer;
+mod window;
 mod worker;
 
 #[cfg(test)]
 mod tests;
 
-pub use lane::{LaneOverlay, LaneReady, LaneStatus, LaneView, OverlayEvent, TargetSize};
-pub use prepare::prepare_lane_frame;
+pub use lane::{LanePolicy, LaneReady, LaneStatus, MapRun, OverlayEvent, SampleItem};
 pub use service::OverlayService;
 pub use viewer::ViewerOverlays;
+pub use window::sample_window;

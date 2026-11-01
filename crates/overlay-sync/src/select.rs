@@ -32,7 +32,7 @@ use crate::{MatchKind, MatchPolicy, SampleKeys, Selection, Sticky, Tolerance};
 /// # Sticky
 ///
 /// With [`Sticky::enabled`], the latest sample before the frame stays on screen while its age is within
-/// [`Sticky::timeout`] (inclusive; no limit for `None`), drawn at [`Sticky::opacity`] clamped to 0 to 1. The age is
+/// [`Sticky::timeout`] (inclusive; no limit for `None`), kept as [`MatchKind::Retained`]. The age is
 /// `frame.timestamp` minus the sample's time: the key itself for a time-keyed file, and the time the video's
 /// `timeline` gives the key's frame for a frame-keyed one, never a frame number read as a time. A key the timeline
 /// does not reach is rejected. The age is measured from the sample, so the result does not depend on which frames
@@ -65,7 +65,7 @@ fn by_frame(
         return missing(coverage);
     };
     if keys[index] == frame.sequence_id {
-        return sample(index, MatchKind::Exact, 1.0);
+        return sample(index, MatchKind::Exact);
     }
     if coverage == Coverage::Dense {
         return Selection::Empty;
@@ -82,12 +82,12 @@ fn by_time(keys: &[MediaTime], time: MediaTime, policy: &MatchPolicy) -> Selecti
     };
     let age = age(time, keys[index]);
     if age == 0 {
-        return sample(index, MatchKind::Exact, 1.0);
+        return sample(index, MatchKind::Exact);
     }
     if let Tolerance::PreviousWithin(tolerance) = policy.tolerance
         && age <= tolerance.0
     {
-        return sample(index, MatchKind::Tolerated, 1.0);
+        return sample(index, MatchKind::Tolerated);
     }
     retain(policy.sticky, index, age)
 }
@@ -106,20 +106,11 @@ fn retain(sticky: Sticky, index: usize, age: i64) -> Selection {
     if !sticky.enabled || !young {
         return Selection::None;
     }
-    let opacity = if sticky.opacity.is_nan() {
-        0.0
-    } else {
-        sticky.opacity.clamp(0.0, 1.0)
-    };
-    sample(index, MatchKind::Retained, opacity)
+    sample(index, MatchKind::Retained)
 }
 
-fn sample(index: usize, kind: MatchKind, opacity: f32) -> Selection {
-    Selection::Sample {
-        index,
-        kind,
-        opacity,
-    }
+fn sample(index: usize, kind: MatchKind) -> Selection {
+    Selection::Sample { index, kind }
 }
 
 /// Microseconds from `then` to `now`, saturating.

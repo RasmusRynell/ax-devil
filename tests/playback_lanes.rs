@@ -1,100 +1,94 @@
 //! A playback socket's lanes against the committed fixture video and overlay files written by each test, through
-//! the real routes, decoders and catalogs: what a lane reports, the overlays it sends for the view they were made for,
-//! what a view that cannot be applied does, and what a watcher may learn from them.
+//! the real routes, decoders and catalogs: what a lane reports, the Frame Maps and Sample Items it sends for the
+//! policy they were selected under, what a policy that cannot be applied does, the catalogs a viewer can fetch, and
+//! what a watcher may learn from them.
 
 mod common;
 
 use api_types::playback::{
-    ClientMessage, Direction, LaneInfo, LaneStatusWire, LaneViewWire, ServerMessage, StickyWire,
-    TargetWire,
+    ClientMessage, Direction, FRAME_MAP_EMPTY, FRAME_MAP_NONE, LaneDefaultsWire, LaneInfo,
+    LanePolicyWire, LaneStatusWire, MATCH_EXACT, ServerMessage, StickyWire,
 };
-use common::{Backend, Event, Overlay, Viewer, fixture};
+use common::{Backend, Event, Viewer, fixture};
 use sessions::{
     CursorOptions,
     session::{Access, Command, Control, Reply},
 };
 use std::collections::BTreeMap;
 
-fn lane_view(catalog: &str, revision: u32, width: u32) -> ClientMessage {
-    ClientMessage::LaneView {
-        lane: 0,
-        revision,
-        view: LaneViewWire {
-            catalog: catalog.into(),
-            filter: BTreeMap::new(),
-            tolerance_ms: None,
-            sticky: StickyWire {
-                enabled: false,
-                timeout_ms: None,
-                opacity: 1.0,
-            },
-            target: TargetWire {
-                width,
-                height: width * 3 / 4,
-            },
-            visible: true,
+fn policy(tolerance_ms: Option<u32>, timeout_ms: Option<u32>) -> LanePolicyWire {
+    LanePolicyWire {
+        tolerance_ms,
+        sticky: StickyWire {
+            enabled: false,
+            timeout_ms,
         },
     }
 }
 
-/// Reads until the lane complains, skipping frames and overlays.
-async fn lane_problem(viewer: &mut Viewer) -> String {
-    loop {
-        match viewer.next().await {
-            Event::Message(ServerMessage::LaneProblem { lane: 0, reason }) => return reason,
-            Event::Frame(_) | Event::Overlay(_) => {}
-            Event::Message(ServerMessage::LaneStatus { .. }) => {}
-            _ => panic!("expected a LaneProblem"),
-        }
-    }
-}
-
-/// Reads until the lane is ready and every frame of 0..=5 has an overlay made for `revision`.
-async fn collect(
-    viewer: &mut Viewer,
+fn lane_policy(
+    lane: u16,
     revision: u32,
-    ready: &mut Option<LaneStatusWire>,
-) -> BTreeMap<u64, Overlay> {
-    let mut overlays = BTreeMap::new();
-    while ready.is_none() || overlays.len() < 6 {
-        match viewer.next().await {
-            Event::Message(ServerMessage::LaneStatus {
-                lane: 0,
-                status: status @ LaneStatusWire::Ready { .. },
-            }) => *ready = Some(status),
-            Event::Message(ServerMessage::LaneStatus { .. }) | Event::Frame(_) => {}
-            Event::Overlay(overlay) if overlay.revision == revision => {
-                overlays.insert(overlay.sequence_id, overlay);
+    policy: LanePolicyWire,
+    subscribed: bool,
+) -> ClientMessage {
+    ClientMessage::LanePolicy {
+        lane,
+        revision,
+        policy,
+        subscribed,
+    }
+}
+
+/// Everything lane 0 has sent so far.
+#[derive(Default)]
+struct Seen {
+    ready: Option<LaneStatusWire>,
+    /// How many times each sample arrived.
+    samples: BTreeMap<u64, u32>,
+    /// By policy revision and frame: the sample cell, the kind, and the data revision the run was made under.
+    maps: BTreeMap<(u32, u64), (u32, u8, u32)>,
+    problems: Vec<String>,
+}
+
+impl Seen {
+    /// Reads until `done` holds, which bounds the wait through the viewer's own timeout.
+    async fn read_until(&mut self, viewer: &mut Viewer, done: impl Fn(&Self) -> bool) {
+        while !done(self) {
+            match viewer.next().await {
+                Event::Message(ServerMessage::LaneStatus {
+                    lane: 0,
+                    status: status @ LaneStatusWire::Ready { .. },
+                }) => self.ready = Some(status),
+                Event::Message(ServerMessage::LaneStatus { .. }) | Event::Frame(_) => {}
+                Event::Message(ServerMessage::LaneProblem { lane: 0, reason }) => {
+                    self.problems.push(reason);
+                }
+                Event::Sample(sample) => {
+                    assert_eq!(sample.source, 0);
+                    *self.samples.entry(sample.sample).or_default() += 1;
+                }
+                Event::Map(map) => {
+                    assert_eq!(map.lane, 0);
+                    for (k, (cell, kind)) in map.samples.iter().zip(&map.kinds).enumerate() {
+                        self.maps
+                            .insert((map.policy, map.first + k as u64), (*cell, *kind, map.data));
+                    }
+                }
+                _ => panic!("expected the lane's status, data and frames"),
             }
-            Event::Overlay(_) => {}
-            _ => panic!("expected the lane's status, overlays and frames"),
         }
     }
-    overlays
+
+    /// Whether the maps made under `policy` cover frames 0 to 5.
+    fn mapped(&self, policy: u32) -> bool {
+        (0..=5).all(|frame| self.maps.contains_key(&(policy, frame)))
+    }
 }
 
-#[tokio::test]
-async fn a_lane_view_naming_an_unknown_catalog_is_reported_and_the_session_goes_on() {
-    let backend = Backend::start().await;
-    let id = backend.add(&fixture("cfr_h264_gop10_bf2.mp4")).await;
-    let mut viewer = backend.viewer().await;
-    viewer.open(&id.ticket(), None).await;
-    let video = viewer.opened().await;
-    assert_eq!(video.lanes.len(), 1);
-
-    viewer.send(&lane_view("built-in:nope", 1, 640)).await;
-    let reason = lane_problem(&mut viewer).await;
-    assert!(reason.contains("built-in:nope"), "{reason}");
-
-    viewer.want(40, 3, 0, Direction::Forward).await;
-    viewer.frames(40..=43).await;
-}
-
-#[tokio::test]
-async fn a_lane_reports_its_load_then_sends_an_overlay_per_frame_for_the_view_it_was_made_for() {
-    let backend = Backend::start().await;
+/// A video with one lane whose file has a box on frames 0 to 2 and is dense, so the others are covered with nothing.
+async fn viewer_with_a_lane(backend: &Backend) -> (Viewer, common::Described) {
     let gt = backend.folder.path().join("gt.txt");
-    // Video frames 0 to 2 have a box; the file is dense, so the others are covered with nothing.
     std::fs::write(
         &gt,
         "1,1,10,10,20,20,1,1,1\n2,1,12,10,20,20,1,1,1\n3,1,14,10,20,20,1,1,1\n",
@@ -106,47 +100,202 @@ async fn a_lane_reports_its_load_then_sends_an_overlay_per_frame_for_the_view_it
     let mut viewer = backend.viewer().await;
     viewer.open(&id.ticket(), None).await;
     let video = viewer.opened().await;
-    let lane = LaneInfo {
-        label: "gt.txt".into(),
-        has_overlay: true,
+    (viewer, video)
+}
+
+#[tokio::test]
+async fn a_catalog_is_fetched_by_id_and_one_that_is_not_served_answers_with_none() {
+    let backend = Backend::start().await;
+    let id = backend.add(&fixture("cfr_h264_gop10_bf2.mp4")).await;
+    let mut viewer = backend.viewer().await;
+    viewer.open(&id.ticket(), None).await;
+    viewer.opened().await;
+
+    for id in [
+        "built-in:standard",
+        "built-in:tracking",
+        "user:night.json",
+        "nope",
+    ] {
+        viewer.send(&ClientMessage::Catalog { id: id.into() }).await;
+    }
+
+    let mut answers = BTreeMap::new();
+    while answers.len() < 4 {
+        match viewer.next().await {
+            Event::Message(ServerMessage::Catalog {
+                id,
+                revision,
+                document,
+            }) => {
+                answers.insert(id, (revision, document));
+            }
+            Event::Frame(_) => {}
+            _ => panic!("expected the answers to the catalog requests"),
+        }
+    }
+    let (revision, document) = &answers["built-in:standard"];
+    assert_eq!(*revision, 1);
+    let document: serde_json::Value = serde_json::from_str(document.as_ref().unwrap()).unwrap();
+    assert_eq!(
+        (document["schema"].as_u64(), document["id"].as_str()),
+        (Some(4), Some("built-in:standard"))
+    );
+    for unserved in ["built-in:tracking", "user:night.json", "nope"] {
+        assert_eq!(answers[unserved], (0, None), "{unserved}");
+    }
+}
+
+#[tokio::test]
+async fn opened_lists_the_served_catalogs_and_what_every_lane_starts_with() {
+    let backend = Backend::start().await;
+    let id = backend.add(&fixture("cfr_h264_gop10_bf2.mp4")).await;
+    let mut viewer = backend.viewer().await;
+    viewer.open(&id.ticket(), None).await;
+
+    let (lane_defaults, catalogs) = loop {
+        match viewer.next().await {
+            Event::Message(ServerMessage::Indexing { .. }) => {}
+            Event::Message(ServerMessage::Opened {
+                lane_defaults,
+                catalogs,
+                ..
+            }) => break (lane_defaults, catalogs),
+            _ => panic!("expected Indexing or Opened"),
+        }
     };
-    assert_eq!(video.lanes, [lane]);
 
-    let mut ready = None;
+    let ids: Vec<_> = catalogs.iter().map(|catalog| catalog.id.as_str()).collect();
+    assert_eq!(
+        ids,
+        ["built-in:standard", "built-in:classic", "built-in:glass"]
+    );
+    assert_eq!(
+        lane_defaults,
+        LaneDefaultsWire {
+            catalog: "built-in:standard".into(),
+            policy: LanePolicyWire {
+                tolerance_ms: Some(50),
+                sticky: StickyWire {
+                    enabled: false,
+                    timeout_ms: Some(2050),
+                },
+            },
+        }
+    );
+}
+
+#[tokio::test]
+async fn a_policy_for_a_lane_without_an_overlay_is_ignored_and_the_session_goes_on() {
+    let backend = Backend::start().await;
+    let id = backend.add(&fixture("cfr_h264_gop10_bf2.mp4")).await;
+    let mut viewer = backend.viewer().await;
+    viewer.open(&id.ticket(), None).await;
+    let video = viewer.opened().await;
+    assert_eq!(
+        video.lanes,
+        [LaneInfo {
+            label: "cfr_h264_gop10_bf2.mp4".into(),
+            source: None,
+        }]
+    );
+
+    viewer
+        .send(&lane_policy(0, 1, policy(None, Some(100_001)), true))
+        .await;
+
+    viewer.want(40, 3, 0, Direction::Forward).await;
+    viewer.frames(40..=43).await;
+}
+
+#[tokio::test]
+async fn a_lane_reports_its_load_then_sends_its_maps_and_each_mapped_sample_once_under_the_policy_asked_for()
+ {
+    let backend = Backend::start().await;
+    let (mut viewer, video) = viewer_with_a_lane(&backend).await;
+    assert_eq!(
+        video.lanes,
+        [LaneInfo {
+            label: "gt.txt".into(),
+            source: Some(0),
+        }]
+    );
+
+    // A lane sends nothing until it is subscribed.
+    let mut seen = Seen::default();
     viewer.want(0, 5, 0, Direction::Forward).await;
-    let overlays = collect(&mut viewer, 0, &mut ready).await;
-
+    seen.read_until(&mut viewer, |seen| seen.ready.is_some())
+        .await;
     let Some(LaneStatusWire::Ready {
-        samples, filter, ..
-    }) = ready.clone()
+        samples,
+        filter,
+        data_revision,
+        mean_sample_bytes,
+        ..
+    }) = seen.ready.clone()
     else {
         panic!("the lane is ready");
     };
-    assert_eq!(samples, 3);
+    assert_eq!((samples, data_revision), (3, 1));
+    assert!(mean_sample_bytes > 0);
     assert!(filter.iter().any(|option| option.id == "show_person"));
-    for (frame, overlay) in &overlays {
-        assert_eq!((overlay.lane, overlay.target), (0, (1280, 720)));
-        assert_eq!(overlay.timestamp_us as f64, video.times[*frame as usize]);
+    assert!(seen.maps.is_empty() && seen.samples.is_empty());
+
+    viewer
+        .send(&lane_policy(0, 1, policy(None, None), true))
+        .await;
+    seen.read_until(&mut viewer, |seen| {
+        seen.mapped(1) && seen.samples.len() == 3
+    })
+    .await;
+    for frame in 0..3 {
         assert_eq!(
-            overlay.matched,
-            if *frame < 3 { 1 } else { 4 },
-            "frame {frame}"
+            seen.maps[&(1, frame)],
+            (frame as u32, MATCH_EXACT, data_revision)
         );
-        assert_eq!(overlay.opacity, 1.0);
     }
-    assert!(
-        overlays[&4].sections.is_empty(),
-        "a covered frame with nothing draws nothing"
+    for frame in 3..=5 {
+        assert_eq!(
+            seen.maps[&(1, frame)],
+            (FRAME_MAP_EMPTY, MATCH_EXACT, data_revision),
+            "a covered frame with nothing is empty, not missing"
+        );
+    }
+    assert!(seen.maps.values().all(|(cell, ..)| *cell != FRAME_MAP_NONE));
+    assert_eq!(
+        seen.samples.values().copied().collect::<Vec<_>>(),
+        [1, 1, 1]
     );
 
-    // A new view resends the window made for it.
-    viewer.send(&lane_view("built-in:tracking", 3, 800)).await;
-    let resent = collect(&mut viewer, 3, &mut ready).await;
-    assert!(resent.values().all(|overlay| overlay.target == (800, 600)));
+    // Another policy resends the maps under its revision, and no sample the lane already holds.
+    viewer
+        .send(&lane_policy(0, 2, policy(Some(50), None), true))
+        .await;
+    seen.read_until(&mut viewer, |seen| seen.mapped(2)).await;
+    assert_eq!(seen.maps[&(2, 1)].0, 1);
+    assert_eq!(
+        seen.samples.values().copied().collect::<Vec<_>>(),
+        [1, 1, 1]
+    );
 
-    // A catalog the library lacks is reported by the lane's overlays; the lane stays ready.
-    viewer.send(&lane_view("user:missing.json", 4, 800)).await;
-    assert!(lane_problem(&mut viewer).await.contains("missing.json"));
+    // A policy that cannot be applied is reported; the lane keeps its matching and the maps carry the new revision.
+    viewer
+        .send(&lane_policy(0, 3, policy(None, Some(100_001)), true))
+        .await;
+    seen.read_until(&mut viewer, |seen| seen.mapped(3)).await;
+    assert!(
+        seen.problems[0].contains("100 seconds"),
+        "{:?}",
+        seen.problems
+    );
+    assert_eq!(seen.maps[&(3, 1)].0, 1);
+
+    // Unsubscribing stops the data: only frames arrive for the window that follows.
+    viewer
+        .send(&lane_policy(0, 4, policy(None, None), false))
+        .await;
+    viewer.want(40, 3, 0, Direction::Forward).await;
+    viewer.frames(40..=43).await;
 }
 
 /// Every lane status `viewer` is sent until each of `lanes` lanes has one that is not `Loading`, as JSON text.
@@ -159,7 +308,8 @@ async fn settled_lanes(viewer: &mut Viewer, lanes: u16) -> BTreeMap<u16, String>
                 ..
             })
             | Event::Frame(_)
-            | Event::Overlay(_) => {}
+            | Event::Sample(_)
+            | Event::Map(_) => {}
             Event::Message(message @ ServerMessage::LaneStatus { lane, .. }) => {
                 settled.insert(lane, serde_json::to_string(&message).unwrap());
             }

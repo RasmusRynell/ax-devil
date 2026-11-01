@@ -1,8 +1,8 @@
 // @vitest-environment node
 import { describe, expect, it } from "vite-plus/test";
+import { catalogDocument, EMPTY, NONE } from "./fakeData";
 import { flush, opened, setup, type OpenedMessage } from "./fakePlayback";
-import { preparedDrawing } from "./fakeOverlay";
-import type { ClientMessage, LaneStatusWire } from "./protocol";
+import type { ClientMessage, LaneInfo, LaneStatusWire } from "./protocol";
 
 const READY: LaneStatusWire = {
   status: "Ready",
@@ -10,12 +10,28 @@ const READY: LaneStatusWire = {
   filter: [],
   warnings: [],
   samples: 5,
+  data_revision: 1,
+  mean_sample_bytes: 10,
 };
-const TWO_LANES = [
-  { label: "DPM", has_overlay: true },
-  { label: "GT", has_overlay: true },
-];
-const laneViews = (sent: ClientMessage[]) => sent.filter((message) => message.type === "LaneView");
+const DPM: LaneInfo = { label: "DPM", source: 0 };
+const TWO_LANES: LaneInfo[] = [DPM, { label: "GT", source: 1 }];
+const policies = (sent: ClientMessage[]) => sent.filter((message) => message.type === "LanePolicy");
+const catalogs = (sent: ClientMessage[]) => sent.filter((message) => message.type === "Catalog");
+
+/** Frame 0 shown with a drawn lane: the maps give sample 0 to frames 0 and 1 (frame 1 retained), none to 2, empty to 3. */
+async function shown() {
+  const t = await setup();
+  t.server.open(10, [DPM]);
+  t.server.catalog();
+  t.server.status(0, READY);
+  t.server.frames(0, 1, 2, 3);
+  t.refresh();
+  t.server.map({ cells: [0, 0, NONE, EMPTY], kinds: [0, 2, 0, 0] });
+  t.server.sample();
+  t.refresh();
+  expect(t.presented).toEqual([0]);
+  return t;
+}
 
 describe("lanes", () => {
   it("describes the video, the catalogs and each lane's load for the UI", async () => {
@@ -34,140 +50,141 @@ describe("lanes", () => {
       { status: "Loading" },
     ]);
     server.status(0, READY);
-    server.say({ type: "LaneProblem", lane: 0, reason: "no such catalog" });
-    expect(session.getSnapshot().lanes[0]).toMatchObject({
-      status: READY,
-      problem: "no such catalog",
-    });
+    server.say({ type: "LaneProblem", lane: 0, reason: "bad timeout" });
+    expect(session.getSnapshot().lanes[0]).toMatchObject({ status: READY, problem: "bad timeout" });
     server.say({ type: "LaneProblem", lane: 7, reason: "ignored" });
   });
 
-  it("shows a frame only once every shown lane that loaded has its overlay for it", async () => {
-    const { server, presented, drawn, refresh } = await setup();
-    server.open(10, TWO_LANES);
-    server.status(0, READY);
-    server.status(1, READY);
-    server.frames(0);
-    server.overlay(0, 0, 0);
-    refresh();
-    expect(presented).toEqual([]);
-    const second = preparedDrawing();
-    server.overlay(1, 0, 0, second);
-    refresh();
-    expect(presented).toEqual([0]);
-    expect(drawn[0].overlays).toHaveLength(2);
-    expect(drawn[0].overlays[1]).toBe(second);
-  });
-
-  it("is never held up by a lane that is loading, failed, hidden or plain", async () => {
-    const { session, server, presented, refresh } = await setup();
-    const lanes = [
-      ...TWO_LANES,
-      { label: "FRCNN", has_overlay: true },
-      { label: "v", has_overlay: false },
-    ];
-    server.open(10, lanes);
-    server.status(1, {
-      status: "Failed",
-      code: "OverlayInvalid",
-      params: {},
-      reason: "bad file",
-      location: "gt.txt",
-    });
-    server.status(2, READY);
-    session.setLaneView(2, { visible: false });
-    server.frames(0);
-    refresh();
-    expect(presented).toEqual([0]);
-    // Lane 0 is still loading; when it turns ready the next frame waits for it.
-    server.status(0, READY);
-    session.step(1);
-    server.frames(1);
-    refresh();
-    expect(presented).toEqual([0]);
-    server.overlay(0, 1, 0);
-    refresh();
-    expect(presented).toEqual([0, 1]);
-  });
-
-  it("keeps the older revision on screen until the newer one arrives, and ignores one that arrives late", async () => {
-    const { session, server, sent, drawn, refresh } = await setup();
-    server.open(10, TWO_LANES);
-    server.status(0, READY);
-    server.status(1, { status: "Loading" });
-    server.frames(0);
-    const old = preparedDrawing();
-    server.overlay(0, 0, 0, old);
-    refresh();
-    session.setLaneView(0, { catalog: "built-in:tracking" });
-    expect(laneViews(sent)).toMatchObject([
-      { lane: 0, revision: 1, view: { catalog: "built-in:tracking" } },
+  it("subscribes every source lane when the entry opens and again after a reconnection", async () => {
+    const { session, server, sent, retries } = await setup();
+    server.open(10, [...TWO_LANES, { label: "v", source: null }]);
+    expect(policies(sent)).toMatchObject([
+      { lane: 0, revision: 1, subscribed: true, policy: { tolerance_ms: 50 } },
+      { lane: 1, revision: 1, subscribed: true },
     ]);
-    expect(drawn.at(-1)?.overlays[0]).toBe(old);
-    const newer = preparedDrawing();
-    server.overlay(0, 0, 1, newer);
-    expect(drawn.at(-1)?.overlays[0]).toBe(newer);
-    server.overlay(0, 0, 0, preparedDrawing());
-    expect(drawn.at(-1)?.overlays[0]).toBe(newer);
-  });
-
-  it("applies the atlas changes of every overlay, even those it does not keep", async () => {
-    const { session, server, drawn, refresh } = await setup();
-    server.open(10, TWO_LANES);
-    server.status(0, READY);
-    server.frames(0);
-    session.setLaneView(1, { visible: false });
-    server.overlay(1, 0, 0, preparedDrawing(3, [{ type: "reset", generation: 3 }]));
-    server.overlay(0, 0, 0, preparedDrawing(3));
-    refresh();
-    expect(drawn.at(-1)).toMatchObject({ sequenceId: 0, atlas: 3 });
-  });
-
-  it("sends a new revision for a view change, once, and not for a change that changes nothing", async () => {
-    const { session, server, sent } = await setup();
-    server.open(10, TWO_LANES);
-    session.setLaneView(1, { sticky: { enabled: true, timeout_ms: null, opacity: 0.5 } });
-    session.setLaneView(1, { sticky: { enabled: true, timeout_ms: null, opacity: 0.5 } });
-    session.setLaneView(1, { visible: false });
-    expect(laneViews(sent)).toMatchObject([
-      { lane: 1, revision: 1, view: { sticky: { enabled: true }, visible: true } },
-      { lane: 1, revision: 2, view: { visible: false } },
+    session.setLane(0, { visible: false });
+    server.drop();
+    retries[0].run();
+    await flush();
+    server.open(10, [...TWO_LANES, { label: "v", source: null }]);
+    expect(policies(sent).slice(3)).toMatchObject([
+      { lane: 0, revision: 3, subscribed: false },
+      { lane: 1, revision: 2, subscribed: true },
     ]);
-    expect(session.getSnapshot().lanes[1]).toMatchObject({ revision: 2 });
   });
 
-  it("sends target changes at most once per display refresh, with the last size", async () => {
-    const { session, server, sent, refresh } = await setup();
-    server.open(10, TWO_LANES);
-    const size = (width: number) => [
-      { width, height: 360 },
-      { width: 400, height: 300 },
-    ];
-    session.setLaneTargets(size(500));
-    session.setLaneTargets(size(520));
-    session.setLaneTargets(size(560.4));
-    expect(laneViews(sent)).toEqual([]);
-    refresh();
-    expect(laneViews(sent)).toMatchObject([
-      { lane: 0, revision: 1, view: { target: { width: 560, height: 360 } } },
-      { lane: 1, revision: 1, view: { target: { width: 400, height: 300 } } },
-    ]);
-    session.setLaneTargets(size(560));
-    refresh();
-    expect(laneViews(sent)).toHaveLength(2);
-  });
-
-  it("gives a reconnected backend the views the user had set", async () => {
+  it("asks for each catalog once, however many lanes use it, and keeps it across a reconnection", async () => {
     const { session, server, sent, retries } = await setup();
     server.open(10, TWO_LANES);
-    session.setLaneView(0, { visible: false });
+    expect(catalogs(sent)).toEqual([{ type: "Catalog", id: "built-in:standard" }]);
+    server.catalog();
+    session.setLane(1, { catalog: "built-in:classic" });
+    session.setLane(0, { catalog: "built-in:classic" });
+    session.setLane(0, { catalog: "built-in:standard" });
+    expect(catalogs(sent)).toHaveLength(2);
+    server.catalog("built-in:classic", catalogDocument("classic"));
     server.drop();
     retries[0].run();
     await flush();
     server.open(10, TWO_LANES);
-    expect(laneViews(sent)).toMatchObject([
-      { lane: 0, revision: 1, view: { visible: false } },
-      { lane: 0, revision: 1, view: { visible: false } },
+    expect(catalogs(sent).map((m) => m.id)).toEqual(["built-in:standard", "built-in:classic"]);
+  });
+
+  it("sizes the data window of a Want from what the shown lanes' items weigh", async () => {
+    const { session, server, wants, refresh } = await setup();
+    server.open(10, TWO_LANES);
+    expect(wants().at(-1)).toMatchObject({ data_ahead: 0, data_behind: 0 });
+    server.status(0, { ...READY, mean_sample_bytes: 50 });
+    refresh();
+    // A tenth of the 1000 byte budget is two items: the playhead and one frame before it.
+    expect(wants().at(-1)).toMatchObject({ ahead: 4, behind: 5, data_ahead: 0, data_behind: 1 });
+    session.setLane(0, { visible: false });
+    refresh();
+    expect(wants().at(-1)).toMatchObject({ data_ahead: 0, data_behind: 0 });
+  });
+
+  it("never draws another sample's marks: it waits for the map, the item and the catalog, and draws them together", async () => {
+    const { server, presented, drawn, refresh, retries, session } = await setup();
+    server.open(10, [DPM]);
+    server.status(0, READY);
+    server.frames(0);
+    refresh();
+    // The video is here; the lane has nothing, so the frame waits for it, but not for long.
+    expect(presented).toEqual([]);
+    const timer = retries.at(-1);
+    expect(timer?.ms).toBeLessThanOrEqual(250);
+    refresh(250);
+    timer?.run();
+    refresh();
+    expect(presented).toEqual([0]);
+    expect(drawn.at(-1)?.lanes).toEqual([undefined]);
+    expect(session.getSnapshot().lanes[0].pending).toBe(true);
+    server.map({ cells: [0] });
+    server.sample();
+    expect(drawn).toHaveLength(1);
+    server.catalog();
+    expect(drawn).toHaveLength(2);
+    expect(drawn[1].lanes[0]).toMatchObject({ source: 0, dataRevision: 1, sample: 0, opacity: 1 });
+    expect(drawn[1].lanes[0]?.columns.rows).toBeGreaterThan(0);
+    expect(session.getSnapshot().lanes[0].pending).toBe(false);
+  });
+
+  it("shows a frame at once when its lanes have their data, and draws nothing for none or empty", async () => {
+    const { session, server, presented, drawn, refresh } = await shown();
+    session.step(2);
+    refresh();
+    expect(presented).toEqual([0, 2]);
+    expect(drawn.at(-1)?.lanes).toEqual([undefined]);
+    session.step(1);
+    refresh();
+    expect(presented).toEqual([0, 2, 3]);
+    expect(session.getSnapshot().lanes[0].pending).toBe(false);
+    server.say({ type: "FrameError", sequence_id: 9, code: "DecodeFailed", params: {} });
+  });
+
+  it("draws a retained sample at the lane's retained opacity", async () => {
+    const { session, drawn, refresh } = await shown();
+    session.setLane(0, { sticky: { enabled: false, timeout_ms: 2050, opacity: 0.5 } });
+    expect(drawn.at(-1)?.lanes[0]).toMatchObject({ sample: 0, opacity: 1 });
+    session.step(1);
+    refresh();
+    expect(drawn.at(-1)).toMatchObject({ sequenceId: 1, lanes: [{ sample: 0, opacity: 0.5 }] });
+  });
+
+  it("blanks a lane whose policy changed until maps of the new revision arrive", async () => {
+    const { session, server, sent, drawn } = await shown();
+    session.setLane(0, { tolerance_ms: 100 });
+    expect(policies(sent).at(-1)).toMatchObject({ revision: 2, policy: { tolerance_ms: 100 } });
+    expect(drawn.at(-1)?.lanes).toEqual([undefined]);
+    expect(session.getSnapshot().lanes[0]).toMatchObject({ pending: true, policyRevision: 2 });
+    server.map({ cells: [0, 0], policyRevision: 1 });
+    expect(drawn.at(-1)?.lanes).toEqual([undefined]);
+    server.map({ cells: [0, 0], policyRevision: 2 });
+    expect(drawn.at(-1)?.lanes[0]).toMatchObject({ sample: 0 });
+    expect(session.getSnapshot().lanes[0].pending).toBe(false);
+  });
+
+  it("is never held up by a lane that is loading, failed, hidden or plain", async () => {
+    const { session, server, presented, refresh } = await setup();
+    server.open(10, [
+      DPM,
+      { label: "GT", source: 1 },
+      { label: "FRCNN", source: 2 },
+      { label: "v", source: null },
     ]);
+    server.status(1, { status: "Failed", code: "OverlayInvalid", params: {}, reason: "bad file" });
+    server.status(2, READY);
+    session.setLane(2, { visible: false });
+    server.frames(0);
+    refresh();
+    expect(presented).toEqual([0]);
+  });
+
+  it("ends the session on an item it cannot read", async () => {
+    const { session, server } = await setup();
+    server.open(10, [DPM]);
+    server.status(0, READY);
+    server.sample({ item: new Uint8Array(64) });
+    expect(session.getSnapshot().status).toBe("failed");
   });
 });

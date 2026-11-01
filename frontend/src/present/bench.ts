@@ -11,7 +11,7 @@ import { LaneQuads } from "./quads/lane";
 import { QuadSink } from "./quads/quadSink";
 import { FakeText } from "./text/fakeSource";
 
-const FRAMES = 300;
+const FRAMES = Number(process.env.AX_BENCH_FRAMES ?? 300);
 const WARMUP = 60;
 const LANES = 4;
 const VIEW = { width: 1280, height: 720, dpr: 1, zoom: 1 };
@@ -28,11 +28,37 @@ interface Lane {
   layouter: Layouter;
 }
 
-/** Run `FRAMES` frames of four lanes of `count` objects with the built-in catalog `name`; one result line. */
-export async function scenario(name: string, count: number, cold: boolean): Promise<string> {
+/**
+ * "warm": every lane shows its own sample frame after frame, glyphs known to the atlas. "cold": every lane shows a
+ * sample it has not shown for several frames and the atlas page starts empty every frame. "hit": warm, through
+ * `LanePresenter`, whose cache the unchanged input hits.
+ */
+export type Mode = "warm" | "cold" | "hit";
+
+/** One benchmark row: milliseconds per lane frame and per four-lane frame, memory and collector figures. */
+export interface BenchResult {
+  catalog: string;
+  count: number;
+  mode: Mode;
+  lane: { p50: number; p95: number };
+  /** Median share of a lane frame in filter and evaluate, and in layout. */
+  evalP50: number;
+  layoutP50: number;
+  lanes4: { p50: number; p95: number };
+  quadBytesPerObject: number;
+  garbageKbPerObject: number;
+  minorGcs: number;
+  minorGcMs: number;
+  retainedKb: number;
+}
+
+/** Run `FRAMES` frames of four lanes of `count` objects with the built-in catalog `name`. */
+export async function scenario(name: string, count: number, mode: Mode): Promise<BenchResult> {
+  const cold = mode === "cold";
   const catalog = builtIn(name);
-  const variants = cold ? [0, 1, 2, 3] : [0];
-  const samples = variants.map((v) => syntheticSample(count, v));
+  const samples = Array.from({ length: cold ? 2 * LANES : LANES }, (_, v) =>
+    syntheticSample(count, v),
+  );
   const text = new FakeText();
   const lanes: Lane[] = Array.from({ length: LANES }, () => {
     const quads = new LaneQuads();
@@ -47,15 +73,22 @@ export async function scenario(name: string, count: number, cold: boolean): Prom
   });
   const mask = { enabled: new Uint32Array(samples[0].maskWords), options: 0 };
   const style = { hidden: 0, theme: null };
+  const { LanePresenter } = mode === "hit" ? await import("./lane") : { LanePresenter: null };
+  const presenters = LanePresenter ? lanes.map(() => new LanePresenter(text)) : [];
   const frame = (
     f: number,
     times: { e: number[]; l: number[]; t: number[]; all: number[] } | null,
   ): void => {
-    const sample = samples[f % samples.length];
     if (cold) text.reset();
     const start = performance.now();
-    for (const lane of lanes) {
+    lanes.forEach((lane, i) => {
+      const sample = samples[(cold ? f * LANES + i : i) % samples.length];
       const t0 = performance.now();
+      if (presenters.length > 0) {
+        presenters[i].present({ catalog, sample, style, mask, filter: null }, VIEW);
+        times?.t.push(performance.now() - t0);
+        return;
+      }
       filterRows(sample, null, mask, lane.rows);
       evaluate(sample, lane.rows, catalog, style, lane.marks, lane.report);
       const t1 = performance.now();
@@ -64,7 +97,7 @@ export async function scenario(name: string, count: number, cold: boolean): Prom
       times?.e.push(t1 - t0);
       times?.l.push(t2 - t1);
       times?.t.push(t2 - t0);
-    }
+    });
     times?.all.push(performance.now() - start);
   };
   for (let f = 0; f < WARMUP; f++) frame(f, null);
@@ -98,18 +131,20 @@ export async function scenario(name: string, count: number, cold: boolean): Prom
     garbage = Math.max(garbage, getHeapStatistics().used_heap_size - start);
   }
   for (const key of ["e", "l", "t", "all"] as const) times[key].sort((a, b) => a - b);
-  const ms = (list: number[], p: number) => percentile(list, p).toFixed(3).padStart(7);
-  const lane = lanes[0];
-  const quadBytes = ((lane.quads.quads.count * 48) / count).toFixed(0);
-  return [
-    `${name.padEnd(8)} ${String(count).padStart(5)} ${cold ? "cold" : "warm"}`,
-    `eval ${ms(times.e, 0.5)} ${ms(times.e, 0.95)}`,
-    `layout ${ms(times.l, 0.5)} ${ms(times.l, 0.95)}`,
-    `lane ${ms(times.t, 0.5)} ${ms(times.t, 0.95)}`,
-    `4 lanes ${ms(times.all, 0.5)} ${ms(times.all, 0.95)}`,
-    `garbage ${(garbage / 1024 / LANES / count).toFixed(2)} KB/object`,
-    `minor GC ${minors} ${pause.toFixed(1)} ms`,
-    `retained ${(retained / 1024).toFixed(0)} KB`,
-    `${quadBytes} quad B/object`,
-  ].join(" | ");
+  const quadCount =
+    presenters.length > 0 ? presenters[0].quads.quads.count : lanes[0].quads.quads.count;
+  return {
+    catalog: name,
+    count,
+    mode,
+    lane: { p50: percentile(times.t, 0.5), p95: percentile(times.t, 0.95) },
+    evalP50: percentile(times.e, 0.5) || 0,
+    layoutP50: percentile(times.l, 0.5) || 0,
+    lanes4: { p50: percentile(times.all, 0.5), p95: percentile(times.all, 0.95) },
+    quadBytesPerObject: (quadCount * 48) / count,
+    garbageKbPerObject: garbage / 1024 / LANES / count,
+    minorGcs: minors,
+    minorGcMs: pause,
+    retainedKb: retained / 1024,
+  };
 }

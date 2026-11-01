@@ -1,8 +1,8 @@
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import { act, cleanup, render, screen } from "@testing-library/react";
 import { hiddenOf } from "../viewer/hidden";
-import { LANE_DEFAULTS } from "./fakeOpened";
-import { columnsFor, displayedSizes, LaneGrid, layoutLanes } from "./LaneGrid";
+import { LANE_SETTINGS } from "./fakeOpened";
+import { columnsFor, LaneGrid, layoutLanes } from "./LaneGrid";
 import type { LaneState } from "./lanes";
 import type { PlaybackSession } from "./session";
 import type { PlaybackView } from "./view";
@@ -35,24 +35,16 @@ describe("lane grid math", () => {
       [150, 150],
     ]);
   });
-
-  it("sizes the picture in each cell by its aspect, and gives hidden lanes none", () => {
-    const cells = layoutLanes([0, 2], 800, 300);
-    expect(displayedSizes(cells, 3, { width: 640, height: 480 })).toEqual([
-      { width: 400, height: 300 },
-      { width: 0, height: 0 },
-      { width: 400, height: 300 },
-    ]);
-  });
 });
 
 function lane(label: string, visible = true): LaneState {
   return {
     label,
-    hasOverlay: false,
+    source: null,
     status: "plain",
-    view: { ...LANE_DEFAULTS, visible },
-    revision: 0,
+    settings: { ...LANE_SETTINGS, visible },
+    policyRevision: 0,
+    pending: false,
   };
 }
 
@@ -67,11 +59,9 @@ function mount(labels: string[], hiddenLabels: string[], views: Record<string, b
       disconnect() {}
     },
   );
-  const session = { setLaneView: vi.fn(), setLaneTargets: vi.fn() };
+  const session = { setLane: vi.fn() };
   const view = {
     lanes: labels.map((label) => lane(label, views[label] ?? true)),
-    width: 640,
-    height: 480,
   } as unknown as PlaybackView;
   const hidden = hiddenOf(
     hiddenLabels.map((label) => ({
@@ -100,23 +90,18 @@ function mount(labels: string[], hiddenLabels: string[], views: Record<string, b
 }
 
 describe("lane grid", () => {
-  it("leaves a hidden lane out, stops its overlay and gives the rest the room", () => {
+  it("leaves a hidden lane out, stops its data and gives the rest the room", () => {
     const session = mount(["A", "B", "C"], ["B"]);
     expect(screen.getByText("A")).toBeTruthy();
     expect(screen.getByText("C")).toBeTruthy();
     expect(screen.queryByText("B")).toBeNull();
-    expect(session.setLaneView.mock.calls).toEqual([[1, { visible: false }]]);
-    expect(session.setLaneTargets.mock.lastCall?.[0]).toEqual([
-      { width: 400, height: 300 },
-      { width: 0, height: 0 },
-      { width: 400, height: 300 },
-    ]);
+    expect(session.setLane.mock.calls).toEqual([[1, { visible: false }]]);
   });
 
   it("shows a lane again once it is no longer hidden", () => {
     const session = mount(["A", "B"], [], { B: false });
     expect(screen.getByText("B")).toBeTruthy();
-    expect(session.setLaneView.mock.calls).toEqual([[1, { visible: true }]]);
+    expect(session.setLane.mock.calls).toEqual([[1, { visible: true }]]);
   });
 
   it("says so when every lane is hidden", () => {

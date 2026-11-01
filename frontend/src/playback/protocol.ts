@@ -9,7 +9,10 @@ import {
   ENVELOPE_VERSION,
   FLAG_KEYFRAME,
   FLAG_LAST_FRAME,
-  KIND_OVERLAY,
+  FRAME_MAP_HEADER_BYTES,
+  FRAME_MAP_RUN_FRAMES,
+  KIND_FRAME_MAP,
+  KIND_SAMPLE,
   KIND_TIMELINE,
   KIND_VIDEO_FRAME,
   LAYOUT_I420,
@@ -17,15 +20,9 @@ import {
   LAYOUT_RGBA,
   MATRIX_BT601,
   MATRIX_BT709,
-  OVERLAY_HEADER_BYTES,
-  OVERLAY_MATCH_EMPTY,
-  OVERLAY_MATCH_EXACT,
-  OVERLAY_MATCH_NONE,
-  OVERLAY_MATCH_RETAINED,
-  OVERLAY_MATCH_TOLERATED,
+  SAMPLE_HEADER_BYTES,
   VIDEO_FRAME_HEADER_BYTES,
 } from "../generated/api";
-import type { OverlaySections } from "../overlay/instructions";
 
 // The constants and the control message types are generated from crates/api-types; every other module imports
 // them from here.
@@ -35,11 +32,20 @@ export {
   ENVELOPE_VERSION,
   FLAG_KEYFRAME,
   FLAG_LAST_FRAME,
-  KIND_OVERLAY,
+  FRAME_MAP_EMPTY,
+  FRAME_MAP_HEADER_BYTES,
+  FRAME_MAP_NONE,
+  FRAME_MAP_RUN_FRAMES,
+  KIND_FRAME_MAP,
+  KIND_SAMPLE,
   KIND_TIMELINE,
   KIND_VIDEO_FRAME,
-  OVERLAY_HEADER_BYTES,
+  MATCH_EXACT,
+  MATCH_RETAINED,
+  MATCH_TOLERATED,
+  MAX_DATA_WINDOW_FRAMES,
   PLAYBACK_PROTOCOL,
+  SAMPLE_HEADER_BYTES,
 } from "../generated/api";
 export type {
   CatalogInfoWire,
@@ -47,12 +53,12 @@ export type {
   ClockWire,
   Direction,
   FilterOptionInfo,
+  LaneDefaultsWire,
   LaneInfo,
+  LanePolicyWire,
   LaneStatusWire,
-  LaneViewWire,
   ServerMessage,
   StickyWire,
-  TargetWire,
   Want,
   WarningInfo,
 } from "../generated/api";
@@ -79,28 +85,36 @@ export type VideoFrame = {
   byteLength: number;
 };
 
-/** How an overlay's sample was found for its frame. */
-export type MatchKind = "none" | "exact" | "tolerated" | "retained" | "empty";
+/** One Sample Item of one source; `item` views the received message from the item's first byte. */
+export type SampleEnvelope = {
+  kind: "sample";
+  /** The viewer's source id (`Opened.lanes[i].source`). */
+  source: number;
+  /** The source revision the item belongs to. */
+  dataRevision: number;
+  /** The sample's index in its source. */
+  sample: number;
+  item: Uint8Array;
+};
 
-/** One lane's Drawing Instructions for one frame and view revision; the sections view the received message. */
-export type OverlayEnvelope = {
-  kind: "overlay";
+/** One run of one lane's Frame Map: `samples[k]` and `kinds[k]` belong to frame `first + k`. */
+export type FrameMapEnvelope = {
+  kind: "map";
   lane: number;
-  sequenceId: number;
-  revision: number;
-  match: MatchKind;
-  /** Below 1 for a sticky sample kept from an earlier frame. */
-  opacity: number;
-  /** The displayed image size in CSS pixels that the lane's catalog was evaluated for. */
-  target: { width: number; height: number };
-  /** The sample's frame number or microseconds by the lane's clock; 0 when nothing matched. */
-  sampleKey: number;
-  sections: OverlaySections;
+  /** The Lane Policy revision the run was selected under. */
+  policyRevision: number;
+  dataRevision: number;
+  first: number;
+  /** A sample index, `FRAME_MAP_NONE` or `FRAME_MAP_EMPTY` as `Int32Array` reads them (-1 and -2). */
+  samples: Int32Array;
+  /** `MATCH_*` per frame. */
+  kinds: Uint8Array;
 };
 
 export type Envelope =
   | { kind: "frame"; frame: VideoFrame }
-  | OverlayEnvelope
+  | SampleEnvelope
+  | FrameMapEnvelope
   /** Presentation time in microseconds by sequence id. */
   | { kind: "timeline"; times: Float64Array };
 
@@ -118,16 +132,6 @@ const FORMATS: Record<number, PixelFormat> = {
   [LAYOUT_RGBA]: "rgba",
 };
 const MATRICES: Record<number, Matrix> = { [MATRIX_BT601]: "bt601", [MATRIX_BT709]: "bt709" };
-const MATCHES: Record<number, MatchKind> = {
-  [OVERLAY_MATCH_NONE]: "none",
-  [OVERLAY_MATCH_EXACT]: "exact",
-  [OVERLAY_MATCH_TOLERATED]: "tolerated",
-  [OVERLAY_MATCH_RETAINED]: "retained",
-  [OVERLAY_MATCH_EMPTY]: "empty",
-};
-/** Bytes before a section's data: tag, padding and length. */
-const SECTION_HEAD_BYTES = 8;
-
 /** Bytes of one tightly packed transport frame. */
 export function frameBytes(width: number, height: number, format: PixelFormat): number {
   if (format === "rgba") return width * height * 4;
@@ -219,40 +223,47 @@ export function parseEnvelope(data: ArrayBufferLike | ArrayBufferView): Envelope
     return { kind: "timeline", times };
   }
 
-  if (kind === KIND_OVERLAY) return parseOverlay(view, bytes, payload);
+  if (kind === KIND_SAMPLE) return parseSample(view, bytes, payload);
+
+  if (kind === KIND_FRAME_MAP) return parseFrameMap(view, bytes, payload);
 
   return null;
 }
 
-/** The overlay header and sections of a kind 2 message. */
-function parseOverlay(view: DataView, bytes: Uint8Array, payload: number): OverlayEnvelope {
-  if (payload < OVERLAY_HEADER_BYTES) throw new EnvelopeError("overlay header too short");
-  const match = MATCHES[view.getUint8(30)];
-  if (match === undefined) throw new EnvelopeError(`unknown overlay match ${view.getUint8(30)}`);
-  const sections = new Map<number, DataView>();
-  let at = payload;
-  for (let index = view.getUint32(56, true); index > 0; index--) {
-    if (at + SECTION_HEAD_BYTES > bytes.length)
-      throw new EnvelopeError("overlay sections are truncated");
-    const length = view.getUint32(at + 4, true);
-    const start = at + SECTION_HEAD_BYTES;
-    if (start + length > bytes.length) throw new EnvelopeError("an overlay section is truncated");
-    // Every section is kept by tag; the instruction decoder ignores the tags it does not know.
-    sections.set(
-      view.getUint16(at, true),
-      new DataView(bytes.buffer, bytes.byteOffset + start, length),
-    );
-    at = start + Math.ceil(length / 8) * 8;
-  }
+/** The header of a kind 4 message; the Sample Item to the end of the message is passed on as it is. */
+function parseSample(view: DataView, bytes: Uint8Array, payload: number): SampleEnvelope {
+  if (payload !== SAMPLE_HEADER_BYTES) throw new EnvelopeError("bad sample header length");
+  if ((bytes.length - payload) % 8 !== 0)
+    throw new EnvelopeError("sample item length is not a multiple of 8");
   return {
-    kind: "overlay",
+    kind: "sample",
+    source: view.getUint16(28, true),
+    dataRevision: view.getUint32(32, true),
+    sample: readU64(view, 8),
+    item: bytes.subarray(payload),
+  };
+}
+
+/** The header and cells of a kind 5 message. */
+function parseFrameMap(view: DataView, bytes: Uint8Array, payload: number): FrameMapEnvelope {
+  if (payload !== FRAME_MAP_HEADER_BYTES) throw new EnvelopeError("bad frame map header length");
+  const count = view.getUint32(40, true);
+  if (count < 1 || count > FRAME_MAP_RUN_FRAMES)
+    throw new EnvelopeError(`a frame map run of ${count} frames`);
+  if (bytes.length !== payload + 5 * count)
+    throw new EnvelopeError("frame map length does not match its frame count");
+  const first = readU64(view, 8);
+  if ((first % FRAME_MAP_RUN_FRAMES) + count > FRAME_MAP_RUN_FRAMES)
+    throw new EnvelopeError("a frame map run crosses a chunk boundary");
+  // An Int32Array view needs 4-byte alignment; a message that arrives misaligned is copied once.
+  const aligned = bytes.byteOffset % 4 === 0 ? bytes : bytes.slice();
+  return {
+    kind: "map",
     lane: view.getUint16(28, true),
-    sequenceId: readU64(view, 8),
-    revision: view.getUint32(32, true),
-    match,
-    opacity: view.getFloat32(36, true),
-    target: { width: view.getUint32(40, true), height: view.getUint32(44, true) },
-    sampleKey: readI64(view, 48),
-    sections,
+    policyRevision: view.getUint32(32, true),
+    dataRevision: view.getUint32(36, true),
+    first,
+    samples: new Int32Array(aligned.buffer, aligned.byteOffset + payload, count),
+    kinds: aligned.subarray(payload + 4 * count),
   };
 }

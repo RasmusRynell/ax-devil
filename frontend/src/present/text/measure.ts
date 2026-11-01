@@ -58,14 +58,24 @@ export class GlyphScratch {
     this.count = 0;
   }
 
-  private glyph(text: TextSource, font: FontHandle, code: number): Glyph {
+  /** The glyph of `code`, through `table` (the font's own, see `tableOf`) for the common code points. */
+  private glyph(
+    text: TextSource,
+    font: FontHandle,
+    table: (Glyph | undefined)[],
+    code: number,
+  ): Glyph {
     if (code >= TABLE) return text.glyph(font, code);
+    return (table[code] ??= text.glyph(font, code));
+  }
+
+  private tableOf(font: FontHandle): (Glyph | undefined)[] {
     let table = this.tables.get(font);
     if (!table) {
       table = [];
       this.tables.set(font, table);
     }
-    return (table[code] ??= text.glyph(font, code));
+    return table;
   }
 
   private add(x: number, y: number, glyph: Glyph): void {
@@ -114,6 +124,7 @@ export class GlyphScratch {
     const lineHeight = font.metrics.lineHeight;
     let line = 0;
     if (plain) {
+      const table = this.tableOf(font);
       let lineTop = 0;
       let pen = 0;
       for (let i = start; i < end; i++) {
@@ -128,7 +139,7 @@ export class GlyphScratch {
             continue;
           }
         }
-        const glyph = this.glyph(text, font, code);
+        const glyph = this.glyph(text, font, table, code);
         this.add(Math.round(pen) + glyph.left, lineTop + glyph.top, glyph);
         pen += glyph.advance;
       }

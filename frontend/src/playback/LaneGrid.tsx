@@ -3,7 +3,6 @@ import type { Hidden } from "../viewer/hidden";
 import { LaneChip } from "./LaneChip";
 import type { PlaybackSession } from "./session";
 import type { PlaybackView } from "./view";
-import { fitPicture } from "./renderer";
 import { VideoCanvas, type LaneLayout } from "./VideoCanvas";
 
 /** How many columns `count` lanes sit in: one row of one or two, else the smallest square that holds them. */
@@ -37,21 +36,6 @@ export function layoutLanes(lanes: readonly number[], width: number, height: num
   });
 }
 
-/** The size, in CSS pixels, each lane's picture is displayed at in `cells`, by lane; hidden lanes get none. */
-export function displayedSizes(
-  cells: readonly LaneLayout[],
-  lanes: number,
-  picture: { width: number; height: number },
-): { width: number; height: number }[] {
-  const sizes = Array.from({ length: lanes }, () => ({ width: 0, height: 0 }));
-  for (const { lane, rect } of cells) {
-    if (rect.width < 1 || rect.height < 1) continue;
-    const { width, height } = fitPicture(rect, picture);
-    sizes[lane] = { width, height };
-  }
-  return sizes;
-}
-
 /** The size of an element's content box in CSS pixels, kept current. */
 function useSize(): [React.RefObject<HTMLDivElement | null>, { width: number; height: number }] {
   const element = useRef<HTMLDivElement>(null);
@@ -69,8 +53,7 @@ function useSize(): [React.RefObject<HTMLDivElement | null>, { width: number; he
 }
 
 /**
- * The picture in a grid of lane cells, each with its name tag. Lanes the user hid leave the grid and stop being sent;
- * the session is told the size each lane is displayed at so the backend draws overlays for it.
+ * The picture in a grid of lane cells, each with its name tag. Lanes the user hid leave the grid and stop being sent.
  */
 export function LaneGrid({
   session,
@@ -93,7 +76,7 @@ export function LaneGrid({
   onHide?: (label: string) => void;
 }) {
   const [box, size] = useSize();
-  const { lanes, width, height } = view;
+  const { lanes } = view;
   const shown = useMemo(
     () => lanes.flatMap((lane, index) => (hidden.lane(entry, lane.label) ? [] : [index])),
     [lanes, hidden, entry],
@@ -102,16 +85,9 @@ export function LaneGrid({
   useEffect(() => {
     lanes.forEach((lane, index) => {
       const visible = shown.includes(index);
-      if (lane.view.visible !== visible) session.setLaneView(index, { visible });
+      if (lane.settings.visible !== visible) session.setLane(index, { visible });
     });
   }, [session, lanes, shown]);
-  useEffect(() => {
-    if (width > 0 && height > 0)
-      session.setLaneTargets(
-        displayedSizes(cells, lanes.length, { width, height }),
-        window.devicePixelRatio,
-      );
-  }, [session, cells, lanes.length, width, height]);
   return (
     <div ref={box} className="absolute inset-0 flex">
       <VideoCanvas session={session} label={name} anchor={anchor} cells={cells} />
@@ -124,7 +100,7 @@ export function LaneGrid({
           <LaneChip
             lane={lanes[index]}
             catalogs={view.catalogs}
-            onChange={(change) => session.setLaneView(index, change)}
+            onChange={(change) => session.setLane(index, change)}
             onHide={onHide && (() => onHide(lanes[index].label))}
           />
         </div>

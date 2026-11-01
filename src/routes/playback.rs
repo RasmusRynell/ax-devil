@@ -1,29 +1,31 @@
 //! The playback WebSocket, one per viewer: its first message, within 5 seconds, is `Open{ticket, start_frame}`. The
 //! ticket comes from the Session socket and is spent once into a stream lease, which names the entry, says what the
 //! viewer may ask for and tells when that ends. The route opens the entry's video and overlays, tells the viewer
-//! about them, applies the viewer's windows and lane views and sends the frames in the windows and the lanes'
-//! overlays for them. Text messages are JSON (`api_types::playback`); frames, overlays and the timeline are binary
-//! envelopes (`envelope`, `overlay_envelope`).
+//! about them, applies the viewer's windows and lane policies and sends the frames in the windows and the lanes'
+//! data for them. Text messages are JSON (`api_types::playback`); frames, the timeline, Sample Items and Frame Maps
+//! are binary envelopes (`envelope`, `items`).
 //!
 //! A ticket that is unknown, used, expired or not parseable closes the socket with 4401 and nothing else: the viewer
 //! learns nothing about why. After that the order of what a viewer receives is `Indexing`*, `Opened`, the Timeline
-//! envelope, then frame envelopes, `FrameError`s, `LaneStatus`es, `LaneProblem`s and Overlay envelopes as they are
-//! ready; overlay messages go before frames when both wait. `Error` is last: the socket closes after it. Errors,
+//! envelope, then frame envelopes, `FrameError`s, `LaneStatus`es, `LaneProblem`s, `Catalog` answers and Sample and
+//! FrameMap envelopes as they are ready. Notices go first; a Sample or FrameMap goes before a frame when its rank
+//! (`playback::rank` of the frame it is for) is at most the rank of the frame waiting, so data wins ties and the
+//! frames nearest the playhead are not held up by data far from it. `Error` is last: the socket closes after it. Errors,
 //! warnings and lane problems carry the host's paths and reasons only for the owner of a session that holds the
 //! files grant. The viewer is not sent anything until the previous message has gone to the socket, and at most one
 //! more message waits behind it.
 //!
-//! What a viewer may ask for, and every frame and frame overlay it is sent, is bounded by its lease's `Authority` as
+//! What a viewer may ask for, and every frame, Sample Item and Frame Map it is sent, is bounded by its lease's `Authority` as
 //! it is now (`gate`): when the authority changes or the presenter's clock moves, what the viewer asked is judged
-//! again at once, the overlays follow the window the gate allowed, and a frame or overlay queued outside the new
+//! again at once, the data follows the window the gate allowed, and a frame or data message queued outside the new
 //! bounds is dropped instead of sent. Once the authority is revoked the session ends at once, also while the video
 //! is being indexed, its overlays stop, a message still queued is dropped and the socket closes with code 4403.
 
 mod envelope;
 mod gate;
+mod items;
 mod lanes;
 mod open;
-mod overlay_envelope;
 #[cfg(test)]
 mod revocation;
 mod stream;
@@ -93,8 +95,8 @@ enum End {
 
 type Flow<T> = Result<T, End>;
 
-/// A message for the viewer. A frame, or a frame's overlay, says which frame it is, so the writer can drop it once
-/// the viewer's authority no longer reaches that frame.
+/// A message for the viewer. A frame, or data ranked by a frame (a sample or a map run), says which frame it is, so
+/// the writer can drop it once the viewer's authority no longer reaches that frame.
 struct Outgoing {
     message: Message,
     frame: Option<u64>,

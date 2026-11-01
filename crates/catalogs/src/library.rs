@@ -4,10 +4,11 @@ use std::sync::{Arc, OnceLock};
 
 use foundation::{ErrorCode, UserError};
 use render_catalog::CompiledCatalog;
+use serde::Deserialize;
 
 use crate::{
     CatalogId,
-    built_in::{BUILT_INS, BuiltIn},
+    built_in::{BUILT_INS, BuiltIn, DOCUMENTS},
 };
 
 /// What the catalog picker shows about a catalog.
@@ -19,6 +20,13 @@ pub struct CatalogInfo {
     pub name: String,
     /// What the catalog is for.
     pub description: String,
+}
+
+/// What a catalog document says about itself.
+#[derive(Deserialize)]
+struct Described {
+    name: String,
+    description: String,
 }
 
 /// A built-in catalog and its compiled form, which the first caller makes.
@@ -72,6 +80,40 @@ impl Library {
                 }
             })
             .collect()
+    }
+
+    /// The catalogs the playback socket serves, Standard first, named by what their documents say. Nothing is
+    /// compiled: the frontend compiles the documents.
+    pub fn documents(&self) -> Vec<CatalogInfo> {
+        DOCUMENTS
+            .iter()
+            .map(|(name, document)| {
+                let id = CatalogId::BuiltIn(name);
+                match serde_json::from_str::<Described>(document) {
+                    Ok(described) => CatalogInfo {
+                        id,
+                        name: described.name,
+                        description: described.description,
+                    },
+                    Err(error) => CatalogInfo {
+                        name: (*name).to_owned(),
+                        description: error.to_string(),
+                        id,
+                    },
+                }
+            })
+            .collect()
+    }
+
+    /// The source of the catalog `id` names, `None` for one that is not served.
+    pub fn document(&self, id: &CatalogId) -> Option<&'static str> {
+        let CatalogId::BuiltIn(name) = id else {
+            return None;
+        };
+        DOCUMENTS
+            .iter()
+            .find(|(served, _)| served == name)
+            .map(|(_, document)| *document)
     }
 
     /// The catalog a new lane starts with: Standard.
@@ -140,6 +182,33 @@ mod tests {
         assert_eq!(listed[0].name, "Standard");
         assert!(listed.iter().all(|info| !info.description.is_empty()));
         assert_eq!(library.default_id(), listed[0].id);
+    }
+
+    #[test]
+    fn the_served_documents_are_listed_by_their_own_names_and_carry_the_id_they_are_asked_for_by() {
+        let library = Library::built_in();
+
+        let listed = library.documents();
+
+        let ids: Vec<String> = listed.iter().map(|info| info.id.to_string()).collect();
+        assert_eq!(
+            ids,
+            ["built-in:standard", "built-in:classic", "built-in:glass"]
+        );
+        assert_eq!(listed[0].name, "Standard");
+        assert_eq!(library.default_id(), listed[0].id);
+        for info in &listed {
+            assert!(!info.description.is_empty());
+            let document = library.document(&info.id).expect("a listed id is served");
+            let value: serde_json::Value = serde_json::from_str(document).unwrap();
+            assert_eq!(value["id"], info.id.to_string());
+        }
+        for unserved in [
+            CatalogId::BuiltIn("tracking"),
+            CatalogId::User("night.json".into()),
+        ] {
+            assert_eq!(library.document(&unserved), None);
+        }
     }
 
     #[test]

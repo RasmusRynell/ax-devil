@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import type { LaneStatusWire } from "../generated/api";
-import { LANE_DEFAULTS } from "./fakeOpened";
+import { LANE_SETTINGS } from "./fakeOpened";
 import { LaneMenu } from "./LaneMenu";
 import type { LaneState } from "./lanes";
 
@@ -21,6 +21,8 @@ const READY: LaneStatusWire = {
   ],
   warnings: [],
   samples: 12,
+  data_revision: 1,
+  mean_sample_bytes: 100,
 };
 
 function setup(lane: Partial<LaneState> = {}, status: LaneStatusWire = READY) {
@@ -28,16 +30,17 @@ function setup(lane: Partial<LaneState> = {}, status: LaneStatusWire = READY) {
   const onHide = vi.fn();
   const state: LaneState = {
     label: "DPM",
-    hasOverlay: true,
+    source: 0,
     status,
-    view: LANE_DEFAULTS,
-    revision: 0,
+    settings: LANE_SETTINGS,
+    policyRevision: 1,
+    pending: false,
     ...lane,
   };
-  const view = render(
+  const rendered = render(
     <LaneMenu lane={state} catalogs={CATALOGS} onChange={onChange} onHide={onHide} />,
   );
-  return { onChange, onHide, state, ...view };
+  return { onChange, onHide, state, ...rendered };
 }
 
 describe("lane menu", () => {
@@ -64,7 +67,7 @@ describe("lane menu", () => {
     rerender(
       <LaneMenu
         catalogs={CATALOGS}
-        lane={{ ...state, view: { ...state.view, filter: { static: true } } }}
+        lane={{ ...state, settings: { ...state.settings, filter: { static: true } } }}
         onChange={onChange}
         onHide={onHide}
       />,
@@ -83,12 +86,14 @@ describe("lane menu", () => {
     const { onChange, state, rerender, onHide } = setup();
     expect(screen.queryByRole("spinbutton", { name: "Timeout (ms)" })).toBeNull();
     fireEvent.click(screen.getByRole("switch", { name: "Sticky" }));
-    expect(onChange).toHaveBeenLastCalledWith({ sticky: { ...state.view.sticky, enabled: true } });
+    expect(onChange).toHaveBeenLastCalledWith({
+      sticky: { ...state.settings.sticky, enabled: true },
+    });
     const sticky = { enabled: true, timeout_ms: 2050, opacity: 1 };
     rerender(
       <LaneMenu
         catalogs={CATALOGS}
-        lane={{ ...state, view: { ...state.view, sticky } }}
+        lane={{ ...state, settings: { ...state.settings, sticky } }}
         onChange={onChange}
         onHide={onHide}
       />,
@@ -109,7 +114,7 @@ describe("lane menu", () => {
 
   it("limits the timeout to what the backend accepts", () => {
     const sticky = { enabled: true, timeout_ms: 1, opacity: 1 };
-    const { onChange } = setup({ view: { ...LANE_DEFAULTS, sticky } });
+    const { onChange } = setup({ settings: { ...LANE_SETTINGS, sticky } });
     const timeout = screen.getByRole("spinbutton", { name: "Timeout (ms)" });
     fireEvent.change(timeout, { target: { value: "250000" } });
     fireEvent.blur(timeout);
@@ -127,7 +132,7 @@ describe("lane menu", () => {
     expect(onChange).toHaveBeenLastCalledWith({ tolerance_ms: null });
     cleanup();
     const exact = setup(
-      { view: { ...LANE_DEFAULTS, tolerance_ms: null } },
+      { settings: { ...LANE_SETTINGS, tolerance_ms: null } },
       { ...READY, clock: "timestamp" },
     );
     fireEvent.change(screen.getByRole("combobox", { name: "Sync" }), {
@@ -138,7 +143,7 @@ describe("lane menu", () => {
 
   it("sets how far back a previous sample may be", () => {
     const { onChange } = setup(
-      { view: { ...LANE_DEFAULTS, tolerance_ms: 50 } },
+      { settings: { ...LANE_SETTINGS, tolerance_ms: 50 } },
       { ...READY, clock: "timestamp" },
     );
     const within = screen.getByRole("spinbutton", { name: "Within (ms)" });

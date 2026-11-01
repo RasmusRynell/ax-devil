@@ -107,7 +107,13 @@ export function allocate(order: readonly VarDecl[], session: Session): number {
       );
       continue;
     }
-    session.slots.set(decl.name, { name: decl.name, type, register: next, length: null });
+    session.slots.set(decl.name, {
+      name: decl.name,
+      type,
+      register: next,
+      length: null,
+      constant: null,
+    });
     next += size;
   }
   return next;
@@ -154,6 +160,22 @@ function setterFor(ctx: EvalContext, register: number, compiled: Compiled): Sett
   }
 }
 
+/** Whether a compiled value is the same for every row. */
+function isConstant(compiled: Compiled): boolean {
+  switch (compiled.type) {
+    case "number":
+    case "bool":
+    case "color":
+      return compiled.scalar.constant !== undefined;
+    case "length": {
+      const { px, k, lo, hi } = compiled.length;
+      return [px, k, lo, hi].every((part) => part.constant !== undefined);
+    }
+    default:
+      return false;
+  }
+}
+
 /** Lower every variable (in dependency order) into setters; the lengths of one variable must share a basis. */
 export function lowerVars(
   order: readonly VarDecl[],
@@ -185,6 +207,11 @@ export function lowerVars(
         ...assignments.map((a) => a.compiled),
         ...themed.map((t) => t.compiled),
       ] as Compiled[]);
+    // No rule or theme sets it and it reads nothing: it is a constant, and neither registers nor rows are involved.
+    if (assignments.length === 0 && themed.length === 0 && isConstant(initial)) {
+      slot.constant = initial;
+      continue;
+    }
     const setter = (compiled: Compiled): Setter => setterFor(ctx, slot.register, compiled);
     const defaults = Array.from({ length: themeCount + 1 }, (_, theme) => {
       const override = themed.find((t) => t.theme === theme);

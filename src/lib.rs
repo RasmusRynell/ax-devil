@@ -57,7 +57,7 @@ pub struct AppState {
     pub videos: Arc<video_sources::VideoSources>,
     /// Opens the overlays of viewers.
     pub overlays: Arc<OverlayService>,
-    /// The render catalogs, listed to every viewer and compiled on first use.
+    /// The render catalogs, listed to every viewer and served on request.
     pub catalogs: Arc<Library>,
     /// Turns true when the backend is stopping: long-lived connections, such as the playback and session sockets,
     /// end.
@@ -97,7 +97,7 @@ impl AppState {
         };
         Self {
             settings,
-            overlays: Arc::new(OverlayService::new(tracks, catalogs.clone())),
+            overlays: Arc::new(OverlayService::new(tracks)),
             catalogs: Arc::new(catalogs),
             sessions: Sessions::new(
                 GRACE,

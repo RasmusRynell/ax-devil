@@ -1,8 +1,8 @@
 import type { MarkBuffer } from "../marks/buffer";
 import { Flag, RUN_WORDS, Rec } from "../marks/buffer";
-import { Kind, Len, type MarkPlan } from "../marks/plan";
-import { GlyphScratch } from "../text/measure";
+import { Kind, Len, type MarkPlan, type Program } from "../marks/plan";
 import { LabelBox } from "../text/labelBox";
+import { INK, type RunCache, runCacheOf } from "../text/runCache";
 import type { FontHandle, TextSource } from "../text/source";
 import type { Resolver } from "./resolver";
 import type { LayoutView, PrimitiveSink } from "./sink";
@@ -23,24 +23,73 @@ export function devicePixels(size: number, dpr: number): number {
 
 /** Lays out the texts and labels of a lane: measures their runs, picks a placement and writes background, bars and glyphs. */
 export class Labels {
-  private readonly scratch = new GlyphScratch();
+  private readonly cache: RunCache;
   private readonly box = new LabelBox();
   private fontPx = new Float64Array(0);
   private fonts: (FontHandle | undefined)[] = [];
-  /** Per run of the label being laid out: its font and the glyph range it measured. */
+  private fontIds = new Int32Array(0);
+  /** The cache epoch the fonts and their ids were made in. */
+  private epoch = -1;
+  private program: Program | null = null;
+  /** Per run of the label being laid out: its font and its entry in the run cache. */
   private runFont: FontHandle[] = [];
-  private runFirst = new Uint32Array(16);
-  private runEnd = new Uint32Array(16);
+  private runEntry = new Uint32Array(16);
 
   constructor(
     private readonly text: TextSource,
     private readonly sizes: Resolver,
-  ) {}
+  ) {
+    this.cache = runCacheOf(text);
+  }
 
-  /** Forget the fonts of a catalog before another one is laid out. */
-  reset(marks: number): void {
+  private reset(marks: number): void {
     this.fontPx = new Float64Array(marks * 4);
+    this.fontIds = new Int32Array(marks * 4);
     this.fonts = Array.from({ length: marks * 4 }, (): FontHandle | undefined => undefined);
+  }
+
+  /** Start a layout pass of `program`: its fonts are looked up again when the catalog changed or the run cache was emptied. */
+  begin(program: Program): void {
+    this.cache.begin(this.text);
+    if (program !== this.program || this.epoch !== this.cache.epoch) {
+      this.reset(program.marks.length);
+      this.program = program;
+      this.epoch = this.cache.epoch;
+    }
+  }
+
+  /**
+   * How far the label or text of `record` can reach beyond its reference rect, from what is known before measuring:
+   * no glyph is wider than two font sizes and a line is no longer than its code points, so a box is no larger than
+   * that in either direction, plus padding, gaps, bars, the placement offsets and a few pixels of rounding.
+   */
+  reach(plan: MarkPlan, marks: MarkBuffer, record: number, dpr: number): number {
+    const { sizes } = this;
+    const first = marks.words[record * 12 + Rec.A];
+    const count = marks.words[record * 12 + Rec.B];
+    let units = 2;
+    for (let k = first; k < first + count; k++)
+      units += Number.isNaN(marks.runBars[k]) ? 2 * marks.runs[k * RUN_WORDS + 1] : BAR_LENGTH;
+    const size = Math.max(sizes.of(plan, Len.Size), 0.5 / dpr);
+    let place = 0;
+    for (let i = 0; i < plan.place.length; i++)
+      place = Math.max(
+        place,
+        Math.abs(sizes.ofPlace(plan, i, 0)) + Math.abs(sizes.ofPlace(plan, i, 1)),
+      );
+    return (
+      units * size +
+      2 * (sizes.of(plan, Len.PadX) + sizes.of(plan, Len.PadY)) +
+      count * sizes.of(plan, Len.Gap) +
+      place +
+      BAR_MIN +
+      2
+    );
+  }
+
+  /** Forget the runs measured so far; the next pass measures them again. */
+  discardRuns(): void {
+    this.cache.discard();
   }
 
   private fontFor(plan: MarkPlan, weight: number, pixels: number): FontHandle {
@@ -49,6 +98,7 @@ export class Labels {
     if (font === undefined || this.fontPx[slot] !== pixels) {
       font = this.text.font(plan.family, pixels, weight);
       this.fonts[slot] = font;
+      this.fontIds[slot] = this.cache.fontId(font);
       this.fontPx[slot] = pixels;
     }
     return font;
@@ -69,15 +119,15 @@ export class Labels {
     view: LayoutView,
     sink: PrimitiveSink,
   ): boolean {
-    const { sizes, box, scratch } = this;
+    const { sizes, box, cache } = this;
     const words = marks.words;
     const base = record * 12;
     const plain = plan.kind === Kind.Text;
-    const size = sizes.length(plan.len[Len.Size]);
-    const padX = sizes.length(plan.len[Len.PadX]);
-    const padY = sizes.length(plan.len[Len.PadY]);
-    const gap = sizes.length(plan.len[Len.Gap]);
-    const radius = sizes.length(plan.len[Len.Radius]);
+    const size = sizes.of(plan, Len.Size);
+    const padX = sizes.of(plan, Len.PadX);
+    const padY = sizes.of(plan, Len.PadY);
+    const gap = sizes.of(plan, Len.Gap);
+    const radius = sizes.of(plan, Len.Radius);
     if (!(size > 0 && size < Infinity && padX >= 0 && padY >= 0 && gap >= 0 && radius >= 0))
       return false;
     const { dpr } = view;
@@ -85,32 +135,30 @@ export class Labels {
     const first = words[base + Rec.A];
     const count = words[base + Rec.B];
     box.clear();
-    scratch.clear();
-    if (this.runFirst.length < count) {
-      this.runFirst = new Uint32Array(count * 2);
-      this.runEnd = new Uint32Array(count * 2);
-    }
+    if (this.runEntry.length < count) this.runEntry = new Uint32Array(count * 2);
     for (let k = 0; k < count; k++) {
       const at = (first + k) * RUN_WORDS;
       const font = this.fontFor(plan, marks.runs[at + 3], pixels);
       this.runFont[k] = font;
       const { ascent, descent, capHeight } = font.metrics;
-      this.runFirst[k] = scratch.count;
       if (Number.isNaN(marks.runBars[first + k])) {
-        scratch.measureRun(
+        const entry = cache.run(
           this.text,
           font,
+          this.fontIds[plan.index * 4 + marks.runs[at + 3]],
           marks.cps,
           marks.runs[at],
           marks.runs[at] + marks.runs[at + 1],
         );
+        this.runEntry[k] = entry;
+        const ink = cache.ink;
         box.add(
           true,
-          scratch.advance / dpr,
-          scratch.left / dpr,
-          scratch.top / dpr,
-          scratch.right / dpr,
-          scratch.bottom / dpr,
+          ink[entry * INK + 4] / dpr,
+          ink[entry * INK] / dpr,
+          ink[entry * INK + 1] / dpr,
+          ink[entry * INK + 2] / dpr,
+          ink[entry * INK + 3] / dpr,
           plain ? 0 : ascent / dpr,
           plain ? 0 : descent / dpr,
         );
@@ -128,7 +176,6 @@ export class Labels {
           descent / dpr,
         );
       }
-      this.runEnd[k] = scratch.count;
     }
     if (!box.size(padX, padY, gap, dpr, plain)) return true;
     if (!this.choose(plan, marks, base, l, t, r, b, view)) return true;
@@ -191,8 +238,8 @@ export class Labels {
     view: LayoutView,
   ): boolean {
     const entry = plan.place[i];
-    const dx = this.sizes.length(entry.dx);
-    const dy = this.sizes.length(entry.dy);
+    const dx = this.sizes.ofPlace(plan, i, 0);
+    const dy = this.sizes.ofPlace(plan, i, 1);
     this.x = l + entry.atX * (r - l) + dx;
     this.y = t + entry.atY * (b - t) + dy;
     this.chosen = i;
@@ -223,7 +270,7 @@ export class Labels {
     plain: boolean,
     sink: PrimitiveSink,
   ): void {
-    const { box, scratch } = this;
+    const { box } = this;
     const flags = marks.words[base + Rec.Flags];
     const background = marks.words[base + Rec.Fill];
     if (!plain && (flags & Flag.Fill) !== 0 && (background & 0xff) > 0)
@@ -253,7 +300,7 @@ export class Labels {
       const color = marks.runs[(first + k) * RUN_WORDS + 2];
       const originX = Math.round((box.innerX + box.offset(k)) * dpr);
       const originY = Math.round(box.baseline * dpr);
-      sink.glyphs(scratch, this.runFirst[k], this.runEnd[k], originX, originY, dpr, color);
+      sink.glyphs(this.cache, this.runEntry[k], originX, originY, dpr, color);
     }
   }
 }

@@ -1,7 +1,10 @@
 // @vitest-environment node
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vite-plus/test";
-import { boxesSection, overlayBytes } from "./fakeOverlay";
+import { readSample } from "../present/columns";
+import { EMPTY, item, mapBytes, NONE, sampleBytes } from "./fakeData";
 import { EnvelopeError, ENVELOPE_MAGIC, frameBytes, parseEnvelope } from "./protocol";
+import { decode } from "./wire";
 
 function head(
   kind: number,
@@ -88,34 +91,31 @@ describe("envelope", () => {
     }
   });
 
-  it("parses an overlay's header and keeps every section, known or not, by tag", () => {
-    const unknown = new Uint8Array([9, 9, 9]);
+  it("parses a Sample Item without copying it", () => {
+    const message = sampleBytes({ source: 2, dataRevision: 7, sample: 42, item: item("classes") });
+    const parsed = parseEnvelope(message);
+    if (parsed?.kind !== "sample") throw new Error("expected a sample");
+    expect(parsed).toMatchObject({ source: 2, dataRevision: 7, sample: 42 });
+    expect(parsed.item.buffer).toBe(message);
+    expect(parsed.item.byteOffset).toBe(40);
+    expect(readSample(parsed.item).rows).toBeGreaterThan(0);
+  });
+
+  it("parses a Frame Map run: sample indices, none and empty, and how each was found", () => {
     const parsed = parseEnvelope(
-      overlayBytes({
+      mapBytes({
         lane: 2,
-        sequenceId: 41,
-        revision: 7,
-        match: 3,
-        opacity: 0.5,
-        target: { width: 800, height: 450 },
-        sampleKey: -1200,
-        sections: [[64, unknown], boxesSection(2)],
+        policyRevision: 3,
+        dataRevision: 7,
+        first: 256,
+        cells: [0, 0, NONE, EMPTY, 9],
+        kinds: [0, 1, 0, 0, 2],
       }),
     );
-    if (parsed?.kind !== "overlay") throw new Error("expected an overlay");
-    expect(parsed).toMatchObject({
-      lane: 2,
-      sequenceId: 41,
-      revision: 7,
-      match: "retained",
-      opacity: 0.5,
-      target: { width: 800, height: 450 },
-      sampleKey: -1200,
-    });
-    expect([...parsed.sections.keys()]).toEqual([64, 2]);
-    // The section after an unknown one of a length that needs padding is found where the padding ends.
-    expect(parsed.sections.get(2)?.byteLength).toBe(40);
-    expect(parsed.sections.get(64)?.byteLength).toBe(3);
+    if (parsed?.kind !== "map") throw new Error("expected a frame map");
+    expect(parsed).toMatchObject({ lane: 2, policyRevision: 3, dataRevision: 7, first: 256 });
+    expect([...parsed.samples]).toEqual([0, 0, -1, -2, 9]);
+    expect([...parsed.kinds]).toEqual([0, 1, 0, 0, 2]);
   });
 
   it("ignores kinds from a newer backend", () => {
@@ -132,18 +132,69 @@ describe("envelope", () => {
       [5, 6],
       [7, 8],
     ]).subarray(0, 70);
-    const shortOverlay = overlayBytes({ sections: [boxesSection(2)] }).slice(0, 80);
-    const unknownMatch = new Uint8Array(overlayBytes({ match: 9 }));
+    const oddItem = sampleBytes().slice(0, 45);
+    const shortHeader = sampleBytes().slice(0, 30);
+    const cells = (count: number) => Array.from({ length: count }, () => 0);
+    const emptyRun = mapBytes({ cells: [] });
+    const longRun = mapBytes({ cells: cells(257) });
+    const crossing = mapBytes({ first: 255, cells: cells(2) });
+    const wrongLength = mapBytes({ cells: cells(3) }).slice(0, 60);
     for (const message of [
       new ArrayBuffer(8),
       wrongMagic.buffer,
       wrongVersion.buffer,
       truncated,
-      shortOverlay,
-      unknownMatch,
+      oddItem,
+      shortHeader,
+      emptyRun,
+      longRun,
+      crossing,
+      wrongLength,
     ]) {
       expect(() => parseEnvelope(message)).toThrow(EnvelopeError);
     }
+  });
+});
+
+describe("the backend's envelopes", () => {
+  // Written by the Rust encoder (`UPDATE_GOLDENS=1 make tests-backend TEST=envelope_goldens`).
+  const golden = (name: string): ArrayBuffer => {
+    const bytes = readFileSync(new URL(`../../../fixtures/wire/${name}`, import.meta.url));
+    return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
+  };
+
+  it("reads the Sample the backend wrote, its item in place and byte for byte", () => {
+    const message = golden("sample.bin");
+    const parsed = parseEnvelope(message);
+    if (parsed?.kind !== "sample") throw new Error("expected a sample");
+    expect(parsed).toMatchObject({ source: 1, dataRevision: 7, sample: 42 });
+    expect(parsed.item.buffer).toBe(message);
+    expect(parsed.item.byteOffset).toBe(40);
+    expect(parsed.item).toEqual(item("classes"));
+    expect(readSample(parsed.item).rows).toBeGreaterThan(0);
+  });
+
+  it("reads the Frame Map run the backend wrote", () => {
+    const parsed = parseEnvelope(golden("frame-map.bin"));
+    if (parsed?.kind !== "map") throw new Error("expected a frame map");
+    expect(parsed).toMatchObject({ lane: 2, policyRevision: 3, dataRevision: 7, first: 256 });
+    expect([...parsed.samples]).toEqual([0, 0, NONE | 0, EMPTY | 0, 9]);
+    expect([...parsed.kinds]).toEqual([0, 1, 0, 0, 2]);
+  });
+});
+
+describe("what the socket delivers", () => {
+  it("reads a control message", () => {
+    expect(decode('{"type":"Indexing","progress":0.5}')).toEqual({
+      type: "message",
+      message: { type: "Indexing", progress: 0.5 },
+    });
+  });
+
+  it("reports a message that breaks the protocol, so the session can end", () => {
+    expect(decode("not json")?.type).toBe("malformed");
+    expect(decode(new ArrayBuffer(40))?.type).toBe("malformed");
+    expect(decode(mapBytes({ first: 255, cells: [0, 0] }))?.type).toBe("malformed");
   });
 });
 

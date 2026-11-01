@@ -11,20 +11,23 @@ use std::{
 
 use foundation::{ErrorCode, HostPath, UserError};
 use overlay_sync::SampleKeys;
-use scene::{Coverage, Fields, FilterPolicy, Scene, serial};
+use scene::{Coverage, Fields, FilterPolicy, Scene, serial, serial::columns::encode_sample_item};
 use scene_decoders::LoadWarning;
 
 use crate::{
     format::Layout,
     io::{names_file, read_exact_at},
-    lru::SceneCache,
+    lru::{ItemCache, SceneCache, footprint},
     summary::Restored,
 };
 
+/// What the encoded Sample Items of one track may hold in memory.
+const ITEM_CACHE_BYTES: usize = 16 << 20;
+
 /// One decoded overlay file: its sample keys in memory and its Scenes behind an artifact.
 ///
-/// Memory is the keys, a few bytes per record, and a byte-bounded cache of recently used Scenes; everything else
-/// stays on disk.
+/// Memory is the keys, a few bytes per record, and byte-bounded caches of recently used Scenes and Sample Items;
+/// everything else stays on disk.
 pub struct Track {
     source: PathBuf,
     keys: SampleKeys,
@@ -42,6 +45,7 @@ pub struct Track {
     crcs: Vec<u32>,
     order: Vec<u32>,
     cache: Mutex<SceneCache>,
+    items: Mutex<ItemCache>,
 }
 
 impl Track {
@@ -67,6 +71,7 @@ impl Track {
             crcs: layout.crcs,
             order: layout.order,
             cache: Mutex::new(SceneCache::new(cache_bytes)),
+            items: Mutex::new(ItemCache::new(ITEM_CACHE_BYTES)),
         }
     }
 
@@ -103,8 +108,31 @@ impl Track {
         }
         // Read and decode outside the lock; two threads missing the same Scene both read it and one copy is kept.
         let scene = Arc::new(self.read(index)?);
-        self.cache().insert(index, scene.clone());
+        let bytes = footprint(&scene);
+        self.cache().insert(index, scene.clone(), bytes);
         Ok(scene)
+    }
+
+    /// The encoded Sample Item of sample `index` under the track's class filters, shared by every viewer of the
+    /// track. Recent items are kept in a bounded cache; an item larger than the whole cache is encoded again on
+    /// each call.
+    pub fn item(&self, index: usize) -> Result<Arc<[u8]>, UserError> {
+        if let Some(item) = self.items().get(index) {
+            return Ok(item);
+        }
+        // Encoded outside the lock; two threads missing the same item both encode it and one copy is kept.
+        let scene = self.scene(index)?;
+        let encoded = encode_sample_item(&scene, &self.filter).map_err(|error| {
+            UserError::new(
+                ErrorCode::FileUnreadable,
+                format!("Sample {index} of this overlay cannot be sent ({error})"),
+            )
+            .at(HostPath::new(&self.source))
+        })?;
+        let item: Arc<[u8]> = encoded.into();
+        let bytes = item.len();
+        self.items().insert(index, item.clone(), bytes);
+        Ok(item)
     }
 
     /// Whether a record of the artifact failed its check, so the artifact is gone and a new open decodes again.
@@ -120,6 +148,10 @@ impl Track {
 
     fn cache(&self) -> std::sync::MutexGuard<'_, SceneCache> {
         self.cache.lock().unwrap_or_else(PoisonError::into_inner)
+    }
+
+    fn items(&self) -> std::sync::MutexGuard<'_, ItemCache> {
+        self.items.lock().unwrap_or_else(PoisonError::into_inner)
     }
 
     /// Marks the artifact damaged and unlinks it, so the next open decodes the file again. Readers that hold the

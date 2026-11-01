@@ -3,8 +3,7 @@ import type { CatalogInfoWire } from "../generated/api";
 import { Button } from "../kit/Button";
 import { Checkbox, Select } from "../kit/Fields";
 import { Switch } from "../kit/Switch";
-import type { LaneState } from "./lanes";
-import type { LaneViewWire } from "./protocol";
+import type { LaneSettings, LaneState } from "./lanes";
 
 /** The longest a kept sample may stay, which the backend enforces. */
 const MAX_STICKY_MS = 100_000;
@@ -76,12 +75,12 @@ function Classes({
   onChange,
 }: {
   lane: LaneState;
-  onChange: (change: Partial<LaneViewWire>) => void;
+  onChange: (change: Partial<LaneSettings>) => void;
 }) {
   if (lane.status === "plain" || lane.status.status !== "Ready" || !lane.status.filter.length)
     return null;
   const options = lane.status.filter;
-  const { filter } = lane.view;
+  const { filter } = lane.settings;
   const isOn = (id: string, fallback: boolean) => filter[id] ?? fallback;
   return (
     <Group label="Classes">
@@ -119,7 +118,7 @@ function Classes({
 /**
  * What the user can change about one lane: its catalog, which classes show, whether old samples stay on screen, and
  * how a sample is matched to a frame (for lanes keyed by time). Each change goes to `onChange` as the part of the
- * lane's view that differs. `onHide` is absent for a seat that may not change the workspace.
+ * lane's settings that differs. `onHide` is absent for a seat that may not change the workspace.
  */
 export function LaneMenu({
   lane,
@@ -130,22 +129,22 @@ export function LaneMenu({
   lane: LaneState;
   /** The catalogs the backend offers for the lane to draw with. */
   catalogs: readonly CatalogInfoWire[];
-  onChange: (change: Partial<LaneViewWire>) => void;
+  onChange: (change: Partial<LaneSettings>) => void;
   onHide?: () => void;
 }) {
-  const { view } = lane;
+  const { settings } = lane;
   const options: [string, string][] = catalogs.map((catalog) => [catalog.id, catalog.name]);
-  if (!catalogs.some((catalog) => catalog.id === view.catalog))
-    options.unshift([view.catalog, view.catalog]);
+  if (!catalogs.some((catalog) => catalog.id === settings.catalog))
+    options.unshift([settings.catalog, settings.catalog]);
   const timed =
     lane.status !== "plain" && lane.status.status === "Ready" && lane.status.clock === "timestamp";
-  const sync: Sync = view.tolerance_ms === null ? "exact" : "previous";
-  const { sticky } = view;
+  const sync: Sync = settings.tolerance_ms === null ? "exact" : "previous";
+  const { sticky } = settings;
   return (
     <div className="flex min-w-[24ch] flex-col gap-m">
       <Select
         label="Catalog"
-        value={view.catalog}
+        value={settings.catalog}
         options={options}
         onChange={(catalog) => onChange({ catalog })}
       />
@@ -196,7 +195,7 @@ export function LaneMenu({
           {sync === "previous" && (
             <NumberField
               label="Within (ms)"
-              value={view.tolerance_ms}
+              value={settings.tolerance_ms}
               min={0}
               max={MAX_STICKY_MS}
               step={10}

@@ -1,6 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import { act, cleanup, render } from "@testing-library/react";
-import type { AtlasMirror } from "../overlay/mirror";
 import type { PlaybackSession, Surface } from "./session";
 import type { VideoFrame } from "./protocol";
 import { VideoCanvas } from "./VideoCanvas";
@@ -40,7 +39,7 @@ describe("video canvas", () => {
     expect(anchor()).toBeNull();
 
     const present = (width: number, height: number) =>
-      act(() => surface?.present({ width, height } as VideoFrame, [], {} as AtlasMirror));
+      act(() => surface?.present({ width, height } as VideoFrame, []));
     present(1920, 1080);
     expect(anchor()?.style.aspectRatio).toBe("1920 / 1080");
     present(1080, 1920);
@@ -59,7 +58,7 @@ describe("video canvas", () => {
     const view = render(
       <VideoCanvas session={session} label="a.mp4" anchor="frame:a" cells={cells} />,
     );
-    act(() => surface?.present({ width: 400, height: 200 } as VideoFrame, [], {} as AtlasMirror));
+    act(() => surface?.present({ width: 400, height: 200 } as VideoFrame, []));
     const at = (lane: number) =>
       view.container.querySelector<HTMLElement>(`[data-cursor-id="frame:a:${lane}"]`);
     expect(at(0)?.style).toMatchObject({

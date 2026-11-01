@@ -1,5 +1,8 @@
 import { Basis } from "../expr/compiled";
-import type { LengthPlan } from "../marks/plan";
+import { LEN_COUNT, type LengthPlan, type MarkPlan, type Program } from "../marks/plan";
+
+/** Resolved lengths kept per mark: its `Len`s, then `dx` and `dy` of each candidate placement (a mask holds at most 8). */
+const STRIDE = LEN_COUNT + 16;
 
 /** Turns lengths into CSS pixels for the record being laid out. */
 export class Resolver {
@@ -13,13 +16,42 @@ export class Resolver {
   imageW = 0;
   imageH = 0;
   imageMin = 0;
+  /** Per mark and `Len`, the length as `length` would give it if the mark's own number fixes it, else NaN. */
+  private fixed = new Float64Array(0);
+  private program: Program | null = null;
 
-  /** The displayed image, and the UI zoom to cancel. */
-  view(width: number, height: number, zoom: number): void {
+  /** The displayed image, and the UI zoom to cancel; the lengths `program` fixes are resolved again when the zoom changed. */
+  view(width: number, height: number, zoom: number, program: Program): void {
     this.imageW = width;
     this.imageH = height;
     this.imageMin = Math.min(width, height);
-    this.unzoom = 1 / zoom;
+    const unzoom = 1 / zoom;
+    if (program === this.program && unzoom === this.unzoom) return;
+    this.program = program;
+    this.unzoom = unzoom;
+    const marks = program.marks;
+    this.fixed = new Float64Array(marks.length * STRIDE);
+    for (const mark of marks) {
+      const plans = [...mark.len, ...mark.place.flatMap((entry) => [entry.dx, entry.dy])];
+      plans.forEach((plan, i) => {
+        this.fixed[mark.index * STRIDE + i] =
+          plan.fixed === plan.fixed ? this.length(plan) : Number.NaN;
+      });
+    }
+  }
+
+  /** Length `i` (a `Len`) of `mark`; a plain table read when the mark's own numbers fix it. */
+  of(mark: MarkPlan, i: number): number {
+    const value = this.fixed[mark.index * STRIDE + i];
+    return value === value ? value : this.length(mark.len[i]);
+  }
+
+  /** The `dx` (axis 0) or `dy` (axis 1) of candidate placement `i` of `mark`. */
+  ofPlace(mark: MarkPlan, i: number, axis: number): number {
+    const value = this.fixed[mark.index * STRIDE + LEN_COUNT + 2 * i + axis];
+    if (value === value) return value;
+    const entry = mark.place[i];
+    return this.length(axis === 0 ? entry.dx : entry.dy);
   }
 
   /** The reference rect's size, which `box.*` lengths of the next record are relative to. */

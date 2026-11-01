@@ -1037,20 +1037,20 @@ behind: number,
 /**
  * Which way the viewer is travelling, which decides what to prefetch first.
  */
-direction: Direction, };
+direction: Direction, 
+/**
+ * How many frames after the playhead the viewer keeps Frame Maps and Sample Items for.
+ */
+data_ahead: number, 
+/**
+ * How many frames before the playhead the viewer keeps Frame Maps and Sample Items for.
+ */
+data_behind: number, };
 
 /**
- * How one lane shows its overlay.
+ * How a lane selects samples for frames: the part of a lane's settings the backend needs.
  */
-export type LaneViewWire = { 
-/**
- * The catalog id, such as `built-in:standard`.
- */
-catalog: string, 
-/**
- * The class filter toggles by option id; options not listed keep their default.
- */
-filter: Record<string, boolean>, 
+export type LanePolicyWire = { 
 /**
  * How far back a time-keyed sample may be, in milliseconds; `null` is exact.
  */
@@ -1058,15 +1058,7 @@ tolerance_ms: number | null,
 /**
  * Whether old samples stay on screen.
  */
-sticky: StickyWire, 
-/**
- * The lane's displayed image size.
- */
-target: TargetWire, 
-/**
- * Whether the lane is shown.
- */
-visible: boolean, };
+sticky: StickyWire, };
 
 /**
  * Keeping the last sample on screen while no sample matches.
@@ -1079,24 +1071,20 @@ enabled: boolean,
 /**
  * How old a kept sample may be, in milliseconds, at most 100000; `null` is without limit.
  */
-timeout_ms: number | null, 
-/**
- * How opaque a kept sample is drawn, 0 to 1.
- */
-opacity: number, };
+timeout_ms: number | null, };
 
 /**
- * A displayed image size in CSS pixels.
+ * What every lane starts with.
  */
-export type TargetWire = { 
+export type LaneDefaultsWire = { 
 /**
- * Width in CSS pixels.
+ * The catalog id, such as `built-in:standard`.
  */
-width: number, 
+catalog: string, 
 /**
- * Height in CSS pixels.
+ * The sample selection every lane starts with.
  */
-height: number, };
+policy: LanePolicyWire, };
 
 /**
  * One lane of the opened entry.
@@ -1107,9 +1095,9 @@ export type LaneInfo = {
  */
 label: string, 
 /**
- * Whether the lane has an overlay file; the lane of an entry without overlays is plain.
+ * The viewer's id of the source the lane draws; `null` for a plain lane. Lanes on the same file share one.
  */
-has_overlay: boolean, };
+source: number | null, };
 
 /**
  * The clock a lane's samples are on.
@@ -1173,7 +1161,15 @@ warnings: Array<WarningInfo>,
 /**
  * How many samples the file has.
  */
-samples: number, } | { "status": "Failed" } & ErrorWire;
+samples: number, 
+/**
+ * The source's revision; its Sample Items and the lane's Frame Maps carry it.
+ */
+data_revision: number, 
+/**
+ * The mean size of a Sample Item in bytes, 0 for an empty file; sizes the viewer's data window.
+ */
+mean_sample_bytes: number, } | { "status": "Failed" } & ErrorWire;
 
 /**
  * What the frontend sends.
@@ -1186,19 +1182,27 @@ ticket: string,
 /**
  * The frame to show, paused; the first frame when absent.
  */
-start_frame?: number, } | { "type": "Want" } & Want | { "type": "LaneView", 
+start_frame?: number, } | { "type": "Want" } & Want | { "type": "LanePolicy", 
 /**
  * The lane's position in `Opened.lanes`.
  */
 lane: number, 
 /**
- * Counts the lane's changes; overlays carry the revision they were made for.
+ * Counts the lane's changes; Frame Maps carry the revision they were selected under.
  */
 revision: number, 
 /**
- * The new view.
+ * How samples are selected.
  */
-view: LaneViewWire, } | { "type": "Close" };
+policy: LanePolicyWire, 
+/**
+ * Whether the lane is shown; an unsubscribed lane gets no Frame Maps and its samples are not sent for it.
+ */
+subscribed: boolean, } | { "type": "Catalog", 
+/**
+ * The catalog id, such as `built-in:standard`.
+ */
+id: string, } | { "type": "Close" };
 
 /**
  * What the backend sends as text. `Opened` is followed by a Timeline envelope.
@@ -1241,9 +1245,9 @@ warnings: Array<string>,
  */
 lanes: Array<LaneInfo>, 
 /**
- * The view every lane starts with.
+ * What every lane starts with.
  */
-lane_defaults: LaneViewWire, 
+lane_defaults: LaneDefaultsWire, 
 /**
  * The catalogs a lane may draw with, built-ins first and Standard first among them.
  */
@@ -1263,7 +1267,19 @@ lane: number,
 /**
  * What went wrong, in words for the user.
  */
-reason: string, } | { "type": "FrameError", 
+reason: string, } | { "type": "Catalog", 
+/**
+ * The requested id.
+ */
+id: string, 
+/**
+ * Counts the document's changes; 0 when there is no such catalog.
+ */
+revision: number, 
+/**
+ * The catalog document, or `null` when no such catalog exists.
+ */
+document: string | null, } | { "type": "FrameError", 
 /**
  * The frame that failed.
  */
@@ -1289,7 +1305,7 @@ location?: string, } | { "type": "Error" } & ErrorWire;
 /**
  * Raised when the messages or the envelope change in a way an older frontend cannot read.
  */
-export const PLAYBACK_PROTOCOL = 3;
+export const PLAYBACK_PROTOCOL = 4;
 
 /**
  * "AXDV" read as a little-endian u32.
@@ -1322,14 +1338,19 @@ export const VIDEO_FRAME_HEADER_BYTES = 64;
 export const KIND_VIDEO_FRAME = 1;
 
 /**
- * Envelope kind: the Drawing Instructions of one lane for a frame and a view revision.
- */
-export const KIND_OVERLAY = 2;
-
-/**
  * Envelope kind: the presentation time of every frame.
  */
 export const KIND_TIMELINE = 3;
+
+/**
+ * Envelope kind: one Sample Item of one source.
+ */
+export const KIND_SAMPLE = 4;
+
+/**
+ * Envelope kind: one run of one lane's Frame Map.
+ */
+export const KIND_FRAME_MAP = 5;
 
 /**
  * Flag bit 0: the frame is a keyframe.
@@ -1367,101 +1388,47 @@ export const MATRIX_BT601 = 0;
 export const MATRIX_BT709 = 1;
 
 /**
- * Where the sections of an Overlay start: the head plus the overlay header.
+ * Where the item of a Sample starts: the head plus the sample header, a multiple of 8 so the item's typed views
+ * need no copy.
  */
-export const OVERLAY_HEADER_BYTES = 64;
+export const SAMPLE_HEADER_BYTES = 40;
 
 /**
- * Overlay match byte: nothing to draw.
+ * Where the sample column of a FrameMap starts: the head plus the map header.
  */
-export const OVERLAY_MATCH_NONE = 0;
+export const FRAME_MAP_HEADER_BYTES = 48;
 
 /**
- * Overlay match byte: the sample is the frame's own.
+ * Frames of a map chunk; a run never spans two chunks.
  */
-export const OVERLAY_MATCH_EXACT = 1;
+export const FRAME_MAP_RUN_FRAMES = 256;
 
 /**
- * Overlay match byte: an earlier sample within the tolerance.
+ * Map cell: nothing belongs to the frame (read as -1 through an `Int32Array`).
  */
-export const OVERLAY_MATCH_TOLERATED = 2;
+export const FRAME_MAP_NONE = 4294967295;
 
 /**
- * Overlay match byte: an older sample kept by sticky.
+ * Map cell: a dense file covers the frame with nothing (read as -2 through an `Int32Array`).
  */
-export const OVERLAY_MATCH_RETAINED = 3;
+export const FRAME_MAP_EMPTY = 4294967294;
 
 /**
- * Overlay match byte: the file covers the frame with nothing.
+ * Map kind: the sample is the frame's own; also the kind of a NONE or EMPTY cell.
  */
-export const OVERLAY_MATCH_EMPTY = 4;
+export const MATCH_EXACT = 0;
 
 /**
- * Overlay section tag: the shared paints.
+ * Map kind: an earlier sample within the tolerance.
  */
-export const OVERLAY_TAG_PAINTS = 1;
+export const MATCH_TOLERATED = 1;
 
 /**
- * Overlay section tag: boxes.
+ * Map kind: an older sample kept by sticky.
  */
-export const OVERLAY_TAG_BOXES = 2;
+export const MATCH_RETAINED = 2;
 
 /**
- * Overlay section tag: lines.
+ * Upper bound of `data_ahead + data_behind + 1` in a Want.
  */
-export const OVERLAY_TAG_LINES = 3;
-
-/**
- * Overlay section tag: circles.
- */
-export const OVERLAY_TAG_CIRCLES = 4;
-
-/**
- * Overlay section tag: points.
- */
-export const OVERLAY_TAG_POINTS = 5;
-
-/**
- * Overlay section tag: the points of every polygon and polyline.
- */
-export const OVERLAY_TAG_PATH_POINTS = 6;
-
-/**
- * Overlay section tag: polygons.
- */
-export const OVERLAY_TAG_POLYGONS = 7;
-
-/**
- * Overlay section tag: polylines.
- */
-export const OVERLAY_TAG_POLYLINES = 8;
-
-/**
- * Overlay section tag: texts.
- */
-export const OVERLAY_TAG_TEXTS = 9;
-
-/**
- * Overlay section tag: the shared label styles.
- */
-export const OVERLAY_TAG_LABEL_STYLES = 10;
-
-/**
- * Overlay section tag: labels.
- */
-export const OVERLAY_TAG_LABELS = 11;
-
-/**
- * Overlay section tag: the runs of every label.
- */
-export const OVERLAY_TAG_RUNS = 12;
-
-/**
- * Overlay section tag: the strings every text refers to.
- */
-export const OVERLAY_TAG_STRINGS = 13;
-
-/**
- * Overlay section tags from here up are reserved (64 is the hit targets); receivers skip unknown tags.
- */
-export const OVERLAY_TAG_RESERVED = 64;
+export const MAX_DATA_WINDOW_FRAMES = 2048;

@@ -14,7 +14,6 @@ use crate::{
 };
 use api_types::{
     Audience,
-    catalogs::CatalogInfoWire,
     playback::{ClientMessage, ServerMessage},
 };
 use foundation::{CancelToken, ErrorCode, HostPath, Interrupt, UserError};
@@ -39,17 +38,9 @@ pub(super) async fn run(
     let entry = lease.entry();
     let location = video_location(&entry.video);
     tracing::info!("Opening {} for a viewer", location.as_path().display());
-    let (videos, catalogs, video) = (
-        state.videos.clone(),
-        state.catalogs.clone(),
-        entry.video.clone(),
-    );
-    let (opened, catalogs) = open_video(
-        move |cancel, progress| {
-            let opened = videos.open(&video, cancel, progress)?;
-            // Listing compiles the catalogs the first time, which stays off the async workers too.
-            Ok((opened, catalog_infos(&catalogs)))
-        },
+    let (videos, video) = (state.videos.clone(), entry.video.clone());
+    let opened = open_video(
+        move |cancel, progress| videos.open(&video, cancel, progress),
         &location,
         incoming,
         outbox,
@@ -68,25 +59,12 @@ pub(super) async fn run(
         audience,
         size,
         warnings,
-        catalogs,
+        library: &state.catalogs,
         overlays: &state.overlays,
     };
     let outcome = stream::stream(&mut session, setup, incoming, outbox, &mut closing, gate).await;
     release(session);
     outcome
-}
-
-/// The catalogs a lane may draw with, as the viewer is told them.
-fn catalog_infos(catalogs: &catalogs::Library) -> Vec<CatalogInfoWire> {
-    catalogs
-        .list()
-        .into_iter()
-        .map(|info| CatalogInfoWire {
-            id: info.id.to_string(),
-            name: info.name,
-            description: info.description,
-        })
-        .collect()
 }
 
 /// Cancels the index build of a viewer that left.
@@ -147,9 +125,13 @@ pub(super) async fn open_video<T: Send + 'static>(
                 }
             }
             message = next_client(incoming) => match message {
-                // A viewer sends its windows and lane views once the video is open; one that came early has
-                // nothing to apply to yet.
-                Some(Ok(ClientMessage::Want(_) | ClientMessage::LaneView { .. })) => {}
+                // A viewer sends its windows, lane policies and catalog requests once the video is open; one that
+                // came early has nothing to apply to yet.
+                Some(Ok(
+                    ClientMessage::Want(_)
+                    | ClientMessage::LanePolicy { .. }
+                    | ClientMessage::Catalog { .. },
+                )) => {}
                 Some(Err(error)) => return Err(End::Failed(error)),
                 Some(Ok(ClientMessage::Open { .. })) => {
                     return Err(End::Failed(UserError::new(

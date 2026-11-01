@@ -1,5 +1,5 @@
 /**
- * The text atlas's rasterizer in the playback worker: an OffscreenCanvas 2D page kept in memory, so the browser's
+ * The text atlas's rasterizer: an OffscreenCanvas 2D page kept in memory, so the browser's
  * own text rendering draws the glyphs at the screen's pixel density and reading coverage back is a copy.
  */
 

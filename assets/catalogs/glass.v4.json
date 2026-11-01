@@ -1,6 +1,6 @@
 {
   "schema": 4,
-  "id": "built-in.glass",
+  "id": "built-in:glass",
   "name": "Glass",
   "description": "Made to impress: rounded boxes in the class color, the id on a dark pill above, the score as a meter on a pill below, and clothing or vehicle colors and tags inside the box.",
   "vars": { "color": "#9aa3ae", "line": "1.5px", "radius": "6px", "tint": 14, "id_inside": false,

@@ -35,3 +35,19 @@ pub(crate) static BUILT_INS: [BuiltIn; 6] = [
         source: include_str!("../../../assets/catalogs/minimal.json"),
     },
 ];
+
+/// The v4 documents the playback socket serves, by name: the picker offers these until the v3 catalogs are retired.
+pub(crate) static DOCUMENTS: [(&str, &str); 3] = [
+    (
+        "standard",
+        include_str!("../../../assets/catalogs/standard.v4.json"),
+    ),
+    (
+        "classic",
+        include_str!("../../../assets/catalogs/classic.v4.json"),
+    ),
+    (
+        "glass",
+        include_str!("../../../assets/catalogs/glass.v4.json"),
+    ),
+];

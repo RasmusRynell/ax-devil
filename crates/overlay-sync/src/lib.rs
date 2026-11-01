@@ -67,8 +67,6 @@ pub struct Sticky {
     pub enabled: bool,
     /// How old a kept sample may be; `None` is without limit.
     pub timeout: Option<MediaTime>,
-    /// How opaque a kept sample is drawn, 0 to 1.
-    pub opacity: f32,
 }
 
 impl Default for Sticky {
@@ -76,7 +74,6 @@ impl Default for Sticky {
         Self {
             enabled: false,
             timeout: Some(MediaTime(2_050_000)),
-            opacity: 1.0,
         }
     }
 }
@@ -114,7 +111,5 @@ pub enum Selection {
         index: usize,
         /// How the sample matched.
         kind: MatchKind,
-        /// How opaque to draw it; the sticky opacity for [`MatchKind::Retained`], else 1.
-        opacity: f32,
     },
 }

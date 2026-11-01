@@ -14,8 +14,8 @@ import { RowSet, filterRows } from "../filter/filter";
 import { MarkBuffer } from "../marks/buffer";
 import { LaneQuads } from "../quads/lane";
 import { QuadSink } from "../quads/quadSink";
-import type { PreparedDrawing } from "../../overlay/prepare";
-import { drawingOf } from "../quads/drawing";
+import { syntheticSample } from "../fixtures";
+import type { Region } from "./sink";
 
 const compile = (layers: unknown[]): CompiledCatalog => {
   const result = compileCatalogDocument({
@@ -136,7 +136,7 @@ describe("atlas pages", () => {
 });
 
 describe("quads", () => {
-  it("records where each layer ends and fits the painter's drawing", () => {
+  it("records where each layer ends", () => {
     const catalog = builtIn("classic");
     const sample = fullSample([
       { id: "a", class: "car", score: 0.5, motion: "moving", velocity: [0.01, 0] },
@@ -150,8 +150,56 @@ describe("quads", () => {
     expect(lane.layerQuads[lane.layerCount - 1]).toBe(lane.quads.count);
     for (let i = 1; i < lane.layerCount; i++)
       expect(lane.layerQuads[i]).toBeGreaterThanOrEqual(lane.layerQuads[i - 1]);
-    const drawing = drawingOf(lane, ORACLE_VIEW, 0) satisfies PreparedDrawing;
-    expect(drawing.texts.length / 12).toBe(lane.quads.count);
     expect(lane.quads.count).toBeGreaterThan(5);
   });
+});
+
+describe("culling", () => {
+  /** The quads of `catalog` over `sample` on a 4x zoomed image, laid out for `visible` or for everything. */
+  const quadsOf = (catalog: CompiledCatalog, visible: Region | null): Float32Array => {
+    const sample = syntheticSample(3000);
+    const set = filterRows(
+      sample,
+      null,
+      { enabled: new Uint32Array(sample.maskWords), options: 0 },
+      new RowSet(),
+    );
+    const marks = new MarkBuffer();
+    evaluate(sample, set, catalog, { hidden: 0, theme: null }, marks, new EvalReport());
+    const lane = new LaneQuads();
+    const view = { width: 5120, height: 2880, dpr: 1, zoom: 1, visible };
+    new Layouter(new FakeText()).run(marks, catalog, sample, view, new QuadSink(lane));
+    return lane.quads.subarray().slice();
+  };
+
+  it.each(["standard", "classic", "glass"])(
+    "%s lays out nothing outside a 4x zoom's window and everything inside it",
+    (name) => {
+      const catalog = builtIn(name);
+      const window: Region = { left: 1920, top: 1080, right: 3200, bottom: 1800 };
+      const all = quadsOf(catalog, null);
+      const culled = quadsOf(catalog, window);
+      const key = (quads: Float32Array, i: number) => quads.slice(i * 12, i * 12 + 12).join(",");
+      const shown = (quads: Float32Array, i: number) => {
+        const [x, y, , , w, h] = quads.slice(i * 12, i * 12 + 6);
+        return (
+          x + w + 1 >= window.left &&
+          x - 1 <= window.right &&
+          y + h + 1 >= window.top &&
+          y - 1 <= window.bottom
+        );
+      };
+      const kept = new Set<string>();
+      for (let i = 0; i < culled.length / 12; i++) kept.add(key(culled, i));
+      let inside = 0;
+      for (let i = 0; i < all.length / 12; i++) {
+        // Line quads are rotated; their corners are not x, y, w, h.
+        if (all[i * 12 + 9] === 2 || !shown(all, i)) continue;
+        inside++;
+        expect(kept.has(key(all, i))).toBe(true);
+      }
+      expect(inside).toBeGreaterThan(50);
+      expect(culled.length).toBeLessThan(all.length / 4);
+    },
+  );
 });

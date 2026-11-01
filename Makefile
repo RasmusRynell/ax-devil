@@ -8,7 +8,7 @@ UI_PORT ?= 7331
 TEST ?=
 ROOT_FILES := desktop/*.cjs scripts/*.cjs vite.config.ts package.json pnpm-workspace.yaml
 .PHONY: help web desktop build check check-fast format tests tests-frontend tests-backend tests-integration \
-	tests-desktop bench _types _frontend-build _static _licenses _dev _dev-rust
+	tests-desktop bench bench-present _types _frontend-build _static _licenses _dev _dev-rust
 
 help:
 	@printf '%s\n' \
@@ -19,6 +19,7 @@ help:
 	  '  tests       Run all test suites' \
 	  '  check       Run every static check and all test suites' \
 	  '  bench       Run the Rust benchmarks (catalog render, lane frame); numbers on stdout' \
+	  '  bench-present  Time the frontend presentation path in plain Node (AX_BENCH_SIZES, _CATALOGS, _MODES, _REPEAT)' \
 	  '  check-fast  Run the static checks, file-size check on changed files only; no tests' \
 	  '  format      Format Rust and TypeScript/JavaScript, and apply lint fixes' \
 	  '' \
@@ -87,6 +88,10 @@ tests: tests-frontend tests-backend tests-integration tests-desktop
 # Timed with std::time::Instant on a MOT20-like frame; numbers go to stdout, nothing is asserted.
 bench:
 	$(ISOLATED) $(CARGO) bench --locked -p render-catalog -p overlays
+
+# Plain Node, no test runner: p50/p95 per catalog, object count and mode; AX_BENCH_* narrow it (frontend/src/present/runBench.ts).
+bench-present: node_modules/.installed
+	node --expose-gc --min-semi-space-size=64 --max-semi-space-size=64 frontend/src/present/runBench.ts
 
 # File size, architecture, formatting, lint and types. CHANGED=--changed limits the file-size check.
 _static: node_modules/.installed _types

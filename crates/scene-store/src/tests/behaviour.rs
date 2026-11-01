@@ -222,6 +222,24 @@ fn the_scene_cache_stays_under_its_bound_over_a_long_track() {
 }
 
 #[test]
+fn a_sample_item_is_the_encoded_scene_and_is_served_from_the_cache_the_second_time() {
+    let fixture = Fixture::new(Shape::Frames {
+        frames: 3,
+        boxes: 4,
+    });
+    let track = fixture.open();
+
+    let item = track.item(1).expect("item");
+
+    let scene = track.scene(1).expect("scene");
+    let expected =
+        scene::serial::columns::encode_sample_item(&scene, track.filter()).expect("encodes");
+    assert_eq!(&*item, expected.as_slice());
+    assert!(Arc::ptr_eq(&item, &track.item(1).expect("item")));
+    assert!(track.item(3).is_err(), "past the last sample");
+}
+
+#[test]
 fn a_scene_larger_than_the_whole_cache_is_served_but_not_kept() {
     let mut fixture = Fixture::new(Shape::Frames {
         frames: 2,

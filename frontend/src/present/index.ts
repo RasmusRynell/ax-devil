@@ -16,4 +16,14 @@ export {
   type CompiledFilter,
   type FilterResult,
 } from "./filter/filter";
-export type { SampleView } from "./expr/sampleShape";
+export { readSample, SampleFormatError, type SampleView } from "./columns";
+export { CodePoints } from "./expr/codePoints";
+export { type EvalStyle, evaluate } from "./evaluate/evaluate";
+export { EvalReport } from "./evaluate/report";
+export { Layouter } from "./layout/layout";
+export type { LayoutView } from "./layout/sink";
+export { LanePresenter, type LaneInput } from "./lane";
+export { MarkBuffer } from "./marks/buffer";
+export { LaneQuads } from "./quads/lane";
+export { QuadSink } from "./quads/quadSink";
+export { AtlasFull, type FontHandle, type Glyph, type TextSource } from "./text/source";

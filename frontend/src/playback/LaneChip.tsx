@@ -2,8 +2,8 @@ import { reasonOf } from "../errors";
 import { Icon } from "../kit/Icon";
 import { Popover } from "../kit/Popover";
 import { LaneMenu } from "./LaneMenu";
-import type { LaneState } from "./lanes";
-import type { CatalogInfoWire, LaneViewWire } from "./protocol";
+import type { LaneSettings, LaneState } from "./lanes";
+import type { CatalogInfoWire } from "./protocol";
 
 /** One thing to tell the user about a lane. */
 export type Notice = {
@@ -24,6 +24,11 @@ export function laneNotices(lane: LaneState): Notice[] {
       reasons: status.location === undefined ? undefined : [status.location],
     });
   if (lane.problem) notices.push({ problem: lane.problem });
+  if (lane.catalogProblem)
+    notices.push({
+      problem: "The chosen catalog cannot be used",
+      reasons: lane.catalogProblem.split("\n"),
+    });
   if (status !== "plain" && status.status === "Ready")
     for (const warning of status.warnings)
       notices.push({
@@ -57,7 +62,7 @@ export function NoticeList({ notices }: { notices: readonly Notice[] }) {
 
 /**
  * The name tag over a lane's top-left corner: its label, that it is loading, a button for what there is to report,
- * and the button that opens the lane's menu. A lane without an overlay file has neither warnings nor settings.
+ * and the button that opens the lane's menu. A lane without a source has neither warnings nor settings.
  * Without `onHide` the menu cannot hide the lane.
  */
 export function LaneChip({
@@ -68,11 +73,11 @@ export function LaneChip({
 }: {
   lane: LaneState;
   catalogs: readonly CatalogInfoWire[];
-  onChange: (change: Partial<LaneViewWire>) => void;
+  onChange: (change: Partial<LaneSettings>) => void;
   onHide?: () => void;
 }) {
   const notices = laneNotices(lane);
-  const loading = lane.status !== "plain" && lane.status.status === "Loading";
+  const loading = lane.pending || (lane.status !== "plain" && lane.status.status === "Loading");
   return (
     <div className="flex w-fit max-w-full items-center rounded-control bg-canvas-scrim text-on-canvas">
       <span className="min-w-0 truncate px-m">{lane.label}</span>
@@ -91,7 +96,7 @@ export function LaneChip({
           <NoticeList notices={notices} />
         </Popover>
       )}
-      {lane.hasOverlay && (
+      {lane.source !== null && (
         <Popover
           onCanvas
           label={`${lane.label}: settings`}

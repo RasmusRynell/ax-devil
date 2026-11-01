@@ -1,5 +1,5 @@
-//! The render catalogs the app offers: the six built into the app, checking a catalog file, and compiling each
-//! catalog once for everyone who draws with it.
+//! The render catalogs the app offers: the v4 documents the playback socket serves, the six v3 catalogs the CLI
+//! still uses, checking a catalog file, and compiling each v3 catalog once for everyone who draws with it.
 //!
 //! A [`CatalogId`] names a catalog (`built-in:<name>` or `user:<file>`); [`Library::compiled`] gives its compiled form.
 //! Catalogs in the user's catalog folder are not read yet, so only `check_file` looks at user files.

@@ -1,9 +1,7 @@
-//! Tests of the lane pipeline through real MOT files and ONVIF records, with catalogs and track loads that the
-//! tests can fail or hold.
+//! Tests of the data feed through real MOT files, with track loads that the tests can hold or break.
 
+mod delivery;
 mod statuses;
-mod views;
-mod window;
 
 use std::{
     fs,
@@ -15,18 +13,17 @@ use std::{
     time::Duration,
 };
 
-use catalogs::CatalogId;
-use foundation::{CancelToken, ErrorCode, FrameRate, FrameSize, Interrupt, Timeline, UserError};
+use foundation::{CancelToken, FrameRate, FrameSize, Interrupt, Timeline, UserError};
 use handlers::Handlers;
+use overlay_sync::MatchPolicy;
 use playback::{Direction, Priority, Want};
 use playlist_resolvers::OverlayRef;
-use render_catalog::CompiledCatalog;
 use scene_store::{Track, TrackRegistry};
 use tempfile::TempDir;
 
 use crate::{
-    LaneOverlay, LaneStatus, OverlayEvent, OverlayService, ViewerOverlays,
-    sources::{CatalogSource, TrackSource},
+    LaneStatus, MapRun, OverlayEvent, OverlayService, SampleItem, ViewerOverlays,
+    sources::TrackSource,
 };
 
 pub(super) const SIZE: FrameSize = FrameSize {
@@ -34,34 +31,8 @@ pub(super) const SIZE: FrameSize = FrameSize {
     height: 1080,
 };
 
-const MINIMAL: &str = include_str!("../../../../assets/catalogs/minimal.json");
-
-/// Catalogs that compile the Minimal catalog for every id but `user:bad`, which fails, and `user:panic`, which
-/// takes the worker down.
-pub(super) struct Catalogs {
-    minimal: Arc<CompiledCatalog>,
-    pub(super) asked: Mutex<Vec<CatalogId>>,
-}
-
-impl CatalogSource for Catalogs {
-    fn default_id(&self) -> CatalogId {
-        CatalogId::BuiltIn("standard")
-    }
-
-    fn compiled(&self, id: &CatalogId) -> Result<Arc<CompiledCatalog>, UserError> {
-        self.asked.lock().expect("asked").push(id.clone());
-        assert!(*id != CatalogId::User("panic".into()), "the worker dies");
-        if *id == CatalogId::User("bad".into()) {
-            return Err(UserError::new(
-                ErrorCode::CatalogInvalid,
-                format!("The catalog is damaged: {id}"),
-            ));
-        }
-        Ok(Arc::clone(&self.minimal))
-    }
-}
-
-/// Tracks from a real registry; opening the file named `held` waits until the viewer is closed.
+/// Tracks from a real registry; opening the file named `held` waits until the viewer is closed, and the file
+/// named `panic` takes the source thread down.
 pub(super) struct Tracks {
     pub(super) registry: TrackRegistry,
     held: Option<&'static str>,
@@ -75,7 +46,9 @@ impl TrackSource for Tracks {
         frame_size: FrameSize,
         cancel: &CancelToken,
     ) -> Result<Arc<Track>, Interrupt<UserError>> {
-        if overlay.path.file_name().and_then(|name| name.to_str()) == self.held {
+        let name = overlay.path.file_name().and_then(|name| name.to_str());
+        assert!(name != Some("panic.txt"), "the source thread dies");
+        if name == self.held {
             while !cancel.is_cancelled() {
                 std::thread::sleep(Duration::from_millis(5));
             }
@@ -92,51 +65,60 @@ pub(super) struct Env {
     dir: TempDir,
     pub(super) service: OverlayService,
     pub(super) tracks: Arc<Tracks>,
-    pub(super) catalogs: Arc<Catalogs>,
     /// Receives once a held load has seen its cancellation.
     pub(super) cancelled: std::sync::mpsc::Receiver<()>,
 }
 
 impl Env {
     pub(super) fn new() -> Self {
-        Self::holding(None)
+        Self::build(None, false)
     }
 
     /// An environment whose loads of the file `held` never finish until cancelled.
-    pub(super) fn holding(held: Option<&'static str>) -> Self {
+    pub(super) fn holding(held: &'static str) -> Self {
+        Self::build(Some(held), false)
+    }
+
+    /// An environment whose scene artifacts are kept in a folder, so a test can damage one.
+    pub(super) fn caching() -> Self {
+        Self::build(None, true)
+    }
+
+    fn build(held: Option<&'static str>, cache: bool) -> Self {
+        let dir = TempDir::new().expect("temp dir");
+        let cache_dir = cache.then(|| dir.path().join("cache"));
         let (sender, cancelled) = channel();
         let tracks = Arc::new(Tracks {
-            registry: TrackRegistry::new(Handlers::built_in(), None),
+            registry: TrackRegistry::new(Handlers::built_in(), cache_dir.as_deref()),
             held,
             cancelled: Mutex::new(sender),
         });
-        let catalogs = Arc::new(Catalogs {
-            minimal: Arc::new(
-                render_catalog::compile(MINIMAL).expect("the Minimal catalog compiles"),
-            ),
-            asked: Mutex::new(Vec::new()),
-        });
         Self {
-            dir: TempDir::new().expect("temp dir"),
-            service: OverlayService::from_sources(tracks.clone(), catalogs.clone()),
+            dir,
+            service: OverlayService::from_sources(tracks.clone()),
             tracks,
-            catalogs,
             cancelled,
         }
     }
 
+    /// The folder the files are written to.
+    pub(super) fn path(&self, name: &str) -> PathBuf {
+        self.dir.path().join(name)
+    }
+
     /// Writes `name` and returns the overlay of the handler `handler` reading it.
     pub(super) fn overlay(&self, name: &str, handler: &str, text: &str) -> OverlayRef {
-        let path = self.dir.path().join(name);
+        let path = self.path(name);
         fs::write(&path, text).expect("write overlay");
         overlay_at(name, handler, path)
     }
 
-    /// A MOT overlay with one box in each of `frames` (0-based).
+    /// A MOT overlay with one box in each of `frames` (0-based); the box of frame `n` is `n + 1` wide, so every
+    /// sample encodes differently.
     pub(super) fn mot(&self, name: &str, frames: impl IntoIterator<Item = u64>) -> OverlayRef {
         let text: String = frames
             .into_iter()
-            .map(|frame| format!("{},1,100,100,50,80,0.9,-1,-1,-1\n", frame + 1))
+            .map(|frame| format!("{},1,100,100,{},80,0.9,-1,-1,-1\n", frame + 1, frame + 1))
             .collect();
         self.overlay(name, "MOT_FILE", &text)
     }
@@ -164,6 +146,7 @@ pub(super) fn timeline(frames: u64) -> Timeline {
     Timeline::new(times).expect("timeline")
 }
 
+/// A forward data window of `behind` frames before and `ahead` after `playhead`.
 pub(super) fn want(playhead: u64, behind: u32, ahead: u32) -> Want {
     Want {
         playhead,
@@ -174,22 +157,27 @@ pub(super) fn want(playhead: u64, behind: u32, ahead: u32) -> Want {
     }
 }
 
-/// The next event, failing the test when none comes.
+/// The default matching, subscribed.
+pub(super) fn shown() -> (Option<MatchPolicy>, bool) {
+    (Some(MatchPolicy::default()), true)
+}
+
+/// The next event with no frame waiting, failing the test when none comes.
 pub(super) async fn next(viewer: &mut ViewerOverlays) -> OverlayEvent {
-    tokio::time::timeout(Duration::from_secs(10), viewer.next_event())
+    tokio::time::timeout(Duration::from_secs(10), viewer.next_event(None))
         .await
         .expect("an event in time")
         .expect("the viewer is open")
 }
 
-/// Whether an event arrives soon.
+/// Whether no event arrives soon.
 pub(super) async fn quiet(viewer: &mut ViewerOverlays) -> bool {
-    tokio::time::timeout(Duration::from_millis(250), viewer.next_event())
+    tokio::time::timeout(Duration::from_millis(250), viewer.next_event(None))
         .await
         .is_err()
 }
 
-/// Reads events until every lane of `lanes` has a Ready status.
+/// Reads events until every source of `lanes` has a Ready status.
 pub(super) async fn until_ready(viewer: &mut ViewerOverlays, lanes: &[u16]) {
     let mut waiting = lanes.to_vec();
     while !waiting.is_empty() {
@@ -203,25 +191,51 @@ pub(super) async fn until_ready(viewer: &mut ViewerOverlays, lanes: &[u16]) {
     }
 }
 
-/// The next `count` overlays; other events on the way are returned beside them.
-pub(super) async fn overlays(
-    viewer: &mut ViewerOverlays,
-    count: usize,
-) -> (Vec<LaneOverlay>, Vec<OverlayEvent>) {
-    let (mut found, mut others) = (Vec::new(), Vec::new());
-    while found.len() < count {
-        match next(viewer).await {
-            OverlayEvent::Overlay(overlay) => found.push(overlay),
-            other => others.push(other),
-        }
-    }
-    (found, others)
+/// What the viewer sent, in order.
+#[derive(Default)]
+pub(super) struct Sent {
+    pub(super) maps: Vec<MapRun>,
+    pub(super) samples: Vec<SampleItem>,
+    pub(super) problems: Vec<(u16, String)>,
+    /// `"map"` or `"sample"` in arrival order.
+    pub(super) order: Vec<&'static str>,
 }
 
-/// `(lane, frame)` of each overlay in arrival order.
-pub(super) fn places(found: &[LaneOverlay]) -> Vec<(u16, u64)> {
+/// Reads events until nothing arrives for a while.
+pub(super) async fn settle(viewer: &mut ViewerOverlays) -> Sent {
+    let mut sent = Sent::default();
+    while let Ok(Some(event)) =
+        tokio::time::timeout(Duration::from_millis(400), viewer.next_event(None)).await
+    {
+        match event {
+            OverlayEvent::Map(run) => {
+                sent.order.push("map");
+                sent.maps.push(run);
+            }
+            OverlayEvent::Sample(item) => {
+                sent.order.push("sample");
+                sent.samples.push(item);
+            }
+            OverlayEvent::Problem { lane, reason } => sent.problems.push((lane, reason)),
+            OverlayEvent::Status { .. } => {}
+        }
+    }
+    sent
+}
+
+/// The `(frame, sample)` cells of all runs of `lane`.
+pub(super) fn cells(sent: &Sent, lane: u16) -> Vec<(u64, u32)> {
+    let mut found = Vec::new();
+    for run in sent.maps.iter().filter(|run| run.lane == lane) {
+        for (offset, &cell) in run.samples.iter().enumerate() {
+            found.push((run.first + offset as u64, cell));
+        }
+    }
+    found.sort_unstable();
     found
-        .iter()
-        .map(|overlay| (overlay.lane, overlay.frame.sequence_id))
-        .collect()
+}
+
+/// The sample indices sent, in arrival order.
+pub(super) fn sample_ids(sent: &Sent) -> Vec<u64> {
+    sent.samples.iter().map(|item| item.sample).collect()
 }

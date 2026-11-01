@@ -1,5 +1,6 @@
 //! The streaming half of a playback session: once the video is open, tell the viewer about the entry, then apply its
-//! windows and lane views and send the frames in the windows and the lanes' overlays for them.
+//! windows and lane policies and send the frames in the windows and the lanes' data for them: Sample Items and Frame
+//! Maps, nearest the playhead first, interleaved with the frames by the same rank.
 
 use super::{
     End, Flow, Incoming, Outbox, Outgoing, envelope,
@@ -10,7 +11,6 @@ use super::{
 use crate::video_sources::video_location;
 use api_types::{
     Audience,
-    catalogs::CatalogInfoWire,
     playback::{
         ClientMessage, Direction as WireDirection, PLAYBACK_PROTOCOL, ServerMessage,
         Want as WireWant,
@@ -18,6 +18,7 @@ use api_types::{
     project,
 };
 use axum::extract::ws::Message;
+use catalogs::Library;
 use foundation::{ErrorCode, FrameSize, HostPath, UserError};
 use overlays::OverlayService;
 use playback::{Delivery, Direction, Priority, Session, Want};
@@ -44,13 +45,13 @@ pub(super) struct Setup<'a> {
     pub(super) size: FrameSize,
     /// The video's warnings, which name the host's files.
     pub(super) warnings: Vec<String>,
-    /// The catalogs a lane may draw with.
-    pub(super) catalogs: Vec<CatalogInfoWire>,
+    /// The catalogs a lane may draw with, which the viewer asks for by id.
+    pub(super) library: &'a Library,
     /// Opens the lanes' overlays.
     pub(super) overlays: &'a OverlayService,
 }
 
-/// What the session sends next, overlay messages before frames.
+/// What the session sends next: notices first, then whichever of a lane's data and the next frame ranks first.
 enum Next {
     Lane(LaneEvent),
     /// `None` when the session or its source closed.
@@ -70,6 +71,8 @@ struct Playing<'a, I> {
     audience: Audience,
     last: u64,
     failures: u32,
+    /// The data frames after and before the playhead the viewer asked for last.
+    data: (u32, u32),
 }
 
 /// Tells the viewer about the entry, then applies its messages and sends what it has room for until it leaves.
@@ -90,6 +93,7 @@ pub(super) async fn stream(
     gate.open(timeline.clone());
     let lanes = Lanes::open(
         setup.overlays,
+        setup.library,
         setup.entry,
         timeline.clone(),
         setup.size,
@@ -108,9 +112,9 @@ pub(super) async fn stream(
         } else {
             Vec::new()
         },
-        lanes: lanes::infos(setup.entry),
-        lane_defaults: lanes::view_wire(&setup.overlays.lane_defaults()),
-        catalogs: setup.catalogs,
+        lanes: lanes.infos(setup.entry),
+        lane_defaults: lanes::lane_defaults(setup.overlays, setup.library),
+        catalogs: lanes::catalog_infos(setup.library),
     });
     // The overlays stop with `Playing`, which goes when the session ends, a revoked one included.
     let mut playing = Playing {
@@ -124,6 +128,7 @@ pub(super) async fn stream(
         audience: setup.audience,
         last,
         failures: 0,
+        data: (INITIAL_AHEAD, INITIAL_BEHIND),
     };
     // Decoding starts at the first frame the viewer shows while the messages below are on their way.
     playing.ask(Want {
@@ -141,30 +146,38 @@ pub(super) async fn stream(
 }
 
 impl<I: Incoming> Playing<'_, I> {
-    /// Gives the session `want` as the authority allows it, and the overlays the same window.
+    /// Gives the session `want` as the authority allows it, and the overlays the data window inside it.
     fn ask(&mut self, want: Want) -> Flow<()> {
         self.gate.ask(self.session, want)?;
-        self.lanes.follow(self.gate.applied());
+        self.lanes.follow(self.gate.applied(), self.data);
         Ok(())
     }
 
     /// Judges the viewer's last want again, after the authority changed or as the presenter's clock moves.
     fn refresh(&mut self) -> Flow<()> {
         self.gate.refresh(self.session)?;
-        self.lanes.follow(self.gate.applied());
+        self.lanes.follow(self.gate.applied(), self.data);
         Ok(())
     }
 
-    /// Handles what the viewer sent once its video is open: windows apply as its authority allows them, lane views
-    /// apply to their lanes, anything else ends the session.
+    /// Handles what the viewer sent once its video is open: windows apply as its authority allows them, lane policies
+    /// apply to their lanes, catalog requests are answered, anything else ends the session.
     fn apply(&mut self, message: Option<Result<ClientMessage, UserError>>) -> Flow<()> {
         match message {
-            Some(Ok(ClientMessage::Want(wire))) => self.ask(want(wire)),
-            Some(Ok(ClientMessage::LaneView {
+            Some(Ok(ClientMessage::Want(wire))) => {
+                self.data = (wire.data_ahead, wire.data_behind);
+                self.ask(want(wire))
+            }
+            Some(Ok(ClientMessage::LanePolicy {
                 lane,
                 revision,
-                view,
-            })) => self.lanes.view(lane, revision, view),
+                policy,
+                subscribed,
+            })) => self.lanes.policy(lane, revision, policy, subscribed),
+            Some(Ok(ClientMessage::Catalog { id })) => {
+                self.lanes.catalog(id);
+                Ok(())
+            }
             Some(Ok(ClientMessage::Open { .. })) => Err(End::Failed(UserError::new(
                 ErrorCode::ProtocolViolation,
                 "The video is already open",
@@ -241,11 +254,14 @@ impl<I: Incoming> Playing<'_, I> {
     }
 }
 
-/// The next thing to send: what the lanes have, which is nearest the playhead and small, then frames.
+/// The next thing to send: the lanes' notices, then their data or the next frame, whichever ranks first, the data
+/// first on a tie. The lanes hold an item back while a frame ranks before it; the rank is read again whenever this
+/// is called, which is after every message sent and every message of the viewer.
 async fn next(session: &mut Session, lanes: &mut Lanes) -> Next {
+    let rank = session.next_rank();
     tokio::select! {
         biased;
-        event = lanes.next() => Next::Lane(event),
+        event = lanes.next(rank) => Next::Lane(event),
         delivery = session.next_delivery() => Next::Delivery(delivery),
     }
 }

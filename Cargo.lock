@@ -237,6 +237,8 @@ version = "0.1.0"
 dependencies = [
  "foundation",
  "render-catalog",
+ "serde",
+ "serde_json",
  "tempfile",
 ]
 
@@ -851,14 +853,12 @@ dependencies = [
 name = "overlays"
 version = "0.1.0"
 dependencies = [
- "catalogs",
- "drawing",
+ "api-types",
  "foundation",
  "handlers",
  "overlay-sync",
  "playback",
  "playlist-resolvers",
- "render-catalog",
  "scene",
  "scene-decoders",
  "scene-store",

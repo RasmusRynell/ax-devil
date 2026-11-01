@@ -2,12 +2,15 @@
  * Draws decoded frames on a canvas with WebGL2. Planar and semi-planar YUV frames are converted to RGB in a shader
  * from the matrix and range in the frame header; RGBA frames are drawn as they are. The canvas holds one cell per
  * lane: the frame is uploaded once and drawn into every cell, fitted keeping its aspect on a near-black field, and
- * each lane's overlay is painted over its picture on the same context.
+ * each lane's marks are laid out for its cell and painted over its picture on the same context.
  */
 
-import type { AtlasMirror } from "../overlay/mirror";
+import { TextAtlas } from "../overlay/atlas";
+import { AtlasText } from "../overlay/atlasText";
+import { canvasGlyphs } from "../overlay/canvasGlyphs";
 import { OverlayPainter, type CellRect } from "../overlay/painter";
-import type { PreparedDrawing } from "../overlay/prepare";
+import type { LaneFrame } from "./contract";
+import { LaneLayouts } from "./laneLayouts";
 import type { Matrix, VideoFrame } from "./protocol";
 
 export type { CellRect } from "../overlay/painter";
@@ -75,7 +78,7 @@ void main() {
 
 type Planes = { key: string; textures: WebGLTexture[] };
 
-/** One viewer's canvas: the video in every lane cell and each lane's overlay over it. */
+/** One viewer's canvas: the video in every lane cell and each lane's marks over it. */
 export class VideoRenderer {
   readonly #canvas: HTMLCanvasElement;
   readonly #gl: WebGL2RenderingContext;
@@ -88,8 +91,12 @@ export class VideoRenderer {
   #frame: VideoFrame | undefined;
   /** `null` is one cell for lane 0 covering the canvas. */
   #cells: readonly LaneCell[] | null = null;
-  #overlays: readonly (PreparedDrawing | undefined)[] = [];
-  #atlas: AtlasMirror | undefined;
+  /** What each lane draws over the frame, by lane. */
+  #lanes: readonly (LaneFrame | undefined)[] = [];
+  /** The glyph atlas is the renderer's, so a restored context starts on a fresh page. */
+  readonly #atlas = new TextAtlas(canvasGlyphs());
+  readonly #text = new AtlasText(this.#atlas);
+  readonly #layouts = new LaneLayouts(this.#text);
 
   constructor(canvas: HTMLCanvasElement) {
     const gl = canvas.getContext("webgl2", {
@@ -153,16 +160,13 @@ export class VideoRenderer {
   }
 
   /**
-   * Draws the frame in every cell with each cell's lane overlay from `overlays` (by lane) over it, their texts from
-   * `atlas`. The frame is uploaded only when it is not the one drawn last.
+   * Draws the frame in every cell with each cell's lane marks from `lanes` (by lane) over it. The frame is uploaded
+   * only when it is not the one drawn last.
    */
-  present(
-    frame: VideoFrame,
-    overlays: readonly (PreparedDrawing | undefined)[] = [],
-    atlas?: AtlasMirror,
-  ): void {
-    this.#overlays = overlays;
-    this.#atlas = atlas;
+  present(frame: VideoFrame, lanes: readonly (LaneFrame | undefined)[] = []): void {
+    this.#lanes = lanes;
+    this.#layouts.keep(lanes.length);
+    this.#painter.keepLanes(lanes.length);
     if (frame !== this.#frame) this.#upload(frame);
     this.redraw();
   }
@@ -240,7 +244,7 @@ export class VideoRenderer {
     this.#frame = frame;
   }
 
-  /** Draws the last frame and overlays again, fitted to the canvas and cells as they are now. */
+  /** Draws the last frame and marks again, fitted to the canvas and cells as they are now. */
   redraw(): void {
     const gl = this.#gl;
     const { width: canvasWidth, height: canvasHeight } = this.#canvas;
@@ -253,17 +257,28 @@ export class VideoRenderer {
     const cells = this.#cells ?? [
       { lane: 0, rect: { x: 0, y: 0, width: canvasWidth, height: canvasHeight } },
     ];
-    for (const { lane, rect } of cells) {
-      if (rect.width <= 0 || rect.height <= 0) continue;
-      const fitted = fitPicture(rect, picture);
+    const placed = cells
+      .filter(({ rect }) => rect.width > 0 && rect.height > 0)
+      .map(({ lane, rect }) => ({ lane, rect, fitted: fitPicture(rect, picture) }));
+    const dpr = devicePixelRatio;
+    const drawings = this.#layouts.layOut(
+      placed.map(({ lane, fitted }) => ({
+        lane,
+        frame: this.#lanes[lane],
+        // CSS pixels, so a lane keeps its look at any pixel density.
+        view: { width: fitted.width / dpr, height: fitted.height / dpr, dpr },
+      })),
+    );
+    this.#painter.sync(this.#atlas);
+    placed.forEach(({ rect, fitted }, at) => {
       gl.useProgram(this.#program);
       gl.bindVertexArray(this.#quad);
       gl.viewport(fitted.x, canvasHeight - fitted.y - fitted.height, fitted.width, fitted.height);
       gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
       gl.bindVertexArray(null);
-      const overlay = this.#overlays[lane];
-      if (overlay) this.#painter.draw(overlay, fitted, rect, this.#atlas);
-    }
+      const drawing = drawings[at];
+      if (drawing) this.#painter.draw(drawing, fitted, rect);
+    });
   }
 
   /** Frees the GPU's copy of the picture and the overlay painter. */

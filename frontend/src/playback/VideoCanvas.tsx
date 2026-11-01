@@ -92,7 +92,7 @@ function Anchors({
 
 /**
  * The picture the session presents, drawn at the screen's pixel density into each lane's cell with that lane's
- * overlay over it; without `cells`, one cell for lane 0 fills the space. A browser without WebGL2 says so instead.
+ * marks over it; without `cells`, one cell for lane 0 fills the space. A browser without WebGL2 says so instead.
  * `anchor` names the `data-cursor-id` of the elements over the pictures; with `cells` each gets `:<lane>` after it.
  */
 export function VideoCanvas({
@@ -126,8 +126,8 @@ export function VideoCanvas({
       renderer.current = current;
       current.setCells(deviceCells(layout.current, element));
       session.setSurface({
-        present: (frame, overlays, atlas) => {
-          current.present(frame, overlays, atlas);
+        present: (frame, lanes) => {
+          current.present(frame, lanes);
           const { width, height } = frame;
           setPicture((now) =>
             now?.width === width && now.height === height ? now : { width, height },

@@ -1,13 +1,19 @@
 // The backend's Opened message for tests: the test says how long the video is.
-import type { LaneInfo, LaneViewWire, ServerMessage } from "../generated/api";
+import type { LaneDefaultsWire, LaneInfo, ServerMessage } from "../generated/api";
+import type { LaneSettings } from "./contract";
 import { PLAYBACK_PROTOCOL } from "./protocol";
 
-export const LANE_DEFAULTS: LaneViewWire = {
+export const LANE_DEFAULTS: LaneDefaultsWire = {
   catalog: "built-in:standard",
+  policy: { tolerance_ms: 50, sticky: { enabled: false, timeout_ms: 2050 } },
+};
+
+/** A lane's settings as the user has not touched them. */
+export const LANE_SETTINGS: LaneSettings = {
+  catalog: LANE_DEFAULTS.catalog,
   filter: {},
-  tolerance_ms: 50,
-  sticky: { enabled: false, timeout_ms: 2050, opacity: 1 },
-  target: { width: 1280, height: 720 },
+  tolerance_ms: LANE_DEFAULTS.policy.tolerance_ms,
+  sticky: { ...LANE_DEFAULTS.policy.sticky, opacity: 1 },
   visible: true,
 };
 
@@ -15,7 +21,7 @@ export const LANE_DEFAULTS: LaneViewWire = {
 export const opened = (
   frames: number,
   frameBytes: number,
-  lanes: LaneInfo[] = [{ label: "a.mp4", has_overlay: false }],
+  lanes: LaneInfo[] = [{ label: "a.mp4", source: null }],
 ): ServerMessage => ({
   type: "Opened",
   protocol: PLAYBACK_PROTOCOL,

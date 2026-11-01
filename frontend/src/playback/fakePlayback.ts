@@ -1,6 +1,7 @@
 // A playback session against a fake server, a fake display refresh and a fake clock, for tests.
 import { opened as openedMessage } from "./fakeOpened";
-import { preparedDrawing } from "./fakeOverlay";
+import { catalogDocument, mapBytes, sampleBytes } from "./fakeData";
+import type { LaneFrame } from "./contract";
 import { PlaybackSession, type PlaybackIntent } from "./session";
 import type {
   ClientMessage,
@@ -9,7 +10,7 @@ import type {
   ServerMessage,
   VideoFrame,
 } from "./protocol";
-import type { Incoming } from "./wire";
+import { decode, type Incoming } from "./wire";
 
 export const FRAME_BYTES = 100;
 
@@ -46,7 +47,7 @@ export async function setup(resume?: { frame: number; speed: number }) {
   let tickets = 0;
   let ticket: () => Promise<string> = async () => `ticket-${++tickets}`;
   const presented: number[] = [];
-  const drawn: { sequenceId: number; overlays: unknown[]; atlas: number }[] = [];
+  const drawn: { sequenceId: number; lanes: (LaneFrame | undefined)[] }[] = [];
   const time = { now: 1000 };
   const refreshes: (() => void)[] = [];
   const retries: { run: () => void; ms: number }[] = [];
@@ -75,13 +76,9 @@ export async function setup(resume?: { frame: number; speed: number }) {
     resume,
   });
   session.setSurface({
-    present: (frame, overlays, atlas) => {
+    present: (frame, lanes) => {
       presented.push(frame.sequenceId);
-      drawn.push({
-        sequenceId: frame.sequenceId,
-        overlays: [...overlays],
-        atlas: atlas.generation,
-      });
+      drawn.push({ sequenceId: frame.sequenceId, lanes: [...lanes] });
     },
   });
   const server = {
@@ -105,11 +102,22 @@ export async function setup(resume?: { frame: number; speed: number }) {
     },
     status: (lane: number, status: LaneStatusWire) =>
       server.say({ type: "LaneStatus", lane, status }),
-    overlay: (lane: number, sequenceId: number, revision: number, drawing = preparedDrawing()) =>
-      deliver({
-        type: "overlays",
-        overlays: [{ lane, sequenceId, revision, prepared: drawing }],
-      }),
+    /** A Sample Item of `source`; a real one from the oracle fixtures unless `fields.item` says otherwise. */
+    sample: (fields: Parameters<typeof sampleBytes>[0] = {}) => {
+      const incoming = decode(sampleBytes(fields));
+      if (incoming) deliver(incoming);
+    },
+    /** A run of a lane's Frame Map. */
+    map: (fields: Parameters<typeof mapBytes>[0]) => {
+      const incoming = decode(mapBytes(fields));
+      if (incoming) deliver(incoming);
+    },
+    /** The answer to a `Catalog` request: Standard unless `document` says otherwise. */
+    catalog: (
+      id = "built-in:standard",
+      document: string | null = catalogDocument(),
+      revision = 1,
+    ) => server.say({ type: "Catalog", id, revision, document }),
   };
   /** One display refresh after `ms` milliseconds. */
   const refresh = (ms = 0) => {

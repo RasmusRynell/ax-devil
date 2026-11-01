@@ -158,7 +158,7 @@ module.exports.playlist = async (window) => {
         lanes,
       );
       for (const cell of cells) {
-        // The overlay arrives with its frame, but a resized lane draws a new one: wait until it is on screen.
+        // Marks are drawn once the lane's sample is held, and again when its lane is resized: wait until they are on screen.
         const found = async () => (await colourful(cell)) > 0;
         const deadline = Date.now() + 5000;
         while ((await found()) !== drawn && Date.now() < deadline) await delay(100);

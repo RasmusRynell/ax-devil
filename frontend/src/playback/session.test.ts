@@ -79,7 +79,15 @@ describe("what the window asks for and keeps", () => {
     const { session, server, wants, presented, refresh } = await setup();
     server.open();
     expect(wants()).toEqual([
-      { type: "Want", playhead: 0, ahead: 4, behind: 5, direction: "forward" },
+      {
+        type: "Want",
+        playhead: 0,
+        ahead: 4,
+        behind: 5,
+        direction: "forward",
+        data_ahead: 0,
+        data_behind: 0,
+      },
     ]);
     // Paused at 0 the window is 0 to 4: frame 6 is dropped on arrival.
     server.frames(0, 1, 6);

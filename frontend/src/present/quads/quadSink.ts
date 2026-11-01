@@ -9,12 +9,21 @@ import {
   square,
 } from "../../overlay/quads";
 import type { PrimitiveSink } from "../layout/sink";
-import type { GlyphScratch } from "../text/measure";
+import { GLYPH, type RunCache } from "../text/runCache";
 import type { LaneQuads } from "./lane";
+
+/** The colours seen lately and their words: a frame uses a handful, over and over. */
+const seen = new Uint32Array(64);
+const words = new Uint32Array(64);
 
 /** A packed `0xRRGGBBAA` colour as the premultiplied word the quads carry. */
 export function premultipliedWord(rgba: number): number {
-  return premultiplied(rgba >>> 24, (rgba >>> 16) & 0xff, (rgba >>> 8) & 0xff, rgba & 0xff);
+  const slot = (rgba ^ (rgba >>> 11)) & 63;
+  if (seen[slot] === rgba) return words[slot];
+  const word = premultiplied(rgba >>> 24, (rgba >>> 16) & 0xff, (rgba >>> 8) & 0xff, rgba & 0xff);
+  seen[slot] = rgba;
+  words[slot] = word;
+  return word;
 }
 
 /** Writes layout's primitives as the instanced quads the painter draws. */
@@ -165,9 +174,8 @@ export class QuadSink implements PrimitiveSink {
   }
 
   glyphs(
-    run: GlyphScratch,
-    first: number,
-    end: number,
+    runs: RunCache,
+    entry: number,
     originX: number,
     originY: number,
     dpr: number,
@@ -176,18 +184,19 @@ export class QuadSink implements PrimitiveSink {
     const word = premultipliedWord(color);
     const quads = this.out.quads;
     const inverse = 1 / dpr;
-    for (let g = first; g < end; g++) {
-      const glyph = run.glyphs[g];
+    const pool = runs.glyphs;
+    const end = runs.glyphEnd[entry] * GLYPH;
+    for (let at = runs.glyphFirst[entry] * GLYPH; at < end; at += GLYPH) {
       quads.push(
         Kind.glyph,
-        (originX + run.x[g]) * inverse,
-        (originY + run.y[g]) * inverse,
+        (originX + pool[at]) * inverse,
+        (originY + pool[at + 1]) * inverse,
         1,
         0,
-        glyph.width * inverse,
-        glyph.height * inverse,
-        glyph.u,
-        glyph.v,
+        pool[at + 2] * inverse,
+        pool[at + 3] * inverse,
+        pool[at + 4],
+        pool[at + 5],
         0,
         word,
         0,

@@ -1,12 +1,14 @@
 /**
- * The worker's text atlas: glyph bitmaps rasterized once per font on one coverage page, placed by a shelf allocator.
+ * A renderer's text atlas: glyph bitmaps rasterized once per font on one coverage page, placed by a shelf allocator.
  * Text is laid out glyph by glyph from the cached advances, so a frame of new strings (ids, scores) only costs
  * lookups; strings in scripts that need shaping (joining, combining marks) are rasterized whole instead. Every
- * placement is recorded as an upload the main thread copies into its mirror of the page (mirror.ts).
+ * placement is recorded as an upload the painter copies onto the GPU page (painter.ts).
  *
- * When the page is full the atlas starts a new generation on an empty page; drawings of the old generation then
- * sample the wrong glyphs and must be prepared again (prepare.ts does that for the frame window).
+ * When the page is full the atlas starts a new generation on an empty page; quads laid out on the old generation then
+ * sample the wrong glyphs, so every lane lays out again before it is drawn (renderer.ts).
  */
+
+import { AtlasFull } from "../present";
 
 /** Width and height of the page in pixels. */
 export const ATLAS_PAGE_SIZE = 2048;
@@ -28,7 +30,7 @@ export type TextMeasure = {
   bottom: number;
 };
 
-/** Rasterizes text for the atlas: an OffscreenCanvas in the worker (canvasGlyphs.ts), a fake in tests. */
+/** Rasterizes text for the atlas: an OffscreenCanvas (canvasGlyphs.ts), a fake in tests. */
 export interface GlyphSource {
   metrics(font: string): FontMetrics;
   measure(font: string, text: string): TextMeasure;
@@ -39,7 +41,7 @@ export interface GlyphSource {
   clear(): void;
 }
 
-/** A change to the page, applied by the main thread in the order drawings arrive. */
+/** A change to the page, applied to the GPU in the order it happened. */
 export type AtlasUpload =
   | { type: "reset"; generation: number }
   | { type: "region"; x: number; y: number; width: number; height: number; alpha: Uint8Array };
@@ -63,21 +65,13 @@ export type AtlasFont = {
   readonly strings: Map<string, Glyph>;
 };
 
-/** Thrown by `glyph` and `whole` when the page has no room; preparation resets the atlas and lays out again. */
-export class AtlasFull extends Error {
-  constructor() {
-    super("the text atlas page is full");
-    this.name = "AtlasFull";
-  }
-}
-
 const WEIGHTS = [400, 500, 600, 700];
 const DEFAULT_FAMILY = "system-ui, sans-serif";
 const MAX_FONTS = 256;
 const MAX_STRINGS = 4096;
 const NO_GLYPH: Glyph = { advance: 0, left: 0, top: 0, width: 0, height: 0, u: 0, v: 0 };
 
-/** The atlas of one viewer's worker. */
+/** The atlas of one renderer. */
 export class TextAtlas {
   readonly #source: GlyphSource;
   readonly #size: number;
@@ -98,7 +92,12 @@ export class TextAtlas {
     this.#size = pageSize;
   }
 
-  /** Counts the pages started; drawings remember the one their glyphs are on. */
+  /** Width and height of the page in pixels. */
+  get size(): number {
+    return this.#size;
+  }
+
+  /** Counts the pages started; layouts remember the one their glyphs are on. */
   get generation(): number {
     return this.#generation;
   }
@@ -160,7 +159,7 @@ export class TextAtlas {
     this.dropped = 0;
   }
 
-  /** The page changes since the last call, for the drawing that goes out next. */
+  /** The page changes since the last call. */
   takeUploads(): AtlasUpload[] {
     const uploads = this.#uploads;
     const dirty = this.#dirty;

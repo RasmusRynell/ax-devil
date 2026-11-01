@@ -2,51 +2,81 @@
 
 use std::{sync::Arc, thread};
 
-use playback::Want;
+use overlay_sync::MatchPolicy;
+use playback::{Rank, Want};
 
-use crate::{LaneView, OverlayEvent, state::Shared};
+use crate::{OverlayEvent, state::Shared};
 
-/// One viewer's overlays: loads lanes and prepares their frames on a worker.
+/// One viewer's overlays: loads sources and encodes their samples on threads of their own.
 ///
 /// Dropping it closes it, like [`ViewerOverlays::close`].
 pub struct ViewerOverlays {
     shared: Arc<Shared>,
     threads: Vec<thread::JoinHandle<()>>,
+    sources: Vec<Option<u16>>,
 }
 
 impl ViewerOverlays {
-    pub(crate) fn new(shared: Arc<Shared>, threads: Vec<thread::JoinHandle<()>>) -> Self {
-        Self { shared, threads }
+    pub(crate) fn new(
+        shared: Arc<Shared>,
+        threads: Vec<thread::JoinHandle<()>>,
+        sources: Vec<Option<u16>>,
+    ) -> Self {
+        Self {
+            shared,
+            threads,
+            sources,
+        }
     }
 
-    /// Replaces the lane's view. A new revision resends the lane's whole window; a catalog that fails to compile
-    /// keeps the last compiled one and emits [`OverlayEvent::Problem`], the lane staying ready. A lane without an
-    /// overlay, or past the last lane, is ignored.
-    ///
-    /// The catalog compiles on the worker, not the caller.
-    pub fn set_view(&self, lane: u16, revision: u32, view: LaneView) {
+    /// The source of each lane, `None` for a plain lane. Lanes on the same file share a source.
+    pub fn lane_sources(&self) -> &[Option<u16>] {
+        &self.sources
+    }
+
+    /// Replaces a lane's policy under `revision`: its Frame Map is selected and sent again, its samples only where
+    /// the new map needs others. `matching: None` is a policy the caller refused: the lane keeps its previous
+    /// matching but adopts `revision` and `subscribed`. A plain lane, or one past the last lane, is ignored.
+    pub fn set_policy(
+        &self,
+        lane: u16,
+        revision: u32,
+        matching: Option<MatchPolicy>,
+        subscribed: bool,
+    ) {
+        self.shared.update(|state| {
+            state.set_policy(
+                usize::from(lane),
+                revision,
+                matching,
+                subscribed,
+                &self.shared.timeline,
+            );
+        });
+    }
+
+    /// Moves the data window: the playhead and direction the viewer's gate applied, with `ahead` and `behind` the
+    /// data frames. Applied in order: maps and samples that leave the window are forgotten and sent again when they
+    /// return.
+    pub fn want(&self, window: Want) {
         self.shared
-            .update(|state| state.set_view(usize::from(lane), revision, view));
+            .update(|state| state.set_want(window, &self.shared.timeline));
     }
 
-    /// Moves the window of frames to prepare, with the same windows as the video, applied in order: a frame that
-    /// leaves the window is forgotten and prepared again when it returns.
-    pub fn want(&self, want: Want) {
-        self.shared.update(|state| state.set_want(want));
-    }
-
-    /// The next event: statuses and problems first, then overlays nearest the playhead (the playhead, then the
-    /// direction of travel, then the other side). Waits while there is nothing; `None` once the viewer is closed.
-    pub async fn next_event(&mut self) -> Option<OverlayEvent> {
+    /// The next event: statuses and problems first, then the most urgent map run or sample, nearest the playhead
+    /// first and maps before samples. An item goes only if its rank is at most `frame_rank`, the rank of the video
+    /// frame waiting (`None`: no frame waits), so the data wins ties. Waits while there is nothing; `None` once the
+    /// viewer is closed.
+    pub async fn next_event(&mut self, frame_rank: Option<Rank>) -> Option<OverlayEvent> {
         loop {
             let notified = self.shared.wake.notified();
             let (event, closed) = {
                 let mut state = self.shared.lock();
-                (state.pull(), state.closed)
+                (state.pull(frame_rank), state.closed)
             };
             match event {
                 Some(event) => {
-                    // A slot in the prepared queue is free.
+                    // A slot in a source's ready items may be free.
                     self.shared.work.notify_all();
                     return Some(event);
                 }
@@ -82,8 +112,8 @@ impl Drop for ViewerOverlays {
 
 #[cfg(test)]
 impl ViewerOverlays {
-    /// The catalog a lane draws with now.
-    pub(crate) fn loaded_catalog(&self, lane: usize) -> Option<catalogs::CatalogId> {
-        self.shared.lock().loaded_catalog(lane)
+    /// How many encoded items of `source` wait for the consumer.
+    pub(crate) fn waiting_items(&self, source: usize) -> usize {
+        self.shared.lock().sources[source].ready.len()
     }
 }

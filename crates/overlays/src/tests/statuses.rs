@@ -2,15 +2,14 @@
 
 use std::time::Duration;
 
-use catalogs::CatalogId;
 use foundation::{CancelToken, Interrupt};
 use scene::TimeKind;
 
-use super::{Env, SIZE, next, overlay_at, until_ready, want};
+use super::{Env, SIZE, next, overlay_at, settle, shown, want};
 use crate::{LaneStatus, OverlayEvent};
 
 #[tokio::test]
-async fn a_lane_is_loading_then_ready_with_the_file_filter_and_warnings() {
+async fn a_lane_is_loading_then_ready_with_the_file_filter_warnings_and_item_size() {
     let env = Env::new();
     // The second row is damaged: the decoder skips it and says so.
     let overlay = env.overlay(
@@ -19,6 +18,7 @@ async fn a_lane_is_loading_then_ready_with_the_file_filter_and_warnings() {
         "1,1,100,100,50,80,0.9,-1,-1,-1\nnot a row\n3,1,100,100,50,80,0.9,-1,-1,-1\n",
     );
     let mut viewer = env.open(vec![Some(overlay), None], 5);
+    assert_eq!(viewer.lane_sources(), [Some(0), None]);
 
     assert_eq!(
         next(&mut viewer).await,
@@ -36,17 +36,17 @@ async fn a_lane_is_loading_then_ready_with_the_file_filter_and_warnings() {
     };
     assert_eq!(ready.clock, TimeKind::Frame);
     assert_eq!(ready.samples, 2);
+    assert_eq!(ready.data_revision, 1);
+    assert!(ready.mean_sample_bytes > 0, "the mean item size");
     assert!(!ready.filter.options.is_empty(), "the file's class filters");
     assert!(!ready.warnings.is_empty(), "the skipped row is reported");
 
-    // The lane without an overlay never gets a status or an overlay.
+    // The lane without an overlay never gets a status or data.
     viewer.want(want(0, 0, 4));
-    for _ in 0..5 {
-        let OverlayEvent::Overlay(overlay) = next(&mut viewer).await else {
-            panic!("only overlays follow");
-        };
-        assert_eq!(overlay.lane, 0);
-    }
+    viewer.set_policy(0, 1, shown().0, true);
+    viewer.set_policy(1, 1, shown().0, true);
+    let sent = settle(&mut viewer).await;
+    assert!(sent.maps.iter().all(|run| run.lane == 0));
 }
 
 #[tokio::test]
@@ -63,19 +63,22 @@ async fn a_lane_that_cannot_load_fails_with_the_decoders_error_and_the_others_go
     let good = env.mot("good.txt", 0..5);
     let mut viewer = env.open(vec![Some(missing), Some(good)], 5);
     viewer.want(want(0, 0, 1));
+    viewer.set_policy(0, 1, shown().0, true);
+    viewer.set_policy(1, 1, shown().0, true);
 
     let mut failed = None;
-    let mut overlays = 0;
-    while failed.is_none() || overlays < 2 {
+    let mut samples = 0;
+    while failed.is_none() || samples < 2 {
         match next(&mut viewer).await {
             OverlayEvent::Status {
                 lane: 0,
                 status: LaneStatus::Failed(error),
             } => failed = Some(error),
-            OverlayEvent::Overlay(overlay) => {
-                assert_eq!(overlay.lane, 1, "a failed lane draws nothing");
-                overlays += 1;
+            OverlayEvent::Sample(item) => {
+                assert_eq!(item.source, 1, "a failed source sends nothing");
+                samples += 1;
             }
+            OverlayEvent::Map(run) => assert_eq!(run.lane, 1, "a failed lane has no map"),
             _ => {}
         }
     }
@@ -84,7 +87,7 @@ async fn a_lane_that_cannot_load_fails_with_the_decoders_error_and_the_others_go
 
 #[tokio::test]
 async fn closing_cancels_a_load_in_progress() {
-    let env = Env::holding(Some("slow.txt"));
+    let env = Env::holding("slow.txt");
     let slow = env.mot("slow.txt", 0..3);
     let mut viewer = env.open(vec![Some(slow)], 3);
     assert_eq!(
@@ -103,25 +106,28 @@ async fn closing_cancels_a_load_in_progress() {
 }
 
 #[tokio::test]
-async fn a_worker_that_dies_fails_the_lanes_that_were_ready_and_then_the_viewer_ends() {
+async fn a_source_thread_that_dies_fails_its_lane_and_then_the_viewer_ends() {
     let env = Env::new();
-    let mut viewer = env.open(vec![Some(env.mot("a.txt", 0..3)), None], 3);
-    until_ready(&mut viewer, &[0]).await;
-
-    let mut view = env.service.lane_defaults();
-    view.catalog = CatalogId::User("panic".into());
-    viewer.set_view(0, 1, view);
+    let panicking = env.mot("panic.txt", 0..3);
+    let mut viewer = env.open(vec![Some(panicking), None], 3);
+    assert_eq!(
+        next(&mut viewer).await,
+        OverlayEvent::Status {
+            lane: 0,
+            status: LaneStatus::Loading
+        }
+    );
 
     let OverlayEvent::Status {
         lane: 0,
         status: LaneStatus::Failed(error),
     } = next(&mut viewer).await
     else {
-        panic!("the lane fails instead of staying ready");
+        panic!("the lane fails instead of staying loading");
     };
     assert_eq!(error.reason, "The overlays stopped unexpectedly");
     assert_eq!(
-        viewer.next_event().await,
+        viewer.next_event(None).await,
         None,
         "no status for the plain lane"
     );

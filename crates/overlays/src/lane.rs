@@ -1,36 +1,20 @@
-//! The vocabulary of a viewer's lanes: how a lane is shown, where its load stands and what it produces.
+//! The vocabulary of a viewer's lanes: how a lane selects samples, where its load stands and what the feed produces.
 
 use std::sync::Arc;
 
-use catalogs::CatalogId;
-use drawing::DrawingInstructions;
-use foundation::{FrameId, UserError};
-use overlay_sync::{MatchPolicy, Selection};
-use scene::{FilterChoice, FilterPolicy, TimeKind};
+use foundation::UserError;
+use overlay_sync::MatchPolicy;
+use scene::{FilterPolicy, TimeKind};
 use scene_decoders::LoadWarning;
 
-/// The displayed size of a lane's image in CSS pixels, which catalog lengths in pixels are measured against.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub struct TargetSize {
-    /// Width in CSS pixels.
-    pub width: u32,
-    /// Height in CSS pixels.
-    pub height: u32,
-}
-
-/// How one lane shows its overlay; session state of the viewer.
-#[derive(Clone, Debug, PartialEq)]
-pub struct LaneView {
-    /// The catalog that draws the lane.
-    pub catalog: CatalogId,
-    /// The class filter toggles.
-    pub filter: FilterChoice,
-    /// How samples are matched to frames.
-    pub policy: MatchPolicy,
-    /// The lane's displayed image size.
-    pub target: TargetSize,
-    /// Whether the lane is shown; a hidden lane produces no overlays.
-    pub visible: bool,
+/// How a lane selects samples for frames, and whether it wants any; the part of a lane's settings the backend needs.
+/// Session state of the viewer's socket.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct LanePolicy {
+    /// Tolerance and sticky.
+    pub matching: MatchPolicy,
+    /// Whether the lane is shown; an unsubscribed lane gets no Frame Maps and its samples are not sent for it.
+    pub subscribed: bool,
 }
 
 /// Where a lane's load stands.
@@ -38,7 +22,7 @@ pub struct LaneView {
 pub enum LaneStatus {
     /// The overlay file is being decoded.
     Loading,
-    /// The overlay is ready to draw.
+    /// The overlay is ready to be sent.
     Ready(LaneReady),
     /// The overlay could not be loaded.
     Failed(UserError),
@@ -55,26 +39,44 @@ pub struct LaneReady {
     pub warnings: Vec<LoadWarning>,
     /// How many samples the file has.
     pub samples: usize,
+    /// The source's revision; its items and the lane's maps carry it.
+    pub data_revision: u32,
+    /// The mean size of a Sample Item in bytes, 0 for an empty file.
+    pub mean_sample_bytes: u32,
 }
 
-/// The overlay of one lane for one video frame.
+/// One Sample Item of one source, for the viewer.
 #[derive(Clone, Debug, PartialEq)]
-pub struct LaneOverlay {
-    /// The lane's position in the entry's overlays.
+pub struct SampleItem {
+    /// The viewer's id of the source.
+    pub source: u16,
+    /// The source revision the item belongs to.
+    pub data_revision: u32,
+    /// The sample's index in the file.
+    pub sample: u64,
+    /// The frame the item ranks by: of the frames in the data window that map to the sample, the most urgent.
+    pub frame: u64,
+    /// The encoded item (`scene::serial::columns`).
+    pub item: Arc<[u8]>,
+}
+
+/// One run of one lane's Frame Map: consecutive frames that never span two 256-frame chunks.
+#[derive(Clone, Debug, PartialEq)]
+pub struct MapRun {
+    /// The lane's position in the entry's lanes.
     pub lane: u16,
-    /// The video frame the overlay belongs to.
-    pub frame: FrameId,
-    /// The view revision the overlay was made for.
-    pub revision: u32,
-    /// The target size the overlay was made for.
-    pub target: TargetSize,
-    /// Which sample was drawn.
-    pub selection: Selection,
-    /// The key of that sample on the lane's clock: its frame number, or its time in microseconds; 0 when no sample
-    /// was drawn.
-    pub key: i64,
-    /// What to draw.
-    pub drawing: Arc<DrawingInstructions>,
+    /// The lane policy revision the run was selected under.
+    pub policy_revision: u32,
+    /// The lane's source revision.
+    pub data_revision: u32,
+    /// The first frame of the run.
+    pub first: u64,
+    /// The sample of each frame, or the NONE and EMPTY cells of the playback wire.
+    pub samples: Vec<u32>,
+    /// How each sample matched (the `MATCH_*` bytes of the playback wire).
+    pub kinds: Vec<u8>,
+    /// The frame the run ranks by: the one nearest the playhead.
+    pub frame: u64,
 }
 
 /// What a viewer's overlays report.
@@ -82,19 +84,21 @@ pub struct LaneOverlay {
 pub enum OverlayEvent {
     /// A lane's load changed.
     Status {
-        /// The lane's position in the entry's overlays.
+        /// The lane's position in the entry's lanes.
         lane: u16,
         /// Where the load stands.
         status: LaneStatus,
     },
-    /// A lane frame is ready.
-    Overlay(LaneOverlay),
-    /// A catalog failed to compile or to draw a frame; the lane keeps drawing with its last catalog. Each reason is
-    /// reported once per view.
+    /// A policy was refused or a sample could not be read; the lane carries on. Each reason is reported once per
+    /// load, at most 16 per lane.
     Problem {
-        /// The lane's position in the entry's overlays.
+        /// The lane's position in the entry's lanes.
         lane: u16,
         /// What went wrong, in words for the user.
         reason: String,
     },
+    /// A Sample Item.
+    Sample(SampleItem),
+    /// A run of a Frame Map.
+    Map(MapRun),
 }

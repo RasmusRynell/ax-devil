@@ -1,4 +1,4 @@
-import type { GlyphScratch } from "../text/measure";
+import type { RunCache } from "../text/runCache";
 
 /**
  * Where layout writes what it decided, in target CSS pixels. Colours are packed `0xRRGGBBAA`. A stroke is absent when
@@ -80,19 +80,26 @@ export interface PrimitiveSink {
     fill: number,
   ): void;
   /**
-   * The glyphs `first` to `end` of `run` (bitmaps and their top-left corners relative to a baseline origin, in device
+   * The glyphs of cached run `entry` (bitmaps and their top-left corners relative to a baseline origin, in device
    * pixels) with the origin at (`originX`, `originY`) device pixels, drawn in `color` at device ratio `dpr`. A run is
    * one call, so no number is boxed per glyph.
    */
   glyphs(
-    run: GlyphScratch,
-    first: number,
-    end: number,
+    runs: RunCache,
+    entry: number,
     originX: number,
     originY: number,
     dpr: number,
     color: number,
   ): void;
+}
+
+/** A rectangle of the displayed image in CSS pixels. */
+export interface Region {
+  left: number;
+  top: number;
+  right: number;
+  bottom: number;
 }
 
 /** The displayed image and how it is shown, in CSS pixels. */
@@ -104,4 +111,9 @@ export interface LayoutView {
   dpr: number;
   /** The UI zoom; lengths in px are divided by it, so overlays keep their size when the interface is zoomed. */
   zoom: number;
+  /**
+   * The part of the displayed image on screen, when a zoom pushes the rest out of view: marks that lie entirely outside
+   * it are not laid out. Absent or null: everything is.
+   */
+  visible?: Region | null;
 }

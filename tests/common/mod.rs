@@ -5,7 +5,10 @@
 
 use api_types::{
     CursorPoint, ErrorWire,
-    playback::{ClientMessage, Direction, LaneInfo, PLAYBACK_PROTOCOL, ServerMessage, Want},
+    playback::{
+        ClientMessage, Direction, KIND_FRAME_MAP, KIND_SAMPLE, LaneInfo, PLAYBACK_PROTOCOL,
+        SAMPLE_HEADER_BYTES, ServerMessage, Want,
+    },
 };
 use ax_devil::{AppState, access::Policy, app, video_sources::VideoSources};
 use futures_util::{SinkExt, StreamExt};
@@ -33,9 +36,6 @@ use workspace_store::{DocCommand, Resolution};
 pub const WAIT: Duration = Duration::from_secs(20);
 const SQUEEZED_BUFFER: u32 = 4096;
 pub const MIB: usize = 1024 * 1024;
-const BOXES_TAG: u16 = 2;
-/// x, y, width, height and paint, four bytes each.
-const BOX_BYTES: usize = 20;
 
 pub fn fixture(name: &str) -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -275,24 +275,32 @@ pub fn u64_at(bytes: &[u8], at: usize) -> u64 {
     u64::from_le_bytes(bytes[at..at + 8].try_into().unwrap())
 }
 
-/// One Overlay envelope: the head and the overlay header, and the tags of the sections in order.
-pub struct Overlay {
-    pub sequence_id: u64,
-    pub timestamp_us: i64,
-    pub lane: u16,
-    pub matched: u8,
+/// One Sample envelope: the head and the sample header, and what the item says about itself.
+pub struct Sample {
+    pub source: u16,
     pub revision: u32,
-    pub opacity: f32,
-    pub target: (u32, u32),
-    pub sections: Vec<u16>,
-    /// The records of the BOXES section; 0 when the overlay has none.
-    pub boxes: usize,
+    /// The sample's index in its file.
+    pub sample: u64,
+    /// The entities of the item.
+    pub rows: u32,
+}
+
+/// One FrameMap envelope: a run of a lane's map from frame to sample.
+pub struct Map {
+    pub lane: u16,
+    pub policy: u32,
+    pub data: u32,
+    pub first: u64,
+    /// A sample index per frame, or `FRAME_MAP_NONE` or `FRAME_MAP_EMPTY`.
+    pub samples: Vec<u32>,
+    pub kinds: Vec<u8>,
 }
 
 pub enum Event {
     Message(ServerMessage),
     Frame(Frame),
-    Overlay(Overlay),
+    Sample(Sample),
+    Map(Map),
     Timeline(Vec<f64>),
     Closed,
 }
@@ -323,29 +331,32 @@ pub fn parse_envelope(bytes: &[u8]) -> Event {
                 planes,
             })
         }
-        2 => {
-            assert_eq!(payload_at, 64);
-            let count = u32_at(bytes, 56);
-            let (mut sections, mut boxes, mut at) = (Vec::new(), 0, 64);
-            for _ in 0..count {
-                let tag = u16::from_le_bytes([bytes[at], bytes[at + 1]]);
-                if tag == BOXES_TAG {
-                    boxes = u32_at(bytes, at + 4) as usize / BOX_BYTES;
-                }
-                sections.push(tag);
-                at = (at + 8 + u32_at(bytes, at + 4) as usize).next_multiple_of(8);
-            }
-            assert_eq!(at, bytes.len(), "the message is exactly its sections");
-            Event::Overlay(Overlay {
-                sequence_id: u64_at(bytes, 8),
-                timestamp_us: u64_at(bytes, 16) as i64,
-                lane: u16::from_le_bytes([bytes[28], bytes[29]]),
-                matched: bytes[30],
+        KIND_SAMPLE => {
+            assert_eq!(payload_at, usize::from(SAMPLE_HEADER_BYTES));
+            assert_eq!(bytes.len() % 8, 0, "the item is a whole number of words");
+            Event::Sample(Sample {
+                source: u16::from_le_bytes([bytes[28], bytes[29]]),
                 revision: u32_at(bytes, 32),
-                opacity: f32::from_bits(u32_at(bytes, 36)),
-                target: (u32_at(bytes, 40), u32_at(bytes, 44)),
-                sections,
-                boxes,
+                sample: u64_at(bytes, 8),
+                rows: u32_at(bytes, payload_at + 8),
+            })
+        }
+        KIND_FRAME_MAP => {
+            assert_eq!(payload_at, 48);
+            let count = u32_at(bytes, 40) as usize;
+            assert!((1..=256).contains(&count));
+            assert_eq!(
+                bytes.len(),
+                48 + 5 * count,
+                "the message is exactly its map"
+            );
+            Event::Map(Map {
+                lane: u16::from_le_bytes([bytes[28], bytes[29]]),
+                policy: u32_at(bytes, 32),
+                data: u32_at(bytes, 36),
+                first: u64_at(bytes, 8),
+                samples: (0..count).map(|k| u32_at(bytes, 48 + 4 * k)).collect(),
+                kinds: bytes[48 + 4 * count..].to_vec(),
             })
         }
         3 => {
@@ -427,12 +438,27 @@ impl Viewer {
         .await;
     }
 
+    /// Asks for the frames in the window and the lanes' data for the same frames.
     pub async fn want(&mut self, playhead: u64, ahead: u32, behind: u32, direction: Direction) {
+        self.want_data(playhead, (ahead, behind), (ahead, behind), direction)
+            .await;
+    }
+
+    /// Asks for the frames in the first window (`ahead`, `behind`) and the data in the second.
+    pub async fn want_data(
+        &mut self,
+        playhead: u64,
+        (ahead, behind): (u32, u32),
+        (data_ahead, data_behind): (u32, u32),
+        direction: Direction,
+    ) {
         self.send(&ClientMessage::Want(Want {
             playhead,
             ahead,
             behind,
             direction,
+            data_ahead,
+            data_behind,
         }))
         .await;
     }

@@ -42,7 +42,7 @@ export const Len = {
   Gain: 20,
   MinSpeed: 21,
 } as const;
-const LEN_COUNT = 22;
+export const LEN_COUNT = 22;
 
 /** Where each named field lands, and what it is when the mark does not write it (in px). */
 const LENGTH_FIELDS: Readonly<Partial<Record<FieldName, readonly [number, number]>>> = {
