@@ -24,7 +24,7 @@ devices and processes at their boundary.
 | UI behavior | Few | Fit (no clipped text, both themes, window minimum and 200% zoom), focus and keyboard | `tests/modules/chrome/test_surface_fit.py` |
 | Crash safety | Few | Kill the process during a recovery-copy write and during a cache build; the next launch recovers | new |
 | CLI | Few | Commands build the right items; headless catalog commands' exit codes | `tests/core/` |
-| Installation | Separate target | Real install and plugin lifecycle in isolated storage | `make test-integration` |
+| Installation | Separate target | Real install and plugin lifecycle in isolated storage | `make tests-integration` |
 | Performance and soak | Scheduled | Benchmarks against a ref (DT-03); playback memory; hours of synthetic live input with bursts: bounded memory, no stall | `tools/bench`, `docs/runbooks/testing.md#playback-memory` |
 
 ## Isolation (MUST)
