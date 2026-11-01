@@ -3,11 +3,10 @@ import type { ContentInfo } from "./generated/api";
 import { VideoViewer } from "./playback/VideoViewer";
 
 type Kind = ContentInfo["kind"];
-/** Where a viewer keeps what it shows while it is not on screen: its position, say. Closing the viewer forgets it. */
-export type ViewerMemory = { saved: unknown; save(state: unknown): void };
+/** What a viewer is given: its item, whose id keys what the window shows of it, and the item's Content. */
 export type ViewerProps<K extends Kind = Kind> = {
+  item: string;
   content: Extract<ContentInfo, { kind: K }>;
-  memory: ViewerMemory;
 };
 
 /**

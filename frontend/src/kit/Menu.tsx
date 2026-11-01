@@ -9,6 +9,8 @@ export type MenuEntry =
       label: string;
       shortcut?: string;
       disabled?: boolean;
+      /** Why it is disabled, shown as its tooltip. */
+      reason?: string;
     }
   | { kind: "submenu"; label: string; items: readonly MenuEntry[] };
 
@@ -123,6 +125,7 @@ function Entries({ entries, checked, expanded, toggle, onSelect }: EntriesProps)
         role={entry.kind === "check" ? "menuitemcheckbox" : "menuitem"}
         aria-checked={entry.kind === "check" ? isChecked : undefined}
         disabled={entry.disabled}
+        title={entry.disabled ? entry.reason : undefined}
         tabIndex={-1}
         onClick={() => onSelect(entry)}
         onMouseEnter={(event) => event.currentTarget.focus()}

@@ -14,9 +14,8 @@ workspace = true
 
 [dependencies]
 foundation.workspace = true
+serde.workspace = true
 workspace.workspace = true
-tokio = { workspace = true, features = ["rt", "sync"] }
 
 [dev-dependencies]
 tempfile = "3"
-tokio = { workspace = true, features = ["macros", "rt", "sync", "time"] }

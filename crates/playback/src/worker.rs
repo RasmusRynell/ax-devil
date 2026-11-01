@@ -4,7 +4,7 @@ use crate::decoder::decode_threads;
 use crate::plan::reads_on;
 use crate::source::{ClaimShared, PARKED_SLOTS, Source, State};
 use crate::{FrameSet, SpanDecoder, lock};
-use foundation::{FrameFailure, UserError, VideoFrame};
+use foundation::{ErrorCode, FrameFailure, UserError, VideoFrame};
 use std::ops::RangeInclusive;
 use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::sync::{Arc, PoisonError};
@@ -92,9 +92,10 @@ impl Source {
             self.fail_range(
                 covered,
                 &UserError::new(
+                    ErrorCode::DecodeFailed,
                     "the video decoder stopped unexpectedly",
-                    self.location.as_str(),
-                ),
+                )
+                .at(self.location.clone()),
             );
         }
         let position = worker.decoder.as_ref().map_or(Some(0), |d| d.position());
@@ -189,7 +190,8 @@ impl Source {
         for gap in produced.gaps_in(wanted) {
             self.fail_range(
                 gap,
-                &UserError::new("the file ends early or is damaged", self.location.as_str()),
+                &UserError::new(ErrorCode::DecodeFailed, "the file ends early or is damaged")
+                    .at(self.location.clone()),
             );
         }
     }

@@ -28,7 +28,8 @@ export const SETTINGS = [
     "live": true,
     "env": false,
     "secret": false,
-    "quick_setup": true
+    "quick_setup": true,
+    "scope": "personal"
   },
   {
     "key": "ui.quick_setup_done",
@@ -42,7 +43,8 @@ export const SETTINGS = [
     "live": true,
     "env": false,
     "secret": false,
-    "quick_setup": false
+    "quick_setup": false,
+    "scope": "personal"
   },
   {
     "key": "playback.video_cache",
@@ -57,7 +59,8 @@ export const SETTINGS = [
     "live": true,
     "env": false,
     "secret": false,
-    "quick_setup": false
+    "quick_setup": false,
+    "scope": "server"
   },
   {
     "key": "storage.cache_dir",
@@ -70,7 +73,8 @@ export const SETTINGS = [
     "live": false,
     "env": false,
     "secret": false,
-    "quick_setup": false
+    "quick_setup": false,
+    "scope": "server"
   }
 ] as const;
 

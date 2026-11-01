@@ -1,9 +1,10 @@
 //! The settings service: loads the config file, validates changes, saves them atomically and holds the one
 //! immutable state. Domain code takes settings as values; only the bootstrap wires this service in.
 //!
-//! Settings are personal to one user. They supply defaults at the moment something is created and the value is
-//! copied in; nothing created from them refers back to the file. Only shortcuts are read live. See the README for the
-//! file format and how to change it.
+//! Settings supply defaults at the moment something is created and the value is copied in; nothing created from them
+//! refers back to the file. Only shortcuts are read live. Each setting has a [`Scope`], which decides which of them
+//! a person may read and change when several share one backend. See the README for the file format and how to
+//! change it.
 //!
 //! A change reaches subscribers as the new state, replaced whole; a subscriber that is busy sees only the newest.
 
@@ -24,7 +25,7 @@ use std::{
     path::{Path, PathBuf},
     sync::{Arc, Mutex, PoisonError},
 };
-pub use table::{Setting, TABLE};
+pub use table::{MASK, Scope, Setting, TABLE};
 use tokio::sync::watch;
 
 /// Why settings could not be loaded, validated or saved; the reason is meant for the user and never contains a
@@ -50,13 +51,13 @@ impl std::error::Error for Error {}
 /// Looks up an environment variable by name.
 type Lookup = Arc<dyn Fn(&str) -> Option<String> + Send + Sync>;
 
-/// A full replacement of the editable settings. Both maps hold every declared key and command; the file stores only
-/// what differs from the defaults.
+/// A full replacement of the settings and shortcuts a person may change (see [`Settings::replace`]). The file stores
+/// only what differs from the defaults.
 #[derive(Clone, Debug)]
 pub struct Change {
-    /// Every declared setting by dotted key, references unresolved.
+    /// Every setting in the changed scopes by dotted key, references unresolved. A masked secret keeps its value.
     pub values: BTreeMap<String, Value>,
-    /// The key of every command, `None` when unbound.
+    /// The key of every command, `None` when unbound; empty unless [`Scope::Personal`] is changed.
     pub shortcuts: BTreeMap<String, Option<String>>,
 }
 
@@ -178,13 +179,22 @@ impl State {
         found
     }
 
-    /// Every declared setting by dotted key, such as `ui.theme`, with its default when the file has none.
-    /// A `$NAME` reference is returned as written; see [`resolved`](Self::resolved).
-    pub fn values(&self) -> BTreeMap<String, Value> {
-        self.values.clone()
+    /// The settings in `scopes` by dotted key, such as `ui.theme`, with the default when the file has none, as shown
+    /// to a person: a `$NAME` reference as written, a literal secret masked. See [`resolved`](Self::resolved) for
+    /// the value as it is used.
+    pub fn values(&self, scopes: &[Scope]) -> BTreeMap<String, Value> {
+        self.table
+            .iter()
+            .filter(|setting| scopes.contains(&setting.scope))
+            .filter_map(|setting| {
+                let value = self.values.get(setting.key)?;
+                Some((setting.key.to_owned(), setting.shown(value)))
+            })
+            .collect()
     }
 
-    /// The key of every command once the user's overrides apply; `None` when unbound.
+    /// The key of every command once the user's overrides apply; `None` when unbound. Shortcuts belong to
+    /// [`Scope::Personal`].
     pub fn shortcuts(&self) -> BTreeMap<&'static str, Option<String>> {
         shortcuts::effective(&self.overrides)
     }
@@ -299,9 +309,17 @@ impl Settings {
         self.state.borrow().clone()
     }
 
-    /// The keys of the settings changed since the app started that only apply after a restart.
-    pub fn restart_pending(&self) -> Vec<&'static str> {
-        restart_pending(&self.started, &self.state())
+    /// The keys of the settings in `scopes` changed since the app started that only apply after a restart.
+    pub fn restart_pending(&self, scopes: &[Scope]) -> Vec<&'static str> {
+        let state = self.state();
+        let mut keys = restart_pending(&self.started, &state);
+        keys.retain(|key| {
+            state
+                .table
+                .iter()
+                .any(|setting| setting.key == *key && scopes.contains(&setting.scope))
+        });
+        keys
     }
 
     /// A receiver that holds the current state and is woken by every successful [`replace`](Self::replace).
@@ -309,10 +327,11 @@ impl Settings {
         self.state.subscribe()
     }
 
-    /// Replaces every declared setting and shortcut with `change`, which must hold exactly the declared settings and
-    /// only known commands. Validates all, writes the file atomically with only what differs from the defaults (and
-    /// keeps what this version does not know), then swaps the state; on any failure nothing changes.
-    pub fn replace(&self, change: &Change) -> Result<Arc<State>, Error> {
+    /// Replaces every setting in `scopes`, and the shortcuts when `scopes` holds [`Scope::Personal`], with `change`,
+    /// which must hold exactly those settings and only known commands; a masked secret keeps its stored value.
+    /// Validates all, writes the file atomically with only what differs from the defaults (and keeps what this
+    /// version does not know and the settings of other scopes), then swaps the state; on any failure nothing changes.
+    pub fn replace(&self, scopes: &[Scope], change: &Change) -> Result<Arc<State>, Error> {
         let _writing = self.writing.lock().unwrap_or_else(PoisonError::into_inner);
         let current = self.state();
         let invalid = |location: &str, reason: &str| Error {
@@ -320,25 +339,39 @@ impl Settings {
             reason: reason.to_owned(),
             invalid: true,
         };
-        if let Some(key) = change.values.keys().find(|key| {
-            !current
+        let chosen = || {
+            current
                 .table
                 .iter()
-                .any(|setting| setting.key == key.as_str())
-        }) {
+                .filter(|setting| scopes.contains(&setting.scope))
+        };
+        if let Some(key) = change
+            .values
+            .keys()
+            .find(|key| !chosen().any(|setting| setting.key == key.as_str()))
+        {
             return Err(invalid(key, "unknown setting"));
         }
-        if let Some(setting) = current
-            .table
-            .iter()
-            .find(|setting| !change.values.contains_key(setting.key))
-        {
-            return Err(invalid(setting.key, "missing"));
+        let mut values = current.values.clone();
+        for setting in chosen() {
+            let value = change
+                .values
+                .get(setting.key)
+                .ok_or_else(|| invalid(setting.key, "missing"))?;
+            if !setting.is_masked(value) {
+                values.insert(setting.key.to_owned(), value.clone());
+            }
         }
-        let overrides = shortcuts::overrides_from(&change.shortcuts)?;
+        let overrides = if scopes.contains(&Scope::Personal) {
+            shortcuts::overrides_from(&change.shortcuts)?
+        } else if let Some(id) = change.shortcuts.keys().next() {
+            return Err(invalid(&format!("shortcuts.{id}"), "not yours to change"));
+        } else {
+            current.overrides.clone()
+        };
 
         let mut rest = current.document.clone();
-        let mut settings = Map::from_iter(change.values.clone());
+        let mut settings = Map::from_iter(values);
         if let Some(Value::Object(kept)) = rest.get("settings") {
             settings.extend(
                 kept.iter()
@@ -375,5 +408,7 @@ impl Settings {
     }
 }
 
+#[cfg(test)]
+mod scope_tests;
 #[cfg(test)]
 mod tests;

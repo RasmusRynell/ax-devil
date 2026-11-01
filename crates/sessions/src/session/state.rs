@@ -1,0 +1,165 @@
+//! The state of one session. Immutable between transitions: [`transition`](super::transition) returns the next one.
+
+use super::{
+    Access, GrantId, JobId, Lease, SeatId, SharingGen,
+    jobs::JobEntry,
+    streams::{Grant, PendingTicket},
+    views::View,
+};
+use crate::{EndReason, JoinLink, OwnerId, SeatMode, SessionId};
+use std::{collections::BTreeMap, sync::Arc};
+use workspace_store::WorkspaceState;
+
+/// The seat of the session's owner, which exists from the first connect to the end.
+pub const OWNER_SEAT: SeatId = crate::ParticipantId(1);
+
+/// What the session is about, for everyone it is shared with. Text a user wrote in it is shared on purpose;
+/// anything else reaches a watcher only through a projection that names every field.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct Doc {
+    /// The items, how they resolved, and which have a viewer open. Annotations and live state join as slices.
+    pub workspace: WorkspaceState,
+}
+
+/// Who a seat is.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SeatKind {
+    /// Created the session; the only seat whose view is the presenter's.
+    Owner,
+    /// Joined while sharing was on, under that "Start sharing".
+    Watcher {
+        /// The sharing the seat joined under. A seat of an older one is not a seat.
+        sharing: SharingGen,
+    },
+}
+
+impl SeatKind {
+    /// The sharing the seat joined under; `None` for the owner.
+    pub fn sharing(&self) -> Option<SharingGen> {
+        match self {
+            Self::Owner => None,
+            Self::Watcher { sharing } => Some(*sharing),
+        }
+    }
+}
+
+/// One seat of a session.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Seat {
+    /// Bumped by every resume; handles, tickets, grants and timers of an older lease do nothing.
+    pub lease: Lease,
+    /// Owner or watcher.
+    pub kind: SeatKind,
+    /// False while the connection is gone and the grace period runs.
+    pub present: bool,
+    /// The seat's own view while it explores; `None` while it follows. A seat that may only watch never has one,
+    /// and one that may edit always does.
+    pub view: Option<Arc<View>>,
+    /// The highest View sequence number finished for this seat: accepted, refused or overwritten.
+    pub views_done: u64,
+}
+
+impl Seat {
+    /// Whose view the seat shows.
+    pub fn mode(&self) -> SeatMode {
+        if self.view.is_some() {
+            SeatMode::Exploring
+        } else {
+            SeatMode::Following
+        }
+    }
+}
+
+/// Sharing is on: what watchers may do and the link that admits them.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Sharing {
+    /// This "Start sharing". Never reused.
+    pub generation: SharingGen,
+    /// What every watcher may do.
+    pub access: Access,
+    /// The link that admits a watcher.
+    pub link: JoinLink,
+}
+
+/// Everything about one session at one moment.
+#[derive(Clone, Debug)]
+pub struct SessionState {
+    /// Counts changes a seat can see: Doc, presenter view, seats, sharing and the end. Grants, tickets and jobs do
+    /// not count.
+    pub revision: u64,
+    /// Names the session.
+    pub id: SessionId,
+    /// Whoever owns it.
+    pub owner: OwnerId,
+    /// The owner holds the grant to read the host's files, so it may run commands that do.
+    pub files: bool,
+    /// What the session is about.
+    pub doc: Arc<Doc>,
+    /// Counts changes to the Doc.
+    pub doc_rev: u64,
+    /// The view the owner published.
+    pub presenter: Arc<View>,
+    /// Counts changes to the presenter's view.
+    pub presenter_rev: u64,
+    /// Every seat, away ones included.
+    pub seats: BTreeMap<SeatId, Seat>,
+    /// `Some` while the owner shares the session.
+    pub sharing: Option<Sharing>,
+    /// Why the session is over, once it is.
+    pub ended: Option<EndReason>,
+    pub(super) next_seat: u32,
+    pub(super) next_sharing: u64,
+    pub(super) next_grant: u64,
+    pub(super) next_job: u64,
+    /// The record of what is authorized. A grant removed is never given back.
+    pub(super) grants: BTreeMap<GrantId, Grant>,
+    pub(super) tickets: Vec<PendingTicket>,
+    pub(super) jobs: BTreeMap<JobId, JobEntry>,
+}
+
+impl SessionState {
+    /// A session of one: its owner's seat, an empty Doc and an empty presenter view, not shared.
+    pub fn new(id: SessionId, owner: OwnerId, files: bool) -> Self {
+        let owner_seat = Seat {
+            lease: Lease(0),
+            kind: SeatKind::Owner,
+            present: true,
+            view: None,
+            views_done: 0,
+        };
+        Self {
+            revision: 0,
+            id,
+            owner,
+            files,
+            doc: Arc::default(),
+            doc_rev: 0,
+            presenter: Arc::default(),
+            presenter_rev: 0,
+            seats: BTreeMap::from([(OWNER_SEAT, owner_seat)]),
+            sharing: None,
+            ended: None,
+            next_seat: OWNER_SEAT.0 + 1,
+            next_sharing: 0,
+            next_grant: 0,
+            next_job: 0,
+            grants: BTreeMap::new(),
+            tickets: Vec::new(),
+            jobs: BTreeMap::new(),
+        }
+    }
+
+    /// What a seat can see differs between `self` and `other`.
+    pub(super) fn visibly_differs(&self, other: &Self) -> bool {
+        self.doc_rev != other.doc_rev
+            || self.presenter_rev != other.presenter_rev
+            || self.seats != other.seats
+            || self.sharing != other.sharing
+            || self.ended != other.ended
+    }
+
+    /// The grant `id`, if it was not removed.
+    pub(super) fn has_grant(&self, id: GrantId) -> bool {
+        self.grants.contains_key(&id)
+    }
+}

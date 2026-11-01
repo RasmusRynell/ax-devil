@@ -5,8 +5,8 @@ use crate::worker::{Step, Worker};
 use crate::{CachePool, DecoderFactory, Delivery, FrameSet, Session, SourceSpec, SpanDecoder};
 use bytes::Bytes;
 use foundation::{
-    ColorDesc, FrameFailure, FrameId, FrameLayout, Keyframes, Matrix, MediaTime, PixelFormat,
-    Plane, Timeline, UserError, VideoFrame,
+    ColorDesc, FrameFailure, FrameId, FrameLayout, HostPath, Keyframes, Matrix, MediaTime,
+    PixelFormat, Plane, Timeline, UserError, VideoFrame,
 };
 use std::collections::BTreeMap;
 use std::future::Future;
@@ -183,7 +183,7 @@ impl Fixture {
             spec(frames, gop),
             factory,
             pool.add_source(),
-            "video.mp4".to_string(),
+            HostPath::new("video.mp4"),
         );
         Self {
             pool,
@@ -280,5 +280,6 @@ pub(crate) fn want(
         ahead,
         behind,
         direction,
+        priority: crate::Priority::default(),
     }
 }

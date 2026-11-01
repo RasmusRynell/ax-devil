@@ -1,5 +1,5 @@
 //! Writes the Rust API types and the playback constants to frontend/src/generated/api.ts, the settings and command
-//! tables to frontend/src/generated/settings.ts, and the API version and reserved shortcuts to
+//! tables to frontend/src/generated/settings.ts, and the API and shell versions and the reserved shortcuts to
 //! desktop/generated/api.json, only when they changed.
 
 use ts_rs::TS;
@@ -12,20 +12,59 @@ macro_rules! declarations {
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
+    use ::playback::ClockIntent;
     use api_types::{playback::*, window::*, workspace::*, *};
+    use foundation::ErrorCode;
+    use sessions::{
+        CursorOptions, EndReason, SeatMode, SeatRole,
+        session::{
+            Access, Can, ContentRef, Control, Refusal, RosterEntry, Sidebar, SidebarView, View,
+            ViewerView,
+        },
+    };
     let mut sections = declarations![
+        Grant,
         AppInfo,
         SettingsState,
         SettingsChange,
         WindowState,
         ApiError,
+        ErrorCode,
+        ErrorParams,
+        ErrorWire,
+        SidebarView,
+        Access,
+        ClockIntent,
+        Sidebar,
+        ViewerView,
+        View,
+        CursorOptions,
+        SessionAuth,
+        DocCommand,
+        Control,
+        ContentRef,
+        SessionCommand,
+        CursorRegion,
+        CursorElement,
+        CursorPoint,
+        SessionClientMessage,
+        SeatRole,
+        SeatMode,
+        SeatAccess,
+        Can,
+        RosterEntry,
+        SharingInfo,
+        DocWire,
+        Refusal,
+        AckOutcome,
+        EndReason,
+        SessionServerMessage,
+        SessionSummary,
         WorkspaceState,
         ItemState,
         ResolutionState,
         ContentInfo,
         NewItem,
-        AddItemsRequest,
-        ServerEvent,
         Direction,
         Want,
         ClientMessage,
@@ -39,8 +78,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     write_if_changed("frontend/src/generated/api.ts", &text)?;
     write_if_changed("frontend/src/generated/settings.ts", &settings_module()?)?;
     // The desktop shell and the development supervisor are CommonJS and read these from JSON.
-    let desktop =
-        serde_json::json!({ "apiVersion": API_VERSION, "reserved": settings::shortcuts::RESERVED });
+    let desktop = serde_json::json!({
+        "apiVersion": API_VERSION,
+        "shellApi": SHELL_API,
+        "reserved": settings::shortcuts::RESERVED,
+    });
     write_if_changed("desktop/generated/api.json", &format!("{desktop:#}\n"))?;
     Ok(())
 }

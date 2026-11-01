@@ -3,7 +3,7 @@ use crate::plan::plan;
 use crate::plan::reads_on;
 use crate::testing::{spec, want};
 use crate::window::prefetch_windows;
-use crate::{FrameSet, Span};
+use crate::{FrameSet, Priority, Span};
 
 fn spans(planned: &[Span]) -> Vec<(u64, std::ops::RangeInclusive<u64>)> {
     planned
@@ -97,6 +97,16 @@ fn wants_share_the_budget_and_in_flight_spans_win_ties() {
     assert_eq!(
         busy[0].keyframe, 70,
         "the span a worker is already on stays first"
+    );
+
+    // Equal distance, but one viewer is the owner: its span goes first though its keyframe is the higher one.
+    let mut unequal = wants;
+    unequal[0].priority = Priority::Low;
+    unequal[1].priority = Priority::High;
+    let ranked = plan(&video, &unequal, 24, &FrameSet::new(), &[]);
+    assert_eq!(
+        ranked[0].keyframe, 70,
+        "the high priority want is served first"
     );
 }
 

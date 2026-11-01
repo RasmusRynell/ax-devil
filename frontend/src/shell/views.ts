@@ -1,6 +1,5 @@
+import type { SidebarView } from "../generated/api";
 import type { IconName } from "../kit/icons";
-
-export type ViewId = "workspace" | "live" | "offline" | "bookmarks" | "plugins";
 
 export interface ActivityItem {
   id: string;
@@ -20,6 +19,7 @@ export const ACTIVITY: { top: readonly ActivityItem[]; bottom: readonly Activity
   ],
   bottom: [
     { id: "plugins", label: "Plugins", icon: "plug", opens: "view" },
+    { id: "sessions", label: "Sessions", icon: "users", opens: "view" },
     { id: "render-catalogs", label: "Render Catalogs", icon: "palette", opens: "command" },
     { id: "settings", label: "Settings", icon: "settings", opens: "command" },
   ],
@@ -32,8 +32,8 @@ export const SEARCH: Partial<Record<string, string>> = {
   offline: "Search files",
 };
 
-export const VIEW_TITLES: Record<ViewId, string> = Object.fromEntries(
+export const VIEW_TITLES: Record<SidebarView, string> = Object.fromEntries(
   [...ACTIVITY.top, ...ACTIVITY.bottom]
     .filter((item) => item.opens === "view")
     .map((item) => [item.id, item.label]),
-) as Record<ViewId, string>;
+) as Record<SidebarView, string>;

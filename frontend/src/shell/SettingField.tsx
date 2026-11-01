@@ -17,6 +17,8 @@ export interface Row {
     readonly type: KindTag;
     readonly options?: readonly (readonly [string, string])[];
   };
+  /** Whom the setting is for: `personal` is one person's own, `server` is for whoever may configure the server. */
+  readonly scope: "personal" | "server";
   readonly page: string | null;
   readonly section: string;
   readonly live: boolean;

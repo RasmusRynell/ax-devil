@@ -9,5 +9,6 @@ mod item;
 mod workspace;
 
 pub use content::{Content, ContentId, FileVideoSource, SeekableVideoContent};
-pub use item::{ItemId, Recipe, VideoRecipe, WorkspaceItem};
+pub use foundation::ItemId;
+pub use item::{Recipe, VideoRecipe, WorkspaceItem};
 pub use workspace::Workspace;

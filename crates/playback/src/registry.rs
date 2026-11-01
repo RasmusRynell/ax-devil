@@ -2,7 +2,7 @@
 
 use crate::source::{DECODE_WORKERS, Source};
 use crate::{CachePool, DecoderFactory, Session, SourceSpec, lock};
-use foundation::UserError;
+use foundation::{ErrorCode, HostPath, UserError};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Condvar, Mutex, Weak};
@@ -63,9 +63,10 @@ pub struct Registry {
 fn canonical(path: &Path) -> Result<PathBuf, UserError> {
     std::fs::canonicalize(path).map_err(|error| {
         UserError::new(
+            ErrorCode::FileUnreadable,
             format!("Cannot open the video: {error}"),
-            path.display().to_string(),
         )
+        .at(HostPath::new(path))
     })
 }
 
@@ -107,7 +108,7 @@ impl Registry {
             {
                 return Ok(session);
             }
-            let location = key.display().to_string();
+            let location = HostPath::new(&key);
             let source = Source::new(spec, factory, self.shared.pool.add_source(), location);
             let me = Arc::downgrade(&source);
             let registry = Arc::downgrade(&self.shared);
@@ -132,10 +133,8 @@ impl Registry {
         self.spawn_workers(&source)?;
         self.shared.poke_all();
         session.ok_or_else(|| {
-            UserError::new(
-                "The video was closed while opening",
-                path.display().to_string(),
-            )
+            UserError::new(ErrorCode::VideoClosed, "The video was closed while opening")
+                .at(HostPath::new(path))
         })
     }
 
@@ -152,9 +151,10 @@ impl Registry {
             if let Err(error) = spawned {
                 source.close();
                 return Err(UserError::new(
+                    ErrorCode::Internal,
                     format!("Cannot start the video decoder: {error}"),
-                    source.location.as_str(),
-                ));
+                )
+                .at(source.location.clone()));
             }
         }
         Ok(())

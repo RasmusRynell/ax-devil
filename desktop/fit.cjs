@@ -13,10 +13,17 @@ function page() {
     rect.bottom <= box.bottom + 1;
   const viewport = { left: 0, top: 0, right: innerWidth, bottom: innerHeight };
 
+  // While a dialog is open the page behind it is inert, so the dialog alone is checked.
+  const dialog = document.querySelector("dialog[open]");
+  const controls = dialog
+    ? dialog.querySelectorAll("button, input, select")
+    : document.querySelectorAll(
+        "header button, nav[aria-label=Activity] button, aside button, aside input, main button",
+      );
+  const containers = dialog ? [dialog] : document.querySelectorAll("header, aside, main");
+
   // Every visible shell action fits without scrolling, and nothing covers it.
-  for (const control of document.querySelectorAll(
-    "header button, nav[aria-label=Activity] button, aside button, aside input, main button",
-  )) {
+  for (const control of controls) {
     const rect = control.getBoundingClientRect();
     if (!rect.width || !rect.height) continue;
     const name = control.ariaLabel || control.textContent;
@@ -29,7 +36,7 @@ function page() {
   }
 
   // Text in one container never overlaps other text, and no label is cut off.
-  for (const container of document.querySelectorAll("aside, main")) {
+  for (const container of containers) {
     const boxes = [];
     const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT);
     for (let node = walker.nextNode(); node; node = walker.nextNode()) {
@@ -47,6 +54,8 @@ function page() {
       }),
     );
     for (const element of container.querySelectorAll("*")) {
+      // An input scrolls a value longer than its field, such as a join link; that is not a cut-off label.
+      if (element.localName === "input") continue;
       if (element.clientWidth > 2 && element.scrollWidth > element.clientWidth + 1)
         problems.push(`cut off: "${element.textContent.trim().slice(0, 30)}"`);
     }

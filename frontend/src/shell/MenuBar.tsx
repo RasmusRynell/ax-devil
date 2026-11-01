@@ -1,10 +1,12 @@
 import { useEffect, useRef, useState } from "react";
-import { MENUS, menuEntries } from "../commands";
+import { menusFor } from "../commands";
 import { Menu, type MenuCommand } from "../kit/Menu";
+import { useAllowed } from "../session/session";
 import { useSettings } from "../settings";
 
 interface Props {
   checked: ReadonlySet<string>;
+  wired: ReadonlySet<string>;
   onSelect: (command: MenuCommand) => void;
 }
 
@@ -14,8 +16,8 @@ const FIRST_ITEM = '[role="menu"] [role^="menuitem"]:not(:disabled)';
  * The in-page menu bar. Alt focuses it, Left and Right move between menus, Down opens one, Escape closes it, and
  * hovering another menu while one is open switches to it.
  */
-export function MenuBar({ checked, onSelect }: Props) {
-  const { shortcuts } = useSettings();
+export function MenuBar({ checked, wired, onSelect }: Props) {
+  const menus = menusFor(useAllowed(), wired, useSettings().shortcuts);
   const [open, setOpen] = useState<number | null>(null);
   // Only one menu button is a Tab stop, so Tab leaves the bar instead of walking through it.
   const [tabStop, setTabStop] = useState(0);
@@ -85,12 +87,13 @@ export function MenuBar({ checked, onSelect }: Props) {
       }}
       className="flex h-full items-center gap-xs px-s [-webkit-app-region:no-drag]"
     >
-      {MENUS.map((menu, index) => (
+      {menus.map((menu, index) => (
         <div key={menu.label} className="relative">
           <button
             type="button"
             role="menuitem"
             data-top
+            data-cursor-id={`menu:${menu.label}`}
             aria-haspopup="menu"
             aria-expanded={open === index}
             tabIndex={tabStop === index ? 0 : -1}
@@ -102,9 +105,12 @@ export function MenuBar({ checked, onSelect }: Props) {
             {menu.label}
           </button>
           {open === index && (
-            <div className="absolute top-full left-0 z-10 max-h-[calc(100vh-var(--spacing-bar))] min-w-max overflow-y-auto rounded-popup border border-line-strong bg-popup p-xs shadow-popup">
+            <div
+              data-cursor-region="popup"
+              className="absolute top-full left-0 z-10 max-h-[calc(100vh-var(--spacing-bar))] min-w-max overflow-y-auto rounded-popup border border-line-strong bg-popup p-xs shadow-popup"
+            >
               <Menu
-                entries={menuEntries(menu.items, shortcuts)}
+                entries={menu.entries}
                 checked={checked}
                 onSelect={(command) => {
                   setOpen(null);

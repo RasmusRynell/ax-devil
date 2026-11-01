@@ -3,7 +3,15 @@
  * session is framework-free; time, the display refresh and the socket are injected, and the UI reads `getSnapshot`.
  */
 
-import { PlaybackClock, SPEED_STEP, clampSpeed, type FrameInfo } from "./clock";
+import { CommandRefused, reasonOf } from "../errors";
+import {
+  PlaybackClock,
+  SPEED_STEP,
+  clampSpeed,
+  followFrame,
+  type ClockIntent,
+  type FrameInfo,
+} from "./clock";
 import { FrameBuffer, windowSize } from "./FrameBuffer";
 import { WantPlanner } from "./direction";
 import {
@@ -19,8 +27,18 @@ import type { Connect, Connection, Incoming } from "./wire";
 export const BUFFER_BUDGET_BYTES = 512 * 1024 * 1024;
 /** Waits between reconnection attempts; the last one repeats. */
 const RETRY_MS = [500, 1000, 2000, 4000, 8000];
+/**
+ * The close codes that end a stream for good, with what the viewer says: asking again would be refused, or the
+ * backend ended the stream on purpose. Any other close is a lost connection that is worth another try.
+ */
+const ENDED: Record<number, string> = {
+  4401: "The backend refused this video stream.",
+  4403: "This video stream was ended: access to it was withdrawn.",
+};
 
 export interface SessionDeps {
+  /** A ticket for one socket: the first message of every connection spends one. Rejects when it cannot get one. */
+  ticket: () => Promise<string>;
   connect: Connect;
   /** Monotonic milliseconds. */
   now: () => number;
@@ -31,7 +49,12 @@ export interface SessionDeps {
   budgetBytes?: number;
   /** Where an earlier session of this video left off: this one opens there, paused, at that speed. */
   resume?: ResumeState;
+  /** Told what the clock is doing after every change the viewer makes: the intent a presenter publishes. */
+  onIntent?: (intent: PlaybackIntent) => void;
 }
+
+/** What the viewer asked the clock to do: the position it is on and whether it runs, at what speed. */
+export type PlaybackIntent = { frame: number; playing: boolean; speed: number };
 
 /** What carries a video's viewing from one session to the next, across a reconnection or a viewer shown again. */
 export type ResumeState = { frame: number; speed: number };
@@ -45,7 +68,7 @@ export type PlaybackView = {
   status: "connecting" | "indexing" | "ready" | "reconnecting" | "failed";
   /** Indexing progress, 0 to 1. */
   progress: number;
-  failure?: { reason: string; location: string };
+  failure?: { reason: string; location?: string };
   /** How many frames the video has; 0 until it is ready. */
   frameCount: number;
   playing: boolean;
@@ -81,7 +104,6 @@ const sameView = (a: PlaybackView, b: PlaybackView): boolean =>
   a.frameError?.reason === b.frameError?.reason;
 
 export class PlaybackSession {
-  readonly #contentId: string;
   readonly #deps: SessionDeps;
   readonly #budget: number;
   readonly #listeners = new Set<() => void>();
@@ -103,12 +125,17 @@ export class PlaybackSession {
   #opened: Extract<ServerMessage, { type: "Opened" }> | undefined;
   #buffer: FrameBuffer<VideoFrame> | undefined;
   #clock: PlaybackClock | undefined;
+  #times: Float64Array | undefined;
+  /** The presenter's clock this session was last told to follow, and how to read the backend's time. */
+  #followed: { intent: ClockIntent; serverNowUs: () => number } | undefined;
   #planner: WantPlanner | undefined;
   #lastWant: Want | undefined;
   #speed = 1;
   /** The frame to open on after a lost connection. */
   #resumeAt: number | undefined;
   #retries = 0;
+  /** Set when a lost connection took a running clock: the reopened one is paused, so the viewer's intent is stale. */
+  #stoppedByLoss = false;
   #cancelFrame: (() => void) | undefined;
   #cancelRetry: (() => void) | undefined;
   #closed = false;
@@ -117,15 +144,14 @@ export class PlaybackSession {
   #status: PlaybackView["status"] = "connecting";
   #progress = 0;
 
-  constructor(contentId: string, deps: SessionDeps) {
-    this.#contentId = contentId;
+  constructor(deps: SessionDeps) {
     this.#deps = deps;
     this.#budget = deps.budgetBytes ?? BUFFER_BUDGET_BYTES;
     this.#resumeAt = deps.resume?.frame;
     this.#speed = clampSpeed(deps.resume?.speed ?? 1);
   }
 
-  /** Where the next session should open: the position asked for, and the speed. Read before `close`. */
+  /** Where the next session should open: the position asked for, and the speed. Kept after the video is released. */
   resumeState(): ResumeState {
     return { frame: this.#clock?.playhead ?? this.#resumeAt ?? 0, speed: this.#speed };
   }
@@ -170,11 +196,13 @@ export class PlaybackSession {
     clock.play();
     this.#planner?.played();
     this.#changed();
+    this.#intend();
   }
 
   pause(): void {
     this.#clock?.pause();
     this.#changed();
+    this.#intend();
   }
 
   togglePlay(): void {
@@ -188,6 +216,7 @@ export class PlaybackSession {
     this.#clock.step(delta);
     this.#planner?.stepped(delta);
     this.#changed();
+    this.#intend();
   }
 
   /** Jumps to a frame, as scrubbing the seek bar does. */
@@ -195,6 +224,7 @@ export class PlaybackSession {
     if (!this.#clock) return;
     this.#clock.seek(sequenceId);
     this.#changed();
+    this.#intend();
   }
 
   /** Sets the speed, rounded to hundredths and kept within 0.01 to 10; it stays across a reconnection. */
@@ -202,6 +232,7 @@ export class PlaybackSession {
     this.#speed = clampSpeed(speed);
     this.#clock?.setSpeed(this.#speed);
     this.#changed();
+    this.#intend();
   }
 
   /** One 0.1 step up (`1`) or down (`-1`). */
@@ -209,18 +240,66 @@ export class PlaybackSession {
     this.setSpeed(this.#speed + direction * SPEED_STEP);
   }
 
+  /**
+   * Follows a presenter: puts the clock where the presenter's is by now (`serverNowUs` reads the backend's time) and
+   * runs it at the presenter's speed. Call it again whenever the presenter's intent changes; between two intents both
+   * clocks run alike on their own. A reconnection puts the clock back in step the same way.
+   */
+  follow(intent: ClockIntent, serverNowUs: () => number): void {
+    this.#followed = { intent, serverNowUs };
+    this.#applyFollowed();
+  }
+
+  #applyFollowed(): void {
+    const clock = this.#clock;
+    const times = this.#times;
+    if (!this.#followed || !clock || !times) return;
+    const { intent, serverNowUs } = this.#followed;
+    const frame = followFrame(times, intent, serverNowUs());
+    this.#speed = clampSpeed(intent.speedCenti / 100);
+    clock.setSpeed(this.#speed);
+    if (intent.playing && frame < times.length - 1) {
+      clock.seek(frame);
+      if (!clock.playing) {
+        clock.play();
+        this.#planner?.played();
+      }
+    } else {
+      clock.pause();
+      clock.seek(frame);
+    }
+    this.#changed();
+  }
+
+  /** Tells the viewer what the clock is doing now, after the viewer changed it. */
+  #intend(): void {
+    // What the viewer does is its own now; the presenter's clock no longer applies, nor after a reconnection.
+    this.#followed = undefined;
+    const clock = this.#clock;
+    if (clock)
+      this.#deps.onIntent?.({ frame: clock.playhead, playing: clock.playing, speed: this.#speed });
+  }
+
   #connect(): void {
     const attempt = {};
     this.#attempt = attempt;
     this.#opened = undefined;
-    this.#connection = this.#deps.connect((incoming) => {
-      if (this.#attempt === attempt && !this.#closed) this.#onIncoming(incoming);
-    });
-    this.#connection.send({
-      type: "Open",
-      content_id: this.#contentId,
-      start_frame: this.#resumeAt,
-    });
+    const current = () => this.#attempt === attempt && !this.#closed;
+    this.#deps.ticket().then(
+      (ticket) => {
+        if (!current()) return;
+        this.#connection = this.#deps.connect((incoming) => {
+          if (current()) this.#onIncoming(incoming);
+        });
+        this.#connection.send({ type: "Open", ticket, start_frame: this.#resumeAt });
+      },
+      (error: unknown) => {
+        if (!current()) return;
+        // Not getting a ticket because the session's own connection is down is worth another try.
+        if (error instanceof CommandRefused) this.#fail(error.message);
+        else this.#lose();
+      },
+    );
   }
 
   #onIncoming(incoming: Incoming): void {
@@ -231,7 +310,11 @@ export class PlaybackSession {
         `The backend sent something this window cannot read: ${incoming.reason}`,
         "playback",
       );
-    else if (this.#status !== "failed") this.#lose();
+    else if (this.#status !== "failed") {
+      const ended = ENDED[incoming.code];
+      if (ended) this.#fail(ended);
+      else this.#lose();
+    }
   }
 
   #onMessage(message: ServerMessage): void {
@@ -246,9 +329,9 @@ export class PlaybackSession {
         );
       this.#opened = message;
     } else if (message.type === "FrameError") {
-      this.#noteFailure(message.sequence_id, message.reason);
+      this.#noteFailure(message.sequence_id, reasonOf(message));
     } else if (message.type === "Error") {
-      return this.#fail(message.reason, message.location);
+      return this.#fail(reasonOf(message), message.location);
     }
     this.#publish();
   }
@@ -270,12 +353,17 @@ export class PlaybackSession {
       return this.#fail("The backend described the video inconsistently", "playback");
     this.#buffer = new FrameBuffer<VideoFrame>(this.#budget, times.length);
     this.#planner = new WantPlanner(windowSize(this.#budget, opened.frame_bytes));
+    this.#times = times;
     this.#clock = new PlaybackClock(times, this.#deps.now, this.#resumeAt ?? 0);
     this.#clock.setSpeed(this.#speed);
     this.#frameErrors.clear();
     this.#status = "ready";
     this.#retries = 0;
     this.#frameCount = opened.frame_count;
+    this.#applyFollowed();
+    // The reopened clock is paused: tell the presenter's followers where this viewer really is now.
+    if (this.#stoppedByLoss && !this.#followed) this.#intend();
+    this.#stoppedByLoss = false;
     this.#sendWant();
     this.#publish();
   }
@@ -290,7 +378,10 @@ export class PlaybackSession {
     const clock = this.#clock;
     const buffer = this.#buffer;
     if (!clock || !buffer) return;
+    const wasPlaying = clock.playing;
     const presented = clock.tick(buffer);
+    // Playing ended on its own, at the last frame: the viewer's intent is a pause there, unless it follows a presenter.
+    if (wasPlaying && !clock.playing && !this.#followed) this.#intend();
     const held = presented === undefined ? undefined : buffer.get(presented);
     if (held) this.#surface?.present(held);
     this.#sendWant();
@@ -331,7 +422,7 @@ export class PlaybackSession {
 
   /** The socket closed on its own: drop the video and open again where it left off, paused. */
   #lose(): void {
-    this.#resumeAt = this.#clock?.playhead ?? this.#resumeAt;
+    this.#stoppedByLoss ||= this.#clock?.playing ?? false;
     this.#releaseVideo();
     this.#connection = undefined;
     this.#status = "reconnecting";
@@ -340,7 +431,7 @@ export class PlaybackSession {
     this.#publish();
   }
 
-  #fail(reason: string, location: string): void {
+  #fail(reason: string, location?: string): void {
     this.#failure = { reason, location };
     this.#status = "failed";
     this.#connection?.close();
@@ -349,11 +440,13 @@ export class PlaybackSession {
     this.#publish();
   }
 
-  /** Stops the display loop and drops the clock and every held frame. */
+  /** Stops the display loop and drops the clock and every held frame, keeping the position for the next opening. */
   #releaseVideo(): void {
+    this.#resumeAt = this.#clock?.playhead ?? this.#resumeAt;
     this.#cancelFrame?.();
     this.#cancelFrame = undefined;
     this.#clock = undefined;
+    this.#times = undefined;
     this.#buffer = undefined;
     this.#planner = undefined;
     this.#lastWant = undefined;

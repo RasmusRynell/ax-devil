@@ -6,26 +6,95 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import { useGrants } from "./access";
+import { apiFetch } from "./api";
 import type { ApiError, SettingsChange, SettingsState } from "./generated/api";
+import { COMMANDS, SETTINGS, type SettingKey } from "./generated/settings";
 
 export interface SettingsApi extends SettingsState {
   /**
-   * Stores *change* through the backend and shows what it returns; resolves to the refusal (its `location` is a
-   * setting key or `shortcuts.<id>`, empty when the backend could not be reached), else null.
+   * Stores *change* where each part lives and shows what the backend returns; resolves to the refusal (its `location`
+   * is a setting key or `shortcuts.<id>`, empty when the backend could not be reached), else null.
    */
   save: (change: SettingsChange) => Promise<ApiError | null>;
 }
 
 type Load =
   | { state: "loading" }
-  | { state: "ready"; stored: SettingsState }
+  | { state: "ready"; remote: SettingsState | null }
   | { state: "failed"; reason: string };
 
 /** Provided by `SettingsProvider`; tests provide their own value. */
 export const SettingsContext = createContext<SettingsApi | null>(null);
 
+type Row = (typeof SETTINGS)[number];
+type Values = SettingsState["values"];
+type Shortcuts = SettingsState["shortcuts"];
+
+/** The Personal settings and shortcut overrides this browser keeps when the backend does not keep them. */
+interface Local {
+  values: Partial<Values>;
+  /** Only the commands whose key differs from the standard one. */
+  shortcuts: Partial<Shortcuts>;
+}
+
+const LOCAL_KEY = "ax-devil.preferences";
+const PERSONAL = SETTINGS.filter((row) => row.scope === "personal");
+const DEFAULT_VALUES = Object.fromEntries(
+  SETTINGS.map((row) => [
+    row.key,
+    "default" in row.kind ? row.kind.default : row.kind.type === "auto_or_whole" ? "auto" : "",
+  ]),
+) as Values;
+const STANDARD_SHORTCUTS = Object.fromEntries(
+  COMMANDS.map((command) => [command.id, command.key]),
+) as Shortcuts;
+
+/** Whether *value* is something this Personal row can hold; a stored value that is not is ignored. */
+const holds = (row: Row, value: unknown) =>
+  row.kind.type === "bool"
+    ? typeof value === "boolean"
+    : row.kind.type === "choice" && row.kind.options.some(([name]) => name === value);
+
+/** What this browser kept: only what the Personal rows and commands still accept, ignoring anything unreadable. */
+function readLocal(): Local {
+  const local: Local = { values: {}, shortcuts: {} };
+  try {
+    const kept = JSON.parse(window.localStorage.getItem(LOCAL_KEY) ?? "{}") as Partial<Local>;
+    for (const row of PERSONAL) {
+      const value = kept.values?.[row.key];
+      if (holds(row, value)) Object.assign(local.values, { [row.key]: value });
+    }
+    for (const { id } of COMMANDS) {
+      const key = kept.shortcuts?.[id];
+      if (key === null || typeof key === "string") local.shortcuts[id] = key;
+    }
+  } catch {
+    // Nothing usable was kept: the defaults apply.
+  }
+  return local;
+}
+
+/** The part of *change* this browser keeps. */
+function localOf(change: SettingsChange): Local {
+  const values: Partial<Values> = {};
+  for (const { key } of PERSONAL) values[key] = change.values[key];
+  const shortcuts: Partial<Shortcuts> = {};
+  for (const { id, key } of COMMANDS)
+    if (change.shortcuts[id] !== key) shortcuts[id] = change.shortcuts[id];
+  return { values, shortcuts };
+}
+
+/** The part of *change* that belongs on the server: every row that is not Personal. */
+function serverValues(values: Values): Partial<Values> {
+  const personal = new Set<SettingKey>(PERSONAL.map((row) => row.key));
+  return Object.fromEntries(
+    Object.entries(values).filter(([key]) => !personal.has(key as SettingKey)),
+  );
+}
+
 async function request(init?: RequestInit): Promise<SettingsState> {
-  const response = await fetch("/api/settings", init);
+  const response = await apiFetch("/api/settings", init);
   if (!response.ok) {
     const error = (await response.json().catch(() => null)) as ApiError | null;
     throw error ?? { reason: `the backend answered ${response.status}`, location: "" };
@@ -39,16 +108,25 @@ const refusalOf = (error: unknown): ApiError =>
     : { reason: error instanceof Error ? error.message : String(error), location: "" };
 
 /**
- * The backend's stored settings are the only copy. Children render once they arrive, with the theme
- * applied live to the document root; a failed read shows its reason instead.
+ * Where each setting lives follows the grants. Personal settings and shortcuts come from the backend only when it
+ * grants `preferences`, so a server-password holder or a link watcher never changes someone else's theme; otherwise
+ * this browser keeps them. Server settings come from the backend for `configuration` holders. Children render once
+ * the settings are read, with the theme applied live to the document root; a failed read shows its reason instead.
  */
 export function SettingsProvider({ children }: { children: ReactNode }) {
-  const [load, setLoad] = useState<Load>({ state: "loading" });
+  const grants = useGrants();
+  const keepsPreferences = grants.includes("preferences");
+  const hasBackend = keepsPreferences || grants.includes("configuration");
+  const [load, setLoad] = useState<Load>(
+    hasBackend ? { state: "loading" } : { state: "ready", remote: null },
+  );
+  const [local, setLocal] = useState(readLocal);
   useEffect(() => {
+    if (!hasBackend) return;
     let current = true;
     request()
-      .then((stored) => {
-        if (current) setLoad({ state: "ready", stored });
+      .then((remote) => {
+        if (current) setLoad({ state: "ready", remote });
       })
       .catch((error: unknown) => {
         if (current) setLoad({ state: "failed", reason: refusalOf(error).reason });
@@ -56,33 +134,54 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
     return () => {
       current = false;
     };
-  }, []);
-  const stored = load.state === "ready" ? load.stored : null;
-  const theme = stored?.values["ui.theme"] as string | undefined;
+  }, [hasBackend]);
+  const remote = load.state === "ready" ? load.remote : null;
+  const mine = keepsPreferences ? null : local;
+  const values = { ...DEFAULT_VALUES, ...remote?.values, ...mine?.values };
+  const theme = values["ui.theme"] as string;
   useLayoutEffect(() => {
     // tokens.css selects the color scheme from this attribute.
-    if (theme) document.documentElement.dataset.theme = theme;
+    document.documentElement.dataset.theme = theme;
   }, [theme]);
 
   if (load.state === "failed")
     return <p role="alert">ax-devil cannot read its settings: {load.reason}</p>;
-  if (!stored) return <main aria-busy="true" />;
+  if (load.state === "loading") return <main aria-busy="true" />;
 
   const save = async (change: SettingsChange) => {
     try {
-      const replaced = await request({
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(change),
-      });
-      setLoad({ state: "ready", stored: replaced });
+      if (hasBackend) {
+        // Without `preferences` the backend takes only the Server rows, and the shortcuts go back as they were read.
+        const sent = keepsPreferences
+          ? change
+          : {
+              values: serverValues(change.values),
+              shortcuts: remote?.shortcuts ?? STANDARD_SHORTCUTS,
+            };
+        const replaced = await request({
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(sent),
+        });
+        setLoad({ state: "ready", remote: replaced });
+      }
+      if (!keepsPreferences) {
+        const kept = localOf(change);
+        window.localStorage.setItem(LOCAL_KEY, JSON.stringify(kept));
+        setLocal(kept);
+      }
       return null;
     } catch (error) {
       return refusalOf(error);
     }
   };
+  const shortcuts = mine
+    ? { ...STANDARD_SHORTCUTS, ...mine.shortcuts }
+    : (remote?.shortcuts ?? STANDARD_SHORTCUTS);
   return (
-    <SettingsContext.Provider value={{ ...stored, save }}>{children}</SettingsContext.Provider>
+    <SettingsContext.Provider value={{ values, shortcuts, restart: remote?.restart ?? [], save }}>
+      {children}
+    </SettingsContext.Provider>
   );
 }
 

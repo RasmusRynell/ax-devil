@@ -2,20 +2,15 @@
 // Reads `cargo metadata --format-version 1` on stdin; every workspace crate declares its layer in
 // `[package.metadata.ax-devil] layer = "..."`.
 const fs = require("node:fs");
+const path = require("node:path");
 
 // Lowest first. A crate may depend on workspace crates in its own layer or below.
 const LAYERS = ["foundation", "domain", "services", "adapters", "entry"];
-// Layers 1-3 stay free of the HTTP/WebSocket server and anything else that ties them to how the UI is reached.
+// Layers 1-3 stay free of the HTTP/WebSocket server and anything else that ties them to how the UI is reached. `serde`
+// and `ts-rs` are not in this set: they only describe plain data, so a type is defined once at the layer that owns it
+// and carries its own wire form.
 const TOOLKIT_FREE = new Set(["foundation", "domain", "services"]);
-const SERVER_CRATES = new Set([
-  "axum",
-  "axum-core",
-  "hyper",
-  "tower",
-  "tower-http",
-  "rust-embed",
-  "ts-rs",
-]);
+const SERVER_CRATES = new Set(["axum", "axum-core", "hyper", "tower", "tower-http", "rust-embed"]);
 
 // Rules the layers alone do not say. `from` is a crate name, or "*" for every crate except those in `except`; `to` is
 // a dependency, workspace or not. Dev-dependencies are exempt, like in the layer rule.
@@ -81,10 +76,61 @@ function check(metadata) {
   return { problems, crates: workspace.length };
 }
 
-module.exports = { check };
+// The only file that may mount a route: the route table.
+const ROUTE_TABLE = "src/routes/mod.rs";
+
+/** The problems in `sources` (`{ file, text }` Rust files, `file` relative to the repository), one sentence each. */
+function checkRoutes(sources) {
+  return sources
+    .filter(({ file }) => file !== ROUTE_TABLE)
+    .filter(({ text }) => text.split("\n").some((line) => /\.route\(/.test(line.split("//")[0])))
+    .map(
+      ({ file }) => `${file} mounts a route; add the route to the table in ${ROUTE_TABLE} instead`,
+    );
+}
+
+// The only file that builds the Doc's wire form. It destructures `Doc` exhaustively, so a new Doc field does not
+// compile until the projection decides what each audience sees of it.
+const PROJECTION = "src/session/project.rs";
+
+/** The problems in `sources` (as for `checkRoutes`) with the projection: it must exist and use no rest pattern. */
+function checkProjection(sources) {
+  const projection = sources.find(({ file }) => file === PROJECTION);
+  if (!projection) return [`${PROJECTION} is missing; it is the only constructor of DocWire`];
+  const code = projection.text
+    .split("\n")
+    .map((line) => line.split("//")[0])
+    .join("\n");
+  // `..` closing a pattern: `, ..`, `..` before `}`.
+  return /\.\.\s*\}|,\s*\.\.(?![.=\w])/.test(code)
+    ? [
+        `${PROJECTION} uses a rest pattern (\`..\`); name every field of Doc so a new one must be projected`,
+      ]
+    : [];
+}
+
+/** Every Rust file under `src` and under each crate's `src` in the repository at `root`. */
+function rustSources(root) {
+  const found = [];
+  const walk = (dir) => {
+    for (const entry of fs.readdirSync(path.join(root, dir), { withFileTypes: true })) {
+      const file = `${dir}/${entry.name}`;
+      if (entry.isDirectory()) walk(file);
+      else if (entry.name.endsWith(".rs"))
+        found.push({ file, text: fs.readFileSync(path.join(root, file), "utf8") });
+    }
+  };
+  walk("src");
+  for (const crate of fs.readdirSync(path.join(root, "crates"))) walk(`crates/${crate}/src`);
+  return found;
+}
+
+module.exports = { check, checkRoutes, checkProjection };
 
 if (require.main === module) {
   const { problems, crates } = check(JSON.parse(fs.readFileSync(0, "utf8")));
+  const sources = rustSources(path.join(__dirname, ".."));
+  problems.push(...checkRoutes(sources), ...checkProjection(sources));
   if (problems.length) {
     console.error(`Architecture check failed:\n  ${problems.join("\n  ")}`);
     process.exit(1);

@@ -103,6 +103,7 @@ pub fn follow(
 mod tests {
     use super::*;
     use serde_json::json;
+    use settings::Scope;
 
     const GIB: u64 = 1024 * MIB;
 
@@ -134,11 +135,11 @@ mod tests {
         ));
         let task = follow(&settings, videos, Some(4 * GIB));
         let save = |cache: serde_json::Value| {
-            let mut values = settings.state().values();
+            let mut values = settings.state().values(&Scope::ALL);
             values.insert(SETTING.into(), cache);
             let shortcuts = Default::default();
             settings
-                .replace(&settings::Change { values, shortcuts })
+                .replace(&Scope::ALL, &settings::Change { values, shortcuts })
                 .unwrap();
         };
         let resized = async |expected: u64| {

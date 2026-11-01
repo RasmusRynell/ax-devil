@@ -56,7 +56,7 @@ fn a_saved_change_is_sparse_survives_a_restart_and_keeps_what_this_version_does_
     .unwrap();
 
     let settings = Settings::load(&path).unwrap();
-    assert_eq!(settings.state().values()["ui.theme"], "light");
+    assert_eq!(settings.state().values(&Scope::ALL)["ui.theme"], "light");
     assert_eq!(settings.state().shortcuts()["exit"], None);
 
     let mut edit = change("dark");
@@ -64,7 +64,7 @@ fn a_saved_change_is_sparse_survives_a_restart_and_keeps_what_this_version_does_
         .insert("ui.quick_setup_done".into(), json!(false));
     edit.shortcuts
         .insert("exit".into(), Some("Ctrl+Alt+Q".into()));
-    settings.replace(&edit).unwrap();
+    settings.replace(&Scope::ALL, &edit).unwrap();
 
     assert_eq!(
         read(&path),
@@ -77,7 +77,7 @@ fn a_saved_change_is_sparse_survives_a_restart_and_keeps_what_this_version_does_
         "only what differs from the default is written; unknown entries stay"
     );
     let again = Settings::load(&path).unwrap().state();
-    assert_eq!(again.values()["ui.theme"], "dark");
+    assert_eq!(again.values(&Scope::ALL)["ui.theme"], "dark");
     assert_eq!(again.shortcuts()["exit"].as_deref(), Some("Ctrl+Alt+Q"));
     assert_eq!(
         fs::read_dir(path.parent().unwrap()).unwrap().count(),
@@ -89,7 +89,7 @@ fn a_saved_change_is_sparse_survives_a_restart_and_keeps_what_this_version_does_
     reset
         .values
         .insert("ui.quick_setup_done".into(), json!(false));
-    settings.replace(&reset).unwrap();
+    settings.replace(&Scope::ALL, &reset).unwrap();
     assert_eq!(
         read(&path)["settings"],
         json!({"ui.text_size": "large"}),
@@ -172,7 +172,7 @@ fn an_older_file_is_backed_up_migrated_in_order_and_written_at_the_current_versi
     let v1 = r#"{"version": 1, "settings": {"theme": "night"}}"#;
     let (folder, path, settings) = load(v1);
     assert_eq!(
-        settings.state().values()["ui.theme"],
+        settings.state().values(&Scope::ALL)["ui.theme"],
         "dark",
         "step 2 saw the result of step 1"
     );
@@ -188,7 +188,7 @@ fn an_older_file_is_backed_up_migrated_in_order_and_written_at_the_current_versi
 
     let (folder, _, settings) = load(r#"{"version": 2, "settings": {"ui.theme": "night"}}"#);
     assert_eq!(
-        settings.state().values()["ui.theme"],
+        settings.state().values(&Scope::ALL)["ui.theme"],
         "dark",
         "a v2 file skips step 1"
     );
@@ -246,18 +246,18 @@ fn every_released_settings_file_still_loads() {
         let settings = Settings::load(&path).unwrap_or_else(|error| panic!("{name}: {error}"));
         let state = settings.state();
         let again = Change {
-            values: state.values(),
+            values: state.values(&Scope::ALL),
             shortcuts: state
                 .shortcuts()
                 .into_iter()
                 .map(|(id, key)| (id.to_owned(), key))
                 .collect(),
         };
-        settings.replace(&again).unwrap();
+        settings.replace(&Scope::ALL, &again).unwrap();
         assert_eq!(read(&path)["version"], VERSION, "{name}");
         assert_eq!(
-            Settings::load(&path).unwrap().state().values(),
-            state.values(),
+            Settings::load(&path).unwrap().state().values(&Scope::ALL),
+            state.values(&Scope::ALL),
             "{name}"
         );
     }
@@ -280,8 +280,8 @@ fn saving_replaces_a_linked_settings_file_with_a_private_file_and_leaves_the_tar
     std::os::unix::fs::symlink(&target, &path).unwrap();
 
     let settings = Settings::load(&path).unwrap();
-    assert_eq!(settings.state().values()["ui.theme"], "light");
-    settings.replace(&change("dark")).unwrap();
+    assert_eq!(settings.state().values(&Scope::ALL)["ui.theme"], "light");
+    settings.replace(&Scope::ALL, &change("dark")).unwrap();
 
     assert_eq!(fs::read_to_string(&target).unwrap(), original);
     assert!(!fs::symlink_metadata(&path).unwrap().is_symlink());
@@ -292,7 +292,7 @@ fn saving_replaces_a_linked_settings_file_with_a_private_file_and_leaves_the_tar
     let private = folder.path().join("a/b/settings.json");
     Settings::load(&private)
         .unwrap()
-        .replace(&change("dark"))
+        .replace(&Scope::ALL, &change("dark"))
         .unwrap();
     let mode = fs::metadata(private.parent().unwrap())
         .unwrap()
@@ -329,12 +329,12 @@ fn a_rejected_replace_changes_neither_state_nor_file() {
         (duplicate, "shortcuts.exit"),
         (reserved, "shortcuts.exit"),
     ] {
-        let error = settings.replace(&rejected).unwrap_err();
+        let error = settings.replace(&Scope::ALL, &rejected).unwrap_err();
         assert_eq!(error.location, location);
         assert!(error.invalid);
     }
 
-    assert_eq!(settings.state().values()["ui.theme"], "auto");
+    assert_eq!(settings.state().values(&Scope::ALL)["ui.theme"], "auto");
     assert!(!path.exists());
 }
 
@@ -357,10 +357,10 @@ fn the_video_cache_is_auto_or_whole_mib_in_range_and_a_saved_number_survives_a_r
         json!("512"),
         json!(true),
     ] {
-        let error = settings.replace(&with(rejected)).unwrap_err();
+        let error = settings.replace(&Scope::ALL, &with(rejected)).unwrap_err();
         assert_eq!(error.location, "playback.video_cache");
     }
-    settings.replace(&with(json!(512))).unwrap();
+    settings.replace(&Scope::ALL, &with(json!(512))).unwrap();
     assert_eq!(
         Settings::load(&path)
             .unwrap()
@@ -368,7 +368,7 @@ fn the_video_cache_is_auto_or_whole_mib_in_range_and_a_saved_number_survives_a_r
             .auto_or_whole("playback.video_cache"),
         Some(512)
     );
-    settings.replace(&with(json!("auto"))).unwrap();
+    settings.replace(&Scope::ALL, &with(json!("auto"))).unwrap();
     assert_eq!(settings.state().auto_or_whole("playback.video_cache"), None);
 }
 
@@ -385,12 +385,12 @@ fn the_cache_folder_is_empty_or_an_absolute_path_that_need_not_exist() {
     };
 
     for rejected in [json!("cache"), json!("~/cache"), json!("$CACHE"), json!(7)] {
-        let error = settings.replace(&with(rejected)).unwrap_err();
+        let error = settings.replace(&Scope::ALL, &with(rejected)).unwrap_err();
         assert_eq!(error.location, "storage.cache_dir");
         assert_eq!(error.reason, "expected an absolute folder path");
     }
     settings
-        .replace(&with(json!("/unplugged/drive/cache")))
+        .replace(&Scope::ALL, &with(json!("/unplugged/drive/cache")))
         .unwrap();
     assert_eq!(
         Settings::load(&path)
@@ -399,8 +399,8 @@ fn the_cache_folder_is_empty_or_an_absolute_path_that_need_not_exist() {
             .folder("storage.cache_dir"),
         Some(PathBuf::from("/unplugged/drive/cache"))
     );
-    assert_eq!(settings.restart_pending(), ["storage.cache_dir"]);
-    settings.replace(&with(json!(""))).unwrap();
+    assert_eq!(settings.restart_pending(&Scope::ALL), ["storage.cache_dir"]);
+    settings.replace(&Scope::ALL, &with(json!(""))).unwrap();
     assert_eq!(settings.state().folder("storage.cache_dir"), None);
 }
 
@@ -411,15 +411,18 @@ fn subscribers_see_each_saved_change_and_nothing_for_a_rejected_one() {
     let mut changes = settings.subscribe();
     assert!(!changes.has_changed().unwrap());
 
-    settings.replace(&change("neon")).unwrap_err();
+    settings.replace(&Scope::ALL, &change("neon")).unwrap_err();
     assert!(
         !changes.has_changed().unwrap(),
         "a rejected change is not announced"
     );
 
-    settings.replace(&change("dark")).unwrap();
+    settings.replace(&Scope::ALL, &change("dark")).unwrap();
     assert!(changes.has_changed().unwrap());
-    assert_eq!(changes.borrow_and_update().values()["ui.theme"], "dark");
+    assert_eq!(
+        changes.borrow_and_update().values(&Scope::ALL)["ui.theme"],
+        "dark"
+    );
 }
 
 const NET: &[Setting] = &[
@@ -433,6 +436,7 @@ const NET: &[Setting] = &[
         env: true,
         secret: true,
         quick_setup: false,
+        scope: Scope::Server,
     },
     Setting {
         key: "net.mode",
@@ -447,6 +451,7 @@ const NET: &[Setting] = &[
         env: true,
         secret: false,
         quick_setup: false,
+        scope: Scope::Server,
     },
 ];
 
@@ -469,23 +474,32 @@ fn a_reference_is_stored_as_written_checked_when_resolved_and_a_restart_is_asked
         shortcuts: change("auto").shortcuts,
     };
 
-    let error = settings.replace(&edit("$ADDRESS", "$MODE")).unwrap_err();
+    let error = settings
+        .replace(&Scope::ALL, &edit("$ADDRESS", "$MODE"))
+        .unwrap_err();
     assert_eq!(
         error.location, "net.mode",
         "the expanded value must fit the setting"
     );
     assert!(!error.reason.contains("secret-mode"), "{}", error.reason);
-    assert!(settings.restart_pending().is_empty());
+    assert!(settings.restart_pending(&Scope::ALL).is_empty());
 
-    let state = settings.replace(&edit("$ADDRESS", "b")).unwrap();
+    let state = settings
+        .replace(&Scope::ALL, &edit("$ADDRESS", "b"))
+        .unwrap();
     assert_eq!(
         read(&path)["settings"]["net.address"],
         "$ADDRESS",
         "the reference is stored, not the value"
     );
     assert_eq!(state.resolved("net.address"), Some(json!("10.0.0.2")));
-    assert_eq!(settings.restart_pending(), ["net.address", "net.mode"]);
+    assert_eq!(
+        settings.restart_pending(&Scope::ALL),
+        ["net.address", "net.mode"]
+    );
 
-    let state = settings.replace(&edit("10.0.0.9", "a")).unwrap();
+    let state = settings
+        .replace(&Scope::ALL, &edit("10.0.0.9", "a"))
+        .unwrap();
     assert_eq!(restart_pending(&settings.started, &state), ["net.address"]);
 }

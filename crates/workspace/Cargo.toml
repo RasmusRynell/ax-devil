@@ -14,7 +14,7 @@ workspace = true
 
 [dependencies]
 foundation.workspace = true
-uuid = { version = "1", features = ["v4"] }
+serde.workspace = true
 
 [dev-dependencies]
 tempfile = "3"

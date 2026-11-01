@@ -1,4 +1,5 @@
 import { useId, useState } from "react";
+import { useGrants } from "../access";
 import { SETTINGS } from "../generated/settings";
 import { Dialog } from "../kit/Dialog";
 import { Icon } from "../kit/Icon";
@@ -6,28 +7,33 @@ import { useSettings } from "../settings";
 import { literalSecret, Refusal, SettingField, type Row } from "./SettingField";
 import { useSaveDialog } from "./useSaveDialog";
 
-/** The rows the dialog shows: every setting that has a page. */
-const ROWS: readonly Row[] = SETTINGS.filter((row) => row.page !== null);
-const PAGES = [...new Set(ROWS.map((row) => row.page))];
+/** Every setting that has a page. */
+const PAGED: readonly Row[] = SETTINGS.filter((row) => row.page !== null);
 
-/** The Settings dialog, built from the settings table. Changes apply on OK, through the backend. */
+/**
+ * The Settings dialog, built from the settings table: the Personal rows for everyone, the Server rows for whoever may
+ * configure the server. Changes apply on OK.
+ */
 export function SettingsDialog({ onClose }: { onClose: () => void }) {
   const { values, shortcuts } = useSettings();
+  const configures = useGrants().includes("configuration");
+  const shown = PAGED.filter((row) => configures || row.scope === "personal");
+  const pages = [...new Set(shown.map((row) => row.page))];
   const [draft, setDraft] = useState(values);
-  const [page, setPage] = useState(PAGES[0]);
+  const [page, setPage] = useState(pages[0]);
   const { saving, refusal, submit } = useSaveDialog(onClose);
   const panel = useId();
   const ok = async () => {
     const refused = await submit({ values: draft, shortcuts });
-    const at = ROWS.find((row) => row.key === refused?.location);
+    const at = shown.find((row) => row.key === refused?.location);
     if (at) setPage(at.page);
   };
-  const rows = ROWS.filter((row) => row.page === page);
-  const refusedRow = ROWS.some((row) => row.key === refusal?.location);
+  const rows = shown.filter((row) => row.page === page);
+  const refusedRow = shown.some((row) => row.key === refusal?.location);
   return (
     <Dialog title="Settings" onOk={() => void ok()} onCancel={onClose} busy={saving}>
       <div role="tablist" className="flex border-b border-line">
-        {PAGES.map((name) => (
+        {pages.map((name) => (
           <button
             key={name}
             type="button"

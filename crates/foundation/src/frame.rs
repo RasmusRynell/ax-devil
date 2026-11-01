@@ -1,4 +1,4 @@
-use crate::{FrameId, UserError};
+use crate::{ErrorCode, FrameId, UserError};
 use bytes::Bytes;
 
 /// How the samples of a frame are laid out in its planes.
@@ -76,19 +76,19 @@ impl VideoFrame {
         for (index, plane) in layout.planes.iter().enumerate() {
             if plane.len > 0 && (plane.stride == 0 || plane.len % plane.stride != 0) {
                 return Err(UserError::new(
+                    ErrorCode::DecodeFailed,
                     format!("plane {index} is not a whole number of rows"),
-                    format!("frame {}", id.sequence_id),
                 ));
             }
             total = total.saturating_add(plane.len as usize);
         }
         if total != data.len() {
             return Err(UserError::new(
+                ErrorCode::DecodeFailed,
                 format!(
                     "the planes take {total} bytes but the frame has {}",
                     data.len()
                 ),
-                format!("frame {}", id.sequence_id),
             ));
         }
         Ok(Self {
@@ -184,8 +184,7 @@ mod tests {
         assert!(frame.plane(3).is_empty());
         assert_eq!(frame.reserved_bytes(), 8);
 
-        let short = VideoFrame::new(id(), false, layout([4, 2, 4]), data.clone()).unwrap_err();
-        assert_eq!(short.location, "frame 3");
+        assert!(VideoFrame::new(id(), false, layout([4, 2, 4]), data.clone()).is_err());
         assert!(VideoFrame::new(id(), false, layout([4, 2, 0]), data.clone()).is_err());
         assert!(
             VideoFrame::new(id(), false, layout([3, 2, 3]), data).is_err(),

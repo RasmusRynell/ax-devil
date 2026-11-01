@@ -1,12 +1,14 @@
-//! `ax-devil local --video PATH` through the real binary: it opens an Untitled workspace holding that one video.
+//! `ax-devil local --video PATH` through the real binary: the first window's session holds that one video, with its
+//! viewer requested, in an Untitled workspace.
+
+mod session_client;
 
 use serde_json::Value;
+use session_client::Socket;
 use std::{
-    io::{BufRead, BufReader, Read, Write},
-    net::TcpStream,
+    io::{BufRead, BufReader},
     path::Path,
     process::{Child, Command, Stdio},
-    time::{Duration, Instant},
 };
 
 /// A running backend, stopped when dropped.
@@ -41,37 +43,6 @@ impl Backend {
         let address = ready.expect("the backend exited before it was ready");
         Self { child, address }
     }
-
-    /// The workspace once nothing in it is pending.
-    fn settled_workspace(&self) -> Value {
-        let deadline = Instant::now() + Duration::from_secs(10);
-        loop {
-            let workspace = self.get("/api/workspace");
-            let pending = workspace["items"]
-                .as_array()
-                .unwrap()
-                .iter()
-                .any(|item| item["resolution"]["status"] == "Pending");
-            if !pending || Instant::now() > deadline {
-                return workspace;
-            }
-            std::thread::sleep(Duration::from_millis(20));
-        }
-    }
-
-    fn get(&self, path: &str) -> Value {
-        let mut stream = TcpStream::connect(&self.address).unwrap();
-        write!(
-            stream,
-            "GET {path} HTTP/1.1\r\nHost: {}\r\nConnection: close\r\n\r\n",
-            self.address
-        )
-        .unwrap();
-        let mut response = String::new();
-        stream.read_to_string(&mut response).unwrap();
-        let (_, body) = response.split_once("\r\n\r\n").unwrap();
-        serde_json::from_str(body).unwrap()
-    }
 }
 
 impl Drop for Backend {
@@ -81,13 +52,16 @@ impl Drop for Backend {
     }
 }
 
-#[test]
-fn local_video_opens_an_untitled_workspace_with_one_resolved_item() {
+#[tokio::test]
+async fn local_video_opens_an_untitled_workspace_with_one_resolved_item_for_the_first_window_only()
+{
     let folder = tempfile::tempdir().unwrap();
     let video = folder.path().join("gate.mp4");
     std::fs::write(&video, "x").unwrap();
+    let backend = Backend::start(folder.path(), &video);
 
-    let workspace = Backend::start(folder.path(), &video).settled_workspace();
+    let mut first = Socket::own(&backend.address, None).await;
+    let workspace = first.settled_doc().await["doc"]["workspace"].clone();
 
     assert_eq!(workspace["name"], Value::Null);
     let items = workspace["items"].as_array().unwrap();
@@ -95,4 +69,9 @@ fn local_video_opens_an_untitled_workspace_with_one_resolved_item() {
     assert_eq!(items[0]["label"], "gate.mp4");
     assert_eq!(items[0]["open"], true);
     assert_eq!(items[0]["resolution"]["status"], "Resolved");
+
+    // The video belongs to the first window; a second window starts empty.
+    let mut second = Socket::own(&backend.address, None).await;
+    let doc = second.until(|message| message["type"] == "doc").await;
+    assert_eq!(doc["doc"]["workspace"]["items"], serde_json::json!([]));
 }

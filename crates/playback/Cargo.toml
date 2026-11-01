@@ -14,8 +14,10 @@ workspace = true
 
 [dependencies]
 foundation.workspace = true
+serde.workspace = true
 tokio = { workspace = true, features = ["sync"] }
 tracing.workspace = true
+ts-rs.workspace = true
 
 [dev-dependencies]
 bytes.workspace = true

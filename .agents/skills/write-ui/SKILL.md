@@ -21,7 +21,7 @@ block to this table when it lands, and use what is listed instead of writing a l
 | Tokens: light/dark color pairs, spacing, radii, text roles, heights | Tailwind utilities generated from `@theme` (`bg-surface`, `text-muted`, `p-m`, `h-row`, `text-small`); values only in the token file | `frontend/src/tokens.css` |
 | Theme | The stored setting selects the colors through the root's `data-theme`, live | `frontend/src/settings.tsx` |
 | Icons | `Icon` over the Lucide SVGs; add a new one from Lucide to `assets/icons/` and to `icons.ts` | `assets/icons/`, `frontend/src/kit/` |
-| Buttons, menus, dialogs, fields, row lists, key chips | The kit in `frontend/src/kit/` | same |
+| Buttons, menus, popups, context menus, dialogs, fields, row lists, key chips | The kit: `Button`, `Menu`, `Popup`, `ContextMenu`, `Dialog`, `SearchField`, `Select`, `TextField`, `Checkbox`, `RowList`, `KeyChips` | `frontend/src/kit/` |
 | Windows | Created by the shell; the frontend never opens windows itself | `desktop/main.cjs` |
 
 Before writing UI, read the [UI Lifecycle invariants](../../../docs/domain/invariants.md#ui-lifecycle): components
@@ -56,6 +56,14 @@ project state owned by the backend, never own it, and never do file, network or 
 
   Scrolling is right only for content that grows with the user's data, such as a list of rows. Lists that can grow
   long (sidebar trees, Objects and Events) are virtualized.
+- **Shareable UI.** Others see a pointer through the `data-cursor-id` of the element under it, inside a
+  `data-cursor-region`; give an element that should show it a stable id. Popups and dialogs are regions of their own
+  that share no pointer, so they get none. Names: `menu:<label>`, `activity:<view>`, `window:<control>`,
+  `title:drag`, `row:<id>`, `sidebar:<id>`, `tab:<item>`, `tab-close:<item>`,
+  `transport:<control>` (seek, play, step-back, step-forward, speed), `frame:<item>` (laid exactly over a video's
+  picture, so a pointer lands on the same image pixel in every window size), `share…`, `session…`, `sessions:…`. The main
+  region's cursor scope is the active item id, or `welcome` without one. Characters inside a truncated label
+  are not tracked.
 - **A new user preference** is a row in the settings table ([08](../../../docs/rebuild/08-settings-cli.md#settings-model)),
   applied live when possible; only a setting that cannot apply live carries the restart marker.
 

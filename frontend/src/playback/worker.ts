@@ -40,8 +40,8 @@ scope.onmessage = ({ data }) => {
       const incoming = decode(received);
       if (incoming) deliver(incoming);
     };
-    opened.onclose = () => {
-      deliver({ type: "closed" });
+    opened.onclose = ({ code }) => {
+      deliver({ type: "closed", code });
       scope.close();
     };
   } else if (data.type === "send") {

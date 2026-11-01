@@ -4,6 +4,11 @@
 import type { CommandId, SettingKey } from "./settings";
 
 /**
+ * What a caller may do on a backend. Every request is judged by the grants of whoever sent it; they are not roles.
+ */
+export type Grant = "preferences" | "configuration" | "sessions" | "files";
+
+/**
  * Identifies a running backend, so the desktop shell and the development supervisor reuse only a compatible one.
  */
 export type AppInfo = { 
@@ -26,7 +31,15 @@ development: boolean,
 /**
  * The backend process id.
  */
-pid: number, };
+pid: number, 
+/**
+ * The desktop shell interface this backend's frontend needs; compare with the shell's own version.
+ */
+shell: number, 
+/**
+ * What the caller of this request may do.
+ */
+grants: Array<Grant>, };
 
 /**
  * Every setting and shortcut as the app uses them: the body of `GET /api/settings` and the reply to a save. The keys
@@ -34,29 +47,31 @@ pid: number, };
  */
 export type SettingsState = { 
 /**
- * Every declared setting by dotted key, such as `"ui.theme"`, with its default when unset. A `$NAME`
- * reference is returned as written.
+ * The settings the caller may read by dotted key, such as `"ui.theme"`, with the default when unset: those of
+ * its scopes, a `$NAME` reference as written and a literal secret masked.
  */
 values: Record<SettingKey, string | boolean | number>, 
 /**
- * The key of every command once the user's changes apply; `null` when unbound.
+ * The key of every command once the user's changes apply; `null` when unbound. Empty unless the caller holds
+ * the `preferences` grant: shortcuts are Personal.
  */
 shortcuts: Record<CommandId, string | null>, 
 /**
- * The settings changed since the app started that only apply after a restart.
+ * The settings of the caller's scopes changed since the app started that only apply after a restart.
  */
 restart: Array<SettingKey>, };
 
 /**
- * The body of `PUT /api/settings`: every setting and shortcut, which replace the stored ones.
+ * The body of `PUT /api/settings`: every setting and shortcut the caller may change, which replace the stored ones.
+ * A masked secret sent back keeps the stored secret; a key outside the caller's scopes is refused with 403.
  */
 export type SettingsChange = { 
 /**
- * Every declared setting by dotted key.
+ * Every setting of the caller's scopes by dotted key.
  */
 values: Record<SettingKey, string | boolean | number>, 
 /**
- * The key of every command; `null` when unbound.
+ * The key of every command; `null` when unbound. Empty unless the caller holds the `preferences` grant.
  */
 shortcuts: Record<CommandId, string | null>, };
 
@@ -99,7 +114,562 @@ reason: string,
 location: string, };
 
 /**
- * The workspace and what is known about each item: the body of `GET /api/workspace` and of every `Workspace` event.
+ * The public kind of a failure. A code and the ids in a [`Location::Item`] are all a viewer who may not see the
+ * host's files is told; the reason and any path stay with the host.
+ */
+export type ErrorCode = "InvalidPath" | "FileNotFound" | "FileUnreadable" | "NotAVideo" | "UnsupportedFormat" | "IndexingFailed" | "FileChanged" | "DecodeFailed" | "ContentNotFound" | "ProtocolViolation" | "VideoClosed" | "Internal";
+
+/**
+ * The values a client may fill into the message for a code. Only ids, never text.
+ */
+export type ErrorParams = { 
+/**
+ * The workspace item the failure is about.
+ */
+item?: string, };
+
+/**
+ * A failure as the wire carries it: the code and its parameters for everyone, and for an audience with host
+ * details also the reason and the location.
+ */
+export type ErrorWire = { 
+/**
+ * The public kind.
+ */
+code: ErrorCode, 
+/**
+ * The values the code's message needs.
+ */
+params: ErrorParams, 
+/**
+ * What went wrong, in words for the user. Only for an audience with host details.
+ */
+reason?: string, 
+/**
+ * What it is about, such as the file path. Only for an audience with host details, and only when it is about
+ * something.
+ */
+location?: string, };
+
+/**
+ * What the sidebar shows; part of the view a session shares.
+ */
+export type SidebarView = "workspace" | "live" | "offline" | "bookmarks" | "plugins" | "sessions";
+
+/**
+ * What watchers may do while sharing is on.
+ */
+export type Access = "watch" | "explore" | "edit";
+
+/**
+ * What a presenter says the Session's clock is doing, for one viewer. Times are microseconds.
+ */
+export type ClockIntent = { 
+/**
+ * The frame the presenter asked for.
+ */
+frame: number, 
+/**
+ * Whether the clock runs.
+ */
+playing: boolean, 
+/**
+ * Speed in hundredths: 100 is real time.
+ */
+speedCenti: number, 
+/**
+ * When the presenter stamped the intent, in server time.
+ */
+atUs: number, };
+
+/**
+ * What the sidebar shows.
+ */
+export type Sidebar = { 
+/**
+ * Which view.
+ */
+view: SidebarView, 
+/**
+ * Whether the sidebar is open.
+ */
+open: boolean, };
+
+/**
+ * What one open viewer shows.
+ */
+export type ViewerView = { 
+/**
+ * What this window's clock for the viewer is doing; absent until it has one.
+ */
+clock?: ClockIntent, };
+
+/**
+ * What a window shows of the Doc. Items the Doc does not have open are dropped by the backend.
+ */
+export type View = { 
+/**
+ * The sidebar.
+ */
+sidebar: Sidebar, 
+/**
+ * The item of the viewer in front; absent shows the welcome page.
+ */
+active?: string, 
+/**
+ * What each open viewer shows, by item id.
+ */
+viewers: { [key in string]?: ViewerView }, };
+
+/**
+ * One seat's two cursor choices; both are on by default.
+ */
+export type CursorOptions = { 
+/**
+ * Receive other seats' cursors.
+ */
+show: boolean, 
+/**
+ * Broadcast this seat's cursor.
+ */
+share: boolean, };
+
+/**
+ * How a client asks to be admitted; part of the first message of every socket.
+ */
+export type SessionAuth = { "type": "own", 
+/**
+ * The server password; only a server that has one looks at it.
+ */
+serverPassword?: string, } | { "type": "watch", 
+/**
+ * The Session's id.
+ */
+session: string, 
+/**
+ * The server password; only a server that has one looks at it.
+ */
+serverPassword?: string, } | { "type": "join", 
+/**
+ * The link's `<id>.<secret>`.
+ */
+link: string, };
+
+/**
+ * A change to the Doc's content; the backend runs the intake on every item before it applies any.
+ */
+export type DocCommand = { "type": "addItems", 
+/**
+ * What to add, in order.
+ */
+items: Array<NewItem>, 
+/**
+ * Whether a viewer should open for each item once it resolves.
+ */
+open: boolean, } | { "type": "openViewer", 
+/**
+ * The item.
+ */
+item: string, } | { "type": "closeViewer", 
+/**
+ * The item.
+ */
+item: string, };
+
+/**
+ * The owner's control of sharing.
+ */
+export type ControlCommand = { "type": "share", 
+/**
+ * What every watcher may do.
+ */
+access: Access, } | { "type": "setAccess", 
+/**
+ * What every watcher may do.
+ */
+access: Access, } | { "type": "regenerateLink" } | { "type": "stop" };
+
+/**
+ * A stream a seat asks a ticket for: the Content at one commit of its resolution. Authority over the stream ends
+ * with the generation, and the Content's kind decides what a seat may demand of it.
+ */
+export type ContentRef = { 
+/**
+ * The Content's id. Stable across re-resolution.
+ */
+content: string, 
+/**
+ * The commit of the Content's resolution, as the Doc names it. Re-resolving or reopening gives a new one.
+ */
+generation: number, };
+
+/**
+ * What a seat asks for, settled by its own `Ack`. Changes to a seat's view travel the View lane instead.
+ */
+export type SessionCommand = { "type": "content", 
+/**
+ * The change.
+ */
+command: DocCommand, } | { "type": "follow" } | { "type": "control", 
+/**
+ * The change.
+ */
+control: ControlCommand, } | { "type": "requestTicket", 
+/**
+ * The stream.
+ */
+key: ContentRef, };
+
+/**
+ * The part of the window a cursor position belongs to.
+ */
+export type CursorRegion = "titleBar" | "activityBar" | "sidebar" | "main";
+
+/**
+ * A position inside one element, which receivers find by its id.
+ */
+export type CursorElement = { 
+/**
+ * The element's `data-cursor-id`, at most [`CURSOR_NAME_MAX`] characters.
+ */
+id: string, 
+/**
+ * Left to right, a fraction of the element's width.
+ */
+x: number, 
+/**
+ * Top to bottom, a fraction of the element's height.
+ */
+y: number, };
+
+/**
+ * A cursor position. Every `x` and `y` is a fraction in `[0, 1]`, clamped by the backend, so windows of any size
+ * agree.
+ */
+export type CursorPoint = { 
+/**
+ * What `x` and `y` are measured in.
+ */
+region: CursorRegion, 
+/**
+ * What the region shows right now: the sidebar view id, or the open viewer's id or `welcome`.
+ */
+scope: string, 
+/**
+ * Left to right, a fraction of the region's width.
+ */
+x: number, 
+/**
+ * Top to bottom, a fraction of the region's height.
+ */
+y: number, 
+/**
+ * The element under the pointer, when it has an id.
+ */
+element?: CursorElement, };
+
+/**
+ * What a client sends over the Session socket. Anything a seat's standing does not allow is answered with a refused
+ * `Ack` (commands) or settled without effect (views); only a malformed or oversized message, or more commands than
+ * the command budget, closes the socket.
+ */
+export type SessionClientMessage = { "type": "hello", 
+/**
+ * How to be admitted. Not looked at when `resume` is set: the token alone is the credential.
+ */
+auth: SessionAuth, 
+/**
+ * The token from the last `Welcome`: takes that seat back instead of creating or joining.
+ */
+resume?: string, 
+/**
+ * This seat's cursor choices.
+ */
+cursors: CursorOptions, } | { "type": "view", 
+/**
+ * Counts this client's views; `views_done` reports the highest one finished.
+ */
+seq: number, 
+/**
+ * The view.
+ */
+view: View, } | { "type": "command", 
+/**
+ * Counts this client's commands; the `Ack` echoes it.
+ */
+seq: number, 
+/**
+ * The change.
+ */
+cmd: SessionCommand, } | { "type": "cursor", 
+/**
+ * The new position.
+ */
+at: CursorPoint | null, } | { "type": "cursorOptions" } & CursorOptions | { "type": "timeSync", 
+/**
+ * Names the request.
+ */
+id: number, 
+/**
+ * The client's clock when it sent this.
+ */
+clientUs: number, } | { "type": "leave" };
+
+/**
+ * Which seat a participant holds.
+ */
+export type SeatRole = "owner" | "watcher";
+
+/**
+ * Whose view a seat shows.
+ */
+export type SeatMode = "following" | "exploring";
+
+/**
+ * What this seat is allowed to do, in the rows of the role table.
+ */
+export type SeatAccess = "owner" | "watch" | "explore" | "edit";
+
+/**
+ * What a seat may do, one flag per kind of command a window offers a control for; sent to the seat so its UI disables
+ * what the backend would refuse. Derived from the same role table as `authorize`.
+ */
+export type Can = { 
+/**
+ * Change what the seat's window shows.
+ */
+view: boolean, 
+/**
+ * Change the Doc's content.
+ */
+content: boolean, 
+/**
+ * Read the host's files.
+ */
+host: boolean, 
+/**
+ * Change who the session is shared with.
+ */
+control: boolean, };
+
+/**
+ * One seat of a Session, as every seat sees it.
+ */
+export type SeatInfo = { 
+/**
+ * Names the seat in `Roster` and `Cursor` messages.
+ */
+id: number, 
+/**
+ * `Guest N`.
+ */
+name: string, 
+/**
+ * An index into the UI's palette of participant colors.
+ */
+color: number, 
+/**
+ * Owner or watcher.
+ */
+role: SeatRole, 
+/**
+ * Following or exploring.
+ */
+mode: SeatMode, 
+/**
+ * False while the seat is within its grace period.
+ */
+present: boolean, 
+/**
+ * Whether the seat broadcasts its cursor.
+ */
+sharesCursor: boolean, };
+
+/**
+ * Sharing, while it is on.
+ */
+export type SharingInfo = { 
+/**
+ * What every watcher may do.
+ */
+access: Access, 
+/**
+ * The join link URL; the owner's seat only.
+ */
+link?: string, };
+
+/**
+ * The Doc as a watcher or the owner may see it. Built only by the backend's projection.
+ */
+export type DocWire = { 
+/**
+ * The items, how they resolved, and which have a viewer open.
+ */
+workspace: WorkspaceState, };
+
+/**
+ * Why a command or a connection was refused. A code and nothing else: the client words it.
+ */
+export type RefusalCode = "SeatGone" | "NotAllowed" | "NotSharing" | "AlreadySharing" | "ContentUnavailable" | "TooManyStreams" | "BadTicket" | "Link" | "Full" | "Invalid";
+
+/**
+ * How a command ended.
+ */
+export type AckOutcome = { "status": "ok" } | { "status": "refused", 
+/**
+ * Why.
+ */
+code: RefusalCode, };
+
+/**
+ * Why a Session's socket was told it is over.
+ */
+export type EndedReason = "stopped" | "ownerGone" | "replaced";
+
+/**
+ * What the backend sends over the Session socket.
+ */
+export type SessionServerMessage = { "type": "welcome", 
+/**
+ * The Session's id, which `GET /api/sessions` lists it by while it is shared.
+ */
+session: string, 
+/**
+ * This seat's id.
+ */
+seat: number, 
+/**
+ * Takes this seat back after a disconnect; each welcome brings a new one and kills the old.
+ */
+resume: string, 
+/**
+ * The highest View `seq` of this seat that is finished; send later views above it.
+ */
+viewsDone: number, 
+/**
+ * The backend's clock when it sent this.
+ */
+serverUs: number, } | { "type": "doc", 
+/**
+ * Counts changes to the Doc.
+ */
+docRev: number, 
+/**
+ * The Doc as this seat may see it.
+ */
+doc: DocWire, } | { "type": "seat", 
+/**
+ * Counts changes any seat can see.
+ */
+rev: number, 
+/**
+ * The Doc revision `view` belongs to; the Doc for it has been sent.
+ */
+docRev: number, 
+/**
+ * The presenter's view revision.
+ */
+presenterRev: number, 
+/**
+ * What this seat may do.
+ */
+access: SeatAccess, 
+/**
+ * What this seat may do, from the same role table the backend enforces.
+ */
+can: Can, 
+/**
+ * Whether this seat follows or explores.
+ */
+mode: SeatMode, 
+/**
+ * Sharing, while it is on.
+ */
+sharing?: SharingInfo, 
+/**
+ * What this seat shows: its own view while exploring, the presenter's otherwise.
+ */
+view: View, 
+/**
+ * The highest View `seq` of this seat that is finished: accepted, refused or overwritten.
+ */
+viewsDone: number, } | { "type": "roster", 
+/**
+ * The seats.
+ */
+participants: Array<SeatInfo>, } | { "type": "ack", 
+/**
+ * The command's `seq`.
+ */
+seq: number, 
+/**
+ * How it ended.
+ */
+outcome: AckOutcome, } | { "type": "ticket", 
+/**
+ * The `RequestTicket` command's `seq`.
+ */
+seq: number, 
+/**
+ * The bearer ticket: never put it in a URL or a log.
+ */
+ticket: string, 
+/**
+ * How long it can be redeemed, in milliseconds.
+ */
+expiresMs: number, } | { "type": "timeSyncReply", 
+/**
+ * The request's `id`.
+ */
+id: number, 
+/**
+ * The request's `client_us`.
+ */
+clientUs: number, 
+/**
+ * The backend's clock when it answered.
+ */
+serverUs: number, } | { "type": "heartbeat", 
+/**
+ * The backend's clock when it sent this.
+ */
+serverUs: number, } | { "type": "cursor", 
+/**
+ * Whose cursor.
+ */
+participant: number, 
+/**
+ * Where it is now, or `null` when it left the window.
+ */
+at: CursorPoint | null, } | { "type": "ended", 
+/**
+ * Why.
+ */
+reason: EndedReason, };
+
+/**
+ * A line of `GET /api/sessions`: a Session that is shared.
+ */
+export type SessionSummary = { 
+/**
+ * What to watch with.
+ */
+id: string, 
+/**
+ * Whether the owner is connected.
+ */
+ownerPresent: boolean, 
+/**
+ * Seats in the Session, away ones included.
+ */
+participants: number, 
+/**
+ * The join link URL; absent when this backend cannot be reached by other machines.
+ */
+link?: string, };
+
+/**
+ * The workspace and what is known about each item, as one audience may see it.
  */
 export type WorkspaceState = { 
 /**
@@ -140,24 +710,21 @@ export type ResolutionState = { "status": "Pending" } | { "status": "Resolved",
 /**
  * What the item resolved to.
  */
-content: ContentInfo, } | { "status": "Failed", 
-/**
- * What is wrong, in words for the user.
- */
-reason: string, 
-/**
- * What it is about, such as the file path.
- */
-location: string, };
+content: ContentInfo, } | { "status": "Failed" } & ErrorWire;
 
 /**
  * Content by kind. Viewers register by kind.
  */
 export type ContentInfo = { "kind": "SeekableVideo", 
 /**
- * Names the Content; the playback socket opens it by this id.
+ * Names the Content; a ticket request names the stream by this id and `generation`.
  */
 id: string, 
+/**
+ * The commit of the Content's resolution. Re-resolving or reopening the item gives a new one, which makes
+ * tickets for the old one worthless.
+ */
+generation: number, 
 /**
  * The name the viewer shows.
  */
@@ -171,24 +738,6 @@ export type NewItem = { "type": "Video",
  * The file; a relative path is relative to the backend's working folder.
  */
 path: string, };
-
-/**
- * The body of `POST /api/workspace/items`. The intake checks every entry first: if any is refused, nothing is added.
- */
-export type AddItemsRequest = { 
-/**
- * What to add, in order.
- */
-items: Array<NewItem>, 
-/**
- * Whether a viewer should open for each item once it resolves.
- */
-open: boolean, };
-
-/**
- * What `GET /api/events` streams, one per server-sent event, starting with the current state on connect.
- */
-export type ServerEvent = { "type": "Workspace" } & WorkspaceState;
 
 /**
  * How a viewer steps through the video.
@@ -222,9 +771,9 @@ direction: Direction, };
  */
 export type ClientMessage = { "type": "Open", 
 /**
- * The Content to open, by the id the workspace gave it.
+ * The ticket.
  */
-content_id: string, 
+ticket: string, 
 /**
  * The frame to show, paused; the first frame when absent.
  */
@@ -259,22 +808,27 @@ frame_bytes: number, } | { "type": "FrameError",
  */
 sequence_id: number, 
 /**
- * What went wrong, in words for the user.
+ * The public kind.
  */
-reason: string, } | { "type": "Error", 
+code: ErrorCode, 
 /**
- * What went wrong, in words for the user.
+ * The values the code's message needs.
  */
-reason: string, 
+params: ErrorParams, 
 /**
- * What it is about, such as the file path.
+ * What went wrong, in words for the user. Only for an audience with host details.
  */
-location: string, };
+reason?: string, 
+/**
+ * What it is about, such as the file path. Only for an audience with host details, and only when it is about
+ * something.
+ */
+location?: string, } | { "type": "Error" } & ErrorWire;
 
 /**
  * Raised when the messages or the envelope change in a way an older frontend cannot read.
  */
-export const PLAYBACK_PROTOCOL = 1;
+export const PLAYBACK_PROTOCOL = 2;
 
 /**
  * "AXDV" read as a little-endian u32.

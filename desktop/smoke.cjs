@@ -2,23 +2,26 @@
 const { nativeTheme } = require("electron");
 const assert = require("node:assert/strict");
 const fs = require("node:fs/promises");
-const fit = require("./fit.cjs");
 const path = require("node:path");
+const fit = require("./fit.cjs");
+const { SCREENSHOTS, button, page, reload, until, watchCsp } = require("./smoke-kit.cjs");
+const { remote } = require("./smoke-remote.cjs");
+const { sharing } = require("./smoke-sharing.cjs");
+const { video } = require("./smoke-video.cjs");
 
-const SCREENSHOTS = path.resolve(__dirname, "../artifacts/screenshots");
-const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
-
-module.exports = async (window) => {
-  const js = (expression) => window.webContents.executeJavaScript(expression);
-  const wait = async (expression) => {
-    for (let i = 0; i < 100; i++) {
-      if (await js(expression)) return;
-      await delay(100);
-    }
-    throw new Error(`Timed out: ${expression}\n${await js("document.body.innerText")}`);
-  };
+module.exports = async (window, shell) => {
+  const { js, wait } = page(window);
   await wait("document.querySelector('h1')?.textContent === 'ax-devil'");
   assert.equal(await js("document.querySelector('[role=alert]')"), null);
+
+  // No page of the release app may break its Content Security Policy. A reload covers the load itself; a request the
+  // policy forbids shows the collector sees violations at all.
+  const ownerCsp = watchCsp(window);
+  await reload(window);
+  await wait("document.querySelector('h1')?.textContent === 'ax-devil'");
+  await js("fetch('https://example.invalid/').catch(() => {})");
+  await until(() => ownerCsp.length > 0, "the policy to refuse a request to another origin");
+  ownerCsp.length = 0;
 
   await fs.mkdir(SCREENSHOTS, { recursive: true });
   const frame = () =>
@@ -121,6 +124,42 @@ module.exports = async (window) => {
       await js("document.querySelector('[aria-label=Workspace]').click()");
       await frame();
     }
+    await js("document.querySelector('[aria-label=Sessions]').click()");
+    await wait(button("Start sharing"));
+    assert.deepEqual(
+      await js(`(${fit.page.toString()})()`),
+      [],
+      `The Sessions view must fit the 640x480 window at ${zoom * 100}% zoom`,
+    );
+    // The Connect dialog with its password field, which a typed server address brings in.
+    await js(`${button("Connect to server")}.click()`);
+    await wait("document.querySelector('dialog[open] input')");
+    window.webContents.insertText("http://192.168.100.200:7340");
+    await wait("document.querySelector('dialog[open] input[type=password]')");
+    assert.deepEqual(
+      await js(`(${fit.page.toString()})()`),
+      [],
+      `The Connect dialog must fit the 640x480 window at ${zoom * 100}% zoom`,
+    );
+    await shoot(`connect-${theme}${suffix}.png`);
+    await js(
+      "[...document.querySelectorAll('dialog button')].find((b) => b.textContent === 'Cancel').click()",
+    );
+    await wait("!document.querySelector('dialog')");
+    // At 200% an owner's own session is the tallest the Sessions view gets.
+    if (zoom === 2) {
+      await js(`${button("Start sharing")}.click()`);
+      await wait("document.querySelector('aside input[aria-label=\"Join link\"]')");
+      assert.deepEqual(
+        await js(`(${fit.page.toString()})()`),
+        [],
+        "An owner's Sessions view must fit the 640x480 window at 200% zoom",
+      );
+      await shoot(`session-owner-${theme}${suffix}.png`);
+      await js(`${button("Stop sharing")}.click()`);
+      await wait(button("Start sharing"));
+    }
+    await js("document.querySelector('[aria-label=Workspace]').click()");
     await js(
       "!document.querySelector('[role=menu]') && [...document.querySelectorAll('[data-top]')].find((b) => b.textContent === 'View').click()",
     );
@@ -161,43 +200,9 @@ module.exports = async (window) => {
     }
   }
 
-  // A real video through the real backend: the canvas shows a picture, and stepping changes it.
-  const video = path.resolve(__dirname, "../fixtures/video/long_gop_h264.mp4");
-  window.setSize(1100, 720);
-  window.webContents.setZoomFactor(1);
-  assert.equal(
-    await js(`fetch("/api/workspace/items", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ items: [{ type: "Video", path: ${JSON.stringify(video)} }], open: true }),
-    }).then((response) => response.ok)`),
-    true,
-  );
-  const shownFrame = `Number.parseInt(document.querySelector("output[aria-label=Frame]")?.textContent ?? "")`;
-  await wait(`${shownFrame} === 0`);
-  // Frame N of this video is flat with luma 7 N, so frame 0 is black and frame 12 a visible grey.
-  const centre = async () => {
-    await frame();
-    const image = await window.webContents.capturePage();
-    const [x, y, w, h] = await js(
-      "(() => { const r = document.querySelector('canvas').getBoundingClientRect(); return [r.left, r.top, r.width, r.height]; })()",
-    );
-    const scale = image.getSize().width / (await js("innerWidth"));
-    const bitmap = image.toBitmap();
-    const at =
-      (Math.round((y + h / 2) * scale) * image.getSize().width + Math.round((x + w / 2) * scale)) *
-      4;
-    return Math.max(bitmap[at], bitmap[at + 1], bitmap[at + 2]);
-  };
-  await js("document.querySelector('[aria-label=Pause]')?.click()");
-  const black = await centre();
-  for (let step = 1; step <= 12; step++) {
-    await js("document.querySelector('[aria-label=\"Forward 1 frame\"]').click()");
-    await wait(`${shownFrame} === ${step}`);
-  }
-  const grey = await centre();
-  assert.ok(black < 16, `Frame 0 of the video is black, got ${black}`);
-  assert.ok(grey > 40, `Frame 12 must be a visible grey, got ${grey}: the canvas is still black`);
+  await video(window);
+  await sharing(window, shell, ownerCsp);
+  await remote(window, shell);
   console.log(
     `PASS: app shell loaded; screenshots in ${path.relative(path.resolve(__dirname, ".."), SCREENSHOTS)}`,
   );

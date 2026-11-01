@@ -1,8 +1,10 @@
 import { useEffect, useState } from "react";
+import { GrantsContext } from "./access";
+import { apiFetch } from "./api";
 import type { AppInfo } from "./generated/api";
+import { SessionProvider } from "./session/session";
 import { SettingsProvider } from "./settings";
 import { Shell } from "./shell/Shell";
-import { WorkspaceProvider } from "./workspace/WorkspaceProvider";
 
 type Backend =
   | { state: "connecting" }
@@ -14,7 +16,7 @@ export function App() {
   const [backend, setBackend] = useState<Backend>({ state: "connecting" });
   useEffect(() => {
     const request = new AbortController();
-    fetch("/api/info", { signal: request.signal })
+    apiFetch("/api/info", { signal: request.signal })
       .then(async (response) => {
         if (!response.ok) throw new Error(`the backend answered ${response.status}`);
         setBackend({ state: "ready", info: (await response.json()) as AppInfo });
@@ -30,11 +32,13 @@ export function App() {
   }, []);
   if (backend.state === "ready")
     return (
-      <SettingsProvider>
-        <WorkspaceProvider>
-          <Shell />
-        </WorkspaceProvider>
-      </SettingsProvider>
+      <GrantsContext value={backend.info.grants}>
+        <SettingsProvider>
+          <SessionProvider>
+            <Shell />
+          </SessionProvider>
+        </SettingsProvider>
+      </GrantsContext>
     );
   return (
     <main

@@ -76,7 +76,7 @@ tests-backend: _frontend-build
 	$(ISOLATED) $(CARGO) test --workspace --locked $(TEST)
 
 tests-integration: _dev _dev-rust
-	$(ISOLATED) node --test scripts/dev.test.cjs desktop/args.test.cjs desktop/window-state.test.cjs scripts/check-architecture.test.cjs
+	$(ISOLATED) node --test scripts/dev.test.cjs desktop/args.test.cjs desktop/window-state.test.cjs desktop/backend.test.cjs scripts/check-architecture.test.cjs
 
 tests-desktop: build desktop/node_modules/.electron-ready
 	timeout 60s $(ISOLATED) --display pnpm --dir desktop exec electron . --ozone-platform=x11 --smoke-test
