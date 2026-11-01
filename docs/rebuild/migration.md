@@ -5,8 +5,8 @@ recreate for the new stack using the old as reference; Drop = do not bring over.
 
 | Artifact | At reference commit | Action | Reason |
 |----------|---------------------|--------|--------|
-| Built-in render catalogs | `standard.json`, `minimal.json`, `chunky.json`, `glass.json`, `tracking.json`, `classic.json` in `scene/rendering/catalog_definitions/` | Carried to new-tree `assets/catalogs/` | Catalog language is kept ([05](05-formats-and-extensions.md#format-policy)) |
-| Catalog JSON Schema and language reference | `catalog.schema.json` in the same folder; `ax-devil catalog reference` | Port | Generated from the new runtime definitions; diff against the old as a check |
+| Built-in render catalogs | `standard.json`, `minimal.json`, `chunky.json`, `glass.json`, `tracking.json`, `classic.json` in `scene/rendering/catalog_definitions/` | Port to new-tree `assets/catalogs/` as complete v4 documents | Schema v4 replaces v3 ([05](05-formats-and-extensions.md#format-policy)) |
+| Catalog JSON Schema and language reference | `catalog.schema.json` in the same folder; `ax-devil catalog reference` | Port | Generated from the TypeScript definitions of v4; the v3 schema is reference only |
 | Icons and their license | `src/ax_devil/resources/icons/` | Carried to new-tree `assets/icons/` | Same icon set (Lucide, ISC) |
 | Banner image | `src/ax_devil/resources/ax-devil-banner.png` | Carried to new-tree `assets/` | README image |
 | Default settings values | `DEFAULT_CONFIG` in `settings/config_manager.py` | Port | Values for the settings model ([08](08-settings-cli.md#settings-model)) |

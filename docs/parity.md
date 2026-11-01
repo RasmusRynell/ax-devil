@@ -53,9 +53,9 @@ with the test that proves it.
 | ID | Feature | P | Status | Test | Notes |
 |----|---------|---|--------|------|-------|
 | OF-01 | Play/pause, step, speed, seek; clock-following playback | M | in progress | `frontend/src/playback/{clock,direction,session,FrameBuffer,protocol,wire}.test.ts`, `Transport.test.tsx`, `VideoViewer.test.tsx`, `tests/playback_ws.rs`, `crates/foundation` time tests, `crates/media/tests/decode.rs`, `make tests-desktop` | Exact-frame number entry is still missing (the frame readout is not editable); seek/step work. No reverse play. Image sequences play through the same path (`crates/media/tests/sequence.rs`). Variable frame rate, open at a frame and per-frame errors included. The desktop test plays a fixture on Xvfb; playback on a real GPU was measured in the D0 spike, not by a committed test |
-| OF-02 | Comparison lanes: several overlays on one video; a playlist entry switches the video, and two recordings side by side are two viewers with no shared clock (out of scope) | M | done | `tests/mot_playlist.rs`, `tests/playback_lanes.rs`, `crates/overlays/src/tests/`, `frontend/src/playback/{LaneGrid,lanes,session,OverlayBuffer}.test.*` | Lanes of one entry share the video's frames and clock; see the deviation below |
+| OF-02 | Comparison lanes: several overlays on one video; a playlist entry switches the video, and two recordings side by side are two viewers with no shared clock (out of scope) | M | in progress | `tests/mot_playlist.rs`, `tests/playback_lanes.rs`, `crates/overlays/src/tests/`, `frontend/src/playback/{LaneGrid,lanes,session,OverlayBuffer}.test.*` | Lanes of one entry share the video's frames and clock; see the deviations below. D22–D27 replace its pipeline (S1) |
 | OF-03 | Playlists of entries and lanes; next/previous entry | M | done | `crates/playlist-resolvers/tests/`, `crates/workspace/src/intake.rs`, `tests/mot_playlist.rs`, `frontend/src/viewer/{PlaylistViewer,PlaylistFollower}.test.tsx`, `crates/sessions/tests/session/revocation.rs`, `make tests-desktop` | MOT Challenge and folder-pair playlists; one lane per overlay file. A following window moves with the presenter's entry |
-| OF-04 | Timestamp matching, sequence-keyed files, sticky overlays | M | done | `crates/overlay-sync/src/select/tests.rs`, `crates/overlays/src/tests/views.rs`, `tests/mot_playlist.rs` | Per lane, session only; dense and sparse coverage in [invariants](domain/invariants.md#frame-identity) |
+| OF-04 | Timestamp matching, sequence-keyed files, sticky overlays | M | in progress | `crates/overlay-sync/src/select/tests.rs`, `crates/overlays/src/tests/views.rs`, `tests/mot_playlist.rs` | Per lane, session only; dense and sparse coverage in [invariants](domain/invariants.md#frame-identity). Frame Maps replace the overlay messages (D26, S1) |
 | OF-05 | Timing and alignment diagnostics per lane | M | todo |  |  |
 | OF-06 | Decoded-frame cache under one memory allowance | M | in progress | `crates/playback/src/tests/{cache,planner,decode,delivery}.rs`, `tests/playback_ws.rs`, `src/video_cache.rs`, `crates/settings` tests | Allowance, equal shares, eviction, live resize and uncached oversized frames work. Left: the cache marks on the timeline (M4); next-entry warm-up is OF-07 |
 | OF-07 | Prepare next playlist entry in the background | S | todo |  |  |
@@ -69,6 +69,8 @@ The decisions taken with the owner, with their reasons, are in
 | Row | Deviation | Reason |
 |-----|-----------|--------|
 | OF-02 | Lanes share one video: the reference let a secondary lane have its own video, length and frame rate, aligned to the primary lane's frame index | D19: a viewer shows one video; two recordings side by side are two viewers |
+| OF-02 | Pending rule (not built; until S1 the reference's holds): during play a lane without data shows a loading state and the video is not held; after a seek or step a frame waits at most about 250 ms; export always waits | D27: never draw another sample's marks or freeze playback on a slow backend |
+| RC-01 | Catalog schema v4 replaces v3 (not built): rules plus ordered layers, label placement lists, one expression language, no `extends`; layer order replaces the fixed one. The reference's catalogs do not load | D25: the frontend evaluates catalogs per lane |
 | OF-06 | The frame cache lives in `playback`, not `media` | Eviction follows playback windows; export, thumbnails and live never use the cache |
 | OF-06 | Eviction takes the frame farthest from the playhead outside the protected windows; the reference was LRU | It suits scrubbing: after a jump, the frames around the old position are the least likely to be wanted |
 | OF-06 | Auto is never below 256 MiB; the reference had no floor | It is the smallest value the setting accepts, so a machine with little free memory still gets a working cache |
@@ -83,7 +85,7 @@ The decisions taken with the owner, with their reasons, are in
 | ID | Feature | P | Status | Test | Notes |
 |----|---------|---|--------|------|-------|
 | IN-01 | Media tools panel per lane with Objects and Events lists, object and event pages | M | todo |  |  |
-| IN-02 | Object filters by type and score/confidence range; whole-file filtering with declared policies | M | in progress | `crates/scene/src/filter.rs`, `frontend/src/playback/LaneMenu.test.tsx`, `tests/mot_playlist.rs` | Class toggles per lane from the decoder's declared policy. Left: score and confidence ranges, whole-file filtering |
+| IN-02 | Object filters by type and score/confidence range; whole-file filtering with declared policies | M | in progress | `crates/scene/src/filter.rs`, `frontend/src/playback/LaneMenu.test.tsx`, `tests/mot_playlist.rs` | Class toggles per lane from the decoder's declared policy. Left: score and confidence ranges, whole-file filtering (built last, D30). A class mask replaces the Rust filter (S1) |
 | IN-03 | Hover chip and click selection; can be turned off | M | todo |  |  |
 | IN-04 | Frame info HUD, lane names | M | in progress | `frontend/src/playback/VideoViewer.test.tsx`, `make tests-desktop` | Each lane's name is on its tag. Left: the frame info HUD |
 | IN-05 | Zoom, pan, reset, synced across lanes; lane and app fullscreen | M | todo |  |  |
@@ -100,7 +102,7 @@ The decisions taken with the owner, with their reasons, are in
 
 | ID | Feature | P | Status | Test | Notes |
 |----|---------|---|--------|------|-------|
-| RC-01 | Catalog language (schema v3) and the six built-ins | M | done | `crates/render-catalog/tests/{compile.rs,render/}`, `crates/catalogs` tests | All six built-ins compile and match the reference's Drawing Instructions on the oracle sheets (`fixtures/oracle`) |
+| RC-01 | Catalog language (schema v4) and the six built-ins | M | in progress | `crates/render-catalog/tests/{compile.rs,render/}`, `crates/catalogs` tests | Works on v3 evaluated in Rust: all six built-ins match the reference's Drawing Instructions on the oracle sheets (`fixtures/oracle`). D25 replaces both with v4 in the frontend (S0–S3) |
 | RC-02 | Per-view selection, Apply to all, Use as default, hot reload | M | in progress | `frontend/src/playback/LaneMenu.test.tsx`, `tests/playback_lanes.rs`, `crates/overlays/src/tests/views.rs` | A lane picks one of the built-ins from its menu, listed in `Opened`; a catalog that fails keeps the last one. Left: Apply to all, Use as default, user catalogs and hot reload |
 | RC-03 | Catalog viewer window with seeded sheets, New copy, Delete | M | todo |  |  |
 | RC-04 | `catalog list/check/render/new/use/reference` | M | in progress | `src/cli/tests.rs`, `crates/catalogs/src/check.rs` | `catalog list` and `catalog check`; the others are not built |

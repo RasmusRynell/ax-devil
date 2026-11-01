@@ -28,6 +28,7 @@ The script runs only against that checkout and is deterministic (two runs give i
 | `mot/seqinfo.ini`, `det.txt`, `gt.txt` | Tiny sequence: 640x480, 4 frames, frame 3 has no valid row |
 | `mot/{det,gt}.scenes.json` | The old decoder's Scenes (C2 form), one per frame that has rows, with seqinfo width and height |
 | `mot/{det,gt}.warning.json` | The old `LoadWarning.to_metadata()` of skipped rows |
+| `items/*.bin` | The Sample Item of every sheet and MOT scene, written by the Rust encoder (not the reference app); `UPDATE_GOLDENS=1` regenerates them, a stale file fails `scene`'s tests |
 
 Standard and Tracking have every sheet; Minimal, Chunky, Glass and Classic have `classes`, `relations`, `polygons`.
 

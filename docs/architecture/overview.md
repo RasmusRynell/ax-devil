@@ -11,16 +11,17 @@ Until parity, the layer contents, seams and runtime guarantees are specified in
 
 | Process | Owns |
 |---------|------|
-| Backend (`ax-devil`, Rust) | Application state and work: domain, sources, decoding, rendering preparation, files, settings, [sessions](../../crates/sessions/README.md) |
-| Frontend (React, in Chromium) | The UI: a projection of backend state that sends user intent back, and the owner of its own view state |
+| Backend (`ax-devil`, Rust) | Application state and work: domain, sources, decoding, overlay data (rendering preparation until D22 lands), files, settings, [sessions](../../crates/sessions/README.md) |
+| Frontend (React, in Chromium) | The UI: a projection of backend state that sends user intent back, the owner of its own view state, and overlay presentation per lane |
 | Desktop shell (Electron) | Windows, one trusted origin each, and the local backend's lifetime; no application features |
 
 The frontend talks to the backend that served it over HTTP and WebSockets: on `127.0.0.1` for a local backend, on
 the server's own address for another machine's. Types that cross that boundary are Rust types exported to TypeScript;
 the frontend never declares its own copy. Plain data is defined once, in the crate that owns it, with `serde` and
 `ts-rs` derives (layers 1-3 may use both); `crates/api-types` holds the socket protocols and the projections that
-decide what an audience sees. The one hand-parsed format is the binary playback
-envelope: its constants are exported and its layout is in `api_types::playback`.
+decide what an audience sees. The hand-parsed formats are the binary playback
+envelope (its constants are exported and its layout is in `api_types::playback`) and, with D26, the Sample Item
+columns, written by `scene::serial::columns` and read by `frontend/src/present/columns.ts`.
 
 How offline playback divides its work between them is in the [invariants](../domain/invariants.md#offline-delivery).
 
@@ -65,16 +66,32 @@ shows is decided in one place, `restrict`, and a stream is ticketed for one entr
 
 ## Overlays
 
-An overlay file is decoded once into an on-disk artifact that every viewer opening it shares (`scene-store`); memory
-holds the sample keys and a bounded cache of Scenes, not the file. For each lane and each frame of a viewer's
-playback window, `overlays` asks `overlay-sync` which sample belongs to the frame, filters its Scene with the lane's
-class choices and draws it with the lane's catalog (`catalogs`, `render-catalog`) into Drawing Instructions
-(`drawing`). They travel on the playback socket as a message per lane, tied to their frame, and the frontend turns
-them into pixels; the backend never rasterizes. The gate that bounds a viewer's frames by its authority bounds the
-overlays too, and the window they are drawn for is the one the gate allowed, not the one the viewer asked for. A
-lane's view (catalog, filters, sticky) belongs to its socket and is not shared with followers; the catalogs a lane
-may pick travel in `Opened`. Catalog lengths in pixels resolve against the lane's displayed size, so a resize or
-zoom sends the backend a new view and it redraws the window.
+The design below is decided (D22–D30) and not built. Slice S1 of the
+[next priorities](../rebuild/14-build-order.md#next-delivery-priorities) switches to it; until then the last paragraph
+is what runs.
+
+The backend supplies data and does the work every lane and session shares; the frontend does all presentation. An
+overlay file is decoded once into an on-disk artifact that every viewer opening it shares (`scene-store`); memory holds
+the sample keys and a bounded cache of Scenes. On the playback socket `overlays` sends two kinds of items. A Sample Item
+is the immutable, per-source encoding of one sample: its latest observations as typed columns and a class mask from the
+decoder's filter policy, with history, source data and debug data fetched on demand. A Frame Map is per lane: which
+sample belongs to each frame, as `overlay-sync` selects it under the lane's Lane Policy (tolerance, sticky, whether the
+lane is shown). Items and maps rank with the video frames by the same playhead rule and pass the same authority gate.
+They travel inside the sample window: per source, the samples that subscribed lanes' Frame Maps assign to the frames of
+the data window, never wider than the frame window and sized from a share of the viewer's frame budget. The backend
+sends exactly those and the frontend evicts only others; the rule is implemented in Rust and TypeScript and tested
+against one shared fixture. Revisions drop stale items, so there are no acknowledgements or per-seek epochs.
+
+Per lane, `frontend/src/present/` compiles the lane's catalog document (served over the socket, built-in or user),
+filters rows, evaluates Marks from the Sample Item, lays them out for the lane's cell with zoom, pan and aspect, and
+paints them through one WebGL2 context per viewer. A lane's Lane Style (catalog, filters, theme, opacity, zoom, pan)
+stays in the client and its Lane Policy in its socket; neither is shared with followers. Export and `catalog render`
+run the same code in an offscreen Electron page, and Rust freezes their inputs and encodes the frames.
+
+Until the switch: for each lane and frame of a viewer's playback window, `overlays` asks `overlay-sync` which sample
+belongs to the frame, filters its Scene with the lane's class choices and draws it with the lane's catalog (`catalogs`,
+`render-catalog`) into Drawing Instructions (`drawing`), sent as a message per lane that the frontend turns into pixels.
+A resize or zoom sends the backend a new view and it redraws the window. Delete this paragraph at the switch.
 
 ## Layers
 

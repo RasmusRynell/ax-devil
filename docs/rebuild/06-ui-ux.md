@@ -62,6 +62,7 @@ performance crutch.
 |-------|--------|
 | Empty workspace: start panel, welcome area with shortcut rows | `docs/architecture/ui-framework.md#workspace-shell` |
 | Loading entry | `docs/architecture/overview.md#synchronization` |
+| Lane waiting for its data | `docs/domain/invariants.md#offline-delivery` |
 | Pending and unavailable rows | `docs/domain/invariants.md#workspace-and-viewers` |
 | Live connection status | `docs/architecture/overview.md#live-source-composition` |
 | Out-of-date analysis | `video_viewer/README.md#rules` |
@@ -91,10 +92,12 @@ performance crutch.
 ## Overlay drawing
 
 The rules are in `docs/domain/invariants.md#rendering` and `#coordinates`, `.agents/skills/render-catalog/SKILL.md`
-and `video_player/README.md#quick-surface`. Additions:
+and `frontend/src/present/README.md`. Additions:
 
-- **MUST** keep display and export rendering semantically identical (same instructions, order, colors and geometry);
-  pixels may differ only by documented renderer tolerances.
-- **MUST** keep overlay pixels independent of app theme; they follow the frame.
-- *Current mechanism:* one GPU quad stream plus a glyph atlas inside the toolkit scene graph. The requirement is crisp
-  text at fixed screen size and per-frame cost within D9.
+- **MUST** keep display and export rendering identical in meaning by running the same presentation code (D22); pixels
+  may differ only by documented renderer tolerances.
+- **MUST** keep overlay pixels independent of the app theme; they follow the frame. A lane's own overlay theme is part
+  of its Lane Style.
+- *Mechanism (D22):* marks laid out per lane on the main thread, drawn as one quad stream plus a glyph atlas by one
+  WebGL2 context per viewer, lanes as viewports. The requirement is crisp text at fixed screen size and per-frame cost
+  within D9.

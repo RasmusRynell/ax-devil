@@ -41,13 +41,15 @@ Shared language for ax-devil's inspection workspace. Code, docs and UI use these
 | Scene | The world-model exchange format produced by decoders and consumed by filtering, inspection, and rendering. | Raw overlay payload |
 | Score | A decoder's own number for a classification, in any range, shown as a plain number such as `0.87`. Distinct from Confidence; either may be absent. | Confidence, probability |
 | Confidence | What a source reports as its confidence in a classification, any finite number, shown plain such as `0.87`. Distinct from Score; either may be absent. | Score, likelihood |
-| Scene Render Catalog | A compiled catalog of reusable templates and recipes for Scene entities and relations; a view's choice of one is a Selection. | Template file, renderer config |
+| Scene Render Catalog | A catalog document (schema v4) of rules and ordered layers that the frontend compiles and evaluates over a Sample Item into Marks; a lane's choice of one is part of its Lane Style. | Template file, renderer config |
 | Built-in Catalog | The packaged, app-owned, read-only Scene Render Catalog. | Default catalog, packaged default |
 | Default Catalog | The Scene Render Catalog new views start from; the Built-in Catalog until the user picks another. | Active catalog, remembered selection |
-| Drawing Instruction | A catalog operation (box, circle, line, point, polygon, polyline, text or label) emitted directly to the drawing target. JSON still calls these `primitive` steps. | Intermediate drawable object |
-| Prepared Drawing | Drawing Instructions turned into an immutable value the renderer consumes as is, for shapes, text and labels. | Primitive list |
-| Draw Recipe | Catalog-owned entity or relation rendering logic that emits Drawing Instructions. | Object renderer, type switch |
-| Cached Scene Overlay | The adapter that keeps one Scene and provides Prepared Drawings and hover hits to the Frame Display. | Render cache, Scene renderer |
+| Sample Item | The immutable encoding of one Scene sample for presentation: the latest observations as typed columns, keyed by overlay source, data revision and sample, and shared by every lane that views that source. | Overlay message, scene packet |
+| Frame Map | Per lane, the sample (or none, or empty) that belongs to each frame of a window, chosen by the backend under the Lane Policy. | Overlay lookup result |
+| Lane Policy | What the backend needs to select samples for a lane: matching tolerance, sticky and whether the lane is shown. Revisioned and sent by the client. | Lane style, lane view |
+| Lane Style | What only the client needs to present a lane: catalog, filter choices, theme, opacity, zoom, pan and aspect. Never sent to the backend. | Lane policy, lane view |
+| Marks | The boxes, lines, circles, points, paths and labels a catalog produces from a Sample Item in a lane, laid out and painted by the frontend. | Drawing Instruction, Prepared Drawing |
+| Draw Recipe | Catalog-owned entity or relation rendering logic that emits Marks. | Object renderer, type switch |
 
 ## Relationships
 
@@ -60,6 +62,6 @@ Shared language for ax-devil's inspection workspace. Code, docs and UI use these
 - Use **Watcher** for a Session's participant, never Viewer, which already names the inspection surface.
 - Use **Seekable Video Content** for the Workspace description and "seekable source" only for the runtime source opened from it.
 - Use **Frame Display** for the reusable display shell and **Video Viewer** for the workflow that owns media behavior.
-- Use **Overlay Content** for companion data and **Drawing Instruction** for catalog operations and **Prepared Drawing** for what the renderer consumes.
+- Use **Overlay Content** for companion data, **Sample Item** and **Frame Map** for what the backend sends, and **Marks** for what the frontend draws. Use **Lane Policy** for what the backend must know and **Lane Style** for what only the client holds.
 - Use **Scene Render Catalog** for task-selected rendering setups that own templates and catalog-defined recipes.
 - Use **Draw Recipe** for catalog-owned entity rendering behavior. Classification strings are decoder evidence; recipe selection is Scene Render Catalog policy.

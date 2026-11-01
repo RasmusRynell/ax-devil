@@ -59,7 +59,8 @@ marks the rule as deliberately changed; raise the conflict instead of guessing.
 | [09-testing.md](09-testing.md) | Test pyramid, isolation, oracle policy, reliability |
 | [10-quality-gates.md](10-quality-gates.md) | Gates, definition of done, review, CI |
 | [13-security-packaging-ops.md](13-security-packaging-ops.md) | Credentials, network, plugin trust, packaging, licensing |
-| [14-build-order.md](14-build-order.md) | Delivery, stack criteria, milestones, fixtures, risks, open decisions |
+| [14-build-order.md](14-build-order.md) | Delivery, stack criteria, milestones, decisions taken |
+| [15-open-decisions.md](15-open-decisions.md) | Decisions the owner has yet to settle, by milestone |
 | [migration.md](migration.md) | Artifacts to carry over by hand |
 
 ## Ground rules

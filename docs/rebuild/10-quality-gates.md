@@ -13,7 +13,7 @@ Sources: `Makefile`, `pyproject.toml`, `.pre-commit-config.yaml`, `scripts/`, `.
 | Architecture | `scripts/check_architecture.py` | Automated dependency-rule check for [02](02-architecture.md#layers-and-dependency-direction) |
 | Logging | `scripts/check_logging.py` | Enforce the logging rules in [03](03-runtime.md#logging-must) |
 | File size | `scripts/check_file_tokens.py`: 5,000 tokens (bytes/4) per authored file | Same limit and exemptions, pre-commit and CI |
-| Generated artifacts | Catalog JSON Schema and language reference generated from runtime definitions | One source of truth; CI fails on stale generated files |
+| Generated artifacts | Catalog JSON Schema and language reference generated from the TypeScript catalog definitions | One source of truth; CI fails on stale generated files |
 | Dependencies | Bounded ranges; lowest-direct CI job | Same, plus license check ([13](13-security-packaging-ops.md#licensing)) |
 | Fast mode | `make check-fast` | Changed-file mode for agents (SHOULD) |
 
@@ -29,7 +29,7 @@ playbook. It is achievable from the first UI slice: tokens, fit test and screens
 - Prose only → links, examples and consistency validated.
 - Tests and docs follow `AGENTS.md` "Done": delete tests of removed code; doc additions need a stated reason.
 - UI change → screenshots in both themes at normal zoom and 200%; fit test updated.
-- Rendering change → instruction dumps and in-stack goldens reviewed; benchmark when on the hot path.
+- Rendering change → oracle comparisons and in-stack goldens reviewed; benchmark when on the hot path.
 - Parity row → its line in the parity file updated with the test reference.
 
 ## Review

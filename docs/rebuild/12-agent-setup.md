@@ -45,7 +45,7 @@ Optional further guidance: the owner's user-global `writing-for-agents` and `wri
 | `review` | Review changes; working tree, commit or PR | Priorities, findings format, test and doc judgments | Links to the new module map, invariants, runbook |
 | `write-tests` | Add, delete, repair tests | Delete-first, the four questions, choose-and-assert, flaky policy | Runbook links and fixture names |
 | `write-ui` | Build or restyle application UI | Principles, button and accent conventions, fit rules, the check loop | Building-blocks table, code sample, screenshot commands (all Qt today) |
-| `render-catalog` | Change how overlays look by editing catalog JSON | The whole loop and writing guidance (language kept) | Command names if the CLI changes; built-in catalog paths |
+| `render-catalog` | Change how overlays look by editing catalog JSON | The whole loop and writing guidance (rewritten for catalog v4) | Command names if the CLI changes; built-in catalog paths |
 | `write-plugin` (with its `reference.md`) | Write a decoder or resolver for the user's data | The loop: real data, contract, package outside the repo, map to Scene, prove, install, hand over | Reference for the D1 runtime; Scene type names; install commands; example package |
 
 New skills:

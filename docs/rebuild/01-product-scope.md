@@ -83,7 +83,8 @@ object and frame by frame, and for comparing results side by side. Take the pitc
 
 OF-02 follows D19: compare several overlay results against the same recording with one clock. Acceptance: lanes
 with different annotation coverage stay aligned when playing, seeking and stepping through a variable-frame-rate
-video, and switching playlist entries changes their shared video. OF-08 separately accepts export with that timing.
+video, and switching playlist entries changes their shared video. Each lane keeps its own catalog, filter, theme, zoom
+and aspect, also when two lanes show one overlay source (D24). OF-08 separately accepts export with that timing.
 Synchronized comparison of different recordings from the reference is a recorded reduction, not satisfied by
 independent viewers (see the OF-02 deviation in the new-tree `docs/parity.md`).
 
@@ -109,7 +110,7 @@ independent viewers (see the OF-02 deviation in the new-tree `docs/parity.md`).
 
 | ID | Feature | P | Source |
 |----|---------|---|--------|
-| RC-01 | Catalog language (schema v3) and the six built-ins | M | `.agents/skills/render-catalog/SKILL.md` |
+| RC-01 | Catalog language (schema v4) and the six built-ins | M | `.agents/skills/render-catalog/SKILL.md` |
 | RC-02 | Per-view selection, Apply to all, Use as default, hot reload | M | `src/ax_devil/modules/scene/rendering/README.md#catalog-files-and-selection` |
 | RC-03 | Catalog viewer window with seeded sheets, New copy, Delete | M | `docs/architecture/catalog-viewer.md` |
 | RC-04 | `catalog list/check/render/new/use/reference` | M | same |

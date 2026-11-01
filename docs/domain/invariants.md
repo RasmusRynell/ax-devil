@@ -34,9 +34,8 @@ implementing module closes.
 
 ## Coordinates
 
-- Bounding boxes, polygons and points use normalized `[0,1]` image space. Catalog lengths resolve against the current
-  target, not source-video dimensions.
-- Prepared Drawings and styles are immutable values, never changed after publication.
+- Bounding boxes, polygons and points use normalized `[0,1]` image space. Catalog lengths resolve against the lane's
+  cell, not source-video dimensions.
 
 ## Display Rendering
 
@@ -46,10 +45,8 @@ implementing module closes.
 - Offline playback follows the clock: delivery that falls behind skips to the frame due now instead of slowing down;
   the video's final frame is always delivered. The viewer owns that clock; the backend supplies frames and never reads
   a clock for playback.
-- Renderer callbacks consume prepared immutable data only. GPU resources are created and released only in the
-  renderer's resource phase.
-- Display and export share rendering semantics: the same instructions, order, colors and geometry. Pixels differ only
-  by documented renderer tolerances.
+- GPU resources are created and released only in the renderer's resource phase.
+- Display and export run the same presentation code; pixels differ only by documented renderer tolerances.
 
 ## Offline Delivery
 
@@ -59,11 +56,12 @@ implementing module closes.
   scheduling uses the newest. A frame that leaves the window and returns is sent again.
 - A frame's bytes depend only on its identity, so a viewer keeps any arrival inside its window.
 - A viewer shows exactly one video: its lanes share that video's frames and clock, frames travel once per viewer, and
-  only overlay data is per lane.
-- A frame is shown only when its bytes are held and every visible lane that loaded holds an overlay for its sequence
-  id (the newest revision is drawn). A loading, failed or hidden lane never holds a frame back.
-- An overlay passes the same authority gate as its frame and is drawn for the window the gate allowed, never the
-  viewer's raw request.
+  only overlay data is per source or lane.
+- A lane draws only the marks of the sample its Frame Map assigns to the frame, never another's. During play a
+  lane without data shows a loading state and the video is not held; after a seek or step the frame waits up to
+  about 250 ms for ready lanes; export always waits. Loading, failed and hidden lanes never hold a frame back.
+- Sample Items and Frame Maps pass the same authority gate as the frame they rank with and cover the window it
+  allowed, never the viewer's raw request.
 
 ## Frame Identity
 
@@ -92,9 +90,9 @@ implementing module closes.
 ## Scene Model
 
 - Scene is the exchange format for decoded world-model data: all decoders produce it; filtering, inspection and
-  rendering consume it. It has one versioned serialization schema.
+  rendering consume it.
 - Published Scenes are snapshots. Publish a replacement when content changes instead of mutating a delivered one;
-  unchanged identities may reuse filtered and prepared rendering data.
+  unchanged identities may reuse their encoded Sample Item.
 - An entity's observations stay time-sorted.
 - A classification type is a dynamic string; known values are only a convenience. Recipe routing is catalog policy:
   UI code never switches on classification strings.
@@ -194,14 +192,14 @@ implementing module closes.
 
 - Pausing RTSP keeps its connection alive. Stopping is terminal; reopening creates a new source.
 - Scene file artifacts are invalid unless their complete identity matches: source content digest (a stat fingerprint
-  only spares hashing an unchanged file; where the platform has no change time, the digest decides), decoder name,
-  artifact version, Scene version, decode options, frame size and store format version. When only the stat
-  fingerprint differs, the artifact is accepted and republished with the new one. The fingerprint is taken from the
-  held handle before the source is read. If the source changed during the build, a source-indexed store skips
-  persisting and a derived one persists without a digest, so a file written during indexing reads as changed on the
-  next open. Cache files are
-  replaced atomically, read through the handle that wrote them, private to the user and always rebuildable. An open
-  source-indexed store stops serving once its source is rewritten in place; a replaced file leaves it valid.
+  only spares hashing an unchanged file; where the platform has no change time, the digest decides), decoder name (for a
+  converter, its script hash), artifact version, Scene version, decode options, frame size and store format
+  version. When only the stat fingerprint differs, the artifact is accepted and republished with the new one. The
+  fingerprint is taken from the held handle before the source is read. If the source changed during the build, a
+  source-indexed store skips persisting and a derived one persists without a digest, so a file written during indexing
+  reads as changed on the next open. Cache files are replaced atomically, read through the handle that wrote them,
+  private to the user and always rebuildable. An open source-indexed store stops serving once its source is rewritten
+  in place; a replaced file leaves it valid.
 - Both storage modes persist Scene history built from what lookup serves for each timestamp. Offline history places a
   timestamp-keyed event on the first video frame at or after its sample and a frame-keyed one on its sequence frame,
   and omits events outside the video; an object is present on exactly the frames whose looked-up sample contains it,
@@ -216,14 +214,16 @@ implementing module closes.
 
 - Export writes to an owned temporary sibling and replaces the destination only after success. Source/output aliases
   are rejected; cancellation and failure cleanup never delete the destination.
-- Exports keep relative source frame timestamps and durations; unreadable frames fail the export. Export borrows a
-  frozen filter snapshot and the catalog active when it starts, so later edits cannot alter it.
+- Exports keep relative source frame timestamps and durations; unreadable frames fail the export. Export freezes
+  the catalog document, the lane's style and policy and the source revisions when it starts, so later edits cannot
+  alter it.
 
 ## Rendering
 
-- Scene rendering produces Drawing Instructions; drawing preparation and submission never read a Scene.
-- Overlay draw order is shapes, then text, then labels. Order across entities and within a kind is not preserved, so a
-  catalog never relies on one shape covering another.
+- The frontend evaluates, lays out and picks per lane; the backend never evaluates a catalog or rasterizes. Evaluation
+  turns a Sample Item into Marks; layout and painting read only Marks.
+- Overlay draw order is the catalog's layer order; order across entities within a layer is not preserved, so a
+  catalog never relies on one shape covering another there.
 - Each recipe evaluates once per frame for all its routed entities or relations. A row that fails a demanded check
   emits none of its recipe's output, and a recipe whose evaluation fails emits nothing for that frame; other rows and
   recipes are unaffected.
