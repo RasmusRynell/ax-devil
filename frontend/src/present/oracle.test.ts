@@ -31,26 +31,26 @@ function differences(catalog: string, file: string): string[] {
   return found.filter((message) => !allowed.some((e) => message.startsWith(`${e.kind}:`)));
 }
 
-describe.each(["standard", "classic", "glass"])("%s", (catalog) => {
+/** The six built-ins, in the picker's order. */
+const CATALOGS = ["standard", "tracking", "classic", "chunky", "glass", "minimal"];
+
+describe.each(CATALOGS)("%s", (catalog) => {
   it.each(oracleFiles(catalog))("matches the reference on %s", (file) => {
     expect(differences(catalog, file)).toEqual([]);
   });
 });
 
 describe("decoded MOT scenes", () => {
-  it.each(["standard", "classic", "glass"])(
-    "%s draws every scene without skipping a mark",
-    (catalog) => {
-      const compiled = builtIn(catalog);
-      for (const item of readdirSync(new URL("fixtures/oracle/items/", ROOT)).filter((f) =>
-        f.startsWith("mot_"),
-      )) {
-        const { rows, report } = render(compiled, item.replace(".bin", ""), 0);
-        expect(report.total(), item).toBe(0);
-        expect(rows.boxes.length, item).toBeGreaterThan(0);
-      }
-    },
-  );
+  it.each(CATALOGS)("%s draws every scene without skipping a mark", (catalog) => {
+    const compiled = builtIn(catalog);
+    for (const item of readdirSync(new URL("fixtures/oracle/items/", ROOT)).filter((f) =>
+      f.startsWith("mot_"),
+    )) {
+      const { rows, report } = render(compiled, item.replace(".bin", ""), 0);
+      expect(report.total(), item).toBe(0);
+      expect(rows.boxes.length, item).toBeGreaterThan(0);
+    }
+  });
 });
 
 describe("the comparison", () => {

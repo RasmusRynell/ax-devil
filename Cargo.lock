@@ -239,7 +239,6 @@ dependencies = [
  "render-catalog",
  "serde",
  "serde_json",
- "tempfile",
 ]
 
 [[package]]

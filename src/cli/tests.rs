@@ -226,16 +226,48 @@ fn catalog_commands_list_the_built_ins_and_check_a_file_with_its_problems_locate
     assert_eq!(listing.text.lines().count(), 6);
     assert!(listing.text.starts_with("built-in:standard"));
 
+    // The checker is the frontend's compiler, run in Electron-as-Node from the checkout's desktop folder.
+    let desktop = std::path::Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/desktop"));
     let folder = tempfile::tempdir().unwrap();
     let good = folder.path().join("good.json");
-    std::fs::write(&good, include_str!("../../assets/catalogs/minimal.json")).unwrap();
-    let report = catalog::run(&CatalogCommand::Check { file: good });
-    assert!(report.ok);
-    assert!(report.text.contains("Minimal"), "{}", report.text);
+    std::fs::write(&good, include_str!("../../assets/catalogs/minimal.v4.json")).unwrap();
+    let report = catalog::check_in(desktop, &good).unwrap();
+    assert!(report.ok, "{}", report.text);
+    assert!(
+        report.text.contains("Minimal (built-in:minimal)"),
+        "{}",
+        report.text
+    );
 
     let bad = folder.path().join("bad.json");
-    std::fs::write(&bad, "{ \"metadata\": 3 }").unwrap();
-    let report = catalog::run(&CatalogCommand::Check { file: bad });
+    std::fs::write(
+        &bad,
+        include_str!("../../assets/catalogs/minimal.v4.json")
+            .replace("\"stroke\": \"color\"", "\"stroke\": \"colr\""),
+    )
+    .unwrap();
+    let report = catalog::check_in(desktop, &bad).unwrap();
     assert!(!report.ok);
-    assert!(report.text.contains("/metadata"), "{}", report.text);
+    assert!(
+        report
+            .text
+            .contains("/layers/0/marks/0/stroke: unknown name 'colr'"),
+        "{}",
+        report.text
+    );
+    assert!(
+        report.text.contains("  18:"),
+        "line and column: {}",
+        report.text
+    );
+
+    let report = catalog::check_in(desktop, &folder.path().join("missing.json")).unwrap();
+    assert!(!report.ok);
+    assert!(report.text.contains("missing.json"), "{}", report.text);
+
+    let error = catalog::check_in(folder.path(), &good).unwrap_err();
+    assert!(
+        error.contains("Cannot find the desktop shell's Electron"),
+        "{error}"
+    );
 }

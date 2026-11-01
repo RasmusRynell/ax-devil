@@ -6,6 +6,7 @@ import { FIELDS } from "../expr/fields";
 import { TypeVar } from "../expr/types";
 import { arrayAt, closedObject, objectAt, pointerTo, stringAt } from "./document";
 import { compileMark } from "./marks";
+import { LAYER, LAYER_TARGETS, ROOT, RULE } from "./shape";
 import { Session } from "./session";
 import { FEATURES, type Feature, type LayerSpec, type MarkSpec } from "./types";
 import type { CompiledCatalog } from "./types";
@@ -49,13 +50,7 @@ class CatalogCompiler {
   }
 
   compile(document: unknown): CatalogResult {
-    const root = closedObject(
-      document,
-      "",
-      ["schema", "id", "name", "description", "origin", "vars", "themes", "rules", "layers"],
-      ["schema", "id", "name", "description", "layers"],
-      this.diag,
-    );
+    const root = closedObject(document, "", ROOT.allowed, ROOT.required, this.diag);
     if (!root) return this.failed();
     if ("schema" in root && root.schema !== CATALOG_SCHEMA) {
       this.diag.add(
@@ -170,7 +165,7 @@ class CatalogCompiler {
     this.ruleCount = list.length;
     return list.map((entry, index) => {
       const at = pointerTo("/rules", index);
-      const rule = closedObject(entry, at, ["when", "set"], ["when", "set"], this.diag);
+      const rule = closedObject(entry, at, RULE.allowed, RULE.required, this.diag);
       const when =
         rule && "when" in rule ? this.session.parse(rule.when, pointerTo(at, "when")) : null;
       const sets =
@@ -229,13 +224,7 @@ class CatalogCompiler {
     const list = arrayAt(value, "/layers", this.diag);
     list?.forEach((entry, index) => {
       const at = pointerTo("/layers", index);
-      const layer = closedObject(
-        entry,
-        at,
-        ["feature", "for", "when", "marks"],
-        ["marks"],
-        this.diag,
-      );
+      const layer = closedObject(entry, at, LAYER.allowed, LAYER.required, this.diag);
       if (!layer) return;
       let feature: Feature | null = null;
       if ("feature" in layer) {
@@ -255,7 +244,7 @@ class CatalogCompiler {
       let relations = false;
       if ("for" in layer) {
         const target = stringAt(layer.for, pointerTo(at, "for"), this.diag);
-        if (target !== null && target !== "entities" && target !== "relations") {
+        if (target !== null && !(LAYER_TARGETS as readonly string[]).includes(target)) {
           this.diag.add(
             "value",
             { pointer: pointerTo(at, "for"), spans: false },

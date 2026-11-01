@@ -111,17 +111,12 @@ async fn a_catalog_is_fetched_by_id_and_one_that_is_not_served_answers_with_none
     viewer.open(&id.ticket(), None).await;
     viewer.opened().await;
 
-    for id in [
-        "built-in:standard",
-        "built-in:tracking",
-        "user:night.json",
-        "nope",
-    ] {
+    for id in ["built-in:standard", "user:night.json", "nope"] {
         viewer.send(&ClientMessage::Catalog { id: id.into() }).await;
     }
 
     let mut answers = BTreeMap::new();
-    while answers.len() < 4 {
+    while answers.len() < 3 {
         match viewer.next().await {
             Event::Message(ServerMessage::Catalog {
                 id,
@@ -141,7 +136,7 @@ async fn a_catalog_is_fetched_by_id_and_one_that_is_not_served_answers_with_none
         (document["schema"].as_u64(), document["id"].as_str()),
         (Some(4), Some("built-in:standard"))
     );
-    for unserved in ["built-in:tracking", "user:night.json", "nope"] {
+    for unserved in ["user:night.json", "nope"] {
         assert_eq!(answers[unserved], (0, None), "{unserved}");
     }
 }
@@ -168,7 +163,14 @@ async fn opened_lists_the_served_catalogs_and_what_every_lane_starts_with() {
     let ids: Vec<_> = catalogs.iter().map(|catalog| catalog.id.as_str()).collect();
     assert_eq!(
         ids,
-        ["built-in:standard", "built-in:classic", "built-in:glass"]
+        [
+            "built-in:standard",
+            "built-in:tracking",
+            "built-in:classic",
+            "built-in:chunky",
+            "built-in:glass",
+            "built-in:minimal"
+        ]
     );
     assert_eq!(
         lane_defaults,

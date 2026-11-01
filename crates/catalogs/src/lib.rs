@@ -1,15 +1,13 @@
-//! The render catalogs the app offers: the v4 documents the playback socket serves, the six v3 catalogs the CLI
-//! still uses, checking a catalog file, and compiling each v3 catalog once for everyone who draws with it.
+//! The render catalogs the app offers: the v4 documents the playback socket serves, and the six v3 catalogs compiled
+//! once for everyone who still draws with them.
 //!
-//! A [`CatalogId`] names a catalog (`built-in:<name>` or `user:<file>`); [`Library::compiled`] gives its compiled form.
-//! Catalogs in the user's catalog folder are not read yet, so only `check_file` looks at user files.
+//! A [`CatalogId`] names a catalog (`built-in:<name>` or `user:<file>`); [`Library::compiled`] gives the compiled form
+//! of a v3 catalog. Catalogs in the user's catalog folder are not read yet.
 
 mod built_in;
-mod check;
 mod id;
 mod library;
 
-pub use check::{UNREADABLE, check_file};
 pub use id::CatalogId;
 pub use library::{CatalogInfo, Library};
-pub use render_catalog::{CatalogDiagnostic, CatalogMetadata, CompiledCatalog};
+pub use render_catalog::{CatalogMetadata, CompiledCatalog};

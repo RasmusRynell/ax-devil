@@ -2,10 +2,10 @@ import { ANCHORS } from "../expr/checkCall";
 import type { Scope } from "../expr/check";
 import { type CLength, type Compiled, konst } from "../expr/compiled";
 import { didYouMean } from "../expr/diagnostic";
-import type { ExprType } from "../expr/types";
 import { constantLength } from "../expr/lowerLength";
 import { arrayAt, closedObject, pointerTo, stringAt } from "./document";
 import type { Session } from "./session";
+import { FIELD_TYPES, MARKS, PLACE, RUN } from "./shape";
 import {
   type FieldName,
   MARK_TYPES,
@@ -16,114 +16,6 @@ import {
   WEIGHTS,
   type WeightName,
 } from "./types";
-
-const FIELD_TYPES: Readonly<Record<FieldName, ExprType>> = {
-  when: "bool",
-  on: "box",
-  w: "length",
-  h: "length",
-  dx: "length",
-  dy: "length",
-  outset: "length",
-  min_size: "length",
-  stroke: "color",
-  fill: "color",
-  width: "length",
-  dash: "bool",
-  radius: "length",
-  r: "length",
-  from: "point",
-  to: "point",
-  gain: "number",
-  max: "length",
-  head: "length",
-  head_width: "length",
-  min_speed: "number",
-  vx: "number",
-  vy: "number",
-  value: "number",
-  text: "text",
-  color: "color",
-  size: "length",
-  background: "color",
-  gap: "length",
-};
-
-/** Per mark: the expression fields it takes, the static keys it takes, and the keys it must have. */
-const MARKS: Readonly<
-  Record<
-    MarkName,
-    { fields: readonly FieldName[]; statics: readonly string[]; required: readonly string[] }
-  >
-> = {
-  box: {
-    fields: [
-      "when",
-      "on",
-      "w",
-      "h",
-      "dx",
-      "dy",
-      "outset",
-      "min_size",
-      "stroke",
-      "fill",
-      "width",
-      "dash",
-      "radius",
-    ],
-    statics: ["pin", "margin"],
-    required: [],
-  },
-  circle: {
-    fields: ["when", "on", "dx", "dy", "min_size", "stroke", "fill", "width", "dash", "r"],
-    statics: ["pin", "margin"],
-    required: ["r"],
-  },
-  line: {
-    fields: ["when", "min_size", "from", "to", "stroke", "width", "dash"],
-    statics: [],
-    required: ["from", "to"],
-  },
-  arrow: {
-    fields: [
-      "when",
-      "on",
-      "min_size",
-      "gain",
-      "max",
-      "head",
-      "head_width",
-      "min_speed",
-      "vx",
-      "vy",
-      "stroke",
-      "width",
-    ],
-    statics: [],
-    required: [],
-  },
-  polygon: {
-    fields: ["when", "min_size", "stroke", "fill", "width", "dash"],
-    statics: [],
-    required: [],
-  },
-  bar: {
-    fields: ["when", "on", "w", "h", "dx", "dy", "min_size", "value", "fill"],
-    statics: ["pin", "margin"],
-    required: ["value"],
-  },
-  text: {
-    fields: ["when", "on", "min_size", "text", "color", "size"],
-    statics: ["font", "place"],
-    required: ["text", "color", "size", "place"],
-  },
-  label: {
-    fields: ["when", "on", "min_size", "size", "background", "radius", "gap"],
-    statics: ["font", "place", "runs", "pad"],
-    required: ["runs", "size", "place"],
-  },
-};
 
 /** A mark being built: expressions are lowered after every variable's type is settled, then land here. */
 interface Draft {
@@ -223,13 +115,7 @@ function placeAt(
   }
   list.forEach((entry, i) => {
     const at = pointerTo(pointer, i);
-    const object = closedObject(
-      entry,
-      at,
-      ["when", "at", "anchor", "dx", "dy"],
-      ["at", "anchor"],
-      session.diag,
-    );
+    const object = closedObject(entry, at, PLACE.allowed, PLACE.required, session.diag);
     if (!object) return;
     const place = {
       when: null,
@@ -269,13 +155,7 @@ function runsAt(
     session.diag.add("value", { pointer, spans: false }, null, "a label needs at least one run");
   list.forEach((entry, i) => {
     const at = pointerTo(pointer, i);
-    const object = closedObject(
-      entry,
-      at,
-      ["text", "bar", "color", "weight"],
-      ["color"],
-      session.diag,
-    );
+    const object = closedObject(entry, at, RUN.allowed, RUN.required, session.diag);
     if (!object) return;
     if ("text" in object === "bar" in object) {
       session.diag.add(

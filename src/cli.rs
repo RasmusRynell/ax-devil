@@ -34,6 +34,7 @@ use workspace::{WorkspaceItem, intake::NewOverlay};
 
 mod args;
 mod catalog;
+mod desktop;
 #[cfg(test)]
 mod tests;
 
@@ -402,29 +403,8 @@ async fn serve(
 
 /// Starts the desktop shell and waits for it, passing on its exit code.
 fn launch(args: &AppArgs) -> Result<ExitCode, Box<dyn Error>> {
-    let desktop = match std::env::var_os("AX_DEVIL_DESKTOP") {
-        Some(folder) => PathBuf::from(folder),
-        // target/<profile>/ax-devil sits three levels below the checkout that holds desktop/.
-        None => std::env::current_exe()?
-            .ancestors()
-            .nth(3)
-            .map(|root| root.join("desktop"))
-            .unwrap_or_default(),
-    };
-    let binary = if cfg!(windows) {
-        "electron.cmd"
-    } else {
-        "electron"
-    };
-    let electron = desktop.join("node_modules/.bin").join(binary);
-    if !electron.is_file() {
-        return Err(format!(
-            "Cannot find the desktop shell's Electron at {}; set AX_DEVIL_DESKTOP to the desktop folder, \
-             installed with pnpm install",
-            electron.display()
-        )
-        .into());
-    }
+    let desktop = desktop::folder()?;
+    let electron = desktop::electron(&desktop)?;
     let mut shell = Process::new(electron);
     // Shells hosted in an Electron app export this, which would start Electron as plain Node and crash it at once.
     shell.env_remove("ELECTRON_RUN_AS_NODE");

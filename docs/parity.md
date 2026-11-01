@@ -70,7 +70,7 @@ The decisions taken with the owner, with their reasons, are in
 |-----|-----------|--------|
 | OF-02 | Lanes share one video: the reference let a secondary lane have its own video, length and frame rate, aligned to the primary lane's frame index | D19: a viewer shows one video; two recordings side by side are two viewers |
 | OF-02 | During play a lane without data shows a loading state and the video is not held; after a seek or step a frame waits at most about 250 ms; export always waits | D27: never draw another sample's marks or freeze playback on a slow backend |
-| RC-01 | Catalog schema v4 replaces v3 (Standard, Classic and Glass built): rules plus ordered layers, label placement lists, one expression language, no `extends`; layer order replaces the fixed one. The reference's catalogs do not load | D25: the frontend evaluates catalogs per lane |
+| RC-01 | Catalog schema v4 replaces v3: rules plus ordered layers, label placement lists, one expression language, no `extends`; layer order replaces the fixed one. The reference's catalogs do not load | D25: the frontend evaluates catalogs per lane |
 | OF-06 | The frame cache lives in `playback`, not `media` | Eviction follows playback windows; export, thumbnails and live never use the cache |
 | OF-06 | Eviction takes the frame farthest from the playhead outside the protected windows; the reference was LRU | It suits scrubbing: after a jump, the frames around the old position are the least likely to be wanted |
 | OF-06 | Auto is never below 256 MiB; the reference had no floor | It is the smallest value the setting accepts, so a machine with little free memory still gets a working cache |
@@ -102,10 +102,10 @@ The decisions taken with the owner, with their reasons, are in
 
 | ID | Feature | P | Status | Test | Notes |
 |----|---------|---|--------|------|-------|
-| RC-01 | Catalog language (schema v4) and the six built-ins | M | in progress | `frontend/src/present/oracle.test.ts`, `crates/render-catalog/tests/{compile.rs,render/}`, `crates/catalogs` tests | Standard, Classic and Glass are v4 in the frontend and match the reference on the oracle sheets; the other three and `catalog check` follow in S2, the Rust v3 path goes in S3 (D25) |
+| RC-01 | Catalog language (schema v4) and the six built-ins | M | done | `frontend/src/present/oracle.test.ts`, `frontend/src/present/catalog/{catalog,schema}.test.ts`, `crates/catalogs` tests | All six match the reference on the oracle sheets without exceptions. The JSON Schema for editors is generated from the compiler's tables (`assets/catalogs/catalog.schema.json`); the Rust v3 path goes in S3 (D25) |
 | RC-02 | Per-view selection, Apply to all, Use as default, hot reload | M | in progress | `frontend/src/playback/LaneMenu.test.tsx`, `tests/playback_lanes.rs` | A lane picks one of the built-ins from its menu, listed in `Opened`; a catalog that fails keeps the last one. Left: Apply to all, Use as default, user catalogs and hot reload |
 | RC-03 | Catalog viewer window with seeded sheets, New copy, Delete | M | todo |  |  |
-| RC-04 | `catalog list/check/render/new/use/reference` | M | in progress | `src/cli/tests.rs`, `crates/catalogs/src/check.rs` | `catalog list` and `catalog check`; the others are not built |
+| RC-04 | `catalog list/check/render/new/use/reference` | M | in progress | `src/cli/tests.rs` | `catalog list` and `catalog check`, which runs the frontend's compiler in Electron-as-Node (D23); the others are not built |
 
 ## Plugins
 

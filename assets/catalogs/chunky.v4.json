@@ -1,0 +1,60 @@
+{
+  "schema": 4,
+  "id": "built-in:chunky",
+  "name": "Chunky",
+  "description": "Standard drawn bold, for screens seen from a distance or small previews: thick boxes and large tabs.",
+  "vars": {
+    "color": "#828b96",
+    "ink": "#ffffff",
+    "id_inside": false,
+    "line": "3px",
+    "tint": 0,
+    "font": "14px"
+  },
+  "rules": [
+    { "when": "class != null", "set": { "color": "#27ae60" } },
+    { "when": "class in ['vehicle', 'vehicle_other', 'car', 'bus', 'truck', 'bike', 'bicycle']", "set": { "color": "#2f80ed" } },
+    { "when": "class == 'human'", "set": { "color": "#f2a100", "ink": "#111111" } },
+    { "when": "class == 'head'", "set": { "color": "#9b51e0", "id_inside": true } }
+  ],
+  "layers": [
+    { "feature": "outlines", "marks": [
+      { "mark": "box", "stroke": "color", "width": "line", "dash": "attr.occluded", "fill": "alpha(color, tint)" },
+      { "mark": "polygon", "stroke": "color", "width": "1px" }
+    ] },
+    { "feature": "relations", "for": "relations", "when": "relation == 'has_part'", "marks": [
+      { "mark": "line", "from": "anchor(source.box, 'center')", "to": "anchor(target.box, 'center')", "stroke": "#eceff4", "width": "3px" },
+      { "mark": "circle", "on": "source.box", "r": "4.5px", "stroke": "#0e1014", "width": "1px", "fill": "#eceff4" },
+      { "mark": "circle", "on": "target.box", "r": "4.5px", "stroke": "#0e1014", "width": "1px", "fill": "#eceff4" }
+    ] },
+    { "feature": "speed", "marks": [
+      { "mark": "arrow", "gain": 0.5, "max": "100px", "head": "6px", "head_width": "3.5px", "stroke": "color", "width": "1.5px" }
+    ] },
+    { "feature": "movement", "when": "motion_state != null", "marks": [
+      { "mark": "label", "size": "font", "background": "color", "pad": ["5px", "2px"],
+        "runs": [ { "text": "case(motion_state, 'moving', '▶', 'stationary', 'Ⅱ', '?')", "color": "ink", "weight": "bold" } ],
+        "place": [ { "at": "top-right", "anchor": "top-left", "dx": "1.5px", "dy": "-1.5px" } ] }
+    ] },
+    { "feature": "ids", "marks": [
+      { "mark": "label", "size": "font", "background": "color", "pad": ["6px", "2px"],
+        "runs": [ { "text": "trim(id, 10, 'middle')", "color": "ink", "weight": "medium" } ],
+        "place": [
+          { "when": "!id_inside", "at": "top-left", "anchor": "bottom-left", "dx": "-1.5px", "dy": "1.5px" },
+          { "at": "top-left", "anchor": "top-left", "dx": "-1.5px", "dy": "-1.5px" } ] }
+    ] },
+    { "feature": "score", "when": "score != null", "marks": [
+      { "mark": "label", "size": "font", "background": "color", "pad": ["6px", "2px"],
+        "runs": [ { "text": "fixed(score, 2)", "color": "ink", "weight": "medium" } ],
+        "place": [
+          { "at": "bottom-left", "anchor": "top-left", "dx": "-1.5px", "dy": "-1.5px" },
+          { "at": "bottom-left", "anchor": "bottom-left", "dx": "-1.5px", "dy": "1.5px" } ] }
+    ] },
+    { "feature": "confidence", "when": "confidence != null", "marks": [
+      { "mark": "label", "size": "font", "background": "color", "pad": ["6px", "2px"],
+        "runs": [ { "text": "fixed(confidence, 2)", "color": "ink", "weight": "medium" } ],
+        "place": [
+          { "at": "bottom-right", "anchor": "top-right", "dx": "1.5px", "dy": "-1.5px" },
+          { "at": "bottom-right", "anchor": "bottom-right", "dx": "1.5px", "dy": "1.5px" } ] }
+    ] }
+  ]
+}

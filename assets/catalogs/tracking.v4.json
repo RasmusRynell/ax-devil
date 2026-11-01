@@ -1,0 +1,41 @@
+{
+  "schema": 4,
+  "id": "built-in:tracking",
+  "name": "Tracking",
+  "description": "For debugging tracking: thin high-contrast boxes in a color picked from each object's id and a small id, so box changes and id switches between frames stand out. No class names, scores or confidence.",
+  "vars": {
+    "color": "palette(id, [#ffe100, #00dcff, #ff3cc8, #78ff28, #ff8c00, #ffffff, #ff4646, #aa78ff, #00ffaa, #4696ff, #ffaad2, #c8ff96, #ff5078, #1e6eff, #ff2864, #00b4dc, #be46ff, #50dc00, #ff6e00, #00d28c])",
+    "id_inside": false
+  },
+  "rules": [
+    { "when": "class == 'head'", "set": { "id_inside": true } }
+  ],
+  "layers": [
+    { "feature": "outlines", "marks": [
+      { "mark": "box", "outset": "1px", "stroke": "#000000", "width": "0.5px", "dash": "attr.occluded" },
+      { "mark": "box", "stroke": "color", "width": "1.5px", "dash": "attr.occluded" },
+      { "mark": "box", "outset": "-1px", "stroke": "#000000", "width": "0.5px", "dash": "attr.occluded" },
+      { "mark": "polygon", "stroke": "color", "width": "1px" }
+    ] },
+    { "feature": "relations", "for": "relations", "when": "relation == 'has_part'", "marks": [
+      { "mark": "line", "from": "anchor(source.box, 'center')", "to": "anchor(target.box, 'center')", "stroke": "#eceff4", "width": "1px" },
+      { "mark": "circle", "on": "source.box", "r": "2.5px", "stroke": "#0e1014", "width": "1px", "fill": "#eceff4" },
+      { "mark": "circle", "on": "target.box", "r": "2.5px", "stroke": "#0e1014", "width": "1px", "fill": "#eceff4" }
+    ] },
+    { "feature": "speed", "marks": [
+      { "mark": "arrow", "gain": 0.5, "max": "100px", "head": "6px", "head_width": "3.5px", "stroke": "color", "width": "1.5px" }
+    ] },
+    { "feature": "movement", "when": "motion_state != null", "marks": [
+      { "mark": "label", "size": "10px", "background": "#000000c8", "pad": ["3px", "0px"],
+        "runs": [ { "text": "case(motion_state, 'moving', '▶', 'stationary', 'Ⅱ', '?')", "color": "color", "weight": "medium" } ],
+        "place": [ { "at": "top-right", "anchor": "top-left", "dx": "2px" } ] }
+    ] },
+    { "feature": "ids", "marks": [
+      { "mark": "label", "size": "10px", "background": "#000000c8", "pad": ["3px", "0px"],
+        "runs": [ { "text": "trim(id, 10, 'middle')", "color": "color", "weight": "medium" } ],
+        "place": [
+          { "when": "!id_inside", "at": "top-left", "anchor": "bottom-left", "dx": "-2px", "dy": "-2px" },
+          { "at": "top-left", "anchor": "top-left", "dx": "2px", "dy": "2px" } ] }
+    ] }
+  ]
+}

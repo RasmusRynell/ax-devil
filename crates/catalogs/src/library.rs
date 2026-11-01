@@ -193,7 +193,14 @@ mod tests {
         let ids: Vec<String> = listed.iter().map(|info| info.id.to_string()).collect();
         assert_eq!(
             ids,
-            ["built-in:standard", "built-in:classic", "built-in:glass"]
+            [
+                "built-in:standard",
+                "built-in:tracking",
+                "built-in:classic",
+                "built-in:chunky",
+                "built-in:glass",
+                "built-in:minimal"
+            ]
         );
         assert_eq!(listed[0].name, "Standard");
         assert_eq!(library.default_id(), listed[0].id);
@@ -204,7 +211,7 @@ mod tests {
             assert_eq!(value["id"], info.id.to_string());
         }
         for unserved in [
-            CatalogId::BuiltIn("tracking"),
+            CatalogId::BuiltIn("nope"),
             CatalogId::User("night.json".into()),
         ] {
             assert_eq!(library.document(&unserved), None);

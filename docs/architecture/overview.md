@@ -83,8 +83,10 @@ filters rows, evaluates Marks from the Sample Item, lays them out for the lane's
 paints them through one WebGL2 context per viewer. A lane's Lane Style (catalog, filters, theme, opacity, zoom, pan)
 stays in the client and its Lane Policy in its socket; neither is shared with followers. Export and `catalog render`
 will run the same code in an offscreen Electron page, and Rust will freeze their inputs and encode the frames (S6).
+`catalog check` runs the compiler in Electron-as-Node from a bundle `make` builds with the frontend
+(`desktop/generated/catalog-check.cjs`).
 
-The Rust render path (`render-catalog`, `drawing`, the v3 catalog check) is unused by playback and goes in slice S3.
+The Rust render path (`render-catalog`, `drawing`, the v3 catalog compile) is unused by playback and goes in slice S3.
 
 ## Layers
 

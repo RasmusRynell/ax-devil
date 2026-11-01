@@ -73,7 +73,7 @@ _dev-rust: _types
 tests-frontend: node_modules/.installed
 	$(ISOLATED) pnpm --dir frontend exec vp test run $(TEST)
 
-tests-backend: _frontend-build
+tests-backend: _frontend-build desktop/node_modules/.electron-ready
 	$(ISOLATED) $(CARGO) test --workspace --no-default-features --locked $(TEST)
 	$(ISOLATED) $(CARGO) test --workspace --locked $(TEST)
 
