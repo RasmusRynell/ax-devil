@@ -27,6 +27,14 @@ import type { Connect, Connection, Incoming } from "./wire";
 export const BUFFER_BUDGET_BYTES = 512 * 1024 * 1024;
 /** Waits between reconnection attempts; the last one repeats. */
 const RETRY_MS = [500, 1000, 2000, 4000, 8000];
+/**
+ * The close codes that end a stream for good, with what the viewer says: asking again would be refused, or the
+ * backend ended the stream on purpose. Any other close is a lost connection that is worth another try.
+ */
+const ENDED: Record<number, string> = {
+  4401: "The backend refused this video stream.",
+  4403: "This video stream was ended: access to it was withdrawn.",
+};
 
 export interface SessionDeps {
   /** A ticket for one socket: the first message of every connection spends one. Rejects when it cannot get one. */
@@ -300,7 +308,11 @@ export class PlaybackSession {
         `The backend sent something this window cannot read: ${incoming.reason}`,
         "playback",
       );
-    else if (this.#status !== "failed") this.#lose();
+    else if (this.#status !== "failed") {
+      const ended = ENDED[incoming.code];
+      if (ended) this.#fail(ended);
+      else this.#lose();
+    }
   }
 
   #onMessage(message: ServerMessage): void {

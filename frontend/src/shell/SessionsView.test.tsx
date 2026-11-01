@@ -60,6 +60,20 @@ describe("sessions view", () => {
     expect(FakeSocket.rooms.get("room-1")?.access).toBe("explore");
     expect((session.getByRole("checkbox") as HTMLInputElement).checked).toBe(true);
 
+    // The owner sees which guest explores, and none once exploring is off (everyone follows then).
+    const room = FakeSocket.rooms.get("room-1")!;
+    act(() => {
+      room.seat(null);
+      room.seat(null).view = room.presenter;
+      room.share();
+    });
+    const exploring = session.getAllByText("Exploring");
+    expect(exploring.map((tag) => tag.closest("li")?.textContent)).toEqual(["Guest 3Exploring"]);
+    expect(screen.getByRole("button", { name: "Session" }).title).toBe("2 watching, 1 exploring");
+    fireEvent.click(session.getByRole("checkbox", { name: "Let viewers explore on their own" }));
+    await act(async () => {});
+    expect(session.queryByText("Exploring")).toBeNull();
+
     // The cursor option is this person's own, sent to the backend.
     fireEvent.click(screen.getByRole("button", { name: "Session" }));
     fireEvent.click(screen.getByRole("menuitemcheckbox", { name: "Share my cursor" }));
@@ -77,6 +91,7 @@ describe("sessions view", () => {
         docRev: 0,
         presenterRev: 0,
         access: "owner",
+        can: { view: true, content: true, host: true, control: true },
         mode: "following",
         sharing: { access: "explore" },
         view: { sidebar: { view: "workspace", open: true }, viewers: {} },

@@ -90,7 +90,7 @@ async function setup(resume?: { frame: number; speed: number }) {
           times: Float64Array.from({ length: frames }, (_, id) => id * 40_000),
         },
       }),
-    drop: () => deliver({ type: "closed" }),
+    drop: (code = 1006) => deliver({ type: "closed", code }),
     open: (frames = 10) => {
       server.say(opened(frames));
       server.timeline(frames);
@@ -334,6 +334,22 @@ describe("connection loss and closing", () => {
       playing: false,
       shown: { sequenceId: 3 },
     });
+  });
+
+  it("ends for good when the backend refuses or revokes the stream, without asking for another ticket", async () => {
+    for (const code of [4401, 4403]) {
+      const { session, server, tickets, retries, connections } = await setup();
+      let asked = 0;
+      tickets(async () => `ticket-${++asked}`);
+      server.open();
+      server.drop(code);
+      await flush();
+      expect(session.getSnapshot()).toMatchObject({ status: "failed" });
+      expect(session.getSnapshot().failure?.reason).toBeTruthy();
+      expect(retries).toEqual([]);
+      expect(asked).toBe(0);
+      expect(connections()).toBe(1);
+    }
   });
 
   it("tells the backend, stops drawing and ignores the socket after close", async () => {

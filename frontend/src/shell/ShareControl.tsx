@@ -47,6 +47,8 @@ export function ShareControl({ onStartSharing }: { onStartSharing: () => void })
     ) : null;
 
   const owner = state === "owner";
+  const exploring = participants.filter((participant) => participant.mode === "exploring").length;
+  const watching = participants.filter((participant) => participant.role === "watcher").length;
   const presenter = participants.find((participant) => participant.role === "owner");
   const inApp = window.axDevilWindow ? null : openableLink(session?.link ?? null);
   const openInApp: MenuEntry[] = inApp
@@ -99,7 +101,7 @@ export function ShareControl({ onStartSharing }: { onStartSharing: () => void })
           ref={trigger}
           type="button"
           aria-label="Session"
-          title="Session"
+          title={exploring > 0 ? `${watching} watching, ${exploring} exploring` : "Session"}
           aria-haspopup="menu"
           aria-expanded={open}
           data-cursor-id="share"
@@ -119,6 +121,15 @@ export function ShareControl({ onStartSharing }: { onStartSharing: () => void })
               <span className="ml-s text-small text-muted">+{participants.length - AVATARS}</span>
             )}
           </span>
+          {exploring > 0 && (
+            <span
+              aria-hidden
+              className="flex items-center gap-xs text-small text-muted max-sm:hidden"
+            >
+              <Icon name="eye" />
+              {exploring}
+            </span>
+          )}
           <Icon name="chevron-down" />
         </button>
         {open && (

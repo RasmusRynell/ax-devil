@@ -194,6 +194,11 @@ export function SessionsView() {
                     {participant.name}
                     {participant.id === you && <span className="text-muted"> (you)</span>}
                   </span>
+                  {participant.mode === "exploring" && (
+                    <span className="rounded-control border border-line px-s text-small text-muted">
+                      Exploring
+                    </span>
+                  )}
                   {participant.role === "owner" && (
                     <span role="img" aria-label="Owner" title="Owner" className="flex text-muted">
                       <Icon name="crown" />
