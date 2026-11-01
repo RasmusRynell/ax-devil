@@ -1,0 +1,151 @@
+name: Release
+
+# Pull requests that touch packaging and manual runs build, test and upload the packages for all three systems;
+# only a pushed version tag turns them into a draft release.
+on:
+  workflow_dispatch:
+  push:
+    tags: ["v*"]
+  pull_request:
+    paths:
+      - .github/workflows/release.yml
+      - scripts/package-desktop.sh
+      - scripts/smoke-packaged.sh
+      - scripts/ffmpeg-*.sh
+      - desktop/electron-builder.yml
+      - desktop/package.json
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  package:
+    name: Package (${{ matrix.name }})
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 60
+    defaults:
+      run:
+        shell: bash
+    env:
+      MACOSX_DEPLOYMENT_TARGET: ${{ matrix.deployment_target }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: linux
+            runner: ubuntu-22.04
+            ffmpeg: scripts/ffmpeg-fetch.sh linux
+            ffmpeg_script: scripts/ffmpeg-fetch.sh
+            artifact: desktop/dist/*.AppImage
+          - name: win
+            runner: windows-2022
+            ffmpeg: scripts/ffmpeg-fetch.sh win
+            ffmpeg_script: scripts/ffmpeg-fetch.sh
+            artifact: desktop/dist/*.zip
+          - name: mac
+            runner: macos-15
+            ffmpeg: scripts/ffmpeg-build-mac.sh
+            ffmpeg_script: scripts/ffmpeg-build-mac.sh
+            artifact: desktop/dist/*.dmg
+            deployment_target: "13.0"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: release-${{ matrix.name }}-${{ hashFiles('rust-toolchain.toml', 'Cargo.lock') }}
+          restore-keys: release-${{ matrix.name }}-
+
+      # The toolchain file names the Rust version; install it up front instead of on the first cargo call.
+      - name: Install the Rust toolchain
+        run: rustup toolchain install
+
+      - name: Install the build tools (Linux)
+        if: matrix.name == 'linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends patchelf xauth xvfb clang libclang-dev
+          # Ubuntu 22.04 has no such restriction; the setting exists from 23.10 on, as on the CI image.
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 || true
+
+      - name: Find libclang (Windows)
+        if: matrix.name == 'win'
+        run: |
+          llvm='C:\Program Files\LLVM\bin'
+          test -f "$llvm/libclang.dll" || choco install llvm -y --no-progress
+          echo "LIBCLANG_PATH=$llvm" >> "$GITHUB_ENV"
+
+      - name: Choose the FFmpeg folder
+        run: echo "FFMPEG_DIR=$RUNNER_TEMP/ffmpeg" >> "$GITHUB_ENV"
+
+      - name: Restore FFmpeg
+        id: ffmpeg
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.FFMPEG_DIR }}
+          key: ffmpeg-${{ matrix.name }}-${{ matrix.deployment_target }}-${{ hashFiles(matrix.ffmpeg_script) }}
+
+      - name: Get FFmpeg
+        if: steps.ffmpeg.outputs.cache-hit != 'true'
+        run: ${{ matrix.ffmpeg }} "$FFMPEG_DIR"
+
+      - name: Build and package
+        run: scripts/package-desktop.sh ${{ matrix.name }}
+
+      - name: Smoke-test the package
+        run: scripts/smoke-packaged.sh ${{ matrix.name }}
+
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: screenshots-${{ matrix.name }}
+          path: artifacts/screenshots/
+          if-no-files-found: ignore
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: ax-devil-${{ matrix.name }}
+          path: ${{ matrix.artifact }}
+          if-no-files-found: error
+
+  release:
+    name: Draft the release
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: package
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: ax-devil-*
+          merge-multiple: true
+          path: release
+
+      - name: Draft the release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          (cd release && sha256sum -- * > SHA256SUMS)
+          { scripts/ffmpeg-fetch.sh notice; echo; scripts/ffmpeg-build-mac.sh notice; } > release/FFMPEG-LGPL-NOTICE.txt
+          flags=()
+          # A tag with a suffix, such as v1.2.0-rc.1, is a prerelease.
+          if [[ $GITHUB_REF_NAME == *-* ]]; then flags+=(--prerelease); fi
+          gh release create "$GITHUB_REF_NAME" --draft --verify-tag --generate-notes "${flags[@]}" release/*

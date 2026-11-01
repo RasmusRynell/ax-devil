@@ -4,7 +4,7 @@ const { app, BrowserWindow, dialog, screen } = require("electron");
 const path = require("node:path");
 
 const { backendArgs, parseLaunch, userArgs } = require("./args.cjs");
-const { createBackend } = require("./backend.cjs");
+const { backendExecutable, createBackend } = require("./backend.cjs");
 const { confirmLink, linkTarget, singleInstance } = require("./links.cjs");
 const { askAfterFailure, parseTarget, verifyServer } = require("./remote.cjs");
 const { installIpc, localWindows, openWindow } = require("./window.cjs");
@@ -50,6 +50,7 @@ try {
 const backend = createBackend({
   port,
   devUrl,
+  executable: backendExecutable(app),
   args: [
     // The smoke test's sharing listener takes a free loopback port, so no other machine or test can be in the way.
     ...(smoke ? ["--share-address", "127.0.0.1:0"] : []),

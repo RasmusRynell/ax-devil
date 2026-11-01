@@ -114,6 +114,24 @@ Atomic writes and the rule about built-in resources: [05](05-formats-and-extensi
 | Release | Tag, CI, clean-container install check, publish (`docs/runbooks/testing.md#package-artifacts`) | Keep the clean-environment check: install as documented, render catalogs, install the example plugin, play a generated video in the isolated environment, upgrade, check plugins follow |
 | Upgrades | Plugins rebuild after app changes | Plugins follow app upgrades; failure starts the base app with a retry command |
 
+### Desktop package
+
+`make package OS=linux|win|mac FFMPEG_DIR=<dir>` (`scripts/package-desktop.sh`) writes `desktop/dist`. The app archive
+sits beside `resources/bin/`, which holds the `ax-devil` backend and the five FFmpeg libraries it loads; no Python is
+bundled. `FFMPEG_DIR` is a shared LGPL FFmpeg that the backend links dynamically, so it stays replaceable:
+`scripts/ffmpeg-fetch.sh` gets the pinned BtbN build (Linux, Windows) and `scripts/ffmpeg-build-mac.sh` builds a
+minimal one from source (macOS). Linux needs `patchelf` on the build machine.
+`AX_DEVIL_SMOKE_ROOT` points `--smoke-test` of a packaged app at a checkout for fixtures and screenshots
+(`scripts/smoke-packaged.sh`). The shell sets `AX_DEVIL_EXIT_ON_STDIN_CLOSE=1`, which stops the backend when the shell
+closes or loses its standard input.
+
+The Release workflow builds and smoke-tests all three packages for packaging changes in a pull request and for a manual
+run, which keeps them as artifacts; pushing a `v*` tag also drafts a GitHub release with checksums and the FFmpeg notice.
+
+Builds are unsigned. Linux: `chmod +x` the AppImage; where FUSE is missing run it with `--appimage-extract-and-run`;
+on Ubuntu 24.04+ the Chromium sandbox may need `--no-sandbox`. Windows: SmartScreen "More info", then "Run anyway".
+macOS: System Settings, Privacy & Security, "Open Anyway", or `xattr -dr com.apple.quarantine ax-devil.app`.
+
 D6 must be compatible with D1: a self-contained bundle that runs Python plugins needs a bundled or discovered Python.
 
 ## Observability

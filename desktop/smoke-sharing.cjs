@@ -149,7 +149,10 @@ module.exports.sharing = async (window, shell, ownerCsp) => {
   await second.js("document.querySelector('[aria-label=Bookmarks]').click()");
   await second.wait(follow);
   await second.wait(sidebarTitle("Bookmarks"));
-  assert.ok(await js(sidebarTitle("Sessions")), "Exploring must not change the owner's view");
+  assert.ok(
+    await js(`Boolean(${sidebarTitle("Sessions")})`),
+    "Exploring must not change the owner's view",
+  );
   await shootBoth("session-exploring", [["", other, second]]);
   // The owner sees which guest explores, in the list and in the title bar's share indicator.
   await wait(`${GUEST}.filter((li) => li.textContent.includes('Exploring')).length === 1`);

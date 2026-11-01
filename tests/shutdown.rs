@@ -83,3 +83,54 @@ async fn ctrl_c_ends_open_viewers_and_the_backend_exits() {
         "the backend must exit by itself, successfully"
     );
 }
+
+#[test]
+fn closing_stdin_stops_the_backend_only_when_asked_to() {
+    let folder = tempfile::tempdir().unwrap();
+    let start = |ask: bool| {
+        let mut command = Command::new(env!("CARGO_BIN_EXE_ax-devil"));
+        command
+            .arg("--config")
+            .arg(folder.path().join("default.json"))
+            .env("HOME", folder.path())
+            .env("XDG_STATE_HOME", folder.path().join("state"))
+            .env("XDG_CACHE_HOME", folder.path().join("cache-home"))
+            .env("PORT", "0")
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped());
+        if ask {
+            command.env("AX_DEVIL_EXIT_ON_STDIN_CLOSE", "1");
+        }
+        let mut backend = command.spawn().unwrap();
+        let stdout = backend.stdout.take().unwrap();
+        let ready = BufReader::new(stdout)
+            .lines()
+            .map_while(Result::ok)
+            .any(|line| line.starts_with("ax-devil: http://"));
+        assert!(ready, "the backend exited before it was ready");
+        backend
+    };
+    let wait = |backend: &mut std::process::Child, seconds: u64| {
+        let deadline = Instant::now() + Duration::from_secs(seconds);
+        while Instant::now() < deadline {
+            if let Some(status) = backend.try_wait().unwrap() {
+                return Some(status);
+            }
+            std::thread::sleep(Duration::from_millis(20));
+        }
+        None
+    };
+
+    let mut asked = start(true);
+    drop(asked.stdin.take());
+    assert!(wait(&mut asked, 10).is_some_and(|status| status.success()));
+
+    let mut plain = start(false);
+    drop(plain.stdin.take());
+    assert!(
+        wait(&mut plain, 1).is_none(),
+        "a closed stdin must not stop a backend that was not asked to"
+    );
+    plain.kill().unwrap();
+    let _ = plain.wait();
+}

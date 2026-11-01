@@ -4,7 +4,16 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs/promises");
 const path = require("node:path");
 const fit = require("./fit.cjs");
-const { SCREENSHOTS, button, page, reload, setView, until, watchCsp } = require("./smoke-kit.cjs");
+const {
+  SCREENSHOTS,
+  SMOKE_ROOT,
+  button,
+  page,
+  reload,
+  setView,
+  until,
+  watchCsp,
+} = require("./smoke-kit.cjs");
 const { playlist } = require("./smoke-playlist.cjs");
 const { remote } = require("./smoke-remote.cjs");
 const { sharing } = require("./smoke-sharing.cjs");
@@ -76,7 +85,7 @@ module.exports = async (window, shell) => {
 
   // The title bar has the window controls, and Ctrl+= and Ctrl+0 zoom the page.
   for (const name of ["Minimize", "Maximize", "Close"])
-    assert.notEqual(await js(`document.querySelector('[aria-label=${name}]')`), null, name);
+    assert.ok(await js(`document.querySelector('[aria-label=${name}]') !== null`), name);
   const press = (keyCode) =>
     window.webContents.sendInputEvent({ type: "keyDown", keyCode, modifiers: ["control"] });
   press("=");
@@ -203,7 +212,5 @@ module.exports = async (window, shell) => {
   await playlist(window);
   await sharing(window, shell, ownerCsp);
   await remote(window, shell);
-  console.log(
-    `PASS: app shell loaded; screenshots in ${path.relative(path.resolve(__dirname, ".."), SCREENSHOTS)}`,
-  );
+  console.log(`PASS: app shell loaded; screenshots in ${path.relative(SMOKE_ROOT, SCREENSHOTS)}`);
 };

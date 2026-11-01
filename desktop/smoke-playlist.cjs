@@ -5,9 +5,9 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs/promises");
 const path = require("node:path");
 const fit = require("./fit.cjs");
-const { SCREENSHOTS, delay, frames, page, setView } = require("./smoke-kit.cjs");
+const { SCREENSHOTS, SMOKE_ROOT, delay, frames, page, setView } = require("./smoke-kit.cjs");
 
-const DATASET = path.resolve(__dirname, "../fixtures/datasets/mot");
+const DATASET = path.join(SMOKE_ROOT, "fixtures/datasets/mot");
 const SHOWN = `Number.parseInt(document.querySelector("output[aria-label=Frame]")?.textContent ?? "")`;
 const THEMES_AND_ZOOMS = [
   ["light", 1],

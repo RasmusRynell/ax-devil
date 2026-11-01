@@ -4,12 +4,12 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs/promises");
 const http = require("node:http");
 const path = require("node:path");
-const { startProcess } = require("./backend.cjs");
+const { backendExecutable, startProcess } = require("./backend.cjs");
 const { apiVersion, shellApi } = require("./generated/api.json");
-const { SCREENSHOTS, click, frames, page, until } = require("./smoke-kit.cjs");
+const { SCREENSHOTS, SMOKE_ROOT, click, frames, page, until } = require("./smoke-kit.cjs");
 
 const PASSWORD = "smoke-password";
-const FIXTURE = path.resolve(__dirname, "../fixtures/video/long_gop_h264.mp4");
+const FIXTURE = path.join(SMOKE_ROOT, "fixtures/video/long_gop_h264.mp4");
 
 // A server that answers `/api/info` only, as a `shell` interface version: another one than this app's refuses it
 // before any page loads. With `dropPages` every other request is cut off, as a server that disconnects after
@@ -41,6 +41,7 @@ function stubDialogs(...answers) {
 async function remote(local, shell) {
   const localOrigin = new URL(local.webContents.getURL()).origin;
   const served = await startProcess(
+    backendExecutable(app),
     ["serve", "--port", "0"],
     { AX_DEVIL_SERVER_PASSWORD: PASSWORD },
     () => {},
