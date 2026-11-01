@@ -59,6 +59,8 @@ the module that implements it adds one.
 - The backend applies every window report to its record of what a viewer holds, in order, never coalesced; only
   scheduling uses the newest. A frame that leaves the window and returns is sent again.
 - A frame's bytes depend only on its identity, so a viewer keeps any arrival inside its window.
+- A viewer shows exactly one video: its lanes share that video's frames and clock, frames travel once per viewer, and
+  only overlay data is per lane.
 
 ## Frame Identity
 

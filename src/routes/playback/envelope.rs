@@ -2,20 +2,19 @@
 //! `api_types::playback`, and `frontend/src/playback/protocol.ts` parses it.
 
 use api_types::playback::{
-    ENVELOPE_HEAD_BYTES, ENVELOPE_MAGIC, ENVELOPE_VERSION, FLAG_KEYFRAME, FLAG_LAST_FRAME,
-    KIND_TIMELINE, KIND_VIDEO_FRAME, LAYOUT_I420, LAYOUT_NV12, LAYOUT_RGBA, MATRIX_BT601,
-    MATRIX_BT709, VIDEO_FRAME_HEADER_BYTES,
+    ENVELOPE_MAGIC, ENVELOPE_VERSION, FLAG_KEYFRAME, FLAG_LAST_FRAME, KIND_TIMELINE,
+    KIND_VIDEO_FRAME, LAYOUT_I420, LAYOUT_NV12, LAYOUT_RGBA, MATRIX_BT601, MATRIX_BT709,
+    TIMELINE_HEADER_BYTES, VIDEO_FRAME_HEADER_BYTES,
 };
 use bytes::{BufMut, Bytes, BytesMut};
 use foundation::{FrameId, Matrix, MediaTime, PixelFormat, Timeline, VideoFrame};
 
-/// The fixed head every envelope starts with. Lane 0 is the only lane of a video.
+/// The fixed head every envelope starts with.
 fn head(out: &mut BytesMut, kind: u8, payload_at: u16, id: FrameId, flags: u32) {
     out.put_u32_le(ENVELOPE_MAGIC);
     out.put_u8(ENVELOPE_VERSION);
     out.put_u8(kind);
     out.put_u16_le(payload_at);
-    out.put_u32_le(0);
     out.put_u64_le(id.sequence_id);
     out.put_i64_le(id.timestamp.as_us());
     out.put_u32_le(flags);
@@ -25,12 +24,13 @@ fn head(out: &mut BytesMut, kind: u8, payload_at: u16, id: FrameId, flags: u32) 
 /// 2^53 is exact, so the receiver reads the values without conversion.
 pub(super) fn timeline(timeline: &Timeline) -> Bytes {
     let times = timeline.as_slice();
-    let mut out = BytesMut::with_capacity(usize::from(ENVELOPE_HEAD_BYTES) + times.len() * 8);
+    let mut out = BytesMut::with_capacity(usize::from(TIMELINE_HEADER_BYTES) + times.len() * 8);
     let id = FrameId {
         sequence_id: 0,
         timestamp: MediaTime::ZERO,
     };
-    head(&mut out, KIND_TIMELINE, ENVELOPE_HEAD_BYTES, id, 0);
+    head(&mut out, KIND_TIMELINE, TIMELINE_HEADER_BYTES, id, 0);
+    out.put_u32_le(0);
     for time in times {
         out.put_f64_le(time.as_us() as f64);
     }
@@ -112,8 +112,7 @@ mod tests {
         let expected: Vec<u8> = [
             &b"AXDV"[..],
             &[1, 1],                               // version, kind VideoFrame
-            &[68, 0],                              // header_len: where the planes start
-            &[0, 0, 0, 0],                         // lane
+            &[64, 0],                              // header_len: where the planes start
             &[5, 0, 0, 0, 0, 0, 0, 0],             // sequence id
             &[0x87, 0xD6, 0x12, 0, 0, 0, 0, 0],    // timestamp 1_234_567
             &[3, 0, 0, 0],                         // flags: keyframe and last frame
@@ -136,10 +135,10 @@ mod tests {
             &b"AXDV"[..],
             &[1, 3],  // version, kind Timeline
             &[32, 0], // header_len
-            &[0; 4],  // lane
             &[0; 8],  // sequence id
             &[0; 8],  // timestamp
             &[0; 4],  // flags
+            &[0; 4],  // pad: the times start 8-byte aligned
             &0f64.to_le_bytes(),
             &33_333f64.to_le_bytes(),
             &66_667f64.to_le_bytes(),

@@ -14,7 +14,6 @@ const FRAME_BYTES = 100;
 function videoFrame(sequenceId: number): VideoFrame {
   const empty = new Uint8Array(0);
   return {
-    lane: 0,
     sequenceId,
     timestampUs: sequenceId * 40_000,
     keyframe: false,

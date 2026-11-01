@@ -14,10 +14,9 @@ function head(
   view.setUint8(4, 1);
   view.setUint8(5, kind);
   view.setUint16(6, headerLen, true);
-  view.setUint32(8, 0, true);
-  view.setBigUint64(12, BigInt(sequenceId), true);
-  view.setBigInt64(20, BigInt(timestampUs), true);
-  view.setUint32(28, flags, true);
+  view.setBigUint64(8, BigInt(sequenceId), true);
+  view.setBigInt64(16, BigInt(timestampUs), true);
+  view.setUint32(24, flags, true);
   return view;
 }
 
@@ -28,15 +27,15 @@ function videoFrame(
   timestampUs = 233333,
   flags = 3,
 ): Uint8Array {
-  const view = head(1, 68, sequenceId, timestampUs, flags);
-  view.setUint32(32, 4, true);
-  view.setUint32(36, 2, true);
-  view.setUint8(40, layout);
-  view.setUint8(41, 1);
-  view.setUint8(42, 1);
+  const view = head(1, 64, sequenceId, timestampUs, flags);
+  view.setUint32(28, 4, true);
+  view.setUint32(32, 2, true);
+  view.setUint8(36, layout);
+  view.setUint8(37, 1);
+  view.setUint8(38, 1);
   planes.forEach((plane, index) => {
-    view.setUint32(44 + index * 4, plane.length / 2, true);
-    view.setUint32(56 + index * 4, plane.length, true);
+    view.setUint32(40 + index * 4, plane.length / 2, true);
+    view.setUint32(52 + index * 4, plane.length, true);
   });
   return Uint8Array.from([...new Uint8Array(view.buffer), ...planes.flat()]);
 }

@@ -256,8 +256,7 @@ export class PlaybackSession {
   #onEnvelope(envelope: Envelope): void {
     if (envelope.kind === "timeline") {
       if (this.#opened && !this.#clock) this.#ready(this.#opened, envelope.times);
-    } else if (this.#buffer && this.#clock && envelope.frame.lane === 0) {
-      // Only lane 0 exists until M2 decides how lanes reach the viewer; frames of other lanes are dropped on purpose.
+    } else if (this.#buffer && this.#clock) {
       // A frame the window no longer covers, or that does not fit, is dropped here and freed.
       const { sequenceId } = envelope.frame;
       // A paused clock is waiting for exactly one frame, the requested one.

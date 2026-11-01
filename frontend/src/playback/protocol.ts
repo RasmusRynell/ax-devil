@@ -40,7 +40,6 @@ export type Matrix = "bt601" | "bt709";
 
 /** One decoded frame as sent: transport-ready planes, viewing the received message without copying. */
 export type VideoFrame = {
-  lane: number;
   sequenceId: number;
   timestampUs: number;
   keyframe: boolean;
@@ -117,17 +116,17 @@ export function parseEnvelope(data: ArrayBufferLike | ArrayBufferView): Envelope
 
   if (kind === KIND_VIDEO_FRAME) {
     if (payload < VIDEO_FRAME_HEADER_BYTES) throw new EnvelopeError("video header too short");
-    const format = FORMATS[view.getUint8(40)];
-    const matrix = MATRICES[view.getUint8(41)];
-    if (format === undefined) throw new EnvelopeError(`unknown pixel layout ${view.getUint8(40)}`);
-    if (matrix === undefined) throw new EnvelopeError(`unknown color matrix ${view.getUint8(41)}`);
-    const flags = view.getUint32(28, true);
+    const format = FORMATS[view.getUint8(36)];
+    const matrix = MATRICES[view.getUint8(37)];
+    if (format === undefined) throw new EnvelopeError(`unknown pixel layout ${view.getUint8(36)}`);
+    if (matrix === undefined) throw new EnvelopeError(`unknown color matrix ${view.getUint8(37)}`);
+    const flags = view.getUint32(24, true);
     const strides: [number, number, number] = [
+      view.getUint32(40, true),
       view.getUint32(44, true),
       view.getUint32(48, true),
-      view.getUint32(52, true),
     ];
-    const lengths = [view.getUint32(56, true), view.getUint32(60, true), view.getUint32(64, true)];
+    const lengths = [view.getUint32(52, true), view.getUint32(56, true), view.getUint32(60, true)];
     const byteLength = lengths[0] + lengths[1] + lengths[2];
     if (payload + byteLength > bytes.length) throw new EnvelopeError("frame planes are truncated");
     const planeAt = (start: number, length: number) =>
@@ -135,16 +134,15 @@ export function parseEnvelope(data: ArrayBufferLike | ArrayBufferView): Envelope
     return {
       kind: "frame",
       frame: {
-        lane: view.getUint32(8, true),
-        sequenceId: readU64(view, 12),
-        timestampUs: readI64(view, 20),
+        sequenceId: readU64(view, 8),
+        timestampUs: readI64(view, 16),
         keyframe: (flags & FLAG_KEYFRAME) !== 0,
         last: (flags & FLAG_LAST_FRAME) !== 0,
-        width: view.getUint32(32, true),
-        height: view.getUint32(36, true),
+        width: view.getUint32(28, true),
+        height: view.getUint32(32, true),
         format,
         matrix,
-        fullRange: view.getUint8(42) !== 0,
+        fullRange: view.getUint8(38) !== 0,
         strides,
         planes: [
           planeAt(0, lengths[0]),

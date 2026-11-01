@@ -1,23 +1,26 @@
 //! Wire types and envelope constants for the playback WebSocket.
 //!
 //! Text frames carry the JSON messages below; binary frames carry envelopes. Every envelope starts with a fixed
-//! 32-byte head, little-endian:
+//! 28-byte head, little-endian:
 //!
 //! ```text
-//! 0 u32 magic | 4 u8 version | 5 u8 kind | 6 u16 header_len (payload start offset) | 8 u32 lane
-//! 12 u64 sequence_id | 20 i64 timestamp_us | 28 u32 flags
+//! 0 u32 magic | 4 u8 version | 5 u8 kind | 6 u16 header_len (payload start offset)
+//! 8 u64 sequence_id | 16 i64 timestamp_us | 24 u32 flags
 //! ```
 //!
 //! A VideoFrame (kind 1) continues the head with the video header, and its planes start at `header_len`
 //! (at least [`VIDEO_FRAME_HEADER_BYTES`]):
 //!
 //! ```text
-//! 32 u32 width | 36 u32 height | 40 u8 layout | 41 u8 matrix | 42 u8 range (0 limited) | 43 pad
-//! 44 u32 stride[3] | 56 u32 plane_len[3] | planes, one after the other
+//! 28 u32 width | 32 u32 height | 36 u8 layout | 37 u8 matrix | 38 u8 range (0 limited) | 39 pad
+//! 40 u32 stride[3] | 52 u32 plane_len[3] | planes, one after the other
 //! ```
 //!
 //! A Timeline (kind 3) has its `f64` times in microseconds, by sequence id, from `header_len` (at least
-//! [`ENVELOPE_HEAD_BYTES`]) to the end. Kind 2 is reserved for overlays.
+//! [`ENVELOPE_HEAD_BYTES`]; the backend sends [`TIMELINE_HEADER_BYTES`] so the times are 8-byte aligned) to the end.
+//!
+//! A frame belongs to the viewer's one video, so the head has no lane. Kind 2 is reserved for overlays, which are per
+//! lane: their payload header will carry the lane id and the frame's sequence id.
 
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
@@ -39,12 +42,14 @@ constants! {
     /// The envelope format version, byte 4.
     ENVELOPE_VERSION: u8 = 1;
     /// Bytes of the fixed envelope head.
-    ENVELOPE_HEAD_BYTES: u16 = 32;
+    ENVELOPE_HEAD_BYTES: u16 = 28;
+    /// Where the times of a Timeline start: the head padded to a multiple of 8 for the `f64` values.
+    TIMELINE_HEADER_BYTES: u16 = 32;
     /// Where the planes of a VideoFrame start, at least; the head plus the video header.
-    VIDEO_FRAME_HEADER_BYTES: u16 = 68;
+    VIDEO_FRAME_HEADER_BYTES: u16 = 64;
     /// Envelope kind: one decoded video frame.
     KIND_VIDEO_FRAME: u8 = 1;
-    /// Envelope kind: overlay data for a frame; reserved for M2, receivers ignore it.
+    /// Envelope kind: overlay data of one lane for a frame; reserved for M2, receivers ignore it.
     KIND_OVERLAY: u8 = 2;
     /// Envelope kind: the presentation time of every frame.
     KIND_TIMELINE: u8 = 3;

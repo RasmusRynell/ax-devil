@@ -236,12 +236,17 @@ export const ENVELOPE_VERSION = 1;
 /**
  * Bytes of the fixed envelope head.
  */
-export const ENVELOPE_HEAD_BYTES = 32;
+export const ENVELOPE_HEAD_BYTES = 28;
+
+/**
+ * Where the times of a Timeline start: the head padded to a multiple of 8 for the `f64` values.
+ */
+export const TIMELINE_HEADER_BYTES = 32;
 
 /**
  * Where the planes of a VideoFrame start, at least; the head plus the video header.
  */
-export const VIDEO_FRAME_HEADER_BYTES = 68;
+export const VIDEO_FRAME_HEADER_BYTES = 64;
 
 /**
  * Envelope kind: one decoded video frame.
@@ -249,7 +254,7 @@ export const VIDEO_FRAME_HEADER_BYTES = 68;
 export const KIND_VIDEO_FRAME = 1;
 
 /**
- * Envelope kind: overlay data for a frame; reserved for M2, receivers ignore it.
+ * Envelope kind: overlay data of one lane for a frame; reserved for M2, receivers ignore it.
  */
 export const KIND_OVERLAY = 2;
 

@@ -174,16 +174,15 @@ pub enum Event {
     Closed,
 }
 
-/// The envelope head, checked: magic, version 1, lane 0 and a payload that starts where `header_len` says.
+/// The envelope head, checked: magic, version 1 and a payload that starts where `header_len` says.
 pub fn parse_envelope(bytes: &[u8]) -> Event {
     assert_eq!(&bytes[..4], b"AXDV");
     assert_eq!(bytes[4], 1, "envelope version");
     let payload_at = u16::from_le_bytes([bytes[6], bytes[7]]) as usize;
-    assert_eq!(u32_at(bytes, 8), 0, "lane");
     match bytes[5] {
         1 => {
-            assert_eq!(payload_at, 68);
-            let lengths = [u32_at(bytes, 56), u32_at(bytes, 60), u32_at(bytes, 64)];
+            assert_eq!(payload_at, 64);
+            let lengths = [u32_at(bytes, 52), u32_at(bytes, 56), u32_at(bytes, 60)];
             let planes = bytes[payload_at..].to_vec();
             assert_eq!(
                 planes.len(),
@@ -191,12 +190,12 @@ pub fn parse_envelope(bytes: &[u8]) -> Event {
                 "the message is exactly its planes"
             );
             Event::Frame(Frame {
-                sequence_id: u64_at(bytes, 12),
-                timestamp_us: u64_at(bytes, 20) as i64,
-                flags: u32_at(bytes, 28),
-                width: u32_at(bytes, 32),
-                height: u32_at(bytes, 36),
-                layout: bytes[40],
+                sequence_id: u64_at(bytes, 8),
+                timestamp_us: u64_at(bytes, 16) as i64,
+                flags: u32_at(bytes, 24),
+                width: u32_at(bytes, 28),
+                height: u32_at(bytes, 32),
+                layout: bytes[36],
                 plane_lengths: lengths,
                 planes,
             })
