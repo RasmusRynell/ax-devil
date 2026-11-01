@@ -151,7 +151,7 @@ export class PlaybackSession {
     this.#speed = clampSpeed(deps.resume?.speed ?? 1);
   }
 
-  /** Where the next session should open: the position asked for, and the speed. Read before `close`. */
+  /** Where the next session should open: the position asked for, and the speed. Kept after the video is released. */
   resumeState(): ResumeState {
     return { frame: this.#clock?.playhead ?? this.#resumeAt ?? 0, speed: this.#speed };
   }
@@ -422,7 +422,6 @@ export class PlaybackSession {
 
   /** The socket closed on its own: drop the video and open again where it left off, paused. */
   #lose(): void {
-    this.#resumeAt = this.#clock?.playhead ?? this.#resumeAt;
     this.#stoppedByLoss ||= this.#clock?.playing ?? false;
     this.#releaseVideo();
     this.#connection = undefined;
@@ -441,8 +440,9 @@ export class PlaybackSession {
     this.#publish();
   }
 
-  /** Stops the display loop and drops the clock and every held frame. */
+  /** Stops the display loop and drops the clock and every held frame, keeping the position for the next opening. */
   #releaseVideo(): void {
+    this.#resumeAt = this.#clock?.playhead ?? this.#resumeAt;
     this.#cancelFrame?.();
     this.#cancelFrame = undefined;
     this.#clock = undefined;

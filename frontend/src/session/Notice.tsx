@@ -105,6 +105,9 @@ export function Banner({ connection, ownerAway, ended, onDismiss }: Props) {
           ? "Owner reconnecting…"
           : null;
   if (!text) return null;
+  // A server that has a password turns away a visit that brings none or the wrong one, and Dismiss would only visit again.
+  const password =
+    ended === "invalid" ? credential()?.kind === "password" : ended === "refused" && !credential();
   return (
     <div
       role={ended ? "alert" : "status"}
@@ -113,8 +116,7 @@ export function Banner({ connection, ownerAway, ended, onDismiss }: Props) {
       {text}
       {ended === "invalid" && remote ? (
         <RejectedPassword />
-      ) : ended === "refused" && !credential() ? (
-        // A server that has a password turns away a visit that brings none, and Dismiss would only visit again.
+      ) : password ? (
         <PasswordDialog />
       ) : (
         ended && <Button onClick={onDismiss}>Dismiss</Button>

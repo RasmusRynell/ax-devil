@@ -180,6 +180,15 @@ describe("resuming", () => {
     session.setSpeed(0.5);
     expect(session.resumeState()).toEqual({ frame: 3, speed: 0.5 });
   });
+
+  it("keeps the position when the stream is revoked, for the replacement a seat restart opens", async () => {
+    const { session, server } = await setup();
+    server.open();
+    session.seek(6);
+    server.drop(4403);
+    expect(session.getSnapshot().status).toBe("failed");
+    expect(session.resumeState()).toEqual({ frame: 6, speed: 1 });
+  });
 });
 
 describe("what the window asks for and keeps", () => {

@@ -64,7 +64,10 @@ describe("a server that turned the password down", () => {
 });
 
 describe("a browser that opened a server with a password", () => {
-  beforeEach(() => window.sessionStorage.clear());
+  beforeEach(() => {
+    window.sessionStorage.clear();
+    delete window.axDevilWindow;
+  });
 
   const open = () =>
     render(
@@ -84,6 +87,27 @@ describe("a browser that opened a server with a password", () => {
     expect(reload).toHaveBeenCalledOnce();
 
     // The page loads again with the password it now holds.
+    cleanup();
+    FakeSocket.sockets = [];
+    open();
+    await act(async () => {});
+    expect(screen.getByText("app")).toBeTruthy();
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+
+  it("asks again for a password the server turned down, and is let in with the right one", async () => {
+    window.sessionStorage.setItem(
+      "ax-devil.credential",
+      JSON.stringify({ kind: "password", password: "wrong" }),
+    );
+    open();
+    await act(async () => {});
+    expect((await screen.findByRole("alert")).textContent).toContain("not valid");
+    expect(screen.queryByRole("button", { name: "Dismiss" })).toBeNull();
+    fireEvent.change(screen.getByLabelText("Password"), { target: { value: "right" } });
+    fireEvent.click(screen.getByRole("button", { name: "OK" }));
+    expect(reload).toHaveBeenCalledOnce();
+
     cleanup();
     FakeSocket.sockets = [];
     open();
