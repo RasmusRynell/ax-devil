@@ -1,29 +1,24 @@
-//! Between the Session socket's wire types and the sessions crate: what a received command asks for, what a seat is
-//! sent, and the token bucket that bounds what a seat may send.
+//! Between the Session socket's wire types and the sessions crate: what a received command asks for, and the cursor
+//! and token-bucket limits on what a seat may send.
 
-use api_types::{
-    CURSOR_NAME_MAX, CursorElement, CursorPoint, RefusalCode, SeatInfo, SessionCommand,
-    workspace::NewItem,
-};
-use sessions::session::{Command, ContentRef, RosterEntry, StreamKey};
+use api_types::{CURSOR_NAME_MAX, CursorElement, CursorPoint, SessionCommand, workspace::NewItem};
+use sessions::session::{Command, Refusal};
 use std::path::Path;
 use tokio::time::Instant;
-use workspace::{ContentId, ItemId};
-use workspace_store::{ContentGen, DocCommand};
+use workspace_store::DocCommand;
 
-/// The command a client asked for. A command whose own content is not valid, such as an unreadable item id or a path
-/// that names no file, is `Invalid` before it reaches the Session.
-pub(super) fn command(wire: SessionCommand) -> Result<Command, RefusalCode> {
+/// The command a client asked for. A command whose own content is not valid, such as a path that names no file, is
+/// `Invalid` before it reaches the Session.
+pub(super) fn command(wire: SessionCommand) -> Result<Command, Refusal> {
     Ok(match wire {
         SessionCommand::Content { command } => Command::Content(doc_command(command)?),
         SessionCommand::Follow => Command::Follow,
-        SessionCommand::Control { control } => Command::Control(control.into()),
-        SessionCommand::RequestTicket { key } => Command::RequestTicket(stream_key(key)?),
+        SessionCommand::Control { control } => Command::Control(control),
+        SessionCommand::RequestTicket { key } => Command::RequestTicket(key),
     })
 }
 
-fn doc_command(wire: api_types::DocCommand) -> Result<DocCommand, RefusalCode> {
-    let item = |text: &str| ItemId::parse(text).ok_or(RefusalCode::Invalid);
+fn doc_command(wire: api_types::DocCommand) -> Result<DocCommand, Refusal> {
     Ok(match wire {
         api_types::DocCommand::AddItems { items, open } => {
             // The intake checks every entry first, so a request that has one bad entry adds nothing.
@@ -35,59 +30,13 @@ fn doc_command(wire: api_types::DocCommand) -> Result<DocCommand, RefusalCode> {
                 .collect::<Result<Vec<_>, _>>()
                 .map_err(|error| {
                     tracing::debug!("An item was refused: {}", error.reason);
-                    RefusalCode::Invalid
+                    Refusal::Invalid
                 })?;
             DocCommand::AddItems { items, open }
         }
-        api_types::DocCommand::OpenViewer { item: text } => DocCommand::OpenViewer(item(&text)?),
-        api_types::DocCommand::CloseViewer { item: text } => DocCommand::CloseViewer(item(&text)?),
+        api_types::DocCommand::OpenViewer { item } => DocCommand::OpenViewer(item),
+        api_types::DocCommand::CloseViewer { item } => DocCommand::CloseViewer(item),
     })
-}
-
-fn stream_key(wire: api_types::StreamKey) -> Result<StreamKey, RefusalCode> {
-    Ok(match wire {
-        api_types::StreamKey::Frames {
-            content,
-            generation,
-        } => StreamKey::Frames(ContentRef {
-            content: ContentId::parse(&content).ok_or(RefusalCode::Invalid)?,
-            generation: ContentGen(generation),
-        }),
-        api_types::StreamKey::Live { item, generation } => StreamKey::Live {
-            item: ItemId::parse(&item).ok_or(RefusalCode::Invalid)?,
-            generation: ContentGen(generation),
-        },
-    })
-}
-
-/// One seat of the roster as the wire carries it.
-pub(super) fn seat_info(entry: &RosterEntry) -> SeatInfo {
-    let RosterEntry {
-        seat,
-        name,
-        color,
-        kind,
-        mode,
-        present,
-        shares_cursor,
-    } = entry;
-    SeatInfo {
-        id: seat.0,
-        name: name.clone(),
-        color: *color,
-        role: (*kind).into(),
-        mode: (*mode).into(),
-        present: *present,
-        shares_cursor: *shares_cursor,
-    }
-}
-
-/// The sessions crate's form of a seat's cursor choices.
-pub(super) fn cursor_options(options: api_types::CursorOptions) -> sessions::CursorOptions {
-    sessions::CursorOptions {
-        show: options.show,
-        share: options.share,
-    }
 }
 
 /// Keeps every fraction inside `[0, 1]`; `None` when a name is too long to broadcast to every seat.

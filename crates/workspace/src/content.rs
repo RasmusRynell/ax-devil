@@ -1,8 +1,9 @@
-use foundation::ItemId;
-use std::{fmt, path::PathBuf};
+use foundation::{HostPath, ItemId};
+use serde::{Deserialize, Deserializer, Serialize, Serializer, de};
+use std::fmt;
 
 /// Names one Content for as long as its item exists. Derived from the item id, so it names the same Content after
-/// the item resolves again.
+/// the item resolves again. It travels as its text, and text that is not a Content id does not deserialize.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct ContentId(String);
 
@@ -12,15 +13,25 @@ impl ContentId {
         Self(item.to_string())
     }
 
-    /// The id a client names as text: the Content of the item with that id. `None` when the text is not an item id,
-    /// so nothing a client sends can name a Content no item could have.
-    pub fn parse(text: &str) -> Option<Self> {
-        ItemId::parse(text).map(|item| Self::of_item(&item))
-    }
-
     /// The id as text, the form that crosses the wire.
     pub fn as_str(&self) -> &str {
         &self.0
+    }
+}
+
+impl Serialize for ContentId {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.serialize_str(&self.0)
+    }
+}
+
+/// Only the id of an item's Content deserializes, so nothing a client sends can name a Content no item could have.
+impl<'de> Deserialize<'de> for ContentId {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let text = String::deserialize(deserializer)?;
+        ItemId::parse(&text)
+            .map(|item| Self::of_item(&item))
+            .ok_or_else(|| de::Error::custom("that is not a content id"))
     }
 }
 
@@ -34,7 +45,7 @@ impl fmt::Display for ContentId {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct FileVideoSource {
     /// The video file.
-    pub path: PathBuf,
+    pub path: HostPath,
 }
 
 /// A recorded video a viewer can seek in.

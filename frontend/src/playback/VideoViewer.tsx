@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
-import type { StreamKey } from "../generated/api";
+import type { ContentRef } from "../generated/api";
 import { useCan, useFollowing, useServerClock, useStream, useView } from "../session/session";
 import { useViewerActions } from "../viewer/actions";
 import type { ViewerProps } from "../viewers";
@@ -128,8 +128,8 @@ export function VideoViewer({
   content,
   connect = connectWorker,
 }: ViewerProps<"SeekableVideo"> & { connect?: Connect }) {
-  const key = useMemo<StreamKey>(
-    () => ({ type: "frames", content: content.id, generation: content.generation }),
+  const key = useMemo<ContentRef>(
+    () => ({ content: content.id, generation: content.generation }),
     [content.id, content.generation],
   );
   const ticket = useStream(key);

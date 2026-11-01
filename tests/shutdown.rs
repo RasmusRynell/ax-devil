@@ -37,8 +37,7 @@ async fn ctrl_c_ends_open_viewers_and_the_backend_exits() {
     let mut session = Socket::own(&address, None).await;
     let doc = session.settled_doc().await;
     let content = &doc["doc"]["workspace"]["items"][0]["resolution"]["content"];
-    let key =
-        json!({"type": "frames", "content": content["id"], "generation": content["generation"]});
+    let key = json!({"content": content["id"], "generation": content["generation"]});
     session
         .say(json!({"type": "command", "seq": 1, "cmd": {"type": "requestTicket", "key": key}}))
         .await;

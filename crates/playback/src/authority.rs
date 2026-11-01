@@ -3,7 +3,9 @@
 
 use crate::{Priority, Want};
 use foundation::{MediaTime, Timeline};
+use serde::{Deserialize, Serialize};
 use std::ops::RangeInclusive;
+use ts_rs::TS;
 
 /// A follower may be this far behind the presenter's frame (media time).
 const BEHIND_US: i64 = 1_000_000;
@@ -16,17 +18,19 @@ const AHEAD_FLOOR_FRAMES: u64 = 120;
 /// No holder may keep more than this many frames on either side of its playhead, whatever it asks.
 const MAX_WINDOW_FRAMES: u32 = 65_536;
 
-/// What a presenter says the shared clock is doing; the Rust twin of `ClockIntent` in
-/// `frontend/src/playback/clock.ts`. Times are microseconds.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+/// What a presenter says the Session's clock is doing, for one viewer. Times are microseconds.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
 pub struct ClockIntent {
     /// The frame the presenter asked for.
+    #[ts(type = "number")]
     pub frame: u64,
     /// Whether the clock runs.
     pub playing: bool,
     /// Speed in hundredths: 100 is real time.
     pub speed_centi: u32,
     /// When the presenter stamped the intent, in server time.
+    #[ts(type = "number")]
     pub at_us: i64,
 }
 

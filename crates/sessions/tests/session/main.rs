@@ -12,7 +12,7 @@ use sessions::{
     CursorOptions,
     session::{
         Access, Command, Completer, Completion, ContentRef, Control, Handle, Reply, Runner,
-        Service, SessionState, Spawn, StreamKey, StreamLease, Work,
+        Service, SessionState, Spawn, StreamLease, Work,
     },
 };
 use std::{
@@ -74,7 +74,7 @@ impl Rig {
     pub(crate) fn shared(&self, access: Access) -> (Handle<u8>, Handle<u8>) {
         let owner = self.service.create(true, CursorOptions::default()).unwrap();
         owner
-            .command(Command::Control(Control::Share(access)))
+            .command(Command::Control(Control::Share { access }))
             .unwrap();
         let watcher = self.join(&owner);
         (owner, watcher)
@@ -86,7 +86,7 @@ impl Rig {
     }
 
     /// Adds a video, opens its viewer and finishes resolving it.
-    pub(crate) fn open_video(&self, owner: &Handle<u8>, name: &str) -> (ItemId, StreamKey) {
+    pub(crate) fn open_video(&self, owner: &Handle<u8>, name: &str) -> (ItemId, ContentRef) {
         let item = self.video(name);
         let id = item.id;
         owner
@@ -105,7 +105,7 @@ pub(crate) fn link(owner: &Handle<u8>) -> sessions::JoinLink {
 }
 
 /// The key of the stream that carries `item`'s Content as it is resolved now.
-pub(crate) fn key(state: &SessionState, item: ItemId) -> StreamKey {
+pub(crate) fn key(state: &SessionState, item: ItemId) -> ContentRef {
     let Resolution::Resolved {
         content,
         generation,
@@ -113,17 +113,17 @@ pub(crate) fn key(state: &SessionState, item: ItemId) -> StreamKey {
     else {
         panic!("the item is not resolved");
     };
-    StreamKey::Frames(ContentRef {
+    ContentRef {
         content: content.id().clone(),
         generation: *generation,
-    })
+    }
 }
 
 /// Asks `seat` for a ticket for `key` and redeems it.
 pub(crate) fn stream(
     service: &Service<u8>,
     seat: &Handle<u8>,
-    key: &StreamKey,
+    key: &ContentRef,
 ) -> Result<StreamLease, sessions::session::Refusal> {
     let Reply::Ticket(ticket) = seat.command(Command::RequestTicket(key.clone()))? else {
         panic!("a ticket request answers with a ticket");

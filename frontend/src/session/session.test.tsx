@@ -136,6 +136,7 @@ describe("session", () => {
       docRev: 9,
       presenterRev: 9,
       access: "owner" as const,
+      can: { view: true, content: true, host: true, control: true },
       mode: "following" as const,
       view: part,
       viewsDone: 0,

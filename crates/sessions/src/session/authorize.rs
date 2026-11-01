@@ -1,35 +1,26 @@
 //! The one rule for what a seat may do: commands and stream demand alike.
 //!
-//! Every `match` here is exhaustive with no wildcard arm, so a new [`Use`], [`Scope`], [`StreamKey`] or content kind
-//! does not compile until its policy is decided.
+//! Every `match` here is exhaustive with no wildcard arm, so a new [`Use`], [`Scope`] or content kind does not compile
+//! until its policy is decided.
 
 use super::{Access, Lease, Scope, SeatId, SeatKind, SessionState, state::Doc};
 use playback::{Authority, ClockIntent, Priority};
+use serde::{Deserialize, Serialize};
 use std::fmt;
+use ts_rs::TS;
 use workspace::{Content, ContentId, ItemId};
 use workspace_store::{ContentGen, Resolution, WorkspaceState};
 
-/// A Content at one commit of its resolution.
-#[derive(Clone, Debug, PartialEq, Eq)]
+/// A stream a seat asks a ticket for: the Content at one commit of its resolution. Authority over the stream ends
+/// with the generation, and the Content's kind decides what a seat may demand of it.
+#[derive(Clone, Debug, PartialEq, Eq, Deserialize, TS)]
 pub struct ContentRef {
-    /// The Content. Stable across re-resolution.
+    /// The Content's id. Stable across re-resolution.
+    #[ts(type = "string")]
     pub content: ContentId,
-    /// The commit. Re-resolving or reopening gives a new one.
+    /// The commit of the Content's resolution, as the Doc names it. Re-resolving or reopening gives a new one.
+    #[ts(type = "number")]
     pub generation: ContentGen,
-}
-
-/// What a stream carries. Authority over it ends with the generation in its key.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub enum StreamKey {
-    /// The frames of a recorded video.
-    Frames(ContentRef),
-    /// The current frames of a live item.
-    Live {
-        /// The item.
-        item: ItemId,
-        /// The commit of its Content.
-        generation: ContentGen,
-    },
 }
 
 /// What a seat is trying to do.
@@ -37,31 +28,17 @@ pub enum StreamKey {
 pub enum Use<'a> {
     /// A command of this scope.
     Command(Scope),
-    /// Receive a stream.
-    Stream(&'a StreamKey),
-    /// Reserved: compute something private to the seat from a Content. No computation exists and who may run one is
-    /// undecided, so every seat is refused until a feature defines the policy here.
-    Compute(&'a ContentRef),
+    /// Receive the stream of this Content.
+    Stream(&'a ContentRef),
 }
 
-/// How a stream's holder is bound.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Demand {
-    /// The holder chooses its own frames, with this priority against other holders.
-    Own {
-        /// How urgent its frames are.
-        priority: Priority,
-    },
-    /// The holder follows the presenter's clock.
-    Follow,
-}
-
-/// Why a seat was not allowed.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+/// Why a command or a connection was refused. A code and nothing else: the client words it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, TS)]
+#[ts(rename = "RefusalCode")]
 pub enum Refusal {
-    /// The seat is not in the session, its lease is stale, or the session ended.
+    /// The seat is not in the Session, its connection was replaced, or the Session ended.
     SeatGone,
-    /// The seat's role does not allow it.
+    /// The seat's standing does not allow it.
     NotAllowed,
     /// Sharing is off.
     NotSharing,
@@ -69,31 +46,32 @@ pub enum Refusal {
     AlreadySharing,
     /// The Content is not open, not resolved, or not at the generation asked for.
     ContentUnavailable,
-    /// The seat or the session holds as many streams as it may.
+    /// The seat or the Session holds as many streams as it may.
     TooManyStreams,
     /// The ticket is unknown, expired, used, or bound to something that no longer exists.
     BadTicket,
-    /// Reserved policy: not decided yet.
-    Unsupported,
-    /// The link's secret is not the session's current one.
+    /// The link is no longer valid.
     Link,
-    /// The session already has as many seats as it may.
+    /// The Session already has as many seats as it may, or the server as many Sessions.
     Full,
+    /// The input is not valid: text that is not a session id, secret, ticket or join link, or a command's own content
+    /// that was refused before it reached the Session, such as a path that names no file.
+    Invalid,
 }
 
 impl fmt::Display for Refusal {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(match self {
-            Self::SeatGone => "this seat is no longer in the session",
+            Self::SeatGone => "that session or seat no longer exists",
             Self::NotAllowed => "your role cannot do that",
             Self::NotSharing => "the session is not shared",
             Self::AlreadySharing => "the session is already shared",
             Self::ContentUnavailable => "that content is not open",
             Self::TooManyStreams => "too many streams",
             Self::BadTicket => "that ticket is not valid",
-            Self::Unsupported => "that is not supported yet",
             Self::Link => "that link is no longer valid",
-            Self::Full => "that session is full",
+            Self::Full => "that session or server is full",
+            Self::Invalid => "that is not a session id, link or ticket",
         })
     }
 }
@@ -113,6 +91,12 @@ pub(super) enum Standing {
 impl Standing {
     fn allows(self, scope: Scope, files: bool) -> bool {
         match scope {
+            // Back to the presenter's view: a seat that follows, or explores a view it may drop. An editing seat's
+            // view is its own to keep, and a watching seat has none.
+            Scope::Follow => match self {
+                Self::Owner | Self::Following | Self::Exploring => true,
+                Self::Watching | Self::Editing => false,
+            },
             Scope::View => match self {
                 Self::Owner | Self::Following | Self::Exploring | Self::Editing => true,
                 Self::Watching => false,
@@ -138,15 +122,32 @@ impl Standing {
             Self::Watching | Self::Following | Self::Exploring | Self::Editing => Priority::Low,
         }
     }
+}
 
-    fn demand(self) -> Demand {
-        match self {
-            Self::Watching | Self::Following => Demand::Follow,
-            Self::Owner | Self::Exploring | Self::Editing => Demand::Own {
-                priority: self.priority(),
-            },
-        }
-    }
+/// What a seat may do, one flag per kind of command a window offers a control for; sent to the seat so its UI disables
+/// what the backend would refuse. Derived from the same role table as `authorize`.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, TS)]
+pub struct Can {
+    /// Change what the seat's window shows.
+    pub view: bool,
+    /// Change the Doc's content.
+    pub content: bool,
+    /// Read the host's files.
+    pub host: bool,
+    /// Change who the session is shared with.
+    pub control: bool,
+}
+
+/// What `seat` at `lease` may do, or `SeatGone` when it is not a current seat of a live session.
+pub fn can(state: &SessionState, seat: SeatId, lease: Lease) -> Result<Can, Refusal> {
+    let standing = standing(state, seat, lease)?;
+    let allows = |scope| standing.allows(scope, state.files);
+    Ok(Can {
+        view: allows(Scope::View),
+        content: allows(Scope::Content),
+        host: allows(Scope::Host),
+        control: allows(Scope::Control),
+    })
 }
 
 /// The standing of `seat` at `lease`, or `SeatGone` when it is not a current seat of a live session.
@@ -181,58 +182,63 @@ pub(super) fn standing(
     }
 }
 
-/// Whether `seat` at `lease` may do `use_`, and how a stream it is given is bound. Commands ignore the demand.
-///
-/// A stream also needs its Content to be open, resolved and at the generation the key names.
+/// Whether `seat` at `lease` may do `use_`. A stream also needs its Content to be open, resolved and at the
+/// generation the key names.
 pub fn authorize(
     state: &SessionState,
     seat: SeatId,
     lease: Lease,
     use_: Use<'_>,
-) -> Result<Demand, Refusal> {
-    let standing = standing(state, seat, lease)?;
+) -> Result<(), Refusal> {
     match use_ {
         Use::Command(scope) => {
-            if standing.allows(scope, state.files) {
-                Ok(standing.demand())
+            if standing(state, seat, lease)?.allows(scope, state.files) {
+                Ok(())
             } else {
                 Err(Refusal::NotAllowed)
             }
         }
-        Use::Stream(key) => {
-            item_of(&state.doc, key).ok_or(Refusal::ContentUnavailable)?;
-            Ok(match key {
-                StreamKey::Frames(_) => standing.demand(),
-                // Live frames are the current ones: there is no position to follow or scrub, only a priority.
-                StreamKey::Live { .. } => Demand::Own {
-                    priority: standing.priority(),
-                },
-            })
-        }
-        // TODO: decided with the first private computation (who may compute what, from which Content).
-        Use::Compute(_) => Err(Refusal::Unsupported),
+        Use::Stream(key) => authorize_stream(state, seat, lease, key).map(drop),
     }
 }
 
-/// The item whose open, resolved Content `key` names at exactly the generation it carries.
-pub(super) fn item_of(doc: &Doc, key: &StreamKey) -> Option<ItemId> {
+/// What `seat` at `lease` may demand of the stream of the Content `key` names, as it is told and as the route enforces it: its own
+/// priority, or the presenter's clock for that item (paused at the start while the presenter has not set one).
+/// Refused like [`authorize`] with `Use::Stream`.
+pub fn authorize_stream(
+    state: &SessionState,
+    seat: SeatId,
+    lease: Lease,
+    key: &ContentRef,
+) -> Result<Authority, Refusal> {
+    let standing = standing(state, seat, lease)?;
+    let (item, content) = open_content(&state.doc, key).ok_or(Refusal::ContentUnavailable)?;
+    // What a seat may demand of a stream depends on what the stream carries.
+    Ok(match content {
+        Content::SeekableVideo(_) => match standing {
+            Standing::Watching | Standing::Following => {
+                let intent = state
+                    .presenter
+                    .viewers
+                    .get(&item)
+                    .and_then(|viewer| viewer.clock)
+                    .unwrap_or(AT_START);
+                Authority::Follow { intent }
+            }
+            Standing::Owner | Standing::Exploring | Standing::Editing => Authority::Own {
+                priority: standing.priority(),
+            },
+        },
+    })
+}
+
+/// The item and Content `key` names, at exactly the generation it carries, while the item is open and resolved.
+pub(super) fn open_content<'a>(doc: &'a Doc, key: &ContentRef) -> Option<(ItemId, &'a Content)> {
     let workspace = &doc.workspace;
-    match key {
-        StreamKey::Frames(of) => workspace.open.iter().copied().find(|item| {
-            current(workspace, item).is_some_and(|(content, generation)| {
-                content.id() == &of.content && generation == of.generation
-            })
-        }),
-        StreamKey::Live { item, generation } => current(workspace, item)
-            .is_some_and(|(content, current)| current == *generation && is_live(content))
-            .then_some(*item),
-    }
-}
-
-/// The Content `key` names, at exactly the generation it carries, while it is open and resolved.
-pub(super) fn content_of<'a>(doc: &'a Doc, key: &StreamKey) -> Option<&'a Content> {
-    let item = item_of(doc, key)?;
-    current(&doc.workspace, &item).map(|(content, _)| content)
+    workspace.open.iter().copied().find_map(|item| {
+        let (content, generation) = current(workspace, &item)?;
+        (content.id() == &key.content && generation == key.generation).then_some((item, content))
+    })
 }
 
 /// The Content of `item` and its commit, while the item is open and resolved.
@@ -246,27 +252,6 @@ fn current<'a>(workspace: &'a WorkspaceState, item: &ItemId) -> Option<(&'a Cont
             generation,
         } => Some((content, *generation)),
         Resolution::Pending { .. } | Resolution::Failed(_) => None,
-    }
-}
-
-fn is_live(content: &Content) -> bool {
-    match content {
-        Content::SeekableVideo(_) => false,
-    }
-}
-
-/// What the route enforces for a stream bound by `demand`: its own priority, or the presenter's clock for that
-/// item (paused at the start while the presenter has not set one).
-pub(super) fn authority(state: &SessionState, key: &StreamKey, demand: Demand) -> Authority {
-    match demand {
-        Demand::Own { priority } => Authority::Own { priority },
-        Demand::Follow => {
-            let intent = item_of(&state.doc, key)
-                .and_then(|item| state.presenter.viewers.get(&item))
-                .and_then(|viewer| viewer.clock)
-                .unwrap_or(AT_START);
-            Authority::Follow { intent }
-        }
     }
 }
 

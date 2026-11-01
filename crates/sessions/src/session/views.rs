@@ -5,12 +5,15 @@
 
 use super::state::Doc;
 use playback::ClockIntent;
+use serde::{Deserialize, Serialize};
 use std::{collections::BTreeMap, time::Duration};
 use tokio::time::Instant;
+use ts_rs::TS;
 use workspace::ItemId;
 
-/// The views the sidebar can show.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+/// What the sidebar shows; part of the view a session shares.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "lowercase")]
 pub enum SidebarView {
     /// The whole Workspace.
     #[default]
@@ -28,7 +31,8 @@ pub enum SidebarView {
 }
 
 /// What the sidebar shows.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
 pub struct Sidebar {
     /// Which view.
     pub view: SidebarView,
@@ -46,20 +50,27 @@ impl Default for Sidebar {
 }
 
 /// What one open viewer shows.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
 pub struct ViewerView {
-    /// What this window's clock for the viewer is doing; `None` until it has one.
+    /// What this window's clock for the viewer is doing; absent until it has one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
     pub clock: Option<ClockIntent>,
 }
 
-/// What a window shows of the Doc.
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
+/// What a window shows of the Doc. Items the Doc does not have open are dropped by the backend.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
 pub struct View {
     /// The sidebar.
     pub sidebar: Sidebar,
-    /// The viewer in front; `None` shows the welcome page.
+    /// The item of the viewer in front; absent shows the welcome page.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional, as = "Option<String>")]
     pub active: Option<ItemId>,
-    /// What each open viewer shows.
+    /// What each open viewer shows, by item id.
+    #[ts(as = "BTreeMap<String, ViewerView>")]
     pub viewers: BTreeMap<ItemId, ViewerView>,
 }
 
@@ -80,7 +91,11 @@ pub fn restrict(view: &View, doc: &Doc) -> View {
         viewers: viewers
             .iter()
             .filter(|(item, _)| open.contains(item))
-            .map(|(item, viewer)| (*item, *viewer))
+            .map(|(item, viewer)| {
+                // Destructured too: a new field of a viewer's view must decide here whether the Doc restricts it.
+                let ViewerView { clock } = viewer;
+                (*item, ViewerView { clock: *clock })
+            })
             .collect(),
     }
 }
@@ -132,5 +147,36 @@ impl ViewLane {
     pub fn flush(&mut self, now: Instant) -> Option<(u64, View)> {
         self.last_taken = Some(now);
         self.waiting.take()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn a_view_reads_as_the_wire_writes_it_and_an_id_that_names_no_item_is_refused() {
+        let (front, behind) = (ItemId::generate(), ItemId::generate());
+        let message = json!({
+            "sidebar": { "view": "sessions", "open": false },
+            "active": front.to_string(),
+            "viewers": {
+                front.to_string(): {},
+                behind.to_string(): {
+                    "clock": { "frame": 7, "playing": true, "speedCenti": 150, "atUs": -3 },
+                },
+            },
+        });
+        let view: View = serde_json::from_value(message.clone()).unwrap();
+        assert_eq!(view.sidebar.view, SidebarView::Sessions);
+        assert_eq!(view.active, Some(front));
+        assert_eq!(view.viewers[&front], ViewerView::default());
+        assert_eq!(view.viewers[&behind].clock.unwrap().speed_centi, 150);
+        assert_eq!(serde_json::to_value(&view).unwrap(), message);
+
+        let mut bad = message;
+        bad["active"] = json!("not an item");
+        assert!(serde_json::from_value::<View>(bad).is_err());
     }
 }

@@ -59,7 +59,8 @@ reason: string,
 location: string, };
 
 /**
- * The public kind of a failure; mirrors [`foundation::ErrorCode`] one to one.
+ * The public kind of a failure. A code and the ids in a [`Location::Item`] are all a viewer who may not see the
+ * host's files is told; the reason and any path stay with the host.
  */
 export type ErrorCode = "InvalidPath" | "FileNotFound" | "FileUnreadable" | "NotAVideo" | "UnsupportedFormat" | "IndexingFailed" | "FileChanged" | "DecodeFailed" | "ContentNotFound" | "ProtocolViolation" | "VideoClosed" | "Internal";
 
@@ -234,23 +235,16 @@ access: Access, } | { "type": "setAccess",
 access: Access, } | { "type": "regenerateLink" } | { "type": "stop" };
 
 /**
- * A stream a seat asks a ticket for.
+ * A stream a seat asks a ticket for: the Content at one commit of its resolution. Authority over the stream ends
+ * with the generation, and the Content's kind decides what a seat may demand of it.
  */
-export type StreamKey = { "type": "frames", 
+export type ContentRef = { 
 /**
- * The Content's id.
+ * The Content's id. Stable across re-resolution.
  */
 content: string, 
 /**
- * The commit of the Content's resolution, as the Doc names it.
- */
-generation: number, } | { "type": "live", 
-/**
- * The item.
- */
-item: string, 
-/**
- * The commit of the item's Content.
+ * The commit of the Content's resolution, as the Doc names it. Re-resolving or reopening gives a new one.
  */
 generation: number, };
 
@@ -269,7 +263,7 @@ control: ControlCommand, } | { "type": "requestTicket",
 /**
  * The stream.
  */
-key: StreamKey, };
+key: ContentRef, };
 
 /**
  * The part of the window a cursor position belongs to.
@@ -382,6 +376,28 @@ export type SeatMode = "following" | "exploring";
 export type SeatAccess = "owner" | "watch" | "explore" | "edit";
 
 /**
+ * What a seat may do, one flag per kind of command a window offers a control for; sent to the seat so its UI disables
+ * what the backend would refuse. Derived from the same role table as `authorize`.
+ */
+export type Can = { 
+/**
+ * Change what the seat's window shows.
+ */
+view: boolean, 
+/**
+ * Change the Doc's content.
+ */
+content: boolean, 
+/**
+ * Read the host's files.
+ */
+host: boolean, 
+/**
+ * Change who the session is shared with.
+ */
+control: boolean, };
+
+/**
  * One seat of a Session, as every seat sees it.
  */
 export type SeatInfo = { 
@@ -437,9 +453,9 @@ export type DocWire = {
 workspace: WorkspaceState, };
 
 /**
- * Why a command was refused. A code and nothing else: the client words it.
+ * Why a command or a connection was refused. A code and nothing else: the client words it.
  */
-export type RefusalCode = "SeatGone" | "NotAllowed" | "NotSharing" | "AlreadySharing" | "ContentUnavailable" | "TooManyStreams" | "BadTicket" | "Unsupported" | "Link" | "Full" | "Invalid";
+export type RefusalCode = "SeatGone" | "NotAllowed" | "NotSharing" | "AlreadySharing" | "ContentUnavailable" | "TooManyStreams" | "BadTicket" | "Link" | "Full" | "Invalid";
 
 /**
  * How a command ended.
@@ -503,6 +519,10 @@ presenterRev: number,
  * What this seat may do.
  */
 access: SeatAccess, 
+/**
+ * What this seat may do, from the same role table the backend enforces.
+ */
+can: Can, 
 /**
  * Whether this seat follows or explores.
  */

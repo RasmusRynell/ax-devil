@@ -6,19 +6,14 @@
 //! consistent: the Doc comes before any `Seat` whose `doc_rev` is newer, so a view never points at a Doc the client
 //! has not got.
 
-use super::{
-    exit::{Exit, send, send_frame},
-    wire,
-};
+use super::exit::{Exit, send, send_frame};
 use crate::AppState;
-use api_types::{
-    Access, Audience, CursorPoint, SeatAccess, SeatMode, SessionServerMessage, SharingInfo, View,
-};
+use api_types::{Audience, CursorPoint, SeatAccess, SessionServerMessage, SharingInfo};
 use axum::extract::ws::Message;
 use futures_util::Sink;
 use sessions::{
-    EndReason,
-    session::{Change, Handle, RosterEntry, SeatKind, SessionState},
+    EndReason, SeatMode,
+    session::{Can, Change, Handle, RosterEntry, SeatKind, SessionState, View, can},
 };
 use std::{convert::Infallible, sync::Arc, time::Duration};
 use tokio::{
@@ -37,6 +32,7 @@ struct Mine {
     doc_rev: u64,
     presenter_rev: u64,
     access: SeatAccess,
+    can: Can,
     mode: SeatMode,
     sharing: Option<SharingInfo>,
     view: View,
@@ -66,7 +62,7 @@ pub(super) async fn run<S: Sink<Message> + Unpin>(
     };
     let seat = first.seats.get(&handle.seat());
     let audience = Audience {
-        host_details: first.files && seat.is_some_and(|seat| matches!(seat.kind, SeatKind::Owner)),
+        host_details: can(&first, handle.seat(), handle.lease()).is_ok_and(|can| can.host),
     };
     let welcome = SessionServerMessage::Welcome {
         session: handle.session().to_string(),
@@ -156,19 +152,21 @@ async fn send_parts<S: Sink<Message> + Unpin>(
         presenter_rev: session.presenter_rev,
         access: match (&seat.kind, &session.sharing) {
             (SeatKind::Owner, _) => SeatAccess::Owner,
-            (SeatKind::Watcher { .. }, Some(sharing)) => Access::from(sharing.access).into(),
+            (SeatKind::Watcher { .. }, Some(sharing)) => sharing.access.into(),
             // A watcher never outlives its sharing; if it somehow did, watching is the least it could do.
             (SeatKind::Watcher { .. }, None) => SeatAccess::Watch,
         },
-        mode: seat.mode().into(),
+        // A seat the table no longer knows can do nothing; the feed ends it next.
+        can: can(session, handle.seat(), seat.lease).unwrap_or_default(),
+        mode: seat.mode(),
         sharing: session.sharing.as_ref().map(|sharing| SharingInfo {
-            access: sharing.access.into(),
+            access: sharing.access,
             // Only the owner holds the link.
             link: owner
                 .then(|| state.hosting.join_url(&sharing.link))
                 .flatten(),
         }),
-        view: View::from(&**seat.view.as_ref().unwrap_or(&session.presenter)),
+        view: (**seat.view.as_ref().unwrap_or(&session.presenter)).clone(),
         views_done: seat.views_done,
     };
     if sent.mine.as_ref() == Some(&mine) {
@@ -179,6 +177,7 @@ async fn send_parts<S: Sink<Message> + Unpin>(
         doc_rev: mine.doc_rev,
         presenter_rev: mine.presenter_rev,
         access: mine.access,
+        can: mine.can,
         mode: mine.mode,
         sharing: mine.sharing.clone(),
         view: mine.view.clone(),
@@ -193,10 +192,6 @@ async fn send_roster<S: Sink<Message> + Unpin>(
     sink: &mut S,
     roster: &mut watch::Receiver<Arc<Vec<RosterEntry>>>,
 ) -> Result<(), Exit> {
-    let participants = roster
-        .borrow_and_update()
-        .iter()
-        .map(wire::seat_info)
-        .collect();
+    let participants = roster.borrow_and_update().to_vec();
     send(sink, &SessionServerMessage::Roster { participants }).await
 }

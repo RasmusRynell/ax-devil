@@ -335,9 +335,9 @@ async fn run(
 ) -> Flow<()> {
     let mut closing = state.stopping.clone();
     let Content::SeekableVideo(video) = lease.content();
-    let path = video.source.path.clone();
-    tracing::info!("Opening {} for a viewer", path.display());
-    let location = HostPath::new(&path);
+    let location = video.source.path.clone();
+    tracing::info!("Opening {} for a viewer", location.as_path().display());
+    let path = location.as_path().to_path_buf();
     let videos = state.videos.clone();
     let mut session = open_video(
         move |cancel, progress| videos.open(&path, cancel, progress),

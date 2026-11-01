@@ -1,5 +1,5 @@
 import type { Scope } from "../commands";
-import type { SeatAccess, View } from "../generated/api";
+import type { Can, View } from "../generated/api";
 
 /** What the window shows before anyone has chosen anything. */
 export const EMPTY_VIEW: View = { sidebar: { view: "workspace", open: true }, viewers: {} };
@@ -42,10 +42,7 @@ export function shareView(previous: View, next: View): View {
   };
 }
 
-/** What a seat with this standing may change; `null` before the backend has said. The backend decides again. */
-export function canDo(access: SeatAccess | null, scope: Scope): boolean {
-  if (scope === "app") return true;
-  if (access === null) return false;
-  if (scope === "view") return access !== "watch";
-  return access === "owner" || access === "edit";
+/** What a seat may change in `scope`; `false` before the backend has said what the seat can do. */
+export function canDo(can: Can | null, scope: Scope): boolean {
+  return scope === "app" || (can?.[scope] ?? false);
 }

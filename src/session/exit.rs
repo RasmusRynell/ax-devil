@@ -73,9 +73,7 @@ pub(super) async fn finish<S: Sink<Message> + Unpin>(sink: &mut S, exit: Exit) {
         Exit::Left => (1000, String::new()),
         Exit::Close(code, reason) => (code, reason),
         Exit::Ended(reason) => {
-            let message = SessionServerMessage::Ended {
-                reason: reason.into(),
-            };
+            let message = SessionServerMessage::Ended { reason };
             if send(sink, &message).await.is_err() {
                 return;
             }

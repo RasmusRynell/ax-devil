@@ -19,7 +19,9 @@ pub fn video(path: &Path) -> Result<WorkspaceItem, UserError> {
     Ok(WorkspaceItem {
         id: ItemId::generate(),
         label,
-        recipe: Recipe::Video(VideoRecipe { video: absolute }),
+        recipe: Recipe::Video(VideoRecipe {
+            video: HostPath::new(absolute),
+        }),
     })
 }
 
@@ -34,8 +36,8 @@ mod tests {
         let item = video(Path::new("recordings/gate.mp4")).unwrap();
         assert_eq!(item.label, "gate.mp4");
         let Recipe::Video(recipe) = &item.recipe;
-        assert!(recipe.video.is_absolute());
-        assert!(recipe.video.ends_with("recordings/gate.mp4"));
+        assert!(recipe.video.as_path().is_absolute());
+        assert!(recipe.video.as_path().ends_with("recordings/gate.mp4"));
         assert_ne!(item.id, video(Path::new("recordings/gate.mp4")).unwrap().id);
     }
 
@@ -58,7 +60,7 @@ mod tests {
         assert_eq!(content.id.as_str(), item.id.to_string());
         assert_eq!(content.item_id, item.id);
         assert_eq!(content.display_name, "notes.mp4");
-        assert_eq!(content.source.path, not_a_video);
+        assert_eq!(content.source.path, HostPath::new(&not_a_video));
 
         for unreadable in [folder.path().join("missing.mp4"), folder.path().to_owned()] {
             let item = video(&unreadable).unwrap();

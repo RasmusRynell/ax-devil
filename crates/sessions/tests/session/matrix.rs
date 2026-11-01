@@ -3,8 +3,8 @@
 use sessions::{
     OwnerId, SessionId,
     session::{
-        Access, Command, Completion, ContentRef, Control, Demand, Fresh, Input, Lease, OWNER_SEAT,
-        Outcome, Refusal, SeatId, SessionState, StreamKey, Use, View, Work, authorize, transition,
+        Access, Command, Completion, ContentRef, Control, Fresh, Input, Lease, OWNER_SEAT, Outcome,
+        Refusal, SeatId, SessionState, View, Work, authorize, authorize_stream, can, transition,
     },
 };
 use workspace::{ItemId, WorkspaceItem};
@@ -45,7 +45,7 @@ fn allowed(row: Row, needs: Needs) -> bool {
 struct World {
     state: SessionState,
     item: ItemId,
-    key: StreamKey,
+    key: ContentRef,
     spare: WorkspaceItem,
     _dir: tempfile::TempDir,
 }
@@ -93,7 +93,7 @@ fn world(access: Access) -> World {
     );
     step(
         &mut state,
-        command(OWNER_SEAT, Command::Control(Control::Share(access))),
+        command(OWNER_SEAT, Command::Control(Control::Share { access })),
     );
     let effects = step(&mut state, Input::Join { secret: None });
     assert!(matches!(effects.outcome, Outcome::Joined { seat, .. } if seat == SeatId(2)));
@@ -104,10 +104,10 @@ fn world(access: Access) -> World {
     else {
         panic!("resolved");
     };
-    let key = StreamKey::Frames(ContentRef {
+    let key = ContentRef {
         content: content.id().clone(),
         generation: *generation,
-    });
+    };
     World {
         state,
         item: id,
@@ -117,62 +117,39 @@ fn world(access: Access) -> World {
     }
 }
 
-/// The samples of every kind of command. The match is exhaustive on purpose: a new command or control does not
-/// compile until it has a sample here, and the matrix then covers it.
-fn samples(of: &Command, world: &World) -> Vec<(Command, Needs)> {
+/// One sample of every kind of command, with what it needs. The matrix runs exactly this list, so a command added
+/// here is covered at once; `Command::needs` is exhaustive, so production code cannot add one without a scope.
+fn samples(world: &World) -> Vec<(Command, Needs)> {
     let host = DocCommand::AddItems {
         items: vec![world.spare.clone()],
         open: false,
     };
-    match of {
-        Command::Content(DocCommand::AddItems { .. }) => {
-            vec![(Command::Content(host), Needs::Host)]
-        }
-        Command::Content(DocCommand::OpenViewer(_) | DocCommand::CloseViewer(_)) => vec![
-            (
-                Command::Content(DocCommand::OpenViewer(world.item)),
-                Needs::Content,
-            ),
-            (
-                Command::Content(DocCommand::CloseViewer(world.item)),
-                Needs::Content,
-            ),
-        ],
-        Command::Follow => vec![(Command::Follow, Needs::Follow)],
-        Command::Control(Control::Share(_)) => {
-            vec![(
-                Command::Control(Control::Share(Access::Edit)),
-                Needs::Control,
-            )]
-        }
-        Command::Control(Control::SetAccess(_)) => vec![(
-            Command::Control(Control::SetAccess(Access::Watch)),
-            Needs::Control,
-        )],
-        Command::Control(Control::RegenerateLink) => {
-            vec![(Command::Control(Control::RegenerateLink), Needs::Control)]
-        }
-        Command::Control(Control::Stop) => vec![(Command::Control(Control::Stop), Needs::Control)],
-        Command::RequestTicket(_) => {
-            vec![(Command::RequestTicket(world.key.clone()), Needs::Stream)]
-        }
-    }
-}
-
-/// One command of every kind, for `samples` to expand.
-fn kinds(world: &World) -> Vec<Command> {
     vec![
-        Command::Content(DocCommand::OpenViewer(world.item)),
-        Command::Content(DocCommand::AddItems {
-            items: vec![],
-            open: false,
-        }),
-        Command::Follow,
-        Command::Control(Control::Share(Access::Watch)),
-        Command::Control(Control::SetAccess(Access::Watch)),
-        Command::Control(Control::RegenerateLink),
-        Command::Control(Control::Stop),
-        Command::RequestTicket(world.key.clone()),
+        (Command::Content(host), Needs::Host),
+        (
+            Command::Content(DocCommand::OpenViewer(world.item)),
+            Needs::Content,
+        ),
+        (
+            Command::Content(DocCommand::CloseViewer(world.item)),
+            Needs::Content,
+        ),
+        (Command::Follow, Needs::Follow),
+        (
+            Command::Control(Control::Share {
+                access: Access::Edit,
+            }),
+            Needs::Control,
+        ),
+        (
+            Command::Control(Control::SetAccess {
+                access: Access::Watch,
+            }),
+            Needs::Control,
+        ),
+        (Command::Control(Control::RegenerateLink), Needs::Control),
+        (Command::Control(Control::Stop), Needs::Control),
+        (Command::RequestTicket(world.key.clone()), Needs::Stream),
     ]
 }
 
@@ -211,16 +188,29 @@ fn each_kind_of_seat_may_run_exactly_the_commands_the_table_gives_it() {
         Row::Edit,
     ] {
         let (world, seat) = seated(row);
-        for kind in kinds(&world) {
-            for (sample, needs) in samples(&kind, &world) {
-                let result = transition(&world.state, command(seat, sample.clone()));
-                let denied = matches!(result, Err(Refusal::NotAllowed));
-                assert_eq!(
-                    !denied,
-                    allowed(row, needs),
-                    "{row:?} asking {sample:?} (needs {needs:?}): {:?}",
-                    result.map(|_| ())
-                );
+        for (sample, needs) in samples(&world) {
+            let result = transition(&world.state, command(seat, sample.clone()));
+            let denied = matches!(result, Err(Refusal::NotAllowed));
+            assert_eq!(
+                !denied,
+                allowed(row, needs),
+                "{row:?} asking {sample:?} (needs {needs:?}): {:?}",
+                result.map(|_| ())
+            );
+            // The refusal comes from `authorize` itself, not from the command after it, and the flags the seat is
+            // told are the same table.
+            let authorized = authorize(&world.state, seat, Lease(0), sample.needs()).is_ok();
+            assert_eq!(
+                authorized,
+                allowed(row, needs),
+                "{row:?} authorize {sample:?}"
+            );
+            let can = can(&world.state, seat, Lease(0)).unwrap();
+            match needs {
+                Needs::Content => assert_eq!(can.content, allowed(row, needs), "{row:?}"),
+                Needs::Host => assert_eq!(can.host, allowed(row, needs), "{row:?}"),
+                Needs::Control => assert_eq!(can.control, allowed(row, needs), "{row:?}"),
+                Needs::Follow | Needs::Stream => {}
             }
         }
     }
@@ -240,51 +230,51 @@ fn a_view_changes_the_presenter_only_for_the_owner_and_starts_exploring_for_a_se
         transition(&world.state, view)
     };
 
-    assert!(sets(Row::Owner).is_ok());
-    assert_eq!(sets(Row::WatchFollowing).err(), Some(Refusal::NotAllowed));
+    assert!(matches!(sets(Row::Owner), Ok((_, fx)) if matches!(fx.outcome, Outcome::None)));
+    let (watching, effects) = sets(Row::WatchFollowing).unwrap();
+    assert!(matches!(
+        effects.outcome,
+        Outcome::ViewRefused(Refusal::NotAllowed)
+    ));
+    assert_eq!(
+        watching.seats[&SeatId(2)].views_done,
+        1,
+        "a refused view is settled, so the client stops showing it"
+    );
     for row in [Row::ExploreFollowing, Row::ExploreExploring, Row::Edit] {
         let (state, _) = sets(row).unwrap();
         assert_eq!(
             state.seats[&SeatId(2)].mode(),
-            sessions::Mode::Exploring,
+            sessions::SeatMode::Exploring,
             "{row:?}"
         );
     }
 }
 
 #[test]
-fn computing_is_refused_to_every_seat_until_its_policy_is_decided() {
-    let (world, _) = seated(Row::Owner);
-    let of = ContentRef {
-        content: workspace::ContentId::of_item(&world.item),
-        generation: workspace_store::ContentGen(1),
-    };
-    for seat in [OWNER_SEAT, SeatId(2)] {
-        let result = authorize(&world.state, seat, Lease(0), Use::Compute(&of));
-        assert_eq!(result, Err(Refusal::Unsupported));
-    }
-}
-
-#[test]
 fn streams_are_bound_by_seat_following_the_presenter_or_choosing_their_own_frames() {
-    use playback::Priority;
-    let demand = |row: Row| {
+    use playback::{Authority, Priority};
+    let authority = |row: Row| {
         let (world, seat) = seated(row);
-        authorize(&world.state, seat, Lease(0), Use::Stream(&world.key)).unwrap()
+        authorize_stream(&world.state, seat, Lease(0), &world.key).unwrap()
     };
 
     assert_eq!(
-        demand(Row::Owner),
-        Demand::Own {
+        authority(Row::Owner),
+        Authority::Own {
             priority: Priority::High
         }
     );
-    assert_eq!(demand(Row::WatchFollowing), Demand::Follow);
-    assert_eq!(demand(Row::ExploreFollowing), Demand::Follow);
+    for row in [Row::WatchFollowing, Row::ExploreFollowing] {
+        assert!(
+            matches!(authority(row), Authority::Follow { .. }),
+            "{row:?}"
+        );
+    }
     for row in [Row::ExploreExploring, Row::Edit] {
-        let low = Demand::Own {
+        let low = Authority::Own {
             priority: Priority::Low,
         };
-        assert_eq!(demand(row), low, "{row:?}");
+        assert_eq!(authority(row), low, "{row:?}");
     }
 }

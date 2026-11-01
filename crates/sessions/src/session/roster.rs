@@ -5,11 +5,13 @@
 //! nothing is stored for it. A seat keeps the [`Identity`] it was given for its whole life, resumes included.
 
 use super::{SeatId, SessionState};
-use crate::{Kind, Mode};
+use crate::{SeatMode, SeatRole};
+use serde::Serialize;
 use std::sync::{
     Arc,
     atomic::{AtomicBool, Ordering},
 };
+use ts_rs::TS;
 
 /// What names a seat to the others: `Guest N` and a color index into the UI's palette.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -31,19 +33,24 @@ impl Identity {
     }
 }
 
-/// One seat of the session as every seat sees it.
-#[derive(Clone, Debug, PartialEq, Eq)]
+/// One seat of a Session, as every seat sees it.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(rename = "SeatInfo")]
 pub struct RosterEntry {
-    /// The seat. Seats are listed oldest first.
+    /// Names the seat in `Roster` and `Cursor` messages.
+    #[serde(rename = "id")]
+    #[ts(type = "number")]
     pub seat: SeatId,
-    /// `Guest N`, the lowest N no seat in the session uses.
+    /// `Guest N`.
     pub name: String,
-    /// The lowest color index no seat in the session uses.
+    /// An index into the UI's palette of participant colors.
     pub color: u8,
     /// Owner or watcher.
-    pub kind: Kind,
+    #[serde(rename = "role")]
+    pub kind: SeatRole,
     /// Following or exploring.
-    pub mode: Mode,
+    pub mode: SeatMode,
     /// False while the seat is within its grace period.
     pub present: bool,
     /// Whether the seat broadcasts its cursor.
@@ -72,8 +79,8 @@ pub(super) fn build<'a>(
                 name: format!("Guest {}", presence.identity.number),
                 color: presence.identity.color,
                 kind: match state.kind {
-                    super::SeatKind::Owner => Kind::Owner,
-                    super::SeatKind::Watcher { .. } => Kind::Watcher,
+                    super::SeatKind::Owner => SeatRole::Owner,
+                    super::SeatKind::Watcher { .. } => SeatRole::Watcher,
                 },
                 mode: state.mode(),
                 present: state.present,

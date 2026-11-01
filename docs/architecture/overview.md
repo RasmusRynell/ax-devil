@@ -16,8 +16,10 @@ Until parity, the layer contents, seams and runtime guarantees are specified in
 | Desktop shell (Electron) | Windows, one trusted origin each, and the local backend's lifetime; no application features |
 
 The frontend talks to the backend that served it over HTTP and WebSockets: on `127.0.0.1` for a local backend, on
-the server's own address for another machine's. Types that cross that boundary are Rust types in `crates/api-types`,
-exported to TypeScript; the frontend never declares its own copy. The one hand-parsed format is the binary playback
+the server's own address for another machine's. Types that cross that boundary are Rust types exported to TypeScript;
+the frontend never declares its own copy. Plain data is defined once, in the crate that owns it, with `serde` and
+`ts-rs` derives (layers 1-3 may use both); `crates/api-types` holds the socket protocols and the projections that
+decide what an audience sees. The one hand-parsed format is the binary playback
 envelope: its constants are exported and its layout is in `api_types::playback`.
 
 How offline playback divides its work between them is in the [invariants](../domain/invariants.md#offline-delivery).

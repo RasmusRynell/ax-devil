@@ -12,16 +12,21 @@ use api_types::{
 };
 use sessions::session::Doc;
 use workspace::{Content, SeekableVideoContent, Workspace, WorkspaceItem};
-use workspace_store::{ContentGen, Resolution};
+use workspace_store::{ContentGen, Resolution, WorkspaceParts};
 
 /// `doc` as `audience` may see it.
 pub fn project(doc: &Doc, audience: Audience) -> DocWire {
     let Doc { workspace } = doc;
-    let Workspace { name, items } = &workspace.workspace;
+    let WorkspaceParts {
+        workspace,
+        resolutions,
+        open,
+    } = workspace.parts();
+    let Workspace { name, items } = workspace;
     let sees_everything = audience.host_details;
     let items = items
         .iter()
-        .filter(|item| sees_everything || workspace.open.contains(&item.id))
+        .filter(|item| sees_everything || open.contains(&item.id))
         .map(|item| {
             let WorkspaceItem {
                 id,
@@ -31,8 +36,8 @@ pub fn project(doc: &Doc, audience: Audience) -> DocWire {
             ItemState {
                 id: id.to_string(),
                 label: label.clone(),
-                open: workspace.open.contains(id),
-                resolution: match workspace.resolutions.get(id) {
+                open: open.contains(id),
+                resolution: match resolutions.get(id) {
                     Some(Resolution::Resolved {
                         content,
                         generation,
@@ -85,7 +90,7 @@ mod tests {
             id,
             label: label.into(),
             recipe: Recipe::Video(VideoRecipe {
-                video: format!("/home/{folder}/{label}").into(),
+                video: HostPath::new(format!("/home/{folder}/{label}")),
             }),
         }
     }
@@ -99,7 +104,7 @@ mod tests {
             item_id: shown,
             display_name: "gate.mp4".into(),
             source: FileVideoSource {
-                path: "/home/SECRET-PATH-A/gate.mp4".into(),
+                path: HostPath::new("/home/SECRET-PATH-A/gate.mp4"),
             },
         });
         let failure = |folder: &str| {

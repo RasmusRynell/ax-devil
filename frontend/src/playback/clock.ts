@@ -3,6 +3,10 @@
  * Time comes from the injected `now()` (milliseconds); the caller calls `tick` on every display refresh.
  */
 
+import type { ClockIntent } from "../generated/api";
+
+export type { ClockIntent };
+
 export const MIN_SPEED = 0.01;
 export const MAX_SPEED = 10;
 export const SPEED_STEP = 0.1;
@@ -22,15 +26,6 @@ export function atOrBefore(times: Float64Array, timeUs: number): number {
     else high = middle - 1;
   }
   return low;
-}
-
-/** What a presenter says the Session's clock is doing; `atUs` is the presenter's stamp in server time (µs). */
-export interface ClockIntent {
-  frame: number;
-  playing: boolean;
-  /** Speed in hundredths: 100 is real time. */
-  speedCenti: number;
-  atUs: number;
 }
 
 /**

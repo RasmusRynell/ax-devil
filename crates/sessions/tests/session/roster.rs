@@ -2,7 +2,7 @@
 
 use crate::Rig;
 use sessions::{
-    CursorOptions, Kind,
+    CursorOptions, SeatRole,
     session::{Access, RosterEntry},
 };
 use std::sync::Arc;
@@ -28,7 +28,7 @@ async fn seats_are_named_and_colored_with_what_is_free_and_keep_both_for_life() 
         [guest(1), guest(2), guest(3)],
         "oldest first"
     );
-    assert_eq!(roster.borrow()[0].kind, Kind::Owner);
+    assert_eq!(roster.borrow()[0].kind, SeatRole::Owner);
 
     // The first watcher leaves; the next one takes the free name and color. A resumed seat keeps its own.
     first.leave();

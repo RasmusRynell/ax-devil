@@ -3,10 +3,10 @@
 use crate::{Rig, authority, stream};
 use playback::{Authority, ClockIntent, Priority};
 use sessions::{
-    CursorOptions, SessionError,
+    CursorOptions,
     session::{
-        Access, Command, Completion, Control, Refusal, Reply, Sidebar, SidebarView, StreamKey, Use,
-        View, ViewLane, ViewerView, authorize,
+        Access, Command, Completion, Control, Refusal, Reply, Sidebar, SidebarView, View, ViewLane,
+        ViewerView,
     },
 };
 use std::time::Duration;
@@ -81,7 +81,9 @@ async fn a_seat_holds_eight_streams_and_a_session_sixty_four() {
     let rig = Rig::new();
     let owner = rig.service.create(true, CursorOptions::default()).unwrap();
     owner
-        .command(Command::Control(Control::Share(Access::Watch)))
+        .command(Command::Control(Control::Share {
+            access: Access::Watch,
+        }))
         .unwrap();
     let (_, key) = rig.open_video(&owner, "a.mp4");
     let watchers: Vec<_> = (0..8).map(|_| rig.join(&owner)).collect();
@@ -151,6 +153,58 @@ async fn a_following_seat_gets_the_presenters_clock_and_the_owner_its_own_frames
     owner.view(view, 1).unwrap();
 
     assert_eq!(authority(&following), Authority::Follow { intent });
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_presenter_view_change_keeps_the_stored_clock_and_a_new_intent_is_stamped_within_two_seconds()
+ {
+    let rig = Rig::new();
+    let (owner, watcher) = rig.shared(Access::Watch);
+    let (item, key) = rig.open_video(&owner, "a.mp4");
+    let following = stream(&rig.service, &watcher, &key).unwrap();
+    let playing = ClockIntent {
+        frame: 120,
+        playing: true,
+        speed_centi: 100,
+        at_us: rig.service.now_us(),
+    };
+    let view = |intent: ClockIntent, open: bool| View {
+        sidebar: Sidebar {
+            view: SidebarView::Workspace,
+            open,
+        },
+        viewers: [(
+            item,
+            ViewerView {
+                clock: Some(intent),
+            },
+        )]
+        .into(),
+        ..View::default()
+    };
+    owner.view(view(playing, true), 1).unwrap();
+    advance(Duration::from_secs(10)).await;
+
+    // The window re-sends the same intent with every view change: the sidebar toggle must not restamp it.
+    owner.view(view(playing, false), 2).unwrap();
+    assert_eq!(authority(&following), Authority::Follow { intent: playing });
+
+    // A new intent may not claim a time from the future or from long ago.
+    let now = rig.service.now_us();
+    let stamped = |seq: u64, at_us: i64| {
+        let seek = ClockIntent {
+            frame: 300,
+            at_us,
+            ..playing
+        };
+        owner.view(view(seek, false), seq).unwrap();
+        let Authority::Follow { intent } = authority(&following) else {
+            panic!("a following seat follows");
+        };
+        intent.at_us
+    };
+    assert_eq!(stamped(3, now + 3_600_000_000), now);
+    assert_eq!(stamped(4, 0), now - 2_000_000);
 }
 
 #[tokio::test(start_paused = true)]
@@ -241,10 +295,10 @@ async fn a_session_of_one_works_without_sharing() {
     );
     assert!(matches!(
         rig.service.watch(owner.session(), CursorOptions::default()),
-        Err(SessionError::NotFound)
+        Err(Refusal::NotSharing)
     ));
 
-    let (item, key) = rig.open_video(&owner, "a.mp4");
+    let (_, key) = rig.open_video(&owner, "a.mp4");
     let lease = stream(&rig.service, &owner, &key).unwrap();
     assert_eq!(
         authority(&lease),
@@ -257,17 +311,5 @@ async fn a_session_of_one_works_without_sharing() {
     assert_eq!(
         owner.command(Command::Control(Control::Stop)).err(),
         Some(Refusal::NotSharing)
-    );
-
-    let Resolution::Resolved { generation, .. } = owner.state().doc.workspace.resolutions[&item]
-    else {
-        panic!("resolved");
-    };
-    let live = StreamKey::Live { item, generation };
-    let state = owner.state();
-    assert_eq!(
-        authorize(&state, owner.seat(), owner.lease(), Use::Stream(&live)).err(),
-        Some(Refusal::ContentUnavailable),
-        "no Content of this kind is live"
     );
 }

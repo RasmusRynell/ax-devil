@@ -9,7 +9,7 @@ use futures_util::{SinkExt, StreamExt};
 use playback::{CachePool, Registry};
 use sessions::{
     CursorOptions,
-    session::{Command, ContentRef, Handle, Reply, StreamKey},
+    session::{Command, ContentRef, Handle, Reply},
 };
 use std::{
     collections::BTreeSet,
@@ -51,7 +51,7 @@ pub struct Backend {
 /// A video in a session of its own, ready to be streamed: whoever holds it can ask for tickets.
 pub struct Added {
     pub owner: Handle<CursorPoint>,
-    pub key: StreamKey,
+    pub key: ContentRef,
 }
 
 impl Added {
@@ -130,10 +130,10 @@ impl Backend {
                     generation,
                 }) = state.doc.workspace.resolutions.get(&id)
                 {
-                    break StreamKey::Frames(ContentRef {
+                    break ContentRef {
                         content: content.id().clone(),
                         generation: *generation,
-                    });
+                    };
                 }
                 tokio::time::sleep(Duration::from_millis(10)).await;
             }

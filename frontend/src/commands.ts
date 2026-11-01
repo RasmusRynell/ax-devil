@@ -1,10 +1,10 @@
 import type { MenuCommand, MenuEntry } from "./kit/Menu";
 
 /**
- * What a command changes: `content` (the workspace and what its sources show: only the owner or a private window),
- * `view` (what this window shows of it: also an exploring watcher) or `app` (how this app behaves: always).
+ * What a command needs of the seat, as the backend's `Can` names it: `host` (read the host's files), `content` (change
+ * the workspace), `view` (change what this window shows), or `app` (how this app behaves: always allowed).
  */
-export type Scope = "content" | "view" | "app";
+export type Scope = "host" | "content" | "view" | "app";
 
 const SEPARATOR: MenuEntry = { kind: "separator" };
 const scopes = new Map<string, Scope>();
@@ -26,7 +26,7 @@ export const MENUS: readonly { label: string; entries: readonly MenuEntry[] }[] 
     label: "File",
     entries: [
       action("content", "new-workspace", "New Workspace"),
-      action("content", "open-workspace", "Open Workspace", "Ctrl+O"),
+      action("host", "open-workspace", "Open Workspace", "Ctrl+O"),
       {
         kind: "submenu",
         label: "Open Recent",
@@ -35,9 +35,9 @@ export const MENUS: readonly { label: string; entries: readonly MenuEntry[] }[] 
       action("content", "save-workspace", "Save Workspace", "Ctrl+S"),
       action("content", "save-workspace-as", "Save Workspace As", "Ctrl+Shift+S"),
       SEPARATOR,
-      action("content", "add-video", "Add Video", "Ctrl+N"),
+      action("host", "add-video", "Add Video", "Ctrl+N"),
       action("content", "add-live-stream", "Add Live Stream", "Ctrl+L"),
-      action("content", "add-playlist", "Add Playlist", "Ctrl+Shift+N"),
+      action("host", "add-playlist", "Add Playlist", "Ctrl+Shift+N"),
       SEPARATOR,
       action("app", "keyboard-shortcuts", "Keyboard Shortcuts", "Ctrl+K"),
       action("app", "settings", "Settings", "Ctrl+,"),

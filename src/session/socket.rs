@@ -5,7 +5,7 @@
 use super::{
     FIRST_MESSAGE_TIMEOUT,
     exit::{ENDED, Exit, FULL, INVALID_CREDENTIAL, INVALID_DATA, NOT_ALLOWED, finish},
-    reader, wire, writer,
+    reader, writer,
 };
 use crate::{
     AppState,
@@ -19,8 +19,8 @@ use axum::{
 };
 use futures_util::{StreamExt, stream::SplitStream};
 use sessions::{
-    JoinLink, Secret, SessionError, SessionId,
-    session::{Command, Handle},
+    JoinLink, Secret, SessionId,
+    session::{Command, Handle, Refusal},
 };
 use std::net::SocketAddr;
 use tokio::{sync::mpsc, time::timeout};
@@ -106,16 +106,15 @@ async fn hello(
     else {
         return Err(Exit::close(INVALID_DATA, "expected hello"));
     };
-    let cursors = wire::cursor_options(cursors);
     let sessions = &state.sessions;
     // The token alone is the credential of a resume, so `auth` is not looked at.
     if let Some(token) = resume {
         let token = token
             .parse::<Secret>()
-            .map_err(|error| refuse(&error, ENDED))?;
+            .map_err(|error| refuse(error, ENDED))?;
         let handle = sessions
             .resume(&token)
-            .map_err(|error| refuse(&error, ENDED))?;
+            .map_err(|error| refuse(error, ENDED))?;
         // The client sent its current choices; they replace the ones the seat had when it dropped, before the first
         // part is built.
         handle.set_cursor_options(cursors);
@@ -127,7 +126,7 @@ async fn hello(
             let files = principal.grants().contains(&Grant::Files);
             let handle = sessions
                 .create(files, cursors)
-                .map_err(|error| refuse(&error, ENDED))?;
+                .map_err(|error| refuse(error, ENDED))?;
             if principal == Principal::Local {
                 let items = state.launch.take();
                 if !items.is_empty() {
@@ -145,18 +144,18 @@ async fn hello(
             member(state, server_password.as_deref())?;
             let id = session
                 .parse::<SessionId>()
-                .map_err(|error| refuse(&error, ENDED))?;
+                .map_err(|error| refuse(error, ENDED))?;
             sessions
                 .watch(id, cursors)
-                .map_err(|error| refuse(&error, ENDED))
+                .map_err(|error| refuse(error, ENDED))
         }
         SessionAuth::Join { link } => {
             let link = link
                 .parse::<JoinLink>()
-                .map_err(|error| refuse(&error, INVALID_CREDENTIAL))?;
+                .map_err(|error| refuse(error, INVALID_CREDENTIAL))?;
             sessions
                 .join(&link, cursors)
-                .map_err(|error| refuse(&error, INVALID_CREDENTIAL))
+                .map_err(|error| refuse(error, INVALID_CREDENTIAL))
         }
     }
 }
@@ -176,12 +175,19 @@ fn member(state: &AppState, password: Option<&str>) -> Result<Principal, Exit> {
 }
 
 /// `malformed` is the code for text that is not an id, link or token: what the caller was trying to present.
-fn refuse(error: &SessionError, malformed: u16) -> Exit {
-    let code = match error {
-        SessionError::Malformed => malformed,
-        SessionError::NotFound => ENDED,
-        SessionError::Rejected => INVALID_CREDENTIAL,
-        SessionError::Full => FULL,
+fn refuse(refusal: Refusal, malformed: u16) -> Exit {
+    let code = match refusal {
+        Refusal::Invalid => malformed,
+        Refusal::Link => INVALID_CREDENTIAL,
+        Refusal::Full => FULL,
+        // Whatever else keeps a caller out, the session is not there for it.
+        Refusal::SeatGone
+        | Refusal::NotAllowed
+        | Refusal::NotSharing
+        | Refusal::AlreadySharing
+        | Refusal::ContentUnavailable
+        | Refusal::TooManyStreams
+        | Refusal::BadTicket => ENDED,
     };
-    Exit::Close(code, error.to_string())
+    Exit::Close(code, refusal.to_string())
 }

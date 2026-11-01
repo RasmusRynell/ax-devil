@@ -87,8 +87,6 @@ Documented, not fixed.
   suits the same machine or a fast LAN and a few watchers. Compressed delivery is future work.
 - **Edit access has no UI.** The backend supports an `Edit` access row for editing together, but nothing exposes it,
   and an Edit watcher sees only the Owner's open items, so it cannot reopen one the Owner closed.
-- **Private computation is reserved.** `Use::Compute` in `authorize` refuses everything until a feature defines who
-  may compute what ([sessions README](../../crates/sessions/README.md)).
 - **Snapshot cost is unmeasured** at 32 seats under 30 Hz scrubbing.
 
 ## Plugin trust (MUST)

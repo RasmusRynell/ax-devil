@@ -18,7 +18,7 @@ import type {
   SeatInfo,
   SeatMode,
   SessionCommand,
-  StreamKey,
+  ContentRef,
   View,
 } from "../generated/api";
 import { Banner, EndedScreen } from "./Notice";
@@ -120,14 +120,15 @@ export function useFollowing(): boolean {
 
 /** Whether this seat may change things of this scope; the backend decides again when it is asked. */
 export function useCan(scope: Scope): boolean {
-  return useSelect((state) => canDo(state.seat?.access ?? null, scope));
+  return useSelect((state) => canDo(state.seat?.can ?? null, scope));
 }
 
 /** Which scopes of commands work for this window; the others are shown disabled. */
 export function useAllowed(): Record<Scope, boolean> {
+  const host = useCan("host");
   const content = useCan("content");
   const view = useCan("view");
-  return useMemo(() => ({ content, view, app: true }), [content, view]);
+  return useMemo(() => ({ host, content, view, app: true }), [host, content, view]);
 }
 
 /** Asks the backend for a change. The promise rejects with `CommandRefused` when the backend refuses it. */
@@ -140,7 +141,7 @@ export function useCommand(): (command: SessionCommand) => Promise<void> {
  * The way to get a ticket for a stream, for the playback socket's first message. A ticket works once, so every
  * connection asks again. `key` must be the same object between renders for as long as it names the same stream.
  */
-export function useStream(key: StreamKey): () => Promise<string> {
+export function useStream(key: ContentRef): () => Promise<string> {
   const store = useStore();
   return useCallback(() => store.requestTicket(key), [store, key]);
 }

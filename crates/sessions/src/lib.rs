@@ -6,8 +6,9 @@
 //! is dropped is away for the grace period and can be taken back with [`session::Service::resume`]. Every seat has a
 //! lease that resuming bumps; a handle, a drop or a grace timer from an older lease does nothing.
 //!
-//! The session's state and the rules that change it are in [`session`]; this crate knows nothing of the wire or the
-//! UI. The cursor position type `C` is opaque.
+//! The session's state and the rules that change it are in [`session`]. The plain data that crosses to a client, such
+//! as a view or a seat's role, is defined here once and carries its own wire form; the messages are not this crate's,
+//! and nor is the UI. The cursor position type `C` is opaque.
 
 mod common;
 mod cursors;
@@ -17,7 +18,8 @@ pub mod session;
 pub use cursors::{CursorEvent, Cursors};
 pub use secret::{JoinLink, OwnerId, Secret, SessionId};
 
-use std::fmt;
+use serde::{Deserialize, Serialize};
+use ts_rs::TS;
 
 /// Seats one session holds, owner included.
 pub const MAX_SEATS: usize = 32;
@@ -26,68 +28,46 @@ pub const MAX_SEATS: usize = 32;
 pub const MAX_SESSIONS: usize = 64;
 
 /// Names a seat in its session. Never reused within the session.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize)]
 pub struct ParticipantId(pub u32);
 
-/// Why a session, link or resume token was not accepted.
-#[derive(Debug, PartialEq, Eq)]
-pub enum SessionError {
-    /// The text is not a session id, secret or join link.
-    Malformed,
-    /// No such session, or no seat holds that token; it ended or never existed.
-    NotFound,
-    /// The secret does not match the session.
-    Rejected,
-    /// The session already has [`MAX_SEATS`] seats, or the server already has [`MAX_SESSIONS`] sessions.
-    Full,
-}
-
-impl fmt::Display for SessionError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(match self {
-            Self::Malformed => "that is not a session id or link",
-            Self::NotFound => "that session no longer exists",
-            Self::Rejected => "that link is no longer valid",
-            Self::Full => "that session or server is full",
-        })
-    }
-}
-
-impl std::error::Error for SessionError {}
-
-/// Why a seat's updates ended.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+/// Why a Session's socket was told it is over.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(rename = "EndedReason")]
 pub enum EndReason {
     /// The owner stopped sharing.
     Stopped,
     /// The owner was away longer than the grace period.
     OwnerGone,
-    /// A newer connection resumed this seat.
+    /// A newer connection took this seat; this tab stops for good.
     Replaced,
 }
 
-/// What a seat is in the session.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Kind {
-    /// Created the session; the only one who changes what it shows.
+/// Which seat a participant holds.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub enum SeatRole {
+    /// Created the Session; the only one who changes what it shows.
     Owner,
     /// Anyone else.
     Watcher,
 }
 
 /// Whose view a seat shows.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Mode {
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub enum SeatMode {
     /// The presenter's. Owners are always following themselves.
     Following,
-    /// The seat's own, limited to what the presenter has open.
+    /// The seat's own, limited to what the Doc has open.
     Exploring,
 }
 
-/// One seat's cursor preferences.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+/// One seat's two cursor choices; both are on by default.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize, TS)]
 pub struct CursorOptions {
-    /// Receive others' cursors.
+    /// Receive other seats' cursors.
     pub show: bool,
     /// Broadcast this seat's cursor.
     pub share: bool,

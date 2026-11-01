@@ -1,8 +1,10 @@
 import type {
   Access,
+  Can,
   CursorPoint,
   ItemState,
   ResolutionState,
+  SeatAccess,
   SessionClientMessage,
   SessionServerMessage,
   View,
@@ -20,6 +22,14 @@ export const video = (id: string, open = true, resolution = resolved(id)): ItemS
   open,
   resolution,
 });
+
+/** What the fake tells each kind of seat it can do. Fixed test data, not policy: the real backend decides. */
+const CAN: Record<SeatAccess, Can> = {
+  owner: { view: true, content: true, host: true, control: true },
+  watch: { view: false, content: false, host: false, control: false },
+  explore: { view: true, content: false, host: false, control: false },
+  edit: { view: true, content: true, host: false, control: false },
+};
 
 interface Seat {
   id: number;
@@ -211,12 +221,14 @@ export class FakeSocket {
     }
     // Only the owner holds the link.
     const link = seat.owner ? `http://host/#join=${room.link}` : undefined;
+    const access: SeatAccess = seat.owner ? "owner" : (room.access ?? "watch");
     this.emit({
       type: "seat",
       rev: room.docRev,
       docRev: room.docRev,
       presenterRev: 0,
-      access: seat.owner ? "owner" : (room.access ?? "watch"),
+      access,
+      can: CAN[access],
       mode: seat.view ? "exploring" : "following",
       sharing: room.access ? { access: room.access, link } : undefined,
       view: seat.view ?? room.presenter,

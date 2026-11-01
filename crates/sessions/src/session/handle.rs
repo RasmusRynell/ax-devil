@@ -4,7 +4,7 @@ use super::{
     Command, GrantId, Lease, Refusal, SeatId, SessionState, Ticket,
     roster::RosterEntry,
     service::{Service, apply},
-    transition::{Fresh, Input},
+    transition::{Fresh, Input, Outcome},
     views::View,
 };
 use crate::{CursorOptions, Cursors, EndReason, Secret, SessionId};
@@ -123,23 +123,20 @@ impl<C: Clone + Send + 'static> Handle<C> {
     /// Sets this seat's view, from the View lane. A refused view still settles its `seq`, so the client stops
     /// showing it.
     pub fn view(&self, view: View, seq: u64) -> Result<(), Refusal> {
-        let (seat, lease) = (self.seat, self.lease);
-        let now_us = self.service.now_us();
-        self.service.locked(|sessions, deferred| {
-            let input = Input::View {
-                seat,
-                lease,
-                view,
-                seq,
-                now_us,
-            };
-            let result = apply(sessions, self.session, input, deferred);
-            if result.is_err() {
-                let settle = Input::SettleView { seat, lease, seq };
-                let _ = apply(sessions, self.session, settle, deferred);
-            }
-            result.map(|_| ())
-        })
+        let input = Input::View {
+            seat: self.seat,
+            lease: self.lease,
+            view,
+            seq,
+            now_us: self.service.now_us(),
+        };
+        let applied = self
+            .service
+            .locked(|sessions, deferred| apply(sessions, self.session, input, deferred))?;
+        match applied.outcome {
+            Outcome::ViewRefused(refusal) => Err(refusal),
+            Outcome::None | Outcome::Joined { .. } | Outcome::Opened { .. } => Ok(()),
+        }
     }
 
     /// Who is in the session, oldest first: the latest roster, and a signal when it changes. It changes with the

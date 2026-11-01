@@ -1,12 +1,14 @@
 use crate::ItemId;
+use serde::{Deserialize, Serialize};
 use std::{
     fmt,
     path::{Path, PathBuf},
 };
+use ts_rs::TS;
 
-/// Why something failed, as a public kind. A code and the ids in a [`Location::Item`] are all a
-/// viewer who may not see the host's files is told; the reason and any path stay with the host.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+/// The public kind of a failure. A code and the ids in a [`Location::Item`] are all a viewer who may not see the
+/// host's files is told; the reason and any path stay with the host.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize, TS)]
 pub enum ErrorCode {
     /// The path the user entered names no file.
     InvalidPath,

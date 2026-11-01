@@ -6,17 +6,11 @@ const path = require("node:path");
 
 // Lowest first. A crate may depend on workspace crates in its own layer or below.
 const LAYERS = ["foundation", "domain", "services", "adapters", "entry"];
-// Layers 1-3 stay free of the HTTP/WebSocket server and anything else that ties them to how the UI is reached.
+// Layers 1-3 stay free of the HTTP/WebSocket server and anything else that ties them to how the UI is reached. `serde`
+// and `ts-rs` are not in this set: they only describe plain data, so a type is defined once at the layer that owns it
+// and carries its own wire form.
 const TOOLKIT_FREE = new Set(["foundation", "domain", "services"]);
-const SERVER_CRATES = new Set([
-  "axum",
-  "axum-core",
-  "hyper",
-  "tower",
-  "tower-http",
-  "rust-embed",
-  "ts-rs",
-]);
+const SERVER_CRATES = new Set(["axum", "axum-core", "hyper", "tower", "tower-http", "rust-embed"]);
 
 // Rules the layers alone do not say. `from` is a crate name, or "*" for every crate except those in `except`; `to` is
 // a dependency, workspace or not. Dev-dependencies are exempt, like in the layer rule.

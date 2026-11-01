@@ -5,24 +5,17 @@
 //! `views_done`. The only `DocWire` constructor is `project` in the backend's `src/session/project.rs`, so what a
 //! watcher may learn of the Doc is decided in one place.
 
-use crate::{
-    Access, View,
-    workspace::{NewItem, WorkspaceState},
-};
+use crate::workspace::{NewItem, WorkspaceState};
+use foundation::ItemId;
 use serde::{Deserialize, Serialize};
+use sessions::{
+    CursorOptions, EndReason, SeatMode,
+    session::{Access, Can, ContentRef, Control, Refusal, RosterEntry, View},
+};
 use ts_rs::TS;
 
 /// Longest element id or scope a cursor may carry, in characters.
 pub const CURSOR_NAME_MAX: usize = 64;
-
-/// One seat's two cursor choices; both are on by default.
-#[derive(Deserialize, TS, Clone, Copy, Debug, PartialEq, Eq)]
-pub struct CursorOptions {
-    /// Receive other seats' cursors.
-    pub show: bool,
-    /// Broadcast this seat's cursor.
-    pub share: bool,
-}
 
 /// How a client asks to be admitted; part of the first message of every socket.
 #[derive(Deserialize, TS, Clone, Debug, PartialEq, Eq)]
@@ -73,62 +66,14 @@ pub enum DocCommand {
     /// Request a viewer for an item.
     OpenViewer {
         /// The item.
-        item: String,
+        #[ts(type = "string")]
+        item: ItemId,
     },
     /// Withdraw an item's viewer request.
     CloseViewer {
         /// The item.
-        item: String,
-    },
-}
-
-/// The owner's control of sharing.
-#[derive(Deserialize, TS, Clone, Copy, Debug, PartialEq, Eq)]
-#[serde(
-    tag = "type",
-    rename_all = "camelCase",
-    rename_all_fields = "camelCase"
-)]
-pub enum ControlCommand {
-    /// "Start sharing": watchers may join, with `access`.
-    Share {
-        /// What every watcher may do.
-        access: Access,
-    },
-    /// Change what every watcher may do.
-    SetAccess {
-        /// What every watcher may do.
-        access: Access,
-    },
-    /// Replace the join link; seats already in stay.
-    RegenerateLink,
-    /// Stop sharing: every watcher is removed. The Session and its owner continue.
-    Stop,
-}
-
-/// A stream a seat asks a ticket for.
-#[derive(Deserialize, TS, Clone, Debug, PartialEq, Eq)]
-#[serde(
-    tag = "type",
-    rename_all = "camelCase",
-    rename_all_fields = "camelCase"
-)]
-pub enum StreamKey {
-    /// The frames of a recorded video.
-    Frames {
-        /// The Content's id.
-        content: String,
-        /// The commit of the Content's resolution, as the Doc names it.
-        #[ts(type = "number")]
-        generation: u64,
-    },
-    /// The current frames of a live item.
-    Live {
-        /// The item.
-        item: String,
-        /// The commit of the item's Content.
-        #[ts(type = "number")]
-        generation: u64,
+        #[ts(type = "string")]
+        item: ItemId,
     },
 }
 
@@ -150,12 +95,12 @@ pub enum SessionCommand {
     /// Change sharing; the owner only.
     Control {
         /// The change.
-        control: ControlCommand,
+        control: Control,
     },
     /// Ask for a ticket to open a stream; answered with `Ticket`.
     RequestTicket {
         /// The stream.
-        key: StreamKey,
+        key: ContentRef,
     },
 }
 
@@ -259,26 +204,6 @@ pub enum SessionClientMessage {
     Leave,
 }
 
-/// Which seat a participant holds.
-#[derive(Serialize, TS, Clone, Copy, Debug, PartialEq, Eq)]
-#[serde(rename_all = "camelCase")]
-pub enum SeatRole {
-    /// Created the Session; the only one who changes what it shows.
-    Owner,
-    /// Anyone else.
-    Watcher,
-}
-
-/// Whose view a seat shows.
-#[derive(Serialize, TS, Clone, Copy, Debug, PartialEq, Eq)]
-#[serde(rename_all = "camelCase")]
-pub enum SeatMode {
-    /// The presenter's.
-    Following,
-    /// The seat's own, limited to what the Doc has open.
-    Exploring,
-}
-
 /// What this seat is allowed to do, in the rows of the role table.
 #[derive(Serialize, TS, Clone, Copy, Debug, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
@@ -293,24 +218,14 @@ pub enum SeatAccess {
     Edit,
 }
 
-/// One seat of a Session, as every seat sees it.
-#[derive(Serialize, TS, Clone, Debug, PartialEq, Eq)]
-#[serde(rename_all = "camelCase")]
-pub struct SeatInfo {
-    /// Names the seat in `Roster` and `Cursor` messages.
-    pub id: u32,
-    /// `Guest N`.
-    pub name: String,
-    /// An index into the UI's palette of participant colors.
-    pub color: u8,
-    /// Owner or watcher.
-    pub role: SeatRole,
-    /// Following or exploring.
-    pub mode: SeatMode,
-    /// False while the seat is within its grace period.
-    pub present: bool,
-    /// Whether the seat broadcasts its cursor.
-    pub shares_cursor: bool,
+impl From<Access> for SeatAccess {
+    fn from(access: Access) -> Self {
+        match access {
+            Access::Watch => Self::Watch,
+            Access::Explore => Self::Explore,
+            Access::Edit => Self::Edit,
+        }
+    }
 }
 
 /// Sharing, while it is on.
@@ -333,33 +248,6 @@ pub struct DocWire {
     pub workspace: WorkspaceState,
 }
 
-/// Why a command was refused. A code and nothing else: the client words it.
-#[derive(Serialize, TS, Clone, Copy, Debug, PartialEq, Eq)]
-pub enum RefusalCode {
-    /// The seat is not in the Session, its connection was replaced, or the Session ended.
-    SeatGone,
-    /// The seat's standing does not allow it.
-    NotAllowed,
-    /// Sharing is off.
-    NotSharing,
-    /// Sharing is already on.
-    AlreadySharing,
-    /// The Content is not open, not resolved, or not at the generation asked for.
-    ContentUnavailable,
-    /// The seat or the Session holds as many streams as it may.
-    TooManyStreams,
-    /// The ticket is unknown, expired, used, or bound to something that no longer exists.
-    BadTicket,
-    /// Not decided yet.
-    Unsupported,
-    /// The link is no longer valid.
-    Link,
-    /// The Session already has as many seats as it may.
-    Full,
-    /// The command's own content was refused before it reached the Session, such as a path that names no file.
-    Invalid,
-}
-
 /// How a command ended.
 #[derive(Serialize, TS, Clone, Copy, Debug, PartialEq, Eq)]
 #[serde(
@@ -373,20 +261,8 @@ pub enum AckOutcome {
     /// Refused; nothing changed.
     Refused {
         /// Why.
-        code: RefusalCode,
+        code: Refusal,
     },
-}
-
-/// Why a Session's socket was told it is over.
-#[derive(Serialize, TS, Clone, Copy, Debug, PartialEq, Eq)]
-#[serde(rename_all = "camelCase")]
-pub enum EndedReason {
-    /// The owner stopped sharing.
-    Stopped,
-    /// The owner was away longer than the grace period.
-    OwnerGone,
-    /// A newer connection took this seat; this tab stops for good.
-    Replaced,
 }
 
 /// What the backend sends over the Session socket.
@@ -433,6 +309,8 @@ pub enum SessionServerMessage {
         presenter_rev: u64,
         /// What this seat may do.
         access: SeatAccess,
+        /// What this seat may do, from the same role table the backend enforces.
+        can: Can,
         /// Whether this seat follows or explores.
         mode: SeatMode,
         /// Sharing, while it is on.
@@ -448,7 +326,7 @@ pub enum SessionServerMessage {
     /// Everyone in the Session, oldest first; sent again when it changes.
     Roster {
         /// The seats.
-        participants: Vec<SeatInfo>,
+        participants: Vec<RosterEntry>,
     },
     /// Settles a command.
     Ack {
@@ -497,7 +375,7 @@ pub enum SessionServerMessage {
     /// The socket closes after this.
     Ended {
         /// Why.
-        reason: EndedReason,
+        reason: EndReason,
     },
 }
 

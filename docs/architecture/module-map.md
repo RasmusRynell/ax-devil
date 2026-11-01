@@ -17,8 +17,8 @@ Where code and files belong. Layers and the dependency rule are in the [overview
 | `crates/media/` | Layer 3: video file to frame index and frames (FFmpeg); the only crate that links it ([README](../../crates/media/README.md)) |
 | `crates/playback/` | Layer 3: what to decode and cache around each viewer's playhead, and its delivery; never depends on `media` ([README](../../crates/playback/README.md)) |
 | `crates/workspace-store/` | Layer 3: the workspace's state and its pure transitions (apply a command, complete a resolution); whoever holds a state decides where it lives |
-| `crates/sessions/` | The Session service: state, transitions, authorization, tickets and jobs, generic over the cursor type; services layer, knows nothing of the wire |
-| `crates/api-types/` | Rust types sent to the frontend and the API version; `export-types` writes them to `frontend/src/generated/api.ts` and the version to `desktop/generated/api.json`; `session.rs` is the Session socket's wire protocol and `mirror.rs` converts the wire types that mirror `sessions` ones |
+| `crates/sessions/` | The Session service: state, transitions, authorization, tickets and jobs, generic over the cursor type; services layer, knows no message of the wire (the plain data it shares, such as a view, derives its own wire form) |
+| `crates/api-types/` | Rust types sent to the frontend and the API version; `export-types` writes them to `frontend/src/generated/api.ts` and the version to `desktop/generated/api.json`; `session.rs` is the Session socket's wire protocol; plain data that already has an owning crate is not redefined here |
 | `frontend/src/` | The UI. Components and their tests sit side by side |
 | `frontend/src/playback/`, `viewer/`, `viewers.ts` | The playback session (clock, frame buffer, renderer), the viewer host, and the viewer registry keyed by Content kind |
 | `frontend/src/session/` | The session client: the socket and its store (the Doc, each seat's view, commands), cursors and presence |

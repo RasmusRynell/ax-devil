@@ -1,16 +1,12 @@
 //! Types the backend sends to the frontend, exported to TypeScript by `export-types`.
 
 mod error;
-mod mirror;
 pub mod playback;
 mod session;
-mod view;
 pub mod workspace;
 
-pub use error::{Audience, ErrorCode, ErrorParams, ErrorWire, project};
-pub use mirror::InvalidItemId;
+pub use error::{Audience, ErrorParams, ErrorWire, project};
 pub use session::*;
-pub use view::*;
 
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
@@ -72,23 +68,4 @@ pub struct ApiError {
     pub reason: String,
     /// The setting key or file the reason is about.
     pub location: String,
-}
-
-/// What the sidebar shows; part of the view a session shares.
-#[derive(Serialize, Deserialize, TS, Clone, Copy, Debug, Default, PartialEq, Eq)]
-#[serde(rename_all = "lowercase")]
-pub enum SidebarView {
-    /// The whole Workspace.
-    #[default]
-    Workspace,
-    /// Live streams.
-    Live,
-    /// Offline videos.
-    Offline,
-    /// Bookmarks.
-    Bookmarks,
-    /// Plugins.
-    Plugins,
-    /// The session this client is in, and the sessions it can watch.
-    Sessions,
 }

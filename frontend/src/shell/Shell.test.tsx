@@ -211,4 +211,20 @@ describe("a watcher", () => {
       (screen.getByRole("button", { name: "Close a.mp4" }) as HTMLButtonElement).disabled,
     ).toBe(true);
   });
+
+  it("cannot add a video from the host's files when it may only edit", async () => {
+    const room = FakeSocket.host("edit");
+    window.sessionStorage.setItem(
+      "ax-devil.credential",
+      JSON.stringify({ kind: "join", session: room.id, secret: room.secret }),
+    );
+    render(
+      <SessionProvider>
+        <Shell />
+      </SessionProvider>,
+    );
+    await screen.findByRole("heading", { name: "ax-devil" });
+    const add = screen.getAllByRole("button", { name: "Add Video" });
+    expect(add.every((button) => (button as HTMLButtonElement).disabled)).toBe(true);
+  });
 });

@@ -5,8 +5,8 @@
 //! reported in the transition's effects.
 
 use super::{
-    GrantId, Lease, Refusal, SeatId, SeatKind, SessionState, SharingGen, StreamKey, Use,
-    authorize::{authority, authorize, content_of},
+    ContentRef, GrantId, Lease, Refusal, SeatId, SeatKind, SessionState, SharingGen, Use,
+    authorize::{authorize, authorize_stream, open_content},
     transition::{Effects, Fresh, Outcome},
 };
 use crate::Secret;
@@ -55,7 +55,7 @@ pub(super) struct PendingTicket {
     seat: SeatId,
     lease: Lease,
     sharing: Option<SharingGen>,
-    key: StreamKey,
+    key: ContentRef,
     expires: Instant,
 }
 
@@ -65,7 +65,7 @@ pub(super) struct Grant {
     seat: SeatId,
     lease: Lease,
     sharing: Option<SharingGen>,
-    key: StreamKey,
+    key: ContentRef,
     /// What the holder was last told it may demand.
     authority: Authority,
 }
@@ -90,7 +90,7 @@ pub(super) fn request(
     next: &mut SessionState,
     seat: SeatId,
     lease: Lease,
-    key: StreamKey,
+    key: ContentRef,
     fresh: &Fresh,
 ) -> Result<(), Refusal> {
     next.tickets.retain(|ticket| ticket.expires > fresh.now);
@@ -132,11 +132,9 @@ pub(super) fn redeem(
     if now >= pending.expires || current != pending.sharing {
         return Err(Refusal::BadTicket);
     }
-    let demand = authorize(next, pending.seat, pending.lease, Use::Stream(&pending.key))?;
-    let authority = authority(next, &pending.key, demand);
-    let content = content_of(&next.doc, &pending.key)
-        .cloned()
-        .ok_or(Refusal::ContentUnavailable)?;
+    let authority = authorize_stream(next, pending.seat, pending.lease, &pending.key)?;
+    let (_, content) = open_content(&next.doc, &pending.key).ok_or(Refusal::ContentUnavailable)?;
+    let content = content.clone();
     let host_details = next.files
         && next
             .seats
@@ -170,8 +168,7 @@ fn authority_now(state: &SessionState, grant: &Grant) -> Option<Authority> {
     if seat.lease != grant.lease || seat.kind.sharing() != grant.sharing {
         return None;
     }
-    let demand = authorize(state, grant.seat, grant.lease, Use::Stream(&grant.key)).ok()?;
-    Some(authority(state, &grant.key, demand))
+    authorize_stream(state, grant.seat, grant.lease, &grant.key).ok()
 }
 
 /// Re-authorizes every ticket and grant after a transition. A failing ticket disappears; a failing grant is removed

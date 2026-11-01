@@ -12,10 +12,9 @@ use super::{
     transition::{Effects, Input, Outcome, transition},
 };
 use crate::{
-    CursorEvent, CursorOptions, JoinLink, MAX_SESSIONS, OwnerId, Secret, SessionError, SessionId,
-    common, cursors::CURSOR_BACKLOG,
+    CursorEvent, CursorOptions, JoinLink, MAX_SESSIONS, OwnerId, Secret, SessionId, common,
+    cursors::CURSOR_BACKLOG,
 };
-use foundation::CancelToken;
 use playback::Authority;
 use std::{
     collections::{BTreeMap, HashMap},
@@ -47,28 +46,9 @@ struct Private {
     presence: Presence,
 }
 
-/// Tells a stream's holder what it may demand. A change carries the transition that asked for it, and an older one
-/// never overwrites a newer, whatever order the effects run in; a revocation is the newest there will ever be.
-struct AuthorityCell {
-    tx: watch::Sender<Authority>,
-    applied: Mutex<u64>,
-}
-
-impl AuthorityCell {
-    fn set(&self, applied: u64, authority: Authority) {
-        let mut last = common::locked(&self.applied);
-        if applied > *last {
-            *last = applied;
-            self.tx.send_replace(authority);
-        }
-    }
-}
-
-/// Effects collected under the lock and run after it.
+/// Effects collected under the lock and run after it: only the starts of jobs, which may run arbitrary code.
 #[derive(Default)]
 pub(super) struct Deferred {
-    authority: Vec<(Arc<AuthorityCell>, u64, Authority)>,
-    cancel: Vec<CancelToken>,
     spawn: Vec<(SessionId, Spawn)>,
 }
 
@@ -85,11 +65,14 @@ pub(super) struct Live<C> {
     pub cursors: broadcast::Sender<CursorEvent<C>>,
     roster: watch::Sender<Arc<Vec<RosterEntry>>>,
     private: BTreeMap<SeatId, Private>,
-    streams: BTreeMap<GrantId, Arc<AuthorityCell>>,
+    /// Tells each open stream's holder what it may demand. Gone once the grant is released or revoked.
+    streams: BTreeMap<GrantId, watch::Sender<Authority>>,
 }
 
 impl<C: Clone> Live<C> {
-    /// Runs the transition, installs and publishes its state, and defers its effects.
+    /// Runs the transition and installs its state. Revocations, new authority and cancellations take effect before
+    /// the state is published, still under the lock, so nobody sees the new state while a stream or a job still
+    /// follows the old one; only the starts of jobs are deferred.
     fn apply(&mut self, input: Input, deferred: &mut Deferred) -> Result<Applied, Refusal> {
         let (next, effects) = transition(&self.state, input)?;
         let Effects {
@@ -99,37 +82,33 @@ impl<C: Clone> Live<C> {
             retarget,
             outcome,
         } = effects;
-        let applied = next.applied;
         let next = Arc::new(next);
-        for grant in revoke {
-            if let Some(cell) = self.streams.remove(&grant) {
-                deferred.authority.push((cell, applied, Authority::Revoked));
-            }
-        }
-        for (grant, authority) in retarget {
-            if let Some(cell) = self.streams.get(&grant) {
-                deferred
-                    .authority
-                    .push((Arc::clone(cell), applied, authority));
-            }
-        }
-        // A released grant has no holder left to tell.
-        self.streams.retain(|grant, _| next.has_grant(*grant));
         let stream = match &outcome {
             Outcome::Opened {
                 grant, authority, ..
             } => {
                 let (tx, rx) = watch::channel(*authority);
-                let cell = AuthorityCell {
-                    tx,
-                    applied: Mutex::new(applied),
-                };
-                self.streams.insert(*grant, Arc::new(cell));
+                self.streams.insert(*grant, tx);
                 Some(rx)
             }
-            Outcome::None | Outcome::Joined { .. } => None,
+            Outcome::None | Outcome::Joined { .. } | Outcome::ViewRefused(_) => None,
         };
-        deferred.cancel.extend(cancel);
+        for grant in revoke {
+            // The sender goes with the grant, so `Revoked` is the last value its holders will ever see.
+            if let Some(tx) = self.streams.remove(&grant) {
+                tx.send_replace(Authority::Revoked);
+            }
+        }
+        for (grant, authority) in retarget {
+            if let Some(tx) = self.streams.get(&grant) {
+                tx.send_replace(authority);
+            }
+        }
+        for token in cancel {
+            token.cancel();
+        }
+        // A released grant has no holder left to tell.
+        self.streams.retain(|grant, _| next.has_grant(*grant));
         deferred
             .spawn
             .extend(spawn.into_iter().map(|spawn| (next.id, spawn)));
@@ -279,18 +258,7 @@ impl<C: Clone + Send + 'static> Service<C> {
     }
 
     fn run(&self, deferred: Deferred) {
-        let Deferred {
-            authority,
-            cancel,
-            spawn,
-        } = deferred;
-        for (cell, applied, authority) in authority {
-            cell.set(applied, authority);
-        }
-        for token in cancel {
-            token.cancel();
-        }
-        for (session, spawn) in spawn {
+        for (session, spawn) in deferred.spawn {
             let job = spawn.job;
             let service = self.clone();
             let done = Completer(Box::new(move |completion| {
@@ -334,12 +302,12 @@ impl<C: Clone + Send + 'static> Service<C> {
     }
 
     /// Starts a session for a new window. Its owner's seat is the returned handle; nothing is shared. With `files`
-    /// the owner may run commands that read the host's files. Refused with [`SessionError::Full`] at
+    /// the owner may run commands that read the host's files. Refused with [`Refusal::Full`] at
     /// [`MAX_SESSIONS`], counted under the same lock that inserts, so sessions in their grace period hold a place.
-    pub fn create(&self, files: bool, cursors: CursorOptions) -> Result<Handle<C>, SessionError> {
+    pub fn create(&self, files: bool, cursors: CursorOptions) -> Result<Handle<C>, Refusal> {
         let mut sessions = common::locked(&self.inner.sessions);
         if sessions.len() >= MAX_SESSIONS {
-            return Err(SessionError::Full);
+            return Err(Refusal::Full);
         }
         let id = loop {
             let id = SessionId::generate();
@@ -363,12 +331,12 @@ impl<C: Clone + Send + 'static> Service<C> {
     }
 
     /// Seats a watcher in the session the link opens, if its secret is the current one.
-    pub fn join(&self, link: &JoinLink, cursors: CursorOptions) -> Result<Handle<C>, SessionError> {
+    pub fn join(&self, link: &JoinLink, cursors: CursorOptions) -> Result<Handle<C>, Refusal> {
         self.seat_watcher(link.session, Some(&link.secret), cursors)
     }
 
     /// Seats a watcher in shared session `id`, for callers allowed to see every session.
-    pub fn watch(&self, id: SessionId, cursors: CursorOptions) -> Result<Handle<C>, SessionError> {
+    pub fn watch(&self, id: SessionId, cursors: CursorOptions) -> Result<Handle<C>, Refusal> {
         self.seat_watcher(id, None, cursors)
     }
 
@@ -377,28 +345,16 @@ impl<C: Clone + Send + 'static> Service<C> {
         id: SessionId,
         secret: Option<&Secret>,
         cursors: CursorOptions,
-    ) -> Result<Handle<C>, SessionError> {
+    ) -> Result<Handle<C>, Refusal> {
         self.locked(|sessions, deferred| {
-            let secret = secret.cloned();
-            let linked = secret.is_some();
-            let join = Input::Join { secret };
-            let applied = apply(sessions, id, join, deferred).map_err(|refusal| match refusal {
-                Refusal::Full => SessionError::Full,
-                Refusal::Link | Refusal::NotSharing if linked => SessionError::Rejected,
-                Refusal::Link
-                | Refusal::NotSharing
-                | Refusal::SeatGone
-                | Refusal::NotAllowed
-                | Refusal::AlreadySharing
-                | Refusal::ContentUnavailable
-                | Refusal::TooManyStreams
-                | Refusal::BadTicket
-                | Refusal::Unsupported => SessionError::NotFound,
-            })?;
-            let Outcome::Joined { seat, lease } = applied.outcome else {
-                return Err(SessionError::NotFound);
+            let join = Input::Join {
+                secret: secret.cloned(),
             };
-            let live = sessions.get_mut(&id).ok_or(SessionError::NotFound)?;
+            let applied = apply(sessions, id, join, deferred)?;
+            let Outcome::Joined { seat, lease } = applied.outcome else {
+                return Err(Refusal::SeatGone);
+            };
+            let live = sessions.get_mut(&id).ok_or(Refusal::SeatGone)?;
             let identity = live.new_identity();
             let entry = live.enter(seat, lease, cursors, identity);
             Ok(Handle::new(self.clone(), id, seat, entry))
@@ -408,7 +364,7 @@ impl<C: Clone + Send + 'static> Service<C> {
     /// Takes back the seat that holds `token`, within its grace period or while another connection still has it.
     /// The old connection is replaced, its streams end, the old token dies, and the returned handle carries the new
     /// one.
-    pub fn resume(&self, token: &Secret) -> Result<Handle<C>, SessionError> {
+    pub fn resume(&self, token: &Secret) -> Result<Handle<C>, Refusal> {
         self.locked(|sessions, deferred| {
             // Compares every token, so the time taken does not say how many leading digits matched.
             let mut found = None;
@@ -419,17 +375,16 @@ impl<C: Clone + Send + 'static> Service<C> {
                     }
                 }
             }
-            let (id, seat) = found.ok_or(SessionError::NotFound)?;
-            apply(sessions, id, Input::Resume { seat }, deferred)
-                .map_err(|_| SessionError::NotFound)?;
-            let live = sessions.get_mut(&id).ok_or(SessionError::NotFound)?;
+            let (id, seat) = found.ok_or(Refusal::SeatGone)?;
+            apply(sessions, id, Input::Resume { seat }, deferred)?;
+            let live = sessions.get_mut(&id).ok_or(Refusal::SeatGone)?;
             let lease = live
                 .state
                 .seats
                 .get(&seat)
                 .map(|seat| seat.lease)
-                .ok_or(SessionError::NotFound)?;
-            let private = live.private.get(&seat).ok_or(SessionError::NotFound)?;
+                .ok_or(Refusal::SeatGone)?;
+            let private = live.private.get(&seat).ok_or(Refusal::SeatGone)?;
             let options = CursorOptions {
                 show: private.show.load(std::sync::atomic::Ordering::Relaxed),
                 share: private

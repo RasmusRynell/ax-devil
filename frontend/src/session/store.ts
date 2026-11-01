@@ -7,7 +7,7 @@ import type {
   SeatInfo,
   SessionCommand,
   SessionServerMessage,
-  StreamKey,
+  ContentRef,
   View,
 } from "../generated/api";
 import { OffsetEstimator } from "../playback/timeSync";
@@ -174,7 +174,7 @@ export class SessionStore {
   setView(change: (shown: View) => View): void {
     const shown = this.#state.view;
     const next = change(shown);
-    if (next === shown || !canDo(this.#state.seat?.access ?? null, "view")) return;
+    if (next === shown || !canDo(this.#state.seat?.can ?? null, "view")) return;
     this.#seq += 1;
     this.#pending = { seq: this.#seq, view: next };
     this.#cancelFrame ??= this.#deps.frame(() => {
@@ -199,7 +199,7 @@ export class SessionStore {
   }
 
   /** A ticket for one playback socket, once the session is connected; every socket needs its own. */
-  async requestTicket(key: StreamKey): Promise<string> {
+  async requestTicket(key: ContentRef): Promise<string> {
     await new Promise<void>((resolve, reject) => {
       if (this.#state.connection === "online" && this.#state.session) resolve();
       else this.#waiters.push({ resolve: () => resolve(), reject });

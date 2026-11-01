@@ -4,12 +4,9 @@
 
 mod common;
 
-use api_types::{
-    ErrorCode,
-    playback::{ClientMessage, Direction, ServerMessage},
-};
+use api_types::playback::{ClientMessage, Direction, ServerMessage};
 use common::{Backend, Event, MIB, fixture, luma};
-use foundation::{CancelToken, HostPath, Interrupt};
+use foundation::{CancelToken, ErrorCode, HostPath, Interrupt};
 use playback::DECODE_WORKERS;
 use playback::{Delivery, Want};
 use sessions::{
@@ -403,7 +400,9 @@ async fn a_ticket_opens_one_stream_and_a_watchers_stream_ends_when_sharing_stops
         assert_eq!(refused.close_code, Some(4401), "{presented}");
     }
 
-    let share = Command::Control(Control::Share(Access::Watch));
+    let share = Command::Control(Control::Share {
+        access: Access::Watch,
+    });
     video.owner.command(share).unwrap();
     let link = video.owner.state().sharing.as_ref().unwrap().link.clone();
     let seat = backend

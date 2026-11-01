@@ -1,15 +1,16 @@
 //! What a seat can ask for, the scope each ask needs, and what each does to the state.
 
 use super::{
-    Access, JobOwner, Lease, Refusal, SeatId, SessionState, Sharing, SharingGen, StreamKey, Use,
-    authorize::{Standing, standing},
+    Access, ContentRef, JobOwner, Lease, Refusal, SeatId, SessionState, Sharing, SharingGen, Use,
     jobs::{Work, spawn},
     state::Doc,
     streams,
     transition::{Effects, Fresh},
 };
 use crate::JoinLink;
+use serde::Deserialize;
 use std::sync::Arc;
+use ts_rs::TS;
 use workspace::Recipe;
 use workspace_store::{DocCommand, WorkspaceState, apply};
 
@@ -18,6 +19,8 @@ use workspace_store::{DocCommand, WorkspaceState, apply};
 pub enum Scope {
     /// Change what a window shows.
     View,
+    /// Drop the seat's own view and show the presenter's again.
+    Follow,
     /// Change the Doc's content.
     Content,
     /// Read the host's files. The owner needs the files grant.
@@ -27,15 +30,27 @@ pub enum Scope {
 }
 
 /// The owner's control of sharing.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize, TS)]
+#[serde(
+    tag = "type",
+    rename_all = "camelCase",
+    rename_all_fields = "camelCase"
+)]
+#[ts(rename = "ControlCommand")]
 pub enum Control {
-    /// "Start sharing": watchers may join, with `Access`. Mints a new sharing generation and link.
-    Share(Access),
-    /// Change what every watcher may do. Lowering takes effect on seats and streams at once.
-    SetAccess(Access),
-    /// Replace the link. Seats already in stay.
+    /// "Start sharing": watchers may join, with `access`.
+    Share {
+        /// What every watcher may do.
+        access: Access,
+    },
+    /// Change what every watcher may do.
+    SetAccess {
+        /// What every watcher may do.
+        access: Access,
+    },
+    /// Replace the join link; seats already in stay.
     RegenerateLink,
-    /// Stop sharing: every watcher is removed and the generation ends. The session and its owner continue.
+    /// Stop sharing: every watcher is removed. The Session and its owner continue.
     Stop,
 }
 
@@ -50,7 +65,7 @@ pub enum Command {
     /// Change sharing.
     Control(Control),
     /// Ask for a ticket to receive a stream.
-    RequestTicket(StreamKey),
+    RequestTicket(ContentRef),
 }
 
 impl Command {
@@ -58,7 +73,7 @@ impl Command {
     pub fn needs(&self) -> Use<'_> {
         match self {
             Self::Content(command) => Use::Command(content_scope(command)),
-            Self::Follow => Use::Command(Scope::View),
+            Self::Follow => Use::Command(Scope::Follow),
             Self::Control(_) => Use::Command(Scope::Control),
             Self::RequestTicket(key) => Use::Stream(key),
         }
@@ -99,7 +114,10 @@ pub(super) fn run(
             content(next, fx, command);
             Ok(())
         }
-        Command::Follow => follow(next, seat, lease),
+        Command::Follow => {
+            follow(next, seat);
+            Ok(())
+        }
         Command::Control(control) => self::control(next, control, fresh),
         Command::RequestTicket(key) => streams::request(next, seat, lease, key, fresh),
     }
@@ -125,23 +143,16 @@ fn content(next: &mut SessionState, fx: &mut Effects, command: DocCommand) {
     }
 }
 
-fn follow(next: &mut SessionState, seat: SeatId, lease: Lease) -> Result<(), Refusal> {
-    match standing(next, seat, lease)? {
-        Standing::Owner | Standing::Following => {}
-        Standing::Exploring => {
-            if let Some(seat) = next.seats.get_mut(&seat) {
-                seat.view = None;
-            }
-        }
-        // A seat that may edit is always exploring; one that may only watch was refused before it got here.
-        Standing::Editing | Standing::Watching => return Err(Refusal::NotAllowed),
+/// Back to the presenter's view. Authorized only for a seat that follows or explores, so there is nothing to refuse.
+fn follow(next: &mut SessionState, seat: SeatId) {
+    if let Some(seat) = next.seats.get_mut(&seat) {
+        seat.view = None;
     }
-    Ok(())
 }
 
 fn control(next: &mut SessionState, control: Control, fresh: &Fresh) -> Result<(), Refusal> {
     match control {
-        Control::Share(access) => {
+        Control::Share { access } => {
             if next.sharing.is_some() {
                 return Err(Refusal::AlreadySharing);
             }
@@ -155,7 +166,7 @@ fn control(next: &mut SessionState, control: Control, fresh: &Fresh) -> Result<(
                 },
             });
         }
-        Control::SetAccess(access) => {
+        Control::SetAccess { access } => {
             next.sharing.as_mut().ok_or(Refusal::NotSharing)?.access = access;
             let presenter = Arc::clone(&next.presenter);
             let watchers = next

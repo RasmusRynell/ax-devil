@@ -1,15 +1,12 @@
 use crate::content::{Content, ContentId, FileVideoSource, SeekableVideoContent};
 use foundation::{ErrorCode, HostPath, ItemId, UserError};
-use std::{
-    fs, io,
-    path::{Path, PathBuf},
-};
+use std::{fs, io, path::Path};
 
 /// A video file to open.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct VideoRecipe {
     /// The video file, absolute.
-    pub video: PathBuf,
+    pub video: HostPath,
 }
 
 /// What an item was made from, and how to rebuild its Content. Overlay files join the video recipe later.
@@ -38,11 +35,11 @@ impl Recipe {
     pub fn resolve(&self, item: &ItemId) -> Result<Content, UserError> {
         match self {
             Recipe::Video(recipe) => {
-                check_readable_file(&recipe.video)?;
+                check_readable_file(recipe.video.as_path())?;
                 Ok(Content::SeekableVideo(SeekableVideoContent {
                     id: ContentId::of_item(item),
                     item_id: *item,
-                    display_name: file_name(&recipe.video),
+                    display_name: file_name(recipe.video.as_path()),
                     source: FileVideoSource {
                         path: recipe.video.clone(),
                     },

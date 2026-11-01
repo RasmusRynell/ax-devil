@@ -54,7 +54,7 @@ pub enum Input {
         /// Secret and time for the command.
         fresh: Fresh,
     },
-    /// A seat's view, from the View lane.
+    /// A seat's view, from the View lane. Its sequence number is settled whether or not the seat may set a view.
     View {
         /// Who sets it.
         seat: SeatId,
@@ -66,15 +66,6 @@ pub enum Input {
         seq: u64,
         /// The server's clock in microseconds, which bounds the presenter's clock intents.
         now_us: i64,
-    },
-    /// Settles the sequence number of a view that was refused, so the client stops showing it.
-    SettleView {
-        /// The seat.
-        seat: SeatId,
-        /// Its lease.
-        lease: Lease,
-        /// The refused view's sequence number.
-        seq: u64,
     },
     /// A watcher joins. `secret` is the link's; `None` for a caller allowed to join without one.
     Join {
@@ -141,6 +132,8 @@ pub enum Outcome {
         /// Its lease.
         lease: Lease,
     },
+    /// A view was refused. Its sequence number is settled all the same.
+    ViewRefused(Refusal),
     /// A ticket was redeemed.
     Opened {
         /// The new grant.
@@ -180,7 +173,6 @@ pub fn transition(state: &SessionState, input: Input) -> Result<(SessionState, E
     let mut fx = Effects::default();
     apply(&mut next, &mut fx, input)?;
     settle(&mut next, &mut fx, state.doc_rev);
-    next.applied += 1;
     if next.visibly_differs(state) {
         next.revision += 1;
     }
@@ -204,14 +196,7 @@ fn apply(next: &mut SessionState, fx: &mut Effects, input: Input) -> Result<(), 
             view,
             seq,
             now_us,
-        } => set_view(next, seat, lease, view, seq, now_us),
-        Input::SettleView { seat, lease, seq } => {
-            standing(next, seat, lease)?;
-            if let Some(seat) = next.seats.get_mut(&seat) {
-                seat.views_done = seat.views_done.max(seq);
-            }
-            Ok(())
-        }
+        } => set_view(next, fx, seat, lease, view, seq, now_us),
         Input::Join { secret } => join(next, fx, secret.as_ref()),
         Input::Resume { seat } => {
             let seat = next.seats.get_mut(&seat).ok_or(Refusal::SeatGone)?;
@@ -268,7 +253,12 @@ fn leave(
 }
 
 fn join(next: &mut SessionState, fx: &mut Effects, secret: Option<&Secret>) -> Result<(), Refusal> {
-    let sharing = next.sharing.as_ref().ok_or(Refusal::NotSharing)?;
+    // A link to a session that is not shared is as dead as a link with the wrong secret.
+    let sharing = next.sharing.as_ref().ok_or(if secret.is_some() {
+        Refusal::Link
+    } else {
+        Refusal::NotSharing
+    })?;
     if secret.is_some_and(|secret| *secret != sharing.link.secret) {
         return Err(Refusal::Link);
     }
@@ -298,8 +288,11 @@ fn join(next: &mut SessionState, fx: &mut Effects, secret: Option<&Secret>) -> R
     Ok(())
 }
 
+/// Settles `seq` and applies the view if the seat may set one, else reports the refusal in the outcome. Only a seat
+/// that is gone is refused outright: it has no sequence number to settle.
 fn set_view(
     next: &mut SessionState,
+    fx: &mut Effects,
     seat: SeatId,
     lease: Lease,
     view: View,
@@ -307,18 +300,20 @@ fn set_view(
     now_us: i64,
 ) -> Result<(), Refusal> {
     let standing = standing(next, seat, lease)?;
-    authorize(next, seat, lease, Use::Command(Scope::View))?;
-    if next
-        .seats
-        .get(&seat)
-        .is_some_and(|seat| seq <= seat.views_done)
-    {
+    let allowed = authorize(next, seat, lease, Use::Command(Scope::View));
+    let current = next.seats.get_mut(&seat).ok_or(Refusal::SeatGone)?;
+    if seq <= current.views_done {
         // Overwritten by a later view already finished.
+        return Ok(());
+    }
+    current.views_done = seq;
+    if let Err(refusal) = allowed {
+        fx.outcome = Outcome::ViewRefused(refusal);
         return Ok(());
     }
     match standing {
         Standing::Owner => {
-            let published = restrict(&clamp_intents(view, now_us), &next.doc);
+            let published = restrict(&clamp_intents(view, &next.presenter, now_us), &next.doc);
             if published != *next.presenter {
                 next.presenter = Arc::new(published);
                 next.presenter_rev += 1;
@@ -330,20 +325,21 @@ fn set_view(
                 seat.view = Some(own);
             }
         }
-        // Refused by `authorize` above.
-        Standing::Watching => return Err(Refusal::NotAllowed),
-    }
-    if let Some(seat) = next.seats.get_mut(&seat) {
-        seat.views_done = seq;
+        // Refused above.
+        Standing::Watching => {}
     }
     Ok(())
 }
 
 /// The presenter's clock intents are stamped in server time, so none may claim to be from the future or from long
-/// ago.
-fn clamp_intents(mut view: View, now_us: i64) -> View {
-    for viewer in view.viewers.values_mut() {
-        if let Some(clock) = &mut viewer.clock {
+/// ago. An intent the presenter already had is kept as it was stored: the window re-sends the current intent with
+/// every other view change, and only a changed one carries a new stamp.
+fn clamp_intents(mut view: View, published: &View, now_us: i64) -> View {
+    for (item, viewer) in &mut view.viewers {
+        let stored = published.viewers.get(item).and_then(|viewer| viewer.clock);
+        if let Some(clock) = &mut viewer.clock
+            && stored != Some(*clock)
+        {
             clock.at_us = clock
                 .at_us
                 .clamp(now_us.saturating_sub(INTENT_MAX_AGE_US), now_us);
@@ -358,8 +354,6 @@ fn complete_job(next: &mut SessionState, job: JobId, completion: Completion) {
             let workspace = complete(&next.doc.workspace, item, attempt, result);
             set_workspace(next, workspace);
         }
-        // No computation exists yet to consume a seat job's result.
-        (Some(super::JobOwner::Seat { .. }), Completion::Resolved(_)) => {}
         // The job is no longer registered: its result is dropped.
         (None, Completion::Resolved(_)) => {}
     }

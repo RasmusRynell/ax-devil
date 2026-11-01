@@ -4,7 +4,7 @@
 use crate::{GRACE, Rig, authority, key, link, stream};
 use playback::{Authority, Priority};
 use sessions::{
-    CursorOptions, EndReason, MAX_SESSIONS, SessionError,
+    CursorOptions, EndReason, MAX_SESSIONS,
     session::{Access, Change, Command, Control, Refusal, View, ViewerView},
 };
 use tokio::{task::yield_now, time::advance};
@@ -36,11 +36,11 @@ async fn stopping_ends_every_watcher_and_restarting_revives_nothing() {
     ));
     assert!(matches!(
         rig.service.resume(&old_token),
-        Err(SessionError::NotFound)
+        Err(Refusal::SeatGone)
     ));
     assert!(matches!(
         rig.service.join(&old_link, CursorOptions::default()),
-        Err(SessionError::Rejected)
+        Err(Refusal::Link)
     ));
     assert!(
         owner.state().sharing.is_none(),
@@ -63,12 +63,14 @@ async fn stopping_ends_every_watcher_and_restarting_revives_nothing() {
     );
 
     owner
-        .command(Command::Control(Control::Share(Access::Watch)))
+        .command(Command::Control(Control::Share {
+            access: Access::Watch,
+        }))
         .unwrap();
     assert_ne!(link(&owner).secret, old_link.secret);
     assert!(matches!(
         rig.service.join(&old_link, CursorOptions::default()),
-        Err(SessionError::Rejected)
+        Err(Refusal::Link)
     ));
     assert_eq!(rig.service.redeem(&unused).err(), Some(Refusal::BadTicket));
     let again = rig.join(&owner);
@@ -147,7 +149,9 @@ async fn lowering_access_takes_back_exploring_and_editing_at_once() {
     );
 
     owner
-        .command(Command::Control(Control::SetAccess(Access::Watch)))
+        .command(Command::Control(Control::SetAccess {
+            access: Access::Watch,
+        }))
         .unwrap();
 
     assert!(matches!(authority(&exploring), Authority::Follow { .. }));
@@ -157,7 +161,9 @@ async fn lowering_access_takes_back_exploring_and_editing_at_once() {
     );
 
     owner
-        .command(Command::Control(Control::SetAccess(Access::Edit)))
+        .command(Command::Control(Control::SetAccess {
+            access: Access::Edit,
+        }))
         .unwrap();
     let item = *owner.state().doc.workspace.open.iter().next().unwrap();
     assert!(
@@ -166,7 +172,9 @@ async fn lowering_access_takes_back_exploring_and_editing_at_once() {
             .is_ok()
     );
     owner
-        .command(Command::Control(Control::SetAccess(Access::Explore)))
+        .command(Command::Control(Control::SetAccess {
+            access: Access::Explore,
+        }))
         .unwrap();
     assert_eq!(
         watcher
@@ -204,10 +212,7 @@ async fn the_session_ending_ends_every_stream_job_and_seat() {
         Change::Ended(EndReason::OwnerGone)
     ));
     assert!(pending[0].0.cancel.is_cancelled());
-    assert!(matches!(
-        rig.service.resume(&token),
-        Err(SessionError::NotFound)
-    ));
+    assert!(matches!(rig.service.resume(&token), Err(Refusal::SeatGone)));
 }
 
 #[tokio::test(start_paused = true)]
@@ -219,7 +224,7 @@ async fn disconnected_sessions_in_their_grace_period_still_count_against_the_ser
         .collect();
     assert_eq!(
         rig.service.create(true, cursors()).err(),
-        Some(SessionError::Full)
+        Some(Refusal::Full)
     );
 
     // Every window disconnects; each session is kept for its grace period, so there is still no room.
@@ -228,7 +233,7 @@ async fn disconnected_sessions_in_their_grace_period_still_count_against_the_ser
     advance(GRACE / 2).await;
     assert_eq!(
         rig.service.create(true, cursors()).err(),
-        Some(SessionError::Full)
+        Some(Refusal::Full)
     );
 
     // Once they have expired, the places are free again.
@@ -295,7 +300,7 @@ async fn a_new_link_turns_away_the_old_one_and_keeps_the_seats_already_in() {
 
     assert!(matches!(
         rig.service.join(&old, CursorOptions::default()),
-        Err(SessionError::Rejected)
+        Err(Refusal::Link)
     ));
     assert!(
         rig.service

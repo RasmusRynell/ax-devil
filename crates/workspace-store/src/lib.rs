@@ -12,11 +12,12 @@
 //! TODO(M3): saving, recovery copies and the row projection come behind this same interface.
 
 use foundation::UserError;
+use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use workspace::{Content, ItemId, Recipe, Workspace, WorkspaceItem};
 
 /// Names one commit of an item's Content. Later commits have larger values, across all items of a state.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub struct ContentGen(pub u64);
 
 /// What resolving an item has produced so far.
@@ -52,7 +53,35 @@ pub struct WorkspaceState {
     next_generation: u64,
 }
 
+/// The parts of a [`WorkspaceState`] a reader may see, each by name.
+#[derive(Clone, Copy, Debug)]
+pub struct WorkspaceParts<'a> {
+    /// The items, in the order they were added.
+    pub workspace: &'a Workspace,
+    /// The resolution of every item in the workspace.
+    pub resolutions: &'a HashMap<ItemId, Resolution>,
+    /// Items with a viewer requested.
+    pub open: &'a HashSet<ItemId>,
+}
+
 impl WorkspaceState {
+    /// The state's parts. The destructure names every field, so a new one does not compile until it is decided here
+    /// whether readers that destructure [`WorkspaceParts`] (the projection to watchers) get it.
+    pub fn parts(&self) -> WorkspaceParts<'_> {
+        let Self {
+            workspace,
+            resolutions,
+            open,
+            next_attempt: _,
+            next_generation: _,
+        } = self;
+        WorkspaceParts {
+            workspace,
+            resolutions,
+            open,
+        }
+    }
+
     /// Marks the item pending under a new attempt and returns the job for it.
     fn start(&mut self, item: &WorkspaceItem) -> ResolveJob {
         self.next_attempt += 1;

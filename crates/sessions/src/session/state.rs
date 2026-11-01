@@ -6,7 +6,7 @@ use super::{
     streams::{Grant, PendingTicket},
     views::View,
 };
-use crate::{EndReason, JoinLink, Mode, OwnerId, SessionId};
+use crate::{EndReason, JoinLink, OwnerId, SeatMode, SessionId};
 use std::{collections::BTreeMap, sync::Arc};
 use workspace_store::WorkspaceState;
 
@@ -61,11 +61,11 @@ pub struct Seat {
 
 impl Seat {
     /// Whose view the seat shows.
-    pub fn mode(&self) -> Mode {
+    pub fn mode(&self) -> SeatMode {
         if self.view.is_some() {
-            Mode::Exploring
+            SeatMode::Exploring
         } else {
-            Mode::Following
+            SeatMode::Following
         }
     }
 }
@@ -111,8 +111,6 @@ pub struct SessionState {
     pub(super) next_sharing: u64,
     pub(super) next_grant: u64,
     pub(super) next_job: u64,
-    /// Counts every transition, visible or not; orders the authority changes a transition asks for.
-    pub(super) applied: u64,
     /// The record of what is authorized. A grant removed is never given back.
     pub(super) grants: BTreeMap<GrantId, Grant>,
     pub(super) tickets: Vec<PendingTicket>,
@@ -145,7 +143,6 @@ impl SessionState {
             next_sharing: 0,
             next_grant: 0,
             next_job: 0,
-            applied: 0,
             grants: BTreeMap::new(),
             tickets: Vec::new(),
             jobs: BTreeMap::new(),

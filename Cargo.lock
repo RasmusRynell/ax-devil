@@ -434,6 +434,8 @@ name = "foundation"
 version = "0.1.0"
 dependencies = [
  "bytes",
+ "serde",
+ "ts-rs",
  "uuid",
 ]
 
@@ -795,8 +797,10 @@ version = "0.1.0"
 dependencies = [
  "bytes",
  "foundation",
+ "serde",
  "tokio",
  "tracing",
+ "ts-rs",
 ]
 
 [[package]]
@@ -1044,8 +1048,11 @@ dependencies = [
  "foundation",
  "getrandom 0.4.3",
  "playback",
+ "serde",
+ "serde_json",
  "tempfile",
  "tokio",
+ "ts-rs",
  "workspace",
  "workspace-store",
 ]
@@ -1534,6 +1541,7 @@ name = "workspace"
 version = "0.1.0"
 dependencies = [
  "foundation",
+ "serde",
  "tempfile",
 ]
 
@@ -1542,6 +1550,7 @@ name = "workspace-store"
 version = "0.1.0"
 dependencies = [
  "foundation",
+ "serde",
  "tempfile",
  "workspace",
 ]

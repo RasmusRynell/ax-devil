@@ -3,7 +3,7 @@
 //! A [`SessionId`] only names a session; a [`Secret`] is what admits someone. They are drawn independently, so
 //! knowing an id (as the server's password holders do) reveals nothing about the secrets.
 
-use crate::SessionError;
+use crate::session::Refusal;
 use std::{
     fmt::{self, Write as _},
     hint::black_box,
@@ -31,16 +31,16 @@ fn hex(bytes: &[u8]) -> String {
     })
 }
 
-/// Exactly `2 * N` hexadecimal digits, or `Malformed`.
-fn read_hex<const N: usize>(text: &str) -> Result<[u8; N], SessionError> {
+/// Exactly `2 * N` hexadecimal digits, or `Invalid`.
+fn read_hex<const N: usize>(text: &str) -> Result<[u8; N], Refusal> {
     if text.len() != 2 * N || !text.bytes().all(|byte| byte.is_ascii_hexdigit()) {
-        return Err(SessionError::Malformed);
+        return Err(Refusal::Invalid);
     }
     let mut bytes = [0; N];
     for (byte, pair) in bytes.iter_mut().zip(text.as_bytes().chunks(2)) {
         // Both digits were checked to be ASCII hex above.
-        let pair = std::str::from_utf8(pair).map_err(|_| SessionError::Malformed)?;
-        *byte = u8::from_str_radix(pair, 16).map_err(|_| SessionError::Malformed)?;
+        let pair = std::str::from_utf8(pair).map_err(|_| Refusal::Invalid)?;
+        *byte = u8::from_str_radix(pair, 16).map_err(|_| Refusal::Invalid)?;
     }
     Ok(bytes)
 }
@@ -63,9 +63,9 @@ impl fmt::Display for SessionId {
 }
 
 impl FromStr for SessionId {
-    type Err = SessionError;
+    type Err = Refusal;
 
-    fn from_str(text: &str) -> Result<Self, SessionError> {
+    fn from_str(text: &str) -> Result<Self, Refusal> {
         read_hex(text).map(Self)
     }
 }
@@ -139,9 +139,9 @@ impl fmt::Display for Secret {
 
 /// Reads the 32 hex digits a generated secret is shown as; the operator's own password has no parsed form.
 impl FromStr for Secret {
-    type Err = SessionError;
+    type Err = Refusal;
 
-    fn from_str(text: &str) -> Result<Self, SessionError> {
+    fn from_str(text: &str) -> Result<Self, Refusal> {
         read_hex::<16>(text).map(|bytes| Self(hex(&bytes)))
     }
 }
@@ -162,10 +162,10 @@ impl fmt::Display for JoinLink {
 }
 
 impl FromStr for JoinLink {
-    type Err = SessionError;
+    type Err = Refusal;
 
-    fn from_str(text: &str) -> Result<Self, SessionError> {
-        let (session, secret) = text.split_once('.').ok_or(SessionError::Malformed)?;
+    fn from_str(text: &str) -> Result<Self, Refusal> {
+        let (session, secret) = text.split_once('.').ok_or(Refusal::Invalid)?;
         Ok(Self {
             session: session.parse()?,
             secret: secret.parse()?,

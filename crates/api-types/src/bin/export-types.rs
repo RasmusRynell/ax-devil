@@ -11,7 +11,16 @@ macro_rules! declarations {
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
+    use ::playback::ClockIntent;
     use api_types::{playback::*, workspace::*, *};
+    use foundation::ErrorCode;
+    use sessions::{
+        CursorOptions, EndReason, SeatMode, SeatRole,
+        session::{
+            Access, Can, ContentRef, Control, Refusal, RosterEntry, Sidebar, SidebarView, View,
+            ViewerView,
+        },
+    };
     let mut sections = declarations![
         Grant,
         AppInfo,
@@ -29,8 +38,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         CursorOptions,
         SessionAuth,
         DocCommand,
-        ControlCommand,
-        StreamKey,
+        Control,
+        ContentRef,
         SessionCommand,
         CursorRegion,
         CursorElement,
@@ -39,12 +48,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         SeatRole,
         SeatMode,
         SeatAccess,
-        SeatInfo,
+        Can,
+        RosterEntry,
         SharingInfo,
         DocWire,
-        RefusalCode,
+        Refusal,
         AckOutcome,
-        EndedReason,
+        EndReason,
         SessionServerMessage,
         SessionSummary,
         WorkspaceState,

@@ -18,7 +18,7 @@ mod streams;
 mod transition;
 mod views;
 
-pub use authorize::{ContentRef, Demand, Refusal, StreamKey, Use, authorize};
+pub use authorize::{Can, ContentRef, Refusal, Use, authorize, authorize_stream, can};
 pub use commands::{Command, Control, Scope};
 pub use handle::{Change, Feed, Handle, Reply, StreamLease};
 pub use jobs::{Completion, JobOwner, Spawn, Work};
@@ -32,6 +32,8 @@ pub use views::{Sidebar, SidebarView, View, ViewLane, ViewerView, restrict};
 
 /// Names a seat in its session. Never reused within the session.
 pub use crate::ParticipantId as SeatId;
+use serde::{Deserialize, Serialize};
+use ts_rs::TS;
 
 /// Counts the replacements of a seat's connection. A handle, ticket or grant of an older lease does nothing.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
@@ -51,7 +53,8 @@ pub struct GrantId(pub u64);
 pub struct JobId(pub u64);
 
 /// What watchers may do while sharing is on.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
 pub enum Access {
     /// Follow the presenter.
     Watch,

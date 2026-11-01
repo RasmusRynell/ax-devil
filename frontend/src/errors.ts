@@ -28,7 +28,6 @@ export const REFUSALS: Record<RefusalCode, string> = {
   ContentUnavailable: "That video is not open.",
   TooManyStreams: "Too many videos are open.",
   BadTicket: "The backend refused to open that video.",
-  Unsupported: "That is not supported yet.",
   Link: "That link is no longer valid.",
   Full: "That session is full.",
   Invalid: "The backend cannot open that.",

@@ -97,8 +97,7 @@ async fn a_session_works_alone_then_a_watcher_joins_it_sees_only_what_it_may_and
         .iter()
         .find_map(|item| item["resolution"]["content"].as_object())
         .unwrap();
-    let key =
-        json!({"type": "frames", "content": content["id"], "generation": content["generation"]});
+    let key = json!({"content": content["id"], "generation": content["generation"]});
 
     // Sharing: a link appears for the owner, and the session is listed.
     owner

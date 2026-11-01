@@ -47,6 +47,16 @@ void test("only media may depend on ffmpeg-next", () => {
   assert.match(problems[0], /export depends on ffmpeg-next/);
 });
 
+void test("layers 1-3 may derive serde and ts-rs but stay free of the HTTP server", () => {
+  assert.deepEqual(
+    problemsOf([{ name: "sessions", layer: "services", deps: ["serde", "ts-rs"] }]),
+    [],
+  );
+  const problems = problemsOf([{ name: "sessions", layer: "services", deps: ["axum"] }]);
+  assert.equal(problems.length, 1);
+  assert.match(problems[0], /sessions \(services\) depends on axum/);
+});
+
 void test("a dev-dependency is exempt and a higher layer is still rejected", () => {
   assert.deepEqual(
     problemsOf([

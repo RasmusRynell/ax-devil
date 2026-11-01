@@ -16,10 +16,13 @@ workspace = true
 foundation.workspace = true
 getrandom = "0.4"
 playback.workspace = true
+serde.workspace = true
 tokio = { version = "1", features = ["rt", "sync", "time"] }
+ts-rs.workspace = true
 workspace.workspace = true
 workspace-store.workspace = true
 
 [dev-dependencies]
+serde_json.workspace = true
 tempfile = "3"
 tokio = { version = "1", features = ["macros", "rt", "test-util"] }

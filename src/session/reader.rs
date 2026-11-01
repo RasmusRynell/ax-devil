@@ -13,9 +13,7 @@ use super::{
     wire::{self, Bucket},
 };
 use crate::AppState;
-use api_types::{
-    AckOutcome, CursorPoint, SessionClientMessage, SessionServerMessage, View as WireView,
-};
+use api_types::{AckOutcome, CursorPoint, SessionClientMessage, SessionServerMessage};
 use axum::extract::ws::{Message, WebSocket};
 use futures_util::{StreamExt, stream::SplitStream};
 use sessions::session::{
@@ -92,10 +90,10 @@ pub(super) async fn run(
                     reply(&replies, message).await?;
                 }
             }
-            SessionClientMessage::View { seq, view } => views.offer(seq, session_view(view)?),
+            SessionClientMessage::View { seq, view } => views.offer(seq, view),
             SessionClientMessage::CursorOptions(options) => {
                 take_command(&mut commands)?;
-                handle.set_cursor_options(wire::cursor_options(options));
+                handle.set_cursor_options(options);
             }
             SessionClientMessage::Command { seq, cmd } => {
                 take_command(&mut commands)?;
@@ -131,10 +129,6 @@ fn take_command(commands: &mut Bucket) -> Result<(), Exit> {
     }
 }
 
-fn session_view(view: WireView) -> Result<View, Exit> {
-    View::try_from(view).map_err(|error| Exit::Close(INVALID_DATA, error.to_string()))
-}
-
 /// Runs one command and words the result: an `Ack`, or the `Ticket` that answers a ticket request.
 async fn answer(
     state: &AppState,
@@ -150,7 +144,7 @@ async fn answer(
         Ok(command) => command,
         Err(code) => return refused(code),
     };
-    if matches!(command, Command::Control(Control::Share(_)))
+    if matches!(command, Command::Control(Control::Share { .. }))
         && authorize(
             &handle.state(),
             handle.seat(),
@@ -172,6 +166,6 @@ async fn answer(
             ticket: ticket.to_string(),
             expires_ms: u64::try_from(TICKET_TTL.as_millis()).unwrap_or(u64::MAX),
         },
-        Err(refusal) => refused(refusal.into()),
+        Err(refusal) => refused(refusal),
     }
 }
