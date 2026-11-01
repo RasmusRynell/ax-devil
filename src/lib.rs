@@ -3,31 +3,29 @@
 pub mod access;
 mod routes;
 pub mod runtime;
+pub mod session;
 pub mod share;
-mod share_socket;
-mod share_state;
-mod share_wire;
 #[cfg(test)]
 mod test_support;
 pub mod video_cache;
 pub mod video_sources;
 
-pub use share_state::{Share, ShareConfig};
-
-use access::{Admission, Limits, Policy, Principal, SettingsAccess};
+use access::{Admission, Limits, Policy, Principal};
 use api_types::{API_VERSION, ApiError, AppInfo, SHELL_API, Settings as SettingsBody};
 use axum::{
     Json, Router,
     extract::{FromRef, State},
     http::StatusCode,
-    middleware::{from_fn, from_fn_with_state},
-    routing::get,
+    middleware::from_fn,
 };
 #[cfg(feature = "embed-assets")]
 use axum::{
     http::{Uri, header},
     response::{IntoResponse, Response},
 };
+use routes::Listener;
+use session::{GRACE, LaunchQueue, Sessions};
+use sessions::session::OnRuntime;
 use share::Hosting;
 use std::sync::Arc;
 use tokio::sync::watch;
@@ -44,40 +42,47 @@ struct Assets;
 pub struct AppState {
     /// The settings service; a route reads and writes only the scopes its caller is granted.
     pub settings: Arc<settings::Settings>,
-    /// The workspace store.
-    pub store: workspace_store::Store,
     /// The open videos, which the playback socket draws its viewers from.
     pub videos: Arc<video_sources::VideoSources>,
-    /// Turns true when the backend is stopping: long-lived connections, such as the playback and share sockets,
+    /// Turns true when the backend is stopping: long-lived connections, such as the playback and session sockets,
     /// end.
     pub stopping: watch::Receiver<bool>,
     /// How this listener decides who is asking.
     pub policy: Arc<Policy>,
-    /// Counts the open session sockets.
+    /// Counts the open sockets.
     pub admission: Arc<Admission>,
-    /// The sessions this backend holds, whichever listener their sockets arrive on.
-    share: Arc<Share>,
-    /// Where the join links of those sessions point.
+    /// Every session this backend holds, whichever listener its socket arrives on.
+    pub sessions: Sessions,
+    /// Items the first Local session takes when it starts.
+    launch: Arc<LaunchQueue>,
+    /// Where the join links of the sessions point.
     hosting: Arc<Hosting>,
 }
 
 impl AppState {
-    /// State for one listener with the default socket limits and session settings, and no join links.
+    /// State for one listener with the default socket limits, no launch items and no join links. Must be created
+    /// inside a Tokio runtime, which resolves the sessions' items.
     pub fn new(
         settings: Arc<settings::Settings>,
         policy: Policy,
-        store: workspace_store::Store,
         videos: Arc<video_sources::VideoSources>,
         stopping: watch::Receiver<bool>,
     ) -> Self {
+        let runtime = tokio::runtime::Handle::current();
+        let limits = match policy {
+            // Every client of the Local listener is this machine, so a per-address cap would only limit the person
+            // using it: all their windows and viewers share one address.
+            Policy::Local => Limits::behind_proxy(),
+            Policy::Shared { .. } => Limits::default(),
+        };
         Self {
             settings,
-            store,
             videos,
             stopping,
             policy: Arc::new(policy),
-            admission: Arc::new(Admission::new(Limits::default())),
-            share: Arc::new(Share::new(ShareConfig::default())),
+            admission: Arc::new(Admission::new(limits)),
+            sessions: Sessions::new(GRACE, Arc::new(OnRuntime(runtime))),
+            launch: Arc::new(LaunchQueue::default()),
             hosting: Arc::new(Hosting::None),
         }
     }
@@ -89,10 +94,10 @@ impl AppState {
         self
     }
 
-    /// The same state with these session settings. Call it before [`share::ShareListener::new`].
+    /// The same state with `launch` as the items the first Local session takes.
     #[must_use]
-    pub fn with_share(mut self, config: ShareConfig) -> Self {
-        self.share = Arc::new(Share::new(config));
+    pub fn with_launch(mut self, launch: Arc<LaunchQueue>) -> Self {
+        self.launch = launch;
         self
     }
 
@@ -103,11 +108,12 @@ impl AppState {
         self
     }
 
-    /// State for another listener of this backend: the same settings, limits and sessions, its own policy, and no
+    /// State for another listener of this backend: the same settings and sessions, its own policy and limits, and no
     /// join links of its own.
     pub(crate) fn shared_with(&self, policy: Policy) -> Self {
         Self {
             policy: Arc::new(policy),
+            admission: Arc::new(Admission::new(Limits::default())),
             hosting: Arc::new(Hosting::None),
             ..self.clone()
         }
@@ -120,33 +126,19 @@ impl FromRef<AppState> for Arc<Policy> {
     }
 }
 
-/// Builds the routes of the listener for other machines that the desktop opens during a session: the frontend, the
-/// build's identity, and the share socket, which admits join links only.
+/// Builds the routes of the listener for other machines that the desktop opens while a session is shared: the
+/// frontend, the build's identity, and the session and playback sockets, which admit join links only.
 pub fn lan_app(state: AppState) -> Router {
-    Router::new()
-        .route("/api/info", get(info))
-        .merge(share_socket::socket_routes())
-        .with_state(state)
-        .fallback(asset)
-        .layer(from_fn(access::security_headers))
+    routes::mount(Listener::Lan, state).layer(from_fn(access::security_headers))
 }
 
-/// Builds the backend's routes. The Local policy answers only pages this backend served. The workspace and playback
-/// routes reach this machine's files, so only the Local and Server principals may use them, and the listener for
-/// other machines ([`lan_app`]) does not mount them at all.
+/// Builds the backend's routes. The Local policy answers only pages this backend served.
 pub fn app(state: AppState) -> Router {
-    let local = matches!(*state.policy, Policy::Local);
-    let machine = Router::new()
-        .merge(routes::workspace::router())
-        .merge(routes::playback::router())
-        .route_layer(from_fn_with_state(state.clone(), access::require_member));
-    let mut router = Router::new()
-        .route("/api/info", get(info))
-        .route("/api/settings", get(get_settings).put(put_settings))
-        .merge(share_socket::routes())
-        .merge(machine)
-        .with_state(state)
-        .fallback(asset);
+    let (listener, local) = match *state.policy {
+        Policy::Local => (Listener::Local, true),
+        Policy::Shared { .. } => (Listener::Server, false),
+    };
+    let mut router = routes::mount(listener, state);
     if local {
         router = router.layer(from_fn(access::local_guard));
     }
@@ -154,8 +146,8 @@ pub fn app(state: AppState) -> Router {
     router.layer(from_fn(access::security_headers))
 }
 
-async fn get_settings(
-    SettingsAccess(principal): SettingsAccess,
+pub(crate) async fn get_settings(
+    principal: Principal,
     State(state): State<AppState>,
 ) -> Json<SettingsBody> {
     Json(SettingsBody(
@@ -164,8 +156,8 @@ async fn get_settings(
 }
 
 /// Replaces every setting the caller may change; a rejected or unsaved change leaves the stored state as it was.
-async fn put_settings(
-    SettingsAccess(principal): SettingsAccess,
+pub(crate) async fn put_settings(
+    principal: Principal,
     State(state): State<AppState>,
     Json(body): Json<SettingsBody>,
 ) -> Result<Json<SettingsBody>, (StatusCode, Json<ApiError>)> {
@@ -220,7 +212,7 @@ pub(crate) fn failure(
     )
 }
 
-async fn info(principal: Principal) -> Json<AppInfo> {
+pub(crate) async fn info(principal: Principal) -> Json<AppInfo> {
     Json(AppInfo {
         app: "ax-devil".into(),
         api: API_VERSION,
@@ -233,7 +225,7 @@ async fn info(principal: Principal) -> Json<AppInfo> {
 }
 
 #[cfg(feature = "embed-assets")]
-async fn asset(uri: Uri) -> Response {
+pub(crate) async fn asset(uri: Uri) -> Response {
     let path = uri.path().trim_start_matches('/');
     let path = if path.is_empty() { "index.html" } else { path };
     match Assets::get(path) {
@@ -247,11 +239,6 @@ async fn asset(uri: Uri) -> Response {
             .into_response(),
         None => StatusCode::NOT_FOUND.into_response(),
     }
-}
-
-#[cfg(not(feature = "embed-assets"))]
-async fn asset() -> StatusCode {
-    StatusCode::NOT_FOUND
 }
 
 #[cfg(test)]

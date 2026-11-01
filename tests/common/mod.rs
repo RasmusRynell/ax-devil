@@ -1,9 +1,16 @@
 //! The playback tests' backend, viewer and envelope reader.
 
-use api_types::playback::{ClientMessage, Direction, ServerMessage, Want};
+use api_types::{
+    CursorPoint, ErrorWire,
+    playback::{ClientMessage, Direction, ServerMessage, Want},
+};
 use ax_devil::{AppState, access::Policy, app, video_sources::VideoSources};
 use futures_util::{SinkExt, StreamExt};
 use playback::{CachePool, Registry};
+use sessions::{
+    CursorOptions,
+    session::{Command, ContentRef, Handle, Reply, StreamKey},
+};
 use std::{
     collections::BTreeSet,
     net::SocketAddr,
@@ -14,7 +21,7 @@ use std::{
 };
 use tokio::net::TcpStream;
 use tokio_tungstenite::{MaybeTlsStream, WebSocketStream, tungstenite::Message};
-use workspace_store::{Resolution, Store};
+use workspace_store::{DocCommand, Resolution};
 
 /// Bounds every wait, so a broken backend fails the test instead of hanging it.
 pub const WAIT: Duration = Duration::from_secs(20);
@@ -31,14 +38,30 @@ pub fn luma(sequence_id: u64) -> u8 {
     (sequence_id * 7 % 256) as u8
 }
 
-/// The backend: the real app on a local port, over private settings, caches and workspace.
+/// The backend: the real app on a local port, over private settings and caches.
 pub struct Backend {
     squeezed: bool,
     _stop: tokio::sync::watch::Sender<bool>,
     pub address: SocketAddr,
     pub videos: Arc<VideoSources>,
-    pub store: Store,
+    pub state: AppState,
     pub folder: tempfile::TempDir,
+}
+
+/// A video in a session of its own, ready to be streamed: whoever holds it can ask for tickets.
+pub struct Added {
+    pub owner: Handle<CursorPoint>,
+    pub key: StreamKey,
+}
+
+impl Added {
+    /// A new ticket for the video's stream.
+    pub fn ticket(&self) -> String {
+        match self.owner.command(Command::RequestTicket(self.key.clone())) {
+            Ok(Reply::Ticket(ticket)) => ticket.to_string(),
+            other => panic!("expected a ticket, got {other:?}"),
+        }
+    }
 }
 
 impl Backend {
@@ -58,14 +81,8 @@ impl Backend {
         let registry = Registry::new(CachePool::new(256 * MIB));
         let videos = Arc::new(VideoSources::new(registry, &folder.path().join("cache")));
         let (stop, stopping) = tokio::sync::watch::channel(false);
-        let store = Store::new(tokio::runtime::Handle::current());
-        let router = app(AppState::new(
-            Arc::new(settings),
-            Policy::Local,
-            store.clone(),
-            videos.clone(),
-            stopping,
-        ));
+        let state = AppState::new(Arc::new(settings), Policy::Local, videos.clone(), stopping);
+        let router = app(state.clone());
         let socket = tokio::net::TcpSocket::new_v4().unwrap();
         if squeezed {
             // Connections accepted from this socket inherit the small send buffer.
@@ -86,34 +103,54 @@ impl Backend {
             _stop: stop,
             address,
             videos,
-            store,
+            state,
             folder,
         }
     }
 
-    /// Adds the video to the workspace and returns the id of its Content once it resolved.
-    pub async fn add(&self, path: &Path) -> String {
+    /// Adds the video to a new session of its own, with a viewer requested, and returns it once it resolved.
+    pub async fn add(&self, path: &Path) -> Added {
+        let owner = self
+            .state
+            .sessions
+            .create(true, CursorOptions::default())
+            .unwrap();
         let item = workspace::intake::video(path).unwrap();
         let id = item.id;
-        self.store.add_items(vec![item], false);
-        let mut changes = self.store.subscribe();
-        tokio::time::timeout(
-            WAIT,
-            changes.wait_for(|state| {
-                matches!(state.resolutions.get(&id), Some(Resolution::Resolved(_)))
-            }),
-        )
+        let added = DocCommand::AddItems {
+            items: vec![item],
+            open: true,
+        };
+        owner.command(Command::Content(added)).unwrap();
+        let key = tokio::time::timeout(WAIT, async {
+            loop {
+                let state = owner.state();
+                if let Some(Resolution::Resolved {
+                    content,
+                    generation,
+                }) = state.doc.workspace.resolutions.get(&id)
+                {
+                    break StreamKey::Frames(ContentRef {
+                        content: content.id().clone(),
+                        generation: *generation,
+                    });
+                }
+                tokio::time::sleep(Duration::from_millis(10)).await;
+            }
+        })
         .await
-        .unwrap()
-        .unwrap();
-        workspace::ContentId::of_item(&id).to_string()
+        .expect("the video resolves");
+        Added { owner, key }
     }
 
     pub async fn viewer(&self) -> Viewer {
         let url = format!("ws://{}/api/playback", self.address);
         if !self.squeezed {
             let (socket, _) = tokio_tungstenite::connect_async(url).await.unwrap();
-            return Viewer { socket };
+            return Viewer {
+                socket,
+                close_code: None,
+            };
         }
         let socket = tokio::net::TcpSocket::new_v4().unwrap();
         socket.set_recv_buffer_size(SQUEEZED_BUFFER).unwrap();
@@ -121,7 +158,10 @@ impl Backend {
         let (socket, _) = tokio_tungstenite::client_async(url, MaybeTlsStream::Plain(stream))
             .await
             .unwrap();
-        Viewer { socket }
+        Viewer {
+            socket,
+            close_code: None,
+        }
     }
 
     /// Waits until no decode thread is left, which is what releasing the last viewer of a source must lead to.
@@ -232,6 +272,8 @@ pub struct Described {
 
 pub struct Viewer {
     pub socket: WebSocketStream<MaybeTlsStream<TcpStream>>,
+    /// The code of the close frame the backend ended the socket with, once it did.
+    pub close_code: Option<u16>,
 }
 
 impl Viewer {
@@ -275,9 +317,9 @@ impl Viewer {
         self.socket.send(Message::text(body)).await.unwrap();
     }
 
-    pub async fn open(&mut self, content_id: &str, start_frame: Option<u64>) {
+    pub async fn open(&mut self, ticket: &str, start_frame: Option<u64>) {
         self.send(&ClientMessage::Open {
-            content_id: content_id.to_owned(),
+            ticket: ticket.to_owned(),
             start_frame,
         })
         .await;
@@ -305,7 +347,11 @@ impl Viewer {
                 }
                 Some(Ok(Message::Binary(bytes))) => return parse_envelope(&bytes),
                 Some(Ok(Message::Ping(_) | Message::Pong(_))) => {}
-                Some(Ok(Message::Close(_))) | Some(Err(_)) | None => return Event::Closed,
+                Some(Ok(Message::Close(frame))) => {
+                    self.close_code = frame.map(|frame| frame.code.into());
+                    return Event::Closed;
+                }
+                Some(Err(_)) | None => return Event::Closed,
                 Some(Ok(other)) => panic!("unexpected message {other:?}"),
             }
         }
@@ -323,7 +369,7 @@ impl Viewer {
                     duration_us,
                     frame_bytes,
                 }) => {
-                    assert_eq!(protocol, 1);
+                    assert_eq!(protocol, 2);
                     break (frame_count, frame_bytes, duration_us);
                 }
                 _ => panic!("expected Indexing or Opened"),
@@ -366,15 +412,15 @@ impl Viewer {
         arrived
     }
 
-    /// The reason and location of the `Error` that ends the session, then the end of the socket.
-    pub async fn error(&mut self) -> (String, String) {
-        let Event::Message(ServerMessage::Error { reason, location }) = self.next().await else {
+    /// The `Error` that ends the session, then the end of the socket.
+    pub async fn error(&mut self) -> ErrorWire {
+        let Event::Message(ServerMessage::Error(error)) = self.next().await else {
             panic!("expected an Error");
         };
         assert!(
             matches!(self.next().await, Event::Closed),
             "the socket closes after Error"
         );
-        (reason, location)
+        error
     }
 }

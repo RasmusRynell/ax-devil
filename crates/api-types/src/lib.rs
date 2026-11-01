@@ -1,17 +1,23 @@
 //! Types the backend sends to the frontend, exported to TypeScript by `export-types`.
 
+mod error;
+mod mirror;
 pub mod playback;
 mod session;
+mod view;
 pub mod workspace;
 
+pub use error::{Audience, ErrorCode, ErrorParams, ErrorWire, project};
+pub use mirror::InvalidItemId;
 pub use session::*;
+pub use view::*;
 
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use ts_rs::TS;
 
 /// Raised when a route changes in a way an older desktop shell or frontend cannot use.
-pub const API_VERSION: u32 = 4;
+pub const API_VERSION: u32 = 5;
 
 /// Raised when the desktop shell's own interface (the preload bridge and its IPC) changes in a way a frontend served
 /// by a remote backend cannot use. The shell loads a remote backend only when its [`AppInfo::shell`] matches.
@@ -25,8 +31,10 @@ pub enum Grant {
     Preferences,
     /// Read and change the Server settings.
     Configuration,
-    /// List sessions, create them and watch any of them.
+    /// List shared sessions, own a session and watch any of them.
     Sessions,
+    /// Open this machine's own files and videos: the owner's commands that read the host.
+    Files,
 }
 
 /// Identifies a running backend, so the desktop shell and the development supervisor reuse only a compatible one.
@@ -66,7 +74,7 @@ pub struct ApiError {
     pub location: String,
 }
 
-/// What the sidebar shows; part of the view a session shares, and the stand-in for the Workspace it will share.
+/// What the sidebar shows; part of the view a session shares.
 #[derive(Serialize, Deserialize, TS, Clone, Copy, Debug, Default, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
 pub enum SidebarView {

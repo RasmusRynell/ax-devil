@@ -4,7 +4,7 @@
 /**
  * What a caller may do on a backend. Every request is judged by the grants of whoever sent it; they are not roles.
  */
-export type Grant = "preferences" | "configuration" | "sessions";
+export type Grant = "preferences" | "configuration" | "sessions" | "files";
 
 /**
  * Identifies a running backend, so the desktop shell and the development supervisor reuse only a compatible one.
@@ -59,23 +59,111 @@ reason: string,
 location: string, };
 
 /**
- * What the sidebar shows; part of the view a session shares, and the stand-in for the Workspace it will share.
+ * The public kind of a failure; mirrors [`foundation::ErrorCode`] one to one.
+ */
+export type ErrorCode = "InvalidPath" | "FileNotFound" | "FileUnreadable" | "NotAVideo" | "UnsupportedFormat" | "IndexingFailed" | "FileChanged" | "DecodeFailed" | "ContentNotFound" | "ProtocolViolation" | "VideoClosed" | "Internal";
+
+/**
+ * The values a client may fill into the message for a code. Only ids, never text.
+ */
+export type ErrorParams = { 
+/**
+ * The workspace item the failure is about.
+ */
+item?: string, };
+
+/**
+ * A failure as the wire carries it: the code and its parameters for everyone, and for an audience with host
+ * details also the reason and the location.
+ */
+export type ErrorWire = { 
+/**
+ * The public kind.
+ */
+code: ErrorCode, 
+/**
+ * The values the code's message needs.
+ */
+params: ErrorParams, 
+/**
+ * What went wrong, in words for the user. Only for an audience with host details.
+ */
+reason?: string, 
+/**
+ * What it is about, such as the file path. Only for an audience with host details, and only when it is about
+ * something.
+ */
+location?: string, };
+
+/**
+ * What the sidebar shows; part of the view a session shares.
  */
 export type SidebarView = "workspace" | "live" | "offline" | "bookmarks" | "plugins" | "sessions";
 
 /**
- * What the owner publishes and an exploring watcher edits for itself; the stand-in for the open viewers, zoom and
- * playback that will join it. It carries no settings, credentials or host paths.
+ * What watchers may do while sharing is on.
  */
-export type ViewState = { 
+export type Access = "watch" | "explore" | "edit";
+
+/**
+ * What a presenter says the Session's clock is doing, for one viewer. Times are microseconds.
+ */
+export type ClockIntent = { 
+/**
+ * The frame the presenter asked for.
+ */
+frame: number, 
+/**
+ * Whether the clock runs.
+ */
+playing: boolean, 
+/**
+ * Speed in hundredths: 100 is real time.
+ */
+speedCenti: number, 
+/**
+ * When the presenter stamped the intent, in server time.
+ */
+atUs: number, };
+
 /**
  * What the sidebar shows.
  */
-sidebarView: SidebarView, 
+export type Sidebar = { 
+/**
+ * Which view.
+ */
+view: SidebarView, 
 /**
  * Whether the sidebar is open.
  */
-sidebarOpen: boolean, };
+open: boolean, };
+
+/**
+ * What one open viewer shows.
+ */
+export type ViewerView = { 
+/**
+ * What this window's clock for the viewer is doing; absent until it has one.
+ */
+clock?: ClockIntent, };
+
+/**
+ * What a window shows of the Doc. Items the Doc does not have open are dropped by the backend.
+ */
+export type View = { 
+/**
+ * The sidebar.
+ */
+sidebar: Sidebar, 
+/**
+ * The item of the viewer in front; absent shows the welcome page.
+ */
+active?: string, 
+/**
+ * What each open viewer shows, by item id.
+ */
+viewers: { [key in string]?: ViewerView }, };
 
 /**
  * One seat's two cursor choices; both are on by default.
@@ -91,31 +179,97 @@ show: boolean,
 share: boolean, };
 
 /**
- * How a client asks to be seated; the first message of every socket.
+ * How a client asks to be admitted; part of the first message of every socket.
  */
-export type ShareAccess = { "type": "create" } | { "type": "watch", 
+export type SessionAuth = { "type": "own", 
 /**
- * The session's id.
+ * The server password; only a server that has one looks at it.
  */
-session: string, } | { "type": "join", 
+serverPassword?: string, } | { "type": "watch", 
+/**
+ * The Session's id.
+ */
+session: string, 
+/**
+ * The server password; only a server that has one looks at it.
+ */
+serverPassword?: string, } | { "type": "join", 
 /**
  * The link's `<id>.<secret>`.
  */
-link: string, } | { "type": "resume", 
-/**
- * The token from the last `Welcome`.
- */
-token: string, };
+link: string, };
 
 /**
- * Which seat a participant holds.
+ * A change to the Doc's content; the backend runs the intake on every item before it applies any.
  */
-export type SeatRole = "owner" | "watcher";
+export type DocCommand = { "type": "addItems", 
+/**
+ * What to add, in order.
+ */
+items: Array<NewItem>, 
+/**
+ * Whether a viewer should open for each item once it resolves.
+ */
+open: boolean, } | { "type": "openViewer", 
+/**
+ * The item.
+ */
+item: string, } | { "type": "closeViewer", 
+/**
+ * The item.
+ */
+item: string, };
 
 /**
- * Whose view a seat shows.
+ * The owner's control of sharing.
  */
-export type SeatMode = "following" | "exploring";
+export type ControlCommand = { "type": "share", 
+/**
+ * What every watcher may do.
+ */
+access: Access, } | { "type": "setAccess", 
+/**
+ * What every watcher may do.
+ */
+access: Access, } | { "type": "regenerateLink" } | { "type": "stop" };
+
+/**
+ * A stream a seat asks a ticket for.
+ */
+export type StreamKey = { "type": "frames", 
+/**
+ * The Content's id.
+ */
+content: string, 
+/**
+ * The commit of the Content's resolution, as the Doc names it.
+ */
+generation: number, } | { "type": "live", 
+/**
+ * The item.
+ */
+item: string, 
+/**
+ * The commit of the item's Content.
+ */
+generation: number, };
+
+/**
+ * What a seat asks for, settled by its own `Ack`. Changes to a seat's view travel the View lane instead.
+ */
+export type SessionCommand = { "type": "content", 
+/**
+ * The change.
+ */
+command: DocCommand, } | { "type": "follow" } | { "type": "control", 
+/**
+ * The change.
+ */
+control: ControlCommand, } | { "type": "requestTicket", 
+/**
+ * The stream.
+ */
+key: StreamKey, };
 
 /**
  * The part of the window a cursor position belongs to.
@@ -166,58 +320,73 @@ y: number,
 element?: CursorElement, };
 
 /**
- * What the owner decides for the session.
+ * What a client sends over the Session socket. Anything a seat's standing does not allow is answered with a refused
+ * `Ack` (commands) or settled without effect (views); only a malformed or oversized message, or more commands than
+ * the command budget, closes the socket.
  */
-export type ShareOptions = { 
+export type SessionClientMessage = { "type": "hello", 
 /**
- * Watchers may explore on their own.
+ * How to be admitted. Not looked at when `resume` is set: the token alone is the credential.
  */
-explore: boolean, };
-
+auth: SessionAuth, 
 /**
- * What a client sends over the share socket. Each role may send only its own messages; anything else closes the
- * socket with code 1008 and changes nothing.
+ * The token from the last `Welcome`: takes that seat back instead of creating or joining.
  */
-export type ShareClientMessage = { "type": "hello", 
-/**
- * How to be seated.
- */
-access: ShareAccess, 
-/**
- * The server password; only a server that has one looks at it.
- */
-serverPassword?: string, 
+resume?: string, 
 /**
  * This seat's cursor choices.
  */
-cursors: CursorOptions, } | { "type": "publish", 
+cursors: CursorOptions, } | { "type": "view", 
 /**
- * The new view.
+ * Counts this client's views; `views_done` reports the highest one finished.
  */
-state: ViewState, } | { "type": "setOptions", 
-/**
- * Whether watchers may explore.
- */
-explore: boolean, } | { "type": "regenerateLink" } | { "type": "explore" } | { "type": "setView", 
+seq: number, 
 /**
  * The view.
  */
-state: ViewState, 
+view: View, } | { "type": "command", 
 /**
- * Counts this client's edits; the server echoes the latest accepted one as `viewSeq`.
+ * Counts this client's commands; the `Ack` echoes it.
  */
-seq: number, } | { "type": "follow" } | { "type": "cursor", 
+seq: number, 
+/**
+ * The change.
+ */
+cmd: SessionCommand, } | { "type": "cursor", 
 /**
  * The new position.
  */
-at: CursorPoint | null, } | { "type": "cursorOptions" } & CursorOptions | { "type": "leave" };
+at: CursorPoint | null, } | { "type": "cursorOptions" } & CursorOptions | { "type": "timeSync", 
+/**
+ * Names the request.
+ */
+id: number, 
+/**
+ * The client's clock when it sent this.
+ */
+clientUs: number, } | { "type": "leave" };
 
 /**
- * One seat of a session, as every seat sees it.
+ * Which seat a participant holds.
+ */
+export type SeatRole = "owner" | "watcher";
+
+/**
+ * Whose view a seat shows.
+ */
+export type SeatMode = "following" | "exploring";
+
+/**
+ * What this seat is allowed to do, in the rows of the role table.
+ */
+export type SeatAccess = "owner" | "watch" | "explore" | "edit";
+
+/**
+ * One seat of a Session, as every seat sees it.
  */
 export type SeatInfo = { 
 /**
- * Names the seat in snapshots and cursor messages.
+ * Names the seat in `Roster` and `Cursor` messages.
  */
 id: number, 
 /**
@@ -246,84 +415,150 @@ present: boolean,
 sharesCursor: boolean, };
 
 /**
- * Everything one seat sees of its session at one revision, including its own mode and view.
+ * Sharing, while it is on.
  */
-export type ShareSnapshot = { 
+export type SharingInfo = { 
 /**
- * Counts applied changes to the whole session.
+ * What every watcher may do.
  */
-revision: number, 
+access: Access, 
 /**
- * The session's name.
+ * The join link URL; the owner's seat only.
  */
-name: string, 
-/**
- * The owner's seat id.
- */
-owner: number, 
-/**
- * Whether the owner is connected; while not, the rest of this snapshot is the last one the owner left.
- */
-ownerPresent: boolean, 
-/**
- * What the owner allows.
- */
-options: ShareOptions, 
-/**
- * Everyone in the session, oldest first.
- */
-participants: Array<SeatInfo>, 
-/**
- * The view the owner published.
- */
-presenter: ViewState, 
-/**
- * Whether this seat follows or explores.
- */
-mode: SeatMode, 
-/**
- * What this seat shows: its own view while exploring, the presenter's otherwise.
- */
-view: ViewState, 
-/**
- * The latest `seq` of this seat's `setView` the session accepted; adopt `view` only when this is at least the
- * last `seq` sent.
- */
-viewSeq: number, };
+link?: string, };
 
 /**
- * Why a session's socket was told it is over.
+ * The Doc as a watcher or the owner may see it. Built only by the backend's projection.
+ */
+export type DocWire = { 
+/**
+ * The items, how they resolved, and which have a viewer open.
+ */
+workspace: WorkspaceState, };
+
+/**
+ * Why a command was refused. A code and nothing else: the client words it.
+ */
+export type RefusalCode = "SeatGone" | "NotAllowed" | "NotSharing" | "AlreadySharing" | "ContentUnavailable" | "TooManyStreams" | "BadTicket" | "Unsupported" | "Link" | "Full" | "Invalid";
+
+/**
+ * How a command ended.
+ */
+export type AckOutcome = { "status": "ok" } | { "status": "refused", 
+/**
+ * Why.
+ */
+code: RefusalCode, };
+
+/**
+ * Why a Session's socket was told it is over.
  */
 export type EndedReason = "stopped" | "ownerGone" | "replaced";
 
 /**
- * What the backend sends over the share socket.
+ * What the backend sends over the Session socket.
  */
-export type ShareServerMessage = { "type": "welcome", 
+export type SessionServerMessage = { "type": "welcome", 
 /**
- * The session's id.
+ * The Session's id, which `GET /api/sessions` lists it by while it is shared.
  */
 session: string, 
 /**
  * This seat's id.
  */
-you: number, 
-/**
- * Owner or watcher.
- */
-role: SeatRole, 
+seat: number, 
 /**
  * Takes this seat back after a disconnect; each welcome brings a new one and kills the old.
  */
 resume: string, 
 /**
- * The join link URL; only for owners and for holders of the Sessions grant.
+ * The highest View `seq` of this seat that is finished; send later views above it.
  */
-link: string | null, } | { "type": "snapshot" } & ShareSnapshot | { "type": "link", 
+viewsDone: number, 
 /**
- * The link URL.
+ * The backend's clock when it sent this.
  */
-url: string, } | { "type": "cursor", 
+serverUs: number, } | { "type": "doc", 
+/**
+ * Counts changes to the Doc.
+ */
+docRev: number, 
+/**
+ * The Doc as this seat may see it.
+ */
+doc: DocWire, } | { "type": "seat", 
+/**
+ * Counts changes any seat can see.
+ */
+rev: number, 
+/**
+ * The Doc revision `view` belongs to; the Doc for it has been sent.
+ */
+docRev: number, 
+/**
+ * The presenter's view revision.
+ */
+presenterRev: number, 
+/**
+ * What this seat may do.
+ */
+access: SeatAccess, 
+/**
+ * Whether this seat follows or explores.
+ */
+mode: SeatMode, 
+/**
+ * Sharing, while it is on.
+ */
+sharing?: SharingInfo, 
+/**
+ * What this seat shows: its own view while exploring, the presenter's otherwise.
+ */
+view: View, 
+/**
+ * The highest View `seq` of this seat that is finished: accepted, refused or overwritten.
+ */
+viewsDone: number, } | { "type": "roster", 
+/**
+ * The seats.
+ */
+participants: Array<SeatInfo>, } | { "type": "ack", 
+/**
+ * The command's `seq`.
+ */
+seq: number, 
+/**
+ * How it ended.
+ */
+outcome: AckOutcome, } | { "type": "ticket", 
+/**
+ * The `RequestTicket` command's `seq`.
+ */
+seq: number, 
+/**
+ * The bearer ticket: never put it in a URL or a log.
+ */
+ticket: string, 
+/**
+ * How long it can be redeemed, in milliseconds.
+ */
+expiresMs: number, } | { "type": "timeSyncReply", 
+/**
+ * The request's `id`.
+ */
+id: number, 
+/**
+ * The request's `client_us`.
+ */
+clientUs: number, 
+/**
+ * The backend's clock when it answered.
+ */
+serverUs: number, } | { "type": "heartbeat", 
+/**
+ * The backend's clock when it sent this.
+ */
+serverUs: number, } | { "type": "cursor", 
 /**
  * Whose cursor.
  */
@@ -331,43 +566,35 @@ participant: number,
 /**
  * Where it is now, or `null` when it left the window.
  */
-at: CursorPoint | null, } | { "type": "heartbeat" } | { "type": "ended", 
+at: CursorPoint | null, } | { "type": "ended", 
 /**
  * Why.
  */
 reason: EndedReason, };
 
 /**
- * A line of `GET /api/share/sessions`.
+ * A line of `GET /api/sessions`: a Session that is shared.
  */
-export type ShareSummary = { 
+export type SessionSummary = { 
 /**
  * What to watch with.
  */
 id: string, 
 /**
- * The session's name.
- */
-name: string, 
-/**
  * Whether the owner is connected.
  */
 ownerPresent: boolean, 
 /**
- * Seats in the session, away ones included.
+ * Seats in the Session, away ones included.
  */
 participants: number, 
 /**
- * The join link URL; `null` when this backend cannot be reached by other machines.
+ * The join link URL; absent when this backend cannot be reached by other machines.
  */
-link: string | null, 
-/**
- * Whether the caller owns the session.
- */
-mine: boolean, };
+link?: string, };
 
 /**
- * The workspace and what is known about each item: the body of `GET /api/workspace` and of every `Workspace` event.
+ * The workspace and what is known about each item, as one audience may see it.
  */
 export type WorkspaceState = { 
 /**
@@ -408,24 +635,21 @@ export type ResolutionState = { "status": "Pending" } | { "status": "Resolved",
 /**
  * What the item resolved to.
  */
-content: ContentInfo, } | { "status": "Failed", 
-/**
- * What is wrong, in words for the user.
- */
-reason: string, 
-/**
- * What it is about, such as the file path.
- */
-location: string, };
+content: ContentInfo, } | { "status": "Failed" } & ErrorWire;
 
 /**
  * Content by kind. Viewers register by kind.
  */
 export type ContentInfo = { "kind": "SeekableVideo", 
 /**
- * Names the Content; the playback socket opens it by this id.
+ * Names the Content; a ticket request names the stream by this id and `generation`.
  */
 id: string, 
+/**
+ * The commit of the Content's resolution. Re-resolving or reopening the item gives a new one, which makes
+ * tickets for the old one worthless.
+ */
+generation: number, 
 /**
  * The name the viewer shows.
  */
@@ -439,24 +663,6 @@ export type NewItem = { "type": "Video",
  * The file; a relative path is relative to the backend's working folder.
  */
 path: string, };
-
-/**
- * The body of `POST /api/workspace/items`. The intake checks every entry first: if any is refused, nothing is added.
- */
-export type AddItemsRequest = { 
-/**
- * What to add, in order.
- */
-items: Array<NewItem>, 
-/**
- * Whether a viewer should open for each item once it resolves.
- */
-open: boolean, };
-
-/**
- * What `GET /api/events` streams, one per server-sent event, starting with the current state on connect.
- */
-export type ServerEvent = { "type": "Workspace" } & WorkspaceState;
 
 /**
  * How a viewer steps through the video.
@@ -490,9 +696,9 @@ direction: Direction, };
  */
 export type ClientMessage = { "type": "Open", 
 /**
- * The Content to open, by the id the workspace gave it.
+ * The ticket.
  */
-content_id: string, 
+ticket: string, 
 /**
  * The frame to show, paused; the first frame when absent.
  */
@@ -527,22 +733,27 @@ frame_bytes: number, } | { "type": "FrameError",
  */
 sequence_id: number, 
 /**
- * What went wrong, in words for the user.
+ * The public kind.
  */
-reason: string, } | { "type": "Error", 
+code: ErrorCode, 
 /**
- * What went wrong, in words for the user.
+ * The values the code's message needs.
  */
-reason: string, 
+params: ErrorParams, 
 /**
- * What it is about, such as the file path.
+ * What went wrong, in words for the user. Only for an audience with host details.
  */
-location: string, };
+reason?: string, 
+/**
+ * What it is about, such as the file path. Only for an audience with host details, and only when it is about
+ * something.
+ */
+location?: string, } | { "type": "Error" } & ErrorWire;
 
 /**
  * Raised when the messages or the envelope change in a way an older frontend cannot read.
  */
-export const PLAYBACK_PROTOCOL = 1;
+export const PLAYBACK_PROTOCOL = 2;
 
 /**
  * "AXDV" read as a little-endian u32.

@@ -1,9 +1,10 @@
-//! Wire types for the workspace routes and events.
+//! The workspace as the Session socket carries it: the Doc's wire form and the items a client asks to add.
 
+use crate::ErrorWire;
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
-/// The workspace and what is known about each item: the body of `GET /api/workspace` and of every `Workspace` event.
+/// The workspace and what is known about each item, as one audience may see it.
 #[derive(Serialize, Deserialize, TS)]
 pub struct WorkspaceState {
     /// The user's name for the workspace; `null` is Untitled.
@@ -37,13 +38,8 @@ pub enum ResolutionState {
         /// What the item resolved to.
         content: ContentInfo,
     },
-    /// The item stays in the workspace without Content.
-    Failed {
-        /// What is wrong, in words for the user.
-        reason: String,
-        /// What it is about, such as the file path.
-        location: String,
-    },
+    /// The item stays in the workspace without Content; this is why.
+    Failed(ErrorWire),
 }
 
 /// Content by kind. Viewers register by kind.
@@ -52,15 +48,19 @@ pub enum ResolutionState {
 pub enum ContentInfo {
     /// A recorded video.
     SeekableVideo {
-        /// Names the Content; the playback socket opens it by this id.
+        /// Names the Content; a ticket request names the stream by this id and `generation`.
         id: String,
+        /// The commit of the Content's resolution. Re-resolving or reopening the item gives a new one, which makes
+        /// tickets for the old one worthless.
+        #[ts(type = "number")]
+        generation: u64,
         /// The name the viewer shows.
         display_name: String,
     },
 }
 
 /// What the user asked to add; the intake turns each into an item.
-#[derive(Serialize, Deserialize, TS)]
+#[derive(Serialize, Deserialize, TS, Clone, Debug, PartialEq, Eq)]
 #[serde(tag = "type")]
 pub enum NewItem {
     /// A video file.
@@ -68,21 +68,4 @@ pub enum NewItem {
         /// The file; a relative path is relative to the backend's working folder.
         path: String,
     },
-}
-
-/// The body of `POST /api/workspace/items`. The intake checks every entry first: if any is refused, nothing is added.
-#[derive(Serialize, Deserialize, TS)]
-pub struct AddItemsRequest {
-    /// What to add, in order.
-    pub items: Vec<NewItem>,
-    /// Whether a viewer should open for each item once it resolves.
-    pub open: bool,
-}
-
-/// What `GET /api/events` streams, one per server-sent event, starting with the current state on connect.
-#[derive(Serialize, Deserialize, TS)]
-#[serde(tag = "type")]
-pub enum ServerEvent {
-    /// The workspace changed; this is the whole new state.
-    Workspace(WorkspaceState),
 }

@@ -5,6 +5,7 @@ use ax_devil::{
     AppState,
     access::{Limits, Policy},
     app,
+    session::LaunchQueue,
     share::{self, Hosting, LinkBase, ShareListener},
     video_cache,
     video_sources::VideoSources,
@@ -23,7 +24,7 @@ use std::{
 };
 use tokio::sync::watch;
 
-/// How long open connections, such as the event stream, get to close after Ctrl+C before the backend exits anyway.
+/// How long open connections, such as the sockets, get to close after Ctrl+C before the backend exits anyway.
 const SHUTDOWN_GRACE: Duration = Duration::from_secs(2);
 
 /// The environment variable that sets the server password for `serve`.
@@ -47,7 +48,7 @@ struct Cli {
         default_value = "INFO"
     )]
     log_level: logging::Level,
-    /// Where the desktop backend listens for other machines while a session exists; tests use a free port.
+    /// Where the desktop backend listens for other machines while a session is shared; tests use a free port.
     #[arg(
         long,
         hide = true,
@@ -139,7 +140,7 @@ pub async fn run() -> ExitCode {
                 Some(Command::Serve(args)) => serve(&folders, args).await,
                 Some(Command::Local { video }) => match workspace::intake::video(&video) {
                     Ok(item) => host_desktop(&folders, cli.share_address, vec![item]).await,
-                    Err(error) => Err(format!("{}: {}", error.location, error.reason).into()),
+                    Err(error) => Err(format!("{}: {}", video.display(), error.reason).into()),
                 },
                 _ => host_desktop(&folders, cli.share_address, Vec::new()).await,
             },
@@ -154,14 +155,14 @@ pub async fn run() -> ExitCode {
 /// What both backends start from: the services their routes are adapters over, and the stop signal.
 struct Services {
     settings: Arc<settings::Settings>,
-    store: workspace_store::Store,
+    launch: Arc<LaunchQueue>,
     videos: Arc<VideoSources>,
     stop: watch::Sender<bool>,
 }
 
 impl Services {
-    /// Loads the settings, starts the video cache and fills the workspace with `items`. Ctrl+C turns the stop
-    /// signal on.
+    /// Loads the settings, starts the video cache and queues `items` for the first Local session. Ctrl+C turns the
+    /// stop signal on.
     fn start(
         folders: &Folders,
         items: Vec<workspace::WorkspaceItem>,
@@ -169,8 +170,6 @@ impl Services {
         let settings = Arc::new(settings::Settings::load(&folders.config)?);
         tracing::info!("Loaded settings from {}", folders.config.display());
         let videos = video_cache::start(&settings, &folders.cache);
-        let store = workspace_store::Store::new(tokio::runtime::Handle::current());
-        store.add_items(items, true);
         let (stop, _) = watch::channel(false);
         let stop_on_ctrl_c = stop.clone();
         tokio::spawn(async move {
@@ -179,7 +178,7 @@ impl Services {
         });
         Ok(Self {
             settings,
-            store,
+            launch: Arc::new(LaunchQueue::new(items)),
             videos,
             stop,
         })
@@ -190,10 +189,10 @@ impl Services {
         AppState::new(
             Arc::clone(&self.settings),
             policy,
-            self.store.clone(),
             Arc::clone(&self.videos),
             self.stop.subscribe(),
         )
+        .with_launch(Arc::clone(&self.launch))
     }
 
     /// Serves `router` until the stop signal, giving connections [`SHUTDOWN_GRACE`] to close, then ends every viewer
@@ -248,7 +247,7 @@ async fn host_desktop(
     // The desktop shell and the development supervisor wait for this exact line.
     announce(&[format!("ax-devil: http://{}", listener.local_addr()?)]);
     let state = services.state(Policy::Local);
-    // The listener for other machines serves the sessions of this state and opens with the first of them.
+    // The listener for other machines serves the sessions of this state and opens when one starts sharing.
     let hosting = Hosting::Lan(ShareListener::new(share_address, &state));
     services
         .serve(listener, app(state.with_hosting(hosting)))

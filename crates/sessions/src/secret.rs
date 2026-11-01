@@ -50,7 +50,8 @@ fn read_hex<const N: usize>(text: &str) -> Result<[u8; N], SessionError> {
 pub struct SessionId([u8; 8]);
 
 impl SessionId {
-    pub(crate) fn generate() -> Self {
+    /// A new random id.
+    pub fn generate() -> Self {
         Self(random())
     }
 }
@@ -66,6 +67,24 @@ impl FromStr for SessionId {
 
     fn from_str(text: &str) -> Result<Self, SessionError> {
         read_hex(text).map(Self)
+    }
+}
+
+/// Names whoever owns a session: random per connection, carried by its resume token. Not a login and not a
+/// credential.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct OwnerId([u8; 8]);
+
+impl OwnerId {
+    /// A new random id.
+    pub fn generate() -> Self {
+        Self(random())
+    }
+}
+
+impl fmt::Display for OwnerId {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write_hex(&self.0, f)
     }
 }
 

@@ -3,7 +3,9 @@
 //! The playback crate knows frames and windows but not FFmpeg, and the media crate knows FFmpeg but not windows;
 //! this module is where they meet.
 
-use foundation::{CancelToken, FrameFailure, Interrupt, UserError, VideoFrame};
+use foundation::{
+    CancelToken, ErrorCode, FrameFailure, HostPath, Interrupt, UserError, VideoFrame,
+};
 use media::{Decoder, FrameIndex};
 use playback::{DecoderFactory, Registry, Session, SourceSpec, SpanDecoder};
 use std::path::{Path, PathBuf};
@@ -33,7 +35,8 @@ fn decoder_factory(path: PathBuf, index: Arc<FrameIndex>) -> DecoderFactory {
                 Interrupt::Failed(error) => error,
                 // The source cancels the token when it closes, and nobody is left to be told.
                 Interrupt::Cancelled => {
-                    UserError::new("The video was closed", path.display().to_string())
+                    UserError::new(ErrorCode::VideoClosed, "The video was closed")
+                        .at(HostPath::new(&path))
                 }
             },
         )?;

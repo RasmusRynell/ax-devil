@@ -1,35 +1,32 @@
-//! Sessions: what one owner chooses to share, and the watchers who see it.
+//! Sessions: what one window shows, held by the backend from the window's first connect, and the watchers it is
+//! shared with.
 //!
-//! Nothing here creates a session on its own: [`Sessions::create`] makes one, and its [`Owner`] is the only handle
-//! that can change what it shows. [`Watcher`]s follow the owner's view or, when the owner allows it, explore their
-//! own view of what the owner has open. A forbidden call returns a [`Violation`] and changes nothing.
+//! [`session::Service`] holds every session of one backend. A [`session::Handle`] is one seat's connection: the
+//! owner's, which exists from the first connect, or a watcher's once the owner turns sharing on. A seat whose handle
+//! is dropped is away for the grace period and can be taken back with [`session::Service::resume`]. Every seat has a
+//! lease that resuming bumps; a handle, a drop or a grace timer from an older lease does nothing.
 //!
-//! The session's whole internal state travels through one `watch` channel at one revision; each seat derives its
-//! own [`Personal`] snapshot from it, so a seat's view can never arrive out of order with the shared state. The view
-//! state `V` and the cursor position `C` are opaque, so this crate knows nothing of the wire or the UI.
-//!
-//! A seat whose handle is dropped is away for the grace period and can be taken back with [`Sessions::resume`].
-//! Every seat has a lease that resuming bumps; a handle, a drop or a grace timer from an older lease does nothing.
+//! The session's state and the rules that change it are in [`session`]; this crate knows nothing of the wire or the
+//! UI. The cursor position type `C` is opaque.
 
-mod feed;
-mod registry;
-mod seat;
+mod common;
+mod cursors;
 mod secret;
-mod view;
+pub mod session;
 
-pub use feed::{CursorEvent, Cursors, Personal, Snapshots, Update};
-pub use registry::Sessions;
-pub use seat::{Connection, Owner, Role, Seat, SeatMessage, Watcher};
-pub use secret::{JoinLink, Secret, SessionId};
-pub use view::{View, ViewKey};
+pub use cursors::{CursorEvent, Cursors};
+pub use secret::{JoinLink, OwnerId, Secret, SessionId};
 
 use std::fmt;
 
 /// Seats one session holds, owner included.
 pub const MAX_SEATS: usize = 32;
 
-/// Names a participant, unique for the life of the process.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+/// Sessions one server holds, those in their grace period included.
+pub const MAX_SESSIONS: usize = 64;
+
+/// Names a seat in its session. Never reused within the session.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct ParticipantId(pub u32);
 
 /// Why a session, link or resume token was not accepted.
@@ -41,7 +38,7 @@ pub enum SessionError {
     NotFound,
     /// The secret does not match the session.
     Rejected,
-    /// The session already has [`MAX_SEATS`] seats.
+    /// The session already has [`MAX_SEATS`] seats, or the server already has [`MAX_SESSIONS`] sessions.
     Full,
 }
 
@@ -51,7 +48,7 @@ impl fmt::Display for SessionError {
             Self::Malformed => "that is not a session id or link",
             Self::NotFound => "that session no longer exists",
             Self::Rejected => "that link is no longer valid",
-            Self::Full => "that session is full",
+            Self::Full => "that session or server is full",
         })
     }
 }
@@ -68,29 +65,6 @@ pub enum EndReason {
     /// A newer connection resumed this seat.
     Replaced,
 }
-
-/// A call this seat's role or mode does not allow.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Violation {
-    /// Only the other role may do this: a watcher cannot publish, an owner cannot explore.
-    Role,
-    /// The owner does not allow exploring (or just turned it off, so a message in flight lost the race).
-    ExploreOff,
-    /// Setting a view needs the seat to be exploring.
-    NotExploring,
-}
-
-impl fmt::Display for Violation {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(match self {
-            Self::Role => "your role cannot do that",
-            Self::ExploreOff => "the owner does not let viewers explore",
-            Self::NotExploring => "you are not exploring",
-        })
-    }
-}
-
-impl std::error::Error for Violation {}
 
 /// What a seat is in the session.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -110,13 +84,6 @@ pub enum Mode {
     Exploring,
 }
 
-/// What the owner decides for the session.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub struct Options {
-    /// Watchers may explore on their own. Off by default.
-    pub explore: bool,
-}
-
 /// One seat's cursor preferences.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct CursorOptions {
@@ -133,38 +100,4 @@ impl Default for CursorOptions {
             share: true,
         }
     }
-}
-
-/// One seat as every seat sees it.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct Participant {
-    /// Identifies the participant in snapshots and cursor events.
-    pub id: ParticipantId,
-    /// `Guest N`, the lowest N no seat in the session uses.
-    pub name: String,
-    /// The lowest color index no seat in the session uses.
-    pub color: u8,
-    /// Owner or watcher.
-    pub kind: Kind,
-    /// Following or exploring.
-    pub mode: Mode,
-    /// False while the seat is within its grace period.
-    pub present: bool,
-    /// Whether the seat broadcasts its cursor.
-    pub shares_cursor: bool,
-}
-
-/// A line of the session list.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct Summary {
-    /// Names the session.
-    pub id: SessionId,
-    /// The session's name: its owner's.
-    pub name: String,
-    /// Whether the owner is connected.
-    pub owner_present: bool,
-    /// Seats in the session, away ones included.
-    pub participants: usize,
-    /// The current join link. Hand it only to callers allowed to see every session.
-    pub link: JoinLink,
 }

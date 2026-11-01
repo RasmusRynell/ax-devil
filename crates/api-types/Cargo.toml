@@ -13,6 +13,9 @@ layer = "adapters"
 workspace = true
 
 [dependencies]
+foundation.workspace = true
+playback.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+sessions.workspace = true
 ts-rs.workspace = true

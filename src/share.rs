@@ -1,5 +1,5 @@
 //! Where other people reach this backend: the base of the links it hands out, the listener the desktop opens for
-//! them while a session exists, and the rule that only a build with the embedded frontend can be reached by a
+//! them while a session is shared, and the rule that only a build with the embedded frontend can be reached by a
 //! browser from another machine.
 
 use crate::{AppState, access::Policy, lan_app};
@@ -9,6 +9,7 @@ use std::{
     fmt,
     net::{IpAddr, Ipv4Addr, SocketAddr, UdpSocket},
     sync::{Arc, Mutex, PoisonError},
+    time::Duration,
 };
 use tokio::{sync::Mutex as AsyncMutex, task::JoinHandle};
 
@@ -93,18 +94,21 @@ impl fmt::Display for ShareError {
 
 impl std::error::Error for ShareError {}
 
+/// How often the desktop's listener for other machines looks for a shared session.
+const LISTENER_POLL: Duration = Duration::from_secs(1);
+
 /// Where the links of this backend's sessions point.
 pub enum Hosting {
     /// Nobody else can reach this backend, so its sessions have no join link.
     None,
-    /// The desktop backend: a listener opened for the first session and closed after the last.
+    /// The desktop backend: a listener opened when a session starts sharing and closed once none is shared.
     Lan(Arc<ShareListener>),
     /// A server other machines already reach at this base.
     Server(LinkBase),
 }
 
 impl Hosting {
-    /// Makes the backend reachable before its first session is announced; a failure only costs the join link.
+    /// Makes the backend reachable before a session announces its link; a failure only costs the join link.
     pub(crate) async fn open(&self) {
         if let Self::Lan(listener) = self
             && let Err(error) = listener.ensure_open().await
@@ -129,9 +133,9 @@ struct Open {
     serving: JoinHandle<()>,
 }
 
-/// The listener the desktop opens for other machines on the first session and closes after the last. It serves the
-/// same frontend, `/api/info` and the share socket, and accepts join links only: never the server password, settings
-/// or the session list.
+/// The listener the desktop opens for other machines when a session starts sharing and closes once none is shared. It
+/// serves the same frontend, `/api/info` and the session and playback sockets, and accepts join links only: never
+/// the server password, settings or the session list.
 pub struct ShareListener {
     address: SocketAddr,
     state: AppState,
@@ -141,7 +145,7 @@ pub struct ShareListener {
 }
 
 impl ShareListener {
-    /// A listener for `address` that is closed until a session exists. It serves the registry of `local`.
+    /// A listener for `address` that is closed until a session is shared. It serves the sessions of `local`.
     pub fn new(address: SocketAddr, local: &AppState) -> Arc<Self> {
         Arc::new(Self {
             address,
@@ -158,7 +162,7 @@ impl ShareListener {
     }
 
     /// Opens the listener if it is closed, and returns the base of its links. It closes again once no session is
-    /// left.
+    /// shared.
     pub async fn ensure_open(self: &Arc<Self>) -> Result<LinkBase, ShareError> {
         let _changing = self.changing.lock().await;
         if let Some(base) = self.base() {
@@ -174,14 +178,14 @@ impl ShareListener {
         let base = LinkBase::for_listener(None, bound);
         if !base.is_https() {
             tracing::warn!(
-                "Sharing plain HTTP on {bound} while a session exists: what is shown crosses the network unencrypted. \
+                "Sharing plain HTTP on {bound} while a session is shared: what is shown crosses the network unencrypted. \
                  Use a trusted network."
             );
         }
         let app = lan_app(self.state.clone()).into_make_service_with_connect_info::<SocketAddr>();
         let mut stopping = self.state.stopping.clone();
         let serving = tokio::spawn(async move {
-            // Its sockets end when the backend stops (see `share_socket`), so this does not wait them out.
+            // Its sockets end when the backend stops (see `session::socket`), so this does not wait them out.
             let served = axum::serve(listener, app).with_graceful_shutdown(async move {
                 let _ = stopping.wait_for(|stopping| *stopping).await;
             });
@@ -198,19 +202,20 @@ impl ShareListener {
         Ok(base)
     }
 
-    /// The sessions crate has no end notification, and a session also ends when nobody holds a handle, so look.
+    /// The sessions service has no end notification, and a session also stops being shared when its owner goes away,
+    /// so look.
     async fn close_when_empty(&self) {
         let mut stopping = self.state.stopping.clone();
         loop {
             let stop = tokio::select! {
-                () = tokio::time::sleep(self.state.share.config.listener_poll) => false,
+                () = tokio::time::sleep(LISTENER_POLL) => false,
                 _ = stopping.wait_for(|stopping| *stopping) => true,
             };
             if stop {
                 return;
             }
             let _changing = self.changing.lock().await;
-            if self.state.share.is_empty() {
+            if self.state.sessions.list().is_empty() {
                 let open = self
                     .open
                     .lock()
@@ -218,7 +223,7 @@ impl ShareListener {
                     .take();
                 if let Some(open) = open {
                     open.serving.abort();
-                    tracing::info!("Closed the sharing listener: no session is left");
+                    tracing::info!("Closed the sharing listener: no session is shared");
                 }
                 return;
             }

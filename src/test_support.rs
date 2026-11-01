@@ -1,4 +1,4 @@
-//! Shared by the route tests: the app over a private settings file and an empty workspace.
+//! Shared by the route tests: the app over a private settings file.
 
 use crate::{AppState, access::Policy, app};
 use axum::{
@@ -10,12 +10,12 @@ use axum::{
 use std::sync::Arc;
 use tower::ServiceExt;
 
-/// The app, with the temporary folder that holds its settings and caches. Must be created inside a Tokio runtime.
+/// The app, kept with the temporary folder that holds its settings and caches. Must be created inside a Tokio runtime.
 pub struct TestApp {
     router: Router,
     /// Keeps the app from seeing its stop signal; sending true stops it.
     pub _stop: tokio::sync::watch::Sender<bool>,
-    pub folder: tempfile::TempDir,
+    pub _folder: tempfile::TempDir,
 }
 
 impl TestApp {
@@ -27,14 +27,13 @@ impl TestApp {
         let router = app(AppState::new(
             Arc::new(settings),
             Policy::Local,
-            workspace_store::Store::new(tokio::runtime::Handle::current()),
             videos,
             stopping,
         ));
         Self {
             router,
             _stop: stop,
-            folder,
+            _folder: folder,
         }
     }
 

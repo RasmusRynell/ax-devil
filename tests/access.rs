@@ -2,16 +2,14 @@
 //! the `serve` command's start-up output.
 
 use ax_devil::{
-    AppState, access,
-    access::{Admission, Limits, Policy, Refused, SessionsAccess},
+    AppState,
+    access::{Admission, Limits, Policy, Refused},
     app, lan_app, video_cache,
 };
 use axum::{
     Router,
     body::{Body, to_bytes},
     http::{HeaderMap, Request, StatusCode},
-    middleware::from_fn,
-    routing::get,
 };
 use serde_json::{Value, json};
 use sessions::Secret;
@@ -33,24 +31,13 @@ fn state(policy: Policy) -> (AppState, Keep) {
     let settings = settings::Settings::load(&folder.path().join("default.json")).unwrap();
     let videos = video_cache::start(&settings, &folder.path().join("cache"));
     let (stop, stopping) = watch::channel(false);
-    let state = AppState::new(
-        Arc::new(settings),
-        policy,
-        workspace_store::Store::new(tokio::runtime::Handle::current()),
-        videos,
-        stopping,
-    );
+    let state = AppState::new(Arc::new(settings), policy, videos, stopping);
     (state, (folder, stop))
 }
 
 fn router(policy: Policy) -> (Router, Keep) {
     let (state, keep) = state(policy);
-    // A route that needs the Sessions grant, which no other route here does yet.
-    let probe = Router::new()
-        .route("/probe", get(|_: SessionsAccess| async {}))
-        .with_state(state.clone())
-        .layer(from_fn(access::security_headers));
-    (app(state).merge(probe), keep)
+    (app(state), keep)
 }
 
 fn shared(password: &str) -> Policy {
@@ -109,21 +96,31 @@ async fn the_local_listener_answers_only_pages_it_served_and_every_response_forb
             assert_eq!(status, StatusCode::OK, "{headers:?}");
             assert_eq!(
                 info["grants"],
-                json!(["preferences", "configuration", "sessions"])
+                json!(["preferences", "configuration", "sessions", "files"])
             );
         }
     }
     let rebound = [("host", "evil.example")];
     let foreign = [("host", "127.0.0.1"), ("origin", "http://evil.example")];
     let opaque = [("host", "127.0.0.1"), ("origin", "null")];
-    for headers in [&rebound[..], &foreign[..], &opaque[..], &[][..]] {
+    // The same host and port under another scheme is another origin.
+    let secure = [
+        ("host", "127.0.0.1:7330"),
+        ("origin", "https://127.0.0.1:7330"),
+    ];
+    for headers in [
+        &rebound[..],
+        &foreign[..],
+        &opaque[..],
+        &secure[..],
+        &[][..],
+    ] {
         for (method, path) in [
             ("GET", "/api/info"),
             ("GET", "/api/settings"),
             ("PUT", "/api/settings"),
-            ("GET", "/api/share/sessions"),
-            ("GET", "/api/share/socket"),
-            ("GET", "/api/workspace"),
+            ("GET", "/api/sessions"),
+            ("GET", "/api/session"),
             ("GET", "/api/playback"),
             ("GET", "/"),
         ] {
@@ -146,22 +143,23 @@ async fn a_server_answers_settings_and_sessions_only_to_the_password() {
     assert_eq!(info["grants"], json!([]));
     assert_eq!(info["shell"], api_types::SHELL_API);
     let (_, info) = send(&app, "GET", "/api/info", &right, "").await;
-    assert_eq!(info["grants"], json!(["configuration", "sessions"]));
+    assert_eq!(
+        info["grants"],
+        json!(["configuration", "sessions", "files"])
+    );
 
     for headers in [&none[..], &wrong[..]] {
         for (method, path) in [
             ("GET", "/api/settings"),
             ("PUT", "/api/settings"),
-            ("GET", "/probe"),
-            ("GET", "/api/workspace"),
-            ("GET", "/api/playback"),
+            ("GET", "/api/sessions"),
         ] {
             let (status, _) = send(&app, method, path, headers, "{}").await;
             assert_eq!(status, StatusCode::UNAUTHORIZED, "{method} {path}");
         }
     }
     assert_eq!(
-        send(&app, "GET", "/probe", &right, "").await.0,
+        send(&app, "GET", "/api/sessions", &right, "").await.0,
         StatusCode::OK
     );
     // The password holder sees and replaces the Server settings, and may not touch a Personal one.
@@ -180,21 +178,22 @@ async fn a_server_answers_settings_and_sessions_only_to_the_password() {
         (status, &error["location"]),
         (StatusCode::FORBIDDEN, &json!("ui.theme"))
     );
-    // The password holder reaches the workspace, which lists this machine's files.
-    assert_eq!(
-        send(&app, "GET", "/api/workspace", &right, "").await.0,
-        StatusCode::OK
-    );
 }
 
 #[tokio::test]
-async fn the_listener_for_other_machines_serves_neither_the_workspace_nor_playback() {
+async fn the_listener_for_other_machines_serves_the_sockets_but_neither_settings_nor_the_session_list()
+ {
     let (state, _keep) = state(Policy::Shared { password: None });
     let lan = lan_app(state);
     let host = [("host", "192.168.1.20:7340")];
-    for path in ["/api/workspace", "/api/playback", "/api/settings"] {
+    for path in ["/api/settings", "/api/sessions"] {
         let (status, _) = send(&lan, "GET", path, &host, "").await;
         assert_eq!(status, StatusCode::NOT_FOUND, "{path}");
+    }
+    // A plain request is no upgrade, but it reaches the sockets, which the links' holders use.
+    for path in ["/api/session", "/api/playback"] {
+        let (status, _) = send(&lan, "GET", path, &host, "").await;
+        assert_ne!(status, StatusCode::NOT_FOUND, "{path}");
     }
 }
 
