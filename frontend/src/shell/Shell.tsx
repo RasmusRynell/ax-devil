@@ -13,6 +13,7 @@ import { NO_ACTIONS, ViewerActionsContext, type ViewerActions } from "../viewer/
 import { useFrontViewer, useViewers } from "../viewer/useViewers";
 import { ViewerHost } from "../viewer/ViewerHost";
 import { ActivityBar } from "./ActivityBar";
+import { AddVideoDialog } from "./AddVideoDialog";
 import { Banner } from "./Banner";
 import { TitleBar } from "./TitleBar";
 import { QuickSetupDialog } from "./QuickSetupDialog";
@@ -21,7 +22,7 @@ import { ShortcutsDialog } from "./ShortcutsDialog";
 import { Sidebar } from "./Sidebar";
 import { Welcome } from "./Welcome";
 import type { ActivityItem } from "./views";
-import "./windowBridge";
+import { useServerKind } from "./windowBridge";
 
 const TEXT_INPUTS = new Set(["text", "search", "number", "email", "url", "tel", "password"]);
 
@@ -35,7 +36,7 @@ function viewerOwnsPlainKeys(target: EventTarget | null): boolean {
   return !typing && (target === document.body || target.closest("main") !== null);
 }
 
-type Dialog = "settings" | "shortcuts" | "quick-setup";
+type Dialog = "settings" | "shortcuts" | "quick-setup" | "add-video";
 
 /**
  * The application layout: menu bar over the activity bar, sidebar and central area. What the window shows comes from
@@ -60,9 +61,11 @@ export function Shell() {
   // A late close of one dialog cannot dismiss another that has opened since.
   const closer = (which: Dialog) => () => setDialog((now) => (now === which ? null : now));
 
+  // Only the local backend's window may browse this machine's files; any other asks for a path on the server.
+  const local = useServerKind() === "local";
   const addVideo = () => {
-    const bridge = window.axDevilWindow;
-    if (!bridge) return setNotice("Adding a video needs the ax-devil desktop app");
+    const bridge = local ? window.axDevilWindow : undefined;
+    if (!bridge) return setDialog("add-video");
     bridge
       .pickVideos()
       .then((paths) =>
@@ -179,6 +182,7 @@ export function Shell() {
         <Presence scopes={scopes} />
         {dialog === "settings" && <SettingsDialog onClose={closer("settings")} />}
         {dialog === "quick-setup" && <QuickSetupDialog onClose={closer("quick-setup")} />}
+        {dialog === "add-video" && <AddVideoDialog onClose={closer("add-video")} />}
         {dialog === "shortcuts" && <ShortcutsDialog onClose={closer("shortcuts")} />}
       </div>
     </ViewerActionsContext.Provider>

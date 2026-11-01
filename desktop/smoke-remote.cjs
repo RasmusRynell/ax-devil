@@ -6,9 +6,10 @@ const http = require("node:http");
 const path = require("node:path");
 const { startProcess } = require("./backend.cjs");
 const { apiVersion, shellApi } = require("./generated/api.json");
-const { SCREENSHOTS, page, until } = require("./smoke-kit.cjs");
+const { SCREENSHOTS, click, frames, page, until } = require("./smoke-kit.cjs");
 
 const PASSWORD = "smoke-password";
+const FIXTURE = path.resolve(__dirname, "../fixtures/video/long_gop_h264.mp4");
 
 // A server that answers `/api/info` only, as a `shell` interface version: another one than this app's refuses it
 // before any page loads. With `dropPages` every other request is cut off, as a server that disconnects after
@@ -75,6 +76,35 @@ async function remote(local, shell) {
         (await window.webContents.capturePage()).toPNG(),
       );
     }
+
+    // The window may not browse this machine's files, so Add Video asks for a path on the server instead. The
+    // server's first-run Quick Setup comes first.
+    await js(
+      "[...document.querySelectorAll('dialog button')].find((b) => b.textContent === 'Done').click()",
+    );
+    await wait("!document.querySelector('dialog')");
+    await js(
+      "document.querySelector('aside h2')?.textContent !== 'Workspace' && document.querySelector('[aria-label=Workspace]').click()",
+    );
+    await wait("document.querySelector('[data-cursor-id=\"sidebar:add-video\"]')");
+    await frames({ js });
+    await click(window, "sidebar:add-video");
+    await wait("document.querySelector('dialog[open] input')");
+    window.webContents.insertText(FIXTURE);
+    await wait(`document.querySelector('dialog[open] input').value === ${JSON.stringify(FIXTURE)}`);
+    for (const theme of ["light", "dark"]) {
+      nativeTheme.themeSource = theme;
+      await wait(`matchMedia('(prefers-color-scheme: ${theme})').matches`);
+      await frames({ js });
+      await fs.writeFile(
+        path.join(SCREENSHOTS, `remote-add-video-${theme}.png`),
+        (await window.webContents.capturePage()).toPNG(),
+      );
+    }
+    await js(
+      "[...document.querySelectorAll('dialog button')].find((b) => b.textContent === 'Add').click()",
+    );
+    await wait("!document.querySelector('dialog') && document.querySelector('canvas')");
 
     // The server's page is not the local app: it cannot reconnect the window, and it cannot leave its origin.
     const refused = await js(

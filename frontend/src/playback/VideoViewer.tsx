@@ -142,6 +142,9 @@ export function VideoViewer({
   // The effect that creates the session reads these as they are then, and must not restart when they change.
   const latest = useRef({ intent, canChange, following, clock });
   latest.current = { intent, canChange, following, clock };
+  // Where the session that just closed had got to, for the one that replaces it. The published intent still names the
+  // last anchor when the replacement starts, so reading it there would reopen at the frame playback began from.
+  const left = useRef<{ item: string; frame: number; speed: number }>(undefined);
 
   useEffect(() => {
     const publish = ({ frame, playing, speed }: PlaybackIntent) => {
@@ -153,11 +156,14 @@ export function VideoViewer({
       const next = { frame, playing, speedCenti: Math.round(speed * 100), atUs };
       setViewers((now) => ({ ...now, [item]: { ...now[item], clock: next } }));
     };
-    const start = latest.current.intent;
+    const anchor = latest.current.intent;
+    const carried = left.current?.item === item ? left.current : undefined;
+    left.current = undefined;
+    const start = carried ?? (anchor && { frame: anchor.frame, speed: anchor.speedCenti / 100 });
     const created = new PlaybackSession({
       ticket,
       connect,
-      resume: start && { frame: start.frame, speed: start.speedCenti / 100 },
+      resume: start,
       onIntent: publish,
       now: () => performance.now(),
       frame: (callback) => {
@@ -176,7 +182,10 @@ export function VideoViewer({
       const { frame, speed } = created.resumeState();
       created.close();
       // A window that follows has not chosen anything, so leaving does not make it explore.
-      if (!latest.current.following) publish({ frame, playing: false, speed });
+      if (!latest.current.following) {
+        publish({ frame, playing: false, speed });
+        left.current = { item, frame, speed };
+      }
     };
   }, [item, ticket, connect, setViewers]);
 

@@ -149,6 +149,8 @@ describe("sidebar", () => {
 });
 
 describe("add video", () => {
+  // The desktop's own backend grants preferences, which is how a window knows it may browse this machine's files.
+  const local: Grant[] = ["configuration", "preferences"];
   const chooses = (paths: string[]) => {
     window.axDevilWindow = {
       minimize() {},
@@ -165,7 +167,7 @@ describe("add video", () => {
 
   it("asks for the chosen files with a viewer wanted, and says why the backend refused them", async () => {
     chooses(["/clips/a.mp4", "/clips/b.txt"]);
-    await renderShell();
+    await renderShell({ grants: local });
     FakeSocket.latest.defer = true;
     fireEvent.click(screen.getByRole("menuitem", { name: "File" }));
     fireEvent.click(screen.getByRole("menuitem", { name: /Add Video/ }));
@@ -200,18 +202,62 @@ describe("add video", () => {
 
   it("sends nothing when the dialog is cancelled", async () => {
     chooses([]);
-    await renderShell();
+    await renderShell({ grants: local });
     fireEvent.keyDown(document, { key: "n", ctrlKey: true });
     await act(async () => {});
     expect(commands()).toEqual([]);
     expect(screen.queryByRole("alert")).toBeNull();
   });
 
-  it("says so in a browser, which has no native dialog", async () => {
-    await renderShell();
-    fireEvent.keyDown(document, { key: "n", ctrlKey: true });
-    expect(screen.getByRole("alert").textContent).toContain("desktop app");
-  });
+  it.each([
+    ["a remote server's window", true],
+    ["a browser", false],
+  ])(
+    "asks %s for a path on the server, and says why the backend refused it",
+    async (_, desktop) => {
+      const pick = vi.fn(() => Promise.resolve(["/clients/own.mp4"]));
+      if (desktop) {
+        chooses([]);
+        window.axDevilWindow!.pickVideos = pick;
+      }
+      await renderShell({ grants: ["files"] });
+      FakeSocket.latest.defer = true;
+      fireEvent.keyDown(document, { key: "n", ctrlKey: true });
+      fireEvent.change(screen.getByRole("textbox", { name: "Path on the server" }), {
+        target: { value: " /srv/clips/a.mp4 " },
+      });
+      fireEvent.click(screen.getByRole("button", { name: "Add" }));
+      await act(async () => {});
+      expect(pick).not.toHaveBeenCalled();
+      expect(commands()).toMatchObject([
+        {
+          cmd: {
+            type: "content",
+            command: {
+              type: "addItems",
+              items: [{ type: "Video", path: "/srv/clips/a.mp4" }],
+              open: true,
+            },
+          },
+        },
+      ]);
+      await act(async () =>
+        FakeSocket.latest.emit({
+          type: "ack",
+          seq: commands()[0]!.seq,
+          outcome: { status: "refused", code: "Invalid" },
+        }),
+      );
+      expect(screen.getByRole("dialog", { name: "Add video" }).textContent).toContain(
+        "cannot open",
+      );
+      // The dialog stays for another try, which closes it once accepted.
+      FakeSocket.latest.defer = false;
+      fireEvent.click(screen.getByRole("button", { name: "Add" }));
+      await act(async () => {});
+      expect(screen.queryByRole("dialog")).toBeNull();
+    },
+  );
 });
 
 describe("viewer shortcuts", () => {

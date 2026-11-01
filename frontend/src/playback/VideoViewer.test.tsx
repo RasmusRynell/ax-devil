@@ -22,6 +22,7 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup();
+  vi.useRealTimers();
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
   window.sessionStorage.clear();
@@ -139,7 +140,32 @@ describe("video viewer", () => {
       expect(opens(sent)).toHaveLength(2);
       expect(new Set(opens(sent).map((open) => open.ticket)).size).toBe(2);
       expect(screen.getByRole("slider", { name: "Timeline" })).toBeTruthy();
-      vi.useRealTimers();
+    });
+
+    it("opens the new stream where playback had got to, the frame the watchers were told", async () => {
+      const sent: ClientMessage[] = [];
+      render(
+        <SessionProvider>
+          <Viewer sent={sent} />
+        </SessionProvider>,
+      );
+      await act(async () => {});
+      const room = FakeSocket.rooms.get("room-1")!;
+      act(() => room.setItems([video("a")]));
+      await slider();
+      vi.useFakeTimers();
+      fireEvent.click(screen.getByRole("button", { name: "Play" }));
+      await act(() => vi.advanceTimersByTimeAsync(1_000));
+      flushFrames();
+      act(() => FakeSocket.latest.drop());
+      await act(() => vi.advanceTimersByTimeAsync(1_000));
+      const told = room.presenter.viewers.a?.clock;
+      const thumb = screen.getByRole("slider", { name: "Timeline" }) as HTMLInputElement;
+      expect(told).toMatchObject({ playing: false });
+      expect(told?.frame).toBeGreaterThan(0);
+      expect(opens(sent)).toHaveLength(2);
+      expect(opens(sent)[1]).toMatchObject({ start_frame: told?.frame });
+      expect(thumb.value).toBe(String(told?.frame));
     });
 
     it("stays failed, asking once, when the backend no longer lets the seat play it", async () => {
@@ -147,7 +173,6 @@ describe("video viewer", () => {
       expect(opens(sent)).toHaveLength(1);
       expect(ticketRequests()).toHaveLength(2);
       expect(screen.queryByRole("slider", { name: "Timeline" })).toBeNull();
-      vi.useRealTimers();
     });
   });
 

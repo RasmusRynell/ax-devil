@@ -29,7 +29,7 @@ with the test that proves it.
 
 | ID | Feature | P | Status | Test | Notes |
 |----|---------|---|--------|------|-------|
-| AC-01 | Add Video with any number of overlays; decoder picked by extension | M | in progress | `tests/local_video.rs`, `desktop/args.test.cjs`, `frontend/src/shell/Shell.test.tsx` | Video only, no overlays (M2). `local --video` and File > Add Video (the shell shows the file dialog, the frontend sends the paths as a Session command) share the intake; the native dialog itself has no automated test |
+| AC-01 | Add Video with any number of overlays; decoder picked by extension | M | in progress | `tests/local_video.rs`, `desktop/args.test.cjs`, `frontend/src/shell/Shell.test.tsx` | Video only, no overlays (M2). `local --video` and File > Add Video (the local window shows the shell's file dialog, a remote window or browser asks for a path on the server; the frontend sends the paths as a Session command) share the intake; the native dialog itself has no automated test |
 | AC-02 | Drop video files on the window | M | todo |  |  |
 | AC-03 | Add Live Stream with analytics discovery | M | todo |  |  |
 | AC-04 | Add Playlist through a resolver form | M | todo |  |  |
