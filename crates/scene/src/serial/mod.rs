@@ -1,4 +1,4 @@
-//! How Scenes are written and read: one data model, two encodings.
+//! How Scenes are written and read: one data model, two encodings, and the presentation columns of [`columns`].
 //!
 //! - **JSON** for goldens and the plugin wire: `{"scene_version": "4.0", "scenes": [...]}`. A time is `{"frame": N}`
 //!   or `{"us": N}`, a box `{"box": [left, top, right, bottom]}`, a polygon `{"polygon": [[x, y], ...]}`; source
@@ -11,6 +11,7 @@
 //! Reading builds every value through the model's constructors, so a document or record that breaks a model rule is
 //! refused with the reason instead of loaded.
 
+pub mod columns;
 mod picture;
 mod read;
 mod value;

@@ -107,6 +107,11 @@ export class QuadWriter {
   take(from = 0): Float32Array {
     return this.#f32.slice(from * QUAD_FLOATS, this.#length);
   }
+
+  /** The quads from `from` up to `to` (default: all written), viewed in place: valid until the next write or clear. */
+  subarray(from = 0, to = this.count): Float32Array {
+    return this.#f32.subarray(from * QUAD_FLOATS, to * QUAD_FLOATS);
+  }
 }
 
 /** One shape's paint, resolved to target pixels and packed colors. */
