@@ -114,6 +114,16 @@ Atomic writes and the rule about built-in resources: [05](05-formats-and-extensi
 | Release | Tag, CI, clean-container install check, publish (`docs/runbooks/testing.md#package-artifacts`) | Keep the clean-environment check: install as documented, render catalogs, install the example plugin, play a generated video in the isolated environment, upgrade, check plugins follow |
 | Upgrades | Plugins rebuild after app changes | Plugins follow app upgrades; failure starts the base app with a retry command |
 
+### Desktop package
+
+The backend ships beside the app archive, not inside it, so it can be started as a process. FFmpeg is a pinned LGPL
+shared build, linked dynamically so users can replace it; each release ships the matching FFmpeg source. Pushing a `v*`
+tag drafts a GitHub release.
+
+Builds are unsigned. Linux: `chmod +x` the AppImage; where FUSE is missing run it with `--appimage-extract-and-run`;
+on Ubuntu 24.04+ the Chromium sandbox may need `--no-sandbox`. Windows: SmartScreen "More info", then "Run anyway".
+macOS: System Settings, Privacy & Security, "Open Anyway", or `xattr -dr com.apple.quarantine ax-devil.app`.
+
 D6 must be compatible with D1: a self-contained bundle that runs Python plugins needs a bundled or discovered Python.
 
 ## Observability

@@ -2,9 +2,9 @@
 const { dialog } = require("electron");
 const assert = require("node:assert/strict");
 const path = require("node:path");
-const { click, frames, page } = require("./smoke-kit.cjs");
+const { SMOKE_ROOT, click, frames, page } = require("./smoke-kit.cjs");
 
-const FIXTURE = path.resolve(__dirname, "../fixtures/video/long_gop_h264.mp4");
+const FIXTURE = path.join(SMOKE_ROOT, "fixtures/video/long_gop_h264.mp4");
 const SHOWN = `Number.parseInt(document.querySelector("output[aria-label=Frame]")?.textContent ?? "")`;
 /** A pixel this bright is the picture: the field around it is near-black. */
 const LIT = 40;

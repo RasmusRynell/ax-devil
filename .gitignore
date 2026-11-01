@@ -8,3 +8,5 @@
 /frontend/dist/
 /desktop/node_modules/
 /docs/local/
+/desktop/staging/
+/desktop/dist/

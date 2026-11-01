@@ -11,3 +11,6 @@ peerDependencyRules:
     - vite
   allowedVersions:
     vite: "*"
+# electron-builder pulls in electron-winstaller for Squirrel installers, which the Windows zip target does not use.
+allowBuilds:
+  electron-winstaller: false

@@ -52,7 +52,8 @@ impl Paths {
     }
 }
 
-/// The `ax-devil` folder under one XDG base: its variable when absolute, else `home_relative` under the home folder.
+/// The `ax-devil` folder under one XDG base: its variable when absolute, else `home_relative` under the home folder
+/// (`HOME`, or `USERPROFILE` where Windows sets no `HOME`).
 fn folder(env: Env, variable: &str, home_relative: &str) -> Result<PathBuf, String> {
     let absolute = |name: &str| {
         env(name)
@@ -61,7 +62,9 @@ fn folder(env: Env, variable: &str, home_relative: &str) -> Result<PathBuf, Stri
     };
     let base = match absolute(variable) {
         Some(base) => base,
-        None => absolute("HOME")
+        None => ["HOME", "USERPROFILE"]
+            .into_iter()
+            .find_map(absolute)
             .ok_or_else(|| format!("Cannot find the home folder: set HOME or {variable}"))?
             .join(Path::new(home_relative)),
     };
@@ -131,6 +134,11 @@ mod tests {
             Path::new("/home/me/.config/ax-devil/settings.json")
         );
         assert!(paths(&[], None).is_err());
+        let windows = paths(&[("USERPROFILE", "/home/win")], None).unwrap();
+        assert_eq!(
+            windows.cache_dir(None),
+            Path::new("/home/win/.cache/ax-devil")
+        );
     }
 
     #[test]

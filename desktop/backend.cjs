@@ -19,17 +19,28 @@ async function fetchInfo(base, timeoutMs) {
   return response.json();
 }
 
+/** The backend executable: the sidecar in the app's resources when packaged, else the release build in the checkout. */
+function backendExecutable(app) {
+  const name = process.platform === "win32" ? "ax-devil.exe" : "ax-devil";
+  return app.isPackaged
+    ? path.join(process.resourcesPath, "bin", name)
+    : path.resolve(__dirname, "../target/release", name);
+}
+
 /**
- * Starts an ax-devil process and resolves, once it prints its readiness line, with the child and its origin.
+ * Starts the `executable` with `args` and resolves, once it prints its readiness line, with the child and its origin.
+ * The child stops when its standard input closes, which `stop()` does and a crashed shell does too.
  * `onSpawn` gets the child the moment it exists, so the caller can stop it while it is still starting; a startup
  * that times out kills it. `onExit` runs when the process ends after the readiness line. `spawner` is a test seam.
  */
-function startProcess(args, env, onExit, { onSpawn = () => {}, spawner = spawn } = {}) {
-  const executable = path.resolve(__dirname, "../target/release/ax-devil");
+function startProcess(executable, args, env, onExit, { onSpawn = () => {}, spawner = spawn } = {}) {
   const child = spawner(executable, args, {
-    env: { ...process.env, ...env },
-    stdio: ["ignore", "pipe", "pipe"],
+    env: { ...process.env, ...env, AX_DEVIL_EXIT_ON_STDIN_CLOSE: "1" },
+    stdio: ["pipe", "pipe", "pipe"],
+    windowsHide: true,
   });
+  // The backend may be gone by the time stdin is written or closed; that is not an error.
+  child.stdin.on("error", () => {});
   onSpawn(child);
   child.stderr.on("data", (data) => process.stderr.write(data));
   let ready = false;
@@ -60,11 +71,11 @@ function startProcess(args, env, onExit, { onSpawn = () => {}, spawner = spawn }
 
 /**
  * The local backend, started lazily by `ensure()`. A backend found on the port is reused and left running;
- * one this module started gets SIGINT on `stop()`, then SIGKILL after 3 seconds, also while it is still starting.
- * `onUnexpectedExit` runs when an owned backend ends without `stop()`. `args` are the command-line arguments for
- * a backend this module starts; `spawner` is a test seam.
+ * one this module started has its stdin closed on `stop()`, which stops it gracefully; it gets SIGINT after 3 seconds
+ * and SIGKILL 3 seconds later, also while it is still starting. `onUnexpectedExit` runs when an owned backend ends
+ * without `stop()`. `executable` and `args` start a backend this module starts; `spawner` is a test seam.
  */
-function createBackend({ port, devUrl, args = [], onUnexpectedExit, spawner }) {
+function createBackend({ port, devUrl, executable, args = [], onUnexpectedExit, spawner }) {
   let child;
   let origin;
   let stopping = false;
@@ -98,6 +109,7 @@ function createBackend({ port, devUrl, args = [], onUnexpectedExit, spawner }) {
     }
     if (stopping) throw new Error("Backend stopped during startup");
     const started = await startProcess(
+      executable,
       args,
       { PORT: port },
       (reason) => {
@@ -137,16 +149,18 @@ function createBackend({ port, devUrl, args = [], onUnexpectedExit, spawner }) {
         !owned || owned.exitCode !== null || owned.signalCode !== null
           ? Promise.resolve()
           : new Promise((resolve) => {
-              const timer = setTimeout(() => owned.kill("SIGKILL"), 3000);
+              const kill = setTimeout(() => owned.kill("SIGKILL"), 6000);
+              const interrupt = setTimeout(() => owned.kill("SIGINT"), 3000);
               owned.once("exit", () => {
-                clearTimeout(timer);
+                clearTimeout(interrupt);
+                clearTimeout(kill);
                 resolve();
               });
-              owned.kill("SIGINT");
+              owned.stdin.end();
             });
       return Promise.all([starting, ended]).then(() => undefined);
     },
   };
 }
 
-module.exports = { createBackend, fetchInfo, startProcess };
+module.exports = { backendExecutable, createBackend, fetchInfo, startProcess };

@@ -5,9 +5,9 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs/promises");
 const path = require("node:path");
 const fit = require("./fit.cjs");
-const { SCREENSHOTS, delay, frames, page, setView } = require("./smoke-kit.cjs");
+const { SCREENSHOTS, SMOKE_ROOT, delay, frames, page, setView } = require("./smoke-kit.cjs");
 
-const DATASET = path.resolve(__dirname, "../fixtures/datasets/mot");
+const DATASET = path.join(SMOKE_ROOT, "fixtures/datasets/mot");
 const SHOWN = `Number.parseInt(document.querySelector("output[aria-label=Frame]")?.textContent ?? "")`;
 const THEMES_AND_ZOOMS = [
   ["light", 1],
@@ -63,7 +63,7 @@ module.exports.playlist = async (window) => {
     );
     window.webContents.insertText(DATASET);
     await wait(
-      "[...document.querySelectorAll('dialog[open] input')].some((i) => i.value.endsWith('datasets/mot'))",
+      `[...document.querySelectorAll('dialog[open] input')].some((i) => i.value === ${JSON.stringify(DATASET)})`,
     );
     await clickButton("Scan");
     await wait("/MINI-01/.test(document.querySelector('dialog[open]').innerText)");
