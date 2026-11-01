@@ -1,6 +1,7 @@
 // The desktop shell's lifecycle: which windows exist and how they move between the local backend and another
 // machine's server. Backend, window, link and remote details live in their own modules.
 const { app, BrowserWindow, dialog, screen } = require("electron");
+const fs = require("node:fs");
 const path = require("node:path");
 
 const { backendArgs, parseLaunch, userArgs } = require("./args.cjs");
@@ -14,9 +15,10 @@ const smoke = process.argv.includes("--smoke-test");
 // The smoke test always starts its own release backend and never attaches to a running session.
 const port = smoke ? "0" : process.env.PORT || "7330";
 const devUrl = smoke ? undefined : process.env.DESKTOP_DEV_URL;
-// The video canvas needs WebGL2, which a machine without a GPU (a CI runner, a virtual display) blocklists. The smoke
-// test draws with SwiftShader, Chromium's software renderer, so its result does not depend on the machine's graphics.
-if (smoke) {
+// The video canvas needs WebGL2, which a machine without a GPU (a CI runner, a virtual display) blocklists. On Linux and
+// Windows the smoke test draws with SwiftShader, Chromium's software renderer, so its result does not depend on the
+// machine's graphics. SwiftShader does not start on a macOS runner, whose own GPU path (Metal) works.
+if (smoke && process.platform !== "darwin") {
   for (const [name, value] of [
     ["use-gl", "angle"],
     ["use-angle", "swiftshader"],
@@ -35,6 +37,20 @@ let windowState;
 let stopping = false;
 let stopped = false;
 let exitCode = 0;
+// The smoke test's verdict, for a caller that cannot rely on this GUI program's output or exit code: the file named by
+// AX_DEVIL_SMOKE_RESULT gets PASS or FAIL: and the reason, the first time only. It appears whole or not at all.
+let reported = false;
+function report(verdict) {
+  const file = process.env.AX_DEVIL_SMOKE_RESULT;
+  if (!smoke || !file || reported) return;
+  reported = true;
+  try {
+    fs.writeFileSync(`${file}.partial`, `${verdict.replace(/\s+/g, " ")}\n`);
+    fs.renameSync(`${file}.partial`, file);
+  } catch (error) {
+    console.error(`Could not write the smoke result: ${error.message}`);
+  }
+}
 // Opening a remote window that may fail and asking what to do then; the app outlives its last window meanwhile.
 let recovering = 0;
 
@@ -63,12 +79,16 @@ const backend = createBackend({
 
 function fail(error) {
   console.error(error);
+  report(`FAIL: ${error?.message ?? error}`);
   exitCode = 1;
   // Already quitting: the dialog would only report that quitting stopped what was starting.
   if (stopping) return;
   if (!smoke) dialog.showErrorBox("ax-devil could not continue", String(error));
   app.quit();
 }
+
+// A failure nobody caught would leave the smoke test waiting for its own timeout.
+if (smoke) process.on("uncaughtException", fail);
 
 // `window` takes the place of `replace`, which closes.
 function adopt(window, replace) {
@@ -250,6 +270,7 @@ else
         const timer = setTimeout(() => fail(new Error("Desktop smoke test timed out")), 60000);
         await require("./smoke.cjs")(window, { openLaunch, showLocal, showRemote });
         clearTimeout(timer);
+        report("PASS");
         app.quit();
         return;
       }

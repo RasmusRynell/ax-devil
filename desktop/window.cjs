@@ -28,6 +28,9 @@ async function openWindow(
     ...bounds,
     minWidth: 640,
     minHeight: 480,
+    // On macOS a window cannot be larger than its screen, and a CI runner's screen is small; the smoke test's sizes
+    // do not depend on the screen.
+    enableLargerThanScreen: process.argv.includes("--smoke-test"),
     // The page draws its own title bar and window controls (see preload.cjs).
     frame: false,
     webPreferences: {

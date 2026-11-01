@@ -122,8 +122,17 @@ jobs:
       - name: Build and package
         run: scripts/package-desktop.sh ${{ matrix.name }}
 
+      # The script ends the app after two minutes and prints its logs; this ends the script should it hang itself.
       - name: Smoke-test the package
+        timeout-minutes: 8
         run: scripts/smoke-packaged.sh ${{ matrix.name }}
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: smoke-logs-${{ matrix.name }}
+          path: artifacts/smoke-logs/
+          if-no-files-found: ignore
 
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()

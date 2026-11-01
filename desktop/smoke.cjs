@@ -83,9 +83,14 @@ module.exports = async (window, shell) => {
   }
   assert.notEqual(backgrounds.light, backgrounds.dark, "The window must follow the theme");
 
-  // The title bar has the window controls, and Ctrl+= and Ctrl+0 zoom the page.
-  for (const name of ["Minimize", "Maximize", "Close"])
-    assert.ok(await js(`document.querySelector('[aria-label=${name}]') !== null`), name);
+  // The title bar has the window controls, and Ctrl+= and Ctrl+0 zoom the page. A window that fills a small screen
+  // counts as maximized, and then its second control is Restore.
+  for (const selector of [
+    "[aria-label=Minimize]",
+    "[aria-label=Maximize], [aria-label=Restore]",
+    "[aria-label=Close]",
+  ])
+    assert.ok(await js(`document.querySelector("${selector}") !== null`), selector);
   const press = (keyCode) =>
     window.webContents.sendInputEvent({ type: "keyDown", keyCode, modifiers: ["control"] });
   press("=");
