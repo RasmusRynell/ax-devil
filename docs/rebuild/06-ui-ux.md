@@ -30,8 +30,7 @@ Port the token sets by purpose; take values from `chrome/tokens.py`.
 - Status colors (success, warning, error) and category accents distinguishable on both surfaces.
 - The video canvas, letterbox and on-video controls stay near-black with white controls in both themes.
 - Anything using a fixed color re-applies on theme change.
-- Contrast target: D10 (proposal: WCAG 2.x AA, 4.5:1 text, 3:1 large text and component boundaries). The repo has
-  no numeric target.
+- Contrast target: D10 (taken: WCAG 2.x AA, 4.5:1 text, 3:1 large text and component boundaries).
 
 ## Component kit
 

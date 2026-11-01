@@ -53,7 +53,7 @@ with the test that proves it.
 | ID | Feature | P | Status | Test | Notes |
 |----|---------|---|--------|------|-------|
 | OF-01 | Play/pause, step, speed, seek; clock-following playback | M | done | `frontend/src/playback/{clock,direction,session,FrameBuffer,protocol,wire}.test.ts`, `Transport.test.tsx`, `VideoViewer.test.tsx`, `tests/playback_ws.rs`, `crates/foundation` time tests, `crates/media/tests/decode.rs`, `make tests-desktop` | Video only: no overlays (M2), lanes (OF-02) or reverse play. Variable frame rate, open at a frame and per-frame errors included. The desktop test plays a fixture on Xvfb; playback on a real GPU was measured in the D0 spike, not by a committed test |
-| OF-02 | Comparison lanes: several overlays on one video, or lanes with different videos (playlist entries) | M | todo |  |  |
+| OF-02 | Comparison lanes: several overlays on one video; a playlist entry switches the video, and two recordings side by side are two viewers with no shared clock (out of scope) | M | todo |  |  |
 | OF-03 | Playlists of entries and lanes; next/previous entry | M | todo |  |  |
 | OF-04 | Timestamp matching, sequence-keyed files, sticky overlays | M | todo |  |  |
 | OF-05 | Timing and alignment diagnostics per lane | M | todo |  |  |

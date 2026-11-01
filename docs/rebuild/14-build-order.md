@@ -62,6 +62,7 @@ option matching the prototype. Paths here are new-tree paths. Each can be revisi
 | No pre-commit hooks; `make check-fast` locally and CI enforce the gates | Hooks need a setup step per clone |
 | Every suite runs through `scripts/isolated`; it guards `~/.ax_devil` and the `ax-devil` folders under the XDG config, data, cache and state homes. Electron's own data (Chromium profile, crash dumps) goes to `ax-devil-chromium` in the cache home instead, so a running session never trips the guard | M1 put the frame index under `~/.ax_devil/cache/`, which the guard already covers; whoever chooses further storage folders updates it |
 | Custom window frame (D7): a frameless Electron window whose in-page top bar is the title bar (title, menus, drag region, minimize/maximize/close through a minimal preload; absent in a plain browser) | The owner's window manager draws no title bar, so a native frame leaves no way to move or close the window |
+| D10: accessibility target is WCAG 2.x AA contrast (4.5:1 text, 3:1 large text and component boundaries), every action reachable by keyboard, accessible names on icon-only controls | The design tokens are contrast-checked in both themes at M0 and the write-ui skill states the rule; the accessibility-tree pass is M8 |
 | Zoom is the browser's; no app text-size setting. Electron zooms with Ctrl+=, Ctrl+- and Ctrl+0 and Chromium remembers it per host; layouts must fit the window minimum and zoom up to 200% | A web app inherits zoom, so the prototype's `ui.text_size` and its live refit are dropped; a config that still holds the key keeps it untouched |
 | No WebAssembly target or shared Rust/WASM crates yet | The prototype's were spikes; the rendering spike decides whether a crate must also run in the frontend |
 | No root `ARCHITECTURE.md`; the prototype's content lives in `docs/architecture/overview.md` | One home, per [11](11-docs-structure.md#docs-map) |
@@ -95,9 +96,9 @@ when selected by the owner.
 |---|-------|------|
 | M0 | Day-one scaffold ([11](11-docs-structure.md#day-one-scaffold), done by the foundation); tokens; light/dark/auto; component kit seed; screenshot harness; fit-test guard | Empty window screenshots in both themes from CI; fit test passes |
 | M1 | Skeleton: `local --video` through minimal item, Content, shared intake and resolution contracts into an in-memory Untitled workspace; clock-following playback, steps, seek; decoded-frame cache and its allowance (OF-06; the cache marks on the timeline and next-entry warm-up stay with M4); settings service; logging | Frame identity test; frame-cache and playback protocol tests; live theme switch passes the fit test |
-| M2 | Overlay path: Scene model and serialization schema, decoder contract, one built-in decoder, overlay lookup and matching, catalog compiler with Standard, drawing preparation, `catalog check/render` | Canonical instruction comparison passes for Standard's sheets ([09](09-testing.md#oracle-policy)) |
+| M2 | Overlay path: Scene model and serialization schema, decoder contract, one built-in decoder, overlay lookup and matching, catalog compiler with Standard, drawing preparation, `catalog check/render`; the settings crate gets a typed accessor for the cache-size setting (D20), replacing the parsing in `src/video_cache.rs` | Canonical instruction comparison passes for Standard's sheets ([09](09-testing.md#oracle-policy)) |
 | M3 | Workspace persistence, recovery copy, store, row projection, Workspace view, split view, `open` | Lifecycle tests and recovery-copy crash safety, toolkit-free |
-| M4 | Offline depth: lanes (same and different videos), playlists, both resolvers, hide, cache marks on the timeline, sticky, diagnostics, media tools, bookmarks, export | OF-02 parity case; alignment TSVs match the oracle; cache-build crash safety |
+| M4 | Offline depth: lanes (several overlays on one video; playlist entries switch the video), playlists, both resolvers, hide, cache marks on the timeline, sticky, diagnostics, media tools, bookmarks, export | OF-02 parity case; alignment TSVs match the oracle; cache-build crash safety |
 | M5 | Live: RTSP, ONVIF metadata, MQTT, DataHub, sync, status, scan, Live view | Fake-transport and burst tests; one manual camera session |
 | M6 | Catalogs complete: six built-ins, manager, selection scopes, visibility, catalog window | Canonical comparison for all built-ins; catalog conformance suite ([09](09-testing.md#pyramid)) |
 | M7 | Plugin runtime, all built-in decoders, external install/update/remove, Plugins view | The write-plugin example installs and decodes in a fresh process |
@@ -124,21 +125,51 @@ reference and notes. Dropping an M row needs the owner's written decision. New f
 
 ## Open decisions
 
-The recommended default applies unless the owner objects. D5 and D16 are withdrawn; D13 became parity row AP-06; D7 is taken ([decisions](#decisions-taken-for-the-foundation)); D3, D9 and D19 are taken for offline video ([decisions](#decisions-taken-for-offline-video)).
+None of these blocks the current work. Each is settled when its milestone arrives, and the recommended answer applies unless the owner objects. Already settled: D3, D9, D19 ([offline video](#decisions-taken-for-offline-video)); D7, D10 ([foundation](#decisions-taken-for-the-foundation)). D5 and D16 are withdrawn; D13 became parity row AP-06; D20 is a task of M2.
 
-| ID | Question | Recommended default | By |
-|----|----------|---------------------|----|
-| D0 | Language and UI stack | The prototype's stack, taken for the foundation ([above](#d0-stack-choice)); owner signs after the owed spikes (decode and seek is done) | Before M1 |
-| D1 | Plugin runtime; are unchanged third-party plugins supported (PL-05)? | Native built-ins; authors port third-party plugins to the new contract; a Python bridge is optional ([05](05-formats-and-extensions.md#plugin-runtime)) | D0 |
-| D2 | Supported platforms? | Linux supported, including plugin management (Linux-only today); Windows and macOS build and pass the suite | D0 |
-| D4 | Resolver settings as a declared schema ([05](05-formats-and-extensions.md#resolver-contract))? | Yes | D0 |
-| D6 | Packaging; bundled Python for plugins; GPL encoder in bundles? | AppImage or Flatpak plus source build; Python only if D1 keeps a bridge; non-GPL encoder in bundles | M2 |
-| D8 | OS keychain for literal secrets in config and workspace items? | Yes, optional; `$VARIABLE` references stay default | M5 |
-| D20 | Typed accessor for `AutoOrWhole` setting values in the settings crate, instead of the adapter's own JSON parsing in `src/video_cache.rs` | Yes | M2 |
-| D10 | Accessibility target? | WCAG 2.x AA contrast, full keyboard reach, accessible names | M0 |
-| D11 | Localization? | English only; strings grouped per module | — |
-| D12 | DataHub certificates (today: HTTPS/WSS without verification by default)? | Same for parity; pinning option later | M5 |
-| D14 | Live transports in the new language? | Third-party RTSP/MQTT clients meeting the capture-time criterion plus a small Axis device-API module with temporary MQTT publisher setup and removal (LV-08) | D0 |
-| D15 | Scene and Drawing Instruction dump script for the reference worktree? | Yes, throwaway; outputs committed with provenance | M2 |
-| D17 | Remove `docs/rebuild/` at parity or keep as history? | Remove once every rule has its new home ([11](11-docs-structure.md#retiring-docsrebuild)) | M9 |
-| D18 | When may workspace items expand `$VARIABLE` references ([13](13-security-packaging-ops.md#threat-model))? | Credentials bound to their host reference, else one confirmation showing the resolved host, remembered in user state. Behavior change from the reference | M3 |
+### Stack sign-off, by M9
+
+| ID | Question | Recommended answer |
+|----|----------|--------------------|
+| D0 | Does the owner confirm the stack taken at the start (Rust backend, React frontend, Electron shell)? | Yes, once the owed spikes ([above](#d0-stack-choice)) show it holds: live capture time (M5), one surface for video and overlays (M2), plugins (M7), platforms (M8) |
+
+### By M2
+
+| ID | Question | Recommended answer |
+|----|----------|--------------------|
+| D1 | How do plugins (file decoders, message decoders, playlist resolvers) run, and do existing third-party Python plugins keep working (PL-05)? | The built-in ones are native code. Authors port third-party plugins to the new contract; a Python bridge is optional and only built if the owner wants it ([05](05-formats-and-extensions.md#plugin-runtime)) |
+| D15 | Do we write a throwaway script in the old Python app that dumps what it decodes and draws, to compare the new code against? | Yes; commit the outputs with a note on where they came from |
+
+### By M3
+
+| ID | Question | Recommended answer |
+|----|----------|--------------------|
+| D18 | When may a workspace file use `$VARIABLE` references, which read secrets such as passwords from the environment ([13](13-security-packaging-ops.md#threat-model))? | A credential tied to its camera's host is filled in without asking; any other reference asks once, showing the host it would go to, and remembers the answer. This is stricter than the old app |
+
+### By M4
+
+| ID | Question | Recommended answer |
+|----|----------|--------------------|
+| D4 | Should a playlist resolver (the plugin that turns a folder or file into a playlist) declare its settings as data, so the app and the command line both build the form from it ([05](05-formats-and-extensions.md#resolver-contract))? | Yes; tested against both built-in resolvers |
+| D6 | How is the app packaged, which FFmpeg build does it ship, and may it include a GPL video encoder for export? | A single Linux package (AppImage or Flatpak) plus a source build; FFmpeg as a dynamically linked LGPL build; no GPL encoder; Python only if D1 keeps a bridge |
+
+### By M5
+
+| ID | Question | Recommended answer |
+|----|----------|--------------------|
+| D8 | May literal passwords in the config and in workspace files be stored in the operating system's keychain? | Yes, as an option; `$VARIABLE` references stay the default |
+| D12 | Should the app check the HTTPS certificate of a DataHub (the camera-side data service), which the old app does not? | No, as before; add certificate pinning as an option later |
+| D14 | Which libraries handle the live connections (RTSP video, MQTT, WebSocket) and the camera's device API? | Third-party RTSP and MQTT clients that give each frame its camera capture time, plus a small Axis device-API module that sets up and removes the temporary MQTT publisher (LV-08) |
+
+### By M8
+
+| ID | Question | Recommended answer |
+|----|----------|--------------------|
+| D2 | Which platforms are supported? | Linux fully, including plugin management (Linux-only today); Windows and macOS build and pass the test suite |
+| D11 | Should the app be translatable? | No, English only; keep the strings grouped per module so it stays possible |
+
+### By M9
+
+| ID | Question | Recommended answer |
+|----|----------|--------------------|
+| D17 | Delete `docs/rebuild/` once the rewrite reaches parity, or keep it as history? | Delete it once every rule has its new home ([11](11-docs-structure.md#retiring-docsrebuild)) |
