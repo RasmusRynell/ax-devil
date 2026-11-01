@@ -5,8 +5,9 @@
 **ax-devil** is a desktop app for viewing live Axis camera streams and offline recordings together with analytics
 overlays, inspecting objects frame by frame, and comparing results side by side.
 
-> **Being rebuilt.** This branch is a from-scratch rewrite in Rust, React and Electron; it plays a local video
-> (`ax-devil local --video PATH` or File > Add Video) and has few other features yet. What it will do and in which
+> **Being rebuilt.** This branch is a from-scratch rewrite in Rust, React and Electron; it plays local recordings
+> with analytics overlays, comparison lanes and playlists, and supports shared sessions. Saved workspaces, live
+> cameras, inspection and export remain unfinished. What it will do and in which
 > order is in the [rebuild playbook](docs/rebuild/README.md); progress is in [docs/parity.md](docs/parity.md). The
 > Python app it replaces is readable at commit `e31a7453`.
 

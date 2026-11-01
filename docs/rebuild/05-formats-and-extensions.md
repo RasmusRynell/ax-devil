@@ -56,8 +56,10 @@ Use the current definitions as design references, not compatibility targets.
 Sources: `.agents/skills/write-plugin/SKILL.md`, `.agents/skills/write-plugin/reference.md`, `plugin_system/`,
 `scene/decoding/`.
 
-- File handlers (MUST): declared extensions, handler type ids unique per capability, a malformed record raises an
-  error that skips the record and warns on the lane, whole-file warnings, optional classification filter policies.
+- File handlers (MUST): declared extensions, unique handler type ids per capability, whole-file warnings and
+  optional classification filter policies. Independent malformed records may be skipped with a lane warning while
+  preserving source frame/time keys. A malformed document or frame whose omission would hide invalid ground truth
+  fails the load (UVG-VCM); an explicit empty Scene remains a successful sample, distinct from absent data.
 - Declared metadata the host-owned store needs (*current:* `SceneDecoderFileProvider.__init__` in
   `data_sources/file_data_provider/scene_decoder_file_provider.py`): storage mode (source index decoded on demand, or
   derived cache for whole-file parsing), independent records (enables incremental re-decode), sequence lookup

@@ -81,9 +81,11 @@ object and frame by frame, and for comparing results side by side. Take the pitc
 | OF-07 | Prepare next playlist entry in the background | S | same |
 | OF-08 | Export with overlays: lane selection, quality presets, cancellable | M | `docs/domain/invariants.md#export` |
 
-OF-02 policy: secondary lanes follow the primary lane's frame index, clamped to their own last frame; export follows
-the first selected lane and holds shorter lanes on their last frame. Parity case: two lanes with different lengths and
-frame rates play, seek, step and export without errors and with that alignment.
+OF-02 follows D19: compare several overlay results against the same recording with one clock. Acceptance: lanes
+with different annotation coverage stay aligned when playing, seeking and stepping through a variable-frame-rate
+video, and switching playlist entries changes their shared video. OF-08 separately accepts export with that timing.
+Synchronized comparison of different recordings from the reference is a recorded reduction, not satisfied by
+independent viewers (see the OF-02 deviation in the new-tree `docs/parity.md`).
 
 ### Inspection and display
 
@@ -138,6 +140,18 @@ frame rates play, seek, step and export without errors and with that alignment.
 | AP-04 | About dialog | S | `application_shell/about_dialog.py` |
 | AP-05 | Custom window frame: in-page title bar with window controls | S | D7 |
 | AP-06 | Open logs folder / copy diagnostics (new) | S | [13](13-security-packaging-ops.md#observability) |
+
+### Sharing and remote use (new)
+
+These are additions beyond Python. Their security and deployment contract is in
+[13](13-security-packaging-ops.md#sharing-must); status and evidence live in the new-tree `docs/parity.md`.
+
+| ID | User outcome | P | Source |
+|----|--------------|---|--------|
+| SH-01 | Join, reconnect and stop sharing without retaining revoked access | M | [13](13-security-packaging-ops.md#sharing-must) |
+| SH-02 | Follow the presenter or explore open recordings independently, including playlist entry changes | M | same |
+| SH-03 | Share permitted content without exposing host paths, credentials or private preferences | M | same |
+| SH-04 | Connect from a browser or Electron to a shared backend with clear hosting and connection failures | M | same |
 
 ### Developer tooling
 

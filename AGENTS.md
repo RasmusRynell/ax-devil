@@ -5,7 +5,7 @@
 Work out from the request which of two people you are helping; it decides what to read and what you may change.
 
 - **Using ax-devil**: opening recordings, connecting cameras, comparing results, restyling overlays, or making
-  ax-devil read their own data. The rewrite has no user features yet ([parity](docs/parity.md)); user docs and the
+  ax-devil read their own data. Check [parity](docs/parity.md) for implemented workflows; user docs and the
   `render-catalog` and `write-plugin` skills return as their features land. Their catalogs and plugins live outside
   this repository; leave the app's source unchanged. If what they want needs an app change (a bug or missing
   feature), say so and ask before switching to development.

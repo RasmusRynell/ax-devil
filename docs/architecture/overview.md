@@ -1,7 +1,7 @@
 # Architecture Overview
 
 ax-devil is a Rust backend and a React frontend. The desktop app is an Electron window that starts the backend and
-loads the frontend from it; the same frontend also runs in a browser during development. Where code goes is in the
+loads the frontend from it; the same frontend also runs in a browser, locally or against a shared server. Where code goes is in the
 [module map](module-map.md); the rules it must keep are in the [invariants](../domain/invariants.md).
 
 Until parity, the layer contents, seams and runtime guarantees are specified in
