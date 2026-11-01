@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "reac
 import { useViewerActions } from "../viewer/actions";
 import type { ViewerProps } from "../viewers";
 import { PlaybackSession, type PlaybackView, type ResumeState } from "./session";
-import { connectWorker } from "./transport";
+import { connectWorker } from "./connect";
 import { Transport } from "./Transport";
 import { VideoCanvas } from "./VideoCanvas";
 import type { Connect } from "./wire";

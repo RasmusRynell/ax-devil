@@ -10,6 +10,17 @@ const smoke = process.argv.includes("--smoke-test");
 // The smoke test always starts its own release backend and never attaches to a running session.
 const port = smoke ? "0" : process.env.PORT || "7330";
 const devUrl = smoke ? undefined : process.env.DESKTOP_DEV_URL;
+// The video canvas needs WebGL2, which a machine without a GPU (a CI runner, a virtual display) blocklists. The smoke
+// test draws with SwiftShader, Chromium's software renderer, so its result does not depend on the machine's graphics.
+if (smoke) {
+  for (const [name, value] of [
+    ["use-gl", "angle"],
+    ["use-angle", "swiftshader"],
+    ["enable-unsafe-swiftshader"],
+    ["ignore-gpu-blocklist"],
+  ])
+    app.commandLine.appendSwitch(name, value);
+}
 // Video files the Add Video dialog offers; the backend's intake takes any path, the viewer judges the media.
 const VIDEO_EXTENSIONS = ["mp4", "avi", "mkv", "mov"];
 // Electron's own data (Chromium profile, crash dumps) is browser state, not ax-devil data: the backend owns the
