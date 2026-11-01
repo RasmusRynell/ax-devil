@@ -1,0 +1,64 @@
+name: PR Agent
+
+# Advisory Claude review of every ready, same-repository, human-authored pull request.
+# Needs the repository secret ANTHROPIC_KEY; without it the job skips with a notice.
+#
+# - Fork PRs are skipped on purpose. `pull_request` gives forks no secrets and a read-only token, and
+#   `pull_request_target` would hand the key to a workflow triggered by untrusted authors.
+# - No `issue_comment` trigger: comment-triggered runs would let anyone who can comment spend the API key.
+# - Settings in .pr_agent.toml are read from the default branch, so changes to it apply after merge.
+# - Model: Opus (config.model). For cheaper reviews switch to Sonnet: config.model "anthropic/claude-sonnet-5-5", config.fallback_models '["anthropic/claude-sonnet-5"]', and add config.custom_model_max_tokens: "1000000" (Sonnet 5.5 is not in PR-Agent 0.49.0's model list).
+# - The action is pinned by image digest (docker://pragent/pr-agent, tag 0.49.0-github_action). The
+#   Dockerfile of the `The-PR-Agent/pr-agent@<sha>` wrapper pulls a rolling tag, so a commit SHA pins nothing.
+#   Digest for a newer release: docker buildx imagetools inspect pragent/pr-agent:<version>-github_action
+
+on:
+  pull_request:
+    types: [opened, reopened, synchronize, ready_for_review]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pr-agent-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  review:
+    if: >-
+      !github.event.pull_request.draft
+      && github.event.pull_request.user.type != 'Bot'
+      && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      issues: write # PR-Agent posts and updates its review comment and labels through the issues API
+      pull-requests: write
+    steps:
+      - name: Check Anthropic key
+        id: gate
+        env:
+          ANTHROPIC_KEY: ${{ secrets.ANTHROPIC_KEY }}
+        run: |
+          if [ -z "$ANTHROPIC_KEY" ]; then
+            echo "::notice::ANTHROPIC_KEY secret is not set; skipping the PR Agent review."
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: PR Agent review
+        if: steps.gate.outputs.enabled == 'true'
+        # 0.49.0-github_action
+        uses: docker://pragent/pr-agent@sha256:b1ed6e8de56eb4d6e4169ee0d5c209bb5ed1ef071a01c0c042c64b80192a785c
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ANTHROPIC.KEY: ${{ secrets.ANTHROPIC_KEY }}
+          config.model: "anthropic/claude-opus-5-5"
+          config.fallback_models: '["anthropic/claude-sonnet-5-5"]'
+          config.enable_auto_approval: "false"
+          github_action_config.auto_review: "true"
+          github_action_config.auto_describe: "false"
+          github_action_config.auto_improve: "false"
+          github_action_config.pr_actions: '["opened", "reopened", "ready_for_review", "synchronize"]'
