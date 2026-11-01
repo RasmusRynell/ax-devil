@@ -12,7 +12,9 @@ interface Props extends Omit<ButtonHTMLAttributes<HTMLButtonElement>, "children"
 
 /** An icon-only button with a neutral hover tint; the caller sizes it. */
 export function IconButton({ icon, label, onCanvas = false, className = "", ...rest }: Props) {
-  const tone = onCanvas ? "text-on-canvas hover:bg-canvas-hover" : "text-fg hover:bg-hover";
+  const tone = onCanvas
+    ? "text-on-canvas hover:bg-canvas-hover"
+    : "text-fg hover:bg-hover disabled:text-disabled disabled:hover:bg-transparent";
   return (
     <button
       type="button"

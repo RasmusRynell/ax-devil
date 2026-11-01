@@ -14,16 +14,24 @@ export function WindowControls() {
       <IconButton
         icon="minus"
         label="Minimize"
+        data-cursor-id="window:minimize"
         className={size}
         onClick={() => bridge.minimize()}
       />
       <IconButton
         icon="square"
         label={maximized ? "Restore" : "Maximize"}
+        data-cursor-id="window:maximize"
         className={size}
         onClick={() => bridge.toggleMaximize()}
       />
-      <IconButton icon="x" label="Close" className={size} onClick={() => bridge.close()} />
+      <IconButton
+        icon="x"
+        label="Close"
+        data-cursor-id="window:close"
+        className={size}
+        onClick={() => bridge.close()}
+      />
     </div>
   );
 }

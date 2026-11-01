@@ -15,7 +15,7 @@ use std::{
     path::{Path, PathBuf},
     sync::{Arc, Mutex, PoisonError},
 };
-pub use table::{Kind, Setting, TABLE};
+pub use table::{Kind, MASK, Scope, Setting, TABLE};
 use tokio::sync::watch;
 
 /// Why settings could not be loaded, validated or saved; the reason is meant for the user.
@@ -44,13 +44,14 @@ pub struct State {
 }
 
 impl State {
-    /// Every declared setting by dotted key, such as `ui.theme`.
-    pub fn values(&self) -> BTreeMap<String, Value> {
+    /// The settings in `scopes` by dotted key, such as `ui.theme`, as shown to a person: literal secrets are masked.
+    pub fn values(&self, scopes: &[Scope]) -> BTreeMap<String, Value> {
         TABLE
             .iter()
+            .filter(|setting| scopes.contains(&setting.scope))
             .filter_map(|setting| {
                 let value = self.document.pointer(&pointer(setting.key))?;
-                Some((setting.key.to_owned(), value.clone()))
+                Some((setting.key.to_owned(), setting.shown(value)))
             })
             .collect()
     }
@@ -124,30 +125,42 @@ impl Settings {
         self.state.subscribe()
     }
 
-    /// Replaces every declared setting with `values`, which must hold exactly the declared keys. Validates all,
-    /// writes the file atomically, then swaps the state; on any failure nothing changes.
-    pub fn replace(&self, values: &BTreeMap<String, Value>) -> Result<Arc<State>, Error> {
+    /// Replaces every setting in `scopes` with `values`, which must hold exactly their keys; a masked secret keeps
+    /// its stored value. Validates all, writes the file atomically, then swaps the state; on any failure nothing
+    /// changes. Settings in other scopes are left as they are.
+    pub fn replace(
+        &self,
+        scopes: &[Scope],
+        values: &BTreeMap<String, Value>,
+    ) -> Result<Arc<State>, Error> {
         let invalid = |location: &str, reason: &str| Error {
             location: location.to_owned(),
             reason: reason.to_owned(),
             invalid: true,
         };
+        let chosen = || {
+            TABLE
+                .iter()
+                .filter(|setting| scopes.contains(&setting.scope))
+        };
         if let Some(key) = values
             .keys()
-            .find(|key| !TABLE.iter().any(|setting| setting.key == key.as_str()))
+            .find(|key| !chosen().any(|setting| setting.key == key.as_str()))
         {
             return Err(invalid(key, "unknown setting"));
         }
         let _writing = self.writing.lock().unwrap_or_else(PoisonError::into_inner);
         let mut document = self.state().document.clone();
-        for setting in TABLE {
+        for setting in chosen() {
             let value = values
                 .get(setting.key)
                 .ok_or_else(|| invalid(setting.key, "missing"))?;
             setting
                 .validate(value)
                 .map_err(|reason| invalid(setting.key, &reason))?;
-            set(&mut document, setting.key, value.clone());
+            if !setting.is_masked(value) {
+                set(&mut document, setting.key, value.clone());
+            }
         }
         write_atomically(&self.path, &document).map_err(|error| Error {
             location: self.path.display().to_string(),
@@ -251,12 +264,12 @@ mod tests {
 
         let settings = Settings::load(&path).unwrap();
         assert_eq!(
-            settings.state().values()["ui.theme"],
+            settings.state().values(&Scope::ALL)["ui.theme"],
             "auto",
             "an invalid value falls back to the default"
         );
 
-        settings.replace(&values("dark")).unwrap();
+        settings.replace(&Scope::ALL, &values("dark")).unwrap();
         let saved: Value = serde_json::from_str(&fs::read_to_string(&path).unwrap()).unwrap();
         assert_eq!(saved["ui"]["window"]["custom_frame"], true);
         assert_eq!(
@@ -265,7 +278,7 @@ mod tests {
         );
         assert_eq!(saved["shortcuts"], json!({}));
         assert_eq!(
-            Settings::load(&path).unwrap().state().values(),
+            Settings::load(&path).unwrap().state().values(&Scope::ALL),
             values("dark")
         );
         assert_eq!(
@@ -286,7 +299,7 @@ mod tests {
 
         Settings::load(&path)
             .unwrap()
-            .replace(&values("dark"))
+            .replace(&Scope::ALL, &values("dark"))
             .unwrap();
 
         assert_eq!(fs::read_to_string(&victim).unwrap(), "keep");
@@ -299,20 +312,29 @@ mod tests {
         let path = folder.path().join("default.json");
         let settings = Settings::load(&path).unwrap();
 
-        let error = settings.replace(&values("neon")).unwrap_err();
+        let error = settings.replace(&Scope::ALL, &values("neon")).unwrap_err();
         assert_eq!(error.location, "ui.theme");
         assert!(error.invalid);
         let mut unknown = values("dark");
         unknown.insert("ui.zoom".into(), json!(2));
-        assert_eq!(settings.replace(&unknown).unwrap_err().location, "ui.zoom");
+        assert_eq!(
+            settings
+                .replace(&Scope::ALL, &unknown)
+                .unwrap_err()
+                .location,
+            "ui.zoom"
+        );
         let mut missing = values("dark");
         missing.remove("ui.quick_setup_done");
         assert_eq!(
-            settings.replace(&missing).unwrap_err().location,
+            settings
+                .replace(&Scope::ALL, &missing)
+                .unwrap_err()
+                .location,
             "ui.quick_setup_done"
         );
 
-        assert_eq!(settings.state().values()["ui.theme"], "auto");
+        assert_eq!(settings.state().values(&Scope::ALL)["ui.theme"], "auto");
         assert!(!path.exists());
     }
 
@@ -321,7 +343,10 @@ mod tests {
         let folder = tempfile::tempdir().unwrap();
         let path = folder.path().join("default.json");
         let settings = Settings::load(&path).unwrap();
-        assert_eq!(settings.state().values()["playback.video_cache"], "auto");
+        assert_eq!(
+            settings.state().values(&Scope::ALL)["playback.video_cache"],
+            "auto"
+        );
         let with = |cache: Value| {
             let mut all = values("dark");
             all.insert("playback.video_cache".into(), cache);
@@ -335,16 +360,19 @@ mod tests {
             json!("512"),
             json!(true),
         ] {
-            let error = settings.replace(&with(rejected)).unwrap_err();
+            let error = settings.replace(&Scope::ALL, &with(rejected)).unwrap_err();
             assert_eq!(error.location, "playback.video_cache");
         }
-        settings.replace(&with(json!(512))).unwrap();
+        settings.replace(&Scope::ALL, &with(json!(512))).unwrap();
         assert_eq!(
-            Settings::load(&path).unwrap().state().values()["playback.video_cache"],
+            Settings::load(&path).unwrap().state().values(&Scope::ALL)["playback.video_cache"],
             512
         );
-        settings.replace(&with(json!("auto"))).unwrap();
-        assert_eq!(settings.state().values()["playback.video_cache"], "auto");
+        settings.replace(&Scope::ALL, &with(json!("auto"))).unwrap();
+        assert_eq!(
+            settings.state().values(&Scope::ALL)["playback.video_cache"],
+            "auto"
+        );
     }
 
     #[test]
@@ -354,15 +382,18 @@ mod tests {
         let mut changes = settings.subscribe();
         assert!(!changes.has_changed().unwrap());
 
-        settings.replace(&values("neon")).unwrap_err();
+        settings.replace(&Scope::ALL, &values("neon")).unwrap_err();
         assert!(
             !changes.has_changed().unwrap(),
             "a rejected change is not announced"
         );
 
-        settings.replace(&values("dark")).unwrap();
+        settings.replace(&Scope::ALL, &values("dark")).unwrap();
         assert!(changes.has_changed().unwrap());
-        assert_eq!(changes.borrow_and_update().values()["ui.theme"], "dark");
+        assert_eq!(
+            changes.borrow_and_update().values(&Scope::ALL)["ui.theme"],
+            "dark"
+        );
     }
 
     #[test]

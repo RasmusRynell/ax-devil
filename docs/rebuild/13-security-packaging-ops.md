@@ -39,6 +39,39 @@ can pair its own host with `$AX_DEVIL_TARGET_PASS`. Recommended default:
   HTTPS-to-HTTP fallback (`data_sources/README.md#live-transports`). Certificate verification: D12.
 - Device API defaults to HTTPS. No telemetry. Regular tests never use the network.
 
+## Sharing (MUST)
+
+Owns who may reach a backend and the limits that keep one peer or crowd from using it up. Listeners and principals:
+[overview](../architecture/overview.md#listeners-and-principals); what each role may do in a Session:
+[sessions README](../../crates/sessions/README.md).
+
+- Shared listeners grant nothing by cookie or IP address: every credential is a bearer secret (128 random bits,
+  compared in constant time), so a rebound DNS name or a cross-site page gains nothing. Only the Local listener checks
+  Host (a loopback name) and Origin (absent or equal to Host).
+- A secret travels in the URL fragment (`#join=`, `#password=`), which the page moves to `sessionStorage`, then in
+  `Authorization: Bearer` on HTTP and in `Hello` on the socket. Never in a query string or a log.
+- Every response on every listener carries `frame-ancestors 'none'`, `default-src 'self'` and `img-src 'self' data:`
+  (small icons are inlined as `data:` images), and `X-Frame-Options: DENY`. The smoke test asserts the release app
+  breaks none of it.
+- Plain HTTP on a non-loopback address is allowed and logs a warning at startup. TLS is a reverse proxy's job:
+  it targets the shared port, never the Local port, and the server is told its public address (`--public-url`).
+- Join links need the release build: a development build serves no frontend, so `serve` refuses to start and the
+  desktop opens no listener.
+
+| Limit | Value |
+|-------|-------|
+| Open sockets, all / per IP | 256 / 16; every client of a proxy has the proxy's IP, so only the first applies when `serve` is started with the behind-proxy setting |
+| Sockets still waiting for `Hello`, all / per IP | 64 / 4, and `Hello` within 5 s |
+| Frame, message | 16 KiB, 64 KiB |
+| Sessions per server, seats per Session | 64, 32 |
+| Liveness | The server pings every 10 s; 25 s of silence is a disconnect and starts the 30 s grace |
+| Sending | Each send has a 10 s deadline; a timeout is a disconnect |
+| Per seat | Cursors 60/s, the excess dropped; every other message 10/s, the excess closes the socket |
+
+A close the server chose is final and the client stops: 1007 invalid message, 1008 not allowed for the role, 1009
+too big, 1013 full, 4401 invalid password or link, 4404 session ended or unknown, 4409 seat replaced (the Session is
+open in another tab), 4429 too many messages. A lost connection reconnects.
+
 ## Plugin trust (MUST)
 
 State that plugins run with user permissions and installation may execute code (`docs/plugins.md#trust`). Keep index

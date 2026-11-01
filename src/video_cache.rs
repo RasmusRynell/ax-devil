@@ -4,7 +4,7 @@
 use crate::video_sources::VideoSources;
 use playback::{CachePool, Registry};
 use serde_json::Value;
-use settings::{Settings, State};
+use settings::{Scope, Settings, State};
 use std::path::Path;
 use std::sync::Arc;
 use tokio::task::JoinHandle;
@@ -31,7 +31,7 @@ impl VideoCache {
     /// The setting in `state`. The settings service only holds values that fit the setting, so anything else is a
     /// version mismatch that is logged and read as `auto`.
     fn of(state: &State) -> Self {
-        match state.values().remove(SETTING) {
+        match state.values(&Scope::ALL).remove(SETTING) {
             Some(Value::String(name)) if name == "auto" => Self::Auto,
             Some(Value::Number(number)) if number.is_u64() => {
                 Self::Mib(number.as_u64().unwrap_or_default())
@@ -145,9 +145,9 @@ mod tests {
         ));
         let task = follow(&settings, videos, Some(4 * GIB));
         let save = |cache: Value| {
-            let mut all = settings.state().values();
+            let mut all = settings.state().values(&Scope::ALL);
             all.insert(SETTING.into(), cache);
-            settings.replace(&all).unwrap();
+            settings.replace(&Scope::ALL, &all).unwrap();
         };
         let resized = async |expected: u64| {
             while pool.allowance() as u64 != expected {

@@ -1,23 +1,38 @@
 import type { MenuCommand } from "../kit/Menu";
 import "./windowBridge";
 import { MenuBar } from "./MenuBar";
+import { ShareControl } from "./ShareControl";
 import { WindowControls } from "./WindowControls";
 
 interface Props {
   checked: ReadonlySet<string>;
+  /** The commands that do something today; the menus show only these. */
+  wired: ReadonlySet<string>;
   onSelect: (command: MenuCommand) => void;
+  /** Opens the Sessions view. */
+  onShare: () => void;
 }
 
-/** The window's top bar: title, menus, an empty stretch that drags the window, and the window controls. */
-export function TitleBar({ checked, onSelect }: Props) {
+/** The window's top bar: title, menus, an empty stretch that drags the window, the share entry and the window controls. */
+export function TitleBar({ checked, wired, onSelect, onShare }: Props) {
   return (
-    <header className="flex h-bar shrink-0 items-center border-b border-line bg-panel [-webkit-app-region:drag]">
-      <span className="hidden pl-m font-semibold whitespace-nowrap sm:inline">ax-devil</span>
-      <MenuBar checked={checked} onSelect={onSelect} />
+    <header
+      data-cursor-region="titleBar"
+      className="flex h-bar shrink-0 items-center border-b border-line bg-panel [-webkit-app-region:drag]"
+    >
+      <span
+        data-cursor-id="title:name"
+        className="hidden pl-m font-semibold whitespace-nowrap sm:inline"
+      >
+        ax-devil
+      </span>
+      <MenuBar checked={checked} wired={wired} onSelect={onSelect} />
       <div
+        data-cursor-id="title:drag"
         className="h-full min-w-0 flex-1"
         onDoubleClick={() => window.axDevilWindow?.toggleMaximize()}
       />
+      <ShareControl onShare={onShare} />
       <WindowControls />
     </header>
   );

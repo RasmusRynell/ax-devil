@@ -1,5 +1,8 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
+import { GrantsContext } from "./access";
+import { apiFetch } from "./api";
 import type { AppInfo } from "./generated/api";
+import { SessionProvider, useSession } from "./session/session";
 import { SettingsProvider } from "./settings";
 import { Shell } from "./shell/Shell";
 import { WorkspaceProvider } from "./workspace/WorkspaceProvider";
@@ -9,12 +12,21 @@ type Backend =
   | { state: "ready"; info: AppInfo }
   | { state: "failed"; reason: string };
 
+/**
+ * Gives the shell the workspace, except to a watcher: the backend does not yet share the workspace or playback with
+ * the people watching a session, so a watcher sees only the mirrored shell.
+ */
+function WorkspaceGate({ children }: { children: ReactNode }) {
+  const { state } = useSession();
+  return state === "watcher" ? children : <WorkspaceProvider>{children}</WorkspaceProvider>;
+}
+
 /** The application window: shown once the backend answers, with the reason when it does not. */
 export function App() {
   const [backend, setBackend] = useState<Backend>({ state: "connecting" });
   useEffect(() => {
     const request = new AbortController();
-    fetch("/api/info", { signal: request.signal })
+    apiFetch("/api/info", { signal: request.signal })
       .then(async (response) => {
         if (!response.ok) throw new Error(`the backend answered ${response.status}`);
         setBackend({ state: "ready", info: (await response.json()) as AppInfo });
@@ -30,11 +42,15 @@ export function App() {
   }, []);
   if (backend.state === "ready")
     return (
-      <SettingsProvider>
-        <WorkspaceProvider>
-          <Shell />
-        </WorkspaceProvider>
-      </SettingsProvider>
+      <GrantsContext value={backend.info.grants}>
+        <SettingsProvider>
+          <SessionProvider>
+            <WorkspaceGate>
+              <Shell />
+            </WorkspaceGate>
+          </SessionProvider>
+        </SettingsProvider>
+      </GrantsContext>
     );
   return (
     <main

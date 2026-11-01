@@ -1,14 +1,33 @@
 //! Types the backend sends to the frontend, exported to TypeScript by `export-types`.
 
 pub mod playback;
+mod session;
 pub mod workspace;
+
+pub use session::*;
 
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use ts_rs::TS;
 
 /// Raised when a route changes in a way an older desktop shell or frontend cannot use.
-pub const API_VERSION: u32 = 1;
+pub const API_VERSION: u32 = 4;
+
+/// Raised when the desktop shell's own interface (the preload bridge and its IPC) changes in a way a frontend served
+/// by a remote backend cannot use. The shell loads a remote backend only when its [`AppInfo::shell`] matches.
+pub const SHELL_API: u32 = 2;
+
+/// What a caller may do on a backend. Every request is judged by the grants of whoever sent it; they are not roles.
+#[derive(Serialize, TS, Clone, Copy, Debug, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub enum Grant {
+    /// Read and change the Personal settings stored on this backend.
+    Preferences,
+    /// Read and change the Server settings.
+    Configuration,
+    /// List sessions, create them and watch any of them.
+    Sessions,
+}
 
 /// Identifies a running backend, so the desktop shell and the development supervisor reuse only a compatible one.
 #[derive(Serialize, TS)]
@@ -24,6 +43,10 @@ pub struct AppInfo {
     pub development: bool,
     /// The backend process id.
     pub pid: u32,
+    /// The desktop shell interface this backend's frontend needs; compare with the shell's own version.
+    pub shell: u32,
+    /// What the caller of this request may do.
+    pub grants: Vec<Grant>,
 }
 
 /// Every setting by dotted key, such as `"ui.theme"`. `PUT /api/settings` replaces all of them; the keys and their
@@ -41,4 +64,23 @@ pub struct ApiError {
     pub reason: String,
     /// The setting key or file the reason is about.
     pub location: String,
+}
+
+/// What the sidebar shows; part of the view a session shares, and the stand-in for the Workspace it will share.
+#[derive(Serialize, Deserialize, TS, Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum SidebarView {
+    /// The whole Workspace.
+    #[default]
+    Workspace,
+    /// Live streams.
+    Live,
+    /// Offline videos.
+    Offline,
+    /// Bookmarks.
+    Bookmarks,
+    /// Plugins.
+    Plugins,
+    /// The session this client is in, and the sessions it can watch.
+    Sessions,
 }

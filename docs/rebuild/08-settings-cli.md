@@ -6,8 +6,9 @@ and `ax-devil <command> --help` run from a worktree at the reference commit.
 
 ## Settings model
 
-- **SHOULD** declare every setting once in a table: key, type, default, scope, live or restart, validation, label,
-  page. Defaults, config parsing, dialog rows, the restart marker and View-menu toggles are generated from it.
+- **SHOULD** declare every setting once in a table: key, type, default, scope (Personal or Server,
+  [invariants](../domain/invariants.md#settings-and-shortcuts)), live or restart, validation, label, page.
+  Defaults, config parsing, dialog rows, the restart marker and View-menu toggles are generated from it.
   *Current:* `DEFAULT_CONFIG`, enums with `from_config`, `GlobalSettings` properties and hand-built dialog rows.
 - **MUST** keep one immutable settings state replaced whole; consumers subscribe, never poll.
 - **MUST** apply on OK: validate every field, write atomically, then notify; a failed save changes nothing.
@@ -29,7 +30,7 @@ and `ax-devil <command> --help` run from a worktree at the reference commit.
 | App preference (theme, cache memory, scan on startup, overlay preferences) | Config |
 | Defaults for new items (device, broker, DataHub, scan range and logins) | Config |
 | Saved per workspace (items, bookmarks, reviewed marks) | Workspace file |
-| Per view, session only (catalog selection, overlay details, sticky/sync/filter) | Memory; defaults for new views in config (IN-07) |
+| Per view, runtime only (catalog selection, overlay details, sticky/sync/filter) | Memory; defaults for new views in config (IN-07) |
 | Default catalog (the only remembered catalog choice) | Catalog store |
 | Shortcut overrides | Config |
 | Window size and maximized state | Separate window-state store |
@@ -38,7 +39,9 @@ and `ax-devil <command> --help` run from a worktree at the reference commit.
 
 | Command | Behavior |
 |---------|----------|
-| `ax-devil` | Launch (start panel or restored recovery copy); global `--log-level`, `--config` |
+| `ax-devil` | Launch (start panel or restored recovery copy); global `--log-level`, `--config`. With packaging (D6) it becomes `app` |
+| `serve` | Run the backend headless for other machines, protected by a server password ([13](13-security-packaging-ops.md#sharing-must)) |
+| `app` | Open the desktop app, on the local backend or another machine's server |
 | `local`, `live`, `playlist <resolver>` | Build one item into a new Untitled workspace |
 | `open WORKSPACE_FILE` | Open a saved workspace |
 | `list-handlers` | List file overlay handler types |
@@ -60,6 +63,7 @@ and `ax-devil <command> --help` run from a worktree at the reference commit.
 | Mode | Requirement |
 |------|-------------|
 | Normal | INFO logging by default |
+| Headless | `serve`: no window; the frontend is served to browsers on other machines |
 | Developer | One command runs from source with DEBUG logging |
 | Isolated (agents, CI) | [09](09-testing.md#isolation-must) |
 | Restart | Relaunch with the same global options |

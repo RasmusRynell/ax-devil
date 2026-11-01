@@ -1,20 +1,36 @@
 //! The ax-devil backend: HTTP routes for the frontend and, in release builds, the embedded frontend itself.
 
-use api_types::{API_VERSION, ApiError, AppInfo, Settings as SettingsBody};
-use axum::{Json, Router, extract::State, http::StatusCode, routing::get};
+pub mod access;
+mod routes;
+pub mod runtime;
+pub mod share;
+mod share_socket;
+mod share_state;
+mod share_wire;
+#[cfg(test)]
+mod test_support;
+pub mod video_cache;
+pub mod video_sources;
+
+pub use share_state::{Share, ShareConfig};
+
+use access::{Admission, Limits, Policy, Principal, SettingsAccess};
+use api_types::{API_VERSION, ApiError, AppInfo, SHELL_API, Settings as SettingsBody};
+use axum::{
+    Json, Router,
+    extract::{FromRef, State},
+    http::StatusCode,
+    middleware::{from_fn, from_fn_with_state},
+    routing::get,
+};
 #[cfg(feature = "embed-assets")]
 use axum::{
     http::{Uri, header},
     response::{IntoResponse, Response},
 };
+use share::Hosting;
 use std::sync::Arc;
-
-mod routes;
-pub mod runtime;
-#[cfg(test)]
-mod test_support;
-pub mod video_cache;
-pub mod video_sources;
+use tokio::sync::watch;
 
 #[cfg(feature = "embed-assets")]
 #[derive(rust_embed::RustEmbed)]
@@ -23,41 +39,151 @@ pub mod video_sources;
 #[allow_missing = true]
 struct Assets;
 
-/// The services the routes are adapters over, created once at startup.
+/// What every route can reach: the services it is an adapter over, who is asking, the socket limits, and the sessions.
 #[derive(Clone)]
 pub struct AppState {
-    /// The settings service.
+    /// The settings service; a route reads and writes only the scopes its caller is granted.
     pub settings: Arc<settings::Settings>,
     /// The workspace store.
     pub store: workspace_store::Store,
     /// The open videos, which the playback socket draws its viewers from.
     pub videos: Arc<video_sources::VideoSources>,
-    /// Turns true when the backend is stopping: long-lived connections, such as the playback sockets, end.
-    pub stopping: tokio::sync::watch::Receiver<bool>,
+    /// Turns true when the backend is stopping: long-lived connections, such as the playback and share sockets,
+    /// end.
+    pub stopping: watch::Receiver<bool>,
+    /// How this listener decides who is asking.
+    pub policy: Arc<Policy>,
+    /// Counts the open session sockets.
+    pub admission: Arc<Admission>,
+    /// The sessions this backend holds, whichever listener their sockets arrive on.
+    share: Arc<Share>,
+    /// Where the join links of those sessions point.
+    hosting: Arc<Hosting>,
 }
 
-/// Builds the backend's routes around the services.
-pub fn app(state: AppState) -> Router {
+impl AppState {
+    /// State for one listener with the default socket limits and session settings, and no join links.
+    pub fn new(
+        settings: Arc<settings::Settings>,
+        policy: Policy,
+        store: workspace_store::Store,
+        videos: Arc<video_sources::VideoSources>,
+        stopping: watch::Receiver<bool>,
+    ) -> Self {
+        Self {
+            settings,
+            store,
+            videos,
+            stopping,
+            policy: Arc::new(policy),
+            admission: Arc::new(Admission::new(Limits::default())),
+            share: Arc::new(Share::new(ShareConfig::default())),
+            hosting: Arc::new(Hosting::None),
+        }
+    }
+
+    /// The same state with these socket limits.
+    #[must_use]
+    pub fn with_limits(mut self, limits: Limits) -> Self {
+        self.admission = Arc::new(Admission::new(limits));
+        self
+    }
+
+    /// The same state with these session settings. Call it before [`share::ShareListener::new`].
+    #[must_use]
+    pub fn with_share(mut self, config: ShareConfig) -> Self {
+        self.share = Arc::new(Share::new(config));
+        self
+    }
+
+    /// The same state with join links pointing at `hosting`.
+    #[must_use]
+    pub fn with_hosting(mut self, hosting: Hosting) -> Self {
+        self.hosting = Arc::new(hosting);
+        self
+    }
+
+    /// State for another listener of this backend: the same settings, limits and sessions, its own policy, and no
+    /// join links of its own.
+    pub(crate) fn shared_with(&self, policy: Policy) -> Self {
+        Self {
+            policy: Arc::new(policy),
+            hosting: Arc::new(Hosting::None),
+            ..self.clone()
+        }
+    }
+}
+
+impl FromRef<AppState> for Arc<Policy> {
+    fn from_ref(state: &AppState) -> Self {
+        Arc::clone(&state.policy)
+    }
+}
+
+/// Builds the routes of the listener for other machines that the desktop opens during a session: the frontend, the
+/// build's identity, and the share socket, which admits join links only.
+pub fn lan_app(state: AppState) -> Router {
     Router::new()
         .route("/api/info", get(info))
-        .route("/api/settings", get(get_settings).put(put_settings))
+        .merge(share_socket::socket_routes())
+        .with_state(state)
+        .fallback(asset)
+        .layer(from_fn(access::security_headers))
+}
+
+/// Builds the backend's routes. The Local policy answers only pages this backend served. The workspace and playback
+/// routes reach this machine's files, so only the Local and Server principals may use them, and the listener for
+/// other machines ([`lan_app`]) does not mount them at all.
+pub fn app(state: AppState) -> Router {
+    let local = matches!(*state.policy, Policy::Local);
+    let machine = Router::new()
         .merge(routes::workspace::router())
         .merge(routes::playback::router())
-        .fallback(asset)
+        .route_layer(from_fn_with_state(state.clone(), access::require_member));
+    let mut router = Router::new()
+        .route("/api/info", get(info))
+        .route("/api/settings", get(get_settings).put(put_settings))
+        .merge(share_socket::routes())
+        .merge(machine)
         .with_state(state)
+        .fallback(asset);
+    if local {
+        router = router.layer(from_fn(access::local_guard));
+    }
+    // Outermost, so refusals carry the headers too.
+    router.layer(from_fn(access::security_headers))
 }
 
-async fn get_settings(State(state): State<AppState>) -> Json<SettingsBody> {
-    Json(SettingsBody(state.settings.state().values()))
+async fn get_settings(
+    SettingsAccess(principal): SettingsAccess,
+    State(state): State<AppState>,
+) -> Json<SettingsBody> {
+    Json(SettingsBody(
+        state.settings.state().values(&principal.scopes()),
+    ))
 }
 
-/// Replaces every setting; a rejected or unsaved change leaves the stored state as it was.
+/// Replaces every setting the caller may change; a rejected or unsaved change leaves the stored state as it was.
 async fn put_settings(
-    State(AppState { settings, .. }): State<AppState>,
+    SettingsAccess(principal): SettingsAccess,
+    State(state): State<AppState>,
     Json(body): Json<SettingsBody>,
 ) -> Result<Json<SettingsBody>, (StatusCode, Json<ApiError>)> {
+    let scopes = principal.scopes();
+    if let Some(key) = body.0.keys().find(|key| {
+        settings::TABLE
+            .iter()
+            .any(|setting| setting.key == key.as_str() && !scopes.contains(&setting.scope))
+    }) {
+        return Err(failure(
+            StatusCode::FORBIDDEN,
+            key,
+            "this setting is not yours to change".into(),
+        ));
+    }
+    let settings = state.settings;
     // The file write blocks, so it stays off the async workers.
-    let saved = tokio::task::spawn_blocking(move || settings.replace(&body.0))
+    let saved = tokio::task::spawn_blocking(move || settings.replace(&scopes, &body.0))
         .await
         .map_err(|error| {
             failure(
@@ -67,7 +193,7 @@ async fn put_settings(
             )
         })?;
     match saved {
-        Ok(state) => Ok(Json(SettingsBody(state.values()))),
+        Ok(state) => Ok(Json(SettingsBody(state.values(&principal.scopes())))),
         Err(error) => {
             let status = if error.invalid {
                 StatusCode::UNPROCESSABLE_ENTITY
@@ -94,13 +220,15 @@ pub(crate) fn failure(
     )
 }
 
-async fn info() -> Json<AppInfo> {
+async fn info(principal: Principal) -> Json<AppInfo> {
     Json(AppInfo {
         app: "ax-devil".into(),
         api: API_VERSION,
         version: env!("CARGO_PKG_VERSION").into(),
         development: !cfg!(feature = "embed-assets"),
         pid: std::process::id(),
+        shell: SHELL_API,
+        grants: principal.grants().to_vec(),
     })
 }
 
@@ -142,6 +270,7 @@ mod tests {
         Request::builder()
             .method("PUT")
             .uri("/api/settings")
+            .header("host", "127.0.0.1")
             .header("content-type", "application/json")
             .body(Body::from(body.to_owned()))
             .unwrap()

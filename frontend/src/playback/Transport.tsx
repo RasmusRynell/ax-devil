@@ -23,7 +23,7 @@ const BUTTON = "size-row rounded-control";
 function SpeedField({ speed, onChange }: { speed: number; onChange: (speed: number) => void }) {
   const [draft, setDraft] = useState<string | null>(null);
   return (
-    <label className="flex items-center">
+    <label data-cursor-id="transport:speed" className="flex items-center">
       <span className="sr-only">Speed</span>
       <input
         type="number"
@@ -70,6 +70,7 @@ export function Transport({ controls, view, visible }: Props) {
       <input
         type="range"
         aria-label="Timeline"
+        data-cursor-id="transport:seek"
         aria-valuetext={`Frame ${view.playhead} of ${last}`}
         min={0}
         max={last}
@@ -83,6 +84,7 @@ export function Transport({ controls, view, visible }: Props) {
           onCanvas
           icon={playing ? "pause" : "play"}
           label={playing ? "Pause" : "Play"}
+          data-cursor-id="transport:play"
           onClick={() => controls.togglePlay()}
           className={BUTTON}
         />
@@ -90,6 +92,7 @@ export function Transport({ controls, view, visible }: Props) {
           onCanvas
           icon="step-back"
           label="Back 1 frame"
+          data-cursor-id="transport:step-back"
           onClick={() => controls.step(-1)}
           className={BUTTON}
         />
@@ -97,6 +100,7 @@ export function Transport({ controls, view, visible }: Props) {
           onCanvas
           icon="step-forward"
           label="Forward 1 frame"
+          data-cursor-id="transport:step-forward"
           onClick={() => controls.step(1)}
           className={BUTTON}
         />

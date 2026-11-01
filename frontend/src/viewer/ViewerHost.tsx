@@ -55,6 +55,7 @@ export function ViewerHost() {
               type="button"
               role="tab"
               id={`tab-${item.id}`}
+              data-cursor-id={`tab:${item.id}`}
               aria-selected={item.id === active?.id}
               onClick={() => store.activate(item.id)}
               className="h-row max-w-[24ch] truncate bg-transparent pr-xs pl-m text-fg hover:bg-hover focus-ring-inset aria-selected:font-semibold"
@@ -64,6 +65,7 @@ export function ViewerHost() {
             <IconButton
               icon="x"
               label={`Close ${item.label}`}
+              data-cursor-id={`tab-close:${item.id}`}
               onClick={() => store.close(item.id)}
               className="size-row hover:bg-hover"
             />

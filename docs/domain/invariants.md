@@ -140,7 +140,8 @@ the module that implements it adds one.
 ## UI Lifecycle
 
 - UI is a projection of runtime state, not its owner. Components receive state from the module or service that owns
-  the concept, and building a component never rebuilds shared runtime state as a side effect.
+  the concept, and building a component never rebuilds shared runtime state as a side effect. The exception is view
+  state, what the window shows of its content: the client owns it and publishes it.
 - Work that discovers files, reads disk, validates, compiles, builds indexes, opens sources or creates shared caches
   belongs behind the owning runtime boundary, never in UI construction.
 - Text sizes, spacing, radii, heights and colors come from the design tokens, never literals, and a theme change
@@ -243,5 +244,8 @@ the module that implements it adds one.
   changes nothing. Startup storage folders stay active until restart, except recovery copies and recent workspaces,
   which follow the newly saved folder.
 - Settings live in one immutable state replaced whole; consumers subscribe to changes, never poll.
+- Each settings row is Personal (how my app behaves) or Server (what the server works with). A client without the
+  `preferences` grant keeps Personal settings in its browser's `localStorage`. A masked secret sent back means
+  unchanged: the stored value stays.
 - On/off overlay preferences are one closed set; adding a member adds it to the View menu, Settings and the config.
 - All shortcuts are defined in one table; persistence is override-only, so no overrides means all defaults apply.

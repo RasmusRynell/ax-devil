@@ -2,20 +2,26 @@ import bookmark from "../../../assets/icons/bookmark.svg";
 import check from "../../../assets/icons/check.svg";
 import chevronDown from "../../../assets/icons/chevron-down.svg";
 import chevronRight from "../../../assets/icons/chevron-right.svg";
+import copy from "../../../assets/icons/copy.svg";
+import crown from "../../../assets/icons/crown.svg";
+import eye from "../../../assets/icons/eye.svg";
 import folder from "../../../assets/icons/folder.svg";
 import layoutList from "../../../assets/icons/layout-list.svg";
 import listVideo from "../../../assets/icons/list-video.svg";
 import minus from "../../../assets/icons/minus.svg";
+import mousePointer2 from "../../../assets/icons/mouse-pointer-2.svg";
 import palette from "../../../assets/icons/palette.svg";
 import pause from "../../../assets/icons/pause.svg";
 import play from "../../../assets/icons/play.svg";
 import plug from "../../../assets/icons/plug.svg";
+import rotateCw from "../../../assets/icons/rotate-cw.svg";
 import search from "../../../assets/icons/search.svg";
 import settings from "../../../assets/icons/settings.svg";
 import square from "../../../assets/icons/square.svg";
 import squarePlay from "../../../assets/icons/square-play.svg";
 import stepBack from "../../../assets/icons/step-back.svg";
 import stepForward from "../../../assets/icons/step-forward.svg";
+import users from "../../../assets/icons/users.svg";
 import video from "../../../assets/icons/video.svg";
 import x from "../../../assets/icons/x.svg";
 
@@ -25,20 +31,26 @@ export const ICONS = {
   check,
   "chevron-down": chevronDown,
   "chevron-right": chevronRight,
+  copy,
+  crown,
+  eye,
   folder,
   "layout-list": layoutList,
   "list-video": listVideo,
   minus,
+  "mouse-pointer-2": mousePointer2,
   palette,
   pause,
   play,
   plug,
+  "rotate-cw": rotateCw,
   search,
   settings,
   square,
   "square-play": squarePlay,
   "step-back": stepBack,
   "step-forward": stepForward,
+  users,
   video,
   x,
 } as const;

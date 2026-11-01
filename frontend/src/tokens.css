@@ -20,6 +20,17 @@
   --color-canvas-hover: #ffffff24;
   --color-canvas-scrim: #000000cc;
 
+  /* Participant colors, indexed by the backend's color number modulo the count; text on them is --presence-fg. */
+  --presence-0: light-dark(#b42318, #f87171);
+  --presence-1: light-dark(#1d4ed8, #60a5fa);
+  --presence-2: light-dark(#0f766e, #2dd4bf);
+  --presence-3: light-dark(#6d28d9, #a78bfa);
+  --presence-4: light-dark(#b54708, #fb923c);
+  --presence-5: light-dark(#be185d, #f472b6);
+  --presence-6: light-dark(#4d7c0f, #a3e635);
+  --presence-7: light-dark(#a16207, #facc15);
+  --presence-fg: light-dark(#ffffff, #121314);
+
   --spacing-xs: 2px;
   --spacing-s: 4px;
   --spacing-m: 8px;
@@ -49,6 +60,7 @@
   --spacing-activity: calc(var(--spacing-icon) * 2);
   --spacing-sidebar: 34ch;
   --spacing-welcome: 40ch;
+  --spacing-field: 40ch;
 }
 
 /* Strokes: the accent edge of a selected tab or view, and the keyboard focus ring (inset where an edge would clip it). */

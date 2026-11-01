@@ -116,14 +116,13 @@ mod tests {
     use serde_json::{Value, json};
     use std::time::Duration;
     use tokio_stream::StreamExt;
-    use tower::ServiceExt;
 
     struct Events(BodyDataStream);
 
     impl Events {
         async fn connect(test: &TestApp) -> Self {
             let request = Request::builder().uri("/api/events").body(Body::empty());
-            let response = test.router.clone().oneshot(request.unwrap()).await.unwrap();
+            let response = test.open(request.unwrap()).await;
             assert_eq!(response.status(), StatusCode::OK);
             Self(response.into_body().into_data_stream())
         }

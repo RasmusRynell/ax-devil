@@ -15,6 +15,8 @@ function bridge() {
     toggleMaximize: vi.fn(),
     close: vi.fn(),
     pickVideos: vi.fn(() => Promise.resolve([])),
+    connect: vi.fn(),
+    disconnect: vi.fn(),
     onMaximizedChange: vi.fn((listener: (maximized: boolean) => void) => {
       report = listener;
       return () => {};

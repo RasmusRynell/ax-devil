@@ -46,8 +46,29 @@ window: it waits for the app shell, then switches the theme to light and dark an
 `artifacts/screenshots/main-<theme>.png`. Screenshots are captured only after the compositor has drawn a frame for
 the current state; capturing earlier fails. It also captures the View menu and Settings dialog at the window
 minimum, at normal zoom and 200%, then opens a fixture video through the backend and asserts the canvas shows a
-picture and that stepping changes it. New windows join the harness as they land
-([DT-02](../parity.md#developer-tooling)).
+picture and that stepping changes it. It also runs a two-window sharing scenario (an owner and a watcher that joins
+through a link) and asserts that no page of the release app reports a Content Security Policy violation. In smoke
+mode the desktop's listener for other machines takes a free loopback port through the hidden `--share-address`, so
+nothing leaves the machine. New windows join the harness as they land ([DT-02](../parity.md#developer-tooling)).
+
+## Sharing across two machines
+
+Automated checks cannot cut a real network or open a real LAN listener, so run this by hand on release builds
+(`make build`; a development build serves no frontend) when sharing changes. Host A and host B must reach each other.
+
+1. On host A, create a session in the Sessions view of the app. Alternatively run `ax-devil serve --bind 0.0.0.0` on
+   A, open its printed link in a browser on B and create the session there.
+2. On B, open the join link in a browser, then open it again in the app: `ax-devil app --server <link>`, or pass the
+   `ax-devil://open?url=<encoded link>` link as an argument. The app asks before it opens.
+3. Check that the plain HTTP warning was logged on A, that both cursors show on each side, and that follow, explore
+   and Follow presenter behave as in the smoke scenario.
+4. Cut a watcher's network for 10 s: it resumes with the same Guest N. Cut it for 60 s (the server notices after 25 s
+   and holds the seat 30 s more): the owner's list drops the seat.
+5. With the owner in a browser on B and the server on A, cut B's network for 10 s: the session continues, with the
+   watchers seeing the owner away meanwhile. Cut it for 60 s: the session ends and watchers are told the owner
+   left (`OwnerGone`).
+6. With a desktop owner, close its window without Stop sharing: watchers must not stay on a live session. They see
+   the owner away and then the session end, or lose the connection once the app's backend has stopped.
 
 ## Fixtures
 

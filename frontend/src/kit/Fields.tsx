@@ -1,3 +1,4 @@
+import type { LabelHTMLAttributes } from "react";
 import { Icon } from "./Icon";
 
 /** A search input with a leading icon; the placeholder doubles as its accessible name. */
@@ -38,6 +39,54 @@ export function Select<T extends string>({ label, value, options, onChange }: Se
           </option>
         ))}
       </select>
+    </label>
+  );
+}
+
+interface TextFieldProps {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  type?: "text" | "password";
+}
+
+/** A labelled single-line input with its label above, as wide as its container up to a readable width. */
+export function TextField({ label, value, onChange, type = "text" }: TextFieldProps) {
+  return (
+    <label className="flex flex-col gap-s">
+      {label}
+      <input
+        type={type}
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        autoComplete="off"
+        spellCheck={false}
+        className="h-row w-field max-w-full rounded-control border border-line-strong bg-transparent px-m text-fg focus:border-accent focus:outline-none"
+      />
+    </label>
+  );
+}
+
+interface CheckboxProps extends Omit<
+  LabelHTMLAttributes<HTMLLabelElement>,
+  "onChange" | "children"
+> {
+  label: string;
+  checked: boolean;
+  onChange: (checked: boolean) => void;
+}
+
+/** A labelled check box; extra attributes go on its label, so the whole row is one target. */
+export function Checkbox({ label, checked, onChange, className = "", ...rest }: CheckboxProps) {
+  return (
+    <label className={`flex min-h-row items-center gap-m px-m py-xs ${className}`} {...rest}>
+      <input
+        type="checkbox"
+        checked={checked}
+        onChange={(event) => onChange(event.target.checked)}
+        className="size-icon shrink-0 accent-accent"
+      />
+      {label}
     </label>
   );
 }

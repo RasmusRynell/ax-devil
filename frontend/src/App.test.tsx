@@ -1,14 +1,12 @@
-import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { adoptFragment, credential } from "./access";
 import { App } from "./App";
+import { apiFetch } from "./api";
 import type { Settings } from "./generated/api";
+import { FakeSocket } from "./session/fakeBackend";
 
-beforeAll(() => {
-  // jsdom does not implement modal dialogs.
-  HTMLDialogElement.prototype.showModal = function showModal() {
-    this.setAttribute("open", "");
-  };
-});
+beforeEach(() => vi.stubGlobal("WebSocket", FakeSocket));
 
 beforeEach(() => {
   // The workspace's event stream, which this suite leaves silent.
@@ -23,6 +21,10 @@ beforeEach(() => {
 afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
+  window.sessionStorage.clear();
+  window.localStorage.clear();
+  window.history.replaceState(null, "", "/");
+  FakeSocket.reset();
   delete document.documentElement.dataset.theme;
 });
 
@@ -31,11 +33,17 @@ const stored: Settings = {
   "ui.quick_setup_done": true,
 };
 
+const info = (grants = ["preferences", "configuration", "sessions"]) => ({
+  app: "ax-devil",
+  api: 2,
+  grants,
+});
+
 /** A backend with the given stored settings; a PUT replaces them, as the real one does. */
 function backend(settings: Settings = stored, putStatus = 200) {
   let current = settings;
   const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
-    if (url === "/api/info") return { ok: true, json: async () => ({ app: "ax-devil", api: 1 }) };
+    if (url === "/api/info") return { ok: true, json: async () => info() };
     if (init?.method === "PUT") {
       if (putStatus !== 200)
         return {
@@ -72,7 +80,7 @@ describe("app shell", () => {
       "fetch",
       vi.fn(async (url: string) =>
         url === "/api/info"
-          ? { ok: true, json: async () => ({ app: "ax-devil", api: 1 }) }
+          ? { ok: true, json: async () => info() }
           : {
               ok: false,
               status: 500,
@@ -113,8 +121,7 @@ describe("app shell", () => {
     vi.stubGlobal(
       "fetch",
       vi.fn(async (url: string, init?: RequestInit) => {
-        if (url === "/api/info")
-          return { ok: true, json: async () => ({ app: "ax-devil", api: 1 }) };
+        if (url === "/api/info") return { ok: true, json: async () => info() };
         if (init?.method !== "PUT") return { ok: true, json: async () => stored };
         puts.push(init.body as string);
         await new Promise<void>((resolve) => {
@@ -142,5 +149,45 @@ describe("app shell", () => {
     await waitFor(() => expect(document.documentElement.dataset.theme).toBe("light"));
     expect(screen.getByRole("dialog", { hidden: true })).toBeTruthy();
     expect((screen.getByLabelText("Theme") as HTMLSelectElement).value).toBe("auto");
+  });
+});
+
+describe("access", () => {
+  it("moves a link or password out of the address bar and sends the password as a bearer", async () => {
+    window.history.replaceState(null, "", "/?tab=1#join=ann.s3cret");
+    adoptFragment();
+    expect(window.location.hash).toBe("");
+    expect(window.location.search).toBe("?tab=1");
+    expect(credential()).toEqual({ kind: "join", session: "ann", secret: "s3cret" });
+
+    window.history.replaceState(null, "", "/#password=p%40ss");
+    adoptFragment();
+    expect(window.location.href).not.toContain("p%40ss");
+    expect(credential()).toEqual({ kind: "password", password: "p@ss" });
+    const fetchMock = backend();
+    await apiFetch("/api/sessions");
+    const headers = fetchMock.mock.calls[0]?.[1]?.headers as Headers;
+    expect(headers.get("Authorization")).toBe("Bearer p@ss");
+  });
+
+  it("keeps the theme of a viewer without the preferences grant in the browser, not on the server", async () => {
+    const fetchMock = vi.fn(async (url: string) => ({
+      ok: url === "/api/info",
+      status: 401,
+      json: async () => info(["sessions"]),
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+    window.localStorage.setItem("ax-devil.preferences", JSON.stringify({ "ui.theme": "dark" }));
+    render(<App />);
+    fireEvent.click(await screen.findByRole("button", { name: "Settings" }));
+    expect(document.documentElement.dataset.theme).toBe("dark");
+    fireEvent.change(await screen.findByLabelText("Theme"), { target: { value: "light" } });
+    fireEvent.click(screen.getByRole("button", { name: "OK" }));
+    await waitFor(() => expect(document.documentElement.dataset.theme).toBe("light"));
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect(JSON.parse(window.localStorage.getItem("ax-devil.preferences") ?? "{}")).toMatchObject({
+      "ui.theme": "light",
+    });
+    expect(fetchMock.mock.calls.every(([url]) => url !== "/api/settings")).toBe(true);
   });
 });

@@ -1,7 +1,7 @@
 //! The playback tests' backend, viewer and envelope reader.
 
 use api_types::playback::{ClientMessage, Direction, ServerMessage, Want};
-use ax_devil::{AppState, app, video_sources::VideoSources};
+use ax_devil::{AppState, access::Policy, app, video_sources::VideoSources};
 use futures_util::{SinkExt, StreamExt};
 use playback::{CachePool, Registry};
 use std::{
@@ -59,12 +59,13 @@ impl Backend {
         let videos = Arc::new(VideoSources::new(registry, &folder.path().join("cache")));
         let (stop, stopping) = tokio::sync::watch::channel(false);
         let store = Store::new(tokio::runtime::Handle::current());
-        let router = app(AppState {
-            settings: Arc::new(settings),
-            store: store.clone(),
-            videos: videos.clone(),
+        let router = app(AppState::new(
+            Arc::new(settings),
+            Policy::Local,
+            store.clone(),
+            videos.clone(),
             stopping,
-        });
+        ));
         let socket = tokio::net::TcpSocket::new_v4().unwrap();
         if squeezed {
             // Connections accepted from this socket inherit the small send buffer.
@@ -73,7 +74,13 @@ impl Backend {
         socket.bind("127.0.0.1:0".parse().unwrap()).unwrap();
         let listener = socket.listen(16).unwrap();
         let address = listener.local_addr().unwrap();
-        tokio::spawn(async move { axum::serve(listener, router).await });
+        tokio::spawn(async move {
+            axum::serve(
+                listener,
+                router.into_make_service_with_connect_info::<SocketAddr>(),
+            )
+            .await
+        });
         Self {
             squeezed,
             _stop: stop,

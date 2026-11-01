@@ -1,5 +1,5 @@
-//! Writes the Rust API types and the playback constants to frontend/src/generated/api.ts and the API version to
-//! desktop/generated/api.json, only when they changed.
+//! Writes the Rust API types and the playback constants to frontend/src/generated/api.ts and the API and shell
+//! versions to desktop/generated/api.json, only when they changed.
 
 use ts_rs::TS;
 
@@ -13,9 +13,26 @@ macro_rules! declarations {
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     use api_types::{playback::*, workspace::*, *};
     let mut sections = declarations![
+        Grant,
         AppInfo,
         Settings,
         ApiError,
+        SidebarView,
+        ViewState,
+        CursorOptions,
+        ShareAccess,
+        SeatRole,
+        SeatMode,
+        CursorRegion,
+        CursorElement,
+        CursorPoint,
+        ShareOptions,
+        ShareClientMessage,
+        SeatInfo,
+        ShareSnapshot,
+        EndedReason,
+        ShareServerMessage,
+        ShareSummary,
         WorkspaceState,
         ItemState,
         ResolutionState,
@@ -34,8 +51,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         sections.join("\n\n")
     );
     write_if_changed("frontend/src/generated/api.ts", &text)?;
-    // The desktop shell and the development supervisor are CommonJS and read the version from JSON.
-    let version = format!("{{ \"apiVersion\": {} }}\n", API_VERSION);
+    // The desktop shell and the development supervisor are CommonJS and read the versions from JSON.
+    let version = format!(
+        "{{ \"apiVersion\": {}, \"shellApi\": {} }}\n",
+        API_VERSION, SHELL_API
+    );
     write_if_changed("desktop/generated/api.json", &version)?;
     Ok(())
 }

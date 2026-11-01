@@ -1,5 +1,6 @@
-// The only bridge from the page to the window: minimize, maximize and close for the in-page title bar, and the
-// native dialog that adds videos.
+// The only bridge from the page to the shell: the in-page title bar's window controls, the native dialog that adds
+// videos, and moving the window between the local backend and another machine's server. Main answers only a window's
+// trusted page.
 const { contextBridge, ipcRenderer } = require("electron");
 
 contextBridge.exposeInMainWorld("axDevilWindow", {
@@ -15,4 +16,9 @@ contextBridge.exposeInMainWorld("axDevilWindow", {
     void ipcRenderer.invoke("window:is-maximized").then(listener);
     return () => ipcRenderer.off("window:maximized", changed);
   },
+  // Replaces this window with one on another machine's server (a server address or a join link); only the local
+  // page may ask. Rejects when the address is not a web address.
+  connect: (target, password) => ipcRenderer.invoke("window:connect", target, password),
+  // Replaces this window with one on the local backend; only a remote page may ask.
+  disconnect: () => ipcRenderer.invoke("window:disconnect"),
 });

@@ -8,6 +8,7 @@ export interface Row {
   /** Drawn right-aligned, such as key chips. */
   trailing?: ReactNode;
   icon?: IconName;
+  disabled?: boolean;
 }
 
 interface Props {
@@ -27,8 +28,10 @@ export function RowList({ heading, rows, onSelect }: Props) {
           <li key={row.id}>
             <button
               type="button"
+              data-cursor-id={`row:${row.id}`}
+              disabled={row.disabled}
               onClick={() => onSelect(row.id)}
-              className="flex min-h-row w-full items-center py-xs gap-m rounded-control bg-transparent px-m text-left text-fg hover:bg-hover focus-ring"
+              className="flex min-h-row w-full items-center py-xs gap-m rounded-control bg-transparent px-m text-left text-fg hover:bg-hover focus-ring disabled:text-disabled disabled:hover:bg-transparent"
             >
               {row.icon && <Icon name={row.icon} />}
               <span className="min-w-0 flex-1">{row.label}</span>
