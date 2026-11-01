@@ -36,7 +36,7 @@ describe("lanes", () => {
     expect([lanes.awaited(0), lanes.awaited(1)]).toEqual([true, false]);
     lanes.setView(0, { visible: false });
     expect(lanes.awaited(0)).toBe(false);
-    lanes.setStatus(0, { status: "Failed", reason: "bad", location: "x" });
+    lanes.setStatus(0, { status: "Failed", code: "OverlayInvalid", params: {}, reason: "bad" });
     lanes.setView(0, { visible: true });
     expect(lanes.awaited(0)).toBe(false);
   });

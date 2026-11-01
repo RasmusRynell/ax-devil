@@ -1,6 +1,6 @@
 //! The declared settings of every resolver, through the public registry.
 
-use foundation::UserError;
+use foundation::{Location, UserError};
 use playlist_resolvers::{Cli, FieldKind, ResolverSchema, Settings, resolver, resolvers};
 use serde_json::json;
 
@@ -75,8 +75,8 @@ fn mot_challenge_takes_a_root_and_optionally_a_subset_of_its_sequences() {
     for (value, reason, location) in table {
         let error = rejected("mot_challenge", value.clone());
         assert_eq!(
-            (&*error.reason, &*error.location),
-            (reason, location),
+            (&*error.reason, error.location),
+            (reason, Some(Location::field(location))),
             "{value}"
         );
     }
@@ -92,6 +92,9 @@ fn folder_pair_requires_both_folders_and_the_overlay_format() {
     for key in ["videos_dir", "overlays_dir", "handler_type"] {
         let mut value = full.clone();
         value.as_object_mut().unwrap().remove(key);
-        assert_eq!(rejected("folder_pair", value).location, key);
+        assert_eq!(
+            rejected("folder_pair", value).location,
+            Some(Location::field(key))
+        );
     }
 }

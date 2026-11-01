@@ -1,5 +1,11 @@
 import { useEffect, useRef, useState } from "react";
-import { RendererUnavailable, VideoRenderer, type CellRect, type LaneCell } from "./renderer";
+import {
+  RendererUnavailable,
+  VideoRenderer,
+  fitPicture,
+  type CellRect,
+  type LaneCell,
+} from "./renderer";
 import type { PlaybackSession } from "./session";
 
 /** Where a lane is drawn, in CSS pixels from the canvas's top-left corner. */
@@ -39,22 +45,72 @@ function deviceCells(
 }
 
 /**
+ * Elements laid exactly over the picture, one per cell, for other windows' pointers: a pointer lands on the same
+ * image pixel at any window size, whatever the bars around the picture. Without `cells` one fills the space.
+ */
+function Anchors({
+  anchor,
+  picture,
+  cells,
+}: {
+  anchor: string;
+  picture: { width: number; height: number };
+  cells: readonly LaneLayout[] | undefined;
+}) {
+  if (!cells)
+    return (
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-0 flex items-center justify-center [container-type:size]"
+      >
+        <div
+          data-cursor-id={anchor}
+          className="pointer-events-auto"
+          style={{
+            aspectRatio: `${picture.width} / ${picture.height}`,
+            width: `min(100cqw, calc(100cqh * ${picture.width} / ${picture.height}))`,
+          }}
+        />
+      </div>
+    );
+  return (
+    <div aria-hidden className="pointer-events-none absolute inset-0">
+      {cells.map(({ lane, rect }) => {
+        const fitted = fitPicture(rect, picture);
+        return (
+          <div
+            key={lane}
+            data-cursor-id={`${anchor}:${lane}`}
+            className="pointer-events-auto absolute"
+            style={{ left: fitted.x, top: fitted.y, width: fitted.width, height: fitted.height }}
+          />
+        );
+      })}
+    </div>
+  );
+}
+
+/**
  * The picture the session presents, drawn at the screen's pixel density into each lane's cell with that lane's
  * overlay over it; without `cells`, one cell for lane 0 fills the space. A browser without WebGL2 says so instead.
+ * `anchor` names the `data-cursor-id` of the elements over the pictures; with `cells` each gets `:<lane>` after it.
  */
 export function VideoCanvas({
   session,
   label,
+  anchor,
   cells,
 }: {
   session: PlaybackSession;
   label: string;
+  anchor: string;
   cells?: readonly LaneLayout[];
 }) {
   const canvas = useRef<HTMLCanvasElement>(null);
   const renderer = useRef<VideoRenderer | null>(null);
   const layout = useRef(cells);
   const [unavailable, setUnavailable] = useState<string | null>(null);
+  const [picture, setPicture] = useState<{ width: number; height: number } | null>(null);
   useEffect(() => {
     layout.current = cells;
     const element = canvas.current;
@@ -64,11 +120,20 @@ export function VideoCanvas({
     const element = canvas.current;
     if (!element) return;
     let current: VideoRenderer;
+    // The picture's size comes with its frames; the renderer fits it into each cell.
     const attach = () => {
       current = new VideoRenderer(element);
       renderer.current = current;
       current.setCells(deviceCells(layout.current, element));
-      session.setSurface(current);
+      session.setSurface({
+        present: (frame, overlays, atlas) => {
+          current.present(frame, overlays, atlas);
+          const { width, height } = frame;
+          setPicture((now) =>
+            now?.width === width && now.height === height ? now : { width, height },
+          );
+        },
+      });
     };
     try {
       attach();
@@ -107,6 +172,9 @@ export function VideoCanvas({
       </p>
     );
   return (
-    <canvas ref={canvas} role="img" aria-label={label} className="absolute inset-0 size-full" />
+    <>
+      <canvas ref={canvas} role="img" aria-label={label} className="absolute inset-0 size-full" />
+      {picture && <Anchors anchor={anchor} picture={picture} cells={cells} />}
+    </>
   );
 }

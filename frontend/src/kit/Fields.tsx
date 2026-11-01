@@ -1,4 +1,4 @@
-import { useId, type ReactNode } from "react";
+import { useId, type LabelHTMLAttributes, type ReactNode } from "react";
 import { Icon } from "./Icon";
 
 /** A search input with a leading icon; the placeholder doubles as its accessible name. */
@@ -48,18 +48,19 @@ export function Select<T extends string>({ label, value, options, onChange }: Se
   );
 }
 
-/** A labelled on/off box. */
-export function Checkbox({
-  label,
-  checked,
-  onChange,
-}: {
+interface CheckboxProps extends Omit<
+  LabelHTMLAttributes<HTMLLabelElement>,
+  "onChange" | "children"
+> {
   label: ReactNode;
   checked: boolean;
   onChange: (checked: boolean) => void;
-}) {
+}
+
+/** A labelled on/off box; extra attributes go on its label, so the whole row is one target. */
+export function Checkbox({ label, checked, onChange, className = "", ...rest }: CheckboxProps) {
   return (
-    <label className={FIELD}>
+    <label className={`${FIELD} ${className}`} {...rest}>
       {label}
       <input
         type="checkbox"

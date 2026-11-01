@@ -27,6 +27,7 @@ members = [
   "crates/scene",
   "crates/scene-decoders",
   "crates/scene-store",
+  "crates/sessions",
   "crates/settings",
   "crates/workspace",
   "crates/workspace-store",
@@ -67,6 +68,7 @@ render-catalog = { path = "crates/render-catalog" }
 scene = { path = "crates/scene" }
 scene-decoders = { path = "crates/scene-decoders" }
 scene-store = { path = "crates/scene-store" }
+sessions = { path = "crates/sessions" }
 settings = { path = "crates/settings" }
 workspace = { path = "crates/workspace" }
 workspace-store = { path = "crates/workspace-store" }
@@ -74,7 +76,8 @@ workspace-store = { path = "crates/workspace-store" }
 [workspace.lints.rust]
 missing_docs = "warn"
 
-# App code logs through the logger; the readiness line in src/main.rs is the one allowed print.
+# App code logs through the logger; the lines `announce` in src/cli.rs prints and the runtime failure in
+# src/main.rs are the only allowed prints.
 [workspace.lints.clippy]
 print_stdout = "deny"
 print_stderr = "deny"
@@ -103,11 +106,12 @@ overlay-sync.workspace = true
 overlays.workspace = true
 playback.workspace = true
 playlist-resolvers.workspace = true
-scene.workspace = true
 scene-store.workspace = true
+scene.workspace = true
+serde.workspace = true
 serde_json.workspace = true
+sessions.workspace = true
 settings.workspace = true
-tokio-stream = { version = "0.1", features = ["sync"] }
 tracing.workspace = true
 workspace.workspace = true
 workspace-store.workspace = true
@@ -117,5 +121,6 @@ tokio = { workspace = true, features = ["macros", "rt-multi-thread", "net", "sig
 
 [dev-dependencies]
 tempfile = "3"
+tokio = { workspace = true, features = ["test-util"] }
 tokio-tungstenite = "0.29"
 tower = { version = "0.5", features = ["util"] }

@@ -10,11 +10,11 @@ import {
 import type { IconName } from "../kit/icons";
 import { Icon } from "../kit/Icon";
 import { IconButton } from "../kit/IconButton";
-import type { MenuCommand, MenuEntry } from "../kit/Menu";
+import { Menu, type MenuCommand, type MenuEntry } from "../kit/Menu";
+import { Popup } from "../kit/Popup";
 import { Switch } from "../kit/Switch";
-import { setHidden } from "../viewer/requests";
-import { useWorkspace } from "../workspace/WorkspaceProvider";
-import { RowMenu } from "./RowMenu";
+import { useCan, useCommand, useDoc } from "../session/session";
+import { useShow } from "../viewer/useViewers";
 import { treeOf, visibleRows, type TreeRow } from "./treeModel";
 import { useRowWindow } from "./useRowWindow";
 
@@ -27,10 +27,14 @@ function iconOf({ info, playlist }: TreeRow): IconName {
   return info.kind === "entry" ? "video" : "layers";
 }
 
+const NOTHING_CHECKED: ReadonlySet<string> = new Set();
+
 /** Why a row cannot be opened as it is, for assistive technology and the tooltip. */
 function noteOf({ info, dimmed }: TreeRow): string {
   const { status } = info.status;
-  if (status === "Unavailable") return `unavailable: ${info.status.reason}`;
+  // A seat that may not read the host's failures is told the failure, not why.
+  if (status === "Unavailable")
+    return info.status.reason ? `unavailable: ${info.status.reason}` : "unavailable";
   if (status === "Pending") return "opening";
   return dimmed ? "hidden" : "";
 }
@@ -41,7 +45,10 @@ function noteOf({ info, dimmed }: TreeRow): string {
  * Shift+F10 or the Menu key) opens it or hides and unhides it. Hidden rows show, dimmed, only with Show hidden.
  */
 export function WorkspaceTree() {
-  const { view, store } = useWorkspace();
+  const workspace = useDoc()?.workspace;
+  const command = useCommand();
+  const show = useShow();
+  const hides = useCan("content");
   const [showHidden, setShowHidden] = useState(false);
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set());
   const [current, setCurrent] = useState<string | null>(null);
@@ -50,7 +57,7 @@ export function WorkspaceTree() {
   const prefix = useId();
   const lastAt = useRef(0);
 
-  const tree = useMemo(() => (view.state ? treeOf(view.state) : []), [view.state]);
+  const tree = useMemo(() => (workspace ? treeOf(workspace) : []), [workspace]);
   const shown = useMemo(
     () => visibleRows(tree, collapsed, showHidden),
     [tree, collapsed, showHidden],
@@ -72,8 +79,13 @@ export function WorkspaceTree() {
     setCurrent(row.info.key);
     reveal(next);
   };
+  const fail = (error: unknown) =>
+    setProblem(error instanceof Error ? error.message : String(error));
   const open = (row: TreeRow) =>
-    store.show(row.item, row.info.kind === "item" ? null : row.info.entry);
+    show(row.item, row.info.kind === "item" ? undefined : (row.info.entry ?? undefined)).then(
+      () => setProblem(null),
+      fail,
+    );
   const setCollapsedState = (key: string, collapse: boolean) =>
     setCollapsed((now) => {
       const next = new Set(now);
@@ -81,9 +93,12 @@ export function WorkspaceTree() {
       else next.delete(key);
       return next;
     });
-  const toggleHidden = async (row: TreeRow) => {
+  const toggleHidden = (row: TreeRow) => {
     if (!row.target) return;
-    setProblem(await setHidden(row.target.entry, row.target.lane, !row.info.hidden));
+    command({
+      type: "content",
+      command: { type: "setHidden", target: row.target, hidden: !row.info.hidden },
+    }).then(() => setProblem(null), fail);
   };
   const closeMenu = useCallback(() => {
     setMenu(null);
@@ -104,15 +119,16 @@ export function WorkspaceTree() {
                 kind: "action" as const,
                 id: "hidden",
                 label: menuRow.info.hidden ? "Unhide" : "Hide",
+                disabled: !hides,
               },
             ]
           : []),
       ]
     : [];
-  const choose = (command: MenuCommand) => {
+  const choose = (choice: MenuCommand) => {
     if (!menuRow) return;
-    if (command.id === "open") open(menuRow);
-    else void toggleHidden(menuRow);
+    if (choice.id === "open") void open(menuRow);
+    else toggleHidden(menuRow);
   };
 
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
@@ -131,7 +147,7 @@ export function WorkspaceTree() {
     else if (event.key === "ArrowLeft") {
       const parent = shown.findIndex(({ row }) => row.info.key === active.parent);
       if (parent >= 0) go(parent);
-    } else if (event.key === "Enter" || event.key === " ") open(active);
+    } else if (event.key === "Enter" || event.key === " ") void open(active);
     else if (event.key === "ContextMenu" || (event.shiftKey && event.key === "F10")) {
       const box = document.getElementById(`${prefix}-${at}`)?.getBoundingClientRect();
       menuAt(active, box?.left ?? 0, box?.bottom ?? 0);
@@ -180,6 +196,7 @@ export function WorkspaceTree() {
                   key={info.key}
                   id={`${prefix}-${index}`}
                   role="treeitem"
+                  data-cursor-id={`tree:${info.key}`}
                   aria-level={row.level}
                   aria-posinset={position}
                   aria-setsize={siblings}
@@ -189,7 +206,7 @@ export function WorkspaceTree() {
                   onClick={() => {
                     setCurrent(info.key);
                     ref.current?.focus({ preventScroll: true });
-                    open(row);
+                    void open(row);
                   }}
                   onContextMenu={(event) => {
                     event.preventDefault();
@@ -223,9 +240,10 @@ export function WorkspaceTree() {
                       icon={info.hidden ? "eye" : "eye-off"}
                       label={`${info.hidden ? "Unhide" : "Hide"} ${info.label}`}
                       tabIndex={-1}
+                      disabled={!hides}
                       onClick={(event) => {
                         event.stopPropagation();
-                        void toggleHidden(row);
+                        toggleHidden(row);
                       }}
                       className={`size-row rounded-control ${
                         info.hidden || isCurrent
@@ -241,13 +259,16 @@ export function WorkspaceTree() {
         </div>
       )}
       {menu && (
-        <RowMenu
-          entries={menuEntries}
-          x={menu.x}
-          y={menu.y}
-          onSelect={choose}
-          onClose={closeMenu}
-        />
+        <Popup at={menu} onClose={closeMenu} className="z-20 min-w-max">
+          <Menu
+            entries={menuEntries}
+            checked={NOTHING_CHECKED}
+            onSelect={(choice) => {
+              closeMenu();
+              choose(choice);
+            }}
+          />
+        </Popup>
       )}
     </section>
   );

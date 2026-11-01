@@ -5,10 +5,12 @@ import { LANE_DEFAULTS } from "./fakeOpened";
 import { LaneMenu } from "./LaneMenu";
 import type { LaneState } from "./lanes";
 
-afterEach(() => {
-  cleanup();
-  vi.unstubAllGlobals();
-});
+afterEach(cleanup);
+
+const CATALOGS = [
+  { id: "built-in:standard", name: "Standard", description: "" },
+  { id: "built-in:tracking", name: "Tracking", description: "" },
+];
 
 const READY: LaneStatusWire = {
   status: "Ready",
@@ -22,19 +24,6 @@ const READY: LaneStatusWire = {
 };
 
 function setup(lane: Partial<LaneState> = {}, status: LaneStatusWire = READY) {
-  vi.stubGlobal(
-    "fetch",
-    vi.fn(async () => ({
-      ok: true,
-      json: async () => ({
-        catalogs: [
-          { id: "built-in:standard", name: "Standard", description: "" },
-          { id: "built-in:tracking", name: "Tracking", description: "" },
-        ],
-        default: "built-in:standard",
-      }),
-    })),
-  );
   const onChange = vi.fn();
   const onHide = vi.fn();
   const state: LaneState = {
@@ -45,14 +34,15 @@ function setup(lane: Partial<LaneState> = {}, status: LaneStatusWire = READY) {
     revision: 0,
     ...lane,
   };
-  const view = render(<LaneMenu lane={state} onChange={onChange} onHide={onHide} />);
+  const view = render(
+    <LaneMenu lane={state} catalogs={CATALOGS} onChange={onChange} onHide={onHide} />,
+  );
   return { onChange, onHide, state, ...view };
 }
 
 describe("lane menu", () => {
-  it("offers the backend's catalogs and changes the lane's catalog", async () => {
+  it("offers the backend's catalogs and changes the lane's catalog", () => {
     const { onChange } = setup();
-    await screen.findByRole("option", { name: "Tracking" });
     fireEvent.change(screen.getByRole("combobox", { name: "Catalog" }), {
       target: { value: "built-in:tracking" },
     });
@@ -73,6 +63,7 @@ describe("lane menu", () => {
     );
     rerender(
       <LaneMenu
+        catalogs={CATALOGS}
         lane={{ ...state, view: { ...state.view, filter: { static: true } } }}
         onChange={onChange}
         onHide={onHide}
@@ -96,6 +87,7 @@ describe("lane menu", () => {
     const sticky = { enabled: true, timeout_ms: 2050, opacity: 1 };
     rerender(
       <LaneMenu
+        catalogs={CATALOGS}
         lane={{ ...state, view: { ...state.view, sticky } }}
         onChange={onChange}
         onHide={onHide}

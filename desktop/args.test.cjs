@@ -1,6 +1,6 @@
 const assert = require("node:assert/strict");
 const { test } = require("node:test");
-const { backendArgs, userArgs } = require("./args.cjs");
+const { backendArgs, parseLaunch, userArgs } = require("./args.cjs");
 
 void test("the command and its options go to the backend, the shell's and Chromium's switches do not", () => {
   const argv = ["electron", ".", "--ozone-platform=x11", "--smoke-test", "--log-level", "DEBUG"];
@@ -14,4 +14,25 @@ void test("the command and its options go to the backend, the shell's and Chromi
     "--video",
     "x.mp4",
   ]);
+});
+
+void test("a server address or link opens a window and is not taken for the backend's command", () => {
+  const argv = userArgs(
+    ["electron", ".", "--server", "http://nas:7340", "--log-level=DEBUG"],
+    true,
+  );
+  const { launch, rest } = parseLaunch(argv);
+  assert.deepEqual(launch, { server: "http://nas:7340" });
+  assert.deepEqual(backendArgs(rest), ["--log-level=DEBUG"]);
+
+  const linked = parseLaunch([
+    "ax-devil://open?url=http%3A%2F%2Fnas%3A7340",
+    "local",
+    "--video",
+    "a.mp4",
+  ]);
+  assert.deepEqual(linked.launch, { link: "ax-devil://open?url=http%3A%2F%2Fnas%3A7340" });
+  assert.deepEqual(backendArgs(linked.rest), ["local", "--video", "a.mp4"]);
+  assert.deepEqual(parseLaunch(["--server=http://nas"]).launch, { server: "http://nas" });
+  assert.throws(() => parseLaunch(["--server"]), /needs a server address/);
 });

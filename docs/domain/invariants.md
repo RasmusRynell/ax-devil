@@ -14,7 +14,7 @@ implementing module closes.
   Item resolves to. It stores source specs and metadata, never opened sources or factories. Runtime sources are
   created when a viewer opens content.
 - Workspace Items are the truth and Content is derived: everything that adds content creates items, and Content comes
-  only from resolving an item. The Workspace, the store and the file format never branch on item kind.
+  only from resolving an item. The Workspace, the Doc and the file format never branch on item kind.
 - Content ids derive from the owning item's id and never change between resolutions, and Content records its item's
   id. Content built outside resolution has empty ids and is never top-level Content.
 - Live Stream Items store connection values as entered; a `$VARIABLE` reference is expanded only during resolution,
@@ -62,6 +62,8 @@ implementing module closes.
   only overlay data is per lane.
 - A frame is shown only when its bytes are held and every visible lane that loaded holds an overlay for its sequence
   id (the newest revision is drawn). A loading, failed or hidden lane never holds a frame back.
+- An overlay passes the same authority gate as its frame and is drawn for the window the gate allowed, never the
+  viewer's raw request.
 
 ## Frame Identity
 
@@ -114,17 +116,16 @@ implementing module closes.
 
 - Open, focused, pinned, on-screen and live-status facts about viewers come from the hosted viewers; they are not
   copied into parallel state records.
-- Viewer navigation reads Hidden state through a read-only query, never the mutable store.
-- One store owns the current and last saved Workspace, each item's resolution, Hidden refs and mutations, and sends
-  one change notification per successful mutation; "modified" is current ≠ saved. One projection turns the resolved
-  Content and the open items into sidebar rows. The notification also reports a changed modified flag, name or path;
-  a failed open changes nothing.
+- Viewer navigation reads Hidden state through a read-only query of the Doc, never by commanding it.
+- The Doc holds the current Workspace, each item's resolution, Hidden refs and open items, and changes only by a
+  command applied under its Session's lock; a refused command changes nothing, and each change reaches every seat as
+  one new Doc. "Modified" is current ≠ saved. One projection turns the resolved Content and the open items into rows.
 - Hidden refs identify current Workspace content, playlist entries or lanes; orphan and out-of-range refs are ignored.
 - Removing Content removes its whole item and closes every viewer showing it. Opening a Workspace file closes every
   viewer, even when item ids are kept. The split host alone removes and destroys hosted viewers.
 - Every item is listed: an item that failed to resolve is one unavailable row that shows its reason and never opens;
   an item still resolving is one pending row that opens nothing.
-- Items resolve off the UI thread; the store commits a result only while its item and Workspace are still current.
+- Items resolve off the UI thread and the lock; a result commits only while its item still waits on that attempt.
 - Only adding items opens a viewer. Opening or creating a Workspace lists its items and opens and connects nothing.
 - Nothing prompts on launch, open, New or quit: a Workspace with unsaved edits has one recovery copy, never its own
   file, that exists exactly while the edits do and is deleted when they are saved or discarded.
@@ -142,7 +143,8 @@ implementing module closes.
 ## UI Lifecycle
 
 - UI is a projection of runtime state, not its owner. Components receive state from the module or service that owns
-  the concept, and building a component never rebuilds shared runtime state as a side effect.
+  the concept, and building a component never rebuilds shared runtime state as a side effect. The exception is view
+  state, what the window shows of its content: the client owns it and publishes it.
 - Work that discovers files, reads disk, validates, compiles, builds indexes, opens sources or creates shared caches
   belongs behind the owning runtime boundary, never in UI construction.
 - Pixels inside rendered frames (catalogs, sheets, export burn-ins) follow the frame, not the design tokens or theme
@@ -195,8 +197,9 @@ implementing module closes.
   only spares hashing an unchanged file; where the platform has no change time, the digest decides), decoder name,
   artifact version, Scene version, decode options, frame size and store format version. When only the stat
   fingerprint differs, the artifact is accepted and republished with the new one. The fingerprint is taken from the
-  held handle before the source is read. If the source changed during the build, a source-indexed store skips persisting and a derived one
-  persists without a digest, so a file written during indexing reads as changed on the next open. Cache files are
+  held handle before the source is read. If the source changed during the build, a source-indexed store skips
+  persisting and a derived one persists without a digest, so a file written during indexing reads as changed on the
+  next open. Cache files are
   replaced atomically, read through the handle that wrote them, private to the user and always rebuildable. An open
   source-indexed store stops serving once its source is rewritten in place; a replaced file leaves it valid.
 - Both storage modes persist Scene history built from what lookup serves for each timestamp. Offline history places a
@@ -235,19 +238,19 @@ implementing module closes.
 
 ## Settings And Shortcuts
 
-- Domain code takes settings as values; only the settings service, wired at bootstrap, reads and writes them.
+- Domain code takes settings as values; only the settings service reads and writes them.
 - Settings apply on OK. Settings that need a restart carry one shared marker, and saving one offers to restart after
   the exit-time saves. Quick Setup is the one exception.
 - Saves validate every editable field, replace the configuration atomically, and only then notify; a failed save
   changes nothing. Startup storage folders stay active until restart, except recovery copies and recent workspaces,
   which follow the newly saved folder.
 - Settings live in one immutable state replaced whole; consumers subscribe to changes, never poll.
+- Each settings row is Personal (how my app behaves) or Server (what the server works with). A client without the
+  `preferences` grant keeps Personal settings in its browser. A masked secret sent back means unchanged.
 - On/off overlay preferences are one closed set; adding a member adds it to the View menu, Settings and the config.
 - All shortcuts are defined in one table; persistence is override-only, so no overrides means all defaults apply. An
   override wins over any default with the same key, which becomes unbound.
-- Settings are personal: nothing created from them (workspaces, videos, layouts) refers back to them or embeds a value,
-  a `$VARIABLE` reference or a credential; they only supply defaults when something is created. Only shortcuts are
-  read live.
-- A settings file this build cannot read (newer, malformed, or holding an invalid value) stops startup with an error
-  naming the file and key. File format, migration and backups are owned by
+- Settings are defaults, not references: nothing created from them refers back to them or embeds a value or a
+  credential.
+- A settings file this build cannot read stops startup with an error naming the file and key; format and migration:
   [`crates/settings/README.md`](../../crates/settings/README.md).

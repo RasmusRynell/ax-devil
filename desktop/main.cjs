@@ -1,10 +1,13 @@
-const { app, BrowserWindow, dialog, ipcMain, screen } = require("electron");
-const { spawn } = require("node:child_process");
-const { createInterface } = require("node:readline");
+// The desktop shell's lifecycle: which windows exist and how they move between the local backend and another
+// machine's server. Backend, window, link and remote details live in their own modules.
+const { app, BrowserWindow, dialog, screen } = require("electron");
 const path = require("node:path");
 
-const { backendArgs, userArgs } = require("./args.cjs");
-const { apiVersion, reserved } = require("./generated/api.json");
+const { backendArgs, parseLaunch, userArgs } = require("./args.cjs");
+const { createBackend } = require("./backend.cjs");
+const { confirmLink, linkTarget, singleInstance } = require("./links.cjs");
+const { askAfterFailure, parseTarget, verifyServer } = require("./remote.cjs");
+const { installIpc, localWindows, openWindow } = require("./window.cjs");
 const { windowBounds } = require("./window-state.cjs");
 
 const smoke = process.argv.includes("--smoke-test");
@@ -22,83 +25,63 @@ if (smoke) {
   ])
     app.commandLine.appendSwitch(name, value);
 }
-// Video files the Add Video dialog offers; the backend's intake takes any path, the viewer judges the media.
-const VIDEO_EXTENSIONS = ["mp4", "avi", "mkv", "mov"];
 // Electron's own data (Chromium profile, crash dumps) is browser state, not ax-devil data: the backend owns the
 // app's folders, so keep Electron out of them.
 app.setPath("userData", path.join(app.getPath("cache"), "ax-devil-chromium"));
-// Zoom keys the app handles itself (the backend refuses them as shortcuts), by the key that triggers them.
-const ZOOM_STEPS = { "=": 0.5, "+": 0.5, "-": -0.5, 0: null };
-let backend;
-let backendOrigin;
+// The first local window of this run is remembered: where it was and how big, as the backend keeps it.
+let localOrigin;
+let remembered;
 let windowState;
 let stopping = false;
 let stopped = false;
 let exitCode = 0;
-const args = backendArgs(userArgs(process.argv, process.defaultApp));
+// Opening a remote window that may fail and asking what to do then; the app outlives its last window meanwhile.
+let recovering = 0;
 
-// Reuses a compatible backend already on the port; otherwise starts the release build and owns it.
-async function startBackend() {
-  if (port !== "0") {
-    try {
-      const response = await fetch(`http://127.0.0.1:${port}/api/info`, {
-        signal: AbortSignal.timeout(1500),
-      });
-      const info = await response.json();
-      if (info.app !== "ax-devil" || info.api !== apiVersion)
-        throw new Error(`Port ${port} belongs to an incompatible server.`);
-      // A development backend serves no frontend; only the development supervisor pairs it with one.
-      if (info.development && !devUrl)
-        throw new Error(
-          `Port ${port} runs a development backend; use make desktop or another PORT.`,
-        );
-      if (args.length)
-        console.error(`Ignoring the command line: the backend on port ${port} is already running.`);
-      return `http://127.0.0.1:${port}`;
-    } catch (error) {
-      if (error.cause?.code !== "ECONNREFUSED") throw error;
-    }
-  }
-  const executable = path.resolve(__dirname, "../target/release/ax-devil");
-  backend = spawn(executable, args, {
-    env: { ...process.env, PORT: port },
-    stdio: ["ignore", "pipe", "pipe"],
-  });
-  backend.stderr.on("data", (data) => process.stderr.write(data));
-  backend.on("exit", (code, signal) => {
-    if (!stopping) fail(new Error(`Backend exited unexpectedly: ${code ?? signal}`));
-  });
-  return new Promise((resolve, reject) => {
-    const timer = setTimeout(() => reject(new Error("Backend startup timed out")), 10000);
-    backend.once("error", (error) => {
-      clearTimeout(timer);
-      reject(error);
-    });
-    backend.once("exit", () => {
-      clearTimeout(timer);
-      reject(new Error("Backend stopped during startup"));
-    });
-    createInterface({ input: backend.stdout }).on("line", (line) => {
-      const match = /^ax-devil: (http:\/\/127\.0\.0\.1:\d+)$/.exec(line);
-      if (match) {
-        clearTimeout(timer);
-        resolve(match[1]);
-      }
-    });
-  });
+// What the command line asks for: a server to open, and the rest goes to the local backend. A link or `--server`
+// must not reach the backend, which would take its address for the command.
+let commandLine = { launch: {}, rest: [] };
+try {
+  commandLine = parseLaunch(userArgs(process.argv, process.defaultApp));
+} catch (error) {
+  fail(error);
 }
+
+const backend = createBackend({
+  port,
+  devUrl,
+  args: [
+    // The smoke test's sharing listener takes a free loopback port, so no other machine or test can be in the way.
+    ...(smoke ? ["--share-address", "127.0.0.1:0"] : []),
+    ...backendArgs(commandLine.rest),
+  ],
+  onUnexpectedExit: (error) => {
+    if (localWindows().length > 0) fail(error);
+  },
+});
 
 function fail(error) {
   console.error(error);
   exitCode = 1;
+  // Already quitting: the dialog would only report that quitting stopped what was starting.
+  if (stopping) return;
   if (!smoke) dialog.showErrorBox("ax-devil could not continue", String(error));
   app.quit();
+}
+
+// `window` takes the place of `replace`, which closes.
+function adopt(window, replace) {
+  if (replace && !replace.isDestroyed()) {
+    window.setBounds(replace.getBounds());
+    replace.close();
+  }
+  return window;
 }
 
 // The saved window, or nothing when there is none or the backend does not answer; the window then opens at defaults.
 async function loadWindowState() {
   try {
-    const response = await fetch(`${backendOrigin}/api/windows/main`, {
+    const response = await fetch(`${localOrigin}/api/windows/main`, {
       signal: AbortSignal.timeout(1000),
     });
     return response.status === 200 ? await response.json() : undefined;
@@ -111,7 +94,7 @@ async function loadWindowState() {
 async function saveWindowState() {
   if (!windowState) return;
   try {
-    await fetch(`${backendOrigin}/api/windows/main`, {
+    await fetch(`${localOrigin}/api/windows/main`, {
       method: "PUT",
       headers: { "content-type": "application/json" },
       body: JSON.stringify(windowState),
@@ -122,111 +105,153 @@ async function saveWindowState() {
   }
 }
 
+// Keeps `window`'s position for the next start. The normal bounds are kept apart from the maximized state, so a
+// maximized window restores to its own size.
+function remember(window) {
+  const update = () => {
+    if (!window.isDestroyed())
+      windowState = { ...window.getNormalBounds(), maximized: window.isMaximized() };
+  };
+  for (const event of ["resize", "move", "maximize", "unmaximize", "close"])
+    window.on(event, update);
+}
+
+// Opens a window on the local backend, starting it when it is not running yet. The first one of a run opens where
+// it was last closed; the smoke test always opens at the defaults.
+async function showLocal(replace) {
+  localOrigin = await backend.ensure();
+  const origin = devUrl || localOrigin;
+  if (!/^http:\/\/127\.0\.0\.1:\d+$/.test(origin)) throw new Error("Invalid local desktop URL");
+  const first = !replace && !smoke && !remembered;
+  const saved = first ? await loadWindowState() : undefined;
+  const bounds = windowBounds(
+    saved,
+    screen.getAllDisplays().map((display) => display.workArea),
+  );
+  const window = adopt(await openWindow(origin, { fatal: fail, bounds }), replace);
+  if (first) {
+    remembered = true;
+    if (saved?.maximized) window.maximize();
+    remember(window);
+  }
+  return window;
+}
+
+// Opens a window on another machine's server (a server address or a join link) with no local backend involved.
+// A failure asks what to do; resolves to the window, or to nothing when the user chose to quit. Returning to local
+// focuses a local window, or opens one when only remote windows remain.
+async function showRemote(target, password, replace) {
+  const remote = parseTarget(target, password);
+  // A page that fails to load destroys its window, which may be the last one; that must not quit the app.
+  recovering++;
+  try {
+    for (;;) {
+      let reason;
+      try {
+        await verifyServer(remote.base);
+        const window = await openWindow(remote.origin, {
+          url: remote.url,
+          remote: true,
+          fatal: fail,
+        });
+        watchRemote(window, remote);
+        return adopt(window, replace);
+      } catch (error) {
+        reason = error.message;
+      }
+      const choice = await askAfterFailure(replace, reason);
+      if (choice === "retry") continue;
+      if (choice === "quit") return app.quit();
+      const [local] = localWindows();
+      if (local) return local.focus();
+      return showLocal();
+    }
+  } finally {
+    recovering--;
+  }
+}
+
+// A remote page that stops loading after it opened gets the same way out as one that never opened.
+function watchRemote(window, remote) {
+  let asking = false;
+  window.webContents.on("did-fail-load", async (_event, code, description, _url, isMainFrame) => {
+    // -3 is a navigation that was cancelled, such as one this window refused.
+    if (!isMainFrame || code === -3 || asking || window.isDestroyed()) return;
+    asking = true;
+    const choice = await askAfterFailure(window, `Lost ${remote.base}: ${description}`);
+    asking = false;
+    if (window.isDestroyed()) return;
+    if (choice === "retry") window.loadURL(remote.url).catch(() => {});
+    else if (choice === "quit") app.quit();
+    else showLocal(window).catch(fail);
+  });
+}
+
+// Opens what a launch asks for: its server, its confirmed link, or nothing.
+async function openLaunch({ server, link }) {
+  if (server) return showRemote(server);
+  if (!link) return undefined;
+  const target = linkTarget(link);
+  return (await confirmLink(target)) ? showRemote(target) : undefined;
+}
+
+// A launch that reaches the running app: it opens a window, or raises one when it asks for nothing.
+async function onLaunch(launch) {
+  await app.whenReady();
+  try {
+    if (!(await openLaunch(launch)) && !launch.server && !launch.link) {
+      const [existing] = BrowserWindow.getAllWindows();
+      if (existing) existing.focus();
+      else await showLocal();
+    }
+  } catch (error) {
+    dialog.showErrorBox("ax-devil could not open the server", error.message);
+  }
+}
+
+installIpc({
+  connect: (window, target, password) => {
+    // Resolves the address now so a bad one rejects in the page; the rest answers through native dialogs.
+    parseTarget(target, password);
+    showRemote(target, password, window).catch(fail);
+  },
+  disconnect: (window) => {
+    showLocal(window).catch(fail);
+  },
+});
+
 app.on("before-quit", (event) => {
   if (stopped) return;
   event.preventDefault();
   if (stopping) return;
   stopping = true;
-  void saveWindowState().then(stopBackend);
+  void saveWindowState()
+    .then(() => backend.stop())
+    .then(() => {
+      stopped = true;
+      app.exit(exitCode);
+    });
 });
-
-function stopBackend() {
-  const finish = () => {
-    stopped = true;
-    app.exit(exitCode);
-  };
-  if (!backend || backend.exitCode !== null || backend.signalCode !== null) return finish();
-  const timer = setTimeout(() => backend.kill("SIGKILL"), 3000);
-  backend.once("exit", () => {
-    clearTimeout(timer);
-    finish();
-  });
-  backend.kill("SIGINT");
-}
-app.on("window-all-closed", () => app.quit());
+app.on("window-all-closed", () => {
+  if (recovering === 0) app.quit();
+});
 process.on("SIGINT", () => app.quit());
 process.on("SIGTERM", () => app.quit());
 
-app
-  .whenReady()
-  .then(async () => {
-    backendOrigin = await startBackend();
-    const origin = devUrl || backendOrigin;
-    if (!/^http:\/\/127\.0\.0\.1:\d+$/.test(origin)) throw new Error("Invalid local desktop URL");
-    // The smoke test screenshots the default window, whatever an earlier run left.
-    const saved = smoke ? undefined : await loadWindowState();
-    const window = new BrowserWindow({
-      title: "ax-devil",
-      ...windowBounds(
-        saved,
-        screen.getAllDisplays().map((display) => display.workArea),
-      ),
-      minWidth: 640,
-      minHeight: 480,
-      // The page draws its own title bar and window controls (see preload.cjs).
-      frame: false,
-      webPreferences: {
-        nodeIntegration: false,
-        contextIsolation: true,
-        sandbox: true,
-        preload: path.join(__dirname, "preload.cjs"),
-      },
-    });
-    if (saved?.maximized) window.maximize();
-    // The normal bounds are kept apart from the maximized state, so a maximized window restores to its own size.
-    const remember = () => {
-      if (!smoke && !window.isDestroyed())
-        windowState = { ...window.getNormalBounds(), maximized: window.isMaximized() };
-    };
-    for (const event of ["resize", "move", "maximize", "unmaximize", "close"])
-      window.on(event, remember);
-    const sendMaximized = () => window.webContents.send("window:maximized", window.isMaximized());
-    window.on("maximize", sendMaximized);
-    window.on("unmaximize", sendMaximized);
-    ipcMain.on("window:minimize", () => window.minimize());
-    ipcMain.on("window:toggle-maximize", () =>
-      window.isMaximized() ? window.unmaximize() : window.maximize(),
-    );
-    ipcMain.on("window:close", () => window.close());
-    ipcMain.handle("window:is-maximized", () => window.isMaximized());
-    // Only the native dialog: the page sends the chosen paths to the backend itself. Resolves to the absolute paths,
-    // none when the dialog is cancelled.
-    ipcMain.handle("workspace:pick-videos", async () => {
-      const chosen = await dialog.showOpenDialog(window, {
-        title: "Add Video",
-        properties: ["openFile", "multiSelections"],
-        filters: [{ name: "Video files", extensions: VIDEO_EXTENSIONS }],
-      });
-      return chosen.canceled ? [] : chosen.filePaths;
-    });
-    // The chosen absolute path, null when the dialog is cancelled; the page saves it through the settings.
-    ipcMain.handle("settings:pick-folder", async () => {
-      const chosen = await dialog.showOpenDialog(window, { properties: ["openDirectory"] });
-      return chosen.canceled ? null : chosen.filePaths[0];
-    });
-    // There is no application menu, so zoom is handled here; Chromium remembers it per host.
-    window.webContents.on("before-input-event", (event, input) => {
-      if (input.type !== "keyDown" || !input.control || input.alt) return;
-      const step = ZOOM_STEPS[input.key];
-      if (step === undefined || !reserved.includes(`Ctrl+${input.key}`)) return;
-      const zoom = window.webContents;
-      zoom.setZoomLevel(step === null ? 0 : zoom.getZoomLevel() + step);
-      event.preventDefault();
-    });
-    window.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
-    window.webContents.on("will-navigate", (event, url) => {
-      if (new URL(url).origin !== origin) event.preventDefault();
-    });
-    window.webContents.on("render-process-gone", (_event, details) =>
-      fail(new Error(`Renderer stopped: ${details.reason}`)),
-    );
-    window.on("unresponsive", () => fail(new Error("Desktop window stopped responding")));
-    await window.loadURL(origin);
-    if (smoke) {
-      const timer = setTimeout(() => fail(new Error("Desktop smoke test timed out")), 30000);
-      await require("./smoke.cjs")(window);
-      clearTimeout(timer);
-      window.close();
-    }
-  })
-  .catch(fail);
+// A later launch of the app, and a development shell, each run on their own.
+if (!smoke && !devUrl && !singleInstance(onLaunch)) app.quit();
+else
+  app
+    .whenReady()
+    .then(async () => {
+      if (smoke) {
+        const window = await showLocal();
+        const timer = setTimeout(() => fail(new Error("Desktop smoke test timed out")), 60000);
+        await require("./smoke.cjs")(window, { openLaunch, showLocal, showRemote });
+        clearTimeout(timer);
+        app.quit();
+        return;
+      }
+      if (!(await openLaunch(commandLine.launch)) && !stopping) await showLocal();
+    })
+    .catch(fail);

@@ -4,7 +4,7 @@
 mod common;
 
 use common::{assert_explained, expected_luma, flat_luma, index_of_input, open_input, read_all};
-use foundation::{CancelToken, FrameRate, Interrupt};
+use foundation::{CancelToken, FrameRate, HostPath, Interrupt};
 use media::{FrameIndex, ImageSequenceInput, VideoInput};
 use std::path::{Path, PathBuf};
 use tempfile::TempDir;
@@ -150,7 +150,7 @@ fn a_missing_middle_image_fails_its_own_frame_and_no_other() {
                     assert!(failure.error.reason.contains("000006.jpg"), "{failure:?}");
                     assert_eq!(
                         failure.error.location,
-                        folder.path().join("%06d.jpg").display().to_string()
+                        Some(HostPath::new(folder.path().join("%06d.jpg")).into())
                     );
                 }
             }

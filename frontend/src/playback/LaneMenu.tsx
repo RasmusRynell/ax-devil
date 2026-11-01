@@ -1,9 +1,8 @@
-import { useEffect, useId, useState, type ReactNode } from "react";
+import { useId, useState, type ReactNode } from "react";
 import type { CatalogInfoWire } from "../generated/api";
 import { Button } from "../kit/Button";
 import { Checkbox, Select } from "../kit/Fields";
 import { Switch } from "../kit/Switch";
-import { fetchCatalogs } from "../viewer/requests";
 import type { LaneState } from "./lanes";
 import type { LaneViewWire } from "./protocol";
 
@@ -13,20 +12,6 @@ const MAX_STICKY_MS = 100_000;
 const DEFAULT_PREVIOUS_MS = 50;
 
 type Sync = "exact" | "previous";
-
-/** The catalogs the backend offers; empty until they arrive, and when they cannot be listed. */
-function useCatalogs(): readonly CatalogInfoWire[] {
-  const [catalogs, setCatalogs] = useState<readonly CatalogInfoWire[]>([]);
-  useEffect(() => {
-    const abort = new AbortController();
-    fetchCatalogs(abort.signal).then(
-      (info) => setCatalogs(info.catalogs),
-      () => {},
-    );
-    return () => abort.abort();
-  }, []);
-  return catalogs;
-}
 
 /** A number the user edits as text; the change applies when they press Enter or leave the field. */
 function NumberField({
@@ -134,18 +119,20 @@ function Classes({
 /**
  * What the user can change about one lane: its catalog, which classes show, whether old samples stay on screen, and
  * how a sample is matched to a frame (for lanes keyed by time). Each change goes to `onChange` as the part of the
- * lane's view that differs.
+ * lane's view that differs. `onHide` is absent for a seat that may not change the workspace.
  */
 export function LaneMenu({
   lane,
+  catalogs,
   onChange,
   onHide,
 }: {
   lane: LaneState;
+  /** The catalogs the backend offers for the lane to draw with. */
+  catalogs: readonly CatalogInfoWire[];
   onChange: (change: Partial<LaneViewWire>) => void;
-  onHide: () => void;
+  onHide?: () => void;
 }) {
-  const catalogs = useCatalogs();
   const { view } = lane;
   const options: [string, string][] = catalogs.map((catalog) => [catalog.id, catalog.name]);
   if (!catalogs.some((catalog) => catalog.id === view.catalog))
@@ -218,11 +205,13 @@ export function LaneMenu({
           )}
         </Group>
       )}
-      <div className="border-t border-line pt-m">
-        <Button icon="eye-off" onClick={onHide}>
-          Hide lane
-        </Button>
-      </div>
+      {onHide && (
+        <div className="border-t border-line pt-m">
+          <Button icon="eye-off" onClick={onHide}>
+            Hide lane
+          </Button>
+        </div>
+      )}
     </div>
   );
 }

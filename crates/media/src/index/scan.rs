@@ -5,7 +5,7 @@ use crate::ffi;
 use crate::source::{self, Opened};
 use ffmpeg_next::Packet;
 use ffmpeg_next::frame::Video;
-use foundation::{CancelToken, Interrupt, UserError};
+use foundation::{CancelToken, ErrorCode, Interrupt, UserError};
 use std::path::Path;
 use tracing::debug;
 
@@ -103,6 +103,7 @@ pub(super) fn packet_scan(
                 // A read that FFmpeg gave up because of the cancel is no failure of the file.
                 cancel.check()?;
                 return Err(Interrupt::Failed(source::error(
+                    ErrorCode::IndexingFailed,
                     format!("The video cannot be read to the end: {e}"),
                     path,
                 )));
@@ -163,6 +164,7 @@ pub(super) fn decode_scan(
     collect(&mut decoder, &mut frames);
     if missing_pts {
         return Err(Interrupt::Failed(source::error(
+            ErrorCode::IndexingFailed,
             "A frame of the video has no timestamp",
             path,
         )));

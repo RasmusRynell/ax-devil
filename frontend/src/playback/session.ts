@@ -1,18 +1,26 @@
 /**
- * One viewer's playback of one video: the socket, the frames and lane overlays it holds, the clock and what to ask
- * the backend for. A frame is shown once every shown lane that loaded has its overlay for it. The session is
+ * One viewer's playback of one entry: the socket, the frames and lane overlays it holds, the clock and what to ask
+ * the backend for. A frame is shown once every visible lane that loaded has its overlay for it. The session is
  * framework-free; time, the display refresh and the socket are injected, and the UI reads `getSnapshot`.
  */
 
-import { AtlasMirror } from "../overlay/mirror";
+import type { AtlasMirror } from "../overlay/mirror";
 import type { PreparedOverlay } from "../overlay/preparer";
 import type { PreparedDrawing } from "../overlay/prepare";
-import { PlaybackClock, SPEED_STEP, clampSpeed, type FrameInfo, type FrameSource } from "./clock";
+import { CommandRefused, reasonOf } from "../errors";
+import {
+  PlaybackClock,
+  SPEED_STEP,
+  clampSpeed,
+  followFrame,
+  type ClockIntent,
+  type FrameSource,
+} from "./clock";
 import { FrameFailures } from "./failures";
 import { FrameBuffer, windowSize } from "./FrameBuffer";
 import { WantPlanner } from "./direction";
-import { LaneSet, type LaneState } from "./lanes";
-import { OverlayBuffer } from "./OverlayBuffer";
+import { LaneOverlays } from "./laneOverlays";
+import { LaneSet } from "./lanes";
 import {
   PLAYBACK_PROTOCOL,
   type LaneViewWire,
@@ -21,16 +29,25 @@ import {
   type VideoFrame,
   type Want,
 } from "./protocol";
+import { INITIAL_VIEW, sameView, type PlaybackView } from "./view";
 import type { Connect, Connection, DeliveredEnvelope, Incoming } from "./wire";
-
-export type { LaneState } from "./lanes";
 
 /** What one viewer may hold of decoded frames: it divides into the window the backend is asked to fill. */
 export const BUFFER_BUDGET_BYTES = 512 * 1024 * 1024;
 /** Waits between reconnection attempts; the last one repeats. */
 const RETRY_MS = [500, 1000, 2000, 4000, 8000];
+/**
+ * The close codes that end a stream for good, with what the viewer says: asking again would be refused, or the
+ * backend ended the stream on purpose. Any other close is a lost connection that is worth another try.
+ */
+const ENDED: Record<number, string> = {
+  4401: "The backend refused this video stream.",
+  4403: "This video stream was ended: access to it was withdrawn.",
+};
 
 export interface SessionDeps {
+  /** A ticket for one socket: the first message of every connection spends one. Rejects when it cannot get one. */
+  ticket: () => Promise<string>;
   connect: Connect;
   /** Monotonic milliseconds. */
   now: () => number;
@@ -41,13 +58,18 @@ export interface SessionDeps {
   budgetBytes?: number;
   /** Where an earlier session of this video left off: this one opens there, paused, at that speed. */
   resume?: ResumeState;
+  /** Told what the clock is doing after every change the viewer makes: the intent a presenter publishes. */
+  onIntent?: (intent: PlaybackIntent) => void;
 }
+
+/** What the viewer asked the clock to do: the position it is on and whether it runs, at what speed. */
+export type PlaybackIntent = { frame: number; playing: boolean; speed: number };
 
 /** What carries a video's viewing from one session to the next, across a reconnection or a viewer shown again. */
 export type ResumeState = { frame: number; speed: number };
 
 /**
- * Draws the frame the session presents, at most one per display refresh, with each shown lane's overlay (by lane;
+ * Draws the frame the session presents, at most one per display refresh, with each visible lane's overlay (by lane;
  * `undefined` where a lane has none) and the text atlas page the overlays' texts sample.
  */
 export interface Surface {
@@ -58,33 +80,6 @@ export interface Surface {
   ): void;
 }
 
-export type PlaybackView = {
-  status: "connecting" | "indexing" | "ready" | "reconnecting" | "failed";
-  /** Indexing progress, 0 to 1. */
-  progress: number;
-  failure?: { reason: string; location: string };
-  /** How many frames the video has; 0 until it is ready. */
-  frameCount: number;
-  playing: boolean;
-  speed: number;
-  /** The position asked for, which the seek bar shows. */
-  playhead: number;
-  /** The frame on screen, which the readouts report. */
-  shown?: FrameInfo;
-  /** Why the frame at the playhead cannot be shown, while it is the one the screen is waiting on. */
-  frameError?: { sequenceId: number; reason: string };
-  /** The lanes of the entry, empty until the backend has described the video. */
-  lanes: readonly LaneState[];
-  /** The video's frame size in pixels; 0 until it is described. */
-  width: number;
-  height: number;
-  /** Problems with the video itself, such as overlay sizes that do not match it. */
-  warnings: readonly string[];
-};
-
-const NO_LANES: readonly LaneState[] = [];
-const NO_WARNINGS: readonly string[] = [];
-
 const sameWant = (a: Want | undefined, b: Want): boolean =>
   a !== undefined &&
   a.playhead === b.playhead &&
@@ -92,54 +87,22 @@ const sameWant = (a: Want | undefined, b: Want): boolean =>
   a.behind === b.behind &&
   a.direction === b.direction;
 
-const sameShown = (a: FrameInfo | undefined, b: FrameInfo | undefined): boolean =>
-  a === b || (a !== undefined && b !== undefined && a.sequenceId === b.sequenceId);
-
-const sameView = (a: PlaybackView, b: PlaybackView): boolean =>
-  a.status === b.status &&
-  a.progress === b.progress &&
-  a.failure === b.failure &&
-  a.frameCount === b.frameCount &&
-  a.playing === b.playing &&
-  a.speed === b.speed &&
-  a.playhead === b.playhead &&
-  sameShown(a.shown, b.shown) &&
-  a.frameError?.sequenceId === b.frameError?.sequenceId &&
-  a.frameError?.reason === b.frameError?.reason &&
-  a.lanes === b.lanes &&
-  a.width === b.width &&
-  a.height === b.height &&
-  a.warnings === b.warnings;
-
 export class PlaybackSession {
-  readonly #contentId: string;
   readonly #deps: SessionDeps;
   readonly #budget: number;
   readonly #listeners = new Set<() => void>();
   readonly #failures = new FrameFailures();
-  #view: PlaybackView = {
-    status: "connecting",
-    progress: 0,
-    frameCount: 0,
-    playing: false,
-    speed: 1,
-    playhead: 0,
-    lanes: NO_LANES,
-    width: 0,
-    height: 0,
-    warnings: NO_WARNINGS,
-  };
+  #view: PlaybackView = INITIAL_VIEW;
   readonly #lanes = new LaneSet();
-  #overlays: OverlayBuffer<PreparedDrawing> | undefined;
-  /** The text atlas page as the worker of the current connection has it. */
-  #mirror = new AtlasMirror();
+  readonly #overlays = new LaneOverlays(this.#lanes);
   #density: number | undefined;
   #cancelTargets: (() => void) | undefined;
   /** What the clock reads: a frame can be shown when it is held with the overlays of every awaited lane. */
   readonly #source: FrameSource = {
-    has: (sequenceId) => this.#buffer?.has(sequenceId) === true && this.#joined(sequenceId),
+    has: (sequenceId) =>
+      this.#buffer?.has(sequenceId) === true && this.#overlays.joined(sequenceId),
     newestPresentable: (atOrBefore, notBefore) =>
-      this.#buffer?.newestPresentable(atOrBefore, notBefore, (id) => this.#joined(id)),
+      this.#buffer?.newestPresentable(atOrBefore, notBefore, (id) => this.#overlays.joined(id)),
   };
   #surface: Surface | null = null;
   #connection: Connection | undefined;
@@ -148,12 +111,17 @@ export class PlaybackSession {
   #opened: Extract<ServerMessage, { type: "Opened" }> | undefined;
   #buffer: FrameBuffer<VideoFrame> | undefined;
   #clock: PlaybackClock | undefined;
+  #times: Float64Array | undefined;
+  /** The presenter's clock this session was last told to follow, and how to read the backend's time. */
+  #followed: { intent: ClockIntent; serverNowUs: () => number } | undefined;
   #planner: WantPlanner | undefined;
   #lastWant: Want | undefined;
   #speed = 1;
   /** The frame to open on after a lost connection. */
   #resumeAt: number | undefined;
   #retries = 0;
+  /** Set when a lost connection took a running clock: the reopened one is paused, so the viewer's intent is stale. */
+  #stoppedByLoss = false;
   #cancelFrame: (() => void) | undefined;
   #cancelRetry: (() => void) | undefined;
   #closed = false;
@@ -162,15 +130,14 @@ export class PlaybackSession {
   #status: PlaybackView["status"] = "connecting";
   #progress = 0;
 
-  constructor(contentId: string, deps: SessionDeps) {
-    this.#contentId = contentId;
+  constructor(deps: SessionDeps) {
     this.#deps = deps;
     this.#budget = deps.budgetBytes ?? BUFFER_BUDGET_BYTES;
     this.#resumeAt = deps.resume?.frame;
     this.#speed = clampSpeed(deps.resume?.speed ?? 1);
   }
 
-  /** Where the next session should open: the position asked for, and the speed. Read before `close`. */
+  /** Where the next session should open: the position asked for, and the speed. Kept after the video is released. */
   resumeState(): ResumeState {
     return { frame: this.#clock?.playhead ?? this.#resumeAt ?? 0, speed: this.#speed };
   }
@@ -219,7 +186,7 @@ export class PlaybackSession {
     const message = this.#lanes.setView(lane, change);
     if (!message) return;
     this.#connection?.send(message);
-    if (change.visible === false) this.#overlays?.forgetLane(lane);
+    if (change.visible === false) this.#overlays.forget(lane);
     this.represent();
     this.#changed();
   }
@@ -248,11 +215,13 @@ export class PlaybackSession {
     clock.play();
     this.#planner?.played();
     this.#changed();
+    this.#intend();
   }
 
   pause(): void {
     this.#clock?.pause();
     this.#changed();
+    this.#intend();
   }
 
   togglePlay(): void {
@@ -266,6 +235,7 @@ export class PlaybackSession {
     this.#clock.step(delta);
     this.#planner?.stepped(delta);
     this.#changed();
+    this.#intend();
   }
 
   /** Jumps to a frame, as scrubbing the seek bar does. */
@@ -273,6 +243,7 @@ export class PlaybackSession {
     if (!this.#clock) return;
     this.#clock.seek(sequenceId);
     this.#changed();
+    this.#intend();
   }
 
   /** Sets the speed, rounded to hundredths and kept within 0.01 to 10; it stays across a reconnection. */
@@ -280,6 +251,7 @@ export class PlaybackSession {
     this.#speed = clampSpeed(speed);
     this.#clock?.setSpeed(this.#speed);
     this.#changed();
+    this.#intend();
   }
 
   /** One 0.1 step up (`1`) or down (`-1`). */
@@ -287,20 +259,68 @@ export class PlaybackSession {
     this.setSpeed(this.#speed + direction * SPEED_STEP);
   }
 
+  /**
+   * Follows a presenter: puts the clock where the presenter's is by now (`serverNowUs` reads the backend's time) and
+   * runs it at the presenter's speed. Call it again whenever the presenter's intent changes; between two intents both
+   * clocks run alike on their own. A reconnection puts the clock back in step the same way.
+   */
+  follow(intent: ClockIntent, serverNowUs: () => number): void {
+    this.#followed = { intent, serverNowUs };
+    this.#applyFollowed();
+  }
+
+  #applyFollowed(): void {
+    const clock = this.#clock;
+    const times = this.#times;
+    if (!this.#followed || !clock || !times) return;
+    const { intent, serverNowUs } = this.#followed;
+    const frame = followFrame(times, intent, serverNowUs());
+    this.#speed = clampSpeed(intent.speedCenti / 100);
+    clock.setSpeed(this.#speed);
+    if (intent.playing && frame < times.length - 1) {
+      clock.seek(frame);
+      if (!clock.playing) {
+        clock.play();
+        this.#planner?.played();
+      }
+    } else {
+      clock.pause();
+      clock.seek(frame);
+    }
+    this.#changed();
+  }
+
+  /** Tells the viewer what the clock is doing now, after the viewer changed it. */
+  #intend(): void {
+    // What the viewer does is its own now; the presenter's clock no longer applies, nor after a reconnection.
+    this.#followed = undefined;
+    const clock = this.#clock;
+    if (clock)
+      this.#deps.onIntent?.({ frame: clock.playhead, playing: clock.playing, speed: this.#speed });
+  }
+
   #connect(): void {
     const attempt = {};
     this.#attempt = attempt;
     this.#opened = undefined;
-    this.#mirror = new AtlasMirror();
-    this.#connection = this.#deps.connect((incoming) => {
-      if (this.#attempt === attempt && !this.#closed) this.#onIncoming(incoming);
-    });
-    if (this.#density !== undefined) this.#connection.setDensity?.(this.#density);
-    this.#connection.send({
-      type: "Open",
-      content_id: this.#contentId,
-      start_frame: this.#resumeAt,
-    });
+    this.#overlays.reconnect();
+    const current = () => this.#attempt === attempt && !this.#closed;
+    this.#deps.ticket().then(
+      (ticket) => {
+        if (!current()) return;
+        this.#connection = this.#deps.connect((incoming) => {
+          if (current()) this.#onIncoming(incoming);
+        });
+        if (this.#density !== undefined) this.#connection.setDensity?.(this.#density);
+        this.#connection.send({ type: "Open", ticket, start_frame: this.#resumeAt });
+      },
+      (error: unknown) => {
+        if (!current()) return;
+        // Not getting a ticket because the session's own connection is down is worth another try.
+        if (error instanceof CommandRefused) this.#fail(error.message);
+        else this.#lose();
+      },
+    );
   }
 
   #onIncoming(incoming: Incoming): void {
@@ -312,7 +332,11 @@ export class PlaybackSession {
         `The backend sent something this window cannot read: ${incoming.reason}`,
         "playback",
       );
-    else if (this.#status !== "failed") this.#lose();
+    else if (this.#status !== "failed") {
+      const ended = ENDED[incoming.code];
+      if (ended) this.#fail(ended);
+      else this.#lose();
+    }
   }
 
   #onMessage(message: ServerMessage): void {
@@ -334,9 +358,9 @@ export class PlaybackSession {
     } else if (message.type === "LaneProblem") {
       this.#lanes.setProblem(message.lane, message.reason);
     } else if (message.type === "FrameError") {
-      this.#noteFailure(message.sequence_id, message.reason);
+      this.#noteFailure(message.sequence_id, reasonOf(message));
     } else if (message.type === "Error") {
-      return this.#fail(message.reason, message.location);
+      return this.#fail(reasonOf(message), message.location);
     }
     this.#publish();
   }
@@ -353,55 +377,38 @@ export class PlaybackSession {
     }
   }
 
-  /**
-   * Overlays the worker prepared. Every drawing's atlas uploads are applied, kept or not, so the page matches the
-   * worker's; a kept overlay for the frame on screen is drawn at once, and one the paused clock waits for shows it.
-   */
+  /** Overlays the worker prepared: one for the frame on screen is drawn at once, one a paused clock waits for arms it. */
   #onOverlays(overlays: readonly PreparedOverlay[]): void {
-    const shown = this.#clock?.info()?.sequenceId;
-    const lanes = this.#lanes.states;
-    let redraw = false;
-    let arm = false;
-    for (const { lane, sequenceId, revision, prepared } of overlays) {
-      this.#mirror.apply(prepared);
-      if (!lanes[lane]?.view.visible) continue;
-      if (!this.#overlays?.add(lane, sequenceId, revision, prepared)) continue;
-      redraw ||= sequenceId === shown;
-      arm ||= sequenceId === this.#clock?.playhead;
-    }
-    if (redraw) this.represent();
-    if (arm) this.#arm();
+    const kept = this.#overlays.accept(overlays);
+    if (kept.includes(this.#clock?.info()?.sequenceId ?? -1)) this.represent();
+    if (kept.includes(this.#clock?.playhead ?? -1)) this.#arm();
   }
 
-  /** Whether every lane the frame waits on holds its overlay for it. */
-  #joined(sequenceId: number): boolean {
-    return this.#lanes.states.every(
-      (_, lane) => !this.#lanes.awaited(lane) || this.#overlays?.has(lane, sequenceId) === true,
-    );
-  }
-
-  /** Draws a held frame with the overlays of the shown lanes. */
+  /** Draws a held frame with the overlays of the visible lanes. */
   #draw(sequenceId: number): void {
     const held = this.#buffer?.get(sequenceId);
     if (!held) return;
-    const overlays = this.#lanes.states.map((state, lane) =>
-      state.view.visible ? this.#overlays?.get(lane, sequenceId) : undefined,
-    );
-    this.#surface?.present(held, overlays, this.#mirror);
+    const { overlays, atlas } = this.#overlays.compose(sequenceId);
+    this.#surface?.present(held, overlays, atlas);
   }
 
   #ready(opened: Extract<ServerMessage, { type: "Opened" }>, times: Float64Array): void {
     if (times.length === 0 || times.length !== opened.frame_count || opened.frame_bytes <= 0)
       return this.#fail("The backend described the video inconsistently", "playback");
     this.#buffer = new FrameBuffer<VideoFrame>(this.#budget, times.length);
-    this.#overlays = new OverlayBuffer(times.length);
+    this.#overlays.open(times.length);
     this.#planner = new WantPlanner(windowSize(this.#budget, opened.frame_bytes));
+    this.#times = times;
     this.#clock = new PlaybackClock(times, this.#deps.now, this.#resumeAt ?? 0);
     this.#clock.setSpeed(this.#speed);
     this.#failures.clear();
     this.#status = "ready";
     this.#retries = 0;
     this.#frameCount = opened.frame_count;
+    this.#applyFollowed();
+    // The reopened clock is paused: tell the presenter's followers where this viewer really is now.
+    if (this.#stoppedByLoss && !this.#followed) this.#intend();
+    this.#stoppedByLoss = false;
     this.#sendWant();
     this.#publish();
   }
@@ -415,7 +422,10 @@ export class PlaybackSession {
     this.#cancelFrame = undefined;
     const clock = this.#clock;
     if (!clock || !this.#buffer) return;
+    const wasPlaying = clock.playing;
     const presented = clock.tick(this.#source);
+    // Playing ended on its own, at the last frame: the viewer's intent is a pause there, unless it follows a presenter.
+    if (wasPlaying && !clock.playing && !this.#followed) this.#intend();
     if (presented !== undefined) this.#draw(presented);
     this.#sendWant();
     this.#publish();
@@ -446,13 +456,13 @@ export class PlaybackSession {
     if (sameWant(this.#lastWant, want)) return;
     this.#lastWant = want;
     buffer.setWindow(want);
-    this.#overlays?.setWindow(want);
+    this.#overlays.setWindow(want);
     this.#connection?.send({ type: "Want", ...want });
   }
 
   /** The socket closed on its own: drop the video and open again where it left off, paused. */
   #lose(): void {
-    this.#resumeAt = this.#clock?.playhead ?? this.#resumeAt;
+    this.#stoppedByLoss ||= this.#clock?.playing ?? false;
     this.#releaseVideo();
     this.#connection = undefined;
     this.#status = "reconnecting";
@@ -461,7 +471,7 @@ export class PlaybackSession {
     this.#publish();
   }
 
-  #fail(reason: string, location: string): void {
+  #fail(reason: string, location?: string): void {
     this.#failure = { reason, location };
     this.#status = "failed";
     this.#connection?.close();
@@ -470,13 +480,15 @@ export class PlaybackSession {
     this.#publish();
   }
 
-  /** Stops the display loop and drops the clock and every held frame. */
+  /** Stops the display loop and drops the clock and every held frame, keeping the position for the next opening. */
   #releaseVideo(): void {
+    this.#resumeAt = this.#clock?.playhead ?? this.#resumeAt;
     this.#cancelFrame?.();
     this.#cancelFrame = undefined;
     this.#clock = undefined;
+    this.#times = undefined;
     this.#buffer = undefined;
-    this.#overlays = undefined;
+    this.#overlays.close();
     this.#planner = undefined;
     this.#lastWant = undefined;
     this.#failures.clear();
@@ -500,9 +512,10 @@ export class PlaybackSession {
       shown,
       frameError,
       lanes: this.#lanes.states,
+      catalogs: this.#opened?.catalogs ?? INITIAL_VIEW.catalogs,
       width: this.#opened?.width ?? 0,
       height: this.#opened?.height ?? 0,
-      warnings: this.#opened?.warnings ?? NO_WARNINGS,
+      warnings: this.#opened?.warnings ?? INITIAL_VIEW.warnings,
     };
     if (sameView(view, this.#view)) return;
     this.#view = view;

@@ -1,28 +1,28 @@
 //! Routes for the decoders and playlist resolvers the app knows, and for the scan a resolver's form asks for.
 
 use super::CancelOnDrop;
-use crate::{AppState, failure};
+use crate::AppState;
 use api_types::{
-    ApiError,
+    Audience, ErrorWire,
     handlers::{
         ChoiceInfo, DecoderInfo, FieldInfo, FieldKindWire, HandlersInfo, ResolverInfo, ScanRequest,
     },
 };
 use axum::{
-    Json, Router,
+    Json,
     extract::{Path, State},
     http::StatusCode,
-    routing::{get, post},
 };
-use foundation::{CancelToken, Interrupt, UserError};
+use foundation::{CancelToken, ErrorCode, Interrupt, Location, UserError};
 use playlist_resolvers::{Choice, FieldKind, PlaylistResolver, Settings};
 use std::sync::Arc;
 
-/// The handler routes.
-pub fn router() -> Router<AppState> {
-    Router::new()
-        .route("/api/handlers", get(get_handlers))
-        .route("/api/resolvers/{id}/scan", post(scan))
+/// A refused request: the status and the error as the host sees it. Both routes need the `Files` grant, so the
+/// caller may read the host's paths and reasons.
+type Refusal = (StatusCode, Json<ErrorWire>);
+
+fn refuse(status: StatusCode, error: &UserError) -> Refusal {
+    (status, Json(api_types::project(error, Audience::HOST)))
 }
 
 fn field_kind(kind: &FieldKind) -> FieldKindWire {
@@ -42,7 +42,8 @@ fn field_kind(kind: &FieldKind) -> FieldKindWire {
     }
 }
 
-async fn get_handlers(State(state): State<AppState>) -> Json<HandlersInfo> {
+/// The decoders and resolvers the app knows, with the form each resolver's settings take.
+pub(crate) async fn get_handlers(State(state): State<AppState>) -> Json<HandlersInfo> {
     let decoders = state.handlers.file_decoders().iter().map(|decoder| {
         let spec = decoder.spec();
         DecoderInfo {
@@ -92,10 +93,13 @@ async fn scan_choices(
             declared.key == field && matches!(declared.kind, FieldKind::Scan { .. })
         });
     if !scannable {
-        return Err(Interrupt::Failed(UserError::new(
-            "This setting has nothing to scan",
-            field,
-        )));
+        return Err(Interrupt::Failed(
+            UserError::new(
+                ErrorCode::PlaylistInvalid,
+                "This setting has nothing to scan",
+            )
+            .at(Location::field(field)),
+        ));
     }
     let cancel = CancelToken::new();
     let _cancel_when_dropped = CancelOnDrop(cancel.clone());
@@ -103,25 +107,24 @@ async fn scan_choices(
     let job = tokio::task::spawn_blocking(move || resolver.scan(&field, &settings, &cancel));
     job.await.unwrap_or_else(|error| {
         tracing::error!("Scanning {location} failed: {error}");
-        Err(Interrupt::Failed(UserError::new(
-            "The scan stopped unexpectedly",
-            location,
-        )))
+        Err(Interrupt::Failed(
+            UserError::new(ErrorCode::Internal, "The scan stopped unexpectedly")
+                .at(Location::field(location)),
+        ))
     })
 }
 
 /// Finds the values of one `Scan` field from the settings entered so far. The caller supersedes a slow scan by
 /// aborting its request, which cancels the scan.
-async fn scan(
+pub(crate) async fn scan(
     State(state): State<AppState>,
     Path(id): Path<String>,
     Json(request): Json<ScanRequest>,
-) -> Result<Json<Vec<ChoiceInfo>>, (StatusCode, Json<ApiError>)> {
+) -> Result<Json<Vec<ChoiceInfo>>, Refusal> {
     let Some(resolver) = state.handlers.resolver(&id).cloned() else {
-        return Err(failure(
+        return Err(refuse(
             StatusCode::NOT_FOUND,
-            &id,
-            "No such playlist resolver".to_owned(),
+            &UserError::new(ErrorCode::UnknownHandler, "No such playlist resolver"),
         ));
     };
     match scan_choices(resolver, request.field, request.settings).await {
@@ -135,16 +138,11 @@ async fn scan(
                 })
                 .collect(),
         )),
-        Err(Interrupt::Failed(error)) => Err(failure(
-            StatusCode::UNPROCESSABLE_ENTITY,
-            &error.location,
-            error.reason,
-        )),
+        Err(Interrupt::Failed(error)) => Err(refuse(StatusCode::UNPROCESSABLE_ENTITY, &error)),
         // Only a dropped request cancels a scan, so nobody reads this answer.
-        Err(Interrupt::Cancelled) => Err(failure(
+        Err(Interrupt::Cancelled) => Err(refuse(
             StatusCode::SERVICE_UNAVAILABLE,
-            &id,
-            "The scan was cancelled".to_owned(),
+            &UserError::new(ErrorCode::Internal, "The scan was cancelled"),
         )),
     }
 }
@@ -269,17 +267,15 @@ mod tests {
                 StatusCode::UNPROCESSABLE_ENTITY,
                 "root",
             ),
-            (
-                scan("no_such", "sequences", json!({})),
-                StatusCode::NOT_FOUND,
-                "no_such",
-            ),
         ];
         for (request, expected, location) in failures {
             let (status, body) = test.send(request).await;
             assert_eq!(status, expected);
             assert_eq!(json(&body)["location"], location);
         }
+        let (status, body) = test.send(scan("no_such", "sequences", json!({}))).await;
+        assert_eq!(status, StatusCode::NOT_FOUND);
+        assert_eq!(json(&body)["code"], "UnknownHandler");
     }
 
     /// A resolver whose scan runs until it is cancelled and says whether it saw that.
@@ -336,7 +332,10 @@ mod tests {
             _settings: &Settings,
             _cancel: &CancelToken,
         ) -> Result<ResolvedPlaylist, Interrupt<UserError>> {
-            Err(Interrupt::Failed(UserError::new("Not resolvable", "items")))
+            Err(Interrupt::Failed(
+                UserError::new(ErrorCode::PlaylistInvalid, "Not resolvable")
+                    .at(Location::field("items")),
+            ))
         }
 
         fn watch_paths(&self, _: &Settings, _: &CancelToken) -> Result<WatchPaths, Cancelled> {

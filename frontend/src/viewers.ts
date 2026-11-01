@@ -1,17 +1,13 @@
 import type { ComponentType } from "react";
 import type { ContentInfo } from "./generated/api";
-import { VideoViewer } from "./playback/VideoViewer";
-import type { Hidden } from "./viewer/hidden";
+import { SeekableVideoViewer } from "./viewer/EntryViewer";
 import { PlaylistViewer } from "./viewer/PlaylistViewer";
 
 type Kind = ContentInfo["kind"];
-/** Where a viewer keeps what it shows while it is not on screen: its position, say. Closing the viewer forgets it. */
-export type ViewerMemory = { saved: unknown; save(state: unknown): void };
+/** What a viewer is given: its item, whose id keys what the window shows of it, and the item's Content. */
 export type ViewerProps<K extends Kind = Kind> = {
+  item: string;
   content: Extract<ContentInfo, { kind: K }>;
-  memory: ViewerMemory;
-  /** What the user hid in the workspace tree, which a viewer leaves out. */
-  hidden: Hidden;
 };
 
 /**
@@ -20,7 +16,7 @@ export type ViewerProps<K extends Kind = Kind> = {
  */
 export const VIEWERS: { [K in Kind]: ComponentType<ViewerProps<K>> } = {
   Playlist: PlaylistViewer,
-  SeekableVideo: VideoViewer,
+  SeekableVideo: SeekableVideoViewer,
 };
 
 /** The viewer component for this Content. */

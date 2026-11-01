@@ -245,6 +245,12 @@ impl Fixture {
         }
     }
 
+    /// Whether `error` is about the fixture's overlay file.
+    pub(super) fn is_about_source(&self, error: &foundation::UserError) -> bool {
+        let name = self.source.file_name();
+        matches!(&error.location, Some(foundation::Location::Host(path)) if path.as_path().file_name() == name)
+    }
+
     /// The artifact files in the cache folder.
     pub(super) fn artifacts(&self) -> Vec<PathBuf> {
         let Ok(entries) = fs::read_dir(self.cache().join("scenes")) else {

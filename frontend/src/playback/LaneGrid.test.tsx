@@ -4,7 +4,8 @@ import { hiddenOf } from "../viewer/hidden";
 import { LANE_DEFAULTS } from "./fakeOpened";
 import { columnsFor, displayedSizes, LaneGrid, layoutLanes } from "./LaneGrid";
 import type { LaneState } from "./lanes";
-import type { PlaybackSession, PlaybackView } from "./session";
+import type { PlaybackSession } from "./session";
+import type { PlaybackView } from "./view";
 
 // The picture needs WebGL; the cells are what the grid hands it.
 vi.mock("./VideoCanvas", () => ({ VideoCanvas: () => null }));
@@ -88,6 +89,7 @@ function mount(labels: string[], hiddenLabels: string[], views: Record<string, b
         session={session as unknown as PlaybackSession}
         view={view}
         name="clip"
+        anchor="frame:i"
         entry="e"
         hidden={hidden}
         onHide={() => {}}

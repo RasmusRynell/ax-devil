@@ -1,7 +1,8 @@
-import { command } from "../commands";
+import { command, scopeOf } from "../commands";
 import { Button } from "../kit/Button";
 import type { CommandId } from "../generated/settings";
 import type { IconName } from "../kit/icons";
+import { useAllowed } from "../session/session";
 
 const OPEN: readonly [id: CommandId, icon: IconName][] = [
   ["open-workspace", "folder"],
@@ -12,11 +13,19 @@ const OPEN: readonly [id: CommandId, icon: IconName][] = [
 
 /** The Workspace view's start panel: the ways to open content, and the recent workspaces. */
 export function StartPanel({ onRun }: { onRun: (id: string) => void }) {
+  const allowed = useAllowed();
   return (
     <div className="flex flex-col gap-l">
       <div className="grid max-sm:grid-cols-2">
         {OPEN.map(([id, icon]) => (
-          <Button key={id} icon={icon} className="justify-start" onClick={() => onRun(id)}>
+          <Button
+            key={id}
+            icon={icon}
+            data-cursor-id={`sidebar:${id}`}
+            className="justify-start"
+            disabled={!allowed[scopeOf(id)]}
+            onClick={() => onRun(id)}
+          >
             {command(id).label}
           </Button>
         ))}

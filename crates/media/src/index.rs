@@ -14,7 +14,8 @@ use crate::input::VideoInput;
 use crate::sequence::Numbering;
 use crate::source::{self, Opened};
 use foundation::{
-    CancelToken, ColorDesc, Interrupt, Keyframes, MediaTime, PixelFormat, Timeline, UserError,
+    CancelToken, ColorDesc, ErrorCode, Interrupt, Keyframes, MediaTime, PixelFormat, Timeline,
+    UserError,
 };
 use std::fs::File;
 use std::path::Path;
@@ -104,6 +105,7 @@ impl FrameIndex {
         cancel.check()?;
         let file = File::open(path).map_err(|e| {
             Interrupt::Failed(source::error(
+                ErrorCode::FileUnreadable,
                 format!("The video cannot be opened: {e}"),
                 path,
             ))
@@ -111,6 +113,7 @@ impl FrameIndex {
         // Taken from the handle before anything is read, so a file replaced from here on shows as a change.
         let fingerprint = Fingerprint::of_handle(&file).map_err(|e| {
             Interrupt::Failed(source::error(
+                ErrorCode::FileUnreadable,
                 format!("The video cannot be read: {e}"),
                 path,
             ))
@@ -151,6 +154,7 @@ impl FrameIndex {
         };
         let index = Self::from_stored(stored, &opened, &fingerprint, &info).map_err(|reason| {
             Interrupt::Failed(source::error(
+                ErrorCode::IndexingFailed,
                 format!("The video's frame times are unusable: {reason}"),
                 path,
             ))

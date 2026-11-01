@@ -42,6 +42,7 @@ export {
   PLAYBACK_PROTOCOL,
 } from "../generated/api";
 export type {
+  CatalogInfoWire,
   ClientMessage,
   ClockWire,
   Direction,

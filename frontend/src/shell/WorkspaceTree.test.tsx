@@ -1,81 +1,72 @@
-import { afterEach, describe, expect, it, vi } from "vite-plus/test";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
-import type { ItemState, RowInfo } from "../generated/api";
-import { fakeWorkspace, resolved, video } from "../workspace/fakeEvents";
-import { WorkspaceProvider } from "../workspace/WorkspaceProvider";
+import type { ItemState } from "../generated/api";
+import { entry, failed, FakeSocket, playlist, video, type Room } from "../session/fakeSession";
+import { SessionProvider, useView } from "../session/session";
 import { WorkspaceTree } from "./WorkspaceTree";
 
-const ready = { status: "Ready" } as const;
-const row = (key: string, kind: RowInfo["kind"], label: string, entry: string | null, extra = {}) =>
-  ({ key, kind, label, status: ready, hidden: false, entry, ...extra }) satisfies RowInfo;
-
-const playlist: ItemState = {
-  id: "mot",
-  label: "MOT",
-  open: false,
+const MOT = playlist(
+  "mot",
+  [entry("mot/A", "A", ["GT", "DPM"]), entry("mot/B", "B", ["GT"])],
+  false,
+);
+// A video whose entry has no lanes, so its row has no children.
+const CLIP: ItemState = {
+  ...video("v", false),
   resolution: {
     status: "Resolved",
     content: {
-      kind: "Playlist",
-      id: "mot",
-      display_name: "MOT",
-      entries: [
-        { id: "mot/A", label: "A", lanes: ["GT", "DPM"] },
-        { id: "mot/B", label: "B", lanes: ["GT"] },
-      ],
+      kind: "SeekableVideo",
+      id: "content-v",
+      generation: 1,
+      display_name: "v.mp4",
+      entry: entry("content-v", "v.mp4", []),
     },
   },
 };
-const failed: ItemState = {
-  id: "bad",
-  label: "bad.mp4",
-  open: false,
-  resolution: { status: "Failed", reason: "File not found", location: "bad.mp4" },
-};
-const items = [playlist, video("v", false, resolved("v")), failed];
-const rows: RowInfo[] = [
-  row("mot", "item", "MOT", "mot/A"),
-  row("mot/A", "entry", "A", "mot/A"),
-  row("mot/A\u001fGT", "lane", "GT", "mot/A"),
-  row("mot/A\u001fDPM", "lane", "DPM", "mot/A", { hidden: true }),
-  row("mot/B", "entry", "B", "mot/B", { hidden: true }),
-  row("mot/B\u001fGT", "lane", "GT", "mot/B"),
-  row("v", "item", "v.mp4", "content-v"),
-  row("bad", "item", "bad.mp4", null, {
-    status: { status: "Unavailable", reason: "File not found" },
-  }),
-];
+const ITEMS = [MOT, CLIP, failed("bad", "File not found")];
+const HIDDEN = [{ entry: "mot/A", lane: "DPM" }, { entry: "mot/B" }];
 
-function renderTree(state: { items: ItemState[]; rows: RowInfo[] } = { items, rows }) {
-  const workspace = fakeWorkspace();
-  workspace.store.start();
-  const send = (next: { items: ItemState[]; rows: RowInfo[] }) =>
-    workspace.source().onmessage?.(
-      new MessageEvent("message", {
-        data: JSON.stringify({ type: "Workspace", name: null, ...next }),
-      }),
-    );
+/** What the window shows, as the tree changed it. */
+function View() {
+  const [active] = useView("active");
+  const [viewers] = useView("viewers");
+  return <div data-testid="view">{JSON.stringify({ active, viewers })}</div>;
+}
+
+async function renderTree(items: ItemState[] = ITEMS, hidden = HIDDEN) {
   render(
-    <WorkspaceProvider store={workspace.store}>
+    <SessionProvider>
       <WorkspaceTree />
-    </WorkspaceProvider>,
+      <View />
+    </SessionProvider>,
   );
-  act(() => send(state));
-  return { ...workspace, send };
+  await act(async () => {});
+  const room = FakeSocket.rooms.get("room-1") as Room;
+  room.hidden = hidden;
+  act(() => room.setItems(items));
+  return room;
 }
 
 const labels = () => screen.queryAllByRole("treeitem").map((item) => item.textContent);
-const hiddenBody = () => JSON.parse(vi.mocked(fetch).mock.calls[0][1]?.body as string);
+const shown = () => JSON.parse(screen.getByTestId("view").textContent ?? "{}");
+const commands = () =>
+  FakeSocket.latest.received.flatMap((message) =>
+    message.type === "command" && message.cmd.type === "content" ? [message.cmd.command] : [],
+  );
 
+beforeEach(() => vi.stubGlobal("WebSocket", FakeSocket));
 afterEach(() => {
   cleanup();
-  vi.unstubAllGlobals();
   vi.restoreAllMocks();
+  vi.unstubAllGlobals();
+  window.sessionStorage.clear();
+  FakeSocket.reset();
 });
 
 describe("rows", () => {
-  it("shows the backend's rows as a tree with levels, hidden ones left out", () => {
-    renderTree();
+  it("shows the backend's rows as a tree with levels, hidden ones left out", async () => {
+    await renderTree();
     expect(screen.getByRole("tree", { name: "Workspace" })).toBeTruthy();
     expect(screen.getAllByRole("treeitem").map((item) => item.getAttribute("aria-level"))).toEqual([
       "1",
@@ -84,17 +75,22 @@ describe("rows", () => {
       "1",
       "1",
     ]);
-    expect(labels()).toEqual(["MOT", "A", "GT", "v.mp4", "bad.mp4, unavailable: File not found"]);
-    const [item, entry] = screen.getAllByRole("treeitem");
+    expect(labels()).toEqual(["mot", "A", "GT", "v.mp4", "bad.mp4, unavailable: File not found"]);
+    const [item, entryRow] = screen.getAllByRole("treeitem");
     expect(item.getAttribute("aria-expanded")).toBe("true");
-    expect(entry.getAttribute("aria-setsize")).toBe("1");
+    expect(entryRow.getAttribute("aria-setsize")).toBe("1");
   });
 
-  it("shows hidden rows dimmed, with their lanes, only with Show hidden", () => {
-    renderTree();
+  it("names no reason for a failed item when the wire carries none", async () => {
+    await renderTree([failed("bad")]);
+    expect(labels()).toEqual(["bad.mp4, unavailable"]);
+  });
+
+  it("shows hidden rows dimmed, with their lanes, only with Show hidden", async () => {
+    await renderTree();
     fireEvent.click(screen.getByRole("switch", { name: "Show hidden" }));
     expect(labels().slice(0, 6)).toEqual([
-      "MOT",
+      "mot",
       "A",
       "GT",
       "DPM, hidden",
@@ -103,123 +99,163 @@ describe("rows", () => {
     ]);
   });
 
-  it("collapses a row with the left arrow and expands it with the right arrow", () => {
-    renderTree();
+  it("collapses a row with the left arrow and expands it with the right arrow", async () => {
+    await renderTree();
     const tree = screen.getByRole("tree");
     fireEvent.keyDown(tree, { key: "ArrowLeft" });
-    expect(labels()).toEqual(["MOT", "v.mp4", "bad.mp4, unavailable: File not found"]);
+    expect(labels()).toEqual(["mot", "v.mp4", "bad.mp4, unavailable: File not found"]);
     fireEvent.keyDown(tree, { key: "ArrowRight" });
     expect(labels()).toHaveLength(5);
   });
 
-  it("draws only the rows in view of a long list", () => {
-    const many = Array.from({ length: 1000 }, (_, n) =>
-      row(`v${n}`, "item", `video ${n}`, `v${n}`),
-    );
+  it("draws only the rows in view of a long list", async () => {
     const heights = { offsetHeight: 20, clientHeight: 100 };
     for (const [name, value] of Object.entries(heights))
       vi.spyOn(HTMLElement.prototype, name as "offsetHeight", "get").mockReturnValue(value);
-    renderTree({ items: [], rows: many });
-    const drawn = screen.getAllByRole("treeitem").length;
-    expect(drawn).toBeLessThan(40);
+    const many = Array.from({ length: 1000 }, (_, n) => ({
+      ...CLIP,
+      id: `v${n}`,
+      label: `video ${n}`,
+    }));
+    await renderTree(many, []);
+    expect(screen.getAllByRole("treeitem").length).toBeLessThan(40);
     expect(screen.getAllByRole("treeitem")[0].getAttribute("aria-setsize")).toBe("1000");
   });
 });
 
 describe("opening", () => {
-  it("opens an entry's viewer and asks for that entry when its row is clicked", () => {
-    const { store } = renderTree();
+  it("opens the item's viewer on the entry whose row is clicked", async () => {
+    await renderTree();
     fireEvent.click(screen.getByRole("treeitem", { name: /^A/ }));
-    expect(store.getSnapshot()).toMatchObject({
-      viewers: ["mot"],
-      active: "mot",
-      requested: "mot/A",
-    });
+    await act(async () => {});
+    expect(commands()).toEqual([{ type: "openViewer", item: "mot" }]);
+    expect(shown()).toEqual({ active: "mot", viewers: { mot: { entry: "mot/A" } } });
   });
 
-  it("opens an item without choosing its entry, and a lane's entry", () => {
-    const { store } = renderTree();
+  it("opens an item without choosing its entry, and a lane's entry", async () => {
+    await renderTree();
     fireEvent.click(screen.getByRole("treeitem", { name: /^v\.mp4/ }));
-    expect(store.getSnapshot()).toMatchObject({ active: "v", requested: null });
+    await act(async () => {});
+    expect(shown()).toEqual({ active: "v", viewers: { v: {} } });
     fireEvent.click(screen.getByRole("treeitem", { name: /^GT/ }));
-    expect(store.getSnapshot()).toMatchObject({ active: "mot", requested: "mot/A" });
+    await act(async () => {});
+    expect(shown()).toMatchObject({ active: "mot", viewers: { mot: { entry: "mot/A" } } });
   });
 
-  it("moves with the arrow keys and opens the current row with Enter", () => {
-    const { store } = renderTree();
+  it("starts another entry from its beginning, and leaves the one on screen alone", async () => {
+    const room = await renderTree([{ ...MOT, open: true }, CLIP]);
+    const clock = { frame: 7, playing: false, speedCenti: 100, atUs: 0 };
+    act(() =>
+      room.publish({
+        sidebar: room.presenter.sidebar,
+        active: "mot",
+        viewers: { mot: { entry: "mot/A", clock } },
+      }),
+    );
+    fireEvent.click(screen.getByRole("treeitem", { name: /^A/ }));
+    expect(shown().viewers.mot).toEqual({ entry: "mot/A", clock });
+    fireEvent.click(screen.getByRole("switch", { name: "Show hidden" }));
+    fireEvent.click(screen.getByRole("treeitem", { name: /^B/ }));
+    expect(shown().viewers.mot).toEqual({ entry: "mot/B" });
+  });
+
+  it("moves with the arrow keys and opens the current row with Enter", async () => {
+    await renderTree();
     const tree = screen.getByRole("tree");
     fireEvent.keyDown(tree, { key: "ArrowDown" });
     expect(tree.getAttribute("aria-activedescendant")).toBe(screen.getAllByRole("treeitem")[1].id);
     fireEvent.keyDown(tree, { key: "ArrowDown" });
     fireEvent.keyDown(tree, { key: "Enter" });
-    expect(store.getSnapshot()).toMatchObject({ active: "mot", requested: "mot/A" });
+    await act(async () => {});
+    expect(shown()).toMatchObject({ active: "mot", viewers: { mot: { entry: "mot/A" } } });
   });
 
-  it("opens an item that failed, so the viewer can say why", () => {
-    const { store } = renderTree();
+  it("opens an item that failed, so the viewer can say why", async () => {
+    await renderTree([{ ...failed("bad"), open: true }]);
     fireEvent.click(screen.getByRole("treeitem", { name: /^bad\.mp4/ }));
-    expect(store.getSnapshot().active).toBe("bad");
+    expect(shown().active).toBe("bad");
+  });
+
+  it("says when the backend would not open the viewer", async () => {
+    await renderTree();
+    FakeSocket.refuseContent = "TooManyStreams";
+    fireEvent.click(screen.getByRole("treeitem", { name: /^A/ }));
+    await act(async () => {});
+    expect(screen.getByRole("alert").textContent).toBe("Too many videos are open.");
+    expect(shown().active).toBeUndefined();
   });
 });
 
 describe("hiding", () => {
-  const answer = (ok: boolean) =>
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async () =>
-        ok
-          ? new Response("{}")
-          : new Response(JSON.stringify({ reason: "No such entry", location: "x" }), {
-              status: 400,
-            }),
-      ),
-    );
-
-  it("posts an entry, a lane and a video to hide, from the row menu or its button", async () => {
-    answer(true);
-    renderTree();
+  it("asks to hide a lane, an entry and a video, from the row's button or its menu", async () => {
+    await renderTree();
+    fireEvent.click(screen.getByRole("button", { name: "Hide GT" }));
+    await act(async () => {});
+    fireEvent.click(screen.getByRole("button", { name: "Hide v.mp4" }));
+    await act(async () => {});
     fireEvent.contextMenu(screen.getByRole("treeitem", { name: /^A/ }));
     fireEvent.click(screen.getByRole("menuitem", { name: "Hide" }));
     await act(async () => {});
-    expect(hiddenBody()).toEqual({ target: { entry: "mot/A", lane: null }, hidden: true });
-    fireEvent.click(screen.getByRole("button", { name: "Hide GT" }));
-    await act(async () => {});
-    expect(JSON.parse(vi.mocked(fetch).mock.calls[1][1]?.body as string)).toEqual({
-      target: { entry: "mot/A", lane: "GT" },
-      hidden: true,
-    });
-    fireEvent.click(screen.getByRole("button", { name: "Hide v.mp4" }));
-    await act(async () => {});
-    expect(JSON.parse(vi.mocked(fetch).mock.calls[2][1]?.body as string).target).toEqual({
-      entry: "content-v",
-      lane: null,
-    });
+    expect(commands()).toEqual([
+      { type: "setHidden", target: { entry: "mot/A", lane: "GT" }, hidden: true },
+      { type: "setHidden", target: { entry: "content-v" }, hidden: true },
+      { type: "setHidden", target: { entry: "mot/A" }, hidden: true },
+    ]);
   });
 
   it("unhides a hidden row, and offers no hiding for a playlist or a failed item", async () => {
-    answer(true);
-    renderTree();
-    expect(screen.queryByRole("button", { name: /^Hide MOT/ })).toBeNull();
+    await renderTree();
+    expect(screen.queryByRole("button", { name: /^Hide mot/ })).toBeNull();
     expect(screen.queryByRole("button", { name: /^Hide bad/ })).toBeNull();
     fireEvent.click(screen.getByRole("switch", { name: "Show hidden" }));
     fireEvent.click(screen.getByRole("button", { name: "Unhide B" }));
     await act(async () => {});
-    expect(hiddenBody()).toEqual({ target: { entry: "mot/B", lane: null }, hidden: false });
+    expect(commands()).toEqual([{ type: "setHidden", target: { entry: "mot/B" }, hidden: false }]);
+  });
+
+  it("follows the Doc: a hidden row leaves the tree once the backend says so", async () => {
+    await renderTree();
+    fireEvent.click(screen.getByRole("button", { name: "Hide v.mp4" }));
+    await act(async () => {});
+    expect(labels()).toEqual(["mot", "A", "GT", "bad.mp4, unavailable: File not found"]);
   });
 
   it("says why the backend refused", async () => {
-    answer(false);
-    renderTree();
+    await renderTree();
+    FakeSocket.refuseContent = "NotAllowed";
     fireEvent.click(screen.getByRole("button", { name: "Hide A" }));
     await act(async () => {});
-    expect(within(screen.getByRole("alert")).getByText("No such entry (x)")).toBeTruthy();
+    expect(
+      within(screen.getByRole("alert")).getByText("Your role in this session cannot do that."),
+    ).toBeTruthy();
   });
 
-  it("closes the row menu with Escape", () => {
-    renderTree();
+  it("is disabled for a seat that may not change the workspace", async () => {
+    const room = FakeSocket.host("explore");
+    room.hidden = HIDDEN;
+    room.setItems(ITEMS);
+    window.sessionStorage.setItem(
+      "ax-devil.credential",
+      JSON.stringify({ kind: "join", session: room.id, secret: room.secret }),
+    );
+    render(
+      <SessionProvider>
+        <WorkspaceTree />
+      </SessionProvider>,
+    );
+    await act(async () => {});
+    expect((screen.getByRole("button", { name: "Hide GT" }) as HTMLButtonElement).disabled).toBe(
+      true,
+    );
+    fireEvent.contextMenu(screen.getByRole("treeitem", { name: /^A/ }));
+    expect(screen.getByRole("menuitem", { name: "Hide" }).hasAttribute("disabled")).toBe(true);
+  });
+
+  it("closes the row menu with Escape", async () => {
+    await renderTree();
     fireEvent.keyDown(screen.getByRole("tree"), { key: "F10", shiftKey: true });
     expect(screen.getByRole("menu")).toBeTruthy();
-    fireEvent.keyDown(screen.getByRole("menuitem", { name: "Open" }), { key: "Escape" });
+    fireEvent.keyDown(document, { key: "Escape" });
     expect(screen.queryByRole("menu")).toBeNull();
   });
 });

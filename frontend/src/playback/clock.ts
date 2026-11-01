@@ -3,6 +3,10 @@
  * Time comes from the injected `now()` (milliseconds); the caller calls `tick` on every display refresh.
  */
 
+import type { ClockIntent } from "../generated/api";
+
+export type { ClockIntent };
+
 export const MIN_SPEED = 0.01;
 export const MAX_SPEED = 10;
 export const SPEED_STEP = 0.1;
@@ -22,6 +26,17 @@ export function atOrBefore(times: Float64Array, timeUs: number): number {
     else high = middle - 1;
   }
   return low;
+}
+
+/**
+ * The frame a follower shows at `nowServerUs` (server µs): the intent's frame while paused, otherwise the frame due
+ * after the time elapsed since `atUs`, at the intent's speed. Always inside the video.
+ */
+export function followFrame(times: Float64Array, intent: ClockIntent, nowServerUs: number): number {
+  const anchor = Math.min(times.length - 1, Math.max(0, intent.frame));
+  if (!intent.playing) return anchor;
+  const elapsedUs = (nowServerUs - intent.atUs) * (intent.speedCenti / 100);
+  return atOrBefore(times, times[anchor] + elapsedUs);
 }
 
 /** What the clock needs to know about the buffered frames. */

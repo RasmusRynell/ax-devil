@@ -1,0 +1,138 @@
+// A playback session against a fake server, a fake display refresh and a fake clock, for tests.
+import { opened as openedMessage } from "./fakeOpened";
+import { preparedDrawing } from "./fakeOverlay";
+import { PlaybackSession, type PlaybackIntent } from "./session";
+import type {
+  ClientMessage,
+  LaneInfo,
+  LaneStatusWire,
+  ServerMessage,
+  VideoFrame,
+} from "./protocol";
+import type { Incoming } from "./wire";
+
+export const FRAME_BYTES = 100;
+
+export type OpenedMessage = Extract<ServerMessage, { type: "Opened" }>;
+
+/** Lets the ticket the session asked for arrive, so it can open its socket. */
+export const flush = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
+
+function videoFrame(sequenceId: number): VideoFrame {
+  const empty = new Uint8Array(0);
+  return {
+    sequenceId,
+    timestampUs: sequenceId * 40_000,
+    keyframe: false,
+    last: false,
+    width: 4,
+    height: 4,
+    format: "i420",
+    matrix: "bt709",
+    fullRange: false,
+    strides: [4, 2, 2],
+    planes: [empty, empty, empty],
+    byteLength: FRAME_BYTES,
+  };
+}
+
+export const opened = (frames = 10, lanes?: LaneInfo[]): ServerMessage =>
+  openedMessage(frames, FRAME_BYTES, lanes);
+
+/** A session against a fake server, a fake display refresh and a fake clock, with a window of ten frames. */
+export async function setup(resume?: { frame: number; speed: number }) {
+  const sent: ClientMessage[] = [];
+  const intents: PlaybackIntent[] = [];
+  let tickets = 0;
+  let ticket: () => Promise<string> = async () => `ticket-${++tickets}`;
+  const presented: number[] = [];
+  const drawn: { sequenceId: number; overlays: unknown[]; atlas: number }[] = [];
+  const time = { now: 1000 };
+  const refreshes: (() => void)[] = [];
+  const retries: { run: () => void; ms: number }[] = [];
+  let deliver: (incoming: Incoming) => void = () => {};
+  let connections = 0;
+  let closedConnections = 0;
+  const session = new PlaybackSession({
+    ticket: () => ticket(),
+    onIntent: (intent) => intents.push(intent),
+    connect: (onIncoming) => {
+      connections++;
+      deliver = onIncoming;
+      return { send: (message) => sent.push(message), close: () => closedConnections++ };
+    },
+    now: () => time.now,
+    frame: (callback) => {
+      refreshes.push(callback);
+      return () => void refreshes.splice(refreshes.indexOf(callback) >>> 0, 1);
+    },
+    after: (run, ms) => {
+      const retry = { run, ms };
+      retries.push(retry);
+      return () => void retries.splice(retries.indexOf(retry) >>> 0, 1);
+    },
+    budgetBytes: 10 * FRAME_BYTES,
+    resume,
+  });
+  session.setSurface({
+    present: (frame, overlays, atlas) => {
+      presented.push(frame.sequenceId);
+      drawn.push({
+        sequenceId: frame.sequenceId,
+        overlays: [...overlays],
+        atlas: atlas.generation,
+      });
+    },
+  });
+  const server = {
+    say: (message: ServerMessage) => deliver({ type: "message", message }),
+    frames: (...ids: number[]) =>
+      ids.forEach((id) =>
+        deliver({ type: "envelope", envelope: { kind: "frame", frame: videoFrame(id) } }),
+      ),
+    timeline: (frames = 10) =>
+      deliver({
+        type: "envelope",
+        envelope: {
+          kind: "timeline",
+          times: Float64Array.from({ length: frames }, (_, id) => id * 40_000),
+        },
+      }),
+    drop: (code = 1006) => deliver({ type: "closed", code }),
+    open: (frames = 10, lanes?: LaneInfo[]) => {
+      server.say(opened(frames, lanes));
+      server.timeline(frames);
+    },
+    status: (lane: number, status: LaneStatusWire) =>
+      server.say({ type: "LaneStatus", lane, status }),
+    overlay: (lane: number, sequenceId: number, revision: number, drawing = preparedDrawing()) =>
+      deliver({
+        type: "overlays",
+        overlays: [{ lane, sequenceId, revision, prepared: drawing }],
+      }),
+  };
+  /** One display refresh after `ms` milliseconds. */
+  const refresh = (ms = 0) => {
+    time.now += ms;
+    // Display refresh callbacks run once, as requestAnimationFrame's do.
+    refreshes.splice(0).forEach((callback) => callback());
+  };
+  const wants = () => sent.filter((message) => message.type === "Want");
+  session.start();
+  await flush();
+  return {
+    session,
+    server,
+    sent,
+    intents,
+    tickets: (next: () => Promise<string>) => (ticket = next),
+    presented,
+    drawn,
+    refresh,
+    wants,
+    retries,
+    refreshes,
+    connections: () => connections,
+    closedConnections: () => closedConnections,
+  };
+}

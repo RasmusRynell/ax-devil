@@ -9,7 +9,7 @@ use crate::source;
 use ffmpeg_next::decoder;
 use ffmpeg_next::error::EAGAIN;
 use ffmpeg_next::frame::Video;
-use foundation::{CancelToken, FrameFailure, Interrupt, UserError, VideoFrame};
+use foundation::{CancelToken, ErrorCode, FrameFailure, Interrupt, UserError, VideoFrame};
 use std::path::PathBuf;
 use std::sync::Arc;
 use tracing::{debug, warn};
@@ -70,6 +70,7 @@ impl Decoder {
         let path = input.location();
         if !index.describes(input) {
             return Err(Interrupt::Failed(source::error(
+                ErrorCode::FileChanged,
                 "The video changed after it was indexed; open it again",
                 path,
             )));
@@ -77,6 +78,7 @@ impl Decoder {
         let opened = source::open_input(input, &cancel)?;
         if opened.stream != index.stream() {
             return Err(Interrupt::Failed(source::error(
+                ErrorCode::FileChanged,
                 "The video's streams changed after it was indexed",
                 path,
             )));
@@ -87,10 +89,11 @@ impl Decoder {
                 input: opened.input,
                 stream: opened.stream,
             },
-            VideoInput::ImageSequence(sequence) => Reader::Images(
-                ImageFiles::new(sequence)
-                    .map_err(|reason| Interrupt::Failed(source::error(reason, path)))?,
-            ),
+            VideoInput::ImageSequence(sequence) => {
+                Reader::Images(ImageFiles::new(sequence).map_err(|reason| {
+                    Interrupt::Failed(source::error(ErrorCode::FileUnreadable, reason, path))
+                })?)
+            }
         };
         Ok(Decoder {
             path: path.to_path_buf(),
@@ -280,6 +283,6 @@ impl Decoder {
     }
 
     fn error(&self, reason: String) -> UserError {
-        source::error(reason, &self.path)
+        source::error(ErrorCode::DecodeFailed, reason, &self.path)
     }
 }

@@ -1,16 +1,23 @@
 use super::*;
-use serde_json::json;
+use serde_json::{Value, json};
+use workspace::Recipe;
 
-fn parse(args: &[&str]) -> Result<Invocation, clap::Error> {
-    try_parse_from(
+fn parse(args: &[&str]) -> Result<Cli, clap::Error> {
+    args::try_parse_from(
         &Handlers::built_in(),
         std::iter::once("ax-devil").chain(args.iter().copied()),
     )
 }
 
+/// The items a command line opens, built by the intake like a dialog's.
+fn items(args: &[&str]) -> Vec<WorkspaceItem> {
+    launch_items(parse(args).unwrap().command, &Handlers::built_in()).unwrap()
+}
+
 fn playlist(args: &[&str]) -> (String, Settings) {
-    let invocation = parse(&[&["playlist"], args].concat()).unwrap();
-    let Action::Serve(Opens::Playlist { resolver, settings }) = invocation.action else {
+    let Some(Command::Playlist { resolver, settings }) =
+        parse(&[&["playlist"], args].concat()).unwrap().command
+    else {
         panic!("a playlist command opens a playlist");
     };
     (resolver, settings)
@@ -26,11 +33,16 @@ fn absolute(path: &str) -> String {
 
 #[test]
 fn a_plain_launch_opens_nothing_and_keeps_the_global_options() {
-    let invocation = parse(&["--log-level", "debug", "--config", "x.json"]).unwrap();
-    assert!(matches!(invocation.action, Action::Serve(Opens::Nothing)));
-    assert_eq!(invocation.log_level, logging::Level::Debug);
-    assert_eq!(invocation.config, Some(PathBuf::from("x.json")));
-    assert_eq!(parse(&[]).unwrap().log_level, logging::Level::Info);
+    let cli = parse(&["--log-level", "debug", "--config", "x.json"]).unwrap();
+    assert!(cli.command.is_none());
+    assert!(
+        launch_items(cli.command, &Handlers::built_in())
+            .unwrap()
+            .is_empty()
+    );
+    assert_eq!(cli.global.log_level, logging::Level::Debug);
+    assert_eq!(cli.global.config, Some(PathBuf::from("x.json")));
+    assert_eq!(parse(&[]).unwrap().global.log_level, logging::Level::Info);
 }
 
 #[test]
@@ -91,42 +103,50 @@ fn missing_or_unknown_arguments_are_usage_errors() {
 
 #[test]
 fn local_pairs_overlays_with_handlers_in_order_or_leaves_them_all_to_the_extension() {
-    let Action::Serve(Opens::Video { video, overlays }) = parse(&[
+    let folder = tempfile::tempdir().unwrap();
+    let path = |name: &str| folder.path().join(name).to_str().unwrap().to_owned();
+    let [video, tracks, onvif] = ["a.mp4", "x.txt", "y.xml"].map(path);
+    let item = &items(&[
         "local",
         "--video",
-        "a.mp4",
+        &video,
         "--overlay",
-        "x.txt",
+        &tracks,
         "--overlay",
-        "y.xml",
+        &onvif,
         "--handler-type",
         "MOT_FILE",
         "--handler-type",
         "ONVIF_XML",
-    ])
-    .unwrap()
-    .action
-    else {
+    ])[0];
+    let Recipe::Video(recipe) = &item.recipe else {
         panic!("local opens a video");
     };
-    assert_eq!(video, PathBuf::from("a.mp4"));
-    let pairs: Vec<_> = overlays
+    assert_eq!(item.label, "a.mp4");
+    let pairs: Vec<_> = recipe
+        .overlays
         .iter()
-        .map(|overlay| (overlay.path.to_str().unwrap(), overlay.handler.as_deref()))
+        .map(|overlay| {
+            (
+                overlay.path.as_path().to_str().unwrap(),
+                overlay.handler.as_str(),
+            )
+        })
         .collect();
     assert_eq!(
         pairs,
-        [("x.txt", Some("MOT_FILE")), ("y.xml", Some("ONVIF_XML"))]
+        [(tracks.as_str(), "MOT_FILE"), (onvif.as_str(), "ONVIF_XML")]
     );
 
-    let Action::Serve(Opens::Video { overlays, .. }) =
-        parse(&["local", "--video", "a.mp4", "--overlay", "x.txt"])
-            .unwrap()
-            .action
+    let Recipe::Video(recipe) =
+        &items(&["local", "--video", &video, "--overlay", &tracks])[0].recipe
     else {
         panic!("local opens a video");
     };
-    assert_eq!(overlays[0].handler, None);
+    assert_eq!(
+        recipe.overlays[0].handler, "MOT_FILE",
+        "picked by extension"
+    );
 
     let uneven = [
         "local",
@@ -144,14 +164,39 @@ fn local_pairs_overlays_with_handlers_in_order_or_leaves_them_all_to_the_extensi
         parse(&["local", "--overlay", "x"]).is_err(),
         "--video is required"
     );
+    assert!(
+        parse(&[
+            "local",
+            "--video",
+            "a",
+            "--overlay",
+            "x",
+            "--handler-type",
+            "NOPE"
+        ])
+        .is_err(),
+        "the handler must exist"
+    );
+}
+
+#[test]
+fn a_playlist_command_line_becomes_the_item_the_dialog_would_add() {
+    let items = items(&["playlist", "mot_challenge", "/data/mot"]);
+    let Recipe::Playlist(recipe) = &items[0].recipe else {
+        panic!("playlist opens a playlist");
+    };
+    assert_eq!(recipe.resolver, "mot_challenge");
+    assert_eq!(items[0].label, "MOT Challenge");
 }
 
 #[test]
 fn list_handlers_prints_every_decoder_and_resolver_without_opening_anything() {
-    let invocation = parse(&["list-handlers"]).unwrap();
-    assert!(matches!(invocation.action, Action::ListHandlers));
+    assert!(matches!(
+        parse(&["list-handlers"]).unwrap().command,
+        Some(Command::ListHandlers)
+    ));
 
-    let listing = handlers_listing(&Handlers::built_in());
+    let listing = args::handlers_listing(&Handlers::built_in());
     for expected in ["MOT_FILE", "mot_challenge", "folder_pair", "MOT Challenge"] {
         assert!(listing.contains(expected), "{expected} in\n{listing}");
     }
@@ -164,19 +209,19 @@ fn list_handlers_prints_every_decoder_and_resolver_without_opening_anything() {
 
 #[test]
 fn catalog_commands_list_the_built_ins_and_check_a_file_with_its_problems_located() {
-    let command = |args: &[&str]| match parse(&[&["catalog"], args].concat()).unwrap().action {
-        Action::Catalog(command) => command,
-        _ => panic!("a catalog command is a catalog action"),
+    let command = |args: &[&str]| match parse(&[&["catalog"], args].concat()).unwrap().command {
+        Some(Command::Catalog(command)) => command,
+        _ => panic!("a catalog command is a catalog command"),
     };
     assert!(matches!(command(&["list"]), CatalogCommand::List));
     assert!(matches!(
         command(&["check", "night.json"]),
-        CatalogCommand::Check(path) if path == std::path::Path::new("night.json")
+        CatalogCommand::Check { file } if file == std::path::Path::new("night.json")
     ));
     assert!(parse(&["catalog"]).is_err());
     assert!(parse(&["catalog", "check"]).is_err());
 
-    let listing = run_catalog(&CatalogCommand::List);
+    let listing = catalog::run(&CatalogCommand::List);
     assert!(listing.ok);
     assert_eq!(listing.text.lines().count(), 6);
     assert!(listing.text.starts_with("built-in:standard"));
@@ -184,13 +229,13 @@ fn catalog_commands_list_the_built_ins_and_check_a_file_with_its_problems_locate
     let folder = tempfile::tempdir().unwrap();
     let good = folder.path().join("good.json");
     std::fs::write(&good, include_str!("../../assets/catalogs/minimal.json")).unwrap();
-    let report = run_catalog(&CatalogCommand::Check(good));
+    let report = catalog::run(&CatalogCommand::Check { file: good });
     assert!(report.ok);
     assert!(report.text.contains("Minimal"), "{}", report.text);
 
     let bad = folder.path().join("bad.json");
     std::fs::write(&bad, "{ \"metadata\": 3 }").unwrap();
-    let report = run_catalog(&CatalogCommand::Check(bad));
+    let report = catalog::run(&CatalogCommand::Check { file: bad });
     assert!(!report.ok);
     assert!(report.text.contains("/metadata"), "{}", report.text);
 }

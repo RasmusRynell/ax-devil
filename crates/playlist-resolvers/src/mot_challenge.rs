@@ -5,7 +5,10 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use foundation::{CancelToken, Cancelled, FrameRate, Interrupt, UserError};
+use crate::schema::invalid_field;
+use foundation::{
+    CancelToken, Cancelled, ErrorCode, FrameRate, HostPath, Interrupt, Location, UserError,
+};
 
 use crate::{
     Choice, Cli, Field, FieldKind, ImageSequence, OverlayRef, PlaylistResolver, ResolvedEntry,
@@ -68,13 +71,13 @@ impl PlaylistResolver for MotChallengeResolver {
         cancel: &CancelToken,
     ) -> Result<Vec<Choice>, Interrupt<UserError>> {
         if field != "sequences" {
-            return Err(Interrupt::Failed(UserError::new(
+            return Err(Interrupt::Failed(invalid_field(
                 "This setting has nothing to scan",
                 field,
             )));
         }
         let root = required_text(settings, "root").map_err(Interrupt::Failed)?;
-        let mut sequences = load_sequences(Path::new(root), "root", cancel)?;
+        let mut sequences = load_sequences(Path::new(root), Location::field("root"), cancel)?;
         sequences.sort_by(|a, b| a.name.cmp(&b.name));
         sequences.dedup_by(|a, b| a.name == b.name);
         Ok(sequences.into_iter().map(Sequence::into_choice).collect())
@@ -87,7 +90,7 @@ impl PlaylistResolver for MotChallengeResolver {
     ) -> Result<ResolvedPlaylist, Interrupt<UserError>> {
         let root = required_text(settings, "root").map_err(Interrupt::Failed)?;
         let subset = sequence_subset(settings).map_err(Interrupt::Failed)?;
-        let mut sequences = load_sequences(Path::new(root), root, cancel)?;
+        let mut sequences = load_sequences(Path::new(root), HostPath::new(root).into(), cancel)?;
         if let Some(names) = subset {
             let mut missing: Vec<&str> = names
                 .iter()
@@ -106,10 +109,10 @@ impl PlaylistResolver for MotChallengeResolver {
         }
         let entries = build_entries(sequences, cancel)?;
         if entries.is_empty() {
-            return Err(Interrupt::Failed(UserError::new(
-                "No MOT sequences found",
-                root,
-            )));
+            return Err(Interrupt::Failed(
+                UserError::new(ErrorCode::PlaylistInvalid, "No MOT sequences found")
+                    .at(HostPath::new(root)),
+            ));
         }
         Ok(ResolvedPlaylist {
             display_name: SPEC.display_name.to_string(),
@@ -171,23 +174,30 @@ impl Sequence {
 /// path for a resolve.
 fn load_sequences(
     root: &Path,
-    location: &str,
+    location: Location,
     cancel: &CancelToken,
 ) -> Result<Vec<Sequence>, Interrupt<UserError>> {
     cancel.check()?;
-    let error = |reason: String| Interrupt::Failed(UserError::new(reason, location));
+    let error =
+        |code, reason: String| Interrupt::Failed(UserError::new(code, reason).at(location.clone()));
     if !root.is_dir() {
-        return Err(error("MOT root directory does not exist".to_string()));
+        return Err(error(
+            ErrorCode::FileNotFound,
+            "MOT root directory does not exist".to_string(),
+        ));
     }
     discover(root, cancel).map_err(|interrupt| match interrupt {
         Interrupt::Cancelled => Interrupt::Cancelled,
-        Interrupt::Failed(cause) => error(format!("Cannot read the MOT root directory: {cause}")),
+        Interrupt::Failed(cause) => error(
+            ErrorCode::FileUnreadable,
+            format!("Cannot read the MOT root directory: {cause}"),
+        ),
     })
 }
 
 /// The `sequences` setting; `None` when it is absent.
 fn sequence_subset(settings: &Settings) -> Result<Option<Vec<&str>>, UserError> {
-    let invalid = || UserError::new("Must be a list of sequence names", "sequences");
+    let invalid = || invalid_field("Must be a list of sequence names", "sequences");
     match settings.get("sequences") {
         None | Some(serde_json::Value::Null) => Ok(None),
         Some(serde_json::Value::Array(names)) => names
@@ -289,16 +299,19 @@ fn build_entries(
         cancel.check()?;
         let first = &variants[0];
         let frame_rate = FrameRate::parse(&first.info.fps.to_string()).ok_or_else(|| {
-            Interrupt::Failed(UserError::new(
-                format!("frameRate {} is not a usable frame rate", first.info.fps),
-                first.path.join("seqinfo.ini").display().to_string(),
-            ))
+            Interrupt::Failed(
+                UserError::new(
+                    ErrorCode::PlaylistInvalid,
+                    format!("frameRate {} is not a usable frame rate", first.info.fps),
+                )
+                .at(HostPath::new(first.path.join("seqinfo.ini"))),
+            )
         })?;
         let images = first.info.image_pattern().map_err(|reason| {
-            Interrupt::Failed(UserError::new(
-                reason,
-                first.path.join("seqinfo.ini").display().to_string(),
-            ))
+            Interrupt::Failed(
+                UserError::new(ErrorCode::PlaylistInvalid, reason)
+                    .at(HostPath::new(first.path.join("seqinfo.ini"))),
+            )
         })?;
         let video = VideoRef::ImageSequence(ImageSequence {
             pattern: first.path.join(images),

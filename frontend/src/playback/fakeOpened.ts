@@ -27,4 +27,5 @@ export const opened = (
   warnings: [],
   lanes,
   lane_defaults: LANE_DEFAULTS,
+  catalogs: [],
 });

@@ -4,7 +4,9 @@
 //! The playback crate knows frames and windows but not FFmpeg, and the media crate knows FFmpeg but not windows;
 //! this module is where they meet.
 
-use foundation::{CancelToken, FrameFailure, FrameSize, Interrupt, UserError, VideoFrame};
+use foundation::{
+    CancelToken, ErrorCode, FrameFailure, FrameSize, HostPath, Interrupt, UserError, VideoFrame,
+};
 use media::{Decoder, FrameIndex, ImageSequenceInput, VideoInput};
 use playback::{DecoderFactory, Registry, Session, SourceKey, SourceSpec, SpanDecoder};
 use std::collections::HashMap;
@@ -41,10 +43,10 @@ fn decoder_factory(
             |interrupt| match interrupt {
                 Interrupt::Failed(error) => error,
                 // The source cancels the token when it closes, and nobody is left to be told.
-                Interrupt::Cancelled => UserError::new(
-                    "The video was closed",
-                    input.location().display().to_string(),
-                ),
+                Interrupt::Cancelled => {
+                    UserError::new(ErrorCode::VideoClosed, "The video was closed")
+                        .at(HostPath::new(input.location()))
+                }
             },
         )?;
         Ok(Box::new(MediaDecoder(decoder)) as Box<dyn SpanDecoder>)
@@ -63,8 +65,17 @@ pub struct OpenedVideo {
     pub session: Session,
     /// The size of the decoded pictures.
     pub size: FrameSize,
-    /// Things worth telling the user about the video, such as a missing last image.
+    /// Things worth telling the user about the video, such as a missing last image. They name the host's files, so
+    /// only an audience with host details is told.
     pub warnings: Vec<String>,
+}
+
+/// The path errors about `video` name: its file, or the pattern of its images.
+pub fn video_location(video: &VideoRef) -> HostPath {
+    match video {
+        VideoRef::File(path) => HostPath::new(path),
+        VideoRef::ImageSequence(sequence) => HostPath::new(&sequence.pattern),
+    }
 }
 
 /// The identity of `video` for the registry: the canonical path of a file, or of a sequence's folder with the rest
@@ -72,13 +83,14 @@ pub struct OpenedVideo {
 fn source_key(video: &VideoRef) -> Result<SourceKey, UserError> {
     let canonical = |path: &Path| {
         std::fs::canonicalize(path).map_err(|error| {
-            UserError::new(
-                format!("Cannot open the video: {error}"),
-                path.display().to_string(),
-            )
+            let code = match error.kind() {
+                std::io::ErrorKind::NotFound => ErrorCode::FileNotFound,
+                _ => ErrorCode::FileUnreadable,
+            };
+            UserError::new(code, format!("Cannot open the video: {error}")).at(HostPath::new(path))
         })
     };
-    Ok(SourceKey(match video {
+    let identity = match video {
         VideoRef::File(path) => canonical(path)?.display().to_string(),
         VideoRef::ImageSequence(sequence) => {
             let folder = sequence.pattern.parent().unwrap_or(Path::new("."));
@@ -92,7 +104,11 @@ fn source_key(video: &VideoRef) -> Result<SourceKey, UserError> {
                 sequence.frame_count,
             )
         }
-    }))
+    };
+    Ok(SourceKey {
+        identity,
+        location: video_location(video),
+    })
 }
 
 /// What the media crate opens `video` as.

@@ -1,8 +1,9 @@
-//! The sidebar's rows: one projection of the store's state.
+//! The sidebar's rows: one projection of a workspace state.
 
+use foundation::UserError;
 use workspace::{Content, ContentId};
 
-use crate::{HiddenRef, Resolution, StoreState};
+use crate::{HiddenRef, Resolution, WorkspaceState};
 
 /// What a row stands for.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -20,11 +21,8 @@ pub enum RowKind {
 pub enum RowStatus {
     /// Resolving has not finished.
     Pending,
-    /// The item has no Content; the reason is for the user.
-    Unavailable {
-        /// Why.
-        reason: String,
-    },
+    /// The item has no Content, and why.
+    Unavailable(UserError),
     /// Ready to open.
     Ready,
 }
@@ -52,18 +50,13 @@ pub struct Row {
 /// repeat the item. Opening an item row opens its first entry; opening an entry or lane row opens that entry. An
 /// item still resolving, or one that failed, has only its own row. Hidden rows are included and flagged: whether
 /// to list them is the reader's choice.
-pub fn rows(state: &StoreState) -> Vec<Row> {
+pub fn rows(state: &WorkspaceState) -> Vec<Row> {
     let mut rows = Vec::new();
     for item in &state.workspace.items {
         let (status, content) = match state.resolutions.get(&item.id) {
-            Some(Resolution::Resolved(content)) => (RowStatus::Ready, Some(content)),
-            Some(Resolution::Failed(error)) => (
-                RowStatus::Unavailable {
-                    reason: error.reason.clone(),
-                },
-                None,
-            ),
-            Some(Resolution::Pending) | None => (RowStatus::Pending, None),
+            Some(Resolution::Resolved { content, .. }) => (RowStatus::Ready, Some(content)),
+            Some(Resolution::Failed(error)) => (RowStatus::Unavailable(error.clone()), None),
+            Some(Resolution::Pending { .. }) | None => (RowStatus::Pending, None),
         };
         let is_playlist = matches!(content, Some(Content::Playlist(_)));
         rows.push(Row {
@@ -114,7 +107,8 @@ const KEY_SEPARATOR: char = '\u{1f}';
 #[cfg(test)]
 mod tests {
     use super::*;
-    use foundation::{CancelToken, UserError};
+    use crate::{DocCommand, apply, complete};
+    use foundation::{CancelToken, ErrorCode, Interrupt};
     use handlers::Handlers;
     use std::{collections::HashSet, fs, path::Path};
     use workspace::{
@@ -122,21 +116,35 @@ mod tests {
         intake::{self, NewOverlay},
     };
 
-    fn resolve(item: &WorkspaceItem) -> Resolution {
-        match item
-            .recipe
-            .resolve(&item.id, &Handlers::built_in(), &CancelToken::new())
-        {
-            Ok(content) => Resolution::Resolved(content),
-            Err(_) => panic!("the fixture item resolves"),
-        }
-    }
+    /// What finishing an item's job commits: its Content, or `error` when given.
+    type Finish = Option<Result<(), UserError>>;
 
-    fn state_of(items: Vec<(WorkspaceItem, Resolution)>) -> StoreState {
-        let mut state = StoreState::default();
-        for (item, resolution) in items {
-            state.resolutions.insert(item.id, resolution);
-            state.workspace.items.push(item);
+    /// A state with `items` added in order, each finished as given: `None` stays pending, `Some(Ok(()))` resolves
+    /// and `Some(Err(error))` fails with `error`.
+    fn state_of(items: Vec<(WorkspaceItem, Finish)>) -> WorkspaceState {
+        let (finishes, items): (Vec<_>, Vec<_>) = items
+            .into_iter()
+            .map(|(item, finish)| ((item.id, item.recipe.clone(), finish), item))
+            .unzip();
+        let (mut state, jobs) = apply(
+            &WorkspaceState::default(),
+            DocCommand::AddItems { items, open: false },
+        );
+        for ((id, recipe, finish), job) in finishes.into_iter().zip(jobs) {
+            let result = match finish {
+                None => continue,
+                Some(Err(error)) => Err(error),
+                Some(Ok(())) => {
+                    match recipe.resolve(&id, &Handlers::built_in(), &CancelToken::new()) {
+                        Ok(content) => Ok(content),
+                        Err(Interrupt::Failed(error)) => {
+                            panic!("the fixture item resolves: {error}")
+                        }
+                        Err(Interrupt::Cancelled) => panic!("nothing cancels"),
+                    }
+                }
+            };
+            state = complete(&state, job.item, job.attempt, result);
         }
         state
     }
@@ -188,14 +196,12 @@ mod tests {
         let playlist = mot_item(folder.path());
         let pending = intake::video(&video, &[], &handlers).unwrap();
         let broken = intake::video(&folder.path().join("gone.mp4"), &[], &handlers).unwrap();
+        let not_found = UserError::new(ErrorCode::FileNotFound, "File not found");
         let mut state = state_of(vec![
-            (pending, Resolution::Pending),
-            (
-                broken,
-                Resolution::Failed(UserError::new("File not found", "gone.mp4")),
-            ),
-            (playlist.clone(), resolve(&playlist)),
-            (with_lane.clone(), resolve(&with_lane)),
+            (pending, None),
+            (broken, Some(Err(not_found.clone()))),
+            (playlist.clone(), Some(Ok(()))),
+            (with_lane.clone(), Some(Ok(()))),
         ]);
 
         let listed = rows(&state);
@@ -215,12 +221,7 @@ mod tests {
             ]
         );
         assert_eq!(listed[0].status, RowStatus::Pending);
-        assert_eq!(
-            listed[1].status,
-            RowStatus::Unavailable {
-                reason: "File not found".into()
-            }
-        );
+        assert_eq!(listed[1].status, RowStatus::Unavailable(not_found));
         assert!(listed[..2].iter().all(|row| row.entry.is_none()));
         let first = ContentId::of_entry(&playlist.id, "SEQ-01");
         assert_eq!(

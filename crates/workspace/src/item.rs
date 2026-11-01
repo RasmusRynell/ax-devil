@@ -2,37 +2,16 @@ use crate::content::{
     Content, ContentId, Entry, OverlayRef, SeekableVideoContent, VideoRef, check_unique_lanes,
     playlist_content,
 };
-use foundation::{CancelToken, Interrupt, UserError};
+use foundation::{CancelToken, ErrorCode, HostPath, Interrupt, ItemId, UserError};
 use handlers::Handlers;
 use playlist_resolvers::Settings;
-use std::{
-    fmt, fs, io,
-    path::{Path, PathBuf},
-};
-use uuid::Uuid;
-
-/// Names one workspace item for as long as it exists.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub struct ItemId(Uuid);
-
-impl ItemId {
-    /// A new random id.
-    pub fn generate() -> Self {
-        Self(Uuid::new_v4())
-    }
-}
-
-impl fmt::Display for ItemId {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        self.0.fmt(f)
-    }
-}
+use std::{fs, io, path::Path};
 
 /// A video file to open, with the overlay files drawn on it.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct VideoRecipe {
     /// The video file, absolute.
-    pub video: PathBuf,
+    pub video: HostPath,
     /// The overlay files, each shown as its own lane.
     pub overlays: Vec<OverlayRecipe>,
 }
@@ -41,7 +20,7 @@ pub struct VideoRecipe {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct OverlayRecipe {
     /// The overlay file, absolute.
-    pub path: PathBuf,
+    pub path: HostPath,
     /// The decoder handler id.
     pub handler: String,
 }
@@ -98,10 +77,13 @@ impl Recipe {
             }
             Recipe::Playlist(recipe) => {
                 let resolver = handlers.resolver(&recipe.resolver).ok_or_else(|| {
-                    Interrupt::Failed(UserError::new(
-                        "No such playlist resolver",
-                        recipe.resolver.clone(),
-                    ))
+                    Interrupt::Failed(
+                        UserError::new(
+                            ErrorCode::UnknownHandler,
+                            format!("No playlist resolver \"{}\"", recipe.resolver),
+                        )
+                        .at(*item),
+                    )
                 })?;
                 resolver
                     .schema()
@@ -121,30 +103,32 @@ fn resolve_video(
     item: &ItemId,
     handlers: &Handlers,
 ) -> Result<Content, UserError> {
-    check_readable_file(&recipe.video)?;
+    check_readable_file(recipe.video.as_path())?;
     let mut overlays = Vec::with_capacity(recipe.overlays.len());
     for overlay in &recipe.overlays {
+        let path = overlay.path.as_path();
         if handlers.file_decoder(&overlay.handler).is_none() {
             return Err(UserError::new(
+                ErrorCode::UnknownHandler,
                 format!("No overlay format \"{}\"", overlay.handler),
-                overlay.path.display().to_string(),
-            ));
+            )
+            .at(overlay.path.clone()));
         }
-        check_readable_file(&overlay.path)?;
+        check_readable_file(path)?;
         overlays.push(OverlayRef {
-            label: file_name(&overlay.path),
-            path: overlay.path.clone(),
+            label: file_name(path),
+            path: path.to_path_buf(),
             handler: overlay.handler.clone(),
             options: Settings::new(),
         });
     }
     let entry = Entry {
         id: ContentId::of_item(item),
-        label: file_name(&recipe.video),
-        video: VideoRef::File(recipe.video.clone()),
+        label: file_name(recipe.video.as_path()),
+        video: VideoRef::File(recipe.video.as_path().to_path_buf()),
         overlays,
     };
-    check_unique_lanes(&entry)?;
+    check_unique_lanes(item, &entry)?;
     Ok(Content::SeekableVideo(SeekableVideoContent {
         item_id: *item,
         entry,
@@ -159,13 +143,16 @@ pub(crate) fn file_name(path: &Path) -> String {
 }
 
 fn check_readable_file(path: &Path) -> Result<(), UserError> {
-    let fail = |reason: String| UserError::new(reason, path.display().to_string());
+    let fail = |code, reason: String| UserError::new(code, reason).at(HostPath::new(path));
     let unreadable = |error: io::Error| match error.kind() {
-        io::ErrorKind::NotFound => fail("File not found".into()),
-        _ => fail(format!("Cannot read the file: {error}")),
+        io::ErrorKind::NotFound => fail(ErrorCode::FileNotFound, "File not found".into()),
+        _ => fail(
+            ErrorCode::FileUnreadable,
+            format!("Cannot read the file: {error}"),
+        ),
     };
     if !fs::metadata(path).map_err(unreadable)?.is_file() {
-        return Err(fail("Not a file".into()));
+        return Err(fail(ErrorCode::FileUnreadable, "Not a file".into()));
     }
     fs::File::open(path).map_err(unreadable)?;
     Ok(())

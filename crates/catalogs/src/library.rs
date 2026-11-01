@@ -2,7 +2,7 @@
 
 use std::sync::{Arc, OnceLock};
 
-use foundation::UserError;
+use foundation::{ErrorCode, UserError};
 use render_catalog::CompiledCatalog;
 
 use crate::{
@@ -80,20 +80,20 @@ impl Library {
     }
 
     /// The compiled catalog. Blocking on first use per id, with concurrent callers waiting for the one compiling, then
-    /// cached: every caller gets the same compiled catalog. A failure names the catalog.
+    /// cached: every caller gets the same compiled catalog. A failure names the catalog in its reason.
     pub fn compiled(&self, id: &CatalogId) -> Result<Arc<CompiledCatalog>, UserError> {
-        let location = id.to_string();
         let slot = match id {
             CatalogId::BuiltIn(name) => self.slots.iter().find(|slot| slot.built_in.name == *name),
             CatalogId::User(_) => None,
         };
         let Some(slot) = slot else {
+            let reason = match id {
+                CatalogId::BuiltIn(_) => "There is no such catalog",
+                CatalogId::User(_) => "Catalogs of your own are not available yet",
+            };
             return Err(UserError::new(
-                match id {
-                    CatalogId::BuiltIn(_) => "There is no such catalog",
-                    CatalogId::User(_) => "Catalogs of your own are not available yet",
-                },
-                location,
+                ErrorCode::CatalogInvalid,
+                format!("{reason}: {id}"),
             ));
         };
         slot.compiled
@@ -106,8 +106,8 @@ impl Library {
                             |first| format!("{} (at {})", first.message, first.location),
                         );
                         UserError::new(
-                            format!("The catalog cannot be used: {first}"),
-                            location.clone(),
+                            ErrorCode::CatalogInvalid,
+                            format!("The catalog {id} cannot be used: {first}"),
                         )
                     })
             })
@@ -164,8 +164,8 @@ mod tests {
             CatalogId::User("night.json".into()),
         ] {
             let error = library.compiled(&id).unwrap_err();
-            assert_eq!(error.location, id.to_string());
-            assert!(!error.reason.is_empty());
+            assert_eq!(error.code, ErrorCode::CatalogInvalid);
+            assert!(error.reason.contains(&id.to_string()), "{error}");
         }
     }
 }

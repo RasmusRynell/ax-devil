@@ -1,6 +1,6 @@
 use crate::Direction::{Backward, Forward};
 use crate::testing::{Fixture, deliveries, want};
-use foundation::UserError;
+use foundation::{ErrorCode, UserError};
 
 fn frames(ids: &[u64]) -> Vec<(u64, bool)> {
     ids.iter().map(|&id| (id, false)).collect()
@@ -54,7 +54,8 @@ fn a_frame_is_sent_once_per_window_residency_and_again_after_it_re_enters() {
 #[test]
 fn a_failed_frame_is_reported_alone_and_never_decoded_again() {
     let mut fx = Fixture::new(60, 10, 200);
-    crate::lock(&fx.log.failing).insert(12, UserError::new("corrupt data", "frame 12"));
+    crate::lock(&fx.log.failing)
+        .insert(12, UserError::new(ErrorCode::DecodeFailed, "corrupt data"));
     let mut session = fx.session();
     session.want(want(10, 5, 0, Forward));
     fx.drain();

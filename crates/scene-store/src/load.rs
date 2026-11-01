@@ -7,7 +7,7 @@ use std::{
     sync::Arc,
 };
 
-use foundation::{CancelToken, Interrupt, UserError};
+use foundation::{CancelToken, ErrorCode, HostPath, Interrupt, UserError};
 use scene::SCENE_VERSION;
 use scene_decoders::{DecodeContext, DecodeOptions, FileSceneDecoder};
 use sha2::{Digest, Sha256};
@@ -161,17 +161,29 @@ fn build(
     cancel: &CancelToken,
 ) -> Result<Arc<Track>, Interrupt<UserError>> {
     let key = request.key;
-    let located =
-        |reason: String| Interrupt::Failed(UserError::new(reason, key.path.display().to_string()));
+    let located = |code: ErrorCode, reason: String| {
+        Interrupt::Failed(UserError::new(code, reason).at(HostPath::new(&key.path)))
+    };
     let mut input = Vec::with_capacity(usize::try_from(identity.stat.size).unwrap_or(0));
     let digest = read_through(source, &key.path, Some(&mut input), cancel)?;
-    let output = Output::create(request.artifact)
-        .map_err(|e| located(format!("Cannot write the scene cache: {e}")))?;
-    let file = output
-        .writer()
-        .map_err(|e| located(format!("Cannot write the scene cache: {e}")))?;
-    let mut writer = RecordWriter::new(BufWriter::with_capacity(1 << 20, file))
-        .map_err(|e| located(format!("Cannot write the scene cache: {e}")))?;
+    let output = Output::create(request.artifact).map_err(|e| {
+        located(
+            ErrorCode::Internal,
+            format!("Cannot write the scene cache: {e}"),
+        )
+    })?;
+    let file = output.writer().map_err(|e| {
+        located(
+            ErrorCode::Internal,
+            format!("Cannot write the scene cache: {e}"),
+        )
+    })?;
+    let mut writer = RecordWriter::new(BufWriter::with_capacity(1 << 20, file)).map_err(|e| {
+        located(
+            ErrorCode::Internal,
+            format!("Cannot write the scene cache: {e}"),
+        )
+    })?;
 
     let context = DecodeContext {
         options: request.options,
@@ -189,11 +201,11 @@ fn build(
     let decoded = match decoded {
         Ok(summary) => summary,
         Err(Interrupt::Cancelled) => return Err(Interrupt::Cancelled),
-        Err(Interrupt::Failed(error)) => return Err(located(error.0)),
+        Err(Interrupt::Failed(error)) => return Err(located(ErrorCode::OverlayInvalid, error.0)),
     };
     cancel.check()?;
     if let Some(reason) = refused {
-        return Err(located(reason));
+        return Err(located(ErrorCode::Internal, reason));
     }
     drop(input);
 
@@ -201,11 +213,16 @@ fn build(
     // session but never accept it again.
     let unchanged = Stat::of(source).is_ok_and(|now| now == identity.stat);
     identity.digest = unchanged.then_some(digest);
-    let summary = Summary::of(&decoded).map_err(located)?;
-    let finished = writer.finish(summary, &identity).map_err(located)?;
+    let summary = Summary::of(&decoded).map_err(|e| located(ErrorCode::Internal, e))?;
+    let finished = writer
+        .finish(summary, &identity)
+        .map_err(|e| located(ErrorCode::Internal, e))?;
     drop(finished.out);
     let file = output.publish();
-    let restored = finished.summary.restore().map_err(located)?;
+    let restored = finished
+        .summary
+        .restore()
+        .map_err(|e| located(ErrorCode::Internal, e))?;
     Ok(Arc::new(Track::new(
         key.path.clone(),
         file,

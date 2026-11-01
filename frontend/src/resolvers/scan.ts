@@ -1,5 +1,5 @@
-import type { ApiError, ChoiceInfo, ScanRequest } from "../generated/api";
-import { ask, type Answer } from "../workspace/client";
+import type { ChoiceInfo, ErrorWire, ScanRequest } from "../generated/api";
+import { ask, type Answer } from "./handlers";
 
 /** Resolver settings as the backend takes them. */
 export type Settings = Record<string, unknown>;
@@ -31,7 +31,7 @@ export interface ScanView {
   selected: ReadonlySet<string>;
   /** Whether the saved settings named no list, so loading every found value omits the key. */
   everything: boolean;
-  failure: ApiError | null;
+  failure: ErrorWire | null;
 }
 
 /** A field that has not scanned. `saved` is the list the settings hold for it, if any. */
@@ -78,7 +78,7 @@ export function scanFinished(view: ScanView, choices: readonly ChoiceInfo[]): Sc
 }
 
 /** The field after its scan was refused. */
-export function scanFailed(view: ScanView, failure: ApiError): ScanView {
+export function scanFailed(view: ScanView, failure: ErrorWire): ScanView {
   return { ...view, phase: "failed", choices: [], missing: [], failure };
 }
 

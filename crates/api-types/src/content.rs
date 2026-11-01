@@ -9,8 +9,12 @@ use ts_rs::TS;
 pub enum ContentInfo {
     /// A recorded video, with the overlays added to it.
     SeekableVideo {
-        /// Names the Content; the playback socket opens it by this id.
+        /// Names the Content; a ticket request names the stream by this id, `generation` and the entry's id.
         id: String,
+        /// The commit of the Content's resolution. Re-resolving or reopening the item gives a new one, which makes
+        /// tickets for the old one worthless.
+        #[ts(type = "number")]
+        generation: u64,
         /// The name the viewer shows.
         display_name: String,
         /// The one entry: the video and its lanes.
@@ -20,6 +24,9 @@ pub enum ContentInfo {
     Playlist {
         /// Names the Content.
         id: String,
+        /// The commit of the Content's resolution, as for a video.
+        #[ts(type = "number")]
+        generation: u64,
         /// The name the viewer shows.
         display_name: String,
         /// The entries in playlist order.
@@ -30,7 +37,7 @@ pub enum ContentInfo {
 /// One video and its lanes: what a viewer opens.
 #[derive(Serialize, Deserialize, TS)]
 pub struct EntryInfo {
-    /// Names the entry; the playback socket opens it by this id.
+    /// Names the entry; a ticket request names it by this id. A video's one entry has the Content's id.
     pub id: String,
     /// The name rows and viewers show.
     pub label: String,

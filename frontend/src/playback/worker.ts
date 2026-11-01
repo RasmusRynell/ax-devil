@@ -52,8 +52,8 @@ scope.onmessage = ({ data }) => {
       const incoming = receiver.receive(received);
       if (incoming) deliver(incoming);
     };
-    opened.onclose = () => {
-      deliver({ type: "closed" });
+    opened.onclose = ({ code }) => {
+      deliver({ type: "closed", code });
       scope.close();
     };
   } else if (data.type === "density") {

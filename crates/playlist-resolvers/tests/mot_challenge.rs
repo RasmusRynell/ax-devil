@@ -2,7 +2,7 @@
 
 use std::{fs, path::Path};
 
-use foundation::{CancelToken, FrameRate, Interrupt, UserError};
+use foundation::{CancelToken, FrameRate, HostPath, Interrupt, Location, UserError};
 use playlist_resolvers::{
     Choice, ImageSequence, ResolvedEntry, ResolvedPlaylist, Settings, VideoRef, resolver,
 };
@@ -178,19 +178,25 @@ fn bad_settings_and_empty_datasets_name_the_problem() {
     let root = dir.path();
     let gone = root.join("gone");
     let table = [
-        (json!({}), "root"),
-        (json!({ "root": "" }), "root"),
-        (json!({ "root": root, "sequences": "SEQ-01" }), "sequences"),
-        (json!({ "root": root, "sequences": [1] }), "sequences"),
+        (json!({}), Location::field("root")),
+        (json!({ "root": "" }), Location::field("root")),
+        (
+            json!({ "root": root, "sequences": "SEQ-01" }),
+            Location::field("sequences"),
+        ),
+        (
+            json!({ "root": root, "sequences": [1] }),
+            Location::field("sequences"),
+        ),
         (
             json!({ "root": root, "sequences": ["GONE"] }),
-            root.to_str().unwrap(),
+            HostPath::new(root).into(),
         ),
-        (json!({ "root": gone }), gone.to_str().unwrap()),
+        (json!({ "root": gone }), HostPath::new(&gone).into()),
     ];
     for (value, location) in table {
         match resolve(&settings(value.clone())) {
-            Err(Interrupt::Failed(error)) => assert_eq!(error.location, location, "{value}"),
+            Err(Interrupt::Failed(error)) => assert_eq!(error.location, Some(location), "{value}"),
             other => panic!("{value}: expected a failure, got {other:?}"),
         }
     }
@@ -219,7 +225,9 @@ fn imdir_and_imext_set_the_image_pattern_and_a_hostile_imdir_fails_at_the_seqinf
 
     fs::write(&ini, original.replace("imDir=img1", "imDir=../x")).unwrap();
     match resolve(&root_settings(root)) {
-        Err(Interrupt::Failed(error)) => assert_eq!(error.location, ini.to_str().unwrap()),
+        Err(Interrupt::Failed(error)) => {
+            assert_eq!(error.location, Some(HostPath::new(&ini).into()))
+        }
         other => panic!("expected a failure, got {other:?}"),
     }
 }
@@ -289,7 +297,9 @@ fn a_scan_attaches_a_missing_root_to_the_root_setting_and_honours_cancel() {
     let gone = root_settings(&dir.path().join("gone"));
     for settings in [settings(json!({})), gone] {
         match scan(&settings, &CancelToken::new()) {
-            Err(Interrupt::Failed(error)) => assert_eq!(error.location, "root"),
+            Err(Interrupt::Failed(error)) => {
+                assert_eq!(error.location, Some(Location::field("root")))
+            }
             other => panic!("expected a failure at root, got {other:?}"),
         }
     }
@@ -309,5 +319,7 @@ fn a_scan_attaches_a_missing_root_to_the_root_setting_and_honours_cancel() {
         &root_settings(dir.path()),
         &CancelToken::new(),
     );
-    assert!(matches!(other, Err(Interrupt::Failed(error)) if error.location == "root"));
+    assert!(
+        matches!(other, Err(Interrupt::Failed(error)) if error.location == Some(Location::field("root")))
+    );
 }

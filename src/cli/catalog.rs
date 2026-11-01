@@ -1,7 +1,10 @@
-//! The `catalog` subcommands: what they print. They need no server, settings or log file.
+//! The commands that only print, `list-handlers` and `catalog`: what they print. They need no server, settings or
+//! log file.
 
+use super::{CatalogCommand, args};
 use catalogs::{CatalogDiagnostic, Library};
-use std::{fmt::Write, path::Path};
+use handlers::Handlers;
+use std::{fmt::Write, path::Path, process::ExitCode};
 
 /// What a `catalog` subcommand prints and whether it succeeded.
 pub struct Report {
@@ -9,6 +12,36 @@ pub struct Report {
     pub text: String,
     /// Whether the command succeeded; a failed one prints to the error output and exits with a failure.
     pub ok: bool,
+}
+
+impl Report {
+    /// `list-handlers`: the decoders and resolvers `handlers` holds.
+    pub fn listing(handlers: &Handlers) -> Self {
+        Self {
+            text: args::handlers_listing(handlers),
+            ok: true,
+        }
+    }
+
+    /// Prints the report, to the error output when it failed, and gives the exit code.
+    #[allow(clippy::print_stdout, clippy::print_stderr)]
+    pub fn print(self) -> ExitCode {
+        if self.ok {
+            print!("{}", self.text);
+            ExitCode::SUCCESS
+        } else {
+            eprint!("{}", self.text);
+            ExitCode::FAILURE
+        }
+    }
+}
+
+/// What a `catalog` subcommand prints.
+pub fn run(command: &CatalogCommand) -> Report {
+    match command {
+        CatalogCommand::List => list(&Library::built_in()),
+        CatalogCommand::Check { file } => check(file),
+    }
 }
 
 /// `catalog list`: the built-in catalogs, one per line.

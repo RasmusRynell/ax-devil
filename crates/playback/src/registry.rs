@@ -2,7 +2,7 @@
 
 use crate::source::{DECODE_WORKERS, Source};
 use crate::{CachePool, DecoderFactory, Session, SourceSpec, lock};
-use foundation::UserError;
+use foundation::{ErrorCode, HostPath, UserError};
 use std::collections::HashMap;
 use std::sync::{Arc, Condvar, Mutex, Weak};
 use std::time::Duration;
@@ -52,11 +52,14 @@ impl Shared {
     }
 }
 
-/// The identity of a video, which the caller works out: viewers whose keys are equal share one source. It is also
-/// the location the errors of the registry and its sources carry, so it should name the video to a user, such as
-/// the canonical path of a file.
+/// The identity of a video, which the caller works out: viewers whose keys are equal share one source.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
-pub struct SourceKey(pub String);
+pub struct SourceKey {
+    /// What makes the frames, such as the canonical path of a file or a sequence's pattern, start and rate.
+    pub identity: String,
+    /// The file or sequence pattern the errors of the registry and its sources carry.
+    pub location: HostPath,
+}
 
 /// Open sources keyed by [`SourceKey`]. Viewers of one video share its decoders, its cache share and its frames.
 pub struct Registry {
@@ -99,7 +102,12 @@ impl Registry {
             {
                 return Ok(session);
             }
-            let source = Source::new(spec, factory, self.shared.pool.add_source(), key.0.clone());
+            let source = Source::new(
+                spec,
+                factory,
+                self.shared.pool.add_source(),
+                key.location.clone(),
+            );
             let me = Arc::downgrade(&source);
             let registry = Arc::downgrade(&self.shared);
             let own_key = key.clone();
@@ -122,7 +130,10 @@ impl Registry {
         // Outside the registry lock: a failed start closes the source, which takes that lock.
         self.spawn_workers(&source)?;
         self.shared.poke_all();
-        session.ok_or_else(|| UserError::new("The video was closed while opening", key.0.as_str()))
+        session.ok_or_else(|| {
+            UserError::new(ErrorCode::VideoClosed, "The video was closed while opening")
+                .at(key.location.clone())
+        })
     }
 
     fn spawn_workers(&self, source: &Arc<Source>) -> Result<(), UserError> {
@@ -138,9 +149,10 @@ impl Registry {
             if let Err(error) = spawned {
                 source.close();
                 return Err(UserError::new(
+                    ErrorCode::Internal,
                     format!("Cannot start the video decoder: {error}"),
-                    source.location.as_str(),
-                ));
+                )
+                .at(source.location.clone()));
             }
         }
         Ok(())

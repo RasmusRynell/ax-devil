@@ -286,7 +286,7 @@ fn a_damaged_record_is_an_error_for_that_scene_and_the_next_open_rebuilds() {
     assert_eq!(fixture.decoder.runs(), 1, "records are checked when read");
     let error = track.scene(0).expect_err("damaged");
     assert!(error.reason.contains("damaged"), "{error}");
-    assert!(error.location.contains("sample 0"));
+    assert!(error.reason.contains("sample 0"), "{error}");
     assert!(track.scene(1).is_ok() && track.scene(2).is_ok());
 
     // Opening again does not share or reuse the damaged artifact, and the track in hand keeps its file.

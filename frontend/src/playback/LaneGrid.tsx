@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { Hidden } from "../viewer/hidden";
 import { LaneChip } from "./LaneChip";
-import type { PlaybackView, PlaybackSession } from "./session";
+import type { PlaybackSession } from "./session";
+import type { PlaybackView } from "./view";
 import { fitPicture } from "./renderer";
 import { VideoCanvas, type LaneLayout } from "./VideoCanvas";
 
@@ -75,6 +76,7 @@ export function LaneGrid({
   session,
   view,
   name,
+  anchor,
   entry,
   hidden,
   onHide,
@@ -82,10 +84,13 @@ export function LaneGrid({
   session: PlaybackSession;
   view: PlaybackView;
   name: string;
+  /** Names the elements over the pictures for other windows' pointers; see `VideoCanvas`. */
+  anchor: string;
   /** The entry the lanes belong to, as the workspace names it. */
   entry: string;
   hidden: Hidden;
-  onHide: (label: string) => void;
+  /** Hides a lane by its label; absent for a seat that may not change the workspace. */
+  onHide?: (label: string) => void;
 }) {
   const [box, size] = useSize();
   const { lanes, width, height } = view;
@@ -109,7 +114,7 @@ export function LaneGrid({
   }, [session, cells, lanes.length, width, height]);
   return (
     <div ref={box} className="absolute inset-0 flex">
-      <VideoCanvas session={session} label={name} cells={cells} />
+      <VideoCanvas session={session} label={name} anchor={anchor} cells={cells} />
       {cells.map(({ lane: index, rect }) => (
         <div
           key={lanes[index].label}
@@ -118,8 +123,9 @@ export function LaneGrid({
         >
           <LaneChip
             lane={lanes[index]}
+            catalogs={view.catalogs}
             onChange={(change) => session.setLaneView(index, change)}
-            onHide={() => onHide(lanes[index].label)}
+            onHide={onHide && (() => onHide(lanes[index].label))}
           />
         </div>
       ))}

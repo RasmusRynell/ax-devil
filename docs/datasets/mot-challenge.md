@@ -21,17 +21,18 @@ For MOT20, replace `MOT17` with `MOT20`. `MOT17Labels.zip` holds the annotations
 ## Open it
 
 In the app, choose **File > Add Playlist** (Ctrl+Shift+N), pick **MOT Challenge** and the dataset folder, **Scan** to
-list its sequences (all start selected), untick any you do not want and **Load**.
+list its sequences (all start selected), untick any you do not want and **Add**. The playlist resolves in the
+background; a folder that cannot be read leaves the item listed as failed, with the reason.
 
-From the command line, after `make build`, either command opens a new Untitled workspace with the playlist:
+From the command line, after `make build`, either command starts the app with the playlist added to the first local
+window's workspace:
 
 ```bash
 pnpm --dir desktop exec electron . playlist mot_challenge ~/datasets/mot/MOT17 [--sequences MOT17-04-DPM,MOT17-04-FRCNN]
-target/release/ax-devil playlist mot_challenge ~/datasets/mot/MOT17    # serves http://127.0.0.1:7330 for a browser
+target/release/ax-devil playlist mot_challenge ~/datasets/mot/MOT17    # serves http://127.0.0.1:7330; the first browser tab gets it
 ```
 
-`make desktop` and `make web` take no arguments; add the playlist from the dialog there. A folder that cannot be read
-does not stop the app: the playlist is listed as failed, with the reason.
+`make desktop` and `make web` take no arguments; add the playlist from the dialog there.
 
 The folder may be the dataset root, its `train` or `test` folder, or any folder of sequence folders that each hold a
 `seqinfo.ini`. A single sequence folder is not accepted; point at a folder that contains it. `--sequences` takes

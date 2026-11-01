@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import type { PlaybackView } from "./session";
+import type { PlaybackView } from "./view";
 import { Transport } from "./Transport";
 
 afterEach(cleanup);
@@ -14,6 +14,7 @@ const view = (change: Partial<PlaybackView> = {}) => ({
   playhead: 30,
   shown: { sequenceId: 29, timestampUs: 1_160_000 },
   lanes: [],
+  catalogs: [],
   width: 64,
   height: 48,
   warnings: [],

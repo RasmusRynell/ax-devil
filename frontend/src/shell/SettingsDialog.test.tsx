@@ -1,5 +1,6 @@
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vite-plus/test";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { GrantsContext } from "../access";
 import { DEFAULT_SETTINGS, FakeSettings } from "../fakeSettings";
 import { SettingsDialog } from "./SettingsDialog";
 
@@ -12,6 +13,7 @@ const row = vi.hoisted(() => (key: string, kind: object, over: object) => ({
   live: true,
   env: false,
   secret: false,
+  scope: "personal",
   ...over,
 }));
 
@@ -24,17 +26,24 @@ vi.mock(import("../generated/settings"), async (original) => ({
     row(
       "t.size",
       { type: "auto_or_whole" },
-      { label: "Size", page: "Network", section: "Memory", live: false },
+      { label: "Size", page: "Network", section: "Memory", live: false, scope: "server" },
     ),
     row(
       "t.dir",
       { type: "folder" },
-      { label: "Dir", page: "Network", section: "Folders", live: false },
+      { label: "Dir", page: "Network", section: "Folders", live: false, scope: "server" },
     ),
     row(
       "t.token",
       { type: "text", default: "" },
-      { label: "Token", page: "Network", section: "Credentials", env: true, secret: true },
+      {
+        label: "Token",
+        page: "Network",
+        section: "Credentials",
+        env: true,
+        secret: true,
+        scope: "server",
+      },
     ),
   ] as never,
 }));
@@ -59,9 +68,11 @@ describe("settings dialog", () => {
     };
     const state = { ...DEFAULT_SETTINGS, values } as never;
     render(
-      <FakeSettings state={state} save={save}>
-        <SettingsDialog onClose={() => {}} />
-      </FakeSettings>,
+      <GrantsContext.Provider value={["configuration"]}>
+        <FakeSettings state={state} save={save}>
+          <SettingsDialog onClose={() => {}} />
+        </FakeSettings>
+      </GrantsContext.Provider>,
     );
     expect(screen.getAllByRole("tab").map((tab) => tab.textContent)).toEqual([
       "General",
@@ -97,14 +108,25 @@ describe("settings dialog", () => {
     });
   });
 
+  it("offers the Server rows only to someone who may configure the server", () => {
+    render(
+      <FakeSettings>
+        <SettingsDialog onClose={() => {}} />
+      </FakeSettings>,
+    );
+    expect(screen.getAllByRole("tab").map((tab) => tab.textContent)).toEqual(["General"]);
+  });
+
   it("fills a folder field from the native folder dialog", async () => {
     window.axDevilWindow = { pickFolder: () => Promise.resolve("/mnt/cache") } as never;
     const save = vi.fn(async () => null);
     const values = { ...DEFAULT_SETTINGS.values, "t.dir": "" };
     render(
-      <FakeSettings state={{ ...DEFAULT_SETTINGS, values } as never} save={save}>
-        <SettingsDialog onClose={() => {}} />
-      </FakeSettings>,
+      <GrantsContext.Provider value={["configuration"]}>
+        <FakeSettings state={{ ...DEFAULT_SETTINGS, values } as never} save={save}>
+          <SettingsDialog onClose={() => {}} />
+        </FakeSettings>
+      </GrantsContext.Provider>,
     );
     fireEvent.click(screen.getByRole("tab", { name: "Network" }));
     fireEvent.click(screen.getByRole("button", { name: "Browse" }));

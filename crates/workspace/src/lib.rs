@@ -12,5 +12,6 @@ pub use content::{
     Content, ContentId, Entry, ImageSequence, OverlayRef, PlaylistContent, SeekableVideoContent,
     VideoRef,
 };
-pub use item::{ItemId, OverlayRecipe, PlaylistRecipe, Recipe, VideoRecipe, WorkspaceItem};
+pub use foundation::ItemId;
+pub use item::{OverlayRecipe, PlaylistRecipe, Recipe, VideoRecipe, WorkspaceItem};
 pub use workspace::Workspace;

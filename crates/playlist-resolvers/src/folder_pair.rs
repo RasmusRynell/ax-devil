@@ -4,7 +4,8 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use foundation::{CancelToken, Cancelled, Interrupt, UserError};
+use crate::schema::invalid_field;
+use foundation::{CancelToken, Cancelled, ErrorCode, HostPath, Interrupt, UserError};
 
 use crate::{
     Choice, Cli, Field, FieldKind, OverlayRef, PlaylistResolver, ResolvedEntry, ResolvedPlaylist,
@@ -67,7 +68,7 @@ impl PlaylistResolver for FolderPairResolver {
         _settings: &Settings,
         _cancel: &CancelToken,
     ) -> Result<Vec<Choice>, Interrupt<UserError>> {
-        Err(Interrupt::Failed(UserError::new(
+        Err(Interrupt::Failed(invalid_field(
             "This setting has nothing to scan",
             field,
         )))
@@ -94,10 +95,13 @@ impl PlaylistResolver for FolderPairResolver {
                 continue;
             };
             if let Some(compressed) = [&video, &path].into_iter().find(|p| is_compressed(p)) {
-                return Err(Interrupt::Failed(UserError::new(
-                    "Compressed files are not supported; decompress the file first",
-                    compressed.display().to_string(),
-                )));
+                return Err(Interrupt::Failed(
+                    UserError::new(
+                        ErrorCode::UnsupportedFormat,
+                        "Compressed files are not supported; decompress the file first",
+                    )
+                    .at(HostPath::new(compressed)),
+                ));
             }
             let overlay = OverlayRef {
                 label: name.clone(),
@@ -112,10 +116,16 @@ impl PlaylistResolver for FolderPairResolver {
             });
         }
         if entries.is_empty() {
-            return Err(Interrupt::Failed(UserError::new(
-                "No video file name matches an overlay file name",
-                format!("{} and {}", videos_dir.display(), overlays_dir.display()),
-            )));
+            return Err(Interrupt::Failed(
+                UserError::new(
+                    ErrorCode::PlaylistInvalid,
+                    format!(
+                        "No video file name matches an overlay file name in {}",
+                        overlays_dir.display()
+                    ),
+                )
+                .at(HostPath::new(videos_dir)),
+            ));
         }
         entries.sort_by(|a, b| a.name.cmp(&b.name));
         Ok(ResolvedPlaylist {
@@ -155,7 +165,7 @@ pub(crate) fn resolved_file_type(entry: &DirEntry) -> Option<FileType> {
 pub(crate) fn required_text<'a>(settings: &'a Settings, key: &str) -> Result<&'a str, UserError> {
     match settings.get(key).and_then(|value| value.as_str()) {
         Some(text) if !text.is_empty() => Ok(text),
-        _ => Err(UserError::new("Must be a non-empty string", key)),
+        _ => Err(invalid_field("Must be a non-empty string", key)),
     }
 }
 
@@ -163,7 +173,7 @@ fn require_dir(path: &Path, reason: &str) -> Result<(), UserError> {
     if path.is_dir() {
         Ok(())
     } else {
-        Err(UserError::new(reason, path.display().to_string()))
+        Err(UserError::new(ErrorCode::FileNotFound, reason).at(HostPath::new(path)))
     }
 }
 
@@ -174,10 +184,13 @@ fn index_files(
     cancel: &CancelToken,
 ) -> Result<HashMap<String, PathBuf>, Interrupt<UserError>> {
     let unreadable = |error: std::io::Error| {
-        Interrupt::Failed(UserError::new(
-            format!("Cannot read the {label} directory: {error}"),
-            dir.display().to_string(),
-        ))
+        Interrupt::Failed(
+            UserError::new(
+                ErrorCode::FileUnreadable,
+                format!("Cannot read the {label} directory: {error}"),
+            )
+            .at(HostPath::new(dir)),
+        )
     };
     let mut indexed = HashMap::new();
     let mut duplicates = Vec::new();
@@ -204,13 +217,16 @@ fn index_files(
     }
     duplicates.sort();
     duplicates.dedup();
-    Err(Interrupt::Failed(UserError::new(
-        format!(
-            "Duplicate {label} file name(s) after suffix stripping: {}",
-            duplicates.join(", ")
-        ),
-        dir.display().to_string(),
-    )))
+    Err(Interrupt::Failed(
+        UserError::new(
+            ErrorCode::PlaylistInvalid,
+            format!(
+                "Duplicate {label} file name(s) after suffix stripping: {}",
+                duplicates.join(", ")
+            ),
+        )
+        .at(HostPath::new(dir)),
+    ))
 }
 
 /// Whether the file name ends in a compression suffix.

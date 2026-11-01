@@ -6,7 +6,7 @@ use std::{
     path::Path,
 };
 
-use foundation::UserError;
+use foundation::{ErrorCode, HostPath, UserError};
 
 /// Fills `buf` from `offset` without moving a shared file position, so a handle can serve several readers.
 #[cfg(unix)]
@@ -64,5 +64,9 @@ pub(crate) fn create_private_dir(path: &Path) -> io::Result<()> {
 
 /// An I/O failure as words for the user, located at `path`.
 pub(crate) fn user_error(what: &str, error: &io::Error, path: &Path) -> UserError {
-    UserError::new(format!("{what}: {error}"), path.display().to_string())
+    let code = match error.kind() {
+        io::ErrorKind::NotFound => ErrorCode::FileNotFound,
+        _ => ErrorCode::FileUnreadable,
+    };
+    UserError::new(code, format!("{what}: {error}")).at(HostPath::new(path))
 }

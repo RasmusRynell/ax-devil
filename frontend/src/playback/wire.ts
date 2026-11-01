@@ -24,8 +24,8 @@ export type Incoming =
   | { type: "overlays"; overlays: PreparedOverlay[] }
   /** A message that breaks the protocol; the session ends. */
   | { type: "malformed"; reason: string }
-  /** The socket closed, however it ended. */
-  | { type: "closed" };
+  /** The socket closed, however it ended; `code` is its close code, 1006 when it dropped without one. */
+  | { type: "closed"; code: number };
 
 /** One socket to the backend. Messages sent before it is open are held until it is. */
 export interface Connection {

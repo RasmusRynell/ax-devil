@@ -3,17 +3,8 @@
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
-/// The body of `GET /api/catalogs`.
-#[derive(Serialize, Deserialize, TS)]
-pub struct CatalogsInfo {
-    /// The catalogs, built-ins first and Standard first among them.
-    pub catalogs: Vec<CatalogInfoWire>,
-    /// The id a new lane starts with.
-    pub default: String,
-}
-
 /// One catalog the picker offers.
-#[derive(Serialize, Deserialize, TS)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
 pub struct CatalogInfoWire {
     /// The id, such as `built-in:standard`.
     pub id: String,

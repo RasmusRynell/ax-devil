@@ -3,7 +3,7 @@
 use crate::plan::{plan, reads_on};
 use crate::window::{prefetch_windows, send_window};
 use crate::{DecoderFactory, FrameSet, SourceCache, SourceSpec, Span, Want, lock};
-use foundation::{CancelToken, FrameFailure, UserError, VideoFrame};
+use foundation::{CancelToken, FrameFailure, HostPath, UserError, VideoFrame};
 use std::collections::BTreeMap;
 use std::ops::RangeInclusive;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
@@ -31,7 +31,7 @@ pub(crate) struct Source {
     /// Cancelled when the source closes, which interrupts a decoder blocked in input.
     pub(crate) cancel: CancelToken,
     /// What playback's own errors name: the file, as the registry knows it.
-    pub(crate) location: String,
+    pub(crate) location: HostPath,
     /// The machine's cores, the budget `decode_threads` divides.
     cores: usize,
     on_close: Mutex<Option<Box<dyn FnOnce() + Send>>>,
@@ -130,7 +130,7 @@ impl Source {
         spec: SourceSpec,
         factory: DecoderFactory,
         cache: SourceCache,
-        location: String,
+        location: HostPath,
     ) -> Arc<Self> {
         Arc::new(Self {
             spec,

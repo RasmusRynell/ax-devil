@@ -4,6 +4,24 @@ use crate::{env, kind::Kind};
 use serde::Serialize;
 use serde_json::Value;
 
+/// Shown in place of a literal secret; sending it back keeps the stored secret.
+pub const MASK: &str = "********";
+
+/// Who a setting belongs to, which decides who may read and change it on a backend that several people use.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Scope {
+    /// How one person's app behaves, such as the theme and the shortcuts.
+    Personal,
+    /// What the server works with: device and broker defaults, folders, cache.
+    Server,
+}
+
+impl Scope {
+    /// Every scope, for the person who owns the backend.
+    pub const ALL: [Self; 2] = [Self::Personal, Self::Server];
+}
+
 /// One declared setting.
 #[derive(Debug, Serialize)]
 pub struct Setting {
@@ -25,6 +43,8 @@ pub struct Setting {
     pub secret: bool,
     /// Whether Quick Setup asks for it.
     pub quick_setup: bool,
+    /// Who the setting belongs to.
+    pub scope: Scope,
 }
 
 /// Every setting the app has.
@@ -42,6 +62,7 @@ pub const TABLE: &[Setting] = &[
         env: false,
         secret: false,
         quick_setup: true,
+        scope: Scope::Personal,
     },
     Setting {
         key: "ui.quick_setup_done",
@@ -53,6 +74,7 @@ pub const TABLE: &[Setting] = &[
         env: false,
         secret: false,
         quick_setup: false,
+        scope: Scope::Personal,
     },
     Setting {
         key: "playback.video_cache",
@@ -68,6 +90,7 @@ pub const TABLE: &[Setting] = &[
         env: false,
         secret: false,
         quick_setup: false,
+        scope: Scope::Server,
     },
     Setting {
         key: "storage.cache_dir",
@@ -80,10 +103,29 @@ pub const TABLE: &[Setting] = &[
         env: false,
         secret: false,
         quick_setup: false,
+        scope: Scope::Server,
     },
 ];
 
 impl Setting {
+    /// Whether `text` is the secret itself rather than empty or a `$NAME` reference to it.
+    fn literal(&self, text: &str) -> bool {
+        !text.is_empty() && !(self.env && env::reference(text).is_some())
+    }
+
+    /// `value` as shown to a person: the literal in a secret row is masked, everything else as written.
+    pub fn shown(&self, value: &Value) -> Value {
+        match value.as_str() {
+            Some(text) if self.secret && self.literal(text) => Value::String(MASK.into()),
+            _ => value.clone(),
+        }
+    }
+
+    /// Whether a person sent back the masked secret, which means "unchanged".
+    pub(crate) fn is_masked(&self, value: &Value) -> bool {
+        self.secret && value == MASK
+    }
+
     /// Accepts `value` if it fits the kind. A reference in a setting that takes them is expanded by `lookup` first,
     /// so what is checked is what will be used. The reason never contains the value.
     pub(crate) fn check(

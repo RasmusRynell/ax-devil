@@ -157,7 +157,7 @@ fn a_file_mixing_frame_numbers_and_timestamps_is_rejected() {
         error.reason.contains("mixes frame numbers and timestamps"),
         "{error}"
     );
-    assert!(error.location.ends_with("overlay.txt"));
+    assert!(fixture.is_about_source(&error), "{error:?}");
     assert_eq!(fixture.artifacts(), Vec::<PathBuf>::new());
 }
 
@@ -286,7 +286,7 @@ fn failures_name_the_file_and_leave_no_artifact() {
     fs::write(&fixture.source, b"broken").expect("source");
     let error = failure(fixture.registry.open(&fixture.overlay(), SIZE, &token));
     assert_eq!(error.reason, "line 1: not a test file");
-    assert!(error.location.ends_with("overlay.txt"));
+    assert!(fixture.is_about_source(&error), "{error:?}");
     assert_eq!(fixture.artifacts(), Vec::<PathBuf>::new());
     assert!(
         fixture

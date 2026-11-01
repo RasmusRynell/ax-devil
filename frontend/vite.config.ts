@@ -2,7 +2,11 @@ import { defineConfig, lazyPlugins, loadEnv } from "vite-plus";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 export default defineConfig(({ mode }) => ({
-  test: { environment: "jsdom", include: ["src/**/*.test.{ts,tsx}"] },
+  test: {
+    environment: "jsdom",
+    include: ["src/**/*.test.{ts,tsx}"],
+    setupFiles: ["src/test-setup.ts"],
+  },
   fmt: { ignorePatterns: ["**/src/generated/**"] },
   lint: {
     jsPlugins: [{ name: "vite-plus", specifier: "vite-plus/oxlint-plugin" }],

@@ -2,7 +2,7 @@
 
 #![allow(dead_code)] // Each test file uses a part of this.
 
-use foundation::{CancelToken, FrameFailure, UserError, VideoFrame};
+use foundation::{CancelToken, FrameFailure, HostPath, UserError, VideoFrame};
 use media::{Decoder, FrameIndex, VideoInput};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -70,5 +70,5 @@ pub fn expected_luma(sequence_id: u64) -> u8 {
 /// The reason and location of an error, which a user must be shown.
 pub fn assert_explained(error: &UserError, location: &Path) {
     assert!(!error.reason.is_empty(), "the error has no reason");
-    assert_eq!(error.location, location.display().to_string());
+    assert_eq!(error.location, Some(HostPath::new(location).into()));
 }

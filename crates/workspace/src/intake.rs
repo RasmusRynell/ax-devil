@@ -1,10 +1,8 @@
 //! The one place that turns what the user chose into workspace items. Dialogs, the command line and drops all
 //! come through here, so they accept and refuse the same input.
 
-use crate::item::{
-    ItemId, OverlayRecipe, PlaylistRecipe, Recipe, VideoRecipe, WorkspaceItem, file_name,
-};
-use foundation::UserError;
+use crate::item::{OverlayRecipe, PlaylistRecipe, Recipe, VideoRecipe, WorkspaceItem, file_name};
+use foundation::{ErrorCode, HostPath, ItemId, UserError};
 use handlers::Handlers;
 use playlist_resolvers::{FieldKind, Settings};
 use serde_json::Value;
@@ -29,12 +27,13 @@ pub fn video(
     overlays: &[NewOverlay],
     handlers: &Handlers,
 ) -> Result<WorkspaceItem, UserError> {
-    let location = path.display().to_string();
-    let absolute = std::path::absolute(path)
-        .map_err(|_| UserError::new("Enter the path of a video file", location.clone()))?;
+    let invalid =
+        |reason: &str| UserError::new(ErrorCode::InvalidPath, reason).at(HostPath::new(path));
+    let absolute =
+        std::path::absolute(path).map_err(|_| invalid("Enter the path of a video file"))?;
     let label = file_name(&absolute);
     if label.is_empty() {
-        return Err(UserError::new("The path does not name a file", location));
+        return Err(invalid("The path does not name a file"));
     }
     let overlays = overlays
         .iter()
@@ -44,24 +43,30 @@ pub fn video(
         id: ItemId::generate(),
         label,
         recipe: Recipe::Video(VideoRecipe {
-            video: absolute,
+            video: HostPath::new(absolute),
             overlays,
         }),
     })
 }
 
 fn overlay_recipe(overlay: &NewOverlay, handlers: &Handlers) -> Result<OverlayRecipe, UserError> {
-    let location = overlay.path.display().to_string();
+    let refuse =
+        |code, reason: String| UserError::new(code, reason).at(HostPath::new(&overlay.path));
     let path = std::path::absolute(&overlay.path)
         .ok()
         .filter(|path| !file_name(path).is_empty())
-        .ok_or_else(|| UserError::new("The path does not name a file", location.clone()))?;
+        .ok_or_else(|| {
+            refuse(
+                ErrorCode::InvalidPath,
+                "The path does not name a file".into(),
+            )
+        })?;
     let handler = match &overlay.handler {
         Some(handler) if handlers.file_decoder(handler).is_some() => handler.clone(),
         Some(handler) => {
-            return Err(UserError::new(
+            return Err(refuse(
+                ErrorCode::UnknownHandler,
                 format!("No overlay format \"{handler}\""),
-                location,
             ));
         }
         None => {
@@ -73,24 +78,27 @@ fn overlay_recipe(overlay: &NewOverlay, handlers: &Handlers) -> Result<OverlayRe
             match candidates[..] {
                 [only] => only.to_owned(),
                 [] => {
-                    return Err(UserError::new(
-                        "No overlay format reads this kind of file",
-                        location,
+                    return Err(refuse(
+                        ErrorCode::UnknownHandler,
+                        "No overlay format reads this kind of file".into(),
                     ));
                 }
                 _ => {
-                    return Err(UserError::new(
+                    return Err(refuse(
+                        ErrorCode::UnknownHandler,
                         format!(
                             "Several overlay formats read this file; choose one of {}",
                             candidates.join(", ")
                         ),
-                        location,
                     ));
                 }
             }
         }
     };
-    Ok(OverlayRecipe { path, handler })
+    Ok(OverlayRecipe {
+        path: HostPath::new(path),
+        handler,
+    })
 }
 
 /// Builds the item for a playlist of `resolver` with `settings`, labelled `label` or with the resolver's name. The
@@ -103,7 +111,10 @@ pub fn playlist(
     handlers: &Handlers,
 ) -> Result<WorkspaceItem, UserError> {
     let Some(found) = handlers.resolver(resolver) else {
-        return Err(UserError::new("No such playlist resolver", resolver));
+        return Err(UserError::new(
+            ErrorCode::UnknownHandler,
+            format!("No playlist resolver \"{resolver}\""),
+        ));
     };
     let schema = found.schema();
     schema.validate(&settings)?;
@@ -134,8 +145,8 @@ pub fn playlist(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{Content, VideoRef};
-    use foundation::{CancelToken, Interrupt};
+    use crate::{Content, ContentId, VideoRef};
+    use foundation::{CancelToken, Interrupt, Location};
     use std::fs;
     use std::path::PathBuf;
 
@@ -146,8 +157,8 @@ mod tests {
         let Recipe::Video(recipe) = &item.recipe else {
             panic!("a video item has a video recipe");
         };
-        assert!(recipe.video.is_absolute());
-        assert!(recipe.video.ends_with("recordings/gate.mp4"));
+        assert!(recipe.video.as_path().is_absolute());
+        assert!(recipe.video.as_path().ends_with("recordings/gate.mp4"));
         let again = video(Path::new("recordings/gate.mp4"), &[], &Handlers::built_in()).unwrap();
         assert_ne!(item.id, again.id);
     }
@@ -156,7 +167,7 @@ mod tests {
     fn input_that_names_no_file_is_refused_with_the_path_it_was_given() {
         for path in ["", "..", "recordings/.."] {
             let error = video(Path::new(path), &[], &Handlers::built_in()).unwrap_err();
-            assert_eq!(error.location, path, "{path:?}");
+            assert_eq!(error.location, Some(HostPath::new(path).into()), "{path:?}");
         }
     }
 
@@ -189,7 +200,7 @@ mod tests {
             else {
                 panic!("an unreadable path fails to resolve");
             };
-            assert_eq!(error.location, unreadable.display().to_string());
+            assert_eq!(error.location, Some(HostPath::new(&unreadable).into()));
             assert!(!error.reason.is_empty());
         }
     }
@@ -230,7 +241,7 @@ mod tests {
         );
 
         let several = add("boxes.xml", None).unwrap_err();
-        assert_eq!(several.location, "boxes.xml");
+        assert_eq!(several.location, Some(HostPath::new("boxes.xml").into()));
         for candidate in handlers.file_decoders_for(Path::new("boxes.xml")) {
             assert!(
                 several.reason.contains(candidate.spec().handler),
@@ -238,7 +249,10 @@ mod tests {
                 several.reason
             );
         }
-        assert_eq!(add("notes.mp3", None).unwrap_err().location, "notes.mp3");
+        assert_eq!(
+            add("notes.mp3", None).unwrap_err().location,
+            Some(HostPath::new("notes.mp3").into())
+        );
         assert_eq!(
             add("gt.txt", Some("NOPE")).unwrap_err().reason,
             "No overlay format \"NOPE\""
@@ -276,7 +290,10 @@ mod tests {
         else {
             panic!("a missing overlay fails");
         };
-        assert!(missing.location.ends_with("none.txt"));
+        assert_eq!(
+            missing.location,
+            Some(HostPath::new(folder.path().join("none.txt")).into())
+        );
 
         let other = folder.path().join("other");
         fs::create_dir(&other).unwrap();
@@ -286,7 +303,11 @@ mod tests {
         else {
             panic!("two overlays with one file name fail");
         };
-        assert_eq!(twice.location, "gt.txt");
+        assert!(
+            matches!(twice.location, Some(Location::Item(_))),
+            "{twice:?}"
+        );
+        assert!(twice.reason.ends_with("gt.txt"), "{twice}");
     }
 
     fn mot_folder(sequences: &[&str]) -> tempfile::TempDir {
@@ -344,7 +365,7 @@ mod tests {
         assert_eq!(first.entries[0].lane_labels(), ["GT"]);
         assert!(
             Content::Playlist(first)
-                .entry(&ids[1])
+                .entry(&ContentId::of_entry(&item.id, "SEQ-02"))
                 .is_some_and(|entry| entry.label == "SEQ-02")
         );
     }
@@ -353,13 +374,10 @@ mod tests {
     fn a_playlist_the_schema_or_resolver_refuses_is_refused_naming_the_setting() {
         let handlers = Handlers::built_in();
         let none = playlist("mot_challenge", Settings::new(), None, &handlers).unwrap_err();
-        assert_eq!(none.location, "root");
-        assert_eq!(
-            playlist("nope", Settings::new(), None, &handlers)
-                .unwrap_err()
-                .location,
-            "nope"
-        );
+        assert_eq!(none.location, Some(Location::field("root")));
+        let nope = playlist("nope", Settings::new(), None, &handlers).unwrap_err();
+        assert_eq!(nope.code, ErrorCode::UnknownHandler);
+        assert!(nope.reason.contains("nope"), "{nope}");
 
         let gone = playlist(
             "mot_challenge",
@@ -379,7 +397,10 @@ mod tests {
         else {
             panic!("a missing folder fails to resolve");
         };
-        assert!(error.location.ends_with("no/such/folder"), "{error:?}");
+        assert!(
+            matches!(&error.location, Some(Location::Host(path)) if path.as_path().ends_with("no/such/folder")),
+            "{error:?}"
+        );
     }
 
     fn resolved_entry(name: &str, labels: &[&str]) -> playlist_resolvers::ResolvedEntry {
@@ -412,9 +433,9 @@ mod tests {
         };
 
         let entries = build(vec![resolved_entry("A", &["GT"]), resolved_entry("A", &[])]);
-        assert_eq!(entries.unwrap_err().location, "A");
+        assert!(entries.unwrap_err().reason.ends_with(": A"));
         let lanes = build(vec![resolved_entry("A", &["GT", "DET", "GT"])]);
-        assert_eq!(lanes.unwrap_err().location, "GT");
+        assert!(lanes.unwrap_err().reason.ends_with(": GT"));
         assert!(
             build(vec![
                 resolved_entry("A", &["GT"]),

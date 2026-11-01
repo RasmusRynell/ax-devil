@@ -52,7 +52,7 @@ export function treeOf({ items, rows }: WorkspaceState): TreeRow[] {
       dimmed: info.hidden || (parent?.dimmed ?? false),
       target:
         opens !== null && info.status.status === "Ready" && !playlist
-          ? { entry: opens, lane: info.kind === "lane" ? info.label : null }
+          ? { entry: opens, lane: info.kind === "lane" ? info.label : undefined }
           : null,
     };
     if (parent) parent.hasChildren = true;

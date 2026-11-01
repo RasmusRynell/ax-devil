@@ -461,11 +461,12 @@ pub(crate) fn lane_id(index: usize) -> u16 {
     u16::try_from(index).unwrap_or(u16::MAX)
 }
 
-/// An error as one line for the user: the reason and, when there is one, where it happened.
+/// An error as one line for the host: the reason and, when it is about a file or a setting, which one.
 pub(crate) fn describe(error: &foundation::UserError) -> String {
-    if error.location.is_empty() {
-        error.reason.clone()
-    } else {
-        format!("{} ({})", error.reason, error.location)
+    use foundation::Location;
+    match &error.location {
+        Some(Location::Host(path)) => format!("{} ({})", error.reason, path.as_path().display()),
+        Some(Location::Field(key)) => format!("{} ({key})", error.reason),
+        Some(Location::Item(_)) | None => error.reason.clone(),
     }
 }

@@ -1,12 +1,13 @@
-use crate::item::ItemId;
-use foundation::UserError;
+use foundation::{ErrorCode, ItemId, UserError};
 use playlist_resolvers::ResolvedPlaylist;
+use serde::{Deserialize, Deserializer, Serialize, Serializer, de};
 use std::{collections::HashSet, fmt};
 
 pub use playlist_resolvers::{ImageSequence, OverlayRef, VideoRef};
 
 /// Names one Content, or one entry of a playlist, for as long as its item exists. Derived from the item id (and the
-/// entry label), so it names the same thing after the item resolves again.
+/// entry label), so it names the same thing after the item resolves again. It travels as its text, and text that is
+/// not a Content or entry id does not deserialize.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct ContentId(String);
 
@@ -24,6 +25,31 @@ impl ContentId {
     /// The id as text, the form that crosses the wire.
     pub fn as_str(&self) -> &str {
         &self.0
+    }
+}
+
+impl Serialize for ContentId {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.serialize_str(&self.0)
+    }
+}
+
+/// Only `<item>` or `<item>/<label>` deserializes, so nothing a client sends can name a Content or entry no item
+/// could have.
+impl<'de> Deserialize<'de> for ContentId {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let text = String::deserialize(deserializer)?;
+        let (item, label) = match text.split_once('/') {
+            Some((item, label)) => (item, Some(label)),
+            None => (text.as_str(), None),
+        };
+        let item =
+            ItemId::parse(item).ok_or_else(|| de::Error::custom("that is not a content id"))?;
+        Ok(match label {
+            Some(label) if !label.is_empty() => Self::of_entry(&item, label),
+            Some(_) => return Err(de::Error::custom("that is not a content id")),
+            None => Self::of_item(&item),
+        })
     }
 }
 
@@ -118,13 +144,13 @@ impl Content {
     }
 
     /// The entry with this id.
-    pub fn entry(&self, id: &str) -> Option<&Entry> {
-        self.entries().iter().find(|entry| entry.id.as_str() == id)
+    pub fn entry(&self, id: &ContentId) -> Option<&Entry> {
+        self.entries().iter().find(|entry| entry.id == *id)
     }
 }
 
-/// Gives the entries of `resolved` their ids, `{item}/{name}`. Fails, naming the label, when two entries share a name
-/// or two overlays of an entry share a lane label.
+/// Gives the entries of `resolved` their ids, `{item}/{name}`. Fails, naming the label in its reason, when two
+/// entries share a name or two overlays of an entry share a lane label.
 pub(crate) fn playlist_content(
     item: &ItemId,
     resolved: ResolvedPlaylist,
@@ -134,9 +160,13 @@ pub(crate) fn playlist_content(
     for entry in resolved.entries {
         if !names.insert(entry.name.clone()) {
             return Err(UserError::new(
-                "Two entries of the playlist have the same name",
-                entry.name,
-            ));
+                ErrorCode::PlaylistInvalid,
+                format!(
+                    "Two entries of the playlist have the same name: {}",
+                    entry.name
+                ),
+            )
+            .at(*item));
         }
         let entry = Entry {
             id: ContentId::of_entry(item, &entry.name),
@@ -144,7 +174,7 @@ pub(crate) fn playlist_content(
             video: entry.video,
             overlays: entry.overlays,
         };
-        check_unique_lanes(&entry)?;
+        check_unique_lanes(item, &entry)?;
         entries.push(entry);
     }
     Ok(PlaylistContent {
@@ -155,16 +185,43 @@ pub(crate) fn playlist_content(
     })
 }
 
-/// Fails, naming the label, when two overlays of `entry` would be the same lane.
-pub(crate) fn check_unique_lanes(entry: &Entry) -> Result<(), UserError> {
+/// Fails, naming the label in its reason, when two overlays of `entry` of the item `item` would be the same lane.
+pub(crate) fn check_unique_lanes(item: &ItemId, entry: &Entry) -> Result<(), UserError> {
     let mut labels = HashSet::new();
     for overlay in &entry.overlays {
         if !labels.insert(overlay.label.as_str()) {
             return Err(UserError::new(
-                format!("Two overlays of {} have the same name", entry.label),
-                overlay.label.clone(),
-            ));
+                ErrorCode::OverlayInvalid,
+                format!(
+                    "Two overlays of {} have the same name: {}",
+                    entry.label, overlay.label
+                ),
+            )
+            .at(*item));
         }
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn only_a_content_or_entry_id_deserializes() {
+        let item = ItemId::generate();
+        for id in [
+            ContentId::of_item(&item),
+            ContentId::of_entry(&item, "SEQ-01"),
+        ] {
+            let text = serde_json::to_value(&id).unwrap();
+            assert_eq!(serde_json::from_value::<ContentId>(text).unwrap(), id);
+        }
+        for bad in ["", "SEQ-01", "not-an-item/SEQ-01", &format!("{item}/")] {
+            assert!(
+                serde_json::from_value::<ContentId>(bad.into()).is_err(),
+                "{bad:?}"
+            );
+        }
+    }
 }

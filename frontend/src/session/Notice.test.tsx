@@ -1,0 +1,131 @@
+import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { credential, GrantsContext } from "../access";
+import { FakeSocket } from "./fakeSession";
+import { SessionProvider } from "./session";
+
+const disconnect = vi.fn(() => Promise.resolve());
+const reload = vi.fn();
+
+beforeEach(() => {
+  vi.stubGlobal("WebSocket", FakeSocket);
+  vi.stubGlobal("location", { href: window.location.href, reload });
+  window.axDevilWindow = { disconnect } as never;
+  FakeSocket.serverPassword = "right";
+  window.sessionStorage.setItem(
+    "ax-devil.credential",
+    JSON.stringify({ kind: "password", password: "wrong" }),
+  );
+});
+
+afterEach(() => {
+  cleanup();
+  vi.clearAllMocks();
+  vi.unstubAllGlobals();
+  window.sessionStorage.clear();
+  FakeSocket.reset();
+  delete window.axDevilWindow;
+});
+
+/** A desktop window on another machine's server, which turned the stored password down. */
+async function rejected() {
+  render(
+    <GrantsContext.Provider value={[]}>
+      <SessionProvider>
+        <p>app</p>
+      </SessionProvider>
+    </GrantsContext.Provider>,
+  );
+  await act(async () => {});
+  return screen.findByRole("alert");
+}
+
+describe("a server that turned the password down", () => {
+  it("leaves no loop: the window can return to the local backend", async () => {
+    expect((await rejected()).textContent).toContain("not valid");
+    expect(screen.queryByRole("button", { name: "Dismiss" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Disconnect" }));
+    expect(disconnect).toHaveBeenCalledOnce();
+  });
+
+  it("takes a new password and loads the page again with it", async () => {
+    await rejected();
+    fireEvent.click(screen.getByRole("button", { name: "Change password" }));
+    fireEvent.change(screen.getByLabelText("Password"), { target: { value: "秘密" } });
+    fireEvent.click(screen.getByRole("button", { name: "OK" }));
+    expect(screen.getByText(/cannot be used/)).toBeTruthy();
+    expect(reload).not.toHaveBeenCalled();
+
+    fireEvent.change(screen.getByLabelText("Password"), { target: { value: "right" } });
+    fireEvent.click(screen.getByRole("button", { name: "OK" }));
+    expect(credential()).toEqual({ kind: "password", password: "right" });
+    expect(reload).toHaveBeenCalledOnce();
+  });
+});
+
+describe("a browser that opened a server with a password", () => {
+  beforeEach(() => {
+    window.sessionStorage.clear();
+    delete window.axDevilWindow;
+  });
+
+  const open = () =>
+    render(
+      <GrantsContext.Provider value={[]}>
+        <SessionProvider>
+          <p>app</p>
+        </SessionProvider>
+      </GrantsContext.Provider>,
+    );
+
+  it("asks for the password, and is let in once it gives the right one", async () => {
+    open();
+    await act(async () => {});
+    expect(screen.queryByRole("button", { name: "Dismiss" })).toBeNull();
+    fireEvent.change(screen.getByLabelText("Password"), { target: { value: "right" } });
+    fireEvent.click(screen.getByRole("button", { name: "OK" }));
+    expect(reload).toHaveBeenCalledOnce();
+
+    // The page loads again with the password it now holds.
+    cleanup();
+    FakeSocket.sockets = [];
+    open();
+    await act(async () => {});
+    expect(screen.getByText("app")).toBeTruthy();
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+
+  it("asks again for a password the server turned down, and is let in with the right one", async () => {
+    window.sessionStorage.setItem(
+      "ax-devil.credential",
+      JSON.stringify({ kind: "password", password: "wrong" }),
+    );
+    open();
+    await act(async () => {});
+    expect((await screen.findByRole("alert")).textContent).toContain("not valid");
+    expect(screen.queryByRole("button", { name: "Dismiss" })).toBeNull();
+    fireEvent.change(screen.getByLabelText("Password"), { target: { value: "right" } });
+    fireEvent.click(screen.getByRole("button", { name: "OK" }));
+    expect(reload).toHaveBeenCalledOnce();
+
+    cleanup();
+    FakeSocket.sockets = [];
+    open();
+    await act(async () => {});
+    expect(screen.getByText("app")).toBeTruthy();
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+
+  it("asks nothing of a join link that was turned away", async () => {
+    const room = FakeSocket.host();
+    window.sessionStorage.setItem(
+      "ax-devil.credential",
+      JSON.stringify({ kind: "join", session: room.id, secret: room.secret }),
+    );
+    open();
+    await act(async () => {});
+    act(() => FakeSocket.latest.endWith(1008));
+    expect((await screen.findByRole("alert")).textContent).toContain("refused");
+    expect(screen.queryByLabelText("Password")).toBeNull();
+  });
+});

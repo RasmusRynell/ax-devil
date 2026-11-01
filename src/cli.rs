@@ -1,446 +1,448 @@
-//! The command line, built from what the app knows: the `playlist` subcommands and their arguments come from each
-//! resolver's settings schema, and `--handler-type` accepts the decoders in the registry.
+//! The command line: the local backend (bare `ax-devil`, or `local` and `playlist` to open something), `serve` for
+//! other machines, `app`, which opens the desktop shell, and the commands that only print.
 //!
-//! Parsing stays pure: it returns what the user asked for, and `main` decides what to start. Commands that only
-//! print, such as `list-handlers`, never need the server, the settings file or the log file.
+//! `args` builds the parser from what the app knows (the `playlist` subcommands come from each resolver's settings
+//! schema); the items the command line asks for wait in the [`LaunchQueue`] for the first Local session.
 
-use clap::{
-    Arg, ArgAction, ArgMatches, Command, ValueHint, builder::PossibleValuesParser,
-    error::ErrorKind, value_parser,
+use crate::paths::Paths;
+use ax_devil::{
+    AppState,
+    access::{Limits, Policy},
+    app,
+    session::LaunchQueue,
+    share::{self, Hosting, LinkBase, ShareListener},
+    video_cache,
+    video_sources::VideoSources,
 };
+use axum::Router;
+use clap::{Args, Parser, Subcommand, ValueHint};
+use foundation::{Location, UserError};
 use handlers::Handlers;
-use playlist_resolvers::{Cli, Field, FieldKind, PlaylistResolver, Settings};
-use serde_json::Value;
-use std::{ffi::OsString, path::PathBuf};
+use playlist_resolvers::Settings;
+use sessions::Secret;
+use std::{
+    error::Error,
+    future::IntoFuture,
+    net::{IpAddr, SocketAddr},
+    path::PathBuf,
+    process::{Command as Process, ExitCode},
+    sync::Arc,
+    time::Duration,
+};
+use tokio::sync::watch;
 use workspace::{WorkspaceItem, intake::NewOverlay};
 
+mod args;
 mod catalog;
+#[cfg(test)]
+mod tests;
 
-/// Everything one run of the program was asked to do.
-pub struct Invocation {
-    /// The settings file given with `--config`.
-    pub config: Option<PathBuf>,
-    /// The cache folder given with `--cache-dir`.
-    pub cache_dir: Option<PathBuf>,
+/// How long open connections, such as the sockets, get to close after Ctrl+C before the backend exits anyway.
+const SHUTDOWN_GRACE: Duration = Duration::from_secs(2);
+
+/// The environment variable that sets the server password for `serve`: printable ASCII without spaces, because a
+/// browser can send nothing else in a header. Unset or empty, a random password is generated.
+const PASSWORD_VARIABLE: &str = "AX_DEVIL_SERVER_PASSWORD";
+
+/// Desktop app for inspecting Axis camera streams, offline video, and analytics overlays.
+#[derive(Parser)]
+#[command(version)]
+struct Cli {
+    #[command(flatten)]
+    global: Global,
+    #[command(subcommand)]
+    command: Option<Command>,
+}
+
+/// The options every command takes.
+#[derive(Args)]
+struct Global {
+    /// Use this settings file instead of $XDG_CONFIG_HOME/ax-devil/settings.json (~/.config/ax-devil/settings.json).
+    #[arg(long, global = true, value_name = "PATH", value_hint = ValueHint::FilePath)]
+    config: Option<PathBuf>,
+    /// Keep caches in this folder instead of $XDG_CACHE_HOME/ax-devil (~/.cache/ax-devil).
+    #[arg(long, global = true, value_name = "PATH", value_hint = ValueHint::DirPath)]
+    cache_dir: Option<PathBuf>,
     /// How much to log.
-    pub log_level: logging::Level,
-    /// What to run.
-    pub action: Action,
+    #[arg(
+        long,
+        global = true,
+        value_name = "DEBUG|INFO|WARNING|ERROR",
+        default_value = "INFO"
+    )]
+    log_level: logging::Level,
+    /// Where the desktop backend listens for other machines while a session is shared; tests use a free port.
+    #[arg(
+        long,
+        hide = true,
+        value_name = "ADDRESS",
+        default_value = "0.0.0.0:7340"
+    )]
+    share_address: SocketAddr,
 }
 
-/// What to run.
-pub enum Action {
-    /// Print the decoders and resolvers and exit; needs no server.
-    ListHandlers,
-    /// List the catalogs or check a catalog file and exit; needs no server.
-    Catalog(CatalogCommand),
-    /// Start the app, with the item the command line asked for, if any.
-    Serve(Opens),
-}
-
-/// What `catalog` was asked to do.
-pub enum CatalogCommand {
-    /// Print the built-in catalogs.
-    List,
-    /// Validate a catalog file and print what it says about itself, or its problems.
-    Check(PathBuf),
-}
-
-/// The one item a command line adds to the new Untitled workspace.
-pub enum Opens {
-    /// Nothing: the plain launch.
-    Nothing,
-    /// `local`: a video with overlays.
-    Video {
+#[derive(Subcommand)]
+enum Command {
+    /// Open an offline video file in a new Untitled workspace.
+    ///
+    /// A file that cannot be read stays listed in the workspace, with the reason.
+    Local {
         /// The video file.
+        #[arg(long, value_name = "PATH", value_hint = ValueHint::FilePath)]
         video: PathBuf,
-        /// The overlay files, each with its decoder when the user named it.
-        overlays: Vec<NewOverlay>,
+        /// An overlay file drawn on the video; repeat for several.
+        #[arg(long, value_name = "PATH", value_hint = ValueHint::FilePath)]
+        overlay: Vec<PathBuf>,
+        /// The decoder of the --overlay in the same position. Give one for every --overlay or none, which picks each
+        /// decoder by file extension.
+        #[arg(long, value_name = "HANDLER")]
+        handler_type: Vec<String>,
     },
-    /// `playlist`: a resolver and the settings its arguments gave.
+    /// Open a playlist in a new Untitled workspace.
+    ///
+    /// Only `args` makes this one, from the subcommand of a resolver, so the derive skips it.
+    #[command(skip)]
     Playlist {
         /// The resolver id.
         resolver: String,
-        /// The settings, keyed as the resolver's schema declares.
+        /// The settings its arguments gave, keyed as the resolver's schema declares.
         settings: Settings,
+    },
+    /// List the overlay decoders and playlist resolvers, then exit.
+    ListHandlers,
+    /// List the render catalogs or check a catalog file, then exit.
+    #[command(subcommand)]
+    Catalog(CatalogCommand),
+    /// Serve the app to other machines, protected by a server password.
+    ///
+    /// AX_DEVIL_SERVER_PASSWORD chooses the password (printable ASCII, no spaces); otherwise one is generated.
+    Serve(ServeArgs),
+    /// Open the desktop app, optionally on another machine's server.
+    App(AppArgs),
+}
+
+/// What `catalog` was asked to do.
+#[derive(Subcommand)]
+enum CatalogCommand {
+    /// List the built-in catalogs.
+    List,
+    /// Validate a catalog file; every problem is listed with its JSON location.
+    Check {
+        /// The catalog file.
+        #[arg(value_name = "FILE", value_hint = ValueHint::FilePath)]
+        file: PathBuf,
     },
 }
 
-impl Opens {
-    /// The items to add: none, or the one the command line described, built by the same intake as the dialogs.
-    pub fn into_items(
+#[derive(Args)]
+struct ServeArgs {
+    /// The address to listen on.
+    #[arg(long, default_value = "127.0.0.1")]
+    bind: IpAddr,
+    /// The port to listen on; 0 picks a free one.
+    #[arg(long, default_value_t = 7340)]
+    port: u16,
+    /// The address other machines use to reach this server, when a reverse proxy sits in front of it.
+    #[arg(long, value_name = "URL", value_parser = LinkBase::parse_public)]
+    public_url: Option<LinkBase>,
+    /// Count open connections for the whole server only, not per client address: every client of a reverse proxy
+    /// has the proxy's address.
+    #[arg(long)]
+    behind_proxy: bool,
+}
+
+#[derive(Args)]
+struct AppArgs {
+    /// Load this server's frontend instead of starting the local backend.
+    #[arg(long, value_name = "URL")]
+    server: Option<String>,
+}
+
+/// Runs the command the user gave.
+pub async fn run() -> ExitCode {
+    let handlers = Handlers::built_in();
+    let Cli { global, command } = args::parse(&handlers);
+    // These commands only print: no logging, settings file or port.
+    match &command {
+        Some(Command::ListHandlers) => return catalog::Report::listing(&handlers).print(),
+        Some(Command::Catalog(catalog)) => return catalog::run(catalog).print(),
+        _ => {}
+    }
+    let paths = Paths::resolve(
+        &|name| std::env::var_os(name),
+        global.config,
+        global.cache_dir,
+    );
+    let launcher = matches!(command, Some(Command::App(_)));
+    let log_file = paths.as_ref().ok().map(|paths| paths.log_file.as_path());
+    logging::init(global.log_level, log_file.filter(|_| !launcher));
+    let result = match command {
+        Some(Command::App(args)) => launch(&args),
+        command => match paths {
+            Err(error) => Err(error.into()),
+            Ok(paths) => match command {
+                Some(Command::Serve(args)) => serve(&paths, args, handlers).await,
+                command => match launch_items(command, &handlers) {
+                    Ok(items) => host_desktop(&paths, global.share_address, handlers, items).await,
+                    Err(reason) => Err(reason.into()),
+                },
+            },
+        },
+    };
+    result.unwrap_or_else(|error| {
+        tracing::error!("{error}");
+        ExitCode::FAILURE
+    })
+}
+
+/// The items `command` asks the first window to open, built by the same intake as the dialogs; none for a plain
+/// launch. The error says what was refused and why.
+fn launch_items(
+    command: Option<Command>,
+    handlers: &Handlers,
+) -> Result<Vec<WorkspaceItem>, String> {
+    let item = match command {
+        Some(Command::Local {
+            video,
+            overlay,
+            handler_type,
+        }) => {
+            let overlays: Vec<_> = overlay
+                .into_iter()
+                .enumerate()
+                .map(|(position, path)| NewOverlay {
+                    path,
+                    handler: handler_type.get(position).cloned(),
+                })
+                .collect();
+            workspace::intake::video(&video, &overlays, handlers)
+        }
+        Some(Command::Playlist { resolver, settings }) => {
+            workspace::intake::playlist(&resolver, settings, None, handlers)
+        }
+        _ => return Ok(Vec::new()),
+    };
+    item.map(|item| vec![item])
+        .map_err(|error| describe(&error))
+}
+
+/// What was refused and why, led by the file or setting it is about.
+fn describe(error: &UserError) -> String {
+    match &error.location {
+        Some(Location::Host(path)) => format!("{}: {}", path.as_path().display(), error.reason),
+        Some(Location::Field(key)) => format!("{key}: {}", error.reason),
+        Some(Location::Item(_)) | None => error.reason.clone(),
+    }
+}
+
+/// What both backends start from: the services their routes are adapters over, and the stop signal.
+struct Services {
+    settings: Arc<settings::Settings>,
+    launch: Arc<LaunchQueue>,
+    videos: Arc<VideoSources>,
+    handlers: Handlers,
+    cache_dir: PathBuf,
+    stop: watch::Sender<bool>,
+}
+
+impl Services {
+    /// Loads the settings, starts the video cache and queues `items` for the first Local session. Ctrl+C turns the
+    /// stop signal on.
+    fn start(
+        paths: &Paths,
+        handlers: Handlers,
+        items: Vec<WorkspaceItem>,
+    ) -> Result<Self, Box<dyn Error>> {
+        let settings = Arc::new(settings::Settings::load(&paths.config_file)?);
+        tracing::info!("Loaded settings from {}", paths.config_file.display());
+        let cache_dir = paths.cache_dir(settings.state().folder("storage.cache_dir"));
+        tracing::info!("Caching in {}", cache_dir.display());
+        let videos = video_cache::start(&settings, &cache_dir);
+        let (stop, _) = watch::channel(false);
+        let stop_on_ctrl_c = stop.clone();
+        tokio::spawn(async move {
+            let _ = tokio::signal::ctrl_c().await;
+            stop_on_ctrl_c.send_replace(true);
+        });
+        Ok(Self {
+            settings,
+            launch: Arc::new(LaunchQueue::new(items)),
+            videos,
+            handlers,
+            cache_dir,
+            stop,
+        })
+    }
+
+    /// The state of one listener over these services.
+    fn state(&self, policy: Policy) -> AppState {
+        AppState::new(
+            Arc::clone(&self.settings),
+            policy,
+            Arc::clone(&self.videos),
+            self.stop.subscribe(),
+            self.handlers.clone(),
+            &self.cache_dir,
+        )
+        .with_launch(Arc::clone(&self.launch))
+    }
+
+    /// Serves `router` until the stop signal, giving connections [`SHUTDOWN_GRACE`] to close, then ends every viewer
+    /// and waits once for the decode threads to finish their frame and exit.
+    async fn serve(
         self,
-        handlers: &Handlers,
-    ) -> Result<Vec<WorkspaceItem>, foundation::UserError> {
-        match self {
-            Self::Nothing => Ok(Vec::new()),
-            Self::Video { video, overlays } => {
-                workspace::intake::video(&video, &overlays, handlers).map(|item| vec![item])
+        listener: tokio::net::TcpListener,
+        router: Router,
+    ) -> Result<(), Box<dyn Error>> {
+        let (mut graceful, mut expired) = (self.stop.subscribe(), self.stop.subscribe());
+        let server = axum::serve(
+            listener,
+            router.into_make_service_with_connect_info::<SocketAddr>(),
+        )
+        .with_graceful_shutdown(async move {
+            let _ = graceful.wait_for(|stop| *stop).await;
+        });
+        let served = tokio::select! {
+            served = server.into_future() => served,
+            () = async {
+                let _ = expired.wait_for(|stop| *stop).await;
+                tokio::time::sleep(SHUTDOWN_GRACE).await;
+            } => {
+                tracing::warn!("Closing connections that stayed open after Ctrl+C");
+                Ok(())
             }
-            Self::Playlist { resolver, settings } => {
-                workspace::intake::playlist(&resolver, settings, None, handlers)
-                    .map(|item| vec![item])
-            }
-        }
-    }
-}
-
-/// What a `catalog` subcommand prints, and whether it succeeded.
-pub fn run_catalog(command: &CatalogCommand) -> catalog::Report {
-    match command {
-        CatalogCommand::List => catalog::list(&catalogs::Library::built_in()),
-        CatalogCommand::Check(path) => catalog::check(path),
-    }
-}
-
-/// Reads the process arguments; prints help, a version or a usage error and exits when that is what was asked for.
-pub fn parse(handlers: &Handlers) -> Invocation {
-    try_parse_from(handlers, std::env::args_os()).unwrap_or_else(|error| error.exit())
-}
-
-/// Reads `args`, whose first item is the program name.
-pub fn try_parse_from<I>(handlers: &Handlers, args: I) -> Result<Invocation, clap::Error>
-where
-    I: IntoIterator,
-    I::Item: Into<OsString> + Clone,
-{
-    let matches = command(handlers).try_get_matches_from(args)?;
-    Ok(Invocation {
-        config: matches.get_one::<PathBuf>("config").cloned(),
-        cache_dir: matches.get_one::<PathBuf>("cache-dir").cloned(),
-        log_level: matches
-            .get_one::<logging::Level>("log-level")
-            .copied()
-            .unwrap_or_default(),
-        action: action(handlers, &matches)?,
-    })
-}
-
-/// The decoders and resolvers `list-handlers` prints, one per line.
-pub fn handlers_listing(handlers: &Handlers) -> String {
-    let decoders: Vec<_> = handlers
-        .file_decoders()
-        .iter()
-        .map(|decoder| {
-            let spec = decoder.spec();
-            (
-                spec.handler,
-                format!("{} ({})", spec.display_name, spec.extensions.join(", ")),
-            )
-        })
-        .collect();
-    let resolvers: Vec<_> = handlers
-        .resolvers()
-        .iter()
-        .map(|resolver| {
-            let spec = resolver.spec();
-            (
-                spec.id,
-                format!("{}: {}", spec.display_name, spec.description),
-            )
-        })
-        .collect();
-    let width = decoders
-        .iter()
-        .chain(&resolvers)
-        .map(|(key, _)| key.len())
-        .max()
-        .unwrap_or(0);
-    let mut listing = String::from("File overlay handlers (for --handler-type):\n");
-    for (key, line) in &decoders {
-        listing.push_str(&format!("  {key:<width$}  {line}\n"));
-    }
-    listing.push_str("\nPlaylist resolvers (ax-devil playlist <resolver> --help):\n");
-    for (key, line) in &resolvers {
-        listing.push_str(&format!("  {key:<width$}  {line}\n"));
-    }
-    listing
-}
-
-fn command(handlers: &Handlers) -> Command {
-    Command::new("ax-devil")
-        .version(env!("CARGO_PKG_VERSION"))
-        .about("Desktop app for inspecting Axis camera streams, offline video, and analytics overlays.")
-        .arg(
-            Arg::new("config")
-                .long("config")
-                .value_name("PATH")
-                .value_parser(value_parser!(PathBuf))
-                .value_hint(ValueHint::FilePath)
-                .help("Use this settings file instead of $XDG_CONFIG_HOME/ax-devil/settings.json (~/.config/ax-devil/settings.json)."),
-        )
-        .arg(
-            Arg::new("cache-dir")
-                .long("cache-dir")
-                .value_name("PATH")
-                .value_parser(value_parser!(PathBuf))
-                .value_hint(ValueHint::DirPath)
-                .help("Keep caches in this folder instead of $XDG_CACHE_HOME/ax-devil (~/.cache/ax-devil)."),
-        )
-        .arg(
-            Arg::new("log-level")
-                .long("log-level")
-                .value_name("DEBUG|INFO|WARNING|ERROR")
-                .default_value("INFO")
-                .value_parser(value_parser!(logging::Level))
-                .help("How much to log."),
-        )
-        .subcommand(local_command(handlers))
-        .subcommand(playlist_command(handlers))
-        .subcommand(
-            Command::new("list-handlers")
-                .about("List the overlay decoders and playlist resolvers, then exit."),
-        )
-        .subcommand(catalog_command())
-}
-
-fn catalog_command() -> Command {
-    Command::new("catalog")
-        .about("List the render catalogs or check a catalog file, then exit.")
-        .subcommand_required(true)
-        .arg_required_else_help(true)
-        .subcommand(Command::new("list").about("List the built-in catalogs."))
-        .subcommand(
-            Command::new("check")
-                .about("Validate a catalog file; every problem is listed with its JSON location.")
-                .arg(
-                    Arg::new("file")
-                        .value_name("FILE")
-                        .required(true)
-                        .value_parser(value_parser!(PathBuf))
-                        .value_hint(ValueHint::FilePath)
-                        .help("The catalog file."),
-                ),
-        )
-}
-
-fn local_command(handlers: &Handlers) -> Command {
-    Command::new("local")
-        .about("Open an offline video file in a new Untitled workspace.")
-        .long_about(
-            "Open an offline video file in a new Untitled workspace.\n\nA file that cannot be read stays listed in the workspace, with the reason.",
-        )
-        .arg(
-            Arg::new("video")
-                .long("video")
-                .value_name("PATH")
-                .required(true)
-                .value_parser(value_parser!(PathBuf))
-                .value_hint(ValueHint::FilePath)
-                .help("The video file."),
-        )
-        .arg(
-            Arg::new("overlay")
-                .long("overlay")
-                .value_name("PATH")
-                .action(ArgAction::Append)
-                .value_parser(value_parser!(PathBuf))
-                .value_hint(ValueHint::FilePath)
-                .help("An overlay file drawn on the video; repeat for several."),
-        )
-        .arg(
-            Arg::new("handler-type")
-                .long("handler-type")
-                .value_name("HANDLER")
-                .action(ArgAction::Append)
-                .value_parser(handler_parser(handlers))
-                .help("The decoder of the --overlay in the same position. Give one for every --overlay or none, which picks each decoder by file extension."),
-        )
-}
-
-fn playlist_command(handlers: &Handlers) -> Command {
-    Command::new("playlist")
-        .about("Open a playlist in a new Untitled workspace.")
-        .subcommand_required(true)
-        .arg_required_else_help(true)
-        .subcommands(
-            handlers
-                .resolvers()
-                .iter()
-                .map(|resolver| resolver_command(resolver.as_ref(), handlers)),
-        )
-}
-
-/// One resolver's subcommand: an argument per schema field.
-fn resolver_command(resolver: &dyn PlaylistResolver, handlers: &Handlers) -> Command {
-    let spec = resolver.spec();
-    Command::new(spec.id).about(spec.description).args(
-        resolver
-            .schema()
-            .fields
-            .iter()
-            .map(|field| field_arg(field, handlers)),
-    )
-}
-
-fn field_arg(field: &Field, handlers: &Handlers) -> Arg {
-    let arg = Arg::new(field.key).required(field.required);
-    let arg = match field.cli {
-        Cli::Positional => arg,
-        Cli::Flag(name) => arg.long(name),
-    };
-    match &field.kind {
-        FieldKind::Folder => arg.value_hint(ValueHint::DirPath).help(field.label),
-        FieldKind::File { .. } => arg.value_hint(ValueHint::FilePath).help(field.label),
-        FieldKind::Text => arg.help(field.label),
-        FieldKind::Handler => arg
-            .value_name("HANDLER")
-            .value_parser(handler_parser(handlers))
-            .help(field.label),
-        FieldKind::Scan { .. } => arg
-            .value_name("A,B,...")
-            .value_delimiter(',')
-            .action(ArgAction::Append)
-            .help(format!(
-                "{}, comma-separated; all when left out",
-                field.label
-            )),
-    }
-}
-
-fn handler_parser(handlers: &Handlers) -> PossibleValuesParser {
-    PossibleValuesParser::new(
-        handlers
-            .file_decoders()
-            .iter()
-            .map(|decoder| decoder.spec().handler),
-    )
-}
-
-fn action(handlers: &Handlers, matches: &ArgMatches) -> Result<Action, clap::Error> {
-    match matches.subcommand() {
-        None => Ok(Action::Serve(Opens::Nothing)),
-        Some(("list-handlers", _)) => Ok(Action::ListHandlers),
-        Some(("catalog", catalog)) => Ok(Action::Catalog(match catalog.subcommand() {
-            Some(("check", check)) => CatalogCommand::Check(
-                check
-                    .get_one::<PathBuf>("file")
-                    .cloned()
-                    .unwrap_or_default(),
-            ),
-            _ => CatalogCommand::List,
-        })),
-        Some(("local", local)) => local_opens(local).map(Action::Serve),
-        Some(("playlist", playlist)) => playlist_opens(handlers, playlist).map(Action::Serve),
-        Some((name, _)) => Err(usage_error(
-            ErrorKind::InvalidSubcommand,
-            format!("unrecognized subcommand '{name}'"),
-        )),
-    }
-}
-
-fn local_opens(matches: &ArgMatches) -> Result<Opens, clap::Error> {
-    let paths: Vec<PathBuf> = matches
-        .get_many("overlay")
-        .into_iter()
-        .flatten()
-        .cloned()
-        .collect();
-    let handler_types: Vec<&String> = matches
-        .get_many("handler-type")
-        .into_iter()
-        .flatten()
-        .collect();
-    if !handler_types.is_empty() && handler_types.len() != paths.len() {
-        return Err(usage_error(
-            ErrorKind::WrongNumberOfValues,
-            format!(
-                "--handler-type is given {} time(s) for {} --overlay; give one for every --overlay, or none",
-                handler_types.len(),
-                paths.len()
-            ),
-        ));
-    }
-    let overlays = paths
-        .into_iter()
-        .enumerate()
-        .map(|(position, path)| NewOverlay {
-            path,
-            handler: handler_types
-                .get(position)
-                .map(|handler| (*handler).clone()),
-        })
-        .collect();
-    Ok(Opens::Video {
-        video: matches
-            .get_one::<PathBuf>("video")
-            .cloned()
-            .unwrap_or_default(),
-        overlays,
-    })
-}
-
-fn playlist_opens(handlers: &Handlers, matches: &ArgMatches) -> Result<Opens, clap::Error> {
-    let Some((id, resolver_matches)) = matches.subcommand() else {
-        return Err(usage_error(
-            ErrorKind::MissingSubcommand,
-            "name a playlist resolver".to_string(),
-        ));
-    };
-    let Some(resolver) = handlers.resolver(id) else {
-        return Err(usage_error(
-            ErrorKind::InvalidSubcommand,
-            format!("unrecognized playlist resolver '{id}'"),
-        ));
-    };
-    let settings = settings_from(resolver.as_ref(), resolver_matches)?;
-    Ok(Opens::Playlist {
-        resolver: id.to_string(),
-        settings,
-    })
-}
-
-/// The settings the arguments gave: folders and files made absolute, a `Scan` field a list when given and left out
-/// when not (which means all of them).
-fn settings_from(
-    resolver: &dyn PlaylistResolver,
-    matches: &ArgMatches,
-) -> Result<Settings, clap::Error> {
-    let schema = resolver.schema();
-    let mut settings = Settings::new();
-    for field in schema.fields {
-        let value = match &field.kind {
-            FieldKind::Scan { .. } => matches
-                .get_many::<String>(field.key)
-                .map(|names| Value::Array(names.cloned().map(Value::String).collect())),
-            FieldKind::Folder | FieldKind::File { .. } => matches
-                .get_one::<String>(field.key)
-                .map(|path| absolute(field, path).map(Value::String))
-                .transpose()?,
-            FieldKind::Text | FieldKind::Handler => matches
-                .get_one::<String>(field.key)
-                .cloned()
-                .map(Value::String),
         };
-        if let Some(value) = value {
-            settings.insert(field.key.to_string(), value);
+        // Whatever ended the server, every viewer ends.
+        self.stop.send_replace(true);
+        let videos = self.videos;
+        let retired =
+            tokio::task::spawn_blocking(move || videos.registry().wait_retired(SHUTDOWN_GRACE))
+                .await;
+        if !matches!(retired, Ok(true)) {
+            tracing::warn!("Some video decoders did not stop in time");
         }
+        Ok(served?)
     }
-    schema.validate(&settings).map_err(|error| {
-        usage_error(
-            ErrorKind::InvalidValue,
-            format!("{}: {}", error.location, error.reason),
-        )
-    })?;
-    Ok(settings)
 }
 
-/// `path` as an absolute path, so the item means the same folder whatever the working folder.
-fn absolute(field: &Field, path: &str) -> Result<String, clap::Error> {
-    std::path::absolute(path)
+/// The backend for the desktop shell and development: loopback only, on `$PORT` (default 7330).
+async fn host_desktop(
+    paths: &Paths,
+    share_address: SocketAddr,
+    handlers: Handlers,
+    items: Vec<WorkspaceItem>,
+) -> Result<ExitCode, Box<dyn Error>> {
+    let services = Services::start(paths, handlers, items)?;
+    let port = std::env::var("PORT")
+        .unwrap_or_else(|_| "7330".into())
+        .parse::<u16>()?;
+    let listener = tokio::net::TcpListener::bind(("127.0.0.1", port)).await?;
+    // The desktop shell and the development supervisor wait for this exact line.
+    announce(&[format!("ax-devil: http://{}", listener.local_addr()?)]);
+    let state = services
+        .state(Policy::Local)
+        .with_windows(paths.window_file.clone());
+    // The listener for other machines serves the sessions of this state and opens when one starts sharing.
+    let hosting = Hosting::Lan(ShareListener::new(share_address, &state));
+    services
+        .serve(listener, app(state.with_hosting(hosting)))
+        .await?;
+    Ok(ExitCode::SUCCESS)
+}
+
+/// The backend for other machines. It reads the same settings file, but only the Server settings are reachable.
+async fn serve(
+    paths: &Paths,
+    args: ServeArgs,
+    handlers: Handlers,
+) -> Result<ExitCode, Box<dyn Error>> {
+    share::refuse_development_build().map_err(|reason| format!("serve: {reason}"))?;
+    let services = Services::start(paths, handlers, Vec::new())?;
+    let chosen = std::env::var(PASSWORD_VARIABLE)
         .ok()
-        .and_then(|absolute| absolute.to_str().map(str::to_owned))
-        .ok_or_else(|| {
-            usage_error(
-                ErrorKind::InvalidValue,
-                format!("{}: '{path}' is not a usable path", field.label),
-            )
+        .filter(|text| !text.is_empty());
+    let generated = chosen.is_none();
+    let password = match chosen {
+        Some(text) => {
+            Secret::chosen(text).map_err(|reason| format!("{PASSWORD_VARIABLE}: {reason}"))?
+        }
+        None => Secret::generate(),
+    };
+    let listener = tokio::net::TcpListener::bind((args.bind, args.port)).await?;
+    let bound = listener.local_addr()?;
+    let base = LinkBase::for_listener(args.public_url, bound);
+    if !bound.ip().is_loopback() && !base.is_https() {
+        tracing::warn!(
+            "Serving plain HTTP on {bound}: the password and everything shown cross the network unencrypted. \
+             Use a trusted network, or put a TLS reverse proxy in front and pass --public-url https://..."
+        );
+    }
+    announce(&if generated {
+        vec![
+            format!("ax-devil server password: {password}"),
+            format!("ax-devil: {}", base.link(&format!("password={password}"))),
+        ]
+    } else {
+        vec![format!("ax-devil: {}", base.url())]
+    });
+    let limits = if args.behind_proxy {
+        Limits::behind_proxy()
+    } else {
+        Limits::default()
+    };
+    let state = services
+        .state(Policy::Shared {
+            password: Some(password),
         })
+        .with_limits(limits)
+        .with_hosting(Hosting::Server(base));
+    services.serve(listener, app(state)).await?;
+    Ok(ExitCode::SUCCESS)
 }
 
-fn usage_error(kind: ErrorKind, message: String) -> clap::Error {
-    clap::Error::raw(kind, message)
+/// Starts the desktop shell and waits for it, passing on its exit code.
+fn launch(args: &AppArgs) -> Result<ExitCode, Box<dyn Error>> {
+    let desktop = match std::env::var_os("AX_DEVIL_DESKTOP") {
+        Some(folder) => PathBuf::from(folder),
+        // target/<profile>/ax-devil sits three levels below the checkout that holds desktop/.
+        None => std::env::current_exe()?
+            .ancestors()
+            .nth(3)
+            .map(|root| root.join("desktop"))
+            .unwrap_or_default(),
+    };
+    let binary = if cfg!(windows) {
+        "electron.cmd"
+    } else {
+        "electron"
+    };
+    let electron = desktop.join("node_modules/.bin").join(binary);
+    if !electron.is_file() {
+        return Err(format!(
+            "Cannot find the desktop shell's Electron at {}; set AX_DEVIL_DESKTOP to the desktop folder, \
+             installed with pnpm install",
+            electron.display()
+        )
+        .into());
+    }
+    let mut shell = Process::new(electron);
+    // Shells hosted in an Electron app export this, which would start Electron as plain Node and crash it at once.
+    shell.env_remove("ELECTRON_RUN_AS_NODE");
+    shell.arg(&desktop);
+    if let Some(server) = &args.server {
+        shell.args(["--server", server]);
+    }
+    let status = shell.status()?;
+    Ok(status
+        .code()
+        .and_then(|code| u8::try_from(code).ok())
+        .map_or(ExitCode::FAILURE, ExitCode::from))
 }
 
-#[cfg(test)]
-mod tests;
+/// Prints the lines other programs and the operator read from stdout.
+#[allow(clippy::print_stdout)]
+fn announce(lines: &[String]) {
+    for line in lines {
+        println!("{line}");
+    }
+}

@@ -1,6 +1,6 @@
 //! The threads of a viewer: one loader per overlay file, and one worker that compiles catalogs and prepares frames.
 
-use foundation::{Interrupt, UserError};
+use foundation::{ErrorCode, Interrupt, UserError};
 use playlist_resolvers::OverlayRef;
 
 use crate::{
@@ -16,8 +16,8 @@ struct CloseOnExit<'a>(&'a Shared);
 impl Drop for CloseOnExit<'_> {
     fn drop(&mut self) {
         self.0.abort(&UserError::new(
+            ErrorCode::Internal,
             "The overlays stopped unexpectedly",
-            "overlay worker",
         ));
         self.0.close();
     }

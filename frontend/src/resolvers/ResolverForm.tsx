@@ -1,6 +1,8 @@
 import { useEffect, useReducer, useRef } from "react";
-import type { ApiError, DecoderInfo, FieldInfo, ResolverInfo } from "../generated/api";
+import { reasonOf } from "../errors";
+import type { DecoderInfo, ErrorWire, FieldInfo, ResolverInfo } from "../generated/api";
 import { Refusal } from "../shell/SettingField";
+import { useServerKind } from "../shell/windowBridge";
 import { FieldControl, type FieldForm } from "./fields";
 import {
   checkedCount,
@@ -94,23 +96,24 @@ function settingsOf(resolver: ResolverInfo, state: State): Settings | null {
   return settings;
 }
 
-/** The refusals to show at `field`: the load's, and failed scans, each at the setting it names or else at its own field. */
-function refusalsAt(
+/** The failed scans to show at `field`, each at the setting it names or else at its own field. */
+function failuresAt(
   resolver: ResolverInfo,
   scans: Readonly<Record<string, ScanView>>,
-  refusal: ApiError | null,
   field: FieldInfo,
-): ApiError[] {
-  const names = (location: string) => resolver.fields.some((other) => other.key === location);
-  const problems = [refusal, ...scanFields(resolver).map((scan) => scans[scan.key]?.failure)];
-  return problems.filter(
-    (problem): problem is ApiError =>
-      !!problem &&
-      (problem.location === field.key ||
-        (field.kind.kind === "Scan" &&
-          scans[field.key]?.failure === problem &&
-          !names(problem.location))),
-  );
+): ErrorWire[] {
+  const names = (location: string | undefined) =>
+    resolver.fields.some((other) => other.key === location);
+  return scanFields(resolver)
+    .map((scan) => scans[scan.key]?.failure)
+    .filter(
+      (problem): problem is ErrorWire =>
+        !!problem &&
+        (problem.location === field.key ||
+          (field.kind.kind === "Scan" &&
+            scans[field.key]?.failure === problem &&
+            !names(problem.location))),
+    );
 }
 
 /** A resolver form's state and what to do with it. */
@@ -132,6 +135,8 @@ export function useResolverForm(
   initial?: Settings,
 ): ResolverFormState {
   const [state, dispatch] = useReducer(reduce, undefined, () => start(resolver, decoders, initial));
+  // Only the backend's own window shares its machine's folders with it.
+  const bridge = useServerKind() === "local" ? window.axDevilWindow : undefined;
   const controllers = useRef(new Map<string, AbortController>());
   // Another resolver is another form.
   if (state.resolverId !== resolver.id) {
@@ -185,6 +190,7 @@ export function useResolverForm(
   return {
     resolver,
     decoders,
+    pickFolder: bridge && (() => bridge.pickFolder()),
     values: state.values,
     scans: state.scans,
     settings: settingsOf(resolver, state),
@@ -208,21 +214,15 @@ export function useResolverForm(
   };
 }
 
-/** The fields of a resolver, each with the refusals that are about it. `refusal` is the backend's answer to a load. */
-export function ResolverForm({
-  form,
-  refusal,
-}: {
-  form: ResolverFormState;
-  refusal: ApiError | null;
-}) {
+/** The fields of a resolver, each with the failed scans that are about it. */
+export function ResolverForm({ form }: { form: ResolverFormState }) {
   return (
     <>
       {form.resolver.fields.map((field) => (
         <div key={field.key} className="flex flex-col gap-s">
           <FieldControl field={field} form={form} />
-          {refusalsAt(form.resolver, form.scans, refusal, field).map((problem) => (
-            <Refusal key={problem.reason} reason={problem.reason} />
+          {failuresAt(form.resolver, form.scans, field).map((problem) => (
+            <Refusal key={reasonOf(problem)} reason={reasonOf(problem)} />
           ))}
         </div>
       ))}

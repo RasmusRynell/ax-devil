@@ -1,10 +1,9 @@
-import { useMemo } from "react";
+import { reasonOf } from "../errors";
 import type { ItemState } from "../generated/api";
 import { IconButton } from "../kit/IconButton";
+import { useCan, useCommand, useView } from "../session/session";
 import { viewerFor } from "../viewers";
-import { hiddenOf, type Hidden } from "./hidden";
-import type { WorkspaceStore } from "../workspace/store";
-import { useWorkspace } from "../workspace/WorkspaceProvider";
+import { useViewers } from "./useViewers";
 
 /** What shows for an item whose viewer is not ready: it is resolving, or it failed with a reason. */
 function ItemStatus({ item }: { item: ItemState }) {
@@ -12,8 +11,10 @@ function ItemStatus({ item }: { item: ItemState }) {
   if (resolution.status === "Failed")
     return (
       <div role="alert" className="m-auto flex max-w-full flex-col gap-s p-xl text-center">
-        <p className="m-0 font-semibold break-words">{resolution.reason}</p>
-        <p className="m-0 text-small break-all text-muted">{resolution.location}</p>
+        <p className="m-0 font-semibold break-words">{reasonOf(resolution)}</p>
+        {resolution.location && (
+          <p className="m-0 text-small break-all text-muted">{resolution.location}</p>
+        )}
       </div>
     );
   return (
@@ -23,41 +24,21 @@ function ItemStatus({ item }: { item: ItemState }) {
   );
 }
 
-function ItemView({
-  item,
-  store,
-  hidden,
-}: {
-  item: ItemState;
-  store: WorkspaceStore;
-  hidden: Hidden;
-}) {
+function ItemView({ item }: { item: ItemState }) {
   const { resolution } = item;
   if (resolution.status !== "Resolved") return <ItemStatus item={item} />;
-  const Viewer = viewerFor(resolution.content);
-  const memory = {
-    saved: store.remembered(item.id),
-    save: (state: unknown) => store.remember(item.id, state),
-  };
-  return (
-    <Viewer
-      key={resolution.content.id}
-      content={resolution.content}
-      memory={memory}
-      hidden={hidden}
-    />
-  );
+  const { content } = resolution;
+  const Viewer = viewerFor(content);
+  // A new generation is a new stream: closing and reopening the item shows a fresh viewer.
+  return <Viewer key={`${content.id}.${content.generation}`} item={item.id} content={content} />;
 }
 
 /** The central area while viewers are open: a tab for each, and the active item's viewer. */
 export function ViewerHost() {
-  const { view, store } = useWorkspace();
-  const items = view.viewers.flatMap(
-    (id) => view.state?.items.find((item) => item.id === id) ?? [],
-  );
-  const active = items.find((item) => item.id === view.active);
-  const rows = view.state?.rows;
-  const hidden = useMemo(() => hiddenOf(rows ?? []), [rows]);
+  const { items, active } = useViewers();
+  const [, setActive] = useView("active");
+  const command = useCommand();
+  const closable = useCan("content");
   return (
     <div className="flex h-full min-h-0 w-full min-w-0 flex-col">
       <div
@@ -74,8 +55,9 @@ export function ViewerHost() {
               type="button"
               role="tab"
               id={`tab-${item.id}`}
+              data-cursor-id={`tab:${item.id}`}
               aria-selected={item.id === active?.id}
-              onClick={() => store.activate(item.id)}
+              onClick={() => setActive(item.id)}
               className="h-row max-w-[24ch] truncate bg-transparent pr-xs pl-m text-fg hover:bg-hover focus-ring-inset aria-selected:font-semibold"
             >
               {item.label}
@@ -83,7 +65,15 @@ export function ViewerHost() {
             <IconButton
               icon="x"
               label={`Close ${item.label}`}
-              onClick={() => store.close(item.id)}
+              data-cursor-id={`tab-close:${item.id}`}
+              disabled={!closable}
+              // A refused close leaves the tab open, which says so.
+              onClick={() =>
+                void command({
+                  type: "content",
+                  command: { type: "closeViewer", item: item.id },
+                }).catch(() => undefined)
+              }
               className="size-row hover:bg-hover"
             />
           </div>
@@ -94,7 +84,7 @@ export function ViewerHost() {
         aria-labelledby={active && `tab-${active.id}`}
         className="flex min-h-0 flex-1 flex-col"
       >
-        {active && <ItemView item={active} store={store} hidden={hidden} />}
+        {active && <ItemView item={active} />}
       </div>
     </div>
   );

@@ -4,18 +4,17 @@
 
 mod common;
 
-use api_types::playback::{
-    ClientMessage, Direction, LaneInfo, LaneStatusWire, LaneViewWire, ServerMessage, StickyWire,
-    TargetWire,
-};
-use common::{Backend, Event, MIB, Overlay, Viewer, fixture, luma};
-use foundation::{CancelToken, Interrupt};
+use api_types::playback::{ClientMessage, Direction, ServerMessage};
+use common::{Backend, Event, MIB, fixture, luma};
+use foundation::{CancelToken, ErrorCode, HostPath, Interrupt};
 use playback::DECODE_WORKERS;
 use playback::{Delivery, Want};
-use std::{
-    collections::{BTreeMap, BTreeSet},
-    time::Duration,
+use sessions::{
+    CursorOptions,
+    session::{Access, Command, Control, Reply},
 };
+use std::{collections::BTreeSet, time::Duration};
+use workspace::VideoRef;
 
 #[tokio::test]
 async fn opening_a_video_describes_it_then_sends_its_timeline_and_the_first_frame() {
@@ -23,7 +22,7 @@ async fn opening_a_video_describes_it_then_sends_its_timeline_and_the_first_fram
     let id = backend.add(&fixture("cfr_h264_gop10_bf2.mp4")).await;
     let mut viewer = backend.viewer().await;
 
-    viewer.open(&id, None).await;
+    viewer.open(&id.ticket(), None).await;
     let video = viewer.opened().await;
 
     assert_eq!(video.frame_count, 90);
@@ -51,7 +50,7 @@ async fn a_window_fills_with_the_right_frames_starting_at_the_playhead() {
     let backend = Backend::start().await;
     let id = backend.add(&fixture("open_gop_h264.mkv")).await;
     let mut viewer = backend.viewer().await;
-    viewer.open(&id, None).await;
+    viewer.open(&id.ticket(), None).await;
     viewer.opened().await;
 
     viewer.want(0, 25, 0, Direction::Forward).await;
@@ -67,7 +66,7 @@ async fn a_jump_far_away_and_back_delivers_each_new_window_with_the_right_frames
     let backend = Backend::start().await;
     let id = backend.add(&fixture("long_gop_h264.mp4")).await;
     let mut viewer = backend.viewer().await;
-    viewer.open(&id, None).await;
+    viewer.open(&id.ticket(), None).await;
     viewer.opened().await;
 
     viewer.want(170, 3, 3, Direction::Forward).await;
@@ -83,7 +82,7 @@ async fn a_video_opens_on_the_requested_frame_and_the_last_frame_says_so() {
     let id = backend.add(&fixture("cfr_h264_gop10_bf2.mp4")).await;
 
     let mut viewer = backend.viewer().await;
-    viewer.open(&id, Some(45)).await;
+    viewer.open(&id.ticket(), Some(45)).await;
     viewer.opened().await;
     // Frames of its group that decode before it may come first; nothing far from it does.
     let arrived = viewer.frames(45..=45).await;
@@ -93,7 +92,7 @@ async fn a_video_opens_on_the_requested_frame_and_the_last_frame_says_so() {
     );
 
     let mut past_the_end = backend.viewer().await;
-    past_the_end.open(&id, Some(1000)).await;
+    past_the_end.open(&id.ticket(), Some(1000)).await;
     past_the_end.opened().await;
     let last = loop {
         let Event::Frame(frame) = past_the_end.next().await else {
@@ -113,7 +112,7 @@ async fn a_failed_frame_is_reported_by_itself_and_its_neighbours_still_arrive() 
     let backend = Backend::start().await;
     let id = backend.add(&fixture("truncated.mp4")).await;
     let mut viewer = backend.viewer().await;
-    viewer.open(&id, None).await;
+    viewer.open(&id.ticket(), None).await;
     let video = viewer.opened().await;
     let last = video.frame_count - 1;
 
@@ -131,11 +130,8 @@ async fn a_failed_frame_is_reported_by_itself_and_its_neighbours_still_arrive() 
                 assert_eq!(frame.flat_luma(), luma(frame.sequence_id));
                 shown.insert(frame.sequence_id);
             }
-            Event::Message(ServerMessage::FrameError {
-                sequence_id,
-                reason,
-            }) => {
-                assert!(!reason.is_empty());
+            Event::Message(ServerMessage::FrameError { sequence_id, error }) => {
+                assert!(!error.reason.unwrap().is_empty());
                 failed.insert(sequence_id);
             }
             _ => panic!("expected frames or frame errors"),
@@ -151,7 +147,7 @@ async fn closing_or_dropping_the_viewer_releases_the_source() {
     let id = backend.add(&fixture("cfr_h264_gop10_bf2.mp4")).await;
 
     let mut closing = backend.viewer().await;
-    closing.open(&id, None).await;
+    closing.open(&id.ticket(), None).await;
     closing.opened().await;
     closing.frames(0..=0).await;
     assert_eq!(backend.videos.registry().running_workers(), DECODE_WORKERS);
@@ -159,7 +155,7 @@ async fn closing_or_dropping_the_viewer_releases_the_source() {
     backend.wait_for_workers(0).await;
 
     let mut leaving = backend.viewer().await;
-    leaving.open(&id, None).await;
+    leaving.open(&id.ticket(), None).await;
     leaving.opened().await;
     leaving.frames(0..=0).await;
     assert_eq!(backend.videos.registry().running_workers(), DECODE_WORKERS);
@@ -172,12 +168,12 @@ async fn two_viewers_of_one_file_share_one_source_until_the_last_leaves() {
     let backend = Backend::start().await;
     let id = backend.add(&fixture("cfr_h264_gop10_bf2.mp4")).await;
     let mut first = backend.viewer().await;
-    first.open(&id, None).await;
+    first.open(&id.ticket(), None).await;
     first.opened().await;
     first.frames(0..=0).await;
 
     let mut second = backend.viewer().await;
-    second.open(&id, Some(30)).await;
+    second.open(&id.ticket(), Some(30)).await;
     let video = second.opened().await;
     assert_eq!(video.frame_count, 90);
     second.frames(30..=30).await;
@@ -204,7 +200,7 @@ async fn a_cache_that_shrinks_to_nothing_and_grows_back_never_changes_what_is_de
     let backend = Backend::start().await;
     let id = backend.add(&fixture("cfr_h264_gop10_bf2.mp4")).await;
     let mut viewer = backend.viewer().await;
-    viewer.open(&id, None).await;
+    viewer.open(&id.ticket(), None).await;
     viewer.opened().await;
     viewer.want(0, 20, 0, Direction::Forward).await;
     viewer.frames(0..=20).await;
@@ -227,7 +223,7 @@ async fn windows_far_larger_than_the_video_are_served_whole() {
     let backend = Backend::start().await;
     let id = backend.add(&fixture("cfr_h264_gop10_bf2.mp4")).await;
     let mut viewer = backend.viewer().await;
-    viewer.open(&id, None).await;
+    viewer.open(&id.ticket(), None).await;
     viewer.opened().await;
 
     viewer.want(40, 500_000, 500_000, Direction::Forward).await;
@@ -238,34 +234,30 @@ async fn windows_far_larger_than_the_video_are_served_whole() {
 async fn what_cannot_be_opened_ends_the_session_with_a_reason_and_where() {
     let backend = Backend::start().await;
 
-    let mut unknown = backend.viewer().await;
-    unknown.open("no-such-content", None).await;
-    let (reason, location) = unknown.error().await;
-    assert!(!reason.is_empty());
-    assert_eq!(location, "no-such-content");
-
     let not_video = fixture("not_video.mp4");
     let mut text = backend.viewer().await;
-    text.open(&backend.add(&not_video).await, None).await;
-    let (reason, location) = text.error().await;
-    assert!(!reason.is_empty());
-    assert_eq!(location, not_video.display().to_string());
+    text.open(&backend.add(&not_video).await.ticket(), None)
+        .await;
+    let error = text.error().await;
+    assert_eq!(error.code, ErrorCode::NotAVideo);
+    assert!(!error.reason.unwrap().is_empty());
+    assert_eq!(error.location, Some(not_video.display().to_string()));
 
     let gone = backend.folder.path().join("gone.mp4");
     std::fs::copy(fixture("cfr_h264_gop10_bf2.mp4"), &gone).unwrap();
     let id = backend.add(&gone).await;
     std::fs::remove_file(&gone).unwrap();
     let mut deleted = backend.viewer().await;
-    deleted.open(&id, None).await;
-    let (reason, location) = deleted.error().await;
-    assert!(!reason.is_empty());
-    assert_eq!(location, gone.display().to_string());
+    deleted.open(&id.ticket(), None).await;
+    let error = deleted.error().await;
+    assert!(!error.reason.unwrap().is_empty());
+    assert_eq!(error.location, Some(gone.display().to_string()));
 
     let mut early = backend.viewer().await;
     early.want(0, 1, 1, Direction::Forward).await;
-    let (_, location) = early.error().await;
     assert_eq!(
-        location, "playback",
+        early.error().await.code,
+        ErrorCode::ProtocolViolation,
         "a window before Open is a protocol error"
     );
     backend.wait_for_workers(0).await;
@@ -278,7 +270,7 @@ async fn a_cancelled_index_build_opens_nothing_and_saves_nothing() {
 
     // The build reports 0.0 before it reads anything, so this cancels it before its first packet.
     let result = backend.videos.open(
-        &workspace::VideoRef::File(fixture("cfr_h264_gop10_bf2.mp4")),
+        &VideoRef::File(fixture("cfr_h264_gop10_bf2.mp4")),
         &cancel,
         &mut |_| cancel.cancel(),
     );
@@ -302,7 +294,7 @@ async fn a_viewer_that_stops_reading_and_then_misbehaves_loses_its_socket_and_it
     };
     let idle = tasks();
     let mut viewer = backend.viewer().await;
-    viewer.open(&id, None).await;
+    viewer.open(&id.ticket(), None).await;
     viewer.opened().await;
     // The window is far more than the two sockets hold. From here the viewer reads nothing, so the backend is
     // stuck writing a frame with the next one waiting behind it.
@@ -336,7 +328,7 @@ async fn a_file_that_changed_while_it_was_indexed_fails_the_whole_source_naming_
     // The index build reports its start after it took the file's identity: touching the file then makes every
     // decoder the source opens afterwards refuse it.
     let mut session = tokio::task::spawn_blocking(move || {
-        let video = workspace::VideoRef::File(path.clone());
+        let video = VideoRef::File(path.clone());
         videos.open(&video, &CancelToken::new(), &mut |_| {
             let touched = std::time::SystemTime::now() + Duration::from_secs(60);
             let file = std::fs::File::options().write(true).open(&path).unwrap();
@@ -352,6 +344,7 @@ async fn a_file_that_changed_while_it_was_indexed_fails_the_whole_source_naming_
         ahead: 4,
         behind: 0,
         direction: playback::Direction::Forward,
+        priority: playback::Priority::default(),
     });
 
     let delivery = tokio::time::timeout(Duration::from_secs(20), session.next_delivery())
@@ -361,7 +354,7 @@ async fn a_file_that_changed_while_it_was_indexed_fails_the_whole_source_naming_
         panic!("expected the source to fail, got {delivery:?}");
     };
     assert!(!error.reason.is_empty());
-    assert_eq!(error.location, video.display().to_string());
+    assert_eq!(error.location, Some(HostPath::new(&video).into()));
     assert!(
         session.next_delivery().await.is_none(),
         "nothing follows it"
@@ -377,14 +370,14 @@ async fn opening_again_after_the_recording_changed_describes_the_recording_now_a
     std::fs::copy(fixture("cfr_h264_gop10_bf2.mp4"), &video).unwrap();
     let id = backend.add(&video).await;
     let mut first = backend.viewer().await;
-    first.open(&id, None).await;
+    first.open(&id.ticket(), None).await;
     assert_eq!(first.opened().await.frame_count, 90);
     first.send(&ClientMessage::Close).await;
     backend.wait_for_workers(0).await;
 
     std::fs::copy(fixture("long_gop_h264.mp4"), &video).unwrap();
     let mut second = backend.viewer().await;
-    second.open(&id, None).await;
+    second.open(&id.ticket(), None).await;
     let described = second.opened().await;
 
     assert_eq!(described.frame_count, 180);
@@ -392,136 +385,49 @@ async fn opening_again_after_the_recording_changed_describes_the_recording_now_a
     second.frames(0..=0).await;
 }
 
-fn lane_view(catalog: &str, revision: u32, width: u32) -> ClientMessage {
-    ClientMessage::LaneView {
-        lane: 0,
-        revision,
-        view: LaneViewWire {
-            catalog: catalog.into(),
-            filter: BTreeMap::new(),
-            tolerance_ms: None,
-            sticky: StickyWire {
-                enabled: false,
-                timeout_ms: None,
-                opacity: 1.0,
-            },
-            target: TargetWire {
-                width,
-                height: width * 3 / 4,
-            },
-            visible: true,
-        },
-    }
-}
-
-/// Reads until the lane complains, skipping frames and overlays.
-async fn lane_problem(viewer: &mut Viewer) -> String {
-    loop {
-        match viewer.next().await {
-            Event::Message(ServerMessage::LaneProblem { lane: 0, reason }) => return reason,
-            Event::Frame(_) | Event::Overlay(_) => {}
-            Event::Message(ServerMessage::LaneStatus { .. }) => {}
-            _ => panic!("expected a LaneProblem"),
-        }
-    }
-}
-
-/// Reads until the lane is ready and every frame of 0..=5 has an overlay made for `revision`.
-async fn collect(
-    viewer: &mut Viewer,
-    revision: u32,
-    ready: &mut Option<LaneStatusWire>,
-) -> BTreeMap<u64, Overlay> {
-    let mut overlays = BTreeMap::new();
-    while ready.is_none() || overlays.len() < 6 {
-        match viewer.next().await {
-            Event::Message(ServerMessage::LaneStatus {
-                lane: 0,
-                status: status @ LaneStatusWire::Ready { .. },
-            }) => *ready = Some(status),
-            Event::Message(ServerMessage::LaneStatus { .. }) | Event::Frame(_) => {}
-            Event::Overlay(overlay) if overlay.revision == revision => {
-                overlays.insert(overlay.sequence_id, overlay);
-            }
-            Event::Overlay(_) => {}
-            _ => panic!("expected the lane's status, overlays and frames"),
-        }
-    }
-    overlays
-}
-
 #[tokio::test]
-async fn a_lane_view_naming_an_unknown_catalog_is_reported_and_the_session_goes_on() {
+async fn a_ticket_opens_one_stream_and_a_watchers_stream_ends_when_sharing_stops() {
     let backend = Backend::start().await;
-    let id = backend.add(&fixture("cfr_h264_gop10_bf2.mp4")).await;
-    let mut viewer = backend.viewer().await;
-    viewer.open(&id, None).await;
-    let video = viewer.opened().await;
-    assert_eq!(video.lanes.len(), 1);
+    let video = backend.add(&fixture("cfr_h264_gop10_bf2.mp4")).await;
+    let ticket = video.ticket();
+    let mut owner = backend.viewer().await;
+    owner.open(&ticket, None).await;
+    owner.opened().await;
+    owner.frames(0..=0).await;
 
-    viewer.send(&lane_view("built-in:nope", 1, 640)).await;
-    let reason = lane_problem(&mut viewer).await;
-    assert!(reason.contains("built-in:nope"), "{reason}");
-
-    viewer.want(40, 3, 0, Direction::Forward).await;
-    viewer.frames(40..=43).await;
-}
-
-#[tokio::test]
-async fn a_lane_reports_its_load_then_sends_an_overlay_per_frame_for_the_view_it_was_made_for() {
-    let backend = Backend::start().await;
-    let gt = backend.folder.path().join("gt.txt");
-    // Video frames 0 to 2 have a box; the file is dense, so the others are covered with nothing.
-    std::fs::write(
-        &gt,
-        "1,1,10,10,20,20,1,1,1\n2,1,12,10,20,20,1,1,1\n3,1,14,10,20,20,1,1,1\n",
-    )
-    .unwrap();
-    let id = backend
-        .add_with_overlays(&fixture("cfr_h264_gop10_bf2.mp4"), &[gt])
-        .await;
-    let mut viewer = backend.viewer().await;
-    viewer.open(&id, None).await;
-    let video = viewer.opened().await;
-    let lane = LaneInfo {
-        label: "gt.txt".into(),
-        has_overlay: true,
-    };
-    assert_eq!(video.lanes, [lane]);
-
-    let mut ready = None;
-    viewer.want(0, 5, 0, Direction::Forward).await;
-    let overlays = collect(&mut viewer, 0, &mut ready).await;
-
-    let Some(LaneStatusWire::Ready {
-        samples, filter, ..
-    }) = ready.clone()
-    else {
-        panic!("the lane is ready");
-    };
-    assert_eq!(samples, 3);
-    assert!(filter.iter().any(|option| option.id == "show_person"));
-    for (frame, overlay) in &overlays {
-        assert_eq!((overlay.lane, overlay.target), (0, (1280, 720)));
-        assert_eq!(overlay.timestamp_us as f64, video.times[*frame as usize]);
-        assert_eq!(
-            overlay.matched,
-            if *frame < 3 { 1 } else { 4 },
-            "frame {frame}"
-        );
-        assert_eq!(overlay.opacity, 1.0);
+    // A ticket works once, and one that was never issued works never; neither says why.
+    for presented in [ticket.as_str(), "not-a-ticket"] {
+        let mut refused = backend.viewer().await;
+        refused.open(presented, None).await;
+        assert!(matches!(refused.next().await, Event::Closed));
+        assert_eq!(refused.close_code, Some(4401), "{presented}");
     }
-    assert!(
-        overlays[&4].sections.is_empty(),
-        "a covered frame with nothing draws nothing"
-    );
 
-    // A new view resends the window made for it.
-    viewer.send(&lane_view("built-in:tracking", 3, 800)).await;
-    let resent = collect(&mut viewer, 3, &mut ready).await;
-    assert!(resent.values().all(|overlay| overlay.target == (800, 600)));
+    let share = Command::Control(Control::Share {
+        access: Access::Watch,
+    });
+    video.owner.command(share).unwrap();
+    let link = video.owner.state().sharing.as_ref().unwrap().link.clone();
+    let seat = backend
+        .state
+        .sessions
+        .join(&link, CursorOptions::default())
+        .unwrap();
+    let Ok(Reply::Ticket(ticket)) = seat.command(Command::RequestTicket(video.key.clone())) else {
+        panic!("a watcher may stream what the owner has open");
+    };
+    let mut watcher = backend.viewer().await;
+    watcher.open(&ticket.to_string(), None).await;
+    watcher.opened().await;
+    watcher.frames(0..=0).await;
 
-    // A catalog the library lacks is reported by the lane's overlays; the lane stays ready.
-    viewer.send(&lane_view("user:missing.json", 4, 800)).await;
-    assert!(lane_problem(&mut viewer).await.contains("missing.json"));
+    video
+        .owner
+        .command(Command::Control(Control::Stop))
+        .unwrap();
+    while !matches!(watcher.next().await, Event::Closed) {}
+    assert_eq!(watcher.close_code, Some(4403));
+    // The owner's own stream goes on.
+    owner.want(30, 3, 0, Direction::Forward).await;
+    owner.frames(30..=33).await;
 }

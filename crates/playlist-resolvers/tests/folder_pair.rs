@@ -2,7 +2,7 @@
 
 use std::{fs, path::Path};
 
-use foundation::{CancelToken, Interrupt};
+use foundation::{CancelToken, HostPath, Interrupt, Location};
 use playlist_resolvers::{ResolvedPlaylist, Settings, VideoRef, WatchPaths, resolver};
 use serde_json::json;
 
@@ -98,7 +98,7 @@ fn a_matched_compressed_file_is_refused_by_name() {
     assert!(error.reason.contains("Compressed"), "{error:?}");
     assert_eq!(
         error.location,
-        overlays.join("clip.txt.GZ").display().to_string()
+        Some(HostPath::new(overlays.join("clip.txt.GZ")).into())
     );
 }
 
@@ -130,19 +130,19 @@ fn settings_and_folders_must_be_usable_and_name_the_problem() {
     for key in ["videos_dir", "overlays_dir", "handler_type"] {
         let mut missing = present.clone();
         missing.remove(key);
-        assert_eq!(failure(&missing).location, key);
+        assert_eq!(failure(&missing).location, Some(Location::field(key)));
         missing.insert(key.to_string(), json!(""));
-        assert_eq!(failure(&missing).location, key);
+        assert_eq!(failure(&missing).location, Some(Location::field(key)));
     }
 
     let gone = dir.path().join("gone");
     assert_eq!(
         failure(&settings(&gone, dir.path())).location,
-        gone.display().to_string()
+        Some(HostPath::new(&gone).into())
     );
     assert_eq!(
         failure(&settings(dir.path(), &gone)).location,
-        gone.display().to_string()
+        Some(HostPath::new(&gone).into())
     );
 }
 
@@ -164,7 +164,7 @@ fn duplicate_names_and_no_pairs_are_errors() {
         duplicate.reason.contains("Duplicate video file name(s)")
             && duplicate.reason.contains("sample")
     );
-    assert_eq!(duplicate.location, videos.display().to_string());
+    assert_eq!(duplicate.location, Some(HostPath::new(&videos).into()));
 }
 
 #[test]

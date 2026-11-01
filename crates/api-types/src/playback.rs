@@ -48,6 +48,7 @@
 //! - RUNS: text `u32`, bar `f32` (NaN for a text run), rgb `u8`x3, weight `u8`
 //! - STRINGS: count `u32`, offsets `u32`[count + 1], then the UTF-8 bytes; string ids index it and `u32::MAX` is none
 
+use crate::{ErrorWire, catalogs::CatalogInfoWire};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use ts_rs::TS;
@@ -63,7 +64,7 @@ macro_rules! constants {
 
 constants! {
     /// Raised when the messages or the envelope change in a way an older frontend cannot read.
-    PLAYBACK_PROTOCOL: u32 = 2;
+    PLAYBACK_PROTOCOL: u32 = 3;
     /// "AXDV" read as a little-endian u32.
     ENVELOPE_MAGIC: u32 = 0x5644_5841;
     /// The envelope format version, byte 4.
@@ -260,23 +261,19 @@ pub enum LaneStatusWire {
         #[ts(type = "number")]
         samples: u64,
     },
-    /// The overlay could not be loaded.
-    Failed {
-        /// What went wrong, in words for the user.
-        reason: String,
-        /// What it is about, such as the file path.
-        location: String,
-    },
+    /// The overlay could not be loaded, and why.
+    Failed(ErrorWire),
 }
 
 /// What the frontend sends.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, TS)]
 #[serde(tag = "type")]
 pub enum ClientMessage {
-    /// Opens a Content; the first message of a session.
+    /// Opens the stream a ticket names; the first message of a session, within 5 seconds of connecting. The ticket
+    /// comes from the Session socket's `RequestTicket`, works once and is never put in a URL.
     Open {
-        /// The Content to open, by the id the workspace gave it.
-        content_id: String,
+        /// The ticket.
+        ticket: String,
         /// The frame to show, paused; the first frame when absent.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         #[ts(type = "number", optional)]
@@ -323,12 +320,14 @@ pub enum ServerMessage {
         width: u32,
         /// Height of the decoded frames in pixels.
         height: u32,
-        /// Problems with the video that did not stop it from opening.
+        /// Problems with the video that did not stop it from opening. Only for an audience with host details.
         warnings: Vec<String>,
         /// The lanes of the entry, in order.
         lanes: Vec<LaneInfo>,
         /// The view every lane starts with.
         lane_defaults: LaneViewWire,
+        /// The catalogs a lane may draw with, built-ins first and Standard first among them.
+        catalogs: Vec<CatalogInfoWire>,
     },
     /// A lane's overlay load changed.
     LaneStatus {
@@ -337,29 +336,27 @@ pub enum ServerMessage {
         /// Where the load stands.
         status: LaneStatusWire,
     },
-    /// A lane's catalog could not be compiled; the lane keeps its last catalog.
+    /// A lane's catalog could not be compiled or failed on a frame; the lane keeps its last catalog. Only for an
+    /// audience with host details.
     LaneProblem {
         /// The lane's position in `Opened.lanes`.
         lane: u16,
         /// What went wrong, in words for the user.
         reason: String,
     },
-    /// One frame could not be decoded; the others are fine. The viewer names the frame itself, so `reason` is only
+    /// One frame could not be decoded; the others are fine. The viewer names the frame itself, so the error is only
     /// the cause.
     FrameError {
         /// The frame that failed.
         #[ts(type = "number")]
         sequence_id: u64,
-        /// What went wrong, in words for the user.
-        reason: String,
+        /// Why it failed.
+        #[serde(flatten)]
+        #[ts(flatten)]
+        error: ErrorWire,
     },
     /// The session cannot go on and ends.
-    Error {
-        /// What went wrong, in words for the user.
-        reason: String,
-        /// What it is about, such as the file path.
-        location: String,
-    },
+    Error(ErrorWire),
 }
 
 #[cfg(test)]
@@ -370,12 +367,12 @@ mod tests {
     #[test]
     fn messages_use_the_names_the_frontend_parses() {
         let open = ClientMessage::Open {
-            content_id: "c1".into(),
+            ticket: "t1".into(),
             start_frame: None,
         };
         assert_eq!(
             serde_json::to_value(&open).unwrap(),
-            json!({"type": "Open", "content_id": "c1"})
+            json!({"type": "Open", "ticket": "t1"})
         );
         let want = json!({
             "type": "Want", "playhead": 7, "ahead": 20, "behind": 5, "direction": "backward"
@@ -416,8 +413,15 @@ mod tests {
                 has_overlay: false,
             }],
             lane_defaults,
+            catalogs: vec![CatalogInfoWire {
+                id: "built-in:standard".into(),
+                name: "Standard".into(),
+                description: String::new(),
+            }],
         };
         let json = serde_json::to_value(&opened).unwrap();
+        assert_eq!(json["protocol"], 3);
+        assert_eq!(json["catalogs"][0]["id"], "built-in:standard");
         assert_eq!(json["type"], "Opened");
         assert_eq!(
             json["lanes"],
@@ -426,14 +430,16 @@ mod tests {
         assert_eq!(json["lane_defaults"]["sticky"]["timeout_ms"], 2050);
         let status = ServerMessage::LaneStatus {
             lane: 1,
-            status: LaneStatusWire::Failed {
-                reason: "bad".into(),
-                location: "gt.txt".into(),
-            },
+            status: LaneStatusWire::Failed(ErrorWire {
+                code: foundation::ErrorCode::OverlayInvalid,
+                params: crate::ErrorParams::default(),
+                reason: None,
+                location: None,
+            }),
         };
         assert_eq!(
             serde_json::to_value(&status).unwrap(),
-            json!({"type": "LaneStatus", "lane": 1, "status": {"status": "Failed", "reason": "bad", "location": "gt.txt"}})
+            json!({"type": "LaneStatus", "lane": 1, "status": {"status": "Failed", "code": "OverlayInvalid", "params": {}}})
         );
     }
 }

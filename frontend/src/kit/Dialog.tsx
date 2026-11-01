@@ -28,6 +28,7 @@ export function Dialog({ title, children, onOk, onCancel, okLabel = "OK", busy =
     <dialog
       ref={dialog}
       aria-labelledby={titleId}
+      data-cursor-region="popup"
       onCancel={(event) => {
         event.preventDefault();
         if (onCancel) onCancel();

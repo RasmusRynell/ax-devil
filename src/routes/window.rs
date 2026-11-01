@@ -3,15 +3,14 @@
 use crate::{AppState, failure};
 use api_types::{ApiError, window::WindowState};
 use axum::{
-    Json, Router,
+    Json,
     extract::{Path, State},
     http::StatusCode,
     response::{IntoResponse, Response},
-    routing::get,
 };
 use std::{
     path::PathBuf,
-    sync::{Mutex, PoisonError},
+    sync::{Arc, Mutex, PoisonError},
 };
 
 /// The file the windows are saved in. Saves write the whole file, so they take turns.
@@ -30,11 +29,6 @@ impl Windows {
     }
 }
 
-/// The window routes.
-pub fn router() -> Router<AppState> {
-    Router::new().route("/api/windows/{name}", get(get_window).put(put_window))
-}
-
 /// A window name is lower-case words joined by hyphens, so it is safe as a key in the file.
 fn named(name: &str) -> Result<(), (StatusCode, Json<ApiError>)> {
     if !name.is_empty() && name.chars().all(|c| c.is_ascii_lowercase() || c == '-') {
@@ -47,12 +41,24 @@ fn named(name: &str) -> Result<(), (StatusCode, Json<ApiError>)> {
     ))
 }
 
+/// The windows file, when this backend keeps one (the desktop's backend does).
+fn kept(windows: Option<Arc<Windows>>) -> Result<Arc<Windows>, (StatusCode, Json<ApiError>)> {
+    windows.ok_or_else(|| {
+        failure(
+            StatusCode::NOT_IMPLEMENTED,
+            "windows",
+            "this backend does not save window positions".into(),
+        )
+    })
+}
+
 /// The saved window, or 204 when none is saved or what is saved cannot be read.
-async fn get_window(
+pub(crate) async fn get(
     State(AppState { windows, .. }): State<AppState>,
     Path(name): Path<String>,
 ) -> Result<Response, (StatusCode, Json<ApiError>)> {
     named(&name)?;
+    let windows = kept(windows)?;
     let saved = tokio::task::spawn_blocking(move || {
         settings::window::load_windows(&windows.file).remove(&name)
     })
@@ -67,12 +73,13 @@ async fn get_window(
 }
 
 /// Saves the window, keeping the others.
-async fn put_window(
+pub(crate) async fn put(
     State(AppState { windows, .. }): State<AppState>,
     Path(name): Path<String>,
     Json(window): Json<WindowState>,
 ) -> Result<StatusCode, (StatusCode, Json<ApiError>)> {
     named(&name)?;
+    let windows = kept(windows)?;
     let saved = tokio::task::spawn_blocking(move || {
         let _saving = windows
             .saving

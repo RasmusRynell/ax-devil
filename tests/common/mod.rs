@@ -1,11 +1,21 @@
 //! The playback tests' backend, viewer and envelope reader.
+
 // Each suite that includes this module uses its own part of it.
 #![allow(dead_code)]
 
-use api_types::playback::{ClientMessage, Direction, LaneInfo, ServerMessage, Want};
-use ax_devil::{AppState, app, video_sources::VideoSources};
+use api_types::{
+    CursorPoint, ErrorWire,
+    playback::{ClientMessage, Direction, LaneInfo, PLAYBACK_PROTOCOL, ServerMessage, Want},
+};
+use ax_devil::{AppState, access::Policy, app, video_sources::VideoSources};
 use futures_util::{SinkExt, StreamExt};
+use handlers::Handlers;
 use playback::{CachePool, Registry};
+use playlist_resolvers::Settings;
+use sessions::{
+    CursorOptions,
+    session::{Command, ContentRef, Handle, Reply},
+};
 use std::{
     collections::BTreeSet,
     net::SocketAddr,
@@ -16,7 +26,8 @@ use std::{
 };
 use tokio::net::TcpStream;
 use tokio_tungstenite::{MaybeTlsStream, WebSocketStream, tungstenite::Message};
-use workspace_store::{Resolution, Store};
+use workspace::{Content, ContentId, WorkspaceItem, intake::NewOverlay};
+use workspace_store::{DocCommand, Resolution};
 
 /// Bounds every wait, so a broken backend fails the test instead of hanging it.
 pub const WAIT: Duration = Duration::from_secs(20);
@@ -36,14 +47,42 @@ pub fn luma(sequence_id: u64) -> u8 {
     (sequence_id * 7 % 256) as u8
 }
 
-/// The backend: the real app on a local port, over private settings, caches and workspace.
+/// The backend: the real app on a local port, over private settings and caches.
 pub struct Backend {
     squeezed: bool,
     _stop: tokio::sync::watch::Sender<bool>,
     pub address: SocketAddr,
     pub videos: Arc<VideoSources>,
-    pub store: Store,
+    pub state: AppState,
     pub folder: tempfile::TempDir,
+}
+
+/// An item in a session of its own, ready to be streamed: whoever holds it can ask for tickets.
+pub struct Added {
+    pub owner: Handle<CursorPoint>,
+    /// The stream of the item's first entry: the one entry of a video.
+    pub key: ContentRef,
+    /// What the item resolved to.
+    pub content: Content,
+}
+
+impl Added {
+    /// A new ticket for the first entry's stream.
+    pub fn ticket(&self) -> String {
+        self.ticket_for(&self.key.entry)
+    }
+
+    /// A new ticket for the stream of the entry with this id.
+    pub fn ticket_for(&self, entry: &ContentId) -> String {
+        let key = ContentRef {
+            entry: entry.clone(),
+            ..self.key.clone()
+        };
+        match self.owner.command(Command::RequestTicket(key)) {
+            Ok(Reply::Ticket(ticket)) => ticket.to_string(),
+            other => panic!("expected a ticket, got {other:?}"),
+        }
+    }
 }
 
 impl Backend {
@@ -61,22 +100,18 @@ impl Backend {
         let folder = tempfile::tempdir().unwrap();
         let settings = settings::Settings::load(&folder.path().join("default.json")).unwrap();
         let registry = Registry::new(CachePool::new(256 * MIB));
-        let videos = Arc::new(VideoSources::new(registry, &folder.path().join("cache")));
+        let cache = folder.path().join("cache");
+        let videos = Arc::new(VideoSources::new(registry, &cache));
         let (stop, stopping) = tokio::sync::watch::channel(false);
-        let handlers = handlers::Handlers::built_in();
-        let catalogs = catalogs::Library::built_in();
-        let tracks = scene_store::TrackRegistry::new(handlers.clone(), None);
-        let store = Store::new(tokio::runtime::Handle::current(), handlers.clone());
-        let router = app(AppState {
-            settings: Arc::new(settings),
-            handlers,
-            overlays: overlays::OverlayService::new(tracks, catalogs.clone()),
-            catalogs,
-            store: store.clone(),
-            windows: Arc::new(ax_devil::Windows::new(folder.path().join("windows.json"))),
-            videos: videos.clone(),
+        let state = AppState::new(
+            Arc::new(settings),
+            Policy::Local,
+            videos.clone(),
             stopping,
-        });
+            Handlers::built_in(),
+            &cache,
+        );
+        let router = app(state.clone());
         let socket = tokio::net::TcpSocket::new_v4().unwrap();
         if squeezed {
             // Connections accepted from this socket inherit the small send buffer.
@@ -85,53 +120,98 @@ impl Backend {
         socket.bind("127.0.0.1:0".parse().unwrap()).unwrap();
         let listener = socket.listen(16).unwrap();
         let address = listener.local_addr().unwrap();
-        tokio::spawn(async move { axum::serve(listener, router).await });
+        tokio::spawn(async move {
+            axum::serve(
+                listener,
+                router.into_make_service_with_connect_info::<SocketAddr>(),
+            )
+            .await
+        });
         Self {
             squeezed,
             _stop: stop,
             address,
             videos,
-            store,
+            state,
             folder,
         }
     }
 
-    /// Adds the video to the workspace and returns the id of its Content once it resolved.
-    pub async fn add(&self, path: &Path) -> String {
+    /// Adds the video to a new session of its own, with a viewer requested, and returns it once it resolved.
+    pub async fn add(&self, path: &Path) -> Added {
         self.add_with_overlays(path, &[]).await
     }
 
     /// Like [`Backend::add`], with one lane per overlay file, each read by the decoder its extension names.
-    pub async fn add_with_overlays(&self, path: &Path, overlays: &[PathBuf]) -> String {
+    pub async fn add_with_overlays(&self, path: &Path, overlays: &[PathBuf]) -> Added {
         let overlays: Vec<_> = overlays
             .iter()
-            .map(|path| workspace::intake::NewOverlay {
+            .map(|path| NewOverlay {
                 path: path.clone(),
                 handler: None,
             })
             .collect();
+        let item = workspace::intake::video(path, &overlays, &Handlers::built_in()).unwrap();
+        self.add_item(item).await
+    }
+
+    /// Adds a playlist of `resolver` with `settings`, as the dialog would, and returns it once it resolved.
+    pub async fn add_playlist(&self, resolver: &str, settings: Settings) -> Added {
         let item =
-            workspace::intake::video(path, &overlays, &handlers::Handlers::built_in()).unwrap();
+            workspace::intake::playlist(resolver, settings, None, &Handlers::built_in()).unwrap();
+        self.add_item(item).await
+    }
+
+    async fn add_item(&self, item: WorkspaceItem) -> Added {
+        let owner = self
+            .state
+            .sessions
+            .create(true, CursorOptions::default())
+            .unwrap();
         let id = item.id;
-        self.store.add_items(vec![item], false);
-        let mut changes = self.store.subscribe();
-        tokio::time::timeout(
-            WAIT,
-            changes.wait_for(|state| {
-                matches!(state.resolutions.get(&id), Some(Resolution::Resolved(_)))
-            }),
-        )
+        let added = DocCommand::AddItems {
+            items: vec![item],
+            open: true,
+        };
+        owner.command(Command::Content(added)).unwrap();
+        let (key, content) = tokio::time::timeout(WAIT, async {
+            loop {
+                let state = owner.state();
+                match state.doc.workspace.resolutions.get(&id) {
+                    Some(Resolution::Resolved {
+                        content,
+                        generation,
+                    }) => {
+                        let entry = content.entries()[0].id.clone();
+                        let key = ContentRef {
+                            content: content.id().clone(),
+                            generation: *generation,
+                            entry,
+                        };
+                        break (key, content.clone());
+                    }
+                    Some(Resolution::Failed(error)) => panic!("the item failed: {error}"),
+                    _ => tokio::time::sleep(Duration::from_millis(10)).await,
+                }
+            }
+        })
         .await
-        .unwrap()
-        .unwrap();
-        workspace::ContentId::of_item(&id).to_string()
+        .expect("the item resolves");
+        Added {
+            owner,
+            key,
+            content,
+        }
     }
 
     pub async fn viewer(&self) -> Viewer {
         let url = format!("ws://{}/api/playback", self.address);
         if !self.squeezed {
             let (socket, _) = tokio_tungstenite::connect_async(url).await.unwrap();
-            return Viewer { socket };
+            return Viewer {
+                socket,
+                close_code: None,
+            };
         }
         let socket = tokio::net::TcpSocket::new_v4().unwrap();
         socket.set_recv_buffer_size(SQUEEZED_BUFFER).unwrap();
@@ -139,7 +219,10 @@ impl Backend {
         let (socket, _) = tokio_tungstenite::client_async(url, MaybeTlsStream::Plain(stream))
             .await
             .unwrap();
-        Viewer { socket }
+        Viewer {
+            socket,
+            close_code: None,
+        }
     }
 
     /// Waits until no decode thread is left, which is what releasing the last viewer of a source must lead to.
@@ -282,15 +365,17 @@ pub fn parse_envelope(bytes: &[u8]) -> Event {
 
 /// What `Opened` says about a video, and the Timeline that follows it.
 pub struct Described {
-    pub lanes: Vec<LaneInfo>,
     pub frame_count: u64,
     pub frame_bytes: u64,
     pub duration_us: i64,
     pub times: Vec<f64>,
+    pub lanes: Vec<LaneInfo>,
 }
 
 pub struct Viewer {
     pub socket: WebSocketStream<MaybeTlsStream<TcpStream>>,
+    /// The code of the close frame the backend ended the socket with, once it did.
+    pub close_code: Option<u16>,
 }
 
 impl Viewer {
@@ -334,9 +419,9 @@ impl Viewer {
         self.socket.send(Message::text(body)).await.unwrap();
     }
 
-    pub async fn open(&mut self, content_id: &str, start_frame: Option<u64>) {
+    pub async fn open(&mut self, ticket: &str, start_frame: Option<u64>) {
         self.send(&ClientMessage::Open {
-            content_id: content_id.to_owned(),
+            ticket: ticket.to_owned(),
             start_frame,
         })
         .await;
@@ -364,7 +449,11 @@ impl Viewer {
                 }
                 Some(Ok(Message::Binary(bytes))) => return parse_envelope(&bytes),
                 Some(Ok(Message::Ping(_) | Message::Pong(_))) => {}
-                Some(Ok(Message::Close(_))) | Some(Err(_)) | None => return Event::Closed,
+                Some(Ok(Message::Close(frame))) => {
+                    self.close_code = frame.map(|frame| frame.code.into());
+                    return Event::Closed;
+                }
+                Some(Err(_)) | None => return Event::Closed,
                 Some(Ok(other)) => panic!("unexpected message {other:?}"),
             }
         }
@@ -384,7 +473,7 @@ impl Viewer {
                     lanes,
                     ..
                 }) => {
-                    assert_eq!(protocol, 2);
+                    assert_eq!(protocol, PLAYBACK_PROTOCOL);
                     break (frame_count, frame_bytes, duration_us, lanes);
                 }
                 _ => panic!("expected Indexing or Opened"),
@@ -399,11 +488,11 @@ impl Viewer {
             panic!("the Timeline envelope must follow Opened");
         };
         Described {
-            lanes,
             frame_count,
             frame_bytes,
             duration_us,
             times,
+            lanes,
         }
     }
 
@@ -428,15 +517,15 @@ impl Viewer {
         arrived
     }
 
-    /// The reason and location of the `Error` that ends the session, then the end of the socket.
-    pub async fn error(&mut self) -> (String, String) {
-        let Event::Message(ServerMessage::Error { reason, location }) = self.next().await else {
+    /// The `Error` that ends the session, then the end of the socket.
+    pub async fn error(&mut self) -> ErrorWire {
+        let Event::Message(ServerMessage::Error(error)) = self.next().await else {
             panic!("expected an Error");
         };
         assert!(
             matches!(self.next().await, Event::Closed),
             "the socket closes after Error"
         );
-        (reason, location)
+        error
     }
 }

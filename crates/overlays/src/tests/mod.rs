@@ -16,9 +16,9 @@ use std::{
 };
 
 use catalogs::CatalogId;
-use foundation::{CancelToken, FrameRate, FrameSize, Interrupt, Timeline, UserError};
+use foundation::{CancelToken, ErrorCode, FrameRate, FrameSize, Interrupt, Timeline, UserError};
 use handlers::Handlers;
-use playback::{Direction, Want};
+use playback::{Direction, Priority, Want};
 use playlist_resolvers::OverlayRef;
 use render_catalog::CompiledCatalog;
 use scene_store::{Track, TrackRegistry};
@@ -52,7 +52,10 @@ impl CatalogSource for Catalogs {
         self.asked.lock().expect("asked").push(id.clone());
         assert!(*id != CatalogId::User("panic".into()), "the worker dies");
         if *id == CatalogId::User("bad".into()) {
-            return Err(UserError::new("The catalog is damaged", "bad"));
+            return Err(UserError::new(
+                ErrorCode::CatalogInvalid,
+                format!("The catalog is damaged: {id}"),
+            ));
         }
         Ok(Arc::clone(&self.minimal))
     }
@@ -167,6 +170,7 @@ pub(super) fn want(playhead: u64, behind: u32, ahead: u32) -> Want {
         ahead,
         behind,
         direction: Direction::Forward,
+        priority: Priority::Normal,
     }
 }
 

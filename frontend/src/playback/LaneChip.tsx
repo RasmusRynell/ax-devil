@@ -1,8 +1,9 @@
+import { reasonOf } from "../errors";
 import { Icon } from "../kit/Icon";
 import { Popover } from "../kit/Popover";
 import { LaneMenu } from "./LaneMenu";
 import type { LaneState } from "./lanes";
-import type { LaneViewWire } from "./protocol";
+import type { CatalogInfoWire, LaneViewWire } from "./protocol";
 
 /** One thing to tell the user about a lane. */
 export type Notice = {
@@ -18,7 +19,10 @@ export function laneNotices(lane: LaneState): Notice[] {
   const { status } = lane;
   const notices: Notice[] = [];
   if (status !== "plain" && status.status === "Failed")
-    notices.push({ problem: status.reason, reasons: [status.location] });
+    notices.push({
+      problem: reasonOf(status),
+      reasons: status.location === undefined ? undefined : [status.location],
+    });
   if (lane.problem) notices.push({ problem: lane.problem });
   if (status !== "plain" && status.status === "Ready")
     for (const warning of status.warnings)
@@ -54,15 +58,18 @@ export function NoticeList({ notices }: { notices: readonly Notice[] }) {
 /**
  * The name tag over a lane's top-left corner: its label, that it is loading, a button for what there is to report,
  * and the button that opens the lane's menu. A lane without an overlay file has neither warnings nor settings.
+ * Without `onHide` the menu cannot hide the lane.
  */
 export function LaneChip({
   lane,
+  catalogs,
   onChange,
   onHide,
 }: {
   lane: LaneState;
+  catalogs: readonly CatalogInfoWire[];
   onChange: (change: Partial<LaneViewWire>) => void;
-  onHide: () => void;
+  onHide?: () => void;
 }) {
   const notices = laneNotices(lane);
   const loading = lane.status !== "plain" && lane.status.status === "Loading";
@@ -94,11 +101,15 @@ export function LaneChip({
           {(close) => (
             <LaneMenu
               lane={lane}
+              catalogs={catalogs}
               onChange={onChange}
-              onHide={() => {
-                close();
-                onHide();
-              }}
+              onHide={
+                onHide &&
+                (() => {
+                  close();
+                  onHide();
+                })
+              }
             />
           )}
         </Popover>

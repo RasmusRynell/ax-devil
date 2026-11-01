@@ -1,6 +1,6 @@
 //! What a resolver's settings are: declared data the form and the CLI are generated from.
 
-use foundation::UserError;
+use foundation::{ErrorCode, Location, UserError};
 use serde_json::Value;
 
 use crate::Settings;
@@ -75,7 +75,7 @@ impl ResolverSchema {
         for field in self.fields {
             match settings.get(field.key) {
                 None | Some(Value::Null) if field.required => {
-                    return Err(UserError::new("Required", field.key));
+                    return Err(invalid_field("Required", field.key));
                 }
                 None | Some(Value::Null) => {}
                 Some(value) => check_type(field, value)?,
@@ -100,5 +100,10 @@ fn check_type(field: &Field, value: &Value) -> Result<(), UserError> {
         _ if value.is_string() => "Must not be empty",
         _ => "Must be text",
     };
-    Err(UserError::new(reason, field.key))
+    Err(invalid_field(reason, field.key))
+}
+
+/// A settings value that does not fit, about the field `key`.
+pub(crate) fn invalid_field(reason: &str, key: &str) -> UserError {
+    UserError::new(ErrorCode::PlaylistInvalid, reason).at(Location::field(key))
 }

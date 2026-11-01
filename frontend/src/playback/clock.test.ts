@@ -1,6 +1,6 @@
 // @vitest-environment node
 import { describe, expect, it } from "vite-plus/test";
-import { PlaybackClock, clampSpeed } from "./clock";
+import { PlaybackClock, clampSpeed, followFrame, type ClockIntent } from "./clock";
 import { FrameBuffer } from "./FrameBuffer";
 
 type Frame = { byteLength: number };
@@ -252,5 +252,32 @@ describe("clock and frames that failed to decode", () => {
     expect(clock.playhead).toBe(2);
     clock.step(1);
     expect(tick()).toBe(3);
+  });
+});
+
+describe("followFrame", () => {
+  const times = Float64Array.from({ length: 10 }, (_, id) => id * 40_000);
+  const intent = (patch: Partial<ClockIntent>): ClockIntent => ({
+    frame: 2,
+    playing: true,
+    speedCenti: 100,
+    atUs: 1_000_000,
+    ...patch,
+  });
+
+  it("anchors a paused follower on the requested frame, however late it is", () => {
+    expect(followFrame(times, intent({ playing: false }), 9_000_000)).toBe(2);
+  });
+
+  it("skips to the frame due now, at the intent's speed", () => {
+    expect(followFrame(times, intent({}), 1_000_000)).toBe(2);
+    expect(followFrame(times, intent({}), 1_130_000)).toBe(5);
+    expect(followFrame(times, intent({ speedCenti: 200 }), 1_130_000)).toBe(8);
+  });
+
+  it("stays inside the video at both ends", () => {
+    expect(followFrame(times, intent({}), 60_000_000)).toBe(9);
+    expect(followFrame(times, intent({ frame: 50, playing: false }), 0)).toBe(9);
+    expect(followFrame(times, intent({ frame: 0 }), 0)).toBe(0);
   });
 });

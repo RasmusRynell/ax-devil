@@ -1,20 +1,18 @@
-//! The committed MOT Challenge dataset (`fixtures/datasets/mot/generate.sh`) added as a playlist through the real
-//! routes, opened as an entry, and its lanes' overlays read from the socket. The dataset's rows are the expectation:
-//! file frame 1 is video frame 0, file frame 6 has no rows in any file, and DPM's `det.txt` has one malformed row.
+//! The committed MOT Challenge dataset (`fixtures/datasets/mot/generate.sh`) added as a playlist over the Session
+//! socket, an entry streamed with a ticket for it, and its lanes' overlays read from the playback socket. The
+//! dataset's rows are the expectation: file frame 1 is video frame 0, file frame 6 has no rows in any file, and DPM's
+//! `det.txt` has one malformed row.
 
 mod common;
+mod session_client;
 
 use api_types::playback::{
     ClientMessage, Direction, LaneStatusWire, LaneViewWire, ServerMessage, StickyWire, TargetWire,
 };
 use common::{Backend, Event, Overlay, Viewer};
 use serde_json::{Value, json};
-use std::{
-    collections::BTreeMap,
-    io::{Read, Write},
-    net::{SocketAddr, TcpStream},
-    path::Path,
-};
+use session_client::Socket;
+use std::{collections::BTreeMap, path::Path};
 
 const EMPTY_MATCH: u8 = 4;
 const EMPTY_FRAME: u64 = 5;
@@ -22,34 +20,56 @@ const FRAMES: u64 = 12;
 const DPM: u16 = 0;
 const GT: u16 = 1;
 
-/// POSTs the dataset to the playlists route and returns the answer's entries.
-async fn add_playlist(address: SocketAddr) -> Vec<Value> {
-    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("fixtures/datasets/mot");
-    let body = json!({"resolver": "mot_challenge", "settings": {"root": root}}).to_string();
-    let answer = tokio::task::spawn_blocking(move || {
-        let mut stream = TcpStream::connect(address).unwrap();
-        write!(
-            stream,
-            "POST /api/workspace/playlists HTTP/1.1\r\nHost: {address}\r\nConnection: close\r\n\
-             Content-Type: application/json\r\nContent-Length: {}\r\n\r\n{body}",
-            body.len()
-        )
-        .unwrap();
-        let mut response = String::new();
-        stream.read_to_string(&mut response).unwrap();
-        response
-    })
-    .await
-    .unwrap();
-    assert!(answer.starts_with("HTTP/1.1 200"), "{answer}");
-    let (_, body) = answer.split_once("\r\n\r\n").unwrap();
-    let workspace: Value = serde_json::from_str(body).unwrap();
-    let item = &workspace["items"][0];
-    assert_eq!(item["resolution"]["status"], "Resolved");
-    item["resolution"]["content"]["entries"]
-        .as_array()
-        .unwrap()
-        .clone()
+/// A session owner that added the dataset as a playlist, and the playlist as its Doc shows it once resolved.
+struct Playlist {
+    owner: Socket,
+    content: Value,
+    seq: u64,
+}
+
+impl Playlist {
+    async fn add(backend: &Backend) -> Self {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("fixtures/datasets/mot");
+        let mut owner = Socket::own(&backend.address.to_string(), None).await;
+        let item =
+            json!({"type": "Playlist", "resolver": "mot_challenge", "settings": {"root": root}});
+        let add = json!({"type": "content", "command": {"type": "addItems", "open": true, "items": [item]}});
+        owner
+            .say(json!({"type": "command", "seq": 1, "cmd": add}))
+            .await;
+        let doc = owner.settled_doc().await;
+        let resolution = &doc["doc"]["workspace"]["items"][0]["resolution"];
+        assert_eq!(resolution["status"], "Resolved", "{resolution}");
+        Self {
+            content: resolution["content"].clone(),
+            owner,
+            seq: 1,
+        }
+    }
+
+    fn entries(&self) -> &[Value] {
+        self.content["entries"].as_array().unwrap()
+    }
+
+    /// A viewer streaming the entry at `index`, through a ticket the owner asked for.
+    async fn stream(&mut self, backend: &Backend, index: usize) -> Viewer {
+        self.seq += 1;
+        let key = json!({
+            "content": self.content["id"],
+            "generation": self.content["generation"],
+            "entry": self.entries()[index]["id"],
+        });
+        let request = json!({"type": "command", "seq": self.seq, "cmd": {"type": "requestTicket", "key": key}});
+        self.owner.say(request).await;
+        let seq = self.seq;
+        let ticket = self
+            .owner
+            .until(|message| message["type"] == "ticket" && message["seq"] == seq)
+            .await;
+        let mut viewer = backend.viewer().await;
+        viewer.open(ticket["ticket"].as_str().unwrap(), None).await;
+        viewer
+    }
 }
 
 /// Everything the lanes of an open entry have said so far.
@@ -116,8 +136,9 @@ fn lane_view(lane: u16, revision: u32, sticky: bool, filter: &[(&str, bool)]) ->
 #[tokio::test]
 async fn the_dataset_opens_as_two_entries_whose_lanes_draw_their_files_rows_frame_by_frame() {
     let backend = Backend::start().await;
-    let entries = add_playlist(backend.address).await;
-    let summary: Vec<(&str, Vec<&str>)> = entries
+    let mut playlist = Playlist::add(&backend).await;
+    let summary: Vec<(&str, Vec<&str>)> = playlist
+        .entries()
         .iter()
         .map(|entry| {
             let lanes = entry["lanes"].as_array().unwrap();
@@ -136,8 +157,7 @@ async fn the_dataset_opens_as_two_entries_whose_lanes_draw_their_files_rows_fram
         ]
     );
 
-    let mut viewer = backend.viewer().await;
-    viewer.open(entries[1]["id"].as_str().unwrap(), None).await;
+    let mut viewer = playlist.stream(&backend, 1).await;
     let video = viewer.opened().await;
     assert_eq!(video.frame_count, FRAMES);
     let labels: Vec<_> = video.lanes.iter().map(|lane| lane.label.as_str()).collect();
@@ -220,10 +240,9 @@ async fn the_dataset_opens_as_two_entries_whose_lanes_draw_their_files_rows_fram
 #[tokio::test]
 async fn an_entry_without_a_ground_truth_file_has_only_its_detection_lane() {
     let backend = Backend::start().await;
-    let entries = add_playlist(backend.address).await;
+    let mut playlist = Playlist::add(&backend).await;
 
-    let mut viewer = backend.viewer().await;
-    viewer.open(entries[0]["id"].as_str().unwrap(), None).await;
+    let mut viewer = playlist.stream(&backend, 0).await;
     let video = viewer.opened().await;
     assert_eq!(video.lanes.len(), 1);
     assert_eq!(video.lanes[0].label, "DET");

@@ -1,20 +1,39 @@
 //! The ax-devil backend: HTTP routes for the frontend and, in release builds, the embedded frontend itself.
 
-use api_types::{API_VERSION, ApiError, AppInfo, SettingsChange, SettingsState};
-use axum::{Json, Router, extract::State, http::StatusCode, routing::get};
+pub mod access;
+mod routes;
+pub mod runtime;
+pub mod session;
+pub mod share;
+#[cfg(test)]
+mod test_support;
+pub mod video_cache;
+pub mod video_sources;
+
+use access::{Admission, Limits, Policy, Principal};
+use api_types::{API_VERSION, ApiError, AppInfo, SHELL_API, SettingsChange, SettingsState};
+use axum::{
+    Json, Router,
+    extract::{FromRef, State},
+    http::StatusCode,
+    middleware::from_fn,
+};
 #[cfg(feature = "embed-assets")]
 use axum::{
     http::{Uri, header},
     response::{IntoResponse, Response},
 };
-use std::sync::Arc;
-
-mod routes;
-pub mod runtime;
-#[cfg(test)]
-mod test_support;
-pub mod video_cache;
-pub mod video_sources;
+use catalogs::Library;
+use handlers::Handlers;
+use overlays::OverlayService;
+use routes::Listener;
+use scene_store::TrackRegistry;
+use session::{GRACE, LaunchQueue, Sessions};
+use sessions::session::OnRuntime;
+use settings::Scope;
+use share::Hosting;
+use std::{collections::BTreeMap, path::Path, sync::Arc};
+use tokio::sync::watch;
 
 pub use routes::window::Windows;
 
@@ -25,67 +44,207 @@ pub use routes::window::Windows;
 #[allow_missing = true]
 struct Assets;
 
-/// The services the routes are adapters over, created once at startup.
+/// What every route can reach: the services it is an adapter over, who is asking, the socket limits, and the sessions.
 #[derive(Clone)]
 pub struct AppState {
-    /// The settings service.
+    /// The settings service; a route reads and writes only the scopes its caller is granted.
     pub settings: Arc<settings::Settings>,
+    /// Where the saved window positions are, when this backend keeps any; see [`AppState::with_windows`].
+    windows: Option<Arc<Windows>>,
     /// The decoders and playlist resolvers the app knows.
-    pub handlers: handlers::Handlers,
-    /// The workspace store.
-    pub store: workspace_store::Store,
-    /// The saved window positions.
-    pub windows: Arc<Windows>,
+    pub handlers: Handlers,
     /// The open videos, which the playback socket draws its viewers from.
     pub videos: Arc<video_sources::VideoSources>,
     /// Opens the overlays of viewers.
-    pub overlays: overlays::OverlayService,
-    /// The render catalogs.
-    pub catalogs: catalogs::Library,
-    /// Turns true when the backend is stopping: long-lived connections, such as the playback sockets, end.
-    pub stopping: tokio::sync::watch::Receiver<bool>,
+    pub overlays: Arc<OverlayService>,
+    /// The render catalogs, listed to every viewer and compiled on first use.
+    pub catalogs: Arc<Library>,
+    /// Turns true when the backend is stopping: long-lived connections, such as the playback and session sockets,
+    /// end.
+    pub stopping: watch::Receiver<bool>,
+    /// How this listener decides who is asking.
+    pub policy: Arc<Policy>,
+    /// Counts the open sockets.
+    pub admission: Arc<Admission>,
+    /// Every session this backend holds, whichever listener its socket arrives on.
+    pub sessions: Sessions,
+    /// Items the first Local session takes when it starts.
+    launch: Arc<LaunchQueue>,
+    /// Where the join links of the sessions point.
+    hosting: Arc<Hosting>,
 }
 
-/// Builds the backend's routes around the services.
+impl AppState {
+    /// State for one listener with the default socket limits, no launch items and no join links. Decoded overlay
+    /// tracks are cached under `cache_dir`. Must be created inside a Tokio runtime, which resolves the sessions'
+    /// items.
+    pub fn new(
+        settings: Arc<settings::Settings>,
+        policy: Policy,
+        videos: Arc<video_sources::VideoSources>,
+        stopping: watch::Receiver<bool>,
+        handlers: Handlers,
+        cache_dir: &Path,
+    ) -> Self {
+        let runtime = tokio::runtime::Handle::current();
+        let catalogs = Library::built_in();
+        let tracks = TrackRegistry::new(handlers.clone(), Some(cache_dir));
+        let limits = match policy {
+            // Every client of the Local listener is this machine, so a per-address cap would only limit the person
+            // using it: all their windows and viewers share one address.
+            Policy::Local => Limits::behind_proxy(),
+            Policy::Shared { .. } => Limits::default(),
+        };
+        Self {
+            settings,
+            overlays: Arc::new(OverlayService::new(tracks, catalogs.clone())),
+            catalogs: Arc::new(catalogs),
+            sessions: Sessions::new(
+                GRACE,
+                Arc::new(OnRuntime {
+                    runtime,
+                    handlers: handlers.clone(),
+                }),
+            ),
+            handlers,
+            videos,
+            stopping,
+            windows: None,
+            policy: Arc::new(policy),
+            admission: Arc::new(Admission::new(limits)),
+            launch: Arc::new(LaunchQueue::default()),
+            hosting: Arc::new(Hosting::None),
+        }
+    }
+
+    /// The same state with these socket limits.
+    #[must_use]
+    pub fn with_limits(mut self, limits: Limits) -> Self {
+        self.admission = Arc::new(Admission::new(limits));
+        self
+    }
+
+    /// The same state with `launch` as the items the first Local session takes.
+    #[must_use]
+    pub fn with_launch(mut self, launch: Arc<LaunchQueue>) -> Self {
+        self.launch = launch;
+        self
+    }
+
+    /// The same state with window positions saved in `file`, which need not exist yet.
+    #[must_use]
+    pub fn with_windows(mut self, file: std::path::PathBuf) -> Self {
+        self.windows = Some(Arc::new(Windows::new(file)));
+        self
+    }
+
+    /// The same state with join links pointing at `hosting`.
+    #[must_use]
+    pub fn with_hosting(mut self, hosting: Hosting) -> Self {
+        self.hosting = Arc::new(hosting);
+        self
+    }
+
+    /// State for another listener of this backend: the same settings and sessions, its own policy and limits, and no
+    /// join links of its own.
+    pub(crate) fn shared_with(&self, policy: Policy) -> Self {
+        Self {
+            policy: Arc::new(policy),
+            admission: Arc::new(Admission::new(Limits::default())),
+            hosting: Arc::new(Hosting::None),
+            ..self.clone()
+        }
+    }
+}
+
+impl FromRef<AppState> for Arc<Policy> {
+    fn from_ref(state: &AppState) -> Self {
+        Arc::clone(&state.policy)
+    }
+}
+
+/// Builds the routes of the listener for other machines that the desktop opens while a session is shared: the
+/// frontend, the build's identity, and the session and playback sockets, which admit join links only.
+pub fn lan_app(state: AppState) -> Router {
+    routes::mount(Listener::Lan, state).layer(from_fn(access::security_headers))
+}
+
+/// Builds the backend's routes. The Local policy answers only pages this backend served.
 pub fn app(state: AppState) -> Router {
-    Router::new()
-        .route("/api/info", get(info))
-        .route("/api/settings", get(get_settings).put(put_settings))
-        .merge(routes::window::router())
-        .merge(routes::catalogs::router())
-        .merge(routes::handlers::router())
-        .merge(routes::workspace::router())
-        .merge(routes::playback::router())
-        .fallback(asset)
-        .with_state(state)
+    let (listener, local) = match *state.policy {
+        Policy::Local => (Listener::Local, true),
+        Policy::Shared { .. } => (Listener::Server, false),
+    };
+    let mut router = routes::mount(listener, state);
+    if local {
+        router = router.layer(from_fn(access::local_guard));
+    }
+    // Outermost, so refusals carry the headers too.
+    router.layer(from_fn(access::security_headers))
 }
 
-/// Every setting and shortcut, with what needs a restart.
-fn snapshot(settings: &settings::Settings, state: &settings::State) -> SettingsState {
-    SettingsState {
-        values: state.values(),
-        shortcuts: state
+/// What `principal` may read of the settings: its scopes' values, the shortcuts when it holds the `preferences`
+/// grant, and which of those need a restart.
+fn snapshot(
+    settings: &settings::Settings,
+    state: &settings::State,
+    principal: Principal,
+) -> SettingsState {
+    let scopes = principal.scopes();
+    let shortcuts = if scopes.contains(&Scope::Personal) {
+        state
             .shortcuts()
             .into_iter()
             .map(|(id, key)| (id.to_owned(), key))
-            .collect(),
+            .collect()
+    } else {
+        BTreeMap::new()
+    };
+    SettingsState {
+        values: state.values(&scopes),
+        shortcuts,
         restart: settings
-            .restart_pending()
+            .restart_pending(&scopes)
             .into_iter()
             .map(str::to_owned)
             .collect(),
     }
 }
 
-async fn get_settings(State(AppState { settings, .. }): State<AppState>) -> Json<SettingsState> {
-    Json(snapshot(&settings, &settings.state()))
+pub(crate) async fn get_settings(
+    principal: Principal,
+    State(AppState { settings, .. }): State<AppState>,
+) -> Json<SettingsState> {
+    Json(snapshot(&settings, &settings.state(), principal))
 }
 
-/// Replaces every setting and shortcut; a rejected or unsaved change leaves the stored state as it was.
-async fn put_settings(
+/// Replaces every setting and shortcut the caller may change; a rejected or unsaved change leaves the stored state
+/// as it was.
+pub(crate) async fn put_settings(
+    principal: Principal,
     State(AppState { settings, .. }): State<AppState>,
     Json(body): Json<SettingsChange>,
 ) -> Result<Json<SettingsState>, (StatusCode, Json<ApiError>)> {
+    let scopes = principal.scopes();
+    let not_yours = |location: &str| {
+        failure(
+            StatusCode::FORBIDDEN,
+            location,
+            "this setting is not yours to change".into(),
+        )
+    };
+    if let Some(key) = body.values.keys().find(|key| {
+        settings::TABLE
+            .iter()
+            .any(|setting| setting.key == key.as_str() && !scopes.contains(&setting.scope))
+    }) {
+        return Err(not_yours(key));
+    }
+    if !scopes.contains(&Scope::Personal)
+        && let Some(id) = body.shortcuts.keys().next()
+    {
+        return Err(not_yours(&format!("shortcuts.{id}")));
+    }
     let change = settings::Change {
         values: body.values,
         shortcuts: body.shortcuts,
@@ -93,8 +252,8 @@ async fn put_settings(
     // The file write blocks, so it stays off the async workers.
     let saved = tokio::task::spawn_blocking(move || {
         settings
-            .replace(&change)
-            .map(|state| snapshot(&settings, &state))
+            .replace(&scopes, &change)
+            .map(|state| snapshot(&settings, &state, principal))
     })
     .await
     .map_err(|error| {
@@ -129,18 +288,20 @@ pub(crate) fn failure(
     )
 }
 
-async fn info() -> Json<AppInfo> {
+pub(crate) async fn info(principal: Principal) -> Json<AppInfo> {
     Json(AppInfo {
         app: "ax-devil".into(),
         api: API_VERSION,
         version: env!("CARGO_PKG_VERSION").into(),
         development: !cfg!(feature = "embed-assets"),
         pid: std::process::id(),
+        shell: SHELL_API,
+        grants: principal.grants().to_vec(),
     })
 }
 
 #[cfg(feature = "embed-assets")]
-async fn asset(uri: Uri) -> Response {
+pub(crate) async fn asset(uri: Uri) -> Response {
     let path = uri.path().trim_start_matches('/');
     let path = if path.is_empty() { "index.html" } else { path };
     match Assets::get(path) {
@@ -154,11 +315,6 @@ async fn asset(uri: Uri) -> Response {
             .into_response(),
         None => StatusCode::NOT_FOUND.into_response(),
     }
-}
-
-#[cfg(not(feature = "embed-assets"))]
-async fn asset() -> StatusCode {
-    StatusCode::NOT_FOUND
 }
 
 #[cfg(test)]
@@ -177,6 +333,7 @@ mod tests {
         Request::builder()
             .method("PUT")
             .uri("/api/settings")
+            .header("host", "127.0.0.1")
             .header("content-type", "application/json")
             .body(Body::from(body.to_owned()))
             .unwrap()
@@ -278,7 +435,7 @@ mod tests {
             StatusCode::UNPROCESSABLE_ENTITY
         );
 
-        std::fs::write(test.folder.path().join("windows.json"), "{ not json").unwrap();
+        std::fs::write(test._folder.path().join("windows.json"), "{ not json").unwrap();
         assert_eq!(
             test.send(window("GET", "main", "")).await.0,
             StatusCode::NO_CONTENT

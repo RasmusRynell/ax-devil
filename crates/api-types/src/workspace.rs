@@ -1,18 +1,21 @@
-//! Wire types for the workspace routes and events.
+//! The workspace as the Session socket carries it: the Doc's wire form and the items a client asks to add.
 
+use crate::ErrorWire;
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
+use workspace::ContentId;
 
 use crate::content::ContentInfo;
 
-/// The workspace and what is known about each item: the body of `GET /api/workspace` and of every `Workspace` event.
+/// The workspace and what is known about each item, as one audience may see it.
 #[derive(Serialize, Deserialize, TS)]
 pub struct WorkspaceState {
     /// The user's name for the workspace; `null` is Untitled.
     pub name: Option<String>,
     /// Every item in the order it was added.
     pub items: Vec<ItemState>,
-    /// The sidebar tree flattened: each item, its entries and their lanes, in tree order.
+    /// The sidebar tree flattened: each item, its entries and their lanes, in tree order. Lists only the items
+    /// `items` lists.
     pub rows: Vec<RowInfo>,
 }
 
@@ -51,11 +54,8 @@ pub enum RowKindWire {
 pub enum RowStatusInfo {
     /// Resolving has not finished.
     Pending,
-    /// The item has no Content.
-    Unavailable {
-        /// Why, in words for the user.
-        reason: String,
-    },
+    /// The item has no Content, and why.
+    Unavailable(ErrorWire),
     /// Ready to open.
     Ready,
 }
@@ -85,17 +85,12 @@ pub enum ResolutionState {
         /// What the item resolved to.
         content: ContentInfo,
     },
-    /// The item stays in the workspace without Content.
-    Failed {
-        /// What is wrong, in words for the user.
-        reason: String,
-        /// What it is about, such as the file path.
-        location: String,
-    },
+    /// The item stays in the workspace without Content; this is why.
+    Failed(ErrorWire),
 }
 
 /// What the user asked to add; the intake turns each into an item.
-#[derive(Serialize, Deserialize, TS)]
+#[derive(Serialize, Deserialize, TS, Clone, Debug, PartialEq, Eq)]
 #[serde(tag = "type")]
 pub enum NewItem {
     /// A video file, with overlay files drawn on it.
@@ -120,7 +115,7 @@ pub enum NewItem {
 }
 
 /// An overlay file to add to a video.
-#[derive(Serialize, Deserialize, TS)]
+#[derive(Serialize, Deserialize, TS, Clone, Debug, PartialEq, Eq)]
 pub struct NewOverlayWire {
     /// The file.
     pub path: String,
@@ -129,51 +124,14 @@ pub struct NewOverlayWire {
     pub handler: Option<String>,
 }
 
-/// The body of `POST /api/workspace/playlists`: resolves the playlist first and adds it only when it resolves.
-#[derive(Serialize, Deserialize, TS)]
-pub struct AddPlaylistRequest {
-    /// The resolver id.
-    pub resolver: String,
-    /// The settings the resolver's schema declares.
-    #[ts(type = "Record<string, unknown>")]
-    pub settings: serde_json::Map<String, serde_json::Value>,
-    /// The row's label; the resolver's name when absent.
-    #[serde(default)]
-    pub label: Option<String>,
-}
-
 /// An entry or lane to hide or show.
-#[derive(Serialize, Deserialize, TS)]
+#[derive(Serialize, Deserialize, TS, Clone, Debug, PartialEq, Eq)]
 pub struct HiddenTarget {
     /// The entry, by its content id.
-    pub entry: String,
+    #[ts(type = "string")]
+    pub entry: ContentId,
     /// The lane's label; the whole entry when absent.
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
     pub lane: Option<String>,
-}
-
-/// The body of `POST /api/workspace/hidden`.
-#[derive(Serialize, Deserialize, TS)]
-pub struct HiddenRequest {
-    /// What to hide or show.
-    pub target: HiddenTarget,
-    /// Whether it is hidden afterwards.
-    pub hidden: bool,
-}
-
-/// The body of `POST /api/workspace/items`. The intake checks every entry first: if any is refused, nothing is added.
-#[derive(Serialize, Deserialize, TS)]
-pub struct AddItemsRequest {
-    /// What to add, in order.
-    pub items: Vec<NewItem>,
-    /// Whether a viewer should open for each item once it resolves.
-    pub open: bool,
-}
-
-/// What `GET /api/events` streams, one per server-sent event, starting with the current state on connect.
-#[derive(Serialize, Deserialize, TS)]
-#[serde(tag = "type")]
-pub enum ServerEvent {
-    /// The workspace changed; this is the whole new state.
-    Workspace(WorkspaceState),
 }

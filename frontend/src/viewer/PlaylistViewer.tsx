@@ -1,17 +1,16 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { EntryInfo } from "../generated/api";
 import { Icon } from "../kit/Icon";
 import { IconButton } from "../kit/IconButton";
 import { Menu } from "../kit/Menu";
 import { Popover } from "../kit/Popover";
-import { VideoViewer } from "../playback/VideoViewer";
+import type { EntryMemory } from "../playback/VideoViewer";
+import { useView } from "../session/session";
 import type { ViewerProps } from "../viewers";
-import { useWorkspace } from "../workspace/WorkspaceProvider";
-import { ViewerActionsContext, useViewerActions, type ViewerActions } from "./actions";
+import { NO_ACTIONS, ViewerActionsContext, useViewerActions, type ViewerActions } from "./actions";
+import { EntryViewer } from "./EntryViewer";
 import type { Hidden } from "./hidden";
-
-/** What a playlist viewer keeps while it is away: the entry it showed and where each entry's video was. */
-type Remembered = { entry?: string; positions: Record<string, unknown> };
+import { useHidden } from "./useViewers";
 
 /**
  * The entry `step` places from `from` (negative is back) that the user has not hidden, or `undefined` when there is
@@ -28,25 +27,27 @@ export function adjacentEntry(
   return undefined;
 }
 
-function rememberedOf(saved: unknown): Remembered {
-  const value = saved as Partial<Remembered> | undefined;
-  return {
-    entry: typeof value?.entry === "string" ? value.entry : undefined,
-    positions: value?.positions ?? {},
-  };
-}
-
 /**
  * Shows a playlist: its entries one at a time in a video viewer, with buttons and a menu to move between them.
- * Hidden entries are skipped; each entry opens where it was left.
+ * Hidden entries are skipped when stepping. The entry on screen is the window's view of this item, so it is the
+ * presenter's for a following window and survives a reload. A position is kept for each entry that was left, until
+ * the viewer closes or the entry leaves the playlist, so returning to an entry reopens it there; the view keeps only
+ * the clock of the entry on screen.
  */
-export function PlaylistViewer({ content, memory, hidden }: ViewerProps<"Playlist">) {
+export function PlaylistViewer({ item, content }: ViewerProps<"Playlist">) {
   const { entries } = content;
-  const saved = useRef(rememberedOf(memory.saved));
-  const [chosen, setChosen] = useState(saved.current.entry);
+  const hidden = useHidden();
+  const [viewers, setViewers] = useView("viewers");
   // What the entry's own viewer offers (play, step, speed) stays reachable next to the playlist's commands.
-  const inner = useRef<ViewerActions>({});
+  const memory = useRef<EntryMemory>(new Map());
+  useEffect(() => {
+    const listed = new Set(entries.map((entry) => entry.id));
+    for (const id of memory.current.keys()) if (!listed.has(id)) memory.current.delete(id);
+  }, [entries]);
+  const [inner, setInner] = useState<ViewerActions>(NO_ACTIONS);
 
+  // The backend keeps the view naming an entry; until it has, the first one that is not hidden is its choice too.
+  const chosen = viewers[item]?.entry;
   const index = (() => {
     const found = entries.findIndex((entry) => entry.id === chosen);
     return found >= 0 ? found : entries.findIndex((entry) => !hidden.entry(entry.id));
@@ -55,38 +56,22 @@ export function PlaylistViewer({ content, memory, hidden }: ViewerProps<"Playlis
   const previous = adjacentEntry(entries, hidden, index, -1);
   const next = adjacentEntry(entries, hidden, index, 1);
 
-  const choose = (id: string) => {
-    saved.current = { ...saved.current, entry: id };
-    memory.save(saved.current);
-    setChosen(id);
-  };
-  const own = useMemo<ViewerActions>(
-    () => ({
-      ...(previous && { "previous-entry": () => choose(previous.id) }),
-      ...(next && { "next-entry": () => choose(next.id) }),
-    }),
-    // `choose` only reads refs and stable setters.
-    [previous?.id, next?.id],
+  // Another entry starts at its own beginning, so the view keeps the entry and no clock.
+  const choose = useCallback(
+    (id: string) =>
+      setViewers((now) => (now[item]?.entry === id ? now : { ...now, [item]: { entry: id } })),
+    [setViewers, item],
   );
+  const [previousId, nextId] = [previous?.id, next?.id];
   const actions = useMemo<ViewerActions>(
-    () =>
-      new Proxy(own, {
-        get: (target, id) =>
-          typeof id === "string" ? (target[id] ?? inner.current[id]) : undefined,
-      }),
-    [own],
+    () => ({
+      ...inner,
+      ...(previousId && { "previous-entry": () => choose(previousId) }),
+      ...(nextId && { "next-entry": () => choose(nextId) }),
+    }),
+    [inner, previousId, nextId, choose],
   );
   useViewerActions(actions);
-
-  // An entry the user opened from the workspace tree is shown even if it is hidden.
-  const { view, store } = useWorkspace();
-  const { requested } = view;
-  useEffect(() => {
-    if (requested === null || !entries.some((entry) => entry.id === requested)) return;
-    choose(requested);
-    store.fulfil();
-    // `choose` only reads refs and stable setters.
-  }, [requested, entries, store]);
 
   if (!current)
     return (
@@ -95,28 +80,13 @@ export function PlaylistViewer({ content, memory, hidden }: ViewerProps<"Playlis
       </p>
     );
   const listed = entries.filter((entry) => entry.id === current.id || !hidden.entry(entry.id));
-  const video = {
-    kind: "SeekableVideo" as const,
-    id: current.id,
-    display_name: current.label,
-    entry: current,
-  };
-  const position = {
-    saved: saved.current.positions[current.id],
-    save: (state: unknown) => {
-      saved.current = {
-        ...saved.current,
-        positions: { ...saved.current.positions, [current.id]: state },
-      };
-      memory.save(saved.current);
-    },
-  };
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <div className="flex h-row shrink-0 items-center border-b border-line bg-panel">
         <IconButton
           icon="chevron-left"
           label="Previous entry"
+          data-cursor-id="entry:previous"
           disabled={!previous}
           onClick={() => previous && choose(previous.id)}
           className="size-row disabled:text-disabled disabled:hover:bg-transparent"
@@ -149,6 +119,7 @@ export function PlaylistViewer({ content, memory, hidden }: ViewerProps<"Playlis
         <IconButton
           icon="chevron-right"
           label="Next entry"
+          data-cursor-id="entry:next"
           disabled={!next}
           onClick={() => next && choose(next.id)}
           className="size-row disabled:text-disabled disabled:hover:bg-transparent"
@@ -157,8 +128,8 @@ export function PlaylistViewer({ content, memory, hidden }: ViewerProps<"Playlis
           {index + 1} / {entries.length}
         </output>
       </div>
-      <ViewerActionsContext.Provider value={inner}>
-        <VideoViewer key={current.id} content={video} memory={position} hidden={hidden} />
+      <ViewerActionsContext.Provider value={setInner}>
+        <EntryViewer item={item} content={content} entry={current} memory={memory.current} />
       </ViewerActionsContext.Provider>
     </div>
   );

@@ -1,16 +1,16 @@
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import type { ContentInfo, ContentRef, EntryInfo } from "../generated/api";
 import { Icon } from "../kit/Icon";
-import { IconButton } from "../kit/IconButton";
-import { Popover } from "../kit/Popover";
+import { useCan, useFollowing, useServerClock, useStream, useView } from "../session/session";
 import { useViewerActions } from "../viewer/actions";
-import type { Hidden } from "../viewer/hidden";
-import { setHidden } from "../viewer/requests";
-import type { ViewerProps } from "../viewers";
+import { NOTHING_HIDDEN, type Hidden } from "../viewer/hidden";
 import { NoticeList } from "./LaneChip";
 import { LaneGrid } from "./LaneGrid";
-import { PlaybackSession, type PlaybackView, type ResumeState } from "./session";
+import { Popover } from "../kit/Popover";
+import { PlaybackSession, type PlaybackIntent, type ResumeState } from "./session";
 import { connectWorker } from "./connect";
 import { Transport } from "./Transport";
+import type { PlaybackView } from "./view";
 import type { Connect } from "./wire";
 
 /** What the pane says while the video is not ready: indexing with its progress, reconnecting, or why it failed. */
@@ -19,7 +19,9 @@ function Status({ view, name }: { view: PlaybackView; name: string }) {
     return (
       <div role="alert" className="m-auto flex max-w-full flex-col gap-s p-xl text-center">
         <p className="m-0 font-semibold break-words">{view.failure.reason}</p>
-        <p className="m-0 text-small break-all text-on-canvas-muted">{view.failure.location}</p>
+        {view.failure.location && (
+          <p className="m-0 text-small break-all text-on-canvas-muted">{view.failure.location}</p>
+        )}
       </div>
     );
   const text =
@@ -53,17 +55,22 @@ function Status({ view, name }: { view: PlaybackView; name: string }) {
 
 function Playback({
   session,
+  item,
   name,
   entry,
   hidden,
+  canChange,
+  onHideLane,
 }: {
   session: PlaybackSession;
+  item: string;
   name: string;
   entry: string;
   hidden: Hidden;
+  canChange: boolean;
+  onHideLane?: (label: string) => void;
 }) {
   const view = useSyncExternalStore(session.subscribe, session.getSnapshot);
-  const [refusal, setRefusal] = useState<string | null>(null);
   const pane = useRef<HTMLDivElement>(null);
   // A viewer that opens takes the keyboard, so its shortcuts work at once.
   useEffect(() => pane.current?.focus({ preventScroll: true }), []);
@@ -94,13 +101,10 @@ function Playback({
               session={session}
               view={view}
               name={name}
+              anchor={`frame:${item}`}
               entry={entry}
               hidden={hidden}
-              onHide={(label) => {
-                setHidden(entry, label, true).then(setRefusal, (error: unknown) =>
-                  setRefusal(error instanceof Error ? error.message : String(error)),
-                );
-              }}
+              onHide={onHideLane}
             />
             {view.warnings.length > 0 && (
               <div className="absolute top-0 right-0 p-s">
@@ -116,23 +120,8 @@ function Playback({
                 </div>
               </div>
             )}
-            {refusal && (
-              <div
-                role="alert"
-                className="absolute top-0 left-1/2 m-s flex -translate-x-1/2 items-center rounded-control bg-canvas-scrim pl-m"
-              >
-                {refusal}
-                <IconButton
-                  onCanvas
-                  icon="x"
-                  label="Dismiss"
-                  onClick={() => setRefusal(null)}
-                  className="size-row"
-                />
-              </div>
-            )}
           </div>
-          <Transport controls={session} view={view} />
+          <Transport controls={session} view={view} disabled={!canChange} />
         </>
       ) : (
         <Status view={view} name={name} />
@@ -141,21 +130,94 @@ function Playback({
   );
 }
 
+/** Where each entry of an item was left, by entry id: kept by whoever shows the entries, for as long as it does. */
+export type EntryMemory = Map<string, ResumeState>;
+
+/** What the viewer is given besides the item: the Content to stream from and the entry of it to play. */
+export type VideoViewerProps = {
+  /** The workspace item whose viewer this is; the window's view keeps this viewer's clock under it. */
+  item: string;
+  /** The Content the stream belongs to, a video or a playlist. */
+  content: Pick<ContentInfo, "id" | "generation" | "display_name">;
+  /** The entry to play. A stream is for one entry, and the viewer starts over when it changes. */
+  entry: EntryInfo;
+  /** What the user hid in the workspace: lanes left out of the grid. */
+  hidden?: Hidden;
+  /** Hides one of the entry's lanes by its label; absent when this seat may not change the workspace. */
+  onHideLane?: (label: string) => void;
+  /**
+   * Where the entries this viewer was shown for were left, so that coming back to one reopens it there. A viewer
+   * shown for one entry needs none.
+   */
+  memory?: EntryMemory;
+  connect?: Connect;
+};
+
 /**
  * Plays one entry from the backend: its lanes in a grid with the transport below them, or why there is no picture
- * yet. Lanes the user hid are left out.
+ * yet. What the clock does is the window's view of this item, for the entry that view names. Whatever the viewer does
+ * with the controls is published when the seat may change its view, also while following: that is what makes the
+ * backend let the seat explore. The presenter's clock drives a following window and is never published back. Lane
+ * settings (catalog, classes, sticky) belong to this window's own stream and are not shared.
  */
 export function VideoViewer({
+  item,
   content,
+  entry,
+  hidden = NOTHING_HIDDEN,
+  onHideLane,
   memory,
-  hidden,
   connect = connectWorker,
-}: ViewerProps<"SeekableVideo"> & { connect?: Connect }) {
+}: VideoViewerProps) {
+  const key = useMemo<ContentRef>(
+    () => ({ content: content.id, generation: content.generation, entry: entry.id }),
+    [content.id, content.generation, entry.id],
+  );
+  const ticket = useStream(key);
+  const [viewers, setViewers] = useView("viewers");
+  // A clock belongs to the entry the view names beside it; one left from another entry is not this viewer's.
+  const shown = viewers[item];
+  const intent = shown?.entry === undefined || shown.entry === entry.id ? shown?.clock : undefined;
+  const canChange = useCan("view");
+  const following = useFollowing();
+  const clock = useServerClock();
   const [session, setSession] = useState<PlaybackSession | null>(null);
+  // The effect that creates the session reads these as they are then, and must not restart when they change.
+  const latest = useRef({ intent, canChange, following, clock });
+  latest.current = { intent, canChange, following, clock };
+  // Where each entry was left, for the session that replaces the one that closed. The published intent still names the
+  // last anchor when the replacement starts, so reading it there would reopen at the frame playback began from.
+  const own = useRef<EntryMemory>(new Map());
+  const left = memory ?? own.current;
+
   useEffect(() => {
-    const created = new PlaybackSession(content.id, {
+    const publish = ({ frame, playing, speed }: PlaybackIntent) => {
+      const { canChange: allowed, clock: server } = latest.current;
+      if (!allowed) return;
+      // A clock that is not in step yet stamps the future, which the backend cuts back to its own time. The wire
+      // carries whole microseconds.
+      const atUs = Math.round(server.nowUs() ?? Number.MAX_SAFE_INTEGER);
+      const next = { frame, playing, speedCenti: Math.round(speed * 100), atUs };
+      // The view may already name another entry, which the viewer was left for: its clock is not this one's.
+      setViewers((now) => {
+        const current = now[item];
+        if (current?.entry !== undefined && current.entry !== entry.id) return now;
+        return { ...now, [item]: { ...current, clock: next } };
+      });
+    };
+    const anchor = latest.current.intent;
+    // A window that follows takes the presenter's clock, never a position of its own, and forgets any it had.
+    const carried = latest.current.following ? undefined : left.get(entry.id);
+    left.delete(entry.id);
+    const start = carried ?? (anchor && { frame: anchor.frame, speed: anchor.speedCenti / 100 });
+    // A window that reloads and takes its seat back finds its clock still running in the accepted intent, which
+    // the watchers keep following: it picks the clock up where it is by now, as a following window does.
+    const running = !carried && !latest.current.following && anchor?.playing ? anchor : undefined;
+    const created = new PlaybackSession({
+      ticket,
       connect,
-      resume: memory.saved as ResumeState | undefined,
+      resume: start,
+      onIntent: publish,
       now: () => performance.now(),
       frame: (callback) => {
         const handle = requestAnimationFrame(callback);
@@ -167,20 +229,34 @@ export function VideoViewer({
       },
     });
     created.start();
+    if (running) created.follow(running, () => latest.current.clock.nowUs() ?? running.atUs);
     setSession(created);
     return () => {
-      memory.save(created.resumeState());
+      // Shown again later, the viewer opens where it was left, paused.
+      const { frame, speed } = created.resumeState();
       created.close();
+      // A window that follows has not chosen anything, so leaving does not make it explore.
+      if (!latest.current.following) {
+        publish({ frame, playing: false, speed });
+        left.set(entry.id, { frame, speed });
+      }
     };
-    // `memory.saved` is only read when the session starts; a new `memory` object each render must not restart it.
-  }, [content.id, connect]);
+  }, [item, entry.id, ticket, connect, setViewers, left]);
+
+  useEffect(() => {
+    if (session && following && intent) session.follow(intent, () => clock.nowUs() ?? intent.atUs);
+  }, [session, following, intent, clock]);
+
   return (
     session && (
       <Playback
         session={session}
-        name={content.display_name}
-        entry={content.entry.id}
+        item={item}
+        name={entry.label}
+        entry={entry.id}
         hidden={hidden}
+        canChange={canChange}
+        onHideLane={onHideLane}
       />
     )
   );

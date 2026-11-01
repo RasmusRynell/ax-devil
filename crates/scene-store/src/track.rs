@@ -9,7 +9,7 @@ use std::{
     },
 };
 
-use foundation::UserError;
+use foundation::{ErrorCode, HostPath, UserError};
 use overlay_sync::SampleKeys;
 use scene::{Coverage, Fields, FilterPolicy, Scene, serial};
 use scene_decoders::LoadWarning;
@@ -141,11 +141,13 @@ impl Track {
     fn read(&self, index: usize) -> Result<Scene, UserError> {
         let fail = |reason: String| {
             UserError::new(
+                ErrorCode::FileUnreadable,
                 format!(
-                    "The scene cache of this overlay is damaged ({reason}); open the overlay again"
+                    "The scene cache of this overlay is damaged at sample {index} ({reason}); open the \
+                     overlay again"
                 ),
-                format!("{} sample {index}", self.source.display()),
             )
+            .at(HostPath::new(&self.source))
         };
         if index >= self.keys.len() {
             return Err(fail("no such sample".to_string()));

@@ -8,7 +8,7 @@ use std::{
     time::Duration,
 };
 
-use foundation::{CancelToken, FrameSize, Interrupt, UserError};
+use foundation::{CancelToken, ErrorCode, FrameSize, HostPath, Interrupt, UserError};
 use handlers::Handlers;
 use playlist_resolvers::OverlayRef;
 use scene_decoders::FileSceneDecoder;
@@ -251,10 +251,13 @@ impl TrackRegistry {
         cancel: &CancelToken,
     ) -> Result<Arc<Track>, Interrupt<UserError>> {
         let decoder = (self.decoders)(&key.handler).ok_or_else(|| {
-            Interrupt::Failed(UserError::new(
-                format!("No decoder is installed for '{}'", key.handler),
-                key.path.display().to_string(),
-            ))
+            Interrupt::Failed(
+                UserError::new(
+                    ErrorCode::UnknownHandler,
+                    format!("No decoder is installed for '{}'", key.handler),
+                )
+                .at(HostPath::new(&key.path)),
+            )
         })?;
         let artifact = self
             .cache_dir

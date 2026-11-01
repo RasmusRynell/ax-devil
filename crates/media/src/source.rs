@@ -10,7 +10,7 @@ use ffmpeg_next::format::context::Input;
 use ffmpeg_next::format::{self};
 use ffmpeg_next::media::Type;
 use ffmpeg_next::util::log::{self, Level};
-use foundation::{CancelToken, Interrupt, UserError};
+use foundation::{CancelToken, ErrorCode, HostPath, Interrupt, UserError};
 use std::path::Path;
 use std::sync::Once;
 
@@ -23,8 +23,8 @@ pub(crate) struct Opened {
 }
 
 /// The error for something that went wrong with the file at `path`.
-pub(crate) fn error(reason: impl Into<String>, path: &Path) -> UserError {
-    UserError::new(reason, path.display().to_string())
+pub(crate) fn error(code: ErrorCode, reason: impl Into<String>, path: &Path) -> UserError {
+    UserError::new(code, reason).at(HostPath::new(path))
 }
 
 /// Opens `input` and picks its best video stream. FFmpeg polls `cancel` while it opens the file and on every later
@@ -65,11 +65,14 @@ pub(crate) fn open_input(
     let input = opened.map_err(|e| {
         cancel.check().err().map_or_else(
             || {
-                let what = match video {
-                    VideoInput::File(_) => "The file is not a video",
-                    VideoInput::ImageSequence(_) => "The first image cannot be opened",
+                let (code, what) = match video {
+                    VideoInput::File(_) => (ErrorCode::NotAVideo, "The file is not a video"),
+                    VideoInput::ImageSequence(_) => (
+                        ErrorCode::FileUnreadable,
+                        "The first image cannot be opened",
+                    ),
                 };
-                Interrupt::Failed(error(format!("{what}: {e}"), path))
+                Interrupt::Failed(error(code, format!("{what}: {e}"), path))
             },
             Interrupt::from,
         )
@@ -77,6 +80,7 @@ pub(crate) fn open_input(
     cancel.check()?;
     if matches!(video, VideoInput::ImageSequence(_)) && input.format().name() != "image2" {
         return Err(Interrupt::Failed(error(
+            ErrorCode::NotAVideo,
             "The first image is not a picture FFmpeg reads as an image sequence",
             path,
         )));
@@ -87,6 +91,7 @@ pub(crate) fn open_input(
             .contains(format::stream::Disposition::ATTACHED_PIC)
     }) else {
         return Err(Interrupt::Failed(error(
+            ErrorCode::NotAVideo,
             "The file has no video stream",
             path,
         )));
@@ -94,6 +99,7 @@ pub(crate) fn open_input(
     let rate = stream.time_base();
     if rate.numerator() <= 0 || rate.denominator() <= 0 {
         return Err(Interrupt::Failed(error(
+            ErrorCode::UnsupportedFormat,
             "The video has no usable time base",
             path,
         )));
@@ -118,18 +124,31 @@ pub(crate) fn open_decoder(
     path: &Path,
 ) -> Result<decoder::Video, UserError> {
     let Some(stream) = opened.input.stream(opened.stream) else {
-        return Err(error("The video stream disappeared", path));
+        return Err(error(
+            ErrorCode::FileChanged,
+            "The video stream disappeared",
+            path,
+        ));
     };
-    let mut context = codec::context::Context::from_parameters(stream.parameters())
-        .map_err(|e| error(format!("The video codec is not supported: {e}"), path))?;
+    let mut context =
+        codec::context::Context::from_parameters(stream.parameters()).map_err(|e| {
+            error(
+                ErrorCode::UnsupportedFormat,
+                format!("The video codec is not supported: {e}"),
+                path,
+            )
+        })?;
     context.set_threading(threading::Config {
         kind: threading::Type::Frame,
         count: threads,
     });
-    context
-        .decoder()
-        .video()
-        .map_err(|e| error(format!("The video codec could not be opened: {e}"), path))
+    context.decoder().video().map_err(|e| {
+        error(
+            ErrorCode::UnsupportedFormat,
+            format!("The video codec could not be opened: {e}"),
+            path,
+        )
+    })
 }
 
 /// Size, delivered pixel layout and colour of the video stream.
@@ -137,7 +156,11 @@ pub(crate) fn probe(opened: &Opened, path: &Path) -> Result<VideoInfo, UserError
     let decoder = open_decoder(opened, 1, path)?;
     let (width, height) = (decoder.width(), decoder.height());
     if width == 0 || height == 0 {
-        return Err(error("The video has no picture size", path));
+        return Err(error(
+            ErrorCode::UnsupportedFormat,
+            "The video has no picture size",
+            path,
+        ));
     }
     let source = decoder.format();
     Ok(VideoInfo {

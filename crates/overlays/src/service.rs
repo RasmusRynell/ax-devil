@@ -81,8 +81,8 @@ impl OverlayService {
             Err(error) => {
                 tracing::error!("cannot start the overlay worker: {error}");
                 shared.abort(&foundation::UserError::new(
-                    "Cannot start the overlays",
-                    error.to_string(),
+                    foundation::ErrorCode::Internal,
+                    format!("Cannot start the overlays: {error}"),
                 ));
             }
         }
@@ -106,8 +106,8 @@ impl OverlayService {
                         state.finish_load(
                             index,
                             Err(foundation::UserError::new(
-                                "Cannot start loading the overlay",
-                                error.to_string(),
+                                foundation::ErrorCode::Internal,
+                                format!("Cannot start loading the overlay: {error}"),
                             )),
                         );
                     });
