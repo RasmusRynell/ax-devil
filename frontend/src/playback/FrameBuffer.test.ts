@@ -38,6 +38,15 @@ describe("frame buffer (B30)", () => {
     expect(buffer.usedBytes).toBe(0);
   });
 
+  it("finds the newest held frame that is ready", () => {
+    const buffer = new FrameBuffer<{ byteLength: number }>(500, 20);
+    buffer.setWindow({ playhead: 5, ahead: 3, behind: 3 });
+    [3, 4, 6].forEach((id) => buffer.add(id, frame(100)));
+    expect(buffer.newestPresentable(7, 0)).toBe(6);
+    expect(buffer.newestPresentable(7, 0, (id) => id !== 6)).toBe(4);
+    expect(buffer.newestPresentable(7, 5, (id) => id !== 6)).toBeUndefined();
+  });
+
   it("clamps the window to the video and refuses a frame beyond the budget", () => {
     const buffer = new FrameBuffer<{ byteLength: number }>(250, 3);
     buffer.setWindow({ playhead: 1, ahead: 10, behind: 10 });

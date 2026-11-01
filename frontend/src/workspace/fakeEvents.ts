@@ -6,7 +6,12 @@ export const pending: ResolutionState = { status: "Pending" };
 
 export const resolved = (id: string): ResolutionState => ({
   status: "Resolved",
-  content: { kind: "SeekableVideo", id: `content-${id}`, display_name: `${id}.mp4` },
+  content: {
+    kind: "SeekableVideo",
+    id: `content-${id}`,
+    display_name: `${id}.mp4`,
+    entry: { id: `content-${id}`, label: `${id}.mp4`, lanes: [`${id}.mp4`] },
+  },
 });
 
 export const video = (id: string, open: boolean, resolution: ResolutionState): ItemState => ({
@@ -41,7 +46,7 @@ export function fakeWorkspace() {
           this.onerror?.(new Event("error"));
         },
         send(items) {
-          const data = JSON.stringify({ type: "Workspace", name: null, items });
+          const data = JSON.stringify({ type: "Workspace", name: null, items, rows: [] });
           this.onmessage?.(new MessageEvent("message", { data }));
         },
       };

@@ -1,6 +1,8 @@
+import { useMemo } from "react";
 import type { ItemState } from "../generated/api";
 import { IconButton } from "../kit/IconButton";
 import { viewerFor } from "../viewers";
+import { hiddenOf, type Hidden } from "./hidden";
 import type { WorkspaceStore } from "../workspace/store";
 import { useWorkspace } from "../workspace/WorkspaceProvider";
 
@@ -21,7 +23,15 @@ function ItemStatus({ item }: { item: ItemState }) {
   );
 }
 
-function ItemView({ item, store }: { item: ItemState; store: WorkspaceStore }) {
+function ItemView({
+  item,
+  store,
+  hidden,
+}: {
+  item: ItemState;
+  store: WorkspaceStore;
+  hidden: Hidden;
+}) {
   const { resolution } = item;
   if (resolution.status !== "Resolved") return <ItemStatus item={item} />;
   const Viewer = viewerFor(resolution.content);
@@ -29,7 +39,14 @@ function ItemView({ item, store }: { item: ItemState; store: WorkspaceStore }) {
     saved: store.remembered(item.id),
     save: (state: unknown) => store.remember(item.id, state),
   };
-  return <Viewer key={resolution.content.id} content={resolution.content} memory={memory} />;
+  return (
+    <Viewer
+      key={resolution.content.id}
+      content={resolution.content}
+      memory={memory}
+      hidden={hidden}
+    />
+  );
 }
 
 /** The central area while viewers are open: a tab for each, and the active item's viewer. */
@@ -39,6 +56,8 @@ export function ViewerHost() {
     (id) => view.state?.items.find((item) => item.id === id) ?? [],
   );
   const active = items.find((item) => item.id === view.active);
+  const rows = view.state?.rows;
+  const hidden = useMemo(() => hiddenOf(rows ?? []), [rows]);
   return (
     <div className="flex h-full min-h-0 w-full min-w-0 flex-col">
       <div
@@ -75,7 +94,7 @@ export function ViewerHost() {
         aria-labelledby={active && `tab-${active.id}`}
         className="flex min-h-0 flex-1 flex-col"
       >
-        {active && <ItemView item={active} store={store} />}
+        {active && <ItemView item={active} store={store} hidden={hidden} />}
       </div>
     </div>
   );

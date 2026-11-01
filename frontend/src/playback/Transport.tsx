@@ -46,22 +46,18 @@ function SpeedField({ speed, onChange }: { speed: number; onChange: (speed: numb
 interface Props {
   controls: Controls;
   view: PlaybackView;
-  /** Whether the controls show; hidden controls stay in the page for the keyboard. */
-  visible: boolean;
 }
 
 /**
- * The playback controls over the bottom of the video: seek bar, play and step buttons, the frame and time of the
+ * The playback controls under the video: seek bar, play and step buttons, the frame and time of the
  * frame on screen, and the speed. The frame count and time describe the frame shown, the seek bar the position asked
  * for. A frame that failed to decode says why.
  */
-export function Transport({ controls, view, visible }: Props) {
+export function Transport({ controls, view }: Props) {
   const last = view.frameCount - 1;
   const { shown, playing, frameError } = view;
   return (
-    <div
-      className={`absolute inset-x-0 bottom-0 flex flex-col gap-xs bg-linear-to-t from-canvas-scrim to-transparent px-m pt-xl pb-s text-on-canvas transition-opacity motion-reduce:transition-none ${visible ? "" : "pointer-events-none opacity-0"}`}
-    >
+    <div className="flex shrink-0 flex-col gap-xs px-m py-s text-on-canvas">
       {frameError && (
         <p role="alert" className="m-0 w-fit rounded-control bg-canvas-scrim px-m py-xs">
           Frame {frameError.sequenceId} cannot be shown: {frameError.reason}

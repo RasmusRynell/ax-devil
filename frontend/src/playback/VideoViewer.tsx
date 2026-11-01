@@ -1,14 +1,17 @@
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { Icon } from "../kit/Icon";
+import { IconButton } from "../kit/IconButton";
+import { Popover } from "../kit/Popover";
 import { useViewerActions } from "../viewer/actions";
+import type { Hidden } from "../viewer/hidden";
+import { setHidden } from "../viewer/requests";
 import type { ViewerProps } from "../viewers";
+import { NoticeList } from "./LaneChip";
+import { LaneGrid } from "./LaneGrid";
 import { PlaybackSession, type PlaybackView, type ResumeState } from "./session";
 import { connectWorker } from "./connect";
 import { Transport } from "./Transport";
-import { VideoCanvas } from "./VideoCanvas";
 import type { Connect } from "./wire";
-
-/** How long the controls stay over a playing video after the pointer last moved. */
-const CONTROLS_IDLE_MS = 2000;
 
 /** What the pane says while the video is not ready: indexing with its progress, reconnecting, or why it failed. */
 function Status({ view, name }: { view: PlaybackView; name: string }) {
@@ -48,18 +51,22 @@ function Status({ view, name }: { view: PlaybackView; name: string }) {
   );
 }
 
-function Playback({ session, name }: { session: PlaybackSession; name: string }) {
+function Playback({
+  session,
+  name,
+  entry,
+  hidden,
+}: {
+  session: PlaybackSession;
+  name: string;
+  entry: string;
+  hidden: Hidden;
+}) {
   const view = useSyncExternalStore(session.subscribe, session.getSnapshot);
-  const [moving, setMoving] = useState(true);
-  const [focused, setFocused] = useState(false);
+  const [refusal, setRefusal] = useState<string | null>(null);
   const pane = useRef<HTMLDivElement>(null);
   // A viewer that opens takes the keyboard, so its shortcuts work at once.
   useEffect(() => pane.current?.focus({ preventScroll: true }), []);
-  useEffect(() => {
-    if (!moving) return;
-    const timer = setTimeout(() => setMoving(false), CONTROLS_IDLE_MS);
-    return () => clearTimeout(timer);
-  }, [moving]);
   useViewerActions(
     useMemo(
       () => ({
@@ -78,18 +85,54 @@ function Playback({ session, name }: { session: PlaybackSession; name: string })
     <div
       ref={pane}
       tabIndex={-1}
-      onPointerMove={() => setMoving(true)}
-      // Keyboard focus on a control keeps the controls up; the pane itself holding focus does not.
-      onFocus={({ target, currentTarget }) =>
-        setFocused(target !== currentTarget && target.matches(":focus-visible"))
-      }
-      onBlur={() => setFocused(false)}
-      className="relative flex min-h-0 flex-1 flex-col bg-canvas text-on-canvas outline-none"
+      className="flex min-h-0 flex-1 flex-col bg-canvas text-on-canvas outline-none"
     >
       {view.status === "ready" ? (
         <>
-          <VideoCanvas session={session} label={name} />
-          <Transport controls={session} view={view} visible={!view.playing || moving || focused} />
+          <div className="relative min-h-0 flex-1">
+            <LaneGrid
+              session={session}
+              view={view}
+              name={name}
+              entry={entry}
+              hidden={hidden}
+              onHide={(label) => {
+                setHidden(entry, label, true).then(setRefusal, (error: unknown) =>
+                  setRefusal(error instanceof Error ? error.message : String(error)),
+                );
+              }}
+            />
+            {view.warnings.length > 0 && (
+              <div className="absolute top-0 right-0 p-s">
+                <div className="rounded-control bg-canvas-scrim">
+                  <Popover
+                    onCanvas
+                    label={`${name}: warnings`}
+                    trigger={<Icon name="triangle-alert" />}
+                    className="size-row justify-center"
+                  >
+                    <NoticeList notices={view.warnings.map((problem) => ({ problem }))} />
+                  </Popover>
+                </div>
+              </div>
+            )}
+            {refusal && (
+              <div
+                role="alert"
+                className="absolute top-0 left-1/2 m-s flex -translate-x-1/2 items-center rounded-control bg-canvas-scrim pl-m"
+              >
+                {refusal}
+                <IconButton
+                  onCanvas
+                  icon="x"
+                  label="Dismiss"
+                  onClick={() => setRefusal(null)}
+                  className="size-row"
+                />
+              </div>
+            )}
+          </div>
+          <Transport controls={session} view={view} />
         </>
       ) : (
         <Status view={view} name={name} />
@@ -98,10 +141,14 @@ function Playback({ session, name }: { session: PlaybackSession; name: string })
   );
 }
 
-/** Plays a video from the backend: the picture with its transport, or why there is none yet. */
+/**
+ * Plays one entry from the backend: its lanes in a grid with the transport below them, or why there is no picture
+ * yet. Lanes the user hid are left out.
+ */
 export function VideoViewer({
   content,
   memory,
+  hidden,
   connect = connectWorker,
 }: ViewerProps<"SeekableVideo"> & { connect?: Connect }) {
   const [session, setSession] = useState<PlaybackSession | null>(null);
@@ -127,5 +174,14 @@ export function VideoViewer({
     };
     // `memory.saved` is only read when the session starts; a new `memory` object each render must not restart it.
   }, [content.id, connect]);
-  return session && <Playback session={session} name={content.display_name} />;
+  return (
+    session && (
+      <Playback
+        session={session}
+        name={content.display_name}
+        entry={content.entry.id}
+        hidden={hidden}
+      />
+    )
+  );
 }

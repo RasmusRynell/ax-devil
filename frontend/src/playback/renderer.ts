@@ -1,10 +1,32 @@
 /**
  * Draws decoded frames on a canvas with WebGL2. Planar and semi-planar YUV frames are converted to RGB in a shader
- * from the matrix and range in the frame header; RGBA frames are drawn as they are. The picture is fitted into the
- * canvas keeping its aspect, on a near-black field.
+ * from the matrix and range in the frame header; RGBA frames are drawn as they are. The canvas holds one cell per
+ * lane: the frame is uploaded once and drawn into every cell, fitted keeping its aspect on a near-black field, and
+ * each lane's overlay is painted over its picture on the same context.
  */
 
+import type { AtlasMirror } from "../overlay/mirror";
+import { OverlayPainter, type CellRect } from "../overlay/painter";
+import type { PreparedDrawing } from "../overlay/prepare";
 import type { Matrix, VideoFrame } from "./protocol";
+
+export type { CellRect } from "../overlay/painter";
+
+/** Where a lane is drawn on the canvas, in device pixels. */
+export type LaneCell = { lane: number; rect: CellRect };
+
+/** The picture of `size` fitted into `cell` keeping its aspect, centred, on whole pixels. */
+export function fitPicture(cell: CellRect, size: { width: number; height: number }): CellRect {
+  const scale = Math.min(cell.width / size.width, cell.height / size.height);
+  const width = Math.max(1, Math.floor(size.width * scale));
+  const height = Math.max(1, Math.floor(size.height * scale));
+  return {
+    x: cell.x + Math.floor((cell.width - width) / 2),
+    y: cell.y + Math.floor((cell.height - height) / 2),
+    width,
+    height,
+  };
+}
 
 /** WebGL2 cannot be had: the browser has no support, or has disabled it. */
 export class RendererUnavailable extends Error {
@@ -53,18 +75,27 @@ void main() {
 
 type Planes = { key: string; textures: WebGLTexture[] };
 
+/** One viewer's canvas: the video in every lane cell and each lane's overlay over it. */
 export class VideoRenderer {
   readonly #canvas: HTMLCanvasElement;
   readonly #gl: WebGL2RenderingContext;
   readonly #program: WebGLProgram;
   readonly #uniforms: Record<string, WebGLUniformLocation | null> = {};
+  readonly #quad: WebGLVertexArrayObject;
+  readonly #painter: OverlayPainter;
   #planes: Planes | undefined;
   #picture: { width: number; height: number } | undefined;
+  #frame: VideoFrame | undefined;
+  /** `null` is one cell for lane 0 covering the canvas. */
+  #cells: readonly LaneCell[] | null = null;
+  #overlays: readonly (PreparedDrawing | undefined)[] = [];
+  #atlas: AtlasMirror | undefined;
 
   constructor(canvas: HTMLCanvasElement) {
     const gl = canvas.getContext("webgl2", {
       alpha: false,
       antialias: false,
+      stencil: true,
       powerPreference: "high-performance",
     });
     if (!gl) throw new RendererUnavailable("WebGL2 is not available");
@@ -85,6 +116,8 @@ export class VideoRenderer {
     gl.linkProgram(program);
     gl.useProgram(program);
     this.#program = program;
+    this.#quad = gl.createVertexArray();
+    gl.bindVertexArray(this.#quad);
     gl.bindBuffer(gl.ARRAY_BUFFER, gl.createBuffer());
     gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]), gl.STATIC_DRAW);
     const corner = gl.getAttribLocation(program, "corner");
@@ -95,7 +128,21 @@ export class VideoRenderer {
     gl.uniform1i(this.#uniforms.plane0, 0);
     gl.uniform1i(this.#uniforms.plane1, 1);
     gl.uniform1i(this.#uniforms.plane2, 2);
+    gl.bindVertexArray(null);
     gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
+    try {
+      this.#painter = new OverlayPainter(gl);
+    } catch (error) {
+      throw new RendererUnavailable(
+        error instanceof Error ? error.message : "overlays cannot be drawn",
+      );
+    }
+  }
+
+  /** Sets the lane cells, `null` for one cell covering the canvas, and draws again. */
+  setCells(cells: readonly LaneCell[] | null): void {
+    this.#cells = cells;
+    this.redraw();
   }
 
   /** Sets the canvas to this many device pixels and draws the picture again. */
@@ -105,9 +152,24 @@ export class VideoRenderer {
     this.redraw();
   }
 
-  /** Uploads the frame and draws it. */
-  present(frame: VideoFrame): void {
+  /**
+   * Draws the frame in every cell with each cell's lane overlay from `overlays` (by lane) over it, their texts from
+   * `atlas`. The frame is uploaded only when it is not the one drawn last.
+   */
+  present(
+    frame: VideoFrame,
+    overlays: readonly (PreparedDrawing | undefined)[] = [],
+    atlas?: AtlasMirror,
+  ): void {
+    this.#overlays = overlays;
+    this.#atlas = atlas;
+    if (frame !== this.#frame) this.#upload(frame);
+    this.redraw();
+  }
+
+  #upload(frame: VideoFrame): void {
     const gl = this.#gl;
+    gl.useProgram(this.#program);
     const { format, width, height } = frame;
     const chromaWidth = Math.ceil(width / 2);
     const chromaHeight = Math.ceil(height / 2);
@@ -175,37 +237,46 @@ export class VideoRenderer {
     gl.uniform1f(this.#uniforms.kb, kb);
     gl.uniform1f(this.#uniforms.limited, frame.fullRange ? 0 : 1);
     this.#picture = { width, height };
-    this.redraw();
+    this.#frame = frame;
   }
 
-  /** Draws the last uploaded frame again, fitted to the canvas as it is now. */
+  /** Draws the last frame and overlays again, fitted to the canvas and cells as they are now. */
   redraw(): void {
     const gl = this.#gl;
     const { width: canvasWidth, height: canvasHeight } = this.#canvas;
     gl.viewport(0, 0, canvasWidth, canvasHeight);
     gl.clearColor(FIELD, FIELD, FIELD, 1);
-    gl.clear(gl.COLOR_BUFFER_BIT);
-    if (!this.#picture || !this.#planes) return;
-    const scale = Math.min(canvasWidth / this.#picture.width, canvasHeight / this.#picture.height);
-    const width = Math.max(1, Math.floor(this.#picture.width * scale));
-    const height = Math.max(1, Math.floor(this.#picture.height * scale));
-    gl.viewport(
-      Math.floor((canvasWidth - width) / 2),
-      Math.floor((canvasHeight - height) / 2),
-      width,
-      height,
-    );
-    gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+    gl.clearStencil(0);
+    gl.clear(gl.COLOR_BUFFER_BIT | gl.STENCIL_BUFFER_BIT);
+    const picture = this.#picture;
+    if (!picture || !this.#planes) return;
+    const cells = this.#cells ?? [
+      { lane: 0, rect: { x: 0, y: 0, width: canvasWidth, height: canvasHeight } },
+    ];
+    for (const { lane, rect } of cells) {
+      if (rect.width <= 0 || rect.height <= 0) continue;
+      const fitted = fitPicture(rect, picture);
+      gl.useProgram(this.#program);
+      gl.bindVertexArray(this.#quad);
+      gl.viewport(fitted.x, canvasHeight - fitted.y - fitted.height, fitted.width, fitted.height);
+      gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+      gl.bindVertexArray(null);
+      const overlay = this.#overlays[lane];
+      if (overlay) this.#painter.draw(overlay, fitted, rect, this.#atlas);
+    }
   }
 
-  /** Frees the GPU's copy of the picture. */
+  /** Frees the GPU's copy of the picture and the overlay painter. */
   dispose(): void {
     this.#dropPlanes();
+    this.#painter.dispose();
+    this.#gl.deleteVertexArray(this.#quad);
     this.#gl.deleteProgram(this.#program);
   }
 
   #dropPlanes(): void {
     this.#planes?.textures.forEach((texture) => this.#gl.deleteTexture(texture));
     this.#planes = undefined;
+    this.#frame = undefined;
   }
 }

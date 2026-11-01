@@ -15,6 +15,11 @@ export type WorkspaceView = {
   viewers: readonly string[];
   /** The item whose viewer is shown. */
   active: string | null;
+  /**
+   * The entry (by content id) the user asked to see in a playlist's viewer, until that viewer has shown it.
+   * Video items never set it: their one entry is the item.
+   */
+  requested: string | null;
 };
 
 /** The part of `EventSource` the store uses. */
@@ -43,7 +48,13 @@ export class WorkspaceStore {
   readonly #opened = new Set<string>();
   /** What each open viewer last showed, by item id; a viewer that is shown again opens where it left off. */
   readonly #remembered = new Map<string, unknown>();
-  #view: WorkspaceView = { connection: "connecting", state: null, viewers: [], active: null };
+  #view: WorkspaceView = {
+    connection: "connecting",
+    state: null,
+    viewers: [],
+    active: null,
+    requested: null,
+  };
   #source: EventSourceLike | undefined;
   #cancelRetry: (() => void) | undefined;
   #retries = 0;
@@ -102,6 +113,26 @@ export class WorkspaceStore {
     if (this.#view.viewers.includes(itemId)) this.#set({ active: itemId });
   }
 
+  /**
+   * The one way the user opens something from the workspace tree: the item's viewer opens if it is not open, is
+   * shown, and, given an entry of a playlist, is asked to show that entry (see `requested`).
+   */
+  show(itemId: string, entry: string | null = null): void {
+    const items = this.#view.state?.items ?? [];
+    if (!items.some((item) => item.id === itemId)) return;
+    const { viewers } = this.#view;
+    this.#set({
+      viewers: viewers.includes(itemId) ? viewers : [...viewers, itemId],
+      active: itemId,
+      requested: entry !== null && entry !== itemId ? entry : this.#view.requested,
+    });
+  }
+
+  /** The viewer has shown the requested entry. */
+  fulfil(): void {
+    if (this.#view.requested !== null) this.#set({ requested: null });
+  }
+
   /** Closes a viewer. The item never opens another by itself. */
   close(itemId: string): void {
     const viewers = this.#view.viewers.filter((id) => id !== itemId);
@@ -109,11 +140,12 @@ export class WorkspaceStore {
     this.#set({
       viewers,
       active: this.#view.active === itemId ? (viewers.at(-1) ?? null) : this.#view.active,
+      requested: this.#view.requested?.startsWith(`${itemId}/`) ? null : this.#view.requested,
     });
   }
 
-  #receive({ name, items }: ServerEvent): void {
-    const state: WorkspaceState = { name, items };
+  #receive({ name, items, rows }: ServerEvent): void {
+    const state: WorkspaceState = { name, items, rows };
     const ids = new Set(items.map((item) => item.id));
     let viewers = this.#view.viewers.filter((id) => ids.has(id));
     for (const id of this.#remembered.keys()) if (!ids.has(id)) this.#remembered.delete(id);
@@ -127,7 +159,10 @@ export class WorkspaceStore {
       active = item.id;
     }
     if (active !== null && !viewers.includes(active)) active = viewers.at(-1) ?? null;
-    this.#set({ connection: "open", state, viewers, active });
+    const requested = rows.some((row) => row.entry === this.#view.requested)
+      ? this.#view.requested
+      : null;
+    this.#set({ connection: "open", state, viewers, active, requested });
   }
 
   #set(change: Partial<WorkspaceView>): void {

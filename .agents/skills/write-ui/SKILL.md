@@ -22,6 +22,8 @@ block to this table when it lands, and use what is listed instead of writing a l
 | Theme | The stored setting selects the colors through the root's `data-theme`, live | `frontend/src/settings.tsx` |
 | Icons | `Icon` over the Lucide SVGs; add a new one from Lucide to `assets/icons/` and to `icons.ts` | `assets/icons/`, `frontend/src/kit/` |
 | Buttons, menus, dialogs, fields, row lists, key chips | The kit in `frontend/src/kit/` | same |
+| A panel of controls beside a button (Escape closes, plain keys stay inside) | `Popover` | `frontend/src/kit/Popover.tsx` |
+| An on/off setting that applies as it flips | `Switch` | `frontend/src/kit/Switch.tsx` |
 | Windows | Created by the shell; the frontend never opens windows itself | `desktop/main.cjs` |
 
 Before writing UI, read the [UI Lifecycle invariants](../../../docs/domain/invariants.md#ui-lifecycle): components

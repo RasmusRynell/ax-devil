@@ -198,6 +198,193 @@ module.exports = async (window) => {
   const grey = await centre();
   assert.ok(black < 16, `Frame 0 of the video is black, got ${black}`);
   assert.ok(grey > 40, `Frame 12 must be a visible grey, got ${grey}: the canvas is still black`);
+
+  // A MOT Challenge playlist through the Add Playlist dialog: its lanes draw their files' boxes on the picture.
+  const dataset = path.resolve(__dirname, "../fixtures/datasets/mot");
+  const closeMenu = () =>
+    js(
+      "document.querySelector('[role=menu]') && document.querySelector('[aria-expanded=true]').click()",
+    );
+  const openAddPlaylist = async () => {
+    await closeMenu();
+    await js(
+      "[...document.querySelectorAll('[data-top]')].find((b) => b.textContent === 'File').click()",
+    );
+    await wait("document.querySelector('[role=menu]')");
+    await js(
+      "[...document.querySelectorAll('[role=menuitem]')].find((b) => b.textContent.startsWith('Add Playlist')).click()",
+    );
+    await wait("!!document.querySelector('dialog[open] select')");
+    await js(`(() => {
+      const select = document.querySelector('dialog[open] select');
+      const option = [...select.options].find((o) => o.textContent === 'MOT Challenge');
+      Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value').set.call(select, option.value);
+      select.dispatchEvent(new Event('change', { bubbles: true }));
+    })()`);
+    await wait(
+      "[...document.querySelectorAll('dialog[open] label')].some((l) => l.textContent === 'Dataset folder')",
+    );
+    await js(
+      "[...document.querySelectorAll('dialog[open] label')].find((l) => l.textContent === 'Dataset folder').control.focus()",
+    );
+    window.webContents.insertText(dataset);
+    await wait(
+      "[...document.querySelectorAll('dialog[open] input')].some((i) => i.value.endsWith('datasets/mot'))",
+    );
+    await js(
+      "[...document.querySelectorAll('dialog[open] button')].find((b) => b.textContent === 'Scan').click()",
+    );
+    await wait("/MINI-01/.test(document.querySelector('dialog[open]').innerText)");
+    await wait("/MINI-02/.test(document.querySelector('dialog[open]').innerText)");
+  };
+  window.setSize(640, 480);
+  for (const [theme, zoom] of [
+    ["light", 1],
+    ["dark", 1],
+    ["light", 2],
+    ["dark", 2],
+  ]) {
+    window.webContents.setZoomFactor(zoom);
+    nativeTheme.themeSource = theme;
+    await wait(`matchMedia('(prefers-color-scheme: ${theme})').matches`);
+    await openAddPlaylist();
+    await shoot(`add-playlist-${theme}${zoom === 1 ? "" : "-200"}.png`);
+    // The folder box scrolls its own long path, which the check reports as text cut off with no name.
+    assert.deepEqual(
+      (await js(`(${fit.dialog.toString()})()`)).filter((problem) => problem !== 'cut off: ""'),
+      [],
+      `The Add Playlist dialog must fit the 640x480 window at ${zoom * 100}% zoom`,
+    );
+    await js(
+      "[...document.querySelectorAll('dialog button')].find((b) => b.textContent === 'Cancel').click()",
+    );
+    await wait("!document.querySelector('dialog')");
+  }
+  window.webContents.setZoomFactor(1);
+  nativeTheme.themeSource = "light";
+  window.setSize(1100, 720);
+  await openAddPlaylist();
+  await js(
+    "[...document.querySelectorAll('dialog button')].find((b) => b.textContent === 'Load').click()",
+  );
+  await wait("!document.querySelector('dialog')");
+
+  // The lane cells on screen, from the name tags the grid places at each cell's corner.
+  const laneCells = () =>
+    js(`(() => {
+      const grid = document.querySelector('canvas').parentElement;
+      const tags = [...grid.querySelectorAll(':scope > div.absolute')].map((tag) => ({
+        label: tag.querySelector('span').textContent,
+        ...tag.getBoundingClientRect().toJSON(),
+      }));
+      const end = grid.getBoundingClientRect();
+      const next = (values, value, limit) => Math.min(limit, ...values.filter((other) => other > value + 1));
+      return tags.map((tag) => ({
+        label: tag.label,
+        x: tag.left,
+        y: tag.top,
+        right: next(tags.map((other) => other.left), tag.left, end.right),
+        bottom: next(tags.map((other) => other.top), tag.top, end.bottom),
+      }));
+    })()`);
+  // Pixels of a lane cell that carry colour: the grey picture, the white text and the dark name tags do not.
+  const colourful = async (cell) => {
+    await frame();
+    const image = await window.webContents.capturePage();
+    const scale = image.getSize().width / (await js("innerWidth"));
+    const bitmap = image.toBitmap();
+    let count = 0;
+    for (let y = Math.round(cell.y * scale); y < Math.round(cell.bottom * scale); y++)
+      for (let x = Math.round(cell.x * scale); x < Math.round(cell.right * scale); x++) {
+        const at = (y * image.getSize().width + x) * 4;
+        const channels = [bitmap[at], bitmap[at + 1], bitmap[at + 2]];
+        if (Math.max(...channels) - Math.min(...channels) >= 80) count++;
+      }
+    return count;
+  };
+  const goToFrame = async (target) => {
+    await js("document.querySelector('[aria-label=Pause]')?.click()");
+    for (;;) {
+      const at = await js(shownFrame);
+      if (at === target) return;
+      await js(
+        `document.querySelector('[aria-label="${at < target ? "Forward" : "Back"} 1 frame"]').click()`,
+      );
+      await wait(`${shownFrame} !== ${at}`);
+    }
+  };
+  const showEntry = async (label, lanes) => {
+    await wait(`document.querySelector('[aria-label="Entry: ${label}"]')`);
+    await wait(`document.querySelectorAll('canvas ~ div.absolute').length === ${lanes}`);
+    await wait(`${shownFrame} >= 0`);
+  };
+
+  // Every lane has boxes on frame 0; frame 5 has no rows in any file, so nothing is drawn on it.
+  const expectOverlays = async (lanes) => {
+    for (const [at, drawn] of [
+      [0, true],
+      [5, false],
+      [0, true],
+    ]) {
+      await goToFrame(at);
+      const cells = await laneCells();
+      assert.deepEqual(
+        cells.map((cell) => cell.label),
+        lanes,
+      );
+      for (const cell of cells) {
+        // The overlay arrives with its frame, but a resized lane draws a new one: wait until it is on screen.
+        const found = async () => (await colourful(cell)) > 0;
+        const deadline = Date.now() + 5000;
+        while ((await found()) !== drawn && Date.now() < deadline) await delay(100);
+        assert.equal(
+          await found(),
+          drawn,
+          `${cell.label}, frame ${at}: boxes ${drawn ? "missing" : "left over"}`,
+        );
+      }
+    }
+  };
+  const setTheme = async (theme) => {
+    nativeTheme.themeSource = theme;
+    await wait(`matchMedia('(prefers-color-scheme: ${theme})').matches`);
+  };
+
+  // MINI-02 (the test folder lists first) has one lane, DET; MINI-01 has DPM, GT and FRCNN.
+  const entries = [
+    { entry: "MINI-02", lanes: ["DET"] },
+    { entry: "MINI-01", lanes: ["DPM", "GT", "FRCNN"] },
+  ];
+  for (const { entry, lanes } of entries) {
+    if (entry === "MINI-01")
+      await js("document.querySelector('[aria-label=\"Next entry\"]').click()");
+    await showEntry(entry, lanes.length);
+    await expectOverlays(lanes);
+    for (const theme of ["light", "dark"]) {
+      await setTheme(theme);
+      await shoot(`playlist-${entry}-${theme}.png`);
+    }
+  }
+
+  // The smallest window, at normal zoom and 200%, with the sidebar closed: the lanes still fit and still draw.
+  window.setSize(640, 480);
+  await js("document.querySelector('[aria-label=Workspace]').click()");
+  for (const [theme, zoom] of [
+    ["light", 1],
+    ["dark", 1],
+    ["light", 2],
+    ["dark", 2],
+  ]) {
+    window.webContents.setZoomFactor(zoom);
+    await setTheme(theme);
+    await expectOverlays(entries[1].lanes);
+    await shoot(`playlist-min-${theme}${zoom === 1 ? "" : "-200"}.png`);
+    assert.deepEqual(
+      await js(`(${fit.page.toString()})()`),
+      [],
+      `The playlist viewer must fit the 640x480 window at ${zoom * 100}% zoom`,
+    );
+  }
   console.log(
     `PASS: app shell loaded; screenshots in ${path.relative(path.resolve(__dirname, ".."), SCREENSHOTS)}`,
   );

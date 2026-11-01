@@ -8,6 +8,7 @@ import { ViewerHost } from "../viewer/ViewerHost";
 import { addVideos } from "../workspace/client";
 import { useWorkspace } from "../workspace/WorkspaceProvider";
 import { ActivityBar } from "./ActivityBar";
+import { AddPlaylistDialog } from "./AddPlaylistDialog";
 import { Banner } from "./Banner";
 import { TitleBar } from "./TitleBar";
 import { QuickSetupDialog } from "./QuickSetupDialog";
@@ -30,7 +31,7 @@ function viewerOwnsPlainKeys(target: EventTarget | null): boolean {
   return !typing && (target === document.body || target.closest("main") !== null);
 }
 
-type Dialog = "settings" | "shortcuts" | "quick-setup";
+type Dialog = "settings" | "shortcuts" | "quick-setup" | "add-playlist";
 
 /** The application layout: menu bar over the activity bar, sidebar and central area. */
 export function Shell() {
@@ -65,6 +66,7 @@ export function Shell() {
     "keyboard-shortcuts": () => setDialog("shortcuts"),
     "quick-setup": () => setDialog("quick-setup"),
     "add-video": addVideo,
+    "add-playlist": () => setDialog("add-playlist"),
   };
   // A modal dialog owns the keyboard and the window: no command, from a shortcut or a menu, runs while one is open.
   const find = (id: string) => (dialog ? undefined : (actions[id] ?? viewerActions.current[id]));
@@ -144,6 +146,7 @@ export function Shell() {
         </div>
         {dialog === "settings" && <SettingsDialog onClose={closer("settings")} />}
         {dialog === "quick-setup" && <QuickSetupDialog onClose={closer("quick-setup")} />}
+        {dialog === "add-playlist" && <AddPlaylistDialog onClose={closer("add-playlist")} />}
         {dialog === "shortcuts" && <ShortcutsDialog onClose={closer("shortcuts")} />}
       </div>
     </ViewerActionsContext.Provider>

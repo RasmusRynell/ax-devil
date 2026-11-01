@@ -170,8 +170,8 @@ describe("add video", () => {
     expect(url).toBe("/api/workspace/items");
     expect(JSON.parse(init.body as string)).toEqual({
       items: [
-        { type: "Video", path: "/clips/a.mp4" },
-        { type: "Video", path: "/clips/b.txt" },
+        { type: "Video", path: "/clips/a.mp4", overlays: [] },
+        { type: "Video", path: "/clips/b.txt", overlays: [] },
       ],
       open: true,
     });

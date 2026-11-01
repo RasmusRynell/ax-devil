@@ -11,6 +11,17 @@ export function windowSize(budgetBytes: number, frameBytes: number): number {
   return Math.max(1, Math.floor(budgetBytes / frameBytes));
 }
 
+/** The sequence ids a window covers in a video of `frameCount` frames, as an inclusive range. */
+export function windowRange(
+  { playhead, ahead, behind }: Window,
+  frameCount: number,
+): { low: number; high: number } {
+  return {
+    low: Math.max(0, playhead - behind),
+    high: Math.min(frameCount - 1, playhead + ahead),
+  };
+}
+
 export class FrameBuffer<F extends { readonly byteLength: number }> {
   readonly #budgetBytes: number;
   readonly #frameCount: number;
@@ -29,9 +40,8 @@ export class FrameBuffer<F extends { readonly byteLength: number }> {
   }
 
   /** Reports a new window and evicts everything outside it. Until the first window nothing is accepted. */
-  setWindow({ playhead, ahead, behind }: Window): void {
-    this.#low = Math.max(0, playhead - behind);
-    this.#high = Math.min(this.#frameCount - 1, playhead + ahead);
+  setWindow(window: Window): void {
+    ({ low: this.#low, high: this.#high } = windowRange(window, this.#frameCount));
     for (const [sequenceId, frame] of this.#frames) {
       if (sequenceId >= this.#low && sequenceId <= this.#high) continue;
       this.#used -= frame.byteLength;
@@ -58,10 +68,14 @@ export class FrameBuffer<F extends { readonly byteLength: number }> {
     return this.#frames.get(sequenceId);
   }
 
-  /** The highest held sequence id in `notBefore..atOrBefore`, if any. */
-  newestPresentable(atOrBefore: number, notBefore: number): number | undefined {
+  /** The highest held sequence id in `notBefore..atOrBefore` that `ready` accepts (any, by default), if any. */
+  newestPresentable(
+    atOrBefore: number,
+    notBefore: number,
+    ready: (sequenceId: number) => boolean = () => true,
+  ): number | undefined {
     for (let id = Math.min(atOrBefore, this.#high); id >= Math.max(notBefore, this.#low); id--) {
-      if (this.has(id)) return id;
+      if (this.has(id) && ready(id)) return id;
     }
     return undefined;
   }

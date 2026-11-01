@@ -21,7 +21,7 @@ export function StartPanel({ onRun }: { onRun: (id: string) => void }) {
           </Button>
         ))}
       </div>
-      <section className="flex flex-col gap-xs">
+      <section className="flex flex-col gap-xs [@media(max-height:20rem)]:hidden">
         <h3 className="px-m text-small font-semibold text-muted uppercase">Recent workspaces</h3>
         <p className="m-0 px-m text-muted">No recent workspaces</p>
       </section>

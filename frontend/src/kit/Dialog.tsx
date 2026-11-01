@@ -37,7 +37,7 @@ export function Dialog({ title, children, onOk, onCancel, okLabel = "OK", busy =
     >
       <form
         onSubmit={submit}
-        className="flex max-h-[calc(100vh-var(--spacing-s))] flex-col gap-l p-xl"
+        className="flex max-h-[calc(100vh-var(--spacing-s))] flex-col gap-l p-xl [@media(max-height:20rem)]:gap-s [@media(max-height:20rem)]:p-m"
       >
         <h2 id={titleId} className="m-0 text-heading font-semibold">
           {title}

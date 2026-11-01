@@ -80,3 +80,50 @@ describe("connection", () => {
     expect(store.getSnapshot().connection).toBe("open");
   });
 });
+
+describe("showing an item from the workspace tree", () => {
+  const rows = (entry: string) => [
+    { key: "a", kind: "item", label: "a", status: { status: "Ready" }, hidden: false, entry },
+  ];
+  const send = (source: { onmessage: ((event: MessageEvent<string>) => void) | null }) =>
+    source.onmessage?.(
+      new MessageEvent("message", {
+        data: JSON.stringify({
+          type: "Workspace",
+          name: null,
+          items: [video("a", false, resolved("a")), video("b", false, resolved("b"))],
+          rows: rows("a/seq"),
+        }),
+      }),
+    );
+
+  it("opens the viewer of an item that has none and shows it, and ignores unknown items", () => {
+    const { store, source } = setup();
+    send(source());
+    store.show("missing");
+    expect(store.getSnapshot()).toMatchObject({ viewers: [], active: null });
+    store.show("a");
+    store.show("b");
+    store.show("a");
+    expect(store.getSnapshot()).toMatchObject({ viewers: ["a", "b"], active: "a" });
+  });
+
+  it("asks a playlist's viewer for an entry until it has shown it, and forgets the ask with the viewer", () => {
+    const { store, source } = setup();
+    send(source());
+    store.show("a", "a/seq");
+    expect(store.getSnapshot().requested).toBe("a/seq");
+    store.fulfil();
+    expect(store.getSnapshot().requested).toBeNull();
+    store.show("a", "a/seq");
+    store.close("a");
+    expect(store.getSnapshot().requested).toBeNull();
+  });
+
+  it("does not ask a video's viewer for its own entry", () => {
+    const { store, source } = setup();
+    send(source());
+    store.show("a", "a");
+    expect(store.getSnapshot().requested).toBeNull();
+  });
+});

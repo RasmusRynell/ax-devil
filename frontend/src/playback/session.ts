@@ -1,19 +1,29 @@
 /**
- * One viewer's playback of one video: the socket, the frames it holds, the clock and what to ask the backend for. The
- * session is framework-free; time, the display refresh and the socket are injected, and the UI reads `getSnapshot`.
+ * One viewer's playback of one video: the socket, the frames and lane overlays it holds, the clock and what to ask
+ * the backend for. A frame is shown once every shown lane that loaded has its overlay for it. The session is
+ * framework-free; time, the display refresh and the socket are injected, and the UI reads `getSnapshot`.
  */
 
-import { PlaybackClock, SPEED_STEP, clampSpeed, type FrameInfo } from "./clock";
+import { AtlasMirror } from "../overlay/mirror";
+import type { PreparedOverlay } from "../overlay/preparer";
+import type { PreparedDrawing } from "../overlay/prepare";
+import { PlaybackClock, SPEED_STEP, clampSpeed, type FrameInfo, type FrameSource } from "./clock";
+import { FrameFailures } from "./failures";
 import { FrameBuffer, windowSize } from "./FrameBuffer";
 import { WantPlanner } from "./direction";
+import { LaneSet, type LaneState } from "./lanes";
+import { OverlayBuffer } from "./OverlayBuffer";
 import {
   PLAYBACK_PROTOCOL,
-  type Envelope,
+  type LaneViewWire,
   type ServerMessage,
+  type TargetWire,
   type VideoFrame,
   type Want,
 } from "./protocol";
-import type { Connect, Connection, Incoming } from "./wire";
+import type { Connect, Connection, DeliveredEnvelope, Incoming } from "./wire";
+
+export type { LaneState } from "./lanes";
 
 /** What one viewer may hold of decoded frames: it divides into the window the backend is asked to fill. */
 export const BUFFER_BUDGET_BYTES = 512 * 1024 * 1024;
@@ -36,9 +46,16 @@ export interface SessionDeps {
 /** What carries a video's viewing from one session to the next, across a reconnection or a viewer shown again. */
 export type ResumeState = { frame: number; speed: number };
 
-/** Draws the frame the session presents; at most one per display refresh. */
+/**
+ * Draws the frame the session presents, at most one per display refresh, with each shown lane's overlay (by lane;
+ * `undefined` where a lane has none) and the text atlas page the overlays' texts sample.
+ */
 export interface Surface {
-  present(frame: VideoFrame): void;
+  present(
+    frame: VideoFrame,
+    overlays: readonly (PreparedDrawing | undefined)[],
+    atlas: AtlasMirror,
+  ): void;
 }
 
 export type PlaybackView = {
@@ -56,7 +73,17 @@ export type PlaybackView = {
   shown?: FrameInfo;
   /** Why the frame at the playhead cannot be shown, while it is the one the screen is waiting on. */
   frameError?: { sequenceId: number; reason: string };
+  /** The lanes of the entry, empty until the backend has described the video. */
+  lanes: readonly LaneState[];
+  /** The video's frame size in pixels; 0 until it is described. */
+  width: number;
+  height: number;
+  /** Problems with the video itself, such as overlay sizes that do not match it. */
+  warnings: readonly string[];
 };
+
+const NO_LANES: readonly LaneState[] = [];
+const NO_WARNINGS: readonly string[] = [];
 
 const sameWant = (a: Want | undefined, b: Want): boolean =>
   a !== undefined &&
@@ -78,16 +105,18 @@ const sameView = (a: PlaybackView, b: PlaybackView): boolean =>
   a.playhead === b.playhead &&
   sameShown(a.shown, b.shown) &&
   a.frameError?.sequenceId === b.frameError?.sequenceId &&
-  a.frameError?.reason === b.frameError?.reason;
+  a.frameError?.reason === b.frameError?.reason &&
+  a.lanes === b.lanes &&
+  a.width === b.width &&
+  a.height === b.height &&
+  a.warnings === b.warnings;
 
 export class PlaybackSession {
   readonly #contentId: string;
   readonly #deps: SessionDeps;
   readonly #budget: number;
   readonly #listeners = new Set<() => void>();
-  readonly #frameErrors = new Map<number, string>();
-  /** The ids in `#frameErrors`, ascending, to find the latest one at or before a position without a scan. */
-  #failedIds: number[] = [];
+  readonly #failures = new FrameFailures();
   #view: PlaybackView = {
     status: "connecting",
     progress: 0,
@@ -95,6 +124,22 @@ export class PlaybackSession {
     playing: false,
     speed: 1,
     playhead: 0,
+    lanes: NO_LANES,
+    width: 0,
+    height: 0,
+    warnings: NO_WARNINGS,
+  };
+  readonly #lanes = new LaneSet();
+  #overlays: OverlayBuffer<PreparedDrawing> | undefined;
+  /** The text atlas page as the worker of the current connection has it. */
+  #mirror = new AtlasMirror();
+  #density: number | undefined;
+  #cancelTargets: (() => void) | undefined;
+  /** What the clock reads: a frame can be shown when it is held with the overlays of every awaited lane. */
+  readonly #source: FrameSource = {
+    has: (sequenceId) => this.#buffer?.has(sequenceId) === true && this.#joined(sequenceId),
+    newestPresentable: (atOrBefore, notBefore) =>
+      this.#buffer?.newestPresentable(atOrBefore, notBefore, (id) => this.#joined(id)),
   };
   #surface: Surface | null = null;
   #connection: Connection | undefined;
@@ -142,6 +187,8 @@ export class PlaybackSession {
     this.#connection?.close();
     this.#connection = undefined;
     this.#cancelRetry?.();
+    this.#cancelTargets?.();
+    this.#cancelTargets = undefined;
     this.#releaseVideo();
   }
 
@@ -160,8 +207,39 @@ export class PlaybackSession {
   /** Draws the shown frame again, for a surface that lost its picture, if the frame is still held. */
   represent(): void {
     const shown = this.#clock?.info();
-    const held = shown && this.#buffer?.get(shown.sequenceId);
-    if (held) this.#surface?.present(held);
+    if (shown) this.#draw(shown.sequenceId);
+  }
+
+  /**
+   * Changes how a lane is shown (catalog, class filter, sync, sticky, visibility): a new revision the backend answers
+   * with overlays for it. Until they arrive the frame keeps the lane's last overlay. A change that leaves the view
+   * as it is sends nothing.
+   */
+  setLaneView(lane: number, change: Partial<LaneViewWire>): void {
+    const message = this.#lanes.setView(lane, change);
+    if (!message) return;
+    this.#connection?.send(message);
+    if (change.visible === false) this.#overlays?.forgetLane(lane);
+    this.represent();
+    this.#changed();
+  }
+
+  /**
+   * Tells the session the size each lane's picture is displayed at, in CSS pixels by lane, and the screen's device
+   * pixels per CSS pixel. A lane whose size changed gets a new view, at most once per display refresh however often
+   * this is called, so a resize does not ask the backend for every intermediate size.
+   */
+  setLaneTargets(targets: readonly TargetWire[], density = 1): void {
+    this.#lanes.setTargets(targets);
+    if (density !== this.#density) {
+      this.#density = density;
+      this.#connection?.setDensity?.(density);
+    }
+    this.#cancelTargets ??= this.#deps.frame(() => {
+      this.#cancelTargets = undefined;
+      this.#lanes.retarget().forEach((message) => this.#connection?.send(message));
+      this.#publish();
+    });
   }
 
   play(): void {
@@ -213,9 +291,11 @@ export class PlaybackSession {
     const attempt = {};
     this.#attempt = attempt;
     this.#opened = undefined;
+    this.#mirror = new AtlasMirror();
     this.#connection = this.#deps.connect((incoming) => {
       if (this.#attempt === attempt && !this.#closed) this.#onIncoming(incoming);
     });
+    if (this.#density !== undefined) this.#connection.setDensity?.(this.#density);
     this.#connection.send({
       type: "Open",
       content_id: this.#contentId,
@@ -226,6 +306,7 @@ export class PlaybackSession {
   #onIncoming(incoming: Incoming): void {
     if (incoming.type === "message") this.#onMessage(incoming.message);
     else if (incoming.type === "envelope") this.#onEnvelope(incoming.envelope);
+    else if (incoming.type === "overlays") this.#onOverlays(incoming.overlays);
     else if (incoming.type === "malformed")
       this.#fail(
         `The backend sent something this window cannot read: ${incoming.reason}`,
@@ -245,6 +326,13 @@ export class PlaybackSession {
           "playback",
         );
       this.#opened = message;
+      this.#lanes
+        .open(message.lanes, message.lane_defaults)
+        .forEach((m) => this.#connection?.send(m));
+    } else if (message.type === "LaneStatus") {
+      if (this.#lanes.setStatus(message.lane, message.status)) this.#arm();
+    } else if (message.type === "LaneProblem") {
+      this.#lanes.setProblem(message.lane, message.reason);
     } else if (message.type === "FrameError") {
       this.#noteFailure(message.sequence_id, message.reason);
     } else if (message.type === "Error") {
@@ -253,7 +341,7 @@ export class PlaybackSession {
     this.#publish();
   }
 
-  #onEnvelope(envelope: Envelope): void {
+  #onEnvelope(envelope: DeliveredEnvelope): void {
     if (envelope.kind === "timeline") {
       if (this.#opened && !this.#clock) this.#ready(this.#opened, envelope.times);
     } else if (this.#buffer && this.#clock) {
@@ -265,14 +353,52 @@ export class PlaybackSession {
     }
   }
 
+  /**
+   * Overlays the worker prepared. Every drawing's atlas uploads are applied, kept or not, so the page matches the
+   * worker's; a kept overlay for the frame on screen is drawn at once, and one the paused clock waits for shows it.
+   */
+  #onOverlays(overlays: readonly PreparedOverlay[]): void {
+    const shown = this.#clock?.info()?.sequenceId;
+    const lanes = this.#lanes.states;
+    let redraw = false;
+    let arm = false;
+    for (const { lane, sequenceId, revision, prepared } of overlays) {
+      this.#mirror.apply(prepared);
+      if (!lanes[lane]?.view.visible) continue;
+      if (!this.#overlays?.add(lane, sequenceId, revision, prepared)) continue;
+      redraw ||= sequenceId === shown;
+      arm ||= sequenceId === this.#clock?.playhead;
+    }
+    if (redraw) this.represent();
+    if (arm) this.#arm();
+  }
+
+  /** Whether every lane the frame waits on holds its overlay for it. */
+  #joined(sequenceId: number): boolean {
+    return this.#lanes.states.every(
+      (_, lane) => !this.#lanes.awaited(lane) || this.#overlays?.has(lane, sequenceId) === true,
+    );
+  }
+
+  /** Draws a held frame with the overlays of the shown lanes. */
+  #draw(sequenceId: number): void {
+    const held = this.#buffer?.get(sequenceId);
+    if (!held) return;
+    const overlays = this.#lanes.states.map((state, lane) =>
+      state.view.visible ? this.#overlays?.get(lane, sequenceId) : undefined,
+    );
+    this.#surface?.present(held, overlays, this.#mirror);
+  }
+
   #ready(opened: Extract<ServerMessage, { type: "Opened" }>, times: Float64Array): void {
     if (times.length === 0 || times.length !== opened.frame_count || opened.frame_bytes <= 0)
       return this.#fail("The backend described the video inconsistently", "playback");
     this.#buffer = new FrameBuffer<VideoFrame>(this.#budget, times.length);
+    this.#overlays = new OverlayBuffer(times.length);
     this.#planner = new WantPlanner(windowSize(this.#budget, opened.frame_bytes));
     this.#clock = new PlaybackClock(times, this.#deps.now, this.#resumeAt ?? 0);
     this.#clock.setSpeed(this.#speed);
-    this.#frameErrors.clear();
+    this.#failures.clear();
     this.#status = "ready";
     this.#retries = 0;
     this.#frameCount = opened.frame_count;
@@ -288,11 +414,9 @@ export class PlaybackSession {
   #tick = (): void => {
     this.#cancelFrame = undefined;
     const clock = this.#clock;
-    const buffer = this.#buffer;
-    if (!clock || !buffer) return;
-    const presented = clock.tick(buffer);
-    const held = presented === undefined ? undefined : buffer.get(presented);
-    if (held) this.#surface?.present(held);
+    if (!clock || !this.#buffer) return;
+    const presented = clock.tick(this.#source);
+    if (presented !== undefined) this.#draw(presented);
     this.#sendWant();
     this.#publish();
     if (clock.playing) this.#arm();
@@ -309,11 +433,7 @@ export class PlaybackSession {
   }
 
   #noteFailure(sequenceId: number, reason: string): void {
-    if (!this.#frameErrors.has(sequenceId)) {
-      this.#failedIds.push(sequenceId);
-      this.#failedIds.sort((a, b) => a - b);
-    }
-    this.#frameErrors.set(sequenceId, reason);
+    this.#failures.note(sequenceId, reason);
     this.#clock?.skip(sequenceId);
   }
 
@@ -326,6 +446,7 @@ export class PlaybackSession {
     if (sameWant(this.#lastWant, want)) return;
     this.#lastWant = want;
     buffer.setWindow(want);
+    this.#overlays?.setWindow(want);
     this.#connection?.send({ type: "Want", ...want });
   }
 
@@ -355,10 +476,10 @@ export class PlaybackSession {
     this.#cancelFrame = undefined;
     this.#clock = undefined;
     this.#buffer = undefined;
+    this.#overlays = undefined;
     this.#planner = undefined;
     this.#lastWant = undefined;
-    this.#frameErrors.clear();
-    this.#failedIds = [];
+    this.#failures.clear();
   }
 
   #publish(): void {
@@ -366,10 +487,8 @@ export class PlaybackSession {
     const shown = clock?.info();
     const playhead = clock?.playhead ?? 0;
     // The failure the screen is waiting on: the latest failed frame at or before the playhead that was not passed.
-    let frameError: PlaybackView["frameError"];
-    const failed = this.#latestFailureAtOrBefore(playhead);
-    if (failed !== undefined && failed > (shown?.sequenceId ?? -1))
-      frameError = { sequenceId: failed, reason: this.#frameErrors.get(failed) ?? "" };
+    const failed = this.#failures.latestAtOrBefore(playhead);
+    const frameError = failed && failed.sequenceId > (shown?.sequenceId ?? -1) ? failed : undefined;
     const view: PlaybackView = {
       status: this.#status,
       progress: this.#progress,
@@ -380,22 +499,13 @@ export class PlaybackSession {
       playhead,
       shown,
       frameError,
+      lanes: this.#lanes.states,
+      width: this.#opened?.width ?? 0,
+      height: this.#opened?.height ?? 0,
+      warnings: this.#opened?.warnings ?? NO_WARNINGS,
     };
     if (sameView(view, this.#view)) return;
     this.#view = view;
     this.#listeners.forEach((listener) => listener());
-  }
-
-  /** The highest failed sequence id that is at or before `position`, by binary search. */
-  #latestFailureAtOrBefore(position: number): number | undefined {
-    const ids = this.#failedIds;
-    let low = 0;
-    let high = ids.length;
-    while (low < high) {
-      const middle = (low + high) >> 1;
-      if (ids[middle] <= position) low = middle + 1;
-      else high = middle;
-    }
-    return ids[low - 1];
   }
 }

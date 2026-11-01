@@ -13,12 +13,16 @@ const view = (change: Partial<PlaybackView> = {}) => ({
   speed: 1,
   playhead: 30,
   shown: { sequenceId: 29, timestampUs: 1_160_000 },
+  lanes: [],
+  width: 64,
+  height: 48,
+  warnings: [],
   ...change,
 });
 
 function setup(change: Partial<PlaybackView> = {}) {
   const controls = { togglePlay: vi.fn(), step: vi.fn(), seek: vi.fn(), setSpeed: vi.fn() };
-  const result = render(<Transport controls={controls} view={view(change)} visible />);
+  const result = render(<Transport controls={controls} view={view(change)} />);
   return { controls, ...result };
 }
 
@@ -30,7 +34,7 @@ describe("transport", () => {
     fireEvent.click(screen.getByRole("button", { name: "Forward 1 frame" }));
     expect(controls.togglePlay).toHaveBeenCalledTimes(1);
     expect(controls.step.mock.calls).toEqual([[-1], [1]]);
-    rerender(<Transport controls={controls} view={view({ playing: true })} visible />);
+    rerender(<Transport controls={controls} view={view({ playing: true })} />);
     expect(screen.getByRole("button", { name: "Pause" })).toBeTruthy();
   });
 

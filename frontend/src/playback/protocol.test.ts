@@ -1,5 +1,6 @@
 // @vitest-environment node
 import { describe, expect, it } from "vite-plus/test";
+import { boxesSection, overlayBytes } from "./fakeOverlay";
 import { EnvelopeError, ENVELOPE_MAGIC, frameBytes, parseEnvelope } from "./protocol";
 
 function head(
@@ -87,8 +88,37 @@ describe("envelope", () => {
     }
   });
 
-  it("ignores overlays and unknown kinds", () => {
-    expect(parseEnvelope(head(2, 40).buffer)).toBeNull();
+  it("parses an overlay's header and keeps every section, known or not, by tag", () => {
+    const unknown = new Uint8Array([9, 9, 9]);
+    const parsed = parseEnvelope(
+      overlayBytes({
+        lane: 2,
+        sequenceId: 41,
+        revision: 7,
+        match: 3,
+        opacity: 0.5,
+        target: { width: 800, height: 450 },
+        sampleKey: -1200,
+        sections: [[64, unknown], boxesSection(2)],
+      }),
+    );
+    if (parsed?.kind !== "overlay") throw new Error("expected an overlay");
+    expect(parsed).toMatchObject({
+      lane: 2,
+      sequenceId: 41,
+      revision: 7,
+      match: "retained",
+      opacity: 0.5,
+      target: { width: 800, height: 450 },
+      sampleKey: -1200,
+    });
+    expect([...parsed.sections.keys()]).toEqual([64, 2]);
+    // The section after an unknown one of a length that needs padding is found where the padding ends.
+    expect(parsed.sections.get(2)?.byteLength).toBe(40);
+    expect(parsed.sections.get(64)?.byteLength).toBe(3);
+  });
+
+  it("ignores kinds from a newer backend", () => {
     expect(parseEnvelope(head(99, 32).buffer)).toBeNull();
   });
 
@@ -102,7 +132,16 @@ describe("envelope", () => {
       [5, 6],
       [7, 8],
     ]).subarray(0, 70);
-    for (const message of [new ArrayBuffer(8), wrongMagic.buffer, wrongVersion.buffer, truncated]) {
+    const shortOverlay = overlayBytes({ sections: [boxesSection(2)] }).slice(0, 80);
+    const unknownMatch = new Uint8Array(overlayBytes({ match: 9 }));
+    for (const message of [
+      new ArrayBuffer(8),
+      wrongMagic.buffer,
+      wrongVersion.buffer,
+      truncated,
+      shortOverlay,
+      unknownMatch,
+    ]) {
       expect(() => parseEnvelope(message)).toThrow(EnvelopeError);
     }
   });
