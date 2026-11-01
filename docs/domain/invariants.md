@@ -39,8 +39,8 @@ implementing module closes.
 
 ## Display Rendering
 
-- Video and overlay data are handed to the display as one synchronized pair; queued updates may coalesce to the
-  latest pair. Offline delivery presents only the newest frame queued for the UI; seeks and frame steps still present
+- Video and overlay data travel separately and are joined by frame in the frontend; queued updates may coalesce to the
+  latest frame. Offline delivery presents only the newest frame queued for the UI; seeks and frame steps still present
   the requested frame.
 - Offline playback follows the clock: delivery that falls behind skips to the frame due now instead of slowing down;
   the video's final frame is always delivered. The viewer owns that clock; the backend supplies frames and never reads
@@ -94,7 +94,7 @@ implementing module closes.
 - Published Scenes are snapshots. Publish a replacement when content changes instead of mutating a delivered one;
   unchanged identities may reuse their encoded Sample Item.
 - An entity's observations stay time-sorted.
-- A classification type is a dynamic string; known values are only a convenience. Recipe routing is catalog policy:
+- A classification type is a dynamic string; known values are only a convenience. Routing by classification is catalog policy:
   UI code never switches on classification strings.
 - Score and confidence are separate: a decoder sets what its source provides and never derives one from the other or
   a default; a missing value stays missing and the sample is kept. Both are any finite number shown plain; a bar for a
@@ -222,11 +222,10 @@ implementing module closes.
 
 - The frontend evaluates, lays out and picks per lane; the backend never evaluates a catalog or rasterizes. Evaluation
   turns a Sample Item into Marks; layout and painting read only Marks.
-- Overlay draw order is the catalog's layer order; order across entities within a layer is not preserved, so a
-  catalog never relies on one shape covering another there.
-- Each recipe evaluates once per frame for all its routed entities or relations. A row that fails a demanded check
-  emits none of its recipe's output, and a recipe whose evaluation fails emits nothing for that frame; other rows and
-  recipes are unaffected.
+- Overlay draw order is the catalog's layer order; inside a layer, rows in sample order, each row's marks in listed
+  order.
+- A mark whose evaluation fails at runtime (a null required field, a non-finite result, an invalid length
+  combination) is skipped and counted; other marks and rows are unaffected, and evaluation never throws.
 - Built-in catalogs are read in place from the packaged resources and never copied into the store, written or deleted.
   Every JSON file in the user catalog folder is a user catalog, and startup and listing never overwrite one. The one
   write the app makes is an explicit copy, which validates before atomically replacing its destination. A copy of a

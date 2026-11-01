@@ -3,7 +3,8 @@
 Decodes an overlay file once, keeps every Scene in a private artifact on disk, and serves Scenes by sample index.
 Memory per open track is the sorted sample keys and the record index (about 12 bytes per sample) plus a byte-bounded
 cache of recently used Scenes (`SCENE_CACHE_BYTES`, 32 MiB). The Scenes themselves stay on disk, so a file's size
-does not change what the app holds (the reference app held about 690 MB for a 50 MB CVAT file).
+does not change what the app holds (the reference app held about 690 MB for a 50 MB CVAT file). `Track::item` adds a
+second cache of encoded Sample Items (16 MiB per track), shared by every viewer of the track.
 
 ## Artifact
 

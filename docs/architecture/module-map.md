@@ -15,25 +15,25 @@ Where code and files belong. Layers and the dependency rule are in the [overview
 | `crates/<name>/` | One owning concept per crate (Scene model, catalog compiler, workspace, sources, ...), with its layer declared |
 | `crates/foundation/` | Layer 1: Media Time, frame identity, the frame index types, decoded frames, cancellation and the user-facing error. No I/O |
 | `crates/workspace/` | Layer 2: workspace items, recipes, Content (videos and playlists of entries and lanes) and the intake. Resolving checks the files only; opening media is the viewer's job |
-| `crates/scene/` | Layer 2: the Scene model decoders produce, the class filter policy and (target, D26) the Sample Item columns encoder |
+| `crates/scene/` | Layer 2: the Scene model decoders produce, the class filter policy and the Sample Item columns encoder |
 | `crates/scene-decoders/` | Layer 2: built-in decoders from overlay files and records to Scenes (MOT, UVG-VCM, ONVIF XML, CVAT) |
 | `crates/playlist-resolvers/` | Layer 2: built-in resolvers from settings to playlists of videos and overlay files (folder pair, MOT Challenge), each declaring the settings schema its form and command are generated from |
 | `crates/handlers/` | Layer 2: the one registry of file decoders, record decoders and playlist resolvers; the built-ins now, a plugin runtime later |
-| `crates/drawing/`, `crates/render-catalog/` | Layer 2, deleted by D22 (slice S3): the Drawing Instruction contract and the v3 catalog language with its Rust evaluator; the frontend replaces them |
-| `crates/overlay-sync/` | Layer 2: Overlay Lookup, the pure choice of the sample that belongs to a frame (matching, coverage, sticky), and (target) Frame Map chunks |
+| `crates/drawing/`, `crates/render-catalog/` | Layer 2, unused by playback and deleted in slice S3 (D22): the Drawing Instruction contract and the v3 catalog language with its Rust evaluator; the frontend replaces them |
+| `crates/overlay-sync/` | Layer 2: Overlay Lookup, the pure choice of the sample that belongs to a frame (matching, coverage, sticky) |
 | `crates/media/` | Layer 3: video file or image sequence to frame index and frames (FFmpeg); the only crate that links it ([README](../../crates/media/README.md)) |
 | `crates/playback/` | Layer 3: what to decode and cache around each viewer's playhead, and its delivery; never depends on `media` ([README](../../crates/playback/README.md)) |
 | `crates/workspace-store/` | Layer 3: the workspace's state and its pure transitions (apply a command, complete a resolution), the hidden refs and the sidebar row projection; whoever holds a state decides where it lives |
 | `crates/sessions/` | The Session service: state, transitions, authorization, tickets and jobs, generic over the cursor type; services layer, knows no message of the wire (the plain data it shares, such as a view, derives its own wire form) |
 | `crates/scene-store/` | Layer 3: an overlay file decoded once into an on-disk artifact, shared by every viewer, with Scenes served from a bounded cache ([README](../../crates/scene-store/README.md)) |
-| `crates/catalogs/` | Layer 3: the catalog documents the app offers (the six built-ins), listed from their metadata and served to the frontend, which compiles them; today it still checks and compiles them |
-| `crates/overlays/` | Layer 3: a viewer's overlay data feed (target: Sample Items per source and Frame Maps per lane inside the sample window, [README](../../crates/overlays/README.md)); today it still draws each lane's frames |
+| `crates/catalogs/` | Layer 3: the catalog documents the app offers, listed from their metadata and served to the frontend, which compiles them (v4 Standard, Classic and Glass; the other three in S2); the v3 check and compile path stays until S3 |
+| `crates/overlays/` | Layer 3: a viewer's overlay data feed: Sample Items per source and Frame Maps per lane inside the sample window ([README](../../crates/overlays/README.md)) |
 | `crates/settings/` | Layer 3: the settings file, its declared settings (each Personal or Server) and shortcuts, and the window-state file ([README](../../crates/settings/README.md)) |
 | `crates/api-types/` | Rust types sent to the frontend and the API version; `export-types` writes them and the settings and command tables to `frontend/src/generated/`, and the versions and reserved keys to `desktop/generated/api.json`; `session.rs` is the Session socket's wire protocol; plain data that already has an owning crate is not redefined here |
 | `frontend/src/` | The UI. Components and their tests sit side by side |
 | `frontend/src/playback/`, `viewer/`, `viewers.ts` | The playback session (clock, frame buffer, renderer, lanes), the viewer host and playlist viewer, and the viewer registry keyed by Content kind |
-| `frontend/src/overlay/` | The WebGL painter and glyph atlas; Drawing Instructions to quads until D22 lands, then Marks |
-| `frontend/src/present/` | Target (D22): overlay presentation per lane, from Sample Item and Lane Style to Marks, layout and picks ([README](../../frontend/src/present/README.md)); replaces the preparation in `overlay/` |
+| `frontend/src/overlay/` | The WebGL painter and glyph atlas: Marks to quads, text through the atlas |
+| `frontend/src/present/` | Overlay presentation per lane, from Sample Item and Lane Style to Marks and layout ([README](../../frontend/src/present/README.md)) |
 | `frontend/src/resolvers/` | The resolver settings form, generated from the schema the backend sends, and the cancellable scan |
 | `frontend/src/session/` | The session client: the socket and its store (the Doc, each seat's view, commands), cursors and presence |
 | `frontend/src/shell/` | The window: title and activity bars, sidebar, and the sharing UI (`SessionsView`, `ShareControl`, `ConnectDialog`) |

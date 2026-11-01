@@ -11,7 +11,7 @@ Until parity, the layer contents, seams and runtime guarantees are specified in
 
 | Process | Owns |
 |---------|------|
-| Backend (`ax-devil`, Rust) | Application state and work: domain, sources, decoding, overlay data (rendering preparation until D22 lands), files, settings, [sessions](../../crates/sessions/README.md) |
+| Backend (`ax-devil`, Rust) | Application state and work: domain, sources, decoding, overlay data, files, settings, [sessions](../../crates/sessions/README.md) |
 | Frontend (React, in Chromium) | The UI: a projection of backend state that sends user intent back, the owner of its own view state, and overlay presentation per lane |
 | Desktop shell (Electron) | Windows, one trusted origin each, and the local backend's lifetime; no application features |
 
@@ -20,7 +20,7 @@ the server's own address for another machine's. Types that cross that boundary a
 the frontend never declares its own copy. Plain data is defined once, in the crate that owns it, with `serde` and
 `ts-rs` derives (layers 1-3 may use both); `crates/api-types` holds the socket protocols and the projections that
 decide what an audience sees. The hand-parsed formats are the binary playback
-envelope (its constants are exported and its layout is in `api_types::playback`) and, with D26, the Sample Item
+envelope (its constants are exported and its layout is in `api_types::playback`) and the Sample Item
 columns, written by `scene::serial::columns` and read by `frontend/src/present/columns.ts`.
 
 How offline playback divides its work between them is in the [invariants](../domain/invariants.md#offline-delivery).
@@ -66,10 +66,6 @@ shows is decided in one place, `restrict`, and a stream is ticketed for one entr
 
 ## Overlays
 
-The design below is decided (D22–D30) and not built. Slice S1 of the
-[next priorities](../rebuild/14-build-order.md#next-delivery-priorities) switches to it; until then the last paragraph
-is what runs.
-
 The backend supplies data and does the work every lane and session shares; the frontend does all presentation. An
 overlay file is decoded once into an on-disk artifact that every viewer opening it shares (`scene-store`); memory holds
 the sample keys and a bounded cache of Scenes. On the playback socket `overlays` sends two kinds of items. A Sample Item
@@ -86,12 +82,9 @@ Per lane, `frontend/src/present/` compiles the lane's catalog document (served o
 filters rows, evaluates Marks from the Sample Item, lays them out for the lane's cell with zoom, pan and aspect, and
 paints them through one WebGL2 context per viewer. A lane's Lane Style (catalog, filters, theme, opacity, zoom, pan)
 stays in the client and its Lane Policy in its socket; neither is shared with followers. Export and `catalog render`
-run the same code in an offscreen Electron page, and Rust freezes their inputs and encodes the frames.
+will run the same code in an offscreen Electron page, and Rust will freeze their inputs and encode the frames (S6).
 
-Until the switch: for each lane and frame of a viewer's playback window, `overlays` asks `overlay-sync` which sample
-belongs to the frame, filters its Scene with the lane's class choices and draws it with the lane's catalog (`catalogs`,
-`render-catalog`) into Drawing Instructions (`drawing`), sent as a message per lane that the frontend turns into pixels.
-A resize or zoom sends the backend a new view and it redraws the window. Delete this paragraph at the switch.
+The Rust render path (`render-catalog`, `drawing`, the v3 catalog check) is unused by playback and goes in slice S3.
 
 ## Layers
 

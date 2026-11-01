@@ -104,7 +104,7 @@ entry points, and keep reusable build and test steps in the Makefile.
   or collapse what the new text makes redundant. Net doc growth needs a stated reason.
 - UI changes: screenshots in both themes from the harness (`make tests-desktop`), and, once the fit test exists, at
   200% zoom with the fit test updated (write-ui skill).
-- Rendering changes: Drawing Instruction dumps and in-stack goldens reviewed; a benchmark when on the hot path.
+- Rendering changes: oracle canonical rows (`fixtures/oracle`) and in-stack goldens reviewed; a benchmark when on the hot path.
 - A parity row: its line in [docs/parity.md](docs/parity.md) updated with the test that proves it.
 
 ## Project Guidance
