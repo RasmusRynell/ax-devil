@@ -276,7 +276,21 @@ async fn a_viewer_made_a_follower_gets_no_frame_or_data_outside_the_presenters_w
     let (holder, authority) = watch::channel(Authority::default());
     let gate = Gate::new(authority, || 0);
     let (_stop, mut closing) = watch::channel(false);
-    let (outbox, mut queue) = mpsc::channel::<Outgoing>(1);
+    // A socket that takes each message only when it is let through, as one whose peer reads slowly does.
+    let delivered = Arc::new(Mutex::new(Vec::<Message>::new()));
+    let permits = Arc::new(Semaphore::new(0));
+    let socket = Box::pin(sink::unfold((), {
+        let (delivered, permits) = (delivered.clone(), permits.clone());
+        move |(), message: Message| {
+            let (delivered, permits) = (delivered.clone(), permits.clone());
+            async move {
+                permits.acquire().await.unwrap().forget();
+                delivered.lock().unwrap().push(message);
+                Ok::<(), ()>(())
+            }
+        }
+    }));
+    let (outbox, writer) = spawn_writer(socket, gate.clone());
     let (asks, asked) = mpsc::channel::<Message>(1);
     let mut viewer = Box::pin(streams::unfold(asked, |mut asked| async {
         asked.recv().await.map(|message| (Ok(message), asked))
@@ -318,8 +332,8 @@ async fn a_viewer_made_a_follower_gets_no_frame_or_data_outside_the_presenters_w
         subscribed: true,
     })
     .unwrap();
-    // What a data envelope is for (see `api_types::playback`): the frames a Frame Map covers, or the one sample a
-    // Sample Item is. The file has one sample per frame, so a sample's index is its frame.
+    // What an envelope covers (see `api_types::playback`): the frame of a video frame, the frames a Frame Map covers,
+    // or the one sample a Sample Item is. The file has one sample per frame, so a sample's index is its frame.
     let covers = |bytes: &[u8]| {
         let first = u64::from_le_bytes(bytes[8..16].try_into().unwrap());
         match bytes[5] {
@@ -330,7 +344,7 @@ async fn a_viewer_made_a_follower_gets_no_frame_or_data_outside_the_presenters_w
             _ => first..first + 1,
         }
     };
-    let is_data = |sent: &Outgoing| matches!(&sent.message, Message::Binary(bytes) if matches!(bytes[5], 4 | 5));
+    let seen = || delivered.lock().unwrap().len();
 
     let streaming = stream::stream(
         &mut session,
@@ -345,76 +359,128 @@ async fn a_viewer_made_a_follower_gets_no_frame_or_data_outside_the_presenters_w
         asks.send(Message::text(&everything)).await.unwrap();
         asks.send(Message::text(&everything)).await.unwrap();
         asks.send(Message::text(&subscribe)).await.unwrap();
-        // While the viewer explores, the lane's data comes for frames far from where it will follow.
+        // While the viewer explores, the lane's data comes for frames far from where it will follow. Let the writer
+        // send one message at a time until a far sample has gone.
         loop {
-            let sent = queue.recv().await.unwrap();
-            if is_data(&sent)
-                && sent
-                    .frames
-                    .as_ref()
-                    .is_some_and(|frames| *frames.end() > 20)
+            let before = seen();
+            permits.add_permits(1);
+            while seen() == before {
+                tokio::time::sleep(Duration::from_millis(1)).await;
+            }
+            let last = delivered.lock().unwrap().last().cloned().unwrap();
+            if matches!(&last, Message::Binary(bytes) if bytes[5] == 4 && covers(bytes).start > 20)
             {
                 break;
             }
         }
-        // Something more waits in the outbox because nobody reads it.
-        while queue.is_empty() {
+        // Something more waits in the outbox because the socket takes nothing.
+        while outbox.capacity() > 0 {
             tokio::time::sleep(Duration::from_millis(5)).await;
         }
         // The owner turns exploring off: the viewer follows a presenter paused on frame 10 and says nothing more.
+        let cut = seen();
         holder.send_replace(paused_on(10));
-        // What was already queued was handed over before the change. Nothing after it may be outside frames 6 to 14,
-        // neither a frame nor data, and the lane's maps cover every frame in it. (Its frames may have gone already,
-        // while the lane loaded.)
-        queue.recv().await.unwrap();
+        permits.add_permits(1 << 20);
+        // The lane's maps and samples cover every frame of its window.
         let mut unmapped = BTreeSet::from_iter(6..=14);
         let mut unsent = BTreeSet::from_iter(6..=14);
-        let mut told = false;
         while !(unmapped.is_empty() && unsent.is_empty()) {
-            let sent = queue.recv().await.unwrap();
-            let Some(frames) = &sent.frames else {
-                // The window told to the viewer is inside the presenter's; it and the evictions are not gated.
-                if let Message::Text(body) = &sent.message
-                    && let Ok(ServerMessage::DataWindow { first, last }) =
-                        serde_json::from_str(body)
-                {
-                    assert!(
-                        (6..=14).contains(&first) && (6..=14).contains(&last),
-                        "the data window {first}..={last} is outside the presenter's window"
-                    );
-                    told = true;
+            tokio::time::sleep(Duration::from_millis(5)).await;
+            for message in &delivered.lock().unwrap()[cut..] {
+                if let Message::Binary(bytes) = message {
+                    let left = match bytes[5] {
+                        5 => &mut unmapped,
+                        4 => &mut unsent,
+                        _ => continue,
+                    };
+                    for covered in covers(bytes) {
+                        left.remove(&covered);
+                    }
                 }
-                continue;
-            };
-            assert!(
-                (6..=14).contains(frames.start()) && (6..=14).contains(frames.end()),
-                "frames {frames:?} are outside the presenter's window"
-            );
-            let Message::Binary(bytes) = &sent.message else {
-                continue;
-            };
-            if !matches!(bytes[5], 4 | 5) {
-                continue;
-            }
-            let (kind, left) = if bytes[5] == 5 {
-                ("map", &mut unmapped)
-            } else {
-                ("sample", &mut unsent)
-            };
-            for covered in covers(bytes) {
-                assert!(
-                    (6..=14).contains(&covered),
-                    "a {kind} reaches frame {covered}, outside the presenter's window"
-                );
-                left.remove(&covered);
             }
         }
-        assert!(told, "the window the lane follows is told before its maps");
         holder.send_replace(Authority::Revoked);
+        cut
     };
-    let (ended, ()) = tokio::time::timeout(WAIT, async { tokio::join!(streaming, watching) })
+    let (ended, cut) = tokio::time::timeout(WAIT, async { tokio::join!(streaming, watching) })
         .await
         .expect("the window arrives and the stream ends");
     assert!(matches!(ended, Err(End::Revoked)), "a revoked stream ends");
-    // The writer drops whatever was still queued and closes the socket revoked (see the test above).
+    drop(outbox);
+    tokio::time::timeout(WAIT, writer).await.unwrap().unwrap();
+
+    // The order and the contents of what the socket took. The message after the cut is the one the writer already
+    // held when the authority narrowed, which may be from before; everything after it is the follower's.
+    let delivered = delivered.lock().unwrap();
+    assert_eq!(delivered.last(), Some(&gate::revoked_close()));
+    let (mut window, mut told, mut held) =
+        (None::<RangeInclusive<u64>>, Vec::new(), BTreeSet::new());
+    for (at, message) in delivered.iter().enumerate() {
+        match message {
+            Message::Text(body) => match serde_json::from_str(body) {
+                Ok(ServerMessage::DataWindow { first, last }) => {
+                    // Controls are not gated: the window is the authority's at the time it was applied.
+                    assert!(
+                        at <= cut || (6..=14).contains(&first) && (6..=14).contains(&last),
+                        "the data window {first}..={last} is outside the presenter's window"
+                    );
+                    window = Some(first..=last);
+                    told.push(first..=last);
+                }
+                Ok(ServerMessage::Evict {
+                    source, samples, ..
+                }) => {
+                    assert_eq!(source, 0);
+                    for sample in samples.into_iter().map(u64::from) {
+                        assert!(
+                            told.iter().any(|window| window.contains(&sample)),
+                            "evicting {sample}, which no window told to the viewer had"
+                        );
+                        assert!(
+                            !(6..=14).contains(&sample),
+                            "evicting {sample}, which the follower still needs"
+                        );
+                        held.remove(&sample);
+                    }
+                }
+                _ => {}
+            },
+            Message::Binary(bytes) if matches!(bytes[5], 1 | 4 | 5) => {
+                let covered = covers(bytes);
+                assert!(
+                    at <= cut
+                        || (6..=14).contains(&covered.start)
+                            && (6..=14).contains(&(covered.end - 1)),
+                    "{covered:?} is outside the presenter's window"
+                );
+                match bytes[5] {
+                    5 => {
+                        let window = window
+                            .as_ref()
+                            .expect("the window is told before the first map");
+                        assert!(
+                            window.contains(&covered.start) && window.contains(&(covered.end - 1)),
+                            "the map of {covered:?} is outside the window {window:?} told before it"
+                        );
+                    }
+                    4 => {
+                        held.insert(covered.start);
+                    }
+                    _ => {}
+                }
+            }
+            _ => {}
+        }
+        if at + 1 == cut {
+            assert!(
+                !held.is_empty(),
+                "the viewer held far samples before it was narrowed"
+            );
+        }
+    }
+    // Every control survived the narrowing: what the viewer held outside its window was evicted.
+    assert!(
+        held.iter().all(|sample| (6..=14).contains(sample)),
+        "the viewer still holds {held:?}"
+    );
 }

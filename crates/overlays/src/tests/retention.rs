@@ -6,7 +6,7 @@ use super::{
     viewer_model::{Rig, backward, evicted, exact, samples, sticky},
     want,
 };
-use crate::OverlayEvent;
+use crate::{OverlayEvent, state::READY_PER_SOURCE};
 
 #[test]
 fn a_sticky_sample_that_stays_selected_across_a_jump_is_neither_evicted_nor_sent_again() {
@@ -207,24 +207,98 @@ fn a_new_revision_discards_the_evictions_still_waiting_and_clears_what_was_sent(
 }
 
 #[test]
-fn the_most_urgent_sample_is_encoded_when_the_ready_items_are_all_worse_and_the_budget_is_full() {
+fn the_most_urgent_sample_is_encoded_when_the_ready_items_are_full_of_worse_ones() {
     let env = Env::new();
     let mut rig = Rig::new(&env, 0..20, 20, 1);
-    rig.budget(2);
     rig.policy(0, 1, shown().0.expect("policy"), true);
     rig.want(want(10, 2, 6));
-    rig.pump();
-    assert_eq!(rig.sent(), [10, 11]);
-    assert_eq!(
-        rig.state.sources[0].ready.len(),
-        4,
-        "ready is full of items that do not fit"
-    );
+    while let Some((sample, revision)) = rig.state.next_encode(0) {
+        let item = rig.track.item(sample as usize).expect("item");
+        rig.state.finish_encode(0, revision, sample, item, None);
+    }
+    assert_eq!(rig.state.sources[0].ready.len(), 4, "the consumer is slow");
 
-    rig.want(want(9, 1, 7));
-    rig.pump();
+    rig.want(want(14, 6, 2));
 
-    assert_eq!(rig.sent(), [9, 10]);
+    assert_eq!(rig.state.next_encode(0), Some((14, 1)));
+    assert_eq!(rig.state.sources[0].ready.len(), 3, "the worst makes room");
+}
+
+/// Samples of 1 box, then `blockers` of 20 that do not fit beside the first, then two of 1 that do.
+fn blocked_then_small(blockers: usize) -> Rig {
+    let env = Env::new();
+    let counts: Vec<u32> = [1]
+        .into_iter()
+        .chain(std::iter::repeat_n(20, blockers))
+        .chain([1, 1])
+        .collect();
+    let mut rig = Rig::boxes(&env, &counts, 1);
+    let small = rig.sizes[0];
+    assert!(rig.sizes[1] > 2 * small, "the blockers are large");
+    rig.budget_bytes(3 * small);
+    rig.policy(0, 1, shown().0.expect("policy"), true);
+    rig.want(want(0, 0, counts.len() as u32 - 1));
+    rig.pump();
+    rig
+}
+
+#[test]
+fn a_sample_that_does_not_fit_does_not_hold_back_the_smaller_ones_after_it() {
+    let rig = blocked_then_small(1);
+    assert_eq!(rig.sent(), [0, 2, 3]);
+    rig.check();
+}
+
+#[test]
+fn smaller_samples_are_reached_past_more_blocked_ones_than_the_ready_items_hold() {
+    let rig = blocked_then_small(READY_PER_SOURCE + 1);
+    assert_eq!(rig.sent(), [0, 6, 7]);
+    rig.check();
+}
+
+#[test]
+fn samples_of_mixed_sizes_are_sent_by_rank_and_a_larger_one_evicts_only_worse_ones() {
+    let env = Env::new();
+    // Small, large, small, large, small.
+    let mut rig = Rig::boxes(&env, &[1, 20, 1, 20, 1], 1);
+    let (small, large) = (rig.sizes[0], rig.sizes[1]);
+    rig.budget_bytes(large + 2 * small);
+    rig.policy(0, 1, shown().0.expect("policy"), true);
+
+    rig.want(want(1, 1, 2));
+    rig.pump();
+    assert_eq!(rig.sent(), [0, 1, 2], "the large sample 3 waits, 0 fits");
+    rig.check();
+
+    // Sample 3 is the playhead and outranks everything sent: the worst go until it fits, and 0 comes back.
+    rig.want(want(3, 3, 0));
+    let moved = rig.pump();
+    assert_eq!(evicted(&moved), [0, 1]);
+    assert_eq!(rig.sent(), [0, 2, 3]);
+    rig.check();
+}
+
+#[test]
+fn a_sample_larger_than_the_budget_goes_alone_when_nothing_better_is_sent() {
+    let env = Env::new();
+    let mut rig = Rig::boxes(&env, &[1, 1, 20, 1, 1], 1);
+    rig.budget_bytes(2 * rig.sizes[0]);
+    assert!(rig.sizes[2] > rig.state.budget);
+    rig.policy(0, 1, shown().0.expect("policy"), true);
+    rig.want(want(0, 0, 1));
+    rig.pump();
+    assert_eq!(rig.sent(), [0, 1]);
+
+    // Sample 1 is sent and outranks the large one, which waits while sample 3 goes.
+    rig.want(want(1, 0, 2));
+    rig.pump();
+    assert_eq!(rig.sent(), [1, 3]);
+    rig.check();
+
+    // At the playhead the large one outranks what is sent and takes the budget alone.
+    rig.want(want(2, 0, 2));
+    rig.pump();
+    assert_eq!(rig.sent(), [2]);
     rig.check();
 }
 

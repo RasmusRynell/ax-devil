@@ -202,6 +202,9 @@ impl State {
             source
                 .ready
                 .retain(|(sample, _)| source.window.contains_key(sample));
+            source
+                .blocked
+                .retain(|sample, _| source.window.contains_key(sample));
         }
     }
 }

@@ -95,8 +95,8 @@ pub(super) struct Rig {
     pub(super) dropped: Vec<OverlayEvent>,
     pub(super) drop_every: usize,
     pub(super) seen: usize,
-    /// Every item has this many bytes.
-    pub(super) item_bytes: u64,
+    /// The bytes of the item of each sample.
+    pub(super) sizes: Vec<u64>,
 }
 
 impl Rig {
@@ -108,6 +108,18 @@ impl Rig {
         lanes: usize,
     ) -> Self {
         Self::open(env, env.mot("a.txt", frames), timeline(count), lanes)
+    }
+
+    /// A dense MOT source whose frame `n` has `counts[n]` boxes (at least one), so that the items differ in size.
+    pub(super) fn boxes(env: &Env, counts: &[u32], lanes: usize) -> Self {
+        let text: String = (0..counts.len())
+            .flat_map(|frame| {
+                (1..=counts[frame])
+                    .map(move |id| format!("{},{id},100,100,20,80,0.9,-1,-1,-1\n", frame + 1))
+            })
+            .collect();
+        let overlay = env.overlay("a.txt", "MOT_FILE", &text);
+        Self::open(env, overlay, timeline(counts.len() as u64), lanes)
     }
 
     /// A sparse, time-keyed source with a box at each of `frames` of a timeline of `count` frames 40 ms apart, so
@@ -122,11 +134,18 @@ impl Rig {
             .into_iter()
             .map(|frame| {
                 let ms = frame * 40;
+                // One to four objects, so that the items differ in size.
+                let objects: String = (1..=1 + frame % 4)
+                    .map(|id| {
+                        format!(
+                            "<tt:Object ObjectId=\"{id}\"><tt:Appearance><tt:Class><tt:Type Likelihood=\"0.9\">person</tt:Type></tt:Class>\
+                             <tt:Shape><tt:BoundingBox left=\"-0.2\" top=\"0.2\" right=\"0.2\" bottom=\"-0.2\"/></tt:Shape>\
+                             </tt:Appearance></tt:Object>"
+                        )
+                    })
+                    .collect();
                 format!(
-                    "<tt:Frame xmlns:tt=\"http://www.onvif.org/ver10/schema\" UtcTime=\"1970-01-01T00:{:02}:{:02}.{:03}Z\">\
-                     <tt:Object ObjectId=\"1\"><tt:Appearance><tt:Class><tt:Type Likelihood=\"0.9\">person</tt:Type></tt:Class>\
-                     <tt:Shape><tt:BoundingBox left=\"-0.2\" top=\"0.2\" right=\"0.2\" bottom=\"-0.2\"/></tt:Shape>\
-                     </tt:Appearance></tt:Object></tt:Frame>\n",
+                    "<tt:Frame xmlns:tt=\"http://www.onvif.org/ver10/schema\" UtcTime=\"1970-01-01T00:{:02}:{:02}.{:03}Z\">{objects}</tt:Frame>\n",
                     ms / 60_000,
                     ms / 1000 % 60,
                     ms % 1000
@@ -155,11 +174,9 @@ impl Rig {
             super::SAMPLE_BUDGET,
         );
         state.finish_load(0, Ok((track.clone(), 100)), &timeline);
-        let sizes: BTreeSet<usize> = (0..track.keys().len())
-            .map(|sample| track.item(sample).expect("item").len())
+        let sizes = (0..track.keys().len())
+            .map(|sample| track.item(sample).expect("item").len() as u64)
             .collect();
-        assert_eq!(sizes.len(), 1, "the items have one size: {sizes:?}");
-        let item_bytes = sizes.into_iter().next().unwrap_or_default() as u64;
         Self {
             state,
             track,
@@ -175,14 +192,18 @@ impl Rig {
             dropped: Vec::new(),
             drop_every: 0,
             seen: 0,
-            item_bytes,
+            sizes,
         }
     }
 
-    /// The viewer can hold `items` items at once.
+    /// The viewer can hold `items` of the largest items at once.
     pub(super) fn budget(&mut self, items: u64) {
-        self.state.budget = items * self.item_bytes;
-        self.model.budget = self.state.budget;
+        self.budget_bytes(items * self.sizes.iter().max().copied().unwrap_or_default());
+    }
+
+    pub(super) fn budget_bytes(&mut self, bytes: u64) {
+        self.state.budget = bytes;
+        self.model.budget = bytes;
     }
 
     pub(super) fn want(&mut self, want: Want) {
@@ -325,11 +346,17 @@ impl Rig {
                 .filter(|&&cell| cell < FIRST_NON_SAMPLE)
             {
                 let sample = u64::from(cell);
+                // What the sample cannot evict is the sent samples that outrank it.
+                let held: u64 = source
+                    .sent
+                    .iter()
+                    .filter(|&(&sent, _)| outranks(sent, sample))
+                    .map(|(_, held)| held.bytes)
+                    .sum();
                 assert!(
                     source.sent.contains_key(&sample)
-                        || (source.sent.keys().all(|&sent| outranks(sent, sample))
-                            && bytes + self.item_bytes > self.state.budget),
-                    "I2: sample {sample} is wanted, not sent and there is room or it outranks what is sent"
+                        || (held > 0 && held + self.sizes[sample as usize] > self.state.budget),
+                    "I2: sample {sample} is wanted, not sent, and the {held} bytes that outrank it leave room"
                 );
             }
         }

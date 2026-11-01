@@ -10,5 +10,6 @@ evaluates a catalog, filters for display or draws; presentation is `frontend/src
   (`fixtures/sample-window/cases.json`).
 - The backend alone decides what a viewer holds: `Source.sent` is what it counts as held, `Source.evicting` what it
   has stopped counting but not yet told the viewer. Control messages (window, evictions) go before data; a sample that
-  does not fit `Open.data_bytes` evicts the sent ones that rank after it, or waits.
+  does not fit `Open.data_bytes` evicts the sent ones that rank after it, or waits without holding back smaller, less urgent
+  samples that fit.
 - Per-viewer sent sets reuse the frame mechanism but are separate from `playback`'s, which knows no overlays.

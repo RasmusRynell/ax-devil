@@ -5,7 +5,7 @@
 //! map or sample goes while a control message waits, so a sample is never sent before the eviction of its previous
 //! send, and a map never before the window it was selected for.
 
-use std::ops::RangeInclusive;
+use std::{cell::OnceCell, cmp::Reverse, ops::RangeInclusive};
 
 use playback::{Rank, Want, rank};
 
@@ -125,15 +125,11 @@ impl State {
     }
 
     /// The most urgent thing to send, with its key. A lane offers the first run of each gap of unsent frames: the
-    /// part of the gap inside the 256-frame chunk of its frame nearest the playhead. A source offers its most
-    /// urgent waiting item if it fits the budget.
+    /// part of the gap inside the 256-frame chunk of its frame nearest the playhead. The sources offer their most
+    /// urgent waiting sample that fits the budget; one that does not fit never holds back a less urgent one that
+    /// does.
     fn best(&self, want: &Want, window: &RangeInclusive<u64>) -> Option<(Key, Pick)> {
         let mut best: Option<(Key, Pick)> = None;
-        let mut offer = |key: Key, pick: Pick| {
-            if best.as_ref().is_none_or(|(held, _)| key < *held) {
-                best = Some((key, pick));
-            }
-        };
         for (lane, slot) in self.lanes.iter().enumerate() {
             if slot.window.is_empty() {
                 continue;
@@ -142,92 +138,68 @@ impl State {
                 let run = run_in(&gap, want.playhead);
                 let frame = want.playhead.clamp(*run.start(), *run.end());
                 let urgency = rank(want.direction, want.playhead, frame);
-                offer(
-                    (urgency, MAP, lane_id(lane), *run.start()),
-                    Pick::Map { lane, run },
-                );
+                let key = (urgency, MAP, lane_id(lane), *run.start());
+                if best.as_ref().is_none_or(|(held, _)| key < *held) {
+                    best = Some((key, Pick::Map { lane, run }));
+                }
             }
         }
+        let mut waiting: Vec<(Key, usize, u64, u64)> = Vec::new();
         for (source, slot) in self.sources.iter().enumerate() {
-            let urgent = slot
-                .ready
-                .iter()
-                .filter_map(|(sample, item)| Some((*slot.window.get(sample)?, *sample, item.len())))
-                .map(|(frame, sample, len)| {
-                    (
-                        rank(want.direction, want.playhead, frame),
-                        sample,
-                        len as u64,
-                    )
-                })
-                .min();
-            if let Some((urgency, sample, bytes)) = urgent {
-                let key = (urgency, SAMPLE, lane_id(source), sample);
-                if let Some(room) = self.room_for(want, &key, bytes) {
-                    offer(
-                        key,
-                        Pick::Sample {
-                            source,
-                            sample,
-                            room,
-                        },
-                    );
+            for (sample, item) in &slot.ready {
+                if let Some(&frame) = slot.window.get(sample) {
+                    let urgency = rank(want.direction, want.playhead, frame);
+                    let key = (urgency, SAMPLE, lane_id(source), *sample);
+                    waiting.push((key, source, *sample, item.len() as u64));
                 }
+            }
+        }
+        waiting.sort_unstable();
+        let sent = Sent::new(self, want);
+        for (key, source, sample, bytes) in waiting {
+            if best.as_ref().is_some_and(|(held, _)| *held < key) {
+                break;
+            }
+            if let Some(room) = sent.room_for(&key, bytes) {
+                let pick = Pick::Sample {
+                    source,
+                    sample,
+                    room,
+                };
+                best = Some((key, pick));
+                break;
             }
         }
         best
     }
 
-    /// The sent samples to evict, worst first, so that a sample of `bytes` with `key` fits the budget; `None` when
-    /// it does not fit. Only samples ranking after it are evicted. It always fits when nothing sent ranks before it,
-    /// so a single item larger than the budget still goes.
-    fn room_for(&self, want: &Want, key: &Key, bytes: u64) -> Option<Vec<(usize, u64)>> {
-        let total: u64 = self
-            .sources
-            .iter()
-            .flat_map(|slot| slot.sent.values())
-            .map(|held| held.bytes)
-            .sum();
-        if total.saturating_add(bytes) <= self.budget {
-            return Some(Vec::new());
-        }
-        let mut sent: Vec<(Key, usize, u64, u64)> = Vec::new();
-        for (source, slot) in self.sources.iter().enumerate() {
-            for (&sample, held) in &slot.sent {
-                let frame = slot.window.get(&sample).copied().unwrap_or(u64::MAX);
-                let urgency = rank(want.direction, want.playhead, frame);
-                sent.push((
-                    (urgency, SAMPLE, lane_id(source), sample),
-                    source,
-                    sample,
-                    held.bytes,
-                ));
-            }
-        }
-        sent.sort_unstable_by_key(|held| std::cmp::Reverse(held.0));
-        let (mut total, mut room) = (total, Vec::new());
-        for (held, source, sample, held_bytes) in &sent {
-            if total.saturating_add(bytes) <= self.budget || held < key {
-                break;
-            }
-            total -= held_bytes;
-            room.push((*source, *sample));
-        }
-        (total.saturating_add(bytes) <= self.budget || room.len() == sent.len()).then_some(room)
-    }
-
-    /// The sample of `source` to encode next: the most urgent of its sample window that is neither sent nor waiting.
-    /// When `READY_PER_SOURCE` items wait, it must outrank the one that ranks last, which is dropped for it: items
-    /// that do not fit the budget would otherwise keep a more urgent sample from ever being encoded.
+    /// The sample of `source` to encode next: the most urgent of its sample window that is neither sent nor waiting
+    /// and whose item could fit the budget, which is judged by its size once that is known and by the smallest
+    /// item before. An encoded item that no longer fits is dropped for a later sample, its size kept in `blocked`,
+    /// so the encoder reaches the samples that do fit (and does not encode the same one again until it fits). When
+    /// `READY_PER_SOURCE` items wait, it must outrank the one that ranks last, which is dropped for it.
     pub(crate) fn next_encode(&mut self, source: usize) -> Option<(u64, u32)> {
         let (want, _) = self.window()?;
-        let slot = &mut self.sources[source];
+        let slot = &self.sources[source];
         if !matches!(slot.load, Load::Ready(_)) {
             return None;
         }
-        let urgency =
-            |sample: u64, frame: u64| (rank(want.direction, want.playhead, frame), sample);
-        let (sample, frame) = slot
+        let sent = Sent::new(self, &want);
+        let key = |sample: u64, frame: u64| {
+            let urgency = rank(want.direction, want.playhead, frame);
+            (urgency, SAMPLE, lane_id(source), sample)
+        };
+        let (mut waiting, mut parked) = (Vec::new(), Vec::new());
+        for (sample, item) in &slot.ready {
+            let frame = slot.window.get(sample).copied().unwrap_or(u64::MAX);
+            let bytes = item.len() as u64;
+            if sent.fits(&key(*sample, frame), bytes) {
+                waiting.push(key(*sample, frame));
+            } else {
+                parked.push((*sample, bytes));
+            }
+        }
+        let candidate = slot
             .window
             .iter()
             .filter(|(sample, _)| {
@@ -235,22 +207,122 @@ impl State {
                     && !slot.evicting.contains_key(sample)
                     && !slot.ready.iter().any(|(held, _)| held == *sample)
             })
-            .min_by_key(|&(&sample, &frame)| urgency(sample, frame))
-            .map(|(&sample, &frame)| (sample, frame))?;
-        if slot.ready.len() >= crate::state::READY_PER_SOURCE {
-            let (worst, _) = slot
-                .ready
-                .iter()
-                .enumerate()
-                .filter_map(|(at, (held, _))| Some((at, urgency(*held, *slot.window.get(held)?))))
-                .max_by_key(|&(_, urgency)| urgency)?;
-            let worse = slot.ready[worst].0;
-            if urgency(sample, frame) >= urgency(worse, slot.window.get(&worse).copied()?) {
-                return None;
-            }
-            slot.ready.remove(worst);
+            .map(|(&sample, &frame)| key(sample, frame))
+            .filter(|key| sent.fits(key, slot.blocked.get(&key.3).copied().unwrap_or(1)))
+            .min();
+        let worst = waiting
+            .iter()
+            .max()
+            .filter(|_| waiting.len() >= crate::state::READY_PER_SOURCE);
+        let chosen = candidate.filter(|key| worst.is_none_or(|worst| key < worst));
+        let dropped = chosen.and(worst).map(|worst| worst.3);
+        let revision = slot.data_revision;
+        let slot = &mut self.sources[source];
+        for (sample, bytes) in parked {
+            slot.ready.retain(|(held, _)| *held != sample);
+            slot.blocked.insert(sample, bytes);
         }
-        Some((sample, slot.data_revision))
+        if let Some(sample) = dropped {
+            slot.ready.retain(|(held, _)| *held != sample);
+        }
+        chosen.map(|key| (key.3, revision))
+    }
+}
+
+/// The samples all sources have sent, against the byte budget.
+struct Sent<'a> {
+    state: &'a State,
+    want: &'a Want,
+    /// The bytes of all sent samples.
+    total: u64,
+    /// The sent samples, worst first; built the first time something does not fit outright.
+    worst_first: OnceCell<Vec<Ranked>>,
+}
+
+/// A sent sample, for choosing which to evict.
+struct Ranked {
+    key: Key,
+    source: usize,
+    sample: u64,
+    /// The bytes freed by evicting this sample and every one before it.
+    freed: u64,
+}
+
+impl<'a> Sent<'a> {
+    fn new(state: &'a State, want: &'a Want) -> Self {
+        let total = state
+            .sources
+            .iter()
+            .flat_map(|slot| slot.sent.values())
+            .map(|held| held.bytes)
+            .sum();
+        Self {
+            state,
+            want,
+            total,
+            worst_first: OnceCell::new(),
+        }
+    }
+
+    fn worst_first(&self) -> &[Ranked] {
+        self.worst_first.get_or_init(|| {
+            let mut sent = Vec::new();
+            for (source, slot) in self.state.sources.iter().enumerate() {
+                for (&sample, held) in &slot.sent {
+                    let frame = slot.window.get(&sample).copied().unwrap_or(u64::MAX);
+                    let urgency = rank(self.want.direction, self.want.playhead, frame);
+                    let key = (urgency, SAMPLE, lane_id(source), sample);
+                    sent.push((key, source, sample, held.bytes));
+                }
+            }
+            sent.sort_unstable_by_key(|held| Reverse(held.0));
+            let mut freed = 0;
+            sent.into_iter()
+                .map(|(key, source, sample, bytes)| {
+                    freed += bytes;
+                    Ranked {
+                        key,
+                        source,
+                        sample,
+                        freed,
+                    }
+                })
+                .collect()
+        })
+    }
+
+    /// How many of the worst sent samples to evict so that a sample of `bytes` with `key` fits the budget; `None`
+    /// when it does not fit. Only samples ranking after it are evicted. It always fits when nothing sent ranks
+    /// before it, so a single item larger than the budget still goes.
+    fn evictions(&self, key: &Key, bytes: u64) -> Option<usize> {
+        let budget = self.state.budget;
+        if self.total.saturating_add(bytes) <= budget {
+            return Some(0);
+        }
+        let sent = self.worst_first();
+        let worse = sent.partition_point(|held| held.key > *key);
+        let enough = sent[..worse]
+            .partition_point(|held| (self.total - held.freed).saturating_add(bytes) > budget);
+        if enough < worse {
+            Some(enough + 1)
+        } else {
+            (worse == sent.len()).then_some(worse)
+        }
+    }
+
+    fn fits(&self, key: &Key, bytes: u64) -> bool {
+        self.evictions(key, bytes).is_some()
+    }
+
+    /// The sent samples to evict, worst first, so that a sample of `bytes` with `key` fits the budget; `None` when
+    /// it does not fit.
+    fn room_for(&self, key: &Key, bytes: u64) -> Option<Vec<(usize, u64)>> {
+        let count = self.evictions(key, bytes)?;
+        let room = self
+            .worst_first
+            .get()
+            .map_or(&[][..], |sent| &sent[..count]);
+        Some(room.iter().map(|held| (held.source, held.sample)).collect())
     }
 }
 

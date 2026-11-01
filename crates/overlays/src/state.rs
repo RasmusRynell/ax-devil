@@ -134,6 +134,9 @@ pub(crate) struct Source {
     pub(crate) evicting: BTreeMap<u64, Held>,
     /// Encoded and not yet sent; in none of `sent` and `evicting`.
     pub(crate) ready: Vec<(u64, Arc<[u8]>)>,
+    /// Samples that were encoded and did not fit the budget, with their sizes. Their items are dropped so that the
+    /// encoder goes on to later samples; it encodes one again when its size fits.
+    pub(crate) blocked: BTreeMap<u64, u64>,
 }
 
 /// One send of a sample.
@@ -175,6 +178,7 @@ impl State {
                             sent: BTreeMap::new(),
                             evicting: BTreeMap::new(),
                             ready: Vec::new(),
+                            blocked: BTreeMap::new(),
                         });
                         sources.len() - 1
                     })
@@ -229,6 +233,7 @@ impl State {
         slot.sent.clear();
         slot.evicting.clear();
         slot.ready.clear();
+        slot.blocked.clear();
         for lane in self.lanes_of(source).collect::<Vec<_>>() {
             self.lanes[lane].window = LaneWindow::default();
             self.push_notice(OverlayEvent::Status {
@@ -277,6 +282,7 @@ impl State {
         slot.sent.clear();
         slot.evicting.clear();
         slot.ready.clear();
+        slot.blocked.clear();
         for lane in self.lanes_of(source).collect::<Vec<_>>() {
             let slot = &mut self.lanes[lane];
             slot.maps_sent.clear();
@@ -311,6 +317,7 @@ impl State {
         {
             return;
         }
+        slot.blocked.remove(&sample);
         slot.ready.push((sample, item));
         if let Some(reason) = problem {
             for lane in self.lanes_of(source).collect::<Vec<_>>() {
