@@ -37,6 +37,8 @@ async function openWindow(
       nodeIntegration: false,
       contextIsolation: true,
       sandbox: true,
+      // Smoke test windows overlap, and an overlapped page must keep drawing (see main.cjs).
+      backgroundThrottling: !process.argv.includes("--smoke-test"),
       preload: path.join(__dirname, "preload.cjs"),
     },
   });

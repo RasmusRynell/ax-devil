@@ -122,7 +122,7 @@ jobs:
       - name: Build and package
         run: scripts/package-desktop.sh ${{ matrix.name }}
 
-      # The script ends the app after two minutes and prints its logs; this ends the script should it hang itself.
+      # The script ends the app after three minutes and prints its logs; this ends the script should it hang itself.
       - name: Smoke-test the package
         timeout-minutes: 8
         run: scripts/smoke-packaged.sh ${{ matrix.name }}

@@ -63,7 +63,7 @@ module.exports.playlist = async (window) => {
     );
     window.webContents.insertText(DATASET);
     await wait(
-      "[...document.querySelectorAll('dialog[open] input')].some((i) => i.value.endsWith('datasets/mot'))",
+      `[...document.querySelectorAll('dialog[open] input')].some((i) => i.value === ${JSON.stringify(DATASET)})`,
     );
     await clickButton("Scan");
     await wait("/MINI-01/.test(document.querySelector('dialog[open]').innerText)");

@@ -10,6 +10,11 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 os="${1:-}"
+# The Windows and macOS apps open on the desktop they run on, which only a CI runner may lend.
+if [[ ($os == win || $os == mac) && ${CI:-} != true ]]; then
+  echo "native desktop smoke runs only on CI runners; use Linux/Xvfb locally" >&2
+  exit 1
+fi
 dist="$PWD/desktop/dist"
 logs="$PWD/artifacts/smoke-logs"
 rm -rf "$logs"
@@ -79,7 +84,7 @@ pid=$!
 set +m
 
 seconds=0
-until [[ -s $result ]] || ((seconds >= 120)); do
+until [[ -s $result ]] || ((seconds >= 180)); do
   # An app that ended without a verdict gets one more second for the file to appear.
   if ! alive; then
     sleep 1

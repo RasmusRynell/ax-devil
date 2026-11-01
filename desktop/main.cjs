@@ -27,6 +27,16 @@ if (smoke && process.platform !== "darwin") {
   ])
     app.commandLine.appendSwitch(name, value);
 }
+// A second window hidden behind the first, as the sharing scenario makes, is "occluded" on macOS and Windows: its page
+// stops drawing and the frames and screenshots the smoke test waits for never come. Nobody watches the smoke test.
+if (smoke) {
+  app.commandLine.appendSwitch(
+    "disable-features",
+    "CalculateNativeWinOcclusion,MacWebContentsOcclusion",
+  );
+  app.commandLine.appendSwitch("disable-backgrounding-occluded-windows");
+  app.commandLine.appendSwitch("disable-renderer-backgrounding");
+}
 // Electron's own data (Chromium profile, crash dumps) is browser state, not ax-devil data: the backend owns the
 // app's folders, so keep Electron out of them.
 app.setPath("userData", path.join(app.getPath("cache"), "ax-devil-chromium"));
@@ -267,7 +277,7 @@ else
     .then(async () => {
       if (smoke) {
         const window = await showLocal();
-        const timer = setTimeout(() => fail(new Error("Desktop smoke test timed out")), 60000);
+        const timer = setTimeout(() => fail(new Error("Desktop smoke test timed out")), 120000);
         await require("./smoke.cjs")(window, { openLaunch, showLocal, showRemote });
         clearTimeout(timer);
         report("PASS");

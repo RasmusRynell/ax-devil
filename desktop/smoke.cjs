@@ -213,9 +213,13 @@ module.exports = async (window, shell) => {
     }
   }
 
+  console.log("smoke: video");
   await video(window);
+  console.log("smoke: playlist");
   await playlist(window);
+  console.log("smoke: sharing");
   await sharing(window, shell, ownerCsp);
+  console.log("smoke: remote");
   await remote(window, shell);
   console.log(`PASS: app shell loaded; screenshots in ${path.relative(SMOKE_ROOT, SCREENSHOTS)}`);
 };
