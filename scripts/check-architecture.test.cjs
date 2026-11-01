@@ -2,7 +2,7 @@
 // `node --test scripts/check-architecture.test.cjs`.
 const assert = require("node:assert/strict");
 const test = require("node:test");
-const { check } = require("./check-architecture.cjs");
+const { check, checkRoutes, checkProjection } = require("./check-architecture.cjs");
 
 /** A workspace of `{ name, layer, deps }` crates in the shape of `cargo metadata`. */
 function workspace(crates) {
@@ -60,4 +60,36 @@ void test("a dev-dependency is exempt and a higher layer is still rejected", () 
     { name: "playback", layer: "services", deps: ["api-types"] },
   ]);
   assert.match(problems[0], /a higher layer/);
+});
+
+void test("a route is mounted only in the route table", () => {
+  const mount = 'Router::new().route("/api/x", get(x))';
+  assert.deepEqual(
+    checkRoutes([
+      { file: "src/routes/mod.rs", text: mount },
+      { file: "src/lib.rs", text: "// a comment mentioning .route( is fine\nfn app() {}" },
+    ]),
+    [],
+  );
+  const problems = checkRoutes([
+    { file: "src/session/socket.rs", text: `fn r() {\n  ${mount}\n}` },
+  ]);
+  assert.equal(problems.length, 1);
+  assert.match(problems[0], /src\/session\/socket\.rs mounts a route/);
+});
+
+void test("the projection names every field of Doc: no rest pattern", () => {
+  const file = "src/session/project.rs";
+  const clean =
+    "// `Doc { .. }` in a comment is fine\nlet Doc { workspace } = doc;\nlet n = x..=y;";
+  assert.deepEqual(checkProjection([{ file, text: clean }]), []);
+  for (const rest of [
+    "let Doc { workspace, .. } = doc;",
+    "let Doc {\n  workspace,\n  ..\n} = doc;",
+  ]) {
+    const problems = checkProjection([{ file, text: rest }]);
+    assert.equal(problems.length, 1, rest);
+    assert.match(problems[0], /rest pattern/);
+  }
+  assert.match(checkProjection([])[0], /is missing/);
 });

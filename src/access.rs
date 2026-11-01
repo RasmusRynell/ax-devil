@@ -4,9 +4,9 @@
 use api_types::{ApiError, Grant};
 use axum::{
     Json,
-    extract::{FromRef, FromRequestParts, Request},
+    extract::{FromRef, FromRequestParts, Request, State},
     http::{
-        HeaderMap, HeaderName, HeaderValue, StatusCode, Uri, header, request::Parts, uri::Authority,
+        HeaderMap, HeaderName, HeaderValue, StatusCode, header, request::Parts, uri::Authority,
     },
     middleware::Next,
     response::{IntoResponse, Response},
@@ -49,8 +49,13 @@ impl Principal {
     /// What this principal may do.
     pub fn grants(self) -> &'static [Grant] {
         match self {
-            Self::Local => &[Grant::Preferences, Grant::Configuration, Grant::Sessions],
-            Self::Server => &[Grant::Configuration, Grant::Sessions],
+            Self::Local => &[
+                Grant::Preferences,
+                Grant::Configuration,
+                Grant::Sessions,
+                Grant::Files,
+            ],
+            Self::Server => &[Grant::Configuration, Grant::Sessions, Grant::Files],
             Self::None => &[],
         }
     }
@@ -62,7 +67,7 @@ impl Principal {
             .filter_map(|grant| match grant {
                 Grant::Preferences => Some(Scope::Personal),
                 Grant::Configuration => Some(Scope::Server),
-                Grant::Sessions => None,
+                Grant::Sessions | Grant::Files => None,
             })
             .collect()
     }
@@ -102,8 +107,8 @@ where
     }
 }
 
-/// Answers 401 when the caller holds none of the grants a route needs.
-pub struct Unauthorized;
+/// Answers 401 when the caller does not pass a route's gate.
+struct Unauthorized;
 
 impl IntoResponse for Unauthorized {
     fn into_response(self) -> Response {
@@ -115,55 +120,47 @@ impl IntoResponse for Unauthorized {
     }
 }
 
-/// A caller who may read or change at least one kind of setting. The handler narrows it with
-/// [`Principal::scopes`].
-pub struct SettingsAccess(pub Principal);
+/// Who a route lets through, as the route table states it. Everything beyond `Principal` checks stays in the handler.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Who {
+    /// Anyone; the handler may show more to a caller with grants.
+    Public,
+    /// A caller who may read or change at least one kind of setting; the handler narrows it with
+    /// [`Principal::scopes`].
+    Settings,
+    /// A caller who holds the `Sessions` grant.
+    Sessions,
+    /// A WebSocket upgrade: the socket limits admit it and the first message authenticates it: `Hello` on the
+    /// Session socket, a ticket on the playback socket.
+    Upgrade,
+}
 
-/// A caller who may list, create and watch sessions.
-pub struct SessionsAccess(pub Principal);
-
-impl<S: Send + Sync> FromRequestParts<S> for SettingsAccess
-where
-    Arc<Policy>: FromRef<S>,
-{
-    type Rejection = Unauthorized;
-
-    async fn from_request_parts(parts: &mut Parts, state: &S) -> Result<Self, Unauthorized> {
-        let Ok(principal) = Principal::from_request_parts(parts, state).await;
-        if principal.scopes().is_empty() {
-            return Err(Unauthorized);
+impl Who {
+    /// Whether `principal` passes this gate.
+    pub fn allows(self, principal: Principal) -> bool {
+        match self {
+            Self::Public | Self::Upgrade => true,
+            Self::Settings => !principal.scopes().is_empty(),
+            Self::Sessions => principal.grants().contains(&Grant::Sessions),
         }
-        Ok(Self(principal))
     }
 }
 
-impl<S: Send + Sync> FromRequestParts<S> for SessionsAccess
-where
-    Arc<Policy>: FromRef<S>,
-{
-    type Rejection = Unauthorized;
-
-    async fn from_request_parts(parts: &mut Parts, state: &S) -> Result<Self, Unauthorized> {
-        let Ok(principal) = Principal::from_request_parts(parts, state).await;
-        if !principal.grants().contains(&Grant::Sessions) {
-            return Err(Unauthorized);
-        }
-        Ok(Self(principal))
-    }
-}
-
-/// Answers 401 unless the caller is the person at this machine or holds the server password. The routes behind it
-/// read this machine's files and videos.
-pub async fn require_member(principal: Principal, request: Request, next: Next) -> Response {
-    if principal == Principal::None {
-        Unauthorized.into_response()
-    } else {
+/// Answers 401 unless the caller passes the gate `who` of the route.
+pub async fn require(
+    State((policy, who)): State<(Arc<Policy>, Who)>,
+    request: Request,
+    next: Next,
+) -> Response {
+    if who.allows(policy.principal(request.headers())) {
         next.run(request).await
+    } else {
+        Unauthorized.into_response()
     }
 }
 
 /// Keeps other websites off the Local listener. A page reached through a rebound DNS name has the same `Origin` and
-/// `Host` as the real one, so `Host` must be a loopback name; a page from another site sends a foreign `Origin`.
+/// `Host` as the real one, so `Host` must be a loopback name; a page from another site sends a foreign `Origin`, compared in full (scheme, host and port).
 /// Requests without `Origin` (the desktop shell, scripts, plain navigation) pass.
 pub async fn local_guard(request: Request, next: Next) -> Response {
     if is_local_page(request.headers()) {
@@ -189,13 +186,12 @@ fn is_local_page(headers: &HeaderMap) -> bool {
         host.host().to_ascii_lowercase().as_str(),
         "127.0.0.1" | "localhost" | "[::1]"
     );
+    // The Local listener speaks plain HTTP, so a page of it has exactly this origin; any other scheme, host or port is
+    // another site.
     let same_origin = headers.get(header::ORIGIN).is_none_or(|origin| {
         origin
             .to_str()
-            .ok()
-            .and_then(|origin| origin.parse::<Uri>().ok())
-            .and_then(|uri| uri.authority().cloned())
-            .is_some_and(|origin| origin.as_str().eq_ignore_ascii_case(host.as_str()))
+            .is_ok_and(|origin| origin.eq_ignore_ascii_case(&format!("http://{host}")))
     });
     loopback && same_origin
 }
@@ -257,8 +253,8 @@ impl Default for Limits {
 }
 
 impl Limits {
-    /// For a server behind a reverse proxy, where every client has the proxy's address: a peer may use as many
-    /// sockets as the whole server, so only the totals bind.
+    /// For a listener whose clients all share one address, such as a server behind a reverse proxy or the Local
+    /// listener: a peer may use as many sockets as the whole server, so only the totals bind.
     pub fn behind_proxy() -> Self {
         let totals = Self::default();
         Self {
