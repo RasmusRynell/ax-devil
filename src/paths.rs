@@ -14,8 +14,10 @@ pub type Env<'a> = &'a dyn Fn(&str) -> Option<OsString>;
 pub struct Paths {
     /// The settings file. Its folder is created, private to the user, when the file is first written.
     pub config_file: PathBuf,
-    /// The folder for cached video indexes and decoded frames.
-    pub cache_dir: PathBuf,
+    /// The standard folder for cached video indexes and decoded frames.
+    default_cache_dir: PathBuf,
+    /// The `--cache-dir` override, which beats the `storage.cache_dir` setting.
+    cache_override: Option<PathBuf>,
     /// The log file.
     pub log_file: PathBuf,
     /// The window positions, which are state rather than settings.
@@ -35,13 +37,18 @@ impl Paths {
                 Some(path) => path,
                 None => folder(env, "XDG_CONFIG_HOME", ".config")?.join("settings.json"),
             },
-            cache_dir: match cache_dir {
-                Some(path) => path,
-                None => folder(env, "XDG_CACHE_HOME", ".cache")?,
-            },
+            default_cache_dir: folder(env, "XDG_CACHE_HOME", ".cache")?,
+            cache_override: cache_dir,
             log_file: state.join("logs/ax-devil.log"),
             window_file: state.join("windows.json"),
         })
+    }
+
+    /// The folder for cached video indexes and decoded frames: `--cache-dir`, else the `storage.cache_dir`
+    /// setting (`setting`), else the standard folder. The folder is not checked here; failing to use it is not fatal.
+    pub fn cache_dir(&self, setting: Option<PathBuf>) -> PathBuf {
+        let chosen = self.cache_override.clone().or(setting);
+        chosen.unwrap_or_else(|| self.default_cache_dir.clone())
     }
 }
 
@@ -67,9 +74,21 @@ mod tests {
     use std::collections::HashMap;
 
     fn paths(vars: &[(&str, &str)], config: Option<&str>) -> Result<Paths, String> {
+        resolve(vars, config, None)
+    }
+
+    fn resolve(
+        vars: &[(&str, &str)],
+        config: Option<&str>,
+        cache_dir: Option<&str>,
+    ) -> Result<Paths, String> {
         let vars: HashMap<_, _> = vars.iter().copied().collect();
         let env = |name: &str| vars.get(name).map(OsString::from);
-        Paths::resolve(&env, config.map(PathBuf::from), None)
+        Paths::resolve(
+            &env,
+            config.map(PathBuf::from),
+            cache_dir.map(PathBuf::from),
+        )
     }
 
     #[test]
@@ -85,7 +104,7 @@ mod tests {
             found.config_file,
             Path::new("/x/config/ax-devil/settings.json")
         );
-        assert_eq!(found.cache_dir, Path::new("/x/cache/ax-devil"));
+        assert_eq!(found.cache_dir(None), Path::new("/x/cache/ax-devil"));
         assert_eq!(
             found.log_file,
             Path::new("/x/state/ax-devil/logs/ax-devil.log")
@@ -102,7 +121,7 @@ mod tests {
         ];
         let found = paths(&relative, Some("/etc/mine.json")).unwrap();
         assert_eq!(found.config_file, Path::new("/etc/mine.json"));
-        assert_eq!(found.cache_dir, Path::new("/home/me/.cache/ax-devil"));
+        assert_eq!(found.cache_dir(None), Path::new("/home/me/.cache/ax-devil"));
         assert_eq!(
             found.log_file,
             Path::new("/home/me/.local/state/ax-devil/logs/ax-devil.log")
@@ -112,5 +131,16 @@ mod tests {
             Path::new("/home/me/.config/ax-devil/settings.json")
         );
         assert!(paths(&[], None).is_err());
+    }
+
+    #[test]
+    fn the_cache_folder_comes_from_the_command_line_then_the_setting_then_the_xdg_default() {
+        let vars = [("HOME", "/home/me")];
+        let setting = || Some(PathBuf::from("/mnt/big/cache"));
+        let plain = resolve(&vars, None, None).unwrap();
+        assert_eq!(plain.cache_dir(None), Path::new("/home/me/.cache/ax-devil"));
+        assert_eq!(plain.cache_dir(setting()), Path::new("/mnt/big/cache"));
+        let flagged = resolve(&vars, None, Some("/tmp/flag")).unwrap();
+        assert_eq!(flagged.cache_dir(setting()), Path::new("/tmp/flag"));
     }
 }

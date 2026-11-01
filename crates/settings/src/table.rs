@@ -23,6 +23,8 @@ pub struct Setting {
     pub env: bool,
     /// Whether the value is a credential: the dialog masks a literal.
     pub secret: bool,
+    /// Whether Quick Setup asks for it.
+    pub quick_setup: bool,
 }
 
 /// Every setting the app has.
@@ -39,6 +41,7 @@ pub const TABLE: &[Setting] = &[
         live: true,
         env: false,
         secret: false,
+        quick_setup: true,
     },
     Setting {
         key: "ui.quick_setup_done",
@@ -49,6 +52,7 @@ pub const TABLE: &[Setting] = &[
         live: true,
         env: false,
         secret: false,
+        quick_setup: false,
     },
     Setting {
         key: "playback.video_cache",
@@ -63,6 +67,19 @@ pub const TABLE: &[Setting] = &[
         live: true,
         env: false,
         secret: false,
+        quick_setup: false,
+    },
+    Setting {
+        key: "storage.cache_dir",
+        // Empty is the standard XDG cache folder. `--cache-dir` wins over the setting.
+        kind: Kind::Folder,
+        label: "Cache folder",
+        page: Some("Storage"),
+        section: "Folders",
+        live: false,
+        env: false,
+        secret: false,
+        quick_setup: false,
     },
 ];
 

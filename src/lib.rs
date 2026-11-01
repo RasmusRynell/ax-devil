@@ -52,9 +52,8 @@ pub fn app(state: AppState) -> Router {
         .with_state(state)
 }
 
-/// Every setting and shortcut, with what needs a restart and which secrets are stored as plain text.
+/// Every setting and shortcut, with what needs a restart.
 fn snapshot(settings: &settings::Settings, state: &settings::State) -> SettingsState {
-    let names = |keys: Vec<&str>| keys.into_iter().map(str::to_owned).collect();
     SettingsState {
         values: state.values(),
         shortcuts: state
@@ -62,8 +61,11 @@ fn snapshot(settings: &settings::Settings, state: &settings::State) -> SettingsS
             .into_iter()
             .map(|(id, key)| (id.to_owned(), key))
             .collect(),
-        restart: names(settings.restart_pending()),
-        plaintext: names(state.literal_secrets()),
+        restart: settings
+            .restart_pending()
+            .into_iter()
+            .map(str::to_owned)
+            .collect(),
     }
 }
 

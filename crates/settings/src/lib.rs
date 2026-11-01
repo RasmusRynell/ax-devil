@@ -201,20 +201,11 @@ impl State {
         })
     }
 
-    /// The secret settings that hold a literal value instead of a `$NAME` reference.
-    pub fn literal_secrets(&self) -> Vec<&'static str> {
-        self.table
-            .iter()
-            .filter(|setting| setting.secret)
-            .filter(|setting| {
-                let value = &self.values[setting.key];
-                *value != setting.kind.default_value()
-                    && !value
-                        .as_str()
-                        .is_some_and(|text| env::reference(text).is_some())
-            })
-            .map(|setting| setting.key)
-            .collect()
+    /// The folder a setting of kind `Folder` holds; `None` when it is empty (the standard folder) or `key` is not such
+    /// a setting.
+    pub fn folder(&self, key: &str) -> Option<PathBuf> {
+        let path = self.values.get(key)?.as_str()?;
+        (!path.is_empty()).then(|| PathBuf::from(path))
     }
 
     /// The number a setting of kind `AutoOrWhole` holds; `None` for `auto`, or when `key` is not such a setting.

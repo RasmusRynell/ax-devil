@@ -2,6 +2,7 @@
 
 use serde::Serialize;
 use serde_json::Value;
+use std::path::Path;
 
 /// What a setting holds, and its default.
 #[derive(Debug, Serialize)]
@@ -31,6 +32,9 @@ pub enum Kind {
         /// The value when the config has none.
         default: &'static str,
     },
+    /// A folder the user picked: an absolute path, or empty for the app's standard folder. Never checked against
+    /// the disk, so an unplugged drive does not stop startup.
+    Folder,
 }
 
 impl Kind {
@@ -42,6 +46,7 @@ impl Kind {
                 Value::String((*default).into())
             }
             Self::AutoOrWhole { .. } => Value::String("auto".into()),
+            Self::Folder => Value::String(String::new()),
         }
     }
 
@@ -60,6 +65,12 @@ impl Kind {
                 let names: Vec<&str> = options.iter().map(|(option, _)| *option).collect();
                 Err(format!("expected one of {}", names.join(", ")))
             }
+            (Self::Folder, Value::String(path))
+                if path.is_empty() || Path::new(path).is_absolute() =>
+            {
+                Ok(())
+            }
+            (Self::Folder, _) => Err("expected an absolute folder path".into()),
             (Self::AutoOrWhole { .. }, Value::String(name)) if name == "auto" => Ok(()),
             (Self::AutoOrWhole { min, max }, value) => match value.as_u64() {
                 Some(number) if (*min..=*max).contains(&number) => Ok(()),

@@ -10,6 +10,7 @@ import { useWorkspace } from "../workspace/WorkspaceProvider";
 import { ActivityBar } from "./ActivityBar";
 import { Banner } from "./Banner";
 import { TitleBar } from "./TitleBar";
+import { QuickSetupDialog } from "./QuickSetupDialog";
 import { SettingsDialog } from "./SettingsDialog";
 import { ShortcutsDialog } from "./ShortcutsDialog";
 import { Sidebar } from "./Sidebar";
@@ -29,15 +30,22 @@ function viewerOwnsPlainKeys(target: EventTarget | null): boolean {
   return !typing && (target === document.body || target.closest("main") !== null);
 }
 
+type Dialog = "settings" | "shortcuts" | "quick-setup";
+
 /** The application layout: menu bar over the activity bar, sidebar and central area. */
 export function Shell() {
   const [view, setView] = useState<ViewId>("workspace");
   const [sidebarOpen, setSidebarOpen] = useState(true);
-  const [dialog, setDialog] = useState<"settings" | "shortcuts" | null>(null);
   const [checked, setChecked] = useState<ReadonlySet<string>>(new Set());
   const [notice, setNotice] = useState<string | null>(null);
   const { view: workspace } = useWorkspace();
-  const { shortcuts, restart } = useSettings();
+  const { values, shortcuts, restart } = useSettings();
+  // Settings arrive before the shell renders, so a first run is known here.
+  const [dialog, setDialog] = useState<Dialog | null>(
+    values["ui.quick_setup_done"] === false ? "quick-setup" : null,
+  );
+  // A late close of one dialog cannot dismiss another that has opened since.
+  const closer = (which: Dialog) => () => setDialog((now) => (now === which ? null : now));
   const viewerActions = useRef<ViewerActions>({});
 
   const addVideo = () => {
@@ -55,9 +63,11 @@ export function Shell() {
     sidebar: () => setSidebarOpen((open) => !open),
     settings: () => setDialog("settings"),
     "keyboard-shortcuts": () => setDialog("shortcuts"),
+    "quick-setup": () => setDialog("quick-setup"),
     "add-video": addVideo,
   };
-  const find = (id: string) => actions[id] ?? viewerActions.current[id];
+  // A modal dialog owns the keyboard and the window: no command, from a shortcut or a menu, runs while one is open.
+  const find = (id: string) => (dialog ? undefined : (actions[id] ?? viewerActions.current[id]));
   const run = (id: string) => find(id)?.();
   const select = (item: MenuCommand) => {
     if (item.kind === "check")
@@ -132,8 +142,9 @@ export function Shell() {
             {workspace.active ? <ViewerHost /> : <Welcome onRun={run} />}
           </main>
         </div>
-        {dialog === "settings" && <SettingsDialog onClose={() => setDialog(null)} />}
-        {dialog === "shortcuts" && <ShortcutsDialog onClose={() => setDialog(null)} />}
+        {dialog === "settings" && <SettingsDialog onClose={closer("settings")} />}
+        {dialog === "quick-setup" && <QuickSetupDialog onClose={closer("quick-setup")} />}
+        {dialog === "shortcuts" && <ShortcutsDialog onClose={closer("shortcuts")} />}
       </div>
     </ViewerActionsContext.Provider>
   );

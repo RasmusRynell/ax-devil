@@ -199,6 +199,11 @@ app
       });
       return chosen.canceled ? [] : chosen.filePaths;
     });
+    // The chosen absolute path, null when the dialog is cancelled; the page saves it through the settings.
+    ipcMain.handle("settings:pick-folder", async () => {
+      const chosen = await dialog.showOpenDialog(window, { properties: ["openDirectory"] });
+      return chosen.canceled ? null : chosen.filePaths[0];
+    });
     // There is no application menu, so zoom is handled here; Chromium remembers it per host.
     window.webContents.on("before-input-event", (event, input) => {
       if (input.type !== "keyDown" || !input.control || input.alt) return;

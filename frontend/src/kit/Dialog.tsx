@@ -5,13 +5,15 @@ interface Props {
   title: string;
   children: ReactNode;
   onOk: () => void;
-  onCancel: () => void;
+  /** Without it the dialog has only OK, and Escape runs OK. */
+  onCancel?: () => void;
+  okLabel?: string;
   /** While true, OK is disabled, so the action cannot run twice. */
   busy?: boolean;
 }
 
 /** A modal dialog with OK and Cancel. Enter runs OK and Escape cancels; the browser traps focus inside. */
-export function Dialog({ title, children, onOk, onCancel, busy = false }: Props) {
+export function Dialog({ title, children, onOk, onCancel, okLabel = "OK", busy = false }: Props) {
   const dialog = useRef<HTMLDialogElement>(null);
   const titleId = useId();
   useEffect(() => {
@@ -28,7 +30,8 @@ export function Dialog({ title, children, onOk, onCancel, busy = false }: Props)
       aria-labelledby={titleId}
       onCancel={(event) => {
         event.preventDefault();
-        onCancel();
+        if (onCancel) onCancel();
+        else if (!busy) onOk();
       }}
       className="m-auto max-h-full max-w-full overflow-auto rounded-popup border border-line-strong bg-popup p-0 text-fg backdrop:bg-scrim"
     >
@@ -41,9 +44,9 @@ export function Dialog({ title, children, onOk, onCancel, busy = false }: Props)
         </h2>
         {children}
         <div className="flex justify-end gap-m">
-          <Button onClick={onCancel}>Cancel</Button>
+          {onCancel && <Button onClick={onCancel}>Cancel</Button>}
           <Button type="submit" disabled={busy}>
-            OK
+            {okLabel}
           </Button>
         </div>
       </form>

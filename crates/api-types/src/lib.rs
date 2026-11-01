@@ -41,9 +41,6 @@ pub struct SettingsState {
     /// The settings changed since the app started that only apply after a restart.
     #[ts(type = "Array<SettingKey>")]
     pub restart: Vec<String>,
-    /// The secret settings that hold a literal value instead of a `$NAME` reference.
-    #[ts(type = "Array<SettingKey>")]
-    pub plaintext: Vec<String>,
 }
 
 /// The body of `PUT /api/settings`: every setting and shortcut, which replace the stored ones.

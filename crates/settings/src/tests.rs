@@ -8,6 +8,7 @@ fn values(theme: &str) -> BTreeMap<String, Value> {
         ("ui.theme".into(), json!(theme)),
         ("ui.quick_setup_done".into(), json!(true)),
         ("playback.video_cache".into(), json!("auto")),
+        ("storage.cache_dir".into(), json!("")),
     ])
 }
 
@@ -372,6 +373,38 @@ fn the_video_cache_is_auto_or_whole_mib_in_range_and_a_saved_number_survives_a_r
 }
 
 #[test]
+fn the_cache_folder_is_empty_or_an_absolute_path_that_need_not_exist() {
+    let folder = tempfile::tempdir().unwrap();
+    let path = folder.path().join("settings.json");
+    let settings = Settings::load(&path).unwrap();
+    assert_eq!(settings.state().folder("storage.cache_dir"), None);
+    let with = |cache: Value| {
+        let mut all = change("dark");
+        all.values.insert("storage.cache_dir".into(), cache);
+        all
+    };
+
+    for rejected in [json!("cache"), json!("~/cache"), json!("$CACHE"), json!(7)] {
+        let error = settings.replace(&with(rejected)).unwrap_err();
+        assert_eq!(error.location, "storage.cache_dir");
+        assert_eq!(error.reason, "expected an absolute folder path");
+    }
+    settings
+        .replace(&with(json!("/unplugged/drive/cache")))
+        .unwrap();
+    assert_eq!(
+        Settings::load(&path)
+            .unwrap()
+            .state()
+            .folder("storage.cache_dir"),
+        Some(PathBuf::from("/unplugged/drive/cache"))
+    );
+    assert_eq!(settings.restart_pending(), ["storage.cache_dir"]);
+    settings.replace(&with(json!(""))).unwrap();
+    assert_eq!(settings.state().folder("storage.cache_dir"), None);
+}
+
+#[test]
 fn subscribers_see_each_saved_change_and_nothing_for_a_rejected_one() {
     let folder = tempfile::tempdir().unwrap();
     let settings = Settings::load(&folder.path().join("settings.json")).unwrap();
@@ -399,6 +432,7 @@ const NET: &[Setting] = &[
         live: false,
         env: true,
         secret: true,
+        quick_setup: false,
     },
     Setting {
         key: "net.mode",
@@ -412,6 +446,7 @@ const NET: &[Setting] = &[
         live: false,
         env: true,
         secret: false,
+        quick_setup: false,
     },
 ];
 
@@ -449,10 +484,8 @@ fn a_reference_is_stored_as_written_checked_when_resolved_and_a_restart_is_asked
         "the reference is stored, not the value"
     );
     assert_eq!(state.resolved("net.address"), Some(json!("10.0.0.2")));
-    assert!(state.literal_secrets().is_empty());
     assert_eq!(settings.restart_pending(), ["net.address", "net.mode"]);
 
     let state = settings.replace(&edit("10.0.0.9", "a")).unwrap();
-    assert_eq!(state.literal_secrets(), ["net.address"]);
     assert_eq!(restart_pending(&settings.started, &state), ["net.address"]);
 }

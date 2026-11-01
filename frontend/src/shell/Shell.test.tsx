@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from "vite-plus/test";
+import { afterEach, beforeAll, describe, expect, it, vi } from "vite-plus/test";
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { MENUS } from "../commands";
 import type { CommandId } from "../generated/settings";
@@ -22,9 +22,22 @@ vi.mock("../playback/VideoViewer", () => ({
   },
 }));
 
-function renderShell(shortcuts: Partial<Record<CommandId, string | null>> = {}) {
+beforeAll(() => {
+  HTMLDialogElement.prototype.showModal = function showModal() {
+    this.setAttribute("open", "");
+  };
+});
+
+function renderShell(
+  shortcuts: Partial<Record<CommandId, string | null>> = {},
+  values: Partial<typeof DEFAULT_SETTINGS.values> = {},
+) {
   const workspace = fakeWorkspace();
-  const state = { ...DEFAULT_SETTINGS, shortcuts: { ...DEFAULT_SETTINGS.shortcuts, ...shortcuts } };
+  const state = {
+    ...DEFAULT_SETTINGS,
+    values: { ...DEFAULT_SETTINGS.values, ...values },
+    shortcuts: { ...DEFAULT_SETTINGS.shortcuts, ...shortcuts },
+  };
   const shell = render(
     <FakeSettings state={state}>
       <WorkspaceProvider store={workspace.store}>
@@ -92,6 +105,27 @@ describe("menu bar", () => {
   });
 });
 
+describe("quick setup", () => {
+  it("opens on the first run only, and again from the Help menu", () => {
+    renderShell();
+    expect(screen.queryByRole("dialog", { name: "Quick Setup" })).toBeNull();
+    fireEvent.click(screen.getByRole("menuitem", { name: "Help" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Quick Setup" }));
+    expect(screen.getByRole("dialog", { name: "Quick Setup" })).toBeTruthy();
+
+    cleanup();
+    renderShell({}, { "ui.quick_setup_done": false });
+    expect(screen.getByRole("dialog", { name: "Quick Setup" })).toBeTruthy();
+  });
+
+  it("keeps the shortcuts of other dialogs from replacing it", () => {
+    renderShell({}, { "ui.quick_setup_done": false });
+    fireEvent.keyDown(document.body, { key: ",", ctrlKey: true });
+    expect(screen.queryByRole("dialog", { name: "Settings" })).toBeNull();
+    expect(screen.getByRole("dialog", { name: "Quick Setup" })).toBeTruthy();
+  });
+});
+
 describe("sidebar", () => {
   it("hides from the View menu and from the shortcut, and from the active view's button", () => {
     renderShell();
@@ -115,6 +149,7 @@ describe("add video", () => {
       toggleMaximize() {},
       close() {},
       pickVideos: () => Promise.resolve(paths),
+      pickFolder: () => Promise.resolve(null),
       onMaximizedChange: () => () => {},
     } satisfies WindowBridge;
   };

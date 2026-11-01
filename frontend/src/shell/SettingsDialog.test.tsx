@@ -1,5 +1,5 @@
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vite-plus/test";
-import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { DEFAULT_SETTINGS, FakeSettings } from "../fakeSettings";
 import { SettingsDialog } from "./SettingsDialog";
 
@@ -27,6 +27,11 @@ vi.mock(import("../generated/settings"), async (original) => ({
       { label: "Size", page: "Network", section: "Memory", live: false },
     ),
     row(
+      "t.dir",
+      { type: "folder" },
+      { label: "Dir", page: "Network", section: "Folders", live: false },
+    ),
+    row(
       "t.token",
       { type: "text", default: "" },
       { label: "Token", page: "Network", section: "Credentials", env: true, secret: true },
@@ -45,7 +50,13 @@ afterAll(() => vi.restoreAllMocks());
 describe("settings dialog", () => {
   it("is built from the table: pages, sections, a control per kind, masked secrets, restart marker", () => {
     const save = vi.fn(async () => null);
-    const values = { "t.flag": false, "t.hidden": true, "t.size": "auto", "t.token": "hunter2" };
+    const values = {
+      "t.flag": false,
+      "t.hidden": true,
+      "t.size": "auto",
+      "t.dir": "",
+      "t.token": "hunter2",
+    };
     const state = { ...DEFAULT_SETTINGS, values } as never;
     render(
       <FakeSettings state={state} save={save}>
@@ -63,18 +74,43 @@ describe("settings dialog", () => {
     fireEvent.click(screen.getByRole("tab", { name: "Network" }));
     const token = screen.getByLabelText("Token") as HTMLInputElement;
     expect(token.type).toBe("password");
+    const warning = screen.getByText(/^Saved as plain text/);
+    expect(warning.textContent).toBe(
+      "Saved as plain text. Use $VARIABLE to read it from the environment.",
+    );
+    expect(token.getAttribute("aria-describedby")).toBe(warning.id);
     fireEvent.change(token, { target: { value: "$TOKEN" } });
     expect(token.type).toBe("text");
-    const size = screen.getByLabelText("Size");
+    expect(screen.queryByText(/^Saved as plain text/)).toBeNull();
+    expect(token.getAttribute("aria-describedby")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Browse" })).toBeNull();
     expect(
-      within(size.closest("label") as HTMLElement).getByTitle("Applies after a restart"),
-    ).toBeTruthy();
-    fireEvent.change(size, { target: { value: "512" } });
+      within(screen.getByRole("tabpanel")).getAllByTitle("Applies after a restart"),
+    ).toHaveLength(2);
+    fireEvent.change(screen.getByLabelText("Size"), { target: { value: "512" } });
+    fireEvent.change(screen.getByLabelText("Dir"), { target: { value: "/data/cache" } });
 
     fireEvent.click(screen.getByRole("button", { name: "OK" }));
     expect(save).toHaveBeenCalledWith({
-      values: { ...values, "t.size": 512, "t.token": "$TOKEN" },
+      values: { ...values, "t.size": 512, "t.dir": "/data/cache", "t.token": "$TOKEN" },
       shortcuts: DEFAULT_SETTINGS.shortcuts,
     });
+  });
+
+  it("fills a folder field from the native folder dialog", async () => {
+    window.axDevilWindow = { pickFolder: () => Promise.resolve("/mnt/cache") } as never;
+    const save = vi.fn(async () => null);
+    const values = { ...DEFAULT_SETTINGS.values, "t.dir": "" };
+    render(
+      <FakeSettings state={{ ...DEFAULT_SETTINGS, values } as never} save={save}>
+        <SettingsDialog onClose={() => {}} />
+      </FakeSettings>,
+    );
+    fireEvent.click(screen.getByRole("tab", { name: "Network" }));
+    fireEvent.click(screen.getByRole("button", { name: "Browse" }));
+    await waitFor(() =>
+      expect((screen.getByLabelText("Dir") as HTMLInputElement).value).toBe("/mnt/cache"),
+    );
+    delete window.axDevilWindow;
   });
 });

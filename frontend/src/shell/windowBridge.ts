@@ -5,6 +5,8 @@ export interface WindowBridge {
   close(): void;
   /** Opens the native file dialog for video files. Resolves to the absolute paths chosen; none when cancelled. */
   pickVideos(): Promise<string[]>;
+  /** Opens the native folder dialog. Resolves to the absolute path chosen; null when cancelled. */
+  pickFolder(): Promise<string | null>;
   /** Reports the current state at once and every change after; returns the way to stop listening. */
   onMaximizedChange(listener: (maximized: boolean) => void): () => void;
 }

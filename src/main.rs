@@ -4,12 +4,7 @@ mod paths;
 
 use clap::{Parser, Subcommand};
 use std::{
-    error::Error,
-    future::IntoFuture,
-    path::{Path, PathBuf},
-    process::ExitCode,
-    sync::Arc,
-    time::Duration,
+    error::Error, future::IntoFuture, path::PathBuf, process::ExitCode, sync::Arc, time::Duration,
 };
 
 /// How long open connections, such as the event stream, get to close after Ctrl+C before the backend exits anyway.
@@ -83,14 +78,7 @@ async fn run() -> ExitCode {
             }
         },
     };
-    match serve(
-        &paths.config_file,
-        paths.cache_dir,
-        paths.window_file,
-        items,
-    )
-    .await
-    {
+    match serve(&paths, items).await {
         Ok(()) => ExitCode::SUCCESS,
         Err(error) => {
             tracing::error!("{error}");
@@ -100,13 +88,14 @@ async fn run() -> ExitCode {
 }
 
 async fn serve(
-    config: &Path,
-    cache_dir: PathBuf,
-    windows: PathBuf,
+    paths: &paths::Paths,
     items: Vec<workspace::WorkspaceItem>,
 ) -> Result<(), Box<dyn Error>> {
+    let config = &paths.config_file;
     let settings = Arc::new(settings::Settings::load(config)?);
     tracing::info!("Loaded settings from {}", config.display());
+    let cache_dir = paths.cache_dir(settings.state().folder("storage.cache_dir"));
+    tracing::info!("Caching in {}", cache_dir.display());
     let videos = ax_devil::video_cache::start(&settings, &cache_dir);
     let store = workspace_store::Store::new(tokio::runtime::Handle::current());
     store.add_items(items, true);
@@ -132,7 +121,7 @@ async fn serve(
         ax_devil::app(ax_devil::AppState {
             settings,
             store,
-            windows: Arc::new(ax_devil::Windows::new(windows)),
+            windows: Arc::new(ax_devil::Windows::new(paths.window_file.clone())),
             videos: Arc::clone(&videos),
             // Open playback sockets end when this turns true, so they cannot hold the shutdown or keep
             // decoders running.

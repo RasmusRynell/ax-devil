@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { useId, type ReactNode } from "react";
 import { Icon } from "./Icon";
 
 /** A search input with a leading icon; the placeholder doubles as its accessible name. */
@@ -71,29 +71,41 @@ export function Checkbox({
   );
 }
 
-/** A labelled text box; `masked` hides what is typed. */
+/** A labelled text box; `masked` hides what is typed, `action` sits after the box, `describedBy` names a note about it. */
 export function TextField({
   label,
   value,
   masked = false,
+  describedBy,
+  action,
   onChange,
 }: {
   label: ReactNode;
   value: string;
   masked?: boolean;
+  describedBy?: string;
+  action?: ReactNode;
   onChange: (value: string) => void;
 }) {
+  const id = useId();
   return (
-    <label className={FIELD}>
-      {label}
-      <input
-        type={masked ? "password" : "text"}
-        value={value}
-        autoComplete="off"
-        spellCheck={false}
-        onChange={(event) => onChange(event.target.value)}
-        className={`${INPUT} min-w-0 w-field`}
-      />
-    </label>
+    <div className={FIELD}>
+      <label htmlFor={id} className="contents">
+        {label}
+      </label>
+      <span className="flex min-w-0 items-center gap-s">
+        <input
+          id={id}
+          type={masked ? "password" : "text"}
+          value={value}
+          autoComplete="off"
+          spellCheck={false}
+          aria-describedby={describedBy}
+          onChange={(event) => onChange(event.target.value)}
+          className={`${INPUT} min-w-0 w-field`}
+        />
+        {action}
+      </span>
+    </div>
   );
 }

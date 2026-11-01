@@ -27,7 +27,8 @@ export const SETTINGS = [
     "section": "Appearance",
     "live": true,
     "env": false,
-    "secret": false
+    "secret": false,
+    "quick_setup": true
   },
   {
     "key": "ui.quick_setup_done",
@@ -40,7 +41,8 @@ export const SETTINGS = [
     "section": "",
     "live": true,
     "env": false,
-    "secret": false
+    "secret": false,
+    "quick_setup": false
   },
   {
     "key": "playback.video_cache",
@@ -54,7 +56,21 @@ export const SETTINGS = [
     "section": "Memory",
     "live": true,
     "env": false,
-    "secret": false
+    "secret": false,
+    "quick_setup": false
+  },
+  {
+    "key": "storage.cache_dir",
+    "kind": {
+      "type": "folder"
+    },
+    "label": "Cache folder",
+    "page": "Storage",
+    "section": "Folders",
+    "live": false,
+    "env": false,
+    "secret": false,
+    "quick_setup": false
   }
 ] as const;
 

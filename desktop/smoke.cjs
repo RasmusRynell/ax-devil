@@ -21,6 +21,44 @@ module.exports = async (window) => {
   assert.equal(await js("document.querySelector('[role=alert]')"), null);
 
   await fs.mkdir(SCREENSHOTS, { recursive: true });
+  const frame = () =>
+    js("new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done)))");
+  const shoot = async (name) => {
+    await frame();
+    await fs.writeFile(
+      path.join(SCREENSHOTS, name),
+      (await window.webContents.capturePage()).toPNG(),
+    );
+  };
+
+  // The isolated home is a first run, so Quick Setup is open: check it in the smallest window, then Done closes it.
+  const size = window.getSize();
+  window.setSize(640, 480);
+  await wait("document.querySelector('dialog[open] h2')?.textContent === 'Quick Setup'");
+  for (const [theme, zoom] of [
+    ["light", 1],
+    ["dark", 1],
+    ["light", 2],
+    ["dark", 2],
+  ]) {
+    window.webContents.setZoomFactor(zoom);
+    nativeTheme.themeSource = theme;
+    await wait(`matchMedia('(prefers-color-scheme: ${theme})').matches`);
+    await frame();
+    assert.deepEqual(
+      await js(`(${fit.dialog.toString()})()`),
+      [],
+      `Quick Setup must fit the 640x480 window at ${zoom * 100}% zoom`,
+    );
+    await shoot(`quick-setup-${theme}${zoom === 1 ? "" : "-200"}.png`);
+  }
+  window.webContents.setZoomFactor(1);
+  await js(
+    "[...document.querySelectorAll('dialog button')].find((b) => b.textContent === 'Done').click()",
+  );
+  await wait("!document.querySelector('dialog')");
+  window.setSize(...size);
+
   const backgrounds = {};
   for (const theme of ["light", "dark"]) {
     nativeTheme.themeSource = theme;
@@ -45,15 +83,6 @@ module.exports = async (window) => {
 
   // The smallest window, at normal zoom and at 200%: the View menu, then the Settings and Keyboard Shortcuts dialogs, in both themes.
   window.setSize(640, 480);
-  const frame = () =>
-    js("new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done)))");
-  const shoot = async (name) => {
-    await frame();
-    await fs.writeFile(
-      path.join(SCREENSHOTS, name),
-      (await window.webContents.capturePage()).toPNG(),
-    );
-  };
   const openShortcuts = async () => {
     await js(
       "document.querySelector('[role=menu]') && document.querySelector('[aria-expanded=true]').click()",
@@ -101,6 +130,16 @@ module.exports = async (window) => {
       {
         name: "settings",
         open: () => js("document.querySelector('[aria-label=Settings]').click()"),
+      },
+      {
+        name: "settings-storage",
+        open: async () => {
+          await js("document.querySelector('[aria-label=Settings]').click()");
+          await wait("document.querySelector('dialog[open]')");
+          await js(
+            "[...document.querySelectorAll('[role=tab]')].find((b) => b.textContent === 'Storage').click()",
+          );
+        },
       },
       { name: "shortcuts", open: openShortcuts },
     ]) {

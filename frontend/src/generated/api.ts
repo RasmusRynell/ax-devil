@@ -45,11 +45,7 @@ shortcuts: Record<CommandId, string | null>,
 /**
  * The settings changed since the app started that only apply after a restart.
  */
-restart: Array<SettingKey>, 
-/**
- * The secret settings that hold a literal value instead of a `$NAME` reference.
- */
-plaintext: Array<SettingKey>, };
+restart: Array<SettingKey>, };
 
 /**
  * The body of `PUT /api/settings`: every setting and shortcut, which replace the stored ones.
