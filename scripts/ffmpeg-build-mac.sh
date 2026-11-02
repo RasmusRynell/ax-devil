@@ -27,7 +27,7 @@ CONFIGURE=(
 
 # Downloads $1 to $2 and fails unless it has the SHA-256 $3.
 download() {
-  curl --proto '=https' --tlsv1.2 -sSfL --retry 4 --retry-delay 15 --connect-timeout 30 -o "$2" "$1"
+  curl --proto '=https' --tlsv1.2 -sSfL --retry 10 --retry-delay 20 --retry-all-errors --connect-timeout 30 -o "$2" "$1"
   if command -v sha256sum >/dev/null; then
     echo "$3  $2" | sha256sum -c -
   else
