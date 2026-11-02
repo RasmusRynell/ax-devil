@@ -17,6 +17,8 @@ export function SearchField({ placeholder }: { placeholder: string }) {
 }
 
 const FIELD = "flex items-center justify-between gap-xl";
+/** A label with its control; at a width too narrow for both on a line, the control drops under the label. */
+const LABELLED = "flex flex-wrap items-center justify-between gap-x-xl gap-y-s";
 const INPUT =
   "h-row rounded-control border border-line-strong bg-popup px-s text-fg focus:border-accent focus:outline-none";
 
@@ -31,7 +33,7 @@ interface SelectProps<T extends string> {
 /** A labelled drop-down over a closed set. */
 export function Select<T extends string>({ label, value, options, onChange }: SelectProps<T>) {
   return (
-    <label className={FIELD}>
+    <label className={LABELLED}>
       {label}
       <select
         value={value}
@@ -99,7 +101,7 @@ export function TextField({
 }) {
   const id = useId();
   return (
-    <div className={FIELD}>
+    <div className={LABELLED}>
       <label htmlFor={id} className="contents">
         {label}
       </label>

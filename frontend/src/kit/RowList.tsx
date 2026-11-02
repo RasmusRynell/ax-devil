@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { Icon } from "./Icon";
 import type { IconName } from "./icons";
+import { SectionCaption } from "./SectionCaption";
 
 export interface Row {
   id: string;
@@ -22,7 +23,7 @@ interface Props {
 export function RowList({ heading, rows, onSelect }: Props) {
   return (
     <section className="flex flex-col gap-xs">
-      <h2 className="px-m text-small font-semibold text-muted uppercase">{heading}</h2>
+      <SectionCaption heading={heading} />
       <ul className="m-0 flex list-none flex-col p-0">
         {rows.map((row) => (
           <li key={row.id}>

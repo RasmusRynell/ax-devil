@@ -8,6 +8,7 @@ import {
   type KeyboardEvent,
   type ReactNode,
 } from "react";
+import { useOutsidePress } from "./useOutsidePress";
 
 const FIRST_CONTROL =
   'input:not(:disabled), select:not(:disabled), button:not(:disabled), [role^="menuitem"]:not(:disabled)';
@@ -56,7 +57,7 @@ function placement(button: HTMLElement, panel: HTMLElement): CSSProperties {
 
 /**
  * A button that opens a panel of controls beside it. Opening moves focus into the panel; Escape, a click elsewhere
- * or Tab out of it closes it, and Escape returns focus to the button. The panel keeps plain keys to itself, so
+ * or Tab out of it closes it (the click that closes it is not passed on), and Escape returns focus to the button. The panel keeps plain keys to itself, so
  * Space on one of its controls never reaches the viewer's shortcuts.
  */
 export function Popover({ label, trigger, children, onCanvas = false, className = "" }: Props) {
@@ -74,14 +75,10 @@ export function Popover({ label, trigger, children, onCanvas = false, className 
     setPlace(placement(button.current, panel.current));
   }, [open]);
 
+  useOutsidePress(() => root.current, close, open);
+
   useEffect(() => {
-    if (!open) return;
-    const outside = (event: PointerEvent) => {
-      if (!root.current?.contains(event.target as Node)) setOpen(false);
-    };
-    document.addEventListener("pointerdown", outside);
-    panel.current?.querySelector<HTMLElement>(FIRST_CONTROL)?.focus();
-    return () => document.removeEventListener("pointerdown", outside);
+    if (open) panel.current?.querySelector<HTMLElement>(FIRST_CONTROL)?.focus();
   }, [open]);
 
   const onKey = (event: KeyboardEvent) => {

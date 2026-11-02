@@ -13,7 +13,8 @@
   --color-accent: light-dark(#23678d, #3994bc);
   --color-hover: light-dark(#26344514, #cccccc14);
   --color-scrim: light-dark(#f6f8fb99, #12131499);
-  /* Status text: something needs a look (caution), something is wrong (danger). */
+  /* Status text: all is well (success), something needs a look (caution), something is wrong (danger). */
+  --color-success: light-dark(#1b6e3c, #5fc27e);
   --color-caution: light-dark(#8a5300, #e0b04a);
   --color-danger: light-dark(#b3261e, #f28b82);
   /* The video surface and the controls over it look the same in both themes: near-black with white controls. */
@@ -74,7 +75,7 @@
   --spacing-field: 24ch;
 }
 
-/* Strokes: the accent edge of a selected tab or view, and the keyboard focus ring (inset where an edge would clip it). */
+/* Strokes: the accent edge of a selected tab or view, and the keyboard focus ring (inset where an edge would clip it; `within` for a label around a hidden native input). */
 @utility border-b-edge {
   border-bottom-width: var(--stroke-edge);
   border-bottom-style: solid;
@@ -85,6 +86,11 @@
 }
 @utility focus-ring {
   &:focus-visible {
+    outline: var(--stroke-focus) solid var(--color-accent);
+  }
+}
+@utility focus-ring-within {
+  &:has(:focus-visible) {
     outline: var(--stroke-focus) solid var(--color-accent);
   }
 }

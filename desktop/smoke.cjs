@@ -14,6 +14,7 @@ const {
   until,
   watchCsp,
 } = require("./smoke-kit.cjs");
+const { gallery } = require("./smoke-gallery.cjs");
 const { playlist } = require("./smoke-playlist.cjs");
 const { exportDialog } = require("./smoke-export.cjs");
 const { remote } = require("./smoke-remote.cjs");
@@ -237,6 +238,8 @@ module.exports = async (window, shell) => {
     }
   }
 
+  console.log("smoke: kit gallery");
+  await gallery(window);
   console.log("smoke: video");
   await video(window);
   console.log("smoke: export");

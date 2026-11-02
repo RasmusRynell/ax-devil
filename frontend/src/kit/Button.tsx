@@ -1,21 +1,93 @@
-import type { ButtonHTMLAttributes } from "react";
+import { useRef, useState, type ButtonHTMLAttributes } from "react";
 import { Icon } from "./Icon";
+import { IconButton } from "./IconButton";
 import type { IconName } from "./icons";
+import { Menu, type MenuCommand, type MenuEntry } from "./Menu";
+import { Popup } from "./Popup";
 
 interface Props extends ButtonHTMLAttributes<HTMLButtonElement> {
   icon?: IconName;
+  /** `small` is the compact action beside a field or in a row: small text at the same height. */
+  size?: "small";
 }
 
 /** The neutral action button: transparent at rest, a subtle tint on hover; the same for every kind of action. */
-export function Button({ icon, children, className = "", type = "button", ...rest }: Props) {
+export function Button({ icon, size, children, className = "", type = "button", ...rest }: Props) {
   return (
     <button
       type={type}
-      className={`inline-flex min-h-row items-center gap-m rounded-control bg-transparent px-m py-xs text-left text-fg hover:bg-hover focus-ring disabled:text-disabled disabled:hover:bg-transparent ${className}`}
+      className={`inline-flex min-h-row items-center gap-m rounded-control bg-transparent px-m py-xs text-left text-fg hover:bg-hover focus-ring disabled:text-disabled disabled:hover:bg-transparent ${size === "small" ? "text-small" : ""} ${className}`}
       {...rest}
     >
       {icon && <Icon name={icon} />}
       {children}
     </button>
+  );
+}
+
+const NOTHING_CHECKED: ReadonlySet<string> = new Set();
+
+interface MenuButtonProps {
+  /** The button's text, shown before the chevron. */
+  label: string;
+  entries: readonly MenuEntry[];
+  /** The ids of the `check` entries that are checked. */
+  checked?: ReadonlySet<string>;
+  onSelect: (command: MenuCommand) => void;
+  disabled?: boolean;
+}
+
+/** A button that opens `entries` as a menu below it at once, closing on a choice or Escape and returning focus to it. */
+export function MenuButton({
+  label,
+  entries,
+  checked = NOTHING_CHECKED,
+  onSelect,
+  disabled,
+}: MenuButtonProps) {
+  const [open, setOpen] = useState(false);
+  const wrap = useRef<HTMLSpanElement>(null);
+  return (
+    <span ref={wrap} className="relative inline-block">
+      <Button
+        size="small"
+        aria-haspopup="menu"
+        aria-expanded={open}
+        disabled={disabled}
+        onClick={() => setOpen((now) => !now)}
+      >
+        {label}
+        <Icon name="chevron-down" />
+      </Button>
+      {open && (
+        <Popup
+          boundary={wrap}
+          onClose={() => setOpen(false)}
+          className="absolute top-full left-0 z-10 min-w-max"
+        >
+          <Menu
+            entries={entries}
+            checked={checked}
+            onSelect={(command) => {
+              setOpen(false);
+              wrap.current?.querySelector("button")?.focus();
+              onSelect(command);
+            }}
+          />
+        </Popup>
+      )}
+    </span>
+  );
+}
+
+/** The square folder button after a path field; `what` names the thing chosen, as in "Choose video file". */
+export function BrowseButton({ what, onBrowse }: { what: string; onBrowse: () => void }) {
+  return (
+    <IconButton
+      icon="folder"
+      label={`Choose ${what}`}
+      onClick={onBrowse}
+      className="size-row rounded-control"
+    />
   );
 }

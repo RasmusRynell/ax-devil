@@ -22,6 +22,13 @@ block to this table when it lands, and use what is listed instead of writing a l
 | Theme | The stored setting selects the colors through the root's `data-theme`, live | `frontend/src/settings.tsx` |
 | Icons | `Icon` over the Lucide SVGs; add a new one from Lucide to `assets/icons/` and to `icons.ts` | `assets/icons/`, `frontend/src/kit/` |
 | Buttons, menus, popups, context menus, dialogs, fields, row lists, key chips | The kit: `Button`, `Menu`, `Popup`, `ContextMenu`, `Dialog`, `SearchField`, `Select`, `TextField`, `Checkbox`, `RowList`, `KeyChips` | `frontend/src/kit/` |
+| A compact action beside a field or in a row; a button that opens a menu; the folder button after a path field | `Button size="small"`, `MenuButton`, `BrowseButton` | `frontend/src/kit/Button.tsx` |
+| A question or notice that only a choice dismisses (Escape does nothing, Enter gives the default) | `ChoiceDialog` | `frontend/src/kit/ChoiceDialog.tsx` |
+| Buttons that act on a banner's message | `Banner`'s `actions` slot | `frontend/src/shell/Banner.tsx` |
+| Status tags, checkable chips, one-of-many choices, a mode switch | `Chip` (neutral, success, warning, error; clickable with `onClick`), `ToggleChip`, `ChoiceChips` and `ChipRow` (wrap whole), `SegmentedControl` | `frontend/src/kit/Chips.tsx` |
+| A group heading with count, aside and fold | `SectionCaption` | `frontend/src/kit/SectionCaption.tsx` |
+| A sidebar view: header with action over a vertically scrolling body | `ViewPanel` | `frontend/src/kit/ViewPanel.tsx` |
+| Seeing every kit block in both themes | The kit gallery at `#kit-gallery`; add a new block to it | `frontend/src/kit/Gallery.tsx` |
 | A panel of controls beside a button (Escape closes, plain keys stay inside) | `Popover` | `frontend/src/kit/Popover.tsx` |
 | An on/off setting that applies as it flips | `Switch` | `frontend/src/kit/Switch.tsx` |
 | Windows | Created by the shell; the frontend never opens windows itself | `desktop/main.cjs` |
