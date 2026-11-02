@@ -7,6 +7,7 @@ import type { Geometry } from "./renderer";
 import type { PlaybackSession } from "./session";
 import type { PlaybackView } from "./view";
 import { VideoCanvas } from "./VideoCanvas";
+import { FIT, intersection, pictureRect } from "./viewport";
 
 /** The size of an element's content box in CSS pixels, kept current. */
 function useSize(): [React.RefObject<HTMLDivElement | null>, { width: number; height: number }] {
@@ -89,26 +90,36 @@ export function LaneGrid({
         onSelect={onSelect}
         onDrawn={onDrawn}
       />
-      {cells.map(({ lane: index, rect }) => (
-        <div
-          key={lanes[index].label}
-          className="pointer-events-none absolute p-s *:pointer-events-auto"
-          style={{ left: rect.x, top: rect.y, maxWidth: rect.width }}
-        >
-          <LaneChip
-            lane={lanes[index]}
-            catalogs={view.catalogs}
-            cadence={view.cadence}
-            onChange={(change) => session.setLane(index, change)}
-            onApplyAll={
-              lanes.filter((lane) => lane.source !== null).length > 1
-                ? () => session.applyToAll(index)
-                : undefined
-            }
-            onHide={onHide && (() => onHide(lanes[index].label))}
-          />
-        </div>
-      ))}
+      {cells.map(({ lane: index, rect: cell }) => {
+        // The tag starts at the corner of the visible picture, not of the cell around it, and may run over the bars.
+        const rect =
+          view.width > 0
+            ? (intersection(
+                pictureRect(cell, { width: view.width, height: view.height }, viewport ?? FIT),
+                cell,
+              ) ?? cell)
+            : cell;
+        return (
+          <div
+            key={lanes[index].label}
+            className="pointer-events-none absolute p-s *:pointer-events-auto"
+            style={{ left: rect.x, top: rect.y, maxWidth: cell.x + cell.width - rect.x }}
+          >
+            <LaneChip
+              lane={lanes[index]}
+              catalogs={view.catalogs}
+              cadence={view.cadence}
+              onChange={(change) => session.setLane(index, change)}
+              onApplyAll={
+                lanes.filter((lane) => lane.source !== null).length > 1
+                  ? () => session.applyToAll(index)
+                  : undefined
+              }
+              onHide={onHide && (() => onHide(lanes[index].label))}
+            />
+          </div>
+        );
+      })}
       {shown.length === 0 && lanes.length > 0 && (
         <p role="status" className="m-auto text-on-canvas-muted">
           All lanes are hidden
