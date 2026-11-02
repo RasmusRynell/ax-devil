@@ -48,13 +48,25 @@ struct Scene {
     _catalogs: tempfile::TempDir,
 }
 
-async fn scene(video: &str, overlays: &[(&str, &str)], colors: &[[u8; 3]], sticky: bool) -> Scene {
+async fn scene(
+    video: &str,
+    (width, height): (u32, u32),
+    overlays: &[(&str, &str)],
+    colors: &[[u8; 3]],
+    sticky: bool,
+) -> Scene {
     let catalogs = tempfile::tempdir().unwrap();
     for (n, color) in colors.iter().enumerate() {
         fs::write(catalogs.path().join(format!("c{n}.json")), outline(*color)).unwrap();
     }
     let backend =
         Backend::start_with_catalogs(Library::with_folder(catalogs.path().to_path_buf())).await;
+    // The MOT decoder reads the picture size from the seqinfo.ini beside its file.
+    fs::write(
+        backend.folder.path().join("seqinfo.ini"),
+        format!("[Sequence]\nframeRate=30\nseqLength=100\nimWidth={width}\nimHeight={height}\n"),
+    )
+    .unwrap();
     let files: Vec<_> = overlays
         .iter()
         .map(|(name, content)| {
@@ -216,7 +228,14 @@ async fn one_lane_makes_an_mp4_of_the_picture_size_with_the_source_times_and_the
     // The sample is at the time of frame 10 of the variable frame rate video (347 ms). The lane keeps it on screen,
     // so frames 11 to 14 draw it again from the item the page already holds.
     let xml = onvif_box("1970-01-01T00:00:00.347Z");
-    let mut scene = scene("vfr_h264.mkv", &[("lane.xml", &xml)], &[RED], true).await;
+    let mut scene = scene(
+        "vfr_h264.mkv",
+        (WIDTH, HEIGHT),
+        &[("lane.xml", &xml)],
+        &[RED],
+        true,
+    )
+    .await;
     let path = scene.export(10, 14, LOSSLESS, "clip.mp4").await;
 
     let (index, frames) = decoded(&VideoInput::File(path));
@@ -282,7 +301,14 @@ async fn two_lanes_tile_side_by_side_each_with_its_own_data_catalog_and_name() {
     let left = "21,1,36,28,20,16,1,1,1\n";
     let right = "21,1,10,28,24,16,1,1,1\n";
     let overlays = [("left.txt", left), ("right.txt", right)];
-    let mut scene = scene("cfr_h264_gop10_bf2.mp4", &overlays, &[RED, BLUE], false).await;
+    let mut scene = scene(
+        "cfr_h264_gop10_bf2.mp4",
+        (WIDTH, HEIGHT),
+        &overlays,
+        &[RED, BLUE],
+        false,
+    )
+    .await;
     let path = scene.export(20, 21, LOSSLESS, "grid.mp4").await;
 
     let (index, frames) = decoded(&VideoInput::File(path));
@@ -344,7 +370,14 @@ async fn a_still_is_a_png_of_the_picture_size_with_the_box_and_the_picture_exact
         return;
     }
     let overlays = [("lane.txt", "21,1,28,22,28,20,1,1,1\n")];
-    let mut scene = scene("cfr_h264_gop10_bf2.mp4", &overlays, &[RED], false).await;
+    let mut scene = scene(
+        "cfr_h264_gop10_bf2.mp4",
+        (WIDTH, HEIGHT),
+        &overlays,
+        &[RED],
+        false,
+    )
+    .await;
     let path = scene
         .export(20, 20, ExportFormatWire::Png, "still.png")
         .await;
@@ -384,7 +417,7 @@ async fn a_still_of_an_odd_sized_picture_keeps_its_exact_size() {
         return;
     }
     let overlays = [("lane.txt", "1,1,28,22,28,20,1,1,1\n")];
-    let mut scene = scene("rgb24_63x47.nut", &overlays, &[RED], false).await;
+    let mut scene = scene("rgb24_63x47.nut", (63, 47), &overlays, &[RED], false).await;
     let path = scene.export(0, 0, ExportFormatWire::Png, "odd.png").await;
 
     let (width, height, rows) = read_png(&path);

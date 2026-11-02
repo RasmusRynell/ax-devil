@@ -3,7 +3,7 @@
 
 use super::{Added, Backend, Event, Handlers, Viewer};
 use api_types::playback::{
-    ClientMessage, ExportStateWire, FilterOptionInfo, LanePolicyWire, LaneStatusWire,
+    BasisWire, ClientMessage, ExportStateWire, FilterOptionInfo, LanePolicyWire, LaneStatusWire,
     ServerMessage, StickyWire,
 };
 use ax_devil::exports::ExportService;
@@ -31,8 +31,8 @@ pub struct Served {
     pub filter: Vec<FilterOptionInfo>,
 }
 
-/// Subscribes each lane (policy revision 1, keeping the last sample on screen when `sticky`) and asks for the catalog
-/// it is paired with; returns once every lane and catalog is served, in the order of `lanes`.
+/// Subscribes each lane (matched by time, policy revision 1, keeping the last sample on screen when `sticky`) and
+/// asks for the catalog it is paired with; returns once every lane and catalog is served, in the order of `lanes`.
 pub async fn serve_lanes(viewer: &mut Viewer, sticky: bool, lanes: &[(u16, &str)]) -> Vec<Served> {
     for (lane, catalog) in lanes {
         viewer
@@ -40,7 +40,7 @@ pub async fn serve_lanes(viewer: &mut Viewer, sticky: bool, lanes: &[(u16, &str)
                 lane: *lane,
                 revision: 1,
                 policy: LanePolicyWire {
-                    basis: None,
+                    basis: Some(BasisWire::Time),
                     tolerance_ms: None,
                     sticky: StickyWire {
                         enabled: sticky,
