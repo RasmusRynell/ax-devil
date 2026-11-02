@@ -77,6 +77,10 @@ impl Graphics {
 
     /// The Chromium switches that select it.
     fn flags(self) -> &'static [&'static str] {
+        // SwiftShader does not start on macOS, where Metal is the only renderer, software or not.
+        if cfg!(target_os = "macos") {
+            return &["--use-angle=metal", "--ignore-gpu-blocklist"];
+        }
         match self {
             Self::Gpu => &["--use-angle=vulkan", "--ignore-gpu-blocklist"],
             Self::Software => &["--use-angle=swiftshader", "--enable-unsafe-swiftshader"],

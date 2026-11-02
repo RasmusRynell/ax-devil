@@ -90,6 +90,8 @@ def main():
     with open(request["path"], newline="") as handle:
         for line, row in enumerate(csv.DictReader(handle), start=2):
             try:
+                if None in row.values():  # a short row: DictReader leaves its missing cells None
+                    raise ValueError("fewer cells than the header")
                 emit({"sample": sample(row, width, height, camera)})
             except (KeyError, ValueError) as error:
                 emit({"skipped": f"row {line}: {error}"})

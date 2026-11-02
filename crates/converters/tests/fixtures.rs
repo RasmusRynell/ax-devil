@@ -115,9 +115,15 @@ fn the_python_converter_gives_the_model_everything_it_covers() {
         panic!("{:?}", run.sink.warnings)
     };
     assert!(undeclared.reasons == ["'not_declared'"]);
-    assert_eq!(skipped.problem, "Skipped 1 of 6 records");
+    assert_eq!(skipped.problem, "Skipped 2 of 7 records");
     assert!(
         skipped.reasons[0].starts_with("row 6:"),
+        "{:?}",
+        skipped.reasons
+    );
+    // A truncated row is skipped like a malformed one; it does not end the converter.
+    assert!(
+        skipped.reasons[1].starts_with("row 8:"),
         "{:?}",
         skipped.reasons
     );
