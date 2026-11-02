@@ -69,5 +69,9 @@ describe("values", () => {
     ];
     expect(rawJson(fields)).toBe('{\n  "a.b": 1,\n  "n": null\n}');
     expect(rawJson([])).toBe("{}");
+    // Paths that join to the same key all stay.
+    expect(rawJson([field(DOTTED, 1), field(NESTED, 2), field(NESTED, 3)])).toBe(
+      '{\n  "a.b": 1,\n  "a.b (2)": 2,\n  "a.b (3)": 3\n}',
+    );
   });
 });

@@ -134,14 +134,20 @@ export function displayValue(value: FieldWire["value"]): string {
 /** What copying a value puts on the clipboard: all of it. */
 export const copyValue = (value: FieldWire["value"]): string => String(value);
 
-/** The Raw fields as a JSON object keyed by dotted path, in field order. */
+/**
+ * The Raw fields as a JSON object keyed by dotted path, in field order. Paths that join to the same key (`["a.b"]`
+ * and `["a", "b"]`) keep every value: the later ones get " (2)", " (3)" after the key.
+ */
 export function rawJson(fields: readonly FieldWire[]): string {
-  const entries = new Map<string, FieldWire["value"]>();
-  for (const field of fields)
-    if (field.group === "raw") entries.set(field.path.join("."), field.value);
-  if (entries.size === 0) return "{}";
-  const body = [...entries].map(
-    ([key, value]) => `  ${JSON.stringify(key)}: ${JSON.stringify(value)}`,
-  );
-  return `{\n${body.join(",\n")}\n}`;
+  const keys = new Set<string>();
+  const body: string[] = [];
+  for (const field of fields) {
+    if (field.group !== "raw") continue;
+    const dotted = field.path.join(".");
+    let key = dotted;
+    for (let copy = 2; keys.has(key); copy++) key = `${dotted} (${copy})`;
+    keys.add(key);
+    body.push(`  ${JSON.stringify(key)}: ${JSON.stringify(field.value)}`);
+  }
+  return body.length === 0 ? "{}" : `{\n${body.join(",\n")}\n}`;
 }
