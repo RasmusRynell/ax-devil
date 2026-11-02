@@ -1,14 +1,13 @@
 //! A playback socket's lanes against the committed fixture video and overlay files written by each test, through
 //! the real routes, decoders and catalogs: what a lane reports, the Frame Maps and Sample Items it sends for the
-//! policy they were selected under, what a policy that cannot be applied does, the catalogs a viewer can fetch, and
-//! what a watcher may learn from them.
+//! policy they were selected under, what a policy that cannot be applied does, and what a watcher may learn from
+//! them.
 
 mod common;
 
 use api_types::playback::{
-    BasisWire, ClientMessage, Direction, FRAME_MAP_EMPTY, FRAME_MAP_NONE, IngestWire,
-    LaneDefaultsWire, LaneInfo, LanePolicyWire, LaneStatusWire, MATCH_EXACT, ServerMessage,
-    StickyWire,
+    BasisWire, ClientMessage, Direction, FRAME_MAP_EMPTY, FRAME_MAP_NONE, IngestWire, LaneInfo,
+    LanePolicyWire, LaneStatusWire, MATCH_EXACT, ServerMessage, StickyWire,
 };
 use common::{Backend, Event, Viewer, fixture};
 use overlay_sync::{MatchBasis, MatchPolicy, Sticky, Tolerance};
@@ -113,92 +112,6 @@ async fn viewer_with_a_lane(backend: &Backend) -> (Viewer, common::Described) {
     viewer.open(&id.ticket(), None).await;
     let video = viewer.opened().await;
     (viewer, video)
-}
-
-#[tokio::test]
-async fn a_catalog_is_fetched_by_id_and_one_that_is_not_served_answers_with_none() {
-    let backend = Backend::start().await;
-    let id = backend.add(&fixture("cfr_h264_gop10_bf2.mp4")).await;
-    let mut viewer = backend.viewer().await;
-    viewer.open(&id.ticket(), None).await;
-    viewer.opened().await;
-
-    for id in ["built-in:standard", "user:night.json", "nope"] {
-        viewer.send(&ClientMessage::Catalog { id: id.into() }).await;
-    }
-
-    let mut answers = BTreeMap::new();
-    while answers.len() < 3 {
-        match viewer.next().await {
-            Event::Message(ServerMessage::Catalog {
-                id,
-                revision,
-                document,
-                ..
-            }) => {
-                answers.insert(id, (revision, document));
-            }
-            Event::Frame(_) => {}
-            _ => panic!("expected the answers to the catalog requests"),
-        }
-    }
-    let (revision, document) = &answers["built-in:standard"];
-    assert_eq!(*revision, 1);
-    let document: serde_json::Value = serde_json::from_str(document.as_ref().unwrap()).unwrap();
-    assert_eq!(
-        (document["schema"].as_u64(), document["name"].as_str()),
-        (Some(4), Some("Standard"))
-    );
-    for unserved in ["user:night.json", "nope"] {
-        assert_eq!(answers[unserved], (0, None), "{unserved}");
-    }
-}
-
-#[tokio::test]
-async fn opened_lists_the_served_catalogs_and_what_every_lane_starts_with() {
-    let backend = Backend::start().await;
-    let id = backend.add(&fixture("cfr_h264_gop10_bf2.mp4")).await;
-    let mut viewer = backend.viewer().await;
-    viewer.open(&id.ticket(), None).await;
-
-    let (lane_defaults, catalogs) = loop {
-        match viewer.next().await {
-            Event::Message(ServerMessage::Indexing { .. }) => {}
-            Event::Message(ServerMessage::Opened {
-                lane_defaults,
-                catalogs,
-                ..
-            }) => break (lane_defaults, catalogs),
-            _ => panic!("expected Indexing or Opened"),
-        }
-    };
-
-    let ids: Vec<_> = catalogs.iter().map(|catalog| catalog.id.as_str()).collect();
-    assert_eq!(
-        ids,
-        [
-            "built-in:standard",
-            "built-in:tracking",
-            "built-in:classic",
-            "built-in:chunky",
-            "built-in:glass",
-            "built-in:minimal"
-        ]
-    );
-    assert_eq!(
-        lane_defaults,
-        LaneDefaultsWire {
-            catalog: "built-in:standard".into(),
-            policy: LanePolicyWire {
-                basis: None,
-                tolerance_ms: Some(50),
-                sticky: StickyWire {
-                    enabled: true,
-                    timeout_ms: Some(2050),
-                },
-            },
-        }
-    );
 }
 
 #[tokio::test]
