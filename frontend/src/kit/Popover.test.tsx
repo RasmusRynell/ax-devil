@@ -5,7 +5,7 @@ import { Popover } from "./Popover";
 afterEach(cleanup);
 
 describe("popover", () => {
-  it("closes on a click outside without passing that click on", () => {
+  it("closes on a click outside without passing that click on", async () => {
     const beneath = vi.fn();
     render(
       <>
@@ -34,5 +34,13 @@ describe("popover", () => {
 
     click("Beneath");
     expect(beneath).toHaveBeenCalledTimes(1);
+
+    // A press the browser cancels never becomes a click, and must not swallow a later one.
+    click("Appearance");
+    fireEvent.pointerDown(screen.getByRole("button", { name: "Beneath" }));
+    fireEvent.pointerCancel(screen.getByRole("button", { name: "Beneath" }));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    fireEvent.click(screen.getByRole("button", { name: "Beneath" }));
+    expect(beneath).toHaveBeenCalledTimes(2);
   });
 });

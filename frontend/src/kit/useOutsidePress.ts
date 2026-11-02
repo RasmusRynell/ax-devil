@@ -5,16 +5,19 @@ function swallowNextClick() {
   const done = () => {
     document.removeEventListener("click", stop, true);
     document.removeEventListener("pointerup", release, true);
+    document.removeEventListener("pointercancel", release, true);
   };
   const stop = (event: Event) => {
     event.stopPropagation();
     event.preventDefault();
     done();
   };
-  // A press that never becomes a click (a drag, a scroll bar) must not leave the listener behind.
+  // A press that ends without a click (a drag, a scroll bar, a cancelled touch) must not leave the listener behind:
+  // after pointerup the click follows at once, so one still pending a task later is not coming.
   const release = () => void setTimeout(done, 0);
   document.addEventListener("click", stop, true);
   document.addEventListener("pointerup", release, true);
+  document.addEventListener("pointercancel", release, true);
 }
 
 /**
