@@ -66,17 +66,20 @@ export function SessionProvider({
   if (viewer && ended) return <EndedScreen why={ended} />;
   return (
     <StoreContext.Provider value={store}>
-      {seated || ended ? (
-        children
-      ) : (
-        <main aria-busy="true" className="flex h-screen items-center justify-center" />
-      )}
-      <Banner
-        connection={connection}
-        ownerAway={ownerAway}
-        ended={ended}
-        onDismiss={() => store.dismiss()}
-      />
+      {/* The notice takes a strip of its own at the bottom, so the window shrinks above it instead of being covered. */}
+      <div className="flex h-screen flex-col">
+        {seated || ended ? (
+          children
+        ) : (
+          <main aria-busy="true" className="flex min-h-0 flex-1 items-center justify-center" />
+        )}
+        <Banner
+          connection={connection}
+          ownerAway={ownerAway}
+          ended={ended}
+          onDismiss={() => store.dismiss()}
+        />
+      </div>
     </StoreContext.Provider>
   );
 }

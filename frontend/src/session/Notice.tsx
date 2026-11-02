@@ -93,7 +93,7 @@ interface Props {
   onDismiss: () => void;
 }
 
-/** The bar along the bottom that says the session is not as it should be; absent while all is well. */
+/** The card along the bottom that says the session is not as it should be; absent while all is well. */
 export function Banner({ connection, ownerAway, ended, onDismiss }: Props) {
   const remote = useServerKind() === "remote";
   const text = ended
@@ -111,14 +111,12 @@ export function Banner({ connection, ownerAway, ended, onDismiss }: Props) {
     ended === "invalid" ? credential()?.kind === "password" : ended === "refused" && !credential();
   const rejected = ended === "invalid" && remote;
   return (
-    <div className="fixed inset-x-0 bottom-0 z-40">
-      <Card
-        role={ended ? "alert" : "status"}
-        actions={rejected ? <RejectedPassword /> : password && <PasswordDialog />}
-        onDismiss={ended && !rejected && !password ? onDismiss : undefined}
-      >
-        {text}
-      </Card>
-    </div>
+    <Card
+      role={ended ? "alert" : "status"}
+      actions={rejected ? <RejectedPassword /> : password && <PasswordDialog />}
+      onDismiss={ended && !rejected && !password ? onDismiss : undefined}
+    >
+      {text}
+    </Card>
   );
 }

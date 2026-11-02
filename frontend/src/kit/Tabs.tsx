@@ -56,7 +56,7 @@ export function Tabs<T extends string>({ label, tabs, value, onChange, panelId }
             onKeyDown(event, at);
           }}
           onKeyUp={tabKeys}
-          className={`${QUIET} -mb-hairline border-b-edge border-transparent aria-selected:border-accent`}
+          className={`${QUIET} [--stroke-focus:var(--spacing-hairline)] -mb-hairline border-b-edge border-transparent aria-selected:border-accent`}
         >
           {name}
         </button>

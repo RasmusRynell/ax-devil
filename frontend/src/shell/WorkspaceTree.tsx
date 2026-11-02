@@ -13,6 +13,7 @@ import { IconButton } from "../kit/IconButton";
 import { Menu, type MenuCommand, type MenuEntry } from "../kit/Menu";
 import { NoticeList, noticeOf } from "../kit/NoticeList";
 import { Popover } from "../kit/Popover";
+import { KIND, type Kind } from "../kit/look";
 import { Popup } from "../kit/Popup";
 import { SectionCaption } from "../kit/SectionCaption";
 import { Switch } from "../kit/Switch";
@@ -23,11 +24,19 @@ import { useRowWindow } from "./useRowWindow";
 
 const ROW_HEIGHT = "var(--spacing-row)";
 
-/** The icon in front of a row. */
-function iconOf({ info, playlist }: TreeRow): IconName {
-  if (info.status.status === "Unavailable") return "triangle-alert";
-  if (info.kind === "item") return playlist ? "list-video" : "square-play";
-  return info.kind === "entry" ? "video" : "layers";
+const KIND_ICONS: Record<Kind, IconName> = {
+  live: "video",
+  video: "square-play",
+  playlist: "list-video",
+  lane: "layers",
+};
+
+/** The icon in front of a row and its colour: its kind's, a warning when unavailable, muted when hidden or pending. */
+function iconOf({ info, playlist, dimmed }: TreeRow): { name: IconName; className: string } {
+  const { status } = info.status;
+  if (status === "Unavailable") return { name: "triangle-alert", className: "text-caution" };
+  const kind: Kind = info.kind === "lane" ? "lane" : playlist ? "playlist" : "video";
+  return { name: KIND_ICONS[kind], className: dimmed || status !== "Ready" ? "" : KIND[kind] };
 }
 
 const NOTHING_CHECKED: ReadonlySet<string> = new Set();
@@ -238,7 +247,7 @@ export function WorkspaceTree() {
                   ) : (
                     <span aria-hidden className="size-icon shrink-0" />
                   )}
-                  <Icon name={iconOf(row)} />
+                  <Icon {...iconOf(row)} />
                   <span className="min-w-0 flex-1 truncate">{info.label}</span>
                   {note && <span className="sr-only">{`, ${note}`}</span>}
                   {info.warnings.length > 0 && (

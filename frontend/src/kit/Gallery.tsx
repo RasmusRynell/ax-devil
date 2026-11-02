@@ -35,7 +35,17 @@ const MENU: readonly MenuEntry[] = [
   { kind: "action", id: "remove", label: "Remove", disabled: true },
 ];
 const TABS = ["General", "Display", "Network"] as const;
-const MARKS = ["muted", "accent", "success", "caution", "danger"] as const;
+const MARKS = [
+  "muted",
+  "accent",
+  "success",
+  "caution",
+  "danger",
+  "live",
+  "video",
+  "playlist",
+  "lane",
+] as const;
 const FILTERS = ["Boxes", "Tracks", "Labels", "Events", "Attributes", "Heatmap"];
 
 function Section({ title, children }: { title: string; children: ReactNode }) {

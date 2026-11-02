@@ -58,6 +58,17 @@ export const TONE: Record<Tone, { text: string; fill: string; press: string; edg
   },
 };
 
+/** The kinds of thing the app shows apart by colour; the names are the colour tokens. */
+export type Kind = "live" | "video" | "playlist" | "lane";
+
+/** The text colour (so an icon's) of each kind. */
+export const KIND: Record<Kind, string> = {
+  live: "text-kind-live",
+  video: "text-kind-video",
+  playlist: "text-kind-playlist",
+  lane: "text-kind-lane",
+};
+
 /** A text input, drop-down or other single-line field; focus shows as an accent border, not the ring buttons use. */
 export const FIELD =
   "h-row rounded-control border border-line-strong bg-popup px-s text-fg placeholder:text-muted focus:border-accent focus:outline-none disabled:border-line-strong/50 disabled:text-disabled";

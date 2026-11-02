@@ -168,7 +168,7 @@ export function Shell({ version }: { version: string }) {
 
   return (
     <ViewerActionsContext.Provider value={setViewerActions}>
-      <div className="flex h-screen flex-col">
+      <div className="flex min-h-0 flex-1 flex-col">
         <h1 className="sr-only">ax-devil</h1>
         <TitleBar
           checked={
