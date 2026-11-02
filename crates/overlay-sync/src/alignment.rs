@@ -28,6 +28,14 @@ pub struct Alignment {
 }
 
 impl Alignment {
+    /// How many samples a perfectly aligned file would have selected: a frame selects one sample, so a file with more
+    /// samples than the video has frames cannot have them all selected.
+    pub fn attainable(&self) -> usize {
+        let frames =
+            usize::try_from(self.last_frame).map_or(usize::MAX, |last| last.saturating_add(1));
+        self.samples.min(frames)
+    }
+
     /// How many samples no frame selects.
     pub fn unmatched(&self) -> usize {
         self.samples - self.matched
