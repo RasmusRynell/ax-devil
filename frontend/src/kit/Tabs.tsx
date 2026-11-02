@@ -1,5 +1,8 @@
 import { useRef, type KeyboardEvent } from "react";
+import { ownKeys } from "./keys";
 import { QUIET } from "./look";
+
+const tabKeys = ownKeys(new Set(["ArrowLeft", "ArrowRight", "Home", "End"]));
 
 interface Props<T extends string> {
   /** The accessible name of the tab strip. */
@@ -16,6 +19,7 @@ interface Props<T extends string> {
 export function Tabs<T extends string>({ label, tabs, value, onChange, panelId }: Props<T>) {
   const buttons = useRef<(HTMLButtonElement | null)[]>([]);
   const onKeyDown = (event: KeyboardEvent<HTMLButtonElement>, at: number) => {
+    if (event.ctrlKey || event.altKey || event.metaKey) return;
     const last = tabs.length - 1;
     const to =
       event.key === "ArrowRight"
@@ -47,7 +51,11 @@ export function Tabs<T extends string>({ label, tabs, value, onChange, panelId }
           aria-controls={panelId}
           tabIndex={name === value ? 0 : -1}
           onClick={() => onChange(name)}
-          onKeyDown={(event) => onKeyDown(event, at)}
+          onKeyDown={(event) => {
+            tabKeys(event);
+            onKeyDown(event, at);
+          }}
+          onKeyUp={tabKeys}
           className={`${QUIET} -mb-hairline border-b-edge border-transparent aria-selected:border-accent`}
         >
           {name}

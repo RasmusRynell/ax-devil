@@ -25,4 +25,19 @@ describe("tabs", () => {
     fireEvent.keyDown(selected(), { key: "ArrowLeft" });
     expect(selected().textContent).toBe("Timing");
   });
+
+  it("keeps its own keys from the shell's shortcuts, but not Ctrl combinations", () => {
+    render(<Harness />);
+    const seen: string[] = [];
+    const listen = (event: KeyboardEvent) => seen.push(event.key);
+    document.addEventListener("keydown", listen);
+    fireEvent.keyDown(screen.getByRole("tab", { selected: true }), { key: "ArrowRight" });
+    expect(seen).toEqual([]);
+    fireEvent.keyDown(screen.getByRole("tab", { selected: true }), {
+      key: "ArrowRight",
+      ctrlKey: true,
+    });
+    document.removeEventListener("keydown", listen);
+    expect(seen).toEqual(["ArrowRight"]);
+  });
 });

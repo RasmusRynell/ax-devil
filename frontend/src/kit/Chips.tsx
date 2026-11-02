@@ -1,21 +1,15 @@
-import { useEffect, useId, useRef, type KeyboardEvent, type ReactNode } from "react";
+import { useEffect, useId, useRef, type ReactNode } from "react";
 import { Icon } from "./Icon";
 import type { IconName } from "./icons";
+import { ownKeys } from "./keys";
 import { CHECKED, CHOSEN, CONTROL_IN, PILL, TONE, type Tone } from "./look";
 
 /** Box of a status tag: the same shape as the interactive pills, with a clear border so the sizes match. */
 const TAG = `${PILL} inline-flex min-h-row items-center rounded-control border border-transparent px-m`;
 
-const OWN_KEYS = new Set([" ", "Enter", "ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"]);
-
-/**
- * Keeps a control's own keys from reaching the shell's shortcuts, so Space on a chip chooses it instead of playing
- * the video and an arrow key moves the choice instead of stepping a frame.
- */
-function ownKeys(event: KeyboardEvent) {
-  if (OWN_KEYS.has(event.key) && !event.ctrlKey && !event.altKey && !event.metaKey)
-    event.stopPropagation();
-}
+const chipKeys = ownKeys(
+  new Set([" ", "Enter", "ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"]),
+);
 
 interface ChipProps {
   tone?: Tone;
@@ -41,8 +35,8 @@ export function Chip({ tone = "neutral", onClick, title, children }: ChipProps) 
       type="button"
       title={title}
       onClick={onClick}
-      onKeyDown={ownKeys}
-      onKeyUp={ownKeys}
+      onKeyDown={chipKeys}
+      onKeyUp={chipKeys}
       className={`${TAG} ${look.text} ${look.fill} ${look.press} focus-ring`}
     >
       {text}
@@ -73,8 +67,8 @@ export function ToggleChip({
   return (
     <label
       title={title}
-      onKeyDown={ownKeys}
-      onKeyUp={ownKeys}
+      onKeyDown={chipKeys}
+      onKeyUp={chipKeys}
       className={`${PILL} ${CONTROL_IN} ${CHECKED}`}
     >
       <input
@@ -139,8 +133,8 @@ function Radios<T extends string>({
     <div
       role="radiogroup"
       aria-label={label}
-      onKeyDown={ownKeys}
-      onKeyUp={ownKeys}
+      onKeyDown={chipKeys}
+      onKeyUp={chipKeys}
       className={className}
     >
       {options.map(([option, text]) => (
