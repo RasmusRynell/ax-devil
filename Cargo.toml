@@ -14,7 +14,8 @@ layer = "entry"
 members = [
   "crates/api-types",
   "crates/catalogs",
-  "crates/drawing",
+  "crates/converters",
+  "crates/export",
   "crates/foundation",
   "crates/handlers",
   "crates/logging",
@@ -23,7 +24,6 @@ members = [
   "crates/overlays",
   "crates/playback",
   "crates/playlist-resolvers",
-  "crates/render-catalog",
   "crates/scene",
   "crates/scene-decoders",
   "crates/scene-store",
@@ -46,6 +46,7 @@ crc32fast = "1"
 memchr = "2"
 postcard = { version = "1", default-features = false, features = ["use-std"] }
 quick-xml = "0.42"
+rustix = { version = "1", default-features = false, features = ["std", "process"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 sha2 = "0.11"
@@ -55,7 +56,8 @@ tracing = "0.1"
 tracing-subscriber = "0.3"
 api-types = { path = "crates/api-types" }
 catalogs = { path = "crates/catalogs" }
-drawing = { path = "crates/drawing" }
+converters = { path = "crates/converters" }
+export = { path = "crates/export" }
 foundation = { path = "crates/foundation" }
 handlers = { path = "crates/handlers" }
 logging = { path = "crates/logging" }
@@ -64,7 +66,6 @@ overlay-sync = { path = "crates/overlay-sync" }
 overlays = { path = "crates/overlays" }
 playback = { path = "crates/playback" }
 playlist-resolvers = { path = "crates/playlist-resolvers" }
-render-catalog = { path = "crates/render-catalog" }
 scene = { path = "crates/scene" }
 scene-decoders = { path = "crates/scene-decoders" }
 scene-store = { path = "crates/scene-store" }
@@ -96,7 +97,8 @@ axum = { version = "0.8", features = ["ws"] }
 bytes.workspace = true
 catalogs.workspace = true
 clap = { version = "4", features = ["derive"] }
-drawing.workspace = true
+converters.workspace = true
+export.workspace = true
 foundation.workspace = true
 futures-util = { version = "0.3", default-features = false, features = ["sink", "std"] }
 handlers.workspace = true
@@ -106,6 +108,7 @@ overlay-sync.workspace = true
 overlays.workspace = true
 playback.workspace = true
 playlist-resolvers.workspace = true
+rustix.workspace = true
 scene-store.workspace = true
 scene.workspace = true
 serde.workspace = true
@@ -117,10 +120,17 @@ workspace.workspace = true
 workspace-store.workspace = true
 mime_guess = { version = "2", optional = true }
 rust-embed = { version = "8", optional = true }
+tempfile = "3"
 tokio = { workspace = true, features = ["macros", "rt-multi-thread", "net", "signal", "sync", "time"] }
+tungstenite = "0.29"
 
 [dev-dependencies]
-tempfile = "3"
+scene-decoders.workspace = true
 tokio = { workspace = true, features = ["test-util"] }
 tokio-tungstenite = "0.29"
 tower = { version = "0.5", features = ["util"] }
+
+# Timed with std::time::Instant; run with `make bench-export`.
+[[bench]]
+name = "export"
+harness = false

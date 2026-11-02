@@ -122,6 +122,9 @@ pub struct NewOverlayWire {
     /// The decoder handler id; the only decoder for the file's extension when absent.
     #[serde(default)]
     pub handler: Option<String>,
+    /// The lane's name; the file name when absent, numbered ` (2)`, ` (3)` when the video already shows the file.
+    #[serde(default)]
+    pub label: Option<String>,
 }
 
 /// An entry or lane to hide or show.

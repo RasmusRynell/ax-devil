@@ -1,27 +1,35 @@
 //! The streaming half of a playback session: once the video is open, tell the viewer about the entry, then apply its
-//! windows and lane views and send the frames in the windows and the lanes' overlays for them.
+//! windows and lane policies and send the frames in the windows and the lanes' data for them: Sample Items and Frame
+//! Maps, nearest the playhead first, interleaved with the frames by the same rank.
 
 use super::{
-    End, Flow, Incoming, Outbox, Outgoing, envelope,
+    End, Flow, Incoming, Outbox, Outgoing,
+    catalogs::CatalogFeed,
+    export::{Exports, Request},
+    file_scope::{self, FileScopes},
     gate::Gate,
+    inspect::Inspections,
     lanes::{self, LaneEvent, Lanes},
     next_client, stopped, text,
 };
-use crate::video_sources::video_location;
+use crate::{
+    exports::ExportService,
+    video_sources::{VideoSources, video_location},
+};
 use api_types::{
     Audience,
-    catalogs::CatalogInfoWire,
     playback::{
         ClientMessage, Direction as WireDirection, PLAYBACK_PROTOCOL, ServerMessage,
-        Want as WireWant,
+        Want as WireWant, envelope,
     },
     project,
 };
 use axum::extract::ws::Message;
+use catalogs::Library;
 use foundation::{ErrorCode, FrameSize, HostPath, UserError};
 use overlays::OverlayService;
 use playback::{Delivery, Direction, Priority, Session, Want};
-use std::time::Duration;
+use std::{sync::Arc, time::Duration};
 use tokio::{sync::watch, time::MissedTickBehavior};
 use workspace::Entry;
 
@@ -38,20 +46,30 @@ pub(super) struct Setup<'a> {
     pub(super) entry: &'a Entry,
     /// The frame the viewer opened on.
     pub(super) start_frame: Option<u64>,
+    /// The most bytes of Sample Items the viewer holds at once.
+    pub(super) data_bytes: u64,
     /// What the viewer may learn from an error, a warning or a lane problem.
     pub(super) audience: Audience,
     /// The size of the decoded pictures.
     pub(super) size: FrameSize,
     /// The video's warnings, which name the host's files.
     pub(super) warnings: Vec<String>,
-    /// The catalogs a lane may draw with.
-    pub(super) catalogs: Vec<CatalogInfoWire>,
+    /// The catalogs a lane may draw with, which the viewer asks for by id.
+    pub(super) library: &'a Library,
     /// Opens the lanes' overlays.
     pub(super) overlays: &'a OverlayService,
+    /// Runs the viewer's export, if the owner asks for one.
+    pub(super) exports: &'a Arc<ExportService>,
+    /// The open videos, which an export reads from.
+    pub(super) videos: &'a Arc<VideoSources>,
 }
 
-/// What the session sends next, overlay messages before frames.
+/// What the session sends next: notices first, then whichever of a lane's data and the next frame ranks first.
 enum Next {
+    Catalog(Outgoing),
+    Inspection(Outgoing),
+    Export(Outgoing),
+    FileScope(file_scope::Reply),
     Lane(LaneEvent),
     /// `None` when the session or its source closed.
     Delivery(Option<Delivery>),
@@ -62,6 +80,10 @@ struct Playing<'a, I> {
     session: &'a mut Session,
     gate: Gate,
     lanes: Lanes,
+    catalogs: CatalogFeed,
+    inspections: Inspections,
+    exports: Exports,
+    file_scopes: FileScopes,
     incoming: &'a mut I,
     outbox: &'a Outbox,
     closing: &'a mut watch::Receiver<bool>,
@@ -70,6 +92,8 @@ struct Playing<'a, I> {
     audience: Audience,
     last: u64,
     failures: u32,
+    /// The data frames after and before the playhead the viewer asked for last.
+    data: (u32, u32),
 }
 
 /// Tells the viewer about the entry, then applies its messages and sends what it has room for until it leaves.
@@ -88,14 +112,8 @@ pub(super) async fn stream(
     let last = timeline.last();
     let location = video_location(&setup.entry.video);
     gate.open(timeline.clone());
-    let lanes = Lanes::open(
-        setup.overlays,
-        setup.entry,
-        timeline.clone(),
-        setup.size,
-        setup.audience,
-        location.clone(),
-    );
+    let lanes = Lanes::open(&setup, timeline.clone(), location.clone());
+    let catalogs = CatalogFeed::new(setup.library);
     let opened = text(&ServerMessage::Opened {
         protocol: PLAYBACK_PROTOCOL,
         frame_count: timeline.len(),
@@ -108,15 +126,19 @@ pub(super) async fn stream(
         } else {
             Vec::new()
         },
-        lanes: lanes::infos(setup.entry),
-        lane_defaults: lanes::view_wire(&setup.overlays.lane_defaults()),
-        catalogs: setup.catalogs,
+        lanes: lanes.infos(setup.entry),
+        lane_defaults: lanes::lane_defaults(setup.library),
+        catalogs: catalogs.listing(),
     });
     // The overlays stop with `Playing`, which goes when the session ends, a revoked one included.
     let mut playing = Playing {
         session,
         gate,
         lanes,
+        catalogs,
+        inspections: Inspections::default(),
+        exports: Exports::new(setup.entry, setup.audience, setup.exports, setup.videos),
+        file_scopes: FileScopes::new(setup.audience),
         incoming,
         outbox,
         closing,
@@ -124,6 +146,7 @@ pub(super) async fn stream(
         audience: setup.audience,
         last,
         failures: 0,
+        data: (INITIAL_AHEAD, INITIAL_BEHIND),
     };
     // Decoding starts at the first frame the viewer shows while the messages below are on their way.
     playing.ask(Want {
@@ -141,35 +164,107 @@ pub(super) async fn stream(
 }
 
 impl<I: Incoming> Playing<'_, I> {
-    /// Gives the session `want` as the authority allows it, and the overlays the same window.
+    /// Gives the session `want` as the authority allows it, and the overlays the data window inside it.
     fn ask(&mut self, want: Want) -> Flow<()> {
         self.gate.ask(self.session, want)?;
-        self.lanes.follow(self.gate.applied());
+        self.lanes.follow(self.gate.applied(), self.data);
         Ok(())
     }
 
-    /// Judges the viewer's last want again, after the authority changed or as the presenter's clock moves.
+    /// Judges the viewer's last want again, after the authority changed or as the presenter's clock moves, then
+    /// gives the overlays back the data the writer dropped, which they offer again inside the window now.
     fn refresh(&mut self) -> Flow<()> {
         self.gate.refresh(self.session)?;
-        self.lanes.follow(self.gate.applied());
+        self.lanes.follow(self.gate.applied(), self.data);
+        for event in self.gate.take_rejected() {
+            self.lanes.undelivered(&event);
+        }
         Ok(())
     }
 
-    /// Handles what the viewer sent once its video is open: windows apply as its authority allows them, lane views
-    /// apply to their lanes, anything else ends the session.
+    /// Handles what the viewer sent once its video is open: windows apply as its authority allows them, lane policies
+    /// apply to their lanes, catalog requests are answered, anything else ends the session.
     fn apply(&mut self, message: Option<Result<ClientMessage, UserError>>) -> Flow<()> {
         match message {
-            Some(Ok(ClientMessage::Want(wire))) => self.ask(want(wire)),
-            Some(Ok(ClientMessage::LaneView {
+            Some(Ok(ClientMessage::Want(wire))) => {
+                self.data = (wire.data_ahead, wire.data_behind);
+                self.ask(want(wire))
+            }
+            Some(Ok(ClientMessage::LanePolicy {
                 lane,
                 revision,
-                view,
-            })) => self.lanes.view(lane, revision, view),
+                policy,
+                subscribed,
+            })) => self.lanes.policy(lane, revision, policy, subscribed),
+            Some(Ok(ClientMessage::Catalog { id })) => {
+                self.catalogs.ask(id);
+                Ok(())
+            }
+            Some(Ok(ClientMessage::Inspect {
+                source,
+                data_revision,
+                sample,
+                entity,
+            })) => {
+                self.inspections
+                    .ask(self.lanes.overlays(), source, data_revision, sample, entity);
+                Ok(())
+            }
             Some(Ok(ClientMessage::Open { .. })) => Err(End::Failed(UserError::new(
                 ErrorCode::ProtocolViolation,
                 "The video is already open",
             ))),
+            Some(Ok(ClientMessage::Export {
+                job,
+                lanes,
+                first,
+                last,
+                format,
+                path,
+            })) => {
+                let request = Request {
+                    job,
+                    lanes,
+                    first,
+                    last,
+                    format,
+                    path,
+                };
+                self.exports
+                    .start(request, self.lanes.overlays(), &self.catalogs, self.last);
+                Ok(())
+            }
+            Some(Ok(ClientMessage::CancelExport { job })) => {
+                self.exports.cancel(job);
+                Ok(())
+            }
             Some(Err(error)) => Err(End::Failed(error)),
+            Some(Ok(ClientMessage::FileQuery {
+                lane,
+                request,
+                query,
+                classes,
+                sort,
+                offset,
+                limit,
+                bins,
+            })) => self.file_scopes.ask(
+                self.lanes.overlays(),
+                self.gate.is_own(),
+                file_scope::Ask {
+                    lane,
+                    request,
+                    query,
+                    classes,
+                    sort,
+                    offset,
+                    limit,
+                    bins,
+                },
+            ),
+            Some(Ok(ClientMessage::FileRelease { lane })) => {
+                self.file_scopes.release(self.lanes.overlays(), lane)
+            }
             Some(Ok(ClientMessage::Close)) | None => Err(End::Closed),
         }
     }
@@ -208,7 +303,14 @@ impl<I: Incoming> Playing<'_, I> {
                 reserved = outbox.reserve(), if room.is_none() => {
                     room = Some(reserved.map_err(|_| End::Closed)?);
                 }
-                next = next(self.session, &mut self.lanes), if room.is_some() => {
+                next = next(
+                    self.session,
+                    &mut self.catalogs,
+                    &mut self.inspections,
+                    &mut self.exports,
+                    &mut self.file_scopes,
+                    &mut self.lanes,
+                ), if room.is_some() => {
                     if let Some(message) = self.encode(next)?
                         && let Some(room) = room.take()
                     {
@@ -225,6 +327,10 @@ impl<I: Incoming> Playing<'_, I> {
     /// The message for what the session produced, if it is one.
     fn encode(&mut self, next: Next) -> Flow<Option<Outgoing>> {
         match next {
+            Next::Catalog(message) | Next::Inspection(message) | Next::Export(message) => {
+                Ok(Some(message))
+            }
+            Next::FileScope(reply) => Ok(Some(reply.outgoing(self.gate.is_own()))),
             Next::Lane(event) => Ok(self.lanes.encode(event)),
             Next::Delivery(delivery) => {
                 let delivery = delivery.ok_or(End::Closed)?;
@@ -241,11 +347,25 @@ impl<I: Incoming> Playing<'_, I> {
     }
 }
 
-/// The next thing to send: what the lanes have, which is nearest the playhead and small, then frames.
-async fn next(session: &mut Session, lanes: &mut Lanes) -> Next {
+/// The next thing to send: the catalogs', inspections', exports' and file queries' messages and the lanes' notices, then their data or the next frame, whichever ranks first, the data
+/// first on a tie. The lanes hold an item back while a frame ranks before it; the rank is read again whenever this
+/// is called, which is after every message sent and every message of the viewer.
+async fn next(
+    session: &mut Session,
+    catalogs: &mut CatalogFeed,
+    inspections: &mut Inspections,
+    exports: &mut Exports,
+    file_scopes: &mut FileScopes,
+    lanes: &mut Lanes,
+) -> Next {
+    let rank = session.next_rank();
     tokio::select! {
         biased;
-        event = lanes.next() => Next::Lane(event),
+        message = catalogs.next() => Next::Catalog(message),
+        message = inspections.next() => Next::Inspection(message),
+        message = exports.next() => Next::Export(message),
+        reply = file_scopes.next() => Next::FileScope(reply),
+        event = lanes.next(rank) => Next::Lane(event),
         delivery = session.next_delivery() => Next::Delivery(delivery),
     }
 }
@@ -261,10 +381,10 @@ fn encode(
     match delivery {
         Delivery::Frame(frame) => {
             let sequence_id = frame.id().sequence_id;
-            Ok(Outgoing {
-                message: Message::Binary(envelope::video_frame(&frame, sequence_id == last)),
-                frame: Some(sequence_id),
-            })
+            Ok(Outgoing::frame(
+                Message::Binary(envelope::video_frame(&frame, sequence_id == last)),
+                sequence_id,
+            ))
         }
         Delivery::Failure(failure) => {
             // A video with many bad frames would flood the log: the first is a warning, the rest are for diagnosis.
@@ -285,13 +405,13 @@ fn encode(
                     error.reason
                 );
             }
-            Ok(Outgoing {
-                message: text(&ServerMessage::FrameError {
+            Ok(Outgoing::frame(
+                text(&ServerMessage::FrameError {
                     sequence_id: failure.sequence_id,
                     error: project(&failure.error, audience),
                 }),
-                frame: Some(failure.sequence_id),
-            })
+                failure.sequence_id,
+            ))
         }
         Delivery::Failed(mut error) => {
             if error.location.is_none() {

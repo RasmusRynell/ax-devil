@@ -168,10 +168,10 @@ fn samples_are_sorted_by_key_and_a_repeated_key_keeps_the_last_record() {
     let track = fixture.open();
 
     assert_eq!(
-        track.keys(),
-        &SampleKeys::Times(vec![MediaTime(1_000), MediaTime(2_000), MediaTime(3_000)].into())
+        track.snapshot().keys,
+        SampleKeys::Times(vec![MediaTime(1_000), MediaTime(2_000), MediaTime(3_000)].into())
     );
-    assert_eq!(track.keys().kind(), TimeKind::Timestamp);
+    assert_eq!(track.snapshot().keys.kind(), TimeKind::Timestamp);
     let boxes: Vec<_> = (0..3)
         .map(|i| track.scene(i).expect("scene").entities().len())
         .collect();
@@ -184,7 +184,7 @@ fn samples_are_sorted_by_key_and_a_repeated_key_keeps_the_last_record() {
         track
             .warnings()
             .iter()
-            .any(|w| w.problem.contains("share their key"))
+            .any(|w| w.problem.contains("replaced by a later one"))
     );
 }
 
@@ -198,7 +198,7 @@ fn the_scene_cache_stays_under_its_bound_over_a_long_track() {
     fixture.registry =
         Fixture::registry_over(&fixture.decoder, Some(&fixture.cache())).with_scene_cache(BOUND);
     let track = fixture.open();
-    assert_eq!(track.keys().len(), 10_000);
+    assert_eq!(track.snapshot().keys.len(), 10_000);
 
     let mut peak = 0;
     let mut frame = 1_u64;
@@ -219,6 +219,24 @@ fn the_scene_cache_stays_under_its_bound_over_a_long_track() {
         "a resident Scene is shared"
     );
     assert!(track.scene(10_000).is_err(), "past the last sample");
+}
+
+#[test]
+fn a_sample_item_is_the_encoded_scene_and_is_served_from_the_cache_the_second_time() {
+    let fixture = Fixture::new(Shape::Frames {
+        frames: 3,
+        boxes: 4,
+    });
+    let track = fixture.open();
+
+    let item = track.item(1).expect("item");
+
+    let scene = track.scene(1).expect("scene");
+    let expected =
+        scene::serial::columns::encode_sample_item(&scene, track.filter()).expect("encodes");
+    assert_eq!(&*item, expected.as_slice());
+    assert!(Arc::ptr_eq(&item, &track.item(1).expect("item")));
+    assert!(track.item(3).is_err(), "past the last sample");
 }
 
 #[test]
@@ -353,7 +371,10 @@ fn the_real_mot_decoder_round_trips_through_an_artifact() {
     let warm = open();
 
     for track in [&cold, &warm] {
-        assert_eq!(track.keys(), &SampleKeys::Frames(vec![0, 1, 3].into()));
+        assert_eq!(
+            track.snapshot().keys,
+            SampleKeys::Frames(vec![0, 1, 3].into())
+        );
         assert_eq!(track.coverage(), Coverage::Dense);
         assert_eq!(track.warnings().len(), 1);
         assert_eq!(track.filter().options.len(), 14);

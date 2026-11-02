@@ -47,7 +47,7 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
           </button>
         ))}
       </div>
-      <div id={panel} role="tabpanel" className="flex flex-col gap-l">
+      <div id={panel} role="tabpanel" className="flex min-h-0 flex-col gap-l overflow-y-auto">
         {[...new Set(rows.map((row) => row.section))].map((section) => (
           <section key={section} className="flex flex-col gap-m">
             <h3 className="m-0 text-small font-semibold text-muted uppercase">{section}</h3>

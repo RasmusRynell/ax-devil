@@ -9,6 +9,7 @@
 mod error;
 mod filter;
 mod geometry;
+pub mod inspection;
 mod observation;
 mod scene;
 pub mod serial;

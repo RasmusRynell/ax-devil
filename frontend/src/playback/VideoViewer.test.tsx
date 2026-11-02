@@ -3,7 +3,6 @@ import { describe, expect, it, vi } from "vite-plus/test";
 import { FakeSocket, video } from "../session/fakeSession";
 import { SessionProvider } from "../session/session";
 import { SessionStore } from "../session/store";
-import { LANE_DEFAULTS } from "./fakeOpened";
 import type { ClientMessage, LaneInfo, ServerMessage } from "./protocol";
 import {
   Viewer,
@@ -201,8 +200,8 @@ describe("video viewer", () => {
 
   describe("lanes", () => {
     const LANES: LaneInfo[] = [
-      { label: "DPM", has_overlay: true },
-      { label: "GT", has_overlay: true },
+      { label: "DPM", source: 0 },
+      { label: "GT", source: 1 },
     ];
     const mountLanes = async (onHideLane?: (label: string) => void) => {
       const sent: ClientMessage[] = [];
@@ -232,19 +231,28 @@ describe("video viewer", () => {
           },
         ],
         samples: 4,
+        data_revision: 1,
+        mean_sample_bytes: 100,
+        ingest: { state: "Complete" },
       },
     };
 
-    it("sends the lane menu's changes to the backend as the lane's new view", async () => {
+    it("sends the lane menu's changes the backend selects by as a new policy, and keeps the rest to itself", async () => {
       const sent = await mountLanes();
       answer(ready);
       fireEvent.click(screen.getByRole("button", { name: "GT: settings" }));
+      const before = sent.length;
+      fireEvent.click(screen.getByRole("tab", { name: "Filter" }));
       fireEvent.click(screen.getByRole("checkbox", { name: "Pedestrian" }));
+      expect(sent).toHaveLength(before);
+      fireEvent.click(screen.getByRole("tab", { name: "Timing" }));
+      fireEvent.click(screen.getByRole("switch", { name: "Sticky" }));
       expect(sent.at(-1)).toEqual({
-        type: "LaneView",
+        type: "LanePolicy",
         lane: 1,
-        revision: 1,
-        view: { ...LANE_DEFAULTS, filter: { pedestrian: false } },
+        revision: 2,
+        policy: { tolerance_ms: 50, sticky: { enabled: true, timeout_ms: 2050 } },
+        subscribed: true,
       });
     });
 

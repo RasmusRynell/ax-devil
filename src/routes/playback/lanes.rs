@@ -1,23 +1,24 @@
-//! A viewer's lanes: what the entry shows, how a lane is viewed, where its load stands and the overlays it sends,
-//! and their wire forms. A lane view that cannot be applied, and a lane's problems, are told only to an audience with
-//! host details; the lane keeps its last view and the session goes on.
+//! A viewer's lanes: what the entry shows, how a lane selects samples, where its load stands and the data it sends,
+//! and their wire forms. A policy that cannot be applied, and a lane's problems, are told only to an audience with
+//! host details; the lane keeps its last matching, adopts the new revision and the session goes on.
 
-use super::{End, Flow, Outgoing, overlay_envelope, text};
+use super::{End, Flow, Outgoing, stream::Setup, text};
 use api_types::{
     Audience,
     playback::{
-        ClockWire, FilterOptionInfo, LaneInfo, LaneStatusWire, LaneViewWire, ServerMessage,
-        StickyWire, TargetWire, WarningInfo,
+        ClockWire, FilterOptionInfo, IngestWire, LaneDefaultsWire, LaneInfo, LanePolicyWire,
+        LaneStatusWire, MAX_DATA_WINDOW_FRAMES, ServerMessage, StickyWire, WarningInfo, envelope,
     },
     project,
 };
 use axum::extract::ws::Message;
-use catalogs::CatalogId;
-use foundation::{ErrorCode, FrameSize, HostPath, MediaTime, Timeline, UserError};
+use catalogs::Library;
+use foundation::{ErrorCode, HostPath, MediaTime, Timeline, UserError};
 use overlay_sync::{MatchPolicy, Sticky, Tolerance};
-use overlays::{LaneStatus, LaneView, OverlayEvent, OverlayService, TargetSize, ViewerOverlays};
-use playback::Want;
-use scene::{FilterChoice, TimeKind};
+use overlays::{LaneStatus, OverlayEvent, ViewerOverlays};
+use playback::{Rank, Want};
+use scene::TimeKind;
+use scene_store::Ingest;
 use std::collections::{BTreeMap, BTreeSet};
 use workspace::Entry;
 
@@ -26,7 +27,7 @@ const MAX_STICKY_TIMEOUT_MS: u32 = 100_000;
 
 /// What a viewer's lanes have to send.
 pub(super) enum LaneEvent {
-    /// A lane view the viewer sent that cannot be applied.
+    /// A lane policy the viewer sent that cannot be applied.
     Problem(u16, String),
     /// What the overlays reported.
     Overlay(OverlayEvent),
@@ -46,9 +47,9 @@ pub(super) struct Lanes {
     working: BTreeSet<u16>,
     /// Lanes the overlays left without a terminal status when they ended, each still to be told it failed.
     abandoned: Vec<u16>,
-    /// The newest unsent complaint about each lane's view; a lane's next view replaces it.
+    /// The newest unsent complaint about each lane's policy; a lane's next policy replaces it.
     problems: BTreeMap<u16, String>,
-    /// The window the overlays were last given.
+    /// The data window the overlays were last given.
     window: Option<Want>,
     audience: Audience,
     /// The video's file, which a lane whose overlays stopped is told about.
@@ -56,16 +57,22 @@ pub(super) struct Lanes {
 }
 
 impl Lanes {
+    /// The viewer's overlays, which answer inspections.
+    pub(super) fn overlays(&self) -> &ViewerOverlays {
+        &self.overlays
+    }
+
     /// Starts loading the overlays of `entry`, one lane each, or the one plain lane of an entry without overlays.
-    /// Nothing is prepared until the lanes [`follow`](Self::follow) a window.
-    pub(super) fn open(
-        service: &OverlayService,
-        entry: &Entry,
-        timeline: Timeline,
-        size: FrameSize,
-        audience: Audience,
-        location: HostPath,
-    ) -> Self {
+    /// Nothing is sent until the lanes [`follow`](Self::follow) a window and a lane subscribes.
+    pub(super) fn open(setup: &Setup, timeline: Timeline, location: HostPath) -> Self {
+        let Setup {
+            entry,
+            data_bytes,
+            audience,
+            size,
+            overlays,
+            ..
+        } = *setup;
         let sources: Vec<_> = if entry.overlays.is_empty() {
             vec![None]
         } else {
@@ -78,7 +85,7 @@ impl Lanes {
             .collect();
         let count = sources.len();
         Self {
-            overlays: service.open_viewer(sources, timeline, size),
+            overlays: overlays.open_viewer(sources, timeline, size, data_bytes),
             live: true,
             count,
             working,
@@ -90,41 +97,63 @@ impl Lanes {
         }
     }
 
-    /// Gives the overlays `applied`, the window the viewer's authority allowed its video, when it is new. The
-    /// overlays never prepare a frame the viewer may not have.
-    pub(super) fn follow(&mut self, applied: Option<Want>) {
-        if let Some(want) = applied
-            && self.window != applied
-        {
-            self.window = applied;
-            self.overlays.want(want);
+    /// Gives the overlays the data window inside `applied`, the window the viewer's authority allowed its video, when
+    /// it is new: the viewer's data frames, bounded by what the video window allows and by the largest data window.
+    /// The overlays never select or send anything for a frame the viewer may not have.
+    pub(super) fn follow(&mut self, applied: Option<Want>, data: (u32, u32)) {
+        let Some(applied) = applied else {
+            return;
+        };
+        let window = data_window(applied, data);
+        if self.window != Some(window) {
+            self.window = Some(window);
+            self.overlays.want(window);
         }
     }
 
-    /// Gives a lane the view the viewer asked for. One that cannot be applied leaves the lane's last view and is
-    /// reported as a `LaneProblem`; a lane the entry does not have ends the session.
-    pub(super) fn view(&mut self, lane: u16, revision: u32, view: LaneViewWire) -> Flow<()> {
+    /// Takes back data the writer dropped, which the overlays send again while the viewer's window still needs it.
+    pub(super) fn undelivered(&self, event: &OverlayEvent) {
+        self.overlays.undelivered(event);
+    }
+
+    /// Gives a lane the policy the viewer asked for. One that cannot be applied is reported as a `LaneProblem`; the
+    /// lane keeps its matching but adopts `revision` and `subscribed`, so the maps it sends carry the revision the
+    /// viewer waits for. A plain lane ignores it; a lane the entry does not have ends the session.
+    pub(super) fn policy(
+        &mut self,
+        lane: u16,
+        revision: u32,
+        policy: LanePolicyWire,
+        subscribed: bool,
+    ) -> Flow<()> {
         if usize::from(lane) >= self.count {
             return Err(End::Failed(UserError::new(
                 ErrorCode::ProtocolViolation,
                 format!("The video has no lane {lane}"),
             )));
         }
-        match view_from_wire(view) {
-            Ok(view) => {
+        if self.overlays.lane_sources()[usize::from(lane)].is_none() {
+            return Ok(());
+        }
+        let matching = match policy_from_wire(policy) {
+            Ok(matching) => {
                 self.problems.remove(&lane);
-                self.overlays.set_view(lane, revision, view);
+                Some(matching)
             }
             Err(reason) => {
                 self.problems.insert(lane, reason);
+                None
             }
-        }
+        };
+        self.overlays
+            .set_policy(lane, revision, matching, subscribed);
         Ok(())
     }
 
-    /// The next thing the lanes have to send: complaints about views first, then what the overlays report, which is
-    /// nearest the playhead. Waits while there is nothing.
-    pub(super) async fn next(&mut self) -> LaneEvent {
+    /// The next thing the lanes have to send: complaints first, then what the overlays report, which is
+    /// nearest the playhead and goes only while its rank is at most `frame_rank`, the rank of the video frame
+    /// waiting. Waits while there is nothing.
+    pub(super) async fn next(&mut self, frame_rank: Option<Rank>) -> LaneEvent {
         if let Some((lane, reason)) = self.problems.pop_first() {
             return LaneEvent::Problem(lane, reason);
         }
@@ -134,14 +163,15 @@ impl Lanes {
         if !self.live {
             return std::future::pending().await;
         }
-        match self.overlays.next_event().await {
+        match self.overlays.next_event(frame_rank).await {
             Some(event) => LaneEvent::Overlay(event),
             None => LaneEvent::Ended,
         }
     }
 
-    /// The message for `event`, if the viewer is to be told. An overlay names its frame, so the gate drops it like
-    /// the frame once the viewer's authority no longer reaches it.
+    /// The message for `event`, if the viewer is to be told. A sample names the frame it ranks by and a map run the
+    /// frames it covers, so the writer drops it like a frame once the viewer's authority no longer reaches all of
+    /// them.
     pub(super) fn encode(&mut self, event: LaneEvent) -> Option<Outgoing> {
         let host_details = self.audience.host_details;
         let problem = |lane, reason| {
@@ -156,10 +186,32 @@ impl Lanes {
                 }
                 Some(self.status(lane, status))
             }
-            LaneEvent::Overlay(OverlayEvent::Overlay(overlay)) => Some(Outgoing {
-                message: Message::Binary(overlay_envelope::overlay(&overlay)),
-                frame: Some(overlay.frame.sequence_id),
+            LaneEvent::Overlay(OverlayEvent::Sample(sample)) => Some(Outgoing {
+                message: Message::Binary(envelope::sample(&sample)),
+                frames: Some(sample.frame..=sample.frame),
+                data: Some(OverlayEvent::Sample(sample)),
             }),
+            LaneEvent::Overlay(OverlayEvent::Map(run)) => Some(Outgoing {
+                message: Message::Binary(envelope::frame_map(&run)),
+                frames: Some(run.frames()),
+                data: Some(OverlayEvent::Map(run)),
+            }),
+            // Control messages are never gated: they name nothing the authority did not allow when it was chosen.
+            LaneEvent::Overlay(OverlayEvent::Window { first, last }) => {
+                Some(text(&ServerMessage::DataWindow { first, last }).into())
+            }
+            LaneEvent::Overlay(OverlayEvent::Evict {
+                source,
+                data_revision,
+                samples,
+            }) => Some(
+                text(&ServerMessage::Evict {
+                    source,
+                    data_revision,
+                    samples,
+                })
+                .into(),
+            ),
             LaneEvent::Ended => {
                 tracing::warn!(
                     "The overlays of {} stopped; the video goes on",
@@ -186,56 +238,72 @@ impl Lanes {
         })
         .into()
     }
+
+    /// The lanes the entry shows: one per overlay, or one plain lane.
+    pub(super) fn infos(&self, entry: &Entry) -> Vec<LaneInfo> {
+        let labels: Vec<&String> = if entry.overlays.is_empty() {
+            vec![&entry.label]
+        } else {
+            entry
+                .overlays
+                .iter()
+                .map(|overlay| &overlay.label)
+                .collect()
+        };
+        labels
+            .into_iter()
+            .zip(self.overlays.lane_sources())
+            .map(|(label, source)| LaneInfo {
+                label: label.clone(),
+                source: *source,
+            })
+            .collect()
+    }
 }
 
-/// The lanes an entry shows: one per overlay, or one plain lane.
-pub(super) fn infos(entry: &Entry) -> Vec<LaneInfo> {
-    if entry.overlays.is_empty() {
-        return vec![LaneInfo {
-            label: entry.label.clone(),
-            has_overlay: false,
-        }];
+/// What every lane starts with: the library's default catalog and the default matching.
+pub(super) fn lane_defaults(catalogs: &Library) -> LaneDefaultsWire {
+    LaneDefaultsWire {
+        catalog: catalogs.default_id().to_string(),
+        policy: policy_wire(&MatchPolicy::default()),
     }
-    entry
-        .overlays
-        .iter()
-        .map(|overlay| LaneInfo {
-            label: overlay.label.clone(),
-            has_overlay: true,
-        })
-        .collect()
+}
+
+/// The data window of a viewer: `data` frames ahead and behind the playhead of `applied`, no more than it keeps frames
+/// and no more than [`MAX_DATA_WINDOW_FRAMES`] in all.
+fn data_window(applied: Want, data: (u32, u32)) -> Want {
+    let ahead = data.0.min(applied.ahead).min(MAX_DATA_WINDOW_FRAMES - 1);
+    let behind = data
+        .1
+        .min(applied.behind)
+        .min(MAX_DATA_WINDOW_FRAMES - 1 - ahead);
+    Want {
+        ahead,
+        behind,
+        ..applied
+    }
 }
 
 fn millis(time: MediaTime) -> u32 {
     u32::try_from(time.as_us() / 1000).unwrap_or(u32::MAX)
 }
 
-/// The wire form of a lane's view.
-pub(super) fn view_wire(view: &LaneView) -> LaneViewWire {
-    LaneViewWire {
-        catalog: view.catalog.to_string(),
-        filter: view.filter.overrides.clone(),
-        tolerance_ms: match view.policy.tolerance {
+/// The wire form of a lane's matching.
+fn policy_wire(policy: &MatchPolicy) -> LanePolicyWire {
+    LanePolicyWire {
+        tolerance_ms: match policy.tolerance {
             Tolerance::Exact => None,
             Tolerance::PreviousWithin(time) => Some(millis(time)),
         },
         sticky: StickyWire {
-            enabled: view.policy.sticky.enabled,
-            timeout_ms: view.policy.sticky.timeout.map(millis),
-            opacity: view.policy.sticky.opacity,
+            enabled: policy.sticky.enabled,
+            timeout_ms: policy.sticky.timeout.map(millis),
         },
-        target: TargetWire {
-            width: view.target.width,
-            height: view.target.height,
-        },
-        visible: view.visible,
     }
 }
 
-/// The view a viewer asked for, or why it cannot be applied, in words for the user.
-fn view_from_wire(wire: LaneViewWire) -> Result<LaneView, String> {
-    let catalog = CatalogId::parse(&wire.catalog)
-        .ok_or_else(|| format!("There is no catalog \"{}\"", wire.catalog))?;
+/// The matching a viewer asked for, or why it cannot be applied, in words for the user.
+fn policy_from_wire(wire: LanePolicyWire) -> Result<MatchPolicy, String> {
     let timeout = match wire.sticky.timeout_ms {
         Some(ms) if ms > MAX_STICKY_TIMEOUT_MS => {
             return Err(format!(
@@ -246,32 +314,15 @@ fn view_from_wire(wire: LaneViewWire) -> Result<LaneView, String> {
         Some(ms) => Some(MediaTime::from_us(i64::from(ms) * 1000)),
         None => None,
     };
-    if !(0.0..=1.0).contains(&wire.sticky.opacity) {
-        return Err("The opacity of a kept overlay is between 0 and 1".to_owned());
-    }
-    Ok(LaneView {
-        catalog,
-        filter: FilterChoice {
-            overrides: wire.filter,
+    Ok(MatchPolicy {
+        tolerance: match wire.tolerance_ms {
+            None => Tolerance::Exact,
+            Some(ms) => Tolerance::PreviousWithin(MediaTime::from_us(i64::from(ms) * 1000)),
         },
-        policy: MatchPolicy {
-            tolerance: match wire.tolerance_ms {
-                None => Tolerance::Exact,
-                Some(ms) => Tolerance::PreviousWithin(MediaTime::from_us(i64::from(ms) * 1000)),
-            },
-            sticky: Sticky {
-                enabled: wire.sticky.enabled,
-                timeout,
-                opacity: wire.sticky.opacity,
-            },
+        sticky: Sticky {
+            enabled: wire.sticky.enabled,
+            timeout,
         },
-        // A lane that is not laid out yet reports nothing; lengths in pixels still need a size to measure against,
-        // and the viewer sends a new view when the real one is known.
-        target: TargetSize {
-            width: wire.target.width.max(1),
-            height: wire.target.height.max(1),
-        },
-        visible: wire.visible,
     })
 }
 
@@ -307,6 +358,13 @@ fn status_wire(status: LaneStatus, audience: Audience) -> LaneStatusWire {
                 })
                 .collect(),
             samples: ready.samples as u64,
+            data_revision: ready.data_revision,
+            mean_sample_bytes: ready.mean_sample_bytes,
+            ingest: match ready.ingest {
+                Ingest::Reading => IngestWire::Reading,
+                Ingest::Complete => IngestWire::Complete,
+                Ingest::Incomplete(error) => IngestWire::Incomplete(project(&error, audience)),
+            },
         },
         LaneStatus::Failed(error) => LaneStatusWire::Failed(project(&error, audience)),
     }
@@ -316,51 +374,57 @@ fn status_wire(status: LaneStatus, audience: Audience) -> LaneStatusWire {
 mod tests {
     use super::*;
 
-    fn wire() -> LaneViewWire {
-        LaneViewWire {
-            catalog: "built-in:tracking".into(),
-            filter: [("show_car".to_owned(), false)].into(),
+    fn wire() -> LanePolicyWire {
+        LanePolicyWire {
             tolerance_ms: Some(40),
             sticky: StickyWire {
                 enabled: true,
                 timeout_ms: Some(2050),
-                opacity: 0.5,
             },
-            target: TargetWire {
-                width: 640,
-                height: 360,
-            },
-            visible: false,
         }
     }
 
     #[test]
-    fn a_view_survives_the_trip_and_what_cannot_be_applied_says_why() {
-        let view = view_from_wire(wire()).unwrap();
-        assert_eq!(view_wire(&view), wire());
+    fn a_policy_survives_the_trip_and_what_cannot_be_applied_says_why() {
+        let policy = policy_from_wire(wire()).unwrap();
+        assert_eq!(policy_wire(&policy), wire());
 
-        let refused = |change: fn(&mut LaneViewWire)| {
-            let mut bad = wire();
-            change(&mut bad);
-            view_from_wire(bad).unwrap_err()
-        };
-        assert!(refused(|v| v.catalog = "built-in:nope".into()).contains("built-in:nope"));
-        assert!(refused(|v| v.sticky.timeout_ms = Some(100_001)).contains("100 seconds"));
-        assert!(refused(|v| v.sticky.opacity = 1.5).contains("opacity"));
-        assert!(refused(|v| v.sticky.opacity = f32::NAN).contains("opacity"));
-
-        let mut unmeasured = wire();
-        unmeasured.target = TargetWire {
-            width: 0,
-            height: 0,
-        };
-        let view = view_from_wire(unmeasured).unwrap();
-        assert_eq!((view.target.width, view.target.height), (1, 1));
         let mut unlimited = wire();
-        (unlimited.tolerance_ms, unlimited.sticky.timeout_ms) = (None, None);
+        unlimited.tolerance_ms = None;
+        unlimited.sticky.timeout_ms = None;
         assert_eq!(
-            view_wire(&view_from_wire(unlimited.clone()).unwrap()),
+            policy_wire(&policy_from_wire(unlimited).unwrap()),
             unlimited
+        );
+
+        let mut too_long = wire();
+        too_long.sticky.timeout_ms = Some(MAX_STICKY_TIMEOUT_MS + 1);
+        assert!(
+            policy_from_wire(too_long)
+                .unwrap_err()
+                .contains("100 seconds")
+        );
+    }
+
+    #[test]
+    fn the_data_window_is_bounded_by_the_video_window_and_the_largest_data_window() {
+        let applied = |ahead, behind| Want {
+            playhead: 5,
+            ahead,
+            behind,
+            direction: playback::Direction::Forward,
+            priority: playback::Priority::default(),
+        };
+        let window = |applied: Want, data| {
+            let window = data_window(applied, data);
+            (window.ahead, window.behind)
+        };
+
+        assert_eq!(window(applied(10, 10), (4, 4)), (4, 4));
+        assert_eq!(window(applied(3, 2), (4, 4)), (3, 2));
+        assert_eq!(
+            window(applied(u32::MAX, u32::MAX), (u32::MAX, u32::MAX)),
+            (MAX_DATA_WINDOW_FRAMES - 1, 0)
         );
     }
 }

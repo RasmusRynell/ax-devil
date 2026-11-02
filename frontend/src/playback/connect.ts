@@ -15,10 +15,9 @@ export const connectWorker: Connect = (onIncoming) => {
     onIncoming(data);
     if (data.type === "closed") worker.terminate();
   };
-  post({ type: "connect", url: playbackUrl(), density: devicePixelRatio });
+  post({ type: "connect", url: playbackUrl() });
   return {
     send: (message) => post({ type: "send", message }),
     close: () => post({ type: "close" }),
-    setDensity: (density) => post({ type: "density", density }),
   };
 };

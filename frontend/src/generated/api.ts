@@ -865,7 +865,11 @@ path: string,
 /**
  * The decoder handler id; the only decoder for the file's extension when absent.
  */
-handler: string | null, };
+handler: string | null, 
+/**
+ * The lane's name; the file name when absent, numbered ` (2)`, ` (3)` when the video already shows the file.
+ */
+label: string | null, };
 
 /**
  * An entry or lane to hide or show.
@@ -908,7 +912,66 @@ display_name: string,
 /**
  * The file extensions it reads: lowercase, with the dot.
  */
-extensions: Array<string>, };
+extensions: Array<string>, 
+/**
+ * The id of the converter that provides it; absent for the built-in decoders.
+ */
+plugin?: string, };
+
+/**
+ * The body of `GET /api/plugins`: the converters the user installed, whether or not they loaded.
+ */
+export type PluginsInfo = { 
+/**
+ * One per registry entry, in install order.
+ */
+converters: Array<PluginInfo>, 
+/**
+ * Why the registry itself could not be used, in which case no converter loaded.
+ */
+problem?: string, };
+
+/**
+ * One installed converter.
+ */
+export type PluginInfo = { 
+/**
+ * The manifest file the registry names.
+ */
+manifest: string, 
+/**
+ * The folder the manifest is in.
+ */
+folder: string, 
+/**
+ * Whether it loaded.
+ */
+status: PluginStatus, };
+
+/**
+ * Whether an installed converter can be used.
+ */
+export type PluginStatus = { "state": "Loaded", 
+/**
+ * The plugin id and handler id.
+ */
+id: string, 
+/**
+ * What the user reads.
+ */
+name: string, 
+/**
+ * Free text from the manifest.
+ */
+version: string, 
+/**
+ * The file extensions it reads: lowercase, with the dot.
+ */
+extensions: Array<string>, } | { "state": "Failed", 
+/**
+ * What is wrong, naming the manifest field when there is one.
+ */
+reason: string, };
 
 /**
  * A playlist resolver and the form its settings take.
@@ -1037,20 +1100,20 @@ behind: number,
 /**
  * Which way the viewer is travelling, which decides what to prefetch first.
  */
-direction: Direction, };
+direction: Direction, 
+/**
+ * How many frames after the playhead the viewer keeps Frame Maps and Sample Items for.
+ */
+data_ahead: number, 
+/**
+ * How many frames before the playhead the viewer keeps Frame Maps and Sample Items for.
+ */
+data_behind: number, };
 
 /**
- * How one lane shows its overlay.
+ * How a lane selects samples for frames: the part of a lane's settings the backend needs.
  */
-export type LaneViewWire = { 
-/**
- * The catalog id, such as `built-in:standard`.
- */
-catalog: string, 
-/**
- * The class filter toggles by option id; options not listed keep their default.
- */
-filter: Record<string, boolean>, 
+export type LanePolicyWire = { 
 /**
  * How far back a time-keyed sample may be, in milliseconds; `null` is exact.
  */
@@ -1058,15 +1121,7 @@ tolerance_ms: number | null,
 /**
  * Whether old samples stay on screen.
  */
-sticky: StickyWire, 
-/**
- * The lane's displayed image size.
- */
-target: TargetWire, 
-/**
- * Whether the lane is shown.
- */
-visible: boolean, };
+sticky: StickyWire, };
 
 /**
  * Keeping the last sample on screen while no sample matches.
@@ -1079,24 +1134,20 @@ enabled: boolean,
 /**
  * How old a kept sample may be, in milliseconds, at most 100000; `null` is without limit.
  */
-timeout_ms: number | null, 
-/**
- * How opaque a kept sample is drawn, 0 to 1.
- */
-opacity: number, };
+timeout_ms: number | null, };
 
 /**
- * A displayed image size in CSS pixels.
+ * What every lane starts with.
  */
-export type TargetWire = { 
+export type LaneDefaultsWire = { 
 /**
- * Width in CSS pixels.
+ * The catalog id, such as `built-in:standard`.
  */
-width: number, 
+catalog: string, 
 /**
- * Height in CSS pixels.
+ * The sample selection every lane starts with.
  */
-height: number, };
+policy: LanePolicyWire, };
 
 /**
  * One lane of the opened entry.
@@ -1107,9 +1158,9 @@ export type LaneInfo = {
  */
 label: string, 
 /**
- * Whether the lane has an overlay file; the lane of an entry without overlays is plain.
+ * The viewer's id of the source the lane draws; `null` for a plain lane. Lanes on the same file share one.
  */
-has_overlay: boolean, };
+source: number | null, };
 
 /**
  * The clock a lane's samples are on.
@@ -1173,7 +1224,70 @@ warnings: Array<WarningInfo>,
 /**
  * How many samples the file has.
  */
-samples: number, } | { "status": "Failed" } & ErrorWire;
+samples: number, 
+/**
+ * The source's revision; its Sample Items and the lane's Frame Maps carry it.
+ */
+data_revision: number, 
+/**
+ * The mean size of a Sample Item in bytes, 0 for an empty file; sizes the viewer's data window.
+ */
+mean_sample_bytes: number, 
+/**
+ * How far the file has been read. A file still being read repeats this status under the same
+ * `data_revision` as more of it arrives, and under a new one when the numbering of its samples changes;
+ * the samples and Frame Maps held stay valid for an equal revision.
+ */
+ingest: IngestWire, } | { "status": "Failed" } & ErrorWire;
+
+/**
+ * How far an overlay file has been read.
+ */
+export type IngestWire = { "state": "Reading" } | { "state": "Complete" } | { "state": "Incomplete" } & ErrorWire;
+
+/**
+ * Sections of the inspection, in display order.
+ */
+export type FieldGroupWire = "classification" | "motion" | "geometry" | "debug" | "raw";
+
+/**
+ * Who produced a field of the Debug group.
+ */
+export type FieldOriginWire = "source" | "decoder";
+
+/**
+ * One leaf of an object's data.
+ */
+export type FieldWire = { 
+/**
+ * The section the field is listed in.
+ */
+group: FieldGroupWire, 
+/**
+ * Who produced the field; only in the Debug group.
+ */
+origin?: FieldOriginWire, 
+/**
+ * The field's place in the data; a list index is its decimal digits.
+ */
+path: Array<string>, 
+/**
+ * The leaf: a number, text, true or false, or `null`.
+ */
+value: null | boolean | number | string, };
+
+/**
+ * What the backend knows of one object of one sample.
+ */
+export type InspectionWire = { "state": "Found", 
+/**
+ * At most 4096; a text is cut at 4096 characters.
+ */
+fields: Array<FieldWire>, 
+/**
+ * Whether fields were left out or a text was cut.
+ */
+truncated: boolean, } | { "state": "Absent" } | { "state": "Unavailable" };
 
 /**
  * What the frontend sends.
@@ -1186,19 +1300,113 @@ ticket: string,
 /**
  * The frame to show, paused; the first frame when absent.
  */
-start_frame?: number, } | { "type": "Want" } & Want | { "type": "LaneView", 
+start_frame?: number, 
+/**
+ * The most bytes of Sample Items the viewer holds at once, fixed for the stream. The backend never has more
+ * than this sent, except one item larger than it alone.
+ */
+data_bytes: number, } | { "type": "Want" } & Want | { "type": "LanePolicy", 
 /**
  * The lane's position in `Opened.lanes`.
  */
 lane: number, 
 /**
- * Counts the lane's changes; overlays carry the revision they were made for.
+ * Counts the lane's changes; Frame Maps carry the revision they were selected under.
  */
 revision: number, 
 /**
- * The new view.
+ * How samples are selected.
  */
-view: LaneViewWire, } | { "type": "Close" };
+policy: LanePolicyWire, 
+/**
+ * Whether the lane is shown; an unsubscribed lane gets no Frame Maps and its samples are not sent for it.
+ */
+subscribed: boolean, } | { "type": "Catalog", 
+/**
+ * The catalog id, such as `built-in:standard`.
+ */
+id: string, } | { "type": "Inspect", 
+/**
+ * The viewer's source id, `LaneInfo::source`.
+ */
+source: number, 
+/**
+ * The source revision the sample belongs to.
+ */
+data_revision: number, 
+/**
+ * The sample's index in its source.
+ */
+sample: number, 
+/**
+ * The object's id; at most 1024 bytes.
+ */
+entity: string, } | { "type": "Export", 
+/**
+ * Names the job in its `Export` messages.
+ */
+job: number, 
+/**
+ * The lanes to draw, in the order they tile.
+ */
+lanes: Array<ExportLaneWire>, 
+/**
+ * The first frame, a sequence id.
+ */
+first: number, 
+/**
+ * The last frame, inclusive; equal to `first` for a PNG.
+ */
+last: number, 
+/**
+ * What to write.
+ */
+format: ExportFormatWire, 
+/**
+ * Where to write it on the backend's machine: an absolute path.
+ */
+path: string, } | { "type": "CancelExport", 
+/**
+ * The job to cancel.
+ */
+job: number, } | { "type": "FileQuery", 
+/**
+ * The lane's position in `Opened.lanes`.
+ */
+lane: number, 
+/**
+ * Names the request in its answer; the client drops answers of older requests.
+ */
+request: number, 
+/**
+ * The search, parsed by the client.
+ */
+query: SearchWire, 
+/**
+ * The lane's class toggles: bit `i % 32` of word `i / 32` is set for each enabled filter option, as in the
+ * Sample Item's class mask.
+ */
+classes: Array<number>, 
+/**
+ * The order of the rows.
+ */
+sort: FileSortWire, 
+/**
+ * The first row to send.
+ */
+offset: number, 
+/**
+ * How many rows to send at most, from 1 to 200.
+ */
+limit: number, 
+/**
+ * The most spans of presence per row, from 0 to 256; 0 sends none.
+ */
+bins: number, } | { "type": "FileRelease", 
+/**
+ * The lane's position in `Opened.lanes`.
+ */
+lane: number, } | { "type": "Close" };
 
 /**
  * What the backend sends as text. `Opened` is followed by a Timeline envelope.
@@ -1241,9 +1449,9 @@ warnings: Array<string>,
  */
 lanes: Array<LaneInfo>, 
 /**
- * The view every lane starts with.
+ * What every lane starts with.
  */
-lane_defaults: LaneViewWire, 
+lane_defaults: LaneDefaultsWire, 
 /**
  * The catalogs a lane may draw with, built-ins first and Standard first among them.
  */
@@ -1263,7 +1471,47 @@ lane: number,
 /**
  * What went wrong, in words for the user.
  */
-reason: string, } | { "type": "FrameError", 
+reason: string, } | { "type": "Catalog", 
+/**
+ * The requested id.
+ */
+id: string, 
+/**
+ * Counts the document's changes; 0 when there is no such catalog.
+ */
+revision: number, 
+/**
+ * The catalog document, or `null` when no such catalog exists or it cannot be served.
+ */
+document: string | null, 
+/**
+ * Why an existing catalog cannot be served (too large, unreadable, not text); `null` otherwise.
+ */
+problem: string | null, } | { "type": "Catalogs", 
+/**
+ * Built-ins first and Standard first among them, then the user's.
+ */
+catalogs: Array<CatalogInfoWire>, } | { "type": "Inspected", 
+/**
+ * The requested source.
+ */
+source: number, 
+/**
+ * The requested revision.
+ */
+data_revision: number, 
+/**
+ * The requested sample.
+ */
+sample: number, 
+/**
+ * The requested object.
+ */
+entity: string, 
+/**
+ * What the backend knows of it.
+ */
+inspection: InspectionWire, } | { "type": "FrameError", 
 /**
  * The frame that failed.
  */
@@ -1284,12 +1532,380 @@ reason?: string,
  * What it is about, such as the file path or the settings field key. Only for an audience with host details,
  * and only when it is about something.
  */
-location?: string, } | { "type": "Error" } & ErrorWire;
+location?: string, } | { "type": "DataWindow", 
+/**
+ * The first frame.
+ */
+first: number, 
+/**
+ * The last frame.
+ */
+last: number, } | { "type": "Evict", 
+/**
+ * The viewer's source id, `LaneInfo::source`.
+ */
+source: number, 
+/**
+ * The source revision the samples belong to.
+ */
+data_revision: number, 
+/**
+ * The sample indices, ascending and distinct.
+ */
+samples: Array<number>, } | { "type": "Export", 
+/**
+ * The job from the request.
+ */
+job: number, 
+/**
+ * Where it stands.
+ */
+state: ExportStateWire, } | { "type": "FileRows", 
+/**
+ * The lane's position in `Opened.lanes`.
+ */
+lane: number, 
+/**
+ * The request answered.
+ */
+request: number, 
+/**
+ * The source revision the rows were listed under; the client drops rows of any other.
+ */
+data_revision: number, 
+/**
+ * The lane policy revision the presence was placed under; the client drops rows of any other.
+ */
+policy_revision: number, 
+/**
+ * How many objects the video shows that the class toggles keep.
+ */
+total: number, 
+/**
+ * How many of them the search matches, which is how many rows there are.
+ */
+matched: number, 
+/**
+ * The request's `offset`.
+ */
+offset: number, 
+/**
+ * Rows `offset` to `offset + rows.len()` of the list.
+ */
+rows: Array<FileRowWire>, } | { "type": "FileScope", 
+/**
+ * The lane's position in `Opened.lanes`.
+ */
+lane: number, 
+/**
+ * The request answered.
+ */
+request: number, 
+/**
+ * Why there are no rows.
+ */
+unavailable: FileScopeUnavailable, } | { "type": "Error" } & ErrorWire;
+
+/**
+ * A catalog document as the backend served it to the viewer: the export draws with exactly that text.
+ */
+export type CatalogRefWire = { 
+/**
+ * The catalog id, such as `built-in:standard`.
+ */
+id: string, 
+/**
+ * The revision of the document the viewer was served.
+ */
+revision: number, };
+
+/**
+ * How a lane looks, frozen when the export starts.
+ */
+export type LaneStyleWire = { 
+/**
+ * The lane's name, written on its cell when several lanes share the picture.
+ */
+label: string, 
+/**
+ * The indices, in `LaneStatusWire::Ready.filter`, of the class filters switched on.
+ */
+enabled_classes: Array<number>, 
+/**
+ * How many class filters the file offers: the length of `LaneStatusWire::Ready.filter`.
+ */
+class_options: number, 
+/**
+ * Bits of the catalog's features switched off.
+ */
+hidden: number, 
+/**
+ * One of the catalog's themes; `null` is the catalog's own look.
+ */
+theme: string | null, 
+/**
+ * The painter's opacity for samples kept by sticky, 0 to 1.
+ */
+retained_opacity: number, 
+/**
+ * The lane's frame filter expression; `null` draws every sample.
+ */
+filter: string | null, };
+
+/**
+ * One lane an export draws.
+ */
+export type ExportLaneWire = { 
+/**
+ * The lane's position in `Opened.lanes`.
+ */
+lane: number, 
+/**
+ * The catalog the lane draws with.
+ */
+catalog: CatalogRefWire, 
+/**
+ * How the lane looks.
+ */
+style: LaneStyleWire, 
+/**
+ * The lane's policy revision; the backend refuses the export when it differs from its own.
+ */
+policy_revision: number, 
+/**
+ * The source revision the viewer holds, absent for a plain lane; the backend refuses the export when it differs.
+ */
+data_revision: number | null, };
+
+/**
+ * How good the video is: H.264 constant quality, from the largest file to the smallest.
+ */
+export type ExportQualityWire = "lossless" | "high" | "balanced" | "small";
+
+/**
+ * What an export writes.
+ */
+export type ExportFormatWire = { "format": "Mp4", 
+/**
+ * The quality preset.
+ */
+quality: ExportQualityWire, } | { "format": "Png" };
+
+/**
+ * Where an export job stands.
+ */
+export type ExportStateWire = { "state": "Running", 
+/**
+ * Frames written.
+ */
+done: number, 
+/**
+ * Frames in the range.
+ */
+total: number, } | { "state": "Done" } | { "state": "Cancelled" } | { "state": "Failed" } & ErrorWire;
+
+/**
+ * How a term compares a field with its value.
+ */
+export type SearchOp = "eq" | "gt" | "lt" | "ge" | "le";
+
+/**
+ * One condition of a search.
+ */
+export type TermWire = { 
+/**
+ * The field, or `null` to search the free text. A path names a field when it equals it or its trailing dotted
+ * parts, ignoring case; one that names none of an object's fields matches nothing.
+ */
+path: string | null, 
+/**
+ * How the field is compared with `value`.
+ */
+op: SearchOp, 
+/**
+ * What to compare with, or the text to look for when there is no path.
+ */
+value: string, 
+/**
+ * Whether the term holds where it does not match.
+ */
+negated: boolean, };
+
+/**
+ * A parsed search: every group must match, and a group matches when any of its terms does. No group matches
+ * everything.
+ */
+export type SearchWire = { 
+/**
+ * The groups, ANDed.
+ */
+groups: Array<Array<TermWire>>, };
+
+/**
+ * What the rows are sorted by.
+ */
+export type FileSortKey = "id" | "class" | "first_seen";
+
+/**
+ * The order of the rows. Rows equal in the key are in ascending id order whichever way the key goes.
+ */
+export type FileSortWire = { 
+/**
+ * What to sort by.
+ */
+key: FileSortKey, 
+/**
+ * Whether the key runs from greatest to least.
+ */
+descending: boolean, };
+
+/**
+ * Which change to entity identity an operation is.
+ */
+export type OperationKindWire = "delete" | "rename" | "merge" | "split";
+
+/**
+ * An object of the file as a list shows it.
+ */
+export type FileRowWire = { 
+/**
+ * The entity id.
+ */
+id: string, 
+/**
+ * The classes it was recorded with, in order of first appearance.
+ */
+classes: Array<string>, 
+/**
+ * The kinds of event it is in, in the order delete, rename, merge, split.
+ */
+events: Array<OperationKindWire>, 
+/**
+ * The first frame the video shows it on.
+ */
+first_frame: number, 
+/**
+ * The last frame the video shows it on.
+ */
+last_frame: number, 
+/**
+ * Where it is on screen as `[first, last]` frames, in order, merged so a strip of `bins` marks can draw it; at
+ * most as many as the request's `bins`.
+ */
+presence: Array<[number, number]>, };
+
+/**
+ * Why a File scope query has no rows.
+ */
+export type FileScopeUnavailable = { "state": "Reading" } | { "state": "Following" } | { "state": "TooLarge" } | { "state": "Failed" } & ErrorWire | { "state": "PlainLane" };
+
+/**
+ * Width and height of a decoded picture in pixels.
+ */
+export type SizeWire = { 
+/**
+ * Pixels across.
+ */
+width: number, 
+/**
+ * Pixels down.
+ */
+height: number, };
+
+/**
+ * The pixel layout a renderer reads back.
+ */
+export type OutputWire = "I420" | "Rgba";
+
+/**
+ * One lane the renderer draws.
+ */
+export type RenderLaneWire = { 
+/**
+ * The viewer's id of the lane's source, as in the Sample envelopes; `null` for a plain lane.
+ */
+source: number | null, 
+/**
+ * The catalog document text.
+ */
+catalog: string, 
+/**
+ * How the lane looks.
+ */
+style: LaneStyleWire, };
+
+/**
+ * The job, once, before the first frame.
+ */
+export type RenderSetup = { 
+/**
+ * What to read back.
+ */
+output: OutputWire, 
+/**
+ * The size of the video's pictures.
+ */
+picture: SizeWire, 
+/**
+ * The largest output the export accepts; a page that wants more fails the setup.
+ */
+max_output: SizeWire, 
+/**
+ * The lanes, in the order they tile.
+ */
+lanes: Array<RenderLaneWire>, };
+
+/**
+ * What the page sends as text.
+ */
+export type PageMessage = { "type": "Hello", 
+/**
+ * The protocol version, to compare with `RENDER_PROTOCOL`.
+ */
+protocol: number, 
+/**
+ * The secret the backend gave the page process.
+ */
+secret: string, } | { "type": "Ready", 
+/**
+ * Width of the output; even for I420.
+ */
+width: number, 
+/**
+ * Height of the output; even for I420.
+ */
+height: number, 
+/**
+ * The GPU or software renderer in use, for the log.
+ */
+renderer: string, } | { "type": "Failed", 
+/**
+ * What went wrong, in words for the user.
+ */
+reason: string, };
+
+/**
+ * What the backend sends as text, besides the binary envelopes.
+ */
+export type HostMessage = { "type": "Setup" } & RenderSetup | { "type": "Render", 
+/**
+ * Echoed in the Pixels message.
+ */
+seq: number, 
+/**
+ * The sample index each lane draws, -1 when nothing belongs to the frame or -2 when a dense file covers it with
+ * nothing (a Frame Map cell read through an `Int32Array`).
+ */
+cells: Array<number>, 
+/**
+ * The `MATCH_*` kind of each lane's cell.
+ */
+kinds: Array<number>, };
 
 /**
  * Raised when the messages or the envelope change in a way an older frontend cannot read.
  */
-export const PLAYBACK_PROTOCOL = 3;
+export const PLAYBACK_PROTOCOL = 4;
 
 /**
  * "AXDV" read as a little-endian u32.
@@ -1322,14 +1938,19 @@ export const VIDEO_FRAME_HEADER_BYTES = 64;
 export const KIND_VIDEO_FRAME = 1;
 
 /**
- * Envelope kind: the Drawing Instructions of one lane for a frame and a view revision.
- */
-export const KIND_OVERLAY = 2;
-
-/**
  * Envelope kind: the presentation time of every frame.
  */
 export const KIND_TIMELINE = 3;
+
+/**
+ * Envelope kind: one Sample Item of one source.
+ */
+export const KIND_SAMPLE = 4;
+
+/**
+ * Envelope kind: one run of one lane's Frame Map.
+ */
+export const KIND_FRAME_MAP = 5;
 
 /**
  * Flag bit 0: the frame is a keyframe.
@@ -1367,101 +1988,72 @@ export const MATRIX_BT601 = 0;
 export const MATRIX_BT709 = 1;
 
 /**
- * Where the sections of an Overlay start: the head plus the overlay header.
+ * Where the item of a Sample starts: the head plus the sample header, a multiple of 8 so the item's typed views
+ * need no copy.
  */
-export const OVERLAY_HEADER_BYTES = 64;
+export const SAMPLE_HEADER_BYTES = 40;
 
 /**
- * Overlay match byte: nothing to draw.
+ * Where the sample column of a FrameMap starts: the head plus the map header.
  */
-export const OVERLAY_MATCH_NONE = 0;
+export const FRAME_MAP_HEADER_BYTES = 48;
 
 /**
- * Overlay match byte: the sample is the frame's own.
+ * Frames of a map chunk; a run never spans two chunks.
  */
-export const OVERLAY_MATCH_EXACT = 1;
+export const FRAME_MAP_RUN_FRAMES = 256;
 
 /**
- * Overlay match byte: an earlier sample within the tolerance.
+ * Map cell: nothing belongs to the frame (read as -1 through an `Int32Array`).
  */
-export const OVERLAY_MATCH_TOLERATED = 2;
+export const FRAME_MAP_NONE = 4294967295;
 
 /**
- * Overlay match byte: an older sample kept by sticky.
+ * Map cell: a dense file covers the frame with nothing (read as -2 through an `Int32Array`).
  */
-export const OVERLAY_MATCH_RETAINED = 3;
+export const FRAME_MAP_EMPTY = 4294967294;
 
 /**
- * Overlay match byte: the file covers the frame with nothing.
+ * Map kind: the sample is the frame's own; also the kind of a NONE or EMPTY cell.
  */
-export const OVERLAY_MATCH_EMPTY = 4;
+export const MATCH_EXACT = 0;
 
 /**
- * Overlay section tag: the shared paints.
+ * Map kind: an earlier sample within the tolerance.
  */
-export const OVERLAY_TAG_PAINTS = 1;
+export const MATCH_TOLERATED = 1;
 
 /**
- * Overlay section tag: boxes.
+ * Map kind: an older sample kept by sticky.
  */
-export const OVERLAY_TAG_BOXES = 2;
+export const MATCH_RETAINED = 2;
 
 /**
- * Overlay section tag: lines.
+ * Upper bound of `data_ahead + data_behind + 1` in a Want.
  */
-export const OVERLAY_TAG_LINES = 3;
+export const MAX_DATA_WINDOW_FRAMES = 2048;
 
 /**
- * Overlay section tag: circles.
+ * Raised when the messages or the Pixels layout change in a way an older render page cannot use.
  */
-export const OVERLAY_TAG_CIRCLES = 4;
+export const RENDER_PROTOCOL = 1;
 
 /**
- * Overlay section tag: points.
+ * "AXPX" read as a little-endian u32.
  */
-export const OVERLAY_TAG_POINTS = 5;
+export const PIXELS_MAGIC = 1481660481;
 
 /**
- * Overlay section tag: the points of every polygon and polyline.
+ * Bytes before the planes of a Pixels message.
  */
-export const OVERLAY_TAG_PATH_POINTS = 6;
+export const PIXELS_HEADER_BYTES = 32;
 
 /**
- * Overlay section tag: polygons.
+ * Pixels format: planar Y, U, V with 4:2:0 subsampling, BT.709 limited range.
  */
-export const OVERLAY_TAG_POLYGONS = 7;
+export const PIXELS_I420 = 1;
 
 /**
- * Overlay section tag: polylines.
+ * Pixels format: one interleaved RGBA plane.
  */
-export const OVERLAY_TAG_POLYLINES = 8;
-
-/**
- * Overlay section tag: texts.
- */
-export const OVERLAY_TAG_TEXTS = 9;
-
-/**
- * Overlay section tag: the shared label styles.
- */
-export const OVERLAY_TAG_LABEL_STYLES = 10;
-
-/**
- * Overlay section tag: labels.
- */
-export const OVERLAY_TAG_LABELS = 11;
-
-/**
- * Overlay section tag: the runs of every label.
- */
-export const OVERLAY_TAG_RUNS = 12;
-
-/**
- * Overlay section tag: the strings every text refers to.
- */
-export const OVERLAY_TAG_STRINGS = 13;
-
-/**
- * Overlay section tags from here up are reserved (64 is the hit targets); receivers skip unknown tags.
- */
-export const OVERLAY_TAG_RESERVED = 64;
+export const PIXELS_RGBA = 2;

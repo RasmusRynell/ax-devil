@@ -54,7 +54,9 @@ const STANDARD_SHORTCUTS = Object.fromEntries(
 const holds = (row: Row, value: unknown) =>
   row.kind.type === "bool"
     ? typeof value === "boolean"
-    : row.kind.type === "choice" && row.kind.options.some(([name]) => name === value);
+    : row.kind.type === "text"
+      ? typeof value === "string"
+      : row.kind.type === "choice" && row.kind.options.some(([name]) => name === value);
 
 /** What this browser kept: only what the Personal rows and commands still accept, ignoring anything unreadable. */
 function readLocal(): Local {

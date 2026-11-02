@@ -34,7 +34,14 @@ version="$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -1)"
 # The steps of `make build`, spelled out because a Windows runner has no make to count on.
 if [[ -z ${SKIP_BUILD:-} ]]; then
   pnpm install --frozen-lockfile
-  scripts/cargo run --locked -q -p api-types --bin export-types
+  # export-types links FFmpeg (through the export crate) while the libraries are still only in FFMPEG_DIR, so the
+  # loader is told where they are. It is run directly: macOS drops DYLD_* from a script started through /usr/bin/env.
+  scripts/cargo build --locked -q -p api-types --bin export-types
+  case "$os" in
+  linux) LD_LIBRARY_PATH="$FFMPEG_DIR/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" target/debug/export-types ;;
+  win) PATH="$(cygpath -u "$FFMPEG_DIR/bin"):$PATH" target/debug/export-types ;;
+  mac) DYLD_LIBRARY_PATH="$FFMPEG_DIR/lib${DYLD_LIBRARY_PATH:+:$DYLD_LIBRARY_PATH}" target/debug/export-types ;;
+  esac
   pnpm --dir frontend build
   scripts/cargo build --locked --release
 fi
@@ -43,6 +50,14 @@ if [[ ! -f frontend/dist/index.html ]]; then
   echo "frontend/dist/index.html is missing: the backend would embed no frontend." >&2
   exit 1
 fi
+
+# Export draws through the hidden renderer page, and `catalog check` runs its bundle; both are built with the frontend.
+for built in desktop/generated/render/render.html desktop/generated/catalog-check.cjs; do
+  if [[ ! -f $built ]]; then
+    echo "$built is missing: the package could not export." >&2
+    exit 1
+  fi
+done
 
 bin=desktop/staging/bin
 rm -rf desktop/staging

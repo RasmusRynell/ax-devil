@@ -130,6 +130,7 @@ async fn the_local_listener_answers_only_pages_it_served_and_every_response_forb
             ("PUT", "/api/settings"),
             ("GET", "/api/sessions"),
             ("GET", "/api/handlers"),
+            ("GET", "/api/plugins"),
             ("POST", "/api/resolvers/mot_challenge/scan"),
             ("GET", "/api/session"),
             ("GET", "/api/playback"),
@@ -165,18 +166,20 @@ async fn a_server_answers_settings_and_sessions_only_to_the_password() {
             ("PUT", "/api/settings"),
             ("GET", "/api/sessions"),
             ("GET", "/api/handlers"),
+            ("GET", "/api/plugins"),
             ("POST", "/api/resolvers/mot_challenge/scan"),
         ] {
             let (status, _) = send(&app, method, path, headers, "{}").await;
             assert_eq!(status, StatusCode::UNAUTHORIZED, "{method} {path}");
         }
     }
-    for path in ["/api/sessions", "/api/handlers"] {
+    for path in ["/api/sessions", "/api/handlers", "/api/plugins"] {
         assert_eq!(send(&app, "GET", path, &right, "").await.0, StatusCode::OK);
     }
     // The password holder sees and replaces the Server settings, and may touch neither a Personal setting nor a
     // shortcut.
-    let server = json!({"playback.video_cache": "auto", "storage.cache_dir": ""});
+    let server =
+        json!({"playback.video_cache": "auto", "storage.cache_dir": "", "storage.catalog_dir": ""});
     let (status, settings) = send(&app, "GET", "/api/settings", &right, "").await;
     assert_eq!(
         (status, settings),
@@ -234,7 +237,12 @@ async fn the_listener_for_other_machines_serves_the_sockets_but_neither_settings
     let (state, _keep) = state(Policy::Shared { password: None });
     let lan = lan_app(state);
     let host = [("host", "192.168.1.20:7340")];
-    for path in ["/api/settings", "/api/sessions", "/api/handlers"] {
+    for path in [
+        "/api/settings",
+        "/api/sessions",
+        "/api/handlers",
+        "/api/plugins",
+    ] {
         let (status, _) = send(&lan, "GET", path, &host, "").await;
         assert_eq!(status, StatusCode::NOT_FOUND, "{path}");
     }

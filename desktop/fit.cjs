@@ -117,4 +117,40 @@ function dialog() {
   return problems;
 }
 
-module.exports = { page, dialog };
+/**
+ * A panel laid over or beside the viewer (a popover, the inspector): inside the window, not scrolling sideways, with no
+ * control or text sticking out of it or cut off, and no horizontal scrollbar on the page. Height may scroll.
+ */
+function panel(selector) {
+  const problems = [];
+  const box = document.querySelector(selector);
+  if (!box) return [`no panel: ${selector}`];
+  const bounds = box.getBoundingClientRect();
+  if (
+    bounds.left < -1 ||
+    bounds.right > innerWidth + 1 ||
+    bounds.top < -1 ||
+    bounds.bottom > innerHeight + 1
+  )
+    problems.push(
+      `panel outside the window: ${[bounds.left, bounds.top, bounds.right, bounds.bottom].map(Math.round).join()}`,
+    );
+  if (box.scrollWidth > box.clientWidth + 1) problems.push("panel scrolls sideways");
+  const root = document.documentElement;
+  if (root.scrollWidth > root.clientWidth) problems.push("the page scrolls sideways");
+  for (const element of box.querySelectorAll("*")) {
+    const rect = element.getBoundingClientRect();
+    const name = (element.ariaLabel || element.textContent).trim().slice(0, 30);
+    if (rect.width && (rect.left < bounds.left - 1 || rect.right > bounds.right + 1))
+      problems.push(`outside the panel: "${name}"`);
+    if (
+      element.localName !== "input" &&
+      element.clientWidth > 2 &&
+      element.scrollWidth > element.clientWidth + 1
+    )
+      problems.push(`cut off: "${name}"`);
+  }
+  return problems;
+}
+
+module.exports = { page, dialog, panel };

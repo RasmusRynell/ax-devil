@@ -1,10 +1,15 @@
 //! MOT decoder behavior through the public registry.
 
-use std::sync::LazyLock;
+use std::{ops::ControlFlow, sync::LazyLock};
 
 use foundation::{CancelToken, FrameSize, Interrupt};
 use scene::{Classification, Coverage, Entity, Geometry, Scene, SceneTime, Score, Value};
-use scene_decoders::{DecodeContext, DecodeOptions, DecodeSummary, file_decoder};
+use scene_decoders::{
+    DecodeContext, DecodeOptions, DecodeSummary, Header, LoadWarning, OnEqualKey, SceneSink,
+    file_decoder,
+};
+
+mod common;
 
 fn context(width: u32, height: u32) -> DecodeContext<'static> {
     static OPTIONS: LazyLock<DecodeOptions> = LazyLock::new(DecodeOptions::new);
@@ -16,13 +21,8 @@ fn context(width: u32, height: u32) -> DecodeContext<'static> {
 
 fn decode_with(text: &str, context: &DecodeContext<'_>) -> (Vec<Scene>, DecodeSummary) {
     let decoder = file_decoder("MOT_FILE").expect("MOT decoder is registered");
-    let mut scenes = Vec::new();
-    let summary = match decoder.decode_file(
-        text.as_bytes(),
-        context,
-        &mut |scene| scenes.push(scene),
-        &CancelToken::new(),
-    ) {
+    let (scenes, result) = common::run(decoder, text.as_bytes(), context, &CancelToken::new());
+    let summary = match result {
         Ok(summary) => summary,
         Err(Interrupt::Failed(error)) => panic!("decode failed: {error}"),
         Err(Interrupt::Cancelled) => panic!("decode was cancelled"),
@@ -195,6 +195,31 @@ fn a_cancelled_token_stops_the_decode() {
     let token = CancelToken::new();
     token.cancel();
     let text = "1,1,0,0,1,1,1\n".repeat(5000);
-    let result = decoder.decode_file(text.as_bytes(), &context(1920, 1080), &mut |_| {}, &token);
+    let (_, result) = common::run(decoder, text.as_bytes(), &context(1920, 1080), &token);
     assert!(matches!(result, Err(Interrupt::Cancelled)));
+}
+
+#[test]
+fn a_sink_that_cannot_take_more_stops_the_decode() {
+    struct Full(usize);
+    impl SceneSink for Full {
+        fn header(&mut self, _header: Header) {}
+        fn sample(&mut self, _scene: Scene, _on_equal_key: OnEqualKey) -> ControlFlow<()> {
+            self.0 += 1;
+            ControlFlow::Break(())
+        }
+        fn warn(&mut self, _warning: LoadWarning) {}
+    }
+    let decoder = file_decoder("MOT_FILE").expect("MOT decoder is registered");
+    let mut sink = Full(0);
+
+    let result = decoder.decode_file(
+        &common::BytesSource(b"1,1,0,0,1,1,1\n2,1,0,0,1,1,1\n3,1,0,0,1,1,1\n"),
+        &context(1920, 1080),
+        &mut sink,
+        &CancelToken::new(),
+    );
+
+    assert!(result.is_ok());
+    assert_eq!(sink.0, 1);
 }

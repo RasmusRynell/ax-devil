@@ -16,13 +16,15 @@ pub struct VideoRecipe {
     pub overlays: Vec<OverlayRecipe>,
 }
 
-/// An overlay file and the decoder that reads it.
+/// An overlay file and the decoder that reads it, shown as a lane of its own: one file may be several lanes.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct OverlayRecipe {
     /// The overlay file, absolute.
     pub path: HostPath,
     /// The decoder handler id.
     pub handler: String,
+    /// The lane's name, unique within the video.
+    pub label: String,
 }
 
 /// A playlist resolver and the settings it resolves.
@@ -59,8 +61,8 @@ impl Recipe {
     ///
     /// A video recipe checks that its path is a readable regular file, and each overlay that its decoder is known and
     /// its file readable; opening the media is the viewer's job, so a file that is not a video resolves here and
-    /// fails when the viewer opens it. Each overlay is a lane labelled with its file name, so two overlays with the
-    /// same file name fail.
+    /// fails when the viewer opens it. Each overlay is a lane with its recipe's label, so two overlays with the
+    /// same label fail.
     ///
     /// A playlist recipe asks its resolver, then checks that entry names and the lane names within each entry are
     /// unique, since they are the identity of entries and lanes. Resolving twice gives the same ids.
@@ -116,7 +118,7 @@ fn resolve_video(
         }
         check_readable_file(path)?;
         overlays.push(OverlayRef {
-            label: file_name(path),
+            label: overlay.label.clone(),
             path: path.to_path_buf(),
             handler: overlay.handler.clone(),
             options: Settings::new(),

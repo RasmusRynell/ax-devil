@@ -1,0 +1,64 @@
+{
+  "schema": 4,
+  "name": "Classic",
+  "description": "The original ax-devil look: the id above each box and the class below it, a score bar, a movement symbol, color swatches and badges inside the box.",
+  "vars": {
+    "color": "#c8d2dc",
+    "line": "1.5px",
+    "first": null,
+    "second": null,
+    "bag": false,
+    "face": null,
+    "swatch": "clamp(box.min * 0.15, 5px, 16px)"
+  },
+  "rules": [
+    { "when": "class != null", "set": {
+      "color": "ramp(score ?? 0.5, 0, #006622, 0.25, #00b93e, 0.5, #0dff5d, 0.75, #60ff95, 1, #b3ffcc)", "line": "1px" } },
+    { "when": "class in ['vehicle', 'vehicle_other', 'car', 'bus', 'truck', 'bike', 'bicycle']", "set": {
+      "color": "#5096ff", "first": "top(attr.vehicle_colors)" } },
+    { "when": "class == 'human'", "set": {
+      "first": "top(attr.upper_clothing_colors)", "second": "top(attr.lower_clothing_colors)", "bag": "attr.carries_bag" } },
+    { "when": "class == 'head'", "set": { "color": "#ffff00", "face": "attr.face_visible" } }
+  ],
+  "layers": [
+    { "feature": "outlines", "marks": [
+      { "mark": "box", "stroke": "color", "width": "line", "dash": "attr.occluded", "fill": "alpha(color, 15)" },
+      { "mark": "polygon", "stroke": "color", "width": "line", "dash": "attr.occluded", "fill": "alpha(color, 15)" }
+    ] },
+    { "feature": "score", "when": "score != null", "marks": [
+      { "mark": "bar", "value": "score", "pin": "bottom-left", "w": "1px",
+        "margin": ["min(box.h * 0.35, 20px)", "0px", "min(box.min * 0.1, 4px)", "min(box.min * 0.1, 4px)"],
+        "fill": "alpha(ramp(score, 0, #8c0f0f, 0.25, #ff1e1e, 0.5, #ffa500, 0.75, #96f028, 1, #14ff78), 220)" }
+    ] },
+    { "feature": "attributes", "when": "face != null", "marks": [
+      { "mark": "box", "on": "inset(box, 0.2)", "stroke": "#f52891", "width": "1px", "fill": "alpha(#f52891, 15)" },
+      { "mark": "bar", "on": "inset(box, 0.2)", "value": "face", "pin": "bottom-left", "w": "1px", "margin": ["2px", "0px", "2px", "2px"],
+        "fill": "alpha(ramp(face, 0, #8c0f0f, 0.25, #ff1e1e, 0.5, #ffa500, 0.75, #96f028, 1, #14ff78), 220)" }
+    ] },
+    { "feature": "attributes", "marks": [
+      { "mark": "circle", "when": "first != null", "pin": "top-right", "r": "swatch / 2", "margin": "max(swatch * 0.2, 2px)", "fill": "first" },
+      { "mark": "circle", "when": "second != null", "pin": "bottom-right", "r": "swatch / 2", "margin": "max(swatch * 0.2, 2px)", "fill": "second" },
+      { "mark": "box", "when": "bag", "pin": "center-right", "w": "swatch", "h": "swatch", "margin": "max(swatch * 0.2, 2px)",
+        "stroke": "#ffffff", "width": "1px", "fill": "#c8c8c8" }
+    ] },
+    { "feature": "speed", "marks": [
+      { "mark": "arrow", "gain": 0.5, "max": "100px", "head": "4.2px", "head_width": "2.8px", "stroke": "#00ff96", "width": "1.05px" }
+    ] },
+    { "feature": "relations", "for": "relations", "when": "relation == 'has_part'", "marks": [
+      { "mark": "line", "from": "anchor(source.box, 'center')", "to": "anchor(target.box, 'center')", "stroke": "#ffffff", "width": "2px", "dash": true }
+    ] },
+    { "feature": "ids", "marks": [
+      { "mark": "text", "text": "trim(id, 10, 'end', '...', '-')", "color": "#ffffff", "size": "12px", "font": "Arial",
+        "place": [ { "at": "top-left", "anchor": "bottom-left" } ] }
+    ] },
+    { "feature": "class_names", "when": "class != null", "marks": [
+      { "mark": "text", "text": "trim(class, 30, 'end', '...')", "color": "#ffffff", "size": "12px", "font": "Arial",
+        "place": [ { "at": "bottom-left", "anchor": "top-left" } ] }
+    ] },
+    { "feature": "movement", "when": "motion_state != null", "marks": [
+      { "mark": "label", "size": "11px", "background": "#0e1014aa", "pad": ["3px", "1px"], "radius": "2px",
+        "runs": [ { "text": "case(motion_state, 'moving', '▶', 'stationary', 'Ⅱ', '?')", "color": "#ffffff", "weight": "medium" } ],
+        "place": [ { "at": "top-right", "anchor": "top-left", "dx": "3px" } ] }
+    ] }
+  ]
+}

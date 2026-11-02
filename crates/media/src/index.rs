@@ -69,6 +69,8 @@ pub struct FrameIndex {
     origin: Origin,
     timeline: Timeline,
     keyframes: Keyframes,
+    /// How long the container says the last frame lasts, when it does.
+    last_duration: Option<MediaTime>,
     info: VideoInfo,
     warnings: Vec<String>,
 }
@@ -141,16 +143,16 @@ impl FrameIndex {
         }
 
         cancel.check()?;
-        let (scan, pts, keyframes) =
-            scan::build(&mut opened, path, fingerprint.size, cancel, progress)?;
+        let (scan, scanned) = scan::build(&mut opened, path, fingerprint.size, cancel, progress)?;
         let stored = Stored {
             scan,
             fingerprint,
             stream: opened.stream as u32,
             time_base: opened.time_base,
-            first_pts: pts.first().copied().unwrap_or_default(),
-            pts,
-            keyframes,
+            first_pts: scanned.pts.first().copied().unwrap_or_default(),
+            last_duration: scanned.last_duration,
+            pts: scanned.pts,
+            keyframes: scanned.keyframes,
         };
         let index = Self::from_stored(stored, &opened, &fingerprint, &info).map_err(|reason| {
             Interrupt::Failed(source::error(
@@ -176,6 +178,18 @@ impl FrameIndex {
     /// Presentation time of every frame.
     pub fn timeline(&self) -> &Timeline {
         &self.timeline
+    }
+
+    /// How long frame `sequence_id` lasts: the time to the next frame, and for the last frame the duration the
+    /// container gives it, else the previous gap. `None` past the end, and for a last frame with no duration and no
+    /// earlier frame.
+    pub fn duration_of(&self, sequence_id: u64) -> Option<MediaTime> {
+        if sequence_id + 1 == self.timeline.len() {
+            self.last_duration
+                .or_else(|| self.timeline.period_after(sequence_id))
+        } else {
+            self.timeline.period_after(sequence_id)
+        }
     }
 
     /// The sequence ids where decoding can start.
@@ -263,10 +277,17 @@ impl FrameIndex {
             return Err("the video stream differs".to_string());
         }
         let (timeline, keyframes) = times_of(&stored)?;
+        let last_duration = MediaTime::from_ticks(
+            stored.last_duration,
+            i64::from(stored.time_base.0),
+            i64::from(stored.time_base.1),
+        )
+        .filter(|duration| *duration > MediaTime::ZERO);
         Ok(Self {
             origin: Origin::Packets(stored),
             timeline,
             keyframes,
+            last_duration,
             info: info.clone(),
             warnings: Vec::new(),
         })

@@ -2,8 +2,8 @@ import { reasonOf } from "../errors";
 import { Icon } from "../kit/Icon";
 import { Popover } from "../kit/Popover";
 import { LaneMenu } from "./LaneMenu";
-import type { LaneState } from "./lanes";
-import type { CatalogInfoWire, LaneViewWire } from "./protocol";
+import type { LaneSettings, LaneState } from "./lanes";
+import type { CatalogInfoWire } from "./protocol";
 
 /** One thing to tell the user about a lane. */
 export type Notice = {
@@ -14,7 +14,7 @@ export type Notice = {
   more?: boolean;
 };
 
-/** What the lane has to report: why it failed, why its last change was not applied, and what its file warned of. */
+/** What the lane has to report: why it failed or stopped reading, why its last change was not applied, and what its file warned of. */
 export function laneNotices(lane: LaneState): Notice[] {
   const { status } = lane;
   const notices: Notice[] = [];
@@ -24,7 +24,18 @@ export function laneNotices(lane: LaneState): Notice[] {
       reasons: status.location === undefined ? undefined : [status.location],
     });
   if (lane.problem) notices.push({ problem: lane.problem });
-  if (status !== "plain" && status.status === "Ready")
+  if (lane.catalogProblem)
+    notices.push({
+      problem: "The chosen catalog cannot be used",
+      reasons: lane.catalogProblem.split("\n"),
+    });
+  if (status !== "plain" && status.status === "Ready") {
+    if (status.ingest.state === "Incomplete")
+      notices.push({
+        problem: reasonOf(status.ingest),
+        consequence: "The overlay ends where reading stopped.",
+        reasons: status.ingest.location === undefined ? undefined : [status.ingest.location],
+      });
     for (const warning of status.warnings)
       notices.push({
         problem: warning.problem,
@@ -32,6 +43,7 @@ export function laneNotices(lane: LaneState): Notice[] {
         reasons: warning.reasons,
         more: warning.more_reasons,
       });
+  }
   return notices;
 }
 
@@ -57,22 +69,24 @@ export function NoticeList({ notices }: { notices: readonly Notice[] }) {
 
 /**
  * The name tag over a lane's top-left corner: its label, that it is loading, a button for what there is to report,
- * and the button that opens the lane's menu. A lane without an overlay file has neither warnings nor settings.
- * Without `onHide` the menu cannot hide the lane.
+ * and the button that opens the lane's menu. A lane without a source has neither warnings nor settings.
+ * Without `onHide` the menu cannot hide the lane, without `onApplyAll` it cannot copy to the others.
  */
 export function LaneChip({
   lane,
   catalogs,
   onChange,
   onHide,
+  onApplyAll,
 }: {
   lane: LaneState;
   catalogs: readonly CatalogInfoWire[];
-  onChange: (change: Partial<LaneViewWire>) => void;
+  onChange: (change: Partial<LaneSettings>) => void;
   onHide?: () => void;
+  onApplyAll?: () => void;
 }) {
   const notices = laneNotices(lane);
-  const loading = lane.status !== "plain" && lane.status.status === "Loading";
+  const loading = lane.pending || (lane.status !== "plain" && lane.status.status === "Loading");
   return (
     <div className="flex w-fit max-w-full items-center rounded-control bg-canvas-scrim text-on-canvas">
       <span className="min-w-0 truncate px-m">{lane.label}</span>
@@ -91,7 +105,7 @@ export function LaneChip({
           <NoticeList notices={notices} />
         </Popover>
       )}
-      {lane.hasOverlay && (
+      {lane.source !== null && (
         <Popover
           onCanvas
           label={`${lane.label}: settings`}
@@ -103,6 +117,13 @@ export function LaneChip({
               lane={lane}
               catalogs={catalogs}
               onChange={onChange}
+              onApplyAll={
+                onApplyAll &&
+                (() => {
+                  close();
+                  onApplyAll();
+                })
+              }
               onHide={
                 onHide &&
                 (() => {

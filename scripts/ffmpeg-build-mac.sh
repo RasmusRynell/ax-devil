@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Builds a minimal LGPL FFmpeg for macOS from its source tarball: shared libraries only, the formats and codecs the
-# app and its test fixtures use, no TLS, nothing GPL or non-free.
+# app and its test fixtures use plus what export writes (PNG, H.264 in MP4), no TLS, nothing GPL or non-free.
 #
 #   scripts/ffmpeg-build-mac.sh PREFIX      installs include/ and lib/ under PREFIX, an empty or missing folder
 #   scripts/ffmpeg-build-mac.sh source DIR  puts the source tarball it builds from, ffmpeg-source-macos-<version>.tar.xz, in DIR
@@ -21,11 +21,13 @@ CONFIGURE=(
   --enable-demuxer=mov,matroska,nut,avi,mpegts,h264,hevc,image2,mjpeg,rtsp,rtp,sdp
   --enable-decoder=h264,hevc,mjpeg,png,rawvideo,mpeg4,vp9
   --enable-parser=h264,hevc,mjpeg,png,vp9
+  # Export: PNG stills, and H.264 in MP4 through the system encoder (x264 is GPL; none is built here).
+  --enable-encoder=png,h264_videotoolbox --enable-muxer=mp4 --enable-videotoolbox
 )
 
 # Downloads $1 to $2 and fails unless it has the SHA-256 $3.
 download() {
-  curl --proto '=https' --tlsv1.2 -sSfL -o "$2" "$1"
+  curl --proto '=https' --tlsv1.2 -sSfL --retry 10 --retry-delay 20 --retry-all-errors --connect-timeout 30 -o "$2" "$1"
   if command -v sha256sum >/dev/null; then
     echo "$3  $2" | sha256sum -c -
   else

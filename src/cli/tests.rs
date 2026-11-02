@@ -196,7 +196,7 @@ fn list_handlers_prints_every_decoder_and_resolver_without_opening_anything() {
         Some(Command::ListHandlers)
     ));
 
-    let listing = args::handlers_listing(&Handlers::built_in());
+    let listing = args::handlers_listing(&Handlers::built_in(), &PluginsInfo::default());
     for expected in ["MOT_FILE", "mot_challenge", "folder_pair", "MOT Challenge"] {
         assert!(listing.contains(expected), "{expected} in\n{listing}");
     }
@@ -218,24 +218,164 @@ fn catalog_commands_list_the_built_ins_and_check_a_file_with_its_problems_locate
         command(&["check", "night.json"]),
         CatalogCommand::Check { file } if file == std::path::Path::new("night.json")
     ));
+    assert!(matches!(
+        command(&["render", "night.json", "--out", "sheets"]),
+        CatalogCommand::Render { sheet: SheetName::Overview, out, .. } if out == std::path::Path::new("sheets")
+    ));
     assert!(parse(&["catalog"]).is_err());
     assert!(parse(&["catalog", "check"]).is_err());
+    assert!(parse(&["catalog", "render", "night.json"]).is_err());
 
-    let listing = catalog::run(&CatalogCommand::List);
+    let catalogs = tempfile::tempdir().unwrap();
+    std::fs::write(
+        catalogs.path().join("night.json"),
+        r#"{"name":"Night","description":"Dark"}"#,
+    )
+    .unwrap();
+    let folder = || Ok(catalogs.path().to_path_buf());
+    let listing = catalog::run(&CatalogCommand::List, folder());
     assert!(listing.ok);
-    assert_eq!(listing.text.lines().count(), 6);
+    assert_eq!(listing.text.lines().count(), 7);
     assert!(listing.text.starts_with("built-in:standard"));
+    assert!(
+        listing.text.ends_with("user:night.json    Night: Dark\n"),
+        "{}",
+        listing.text
+    );
+    let unknown = catalog::run(&CatalogCommand::List, Err("no home".into()));
+    assert!(!unknown.ok);
+    assert!(unknown.text.contains("no home"));
+    // A user catalog is checked by its id, in the folder, without the settings.
+    let checked = |file: &str, folder| catalog::checked_file(std::path::Path::new(file), folder);
+    assert_eq!(
+        checked("user:night.json", folder()),
+        Ok(catalogs.path().join("night.json"))
+    );
+    assert!(checked("user:night.json", Err("no home".into())).is_err());
+    assert_eq!(
+        checked("night.json", Err("no home".into())),
+        Ok("night.json".into())
+    );
+    assert_eq!(
+        checked("user:../night.json", folder()),
+        Ok("user:../night.json".into())
+    );
 
+    // The checker is the frontend's compiler, run in Electron-as-Node from the checkout's desktop folder.
+    let desktop = std::path::Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/desktop"));
     let folder = tempfile::tempdir().unwrap();
     let good = folder.path().join("good.json");
-    std::fs::write(&good, include_str!("../../assets/catalogs/minimal.json")).unwrap();
-    let report = catalog::run(&CatalogCommand::Check { file: good });
-    assert!(report.ok);
+    std::fs::write(&good, include_str!("../../assets/catalogs/minimal.v4.json")).unwrap();
+    let report = catalog::check_in(desktop, &good).unwrap();
+    assert!(report.ok, "{}", report.text);
     assert!(report.text.contains("Minimal"), "{}", report.text);
 
     let bad = folder.path().join("bad.json");
-    std::fs::write(&bad, "{ \"metadata\": 3 }").unwrap();
-    let report = catalog::run(&CatalogCommand::Check { file: bad });
+    std::fs::write(
+        &bad,
+        include_str!("../../assets/catalogs/minimal.v4.json")
+            .replace("\"stroke\": \"color\"", "\"stroke\": \"colr\""),
+    )
+    .unwrap();
+    let report = catalog::check_in(desktop, &bad).unwrap();
     assert!(!report.ok);
-    assert!(report.text.contains("/metadata"), "{}", report.text);
+    assert!(
+        report
+            .text
+            .contains("/layers/0/marks/0/stroke: unknown name 'colr'"),
+        "{}",
+        report.text
+    );
+    assert!(
+        report.text.contains("  17:"),
+        "line and column: {}",
+        report.text
+    );
+
+    // Rendering lists the same problems and draws nothing.
+    let out = folder.path().join("sheets");
+    let rendered = catalog::render_in(desktop, &bad, &out, SheetName::Overview).unwrap();
+    assert!(!rendered.ok);
+    assert_eq!(rendered.text, report.text);
+    assert!(!out.exists());
+
+    let report = catalog::check_in(desktop, &folder.path().join("missing.json")).unwrap();
+    assert!(!report.ok);
+    assert!(report.text.contains("missing.json"), "{}", report.text);
+
+    let error = catalog::check_in(folder.path(), &good).unwrap_err();
+    assert!(
+        error.contains("Cannot find the desktop shell's Electron"),
+        "{error}"
+    );
+}
+
+#[tokio::test]
+async fn plugins_installed_and_removed_through_the_registry_load_on_the_next_start() {
+    let folder = tempfile::tempdir().unwrap();
+    let registry = Ok(folder.path().join("data/plugins.json"));
+    let fixture =
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("fixtures/converters/shell-times");
+    let broken = folder.path().join("broken");
+    std::fs::create_dir(&broken).unwrap();
+    std::fs::write(
+        broken.join("ax-devil-converter.json"),
+        r#"{"manifest":1,"protocol":2}"#,
+    )
+    .unwrap();
+    // Each command starts as the app does: the registry is read before the command line.
+    let plugins = |args: &[&str]| {
+        let (handlers, installed) = ax_devil::plugins::load(&registry, Handlers::built_in());
+        let command = match parse(&[&["plugins"], args].concat()).unwrap().command {
+            Some(Command::Plugins(command)) => command,
+            _ => panic!("a plugins command is a plugins command"),
+        };
+        plugins::run(command, registry.clone(), handlers, installed)
+    };
+    let fixture = fixture.to_str().unwrap();
+
+    let installed = plugins(&["install", fixture]).await;
+    assert!(
+        installed.ok && installed.text.contains("next start"),
+        "{}",
+        installed.text
+    );
+    let again = plugins(&["install", fixture]).await;
+    assert!(
+        !again.ok && again.text.contains("already taken"),
+        "{}",
+        again.text
+    );
+    let refused = plugins(&["install", broken.to_str().unwrap()]).await;
+    assert!(!refused.ok, "{}", refused.text);
+
+    let listed = plugins(&["list"]).await;
+    assert!(
+        listed.ok && listed.text.starts_with("shell-times  1.0.0  .times.txt"),
+        "{}",
+        listed.text
+    );
+    let json: Value = serde_json::from_str(&plugins(&["list", "--json"]).await.text).unwrap();
+    assert_eq!(json["converters"][0]["status"]["state"], "Loaded");
+    let handlers = ax_devil::plugins::load(&registry, Handlers::built_in()).0;
+    assert!(
+        args::try_parse_from(
+            &handlers,
+            [
+                "ax-devil",
+                "local",
+                "--video",
+                "v.mp4",
+                "--overlay",
+                "a.txt",
+                "--handler-type",
+                "shell-times"
+            ]
+        )
+        .is_ok()
+    );
+
+    assert!(plugins(&["remove", "shell-times"]).await.ok);
+    assert!(!plugins(&["remove", "shell-times"]).await.ok);
+    assert!(plugins(&["list"]).await.text.contains("No converters"));
 }

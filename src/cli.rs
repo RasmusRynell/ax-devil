@@ -4,21 +4,24 @@
 //! `args` builds the parser from what the app knows (the `playlist` subcommands come from each resolver's settings
 //! schema); the items the command line asks for wait in the [`LaunchQueue`] for the first Local session.
 
-use crate::paths::Paths;
+use crate::paths::{self, Paths};
+use api_types::handlers::PluginsInfo;
 use ax_devil::{
     AppState,
     access::{Limits, Policy},
-    app,
+    app, desktop,
     session::LaunchQueue,
     share::{self, Hosting, LinkBase, ShareListener},
     video_cache,
     video_sources::VideoSources,
 };
 use axum::Router;
-use clap::{Args, Parser, Subcommand, ValueHint};
+use catalogs::Library;
+use clap::{Args, Parser, Subcommand, ValueEnum, ValueHint};
 use foundation::{Location, UserError};
 use handlers::Handlers;
 use playlist_resolvers::Settings;
+use plugins::PluginsCommand;
 use sessions::Secret;
 use std::{
     error::Error,
@@ -34,6 +37,7 @@ use workspace::{WorkspaceItem, intake::NewOverlay};
 
 mod args;
 mod catalog;
+mod plugins;
 #[cfg(test)]
 mod tests;
 
@@ -114,9 +118,12 @@ enum Command {
     },
     /// List the overlay decoders and playlist resolvers, then exit.
     ListHandlers,
-    /// List the render catalogs or check a catalog file, then exit.
+    /// List the render catalogs, check a catalog file or draw one, then exit.
     #[command(subcommand)]
     Catalog(CatalogCommand),
+    /// Install, remove, list or check converters, which read overlay files of other formats, then exit.
+    #[command(subcommand)]
+    Plugins(PluginsCommand),
     /// Serve the app to other machines, protected by a server password.
     ///
     /// AX_DEVIL_SERVER_PASSWORD chooses the password (printable ASCII, no spaces); otherwise one is generated.
@@ -128,14 +135,35 @@ enum Command {
 /// What `catalog` was asked to do.
 #[derive(Subcommand)]
 enum CatalogCommand {
-    /// List the built-in catalogs.
+    /// List the built-in catalogs and the files of the user's catalog folder.
     List,
     /// Validate a catalog file; every problem is listed with its JSON location.
     Check {
-        /// The catalog file.
+        /// The catalog file, or a catalog of the user's folder as `user:<file name>`.
         #[arg(value_name = "FILE", value_hint = ValueHint::FilePath)]
         file: PathBuf,
     },
+    /// Draw a sheet of example objects with a catalog and write it as a PNG; needs no display.
+    ///
+    /// The catalog is checked first, and a catalog with problems is listed as `check` does.
+    Render {
+        /// The catalog file, or a catalog of the user's folder as `user:<file name>`.
+        #[arg(value_name = "FILE", value_hint = ValueHint::FilePath)]
+        file: PathBuf,
+        /// The folder to write the picture to; made when missing. The file is named after the sheet.
+        #[arg(long, value_name = "DIR", value_hint = ValueHint::DirPath)]
+        out: PathBuf,
+        /// The sheet to draw.
+        #[arg(long, value_enum, default_value_t = SheetName::Overview)]
+        sheet: SheetName,
+    },
+}
+
+/// The example sheets `catalog render` can draw.
+#[derive(Clone, Copy, ValueEnum)]
+enum SheetName {
+    /// One object for every class the built-in decoders name, and a relation.
+    Overview,
 }
 
 #[derive(Args)]
@@ -164,14 +192,39 @@ struct AppArgs {
 
 /// Runs the command the user gave.
 pub async fn run() -> ExitCode {
-    let handlers = Handlers::built_in();
+    let registry = paths::plugins_file(&|name| std::env::var_os(name));
+    let (handlers, installed) = ax_devil::plugins::load(&registry, Handlers::built_in());
     let Cli { global, command } = args::parse(&handlers);
     // These commands only print: no logging, settings file or port.
-    match &command {
-        Some(Command::ListHandlers) => return catalog::Report::listing(&handlers).print(),
-        Some(Command::Catalog(catalog)) => return catalog::run(catalog).print(),
-        _ => {}
+    match command {
+        Some(Command::ListHandlers) => catalog::Report::listing(&handlers, &installed).print(),
+        Some(Command::Plugins(command)) => plugins::run(command, registry, handlers, installed)
+            .await
+            .print(),
+        Some(Command::Catalog(catalog)) => {
+            let folder = Paths::resolve(
+                &|name| std::env::var_os(name),
+                global.config,
+                global.cache_dir,
+            )
+            .and_then(|paths| {
+                settings::Settings::load(&paths.config_file)
+                    .map(|settings| catalog_folder(&paths, &settings))
+                    .map_err(|error| error.to_string())
+            });
+            catalog::run(&catalog, folder).print()
+        }
+        command => run_backend(global, command, handlers, installed).await,
     }
+}
+
+/// Starts what `command` asks for: the desktop backend, `serve` or the shell.
+async fn run_backend(
+    global: Global,
+    command: Option<Command>,
+    handlers: Handlers,
+    installed: PluginsInfo,
+) -> ExitCode {
     let paths = Paths::resolve(
         &|name| std::env::var_os(name),
         global.config,
@@ -180,14 +233,17 @@ pub async fn run() -> ExitCode {
     let launcher = matches!(command, Some(Command::App(_)));
     let log_file = paths.as_ref().ok().map(|paths| paths.log_file.as_path());
     logging::init(global.log_level, log_file.filter(|_| !launcher));
+    ax_devil::plugins::log_problems(&installed);
     let result = match command {
         Some(Command::App(args)) => launch(&args),
         command => match paths {
             Err(error) => Err(error.into()),
             Ok(paths) => match command {
-                Some(Command::Serve(args)) => serve(&paths, args, handlers).await,
+                Some(Command::Serve(args)) => serve(&paths, args, handlers, installed).await,
                 command => match launch_items(command, &handlers) {
-                    Ok(items) => host_desktop(&paths, global.share_address, handlers, items).await,
+                    Ok(items) => {
+                        host_desktop(&paths, global.share_address, handlers, installed, items).await
+                    }
                     Err(reason) => Err(reason.into()),
                 },
             },
@@ -217,6 +273,7 @@ fn launch_items(
                 .map(|(position, path)| NewOverlay {
                     path,
                     handler: handler_type.get(position).cloned(),
+                    label: None,
                 })
                 .collect();
             workspace::intake::video(&video, &overlays, handlers)
@@ -239,12 +296,19 @@ fn describe(error: &UserError) -> String {
     }
 }
 
+/// The folder of the user's render catalogs: the `storage.catalog_dir` setting, else the standard folder.
+fn catalog_folder(paths: &Paths, settings: &settings::Settings) -> PathBuf {
+    paths.catalog_dir(settings.state().folder("storage.catalog_dir"))
+}
+
 /// What both backends start from: the services their routes are adapters over, and the stop signal.
 struct Services {
     settings: Arc<settings::Settings>,
+    catalogs: Library,
     launch: Arc<LaunchQueue>,
     videos: Arc<VideoSources>,
     handlers: Handlers,
+    plugins: PluginsInfo,
     cache_dir: PathBuf,
     stop: watch::Sender<bool>,
 }
@@ -255,6 +319,7 @@ impl Services {
     fn start(
         paths: &Paths,
         handlers: Handlers,
+        plugins: PluginsInfo,
         items: Vec<WorkspaceItem>,
     ) -> Result<Self, Box<dyn Error>> {
         let settings = Arc::new(settings::Settings::load(&paths.config_file)?);
@@ -262,6 +327,9 @@ impl Services {
         let cache_dir = paths.cache_dir(settings.state().folder("storage.cache_dir"));
         tracing::info!("Caching in {}", cache_dir.display());
         let videos = video_cache::start(&settings, &cache_dir);
+        let catalog_dir = catalog_folder(paths, &settings);
+        tracing::info!("Reading user catalogs from {}", catalog_dir.display());
+        let catalogs = Library::with_folder(catalog_dir);
         let (stop, _) = watch::channel(false);
         let stop_on_ctrl_c = stop.clone();
         tokio::spawn(async move {
@@ -278,9 +346,11 @@ impl Services {
         }
         Ok(Self {
             settings,
+            catalogs,
             launch: Arc::new(LaunchQueue::new(items)),
             videos,
             handlers,
+            plugins,
             cache_dir,
             stop,
         })
@@ -296,7 +366,9 @@ impl Services {
             self.handlers.clone(),
             &self.cache_dir,
         )
+        .with_plugins(self.plugins.clone())
         .with_launch(Arc::clone(&self.launch))
+        .with_catalogs(self.catalogs.clone())
     }
 
     /// Serves `router` until the stop signal, giving connections [`SHUTDOWN_GRACE`] to close, then ends every viewer
@@ -342,9 +414,10 @@ async fn host_desktop(
     paths: &Paths,
     share_address: SocketAddr,
     handlers: Handlers,
+    plugins: PluginsInfo,
     items: Vec<WorkspaceItem>,
 ) -> Result<ExitCode, Box<dyn Error>> {
-    let services = Services::start(paths, handlers, items)?;
+    let services = Services::start(paths, handlers, plugins, items)?;
     let port = std::env::var("PORT")
         .unwrap_or_else(|_| "7330".into())
         .parse::<u16>()?;
@@ -367,9 +440,10 @@ async fn serve(
     paths: &Paths,
     args: ServeArgs,
     handlers: Handlers,
+    plugins: PluginsInfo,
 ) -> Result<ExitCode, Box<dyn Error>> {
     share::refuse_development_build().map_err(|reason| format!("serve: {reason}"))?;
-    let services = Services::start(paths, handlers, Vec::new())?;
+    let services = Services::start(paths, handlers, plugins, Vec::new())?;
     let chosen = std::env::var(PASSWORD_VARIABLE)
         .ok()
         .filter(|text| !text.is_empty());
@@ -414,29 +488,8 @@ async fn serve(
 
 /// Starts the desktop shell and waits for it, passing on its exit code.
 fn launch(args: &AppArgs) -> Result<ExitCode, Box<dyn Error>> {
-    let desktop = match std::env::var_os("AX_DEVIL_DESKTOP") {
-        Some(folder) => PathBuf::from(folder),
-        // target/<profile>/ax-devil sits three levels below the checkout that holds desktop/.
-        None => std::env::current_exe()?
-            .ancestors()
-            .nth(3)
-            .map(|root| root.join("desktop"))
-            .unwrap_or_default(),
-    };
-    let binary = if cfg!(windows) {
-        "electron.cmd"
-    } else {
-        "electron"
-    };
-    let electron = desktop.join("node_modules/.bin").join(binary);
-    if !electron.is_file() {
-        return Err(format!(
-            "Cannot find the desktop shell's Electron at {}; set AX_DEVIL_DESKTOP to the desktop folder, \
-             installed with pnpm install",
-            electron.display()
-        )
-        .into());
-    }
+    let desktop = desktop::folder()?;
+    let electron = desktop::electron(&desktop)?;
     let mut shell = Process::new(electron);
     // Shells hosted in an Electron app export this, which would start Electron as plain Node and crash it at once.
     shell.env_remove("ELECTRON_RUN_AS_NODE");

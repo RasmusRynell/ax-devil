@@ -51,7 +51,9 @@ async fn ctrl_c_ends_open_viewers_and_the_backend_exits() {
     let ticket = session.until(|message| message["type"] == "ticket").await["ticket"].clone();
 
     let mut viewer = Socket::connect(&address, "/api/playback").await;
-    viewer.say(json!({"type": "Open", "ticket": ticket})).await;
+    viewer
+        .say(json!({"type": "Open", "ticket": ticket, "data_bytes": 1 << 20}))
+        .await;
     // The first frame is on its way: the source is open and its decoders are running.
     viewer.until_binary(|bytes| bytes[5] == 1).await;
 

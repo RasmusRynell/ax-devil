@@ -160,6 +160,7 @@ describe("add video", () => {
       connect: () => Promise.resolve(),
       disconnect: () => Promise.resolve(),
       pickFolder: () => Promise.resolve(null),
+      pickExportFile: () => Promise.resolve(null),
       onMaximizedChange: () => () => {},
     } satisfies WindowBridge;
   };

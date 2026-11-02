@@ -217,7 +217,10 @@ fn every_model_value_survives_json_and_postcard() {
     assert_eq!(from_json_str(&text).expect("reads"), scenes);
     for scene in &scenes {
         assert_eq!(&through_postcard(scene), scene);
+        let line = serde_json::to_vec(&W(scene)).expect("writes");
+        assert_eq!(&scene_from_json_slice(&line).expect("reads"), scene);
     }
+    assert!(scene_from_json_slice(br#"{"time":{"start":{"frame":1},"end":{"frame":0}}}"#).is_err());
 }
 
 #[test]

@@ -5,6 +5,8 @@ use scene::{Coverage, Geometry, Scene, SceneTime, Value};
 use scene_decoders::{DecodeContext, DecodeOptions, DecodeSummary, file_decoder};
 use serde_json::{Value as Json, json};
 
+mod common;
+
 fn detection(track_id: i64, class_id: i64) -> Json {
     json!({"track_id": track_id, "class_id": class_id, "x_min": 0.1, "y_min": 0.2, "x_max": 0.4, "y_max": 0.6})
 }
@@ -16,21 +18,19 @@ fn with(mut detection: Json, key: &str, value: Json) -> Json {
 
 fn decode(document: &str) -> Result<(Vec<Scene>, DecodeSummary), String> {
     let decoder = file_decoder("UVG_VCM").expect("the UVG-VCM decoder is built in");
-    let mut scenes = Vec::new();
-    let summary = decoder
-        .decode_file(
-            document.as_bytes(),
-            &DecodeContext {
-                options: &DecodeOptions::new(),
-                frame_size: FrameSize {
-                    width: 1920,
-                    height: 1080,
-                },
+    let (scenes, result) = common::run(
+        decoder,
+        document.as_bytes(),
+        &DecodeContext {
+            options: &DecodeOptions::new(),
+            frame_size: FrameSize {
+                width: 1920,
+                height: 1080,
             },
-            &mut |scene| scenes.push(scene),
-            &CancelToken::new(),
-        )
-        .map_err(|interrupt| format!("{interrupt:?}"))?;
+        },
+        &CancelToken::new(),
+    );
+    let summary = result.map_err(|interrupt| format!("{interrupt:?}"))?;
     Ok((scenes, summary))
 }
 

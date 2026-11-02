@@ -9,6 +9,11 @@ export interface WindowBridge {
   pickVideos(): Promise<string[]>;
   /** Opens the native folder dialog. Resolves to the absolute path chosen; null when cancelled. */
   pickFolder(): Promise<string | null>;
+  /**
+   * Opens the native save dialog for an export, suggesting `name`. Resolves to the absolute path chosen, which ends in
+   * `.extension`; null when cancelled.
+   */
+  pickExportFile(name: string, extension: "mp4" | "png"): Promise<string | null>;
   /** Reports the current state at once and every change after; returns the way to stop listening. */
   onMaximizedChange(listener: (maximized: boolean) => void): () => void;
   /**
@@ -18,6 +23,8 @@ export interface WindowBridge {
   connect(target: string, password?: string): Promise<void>;
   /** Replaces this window with one on the local backend; only a remote page may ask. */
   disconnect(): Promise<void>;
+  /** The page zoom factor (1 is 100%), read when asked. */
+  zoomFactor?(): number;
 }
 
 declare global {

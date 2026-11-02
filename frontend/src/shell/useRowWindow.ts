@@ -10,9 +10,9 @@ type Measure = { top: number; height: number; row: number };
 /**
  * Which of `count` equal-height rows a scroll container has to draw. Attach `ref` to the container; the rows are
  * `[start, end)` and the caller pads the container by the rows left out. A row's height is measured from the first
- * `[role="treeitem"]` in the container, so it follows the zoom.
+ * element matching `selector` (tree items by default) in the container, so it follows the zoom.
  */
-export function useRowWindow(count: number) {
+export function useRowWindow(count: number, selector = '[role="treeitem"]') {
   const ref = useRef<HTMLDivElement>(null);
   const [measure, setMeasure] = useState<Measure>({ top: 0, height: 0, row: 0 });
 
@@ -22,12 +22,12 @@ export function useRowWindow(count: number) {
     const next = {
       top: element.scrollTop,
       height: element.clientHeight,
-      row: element.querySelector<HTMLElement>('[role="treeitem"]')?.offsetHeight ?? 0,
+      row: element.querySelector<HTMLElement>(selector)?.offsetHeight ?? 0,
     };
     setMeasure((now) =>
       now.top === next.top && now.height === next.height && now.row === next.row ? now : next,
     );
-  }, []);
+  }, [selector]);
 
   useLayoutEffect(update);
   useEffect(() => {

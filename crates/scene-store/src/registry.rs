@@ -11,11 +11,12 @@ use std::{
 use foundation::{CancelToken, ErrorCode, FrameSize, HostPath, Interrupt, UserError};
 use handlers::Handlers;
 use playlist_resolvers::OverlayRef;
-use scene_decoders::FileSceneDecoder;
+use scene_decoders::{DecodeOptions, FileSceneDecoder};
 use serde_json::Value as Json;
 use sha2::{Digest, Sha256};
 
 use crate::{
+    ingest::Tuning,
     io::user_error,
     load::{Request, load},
     track::Track,
@@ -67,6 +68,7 @@ pub struct TrackRegistry {
     cache_dir: Option<PathBuf>,
     decoders: Arc<DecoderLookup>,
     scene_cache_bytes: usize,
+    tuning: Tuning,
     slots: Mutex<HashMap<TrackKey, Slot>>,
 }
 
@@ -133,6 +135,7 @@ impl TrackRegistry {
             cache_dir: cache_dir.map(Path::to_path_buf),
             decoders: Arc::new(lookup),
             scene_cache_bytes: SCENE_CACHE_BYTES,
+            tuning: Tuning::default(),
             slots: Mutex::new(HashMap::new()),
         }
     }
@@ -144,11 +147,21 @@ impl TrackRegistry {
         self
     }
 
+    /// Lowers the ingest limits so a test reaches them with little data.
+    #[cfg(test)]
+    #[must_use]
+    pub(crate) fn with_tuning(mut self, tuning: Tuning) -> Self {
+        self.tuning = tuning;
+        self
+    }
+
     /// Blocking. Shares an open track with the same key; else loads a valid artifact or decodes the file and writes
     /// one.
     ///
+    /// The track is returned once it can be read: for a decoder that gave a header, after its first publication
+    /// while the decode goes on ([`Track::snapshot`] says how far it is); otherwise when the decode has ended.
     /// Concurrent opens of one key decode once: the others wait, and one of them takes over if the opener is
-    /// cancelled.
+    /// cancelled before the track can be read.
     pub fn open(
         &self,
         overlay: &OverlayRef,
@@ -163,10 +176,24 @@ impl TrackRegistry {
                 &overlay.path,
             ))
         })?;
+        let decoder = (self.decoders)(&overlay.handler).ok_or_else(|| {
+            Interrupt::Failed(
+                UserError::new(
+                    ErrorCode::UnknownHandler,
+                    format!("No decoder is installed for '{}'", overlay.handler),
+                )
+                .at(HostPath::new(&path)),
+            )
+        })?;
+        let options = decoder.declared_options(&overlay.options).map_err(|e| {
+            Interrupt::Failed(
+                UserError::new(ErrorCode::OverlayInvalid, e.0).at(HostPath::new(&path)),
+            )
+        })?;
         let key = TrackKey {
             path,
             handler: overlay.handler.clone(),
-            options: canonical_json(&overlay.options),
+            options: canonical_json(&options),
             frame_size,
         };
         loop {
@@ -178,7 +205,7 @@ impl TrackRegistry {
                 },
                 Claim::Open(pending) => pending,
             };
-            return self.finish(&key, overlay, &pending, cancel);
+            return self.finish(&key, &decoder, &options, &pending, cancel);
         }
     }
 
@@ -188,7 +215,7 @@ impl TrackRegistry {
         match slots.get(key) {
             Some(Slot::Open(track)) => {
                 if let Some(track) = track.upgrade()
-                    && !track.is_damaged()
+                    && track.is_reusable()
                 {
                     return Claim::Shared(track);
                 }
@@ -212,7 +239,8 @@ impl TrackRegistry {
     fn finish(
         &self,
         key: &TrackKey,
-        overlay: &OverlayRef,
+        decoder: &Arc<dyn FileSceneDecoder>,
+        options: &DecodeOptions,
         pending: &Arc<Pending>,
         cancel: &CancelToken,
     ) -> Result<Arc<Track>, Interrupt<UserError>> {
@@ -223,7 +251,7 @@ impl TrackRegistry {
             pending,
             done: false,
         };
-        let result = self.load(key, overlay, cancel);
+        let result = self.load(key, decoder, options, cancel);
         let (slot, outcome) = match &result {
             Ok(track) => (
                 Some(Slot::Open(Arc::downgrade(track))),
@@ -247,29 +275,22 @@ impl TrackRegistry {
     fn load(
         &self,
         key: &TrackKey,
-        overlay: &OverlayRef,
+        decoder: &Arc<dyn FileSceneDecoder>,
+        options: &DecodeOptions,
         cancel: &CancelToken,
     ) -> Result<Arc<Track>, Interrupt<UserError>> {
-        let decoder = (self.decoders)(&key.handler).ok_or_else(|| {
-            Interrupt::Failed(
-                UserError::new(
-                    ErrorCode::UnknownHandler,
-                    format!("No decoder is installed for '{}'", key.handler),
-                )
-                .at(HostPath::new(&key.path)),
-            )
-        })?;
         let artifact = self
             .cache_dir
             .as_ref()
             .map(|dir| dir.join("scenes").join(format!("{}.axscene", key.digest())));
         load(
-            decoder.as_ref(),
+            decoder,
             &Request {
                 key,
-                options: &overlay.options,
+                options,
                 artifact: artifact.as_deref(),
                 cache_bytes: self.scene_cache_bytes,
+                tuning: self.tuning,
             },
             cancel,
         )

@@ -13,8 +13,16 @@ layer = "services"
 workspace = true
 
 [dependencies]
+bytes.workspace = true
 foundation.workspace = true
-render-catalog.workspace = true
+scene.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tokio = { workspace = true, features = ["sync"] }
+tracing.workspace = true
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
 
 [dev-dependencies]
 tempfile = "3"

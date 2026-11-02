@@ -1,7 +1,9 @@
 use foundation::{CancelToken, Interrupt};
-use scene::{Coverage, Fields, Scene};
+use scene::{Coverage, Fields};
 
-use crate::{DecodeError, DecodeSummary, RecordSceneDecoder, SkippedRecords};
+use crate::{
+    DecodeError, DecodeSummary, OnEqualKey, RecordSceneDecoder, SceneSink, SkippedRecords,
+};
 
 /// Lines between two checks of the cancel token.
 const CANCEL_EVERY: usize = 4096;
@@ -11,7 +13,7 @@ const CANCEL_EVERY: usize = 4096;
 pub fn decode_lines(
     decoder: &dyn RecordSceneDecoder,
     input: &[u8],
-    emit: &mut dyn FnMut(Scene),
+    sink: &mut dyn SceneSink,
     cancel: &CancelToken,
 ) -> Result<DecodeSummary, Interrupt<DecodeError>> {
     let mut skipped = SkippedRecords::new("lines", "Those lines are not drawn.");
@@ -29,7 +31,11 @@ pub fn decode_lines(
         }
         records += 1;
         match decoder.decode_record(line) {
-            Ok(Some(scene)) => emit(scene),
+            Ok(Some(scene)) => {
+                if sink.sample(scene, OnEqualKey::Replace).is_break() {
+                    break;
+                }
+            }
             Ok(None) => {}
             Err(reason) => skipped.add(format!("line {}: {reason}", index + 1)),
         }

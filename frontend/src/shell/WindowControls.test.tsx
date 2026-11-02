@@ -18,6 +18,7 @@ function bridge() {
     connect: vi.fn(),
     disconnect: vi.fn(),
     pickFolder: vi.fn(() => Promise.resolve(null)),
+    pickExportFile: vi.fn(() => Promise.resolve(null)),
     onMaximizedChange: vi.fn((listener: (maximized: boolean) => void) => {
       report = listener;
       return () => {};

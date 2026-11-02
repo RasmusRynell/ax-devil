@@ -1,20 +1,20 @@
 //! The committed MOT Challenge dataset (`fixtures/datasets/mot/generate.sh`) added as a playlist over the Session
-//! socket, an entry streamed with a ticket for it, and its lanes' overlays read from the playback socket. The
-//! dataset's rows are the expectation: file frame 1 is video frame 0, file frame 6 has no rows in any file, and DPM's
-//! `det.txt` has one malformed row.
+//! socket, an entry streamed with a ticket for it, and its lanes' data read from the playback socket: each frame's map
+//! cell names a Sample Item with the rows of the file's frame. The dataset's rows are the expectation: file frame 1
+//! is video frame 0, file frame 6 has no rows in any file, and DPM's `det.txt` has one malformed row.
 
 mod common;
 mod session_client;
 
 use api_types::playback::{
-    ClientMessage, Direction, LaneStatusWire, LaneViewWire, ServerMessage, StickyWire, TargetWire,
+    ClientMessage, Direction, FRAME_MAP_EMPTY, IngestWire, LanePolicyWire, LaneStatusWire,
+    ServerMessage, StickyWire,
 };
-use common::{Backend, Event, Overlay, Viewer};
+use common::{Backend, Event, Viewer};
 use serde_json::{Value, json};
 use session_client::Socket;
 use std::{collections::BTreeMap, path::Path};
 
-const EMPTY_MATCH: u8 = 4;
 const EMPTY_FRAME: u64 = 5;
 const FRAMES: u64 = 12;
 const DPM: u16 = 0;
@@ -72,12 +72,14 @@ impl Playlist {
     }
 }
 
-/// Everything the lanes of an open entry have said so far.
+/// Everything the lanes of an open entry have said so far. A lane is a source of its own: each has its own file.
 #[derive(Default)]
 struct Lanes {
     status: BTreeMap<u16, LaneStatusWire>,
-    /// By lane, video frame and revision.
-    overlays: BTreeMap<(u16, u64, u32), Overlay>,
+    /// By lane, policy revision and video frame: the map cell.
+    cells: BTreeMap<(u16, u32, u64), u32>,
+    /// By source and sample: the entities of the item.
+    items: BTreeMap<(u16, u64), u32>,
 }
 
 impl Lanes {
@@ -88,53 +90,65 @@ impl Lanes {
                 Event::Message(ServerMessage::LaneStatus { lane, status }) => {
                     self.status.insert(lane, status);
                 }
-                Event::Overlay(overlay) => {
-                    self.overlays.insert(
-                        (overlay.lane, overlay.sequence_id, overlay.revision),
-                        overlay,
-                    );
+                Event::Sample(sample) => {
+                    self.items
+                        .insert((sample.source, sample.sample), sample.rows);
                 }
-                Event::Frame(_) => {}
-                _ => panic!("expected lane statuses, overlays and frames"),
+                Event::Map(map) => {
+                    for (k, cell) in map.samples.iter().enumerate() {
+                        self.cells
+                            .insert((map.lane, map.policy, map.first + k as u64), *cell);
+                    }
+                }
+                Event::Message(ServerMessage::DataWindow { .. } | ServerMessage::Evict { .. })
+                | Event::Frame(_) => {}
+                _ => panic!("expected lane statuses, data and frames"),
             }
         }
     }
 
-    fn overlay(&self, lane: u16, frame: u64, revision: u32) -> &Overlay {
-        &self.overlays[&(lane, frame, revision)]
+    /// Whether `lanes` lanes have a map cell for every frame under `policy` and every sample those cells name.
+    fn has_all(&self, lanes: u16, policy: u32) -> bool {
+        (0..lanes).all(|lane| {
+            (0..FRAMES).all(|frame| {
+                self.cells.get(&(lane, policy, frame)).is_some_and(|cell| {
+                    *cell >= FRAME_MAP_EMPTY || self.items.contains_key(&(lane, u64::from(*cell)))
+                })
+            })
+        })
     }
 
-    fn has_all(&self, lanes: u16, revision: u32) -> bool {
-        (0..lanes).all(|lane| {
-            (0..FRAMES).all(|frame| self.overlays.contains_key(&(lane, frame, revision)))
-        })
+    /// The map cell of a frame.
+    fn cell(&self, lane: u16, frame: u64, policy: u32) -> u32 {
+        self.cells[&(lane, policy, frame)]
+    }
+
+    /// The rows of the file's frame the lane's map names for the video frame, 0 where the map says nothing.
+    fn rows(&self, lane: u16, frame: u64, policy: u32) -> u32 {
+        match self.cell(lane, frame, policy) {
+            cell if cell >= FRAME_MAP_EMPTY => 0,
+            cell => self.items[&(lane, u64::from(cell))],
+        }
     }
 }
 
-fn lane_view(lane: u16, revision: u32, sticky: bool, filter: &[(&str, bool)]) -> ClientMessage {
-    ClientMessage::LaneView {
+fn subscribe(lane: u16, revision: u32, sticky: bool) -> ClientMessage {
+    ClientMessage::LanePolicy {
         lane,
         revision,
-        view: LaneViewWire {
-            catalog: "built-in:standard".into(),
-            filter: filter.iter().map(|(id, on)| ((*id).into(), *on)).collect(),
+        policy: LanePolicyWire {
             tolerance_ms: None,
             sticky: StickyWire {
                 enabled: sticky,
                 timeout_ms: None,
-                opacity: 1.0,
             },
-            target: TargetWire {
-                width: 640,
-                height: 480,
-            },
-            visible: true,
         },
+        subscribed: true,
     }
 }
 
 #[tokio::test]
-async fn the_dataset_opens_as_two_entries_whose_lanes_draw_their_files_rows_frame_by_frame() {
+async fn the_dataset_opens_as_two_entries_whose_lanes_map_each_frame_to_its_files_rows() {
     let backend = Backend::start().await;
     let mut playlist = Playlist::add(&backend).await;
     let summary: Vec<(&str, Vec<&str>)> = playlist
@@ -167,17 +181,24 @@ async fn the_dataset_opens_as_two_entries_whose_lanes_draw_their_files_rows_fram
     viewer
         .want(0, FRAMES as u32 - 1, 0, Direction::Forward)
         .await;
+    for lane in 0..3 {
+        viewer.send(&subscribe(lane, 1, false)).await;
+    }
     lanes
-        .read_until(&mut viewer, |lanes| lanes.has_all(3, 0))
+        .read_until(&mut viewer, |lanes| lanes.has_all(3, 1))
         .await;
 
     // The malformed row is the only one skipped, and only DPM's file has it.
     let LaneStatusWire::Ready {
-        filter, warnings, ..
+        filter,
+        warnings,
+        ingest,
+        ..
     } = &lanes.status[&DPM]
     else {
         panic!("DPM is ready");
     };
+    assert_eq!(*ingest, IngestWire::Complete);
     assert_eq!(filter.len(), 14, "13 MOT classes and the unmapped one");
     let [warning] = &warnings[..] else {
         panic!("one warning, got {warnings:?}");
@@ -190,51 +211,27 @@ async fn the_dataset_opens_as_two_entries_whose_lanes_draw_their_files_rows_fram
         assert!(warnings.is_empty(), "{warnings:?}");
     }
 
-    // Frame 0: DPM and FRCNN have a tracked and an untracked box, GT a person, a static person and class 99.
-    // Frame 3 lost DPM's untracked box to the malformed row.
-    let boxes = |lane, frame| lanes.overlay(lane, frame, 0).boxes;
-    assert_eq!([boxes(DPM, 0), boxes(GT, 0), boxes(2, 0)], [2, 3, 2]);
-    assert_eq!([boxes(DPM, 3), boxes(GT, 3), boxes(2, 3)], [1, 3, 2]);
+    // Frame 0: DPM and FRCNN have a tracked and an untracked row, GT a person, a static person and class 99. The item
+    // keeps every row; hiding a class is the frontend's. Frame 3 lost DPM's untracked row to the malformed row.
+    let rows = |lane, frame| lanes.rows(lane, frame, 1);
+    assert_eq!([rows(DPM, 0), rows(GT, 0), rows(2, 0)], [2, 3, 2]);
+    assert_eq!([rows(DPM, 3), rows(GT, 3), rows(2, 3)], [1, 3, 2]);
 
-    // Nothing is drawn on the frame without rows, and a lane that keeps its last object (sticky) still draws none:
+    // Nothing is mapped on the frame without rows, and a lane that keeps its last object (sticky) still maps none:
     // the file covers every frame, so the frame is empty rather than missing.
     for lane in 0..3 {
-        let overlay = lanes.overlay(lane, EMPTY_FRAME, 0);
-        assert_eq!((overlay.matched, overlay.boxes), (EMPTY_MATCH, 0));
+        assert_eq!(lanes.cell(lane, EMPTY_FRAME, 1), FRAME_MAP_EMPTY);
     }
     for lane in 0..3 {
-        viewer.send(&lane_view(lane, 1, true, &[])).await;
+        viewer.send(&subscribe(lane, 2, true)).await;
     }
     lanes
-        .read_until(&mut viewer, |lanes| lanes.has_all(3, 1))
+        .read_until(&mut viewer, |lanes| lanes.has_all(3, 2))
         .await;
     for lane in 0..3 {
-        let overlay = lanes.overlay(lane, EMPTY_FRAME, 1);
-        assert_eq!((overlay.matched, overlay.boxes), (EMPTY_MATCH, 0));
-        assert!(lanes.overlay(lane, 4, 1).boxes > 0);
+        assert_eq!(lanes.cell(lane, EMPTY_FRAME, 2), FRAME_MAP_EMPTY);
+        assert!(lanes.rows(lane, 4, 2) > 0);
     }
-
-    // Turning "Person" off in the GT lane removes the person only; the other lanes are not touched.
-    viewer
-        .send(&lane_view(GT, 2, true, &[("show_person", false)]))
-        .await;
-    lanes
-        .read_until(&mut viewer, |lanes| {
-            (0..FRAMES).all(|frame| lanes.overlays.contains_key(&(GT, frame, 2)))
-        })
-        .await;
-    assert_eq!(lanes.overlay(GT, 0, 2).boxes, 2);
-    assert_eq!(
-        lanes.overlay(GT, 0, 1).boxes,
-        3,
-        "the earlier view is unchanged"
-    );
-    assert!(
-        lanes
-            .overlays
-            .keys()
-            .all(|(lane, _, revision)| *lane == GT || *revision < 2)
-    );
 }
 
 #[tokio::test]
@@ -251,12 +248,13 @@ async fn an_entry_without_a_ground_truth_file_has_only_its_detection_lane() {
     viewer
         .want(0, FRAMES as u32 - 1, 0, Direction::Forward)
         .await;
+    viewer.send(&subscribe(0, 1, false)).await;
     lanes
-        .read_until(&mut viewer, |lanes| lanes.has_all(1, 0))
+        .read_until(&mut viewer, |lanes| lanes.has_all(1, 1))
         .await;
     let LaneStatusWire::Ready { warnings, .. } = &lanes.status[&0] else {
         panic!("DET is ready");
     };
     assert!(warnings.is_empty());
-    assert_eq!(lanes.overlay(0, 0, 0).boxes, 2);
+    assert_eq!(lanes.rows(0, 0, 1), 2);
 }

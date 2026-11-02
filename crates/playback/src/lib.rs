@@ -31,7 +31,7 @@ pub(crate) use cache::SourceCache;
 pub use decoder::{DecoderFactory, SourceSpec, SpanDecoder};
 pub use frames::FrameSet;
 pub(crate) use plan::Span;
-pub use plan::{Direction, Priority, Want};
+pub use plan::{Direction, Priority, Rank, Want, rank};
 pub use registry::{Registry, SourceKey};
 pub use session::{Delivery, Session};
 pub use source::DECODE_WORKERS;

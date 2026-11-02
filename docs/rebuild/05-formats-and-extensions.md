@@ -7,9 +7,11 @@ over by hand from the old tree is in [migration.md](migration.md).
 
 The new app defines its own formats ([README](README.md#delivery)). One format is kept deliberately:
 
-- **Render catalog language, schema v3** (`.agents/skills/render-catalog/SKILL.md#how-a-catalog-is-built`,
-  `scene/rendering/catalog_definitions/`, `ax-devil catalog reference`). Reason: the six built-in catalogs and the
-  render-catalog skill carry over unchanged, and the language is the main agent-facing extension surface.
+- **Render catalog language, schema v4** (D25), defined in a spec to be written; it replaces v3
+  (`scene/rendering/catalog_definitions/`). Reason: the frontend compiles and evaluates catalogs per lane (D22), so
+  styles, frame filters and draw order share one language. The language is the main agent-facing extension surface;
+  the six built-ins are rewritten as complete v4 documents, and the JSON Schema and reference are generated from the
+  TypeScript definitions ([10](10-quality-gates.md#gates-must)).
 
 Rules for every format the new app owns (MUST):
 
@@ -35,7 +37,7 @@ Use the current definitions as design references, not compatibility targets.
 | Window state | `settings/window_state.py` | Not a versioned document: size and maximized state only, kept apart from config; unreadable state falls back to defaults |
 | Render catalogs | above | Every JSON file in the user folder is a catalog; default choice stored beside them |
 | Bookmarks CSV | `workspace/core/bookmark_csv.py` | Header row; one row per bookmark |
-| Export video | `video_viewer/export/encoder.py`, `docs/domain/invariants.md#export` | Source frame timing kept; no audio; quality presets (encoder choice: D6) |
+| Export video | `video_viewer/export/encoder.py`, `docs/domain/invariants.md#export` | Source frame timing kept; no audio; quality presets (format and encoder: D6, decided when export is built; default MP4/H.264 through the linked FFmpeg) |
 | Scene serialization | new, below | — |
 | Caches | `docs/domain/invariants.md#data-pipeline` | Full-identity invalidation; private; rebuildable |
 | Logs | `settings/logging_config.py` | Rotating plain text ([03](03-runtime.md#logging-must)) |
@@ -49,7 +51,8 @@ Use the current definitions as design references, not compatibility targets.
   plugin API version is a separate check (`plugin_system/base.py`). The host normalizes accepted older-minor output to
   the current schema before caching; cache identity includes the host schema version.
 - **MUST** restrict free-form fields (`Attribute.value`, `source_data`, `debug`) to schema value types (null, bool,
-  number, string, list, map). *Current:* any picklable Python object.
+  number, string, list, map). *Current:* any picklable Python object. A colour list (name, colour, score per item) is
+  one more typed value (D26), so catalogs can colour by attribute from a Sample Item.
 
 ## Decoder contract
 
@@ -61,15 +64,15 @@ Sources: `.agents/skills/write-plugin/SKILL.md`, `.agents/skills/write-plugin/re
   preserving source frame/time keys. A malformed document or frame whose omission would hide invalid ground truth
   fails the load (UVG-VCM); an explicit empty Scene remains a successful sample, distinct from absent data.
 - Declared metadata the host-owned store needs (*current:* `SceneDecoderFileProvider.__init__` in
-  `data_sources/file_data_provider/scene_decoder_file_provider.py`): storage mode (source index decoded on demand, or
-  derived cache for whole-file parsing), independent records (enables incremental re-decode), sequence lookup
-  support, timestamp fallback policy, `artifact_version`, and decode options, which are part of cache identity.
+  `data_sources/file_data_provider/scene_decoder_file_provider.py`): independent records, sequence lookup support,
+  timestamp fallback policy, `artifact_version`, and decode options, which are part of cache identity.
 - Line-record handlers decode each record independently of earlier calls, because records are decoded in seek order
   by one reused instance (`plugin_system/line_decoder_plugin.py`).
 - Payload handlers may be stateful (`scene/decoding/payload_to_scene_decoder.py`; the built-in ones are not). Payload
   decode is lossless and its queue overflow is a reported lane error ([03](03-runtime.md#real-time-delivery-must)).
   The host resets a decoder on transport reconnect and helper restart.
-- Decoders yield per-frame Scenes or records; the host builds the indexed store ([02](02-architecture.md#seams-to-redraw)).
+- Decoders yield per-frame Scenes or records; the host builds the indexed store ([02](02-architecture.md#seams-to-redraw)),
+  grouping equal-timestamp records and sorting at the end of ingest.
 
 ## Resolver contract
 
@@ -83,41 +86,37 @@ validates the schema against both.
 
 ## Plugin runtime
 
-Guarantees any mechanism must meet (`docs/domain/invariants.md#plugin-system`, `docs/plugins.md`):
+Guarantees any mechanism must meet (`docs/domain/invariants.md#plugin-system`, [plugins](../plugins.md)):
 
 - Discovery only through a declared registry; never by folder presence.
-- API and Scene version checks before registration; failures listed, never fatal.
+- Protocol and Scene version checks before registration; failures listed, never fatal.
 - Plugin dependencies isolated from the app's; installing a plugin never changes the app.
-- Install, update, remove from the CLI and the running app; validated before activation; applied on restart.
-- Authoring stays cheap for an agent: one small package, a local install command, edits picked up on restart.
+- Install and remove from the CLI, validated before activation and applied on restart; update and the Plugins view are
+  not built (PL-03).
+- Authoring stays cheap for an agent: one small folder, a local install command, a check command that runs it on real
+  data.
 
-"Python stays an authoring language" differs from "existing plugins run unchanged" (PL-05). Existing plugins also use
-hooks a Scene bridge does not carry:
+The reference's plugin hooks do not carry over (PL-05): resolver settings widgets and Click commands become the
+declared schema (D4), filter predicates become declarative classification policies, file provider factories become
+the host-owned store fed by the decoder's stream, and Scene free-form values are schema value types only.
 
-| Hook | Current | Porting need |
-|------|---------|--------------|
-| Resolver settings widget and restore | `create_settings_widget`, `restore_settings` (Qt) | Replaced by the settings schema (D4) |
-| Resolver CLI command | `create_cli_command` (Click) | Generated from the schema |
-| Filter factories and predicates | `filter_factory`, `FilterOption` predicates in `filtering/predicate_utils.py` | Declarative classification policies only, or evaluated in the plugin process |
-| File provider factories | `FileToSceneDecoderDefinition.factory`, `create_provider` | Host-owned store fed by the decoder stream |
-| Resolver file watching | `source_paths` | Keep, as data |
-| Arbitrary values in Scenes | `Attribute.value`, `source_data`, `debug` | Schema value types only |
+D1 is settled by D29: built-in decoders and resolvers are native; third-party authors port their plugins to the new
+contract; unchanged plugins are not supported (PL-05); there is no in-process Python bridge. Other data enters through
+converter processes (any language, JSON Lines; the spec is the
+[write-plugin reference](../../.agents/skills/write-plugin/reference.md), the host's rules
+[`crates/converters/README.md`](../../crates/converters/README.md)):
 
-Recommended default, owner decision D1: built-in decoders and resolvers are native; third-party authors port their
-plugins to the new contract; unchanged plugins are not supported (PL-05). If the owner keeps a Python bridge:
-
-- It speaks the Scene schema, streams whole-file decodes in batches, and gives live payload handlers a latency budget
-  (proposal: under 5 ms median per message at 30 messages/s).
-- Failure contract: bounded request queues; cancellation forwarded; worker death reported as a plugin or lane error
-  and restarted at most once per open; responses carry request ids and stale ones are discarded; close releases the
-  worker; only schema value types cross.
-- The D0 spike proves one external file decoder, one payload decoder and one resolver through it.
+- A manifest declares the converter; it runs with an allowlisted environment, its stderr is drained, a line over
+  16 MiB fails it, and a kill takes its whole process group (on Windows only the process).
+- A failure marks the lane incomplete; cache identity includes the hash of its manifest and code files
+  (`docs/domain/invariants.md#data-pipeline`).
+- There is no sandbox: a converter runs with the user's rights ([trust](../plugins.md#trust)).
 
 ## Other extension points (keep)
 
 | Extension | Source |
 |-----------|--------|
 | Workspace item kinds: one registered table; nothing branches on kind | `docs/architecture/workspace.md#workspace-items` |
-| Overlay features and Drawing Instructions | `docs/architecture/draw-system.md#extension-points` |
+| Overlay features and mark kinds | `frontend/src/present/README.md` |
 | Sidebar views and viewers | `docs/architecture/ui-framework.md#sidebar-views`, `#viewer-widgets` |
 | Overlay preferences: one closed set driving menu, settings and config | [08](08-settings-cli.md#settings-model) |

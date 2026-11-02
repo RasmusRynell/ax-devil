@@ -189,6 +189,7 @@ mod tests {
             &[NewOverlay {
                 path: gt,
                 handler: None,
+                label: None,
             }],
             &handlers,
         )

@@ -25,7 +25,7 @@ Port behavior, not code: the reference docs hold the rules, the Python holds Pyt
    output; a known old bug is never frozen in.
 4. **Design the seam.** Name the crate or frontend folder per the [module map](../../../docs/architecture/module-map.md)
    and its layer. Keep the interface small. Stop and ask the owner when the playbook leaves a decision open
-   ([14](../../../docs/rebuild/14-build-order.md#open-decisions)) or the reference contradicts the invariants.
+   ([15](../../../docs/rebuild/15-open-decisions.md)) or the reference contradicts the invariants.
 5. **Test, then implement.** Write the tests, see them fail, implement until they pass. Wire time, scheduling and
    cancellation through their injected services.
 6. **Place the rules.** Move each rule the module now enforces from `docs/rebuild/` to its new home

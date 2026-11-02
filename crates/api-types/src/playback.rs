@@ -19,41 +19,44 @@
 //! A Timeline (kind 3) has its `f64` times in microseconds, by sequence id, from `header_len` (at least
 //! [`ENVELOPE_HEAD_BYTES`]; the backend sends [`TIMELINE_HEADER_BYTES`] so the times are 8-byte aligned) to the end.
 //!
-//! A frame belongs to the viewer's one video, so the head has no lane. An Overlay (kind 2) is the Drawing
-//! Instructions of one lane for one video frame and one view revision; its head carries the frame's `sequence_id`
-//! and time, and continues with the overlay header, then sections:
+//! A frame belongs to the viewer's one video, so the head has no lane. A Sample (kind 4) is one Sample Item of one
+//! source; the item is the self-describing column format of `scene::serial::columns`. Its head's `sequence_id` is the
+//! sample index and `timestamp_us` is reserved (0) for the capture time of live samples:
 //!
 //! ```text
-//! 28 u16 lane | 30 u8 match (0 none, 1 exact, 2 tolerated, 3 retained, 4 empty) | 31 pad
-//! 32 u32 revision | 36 f32 opacity | 40 u32 target_width | 44 u32 target_height
-//! 48 i64 sample_key (frame number or microseconds by the lane's clock; 0 when match is none or empty)
-//! 56 u32 section_count | 60 pad
-//! 64 sections, each: u16 tag | u16 pad | u32 byte_len | bytes | zero padding to a multiple of 8
+//! 28 u16 source (the viewer's source id, `LaneInfo::source`) | 30 u16 reserved
+//! 32 u32 data_revision (the source revision the item belongs to) | 36 u32 reserved
+//! 40 the item, to the end of the message
 //! ```
 //!
-//! `byte_len` counts the section's bytes only, not the padding: the next section starts at the end of the bytes
-//! rounded up to a multiple of 8 (every section, the last included, is padded).
+//! A FrameMap (kind 5) is one run of one lane's map from frame to sample; its head's `sequence_id` is the first frame.
+//! A run never spans two [`FRAME_MAP_RUN_FRAMES`] chunks:
 //!
-//! Section records are little-endian with 4-byte fields and `f32` coordinates, normalized to the frame; see the
-//! `OVERLAY_TAG_*` constants for the tags. Empty sections are omitted and receivers skip tags they do not know:
+//! ```text
+//! 28 u16 lane | 30 u16 reserved | 32 u32 policy_revision | 36 u32 data_revision
+//! 40 u32 count (1 to 256) | 44 u32 reserved
+//! 48 u32 sample[count] (a sample index, FRAME_MAP_NONE or FRAME_MAP_EMPTY) | u8 kind[count] (MATCH_*)
+//! ```
 //!
-//! - PAINTS (24 bytes): pen rgb `u8`x3, dashed `u8`, pen_width `f32`, brush rgba `u8`x4, font_family `u32`,
-//!   font_size `f32`, radius `f32`
-//! - BOXES: x, y, w, h `f32`, paint `u32`; LINES: x1, y1, x2, y2 `f32`, paint; CIRCLES: x, y, r `f32`, paint;
-//!   POINTS: x, y `f32`, paint
-//! - PATH_POINTS: x, y `f32` pairs; POLYGONS and POLYLINES: first `u32`, count `u32`, paint `u32`
-//! - TEXTS: x, y `f32`, text `u32`, anchor `u8`, pad x3, paint `u32`
-//! - LABEL_STYLES: size `f32`, family `u32`, background rgba `u8`x4, padding_x, padding_y, radius, gap `f32`
-//! - LABELS: x, y `f32`, anchor `u8`, pad x3, style `u32`, first_run `u32`, runs `u32`
-//! - RUNS: text `u32`, bar `f32` (NaN for a text run), rgb `u8`x3, weight `u8`
-//! - STRINGS: count `u32`, offsets `u32`[count + 1], then the UTF-8 bytes; string ids index it and `u32::MAX` is none
+//! The backend alone decides what the viewer holds: it drops a Sample Item only on `Evict`, a new data revision or a
+//! failed source, and a Frame Map cell only outside the last `DataWindow` or on a revision change. `Open.data_bytes`
+//! bounds the Sample Items the backend keeps sent.
 
-use crate::{ErrorWire, catalogs::CatalogInfoWire};
+use crate::{ErrorWire, catalogs::CatalogInfoWire, inspect::InspectionWire};
+use overlay_sync::MatchKind;
+use scene_store::{Row, Search, Sort};
 use serde::{Deserialize, Serialize};
-use std::collections::BTreeMap;
 use ts_rs::TS;
 
-/// Defines the envelope constants once for Rust and for `export-types`, which writes them to `api.ts`.
+pub mod envelope;
+mod export;
+mod file_scope;
+mod lane;
+pub use export::*;
+pub use file_scope::*;
+pub use lane::*;
+
+/// Defines constants once for Rust and for `export-types`, which writes them to `api.ts`.
 macro_rules! constants {
     ($($(#[doc = $doc:literal])+ $name:ident: $type:ty = $value:expr;)+) => {
         $($(#[doc = $doc])+ pub const $name: $type = $value;)+
@@ -61,10 +64,11 @@ macro_rules! constants {
         pub const CONSTANTS: &[(&str, u64, &str)] = &[$((stringify!($name), $name as u64, concat!($($doc, "\n"),+))),+];
     };
 }
+pub(crate) use constants;
 
 constants! {
     /// Raised when the messages or the envelope change in a way an older frontend cannot read.
-    PLAYBACK_PROTOCOL: u32 = 3;
+    PLAYBACK_PROTOCOL: u32 = 4;
     /// "AXDV" read as a little-endian u32.
     ENVELOPE_MAGIC: u32 = 0x5644_5841;
     /// The envelope format version, byte 4.
@@ -77,10 +81,12 @@ constants! {
     VIDEO_FRAME_HEADER_BYTES: u16 = 64;
     /// Envelope kind: one decoded video frame.
     KIND_VIDEO_FRAME: u8 = 1;
-    /// Envelope kind: the Drawing Instructions of one lane for a frame and a view revision.
-    KIND_OVERLAY: u8 = 2;
     /// Envelope kind: the presentation time of every frame.
     KIND_TIMELINE: u8 = 3;
+    /// Envelope kind: one Sample Item of one source.
+    KIND_SAMPLE: u8 = 4;
+    /// Envelope kind: one run of one lane's Frame Map.
+    KIND_FRAME_MAP: u8 = 5;
     /// Flag bit 0: the frame is a keyframe.
     FLAG_KEYFRAME: u32 = 1;
     /// Flag bit 1: the frame is the last of the video.
@@ -95,46 +101,25 @@ constants! {
     MATRIX_BT601: u8 = 0;
     /// Video header matrix byte: BT.709 YUV to RGB.
     MATRIX_BT709: u8 = 1;
-    /// Where the sections of an Overlay start: the head plus the overlay header.
-    OVERLAY_HEADER_BYTES: u16 = 64;
-    /// Overlay match byte: nothing to draw.
-    OVERLAY_MATCH_NONE: u8 = 0;
-    /// Overlay match byte: the sample is the frame's own.
-    OVERLAY_MATCH_EXACT: u8 = 1;
-    /// Overlay match byte: an earlier sample within the tolerance.
-    OVERLAY_MATCH_TOLERATED: u8 = 2;
-    /// Overlay match byte: an older sample kept by sticky.
-    OVERLAY_MATCH_RETAINED: u8 = 3;
-    /// Overlay match byte: the file covers the frame with nothing.
-    OVERLAY_MATCH_EMPTY: u8 = 4;
-    /// Overlay section tag: the shared paints.
-    OVERLAY_TAG_PAINTS: u16 = 1;
-    /// Overlay section tag: boxes.
-    OVERLAY_TAG_BOXES: u16 = 2;
-    /// Overlay section tag: lines.
-    OVERLAY_TAG_LINES: u16 = 3;
-    /// Overlay section tag: circles.
-    OVERLAY_TAG_CIRCLES: u16 = 4;
-    /// Overlay section tag: points.
-    OVERLAY_TAG_POINTS: u16 = 5;
-    /// Overlay section tag: the points of every polygon and polyline.
-    OVERLAY_TAG_PATH_POINTS: u16 = 6;
-    /// Overlay section tag: polygons.
-    OVERLAY_TAG_POLYGONS: u16 = 7;
-    /// Overlay section tag: polylines.
-    OVERLAY_TAG_POLYLINES: u16 = 8;
-    /// Overlay section tag: texts.
-    OVERLAY_TAG_TEXTS: u16 = 9;
-    /// Overlay section tag: the shared label styles.
-    OVERLAY_TAG_LABEL_STYLES: u16 = 10;
-    /// Overlay section tag: labels.
-    OVERLAY_TAG_LABELS: u16 = 11;
-    /// Overlay section tag: the runs of every label.
-    OVERLAY_TAG_RUNS: u16 = 12;
-    /// Overlay section tag: the strings every text refers to.
-    OVERLAY_TAG_STRINGS: u16 = 13;
-    /// Overlay section tags from here up are reserved (64 is the hit targets); receivers skip unknown tags.
-    OVERLAY_TAG_RESERVED: u16 = 64;
+    /// Where the item of a Sample starts: the head plus the sample header, a multiple of 8 so the item's typed views
+    /// need no copy.
+    SAMPLE_HEADER_BYTES: u16 = 40;
+    /// Where the sample column of a FrameMap starts: the head plus the map header.
+    FRAME_MAP_HEADER_BYTES: u16 = 48;
+    /// Frames of a map chunk; a run never spans two chunks.
+    FRAME_MAP_RUN_FRAMES: u16 = overlays::RUN_FRAMES;
+    /// Map cell: nothing belongs to the frame (read as -1 through an `Int32Array`).
+    FRAME_MAP_NONE: u32 = overlays::NONE_CELL;
+    /// Map cell: a dense file covers the frame with nothing (read as -2 through an `Int32Array`).
+    FRAME_MAP_EMPTY: u32 = overlays::EMPTY_CELL;
+    /// Map kind: the sample is the frame's own; also the kind of a NONE or EMPTY cell.
+    MATCH_EXACT: u8 = MatchKind::Exact as u8;
+    /// Map kind: an earlier sample within the tolerance.
+    MATCH_TOLERATED: u8 = MatchKind::Tolerated as u8;
+    /// Map kind: an older sample kept by sticky.
+    MATCH_RETAINED: u8 = MatchKind::Retained as u8;
+    /// Upper bound of `data_ahead + data_behind + 1` in a Want.
+    MAX_DATA_WINDOW_FRAMES: u32 = 2048;
 }
 
 /// How a viewer steps through the video.
@@ -160,109 +145,10 @@ pub struct Want {
     pub behind: u32,
     /// Which way the viewer is travelling, which decides what to prefetch first.
     pub direction: Direction,
-}
-
-/// How one lane shows its overlay.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, TS)]
-pub struct LaneViewWire {
-    /// The catalog id, such as `built-in:standard`.
-    pub catalog: String,
-    /// The class filter toggles by option id; options not listed keep their default.
-    #[ts(type = "Record<string, boolean>")]
-    pub filter: BTreeMap<String, bool>,
-    /// How far back a time-keyed sample may be, in milliseconds; `null` is exact.
-    pub tolerance_ms: Option<u32>,
-    /// Whether old samples stay on screen.
-    pub sticky: StickyWire,
-    /// The lane's displayed image size.
-    pub target: TargetWire,
-    /// Whether the lane is shown.
-    pub visible: bool,
-}
-
-/// Keeping the last sample on screen while no sample matches.
-#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize, TS)]
-pub struct StickyWire {
-    /// Whether samples are kept.
-    pub enabled: bool,
-    /// How old a kept sample may be, in milliseconds, at most 100000; `null` is without limit.
-    pub timeout_ms: Option<u32>,
-    /// How opaque a kept sample is drawn, 0 to 1.
-    pub opacity: f32,
-}
-
-/// A displayed image size in CSS pixels.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
-pub struct TargetWire {
-    /// Width in CSS pixels.
-    pub width: u32,
-    /// Height in CSS pixels.
-    pub height: u32,
-}
-
-/// One lane of the opened entry.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
-pub struct LaneInfo {
-    /// The lane's name.
-    pub label: String,
-    /// Whether the lane has an overlay file; the lane of an entry without overlays is plain.
-    pub has_overlay: bool,
-}
-
-/// The clock a lane's samples are on.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
-#[serde(rename_all = "lowercase")]
-pub enum ClockWire {
-    /// Frame numbers.
-    Frame,
-    /// Timestamps.
-    Timestamp,
-}
-
-/// One class filter a lane offers.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
-pub struct FilterOptionInfo {
-    /// Stable id, such as `show_car`.
-    pub id: String,
-    /// What the user reads.
-    pub label: String,
-    /// Whether the filter starts switched on.
-    pub default_enabled: bool,
-}
-
-/// A problem that did not stop an overlay from loading.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
-pub struct WarningInfo {
-    /// What happened.
-    pub problem: String,
-    /// The first reasons.
-    pub reasons: Vec<String>,
-    /// What the user can expect as a result.
-    pub consequence: String,
-    /// Whether more reasons exist than are listed.
-    pub more_reasons: bool,
-}
-
-/// Where a lane's load stands.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, TS)]
-#[serde(tag = "status")]
-pub enum LaneStatusWire {
-    /// The overlay file is being decoded.
-    Loading,
-    /// The overlay is ready to draw.
-    Ready {
-        /// The clock the file's samples are on.
-        clock: ClockWire,
-        /// The class filters the file's content calls for.
-        filter: Vec<FilterOptionInfo>,
-        /// Problems the decoder reported.
-        warnings: Vec<WarningInfo>,
-        /// How many samples the file has.
-        #[ts(type = "number")]
-        samples: u64,
-    },
-    /// The overlay could not be loaded, and why.
-    Failed(ErrorWire),
+    /// How many frames after the playhead the viewer keeps Frame Maps and Sample Items for.
+    pub data_ahead: u32,
+    /// How many frames before the playhead the viewer keeps Frame Maps and Sample Items for.
+    pub data_behind: u32,
 }
 
 /// What the frontend sends.
@@ -278,17 +164,93 @@ pub enum ClientMessage {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         #[ts(type = "number", optional)]
         start_frame: Option<u64>,
+        /// The most bytes of Sample Items the viewer holds at once, fixed for the stream. The backend never has more
+        /// than this sent, except one item larger than it alone.
+        #[ts(type = "number")]
+        data_bytes: u64,
     },
     /// Replaces the viewer's window.
     Want(Want),
-    /// Replaces how one lane shows its overlay; a higher revision resends the lane's overlays.
-    LaneView {
+    /// Replaces how one lane selects samples and whether it wants any; a higher revision resends the lane's Frame Maps.
+    LanePolicy {
         /// The lane's position in `Opened.lanes`.
         lane: u16,
-        /// Counts the lane's changes; overlays carry the revision they were made for.
+        /// Counts the lane's changes; Frame Maps carry the revision they were selected under.
         revision: u32,
-        /// The new view.
-        view: LaneViewWire,
+        /// How samples are selected.
+        policy: LanePolicyWire,
+        /// Whether the lane is shown; an unsubscribed lane gets no Frame Maps and its samples are not sent for it.
+        subscribed: bool,
+    },
+    /// Asks for a catalog document by id; the answer is a `Catalog` message.
+    Catalog {
+        /// The catalog id, such as `built-in:standard`.
+        id: String,
+    },
+    /// Asks for every field of one object of a Sample Item the viewer holds; the answer is `Inspected`. A newer
+    /// request replaces one not started yet.
+    Inspect {
+        /// The viewer's source id, `LaneInfo::source`.
+        source: u16,
+        /// The source revision the sample belongs to.
+        data_revision: u32,
+        /// The sample's index in its source.
+        sample: u32,
+        /// The object's id; at most 1024 bytes.
+        entity: String,
+    },
+    /// Starts an export of the viewer's video with the lanes named, frozen as the viewer holds them; progress and the
+    /// result arrive as `Export` messages. Owners only; one export runs per backend.
+    Export {
+        /// Names the job in its `Export` messages.
+        job: u32,
+        /// The lanes to draw, in the order they tile.
+        lanes: Vec<ExportLaneWire>,
+        /// The first frame, a sequence id.
+        #[ts(type = "number")]
+        first: u64,
+        /// The last frame, inclusive; equal to `first` for a PNG.
+        #[ts(type = "number")]
+        last: u64,
+        /// What to write.
+        format: ExportFormatWire,
+        /// Where to write it on the backend's machine: an absolute path.
+        path: String,
+    },
+    /// Cancels a running export; ignored when the job is not running.
+    CancelExport {
+        /// The job to cancel.
+        job: u32,
+    },
+    /// Asks for rows of a lane's File scope list: the objects its whole file holds that the video shows under the
+    /// lane's matching, kept by the class toggles and the search, sorted and paged. The answer is `FileRows` or
+    /// `FileScope`. One request runs per lane; a newer `request` replaces the older, which is never answered. Owners
+    /// only. A `limit` outside 1 to 200 or `bins` above 256 is a `LaneProblem`.
+    FileQuery {
+        /// The lane's position in `Opened.lanes`.
+        lane: u16,
+        /// Names the request in its answer; the client drops answers of older requests.
+        request: u32,
+        /// The search, parsed by the client.
+        query: Search,
+        /// The lane's class toggles: bit `i % 32` of word `i / 32` is set for each enabled filter option, as in the
+        /// Sample Item's class mask.
+        classes: Vec<u32>,
+        /// The order of the rows.
+        sort: Sort,
+        /// The first row to send.
+        offset: u32,
+        /// How many rows to send at most, from 1 to 200.
+        limit: u32,
+        /// The most spans of presence per row, from 0 to 256; 0 sends none.
+        bins: u16,
+    },
+    /// Stops wanting a lane's File scope list: the lane's running or waiting query is cancelled and never answered, and
+    /// what the backend kept for the lane's paging is dropped. Nothing is sent back. A lane the video
+    /// does not have ends the session, as for `FileQuery`.
+    FileRelease {
+        /// The lane's position in `Opened.lanes`.
+        lane: u16,
     },
     /// Ends the session and releases the source.
     Close,
@@ -324,8 +286,8 @@ pub enum ServerMessage {
         warnings: Vec<String>,
         /// The lanes of the entry, in order.
         lanes: Vec<LaneInfo>,
-        /// The view every lane starts with.
-        lane_defaults: LaneViewWire,
+        /// What every lane starts with.
+        lane_defaults: LaneDefaultsWire,
         /// The catalogs a lane may draw with, built-ins first and Standard first among them.
         catalogs: Vec<CatalogInfoWire>,
     },
@@ -336,13 +298,42 @@ pub enum ServerMessage {
         /// Where the load stands.
         status: LaneStatusWire,
     },
-    /// A lane's catalog could not be compiled or failed on a frame; the lane keeps its last catalog. Only for an
+    /// A lane's policy was refused or one of its samples could not be read; the lane keeps what it had. Only for an
     /// audience with host details.
     LaneProblem {
         /// The lane's position in `Opened.lanes`.
         lane: u16,
         /// What went wrong, in words for the user.
         reason: String,
+    },
+    /// The answer to a `Catalog` request.
+    Catalog {
+        /// The requested id.
+        id: String,
+        /// Counts the document's changes; 0 when there is no such catalog.
+        revision: u32,
+        /// The catalog document, or `null` when no such catalog exists or it cannot be served.
+        document: Option<String>,
+        /// Why an existing catalog cannot be served (too large, unreadable, not text); `null` otherwise.
+        problem: Option<String>,
+    },
+    /// The catalogs a lane may draw with changed: the whole list, as in `Opened.catalogs`.
+    Catalogs {
+        /// Built-ins first and Standard first among them, then the user's.
+        catalogs: Vec<CatalogInfoWire>,
+    },
+    /// The answer to an `Inspect` request.
+    Inspected {
+        /// The requested source.
+        source: u16,
+        /// The requested revision.
+        data_revision: u32,
+        /// The requested sample.
+        sample: u32,
+        /// The requested object.
+        entity: String,
+        /// What the backend knows of it.
+        inspection: InspectionWire,
     },
     /// One frame could not be decoded; the others are fine. The viewer names the frame itself, so the error is only
     /// the cause.
@@ -355,91 +346,67 @@ pub enum ServerMessage {
         #[ts(flatten)]
         error: ErrorWire,
     },
+    /// The frames the viewer keeps Frame Map cells for from now on, inclusive: the data window the backend applied.
+    /// Precedes every Frame Map run selected for it.
+    DataWindow {
+        /// The first frame.
+        #[ts(type = "number")]
+        first: u64,
+        /// The last frame.
+        #[ts(type = "number")]
+        last: u64,
+    },
+    /// The viewer no longer holds these samples of the source. Ignored for another data revision; a sample not held
+    /// is ignored.
+    Evict {
+        /// The viewer's source id, `LaneInfo::source`.
+        source: u16,
+        /// The source revision the samples belong to.
+        data_revision: u32,
+        /// The sample indices, ascending and distinct.
+        samples: Vec<u32>,
+    },
+    /// Where an export stands. Sent at most ten times a second while running, then once with the outcome.
+    Export {
+        /// The job from the request.
+        job: u32,
+        /// Where it stands.
+        state: ExportStateWire,
+    },
+    /// Rows of a lane's File scope list, the answer to a `FileQuery` that could be answered. Not held back for a
+    /// frame.
+    FileRows {
+        /// The lane's position in `Opened.lanes`.
+        lane: u16,
+        /// The request answered.
+        request: u32,
+        /// The source revision the rows were listed under; the client drops rows of any other.
+        data_revision: u32,
+        /// The lane policy revision the presence was placed under; the client drops rows of any other.
+        policy_revision: u32,
+        /// How many objects the video shows that the class toggles keep.
+        #[ts(type = "number")]
+        total: u64,
+        /// How many of them the search matches, which is how many rows there are.
+        #[ts(type = "number")]
+        matched: u64,
+        /// The request's `offset`.
+        offset: u32,
+        /// Rows `offset` to `offset + rows.len()` of the list.
+        rows: Vec<Row>,
+    },
+    /// The answer to a `FileQuery` that cannot be answered, and why. Not held back for a frame.
+    FileScope {
+        /// The lane's position in `Opened.lanes`.
+        lane: u16,
+        /// The request answered.
+        request: u32,
+        /// Why there are no rows.
+        unavailable: FileScopeUnavailable,
+    },
     /// The session cannot go on and ends.
     Error(ErrorWire),
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use serde_json::json;
-
-    #[test]
-    fn messages_use_the_names_the_frontend_parses() {
-        let open = ClientMessage::Open {
-            ticket: "t1".into(),
-            start_frame: None,
-        };
-        assert_eq!(
-            serde_json::to_value(&open).unwrap(),
-            json!({"type": "Open", "ticket": "t1"})
-        );
-        let want = json!({
-            "type": "Want", "playhead": 7, "ahead": 20, "behind": 5, "direction": "backward"
-        });
-        assert!(matches!(
-            serde_json::from_value(want).unwrap(),
-            ClientMessage::Want(Want {
-                playhead: 7,
-                direction: Direction::Backward,
-                ..
-            })
-        ));
-        let lane_defaults = LaneViewWire {
-            catalog: "built-in:standard".into(),
-            filter: BTreeMap::new(),
-            tolerance_ms: Some(50),
-            sticky: StickyWire {
-                enabled: false,
-                timeout_ms: Some(2050),
-                opacity: 1.0,
-            },
-            target: TargetWire {
-                width: 1280,
-                height: 720,
-            },
-            visible: true,
-        };
-        let opened = ServerMessage::Opened {
-            protocol: PLAYBACK_PROTOCOL,
-            frame_count: 90,
-            duration_us: 3_000_000,
-            frame_bytes: 4608,
-            width: 64,
-            height: 48,
-            warnings: Vec::new(),
-            lanes: vec![LaneInfo {
-                label: "gate.mp4".into(),
-                has_overlay: false,
-            }],
-            lane_defaults,
-            catalogs: vec![CatalogInfoWire {
-                id: "built-in:standard".into(),
-                name: "Standard".into(),
-                description: String::new(),
-            }],
-        };
-        let json = serde_json::to_value(&opened).unwrap();
-        assert_eq!(json["protocol"], 3);
-        assert_eq!(json["catalogs"][0]["id"], "built-in:standard");
-        assert_eq!(json["type"], "Opened");
-        assert_eq!(
-            json["lanes"],
-            json!([{"label": "gate.mp4", "has_overlay": false}])
-        );
-        assert_eq!(json["lane_defaults"]["sticky"]["timeout_ms"], 2050);
-        let status = ServerMessage::LaneStatus {
-            lane: 1,
-            status: LaneStatusWire::Failed(ErrorWire {
-                code: foundation::ErrorCode::OverlayInvalid,
-                params: crate::ErrorParams::default(),
-                reason: None,
-                location: None,
-            }),
-        };
-        assert_eq!(
-            serde_json::to_value(&status).unwrap(),
-            json!({"type": "LaneStatus", "lane": 1, "status": {"status": "Failed", "code": "OverlayInvalid", "params": {}}})
-        );
-    }
-}
+mod tests;

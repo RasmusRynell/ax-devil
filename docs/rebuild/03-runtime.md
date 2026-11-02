@@ -13,7 +13,7 @@ Sources: `docs/domain/invariants.md#ui-lifecycle`, `#display-rendering`, `#synch
 | Cancellation propagates through every layer a task calls and cannot be swallowed by generic error handling; a cancelled task delivers nothing | One cooperative token polled between operations; `Cancelled` is a `BaseException` (`src/ax_devil/core/cancellation.py`) |
 | Tasks receive all inputs at submission and never read UI or UI-mutated state | Plain values passed to `submit` |
 | A newer request for the same consumer supersedes the older; only current results arrive | `LatestRequest` |
-| Slow or ordered work never delays unrelated work | Named pools (`shared`, `plugins`, `render-catalogs`, `render-catalog-mutations`, `overlay-analysis`) |
+| Slow or ordered work never delays unrelated work | Named pools (`shared`, `plugins`, `render-catalog-mutations`, `overlay-analysis`) |
 | Streams own their producers; work with external effects (plugin install) finishes regardless of who still listens | Own threads and runners |
 | Every resource has one owner at a time; hand-offs are explicit; an unclaimed result's resources are released | `EntryMedia` ownership until `release_media`; `on_discard` |
 | A resource is destroyed on the executor it requires (UI objects on the UI thread, GPU objects in the renderer phase) | GUI-thread deletion; Qt scene-graph phase |
@@ -49,9 +49,9 @@ frame rates or bursts can exhaust the frame buffer"):
 
 Startup order (*current:* `Application.start()` in `src/ax_devil/app.py`):
 
-1. If D1 keeps per-installation plugin selections, resolve the active one.
+1. (Python app only: resolve the installation's plugin selection; D29 has none.)
 2. Logging to console; load settings; ensure storage folders; logging to file.
-3. Discover and register plugins; record failures.
+3. Register built-in handlers and the installed converters from the registry; record failures.
 4. Create the UI; apply theme; install shortcuts.
 5. Create the catalog manager.
 6. Show the main window and launch: CLI items → new Untitled workspace; `open FILE` → that workspace; plain launch →
@@ -87,7 +87,8 @@ not an error (`data_sources/README.md#live-transports`).
 
 The repo measures (DT-03) rather than stating budgets; D9 sets them. The offline video budgets are taken
 ([14](14-build-order.md#decisions-taken-for-offline-video)). Proposal, not a repo fact: offline 1080p30 with four lanes
-and Standard, and live 1080p30 with one overlay, at full rate; overlay preparation under 4 ms for 100 objects.
+and Standard, and live 1080p30 with one overlay, at full rate; presentation on the main thread under 8 ms p95 (video
+upload included) at four lanes of 1000 objects, 1080p and 4K (D22, measured by the S0 bench).
 
 ## Error model (MUST)
 
@@ -98,12 +99,12 @@ and Standard, and live 1080p30 with one overlay, at full rate; overlay preparati
 | Failure | Source |
 |---------|--------|
 | Item resolution, unreadable workspace or item | `docs/architecture/workspace.md#resolution`, `#file-format` |
-| Malformed decoder record, whole-file load warnings | `.agents/skills/write-plugin/SKILL.md#writing-it-well` |
+| Malformed decoder record, whole-file load warnings | `.agents/skills/write-plugin/reference.md#output-json-lines-on-stdout` |
 | Recipe evaluation, catalog load | `docs/domain/invariants.md#rendering` |
 | Plugin load | `docs/domain/invariants.md#plugin-system` |
 | Settings save | `docs/domain/invariants.md#settings-and-shortcuts` |
 | Export | `docs/domain/invariants.md#export` |
-| Whole-file analysis | `video_viewer/README.md#rules` |
+| Whole-file analysis | `crates/scene-store/README.md#file-history` |
 | Uncaught exception: log, offer continue or close | `application_shell/exception_handler.py` |
 
 ## Logging (MUST)

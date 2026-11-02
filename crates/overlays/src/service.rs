@@ -2,14 +2,13 @@
 
 use std::{sync::Arc, thread};
 
-use catalogs::Library;
 use foundation::{FrameSize, Timeline};
 use playlist_resolvers::OverlayRef;
 use scene_store::TrackRegistry;
 
 use crate::{
-    LaneView, TargetSize, ViewerOverlays,
-    sources::{CatalogSource, TrackSource},
+    ViewerOverlays,
+    sources::TrackSource,
     state::{Shared, State, lane_id},
     worker,
 };
@@ -18,50 +17,45 @@ use crate::{
 #[derive(Clone)]
 pub struct OverlayService {
     tracks: Arc<dyn TrackSource>,
-    catalogs: Arc<dyn CatalogSource>,
 }
 
 impl OverlayService {
-    /// A service loading tracks through `tracks` and drawing with `catalogs`.
-    pub fn new(tracks: TrackRegistry, catalogs: Library) -> Self {
-        Self::from_sources(Arc::new(tracks), Arc::new(catalogs))
+    /// A service loading tracks through `tracks`.
+    pub fn new(tracks: TrackRegistry) -> Self {
+        Self::from_sources(Arc::new(tracks))
     }
 
-    pub(crate) fn from_sources(
-        tracks: Arc<dyn TrackSource>,
-        catalogs: Arc<dyn CatalogSource>,
-    ) -> Self {
-        Self { tracks, catalogs }
+    pub(crate) fn from_sources(tracks: Arc<dyn TrackSource>) -> Self {
+        Self { tracks }
     }
 
-    /// The view every lane starts with; the one place lane defaults live. The target is a placeholder until the
-    /// viewer reports its size.
-    pub fn lane_defaults(&self) -> LaneView {
-        LaneView {
-            catalog: self.catalogs.default_id(),
-            filter: scene::FilterChoice::default(),
-            policy: overlay_sync::MatchPolicy::default(),
-            target: TargetSize {
-                width: 1280,
-                height: 720,
-            },
-            visible: true,
-        }
-    }
-
-    /// Starts loading every lane's track in the background; a lane without an overlay never gets a status.
+    /// Starts loading every source in the background; a lane without an overlay never gets a status. Lanes on the
+    /// same file (same path, handler and options) share one source, loaded and sent once.
     ///
-    /// Each overlay loads on its own thread (loads share decoding through the track registry) and one worker thread
-    /// compiles catalogs and prepares frames, so nothing here blocks the caller. Lanes past `u16::MAX` are not
-    /// opened.
+    /// `sample_budget` is the most bytes of Sample Items the viewer holds at once: the viewer never has more sent, but
+    /// one item larger than it alone.
+    ///
+    /// Each source loads, then encodes, on its own thread (loads share decoding through the track registry), so
+    /// nothing here blocks the caller. Lanes past `u16::MAX` are not opened.
     pub fn open_viewer(
         &self,
         mut lanes: Vec<Option<OverlayRef>>,
         timeline: Timeline,
         frame_size: FrameSize,
+        sample_budget: u64,
     ) -> ViewerOverlays {
         lanes.truncate(usize::from(u16::MAX));
-        let state = State::new(lanes, &self.lane_defaults(), timeline.last());
+        let state = State::new(lanes, timeline.last(), sample_budget);
+        let lane_sources: Vec<Option<u16>> = state
+            .lanes
+            .iter()
+            .map(|lane| lane.source.map(lane_id))
+            .collect();
+        let overlays: Vec<OverlayRef> = state
+            .sources
+            .iter()
+            .map(|source| source.overlay.clone())
+            .collect();
         let shared = Arc::new(Shared {
             state: std::sync::Mutex::new(state),
             work: std::sync::Condvar::new(),
@@ -71,37 +65,15 @@ impl OverlayService {
             frame_size,
         });
         let mut threads = Vec::new();
-        let catalogs = Arc::clone(&self.catalogs);
-        let worker_shared = Arc::clone(&shared);
-        match thread::Builder::new()
-            .name("overlays-worker".into())
-            .spawn(move || worker::run(&worker_shared, catalogs.as_ref()))
-        {
-            Ok(handle) => threads.push(handle),
-            Err(error) => {
-                tracing::error!("cannot start the overlay worker: {error}");
-                shared.abort(&foundation::UserError::new(
-                    foundation::ErrorCode::Internal,
-                    format!("Cannot start the overlays: {error}"),
-                ));
-            }
-        }
-        let overlays: Vec<(usize, OverlayRef)> = shared
-            .lock()
-            .lanes
-            .iter()
-            .enumerate()
-            .filter_map(|(index, lane)| Some((index, lane.overlay.clone()?)))
-            .collect();
-        for (index, overlay) in overlays {
-            let (loader_shared, tracks) = (Arc::clone(&shared), Arc::clone(&self.tracks));
+        for (index, overlay) in overlays.into_iter().enumerate() {
+            let (thread_shared, tracks) = (Arc::clone(&shared), Arc::clone(&self.tracks));
             let spawned = thread::Builder::new()
-                .name(format!("overlays-load-{}", lane_id(index)))
-                .spawn(move || worker::load(&loader_shared, tracks.as_ref(), index, &overlay));
+                .name(format!("overlays-source-{}", lane_id(index)))
+                .spawn(move || worker::run(&thread_shared, tracks.as_ref(), index, &overlay));
             match spawned {
                 Ok(handle) => threads.push(handle),
                 Err(error) => {
-                    tracing::error!("cannot start an overlay loader: {error}");
+                    tracing::error!("cannot start an overlay source: {error}");
                     shared.update(|state| {
                         state.finish_load(
                             index,
@@ -109,11 +81,12 @@ impl OverlayService {
                                 foundation::ErrorCode::Internal,
                                 format!("Cannot start loading the overlay: {error}"),
                             )),
+                            &shared.timeline,
                         );
                     });
                 }
             }
         }
-        ViewerOverlays::new(shared, threads)
+        ViewerOverlays::new(shared, threads, lane_sources)
     }
 }

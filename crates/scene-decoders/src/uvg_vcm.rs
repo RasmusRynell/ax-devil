@@ -13,7 +13,8 @@ use scene::{
 use serde_json::value::RawValue;
 
 use crate::{
-    DecodeContext, DecodeError, DecodeSummary, DecoderSpec, FileSceneDecoder, LoadWarning, Storage,
+    DecodeContext, DecodeError, DecodeSummary, DecoderSpec, FileSceneDecoder, LoadWarning,
+    OnEqualKey, SceneSink, SourceFile, Storage,
 };
 
 static SPEC: DecoderSpec = DecoderSpec {
@@ -126,11 +127,12 @@ impl FileSceneDecoder for UvgVcmDecoder {
 
     fn decode_file(
         &self,
-        input: &[u8],
+        source: &dyn SourceFile,
         _context: &DecodeContext<'_>,
-        emit: &mut dyn FnMut(Scene),
+        sink: &mut dyn SceneSink,
         cancel: &CancelToken,
     ) -> Result<DecodeSummary, Interrupt<DecodeError>> {
+        let input = source.bytes(cancel)?;
         let mut document: HashMap<&str, &RawValue> = serde_json::from_slice(input)
             .map_err(|error| fail(format!("UVG-VCM document: {error}")))?;
         let version = document
@@ -159,7 +161,9 @@ impl FileSceneDecoder for UvgVcmDecoder {
             if !ambiguous.is_empty() {
                 duplicates.push((index + 1, ambiguous));
             }
-            emit(scene);
+            if sink.sample(scene, OnEqualKey::Replace).is_break() {
+                break;
+            }
         }
 
         Ok(DecodeSummary {

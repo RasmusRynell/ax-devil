@@ -48,7 +48,7 @@ describe("video viewer entries", () => {
     await act(async () => {});
     expect((await slider()).value).toBe("0");
     expect(sent.filter((message) => message.type === "Open")).toEqual([
-      { type: "Open", ticket: expect.any(String) },
+      { type: "Open", ticket: expect.any(String), data_bytes: expect.any(Number) },
     ]);
     expect(tickets().at(-1)).toMatchObject({ entry: "content-b" });
     flushFrames();
@@ -132,6 +132,7 @@ describe("video viewer entries", () => {
     expect(sent.find((message) => message.type === "Open")).toEqual({
       type: "Open",
       ticket: expect.any(String),
+      data_bytes: expect.any(Number),
     });
   });
 
@@ -142,7 +143,11 @@ describe("video viewer entries", () => {
     seed(room, "content-b", 55);
     act(() => room.setItems([video("a")]));
     expect((await slider()).value).toBe("0");
-    expect(sent[0]).toEqual({ type: "Open", ticket: expect.any(String) });
+    expect(sent[0]).toEqual({
+      type: "Open",
+      ticket: expect.any(String),
+      data_bytes: expect.any(Number),
+    });
   });
 
   it("moves a following window to the presenter's new entry without a revoked notice", async () => {

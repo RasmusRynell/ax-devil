@@ -25,9 +25,33 @@ interface Props {
   className?: string;
 }
 
-/** Keeps `[start, start + size]` inside `[0, limit]`, preferring the start. */
-function within(start: number, size: number, limit: number): number {
-  return Math.max(0, Math.min(start, limit - size));
+/** Keeps `[start, start + size]` inside `[from, to]`, preferring the start. */
+function within(start: number, size: number, from: number, to: number): number {
+  return Math.max(from, Math.min(start, to - size));
+}
+
+/**
+ * Where a panel opens for its button: below it when it fits, else moved to stay inside the nearest ancestor marked
+ * with `data-popover-bounds` (the window without one), and no larger than that area, so it scrolls instead of leaving it.
+ */
+function placement(button: HTMLElement, panel: HTMLElement): CSSProperties {
+  const at = button.getBoundingClientRect();
+  const area = button.closest("[data-popover-bounds]")?.getBoundingClientRect();
+  const { left, top, right, bottom } = area ?? {
+    left: 0,
+    top: 0,
+    right: window.innerWidth,
+    bottom: window.innerHeight,
+  };
+  const width = Math.min(panel.offsetWidth, right - left);
+  const height = Math.min(panel.offsetHeight, bottom - top);
+  const y = within(at.bottom, height, top, bottom);
+  return {
+    left: within(at.left, width, left, right),
+    top: y,
+    maxWidth: `min(48ch, ${right - left}px)`,
+    maxHeight: bottom - y,
+  };
 }
 
 /**
@@ -45,13 +69,9 @@ export function Popover({ label, trigger, children, onCanvas = false, className 
   const close = () => setOpen(false);
 
   useLayoutEffect(() => {
-    if (!open || !button.current || !panel.current) return;
-    const at = button.current.getBoundingClientRect();
-    const { offsetWidth, offsetHeight } = panel.current;
-    setPlace({
-      left: within(at.left, offsetWidth, window.innerWidth),
-      top: within(at.bottom, offsetHeight, window.innerHeight),
-    });
+    if (!open) return setPlace(undefined);
+    if (!button.current || !panel.current) return;
+    setPlace(placement(button.current, panel.current));
   }, [open]);
 
   useEffect(() => {
@@ -104,7 +124,7 @@ export function Popover({ label, trigger, children, onCanvas = false, className 
           role="dialog"
           aria-label={label}
           style={place}
-          className="fixed z-10 max-h-[calc(100vh-var(--spacing-m)*2)] w-max max-w-[min(48ch,100vw)] overflow-y-auto rounded-popup border border-line-strong bg-popup p-m text-fg shadow-popup"
+          className="fixed z-10 max-h-screen w-max max-w-[min(48ch,100vw)] overflow-y-auto rounded-popup border border-line-strong bg-popup p-m text-fg shadow-popup"
         >
           {typeof children === "function" ? children(close) : children}
         </div>

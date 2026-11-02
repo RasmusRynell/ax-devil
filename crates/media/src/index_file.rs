@@ -2,7 +2,8 @@
 //!
 //! Layout, all little-endian: `"AXDVIDX"`, version `u8`, scan kind `u8`, the fingerprint (`device`, `inode`, `size`
 //! as `u64`; `mtime_ns`, `ctime_ns` as `i64`; the sample digest as `u64`), then the body: stream `u32`, time base
-//! numerator and denominator `i32`, first pts `i64`, frame count and keyframe count `u64`, the pts of every frame
+//! numerator and denominator `i32`, first pts `i64`, the duration of the last frame in time base ticks `i64` (0
+//! when the container gave none), frame count and keyframe count `u64`, the pts of every frame
 //! in presentation order `i64[]`, the keyframe sequence ids `u64[]`, and last the xxh3 of the body.
 
 use crate::ScanKind;
@@ -15,10 +16,10 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use xxhash_rust::xxh3::xxh3_64;
 
 const MAGIC: &[u8; 7] = b"AXDVIDX";
-const VERSION: u8 = 1;
+const VERSION: u8 = 2;
 const FINGERPRINT_BYTES: usize = 6 * 8;
 const HEAD_BYTES: usize = MAGIC.len() + 2 + FINGERPRINT_BYTES;
-const FIXED_BODY_BYTES: usize = 4 + 4 + 4 + 8 + 8 + 8;
+const FIXED_BODY_BYTES: usize = 4 + 4 + 4 + 8 + 8 + 8 + 8;
 /// The longest part of an index file name taken from the video's own name, in UTF-8 bytes.
 const NAME_BYTES: usize = 120;
 
@@ -30,6 +31,8 @@ pub(crate) struct Stored {
     pub(crate) stream: u32,
     pub(crate) time_base: (i32, i32),
     pub(crate) first_pts: i64,
+    /// The container's duration of the last frame in presentation order, in time base ticks; 0 when it gave none.
+    pub(crate) last_duration: i64,
     /// The pts of every frame in presentation order.
     pub(crate) pts: Vec<i64>,
     /// The sequence ids where decoding can start.
@@ -60,6 +63,7 @@ impl Stored {
         out.extend_from_slice(&self.time_base.0.to_le_bytes());
         out.extend_from_slice(&self.time_base.1.to_le_bytes());
         out.extend_from_slice(&self.first_pts.to_le_bytes());
+        out.extend_from_slice(&self.last_duration.to_le_bytes());
         out.extend_from_slice(&(self.pts.len() as u64).to_le_bytes());
         out.extend_from_slice(&(self.keyframes.len() as u64).to_le_bytes());
         for pts in &self.pts {
@@ -106,6 +110,7 @@ impl Stored {
         let stream = reader.u32()?;
         let time_base = (reader.i32()?, reader.i32()?);
         let first_pts = reader.i64()?;
+        let last_duration = reader.i64()?;
         let frames = reader.u64()?;
         let keys = reader.u64()?;
         let expected = frames
@@ -126,6 +131,7 @@ impl Stored {
             stream,
             time_base,
             first_pts,
+            last_duration,
             pts,
             keyframes,
         })

@@ -82,5 +82,5 @@ new home:
 | 11 (this file) | `AGENTS.md` placement rule and Read Next |
 | [12](12-agent-setup.md) | `AGENTS.md`, `.agents/skills/` |
 | [13](13-security-packaging-ops.md) | `docs/settings.md`, `docs/plugins.md#trust`, invariants, testing runbook (release) |
-| [14](14-build-order.md) | Nothing; decisions land in the docs that own their rules |
+| [14](14-build-order.md), [15](15-open-decisions.md) | Nothing; decisions land in the docs that own their rules |
 | [migration.md](migration.md) | Nothing; done when the branch carries the artifacts |

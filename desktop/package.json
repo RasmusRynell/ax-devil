@@ -4,7 +4,7 @@
   "description": "Desktop app for inspecting Axis camera streams, offline video, and analytics overlays",
   "author": "Rasmus Rynell",
   "private": true,
-  "main": "main.cjs",
+  "main": "start.cjs",
   "scripts": {
     "start": "electron ."
   },

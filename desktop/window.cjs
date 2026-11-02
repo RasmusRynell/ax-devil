@@ -9,6 +9,9 @@ const { windowBounds } = require("./window-state.cjs");
 // Video files the Add Video dialog offers; the backend's intake takes any path, the viewer judges the media.
 const VIDEO_EXTENSIONS = ["mp4", "avi", "mkv", "mov"];
 
+// What an export writes, by file extension; the page names one of these.
+const EXPORT_EXTENSIONS = ["mp4", "png"];
+
 // Zoom keys the shell handles itself (the backend refuses them as shortcuts), by the key that triggers them.
 const ZOOM_STEPS = { "=": 0.5, "+": 0.5, "-": -0.5, 0: null };
 
@@ -121,6 +124,22 @@ function installIpc({ connect, disconnect }) {
       filters: [{ name: "Video files", extensions: VIDEO_EXTENSIONS }],
     });
     return chosen.canceled ? [] : chosen.filePaths;
+  });
+  // The absolute path an export is saved to, with the extension the export writes; null when cancelled. The
+  // backend, which writes the file, checks the path again. Only the local backend's page may browse this machine.
+  handle("export:pick-file", async ({ remote, window }, name, extension) => {
+    if (remote) throw new Error("Not allowed");
+    if (typeof name !== "string" || !EXPORT_EXTENSIONS.includes(extension))
+      throw new Error("Expected a file name and an export extension");
+    const chosen = await dialog.showSaveDialog(window, {
+      title: "Export",
+      defaultPath: path.basename(name),
+      filters: [{ name: extension.toUpperCase(), extensions: [extension] }],
+    });
+    if (chosen.canceled) return null;
+    return chosen.filePath.toLowerCase().endsWith(`.${extension}`)
+      ? chosen.filePath
+      : `${chosen.filePath}.${extension}`;
   });
   // The chosen absolute path, null when the dialog is cancelled; the page saves it through the settings. Only the
   // local backend's page may browse this machine's folders.

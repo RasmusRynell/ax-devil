@@ -1,5 +1,6 @@
 use crate::Direction::{Backward, Forward};
-use crate::testing::{Fixture, deliveries, want};
+use crate::testing::{Fixture, deliveries, poll_now, want};
+use crate::{Delivery, rank};
 use foundation::{ErrorCode, UserError};
 
 fn frames(ids: &[u64]) -> Vec<(u64, bool)> {
@@ -21,6 +22,29 @@ fn delivery_is_playhead_first_then_nearest_in_the_direction_of_travel() {
     session.want(want(30, 1, 3, Backward));
     fx.drain();
     assert_eq!(deliveries(&mut session), frames(&[30, 29, 28, 27, 31]));
+}
+
+#[test]
+fn next_rank_is_the_rank_of_the_frame_the_next_delivery_returns_and_sends_nothing() {
+    let mut fx = Fixture::new(60, 10, 200);
+    let mut session = fx.session();
+    assert_eq!(session.next_rank(), None, "no want yet");
+    session.want(want(10, 3, 2, Forward));
+    fx.drain();
+    for _ in 0..6 {
+        let ranked = session.next_rank();
+        assert_eq!(ranked, session.next_rank(), "peeking does not send");
+        let Some(Some(Delivery::Frame(frame))) = poll_now(session.next_delivery()) else {
+            panic!("a frame is waiting");
+        };
+        assert_eq!(
+            ranked,
+            Some(rank(Forward, 10, frame.id().sequence_id)),
+            "frame {}",
+            frame.id().sequence_id
+        );
+    }
+    assert_eq!(session.next_rank(), None, "the window was sent");
 }
 
 #[test]

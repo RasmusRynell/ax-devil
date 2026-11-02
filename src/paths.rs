@@ -18,6 +18,8 @@ pub struct Paths {
     default_cache_dir: PathBuf,
     /// The `--cache-dir` override, which beats the `storage.cache_dir` setting.
     cache_override: Option<PathBuf>,
+    /// The standard folder of the user's render catalogs.
+    default_catalog_dir: PathBuf,
     /// The log file.
     pub log_file: PathBuf,
     /// The window positions, which are state rather than settings.
@@ -39,6 +41,7 @@ impl Paths {
             },
             default_cache_dir: folder(env, "XDG_CACHE_HOME", ".cache")?,
             cache_override: cache_dir,
+            default_catalog_dir: data_folder(env)?.join("catalogs"),
             log_file: state.join("logs/ax-devil.log"),
             window_file: state.join("windows.json"),
         })
@@ -50,6 +53,22 @@ impl Paths {
         let chosen = self.cache_override.clone().or(setting);
         chosen.unwrap_or_else(|| self.default_cache_dir.clone())
     }
+
+    /// The folder of the user's render catalogs: the `storage.catalog_dir` setting (`setting`), else the standard
+    /// folder. The folder need not exist, and nothing creates it.
+    pub fn catalog_dir(&self, setting: Option<PathBuf>) -> PathBuf {
+        setting.unwrap_or_else(|| self.default_catalog_dir.clone())
+    }
+}
+
+/// The registry of installed converters, `plugins.json` in the data folder. It has no command-line override, so the
+/// handlers can be built before the command line is read.
+pub fn plugins_file(env: Env) -> Result<PathBuf, String> {
+    Ok(data_folder(env)?.join("plugins.json"))
+}
+
+fn data_folder(env: Env) -> Result<PathBuf, String> {
+    folder(env, "XDG_DATA_HOME", ".local/share")
 }
 
 /// The `ax-devil` folder under one XDG base: its variable when absolute, else `home_relative` under the home folder
@@ -101,6 +120,7 @@ mod tests {
             ("XDG_CONFIG_HOME", "/x/config"),
             ("XDG_STATE_HOME", "/x/state"),
             ("XDG_CACHE_HOME", "/x/cache"),
+            ("XDG_DATA_HOME", "/x/data"),
         ];
         let found = paths(&xdg, None).unwrap();
         assert_eq!(
@@ -109,12 +129,25 @@ mod tests {
         );
         assert_eq!(found.cache_dir(None), Path::new("/x/cache/ax-devil"));
         assert_eq!(
+            found.catalog_dir(None),
+            Path::new("/x/data/ax-devil/catalogs")
+        );
+        assert_eq!(
             found.log_file,
             Path::new("/x/state/ax-devil/logs/ax-devil.log")
         );
         assert_eq!(
             found.window_file,
             Path::new("/x/state/ax-devil/windows.json")
+        );
+        let env = |name: &str| {
+            xdg.iter()
+                .find(|(key, _)| *key == name)
+                .map(|(_, value)| OsString::from(value))
+        };
+        assert_eq!(
+            plugins_file(&env).unwrap(),
+            Path::new("/x/data/ax-devil/plugins.json")
         );
 
         let relative = [
@@ -125,6 +158,14 @@ mod tests {
         let found = paths(&relative, Some("/etc/mine.json")).unwrap();
         assert_eq!(found.config_file, Path::new("/etc/mine.json"));
         assert_eq!(found.cache_dir(None), Path::new("/home/me/.cache/ax-devil"));
+        assert_eq!(
+            found.catalog_dir(None),
+            Path::new("/home/me/.local/share/ax-devil/catalogs")
+        );
+        assert_eq!(
+            found.catalog_dir(Some("/mnt/mine".into())),
+            Path::new("/mnt/mine")
+        );
         assert_eq!(
             found.log_file,
             Path::new("/home/me/.local/state/ax-devil/logs/ax-devil.log")

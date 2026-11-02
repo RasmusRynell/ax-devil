@@ -7,7 +7,7 @@ import { PLAYBACK_PROTOCOL } from "./protocol";
 describe("opening", () => {
   it("asks for the video, shows indexing, then shows the first frame paused", async () => {
     const { session, server, sent, presented, refresh } = await setup();
-    expect(sent).toEqual([{ type: "Open", ticket: "ticket-1" }]);
+    expect(sent).toEqual([{ type: "Open", ticket: "ticket-1", data_bytes: expect.any(Number) }]);
     server.say({ type: "Indexing", progress: 0.4 });
     expect(session.getSnapshot()).toMatchObject({ status: "indexing", progress: 0.4 });
 
@@ -53,7 +53,9 @@ describe("opening", () => {
 describe("resuming", () => {
   it("opens where an earlier session left off, paused, at the speed it had", async () => {
     const { session, server, sent, presented, refresh } = await setup({ frame: 7, speed: 2 });
-    expect(sent).toEqual([{ type: "Open", ticket: "ticket-1", start_frame: 7 }]);
+    expect(sent).toEqual([
+      { type: "Open", ticket: "ticket-1", start_frame: 7, data_bytes: expect.any(Number) },
+    ]);
     server.open();
     server.frames(7);
     refresh();
@@ -79,7 +81,15 @@ describe("what the window asks for and keeps", () => {
     const { session, server, wants, presented, refresh } = await setup();
     server.open();
     expect(wants()).toEqual([
-      { type: "Want", playhead: 0, ahead: 4, behind: 5, direction: "forward" },
+      {
+        type: "Want",
+        playhead: 0,
+        ahead: 4,
+        behind: 5,
+        direction: "forward",
+        data_ahead: 0,
+        data_behind: 0,
+      },
     ]);
     // Paused at 0 the window is 0 to 4: frame 6 is dropped on arrival.
     server.frames(0, 1, 6);
@@ -216,7 +226,12 @@ describe("connection loss and closing", () => {
     await flush();
     expect(connections()).toBe(2);
     // A ticket works once: the new connection spends a new one.
-    expect(sent.at(-1)).toEqual({ type: "Open", ticket: "ticket-2", start_frame: 3 });
+    expect(sent.at(-1)).toEqual({
+      type: "Open",
+      ticket: "ticket-2",
+      start_frame: 3,
+      data_bytes: expect.any(Number),
+    });
     server.open();
     server.frames(3);
     refresh();

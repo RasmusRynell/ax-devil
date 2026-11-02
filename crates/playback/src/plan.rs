@@ -53,12 +53,14 @@ pub(crate) struct Span {
 }
 
 /// Lower is more urgent: the playhead, then the direction of travel nearest first, then the other side.
-pub(crate) type Rank = (u8, u64);
+pub type Rank = (u8, u64);
 
 /// Lower is more urgent: the viewer's priority first, then its [`Rank`].
 type Urgency = (Priority, Rank);
 
-pub(crate) fn rank(direction: Direction, playhead: u64, frame: u64) -> Rank {
+/// The urgency of `frame` for a viewer at `playhead` travelling `direction`; lower is more urgent. It is injective in
+/// `frame`, so no two frames of one viewer tie.
+pub fn rank(direction: Direction, playhead: u64, frame: u64) -> Rank {
     let distance = frame.abs_diff(playhead);
     if distance == 0 {
         (0, 0)

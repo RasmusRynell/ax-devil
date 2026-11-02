@@ -1,4 +1,4 @@
-//! The bounded cache of decoded Scenes a track keeps in memory.
+//! The bounded caches a track keeps in memory: decoded Scenes and encoded Sample Items.
 
 use std::{
     collections::{BTreeMap, HashMap},
@@ -8,23 +8,29 @@ use std::{
 
 use scene::{Fields, Geometry, Scene, Value};
 
-/// Least recently used Scenes by sample index, kept under a byte budget.
-pub(crate) struct SceneCache {
+/// Least recently used values by sample index, kept under a byte budget.
+pub(crate) struct Lru<V> {
     budget: usize,
     used: usize,
     tick: u64,
-    entries: HashMap<usize, Entry>,
+    entries: HashMap<usize, Entry<V>>,
     /// Entries by the tick they were last used, oldest first.
     recency: BTreeMap<u64, usize>,
 }
 
-struct Entry {
-    scene: Arc<Scene>,
+/// Decoded Scenes, measured by [`footprint`].
+pub(crate) type SceneCache = Lru<Arc<Scene>>;
+
+/// Encoded Sample Items, measured by their length.
+pub(crate) type ItemCache = Lru<Arc<[u8]>>;
+
+struct Entry<V> {
+    value: V,
     bytes: usize,
     tick: u64,
 }
 
-impl SceneCache {
+impl<V: Clone> Lru<V> {
     pub(crate) fn new(budget: usize) -> Self {
         Self {
             budget,
@@ -35,20 +41,19 @@ impl SceneCache {
         }
     }
 
-    /// The Scene of sample `index`, marked as just used.
-    pub(crate) fn get(&mut self, index: usize) -> Option<Arc<Scene>> {
+    /// The value of sample `index`, marked as just used.
+    pub(crate) fn get(&mut self, index: usize) -> Option<V> {
         self.tick += 1;
         let entry = self.entries.get_mut(&index)?;
         self.recency.remove(&entry.tick);
         entry.tick = self.tick;
         self.recency.insert(self.tick, index);
-        Some(entry.scene.clone())
+        Some(entry.value.clone())
     }
 
-    /// Keeps `scene`, evicting the least recently used until it fits. A Scene larger than the whole budget is not
-    /// kept.
-    pub(crate) fn insert(&mut self, index: usize, scene: Arc<Scene>) {
-        let bytes = footprint(&scene);
+    /// Keeps `value` of `bytes`, evicting the least recently used until it fits. A value larger than the whole
+    /// budget is not kept.
+    pub(crate) fn insert(&mut self, index: usize, value: V, bytes: usize) {
         if bytes > self.budget || self.entries.contains_key(&index) {
             return;
         }
@@ -65,7 +70,7 @@ impl SceneCache {
         self.entries.insert(
             index,
             Entry {
-                scene,
+                value,
                 bytes,
                 tick: self.tick,
             },
@@ -73,7 +78,7 @@ impl SceneCache {
         self.used += bytes;
     }
 
-    /// How many bytes of Scenes are held, by [`footprint`].
+    /// How many bytes are held.
     #[cfg(test)]
     pub(crate) fn used(&self) -> usize {
         self.used

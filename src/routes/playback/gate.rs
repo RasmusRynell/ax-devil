@@ -5,9 +5,13 @@
 use super::{End, Flow};
 use axum::extract::ws::{CloseFrame, Message};
 use foundation::Timeline;
+use overlays::OverlayEvent;
 use playback::{Authority, Direction, Priority, Session, Want, clamp_demand};
-use std::sync::{Arc, OnceLock};
-use tokio::sync::watch;
+use std::{
+    ops::RangeInclusive,
+    sync::{Arc, Mutex, OnceLock, PoisonError},
+};
+use tokio::sync::{Notify, watch};
 
 /// The close code of a stream whose authority was revoked: the viewer must not reconnect on its own.
 pub(super) const REVOKED: u16 = 4403;
@@ -31,6 +35,13 @@ pub(super) fn revoked_close() -> Message {
     }))
 }
 
+/// Data the writer dropped because the authority no longer reached it, until the stream gives it back to the overlays.
+#[derive(Default)]
+struct Rejected {
+    data: Mutex<Vec<OverlayEvent>>,
+    wake: Notify,
+}
+
 /// The authority over one open video: what its viewer may ask for, judged against the server clock the presenter's
 /// clock intents are stamped in. It remembers what the viewer asked, so a change of authority or of the presenter's
 /// clock narrows or widens what is applied without waiting for the viewer to ask again. A clone shares the video's
@@ -40,6 +51,7 @@ pub(super) struct Gate {
     authority: watch::Receiver<Authority>,
     now_us: Arc<dyn Fn() -> i64 + Send + Sync>,
     timeline: Arc<OnceLock<Timeline>>,
+    rejected: Arc<Rejected>,
     /// The viewer's last want, as it asked.
     asked: Option<Want>,
     /// The last want given to the session.
@@ -56,6 +68,7 @@ impl Gate {
             authority,
             now_us: Arc::new(now_us),
             timeline: Arc::default(),
+            rejected: Arc::default(),
             asked: None,
             applied: None,
         }
@@ -73,21 +86,52 @@ impl Gate {
             || matches!(*self.authority.borrow(), Authority::Revoked)
     }
 
-    /// Whether the viewer may be sent `frame` now.
-    pub(super) fn admits(&self, frame: u64) -> bool {
+    /// Whether the viewer chooses its own frames, which alone reaches the whole of a file.
+    pub(super) fn is_own(&self) -> bool {
+        matches!(*self.authority.borrow(), Authority::Own { .. })
+    }
+
+    /// Whether the viewer may be sent every one of `frames` now. What a viewer may have is one run of frames, so
+    /// the ends decide, both against the one authority and clock this reads.
+    pub(super) fn admits(&self, frames: &RangeInclusive<u64>) -> bool {
         let Some(timeline) = self.timeline.get() else {
             return false;
         };
         let authority = *self.authority.borrow();
-        let one = Want {
-            playhead: frame,
-            ahead: 0,
-            behind: 0,
-            direction: Direction::Forward,
-            priority: Priority::default(),
+        let now = (self.now_us)();
+        let admits = |frame| {
+            let one = Want {
+                playhead: frame,
+                ahead: 0,
+                behind: 0,
+                direction: Direction::Forward,
+                priority: Priority::default(),
+            };
+            clamp_demand(&authority, timeline, now, one)
+                .is_some_and(|allowed| allowed.playhead == frame)
         };
-        clamp_demand(&authority, timeline, (self.now_us)(), one)
-            .is_some_and(|allowed| allowed.playhead == frame)
+        admits(*frames.start()) && admits(*frames.end())
+    }
+
+    /// Records data the writer dropped, and wakes [`changed`](Self::changed) so the stream gives it back.
+    pub(super) fn reject(&self, data: OverlayEvent) {
+        self.rejected
+            .data
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .push(data);
+        self.rejected.wake.notify_one();
+    }
+
+    /// The data the writer dropped since this was last called.
+    pub(super) fn take_rejected(&self) -> Vec<OverlayEvent> {
+        std::mem::take(
+            &mut *self
+                .rejected
+                .data
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner),
+        )
     }
 
     /// Gives the session `want` as the authority allows it now; [`End::Revoked`] once it is revoked.
@@ -113,9 +157,12 @@ impl Gate {
         self.authority.has_changed().unwrap_or(true)
     }
 
-    /// Resolves when the authority changes or its holder goes away.
+    /// Resolves when the authority changes, its holder goes away or the writer dropped data.
     pub(super) async fn changed(&mut self) {
-        let _ = self.authority.changed().await;
+        tokio::select! {
+            _ = self.authority.changed() => {}
+            () = self.rejected.wake.notified() => {}
+        }
     }
 
     /// Resolves once the authority is revoked. An error means the holder is gone, which is a revocation too.

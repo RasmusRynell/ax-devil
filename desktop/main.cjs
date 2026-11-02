@@ -15,6 +15,9 @@ const smoke = process.argv.includes("--smoke-test");
 // The smoke test always starts its own release backend and never attaches to a running session.
 const port = smoke ? "0" : process.env.PORT || "7330";
 const devUrl = smoke ? undefined : process.env.DESKTOP_DEV_URL;
+// The backend starts the hidden renderer with this executable and folder; in a packaged app it cannot find them itself.
+process.env.AX_DEVIL_ELECTRON ??= process.execPath;
+process.env.AX_DEVIL_DESKTOP ??= app.getAppPath();
 // The video canvas needs WebGL2, which a machine without a GPU (a CI runner, a virtual display) blocklists. On Linux and
 // Windows the smoke test draws with SwiftShader, Chromium's software renderer, so its result does not depend on the
 // machine's graphics. SwiftShader does not start on a macOS runner, whose own GPU path (Metal) works.

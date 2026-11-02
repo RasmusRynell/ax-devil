@@ -1,7 +1,13 @@
-//! The playback tests' backend, viewer and envelope reader.
+//! The playback tests' backend and viewer; `envelope` reads what they receive.
 
 // Each suite that includes this module uses its own part of it.
 #![allow(dead_code)]
+
+pub mod export_kit;
+
+mod envelope;
+pub use envelope::Event;
+use envelope::parse_envelope;
 
 use api_types::{
     CursorPoint, ErrorWire,
@@ -32,10 +38,9 @@ use workspace_store::{DocCommand, Resolution};
 /// Bounds every wait, so a broken backend fails the test instead of hanging it.
 pub const WAIT: Duration = Duration::from_secs(20);
 const SQUEEZED_BUFFER: u32 = 4096;
+/// A tenth of the viewer's default 512 MiB frame budget, what `open` offers for Sample Items.
+pub const SAMPLE_BUDGET: u64 = 53_687_091;
 pub const MIB: usize = 1024 * 1024;
-const BOXES_TAG: u16 = 2;
-/// x, y, width, height and paint, four bytes each.
-const BOX_BYTES: usize = 20;
 
 pub fn fixture(name: &str) -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -87,30 +92,44 @@ impl Added {
 
 impl Backend {
     pub async fn start() -> Self {
-        Self::start_with(false).await
+        Self::start_with(false, Handlers::built_in(), |_| {}).await
     }
 
     /// A backend and viewers whose sockets hold only a few kilobytes, so a viewer that stops reading backs the
     /// backend up after a few frames.
     pub async fn start_squeezed() -> Self {
-        Self::start_with(true).await
+        Self::start_with(true, Handlers::built_in(), |_| {}).await
     }
 
-    async fn start_with(squeezed: bool) -> Self {
+    /// A backend whose catalogs are `catalogs`, which the test polls itself with `rescan`.
+    pub async fn start_with_catalogs(catalogs: catalogs::Library) -> Self {
+        Self::start_with(false, Handlers::built_in(), |state| {
+            state.catalogs = Arc::new(catalogs);
+        })
+        .await
+    }
+
+    /// A backend that decodes with `handlers`, over the state `configure` adjusts.
+    pub async fn start_with(
+        squeezed: bool,
+        handlers: Handlers,
+        configure: impl FnOnce(&mut AppState),
+    ) -> Self {
         let folder = tempfile::tempdir().unwrap();
         let settings = settings::Settings::load(&folder.path().join("default.json")).unwrap();
         let registry = Registry::new(CachePool::new(256 * MIB));
         let cache = folder.path().join("cache");
         let videos = Arc::new(VideoSources::new(registry, &cache));
         let (stop, stopping) = tokio::sync::watch::channel(false);
-        let state = AppState::new(
+        let mut state = AppState::new(
             Arc::new(settings),
             Policy::Local,
             videos.clone(),
             stopping,
-            Handlers::built_in(),
+            handlers,
             &cache,
         );
+        configure(&mut state);
         let router = app(state.clone());
         let socket = tokio::net::TcpSocket::new_v4().unwrap();
         if squeezed {
@@ -149,9 +168,10 @@ impl Backend {
             .map(|path| NewOverlay {
                 path: path.clone(),
                 handler: None,
+                label: None,
             })
             .collect();
-        let item = workspace::intake::video(path, &overlays, &Handlers::built_in()).unwrap();
+        let item = workspace::intake::video(path, &overlays, &self.state.handlers).unwrap();
         self.add_item(item).await
     }
 
@@ -242,127 +262,6 @@ impl Backend {
     }
 }
 
-/// One frame envelope, read with the offsets of the documented layout.
-pub struct Frame {
-    pub sequence_id: u64,
-    pub timestamp_us: i64,
-    pub flags: u32,
-    pub width: u32,
-    pub height: u32,
-    pub layout: u8,
-    pub plane_lengths: [u32; 3],
-    pub planes: Vec<u8>,
-}
-
-impl Frame {
-    /// The luma every sample of the Y plane has; fails when the picture is not flat.
-    pub fn flat_luma(&self) -> u8 {
-        let y = &self.planes[..self.plane_lengths[0] as usize];
-        assert!(
-            y.iter().all(|sample| *sample == y[0]),
-            "frame {} is not flat",
-            self.sequence_id
-        );
-        y[0]
-    }
-}
-
-pub fn u32_at(bytes: &[u8], at: usize) -> u32 {
-    u32::from_le_bytes(bytes[at..at + 4].try_into().unwrap())
-}
-
-pub fn u64_at(bytes: &[u8], at: usize) -> u64 {
-    u64::from_le_bytes(bytes[at..at + 8].try_into().unwrap())
-}
-
-/// One Overlay envelope: the head and the overlay header, and the tags of the sections in order.
-pub struct Overlay {
-    pub sequence_id: u64,
-    pub timestamp_us: i64,
-    pub lane: u16,
-    pub matched: u8,
-    pub revision: u32,
-    pub opacity: f32,
-    pub target: (u32, u32),
-    pub sections: Vec<u16>,
-    /// The records of the BOXES section; 0 when the overlay has none.
-    pub boxes: usize,
-}
-
-pub enum Event {
-    Message(ServerMessage),
-    Frame(Frame),
-    Overlay(Overlay),
-    Timeline(Vec<f64>),
-    Closed,
-}
-
-/// The envelope head, checked: magic, version 1 and a payload that starts where `header_len` says.
-pub fn parse_envelope(bytes: &[u8]) -> Event {
-    assert_eq!(&bytes[..4], b"AXDV");
-    assert_eq!(bytes[4], 1, "envelope version");
-    let payload_at = u16::from_le_bytes([bytes[6], bytes[7]]) as usize;
-    match bytes[5] {
-        1 => {
-            assert_eq!(payload_at, 64);
-            let lengths = [u32_at(bytes, 52), u32_at(bytes, 56), u32_at(bytes, 60)];
-            let planes = bytes[payload_at..].to_vec();
-            assert_eq!(
-                planes.len(),
-                lengths.iter().sum::<u32>() as usize,
-                "the message is exactly its planes"
-            );
-            Event::Frame(Frame {
-                sequence_id: u64_at(bytes, 8),
-                timestamp_us: u64_at(bytes, 16) as i64,
-                flags: u32_at(bytes, 24),
-                width: u32_at(bytes, 28),
-                height: u32_at(bytes, 32),
-                layout: bytes[36],
-                plane_lengths: lengths,
-                planes,
-            })
-        }
-        2 => {
-            assert_eq!(payload_at, 64);
-            let count = u32_at(bytes, 56);
-            let (mut sections, mut boxes, mut at) = (Vec::new(), 0, 64);
-            for _ in 0..count {
-                let tag = u16::from_le_bytes([bytes[at], bytes[at + 1]]);
-                if tag == BOXES_TAG {
-                    boxes = u32_at(bytes, at + 4) as usize / BOX_BYTES;
-                }
-                sections.push(tag);
-                at = (at + 8 + u32_at(bytes, at + 4) as usize).next_multiple_of(8);
-            }
-            assert_eq!(at, bytes.len(), "the message is exactly its sections");
-            Event::Overlay(Overlay {
-                sequence_id: u64_at(bytes, 8),
-                timestamp_us: u64_at(bytes, 16) as i64,
-                lane: u16::from_le_bytes([bytes[28], bytes[29]]),
-                matched: bytes[30],
-                revision: u32_at(bytes, 32),
-                opacity: f32::from_bits(u32_at(bytes, 36)),
-                target: (u32_at(bytes, 40), u32_at(bytes, 44)),
-                sections,
-                boxes,
-            })
-        }
-        3 => {
-            assert_eq!(payload_at, 32);
-            Event::Timeline(
-                bytes[payload_at..]
-                    .as_chunks::<8>()
-                    .0
-                    .iter()
-                    .map(|time| f64::from_le_bytes(*time))
-                    .collect(),
-            )
-        }
-        kind => panic!("unexpected envelope kind {kind}"),
-    }
-}
-
 /// What `Opened` says about a video, and the Timeline that follows it.
 pub struct Described {
     pub frame_count: u64,
@@ -423,16 +322,32 @@ impl Viewer {
         self.send(&ClientMessage::Open {
             ticket: ticket.to_owned(),
             start_frame,
+            data_bytes: SAMPLE_BUDGET,
         })
         .await;
     }
 
+    /// Asks for the frames in the window and the lanes' data for the same frames.
     pub async fn want(&mut self, playhead: u64, ahead: u32, behind: u32, direction: Direction) {
+        self.want_data(playhead, (ahead, behind), (ahead, behind), direction)
+            .await;
+    }
+
+    /// Asks for the frames in the first window (`ahead`, `behind`) and the data in the second.
+    pub async fn want_data(
+        &mut self,
+        playhead: u64,
+        (ahead, behind): (u32, u32),
+        (data_ahead, data_behind): (u32, u32),
+        direction: Direction,
+    ) {
         self.send(&ClientMessage::Want(Want {
             playhead,
             ahead,
             behind,
             direction,
+            data_ahead,
+            data_behind,
         }))
         .await;
     }

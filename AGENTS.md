@@ -6,7 +6,8 @@ Work out from the request which of two people you are helping; it decides what t
 
 - **Using ax-devil**: opening recordings, connecting cameras, comparing results, restyling overlays, or making
   ax-devil read their own data. Check [parity](docs/parity.md) for implemented workflows; user docs and the
-  `render-catalog` and `write-plugin` skills return as their features land. Their catalogs and plugins live outside
+  `render-catalog` skill return as their features land. For their own data, read [plugins](docs/plugins.md) and the
+  `write-plugin` skill. Their catalogs and plugins live outside
   this repository; leave the app's source unchanged. If what they want needs an app change (a bug or missing
   feature), say so and ask before switching to development.
 - **Developing ax-devil**: changing the app's code, tests, docs, or built-in plugins and catalogs. Follow everything
@@ -33,6 +34,7 @@ has them; they are optional and not part of this repository.
 | `.agents/skills/review/SKILL.md` | Reviewing changes for real problems, module depth, architectural ownership, tests worth merging, and documentation placement |
 | `.agents/skills/write-tests/SKILL.md` | Deciding whether a test is worth having, deleting tests, writing regression coverage, changing assertions, or repairing flaky tests |
 | `.agents/skills/write-ui/SKILL.md` | Adding or restyling application UI: windows, dialogs, panels, fonts, spacing, colors |
+| `.agents/skills/write-plugin/SKILL.md` | Making ax-devil read an overlay format it does not: writing, checking and installing a converter |
 | `.agents/skills/port-module/SKILL.md` | Building one module or parity row of the rewrite from the reference commit |
 | `.agents/skills/verify-headless/SKILL.md` | Running the app, a command or the screenshot harness in isolation and inspecting the result |
 
@@ -104,7 +106,7 @@ entry points, and keep reusable build and test steps in the Makefile.
   or collapse what the new text makes redundant. Net doc growth needs a stated reason.
 - UI changes: screenshots in both themes from the harness (`make tests-desktop`), and, once the fit test exists, at
   200% zoom with the fit test updated (write-ui skill).
-- Rendering changes: Drawing Instruction dumps and in-stack goldens reviewed; a benchmark when on the hot path.
+- Rendering changes: oracle canonical rows (`fixtures/oracle`) and in-stack goldens reviewed; a benchmark when on the hot path.
 - A parity row: its line in [docs/parity.md](docs/parity.md) updated with the test that proves it.
 
 ## Project Guidance

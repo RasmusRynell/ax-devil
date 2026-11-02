@@ -1,6 +1,9 @@
 //! Tests of the store through a decoder that counts its runs.
 
 mod behaviour;
+mod history;
+mod ingest;
+mod query;
 mod reuse;
 
 use std::{
@@ -19,7 +22,8 @@ use scene::{
     Observation, Scene, SceneTime, TimeSlice, Value,
 };
 use scene_decoders::{
-    DecodeContext, DecodeError, DecodeSummary, DecoderSpec, FileSceneDecoder, LoadWarning, Storage,
+    DecodeContext, DecodeError, DecodeSummary, DecoderSpec, FileSceneDecoder, LoadWarning,
+    OnEqualKey, SceneSink, SourceFile, Storage,
 };
 use tempfile::TempDir;
 
@@ -112,45 +116,45 @@ impl FileSceneDecoder for Counting {
 
     fn decode_file(
         &self,
-        input: &[u8],
+        source: &dyn SourceFile,
         context: &DecodeContext<'_>,
-        emit: &mut dyn FnMut(Scene),
+        sink: &mut dyn SceneSink,
         cancel: &CancelToken,
     ) -> Result<DecodeSummary, Interrupt<DecodeError>> {
-        if input.starts_with(b"broken") {
+        if source.bytes(cancel)?.starts_with(b"broken") {
             return Err(Interrupt::Failed(DecodeError(
                 "line 1: not a test file".into(),
             )));
         }
         self.runs.fetch_add(1, Ordering::SeqCst);
         let width = f64::from(context.frame_size.width);
-        let step = |n: u64, scene: Scene, emit: &mut dyn FnMut(Scene)| {
+        let step = |n: u64, scene: Scene, sink: &mut dyn SceneSink| {
             if let Some(hook) = &*self.hook.lock().expect("hook lock") {
                 hook(n, cancel);
             }
             cancel.check()?;
-            emit(scene);
+            let _ = sink.sample(scene, OnEqualKey::Replace);
             Ok::<_, Interrupt<DecodeError>>(())
         };
         match self.shape {
             Shape::Frames { frames, boxes } => {
                 for frame in 0..frames {
-                    step(frame, entities(SceneTime::Frame(frame), boxes, width), emit)?;
+                    step(frame, entities(SceneTime::Frame(frame), boxes, width), sink)?;
                 }
             }
             Shape::Mixed => {
-                step(0, entities(SceneTime::Frame(0), 1, width), emit)?;
+                step(0, entities(SceneTime::Frame(0), 1, width), sink)?;
                 step(
                     1,
                     entities(SceneTime::Timestamp(MediaTime(40_000)), 1, width),
-                    emit,
+                    sink,
                 )?;
             }
             Shape::Shuffled => {
                 for (n, us) in [3_000_u64, 1_000, 2_000, 1_000].into_iter().enumerate() {
                     let boxes = n + 1;
                     let time = SceneTime::Timestamp(MediaTime(us as i64));
-                    step(n as u64, entities(time, boxes, width), emit)?;
+                    step(n as u64, entities(time, boxes, width), sink)?;
                 }
             }
         }

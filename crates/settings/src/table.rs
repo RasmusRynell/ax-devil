@@ -77,6 +77,31 @@ pub const TABLE: &[Setting] = &[
         scope: Scope::Personal,
     },
     Setting {
+        key: "overlays.object_details",
+        kind: Kind::Bool { default: true },
+        label: "Show object details on hover and click",
+        page: Some("General"),
+        section: "Video overlays",
+        live: true,
+        env: false,
+        secret: false,
+        quick_setup: false,
+        scope: Scope::Personal,
+    },
+    Setting {
+        key: "overlays.default_catalog",
+        // A catalog id such as `built-in:standard`; empty is the built-in default. Chosen from a lane's menu.
+        kind: Kind::Text { default: "" },
+        label: "Default catalog",
+        page: None,
+        section: "",
+        live: true,
+        env: false,
+        secret: false,
+        quick_setup: false,
+        scope: Scope::Personal,
+    },
+    Setting {
         key: "playback.video_cache",
         // Auto, or MiB shared by every open video. The upper bound is 1 TiB.
         kind: Kind::AutoOrWhole {
@@ -97,6 +122,19 @@ pub const TABLE: &[Setting] = &[
         // Empty is the standard XDG cache folder. `--cache-dir` wins over the setting.
         kind: Kind::Folder,
         label: "Cache folder",
+        page: Some("Storage"),
+        section: "Folders",
+        live: false,
+        env: false,
+        secret: false,
+        quick_setup: false,
+        scope: Scope::Server,
+    },
+    Setting {
+        key: "storage.catalog_dir",
+        // Empty is the standard XDG data folder's `ax-devil/catalogs`.
+        kind: Kind::Folder,
+        label: "Render catalog folder",
         page: Some("Storage"),
         section: "Folders",
         live: false,

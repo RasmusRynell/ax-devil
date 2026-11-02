@@ -5,6 +5,7 @@
 //! Parsing stays pure: it returns what the user asked for, and `run` decides what to start.
 
 use super::{Cli, Command, Global, describe};
+use api_types::handlers::{PluginStatus, PluginsInfo};
 use clap::{
     Arg, ArgAction, ArgMatches, CommandFactory, FromArgMatches, ValueHint,
     builder::PossibleValuesParser, error::ErrorKind,
@@ -54,8 +55,8 @@ where
     Ok(cli)
 }
 
-/// The decoders and resolvers `list-handlers` prints, one per line.
-pub(super) fn handlers_listing(handlers: &Handlers) -> String {
+/// The decoders and resolvers `list-handlers` prints, one per line, then the converters that did not load.
+pub(super) fn handlers_listing(handlers: &Handlers, installed: &PluginsInfo) -> String {
     let decoders: Vec<_> = handlers
         .file_decoders()
         .iter()
@@ -91,6 +92,28 @@ pub(super) fn handlers_listing(handlers: &Handlers) -> String {
     listing.push_str("\nPlaylist resolvers (ax-devil playlist <resolver> --help):\n");
     for (key, line) in &resolvers {
         listing.push_str(&format!("  {key:<width$}  {line}\n"));
+    }
+    let problems: Vec<String> = installed
+        .problem
+        .iter()
+        .cloned()
+        .chain(
+            installed
+                .converters
+                .iter()
+                .filter_map(|plugin| match &plugin.status {
+                    PluginStatus::Failed { reason } => {
+                        Some(format!("{}: {reason}", plugin.manifest))
+                    }
+                    PluginStatus::Loaded { .. } => None,
+                }),
+        )
+        .collect();
+    if !problems.is_empty() {
+        listing.push_str("\nConverters that did not load (ax-devil plugins list):\n");
+        for problem in problems {
+            listing.push_str(&format!("  {problem}\n"));
+        }
     }
     listing
 }

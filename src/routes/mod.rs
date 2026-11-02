@@ -105,6 +105,13 @@ pub(crate) const ROUTES: &[Route] = &[
         handler: |method| on(method, handlers::get_handlers),
     },
     Route {
+        method: MethodFilter::GET,
+        path: "/api/plugins",
+        listeners: MEMBERS,
+        who: Who::Files,
+        handler: |method| on(method, handlers::get_plugins),
+    },
+    Route {
         method: MethodFilter::POST,
         path: "/api/resolvers/{id}/scan",
         listeners: MEMBERS,

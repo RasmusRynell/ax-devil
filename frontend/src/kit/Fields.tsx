@@ -55,16 +55,25 @@ interface CheckboxProps extends Omit<
   label: ReactNode;
   checked: boolean;
   onChange: (checked: boolean) => void;
+  disabled?: boolean;
 }
 
 /** A labelled on/off box; extra attributes go on its label, so the whole row is one target. */
-export function Checkbox({ label, checked, onChange, className = "", ...rest }: CheckboxProps) {
+export function Checkbox({
+  label,
+  checked,
+  onChange,
+  disabled,
+  className = "",
+  ...rest
+}: CheckboxProps) {
   return (
-    <label className={`${FIELD} ${className}`} {...rest}>
+    <label className={`${FIELD} ${disabled ? "text-disabled" : ""} ${className}`} {...rest}>
       {label}
       <input
         type="checkbox"
         checked={checked}
+        disabled={disabled}
         onChange={(event) => onChange(event.target.checked)}
         className="size-icon accent-accent"
       />

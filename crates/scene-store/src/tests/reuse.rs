@@ -55,7 +55,10 @@ fn a_warm_reopen_decodes_nothing_and_reports_what_the_decode_did() {
     let warm = fixture.open();
 
     assert_eq!(fixture.decoder.runs(), 1, "the artifact was used");
-    assert_eq!(warm.keys(), &SampleKeys::Frames(vec![0, 1, 2].into()));
+    assert_eq!(
+        warm.snapshot().keys,
+        SampleKeys::Frames(vec![0, 1, 2].into())
+    );
     assert_eq!(warm.coverage(), Coverage::Dense);
     assert_eq!(warm.warnings().len(), 1);
     assert_eq!(warm.warnings()[0].problem, "Skipped 1 of 3 rows");
@@ -67,7 +70,7 @@ fn a_warm_reopen_decodes_nothing_and_reports_what_the_decode_did() {
 #[test]
 fn each_identity_component_invalidates() {
     type Change = fn(&mut Identity);
-    let table: [(&str, Change); 9] = [
+    let table: [(&str, Change); 10] = [
         ("handler", |id| id.handler = "OTHER".into()),
         ("artifact version", |id| id.artifact_version += 1),
         ("scene major", |id| id.scene_major += 1),
@@ -75,6 +78,7 @@ fn each_identity_component_invalidates() {
         ("options", |id| id.options = r#"{"a":1}"#.into()),
         ("width", |id| id.width += 1),
         ("height", |id| id.height += 1),
+        ("code", |id| id.code = Some([1; 32])),
         ("digest missing", |id| id.digest = None),
         ("digest differs", |id| {
             id.digest = id.digest.map(|mut digest| {
@@ -249,7 +253,7 @@ fn corrupt_or_foreign_artifacts_are_rebuilt() {
             b[last] ^= 0xFF;
         }),
         ("tail checksum", |b| {
-            let at = b.len() - 40;
+            let at = b.len() - 48;
             b[at] ^= 0xFF;
         }),
     ];
@@ -316,8 +320,8 @@ fn an_artifact_claiming_a_huge_section_is_discarded_without_allocating_it() {
         .open(&fixture.artifacts()[0])
         .expect("artifact");
     file.set_len(len).expect("sparse");
-    file.seek(SeekFrom::Start(len - 32)).expect("seek");
-    for word in [8_u64; 3] {
+    file.seek(SeekFrom::Start(len - 40)).expect("seek");
+    for word in [8_u64; 4] {
         file.write_all(&word.to_le_bytes()).expect("offset");
     }
     file.write_all(&[0; 4]).expect("checksum");

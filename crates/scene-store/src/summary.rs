@@ -9,7 +9,7 @@ use scene::{ClassRule, Coverage, Fields, FilterOption, FilterPolicy, serial};
 use scene_decoders::{DecodeSummary, LoadWarning};
 use serde::{Deserialize, Serialize};
 
-#[derive(Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 struct WarningWire {
     problem: String,
     reasons: Vec<String>,
@@ -17,7 +17,7 @@ struct WarningWire {
     more_reasons: bool,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 struct OptionWire {
     id: String,
     label: String,
@@ -28,7 +28,7 @@ struct OptionWire {
 }
 
 /// The stored form of a [`DecodeSummary`].
-#[derive(Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 pub(crate) struct Summary {
     dense: bool,
     warnings: Vec<WarningWire>,

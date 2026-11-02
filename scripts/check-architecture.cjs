@@ -32,11 +32,6 @@ const FORBIDDEN = [
     why: "foundation has no I/O and no async runtime",
   },
   {
-    from: "drawing",
-    to: "scene",
-    why: "the drawing contract never knows Scenes",
-  },
-  {
     from: "media",
     to: "api-types",
     why: "wire types belong to the adapter layer",

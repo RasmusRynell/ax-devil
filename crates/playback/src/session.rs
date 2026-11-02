@@ -1,7 +1,7 @@
 //! A viewer's handle on a source: its wants in, its frames out.
 
 use crate::plan::{Rank, nearest, rank};
-use crate::source::Source;
+use crate::source::{SessionState, Source, State};
 use crate::window::send_window;
 use crate::{FrameSet, SourceSpec, Want};
 use foundation::{FrameFailure, UserError, VideoFrame};
@@ -68,6 +68,12 @@ impl Session {
         }
     }
 
+    /// The [`Rank`] of the frame [`next_delivery`](Self::next_delivery) would return now, without sending it; `None`
+    /// when it would wait or end. Lets a viewer interleave its own items with the frames by the same rule.
+    pub fn next_rank(&self) -> Option<Rank> {
+        self.source.next_rank(self.id)
+    }
+
     /// Leaves the source now.
     pub fn close(self) {}
 }
@@ -79,6 +85,35 @@ impl Drop for Session {
 }
 
 impl Source {
+    /// The rank of the frame [`Source::pull`] would deliver to the session now.
+    pub(crate) fn next_rank(&self, session: u64) -> Option<Rank> {
+        let state = crate::lock(&self.state);
+        if state.closed {
+            return None;
+        }
+        let viewer = state.sessions.get(&session)?;
+        if state.fatal.is_some() {
+            // The failure is the next delivery, until it was told.
+            return (!viewer.told).then_some((0, 0));
+        }
+        let want = viewer.want?;
+        let frame = self.best_unsent_frame(&state, viewer, &want)?;
+        Some(rank(want.direction, want.playhead, frame))
+    }
+
+    /// The most urgent frame in the viewer's send window that is available and not sent yet.
+    fn best_unsent_frame(&self, state: &State, viewer: &SessionState, want: &Want) -> Option<u64> {
+        let mut available = self.cache.ranges();
+        for &id in state.failed.keys() {
+            available.insert(id);
+        }
+        for frame in &viewer.parked {
+            available.insert(frame.id().sequence_id);
+        }
+        let window = send_window(want, self.last());
+        best_unsent(&available, &viewer.sent, &window, want)
+    }
+
     /// The best unsent, available frame of the session, marked as sent.
     pub(crate) fn pull(&self, session: u64) -> Pull {
         let mut state = crate::lock(&self.state);
@@ -101,16 +136,8 @@ impl Source {
             let Some(want) = viewer.want else {
                 return Pull::Pending;
             };
-            let mut available = self.cache.ranges();
-            for &id in state.failed.keys() {
-                available.insert(id);
-            }
             let viewer = &state.sessions[&session];
-            for frame in &viewer.parked {
-                available.insert(frame.id().sequence_id);
-            }
-            let window = send_window(&want, self.last());
-            let Some(next) = best_unsent(&available, &viewer.sent, &window, &want) else {
+            let Some(next) = self.best_unsent_frame(&state, viewer, &want) else {
                 return Pull::Pending;
             };
             let parked = viewer

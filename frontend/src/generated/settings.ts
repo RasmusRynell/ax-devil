@@ -47,6 +47,36 @@ export const SETTINGS = [
     "scope": "personal"
   },
   {
+    "key": "overlays.object_details",
+    "kind": {
+      "type": "bool",
+      "default": true
+    },
+    "label": "Show object details on hover and click",
+    "page": "General",
+    "section": "Video overlays",
+    "live": true,
+    "env": false,
+    "secret": false,
+    "quick_setup": false,
+    "scope": "personal"
+  },
+  {
+    "key": "overlays.default_catalog",
+    "kind": {
+      "type": "text",
+      "default": ""
+    },
+    "label": "Default catalog",
+    "page": null,
+    "section": "",
+    "live": true,
+    "env": false,
+    "secret": false,
+    "quick_setup": false,
+    "scope": "personal"
+  },
+  {
     "key": "playback.video_cache",
     "kind": {
       "type": "auto_or_whole",
@@ -68,6 +98,20 @@ export const SETTINGS = [
       "type": "folder"
     },
     "label": "Cache folder",
+    "page": "Storage",
+    "section": "Folders",
+    "live": false,
+    "env": false,
+    "secret": false,
+    "quick_setup": false,
+    "scope": "server"
+  },
+  {
+    "key": "storage.catalog_dir",
+    "kind": {
+      "type": "folder"
+    },
+    "label": "Render catalog folder",
     "page": "Storage",
     "section": "Folders",
     "live": false,
@@ -150,6 +194,24 @@ export const COMMANDS = [
     "id": "lane-fullscreen",
     "label": "Toggle Lane Fullscreen",
     "key": "F",
+    "repeats": false
+  },
+  {
+    "id": "zoom-in",
+    "label": "Zoom In",
+    "key": "=",
+    "repeats": true
+  },
+  {
+    "id": "zoom-out",
+    "label": "Zoom Out",
+    "key": "-",
+    "repeats": true
+  },
+  {
+    "id": "zoom-reset",
+    "label": "Reset Zoom",
+    "key": "0",
     "repeats": false
   },
   {

@@ -2,6 +2,9 @@
 
 import type { Want } from "./protocol";
 
+/** The frame half of a `Want`: the data window is sized by the session, which knows the lanes. */
+export type FrameWant = Omit<Want, "data_ahead" | "data_behind">;
+
 /** Share of the window ahead of the playhead. */
 const AHEAD_SHARE = { playing: 0.85, paused: 0.5, backward: 0.15 };
 /** Consecutive backward steps that start backward mode. */
@@ -35,7 +38,7 @@ export class WantPlanner {
    * The `Want` for the current state. Call it once per scheduling tick: however many steps and seeks happened since
    * the last call, it names only the latest playhead.
    */
-  want(state: { playhead: number; playing: boolean }): Want {
+  want(state: { playhead: number; playing: boolean }): FrameWant {
     const backward = !state.playing && this.backward;
     const share = state.playing
       ? AHEAD_SHARE.playing
@@ -51,3 +54,13 @@ export class WantPlanner {
     };
   }
 }
+
+/** Whether two `Want`s ask for the same: the viewer sends a new one only when it differs from the last. */
+export const sameWant = (a: Want | undefined, b: Want): boolean =>
+  a !== undefined &&
+  a.playhead === b.playhead &&
+  a.ahead === b.ahead &&
+  a.behind === b.behind &&
+  a.direction === b.direction &&
+  a.data_ahead === b.data_ahead &&
+  a.data_behind === b.data_behind;

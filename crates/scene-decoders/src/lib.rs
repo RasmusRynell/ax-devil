@@ -11,6 +11,8 @@ mod onvif_xml;
 mod uvg_vcm;
 mod warning;
 
+use std::{ops::ControlFlow, path::Path};
+
 use foundation::{CancelToken, FrameSize, Interrupt};
 use scene::{Coverage, Fields, FilterPolicy, Scene};
 
@@ -86,18 +88,74 @@ pub struct DecodeSummary {
     pub coverage: Coverage,
 }
 
+/// What a whole-file decoder reads: built-ins take the bytes, a converter takes the path. Implemented by the store.
+pub trait SourceFile {
+    /// Where the file is.
+    fn path(&self) -> &Path;
+
+    /// The whole file, read once through the handle the store fingerprinted; later calls return the same bytes.
+    fn bytes(&self, cancel: &CancelToken) -> Result<&[u8], Interrupt<DecodeError>>;
+}
+
+/// How a sample with the start key of an earlier one joins it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum OnEqualKey {
+    /// The sample's contents are added to what the key already holds.
+    Merge,
+    /// The sample replaces what the key held.
+    Replace,
+}
+
+/// What a file says about itself; given early it lets the host publish samples while the decode runs.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Header {
+    /// The class filters this file's content calls for.
+    pub filter: FilterPolicy,
+    /// What the file says about frames it has no Scene for.
+    pub coverage: Coverage,
+    /// What the file says about itself, kept with the track by the scene store.
+    pub metadata: Fields,
+}
+
+/// Where every decoder puts its Scenes; the host groups, orders, stores and publishes them.
+pub trait SceneSink {
+    /// At most once, before the first sample. Without it the host publishes at the end. A decoder that calls it
+    /// returns the same values in its [`DecodeSummary`].
+    fn header(&mut self, header: Header);
+
+    /// Takes one Scene. `Break` means the host cannot take more (store full or failed, or the decode was
+    /// cancelled): the decoder stops at once and returns what it has, which the host ignores.
+    fn sample(&mut self, scene: Scene, on_equal_key: OnEqualKey) -> ControlFlow<()>;
+
+    /// A problem found while decoding, shown to the user. A warning goes here or into the [`DecodeSummary`], not
+    /// both; the host shows both.
+    fn warn(&mut self, warning: LoadWarning);
+}
+
 /// A decoder that reads a whole file.
 pub trait FileSceneDecoder: Send + Sync {
     /// What the host needs to know about the decoder.
     fn spec(&self) -> &'static DecoderSpec;
 
-    /// Decodes `input`, handing each Scene to `emit`. Frame-keyed decoders emit ascending frames, one Scene per
-    /// frame; time-keyed ones emit in record order.
+    /// SHA-256 of the code that makes the Scenes when that code is not part of the app, such as a converter's
+    /// manifest and files. It is part of the identity of the scene cache: another hash rebuilds. `None` for built-ins.
+    fn code_hash(&self) -> Option<[u8; 32]> {
+        None
+    }
+
+    /// `options` with the decoder's defaults filled in and undeclared keys dropped, so that an explicit default and
+    /// an omitted key make one scene cache. The error is words for the user.
+    fn declared_options(&self, options: &DecodeOptions) -> Result<DecodeOptions, DecodeError> {
+        Ok(options.clone())
+    }
+
+    /// Decodes `source`, handing each Scene to `sink`. Frame-keyed decoders give ascending frames, one Scene per
+    /// frame; time-keyed ones give them in record order.
     fn decode_file(
         &self,
-        input: &[u8],
+        source: &dyn SourceFile,
         context: &DecodeContext<'_>,
-        emit: &mut dyn FnMut(Scene),
+        sink: &mut dyn SceneSink,
         cancel: &CancelToken,
     ) -> Result<DecodeSummary, Interrupt<DecodeError>>;
 }

@@ -1,4 +1,4 @@
-//! How Scenes are written and read: one data model, two encodings.
+//! How Scenes are written and read: one data model, two encodings, and the presentation columns of [`columns`].
 //!
 //! - **JSON** for goldens and the plugin wire: `{"scene_version": "4.0", "scenes": [...]}`. A time is `{"frame": N}`
 //!   or `{"us": N}`, a box `{"box": [left, top, right, bottom]}`, a polygon `{"polygon": [[x, y], ...]}`; source
@@ -11,6 +11,7 @@
 //! Reading builds every value through the model's constructors, so a document or record that breaks a model rule is
 //! refused with the reason instead of loaded.
 
+pub mod columns;
 mod picture;
 mod read;
 mod value;
@@ -67,6 +68,14 @@ pub fn from_json(value: &Json) -> Result<Vec<Scene>, SceneError> {
 /// Reads JSON text written by [`to_json_string`], keeping source values in the order they are written in.
 pub fn from_json_str(text: &str) -> Result<Vec<Scene>, SceneError> {
     document(serde_json::from_str(text).map_err(failed)?)
+}
+
+/// Reads one Scene from JSON text in the per-Scene shape [`to_json_string`] writes, building every value through the
+/// model's constructors.
+pub fn scene_from_json_slice(bytes: &[u8]) -> Result<Scene, SceneError> {
+    serde_json::from_slice::<SceneIn>(bytes)
+        .map_err(failed)?
+        .build()
 }
 
 fn document(document: DocumentIn) -> Result<Vec<Scene>, SceneError> {

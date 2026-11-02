@@ -182,7 +182,7 @@ async fn a_session_works_alone_then_a_watcher_joins_it_sees_only_what_it_may_and
     let ticket = watcher.until(of_type("ticket")).await["ticket"].clone();
     let mut playback = Socket::connect(&address, "/api/playback").await;
     playback
-        .say(json!({"type": "Open", "ticket": ticket}))
+        .say(json!({"type": "Open", "ticket": ticket, "data_bytes": 1 << 20}))
         .await;
     let opened = playback.until(of_type("Opened")).await;
     assert_eq!(opened["protocol"], json!(PLAYBACK_PROTOCOL));

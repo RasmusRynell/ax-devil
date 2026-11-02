@@ -9,8 +9,16 @@ use foundation::{CancelToken, ErrorCode, Interrupt, UserError};
 use std::path::Path;
 use tracing::debug;
 
-/// Presentation-ordered pts of every frame, and the sequence ids of the keyframes.
-type Scanned = (Vec<i64>, Vec<u64>);
+/// What a scan found about the frames of a video.
+#[derive(Debug, PartialEq, Eq)]
+pub(super) struct Scanned {
+    /// Presentation-ordered pts of every frame.
+    pub(super) pts: Vec<i64>,
+    /// The sequence ids of the keyframes.
+    pub(super) keyframes: Vec<u64>,
+    /// The container's duration of the last frame in ticks; 0 when it gave none, as the decode scan never does.
+    pub(super) last_duration: i64,
+}
 
 /// Scans `path` by its packets, or by decoding when the packets cannot give every frame its own timestamp.
 pub(super) fn build(
@@ -19,31 +27,38 @@ pub(super) fn build(
     file_size: u64,
     cancel: &CancelToken,
     progress: &mut dyn FnMut(f32),
-) -> Result<(ScanKind, Vec<i64>, Vec<u64>), Interrupt<UserError>> {
+) -> Result<(ScanKind, Scanned), Interrupt<UserError>> {
     progress(0.0);
-    if let Some((pts, keyframes)) = packet_scan(opened, path, file_size, cancel, progress)? {
-        return Ok((ScanKind::Packet, pts, keyframes));
+    if let Some(scanned) = packet_scan(opened, path, file_size, cancel, progress)? {
+        return Ok((ScanKind::Packet, scanned));
     }
     debug!(path = %path.display(), "packets lack unique timestamps; decoding to build the index");
     let mut again = source::open(path, cancel)?;
     progress(0.0);
-    let (pts, keyframes) = decode_scan(&mut again, path, file_size, cancel, progress)?;
-    Ok((ScanKind::Decode, pts, keyframes))
+    let scanned = decode_scan(&mut again, path, file_size, cancel, progress)?;
+    Ok((ScanKind::Decode, scanned))
 }
 
-/// Orders the video packets, given as (pts, keyframe flag) in file order, into presentation order. `None` when a
-/// packet has no pts or two share one, so the packets alone cannot say which frame is which.
-pub(super) fn order(mut packets: Vec<(Option<i64>, bool)>) -> Option<Scanned> {
+/// Orders the video packets, given as (pts, keyframe flag, duration) in file order, into presentation order. `None`
+/// when a packet has no pts or two share one, so the packets alone cannot say which frame is which.
+pub(super) fn order(mut packets: Vec<(Option<i64>, bool, i64)>) -> Option<Scanned> {
     let mut stamped = Vec::with_capacity(packets.len());
-    for (pts, key) in packets.drain(..) {
-        stamped.push((pts?, key));
+    for (pts, key, duration) in packets.drain(..) {
+        stamped.push((pts?, key, duration));
     }
-    stamped.sort_by_key(|(pts, _)| *pts);
+    stamped.sort_by_key(|(pts, _, _)| *pts);
     if stamped.windows(2).any(|pair| pair[0].0 == pair[1].0) {
         return None;
     }
-    let keyframes = keyframes_of(stamped.iter().map(|(_, key)| *key));
-    Some((stamped.into_iter().map(|(pts, _)| pts).collect(), keyframes))
+    let keyframes = keyframes_of(stamped.iter().map(|(_, key, _)| *key));
+    let last_duration = stamped
+        .last()
+        .map_or(0, |(_, _, duration)| (*duration).max(0));
+    Some(Scanned {
+        pts: stamped.into_iter().map(|(pts, _, _)| pts).collect(),
+        keyframes,
+        last_duration,
+    })
 }
 
 /// Sequence ids of the flagged frames. Decoding always starts at the first frame, so it is a keyframe.
@@ -111,7 +126,7 @@ pub(super) fn packet_scan(
         }
         reporter.read(packet.size());
         if packet.stream() == opened.stream && !ffi::is_discard(&packet) {
-            packets.push((packet.pts(), packet.is_key()));
+            packets.push((packet.pts(), packet.is_key(), packet.duration()));
         }
     }
     Ok(order(packets))
@@ -170,5 +185,9 @@ pub(super) fn decode_scan(
         )));
     }
     let keyframes = keyframes_of(frames.iter().map(|(_, key)| *key));
-    Ok((frames.into_iter().map(|(pts, _)| pts).collect(), keyframes))
+    Ok(Scanned {
+        pts: frames.into_iter().map(|(pts, _)| pts).collect(),
+        keyframes,
+        last_duration: 0,
+    })
 }

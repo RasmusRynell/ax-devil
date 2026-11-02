@@ -13,13 +13,10 @@ layer = "services"
 workspace = true
 
 [dependencies]
-catalogs.workspace = true
-drawing.workspace = true
 foundation.workspace = true
 overlay-sync.workspace = true
 playback.workspace = true
 playlist-resolvers.workspace = true
-render-catalog.workspace = true
 scene.workspace = true
 scene-decoders.workspace = true
 scene-store.workspace = true
@@ -34,5 +31,5 @@ tokio = { workspace = true, features = ["macros", "rt", "time"] }
 
 # Timed with std::time::Instant; run with `cargo bench -p overlays`.
 [[bench]]
-name = "lane_frame"
+name = "item_encode"
 harness = false

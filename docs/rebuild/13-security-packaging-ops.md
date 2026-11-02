@@ -96,8 +96,8 @@ Documented, not fixed.
 
 ## Plugin trust (MUST)
 
-State that plugins run with user permissions and installation may execute code (`docs/plugins.md#trust`). Keep index
-credentials out of plugin metadata and persisted index URLs.
+State that converters run with the user's permissions and are not sandboxed (`docs/plugins.md#trust`). Keep credentials
+out of converter manifests and the registry.
 
 ## File safety (MUST)
 
@@ -111,20 +111,22 @@ Atomic writes and the rule about built-in resources: [05](05-formats-and-extensi
 | Channel | PyPI wheel; `uv tool install`, pip, source with `uv sync --locked` | D6; default: one self-contained Linux package (AppImage or Flatpak) plus source build; CLI named `ax-devil` |
 | Native dependencies | Qt and FFmpeg system libraries per distro | Bundle where licenses allow; one installation page for the rest |
 | Versioning | SemVer, Keep a Changelog, tag matches package version | Keep |
-| Release | Tag, CI, clean-container install check, publish (`docs/runbooks/testing.md#package-artifacts`) | Keep the clean-environment check: install as documented, render catalogs, install the example plugin, play a generated video in the isolated environment, upgrade, check plugins follow |
-| Upgrades | Plugins rebuild after app changes | Plugins follow app upgrades; failure starts the base app with a retry command |
+| Release | Tag, CI, clean-container install check, publish (`docs/runbooks/testing.md#package-artifacts`) | Keep the clean-environment check: install as documented, render catalogs, install the example plugin, play a generated video in the isolated environment, upgrade, check converters still load |
+| Upgrades | Converters do not depend on the app | An upgrade changes no converter; one that no longer loads is listed |
 
 ### Desktop package
 
-The backend ships beside the app archive, not inside it, so it can be started as a process. FFmpeg is a pinned LGPL
-shared build, linked dynamically so users can replace it; each release ships the matching FFmpeg source. Pushing a `v*`
-tag drafts a GitHub release.
+The backend ships beside the app's files, not inside an archive, so it can be started as a process; the app's own
+Electron also runs the hidden renderer that export draws with, from the same folder. FFmpeg is a pinned LGPL shared
+build, linked dynamically so users can replace it; each release ships the matching FFmpeg source. It has no x264 (GPL):
+the H.264 encoder is OpenH264 on Linux and Windows and VideoToolbox on macOS. Pushing a `v*` tag drafts a GitHub
+release.
 
 Builds are unsigned. Linux: `chmod +x` the AppImage; where FUSE is missing run it with `--appimage-extract-and-run`;
 on Ubuntu 24.04+ the Chromium sandbox may need `--no-sandbox`. Windows: SmartScreen "More info", then "Run anyway".
 macOS: System Settings, Privacy & Security, "Open Anyway", or `xattr -dr com.apple.quarantine ax-devil.app`.
 
-D6 must be compatible with D1: a self-contained bundle that runs Python plugins needs a bundled or discovered Python.
+D6 and D29: converters are the user's own programs, so a bundle ships no interpreter for them.
 
 ## Observability
 
@@ -136,5 +138,5 @@ D6 must be compatible with D1: a self-contained bundle that runs Python plugins 
 
 - App license MIT (`LICENSE`). Bundled icons are Lucide (ISC); ship the license file
   (`src/ax_devil/resources/icons/`). Demo footage and dataset attributions: `README.md`, `docs/datasets/`.
-- **MUST** check every new dependency's license and the distribution terms of bundled binaries. The encoder today is
-  libx264 through FFmpeg, GPL when bundled (D6).
+- **MUST** check every new dependency's license and the distribution terms of bundled binaries. The encoder is whichever H.264
+  encoder the FFmpeg build has (libx264, libopenh264, VideoToolbox); libx264 is GPL, so a bundle ships none (D6).
