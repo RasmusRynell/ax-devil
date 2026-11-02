@@ -1,5 +1,6 @@
 import { useLayoutEffect, useMemo, useRef } from "react";
 import { Icon } from "../kit/Icon";
+import { FIELD_IN } from "../kit/look";
 import { parseSearch, type SearchTokenKind } from "../search/query";
 
 /** How each kind of word is drawn. Same glyph widths as the text, so the colored copy lines up under the caret. */
@@ -48,15 +49,15 @@ export function SearchBar({
     return part;
   });
   return (
-    <label className="relative flex h-row items-center rounded-control border border-line-strong text-muted focus-within:border-accent">
-      <span className="flex pl-m">
+    <label className={`relative flex items-center gap-s ${FIELD_IN}`}>
+      <span className="flex text-muted">
         <Icon name="search" />
       </span>
       <span className="relative h-full min-w-0 flex-1">
         <span
           ref={copy}
           aria-hidden
-          className="pointer-events-none absolute inset-0 flex items-center overflow-hidden px-s text-fg"
+          className="pointer-events-none absolute inset-0 flex items-center overflow-hidden text-fg"
         >
           <span className="whitespace-pre">
             {parts}
@@ -73,7 +74,7 @@ export function SearchBar({
           spellCheck={false}
           onChange={(event) => onChange(event.target.value)}
           onScroll={follow}
-          className="relative size-full bg-transparent px-s text-transparent caret-fg outline-none placeholder:text-muted"
+          className="relative size-full bg-transparent text-transparent caret-fg outline-none placeholder:text-muted"
         />
       </span>
     </label>

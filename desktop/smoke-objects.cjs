@@ -29,7 +29,7 @@ module.exports.objects = async (window, { setTheme, shoot }) => {
     wait(`/\\b${matched} of ${total}\\b/.test(document.querySelector('${PANEL}').innerText)`);
   const scope = (name) =>
     js(
-      `[...document.querySelectorAll('${PANEL} button')].find((b) => b.textContent === '${name}').click()`,
+      `[...document.querySelectorAll('${PANEL} input[type=radio]')].find((r) => r.parentElement.textContent === '${name}').click()`,
     );
   const fits = async (what) =>
     assert.deepEqual(await js(`(${fit.panel.toString()})(${JSON.stringify(PANEL)})`), [], what);
@@ -71,7 +71,7 @@ module.exports.objects = async (window, { setTheme, shoot }) => {
     await setTheme(theme);
     await shoot(`objects-file-${theme}.png`);
   }
-  await js(`document.querySelector('${PANEL} input').focus()`);
+  await js(`document.querySelector('${PANEL} input:not([type=radio])').focus()`);
   window.webContents.insertText(`id:${inFile[0].id} OR class:nothing`);
   await shows(1, total);
   assert.deepEqual(
@@ -79,10 +79,10 @@ module.exports.objects = async (window, { setTheme, shoot }) => {
     [inFile[0].id],
   );
   await js(
-    `Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(document.querySelector('${PANEL} input'), '')`,
+    `Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(document.querySelector('${PANEL} input:not([type=radio])'), '')`,
   );
   await js(
-    `document.querySelector('${PANEL} input').dispatchEvent(new Event('input', { bubbles: true }))`,
+    `document.querySelector('${PANEL} input:not([type=radio])').dispatchEvent(new Event('input', { bubbles: true }))`,
   );
   await shows(total, total);
 

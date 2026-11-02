@@ -14,6 +14,7 @@ import { Menu, type MenuCommand, type MenuEntry } from "../kit/Menu";
 import { NoticeList, noticeOf } from "../kit/NoticeList";
 import { Popover } from "../kit/Popover";
 import { Popup } from "../kit/Popup";
+import { SectionCaption } from "../kit/SectionCaption";
 import { Switch } from "../kit/Switch";
 import { useCan, useCommand, useDoc } from "../session/session";
 import { useShow } from "../viewer/useViewers";
@@ -160,8 +161,10 @@ export function WorkspaceTree() {
 
   return (
     <section aria-label="Workspace items" className="flex min-h-0 flex-1 flex-col gap-xs">
-      <div className="flex items-center justify-between gap-m px-m">
-        <h3 className="text-small font-semibold text-muted uppercase">Items</h3>
+      <div className="flex items-center gap-m pr-m">
+        <div className="min-w-0 flex-1">
+          <SectionCaption heading="Items" />
+        </div>
         <Switch label="Show hidden" checked={showHidden} onChange={setShowHidden} />
       </div>
       {problem && (
@@ -259,7 +262,7 @@ export function WorkspaceTree() {
                         event.stopPropagation();
                         toggleHidden(row);
                       }}
-                      className={`size-row rounded-control ${
+                      className={`rounded-control ${
                         info.hidden || isCurrent
                           ? ""
                           : "opacity-0 group-hover/row:opacity-100 focus-visible:opacity-100"

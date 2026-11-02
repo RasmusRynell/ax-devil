@@ -2,6 +2,7 @@ import { useState } from "react";
 import { compileFilter, type Diagnostic } from "../present";
 import { Button } from "../kit/Button";
 import { Checkbox } from "../kit/Fields";
+import { FIELD } from "../kit/look";
 import type { LaneSettings, LaneState } from "./lanes";
 import { Group } from "./LaneMenuFields";
 
@@ -89,7 +90,7 @@ function Expression({
           onChange={(event) => setDraft(event.target.value)}
           onBlur={apply}
           onKeyDown={(event) => event.key === "Enter" && apply()}
-          className="h-row min-w-0 rounded-control border border-line-strong bg-popup px-s text-fg focus:border-accent focus:outline-none"
+          className={`${FIELD} min-w-0`}
         />
       </label>
       {found.map((diagnostic, at) => (

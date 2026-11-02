@@ -1,6 +1,8 @@
 import { useState } from "react";
 import { Icon } from "../kit/Icon";
+import { Chip } from "../kit/Chips";
 import { IconButton } from "../kit/IconButton";
+import { SectionCaption } from "../kit/SectionCaption";
 import type { InspectionView, Summary } from "./contract";
 import type { FieldGroupWire, FieldWire } from "./protocol";
 
@@ -80,11 +82,7 @@ function Field({ field }: { field: FieldWire }) {
     <div className="flex flex-col">
       <dt className="flex flex-wrap items-baseline gap-s text-small break-all text-muted">
         {field.path.join(".") || "value"}
-        {field.origin && (
-          <span className="rounded-control border border-line-strong px-s">
-            {ORIGINS[field.origin]}
-          </span>
-        )}
+        {field.origin && <Chip>{ORIGINS[field.origin]}</Chip>}
       </dt>
       <dd className="m-0 break-words">
         <Value value={field.value} />
@@ -99,9 +97,9 @@ function Groups({ fields }: { fields: readonly FieldWire[] }) {
     const own = fields.filter((field) => field.group === group);
     return (
       own.length > 0 && (
-        <section key={group} aria-label={heading} className="flex flex-col gap-s">
-          <h3 className="m-0 font-semibold">{heading}</h3>
-          <dl className="m-0 flex flex-col gap-s">
+        <section key={group} aria-label={heading} className="-mx-m flex flex-col gap-s">
+          <SectionCaption heading={heading} />
+          <dl className="m-0 flex flex-col gap-s px-m">
             {own.map((field, i) => (
               <Field key={`${field.path.join(".")}:${i}`} field={field} />
             ))}
@@ -144,7 +142,7 @@ export function Inspector({
             <span className="text-small text-muted">{detailOf(summarized)}</span>
           )}
         </div>
-        <IconButton icon="x" label="Close inspector" onClick={onClose} className="size-row" />
+        <IconButton icon="x" label="Close inspector" onClick={onClose} />
       </header>
       <div
         aria-busy={inspection.state === "loading"}

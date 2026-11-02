@@ -5,6 +5,7 @@ import { Button } from "../kit/Button";
 import { Dialog } from "../kit/Dialog";
 import { IconButton } from "../kit/IconButton";
 import { KeyChips } from "../kit/KeyChips";
+import { QUIET } from "../kit/look";
 import { shortcutOf } from "../kit/shortcut";
 import { useSettings } from "../settings";
 import { useSaveDialog } from "./useSaveDialog";
@@ -105,7 +106,7 @@ export function ShortcutsDialog({ onClose }: { onClose: () => void }) {
                     swallowKeyUp.current = false;
                   }}
                   onBlur={() => setRecording((now) => (now === id ? null : now))}
-                  className="flex min-h-row items-center justify-end rounded-control bg-transparent px-m hover:bg-hover focus-ring"
+                  className={`${QUIET} justify-end`}
                 >
                   <span id={`${bindingId}-${id}`} className="flex">
                     {recording === id ? (
@@ -122,14 +123,14 @@ export function ShortcutsDialog({ onClose }: { onClose: () => void }) {
                   label={`Reset ${label}`}
                   disabled={draft[id] === standard}
                   onClick={() => assign(id, standard, true)}
-                  className="size-row rounded-control disabled:text-disabled disabled:hover:bg-transparent"
+                  className="rounded-control"
                 />
                 <IconButton
                   icon="x"
                   label={`Clear ${label}`}
                   disabled={draft[id] === null}
                   onClick={() => assign(id, null)}
-                  className="size-row rounded-control disabled:text-disabled disabled:hover:bg-transparent"
+                  className="rounded-control"
                 />
               </div>
               {text && (

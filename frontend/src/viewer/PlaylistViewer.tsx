@@ -89,7 +89,6 @@ export function PlaylistViewer({ item, content }: ViewerProps<"Playlist">) {
           data-cursor-id="entry:previous"
           disabled={!previous}
           onClick={() => previous && choose(previous.id)}
-          className="size-row disabled:text-disabled disabled:hover:bg-transparent"
         />
         <Popover
           label={`Entry: ${current.label}`}
@@ -122,7 +121,6 @@ export function PlaylistViewer({ item, content }: ViewerProps<"Playlist">) {
           data-cursor-id="entry:next"
           disabled={!next}
           onClick={() => next && choose(next.id)}
-          className="size-row disabled:text-disabled disabled:hover:bg-transparent"
         />
         <output aria-label="Entry" className="px-m text-muted tabular-nums">
           {index + 1} / {entries.length}

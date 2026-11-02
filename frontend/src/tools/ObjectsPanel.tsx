@@ -11,6 +11,7 @@ import { reasonOf } from "../errors";
 import type { FileRowWire, FileScopeUnavailable } from "../generated/api";
 import { Select } from "../kit/Fields";
 import { Icon } from "../kit/Icon";
+import { SegmentedControl } from "../kit/Chips";
 import { IconButton } from "../kit/IconButton";
 import type { LaneFrame, Selection } from "../playback/contract";
 import type { FileScope } from "../playback/fileScope";
@@ -322,21 +323,12 @@ function ObjectsList({
   return (
     <>
       <div className="flex items-center gap-m border-b border-line py-xs pr-xs pl-m">
-        <div className="flex rounded-control border border-line-strong">
-          {(Object.keys(SCOPES) as Scope[]).map((key) => (
-            <button
-              key={key}
-              type="button"
-              aria-pressed={scope === key}
-              onClick={() => setScope(key)}
-              className={`h-row rounded-control bg-transparent px-m hover:bg-hover focus-ring ${
-                scope === key ? "bg-hover text-fg" : "text-muted"
-              }`}
-            >
-              {SCOPES[key].title}
-            </button>
-          ))}
-        </div>
+        <SegmentedControl
+          label="Scope"
+          options={(Object.keys(SCOPES) as Scope[]).map((key) => [key, SCOPES[key].title] as const)}
+          value={scope}
+          onChange={setScope}
+        />
         <span className="min-w-0 flex-1 truncate text-small text-muted">{`${count} of ${total}`}</span>
         {trailing}
       </div>
@@ -447,9 +439,7 @@ export function ObjectsPanel({
   const lanes = view.lanes.flatMap((lane, index) => (lane.source === null ? [] : [index]));
   const [chosen, setChosen] = useState<number | null>(null);
   const lane = chosen !== null && lanes.includes(chosen) ? chosen : lanes[0];
-  const close = (
-    <IconButton icon="x" label="Close media tools" onClick={onClose} className="size-row" />
-  );
+  const close = <IconButton icon="x" label="Close media tools" onClick={onClose} />;
   return (
     <aside
       aria-label="Media tools"

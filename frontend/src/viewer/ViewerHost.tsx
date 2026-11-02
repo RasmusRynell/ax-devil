@@ -1,6 +1,7 @@
 import { reasonOf } from "../errors";
 import type { ItemState } from "../generated/api";
 import { IconButton } from "../kit/IconButton";
+import { QUIET } from "../kit/look";
 import { useCan, useCommand, useView } from "../session/session";
 import { viewerFor } from "../viewers";
 import { useViewers } from "./useViewers";
@@ -58,9 +59,9 @@ export function ViewerHost() {
               data-cursor-id={`tab:${item.id}`}
               aria-selected={item.id === active?.id}
               onClick={() => setActive(item.id)}
-              className="h-row max-w-[24ch] truncate bg-transparent pr-xs pl-m text-fg hover:bg-hover focus-ring-inset aria-selected:font-semibold"
+              className={`${QUIET} max-w-[24ch] focus-ring-inset aria-selected:font-semibold`}
             >
-              {item.label}
+              <span className="truncate">{item.label}</span>
             </button>
             <IconButton
               icon="x"
@@ -74,7 +75,6 @@ export function ViewerHost() {
                   command: { type: "closeViewer", item: item.id },
                 }).catch(() => undefined)
               }
-              className="size-row hover:bg-hover"
             />
           </div>
         ))}

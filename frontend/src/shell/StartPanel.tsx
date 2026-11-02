@@ -3,6 +3,7 @@ import type { CommandId } from "../generated/settings";
 import { Icon } from "../kit/Icon";
 import type { IconName } from "../kit/icons";
 import { QUIET } from "../kit/look";
+import { SectionCaption } from "../kit/SectionCaption";
 import { useAllowed } from "../session/session";
 
 const OPEN: readonly [id: CommandId, icon: IconName][] = [
@@ -33,7 +34,7 @@ export function StartPanel({ onRun }: { onRun: (id: string) => void }) {
         ))}
       </div>
       <section className="flex flex-col gap-xs [@media(max-height:20rem)]:hidden">
-        <h3 className="px-m text-small font-semibold text-muted uppercase">Recent workspaces</h3>
+        <SectionCaption heading="Recent workspaces" />
         <p className="m-0 px-m text-muted">No recent workspaces</p>
       </section>
     </div>
