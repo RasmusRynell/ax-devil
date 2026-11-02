@@ -10,6 +10,7 @@ afterEach(cleanup);
 
 const lane = (change: Partial<LaneState>): LaneState => ({
   label: "DET",
+  slot: "DET",
   source: 0,
   status: { status: "Loading" },
   settings: LANE_SETTINGS,

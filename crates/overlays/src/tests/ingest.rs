@@ -1,47 +1,53 @@
 //! A track still being read: the lane sends the frames its samples have decided, once, and no others.
 
 use std::{
+    path::{Path, PathBuf},
     sync::{
-        Arc, Mutex,
+        Arc, LazyLock, Mutex,
         mpsc::{Receiver, RecvTimeoutError, Sender, channel},
     },
     thread,
     time::Duration,
 };
 
-use foundation::{CancelToken, Interrupt, MediaTime};
-use overlay_sync::{MatchBasis, MatchPolicy, Sticky};
-use playlist_resolvers::OverlayRef;
+use foundation::{CancelToken, FrameRate, Interrupt, MediaTime, UserError};
+use handler_api::{
+    DecodeError, DecodeSummary, Decoder, Form, Framing, Header, Input, OnEqualKey, OverlayRef,
+    Record, SceneSink, Settings, Spec, Values,
+};
+use overlay_sync::{MatchPolicy, Sticky};
 use scene::{
-    BoundingBox, Coverage, Entity, EntityId, FilterPolicy, Geometry, Observation, Scene, SceneTime,
-    TimeSlice,
+    BoundingBox, Coverage, Entity, EntityId, FilterPolicy, Geometry, MatchBasis, Observation,
+    Scene, SceneTime, TimeSlice,
 };
-use scene_decoders::{
-    DecodeContext, DecodeError, DecodeSummary, DecoderSpec, FileSceneDecoder, Header, OnEqualKey,
-    SceneSink, SourceFile, Storage,
+use scene_store::{Feed, Ingest, LiveTrack, TrackRead};
+
+use super::{
+    Env, SAMPLE_BUDGET, Sent, cells, next, overlay_at, sample_ids, settle_into, timeline, want,
 };
-use scene_store::Ingest;
+use crate::{
+    FileScopeBlocked, LaneStatus, OverlayEvent, OverlayService, ViewerOverlays,
+    sources::TrackSource,
+};
 
-use super::{Env, Sent, cells, next, sample_ids, settle_into, want};
-use crate::{FileScopeBlocked, LaneStatus, OverlayEvent, ViewerOverlays};
-
-static PACED: DecoderSpec = DecoderSpec {
-    plugin_id: "test",
-    handler: "PACED",
-    display_name: "Paced",
-    extensions: &[".paced"],
-    artifact_version: 1,
-    storage: Storage::DerivedCache,
-    bases: &[MatchBasis::Frame],
+static PACED: LazyLock<Spec> = LazyLock::new(|| Spec {
+    id: "PACED".into(),
+    plugin: "test".into(),
+    name: "Paced".into(),
+    extensions: vec![".paced".into()],
+    framing: Framing::Whole,
+    bases: vec![MatchBasis::Frame],
     default_basis: MatchBasis::Frame,
-};
+    options: Form::default(),
+    version: 1,
+});
 
 /// The same, keyed by timestamps that count from a recording's UTC time, not from the video's 0.
-static PACED_TIMED: DecoderSpec = DecoderSpec {
-    handler: "PACED_TIMED",
-    bases: &[MatchBasis::Frame, MatchBasis::Time],
-    ..PACED
-};
+static PACED_TIMED: LazyLock<Spec> = LazyLock::new(|| Spec {
+    id: "PACED_TIMED".into(),
+    bases: vec![MatchBasis::Frame, MatchBasis::Time],
+    ..PACED.clone()
+});
 
 /// 2023-11-14T22:13:20Z in microseconds.
 const RECORDING_START: i64 = 1_700_000_000_000_000;
@@ -51,7 +57,7 @@ const PUBLISH_GAP: Duration = Duration::from_millis(260);
 
 /// A decoder that gives one Scene for each key the test sends, frame-keyed or, for [`PACED_TIMED`], keyed by the
 /// recording's time of the frame, and ends when the sender is dropped.
-struct Paced(Mutex<Receiver<u64>>, &'static DecoderSpec);
+struct Paced(Mutex<Receiver<u64>>, &'static Spec);
 
 fn scene_at(key: u64, timed: bool) -> Scene {
     let time = if timed {
@@ -76,15 +82,15 @@ fn policy() -> FilterPolicy {
     }
 }
 
-impl FileSceneDecoder for Paced {
-    fn spec(&self) -> &'static DecoderSpec {
+impl Decoder for Paced {
+    fn spec(&self) -> &Spec {
         self.1
     }
 
-    fn decode_file(
+    fn decode(
         &self,
-        _source: &dyn SourceFile,
-        _context: &DecodeContext<'_>,
+        _input: &mut dyn Input,
+        _options: &Values,
         sink: &mut dyn SceneSink,
         cancel: &CancelToken,
     ) -> Result<DecodeSummary, Interrupt<DecodeError>> {
@@ -128,10 +134,10 @@ fn viewer_over_paced_file() -> (Env, ViewerOverlays, Sender<u64>) {
     viewer_over(&PACED)
 }
 
-fn viewer_over(spec: &'static DecoderSpec) -> (Env, ViewerOverlays, Sender<u64>) {
+fn viewer_over(spec: &'static Spec) -> (Env, ViewerOverlays, Sender<u64>) {
     let (keys, receiver) = channel();
     let env = Env::with_decoder(Arc::new(Paced(Mutex::new(receiver), spec)));
-    let overlay: OverlayRef = env.overlay("a.paced", spec.handler, "rows\n");
+    let overlay: OverlayRef = env.overlay("a.paced", spec.id.as_str(), "rows\n");
     let viewer = env.open(vec![Some(overlay)], 10);
     viewer.want(want(0, 0, 9));
     let sticky = MatchPolicy {
@@ -322,4 +328,148 @@ async fn a_lane_offers_its_file_scope_once_the_ingest_has_ended_and_under_its_cu
     let plain = env.open(vec![None], 10);
     assert!(matches!(plain.file_scope(0), Err(FileScopeBlocked::Plain)));
     assert!(matches!(viewer.file_scope(1), Err(FileScopeBlocked::Plain)));
+}
+
+/// Gives each timestamp the test sends, in microseconds, as a record, and ends when the sender is dropped.
+struct Ticks {
+    ticks: Receiver<i64>,
+    text: String,
+}
+
+impl Input for Ticks {
+    fn path(&self) -> Option<&Path> {
+        None
+    }
+
+    fn next(&mut self, cancel: &CancelToken) -> Result<Option<Record<'_>>, Interrupt<DecodeError>> {
+        loop {
+            cancel.check()?;
+            match self.ticks.recv_timeout(Duration::from_millis(20)) {
+                Ok(time) => {
+                    self.text = time.to_string();
+                    return Ok(Some(Record {
+                        bytes: self.text.as_bytes(),
+                        position: 1,
+                        capture_time: None,
+                    }));
+                }
+                Err(RecvTimeoutError::Timeout) => {}
+                Err(RecvTimeoutError::Disconnected) => return Ok(None),
+            }
+        }
+    }
+}
+
+/// A one-box Scene at each record's timestamp.
+struct Stamps;
+
+impl Decoder for Stamps {
+    fn spec(&self) -> &Spec {
+        &PACED_TIMED
+    }
+
+    fn decode(
+        &self,
+        input: &mut dyn Input,
+        _options: &Values,
+        sink: &mut dyn SceneSink,
+        cancel: &CancelToken,
+    ) -> Result<DecodeSummary, Interrupt<DecodeError>> {
+        while let Some(record) = input.next(cancel)? {
+            let time: i64 = std::str::from_utf8(record.bytes)
+                .expect("text")
+                .parse()
+                .expect("microseconds");
+            let mut entity = Entity::new(EntityId::from(1_u64));
+            let time = SceneTime::Timestamp(MediaTime(time));
+            entity.push_observation(Observation::new(
+                time,
+                Geometry::Box(BoundingBox::new(0.1, 0.1, 0.2, 0.2).expect("a box")),
+            ));
+            let scene = Scene::new(TimeSlice::at(time))
+                .with_entities(vec![entity])
+                .expect("one clock");
+            let _ = sink.sample(scene, OnEqualKey::Merge);
+        }
+        Ok(DecodeSummary {
+            warnings: Vec::new(),
+            filter: policy(),
+            metadata: Vec::new(),
+            coverage: Coverage::Sparse,
+        })
+    }
+}
+
+/// One session, then no more.
+struct OneSession(Option<Ticks>);
+
+impl Feed for OneSession {
+    fn next_input(&mut self, _cancel: &CancelToken) -> Option<Box<dyn Input + Send>> {
+        Some(Box::new(self.0.take()?))
+    }
+}
+
+/// Opens the same live track whatever the overlay.
+struct Live(Arc<LiveTrack>);
+
+impl TrackSource for Live {
+    fn open(
+        &self,
+        _overlay: &OverlayRef,
+        _cancel: &CancelToken,
+    ) -> Result<Arc<dyn TrackRead>, Interrupt<UserError>> {
+        Ok(self.0.clone())
+    }
+}
+
+#[tokio::test]
+async fn lanes_of_a_live_track_fill_without_aligning_or_restarting_their_source() {
+    let (ticks, receiver) = channel();
+    let feed = OneSession(Some(Ticks {
+        ticks: receiver,
+        text: String::new(),
+    }));
+    let values = PACED_TIMED
+        .options
+        .validate(&Settings::new())
+        .expect("no options");
+    let track = LiveTrack::start(Arc::new(Stamps), values, Box::new(feed), 100).expect("starts");
+    let overlay = overlay_at("live", "LIVE", PathBuf::from("live"));
+    let mut viewer = OverlayService::from_sources(Arc::new(Live(track))).open_viewer(
+        vec![Some(overlay.clone()), Some(overlay)],
+        timeline(10),
+        SAMPLE_BUDGET,
+    );
+    viewer.want(want(0, 0, 9));
+    for lane in 0..2 {
+        viewer.set_policy(lane, 1, Some(MatchPolicy::default()), true);
+    }
+    let rate = FrameRate::new(30, 1).expect("rate");
+    let at = |frame| rate.time_of(frame).expect("time").0;
+    let mut sent = Sent::default();
+
+    // Samples at frames 0 and 3 decide frames 0 to 2. The first announcement of a growing source comes at most every
+    // 500 ms, so the third waits for it.
+    ticks.send(at(0)).expect("sent");
+    ticks.send(at(3)).expect("sent");
+    tokio::time::sleep(Duration::from_millis(520)).await;
+    ticks.send(at(6)).expect("sent");
+    record_until(&mut viewer, &mut sent, |sent| {
+        (0..2).all(|lane| cells(sent, lane).len() >= 6)
+            && sent
+                .readies
+                .last()
+                .is_some_and(|ready| ready.mean_sample_bytes > 0)
+    })
+    .await;
+
+    // Each sample is a new publication of the same numbering: one revision, no alignment, a source still reading.
+    assert_eq!(cells(&sent, 0), cells(&sent, 1));
+    assert!(sent.readies.iter().all(|ready| {
+        ready.data_revision == 1 && ready.alignment.is_none() && ready.ingest == Ingest::Reading
+    }));
+    assert!(matches!(
+        viewer.file_scope(0),
+        Err(FileScopeBlocked::Reading)
+    ));
 }

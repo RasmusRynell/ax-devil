@@ -1,9 +1,9 @@
-use foundation::{ErrorCode, ItemId, UserError};
-use playlist_resolvers::ResolvedPlaylist;
+use foundation::{ErrorCode, ItemId, UserError, Warning};
+use handler_api::ResolvedPlaylist;
 use serde::{Deserialize, Deserializer, Serialize, Serializer, de};
 use std::{collections::HashSet, fmt};
 
-pub use playlist_resolvers::{ImageSequence, OverlayRef, VideoRef};
+pub use handler_api::{ImageSequence, OverlayRef, VideoRef};
 
 /// Names one Content, or one entry of a playlist, for as long as its item exists. Derived from the item id (and the
 /// entry label), so it names the same thing after the item resolves again. It travels as its text, and text that is
@@ -68,7 +68,7 @@ pub struct Entry {
     pub label: String,
     /// Where the frames come from.
     pub video: VideoRef,
-    /// The overlays, each shown as its own lane; labels are unique within the entry.
+    /// The overlays, each shown as its own lane; labels and slots are unique within the entry.
     pub overlays: Vec<OverlayRef>,
 }
 
@@ -76,12 +76,22 @@ impl Entry {
     /// The lane names: the overlay labels, or the entry's own label for the one plain lane of an entry without
     /// overlays.
     pub fn lane_labels(&self) -> Vec<&str> {
+        self.lane_names(|overlay| &overlay.label)
+    }
+
+    /// The lane slots: the overlay slots, or the entry's own label for the one plain lane of an entry without
+    /// overlays.
+    pub fn lane_slots(&self) -> Vec<&str> {
+        self.lane_names(|overlay| &overlay.slot)
+    }
+
+    fn lane_names(&self, of: impl Fn(&OverlayRef) -> &String) -> Vec<&str> {
         if self.overlays.is_empty() {
             vec![self.label.as_str()]
         } else {
             self.overlays
                 .iter()
-                .map(|overlay| overlay.label.as_str())
+                .map(|overlay| of(overlay).as_str())
                 .collect()
         }
     }
@@ -107,6 +117,8 @@ pub struct PlaylistContent {
     pub display_name: String,
     /// The entries in playlist order.
     pub entries: Vec<Entry>,
+    /// What the resolver left out of the playlist.
+    pub warnings: Vec<Warning>,
 }
 
 /// What a viewer opens, by kind. Viewers register by kind; live sources join this set later.
@@ -140,6 +152,14 @@ impl Content {
         match self {
             Content::SeekableVideo(video) => std::slice::from_ref(&video.entry),
             Content::Playlist(playlist) => &playlist.entries,
+        }
+    }
+
+    /// What resolving left out of the Content, such as a skipped sequence.
+    pub fn warnings(&self) -> &[Warning] {
+        match self {
+            Content::SeekableVideo(_) => &[],
+            Content::Playlist(playlist) => &playlist.warnings,
         }
     }
 
@@ -182,14 +202,17 @@ pub(crate) fn playlist_content(
         item_id: *item,
         display_name: resolved.display_name,
         entries,
+        warnings: resolved.warnings,
     })
 }
 
-/// Fails, naming the label in its reason, when two overlays of `entry` of the item `item` would be the same lane.
+/// Fails, naming the label in its reason, when two overlays of `entry` of the item `item` would be the same lane: they
+/// share a label or a slot.
 pub(crate) fn check_unique_lanes(item: &ItemId, entry: &Entry) -> Result<(), UserError> {
     let mut labels = HashSet::new();
+    let mut slots = HashSet::new();
     for overlay in &entry.overlays {
-        if !labels.insert(overlay.label.as_str()) {
+        if !labels.insert(overlay.label.as_str()) || !slots.insert(overlay.slot.as_str()) {
             return Err(UserError::new(
                 ErrorCode::OverlayInvalid,
                 format!(

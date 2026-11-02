@@ -7,10 +7,10 @@ use ax_devil::plugins::reserved_ids;
 use clap::{Subcommand, ValueHint};
 use converters::Registry;
 use foundation::{CancelToken, Interrupt};
+use handler_api::{OverlayRef, Settings};
 use handlers::Handlers;
-use playlist_resolvers::{OverlayRef, Settings};
 use scene::SceneTime;
-use scene_store::{Ingest, TrackRegistry};
+use scene_store::{Ingest, TrackRead, TrackRegistry};
 use std::{
     fmt::Write,
     path::{Path, PathBuf},
@@ -199,6 +199,7 @@ fn check(
 ) -> Report {
     let overlay = OverlayRef {
         label: id.to_owned(),
+        slot: id.to_owned(),
         path: file.to_path_buf(),
         handler: id.to_owned(),
         options: options
@@ -206,7 +207,7 @@ fn check(
             .map(|(key, value)| (key, value.into()))
             .collect::<Settings>(),
     };
-    let tracks = TrackRegistry::new(handlers.clone(), None);
+    let tracks = TrackRegistry::new(handlers.decoder_lookup(), None);
     let track = match tracks.open(&overlay, cancel) {
         Ok(track) => track,
         Err(Interrupt::Failed(error)) => return failed(describe(&error)),

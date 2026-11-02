@@ -3,10 +3,8 @@
 use std::collections::BTreeSet;
 
 use foundation::{CancelToken, MediaTime};
+use handler_api::Settings;
 use scene::{Classification, Coverage, Event, Geometry, Scene, SceneTime, Score, Value};
-use scene_decoders::{
-    DecodeContext, DecodeOptions, RecordSceneDecoder, file_decoder, record_decoder,
-};
 
 mod common;
 
@@ -15,12 +13,19 @@ const FRAMES: &[u8] = include_bytes!("../../../fixtures/decoders/onvif_xml/frame
 const SAMPLE_TIME: MediaTime = MediaTime(1_741_680_714_008_178);
 const NEW_YEAR_2024: i64 = 1_704_067_200_000_000;
 
-fn record_decoder_under_test() -> &'static dyn RecordSceneDecoder {
-    record_decoder("ONVIF_XML").expect("the ONVIF record decoder is built in")
-}
-
+/// The Scene of one record, `None` when the record has no overlay, or why the record was skipped.
 fn decode(xml: &[u8]) -> Result<Option<Scene>, String> {
-    record_decoder_under_test().decode_record(xml)
+    let (mut gave, result) = common::run_input(
+        &*common::decoder("ONVIF_XML"),
+        &mut common::Memory(vec![(1, xml)]),
+        &Settings::new(),
+        &CancelToken::new(),
+    );
+    result.expect("a record never fails the file");
+    match gave.skipped.pop() {
+        Some((_, reason)) => Err(reason),
+        None => Ok(gave.scenes.pop()),
+    }
 }
 
 fn decode_scene(xml: &[u8]) -> Scene {
@@ -160,16 +165,14 @@ fn an_object_without_appearance_is_dropped_and_the_frame_keeps_its_time() {
 
 #[test]
 fn a_file_is_one_document_per_line_and_a_bad_line_is_a_warning() {
-    let decoder = file_decoder("ONVIF_XML").expect("the ONVIF file decoder is built in");
-    let (scenes, result) = common::run(
-        decoder,
-        FRAMES,
-        &DecodeContext {
-            options: &DecodeOptions::new(),
-        },
+    let (gave, result) = common::run_input(
+        &*common::decoder("ONVIF_XML"),
+        &mut common::lines(FRAMES),
+        &Settings::new(),
         &CancelToken::new(),
     );
     let summary = result.expect("a bad line does not fail the file");
+    let scenes = gave.scenes;
 
     assert_eq!(summary.coverage, Coverage::Sparse);
     let times: Vec<_> = scenes.iter().map(|scene| scene.time().start()).collect();
@@ -178,20 +181,21 @@ fn a_file_is_one_document_per_line_and_a_bad_line_is_a_warning() {
     assert_eq!(scenes[0].entities()[0].id(), "obj-1");
     assert!(scenes[1].entities().is_empty(), "the nested frame is found");
 
-    let [warning] = &summary.warnings[..] else {
-        panic!("one warning: {:?}", summary.warnings);
+    let [(line, _)] = &gave.skipped[..] else {
+        panic!("one skipped line: {:?}", gave.skipped);
     };
-    assert_eq!(warning.problem, "Skipped 1 of 4 lines");
-    assert!(
-        warning.reasons[0].starts_with("line 5: "),
-        "{:?}",
-        warning.reasons
-    );
+    assert_eq!(*line, 5);
 }
 
 #[test]
 fn each_class_is_shown_by_exactly_its_own_filter() {
-    let policy = record_decoder_under_test().filter_policy();
+    let (_, summary) = common::run_input(
+        &*common::decoder("ONVIF_XML"),
+        &mut common::Memory(Vec::new()),
+        &Settings::new(),
+        &CancelToken::new(),
+    );
+    let policy = summary.expect("an empty file decodes").filter;
     let shown = |class: &[&str]| -> Vec<&str> {
         policy
             .options

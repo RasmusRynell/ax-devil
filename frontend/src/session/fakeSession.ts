@@ -119,10 +119,17 @@ function rowsOf(items: readonly ItemState[], hidden: readonly HiddenTarget[]): R
       status: ready,
       hidden: hides(hidden, entry.id, lane),
       entry: entry.id,
+      warnings: [],
     }));
   return items.flatMap((item): RowInfo[] => {
     const { resolution } = item;
-    const base = { key: item.id, kind: "item" as const, label: item.label, hidden: false };
+    const base = {
+      key: item.id,
+      kind: "item" as const,
+      label: item.label,
+      hidden: false,
+      warnings: [],
+    };
     if (resolution.status === "Pending")
       return [{ ...base, status: { status: "Pending" }, entry: null }];
     if (resolution.status === "Failed")
@@ -148,6 +155,7 @@ function rowsOf(items: readonly ItemState[], hidden: readonly HiddenTarget[]): R
           status: ready,
           hidden: hides(hidden, entry.id),
           entry: entry.id,
+          warnings: [],
         },
         ...lanes(entry),
       ]),

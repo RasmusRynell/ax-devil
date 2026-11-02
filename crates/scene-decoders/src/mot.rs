@@ -1,33 +1,18 @@
 use std::{
     borrow::Cow,
     collections::{HashMap, hash_map::Entry},
-    io::ErrorKind,
-    path::Path,
 };
 
-use foundation::{CancelToken, Interrupt, SeqInfo, parse_seqinfo};
+use foundation::{CancelToken, Interrupt};
+use handler_api::{
+    DecodeError, DecodeSummary, Decoder, Field, FieldKind, Form, Framing, Input, OnEqualKey,
+    SceneSink, SkippedRecords, Spec, Values,
+};
 use memchr::memchr_iter;
-use overlay_sync::MatchBasis;
 use scene::{
     BoundingBox, ClassRule, ClassType, Classification, Coverage, Entity, EntityId, Fields,
-    FilterOption, FilterPolicy, Geometry, Observation, Scene, SceneError, SceneTime, Score,
-    TimeSlice, UNMAPPED_CLASS, Value,
-};
-
-use crate::{
-    DecodeContext, DecodeError, DecodeOptions, DecodeSummary, DecoderSpec, FileSceneDecoder,
-    OnEqualKey, SceneSink, SkippedRecords, SourceFile, Storage,
-};
-
-static SPEC: DecoderSpec = DecoderSpec {
-    plugin_id: "mot",
-    handler: "MOT_FILE",
-    display_name: "MOT Annotations",
-    extensions: &[".txt"],
-    artifact_version: 1,
-    storage: Storage::DerivedCache,
-    bases: &[MatchBasis::Frame],
-    default_basis: MatchBasis::Frame,
+    FilterOption, FilterPolicy, Geometry, MatchBasis, Observation, Scene, SceneError, SceneTime,
+    Score, TimeSlice, UNMAPPED_CLASS, Value,
 };
 
 /// Rows between cancellation checks.
@@ -88,58 +73,44 @@ static CLASSES: [(ClassType, &str, &str); 13] = [
 
 /// Reads MOT Challenge detection (7 or 10 columns) and ground-truth (9 columns) text files.
 ///
-/// Frames are 1-based in the file and 0-based in Scenes. Boxes are pixels, normalized by the image size the
-/// dataset's `seqinfo.ini` states, which sits in the sequence folder above `gt/` or `det/`, or beside a file
-/// kept elsewhere; the video is never consulted. [`declared_options`](FileSceneDecoder::declared_options) reads it and declares it as `width` and
-/// `height`, so changing the file rebuilds the scene cache. A frame without rows is empty ([`Coverage::Dense`]).
-pub struct MotDecoder;
+/// Frames are 1-based in the file and 0-based in Scenes. Boxes are pixels, normalized by the required `width` and
+/// `height` options, the image size of the sequence (a playlist resolver reads it from `seqinfo.ini`); the video is
+/// never consulted. A frame without rows is empty ([`Coverage::Dense`]).
+pub struct MotDecoder {
+    spec: Spec,
+}
+
+impl MotDecoder {
+    pub(crate) fn new() -> Self {
+        let size = |key: &str, label: &str| {
+            Field::new(key, label, FieldKind::Integer { min: 1 }).required()
+        };
+        Self {
+            spec: Spec {
+                id: "MOT_FILE".to_owned(),
+                plugin: "mot".to_owned(),
+                name: "MOT Annotations".to_owned(),
+                extensions: vec![".txt".to_owned()],
+                framing: Framing::Whole,
+                bases: vec![MatchBasis::Frame],
+                default_basis: MatchBasis::Frame,
+                options: Form {
+                    fields: vec![
+                        size("width", "Image width (pixels)"),
+                        size("height", "Image height (pixels)"),
+                    ],
+                },
+                version: 1,
+            },
+        }
+    }
+}
 
 /// The size the dataset's boxes are measured in.
 #[derive(Clone, Copy)]
 struct Extent {
     width: f64,
     height: f64,
-}
-
-/// The size declared by [`MotDecoder::declared_options`].
-fn declared_extent(options: &DecodeOptions) -> Result<Extent, DecodeError> {
-    let size = |key: &str| options.get(key).and_then(serde_json::Value::as_u64);
-    match (size("width"), size("height")) {
-        (Some(width @ 1..), Some(height @ 1..)) => Ok(Extent {
-            width: width as f64,
-            height: height as f64,
-        }),
-        _ => Err(DecodeError(
-            "MOT annotations decode only with the image size from their seqinfo.ini".to_owned(),
-        )),
-    }
-}
-
-/// The `seqinfo.ini` of the sequence that holds `annotations`: in the folder above a `gt` or `det` folder, else in
-/// the file's own folder. No other folder is searched.
-fn read_seqinfo(annotations: &Path) -> Result<SeqInfo, DecodeError> {
-    let folder = annotations.parent().unwrap_or(Path::new(""));
-    let in_layout_folder = folder
-        .file_name()
-        .is_some_and(|name| name == "gt" || name == "det");
-    let sequence = if in_layout_folder {
-        folder.parent().unwrap_or(folder)
-    } else {
-        folder
-    };
-    let ini = sequence.join("seqinfo.ini");
-    let text = std::fs::read_to_string(&ini).map_err(|error| {
-        DecodeError(if error.kind() == ErrorKind::NotFound {
-            format!(
-                "MOT annotations need a seqinfo.ini next to the sequence (tried {})",
-                ini.display()
-            )
-        } else {
-            format!("Cannot read {}: {error}", ini.display())
-        })
-    })?;
-    parse_seqinfo(&text)
-        .map_err(|reason| DecodeError(format!("{} is not usable: {reason}", ini.display())))
 }
 
 /// One valid row, its box already normalized.
@@ -155,32 +126,34 @@ struct Row {
     visibility: f64,
 }
 
-impl FileSceneDecoder for MotDecoder {
-    fn spec(&self) -> &'static DecoderSpec {
-        &SPEC
+impl Decoder for MotDecoder {
+    fn spec(&self) -> &Spec {
+        &self.spec
     }
 
-    fn declared_options(
+    fn decode(
         &self,
-        path: &Path,
-        _options: &DecodeOptions,
-    ) -> Result<DecodeOptions, DecodeError> {
-        let info = read_seqinfo(path)?;
-        Ok(DecodeOptions::from_iter([
-            ("width".to_owned(), info.width.into()),
-            ("height".to_owned(), info.height.into()),
-        ]))
-    }
-
-    fn decode_file(
-        &self,
-        source: &dyn SourceFile,
-        context: &DecodeContext<'_>,
+        input: &mut dyn Input,
+        options: &Values,
         sink: &mut dyn SceneSink,
         cancel: &CancelToken,
     ) -> Result<DecodeSummary, Interrupt<DecodeError>> {
-        let extent = declared_extent(context.options).map_err(Interrupt::Failed)?;
-        let input = source.bytes(cancel)?;
+        let size = |key: &str| {
+            options
+                .integer(key)
+                .filter(|&pixels| pixels >= 1)
+                .map(|pixels| pixels as f64)
+                .ok_or_else(|| {
+                    Interrupt::Failed(DecodeError(format!(
+                        "MOT annotations need the image size as the option '{key}'"
+                    )))
+                })
+        };
+        let extent = Extent {
+            width: size("width")?,
+            height: size("height")?,
+        };
+        let input = input.next(cancel)?.map_or(&[][..], |record| record.bytes);
         let mut skipped = SkippedRecords::new("rows", "Objects on skipped rows are not shown.");
         let (mut rows, total) = read_rows(input, extent, &mut skipped, cancel)?;
         if !rows.is_sorted_by_key(|row| row.frame) {

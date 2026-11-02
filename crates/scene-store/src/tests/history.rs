@@ -90,21 +90,21 @@ struct Emit {
     runs: Arc<AtomicUsize>,
 }
 
-impl FileSceneDecoder for Emit {
-    fn spec(&self) -> &'static DecoderSpec {
+impl Decoder for Emit {
+    fn spec(&self) -> &Spec {
         &SPEC
     }
 
-    fn decode_file(
+    fn decode(
         &self,
-        _source: &dyn SourceFile,
-        _context: &DecodeContext<'_>,
+        _input: &mut dyn Input,
+        _options: &Values,
         sink: &mut dyn SceneSink,
         _cancel: &CancelToken,
     ) -> Result<DecodeSummary, Interrupt<DecodeError>> {
         self.runs.fetch_add(1, Ordering::SeqCst);
         if self.header {
-            sink.header(scene_decoders::Header {
+            sink.header(handler_api::Header {
                 filter: self.policy.clone(),
                 coverage: Coverage::Sparse,
                 metadata: Vec::new(),
@@ -127,8 +127,8 @@ impl FileSceneDecoder for Emit {
 
 fn registry(dir: &TempDir, emit: Emit, tuning: Tuning) -> TrackRegistry {
     let emit = Arc::new(emit);
-    TrackRegistry::with_decoders(
-        move |handler| (handler == "TEST").then(|| emit.clone() as Arc<dyn FileSceneDecoder>),
+    TrackRegistry::new(
+        move |handler| (handler == "TEST").then(|| emit.clone() as Arc<dyn Decoder>),
         Some(&dir.path().join("cache")),
     )
     .with_tuning(tuning)
@@ -139,6 +139,7 @@ fn open(dir: &TempDir, registry: &TrackRegistry) -> Arc<Track> {
     fs::write(&source, b"rows\n").expect("source");
     let overlay = OverlayRef {
         label: "lane".into(),
+        slot: "lane".into(),
         path: source,
         handler: "TEST".into(),
         options: Settings::new(),

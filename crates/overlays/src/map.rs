@@ -4,7 +4,7 @@
 use foundation::Timeline;
 use overlay_sync::{MatchPolicy, Selection, select};
 use scene::Coverage;
-use scene_store::{Track, TrackSnapshot};
+use scene_store::{TrackRead, TrackSnapshot};
 
 use crate::window::{EMPTY_CELL, NONE_CELL};
 
@@ -15,7 +15,7 @@ use crate::window::{EMPTY_CELL, NONE_CELL};
 /// [`NONE_CELL`] when nothing belongs to it (also a frame past the end of the timeline, and a frame the track's
 /// ingest has not decided yet).
 pub fn cell(
-    track: &Track,
+    track: &dyn TrackRead,
     snapshot: &TrackSnapshot,
     timeline: &Timeline,
     frame: u64,

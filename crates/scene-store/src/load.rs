@@ -9,8 +9,8 @@ use std::{
 };
 
 use foundation::{CancelToken, ErrorCode, HostPath, Interrupt, UserError};
+use handler_api::{Decoder, Spec, Values};
 use scene::SCENE_VERSION;
-use scene_decoders::{DecodeOptions, DecoderSpec, FileSceneDecoder};
 
 use crate::{
     TrackKey,
@@ -21,7 +21,7 @@ use crate::{
     source::{LazySource, read_through},
     stat::Stat,
     summary::Summary,
-    track::{Decided, Generation, Growth, Ingest, Meta, Records, Track, TrackSnapshot},
+    track::{Decided, Generation, Growth, Ingest, Meta, Numbering, Records, Track, TrackSnapshot},
 };
 
 /// How often a waiting open looks at its cancel token.
@@ -30,7 +30,7 @@ const WAIT_SLICE: Duration = Duration::from_millis(20);
 /// Everything one open needs besides the decoder.
 pub(crate) struct Request<'a> {
     pub key: &'a TrackKey,
-    pub options: &'a DecodeOptions,
+    pub options: &'a Values,
     /// Where the artifact lives; `None` keeps it in an unnamed temporary file.
     pub artifact: Option<&'a Path>,
     pub cache_bytes: usize,
@@ -40,7 +40,7 @@ pub(crate) struct Request<'a> {
 /// Opens the track of `request.key`. A decode that must run is started on its own thread; this returns once the
 /// track can be read, which for a decoder without a header is the end of the decode.
 pub(crate) fn load(
-    decoder: &Arc<dyn FileSceneDecoder>,
+    decoder: &Arc<dyn Decoder>,
     request: &Request<'_>,
     cancel: &CancelToken,
 ) -> Result<Arc<Track>, Interrupt<UserError>> {
@@ -53,7 +53,7 @@ pub(crate) fn load(
         .map_err(|e| failed(user_error("Cannot read the overlay file", &e, &key.path)))?;
     let wanted = Identity {
         handler: key.handler.clone(),
-        artifact_version: spec.artifact_version,
+        artifact_version: spec.version,
         scene_major: SCENE_VERSION.major,
         scene_minor: SCENE_VERSION.minor,
         options: key.options.clone(),
@@ -81,7 +81,7 @@ fn reuse(
     request: &Request<'_>,
     wanted: &Identity,
     source: &File,
-    spec: &'static DecoderSpec,
+    spec: &Spec,
     cancel: &CancelToken,
 ) -> Result<Option<Arc<Track>>, Interrupt<UserError>> {
     let Ok(mut file) = File::open(path) else {
@@ -139,14 +139,14 @@ fn reuse(
         ingest: Ingest::Complete,
         generation: 0,
         warnings: restored.warnings.into(),
-        numbering: Arc::new(Generation::new(
+        numbering: Numbering::Artifact(Arc::new(Generation::new(
             file,
             Records {
                 boundaries: layout.boundaries,
                 crcs: layout.crcs,
             },
             request.cache_bytes,
-        )),
+        ))),
     };
     let growth = Arc::new(Growth::new(snapshot, Some(path.to_path_buf())));
     let meta = Meta {
@@ -158,7 +158,7 @@ fn reuse(
         request.key.path.clone(),
         growth,
         meta,
-        spec,
+        Arc::new(spec.clone()),
         CancelToken::new(),
     ))))
 }
@@ -193,7 +193,7 @@ pub(crate) fn republish(
 /// Starts the ingest and waits until the track can be read. Cancelling before that stops the ingest and waits for
 /// it to remove its files; after that the track's own drop stops it.
 fn build(
-    decoder: &Arc<dyn FileSceneDecoder>,
+    decoder: &Arc<dyn Decoder>,
     request: &Request<'_>,
     identity: Identity,
     source: LazySource,

@@ -2,8 +2,8 @@
 
 use std::{fs::File, io::BufWriter};
 
-use foundation::{CancelToken, ErrorCode, Interrupt, UserError};
-use scene_decoders::{DecodeSummary, Header, LoadWarning};
+use foundation::{CancelToken, ErrorCode, Interrupt, UserError, Warning};
+use handler_api::{DecodeSummary, Header};
 
 use crate::{
     format::{Identity, Layout},
@@ -29,7 +29,7 @@ pub(crate) struct Settled {
     pub(crate) fresh: bool,
     pub(crate) replaced: usize,
     pub(crate) header: Option<Header>,
-    pub(crate) warnings: Vec<LoadWarning>,
+    pub(crate) warnings: Vec<Warning>,
     pub(crate) cancel: CancelToken,
 }
 
@@ -52,7 +52,7 @@ impl Settled {
         decoded.warnings.append(&mut self.warnings);
         let mut stored = Summary::of(&decoded).map_err(internal)?;
         if self.replaced > 0 {
-            stored.warn(&LoadWarning {
+            stored.warn(&Warning {
                 problem: format!(
                     "{} samples were replaced by a later one with the same time",
                     self.replaced

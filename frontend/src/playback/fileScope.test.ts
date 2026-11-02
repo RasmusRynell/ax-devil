@@ -38,7 +38,7 @@ type Scope = Extract<ServerMessage, { type: "FileScope" }>;
 /** A file scope over one Ready lane, a recording socket and fake timers. */
 function scope() {
   const lanes = new LaneSet();
-  lanes.open([{ label: "DPM", source: 0 }], LANE_DEFAULTS);
+  lanes.open([{ label: "DPM", slot: "DPM", source: 0 }], LANE_DEFAULTS);
   lanes.setStatus(0, READY);
   const sent: ClientMessage[] = [];
   const files = new FileScope(
@@ -250,7 +250,7 @@ describe("in a playback session", () => {
   it("asks once the lane is ready and again when the viewer follows, then owns its frames", async () => {
     vi.useRealTimers();
     const { session, server, sent, retries } = await setup();
-    server.open(10, [{ label: "DPM", source: 0 }]);
+    server.open(10, [{ label: "DPM", slot: "DPM", source: 0 }]);
     server.status(0, READY);
     session.files.request(0, "car", SORT, 0, 50, 64);
     const debounce = () => {

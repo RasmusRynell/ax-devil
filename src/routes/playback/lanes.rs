@@ -243,26 +243,21 @@ impl Lanes {
     }
 
     /// The lanes the entry shows: one per overlay, or one plain lane.
-    pub(super) fn infos(&self, entry: &Entry, matching: &[Option<MatchPolicy>]) -> Vec<LaneInfo> {
-        let labels: Vec<&String> = if entry.overlays.is_empty() {
-            vec![&entry.label]
-        } else {
-            entry
-                .overlays
-                .iter()
-                .map(|overlay| &overlay.label)
-                .collect()
-        };
-        labels
+    pub(super) fn infos(
+        &self,
+        entry: &Entry,
+        matching: &BTreeMap<String, MatchPolicy>,
+    ) -> Vec<LaneInfo> {
+        entry
+            .lane_labels()
             .into_iter()
+            .zip(entry.lane_slots())
             .zip(self.overlays.lane_sources())
-            .zip(matching.iter().map(Some).chain(std::iter::repeat(None)))
-            .map(|((label, source), matching)| LaneInfo {
-                label: label.clone(),
+            .map(|((label, slot), source)| LaneInfo {
+                label: label.to_owned(),
+                slot: slot.to_owned(),
                 source: *source,
-                policy: matching
-                    .and_then(|matching| matching.as_ref())
-                    .map(policy_wire),
+                policy: matching.get(slot).map(policy_wire),
             })
             .collect()
     }
@@ -367,12 +362,7 @@ fn status_wire(status: LaneStatus, audience: Audience) -> LaneStatusWire {
                 .warnings
                 .into_iter()
                 .filter(|_| audience.host_details)
-                .map(|warning| WarningInfo {
-                    problem: warning.problem,
-                    reasons: warning.reasons,
-                    consequence: warning.consequence,
-                    more_reasons: warning.more_reasons,
-                })
+                .map(WarningInfo::from)
                 .collect(),
             alignment: ready.alignment.map(|alignment| AlignmentWire {
                 basis: basis_wire(alignment.basis),

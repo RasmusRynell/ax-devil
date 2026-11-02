@@ -30,7 +30,7 @@ use foundation::{ErrorCode, FrameSize, HostPath, UserError};
 use overlay_sync::MatchPolicy;
 use overlays::OverlayService;
 use playback::{Delivery, Direction, Priority, Session, Want};
-use std::{sync::Arc, time::Duration};
+use std::{collections::BTreeMap, sync::Arc, time::Duration};
 use tokio::{sync::watch, time::MissedTickBehavior};
 use workspace::Entry;
 
@@ -46,7 +46,7 @@ pub(super) struct Setup<'a> {
     /// The entry: its video, which the session plays, and its overlays, one lane each.
     pub(super) entry: &'a Entry,
     /// How the workspace says each lane matches its records to frames; `None` is the default.
-    pub(super) matching: &'a [Option<MatchPolicy>],
+    pub(super) matching: &'a BTreeMap<String, MatchPolicy>,
     /// The frame the viewer opened on.
     pub(super) start_frame: Option<u64>,
     /// The most bytes of Sample Items the viewer holds at once.

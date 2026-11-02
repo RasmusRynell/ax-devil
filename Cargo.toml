@@ -17,6 +17,7 @@ members = [
   "crates/converters",
   "crates/export",
   "crates/foundation",
+  "crates/handler-api",
   "crates/handlers",
   "crates/logging",
   "crates/media",
@@ -59,6 +60,7 @@ catalogs = { path = "crates/catalogs" }
 converters = { path = "crates/converters" }
 export = { path = "crates/export" }
 foundation = { path = "crates/foundation" }
+handler-api = { path = "crates/handler-api" }
 handlers = { path = "crates/handlers" }
 logging = { path = "crates/logging" }
 media = { path = "crates/media" }
@@ -96,18 +98,18 @@ api-types.workspace = true
 axum = { version = "0.8", features = ["ws"] }
 bytes.workspace = true
 catalogs.workspace = true
-clap = { version = "4", features = ["derive"] }
+clap = { version = "4", features = ["derive", "string"] }
 converters.workspace = true
 export.workspace = true
 foundation.workspace = true
 futures-util = { version = "0.3", default-features = false, features = ["sink", "std"] }
+handler-api.workspace = true
 handlers.workspace = true
 logging.workspace = true
 media.workspace = true
 overlay-sync.workspace = true
 overlays.workspace = true
 playback.workspace = true
-playlist-resolvers.workspace = true
 rustix.workspace = true
 scene-store.workspace = true
 scene.workspace = true
@@ -125,7 +127,6 @@ tokio = { workspace = true, features = ["macros", "rt-multi-thread", "net", "sig
 tungstenite = "0.29"
 
 [dev-dependencies]
-scene-decoders.workspace = true
 tokio = { workspace = true, features = ["test-util"] }
 tokio-tungstenite = "0.29"
 tower = { version = "0.5", features = ["util"] }

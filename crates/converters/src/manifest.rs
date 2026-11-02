@@ -8,8 +8,8 @@ use std::{
     time::Duration,
 };
 
-use scene::{SCENE_VERSION, SceneVersion};
-use scene_decoders::MatchBasis;
+use handler_api::{Field, FieldKind, Form};
+use scene::{MatchBasis, SCENE_VERSION, SceneVersion};
 use serde_json::{Map, Value};
 use sha2::{Digest, Sha256};
 
@@ -62,32 +62,6 @@ impl fmt::Display for ManifestError {
 
 impl std::error::Error for ManifestError {}
 
-/// What kind of value an option holds, and so which control it gets.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum OptionKind {
-    /// Free text.
-    Text,
-    /// A file path.
-    File,
-    /// A folder path.
-    Folder,
-}
-
-/// One option a converter declares; values are always text.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct OptionField {
-    /// The key in the options and in the request.
-    pub key: String,
-    /// What the user reads.
-    pub label: String,
-    /// Which control it gets.
-    pub kind: OptionKind,
-    /// Whether decoding fails without a value (and without a default).
-    pub required: bool,
-    /// The value used when the overlay gives none.
-    pub default: Option<String>,
-}
-
 /// A validated manifest.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Manifest {
@@ -111,7 +85,7 @@ pub struct Manifest {
     /// How long the converter may print nothing before it is killed.
     pub idle_timeout: Duration,
     /// The options the converter takes.
-    pub options: Vec<OptionField>,
+    pub options: Form,
     /// What a lane may match the converter's records to video frames by.
     pub bases: Vec<MatchBasis>,
     /// The basis a lane starts with, one of `bases`.
@@ -448,15 +422,15 @@ impl Fields<'_> {
         Ok((bases, default))
     }
 
-    fn options(&mut self) -> Result<Vec<OptionField>, ManifestError> {
+    fn options(&mut self) -> Result<Form, ManifestError> {
         let Some(options) = self.0.remove("options") else {
-            return Ok(Vec::new());
+            return Ok(Form::default());
         };
         let Value::Array(items) = options else {
             return Err(ManifestError::new("options", "must be a list"));
         };
         let mut seen = HashSet::new();
-        items
+        let fields = items
             .into_iter()
             .map(|item| {
                 let field = option(item)?;
@@ -469,11 +443,13 @@ impl Fields<'_> {
                     ))
                 }
             })
-            .collect()
+            .collect::<Result<_, _>>()?;
+        Ok(Form { fields })
     }
 }
 
-fn option(item: Value) -> Result<OptionField, ManifestError> {
+/// One declared option; values are always text.
+fn option(item: Value) -> Result<Field, ManifestError> {
     let bad = |reason: String| ManifestError::new("options", reason);
     let Value::Object(mut fields) = item else {
         return Err(bad("every option must be an object".to_owned()));
@@ -485,9 +461,11 @@ fn option(item: Value) -> Result<OptionField, ManifestError> {
     let key = text("key")?;
     let label = text("label")?;
     let kind = match text("kind")?.as_str() {
-        "text" => OptionKind::Text,
-        "file" => OptionKind::File,
-        "folder" => OptionKind::Folder,
+        "text" => FieldKind::Text,
+        "file" => FieldKind::File {
+            extensions: Vec::new(),
+        },
+        "folder" => FieldKind::Folder,
         other => {
             return Err(bad(format!(
                 "{key}: kind '{other}' is not text, file or folder"
@@ -513,12 +491,10 @@ fn option(item: Value) -> Result<OptionField, ManifestError> {
     if let Some(unknown) = fields.keys().next() {
         return Err(bad(format!("{key}: unknown field '{unknown}'")));
     }
-    Ok(OptionField {
-        key,
-        label,
-        kind,
+    Ok(Field {
         required,
-        default,
+        default: default.map(Value::String),
+        ..Field::new(&key, &label, kind)
     })
 }
 

@@ -11,7 +11,7 @@ use crate::JoinLink;
 use serde::Deserialize;
 use std::sync::Arc;
 use ts_rs::TS;
-use workspace::Recipe;
+use workspace::{Recipe, Source};
 use workspace_store::{DocCommand, WorkspaceState, apply};
 
 /// What a command needs a seat to be allowed to do. [`Command::needs`] decides it for every command.
@@ -98,8 +98,8 @@ fn content_scope(command: &DocCommand) -> Scope {
 
 /// Whether resolving the recipe reads the host's files.
 fn reads_host(recipe: &Recipe) -> bool {
-    match recipe {
-        Recipe::Video(_) | Recipe::Playlist(_) => true,
+    match recipe.source {
+        Source::Video(_) | Source::Playlist(_) => true,
     }
 }
 

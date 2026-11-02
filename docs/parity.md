@@ -12,7 +12,7 @@ owner's written decision. A new feature gets a row in 01 first.
 | WS-02 | New, Open, Save, Save As, recent workspaces | M | todo |  |  |
 | WS-03 | No prompts; recovery copy, restore banner, per-instance lock | M | todo |  |  |
 | WS-04 | Unreadable items preserved | M | todo |  |  |
-| WS-05 | Background resolution; pending and unavailable rows | M | in progress | `crates/workspace-store` tests, `frontend/src/{viewer/ViewerHost,shell/WorkspaceTree}.test.tsx`, `tests/local_video.rs` | A pending or failed item has a sidebar row; a failed one keeps its reason. Left: an unavailable row should not open (invariants) but opens a viewer showing the reason |
+| WS-05 | Background resolution; pending and unavailable rows | M | in progress | `crates/workspace-store` tests, `crates/playlist-resolvers/tests/mot_challenge.rs`, `frontend/src/{viewer/ViewerHost,shell/WorkspaceTree}.test.tsx`, `tests/local_video.rs` | A pending or failed item has a sidebar row; a failed one keeps its reason, a playlist's skipped sequences are a warning on its row. Left: an unavailable row should not open (invariants) but opens a viewer showing the reason |
 | WS-06 | Re-resolve on file change; reload offered to open viewers | M | todo |  |  |
 | WS-07 | Rename, Edit, Remove, item information | M | todo |  |  |
 | WS-08 | Hide/Unhide entries and lanes | M | done | `crates/workspace-store` tests, `crates/sessions/tests/session/matrix.rs`, `src/session/project.rs`, `frontend/src/{shell/WorkspaceTree,viewer/{PlaylistViewer,hidden},playback/{LaneGrid,VideoViewer}}.test.*` | Kept in the Doc, never saved ([CONTEXT](../CONTEXT.md)). "Show hidden" lists hidden rows dimmed; next/previous skip hidden entries; hidden lanes undrawn |
@@ -28,10 +28,10 @@ owner's written decision. A new feature gets a row in 01 first.
 
 | ID | Feature | P | Status | Test | Notes |
 |----|---------|---|--------|------|-------|
-| AC-01 | Add Video with any number of overlays; decoder picked by extension | M | in progress | `crates/workspace/src/intake.rs`, `src/cli/tests.rs`, `tests/{playback_ws,local_video}.rs`, `desktop/args.test.cjs`, `frontend/src/shell/Shell.test.tsx` | `local` and the intake take any number of overlays, each with its decoder. File > Add Video (a remote window asks for a path) takes none; the native dialog is untested |
+| AC-01 | Add Video with any number of overlays; decoder picked by extension | M | in progress | `crates/workspace/src/intake.rs`, `src/cli/tests.rs`, `tests/{playback_ws,local_video}.rs`, `desktop/args.test.cjs`, `frontend/src/shell/Shell.test.tsx` | `local` and the intake take any number of overlays, each with its decoder. `local --overlay-option` and Add Video's one overlay give a decoder its options. A remote window asks for a path; the native dialog is untested |
 | AC-02 | Drop video files on the window | M | todo |  |  |
 | AC-03 | Add Live Stream with analytics discovery | M | todo |  |  |
-| AC-04 | Add Playlist through a resolver form | M | done | `shell/AddPlaylistDialog.test.tsx`, `resolvers/*.test.*`, `crates/playlist-resolvers/tests/schema.rs`, `src/routes/handlers.rs`, `src/cli/tests.rs`, `tests/{local_video,mot_playlist}.rs`, `make tests-desktop` | Resolves in the background; a failure shows on its row; the dialog keeps the intake's refusal. The CLI playlist waits for a local window |
+| AC-04 | Add Playlist through a resolver form | M | done | `shell/AddPlaylistDialog.test.tsx`, `resolvers/*.test.*`, `crates/handler-api/tests/form.rs`, `src/routes/handlers.rs`, `src/cli/tests.rs`, `tests/{local_video,mot_playlist}.rs`, `make tests-desktop` | Resolves in the background; a failure shows on its row; the dialog keeps the intake's refusal. The CLI playlist waits for a local window |
 | AC-05 | One intake validation for dialogs, CLI and drops | M | in progress | `crates/workspace/src/intake.rs`, `tests/{local_video,mot_playlist}.rs` | The dialogs and CLI use `workspace::intake`; drops are not built |
 
 ## Live
@@ -62,22 +62,7 @@ owner's written decision. A new feature gets a row in 01 first.
 
 ### Deviations from the reference
 
-The offline decisions taken with the owner are in
-[14](rebuild/14-build-order.md#decisions-taken-for-offline-video). The rest:
-
-| Row | Deviation | Reason |
-|-----|-----------|--------|
-| OF-02 | Lanes share one video; the reference let a secondary lane have its own video, length and frame rate, aligned to the primary's frame index | D19: two recordings side by side are two viewers |
-| RC-01 | Catalog schema v4 replaces v3: rules plus ordered layers (replacing the fixed order), label placement lists, one expression language, no `extends` and no `id` (a user catalog is its file). The reference's catalogs do not load | D25: the frontend evaluates catalogs per lane; D33: location is identity |
-| OF-06 | The frame cache lives in `playback`, not `media` | Eviction follows playback windows; export, thumbnails and live skip it |
-| OF-06 | Eviction takes the frame farthest from the playhead outside the protected windows; the reference used LRU | It suits scrubbing: after a jump, frames around the old position are the least wanted |
-| OF-06 | Auto is never below 256 MiB; the reference had no floor | The setting's smallest value; a low-memory machine still gets a cache |
-| OF-01 | The index is built by scanning packets; the reference decoded the whole video. The decode scan is the fallback | Spike: 1.1 s against 36 s for 10 minutes of 1080p30, same results |
-| OF-01 | The index is valid by a stat fingerprint plus a digest of the first and last 64 KiB; the reference used the stat fingerprint alone | Hashing a huge video defeats instant reopen |
-| OF-01 | Walking back through a group longer than the budget decodes a block of half the budget at a time | No keyframe group is decoded twice to keep one more frame |
-| OF-01 | The client ends the session when the protocol version in `Opened` differs from its own | A stale window stops with a message, not misparsed frames |
-| OF-01 | Playback commands sit in a View > Playback submenu; the keys, including Left and Right for 10 frames, are the reference's | There is no Playback menu |
-| ST-01 | `storage.cache_dir` and `storage.catalog_dir` take no `$NAME` reference; [08](rebuild/08-settings-cli.md) asked for references in storage fields | Browse yields an absolute path; a reference would have to resolve before the first window opens |
+Listed in [parity deviations](parity-deviations.md).
 
 ## Inspection and display
 
@@ -110,8 +95,8 @@ The offline decisions taken with the owner are in
 
 | ID | Feature | P | Status | Test | Notes |
 |----|---------|---|--------|------|-------|
-| PL-01 | Decoder plugins (file, payload) and playlist resolver plugins | M | in progress | `crates/converters/tests/`, `tests/converters.rs` | Converters ([plugins](plugins.md), D29). Left: payload decoders, plugin resolvers, `local --overlay-option` |
-| PL-02 | Built-in decoders and resolvers listed by `list-handlers` and `playlist --help` | M | in progress | `src/cli/tests.rs`, `src/routes/handlers.rs`, `crates/handlers` tests | MOT, UVG-VCM, ONVIF XML, CVAT and converters; both resolvers. ADF beta/v1 frame, consolidated and payload decoders remain. CLI help is generated, untested |
+| PL-01 | Decoder plugins (file, payload) and playlist resolver plugins | M | in progress | `crates/converters/tests/`, `tests/converters.rs` | Converters ([plugins](plugins.md), D29). Left: payload decoders, plugin resolvers |
+| PL-02 | Built-in decoders and resolvers listed by `list-handlers` and `playlist --help` | M | in progress | `src/cli/tests.rs`, `src/routes/handlers.rs`, `crates/handlers` tests, `crates/scene-decoders/tests/adf_*.rs` | MOT, UVG-VCM, ONVIF XML, CVAT, ADF beta/v1 (frame and consolidated) and converters; both resolvers. ADF as live payload decoders waits for live sources. CLI help is generated, untested |
 | PL-03 | Install, update, remove, list from CLI and Plugins view | M | in progress | `tests/converters.rs`, `src/cli/tests.rs` | `plugins install/remove/list/check`; applied on restart. Left: `update`, Plugins view |
 | PL-04 | Load failures never stop the app and are listed | M | in progress | `tests/converters.rs` | `plugins list` shows load failures; a failed run leaves its lane Incomplete. Left: Plugins view |
 | PL-05 | Unchanged third-party Python plugins run (bridge); not planned by default | S | todo |  |  |

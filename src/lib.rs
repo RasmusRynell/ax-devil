@@ -102,7 +102,7 @@ impl AppState {
     ) -> Self {
         let runtime = tokio::runtime::Handle::current();
         let catalogs = Library::built_in();
-        let tracks = TrackRegistry::new(handlers.clone(), Some(cache_dir));
+        let tracks = TrackRegistry::new(handlers.decoder_lookup(), Some(cache_dir));
         let limits = match policy {
             // Every client of the Local listener is this machine, so a per-address cap would only limit the person
             // using it: all their windows and viewers share one address.

@@ -5,6 +5,7 @@ use std::{fs, time::Duration};
 use foundation::CancelToken;
 use overlay_sync::{MatchPolicy, Sticky};
 use playback::Rank;
+use scene_store::TrackRead;
 
 use super::{Env, cells, next, quiet, sample_ids, settle, shown, timeline, until_ready, want};
 use crate::{
@@ -115,7 +116,7 @@ async fn an_export_cell_is_the_cell_the_viewer_was_sent() {
         for (offset, (&sample, &kind)) in run.samples.iter().zip(&run.kinds).enumerate() {
             let frame = run.first + offset as u64;
             assert_eq!(
-                crate::cell(&track, &track.snapshot(), &timeline, frame, &policy),
+                crate::cell(&*track, &track.snapshot(), &timeline, frame, &policy),
                 (sample, kind),
                 "frame {frame}"
             );

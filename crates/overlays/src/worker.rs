@@ -3,9 +3,9 @@
 use std::{sync::Arc, thread};
 
 use foundation::{ErrorCode, Interrupt, UserError};
-use playlist_resolvers::OverlayRef;
+use handler_api::OverlayRef;
 use scene::{Scene, SceneTime, TimeSlice, serial::columns::encode_sample_item};
-use scene_store::{Track, TrackSnapshot};
+use scene_store::{TrackRead, TrackSnapshot};
 
 use crate::{
     sources::TrackSource,
@@ -52,18 +52,18 @@ pub(crate) fn run(
     // snapshot current when it is recorded, and a listener call for an older one finds nothing to do.
     let listener: Arc<dyn Fn() + Send + Sync> = {
         let (shared, track) = (Arc::clone(shared), Arc::clone(&opened));
-        Arc::new(move || published(&shared, source, &track))
+        Arc::new(move || published(&shared, source, &*track))
     };
     opened.on_change(Arc::downgrade(&listener));
-    let mean = mean_item_bytes(shared, &opened);
+    let mean = mean_item_bytes(shared, &*opened);
     shared.update(|state| state.finish_load(source, Ok((opened.clone(), mean)), &shared.timeline));
     shared.align();
-    encode(shared, source, &opened);
+    encode(shared, source, &*opened);
 }
 
 /// The track published more samples or ended; runs on its ingest thread. The item size is measured again only when
 /// the samples were renumbered or the ingest ended, not at each publication.
-fn published(shared: &Shared, source: usize, track: &Track) {
+fn published(shared: &Shared, source: usize, track: &dyn TrackRead) {
     if shared.cancel.is_cancelled() {
         return;
     }
@@ -75,7 +75,7 @@ fn published(shared: &Shared, source: usize, track: &Track) {
 
 /// The mean size of the items of up to `MEAN_SAMPLES` evenly spaced samples; samples that cannot be read do not
 /// count.
-fn mean_item_bytes(shared: &Shared, track: &Track) -> u32 {
+fn mean_item_bytes(shared: &Shared, track: &dyn TrackRead) -> u32 {
     let count = track.snapshot().keys.len();
     if count == 0 {
         return 0;
@@ -102,7 +102,7 @@ fn mean_item_bytes(shared: &Shared, track: &Track) -> u32 {
 /// sample that cannot be read or encoded still goes, as an empty item with a problem, so no lane waits for it. A
 /// sample is read by the numbering of the snapshot it was claimed under, so one the track has since renumbered is
 /// read as it was and dropped with its revision.
-fn encode(shared: &Shared, source: usize, track: &Track) {
+fn encode(shared: &Shared, source: usize, track: &dyn TrackRead) {
     let mut empty: Option<Arc<[u8]>> = None;
     while let Some((sample, data_revision, snapshot)) = next_sample(shared, source) {
         let read = usize::try_from(sample).map(|index| track.item_in(&snapshot, index));
@@ -136,7 +136,7 @@ fn next_sample(shared: &Shared, source: usize) -> Option<(u64, u32, Arc<TrackSna
 }
 
 /// The item of a Scene with no entities, made once per source.
-fn empty_item(held: &mut Option<Arc<[u8]>>, track: &Track) -> Arc<[u8]> {
+fn empty_item(held: &mut Option<Arc<[u8]>>, track: &dyn TrackRead) -> Arc<[u8]> {
     Arc::clone(held.get_or_insert_with(|| {
         let scene = Scene::new(TimeSlice::at(SceneTime::Frame(0)));
         let bytes = encode_sample_item(&scene, track.filter()).unwrap_or_else(|error| {

@@ -15,7 +15,7 @@ use axum::{
     http::StatusCode,
 };
 use foundation::{CancelToken, ErrorCode, Interrupt, Location, UserError};
-use playlist_resolvers::{Choice, FieldKind, PlaylistResolver, Settings};
+use handler_api::{Choice, FieldKind, Form, PlaylistResolver, Settings};
 use std::sync::Arc;
 
 /// A refused request: the status and the error as the host sees it. Both routes need the `Files` grant, so the
@@ -30,54 +30,52 @@ fn field_kind(kind: &FieldKind) -> FieldKindWire {
     match kind {
         FieldKind::Folder => FieldKindWire::Folder,
         FieldKind::File { extensions } => FieldKindWire::File {
-            extensions: extensions
-                .iter()
-                .map(|&extension| extension.to_owned())
-                .collect(),
+            extensions: extensions.clone(),
         },
         FieldKind::Text => FieldKindWire::Text,
+        FieldKind::Integer { min } => FieldKindWire::Integer { min: *min },
         FieldKind::Handler => FieldKindWire::Handler,
+        FieldKind::DecoderOptions { handler_field } => FieldKindWire::DecoderOptions {
+            handler_field: handler_field.clone(),
+        },
         FieldKind::Scan { depends_on } => FieldKindWire::Scan {
-            depends_on: depends_on.iter().map(|&key| key.to_owned()).collect(),
+            depends_on: depends_on.clone(),
         },
     }
 }
 
-/// The decoders and resolvers the app knows, with the form each resolver's settings take.
+fn field_infos(form: &Form) -> Vec<FieldInfo> {
+    form.fields
+        .iter()
+        .map(|field| FieldInfo {
+            key: field.key.clone(),
+            label: field.label.clone(),
+            kind: field_kind(&field.kind),
+            required: field.required,
+            default: field.default.clone(),
+        })
+        .collect()
+}
+
+/// The decoders and resolvers the app knows, with the form each decoder's options and resolver's settings take.
 pub(crate) async fn get_handlers(State(state): State<AppState>) -> Json<HandlersInfo> {
-    let decoders = state.handlers.file_decoders().iter().map(|decoder| {
+    let decoders = state.handlers.decoders().iter().map(|decoder| {
         let spec = decoder.spec();
         DecoderInfo {
-            handler: spec.handler.to_owned(),
-            display_name: spec.display_name.to_owned(),
-            extensions: spec
-                .extensions
-                .iter()
-                .map(|&extension| extension.to_owned())
-                .collect(),
-            plugin: state
-                .plugins
-                .provides(spec.handler)
-                .then(|| spec.handler.to_owned()),
+            handler: spec.id.clone(),
+            display_name: spec.name.clone(),
+            extensions: spec.extensions.clone(),
+            options: field_infos(&spec.options),
+            plugin: state.plugins.provides(&spec.id).then(|| spec.id.clone()),
         }
     });
     let resolvers = state.handlers.resolvers().iter().map(|resolver| {
         let spec = resolver.spec();
         ResolverInfo {
-            id: spec.id.to_owned(),
-            display_name: spec.display_name.to_owned(),
-            description: spec.description.to_owned(),
-            fields: resolver
-                .schema()
-                .fields
-                .iter()
-                .map(|field| FieldInfo {
-                    key: field.key.to_owned(),
-                    label: field.label.to_owned(),
-                    kind: field_kind(&field.kind),
-                    required: field.required,
-                })
-                .collect(),
+            id: spec.id.clone(),
+            display_name: spec.name.clone(),
+            description: spec.description.clone(),
+            fields: field_infos(&spec.form),
         }
     });
     Json(HandlersInfo {
@@ -98,10 +96,11 @@ async fn scan_choices(
     field: String,
     settings: Settings,
 ) -> Result<Vec<Choice>, Interrupt<UserError>> {
-    let scannable =
-        resolver.schema().fields.iter().any(|declared| {
-            declared.key == field && matches!(declared.kind, FieldKind::Scan { .. })
-        });
+    let form = &resolver.spec().form;
+    let scannable = form
+        .fields
+        .iter()
+        .any(|declared| declared.key == field && matches!(declared.kind, FieldKind::Scan { .. }));
     if !scannable {
         return Err(Interrupt::Failed(
             UserError::new(
@@ -111,6 +110,7 @@ async fn scan_choices(
             .at(Location::field(field)),
         ));
     }
+    let settings = form.validate(&settings).map_err(Interrupt::Failed)?;
     let cancel = CancelToken::new();
     let _cancel_when_dropped = CancelOnDrop(cancel.clone());
     let location = field.clone();
@@ -162,13 +162,13 @@ mod tests {
     use super::*;
     use crate::test_support::{TestApp, json};
     use axum::{body::Body, http::Request};
-    use foundation::Cancelled;
-    use playlist_resolvers::{
-        Cli, Field, ResolvedPlaylist, ResolverSchema, ResolverSpec, WatchPaths,
-    };
+    use handler_api::{Field, Form, ResolvedPlaylist, ResolverSpec, Values};
     use serde_json::json;
     use std::{
-        sync::atomic::{AtomicBool, Ordering},
+        sync::{
+            LazyLock,
+            atomic::{AtomicBool, Ordering},
+        },
         time::{Duration, Instant},
     };
 
@@ -295,34 +295,28 @@ mod tests {
         cancelled: AtomicBool,
     }
 
-    static WAITING_SPEC: ResolverSpec = ResolverSpec {
-        id: "waiting",
-        display_name: "Waiting",
-        description: "Scans until cancelled.",
-    };
-    static WAITING_SCHEMA: ResolverSchema = ResolverSchema {
-        fields: &[Field {
-            key: "items",
-            label: "Items",
-            kind: FieldKind::Scan { depends_on: &[] },
-            required: false,
-            cli: Cli::Flag("items"),
-        }],
-    };
+    static WAITING_SPEC: LazyLock<ResolverSpec> = LazyLock::new(|| ResolverSpec {
+        id: "waiting".into(),
+        name: "Waiting".into(),
+        description: "Scans until cancelled.".into(),
+        form: Form {
+            fields: vec![Field::new(
+                "items",
+                "Items",
+                FieldKind::Scan { depends_on: vec![] },
+            )],
+        },
+    });
 
     impl PlaylistResolver for Waiting {
-        fn spec(&self) -> &'static ResolverSpec {
+        fn spec(&self) -> &ResolverSpec {
             &WAITING_SPEC
-        }
-
-        fn schema(&self) -> &'static ResolverSchema {
-            &WAITING_SCHEMA
         }
 
         fn scan(
             &self,
             _field: &str,
-            _settings: &Settings,
+            _settings: &Values,
             cancel: &CancelToken,
         ) -> Result<Vec<Choice>, Interrupt<UserError>> {
             self.started.store(true, Ordering::Release);
@@ -339,17 +333,13 @@ mod tests {
 
         fn resolve(
             &self,
-            _settings: &Settings,
+            _settings: &Values,
             _cancel: &CancelToken,
         ) -> Result<ResolvedPlaylist, Interrupt<UserError>> {
             Err(Interrupt::Failed(
                 UserError::new(ErrorCode::PlaylistInvalid, "Not resolvable")
                     .at(Location::field("items")),
             ))
-        }
-
-        fn watch_paths(&self, _: &Settings, _: &CancelToken) -> Result<WatchPaths, Cancelled> {
-            Ok(WatchPaths::default())
         }
     }
 

@@ -6,8 +6,8 @@ use std::{
     time::{Duration, Instant},
 };
 
+use handler_api::Header;
 use scene::Geometry;
-use scene_decoders::{DecodeOptions, Header};
 
 use super::*;
 use crate::{Decided, Ingest, ingest::Tuning};
@@ -36,7 +36,7 @@ struct Script {
     header: bool,
     fail: Option<&'static str>,
     code: Option<[u8; 32]>,
-    default_profile: bool,
+    spec: Spec,
     gate: Mutex<Option<Gate>>,
     runs: AtomicUsize,
 }
@@ -48,7 +48,7 @@ impl Script {
             header: false,
             fail: None,
             code: None,
-            default_profile: false,
+            spec: spec(1),
             gate: Mutex::new(None),
             runs: AtomicUsize::new(0),
         }
@@ -90,33 +90,19 @@ fn scene_of(step: &Step) -> Scene {
         .expect("one clock")
 }
 
-impl FileSceneDecoder for Script {
-    fn spec(&self) -> &'static DecoderSpec {
-        &SPEC
+impl Decoder for Script {
+    fn spec(&self) -> &Spec {
+        &self.spec
     }
 
     fn code_hash(&self) -> Option<[u8; 32]> {
         self.code
     }
 
-    fn declared_options(
+    fn decode(
         &self,
-        _path: &Path,
-        options: &DecodeOptions,
-    ) -> Result<DecodeOptions, DecodeError> {
-        let mut declared = options.clone();
-        if self.default_profile {
-            declared
-                .entry("profile")
-                .or_insert_with(|| "default".into());
-        }
-        Ok(declared)
-    }
-
-    fn decode_file(
-        &self,
-        _source: &dyn SourceFile,
-        _context: &DecodeContext<'_>,
+        _input: &mut dyn Input,
+        _options: &Values,
         sink: &mut dyn SceneSink,
         cancel: &CancelToken,
     ) -> Result<DecodeSummary, Interrupt<DecodeError>> {
@@ -171,10 +157,8 @@ impl Rig {
 
     fn registry(decoder: &Arc<Script>, dir: &TempDir, tuning: Tuning) -> TrackRegistry {
         let decoder = decoder.clone();
-        TrackRegistry::with_decoders(
-            move |handler| {
-                (handler == "TEST").then(|| decoder.clone() as Arc<dyn FileSceneDecoder>)
-            },
+        TrackRegistry::new(
+            move |handler| (handler == "TEST").then(|| decoder.clone() as Arc<dyn Decoder>),
             Some(&dir.path().join("cache")),
         )
         .with_tuning(tuning)
@@ -187,6 +171,7 @@ impl Rig {
     fn overlay(&self) -> OverlayRef {
         OverlayRef {
             label: "lane".into(),
+            slot: "lane".into(),
             path: self.dir.path().join("overlay.txt"),
             handler: "TEST".into(),
             options: Settings::new(),
@@ -552,7 +537,7 @@ fn the_code_hash_and_the_declared_options_are_part_of_the_cache_identity() {
     let steps = vec![step(0, &[(1, 1)], OnEqualKey::Merge)];
     let mut script = Script::new(steps);
     script.code = Some([1; 32]);
-    script.default_profile = true;
+    script.spec.options.fields[0].default = Some("default".into());
     let mut rig = Rig::new(script, Tuning::default());
     drop(rig.open().expect("opens"));
     assert_eq!(rig.decoder.runs(), 1);
@@ -573,7 +558,7 @@ fn the_code_hash_and_the_declared_options_are_part_of_the_cache_identity() {
     // The same decoder with other code is another decode of the same cache file.
     let mut changed = Script::new(vec![step(0, &[(1, 1)], OnEqualKey::Merge)]);
     changed.code = Some([2; 32]);
-    changed.default_profile = true;
+    changed.spec.options.fields[0].default = Some("default".into());
     rig.decoder = Arc::new(changed);
     rig.restart(Tuning::default());
     drop(rig.open().expect("opens"));

@@ -1,6 +1,6 @@
 //! The sidebar's rows: one projection of a workspace state.
 
-use foundation::UserError;
+use foundation::{UserError, Warning};
 use workspace::{Content, ContentId};
 
 use crate::{HiddenRef, Resolution, WorkspaceState};
@@ -42,6 +42,8 @@ pub struct Row {
     pub hidden: bool,
     /// The entry that opening the row opens.
     pub entry: Option<ContentId>,
+    /// What resolving left out of an item's Content; empty for entries and lanes.
+    pub warnings: Vec<Warning>,
 }
 
 /// The rows of `state` in tree order: each item, then for a playlist its entries, each followed by its lanes.
@@ -70,6 +72,7 @@ pub fn rows(state: &WorkspaceState) -> Vec<Row> {
             entry: content
                 .and_then(|content| content.entries().first())
                 .map(|entry| entry.id.clone()),
+            warnings: content.map_or_else(Vec::new, |content| content.warnings().to_vec()),
         });
         let Some(content) = content else {
             continue;
@@ -83,6 +86,7 @@ pub fn rows(state: &WorkspaceState) -> Vec<Row> {
                     status: RowStatus::Ready,
                     hidden: state.is_hidden(&HiddenRef::Entry(entry.id.clone())),
                     entry: Some(entry.id.clone()),
+                    warnings: Vec::new(),
                 });
             }
             for overlay in &entry.overlays {
@@ -94,6 +98,7 @@ pub fn rows(state: &WorkspaceState) -> Vec<Row> {
                     hidden: state
                         .is_hidden(&HiddenRef::Lane(entry.id.clone(), overlay.label.clone())),
                     entry: Some(entry.id.clone()),
+                    warnings: Vec::new(),
                 });
             }
         }
@@ -165,6 +170,12 @@ mod tests {
             )
             .unwrap();
         }
+        fs::create_dir_all(root.join("SEQ-03")).unwrap();
+        fs::write(
+            root.join("SEQ-03/seqinfo.ini"),
+            "[Sequence]\nimWidth=wide\n",
+        )
+        .unwrap();
     }
 
     fn summary(rows: &[Row]) -> Vec<(RowKind, &str, bool)> {
@@ -190,6 +201,10 @@ mod tests {
                 path: gt,
                 handler: None,
                 label: None,
+                options: [("width", 64), ("height", 48)]
+                    .map(|(key, size)| (key.to_owned(), size.into()))
+                    .into_iter()
+                    .collect(),
             }],
             &handlers,
         )
@@ -221,16 +236,36 @@ mod tests {
                 (RowKind::Lane, "gt.txt", false),
             ]
         );
-        assert_eq!(listed[0].status, RowStatus::Pending);
-        assert_eq!(listed[1].status, RowStatus::Unavailable(not_found));
-        assert!(listed[..2].iter().all(|row| row.entry.is_none()));
+        // The first row of a kind and label: the pending video, the playlist's first lane.
+        let row = |kind, label: &str| {
+            listed
+                .iter()
+                .find(|row| row.kind == kind && row.label == label)
+                .unwrap()
+        };
+        let (pending_row, broken_row) =
+            (row(RowKind::Item, "v.mp4"), row(RowKind::Item, "gone.mp4"));
+        assert_eq!(pending_row.status, RowStatus::Pending);
+        assert_eq!(broken_row.status, RowStatus::Unavailable(not_found));
+        assert!(pending_row.entry.is_none() && broken_row.entry.is_none());
         let first = ContentId::of_entry(&playlist.id, "SEQ-01");
+        let mot_row = row(RowKind::Item, "MOT Challenge");
         assert_eq!(
-            listed[2].entry,
+            mot_row.entry,
             Some(first.clone()),
             "the item opens its first entry"
         );
-        assert_eq!(listed[4].entry, Some(first.clone()));
+        assert_eq!(row(RowKind::Lane, "GT").entry, Some(first.clone()));
+        assert_eq!(
+            mot_row.warnings.len(),
+            1,
+            "the skipped sequence is warned of"
+        );
+        assert!(
+            listed
+                .iter()
+                .all(|row| row.key == mot_row.key || row.warnings.is_empty())
+        );
         let keys: HashSet<_> = listed.iter().map(|row| &row.key).collect();
         assert_eq!(keys.len(), listed.len(), "keys are unique");
 

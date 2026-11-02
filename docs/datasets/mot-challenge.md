@@ -48,9 +48,9 @@ sliders button) pick the catalog and the classes to show; the **Tracking** catal
 
 ## What is read
 
-- Frames are matched by number: file frame 1 is video frame 0. Boxes are scaled by the image size in `seqinfo.ini`,
-  never the video's. A `det.txt` or `gt.txt` added on its own as an overlay needs that file in the sequence folder
-  (`<sequence>/seqinfo.ini` with `<sequence>/gt/gt.txt`), or beside it when the file is not in a `gt` or `det` folder; no other folder is searched, and without one it fails to load.
+- Frames are matched by number: file frame 1 is video frame 0. Boxes are scaled by the lane's `width` and `height`
+  options, never the video's. A playlist sets them from each sequence's `seqinfo.ini`; a `det.txt` or `gt.txt` added on
+  its own as an overlay has no `seqinfo.ini` to read and needs both options, in pixels, or it fails to load.
 - Public detections have no track ids, so the Tracking catalog is meaningful on ground truth only. A detection's score is kept as it
   is; ground truth has none.
 - Ground-truth classes are the benchmark's 1 to 13; every row is shown, including static people, distractors and

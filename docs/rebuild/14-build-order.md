@@ -126,8 +126,8 @@ owner selects them.
 ## Next delivery priorities
 
 Status follows `docs/parity.md`, not milestone order. Next, close the intake/playback gaps and establish
-durable workspace recovery; then complete inspection, bookmarks, diagnostics and safe export. Bring ADF payload
-decoders forward for live work. Packaging feasibility needs a decision before its consumers.
+durable workspace recovery; then complete inspection, bookmarks, diagnostics and safe export. Feed the ADF
+decoders live payloads when live sources land. Packaging feasibility needs a decision before its consumers.
 
 The overlay pipeline (D22–D36) goes first among overlay work: S0 the evaluator spike, S1 the data wire and switch, S2
 the remaining built-ins and `catalog check`, S3 deleting the Rust render path, S4 lane presentation and user catalogs

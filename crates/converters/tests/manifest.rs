@@ -7,7 +7,7 @@ use std::{fs, path::Path};
 use common::{TestSink, decode};
 use converters::{ConverterDecoder, MANIFEST_FILE, Manifest, Registry, load};
 use foundation::CancelToken;
-use scene_decoders::{DecodeOptions, FileSceneDecoder};
+use handler_api::{Decoder, Settings};
 use serde_json::{Value, json};
 
 /// Changes the base manifest into one a field of which is wrong.
@@ -15,7 +15,7 @@ type Edit = Box<dyn FnOnce(&mut Value)>;
 
 fn base() -> Value {
     json!({
-        "manifest": 1, "kind": "file", "id": "acme", "name": "ACME", "version": "1", "protocol": 1,
+        "manifest": 1, "kind": "file", "id": "acme", "name": "ACME", "version": "1", "protocol": 2,
         "scene_version": "4.0", "extensions": [".acme"], "command": ["python3", "convert.py"],
         "env": ["PYTHONPATH"], "code": ["convert.py"],
         "options": [{ "key": "camera", "label": "Camera", "kind": "text", "default": "front" }]
@@ -45,7 +45,7 @@ fn refused(edit: impl FnOnce(&mut Value)) -> (Option<&'static str>, String) {
 fn every_refusal_names_the_manifest_field() {
     let cases: Vec<(&str, Edit)> = vec![
         ("manifest", Box::new(|m| m["manifest"] = json!(2))),
-        ("protocol", Box::new(|m| m["protocol"] = json!(2))),
+        ("protocol", Box::new(|m| m["protocol"] = json!(3))),
         (
             "scene_version",
             Box::new(|m| m["scene_version"] = json!("5.0")),
@@ -167,19 +167,16 @@ fn the_store_gets_the_code_hash_and_a_converter_whose_files_cannot_be_hashed_ref
     manifest["code"] = json!(["convert.py"]);
     let path = install(folder.path(), &manifest);
     let decoder = ConverterDecoder::load(&path).expect("loads");
-    assert_eq!(
-        FileSceneDecoder::code_hash(&decoder),
-        decoder.code_hash().ok()
-    );
-    assert!(FileSceneDecoder::code_hash(&decoder).is_some());
+    assert_eq!(Decoder::code_hash(&decoder), decoder.code_hash().ok());
+    assert!(Decoder::code_hash(&decoder).is_some());
 
     fs::remove_file(folder.path().join("convert.py")).expect("remove");
 
-    assert_eq!(FileSceneDecoder::code_hash(&decoder), None);
+    assert_eq!(Decoder::code_hash(&decoder), None);
     let run = decode(
         &decoder,
         &folder.path().join("a.test"),
-        &DecodeOptions::new(),
+        &Settings::new(),
         &CancelToken::new(),
         TestSink::default(),
     );
@@ -201,12 +198,15 @@ fn options_are_filled_from_defaults_and_restricted_to_the_declared_keys() {
             .map(|(key, value)| ((*key).to_owned(), Value::from(*value)))
             .collect()
     };
-    let omitted = decoder
-        .declared_options(&given(&[("other", "1")]))
-        .expect("options");
-    let explicit = decoder
-        .declared_options(&given(&[("camera", "front")]))
-        .expect("options");
+    let form = &decoder.spec().options;
+    let omitted = form
+        .validate(&given(&[("other", "1")]))
+        .expect("options")
+        .declared();
+    let explicit = form
+        .validate(&given(&[("camera", "front")]))
+        .expect("options")
+        .declared();
     assert_eq!(omitted, explicit);
     assert_eq!(omitted["camera"], "front");
     assert_eq!(omitted.len(), 1);

@@ -13,5 +13,5 @@ pub use content::{
     VideoRef,
 };
 pub use foundation::ItemId;
-pub use item::{OverlayRecipe, PlaylistRecipe, Recipe, VideoRecipe, WorkspaceItem};
+pub use item::{OverlayRecipe, PlaylistRecipe, Recipe, Source, VideoRecipe, WorkspaceItem};
 pub use workspace::Workspace;

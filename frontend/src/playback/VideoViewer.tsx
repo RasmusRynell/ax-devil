@@ -6,8 +6,8 @@ import { useSettings } from "../settings";
 import { useCan, useFollowing, useServerClock, useStream, useView } from "../session/session";
 import { useViewerActions } from "../viewer/actions";
 import { NOTHING_HIDDEN, type Hidden } from "../viewer/hidden";
+import { NoticeList } from "../kit/NoticeList";
 import { useChromeVisibility } from "./chromeVisibility";
-import { NoticeList } from "./LaneChip";
 import { LaneGrid } from "./LaneGrid";
 import { Popover } from "../kit/Popover";
 import { ObjectsPanel } from "../tools/ObjectsPanel";
@@ -238,8 +238,8 @@ export type VideoViewerProps = {
   hidden?: Hidden;
   /** Hides one of the entry's lanes by its label; absent when this seat may not change the workspace. */
   onHideLane?: (label: string) => void;
-  /** Keeps the matching of one of the entry's lanes, by position, in the workspace; absent when this seat may not. */
-  onLaneMatching?: (lane: number, policy: LanePolicyWire) => void;
+  /** Keeps the matching of one of the entry's lanes, by its slot, in the workspace; absent when this seat may not. */
+  onLaneMatching?: (slot: string, policy: LanePolicyWire) => void;
   /**
    * Where the entries this viewer was shown for were left, so that coming back to one reopens it there. A viewer
    * shown for one entry needs none.
@@ -323,7 +323,7 @@ export function VideoViewer({
       lanes: priorLanes.current,
       defaultCatalog: () => String(defaultCatalog.current) || null,
       onIntent: publish,
-      onPolicy: (lane, policy) => latest.current.onLaneMatching?.(lane, policy),
+      onPolicy: (slot, policy) => latest.current.onLaneMatching?.(slot, policy),
       now: () => performance.now(),
       frame: (callback) => {
         const handle = requestAnimationFrame(callback);

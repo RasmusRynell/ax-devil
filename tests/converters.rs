@@ -16,9 +16,9 @@ use ax_devil::plugins;
 use common::{Backend, Event, fixture};
 use converters::Registry;
 use foundation::CancelToken;
+use handler_api::OverlayRef;
 use handlers::Handlers;
-use playlist_resolvers::OverlayRef;
-use scene_store::TrackRegistry;
+use scene_store::{TrackRead, TrackRegistry};
 use std::{
     path::{Path, PathBuf},
     process::{Command, Output, Stdio},
@@ -176,12 +176,13 @@ fn a_converter_that_writes_out_of_order_has_its_samples_sorted_and_the_replaced_
     let (handlers, _) = plugins::load(&Ok(registry), Handlers::built_in());
     let overlay = OverlayRef {
         label: "times".into(),
+        slot: "times".into(),
         path: converter("shell-times/sample.times.txt"),
         handler: "shell-times".into(),
         options: Default::default(),
     };
 
-    let track = TrackRegistry::new(handlers, None)
+    let track = TrackRegistry::new(handlers.decoder_lookup(), None)
         .open(&overlay, &CancelToken::new())
         .unwrap();
     let snapshot = loop {
@@ -281,6 +282,7 @@ async fn a_lane_over_a_converter_that_defaults_to_time_is_matched_by_time_withou
         path: converter("shell-times/sample.times.txt"),
         handler: Some("shell-times".into()),
         label: None,
+        options: Default::default(),
     }];
     let item = workspace::intake::video(
         &fixture("cfr_h264_gop10_bf2.mp4"),

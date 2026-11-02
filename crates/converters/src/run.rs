@@ -12,7 +12,7 @@ use std::{
 };
 
 use foundation::CancelToken;
-use scene_decoders::{Header, SceneSink};
+use handler_api::{Header, SceneSink};
 
 use crate::{
     lines::{LineBuffer, TooLong},
@@ -33,8 +33,8 @@ const READ_AHEAD: usize = 8;
 
 /// What to run.
 pub(crate) struct Spec<'a> {
-    /// The converter's id, for the filter policy name, thread names and logs.
-    pub id: &'static str,
+    /// The converter's id, for thread names and logs.
+    pub id: &'a str,
     pub program: &'a OsStr,
     pub args: &'a [OsString],
     pub env: &'a [String],
@@ -74,7 +74,7 @@ enum Chunk {
 /// Runs the converter to its end, handing its lines to `sink`. The converter's whole process group is killed
 /// whenever the run ends, and its working folder removed.
 pub(crate) fn run(spec: &Spec<'_>, sink: &mut dyn SceneSink, cancel: &CancelToken) -> Outcome {
-    let mut records = Records::new(sink, spec.id);
+    let mut records = Records::new(sink);
     let end = match supervise(spec, &mut records, cancel) {
         Ok(end) => end,
         Err(reason) => End::Incomplete(reason),

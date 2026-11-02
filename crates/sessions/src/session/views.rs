@@ -268,6 +268,7 @@ mod tests {
             item_id: item,
             display_name: "P".into(),
             entries: vec![entry(&item, "A"), entry(&item, "B")],
+            warnings: Vec::new(),
         });
         let resolved = workspace_store::complete(&state, item, jobs[0].attempt, Ok(content));
         assert_eq!(shown(&resolved, Some(b.clone())), Some(b.clone()));

@@ -7,6 +7,7 @@ use api_types::playback::{
     ServerMessage, StickyWire,
 };
 use ax_devil::exports::ExportService;
+use handler_api::Settings;
 use std::{
     path::{Path, PathBuf},
     sync::Arc,
@@ -186,19 +187,20 @@ pub fn read_png(path: &Path) -> (u32, u32, Vec<u8>) {
 }
 
 impl Backend {
-    /// Like [`Backend::add_with_overlays`], with the handler each overlay names, for files whose extension several
-    /// handlers read.
+    /// Like [`Backend::add_with_overlays`], with the handler and options each overlay names, for files whose
+    /// extension several handlers read.
     pub async fn add_with_handlers(
         &self,
         path: &Path,
-        overlays: &[(PathBuf, Option<&str>)],
+        overlays: &[(PathBuf, Option<&str>, Settings)],
     ) -> Added {
         let overlays: Vec<_> = overlays
             .iter()
-            .map(|(path, handler)| NewOverlay {
+            .map(|(path, handler, options)| NewOverlay {
                 path: path.clone(),
                 handler: handler.map(str::to_owned),
                 label: None,
+                options: options.clone(),
             })
             .collect();
         let item = workspace::intake::video(path, &overlays, &Handlers::built_in()).unwrap();

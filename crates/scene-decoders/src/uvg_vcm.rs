@@ -4,30 +4,19 @@
 
 use std::collections::HashMap;
 
-use foundation::{CancelToken, Interrupt};
-use overlay_sync::MatchBasis;
+use foundation::{CancelToken, Interrupt, Warning};
+use handler_api::{
+    DecodeError, DecodeSummary, Decoder, Form, Framing, Input, OnEqualKey, SceneSink, Spec, Values,
+};
 use scene::{
     BoundingBox, ClassRule, ClassType, Classification, Coverage, Entity, EntityId, Fields,
-    FilterOption, FilterPolicy, Geometry, Name, Observation, Point, Polygon, Scene, SceneTime,
-    TimeSlice, Value,
+    FilterOption, FilterPolicy, Geometry, MatchBasis, Name, Observation, Point, Polygon, Scene,
+    SceneTime, TimeSlice, Value,
 };
 use serde_json::value::RawValue;
 
-use crate::{
-    DecodeContext, DecodeError, DecodeSummary, DecoderSpec, FileSceneDecoder, LoadWarning,
-    OnEqualKey, SceneSink, SourceFile, Storage,
-};
-
-static SPEC: DecoderSpec = DecoderSpec {
-    plugin_id: "uvg-vcm",
-    handler: "UVG_VCM",
-    display_name: "UVG-VCM",
-    extensions: &[".json"],
-    artifact_version: 1,
-    storage: Storage::DerivedCache,
-    bases: &[MatchBasis::Frame],
-    default_basis: MatchBasis::Frame,
-};
+/// The plugin the decoder ships as, and the name of its filter policy.
+const PLUGIN: &str = "uvg-vcm";
 
 /// How many classes UVG-VCM has.
 const CLASS_COUNT: usize = 80;
@@ -121,22 +110,42 @@ static CLASS_NAMES: [ClassType; CLASS_COUNT] = [
 const MAX_NAMED_FRAMES: usize = 3;
 
 /// Reads UVG-VCM detection JSON files.
-pub struct UvgVcmDecoder;
+pub struct UvgVcmDecoder {
+    spec: Spec,
+}
 
-impl FileSceneDecoder for UvgVcmDecoder {
-    fn spec(&self) -> &'static DecoderSpec {
-        &SPEC
+impl UvgVcmDecoder {
+    pub(crate) fn new() -> Self {
+        Self {
+            spec: Spec {
+                id: "UVG_VCM".to_owned(),
+                plugin: PLUGIN.to_owned(),
+                name: "UVG-VCM".to_owned(),
+                extensions: vec![".json".to_owned()],
+                framing: Framing::Whole,
+                bases: vec![MatchBasis::Frame],
+                default_basis: MatchBasis::Frame,
+                options: Form::default(),
+                version: 1,
+            },
+        }
+    }
+}
+
+impl Decoder for UvgVcmDecoder {
+    fn spec(&self) -> &Spec {
+        &self.spec
     }
 
-    fn decode_file(
+    fn decode(
         &self,
-        source: &dyn SourceFile,
-        _context: &DecodeContext<'_>,
+        input: &mut dyn Input,
+        _options: &Values,
         sink: &mut dyn SceneSink,
         cancel: &CancelToken,
     ) -> Result<DecodeSummary, Interrupt<DecodeError>> {
-        let input = source.bytes(cancel)?;
-        let mut document: HashMap<&str, &RawValue> = serde_json::from_slice(input)
+        let bytes = input.next(cancel)?.map_or(&[][..], |record| record.bytes);
+        let mut document: HashMap<&str, &RawValue> = serde_json::from_slice(bytes)
             .map_err(|error| fail(format!("UVG-VCM document: {error}")))?;
         let version = document
             .remove("version")
@@ -348,8 +357,8 @@ fn geometry(detection: &Fields, context: &str) -> Result<Geometry, String> {
 }
 
 /// The warning for frames whose track ids repeat, naming the first few.
-fn duplicate_warning(duplicates: &[(usize, Vec<i64>)], total: usize) -> Option<LoadWarning> {
-    (!duplicates.is_empty()).then(|| LoadWarning {
+fn duplicate_warning(duplicates: &[(usize, Vec<i64>)], total: usize) -> Option<Warning> {
+    (!duplicates.is_empty()).then(|| Warning {
         problem: format!("Duplicate tracking IDs in {} of {total} frames", duplicates.len()),
         reasons: duplicates
             .iter()
@@ -397,7 +406,7 @@ fn filter_policy(seen: &[bool; CLASS_COUNT]) -> FilterPolicy {
         });
     }
     FilterPolicy {
-        name: SPEC.plugin_id,
+        name: PLUGIN,
         options,
     }
 }

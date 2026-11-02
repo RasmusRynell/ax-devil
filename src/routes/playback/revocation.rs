@@ -10,6 +10,7 @@ use open::open_video;
 use overlays::{MapRun, OverlayEvent, OverlayService};
 use playback::{Authority, CachePool, ClockIntent, Registry};
 use std::{
+    collections::BTreeMap,
     collections::BTreeSet,
     path::Path,
     sync::{
@@ -241,11 +242,6 @@ fn entry_with_a_lane(folder: &Path) -> Entry {
         .map(|frame| format!("{frame},1,10,10,20,20,1,1,1\n"))
         .collect();
     std::fs::write(&gt, rows).unwrap();
-    std::fs::write(
-        folder.join("seqinfo.ini"),
-        "[Sequence]\nframeRate=30\nseqLength=90\nimWidth=64\nimHeight=48\n",
-    )
-    .unwrap();
     let item = foundation::ItemId::generate();
     Entry {
         id: ContentId::of_item(&item),
@@ -255,9 +251,13 @@ fn entry_with_a_lane(folder: &Path) -> Entry {
         ),
         overlays: vec![OverlayRef {
             label: "GT".into(),
+            slot: "GT".into(),
             path: gt,
             handler: "MOT_FILE".into(),
-            options: Default::default(),
+            options: handler_api::Settings::from_iter([
+                ("width".to_owned(), 64.into()),
+                ("height".to_owned(), 48.into()),
+            ]),
         }],
     }
 }
@@ -276,7 +276,10 @@ async fn a_viewer_made_a_follower_gets_no_frame_or_data_outside_the_presenters_w
         .unwrap_or_else(|_| panic!("the video opens"));
     let mut session = opened.session;
     let handlers = handlers::Handlers::built_in();
-    let service = OverlayService::new(scene_store::TrackRegistry::new(handlers, None));
+    let service = OverlayService::new(scene_store::TrackRegistry::new(
+        handlers.decoder_lookup(),
+        None,
+    ));
     let library = ::catalogs::Library::built_in();
     let (holder, authority) = watch::channel(Authority::default());
     let gate = Gate::new(authority, || 0);
@@ -302,7 +305,7 @@ async fn a_viewer_made_a_follower_gets_no_frame_or_data_outside_the_presenters_w
     }));
     let setup = stream::Setup {
         entry: &entry,
-        matching: &[],
+        matching: &BTreeMap::new(),
         start_frame: Some(60),
         data_bytes: SAMPLE_BUDGET,
         audience: Audience::HOST,

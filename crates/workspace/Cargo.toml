@@ -14,9 +14,9 @@ workspace = true
 
 [dependencies]
 foundation.workspace = true
+handler-api.workspace = true
 handlers.workspace = true
 overlay-sync.workspace = true
-playlist-resolvers.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 

@@ -1,35 +1,28 @@
 //! MOT decoder behavior through the public registry.
 
-use std::{fs, ops::ControlFlow};
+use std::ops::ControlFlow;
 
-use foundation::{CancelToken, Interrupt};
+use foundation::{CancelToken, Interrupt, Warning};
+use handler_api::{DecodeSummary, Header, OnEqualKey, SceneSink, Settings};
 use scene::{Classification, Coverage, Entity, Geometry, Scene, SceneTime, Score, Value};
-use scene_decoders::{
-    DecodeContext, DecodeOptions, DecodeSummary, Header, LoadWarning, OnEqualKey, SceneSink,
-    file_decoder,
-};
 
 mod common;
 
-/// The options the decoder declares for annotations at `<sequence>/gt/gt.txt` whose `seqinfo.ini` states the size.
-fn options(width: u32, height: u32) -> DecodeOptions {
-    let sequence = tempfile::tempdir().unwrap();
-    fs::create_dir(sequence.path().join("gt")).unwrap();
-    fs::write(
-        sequence.path().join("seqinfo.ini"),
-        format!("[Sequence]\nframeRate=30\nseqLength=1\nimWidth={width}\nimHeight={height}\n"),
-    )
-    .unwrap();
-    let decoder = file_decoder("MOT_FILE").expect("MOT decoder is registered");
-    decoder
-        .declared_options(&sequence.path().join("gt/gt.txt"), &DecodeOptions::new())
-        .unwrap()
+/// The options of a sequence of this image size in pixels.
+fn options(width: u32, height: u32) -> Settings {
+    Settings::from_iter([
+        ("width".to_owned(), width.into()),
+        ("height".to_owned(), height.into()),
+    ])
 }
 
-fn decode_with(text: &str, options: &DecodeOptions) -> (Vec<Scene>, DecodeSummary) {
-    let decoder = file_decoder("MOT_FILE").expect("MOT decoder is registered");
-    let context = DecodeContext { options };
-    let (scenes, result) = common::run(decoder, text.as_bytes(), &context, &CancelToken::new());
+fn decode_with(text: &str, options: &Settings) -> (Vec<Scene>, DecodeSummary) {
+    let (scenes, result) = common::run(
+        &*common::decoder("MOT_FILE"),
+        text.as_bytes(),
+        options,
+        &CancelToken::new(),
+    );
     let summary = match result {
         Ok(summary) => summary,
         Err(Interrupt::Failed(error)) => panic!("decode failed: {error}"),
@@ -110,7 +103,7 @@ fn rows_with_invalid_values_are_skipped() {
 }
 
 #[test]
-fn boxes_are_normalized_by_the_size_the_seqinfo_declares() {
+fn boxes_are_normalized_by_the_image_size_options() {
     let text = "1,1,0,0,64,48,1,1,0.8\n1,2,32,24,64,48,0,7,0.25\n";
     for width in [640, 1280] {
         let (scenes, summary) = decode_with(text, &options(width, 480));
@@ -132,31 +125,18 @@ fn boxes_are_normalized_by_the_size_the_seqinfo_declares() {
 }
 
 #[test]
-fn only_the_seqinfo_of_the_files_own_sequence_counts() {
-    let folder = tempfile::tempdir().unwrap();
-    let decoder = file_decoder("MOT_FILE").expect("MOT decoder is registered");
-    let error = decoder
-        .declared_options(&folder.path().join("gt/gt.txt"), &DecodeOptions::new())
-        .expect_err("no seqinfo.ini");
-    assert!(error.0.contains("need a seqinfo.ini"), "{error}");
-    assert!(
-        error
-            .0
-            .contains(folder.path().join("seqinfo.ini").to_str().unwrap()),
-        "names the path tried: {error}"
-    );
+fn the_image_size_is_a_required_option() {
+    let decoder = common::decoder("MOT_FILE");
+    let form = &decoder.spec().options;
 
-    // Only the file's own sequence counts: a parent folder's ini is not consulted.
-    fs::write(
-        folder.path().join("seqinfo.ini"),
-        "[Sequence]\nframeRate=30\nseqLength=1\nimWidth=9\nimHeight=9\n",
-    )
-    .unwrap();
-    fs::create_dir(folder.path().join("seq")).unwrap();
-    let error = decoder
-        .declared_options(&folder.path().join("seq/gt.txt"), &DecodeOptions::new())
-        .expect_err("the parent's ini does not count");
-    assert!(error.0.contains("need a seqinfo.ini"), "{error}");
+    for missing in [
+        Settings::new(),
+        options(1920, 0),
+        Settings::from_iter([("width".to_owned(), 640.into())]),
+    ] {
+        assert!(form.validate(&missing).is_err(), "{missing:?}");
+    }
+    assert!(form.validate(&options(640, 480)).is_ok());
 }
 
 #[test]
@@ -227,16 +207,13 @@ fn every_class_id_can_be_hidden_by_exactly_one_filter() {
 
 #[test]
 fn a_cancelled_token_stops_the_decode() {
-    let decoder = file_decoder("MOT_FILE").expect("MOT decoder is registered");
     let token = CancelToken::new();
     token.cancel();
     let text = "1,1,0,0,1,1,1\n".repeat(5000);
     let (_, result) = common::run(
-        decoder,
+        &*common::decoder("MOT_FILE"),
         text.as_bytes(),
-        &DecodeContext {
-            options: &options(1920, 1080),
-        },
+        &options(1920, 1080),
         &token,
     );
     assert!(matches!(result, Err(Interrupt::Cancelled)));
@@ -251,16 +228,21 @@ fn a_sink_that_cannot_take_more_stops_the_decode() {
             self.0 += 1;
             ControlFlow::Break(())
         }
-        fn warn(&mut self, _warning: LoadWarning) {}
+        fn skip(&mut self, _position: u64, _reason: String) {}
+        fn warn(&mut self, _warning: Warning) {}
     }
-    let decoder = file_decoder("MOT_FILE").expect("MOT decoder is registered");
+    let decoder = common::decoder("MOT_FILE");
     let mut sink = Full(0);
+    let bytes: &[u8] = b"1,1,0,0,1,1,1\n2,1,0,0,1,1,1\n3,1,0,0,1,1,1\n";
+    let options = decoder
+        .spec()
+        .options
+        .validate(&options(1920, 1080))
+        .unwrap();
 
-    let result = decoder.decode_file(
-        &common::BytesSource(b"1,1,0,0,1,1,1\n2,1,0,0,1,1,1\n3,1,0,0,1,1,1\n"),
-        &DecodeContext {
-            options: &options(1920, 1080),
-        },
+    let result = decoder.decode(
+        &mut common::Memory(vec![(0, bytes)]),
+        &options,
         &mut sink,
         &CancelToken::new(),
     );

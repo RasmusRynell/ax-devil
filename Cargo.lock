@@ -100,6 +100,7 @@ dependencies = [
  "export",
  "foundation",
  "futures-util",
+ "handler-api",
  "handlers",
  "logging",
  "media",
@@ -107,11 +108,9 @@ dependencies = [
  "overlay-sync",
  "overlays",
  "playback",
- "playlist-resolvers",
  "rust-embed",
  "rustix",
  "scene",
- "scene-decoders",
  "scene-store",
  "serde",
  "serde_json",
@@ -358,10 +357,10 @@ name = "converters"
 version = "0.1.0"
 dependencies = [
  "foundation",
+ "handler-api",
  "memchr",
  "rustix",
  "scene",
- "scene-decoders",
  "serde",
  "serde_json",
  "sha2",
@@ -470,11 +469,11 @@ version = "0.1.0"
 dependencies = [
  "bytes",
  "foundation",
+ "handler-api",
  "handlers",
  "media",
  "overlay-sync",
  "overlays",
- "playlist-resolvers",
  "scene-store",
  "serde",
  "serde_json",
@@ -609,12 +608,20 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e4eba85ea1d0a966a983acd07deee566e67395d2d96b6fb39e62b5a833f1eb0b"
 
 [[package]]
-name = "handlers"
+name = "handler-api"
 version = "0.1.0"
 dependencies = [
  "foundation",
- "playlist-resolvers",
  "scene",
+ "serde_json",
+]
+
+[[package]]
+name = "handlers"
+version = "0.1.0"
+dependencies = [
+ "handler-api",
+ "playlist-resolvers",
  "scene-decoders",
 ]
 
@@ -896,12 +903,11 @@ name = "overlays"
 version = "0.1.0"
 dependencies = [
  "foundation",
+ "handler-api",
  "handlers",
  "overlay-sync",
  "playback",
- "playlist-resolvers",
  "scene",
- "scene-decoders",
  "scene-store",
  "serde_json",
  "tempfile",
@@ -944,9 +950,9 @@ name = "playlist-resolvers"
 version = "0.1.0"
 dependencies = [
  "foundation",
+ "handler-api",
  "serde_json",
  "tempfile",
- "tracing",
 ]
 
 [[package]]
@@ -1158,9 +1164,10 @@ dependencies = [
 name = "scene-decoders"
 version = "0.1.0"
 dependencies = [
+ "base64",
  "foundation",
+ "handler-api",
  "memchr",
- "overlay-sync",
  "quick-xml",
  "scene",
  "serde_json",
@@ -1173,12 +1180,12 @@ version = "0.1.0"
 dependencies = [
  "crc32fast",
  "foundation",
+ "handler-api",
  "handlers",
+ "memchr",
  "overlay-sync",
- "playlist-resolvers",
  "postcard",
  "scene",
- "scene-decoders",
  "serde",
  "serde_json",
  "sha2",
@@ -1756,9 +1763,9 @@ name = "workspace"
 version = "0.1.0"
 dependencies = [
  "foundation",
+ "handler-api",
  "handlers",
  "overlay-sync",
- "playlist-resolvers",
  "serde",
  "serde_json",
  "tempfile",

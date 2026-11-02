@@ -314,9 +314,9 @@ hidden: boolean, } | { "type": "setLaneMatching",
  */
 item: string, 
 /**
- * The lane's position in the entry.
+ * The lane's slot, which names it in every entry.
  */
-lane: number, 
+slot: string, 
 /**
  * How the lane matches.
  */
@@ -795,7 +795,11 @@ hidden: boolean,
 /**
  * The entry that opening the row opens, by the id the playback socket takes.
  */
-entry: string | null, };
+entry: string | null, 
+/**
+ * What resolving left out of an item's Content; empty for entries and lanes.
+ */
+warnings: Array<WarningInfo>, };
 
 /**
  * What a row stands for.
@@ -902,7 +906,11 @@ handler: string | null,
 /**
  * The lane's name; the file name when absent, numbered ` (2)`, ` (3)` when the video already shows the file.
  */
-label: string | null, };
+label: string | null, 
+/**
+ * The options the decoder's form declares; checked by the intake.
+ */
+options: Record<string, unknown>, };
 
 /**
  * An entry or lane to hide or show.
@@ -946,6 +954,10 @@ display_name: string,
  * The file extensions it reads: lowercase, with the dot.
  */
 extensions: Array<string>, 
+/**
+ * The options it takes, in the order they are shown; empty for a decoder without any.
+ */
+options: Array<FieldInfo>, 
 /**
  * The id of the converter that provides it; absent for the built-in decoders.
  */
@@ -1028,7 +1040,7 @@ description: string,
 fields: Array<FieldInfo>, };
 
 /**
- * One setting of a resolver.
+ * One setting of a resolver or option of a decoder.
  */
 export type FieldInfo = { 
 /**
@@ -1044,9 +1056,13 @@ label: string,
  */
 kind: FieldKindWire, 
 /**
- * Whether resolving fails without it.
+ * Whether resolving fails without it, once the default is filled in.
  */
-required: boolean, };
+required: boolean, 
+/**
+ * The value used when none is given; absent when there is none.
+ */
+default?: unknown, };
 
 /**
  * What kind of value a setting holds.
@@ -1055,7 +1071,15 @@ export type FieldKindWire = { "kind": "Folder" } | { "kind": "File",
 /**
  * Lowercase, with the dot.
  */
-extensions: Array<string>, } | { "kind": "Text" } | { "kind": "Handler" } | { "kind": "Scan", 
+extensions: Array<string>, } | { "kind": "Text" } | { "kind": "Integer", 
+/**
+ * The smallest value allowed.
+ */
+min: bigint, } | { "kind": "Handler" } | { "kind": "DecoderOptions", 
+/**
+ * The key of the `Handler` field.
+ */
+handler_field: string, } | { "kind": "Scan", 
 /**
  * The settings the scan reads, whose change invalidates its result.
  */
@@ -1195,6 +1219,10 @@ export type LaneInfo = {
  * The lane's name.
  */
 label: string, 
+/**
+ * The lane's identity within the entry, which the workspace keeps its matching under.
+ */
+slot: string, 
 /**
  * The viewer's id of the source the lane draws; `null` for a plain lane. Lanes on the same file share one.
  */

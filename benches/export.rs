@@ -155,9 +155,20 @@ async fn export_time(
 }
 
 /// One case on the current environment: (start-up, frames per second after it).
-async fn run(dir: &Path, video: &Path, gt: &Path, frames: u64) -> (Duration, f64) {
+async fn run(
+    dir: &Path,
+    video: &Path,
+    gt: &Path,
+    size: (u32, u32),
+    frames: u64,
+) -> (Duration, f64) {
     let backend = Backend::start().await;
-    let added = backend.add_with_overlays(video, &[gt.to_path_buf()]).await;
+    let added = backend
+        .add_with_handlers(
+            video,
+            &[(gt.to_path_buf(), None, common::mot_options(size))],
+        )
+        .await;
     let mut viewer = backend.viewer().await;
     viewer.open(&added.ticket(), None).await;
     viewer.opened().await;
@@ -225,7 +236,8 @@ fn main() {
         let gt = boxes(case.path(), width, height, objects, frames);
         for (mode, graphics) in &modes {
             set(*graphics);
-            let (startup, fps) = runtime().block_on(run(case.path(), &video, &gt, frames));
+            let (startup, fps) =
+                runtime().block_on(run(case.path(), &video, &gt, (width, height), frames));
             println!(
                 "{name} {objects:>4} boxes {mode:>8}: {fps:>6.1} fps, first frame {:.2} s",
                 startup.as_secs_f64()

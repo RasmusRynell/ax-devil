@@ -1,4 +1,4 @@
-//! The overlay file as a decoder sees it: read once, lazily, through the handle that was fingerprinted.
+//! The overlay file as the host holds it: read once, lazily, through the handle that was fingerprinted.
 
 use std::{
     fs::File,
@@ -8,7 +8,7 @@ use std::{
 };
 
 use foundation::{CancelToken, Interrupt, UserError};
-use scene_decoders::{DecodeError, SourceFile};
+use handler_api::DecodeError;
 use sha2::{Digest, Sha256};
 
 use crate::{io::user_error, stat::Stat};
@@ -54,14 +54,14 @@ impl LazySource {
     pub(crate) fn unchanged(&self) -> bool {
         Stat::of(&self.file).is_ok_and(|now| now == self.stat)
     }
-}
 
-impl SourceFile for LazySource {
-    fn path(&self) -> &Path {
+    /// Where the file is.
+    pub(crate) fn path(&self) -> &Path {
         &self.path
     }
 
-    fn bytes(&self, cancel: &CancelToken) -> Result<&[u8], Interrupt<DecodeError>> {
+    /// The whole file, read once through the handle that was fingerprinted; later calls return the same bytes.
+    pub(crate) fn bytes(&self, cancel: &CancelToken) -> Result<&[u8], Interrupt<DecodeError>> {
         cancel.check()?;
         if let Some(bytes) = self.bytes.get() {
             return Ok(bytes);

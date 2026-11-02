@@ -42,6 +42,7 @@ describe("lane grid math", () => {
 function lane(label: string, visible = true): LaneState {
   return {
     label,
+    slot: label,
     source: null,
     status: "plain",
     settings: { ...LANE_SETTINGS, visible },
@@ -79,6 +80,7 @@ function mount(
       status: { status: "Ready" as const },
       hidden: true,
       entry: "e",
+      warnings: [],
     })),
   );
   act(() => {

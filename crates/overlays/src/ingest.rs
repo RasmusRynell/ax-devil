@@ -9,11 +9,11 @@ use std::{
     time::{Duration, Instant},
 };
 
-use foundation::{Timeline, UserError};
+use foundation::{Timeline, UserError, Warning};
+use handler_api::{Form, OverlayRef};
 use overlay_sync::{Alignment, MatchBasis, MatchPolicy, Tolerance, Verdict, alignment};
 use scene::Coverage;
-use scene_decoders::LoadWarning;
-use scene_store::{Ingest, Track, TrackSnapshot};
+use scene_store::{Ingest, TrackRead, TrackSnapshot};
 
 use crate::{
     LaneReady, LaneStatus, OverlayEvent,
@@ -26,13 +26,17 @@ use crate::{
 const READY_EVERY: Duration = Duration::from_millis(500);
 
 impl State {
-    /// Whether the ingest of `source` has reached a point where the item size is measured again: its samples were
-    /// renumbered, or it ended. `now` is the track's current snapshot.
+    /// Whether the item size of `source` is measured again: its samples were renumbered, its ingest ended, or it was
+    /// measured on a track with no samples (a live one) and has some now. `now` is the track's current snapshot.
     pub(crate) fn remeasure(&self, source: usize, now: &TrackSnapshot) -> bool {
-        match self.sources.get(source).map(|slot| &slot.load) {
-            Some(Load::Ready(_, held)) => {
+        let Some(slot) = self.sources.get(source) else {
+            return false;
+        };
+        match &slot.load {
+            Load::Ready(_, held) => {
                 now.generation != held.generation
                     || (held.ingest == Ingest::Reading && now.ingest != Ingest::Reading)
+                    || (slot.mean_sample_bytes == 0 && !now.keys.is_empty())
             }
             _ => false,
         }
@@ -76,7 +80,7 @@ impl State {
     pub(crate) fn begin_revision(
         &mut self,
         source: usize,
-        track: Arc<Track>,
+        track: Arc<dyn TrackRead>,
         snapshot: Arc<TrackSnapshot>,
         mean_sample_bytes: u32,
         timeline: &Timeline,
@@ -118,17 +122,20 @@ impl State {
         }
     }
 
-    /// The status of `source` once its file is loaded.
+    /// The status of `source` once its file is loaded. The source's own options are checked here, not by the track,
+    /// which is shared by sources that differ only in options its decoder does not take.
     fn ready(&self, source: usize) -> Option<LaneReady> {
         let slot = &self.sources[source];
         let Load::Ready(track, snapshot) = &slot.load else {
             return None;
         };
+        let mut warnings = snapshot.warnings.to_vec();
+        warnings.extend(undeclared_options(&slot.overlay, track.options()));
         Some(LaneReady {
-            bases: track.bases(),
+            bases: track.bases().to_vec(),
             default_basis: track.default_basis(),
             filter: track.filter().clone(),
-            warnings: snapshot.warnings.to_vec(),
+            warnings,
             alignment: None,
             samples: snapshot.keys.len(),
             data_revision: slot.data_revision,
@@ -202,7 +209,7 @@ impl State {
         &mut self,
         job: &AlignmentJob,
         alignment: Alignment,
-        warning: Option<LoadWarning>,
+        warning: Option<Warning>,
     ) {
         if self.closed
             || self
@@ -273,7 +280,7 @@ pub(crate) struct Aligned {
     basis: Option<MatchBasis>,
     tolerance: Tolerance,
     alignment: Alignment,
-    warning: Option<LoadWarning>,
+    warning: Option<Warning>,
 }
 
 impl Aligned {
@@ -284,11 +291,26 @@ impl Aligned {
     }
 }
 
+/// The warning for options of `overlay` that its decoder, which takes `form`, does not declare and never receives.
+fn undeclared_options(overlay: &OverlayRef, form: &Form) -> Option<Warning> {
+    let keys: Vec<&String> = overlay
+        .options
+        .keys()
+        .filter(|key| form.fields.iter().all(|field| field.key != **key))
+        .collect();
+    (!keys.is_empty()).then(|| Warning {
+        problem: format!("{} does not take some of the options", overlay.handler),
+        reasons: keys.iter().take(3).map(|key| format!("'{key}'")).collect(),
+        consequence: "They were not passed to it.".to_owned(),
+        more_reasons: keys.len() > 3,
+    })
+}
+
 /// The warning for samples that do not line up with the video's frames: by time, the last one far from the last
 /// frame, or too few of the [`attainable`](Alignment::attainable) ones selected by a frame ([`Verdict::Weak`]); by
 /// frame, too few of them within the video. A file sampled faster than the video leaves samples unselected however
 /// well it lines up.
-fn misalignment(alignment: &Alignment, policy: &MatchPolicy) -> Option<LoadWarning> {
+fn misalignment(alignment: &Alignment, policy: &MatchPolicy) -> Option<Warning> {
     let mut reasons = Vec::new();
     if alignment.ends_far()
         && let Some(gap) = alignment.end_gap
@@ -331,7 +353,7 @@ fn misalignment(alignment: &Alignment, policy: &MatchPolicy) -> Option<LoadWarni
         }
         MatchBasis::Frame => "Records past the last frame are not drawn.",
     };
-    (!reasons.is_empty()).then(|| LoadWarning {
+    (!reasons.is_empty()).then(|| Warning {
         problem: "The overlay does not line up with the video's frames".into(),
         reasons,
         consequence: consequence.into(),

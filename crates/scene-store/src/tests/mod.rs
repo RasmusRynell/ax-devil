@@ -1,8 +1,10 @@
 //! Tests of the store through a decoder that counts its runs.
 
 mod behaviour;
+mod framing;
 mod history;
 mod ingest;
+mod live;
 mod query;
 mod reuse;
 
@@ -10,36 +12,44 @@ use std::{
     fs,
     path::{Path, PathBuf},
     sync::{
-        Arc, Mutex,
+        Arc, LazyLock, Mutex,
         atomic::{AtomicUsize, Ordering},
     },
 };
 
-use foundation::{CancelToken, Interrupt, MediaTime};
-use overlay_sync::{FrameKey, KeyChunks, MatchBasis, SampleKeys};
-use playlist_resolvers::{OverlayRef, Settings};
+use foundation::{CancelToken, Interrupt, MediaTime, Warning};
+use handler_api::{
+    DecodeError, DecodeSummary, Decoder, Field, FieldKind, Form, Framing, Input, OnEqualKey,
+    OverlayRef, SceneSink, Settings, Spec, Values,
+};
+use overlay_sync::{FrameKey, KeyChunks, SampleKeys};
 use scene::{
     BoundingBox, ClassType, Classification, Coverage, Entity, EntityId, FilterPolicy, Geometry,
-    Observation, Scene, SceneTime, TimeSlice, Value,
-};
-use scene_decoders::{
-    DecodeContext, DecodeError, DecodeSummary, DecoderSpec, FileSceneDecoder, LoadWarning,
-    OnEqualKey, SceneSink, SourceFile, Storage,
+    MatchBasis, Observation, Scene, SceneTime, TimeSlice, Value,
 };
 use tempfile::TempDir;
 
-use crate::{Track, TrackRegistry};
+use crate::{Track, TrackRead, TrackRegistry};
 
-pub(super) static SPEC: DecoderSpec = DecoderSpec {
-    plugin_id: "test",
-    handler: "TEST",
-    display_name: "Test",
-    extensions: &[".txt"],
-    artifact_version: 1,
-    storage: Storage::DerivedCache,
-    bases: &[MatchBasis::Frame, MatchBasis::Time],
-    default_basis: MatchBasis::Frame,
-};
+/// The spec of a decoder that is never changed.
+pub(super) static SPEC: LazyLock<Spec> = LazyLock::new(|| spec(1));
+
+/// The test decoder's spec at `version`; it declares one text option, `profile`.
+pub(super) fn spec(version: u32) -> Spec {
+    Spec {
+        id: "TEST".into(),
+        plugin: "test".into(),
+        name: "Test".into(),
+        extensions: vec![".txt".into()],
+        framing: Framing::Whole,
+        bases: vec![MatchBasis::Frame, MatchBasis::Time],
+        default_basis: MatchBasis::Frame,
+        options: Form {
+            fields: vec![Field::new("profile", "Profile", FieldKind::Text)],
+        },
+        version,
+    }
+}
 
 /// Frame keys whose samples are numbered by them.
 pub(super) fn in_order(frames: &[u64]) -> KeyChunks<FrameKey> {
@@ -61,11 +71,6 @@ pub(super) fn frame_keys(keys: &[u64]) -> SampleKeys {
     }
 }
 
-pub(super) static SPEC_V2: DecoderSpec = DecoderSpec {
-    artifact_version: 2,
-    ..SPEC
-};
-
 /// What a [`Counting`] decoder emits.
 #[derive(Clone, Copy)]
 pub(super) enum Shape {
@@ -81,7 +86,7 @@ type Hook = Box<dyn Fn(u64, &CancelToken) + Send + Sync>;
 
 /// A file decoder that counts its runs.
 pub(super) struct Counting {
-    pub spec: &'static DecoderSpec,
+    pub spec: Spec,
     pub shape: Shape,
     pub runs: AtomicUsize,
     pub hook: Mutex<Option<Hook>>,
@@ -90,7 +95,7 @@ pub(super) struct Counting {
 impl Counting {
     pub(super) fn new(shape: Shape) -> Arc<Self> {
         Arc::new(Self {
-            spec: &SPEC,
+            spec: spec(1),
             shape,
             runs: AtomicUsize::new(0),
             hook: Mutex::new(None),
@@ -132,19 +137,22 @@ fn entities(time: SceneTime, boxes: usize) -> Scene {
         .expect("one clock")
 }
 
-impl FileSceneDecoder for Counting {
-    fn spec(&self) -> &'static DecoderSpec {
-        self.spec
+impl Decoder for Counting {
+    fn spec(&self) -> &Spec {
+        &self.spec
     }
 
-    fn decode_file(
+    fn decode(
         &self,
-        source: &dyn SourceFile,
-        _context: &DecodeContext<'_>,
+        input: &mut dyn Input,
+        _options: &Values,
         sink: &mut dyn SceneSink,
         cancel: &CancelToken,
     ) -> Result<DecodeSummary, Interrupt<DecodeError>> {
-        if source.bytes(cancel)?.starts_with(b"broken") {
+        if input
+            .next(cancel)?
+            .is_some_and(|record| record.bytes.starts_with(b"broken"))
+        {
             return Err(Interrupt::Failed(DecodeError(
                 "line 1: not a test file".into(),
             )));
@@ -181,7 +189,7 @@ impl FileSceneDecoder for Counting {
             }
         }
         Ok(DecodeSummary {
-            warnings: vec![LoadWarning {
+            warnings: vec![Warning {
                 problem: "Skipped 1 of 3 rows".into(),
                 reasons: vec!["line 2: bad".into()],
                 consequence: "They are not shown.".into(),
@@ -230,10 +238,8 @@ impl Fixture {
 
     pub(super) fn registry_over(decoder: &Arc<Counting>, cache: Option<&Path>) -> TrackRegistry {
         let decoder = decoder.clone();
-        TrackRegistry::with_decoders(
-            move |handler| {
-                (handler == "TEST").then(|| decoder.clone() as Arc<dyn FileSceneDecoder>)
-            },
+        TrackRegistry::new(
+            move |handler| (handler == "TEST").then(|| decoder.clone() as Arc<dyn Decoder>),
             cache,
         )
     }
@@ -245,6 +251,7 @@ impl Fixture {
     pub(super) fn overlay(&self) -> OverlayRef {
         OverlayRef {
             label: "lane".into(),
+            slot: "lane".into(),
             path: self.source.clone(),
             handler: "TEST".into(),
             options: Settings::new(),

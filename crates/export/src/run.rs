@@ -178,7 +178,7 @@ fn job_for(
     let mut named: BTreeMap<(u16, u32), &FrozenSource> = BTreeMap::new();
     for lane in &spec.lanes {
         let (value, kind) = match &lane.source {
-            Some(source) => cell(&source.track, &source.snapshot, timeline, at, &lane.policy),
+            Some(source) => cell(&*source.track, &source.snapshot, timeline, at, &lane.policy),
             None => (overlays::NONE_CELL, 0),
         };
         if let Some(source) = lane.source.as_ref().filter(|_| value < FIRST_NON_SAMPLE) {

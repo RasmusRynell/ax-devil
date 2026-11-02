@@ -2,36 +2,21 @@
 
 mod shape;
 
-use foundation::MediaTime;
-use foundation::{CancelToken, Interrupt};
-use overlay_sync::MatchBasis;
+use foundation::{CancelToken, Interrupt, MediaTime};
+use handler_api::{
+    DecodeError, DecodeSummary, Decoder, Form, Framing, Input, OnEqualKey, SceneSink, Spec, Values,
+};
 use quick_xml::{
     Reader,
     events::{BytesStart, Event},
 };
 use scene::{
-    ClassRule, Entity, EntityId, FilterOption, FilterPolicy, Name, Operation, Scene, SceneTime,
-    TimeSlice,
+    ClassRule, Coverage, Entity, EntityId, Fields, FilterOption, FilterPolicy, MatchBasis, Name,
+    Operation, Scene, SceneTime, TimeSlice,
 };
 use shape::{RawObject, Tag, attrs};
 
-use crate::{
-    DecodeContext, DecodeError, DecodeSummary, DecoderSpec, FileSceneDecoder, RecordSceneDecoder,
-    SceneSink, SourceFile, Storage, iso8601, lines,
-};
-
-static SPEC: DecoderSpec = DecoderSpec {
-    plugin_id: "axis-onvif-xml",
-    handler: "ONVIF_XML",
-    display_name: "Axis ONVIF XML",
-    extensions: &[".xml"],
-    artifact_version: 1,
-    storage: Storage::SourceIndexed {
-        independent_records: true,
-    },
-    bases: &[MatchBasis::Frame, MatchBasis::Time],
-    default_basis: MatchBasis::Frame,
-};
+use crate::iso8601;
 
 /// Filter id, label and the class it shows; `show_other` is added after them.
 const FILTERS: [(&str, &str, &str); 13] = [
@@ -51,93 +36,125 @@ const FILTERS: [(&str, &str, &str); 13] = [
 ];
 
 /// Reads Axis ONVIF metadata XML, one document per line.
-pub struct OnvifXmlDecoder;
+pub struct OnvifXmlDecoder {
+    spec: Spec,
+}
 
-impl RecordSceneDecoder for OnvifXmlDecoder {
-    fn spec(&self) -> &'static DecoderSpec {
-        &SPEC
-    }
-
-    fn decode_record(&self, record: &[u8]) -> Result<Option<Scene>, String> {
-        let mut document = Document::default();
-        let mut reader = Reader::from_reader(record);
-        loop {
-            match reader
-                .read_event()
-                .map_err(|error| format!("invalid XML: {error}"))?
-            {
-                Event::Start(element) => document.open(&element)?,
-                Event::Empty(element) => {
-                    document.open(&element)?;
-                    document.close()?;
-                }
-                Event::End(_) => document.close()?,
-                Event::Text(text) => document.text(&text.xml10_content()),
-                Event::CData(text) => document.text(&text.xml10_content()),
-                Event::GeneralRef(reference) => match reference.resolve_char_ref() {
-                    Ok(Some(character)) => document.text(character.encode_utf8(&mut [0; 4])),
-                    _ => document.text(match &*reference {
-                        "lt" => "<",
-                        "gt" => ">",
-                        "amp" => "&",
-                        "quot" => "\"",
-                        "apos" => "'",
-                        _ => "",
-                    }),
-                },
-                Event::Eof => return document.finish(),
-                _ => {}
-            }
-        }
-    }
-
-    fn filter_policy(&self) -> FilterPolicy {
-        let mut options: Vec<FilterOption> = FILTERS
-            .iter()
-            .map(|&(id, label, class)| FilterOption {
-                id: id.into(),
-                label: label.into(),
-                default_enabled: true,
-                rule: ClassRule {
-                    types: vec![class.into()],
-                    include_empty: class == "unknown",
-                    exclude: false,
-                },
-            })
-            .collect();
-        options.push(FilterOption {
-            id: "show_other".into(),
-            label: "Other".into(),
-            default_enabled: true,
-            rule: ClassRule {
-                types: FILTERS
-                    .iter()
-                    .map(|&(_, _, class)| Name::from(class))
-                    .collect(),
-                include_empty: false,
-                exclude: true,
+impl OnvifXmlDecoder {
+    pub(crate) fn new() -> Self {
+        Self {
+            spec: Spec {
+                id: "ONVIF_XML".to_owned(),
+                plugin: "axis-onvif-xml".to_owned(),
+                name: "Axis ONVIF XML".to_owned(),
+                extensions: vec![".xml".to_owned()],
+                framing: Framing::Records,
+                bases: vec![MatchBasis::Frame, MatchBasis::Time],
+                default_basis: MatchBasis::Frame,
+                options: Form::default(),
+                version: 2,
             },
-        });
-        FilterPolicy {
-            name: "onvif_xml",
-            options,
         }
     }
 }
 
-impl FileSceneDecoder for OnvifXmlDecoder {
-    fn spec(&self) -> &'static DecoderSpec {
-        &SPEC
+impl Decoder for OnvifXmlDecoder {
+    fn spec(&self) -> &Spec {
+        &self.spec
     }
 
-    fn decode_file(
+    fn decode(
         &self,
-        source: &dyn SourceFile,
-        _context: &DecodeContext<'_>,
+        input: &mut dyn Input,
+        _options: &Values,
         sink: &mut dyn SceneSink,
         cancel: &CancelToken,
     ) -> Result<DecodeSummary, Interrupt<DecodeError>> {
-        lines::decode_lines(self, source.bytes(cancel)?, sink, cancel)
+        while let Some(record) = input.next(cancel)? {
+            match decode_record(record.bytes) {
+                Ok(Some(scene)) => {
+                    if sink.sample(scene, OnEqualKey::Replace).is_break() {
+                        break;
+                    }
+                }
+                Ok(None) => {}
+                Err(reason) => sink.skip(record.position, reason),
+            }
+        }
+        Ok(DecodeSummary {
+            warnings: Vec::new(),
+            filter: filter_policy(),
+            metadata: Fields::new(),
+            coverage: Coverage::Sparse,
+        })
+    }
+}
+
+/// One trimmed, non-empty record. `Ok(None)` means the record has no overlay; `Err` carries the reason it is skipped.
+fn decode_record(record: &[u8]) -> Result<Option<Scene>, String> {
+    let mut document = Document::default();
+    let mut reader = Reader::from_reader(record);
+    loop {
+        match reader
+            .read_event()
+            .map_err(|error| format!("invalid XML: {error}"))?
+        {
+            Event::Start(element) => document.open(&element)?,
+            Event::Empty(element) => {
+                document.open(&element)?;
+                document.close()?;
+            }
+            Event::End(_) => document.close()?,
+            Event::Text(text) => document.text(&text.xml10_content()),
+            Event::CData(text) => document.text(&text.xml10_content()),
+            Event::GeneralRef(reference) => match reference.resolve_char_ref() {
+                Ok(Some(character)) => document.text(character.encode_utf8(&mut [0; 4])),
+                _ => document.text(match &*reference {
+                    "lt" => "<",
+                    "gt" => ">",
+                    "amp" => "&",
+                    "quot" => "\"",
+                    "apos" => "'",
+                    _ => "",
+                }),
+            },
+            Event::Eof => return document.finish(),
+            _ => {}
+        }
+    }
+}
+
+/// The class filters of this decoder's content.
+fn filter_policy() -> FilterPolicy {
+    let mut options: Vec<FilterOption> = FILTERS
+        .iter()
+        .map(|&(id, label, class)| FilterOption {
+            id: id.into(),
+            label: label.into(),
+            default_enabled: true,
+            rule: ClassRule {
+                types: vec![class.into()],
+                include_empty: class == "unknown",
+                exclude: false,
+            },
+        })
+        .collect();
+    options.push(FilterOption {
+        id: "show_other".into(),
+        label: "Other".into(),
+        default_enabled: true,
+        rule: ClassRule {
+            types: FILTERS
+                .iter()
+                .map(|&(_, _, class)| Name::from(class))
+                .collect(),
+            include_empty: false,
+            exclude: true,
+        },
+    });
+    FilterPolicy {
+        name: "onvif_xml",
+        options,
     }
 }
 

@@ -14,8 +14,8 @@ workspace = true
 
 [dependencies]
 foundation.workspace = true
-serde_json.workspace = true
-tracing.workspace = true
+handler-api.workspace = true
 
 [dev-dependencies]
+serde_json.workspace = true
 tempfile = "3"

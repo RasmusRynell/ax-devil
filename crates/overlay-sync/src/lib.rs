@@ -13,19 +13,8 @@ use serde::{Deserialize, Serialize};
 
 pub use alignment::{Alignment, Verdict, alignment};
 pub use keys::{CHUNK_KEYS, KeyChunks};
+pub use scene::MatchBasis;
 pub use select::select;
-
-/// What a lane matches records to video frames by. The host chooses it per lane; a decoder only declares which
-/// bases it supports and which it recommends.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub enum MatchBasis {
-    /// By frame number. A time-keyed file's frame number is the record's position in the file: record k belongs to
-    /// frame k.
-    #[default]
-    Frame,
-    /// By the sample's timestamp on the video's Media Time clock.
-    Time,
-}
 
 /// The frame number a sample is found by and the sample it names.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

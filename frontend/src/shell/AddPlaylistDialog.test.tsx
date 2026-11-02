@@ -6,7 +6,16 @@ import { SessionProvider } from "../session/session";
 import { AddPlaylistDialog } from "./AddPlaylistDialog";
 
 const HANDLERS: HandlersInfo = {
-  decoders: [{ handler: "MOT_FILE", display_name: "MOT Annotations", extensions: [".txt"] }],
+  decoders: [
+    {
+      handler: "MOT_FILE",
+      display_name: "MOT Annotations",
+      extensions: [".txt"],
+      options: [
+        { key: "width", label: "Image width", kind: { kind: "Integer", min: 1n }, required: true },
+      ],
+    },
+  ],
   resolvers: [
     {
       id: "mot_challenge",
@@ -29,6 +38,12 @@ const HANDLERS: HandlersInfo = {
       fields: [
         { key: "videos_dir", label: "Videos folder", kind: { kind: "Folder" }, required: true },
         { key: "handler_type", label: "Overlay format", kind: { kind: "Handler" }, required: true },
+        {
+          key: "options",
+          label: "Overlay options",
+          kind: { kind: "DecoderOptions", handler_field: "handler_type" },
+          required: false,
+        },
       ],
     },
   ],
@@ -130,7 +145,7 @@ describe("add playlist dialog", () => {
     expect(screen.queryByRole("alert")).toBeNull();
   });
 
-  it("builds the form of the chosen resolver, with the decoders to choose from", async () => {
+  it("builds the form of the chosen resolver, with the chosen decoder's options sent as a map", async () => {
     stubBackend();
     await open();
     fireEvent.change(screen.getByLabelText("Playlist type"), { target: { value: "folder_pair" } });
@@ -138,7 +153,29 @@ describe("add playlist dialog", () => {
     const format = screen.getByLabelText("Overlay format") as HTMLSelectElement;
     expect(format.value).toBe("MOT_FILE");
     fireEvent.change(screen.getByLabelText("Videos folder"), { target: { value: "/videos" } });
+    expect(add()).toHaveProperty("disabled", true);
+    fireEvent.change(screen.getByLabelText("Image width"), { target: { value: "1920" } });
     expect(add()).toHaveProperty("disabled", false);
+    fireEvent.click(add());
+    await waitFor(() => expect(commands()).toHaveLength(1));
+    expect(commands()).toMatchObject([
+      {
+        cmd: {
+          command: {
+            items: [
+              {
+                resolver: "folder_pair",
+                settings: {
+                  videos_dir: "/videos",
+                  handler_type: "MOT_FILE",
+                  options: { width: 1920 },
+                },
+              },
+            ],
+          },
+        },
+      },
+    ]);
   });
 
   it("says why the handlers could not be loaded, in the backend's words when it sends them", async () => {

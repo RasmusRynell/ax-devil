@@ -17,8 +17,8 @@ const ready: LaneStatusWire = {
   ingest: { state: "Complete" },
 };
 const LANES = [
-  { label: "DPM", source: 0 },
-  { label: "plain", source: null },
+  { label: "DPM", slot: "DPM", source: 0 },
+  { label: "plain", slot: "plain", source: null },
 ];
 
 function opened(): LaneSet {
@@ -89,7 +89,7 @@ describe("lanes", () => {
       { lane: 0, revision: 3, subscribed: false },
     ]);
     expect(lanes.states[0].status).toEqual({ status: "Loading" });
-    lanes.open([{ label: "other", source: 0 }], LANE_DEFAULTS);
+    lanes.open([{ label: "other", slot: "other", source: 0 }], LANE_DEFAULTS);
     expect(lanes.states[0]).toMatchObject({ policyRevision: 1, settings: { visible: true } });
   });
 
@@ -131,10 +131,10 @@ describe("lanes", () => {
     const lanes = new LaneSet();
     lanes.open(
       [
-        { label: "a", source: 0 },
-        { label: "b", source: 1 },
-        { label: "v", source: null },
-        { label: "c", source: 2 },
+        { label: "a", slot: "a", source: 0 },
+        { label: "b", slot: "b", source: 1 },
+        { label: "v", slot: "v", source: null },
+        { label: "c", slot: "c", source: 2 },
       ],
       LANE_DEFAULTS,
     );

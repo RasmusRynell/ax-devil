@@ -13,13 +13,13 @@ use export::{
     RenderJob, RenderSetup, Renderer, run,
 };
 use foundation::{CancelToken, ErrorCode, FrameRate, UserError};
+use handler_api::OverlayRef;
 use handlers::Handlers;
 use media::{
     Decoder, EncodeFormat, Encoder, FrameIndex, ImageSequenceInput, Picture, Quality, VideoInput,
 };
 use overlay_sync::{MatchBasis, MatchPolicy, Sticky};
-use playlist_resolvers::OverlayRef;
-use scene_store::{Track, TrackRegistry};
+use scene_store::{Track, TrackRead, TrackRegistry};
 
 const WIDTH: u32 = 64;
 const HEIGHT: u32 = 48;
@@ -349,11 +349,12 @@ fn two_sample_track(dir: &Path) -> (PathBuf, Arc<Track>) {
     fs::write(&mot, format!("{}\n{}\n", frame("00"), frame("00.5"))).unwrap();
     let overlay = OverlayRef {
         label: "det".into(),
+        slot: "det".into(),
         path: mot.clone(),
         handler: "ONVIF_XML".into(),
         options: serde_json::Map::new(),
     };
-    let track = TrackRegistry::new(Handlers::built_in(), None)
+    let track = TrackRegistry::new(Handlers::built_in().decoder_lookup(), None)
         .open(&overlay, &CancelToken::new())
         .expect("the track");
     (mot, track)

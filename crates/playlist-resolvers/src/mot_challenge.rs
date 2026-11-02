@@ -5,46 +5,20 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use crate::schema::invalid_field;
 use foundation::{
-    CancelToken, Cancelled, ErrorCode, FrameRate, HostPath, Interrupt, Location, SeqInfo,
-    UserError, parse_seqinfo,
+    CancelToken, ErrorCode, FrameRate, HostPath, Interrupt, Location, SeqInfo, UserError, Warning,
+    parse_seqinfo,
+};
+use handler_api::{
+    Choice, Field, FieldKind, Form, ImageSequence, OverlayRef, PlaylistResolver, ResolvedEntry,
+    ResolvedPlaylist, ResolverSpec, Selection, Settings, SkippedRecords, Values, VideoRef,
+    invalid_field,
 };
 
-use crate::{
-    Choice, Cli, Field, FieldKind, ImageSequence, OverlayRef, PlaylistResolver, ResolvedEntry,
-    ResolvedPlaylist, ResolverSchema, ResolverSpec, Settings, VideoRef, WatchPaths,
-    folder_pair::{required_text, resolved_file_type},
-};
-
-static SPEC: ResolverSpec = ResolverSpec {
-    id: "mot_challenge",
-    display_name: "MOT Challenge",
-    description: "Load the train and test sequences of a MOT Challenge dataset folder.",
-};
-
-static SCHEMA: ResolverSchema = ResolverSchema {
-    fields: &[
-        Field {
-            key: "root",
-            label: "Dataset folder",
-            kind: FieldKind::Folder,
-            required: true,
-            cli: Cli::Positional,
-        },
-        Field {
-            key: "sequences",
-            label: "Sequences",
-            kind: FieldKind::Scan {
-                depends_on: &["root"],
-            },
-            required: false,
-            cli: Cli::Flag("sequences"),
-        },
-    ],
-};
+use crate::resolved_file_type;
 
 const DETECTOR_SUFFIXES: [&str; 3] = ["DPM", "FRCNN", "SDP"];
+const NOT_LISTED: &str = "They are not in the playlist.";
 const MOT_HANDLER: &str = "MOT_FILE";
 
 /// Lists the sequences of a MOT Challenge dataset folder.
@@ -52,22 +26,48 @@ const MOT_HANDLER: &str = "MOT_FILE";
 /// Sequences are the folders with a `seqinfo.ini` directly under `root` and under its `train` and `test` folders.
 /// The optional `sequences` setting names the ones to keep. Detector variants of one video (`-DPM`, `-FRCNN`,
 /// `-SDP`) become one entry with one detection lane each, in variant name order, and a single ground-truth lane
-/// right after the detection lane of the first variant that has one: `DPM, GT, FRCNN, SDP`.
-pub struct MotChallengeResolver;
+/// right after the detection lane of the first variant that has one: `DPM, GT, FRCNN, SDP`. Every lane's `width` and
+/// `height` options are the image size its sequence's `seqinfo.ini` states, which the MOT decoder needs.
+pub struct MotChallengeResolver {
+    spec: ResolverSpec,
+}
+
+impl MotChallengeResolver {
+    pub(crate) fn new() -> Self {
+        Self {
+            spec: ResolverSpec {
+                id: "mot_challenge".to_owned(),
+                name: "MOT Challenge".to_owned(),
+                description: "Load the train and test sequences of a MOT Challenge dataset folder."
+                    .to_owned(),
+                form: Form {
+                    fields: vec![
+                        Field::new("root", "Dataset folder", FieldKind::Folder)
+                            .required()
+                            .positional(),
+                        Field::new(
+                            "sequences",
+                            "Sequences",
+                            FieldKind::Scan {
+                                depends_on: vec!["root".to_owned()],
+                            },
+                        ),
+                    ],
+                },
+            },
+        }
+    }
+}
 
 impl PlaylistResolver for MotChallengeResolver {
-    fn spec(&self) -> &'static ResolverSpec {
-        &SPEC
-    }
-
-    fn schema(&self) -> &'static ResolverSchema {
-        &SCHEMA
+    fn spec(&self) -> &ResolverSpec {
+        &self.spec
     }
 
     fn scan(
         &self,
         field: &str,
-        settings: &Settings,
+        settings: &Values,
         cancel: &CancelToken,
     ) -> Result<Vec<Choice>, Interrupt<UserError>> {
         if field != "sequences" {
@@ -76,8 +76,8 @@ impl PlaylistResolver for MotChallengeResolver {
                 field,
             )));
         }
-        let root = required_text(settings, "root").map_err(Interrupt::Failed)?;
-        let mut sequences = load_sequences(Path::new(root), Location::field("root"), cancel)?;
+        let root = root(settings).map_err(Interrupt::Failed)?;
+        let mut sequences = load_sequences(root, Location::field("root"), cancel)?.sequences;
         sequences.sort_by(|a, b| a.name.cmp(&b.name));
         sequences.dedup_by(|a, b| a.name == b.name);
         Ok(sequences.into_iter().map(Sequence::into_choice).collect())
@@ -85,27 +85,29 @@ impl PlaylistResolver for MotChallengeResolver {
 
     fn resolve(
         &self,
-        settings: &Settings,
+        settings: &Values,
         cancel: &CancelToken,
     ) -> Result<ResolvedPlaylist, Interrupt<UserError>> {
-        let root = required_text(settings, "root").map_err(Interrupt::Failed)?;
-        let subset = sequence_subset(settings).map_err(Interrupt::Failed)?;
-        let mut sequences = load_sequences(Path::new(root), HostPath::new(root).into(), cancel)?;
-        if let Some(names) = subset {
-            let mut missing: Vec<&str> = names
+        let root = root(settings).map_err(Interrupt::Failed)?;
+        let Discovered {
+            mut sequences,
+            skipped,
+            total,
+        } = load_sequences(root, HostPath::new(root).into(), cancel)?;
+        let mut warnings: Vec<Warning> = skipped.warning(total).into_iter().collect();
+        if let Selection::Only(names) = settings.selection("sequences") {
+            let mut missing = SkippedRecords::new("selected sequences", NOT_LISTED);
+            let mut absent: Vec<&str> = names
                 .iter()
-                .copied()
+                .map(String::as_str)
                 .filter(|name| !sequences.iter().any(|sequence| sequence.name == *name))
                 .collect();
-            if !missing.is_empty() {
-                missing.sort_unstable();
-                tracing::warn!(
-                    "MOT sequences not found in {}: {}",
-                    root,
-                    missing.join(", ")
-                );
+            absent.sort_unstable();
+            for name in absent {
+                missing.add(format!("{name} is not in the dataset folder"));
             }
-            sequences.retain(|sequence| names.contains(&sequence.name.as_str()));
+            warnings.extend(missing.warning(names.len()));
+            sequences.retain(|sequence| names.contains(&sequence.name));
         }
         let entries = build_entries(sequences, cancel)?;
         if entries.is_empty() {
@@ -115,36 +117,10 @@ impl PlaylistResolver for MotChallengeResolver {
             ));
         }
         Ok(ResolvedPlaylist {
-            display_name: SPEC.display_name.to_string(),
+            display_name: self.spec.name.clone(),
             entries,
+            warnings,
         })
-    }
-
-    fn watch_paths(
-        &self,
-        settings: &Settings,
-        cancel: &CancelToken,
-    ) -> Result<WatchPaths, Cancelled> {
-        let Ok(root) = required_text(settings, "root") else {
-            return Ok(WatchPaths::default());
-        };
-        let root = PathBuf::from(root);
-        let mut watch = WatchPaths::default();
-        match candidate_dirs(&root, cancel) {
-            Ok(candidates) => {
-                for dir in candidates {
-                    cancel.check()?;
-                    let ini = dir.join("seqinfo.ini");
-                    if ini.is_file() {
-                        watch.files.insert(ini);
-                    }
-                }
-            }
-            Err(Interrupt::Cancelled) => return Err(Cancelled),
-            Err(Interrupt::Failed(_)) => {}
-        }
-        watch.folders.insert(root);
-        Ok(watch)
     }
 }
 
@@ -170,13 +146,22 @@ impl Sequence {
     }
 }
 
+/// The sequences under `root` and the folders left out of them.
+struct Discovered {
+    sequences: Vec<Sequence>,
+    /// The folders with a `seqinfo.ini` that could not be used.
+    skipped: SkippedRecords,
+    /// How many folders have a `seqinfo.ini`.
+    total: usize,
+}
+
 /// The sequences under `root`. A problem with the folder is attached to `location`: the setting key for a scan, the
 /// path for a resolve.
 fn load_sequences(
     root: &Path,
     location: Location,
     cancel: &CancelToken,
-) -> Result<Vec<Sequence>, Interrupt<UserError>> {
+) -> Result<Discovered, Interrupt<UserError>> {
     cancel.check()?;
     let error =
         |code, reason: String| Interrupt::Failed(UserError::new(code, reason).at(location.clone()));
@@ -195,18 +180,11 @@ fn load_sequences(
     })
 }
 
-/// The `sequences` setting; `None` when it is absent.
-fn sequence_subset(settings: &Settings) -> Result<Option<Vec<&str>>, UserError> {
-    let invalid = || invalid_field("Must be a list of sequence names", "sequences");
-    match settings.get("sequences") {
-        None | Some(serde_json::Value::Null) => Ok(None),
-        Some(serde_json::Value::Array(names)) => names
-            .iter()
-            .map(|name| name.as_str().ok_or_else(invalid))
-            .collect::<Result<_, _>>()
-            .map(Some),
-        Some(_) => Err(invalid()),
-    }
+/// The dataset folder setting.
+fn root(settings: &Values) -> Result<&Path, UserError> {
+    settings
+        .path("root")
+        .ok_or_else(|| invalid_field("Required", "root"))
 }
 
 /// The folders under `root` and under its `train` and `test` folders, in path order.
@@ -239,9 +217,12 @@ fn list_dirs(
     Ok(())
 }
 
-/// The sequences under `root`; a folder with a missing or unreadable `seqinfo.ini` is left out.
-fn discover(root: &Path, cancel: &CancelToken) -> Result<Vec<Sequence>, Interrupt<io::Error>> {
+/// The sequences under `root`; a folder with a missing `seqinfo.ini` is not one, and one with an unreadable or bad
+/// `seqinfo.ini` is skipped.
+fn discover(root: &Path, cancel: &CancelToken) -> Result<Discovered, Interrupt<io::Error>> {
     let mut sequences = Vec::new();
+    let mut skipped = SkippedRecords::new("sequences", NOT_LISTED);
+    let mut total = 0;
     for path in candidate_dirs(root, cancel)? {
         cancel.check()?;
         let text = match fs::read_to_string(path.join("seqinfo.ini")) {
@@ -250,17 +231,19 @@ fn discover(root: &Path, cancel: &CancelToken) -> Result<Vec<Sequence>, Interrup
                 continue;
             }
             Err(error) => {
-                tracing::warn!(
-                    "Skipping {}: cannot read seqinfo.ini ({error})",
+                total += 1;
+                skipped.add(format!(
+                    "{}: cannot read seqinfo.ini ({error})",
                     path.display()
-                );
+                ));
                 continue;
             }
         };
+        total += 1;
         let mut info = match parse_seqinfo(&text) {
             Ok(info) => info,
             Err(reason) => {
-                tracing::warn!("Skipping {}: bad seqinfo.ini ({reason})", path.display());
+                skipped.add(format!("{}: bad seqinfo.ini ({reason})", path.display()));
                 continue;
             }
         };
@@ -272,7 +255,11 @@ fn discover(root: &Path, cancel: &CancelToken) -> Result<Vec<Sequence>, Interrup
         });
         sequences.push(Sequence { name, path, info });
     }
-    Ok(sequences)
+    Ok(Discovered {
+        sequences,
+        skipped,
+        total,
+    })
 }
 
 /// One entry per video: detector variants of a sequence share the first variant's video.
@@ -330,12 +317,12 @@ fn build_entries(
                     || "DET".to_string(),
                     |(_, detector)| detector.to_ascii_uppercase(),
                 );
-                overlays.push(mot_overlay(label, detections));
+                overlays.push(mot_overlay(label, detections, &variant.info));
             }
             let ground_truth = variant.path.join("gt").join("gt.txt");
             if !has_ground_truth && ground_truth.is_file() {
                 has_ground_truth = true;
-                overlays.push(mot_overlay("GT".to_string(), ground_truth));
+                overlays.push(mot_overlay("GT".to_string(), ground_truth, &variant.info));
             }
         }
         entries.push(ResolvedEntry {
@@ -347,12 +334,17 @@ fn build_entries(
     Ok(entries)
 }
 
-fn mot_overlay(label: String, path: PathBuf) -> OverlayRef {
+/// A MOT lane over `path`, with the image size the decoder normalizes its boxes by.
+fn mot_overlay(label: String, path: PathBuf, info: &SeqInfo) -> OverlayRef {
     OverlayRef {
+        slot: label.clone(),
         label,
         path,
         handler: MOT_HANDLER.to_string(),
-        options: Settings::new(),
+        options: Settings::from_iter([
+            ("width".to_owned(), info.width.into()),
+            ("height".to_owned(), info.height.into()),
+        ]),
     }
 }
 

@@ -125,6 +125,7 @@ async fn a_policy_for_a_lane_without_an_overlay_is_ignored_and_the_session_goes_
         video.lanes,
         [LaneInfo {
             label: "cfr_h264_gop10_bf2.mp4".into(),
+            slot: "cfr_h264_gop10_bf2.mp4".into(),
             source: None,
             policy: None,
         }]
@@ -147,6 +148,7 @@ async fn a_lane_reports_its_load_then_sends_its_maps_and_each_mapped_sample_once
         video.lanes,
         [LaneInfo {
             label: "gt.txt".into(),
+            slot: "gt.txt".into(),
             source: Some(0),
             policy: None,
         }]
@@ -258,11 +260,13 @@ async fn one_file_shown_twice_is_two_lanes_with_their_own_policies_on_one_source
         [
             LaneInfo {
                 label: "gt.txt".into(),
+                slot: "gt.txt".into(),
                 source: Some(0),
                 policy: None,
             },
             LaneInfo {
                 label: "gt.txt (2)".into(),
+                slot: "gt.txt (2)".into(),
                 source: Some(0),
                 policy: None,
             },
@@ -415,7 +419,7 @@ async fn an_onvif_lane_starts_by_frame_switches_to_time_and_the_workspace_keeps_
     let id = backend
         .add_with_handlers(
             &fixture("cfr_h264_gop10_bf2.mp4"),
-            &[(path, Some("ONVIF_XML"))],
+            &[(path, Some("ONVIF_XML"), Default::default())],
         )
         .await;
     let mut viewer = backend.viewer().await;
@@ -467,7 +471,7 @@ async fn an_onvif_lane_starts_by_frame_switches_to_time_and_the_workspace_keeps_
     };
     let kept = DocCommand::SetLaneMatching {
         item: content.item_id,
-        lane: 0,
+        slot: "lane.xml".into(),
         matching,
     };
     id.owner.command(Command::Content(kept)).unwrap();

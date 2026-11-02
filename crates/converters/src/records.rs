@@ -2,8 +2,9 @@
 
 use std::borrow::Cow;
 
+use foundation::Warning;
+use handler_api::{Header, OnEqualKey, SceneSink};
 use scene::{ClassRule, Coverage, Fields, FilterOption, FilterPolicy, Value, serial};
-use scene_decoders::{Header, LoadWarning, OnEqualKey, SceneSink, SkippedRecords};
 use serde::Deserialize;
 use serde_json::value::RawValue;
 
@@ -74,7 +75,7 @@ struct WarningIn {
 enum Parsed {
     Header(Header),
     Sample(scene::Scene, OnEqualKey),
-    Warning(LoadWarning),
+    Warning(Warning),
     Skipped(String),
 }
 
@@ -87,26 +88,22 @@ pub(crate) enum Next {
     Protocol(String),
 }
 
-/// Feeds a sink from lines and counts what it skipped.
+/// The name of the filter policy of every converter.
+pub(crate) const POLICY_NAME: &str = "converter";
+
+/// Feeds a sink from lines.
 pub(crate) struct Records<'a> {
     sink: &'a mut dyn SceneSink,
-    policy_name: &'static str,
     header: Option<Header>,
     sampled: bool,
-    seen: usize,
-    skipped: SkippedRecords,
 }
 
 impl<'a> Records<'a> {
-    /// `policy_name` names the filter policy a header declares: the converter's id.
-    pub(crate) fn new(sink: &'a mut dyn SceneSink, policy_name: &'static str) -> Self {
+    pub(crate) fn new(sink: &'a mut dyn SceneSink) -> Self {
         Self {
             sink,
-            policy_name,
             header: None,
             sampled: false,
-            seen: 0,
-            skipped: SkippedRecords::new("records", "Objects in skipped records are not shown."),
         }
     }
 
@@ -128,29 +125,19 @@ impl<'a> Records<'a> {
             }
             Ok(Parsed::Warning(warning)) => self.sink.warn(warning),
             Ok(Parsed::Sample(scene, on_equal_key)) => {
-                self.seen += 1;
                 self.sampled = true;
                 if self.sink.sample(scene, on_equal_key).is_break() {
                     return Next::SinkFull;
                 }
             }
-            Ok(Parsed::Skipped(reason)) => {
-                self.seen += 1;
-                self.skipped.add(reason);
-            }
-            Err(reason) => {
-                self.seen += 1;
-                self.skipped.add(format!("line {number}: {reason}"));
-            }
+            Ok(Parsed::Skipped(reason)) => self.sink.skip(number as u64, reason),
+            Err(reason) => self.sink.skip(number as u64, reason),
         }
         Next::Continue
     }
 
-    /// Sends the warning about skipped records and gives back the header the file declared.
+    /// The header the file declared.
     pub(crate) fn finish(self) -> Option<Header> {
-        if let Some(warning) = self.skipped.warning(self.seen) {
-            self.sink.warn(warning);
-        }
         self.header
     }
 
@@ -224,7 +211,7 @@ impl<'a> Records<'a> {
             .collect();
         Ok(Header {
             filter: FilterPolicy {
-                name: self.policy_name,
+                name: POLICY_NAME,
                 options,
             },
             coverage: match header.coverage {
@@ -237,8 +224,8 @@ impl<'a> Records<'a> {
 }
 
 /// A converter's warning, cut to what a lane shows.
-fn load_warning(warning: WarningIn) -> LoadWarning {
-    LoadWarning {
+fn load_warning(warning: WarningIn) -> Warning {
+    Warning {
         problem: cut(&warning.problem),
         more_reasons: warning.reasons.len() > MAX_REASONS,
         reasons: warning

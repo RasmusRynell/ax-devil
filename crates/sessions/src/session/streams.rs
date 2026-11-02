@@ -142,7 +142,7 @@ pub(super) fn redeem(
         .items
         .iter()
         .find(|known| known.id == item)
-        .map(|known| known.recipe.lane_matching(entry.overlays.len()))
+        .map(|known| known.recipe.lane_matching.clone())
         .unwrap_or_default();
     let (content, entry) = (content.clone(), Box::new(entry.clone()));
     let host_details = next.files

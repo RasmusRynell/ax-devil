@@ -4,16 +4,19 @@
 //!
 //! Parsing stays pure: it returns what the user asked for, and `run` decides what to start.
 
-use super::{Cli, Command, Global, describe};
+use super::{Cli, Command, Global, OverlayOption, describe};
 use api_types::handlers::{PluginStatus, PluginsInfo};
 use clap::{
     Arg, ArgAction, ArgMatches, CommandFactory, FromArgMatches, ValueHint,
     builder::PossibleValuesParser, error::ErrorKind,
 };
+use foundation::UserError;
+use handler_api::{
+    Cli as CliPlacement, Decoder, Field, FieldKind, PlaylistResolver, Settings, invalid_field,
+};
 use handlers::Handlers;
-use playlist_resolvers::{Cli as CliPlacement, Field, FieldKind, PlaylistResolver, Settings};
 use serde_json::Value;
-use std::ffi::OsString;
+use std::{ffi::OsString, path::Path, sync::Arc};
 
 /// Reads the process arguments; prints help, a version or a usage error and exits when that is what was asked for.
 pub(super) fn parse(handlers: &Handlers) -> Cli {
@@ -35,36 +38,119 @@ where
         });
     }
     let cli = Cli::from_arg_matches(&matches)?;
+    let mut cli = cli;
     if let Some(Command::Local {
         overlay,
         handler_type,
+        overlay_option,
         ..
-    }) = &cli.command
-        && !handler_type.is_empty()
-        && handler_type.len() != overlay.len()
+    }) = &mut cli.command
     {
-        return Err(usage_error(
-            ErrorKind::WrongNumberOfValues,
-            format!(
-                "--handler-type is given {} time(s) for {} --overlay; give one for every --overlay, or none",
-                handler_type.len(),
-                overlay.len()
-            ),
-        ));
+        if !handler_type.is_empty() && handler_type.len() != overlay.len() {
+            return Err(usage_error(
+                ErrorKind::WrongNumberOfValues,
+                format!(
+                    "--handler-type is given {} time(s) for {} --overlay; give one for every --overlay, or none",
+                    handler_type.len(),
+                    overlay.len()
+                ),
+            ));
+        }
+        if let Some(local) = matches.subcommand_matches("local") {
+            attach_overlay_options(local, overlay_option)?;
+        }
     }
     Ok(cli)
+}
+
+/// Gives each `--overlay-option` the position of the nearest `--overlay` before it on the command line.
+fn attach_overlay_options(
+    local: &ArgMatches,
+    options: &mut [OverlayOption],
+) -> Result<(), clap::Error> {
+    let overlays: Vec<usize> = local.indices_of("overlay").into_iter().flatten().collect();
+    let at = local.indices_of("overlay_option").into_iter().flatten();
+    for (option, at) in options.iter_mut().zip(at) {
+        let before = overlays.partition_point(|overlay| *overlay < at);
+        option.overlay = before.checked_sub(1).ok_or_else(|| {
+            usage_error(
+                ErrorKind::ArgumentConflict,
+                format!(
+                    "--overlay-option {}={} comes before any --overlay",
+                    option.key, option.value
+                ),
+            )
+        })?;
+    }
+    Ok(())
+}
+
+/// Reads one `--overlay-option` as `KEY=VALUE`.
+pub(super) fn parse_overlay_option(text: &str) -> Result<OverlayOption, String> {
+    match text.split_once('=') {
+        Some((key, value)) if !key.is_empty() => Ok(OverlayOption {
+            overlay: 0,
+            key: key.to_owned(),
+            value: value.to_owned(),
+        }),
+        _ => Err("expected KEY=VALUE".to_owned()),
+    }
+}
+
+/// The options `given` for the overlay file `path`, typed by the form of its decoder: `handler`, else the only
+/// decoder for the extension. A decoder not found leaves the values text, for the intake to refuse.
+pub(super) fn overlay_settings<'a>(
+    handlers: &Handlers,
+    path: &Path,
+    handler: Option<&str>,
+    given: impl Iterator<Item = &'a OverlayOption>,
+) -> Result<Settings, UserError> {
+    let decoder = match handler {
+        Some(handler) => handlers.decoder(handler),
+        None => match handlers.decoders_for(path)[..] {
+            [only] => Some(only),
+            _ => None,
+        },
+    };
+    typed_options(decoder, given)
+}
+
+/// The options `given` as settings, each typed by the form of `decoder`: a whole number where it declares one.
+fn typed_options<'a>(
+    decoder: Option<&Arc<dyn Decoder>>,
+    given: impl Iterator<Item = &'a OverlayOption>,
+) -> Result<Settings, UserError> {
+    let mut settings = Settings::new();
+    for option in given {
+        let integer = decoder.is_some_and(|decoder| {
+            decoder.spec().options.fields.iter().any(|field| {
+                field.key == option.key && matches!(field.kind, FieldKind::Integer { .. })
+            })
+        });
+        let value = if integer {
+            let number: i64 = option
+                .value
+                .parse()
+                .map_err(|_| invalid_field("Must be a whole number", &option.key))?;
+            Value::from(number)
+        } else {
+            Value::String(option.value.clone())
+        };
+        settings.insert(option.key.clone(), value);
+    }
+    Ok(settings)
 }
 
 /// The decoders and resolvers `list-handlers` prints, one per line, then the converters that did not load.
 pub(super) fn handlers_listing(handlers: &Handlers, installed: &PluginsInfo) -> String {
     let decoders: Vec<_> = handlers
-        .file_decoders()
+        .decoders()
         .iter()
         .map(|decoder| {
             let spec = decoder.spec();
             (
-                spec.handler,
-                format!("{} ({})", spec.display_name, spec.extensions.join(", ")),
+                spec.id.as_str(),
+                format!("{} ({})", spec.name, spec.extensions.join(", ")),
             )
         })
         .collect();
@@ -74,8 +160,8 @@ pub(super) fn handlers_listing(handlers: &Handlers, installed: &PluginsInfo) -> 
         .map(|resolver| {
             let spec = resolver.spec();
             (
-                spec.id,
-                format!("{}: {}", spec.display_name, spec.description),
+                spec.id.as_str(),
+                format!("{}: {}", spec.name, spec.description),
             )
         })
         .collect();
@@ -145,29 +231,40 @@ fn playlist_command(handlers: &Handlers) -> clap::Command {
 /// One resolver's subcommand: an argument per schema field.
 fn resolver_command(resolver: &dyn PlaylistResolver, handlers: &Handlers) -> clap::Command {
     let spec = resolver.spec();
-    clap::Command::new(spec.id).about(spec.description).args(
-        resolver
-            .schema()
-            .fields
-            .iter()
-            .map(|field| field_arg(field, handlers)),
-    )
+    clap::Command::new(spec.id.clone())
+        .about(spec.description.clone())
+        .args(
+            spec.form
+                .fields
+                .iter()
+                .map(|field| field_arg(field, handlers)),
+        )
 }
 
 fn field_arg(field: &Field, handlers: &Handlers) -> Arg {
-    let arg = Arg::new(field.key).required(field.required);
-    let arg = match field.cli {
+    let arg = Arg::new(field.key.clone()).required(field.required);
+    let arg = match &field.cli {
         CliPlacement::Positional => arg,
-        CliPlacement::Flag(name) => arg.long(name),
+        CliPlacement::Flag(name) => arg.long(name.clone()),
     };
+    let label = field.label.clone();
     match &field.kind {
-        FieldKind::Folder => arg.value_hint(ValueHint::DirPath).help(field.label),
-        FieldKind::File { .. } => arg.value_hint(ValueHint::FilePath).help(field.label),
-        FieldKind::Text => arg.help(field.label),
+        FieldKind::Folder => arg.value_hint(ValueHint::DirPath).help(label),
+        FieldKind::File { .. } => arg.value_hint(ValueHint::FilePath).help(label),
+        FieldKind::Text => arg.help(label),
+        FieldKind::Integer { .. } => arg
+            .value_name("N")
+            .value_parser(clap::value_parser!(i64))
+            .help(label),
         FieldKind::Handler => arg
             .value_name("HANDLER")
             .value_parser(handler_parser(handlers))
-            .help(field.label),
+            .help(label),
+        FieldKind::DecoderOptions { .. } => arg
+            .value_name("KEY=VALUE")
+            .value_parser(parse_overlay_option)
+            .action(ArgAction::Append)
+            .help(label),
         FieldKind::Scan { .. } => arg
             .value_name("A,B,...")
             .value_delimiter(',')
@@ -182,9 +279,9 @@ fn field_arg(field: &Field, handlers: &Handlers) -> Arg {
 fn handler_parser(handlers: &Handlers) -> PossibleValuesParser {
     PossibleValuesParser::new(
         handlers
-            .file_decoders()
+            .decoders()
             .iter()
-            .map(|decoder| decoder.spec().handler),
+            .map(|decoder| decoder.spec().id.clone()),
     )
 }
 
@@ -204,38 +301,50 @@ fn playlist_command_of(handlers: &Handlers, matches: &ArgMatches) -> Result<Comm
     };
     Ok(Command::Playlist {
         resolver: id.to_string(),
-        settings: settings_from(resolver.as_ref(), resolver_matches)?,
+        settings: settings_from(handlers, resolver.as_ref(), resolver_matches)?,
     })
 }
 
 /// The settings the arguments gave: folders and files made absolute, a `Scan` field a list when given and left out
-/// when not (which means all of them).
+/// when not (which means all of them), and decoder options typed by the chosen decoder.
 fn settings_from(
+    handlers: &Handlers,
     resolver: &dyn PlaylistResolver,
     matches: &ArgMatches,
 ) -> Result<Settings, clap::Error> {
-    let schema = resolver.schema();
+    let form = &resolver.spec().form;
     let mut settings = Settings::new();
-    for field in schema.fields {
+    for field in &form.fields {
+        let key = field.key.as_str();
         let value = match &field.kind {
             FieldKind::Scan { .. } => matches
-                .get_many::<String>(field.key)
+                .get_many::<String>(key)
                 .map(|names| Value::Array(names.cloned().map(Value::String).collect())),
             FieldKind::Folder | FieldKind::File { .. } => matches
-                .get_one::<String>(field.key)
+                .get_one::<String>(key)
                 .map(|path| absolute(field, path).map(Value::String))
                 .transpose()?,
-            FieldKind::Text | FieldKind::Handler => matches
-                .get_one::<String>(field.key)
-                .cloned()
-                .map(Value::String),
+            FieldKind::Integer { .. } => matches
+                .get_one::<i64>(key)
+                .map(|number| Value::from(*number)),
+            FieldKind::DecoderOptions { handler_field } => {
+                let decoder = matches
+                    .get_one::<String>(handler_field)
+                    .and_then(|id| handlers.decoder(id));
+                let given = matches.get_many::<OverlayOption>(key).into_iter().flatten();
+                let options = typed_options(decoder, given)
+                    .map_err(|error| usage_error(ErrorKind::InvalidValue, describe(&error)))?;
+                (!options.is_empty()).then_some(Value::Object(options))
+            }
+            FieldKind::Text | FieldKind::Handler => {
+                matches.get_one::<String>(key).cloned().map(Value::String)
+            }
         };
         if let Some(value) = value {
-            settings.insert(field.key.to_string(), value);
+            settings.insert(field.key.clone(), value);
         }
     }
-    schema
-        .validate(&settings)
+    form.validate(&settings)
         .map_err(|error| usage_error(ErrorKind::InvalidValue, describe(&error)))?;
     Ok(settings)
 }

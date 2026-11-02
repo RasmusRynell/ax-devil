@@ -3,7 +3,7 @@ import { reasonOf } from "../errors";
 import type { DecoderInfo, ErrorWire, FieldInfo, ResolverInfo } from "../generated/api";
 import { Refusal } from "../shell/SettingField";
 import { useServerKind } from "../shell/windowBridge";
-import { FieldControl, type FieldForm } from "./fields";
+import { decoderOptions, FieldControl, misread, needsValue, shown, type FieldForm } from "./fields";
 import {
   checkedCount,
   chosen,
@@ -35,7 +35,10 @@ const blank = (value: unknown) => typeof value !== "string" || value.trim() === 
 const scanFields = (resolver: ResolverInfo) =>
   resolver.fields.filter((field) => field.kind.kind === "Scan");
 
-/** The fields' starting text: the saved settings, whatever else they hold kept, with each decoder choice filled in. */
+/**
+ * The fields' starting text: the saved settings, whatever else they hold kept, with each decoder choice filled in. The
+ * saved options of a decoder become the text of its option fields, under `<field key>.<option key>`.
+ */
 function start(
   resolver: ResolverInfo,
   decoders: readonly DecoderInfo[],
@@ -47,8 +50,15 @@ function start(
     if (field.kind.kind === "Scan") {
       scans[field.key] = idleScan(values[field.key]);
       delete values[field.key];
-    } else if (typeof values[field.key] !== "string") {
-      values[field.key] = field.kind.kind === "Handler" ? (decoders[0]?.handler ?? "") : "";
+    } else if (field.kind.kind === "DecoderOptions") {
+      const saved = values[field.key];
+      delete values[field.key];
+      if (saved && typeof saved === "object") {
+        for (const [option, value] of Object.entries(saved))
+          values[`${field.key}.${option}`] = String(value);
+      }
+    } else if (field.kind.kind === "Handler" && typeof values[field.key] !== "string") {
+      values[field.key] = decoders[0]?.handler ?? "";
     }
   }
   return { resolverId: resolver.id, values, scans };
@@ -79,18 +89,41 @@ function reduce(state: State, action: Action): State {
   }
 }
 
-/** What loading sends, or `null` while something is missing: a required text, or a scan with a checked value. */
-function settingsOf(resolver: ResolverInfo, state: State): Settings | null {
+/** What loading sends, or `null` while something is missing or misread: a required text without a default, a scan with a checked value, or an integer that is not a whole number. */
+function settingsOf(
+  resolver: ResolverInfo,
+  state: State,
+  decoders: readonly DecoderInfo[],
+): Settings | null {
   const settings: Settings = { ...state.values };
+  // The text of a field as it is sent: a number for an `Integer` field, nothing while blank.
+  const typed = (field: FieldInfo, text: unknown) =>
+    blank(text) ? undefined : field.kind.kind === "Integer" ? Number(text) : text;
   for (const field of resolver.fields) {
     if (field.kind.kind === "Scan") {
       const view = state.scans[field.key];
       if (view?.phase !== "done" || checkedCount(view) === 0) return null;
       const names = chosen(view);
       if (names) settings[field.key] = names;
-    } else if (blank(settings[field.key])) {
-      if (field.required) return null;
-      delete settings[field.key];
+    } else if (field.kind.kind === "DecoderOptions") {
+      const options: Settings = {};
+      for (const option of decoderOptions(field, state.values, decoders)) {
+        const prefixed = { ...option, key: `${field.key}.${option.key}` };
+        if (misread(prefixed, state.values)) return null;
+        const value = typed(option, shown(prefixed, state.values));
+        if (value !== undefined) options[option.key] = value;
+        else if (needsValue(option)) return null;
+      }
+      for (const key of Object.keys(settings)) {
+        if (key.startsWith(`${field.key}.`)) delete settings[key];
+      }
+      if (Object.keys(options).length) settings[field.key] = options;
+    } else {
+      if (misread(field, settings)) return null;
+      const value = typed(field, shown(field, settings));
+      if (value !== undefined) settings[field.key] = value;
+      else if (needsValue(field)) return null;
+      else delete settings[field.key];
     }
   }
   return settings;
@@ -193,7 +226,7 @@ export function useResolverForm(
     pickFolder: bridge && (() => bridge.pickFolder()),
     values: state.values,
     scans: state.scans,
-    settings: settingsOf(resolver, state),
+    settings: settingsOf(resolver, state, decoders),
     canScan: (key) => canScanWith(key, state.values),
     scan: (key) => run(key, state.values),
     set: (key, value, commit = false) => {

@@ -6,7 +6,7 @@ use foundation::{ErrorCode, Timeline, UserError};
 use overlay_sync::MatchPolicy;
 use playback::{Rank, Want};
 
-use scene_store::{Ingest, Track, TrackSnapshot};
+use scene_store::{Ingest, TrackRead, TrackSnapshot};
 
 use crate::{
     LaneSnapshot, OverlayEvent, SourceSnapshot,
@@ -17,7 +17,7 @@ use crate::{
 #[derive(Clone)]
 pub struct FileScopeInput {
     /// The decoded file.
-    pub track: Arc<Track>,
+    pub track: Arc<dyn TrackRead>,
     /// The file as the lane holds it: its ingest has ended, and it is the numbering of `data_revision`.
     pub snapshot: Arc<TrackSnapshot>,
     /// How the lane matches samples to frames.
@@ -128,7 +128,7 @@ impl ViewerOverlays {
     }
 
     /// The track of a sample this viewer holds, the snapshot whose numbering the sample index is of (read it with
-    /// [`Track::scene_in`]), and the frame the sample ranks by: only for a ready source of `data_revision` whose
+    /// [`TrackRead::scene_in`]), and the frame the sample ranks by: only for a ready source of `data_revision` whose
     /// `sample` was sent and is still counted as held, inside the sample window. Anything else is `None`, so the
     /// viewer's authority bounds what an inspection may read.
     pub fn inspect_target(
@@ -136,7 +136,7 @@ impl ViewerOverlays {
         source: u16,
         data_revision: u32,
         sample: u64,
-    ) -> Option<(Arc<Track>, Arc<TrackSnapshot>, u64)> {
+    ) -> Option<(Arc<dyn TrackRead>, Arc<TrackSnapshot>, u64)> {
         let state = self.shared.lock();
         let slot = state.sources.get(usize::from(source))?;
         let Load::Ready(track, held) = &slot.load else {

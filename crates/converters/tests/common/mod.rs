@@ -8,19 +8,19 @@ use std::{
 };
 
 use converters::ConverterDecoder;
-use foundation::{CancelToken, Interrupt};
-use scene::Scene;
-use scene_decoders::{
-    DecodeContext, DecodeError, DecodeOptions, DecodeSummary, FileSceneDecoder, Header,
-    LoadWarning, OnEqualKey, SceneSink, SourceFile,
+use foundation::{CancelToken, Interrupt, Warning};
+use handler_api::{
+    DecodeError, DecodeSummary, Decoder, Header, Input, OnEqualKey, Record, SceneSink, Settings,
 };
+use scene::Scene;
 
 /// Records what a decoder gives its sink; optionally cancels after some samples.
 #[derive(Default)]
 pub struct TestSink {
     pub header: Option<Header>,
     pub samples: Vec<(Scene, OnEqualKey)>,
-    pub warnings: Vec<LoadWarning>,
+    pub skips: Vec<(u64, String)>,
+    pub warnings: Vec<Warning>,
     pub cancel_after: Option<(usize, CancelToken)>,
 }
 
@@ -41,7 +41,11 @@ impl SceneSink for TestSink {
         ControlFlow::Continue(())
     }
 
-    fn warn(&mut self, warning: LoadWarning) {
+    fn skip(&mut self, position: u64, reason: String) {
+        self.skips.push((position, reason));
+    }
+
+    fn warn(&mut self, warning: Warning) {
         self.warnings.push(warning);
     }
 }
@@ -49,12 +53,12 @@ impl SceneSink for TestSink {
 /// A file the decoder is pointed at; converters never ask for its bytes.
 pub struct FileSource(pub PathBuf);
 
-impl SourceFile for FileSource {
-    fn path(&self) -> &Path {
-        &self.0
+impl Input for FileSource {
+    fn path(&self) -> Option<&Path> {
+        Some(&self.0)
     }
 
-    fn bytes(&self, _: &CancelToken) -> Result<&[u8], Interrupt<DecodeError>> {
+    fn next(&mut self, _: &CancelToken) -> Result<Option<Record<'_>>, Interrupt<DecodeError>> {
         panic!("a converter reads the file itself");
     }
 }
@@ -89,19 +93,28 @@ impl Run {
 pub fn decode(
     decoder: &ConverterDecoder,
     file: &Path,
-    options: &DecodeOptions,
+    options: &Settings,
     cancel: &CancelToken,
     mut sink: TestSink,
 ) -> Run {
-    let context = DecodeContext { options };
-    let result = decoder.decode_file(&FileSource(file.to_path_buf()), &context, &mut sink, cancel);
+    let options = decoder
+        .spec()
+        .options
+        .validate(options)
+        .expect("the options fit the converter's form");
+    let result = decoder.decode(
+        &mut FileSource(file.to_path_buf()),
+        &options,
+        &mut sink,
+        cancel,
+    );
     Run { result, sink }
 }
 
 /// A manifest document with these fields; `extra` is inserted before the closing brace as `, "key": value` text.
 pub fn manifest_text(command: &str, extra: &str) -> String {
     format!(
-        r#"{{"manifest":1,"kind":"file","id":"test-conv","name":"Test","version":"1","protocol":1,
+        r#"{{"manifest":1,"kind":"file","id":"test-conv","name":"Test","version":"1","protocol":2,
             "scene_version":"4.0","extensions":[".test"],"command":{command}{extra}}}"#
     )
 }

@@ -1,18 +1,15 @@
 //! Opening tracks and sharing them between viewers.
 
 use std::{
-    collections::{BTreeMap, HashMap},
+    collections::HashMap,
     fmt::Write as _,
     path::{Path, PathBuf},
     sync::{Arc, Condvar, Mutex, MutexGuard, PoisonError, Weak},
     time::Duration,
 };
 
-use foundation::{CancelToken, ErrorCode, HostPath, Interrupt, UserError};
-use handlers::Handlers;
-use playlist_resolvers::OverlayRef;
-use scene_decoders::{DecodeOptions, FileSceneDecoder};
-use serde_json::Value as Json;
+use foundation::{CancelToken, ErrorCode, HostPath, Interrupt, Location, UserError};
+use handler_api::{Decoder, OverlayRef, Values};
 use sha2::{Digest, Sha256};
 
 use crate::{
@@ -35,7 +32,7 @@ pub struct TrackKey {
     pub path: PathBuf,
     /// The decoder handler id.
     pub handler: String,
-    /// The decoder options as canonical JSON: object keys sorted at every depth.
+    /// The decoder's declared options as canonical JSON ([`Values::canonical`]).
     pub options: String,
 }
 
@@ -58,7 +55,7 @@ impl TrackKey {
     }
 }
 
-type DecoderLookup = dyn Fn(&str) -> Option<Arc<dyn FileSceneDecoder>> + Send + Sync;
+type DecoderLookup = dyn Fn(&str) -> Option<Arc<dyn Decoder>> + Send + Sync;
 
 /// Opens and shares tracks.
 pub struct TrackRegistry {
@@ -114,18 +111,10 @@ impl Pending {
 }
 
 impl TrackRegistry {
-    /// A registry decoding with `handlers`, keeping artifacts under `cache_dir` when it is given. Without a cache
-    /// folder artifacts live in unnamed temporary files and are not reused across opens.
-    pub fn new(handlers: Handlers, cache_dir: Option<&Path>) -> Self {
-        Self::with_decoders(
-            move |handler| handlers.file_decoder(handler).cloned(),
-            cache_dir,
-        )
-    }
-
-    /// A registry that finds decoders with `lookup`.
-    pub(crate) fn with_decoders(
-        lookup: impl Fn(&str) -> Option<Arc<dyn FileSceneDecoder>> + Send + Sync + 'static,
+    /// A registry that finds decoders by id with `lookup`, keeping artifacts under `cache_dir` when it is given.
+    /// Without a cache folder artifacts live in unnamed temporary files and are not reused across opens.
+    pub fn new(
+        lookup: impl Fn(&str) -> Option<Arc<dyn Decoder>> + Send + Sync + 'static,
         cache_dir: Option<&Path>,
     ) -> Self {
         Self {
@@ -156,7 +145,8 @@ impl TrackRegistry {
     /// one.
     ///
     /// The track is returned once it can be read: for a decoder that gave a header, after its first publication
-    /// while the decode goes on ([`Track::snapshot`] says how far it is); otherwise when the decode has ended.
+    /// while the decode goes on ([`snapshot`](crate::TrackRead::snapshot) says how far it is); otherwise when the
+    /// decode has ended.
     /// Concurrent opens of one key decode once: the others wait, and one of them takes over if the opener is
     /// cancelled before the track can be read.
     pub fn open(
@@ -182,16 +172,14 @@ impl TrackRegistry {
             )
         })?;
         let options = decoder
-            .declared_options(&path, &overlay.options)
-            .map_err(|e| {
-                Interrupt::Failed(
-                    UserError::new(ErrorCode::OverlayInvalid, e.0).at(HostPath::new(&path)),
-                )
-            })?;
+            .spec()
+            .options
+            .validate(&overlay.options)
+            .map_err(|error| Interrupt::Failed(invalid_option(&decoder, &error, &path)))?;
         let key = TrackKey {
             path,
             handler: overlay.handler.clone(),
-            options: canonical_json(&options),
+            options: options.canonical(),
         };
         loop {
             let pending = match self.claim(&key) {
@@ -236,8 +224,8 @@ impl TrackRegistry {
     fn finish(
         &self,
         key: &TrackKey,
-        decoder: &Arc<dyn FileSceneDecoder>,
-        options: &DecodeOptions,
+        decoder: &Arc<dyn Decoder>,
+        options: &Values,
         pending: &Arc<Pending>,
         cancel: &CancelToken,
     ) -> Result<Arc<Track>, Interrupt<UserError>> {
@@ -272,8 +260,8 @@ impl TrackRegistry {
     fn load(
         &self,
         key: &TrackKey,
-        decoder: &Arc<dyn FileSceneDecoder>,
-        options: &DecodeOptions,
+        decoder: &Arc<dyn Decoder>,
+        options: &Values,
         cancel: &CancelToken,
     ) -> Result<Arc<Track>, Interrupt<UserError>> {
         let artifact = self
@@ -320,20 +308,21 @@ impl Drop for ClaimGuard<'_> {
     }
 }
 
-/// `options` as JSON text with the keys of every object in order, so equal options make equal keys.
-pub(crate) fn canonical_json(options: &serde_json::Map<String, Json>) -> String {
-    fn sorted(value: &Json) -> Json {
-        match value {
-            Json::Object(map) => Json::Object(
-                map.iter()
-                    .collect::<BTreeMap<_, _>>()
-                    .into_iter()
-                    .map(|(key, value)| (key.clone(), sorted(value)))
-                    .collect(),
-            ),
-            Json::Array(items) => Json::Array(items.iter().map(sorted).collect()),
-            other => other.clone(),
-        }
-    }
-    sorted(&Json::Object(options.clone())).to_string()
+/// A rejected option of `decoder`, named by its label, as a failure of the overlay file.
+fn invalid_option(decoder: &Arc<dyn Decoder>, error: &UserError, path: &Path) -> UserError {
+    let label = match &error.location {
+        Some(Location::Field(key)) => decoder
+            .spec()
+            .options
+            .fields
+            .iter()
+            .find(|field| field.key == *key)
+            .map_or(key.as_str(), |field| field.label.as_str()),
+        _ => "An option",
+    };
+    UserError::new(
+        ErrorCode::OverlayInvalid,
+        format!("{label}: {}", error.reason),
+    )
+    .at(HostPath::new(path))
 }

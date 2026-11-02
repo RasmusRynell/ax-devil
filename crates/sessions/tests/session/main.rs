@@ -80,6 +80,10 @@ pub(crate) fn playlist_in(dir: &std::path::Path, names: &[&str]) -> WorkspaceIte
     settings.insert("videos_dir".into(), videos.display().to_string().into());
     settings.insert("overlays_dir".into(), overlays.display().to_string().into());
     settings.insert("handler_type".into(), "MOT_FILE".into());
+    settings.insert(
+        "options".into(),
+        serde_json::json!({"width": 64, "height": 48}),
+    );
     workspace::intake::playlist("folder_pair", settings, None, &Handlers::built_in()).unwrap()
 }
 

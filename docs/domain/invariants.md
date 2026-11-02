@@ -119,8 +119,8 @@ implementing module closes.
   command applied under its Session's lock; a refused command changes nothing, and each change reaches every seat as
   one new Doc. "Modified" is current ≠ saved. One projection turns the resolved Content and the open items into rows.
 - Hidden refs identify current Workspace content, playlist entries or lanes; orphan and out-of-range refs are ignored.
-- A lane's matching (basis, tolerance, sticky) lives in its item's recipe, by overlay for a video and by lane position
-  for a playlist (lane names are per entry), and changes only by a Doc command.
+- A lane's matching (basis, tolerance, sticky) lives in its item's recipe, by the lane's slot (the same in every entry
+  of a playlist, where lane names can differ), and changes only by a Doc command.
 - Removing Content removes its whole item and closes every viewer showing it. Opening a Workspace file closes every
   viewer, even when item ids are kept. The split host alone removes and destroys hosted viewers.
 - Every item is listed: a failed one is an unavailable row showing its reason that never opens; one still resolving is

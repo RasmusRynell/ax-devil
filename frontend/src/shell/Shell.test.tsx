@@ -314,6 +314,51 @@ describe("add video", () => {
   );
 });
 
+describe("add video with an overlay", () => {
+  it("asks for the options its decoder declares, sends them as typed, and holds back a missing required one", async () => {
+    const options = [
+      { key: "width", label: "Image width", kind: { kind: "Integer", min: 1 }, required: true },
+    ];
+    const decoders = [
+      { handler: "MOT_FILE", display_name: "MOT", extensions: [".txt"], options },
+      { handler: "ONVIF_XML", display_name: "ONVIF", extensions: [".xml"], options: [] },
+    ];
+    vi.stubGlobal("fetch", async () => new Response(JSON.stringify({ decoders, resolvers: [] })));
+    await renderShell({ grants: ["files"] });
+    fireEvent.keyDown(document, { key: "n", ctrlKey: true });
+    fireEvent.change(screen.getByRole("textbox", { name: "Path on the server" }), {
+      target: { value: "/srv/a.mp4" },
+    });
+    fireEvent.change(await screen.findByRole("textbox", { name: "Overlay path" }), {
+      target: { value: "/srv/gt.txt" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Add" }));
+    expect(screen.getByRole("alert").textContent).toContain("Image width is required");
+    const sent = () => FakeSocket.latest.received.filter((message) => message.type === "command");
+    expect(sent()).toEqual([]);
+
+    fireEvent.change(screen.getByRole("textbox", { name: "Image width" }), {
+      target: { value: "1920" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Add" }));
+    await act(async () => {});
+    expect(sent()).toMatchObject([
+      {
+        cmd: {
+          command: {
+            items: [
+              {
+                path: "/srv/a.mp4",
+                overlays: [{ path: "/srv/gt.txt", handler: "MOT_FILE", options: { width: 1920 } }],
+              },
+            ],
+          },
+        },
+      },
+    ]);
+  });
+});
+
 describe("add playlist", () => {
   it("opens from the shortcut and from the File menu", async () => {
     vi.stubGlobal(

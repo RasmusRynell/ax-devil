@@ -81,17 +81,19 @@ export function Checkbox({
   );
 }
 
-/** A labelled text box; `masked` hides what is typed, `action` sits after the box, `describedBy` names a note about it. */
+/** A labelled text box; `masked` hides what is typed, `placeholder` shows what applies while it is empty, `action` sits after the box, `describedBy` names a note about it. */
 export function TextField({
   label,
   value,
   masked = false,
+  placeholder,
   describedBy,
   action,
   onChange,
 }: {
   label: ReactNode;
   value: string;
+  placeholder?: string;
   masked?: boolean;
   describedBy?: string;
   action?: ReactNode;
@@ -108,6 +110,7 @@ export function TextField({
           id={id}
           type={masked ? "password" : "text"}
           value={value}
+          placeholder={placeholder}
           autoComplete="off"
           spellCheck={false}
           aria-describedby={describedBy}

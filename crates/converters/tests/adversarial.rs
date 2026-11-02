@@ -16,8 +16,8 @@ use std::{
 use common::{Run, TestSink, decode, manifest_text};
 use converters::ConverterDecoder;
 use foundation::{CancelToken, Interrupt};
+use handler_api::{OnEqualKey, Settings};
 use scene::SceneTime;
-use scene_decoders::{DecodeOptions, OnEqualKey};
 
 const MODE_PREFIX: &str = "--converter=";
 const SECRET_NAMES: [&str; 3] = [
@@ -266,7 +266,7 @@ fn run_fake(mode: &str, extra: &str, cancel: &CancelToken, sink: TestSink) -> Ru
     decode(
         &decoder,
         &folder.path().join("input.test"),
-        &DecodeOptions::new(),
+        &Settings::new(),
         cancel,
         sink,
     )
@@ -302,7 +302,6 @@ fn wire_lines_reach_the_sink() {
     let summary = run.summary();
     let header = run.sink.header.as_ref().expect("header reached the sink");
     assert_eq!(header.filter.options.len(), 1);
-    assert_eq!(header.filter.name, "test-conv");
     assert_eq!(summary.coverage, scene::Coverage::Dense);
     assert_eq!(summary.filter, header.filter);
     let modes: Vec<OnEqualKey> = run.sink.samples.iter().map(|(_, mode)| *mode).collect();
@@ -311,10 +310,10 @@ fn wire_lines_reach_the_sink() {
         [OnEqualKey::Merge, OnEqualKey::Merge, OnEqualKey::Replace]
     );
     let warnings = &run.sink.warnings;
-    assert_eq!(warnings.len(), 2, "{warnings:?}");
+    assert_eq!(warnings.len(), 1, "{warnings:?}");
     assert_eq!(warnings[0].reasons, ["a", "b", "c"]);
     assert!(warnings[0].more_reasons);
-    assert_eq!(warnings[1].problem, "Skipped 1 of 4 records");
+    assert_eq!(run.sink.skips, [(7, "row 9 has no id".to_owned())]);
 }
 
 fn a_silent_converter_is_killed_after_the_idle_timeout() {
@@ -395,24 +394,13 @@ fn bad_lines_are_skipped_and_counted_by_line_number() {
         .map(|index| frame_of(&run, index))
         .collect();
     assert_eq!(frames, [0, 1, 3]);
-    let warning = &run.sink.warnings[0];
-    assert_eq!(warning.problem, "Skipped 4 of 7 records");
-    assert!(
-        warning.reasons[0].starts_with("line 2: "),
-        "{:?}",
-        warning.reasons
-    );
-    assert!(
-        warning.reasons[1].starts_with("line 3: "),
-        "{:?}",
-        warning.reasons
-    );
-    assert!(
-        warning.reasons[2].starts_with("line 5: "),
-        "{:?}",
-        warning.reasons
-    );
-    assert!(warning.more_reasons);
+    let positions: Vec<u64> = run
+        .sink
+        .skips
+        .iter()
+        .map(|(position, _)| *position)
+        .collect();
+    assert_eq!(positions, [2, 3, 5, 6]);
 }
 
 fn a_failure_keeps_the_samples_and_quotes_stderr() {

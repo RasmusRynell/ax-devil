@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { reasonOf } from "../errors";
 import type { ErrorWire, HandlersInfo } from "../generated/api";
-import { Dialog } from "../kit/Dialog";
+import { Dialog, DialogBody } from "../kit/Dialog";
 import { Select, TextField } from "../kit/Fields";
 import { fetchHandlers } from "../resolvers/handlers";
 import { ResolverForm, useResolverForm } from "../resolvers/ResolverForm";
@@ -92,7 +92,7 @@ function Loaded({ handlers, onClose }: { handlers: HandlersInfo; onClose: () => 
       busy={adding || !form.settings}
     >
       <fieldset disabled={adding} className="contents">
-        <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-l overflow-y-auto [@media(max-height:20rem)]:gap-s">
+        <DialogBody>
           <Select
             label="Playlist type"
             value={resolver.id}
@@ -103,7 +103,7 @@ function Loaded({ handlers, onClose }: { handlers: HandlersInfo; onClose: () => 
           />
           <ResolverForm form={form} />
           <TextField label="Name" value={name} onChange={setName} />
-        </div>
+        </DialogBody>
       </fieldset>
       {refusal && <Refusal reason={refusal} />}
     </Dialog>

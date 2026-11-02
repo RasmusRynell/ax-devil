@@ -7,6 +7,7 @@
 //! artifact that replaces the published one as the next generation.
 
 use std::{
+    cell::Cell,
     cmp::Ordering,
     fs::File,
     io::BufWriter,
@@ -17,18 +18,19 @@ use std::{
     time::{Duration, Instant},
 };
 
-use foundation::{CancelToken, ErrorCode, Interrupt, UserError};
+use foundation::{CancelToken, ErrorCode, Interrupt, UserError, Warning};
+use handler_api::{
+    DecodeError, DecodeSummary, Decoder, Framing, Header, OnEqualKey, SceneSink, SkippedRecords,
+    Values,
+};
 use overlay_sync::MatchBasis;
 use scene::{Scene, SceneTime, TimeKind};
-use scene_decoders::{
-    DecodeContext, DecodeError, DecodeOptions, DecodeSummary, FileSceneDecoder, Header,
-    LoadWarning, OnEqualKey, SceneSink,
-};
 
 use crate::{
     format::Identity,
     group::Group,
     history::{HISTORY_BYTES, HistoryBuilder},
+    input::FileInput,
     keylog::KeyLog,
     link::{Link, Presented},
     output::Output,
@@ -78,8 +80,8 @@ pub(crate) enum First {
 
 /// Everything the thread needs; it owns all of it.
 pub(crate) struct Job {
-    pub decoder: Arc<dyn FileSceneDecoder>,
-    pub options: DecodeOptions,
+    pub decoder: Arc<dyn Decoder>,
+    pub options: Values,
     pub source: LazySource,
     pub identity: Identity,
     pub artifact: Option<PathBuf>,
@@ -109,12 +111,13 @@ fn run(job: Job) {
         cancel,
         first,
     } = job;
-    let by_position = decoder.spec().bases.contains(&MatchBasis::Frame);
+    let spec = Arc::new(decoder.spec().clone());
+    let by_position = spec.bases.contains(&MatchBasis::Frame);
     let mut link = Link::new(
         source.path_buf(),
         cache_bytes,
         cancel.clone(),
-        decoder.spec(),
+        spec.clone(),
         first,
     );
     let store = match Store::start(artifact, tuning, by_position, cancel.clone()) {
@@ -124,19 +127,90 @@ fn run(job: Job) {
             return;
         }
     };
-    let mut feed = Feed { link, store };
-    let context = DecodeContext { options: &options };
-    let result = decoder.decode_file(&source, &context, &mut feed, &cancel);
-    let Feed { mut link, store } = feed;
+    let records = Cell::new(0);
+    let mut input = FileInput::new(&source, spec.framing, &records);
+    let mut feed = Feed {
+        link,
+        store,
+        framing: spec.framing,
+        records: &records,
+        whole: Whole::default(),
+        skipped: SkippedRecords::new("lines", "Those lines are not drawn."),
+    };
+    let result = decoder.decode(&mut input, &options, &mut feed, &cancel);
+    let total = feed.lines();
+    let Feed {
+        mut link,
+        mut store,
+        skipped,
+        ..
+    } = feed;
+    if let Some(warning) = skipped.warning(total) {
+        store.warnings.push(warning);
+    }
     if let Err(interrupt) = store.conclude(&mut link, result, &source, identity) {
         link.fail(interrupt);
     }
 }
 
 /// The sink the decoder feeds.
-struct Feed {
+struct Feed<'a> {
     link: Link,
     store: Store,
+    framing: Framing,
+    /// How many records the input has given; the last is the one the decoder is working on.
+    records: &'a Cell<u64>,
+    /// The records of a decoder that reads the file itself, which no input counts.
+    whole: Whole,
+    /// The records the decoder gave up on; the warning names them with the count of lines read.
+    skipped: SkippedRecords,
+}
+
+/// The records of a decoder that reads the file itself (a converter): a skip is one, and so are the consecutive
+/// Scenes of one start key, which the host joins.
+#[derive(Default)]
+struct Whole {
+    /// How many records have been seen.
+    count: u64,
+    /// The start key of the record the last Scene joined; a skip clears it.
+    key: Option<SceneTime>,
+}
+
+impl Whole {
+    /// The place of a Scene with start `key`, from 0.
+    fn sample(&mut self, key: SceneTime) -> u64 {
+        if self.key != Some(key) {
+            self.count += 1;
+            self.key = Some(key);
+        }
+        self.count - 1
+    }
+
+    fn skip(&mut self) {
+        self.count += 1;
+        self.key = None;
+    }
+}
+
+impl Feed<'_> {
+    /// Where the file puts the Scene with start `key` that arrives now, from 0, for matching by frame. A record is
+    /// placed by its own place among the file's records, so one that gave no Scene (skipped, or with nothing to
+    /// draw) still holds its frame.
+    fn ordinal(&mut self, key: SceneTime) -> u64 {
+        match self.framing {
+            Framing::Records => self.records.get().saturating_sub(1),
+            Framing::Whole => self.whole.sample(key),
+        }
+    }
+
+    /// The records the skipped warning counts against.
+    fn lines(&self) -> usize {
+        let count = match self.framing {
+            Framing::Records => self.records.get(),
+            Framing::Whole => self.whole.count,
+        };
+        usize::try_from(count).unwrap_or(usize::MAX)
+    }
 }
 
 /// What the store keeps while Scenes arrive.
@@ -150,8 +224,6 @@ struct Store {
     /// The group of the highest key so far and the position in the file of its record; `None` once the ingest is
     /// frozen or nothing has arrived.
     open: Option<(SceneTime, Group, u64)>,
-    /// How many Scenes have arrived: the position in the file of the next.
-    arrivals: u64,
     /// Set when a key below the open one arrived: from then on Scenes are fragments to be sorted.
     frozen: Option<Sorter>,
     /// How many Scenes replaced earlier ones of their key while ascending; the pass adds its own.
@@ -169,7 +241,7 @@ struct Store {
     published_records: usize,
 }
 
-impl SceneSink for Feed {
+impl SceneSink for Feed<'_> {
     fn header(&mut self, header: Header) {
         let store = &mut self.store;
         if store.header.is_some() || store.clock.is_some() {
@@ -180,11 +252,12 @@ impl SceneSink for Feed {
     }
 
     fn sample(&mut self, scene: Scene, on_equal_key: OnEqualKey) -> ControlFlow<()> {
+        let ordinal = self.ordinal(scene.time().start());
         let store = &mut self.store;
         if store.refused.is_some() || store.cancel.is_cancelled() {
             return ControlFlow::Break(());
         }
-        match store.accept(&mut self.link, scene, on_equal_key) {
+        match store.accept(&mut self.link, scene, on_equal_key, ordinal) {
             Ok(()) => ControlFlow::Continue(()),
             Err(reason) => {
                 store.refused = Some(reason);
@@ -193,7 +266,12 @@ impl SceneSink for Feed {
         }
     }
 
-    fn warn(&mut self, warning: LoadWarning) {
+    fn skip(&mut self, position: u64, reason: String) {
+        self.whole.skip();
+        self.skipped.add(format!("line {position}: {reason}"));
+    }
+
+    fn warn(&mut self, warning: Warning) {
         self.store.warnings.push(warning);
     }
 }
@@ -217,7 +295,6 @@ impl Store {
             clock: None,
             header: None,
             open: None,
-            arrivals: 0,
             frozen: None,
             replaced: 0,
             keys: KeyLog::new(TimeKind::Frame, by_position),
@@ -235,6 +312,7 @@ impl Store {
         link: &mut Link,
         scene: Scene,
         on_equal_key: OnEqualKey,
+        ordinal: u64,
     ) -> Result<(), String> {
         let start = scene.time().start();
         match self.clock {
@@ -250,8 +328,6 @@ impl Store {
             Some(_) => {}
         }
         let replace = on_equal_key == OnEqualKey::Replace;
-        let ordinal = self.arrivals;
-        self.arrivals += 1;
         if let Some(sorter) = &mut self.frozen {
             return add_fragment(sorter, &mut self.writer, start, &scene, replace, ordinal);
         }

@@ -8,13 +8,13 @@ use std::{
 };
 
 use foundation::{CancelToken, MediaTime, Timeline};
+use handler_api::OverlayRef;
 use overlay_sync::{MatchBasis, MatchPolicy, Sticky, Tolerance};
 use playback::{Direction, Priority, Want, rank};
-use playlist_resolvers::OverlayRef;
-use scene_store::Track;
+use scene_store::TrackRead;
 
 use super::{Env, timeline, want};
-use crate::{OverlayEvent, state::State, window::FIRST_NON_SAMPLE};
+use crate::{OverlayEvent, sources::TrackSource, state::State, window::FIRST_NON_SAMPLE};
 
 /// What a viewer would hold after the events it was sent, applied in order.
 pub(super) struct Model {
@@ -89,7 +89,7 @@ impl Model {
 /// as the consumer. The writer drops every `drop_every`th sample or map (never when 0), which is handed back later.
 pub(super) struct Rig {
     pub(super) state: State,
-    pub(super) track: Arc<Track>,
+    pub(super) track: Arc<dyn TrackRead>,
     pub(super) timeline: Timeline,
     pub(super) model: Model,
     pub(super) dropped: Vec<OverlayEvent>,
@@ -163,11 +163,8 @@ impl Rig {
     }
 
     pub(super) fn open(env: &Env, overlay: OverlayRef, timeline: Timeline, lanes: usize) -> Self {
-        let track = env
-            .tracks
-            .registry
-            .open(&overlay, &CancelToken::new())
-            .expect("opens");
+        let track =
+            TrackSource::open(&env.tracks.registry, &overlay, &CancelToken::new()).expect("opens");
         let mut state = State::new(
             vec![Some(overlay); lanes],
             timeline.last(),

@@ -64,6 +64,8 @@ export type CatalogLook = {
 /** What the UI shows of one lane. */
 export type LaneState = {
   label: string;
+  /** The lane's identity within its entry, which the workspace keeps its matching under. */
+  slot: string;
   /** The viewer's source id; `null` for a plain lane. */
   source: number | null;
   status: LaneStatusWire | "plain";

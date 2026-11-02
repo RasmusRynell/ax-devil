@@ -1,10 +1,18 @@
 //! Folder Pair resolver behavior through the public registry.
 
-use std::{fs, path::Path};
+use std::{fs, path::Path, sync::Arc};
 
 use foundation::{CancelToken, HostPath, Interrupt, Location};
-use playlist_resolvers::{ResolvedPlaylist, Settings, VideoRef, WatchPaths, resolver};
+use handler_api::{PlaylistResolver, ResolvedPlaylist, Settings, VideoRef};
+use playlist_resolvers::resolvers;
 use serde_json::json;
+
+fn resolver() -> Arc<dyn PlaylistResolver> {
+    resolvers()
+        .into_iter()
+        .find(|resolver| resolver.spec().id == "folder_pair")
+        .unwrap()
+}
 
 fn touch(path: impl AsRef<Path>) {
     let path = path.as_ref();
@@ -25,7 +33,12 @@ fn resolve(
     settings: &Settings,
     cancel: &CancelToken,
 ) -> Result<ResolvedPlaylist, Interrupt<foundation::UserError>> {
-    resolver("folder_pair").unwrap().resolve(settings, cancel)
+    let values = resolver()
+        .spec()
+        .form
+        .validate(settings)
+        .map_err(Interrupt::Failed)?;
+    resolver().resolve(&values, cancel)
 }
 
 fn failure(settings: &Settings) -> foundation::UserError {
@@ -168,7 +181,7 @@ fn duplicate_names_and_no_pairs_are_errors() {
 }
 
 #[test]
-fn a_cancelled_token_stops_resolving_and_watching() {
+fn a_cancelled_token_stops_resolving() {
     let dir = tempfile::tempdir().unwrap();
     touch(dir.path().join("v/a.mp4"));
     touch(dir.path().join("o/a.json"));
@@ -180,27 +193,4 @@ fn a_cancelled_token_stops_resolving_and_watching() {
         resolve(&settings, &cancel),
         Err(Interrupt::Cancelled)
     ));
-    assert!(
-        resolver("folder_pair")
-            .unwrap()
-            .watch_paths(&settings, &cancel)
-            .is_err()
-    );
-}
-
-#[test]
-fn watches_both_folders() {
-    let (videos, overlays) = (Path::new("/videos"), Path::new("/overlays"));
-    let watch = resolver("folder_pair")
-        .unwrap()
-        .watch_paths(&settings(videos, overlays), &CancelToken::new())
-        .unwrap();
-
-    assert_eq!(
-        watch,
-        WatchPaths {
-            folders: [videos.into(), overlays.into()].into(),
-            ..WatchPaths::default()
-        }
-    );
 }
