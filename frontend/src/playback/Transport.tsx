@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { type CSSProperties, useState } from "react";
 import { IconButton } from "../kit/IconButton";
 import { MAX_SPEED } from "./clock";
 import type { PlaybackSession } from "./session";
@@ -22,7 +22,7 @@ const BUTTON = "size-row rounded-control";
 
 // The controls fade with the pointer's rest (see chromeVisibility) and stay while a control has the keyboard focus ring.
 const CONTROLS =
-  "pointer-events-auto flex flex-col gap-xs bg-canvas-scrim px-m py-s text-on-canvas transition-opacity duration-200 ease-out-cubic motion-reduce:transition-none group-data-[chrome=hidden]:not-has-[:focus-visible]:opacity-0 group-data-[chrome=hidden]:not-has-[:focus-visible]:delay-200";
+  "pointer-events-auto flex flex-col rounded-popup border border-canvas-line bg-canvas-scrim px-l py-xs text-on-canvas shadow-float transition-opacity duration-200 ease-out-cubic motion-reduce:transition-none group-data-[chrome=hidden]:not-has-[:focus-visible]:opacity-0 group-data-[chrome=hidden]:not-has-[:focus-visible]:delay-200";
 
 /** The speed field: edits commit as they become a number; leaving it shows the speed the session settled on. */
 function SpeedField({
@@ -73,11 +73,11 @@ export function Transport({ controls, view, disabled = false }: Props) {
   const last = view.frameCount - 1;
   const { shown, playing, frameError } = view;
   return (
-    <div className="pointer-events-none absolute inset-x-0 bottom-0 flex flex-col items-start text-on-canvas">
+    <div className="pointer-events-none absolute inset-x-0 bottom-0 flex flex-col items-start gap-s p-m text-on-canvas">
       {frameError && (
         <p
           role="alert"
-          className="pointer-events-auto m-0 w-fit rounded-control bg-canvas-scrim px-m py-xs"
+          className="pointer-events-auto m-0 w-fit rounded-popup border border-canvas-line bg-canvas-scrim px-m py-xs shadow-float"
         >
           Frame {frameError.sequenceId} cannot be shown: {frameError.reason}
         </p>
@@ -94,7 +94,8 @@ export function Transport({ controls, view, disabled = false }: Props) {
           disabled={disabled}
           value={view.playhead}
           onChange={(event) => controls.seek(event.target.valueAsNumber)}
-          className="m-0 h-icon w-full accent-on-canvas"
+          style={{ "--seek-fill": last > 0 ? view.playhead / last : 0 } as CSSProperties}
+          className="seek-bar m-0 h-l w-full"
         />
         <div className="flex flex-wrap items-center gap-x-xs">
           <IconButton
@@ -126,9 +127,10 @@ export function Transport({ controls, view, disabled = false }: Props) {
           />
           <span className="flex-1" />
           <output aria-label="Frame" className="px-xs tabular-nums">
-            {shown?.sequenceId ?? "…"} / {last}
+            {shown?.sequenceId ?? "…"}
+            <span className="text-on-canvas-muted"> / {last}</span>
           </output>
-          <output aria-label="Time" className="px-xs tabular-nums">
+          <output aria-label="Time" className="px-xs tabular-nums text-on-canvas-muted">
             {shown ? timecode(shown.timestampUs) : "…"}
           </output>
           <SpeedField
