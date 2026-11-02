@@ -8,31 +8,26 @@
 import { createElement, type ReactElement } from "react";
 import { flushSync } from "react-dom";
 import { createRoot, type Root } from "react-dom/client";
-import type { FileRowWire, FileSortWire } from "../generated/api";
 import type { LaneFrame } from "../playback/contract";
 import type { FieldGroupWire, FieldWire } from "../playback/protocol";
 import type { InspectorMemory } from "../playback/fields";
 import { Inspector } from "../playback/Inspector";
 import { LANE_DEFAULTS } from "../playback/fakeOpened";
-import type { FileScope } from "../playback/fileScope";
 import { LaneSet } from "../playback/lanes";
-import type { LaneStatusWire } from "../playback/protocol";
 import { INITIAL_VIEW, type PlaybackView } from "../playback/view";
 import { ObjectsPanel } from "../tools/ObjectsPanel";
 import { rememberedWidths } from "../tools/table/fit";
 import "../style.css";
 import { summarize } from "./stats";
-import { catalogNamed, laneRing } from "./synthetic";
+import { FakeFiles, READY, RING, ringOf } from "./tablesData";
 import type { Settings, Stat } from "./types";
 
 /** The refresh interval the budget is written for: scrolling and resizing keep to it at 100000 rows. */
 const BUDGET = 16.7;
 /** An interval this much over a refresh is a frame that was late. */
 const LATE = BUDGET * 1.1;
-const RING = 6;
 /** Fields in the inspector scenarios; the backend caps an object at 4096. */
 const FIELDS = 4000;
-const CLASSES = ["car", "human", "head", "bus", "dog", "truck"];
 
 export type TableName =
   | "first rows"
@@ -95,78 +90,6 @@ export function plan(settings: Settings): TableScenario[] {
     scenario("inspector scroll", "Fields"),
     scenario("inspector pin", "Fields"),
   ];
-}
-
-const READY: Extract<LaneStatusWire, { status: "Ready" }> = {
-  status: "Ready",
-  bases: ["Frame"],
-  default_basis: "Frame",
-  filter: [],
-  warnings: [],
-  samples: 1000,
-  data_revision: 1,
-  alignment: null,
-  mean_sample_bytes: 100,
-  ingest: { state: "Complete" },
-};
-
-const fileRow = (index: number): FileRowWire => {
-  const first = (index * 37) % 900;
-  return {
-    id: `track-${index * 7919}`,
-    classes: [CLASSES[index % CLASSES.length]],
-    events: [],
-    first_frame: first,
-    last_frame: first + 50,
-    presence: [
-      [first, first + 20],
-      [first + 30, first + 50],
-    ],
-  };
-};
-
-type FileScopeView = ReturnType<FileScope["view"]>;
-
-/** The File scope client of a lane whose file has `total` objects; a page is answered a task after it is asked for. */
-class FakeFiles {
-  readonly #listeners = new Set<() => void>();
-  readonly #total: number;
-  #view: FileScopeView = { pending: false, page: null, unavailable: null };
-
-  constructor(total: number) {
-    this.#total = total;
-  }
-
-  subscribe = (listener: () => void): (() => void) => {
-    this.#listeners.add(listener);
-    return () => this.#listeners.delete(listener);
-  };
-  view = (_lane: number): FileScopeView => this.#view;
-  request = (_lane: number, _text: string, _sort: FileSortWire, offset: number, limit: number) => {
-    const rows = Array.from({ length: Math.min(limit, this.#total - offset) }, (_, k) =>
-      fileRow(offset + k),
-    );
-    setTimeout(() => {
-      this.#view = {
-        pending: false,
-        page: { total: this.#total, matched: this.#total, offset, rows },
-        unavailable: null,
-      };
-      this.#listeners.forEach((listener) => listener());
-    }, 0);
-  };
-  release = (_lane: number) => {};
-}
-
-const rings = new Map<number, LaneFrame[]>();
-/** `RING` frames of `objects` objects each, made once. */
-function ringOf(objects: number): LaneFrame[] {
-  let ring = rings.get(objects);
-  if (!ring) {
-    ring = laneRing(catalogNamed("standard"), 1, objects, RING).map((step) => step[0]);
-    rings.set(objects, ring);
-  }
-  return ring;
 }
 
 /** A viewer 1280 x 720 with the panel in a column beside the picture, as it is in a wide window. */
