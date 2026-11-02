@@ -101,10 +101,15 @@ module.exports.objects = async (window, { setTheme, shoot }) => {
     (await rows()).some((row) => row.selected && !row.dimmed),
     "The object is selected and now in the frame",
   );
+  // A pinned field rises into a section of its own.
+  const INSPECTOR = "aside[aria-label=Inspector]";
+  await js(`document.querySelector('${INSPECTOR} [data-act=pin][aria-label^=Pin]').click()`);
+  await wait(`document.querySelector('${INSPECTOR} section[aria-label=Pinned]')`);
   for (const theme of THEMES) {
     await setTheme(theme);
     await shoot(`objects-inspected-${theme}.png`);
   }
+  await js(`document.querySelector('${INSPECTOR} [data-act=pin][aria-label^=Unpin]').click()`);
   await js("document.querySelector('[aria-label=\"Close inspector\"]').click()");
 
   // The smallest window at 200%: the panel covers the viewer and nothing sticks out or is cut off.
