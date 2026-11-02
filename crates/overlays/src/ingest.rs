@@ -273,7 +273,7 @@ impl Aligned {
 
 /// The warning for samples that do not line up with the video's frames: by time, the last one far from the last
 /// frame, or too few of the [`attainable`](Alignment::attainable) ones selected by a frame; by frame, too few of them
-/// within the video. A file at a higher rate than the video leaves samples unselected however well it lines up.
+/// within the video. A file sampled faster than the video leaves samples unselected however well it lines up.
 fn misalignment(alignment: &Alignment, policy: &MatchPolicy) -> Option<LoadWarning> {
     let mut reasons = Vec::new();
     if alignment.ends_far()
@@ -287,12 +287,7 @@ fn misalignment(alignment: &Alignment, policy: &MatchPolicy) -> Option<LoadWarni
             seconds(alignment.video_end.0),
         ));
     }
-    #[expect(
-        clippy::cast_precision_loss,
-        reason = "a share of the samples needs no exactness"
-    )]
-    let share = alignment.matched as f64 / alignment.attainable().max(1) as f64;
-    if alignment.samples > 0 && share < MATCHED_ENOUGH {
+    if !alignment.lines_up() {
         reasons.push(match alignment.basis {
             MatchBasis::Time => {
                 let within = match policy.tolerance {
@@ -329,9 +324,6 @@ fn misalignment(alignment: &Alignment, policy: &MatchPolicy) -> Option<LoadWarni
         more_reasons: false,
     })
 }
-
-/// The share of the attainable samples a frame must select for the file to line up with the video.
-const MATCHED_ENOUGH: f64 = 0.8;
 
 /// Microseconds as seconds for the user, such as `41.6 s`.
 fn seconds(us: i64) -> String {

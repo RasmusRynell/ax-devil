@@ -9,6 +9,8 @@ use crate::{MatchBasis, MatchKind, MatchPolicy, SampleKeys, Selection, Sticky, s
 const END_GAP_MIN: MediaTime = MediaTime(1_000_000);
 /// The share of the video's length a gap between the last sample and its end must also exceed to count as far.
 const END_GAP_SHARE: f64 = 0.05;
+/// The share of the attainable samples frames must select for the file to line up with the video.
+const MATCHED_ENOUGH: f64 = 0.8;
 
 /// How the samples of a file meet the frames of a video under one policy.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -28,12 +30,28 @@ pub struct Alignment {
 }
 
 impl Alignment {
-    /// How many samples a perfectly aligned file would have selected: a frame selects one sample, so a file with more
-    /// samples than the video has frames cannot have them all selected.
+    /// How many samples a perfectly aligned file would have selected. By time a frame selects one sample, so a file
+    /// sampled faster than the video cannot have them all selected. By frame every record has a frame of its own, so a
+    /// record past the video's last frame is a miss.
     pub fn attainable(&self) -> usize {
-        let frames =
-            usize::try_from(self.last_frame).map_or(usize::MAX, |last| last.saturating_add(1));
-        self.samples.min(frames)
+        match self.basis {
+            MatchBasis::Time => {
+                let frames = usize::try_from(self.last_frame)
+                    .map_or(usize::MAX, |last| last.saturating_add(1));
+                self.samples.min(frames)
+            }
+            MatchBasis::Frame => self.samples,
+        }
+    }
+
+    /// Whether enough of the attainable samples are selected by a frame for the file to line up with the video.
+    pub fn lines_up(&self) -> bool {
+        #[expect(
+            clippy::cast_precision_loss,
+            reason = "a share of the samples needs no exactness"
+        )]
+        let share = self.matched as f64 / self.attainable().max(1) as f64;
+        self.samples == 0 || share >= MATCHED_ENOUGH
     }
 
     /// How many samples no frame selects.
@@ -231,5 +249,24 @@ mod tests {
             &by(MatchBasis::Time, Tolerance::Exact),
         );
         assert_eq!((aligned.matched, aligned.attainable()), (4, 4));
+        assert!(aligned.lines_up());
+    }
+
+    #[test]
+    fn records_past_the_last_frame_do_not_line_up_by_frame() {
+        // 1000 records on frames 0 to 999 against 300 frames: only 300 can be selected.
+        let records = SampleKeys {
+            frames: Some(KeyChunks::new().appended(&in_order(&(0..1000).collect::<Vec<_>>()))),
+            times: None,
+        };
+        let video = timeline(&(0..300).map(|k| k * 40).collect::<Vec<_>>());
+        let by_frame = alignment(
+            &records,
+            Coverage::Dense,
+            &video,
+            &by(MatchBasis::Frame, Tolerance::Exact),
+        );
+        assert_eq!((by_frame.matched, by_frame.attainable()), (300, 1000));
+        assert!(!by_frame.lines_up());
     }
 }
