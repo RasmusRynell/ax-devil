@@ -35,7 +35,7 @@ export function App() {
       <GrantsContext value={backend.info.grants}>
         <SettingsProvider>
           <SessionProvider>
-            <Shell />
+            <Shell version={backend.info.version} />
           </SessionProvider>
         </SettingsProvider>
       </GrantsContext>

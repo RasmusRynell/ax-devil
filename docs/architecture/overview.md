@@ -31,7 +31,7 @@ How offline playback divides its work between them is in the [invariants](../dom
 |----------|------------|--------|
 | Local: `127.0.0.1`, for the desktop and development | The person at this machine | Everything; a Host guard and an Origin guard (scheme, host and port in full) keep other websites off |
 | `serve`: another machine's server | Anyone who can reach it | The server password, join links and resume secrets |
-| Desktop LAN: opened when a session starts sharing, closed once none is shared | Anyone who can reach it | Join links, resume secrets and playback tickets only; serves the frontend, `/api/info`, the session socket and the playback socket, nothing else |
+| Desktop LAN: opened when a session starts sharing, closed once none is shared | Anyone who can reach it | Join links, resume secrets and playback tickets only; serves the frontend, `/api/info`, `/api/client-errors` (a page reports an uncaught error to the log), the session socket and the playback socket, nothing else |
 
 Each request resolves to a principal with grants: Local has `preferences`, `configuration`, `sessions` and `files`;
 Server (the password) has `configuration`, `sessions` and `files`; anyone else has none. A join link or resume

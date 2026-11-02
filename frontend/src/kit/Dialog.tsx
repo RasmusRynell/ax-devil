@@ -8,18 +8,32 @@ interface Props {
   /** Without it the dialog has only OK, and Escape runs OK. */
   onCancel?: () => void;
   okLabel?: string;
+  /** Opens with OK focused, for a dialog with nothing to fill in, so Enter confirms. */
+  focusOk?: boolean;
+  /** Extra buttons before OK, for a choice that Escape must not make. */
+  footer?: ReactNode;
   /** While true, OK is disabled, so the action cannot run twice. */
   busy?: boolean;
 }
 
 /** A modal dialog with OK and Cancel. Enter runs OK and Escape cancels; the browser traps focus inside. */
-export function Dialog({ title, children, onOk, onCancel, okLabel = "OK", busy = false }: Props) {
+export function Dialog({
+  title,
+  children,
+  onOk,
+  onCancel,
+  okLabel = "OK",
+  footer,
+  focusOk = false,
+  busy = false,
+}: Props) {
   const dialog = useRef<HTMLDialogElement>(null);
   const titleId = useId();
   useEffect(() => {
     const element = dialog.current;
     if (element && !element.open) element.showModal();
-  }, []);
+    if (focusOk) element?.querySelector<HTMLElement>("[type=submit]")?.focus();
+  }, [focusOk]);
   const submit = (event: FormEvent) => {
     event.preventDefault();
     if (!busy) onOk();
@@ -46,6 +60,7 @@ export function Dialog({ title, children, onOk, onCancel, okLabel = "OK", busy =
         {children}
         <div className="flex justify-end gap-m">
           {onCancel && <Button onClick={onCancel}>Cancel</Button>}
+          {footer}
           <Button type="submit" disabled={busy}>
             {okLabel}
           </Button>

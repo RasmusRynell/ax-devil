@@ -28,10 +28,10 @@ owner's written decision. A new feature gets a row in 01 first.
 
 | ID | Feature | P | Status | Test | Notes |
 |----|---------|---|--------|------|-------|
-| AC-01 | Add Video with any number of overlays; decoder picked by extension | M | in progress | `crates/workspace/src/intake.rs`, `src/cli/tests.rs`, `tests/{playback_ws,local_video}.rs`, `desktop/args.test.cjs`, `frontend/src/shell/Shell.test.tsx` | `local` and the intake take any number of overlays, each with its decoder. `local --overlay-option` and Add Video's one overlay give a decoder its options. A remote window asks for a server path; the native dialog is untested |
+| AC-01 | Add Video with any number of overlays; decoder picked by extension | M | in progress | `crates/workspace/src/intake.rs`, `src/cli/tests.rs`, `tests/{playback_ws,local_video}.rs`, `desktop/args.test.cjs`, `frontend/src/shell/Shell.test.tsx` | `local` and the intake take any number of overlays, each with its decoder. `local --overlay-option` and Add Video's one overlay give a decoder its options. A remote window asks for a path; the native dialog is untested |
 | AC-02 | Drop video files on the window | M | todo |  |  |
 | AC-03 | Add Live Stream with analytics discovery | M | todo |  |  |
-| AC-04 | Add Playlist through a resolver form | M | done | `frontend/src/{shell/AddPlaylistDialog,resolvers/*}.test.*`, `crates/handler-api/tests/form.rs`, `src/routes/handlers.rs`, `src/cli/tests.rs`, `tests/{local_video,mot_playlist}.rs`, `make tests-desktop` | The form and `playlist <resolver>` come from the resolver's declared schema; scan is cancellable. It resolves in the background; a failure shows on its row, and only the intake's refusal stays in the dialog. The CLI playlist waits for a local window |
+| AC-04 | Add Playlist through a resolver form | M | done | `shell/AddPlaylistDialog.test.tsx`, `resolvers/*.test.*`, `crates/handler-api/tests/form.rs`, `src/routes/handlers.rs`, `src/cli/tests.rs`, `tests/{local_video,mot_playlist}.rs`, `make tests-desktop` | Resolves in the background; a failure shows on its row; the dialog keeps the intake's refusal. The CLI playlist waits for a local window |
 | AC-05 | One intake validation for dialogs, CLI and drops | M | in progress | `crates/workspace/src/intake.rs`, `tests/{local_video,mot_playlist}.rs` | The dialogs and CLI use `workspace::intake`; drops are not built |
 
 ## Live
@@ -111,10 +111,10 @@ Listed in [parity deviations](parity-deviations.md).
 | ST-04 | `$VARIABLE` references | M | in progress | `crates/settings` tests | Backend done: rows with `env` store the reference and expand it on use; none takes one |
 | ST-05 | Keyboard shortcuts, dialog, override persistence | M | done | `crates/settings` tests, `frontend/src/shell/ShortcutsDialog.test.tsx`, `Shell.test.tsx` | Command table, override-only storage, conflict and reserved-key checks, the Shortcuts dialog, live key handling; actions follow each feature row |
 | ST-06 | Workspace credential references expand only for their bound host or a confirmed one; warn before saving a literal password (new) | M | in progress | `frontend/src/shell/SettingsDialog.test.tsx` | The Settings dialog warns under a secret field holding a literal (mocked). Left: the first real secret row, workspace half (M5) |
-| AP-01 | Uncaught errors logged; continue or close | M | todo |  |  |
+| AP-01 | Uncaught errors logged; continue or close | M | done | `UncaughtErrors.test.tsx`, `desktop/uncaught.test.cjs` | The page reports its errors to the backend's log |
 | AP-02 | Restart from inside the app | M | todo |  |  |
 | AP-03 | `clear-cache` | S | todo |  |  |
-| AP-04 | About dialog | S | todo |  |  |
+| AP-04 | About dialog | S | done | `shell/Shell.test.tsx` |  |
 | AP-05 | Custom window frame: in-page title bar with window controls | S | done | `shell/WindowControls.test.tsx` | Frameless; dragging and maximize on a real window manager are untested |
 | AP-06 | Open logs folder / copy diagnostics (new) | S | todo |  |  |
 

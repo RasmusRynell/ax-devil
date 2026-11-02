@@ -93,6 +93,28 @@ async function remote(local, shell) {
     await frames({ js });
     await click(window, "sidebar:add-video");
     await wait("document.querySelector('dialog[open] input')");
+    // With a failure showing, the dialog still fits the smallest window at 200% zoom.
+    await js(
+      "[...document.querySelectorAll('dialog button')].find((b) => b.textContent === 'Add').click()",
+    );
+    await wait("document.querySelector('dialog[open] [role=alert]')");
+    const bounds = window.getBounds();
+    for (const [theme, zoom] of [
+      ["light", 1],
+      ["dark", 2],
+    ]) {
+      await setView(window, [640, 480], zoom);
+      nativeTheme.themeSource = theme;
+      await wait(`matchMedia('(prefers-color-scheme: ${theme})').matches`);
+      await frames({ js });
+      assert.deepEqual(
+        await js(`(${fit.dialog.toString()})()`),
+        [],
+        `Add Video must fit the 640x480 window at ${zoom * 100}% zoom with a failure showing`,
+      );
+    }
+    window.webContents.setZoomFactor(1);
+    window.setBounds(bounds);
     window.webContents.insertText(FIXTURE);
     await wait(`document.querySelector('dialog[open] input').value === ${JSON.stringify(FIXTURE)}`);
     for (const theme of ["light", "dark"]) {

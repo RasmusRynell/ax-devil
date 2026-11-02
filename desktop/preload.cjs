@@ -26,6 +26,8 @@ contextBridge.exposeInMainWorld("axDevilWindow", {
   connect: (target, password) => ipcRenderer.invoke("window:connect", target, password),
   // Replaces this window with one on the local backend; only a remote page may ask.
   disconnect: () => ipcRenderer.invoke("window:disconnect"),
+  // The desktop app's own version, which a remote server's page cannot learn from its backend.
+  appVersion: () => ipcRenderer.invoke("app:version"),
   // The page zoom factor, 1 at 100%; overlays on the video keep their size when the page is zoomed.
   zoomFactor: () => webFrame.getZoomFactor(),
 });

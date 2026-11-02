@@ -138,11 +138,7 @@ export function AddVideoDialog({ onClose }: { onClose: () => void }) {
         )}
         {decoder && <ResolverForm form={form} />}
         {tried && overlay.trim() && missing && <Refusal reason={`${missing.label} is required`} />}
-        {failure && (
-          <p role="alert" className="m-0">
-            {failure}
-          </p>
-        )}
+        {failure && <Refusal reason={failure} />}
       </DialogBody>
     </Dialog>
   );
