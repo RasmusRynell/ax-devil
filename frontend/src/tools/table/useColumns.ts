@@ -129,6 +129,15 @@ export function useColumns<Row>(
   const divider = (index: number) => {
     const title = columns[index].title;
     const widthOf = () => applied.current.widths[applied.current.shown.indexOf(index)];
+    /** Ends this divider's drag, keeping the width it reached. */
+    const finish = () => {
+      const now = drag.current;
+      if (now?.index !== index) return;
+      const width = now.draft.get(title);
+      if (width === undefined) remembered.delete(title);
+      else remembered.set(title, width);
+      drag.current = null;
+    };
     return {
       onPointerDown: (event: PointerEvent<HTMLElement>) => {
         event.currentTarget.setPointerCapture(event.pointerId);
@@ -141,17 +150,12 @@ export function useColumns<Row>(
       },
       onPointerMove: (event: PointerEvent<HTMLElement>) => {
         const now = drag.current;
-        if (now?.index === index)
+        if (now?.index === index && event.buttons !== 0)
           resize(index, now.start.width + event.clientX - now.x, now.draft, now.start);
       },
-      onPointerUp: () => {
-        const now = drag.current;
-        if (now?.index !== index) return;
-        const width = now.draft.get(title);
-        if (width === undefined) remembered.delete(title);
-        else remembered.set(title, width);
-        drag.current = null;
-      },
+      onPointerUp: finish,
+      onPointerCancel: finish,
+      onLostPointerCapture: finish,
       onDoubleClick: () => {
         remembered.set(title, fitWidth(applied.current.measures[index]));
         refit();
