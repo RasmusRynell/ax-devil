@@ -21,11 +21,14 @@ const LOOK: Record<SearchTokenKind, string> = {
  */
 export function SearchBar({
   label,
+  title,
   value,
   onChange,
 }: {
   /** The accessible name and the placeholder. */
   label: string;
+  /** What the search covers, as a tooltip. */
+  title?: string;
   value: string;
   onChange: (value: string) => void;
 }) {
@@ -50,7 +53,7 @@ export function SearchBar({
     return part;
   });
   return (
-    <label className={`relative flex items-center gap-s ${FIELD_IN}`}>
+    <label title={title} className={`relative flex items-center gap-s ${FIELD_IN}`}>
       <span className="flex text-muted">
         <Icon name="search" />
       </span>

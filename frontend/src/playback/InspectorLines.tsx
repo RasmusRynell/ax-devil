@@ -1,8 +1,16 @@
-import { memo, useMemo, useState, type MouseEvent } from "react";
+import {
+  memo,
+  useCallback,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type MouseEvent,
+} from "react";
 import { ContextMenu } from "../kit/ContextMenu";
-import { Icon } from "../kit/Icon";
 import { IconButton } from "../kit/IconButton";
 import type { MenuEntry } from "../kit/Menu";
+import { SectionCaption } from "../kit/SectionCaption";
 import { useRowWindow } from "../shell/useRowWindow";
 import {
   copyValue,
@@ -22,7 +30,6 @@ const ROW_HEIGHT = "var(--spacing-row)";
 const RAW_COPIED = "raw";
 /** Hidden until the row is pointed at or holds focus; a pinned row keeps its pin showing. */
 const ON_ROW = "opacity-0 group-hover/row:opacity-100 group-focus-within/row:opacity-100";
-const BUTTON = "h-row px-xs";
 
 interface FieldProps {
   /** The field's group and path; several rows can share it. */
@@ -59,13 +66,13 @@ const FieldLine = memo(function FieldLine({
         icon="pin"
         label={`${pinned ? "Unpin" : "Pin"} ${label}`}
         data-act="pin"
-        className={`${BUTTON} ${pinned ? "" : ON_ROW}`}
+        className={pinned ? "" : ON_ROW}
       />
       <span title={label} className="truncate text-small text-muted">
         {label}
       </span>
       {missing ? (
-        <span className="col-span-2 truncate text-muted italic">unavailable</span>
+        <span className="col-span-2 truncate text-muted">unavailable</span>
       ) : (
         <>
           <span title={full} className="truncate tabular-nums">
@@ -75,7 +82,7 @@ const FieldLine = memo(function FieldLine({
             icon={copied ? "check" : "copy"}
             label={`Copy ${label}`}
             data-act="copy"
-            className={`${BUTTON} ${copied ? "" : ON_ROW}`}
+            className={copied ? "" : ON_ROW}
           />
         </>
       )}
@@ -89,41 +96,36 @@ interface CaptionProps {
   folded: boolean;
   copyable: boolean;
   copied: boolean;
+  onFold: (group: FieldGroupWire) => void;
 }
 
-/** A group's heading with its fold control, or a plain caption inside a group. */
+/** A group's heading with its fold control and, for Raw, its copy button; a caption inside a group is plain text. */
 const CaptionLine = memo(function CaptionLine({
   group,
   heading,
   folded,
   copyable,
   copied,
+  onFold,
 }: CaptionProps) {
   return (
-    <div
-      role="listitem"
-      data-group={group ?? undefined}
-      className="group/row flex h-row items-center gap-s px-s"
-    >
+    <div role="listitem" data-group={group ?? undefined} className="group/row flex items-center">
       {group ? (
-        <button
-          type="button"
-          data-act="fold"
-          aria-expanded={!folded}
-          className="flex h-row min-w-0 flex-1 items-center gap-s rounded-control bg-transparent px-xs text-left font-semibold focus-ring-inset"
-        >
-          <Icon name={folded ? "chevron-right" : "chevron-down"} />
-          {heading}
-        </button>
+        <div className="min-w-0 flex-1">
+          <SectionCaption
+            heading={heading}
+            fold={{ open: !folded, onToggle: () => onFold(group) }}
+          />
+        </div>
       ) : (
-        <span className="flex-1 px-xs text-small text-muted">{heading}</span>
+        <span className="flex h-row flex-1 items-center px-m text-small text-muted">{heading}</span>
       )}
       {copyable && (
         <IconButton
           icon={copied ? "check" : "copy"}
           label={`Copy ${heading}`}
           data-act="copy"
-          className={`${BUTTON} ${copied ? "" : ON_ROW}`}
+          className={copied ? "" : ON_ROW}
         />
       )}
     </div>
@@ -136,6 +138,7 @@ function rows(
   first: number,
   pins: ReadonlySet<string>,
   copied: string | null,
+  onFold: (group: FieldGroupWire) => void,
   keyOf: (line: Line, index: number) => string | number,
 ) {
   return lines.map((line, i) => {
@@ -148,6 +151,7 @@ function rows(
           folded={line.folded}
           copyable={line.copyable}
           copied={copied === RAW_COPIED}
+          onFold={onFold}
         />
       );
     }
@@ -207,17 +211,23 @@ export function InspectorLines({
     const line = byKey.get(key);
     if (line && line.kind !== "caption") onMemory({ ...memory, pins: togglePin(pins, line.id) });
   };
+  const latest = useRef({ memory, onMemory });
+  useLayoutEffect(() => {
+    latest.current = { memory, onMemory };
+  });
+  const onFold = useCallback((group: FieldGroupWire) => {
+    const { memory: now, onMemory: report } = latest.current;
+    const next = new Set(now.folded);
+    if (!next.delete(group)) next.add(group);
+    report({ ...now, folded: next });
+  }, []);
   const onClick = (event: MouseEvent<HTMLDivElement>) => {
     const button = (event.target as Element).closest<HTMLElement>("[data-act]");
     const row = button?.closest<HTMLElement>("[data-field],[data-group]");
     if (!button || !row) return;
     const { field, group } = row.dataset;
     if (button.dataset.act === "pin" && field !== undefined) pin(field);
-    else if (button.dataset.act === "fold") {
-      const next = new Set(folded);
-      if (!next.delete(group as FieldGroupWire)) next.add(group as FieldGroupWire);
-      onMemory({ ...memory, folded: next });
-    } else if (button.dataset.act === "copy") {
+    else if (button.dataset.act === "copy") {
       const index = row.dataset.index;
       const line = index === undefined ? undefined : all[Number(index)];
       if (line?.kind === "field") copy(copyValue(line.value), index as string);
@@ -253,12 +263,12 @@ export function InspectorLines({
           {pinned.length > 0 && (
             <>
               <section aria-label="Pinned" className="shrink-0">
-                <div className="flex h-row items-center px-m font-semibold">Pinned</div>
+                <SectionCaption heading="Pinned" count={pinned.length} />
                 <div
                   role="list"
                   className="max-h-[calc(var(--spacing-row)*6)] overflow-y-auto [scrollbar-gutter:stable]"
                 >
-                  {rows(pinned, 0, pinnedKeys, copied, (line) =>
+                  {rows(pinned, 0, pinnedKeys, copied, onFold, (line) =>
                     line.kind === "caption" ? "" : line.key,
                   )}
                 </div>
@@ -283,6 +293,7 @@ export function InspectorLines({
                 pinned.length + start,
                 pinnedKeys,
                 copied,
+                onFold,
                 (_, i) => start + i,
               )}
             </div>

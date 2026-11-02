@@ -1,3 +1,4 @@
+import { Chip } from "../kit/Chips";
 import { IconButton } from "../kit/IconButton";
 import type { InspectionView, Summary } from "./contract";
 import type { InspectorMemory } from "./fields";
@@ -65,6 +66,11 @@ export function Inspector({
             <span className="text-small text-muted">{detailOf(summarized)}</span>
           )}
         </div>
+        {inspection.state !== "absent" && inspection.truncated && (
+          <Chip tone="caution" title="Some fields are not listed">
+            Truncated
+          </Chip>
+        )}
         <IconButton icon="x" label="Close inspector" onClick={onClose} />
       </header>
       <div aria-busy={inspection.state === "loading"} className="flex min-h-0 flex-1 flex-col">
@@ -82,9 +88,6 @@ export function Inspector({
           </p>
         )}
         {!unknown && <InspectorLines fields={fields} memory={memory} onMemory={onMemory} />}
-        {inspection.state !== "absent" && inspection.truncated && (
-          <p className="m-0 shrink-0 p-m text-small text-muted">Some fields are not listed</p>
-        )}
       </div>
     </aside>
   );

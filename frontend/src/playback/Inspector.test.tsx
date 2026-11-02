@@ -150,7 +150,7 @@ describe("inspector", () => {
 
   it("says when fields were left out", () => {
     show({ ...ready(FIELDS), truncated: true });
-    expect(screen.getByText("Some fields are not listed")).toBeTruthy();
+    expect(screen.getByTitle("Some fields are not listed").textContent).toBe("Truncated");
   });
 
   it("draws the fields scrolled into view when the list is longer than the window", () => {

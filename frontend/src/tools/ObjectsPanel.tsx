@@ -62,9 +62,6 @@ const UNAVAILABLE: Record<Exclude<FileScopeUnavailable["state"], "Failed">, stri
   PlainLane: "This lane has no objects",
 };
 
-/** The fields File scope can search. */
-const FILE_FIELDS = ["id", "class", "event"];
-
 /** Rows asked of the backend at once, and how many rows the window moves before another page is asked for. */
 const PAGE = 200;
 const STEP = 50;
@@ -270,11 +267,6 @@ function ObjectsList({
         {total === 0 ? SCOPES[scope].none : "No matching objects"}
       </p>
     );
-  const outside =
-    inFile &&
-    wire.groups.some((group) =>
-      group.some((term) => term.path !== null && !FILE_FIELDS.includes(term.path.toLowerCase())),
-    );
   const shared = {
     label: "Objects",
     count,
@@ -306,11 +298,13 @@ function ObjectsList({
         <span className="min-w-0 flex-1 truncate text-small text-muted">{`${count} of ${total}`}</span>
         {trailing}
       </div>
-      <div className="flex flex-col gap-s p-m pb-s">
-        <SearchBar label="Search objects" value={text} onChange={setText} />
-        {outside && (
-          <p className="m-0 text-small text-muted">File scope searches id, class and event</p>
-        )}
+      <div className="p-m pb-s">
+        <SearchBar
+          label="Search objects"
+          title={inFile ? "File scope searches id, class and event" : undefined}
+          value={text}
+          onChange={setText}
+        />
       </div>
       {inFile ? (
         <Table<FileRowWire>
