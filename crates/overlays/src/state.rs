@@ -13,6 +13,7 @@ use std::{
 };
 
 use foundation::{CancelToken, Timeline, UserError};
+use overlay_sync::Alignment;
 use playback::{FrameSet, Want};
 use playlist_resolvers::OverlayRef;
 use scene_decoders::LoadWarning;
@@ -117,10 +118,10 @@ pub(crate) struct Lane {
     pub(crate) maps_sent: FrameSet,
     /// The problems already reported since the source loaded.
     pub(crate) reported: HashSet<String>,
-    /// The alignment warning last computed for the lane's file and policy.
+    /// The alignment and warning last computed for the lane's file and policy.
     pub(crate) aligned: Option<Aligned>,
-    /// The alignment warning in the last status queued for the lane.
-    pub(crate) told: Option<LoadWarning>,
+    /// The alignment and warning in the last status queued for the lane.
+    pub(crate) told: Option<(Alignment, Option<LoadWarning>)>,
 }
 
 /// One overlay file of a viewer, shared by every lane that draws it.

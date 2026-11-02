@@ -1244,9 +1244,14 @@ default_basis: BasisWire,
  */
 filter: Array<FilterOptionInfo>, 
 /**
- * Problems the decoder reported.
+ * Problems the decoder reported, and a misalignment with the video's frames.
  */
 warnings: Array<WarningInfo>, 
+/**
+ * How the samples line up with the video's frames under the lane's basis and tolerance; `null` while the
+ * file is read. Sent again when a change of either alters it.
+ */
+alignment: AlignmentWire | null, 
 /**
  * How many samples the file has.
  */
@@ -1270,6 +1275,44 @@ ingest: IngestWire, } | { "status": "Failed" } & ErrorWire;
  * How far an overlay file has been read.
  */
 export type IngestWire = { "state": "Reading" } | { "state": "Complete" } | { "state": "Incomplete" } & ErrorWire;
+
+/**
+ * How an overlay's samples line up with the video's frames.
+ */
+export type AlignmentWire = { 
+/**
+ * What the samples were matched by.
+ */
+basis: BasisWire, 
+/**
+ * How many samples the file has.
+ */
+samples: number, 
+/**
+ * How many of them a frame selects, exactly or within the tolerance.
+ */
+matched: number, 
+/**
+ * How many of them a frame selects exactly.
+ */
+exact: number, 
+/**
+ * By time, the last sample's time minus the last frame's time, in microseconds.
+ */
+end_gap_us: number | null, 
+/**
+ * Whether the last sample is more than a second and 5% of the video from the last frame.
+ */
+ends_far: boolean, 
+/**
+ * How well the file lines up, by its worst trait.
+ */
+verdict: AlignmentVerdictWire, };
+
+/**
+ * How well an overlay lines up with the video, worst first.
+ */
+export type AlignmentVerdictWire = "weak" | "ends_far" | "partial" | "good";
 
 /**
  * Sections of the inspection, in display order.
@@ -1931,7 +1974,7 @@ kinds: Array<number>, };
 /**
  * Raised when the messages or the envelope change in a way an older frontend cannot read.
  */
-export const PLAYBACK_PROTOCOL = 4;
+export const PLAYBACK_PROTOCOL = 5;
 
 /**
  * "AXDV" read as a little-endian u32.

@@ -5,6 +5,7 @@ import type { BasisWire, LaneStatusWire } from "../generated/api";
 import type { SettingsApi } from "../settings";
 import { LANE_SETTINGS } from "./fakeOpened";
 import { LaneMenu } from "./LaneMenu";
+import type { Cadence } from "./cadence";
 import type { LaneState } from "./lanes";
 
 afterEach(cleanup);
@@ -26,6 +27,7 @@ const READY: LaneStatusWire = {
   warnings: [],
   samples: 12,
   data_revision: 1,
+  alignment: null,
   mean_sample_bytes: 100,
   ingest: { state: "Complete" },
 };
@@ -36,6 +38,7 @@ function setup(
   lane: Partial<LaneState> = {},
   status: LaneStatusWire = READY,
   save: SettingsApi["save"] = vi.fn(async () => null),
+  cadence: Cadence | null = null,
 ) {
   const onChange = vi.fn();
   const onHide = vi.fn();
@@ -55,6 +58,7 @@ function setup(
       <LaneMenu
         lane={shown}
         catalogs={CATALOGS}
+        cadence={cadence}
         onChange={onChange}
         onHide={onHide}
         onApplyAll={onApplyAll}
@@ -226,6 +230,48 @@ describe("lane menu", () => {
   });
 
   describe("timing", () => {
+    it("shows how the video's frames are spaced and how the lane's samples land on them", () => {
+      const ended = {
+        ...READY,
+        alignment: {
+          basis: "Time" as const,
+          samples: 334,
+          matched: 300,
+          exact: 173,
+          end_gap_us: -19_080_000,
+          ends_far: true,
+          verdict: "ends_far" as const,
+        },
+      };
+      const variable = { variable: true, periodsUs: [40_000, 80_000] };
+      setup({}, ended, undefined, variable);
+      tab("Timing");
+      const group = screen.getByRole("group", { name: "Alignment" });
+      expect(group.textContent).toContain("Video: variable, 40 ms, 80 ms");
+      expect(group.textContent).toContain("Overlay: 300 of 334 on a frame (90%), 173 exact");
+      expect(screen.getByText("Ends 19.1 s before the video").className).toContain("text-caution");
+    });
+
+    it("a frame-matched lane's alignment shows no exact count or end gap", () => {
+      const byFrame = {
+        ...READY,
+        alignment: {
+          basis: "Frame" as const,
+          samples: 3,
+          matched: 3,
+          exact: 3,
+          end_gap_us: null,
+          ends_far: false,
+          verdict: "good" as const,
+        },
+      };
+      setup({}, byFrame);
+      tab("Timing");
+      const group = screen.getByRole("group", { name: "Alignment" });
+      expect(group.textContent).toContain("Overlay: 3 of 3 on a frame (100%)");
+      expect(group.textContent).not.toMatch(/exact|Ends/);
+    });
+
     it("switches sticky on, and sets its timeout and opacity when the field is left", () => {
       const { onChange, state, show } = setup();
       tab("Timing");

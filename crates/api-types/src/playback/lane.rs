@@ -95,8 +95,11 @@ pub enum LaneStatusWire {
         default_basis: BasisWire,
         /// The class filters the file's content calls for.
         filter: Vec<FilterOptionInfo>,
-        /// Problems the decoder reported.
+        /// Problems the decoder reported, and a misalignment with the video's frames.
         warnings: Vec<WarningInfo>,
+        /// How the samples line up with the video's frames under the lane's basis and tolerance; `null` while the
+        /// file is read. Sent again when a change of either alters it.
+        alignment: Option<AlignmentWire>,
         /// How many samples the file has.
         #[ts(type = "number")]
         samples: u64,
@@ -111,6 +114,43 @@ pub enum LaneStatusWire {
     },
     /// The overlay could not be loaded, and why.
     Failed(ErrorWire),
+}
+
+/// How an overlay's samples line up with the video's frames.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
+pub struct AlignmentWire {
+    /// What the samples were matched by.
+    pub basis: BasisWire,
+    /// How many samples the file has.
+    #[ts(type = "number")]
+    pub samples: u64,
+    /// How many of them a frame selects, exactly or within the tolerance.
+    #[ts(type = "number")]
+    pub matched: u64,
+    /// How many of them a frame selects exactly.
+    #[ts(type = "number")]
+    pub exact: u64,
+    /// By time, the last sample's time minus the last frame's time, in microseconds.
+    #[ts(type = "number | null")]
+    pub end_gap_us: Option<i64>,
+    /// Whether the last sample is more than a second and 5% of the video from the last frame.
+    pub ends_far: bool,
+    /// How well the file lines up, by its worst trait.
+    pub verdict: AlignmentVerdictWire,
+}
+
+/// How well an overlay lines up with the video, worst first.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "snake_case")]
+pub enum AlignmentVerdictWire {
+    /// Fewer than 80% of the samples are on a frame.
+    Weak,
+    /// The last sample is more than a second and 5% of the video from the last frame.
+    EndsFar,
+    /// Some samples are on no frame, as a file at a higher rate than the video always has.
+    Partial,
+    /// Every sample is on a frame.
+    Good,
 }
 
 /// How far an overlay file has been read.

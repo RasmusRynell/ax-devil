@@ -5,6 +5,7 @@ import type { LaneSettings, LaneState } from "./lanes";
 import { LaneMenuFilter } from "./LaneMenuFilter";
 import { LaneMenuLook } from "./LaneMenuLook";
 import { LaneMenuTiming } from "./LaneMenuTiming";
+import type { Cadence } from "./cadence";
 
 const TABS = ["Look", "Filter", "Timing"] as const;
 
@@ -17,6 +18,7 @@ const TABS = ["Look", "Filter", "Timing"] as const;
 export function LaneMenu({
   lane,
   catalogs,
+  cadence,
   onChange,
   onHide,
   onApplyAll,
@@ -24,6 +26,8 @@ export function LaneMenu({
   lane: LaneState;
   /** The catalogs the backend offers for the lane to draw with. */
   catalogs: readonly CatalogInfoWire[];
+  /** How evenly the video's frames are spaced, shown with the lane's timing. */
+  cadence: Cadence | null;
   onChange: (change: Partial<LaneSettings>) => void;
   onHide?: () => void;
   /** Gives the viewer's other lanes this lane's settings, but not its visibility. */
@@ -51,7 +55,7 @@ export function LaneMenu({
       <div id={panel} role="tabpanel" aria-label={tab} className="flex flex-col gap-m">
         {tab === "Look" && <LaneMenuLook lane={lane} catalogs={catalogs} onChange={onChange} />}
         {tab === "Filter" && <LaneMenuFilter lane={lane} onChange={onChange} />}
-        {tab === "Timing" && <LaneMenuTiming lane={lane} onChange={onChange} />}
+        {tab === "Timing" && <LaneMenuTiming lane={lane} cadence={cadence} onChange={onChange} />}
       </div>
       {(onApplyAll || onHide) && (
         <div className="flex flex-wrap gap-s border-t border-line pt-m">

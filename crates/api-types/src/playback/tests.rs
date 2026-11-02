@@ -194,7 +194,7 @@ fn opened_and_lane_status_carry_the_source_and_data_revision() {
         }],
     };
     let json = serde_json::to_value(&opened).unwrap();
-    assert_eq!(json["protocol"], 4);
+    assert_eq!(json["protocol"], 5);
     assert_eq!(json["catalogs"][0]["id"], "built-in:standard");
     assert_eq!(
         json["lanes"],
@@ -212,6 +212,7 @@ fn opened_and_lane_status_carry_the_source_and_data_revision() {
             default_basis: BasisWire::Frame,
             filter: Vec::new(),
             warnings: Vec::new(),
+            alignment: None,
             samples: 6,
             data_revision: 1,
             mean_sample_bytes: 812,
@@ -221,7 +222,8 @@ fn opened_and_lane_status_carry_the_source_and_data_revision() {
     assert_eq!(
         serde_json::to_value(&ready).unwrap(),
         json!({"type": "LaneStatus", "lane": 1, "status": {
-            "status": "Ready", "bases": ["Frame"], "default_basis": "Frame", "filter": [], "warnings": [], "samples": 6,
+            "status": "Ready", "bases": ["Frame"], "default_basis": "Frame", "filter": [], "warnings": [], "alignment": null,
+            "samples": 6,
             "data_revision": 1, "mean_sample_bytes": 812, "ingest": {"state": "Reading"}
         }})
     );

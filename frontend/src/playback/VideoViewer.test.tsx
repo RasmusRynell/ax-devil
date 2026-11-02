@@ -242,6 +242,7 @@ describe("video viewer", () => {
         ],
         samples: 4,
         data_revision: 1,
+        alignment: null,
         mean_sample_bytes: 100,
         ingest: { state: "Complete" },
       },

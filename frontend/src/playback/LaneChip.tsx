@@ -1,7 +1,9 @@
+import type { Cadence } from "./cadence";
 import { reasonOf } from "../errors";
 import { Icon } from "../kit/Icon";
 import { Popover } from "../kit/Popover";
 import { LaneMenu } from "./LaneMenu";
+import { alignmentTone } from "./LaneMenuTiming";
 import type { LaneSettings, LaneState } from "./lanes";
 import type { CatalogInfoWire } from "./protocol";
 
@@ -47,6 +49,18 @@ export function laneNotices(lane: LaneState): Notice[] {
   return notices;
 }
 
+const TONE_ON_CANVAS = {
+  danger: "text-on-canvas-danger",
+  caution: "text-on-canvas-caution",
+} as const;
+
+/** The warning icon's tone, from how the lane's samples line up with the video's frames. */
+function chipTone(lane: LaneState): string {
+  const ready = lane.status !== "plain" && lane.status.status === "Ready" ? lane.status : null;
+  const tone = alignmentTone(ready?.alignment);
+  return tone ? TONE_ON_CANVAS[tone] : "";
+}
+
 /** Notices as a list: each problem with what follows from it and the reasons the backend gives. */
 export function NoticeList({ notices }: { notices: readonly Notice[] }) {
   return (
@@ -75,12 +89,15 @@ export function NoticeList({ notices }: { notices: readonly Notice[] }) {
 export function LaneChip({
   lane,
   catalogs,
+  cadence,
   onChange,
   onHide,
   onApplyAll,
 }: {
   lane: LaneState;
   catalogs: readonly CatalogInfoWire[];
+  /** How evenly the video's frames are spaced, for the lane's timing. */
+  cadence: Cadence | null;
   onChange: (change: Partial<LaneSettings>) => void;
   onHide?: () => void;
   onApplyAll?: () => void;
@@ -99,7 +116,11 @@ export function LaneChip({
         <Popover
           onCanvas
           label={`${lane.label}: warnings`}
-          trigger={<Icon name="triangle-alert" />}
+          trigger={
+            <span className={`inline-flex ${chipTone(lane)}`}>
+              <Icon name="triangle-alert" />
+            </span>
+          }
           className="size-row justify-center"
         >
           <NoticeList notices={notices} />
@@ -116,6 +137,7 @@ export function LaneChip({
             <LaneMenu
               lane={lane}
               catalogs={catalogs}
+              cadence={cadence}
               onChange={onChange}
               onApplyAll={
                 onApplyAll &&

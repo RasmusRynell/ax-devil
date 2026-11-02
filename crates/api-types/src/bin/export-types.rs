@@ -101,6 +101,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         WarningInfo,
         LaneStatusWire,
         IngestWire,
+        AlignmentWire,
+        AlignmentVerdictWire,
         FieldGroup,
         FieldOrigin,
         FieldWire,

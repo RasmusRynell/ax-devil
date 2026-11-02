@@ -151,7 +151,7 @@ async fn ready_warnings(viewer: &mut crate::ViewerOverlays) -> Vec<String> {
             status: LaneStatus::Ready(ready),
             ..
         } = next(viewer).await
-            && ready.ingest != scene_store::Ingest::Reading
+            && ready.alignment.is_some()
         {
             return ready.warnings.into_iter().map(|w| w.problem).collect();
         }

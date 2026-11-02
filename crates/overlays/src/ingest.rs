@@ -10,7 +10,7 @@ use std::{
 };
 
 use foundation::{Timeline, UserError};
-use overlay_sync::{Alignment, MatchBasis, MatchPolicy, Tolerance, alignment};
+use overlay_sync::{Alignment, MatchBasis, MatchPolicy, Tolerance, Verdict, alignment};
 use scene::Coverage;
 use scene_decoders::LoadWarning;
 use scene_store::{Ingest, Track, TrackSnapshot};
@@ -129,6 +129,7 @@ impl State {
             default_basis: track.default_basis(),
             filter: track.filter().clone(),
             warnings: snapshot.warnings.to_vec(),
+            alignment: None,
             samples: snapshot.keys.len(),
             data_revision: slot.data_revision,
             mean_sample_bytes: slot.mean_sample_bytes,
@@ -136,16 +137,19 @@ impl State {
         })
     }
 
-    /// Queues `ready` for `lane`, with the lane's alignment warning if it is computed for the file and policy the
-    /// lane has now.
+    /// Queues `ready` for `lane`, with the lane's alignment and its warning if they are computed for the file and
+    /// policy the lane has now.
     fn tell(&mut self, lane: usize, mut ready: LaneReady) {
         let data_revision = ready.data_revision;
-        let warning = self.current_job(lane).and_then(|job| {
+        let aligned = self.current_job(lane).and_then(|job| {
             let aligned = self.lanes[lane].aligned.as_ref()?;
-            aligned.is_for(&job).then(|| aligned.warning.clone())?
+            aligned.is_for(&job).then(|| aligned.clone())
         });
-        ready.warnings.extend(warning.clone());
-        self.lanes[lane].told = warning;
+        ready
+            .warnings
+            .extend(aligned.iter().flat_map(|a| a.warning.clone()));
+        ready.alignment = aligned.as_ref().map(|a| a.alignment);
+        self.lanes[lane].told = aligned.map(|a| (a.alignment, a.warning));
         let status = LaneStatus::Ready(ready);
         let queued = self.notices.iter_mut().find(|notice| {
             matches!(notice, OverlayEvent::Status { lane: held, status: LaneStatus::Ready(old) }
@@ -192,9 +196,14 @@ impl State {
             .collect()
     }
 
-    /// Takes the warning computed for `job` if the lane's file and policy are still what it read, and tells the lane if it changes what
-    /// the lane was last told.
-    pub(crate) fn set_alignment(&mut self, job: &AlignmentJob, warning: Option<LoadWarning>) {
+    /// Takes the alignment and warning computed for `job` if the lane's file and policy are still what it read, and
+    /// tells the lane if they change what it was last told.
+    pub(crate) fn set_alignment(
+        &mut self,
+        job: &AlignmentJob,
+        alignment: Alignment,
+        warning: Option<LoadWarning>,
+    ) {
         if self.closed
             || self
                 .current_job(job.lane)
@@ -203,11 +212,12 @@ impl State {
             return;
         }
         let slot = &mut self.lanes[job.lane];
-        let told = slot.told != warning;
+        let told = slot.told.as_ref() != Some(&(alignment, warning.clone()));
         slot.aligned = Some(Aligned {
             snapshot: Arc::clone(&job.snapshot),
             basis: job.matching.basis,
             tolerance: job.matching.tolerance,
+            alignment,
             warning,
         });
         if told
@@ -228,8 +238,9 @@ impl Shared {
             if self.cancel.is_cancelled() {
                 return;
             }
-            let warning = misalignment(&job.run(&self.timeline), &job.matching);
-            self.update(|state| state.set_alignment(&job, warning));
+            let alignment = job.run(&self.timeline);
+            let warning = misalignment(&alignment, &job.matching);
+            self.update(|state| state.set_alignment(&job, alignment, warning));
         }
     }
 }
@@ -255,11 +266,13 @@ impl AlignmentJob {
     }
 }
 
-/// The alignment warning of a lane, with the file and policy it was computed for.
+/// The alignment of a lane and its warning, with the file and policy they were computed for.
+#[derive(Clone)]
 pub(crate) struct Aligned {
     snapshot: Arc<TrackSnapshot>,
     basis: Option<MatchBasis>,
     tolerance: Tolerance,
+    alignment: Alignment,
     warning: Option<LoadWarning>,
 }
 
@@ -272,8 +285,9 @@ impl Aligned {
 }
 
 /// The warning for samples that do not line up with the video's frames: by time, the last one far from the last
-/// frame, or too few of the [`attainable`](Alignment::attainable) ones selected by a frame; by frame, too few of them
-/// within the video. A file sampled faster than the video leaves samples unselected however well it lines up.
+/// frame, or too few of the [`attainable`](Alignment::attainable) ones selected by a frame ([`Verdict::Weak`]); by
+/// frame, too few of them within the video. A file sampled faster than the video leaves samples unselected however
+/// well it lines up.
 fn misalignment(alignment: &Alignment, policy: &MatchPolicy) -> Option<LoadWarning> {
     let mut reasons = Vec::new();
     if alignment.ends_far()
@@ -287,7 +301,7 @@ fn misalignment(alignment: &Alignment, policy: &MatchPolicy) -> Option<LoadWarni
             seconds(alignment.video_end.0),
         ));
     }
-    if !alignment.lines_up() {
+    if alignment.verdict() == Verdict::Weak {
         reasons.push(match alignment.basis {
             MatchBasis::Time => {
                 let within = match policy.tolerance {
