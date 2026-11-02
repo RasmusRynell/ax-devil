@@ -6,6 +6,7 @@ const path = require("node:path");
 const fit = require("./fit.cjs");
 const { SCREENSHOTS, button, page, reload, setView, until, watchCsp } = require("./smoke-kit.cjs");
 const { playlist } = require("./smoke-playlist.cjs");
+const { exportDialog } = require("./smoke-export.cjs");
 const { remote } = require("./smoke-remote.cjs");
 const { sharing } = require("./smoke-sharing.cjs");
 const { video } = require("./smoke-video.cjs");
@@ -200,6 +201,7 @@ module.exports = async (window, shell) => {
   }
 
   await video(window);
+  await exportDialog(window);
   await playlist(window);
   await sharing(window, shell, ownerCsp);
   await remote(window, shell);

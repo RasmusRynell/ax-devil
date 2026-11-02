@@ -1,8 +1,8 @@
 # present
 
 Overlay presentation per lane: catalog and filter compilation, evaluation of a Sample Item into Marks, layout for the
-lane's cell, and picking (`pick/`). Export and `catalog render` will run it in an offscreen Electron page
-(S6), so display and export share it.
+lane's cell, and picking (`pick/`). Export and `catalog render` run it in the Render Page, so display and
+export share it.
 
 - Pure: no DOM and no GL, so it runs in Node tests and the export page. Painting and the glyph atlas stay in
   `../overlay/`.
@@ -12,7 +12,7 @@ lane's cell, and picking (`pick/`). Export and `catalog render` will run it in a
   allocation count.
 - Marks carry lengths tagged in pixels or image units, so zoom and resize only lay out again. `LayoutView.zoom` is the
   page zoom: pixel lengths are divided by it, so overlays keep their size on screen.
-- The backend never sees a Lane Style; it receives only the Lane Policy.
+- The backend never interprets a Lane Style; export carries it frozen.
 - A lane remembers its last result (`lane.ts`): the same sample, catalog, style and filter skip filter and evaluate;
   the same displayed size, device ratio, zoom and atlas page skip layout too. Pan and opacity are not inputs. The key
   is the sample object, so whoever decodes must hand over a new object for new data.

@@ -134,6 +134,13 @@ export class LaneSet {
     return this.#replace(lane, (state) => (state.look === look ? state : { ...state, look }));
   }
 
+  /** The revision of the document the lane's chosen catalog compiled from; `undefined` when none did. */
+  setCatalogRevision(lane: number, revision: number | undefined): boolean {
+    return this.#replace(lane, (state) =>
+      state.catalogRevision === revision ? state : { ...state, catalogRevision: revision },
+    );
+  }
+
   /** Whether the lane waits for data of the frame on screen. */
   setPending(lane: number, pending: boolean): boolean {
     return this.#replace(lane, (state) =>

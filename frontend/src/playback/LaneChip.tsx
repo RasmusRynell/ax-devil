@@ -14,7 +14,7 @@ export type Notice = {
   more?: boolean;
 };
 
-/** What the lane has to report: why it failed, why its last change was not applied, and what its file warned of. */
+/** What the lane has to report: why it failed or stopped reading, why its last change was not applied, and what its file warned of. */
 export function laneNotices(lane: LaneState): Notice[] {
   const { status } = lane;
   const notices: Notice[] = [];
@@ -29,7 +29,13 @@ export function laneNotices(lane: LaneState): Notice[] {
       problem: "The chosen catalog cannot be used",
       reasons: lane.catalogProblem.split("\n"),
     });
-  if (status !== "plain" && status.status === "Ready")
+  if (status !== "plain" && status.status === "Ready") {
+    if (status.ingest.state === "Incomplete")
+      notices.push({
+        problem: reasonOf(status.ingest),
+        consequence: "The overlay ends where reading stopped.",
+        reasons: status.ingest.location === undefined ? undefined : [status.ingest.location],
+      });
     for (const warning of status.warnings)
       notices.push({
         problem: warning.problem,
@@ -37,6 +43,7 @@ export function laneNotices(lane: LaneState): Notice[] {
         reasons: warning.reasons,
         more: warning.more_reasons,
       });
+  }
   return notices;
 }
 

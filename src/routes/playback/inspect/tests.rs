@@ -8,6 +8,7 @@ use axum::extract::ws::Message;
 use foundation::{FrameSize, MediaTime, Timeline};
 use overlays::{LaneStatus, OverlayEvent, OverlayService, SampleItem};
 use playback::{Authority, ClockIntent, Direction, Priority, Want};
+use scene::inspection::FieldGroup;
 use std::{path::Path, time::Duration};
 use tokio::sync::watch;
 use workspace::OverlayRef;
@@ -137,18 +138,18 @@ async fn a_held_sample_is_found_or_absent_and_anything_else_is_unavailable_witho
         panic!("found");
     };
     assert!(!truncated);
-    let at = |group: FieldGroupWire, name: &str| {
+    let at = |group: FieldGroup, name: &str| {
         fields
             .iter()
             .find(|field| field.group == group && field.path == [name])
             .map(|field| field.value.clone())
     };
     assert_eq!(
-        at(FieldGroupWire::Geometry, "width"),
+        at(FieldGroup::Geometry, "width"),
         Some(serde_json::json!(20.0 / 64.0))
     );
     assert_eq!(
-        at(FieldGroupWire::Raw, "frame_number"),
+        at(FieldGroup::Raw, "frame_number"),
         Some(serde_json::json!(10))
     );
     let groups: Vec<_> = fields.iter().map(|field| field.group as u8).collect();

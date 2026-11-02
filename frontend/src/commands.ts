@@ -52,7 +52,7 @@ const SCOPES: Record<CommandId, Scope> = {
   "object-details": "view",
   "info-overlay": "view",
   "add-bookmark": "content",
-  "export-video": "content",
+  "export-video": "host",
   "render-catalogs": "content",
   "debug-metrics": "app",
   plugins: "content",

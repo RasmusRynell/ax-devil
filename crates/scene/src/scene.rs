@@ -1,5 +1,8 @@
 use std::collections::HashSet;
 
+use serde::{Deserialize, Serialize};
+use ts_rs::TS;
+
 use crate::{
     EntityId, Fields, Image, MotionState, Name, Observation, SceneError, SceneTime, TimeSlice,
 };
@@ -73,8 +76,10 @@ impl Entity {
     }
 }
 
-/// Which change to entity identity an [`Operation`] is.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+/// Which change to entity identity an operation is.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize, TS)]
+#[serde(rename_all = "lowercase")]
+#[ts(rename = "OperationKindWire")]
 pub enum OperationKind {
     /// An entity is gone for good.
     Delete,

@@ -16,6 +16,12 @@ const GROUPS: readonly (readonly [FieldGroupWire, string])[] = [
 /** Who produced a Debug field, in the words the user knows. */
 const ORIGINS = { source: "Source", decoder: "Computed" } as const;
 
+/** What makes the inspector a column beside the picture rather than a cover over it: a wide enough viewer. */
+const COLUMN =
+  "@min-[72ch]:static @min-[72ch]:w-[min(var(--spacing-sidebar),60%)] @min-[72ch]:shrink-0 @min-[72ch]:border-l @min-[72ch]:border-line";
+const COLUMN_CROWDED =
+  "@min-[112ch]:static @min-[112ch]:w-[min(var(--spacing-sidebar),60%)] @min-[112ch]:shrink-0 @min-[112ch]:border-l @min-[112ch]:border-line";
+
 /** A text longer than this many characters is cut until the user expands it. */
 const CUT = 80;
 
@@ -115,16 +121,19 @@ function Groups({ fields }: { fields: readonly FieldWire[] }) {
 export function Inspector({
   inspection,
   onClose,
+  crowded = false,
 }: {
   inspection: Exclude<InspectionView, { state: "none" }>;
   onClose: () => void;
+  /** Whether another column is beside the picture, so that this one needs more room to be a column too. */
+  crowded?: boolean;
 }) {
   const summarized = inspection.state === "absent" ? null : inspection.summary;
   const fields = inspection.state === "absent" ? [] : inspection.fields;
   return (
     <aside
       aria-label="Inspector"
-      className="absolute inset-0 z-10 flex flex-col bg-panel text-fg @min-[72ch]:static @min-[72ch]:w-[min(var(--spacing-sidebar),60%)] @min-[72ch]:shrink-0 @min-[72ch]:border-l @min-[72ch]:border-line"
+      className={`absolute inset-0 z-10 flex flex-col bg-panel text-fg ${crowded ? COLUMN_CROWDED : COLUMN}`}
     >
       <header className="flex items-center gap-s border-b border-line py-xs pr-xs pl-m">
         <div className="flex min-w-0 flex-1 flex-wrap items-baseline gap-x-m">

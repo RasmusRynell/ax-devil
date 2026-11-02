@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vp dev --host 127.0.0.1",
-    "build": "tsc --noEmit && vp build && vp build --config vite.cli.config.ts"
+    "build": "tsc --noEmit && vp build && vp build --config vite.cli.config.ts && vp build --config vite.render.config.ts"
   },
   "dependencies": {
     "react": "^19.0.0",

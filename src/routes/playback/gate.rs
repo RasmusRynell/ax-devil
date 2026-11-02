@@ -86,6 +86,11 @@ impl Gate {
             || matches!(*self.authority.borrow(), Authority::Revoked)
     }
 
+    /// Whether the viewer chooses its own frames, which alone reaches the whole of a file.
+    pub(super) fn is_own(&self) -> bool {
+        matches!(*self.authority.borrow(), Authority::Own { .. })
+    }
+
     /// Whether the viewer may be sent every one of `frames` now. What a viewer may have is one run of frames, so
     /// the ends decide, both against the one authority and clock this reads.
     pub(super) fn admits(&self, frames: &RangeInclusive<u64>) -> bool {

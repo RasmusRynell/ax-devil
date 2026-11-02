@@ -1,5 +1,8 @@
 use std::sync::Arc;
 
+use serde::{Deserialize, Serialize};
+use ts_rs::TS;
+
 /// Media Time: microseconds from the first frame of a video. Always comes from container timestamps, never from a
 /// frame rate.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -114,7 +117,8 @@ fn gcd(mut a: u32, mut b: u32) -> u32 {
 }
 
 /// Width and height of a decoded picture in pixels.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize, TS)]
+#[ts(rename = "SizeWire")]
 pub struct FrameSize {
     /// Pixels across.
     pub width: u32,

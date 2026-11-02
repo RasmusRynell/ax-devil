@@ -43,10 +43,20 @@
 //! bounds the Sample Items the backend keeps sent.
 
 use crate::{ErrorWire, catalogs::CatalogInfoWire, inspect::InspectionWire};
+use overlay_sync::MatchKind;
+use scene_store::{Row, Search, Sort};
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
-/// Defines the envelope constants once for Rust and for `export-types`, which writes them to `api.ts`.
+pub mod envelope;
+mod export;
+mod file_scope;
+mod lane;
+pub use export::*;
+pub use file_scope::*;
+pub use lane::*;
+
+/// Defines constants once for Rust and for `export-types`, which writes them to `api.ts`.
 macro_rules! constants {
     ($($(#[doc = $doc:literal])+ $name:ident: $type:ty = $value:expr;)+) => {
         $($(#[doc = $doc])+ pub const $name: $type = $value;)+
@@ -54,10 +64,11 @@ macro_rules! constants {
         pub const CONSTANTS: &[(&str, u64, &str)] = &[$((stringify!($name), $name as u64, concat!($($doc, "\n"),+))),+];
     };
 }
+pub(crate) use constants;
 
 constants! {
     /// Raised when the messages or the envelope change in a way an older frontend cannot read.
-    PLAYBACK_PROTOCOL: u32 = 5;
+    PLAYBACK_PROTOCOL: u32 = 4;
     /// "AXDV" read as a little-endian u32.
     ENVELOPE_MAGIC: u32 = 0x5644_5841;
     /// The envelope format version, byte 4.
@@ -96,17 +107,17 @@ constants! {
     /// Where the sample column of a FrameMap starts: the head plus the map header.
     FRAME_MAP_HEADER_BYTES: u16 = 48;
     /// Frames of a map chunk; a run never spans two chunks.
-    FRAME_MAP_RUN_FRAMES: u16 = 256;
+    FRAME_MAP_RUN_FRAMES: u16 = overlays::RUN_FRAMES;
     /// Map cell: nothing belongs to the frame (read as -1 through an `Int32Array`).
-    FRAME_MAP_NONE: u32 = 0xFFFF_FFFF;
+    FRAME_MAP_NONE: u32 = overlays::NONE_CELL;
     /// Map cell: a dense file covers the frame with nothing (read as -2 through an `Int32Array`).
-    FRAME_MAP_EMPTY: u32 = 0xFFFF_FFFE;
+    FRAME_MAP_EMPTY: u32 = overlays::EMPTY_CELL;
     /// Map kind: the sample is the frame's own; also the kind of a NONE or EMPTY cell.
-    MATCH_EXACT: u8 = 0;
+    MATCH_EXACT: u8 = MatchKind::Exact as u8;
     /// Map kind: an earlier sample within the tolerance.
-    MATCH_TOLERATED: u8 = 1;
+    MATCH_TOLERATED: u8 = MatchKind::Tolerated as u8;
     /// Map kind: an older sample kept by sticky.
-    MATCH_RETAINED: u8 = 2;
+    MATCH_RETAINED: u8 = MatchKind::Retained as u8;
     /// Upper bound of `data_ahead + data_behind + 1` in a Want.
     MAX_DATA_WINDOW_FRAMES: u32 = 2048;
 }
@@ -138,102 +149,6 @@ pub struct Want {
     pub data_ahead: u32,
     /// How many frames before the playhead the viewer keeps Frame Maps and Sample Items for.
     pub data_behind: u32,
-}
-
-/// How a lane selects samples for frames: the part of a lane's settings the backend needs.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
-pub struct LanePolicyWire {
-    /// How far back a time-keyed sample may be, in milliseconds; `null` is exact.
-    pub tolerance_ms: Option<u32>,
-    /// Whether old samples stay on screen.
-    pub sticky: StickyWire,
-}
-
-/// Keeping the last sample on screen while no sample matches.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
-pub struct StickyWire {
-    /// Whether samples are kept.
-    pub enabled: bool,
-    /// How old a kept sample may be, in milliseconds, at most 100000; `null` is without limit.
-    pub timeout_ms: Option<u32>,
-}
-
-/// What every lane starts with.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
-pub struct LaneDefaultsWire {
-    /// The catalog id, such as `built-in:standard`.
-    pub catalog: String,
-    /// The sample selection every lane starts with.
-    pub policy: LanePolicyWire,
-}
-
-/// One lane of the opened entry.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
-pub struct LaneInfo {
-    /// The lane's name.
-    pub label: String,
-    /// The viewer's id of the source the lane draws; `null` for a plain lane. Lanes on the same file share one.
-    pub source: Option<u16>,
-}
-
-/// The clock a lane's samples are on.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
-#[serde(rename_all = "lowercase")]
-pub enum ClockWire {
-    /// Frame numbers.
-    Frame,
-    /// Timestamps.
-    Timestamp,
-}
-
-/// One class filter a lane offers.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
-pub struct FilterOptionInfo {
-    /// Stable id, such as `show_car`.
-    pub id: String,
-    /// What the user reads.
-    pub label: String,
-    /// Whether the filter starts switched on.
-    pub default_enabled: bool,
-}
-
-/// A problem that did not stop an overlay from loading.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
-pub struct WarningInfo {
-    /// What happened.
-    pub problem: String,
-    /// The first reasons.
-    pub reasons: Vec<String>,
-    /// What the user can expect as a result.
-    pub consequence: String,
-    /// Whether more reasons exist than are listed.
-    pub more_reasons: bool,
-}
-
-/// Where a lane's load stands.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, TS)]
-#[serde(tag = "status")]
-pub enum LaneStatusWire {
-    /// The overlay file is being decoded.
-    Loading,
-    /// The overlay is ready to draw.
-    Ready {
-        /// The clock the file's samples are on.
-        clock: ClockWire,
-        /// The class filters the file's content calls for.
-        filter: Vec<FilterOptionInfo>,
-        /// Problems the decoder reported.
-        warnings: Vec<WarningInfo>,
-        /// How many samples the file has.
-        #[ts(type = "number")]
-        samples: u64,
-        /// The source's revision; its Sample Items and the lane's Frame Maps carry it.
-        data_revision: u32,
-        /// The mean size of a Sample Item in bytes, 0 for an empty file; sizes the viewer's data window.
-        mean_sample_bytes: u32,
-    },
-    /// The overlay could not be loaded, and why.
-    Failed(ErrorWire),
 }
 
 /// What the frontend sends.
@@ -283,6 +198,59 @@ pub enum ClientMessage {
         sample: u32,
         /// The object's id; at most 1024 bytes.
         entity: String,
+    },
+    /// Starts an export of the viewer's video with the lanes named, frozen as the viewer holds them; progress and the
+    /// result arrive as `Export` messages. Owners only; one export runs per backend.
+    Export {
+        /// Names the job in its `Export` messages.
+        job: u32,
+        /// The lanes to draw, in the order they tile.
+        lanes: Vec<ExportLaneWire>,
+        /// The first frame, a sequence id.
+        #[ts(type = "number")]
+        first: u64,
+        /// The last frame, inclusive; equal to `first` for a PNG.
+        #[ts(type = "number")]
+        last: u64,
+        /// What to write.
+        format: ExportFormatWire,
+        /// Where to write it on the backend's machine: an absolute path.
+        path: String,
+    },
+    /// Cancels a running export; ignored when the job is not running.
+    CancelExport {
+        /// The job to cancel.
+        job: u32,
+    },
+    /// Asks for rows of a lane's File scope list: the objects its whole file holds that the video shows under the
+    /// lane's matching, kept by the class toggles and the search, sorted and paged. The answer is `FileRows` or
+    /// `FileScope`. One request runs per lane; a newer `request` replaces the older, which is never answered. Owners
+    /// only. A `limit` outside 1 to 200 or `bins` above 256 is a `LaneProblem`.
+    FileQuery {
+        /// The lane's position in `Opened.lanes`.
+        lane: u16,
+        /// Names the request in its answer; the client drops answers of older requests.
+        request: u32,
+        /// The search, parsed by the client.
+        query: Search,
+        /// The lane's class toggles: bit `i % 32` of word `i / 32` is set for each enabled filter option, as in the
+        /// Sample Item's class mask.
+        classes: Vec<u32>,
+        /// The order of the rows.
+        sort: Sort,
+        /// The first row to send.
+        offset: u32,
+        /// How many rows to send at most, from 1 to 200.
+        limit: u32,
+        /// The most spans of presence per row, from 0 to 256; 0 sends none.
+        bins: u16,
+    },
+    /// Stops wanting a lane's File scope list: the lane's running or waiting query is cancelled and never answered, and
+    /// what the backend kept for the lane's paging is dropped. Nothing is sent back. A lane the video
+    /// does not have ends the session, as for `FileQuery`.
+    FileRelease {
+        /// The lane's position in `Opened.lanes`.
+        lane: u16,
     },
     /// Ends the session and releases the source.
     Close,
@@ -397,6 +365,44 @@ pub enum ServerMessage {
         data_revision: u32,
         /// The sample indices, ascending and distinct.
         samples: Vec<u32>,
+    },
+    /// Where an export stands. Sent at most ten times a second while running, then once with the outcome.
+    Export {
+        /// The job from the request.
+        job: u32,
+        /// Where it stands.
+        state: ExportStateWire,
+    },
+    /// Rows of a lane's File scope list, the answer to a `FileQuery` that could be answered. Not held back for a
+    /// frame.
+    FileRows {
+        /// The lane's position in `Opened.lanes`.
+        lane: u16,
+        /// The request answered.
+        request: u32,
+        /// The source revision the rows were listed under; the client drops rows of any other.
+        data_revision: u32,
+        /// The lane policy revision the presence was placed under; the client drops rows of any other.
+        policy_revision: u32,
+        /// How many objects the video shows that the class toggles keep.
+        #[ts(type = "number")]
+        total: u64,
+        /// How many of them the search matches, which is how many rows there are.
+        #[ts(type = "number")]
+        matched: u64,
+        /// The request's `offset`.
+        offset: u32,
+        /// Rows `offset` to `offset + rows.len()` of the list.
+        rows: Vec<Row>,
+    },
+    /// The answer to a `FileQuery` that cannot be answered, and why. Not held back for a frame.
+    FileScope {
+        /// The lane's position in `Opened.lanes`.
+        lane: u16,
+        /// The request answered.
+        request: u32,
+        /// Why there are no rows.
+        unavailable: FileScopeUnavailable,
     },
     /// The session cannot go on and ends.
     Error(ErrorWire),

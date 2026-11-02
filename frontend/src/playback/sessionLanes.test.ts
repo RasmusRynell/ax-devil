@@ -14,6 +14,7 @@ const READY: LaneStatusWire = {
   samples: 5,
   data_revision: 1,
   mean_sample_bytes: 10,
+  ingest: { state: "Complete" },
 };
 const DPM: LaneInfo = { label: "DPM", source: 0 };
 const TWO_LANES: LaneInfo[] = [DPM, { label: "GT", source: 1 }];
@@ -56,6 +57,29 @@ describe("lanes", () => {
     server.say({ type: "LaneProblem", lane: 0, reason: "bad timeout" });
     expect(session.getSnapshot().lanes[0]).toMatchObject({ status: READY, problem: "bad timeout" });
     server.say({ type: "LaneProblem", lane: 7, reason: "ignored" });
+  });
+
+  it("holds the revision each lane's catalog compiled from, plain lanes included, and carries the export socket's word to the export", async () => {
+    const { session, server, sent } = await setup();
+    server.open(10, [DPM, { label: "v", source: null }]);
+    expect(session.getSnapshot().lanes.map((lane) => lane.catalogRevision)).toEqual([
+      undefined,
+      undefined,
+    ]);
+    server.catalog("built-in:standard", catalogDocument(), 4);
+    expect(session.getSnapshot().lanes.map((lane) => lane.catalogRevision)).toEqual([4, 4]);
+    expect(catalogs(sent)).toHaveLength(1);
+    session.exports.start({
+      lanes: [],
+      first: 2,
+      last: 4,
+      format: { format: "Png" },
+      path: "/a.png",
+    });
+    server.say({ type: "Export", job: 1, state: { state: "Running", done: 2, total: 3 } });
+    expect(session.exports.getSnapshot()).toMatchObject({ phase: "running", done: 2 });
+    server.drop();
+    expect(session.exports.getSnapshot()).toMatchObject({ phase: "failed" });
   });
 
   it("subscribes every source lane when the entry opens and again after a reconnection", async () => {

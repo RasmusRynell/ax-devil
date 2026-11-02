@@ -26,6 +26,7 @@ const READY: LaneStatusWire = {
   samples: 1,
   data_revision: 1,
   mean_sample_bytes: 1,
+  ingest: { state: "Complete" },
 };
 
 describe("lane chip", () => {
@@ -38,6 +39,27 @@ describe("lane chip", () => {
     expect(show({})?.textContent).toBe("Loading…");
     expect(show({ status: READY })).toBeNull();
     expect(show({ status: READY, pending: true })).not.toBeNull();
+    // A file still being read shows loading only for frames that wait for it.
+    const reading: LaneStatusWire = { ...READY, ingest: { state: "Reading" } };
+    expect(show({ status: reading })).toBeNull();
+    expect(show({ status: reading, pending: true })?.textContent).toBe("Loading…");
+  });
+
+  it("lists why a file stopped being read among the lane's notices", () => {
+    const stopped: LaneStatusWire = {
+      ...READY,
+      ingest: {
+        state: "Incomplete",
+        code: "OverlayInvalid",
+        params: {},
+        reason: "The converter stopped with exit code 3",
+      },
+    };
+    render(<LaneChip lane={lane({ status: stopped })} catalogs={[]} onChange={() => {}} />);
+    fireEvent.click(screen.getByRole("button", { name: "DET: warnings" }));
+    expect(screen.getByRole("dialog", { name: "DET: warnings" }).textContent).toContain(
+      "The converter stopped with exit code 3",
+    );
   });
 
   it("copies the lane's settings to the others from its menu, which closes", () => {

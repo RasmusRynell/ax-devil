@@ -25,10 +25,10 @@ async fn only_a_sample_sent_under_the_current_revision_and_still_held_can_be_ins
     held.sort_unstable();
     assert_eq!(held, [1, 2, 3]);
     for item in &sent.samples {
-        let (track, frame) = viewer
+        let (track, _, frame) = viewer
             .inspect_target(0, 1, item.sample)
             .expect("a held sample");
-        assert_eq!((frame, track.keys().len()), (item.frame, 30));
+        assert_eq!((frame, track.snapshot().keys.len()), (item.frame, 30));
     }
     assert!(viewer.inspect_target(0, 2, 2).is_none(), "another revision");
     assert!(viewer.inspect_target(1, 1, 2).is_none(), "another source");

@@ -174,7 +174,7 @@ impl Rig {
             super::SAMPLE_BUDGET,
         );
         state.finish_load(0, Ok((track.clone(), 100)), &timeline);
-        let sizes = (0..track.keys().len())
+        let sizes = (0..track.snapshot().keys.len())
             .map(|sample| track.item(sample).expect("item").len() as u64)
             .collect();
         Self {

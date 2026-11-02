@@ -209,9 +209,10 @@ describe("readSample", () => {
     expect(() =>
       readSample(damaged((w) => (w[section(17) + 5] = w[section(17) + 4] - 1))),
     ).toThrowError(SampleFormatError);
-    // An entity or a class the item does not have, and an outline outside the points.
+    // An entity or a class the item does not have (an entity id also may not be "none"), and an outline outside the points.
     for (const [n, value] of [
       [0, 99_999],
+      [0, 0xffffffff],
       [6, 99_999],
       [2, 99_999],
     ]) {

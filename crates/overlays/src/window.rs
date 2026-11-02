@@ -1,18 +1,22 @@
 //! The sample-window rule: which samples a data window needs, and in which order they are sent.
 //!
-//! The backend sends exactly this set and the frontend keeps exactly this set, so both sides implement the rule and
-//! check it against `fixtures/sample-window/cases.json` (the TypeScript twin is
-//! `frontend/src/playback/data/sampleWindow.ts`). A drift would leave a lane waiting for a sample that never comes.
+//! The backend alone decides which samples a viewer holds, so this set is what it sends and keeps; the frontend
+//! holds what it is sent. `fixtures/sample-window/cases.json` pins the rule (read by the tests below only).
 
 use playback::{Direction, Rank, rank};
 use std::collections::HashMap;
 
-/// The first map cell that is not a sample index: `FRAME_MAP_EMPTY` (0xFFFF_FFFE) and `FRAME_MAP_NONE` (0xFFFF_FFFF)
-/// of the playback wire.
-pub(crate) const FIRST_NON_SAMPLE: u32 = 0xFFFF_FFFE;
+/// The map cell of a frame a dense file covers with nothing.
+pub const EMPTY_CELL: u32 = 0xFFFF_FFFE;
 
-/// The map cell of a frame nothing belongs to: `FRAME_MAP_NONE` of the playback wire.
-pub(crate) const NONE_CELL: u32 = 0xFFFF_FFFF;
+/// The map cell of a frame nothing belongs to.
+pub const NONE_CELL: u32 = 0xFFFF_FFFF;
+
+/// The first map cell that is not a sample index: [`EMPTY_CELL`] and [`NONE_CELL`] are the last two values.
+pub const FIRST_NON_SAMPLE: u32 = EMPTY_CELL;
+
+/// Frames of a map chunk; a run never spans two.
+pub const RUN_FRAMES: u16 = 256;
 
 /// The samples the lanes' maps select inside a data window, most urgent first.
 ///
@@ -52,7 +56,6 @@ pub fn sample_window(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use overlay_sync::MatchKind;
     use serde_json::Value;
 
     fn numbers(value: &Value) -> Vec<u64> {
@@ -62,23 +65,6 @@ mod tests {
             .iter()
             .map(|n| n.as_u64().unwrap())
             .collect()
-    }
-
-    #[test]
-    fn the_cells_are_the_ones_of_the_playback_wire() {
-        assert_eq!(FIRST_NON_SAMPLE, api_types::playback::FRAME_MAP_EMPTY);
-        assert_eq!(NONE_CELL, api_types::playback::FRAME_MAP_NONE);
-        assert_eq!(
-            u64::from(api_types::playback::FRAME_MAP_RUN_FRAMES),
-            crate::pull::RUN_FRAMES
-        );
-        let kinds = [MatchKind::Exact, MatchKind::Tolerated, MatchKind::Retained];
-        let wire = [
-            api_types::playback::MATCH_EXACT,
-            api_types::playback::MATCH_TOLERATED,
-            api_types::playback::MATCH_RETAINED,
-        ];
-        assert_eq!(kinds.map(crate::data::kind_byte), wire);
     }
 
     #[test]

@@ -5,11 +5,17 @@
 use super::{Outgoing, text};
 use api_types::{catalogs::CatalogInfoWire, playback::ServerMessage};
 use catalogs::{CatalogId, Library, Served};
-use std::collections::{BTreeSet, VecDeque};
+use std::{
+    collections::{BTreeSet, VecDeque},
+    sync::Arc,
+};
 use tokio::sync::watch;
 
 /// How many distinct catalogs a viewer is kept up to date with; asking for one more drops the one asked for longest ago.
 const MAX_ASKED: usize = 64;
+
+/// How many documents a viewer was served are kept for an export to draw with, the oldest dropped first.
+const MAX_KEPT: usize = 16;
 
 /// What one viewer has been told of the catalogs.
 pub(super) struct CatalogFeed {
@@ -24,6 +30,8 @@ pub(super) struct CatalogFeed {
     unanswered: BTreeSet<String>,
     /// The ids whose document changed since the viewer was answered, in the order to push them.
     stale: VecDeque<String>,
+    /// The newest documents served, oldest first: an export draws with exactly the text its viewer holds.
+    kept: VecDeque<(String, u32, Arc<str>)>,
 }
 
 impl CatalogFeed {
@@ -38,7 +46,16 @@ impl CatalogFeed {
             asked: Vec::new(),
             unanswered: BTreeSet::new(),
             stale: VecDeque::new(),
+            kept: VecDeque::new(),
         }
+    }
+
+    /// The document of catalog `id` at `revision` as this viewer was served it, if it still keeps it.
+    pub(super) fn kept(&self, id: &str, revision: u32) -> Option<Arc<str>> {
+        self.kept
+            .iter()
+            .find(|(kept, at, _)| kept == id && *at == revision)
+            .map(|(_, _, text)| Arc::clone(text))
     }
 
     /// The catalogs a lane may draw with, as `Opened` tells them.
@@ -100,7 +117,16 @@ impl CatalogFeed {
             *revision = served.revision();
         }
         let (revision, document, problem) = match served {
-            Served::Document { revision, text } => (revision, Some(text.to_string()), None),
+            Served::Document { revision, text } => {
+                if self.kept(&id, revision).is_none() {
+                    if self.kept.len() == MAX_KEPT {
+                        self.kept.pop_front();
+                    }
+                    self.kept
+                        .push_back((id.clone(), revision, Arc::clone(&text)));
+                }
+                (revision, Some(text.to_string()), None)
+            }
             Served::Unreadable { revision, problem } => (revision, None, Some(problem)),
             Served::Missing { revision } => (revision, None, None),
         };

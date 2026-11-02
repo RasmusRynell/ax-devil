@@ -8,14 +8,12 @@
 
 use super::{Outgoing, text};
 use api_types::{
-    inspect::{FieldGroupWire, FieldOriginWire, FieldWire, InspectionWire},
+    inspect::{FieldWire, InspectionWire},
     playback::ServerMessage,
 };
 use overlays::ViewerOverlays;
-use scene::inspection::{
-    FieldGroup, FieldOrigin, InspectionField, Leaf, MAX_FIELDS, entity_fields,
-};
-use scene_store::Track;
+use scene::inspection::{InspectionField, Leaf, MAX_FIELDS, entity_fields};
+use scene_store::{Track, TrackSnapshot};
 use serde_json::Value;
 use std::sync::Arc;
 use tokio::task::JoinHandle;
@@ -35,8 +33,9 @@ struct Request {
 /// A request and the sample it may read, decided when the request arrived.
 struct Job {
     request: Request,
-    /// The sample's track and the frame it ranks by; `None` when the viewer does not hold it.
-    target: Option<(Arc<Track>, u64)>,
+    /// The sample's track, the snapshot its index is of and the frame it ranks by; `None` when the viewer does not
+    /// hold it.
+    target: Option<(Arc<Track>, Arc<TrackSnapshot>, u64)>,
 }
 
 /// A viewer's inspections: one runs at a time, the newest request waits for it.
@@ -99,10 +98,10 @@ impl Inspections {
 
 /// The answer to `job`, reading the sample's scene.
 fn answer(Job { request, target }: Job) -> Outgoing {
-    let Some((track, frame)) = target else {
+    let Some((track, snapshot, frame)) = target else {
         return reply(&request, InspectionWire::Unavailable, None);
     };
-    let scene = match track.scene(request.sample as usize) {
+    let scene = match track.scene_in(&snapshot, request.sample as usize) {
         Ok(scene) => scene,
         Err(error) => {
             tracing::debug!("Sample {} cannot be inspected: {error:?}", request.sample);
@@ -144,17 +143,6 @@ fn reply(request: &Request, inspection: InspectionWire, frame: Option<u64>) -> O
 }
 
 fn field(field: InspectionField) -> FieldWire {
-    let group = match field.group {
-        FieldGroup::Classification => FieldGroupWire::Classification,
-        FieldGroup::Motion => FieldGroupWire::Motion,
-        FieldGroup::Geometry => FieldGroupWire::Geometry,
-        FieldGroup::Debug => FieldGroupWire::Debug,
-        FieldGroup::Raw => FieldGroupWire::Raw,
-    };
-    let origin = field.origin.map(|origin| match origin {
-        FieldOrigin::Source => FieldOriginWire::Source,
-        FieldOrigin::Decoder => FieldOriginWire::Decoder,
-    });
     let value = match field.value {
         Leaf::Null => Value::Null,
         Leaf::Bool(truth) => Value::Bool(truth),
@@ -167,8 +155,8 @@ fn field(field: InspectionField) -> FieldWire {
         Leaf::Text(text) => Value::String(text),
     };
     FieldWire {
-        group,
-        origin,
+        group: field.group,
+        origin: field.origin,
         path: field.path,
         value,
     }

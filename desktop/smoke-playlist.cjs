@@ -5,6 +5,7 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs/promises");
 const path = require("node:path");
 const fit = require("./fit.cjs");
+const { objects } = require("./smoke-objects.cjs");
 const { overlays } = require("./smoke-overlays.cjs");
 const { panels } = require("./smoke-panels.cjs");
 const { twice } = require("./smoke-twice.cjs");
@@ -173,6 +174,7 @@ module.exports.playlist = async (window) => {
   await goToFrame(0);
   const { point } = await overlays(window, { setTheme });
   await panels(window, { setTheme, shoot, showEntry, point });
+  await objects(window, { setTheme, shoot });
 
   // The playlist's tab closes, which leaves the video as the one open item for the scenarios that follow.
   await js(

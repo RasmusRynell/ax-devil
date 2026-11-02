@@ -261,10 +261,10 @@ fn entry_with_a_lane(folder: &Path) -> Entry {
 async fn a_viewer_made_a_follower_gets_no_frame_or_data_outside_the_presenters_window_and_ends_once_revoked()
  {
     let folder = tempfile::tempdir().unwrap();
-    let videos = VideoSources::new(
+    let videos = Arc::new(VideoSources::new(
         Registry::new(CachePool::new(256 << 20)),
         &folder.path().join("cache"),
-    );
+    ));
     let entry = entry_with_a_lane(folder.path());
     let opened = videos
         .open(&entry.video, &CancelToken::new(), &mut |_| {})
@@ -307,6 +307,8 @@ async fn a_viewer_made_a_follower_gets_no_frame_or_data_outside_the_presenters_w
         warnings: Vec::new(),
         library: &library,
         overlays: &service,
+        exports: &Arc::new(crate::exports::ExportService::electron()),
+        videos: &videos,
     };
     // An exploring viewer asks for the whole video around frame 60, once.
     let everything = serde_json::to_string(&ClientMessage::Want(WireWant {

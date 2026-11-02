@@ -1,7 +1,9 @@
 // @vitest-environment node
 import { describe, expect, it } from "vite-plus/test";
-import { AtlasFull } from "../present";
+import { AtlasFull, CodePoints } from "../present";
+import { runCacheOf } from "../present/text/runCache";
 import { type GlyphSource, TextAtlas } from "./atlas";
+import { AtlasText } from "./atlasText";
 
 // A 32 px page holds twelve 10 px glyphs (6 by 9 each, a pixel apart): four on each of three shelves.
 const PAGE = 32;
@@ -57,5 +59,16 @@ describe("TextAtlas", () => {
     atlas.dropOverflow = true;
     expect(atlas.glyph(font, code("m")).width).toBe(0);
     expect(atlas.dropped).toBe(1);
+  });
+
+  it("lays out a very long run of a joining script instead of overflowing the stack", () => {
+    const text = new AtlasText(new TextAtlas(fakeGlyphs(), 1 << 16));
+    const arabic = new CodePoints();
+    for (let i = 0; i < 200_000; i++) arabic.push(0x0628);
+    const font = text.font("", 10, 0);
+    expect(() => text.whole(font, arabic, 0, arabic.length)).not.toThrow();
+    const cache = runCacheOf(text);
+    cache.begin(text);
+    expect(() => cache.run(text, font, cache.fontId(font), arabic, 0, arabic.length)).not.toThrow();
   });
 });

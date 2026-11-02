@@ -270,6 +270,25 @@ fn attributes_ship_as_one_column_per_name_and_kind_and_only_scalars_and_colour_l
     assert_eq!(item.len() % 8, 0);
 }
 
+#[test]
+fn a_sample_whose_dense_attribute_columns_exceed_the_item_is_refused_before_they_are_built() {
+    // 30,000 entities with a distinct numeric attribute each would be 30,000 columns of 30,000 numbers (7.2 GB).
+    let entities = (0..30_000)
+        .map(|index| {
+            let mut classification = Classification::new(ClassType::from_static("car"));
+            classification.attributes = vec![(
+                crate::Name::Owned(format!("attribute{index}")),
+                Value::Int(1),
+            )];
+            entity(&format!("e{index}"), vec![classification])
+        })
+        .collect();
+
+    let error = encode_sample_item(&scene_of(entities), &policy()).expect_err("too large");
+
+    assert!(error.to_string().contains("too large"), "{error}");
+}
+
 fn golden(name: &str, scene: &Scene) {
     let item = encode_sample_item(scene, &policy()).expect("the oracle scene encodes");
     let path = oracle().join("items").join(format!("{name}.bin"));

@@ -5,18 +5,22 @@
 use super::{
     End, Flow, Incoming, Outbox, Outgoing,
     catalogs::CatalogFeed,
-    envelope,
+    export::{Exports, Request},
+    file_scope::{self, FileScopes},
     gate::Gate,
     inspect::Inspections,
     lanes::{self, LaneEvent, Lanes},
     next_client, stopped, text,
 };
-use crate::video_sources::video_location;
+use crate::{
+    exports::ExportService,
+    video_sources::{VideoSources, video_location},
+};
 use api_types::{
     Audience,
     playback::{
         ClientMessage, Direction as WireDirection, PLAYBACK_PROTOCOL, ServerMessage,
-        Want as WireWant,
+        Want as WireWant, envelope,
     },
     project,
 };
@@ -25,7 +29,7 @@ use catalogs::Library;
 use foundation::{ErrorCode, FrameSize, HostPath, UserError};
 use overlays::OverlayService;
 use playback::{Delivery, Direction, Priority, Session, Want};
-use std::time::Duration;
+use std::{sync::Arc, time::Duration};
 use tokio::{sync::watch, time::MissedTickBehavior};
 use workspace::Entry;
 
@@ -54,12 +58,18 @@ pub(super) struct Setup<'a> {
     pub(super) library: &'a Library,
     /// Opens the lanes' overlays.
     pub(super) overlays: &'a OverlayService,
+    /// Runs the viewer's export, if the owner asks for one.
+    pub(super) exports: &'a Arc<ExportService>,
+    /// The open videos, which an export reads from.
+    pub(super) videos: &'a Arc<VideoSources>,
 }
 
 /// What the session sends next: notices first, then whichever of a lane's data and the next frame ranks first.
 enum Next {
     Catalog(Outgoing),
     Inspection(Outgoing),
+    Export(Outgoing),
+    FileScope(file_scope::Reply),
     Lane(LaneEvent),
     /// `None` when the session or its source closed.
     Delivery(Option<Delivery>),
@@ -72,6 +82,8 @@ struct Playing<'a, I> {
     lanes: Lanes,
     catalogs: CatalogFeed,
     inspections: Inspections,
+    exports: Exports,
+    file_scopes: FileScopes,
     incoming: &'a mut I,
     outbox: &'a Outbox,
     closing: &'a mut watch::Receiver<bool>,
@@ -115,7 +127,7 @@ pub(super) async fn stream(
             Vec::new()
         },
         lanes: lanes.infos(setup.entry),
-        lane_defaults: lanes::lane_defaults(setup.overlays, setup.library),
+        lane_defaults: lanes::lane_defaults(setup.library),
         catalogs: catalogs.listing(),
     });
     // The overlays stop with `Playing`, which goes when the session ends, a revoked one included.
@@ -125,6 +137,8 @@ pub(super) async fn stream(
         lanes,
         catalogs,
         inspections: Inspections::default(),
+        exports: Exports::new(setup.entry, setup.audience, setup.exports, setup.videos),
+        file_scopes: FileScopes::new(setup.audience),
         incoming,
         outbox,
         closing,
@@ -200,7 +214,57 @@ impl<I: Incoming> Playing<'_, I> {
                 ErrorCode::ProtocolViolation,
                 "The video is already open",
             ))),
+            Some(Ok(ClientMessage::Export {
+                job,
+                lanes,
+                first,
+                last,
+                format,
+                path,
+            })) => {
+                let request = Request {
+                    job,
+                    lanes,
+                    first,
+                    last,
+                    format,
+                    path,
+                };
+                self.exports
+                    .start(request, self.lanes.overlays(), &self.catalogs, self.last);
+                Ok(())
+            }
+            Some(Ok(ClientMessage::CancelExport { job })) => {
+                self.exports.cancel(job);
+                Ok(())
+            }
             Some(Err(error)) => Err(End::Failed(error)),
+            Some(Ok(ClientMessage::FileQuery {
+                lane,
+                request,
+                query,
+                classes,
+                sort,
+                offset,
+                limit,
+                bins,
+            })) => self.file_scopes.ask(
+                self.lanes.overlays(),
+                self.gate.is_own(),
+                file_scope::Ask {
+                    lane,
+                    request,
+                    query,
+                    classes,
+                    sort,
+                    offset,
+                    limit,
+                    bins,
+                },
+            ),
+            Some(Ok(ClientMessage::FileRelease { lane })) => {
+                self.file_scopes.release(self.lanes.overlays(), lane)
+            }
             Some(Ok(ClientMessage::Close)) | None => Err(End::Closed),
         }
     }
@@ -243,6 +307,8 @@ impl<I: Incoming> Playing<'_, I> {
                     self.session,
                     &mut self.catalogs,
                     &mut self.inspections,
+                    &mut self.exports,
+                    &mut self.file_scopes,
                     &mut self.lanes,
                 ), if room.is_some() => {
                     if let Some(message) = self.encode(next)?
@@ -261,7 +327,10 @@ impl<I: Incoming> Playing<'_, I> {
     /// The message for what the session produced, if it is one.
     fn encode(&mut self, next: Next) -> Flow<Option<Outgoing>> {
         match next {
-            Next::Catalog(message) | Next::Inspection(message) => Ok(Some(message)),
+            Next::Catalog(message) | Next::Inspection(message) | Next::Export(message) => {
+                Ok(Some(message))
+            }
+            Next::FileScope(reply) => Ok(Some(reply.outgoing(self.gate.is_own()))),
             Next::Lane(event) => Ok(self.lanes.encode(event)),
             Next::Delivery(delivery) => {
                 let delivery = delivery.ok_or(End::Closed)?;
@@ -278,13 +347,15 @@ impl<I: Incoming> Playing<'_, I> {
     }
 }
 
-/// The next thing to send: the catalogs' and inspections' messages and the lanes' notices, then their data or the next frame, whichever ranks first, the data
+/// The next thing to send: the catalogs', inspections', exports' and file queries' messages and the lanes' notices, then their data or the next frame, whichever ranks first, the data
 /// first on a tie. The lanes hold an item back while a frame ranks before it; the rank is read again whenever this
 /// is called, which is after every message sent and every message of the viewer.
 async fn next(
     session: &mut Session,
     catalogs: &mut CatalogFeed,
     inspections: &mut Inspections,
+    exports: &mut Exports,
+    file_scopes: &mut FileScopes,
     lanes: &mut Lanes,
 ) -> Next {
     let rank = session.next_rank();
@@ -292,6 +363,8 @@ async fn next(
         biased;
         message = catalogs.next() => Next::Catalog(message),
         message = inspections.next() => Next::Inspection(message),
+        message = exports.next() => Next::Export(message),
+        reply = file_scopes.next() => Next::FileScope(reply),
         event = lanes.next(rank) => Next::Lane(event),
         delivery = session.next_delivery() => Next::Delivery(delivery),
     }

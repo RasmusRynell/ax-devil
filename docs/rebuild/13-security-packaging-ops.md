@@ -96,8 +96,8 @@ Documented, not fixed.
 
 ## Plugin trust (MUST)
 
-State that plugins run with user permissions and installation may execute code (`docs/plugins.md#trust`). Keep index
-credentials out of plugin metadata and persisted index URLs.
+State that converters run with the user's permissions and are not sandboxed (`docs/plugins.md#trust`). Keep credentials
+out of converter manifests and the registry.
 
 ## File safety (MUST)
 
@@ -111,10 +111,10 @@ Atomic writes and the rule about built-in resources: [05](05-formats-and-extensi
 | Channel | PyPI wheel; `uv tool install`, pip, source with `uv sync --locked` | D6; default: one self-contained Linux package (AppImage or Flatpak) plus source build; CLI named `ax-devil` |
 | Native dependencies | Qt and FFmpeg system libraries per distro | Bundle where licenses allow; one installation page for the rest |
 | Versioning | SemVer, Keep a Changelog, tag matches package version | Keep |
-| Release | Tag, CI, clean-container install check, publish (`docs/runbooks/testing.md#package-artifacts`) | Keep the clean-environment check: install as documented, render catalogs, install the example plugin, play a generated video in the isolated environment, upgrade, check plugins follow |
-| Upgrades | Plugins rebuild after app changes | Plugins follow app upgrades; failure starts the base app with a retry command |
+| Release | Tag, CI, clean-container install check, publish (`docs/runbooks/testing.md#package-artifacts`) | Keep the clean-environment check: install as documented, render catalogs, install the example plugin, play a generated video in the isolated environment, upgrade, check converters still load |
+| Upgrades | Converters do not depend on the app | An upgrade changes no converter; one that no longer loads is listed |
 
-D6 must be compatible with D1: a self-contained bundle that runs Python plugins needs a bundled or discovered Python.
+D6 and D29: converters are the user's own programs, so a bundle ships no interpreter for them.
 
 ## Observability
 

@@ -3,6 +3,9 @@
 //! Hit-testing never reads `source_data` or `debug`, but inspecting an object shows both, under Debug with their
 //! origin. A Scene's own `debug` is never listed.
 
+use serde::{Deserialize, Serialize};
+use ts_rs::TS;
+
 use crate::{
     Classification, Entity, Geometry, MotionState, Name, Observation, SceneTime, Value,
     WorldVelocity,
@@ -15,7 +18,9 @@ pub const MAX_FIELDS: usize = 4096;
 pub const MAX_TEXT_CHARS: usize = 4096;
 
 /// Sections of the inspection, in display order.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, TS)]
+#[serde(rename_all = "lowercase")]
+#[ts(rename = "FieldGroupWire")]
 pub enum FieldGroup {
     /// What the object is: class, score, confidence, attributes.
     Classification,
@@ -30,7 +35,9 @@ pub enum FieldGroup {
 }
 
 /// Who produced a field of the Debug group.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "lowercase")]
+#[ts(rename = "FieldOriginWire")]
 pub enum FieldOrigin {
     /// The source's own data, as it wrote it.
     Source,

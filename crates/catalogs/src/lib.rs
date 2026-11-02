@@ -9,6 +9,7 @@ mod built_in;
 mod folder;
 mod id;
 mod library;
+pub mod sheets;
 
 pub use id::CatalogId;
 pub use library::{CatalogInfo, Library, Served};

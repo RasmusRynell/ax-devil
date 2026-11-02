@@ -1,43 +1,34 @@
 /** What each lane draws on a frame: the sample its Frame Map assigns to it, or the reason there is none yet. */
 
-import { compileFilter, type ClassMask, type CompiledFilter } from "../present";
-import type { LaneFrame } from "./contract";
+import type { LaneStyleWire } from "../generated/api";
+import type { LaneFrame, LaneSettings } from "./contract";
 import type { LaneCatalogs } from "./laneCatalog";
 import type { FrameMaps } from "./data/FrameMaps";
 import { UNKNOWN } from "./data/FrameMaps";
 import type { SampleStore } from "./data/SampleStore";
+import { frameOf, styleOf } from "./laneStyle";
 import type { LaneSet, ReadyStatus } from "./lanes";
-import { MATCH_RETAINED, type FilterOptionInfo } from "./protocol";
+import { MATCH_RETAINED } from "./protocol";
 
 /**
  * Draw the lane's marks; draw nothing, because the lane has none for the frame or is not shown; or wait, because the
  * data of the frame has not all arrived. A lane never draws another sample's marks.
  */
-export type LaneDraw =
-  | { state: "draw"; frame: LaneFrame }
-  | { state: "none" }
-  | { state: "pending" };
+type LaneDraw = { state: "draw"; frame: LaneFrame } | { state: "none" } | { state: "pending" };
 
 const NONE: LaneDraw = { state: "none" };
 const PENDING: LaneDraw = { state: "pending" };
-
-function maskOf(options: readonly FilterOptionInfo[], filter: Record<string, boolean>): ClassMask {
-  const enabled = new Uint32Array(Math.ceil(options.length / 32));
-  options.forEach((option, i) => {
-    if (filter[option.id] ?? option.default_enabled) enabled[i >> 5] |= 1 << (i & 31);
-  });
-  return { enabled, options: options.length };
-}
 
 export class LaneData {
   readonly #lanes: LaneSet;
   readonly #samples: SampleStore;
   readonly #maps: FrameMaps;
   readonly #catalogs: LaneCatalogs;
-  /** The frame filter of each lane, compiled again only when its expression changes. */
-  readonly #filters = new Map<number, { expression: string; filter: CompiledFilter | null }>();
-  /** The class mask of each lane, made again only when its options or toggles are replaced. */
-  readonly #masks = new Map<number, { ready: ReadyStatus; filter: object; mask: ClassMask }>();
+  /** The style of each lane, made again only when what it is made from changes. */
+  readonly #styles = new Map<
+    number,
+    { ready: ReadyStatus; settings: LaneSettings; label: string; style: LaneStyleWire }
+  >();
 
   constructor(lanes: LaneSet, samples: SampleStore, maps: FrameMaps, catalogs: LaneCatalogs) {
     this.#lanes = lanes;
@@ -62,20 +53,15 @@ export class LaneData {
     if (!chosen.catalog) return NONE;
     return {
       state: "draw",
-      frame: {
-        source: source,
+      frame: frameOf(this.#style(lane, state.label, state.settings, ready), {
+        source,
         dataRevision: ready.data_revision,
         sample: cell,
         columns,
         catalog: chosen.catalog,
         styleRevision: this.#lanes.styleRevision(lane),
-        classMask: this.#mask(lane, ready, state.settings.filter),
-        filter: this.#filter(lane, state.settings.expression),
-        hidden: state.settings.hidden,
-        theme: state.settings.theme,
-        opacity:
-          this.#maps.kind(lane, frame) === MATCH_RETAINED ? state.settings.sticky.opacity : 1,
-      },
+        retained: this.#maps.kind(lane, frame) === MATCH_RETAINED,
+      }),
     };
   }
 
@@ -84,21 +70,22 @@ export class LaneData {
     return this.#lanes.states.every((_, lane) => this.at(lane, frame).state !== "pending");
   }
 
-  /** The lane's filter; an expression that does not compile filters nothing, as the menu applies only ones that do. */
-  #filter(lane: number, expression: string): CompiledFilter | null {
-    const held = this.#filters.get(lane);
-    if (held?.expression === expression) return held.filter;
-    const result = compileFilter(expression);
-    const filter = result.ok && result.filter.test ? result.filter : null;
-    this.#filters.set(lane, { expression, filter });
-    return filter;
-  }
-
-  #mask(lane: number, ready: ReadyStatus, filter: Record<string, boolean>): ClassMask {
-    const held = this.#masks.get(lane);
-    if (held?.ready === ready && held.filter === filter) return held.mask;
-    const mask = maskOf(ready.filter, filter);
-    this.#masks.set(lane, { ready, filter, mask });
-    return mask;
+  /** The lane's style; the same object until something it is made from changes, so the presenter keeps its caches. */
+  #style(lane: number, label: string, settings: LaneSettings, ready: ReadyStatus): LaneStyleWire {
+    const held = this.#styles.get(lane);
+    // The file's filter options are fixed for a revision, so a status that only reports progress keeps the style.
+    if (
+      held?.ready.data_revision === ready.data_revision &&
+      held.label === label &&
+      held.settings.filter === settings.filter &&
+      held.settings.hidden === settings.hidden &&
+      held.settings.expression === settings.expression &&
+      held.settings.theme === settings.theme &&
+      held.settings.sticky.opacity === settings.sticky.opacity
+    )
+      return held.style;
+    const style = styleOf(label, settings, ready.filter);
+    this.#styles.set(lane, { ready, settings, label, style });
+    return style;
   }
 }

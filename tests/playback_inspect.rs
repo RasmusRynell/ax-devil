@@ -4,12 +4,13 @@
 mod common;
 
 use api_types::{
-    inspect::{FieldGroupWire, InspectionWire},
+    inspect::InspectionWire,
     playback::{
         ClientMessage, Direction, LanePolicyWire, LaneStatusWire, ServerMessage, StickyWire,
     },
 };
 use common::{Backend, Event, Viewer, fixture};
+use scene::inspection::FieldGroup;
 
 /// A video whose one lane holds object 1 on frames 0 to 2 and object 2 on frame 1, with the lane's three samples
 /// sent. Returns the viewer and the source's data revision.
@@ -106,14 +107,14 @@ async fn an_object_of_a_held_sample_is_found_with_its_fields_and_a_missing_one_i
             .find(|field| field.group == group && field.path == [name])
             .map(|field| field.value.clone())
     };
-    assert!(value(FieldGroupWire::Geometry, "x").is_some());
-    assert_eq!(value(FieldGroupWire::Raw, "frame_number"), Some(1.into()));
+    assert!(value(FieldGroup::Geometry, "x").is_some());
+    assert_eq!(value(FieldGroup::Raw, "frame_number"), Some(1.into()));
     let order: Vec<_> = fields.iter().map(|field| field.group as u8).collect();
     assert!(order.is_sorted(), "groups are in display order");
     assert!(
         fields
             .iter()
-            .all(|field| field.origin.is_none() || field.group == FieldGroupWire::Debug),
+            .all(|field| field.origin.is_none() || field.group == FieldGroup::Debug),
         "only Debug fields have an origin"
     );
 

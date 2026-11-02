@@ -89,6 +89,7 @@ impl FrameIndex {
             },
             timeline,
             keyframes,
+            last_duration: None,
             info,
             warnings,
         })

@@ -56,6 +56,7 @@ export class EvalContext {
   mismatched = 0;
 
   private readonly literals: Uint8Array[] = [];
+  private readonly literalPoints: number[][] = [];
   private readonly attrs: AttrSpec[] = [];
   private missingBool = new Uint8Array(0);
   private missingNumber = new Float64Array(0);
@@ -70,8 +71,14 @@ export class EvalContext {
     );
     if (found >= 0) return found;
     this.literals.push(utf8);
+    this.literalPoints.push(Array.from(text, (char) => char.codePointAt(0) ?? 0));
     this.lit = new Int32Array(this.literals.length);
     return this.literals.length - 1;
+  }
+
+  /** Append the text of literal `slot`, also when the sample does not contain it. */
+  emitLiteral(slot: number, out: CodePoints): void {
+    for (const point of this.literalPoints[slot]) out.push(point);
   }
 
   /** Register an attribute read; the same name and kind share one slot. */

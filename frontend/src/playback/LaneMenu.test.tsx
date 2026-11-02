@@ -26,6 +26,7 @@ const READY: LaneStatusWire = {
   samples: 12,
   data_revision: 1,
   mean_sample_bytes: 100,
+  ingest: { state: "Complete" },
 };
 
 const ALL_FEATURES = 0b1_1111_1111;

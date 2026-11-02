@@ -12,6 +12,7 @@ make tests-backend TEST=info       # Rust tests, without and with the embedded f
 make tests-integration             # Development supervisor (starts the services, stops the whole tree) and the desktop's argument forwarding
 make tests-desktop                 # Electron app on a private display; screenshots in artifacts/screenshots/
 make bench                         # Rust benchmarks (sample item encode); numbers on stdout, nothing asserted
+make bench-export                  # Export speed through the real render page, SwiftShader and GPU; numbers on stdout
 make check                         # Every static check, then every suite
 make check-fast                    # Static checks only, file-size check on changed files only
 ```
@@ -40,6 +41,22 @@ Run any ad-hoc GUI check the same way, for example
 display cannot verify (physical GPU, compositor, window manager, fractional scaling on a real screen) is reported as
 not run.
 
+## Export end to end
+
+`tests/export.rs` and `tests/catalog_render.rs` run the real Electron render page, forced to SwiftShader so pixels do
+not depend on the machine's graphics (`AX_DEVIL_RENDER_GRAPHICS=software`), through the routes and the command, and
+read the written MP4 and PNG back with `media`. They skip, saying why on stderr, when Electron or the built render
+page is missing; `make tests-backend` builds both and sets `AX_DEVIL_REQUIRE_ELECTRON`, which makes a skip a failure.
+The overview golden `fixtures/render/standard-overview.png` is regenerated with `UPDATE_GOLDENS=1 make tests-backend
+TEST=catalog_render` and reviewed by eye; the test allows 2% of pixels to differ by more than 24/255 because system
+fonts vary.
+
+## Converter tests
+
+`crates/converters/tests` and `tests/converters.rs` run the converters in `fixtures/converters` as real processes. The
+Python one needs `python3`; without it that test skips, saying why on stderr, unless `AX_DEVIL_REQUIRE_PYTHON` is set,
+which makes the skip a failure.
+
 ## Desktop suite and screenshots
 
 `make tests-desktop` builds the release app, starts Electron with `--smoke-test` and runs `desktop/smoke.cjs` in the
@@ -47,7 +64,8 @@ window: it waits for the app shell, then switches the theme to light and dark an
 `artifacts/screenshots/main-<theme>.png`. Screenshots are captured only after the compositor has drawn a frame for
 the current state; capturing earlier fails. It also captures the View menu and Settings dialog at the window
 minimum, at normal zoom and 200%, then adds a fixture video through the Add Video command and asserts the canvas
-shows a picture and that stepping changes it. It adds the fixture MOT Challenge playlist through the Add Playlist
+shows a picture and that stepping changes it. On that video it opens the export dialog with Ctrl+E and checks that Export asks the native save dialog and
+that the dialog fits the window minimum at 200% zoom in both themes. It adds the fixture MOT Challenge playlist through the Add Playlist
 dialog and asserts, on the real canvas, that every lane draws its boxes on frame 0 and none on the empty frame 5, in
 both themes, at the window minimum and at 200% zoom. It also runs a sharing scenario (an owner, a watcher that joins
 through a link, and a third window that lists the shared Session) and asserts that no page of the release app

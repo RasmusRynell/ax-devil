@@ -49,9 +49,9 @@ frame rates or bursts can exhaust the frame buffer"):
 
 Startup order (*current:* `Application.start()` in `src/ax_devil/app.py`):
 
-1. If D1 keeps per-installation plugin selections, resolve the active one.
+1. (Python app only: resolve the installation's plugin selection; D29 has none.)
 2. Logging to console; load settings; ensure storage folders; logging to file.
-3. Discover and register plugins; record failures.
+3. Register built-in handlers and the installed converters from the registry; record failures.
 4. Create the UI; apply theme; install shortcuts.
 5. Create the catalog manager.
 6. Show the main window and launch: CLI items → new Untitled workspace; `open FILE` → that workspace; plain launch →
@@ -99,12 +99,12 @@ upload included) at four lanes of 1000 objects, 1080p and 4K (D22, measured by t
 | Failure | Source |
 |---------|--------|
 | Item resolution, unreadable workspace or item | `docs/architecture/workspace.md#resolution`, `#file-format` |
-| Malformed decoder record, whole-file load warnings | `.agents/skills/write-plugin/SKILL.md#writing-it-well` |
+| Malformed decoder record, whole-file load warnings | `.agents/skills/write-plugin/reference.md#output-json-lines-on-stdout` |
 | Recipe evaluation, catalog load | `docs/domain/invariants.md#rendering` |
 | Plugin load | `docs/domain/invariants.md#plugin-system` |
 | Settings save | `docs/domain/invariants.md#settings-and-shortcuts` |
 | Export | `docs/domain/invariants.md#export` |
-| Whole-file analysis | `video_viewer/README.md#rules` |
+| Whole-file analysis | `crates/scene-store/README.md#file-history` |
 | Uncaught exception: log, offer continue or close | `application_shell/exception_handler.py` |
 
 ## Logging (MUST)

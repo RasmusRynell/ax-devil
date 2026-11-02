@@ -32,3 +32,13 @@ export type PlaybackIntent = { frame: number; playing: boolean; speed: number };
 
 /** What carries a video's viewing from one session to the next, across a reconnection or a viewer shown again. */
 export type ResumeState = { frame: number; speed: number };
+
+/** Waits between reconnection attempts; the last one repeats. */
+export const RETRY_MS = [500, 1000, 2000, 4000, 8000];
+/**
+ * Close codes that end a stream for good, with what the viewer says; other closes are retried.
+ */
+export const ENDED: Record<number, string> = {
+  4401: "The backend refused this video stream.",
+  4403: "This video stream was ended: access to it was withdrawn.",
+};

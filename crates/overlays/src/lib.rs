@@ -19,7 +19,9 @@
 //! [`Want`]: playback::Want
 
 mod data;
+mod ingest;
 mod lane;
+mod map;
 mod pull;
 mod service;
 mod sources;
@@ -31,7 +33,11 @@ mod worker;
 #[cfg(test)]
 mod tests;
 
-pub use lane::{LanePolicy, LaneReady, LaneStatus, MapRun, OverlayEvent, SampleItem};
+pub use lane::{
+    LanePolicy, LaneReady, LaneSnapshot, LaneStatus, MapRun, OverlayEvent, SampleItem,
+    SourceSnapshot,
+};
+pub use map::cell;
 pub use service::OverlayService;
-pub use viewer::ViewerOverlays;
-pub use window::sample_window;
+pub use viewer::{FileScopeBlocked, FileScopeInput, ViewerOverlays};
+pub use window::{EMPTY_CELL, FIRST_NON_SAMPLE, NONE_CELL, RUN_FRAMES, sample_window};

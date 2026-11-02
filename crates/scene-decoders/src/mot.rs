@@ -12,8 +12,8 @@ use scene::{
 };
 
 use crate::{
-    DecodeContext, DecodeError, DecodeSummary, DecoderSpec, FileSceneDecoder, SkippedRecords,
-    Storage,
+    DecodeContext, DecodeError, DecodeSummary, DecoderSpec, FileSceneDecoder, OnEqualKey,
+    SceneSink, SkippedRecords, SourceFile, Storage,
 };
 
 static SPEC: DecoderSpec = DecoderSpec {
@@ -107,11 +107,12 @@ impl FileSceneDecoder for MotDecoder {
 
     fn decode_file(
         &self,
-        input: &[u8],
+        source: &dyn SourceFile,
         context: &DecodeContext<'_>,
-        emit: &mut dyn FnMut(Scene),
+        sink: &mut dyn SceneSink,
         cancel: &CancelToken,
     ) -> Result<DecodeSummary, Interrupt<DecodeError>> {
+        let input = source.bytes(cancel)?;
         let mut skipped = SkippedRecords::new("rows", "Objects on skipped rows are not shown.");
         let (mut rows, total) = read_rows(input, context.frame_size, &mut skipped, cancel)?;
         if !rows.is_sorted_by_key(|row| row.frame) {
@@ -128,7 +129,9 @@ impl FileSceneDecoder for MotDecoder {
             seen += frame_rows.len();
             let scene = frame_scene(frame_rows, &mut tracks)
                 .map_err(|error| Interrupt::Failed(DecodeError(error.to_string())))?;
-            emit(scene);
+            if sink.sample(scene, OnEqualKey::Replace).is_break() {
+                break;
+            }
         }
 
         Ok(DecodeSummary {

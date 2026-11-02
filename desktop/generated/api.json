@@ -1,5 +1,5 @@
 {
-  "apiVersion": 9,
+  "apiVersion": 8,
   "reserved": [
     "Ctrl+=",
     "Ctrl++",

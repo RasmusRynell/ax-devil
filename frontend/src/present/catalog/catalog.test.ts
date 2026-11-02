@@ -99,6 +99,30 @@ describe("rules and variables", () => {
     expect(got).toEqual([0x111111ff, 0x222222ff, 0x333333ff, 0x444444ff]);
   });
 
+  it("keeps a string variable comparable where it is also displayed as text", () => {
+    const result = compileCatalogDocument({
+      schema: 4,
+      name: "T",
+      description: "d",
+      vars: { v: "'foo'" },
+      layers: [
+        {
+          when: "v == 'foo'",
+          marks: [
+            {
+              mark: "text",
+              text: "v",
+              color: "#ffffff",
+              size: "10px",
+              place: [{ at: "top-left", anchor: "top-left" }],
+            },
+          ],
+        },
+      ],
+    });
+    expect(result.ok ? [] : result.diagnostics).toEqual([]);
+  });
+
   it("keeps text, lengths and strings in variables", () => {
     const text = JSON.stringify({
       schema: 4,

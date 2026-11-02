@@ -79,12 +79,19 @@ tells the viewer its data window and every sample it stops holding, within a byt
 opens; the viewer evicts only on that word. Revisions drop stale items, so there are no acknowledgements or per-seek
 epochs.
 
+File scope lists a lane's whole file, which no window holds: `scene-store` builds a history at ingest, and the socket
+answers one query per lane (a newer one cancels the older) with one page of rows, placed on the video under the lane's
+Lane Policy. Replies name their revisions and no frame, so the gate never holds them; only a viewer with its own
+authority is answered, and it needs the ingest ended.
+
 Per lane, `frontend/src/present/` compiles the lane's catalog document (served over the socket, built-in or user; a
 changed user file is pushed to the sockets that asked for it), filters rows, evaluates Marks from the Sample Item, lays
 them out for the lane's cell, and paints them through one WebGL2 context per viewer. A lane's Lane Style (catalog,
 theme, hidden features, filters, sticky opacity) stays in the client and its Lane Policy in its socket; neither is
-shared with followers. The viewer's viewport and selection are client state; picking runs over the lane's filtered rows. Export and `catalog render`
-will run the same code in an offscreen Electron page, and Rust will freeze their inputs and encode the frames (S6).
+shared with followers; an export carries the style frozen. The viewer's viewport and selection are client state;
+picking runs over the lane's filtered rows. Export and `catalog render` run the same code in the Render Page, a hidden
+offscreen Electron page (`desktop/render.cjs`, no display) that Rust talks to over a private loopback socket: Rust
+freezes the job's inputs, sends the page each frame's picture and Sample Items, and encodes the pixels it returns.
 `catalog check` runs the compiler in Electron-as-Node from a bundle `make` builds with the frontend
 (`desktop/generated/catalog-check.cjs`).
 

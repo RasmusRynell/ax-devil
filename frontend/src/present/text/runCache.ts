@@ -10,6 +10,8 @@ export const GLYPH = 6;
 /** Past these a cache is emptied before the next layout, so it stays a few tens of megabytes however long the session runs. */
 const MAX_RUNS = 1 << 16;
 const MAX_GLYPHS = 1 << 19;
+/** Longest run laid out; the rest of a longer text is left off, so one mark cannot outgrow the cache or the page. */
+export const MAX_RUN_CODE_POINTS = 4096;
 
 /**
  * Laid-out runs by (font, code points): the ink box, advance and the glyph quads relative to the run origin, so a
@@ -67,15 +69,16 @@ export class RunCache {
     return id;
   }
 
-  /** The run of code points `start` to `end` in `font` (named `fontId`), measured on the first ask. */
+  /** The run of code points `start` to `end` (at most `MAX_RUN_CODE_POINTS`) in `font` (named `fontId`), measured on the first ask. */
   run(
     text: TextSource,
     font: FontHandle,
     fontId: number,
     cps: CodePoints,
     start: number,
-    end: number,
+    runEnd: number,
   ): number {
+    const end = Math.min(runEnd, start + MAX_RUN_CODE_POINTS);
     const data = cps.data;
     let hash = Math.imul(fontId + 1, 0x9e3779b1) ^ (end - start);
     for (let i = start; i < end; i++) hash = Math.imul(hash ^ data[i], 0x01000193);

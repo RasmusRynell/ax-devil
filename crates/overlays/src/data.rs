@@ -1,24 +1,26 @@
 //! The windows of a viewer: which frames' maps and which samples its data window holds, and when they change.
 //!
 //! The data window is the playhead with `ahead` and `behind` frames of the viewer's `want`, clamped to the video.
-//! Every change of the want, of a lane's policy or of a load recomputes the lane maps of the window (one
-//! [`overlay_sync::select`] per new frame) and the sample window of each source ([`crate::sample_window`]). Maps that
-//! left the window are forgotten and sent again when they return; samples that left it are told to the viewer as
-//! evictions (see `pull`), and are sent again when they return after that.
+//! Every change of the want, of a lane's policy, of a load or of what an ingest has published recomputes the lane
+//! maps of the window (one [`overlay_sync::select`] per new frame) and the sample window of each source
+//! ([`crate::sample_window`]). A lane's map holds only the frames its track has decided; the rest of the window has
+//! no cells, so nothing is selected, sent or counted for them until the ingest decides them. Maps that left the
+//! window are forgotten and sent again when they return; samples that left it are told to the viewer as evictions
+//! (see `pull`), and are sent again when they return after that.
 
 use std::{collections::BTreeMap, ops::RangeInclusive};
 
 use foundation::Timeline;
-use overlay_sync::{MatchKind, Selection, select};
 use playback::Want;
 
 use crate::{
+    map::cell_in,
     sample_window,
     state::{Load, State},
-    window::{FIRST_NON_SAMPLE, NONE_CELL},
 };
 
-/// A lane's map of every frame of the data window: the sample of each frame and how it matched.
+/// A lane's map of the decided frames of the data window: the sample of each frame and how it matched. The cells start
+/// at the first frame of the window and stop before the first frame its track has not decided.
 #[derive(Clone, Debug, Default)]
 pub(crate) struct LaneWindow {
     first: u64,
@@ -37,11 +39,18 @@ impl LaneWindow {
         Some((*self.samples.get(at)?, self.kinds[at]))
     }
 
-    /// The map of `range`, keeping the cells this window already has and asking `compute` for the others.
+    /// The frames the window holds cells for.
+    pub(crate) fn frames(&self) -> Option<RangeInclusive<u64>> {
+        let held = self.samples.len().checked_sub(1)?;
+        Some(self.first..=self.first.saturating_add(held as u64))
+    }
+
+    /// The map of `range`, keeping the cells this window already has (a decided frame never changes) and asking
+    /// `compute` for the others, up to the first frame it cannot decide (`None`).
     fn moved_to(
         &self,
         range: &RangeInclusive<u64>,
-        mut compute: impl FnMut(u64) -> (u32, u8),
+        mut compute: impl FnMut(u64) -> Option<(u32, u8)>,
     ) -> Self {
         let mut moved = Self {
             first: *range.start(),
@@ -49,7 +58,9 @@ impl LaneWindow {
             kinds: Vec::new(),
         };
         for frame in range.clone() {
-            let (sample, kind) = self.cell(frame).unwrap_or_else(|| compute(frame));
+            let Some((sample, kind)) = self.cell(frame).or_else(|| compute(frame)) else {
+                break;
+            };
             moved.samples.push(sample);
             moved.kinds.push(kind);
         }
@@ -64,15 +75,6 @@ impl LaneWindow {
             self.samples[from..=to].to_vec(),
             self.kinds[from..=to].to_vec(),
         )
-    }
-}
-
-/// The `MATCH_*` byte of the playback wire.
-pub(crate) fn kind_byte(kind: MatchKind) -> u8 {
-    match kind {
-        MatchKind::Exact => 0,
-        MatchKind::Tolerated => 1,
-        MatchKind::Retained => 2,
     }
 }
 
@@ -142,27 +144,20 @@ impl State {
             let track = lane
                 .source
                 .and_then(|source| match &self.sources[source].load {
-                    Load::Ready(track) if lane.policy.subscribed => Some(track),
+                    Load::Ready(track, snapshot) if lane.policy.subscribed => {
+                        Some((track, snapshot))
+                    }
                     _ => None,
                 });
             lane.window = match track {
-                Some(track) => lane.window.moved_to(&range, |frame| {
-                    let Some(id) = timeline.frame(frame) else {
-                        return (NONE_CELL, 0);
-                    };
-                    match select(
-                        track.keys(),
+                Some((track, snapshot)) => lane.window.moved_to(&range, |frame| {
+                    cell_in(
+                        snapshot,
                         track.coverage(),
-                        id,
                         timeline,
+                        frame,
                         &lane.policy.matching,
-                    ) {
-                        Selection::None => (NONE_CELL, 0),
-                        Selection::Empty => (FIRST_NON_SAMPLE, 0),
-                        Selection::Sample { index, kind } => {
-                            (u32::try_from(index).unwrap_or(NONE_CELL), kind_byte(kind))
-                        }
-                    }
+                    )
                 }),
                 None => LaneWindow::default(),
             };

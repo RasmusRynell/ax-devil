@@ -17,7 +17,7 @@ export {
   type FilterResult,
 } from "./filter/filter";
 export { readSample, SampleFormatError, type SampleView } from "./columns";
-export { CodePoints } from "./expr/codePoints";
+export { CodePoints, codePointString } from "./expr/codePoints";
 export { type EvalStyle, evaluate } from "./evaluate/evaluate";
 export { EvalReport } from "./evaluate/report";
 export { Layouter } from "./layout/layout";

@@ -1,149 +1,165 @@
-//! A decoded overlay file: its sample keys in memory, its Scenes in the artifact.
+//! A decoded overlay file: its sample keys in memory, its Scenes in the artifact, both growing while it is ingested.
 
 use std::{
     fs::File,
     path::PathBuf,
     sync::{
-        Arc, Mutex, PoisonError,
+        Arc, Mutex, OnceLock, PoisonError, RwLock, RwLockReadGuard, Weak,
         atomic::{AtomicBool, Ordering},
     },
 };
 
-use foundation::{ErrorCode, HostPath, UserError};
+use foundation::{CancelToken, ErrorCode, FrameId, HostPath, UserError};
 use overlay_sync::SampleKeys;
-use scene::{Coverage, Fields, FilterPolicy, Scene, serial, serial::columns::encode_sample_item};
-use scene_decoders::LoadWarning;
+use scene::{
+    Coverage, Fields, FilterPolicy, Scene, SceneTime, TimeKind, serial::columns::encode_sample_item,
+};
+use scene_decoders::{Header, LoadWarning};
 
 use crate::{
-    format::Layout,
-    io::{names_file, read_exact_at},
+    format::{HEADER_LEN, read_record},
+    history::{History, HistoryUnavailable, Miss, Slot},
+    io::names_file,
     lru::{ItemCache, SceneCache, footprint},
-    summary::Restored,
 };
 
 /// What the encoded Sample Items of one track may hold in memory.
 const ITEM_CACHE_BYTES: usize = 16 << 20;
 
-/// One decoded overlay file: its sample keys in memory and its Scenes behind an artifact.
+/// How far the ingest of a file has got.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Ingest {
+    /// The decoder is still running; more samples may come.
+    Reading,
+    /// Every sample is in, and the artifact is stored if it can be.
+    Complete,
+    /// The decoder stopped early; the samples it gave are kept, the artifact is not stored, and the next open
+    /// decodes again.
+    Incomplete(UserError),
+}
+
+/// Which frames the published samples decide.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Decided {
+    /// Every sample with a key below this time is published and final; later samples may still come.
+    Below(SceneTime),
+    /// The ingest has ended: every frame is decided.
+    All,
+}
+
+/// What a [`Track`] holds at one moment. Take one with [`Track::snapshot`]; it never changes.
 ///
-/// Memory is the keys, a few bytes per record, and byte-bounded caches of recently used Scenes and Sample Items;
-/// everything else stays on disk.
-pub struct Track {
-    source: PathBuf,
-    keys: SampleKeys,
-    coverage: Coverage,
-    warnings: Vec<LoadWarning>,
-    filter: FilterPolicy,
-    metadata: Fields,
-    /// The handle that wrote or validated the artifact; positional reads leave it shared.
-    artifact: File,
-    /// Where the artifact is stored, if it is.
-    artifact_path: Option<PathBuf>,
-    /// Set when a record failed its check; the registry then stops sharing this track.
-    damaged: AtomicBool,
-    boundaries: Vec<u64>,
-    crcs: Vec<u32>,
-    order: Vec<u32>,
+/// It holds the numbering of its samples, so [`Track::scene_in`] and [`Track::item_in`] read sample `i` of the
+/// snapshot even after the track has numbered its samples anew.
+#[derive(Clone, Debug)]
+pub struct TrackSnapshot {
+    /// The published samples' keys, ascending and unique; sample `i` is read with [`Track::scene_in`].
+    pub keys: SampleKeys,
+    /// Which frames the published samples decide.
+    pub decided: Decided,
+    /// How far the ingest has got.
+    pub ingest: Ingest,
+    /// Counts the times published sample indices changed meaning (a sample arrived out of order and the samples
+    /// were sorted). Snapshots of different generations number their samples differently.
+    pub generation: u32,
+    /// Problems the decoder and the store reported so far.
+    pub warnings: Arc<[LoadWarning]>,
+    /// Where the records of these samples are.
+    pub(crate) numbering: Arc<Generation>,
+}
+
+impl TrackSnapshot {
+    /// Whether the samples published here decide what `frame` shows, so that no later sample can change it. A frame
+    /// shows only samples keyed at or before it, so it is decided once the open key is past it.
+    pub fn decides(&self, frame: FrameId) -> bool {
+        match self.decided {
+            Decided::All => true,
+            Decided::Below(SceneTime::Frame(open)) => frame.sequence_id < open,
+            Decided::Below(SceneTime::Timestamp(open)) => frame.timestamp < open,
+        }
+    }
+
+    /// The clock the keys are on.
+    pub fn clock(&self) -> TimeKind {
+        self.keys.kind()
+    }
+}
+
+/// What the file says about itself, fixed at the first publication.
+pub(crate) struct Meta {
+    pub coverage: Coverage,
+    pub filter: FilterPolicy,
+    pub metadata: Fields,
+}
+
+impl Meta {
+    /// What a header says; a decoder that gave none has an empty policy, sparse coverage and no metadata.
+    pub(crate) fn of(header: Option<&Header>) -> Self {
+        match header {
+            Some(header) => Self {
+                coverage: header.coverage,
+                filter: header.filter.clone(),
+                metadata: header.metadata.clone(),
+            },
+            None => Self {
+                coverage: Coverage::Sparse,
+                filter: FilterPolicy {
+                    name: "",
+                    options: Vec::new(),
+                },
+                metadata: Fields::new(),
+            },
+        }
+    }
+}
+
+/// Where the records of one generation are: record `r` occupies `boundaries[r]..boundaries[r + 1]`, and record `r`
+/// is sample `r`.
+pub(crate) struct Records {
+    pub boundaries: Vec<u64>,
+    pub crcs: Vec<u32>,
+}
+
+impl Records {
+    /// The records whose ends are `records.0` and checksums `records.1`, starting after the file header.
+    pub(crate) fn after_header(records: (&[u64], &[u32])) -> Self {
+        let mut boundaries = Vec::with_capacity(records.0.len() + 1);
+        boundaries.push(HEADER_LEN);
+        boundaries.extend_from_slice(records.0);
+        Self {
+            boundaries,
+            crcs: records.1.to_vec(),
+        }
+    }
+}
+
+/// The artifact as one numbering of samples: its handle, the published records and the caches keyed by sample index.
+pub(crate) struct Generation {
+    file: Arc<File>,
+    records: RwLock<Records>,
     cache: Mutex<SceneCache>,
     items: Mutex<ItemCache>,
 }
 
-impl Track {
-    pub(crate) fn new(
-        source: PathBuf,
-        artifact: File,
-        artifact_path: Option<PathBuf>,
-        layout: Layout,
-        restored: Restored,
-        cache_bytes: usize,
-    ) -> Self {
+impl Generation {
+    pub(crate) fn new(file: File, records: Records, cache_bytes: usize) -> Self {
         Self {
-            source,
-            keys: layout.keys,
-            coverage: restored.coverage,
-            warnings: restored.warnings,
-            filter: restored.filter,
-            metadata: restored.metadata,
-            artifact,
-            artifact_path,
-            damaged: AtomicBool::new(false),
-            boundaries: layout.boundaries,
-            crcs: layout.crcs,
-            order: layout.order,
+            file: Arc::new(file),
+            records: RwLock::new(records),
             cache: Mutex::new(SceneCache::new(cache_bytes)),
             items: Mutex::new(ItemCache::new(ITEM_CACHE_BYTES)),
         }
     }
 
-    /// The sorted keys of the samples.
-    pub fn keys(&self) -> &SampleKeys {
-        &self.keys
+    /// Makes the records with these ends and checksums readable after the ones already there.
+    pub(crate) fn extend(&self, boundaries: &[u64], crcs: &[u32]) {
+        let mut held = self.records.write().unwrap_or_else(PoisonError::into_inner);
+        held.boundaries.extend_from_slice(boundaries);
+        held.crcs.extend_from_slice(crcs);
     }
 
-    /// What the file says about frames it has no Scene for.
-    pub fn coverage(&self) -> Coverage {
-        self.coverage
-    }
-
-    /// Problems the decoder reported.
-    pub fn warnings(&self) -> &[LoadWarning] {
-        &self.warnings
-    }
-
-    /// The class filters the file's content calls for.
-    pub fn filter(&self) -> &FilterPolicy {
-        &self.filter
-    }
-
-    /// What the file says about itself.
-    pub fn metadata(&self) -> &Fields {
-        &self.metadata
-    }
-
-    /// The Scene of sample `index`; reads the artifact through the handle that wrote or validated it, and keeps
-    /// recent Scenes in a bounded cache.
-    pub fn scene(&self, index: usize) -> Result<Arc<Scene>, UserError> {
-        if let Some(scene) = self.cache().get(index) {
-            return Ok(scene);
-        }
-        // Read and decode outside the lock; two threads missing the same Scene both read it and one copy is kept.
-        let scene = Arc::new(self.read(index)?);
-        let bytes = footprint(&scene);
-        self.cache().insert(index, scene.clone(), bytes);
-        Ok(scene)
-    }
-
-    /// The encoded Sample Item of sample `index` under the track's class filters, shared by every viewer of the
-    /// track. Recent items are kept in a bounded cache; an item larger than the whole cache is encoded again on
-    /// each call.
-    pub fn item(&self, index: usize) -> Result<Arc<[u8]>, UserError> {
-        if let Some(item) = self.items().get(index) {
-            return Ok(item);
-        }
-        // Encoded outside the lock; two threads missing the same item both encode it and one copy is kept.
-        let scene = self.scene(index)?;
-        let encoded = encode_sample_item(&scene, &self.filter).map_err(|error| {
-            UserError::new(
-                ErrorCode::FileUnreadable,
-                format!("Sample {index} of this overlay cannot be sent ({error})"),
-            )
-            .at(HostPath::new(&self.source))
-        })?;
-        let item: Arc<[u8]> = encoded.into();
-        let bytes = item.len();
-        self.items().insert(index, item.clone(), bytes);
-        Ok(item)
-    }
-
-    /// Whether a record of the artifact failed its check, so the artifact is gone and a new open decodes again.
-    pub(crate) fn is_damaged(&self) -> bool {
-        self.damaged.load(Ordering::Acquire)
-    }
-
-    /// How many bytes of Scenes the cache holds.
-    #[cfg(test)]
-    pub(crate) fn cached_bytes(&self) -> usize {
-        self.cache().used()
+    fn records(&self) -> RwLockReadGuard<'_, Records> {
+        self.records.read().unwrap_or_else(PoisonError::into_inner)
     }
 
     fn cache(&self) -> std::sync::MutexGuard<'_, SceneCache> {
@@ -153,24 +169,257 @@ impl Track {
     fn items(&self) -> std::sync::MutexGuard<'_, ItemCache> {
         self.items.lock().unwrap_or_else(PoisonError::into_inner)
     }
+}
+
+impl std::fmt::Debug for Generation {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Generation").finish_non_exhaustive()
+    }
+}
+
+/// The part of a track the ingest changes, shared by the track and the thread that feeds it.
+pub(crate) struct Growth {
+    snapshot: RwLock<Arc<TrackSnapshot>>,
+    listeners: Mutex<Vec<Weak<dyn Fn() + Send + Sync>>>,
+    history: Mutex<Slot>,
+    /// Where the artifact is stored, once it is.
+    stored: OnceLock<PathBuf>,
+}
+
+impl Growth {
+    pub(crate) fn new(snapshot: TrackSnapshot, stored: Option<PathBuf>) -> Self {
+        Self {
+            history: Mutex::new(Slot::initial(&snapshot.ingest)),
+            snapshot: RwLock::new(Arc::new(snapshot)),
+            listeners: Mutex::new(Vec::new()),
+            stored: stored.map(OnceLock::from).unwrap_or_default(),
+        }
+    }
+
+    pub(crate) fn set_stored(&self, path: PathBuf) {
+        let _ = self.stored.set(path);
+    }
+
+    /// Says where the history is; set before the snapshot that ends the ingest is published.
+    pub(crate) fn set_history(&self, slot: Slot) {
+        *self.history.lock().unwrap_or_else(PoisonError::into_inner) = slot;
+    }
+
+    pub(crate) fn snapshot(&self) -> Arc<TrackSnapshot> {
+        self.snapshot
+            .read()
+            .unwrap_or_else(PoisonError::into_inner)
+            .clone()
+    }
+
+    /// Makes the records with these ends and checksums readable after the ones already there, then publishes
+    /// `snapshot` and tells the listeners. The records come first, so every index of a snapshot can be read.
+    pub(crate) fn extend(&self, boundaries: &[u64], crcs: &[u32], snapshot: TrackSnapshot) {
+        snapshot.numbering.extend(boundaries, crcs);
+        self.publish(snapshot);
+    }
+
+    /// Publishes `snapshot` and tells the listeners. A snapshot of a new numbering starts serving it at once.
+    pub(crate) fn publish(&self, snapshot: TrackSnapshot) {
+        *self
+            .snapshot
+            .write()
+            .unwrap_or_else(PoisonError::into_inner) = Arc::new(snapshot);
+        // Called outside every lock, so a listener may read the track.
+        let live: Vec<Arc<dyn Fn() + Send + Sync>> = {
+            let mut listeners = self
+                .listeners
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner);
+            listeners.retain(|listener| listener.strong_count() > 0);
+            listeners.iter().filter_map(Weak::upgrade).collect()
+        };
+        for listener in live {
+            listener();
+        }
+    }
+}
+
+/// One decoded overlay file: its sample keys in memory and its Scenes behind an artifact.
+///
+/// While the file is still being ingested the track serves what is published; [`Track::snapshot`] says how much.
+/// Memory is the keys, a few bytes per record, and byte-bounded caches of recently used Scenes and Sample Items;
+/// everything else stays on disk. Dropping the last handle stops an ingest still running.
+pub struct Track {
+    source: PathBuf,
+    growth: Arc<Growth>,
+    meta: Meta,
+    /// Cancels the ingest thread when the track goes away.
+    ingest: CancelToken,
+    /// Set when a record failed its check; the registry then stops sharing this track.
+    damaged: AtomicBool,
+}
+
+impl Track {
+    pub(crate) fn new(
+        source: PathBuf,
+        growth: Arc<Growth>,
+        meta: Meta,
+        ingest: CancelToken,
+    ) -> Self {
+        Self {
+            source,
+            growth,
+            meta,
+            ingest,
+            damaged: AtomicBool::new(false),
+        }
+    }
+
+    /// What is published now: the keys, which frames they decide and how far the ingest has got.
+    pub fn snapshot(&self) -> Arc<TrackSnapshot> {
+        self.growth.snapshot()
+    }
+
+    /// Calls `listener` after every publication, on the ingest thread, with no lock held. The track keeps only a weak
+    /// reference: dropping the listener's `Arc` removes it.
+    pub fn on_change(&self, listener: Weak<dyn Fn() + Send + Sync>) {
+        self.growth
+            .listeners
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .push(listener);
+    }
+
+    /// The file history, once the ingest has ended: the objects the file holds, their classes, events and runs of
+    /// samples. It is read from the artifact when asked and shared while any caller holds it, so hold it across the
+    /// pages of one query.
+    pub fn history(&self) -> Result<Arc<History>, HistoryUnavailable> {
+        let generation = self.growth.snapshot().numbering.clone();
+        let found = self
+            .growth
+            .history
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .get(&generation.file);
+        found.map_err(|miss| match miss {
+            Miss::Unavailable(why) => why,
+            Miss::Damaged(why) => {
+                self.invalidate(&generation.file);
+                match why {
+                    HistoryUnavailable::Failed(error) => {
+                        HistoryUnavailable::Failed(error.at(HostPath::new(&self.source)))
+                    }
+                    other => other,
+                }
+            }
+        })
+    }
+
+    /// What the file says about frames it has no Scene for.
+    pub fn coverage(&self) -> Coverage {
+        self.meta.coverage
+    }
+
+    /// Problems the decoder reported so far.
+    pub fn warnings(&self) -> Arc<[LoadWarning]> {
+        self.snapshot().warnings.clone()
+    }
+
+    /// The class filters the file's content calls for.
+    pub fn filter(&self) -> &FilterPolicy {
+        &self.meta.filter
+    }
+
+    /// What the file says about itself.
+    pub fn metadata(&self) -> &Fields {
+        &self.meta.metadata
+    }
+
+    /// The Scene of sample `index` of the current snapshot; see [`scene_in`](Self::scene_in).
+    pub fn scene(&self, index: usize) -> Result<Arc<Scene>, UserError> {
+        self.scene_in(&self.snapshot(), index)
+    }
+
+    /// The Scene of sample `index` of `snapshot`, a snapshot of this track: read by the numbering the snapshot holds,
+    /// so a track that has numbered its samples anew since does not change which sample this is. It reads the
+    /// artifact through the handle that wrote or validated it and keeps recent Scenes in a bounded cache.
+    pub fn scene_in(
+        &self,
+        snapshot: &TrackSnapshot,
+        index: usize,
+    ) -> Result<Arc<Scene>, UserError> {
+        self.read_scene(&snapshot.numbering, index)
+    }
+
+    fn read_scene(&self, generation: &Generation, index: usize) -> Result<Arc<Scene>, UserError> {
+        if let Some(scene) = generation.cache().get(index) {
+            return Ok(scene);
+        }
+        // Read and decode outside the lock; two threads missing the same Scene both read it and one copy is kept.
+        let scene = Arc::new(self.read(generation, index)?);
+        let bytes = footprint(&scene);
+        generation.cache().insert(index, scene.clone(), bytes);
+        Ok(scene)
+    }
+
+    /// The encoded Sample Item of sample `index` of the current snapshot; see [`item_in`](Self::item_in).
+    pub fn item(&self, index: usize) -> Result<Arc<[u8]>, UserError> {
+        self.item_in(&self.snapshot(), index)
+    }
+
+    /// The encoded Sample Item of sample `index` of `snapshot`, a snapshot of this track, under the track's class
+    /// filters and shared by every viewer of the track. Recent items are kept in a bounded cache; an item larger than
+    /// the whole cache is encoded again on each call.
+    pub fn item_in(&self, snapshot: &TrackSnapshot, index: usize) -> Result<Arc<[u8]>, UserError> {
+        let generation = &snapshot.numbering;
+        if let Some(item) = generation.items().get(index) {
+            return Ok(item);
+        }
+        // Encoded outside the lock; two threads missing the same item both encode it and one copy is kept.
+        let scene = self.read_scene(generation, index)?;
+        let encoded = encode_sample_item(&scene, &self.meta.filter).map_err(|error| {
+            UserError::new(
+                ErrorCode::FileUnreadable,
+                format!("Sample {index} of this overlay cannot be sent ({error})"),
+            )
+            .at(HostPath::new(&self.source))
+        })?;
+        let item: Arc<[u8]> = encoded.into();
+        let bytes = item.len();
+        generation.items().insert(index, item.clone(), bytes);
+        Ok(item)
+    }
+
+    /// Whether a new open may share this track: not once its artifact is damaged or its ingest ended Incomplete.
+    /// Readers that hold it keep it; the new open decodes again.
+    pub(crate) fn is_reusable(&self) -> bool {
+        !self.is_damaged() && !matches!(self.snapshot().ingest, Ingest::Incomplete(_))
+    }
+
+    /// Whether a record of the artifact failed its check, so the artifact is gone and a new open decodes again.
+    fn is_damaged(&self) -> bool {
+        self.damaged.load(Ordering::Acquire)
+    }
+
+    /// How many bytes of Scenes the cache holds.
+    #[cfg(test)]
+    pub(crate) fn cached_bytes(&self) -> usize {
+        self.snapshot().numbering.cache().used()
+    }
 
     /// Marks the artifact damaged and unlinks it, so the next open decodes the file again. Readers that hold the
     /// file keep reading it; a path that names another file now (a newer artifact) is left alone.
-    fn invalidate(&self) {
+    fn invalidate(&self, file: &File) {
         if self.damaged.swap(true, Ordering::AcqRel) {
             return;
         }
-        let Some(path) = self.artifact_path.as_deref() else {
+        let Some(path) = self.growth.stored.get() else {
             return;
         };
-        if names_file(path, &self.artifact)
+        if names_file(path, file)
             && let Err(error) = std::fs::remove_file(path)
         {
             tracing::warn!(artifact = %path.display(), %error, "could not remove a damaged scene artifact");
         }
     }
 
-    fn read(&self, index: usize) -> Result<Scene, UserError> {
+    fn read(&self, generation: &Generation, index: usize) -> Result<Scene, UserError> {
         let fail = |reason: String| {
             UserError::new(
                 ErrorCode::FileUnreadable,
@@ -181,24 +430,25 @@ impl Track {
             )
             .at(HostPath::new(&self.source))
         };
-        if index >= self.keys.len() {
-            return Err(fail("no such sample".to_string()));
-        }
-        let damaged = |reason: String| {
-            self.invalidate();
-            fail(reason)
+        let (start, end, crc) = {
+            let records = generation.records();
+            match (
+                records.crcs.get(index),
+                records.boundaries.get(index..=index + 1),
+            ) {
+                (Some(&crc), Some(&[start, end])) => (start, end, crc),
+                _ => return Err(fail("no such sample".to_string())),
+            }
         };
-        let record = self
-            .order
-            .get(index)
-            .map_or(index, |&record| record as usize);
-        let (start, end) = (self.boundaries[record], self.boundaries[record + 1]);
-        // `Layout` checked that no record is longer than MAX_RECORD_LEN.
-        let mut bytes = vec![0_u8; (end - start) as usize];
-        read_exact_at(&self.artifact, &mut bytes, start).map_err(|e| damaged(e.to_string()))?;
-        if crc32fast::hash(&bytes) != self.crcs[record] {
-            return Err(damaged("checksum mismatch".to_string()));
-        }
-        serial::decode(&bytes).map_err(|e| damaged(e.to_string()))
+        read_record(&generation.file, start, end, crc).map_err(|reason| {
+            self.invalidate(&generation.file);
+            fail(reason)
+        })
+    }
+}
+
+impl Drop for Track {
+    fn drop(&mut self) {
+        self.ingest.cancel();
     }
 }

@@ -1,6 +1,6 @@
 use super::*;
 use crate::fingerprint::Fingerprint;
-use crate::index::scan::{decode_scan, order, packet_scan};
+use crate::index::scan::{Scanned, decode_scan, order, packet_scan};
 use std::path::PathBuf;
 
 fn fixture(name: &str) -> PathBuf {
@@ -38,28 +38,44 @@ fn the_packet_scan_gives_the_index_the_decode_scan_gives_on_every_fixture() {
             }
         };
         let (by_packets, by_decoding) = (scan(false), scan(true));
-        assert!(by_packets.is_ok(), "{name}: {by_packets:?}");
-        assert_eq!(by_packets, by_decoding, "{name}");
+        let (by_packets, by_decoding) = (
+            by_packets.unwrap_or_else(|e| panic!("{name}: {e}")),
+            by_decoding.unwrap_or_else(|e| panic!("{name}: {e}")),
+        );
+        assert_eq!(by_packets.pts, by_decoding.pts, "{name}");
+        assert_eq!(by_packets.keyframes, by_decoding.keyframes, "{name}");
     }
 }
 
 #[test]
 fn packets_without_unique_timestamps_cannot_be_indexed_without_decoding() {
+    let scanned = |pts: Vec<i64>, keyframes: Vec<u64>, last_duration: i64| {
+        Some(Scanned {
+            pts,
+            keyframes,
+            last_duration,
+        })
+    };
+    // The last frame to show is the one with the highest pts, whatever its place in the file.
     let shuffled = vec![
-        (Some(30), false),
-        (Some(0), true),
-        (Some(20), false),
-        (Some(10), true),
+        (Some(30), false, 7),
+        (Some(0), true, 10),
+        (Some(20), false, 10),
+        (Some(10), true, 10),
     ];
-    assert_eq!(order(shuffled), Some((vec![0, 10, 20, 30], vec![0, 1])));
+    assert_eq!(order(shuffled), scanned(vec![0, 10, 20, 30], vec![0, 1], 7));
     // Decoding always starts at the first frame, flagged or not.
     assert_eq!(
-        order(vec![(Some(5), false), (Some(9), true)]),
-        Some((vec![5, 9], vec![0, 1]))
+        order(vec![(Some(5), false, 0), (Some(9), true, -1)]),
+        scanned(vec![5, 9], vec![0, 1], 0)
     );
-    assert_eq!(order(vec![(Some(0), true), (None, false)]), None);
+    assert_eq!(order(vec![(Some(0), true, 1), (None, false, 1)]), None);
     assert_eq!(
-        order(vec![(Some(0), true), (Some(7), false), (Some(7), false)]),
+        order(vec![
+            (Some(0), true, 1),
+            (Some(7), false, 1),
+            (Some(7), false, 1)
+        ]),
         None
     );
 }
@@ -79,6 +95,7 @@ fn two_frames_sharing_a_timestamp_make_the_index_unusable_with_a_reason() {
         stream: 0,
         time_base: (1, 1000),
         first_pts: pts[0],
+        last_duration: 0,
         pts,
         keyframes: vec![0],
     };

@@ -7,7 +7,7 @@ import type { CatalogInfoWire } from "./protocol";
 const SHOWN_DIAGNOSTICS = 5;
 
 /** What a lane may draw with. `catalog` is the last compile that worked; `problem` says why a newer document failed. */
-export type CatalogEntry =
+type CatalogEntry =
   | { state: "loading" }
   | { state: "ready"; catalog?: CompiledCatalog; problem?: string };
 
@@ -30,6 +30,8 @@ function describe(diagnostics: readonly Diagnostic[], document: string): string 
 export class Catalogs {
   readonly #request: (id: string) => void;
   readonly #held = new Map<string, Held>();
+  /** The revision of the document each catalog's last successful compile came from. */
+  readonly #compiled = new Map<string, number>();
   #listing: readonly CatalogInfoWire[] = [];
 
   /** `request` asks the backend for a catalog document, which also subscribes the connection to its changes. */
@@ -40,6 +42,11 @@ export class Catalogs {
   /** The catalogs a lane may choose, as the backend last listed them. */
   get listing(): readonly CatalogInfoWire[] {
     return this.#listing;
+  }
+
+  /** The revision of the document the catalog `id` is drawn from; absent until one compiled. */
+  compiledRevision(id: string): number | undefined {
+    return this.#compiled.get(id);
   }
 
   /** The catalog `id`, asking for it first when this session has not. */
@@ -92,6 +99,7 @@ export class Catalogs {
       return true;
     }
     const result = compileCatalog(document);
+    if (result.ok) this.#compiled.set(id, revision);
     held.entry = result.ok
       ? { state: "ready", catalog: result.catalog }
       : { state: "ready", catalog, problem: describe(result.diagnostics, document) };

@@ -1,0 +1,13 @@
+{
+  "manifest": 1,
+  "kind": "file",
+  "id": "shell-times",
+  "name": "Shell times (text)",
+  "version": "1.0.0",
+  "protocol": 1,
+  "scene_version": "4.0",
+  "extensions": [".times.txt"],
+  "command": ["sh", "convert.sh"],
+  "code": ["convert.sh"],
+  "idle_timeout_s": 30
+}

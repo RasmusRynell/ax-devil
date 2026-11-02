@@ -62,6 +62,8 @@ pub(super) async fn run(
         warnings,
         library: &state.catalogs,
         overlays: &state.overlays,
+        exports: &state.exports,
+        videos: &state.videos,
     };
     let outcome = stream::stream(&mut session, setup, incoming, outbox, &mut closing, gate).await;
     release(session);
@@ -132,7 +134,11 @@ pub(super) async fn open_video<T: Send + 'static>(
                     ClientMessage::Want(_)
                     | ClientMessage::LanePolicy { .. }
                     | ClientMessage::Catalog { .. }
-                    | ClientMessage::Inspect { .. },
+                    | ClientMessage::Inspect { .. }
+                    | ClientMessage::Export { .. }
+                    | ClientMessage::CancelExport { .. }
+                    | ClientMessage::FileQuery { .. }
+                    | ClientMessage::FileRelease { .. },
                 )) => {}
                 Some(Err(error)) => return Err(End::Failed(error)),
                 Some(Ok(ClientMessage::Open { .. })) => {

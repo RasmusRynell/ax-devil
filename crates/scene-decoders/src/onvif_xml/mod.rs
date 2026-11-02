@@ -16,7 +16,7 @@ use shape::{RawObject, Tag, attrs};
 
 use crate::{
     DecodeContext, DecodeError, DecodeSummary, DecoderSpec, FileSceneDecoder, RecordSceneDecoder,
-    Storage, iso8601, lines,
+    SceneSink, SourceFile, Storage, iso8601, lines,
 };
 
 static SPEC: DecoderSpec = DecoderSpec {
@@ -129,12 +129,12 @@ impl FileSceneDecoder for OnvifXmlDecoder {
 
     fn decode_file(
         &self,
-        input: &[u8],
+        source: &dyn SourceFile,
         _context: &DecodeContext<'_>,
-        emit: &mut dyn FnMut(Scene),
+        sink: &mut dyn SceneSink,
         cancel: &CancelToken,
     ) -> Result<DecodeSummary, Interrupt<DecodeError>> {
-        lines::decode_lines(self, input, emit, cancel)
+        lines::decode_lines(self, source.bytes(cancel)?, sink, cancel)
     }
 }
 

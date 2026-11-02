@@ -7,7 +7,8 @@ Where code and files belong. Layers and the dependency rule are in the [overview
 | `src/main.rs`, `src/cli.rs`, `src/cli/`, `src/runtime.rs` | Backend startup and shutdown and the command line (the local backend, `local`, `serve`, `app`, and `playlist <resolver>`, `list-handlers`, `catalog` generated from the registry); the items the command line asks for wait in the launch queue; prints the readiness line the shell and supervisor wait for |
 | `src/paths.rs` | Where the settings file, caches, logs, window state and the user's catalog folder live: the XDG folders, or the command-line overrides |
 | `src/lib.rs` | The backend's two entry points (`app`, `lan_app`), the state every route reaches, settings and info handlers, the embedded frontend |
-| `src/routes/` | The route table, the window-position routes, the handler and scan routes, and the playback WebSocket (redeems a ticket into a stream lease and enforces its authority) with its lane overlays, catalog feed (`playback/catalogs.rs`) and inspections (`playback/inspect.rs`): adapters over the services, no logic |
+| `src/routes/` | The route table, the window-position routes, the handler and scan routes, and the playback WebSocket (redeems a ticket into a stream lease and enforces its authority) with its lane overlays, catalog feed (`playback/catalogs.rs`) inspections (`playback/inspect.rs`) and File scope queries (`playback/file_scope.rs`): adapters over the services that hold only per-viewer state (File scope's per-lane job scheduler and cache, the export request frozen into an `ExportSpec`) |
+| `src/exports.rs`, `src/render_host.rs`, `src/desktop.rs`, `src/routes/playback/export.rs` | The backend's one export job, the Render Page's host and its private socket, the desktop folder and its Electron, and the playback socket's export messages |
 | `src/video_sources.rs`, `src/video_cache.rs` | Where `media` meets `playback` (the decoder adapter, opening viewers on files) and how the `playback.video_cache` setting sizes the cache |
 | `src/access.rs` | Principals and grants, the Local guard, security headers, socket admission limits |
 | `src/share.rs` | Where other machines reach the backend: join-link base, the desktop's listener for them while a session is shared, the development-build refusal |
@@ -18,21 +19,25 @@ Where code and files belong. Layers and the dependency rule are in the [overview
 | `crates/scene/` | Layer 2: the Scene model decoders produce, the class filter policy and the Sample Item columns encoder and the grouped fields of an entity for inspection |
 | `crates/scene-decoders/` | Layer 2: built-in decoders from overlay files and records to Scenes (MOT, UVG-VCM, ONVIF XML, CVAT) |
 | `crates/playlist-resolvers/` | Layer 2: built-in resolvers from settings to playlists of videos and overlay files (folder pair, MOT Challenge), each declaring the settings schema its form and command are generated from |
-| `crates/handlers/` | Layer 2: the one registry of file decoders, record decoders and playlist resolvers; the built-ins now, a plugin runtime later |
+| `crates/handlers/` | Layer 2: the one registry of file decoders, record decoders and playlist resolvers; the built-ins and the installed converters |
 | `crates/overlay-sync/` | Layer 2: Overlay Lookup, the pure choice of the sample that belongs to a frame (matching, coverage, sticky) |
 | `crates/media/` | Layer 3: video file or image sequence to frame index and frames (FFmpeg); the only crate that links it ([README](../../crates/media/README.md)) |
 | `crates/playback/` | Layer 3: what to decode and cache around each viewer's playhead, and its delivery; never depends on `media` ([README](../../crates/playback/README.md)) |
 | `crates/workspace-store/` | Layer 3: the workspace's state and its pure transitions (apply a command, complete a resolution), the hidden refs and the sidebar row projection; whoever holds a state decides where it lives |
 | `crates/sessions/` | The Session service: state, transitions, authorization, tickets and jobs, generic over the cursor type; services layer, knows no message of the wire (the plain data it shares, such as a view, derives its own wire form) |
-| `crates/scene-store/` | Layer 3: an overlay file decoded once into an on-disk artifact, shared by every viewer, with Scenes served from a bounded cache ([README](../../crates/scene-store/README.md)) |
+| `crates/scene-store/` | Layer 3: an overlay file decoded once into an on-disk artifact, shared by every viewer, with Scenes served from a bounded cache, and the file history that File scope queries ([README](../../crates/scene-store/README.md)) |
 | `crates/catalogs/` | Layer 3: the catalog documents the app offers, the six built-in v4 documents and the `*.json` files of the user's folder, listed, polled for changes and served as text to the frontend, which compiles them ([README](../../crates/catalogs/README.md)) |
 | `crates/overlays/` | Layer 3: a viewer's overlay data feed: Sample Items per source and Frame Maps per lane inside the sample window ([README](../../crates/overlays/README.md)) |
+| `crates/converters/` | Services layer: installed converter programs as file decoders: the manifest, the registry file and the process supervisor that feeds a decode's sink |
+| `crates/export/` | Services layer: an export job from frozen inputs to an encoded file, knowing no window, socket or Electron ([README](../../crates/export/README.md)) |
 | `crates/settings/` | Layer 3: the settings file, its declared settings (each Personal or Server) and shortcuts, and the window-state file ([README](../../crates/settings/README.md)) |
 | `crates/api-types/` | Rust types sent to the frontend and the API version; `export-types` writes them and the settings and command tables to `frontend/src/generated/`, and the versions and reserved keys to `desktop/generated/api.json`; `session.rs` is the Session socket's wire protocol; plain data that already has an owning crate is not redefined here |
 | `frontend/src/` | The UI. Components and their tests sit side by side |
 | `frontend/src/playback/`, `viewer/`, `viewers.ts` | The playback session (clock, frame buffer, renderer, lanes, viewport, selection and the inspector), the viewer host and playlist viewer, and the viewer registry keyed by Content kind |
+| `frontend/src/tools/`, `search/` | The Objects list in Frame and File scope, and the search language both share (parser in `search/`; File scope's matching runs in `scene-store`) |
 | `frontend/src/overlay/` | The WebGL painter and glyph atlas: Marks to quads, text through the atlas |
 | `frontend/src/present/` | Overlay presentation per lane, from Sample Item and Lane Style to Marks, layout and picking ([README](../../frontend/src/present/README.md)) |
+| `frontend/src/export/`, `frontend/src/render/`, `frontend/render.html`, `desktop/render.cjs` | The export dialog and the playback session's export job; the Render Page that draws an export's pictures with the shared presentation code, and the hidden Electron that hosts it |
 | `frontend/src/bench/`, `frontend/bench.html`, `desktop/bench.cjs` | The dev-only benchmark that times the real renderer in Electron (`make bench-browser`) |
 | `frontend/src/resolvers/` | The resolver settings form, generated from the schema the backend sends, and the cancellable scan |
 | `frontend/src/session/` | The session client: the socket and its store (the Doc, each seat's view, commands), cursors and presence |
@@ -40,7 +45,7 @@ Where code and files belong. Layers and the dependency rule are in the [overview
 | `frontend/src/access.ts`, `api.ts` | The credential this page holds and its grants; `fetch` for its own backend |
 | `desktop/main.cjs` | The shell's lifecycle: which windows exist and how they move between local and remote |
 | `desktop/args.cjs`, `backend.cjs`, `window.cjs`, `links.cjs`, `remote.cjs` | The command line (what opens a server, what the backend gets), the local backend process, windows with their trusted origin and IPC, launch links and the single instance, another server's address and its checks |
-| `desktop/smoke.cjs`, `smoke-kit.cjs`, `smoke-video.cjs`, `smoke-playlist.cjs`, `smoke-sharing.cjs`, `smoke-remote.cjs` | The smoke test and screenshot harness: the main scenario and its runner, shared page helpers, and the video, playlist, sharing and remote-server scenarios |
+| `desktop/smoke*.cjs` | The smoke test and screenshot harness: `smoke.cjs` runs the scenarios, `smoke-kit.cjs` holds the page helpers, and one file per scenario (video, overlays, objects, panels, export, playlist, twice, sharing, remote) |
 | `assets/` | Packaged built-in resources: render catalogs, icons, banner. The app reads them in place and never writes them |
 | `fixtures/` | Committed test inputs with their provenance and license ([README](../../fixtures/README.md)) |
 | `scripts/` | Development and verification support; the Makefile is the entry point |

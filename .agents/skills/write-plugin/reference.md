@@ -1,0 +1,108 @@
+# Converter reference
+
+The one specification of the converter contract (protocol 1). Code that enforces it: `crates/converters`. The model
+converter is `fixtures/converters/python-tracks`; a second, in POSIX shell and awk, is `fixtures/converters/shell-times`.
+
+## Manifest `ax-devil-converter.json`
+
+A JSON object in the converter's folder. Unknown fields, a wrong type or a missing required field refuse it, naming the
+field.
+
+| Field | Required | Meaning |
+|-------|----------|---------|
+| `manifest` | yes | `1` |
+| `kind` | yes | `"file"` |
+| `id` | yes | 1-64 characters of `a-z 0-9 . _ -`, starting with a letter or digit. Also the handler id (`--handler-type`) and the filter policy name. Must differ from every built-in and installed id |
+| `name`, `version` | yes | Shown to the user; `version` is free text |
+| `protocol` | yes | `1`; any other value does not load |
+| `scene_version` | yes | The Scene version written, `"4.0"`; a different major or a newer minor does not load |
+| `extensions` | no | File name endings the converter opens, lowercase with the dot, such as `.acme.jsonl`. Without any, it is picked only by id |
+| `command` | yes | Program and arguments. A program containing `/` is relative to the folder and must be executable; otherwise it is looked up on `PATH`. Later items that name a file or folder of the converter become absolute; items starting with `-` are passed as written. The overlay path is appended as the last argument |
+| `env` | no | Names of environment variables to pass through besides the standard few. `AX_DEVIL_*` is refused |
+| `code` | no | Paths in the folder (files or folders, no `..`) whose bytes identify the converter; default the whole folder. Dot-names and `__pycache__` are skipped; at most 20,000 files and 256 MiB |
+| `idle_timeout_s` | no | 1 to 86,400; default 120. Seconds the converter may print nothing before it is killed |
+| `options` | no | `[{"key","label","kind","required","default"}]`: `key` is letters, digits, `_` or `-`; `kind` is `text`, `file` or `folder`; `required` defaults to false; `default` is text. Values are always text |
+
+The cache of a file's samples is keyed by the converter's id, the SHA-256 of the manifest and its `code` files, the
+declared options (defaults filled in; undeclared keys are dropped with a warning) and the frame size. Editing a code
+file reruns the converter the next time the file opens; the app reads the manifest itself only at start.
+
+## Registry `$XDG_DATA_HOME/ax-devil/plugins.json`
+
+`{"version": 1, "converters": [{"manifest": "/absolute/path/ax-devil-converter.json"}]}` (default
+`~/.local/share/ax-devil/plugins.json`). `plugins install` and `plugins remove` write it atomically; a converter is
+never found by scanning folders. The app reads it at start, so a change applies on the next start. A broken registry
+loads no converter; a broken entry fails alone. Both are listed by `plugins list`.
+
+## Running
+
+The host starts `command` in an empty private working folder (also `TMPDIR`), removed at the end, so rely on the
+absolute paths in the request. The environment holds only `PATH`, `HOME`, `LANG`,
+`LC_ALL`, `LC_CTYPE`, `TZ` (on Windows also `SYSTEMROOT`) and the manifest's `env`. Stdin gets one line, then EOF:
+
+```json
+{"protocol":1,"path":"/abs/overlay.file","frame":{"width":1920,"height":1080},"options":{"camera":"front"}}
+```
+
+`options` holds every declared option that has a value. Read stdin, then the file at `path`; write to stdout.
+Stderr is drained: its last 20 lines (2 KiB) join a failure's reason, and it is logged at DEBUG only.
+
+## Output: JSON Lines on stdout
+
+UTF-8, one JSON object per line, `\n` or `\r\n`; blank lines are ignored; a line may be up to 16 MiB. Each line has
+exactly one key:
+
+| Line | Meaning |
+|------|---------|
+| `{"header": {...}}` | At most once, before the first sample. `coverage`: `"dense"` (a frame without a sample is empty and sticky never crosses it) or `"sparse"` (default; nothing is said about it). `filter`: classification options `{"id","label","default" (true),"types" [],"include_empty" (false),"exclude" (false)}`. `metadata`: an object of what the file says about itself |
+| `{"sample": Scene}` | One Scene. Samples with the same start key are joined: entities by id (observations added in order), events, relations and debug appended |
+| `{"replace": Scene}` | Like `sample`, but drops what its start key already held |
+| `{"warning": {"problem","reasons":[],"consequence"}}` | A problem the user should see; texts cut to 200 characters, three reasons |
+| `{"skipped": "reason"}` | A record you could not convert; counted |
+
+A line that is not valid JSON, has none or several of these keys, or holds a Scene that breaks a model rule is skipped
+and counted by line number. At the end one warning gives "Skipped N of M records" with up to three reasons. A header
+that comes late or twice ends the run as a protocol error.
+
+The run ends **Complete** when the converter exits 0 after its last line. Any other end is **Incomplete**: a nonzero
+exit or signal, nothing printed for `idle_timeout_s`, a line over 16 MiB, a protocol error, an unreadable pipe. The
+samples already read stay and the lane shows the reason; if none arrived, the overlay fails to open. On every end,
+and when the lane is closed, the host kills the converter and (not on Windows) everything it started.
+
+## Scene
+
+A sample is one Scene in the JSON of `scene::serial`. Times are `{"frame": N}` (frame-keyed) or `{"us": N}`
+(microseconds on the video's clock); one file uses one kind. Geometry is normalized to `[0,1]` of the frame. Absent
+parts may be left out.
+
+```json
+{"time": {"start": {"us": 100000}, "end": {"us": 100000}},
+ "entities": [{"id": "7", "end_reason": null, "motion_state": "moving",
+   "observations": [{"time": {"us": 100000},
+     "geometry": {"box": [0.1, 0.2, 0.3, 0.4]},
+     "classifications": [{"type": "car", "score": 0.9, "confidence": null, "attributes": {}}],
+     "measurements": {"image_velocity": {"vx": 0.01, "vy": 0.0}},
+     "source_data": {}, "debug": {}}]}],
+ "events": [{"time": {"start": {"us": 100000}, "end": {"us": 100000}},
+             "operation": {"rename": {"from": "6", "to": "7"}}}],
+ "relations": [{"type": "follows", "source": "7", "target": "6"}]}
+```
+
+- The Scene's key is `time.start`. Emit Scenes as the file gives them, one per object or per frame; the host joins equal keys.
+- Geometry is `{"box": [left, top, right, bottom]}` or `{"polygon": [[x, y], ...]}`.
+- `type` is any string; `score` and `confidence` are separate finite numbers or `null`. Never derive one from the other.
+- `motion_state`: `moving`, `stationary`, `unknown` or `null`. `end_reason`: text or `null`.
+- `measurements` (all optional): `image_velocity {vx, vy}`, `world_velocity {pitch, speed, yaw}`,
+  `geographic {latitude, longitude, elevation?}`, `world {distance, azimuth, elevation}`.
+- `events` operations: `delete {entity}`, `rename {from, to}`, `merge {sources, target}`, `split {source, targets}`.
+- `source_data` holds what the file said verbatim; `debug` what the converter computed. Both hold only null, bool,
+  number, string, list and map.
+- A classification attribute that is a list of `{"rgb": [r, g, b], "name"?, "score"?}` is a colour list a catalog can
+  colour by; bool, number and string attributes are also shown.
+- `entities[].images` (`{"timestamp_us", "box", "data": base64}`) carries crops.
+
+## What the user sees while it runs
+
+The lane fills as samples arrive, but only when a header came first and keys ascend. Without a header, or after a
+key below an earlier one, frames wait for the end of the run, where the host sorts and joins them. Reopening an
+unchanged file reads the stored result and does not run the converter.

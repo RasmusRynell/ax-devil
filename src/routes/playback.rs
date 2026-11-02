@@ -3,7 +3,7 @@
 //! viewer may ask for and tells when that ends. The route opens the entry's video and overlays, tells the viewer
 //! about them, applies the viewer's windows and lane policies and sends the frames in the windows and the lanes'
 //! data for them. Text messages are JSON (`api_types::playback`); frames, the timeline, Sample Items and Frame Maps
-//! are binary envelopes (`envelope`, `items`).
+//! are binary envelopes (`api_types::playback::envelope`).
 //!
 //! A ticket that is unknown, used, expired or not parseable closes the socket with 4401 and nothing else: the viewer
 //! learns nothing about why. After that the order of what a viewer receives is `Indexing`*, `Opened`, the Timeline
@@ -21,12 +21,18 @@
 //! again at once, the data follows the window the gate allowed, and a frame or data message queued with any frame outside
 //! the new bounds is dropped instead of sent; dropped data is offered again if the window still needs it. Once the authority is revoked the session ends at once, also while the video
 //! is being indexed, its overlays stop, a message still queued is dropped and the socket closes with code 4403.
+//!
+//! The owner can ask for rows of a lane's whole file (`file_scope`): the answers name the revisions they were made
+//! under and no frame, so they are never held back, and a follower is told it follows.
+//!
+//! The owner can start an export (`export`): one per viewer and one per backend, which ends with the viewer. Its
+//! progress notices name no frame and are never held back.
 
 mod catalogs;
-mod envelope;
+mod export;
+mod file_scope;
 mod gate;
 mod inspect;
-mod items;
 mod lanes;
 mod open;
 #[cfg(test)]

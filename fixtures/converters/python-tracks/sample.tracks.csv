@@ -1,0 +1,7 @@
+frame,id,class,score,confidence,box,polygon,color,vx,vy,state,end,renamed_from
+0,1,car,0.91,0.8,192:216:576:432,,red,0.01,0.0,moving,,
+1,1,car,0.92,0.8,211:216:595:432,,red,0.01,0.0,moving,,
+1,2,person,0.7,,,960:540;1152:540;1056:756,,0.0,0.0,stationary,,
+2,2,person,0.7,,960:540:1152:756,,,0.0,0.0,stationary,left_scene,
+two,3,car,0.5,0.5,0:0:10:10,,,0.0,0.0,,,
+3,9,car,0.93,0.8,230:216:614:432,,white,0.01,0.0,moving,,1

@@ -10,12 +10,9 @@ use std::{cell::OnceCell, cmp::Reverse, ops::RangeInclusive};
 use playback::{Rank, Want, rank};
 
 use crate::{
-    MapRun, OverlayEvent,
+    MapRun, OverlayEvent, RUN_FRAMES,
     state::{Held, Load, State, lane_id},
 };
-
-/// Frames of a map chunk; a run never spans two. The `FRAME_MAP_RUN_FRAMES` of the playback wire.
-pub(crate) const RUN_FRAMES: u64 = 256;
 
 const MAP: u8 = 0;
 const SAMPLE: u8 = 1;
@@ -124,17 +121,19 @@ impl State {
         })
     }
 
-    /// The most urgent thing to send, with its key. A lane offers the first run of each gap of unsent frames: the
-    /// part of the gap inside the 256-frame chunk of its frame nearest the playhead. The sources offer their most
+    /// The most urgent thing to send, with its key. A lane offers the first run of each gap of unsent frames it has
+    /// decided: the part of the gap inside the 256-frame chunk of its frame nearest the playhead. The sources offer their most
     /// urgent waiting sample that fits the budget; one that does not fit never holds back a less urgent one that
     /// does.
     fn best(&self, want: &Want, window: &RangeInclusive<u64>) -> Option<(Key, Pick)> {
         let mut best: Option<(Key, Pick)> = None;
         for (lane, slot) in self.lanes.iter().enumerate() {
-            if slot.window.is_empty() {
+            let Some(decided) = slot.window.frames() else {
                 continue;
-            }
-            for gap in slot.maps_sent.gaps_in(window.clone()) {
+            };
+            let reach =
+                (*window.start()).max(*decided.start())..=(*window.end()).min(*decided.end());
+            for gap in slot.maps_sent.gaps_in(reach) {
                 let run = run_in(&gap, want.playhead);
                 let frame = want.playhead.clamp(*run.start(), *run.end());
                 let urgency = rank(want.direction, want.playhead, frame);
@@ -181,7 +180,7 @@ impl State {
     pub(crate) fn next_encode(&mut self, source: usize) -> Option<(u64, u32)> {
         let (want, _) = self.window()?;
         let slot = &self.sources[source];
-        if !matches!(slot.load, Load::Ready(_)) {
+        if !matches!(slot.load, Load::Ready(..)) {
             return None;
         }
         let sent = Sent::new(self, &want);
@@ -330,6 +329,7 @@ impl<'a> Sent<'a> {
 /// playhead.
 fn run_in(gap: &RangeInclusive<u64>, playhead: u64) -> RangeInclusive<u64> {
     let nearest = playhead.clamp(*gap.start(), *gap.end());
-    let low = nearest - nearest % RUN_FRAMES;
-    (*gap.start()).max(low)..=(*gap.end()).min(low + (RUN_FRAMES - 1))
+    let chunk = u64::from(RUN_FRAMES);
+    let low = nearest - nearest % chunk;
+    (*gap.start()).max(low)..=(*gap.end()).min(low + (chunk - 1))
 }

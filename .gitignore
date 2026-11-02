@@ -8,4 +8,5 @@
 /frontend/dist/
 /desktop/node_modules/
 /desktop/generated/catalog-check.cjs
+/desktop/generated/render/
 /docs/local/

@@ -7,8 +7,8 @@ mod common;
 mod session_client;
 
 use api_types::playback::{
-    ClientMessage, Direction, FRAME_MAP_EMPTY, LanePolicyWire, LaneStatusWire, ServerMessage,
-    StickyWire,
+    ClientMessage, Direction, FRAME_MAP_EMPTY, IngestWire, LanePolicyWire, LaneStatusWire,
+    ServerMessage, StickyWire,
 };
 use common::{Backend, Event, Viewer};
 use serde_json::{Value, json};
@@ -190,11 +190,15 @@ async fn the_dataset_opens_as_two_entries_whose_lanes_map_each_frame_to_its_file
 
     // The malformed row is the only one skipped, and only DPM's file has it.
     let LaneStatusWire::Ready {
-        filter, warnings, ..
+        filter,
+        warnings,
+        ingest,
+        ..
     } = &lanes.status[&DPM]
     else {
         panic!("DPM is ready");
     };
+    assert_eq!(*ingest, IngestWire::Complete);
     assert_eq!(filter.len(), 14, "13 MOT classes and the unmapped one");
     let [warning] = &warnings[..] else {
         panic!("one warning, got {warnings:?}");

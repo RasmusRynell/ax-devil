@@ -12,12 +12,13 @@ export function constantText(text: string): Emitter {
   };
 }
 
-/** The text of a string id; null for no string. */
+/** The text of a string id, also a literal the sample does not contain; null for no string. */
 export function stringText(ctx: EvalContext, id: RowFn): Emitter {
   return (row, out) => {
     const value = id(row);
-    if (value < 0) return false;
-    ctx.strings.decode(value, out);
+    if (value >= 0) ctx.strings.decode(value, out);
+    else if (value <= -3) ctx.emitLiteral(-3 - value, out);
+    else return false;
     return true;
   };
 }

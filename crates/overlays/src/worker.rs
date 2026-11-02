@@ -5,11 +5,11 @@ use std::{sync::Arc, thread};
 use foundation::{ErrorCode, Interrupt, UserError};
 use playlist_resolvers::OverlayRef;
 use scene::{Scene, SceneTime, TimeSlice, serial::columns::encode_sample_item};
-use scene_store::Track;
+use scene_store::{Track, TrackSnapshot};
 
 use crate::{
     sources::TrackSource,
-    state::{Shared, describe},
+    state::{Load, Shared, describe},
 };
 
 /// How many evenly spaced samples the load encodes to learn the mean item size (and to warm the track's cache).
@@ -31,9 +31,14 @@ impl Drop for CloseOnPanic<'_> {
     }
 }
 
-/// Loads one source's track, records how it went, and then encodes samples until the viewer closes. A cancelled
-/// load records nothing.
-pub(crate) fn run(shared: &Shared, tracks: &dyn TrackSource, source: usize, overlay: &OverlayRef) {
+/// Loads one source's track, records how it went, and then encodes samples until the viewer closes, taking up what the
+/// track's ingest publishes meanwhile. A cancelled load records nothing.
+pub(crate) fn run(
+    shared: &Arc<Shared>,
+    tracks: &dyn TrackSource,
+    source: usize,
+    overlay: &OverlayRef,
+) {
     let _close = CloseOnPanic(shared);
     let opened = match tracks.open(overlay, shared.frame_size, &shared.cancel) {
         Ok(track) => track,
@@ -43,15 +48,33 @@ pub(crate) fn run(shared: &Shared, tracks: &dyn TrackSource, source: usize, over
             return;
         }
     };
+    // Registered before the load is recorded, so a publication in between is not missed: the load takes the
+    // snapshot current when it is recorded, and a listener call for an older one finds nothing to do.
+    let listener: Arc<dyn Fn() + Send + Sync> = {
+        let (shared, track) = (Arc::clone(shared), Arc::clone(&opened));
+        Arc::new(move || published(&shared, source, &track))
+    };
+    opened.on_change(Arc::downgrade(&listener));
     let mean = mean_item_bytes(shared, &opened);
     shared.update(|state| state.finish_load(source, Ok((opened.clone(), mean)), &shared.timeline));
     encode(shared, source, &opened);
 }
 
+/// The track published more samples or ended; runs on its ingest thread. The item size is measured again only when
+/// the samples were renumbered or the ingest ended, not at each publication.
+fn published(shared: &Shared, source: usize, track: &Track) {
+    if shared.cancel.is_cancelled() {
+        return;
+    }
+    let measure = shared.lock().remeasure(source, &track.snapshot());
+    let mean = measure.then(|| mean_item_bytes(shared, track));
+    shared.update(|state| state.track_changed(source, mean, &shared.timeline));
+}
+
 /// The mean size of the items of up to `MEAN_SAMPLES` evenly spaced samples; samples that cannot be read do not
 /// count.
 fn mean_item_bytes(shared: &Shared, track: &Track) -> u32 {
-    let count = track.keys().len();
+    let count = track.snapshot().keys.len();
     if count == 0 {
         return 0;
     }
@@ -74,11 +97,14 @@ fn mean_item_bytes(shared: &Shared, track: &Track) -> u32 {
 }
 
 /// The encoder loop of one source: the most urgent unclaimed sample of its window, until the viewer closes. A
-/// sample that cannot be read or encoded still goes, as an empty item with a problem, so no lane waits for it.
+/// sample that cannot be read or encoded still goes, as an empty item with a problem, so no lane waits for it. A
+/// sample is read by the numbering of the snapshot it was claimed under, so one the track has since renumbered is
+/// read as it was and dropped with its revision.
 fn encode(shared: &Shared, source: usize, track: &Track) {
     let mut empty: Option<Arc<[u8]>> = None;
-    while let Some((sample, data_revision)) = next_sample(shared, source) {
-        let (item, problem) = match usize::try_from(sample).map(|index| track.item(index)) {
+    while let Some((sample, data_revision, snapshot)) = next_sample(shared, source) {
+        let read = usize::try_from(sample).map(|index| track.item_in(&snapshot, index));
+        let (item, problem) = match read {
             Ok(Ok(item)) => (item, None),
             Ok(Err(error)) => (empty_item(&mut empty, track), Some(describe(&error))),
             Err(_) => (empty_item(&mut empty, track), None),
@@ -87,15 +113,18 @@ fn encode(shared: &Shared, source: usize, track: &Track) {
     }
 }
 
-/// Waits for a sample to encode; `None` once the viewer is closed.
-fn next_sample(shared: &Shared, source: usize) -> Option<(u64, u32)> {
+/// Waits for a sample to encode and says which revision and snapshot it was claimed under; `None` once the viewer is
+/// closed.
+fn next_sample(shared: &Shared, source: usize) -> Option<(u64, u32, Arc<TrackSnapshot>)> {
     let mut state = shared.lock();
     loop {
         if state.closed {
             return None;
         }
-        if let Some(next) = state.next_encode(source) {
-            return Some(next);
+        if let Some((sample, data_revision)) = state.next_encode(source)
+            && let Load::Ready(_, held) = &state.sources[source].load
+        {
+            return Some((sample, data_revision, Arc::clone(held)));
         }
         state = shared
             .work

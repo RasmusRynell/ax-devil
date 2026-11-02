@@ -95,6 +95,19 @@ describe("video viewer objects", () => {
     expect(inspector()).toBeNull();
   });
 
+  it("opens and closes the media tools by their command or their button", async () => {
+    const { run } = await mount();
+    const tools = () => screen.queryByRole("complementary", { name: "Media tools" });
+    expect(tools()).toBeNull();
+    run("media-tools");
+    expect(tools()).toBeTruthy();
+    run("media-tools");
+    expect(tools()).toBeNull();
+    run("media-tools");
+    fireEvent.click(screen.getByRole("button", { name: "Close media tools" }));
+    expect(tools()).toBeNull();
+  });
+
   it("shows the hover chip of the object under the pointer", async () => {
     const { props } = await mount();
     expect(props().objectDetails).toBe(true);

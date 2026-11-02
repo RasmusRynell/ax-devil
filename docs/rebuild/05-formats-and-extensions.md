@@ -64,9 +64,8 @@ Sources: `.agents/skills/write-plugin/SKILL.md`, `.agents/skills/write-plugin/re
   preserving source frame/time keys. A malformed document or frame whose omission would hide invalid ground truth
   fails the load (UVG-VCM); an explicit empty Scene remains a successful sample, distinct from absent data.
 - Declared metadata the host-owned store needs (*current:* `SceneDecoderFileProvider.__init__` in
-  `data_sources/file_data_provider/scene_decoder_file_provider.py`): storage mode (source index decoded on demand, or
-  derived cache for whole-file parsing), independent records (enables incremental re-decode), sequence lookup
-  support, timestamp fallback policy, `artifact_version`, and decode options, which are part of cache identity.
+  `data_sources/file_data_provider/scene_decoder_file_provider.py`): independent records, sequence lookup support,
+  timestamp fallback policy, `artifact_version`, and decode options, which are part of cache identity.
 - Line-record handlers decode each record independently of earlier calls, because records are decoded in seek order
   by one reused instance (`plugin_system/line_decoder_plugin.py`).
 - Payload handlers may be stateful (`scene/decoding/payload_to_scene_decoder.py`; the built-in ones are not). Payload
@@ -87,34 +86,31 @@ validates the schema against both.
 
 ## Plugin runtime
 
-Guarantees any mechanism must meet (`docs/domain/invariants.md#plugin-system`, `docs/plugins.md`):
+Guarantees any mechanism must meet (`docs/domain/invariants.md#plugin-system`, [plugins](../plugins.md)):
 
 - Discovery only through a declared registry; never by folder presence.
-- API and Scene version checks before registration; failures listed, never fatal.
+- Protocol and Scene version checks before registration; failures listed, never fatal.
 - Plugin dependencies isolated from the app's; installing a plugin never changes the app.
-- Install, update, remove from the CLI and the running app; validated before activation; applied on restart.
-- Authoring stays cheap for an agent: one small package, a local install command, edits picked up on restart.
+- Install and remove from the CLI, validated before activation and applied on restart; update and the Plugins view are
+  not built (PL-03).
+- Authoring stays cheap for an agent: one small folder, a local install command, a check command that runs it on real
+  data.
 
-"Python stays an authoring language" differs from "existing plugins run unchanged" (PL-05). Existing plugins also use
-hooks a converter process does not carry:
-
-| Hook | Current | Porting need |
-|------|---------|--------------|
-| Resolver settings widget and restore | `create_settings_widget`, `restore_settings` (Qt) | Replaced by the settings schema (D4) |
-| Resolver CLI command | `create_cli_command` (Click) | Generated from the schema |
-| Filter factories and predicates | `filter_factory`, `FilterOption` predicates in `filtering/predicate_utils.py` | Declarative classification policies only, or evaluated in the plugin process |
-| File provider factories | `FileToSceneDecoderDefinition.factory`, `create_provider` | Host-owned store fed by the decoder stream |
-| Resolver file watching | `source_paths` | Keep, as data |
-| Arbitrary values in Scenes | `Attribute.value`, `source_data`, `debug` | Schema value types only |
+The reference's plugin hooks do not carry over (PL-05): resolver settings widgets and Click commands become the
+declared schema (D4), filter predicates become declarative classification policies, file provider factories become
+the host-owned store fed by the decoder's stream, and Scene free-form values are schema value types only.
 
 D1 is settled by D29: built-in decoders and resolvers are native; third-party authors port their plugins to the new
 contract; unchanged plugins are not supported (PL-05); there is no in-process Python bridge. Other data enters through
-converter processes (any language, JSON Lines):
+converter processes (any language, JSON Lines; the spec is the
+[write-plugin reference](../../.agents/skills/write-plugin/reference.md), the host's rules
+[`crates/converters/README.md`](../../crates/converters/README.md)):
 
 - A manifest declares the converter; it runs with an allowlisted environment, its stderr is drained, a line over
-  16 MiB fails it, and a kill takes its whole process group.
-- A failure marks the lane incomplete; cache identity includes the script hash
+  16 MiB fails it, and a kill takes its whole process group (on Windows only the process).
+- A failure marks the lane incomplete; cache identity includes the hash of its manifest and code files
   (`docs/domain/invariants.md#data-pipeline`).
+- There is no sandbox: a converter runs with the user's rights ([trust](../plugins.md#trust)).
 
 ## Other extension points (keep)
 

@@ -3,7 +3,13 @@
  * `whole` converts. The atlas's page changes are applied to the GPU by the painter through `atlas.takeUploads()`.
  */
 
-import type { CodePoints, FontHandle, Glyph, TextSource } from "../present";
+import {
+  type CodePoints,
+  codePointString,
+  type FontHandle,
+  type Glyph,
+  type TextSource,
+} from "../present";
 import type { AtlasFont, TextAtlas } from "./atlas";
 
 export class AtlasText implements TextSource {
@@ -31,7 +37,7 @@ export class AtlasText implements TextSource {
   }
 
   whole(font: FontHandle, text: CodePoints, start: number, end: number): Glyph {
-    const line = String.fromCodePoint(...text.data.subarray(start, end));
+    const line = codePointString(text.data, start, end);
     return this.atlas.whole(font as AtlasFont, line);
   }
 

@@ -12,6 +12,7 @@ use playlist_resolvers::{
 use scene::Scene;
 use scene_decoders::{
     DecodeContext, DecodeError, DecodeSummary, DecoderSpec, FileSceneDecoder, RecordSceneDecoder,
+    SceneSink, SourceFile,
 };
 
 /// The decoders and resolvers this build knows. Cheap to clone.
@@ -39,6 +40,16 @@ impl Handlers {
                 .map(|&resolver| Arc::new(BuiltInResolver(resolver)) as Arc<dyn PlaylistResolver>)
                 .collect(),
         }
+    }
+
+    /// These handlers plus `decoders`, after the built-ins, in the order given.
+    #[must_use]
+    pub fn with_file_decoders(
+        mut self,
+        decoders: impl IntoIterator<Item = Arc<dyn FileSceneDecoder>>,
+    ) -> Self {
+        self.file_decoders.extend(decoders);
+        self
     }
 
     /// The whole-file decoders in registry order.
@@ -99,12 +110,12 @@ impl FileSceneDecoder for BuiltInFile {
 
     fn decode_file(
         &self,
-        input: &[u8],
+        source: &dyn SourceFile,
         context: &DecodeContext<'_>,
-        emit: &mut dyn FnMut(Scene),
+        sink: &mut dyn SceneSink,
         cancel: &CancelToken,
     ) -> Result<DecodeSummary, Interrupt<DecodeError>> {
-        self.0.decode_file(input, context, emit, cancel)
+        self.0.decode_file(source, context, sink, cancel)
     }
 }
 

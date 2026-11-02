@@ -16,7 +16,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     use api_types::{
         catalogs::*, content::*, handlers::*, inspect::*, playback::*, window::*, workspace::*, *,
     };
-    use foundation::ErrorCode;
+    use export::{LaneStyle, Output, RenderLane, RenderSetup};
+    use foundation::{ErrorCode, FrameSize};
+    use scene::{
+        OperationKind,
+        inspection::{FieldGroup, FieldOrigin},
+    };
+    use scene_store::{Op, Row, Search, Sort, SortKey, Term};
     use sessions::{
         CursorOptions, EndReason, SeatMode, SeatRole,
         session::{
@@ -75,6 +81,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         HiddenTarget,
         HandlersInfo,
         DecoderInfo,
+        PluginsInfo,
+        PluginInfo,
+        PluginStatus,
         ResolverInfo,
         FieldInfo,
         FieldKindWire,
@@ -91,12 +100,33 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         FilterOptionInfo,
         WarningInfo,
         LaneStatusWire,
-        FieldGroupWire,
-        FieldOriginWire,
+        IngestWire,
+        FieldGroup,
+        FieldOrigin,
         FieldWire,
         InspectionWire,
         ClientMessage,
         ServerMessage,
+        CatalogRefWire,
+        LaneStyle,
+        ExportLaneWire,
+        ExportQualityWire,
+        ExportFormatWire,
+        ExportStateWire,
+        Op,
+        Term,
+        Search,
+        SortKey,
+        Sort,
+        OperationKind,
+        Row,
+        FileScopeUnavailable,
+        FrameSize,
+        Output,
+        RenderLane,
+        RenderSetup,
+        render::PageMessage,
+        render::HostMessage,
     ];
     sections.push(constants());
     let text = format!(
@@ -151,10 +181,11 @@ fn data(name: &str, doc: &str, value: &impl serde::Serialize) -> Result<String, 
     ))
 }
 
-/// The playback constants as TypeScript consts, each under its doc comment.
+/// The playback and render constants as TypeScript consts, each under its doc comment.
 fn constants() -> String {
     api_types::playback::CONSTANTS
         .iter()
+        .chain(api_types::render::CONSTANTS)
         .map(|(name, value, doc)| {
             format!(
                 "/**\n *{}\n */\nexport const {name} = {value};",

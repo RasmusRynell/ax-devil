@@ -1,43 +1,19 @@
-//! Wire types of an object's inspection: the answer to `Inspect` on the playback socket.
+//! Wire types of an object's inspection: the answer to `Inspect` on the playback socket. The groups and origins of
+//! its fields are `scene::inspection`'s own types.
 
+use scene::inspection::{FieldGroup, FieldOrigin};
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
-
-/// Where in the inspector a field is listed; the variants are in display order.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
-#[serde(rename_all = "lowercase")]
-pub enum FieldGroupWire {
-    /// What the object is: class, confidence, scores.
-    Classification,
-    /// Where it moves: speed, direction, track.
-    Motion,
-    /// Where it is: box, polygon.
-    Geometry,
-    /// What the file and the decoder carried along; each field has an origin.
-    Debug,
-    /// Everything else the observation holds.
-    Raw,
-}
-
-/// Who produced a field in the Debug group.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
-#[serde(rename_all = "lowercase")]
-pub enum FieldOriginWire {
-    /// The file's own data, as the source wrote it.
-    Source,
-    /// What the decoder computed from it.
-    Decoder,
-}
 
 /// One leaf of an object's data.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, TS)]
 pub struct FieldWire {
     /// The section the field is listed in.
-    pub group: FieldGroupWire,
+    pub group: FieldGroup,
     /// Who produced the field; only in the Debug group.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
-    pub origin: Option<FieldOriginWire>,
+    pub origin: Option<FieldOrigin>,
     /// The field's place in the data; a list index is its decimal digits.
     pub path: Vec<String>,
     /// The leaf: a number, text, true or false, or `null`.

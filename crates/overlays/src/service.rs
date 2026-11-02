@@ -3,7 +3,6 @@
 use std::{sync::Arc, thread};
 
 use foundation::{FrameSize, Timeline};
-use overlay_sync::MatchPolicy;
 use playlist_resolvers::OverlayRef;
 use scene_store::TrackRegistry;
 
@@ -28,12 +27,6 @@ impl OverlayService {
 
     pub(crate) fn from_sources(tracks: Arc<dyn TrackSource>) -> Self {
         Self { tracks }
-    }
-
-    /// How samples are matched to frames until a lane says otherwise; the one place the lane defaults of the
-    /// backend live.
-    pub fn lane_defaults(&self) -> MatchPolicy {
-        MatchPolicy::default()
     }
 
     /// Starts loading every source in the background; a lane without an overlay never gets a status. Lanes on the

@@ -24,7 +24,6 @@ tokio = { workspace = true, features = ["sync"] }
 tracing.workspace = true
 
 [dev-dependencies]
-api-types.workspace = true
 handlers.workspace = true
 serde_json.workspace = true
 tempfile = "3"

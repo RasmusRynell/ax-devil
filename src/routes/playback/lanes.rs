@@ -2,12 +2,12 @@
 //! and their wire forms. A policy that cannot be applied, and a lane's problems, are told only to an audience with
 //! host details; the lane keeps its last matching, adopts the new revision and the session goes on.
 
-use super::{End, Flow, Outgoing, items, stream::Setup, text};
+use super::{End, Flow, Outgoing, stream::Setup, text};
 use api_types::{
     Audience,
     playback::{
-        ClockWire, FilterOptionInfo, LaneDefaultsWire, LaneInfo, LanePolicyWire, LaneStatusWire,
-        MAX_DATA_WINDOW_FRAMES, ServerMessage, StickyWire, WarningInfo,
+        ClockWire, FilterOptionInfo, IngestWire, LaneDefaultsWire, LaneInfo, LanePolicyWire,
+        LaneStatusWire, MAX_DATA_WINDOW_FRAMES, ServerMessage, StickyWire, WarningInfo, envelope,
     },
     project,
 };
@@ -15,9 +15,10 @@ use axum::extract::ws::Message;
 use catalogs::Library;
 use foundation::{ErrorCode, HostPath, MediaTime, Timeline, UserError};
 use overlay_sync::{MatchPolicy, Sticky, Tolerance};
-use overlays::{LaneStatus, OverlayEvent, OverlayService, ViewerOverlays};
+use overlays::{LaneStatus, OverlayEvent, ViewerOverlays};
 use playback::{Rank, Want};
 use scene::TimeKind;
+use scene_store::Ingest;
 use std::collections::{BTreeMap, BTreeSet};
 use workspace::Entry;
 
@@ -186,12 +187,12 @@ impl Lanes {
                 Some(self.status(lane, status))
             }
             LaneEvent::Overlay(OverlayEvent::Sample(sample)) => Some(Outgoing {
-                message: Message::Binary(items::sample(&sample)),
+                message: Message::Binary(envelope::sample(&sample)),
                 frames: Some(sample.frame..=sample.frame),
                 data: Some(OverlayEvent::Sample(sample)),
             }),
             LaneEvent::Overlay(OverlayEvent::Map(run)) => Some(Outgoing {
-                message: Message::Binary(items::frame_map(&run)),
+                message: Message::Binary(envelope::frame_map(&run)),
                 frames: Some(run.frames()),
                 data: Some(OverlayEvent::Map(run)),
             }),
@@ -260,11 +261,11 @@ impl Lanes {
     }
 }
 
-/// What every lane starts with: the library's default catalog and the service's matching.
-pub(super) fn lane_defaults(service: &OverlayService, catalogs: &Library) -> LaneDefaultsWire {
+/// What every lane starts with: the library's default catalog and the default matching.
+pub(super) fn lane_defaults(catalogs: &Library) -> LaneDefaultsWire {
     LaneDefaultsWire {
         catalog: catalogs.default_id().to_string(),
-        policy: policy_wire(&service.lane_defaults()),
+        policy: policy_wire(&MatchPolicy::default()),
     }
 }
 
@@ -359,6 +360,11 @@ fn status_wire(status: LaneStatus, audience: Audience) -> LaneStatusWire {
             samples: ready.samples as u64,
             data_revision: ready.data_revision,
             mean_sample_bytes: ready.mean_sample_bytes,
+            ingest: match ready.ingest {
+                Ingest::Reading => IngestWire::Reading,
+                Ingest::Complete => IngestWire::Complete,
+                Ingest::Incomplete(error) => IngestWire::Incomplete(project(&error, audience)),
+            },
         },
         LaneStatus::Failed(error) => LaneStatusWire::Failed(project(&error, audience)),
     }

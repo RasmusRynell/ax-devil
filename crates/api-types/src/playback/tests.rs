@@ -1,5 +1,10 @@
 use super::*;
-use crate::inspect::{FieldGroupWire, FieldOriginWire, FieldWire};
+use crate::inspect::FieldWire;
+use scene::{
+    OperationKind,
+    inspection::{FieldGroup, FieldOrigin},
+};
+use scene_store::{Op, SortKey};
 use serde_json::json;
 
 #[test]
@@ -101,13 +106,13 @@ fn inspection_and_catalog_listing_use_the_names_the_frontend_parses() {
         inspection: InspectionWire::Found {
             fields: vec![
                 FieldWire {
-                    group: FieldGroupWire::Debug,
-                    origin: Some(FieldOriginWire::Source),
+                    group: FieldGroup::Debug,
+                    origin: Some(FieldOrigin::Source),
                     path: vec!["tags".into(), "0".into()],
                     value: json!("x"),
                 },
                 FieldWire {
-                    group: FieldGroupWire::Classification,
+                    group: FieldGroup::Classification,
                     origin: None,
                     path: vec!["class".into()],
                     value: json!(null),
@@ -185,7 +190,7 @@ fn opened_and_lane_status_carry_the_source_and_data_revision() {
         }],
     };
     let json = serde_json::to_value(&opened).unwrap();
-    assert_eq!(json["protocol"], 5);
+    assert_eq!(json["protocol"], 4);
     assert_eq!(json["catalogs"][0]["id"], "built-in:standard");
     assert_eq!(
         json["lanes"],
@@ -205,14 +210,26 @@ fn opened_and_lane_status_carry_the_source_and_data_revision() {
             samples: 6,
             data_revision: 1,
             mean_sample_bytes: 812,
+            ingest: IngestWire::Reading,
         },
     };
     assert_eq!(
         serde_json::to_value(&ready).unwrap(),
         json!({"type": "LaneStatus", "lane": 1, "status": {
             "status": "Ready", "clock": "frame", "filter": [], "warnings": [], "samples": 6,
-            "data_revision": 1, "mean_sample_bytes": 812
+            "data_revision": 1, "mean_sample_bytes": 812, "ingest": {"state": "Reading"}
         }})
+    );
+    let stopped = IngestWire::Incomplete(ErrorWire {
+        code: foundation::ErrorCode::OverlayInvalid,
+        params: crate::ErrorParams::default(),
+        reason: Some("The converter stopped with exit code 3".into()),
+        location: None,
+    });
+    assert_eq!(
+        serde_json::to_value(&stopped).unwrap(),
+        json!({"state": "Incomplete", "code": "OverlayInvalid", "params": {},
+               "reason": "The converter stopped with exit code 3"})
     );
     let failed = ServerMessage::LaneStatus {
         lane: 1,
@@ -227,4 +244,117 @@ fn opened_and_lane_status_carry_the_source_and_data_revision() {
         serde_json::to_value(&failed).unwrap(),
         json!({"type": "LaneStatus", "lane": 1, "status": {"status": "Failed", "code": "OverlayInvalid", "params": {}}})
     );
+}
+
+#[test]
+fn export_messages_use_the_names_the_frontend_parses() {
+    let start = json!({
+        "type": "Export", "job": 4, "first": 10, "last": 99, "path": "/home/a/out.mp4",
+        "format": {"format": "Mp4", "quality": "balanced"},
+        "lanes": [{
+            "lane": 1, "policy_revision": 2, "data_revision": null,
+            "catalog": {"id": "built-in:standard", "revision": 3},
+            "style": {
+                "label": "a.txt", "enabled_classes": [0, 2], "class_options": 3, "hidden": 1,
+                "theme": null, "retained_opacity": 0.5, "filter": "person"
+            }
+        }]
+    });
+    let ClientMessage::Export {
+        lanes,
+        format,
+        last,
+        ..
+    } = serde_json::from_value(start).unwrap()
+    else {
+        panic!("not an Export");
+    };
+    assert_eq!(last, 99);
+    assert_eq!(
+        format,
+        ExportFormatWire::Mp4 {
+            quality: ExportQualityWire::Balanced
+        }
+    );
+    assert_eq!(lanes[0].style.enabled_classes, [0, 2]);
+    assert_eq!(lanes[0].style.filter.as_deref(), Some("person"));
+    assert_eq!(
+        serde_json::to_value(ExportFormatWire::Png).unwrap(),
+        json!({"format": "Png"})
+    );
+    let progress = ServerMessage::Export {
+        job: 4,
+        state: ExportStateWire::Running { done: 5, total: 90 },
+    };
+    assert_eq!(
+        serde_json::to_value(&progress).unwrap(),
+        json!({"type": "Export", "job": 4, "state": {"state": "Running", "done": 5, "total": 90}})
+    );
+    let failed = ServerMessage::Export {
+        job: 4,
+        state: ExportStateWire::Failed(ErrorWire {
+            code: foundation::ErrorCode::OverlayInvalid,
+            params: crate::ErrorParams::default(),
+            reason: Some("disk full".into()),
+            location: None,
+        }),
+    };
+    assert_eq!(
+        serde_json::to_value(&failed).unwrap()["state"]["state"],
+        "Failed"
+    );
+}
+
+#[test]
+fn file_scope_messages_use_the_names_the_frontend_parses() {
+    let query = json!({
+        "type": "FileQuery", "lane": 1, "request": 7, "classes": [5],
+        "query": {"groups": [[{"path": null, "op": "ge", "value": "3", "negated": true}]]},
+        "sort": {"key": "first_seen", "descending": true}, "offset": 20, "limit": 100, "bins": 64
+    });
+    let ClientMessage::FileQuery {
+        query: search,
+        sort,
+        ..
+    } = serde_json::from_value(query).unwrap()
+    else {
+        panic!("a FileQuery");
+    };
+    assert_eq!(search.groups[0][0].op, Op::Ge);
+    assert_eq!(sort.key, SortKey::FirstSeen);
+
+    assert!(matches!(
+        serde_json::from_value(json!({"type": "FileRelease", "lane": 1})).unwrap(),
+        ClientMessage::FileRelease { lane: 1 }
+    ));
+
+    let refused = ServerMessage::FileScope {
+        lane: 1,
+        request: 7,
+        unavailable: FileScopeUnavailable::Following,
+    };
+    assert_eq!(
+        serde_json::to_value(&refused).unwrap(),
+        json!({"type": "FileScope", "lane": 1, "request": 7, "unavailable": {"state": "Following"}})
+    );
+    let rows = ServerMessage::FileRows {
+        lane: 1,
+        request: 7,
+        data_revision: 2,
+        policy_revision: 3,
+        total: 9,
+        matched: 1,
+        offset: 0,
+        rows: vec![Row {
+            id: "4".into(),
+            classes: vec!["car".into()],
+            events: vec![OperationKind::Merge],
+            first_frame: 3,
+            last_frame: 8,
+            presence: vec![[3, 5], [7, 8]],
+        }],
+    };
+    let json = serde_json::to_value(&rows).unwrap();
+    assert_eq!(json["rows"][0]["events"], json!(["merge"]));
+    assert_eq!(json["rows"][0]["presence"], json!([[3, 5], [7, 8]]));
 }

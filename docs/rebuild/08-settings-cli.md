@@ -42,11 +42,11 @@ and `ax-devil <command> --help` run from a worktree at the reference commit.
 | `ax-devil` | Launch (start panel or restored recovery copy); global `--log-level`, `--config`. With packaging (D6) it becomes `app` |
 | `serve` | Run the backend headless for other machines, protected by a server password ([13](13-security-packaging-ops.md#sharing-must)) |
 | `app` | Open the desktop app, on the local backend or another machine's server |
-| `local`, `live`, `playlist <resolver>` | Build one item into a new Untitled workspace |
+| `local`, `live`, `playlist <resolver>` | Build one item into a new Untitled workspace (`local` has no per-overlay options yet) |
 | `open WORKSPACE_FILE` | Open a saved workspace |
 | `list-handlers` | List file overlay handler types |
 | `catalog`, `catalog list/check/render/new/use/reference` | Open the app with the catalog window, or headless catalog work |
-| `plugins install/update/remove/list` | Manage plugins from the base app |
+| `plugins install/remove/list/check` | Manage converters from the base app; they apply on restart ([plugins](../plugins.md)) |
 | `clear-cache` | Remove caches with confirmation |
 
 - **MUST** keep CLI commands thin item builders using the same intake as dialogs; failures surface in the app
@@ -56,7 +56,7 @@ and `ax-devil <command> --help` run from a worktree at the reference commit.
   visible window, and document their display and GPU prerequisites.
 - **MUST** keep `--help` the only documentation of flags; top-level help links docs, AGENTS.md and skills.
 - **MUST** give every agent-editable surface a headless command that exits non-zero with a message naming the location.
-- **SHOULD** add `--json` output to listing commands; not present today.
+- **SHOULD** add `--json` output to listing commands; only `plugins list` has it today.
 
 ## Run modes
 

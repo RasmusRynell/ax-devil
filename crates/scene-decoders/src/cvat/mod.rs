@@ -16,11 +16,11 @@ use quick_xml::{
     Reader,
     events::{BytesStart, Event},
 };
-use scene::{ClassType, Coverage, EntityId, Fields, Name, Scene, Value};
+use scene::{ClassType, Coverage, EntityId, Fields, Name, Value};
 
 use crate::{
-    DecodeContext, DecodeError, DecodeSummary, DecoderSpec, FileSceneDecoder, SkippedRecords,
-    Storage,
+    DecodeContext, DecodeError, DecodeSummary, DecoderSpec, FileSceneDecoder, OnEqualKey,
+    SceneSink, SkippedRecords, SourceFile, Storage,
 };
 use frames::{FrameAcc, Pending, filter_policy};
 use meta::Essentials;
@@ -49,11 +49,12 @@ impl FileSceneDecoder for CvatDecoder {
 
     fn decode_file(
         &self,
-        input: &[u8],
+        source: &dyn SourceFile,
         _context: &DecodeContext<'_>,
-        emit: &mut dyn FnMut(Scene),
+        sink: &mut dyn SceneSink,
         cancel: &CancelToken,
     ) -> Result<DecodeSummary, Interrupt<DecodeError>> {
+        let input = source.bytes(cancel)?;
         let mut parser = Parser::default();
         let mut reader = Reader::from_reader(input);
         reader.config_mut().expand_empty_elements = true;
@@ -102,7 +103,7 @@ impl FileSceneDecoder for CvatDecoder {
             };
             handled.map_err(|message| fail(&reader, message))?;
         }
-        parser.finish(emit, cancel)
+        parser.finish(sink, cancel)
     }
 }
 
@@ -418,7 +419,7 @@ impl Parser {
     /// Builds the Scenes and the summary once the whole file has been read.
     fn finish(
         mut self,
-        emit: &mut dyn FnMut(Scene),
+        sink: &mut dyn SceneSink,
         cancel: &CancelToken,
     ) -> Result<DecodeSummary, Interrupt<DecodeError>> {
         let failed = |message: String| Interrupt::Failed(DecodeError(message));
@@ -450,10 +451,12 @@ impl Parser {
         let mut index = HashMap::new();
         while let Some((frame, acc)) = self.frames.pop_first() {
             cancel.check()?;
-            emit(
-                acc.into_scene(frame, fallback, &mut index)
-                    .map_err(failed)?,
-            );
+            let scene = acc
+                .into_scene(frame, fallback, &mut index)
+                .map_err(failed)?;
+            if sink.sample(scene, OnEqualKey::Replace).is_break() {
+                break;
+            }
         }
         Ok(DecodeSummary {
             warnings: self.skipped.warning(self.shapes).into_iter().collect(),

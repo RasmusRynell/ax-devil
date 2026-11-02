@@ -33,3 +33,17 @@ pub fn electron(desktop: &Path) -> Result<PathBuf, String> {
         ))
     }
 }
+
+/// The page the frontend build writes for the hidden renderer, which `desktop/render.cjs` loads, or why there is
+/// none.
+pub fn render_page(desktop: &Path) -> Result<PathBuf, String> {
+    let page = desktop.join("generated/render/render.html");
+    if page.is_file() {
+        Ok(page)
+    } else {
+        Err(format!(
+            "Cannot find the render page at {}; build it with pnpm --dir frontend build",
+            page.display()
+        ))
+    }
+}

@@ -5,7 +5,8 @@ use crate::AppState;
 use api_types::{
     Audience, ErrorWire,
     handlers::{
-        ChoiceInfo, DecoderInfo, FieldInfo, FieldKindWire, HandlersInfo, ResolverInfo, ScanRequest,
+        ChoiceInfo, DecoderInfo, FieldInfo, FieldKindWire, HandlersInfo, PluginsInfo, ResolverInfo,
+        ScanRequest,
     },
 };
 use axum::{
@@ -54,6 +55,10 @@ pub(crate) async fn get_handlers(State(state): State<AppState>) -> Json<Handlers
                 .iter()
                 .map(|&extension| extension.to_owned())
                 .collect(),
+            plugin: state
+                .plugins
+                .provides(spec.handler)
+                .then(|| spec.handler.to_owned()),
         }
     });
     let resolvers = state.handlers.resolvers().iter().map(|resolver| {
@@ -79,6 +84,11 @@ pub(crate) async fn get_handlers(State(state): State<AppState>) -> Json<Handlers
         decoders: decoders.collect(),
         resolvers: resolvers.collect(),
     })
+}
+
+/// The converters the user installed, with the reason for each that did not load.
+pub(crate) async fn get_plugins(State(state): State<AppState>) -> Json<PluginsInfo> {
+    Json(PluginsInfo::clone(&state.plugins))
 }
 
 /// Runs the resolver's scan of `field` on a blocking thread. Dropping the returned future, as the server does when

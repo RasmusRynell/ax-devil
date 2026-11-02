@@ -1,14 +1,17 @@
-//! The playback tests' backend, viewer and envelope reader.
+//! The playback tests' backend and viewer; `envelope` reads what they receive.
 
 // Each suite that includes this module uses its own part of it.
 #![allow(dead_code)]
 
+pub mod export_kit;
+
+mod envelope;
+pub use envelope::Event;
+use envelope::parse_envelope;
+
 use api_types::{
     CursorPoint, ErrorWire,
-    playback::{
-        ClientMessage, Direction, KIND_FRAME_MAP, KIND_SAMPLE, LaneInfo, PLAYBACK_PROTOCOL,
-        SAMPLE_HEADER_BYTES, ServerMessage, Want,
-    },
+    playback::{ClientMessage, Direction, LaneInfo, PLAYBACK_PROTOCOL, ServerMessage, Want},
 };
 use ax_devil::{AppState, access::Policy, app, video_sources::VideoSources};
 use futures_util::{SinkExt, StreamExt};
@@ -89,21 +92,29 @@ impl Added {
 
 impl Backend {
     pub async fn start() -> Self {
-        Self::start_with(false, None).await
+        Self::start_with(false, Handlers::built_in(), |_| {}).await
     }
 
     /// A backend and viewers whose sockets hold only a few kilobytes, so a viewer that stops reading backs the
     /// backend up after a few frames.
     pub async fn start_squeezed() -> Self {
-        Self::start_with(true, None).await
+        Self::start_with(true, Handlers::built_in(), |_| {}).await
     }
 
     /// A backend whose catalogs are `catalogs`, which the test polls itself with `rescan`.
     pub async fn start_with_catalogs(catalogs: catalogs::Library) -> Self {
-        Self::start_with(false, Some(catalogs)).await
+        Self::start_with(false, Handlers::built_in(), |state| {
+            state.catalogs = Arc::new(catalogs);
+        })
+        .await
     }
 
-    async fn start_with(squeezed: bool, catalogs: Option<catalogs::Library>) -> Self {
+    /// A backend that decodes with `handlers`, over the state `configure` adjusts.
+    pub async fn start_with(
+        squeezed: bool,
+        handlers: Handlers,
+        configure: impl FnOnce(&mut AppState),
+    ) -> Self {
         let folder = tempfile::tempdir().unwrap();
         let settings = settings::Settings::load(&folder.path().join("default.json")).unwrap();
         let registry = Registry::new(CachePool::new(256 * MIB));
@@ -115,12 +126,10 @@ impl Backend {
             Policy::Local,
             videos.clone(),
             stopping,
-            Handlers::built_in(),
+            handlers,
             &cache,
         );
-        if let Some(catalogs) = catalogs {
-            state.catalogs = Arc::new(catalogs);
-        }
+        configure(&mut state);
         let router = app(state.clone());
         let socket = tokio::net::TcpSocket::new_v4().unwrap();
         if squeezed {
@@ -162,7 +171,7 @@ impl Backend {
                 label: None,
             })
             .collect();
-        let item = workspace::intake::video(path, &overlays, &Handlers::built_in()).unwrap();
+        let item = workspace::intake::video(path, &overlays, &self.state.handlers).unwrap();
         self.add_item(item).await
     }
 
@@ -250,138 +259,6 @@ impl Backend {
                 self.videos.registry().running_workers()
             )
         });
-    }
-}
-
-/// One frame envelope, read with the offsets of the documented layout.
-pub struct Frame {
-    pub sequence_id: u64,
-    pub timestamp_us: i64,
-    pub flags: u32,
-    pub width: u32,
-    pub height: u32,
-    pub layout: u8,
-    pub plane_lengths: [u32; 3],
-    pub planes: Vec<u8>,
-}
-
-impl Frame {
-    /// The luma every sample of the Y plane has; fails when the picture is not flat.
-    pub fn flat_luma(&self) -> u8 {
-        let y = &self.planes[..self.plane_lengths[0] as usize];
-        assert!(
-            y.iter().all(|sample| *sample == y[0]),
-            "frame {} is not flat",
-            self.sequence_id
-        );
-        y[0]
-    }
-}
-
-pub fn u32_at(bytes: &[u8], at: usize) -> u32 {
-    u32::from_le_bytes(bytes[at..at + 4].try_into().unwrap())
-}
-
-pub fn u64_at(bytes: &[u8], at: usize) -> u64 {
-    u64::from_le_bytes(bytes[at..at + 8].try_into().unwrap())
-}
-
-/// One Sample envelope: the head and the sample header, and what the item says about itself.
-pub struct Sample {
-    pub source: u16,
-    pub revision: u32,
-    /// The sample's index in its file.
-    pub sample: u64,
-    /// The entities of the item.
-    pub rows: u32,
-}
-
-/// One FrameMap envelope: a run of a lane's map from frame to sample.
-pub struct Map {
-    pub lane: u16,
-    pub policy: u32,
-    pub data: u32,
-    pub first: u64,
-    /// A sample index per frame, or `FRAME_MAP_NONE` or `FRAME_MAP_EMPTY`.
-    pub samples: Vec<u32>,
-    pub kinds: Vec<u8>,
-}
-
-pub enum Event {
-    Message(ServerMessage),
-    Frame(Frame),
-    Sample(Sample),
-    Map(Map),
-    Timeline(Vec<f64>),
-    Closed,
-}
-
-/// The envelope head, checked: magic, version 1 and a payload that starts where `header_len` says.
-pub fn parse_envelope(bytes: &[u8]) -> Event {
-    assert_eq!(&bytes[..4], b"AXDV");
-    assert_eq!(bytes[4], 1, "envelope version");
-    let payload_at = u16::from_le_bytes([bytes[6], bytes[7]]) as usize;
-    match bytes[5] {
-        1 => {
-            assert_eq!(payload_at, 64);
-            let lengths = [u32_at(bytes, 52), u32_at(bytes, 56), u32_at(bytes, 60)];
-            let planes = bytes[payload_at..].to_vec();
-            assert_eq!(
-                planes.len(),
-                lengths.iter().sum::<u32>() as usize,
-                "the message is exactly its planes"
-            );
-            Event::Frame(Frame {
-                sequence_id: u64_at(bytes, 8),
-                timestamp_us: u64_at(bytes, 16) as i64,
-                flags: u32_at(bytes, 24),
-                width: u32_at(bytes, 28),
-                height: u32_at(bytes, 32),
-                layout: bytes[36],
-                plane_lengths: lengths,
-                planes,
-            })
-        }
-        KIND_SAMPLE => {
-            assert_eq!(payload_at, usize::from(SAMPLE_HEADER_BYTES));
-            assert_eq!(bytes.len() % 8, 0, "the item is a whole number of words");
-            Event::Sample(Sample {
-                source: u16::from_le_bytes([bytes[28], bytes[29]]),
-                revision: u32_at(bytes, 32),
-                sample: u64_at(bytes, 8),
-                rows: u32_at(bytes, payload_at + 8),
-            })
-        }
-        KIND_FRAME_MAP => {
-            assert_eq!(payload_at, 48);
-            let count = u32_at(bytes, 40) as usize;
-            assert!((1..=256).contains(&count));
-            assert_eq!(
-                bytes.len(),
-                48 + 5 * count,
-                "the message is exactly its map"
-            );
-            Event::Map(Map {
-                lane: u16::from_le_bytes([bytes[28], bytes[29]]),
-                policy: u32_at(bytes, 32),
-                data: u32_at(bytes, 36),
-                first: u64_at(bytes, 8),
-                samples: (0..count).map(|k| u32_at(bytes, 48 + 4 * k)).collect(),
-                kinds: bytes[48 + 4 * count..].to_vec(),
-            })
-        }
-        3 => {
-            assert_eq!(payload_at, 32);
-            Event::Timeline(
-                bytes[payload_at..]
-                    .as_chunks::<8>()
-                    .0
-                    .iter()
-                    .map(|time| f64::from_le_bytes(*time))
-                    .collect(),
-            )
-        }
-        kind => panic!("unexpected envelope kind {kind}"),
     }
 }
 

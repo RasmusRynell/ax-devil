@@ -4,22 +4,22 @@
 //! same inputs always select the same sample, so the viewer and export agree. [`select`] is the one entry point; its
 //! documentation states the rules.
 
+mod keys;
 mod select;
-
-use std::sync::Arc;
 
 use foundation::MediaTime;
 use scene::TimeKind;
 
+pub use keys::{CHUNK_KEYS, KeyChunks};
 pub use select::select;
 
 /// The keys of an overlay file's samples, ascending and unique, on the clock the file uses.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum SampleKeys {
     /// Frame numbers of the video.
-    Frames(Arc<[u64]>),
+    Frames(KeyChunks<u64>),
     /// Timestamps on the video's Media Time clock.
-    Times(Arc<[MediaTime]>),
+    Times(KeyChunks<MediaTime>),
 }
 
 impl SampleKeys {
@@ -87,15 +87,16 @@ pub struct MatchPolicy {
     pub sticky: Sticky,
 }
 
-/// How a sample came to belong to a frame.
+/// How a sample came to belong to a frame. The discriminant is the `MATCH_*` byte of the playback wire.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[repr(u8)]
 pub enum MatchKind {
     /// The sample's key is the frame's.
-    Exact,
+    Exact = 0,
     /// An earlier sample within the tolerance.
-    Tolerated,
+    Tolerated = 1,
     /// An older sample kept by sticky.
-    Retained,
+    Retained = 2,
 }
 
 /// What belongs to one frame.

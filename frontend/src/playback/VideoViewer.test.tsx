@@ -227,6 +227,7 @@ describe("video viewer", () => {
         samples: 4,
         data_revision: 1,
         mean_sample_bytes: 100,
+        ingest: { state: "Complete" },
       },
     };
 

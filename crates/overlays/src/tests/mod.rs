@@ -1,6 +1,7 @@
 //! Tests of the data feed through real MOT files, with track loads that the tests can hold or break.
 
 mod delivery;
+mod ingest;
 mod inspect;
 mod retention;
 mod statuses;
@@ -25,7 +26,7 @@ use scene_store::{Track, TrackRegistry};
 use tempfile::TempDir;
 
 use crate::{
-    LaneStatus, MapRun, OverlayEvent, OverlayService, SampleItem, ViewerOverlays,
+    LaneReady, LaneStatus, MapRun, OverlayEvent, OverlayService, SampleItem, ViewerOverlays,
     sources::TrackSource,
 };
 
@@ -91,11 +92,15 @@ impl Env {
     }
 
     fn build(held: Option<&'static str>, cache: bool) -> Self {
+        Self::with_handlers(Handlers::built_in(), held, cache)
+    }
+
+    fn with_handlers(handlers: Handlers, held: Option<&'static str>, cache: bool) -> Self {
         let dir = TempDir::new().expect("temp dir");
         let cache_dir = cache.then(|| dir.path().join("cache"));
         let (sender, cancelled) = channel();
         let tracks = Arc::new(Tracks {
-            registry: TrackRegistry::new(Handlers::built_in(), cache_dir.as_deref()),
+            registry: TrackRegistry::new(handlers, cache_dir.as_deref()),
             held,
             cancelled: Mutex::new(sender),
         });
@@ -105,6 +110,15 @@ impl Env {
             tracks,
             cancelled,
         }
+    }
+
+    /// An environment that also reads `.paced` files with `decoder`.
+    pub(super) fn with_decoder(decoder: Arc<dyn scene_decoders::FileSceneDecoder>) -> Self {
+        Self::with_handlers(
+            Handlers::built_in().with_file_decoders([decoder]),
+            None,
+            false,
+        )
     }
 
     /// The folder the files are written to.
@@ -204,6 +218,8 @@ pub(super) struct Sent {
     pub(super) maps: Vec<MapRun>,
     pub(super) samples: Vec<SampleItem>,
     pub(super) problems: Vec<(u16, String)>,
+    /// The Ready statuses told.
+    pub(super) readies: Vec<LaneReady>,
     /// The data windows told, as `(first, last)`.
     pub(super) windows: Vec<(u64, u64)>,
     /// The samples evicted, as `(source, samples)`.
@@ -212,30 +228,46 @@ pub(super) struct Sent {
     pub(super) order: Vec<&'static str>,
 }
 
-/// Reads events until nothing arrives for a while.
-pub(super) async fn settle(viewer: &mut ViewerOverlays) -> Sent {
-    let mut sent = Sent::default();
-    while let Ok(Some(event)) =
-        tokio::time::timeout(Duration::from_millis(400), viewer.next_event(None)).await
-    {
+impl Sent {
+    /// Takes note of `event`.
+    pub(super) fn record(&mut self, event: OverlayEvent) {
         match event {
             OverlayEvent::Map(run) => {
-                sent.order.push("map");
-                sent.maps.push(run);
+                self.order.push("map");
+                self.maps.push(run);
             }
             OverlayEvent::Sample(item) => {
-                sent.order.push("sample");
-                sent.samples.push(item);
+                self.order.push("sample");
+                self.samples.push(item);
             }
-            OverlayEvent::Problem { lane, reason } => sent.problems.push((lane, reason)),
-            OverlayEvent::Window { first, last } => sent.windows.push((first, last)),
+            OverlayEvent::Problem { lane, reason } => self.problems.push((lane, reason)),
+            OverlayEvent::Window { first, last } => self.windows.push((first, last)),
             OverlayEvent::Evict {
                 source, samples, ..
-            } => sent.evicts.push((source, samples)),
+            } => self.evicts.push((source, samples)),
+            OverlayEvent::Status {
+                status: LaneStatus::Ready(ready),
+                ..
+            } => self.readies.push(ready),
             OverlayEvent::Status { .. } => {}
         }
     }
+}
+
+/// Reads events until nothing arrives for a while.
+pub(super) async fn settle(viewer: &mut ViewerOverlays) -> Sent {
+    let mut sent = Sent::default();
+    settle_into(viewer, &mut sent).await;
     sent
+}
+
+/// Like [`settle`], adding to `sent`.
+pub(super) async fn settle_into(viewer: &mut ViewerOverlays, sent: &mut Sent) {
+    while let Ok(Some(event)) =
+        tokio::time::timeout(Duration::from_millis(400), viewer.next_event(None)).await
+    {
+        sent.record(event);
+    }
 }
 
 /// The `(frame, sample)` cells of all runs of `lane`.

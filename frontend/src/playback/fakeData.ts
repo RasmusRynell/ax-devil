@@ -10,6 +10,12 @@ import {
   KIND_SAMPLE,
   SAMPLE_HEADER_BYTES,
 } from "./protocol";
+import {
+  KIND_VIDEO_FRAME,
+  LAYOUT_RGBA,
+  MATRIX_BT709,
+  VIDEO_FRAME_HEADER_BYTES,
+} from "../generated/api";
 
 const ROOT = new URL("../../../", import.meta.url);
 
@@ -78,5 +84,29 @@ export function mapBytes(fields: {
   cells.forEach((cell, k) => view.setUint32(FRAME_MAP_HEADER_BYTES + 4 * k, cell, true));
   const kinds = new Uint8Array(view.buffer, FRAME_MAP_HEADER_BYTES + 4 * cells.length);
   kinds.set(fields.kinds ?? []);
+  return view.buffer as ArrayBuffer;
+}
+
+/** One kind 1 message: an RGBA picture of `width` by `height`, from `rgba` (4 bytes a pixel, rows top-down). */
+export function frameMessage(
+  width: number,
+  height: number,
+  rgba: Uint8Array,
+  sequence = 0,
+): ArrayBuffer {
+  const view = head(
+    KIND_VIDEO_FRAME,
+    VIDEO_FRAME_HEADER_BYTES,
+    VIDEO_FRAME_HEADER_BYTES + rgba.length,
+    sequence,
+  );
+  view.setUint32(28, width, true);
+  view.setUint32(32, height, true);
+  view.setUint8(36, LAYOUT_RGBA);
+  view.setUint8(37, MATRIX_BT709);
+  view.setUint8(38, 1);
+  view.setUint32(40, width * 4, true);
+  view.setUint32(52, rgba.length, true);
+  new Uint8Array(view.buffer).set(rgba, VIDEO_FRAME_HEADER_BYTES);
   return view.buffer as ArrayBuffer;
 }

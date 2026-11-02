@@ -4,7 +4,8 @@
  * lane: the frame is uploaded once and drawn into every cell, fitted keeping its aspect on a near-black field and
  * zoomed and panned by the viewer's viewport, and each lane's marks are laid out for its picture and painted over it
  * on the same context. What was drawn also answers where things are: the picture of each cell, the object under a
- * point, the outlines of selected and hovered objects.
+ * point, the outlines of selected and hovered objects. The export page draws with a fixed device pixel ratio and has
+ * the renderer write each lane's name on its cell; the viewer follows the window's ratio and shows names in the DOM.
  */
 
 import { TextAtlas } from "../overlay/atlas";
@@ -14,6 +15,7 @@ import { OverlayPainter, type CellRect } from "../overlay/painter";
 import type { Region } from "../present";
 import type { LaneFrame, Picked, Selection, Viewport } from "./contract";
 import { describeRow, LaneLayouts, type FoundRow } from "./laneLayouts";
+import { NameTags } from "./nameTags";
 import type { Matrix, VideoFrame } from "./protocol";
 import { FIT, intersection, panBy, pictureRect, toImage, zoomAt } from "./viewport";
 
@@ -119,8 +121,14 @@ export class VideoRenderer {
   readonly #atlas = new TextAtlas(canvasGlyphs());
   readonly #text = new AtlasText(this.#atlas);
   readonly #layouts = new LaneLayouts(this.#text);
+  readonly #tags = new NameTags(this.#text);
+  /** The device pixel ratio to draw at; `undefined` follows the window's. */
+  readonly #dpr: number | undefined;
+  /** The name to write on each lane's cell, by lane; `null` writes none. */
+  #names: readonly string[] | null = null;
 
-  constructor(canvas: HTMLCanvasElement) {
+  constructor(canvas: HTMLCanvasElement, dpr?: number) {
+    this.#dpr = dpr;
     const gl = canvas.getContext("webgl2", {
       alpha: false,
       antialias: false,
@@ -171,6 +179,12 @@ export class VideoRenderer {
   /** Sets the lane cells, `null` for one cell covering the canvas, and draws again. */
   setCells(cells: readonly LaneCell[] | null): void {
     this.#cells = cells;
+    this.redraw();
+  }
+
+  /** Writes `names[lane]` in the corner of each lane's cell, `null` for no names, and draws again. */
+  setNames(names: readonly string[] | null): void {
+    this.#names = names;
     this.redraw();
   }
 
@@ -295,7 +309,7 @@ export class VideoRenderer {
         picture: pictureRect(rect, image, this.#viewport),
       }));
     this.#placed = placed;
-    const dpr = devicePixelRatio;
+    const dpr = this.#dpr ?? devicePixelRatio;
     const drawings = this.#layouts.layOut(
       placed.map(({ lane, cell, picture }) => ({
         lane,
@@ -304,6 +318,13 @@ export class VideoRenderer {
         view: { width: picture.width / dpr, height: picture.height / dpr, dpr },
         visible: onScreen(picture, cell, dpr),
       })),
+    );
+    // After the lanes, whose layout may start a new atlas page: tags are laid out on whichever page is current.
+    const names = this.#names;
+    const tags = placed.map(({ lane, cell }) =>
+      names?.[lane] === undefined
+        ? undefined
+        : this.#tags.drawing(lane, names[lane], dpr, cell.width / dpr, cell.height / dpr),
     );
     this.#painter.sync(this.#atlas);
     placed.forEach(({ cell, picture }, at) => {
@@ -325,6 +346,8 @@ export class VideoRenderer {
       }
       const drawing = drawings[at];
       if (drawing) this.#painter.draw(drawing, picture, cell);
+      const tag = tags[at];
+      if (tag) this.#painter.draw(tag, cell, cell);
     });
     this.onDrawn?.();
   }

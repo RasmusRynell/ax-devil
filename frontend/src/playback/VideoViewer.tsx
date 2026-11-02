@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import type { ContentInfo, ContentRef, EntryInfo } from "../generated/api";
+import { ExportDialog } from "../export/ExportDialog";
 import { Icon } from "../kit/Icon";
 import { useSettings } from "../settings";
 import { useCan, useFollowing, useServerClock, useStream, useView } from "../session/session";
@@ -8,6 +9,7 @@ import { NOTHING_HIDDEN, type Hidden } from "../viewer/hidden";
 import { NoticeList } from "./LaneChip";
 import { LaneGrid } from "./LaneGrid";
 import { Popover } from "../kit/Popover";
+import { ObjectsPanel } from "../tools/ObjectsPanel";
 import type { LaneSettings, Viewport } from "./contract";
 import { Inspector } from "./Inspector";
 import { ObjectLayer, type ObjectLayerHandle } from "./ObjectLayer";
@@ -86,6 +88,8 @@ function Playback({
   const pane = useRef<HTMLDivElement>(null);
   const objects = useRef<ObjectLayerHandle>(null);
   const geometry = useRef<Geometry | null>(null);
+  const [exporting, setExporting] = useState(false);
+  const [tools, setTools] = useState(false);
   const shownViewport = useRef(viewport);
   shownViewport.current = viewport;
   // A viewer that opens takes the keyboard, so its shortcuts work at once.
@@ -124,6 +128,12 @@ function Playback({
         "step-back-10": () => session.step(-10),
         "speed-up": () => session.stepSpeed(1),
         "speed-down": () => session.stepSpeed(-1),
+        "media-tools": () => setTools((open) => !open),
+        "export-video": () => {
+          if (session.getSnapshot().status !== "ready") return;
+          session.pause();
+          setExporting(true);
+        },
       }),
       [session, zoom, onViewport],
     ),
@@ -178,14 +188,35 @@ function Playback({
                 </div>
               )}
             </div>
+            {tools && (
+              <ObjectsPanel
+                source={session}
+                view={view}
+                canSeek={canChange}
+                selectable={objectDetails}
+                onClose={() => setTools(false)}
+              />
+            )}
             {objectDetails && view.inspection.state !== "none" && (
-              <Inspector inspection={view.inspection} onClose={() => session.select(null)} />
+              <Inspector
+                inspection={view.inspection}
+                onClose={() => session.select(null)}
+                crowded={tools}
+              />
             )}
           </div>
           <Transport controls={session} view={view} disabled={!canChange} />
         </>
       ) : (
         <Status view={view} name={name} />
+      )}
+      {exporting && (
+        <ExportDialog
+          jobs={session.exports}
+          view={view}
+          name={name}
+          onClose={() => setExporting(false)}
+        />
       )}
     </div>
   );

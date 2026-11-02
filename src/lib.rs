@@ -1,6 +1,10 @@
 //! The ax-devil backend: HTTP routes for the frontend and, in release builds, the embedded frontend itself.
 
 pub mod access;
+pub mod desktop;
+pub mod exports;
+pub mod plugins;
+pub mod render_host;
 mod routes;
 pub mod runtime;
 pub mod session;
@@ -11,7 +15,9 @@ pub mod video_cache;
 pub mod video_sources;
 
 use access::{Admission, Limits, Policy, Principal};
-use api_types::{API_VERSION, ApiError, AppInfo, SHELL_API, SettingsChange, SettingsState};
+use api_types::{
+    API_VERSION, ApiError, AppInfo, SHELL_API, SettingsChange, SettingsState, handlers::PluginsInfo,
+};
 use axum::{
     Json, Router,
     extract::{FromRef, State},
@@ -57,10 +63,14 @@ pub struct AppState {
     windows: Option<Arc<Windows>>,
     /// The decoders and playlist resolvers the app knows.
     pub handlers: Handlers,
+    /// The converters the user installed, as loaded at startup.
+    pub plugins: Arc<PluginsInfo>,
     /// The open videos, which the playback socket draws its viewers from.
     pub videos: Arc<video_sources::VideoSources>,
     /// Opens the overlays of viewers.
     pub overlays: Arc<OverlayService>,
+    /// Runs the backend's one export at a time.
+    pub exports: Arc<exports::ExportService>,
     /// The render catalogs, listed to every viewer and served on request; see [`AppState::with_catalogs`].
     pub catalogs: Arc<Library>,
     /// Turns true when the backend is stopping: long-lived connections, such as the playback and session sockets,
@@ -102,6 +112,7 @@ impl AppState {
         Self {
             settings,
             overlays: Arc::new(OverlayService::new(tracks)),
+            exports: Arc::new(exports::ExportService::electron()),
             catalogs: Arc::new(catalogs),
             sessions: Sessions::new(
                 GRACE,
@@ -111,6 +122,7 @@ impl AppState {
                 }),
             ),
             handlers,
+            plugins: Arc::default(),
             videos,
             stopping,
             windows: None,
@@ -132,6 +144,13 @@ impl AppState {
     #[must_use]
     pub fn with_launch(mut self, launch: Arc<LaunchQueue>) -> Self {
         self.launch = launch;
+        self
+    }
+
+    /// The same state reporting `plugins`, which `handlers` must already hold the decoders of.
+    #[must_use]
+    pub fn with_plugins(mut self, plugins: PluginsInfo) -> Self {
+        self.plugins = Arc::new(plugins);
         self
     }
 

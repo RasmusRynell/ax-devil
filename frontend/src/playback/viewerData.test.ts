@@ -14,6 +14,7 @@ const READY: LaneStatusWire = {
   samples: 1000,
   data_revision: 1,
   mean_sample_bytes: 2024,
+  ingest: { state: "Complete" },
 };
 
 /** One subscribed lane of source 0 whose catalog has arrived. */
@@ -21,7 +22,11 @@ function viewer() {
   const lanes = new LaneSet();
   lanes.open([{ label: "DPM", source: 0 }], LANE_DEFAULTS);
   lanes.setStatus(0, READY);
-  const data = new ViewerData(lanes, () => {});
+  const data = new ViewerData(
+    lanes,
+    () => {},
+    () => () => {},
+  );
   data.open(10_000, 10 ** 9);
   data.refresh();
   data.catalogs.receive(LANE_DEFAULTS.catalog, 1, catalogDocument(), null);
@@ -81,6 +86,20 @@ describe("viewer data", () => {
     expect(data.samples.get(0, 102)).toBeUndefined();
   });
 
+  it("keeps what it holds when a Ready repeats the revision while the file is read, and drops it for a new one", () => {
+    const { lanes, data, map, sample, state } = viewer();
+    data.window(0, 20);
+    map(0, [0, 0, 0]);
+    sample(0);
+    lanes.setStatus(0, { ...READY, samples: 2000, ingest: { state: "Reading" } });
+    data.refresh();
+    expect(state(1)).toBe("draw");
+    lanes.setStatus(0, { ...READY, data_revision: 2 });
+    data.refresh();
+    expect(state(1)).toBe("pending");
+    expect(data.samples.count).toBe(0);
+  });
+
   it("holds no sample of a source that failed, and takes up a new revision", () => {
     const { lanes, data, sample } = viewer();
     sample(0);
@@ -108,7 +127,11 @@ describe("viewer data", () => {
       ],
       LANE_DEFAULTS,
     );
-    const data = new ViewerData(lanes, () => {});
+    const data = new ViewerData(
+      lanes,
+      () => {},
+      () => () => {},
+    );
     expect(data.sampleBytes()).toBeNull();
     lanes.setStatus(0, READY);
     lanes.setStatus(1, READY);
@@ -132,7 +155,11 @@ describe("viewer data", () => {
     );
     lanes.setStatus(0, READY);
     lanes.setStatus(1, READY);
-    const data = new ViewerData(lanes, () => {});
+    const data = new ViewerData(
+      lanes,
+      () => {},
+      () => () => {},
+    );
     data.open(10, 10 ** 9);
     data.refresh();
     data.catalogs.receive(LANE_DEFAULTS.catalog, 1, catalogDocument(), null);

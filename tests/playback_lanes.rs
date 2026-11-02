@@ -6,8 +6,8 @@
 mod common;
 
 use api_types::playback::{
-    ClientMessage, Direction, FRAME_MAP_EMPTY, FRAME_MAP_NONE, LaneDefaultsWire, LaneInfo,
-    LanePolicyWire, LaneStatusWire, MATCH_EXACT, ServerMessage, StickyWire,
+    ClientMessage, Direction, FRAME_MAP_EMPTY, FRAME_MAP_NONE, IngestWire, LaneDefaultsWire,
+    LaneInfo, LanePolicyWire, LaneStatusWire, MATCH_EXACT, ServerMessage, StickyWire,
 };
 use common::{Backend, Event, Viewer, fixture};
 use sessions::{
@@ -246,12 +246,14 @@ async fn a_lane_reports_its_load_then_sends_its_maps_and_each_mapped_sample_once
         filter,
         data_revision,
         mean_sample_bytes,
+        ingest,
         ..
     }) = seen.ready.clone()
     else {
         panic!("the lane is ready");
     };
     assert_eq!((samples, data_revision), (3, 1));
+    assert_eq!(ingest, IngestWire::Complete);
     assert!(mean_sample_bytes > 0);
     assert!(filter.iter().any(|option| option.id == "show_person"));
     assert!(seen.maps.is_empty() && seen.samples.is_empty());

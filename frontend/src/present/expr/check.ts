@@ -49,8 +49,12 @@ export class Checker {
     return ir;
   }
 
-  /** Require a type; an open type is narrowed, and a string is accepted as text. */
+  /**
+   * Require a type; an open type is narrowed, and a string is accepted as text where it is used, without becoming text
+   * itself, so a string variable that is displayed stays comparable.
+   */
   expect(ir: IR, want: ExprType): void {
+    if (want === "text" && kindOf(ir.ty) === "string") return;
     if (unify(ir.ty, want)) return;
     const found = kindOf(ir.ty) ?? "unknown";
     if (found === "length" && (want === "bool" || want === "number")) {

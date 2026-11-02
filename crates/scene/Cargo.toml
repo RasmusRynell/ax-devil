@@ -18,3 +18,4 @@ foundation.workspace = true
 postcard.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+ts-rs.workspace = true

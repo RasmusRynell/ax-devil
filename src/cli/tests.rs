@@ -196,7 +196,7 @@ fn list_handlers_prints_every_decoder_and_resolver_without_opening_anything() {
         Some(Command::ListHandlers)
     ));
 
-    let listing = args::handlers_listing(&Handlers::built_in());
+    let listing = args::handlers_listing(&Handlers::built_in(), &PluginsInfo::default());
     for expected in ["MOT_FILE", "mot_challenge", "folder_pair", "MOT Challenge"] {
         assert!(listing.contains(expected), "{expected} in\n{listing}");
     }
@@ -218,8 +218,13 @@ fn catalog_commands_list_the_built_ins_and_check_a_file_with_its_problems_locate
         command(&["check", "night.json"]),
         CatalogCommand::Check { file } if file == std::path::Path::new("night.json")
     ));
+    assert!(matches!(
+        command(&["render", "night.json", "--out", "sheets"]),
+        CatalogCommand::Render { sheet: SheetName::Overview, out, .. } if out == std::path::Path::new("sheets")
+    ));
     assert!(parse(&["catalog"]).is_err());
     assert!(parse(&["catalog", "check"]).is_err());
+    assert!(parse(&["catalog", "render", "night.json"]).is_err());
 
     let catalogs = tempfile::tempdir().unwrap();
     std::fs::write(
@@ -287,6 +292,13 @@ fn catalog_commands_list_the_built_ins_and_check_a_file_with_its_problems_locate
         report.text
     );
 
+    // Rendering lists the same problems and draws nothing.
+    let out = folder.path().join("sheets");
+    let rendered = catalog::render_in(desktop, &bad, &out, SheetName::Overview).unwrap();
+    assert!(!rendered.ok);
+    assert_eq!(rendered.text, report.text);
+    assert!(!out.exists());
+
     let report = catalog::check_in(desktop, &folder.path().join("missing.json")).unwrap();
     assert!(!report.ok);
     assert!(report.text.contains("missing.json"), "{}", report.text);
@@ -296,4 +308,74 @@ fn catalog_commands_list_the_built_ins_and_check_a_file_with_its_problems_locate
         error.contains("Cannot find the desktop shell's Electron"),
         "{error}"
     );
+}
+
+#[tokio::test]
+async fn plugins_installed_and_removed_through_the_registry_load_on_the_next_start() {
+    let folder = tempfile::tempdir().unwrap();
+    let registry = Ok(folder.path().join("data/plugins.json"));
+    let fixture =
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("fixtures/converters/shell-times");
+    let broken = folder.path().join("broken");
+    std::fs::create_dir(&broken).unwrap();
+    std::fs::write(
+        broken.join("ax-devil-converter.json"),
+        r#"{"manifest":1,"protocol":2}"#,
+    )
+    .unwrap();
+    // Each command starts as the app does: the registry is read before the command line.
+    let plugins = |args: &[&str]| {
+        let (handlers, installed) = ax_devil::plugins::load(&registry, Handlers::built_in());
+        let command = match parse(&[&["plugins"], args].concat()).unwrap().command {
+            Some(Command::Plugins(command)) => command,
+            _ => panic!("a plugins command is a plugins command"),
+        };
+        plugins::run(command, registry.clone(), handlers, installed)
+    };
+    let fixture = fixture.to_str().unwrap();
+
+    let installed = plugins(&["install", fixture]).await;
+    assert!(
+        installed.ok && installed.text.contains("next start"),
+        "{}",
+        installed.text
+    );
+    let again = plugins(&["install", fixture]).await;
+    assert!(
+        !again.ok && again.text.contains("already taken"),
+        "{}",
+        again.text
+    );
+    let refused = plugins(&["install", broken.to_str().unwrap()]).await;
+    assert!(!refused.ok, "{}", refused.text);
+
+    let listed = plugins(&["list"]).await;
+    assert!(
+        listed.ok && listed.text.starts_with("shell-times  1.0.0  .times.txt"),
+        "{}",
+        listed.text
+    );
+    let json: Value = serde_json::from_str(&plugins(&["list", "--json"]).await.text).unwrap();
+    assert_eq!(json["converters"][0]["status"]["state"], "Loaded");
+    let handlers = ax_devil::plugins::load(&registry, Handlers::built_in()).0;
+    assert!(
+        args::try_parse_from(
+            &handlers,
+            [
+                "ax-devil",
+                "local",
+                "--video",
+                "v.mp4",
+                "--overlay",
+                "a.txt",
+                "--handler-type",
+                "shell-times"
+            ]
+        )
+        .is_ok()
+    );
+
+    assert!(plugins(&["remove", "shell-times"]).await.ok);
+    assert!(!plugins(&["remove", "shell-times"]).await.ok);
+    assert!(plugins(&["list"]).await.text.contains("No converters"));
 }

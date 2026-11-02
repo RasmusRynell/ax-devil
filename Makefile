@@ -8,7 +8,7 @@ UI_PORT ?= 7331
 TEST ?=
 ROOT_FILES := desktop/*.cjs scripts/*.cjs vite.config.ts package.json pnpm-workspace.yaml
 .PHONY: help web desktop build check check-fast format tests tests-frontend tests-backend tests-integration \
-	tests-desktop bench bench-present bench-browser bench-browser-smoke _types _frontend-build _static _licenses _dev _dev-rust
+	tests-desktop bench bench-export bench-present bench-browser bench-browser-smoke _types _frontend-build _static _licenses _dev _dev-rust
 
 help:
 	@printf '%s\n' \
@@ -19,6 +19,7 @@ help:
 	  '  tests       Run all test suites' \
 	  '  check       Run every static check and all test suites' \
 	  '  bench       Run the Rust benchmarks (sample item encode); numbers on stdout' \
+	  '  bench-export  Time export (1080p, 4K) through the real render page, on SwiftShader and the GPU when it can render there' \
 	  '  bench-present  Time the frontend presentation path in plain Node (AX_BENCH_SIZES, _CATALOGS, _MODES, _REPEAT)' \
 	  '  bench-browser  Time the real renderer in Electron (SwiftShader; BENCH_DISPLAY=real for the local GPU; BENCH_* narrow it)' \
 	  '  check-fast  Run the static checks, file-size check on changed files only; no tests' \
@@ -74,6 +75,10 @@ _dev-rust: _types
 tests-frontend: node_modules/.installed
 	$(ISOLATED) pnpm --dir frontend exec vp test run $(TEST)
 
+# The real-Electron export tests and the Python converter tests skip on a machine without Electron, the render page or
+# python3; here they are all provided, so a skip must fail.
+tests-backend: export AX_DEVIL_REQUIRE_ELECTRON = 1
+tests-backend: export AX_DEVIL_REQUIRE_PYTHON = 1
 tests-backend: _frontend-build desktop/node_modules/.electron-ready
 	$(ISOLATED) $(CARGO) test --workspace --no-default-features --locked $(TEST)
 	$(ISOLATED) $(CARGO) test --workspace --locked $(TEST)
@@ -89,6 +94,10 @@ tests: tests-frontend tests-backend tests-integration tests-desktop
 # Timed with std::time::Instant; numbers go to stdout, nothing is asserted.
 bench:
 	$(ISOLATED) $(CARGO) bench --locked -p overlays
+
+# Export through the real render page: first frame, then frames per second, SwiftShader and (if the card can render in the hidden page) GPU.
+bench-export: _frontend-build desktop/node_modules/.electron-ready
+	$(ISOLATED) $(CARGO) bench --locked --no-default-features -p ax-devil --bench export
 
 # Plain Node, no test runner: p50/p95 per catalog, object count and mode; AX_BENCH_* narrow it (frontend/src/present/runBench.ts).
 bench-present: node_modules/.installed

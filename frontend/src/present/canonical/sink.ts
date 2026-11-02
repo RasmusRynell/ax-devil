@@ -1,6 +1,7 @@
 import { Flag, type MarkBuffer, RUN_WORDS, Rec } from "../marks/buffer";
 import { WEIGHTS } from "../catalog/types";
 import type { PrimitiveSink } from "../layout/sink";
+import { codePointString } from "../expr/codePoints";
 
 /** Oracle rows (C5 of `fixtures/oracle/README.md`): plain JSON values keyed as the reference's files are. */
 export type Row = Record<string, unknown>;
@@ -195,7 +196,7 @@ export class CanonicalSink implements PrimitiveSink {
   }
 
   private string(start: number, length: number): string {
-    return String.fromCodePoint(...this.source.marks.cps.data.subarray(start, start + length));
+    return codePointString(this.source.marks.cps.data, start, start + length);
   }
 }
 

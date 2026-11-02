@@ -8,6 +8,8 @@ use scene_decoders::{
     DecodeContext, DecodeOptions, RecordSceneDecoder, file_decoder, record_decoder,
 };
 
+mod common;
+
 const SAMPLE: &[u8] = include_bytes!("../../../fixtures/decoders/onvif_xml/sample_frame.xml");
 const FRAMES: &[u8] = include_bytes!("../../../fixtures/decoders/onvif_xml/frames.xml");
 const SAMPLE_TIME: MediaTime = MediaTime(1_741_680_714_008_178);
@@ -159,21 +161,19 @@ fn an_object_without_appearance_is_dropped_and_the_frame_keeps_its_time() {
 #[test]
 fn a_file_is_one_document_per_line_and_a_bad_line_is_a_warning() {
     let decoder = file_decoder("ONVIF_XML").expect("the ONVIF file decoder is built in");
-    let mut scenes = Vec::new();
-    let summary = decoder
-        .decode_file(
-            FRAMES,
-            &DecodeContext {
-                options: &DecodeOptions::new(),
-                frame_size: FrameSize {
-                    width: 1920,
-                    height: 1080,
-                },
+    let (scenes, result) = common::run(
+        decoder,
+        FRAMES,
+        &DecodeContext {
+            options: &DecodeOptions::new(),
+            frame_size: FrameSize {
+                width: 1920,
+                height: 1080,
             },
-            &mut |scene| scenes.push(scene),
-            &CancelToken::new(),
-        )
-        .expect("a bad line does not fail the file");
+        },
+        &CancelToken::new(),
+    );
+    let summary = result.expect("a bad line does not fail the file");
 
     assert_eq!(summary.coverage, Coverage::Sparse);
     let times: Vec<_> = scenes.iter().map(|scene| scene.time().start()).collect();

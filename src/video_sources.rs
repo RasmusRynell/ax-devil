@@ -53,10 +53,13 @@ fn decoder_factory(
     })
 }
 
-/// What a viewer is told about a video besides its timeline, which the session carries.
+/// What a viewer is told about a video besides its timeline, which the session carries, and what an export reads it
+/// with.
 struct Details {
     size: FrameSize,
     warnings: Vec<String>,
+    input: VideoInput,
+    index: Arc<FrameIndex>,
 }
 
 /// A viewer of an open video.
@@ -153,6 +156,13 @@ impl VideoSources {
         lock(&self.details).get(key)?.upgrade()
     }
 
+    /// The input and frame index of `video` as the viewers of its open source hold them, for an export to read the
+    /// frames on a decoder of its own; `None` when nobody has it open.
+    pub fn open_input(&self, video: &VideoRef) -> Option<(VideoInput, Arc<FrameIndex>)> {
+        let details = self.live_details(&source_key(video).ok()?)?;
+        Some((details.input.clone(), Arc::clone(&details.index)))
+    }
+
     /// A viewer of `video`: one on the source that is already open, or else a new source once the frame index is
     /// read, which for a file is built (reporting `progress`, 0 to 1) when it is not cached; an image sequence has
     /// nothing to build. What the viewer is told about the video comes from the source it joined. Blocks: call it
@@ -195,7 +205,12 @@ impl VideoSources {
                 size.width, size.height, sequence.width, sequence.height
             ));
         }
-        let details = Arc::new(Details { size, warnings });
+        let details = Arc::new(Details {
+            size,
+            warnings,
+            input: input.clone(),
+            index: Arc::clone(&index),
+        });
         let spec = SourceSpec {
             timeline: index.timeline().clone(),
             keyframes: index.keyframes().clone(),

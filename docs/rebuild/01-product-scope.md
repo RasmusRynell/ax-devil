@@ -79,7 +79,7 @@ object and frame by frame, and for comparing results side by side. Take the pitc
 | OF-05 | Timing and alignment diagnostics per lane | M | `src/ax_devil/modules/video_viewer/README.md` |
 | OF-06 | Decoded-frame cache under one memory allowance | M | `docs/settings.md#video-cache-memory` |
 | OF-07 | Prepare next playlist entry in the background | S | same |
-| OF-08 | Export with overlays: lane selection, quality presets, cancellable | M | `docs/domain/invariants.md#export` |
+| OF-08 | Export with overlays: lane selection, a frame range or the frame on screen as a PNG, quality presets, cancellable | M | `docs/domain/invariants.md#export` |
 
 OF-02 follows D19: compare several overlay results against the same recording with one clock. Acceptance: lanes
 with different annotation coverage stay aligned when playing, seeking and stepping through a variable-frame-rate
@@ -93,7 +93,7 @@ independent viewers (see the OF-02 deviation in the new-tree `docs/parity.md`).
 | ID | Feature | P | Source |
 |----|---------|---|--------|
 | IN-01 | Media tools panel per lane with Objects and Events lists, object and event pages | M | `video_viewer/media_tools/` |
-| IN-02 | Object filters by type and score/confidence range; whole-file filtering with declared policies | M | `.agents/skills/write-plugin/reference.md#decoder-classification-filters`, `filtering/` |
+| IN-02 | Object filters by type and score/confidence range; whole-file filtering with declared policies | M | `.agents/skills/write-plugin/reference.md#output-json-lines-on-stdout`, `filtering/` |
 | IN-03 | Hover chip and click selection; can be turned off | M | `docs/settings.md#video-overlays` |
 | IN-04 | Frame info HUD, lane names | M | same |
 | IN-05 | Zoom, pan, reset, synced across lanes; lane and app fullscreen | M | `src/ax_devil/modules/video_player/README.md#lane-fullscreen` |

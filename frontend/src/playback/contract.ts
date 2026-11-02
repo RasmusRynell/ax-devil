@@ -74,6 +74,8 @@ export type LaneState = {
   catalogProblem?: string;
   /** What the catalog the lane draws with offers; absent while the lane has none. */
   look?: CatalogLook;
+  /** The revision of the document the lane's chosen catalog last compiled from; absent until one did. */
+  catalogRevision?: number;
   /** Whether the lane waits for data of the shown frame. */
   pending: boolean;
 };

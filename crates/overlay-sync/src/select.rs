@@ -1,7 +1,7 @@
 use foundation::{FrameId, MediaTime, Timeline};
 use scene::Coverage;
 
-use crate::{MatchKind, MatchPolicy, SampleKeys, Selection, Sticky, Tolerance};
+use crate::{KeyChunks, MatchKind, MatchPolicy, SampleKeys, Selection, Sticky, Tolerance};
 
 /// Selects the sample of an overlay file that belongs to `frame`.
 ///
@@ -51,7 +51,7 @@ pub fn select(
 }
 
 fn by_frame(
-    keys: &[u64],
+    keys: &KeyChunks<u64>,
     coverage: Coverage,
     frame: FrameId,
     timeline: &Timeline,
@@ -60,27 +60,32 @@ fn by_frame(
     // The latest key at or before the frame, if any.
     let latest = keys
         .partition_point(|&key| key <= frame.sequence_id)
-        .checked_sub(1);
-    let Some(index) = latest else {
+        .checked_sub(1)
+        .and_then(|index| Some((index, keys.get(index)?)));
+    let Some((index, key)) = latest else {
         return missing(coverage);
     };
-    if keys[index] == frame.sequence_id {
+    if key == frame.sequence_id {
         return sample(index, MatchKind::Exact);
     }
     if coverage == Coverage::Dense {
         return Selection::Empty;
     }
-    match timeline.time(keys[index]) {
+    match timeline.time(key) {
         Some(time) => retain(sticky, index, age(frame.timestamp, time)),
         None => Selection::None,
     }
 }
 
-fn by_time(keys: &[MediaTime], time: MediaTime, policy: &MatchPolicy) -> Selection {
-    let Some(index) = keys.partition_point(|&key| key <= time).checked_sub(1) else {
+fn by_time(keys: &KeyChunks<MediaTime>, time: MediaTime, policy: &MatchPolicy) -> Selection {
+    let latest = keys
+        .partition_point(|&key| key <= time)
+        .checked_sub(1)
+        .and_then(|index| Some((index, keys.get(index)?)));
+    let Some((index, key)) = latest else {
         return Selection::None;
     };
-    let age = age(time, keys[index]);
+    let age = age(time, key);
     if age == 0 {
         return sample(index, MatchKind::Exact);
     }

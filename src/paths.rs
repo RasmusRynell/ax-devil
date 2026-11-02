@@ -41,7 +41,7 @@ impl Paths {
             },
             default_cache_dir: folder(env, "XDG_CACHE_HOME", ".cache")?,
             cache_override: cache_dir,
-            default_catalog_dir: folder(env, "XDG_DATA_HOME", ".local/share")?.join("catalogs"),
+            default_catalog_dir: data_folder(env)?.join("catalogs"),
             log_file: state.join("logs/ax-devil.log"),
             window_file: state.join("windows.json"),
         })
@@ -59,6 +59,16 @@ impl Paths {
     pub fn catalog_dir(&self, setting: Option<PathBuf>) -> PathBuf {
         setting.unwrap_or_else(|| self.default_catalog_dir.clone())
     }
+}
+
+/// The registry of installed converters, `plugins.json` in the data folder. It has no command-line override, so the
+/// handlers can be built before the command line is read.
+pub fn plugins_file(env: Env) -> Result<PathBuf, String> {
+    Ok(data_folder(env)?.join("plugins.json"))
+}
+
+fn data_folder(env: Env) -> Result<PathBuf, String> {
+    folder(env, "XDG_DATA_HOME", ".local/share")
 }
 
 /// The `ax-devil` folder under one XDG base: its variable when absolute, else `home_relative` under the home folder.
@@ -126,6 +136,15 @@ mod tests {
         assert_eq!(
             found.window_file,
             Path::new("/x/state/ax-devil/windows.json")
+        );
+        let env = |name: &str| {
+            xdg.iter()
+                .find(|(key, _)| *key == name)
+                .map(|(_, value)| OsString::from(value))
+        };
+        assert_eq!(
+            plugins_file(&env).unwrap(),
+            Path::new("/x/data/ax-devil/plugins.json")
         );
 
         let relative = [

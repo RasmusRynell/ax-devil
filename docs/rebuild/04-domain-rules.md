@@ -28,8 +28,7 @@
 
 - UI Lifecycle: the GC freeze and collection rules (Python-specific; the guarantee is in [03](03-runtime.md)).
 - Plugin System: uv project, interpreter selection, `AX_DEVIL_LAUNCH_COMMAND`/`AX_DEVIL_PLUGIN_ROOT`; keep the
-  guarantees (plugins never change app dependencies, management runs from the base app, failed refresh starts the
-  base app).
+  guarantees (a converter's dependencies are its own; install and remove change only the registry).
 - Data Pipeline: "one process pool" for the cache allowance; keep "one allowance shared by open offline sources".
 - Class and method names quoted as requirements (`add_observation()`, `SplitView`, `WorkspaceIntake`).
 

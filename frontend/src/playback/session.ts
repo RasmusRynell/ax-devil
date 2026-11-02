@@ -5,6 +5,7 @@
  */
 
 import { CommandRefused, reasonOf } from "../errors";
+import { ExportJobs } from "../export/jobs";
 import {
   PlaybackClock,
   SPEED_STEP,
@@ -13,9 +14,10 @@ import {
   type ClockIntent,
   type FrameSource,
 } from "./clock";
-import type { LaneControl, LaneSettings, Selection, Surface } from "./contract";
+import type { LaneControl, LaneFrame, LaneSettings, Selection, Surface } from "./contract";
 import { dataWindow, sampleBudgetBytes } from "./data/dataWindow";
 import { FrameFailures } from "./failures";
+import type { FileScope } from "./fileScope";
 import { FrameBuffer, windowSize } from "./FrameBuffer";
 import { DataWait, displaySource } from "./frameSource";
 import { WantPlanner, sameWant } from "./direction";
@@ -27,22 +29,18 @@ import {
   type VideoFrame,
   type Want,
 } from "./protocol";
-import { BUFFER_BUDGET_BYTES, type ResumeState, type SessionDeps } from "./sessionDeps";
+import {
+  BUFFER_BUDGET_BYTES,
+  ENDED,
+  RETRY_MS,
+  type ResumeState,
+  type SessionDeps,
+} from "./sessionDeps";
 import { INITIAL_VIEW, buildView, sameView, type PlaybackView } from "./view";
 import { ViewerData } from "./viewerData";
 import type { Connection, Incoming } from "./wire";
 
 export type { Surface } from "./contract";
-
-/** Waits between reconnection attempts; the last one repeats. */
-const RETRY_MS = [500, 1000, 2000, 4000, 8000];
-/**
- * Close codes that end a stream for good, with what the viewer says; other closes are retried.
- */
-const ENDED: Record<number, string> = {
-  4401: "The backend refused this video stream.",
-  4403: "This video stream was ended: access to it was withdrawn.",
-};
 
 export class PlaybackSession implements LaneControl {
   readonly #deps: SessionDeps;
@@ -51,7 +49,11 @@ export class PlaybackSession implements LaneControl {
   readonly #failures = new FrameFailures();
   #view: PlaybackView = INITIAL_VIEW;
   readonly #lanes = new LaneSet();
-  readonly #data = new ViewerData(this.#lanes, (message) => this.#connection?.send(message));
+  readonly #data = new ViewerData(
+    this.#lanes,
+    (message) => this.#connection?.send(message),
+    (callback, ms) => this.#deps.after(callback, ms),
+  );
   /** A paused clock waits briefly for lane data after a seek or step. */
   readonly #wait = new DataWait(
     () => this.#deps.now(),
@@ -69,6 +71,8 @@ export class PlaybackSession implements LaneControl {
     this.#wait.since,
     () => this.#deps.now(),
   );
+  /** The export this viewer's socket runs for the owner. */
+  readonly exports = new ExportJobs((message) => this.#connection?.send(message));
   #surface: Surface | null = null;
   #connection: Connection | undefined;
   /** Names the current connection, so a late message of an earlier one is ignored. */
@@ -128,6 +132,16 @@ export class PlaybackSession implements LaneControl {
   };
 
   getSnapshot = (): PlaybackView => this.#view;
+
+  /** The lists of the lanes' whole files. */
+  get files(): FileScope {
+    return this.#data.files;
+  }
+
+  /** What `lane` drew on the frame on screen, which Frame scope lists. */
+  shown(lane: number): LaneFrame | undefined {
+    return this.#data.shown(lane);
+  }
 
   /** Sets where frames are drawn; `null` stops drawing. */
   setSurface(surface: Surface | null): void {
@@ -229,6 +243,7 @@ export class PlaybackSession implements LaneControl {
    */
   follow(intent: ClockIntent, serverNowUs: () => number): void {
     this.#followed = { intent, serverNowUs };
+    this.#data.files.setOwner(false);
     this.#applyFollowed();
   }
 
@@ -258,6 +273,7 @@ export class PlaybackSession implements LaneControl {
   #intend(): void {
     // What the viewer does is its own now; the presenter's clock no longer applies, nor after a reconnection.
     this.#followed = undefined;
+    this.#data.files.setOwner(true);
     const clock = this.#clock;
     if (clock)
       this.#deps.onIntent?.({ frame: clock.playhead, playing: clock.playing, speed: this.#speed });
@@ -346,6 +362,10 @@ export class PlaybackSession implements LaneControl {
       this.#data.evict(message);
     } else if (message.type === "LaneProblem") {
       this.#lanes.setProblem(message.lane, message.reason);
+    } else if (message.type === "FileRows" || message.type === "FileScope") {
+      this.#data.files.receive(message);
+    } else if (message.type === "Export") {
+      this.exports.receive(message);
     } else if (message.type === "FrameError") {
       this.#noteFailure(message.sequence_id, reasonOf(message));
     } else if (message.type === "Error") {
@@ -493,6 +513,7 @@ export class PlaybackSession implements LaneControl {
   /** Stops the display loop and drops the clock and every held frame, keeping the position for the next opening. */
   #releaseVideo(): void {
     this.#resumeAt = this.#clock?.playhead ?? this.#resumeAt;
+    this.exports.lost();
     this.#cancelFrame?.();
     this.#cancelFrame = undefined;
     this.#clock = undefined;

@@ -9,18 +9,16 @@ use std::{
     collections::{BTreeMap, HashSet, VecDeque},
     ops::RangeInclusive,
     sync::{Arc, Condvar, Mutex, MutexGuard, PoisonError},
+    time::Instant,
 };
 
 use foundation::{CancelToken, FrameSize, Timeline, UserError};
 use playback::{FrameSet, Want};
 use playlist_resolvers::OverlayRef;
-use scene_store::Track;
+use scene_store::{Track, TrackSnapshot};
 use tokio::sync::Notify;
 
-use crate::{
-    LanePolicy, LaneReady, LaneStatus, OverlayEvent, SampleItem, data::LaneWindow,
-    window::FIRST_NON_SAMPLE,
-};
+use crate::{LanePolicy, LaneStatus, OverlayEvent, SampleItem, data::LaneWindow};
 
 /// Encoded items a source keeps waiting for the consumer; its thread stops encoding while they are full.
 pub(crate) const READY_PER_SOURCE: usize = 4;
@@ -86,7 +84,7 @@ pub(crate) struct State {
     pub(crate) lanes: Vec<Lane>,
     pub(crate) sources: Vec<Source>,
     /// Statuses and problems, delivered before any item.
-    notices: VecDeque<OverlayEvent>,
+    pub(crate) notices: VecDeque<OverlayEvent>,
     /// The most bytes of Sample Items the viewer holds at once.
     pub(crate) budget: u64,
     /// The serial of the next Sample Item sent.
@@ -96,13 +94,14 @@ pub(crate) struct State {
     /// The data window of the last want.
     pub(crate) applied: Option<RangeInclusive<u64>>,
     /// The revision the next finished load gets; starts at 1.
-    next_revision: u32,
+    pub(crate) next_revision: u32,
 }
 
 /// Where a source's track stands.
 pub(crate) enum Load {
     Loading,
-    Ready(Arc<Track>),
+    /// The track, and the snapshot of it the lanes' maps and the sample window were last made from.
+    Ready(Arc<Track>, Arc<TrackSnapshot>),
     Failed,
 }
 
@@ -117,7 +116,7 @@ pub(crate) struct Lane {
     /// Frames of the data window whose map was sent under this revision. Leaving the window forgets them.
     pub(crate) maps_sent: FrameSet,
     /// The problems already reported since the source loaded.
-    reported: HashSet<String>,
+    pub(crate) reported: HashSet<String>,
 }
 
 /// One overlay file of a viewer, shared by every lane that draws it.
@@ -125,6 +124,10 @@ pub(crate) struct Source {
     pub(crate) overlay: OverlayRef,
     pub(crate) load: Load,
     pub(crate) data_revision: u32,
+    /// The mean item size the lanes were told, measured when the revision began and again when the ingest ended.
+    pub(crate) mean_sample_bytes: u32,
+    /// When the lanes were last told the source's status.
+    pub(crate) last_ready: Instant,
     /// The sample window: each sample the subscribed lanes need, with the frame it ranks by.
     pub(crate) window: BTreeMap<u64, u64>,
     /// Samples the viewer holds, as far as the backend counts: sent, and not told to drop.
@@ -174,6 +177,8 @@ impl State {
                             overlay,
                             load: Load::Loading,
                             data_revision: 0,
+                            mean_sample_bytes: 0,
+                            last_ready: Instant::now(),
                             window: BTreeMap::new(),
                             sent: BTreeMap::new(),
                             evicting: BTreeMap::new(),
@@ -209,7 +214,7 @@ impl State {
     }
 
     /// The lanes of `source`, with their wire ids.
-    fn lanes_of(&self, source: usize) -> impl Iterator<Item = usize> + '_ {
+    pub(crate) fn lanes_of(&self, source: usize) -> impl Iterator<Item = usize> + '_ {
         self.lanes
             .iter()
             .enumerate()
@@ -226,7 +231,7 @@ impl State {
         }
     }
 
-    fn fail(&mut self, source: usize, error: &UserError) {
+    pub(crate) fn fail(&mut self, source: usize, error: &UserError) {
         self.sources[source].load = Load::Failed;
         let slot = &mut self.sources[source];
         slot.window.clear();
@@ -254,46 +259,13 @@ impl State {
         if self.closed || source >= self.sources.len() {
             return;
         }
-        let (track, mean_sample_bytes) = match result {
-            Ok((track, _)) if track.keys().len() >= FIRST_NON_SAMPLE as usize => {
-                let error = UserError::new(
-                    foundation::ErrorCode::OverlayInvalid,
-                    "The overlay has too many samples",
-                );
-                return self.fail(source, &error);
+        match result {
+            Ok((track, mean)) => {
+                let snapshot = track.snapshot();
+                self.begin_revision(source, track, snapshot, mean, timeline);
             }
-            Ok(loaded) => loaded,
-            Err(error) => return self.fail(source, &error),
-        };
-        let data_revision = self.next_revision;
-        self.next_revision += 1;
-        let ready = LaneReady {
-            clock: track.keys().kind(),
-            filter: track.filter().clone(),
-            warnings: track.warnings().to_vec(),
-            samples: track.keys().len(),
-            data_revision,
-            mean_sample_bytes,
-        };
-        let slot = &mut self.sources[source];
-        slot.load = Load::Ready(track);
-        slot.data_revision = data_revision;
-        // The viewer drops the old revision's samples on Ready, so an Evict still pending is of no use.
-        slot.sent.clear();
-        slot.evicting.clear();
-        slot.ready.clear();
-        slot.blocked.clear();
-        for lane in self.lanes_of(source).collect::<Vec<_>>() {
-            let slot = &mut self.lanes[lane];
-            slot.maps_sent.clear();
-            slot.window = LaneWindow::default();
-            slot.reported.clear();
-            self.push_notice(OverlayEvent::Status {
-                lane: lane_id(lane),
-                status: LaneStatus::Ready(ready.clone()),
-            });
+            Err(error) => self.fail(source, &error),
         }
-        self.refresh(timeline);
     }
 
     /// Commits an encoded sample if it still belongs: same revision, in the sample window and not sent. A problem

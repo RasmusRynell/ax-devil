@@ -2,8 +2,8 @@
 
 use std::collections::HashMap;
 
-use super::{NO_ID, Strings};
-use crate::{Classification, Value};
+use super::{NO_ID, Strings, f64s, failed, u32s};
+use crate::{Classification, SceneError, Value};
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
 pub(super) enum Kind {
@@ -13,12 +13,24 @@ pub(super) enum Kind {
     Colors,
 }
 
-/// The cells of one attribute column, a cell per row.
+impl Kind {
+    /// The bytes of one cell in the item.
+    fn cell_bytes(self) -> usize {
+        match self {
+            Self::Bool => 1,
+            Self::Str => 4,
+            Self::Number | Self::Colors => 8,
+        }
+    }
+}
+
+/// The set cells of one attribute column as (row, value) in row order; the item stores a cell per row, so the
+/// dense column is only built when written.
 pub(super) enum Cells {
-    Bool(Vec<u8>),
-    Number(Vec<f64>),
-    Str(Vec<u32>),
-    Colors(Vec<[u32; 2]>),
+    Bool(Vec<(usize, u8)>),
+    Number(Vec<(usize, f64)>),
+    Str(Vec<(usize, u32)>),
+    Colors(Vec<(usize, [u32; 2])>),
 }
 
 /// One attribute value of the kinds an item ships.
@@ -35,10 +47,32 @@ struct Colour<'a> {
     name: Option<&'a str>,
 }
 
-/// One attribute column: the name and a cell per row.
+/// One attribute column: the name and its set cells.
 pub(super) struct Column<'a> {
     pub(super) name: &'a str,
-    pub(super) cells: Cells,
+    pub(super) kind: Kind,
+    cells: Cells,
+}
+
+/// `rows` cells, `missing` except where `set` gives one.
+fn dense<T: Copy>(rows: usize, missing: T, set: &[(usize, T)]) -> Vec<T> {
+    let mut cells = vec![missing; rows];
+    for &(row, cell) in set {
+        cells[row] = cell;
+    }
+    cells
+}
+
+impl Column<'_> {
+    /// Appends the column's cell for each of `rows` rows.
+    pub(super) fn write(&self, rows: usize, out: &mut Vec<u8>) {
+        match &self.cells {
+            Cells::Bool(set) => out.extend_from_slice(&dense(rows, 2, set)),
+            Cells::Number(set) => f64s(out, dense(rows, f64::NAN, set)),
+            Cells::Str(set) => u32s(out, dense(rows, NO_ID, set)),
+            Cells::Colors(set) => u32s(out, dense(rows, [NO_ID, 0], set).into_iter().flatten()),
+        }
+    }
 }
 
 fn colour(value: &Value) -> Option<Colour<'_>> {
@@ -100,11 +134,10 @@ impl<'a> Attributes<'a> {
         }
     }
 
-    /// Sets the cells of `row` from `classification`, in `rows` rows; the first attribute of a name wins.
+    /// Sets the cells of row `row` from `classification`, the first attribute of a name wins.
     pub(super) fn add(
         &mut self,
         strings: &mut Strings<'a>,
-        rows: usize,
         row: usize,
         classification: &'a Classification,
     ) {
@@ -123,22 +156,22 @@ impl<'a> Attributes<'a> {
             let at = *self.by_kind.entry((name, kind)).or_insert_with(|| {
                 strings.intern(name);
                 let cells = match kind {
-                    Kind::Bool => Cells::Bool(vec![2; rows]),
-                    Kind::Number => Cells::Number(vec![f64::NAN; rows]),
-                    Kind::Str => Cells::Str(vec![NO_ID; rows]),
-                    Kind::Colors => Cells::Colors(vec![[NO_ID, 0]; rows]),
+                    Kind::Bool => Cells::Bool(Vec::new()),
+                    Kind::Number => Cells::Number(Vec::new()),
+                    Kind::Str => Cells::Str(Vec::new()),
+                    Kind::Colors => Cells::Colors(Vec::new()),
                 };
-                self.columns.push(Column { name, cells });
+                self.columns.push(Column { name, kind, cells });
                 self.columns.len() - 1
             });
             match (&mut self.columns[at].cells, parsed) {
-                (Cells::Bool(cells), Cell::Bool(flag)) => cells[row] = u8::from(flag),
-                (Cells::Number(cells), Cell::Number(number)) => cells[row] = number,
-                (Cells::Str(cells), Cell::Str(text)) => cells[row] = strings.intern(text),
+                (Cells::Bool(cells), Cell::Bool(flag)) => cells.push((row, u8::from(flag))),
+                (Cells::Number(cells), Cell::Number(number)) => cells.push((row, number)),
+                (Cells::Str(cells), Cell::Str(text)) => cells.push((row, strings.intern(text))),
                 (Cells::Colors(cells), Cell::Colors(colours)) => {
                     let first = u32::try_from(self.rgba.len()).unwrap_or(NO_ID);
                     let count = u32::try_from(colours.len()).unwrap_or(NO_ID);
-                    cells[row] = [first, count];
+                    cells.push((row, [first, count]));
                     for colour in colours {
                         self.rgba.push(colour.rgba);
                         self.score.push(colour.score);
@@ -149,5 +182,18 @@ impl<'a> Attributes<'a> {
                 _ => {}
             }
         }
+    }
+
+    /// Fails when the dense columns alone would not fit the item's 32-bit offsets for `rows` rows. Checked before
+    /// any column is built: a few thousand entities with distinct attribute names make gigabytes of mostly empty cells.
+    pub(super) fn check_size(&self, rows: usize) -> Result<(), SceneError> {
+        self.columns
+            .iter()
+            .try_fold(0_usize, |total, column| {
+                total.checked_add(rows.checked_mul(column.kind.cell_bytes())?)
+            })
+            .filter(|&bytes| u32::try_from(bytes).is_ok())
+            .map(drop)
+            .ok_or_else(|| failed("the sample is too large for an item"))
     }
 }

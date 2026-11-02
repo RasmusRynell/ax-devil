@@ -12,6 +12,7 @@ const ready: LaneStatusWire = {
   samples: 3,
   data_revision: 1,
   mean_sample_bytes: 100,
+  ingest: { state: "Complete" },
 };
 const LANES = [
   { label: "DPM", source: 0 },

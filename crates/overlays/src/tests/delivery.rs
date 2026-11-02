@@ -3,9 +3,12 @@
 use std::{fs, time::Duration};
 
 use foundation::CancelToken;
+use overlay_sync::{MatchPolicy, Sticky};
 use playback::Rank;
 
-use super::{Env, cells, next, quiet, sample_ids, settle, shown, timeline, until_ready, want};
+use super::{
+    Env, SIZE, cells, next, quiet, sample_ids, settle, shown, timeline, until_ready, want,
+};
 use crate::{
     LaneStatus, OverlayEvent, ViewerOverlays,
     state::{READY_PER_SOURCE, State},
@@ -84,6 +87,44 @@ async fn runs_cover_the_data_window_once_inside_chunks_and_samples_go_nearest_fi
         .chain((200..300).rev())
         .collect();
     assert_eq!(sample_ids(&sent), expected);
+}
+
+#[tokio::test]
+async fn an_export_cell_is_the_cell_the_viewer_was_sent() {
+    let env = Env::new();
+    let overlay = env.mot("a.txt", [2, 5, 6, 12]);
+    let mut viewer = env.open(vec![Some(overlay.clone())], 20);
+    until_ready(&mut viewer, &[0]).await;
+    let policy = MatchPolicy {
+        sticky: Sticky {
+            enabled: true,
+            timeout: None,
+        },
+        ..MatchPolicy::default()
+    };
+    viewer.set_policy(0, 1, Some(policy), true);
+    viewer.want(want(10, 10, 9));
+    let sent = settle(&mut viewer).await;
+
+    let track = env
+        .tracks
+        .registry
+        .open(&overlay, SIZE, &CancelToken::new())
+        .expect("the track");
+    let timeline = timeline(20);
+    let mut frames = 0;
+    for run in sent.maps.iter().filter(|run| run.lane == 0) {
+        for (offset, (&sample, &kind)) in run.samples.iter().zip(&run.kinds).enumerate() {
+            let frame = run.first + offset as u64;
+            assert_eq!(
+                crate::cell(&track, &track.snapshot(), &timeline, frame, &policy),
+                (sample, kind),
+                "frame {frame}"
+            );
+            frames += 1;
+        }
+    }
+    assert_eq!(frames, 20, "every frame of the window was compared");
 }
 
 #[tokio::test]

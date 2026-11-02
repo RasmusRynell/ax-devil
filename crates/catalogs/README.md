@@ -10,3 +10,5 @@ compiler is the only judge of the language, so a file that is not a catalog is s
   on two: an editor's half-written or swapped save never reaches a lane.
 - Revisions come from one counter for the process (built-ins are 1), so a replaced or re-created file never gets a
   revision a viewer holds. A restart restarts the counter; viewers take any revision that differs from theirs.
+- `sheets` builds the example Scene (the Overview) that `catalog render` draws a catalog on: a grey picture and a Sample Item
+  from the real item encoder, so a catalog is shown what the viewer would show it.

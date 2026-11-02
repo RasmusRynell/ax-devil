@@ -22,3 +22,13 @@ export class CodePoints {
     this.length = 0;
   }
 }
+
+const CHUNK = 4096;
+
+/** Code points `start` to `end` of `data` as a string, built in bounded pieces so a long run cannot overflow the call stack. */
+export function codePointString(data: Uint32Array, start: number, end: number): string {
+  let text = "";
+  for (let at = start; at < end; at += CHUNK)
+    text += String.fromCodePoint(...data.subarray(at, Math.min(at + CHUNK, end)));
+  return text;
+}

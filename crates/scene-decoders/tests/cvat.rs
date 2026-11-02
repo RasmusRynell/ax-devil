@@ -4,12 +4,14 @@ use foundation::{CancelToken, FrameSize, Interrupt};
 use scene::{Classification, Coverage, Geometry, Scene, Value};
 use scene_decoders::{DecodeContext, DecodeOptions, DecodeSummary, file_decoder};
 
+mod common;
+
 const SAMPLE: &str = include_str!("../../../fixtures/decoders/cvat/sample.xml");
 
 fn try_decode(xml: &str) -> Result<(Vec<Scene>, DecodeSummary), String> {
     let decoder = file_decoder("CVAT").expect("the CVAT decoder is built in");
-    let mut scenes = Vec::new();
-    match decoder.decode_file(
+    match common::run(
+        decoder,
         xml.as_bytes(),
         &DecodeContext {
             options: &DecodeOptions::new(),
@@ -18,12 +20,11 @@ fn try_decode(xml: &str) -> Result<(Vec<Scene>, DecodeSummary), String> {
                 height: 1080,
             },
         },
-        &mut |scene| scenes.push(scene),
         &CancelToken::new(),
     ) {
-        Ok(summary) => Ok((scenes, summary)),
-        Err(Interrupt::Failed(error)) => Err(error.0),
-        Err(Interrupt::Cancelled) => panic!("decode was cancelled"),
+        (scenes, Ok(summary)) => Ok((scenes, summary)),
+        (_, Err(Interrupt::Failed(error))) => Err(error.0),
+        (_, Err(Interrupt::Cancelled)) => panic!("decode was cancelled"),
     }
 }
 

@@ -305,10 +305,10 @@ export function readSample(buffer: ArrayBuffer | Uint8Array): SampleView {
       throw new SampleFormatError("the string table does not start with the motion states");
   });
 
-  /** Throws unless every cell of `cells` is -1 or below `limit`. */
-  const refs = (cells: Int32Array, limit: number, what: string): void => {
+  /** Throws unless every cell of `cells` is below `limit` and, when `missing` is false, not -1 (no value). */
+  const refs = (cells: Int32Array, limit: number, what: string, missing = true): void => {
     for (const cell of cells)
-      if (cell < -1 || cell >= limit)
+      if (cell < (missing ? -1 : 0) || cell >= limit)
         throw new SampleFormatError(`${what} refers to ${cell}, which the item does not have`);
   };
 
@@ -381,10 +381,10 @@ export function readSample(buffer: ArrayBuffer | Uint8Array): SampleView {
     relTarget: new Int32Array(data, at(S.relTarget), relations),
     strings: table,
   };
-  refs(view.entityId, strings, "an entity id");
+  refs(view.entityId, strings, "an entity id", false);
   refs(view.classId, strings, "a class");
   refs(view.colors.name, strings, "a colour name");
-  refs(view.relKind, strings, "a relation kind");
+  refs(view.relKind, strings, "a relation kind", false);
   refs(view.relSource, rows, "a relation source");
   refs(view.relTarget, rows, "a relation target");
   return view;

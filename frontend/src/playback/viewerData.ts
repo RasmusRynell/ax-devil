@@ -1,6 +1,7 @@
 /** What a viewer holds of its lanes' data: Sample Items, Frame Maps and catalogs, and what each lane draws from them. */
 
 import { Catalogs } from "./catalogs";
+import { FileScope } from "./fileScope";
 import { FrameMaps } from "./data/FrameMaps";
 import { SampleStore } from "./data/SampleStore";
 import { Inspections } from "./inspection";
@@ -27,6 +28,8 @@ export class ViewerData {
   samples = new SampleStore(0);
   readonly catalogs: Catalogs;
   readonly inspections: Inspections;
+  /** The lists of the lanes' whole files. */
+  readonly files: FileScope;
   readonly #laneCatalogs: LaneCatalogs;
   /** The built-in default catalog, which a lane draws with when its own has failed and it has no other. */
   #fallback = "";
@@ -35,10 +38,17 @@ export class ViewerData {
   #draw: LaneData | undefined;
   /** The lanes that waited for data on the frame last composed. */
   #waiting: number[] = [];
+  /** What each lane drew on the frame last composed; `undefined` for a lane that drew nothing. */
+  #shown: readonly (LaneFrame | undefined)[] = [];
 
-  /** `send` asks the backend for a catalog document or an object's fields. */
-  constructor(lanes: LaneSet, send: (message: ClientMessage) => void) {
+  /** `send` asks the backend for a catalog document, an object's fields or a file's list; `after` times the asking. */
+  constructor(
+    lanes: LaneSet,
+    send: (message: ClientMessage) => void,
+    after: (callback: () => void, ms: number) => () => void,
+  ) {
     this.#lanes = lanes;
+    this.files = new FileScope(lanes, send, after);
     this.catalogs = new Catalogs((id) => send({ type: "Catalog", id }));
     this.#laneCatalogs = new LaneCatalogs(this.catalogs, () => this.#fallback);
     this.inspections = new Inspections(send);
@@ -62,12 +72,18 @@ export class ViewerData {
       return drawn.state === "draw" ? drawn.frame : undefined;
     });
     this.#waiting = waiting;
+    this.#shown = frames;
     surface?.present(video, frames);
     let changed = this.inspections.follow(frames);
     this.#lanes.states.forEach((_, lane) => {
       changed = this.#lanes.setPending(lane, waiting.includes(lane)) || changed;
     });
     return changed;
+  }
+
+  /** What `lane` drew on the frame on screen. */
+  shown(lane: number): LaneFrame | undefined {
+    return this.#shown[lane];
   }
 
   /** Whether any lane that waited for the data of the frame last composed no longer does. */
@@ -89,7 +105,9 @@ export class ViewerData {
     this.#maps = undefined;
     this.#draw = undefined;
     this.#waiting = [];
+    this.#shown = [];
     this.samples.clear();
+    this.files.suspend();
   }
 
   /** The backend opened the entry: what the old connection was asked is asked again, and lanes that changed forget their catalog. */
@@ -97,6 +115,7 @@ export class ViewerData {
     this.#fallback = opened.lane_defaults.catalog;
     this.catalogs.open(opened.catalogs);
     this.inspections.reconnect();
+    this.files.reopen();
     opened.lanes.forEach((lane: LaneInfo, index) => {
       if (before[index]?.label !== lane.label || before[index]?.source !== lane.source)
         this.#laneCatalogs.forget(index);
@@ -147,6 +166,7 @@ export class ViewerData {
   refresh(): void {
     this.sync();
     this.catalogProblems();
+    this.files.refresh();
   }
 
   /**
@@ -188,7 +208,12 @@ export class ViewerData {
   /** Why each lane's catalog is not the chosen one and what the catalog it draws with offers, asking for catalogs not yet asked for. */
   catalogProblems(): void {
     this.#lanes.states.forEach((state, lane) => {
-      if (state.source === null) return;
+      // An export names the catalog of every lane, plain ones too: the lane draws nothing, but the document is held.
+      this.#lanes.setCatalogRevision(lane, this.catalogs.compiledRevision(state.settings.catalog));
+      if (state.source === null) {
+        this.catalogs.get(state.settings.catalog);
+        return;
+      }
       const { catalog, problem } = this.#laneCatalogs.resolve(lane, state.settings.catalog);
       this.#lanes.setCatalogProblem(lane, problem);
       const held = this.#lanes.states[lane].look;

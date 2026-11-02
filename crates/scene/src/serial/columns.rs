@@ -63,7 +63,7 @@
 
 use std::collections::HashMap;
 
-use self::attributes::{Attributes, Cells, Kind};
+use self::attributes::Attributes;
 use super::failed;
 use crate::{
     Classification, Entity, FilterPolicy, Geometry, MotionState, Observation, Point, Scene,
@@ -254,10 +254,11 @@ pub fn encode_sample_item(scene: &Scene, policy: &FilterPolicy) -> Result<Vec<u8
             let Some(primary) = entry.primary else {
                 return NO_ID;
             };
-            attributes.add(&mut strings, rows.len(), row, primary);
+            attributes.add(&mut strings, row, primary);
             strings.intern(primary.class_type.as_str())
         })
         .collect();
+    attributes.check_size(rows.len())?;
     let relation_kinds: Vec<u32> = scene
         .relations()
         .iter()
@@ -282,25 +283,8 @@ pub fn encode_sample_item(scene: &Scene, policy: &FilterPolicy) -> Result<Vec<u8
     let mut attribute_index = Vec::with_capacity(attributes.columns.len() * 3);
     for column in &attributes.columns {
         let at = item.align()?;
-        let kind = match &column.cells {
-            Cells::Bool(cells) => {
-                item.bytes.extend_from_slice(cells);
-                Kind::Bool
-            }
-            Cells::Number(cells) => {
-                f64s(&mut item.bytes, cells.iter().copied());
-                Kind::Number
-            }
-            Cells::Str(cells) => {
-                u32s(&mut item.bytes, cells.iter().copied());
-                Kind::Str
-            }
-            Cells::Colors(cells) => {
-                u32s(&mut item.bytes, cells.iter().flatten().copied());
-                Kind::Colors
-            }
-        };
-        attribute_index.extend([strings.intern(column.name), kind as u32, at]);
+        column.write(rows.len(), &mut item.bytes);
+        attribute_index.extend([strings.intern(column.name), column.kind as u32, at]);
     }
 
     let bounds = |row: &Row| {
