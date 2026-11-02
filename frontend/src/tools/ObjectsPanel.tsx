@@ -297,7 +297,11 @@ function ObjectsList({
           label="Scope"
           options={(Object.keys(SCOPES) as Scope[]).map((key) => [key, SCOPES[key].title] as const)}
           value={scope}
-          onChange={setScope}
+          onChange={(key) => {
+            // The table for the new scope mounts at the top.
+            setScope(key);
+            setOffset(0);
+          }}
         />
         <span className="min-w-0 flex-1 truncate text-small text-muted">{`${count} of ${total}`}</span>
         {trailing}
