@@ -3,7 +3,7 @@
 use std::{ops::RangeInclusive, sync::Arc};
 
 use foundation::UserError;
-use overlay_sync::{MatchBasis, MatchPolicy};
+use overlay_sync::{Alignment, MatchBasis, MatchPolicy};
 use scene::FilterPolicy;
 use scene_decoders::LoadWarning;
 use scene_store::{Ingest, Track, TrackSnapshot};
@@ -38,8 +38,11 @@ pub struct LaneReady {
     pub default_basis: MatchBasis,
     /// The class filters the file's content calls for.
     pub filter: FilterPolicy,
-    /// Problems the decoder reported.
+    /// Problems the decoder reported, and a misalignment with the video's frames.
     pub warnings: Vec<LoadWarning>,
+    /// How the samples line up with the video's frames under the lane's basis and tolerance; `None` until the file
+    /// is read.
+    pub alignment: Option<Alignment>,
     /// How many samples the file has so far.
     pub samples: usize,
     /// The source's revision; its items and the lane's maps carry it. A status that only reports progress of the

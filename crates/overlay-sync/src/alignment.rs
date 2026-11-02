@@ -12,6 +12,19 @@ const END_GAP_SHARE: f64 = 0.05;
 /// The share of the attainable samples frames must select for the file to line up with the video.
 const MATCHED_ENOUGH: f64 = 0.8;
 
+/// How well a file lines up with a video, worst first.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub enum Verdict {
+    /// Fewer than 80% of the attainable samples are on a frame.
+    Weak,
+    /// The last sample is far from the last frame; see [`Alignment::ends_far`]. Only a match by time has one.
+    EndsFar,
+    /// Some samples are on no frame. A file at a higher rate than the video always has some.
+    Partial,
+    /// Every sample is on a frame.
+    Good,
+}
+
 /// How the samples of a file meet the frames of a video under one policy.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Alignment {
@@ -21,6 +34,8 @@ pub struct Alignment {
     pub samples: usize,
     /// How many of them some frame selects exactly or, by time, within the tolerance; sticky does not count.
     pub matched: usize,
+    /// How many of them some frame selects exactly; by frame, all of those matched.
+    pub exact: usize,
     /// By time, the last sample's time minus the last frame's time.
     pub end_gap: Option<MediaTime>,
     /// The last frame's number.
@@ -59,6 +74,19 @@ impl Alignment {
         self.samples - self.matched
     }
 
+    /// How well the file lines up, by its worst trait.
+    pub fn verdict(&self) -> Verdict {
+        if !self.lines_up() {
+            Verdict::Weak
+        } else if self.ends_far() {
+            Verdict::EndsFar
+        } else if self.unmatched() > 0 {
+            Verdict::Partial
+        } else {
+            Verdict::Good
+        }
+    }
+
     /// Whether the last sample is far from the last frame: more than a second and more than 5% of the video. Usually
     /// the file and the video count time differently (for example frame number times a frame period against the
     /// container's timestamps); it can also be a file that covers part of the video on purpose.
@@ -91,18 +119,19 @@ pub fn alignment(
         ..*policy
     };
     let basis = policy.basis.unwrap_or_default();
-    let mut selected = vec![false; keys.len()];
+    let mut selected = vec![None; keys.len()];
     for sequence_id in 0..timeline.len() {
         let Some(frame) = timeline.frame(sequence_id) else {
             break;
         };
-        if let Selection::Sample {
-            index,
-            kind: MatchKind::Exact | MatchKind::Tolerated,
-        } = select(keys, coverage, frame, timeline, &policy)
+        if let Selection::Sample { index, kind } = select(keys, coverage, frame, timeline, &policy)
+            && kind != MatchKind::Retained
             && let Some(seen) = selected.get_mut(index)
         {
-            *seen = true;
+            // Exact wins: a sample one frame hits exactly and another within the tolerance is exact.
+            if *seen != Some(MatchKind::Exact) {
+                *seen = Some(kind);
+            }
         }
     }
     let last_frame = timeline.last();
@@ -117,7 +146,11 @@ pub fn alignment(
     Alignment {
         basis,
         samples: keys.len(),
-        matched: selected.iter().filter(|seen| **seen).count(),
+        matched: selected.iter().filter(|seen| seen.is_some()).count(),
+        exact: selected
+            .iter()
+            .filter(|seen| **seen == Some(MatchKind::Exact))
+            .count(),
         end_gap,
         last_frame,
         video_end,
@@ -184,9 +217,11 @@ mod tests {
             &video,
             &by(MatchBasis::Time, Tolerance::Exact),
         );
-        assert_eq!((exact.samples, exact.matched), (4, 2));
+        assert_eq!((exact.samples, exact.matched, exact.exact), (4, 2, 2));
+        assert_eq!(exact.verdict(), Verdict::Weak);
         let tolerated = alignment(&samples, Coverage::Sparse, &video, &within_40());
-        assert_eq!(tolerated.matched, 4);
+        assert_eq!((tolerated.matched, tolerated.exact), (4, 2));
+        assert_eq!(tolerated.verdict(), Verdict::Good);
     }
 
     #[test]
@@ -207,6 +242,10 @@ mod tests {
         let short = alignment(&times(&[0, 41_000]), Coverage::Sparse, &video, &within_40());
         assert_eq!(short.end_gap, Some(MediaTime(-19_000_000)));
         assert!(short.ends_far());
+        // Its last sample is on no frame either, so half the samples are off: weak before far.
+        assert_eq!(short.verdict(), Verdict::Weak);
+        let on_frames = alignment(&times(&[0, 30_000]), Coverage::Sparse, &video, &within_40());
+        assert_eq!(on_frames.verdict(), Verdict::EndsFar);
         let close = alignment(&times(&[0, 59_500]), Coverage::Sparse, &video, &within_40());
         assert!(!close.ends_far());
         // Under a second is never far, even for a short video.
@@ -232,7 +271,11 @@ mod tests {
             &video,
             &by(MatchBasis::Frame, Tolerance::Exact),
         );
-        assert_eq!((by_frame.matched, by_frame.end_gap), (2, None));
+        assert_eq!(
+            (by_frame.matched, by_frame.exact, by_frame.end_gap),
+            (2, 2, None)
+        );
+        assert_eq!(by_frame.verdict(), Verdict::Weak);
         // Without times nothing is matched by time.
         let by_time = alignment(&samples, Coverage::Dense, &video, &within_40());
         assert_eq!(by_time.matched, 0);

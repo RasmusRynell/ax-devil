@@ -26,6 +26,7 @@ const READY: LaneStatusWire = {
   warnings: [],
   samples: 1,
   data_revision: 1,
+  alignment: null,
   mean_sample_bytes: 1,
   ingest: { state: "Complete" },
 };
@@ -34,7 +35,7 @@ describe("lane chip", () => {
   it("says loading while the backend loads the lane and while the shown frame waits for its data", () => {
     const show = (change: Partial<LaneState>) => {
       cleanup();
-      render(<LaneChip lane={lane(change)} catalogs={[]} onChange={() => {}} />);
+      render(<LaneChip lane={lane(change)} catalogs={[]} cadence={null} onChange={() => {}} />);
       return screen.queryByRole("status");
     };
     expect(show({})?.textContent).toBe("Loading…");
@@ -56,7 +57,14 @@ describe("lane chip", () => {
         reason: "The converter stopped with exit code 3",
       },
     };
-    render(<LaneChip lane={lane({ status: stopped })} catalogs={[]} onChange={() => {}} />);
+    render(
+      <LaneChip
+        lane={lane({ status: stopped })}
+        catalogs={[]}
+        cadence={null}
+        onChange={() => {}}
+      />,
+    );
     fireEvent.click(screen.getByRole("button", { name: "DET: warnings" }));
     expect(screen.getByRole("dialog", { name: "DET: warnings" }).textContent).toContain(
       "The converter stopped with exit code 3",
@@ -70,6 +78,7 @@ describe("lane chip", () => {
         <LaneChip
           lane={lane({ status: READY })}
           catalogs={[]}
+          cadence={null}
           onChange={() => {}}
           onApplyAll={onApplyAll}
         />
@@ -89,6 +98,7 @@ describe("lane chip", () => {
           catalogProblem: "/layers/0 (3:5): unknown mark\n/rules/1: no field",
         })}
         catalogs={[]}
+        cadence={null}
         onChange={() => {}}
       />,
     );

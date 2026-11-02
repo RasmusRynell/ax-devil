@@ -18,6 +18,7 @@ const READY: Extract<LaneStatusWire, { status: "Ready" }> = {
   warnings: [],
   samples: 1000,
   data_revision: 1,
+  alignment: null,
   mean_sample_bytes: 100,
   ingest: { state: "Complete" },
 };

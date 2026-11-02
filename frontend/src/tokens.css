@@ -13,12 +13,17 @@
   --color-accent: light-dark(#23678d, #3994bc);
   --color-hover: light-dark(#26344514, #cccccc14);
   --color-scrim: light-dark(#f6f8fb99, #12131499);
+  /* Status text: something needs a look (caution), something is wrong (danger). */
+  --color-caution: light-dark(#8a5300, #e0b04a);
+  --color-danger: light-dark(#b3261e, #f28b82);
   /* The video surface and the controls over it look the same in both themes: near-black with white controls. */
   --color-canvas: #0a0a0a;
   --color-on-canvas: #ffffff;
   --color-on-canvas-muted: #b8bec6;
   --color-canvas-hover: #ffffff24;
   --color-canvas-scrim: #000000cc;
+  --color-on-canvas-caution: #f5c451;
+  --color-on-canvas-danger: #ff8a80;
 
   /* Participant colors, indexed by the backend's color number modulo the count; text on them is --presence-fg. */
   --presence-0: light-dark(#b42318, #f87171);

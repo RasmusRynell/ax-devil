@@ -4,6 +4,7 @@
  * framework-free; time, the display refresh and the socket are injected, and the UI reads `getSnapshot`.
  */
 
+import { cadence, type Cadence } from "./cadence";
 import { CommandRefused, reasonOf } from "../errors";
 import { ExportJobs } from "../export/jobs";
 import {
@@ -60,7 +61,7 @@ export class PlaybackSession implements LaneControl {
     (callback, ms) => this.#deps.after(callback, ms),
     () => this.#arm(),
   );
-  /** What the clock reads: the video held, and the lanes' data or the wait over; playing never waits for data. */
+  /** What the clock reads: the video held, and the lanes' data or the wait over; playing never waits. */
   readonly #source: FrameSource = displaySource(
     {
       has: (id) => this.#buffer?.has(id) === true,
@@ -75,13 +76,14 @@ export class PlaybackSession implements LaneControl {
   readonly exports = new ExportJobs((message) => this.#connection?.send(message));
   #surface: Surface | null = null;
   #connection: Connection | undefined;
-  /** Names the current connection, so a late message of an earlier one is ignored. */
+  /** Names this connection, so a late message of an earlier one is ignored. */
   #attempt: object = {};
   #opened: Extract<ServerMessage, { type: "Opened" }> | undefined;
   #buffer: FrameBuffer<VideoFrame> | undefined;
   #clock: PlaybackClock | undefined;
   #times: Float64Array | undefined;
-  /** The presenter's clock this session was last told to follow, and how to read the backend's time. */
+  #cadence: Cadence | null = null;
+  /** The presenter's clock last followed, and how to read the backend's time. */
   #followed: { intent: ClockIntent; serverNowUs: () => number } | undefined;
   #planner: WantPlanner | undefined;
   #lastWant: Want | undefined;
@@ -89,7 +91,7 @@ export class PlaybackSession implements LaneControl {
   /** The frame to open on after a lost connection. */
   #resumeAt: number | undefined;
   #retries = 0;
-  /** Set when a lost connection took a running clock: the reopened one is paused, so the viewer's intent is stale. */
+  /** Set when a lost connection took a running clock: the reopened one is paused, so the intent is stale. */
   #stoppedByLoss = false;
   #cancelFrame: (() => void) | undefined;
   #cancelRetry: (() => void) | undefined;
@@ -421,6 +423,7 @@ export class PlaybackSession implements LaneControl {
     this.#data.open(times.length, sampleBudgetBytes(this.#budget));
     this.#planner = new WantPlanner(windowSize(this.#budget, opened.frame_bytes));
     this.#times = times;
+    this.#cadence = cadence(times);
     this.#clock = new PlaybackClock(times, this.#deps.now, this.#resumeAt ?? 0);
     this.#clock.setSpeed(this.#speed);
     this.#failures.clear();
@@ -518,6 +521,7 @@ export class PlaybackSession implements LaneControl {
     this.#cancelFrame = undefined;
     this.#clock = undefined;
     this.#times = undefined;
+    this.#cadence = null;
     this.#buffer = undefined;
     this.#data.close();
     this.#wait.stop();
@@ -539,6 +543,7 @@ export class PlaybackSession implements LaneControl {
       catalogs: this.#data.catalogs.listing,
       opened: this.#opened,
       inspection: this.#data.inspections.view,
+      cadence: this.#cadence,
     });
     if (sameView(view, this.#view)) return;
     this.#view = view;

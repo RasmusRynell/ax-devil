@@ -198,14 +198,15 @@ pub(super) async fn quiet(viewer: &mut ViewerOverlays) -> bool {
         .is_err()
 }
 
-/// Reads events until every source of `lanes` has a Ready status.
+/// Reads events until every source of `lanes` has a Ready status with its alignment, which follows the first one.
 pub(super) async fn until_ready(viewer: &mut ViewerOverlays, lanes: &[u16]) {
     let mut waiting = lanes.to_vec();
     while !waiting.is_empty() {
         if let OverlayEvent::Status {
             lane,
-            status: LaneStatus::Ready(_),
+            status: LaneStatus::Ready(ready),
         } = next(viewer).await
+            && ready.alignment.is_some()
         {
             waiting.retain(|&other| other != lane);
         }

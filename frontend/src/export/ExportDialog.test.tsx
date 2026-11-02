@@ -20,6 +20,7 @@ const READY: LaneStatusWire = {
   warnings: [],
   samples: 5,
   data_revision: 7,
+  alignment: null,
   mean_sample_bytes: 10,
   ingest: { state: "Complete" },
 };

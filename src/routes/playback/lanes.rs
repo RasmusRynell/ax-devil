@@ -6,15 +6,16 @@ use super::{End, Flow, Outgoing, stream::Setup, text};
 use api_types::{
     Audience,
     playback::{
-        BasisWire, FilterOptionInfo, IngestWire, LaneDefaultsWire, LaneInfo, LanePolicyWire,
-        LaneStatusWire, MAX_DATA_WINDOW_FRAMES, ServerMessage, StickyWire, WarningInfo, envelope,
+        AlignmentVerdictWire, AlignmentWire, BasisWire, FilterOptionInfo, IngestWire,
+        LaneDefaultsWire, LaneInfo, LanePolicyWire, LaneStatusWire, MAX_DATA_WINDOW_FRAMES,
+        ServerMessage, StickyWire, WarningInfo, envelope,
     },
     project,
 };
 use axum::extract::ws::Message;
 use catalogs::Library;
 use foundation::{ErrorCode, HostPath, MediaTime, Timeline, UserError};
-use overlay_sync::{MatchBasis, MatchPolicy, Sticky, Tolerance};
+use overlay_sync::{MatchBasis, MatchPolicy, Sticky, Tolerance, Verdict};
 use overlays::{LaneStatus, OverlayEvent, ViewerOverlays};
 use playback::{Rank, Want};
 use scene_store::Ingest;
@@ -25,6 +26,10 @@ use workspace::Entry;
 const MAX_STICKY_TIMEOUT_MS: u32 = 100_000;
 
 /// What a viewer's lanes have to send.
+#[expect(
+    clippy::large_enum_variant,
+    reason = "one event is held at a time, between receiving it and encoding it; boxing would allocate for every event"
+)]
 pub(super) enum LaneEvent {
     /// A lane policy the viewer sent that cannot be applied.
     Problem(u16, String),
@@ -369,6 +374,20 @@ fn status_wire(status: LaneStatus, audience: Audience) -> LaneStatusWire {
                     more_reasons: warning.more_reasons,
                 })
                 .collect(),
+            alignment: ready.alignment.map(|alignment| AlignmentWire {
+                basis: basis_wire(alignment.basis),
+                samples: alignment.samples as u64,
+                matched: alignment.matched as u64,
+                exact: alignment.exact as u64,
+                end_gap_us: alignment.end_gap.map(MediaTime::as_us),
+                ends_far: alignment.ends_far(),
+                verdict: match alignment.verdict() {
+                    Verdict::Weak => AlignmentVerdictWire::Weak,
+                    Verdict::EndsFar => AlignmentVerdictWire::EndsFar,
+                    Verdict::Partial => AlignmentVerdictWire::Partial,
+                    Verdict::Good => AlignmentVerdictWire::Good,
+                },
+            }),
             samples: ready.samples as u64,
             data_revision: ready.data_revision,
             mean_sample_bytes: ready.mean_sample_bytes,

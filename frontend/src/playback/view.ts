@@ -1,5 +1,6 @@
 /** What a playback session shows the UI: one immutable snapshot that is replaced only when something in it changed. */
 
+import type { Cadence } from "./cadence";
 import type { FrameInfo, PlaybackClock } from "./clock";
 import type { InspectionView, Selection } from "./contract";
 import type { FrameFailures } from "./failures";
@@ -34,6 +35,8 @@ export type PlaybackView = {
   height: number;
   /** Problems with the video itself, such as overlay sizes that do not match it. Empty for a watcher. */
   warnings: readonly string[];
+  /** How evenly the video's frames are spaced; `null` until it is ready or for a one-frame video. */
+  cadence: Cadence | null;
 };
 
 /** The view before the backend has said anything. */
@@ -51,6 +54,7 @@ export const INITIAL_VIEW: PlaybackView = {
   width: 0,
   height: 0,
   warnings: [],
+  cadence: null,
 };
 
 const sameShown = (a: FrameInfo | undefined, b: FrameInfo | undefined): boolean =>
@@ -73,7 +77,8 @@ export const sameView = (a: PlaybackView, b: PlaybackView): boolean =>
   a.inspection === b.inspection &&
   a.width === b.width &&
   a.height === b.height &&
-  a.warnings === b.warnings;
+  a.warnings === b.warnings &&
+  a.cadence === b.cadence;
 
 /** What the session knows when it publishes a view. */
 export type ViewParts = {
@@ -88,6 +93,7 @@ export type ViewParts = {
   catalogs: readonly CatalogInfoWire[];
   opened: Extract<ServerMessage, { type: "Opened" }> | undefined;
   inspection: InspectionView;
+  cadence: Cadence | null;
 };
 
 /** The view of the session's state now. */
@@ -115,5 +121,6 @@ export function buildView(parts: ViewParts): PlaybackView {
     width: opened?.width ?? 0,
     height: opened?.height ?? 0,
     warnings: opened?.warnings ?? INITIAL_VIEW.warnings,
+    cadence: parts.cadence,
   };
 }

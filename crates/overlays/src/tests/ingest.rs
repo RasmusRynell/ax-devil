@@ -247,11 +247,11 @@ async fn renumbered_samples_start_a_new_revision_that_its_ready_precedes_in_full
 
     let last = sent.readies.last().expect("a status");
     assert_eq!((last.data_revision, last.samples), (2, 4));
-    let reading = sent.readies.len() - 1;
+    // The new revision's Ready is followed by one with the alignment.
     assert!(
-        sent.readies[..reading]
+        sent.readies
             .iter()
-            .all(|ready| ready.data_revision == 1 && ready.ingest == Ingest::Reading)
+            .all(|ready| (ready.data_revision == 1) == (ready.ingest == Ingest::Reading))
     );
     let new_ready = told
         .iter()

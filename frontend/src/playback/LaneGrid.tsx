@@ -98,6 +98,7 @@ export function LaneGrid({
           <LaneChip
             lane={lanes[index]}
             catalogs={view.catalogs}
+            cadence={view.cadence}
             onChange={(change) => session.setLane(index, change)}
             onApplyAll={
               lanes.filter((lane) => lane.source !== null).length > 1
