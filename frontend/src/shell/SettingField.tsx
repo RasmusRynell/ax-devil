@@ -114,7 +114,7 @@ export function Refusal({ reason }: { reason: string }) {
   return (
     <p role="alert" className="m-0 flex items-center gap-s">
       <Icon name="triangle-alert" />
-      {reason}
+      <span className="min-w-0 [overflow-wrap:anywhere]">{reason}</span>
     </p>
   );
 }

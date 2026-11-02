@@ -54,7 +54,7 @@ async function showShell({
     <GrantsContext.Provider value={grants}>
       <FakeSettings state={state}>
         <SessionProvider>
-          <Shell />
+          <Shell version="1.2.3" />
         </SessionProvider>
       </FakeSettings>
     </GrantsContext.Provider>,
@@ -121,7 +121,8 @@ describe("quick setup", () => {
   it("is not offered to someone who may not configure the server", async () => {
     await renderShell({ grants: ["sessions"], values: { "ui.quick_setup_done": false } });
     expect(screen.queryByRole("dialog", { name: "Quick Setup" })).toBeNull();
-    expect(screen.queryByRole("menuitem", { name: "Help" })).toBeNull();
+    fireEvent.click(screen.getByRole("menuitem", { name: "Help" }));
+    expect(screen.queryByRole("menuitem", { name: "Quick Setup" })).toBeNull();
   });
 
   it("keeps the shortcuts of other dialogs from replacing it", async () => {
@@ -129,6 +130,21 @@ describe("quick setup", () => {
     fireEvent.keyDown(document.body, { key: ",", ctrlKey: true });
     expect(screen.queryByRole("dialog", { name: "Settings" })).toBeNull();
     expect(screen.getByRole("dialog", { name: "Quick Setup" })).toBeTruthy();
+  });
+});
+
+describe("about", () => {
+  it("shows the backend's version and the project link from the Help menu, whoever the seat is", async () => {
+    await renderShell({ grants: ["sessions"] });
+    fireEvent.click(screen.getByRole("menuitem", { name: "Help" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "About" }));
+    const dialog = screen.getByRole("dialog", { name: "About ax-devil" });
+    expect(dialog.textContent).toContain("Version 1.2.3");
+    expect(screen.getByRole("link").getAttribute("href")).toBe(
+      "https://github.com/rasmusrynell/ax-devil",
+    );
+    fireEvent.click(screen.getByRole("button", { name: "OK" }));
+    expect(screen.queryByRole("dialog")).toBeNull();
   });
 });
 

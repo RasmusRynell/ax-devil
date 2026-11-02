@@ -85,7 +85,7 @@ export function MenuBar({ checked, wired, onSelect }: Props) {
       onBlur={(event) => {
         if (!bar.current?.contains(event.relatedTarget)) setOpen(null);
       }}
-      className="flex h-full items-center gap-xs px-s [-webkit-app-region:no-drag]"
+      className="flex h-full items-center gap-xs px-s max-sm:px-0 [-webkit-app-region:no-drag]"
     >
       {menus.map((menu, index) => (
         <div key={menu.label} className="relative">
@@ -100,7 +100,7 @@ export function MenuBar({ checked, wired, onSelect }: Props) {
             onFocus={() => setTabStop(index)}
             onClick={() => setOpen(open === index ? null : index)}
             onMouseEnter={() => open !== null && setOpen(index)}
-            className="h-row rounded-control bg-transparent px-m whitespace-nowrap text-fg hover:bg-hover focus-ring aria-expanded:bg-hover"
+            className="h-row rounded-control bg-transparent px-m max-sm:px-s whitespace-nowrap text-fg hover:bg-hover focus-ring aria-expanded:bg-hover"
           >
             {menu.label}
           </button>

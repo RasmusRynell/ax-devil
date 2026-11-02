@@ -179,7 +179,7 @@ module.exports = async (window, shell) => {
     );
     await wait("document.querySelector('[role=menu]')");
     await shoot(`menu-${theme}${suffix}.png`);
-    for (const { name, open } of [
+    for (const { name, open, close = "Cancel" } of [
       {
         name: "settings",
         open: () => js("document.querySelector('[aria-label=Settings]').click()"),
@@ -195,6 +195,29 @@ module.exports = async (window, shell) => {
         },
       },
       { name: "shortcuts", open: openShortcuts },
+      {
+        name: "about",
+        open: async () => {
+          await js(
+            "[...document.querySelectorAll('[data-top]')].find((b) => b.textContent === 'Help').click()",
+          );
+          await wait("document.querySelector('[role=menu]')");
+          await js(
+            "[...document.querySelectorAll('[role=menuitem]')].find((b) => b.textContent === 'About').click()",
+          );
+        },
+        close: "OK",
+      },
+      {
+        name: "error",
+        // An error nobody catches, with its details open.
+        open: async () => {
+          await js("setTimeout(() => { throw new Error('Smoke test failure'); })");
+          await wait("document.querySelector('dialog details')");
+          await js("document.querySelector('dialog details').open = true");
+        },
+        close: "Continue",
+      },
     ]) {
       await js(
         "document.querySelector('[role=menu]') && document.querySelector('[aria-expanded=true]').click()",
@@ -208,7 +231,7 @@ module.exports = async (window, shell) => {
       );
       await shoot(`${name}-${theme}${suffix}.png`);
       await js(
-        "[...document.querySelectorAll('dialog button')].find((b) => b.textContent === 'Cancel').click()",
+        `[...document.querySelectorAll('dialog button')].find((b) => b.textContent === '${close}').click()`,
       );
       await wait("!document.querySelector('dialog')");
     }

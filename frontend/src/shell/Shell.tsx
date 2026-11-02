@@ -12,6 +12,7 @@ import { useSettings } from "../settings";
 import { NO_ACTIONS, ViewerActionsContext, type ViewerActions } from "../viewer/actions";
 import { useFrontViewer, useViewers } from "../viewer/useViewers";
 import { ViewerHost } from "../viewer/ViewerHost";
+import { AboutDialog } from "./AboutDialog";
 import { ActivityBar } from "./ActivityBar";
 import { AddPlaylistDialog } from "./AddPlaylistDialog";
 import { AddVideoDialog } from "./AddVideoDialog";
@@ -40,13 +41,13 @@ function viewerOwnsPlainKeys(target: EventTarget | null): boolean {
 /** The setting behind the View menu's check for pointing at objects. */
 const OBJECT_DETAILS = "overlays.object_details";
 
-type Dialog = "settings" | "shortcuts" | "quick-setup" | "add-video" | "add-playlist";
+type Dialog = "settings" | "shortcuts" | "quick-setup" | "about" | "add-video" | "add-playlist";
 
 /**
  * The application layout: menu bar over the activity bar, sidebar and central area. What the window shows comes from
- * the session's view, so a watcher that follows the presenter shows the presenter's.
+ * the session's view, so a watcher that follows the presenter shows the presenter's. `version` is the backend's.
  */
-export function Shell() {
+export function Shell({ version }: { version: string }) {
   const [sidebar, setSidebar] = useView("sidebar");
   const { active } = useViewers();
   useFrontViewer();
@@ -102,6 +103,7 @@ export function Shell() {
     settings: () => setDialog("settings"),
     "keyboard-shortcuts": () => setDialog("shortcuts"),
     ...(configures && { "quick-setup": () => setDialog("quick-setup") }),
+    about: () => setDialog("about"),
     "add-video": addVideo,
     "add-playlist": () => setDialog("add-playlist"),
     "object-details": () =>
@@ -194,6 +196,7 @@ export function Shell() {
         <Presence scopes={scopes} />
         {dialog === "settings" && <SettingsDialog onClose={closer("settings")} />}
         {dialog === "quick-setup" && <QuickSetupDialog onClose={closer("quick-setup")} />}
+        {dialog === "about" && <AboutDialog version={version} onClose={closer("about")} />}
         {dialog === "add-video" && <AddVideoDialog onClose={closer("add-video")} />}
         {dialog === "add-playlist" && <AddPlaylistDialog onClose={closer("add-playlist")} />}
         {dialog === "shortcuts" && <ShortcutsDialog onClose={closer("shortcuts")} />}

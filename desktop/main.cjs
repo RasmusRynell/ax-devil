@@ -8,6 +8,7 @@ const { backendArgs, parseLaunch, userArgs } = require("./args.cjs");
 const { backendExecutable, createBackend } = require("./backend.cjs");
 const { confirmLink, linkTarget, singleInstance } = require("./links.cjs");
 const { askAfterFailure, parseTarget, verifyServer } = require("./remote.cjs");
+const { installUncaughtHandler } = require("./uncaught.cjs");
 const { installIpc, localWindows, openWindow } = require("./window.cjs");
 const { windowBounds } = require("./window-state.cjs");
 
@@ -100,8 +101,9 @@ function fail(error) {
   app.quit();
 }
 
-// A failure nobody caught would leave the smoke test waiting for its own timeout.
+// A failure nobody caught would leave the smoke test waiting for its own timeout; the app tells the user and goes on.
 if (smoke) process.on("uncaughtException", fail);
+else installUncaughtHandler({ app, dialog });
 
 // `window` takes the place of `replace`, which closes.
 function adopt(window, replace) {
