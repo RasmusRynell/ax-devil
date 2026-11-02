@@ -158,7 +158,13 @@ export class LaneSet {
     const settings = { ...state.settings, ...change };
     const sent = state.source !== null && !sameSent(settings, state.settings);
     const style = !sameStyle(settings, state.settings);
-    if (!sent && !style && settings.sticky.opacity === state.settings.sticky.opacity)
+    // Visibility is local to a lane without a source, which sends no policy but still has to be shown or hidden.
+    if (
+      !sent &&
+      !style &&
+      settings.sticky.opacity === state.settings.sticky.opacity &&
+      settings.visible === state.settings.visible
+    )
       return undefined;
     const policyRevision = sent ? state.policyRevision + 1 : state.policyRevision;
     if (style) this.#styles = this.#styles.map((n, i) => (i === lane ? n + 1 : n));

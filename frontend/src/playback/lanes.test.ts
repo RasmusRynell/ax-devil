@@ -90,6 +90,17 @@ describe("lanes", () => {
     expect(lanes.states[0].policyRevision).toBe(1);
   });
 
+  it("shows a lane without a source again after it inherited being hidden, sending no policy", () => {
+    const lanes = new LaneSet();
+    lanes.open(LANES, LANE_DEFAULTS, [{ ...opened().states[0].settings, visible: false }]);
+    lanes.open([LANES[1]], LANE_DEFAULTS, [{ ...opened().states[0].settings, visible: false }]);
+    expect(lanes.states[0].settings.visible).toBe(false);
+
+    expect(lanes.set(0, { visible: true })).toBeUndefined();
+
+    expect(lanes.states[0].settings.visible).toBe(true);
+  });
+
   it("starts new lanes from the seeds by position, else the defaults, and a reconnection from what the user set", () => {
     const seeds = [{ ...opened().states[0].settings, theme: "night", visible: false }];
     const lanes = new LaneSet();
