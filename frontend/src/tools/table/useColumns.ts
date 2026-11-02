@@ -52,54 +52,89 @@ export function useColumns<Row>(
     fonts: null,
   });
   const drag = useRef<Drag | null>(null);
+  /** The faces and the room as the page last gave them: they change with size and fonts, not with the rows. */
+  const layout = useRef<{ fonts: Fonts; available: number } | null>(null);
+  /** Whether the dividers have yet to be rendered after a change of which columns are shown. */
+  const settling = useRef(false);
 
-  const refit = useCallback(() => {
-    const box = root.current;
-    const list = scroller.current;
-    const head = header.current;
-    if (!box || !list || !head) return;
-    const fonts = fontsOf(list, head);
-    const style = getComputedStyle(head);
-    const room =
-      list.clientWidth -
-      parseFloat(style.paddingLeft) -
-      parseFloat(style.paddingRight) -
-      parseFloat(style.borderLeftWidth);
-    const available = Number.isFinite(room) ? room : list.clientWidth;
-    if (available <= 0) return;
-    const { columns: cols, rows: inView } = current.current;
-    const measures = measureColumns(cols, inView, fonts);
-    const fit = fitColumns(cols, measures, available, drag.current?.draft ?? remembered);
-    const before = applied.current;
-    applied.current = { ...fit, measures, available, fonts };
-    if (!same(fit.widths, before.widths) || !same(fit.shown, before.shown))
-      box.style.setProperty("--cols", fit.widths.map((width) => `${width}px`).join(" "));
-    box.querySelectorAll<HTMLElement>('[role="separator"]').forEach((divider, k) => {
-      const index = fit.shown[k];
-      if (index === undefined) return;
-      const values = {
-        "aria-valuenow": Math.round(fit.widths[k]),
-        "aria-valuemin": Math.round(measures[index].least),
-        "aria-valuemax": Math.round(available),
-      };
-      for (const [name, value] of Object.entries(values))
-        if (divider.getAttribute(name) !== String(value)) divider.setAttribute(name, String(value));
-    });
-    setShown((now) => (same(now, fit.shown) ? now : fit.shown));
-  }, [scroller, remembered]);
+  /** Fits the columns. The faces and the room are read from the page only first and when `remeasure` is set. */
+  const refit = useCallback(
+    (remeasure = false) => {
+      const box = root.current;
+      const list = scroller.current;
+      const head = header.current;
+      if (!box || !list || !head) return;
+      if (remeasure || !layout.current) {
+        const style = getComputedStyle(head);
+        const room =
+          list.clientWidth -
+          parseFloat(style.paddingLeft) -
+          parseFloat(style.paddingRight) -
+          parseFloat(style.borderLeftWidth);
+        const width = Number.isFinite(room) ? room : list.clientWidth;
+        layout.current = width > 0 ? { fonts: fontsOf(list, head), available: width } : null;
+      }
+      if (!layout.current) return;
+      const { fonts, available } = layout.current;
+      const { columns: cols, rows: inView } = current.current;
+      const measures = measureColumns(cols, inView, fonts);
+      const fit = fitColumns(cols, measures, available, drag.current?.draft ?? remembered);
+      const before = applied.current;
+      applied.current = { ...fit, measures, available, fonts };
+      const shownChanged = !same(fit.shown, before.shown);
+      const widthsChanged = !same(fit.widths, before.widths);
+      if (widthsChanged || shownChanged)
+        box.style.setProperty("--cols", fit.widths.map((width) => `${width}px`).join(" "));
+      // The dividers' values follow the fit; the render after a change of shown columns brings new dividers.
+      const stale =
+        settling.current ||
+        shownChanged ||
+        widthsChanged ||
+        available !== before.available ||
+        fit.shown.some(
+          (index) => Math.round(measures[index].least) !== Math.round(before.measures[index].least),
+        );
+      settling.current = shownChanged;
+      if (stale)
+        box.querySelectorAll<HTMLElement>('[role="separator"]').forEach((divider, k) => {
+          const index = fit.shown[k];
+          if (index === undefined) return;
+          const values = {
+            "aria-valuenow": Math.round(fit.widths[k]),
+            "aria-valuemin": Math.round(measures[index].least),
+            "aria-valuemax": Math.round(available),
+          };
+          for (const [name, value] of Object.entries(values))
+            if (divider.getAttribute(name) !== String(value))
+              divider.setAttribute(name, String(value));
+        });
+      setShown((now) => (same(now, fit.shown) ? now : fit.shown));
+    },
+    [scroller, remembered],
+  );
 
   // After every render: the rows in view may have changed what the columns need.
   useLayoutEffect(() => {
     current.current = { columns, rows };
     refit();
   });
+  // The room changes with the table's size (the window or its zoom), the scroller's (a scrollbar appearing) or the
+  // header's (a font size); the faces change when a font finishes loading.
   useLayoutEffect(() => {
-    const box = root.current;
-    if (!box || typeof ResizeObserver === "undefined") return;
-    const observer = new ResizeObserver(refit);
-    observer.observe(box);
-    return () => observer.disconnect();
-  }, [refit]);
+    const again = () => refit(true);
+    const fonts = typeof document === "undefined" ? undefined : document.fonts;
+    fonts?.addEventListener?.("loadingdone", again);
+    let observer: ResizeObserver | undefined;
+    if (typeof ResizeObserver !== "undefined") {
+      observer = new ResizeObserver(again);
+      for (const element of [root.current, scroller.current, header.current])
+        if (element) observer.observe(element);
+    }
+    return () => {
+      fonts?.removeEventListener?.("loadingdone", again);
+      observer?.disconnect();
+    };
+  }, [refit, scroller]);
 
   /** Resizes the column at `index` towards `requested` pixels, remembering what could be applied in `into`. */
   const resize = (
