@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { FakeSettings } from "../fakeSettings";
+import { DEFAULT_SETTINGS, FakeSettings } from "../fakeSettings";
 import type { LaneStatusWire } from "../generated/api";
 import { LANE_SETTINGS } from "./fakeOpened";
 import { LaneChip } from "./LaneChip";
@@ -35,7 +35,11 @@ describe("lane chip", () => {
   it("says loading while the backend loads the lane and while the shown frame waits for its data", () => {
     const show = (change: Partial<LaneState>) => {
       cleanup();
-      render(<LaneChip lane={lane(change)} catalogs={[]} cadence={null} onChange={() => {}} />);
+      render(
+        <FakeSettings>
+          <LaneChip lane={lane(change)} catalogs={[]} cadence={null} onChange={() => {}} />
+        </FakeSettings>,
+      );
       return screen.queryByRole("status");
     };
     expect(show({})?.textContent).toBe("Loading…");
@@ -58,12 +62,14 @@ describe("lane chip", () => {
       },
     };
     render(
-      <LaneChip
-        lane={lane({ status: stopped })}
-        catalogs={[]}
-        cadence={null}
-        onChange={() => {}}
-      />,
+      <FakeSettings>
+        <LaneChip
+          lane={lane({ status: stopped })}
+          catalogs={[]}
+          cadence={null}
+          onChange={() => {}}
+        />
+      </FakeSettings>,
     );
     fireEvent.click(screen.getByRole("button", { name: "DET: warnings" }));
     expect(screen.getByRole("dialog", { name: "DET: warnings" }).textContent).toContain(
@@ -92,19 +98,41 @@ describe("lane chip", () => {
 
   it("lists why the chosen catalog is not used among the lane's notices", () => {
     render(
-      <LaneChip
-        lane={lane({
-          status: READY,
-          catalogProblem: "/layers/0 (3:5): unknown mark\n/rules/1: no field",
-        })}
-        catalogs={[]}
-        cadence={null}
-        onChange={() => {}}
-      />,
+      <FakeSettings>
+        <LaneChip
+          lane={lane({
+            status: READY,
+            catalogProblem: "/layers/0 (3:5): unknown mark\n/rules/1: no field",
+          })}
+          catalogs={[]}
+          cadence={null}
+          onChange={() => {}}
+        />
+      </FakeSettings>,
     );
     fireEvent.click(screen.getByRole("button", { name: "DET: warnings" }));
     const panel = screen.getByRole("dialog", { name: "DET: warnings" });
     expect(panel.textContent).toContain("/layers/0 (3:5): unknown mark");
     expect(panel.textContent).toContain("/rules/1: no field");
+  });
+
+  it("drops the name but keeps the lane's controls when Show Lane Names is off", () => {
+    const chip = (names: boolean) => (
+      <FakeSettings
+        state={{
+          ...DEFAULT_SETTINGS,
+          values: { ...DEFAULT_SETTINGS.values, "overlays.lane_names": names },
+        }}
+      >
+        <LaneChip lane={lane({ status: READY })} catalogs={[]} cadence={null} onChange={() => {}} />
+      </FakeSettings>
+    );
+    const { unmount } = render(chip(true));
+    expect(screen.queryByText("DET")).not.toBeNull();
+    unmount();
+    render(chip(false));
+    expect(screen.queryByText("DET")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "DET: settings" }));
+    expect(screen.getByRole("dialog", { name: "DET: settings" })).toBeTruthy();
   });
 });

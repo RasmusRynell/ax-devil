@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import { act, cleanup, render, screen } from "@testing-library/react";
+import { FakeSettings } from "../fakeSettings";
 import { hiddenOf } from "../viewer/hidden";
 import { LANE_SETTINGS } from "./fakeOpened";
 import { LaneGrid } from "./LaneGrid";
@@ -82,15 +83,17 @@ function mount(
   );
   act(() => {
     render(
-      <LaneGrid
-        session={session as unknown as PlaybackSession}
-        view={view}
-        name="clip"
-        anchor="frame:i"
-        entry="e"
-        hidden={hidden}
-        onHide={() => {}}
-      />,
+      <FakeSettings>
+        <LaneGrid
+          session={session as unknown as PlaybackSession}
+          view={view}
+          name="clip"
+          anchor="frame:i"
+          entry="e"
+          hidden={hidden}
+          onHide={() => {}}
+        />
+      </FakeSettings>,
     );
   });
   return session;

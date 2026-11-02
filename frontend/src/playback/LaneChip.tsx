@@ -2,6 +2,7 @@ import type { Cadence } from "./cadence";
 import { reasonOf } from "../errors";
 import { Icon } from "../kit/Icon";
 import { Popover } from "../kit/Popover";
+import { useSettings } from "../settings";
 import { LaneMenu } from "./LaneMenu";
 import { alignmentTone } from "./LaneMenuTiming";
 import type { LaneSettings, LaneState } from "./lanes";
@@ -84,6 +85,7 @@ export function NoticeList({ notices }: { notices: readonly Notice[] }) {
 /**
  * The name tag over a lane's top-left corner: its label, that it is loading, a button for what there is to report,
  * and the button that opens the lane's menu. A lane without a source has neither warnings nor settings.
+ * With Show Lane Names off the label goes and the rest stays.
  * Without `onHide` the menu cannot hide the lane, without `onApplyAll` it cannot copy to the others.
  */
 export function LaneChip({
@@ -102,13 +104,14 @@ export function LaneChip({
   onHide?: () => void;
   onApplyAll?: () => void;
 }) {
+  const showName = useSettings().values["overlays.lane_names"] === true;
   const notices = laneNotices(lane);
   const loading = lane.pending || (lane.status !== "plain" && lane.status.status === "Loading");
   return (
     <div className="flex w-fit max-w-full items-center rounded-control bg-canvas-scrim text-on-canvas">
-      <span className="min-w-0 truncate px-m">{lane.label}</span>
+      {showName && <span className="min-w-0 truncate px-m">{lane.label}</span>}
       {loading && (
-        <span role="status" className="pr-m text-on-canvas-muted">
+        <span role="status" className={`${showName ? "" : "pl-m "}pr-m text-on-canvas-muted`}>
           Loading…
         </span>
       )}
