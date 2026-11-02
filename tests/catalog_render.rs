@@ -1,4 +1,4 @@
-//! `catalog render` as a user runs it: the real command, the real Electron render page on SwiftShader, and the PNG it
+//! `catalog check` and `catalog render` as a user runs them: the real command, the real Electron render page on SwiftShader, and the PNG it
 //! writes. The Overview sheet's geometry is exact at known pixels; the rest of the picture is compared with a golden
 //! that tolerates the antialiasing and glyph differences of other machines' fonts. Skipped without Electron (see
 //! `common::export_kit::can_export`).
@@ -153,4 +153,63 @@ fn catalog_render_writes_the_overview_with_its_boxes_where_the_sheet_puts_them_a
         "{:.2}% of the pixels differ from {GOLDEN}; regenerate with UPDATE_GOLDENS=1 make tests-backend TEST=catalog_render",
         share * 100.0
     );
+}
+
+#[test]
+fn catalog_check_reports_a_catalog_or_every_problem_in_it_located_and_render_draws_nothing_for_a_bad_one()
+ {
+    if !can_export() {
+        return;
+    }
+    let catalog = include_str!("../assets/catalogs/minimal.v4.json");
+    let folder = tempfile::tempdir().unwrap();
+    let write = |name: &str, text: &str| {
+        let path = folder.path().join(name);
+        fs::write(&path, text).unwrap();
+        path
+    };
+    let good = write("good.json", catalog);
+    let bad = write(
+        "bad.json",
+        &catalog.replace("\"stroke\": \"color\"", "\"stroke\": \"colr\""),
+    );
+    let run = |args: &[&str], file: &Path| {
+        Command::new(env!("CARGO_BIN_EXE_ax-devil"))
+            .args(["catalog"])
+            .args(args)
+            .arg(file)
+            .output()
+            .unwrap()
+    };
+    let text = |bytes: &[u8]| String::from_utf8_lossy(bytes).into_owned();
+
+    let checked = run(&["check"], &good);
+    assert!(checked.status.success(), "{}", text(&checked.stderr));
+    assert!(text(&checked.stdout).contains("Minimal"));
+
+    let checked = run(&["check"], &bad);
+    assert!(!checked.status.success());
+    let problems = text(&checked.stderr);
+    assert!(
+        problems.contains("/layers/0/marks/0/stroke: unknown name 'colr'"),
+        "{problems}"
+    );
+    assert!(problems.contains("  17:"), "line and column: {problems}");
+
+    // Rendering lists the same problems and draws nothing.
+    let out = folder.path().join("sheets");
+    let rendered = Command::new(env!("CARGO_BIN_EXE_ax-devil"))
+        .args(["catalog", "render"])
+        .arg(&bad)
+        .arg("--out")
+        .arg(&out)
+        .output()
+        .unwrap();
+    assert!(!rendered.status.success());
+    assert_eq!(text(&rendered.stderr), problems);
+    assert!(!out.exists());
+
+    let missing = run(&["check"], &folder.path().join("missing.json"));
+    assert!(!missing.status.success());
+    assert!(text(&missing.stderr).contains("missing.json"));
 }

@@ -133,13 +133,7 @@ pub fn check(path: &Path) -> Report {
 /// compiler reads the file and writes the report; this only starts it.
 pub fn check_in(desktop: &Path, path: &Path) -> Result<Report, String> {
     let electron = desktop::electron(desktop)?;
-    let checker = desktop.join("generated/catalog-check.cjs");
-    if !checker.is_file() {
-        return Err(format!(
-            "Cannot find the catalog checker at {}; build it with pnpm --dir frontend build",
-            checker.display()
-        ));
-    }
+    let checker = desktop::catalog_checker(desktop)?;
     let output = Process::new(electron)
         .env("ELECTRON_RUN_AS_NODE", "1")
         .arg(checker)

@@ -127,7 +127,7 @@ pub fn files(folder: &Path) -> Vec<String> {
     names
 }
 
-/// Whether this machine can run the real Electron render page, which it also prepares for: the backend and the
+/// Whether this machine can run the real Electron render page and catalog checker, which it also prepares for: the backend and the
 /// commands it starts find the checkout's desktop folder (a test binary is not under `target/<profile>/ax-devil`)
 /// and the page renders on SwiftShader, so its pixels do not depend on the machine's graphics. When it cannot, says
 /// why on stderr and returns false, so the test returns early; with `AX_DEVIL_REQUIRE_ELECTRON` set (the Make
@@ -139,6 +139,7 @@ pub fn can_export() -> bool {
     let ready = READY.get_or_init(|| {
         ax_devil::desktop::electron(&desktop)?;
         ax_devil::desktop::render_page(&desktop)?;
+        ax_devil::desktop::catalog_checker(&desktop)?;
         // SAFETY: this runs once, before any test of the binary starts a backend or a page; the other tests'
         // threads are blocked on this lock meanwhile, and nothing else reads the environment.
         unsafe {

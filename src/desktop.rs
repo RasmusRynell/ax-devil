@@ -52,3 +52,17 @@ pub fn render_page(desktop: &Path) -> Result<PathBuf, String> {
         ))
     }
 }
+
+/// The catalog compiler the frontend build writes for `catalog check`, which runs in Electron-as-Node, or why there
+/// is none.
+pub fn catalog_checker(desktop: &Path) -> Result<PathBuf, String> {
+    let checker = desktop.join("generated/catalog-check.cjs");
+    if checker.is_file() {
+        Ok(checker)
+    } else {
+        Err(format!(
+            "Cannot find the catalog checker at {}; build it with pnpm --dir frontend build",
+            checker.display()
+        ))
+    }
+}
