@@ -1,7 +1,9 @@
 //! Querying the history over a placement: class toggles, search, order, pages and where objects are on screen.
 
 use foundation::{MediaTime, Timeline};
-use overlay_sync::{KeyChunks, MatchPolicy, SampleKeys, Selection, Sticky, Tolerance, select};
+use overlay_sync::{
+    KeyChunks, MatchBasis, MatchPolicy, SampleKeys, Selection, Sticky, Tolerance, select,
+};
 
 use super::{
     history::{history_of, policy_of, scene_of, scenes},
@@ -15,10 +17,6 @@ type Case = (String, Vec<(String, Vec<String>)>, Vec<String>);
 fn timeline(frames: usize) -> Timeline {
     let times = (0..frames).map(|n| MediaTime(n as i64 * 40_000)).collect();
     Timeline::new(times).expect("a timeline")
-}
-
-fn frame_keys(keys: &[u64]) -> SampleKeys {
-    SampleKeys::Frames(KeyChunks::new().appended(keys))
 }
 
 fn place(keys: &SampleKeys, frames: usize, coverage: Coverage, policy: &MatchPolicy) -> Placement {
@@ -393,39 +391,67 @@ fn by_selection(
 #[test]
 fn placement_puts_objects_on_exactly_the_frames_the_lookup_shows_their_samples() {
     let history = appearances();
-    let times = SampleKeys::Times(KeyChunks::new().appended(&[
-        MediaTime(0),
-        MediaTime(120_000),
-        MediaTime(130_000),
-        MediaTime(600_000),
-        // Past the end of a 30 frame video.
-        MediaTime(5_000_000),
-    ]));
+    let times = SampleKeys {
+        frames: None,
+        times: Some(KeyChunks::new().appended(&[
+            MediaTime(0),
+            MediaTime(120_000),
+            MediaTime(130_000),
+            MediaTime(600_000),
+            // Past the end of a 30 frame video.
+            MediaTime(5_000_000),
+        ])),
+    };
     let frames = frame_keys(&[2, 3, 4, 10, 40]);
-    let sticky = |timeout| MatchPolicy {
+    let policy = |basis, timeout: Option<Option<MediaTime>>| MatchPolicy {
+        basis: Some(basis),
         sticky: Sticky {
-            enabled: true,
-            timeout,
+            enabled: timeout.is_some(),
+            timeout: timeout.flatten(),
         },
         ..MatchPolicy::default()
     };
+    let (by_frame, by_time) = (
+        policy(MatchBasis::Frame, None),
+        policy(MatchBasis::Time, None),
+    );
     let cases = [
-        (&frames, Coverage::Dense, MatchPolicy::default()),
-        (&frames, Coverage::Sparse, MatchPolicy::default()),
-        (&frames, Coverage::Sparse, sticky(None)),
-        (&frames, Coverage::Sparse, sticky(Some(MediaTime(200_000)))),
-        (&frames, Coverage::Dense, sticky(None)),
-        (&times, Coverage::Sparse, MatchPolicy::default()),
+        (&frames, Coverage::Dense, by_frame),
+        (&frames, Coverage::Sparse, by_frame),
+        (
+            &frames,
+            Coverage::Sparse,
+            policy(MatchBasis::Frame, Some(None)),
+        ),
+        (
+            &frames,
+            Coverage::Sparse,
+            policy(MatchBasis::Frame, Some(Some(MediaTime(200_000)))),
+        ),
+        (
+            &frames,
+            Coverage::Dense,
+            policy(MatchBasis::Frame, Some(None)),
+        ),
+        (&times, Coverage::Sparse, by_time),
         (
             &times,
             Coverage::Sparse,
             MatchPolicy {
                 tolerance: Tolerance::Exact,
-                ..MatchPolicy::default()
+                ..by_time
             },
         ),
-        (&times, Coverage::Sparse, sticky(None)),
-        (&times, Coverage::Sparse, sticky(Some(MediaTime(100_000)))),
+        (
+            &times,
+            Coverage::Sparse,
+            policy(MatchBasis::Time, Some(None)),
+        ),
+        (
+            &times,
+            Coverage::Sparse,
+            policy(MatchBasis::Time, Some(Some(MediaTime(100_000)))),
+        ),
     ];
 
     for (n, (keys, coverage, policy)) in cases.iter().enumerate() {

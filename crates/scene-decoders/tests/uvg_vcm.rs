@@ -1,6 +1,6 @@
 //! The UVG-VCM decoder, through the registry as the host uses it.
 
-use foundation::{CancelToken, FrameSize};
+use foundation::CancelToken;
 use scene::{Coverage, Geometry, Scene, SceneTime, Value};
 use scene_decoders::{DecodeContext, DecodeOptions, DecodeSummary, file_decoder};
 use serde_json::{Value as Json, json};
@@ -23,10 +23,6 @@ fn decode(document: &str) -> Result<(Vec<Scene>, DecodeSummary), String> {
         document.as_bytes(),
         &DecodeContext {
             options: &DecodeOptions::new(),
-            frame_size: FrameSize {
-                width: 1920,
-                height: 1080,
-            },
         },
         &CancelToken::new(),
     );

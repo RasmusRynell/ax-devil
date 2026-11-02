@@ -1,4 +1,5 @@
 import { Select } from "../kit/Fields";
+import type { BasisWire } from "../generated/api";
 import { Switch } from "../kit/Switch";
 import type { LaneSettings, LaneState } from "./lanes";
 import { Group, NumberField } from "./LaneMenuFields";
@@ -10,7 +11,15 @@ const DEFAULT_PREVIOUS_MS = 50;
 
 type Sync = "exact" | "previous";
 
-/** How a sample is matched to a frame (for lanes keyed by time) and whether old samples stay on screen. */
+const BASES: readonly (readonly [BasisWire, string])[] = [
+  ["Frame", "Frame"],
+  ["Time", "Time"],
+];
+
+/**
+ * How a sample is matched to a frame (by the basis the file offers; under time, how far back one may be) and whether
+ * old samples stay on screen. A lane whose file lacks the chosen basis is matched by the file's default.
+ */
 export function LaneMenuTiming({
   lane,
   onChange,
@@ -19,26 +28,40 @@ export function LaneMenuTiming({
   onChange: (change: Partial<LaneSettings>) => void;
 }) {
   const { settings } = lane;
-  const timed =
-    lane.status !== "plain" && lane.status.status === "Ready" && lane.status.clock === "timestamp";
+  const ready = lane.status !== "plain" && lane.status.status === "Ready" ? lane.status : undefined;
+  const bases = ready?.bases ?? [];
+  const basis =
+    settings.basis !== null && bases.includes(settings.basis)
+      ? settings.basis
+      : ready?.default_basis;
   const sync: Sync = settings.tolerance_ms === null ? "exact" : "previous";
   const { sticky } = settings;
   return (
     <>
-      {timed && (
+      {(bases.length > 1 || basis === "Time") && (
         <Group label="Sync">
-          <Select<Sync>
-            label="Sync"
-            value={sync}
-            options={[
-              ["exact", "Exact"],
-              ["previous", "Previous"],
-            ]}
-            onChange={(next) =>
-              onChange({ tolerance_ms: next === "exact" ? null : DEFAULT_PREVIOUS_MS })
-            }
-          />
-          {sync === "previous" && (
+          {bases.length > 1 && (
+            <Select<BasisWire>
+              label="Match by"
+              value={basis ?? "Frame"}
+              options={BASES.filter(([option]) => bases.includes(option))}
+              onChange={(next) => onChange({ basis: next })}
+            />
+          )}
+          {basis === "Time" && (
+            <Select<Sync>
+              label="Sync"
+              value={sync}
+              options={[
+                ["exact", "Exact"],
+                ["previous", "Previous"],
+              ]}
+              onChange={(next) =>
+                onChange({ tolerance_ms: next === "exact" ? null : DEFAULT_PREVIOUS_MS })
+              }
+            />
+          )}
+          {basis === "Time" && sync === "previous" && (
             <NumberField
               label="Within (ms)"
               value={settings.tolerance_ms}

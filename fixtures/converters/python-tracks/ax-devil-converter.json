@@ -11,6 +11,8 @@
   "code": ["convert.py"],
   "idle_timeout_s": 30,
   "options": [
-    { "key": "camera", "label": "Camera name", "kind": "text", "required": false, "default": "front" }
+    { "key": "camera", "label": "Camera name", "kind": "text", "required": false, "default": "front" },
+    { "key": "width", "label": "Image width in pixels", "kind": "text", "required": false, "default": "1920" },
+    { "key": "height", "label": "Image height in pixels", "kind": "text", "required": false, "default": "1080" }
   ]
 }

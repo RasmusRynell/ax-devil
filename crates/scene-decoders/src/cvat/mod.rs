@@ -12,6 +12,7 @@ mod tree;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 
 use foundation::{CancelToken, Interrupt};
+use overlay_sync::MatchBasis;
 use quick_xml::{
     Reader,
     events::{BytesStart, Event},
@@ -34,6 +35,8 @@ static SPEC: DecoderSpec = DecoderSpec {
     extensions: &[".xml"],
     artifact_version: 1,
     storage: Storage::DerivedCache,
+    bases: &[MatchBasis::Frame],
+    default_basis: MatchBasis::Frame,
 };
 
 /// Events between two checks of the cancel token.

@@ -97,6 +97,7 @@ impl State {
             slot.maps_sent.clear();
             slot.window = LaneWindow::default();
             slot.reported.clear();
+            self.fit(lane);
         }
         self.announce(source);
         self.refresh(timeline);
@@ -111,7 +112,8 @@ impl State {
             return;
         };
         let ready = LaneReady {
-            clock: snapshot.clock(),
+            bases: track.bases(),
+            default_basis: track.default_basis(),
             filter: track.filter().clone(),
             warnings: snapshot.warnings.to_vec(),
             samples: snapshot.keys.len(),

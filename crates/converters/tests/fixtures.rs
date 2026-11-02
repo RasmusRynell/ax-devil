@@ -84,7 +84,7 @@ fn the_python_converter_gives_the_model_everything_it_covers() {
             .all(|(_, mode)| *mode == OnEqualKey::Merge)
     );
 
-    // Pixels were normalised by the frame size in the request.
+    // Pixels were normalised by the converter's width and height options (defaults 1920 and 1080).
     let car = run.sink.samples[0].0.entity("1").expect("entity 1");
     let observation = &car.observations()[0];
     let Geometry::Box(bounds) = &observation.geometry else {

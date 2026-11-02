@@ -1,10 +1,13 @@
 use std::{
     borrow::Cow,
     collections::{HashMap, hash_map::Entry},
+    io::ErrorKind,
+    path::Path,
 };
 
-use foundation::{CancelToken, FrameSize, Interrupt};
+use foundation::{CancelToken, Interrupt, SeqInfo, parse_seqinfo};
 use memchr::memchr_iter;
+use overlay_sync::MatchBasis;
 use scene::{
     BoundingBox, ClassRule, ClassType, Classification, Coverage, Entity, EntityId, Fields,
     FilterOption, FilterPolicy, Geometry, Observation, Scene, SceneError, SceneTime, Score,
@@ -12,8 +15,8 @@ use scene::{
 };
 
 use crate::{
-    DecodeContext, DecodeError, DecodeSummary, DecoderSpec, FileSceneDecoder, OnEqualKey,
-    SceneSink, SkippedRecords, SourceFile, Storage,
+    DecodeContext, DecodeError, DecodeOptions, DecodeSummary, DecoderSpec, FileSceneDecoder,
+    OnEqualKey, SceneSink, SkippedRecords, SourceFile, Storage,
 };
 
 static SPEC: DecoderSpec = DecoderSpec {
@@ -23,6 +26,8 @@ static SPEC: DecoderSpec = DecoderSpec {
     extensions: &[".txt"],
     artifact_version: 1,
     storage: Storage::DerivedCache,
+    bases: &[MatchBasis::Frame],
+    default_basis: MatchBasis::Frame,
 };
 
 /// Rows between cancellation checks.
@@ -83,9 +88,59 @@ static CLASSES: [(ClassType, &str, &str); 13] = [
 
 /// Reads MOT Challenge detection (7 or 10 columns) and ground-truth (9 columns) text files.
 ///
-/// Frames are 1-based in the file and 0-based in Scenes. Boxes are pixels, normalized by the decoded frame size the
-/// host passes in the [`DecodeContext`]. A frame without rows is empty ([`Coverage::Dense`]).
+/// Frames are 1-based in the file and 0-based in Scenes. Boxes are pixels, normalized by the image size the
+/// dataset's `seqinfo.ini` states, which sits in the sequence folder above `gt/` or `det/`, or beside a file
+/// kept elsewhere; the video is never consulted. [`declared_options`](FileSceneDecoder::declared_options) reads it and declares it as `width` and
+/// `height`, so changing the file rebuilds the scene cache. A frame without rows is empty ([`Coverage::Dense`]).
 pub struct MotDecoder;
+
+/// The size the dataset's boxes are measured in.
+#[derive(Clone, Copy)]
+struct Extent {
+    width: f64,
+    height: f64,
+}
+
+/// The size declared by [`MotDecoder::declared_options`].
+fn declared_extent(options: &DecodeOptions) -> Result<Extent, DecodeError> {
+    let size = |key: &str| options.get(key).and_then(serde_json::Value::as_u64);
+    match (size("width"), size("height")) {
+        (Some(width @ 1..), Some(height @ 1..)) => Ok(Extent {
+            width: width as f64,
+            height: height as f64,
+        }),
+        _ => Err(DecodeError(
+            "MOT annotations decode only with the image size from their seqinfo.ini".to_owned(),
+        )),
+    }
+}
+
+/// The `seqinfo.ini` of the sequence that holds `annotations`: in the folder above a `gt` or `det` folder, else in
+/// the file's own folder. No other folder is searched.
+fn read_seqinfo(annotations: &Path) -> Result<SeqInfo, DecodeError> {
+    let folder = annotations.parent().unwrap_or(Path::new(""));
+    let in_layout_folder = folder
+        .file_name()
+        .is_some_and(|name| name == "gt" || name == "det");
+    let sequence = if in_layout_folder {
+        folder.parent().unwrap_or(folder)
+    } else {
+        folder
+    };
+    let ini = sequence.join("seqinfo.ini");
+    let text = std::fs::read_to_string(&ini).map_err(|error| {
+        DecodeError(if error.kind() == ErrorKind::NotFound {
+            format!(
+                "MOT annotations need a seqinfo.ini next to the sequence (tried {})",
+                ini.display()
+            )
+        } else {
+            format!("Cannot read {}: {error}", ini.display())
+        })
+    })?;
+    parse_seqinfo(&text)
+        .map_err(|reason| DecodeError(format!("{} is not usable: {reason}", ini.display())))
+}
 
 /// One valid row, its box already normalized.
 struct Row {
@@ -105,6 +160,18 @@ impl FileSceneDecoder for MotDecoder {
         &SPEC
     }
 
+    fn declared_options(
+        &self,
+        path: &Path,
+        _options: &DecodeOptions,
+    ) -> Result<DecodeOptions, DecodeError> {
+        let info = read_seqinfo(path)?;
+        Ok(DecodeOptions::from_iter([
+            ("width".to_owned(), info.width.into()),
+            ("height".to_owned(), info.height.into()),
+        ]))
+    }
+
     fn decode_file(
         &self,
         source: &dyn SourceFile,
@@ -112,9 +179,10 @@ impl FileSceneDecoder for MotDecoder {
         sink: &mut dyn SceneSink,
         cancel: &CancelToken,
     ) -> Result<DecodeSummary, Interrupt<DecodeError>> {
+        let extent = declared_extent(context.options).map_err(Interrupt::Failed)?;
         let input = source.bytes(cancel)?;
         let mut skipped = SkippedRecords::new("rows", "Objects on skipped rows are not shown.");
-        let (mut rows, total) = read_rows(input, context.frame_size, &mut skipped, cancel)?;
+        let (mut rows, total) = read_rows(input, extent, &mut skipped, cancel)?;
         if !rows.is_sorted_by_key(|row| row.frame) {
             // Stable: file order within a frame decides the ids of untracked detections.
             rows.sort_by_key(|row| row.frame);
@@ -146,7 +214,7 @@ impl FileSceneDecoder for MotDecoder {
 /// Parses every non-blank line; returns the valid rows and the number of non-blank lines.
 fn read_rows(
     input: &[u8],
-    frame_size: FrameSize,
+    extent: Extent,
     skipped: &mut SkippedRecords,
     cancel: &CancelToken,
 ) -> Result<(Vec<Row>, usize), Interrupt<DecodeError>> {
@@ -175,7 +243,7 @@ fn read_rows(
             continue;
         }
         total += 1;
-        match parse_row(line, frame_size) {
+        match parse_row(line, extent) {
             Ok(row) => rows.push(row),
             Err(reason) => skipped.add(format!("line {line_number}: {reason}")),
         }
@@ -183,7 +251,7 @@ fn read_rows(
     Ok((rows, total))
 }
 
-fn parse_row(line: &str, frame_size: FrameSize) -> Result<Row, String> {
+fn parse_row(line: &str, extent: Extent) -> Result<Row, String> {
     let mut parts = [""; MAX_COLUMNS];
     let mut count = 0;
     for part in line.split(',') {
@@ -220,14 +288,13 @@ fn parse_row(line: &str, frame_size: FrameSize) -> Result<Row, String> {
     if width < 0.0 || height < 0.0 {
         return Err("negative box width or height".to_string());
     }
-    let (frame_width, frame_height) = (f64::from(frame_size.width), f64::from(frame_size.height));
-    let left = left / frame_width;
-    let top = top / frame_height;
+    let left = left / extent.width;
+    let top = top / extent.height;
     let geometry = BoundingBox::new(
         left,
         top,
-        left + width / frame_width,
-        top + height / frame_height,
+        left + width / extent.width,
+        top + height / extent.height,
     )
     .map_err(|error| error.to_string())?;
     // A detection's score is the source's own number at any range; ground truth has neither score nor confidence.

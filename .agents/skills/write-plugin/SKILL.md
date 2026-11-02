@@ -22,11 +22,11 @@ Scenes from its stdout and draws them like any built-in format. A decoder shippe
 
    ```bash
    ax-devil plugins install FOLDER
-   ax-devil plugins check ID FILE --frame-size 1920x1080 [--option KEY=VALUE]
+   ax-devil plugins check ID FILE [--option KEY=VALUE]
    ```
 
    `check` prints the sample count, the key kind and range, the warnings and why a run stopped early. It exits 1
-   when the run is incomplete or empty. Give the real size of the video's frames: geometry is divided by it.
+   when the run is incomplete or empty. The converter never sees the video: a file in pixels needs its image size as options (`width`, `height`).
 5. Open the video with the file (`ax-devil local --video V --overlay FILE`; the extension picks the converter, or
    `--handler-type ID`). Compare the boxes, labels and the inspector's fields with what the file says. To see it without the
    user's desktop, follow [verify-headless](../verify-headless/SKILL.md).
@@ -37,7 +37,7 @@ rereads code on the next open and the manifest only at start.
 ## Rules
 
 - stdout is the protocol and nothing else: print diagnostics to stderr, flush after every line.
-- Normalize geometry to `[0,1]` with the request's frame size. Do not derive or invent values: a score, a
+- Normalize geometry to `[0,1]` with the image size the file states or an option gives; the converter never sees the video. Do not derive or invent values: a score, a
   confidence or a class the file lacks stays `null`. Keep the file's raw fields in `source_data`, what you computed in
   `debug`.
 - A record you cannot convert is `{"skipped": "why"}`, not a crash and not a made-up Scene. A problem that affects

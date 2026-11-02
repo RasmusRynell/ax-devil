@@ -1,8 +1,8 @@
 //! MOT decoder behavior through the public registry.
 
-use std::{ops::ControlFlow, sync::LazyLock};
+use std::{fs, ops::ControlFlow};
 
-use foundation::{CancelToken, FrameSize, Interrupt};
+use foundation::{CancelToken, Interrupt};
 use scene::{Classification, Coverage, Entity, Geometry, Scene, SceneTime, Score, Value};
 use scene_decoders::{
     DecodeContext, DecodeOptions, DecodeSummary, Header, LoadWarning, OnEqualKey, SceneSink,
@@ -11,17 +11,25 @@ use scene_decoders::{
 
 mod common;
 
-fn context(width: u32, height: u32) -> DecodeContext<'static> {
-    static OPTIONS: LazyLock<DecodeOptions> = LazyLock::new(DecodeOptions::new);
-    DecodeContext {
-        options: &OPTIONS,
-        frame_size: FrameSize { width, height },
-    }
+/// The options the decoder declares for annotations at `<sequence>/gt/gt.txt` whose `seqinfo.ini` states the size.
+fn options(width: u32, height: u32) -> DecodeOptions {
+    let sequence = tempfile::tempdir().unwrap();
+    fs::create_dir(sequence.path().join("gt")).unwrap();
+    fs::write(
+        sequence.path().join("seqinfo.ini"),
+        format!("[Sequence]\nframeRate=30\nseqLength=1\nimWidth={width}\nimHeight={height}\n"),
+    )
+    .unwrap();
+    let decoder = file_decoder("MOT_FILE").expect("MOT decoder is registered");
+    decoder
+        .declared_options(&sequence.path().join("gt/gt.txt"), &DecodeOptions::new())
+        .unwrap()
 }
 
-fn decode_with(text: &str, context: &DecodeContext<'_>) -> (Vec<Scene>, DecodeSummary) {
+fn decode_with(text: &str, options: &DecodeOptions) -> (Vec<Scene>, DecodeSummary) {
     let decoder = file_decoder("MOT_FILE").expect("MOT decoder is registered");
-    let (scenes, result) = common::run(decoder, text.as_bytes(), context, &CancelToken::new());
+    let context = DecodeContext { options };
+    let (scenes, result) = common::run(decoder, text.as_bytes(), &context, &CancelToken::new());
     let summary = match result {
         Ok(summary) => summary,
         Err(Interrupt::Failed(error)) => panic!("decode failed: {error}"),
@@ -31,7 +39,7 @@ fn decode_with(text: &str, context: &DecodeContext<'_>) -> (Vec<Scene>, DecodeSu
 }
 
 fn decode(text: &str) -> (Vec<Scene>, DecodeSummary) {
-    decode_with(text, &context(1920, 1080))
+    decode_with(text, &options(1920, 1080))
 }
 
 fn entity<'a>(scene: &'a Scene, id: &str) -> &'a Entity {
@@ -102,10 +110,10 @@ fn rows_with_invalid_values_are_skipped() {
 }
 
 #[test]
-fn ground_truth_boxes_are_normalized_by_the_host_frame_size() {
+fn boxes_are_normalized_by_the_size_the_seqinfo_declares() {
     let text = "1,1,0,0,64,48,1,1,0.8\n1,2,32,24,64,48,0,7,0.25\n";
     for width in [640, 1280] {
-        let (scenes, summary) = decode_with(text, &context(width, 480));
+        let (scenes, summary) = decode_with(text, &options(width, 480));
         assert!(summary.warnings.is_empty());
         assert_eq!(summary.coverage, Coverage::Dense);
         let observation = &entity(&scenes[0], "2").observations()[0];
@@ -121,6 +129,34 @@ fn ground_truth_boxes_are_normalized_by_the_host_frame_size() {
         near(bottom, 72.0 / 480.0);
         assert_eq!(observation.time, SceneTime::Frame(0));
     }
+}
+
+#[test]
+fn only_the_seqinfo_of_the_files_own_sequence_counts() {
+    let folder = tempfile::tempdir().unwrap();
+    let decoder = file_decoder("MOT_FILE").expect("MOT decoder is registered");
+    let error = decoder
+        .declared_options(&folder.path().join("gt/gt.txt"), &DecodeOptions::new())
+        .expect_err("no seqinfo.ini");
+    assert!(error.0.contains("need a seqinfo.ini"), "{error}");
+    assert!(
+        error
+            .0
+            .contains(folder.path().join("seqinfo.ini").to_str().unwrap()),
+        "names the path tried: {error}"
+    );
+
+    // Only the file's own sequence counts: a parent folder's ini is not consulted.
+    fs::write(
+        folder.path().join("seqinfo.ini"),
+        "[Sequence]\nframeRate=30\nseqLength=1\nimWidth=9\nimHeight=9\n",
+    )
+    .unwrap();
+    fs::create_dir(folder.path().join("seq")).unwrap();
+    let error = decoder
+        .declared_options(&folder.path().join("seq/gt.txt"), &DecodeOptions::new())
+        .expect_err("the parent's ini does not count");
+    assert!(error.0.contains("need a seqinfo.ini"), "{error}");
 }
 
 #[test]
@@ -195,7 +231,14 @@ fn a_cancelled_token_stops_the_decode() {
     let token = CancelToken::new();
     token.cancel();
     let text = "1,1,0,0,1,1,1\n".repeat(5000);
-    let (_, result) = common::run(decoder, text.as_bytes(), &context(1920, 1080), &token);
+    let (_, result) = common::run(
+        decoder,
+        text.as_bytes(),
+        &DecodeContext {
+            options: &options(1920, 1080),
+        },
+        &token,
+    );
     assert!(matches!(result, Err(Interrupt::Cancelled)));
 }
 
@@ -215,7 +258,9 @@ fn a_sink_that_cannot_take_more_stops_the_decode() {
 
     let result = decoder.decode_file(
         &common::BytesSource(b"1,1,0,0,1,1,1\n2,1,0,0,1,1,1\n3,1,0,0,1,1,1\n"),
-        &context(1920, 1080),
+        &DecodeContext {
+            options: &options(1920, 1080),
+        },
         &mut sink,
         &CancelToken::new(),
     );

@@ -174,3 +174,62 @@ fn hiding_twice_changes_nothing_and_a_reference_to_nothing_is_kept_but_hides_not
     let shown = set(&set(&with_orphan, &target, false), &orphan, false);
     assert_eq!(shown, state, "showing undoes hiding");
 }
+
+#[test]
+fn a_lane_matching_lands_in_the_recipe_by_overlay_or_lane_position_and_resolves_nothing() {
+    let folder = tempfile::tempdir().unwrap();
+    let (video, overlay) = (folder.path().join("gate.mp4"), folder.path().join("gt.txt"));
+    std::fs::write(&video, "x").unwrap();
+    std::fs::write(&overlay, "x").unwrap();
+    let overlays = [workspace::intake::NewOverlay {
+        path: overlay,
+        handler: None,
+        label: None,
+    }];
+    let added = workspace::intake::video(&video, &overlays, &Handlers::built_in()).unwrap();
+    let playlist = WorkspaceItem {
+        id: ItemId::generate(),
+        label: "list".into(),
+        recipe: Recipe::Playlist(workspace::PlaylistRecipe {
+            resolver: "folder_pair".into(),
+            settings: Default::default(),
+            lane_matching: Default::default(),
+        }),
+    };
+    let (video_id, playlist_id) = (added.id, playlist.id);
+    let (state, _) = add(&WorkspaceState::default(), vec![added, playlist], false);
+    let matching = overlay_sync::MatchPolicy {
+        basis: Some(overlay_sync::MatchBasis::Time),
+        ..Default::default()
+    };
+    let set = |state: &WorkspaceState, item, lane| {
+        let (next, jobs) = apply(
+            state,
+            DocCommand::SetLaneMatching {
+                item,
+                lane,
+                matching,
+            },
+        );
+        assert!(jobs.is_empty(), "the Content does not depend on matching");
+        next
+    };
+
+    let state = set(&set(&state, video_id, 0), playlist_id, 2);
+    let recipes: Vec<_> = state
+        .workspace
+        .items
+        .iter()
+        .map(|item| &item.recipe)
+        .collect();
+    let (Recipe::Video(video), Recipe::Playlist(playlist)) = (recipes[0], recipes[1]) else {
+        panic!("the items keep their recipes");
+    };
+    assert_eq!(video.overlays[0].matching, Some(matching));
+    assert_eq!(playlist.lane_matching.get(&2), Some(&matching));
+    assert_eq!(
+        set(&state, video_id, 7),
+        state,
+        "a lane the recipe has no overlay for changes nothing"
+    );
+}

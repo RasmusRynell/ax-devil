@@ -15,6 +15,7 @@ mod rows;
 
 use foundation::{CancelToken, Interrupt, UserError};
 use handlers::Handlers;
+use overlay_sync::MatchPolicy;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use workspace::{Content, ContentId, ItemId, Recipe, Workspace, WorkspaceItem};
@@ -144,6 +145,17 @@ pub enum DocCommand {
         /// Whether it is hidden.
         hidden: bool,
     },
+    /// Sets how a lane matches its file's records to frames, in the item's recipe, so a saved workspace keeps it.
+    /// Does nothing for an unknown item or a lane its recipe has no overlay for, and resolves nothing: the Content
+    /// does not depend on it.
+    SetLaneMatching {
+        /// The item.
+        item: ItemId,
+        /// The lane's position in the entry.
+        lane: u16,
+        /// The lane's matching.
+        matching: MatchPolicy,
+    },
 }
 
 /// Work a transition asks its caller to run: resolve `recipe`, then hand the result to [`complete`].
@@ -196,6 +208,29 @@ pub fn apply(state: &WorkspaceState, command: DocCommand) -> (WorkspaceState, Ve
                 next.hidden.insert(target);
             } else {
                 next.hidden.remove(&target);
+            }
+        }
+        DocCommand::SetLaneMatching {
+            item,
+            lane,
+            matching,
+        } => {
+            let recipe = next
+                .workspace
+                .items
+                .iter_mut()
+                .find(|existing| existing.id == item)
+                .map(|existing| &mut existing.recipe);
+            match recipe {
+                Some(Recipe::Video(video)) => {
+                    if let Some(overlay) = video.overlays.get_mut(usize::from(lane)) {
+                        overlay.matching = Some(matching);
+                    }
+                }
+                Some(Recipe::Playlist(playlist)) => {
+                    playlist.lane_matching.insert(lane, matching);
+                }
+                None => {}
             }
         }
     }

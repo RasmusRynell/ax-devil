@@ -1,12 +1,15 @@
 //! What the viewer holds, against a model of the viewer that applies the events in order: the backend alone decides
 //! what is held (`Evict`), which map cells are kept (`Window`) and stays within the byte budget.
 
+use foundation::{MediaTime, Timeline};
+use overlay_sync::{MatchBasis, MatchPolicy};
+
 use super::{
     Env, shown,
     viewer_model::{Rig, backward, evicted, exact, samples, sticky},
     want,
 };
-use crate::{OverlayEvent, state::READY_PER_SOURCE};
+use crate::{OverlayEvent, state::READY_PER_SOURCE, window::FIRST_NON_SAMPLE};
 
 #[test]
 fn a_sticky_sample_that_stays_selected_across_a_jump_is_neither_evicted_nor_sent_again() {
@@ -358,4 +361,55 @@ fn a_random_walk_of_wants_policies_reloads_and_late_hand_backs_keeps_the_viewer_
     rig.pump();
     rig.check();
     assert!(rig.dropped.is_empty());
+}
+
+#[test]
+fn a_time_keyed_file_matches_record_k_to_frame_k_unless_matched_by_time() {
+    let env = Env::new();
+    let shows = |day: &str, policy: MatchPolicy| -> Vec<Option<u32>> {
+        let text: String = ["00.000", "00.120", "00.200"]
+            .iter()
+            .map(|time| {
+                format!(
+                    "<tt:Frame xmlns:tt=\"http://www.onvif.org/ver10/schema\" UtcTime=\"{day}T00:00:{time}Z\"><tt:Object ObjectId=\"1\"><tt:Appearance><tt:Class><tt:Type Likelihood=\"0.9\">person</tt:Type></tt:Class><tt:Shape><tt:BoundingBox left=\"-0.2\" top=\"0.2\" right=\"0.2\" bottom=\"-0.2\"/></tt:Shape></tt:Appearance></tt:Object></tt:Frame>\n"
+                )
+            })
+            .collect();
+        let timeline =
+            Timeline::new((0..8).map(|n| MediaTime(n * 40_000)).collect()).expect("timeline");
+        let mut rig = Rig::open(
+            &env,
+            env.overlay(&format!("{day}.xml"), "ONVIF_XML", &text),
+            timeline,
+            1,
+        );
+        rig.policy(0, 1, policy, true);
+        rig.want(want(4, 4, 4));
+        rig.pump();
+        (0..8)
+            .map(|frame| {
+                rig.model
+                    .cells
+                    .get(&(0, frame))
+                    .copied()
+                    .filter(|&cell| cell < FIRST_NON_SAMPLE)
+            })
+            .collect()
+    };
+    let by_frame = MatchPolicy {
+        basis: Some(MatchBasis::Frame),
+        ..exact()
+    };
+
+    // The video starts at 0 and the recording's UTC times do not: matching by frame is the one that works.
+    assert_eq!(
+        shows("2024-05-01", by_frame),
+        [Some(0), Some(1), Some(2), None, None, None, None, None]
+    );
+    assert_eq!(shows("2024-05-01", exact()), [None; 8]);
+    // A file counting from the epoch lines up by time: sample 1 at 120 ms is frame 3.
+    assert_eq!(
+        shows("1970-01-01", exact()),
+        [Some(0), None, None, Some(1), None, Some(2), None, None]
+    );
 }

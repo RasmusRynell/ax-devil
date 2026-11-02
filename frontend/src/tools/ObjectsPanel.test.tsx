@@ -12,7 +12,8 @@ import { ObjectsPanel } from "./ObjectsPanel";
 
 const READY: Extract<LaneStatusWire, { status: "Ready" }> = {
   status: "Ready",
-  clock: "frame",
+  bases: ["Frame"],
+  default_basis: "Frame",
   filter: [],
   warnings: [],
   samples: 1000,

@@ -6,7 +6,6 @@
 mod folder_pair;
 mod mot_challenge;
 mod schema;
-mod seqinfo;
 
 use std::{collections::BTreeSet, path::PathBuf};
 

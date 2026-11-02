@@ -15,6 +15,7 @@ workspace = true
 [dependencies]
 foundation.workspace = true
 handlers.workspace = true
+overlay-sync.workspace = true
 serde.workspace = true
 workspace.workspace = true
 

@@ -11,8 +11,8 @@ use playlist_resolvers::{
 };
 use scene::Scene;
 use scene_decoders::{
-    DecodeContext, DecodeError, DecodeSummary, DecoderSpec, FileSceneDecoder, RecordSceneDecoder,
-    SceneSink, SourceFile,
+    DecodeContext, DecodeError, DecodeOptions, DecodeSummary, DecoderSpec, FileSceneDecoder,
+    RecordSceneDecoder, SceneSink, SourceFile,
 };
 
 /// The decoders and resolvers this build knows. Cheap to clone.
@@ -106,6 +106,14 @@ struct BuiltInFile(&'static dyn FileSceneDecoder);
 impl FileSceneDecoder for BuiltInFile {
     fn spec(&self) -> &'static DecoderSpec {
         self.0.spec()
+    }
+
+    fn declared_options(
+        &self,
+        path: &Path,
+        options: &DecodeOptions,
+    ) -> Result<DecodeOptions, DecodeError> {
+        self.0.declared_options(path, options)
     }
 
     fn decode_file(

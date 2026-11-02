@@ -1,5 +1,5 @@
 import { useCallback } from "react";
-import type { ContentInfo, EntryInfo } from "../generated/api";
+import type { ContentInfo, EntryInfo, LanePolicyWire } from "../generated/api";
 import { useCan, useCommand } from "../session/session";
 import { VideoViewer, type EntryMemory } from "../playback/VideoViewer";
 import type { ViewerProps } from "../viewers";
@@ -7,7 +7,8 @@ import { useHidden } from "./useViewers";
 
 /**
  * Plays one entry of an item's Content with what the workspace says about it: the lanes the user hid are left out,
- * and a seat that may change the workspace can hide a lane from the lane's own menu.
+ * and a seat that may change the workspace can hide a lane from the lane's own menu and its matching is kept in the
+ * item's recipe.
  */
 export function EntryViewer({
   item,
@@ -33,6 +34,14 @@ export function EntryViewer({
       }).catch(() => undefined),
     [command, entry.id],
   );
+  const keepMatching = useCallback(
+    (lane: number, policy: LanePolicyWire) =>
+      void command({
+        type: "content",
+        command: { type: "setLaneMatching", item, lane, policy },
+      }).catch(() => undefined),
+    [command, item],
+  );
   return (
     <VideoViewer
       item={item}
@@ -41,6 +50,7 @@ export function EntryViewer({
       hidden={hidden}
       memory={memory}
       onHideLane={changes ? hideLane : undefined}
+      onLaneMatching={changes ? keepMatching : undefined}
     />
   );
 }

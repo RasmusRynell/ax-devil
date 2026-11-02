@@ -4,10 +4,22 @@ use crate::ErrorWire;
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
+/// What a lane matches a file's records to video frames by.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
+pub enum BasisWire {
+    /// By frame number: a time-keyed file's record k belongs to frame k.
+    Frame,
+    /// By the records' timestamps.
+    Time,
+}
+
 /// How a lane selects samples for frames: the part of a lane's settings the backend needs.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
 pub struct LanePolicyWire {
-    /// How far back a time-keyed sample may be, in milliseconds; `null` is exact.
+    /// What records are matched to frames by; `null` is the decoder's default. A basis the file does not offer is
+    /// reported as a problem and the decoder's default is used.
+    pub basis: Option<BasisWire>,
+    /// How far back a sample may be under the time basis, in milliseconds; `null` is exact.
     pub tolerance_ms: Option<u32>,
     /// Whether old samples stay on screen.
     pub sticky: StickyWire,
@@ -38,16 +50,11 @@ pub struct LaneInfo {
     pub label: String,
     /// The viewer's id of the source the lane draws; `null` for a plain lane. Lanes on the same file share one.
     pub source: Option<u16>,
-}
-
-/// The clock a lane's samples are on.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
-#[serde(rename_all = "lowercase")]
-pub enum ClockWire {
-    /// Frame numbers.
-    Frame,
-    /// Timestamps.
-    Timestamp,
+    /// How the workspace says the lane matches its records to frames; absent is the defaults. The viewer starts the
+    /// lane from it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub policy: Option<LanePolicyWire>,
 }
 
 /// One class filter a lane offers.
@@ -82,8 +89,10 @@ pub enum LaneStatusWire {
     Loading,
     /// The overlay is ready to draw.
     Ready {
-        /// The clock the file's samples are on.
-        clock: ClockWire,
+        /// The bases the file's records can be matched by.
+        bases: Vec<BasisWire>,
+        /// The basis the decoder recommends, one of `bases`.
+        default_basis: BasisWire,
         /// The class filters the file's content calls for.
         filter: Vec<FilterOptionInfo>,
         /// Problems the decoder reported.

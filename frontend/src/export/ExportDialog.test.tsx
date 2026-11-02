@@ -11,7 +11,8 @@ import { ExportJobs } from "./jobs";
 
 const READY: LaneStatusWire = {
   status: "Ready",
-  clock: "frame",
+  bases: ["Frame"],
+  default_basis: "Frame",
   filter: [
     { id: "car", label: "car", default_enabled: true },
     { id: "bike", label: "bike", default_enabled: false },

@@ -12,12 +12,12 @@ use export::{
     ExportError, ExportLane, ExportSpec, FrozenSource, IN_FLIGHT, LaneStyle, Output, Pixels,
     RenderJob, RenderSetup, Renderer, run,
 };
-use foundation::{CancelToken, ErrorCode, FrameRate, FrameSize, UserError};
+use foundation::{CancelToken, ErrorCode, FrameRate, UserError};
 use handlers::Handlers;
 use media::{
     Decoder, EncodeFormat, Encoder, FrameIndex, ImageSequenceInput, Picture, Quality, VideoInput,
 };
-use overlay_sync::{MatchPolicy, Sticky};
+use overlay_sync::{MatchBasis, MatchPolicy, Sticky};
 use playlist_resolvers::OverlayRef;
 use scene_store::{Track, TrackRegistry};
 
@@ -354,14 +354,7 @@ fn two_sample_track(dir: &Path) -> (PathBuf, Arc<Track>) {
         options: serde_json::Map::new(),
     };
     let track = TrackRegistry::new(Handlers::built_in(), None)
-        .open(
-            &overlay,
-            FrameSize {
-                width: WIDTH,
-                height: HEIGHT,
-            },
-            &CancelToken::new(),
-        )
+        .open(&overlay, &CancelToken::new())
         .expect("the track");
     (mot, track)
 }
@@ -379,6 +372,7 @@ fn the_renderer_is_sent_each_sample_once_while_it_holds_it() {
             source: 7,
         }),
         policy: MatchPolicy {
+            basis: Some(MatchBasis::Time),
             sticky: Sticky {
                 enabled: sticky,
                 timeout: None,

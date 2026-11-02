@@ -2,7 +2,7 @@
 
 use std::collections::BTreeSet;
 
-use foundation::{CancelToken, FrameSize, MediaTime};
+use foundation::{CancelToken, MediaTime};
 use scene::{Classification, Coverage, Event, Geometry, Scene, SceneTime, Score, Value};
 use scene_decoders::{
     DecodeContext, DecodeOptions, RecordSceneDecoder, file_decoder, record_decoder,
@@ -166,10 +166,6 @@ fn a_file_is_one_document_per_line_and_a_bad_line_is_a_warning() {
         FRAMES,
         &DecodeContext {
             options: &DecodeOptions::new(),
-            frame_size: FrameSize {
-                width: 1920,
-                height: 1080,
-            },
         },
         &CancelToken::new(),
     );

@@ -69,11 +69,12 @@ implementing module closes.
   datetime's time since the Unix epoch. Live frames carry device capture time; an offline video's first frame is 0
   and its frames take their times from container presentation timestamps, never from FPS, so timestamp-keyed files for
   a recording count from the epoch and variable frame rates work. Units convert in one place.
-- Timestamp Matching: exact timestamp first, then the latest previous overlay timestamp within the configured
-  tolerance; a future one is never selected early.
-- Frame-keyed files (MOT/CVAT) match annotation sequence ids and resolve sample age through the video's actual frame
-  timeline, never synthetic keys or FPS. A decoder declares coverage: in a Dense file a frame without a sample is
-  empty and sticky never crosses it; a Sparse one says nothing about it.
+- Decoders emit records and know nothing about the video. A lane's match basis is host policy, chosen from the bases
+  its decoder declares and starting at its declared default; live is matched by time. Frame: a record belongs to the
+  frame numbered by its key, for a time-keyed file its position (record k, frame k). Time: exact timestamp first,
+  then the latest previous record within the configured tolerance; a future one is never selected early. Keys are
+  never synthesized from FPS. A decoder declares coverage: in a Dense file a frame without a sample is empty and
+  sticky never crosses it; a Sparse one says nothing about it.
 - With sticky overlays enabled, offline playback and export select the latest sample at or before the requested time,
   regardless of navigation history. Age is measured from the original sample timestamp, never the last matched frame.
   The timeout includes its boundary; no timeout means unlimited. Matching tolerance separates normal matches
@@ -84,8 +85,7 @@ implementing module closes.
   state.
 - File overlay packets keep the matched sample timestamp, and its sequence when known; the requested frame stays in
   lookup metadata.
-- Alignment diagnostics compare on the provider's basis: timestamps for timestamp-keyed overlays, frame numbers for
-  sequence-keyed ones.
+- Alignment diagnostics compare on the lane's match basis.
 
 ## Scene Model
 
@@ -119,6 +119,8 @@ implementing module closes.
   command applied under its Session's lock; a refused command changes nothing, and each change reaches every seat as
   one new Doc. "Modified" is current ≠ saved. One projection turns the resolved Content and the open items into rows.
 - Hidden refs identify current Workspace content, playlist entries or lanes; orphan and out-of-range refs are ignored.
+- A lane's matching (basis, tolerance, sticky) lives in its item's recipe, by overlay for a video and by lane position
+  for a playlist (lane names are per entry), and changes only by a Doc command.
 - Removing Content removes its whole item and closes every viewer showing it. Opening a Workspace file closes every
   viewer, even when item ids are kept. The split host alone removes and destroys hosted viewers.
 - Every item is listed: a failed one is an unavailable row showing its reason that never opens; one still resolving is
@@ -189,7 +191,7 @@ implementing module closes.
 - Pausing RTSP keeps its connection alive. Stopping is terminal; reopening creates a new source.
 - Scene file artifacts are invalid unless their complete identity matches: source content digest (a stat fingerprint
   only spares hashing an unchanged file; where the platform has no change time, the digest decides), decoder name (for
-  a converter, the hash of its manifest and code files), artifact version, Scene version, decode options, frame size
+  a converter, the hash of its manifest and code files), artifact version, Scene version, decode options
   and store format version. If the source changed during the build, the artifact is persisted without a digest, so the
   next open sees the file as changed. Cache files are private and always rebuildable.
 - Samples with one start key are one group, merged or replaced as the decoder asks. A key below an earlier one freezes

@@ -36,6 +36,7 @@ fn messages_use_the_names_the_frontend_parses() {
         lane: 1,
         revision: 2,
         policy: LanePolicyWire {
+            basis: None,
             tolerance_ms: None,
             sticky: StickyWire {
                 enabled: true,
@@ -48,7 +49,7 @@ fn messages_use_the_names_the_frontend_parses() {
         serde_json::to_value(&policy).unwrap(),
         json!({
             "type": "LanePolicy", "lane": 1, "revision": 2, "subscribed": true,
-            "policy": {"tolerance_ms": null, "sticky": {"enabled": true, "timeout_ms": 2050}}
+            "policy": {"basis": null, "tolerance_ms": null, "sticky": {"enabled": true, "timeout_ms": 2050}}
         })
     );
     let catalog = json!({"type": "Catalog", "id": "built-in:standard"});
@@ -167,15 +168,18 @@ fn opened_and_lane_status_carry_the_source_and_data_revision() {
             LaneInfo {
                 label: "gate.mp4".into(),
                 source: None,
+                policy: None,
             },
             LaneInfo {
                 label: "a.txt".into(),
                 source: Some(0),
+                policy: None,
             },
         ],
         lane_defaults: LaneDefaultsWire {
             catalog: "built-in:standard".into(),
             policy: LanePolicyWire {
+                basis: None,
                 tolerance_ms: Some(50),
                 sticky: StickyWire {
                     enabled: false,
@@ -204,7 +208,8 @@ fn opened_and_lane_status_carry_the_source_and_data_revision() {
     let ready = ServerMessage::LaneStatus {
         lane: 1,
         status: LaneStatusWire::Ready {
-            clock: ClockWire::Frame,
+            bases: vec![BasisWire::Frame],
+            default_basis: BasisWire::Frame,
             filter: Vec::new(),
             warnings: Vec::new(),
             samples: 6,
@@ -216,7 +221,7 @@ fn opened_and_lane_status_carry_the_source_and_data_revision() {
     assert_eq!(
         serde_json::to_value(&ready).unwrap(),
         json!({"type": "LaneStatus", "lane": 1, "status": {
-            "status": "Ready", "clock": "frame", "filter": [], "warnings": [], "samples": 6,
+            "status": "Ready", "bases": ["Frame"], "default_basis": "Frame", "filter": [], "warnings": [], "samples": 6,
             "data_revision": 1, "mean_sample_bytes": 812, "ingest": {"state": "Reading"}
         }})
     );

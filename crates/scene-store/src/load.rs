@@ -10,7 +10,7 @@ use std::{
 
 use foundation::{CancelToken, ErrorCode, HostPath, Interrupt, UserError};
 use scene::SCENE_VERSION;
-use scene_decoders::{DecodeOptions, FileSceneDecoder};
+use scene_decoders::{DecodeOptions, DecoderSpec, FileSceneDecoder};
 
 use crate::{
     TrackKey,
@@ -57,14 +57,12 @@ pub(crate) fn load(
         scene_major: SCENE_VERSION.major,
         scene_minor: SCENE_VERSION.minor,
         options: key.options.clone(),
-        width: key.frame_size.width,
-        height: key.frame_size.height,
         code: decoder.code_hash(),
         stat,
         digest: None,
     };
     if let Some(path) = request.artifact
-        && let Some(track) = reuse(path, request, &wanted, &source, cancel)?
+        && let Some(track) = reuse(path, request, &wanted, &source, spec, cancel)?
     {
         return Ok(track);
     }
@@ -83,6 +81,7 @@ fn reuse(
     request: &Request<'_>,
     wanted: &Identity,
     source: &File,
+    spec: &'static DecoderSpec,
     cancel: &CancelToken,
 ) -> Result<Option<Arc<Track>>, Interrupt<UserError>> {
     let Ok(mut file) = File::open(path) else {
@@ -159,6 +158,7 @@ fn reuse(
         request.key.path.clone(),
         growth,
         meta,
+        spec,
         CancelToken::new(),
     ))))
 }
@@ -209,7 +209,6 @@ fn build(
     let handle = spawn(Job {
         decoder: decoder.clone(),
         options: request.options.clone(),
-        frame_size: request.key.frame_size,
         source,
         identity,
         artifact: request.artifact.map(Path::to_path_buf),

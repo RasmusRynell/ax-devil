@@ -3,9 +3,9 @@
 use std::time::Duration;
 
 use foundation::{CancelToken, Interrupt};
-use scene::TimeKind;
+use overlay_sync::MatchBasis;
 
-use super::{Env, SIZE, next, overlay_at, settle, shown, want};
+use super::{Env, next, overlay_at, settle, shown, want};
 use crate::{LaneStatus, OverlayEvent};
 
 #[tokio::test]
@@ -34,7 +34,8 @@ async fn a_lane_is_loading_then_ready_with_the_file_filter_warnings_and_item_siz
     else {
         panic!("the lane becomes ready");
     };
-    assert_eq!(ready.clock, TimeKind::Frame);
+    assert_eq!(ready.bases, [MatchBasis::Frame]);
+    assert_eq!(ready.default_basis, MatchBasis::Frame);
     assert_eq!(ready.samples, 2);
     assert_eq!(ready.data_revision, 1);
     assert!(ready.mean_sample_bytes > 0, "the mean item size");
@@ -53,10 +54,7 @@ async fn a_lane_is_loading_then_ready_with_the_file_filter_warnings_and_item_siz
 async fn a_lane_that_cannot_load_fails_with_the_decoders_error_and_the_others_go_on() {
     let env = Env::new();
     let missing = overlay_at("missing", "MOT_FILE", "/does/not/exist.txt".into());
-    let Err(Interrupt::Failed(expected)) =
-        env.tracks
-            .registry
-            .open(&missing, SIZE, &CancelToken::new())
+    let Err(Interrupt::Failed(expected)) = env.tracks.registry.open(&missing, &CancelToken::new())
     else {
         panic!("the file cannot be opened");
     };

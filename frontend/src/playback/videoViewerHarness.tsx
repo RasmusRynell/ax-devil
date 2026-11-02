@@ -7,7 +7,7 @@ import { FakeSocket } from "../session/fakeSession";
 import { useDoc, useView } from "../session/session";
 import { opened } from "./fakeOpened";
 import type { ClientMessage, LaneInfo, ServerMessage } from "./protocol";
-import { VideoViewer } from "./VideoViewer";
+import { VideoViewer, type VideoViewerProps } from "./VideoViewer";
 import type { Connect, Incoming } from "./wire";
 
 // What the video viewer suites share. Each suite mocks "./VideoCanvas" itself (the picture needs WebGL; these suites
@@ -64,6 +64,7 @@ export function Viewer({
   lanes,
   entryId,
   onHideLane,
+  onLaneMatching,
   settings,
 }: {
   sent: ClientMessage[];
@@ -71,6 +72,7 @@ export function Viewer({
   /** Shows this entry whatever the view names. */
   entryId?: string;
   onHideLane?: (label: string) => void;
+  onLaneMatching?: VideoViewerProps["onLaneMatching"];
   /** The settings the viewer reads; the defaults without. */
   settings?: SettingsState;
 }) {
@@ -87,6 +89,7 @@ export function Viewer({
         entry={entry}
         connect={connect}
         onHideLane={onHideLane}
+        onLaneMatching={onLaneMatching}
       />
     </FakeSettings>
   ) : null;

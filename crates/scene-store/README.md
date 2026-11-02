@@ -1,23 +1,23 @@
 # scene-store
 
 Decodes an overlay file once, keeps every Scene in a private artifact on disk, and serves Scenes by sample index.
-Memory per open track is the sample keys and the record index (about 12 bytes per sample) plus a byte-bounded
+Memory per open track is the sample keys and the record index (about 12 to 24 bytes per sample) plus a byte-bounded
 cache of recently used Scenes (`SCENE_CACHE_BYTES`, 32 MiB). The Scenes themselves stay on disk, so a file's size
 does not change what the app holds (the reference app held about 690 MB for a 50 MB CVAT file). `Track::item` adds a
 second cache of encoded Sample Items (16 MiB per track), shared by every viewer of the track.
 
 ## Artifact
 
-`<cache>/scenes/<sha256 of TrackKey>.axscene`, one per (file, handler, options, frame size), created private (0600,
+`<cache>/scenes/<sha256 of TrackKey>.axscene`, one per (file, handler, options), created private (0600,
 folder 0700), written to a temporary sibling and renamed into place. Without a cache folder the artifact is an unnamed
 temporary file for the life of the track.
 
 ```
 header   "AXSC" | STORE_FORMAT_VERSION u32 LE
 records  one postcard Scene each (scene::serial::encode), back to back; record r is sample r
-index    postcard: sample keys (frames or µs, ascending, unique), record boundaries, CRC-32 per record
+index    postcard: sample keys (frame numbers, µs, or both; timestamps ascend, frame numbers are unique), record boundaries, CRC-32 per record
 summary  postcard: coverage, decoder warnings, filter policy, file metadata
-identity postcard: handler, artifact version, Scene version, canonical options, frame size,
+identity postcard: handler, artifact version, Scene version, canonical options,
          decoder code hash or none (converters), source stat (size, mtime, ctime where the platform has one), source SHA-256 or none
 history  CRC-32 then postcard: the file history (see File history), or a mark that it was too large
 footer   index, summary, identity and history offsets u64 LE | CRC-32 of index..history u32 LE | "AXSE"
@@ -39,7 +39,10 @@ artifact.
 ## Ingest
 
 Samples are keyed by the Scene's start time, and a file uses one clock (frame numbers or timestamps); mixing them
-fails the decode. A decode runs on its own thread (`scene-ingest-<handler>`) and feeds a `SceneSink`; the thread
+fails the decode. A timestamp-keyed file of a decoder that supports matching by frame also gets frame numbers: the
+position in the file of each sample's record (the replacing one, or the first of a merged group), kept when the samples
+are sorted by time. Until the ingest ends, the frames a snapshot decides by frame number are those below the open
+record's position. A decode runs on its own thread (`scene-ingest-<handler>`) and feeds a `SceneSink`; the thread
 holds no `Arc<Track>`, so dropping the last track stops it.
 
 - **Groups.** Scenes with one start key are one group: `Merge` joins them (entities in order of first appearance, an

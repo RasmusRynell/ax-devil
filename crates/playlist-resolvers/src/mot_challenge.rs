@@ -7,14 +7,14 @@ use std::{
 
 use crate::schema::invalid_field;
 use foundation::{
-    CancelToken, Cancelled, ErrorCode, FrameRate, HostPath, Interrupt, Location, UserError,
+    CancelToken, Cancelled, ErrorCode, FrameRate, HostPath, Interrupt, Location, SeqInfo,
+    UserError, parse_seqinfo,
 };
 
 use crate::{
     Choice, Cli, Field, FieldKind, ImageSequence, OverlayRef, PlaylistResolver, ResolvedEntry,
     ResolvedPlaylist, ResolverSchema, ResolverSpec, Settings, VideoRef, WatchPaths,
     folder_pair::{required_text, resolved_file_type},
-    seqinfo::{SeqInfo, parse_seqinfo},
 };
 
 static SPEC: ResolverSpec = ResolverSpec {

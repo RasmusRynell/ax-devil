@@ -241,6 +241,11 @@ fn entry_with_a_lane(folder: &Path) -> Entry {
         .map(|frame| format!("{frame},1,10,10,20,20,1,1,1\n"))
         .collect();
     std::fs::write(&gt, rows).unwrap();
+    std::fs::write(
+        folder.join("seqinfo.ini"),
+        "[Sequence]\nframeRate=30\nseqLength=90\nimWidth=64\nimHeight=48\n",
+    )
+    .unwrap();
     let item = foundation::ItemId::generate();
     Entry {
         id: ContentId::of_item(&item),
@@ -297,6 +302,7 @@ async fn a_viewer_made_a_follower_gets_no_frame_or_data_outside_the_presenters_w
     }));
     let setup = stream::Setup {
         entry: &entry,
+        matching: &[],
         start_frame: Some(60),
         data_bytes: SAMPLE_BUDGET,
         audience: Audience::HOST,
@@ -325,6 +331,7 @@ async fn a_viewer_made_a_follower_gets_no_frame_or_data_outside_the_presenters_w
         lane: 0,
         revision: 1,
         policy: LanePolicyWire {
+            basis: None,
             tolerance_ms: None,
             sticky: StickyWire {
                 enabled: false,

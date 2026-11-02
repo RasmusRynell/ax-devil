@@ -6,18 +6,22 @@
 mod common;
 
 use api_types::playback::{
-    ClientMessage, Direction, FRAME_MAP_EMPTY, FRAME_MAP_NONE, IngestWire, LaneDefaultsWire,
-    LaneInfo, LanePolicyWire, LaneStatusWire, MATCH_EXACT, ServerMessage, StickyWire,
+    BasisWire, ClientMessage, Direction, FRAME_MAP_EMPTY, FRAME_MAP_NONE, IngestWire,
+    LaneDefaultsWire, LaneInfo, LanePolicyWire, LaneStatusWire, MATCH_EXACT, ServerMessage,
+    StickyWire,
 };
 use common::{Backend, Event, Viewer, fixture};
+use overlay_sync::{MatchBasis, MatchPolicy, Sticky, Tolerance};
 use sessions::{
     CursorOptions,
     session::{Access, Command, Control, Reply},
 };
 use std::collections::BTreeMap;
+use workspace_store::DocCommand;
 
 fn policy(tolerance_ms: Option<u32>, timeout_ms: Option<u32>) -> LanePolicyWire {
     LanePolicyWire {
+        basis: None,
         tolerance_ms,
         sticky: StickyWire {
             enabled: false,
@@ -100,12 +104,8 @@ impl Seen {
 
 /// A video with one lane whose file has a box on frames 0 to 2 and is dense, so the others are covered with nothing.
 async fn viewer_with_a_lane(backend: &Backend) -> (Viewer, common::Described) {
-    let gt = backend.folder.path().join("gt.txt");
-    std::fs::write(
-        &gt,
-        "1,1,10,10,20,20,1,1,1\n2,1,12,10,20,20,1,1,1\n3,1,14,10,20,20,1,1,1\n",
-    )
-    .unwrap();
+    let gt =
+        backend.mot_file("1,1,10,10,20,20,1,1,1\n2,1,12,10,20,20,1,1,1\n3,1,14,10,20,20,1,1,1\n");
     let id = backend
         .add_with_overlays(&fixture("cfr_h264_gop10_bf2.mp4"), &[gt])
         .await;
@@ -190,9 +190,10 @@ async fn opened_lists_the_served_catalogs_and_what_every_lane_starts_with() {
         LaneDefaultsWire {
             catalog: "built-in:standard".into(),
             policy: LanePolicyWire {
+                basis: None,
                 tolerance_ms: Some(50),
                 sticky: StickyWire {
-                    enabled: false,
+                    enabled: true,
                     timeout_ms: Some(2050),
                 },
             },
@@ -212,6 +213,7 @@ async fn a_policy_for_a_lane_without_an_overlay_is_ignored_and_the_session_goes_
         [LaneInfo {
             label: "cfr_h264_gop10_bf2.mp4".into(),
             source: None,
+            policy: None,
         }]
     );
 
@@ -233,6 +235,7 @@ async fn a_lane_reports_its_load_then_sends_its_maps_and_each_mapped_sample_once
         [LaneInfo {
             label: "gt.txt".into(),
             source: Some(0),
+            policy: None,
         }]
     );
 
@@ -329,12 +332,8 @@ async fn a_lane_reports_its_load_then_sends_its_maps_and_each_mapped_sample_once
 #[tokio::test]
 async fn one_file_shown_twice_is_two_lanes_with_their_own_policies_on_one_source() {
     let backend = Backend::start().await;
-    let gt = backend.folder.path().join("gt.txt");
-    std::fs::write(
-        &gt,
-        "1,1,10,10,20,20,1,1,1\n2,1,12,10,20,20,1,1,1\n3,1,14,10,20,20,1,1,1\n",
-    )
-    .unwrap();
+    let gt =
+        backend.mot_file("1,1,10,10,20,20,1,1,1\n2,1,12,10,20,20,1,1,1\n3,1,14,10,20,20,1,1,1\n");
     let id = backend
         .add_with_overlays(&fixture("cfr_h264_gop10_bf2.mp4"), &[gt.clone(), gt])
         .await;
@@ -347,10 +346,12 @@ async fn one_file_shown_twice_is_two_lanes_with_their_own_policies_on_one_source
             LaneInfo {
                 label: "gt.txt".into(),
                 source: Some(0),
+                policy: None,
             },
             LaneInfo {
                 label: "gt.txt (2)".into(),
                 source: Some(0),
+                policy: None,
             },
         ]
     );
@@ -433,8 +434,8 @@ async fn a_watcher_learns_that_a_lane_failed_or_warned_but_not_the_hosts_paths_o
     let secret = backend.folder.path().join("SECRET-DIR");
     std::fs::create_dir(&secret).unwrap();
     // One lane loads with a warning about its malformed row, the other's file is gone by the time it loads.
-    let (warned, gone) = (secret.join("warned.txt"), secret.join("gone.txt"));
-    std::fs::write(&warned, "1,1,10,10,20,20,1,1,1\nnot a row\n").unwrap();
+    let warned = backend.mot_file("1,1,10,10,20,20,1,1,1\nnot a row\n");
+    let gone = secret.join("gone.txt");
     std::fs::write(&gone, "1,1,10,10,20,20,1,1,1\n").unwrap();
     let video = backend
         .add_with_overlays(&fixture("cfr_h264_gop10_bf2.mp4"), &[warned, gone.clone()])
@@ -481,4 +482,95 @@ async fn a_watcher_learns_that_a_lane_failed_or_warned_but_not_the_hosts_paths_o
             );
         }
     }
+}
+
+#[tokio::test]
+async fn an_onvif_lane_starts_by_frame_switches_to_time_and_the_workspace_keeps_it() {
+    let backend = Backend::start().await;
+    let xml: String = [0, 100, 200]
+        .iter()
+        .map(|ms| {
+            format!(
+                r#"<tt:Frame xmlns:tt="http://www.onvif.org/ver10/schema" UtcTime="1970-01-01T00:00:00.{ms:03}Z" />{}"#,
+                "\n"
+            )
+        })
+        .collect();
+    let path = backend.folder.path().join("lane.xml");
+    std::fs::write(&path, xml).unwrap();
+    let id = backend
+        .add_with_handlers(
+            &fixture("cfr_h264_gop10_bf2.mp4"),
+            &[(path, Some("ONVIF_XML"))],
+        )
+        .await;
+    let mut viewer = backend.viewer().await;
+    viewer.open(&id.ticket(), None).await;
+    viewer.opened().await;
+
+    let mut seen = Seen::default();
+    viewer.want(0, 5, 0, Direction::Forward).await;
+    seen.read_until(&mut viewer, |seen| seen.ready.is_some())
+        .await;
+    let Some(LaneStatusWire::Ready {
+        bases,
+        default_basis,
+        ..
+    }) = seen.ready.clone()
+    else {
+        panic!("the lane is ready");
+    };
+    assert_eq!(bases, [BasisWire::Frame, BasisWire::Time]);
+    assert_eq!(default_basis, BasisWire::Frame);
+
+    // By frame, record k is frame k; by time, the records at 0, 100 and 200 ms are frames 0, 3 and 6.
+    let frame = policy(None, None);
+    viewer.send(&lane_policy(0, 1, frame, true)).await;
+    seen.read_until(&mut viewer, |seen| seen.mapped(1)).await;
+    assert_eq!(seen.maps[&(1, 1)].0, 1);
+    let time = LanePolicyWire {
+        basis: Some(BasisWire::Time),
+        ..frame
+    };
+    viewer.send(&lane_policy(0, 2, time, true)).await;
+    seen.read_until(&mut viewer, |seen| seen.mapped(2)).await;
+    assert_eq!(seen.maps[&(2, 1)].0, FRAME_MAP_NONE);
+    assert_eq!(
+        (seen.maps[&(2, 3)].0, seen.maps[&(2, 3)].1),
+        (1, MATCH_EXACT)
+    );
+    // The workspace keeps the choice: a viewer opened afterwards starts the lane from it.
+    let workspace::Content::SeekableVideo(content) = &id.content else {
+        panic!();
+    };
+    let matching = MatchPolicy {
+        basis: Some(MatchBasis::Time),
+        tolerance: Tolerance::Exact,
+        sticky: Sticky {
+            enabled: false,
+            timeout: None,
+        },
+    };
+    let kept = DocCommand::SetLaneMatching {
+        item: content.item_id,
+        lane: 0,
+        matching,
+    };
+    id.owner.command(Command::Content(kept)).unwrap();
+    let mut again = backend.viewer().await;
+    again.open(&id.ticket(), None).await;
+    assert_eq!(again.opened().await.lanes[0].policy, Some(time));
+
+    // A frame-keyed file has no time basis: the lane says so and goes on by frame.
+    let (mut viewer, _) = viewer_with_a_lane(&backend).await;
+    let mut seen = Seen::default();
+    viewer.want(0, 5, 0, Direction::Forward).await;
+    viewer.send(&lane_policy(0, 1, time, true)).await;
+    seen.read_until(&mut viewer, |seen| seen.mapped(1)).await;
+    assert!(
+        seen.problems[0].contains("cannot be matched by time"),
+        "{:?}",
+        seen.problems
+    );
+    assert_eq!(seen.maps[&(1, 1)].0, 1);
 }

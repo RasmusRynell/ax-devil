@@ -17,7 +17,7 @@ use std::{
     time::Duration,
 };
 
-use foundation::{CancelToken, FrameRate, FrameSize, Interrupt, Timeline, UserError};
+use foundation::{CancelToken, FrameRate, Interrupt, Timeline, UserError};
 use handlers::Handlers;
 use overlay_sync::MatchPolicy;
 use playback::{Direction, Priority, Want};
@@ -33,11 +33,6 @@ use crate::{
 /// A tenth of the viewer's default 512 MiB frame budget.
 pub(super) const SAMPLE_BUDGET: u64 = 53_687_091;
 
-pub(super) const SIZE: FrameSize = FrameSize {
-    width: 1920,
-    height: 1080,
-};
-
 /// Tracks from a real registry; opening the file named `held` waits until the viewer is closed, and the file
 /// named `panic` takes the source thread down.
 pub(super) struct Tracks {
@@ -50,7 +45,6 @@ impl TrackSource for Tracks {
     fn open(
         &self,
         overlay: &OverlayRef,
-        frame_size: FrameSize,
         cancel: &CancelToken,
     ) -> Result<Arc<Track>, Interrupt<UserError>> {
         let name = overlay.path.file_name().and_then(|name| name.to_str());
@@ -63,7 +57,7 @@ impl TrackSource for Tracks {
             let _ = self.cancelled.lock().expect("sender").send(());
             return Err(Interrupt::Cancelled);
         }
-        self.registry.open(overlay, frame_size, cancel)
+        self.registry.open(overlay, cancel)
     }
 }
 
@@ -97,6 +91,12 @@ impl Env {
 
     fn with_handlers(handlers: Handlers, held: Option<&'static str>, cache: bool) -> Self {
         let dir = TempDir::new().expect("temp dir");
+        // The MOT decoder reads the size its boxes are measured in from the sequence folder.
+        fs::write(
+            dir.path().join("seqinfo.ini"),
+            "[Sequence]\nframeRate=30\nseqLength=100\nimWidth=1920\nimHeight=1080\n",
+        )
+        .expect("write seqinfo.ini");
         let cache_dir = cache.then(|| dir.path().join("cache"));
         let (sender, cancelled) = channel();
         let tracks = Arc::new(Tracks {
@@ -145,7 +145,7 @@ impl Env {
 
     pub(super) fn open(&self, lanes: Vec<Option<OverlayRef>>, frames: u64) -> ViewerOverlays {
         self.service
-            .open_viewer(lanes, timeline(frames), SIZE, SAMPLE_BUDGET)
+            .open_viewer(lanes, timeline(frames), SAMPLE_BUDGET)
     }
 }
 

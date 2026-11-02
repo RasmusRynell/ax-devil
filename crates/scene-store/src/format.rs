@@ -4,14 +4,14 @@
 
 use std::{fs::File, io::Write};
 
-use overlay_sync::SampleKeys;
+use overlay_sync::{FrameKey, KeyChunks, SampleKeys};
 use scene::{Scene, serial};
 use serde::{Deserialize, Serialize};
 
 use crate::{io::read_exact_at, stat::Stat};
 
 /// Changes when the layout of an artifact file changes; older files are rebuilt.
-pub const STORE_FORMAT_VERSION: u32 = 2;
+pub const STORE_FORMAT_VERSION: u32 = 5;
 
 const MAGIC: &[u8; 4] = b"AXSC";
 const END: &[u8; 4] = b"AXSE";
@@ -40,8 +40,6 @@ pub(crate) struct Identity {
     pub scene_major: u16,
     pub scene_minor: u16,
     pub options: String,
-    pub width: u32,
-    pub height: u32,
     /// SHA-256 of the code of a decoder that is not part of the app (a converter's manifest and files); `None` for
     /// built-ins.
     pub code: Option<[u8; 32]>,
@@ -70,31 +68,49 @@ impl Identity {
             other.artifact_version,
             other.scene_major,
             other.scene_minor,
-        ) && (&self.options, self.width, self.height, self.code)
-            == (&other.options, other.width, other.height, other.code)
+        ) && (&self.options, self.code) == (&other.options, other.code)
     }
 }
 
-/// The sample keys of an artifact, on the file's clock.
+/// The sample keys of an artifact: frame numbers, timestamps, or both, with sample `i` at index `i` in each. The
+/// timestamps ascend; the frame numbers are unique but, for a timestamp-keyed file, in file order.
 #[derive(Serialize, Deserialize)]
-pub(crate) enum Keys {
-    Frames(Vec<u64>),
-    Times(Vec<i64>),
+pub(crate) struct Keys {
+    pub frames: Option<Vec<u64>>,
+    pub times: Option<Vec<i64>>,
 }
 
 impl Keys {
-    pub(crate) fn len(&self) -> usize {
-        match self {
-            Self::Frames(keys) => keys.len(),
-            Self::Times(keys) => keys.len(),
+    /// How many samples there are; `None` when the two lists disagree.
+    fn len(&self) -> Option<usize> {
+        match (&self.frames, &self.times) {
+            (Some(frames), Some(times)) => (frames.len() == times.len()).then_some(frames.len()),
+            (Some(keys), None) => Some(keys.len()),
+            (None, Some(keys)) => Some(keys.len()),
+            (None, None) => Some(0),
         }
     }
 
-    fn is_ascending(&self) -> bool {
-        match self {
-            Self::Frames(keys) => keys.windows(2).all(|pair| pair[0] < pair[1]),
-            Self::Times(keys) => keys.windows(2).all(|pair| pair[0] < pair[1]),
-        }
+    fn times_ascend(&self) -> bool {
+        self.times.iter().flatten().is_sorted_by(|a, b| a < b)
+    }
+
+    /// The frame keys in frame order, or `None` when two samples share a frame number.
+    fn frame_keys(frames: Vec<u64>) -> Option<KeyChunks<FrameKey>> {
+        let mut keys: Vec<FrameKey> = frames
+            .iter()
+            .enumerate()
+            .map(|(sample, &frame)| {
+                Some(FrameKey {
+                    frame,
+                    sample: u32::try_from(sample).ok()?,
+                })
+            })
+            .collect::<Option<_>>()?;
+        keys.sort_unstable_by_key(|key| key.frame);
+        keys.windows(2)
+            .all(|pair| pair[0].frame < pair[1].frame)
+            .then(|| keys.into())
     }
 }
 
@@ -126,18 +142,26 @@ impl Index {
                 .boundaries
                 .windows(2)
                 .all(|pair| pair[0] <= pair[1] && pair[1] - pair[0] <= MAX_RECORD_LEN)
-            && self.keys.is_ascending();
+            && self.keys.times_ascend();
         if !well_formed {
             return Err("the record index is inconsistent".to_string());
         }
-        if self.keys.len() != records {
+        if self.keys.len() != Some(records) {
             return Err("the sample count is inconsistent".to_string());
         }
-        let keys = match self.keys {
-            Keys::Frames(keys) => SampleKeys::Frames(keys.into()),
-            Keys::Times(keys) => {
-                SampleKeys::Times(keys.into_iter().map(foundation::MediaTime).collect())
-            }
+        let frames = match self.keys.frames {
+            Some(frames) => Some(
+                Keys::frame_keys(frames)
+                    .ok_or_else(|| "two samples have one frame number".to_string())?,
+            ),
+            None => None,
+        };
+        let keys = SampleKeys {
+            frames,
+            times: self
+                .keys
+                .times
+                .map(|times| times.into_iter().map(foundation::MediaTime).collect()),
         };
         Ok(Layout {
             keys,

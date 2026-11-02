@@ -5,7 +5,7 @@ import { PLAYBACK_PROTOCOL } from "./protocol";
 
 export const LANE_DEFAULTS: LaneDefaultsWire = {
   catalog: "built-in:standard",
-  policy: { tolerance_ms: 50, sticky: { enabled: false, timeout_ms: 2050 } },
+  policy: { basis: null, tolerance_ms: 50, sticky: { enabled: false, timeout_ms: 2050 } },
 };
 
 /** A lane's settings as the user has not touched them. */
@@ -15,6 +15,7 @@ export const LANE_SETTINGS: LaneSettings = {
   hidden: 0,
   filter: {},
   expression: "",
+  basis: LANE_DEFAULTS.policy.basis,
   tolerance_ms: LANE_DEFAULTS.policy.tolerance_ms,
   sticky: { ...LANE_DEFAULTS.policy.sticky, opacity: 1 },
   visible: true,

@@ -7,12 +7,15 @@ mod common;
 
 use api_types::{
     handlers::PluginsInfo,
-    playback::{IngestWire, LaneStatusWire, ServerMessage},
+    playback::{
+        BasisWire, ClientMessage, Direction, FRAME_MAP_NONE, IngestWire, LanePolicyWire,
+        LaneStatusWire, MATCH_EXACT, ServerMessage, StickyWire,
+    },
 };
 use ax_devil::plugins;
 use common::{Backend, Event, fixture};
 use converters::Registry;
-use foundation::{CancelToken, FrameSize};
+use foundation::CancelToken;
 use handlers::Handlers;
 use playlist_resolvers::OverlayRef;
 use scene_store::TrackRegistry;
@@ -177,13 +180,9 @@ fn a_converter_that_writes_out_of_order_has_its_samples_sorted_and_the_replaced_
         handler: "shell-times".into(),
         options: Default::default(),
     };
-    let size = FrameSize {
-        width: 640,
-        height: 360,
-    };
 
     let track = TrackRegistry::new(handlers, None)
-        .open(&overlay, size, &CancelToken::new())
+        .open(&overlay, &CancelToken::new())
         .unwrap();
     let snapshot = loop {
         let snapshot = track.snapshot();
@@ -269,4 +268,73 @@ async fn get(backend: &Backend, path: &str) -> serde_json::Value {
     assert!(response.starts_with("HTTP/1.1 200"), "{response}");
     let (_, body) = response.split_once("\r\n\r\n").unwrap();
     serde_json::from_str(body).unwrap_or_else(|error| panic!("{error}: {body}"))
+}
+
+#[tokio::test]
+async fn a_lane_over_a_converter_that_defaults_to_time_is_matched_by_time_without_being_told() {
+    let home = tempfile::tempdir().unwrap();
+    let registry = install(home.path(), "shell-times");
+    let (handlers, installed) = plugins::load(&Ok(registry), Handlers::built_in());
+    let backend = started(handlers, installed).await;
+    // `.txt` is also a MOT file, so the converter is named.
+    let overlays = [workspace::intake::NewOverlay {
+        path: converter("shell-times/sample.times.txt"),
+        handler: Some("shell-times".into()),
+        label: None,
+    }];
+    let item = workspace::intake::video(
+        &fixture("cfr_h264_gop10_bf2.mp4"),
+        &overlays,
+        &backend.state.handlers,
+    )
+    .unwrap();
+    let added = backend.add_item(item).await;
+    let mut viewer = backend.viewer().await;
+    viewer.open(&added.ticket(), None).await;
+    viewer.opened().await;
+    viewer.want(0, 5, 0, Direction::Forward).await;
+    viewer
+        .send(&ClientMessage::LanePolicy {
+            lane: 0,
+            revision: 1,
+            policy: LanePolicyWire {
+                basis: None,
+                tolerance_ms: Some(10),
+                sticky: StickyWire {
+                    enabled: false,
+                    timeout_ms: None,
+                },
+            },
+            subscribed: true,
+        })
+        .await;
+
+    // The records are at 0, 100, 200, 300 and 400 ms: by time, frame 3 (100 ms) shows the second and frame 1 none;
+    // by frame number, frame 1 would show the second.
+    let (mut bases, mut cells) = (None, std::collections::BTreeMap::new());
+    while cells.len() < 6 {
+        match viewer.next().await {
+            Event::Message(ServerMessage::LaneStatus {
+                status:
+                    LaneStatusWire::Ready {
+                        bases: offered,
+                        default_basis,
+                        ..
+                    },
+                ..
+            }) => bases = Some((offered, default_basis)),
+            Event::Map(map) => {
+                for (k, cell) in map.samples.iter().enumerate() {
+                    cells.insert(map.first + k as u64, (*cell, map.kinds[k]));
+                }
+            }
+            _ => {}
+        }
+    }
+    assert_eq!(
+        bases,
+        Some((vec![BasisWire::Time, BasisWire::Frame], BasisWire::Time))
+    );
+    assert_eq!(cells[&1].0, FRAME_MAP_NONE);
+    assert_eq!(cells[&3], (1, MATCH_EXACT));
 }

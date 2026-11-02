@@ -5,7 +5,7 @@ use super::*;
 use crate::routes::playback::gate::Gate;
 use api_types::playback::ServerMessage;
 use axum::extract::ws::Message;
-use foundation::{FrameSize, MediaTime, Timeline};
+use foundation::{MediaTime, Timeline};
 use overlays::{LaneStatus, OverlayEvent, OverlayService, SampleItem};
 use playback::{Authority, ClockIntent, Direction, Priority, Want};
 use scene::inspection::FieldGroup;
@@ -27,6 +27,11 @@ async fn viewer(folder: &Path) -> (ViewerOverlays, u32) {
         .flat_map(|frame| (1..=2).map(move |id| format!("{frame},{id},10,10,20,20,1,1,1\n")))
         .collect();
     std::fs::write(&gt, rows).unwrap();
+    std::fs::write(
+        folder.join("seqinfo.ini"),
+        "[Sequence]\nframeRate=30\nseqLength=90\nimWidth=64\nimHeight=48\n",
+    )
+    .unwrap();
     let overlay = OverlayRef {
         label: "GT".into(),
         path: gt,
@@ -37,11 +42,7 @@ async fn viewer(folder: &Path) -> (ViewerOverlays, u32) {
         handlers::Handlers::built_in(),
         None,
     ));
-    let size = FrameSize {
-        width: 64,
-        height: 48,
-    };
-    let mut viewer = service.open_viewer(vec![Some(overlay)], timeline(), size, SAMPLE_BUDGET);
+    let mut viewer = service.open_viewer(vec![Some(overlay)], timeline(), SAMPLE_BUDGET);
     loop {
         match event(&mut viewer).await {
             OverlayEvent::Status {

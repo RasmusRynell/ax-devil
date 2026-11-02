@@ -15,7 +15,8 @@ use std::{
     },
 };
 
-use foundation::{CancelToken, FrameSize, Interrupt, MediaTime};
+use foundation::{CancelToken, Interrupt, MediaTime};
+use overlay_sync::{FrameKey, KeyChunks, MatchBasis, SampleKeys};
 use playlist_resolvers::{OverlayRef, Settings};
 use scene::{
     BoundingBox, ClassType, Classification, Coverage, Entity, EntityId, FilterPolicy, Geometry,
@@ -36,7 +37,29 @@ pub(super) static SPEC: DecoderSpec = DecoderSpec {
     extensions: &[".txt"],
     artifact_version: 1,
     storage: Storage::DerivedCache,
+    bases: &[MatchBasis::Frame, MatchBasis::Time],
+    default_basis: MatchBasis::Frame,
 };
+
+/// Frame keys whose samples are numbered by them.
+pub(super) fn in_order(frames: &[u64]) -> KeyChunks<FrameKey> {
+    frames
+        .iter()
+        .enumerate()
+        .map(|(sample, &frame)| FrameKey {
+            frame,
+            sample: sample as u32,
+        })
+        .collect()
+}
+
+/// The keys of a frame-keyed file.
+pub(super) fn frame_keys(keys: &[u64]) -> SampleKeys {
+    SampleKeys {
+        frames: Some(in_order(keys)),
+        times: None,
+    }
+}
 
 pub(super) static SPEC_V2: DecoderSpec = DecoderSpec {
     artifact_version: 2,
@@ -56,7 +79,7 @@ pub(super) enum Shape {
 
 type Hook = Box<dyn Fn(u64, &CancelToken) + Send + Sync>;
 
-/// A file decoder that counts its runs. Box positions depend on the frame size, so a rebuild is visible in the data.
+/// A file decoder that counts its runs.
 pub(super) struct Counting {
     pub spec: &'static DecoderSpec,
     pub shape: Shape,
@@ -84,10 +107,10 @@ impl Counting {
     }
 }
 
-fn entities(time: SceneTime, boxes: usize, width: f64) -> Scene {
+fn entities(time: SceneTime, boxes: usize) -> Scene {
     let list = (0..boxes)
         .map(|n| {
-            let left = n as f64 / 1000.0 + width / 100_000.0;
+            let left = n as f64 / 1000.0;
             let mut entity = Entity::new(EntityId::from(n as u64));
             let mut observation = Observation::new(
                 time,
@@ -117,7 +140,7 @@ impl FileSceneDecoder for Counting {
     fn decode_file(
         &self,
         source: &dyn SourceFile,
-        context: &DecodeContext<'_>,
+        _context: &DecodeContext<'_>,
         sink: &mut dyn SceneSink,
         cancel: &CancelToken,
     ) -> Result<DecodeSummary, Interrupt<DecodeError>> {
@@ -127,7 +150,6 @@ impl FileSceneDecoder for Counting {
             )));
         }
         self.runs.fetch_add(1, Ordering::SeqCst);
-        let width = f64::from(context.frame_size.width);
         let step = |n: u64, scene: Scene, sink: &mut dyn SceneSink| {
             if let Some(hook) = &*self.hook.lock().expect("hook lock") {
                 hook(n, cancel);
@@ -139,14 +161,14 @@ impl FileSceneDecoder for Counting {
         match self.shape {
             Shape::Frames { frames, boxes } => {
                 for frame in 0..frames {
-                    step(frame, entities(SceneTime::Frame(frame), boxes, width), sink)?;
+                    step(frame, entities(SceneTime::Frame(frame), boxes), sink)?;
                 }
             }
             Shape::Mixed => {
-                step(0, entities(SceneTime::Frame(0), 1, width), sink)?;
+                step(0, entities(SceneTime::Frame(0), 1), sink)?;
                 step(
                     1,
-                    entities(SceneTime::Timestamp(MediaTime(40_000)), 1, width),
+                    entities(SceneTime::Timestamp(MediaTime(40_000)), 1),
                     sink,
                 )?;
             }
@@ -154,7 +176,7 @@ impl FileSceneDecoder for Counting {
                 for (n, us) in [3_000_u64, 1_000, 2_000, 1_000].into_iter().enumerate() {
                     let boxes = n + 1;
                     let time = SceneTime::Timestamp(MediaTime(us as i64));
-                    step(n as u64, entities(time, boxes, width), sink)?;
+                    step(n as u64, entities(time, boxes), sink)?;
                 }
             }
         }
@@ -182,11 +204,6 @@ pub(super) struct Fixture {
     pub decoder: Arc<Counting>,
     pub registry: TrackRegistry,
 }
-
-pub(super) const SIZE: FrameSize = FrameSize {
-    width: 640,
-    height: 480,
-};
 
 impl Fixture {
     pub(super) fn new(shape: Shape) -> Self {
@@ -235,14 +252,7 @@ impl Fixture {
     }
 
     pub(super) fn open(&self) -> Arc<Track> {
-        self.open_sized(SIZE)
-    }
-
-    pub(super) fn open_sized(&self, size: FrameSize) -> Arc<Track> {
-        match self
-            .registry
-            .open(&self.overlay(), size, &CancelToken::new())
-        {
+        match self.registry.open(&self.overlay(), &CancelToken::new()) {
             Ok(track) => track,
             Err(Interrupt::Failed(error)) => panic!("open failed: {error}"),
             Err(Interrupt::Cancelled) => panic!("open was cancelled"),

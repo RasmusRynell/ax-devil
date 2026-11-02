@@ -12,21 +12,22 @@ use std::{
     time::{Duration, Instant},
 };
 
-use foundation::{CancelToken, FrameSize};
+use foundation::CancelToken;
 use handlers::Handlers;
 use playlist_resolvers::OverlayRef;
 use scene::serial::columns::encode_sample_item;
 use scene_store::TrackRegistry;
 
 const SIZES: [usize; 4] = [1, 100, 1000, 5000];
-const SIZE: FrameSize = FrameSize {
-    width: 1920,
-    height: 1080,
-};
 const RUNS: usize = 100;
 
 fn main() {
     let dir = tempfile::tempdir().expect("temp dir");
+    std::fs::write(
+        dir.path().join("seqinfo.ini"),
+        "[Sequence]\nframeRate=30\nseqLength=1\nimWidth=1920\nimHeight=1080\n",
+    )
+    .expect("write seqinfo.ini");
     let registry = TrackRegistry::new(Handlers::built_in(), None);
     println!("{RUNS} runs, median per item");
     for objects in SIZES {
@@ -50,7 +51,7 @@ fn main() {
             options: serde_json::Map::new(),
         };
         let track = registry
-            .open(&overlay, SIZE, &CancelToken::new())
+            .open(&overlay, &CancelToken::new())
             .expect("the MOT file opens");
         let cold = Instant::now();
         let scene = black_box(track.scene(0)).expect("the Scene reads");

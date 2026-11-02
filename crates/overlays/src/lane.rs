@@ -3,8 +3,8 @@
 use std::{ops::RangeInclusive, sync::Arc};
 
 use foundation::UserError;
-use overlay_sync::MatchPolicy;
-use scene::{FilterPolicy, TimeKind};
+use overlay_sync::{MatchBasis, MatchPolicy};
+use scene::FilterPolicy;
 use scene_decoders::LoadWarning;
 use scene_store::{Ingest, Track, TrackSnapshot};
 
@@ -12,7 +12,7 @@ use scene_store::{Ingest, Track, TrackSnapshot};
 /// Session state of the viewer's socket.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct LanePolicy {
-    /// Tolerance and sticky.
+    /// Basis, tolerance and sticky.
     pub matching: MatchPolicy,
     /// Whether the lane is shown; an unsubscribed lane gets no Frame Maps and its samples are not sent for it.
     pub subscribed: bool,
@@ -32,8 +32,10 @@ pub enum LaneStatus {
 /// What a loaded lane tells the viewer.
 #[derive(Clone, Debug, PartialEq)]
 pub struct LaneReady {
-    /// The clock the file's samples are on.
-    pub clock: TimeKind,
+    /// The bases the file's records can be matched by.
+    pub bases: &'static [MatchBasis],
+    /// The basis the decoder recommends, one of `bases`.
+    pub default_basis: MatchBasis,
     /// The class filters the file's content calls for.
     pub filter: FilterPolicy,
     /// Problems the decoder reported.

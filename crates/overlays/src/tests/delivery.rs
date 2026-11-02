@@ -6,9 +6,7 @@ use foundation::CancelToken;
 use overlay_sync::{MatchPolicy, Sticky};
 use playback::Rank;
 
-use super::{
-    Env, SIZE, cells, next, quiet, sample_ids, settle, shown, timeline, until_ready, want,
-};
+use super::{Env, cells, next, quiet, sample_ids, settle, shown, timeline, until_ready, want};
 use crate::{
     LaneStatus, OverlayEvent, ViewerOverlays,
     state::{READY_PER_SOURCE, State},
@@ -109,7 +107,7 @@ async fn an_export_cell_is_the_cell_the_viewer_was_sent() {
     let track = env
         .tracks
         .registry
-        .open(&overlay, SIZE, &CancelToken::new())
+        .open(&overlay, &CancelToken::new())
         .expect("the track");
     let timeline = timeline(20);
     let mut frames = 0;
@@ -256,7 +254,7 @@ async fn an_unreadable_sample_goes_as_an_empty_item_with_a_problem_for_each_lane
     drop(
         env.tracks
             .registry
-            .open(&overlay, super::SIZE, &CancelToken::new())
+            .open(&overlay, &CancelToken::new())
             .expect("opens"),
     );
     let artifact = fs::read_dir(env.path("cache/scenes"))
@@ -321,7 +319,7 @@ async fn a_new_load_takes_a_new_revision_and_starts_every_set_from_empty() {
     let track = env
         .tracks
         .registry
-        .open(&overlay, super::SIZE, &CancelToken::new())
+        .open(&overlay, &CancelToken::new())
         .expect("opens");
     let timeline = timeline(10);
     let item = track.item(4).expect("item");

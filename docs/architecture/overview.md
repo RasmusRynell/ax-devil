@@ -71,7 +71,7 @@ overlay file is decoded once into an on-disk artifact that every viewer opening 
 the sample keys and a bounded cache of Scenes. On the playback socket `overlays` sends two kinds of items. A Sample Item
 is the immutable, per-source encoding of one sample: its latest observations as typed columns and a class mask from the
 decoder's filter policy; the rest of an entity's fields (history, source data, debug data) come from one `Inspect` request, answered only for a sample the viewer holds and gated like data. A Frame Map is per lane: which
-sample belongs to each frame, as `overlay-sync` selects it under the lane's Lane Policy (tolerance, sticky, whether the
+sample belongs to each frame, as `overlay-sync` selects it under the lane's Lane Policy (match basis, tolerance, sticky, whether the
 lane is shown). Items and maps rank with the video frames by the same playhead rule and pass the same authority gate.
 They travel inside the sample window: per source, the samples that subscribed lanes' Frame Maps assign to the frames of
 the data window, never wider than the frame window and sized from a share of the viewer's frame budget. The backend

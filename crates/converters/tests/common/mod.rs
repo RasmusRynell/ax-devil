@@ -8,7 +8,7 @@ use std::{
 };
 
 use converters::ConverterDecoder;
-use foundation::{CancelToken, FrameSize, Interrupt};
+use foundation::{CancelToken, Interrupt};
 use scene::Scene;
 use scene_decoders::{
     DecodeContext, DecodeError, DecodeOptions, DecodeSummary, FileSceneDecoder, Header,
@@ -93,13 +93,7 @@ pub fn decode(
     cancel: &CancelToken,
     mut sink: TestSink,
 ) -> Run {
-    let context = DecodeContext {
-        options,
-        frame_size: FrameSize {
-            width: 1920,
-            height: 1080,
-        },
-    };
+    let context = DecodeContext { options };
     let result = decoder.decode_file(&FileSource(file.to_path_buf()), &context, &mut sink, cancel);
     Run { result, sink }
 }

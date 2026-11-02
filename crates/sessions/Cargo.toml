@@ -16,6 +16,7 @@ workspace = true
 foundation.workspace = true
 getrandom = "0.4"
 handlers.workspace = true
+overlay-sync.workspace = true
 playback.workspace = true
 serde.workspace = true
 tokio = { version = "1", features = ["rt", "sync", "time"] }

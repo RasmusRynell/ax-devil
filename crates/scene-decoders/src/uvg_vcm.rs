@@ -5,6 +5,7 @@
 use std::collections::HashMap;
 
 use foundation::{CancelToken, Interrupt};
+use overlay_sync::MatchBasis;
 use scene::{
     BoundingBox, ClassRule, ClassType, Classification, Coverage, Entity, EntityId, Fields,
     FilterOption, FilterPolicy, Geometry, Name, Observation, Point, Polygon, Scene, SceneTime,
@@ -24,6 +25,8 @@ static SPEC: DecoderSpec = DecoderSpec {
     extensions: &[".json"],
     artifact_version: 1,
     storage: Storage::DerivedCache,
+    bases: &[MatchBasis::Frame],
+    default_basis: MatchBasis::Frame,
 };
 
 /// How many classes UVG-VCM has.

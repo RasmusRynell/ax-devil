@@ -12,6 +12,7 @@ use super::{
 };
 use crate::{EndReason, MAX_SEATS, Secret};
 use foundation::CancelToken;
+use overlay_sync::MatchPolicy;
 use playback::Authority;
 use std::sync::Arc;
 use tokio::time::Instant;
@@ -144,6 +145,8 @@ pub enum Outcome {
         content: Content,
         /// The entry of `content` the stream plays; boxed, as it is far larger than the other outcomes.
         entry: Box<Entry>,
+        /// How the workspace says each lane of `entry` matches its records to frames; `None` for the default.
+        matching: Vec<Option<MatchPolicy>>,
         /// Whether the holder may learn the host's paths and diagnostic text: it is the owner of a session whose
         /// owner holds the files grant.
         host_details: bool,

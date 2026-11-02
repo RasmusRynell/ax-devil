@@ -5,7 +5,10 @@ use ts_rs::TS;
 
 /// Media Time: microseconds from the first frame of a video. Always comes from container timestamps, never from a
 /// frame rate.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(
+    Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
+)]
+#[serde(transparent)]
 pub struct MediaTime(pub i64);
 
 impl MediaTime {

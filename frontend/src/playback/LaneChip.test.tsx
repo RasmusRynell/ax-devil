@@ -20,7 +20,8 @@ const lane = (change: Partial<LaneState>): LaneState => ({
 
 const READY: LaneStatusWire = {
   status: "Ready",
-  clock: "frame",
+  bases: ["Frame"],
+  default_basis: "Frame",
   filter: [],
   warnings: [],
   samples: 1,

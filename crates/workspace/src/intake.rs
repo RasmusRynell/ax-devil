@@ -6,7 +6,10 @@ use foundation::{ErrorCode, HostPath, ItemId, UserError};
 use handlers::Handlers;
 use playlist_resolvers::{FieldKind, Settings};
 use serde_json::Value;
-use std::path::{Path, PathBuf};
+use std::{
+    collections::BTreeMap,
+    path::{Path, PathBuf},
+};
 
 /// An overlay file the user chose to add to a video.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -120,6 +123,7 @@ fn overlay_recipe(
         path,
         handler,
         label,
+        matching: None,
     })
 }
 
@@ -160,6 +164,7 @@ pub fn playlist(
         recipe: Recipe::Playlist(PlaylistRecipe {
             resolver: resolver.to_owned(),
             settings,
+            lane_matching: BTreeMap::new(),
         }),
     })
 }

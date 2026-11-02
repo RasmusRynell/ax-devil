@@ -40,6 +40,7 @@ pub async fn serve_lanes(viewer: &mut Viewer, sticky: bool, lanes: &[(u16, &str)
                 lane: *lane,
                 revision: 1,
                 policy: LanePolicyWire {
+                    basis: None,
                     tolerance_ms: None,
                     sticky: StickyWire {
                         enabled: sticky,

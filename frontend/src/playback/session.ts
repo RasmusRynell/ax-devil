@@ -48,7 +48,7 @@ export class PlaybackSession implements LaneControl {
   readonly #listeners = new Set<() => void>();
   readonly #failures = new FrameFailures();
   #view: PlaybackView = INITIAL_VIEW;
-  readonly #lanes = new LaneSet();
+  readonly #lanes = new LaneSet((lane, policy) => this.#deps.onPolicy?.(lane, policy));
   readonly #data = new ViewerData(
     this.#lanes,
     (message) => this.#connection?.send(message),

@@ -17,7 +17,8 @@ use std::{
     time::{Duration, Instant},
 };
 
-use foundation::{CancelToken, ErrorCode, FrameSize, Interrupt, UserError};
+use foundation::{CancelToken, ErrorCode, Interrupt, UserError};
+use overlay_sync::MatchBasis;
 use scene::{Scene, SceneTime, TimeKind};
 use scene_decoders::{
     DecodeContext, DecodeError, DecodeOptions, DecodeSummary, FileSceneDecoder, Header,
@@ -79,7 +80,6 @@ pub(crate) enum First {
 pub(crate) struct Job {
     pub decoder: Arc<dyn FileSceneDecoder>,
     pub options: DecodeOptions,
-    pub frame_size: FrameSize,
     pub source: LazySource,
     pub identity: Identity,
     pub artifact: Option<PathBuf>,
@@ -101,7 +101,6 @@ fn run(job: Job) {
     let Job {
         decoder,
         options,
-        frame_size,
         source,
         identity,
         artifact,
@@ -110,8 +109,15 @@ fn run(job: Job) {
         cancel,
         first,
     } = job;
-    let mut link = Link::new(source.path_buf(), cache_bytes, cancel.clone(), first);
-    let store = match Store::start(artifact, tuning, cancel.clone()) {
+    let by_position = decoder.spec().bases.contains(&MatchBasis::Frame);
+    let mut link = Link::new(
+        source.path_buf(),
+        cache_bytes,
+        cancel.clone(),
+        decoder.spec(),
+        first,
+    );
+    let store = match Store::start(artifact, tuning, by_position, cancel.clone()) {
         Ok(store) => store,
         Err(reason) => {
             link.fail(Interrupt::Failed(link.error(ErrorCode::Internal, reason)));
@@ -119,10 +125,7 @@ fn run(job: Job) {
         }
     };
     let mut feed = Feed { link, store };
-    let context = DecodeContext {
-        options: &options,
-        frame_size,
-    };
+    let context = DecodeContext { options: &options };
     let result = decoder.decode_file(&source, &context, &mut feed, &cancel);
     let Feed { mut link, store } = feed;
     if let Err(interrupt) = store.conclude(&mut link, result, &source, identity) {
@@ -144,13 +147,18 @@ struct Store {
     writer: RecordWriter<BufWriter<File>>,
     clock: Option<TimeKind>,
     header: Option<Header>,
-    /// The group of the highest key so far; `None` once the ingest is frozen or nothing has arrived.
-    open: Option<(SceneTime, Group)>,
+    /// The group of the highest key so far and the position in the file of its record; `None` once the ingest is
+    /// frozen or nothing has arrived.
+    open: Option<(SceneTime, Group, u64)>,
+    /// How many Scenes have arrived: the position in the file of the next.
+    arrivals: u64,
     /// Set when a key below the open one arrived: from then on Scenes are fragments to be sorted.
     frozen: Option<Sorter>,
     /// How many Scenes replaced earlier ones of their key while ascending; the pass adds its own.
     replaced: usize,
     keys: KeyLog,
+    /// Whether a timestamp-keyed file is also matched by frame, by the position of its samples.
+    by_position: bool,
     /// The history of the records written in order; empty once the ingest froze.
     history: HistoryBuilder,
     warnings: Warnings,
@@ -194,6 +202,7 @@ impl Store {
     fn start(
         artifact: Option<PathBuf>,
         tuning: Tuning,
+        by_position: bool,
         cancel: CancelToken,
     ) -> Result<Self, String> {
         let cannot = |e: std::io::Error| format!("Cannot write the scene cache: {e}");
@@ -208,9 +217,11 @@ impl Store {
             clock: None,
             header: None,
             open: None,
+            arrivals: 0,
             frozen: None,
             replaced: 0,
-            keys: KeyLog::new(TimeKind::Frame),
+            keys: KeyLog::new(TimeKind::Frame, by_position),
+            by_position,
             history: HistoryBuilder::new(tuning.history_bytes),
             warnings: Warnings::default(),
             refused: None,
@@ -229,7 +240,7 @@ impl Store {
         match self.clock {
             None => {
                 self.clock = Some(start.kind());
-                self.keys = KeyLog::new(start.kind());
+                self.keys = KeyLog::new(start.kind(), self.by_position);
             }
             Some(kind) if kind != start.kind() => {
                 return Err(
@@ -239,11 +250,13 @@ impl Store {
             Some(_) => {}
         }
         let replace = on_equal_key == OnEqualKey::Replace;
+        let ordinal = self.arrivals;
+        self.arrivals += 1;
         if let Some(sorter) = &mut self.frozen {
-            return add_fragment(sorter, &mut self.writer, start, &scene, replace);
+            return add_fragment(sorter, &mut self.writer, start, &scene, replace, ordinal);
         }
-        let Some((open, group)) = &mut self.open else {
-            self.open = Some((start, Group::new(scene)));
+        let Some((open, group, first)) = &mut self.open else {
+            self.open = Some((start, Group::new(scene), ordinal));
             return Ok(());
         };
         match start.cmp(open) {
@@ -251,6 +264,7 @@ impl Store {
                 if replace {
                     self.replaced += 1;
                     *group = Group::new(scene);
+                    *first = ordinal;
                 } else {
                     group.merge(&scene).map_err(|e| e.to_string())?;
                 }
@@ -261,13 +275,15 @@ impl Store {
             }
             Ordering::Greater => {
                 self.close_group()?;
-                self.open = Some((start, Group::new(scene)));
+                self.open = Some((start, Group::new(scene), ordinal));
                 self.publish_progress(link)
             }
             Ordering::Less => {
                 self.freeze()?;
                 match &mut self.frozen {
-                    Some(sorter) => add_fragment(sorter, &mut self.writer, start, &scene, replace),
+                    Some(sorter) => {
+                        add_fragment(sorter, &mut self.writer, start, &scene, replace, ordinal)
+                    }
                     None => Ok(()),
                 }
             }
@@ -276,11 +292,11 @@ impl Store {
 
     /// Writes the open group as the next record.
     fn close_group(&mut self) -> Result<(), String> {
-        if let Some((time, group)) = self.open.take() {
+        if let Some((time, group, ordinal)) = self.open.take() {
             let scene = group.into_scene().map_err(|e| e.to_string())?;
             self.writer.add(&scene)?;
             self.history.add(&scene);
-            self.keys.push(time);
+            self.keys.push(time, ordinal);
         }
         Ok(())
     }
@@ -288,9 +304,9 @@ impl Store {
     /// The open group becomes the first fragment and the watermark stops moving.
     fn freeze(&mut self) -> Result<(), String> {
         let mut sorter = Sorter::new(self.tuning.sort_budget, self.output.folder());
-        if let Some((time, group)) = self.open.take() {
+        if let Some((time, group, ordinal)) = self.open.take() {
             let scene = group.into_scene().map_err(|e| e.to_string())?;
-            add_fragment(&mut sorter, &mut self.writer, time, &scene, false)?;
+            add_fragment(&mut sorter, &mut self.writer, time, &scene, false, ordinal)?;
         }
         self.frozen = Some(sorter);
         // The pass over the sorted fragments builds the history of the final numbering.
@@ -300,7 +316,7 @@ impl Store {
 
     /// Publishes the closed records when the decoder gave a header and the last publication is old enough.
     fn publish_progress(&mut self, link: &mut Link) -> Result<(), String> {
-        let (Some(header), Some((open, _))) = (&self.header, &self.open) else {
+        let (Some(header), Some((open, _, ordinal))) = (&self.header, &self.open) else {
             return Ok(());
         };
         if self
@@ -319,7 +335,7 @@ impl Store {
                 records: self.writer.tail_from(self.published_records),
                 warnings: self.warnings.list(),
                 ingest: State::Reading,
-                decided: Decided::Below(*open),
+                decided: Decided::below(*open, self.by_position.then_some(*ordinal)),
                 stored: None,
                 fresh: false,
                 history: None,
@@ -397,7 +413,7 @@ impl Store {
         ))
         .map_err(io)?;
         let kind = self.clock.unwrap_or(TimeKind::Frame);
-        let mut keys = KeyLog::new(kind);
+        let mut keys = KeyLog::new(kind, self.by_position);
         let fragments = Fragments {
             first: &self.writer,
             reader: &reader,
@@ -438,6 +454,7 @@ fn add_fragment(
     time: SceneTime,
     scene: &Scene,
     replace: bool,
+    ordinal: u64,
 ) -> Result<(), String> {
     let record = writer.add(scene)?;
     sorter
@@ -445,6 +462,7 @@ fn add_fragment(
             key: sort_key(time),
             record,
             replace,
+            ordinal,
         })
         .map_err(|e| format!("cannot write the scene cache: {e}"))
 }

@@ -400,7 +400,7 @@ impl<C: Clone + Send + 'static> Service<C> {
 
     /// Spends `ticket`, once, into a stream the caller holds until it drops the lease.
     pub fn redeem(&self, ticket: &Ticket) -> Result<StreamLease, Refusal> {
-        let (session, grant, authority, content, entry, host_details) =
+        let (session, grant, authority, content, entry, matching, host_details) =
             self.locked(|sessions, deferred| {
                 let id = sessions
                     .iter()
@@ -418,11 +418,12 @@ impl<C: Clone + Send + 'static> Service<C> {
                             grant,
                             content,
                             entry,
+                            matching,
                             host_details,
                             ..
                         },
                         Some(authority),
-                    ) => Ok((id, grant, authority, content, entry, host_details)),
+                    ) => Ok((id, grant, authority, content, entry, matching, host_details)),
                     _ => Err(Refusal::BadTicket),
                 }
             })?;
@@ -432,6 +433,7 @@ impl<C: Clone + Send + 'static> Service<C> {
             authority,
             content,
             *entry,
+            matching,
             host_details,
             move || {
                 service.locked(|sessions, deferred| {

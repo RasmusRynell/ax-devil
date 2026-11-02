@@ -3,7 +3,7 @@
 
 The model converter: read the request line from stdin, the overlay file from the path in it, and write one JSON
 line per fragment on stdout. Rows of one frame become several `sample` lines; ax-devil merges them by start key.
-Geometry is in pixels in the CSV and normalised here with the frame size from the request. See the write-plugin
+Geometry is in pixels in the CSV and normalised here with the `width` and `height` options. See the write-plugin
 skill for the format.
 """
 
@@ -73,8 +73,9 @@ def sample(row, width, height, camera):
 
 def main():
     request = json.loads(sys.stdin.readline())
-    width, height = request["frame"]["width"], request["frame"]["height"]
-    camera = request["options"].get("camera", "front")
+    options = request["options"]
+    width, height = float(options["width"]), float(options["height"])
+    camera = options["camera"]
     emit(
         {
             "header": {

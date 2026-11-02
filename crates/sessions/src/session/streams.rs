@@ -133,8 +133,17 @@ pub(super) fn redeem(
         return Err(Refusal::BadTicket);
     }
     let authority = authorize_stream(next, pending.seat, pending.lease, &pending.key)?;
-    let (_, content, entry) =
+    let (item, content, entry) =
         open_entry(&next.doc, &pending.key).ok_or(Refusal::ContentUnavailable)?;
+    let matching = next
+        .doc
+        .workspace
+        .workspace
+        .items
+        .iter()
+        .find(|known| known.id == item)
+        .map(|known| known.recipe.lane_matching(entry.overlays.len()))
+        .unwrap_or_default();
     let (content, entry) = (content.clone(), Box::new(entry.clone()));
     let host_details = next.files
         && next
@@ -158,6 +167,7 @@ pub(super) fn redeem(
         authority,
         content,
         entry,
+        matching,
         host_details,
     };
     Ok(())

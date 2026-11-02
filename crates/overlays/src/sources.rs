@@ -2,7 +2,7 @@
 
 use std::sync::Arc;
 
-use foundation::{CancelToken, FrameSize, Interrupt, UserError};
+use foundation::{CancelToken, Interrupt, UserError};
 use playlist_resolvers::OverlayRef;
 use scene_store::{Track, TrackRegistry};
 
@@ -11,7 +11,6 @@ pub(crate) trait TrackSource: Send + Sync {
     fn open(
         &self,
         overlay: &OverlayRef,
-        frame_size: FrameSize,
         cancel: &CancelToken,
     ) -> Result<Arc<Track>, Interrupt<UserError>>;
 }
@@ -20,9 +19,8 @@ impl TrackSource for TrackRegistry {
     fn open(
         &self,
         overlay: &OverlayRef,
-        frame_size: FrameSize,
         cancel: &CancelToken,
     ) -> Result<Arc<Track>, Interrupt<UserError>> {
-        TrackRegistry::open(self, overlay, frame_size, cancel)
+        TrackRegistry::open(self, overlay, cancel)
     }
 }

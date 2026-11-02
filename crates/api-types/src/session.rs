@@ -5,7 +5,10 @@
 //! `views_done`. The only `DocWire` constructor is `project` in the backend's `src/session/project.rs`, so what a
 //! watcher may learn of the Doc is decided in one place.
 
-use crate::workspace::{HiddenTarget, NewItem, WorkspaceState};
+use crate::{
+    playback::LanePolicyWire,
+    workspace::{HiddenTarget, NewItem, WorkspaceState},
+};
 use foundation::ItemId;
 use serde::{Deserialize, Serialize};
 use sessions::{
@@ -81,6 +84,16 @@ pub enum DocCommand {
         target: HiddenTarget,
         /// Whether it is hidden afterwards.
         hidden: bool,
+    },
+    /// Set how a lane matches its file's records to frames, in the item's saved recipe.
+    SetLaneMatching {
+        /// The item.
+        #[ts(type = "string")]
+        item: ItemId,
+        /// The lane's position in the entry.
+        lane: u16,
+        /// How the lane matches.
+        policy: LanePolicyWire,
     },
 }
 

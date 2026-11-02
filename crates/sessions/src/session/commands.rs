@@ -89,9 +89,10 @@ fn content_scope(command: &DocCommand) -> Scope {
                 Scope::Content
             }
         }
-        DocCommand::OpenViewer(_) | DocCommand::CloseViewer(_) | DocCommand::SetHidden { .. } => {
-            Scope::Content
-        }
+        DocCommand::OpenViewer(_)
+        | DocCommand::CloseViewer(_)
+        | DocCommand::SetHidden { .. }
+        | DocCommand::SetLaneMatching { .. } => Scope::Content,
     }
 }
 

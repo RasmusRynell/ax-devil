@@ -13,9 +13,10 @@ mod warning;
 
 use std::{ops::ControlFlow, path::Path};
 
-use foundation::{CancelToken, FrameSize, Interrupt};
+use foundation::{CancelToken, Interrupt};
 use scene::{Coverage, Fields, FilterPolicy, Scene};
 
+pub use overlay_sync::MatchBasis;
 pub use warning::{LoadWarning, SkippedRecords};
 
 /// How a decoder's output is kept between runs.
@@ -33,6 +34,10 @@ pub enum Storage {
 }
 
 /// What the host needs to know about a decoder without running it.
+///
+/// Decoders know nothing of the video: they emit records, and the host matches them to frames by the lane's
+/// [`MatchBasis`]. `bases` are the ones the decoder's records support; `default_basis` is the one the host starts
+/// with. For a time-keyed decoder the Frame key of a record is its position in the file (record k, frame k).
 #[derive(Debug, PartialEq, Eq)]
 pub struct DecoderSpec {
     /// The id of the plugin the decoder ships as; workspaces and the CLI name it.
@@ -47,6 +52,10 @@ pub struct DecoderSpec {
     pub artifact_version: u32,
     /// How the output is kept.
     pub storage: Storage,
+    /// The bases a lane may match this decoder's records by.
+    pub bases: &'static [MatchBasis],
+    /// The recommended basis, one of `bases`.
+    pub default_basis: MatchBasis,
 }
 
 /// Options for one decode, as the user or a playlist resolver gave them.
@@ -66,13 +75,11 @@ impl std::fmt::Display for DecodeError {
 
 impl std::error::Error for DecodeError {}
 
-/// What the host passes to one decode: the user's options and the video the overlay belongs to.
+/// What the host passes to one decode: the user's options. A decoder knows nothing about the video.
 #[derive(Clone, Copy, Debug)]
 pub struct DecodeContext<'a> {
     /// The options the user or a playlist resolver gave.
     pub options: &'a DecodeOptions,
-    /// The decoded size of the video's frames, which pixel coordinates are normalized by.
-    pub frame_size: FrameSize,
 }
 
 /// What a finished decode reports besides its Scenes.
@@ -144,8 +151,14 @@ pub trait FileSceneDecoder: Send + Sync {
     }
 
     /// `options` with the decoder's defaults filled in and undeclared keys dropped, so that an explicit default and
-    /// an omitted key make one scene cache. The error is words for the user.
-    fn declared_options(&self, options: &DecodeOptions) -> Result<DecodeOptions, DecodeError> {
+    /// an omitted key make one scene cache. A decoder whose output depends on files beside `path` (the overlay
+    /// file) states what it read here, so the scene cache is rebuilt when that changes. The error is words for the
+    /// user.
+    fn declared_options(
+        &self,
+        _path: &Path,
+        options: &DecodeOptions,
+    ) -> Result<DecodeOptions, DecodeError> {
         Ok(options.clone())
     }
 
@@ -205,4 +218,20 @@ pub fn record_decoder(handler: &str) -> Option<&'static dyn RecordSceneDecoder> 
         .iter()
         .copied()
         .find(|decoder| decoder.spec().handler == handler)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn every_default_basis_is_a_supported_one() {
+        let specs = file_decoders()
+            .iter()
+            .map(|decoder| decoder.spec())
+            .chain(record_decoders().iter().map(|decoder| decoder.spec()));
+        for spec in specs {
+            assert!(spec.bases.contains(&spec.default_basis), "{}", spec.handler);
+        }
+    }
 }

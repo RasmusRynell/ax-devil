@@ -1,6 +1,7 @@
 //! Between the Session socket's wire types and the sessions crate: what a received command asks for, and the cursor
 //! and token-bucket limits on what a seat may send.
 
+use crate::routes::playback::policy_from_wire;
 use api_types::{
     CURSOR_NAME_MAX, CursorElement, CursorPoint, SessionCommand,
     workspace::{HiddenTarget, NewItem},
@@ -31,7 +32,8 @@ pub(super) fn scope(wire: &SessionCommand) -> Option<Scope> {
             }
             api_types::DocCommand::OpenViewer { .. }
             | api_types::DocCommand::CloseViewer { .. }
-            | api_types::DocCommand::SetHidden { .. } => Scope::Content,
+            | api_types::DocCommand::SetHidden { .. }
+            | api_types::DocCommand::SetLaneMatching { .. } => Scope::Content,
         }),
         SessionCommand::Follow => Some(Scope::Follow),
         SessionCommand::Control { .. } => Some(Scope::Control),
@@ -70,6 +72,16 @@ fn doc_command(wire: api_types::DocCommand, handlers: &Handlers) -> Result<DocCo
             target: hidden_ref(target),
             hidden,
         },
+        api_types::DocCommand::SetLaneMatching { item, lane, policy } => {
+            DocCommand::SetLaneMatching {
+                item,
+                lane,
+                matching: policy_from_wire(policy).map_err(|reason| {
+                    tracing::debug!("A lane matching was refused: {reason}");
+                    Refusal::Invalid
+                })?,
+            }
+        }
     })
 }
 

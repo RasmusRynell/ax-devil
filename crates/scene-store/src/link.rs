@@ -8,7 +8,7 @@ use std::{
 
 use foundation::{CancelToken, ErrorCode, HostPath, Interrupt, UserError};
 use overlay_sync::SampleKeys;
-use scene_decoders::LoadWarning;
+use scene_decoders::{DecoderSpec, LoadWarning};
 
 use crate::{
     history::{HistoryUnavailable, Slot},
@@ -21,6 +21,7 @@ pub(crate) struct Link {
     pub(crate) path: PathBuf,
     pub(crate) cache_bytes: usize,
     pub(crate) cancel: CancelToken,
+    pub(crate) spec: &'static DecoderSpec,
     pub(crate) growth: Option<Arc<Growth>>,
     pub(crate) first: Option<mpsc::Sender<First>>,
     /// The generation of the latest snapshot.
@@ -49,12 +50,14 @@ impl Link {
         path: PathBuf,
         cache_bytes: usize,
         cancel: CancelToken,
+        spec: &'static DecoderSpec,
         first: mpsc::Sender<First>,
     ) -> Self {
         Self {
             path,
             cache_bytes,
             cancel,
+            spec,
             growth: None,
             first: Some(first),
             generation: 0,
@@ -103,6 +106,7 @@ impl Link {
                 self.path.clone(),
                 growth.clone(),
                 meta(),
+                self.spec,
                 self.cancel.clone(),
             ));
             if let Some(slot) = history {

@@ -1,4 +1,4 @@
-import type { FieldWire, LaneStatusWire } from "../generated/api";
+import type { BasisWire, FieldWire, LaneStatusWire } from "../generated/api";
 import type { CellRect } from "../overlay/painter";
 import type { ClassMask, CompiledCatalog, CompiledFilter, SampleView } from "../present";
 import type { VideoFrame } from "./protocol";
@@ -32,7 +32,7 @@ export interface Surface {
 }
 
 /**
- * The settings of one lane. `tolerance_ms`, `sticky` (except `opacity`) and `visible` go to the backend; the rest is
+ * The settings of one lane. `basis`, `tolerance_ms`, `sticky` (except `opacity`) and `visible` go to the backend; the rest is
  * how the client draws what it holds.
  */
 export type LaneSettings = {
@@ -46,6 +46,8 @@ export type LaneSettings = {
   filter: Record<string, boolean>;
   /** The frame filter expression that is applied; `""` is none. Only an expression that compiles is stored. */
   expression: string;
+  /** What the lane matches the file's records to frames by; `null` is the decoder's default, as is a basis the file lacks. */
+  basis: BasisWire | null;
   tolerance_ms: number | null;
   sticky: { enabled: boolean; timeout_ms: number | null; opacity: number };
   visible: boolean;

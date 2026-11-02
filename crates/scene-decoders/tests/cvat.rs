@@ -1,6 +1,6 @@
 //! The CVAT decoder, through the registry as the host uses it.
 
-use foundation::{CancelToken, FrameSize, Interrupt};
+use foundation::{CancelToken, Interrupt};
 use scene::{Classification, Coverage, Geometry, Scene, Value};
 use scene_decoders::{DecodeContext, DecodeOptions, DecodeSummary, file_decoder};
 
@@ -15,10 +15,6 @@ fn try_decode(xml: &str) -> Result<(Vec<Scene>, DecodeSummary), String> {
         xml.as_bytes(),
         &DecodeContext {
             options: &DecodeOptions::new(),
-            frame_size: FrameSize {
-                width: 1920,
-                height: 1080,
-            },
         },
         &CancelToken::new(),
     ) {

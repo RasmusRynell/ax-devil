@@ -46,6 +46,8 @@ impl ConverterDecoder {
             extensions: Box::leak(extensions.into_boxed_slice()),
             artifact_version: 1,
             storage: Storage::DerivedCache,
+            bases: Box::leak(manifest.bases.clone().into_boxed_slice()),
+            default_basis: manifest.default_basis,
         }));
         Self {
             manifest,
@@ -142,7 +144,11 @@ impl FileSceneDecoder for ConverterDecoder {
         ConverterDecoder::code_hash(self).ok()
     }
 
-    fn declared_options(&self, options: &DecodeOptions) -> Result<DecodeOptions, DecodeError> {
+    fn declared_options(
+        &self,
+        _path: &Path,
+        options: &DecodeOptions,
+    ) -> Result<DecodeOptions, DecodeError> {
         ConverterDecoder::declared_options(self, options)
     }
 
@@ -183,7 +189,6 @@ impl FileSceneDecoder for ConverterDecoder {
             request: json!({
                 "protocol": PROTOCOL,
                 "path": overlay_text,
-                "frame": { "width": context.frame_size.width, "height": context.frame_size.height },
                 "options": options,
             })
             .to_string(),

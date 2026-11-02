@@ -55,6 +55,7 @@ pub(super) async fn run(
     } = opened;
     let setup = Setup {
         entry,
+        matching: lease.matching(),
         start_frame: opening.start_frame,
         data_bytes: opening.data_bytes,
         audience,

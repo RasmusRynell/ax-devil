@@ -12,7 +12,7 @@ use std::{
     time::Instant,
 };
 
-use foundation::{CancelToken, FrameSize, Timeline, UserError};
+use foundation::{CancelToken, Timeline, UserError};
 use playback::{FrameSet, Want};
 use playlist_resolvers::OverlayRef;
 use scene_store::{Track, TrackSnapshot};
@@ -39,7 +39,6 @@ pub(crate) struct Shared {
     /// Cancelled on close; interrupts loads in progress.
     pub(crate) cancel: CancelToken,
     pub(crate) timeline: Timeline,
-    pub(crate) frame_size: FrameSize,
 }
 
 impl Shared {

@@ -4,7 +4,7 @@ use super::cache::Cache;
 use super::*;
 use api_types::playback::ServerMessage;
 use axum::extract::ws::Message;
-use foundation::{FrameSize, MediaTime, Timeline};
+use foundation::{MediaTime, Timeline};
 use overlays::{LaneStatus, OverlayEvent, OverlayService};
 use scene_store::{Op, Row, SortKey, Term};
 use std::{path::Path, time::Duration};
@@ -22,6 +22,11 @@ async fn viewer(folder: &Path) -> (ViewerOverlays, u32) {
         })
         .collect();
     std::fs::write(&gt, rows).unwrap();
+    std::fs::write(
+        folder.join("seqinfo.ini"),
+        "[Sequence]\nframeRate=30\nseqLength=90\nimWidth=64\nimHeight=48\n",
+    )
+    .unwrap();
     let overlay = OverlayRef {
         label: "GT".into(),
         path: gt,
@@ -34,14 +39,9 @@ async fn viewer(folder: &Path) -> (ViewerOverlays, u32) {
     ));
     let timeline =
         Timeline::new((0..90).map(|n| MediaTime::from_us(n * 33_333)).collect()).unwrap();
-    let size = FrameSize {
-        width: 64,
-        height: 48,
-    };
     let mut viewer = service.open_viewer(
         vec![Some(overlay.clone()), Some(overlay)],
         timeline,
-        size,
         53_687_091,
     );
     let (mut ready, mut revision) = (0_u8, 0);

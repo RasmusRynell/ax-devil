@@ -888,6 +888,7 @@ version = "0.1.0"
 dependencies = [
  "foundation",
  "scene",
+ "serde",
 ]
 
 [[package]]
@@ -1159,9 +1160,11 @@ version = "0.1.0"
 dependencies = [
  "foundation",
  "memchr",
+ "overlay-sync",
  "quick-xml",
  "scene",
  "serde_json",
+ "tempfile",
 ]
 
 [[package]]
@@ -1257,6 +1260,7 @@ dependencies = [
  "foundation",
  "getrandom 0.4.3",
  "handlers",
+ "overlay-sync",
  "playback",
  "serde",
  "serde_json",
@@ -1753,6 +1757,7 @@ version = "0.1.0"
 dependencies = [
  "foundation",
  "handlers",
+ "overlay-sync",
  "playlist-resolvers",
  "serde",
  "serde_json",
@@ -1765,6 +1770,7 @@ version = "0.1.0"
 dependencies = [
  "foundation",
  "handlers",
+ "overlay-sync",
  "serde",
  "serde_json",
  "tempfile",

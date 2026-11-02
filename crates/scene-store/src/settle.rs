@@ -54,6 +54,7 @@ pub(crate) fn merge_fragments(
     while let Some(head) = next {
         cancel.check()?;
         let mut group = Group::new(read(head).map_err(failed)?);
+        let mut ordinal = head.ordinal;
         next = loop {
             let Some(entry) = entries.next().map_err(failed)? else {
                 break None;
@@ -65,6 +66,7 @@ pub(crate) fn merge_fragments(
             if entry.replace {
                 replaced += 1;
                 group = Group::new(scene);
+                ordinal = entry.ordinal;
             } else {
                 group.merge(&scene).map_err(failed)?;
             }
@@ -75,7 +77,7 @@ pub(crate) fn merge_fragments(
         let scene = group.into_scene().map_err(failed)?;
         out.add(&scene).map_err(failed)?;
         history.add(&scene);
-        keys.push(time_of(kind, head.key));
+        keys.push(time_of(kind, head.key), ordinal);
     }
     Ok(replaced)
 }
@@ -86,7 +88,7 @@ fn failed(reason: impl ToString) -> Interrupt<String> {
 
 /// The in-order records and the sorted fragments as one stream in `(key, record)` order.
 struct Merged {
-    ordered: std::vec::IntoIter<u64>,
+    ordered: std::vec::IntoIter<(u64, u64)>,
     at: u32,
     fragments: Sorted,
     head_ordered: Option<Entry>,
@@ -95,15 +97,32 @@ struct Merged {
 
 impl Merged {
     fn new(ordered: Keys, fragments: Sorted) -> Result<Self, String> {
-        let keys: Vec<u64> = match ordered {
-            Keys::Frames(keys) => keys
+        // Each in-order record's sort key and its position in the file, which a frame-keyed file does not need.
+        let positions = |len: usize, frames: Option<Vec<u64>>| -> Vec<u64> {
+            frames.unwrap_or_else(|| vec![0; len])
+        };
+        let keys: Vec<(u64, u64)> = match ordered {
+            Keys {
+                times: Some(times),
+                frames,
+            } => {
+                let positions = positions(times.len(), frames);
+                times
+                    .into_iter()
+                    .zip(positions)
+                    .map(|(time, ordinal)| {
+                        (sort_key(SceneTime::Timestamp(MediaTime(time))), ordinal)
+                    })
+                    .collect()
+            }
+            Keys {
+                frames: Some(frames),
+                ..
+            } => frames
                 .into_iter()
-                .map(|frame| sort_key(SceneTime::Frame(frame)))
+                .map(|frame| (sort_key(SceneTime::Frame(frame)), 0))
                 .collect(),
-            Keys::Times(keys) => keys
-                .into_iter()
-                .map(|time| sort_key(SceneTime::Timestamp(MediaTime(time))))
-                .collect(),
+            Keys { .. } => Vec::new(),
         };
         let mut merged = Self {
             ordered: keys.into_iter(),
@@ -118,13 +137,14 @@ impl Merged {
     }
 
     fn next_ordered(&mut self) -> Option<Entry> {
-        let key = self.ordered.next()?;
+        let (key, ordinal) = self.ordered.next()?;
         let record = self.at;
         self.at += 1;
         Some(Entry {
             key,
             record,
             replace: false,
+            ordinal,
         })
     }
 

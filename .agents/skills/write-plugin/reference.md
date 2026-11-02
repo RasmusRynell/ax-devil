@@ -21,11 +21,12 @@ field.
 | `env` | no | Names of environment variables to pass through besides the standard few. `AX_DEVIL_*` is refused |
 | `code` | no | Paths in the folder (files or folders, no `..`) whose bytes identify the converter; default the whole folder. Dot-names and `__pycache__` are skipped; at most 20,000 files and 256 MiB |
 | `idle_timeout_s` | no | 1 to 86,400; default 120. Seconds the converter may print nothing before it is killed |
+| `bases` | no | `["frame"]`, `["time"]` or both: what a lane may match your records to video frames by. Frame: record k belongs to frame k (or the frame number you key by). Time: by the records' timestamps. Default `["frame"]` |
+| `default_basis` | no | One of `bases`, the one a lane starts with; default the first listed |
 | `options` | no | `[{"key","label","kind","required","default"}]`: `key` is letters, digits, `_` or `-`; `kind` is `text`, `file` or `folder`; `required` defaults to false; `default` is text. Values are always text |
 
 The cache of a file's samples is keyed by the converter's id, the SHA-256 of the manifest and its `code` files, the
-declared options (defaults filled in; undeclared keys are dropped with a warning) and the frame size. Editing a code
-file reruns the converter the next time the file opens; the app reads the manifest itself only at start.
+declared options (defaults filled in; undeclared keys are dropped with a warning). Editing a code file reruns the converter the next time the file opens; the app reads the manifest itself only at start.
 
 ## Registry `$XDG_DATA_HOME/ax-devil/plugins.json`
 
@@ -41,7 +42,7 @@ absolute paths in the request. The environment holds only `PATH`, `HOME`, `LANG`
 `LC_ALL`, `LC_CTYPE`, `TZ` (on Windows also `SYSTEMROOT`) and the manifest's `env`. Stdin gets one line, then EOF:
 
 ```json
-{"protocol":1,"path":"/abs/overlay.file","frame":{"width":1920,"height":1080},"options":{"camera":"front"}}
+{"protocol":1,"path":"/abs/overlay.file","options":{"camera":"front"}}
 ```
 
 `options` holds every declared option that has a value. Read stdin, then the file at `path`; write to stdout.

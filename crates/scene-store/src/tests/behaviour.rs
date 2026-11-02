@@ -2,9 +2,9 @@
 
 use std::{sync::mpsc, thread, time::Duration};
 
+use foundation::Timeline;
 use handlers::Handlers;
-use overlay_sync::SampleKeys;
-use scene::TimeKind;
+use overlay_sync::{MatchPolicy, Selection, Sticky, Tolerance, select};
 
 use super::*;
 
@@ -24,21 +24,13 @@ fn two_opens_share_one_track_until_both_let_go() {
     });
     let (first, second) = (fixture.open(), fixture.open());
     assert!(Arc::ptr_eq(&first, &second));
-    let other_size = fixture.open_sized(FrameSize {
-        width: 10,
-        height: 10,
-    });
-    assert!(
-        !Arc::ptr_eq(&first, &other_size),
-        "another frame size is another track"
-    );
 
     drop((first, second));
     let again = fixture.open();
 
     assert_eq!(
         fixture.decoder.runs(),
-        2,
+        1,
         "reopening reads the artifact, it does not decode"
     );
     assert!(again.scene(0).is_ok());
@@ -88,7 +80,7 @@ fn cancelling_leaves_no_temporary_file_and_a_waiter_takes_over() {
     });
 
     thread::scope(|scope| {
-        let leader = scope.spawn(|| fixture.registry.open(&fixture.overlay(), SIZE, &token));
+        let leader = scope.spawn(|| fixture.registry.open(&fixture.overlay(), &token));
         signal.recv().expect("the decode started");
         let waiter = scope.spawn(|| fixture.open());
         thread::sleep(Duration::from_millis(60));
@@ -129,16 +121,14 @@ fn a_cancelled_open_leaves_nothing_behind() {
 
     let result = fixture
         .registry
-        .open(&fixture.overlay(), SIZE, &CancelToken::new());
+        .open(&fixture.overlay(), &CancelToken::new());
 
     assert!(matches!(result, Err(Interrupt::Cancelled)));
     assert_eq!(fixture.artifacts(), Vec::<PathBuf>::new());
     let before_cancel = CancelToken::new();
     before_cancel.cancel();
     assert!(matches!(
-        fixture
-            .registry
-            .open(&fixture.overlay(), SIZE, &before_cancel),
+        fixture.registry.open(&fixture.overlay(), &before_cancel),
         Err(Interrupt::Cancelled)
     ));
 }
@@ -150,7 +140,7 @@ fn a_file_mixing_frame_numbers_and_timestamps_is_rejected() {
     let error = failure(
         fixture
             .registry
-            .open(&fixture.overlay(), SIZE, &CancelToken::new()),
+            .open(&fixture.overlay(), &CancelToken::new()),
     );
 
     assert!(
@@ -163,15 +153,54 @@ fn a_file_mixing_frame_numbers_and_timestamps_is_rejected() {
 
 #[test]
 fn samples_are_sorted_by_key_and_a_repeated_key_keeps_the_last_record() {
-    let fixture = Fixture::new(Shape::Shuffled);
+    let mut fixture = Fixture::new(Shape::Shuffled);
 
     let track = fixture.open();
 
+    let keys = track.snapshot().keys.clone();
+    let key = |frame, sample| FrameKey { frame, sample };
     assert_eq!(
-        track.snapshot().keys,
-        SampleKeys::Times(vec![MediaTime(1_000), MediaTime(2_000), MediaTime(3_000)].into())
+        keys,
+        SampleKeys {
+            // Samples are in time order, each found by the position in the file of its record.
+            frames: Some(vec![key(0, 2), key(2, 1), key(3, 0)].into()),
+            times: Some(vec![MediaTime(1_000), MediaTime(2_000), MediaTime(3_000)].into())
+        }
     );
-    assert_eq!(track.snapshot().keys.kind(), TimeKind::Timestamp);
+    // File order: 3000 (1 box), 1000 (2), 2000 (3), 1000 again (4), which replaces record 1.
+    let timeline =
+        Timeline::new([0, 1_000, 2_000, 3_000].map(MediaTime).to_vec()).expect("timeline");
+    let boxes_shown = |basis| -> Vec<Option<usize>> {
+        let policy = MatchPolicy {
+            basis: Some(basis),
+            tolerance: Tolerance::Exact,
+            sticky: Sticky {
+                enabled: false,
+                timeout: None,
+            },
+        };
+        (0..4)
+            .map(|frame| {
+                let id = timeline.frame(frame).expect("frame");
+                match select(&keys, track.coverage(), id, &timeline, &policy) {
+                    Selection::Sample { index, .. } => {
+                        Some(track.scene(index).expect("scene").entities().len())
+                    }
+                    Selection::None | Selection::Empty => None,
+                }
+            })
+            .collect()
+    };
+    assert_eq!(
+        boxes_shown(MatchBasis::Frame),
+        [Some(1), None, Some(3), Some(4)],
+        "frame k shows record k; the replaced record 1 leaves its frame empty"
+    );
+    assert_eq!(
+        boxes_shown(MatchBasis::Time),
+        [None, Some(4), Some(3), Some(1)],
+        "by time each timestamp finds its own sample"
+    );
     let boxes: Vec<_> = (0..3)
         .map(|i| track.scene(i).expect("scene").entities().len())
         .collect();
@@ -186,6 +215,14 @@ fn samples_are_sorted_by_key_and_a_repeated_key_keeps_the_last_record() {
             .iter()
             .any(|w| w.problem.contains("replaced by a later one"))
     );
+    drop(track);
+    fixture.restart();
+    assert_eq!(
+        fixture.open().snapshot().keys,
+        keys,
+        "the artifact keeps both"
+    );
+    assert_eq!(fixture.decoder.runs(), 1);
 }
 
 #[test]
@@ -263,13 +300,11 @@ fn without_a_cache_folder_nothing_is_written_and_nothing_is_reused() {
     let registry = Fixture::registry_over(&fixture.decoder, None);
     let token = CancelToken::new();
 
-    let track = registry
-        .open(&fixture.overlay(), SIZE, &token)
-        .expect("opens");
+    let track = registry.open(&fixture.overlay(), &token).expect("opens");
     assert!(track.scene(2).is_ok());
     drop(track);
     registry
-        .open(&fixture.overlay(), SIZE, &token)
+        .open(&fixture.overlay(), &token)
         .map(drop)
         .expect("opens");
 
@@ -288,29 +323,26 @@ fn failures_name_the_file_and_leave_no_artifact() {
     let mut missing = fixture.overlay();
     missing.path = fixture.dir.path().join("nope.txt");
     assert!(
-        failure(fixture.registry.open(&missing, SIZE, &token))
+        failure(fixture.registry.open(&missing, &token))
             .reason
             .contains("Cannot find")
     );
 
     let mut unknown = fixture.overlay();
     unknown.handler = "NOPE".into();
-    let error = failure(fixture.registry.open(&unknown, SIZE, &token));
+    let error = failure(fixture.registry.open(&unknown, &token));
     assert!(
         error.reason.contains("No decoder") && error.reason.contains("NOPE"),
         "{error}"
     );
 
     fs::write(&fixture.source, b"broken").expect("source");
-    let error = failure(fixture.registry.open(&fixture.overlay(), SIZE, &token));
+    let error = failure(fixture.registry.open(&fixture.overlay(), &token));
     assert_eq!(error.reason, "line 1: not a test file");
     assert!(fixture.is_about_source(&error), "{error:?}");
     assert_eq!(fixture.artifacts(), Vec::<PathBuf>::new());
     assert!(
-        fixture
-            .registry
-            .open(&fixture.overlay(), SIZE, &token)
-            .is_err(),
+        fixture.registry.open(&fixture.overlay(), &token).is_err(),
         "a failure is not remembered as a track"
     );
 }
@@ -348,33 +380,45 @@ fn equal_options_make_one_key_whatever_their_order() {
 #[test]
 fn the_real_mot_decoder_round_trips_through_an_artifact() {
     let dir = tempfile::tempdir().expect("temp dir");
-    let gt = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../fixtures/oracle/mot/gt.txt");
+    let oracle = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../fixtures/oracle/mot");
+    let sequence = tempfile::tempdir().expect("sequence folder");
+    for file in ["gt.txt", "seqinfo.ini"] {
+        std::fs::copy(oracle.join(file), sequence.path().join(file)).expect("copy the fixture");
+    }
     let overlay = OverlayRef {
         label: "GT".into(),
-        path: gt,
+        path: sequence.path().join("gt.txt"),
         handler: "MOT_FILE".into(),
         options: Settings::new(),
     };
-    let size = FrameSize {
-        width: 640,
-        height: 480,
-    };
     let token = CancelToken::new();
-    let open = || {
+    let open = |overlay: &OverlayRef| {
         TrackRegistry::new(Handlers::built_in(), Some(dir.path()))
-            .open(&overlay, size, &token)
+            .open(overlay, &token)
             .map_err(|_| "open failed")
             .expect("opens")
     };
 
-    let cold = open();
-    let warm = open();
+    let cold = open(&overlay);
+    let warm = open(&overlay);
+    let artifacts = || {
+        std::fs::read_dir(dir.path().join("scenes"))
+            .expect("scenes")
+            .count()
+    };
+    assert_eq!(
+        artifacts(),
+        1,
+        "the video is no part of the key: reopening reuses the artifact"
+    );
+    let ini = sequence.path().join("seqinfo.ini");
+    let wider = std::fs::read_to_string(&ini).expect("read seqinfo.ini");
+    std::fs::write(&ini, wider.replace("imWidth=640", "imWidth=1280")).expect("write seqinfo.ini");
+    drop(open(&overlay));
+    assert_eq!(artifacts(), 2, "the size in seqinfo.ini is");
 
     for track in [&cold, &warm] {
-        assert_eq!(
-            track.snapshot().keys,
-            SampleKeys::Frames(vec![0, 1, 3].into())
-        );
+        assert_eq!(track.snapshot().keys, frame_keys(&[0, 1, 3]));
         assert_eq!(track.coverage(), Coverage::Dense);
         assert_eq!(track.warnings().len(), 1);
         assert_eq!(track.filter().options.len(), 14);

@@ -5,8 +5,6 @@ use std::{
     time::{Duration, SystemTime},
 };
 
-use foundation::FrameSize;
-use overlay_sync::SampleKeys;
 use scene::Coverage;
 
 use super::*;
@@ -55,10 +53,7 @@ fn a_warm_reopen_decodes_nothing_and_reports_what_the_decode_did() {
     let warm = fixture.open();
 
     assert_eq!(fixture.decoder.runs(), 1, "the artifact was used");
-    assert_eq!(
-        warm.snapshot().keys,
-        SampleKeys::Frames(vec![0, 1, 2].into())
-    );
+    assert_eq!(warm.snapshot().keys, frame_keys(&[0, 1, 2]));
     assert_eq!(warm.coverage(), Coverage::Dense);
     assert_eq!(warm.warnings().len(), 1);
     assert_eq!(warm.warnings()[0].problem, "Skipped 1 of 3 rows");
@@ -70,14 +65,12 @@ fn a_warm_reopen_decodes_nothing_and_reports_what_the_decode_did() {
 #[test]
 fn each_identity_component_invalidates() {
     type Change = fn(&mut Identity);
-    let table: [(&str, Change); 10] = [
+    let table: [(&str, Change); 8] = [
         ("handler", |id| id.handler = "OTHER".into()),
         ("artifact version", |id| id.artifact_version += 1),
         ("scene major", |id| id.scene_major += 1),
         ("scene minor", |id| id.scene_minor += 1),
         ("options", |id| id.options = r#"{"a":1}"#.into()),
-        ("width", |id| id.width += 1),
-        ("height", |id| id.height += 1),
         ("code", |id| id.code = Some([1; 32])),
         ("digest missing", |id| id.digest = None),
         ("digest differs", |id| {
@@ -113,34 +106,27 @@ fn the_store_format_version_invalidates() {
 }
 
 #[test]
-fn options_frame_size_and_decoder_version_make_artifacts_that_coexist() {
+fn options_and_decoder_version_make_artifacts_that_coexist() {
     let mut fixture = Fixture::new(SHAPE);
-    let narrow = fixture.open().scene(0).expect("scene");
-    let other_size = FrameSize {
-        width: 1920,
-        height: 1080,
-    };
-    let wide = fixture.open_sized(other_size).scene(0).expect("scene");
-    assert_eq!(fixture.decoder.runs(), 2, "a frame size change rebuilds");
-    assert_ne!(narrow, wide, "the Scenes follow the frame size");
+    drop(fixture.open());
     let mut overlay = fixture.overlay();
     overlay.options.insert("profile".into(), "other".into());
     let token = CancelToken::new();
     fixture
         .registry
-        .open(&overlay, SIZE, &token)
+        .open(&overlay, &token)
         .map(drop)
         .expect("opens");
     assert_eq!(
         fixture.decoder.runs(),
-        3,
+        2,
         "options are part of the identity"
     );
-    assert_eq!(fixture.artifacts().len(), 3);
+    assert_eq!(fixture.artifacts().len(), 2);
 
     fixture.restart();
-    drop((fixture.open(), fixture.open_sized(other_size)));
-    assert_eq!(fixture.decoder.runs(), 3, "every variant is still reusable");
+    drop(fixture.open());
+    assert_eq!(fixture.decoder.runs(), 2, "every variant is still reusable");
 
     let newer = Arc::new(Counting {
         spec: &SPEC_V2,
@@ -150,11 +136,11 @@ fn options_frame_size_and_decoder_version_make_artifacts_that_coexist() {
     });
     let registry = Fixture::registry_over(&newer, Some(&fixture.cache()));
     registry
-        .open(&fixture.overlay(), SIZE, &token)
+        .open(&fixture.overlay(), &token)
         .map(drop)
         .expect("opens");
     assert_eq!(newer.runs(), 1, "a new decoder version rebuilds");
-    assert_eq!(fixture.artifacts().len(), 3, "in place");
+    assert_eq!(fixture.artifacts().len(), 2, "in place");
 }
 
 #[test]

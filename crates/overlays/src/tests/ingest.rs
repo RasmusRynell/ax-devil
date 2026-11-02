@@ -9,8 +9,8 @@ use std::{
     time::Duration,
 };
 
-use foundation::{CancelToken, Interrupt};
-use overlay_sync::{MatchPolicy, Sticky};
+use foundation::{CancelToken, Interrupt, MediaTime};
+use overlay_sync::{MatchBasis, MatchPolicy, Sticky};
 use playlist_resolvers::OverlayRef;
 use scene::{
     BoundingBox, Coverage, Entity, EntityId, FilterPolicy, Geometry, Observation, Scene, SceneTime,
@@ -32,16 +32,33 @@ static PACED: DecoderSpec = DecoderSpec {
     extensions: &[".paced"],
     artifact_version: 1,
     storage: Storage::DerivedCache,
+    bases: &[MatchBasis::Frame],
+    default_basis: MatchBasis::Frame,
 };
+
+/// The same, keyed by timestamps that count from a recording's UTC time, not from the video's 0.
+static PACED_TIMED: DecoderSpec = DecoderSpec {
+    handler: "PACED_TIMED",
+    bases: &[MatchBasis::Frame, MatchBasis::Time],
+    ..PACED
+};
+
+/// 2023-11-14T22:13:20Z in microseconds.
+const RECORDING_START: i64 = 1_700_000_000_000_000;
 
 /// The store publishes at most every 250 ms, so the decoder gives each Scene that long after the last.
 const PUBLISH_GAP: Duration = Duration::from_millis(260);
 
-/// A decoder that gives one frame-keyed Scene for each key the test sends, and ends when the sender is dropped.
-struct Paced(Mutex<Receiver<u64>>);
+/// A decoder that gives one Scene for each key the test sends, frame-keyed or, for [`PACED_TIMED`], keyed by the
+/// recording's time of the frame, and ends when the sender is dropped.
+struct Paced(Mutex<Receiver<u64>>, &'static DecoderSpec);
 
-fn scene_at(key: u64) -> Scene {
-    let time = SceneTime::Frame(key);
+fn scene_at(key: u64, timed: bool) -> Scene {
+    let time = if timed {
+        SceneTime::Timestamp(MediaTime(RECORDING_START + key as i64 * 40_000))
+    } else {
+        SceneTime::Frame(key)
+    };
     let mut entity = Entity::new(EntityId::from(key));
     entity.push_observation(Observation::new(
         time,
@@ -61,7 +78,7 @@ fn policy() -> FilterPolicy {
 
 impl FileSceneDecoder for Paced {
     fn spec(&self) -> &'static DecoderSpec {
-        &PACED
+        self.1
     }
 
     fn decode_file(
@@ -82,7 +99,13 @@ impl FileSceneDecoder for Paced {
             match keys.recv_timeout(Duration::from_millis(20)) {
                 Ok(key) => {
                     thread::sleep(PUBLISH_GAP);
-                    if sink.sample(scene_at(key), OnEqualKey::Merge).is_break() {
+                    if sink
+                        .sample(
+                            scene_at(key, self.1.bases.contains(&MatchBasis::Time)),
+                            OnEqualKey::Merge,
+                        )
+                        .is_break()
+                    {
                         break;
                     }
                 }
@@ -102,9 +125,13 @@ impl FileSceneDecoder for Paced {
 /// A viewer of ten frames over a paced file; dropping the sender ends the file. The lane keeps a sample until the
 /// next, so every decided frame has a cell.
 fn viewer_over_paced_file() -> (Env, ViewerOverlays, Sender<u64>) {
+    viewer_over(&PACED)
+}
+
+fn viewer_over(spec: &'static DecoderSpec) -> (Env, ViewerOverlays, Sender<u64>) {
     let (keys, receiver) = channel();
-    let env = Env::with_decoder(Arc::new(Paced(Mutex::new(receiver))));
-    let overlay: OverlayRef = env.overlay("a.paced", "PACED", "rows\n");
+    let env = Env::with_decoder(Arc::new(Paced(Mutex::new(receiver), spec)));
+    let overlay: OverlayRef = env.overlay("a.paced", spec.handler, "rows\n");
     let viewer = env.open(vec![Some(overlay)], 10);
     viewer.want(want(0, 0, 9));
     let sticky = MatchPolicy {
@@ -158,6 +185,28 @@ async fn frames_are_sent_once_when_the_ingest_decides_them_and_not_before() {
     assert_eq!(sent.readies[0].ingest, Ingest::Reading);
     let last = sent.readies.last().expect("a status");
     assert_eq!((&last.ingest, last.samples), (&Ingest::Complete, 3));
+}
+
+#[tokio::test]
+async fn a_timestamp_keyed_file_read_by_frame_decides_frames_by_record_position_not_by_time() {
+    let (_env, mut viewer, keys) = viewer_over(&PACED_TIMED);
+    let mut sent = Sent::default();
+
+    // Records 0 and 1 are in; only record 0 is final, so only frame 0 is decided, however far the recording's own
+    // times are from the video's.
+    keys.send(0).expect("sent");
+    keys.send(1).expect("sent");
+    record_until(&mut viewer, &mut sent, |sent| !cells(sent, 0).is_empty()).await;
+    assert_eq!(cells(&sent, 0), [(0, 0)]);
+
+    keys.send(2).expect("sent");
+    record_until(&mut viewer, &mut sent, |sent| cells(sent, 0).len() >= 2).await;
+    assert_eq!(cells(&sent, 0), [(0, 0), (1, 1)]);
+
+    drop(keys);
+    record_until(&mut viewer, &mut sent, |sent| cells(sent, 0).len() >= 10).await;
+    let expected: Vec<(u64, u32)> = (0..10).map(|frame| (frame, frame.min(2) as u32)).collect();
+    assert_eq!(cells(&sent, 0), expected, "every frame once, as decided");
 }
 
 #[tokio::test]

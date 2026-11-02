@@ -39,6 +39,8 @@ mod open;
 mod revocation;
 mod stream;
 
+pub(crate) use lanes::policy_from_wire;
+
 use crate::{AppState, access::Slot, session::FIRST_MESSAGE_TIMEOUT};
 use api_types::playback::{ClientMessage, ServerMessage};
 use api_types::{Audience, project};

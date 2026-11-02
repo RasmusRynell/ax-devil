@@ -9,7 +9,8 @@ import type { ClientMessage, LaneStatusWire, ServerMessage } from "./protocol";
 
 const READY: Extract<LaneStatusWire, { status: "Ready" }> = {
   status: "Ready",
-  clock: "frame",
+  bases: ["Frame"],
+  default_basis: "Frame",
   filter: [
     { id: "show_car", label: "Car", default_enabled: true },
     { id: "show_bus", label: "Bus", default_enabled: false },

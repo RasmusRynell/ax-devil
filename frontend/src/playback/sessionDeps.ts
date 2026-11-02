@@ -1,6 +1,7 @@
 /** What a playback session is given, and what it reports of the clock. */
 
 import type { LaneSettings } from "./contract";
+import type { LanePolicyWire } from "./protocol";
 import type { Connect } from "./wire";
 
 /** What one viewer may hold of decoded frames: it divides into the window the backend is asked to fill. */
@@ -23,6 +24,8 @@ export interface SessionDeps {
   lanes?: readonly LaneSettings[];
   /** Where an earlier session of this video left off: this one opens there, paused, at that speed. */
   resume?: ResumeState;
+  /** Told the policy of a lane after the viewer changed it: the workspace keeps it with the lane's recipe. */
+  onPolicy?: (lane: number, policy: LanePolicyWire) => void;
   /** Told what the clock is doing after every change the viewer makes: the intent a presenter publishes. */
   onIntent?: (intent: PlaybackIntent) => void;
 }

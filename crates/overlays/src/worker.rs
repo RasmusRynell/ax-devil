@@ -40,7 +40,7 @@ pub(crate) fn run(
     overlay: &OverlayRef,
 ) {
     let _close = CloseOnPanic(shared);
-    let opened = match tracks.open(overlay, shared.frame_size, &shared.cancel) {
+    let opened = match tracks.open(overlay, &shared.cancel) {
         Ok(track) => track,
         Err(Interrupt::Cancelled) => return,
         Err(Interrupt::Failed(error)) => {

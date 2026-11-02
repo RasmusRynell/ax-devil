@@ -11,6 +11,7 @@
 use std::{collections::BTreeMap, ops::RangeInclusive};
 
 use foundation::Timeline;
+use overlay_sync::MatchBasis;
 use playback::Want;
 
 use crate::{
@@ -131,7 +132,39 @@ impl State {
         }
         slot.maps_sent.clear();
         slot.window = LaneWindow::default();
+        self.fit(lane);
         self.refresh(timeline);
+    }
+
+    /// Settles the basis `lane` matches by once its file is loaded: the one it asked for if the file offers it, else
+    /// the decoder's default, which a lane that asked for none also gets. A basis the file lacks is said once per load.
+    /// Nothing changes while the file is not loaded: the lane is settled when it is.
+    pub(crate) fn fit(&mut self, lane: usize) {
+        let Some(source) = self.lanes[lane].source else {
+            return;
+        };
+        let Load::Ready(track, _) = &self.sources[source].load else {
+            return;
+        };
+        let default = track.default_basis();
+        let basis = match self.lanes[lane].policy.matching.basis {
+            Some(asked) if !track.bases().contains(&asked) => {
+                let name = |basis| match basis {
+                    MatchBasis::Frame => "frame number",
+                    MatchBasis::Time => "time",
+                };
+                let reason = format!(
+                    "This file cannot be matched by {}; it is matched by {}",
+                    name(asked),
+                    name(default)
+                );
+                self.report(lane, reason);
+                default
+            }
+            Some(asked) => asked,
+            None => default,
+        };
+        self.lanes[lane].policy.matching.basis = Some(basis);
     }
 
     /// Recomputes the lane maps and sample windows for the current want. A sent sample that left its window is to be

@@ -2,12 +2,32 @@ use super::*;
 
 const MS: i64 = 1_000;
 
-fn times(values: &[i64]) -> SampleKeys {
-    SampleKeys::Times(values.iter().map(|&t| MediaTime(t)).collect())
+/// Frame keys whose samples are numbered by them.
+fn in_order(values: &[u64]) -> KeyChunks<FrameKey> {
+    values
+        .iter()
+        .enumerate()
+        .map(|(sample, &frame)| FrameKey {
+            frame,
+            sample: sample as u32,
+        })
+        .collect()
 }
 
+/// A time-keyed file: its frame keys are the samples' positions.
+fn times(values: &[i64]) -> SampleKeys {
+    SampleKeys {
+        frames: Some(in_order(&(0..values.len() as u64).collect::<Vec<_>>())),
+        times: Some(values.iter().map(|&t| MediaTime(t)).collect()),
+    }
+}
+
+/// A frame-keyed file, which has no times.
 fn frames(values: &[u64]) -> SampleKeys {
-    SampleKeys::Frames(values.into())
+    SampleKeys {
+        frames: Some(in_order(values)),
+        times: None,
+    }
 }
 
 fn timeline(times: &[i64]) -> Timeline {
@@ -26,8 +46,10 @@ fn at(sequence_id: u64, timestamp: i64) -> FrameId {
     }
 }
 
+/// A policy matching by time.
 fn policy(tolerance: Tolerance, sticky: Option<Option<i64>>) -> MatchPolicy {
     MatchPolicy {
+        basis: Some(MatchBasis::Time),
         tolerance,
         sticky: match sticky {
             Some(timeout) => Sticky {
@@ -39,6 +61,14 @@ fn policy(tolerance: Tolerance, sticky: Option<Option<i64>>) -> MatchPolicy {
                 ..Sticky::default()
             },
         },
+    }
+}
+
+/// The same policy matching by frame.
+fn by_frame(policy: MatchPolicy) -> MatchPolicy {
+    MatchPolicy {
+        basis: Some(MatchBasis::Frame),
+        ..policy
     }
 }
 
@@ -182,7 +212,7 @@ fn frame_keyed_exact_and_sticky_age_follow_the_video_timeline() {
         0, 1_000_000, 1_900_000, 3_000_000, 4_000_000, 6_000_000, 9_000_000,
     ]);
     let keys = frames(&[0, 3, 5]);
-    let sticky = policy(within(50), Some(Some(2_050 * MS)));
+    let sticky = by_frame(policy(within(50), Some(Some(2_050 * MS))));
     let at_frame = |n: u64| at(n, timeline.time(n).unwrap().0);
     let cases = [
         (1, picked(0, MatchKind::Retained)),
@@ -197,7 +227,7 @@ fn frame_keyed_exact_and_sticky_age_follow_the_video_timeline() {
         let selected = select(&keys, Coverage::Sparse, at_frame(frame), &timeline, &sticky);
         assert_eq!(selected, expected, "frame {frame}");
     }
-    let off = policy(within(50), None);
+    let off = by_frame(policy(within(50), None));
     let selected = select(&keys, Coverage::Sparse, at_frame(4), &timeline, &off);
     assert_eq!(selected, Selection::None);
     let selected = select(&keys, Coverage::Sparse, at_frame(5), &timeline, &off);
@@ -206,7 +236,7 @@ fn frame_keyed_exact_and_sticky_age_follow_the_video_timeline() {
 
 #[test]
 fn frame_keyed_sparse_before_the_first_sample_selects_nothing() {
-    let sticky = policy(Tolerance::Exact, Some(None));
+    let sticky = by_frame(policy(Tolerance::Exact, Some(None)));
     let selected = select(
         &frames(&[4]),
         Coverage::Sparse,
@@ -220,7 +250,7 @@ fn frame_keyed_sparse_before_the_first_sample_selects_nothing() {
 #[test]
 fn frame_keyed_dense_covers_gaps_with_empty_and_sticky_never_retains_across_them() {
     let keys = frames(&[1, 4]);
-    let sticky = policy(within(50), Some(None));
+    let sticky = by_frame(policy(within(50), Some(None)));
     let cases = [
         (0, Selection::Empty), // before the first sample
         (1, picked(0, MatchKind::Exact)),
@@ -238,7 +268,7 @@ fn frame_keyed_dense_covers_gaps_with_empty_and_sticky_never_retains_across_them
         );
         assert_eq!(selected, expected, "frame {frame}");
     }
-    let none = SampleKeys::Frames(Vec::new().into());
+    let none = frames(&[]);
     assert_eq!(
         select(&none, Coverage::Dense, at(0, 0), &even(), &sticky),
         Selection::Empty
@@ -259,7 +289,7 @@ fn coverage_means_nothing_for_time_keyed_files() {
 fn frame_keyed_keys_past_the_timeline_are_rejected() {
     // The frame is further than the timeline reaches, so the key's time is unknown.
     let short = timeline(&[0, 100 * MS, 200 * MS]);
-    let sticky = policy(Tolerance::Exact, Some(None));
+    let sticky = by_frame(policy(Tolerance::Exact, Some(None)));
     let selected = select(
         &frames(&[5]),
         Coverage::Sparse,
@@ -282,7 +312,7 @@ fn frame_keyed_keys_past_the_timeline_are_rejected() {
 #[test]
 fn frame_keyed_ignores_a_frame_time_before_the_key_time() {
     // A frame whose timestamp disagrees with the timeline must not retain a "future" sample.
-    let sticky = policy(Tolerance::Exact, Some(None));
+    let sticky = by_frame(policy(Tolerance::Exact, Some(None)));
     let selected = select(
         &frames(&[1]),
         Coverage::Sparse,
@@ -291,4 +321,65 @@ fn frame_keyed_ignores_a_frame_time_before_the_key_time() {
         &sticky,
     );
     assert_eq!(selected, Selection::None);
+}
+
+#[test]
+fn a_time_keyed_file_matches_by_position_under_frame_and_by_timestamp_under_time() {
+    // Record k belongs to frame k, whatever its timestamp says; timestamps are a different, explicit choice.
+    let keys = times(&[0, 450 * MS, 460 * MS]);
+    let policy = policy(Tolerance::Exact, None);
+    let by_position = by_frame(policy);
+    let frame_2 = at(2, 200 * MS);
+    assert_eq!(
+        pick(&keys, frame_2, &by_position),
+        picked(2, MatchKind::Exact)
+    );
+    assert_eq!(pick(&keys, frame_2, &policy), Selection::None);
+    let frame_4 = at(4, 450 * MS);
+    assert_eq!(pick(&keys, frame_4, &policy), picked(1, MatchKind::Exact));
+    assert_eq!(
+        pick(
+            &keys,
+            frame_4,
+            &MatchPolicy {
+                sticky: Sticky {
+                    enabled: false,
+                    ..Sticky::default()
+                },
+                ..by_position
+            }
+        ),
+        Selection::None
+    );
+}
+
+#[test]
+fn a_basis_without_keys_selects_nothing() {
+    let sticky = policy(within(50), Some(None));
+    let no_times = frames(&[0, 1]);
+    assert_eq!(pick(&no_times, at(1, 100 * MS), &sticky), Selection::None);
+    let no_frames = SampleKeys {
+        frames: None,
+        ..times(&[0])
+    };
+    assert_eq!(
+        pick(&no_frames, at(0, 0), &by_frame(sticky)),
+        Selection::None
+    );
+    let dense = select(
+        &no_frames,
+        Coverage::Dense,
+        at(0, 0),
+        &even(),
+        &by_frame(sticky),
+    );
+    assert_eq!(dense, Selection::None);
+}
+
+#[test]
+fn sticky_is_on_for_two_seconds_by_default() {
+    let sticky = MatchPolicy::default().sticky;
+    assert!(sticky.enabled);
+    assert_eq!(sticky.timeout, Some(MediaTime(2_050 * MS)));
+    assert_eq!(MatchPolicy::default().basis, None);
 }

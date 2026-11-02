@@ -1,12 +1,13 @@
 // @vitest-environment node
 import { describe, expect, it } from "vite-plus/test";
-import { LANE_DEFAULTS } from "./fakeOpened";
+import { LANE_DEFAULTS, LANE_SETTINGS } from "./fakeOpened";
 import { LaneSet, startWith } from "./lanes";
 import type { LaneStatusWire } from "./protocol";
 
 const ready: LaneStatusWire = {
   status: "Ready",
-  clock: "frame",
+  bases: ["Frame"],
+  default_basis: "Frame",
   filter: [],
   warnings: [],
   samples: 3,
@@ -62,6 +63,19 @@ describe("lanes", () => {
     expect(lanes.styleRevision(0)).toBe(1);
     expect(lanes.set(0, { visible: false })).toMatchObject({ revision: 3, subscribed: false });
     expect(lanes.states[0].problem).toBeUndefined();
+  });
+
+  it("starts a lane from the matching the workspace keeps for it, over what the viewer carried", () => {
+    const lanes = new LaneSet();
+    const kept = {
+      basis: "Time" as const,
+      tolerance_ms: null,
+      sticky: { enabled: false, timeout_ms: null },
+    };
+    const seed = { ...LANE_SETTINGS, tolerance_ms: 100 };
+    const sent = lanes.open([{ ...LANES[0], policy: kept }, LANES[1]], LANE_DEFAULTS, [seed, seed]);
+    expect(sent).toMatchObject([{ policy: kept }]);
+    expect(lanes.states[0].settings.sticky.opacity).toBe(1);
   });
 
   it("subscribes every source lane when the entry opens, keeping the user's settings across a reconnection", () => {

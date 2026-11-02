@@ -8,34 +8,50 @@ mod keys;
 mod select;
 
 use foundation::MediaTime;
-use scene::TimeKind;
+use serde::{Deserialize, Serialize};
 
 pub use keys::{CHUNK_KEYS, KeyChunks};
 pub use select::select;
 
-/// The keys of an overlay file's samples, ascending and unique, on the clock the file uses.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub enum SampleKeys {
-    /// Frame numbers of the video.
-    Frames(KeyChunks<u64>),
-    /// Timestamps on the video's Media Time clock.
-    Times(KeyChunks<MediaTime>),
+/// What a lane matches records to video frames by. The host chooses it per lane; a decoder only declares which
+/// bases it supports and which it recommends.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum MatchBasis {
+    /// By frame number. A time-keyed file's frame number is the record's position in the file: record k belongs to
+    /// frame k.
+    #[default]
+    Frame,
+    /// By the sample's timestamp on the video's Media Time clock.
+    Time,
+}
+
+/// The frame number a sample is found by and the sample it names.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct FrameKey {
+    /// The frame number.
+    pub frame: u64,
+    /// The sample's index in the [`SampleKeys`]' `times` order.
+    pub sample: u32,
+}
+
+/// The keys of an overlay file's samples under each [`MatchBasis`]. Samples are numbered in time order; the
+/// frame numbers of a time-keyed file are those of the records in file order, so they need not ascend with the samples.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct SampleKeys {
+    /// Frame numbers, ascending and unique: those of a frame-keyed file, whose samples are numbered by them, or the
+    /// position in the file of each sample of a time-keyed one. `None` when the file cannot be matched by frame.
+    pub frames: Option<KeyChunks<FrameKey>>,
+    /// Timestamps on the video's Media Time clock, ascending and unique, by sample. `None` when the file has none.
+    pub times: Option<KeyChunks<MediaTime>>,
 }
 
 impl SampleKeys {
-    /// The clock the keys are on.
-    pub fn kind(&self) -> TimeKind {
-        match self {
-            Self::Frames(_) => TimeKind::Frame,
-            Self::Times(_) => TimeKind::Timestamp,
-        }
-    }
-
     /// How many samples there are.
     pub fn len(&self) -> usize {
-        match self {
-            Self::Frames(keys) => keys.len(),
-            Self::Times(keys) => keys.len(),
+        match (&self.times, &self.frames) {
+            (Some(keys), _) => keys.len(),
+            (None, Some(keys)) => keys.len(),
+            (None, None) => 0,
         }
     }
 
@@ -46,7 +62,7 @@ impl SampleKeys {
 }
 
 /// How far from a frame's time a time-keyed sample may be and still belong to it.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Tolerance {
     /// Only a sample at exactly the frame's time.
     Exact,
@@ -60,8 +76,8 @@ impl Default for Tolerance {
     }
 }
 
-/// Keeping the last sample on screen while no sample matches.
-#[derive(Clone, Copy, Debug, PartialEq)]
+/// Keeping the last sample on screen while no sample matches. On by default, for 2.05 s.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Sticky {
     /// Whether samples are kept.
     pub enabled: bool,
@@ -72,16 +88,19 @@ pub struct Sticky {
 impl Default for Sticky {
     fn default() -> Self {
         Self {
-            enabled: false,
+            enabled: true,
             timeout: Some(MediaTime(2_050_000)),
         }
     }
 }
 
 /// The user's choices for matching samples to frames.
-#[derive(Clone, Copy, Debug, Default, PartialEq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct MatchPolicy {
-    /// How near a time-keyed sample must be.
+    /// What records are matched to frames by; `None` is the decoder's default basis, which the host fills in once the
+    /// file is open (until then, and for [`select`], it reads as [`MatchBasis::default`]).
+    pub basis: Option<MatchBasis>,
+    /// How near a time-keyed sample must be, under [`MatchBasis::Time`].
     pub tolerance: Tolerance,
     /// Whether and how long old samples stay.
     pub sticky: Sticky,

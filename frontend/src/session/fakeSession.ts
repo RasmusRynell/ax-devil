@@ -472,7 +472,7 @@ export class FakeSocket {
         });
         room.setItems([...room.items, ...added]);
       } else if (doc.type === "setHidden") room.setHidden(doc.target, doc.hidden);
-      else {
+      else if (doc.type !== "setLaneMatching") {
         const open = doc.type === "openViewer";
         room.setItems(room.items.map((item) => (item.id === doc.item ? { ...item, open } : item)));
       }

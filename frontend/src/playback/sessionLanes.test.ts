@@ -8,7 +8,8 @@ import type { ClientMessage, LaneInfo, LaneStatusWire } from "./protocol";
 
 const READY: LaneStatusWire = {
   status: "Ready",
-  clock: "frame",
+  bases: ["Frame"],
+  default_basis: "Frame",
   filter: [],
   warnings: [],
   samples: 5,

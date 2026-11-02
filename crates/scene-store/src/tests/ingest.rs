@@ -6,7 +6,6 @@ use std::{
     time::{Duration, Instant},
 };
 
-use overlay_sync::SampleKeys;
 use scene::Geometry;
 use scene_decoders::{DecodeOptions, Header};
 
@@ -100,7 +99,11 @@ impl FileSceneDecoder for Script {
         self.code
     }
 
-    fn declared_options(&self, options: &DecodeOptions) -> Result<DecodeOptions, DecodeError> {
+    fn declared_options(
+        &self,
+        _path: &Path,
+        options: &DecodeOptions,
+    ) -> Result<DecodeOptions, DecodeError> {
         let mut declared = options.clone();
         if self.default_profile {
             declared
@@ -191,8 +194,7 @@ impl Rig {
     }
 
     fn open(&self) -> Result<Arc<Track>, Interrupt<foundation::UserError>> {
-        self.registry
-            .open(&self.overlay(), SIZE, &CancelToken::new())
+        self.registry.open(&self.overlay(), &CancelToken::new())
     }
 
     /// The stored artifacts; a file still being written is not one.
@@ -313,17 +315,21 @@ fn a_header_lets_the_track_be_read_while_the_decode_runs() {
         .expect("the decode reached step 3");
 
     let early = track.snapshot();
-    assert_eq!(early.keys, SampleKeys::Frames(vec![0, 1].into()));
-    assert_eq!(early.decided, Decided::Below(SceneTime::Frame(2)));
+    assert_eq!(early.keys, frame_keys(&[0, 1]));
+    assert_eq!(
+        early.decided,
+        Decided::Below {
+            frame: Some(2),
+            time: None
+        }
+    );
     assert_eq!(early.ingest, Ingest::Reading);
-    assert!(early.decides(foundation::FrameId {
-        sequence_id: 1,
-        timestamp: MediaTime(0)
-    }));
-    assert!(!early.decides(foundation::FrameId {
-        sequence_id: 2,
-        timestamp: MediaTime(0)
-    }));
+    let frame = |sequence_id| foundation::FrameId {
+        sequence_id,
+        timestamp: MediaTime(0),
+    };
+    assert!(early.decides(frame(1), MatchBasis::Frame));
+    assert!(!early.decides(frame(2), MatchBasis::Frame));
     let first = track.scene(0).expect("a published sample is readable");
     assert!(track.item(1).is_ok());
     assert!(track.scene(2).is_err(), "an unpublished sample is not");
@@ -338,10 +344,7 @@ fn a_header_lets_the_track_be_read_while_the_decode_runs() {
         done.generation, 0,
         "ascending keys never renumber the samples"
     );
-    assert_eq!(
-        done.keys,
-        SampleKeys::Frames((0..6).collect::<Vec<u64>>().into())
-    );
+    assert_eq!(done.keys, frame_keys(&(0..6).collect::<Vec<u64>>()));
     assert_eq!(*track.scene(0).expect("scene"), *first);
     assert_eq!(rig.artifacts(), 1);
     drop(track);
@@ -407,7 +410,7 @@ fn keys_out_of_order_renumber_the_samples_once_whatever_the_sort_budget() {
 
     assert_eq!(before.generation, 0);
     assert_eq!((after.generation, &after.ingest), (1, &Ingest::Complete));
-    assert_eq!(after.keys, SampleKeys::Frames(vec![0, 1, 2, 3].into()));
+    assert_eq!(after.keys, frame_keys(&[0, 1, 2, 3]));
     assert_eq!(contents(&track, 1), [pair("1", &[2]), pair("2", &[5])]);
     // A snapshot reads by the numbering it holds, however the track was renumbered since.
     let (was, is) = (
@@ -468,7 +471,7 @@ fn keys_out_of_order_renumber_the_samples_once_whatever_the_sort_budget() {
         let keys = track.snapshot().keys.clone();
         assert_eq!(
             keys,
-            SampleKeys::Frames(expected.keys().copied().collect::<Vec<_>>().into())
+            frame_keys(&expected.keys().copied().collect::<Vec<_>>())
         );
         for (index, held) in expected.values().enumerate() {
             assert_eq!(
@@ -558,7 +561,7 @@ fn the_code_hash_and_the_declared_options_are_part_of_the_cache_identity() {
     explicit.options.insert("profile".into(), "default".into());
     drop(
         rig.registry
-            .open(&explicit, SIZE, &CancelToken::new())
+            .open(&explicit, &CancelToken::new())
             .expect("opens"),
     );
     assert_eq!(

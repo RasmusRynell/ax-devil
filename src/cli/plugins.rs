@@ -6,7 +6,7 @@ use api_types::handlers::{PluginStatus, PluginsInfo};
 use ax_devil::plugins::reserved_ids;
 use clap::{Subcommand, ValueHint};
 use converters::Registry;
-use foundation::{CancelToken, FrameSize, Interrupt};
+use foundation::{CancelToken, Interrupt};
 use handlers::Handlers;
 use playlist_resolvers::{OverlayRef, Settings};
 use scene::SceneTime;
@@ -51,23 +51,10 @@ pub enum PluginsCommand {
         /// The overlay file.
         #[arg(value_name = "FILE", value_hint = ValueHint::FilePath)]
         file: PathBuf,
-        /// The size of the video's frames, which the converter is told.
-        #[arg(long, value_name = "WxH", default_value = "1920x1080", value_parser = parse_size)]
-        frame_size: FrameSize,
         /// An option the converter declares; repeat for several.
         #[arg(long = "option", value_name = "KEY=VALUE", value_parser = parse_option)]
         options: Vec<(String, String)>,
     },
-}
-
-fn parse_size(text: &str) -> Result<FrameSize, String> {
-    let size = text.split_once('x').and_then(|(width, height)| {
-        Some(FrameSize {
-            width: width.parse().ok().filter(|&width| width > 0)?,
-            height: height.parse().ok().filter(|&height| height > 0)?,
-        })
-    });
-    size.ok_or_else(|| format!("'{text}' is not WIDTHxHEIGHT, such as 1920x1080"))
 }
 
 fn parse_option(text: &str) -> Result<(String, String), String> {
@@ -103,17 +90,9 @@ pub async fn run(
         (_, Err(reason)) => failed(reason),
         (PluginsCommand::Install { path }, Ok(file)) => install(&file, &path, &handlers),
         (PluginsCommand::Remove { id }, Ok(file)) => remove(&file, &id),
-        (
-            PluginsCommand::Check {
-                id,
-                file,
-                frame_size,
-                options,
-            },
-            Ok(_),
-        ) => {
+        (PluginsCommand::Check { id, file, options }, Ok(_)) => {
             if loaded.provides(&id) {
-                check(&handlers, &id, &file, frame_size, options, &cancel)
+                check(&handlers, &id, &file, options, &cancel)
             } else {
                 failed(format!(
                     "No converter '{id}' is loaded; `ax-devil plugins list` shows what is installed"
@@ -215,7 +194,6 @@ fn check(
     handlers: &Handlers,
     id: &str,
     file: &Path,
-    frame_size: FrameSize,
     options: Vec<(String, String)>,
     cancel: &CancelToken,
 ) -> Report {
@@ -229,7 +207,7 @@ fn check(
             .collect::<Settings>(),
     };
     let tracks = TrackRegistry::new(handlers.clone(), None);
-    let track = match tracks.open(&overlay, frame_size, cancel) {
+    let track = match tracks.open(&overlay, cancel) {
         Ok(track) => track,
         Err(Interrupt::Failed(error)) => return failed(describe(&error)),
         Err(Interrupt::Cancelled) => return failed("Cancelled".to_owned()),

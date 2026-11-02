@@ -4,6 +4,7 @@ import { FakeSocket, video } from "../session/fakeSession";
 import { SessionProvider } from "../session/session";
 import { SessionStore } from "../session/store";
 import type { ClientMessage, LaneInfo, ServerMessage } from "./protocol";
+import type { VideoViewerProps } from "./VideoViewer";
 import {
   Viewer,
   answer,
@@ -203,11 +204,19 @@ describe("video viewer", () => {
       { label: "DPM", source: 0 },
       { label: "GT", source: 1 },
     ];
-    const mountLanes = async (onHideLane?: (label: string) => void) => {
+    const mountLanes = async (
+      onHideLane?: (label: string) => void,
+      onLaneMatching?: VideoViewerProps["onLaneMatching"],
+    ) => {
       const sent: ClientMessage[] = [];
       render(
         <SessionProvider>
-          <Viewer sent={sent} lanes={LANES} onHideLane={onHideLane} />
+          <Viewer
+            sent={sent}
+            lanes={LANES}
+            onHideLane={onHideLane}
+            onLaneMatching={onLaneMatching}
+          />
         </SessionProvider>,
       );
       await act(async () => {});
@@ -220,7 +229,8 @@ describe("video viewer", () => {
       lane: 1,
       status: {
         status: "Ready",
-        clock: "frame",
+        bases: ["Frame"],
+        default_basis: "Frame",
         filter: [{ id: "pedestrian", label: "Pedestrian", default_enabled: true }],
         warnings: [
           {
@@ -238,7 +248,8 @@ describe("video viewer", () => {
     };
 
     it("sends the lane menu's changes the backend selects by as a new policy, and keeps the rest to itself", async () => {
-      const sent = await mountLanes();
+      const onLaneMatching = vi.fn();
+      const sent = await mountLanes(undefined, onLaneMatching);
       answer(ready);
       fireEvent.click(screen.getByRole("button", { name: "GT: settings" }));
       const before = sent.length;
@@ -251,9 +262,11 @@ describe("video viewer", () => {
         type: "LanePolicy",
         lane: 1,
         revision: 2,
-        policy: { tolerance_ms: 50, sticky: { enabled: true, timeout_ms: 2050 } },
+        policy: { basis: null, tolerance_ms: 50, sticky: { enabled: true, timeout_ms: 2050 } },
         subscribed: true,
       });
+      expect(onLaneMatching).toHaveBeenCalledTimes(1);
+      expect(onLaneMatching).toHaveBeenCalledWith(1, (sent.at(-1) as { policy: unknown }).policy);
     });
 
     it("hides a lane through the callback it is given, and offers no hiding without one", async () => {

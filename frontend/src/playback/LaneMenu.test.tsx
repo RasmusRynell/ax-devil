@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { DEFAULT_SETTINGS, FakeSettings } from "../fakeSettings";
-import type { LaneStatusWire } from "../generated/api";
+import type { BasisWire, LaneStatusWire } from "../generated/api";
 import type { SettingsApi } from "../settings";
 import { LANE_SETTINGS } from "./fakeOpened";
 import { LaneMenu } from "./LaneMenu";
@@ -17,7 +17,8 @@ const CATALOGS = [
 
 const READY: LaneStatusWire = {
   status: "Ready",
-  clock: "frame",
+  bases: ["Frame"],
+  default_basis: "Frame",
   filter: [
     { id: "pedestrian", label: "Pedestrian", default_enabled: true },
     { id: "static", label: "Static person", default_enabled: false },
@@ -259,39 +260,43 @@ describe("lane menu", () => {
       expect(onChange).toHaveBeenLastCalledWith({ sticky: { ...sticky, timeout_ms: 100_000 } });
     });
 
-    it("offers sync only for a lane keyed by time", () => {
+    it("offers a basis only when the file offers two, and sync only under time", () => {
       setup();
       tab("Timing");
+      expect(screen.queryByRole("combobox", { name: "Match by" })).toBeNull();
       expect(screen.queryByRole("combobox", { name: "Sync" })).toBeNull();
       cleanup();
-      const { onChange } = setup({}, { ...READY, clock: "timestamp" });
+      const both = {
+        ...READY,
+        bases: ["Frame", "Time"] as BasisWire[],
+        default_basis: "Frame" as const,
+      };
+      const { onChange } = setup({}, both);
+      tab("Timing");
+      expect(screen.queryByRole("combobox", { name: "Sync" })).toBeNull();
+      fireEvent.change(screen.getByRole("combobox", { name: "Match by" }), {
+        target: { value: "Time" },
+      });
+      expect(onChange).toHaveBeenLastCalledWith({ basis: "Time" });
+      cleanup();
+      const timed = setup(
+        { settings: { ...LANE_SETTINGS, basis: "Time", tolerance_ms: 50 } },
+        both,
+      );
       tab("Timing");
       fireEvent.change(screen.getByRole("combobox", { name: "Sync" }), {
         target: { value: "exact" },
       });
-      expect(onChange).toHaveBeenLastCalledWith({ tolerance_ms: null });
-      cleanup();
-      const exact = setup(
-        { settings: { ...LANE_SETTINGS, tolerance_ms: null } },
-        { ...READY, clock: "timestamp" },
-      );
-      tab("Timing");
-      fireEvent.change(screen.getByRole("combobox", { name: "Sync" }), {
-        target: { value: "previous" },
-      });
-      expect(exact.onChange).toHaveBeenLastCalledWith({ tolerance_ms: 50 });
-    });
-
-    it("sets how far back a previous sample may be", () => {
-      const { onChange } = setup(
-        { settings: { ...LANE_SETTINGS, tolerance_ms: 50 } },
-        { ...READY, clock: "timestamp" },
-      );
-      tab("Timing");
+      expect(timed.onChange).toHaveBeenLastCalledWith({ tolerance_ms: null });
       const within = screen.getByRole("spinbutton", { name: "Within (ms)" });
       fireEvent.change(within, { target: { value: "120" } });
       fireEvent.blur(within);
-      expect(onChange).toHaveBeenLastCalledWith({ tolerance_ms: 120 });
+      expect(timed.onChange).toHaveBeenLastCalledWith({ tolerance_ms: 120 });
+      cleanup();
+      setup({ settings: { ...LANE_SETTINGS, basis: "Time" } });
+      tab("Timing");
+      expect(screen.queryByRole("combobox", { name: "Match by" })).toBeNull();
+      expect(screen.queryByRole("combobox", { name: "Sync" })).toBeNull();
     });
   });
 

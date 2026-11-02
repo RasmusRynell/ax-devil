@@ -6,6 +6,7 @@ import type {
   ClientMessage,
   LaneDefaultsWire,
   LaneInfo,
+  LanePolicyWire,
   LaneStatusWire,
 } from "./protocol";
 
@@ -14,12 +15,16 @@ export type { LaneSettings, LaneState } from "./contract";
 /** The Ready status of a lane. */
 export type ReadyStatus = Extract<LaneStatusWire, { status: "Ready" }>;
 
-/** What the backend needs of a lane: if any of it differs, the lane's Frame Maps are selected again. */
-const sameSent = (a: LaneSettings, b: LaneSettings): boolean =>
+/** How a lane matches samples to frames, which the workspace keeps with the lane. */
+export const samePolicy = (a: LaneSettings, b: LaneSettings): boolean =>
+  a.basis === b.basis &&
   a.tolerance_ms === b.tolerance_ms &&
   a.sticky.enabled === b.sticky.enabled &&
-  a.sticky.timeout_ms === b.sticky.timeout_ms &&
-  a.visible === b.visible;
+  a.sticky.timeout_ms === b.sticky.timeout_ms;
+
+/** What the backend needs of a lane: if any of it differs, the lane's Frame Maps are selected again. */
+const sameSent = (a: LaneSettings, b: LaneSettings): boolean =>
+  samePolicy(a, b) && a.visible === b.visible;
 
 /** What changes the marks the lane draws from a sample, not which sample it is. */
 function sameStyle(a: LaneSettings, b: LaneSettings): boolean {
@@ -44,12 +49,21 @@ export function startWith(
     : defaults;
 }
 
+/** `settings` with the matching the workspace keeps for the lane, which wins over what the viewer carried. */
+const withPolicy = (settings: LaneSettings, policy: LanePolicyWire): LaneSettings => ({
+  ...settings,
+  basis: policy.basis,
+  tolerance_ms: policy.tolerance_ms,
+  sticky: { ...policy.sticky, opacity: settings.sticky.opacity },
+});
+
 const settingsOf = ({ catalog, policy }: LaneDefaultsWire): LaneSettings => ({
   catalog,
   theme: null,
   hidden: 0,
   filter: {},
   expression: "",
+  basis: policy.basis,
   tolerance_ms: policy.tolerance_ms,
   sticky: { ...policy.sticky, opacity: 1 },
   visible: true,
@@ -58,8 +72,14 @@ const settingsOf = ({ catalog, policy }: LaneDefaultsWire): LaneSettings => ({
 /** The state of every lane of the opened entry, and the messages that change it. */
 export class LaneSet {
   #states: readonly LaneState[] = [];
+  readonly #onPolicy: (lane: number, policy: LanePolicyWire) => void;
   /** Counts the changes to what a lane's marks look like; the presenter caches by it. */
   #styles: number[] = [];
+
+  /** `onPolicy` hears the matching of a lane whenever the user changes it, for the workspace to keep. */
+  constructor(onPolicy: (lane: number, policy: LanePolicyWire) => void = () => {}) {
+    this.#onPolicy = onPolicy;
+  }
 
   get states(): readonly LaneState[] {
     return this.#states;
@@ -78,7 +98,8 @@ export class LaneSet {
 
   /**
    * Starts the lanes `Opened` describes. A reconnection to the same lanes keeps what the user set; new lanes start
-   * from `seeds` by position (the lanes of the entry before), else from `defaults`. Every lane with a source gets a
+   * from `seeds` by position (the lanes of the entry before), else from `defaults`. The matching the workspace keeps for
+   * a lane (`LaneInfo.policy`) wins over all of these. Every lane with a source gets a
    * new policy revision and its `LanePolicy`, which is also what subscribes it: backend lanes start unsubscribed.
    */
   open(
@@ -94,7 +115,8 @@ export class LaneSet {
     this.#styles = lanes.map((_, i) => (same ? (this.#styles[i] ?? 0) : 0));
     this.#states = lanes.map((lane, index) => {
       const kept = same ? before[index] : undefined;
-      const settings = kept?.settings ?? seeds[index] ?? settingsOf(defaults);
+      const carried = kept?.settings ?? seeds[index] ?? settingsOf(defaults);
+      const settings = lane.policy ? withPolicy(carried, lane.policy) : carried;
       let policyRevision = kept?.policyRevision ?? 0;
       if (lane.source !== null) {
         policyRevision++;
@@ -174,6 +196,7 @@ export class LaneSet {
       policyRevision,
       problem: sent ? undefined : state.problem,
     }));
+    if (!samePolicy(settings, state.settings)) this.#onPolicy(lane, this.#wirePolicy(settings));
     return sent ? this.#policy(lane, policyRevision, settings) : undefined;
   }
 
@@ -188,14 +211,21 @@ export class LaneSet {
     });
   }
 
+  #wirePolicy({ basis, tolerance_ms, sticky }: LaneSettings): LanePolicyWire {
+    return {
+      basis,
+      tolerance_ms,
+      sticky: { enabled: sticky.enabled, timeout_ms: sticky.timeout_ms },
+    };
+  }
+
   #policy(lane: number, revision: number, settings: LaneSettings): ClientMessage {
-    const { tolerance_ms, sticky, visible } = settings;
     return {
       type: "LanePolicy",
       lane,
       revision,
-      policy: { tolerance_ms, sticky: { enabled: sticky.enabled, timeout_ms: sticky.timeout_ms } },
-      subscribed: visible,
+      policy: this.#wirePolicy(settings),
+      subscribed: settings.visible,
     };
   }
 

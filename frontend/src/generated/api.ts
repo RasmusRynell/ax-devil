@@ -287,7 +287,19 @@ target: HiddenTarget,
 /**
  * Whether it is hidden afterwards.
  */
-hidden: boolean, };
+hidden: boolean, } | { "type": "setLaneMatching", 
+/**
+ * The item.
+ */
+item: string, 
+/**
+ * The lane's position in the entry.
+ */
+lane: number, 
+/**
+ * How the lane matches.
+ */
+policy: LanePolicyWire, };
 
 /**
  * The owner's control of sharing.
@@ -1115,7 +1127,12 @@ data_behind: number, };
  */
 export type LanePolicyWire = { 
 /**
- * How far back a time-keyed sample may be, in milliseconds; `null` is exact.
+ * What records are matched to frames by; `null` is the decoder's default. A basis the file does not offer is
+ * reported as a problem and the decoder's default is used.
+ */
+basis: BasisWire | null, 
+/**
+ * How far back a sample may be under the time basis, in milliseconds; `null` is exact.
  */
 tolerance_ms: number | null, 
 /**
@@ -1160,12 +1177,17 @@ label: string,
 /**
  * The viewer's id of the source the lane draws; `null` for a plain lane. Lanes on the same file share one.
  */
-source: number | null, };
+source: number | null, 
+/**
+ * How the workspace says the lane matches its records to frames; absent is the defaults. The viewer starts the
+ * lane from it.
+ */
+policy?: LanePolicyWire, };
 
 /**
- * The clock a lane's samples are on.
+ * What a lane matches a file's records to video frames by.
  */
-export type ClockWire = "frame" | "timestamp";
+export type BasisWire = "Frame" | "Time";
 
 /**
  * One class filter a lane offers.
@@ -1210,9 +1232,13 @@ more_reasons: boolean, };
  */
 export type LaneStatusWire = { "status": "Loading" } | { "status": "Ready", 
 /**
- * The clock the file's samples are on.
+ * The bases the file's records can be matched by.
  */
-clock: ClockWire, 
+bases: Array<BasisWire>, 
+/**
+ * The basis the decoder recommends, one of `bases`.
+ */
+default_basis: BasisWire, 
 /**
  * The class filters the file's content calls for.
  */

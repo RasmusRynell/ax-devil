@@ -96,7 +96,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         StickyWire,
         LaneDefaultsWire,
         LaneInfo,
-        ClockWire,
+        BasisWire,
         FilterOptionInfo,
         WarningInfo,
         LaneStatusWire,

@@ -4,6 +4,7 @@ mod shape;
 
 use foundation::MediaTime;
 use foundation::{CancelToken, Interrupt};
+use overlay_sync::MatchBasis;
 use quick_xml::{
     Reader,
     events::{BytesStart, Event},
@@ -28,6 +29,8 @@ static SPEC: DecoderSpec = DecoderSpec {
     storage: Storage::SourceIndexed {
         independent_records: true,
     },
+    bases: &[MatchBasis::Frame, MatchBasis::Time],
+    default_basis: MatchBasis::Frame,
 };
 
 /// Filter id, label and the class it shows; `show_other` is added after them.

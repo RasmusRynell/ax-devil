@@ -8,6 +8,7 @@ use super::{
     views::View,
 };
 use crate::{CursorOptions, Cursors, EndReason, Secret, SessionId};
+use overlay_sync::MatchPolicy;
 use playback::Authority;
 use std::sync::{
     Arc,
@@ -278,6 +279,7 @@ pub struct StreamLease {
     authority: watch::Receiver<Authority>,
     content: Content,
     entry: ContentEntry,
+    matching: Vec<Option<MatchPolicy>>,
     host_details: bool,
     release: Option<Box<dyn FnOnce() + Send + Sync>>,
 }
@@ -288,6 +290,7 @@ impl StreamLease {
         authority: watch::Receiver<Authority>,
         content: Content,
         entry: ContentEntry,
+        matching: Vec<Option<MatchPolicy>>,
         host_details: bool,
         release: impl FnOnce() + Send + Sync + 'static,
     ) -> Self {
@@ -296,6 +299,7 @@ impl StreamLease {
             authority,
             content,
             entry,
+            matching,
             host_details,
             release: Some(Box::new(release)),
         }
@@ -314,6 +318,12 @@ impl StreamLease {
     /// The entry of [`content`](Self::content) the stream plays, as it was resolved when the ticket was redeemed.
     pub fn entry(&self) -> &ContentEntry {
         &self.entry
+    }
+
+    /// How the workspace says each lane of the entry matches its records to frames, as it was when the ticket was
+    /// redeemed; `None` is the default.
+    pub fn matching(&self) -> &[Option<MatchPolicy>] {
+        &self.matching
     }
 
     /// Whether the holder may learn the host's paths and diagnostic text, or only public error codes.

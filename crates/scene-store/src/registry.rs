@@ -8,7 +8,7 @@ use std::{
     time::Duration,
 };
 
-use foundation::{CancelToken, ErrorCode, FrameSize, HostPath, Interrupt, UserError};
+use foundation::{CancelToken, ErrorCode, HostPath, Interrupt, UserError};
 use handlers::Handlers;
 use playlist_resolvers::OverlayRef;
 use scene_decoders::{DecodeOptions, FileSceneDecoder};
@@ -37,8 +37,6 @@ pub struct TrackKey {
     pub handler: String,
     /// The decoder options as canonical JSON: object keys sorted at every depth.
     pub options: String,
-    /// The decoded size of the video's frames.
-    pub frame_size: FrameSize,
 }
 
 impl TrackKey {
@@ -49,7 +47,6 @@ impl TrackKey {
             self.path.as_os_str().as_encoded_bytes(),
             self.handler.as_bytes(),
             self.options.as_bytes(),
-            format!("{}x{}", self.frame_size.width, self.frame_size.height).as_bytes(),
         ] {
             hash.update(part);
             hash.update([0]);
@@ -165,7 +162,6 @@ impl TrackRegistry {
     pub fn open(
         &self,
         overlay: &OverlayRef,
-        frame_size: FrameSize,
         cancel: &CancelToken,
     ) -> Result<Arc<Track>, Interrupt<UserError>> {
         cancel.check()?;
@@ -185,16 +181,17 @@ impl TrackRegistry {
                 .at(HostPath::new(&path)),
             )
         })?;
-        let options = decoder.declared_options(&overlay.options).map_err(|e| {
-            Interrupt::Failed(
-                UserError::new(ErrorCode::OverlayInvalid, e.0).at(HostPath::new(&path)),
-            )
-        })?;
+        let options = decoder
+            .declared_options(&path, &overlay.options)
+            .map_err(|e| {
+                Interrupt::Failed(
+                    UserError::new(ErrorCode::OverlayInvalid, e.0).at(HostPath::new(&path)),
+                )
+            })?;
         let key = TrackKey {
             path,
             handler: overlay.handler.clone(),
             options: canonical_json(&options),
-            frame_size,
         };
         loop {
             let pending = match self.claim(&key) {

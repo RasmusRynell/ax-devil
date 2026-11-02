@@ -137,6 +137,7 @@ fn subscribe(lane: u16, revision: u32, sticky: bool) -> ClientMessage {
         lane,
         revision,
         policy: LanePolicyWire {
+            basis: None,
             tolerance_ms: None,
             sticky: StickyWire {
                 enabled: sticky,

@@ -1,15 +1,21 @@
 use foundation::{FrameId, MediaTime, Timeline};
 use scene::Coverage;
 
-use crate::{KeyChunks, MatchKind, MatchPolicy, SampleKeys, Selection, Sticky, Tolerance};
+use crate::{
+    FrameKey, KeyChunks, MatchBasis, MatchKind, MatchPolicy, SampleKeys, Selection, Sticky,
+    Tolerance,
+};
 
-/// Selects the sample of an overlay file that belongs to `frame`.
+/// Selects the sample of an overlay file that belongs to `frame`, by the policy's [`MatchBasis`].
+///
+/// Under [`MatchBasis::Frame`] the file is matched by `keys.frames`, under [`MatchBasis::Time`] by `keys.times`; a
+/// file without keys for the chosen basis selects [`Selection::None`].
 ///
 /// A sample is never selected for a frame before its own key, whatever the tolerance: metadata does not appear
 /// before the video reaches it. Nothing is interpolated or matched to the nearest neighbour. The function reads
 /// only its arguments, allocates nothing and costs one binary search, so it is fit for the playback hot path.
 ///
-/// # Time-keyed files ([`SampleKeys::Times`])
+/// # By time ([`MatchBasis::Time`])
 ///
 /// 1. A sample at exactly `frame.timestamp` is [`MatchKind::Exact`].
 /// 2. Otherwise the latest earlier sample is [`MatchKind::Tolerated`] when the policy is
@@ -18,9 +24,9 @@ use crate::{KeyChunks, MatchKind, MatchPolicy, SampleKeys, Selection, Sticky, To
 /// 4. Otherwise [`Selection::None`], also when the frame is before the first sample.
 ///
 /// A tolerated sample is drawn fully opaque and is not limited by the sticky timeout. `coverage` is ignored: a
-/// time-keyed file says nothing about frames it has no sample for.
+/// file matched by time says nothing about frames it has no sample for.
 ///
-/// # Frame-keyed files ([`SampleKeys::Frames`])
+/// # By frame ([`MatchBasis::Frame`])
 ///
 /// 1. The key equal to `frame.sequence_id` is [`MatchKind::Exact`]. The tolerance does not apply; frame numbers are
 ///    not times.
@@ -34,7 +40,7 @@ use crate::{KeyChunks, MatchKind, MatchPolicy, SampleKeys, Selection, Sticky, To
 /// With [`Sticky::enabled`], the latest sample before the frame stays on screen while its age is within
 /// [`Sticky::timeout`] (inclusive; no limit for `None`), kept as [`MatchKind::Retained`]. The age is
 /// `frame.timestamp` minus the sample's time: the key itself for a time-keyed file, and the time the video's
-/// `timeline` gives the key's frame for a frame-keyed one, never a frame number read as a time. A key the timeline
+/// `timeline` gives the key's frame for a match by frame, never a frame number read as a time. A key the timeline
 /// does not reach is rejected. The age is measured from the sample, so the result does not depend on which frames
 /// were selected before. Tolerance does not limit sticky.
 pub fn select(
@@ -44,14 +50,21 @@ pub fn select(
     timeline: &Timeline,
     policy: &MatchPolicy,
 ) -> Selection {
-    match keys {
-        SampleKeys::Frames(keys) => by_frame(keys, coverage, frame, timeline, policy.sticky),
-        SampleKeys::Times(keys) => by_time(keys, frame.timestamp, policy),
-    }
+    let selected = match policy.basis.unwrap_or_default() {
+        MatchBasis::Frame => keys
+            .frames
+            .as_ref()
+            .map(|keys| by_frame(keys, coverage, frame, timeline, policy.sticky)),
+        MatchBasis::Time => keys
+            .times
+            .as_ref()
+            .map(|keys| by_time(keys, frame.timestamp, policy)),
+    };
+    selected.unwrap_or(Selection::None)
 }
 
 fn by_frame(
-    keys: &KeyChunks<u64>,
+    keys: &KeyChunks<FrameKey>,
     coverage: Coverage,
     frame: FrameId,
     timeline: &Timeline,
@@ -59,12 +72,17 @@ fn by_frame(
 ) -> Selection {
     // The latest key at or before the frame, if any.
     let latest = keys
-        .partition_point(|&key| key <= frame.sequence_id)
+        .partition_point(|key| key.frame <= frame.sequence_id)
         .checked_sub(1)
-        .and_then(|index| Some((index, keys.get(index)?)));
-    let Some((index, key)) = latest else {
+        .and_then(|rank| keys.get(rank));
+    let Some(FrameKey {
+        frame: key,
+        sample: index,
+    }) = latest
+    else {
         return missing(coverage);
     };
+    let index = index as usize;
     if key == frame.sequence_id {
         return sample(index, MatchKind::Exact);
     }

@@ -49,8 +49,8 @@ export {
 } from "../generated/api";
 export type {
   CatalogInfoWire,
+  BasisWire,
   ClientMessage,
-  ClockWire,
   Direction,
   FieldGroupWire,
   FieldOriginWire,

@@ -21,7 +21,7 @@ reason, and `plugins list` says why one did not load.
 ## Trust
 
 A converter is code you install. It runs as you, can read your files and reach the network, and ax-devil does not
-sandbox it. ax-devil gives it only the overlay path, the frame size, the options its manifest declares, a short
+sandbox it. ax-devil gives it only the overlay path, the options its manifest declares, a short
 allowlist of environment variables (none of ax-devil's credentials) and an empty private working folder, and kills it
 and, except on Windows, everything it started when the lane no longer needs it. A workspace from someone else can
 make ax-devil run an installed converter on a file it names, as it does with a built-in decoder. Install only

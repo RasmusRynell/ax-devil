@@ -8,12 +8,12 @@ use std::{
 };
 
 use foundation::{CancelToken, MediaTime, Timeline};
-use overlay_sync::{MatchPolicy, Sticky, Tolerance};
+use overlay_sync::{MatchBasis, MatchPolicy, Sticky, Tolerance};
 use playback::{Direction, Priority, Want, rank};
 use playlist_resolvers::OverlayRef;
 use scene_store::Track;
 
-use super::{Env, SIZE, timeline, want};
+use super::{Env, timeline, want};
 use crate::{OverlayEvent, state::State, window::FIRST_NON_SAMPLE};
 
 /// What a viewer would hold after the events it was sent, applied in order.
@@ -166,7 +166,7 @@ impl Rig {
         let track = env
             .tracks
             .registry
-            .open(&overlay, SIZE, &CancelToken::new())
+            .open(&overlay, &CancelToken::new())
             .expect("opens");
         let mut state = State::new(
             vec![Some(overlay); lanes],
@@ -368,9 +368,10 @@ impl Rig {
     }
 }
 
-/// A sample belongs to its own frame only.
+/// A sample belongs to the frame at its own time only.
 pub(super) fn exact() -> MatchPolicy {
     MatchPolicy {
+        basis: Some(MatchBasis::Time),
         tolerance: Tolerance::Exact,
         sticky: Sticky {
             enabled: false,

@@ -4,8 +4,9 @@ use crate::content::{
 };
 use foundation::{CancelToken, ErrorCode, HostPath, Interrupt, ItemId, UserError};
 use handlers::Handlers;
+use overlay_sync::MatchPolicy;
 use playlist_resolvers::Settings;
-use std::{fs, io, path::Path};
+use std::{collections::BTreeMap, fs, io, path::Path};
 
 /// A video file to open, with the overlay files drawn on it.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -25,6 +26,9 @@ pub struct OverlayRecipe {
     pub handler: String,
     /// The lane's name, unique within the video.
     pub label: String,
+    /// How the lane matches the file's records to frames; `None` is the decoder's default basis and the app's
+    /// defaults.
+    pub matching: Option<MatchPolicy>,
 }
 
 /// A playlist resolver and the settings it resolves.
@@ -34,6 +38,9 @@ pub struct PlaylistRecipe {
     pub resolver: String,
     /// The settings the resolver's schema declares.
     pub settings: Settings,
+    /// How each lane matches its file's records to frames, by the lane's position in every entry: a lane's name
+    /// is not shared by a playlist's entries (Folder Pair names it after the entry), its position is.
+    pub lane_matching: BTreeMap<u16, MatchPolicy>,
 }
 
 /// What an item was made from, and how to rebuild its Content.
@@ -57,6 +64,22 @@ pub struct WorkspaceItem {
 }
 
 impl Recipe {
+    /// How the item's `lanes` lanes were last set to match their records to frames, by lane position: a video's
+    /// overlay carries its own, a playlist's lanes share their positions across entries. `None` is the default.
+    pub fn lane_matching(&self, lanes: usize) -> Vec<Option<MatchPolicy>> {
+        (0..lanes)
+            .map(|lane| match self {
+                Recipe::Video(video) => video
+                    .overlays
+                    .get(lane)
+                    .and_then(|overlay| overlay.matching),
+                Recipe::Playlist(playlist) => u16::try_from(lane)
+                    .ok()
+                    .and_then(|lane| playlist.lane_matching.get(&lane).copied()),
+            })
+            .collect()
+    }
+
     /// Builds the Content of the item `item`. Reads the file system, so callers keep it off the UI's executor.
     ///
     /// A video recipe checks that its path is a readable regular file, and each overlay that its decoder is known and

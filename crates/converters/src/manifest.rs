@@ -9,6 +9,7 @@ use std::{
 };
 
 use scene::{SCENE_VERSION, SceneVersion};
+use scene_decoders::MatchBasis;
 use serde_json::{Map, Value};
 use sha2::{Digest, Sha256};
 
@@ -111,6 +112,10 @@ pub struct Manifest {
     pub idle_timeout: Duration,
     /// The options the converter takes.
     pub options: Vec<OptionField>,
+    /// What a lane may match the converter's records to video frames by.
+    pub bases: Vec<MatchBasis>,
+    /// The basis a lane starts with, one of `bases`.
+    pub default_basis: MatchBasis,
     /// The manifest file.
     pub path: PathBuf,
     /// SHA-256 of the manifest text this was read from, so the code identity names the manifest that runs even if the
@@ -232,6 +237,7 @@ impl Manifest {
             }
         });
         let options = read.options()?;
+        let (bases, default_basis) = read.bases()?;
         if let Some(unknown) = fields.keys().next() {
             return Err(ManifestError::new(
                 "manifest",
@@ -249,6 +255,8 @@ impl Manifest {
             code,
             idle_timeout,
             options,
+            bases,
+            default_basis,
             path: path.to_path_buf(),
             digest,
         };
@@ -404,6 +412,40 @@ impl Fields<'_> {
             return Err(ManifestError::new(key, "must not be empty"));
         }
         Ok(Some(texts))
+    }
+
+    /// The bases and the default one: `["frame"]` and the first listed when absent.
+    fn bases(&mut self) -> Result<(Vec<MatchBasis>, MatchBasis), ManifestError> {
+        let basis = |key: &'static str, text: &str| match text {
+            "frame" => Ok(MatchBasis::Frame),
+            "time" => Ok(MatchBasis::Time),
+            other => Err(ManifestError::new(
+                key,
+                format!("'{other}' is not frame or time"),
+            )),
+        };
+        let bases = match self.strings("bases", false)? {
+            None => vec![MatchBasis::Frame],
+            Some(texts) => texts
+                .iter()
+                .map(|text| basis("bases", text))
+                .collect::<Result<Vec<_>, _>>()?,
+        };
+        if bases.is_empty() || (1..bases.len()).any(|i| bases[..i].contains(&bases[i])) {
+            return Err(ManifestError::new(
+                "bases",
+                "must list frame, time or both, once each",
+            ));
+        }
+        let default = match self.0.remove("default_basis") {
+            None => bases[0],
+            Some(Value::String(text)) => basis("default_basis", &text)?,
+            Some(_) => return Err(ManifestError::new("default_basis", "must be text")),
+        };
+        if !bases.contains(&default) {
+            return Err(ManifestError::new("default_basis", "must be one of bases"));
+        }
+        Ok((bases, default))
     }
 
     fn options(&mut self) -> Result<Vec<OptionField>, ManifestError> {

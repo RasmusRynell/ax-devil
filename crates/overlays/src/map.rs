@@ -36,7 +36,7 @@ pub(crate) fn cell_in(
     let Some(id) = timeline.frame(frame) else {
         return Some((NONE_CELL, 0));
     };
-    if !snapshot.decides(id) {
+    if !snapshot.decides(id, policy.basis.unwrap_or_default()) {
         return None;
     }
     Some(

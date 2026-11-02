@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
-import type { ContentInfo, ContentRef, EntryInfo } from "../generated/api";
+import type { ContentInfo, ContentRef, EntryInfo, LanePolicyWire } from "../generated/api";
 import { ExportDialog } from "../export/ExportDialog";
 import { Icon } from "../kit/Icon";
 import { useSettings } from "../settings";
@@ -238,6 +238,8 @@ export type VideoViewerProps = {
   hidden?: Hidden;
   /** Hides one of the entry's lanes by its label; absent when this seat may not change the workspace. */
   onHideLane?: (label: string) => void;
+  /** Keeps the matching of one of the entry's lanes, by position, in the workspace; absent when this seat may not. */
+  onLaneMatching?: (lane: number, policy: LanePolicyWire) => void;
   /**
    * Where the entries this viewer was shown for were left, so that coming back to one reopens it there. A viewer
    * shown for one entry needs none.
@@ -259,6 +261,7 @@ export function VideoViewer({
   entry,
   hidden = NOTHING_HIDDEN,
   onHideLane,
+  onLaneMatching,
   memory,
   connect = connectWorker,
 }: VideoViewerProps) {
@@ -281,8 +284,8 @@ export function VideoViewer({
   // The lane settings of the entry that closed, which the next entry's lanes start from.
   const priorLanes = useRef<readonly LaneSettings[]>([]);
   // The effect that creates the session reads these as they are then, and must not restart when they change.
-  const latest = useRef({ intent, canChange, following, clock });
-  latest.current = { intent, canChange, following, clock };
+  const latest = useRef({ intent, canChange, following, clock, onLaneMatching });
+  latest.current = { intent, canChange, following, clock, onLaneMatching };
   const defaultCatalog = useRef(values["overlays.default_catalog"]);
   defaultCatalog.current = values["overlays.default_catalog"];
   // Where each entry was left, for the session that replaces the one that closed. The published intent still names the
@@ -320,6 +323,7 @@ export function VideoViewer({
       lanes: priorLanes.current,
       defaultCatalog: () => String(defaultCatalog.current) || null,
       onIntent: publish,
+      onPolicy: (lane, policy) => latest.current.onLaneMatching?.(lane, policy),
       now: () => performance.now(),
       frame: (callback) => {
         const handle = requestAnimationFrame(callback);

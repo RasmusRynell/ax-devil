@@ -1,7 +1,7 @@
 //! Overlay data on disk and in memory: decode an overlay file once, keep every Scene in a private artifact, and hand
 //! out Scenes by sample index from a bounded cache.
 //!
-//! [`TrackRegistry::open`] gives the [`Track`] of one overlay file for one video frame size and shares it while
+//! [`TrackRegistry::open`] gives the [`Track`] of one overlay file and shares it while
 //! anyone holds it. A track can be read while its file is still being decoded; [`Track::snapshot`] says how much is
 //! final. The artifact format, the ingest rules and the memory bound are in the crate README.
 

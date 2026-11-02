@@ -16,7 +16,7 @@ use crate::io::read_exact_at;
 /// How many bytes of entries the sorter holds before it writes a sorted run to disk.
 pub(crate) const SORT_BUDGET_BYTES: usize = 64 << 20;
 
-const ENTRY_BYTES: usize = 16;
+const ENTRY_BYTES: usize = 24;
 /// How many entries a run reader holds.
 const READ_ENTRIES: usize = 4096;
 
@@ -29,6 +29,8 @@ pub(crate) struct Entry {
     pub record: u32,
     /// Whether the fragment replaces what its key held before it.
     pub replace: bool,
+    /// The position in the file of the record the fragment came from.
+    pub ordinal: u64,
 }
 
 impl Entry {
@@ -36,7 +38,8 @@ impl Entry {
         let mut bytes = [0; ENTRY_BYTES];
         bytes[..8].copy_from_slice(&self.key.to_le_bytes());
         bytes[8..12].copy_from_slice(&self.record.to_le_bytes());
-        bytes[12..].copy_from_slice(&u32::from(self.replace).to_le_bytes());
+        bytes[12..16].copy_from_slice(&u32::from(self.replace).to_le_bytes());
+        bytes[16..].copy_from_slice(&self.ordinal.to_le_bytes());
         bytes
     }
 
@@ -46,12 +49,16 @@ impl Entry {
             four.copy_from_slice(&bytes[at..at + 4]);
             u32::from_le_bytes(four)
         };
-        let mut key = [0; 8];
-        key.copy_from_slice(&bytes[..8]);
+        let long = |at: usize| {
+            let mut eight = [0; 8];
+            eight.copy_from_slice(&bytes[at..at + 8]);
+            u64::from_le_bytes(eight)
+        };
         Self {
-            key: u64::from_le_bytes(key),
+            key: long(0),
             record: word(8),
             replace: word(12) != 0,
+            ordinal: long(16),
         }
     }
 }

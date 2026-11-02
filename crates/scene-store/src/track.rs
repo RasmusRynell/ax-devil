@@ -9,12 +9,12 @@ use std::{
     },
 };
 
-use foundation::{CancelToken, ErrorCode, FrameId, HostPath, UserError};
-use overlay_sync::SampleKeys;
+use foundation::{CancelToken, ErrorCode, FrameId, HostPath, MediaTime, UserError};
+use overlay_sync::{MatchBasis, SampleKeys};
 use scene::{
     Coverage, Fields, FilterPolicy, Scene, SceneTime, TimeKind, serial::columns::encode_sample_item,
 };
-use scene_decoders::{Header, LoadWarning};
+use scene_decoders::{DecoderSpec, Header, LoadWarning};
 
 use crate::{
     format::{HEADER_LEN, read_record},
@@ -41,10 +41,33 @@ pub enum Ingest {
 /// Which frames the published samples decide.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Decided {
-    /// Every sample with a key below this time is published and final; later samples may still come.
-    Below(SceneTime),
+    /// Every sample keyed below these is published and final; later samples may still come. A key is `None` when the
+    /// file cannot be matched on that basis, so no sample will ever belong to a frame by it.
+    Below {
+        /// The frame number the open sample will have: its record's position in the file.
+        frame: Option<u64>,
+        /// The open sample's timestamp.
+        time: Option<MediaTime>,
+    },
     /// The ingest has ended: every frame is decided.
     All,
+}
+
+impl Decided {
+    /// What an ingest decides while the sample keyed `open`, from the record at `ordinal` in the file, is not yet
+    /// published. `ordinal` is `None` when the file is matched by timestamps only.
+    pub(crate) fn below(open: SceneTime, ordinal: Option<u64>) -> Self {
+        match open {
+            SceneTime::Frame(frame) => Self::Below {
+                frame: Some(frame),
+                time: None,
+            },
+            SceneTime::Timestamp(time) => Self::Below {
+                frame: ordinal,
+                time: Some(time),
+            },
+        }
+    }
 }
 
 /// What a [`Track`] holds at one moment. Take one with [`Track::snapshot`]; it never changes.
@@ -69,19 +92,28 @@ pub struct TrackSnapshot {
 }
 
 impl TrackSnapshot {
-    /// Whether the samples published here decide what `frame` shows, so that no later sample can change it. A frame
-    /// shows only samples keyed at or before it, so it is decided once the open key is past it.
-    pub fn decides(&self, frame: FrameId) -> bool {
-        match self.decided {
-            Decided::All => true,
-            Decided::Below(SceneTime::Frame(open)) => frame.sequence_id < open,
-            Decided::Below(SceneTime::Timestamp(open)) => frame.timestamp < open,
+    /// Whether the samples published here decide what `frame` shows when matched by `basis`, so that no later sample
+    /// can change it. A frame shows only samples keyed at or before it on that basis, so it is decided once the open
+    /// key is past it.
+    pub fn decides(&self, frame: FrameId, basis: MatchBasis) -> bool {
+        match (self.decided, basis) {
+            (Decided::All, _) => true,
+            (Decided::Below { frame: open, .. }, MatchBasis::Frame) => {
+                open.is_none_or(|open| frame.sequence_id < open)
+            }
+            (Decided::Below { time: open, .. }, MatchBasis::Time) => {
+                open.is_none_or(|open| frame.timestamp < open)
+            }
         }
     }
 
-    /// The clock the keys are on.
+    /// The clock the file's own keys are on.
     pub fn clock(&self) -> TimeKind {
-        self.keys.kind()
+        if self.keys.times.is_some() {
+            TimeKind::Timestamp
+        } else {
+            TimeKind::Frame
+        }
     }
 }
 
@@ -249,6 +281,8 @@ pub struct Track {
     source: PathBuf,
     growth: Arc<Growth>,
     meta: Meta,
+    /// The decoder that reads the file.
+    spec: &'static DecoderSpec,
     /// Cancels the ingest thread when the track goes away.
     ingest: CancelToken,
     /// Set when a record failed its check; the registry then stops sharing this track.
@@ -260,15 +294,27 @@ impl Track {
         source: PathBuf,
         growth: Arc<Growth>,
         meta: Meta,
+        spec: &'static DecoderSpec,
         ingest: CancelToken,
     ) -> Self {
         Self {
             source,
             growth,
             meta,
+            spec,
             ingest,
             damaged: AtomicBool::new(false),
         }
+    }
+
+    /// The bases a lane may match the file's samples by.
+    pub fn bases(&self) -> &'static [MatchBasis] {
+        self.spec.bases
+    }
+
+    /// The basis a lane starts with: the decoder's recommendation.
+    pub fn default_basis(&self) -> MatchBasis {
+        self.spec.default_basis
     }
 
     /// What is published now: the keys, which frames they decide and how far the ingest has got.

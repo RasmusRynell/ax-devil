@@ -6,7 +6,7 @@ use super::{End, Flow, Outgoing, stream::Setup, text};
 use api_types::{
     Audience,
     playback::{
-        ClockWire, FilterOptionInfo, IngestWire, LaneDefaultsWire, LaneInfo, LanePolicyWire,
+        BasisWire, FilterOptionInfo, IngestWire, LaneDefaultsWire, LaneInfo, LanePolicyWire,
         LaneStatusWire, MAX_DATA_WINDOW_FRAMES, ServerMessage, StickyWire, WarningInfo, envelope,
     },
     project,
@@ -14,10 +14,9 @@ use api_types::{
 use axum::extract::ws::Message;
 use catalogs::Library;
 use foundation::{ErrorCode, HostPath, MediaTime, Timeline, UserError};
-use overlay_sync::{MatchPolicy, Sticky, Tolerance};
+use overlay_sync::{MatchBasis, MatchPolicy, Sticky, Tolerance};
 use overlays::{LaneStatus, OverlayEvent, ViewerOverlays};
 use playback::{Rank, Want};
-use scene::TimeKind;
 use scene_store::Ingest;
 use std::collections::{BTreeMap, BTreeSet};
 use workspace::Entry;
@@ -69,7 +68,6 @@ impl Lanes {
             entry,
             data_bytes,
             audience,
-            size,
             overlays,
             ..
         } = *setup;
@@ -85,7 +83,7 @@ impl Lanes {
             .collect();
         let count = sources.len();
         Self {
-            overlays: overlays.open_viewer(sources, timeline, size, data_bytes),
+            overlays: overlays.open_viewer(sources, timeline, data_bytes),
             live: true,
             count,
             working,
@@ -240,7 +238,7 @@ impl Lanes {
     }
 
     /// The lanes the entry shows: one per overlay, or one plain lane.
-    pub(super) fn infos(&self, entry: &Entry) -> Vec<LaneInfo> {
+    pub(super) fn infos(&self, entry: &Entry, matching: &[Option<MatchPolicy>]) -> Vec<LaneInfo> {
         let labels: Vec<&String> = if entry.overlays.is_empty() {
             vec![&entry.label]
         } else {
@@ -253,9 +251,13 @@ impl Lanes {
         labels
             .into_iter()
             .zip(self.overlays.lane_sources())
-            .map(|(label, source)| LaneInfo {
+            .zip(matching.iter().map(Some).chain(std::iter::repeat(None)))
+            .map(|((label, source), matching)| LaneInfo {
                 label: label.clone(),
                 source: *source,
+                policy: matching
+                    .and_then(|matching| matching.as_ref())
+                    .map(policy_wire),
             })
             .collect()
     }
@@ -288,9 +290,17 @@ fn millis(time: MediaTime) -> u32 {
     u32::try_from(time.as_us() / 1000).unwrap_or(u32::MAX)
 }
 
+fn basis_wire(basis: MatchBasis) -> BasisWire {
+    match basis {
+        MatchBasis::Frame => BasisWire::Frame,
+        MatchBasis::Time => BasisWire::Time,
+    }
+}
+
 /// The wire form of a lane's matching.
 fn policy_wire(policy: &MatchPolicy) -> LanePolicyWire {
     LanePolicyWire {
+        basis: policy.basis.map(basis_wire),
         tolerance_ms: match policy.tolerance {
             Tolerance::Exact => None,
             Tolerance::PreviousWithin(time) => Some(millis(time)),
@@ -303,7 +313,7 @@ fn policy_wire(policy: &MatchPolicy) -> LanePolicyWire {
 }
 
 /// The matching a viewer asked for, or why it cannot be applied, in words for the user.
-fn policy_from_wire(wire: LanePolicyWire) -> Result<MatchPolicy, String> {
+pub(crate) fn policy_from_wire(wire: LanePolicyWire) -> Result<MatchPolicy, String> {
     let timeout = match wire.sticky.timeout_ms {
         Some(ms) if ms > MAX_STICKY_TIMEOUT_MS => {
             return Err(format!(
@@ -315,6 +325,10 @@ fn policy_from_wire(wire: LanePolicyWire) -> Result<MatchPolicy, String> {
         None => None,
     };
     Ok(MatchPolicy {
+        basis: wire.basis.map(|basis| match basis {
+            BasisWire::Frame => MatchBasis::Frame,
+            BasisWire::Time => MatchBasis::Time,
+        }),
         tolerance: match wire.tolerance_ms {
             None => Tolerance::Exact,
             Some(ms) => Tolerance::PreviousWithin(MediaTime::from_us(i64::from(ms) * 1000)),
@@ -332,10 +346,8 @@ fn status_wire(status: LaneStatus, audience: Audience) -> LaneStatusWire {
     match status {
         LaneStatus::Loading => LaneStatusWire::Loading,
         LaneStatus::Ready(ready) => LaneStatusWire::Ready {
-            clock: match ready.clock {
-                TimeKind::Frame => ClockWire::Frame,
-                TimeKind::Timestamp => ClockWire::Timestamp,
-            },
+            bases: ready.bases.iter().copied().map(basis_wire).collect(),
+            default_basis: basis_wire(ready.default_basis),
             filter: ready
                 .filter
                 .options
@@ -376,6 +388,7 @@ mod tests {
 
     fn wire() -> LanePolicyWire {
         LanePolicyWire {
+            basis: Some(BasisWire::Time),
             tolerance_ms: Some(40),
             sticky: StickyWire {
                 enabled: true,

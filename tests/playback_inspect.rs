@@ -15,12 +15,7 @@ use scene::inspection::FieldGroup;
 /// A video whose one lane holds object 1 on frames 0 to 2 and object 2 on frame 1, with the lane's three samples
 /// sent. Returns the viewer and the source's data revision.
 async fn viewer_holding_three_samples(backend: &Backend) -> (Viewer, u32) {
-    let gt = backend.folder.path().join("gt.txt");
-    std::fs::write(
-        &gt,
-        "1,1,10,10,20,20,1,1,1\n2,1,12,10,20,20,1,1,1\n2,2,40,10,20,20,1,1,1\n3,1,14,10,20,20,1,1,1\n",
-    )
-    .unwrap();
+    let gt = backend.mot_file("1,1,10,10,20,20,1,1,1\n2,1,12,10,20,20,1,1,1\n2,2,40,10,20,20,1,1,1\n3,1,14,10,20,20,1,1,1\n");
     let id = backend
         .add_with_overlays(&fixture("cfr_h264_gop10_bf2.mp4"), &[gt])
         .await;
@@ -33,6 +28,7 @@ async fn viewer_holding_three_samples(backend: &Backend) -> (Viewer, u32) {
             lane: 0,
             revision: 1,
             policy: LanePolicyWire {
+                basis: None,
                 tolerance_ms: None,
                 sticky: StickyWire {
                     enabled: false,

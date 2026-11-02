@@ -15,3 +15,4 @@ workspace = true
 [dependencies]
 foundation.workspace = true
 scene.workspace = true
+serde.workspace = true

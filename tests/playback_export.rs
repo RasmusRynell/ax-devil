@@ -18,6 +18,7 @@ use export::{LaneStyle, Output, Pixels, RenderJob, RenderSetup, Renderer};
 use foundation::{CancelToken, ErrorCode, Interrupt, UserError};
 use handlers::Handlers;
 use media::{FrameIndex, VideoInput};
+use overlay_sync::MatchBasis;
 use scene::{
     BoundingBox, Coverage, Entity, EntityId, FilterPolicy, Geometry, Observation, Scene, SceneTime,
     TimeSlice,
@@ -49,6 +50,8 @@ static GATE: DecoderSpec = DecoderSpec {
     extensions: &[".gate"],
     artifact_version: 1,
     storage: Storage::DerivedCache,
+    bases: &[MatchBasis::Frame],
+    default_basis: MatchBasis::Frame,
 };
 
 /// Reads a `.gate` file as two samples, then keeps reading until the test drops its sender.
@@ -175,8 +178,7 @@ async fn backend_reading(renders: &Arc<Renders>, handlers: Handlers) -> Backend 
 /// An owner's viewer on the fixture with one subscribed lane and the Standard catalog served: the lane's policy
 /// revision, its data revision and the catalog's revision.
 async fn holding_a_lane(backend: &Backend) -> (Viewer, ExportLaneWire, common::Added) {
-    let gt = backend.folder.path().join("gt.txt");
-    fs::write(&gt, "1,1,10,10,20,20,1,1,1\n2,1,12,10,20,20,1,1,1\n").unwrap();
+    let gt = backend.mot_file("1,1,10,10,20,20,1,1,1\n2,1,12,10,20,20,1,1,1\n");
     holding_a_lane_over(backend, gt).await
 }
 

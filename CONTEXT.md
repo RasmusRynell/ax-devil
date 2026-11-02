@@ -46,7 +46,7 @@ Shared language for ax-devil's inspection workspace. Code, docs and UI use these
 | Default Catalog | The Scene Render Catalog new views start from; the Built-in Catalog until the user picks another. | Active catalog, remembered selection |
 | Sample Item | The immutable encoding of one Scene sample for presentation: the latest observations as typed columns, keyed by overlay source, data revision and sample, and shared by every lane that views that source. | Overlay message, scene packet |
 | Frame Map | Per lane, the sample (or none, or empty) that belongs to each frame of a window, chosen by the backend under the Lane Policy. | Overlay lookup result |
-| Lane Policy | What the backend needs to select samples for a lane: matching tolerance, sticky and whether the lane is shown. Revisioned and sent by the client. | Lane style, lane view |
+| Lane Policy | What the backend needs to select samples for a lane: match basis, tolerance, sticky and whether the lane is shown. Revisioned and sent by the client. | Lane style, lane view |
 | Lane Style | What only the client needs to present a lane: catalog, theme, hidden features, class toggles, filter expression and sticky opacity. The backend never interprets it; an Export Job carries it frozen. | Lane policy, lane view |
 | User Catalog | A Scene Render Catalog in a `*.json` file of the user's catalog folder, identified as `user:<file name>` and reloaded as the file changes; the app never writes it except to copy. | Custom catalog, template |
 | Viewport | The zoom (1 to 10) and pan of the picture, one per Video Viewer and shared by its lanes; client view state. | Lane zoom, camera |

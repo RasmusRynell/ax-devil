@@ -2,7 +2,7 @@
 
 use std::{sync::Arc, thread};
 
-use foundation::{FrameSize, Timeline};
+use foundation::Timeline;
 use playlist_resolvers::OverlayRef;
 use scene_store::TrackRegistry;
 
@@ -41,7 +41,6 @@ impl OverlayService {
         &self,
         mut lanes: Vec<Option<OverlayRef>>,
         timeline: Timeline,
-        frame_size: FrameSize,
         sample_budget: u64,
     ) -> ViewerOverlays {
         lanes.truncate(usize::from(u16::MAX));
@@ -62,7 +61,6 @@ impl OverlayService {
             wake: tokio::sync::Notify::new(),
             cancel: foundation::CancelToken::new(),
             timeline,
-            frame_size,
         });
         let mut threads = Vec::new();
         for (index, overlay) in overlays.into_iter().enumerate() {

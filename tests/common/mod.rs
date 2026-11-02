@@ -156,6 +156,21 @@ impl Backend {
         }
     }
 
+    /// A MOT ground-truth file with `rows`, in a sequence folder with the `seqinfo.ini` its decoder reads the image
+    /// size from (`<folder>/SEQ/gt/gt.txt`).
+    pub fn mot_file(&self, rows: &str) -> PathBuf {
+        let sequence = self.folder.path().join("SEQ");
+        std::fs::create_dir_all(sequence.join("gt")).unwrap();
+        std::fs::write(
+            sequence.join("seqinfo.ini"),
+            "[Sequence]\nframeRate=30\nseqLength=100\nimWidth=1920\nimHeight=1080\n",
+        )
+        .unwrap();
+        let gt = sequence.join("gt").join("gt.txt");
+        std::fs::write(&gt, rows).unwrap();
+        gt
+    }
+
     /// Adds the video to a new session of its own, with a viewer requested, and returns it once it resolved.
     pub async fn add(&self, path: &Path) -> Added {
         self.add_with_overlays(path, &[]).await
@@ -182,7 +197,7 @@ impl Backend {
         self.add_item(item).await
     }
 
-    async fn add_item(&self, item: WorkspaceItem) -> Added {
+    pub async fn add_item(&self, item: WorkspaceItem) -> Added {
         let owner = self
             .state
             .sessions
