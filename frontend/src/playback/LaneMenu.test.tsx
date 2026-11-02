@@ -248,7 +248,7 @@ describe("lane menu", () => {
       tab("Timing");
       const group = screen.getByRole("group", { name: "Alignment" });
       expect(group.textContent).toContain("Video: variable, 40 ms, 80 ms");
-      expect(group.textContent).toContain("Overlay: 300 of 334 on a frame (90%), 173 exact");
+      expect(group.textContent).toContain("Overlay: 300 of 334 on a frame (89%), 173 exact");
       expect(screen.getByText("Ends 19.1 s before the video").className).toContain("text-caution");
     });
 

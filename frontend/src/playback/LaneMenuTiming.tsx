@@ -34,7 +34,7 @@ function Alignment({
   cadence: Cadence | null;
   alignment: AlignmentWire | null;
 }) {
-  const share = alignment && Math.round((100 * alignment.matched) / Math.max(1, alignment.samples));
+  const share = alignment && Math.floor((100 * alignment.matched) / Math.max(1, alignment.samples));
   const tone = alignmentTone(alignment);
   const toned = tone ? TONE_TEXT[tone] : "";
   return (
