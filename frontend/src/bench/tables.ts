@@ -332,7 +332,13 @@ async function resize(scenario: TableScenario): Promise<TableResult> {
   const x = divider.getBoundingClientRect().left;
   const send = (type: string, clientX: number) =>
     divider.dispatchEvent(
-      new PointerEvent(type, { bubbles: true, pointerId: 1, pointerType: "mouse", clientX }),
+      new PointerEvent(type, {
+        bubbles: true,
+        pointerId: 1,
+        pointerType: "mouse",
+        clientX,
+        buttons: type === "pointerup" ? 0 : 1,
+      }),
     );
   send("pointerdown", x);
   const widths = new Set<string | null>();
