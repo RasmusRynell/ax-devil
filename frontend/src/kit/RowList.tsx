@@ -1,6 +1,8 @@
 import type { ReactNode } from "react";
 import { Icon } from "./Icon";
 import type { IconName } from "./icons";
+import { QUIET } from "./look";
+import { SectionCaption } from "./SectionCaption";
 
 export interface Row {
   id: string;
@@ -22,7 +24,7 @@ interface Props {
 export function RowList({ heading, rows, onSelect }: Props) {
   return (
     <section className="flex flex-col gap-xs">
-      <h2 className="px-m text-small font-semibold text-muted uppercase">{heading}</h2>
+      <SectionCaption heading={heading} />
       <ul className="m-0 flex list-none flex-col p-0">
         {rows.map((row) => (
           <li key={row.id}>
@@ -31,7 +33,7 @@ export function RowList({ heading, rows, onSelect }: Props) {
               data-cursor-id={`row:${row.id}`}
               disabled={row.disabled}
               onClick={() => onSelect(row.id)}
-              className="flex min-h-row w-full items-center py-xs gap-m rounded-control bg-transparent px-m text-left text-fg hover:bg-hover focus-ring disabled:text-disabled disabled:hover:bg-transparent"
+              className={`${QUIET} w-full py-xs text-left`}
             >
               {row.icon && <Icon name={row.icon} />}
               <span className="min-w-0 flex-1">{row.label}</span>

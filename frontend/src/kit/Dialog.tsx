@@ -1,5 +1,67 @@
-import { useEffect, useId, useRef, type FormEvent, type ReactNode } from "react";
+import {
+  useEffect,
+  useId,
+  useRef,
+  type FormEvent,
+  type ReactEventHandler,
+  type ReactNode,
+} from "react";
 import { Button } from "./Button";
+
+interface FrameProps {
+  title: string;
+  /** The body, between the title and the footer. */
+  children: ReactNode;
+  /** The row of answer buttons, which stays in view while a body that can scroll does. */
+  footer: ReactNode;
+  /** The browser's Escape request, which the dialog turns into its own answer. */
+  onCancel: ReactEventHandler<HTMLDialogElement>;
+  onSubmit?: (event: FormEvent) => void;
+  /** Opens with the submit button focused, for a dialog with nothing to fill in, so Enter confirms. */
+  focusSubmit?: boolean;
+  /** The browser closed the dialog by itself. */
+  onClose?: ReactEventHandler<HTMLDialogElement>;
+}
+
+/** The modal box shared by the kit's dialogs: opened on mount, titled, with a footer under the body. */
+export function DialogFrame({
+  title,
+  children,
+  footer,
+  onCancel,
+  onSubmit,
+  focusSubmit = false,
+  onClose,
+}: FrameProps) {
+  const dialog = useRef<HTMLDialogElement>(null);
+  const titleId = useId();
+  useEffect(() => {
+    const element = dialog.current;
+    if (element && !element.open) element.showModal();
+    if (focusSubmit) element?.querySelector<HTMLElement>("[type=submit]")?.focus();
+  }, [focusSubmit]);
+  return (
+    <dialog
+      ref={dialog}
+      aria-labelledby={titleId}
+      data-cursor-region="popup"
+      onCancel={onCancel}
+      onClose={onClose}
+      className="m-auto max-h-full max-w-full overflow-auto rounded-popup border border-line-strong bg-popup p-0 text-fg backdrop:bg-scrim"
+    >
+      <form
+        onSubmit={onSubmit}
+        className="flex max-h-[calc(100vh-var(--spacing-s))] flex-col gap-l p-xl [@media(max-height:20rem)]:gap-s [@media(max-height:20rem)]:p-m"
+      >
+        <h2 id={titleId} className="m-0 text-heading font-semibold">
+          {title}
+        </h2>
+        {children}
+        {footer}
+      </form>
+    </dialog>
+  );
+}
 
 interface Props {
   title: string;
@@ -27,37 +89,20 @@ export function Dialog({
   focusOk = false,
   busy = false,
 }: Props) {
-  const dialog = useRef<HTMLDialogElement>(null);
-  const titleId = useId();
-  useEffect(() => {
-    const element = dialog.current;
-    if (element && !element.open) element.showModal();
-    if (focusOk) element?.querySelector<HTMLElement>("[type=submit]")?.focus();
-  }, [focusOk]);
-  const submit = (event: FormEvent) => {
-    event.preventDefault();
-    if (!busy) onOk();
-  };
   return (
-    <dialog
-      ref={dialog}
-      aria-labelledby={titleId}
-      data-cursor-region="popup"
+    <DialogFrame
+      title={title}
+      focusSubmit={focusOk}
+      onSubmit={(event) => {
+        event.preventDefault();
+        if (!busy) onOk();
+      }}
       onCancel={(event) => {
         event.preventDefault();
         if (onCancel) onCancel();
         else if (!busy) onOk();
       }}
-      className="m-auto max-h-full max-w-full overflow-auto rounded-popup border border-line-strong bg-popup p-0 text-fg backdrop:bg-scrim"
-    >
-      <form
-        onSubmit={submit}
-        className="flex max-h-[calc(100vh-var(--spacing-s))] flex-col gap-l p-xl [@media(max-height:20rem)]:gap-s [@media(max-height:20rem)]:p-m"
-      >
-        <h2 id={titleId} className="m-0 text-heading font-semibold">
-          {title}
-        </h2>
-        {children}
+      footer={
         <div className="flex justify-end gap-m">
           {onCancel && <Button onClick={onCancel}>Cancel</Button>}
           {footer}
@@ -65,8 +110,10 @@ export function Dialog({
             {okLabel}
           </Button>
         </div>
-      </form>
-    </dialog>
+      }
+    >
+      {children}
+    </DialogFrame>
   );
 }
 

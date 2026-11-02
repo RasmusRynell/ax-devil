@@ -1,7 +1,7 @@
 import { useRef, useState } from "react";
 import { credential, useGrants } from "../access";
-import { Button } from "../kit/Button";
 import { Icon } from "../kit/Icon";
+import { QUIET } from "../kit/look";
 import { Menu, type MenuEntry } from "../kit/Menu";
 import { Popup } from "../kit/Popup";
 import { presenceColor } from "../session/Presence";
@@ -40,9 +40,10 @@ export function ShareControl({ onStartSharing }: { onStartSharing: () => void })
   if (state === "none")
     return sessions ? (
       <div className={wrap}>
-        <Button icon="users" data-cursor-id="share" className="h-row py-0" onClick={onStartSharing}>
+        <button type="button" data-cursor-id="share" className={QUIET} onClick={onStartSharing}>
+          <Icon name="users" />
           <span className="max-sm:sr-only">Start sharing</span>
-        </Button>
+        </button>
       </div>
     ) : null;
 
@@ -87,14 +88,15 @@ export function ShareControl({ onStartSharing }: { onStartSharing: () => void })
         </span>
       )}
       {!owner && mode === "exploring" && (
-        <Button
-          icon="eye"
+        <button
+          type="button"
           data-cursor-id="share:follow"
-          className="h-row py-0"
+          className={QUIET}
           onClick={() => void follow().catch(() => undefined)}
         >
+          <Icon name="eye" />
           <span className="max-sm:sr-only">Follow presenter</span>
-        </Button>
+        </button>
       )}
       <div ref={boundary} className="relative">
         <button
@@ -106,7 +108,7 @@ export function ShareControl({ onStartSharing }: { onStartSharing: () => void })
           aria-expanded={open}
           data-cursor-id="share"
           onClick={() => setOpen(!open)}
-          className="flex h-row items-center gap-s rounded-control bg-transparent px-m text-fg hover:bg-hover focus-ring aria-expanded:bg-hover"
+          className={`${QUIET} gap-s aria-expanded:bg-hover`}
         >
           <span aria-hidden className="flex items-center">
             {participants.slice(0, AVATARS).map((participant) => (
