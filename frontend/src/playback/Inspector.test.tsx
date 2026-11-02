@@ -8,6 +8,7 @@ import type { FieldWire } from "./protocol";
 
 afterEach(() => {
   cleanup();
+  vi.restoreAllMocks();
   vi.unstubAllGlobals();
 });
 
@@ -136,6 +137,24 @@ describe("inspector", () => {
   it("says when fields were left out", () => {
     show({ ...ready(FIELDS), truncated: true });
     expect(screen.getByText("Some fields are not listed")).toBeTruthy();
+  });
+
+  it("draws the fields scrolled into view when the list is longer than the window", () => {
+    vi.spyOn(HTMLElement.prototype, "offsetHeight", "get").mockReturnValue(20);
+    vi.spyOn(HTMLElement.prototype, "clientHeight", "get").mockReturnValue(200);
+    vi.stubGlobal("ResizeObserver", undefined);
+    const many = Array.from({ length: 300 }, (_, i) => ({
+      group: "motion" as const,
+      path: [`m${i}`],
+      value: i,
+    }));
+    show(ready(many));
+    expect(screen.queryByText("m200")).toBeNull();
+
+    const list = screen.getAllByRole("list").at(-1)?.parentElement as HTMLElement;
+    Object.defineProperty(list, "scrollTop", { value: 200 * 20, configurable: true });
+    fireEvent.scroll(list);
+    expect(screen.getByText("m200")).toBeTruthy();
   });
 
   it("closes from its button", () => {

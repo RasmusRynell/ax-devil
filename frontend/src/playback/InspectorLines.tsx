@@ -189,7 +189,7 @@ export function InspectorLines({
   }, [pinned, lines]);
   const [copied, setCopied] = useState<string | null>(null);
   const [menuKey, setMenuKey] = useState<string | null>(null);
-  const { ref, start, end } = useRowWindow(lines.length, ROW);
+  const { ref, start, end, update } = useRowWindow(lines.length, ROW);
 
   const copy = (text: string, key: string) => {
     void navigator.clipboard?.writeText(text);
@@ -257,7 +257,11 @@ export function InspectorLines({
               <hr className="m-0 border-0 border-t border-line" />
             </>
           )}
-          <div ref={ref} className="min-h-0 flex-1 overflow-y-auto [scrollbar-gutter:stable]">
+          <div
+            ref={ref}
+            onScroll={update}
+            className="min-h-0 flex-1 overflow-y-auto [scrollbar-gutter:stable]"
+          >
             <div
               role="list"
               style={{
