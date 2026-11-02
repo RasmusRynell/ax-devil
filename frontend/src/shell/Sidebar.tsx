@@ -15,7 +15,7 @@ export function Sidebar({ view, onRun }: { view: SidebarView; onRun: (id: string
       data-cursor-region="sidebar"
       className="flex w-sidebar max-w-full min-w-0 shrink-0 flex-col max-sm:min-h-0 max-sm:w-full max-sm:flex-1 sm:max-w-2/5 sm:border-r sm:border-line"
     >
-      <ViewPanel title={VIEW_TITLES[view]}>
+      <ViewPanel title={VIEW_TITLES[view]} cursorId="sidebar:title">
         <div
           className={`flex flex-col gap-m px-s pb-s ${view === "workspace" ? "min-h-0 flex-1" : ""}`}
         >
