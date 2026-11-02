@@ -62,6 +62,21 @@ export const SETTINGS = [
     "scope": "personal"
   },
   {
+    "key": "overlays.lane_names",
+    "kind": {
+      "type": "bool",
+      "default": true
+    },
+    "label": "Show lane names",
+    "page": "General",
+    "section": "Video overlays",
+    "live": true,
+    "env": false,
+    "secret": false,
+    "quick_setup": false,
+    "scope": "personal"
+  },
+  {
     "key": "overlays.default_catalog",
     "kind": {
       "type": "text",

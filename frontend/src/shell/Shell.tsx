@@ -38,8 +38,11 @@ function viewerOwnsPlainKeys(target: EventTarget | null): boolean {
   return !typing && (target === document.body || target.closest("main") !== null);
 }
 
-/** The setting behind the View menu's check for pointing at objects. */
-const OBJECT_DETAILS = "overlays.object_details";
+/** The View menu checks that are saved settings, by command. */
+const SETTING_CHECKS = {
+  "object-details": "overlays.object_details",
+  "lane-names": "overlays.lane_names",
+} as const;
 
 type Dialog = "settings" | "shortcuts" | "quick-setup" | "about" | "add-video" | "add-playlist";
 
@@ -106,18 +109,19 @@ export function Shell({ version }: { version: string }) {
     about: () => setDialog("about"),
     "add-video": addVideo,
     "add-playlist": () => setDialog("add-playlist"),
-    "object-details": () =>
-      void save({
-        values: { ...values, [OBJECT_DETAILS]: values[OBJECT_DETAILS] !== true },
-        shortcuts,
-      }),
+    ...Object.fromEntries(
+      Object.entries(SETTING_CHECKS).map(([id, key]) => [
+        id,
+        () => void save({ values: { ...values, [key]: values[key] !== true }, shortcuts }),
+      ]),
+    ),
   };
   // A modal dialog owns the keyboard and the window: no command, from a shortcut or a menu, runs while one is open.
   const find = (id: string) =>
     dialog || !allowed[scopeOf(id)] ? undefined : (actions[id] ?? viewerActions[id]);
   const run = (id: string) => find(id)?.();
   const select = (item: MenuCommand) => {
-    if (item.kind === "check" && item.id !== "object-details")
+    if (item.kind === "check" && !(item.id in SETTING_CHECKS))
       setChecked((now) => {
         const next = new Set(now);
         if (!next.delete(item.id)) next.add(item.id);
@@ -168,7 +172,12 @@ export function Shell({ version }: { version: string }) {
         <h1 className="sr-only">ax-devil</h1>
         <TitleBar
           checked={
-            values[OBJECT_DETAILS] === true ? new Set([...checked, "object-details"]) : checked
+            new Set([
+              ...checked,
+              ...Object.entries(SETTING_CHECKS)
+                .filter(([, key]) => values[key] === true)
+                .map(([id]) => id),
+            ])
           }
           wired={new Set([...Object.keys(actions), ...Object.keys(viewerActions)])}
           onSelect={select}

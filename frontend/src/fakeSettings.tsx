@@ -9,6 +9,7 @@ export const DEFAULT_SETTINGS: SettingsState = {
     "ui.theme": "auto",
     "ui.quick_setup_done": true,
     "overlays.object_details": true,
+    "overlays.lane_names": true,
     "overlays.default_catalog": "",
     "playback.video_cache": "auto",
     "storage.cache_dir": "",

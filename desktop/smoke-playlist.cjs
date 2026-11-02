@@ -10,7 +10,7 @@ const { overlays } = require("./smoke-overlays.cjs");
 const { panels } = require("./smoke-panels.cjs");
 const { twice } = require("./smoke-twice.cjs");
 const kit = require("./smoke-kit.cjs");
-const { SCREENSHOTS, SHOWN, SMOKE_ROOT, delay, frames, page, setView } = kit;
+const { SCREENSHOTS, SHOWN, SMOKE_ROOT, delay, frames, page, setView, showChrome } = kit;
 
 const DATASET = path.join(SMOKE_ROOT, "fixtures/datasets/mot");
 const THEMES_AND_ZOOMS = [
@@ -179,6 +179,7 @@ module.exports.playlist = async (window) => {
     await setTheme(theme);
     await expectOverlays(entries[1].lanes);
     await shoot(`playlist-min-${theme}${zoom === 1 ? "" : "-200"}.png`);
+    await showChrome(window);
     assert.deepEqual(
       await js(`(${fit.page.toString()})()`),
       [],

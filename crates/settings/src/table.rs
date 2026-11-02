@@ -89,6 +89,18 @@ pub const TABLE: &[Setting] = &[
         scope: Scope::Personal,
     },
     Setting {
+        key: "overlays.lane_names",
+        kind: Kind::Bool { default: true },
+        label: "Show lane names",
+        page: Some("General"),
+        section: "Video overlays",
+        live: true,
+        env: false,
+        secret: false,
+        quick_setup: false,
+        scope: Scope::Personal,
+    },
+    Setting {
         key: "overlays.default_catalog",
         // A catalog id such as `built-in:standard`; empty is the built-in default. Chosen from a lane's menu.
         kind: Kind::Text { default: "" },
