@@ -41,6 +41,9 @@ Run any ad-hoc GUI check the same way, for example
 display cannot verify (physical GPU, compositor, window manager, fractional scaling on a real screen) is reported as
 not run.
 
+What an ad-hoc check creates outside `artifacts/` and the run's temporary folder is removed when the check finishes
+(anything over ~100 MB first), and no process it started (test runner, Electron, browser, dev server) is left running.
+
 ## Export end to end
 
 `tests/export.rs` and `tests/catalog_render.rs` run the real Electron render page, forced to SwiftShader so pixels do
