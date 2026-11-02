@@ -21,12 +21,14 @@ block to this table when it lands, and use what is listed instead of writing a l
 | Tokens: light/dark color pairs, spacing, radii, text roles, heights | Tailwind utilities generated from `@theme` (`bg-surface`, `text-muted`, `p-m`, `h-row`, `text-small`); values only in the token file | `frontend/src/tokens.css` |
 | Theme | The stored setting selects the colors through the root's `data-theme`, live | `frontend/src/settings.tsx` |
 | Icons | `Icon` over the Lucide SVGs; add a new one from Lucide to `assets/icons/` and to `icons.ts` | `assets/icons/`, `frontend/src/kit/` |
-| Buttons, menus, popups, context menus, dialogs, fields, row lists, key chips | The kit: `Button`, `Menu`, `Popup`, `ContextMenu`, `Dialog`, `SearchField`, `Select`, `TextField`, `Checkbox`, `RowList`, `KeyChips` | `frontend/src/kit/` |
+| Buttons, menus, popups, context menus, dialogs, fields, row lists, key chips | The kit: `Button`, `IconButton`, `Menu`, `Popup`, `ContextMenu`, `Dialog`, `SearchField`, `Select`, `TextField`, `Checkbox`, `RowList`, `KeyChips` | `frontend/src/kit/` |
+| The look of any control, so a new element matches the rest | The class constants `CONTROL` and `EDGE` (outlined button), `QUIET` (chrome), `CHOSEN` and `CHECKED` (selected), `FIELD`, `PILL`, `SQUARE`, and the status `Tone` map `TONE`; compose them instead of writing local classes, and import one only where a kit component cannot render the element | `frontend/src/kit/look.ts` |
 | A compact action beside a field or in a row; a button that opens a menu; the folder button after a path field | `Button size="small"`, `MenuButton`, `BrowseButton` | `frontend/src/kit/Button.tsx` |
 | A question or notice that only a choice dismisses (Escape does nothing, Enter gives the default) | `ChoiceDialog` | `frontend/src/kit/ChoiceDialog.tsx` |
 | Buttons that act on a banner's message | `Banner`'s `actions` slot | `frontend/src/shell/Banner.tsx` |
-| Status tags, checkable chips, one-of-many choices, a mode switch | `Chip` (neutral, success, warning, error; clickable with `onClick`), `ToggleChip`, `ChoiceChips` and `ChipRow` (wrap whole), `SegmentedControl` | `frontend/src/kit/Chips.tsx` |
-| A group heading with count, aside and fold | `SectionCaption` | `frontend/src/kit/SectionCaption.tsx` |
+| Status tags, checkable chips, one-of-many choices, a mode switch | `Chip` (a `Tone`; clickable with `onClick`), `ToggleChip`, `ChoiceChips` and `ChipRow` (wrap whole), `SegmentedControl` | `frontend/src/kit/Chips.tsx` |
+| A strip of tabs over one panel | `Tabs` | `frontend/src/kit/Tabs.tsx` |
+| A group heading with count, note, aside, colour mark and fold | `SectionCaption` | `frontend/src/kit/SectionCaption.tsx` |
 | A sidebar view: header with action over a vertically scrolling body | `ViewPanel` | `frontend/src/kit/ViewPanel.tsx` |
 | Seeing every kit block in both themes | The kit gallery at `#kit-gallery`; add a new block to it | `frontend/src/kit/Gallery.tsx` |
 | A panel of controls beside a button (Escape closes, plain keys stay inside) | `Popover` | `frontend/src/kit/Popover.tsx` |
@@ -42,11 +44,12 @@ project state owned by the backend, never own it, and never do file, network or 
   rem or color literals in components.
 - **Every color is a light/dark pair,** contrast-checked in both (target: WCAG AA). Muted text has its own token per
   theme, never text at reduced opacity, which fails contrast on light.
-- **Action buttons are neutral:** neutral text and icons, transparent at rest, with a subtle neutral tint on hover
-  and press. Main, secondary and default actions share this look; no local fills, outlines or primary variants.
-  Default means the Enter-key action, not visual emphasis. Keep a visible keyboard-focus outline and a muted disabled
-  state. The accent color marks only checked controls, selected tabs and focused input borders. Controls over video
-  keep their white-on-scrim look; the video canvas stays near-black in both themes.
+- **Buttons are outlined, and the Enter action carries the accent edge** (`type="submit"`). Chrome (menu-bar
+  triggers, list rows, tabs, headers, dismiss, icon buttons in bars) is quiet: no outline, a neutral tint on hover.
+  Accent marks only the Enter action, chosen (solid) and checked (tint and check) controls, the current tab or row
+  edge, and a focused field. Every control is one row high; keep a visible keyboard-focus outline and a muted
+  disabled state. Controls over video keep their white-on-scrim look; the video canvas stays near-black in both
+  themes.
 - **Icons, not glyphs.** Use an icon for buttons and markers instead of characters such as `×`, `⋯` or `«`; icon-only
   controls get an accessible name and a tooltip.
 - **An ellipsis means work in progress.** Write it as the one character `…`, as in `Loading…`; commands, buttons,

@@ -1,18 +1,35 @@
 import { Icon } from "./Icon";
+import type { Tone } from "./look";
+
+/** What colours the small square before the title: the muted default, the accent, or a status tone. */
+export type CaptionMark = "muted" | "accent" | Tone;
+
+const MARK: Record<CaptionMark, string> = {
+  muted: "bg-muted",
+  accent: "bg-accent",
+  neutral: "bg-muted",
+  success: "bg-success",
+  caution: "bg-caution",
+  danger: "bg-danger",
+};
 
 interface Props {
   /** The group name, drawn in capitals; it never shortens. */
   heading: string;
-  /** Shown after the heading as ` · count`. */
+  /** Shown right after the heading. */
   count?: number;
-  /** Small muted text at the right edge; it ends in an ellipsis when the heading and rule leave no room. */
+  /** Shown after the count as ` · note`, in the heading's row but not in capitals. */
+  note?: string;
+  /** Muted text at the right edge; it ends in an ellipsis when the heading and rule leave no room. */
   aside?: string;
-  /** Makes the group foldable through a button before the heading; the caption itself is not clickable. */
+  /** Colour of the square before the heading; muted when omitted. */
+  mark?: CaptionMark;
+  /** Makes the group foldable through a button at the far left; the caption itself is not clickable. */
   fold?: { open: boolean; onToggle: () => void };
 }
 
-/** A row-height group heading with a small square mark and a faint rule, the same height with or without an aside. */
-export function SectionCaption({ heading, count, aside, fold }: Props) {
+/** A row-height group heading: small coloured square, capitals, count, a faint rule, then an optional aside. */
+export function SectionCaption({ heading, count, note, aside, mark = "muted", fold }: Props) {
   return (
     <div className="flex h-row items-center gap-s px-m">
       {fold && (
@@ -21,18 +38,30 @@ export function SectionCaption({ heading, count, aside, fold }: Props) {
           aria-label={heading}
           aria-expanded={fold.open}
           onClick={fold.onToggle}
-          className="flex shrink-0 items-center rounded-control bg-transparent text-muted hover:bg-hover focus-ring"
+          className="flex w-l shrink-0 items-center justify-center rounded-control bg-transparent text-muted hover:bg-hover focus-ring"
         >
           <Icon name={fold.open ? "chevron-down" : "chevron-right"} />
         </button>
       )}
-      <span aria-hidden className="size-m shrink-0 bg-accent" />
-      <h2 className="m-0 shrink-0 text-small font-semibold tracking-wide text-muted uppercase">
-        {count === undefined ? heading : `${heading} · ${count}`}
+      <span aria-hidden className={`size-m shrink-0 rounded-mark ${MARK[mark]}`} />
+      <h2 className="m-0 shrink-0 text-small font-semibold tracking-caption whitespace-nowrap text-muted uppercase">
+        {heading}
+        {count !== undefined && (
+          <>
+            {" "}
+            <span className="ml-s tabular-nums">{count}</span>
+          </>
+        )}
+        {note && (
+          <>
+            {" "}
+            <span className="font-normal normal-case">· {note}</span>
+          </>
+        )}
       </h2>
-      <span aria-hidden className="h-hairline min-w-s flex-1 bg-line" />
+      <span aria-hidden className="h-hairline min-w-s flex-1 bg-fg/12" />
       {aside && (
-        <span title={aside} className="min-w-0 truncate text-small text-muted">
+        <span title={aside} className="min-w-0 truncate text-aside text-muted">
           {aside}
         </span>
       )}

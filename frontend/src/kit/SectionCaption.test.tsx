@@ -5,12 +5,18 @@ import { SectionCaption } from "./SectionCaption";
 afterEach(cleanup);
 
 describe("section caption", () => {
-  it("shows the count, and folds only through its button", () => {
+  it("shows the count and note, and folds only through its button", () => {
     const onToggle = vi.fn();
     render(
-      <SectionCaption heading="Sources" count={3} aside="local" fold={{ open: true, onToggle }} />,
+      <SectionCaption
+        heading="Sources"
+        count={3}
+        note="local"
+        aside="metadata.json"
+        fold={{ open: true, onToggle }}
+      />,
     );
-    const heading = screen.getByRole("heading", { name: "Sources · 3" });
+    const heading = screen.getByRole("heading", { name: "Sources 3 · local" });
     fireEvent.click(heading);
     expect(onToggle).not.toHaveBeenCalled();
     const fold = screen.getByRole("button", { name: "Sources" });

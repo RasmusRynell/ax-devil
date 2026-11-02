@@ -1,12 +1,13 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ButtonHTMLAttributes } from "react";
 import { useGrants } from "../access";
 import type { ControlCommand, SessionSummary } from "../generated/api";
 import { apiFetch } from "../api";
 import { Button } from "../kit/Button";
+import type { IconName } from "../kit/icons";
 import { ContextMenu } from "../kit/ContextMenu";
 import { Checkbox } from "../kit/Fields";
 import { Icon } from "../kit/Icon";
-import { IconButton } from "../kit/IconButton";
+import { QUIET } from "../kit/look";
 import type { MenuEntry } from "../kit/Menu";
 import { presenceColor } from "../session/Presence";
 import { useCommand, useParticipants, useSession } from "../session/session";
@@ -70,6 +71,21 @@ const copyLink = (link: string | null) => {
 
 const ROW = "flex min-h-row items-center gap-m px-m";
 
+/** A quiet, left-aligned action row of the sidebar; `children` is its label. */
+function Action({
+  icon,
+  className = "",
+  children,
+  ...rest
+}: { icon?: IconName } & Omit<ButtonHTMLAttributes<HTMLButtonElement>, "type">) {
+  return (
+    <button type="button" className={`${QUIET} text-left ${className}`} {...rest}>
+      {icon && <Icon name={icon} />}
+      {children}
+    </button>
+  );
+}
+
 /** The join link, selectable, with the button that copies it; the reason there is none when there is none. */
 function JoinLink({ link }: { link: string | null }) {
   const [copied, setCopied] = useState(false);
@@ -93,13 +109,12 @@ function JoinLink({ link }: { link: string | null }) {
           {NO_LINK}
         </span>
       )}
-      <IconButton
+      <Button
         icon={copied ? "check" : "copy"}
         label="Copy join link"
         data-cursor-id="sessions:copy"
         aria-describedby={link ? undefined : "no-join-link"}
         disabled={!link}
-        className="size-row rounded-control"
         onClick={() => {
           if (link) void copy(link).then(setCopied);
         }}
@@ -134,38 +149,37 @@ export function SessionsView() {
         <section aria-label="Session" className="flex flex-col gap-xs">
           <h3 className={HEADING}>Session</h3>
           {unshared && (
-            <Button
+            <Action
               icon="users"
               data-cursor-id="sessions:start"
               onClick={() => void control({ type: "share", access: "watch" })}
             >
               Start sharing
-            </Button>
+            </Action>
           )}
           {owner && (
-            <Button
+            <Action
               icon="x"
               data-cursor-id="sessions:stop"
               onClick={() => void control({ type: "stop" })}
             >
               Stop sharing
-            </Button>
+            </Action>
           )}
           {state === "watcher" && (
-            <Button icon="x" data-cursor-id="sessions:leave" onClick={leave}>
+            <Action icon="x" data-cursor-id="sessions:leave" onClick={leave}>
               Leave
-            </Button>
+            </Action>
           )}
           {owner && (
             <>
               <div className={ROW}>
                 <JoinLink link={link} />
                 {link && (
-                  <IconButton
+                  <Button
                     icon="rotate-cw"
                     label="Regenerate link"
                     data-cursor-id="sessions:regenerate"
-                    className="size-row rounded-control"
                     onClick={() => void control({ type: "regenerateLink" })}
                   />
                 )}
@@ -212,18 +226,18 @@ export function SessionsView() {
         </section>
       )}
       {unshared && kind === "local" && (
-        <Button icon="plug" data-cursor-id="sessions:connect" onClick={() => setConnecting(true)}>
+        <Action icon="plug" data-cursor-id="sessions:connect" onClick={() => setConnecting(true)}>
           Connect to server
-        </Button>
+        </Action>
       )}
       {unshared && kind === "remote" && (
-        <Button
+        <Action
           icon="plug"
           data-cursor-id="sessions:disconnect"
           onClick={() => void window.axDevilWindow?.disconnect().catch(report)}
         >
           Disconnect
-        </Button>
+        </Action>
       )}
       {failure && (
         <p role="alert" className="m-0 px-m">
@@ -248,13 +262,13 @@ export function SessionsView() {
                         <Icon name="users" />
                         {other.participants}
                       </span>
-                      <Button
+                      <Action
                         aria-label={`Watch ${name}`}
                         data-cursor-id={`session:${other.id}:watch`}
                         onClick={() => watch(other.id)}
                       >
                         Watch
-                      </Button>
+                      </Action>
                     </div>
                   </ContextMenu>
                 </li>

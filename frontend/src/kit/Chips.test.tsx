@@ -19,8 +19,8 @@ describe("chips", () => {
     const { heard, stop } = shortcuts();
     render(
       <>
-        <Chip kind="warning">Static</Chip>
-        <Chip kind="success" onClick={onClick}>
+        <Chip tone="caution">Static</Chip>
+        <Chip tone="success" onClick={onClick}>
           Live
         </Chip>
       </>,

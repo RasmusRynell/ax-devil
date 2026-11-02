@@ -1,11 +1,14 @@
 import { useId, type LabelHTMLAttributes, type ReactNode } from "react";
 import { Icon } from "./Icon";
+import { FIELD, FIELD_IN } from "./look";
 
 /** A search input with a leading icon; the placeholder doubles as its accessible name. */
 export function SearchField({ placeholder }: { placeholder: string }) {
   return (
-    <label className="flex h-row items-center gap-s rounded-control border border-line-strong px-m text-muted focus-within:border-accent">
-      <Icon name="search" />
+    <label className={`flex items-center gap-s ${FIELD_IN}`}>
+      <span className="flex text-muted">
+        <Icon name="search" />
+      </span>
       <input
         type="search"
         aria-label={placeholder}
@@ -16,11 +19,9 @@ export function SearchField({ placeholder }: { placeholder: string }) {
   );
 }
 
-const FIELD = "flex items-center justify-between gap-xl";
+const SPLIT = "flex items-center justify-between gap-xl";
 /** A label with its control; at a width too narrow for both on a line, the control drops under the label. */
 const LABELLED = "flex flex-wrap items-center justify-between gap-x-xl gap-y-s";
-const INPUT =
-  "h-row rounded-control border border-line-strong bg-popup px-s text-fg focus:border-accent focus:outline-none";
 
 interface SelectProps<T extends string> {
   label: ReactNode;
@@ -38,7 +39,7 @@ export function Select<T extends string>({ label, value, options, onChange }: Se
       <select
         value={value}
         onChange={(event) => onChange(event.target.value as T)}
-        className={INPUT}
+        className={FIELD}
       >
         {options.map(([option, name]) => (
           <option key={option} value={option}>
@@ -70,7 +71,7 @@ export function Checkbox({
   ...rest
 }: CheckboxProps) {
   return (
-    <label className={`${FIELD} ${disabled ? "text-disabled" : ""} ${className}`} {...rest}>
+    <label className={`${SPLIT} ${disabled ? "text-disabled" : ""} ${className}`} {...rest}>
       {label}
       <input
         type="checkbox"
@@ -114,7 +115,7 @@ export function TextField({
           spellCheck={false}
           aria-describedby={describedBy}
           onChange={(event) => onChange(event.target.value)}
-          className={`${INPUT} min-w-0 w-field`}
+          className={`${FIELD} min-w-0 w-field`}
         />
         {action}
       </span>

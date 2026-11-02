@@ -50,6 +50,7 @@
   --radius-control: 4px;
   --radius-popup: 6px;
   --radius-pill: 9999px;
+  --radius-mark: 2px; /* the small square before a caption */
 
   --shadow-*: initial;
   --shadow-popup: 0 4px 12px light-dark(#26344526, #00000066);
@@ -63,12 +64,16 @@
   --text-*: initial;
   --text-body: 14px; /* the one base size; zoom is the browser's */
   --text-small: calc(var(--text-body) - 2px);
+  --text-aside: calc(var(--text-body) - 1px);
   --text-heading: calc(var(--text-body) + 2px);
+
+  --tracking-caption: 0.08em;
 
   --spacing-icon: calc(var(--text-body) * 1.2);
   --spacing-row: calc(var(--text-body) + 8px);
   --spacing-header: calc(var(--text-body) + 12px);
   --spacing-bar: calc(var(--text-body) + 16px);
+  --spacing-segment: calc(var(--spacing-row) - 2 * (var(--spacing-xs) + var(--spacing-hairline)));
   --spacing-activity: calc(var(--spacing-icon) * 2);
   --spacing-sidebar: 34ch;
   --spacing-welcome: 40ch;
@@ -83,6 +88,13 @@
 @utility border-l-edge {
   border-left-width: var(--stroke-edge);
   border-left-style: solid;
+}
+/* One row square at zero specificity, so a size class from the caller overrides it whatever the stylesheet order. */
+@utility square-row {
+  :where(&) {
+    width: var(--spacing-row);
+    height: var(--spacing-row);
+  }
 }
 @utility focus-ring {
   &:focus-visible {

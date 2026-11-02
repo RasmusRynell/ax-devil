@@ -19,7 +19,7 @@ describe("choice dialog", () => {
         onChoose={choose}
       />,
     );
-    // Enter on the focused button is the browser's own click, so the default answer is whatever has focus.
+    // Enter submits the form, and the default answer is the form's submit button, which has focus.
     expect(document.activeElement).toBe(screen.getByRole("button", { name: "Later" }));
     expect(screen.getAllByRole("button").map((button) => button.textContent)).toEqual([
       "Restart now",
@@ -35,5 +35,9 @@ describe("choice dialog", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Restart now" }));
     expect(choose).toHaveBeenCalledExactlyOnceWith("now");
+
+    choose.mockClear();
+    fireEvent.click(screen.getByRole("button", { name: "Later" }));
+    expect(choose).toHaveBeenCalledExactlyOnceWith("later");
   });
 });

@@ -1,7 +1,8 @@
 import { command, scopeOf } from "../commands";
-import { Button } from "../kit/Button";
 import type { CommandId } from "../generated/settings";
+import { Icon } from "../kit/Icon";
 import type { IconName } from "../kit/icons";
+import { QUIET } from "../kit/look";
 import { useAllowed } from "../session/session";
 
 const OPEN: readonly [id: CommandId, icon: IconName][] = [
@@ -18,16 +19,17 @@ export function StartPanel({ onRun }: { onRun: (id: string) => void }) {
     <div className="flex flex-col gap-l">
       <div className="grid max-sm:grid-cols-2">
         {OPEN.map(([id, icon]) => (
-          <Button
+          <button
             key={id}
-            icon={icon}
+            type="button"
             data-cursor-id={`sidebar:${id}`}
-            className="justify-start"
+            className={`${QUIET} py-xs text-left`}
             disabled={!allowed[scopeOf(id)]}
             onClick={() => onRun(id)}
           >
+            <Icon name={icon} />
             {command(id).label}
-          </Button>
+          </button>
         ))}
       </div>
       <section className="flex flex-col gap-xs [@media(max-height:20rem)]:hidden">

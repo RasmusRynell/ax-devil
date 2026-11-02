@@ -33,11 +33,18 @@ export function ChoiceDialog({ title, message, choices, defaultId, onChoose }: P
         event.currentTarget.showModal();
         focusDefault();
       }}
-      onSubmit={(event) => event.preventDefault()}
+      onSubmit={(event) => {
+        event.preventDefault();
+        onChoose(defaultId);
+      }}
       footer={
         <div ref={footer} className="flex flex-wrap justify-center gap-m">
           {choices.map(({ id, label }) => (
-            <Button key={id} onClick={() => onChoose(id)}>
+            <Button
+              key={id}
+              type={id === defaultId ? "submit" : "button"}
+              onClick={id === defaultId ? undefined : () => onChoose(id)}
+            >
               {label}
             </Button>
           ))}

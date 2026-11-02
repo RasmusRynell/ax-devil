@@ -1,14 +1,10 @@
 import { useId, type KeyboardEvent, type ReactNode } from "react";
+import { Icon } from "./Icon";
+import type { IconName } from "./icons";
+import { CHECKED, CHOSEN, CONTROL_IN, PILL, TONE, type Tone } from "./look";
 
-/** A small outlined tag; every chip shares this shape so mixed rows line up. */
-const CHIP =
-  "inline-flex max-w-full min-w-0 items-center rounded-control border px-m py-xs text-small whitespace-nowrap";
-
-/** What a chosen or checked control looks like: the accent edge and tint, with the text kept readable. */
-const TINT = "has-checked:bg-accent/20";
-const CHECKED = `${TINT} has-checked:border-accent`;
-/** The look of a chip you can check; hover tints only while it is enabled, and a disabled one is dashed. */
-const CHECKABLE = `${CHIP} ${CHECKED} border-line-strong text-fg has-enabled:hover:bg-hover has-disabled:border-dashed has-disabled:text-disabled focus-ring-within`;
+/** Box of a status tag: the same shape as the interactive pills, with a clear border so the sizes match. */
+const TAG = `${PILL} inline-flex min-h-row items-center rounded-control border border-transparent px-m`;
 
 const OWN_KEYS = new Set([" ", "Enter", "ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"]);
 
@@ -21,17 +17,8 @@ function ownKeys(event: KeyboardEvent) {
     event.stopPropagation();
 }
 
-export type ChipKind = "neutral" | "success" | "warning" | "error";
-
-const KINDS: Record<ChipKind, { rest: string; hover: string }> = {
-  neutral: { rest: "border-line-strong text-muted", hover: "hover:bg-hover" },
-  success: { rest: "border-success text-success", hover: "hover:bg-success/15" },
-  warning: { rest: "border-caution text-caution", hover: "hover:bg-caution/15" },
-  error: { rest: "border-danger text-danger", hover: "hover:bg-danger/15" },
-};
-
 interface ChipProps {
-  kind?: ChipKind;
+  tone?: Tone;
   /** Makes the chip a button; without it the chip is plain text that takes no focus. */
   onClick?: () => void;
   /** The full text when the chip is too narrow to show it. */
@@ -40,12 +27,12 @@ interface ChipProps {
 }
 
 /** A status tag whose text ends in an ellipsis when there is no room; clickable when given `onClick`. */
-export function Chip({ kind = "neutral", onClick, title, children }: ChipProps) {
-  const look = KINDS[kind];
+export function Chip({ tone = "neutral", onClick, title, children }: ChipProps) {
+  const look = TONE[tone];
   const text = <span className="truncate">{children}</span>;
   if (!onClick)
     return (
-      <span title={title} className={`${CHIP} ${look.rest}`}>
+      <span title={title} className={`${TAG} ${look.text} ${look.fill}`}>
         {text}
       </span>
     );
@@ -56,7 +43,7 @@ export function Chip({ kind = "neutral", onClick, title, children }: ChipProps) 
       onClick={onClick}
       onKeyDown={ownKeys}
       onKeyUp={ownKeys}
-      className={`${CHIP} ${look.rest} ${look.hover} bg-transparent focus-ring`}
+      className={`${TAG} ${look.text} ${look.fill} ${look.press} focus-ring`}
     >
       {text}
     </button>
@@ -67,15 +54,29 @@ interface ToggleChipProps {
   checked: boolean;
   onChange: (checked: boolean) => void;
   disabled?: boolean;
+  /** Shown in the leading slot while unchecked (a plus when omitted); checked always shows a check. */
+  icon?: IconName;
   /** Why it is disabled, or what it does. */
   title?: string;
   children: ReactNode;
 }
 
 /** A chip that is checked or not on its own, with a checkbox's keyboard behavior and semantics. */
-export function ToggleChip({ checked, onChange, disabled, title, children }: ToggleChipProps) {
+export function ToggleChip({
+  checked,
+  onChange,
+  disabled,
+  icon = "plus",
+  title,
+  children,
+}: ToggleChipProps) {
   return (
-    <label title={title} onKeyDown={ownKeys} onKeyUp={ownKeys} className={CHECKABLE}>
+    <label
+      title={title}
+      onKeyDown={ownKeys}
+      onKeyUp={ownKeys}
+      className={`${PILL} ${CONTROL_IN} ${CHECKED}`}
+    >
       <input
         type="checkbox"
         checked={checked}
@@ -83,6 +84,7 @@ export function ToggleChip({ checked, onChange, disabled, title, children }: Tog
         onChange={(event) => onChange(event.target.checked)}
         className="sr-only"
       />
+      <Icon name={checked ? "check" : icon} />
       <span className="truncate">{children}</span>
     </label>
   );
@@ -153,17 +155,23 @@ function Radios<T extends string>({
 
 /** Chips of which exactly one is chosen, wrapping like a `ChipRow`. */
 export function ChoiceChips<T extends string>(props: ChoiceProps<T>) {
-  return <Radios {...props} className="flex flex-wrap items-center gap-s" itemClass={CHECKABLE} />;
+  return (
+    <Radios
+      {...props}
+      className="flex flex-wrap items-center gap-s"
+      itemClass={`${PILL} ${CONTROL_IN} ${CHOSEN}`}
+    />
+  );
 }
 
-const SEGMENT = `flex h-row min-w-0 items-center px-m ${TINT} text-fg hover:bg-hover focus-ring-within -outline-offset-(--stroke-focus)`;
+const SEGMENT = `inline-flex h-segment min-w-0 items-center rounded-control px-m text-small text-fg focus-ring-within not-has-checked:hover:bg-hover ${CHOSEN}`;
 
 /** Two or three joined segments of which exactly one is chosen: a setting that switches between modes. */
 export function SegmentedControl<T extends string>(props: ChoiceProps<T>) {
   return (
     <Radios
       {...props}
-      className="inline-flex max-w-full divide-x divide-line-strong overflow-hidden rounded-control border border-line-strong"
+      className="inline-flex w-fit max-w-full gap-xs rounded-control border border-line-strong bg-panel p-xs"
       itemClass={SEGMENT}
     />
   );
