@@ -10,6 +10,9 @@ import { flushSync } from "react-dom";
 import { createRoot, type Root } from "react-dom/client";
 import type { FileRowWire, FileSortWire } from "../generated/api";
 import type { LaneFrame } from "../playback/contract";
+import type { FieldGroupWire, FieldWire } from "../playback/protocol";
+import type { InspectorMemory } from "../playback/fields";
+import { Inspector } from "../playback/Inspector";
 import { LANE_DEFAULTS } from "../playback/fakeOpened";
 import type { FileScope } from "../playback/fileScope";
 import { LaneSet } from "../playback/lanes";
@@ -27,10 +30,20 @@ const BUDGET = 16.7;
 /** An interval this much over a refresh is a frame that was late. */
 const LATE = BUDGET * 1.1;
 const RING = 6;
+/** Fields in the inspector scenarios; the backend caps an object at 4096. */
+const FIELDS = 4000;
 const CLASSES = ["car", "human", "head", "bus", "dog", "truck"];
 
-export type TableName = "first rows" | "scroll" | "resize" | "playback open" | "playback closed";
-export type TableScope = "Frame" | "File";
+export type TableName =
+  | "first rows"
+  | "scroll"
+  | "resize"
+  | "playback open"
+  | "playback closed"
+  | "inspector first rows"
+  | "inspector scroll"
+  | "inspector pin";
+export type TableScope = "Frame" | "File" | "Fields";
 
 /** One thing to time: `rows` objects in the frame (Frame scope) or matches in the file (File scope), for `seconds`. */
 export interface TableScenario {
@@ -66,7 +79,7 @@ export function plan(settings: Settings): TableScenario[] {
   const scenario = (name: TableName, scope: TableScope, secs = seconds): TableScenario => ({
     name,
     scope,
-    rows: scope === "Frame" ? objects : file,
+    rows: scope === "Frame" ? objects : scope === "File" ? file : smoke ? 200 : FIELDS,
     seconds: secs,
   });
   return [
@@ -78,6 +91,9 @@ export function plan(settings: Settings): TableScenario[] {
     scenario("resize", "File", Math.min(1, seconds)),
     scenario("playback closed", "Frame"),
     scenario("playback open", "Frame"),
+    scenario("inspector first rows", "Fields"),
+    scenario("inspector scroll", "Fields"),
+    scenario("inspector pin", "Fields"),
   ];
 }
 
@@ -169,7 +185,7 @@ class Rig {
     document.body.append(this.host);
     this.root = createRoot(this.host);
     const lanes = new LaneSet();
-    lanes.open([{ label: "bench", source: 0 }], LANE_DEFAULTS);
+    lanes.open([{ label: "bench", slot: "bench", source: 0 }], LANE_DEFAULTS);
     lanes.setStatus(0, READY);
     this.#view = { ...INITIAL_VIEW, status: "ready", frameCount: 1000, lanes: lanes.states };
     const objects = scenario.scope === "Frame" ? scenario.rows : 5000;
@@ -214,6 +230,61 @@ class Rig {
   get loaded(): boolean {
     const rows = this.host.querySelectorAll('[role="option"]');
     return rows.length > 0 && !this.host.querySelector('[role="option"][aria-busy="true"]');
+  }
+
+  close(): void {
+    this.root.unmount();
+    this.host.remove();
+  }
+}
+
+/** The inspector over an object with `scenario.rows` fields, every group open, in the 1280 x 720 viewer. */
+class InspectorRig {
+  readonly host = document.createElement("div");
+  readonly root: Root;
+  readonly #fields: FieldWire[];
+  #memory: InspectorMemory = { pins: [], folded: new Set<FieldGroupWire>() };
+
+  constructor(rows: number) {
+    this.host.style.cssText =
+      "position:relative;display:flex;width:1280px;height:720px;container-type:size";
+    document.body.append(this.host);
+    this.root = createRoot(this.host);
+    const groups: FieldGroupWire[] = ["classification", "motion", "geometry"];
+    this.#fields = Array.from({ length: rows }, (_, i) => ({
+      group: i < 60 ? groups[i % 3] : "raw",
+      path: i < 60 ? [`field${i}`] : ["data", `list`, String(i)],
+      value: i % 3 === 0 ? i * 0.37 : `value of field ${i}`,
+    }));
+  }
+
+  /** Renders the inspector; a pin or fold re-renders it with the memory it asks for. */
+  show(): void {
+    this.root.render(
+      createElement(Inspector, {
+        inspection: {
+          state: "ready",
+          selection: { lane: 0, source: 0, entity: "track-1" },
+          summary: { entity: "track-1", className: "car", score: 0.9, confidence: 0.8 },
+          fields: this.#fields,
+          truncated: false,
+        },
+        onClose: () => {},
+        memory: this.#memory,
+        onMemory: (memory: InspectorMemory) => {
+          this.#memory = memory;
+          this.show();
+        },
+      }),
+    );
+  }
+
+  get scroller(): HTMLElement {
+    return this.host.querySelector<HTMLElement>('[role="list"]:last-of-type')!.parentElement!;
+  }
+
+  get rows(): NodeListOf<HTMLElement> {
+    return this.host.querySelectorAll('[role="listitem"]');
   }
 
   close(): void {
@@ -378,12 +449,75 @@ async function playback(scenario: TableScenario): Promise<TableResult> {
   return result(scenario, "render of a new frame", work, intervals);
 }
 
+async function inspectorFirstRows(scenario: TableScenario): Promise<TableResult> {
+  const times: number[] = [];
+  for (let rep = 0; rep < 10; rep++) {
+    const rig = new InspectorRig(scenario.rows);
+    const start = performance.now();
+    flushSync(() => rig.show());
+    await painted();
+    times.push(performance.now() - start);
+    if (rig.rows.length === 0) throw new Error("the inspector drew no rows");
+    rig.close();
+  }
+  return result(scenario, "to painted rows", times);
+}
+
+async function inspectorScroll(scenario: TableScenario): Promise<TableResult> {
+  const rig = new InspectorRig(scenario.rows);
+  flushSync(() => rig.show());
+  await painted();
+  const { scroller } = rig;
+  const row = rig.rows[0].offsetHeight;
+  const latency: number[] = [];
+  let scrolled = 0;
+  const onScroll = () => (scrolled = performance.now());
+  const rowsChanged = new MutationObserver(() => {
+    if (scrolled > 0) latency.push(performance.now() - scrolled);
+    scrolled = 0;
+  });
+  document.addEventListener("scroll", onScroll, true);
+  rowsChanged.observe(scroller, { childList: true, subtree: true, attributes: true });
+  const wrap = scroller.scrollHeight - scroller.clientHeight;
+  const intervals = await frames(scenario.seconds, (index) => {
+    scroller.scrollTop = (index * 12 * row) % wrap;
+  });
+  document.removeEventListener("scroll", onScroll, true);
+  rowsChanged.disconnect();
+  rig.close();
+  if (latency.length === 0) throw new Error("scrolling never changed the rows drawn");
+  return result(scenario, "scroll event to rows", latency, intervals);
+}
+
+async function inspectorPin(scenario: TableScenario): Promise<TableResult> {
+  const rig = new InspectorRig(scenario.rows);
+  flushSync(() => rig.show());
+  await painted();
+  const work: number[] = [];
+  // Pin the first unpinned row, then unpin it from the pinned rows; a click ends with the page updated.
+  for (const label of Array.from({ length: 20 }, (_, i) => (i % 2 === 0 ? "Pin " : "Unpin "))) {
+    const button = rig.host.querySelector<HTMLElement>(`[data-act="pin"][aria-label^="${label}"]`)!;
+    const start = performance.now();
+    flushSync(() => button.click());
+    void rig.scroller.offsetHeight;
+    work.push(performance.now() - start);
+    if (Boolean(rig.host.querySelector('section[aria-label="Pinned"]')) !== (label === "Pin "))
+      throw new Error("the pin click did not change the pinned rows");
+    await painted();
+  }
+  rig.close();
+  return result(scenario, "pin click and layout", work);
+}
+
 const RUNNERS: Record<TableName, (scenario: TableScenario) => Promise<TableResult>> = {
   "first rows": firstRows,
   scroll,
   resize,
   "playback open": playback,
   "playback closed": playback,
+  "inspector first rows": inspectorFirstRows,
+  "inspector scroll": inspectorScroll,
+  "inspector pin": inspectorPin,
 };
 
 /** Runs `scenario` in a fresh page-sized rig and removes it after. */
