@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useCommand } from "../session/session";
 import { Dialog } from "../kit/Dialog";
 import { TextField } from "../kit/Fields";
+import { Refusal } from "./SettingField";
 
 /**
  * Asks for the path of a video on the machine that runs the backend, where this window has no file dialog of its own
@@ -43,11 +44,7 @@ export function AddVideoDialog({ onClose }: { onClose: () => void }) {
           setFailure(null);
         }}
       />
-      {failure && (
-        <p role="alert" className="m-0">
-          {failure}
-        </p>
-      )}
+      {failure && <Refusal reason={failure} />}
     </Dialog>
   );
 }

@@ -1,6 +1,7 @@
 // Windows and the IPC they may use. A window trusts exactly one origin, fixed when it is created: the page there
-// may use the shell's IPC, navigation to any other origin is blocked, and new windows are denied.
-const { BrowserWindow, dialog, ipcMain } = require("electron");
+// may use the shell's IPC, navigation to any other origin is blocked, and new windows are denied. The one link a page
+// may open is the project's, in the default browser.
+const { app, BrowserWindow, dialog, ipcMain, shell } = require("electron");
 const path = require("node:path");
 
 const { reserved } = require("./generated/api.json");
@@ -14,6 +15,9 @@ const EXPORT_EXTENSIONS = ["mp4", "png"];
 
 // Zoom keys the shell handles itself (the backend refuses them as shortcuts), by the key that triggers them.
 const ZOOM_STEPS = { "=": 0.5, "+": 0.5, "-": -0.5, 0: null };
+
+// The project link the About dialog offers (the page and this constant must agree).
+const PROJECT_LINK = "https://github.com/rasmusrynell/ax-devil";
 
 // Window contents -> { origin, remote }; `remote` is a page served by another machine's backend.
 const trusted = new WeakMap();
@@ -58,7 +62,10 @@ async function openWindow(
     contents.setZoomLevel(step === null ? 0 : contents.getZoomLevel() + step);
     event.preventDefault();
   });
-  contents.setWindowOpenHandler(() => ({ action: "deny" }));
+  contents.setWindowOpenHandler(({ url: target }) => {
+    if (target === PROJECT_LINK) void shell.openExternal(target);
+    return { action: "deny" };
+  });
   const stayOnOrigin = (event, target) => {
     if (new URL(target).origin !== origin) event.preventDefault();
   };
@@ -114,6 +121,7 @@ function installIpc({ connect, disconnect }) {
   );
   on("window:close", ({ window }) => window.close());
   handle("window:is-maximized", ({ window }) => window.isMaximized());
+  handle("app:version", () => app.getVersion());
   // Only the native dialog: the page sends the chosen paths to the backend itself. Resolves to the absolute paths,
   // none when the dialog is cancelled. Only the local backend's page may browse this machine's files.
   handle("workspace:pick-videos", async ({ remote, window }) => {

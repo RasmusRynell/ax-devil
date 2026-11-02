@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
-import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { GrantsContext } from "../access";
 import { DEFAULT_SETTINGS, FakeSettings } from "../fakeSettings";
 import type { Grant } from "../generated/api";
@@ -54,7 +54,7 @@ async function showShell({
     <GrantsContext.Provider value={grants}>
       <FakeSettings state={state}>
         <SessionProvider>
-          <Shell />
+          <Shell version="1.2.3" />
         </SessionProvider>
       </FakeSettings>
     </GrantsContext.Provider>,
@@ -121,7 +121,19 @@ describe("quick setup", () => {
   it("is not offered to someone who may not configure the server", async () => {
     await renderShell({ grants: ["sessions"], values: { "ui.quick_setup_done": false } });
     expect(screen.queryByRole("dialog", { name: "Quick Setup" })).toBeNull();
-    expect(screen.queryByRole("menuitem", { name: "Help" })).toBeNull();
+    fireEvent.click(screen.getByRole("menuitem", { name: "Help" }));
+    expect(screen.queryByRole("menuitem", { name: "Quick Setup" })).toBeNull();
+  });
+
+  it("keeps shortcuts from running under a dialog the shell did not open", async () => {
+    await renderShell();
+    const foreign = document.body.appendChild(document.createElement("dialog"));
+    foreign.setAttribute("open", "");
+    fireEvent.keyDown(document.body, { key: ",", ctrlKey: true });
+    expect(screen.queryByRole("dialog", { name: "Settings" })).toBeNull();
+    foreign.remove();
+    fireEvent.keyDown(document.body, { key: ",", ctrlKey: true });
+    expect(screen.getByRole("dialog", { name: "Settings" })).toBeTruthy();
   });
 
   it("keeps the shortcuts of other dialogs from replacing it", async () => {
@@ -129,6 +141,46 @@ describe("quick setup", () => {
     fireEvent.keyDown(document.body, { key: ",", ctrlKey: true });
     expect(screen.queryByRole("dialog", { name: "Settings" })).toBeNull();
     expect(screen.getByRole("dialog", { name: "Quick Setup" })).toBeTruthy();
+  });
+});
+
+describe("about", () => {
+  it("shows the backend's version and the project link from the Help menu, whoever the seat is", async () => {
+    await renderShell({ grants: ["sessions"] });
+    fireEvent.click(screen.getByRole("menuitem", { name: "Help" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "About" }));
+    const dialog = screen.getByRole("dialog", { name: "About ax-devil" });
+    expect(dialog.textContent).toContain("Version 1.2.3");
+    expect(screen.getByRole("link").getAttribute("href")).toBe(
+      "https://github.com/rasmusrynell/ax-devil",
+    );
+    fireEvent.click(screen.getByRole("button", { name: "OK" }));
+    expect(screen.queryByRole("dialog")).toBeNull();
+  });
+});
+
+describe("about on the desktop", () => {
+  afterEach(() => void delete window.axDevilWindow);
+
+  it("shows the desktop's own version, and for a remote server also its address and version", async () => {
+    window.axDevilWindow = {
+      appVersion: async () => "0.9.0",
+      onMaximizedChange: () => () => undefined,
+    } as unknown as Window["axDevilWindow"];
+    for (const [grants, remote] of [
+      [["preferences", "sessions"], false],
+      [["sessions"], true],
+    ] as const) {
+      await renderShell({ grants: [...grants] });
+      fireEvent.click(screen.getByRole("menuitem", { name: "Help" }));
+      fireEvent.click(screen.getByRole("menuitem", { name: "About" }));
+      const dialog = screen.getByRole("dialog", { name: "About ax-devil" });
+      await waitFor(() => expect(dialog.textContent).toContain("Version 0.9.0"));
+      // The backend's version appears only as the server's, never as the app's.
+      expect(dialog.textContent?.includes("Connected to")).toBe(remote);
+      expect(dialog.textContent?.includes("1.2.3")).toBe(remote);
+      cleanup();
+    }
   });
 });
 
@@ -161,6 +213,7 @@ describe("add video", () => {
       disconnect: () => Promise.resolve(),
       pickFolder: () => Promise.resolve(null),
       pickExportFile: () => Promise.resolve(null),
+      appVersion: async () => "0.0.0",
       onMaximizedChange: () => () => {},
     } satisfies WindowBridge;
   };

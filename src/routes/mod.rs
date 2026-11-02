@@ -5,6 +5,7 @@
 //! for a path is answered with 405 whoever asks. `scripts/check-architecture.cjs` rejects `.route(` anywhere else.
 //! Which setting rows or sessions a caller may see is decided by the handler from its [`Principal`](crate::access).
 
+mod client_errors;
 mod handlers;
 pub mod playback;
 pub mod window;
@@ -68,6 +69,13 @@ pub(crate) const ROUTES: &[Route] = &[
         listeners: EVERY,
         who: Who::Public,
         handler: |method| on(method, crate::info),
+    },
+    Route {
+        method: MethodFilter::POST,
+        path: "/api/client-errors",
+        listeners: EVERY,
+        who: Who::Public,
+        handler: |method| on(method, client_errors::post).layer(client_errors::limit()),
     },
     Route {
         method: MethodFilter::GET,

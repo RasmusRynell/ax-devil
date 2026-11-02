@@ -7,6 +7,7 @@ pub mod handlers;
 pub mod inspect;
 pub mod playback;
 pub mod render;
+pub mod report;
 mod session;
 pub mod window;
 pub mod workspace;
@@ -19,11 +20,11 @@ use std::collections::BTreeMap;
 use ts_rs::TS;
 
 /// Raised when a route changes in a way an older desktop shell or frontend cannot use.
-pub const API_VERSION: u32 = 8;
+pub const API_VERSION: u32 = 9;
 
 /// Raised when the desktop shell's own interface (the preload bridge and its IPC) changes in a way a frontend served
 /// by a remote backend cannot use. The shell loads a remote backend only when its [`AppInfo::shell`] matches.
-pub const SHELL_API: u32 = 3;
+pub const SHELL_API: u32 = 4;
 
 /// What a caller may do on a backend. Every request is judged by the grants of whoever sent it; they are not roles.
 #[derive(Serialize, TS, Clone, Copy, Debug, PartialEq, Eq)]
