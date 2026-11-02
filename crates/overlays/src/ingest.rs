@@ -10,6 +10,8 @@ use std::{
 };
 
 use foundation::{Timeline, UserError};
+use overlay_sync::{Alignment, MatchBasis, MatchPolicy, Tolerance, alignment};
+use scene_decoders::LoadWarning;
 use scene_store::{Ingest, Track, TrackSnapshot};
 
 use crate::{
@@ -64,7 +66,7 @@ impl State {
         slot.mean_sample_bytes = mean;
         self.refresh(timeline);
         if ended || self.sources[source].last_ready.elapsed() >= READY_EVERY {
-            self.announce(source);
+            self.announce(source, timeline);
         }
     }
 
@@ -99,13 +101,15 @@ impl State {
             slot.reported.clear();
             self.fit(lane);
         }
-        self.announce(source);
+        self.announce(source, timeline);
         self.refresh(timeline);
     }
 
     /// Tells the lanes of `source` where its load stands now. A status still waiting for the consumer under the same
-    /// revision is replaced by this one, so a slow consumer holds one status per lane, not one per publication.
-    fn announce(&mut self, source: usize) {
+    /// revision is replaced by this one, so a slow consumer holds one status per lane, not one per publication. Once
+    /// the file is read, each lane's status also warns when its samples do not line up with the video's frames under
+    /// the lane's tolerance.
+    pub(crate) fn announce(&mut self, source: usize, timeline: &Timeline) {
         let slot = &mut self.sources[source];
         slot.last_ready = Instant::now();
         let Load::Ready(track, snapshot) = &slot.load else {
@@ -122,7 +126,13 @@ impl State {
             ingest: snapshot.ingest.clone(),
         };
         for lane in self.lanes_of(source).collect::<Vec<_>>() {
-            let status = LaneStatus::Ready(ready.clone());
+            let mut status = ready.clone();
+            status.warnings.extend(
+                self.alignment(lane, timeline).and_then(|alignment| {
+                    misalignment(&alignment, &self.lanes[lane].policy.matching)
+                }),
+            );
+            let status = LaneStatus::Ready(status);
             let queued = self.notices.iter_mut().find(|notice| {
                 matches!(notice, OverlayEvent::Status { lane: held, status: LaneStatus::Ready(old) }
                     if usize::from(*held) == lane && old.data_revision == ready.data_revision)
@@ -141,6 +151,97 @@ impl State {
             }
         }
     }
+}
+
+impl State {
+    /// How the samples of `lane`'s file meet the video's frames under the lane's settled policy; `None` while the
+    /// file is being read.
+    pub(crate) fn alignment(&self, lane: usize, timeline: &Timeline) -> Option<Alignment> {
+        let slot = &self.lanes[lane];
+        let Load::Ready(track, snapshot) = &self.sources.get(slot.source?)?.load else {
+            return None;
+        };
+        (snapshot.ingest != Ingest::Reading).then(|| {
+            alignment(
+                &snapshot.keys,
+                track.coverage(),
+                timeline,
+                &slot.policy.matching,
+            )
+        })
+    }
+}
+
+/// The warning for samples that do not line up with the video's frames: by time, the last one far from the last
+/// frame, or fewer than [`MATCHED_ENOUGH`] of them selected by a frame; by frame, too few of them within the video. A
+/// file at a higher rate than the video always leaves some samples unselected, so a few are no warning.
+fn misalignment(alignment: &Alignment, policy: &MatchPolicy) -> Option<LoadWarning> {
+    let mut reasons = Vec::new();
+    if alignment.ends_far()
+        && let Some(gap) = alignment.end_gap
+    {
+        reasons.push(format!(
+            "The last sample is at {}, {} {} the last frame at {}",
+            seconds(alignment.video_end.0.saturating_add(gap.0)),
+            seconds(gap.0.abs()),
+            if gap.0 < 0 { "before" } else { "after" },
+            seconds(alignment.video_end.0),
+        ));
+    }
+    #[expect(
+        clippy::cast_precision_loss,
+        reason = "a share of the samples needs no exactness"
+    )]
+    let share = alignment.matched as f64 / alignment.samples.max(1) as f64;
+    if alignment.samples > 0 && share < MATCHED_ENOUGH {
+        reasons.push(match alignment.basis {
+            MatchBasis::Time => {
+                let within = match policy.tolerance {
+                    Tolerance::Exact => "exactly".to_owned(),
+                    Tolerance::PreviousWithin(time) => {
+                        format!("exactly or up to {} ms before", time.0 / 1000)
+                    }
+                };
+                format!(
+                    "{} of {} samples are on no frame, {within} it",
+                    alignment.unmatched(),
+                    alignment.samples,
+                )
+            }
+            MatchBasis::Frame => format!(
+                "{} of {} records are past the video's last frame (frame {})",
+                alignment.unmatched(),
+                alignment.samples,
+                alignment.last_frame,
+            ),
+        });
+    }
+    let consequence = match alignment.basis {
+        MatchBasis::Time => {
+            "Boxes may be drawn on the wrong frames. The file may count time differently from the video, \
+            for example frame number times a fixed frame period instead of the video's own frame times"
+        }
+        MatchBasis::Frame => "Records past the last frame are not drawn.",
+    };
+    (!reasons.is_empty()).then(|| LoadWarning {
+        problem: "The overlay does not line up with the video's frames".into(),
+        reasons,
+        consequence: consequence.into(),
+        more_reasons: false,
+    })
+}
+
+/// The share of samples a frame must select for the file to line up with the video.
+const MATCHED_ENOUGH: f64 = 0.8;
+
+/// Microseconds as seconds for the user, such as `41.6 s`.
+fn seconds(us: i64) -> String {
+    #[expect(
+        clippy::cast_precision_loss,
+        reason = "a time shown to a tenth of a second needs no exactness"
+    )]
+    let seconds = us as f64 / 1e6;
+    format!("{seconds:.1} s")
 }
 
 /// Why a track with this many samples cannot be sent: the Frame Map cell values above them are not sample indices.

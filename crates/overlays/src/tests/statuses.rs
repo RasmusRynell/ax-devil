@@ -130,3 +130,76 @@ async fn a_source_thread_that_dies_fails_its_lane_and_then_the_viewer_ends() {
         "no status for the plain lane"
     );
 }
+
+/// An ONVIF XML file with one empty frame at each time, in microseconds since the epoch.
+fn onvif_at(times_us: impl IntoIterator<Item = i64>) -> String {
+    times_us
+        .into_iter()
+        .map(|us| {
+            format!(
+                "<tt:Frame xmlns:tt=\"http://www.onvif.org/ver10/schema\" UtcTime=\"1970-01-01T00:00:{:02}.{:06}Z\" />\n",
+                us / 1_000_000,
+                us % 1_000_000
+            )
+        })
+        .collect()
+}
+
+async fn ready_warnings(viewer: &mut crate::ViewerOverlays) -> Vec<String> {
+    loop {
+        if let OverlayEvent::Status {
+            status: LaneStatus::Ready(ready),
+            ..
+        } = next(viewer).await
+            && ready.ingest != scene_store::Ingest::Reading
+        {
+            return ready.warnings.into_iter().map(|w| w.problem).collect();
+        }
+    }
+}
+
+const MISALIGNED: &str = "The overlay does not line up with the video's frames";
+
+#[tokio::test]
+async fn a_lane_matched_by_record_order_gets_no_time_warning() {
+    // Ten seconds of video; the file stops at 2 s. By record order its three records are on frames 0 to 2.
+    let env = Env::new();
+    let overlay = env.overlay(
+        "short.xml",
+        "ONVIF_XML",
+        &onvif_at([0, 1_000_000, 2_000_000]),
+    );
+    let mut viewer = env.open(vec![Some(overlay)], 300);
+    assert!(ready_warnings(&mut viewer).await.is_empty());
+
+    let by_time = overlay_sync::MatchPolicy {
+        basis: Some(overlay_sync::MatchBasis::Time),
+        ..overlay_sync::MatchPolicy::default()
+    };
+    viewer.set_policy(0, 1, Some(by_time), true);
+    assert_eq!(ready_warnings(&mut viewer).await, [MISALIGNED]);
+}
+
+#[tokio::test]
+async fn a_lanes_alignment_warning_follows_its_tolerance() {
+    // A sample 10 ms after every 30 fps frame: within the default tolerance of the next frame, never exact.
+    let env = Env::new();
+    let times = (0..300).map(|frame| frame * 1_000_000 / 30 + 10_000);
+    let overlay = env.overlay("late.xml", "ONVIF_XML", &onvif_at(times));
+    let mut viewer = env.open(vec![Some(overlay)], 300);
+    ready_warnings(&mut viewer).await;
+
+    let by_time = overlay_sync::MatchPolicy {
+        basis: Some(overlay_sync::MatchBasis::Time),
+        ..overlay_sync::MatchPolicy::default()
+    };
+    viewer.set_policy(0, 1, Some(by_time), true);
+    assert!(ready_warnings(&mut viewer).await.is_empty());
+
+    let exact = overlay_sync::MatchPolicy {
+        tolerance: overlay_sync::Tolerance::Exact,
+        ..by_time
+    };
+    viewer.set_policy(0, 2, Some(exact), true);
+    assert_eq!(ready_warnings(&mut viewer).await, [MISALIGNED]);
+}

@@ -384,7 +384,8 @@ async fn one_file_shown_twice_is_two_lanes_with_their_own_policies_on_one_source
                     maps.insert((map.lane, map.first + k as u64), *cell);
                 }
             }
-            Event::Message(ServerMessage::DataWindow { .. }) | Event::Frame(_) => {}
+            Event::Message(ServerMessage::DataWindow { .. } | ServerMessage::LaneStatus { .. })
+            | Event::Frame(_) => {}
             _ => panic!("expected the lanes' data and maps"),
         }
     }
