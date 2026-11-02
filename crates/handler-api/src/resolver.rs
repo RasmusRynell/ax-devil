@@ -30,8 +30,8 @@ pub struct Choice {
 
 /// Turns settings into a playlist.
 ///
-/// A playlist's entry names are unique, and so are the overlay labels within an entry: they are the identity of
-/// entries and lanes.
+/// A playlist's entry names are unique, and so are the overlay labels and slots within an entry: the name is the
+/// identity of an entry, the slot that of a lane.
 pub trait PlaylistResolver: Send + Sync {
     /// What the host needs to know about the resolver.
     fn spec(&self) -> &ResolverSpec;

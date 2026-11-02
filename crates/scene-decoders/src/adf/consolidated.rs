@@ -5,23 +5,24 @@ use std::collections::BTreeMap;
 
 use foundation::MediaTime;
 use scene::{
-    Classification, Entity, Geometry, Measurements, Observation, Scene, SceneTime, TimeSlice,
+    Classification, Entity, Geometry, Measurements, Name, Observation, Scene, SceneTime, TimeSlice,
 };
 use serde_json::Value as Json;
 
 use super::{
     frame::entity_of,
     parse::{
-        Object, bounding_box, classification, entity_id, geographic, image_velocity, list,
+        Object, bounding_box, classification, entity_id, geographic, image, image_velocity, list,
         measurements, object, present, timestamp, world_position, world_velocity,
     },
 };
 
-/// The Scenes of a record, oldest first. `read_world_velocity` says whether the format's world velocity is read.
-pub(super) fn read(record: &Object, read_world_velocity: bool) -> Result<Vec<Scene>, String> {
+/// The Scenes of a record, oldest first. `v1` says whether the format is v1, which also reads the world velocity and
+/// lets an image's `crop_box` stand in for its `bounding_box`.
+pub(super) fn read(record: &Object, v1: bool) -> Result<Vec<Scene>, String> {
     let mut moments: BTreeMap<MediaTime, Vec<Entity>> = BTreeMap::new();
     for track in tracks(record)? {
-        add_track(track, read_world_velocity, &mut moments)?;
+        add_track(track, v1, &mut moments)?;
     }
     moments
         .into_iter()
@@ -53,9 +54,11 @@ fn tracks(record: &Object) -> Result<Vec<&Object>, String> {
     Ok(tracks)
 }
 
+/// Adds the track's observations to the Scenes of their times. Its picture and end reason are of the whole track, so
+/// they go with the last observation.
 fn add_track(
     track: &Object,
-    read_world_velocity: bool,
+    v1: bool,
     moments: &mut BTreeMap<MediaTime, Vec<Entity>>,
 ) -> Result<(), String> {
     let id = entity_id(track.get("id"), "the track id")?;
@@ -72,13 +75,7 @@ fn add_track(
     };
     let observations = sightings
         .iter()
-        .map(|payload| {
-            observation(
-                object(payload, "an observation")?,
-                &classes,
-                read_world_velocity,
-            )
-        })
+        .map(|payload| observation(object(payload, "an observation")?, &classes, v1))
         .collect::<Result<Vec<_>, _>>()?;
     let (Some(first), Some(last)) = (
         observations.iter().map(|(time, _)| *time).min(),
@@ -98,8 +95,20 @@ fn add_track(
         return Err("duration does not match the observations".to_owned());
     }
 
+    let mut picture = present(track.get("image"))
+        .map(|picture| image(picture, v1))
+        .transpose()?;
+    let mut end_reason = present(track.get("end_reason"))
+        .and_then(Json::as_str)
+        .filter(|reason| !reason.is_empty())
+        .map(|reason| Name::from(reason.to_owned()));
     for (time, observation) in observations {
-        entity_of(moments.entry(time).or_default(), id.clone()).push_observation(observation);
+        let entity = entity_of(moments.entry(time).or_default(), id.clone());
+        entity.push_observation(observation);
+        if time == last {
+            entity.images.extend(picture.take());
+            entity.end_reason = end_reason.take();
+        }
     }
     Ok(())
 }
@@ -107,7 +116,7 @@ fn add_track(
 fn observation(
     payload: &Object,
     classes: &[Classification],
-    read_world_velocity: bool,
+    v1: bool,
 ) -> Result<(MediaTime, Observation), String> {
     let time = timestamp(payload, "timestamp", "the observation timestamp")?;
     let mut observation = Observation::new(
@@ -117,7 +126,7 @@ fn observation(
     observation.classifications = classes.to_vec();
     observation.measurements = measurements(Measurements {
         image_velocity: image_velocity(payload.get("velocity"))?,
-        world_velocity: if read_world_velocity {
+        world_velocity: if v1 {
             world_velocity(payload.get("world_velocity"))?
         } else {
             None

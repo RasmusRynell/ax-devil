@@ -6,8 +6,8 @@ use std::{
 
 use foundation::{CancelToken, ErrorCode, HostPath, Interrupt, UserError};
 use handler_api::{
-    Field, FieldKind, Form, OverlayRef, PlaylistResolver, ResolvedEntry, ResolvedPlaylist,
-    ResolverSpec, Settings, Values, VideoRef, invalid_field,
+    Cli, Field, FieldKind, Form, OverlayRef, PlaylistResolver, ResolvedEntry, ResolvedPlaylist,
+    ResolverSpec, Values, VideoRef, invalid_field,
 };
 
 use crate::resolved_file_type;
@@ -18,7 +18,8 @@ const COMPRESSION_SUFFIXES: [&str; 4] = ["bz2", "gz", "xz", "zst"];
 ///
 /// Names match after a trailing compression suffix and one more suffix are removed. Decoders read files as they are,
 /// so a matched file that is compressed fails the resolve and names the file instead of yielding an empty overlay.
-/// Settings are `videos_dir`, `overlays_dir` and `handler_type`, the decoder that reads the overlay files.
+/// Settings are `videos_dir`, `overlays_dir`, `handler_type`, the decoder that reads the overlay files, and its
+/// `options`, which every overlay is given as they are.
 pub struct FolderPairResolver {
     spec: ResolverSpec,
 }
@@ -39,6 +40,16 @@ impl FolderPairResolver {
                             .required()
                             .positional(),
                         Field::new("handler_type", "Overlay format", FieldKind::Handler).required(),
+                        Field {
+                            cli: Cli::Flag("option".to_owned()),
+                            ..Field::new(
+                                "options",
+                                "Overlay options",
+                                FieldKind::DecoderOptions {
+                                    handler_field: "handler_type".to_owned(),
+                                },
+                            )
+                        },
                     ],
                 },
             },
@@ -66,6 +77,7 @@ impl PlaylistResolver for FolderPairResolver {
             Path::new(required("overlays_dir")?),
         );
         let handler = required("handler_type")?;
+        let options = settings.options("options");
         cancel.check()?;
         require_dir(videos_dir, "Video directory does not exist").map_err(Interrupt::Failed)?;
         require_dir(overlays_dir, "Overlay directory does not exist").map_err(Interrupt::Failed)?;
@@ -91,7 +103,7 @@ impl PlaylistResolver for FolderPairResolver {
                 slot: "overlay".to_owned(),
                 path,
                 handler: handler.to_string(),
-                options: Settings::new(),
+                options: options.clone(),
             };
             entries.push(ResolvedEntry {
                 name,

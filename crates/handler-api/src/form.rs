@@ -49,6 +49,12 @@ pub enum FieldKind {
     },
     /// One decoder id, chosen from the registry.
     Handler,
+    /// The options of the decoder that the `Handler` field `handler_field` chose, held as a map under this key and
+    /// checked against that decoder's options form by the host, which has the registry.
+    DecoderOptions {
+        /// The key of the `Handler` field whose decoder's options these are.
+        handler_field: String,
+    },
     /// Several of the values `scan` finds; the key absent means all of them, an explicit list means those.
     Scan {
         /// The settings the scan reads, whose change invalidates its result.
@@ -141,6 +147,8 @@ fn check(field: &Field, value: &Value) -> Result<(), UserError> {
     let reason = match (&field.kind, value) {
         (FieldKind::Scan { .. }, Value::Array(items)) if items.iter().all(Value::is_string) => None,
         (FieldKind::Scan { .. }, _) => Some("Must be a list of names".to_owned()),
+        (FieldKind::DecoderOptions { .. }, Value::Object(_)) => None,
+        (FieldKind::DecoderOptions { .. }, _) => Some("Must be a map of options".to_owned()),
         (FieldKind::Integer { min }, value) => match value.as_i64() {
             Some(number) if number >= *min => None,
             Some(_) => Some(format!("Must be at least {min}")),
@@ -174,6 +182,19 @@ impl Values {
     /// The path of a folder or file setting.
     pub fn path(&self, key: &str) -> Option<&Path> {
         self.text(key).map(Path::new)
+    }
+
+    /// The map a decoder-options setting holds; empty when it is absent.
+    pub fn options(&self, key: &str) -> Map<String, Value> {
+        match self.map.get(key) {
+            Some(Value::Object(options)) => options.clone(),
+            _ => Map::new(),
+        }
+    }
+
+    /// Replaces the map of the decoder-options setting `key` with `options`, the host's checked version of it.
+    pub fn set_options(&mut self, key: &str, options: Map<String, Value>) {
+        self.map.insert(key.to_owned(), Value::Object(options));
     }
 
     /// What a scan setting names: everything when it is absent, else the listed values.

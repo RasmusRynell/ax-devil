@@ -120,9 +120,13 @@ fn track(id: &str, at: &str, class: &str) -> Json {
 
 #[test]
 fn consolidated_tracks_are_scenes_by_time_and_lines_of_one_time_stay_apart_for_the_host_to_merge() {
+    let mut bike = track("track-2", "2024-05-12T10:00:01Z", "Bike");
+    bike["image"] = json!({"timestamp": "2024-05-12T10:00:01Z", "data": "aW1n",
+        "bounding_box": {"left": 0.1, "top": 0.2, "right": 0.4, "bottom": 0.6}});
+    bike["end_reason"] = json!("left the scene");
     let document = json!({"version": "1.0.0-beta1", "tracks": [
         track("track-1", "2024-05-12T10:00:00Z", "Car"),
-        {"object": track("track-2", "2024-05-12T10:00:01Z", "Bike")},
+        {"object": bike},
     ]});
     let lines = [
         document.to_string(),
@@ -156,6 +160,9 @@ fn consolidated_tracks_are_scenes_by_time_and_lines_of_one_time_stay_apart_for_t
     );
     let bike = &scenes[1].entities()[0].observations()[0].classifications[0];
     assert_eq!(bike.class_type, "bike");
+    let tracked = &scenes[1].entities()[0];
+    assert_eq!(&*tracked.images[0].data, b"img");
+    assert_eq!(tracked.end_reason.as_deref(), Some("left the scene"));
 }
 
 #[test]

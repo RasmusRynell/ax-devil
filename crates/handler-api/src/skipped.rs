@@ -50,26 +50,19 @@ mod tests {
     use super::*;
 
     #[test]
-    fn warning_keeps_three_short_reasons_and_says_when_more_exist() {
+    fn warning_keeps_three_reasons_cut_short_and_says_when_more_exist() {
         let mut skipped = SkippedRecords::new("rows", "They are not drawn.");
         assert_eq!(skipped.clone().warning(5), None);
 
-        for reason in ["a", "b", "c", &"x".repeat(300)] {
+        for reason in ["a", "b", &"x".repeat(300), "d"] {
             skipped.add(reason);
         }
         let warning = skipped.warning(10).expect("four rows were skipped");
 
         assert_eq!(warning.problem, "Skipped 4 of 10 rows");
-        assert_eq!(warning.reasons, ["a", "b", "c"]);
+        assert_eq!(warning.reasons[..2], ["a", "b"]);
+        assert_eq!(warning.reasons.len(), 3);
+        assert_eq!(warning.reasons[2].chars().count(), 200);
         assert!(warning.more_reasons);
-    }
-
-    #[test]
-    fn long_reasons_are_cut() {
-        let mut skipped = SkippedRecords::new("rows", "");
-        skipped.add("y".repeat(300));
-        let warning = skipped.warning(1).expect("one row was skipped");
-        assert_eq!(warning.reasons[0].chars().count(), 200);
-        assert!(!warning.more_reasons);
     }
 }

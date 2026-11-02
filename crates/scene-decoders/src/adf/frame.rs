@@ -173,7 +173,9 @@ fn beta_observation(payload: &Object, entities: &mut Vec<Entity>) -> Result<(), 
         // The beta format's world velocity has no known shape, so it is not read.
         ..Measurements::default()
     });
-    let picture = present(payload.get("image")).map(image).transpose()?;
+    let picture = present(payload.get("image"))
+        .map(|picture| image(picture, false))
+        .transpose()?;
 
     let entity = entity_of(entities, id);
     entity.push_observation(observation);

@@ -35,6 +35,9 @@ fn field_kind(kind: &FieldKind) -> FieldKindWire {
         FieldKind::Text => FieldKindWire::Text,
         FieldKind::Integer { min } => FieldKindWire::Integer { min: *min },
         FieldKind::Handler => FieldKindWire::Handler,
+        FieldKind::DecoderOptions { handler_field } => FieldKindWire::DecoderOptions {
+            handler_field: handler_field.clone(),
+        },
         FieldKind::Scan { depends_on } => FieldKindWire::Scan {
             depends_on: depends_on.clone(),
         },

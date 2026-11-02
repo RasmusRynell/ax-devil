@@ -8,7 +8,7 @@ use std::{
 
 use foundation::{CancelToken, ErrorCode, HostPath, Interrupt, MediaTime, UserError, Warning};
 use handler_api::{
-    DecodeSummary, Decoder, Header, Input, OnEqualKey, SceneSink, SkippedRecords, Values,
+    DecodeSummary, Decoder, Form, Header, Input, OnEqualKey, SceneSink, SkippedRecords, Values,
 };
 use overlay_sync::{KeyChunks, MatchBasis, SampleKeys};
 use scene::{
@@ -83,23 +83,31 @@ impl Heard {
 /// A track over a live feed, matched to the video by time.
 ///
 /// A thread decodes each [`Input`] the feed gives, one after the other, and the sink keeps the newest Scene open until
-/// a later one arrives. The track holds at most `cap` published samples: when there are more it drops the oldest half
-/// at once, which renumbers the rest (a new generation), so a viewer renumbers once per batch and not once per
-/// sample. The ingest never ends; dropping the track stops the thread.
+/// a later one arrives or its session ends. The track holds at most `cap` published samples: when there are more it
+/// drops the oldest half at once, which renumbers the rest (a new generation), so a viewer renumbers once per batch
+/// and not once per sample. The ingest never ends; dropping the track stops the thread.
 pub struct LiveTrack {
+    options: Form,
     growth: Arc<Growth>,
     heard: Arc<Heard>,
     cancel: CancelToken,
 }
 
 impl LiveTrack {
-    /// Starts decoding what `feed` gives with `decoder` and `values`, keeping at most `cap` samples.
+    /// Starts decoding what `feed` gives with `decoder` and `values`, keeping at most `cap` samples. A `cap` below 2
+    /// is refused: dropping half of the samples would drop the newest too.
     pub fn start(
         decoder: Arc<dyn Decoder>,
         values: Values,
         feed: Box<dyn Feed>,
         cap: usize,
     ) -> std::io::Result<Arc<Self>> {
+        if cap < 2 {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "a live track keeps at least 2 samples",
+            ));
+        }
         let cancel = CancelToken::new();
         let heard = Arc::new(Heard {
             given: OnceLock::new(),
@@ -117,6 +125,7 @@ impl LiveTrack {
             samples,
             keys: KeyChunks::new(),
             open: None,
+            closed: None,
             generation: 0,
             late: 0,
             records: 0,
@@ -124,6 +133,7 @@ impl LiveTrack {
             warnings: Warnings::default(),
         };
         let track = Arc::new(Self {
+            options: decoder.spec().options.clone(),
             growth: sink.growth.clone(),
             heard,
             cancel: cancel.clone(),
@@ -148,6 +158,10 @@ impl TrackRead for LiveTrack {
 
     fn default_basis(&self) -> MatchBasis {
         MatchBasis::Time
+    }
+
+    fn options(&self) -> &Form {
+        &self.options
     }
 
     fn snapshot(&self) -> Arc<TrackSnapshot> {
@@ -198,10 +212,11 @@ impl TrackRead for LiveTrack {
     }
 }
 
-/// The snapshot of a live track: `keys` published, `open` the key of the sample not yet published, if any.
+/// The snapshot of a live track: `keys` published, `frontier` the key of the newest sample, if any: frames below it
+/// are decided.
 fn snapshot(
     keys: KeyChunks<MediaTime>,
-    open: Option<MediaTime>,
+    frontier: Option<MediaTime>,
     generation: u32,
     samples: &Arc<Samples>,
     warnings: Vec<Warning>,
@@ -214,7 +229,7 @@ fn snapshot(
         // Until a sample is open nothing is decided: any frame may still get the first.
         decided: Decided::Below {
             frame: None,
-            time: Some(open.unwrap_or(MediaTime(i64::MIN))),
+            time: Some(frontier.unwrap_or(MediaTime(i64::MIN))),
         },
         ingest: Ingest::Reading,
         generation,
@@ -245,6 +260,7 @@ fn run(
         if cancel.is_cancelled() {
             return;
         }
+        sink.close_open();
         sink.publish();
     }
 }
@@ -261,6 +277,8 @@ struct Sink {
     keys: KeyChunks<MediaTime>,
     /// The newest sample, which a Scene with its key may still join.
     open: Option<(MediaTime, Group)>,
+    /// The key of the newest published sample, which a later Scene must be above.
+    closed: Option<MediaTime>,
     generation: u32,
     /// How many Scenes arrived with a key below the open one and were dropped.
     late: usize,
@@ -286,6 +304,10 @@ impl SceneSink for Sink {
             return ControlFlow::Continue(());
         };
         let Some((open, group)) = &mut self.open else {
+            if self.closed.is_some_and(|closed| time <= closed) {
+                self.late += 1;
+                return ControlFlow::Continue(());
+            }
             self.open = Some((time, Group::new(scene)));
             self.publish();
             return ControlFlow::Continue(());
@@ -336,6 +358,7 @@ impl Sink {
             .write()
             .unwrap_or_else(PoisonError::into_inner);
         held.push(scene);
+        self.closed = Some(time);
         self.keys = self.keys.appended(&[time]);
         if held.len() > self.cap {
             let dropped = held.len().div_ceil(2);
@@ -363,18 +386,27 @@ impl Sink {
         }
         let total = self.records;
         warnings.extend(self.skipped.clone().warning(total));
-        let open = self.open.as_ref().map(|(time, _)| *time);
+        let frontier = self.open.as_ref().map(|(time, _)| *time).or(self.closed);
         self.growth.publish(snapshot(
             self.keys.clone(),
-            open,
+            frontier,
             self.generation,
             &self.samples,
             warnings,
         ));
     }
 
-    /// Takes what a finished session reports.
+    /// Takes what a finished session reports. A decoder that gave no header has its filter, coverage and metadata
+    /// from the first summary, which also replaces what the samples were encoded under.
     fn ended(&mut self, summary: DecodeSummary) {
+        let meta = Meta {
+            coverage: summary.coverage,
+            filter: summary.filter,
+            metadata: summary.metadata,
+        };
+        if self.heard.given.set(meta).is_ok() {
+            *self.samples.items() = ItemCache::new(ITEM_CACHE_BYTES);
+        }
         for warning in summary.warnings {
             self.warnings.push(warning);
         }

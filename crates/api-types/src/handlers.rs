@@ -128,6 +128,12 @@ pub enum FieldKindWire {
     },
     /// One file decoder handler id, chosen from `HandlersInfo.decoders`.
     Handler,
+    /// The options of the decoder chosen in the `Handler` field `handler_field`: a map under this key, edited with
+    /// that decoder's `DecoderInfo.options`.
+    DecoderOptions {
+        /// The key of the `Handler` field.
+        handler_field: String,
+    },
     /// Several of the values a scan finds; absent means all of them.
     Scan {
         /// The settings the scan reads, whose change invalidates its result.

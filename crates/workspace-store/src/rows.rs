@@ -236,26 +236,35 @@ mod tests {
                 (RowKind::Lane, "gt.txt", false),
             ]
         );
-        assert_eq!(listed[0].status, RowStatus::Pending);
-        assert_eq!(listed[1].status, RowStatus::Unavailable(not_found));
-        assert!(listed[..2].iter().all(|row| row.entry.is_none()));
+        // The first row of a kind and label: the pending video, the playlist's first lane.
+        let row = |kind, label: &str| {
+            listed
+                .iter()
+                .find(|row| row.kind == kind && row.label == label)
+                .unwrap()
+        };
+        let (pending_row, broken_row) =
+            (row(RowKind::Item, "v.mp4"), row(RowKind::Item, "gone.mp4"));
+        assert_eq!(pending_row.status, RowStatus::Pending);
+        assert_eq!(broken_row.status, RowStatus::Unavailable(not_found));
+        assert!(pending_row.entry.is_none() && broken_row.entry.is_none());
         let first = ContentId::of_entry(&playlist.id, "SEQ-01");
+        let mot_row = row(RowKind::Item, "MOT Challenge");
         assert_eq!(
-            listed[2].entry,
+            mot_row.entry,
             Some(first.clone()),
             "the item opens its first entry"
         );
-        assert_eq!(listed[4].entry, Some(first.clone()));
+        assert_eq!(row(RowKind::Lane, "GT").entry, Some(first.clone()));
         assert_eq!(
-            listed[2].warnings.len(),
+            mot_row.warnings.len(),
             1,
             "the skipped sequence is warned of"
         );
         assert!(
             listed
                 .iter()
-                .enumerate()
-                .all(|(at, row)| at == 2 || row.warnings.is_empty())
+                .all(|row| row.key == mot_row.key || row.warnings.is_empty())
         );
         let keys: HashSet<_> = listed.iter().map(|row| &row.key).collect();
         assert_eq!(keys.len(), listed.len(), "keys are unique");

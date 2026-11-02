@@ -11,11 +11,11 @@ the built-ins. The scene store drives it like any decoder and owns grouping, ord
 - **Identity.** `code_hash` is SHA-256 over the manifest and the files its `code` names, re-read only when a size or
   modification time changed. A converter whose files cannot be hashed is not run, so nothing is cached under a
   missing identity.
-- **One run** (`run.rs`): own process group, private empty working folder as cwd and `TMPDIR`, an environment cleared
-  to `PASSED_ENV` plus the manifest's `env` (no `AX_DEVIL_*`, which the manifest refuses). The request (path and validated options, no frame size) is written on a
-  thread so a converter that never reads stdin cannot block the host. A reader thread feeds 64 KiB chunks through a
-  bounded channel to the line reader, so a fast converter is held back by the store, not buffered. A line over
-  16 MiB is refused before it is buffered.
+- **One run** (`run.rs`): own process group, private empty working folder as cwd and `TMPDIR`, an environment cleared to
+  `PASSED_ENV` plus the manifest's `env` (no `AX_DEVIL_*`, which the manifest refuses). The request (path and validated
+  options, no frame size) is written on a thread so a converter that never reads stdin cannot block the host. A reader
+  thread feeds 64 KiB chunks through a bounded channel to the line reader, so a fast converter is held back by the
+  store, not buffered. A line over 16 MiB is refused before it is buffered.
 - **Every run ends the same way.** The group is killed whether the converter finished, failed, was cancelled or went
   idle (no output for `idle_timeout_s`), then the child is waited for and the working folder removed. A grandchild left
   behind never outlives the lane; output already written is still read, for up to 2 s. Windows has no process group here: only the converter process itself is killed.

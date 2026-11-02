@@ -12,11 +12,11 @@ use clap::{
 };
 use foundation::UserError;
 use handler_api::{
-    Cli as CliPlacement, Field, FieldKind, PlaylistResolver, Settings, invalid_field,
+    Cli as CliPlacement, Decoder, Field, FieldKind, PlaylistResolver, Settings, invalid_field,
 };
 use handlers::Handlers;
 use serde_json::Value;
-use std::{ffi::OsString, path::Path};
+use std::{ffi::OsString, path::Path, sync::Arc};
 
 /// Reads the process arguments; prints help, a version or a usage error and exits when that is what was asked for.
 pub(super) fn parse(handlers: &Handlers) -> Cli {
@@ -112,6 +112,14 @@ pub(super) fn overlay_settings<'a>(
             _ => None,
         },
     };
+    typed_options(decoder, given)
+}
+
+/// The options `given` as settings, each typed by the form of `decoder`: a whole number where it declares one.
+fn typed_options<'a>(
+    decoder: Option<&Arc<dyn Decoder>>,
+    given: impl Iterator<Item = &'a OverlayOption>,
+) -> Result<Settings, UserError> {
     let mut settings = Settings::new();
     for option in given {
         let integer = decoder.is_some_and(|decoder| {
@@ -252,6 +260,11 @@ fn field_arg(field: &Field, handlers: &Handlers) -> Arg {
             .value_name("HANDLER")
             .value_parser(handler_parser(handlers))
             .help(label),
+        FieldKind::DecoderOptions { .. } => arg
+            .value_name("KEY=VALUE")
+            .value_parser(parse_overlay_option)
+            .action(ArgAction::Append)
+            .help(label),
         FieldKind::Scan { .. } => arg
             .value_name("A,B,...")
             .value_delimiter(',')
@@ -288,13 +301,14 @@ fn playlist_command_of(handlers: &Handlers, matches: &ArgMatches) -> Result<Comm
     };
     Ok(Command::Playlist {
         resolver: id.to_string(),
-        settings: settings_from(resolver.as_ref(), resolver_matches)?,
+        settings: settings_from(handlers, resolver.as_ref(), resolver_matches)?,
     })
 }
 
 /// The settings the arguments gave: folders and files made absolute, a `Scan` field a list when given and left out
-/// when not (which means all of them).
+/// when not (which means all of them), and decoder options typed by the chosen decoder.
 fn settings_from(
+    handlers: &Handlers,
     resolver: &dyn PlaylistResolver,
     matches: &ArgMatches,
 ) -> Result<Settings, clap::Error> {
@@ -313,6 +327,15 @@ fn settings_from(
             FieldKind::Integer { .. } => matches
                 .get_one::<i64>(key)
                 .map(|number| Value::from(*number)),
+            FieldKind::DecoderOptions { handler_field } => {
+                let decoder = matches
+                    .get_one::<String>(handler_field)
+                    .and_then(|id| handlers.decoder(id));
+                let given = matches.get_many::<OverlayOption>(key).into_iter().flatten();
+                let options = typed_options(decoder, given)
+                    .map_err(|error| usage_error(ErrorKind::InvalidValue, describe(&error)))?;
+                (!options.is_empty()).then_some(Value::Object(options))
+            }
             FieldKind::Text | FieldKind::Handler => {
                 matches.get_one::<String>(key).cloned().map(Value::String)
             }

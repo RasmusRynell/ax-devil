@@ -131,9 +131,7 @@ impl<'a> Records<'a> {
                 }
             }
             Ok(Parsed::Skipped(reason)) => self.sink.skip(number as u64, reason),
-            Err(reason) => self
-                .sink
-                .skip(number as u64, format!("line {number}: {reason}")),
+            Err(reason) => self.sink.skip(number as u64, reason),
         }
         Next::Continue
     }

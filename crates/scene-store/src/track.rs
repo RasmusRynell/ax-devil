@@ -10,7 +10,7 @@ use std::{
 };
 
 use foundation::{CancelToken, ErrorCode, FrameId, HostPath, MediaTime, UserError, Warning};
-use handler_api::{Header, Spec};
+use handler_api::{Form, Header, Spec};
 use overlay_sync::{MatchBasis, SampleKeys};
 use scene::{
     Coverage, Fields, FilterPolicy, Scene, SceneTime, TimeKind, serial::columns::encode_sample_item,
@@ -351,6 +351,10 @@ impl TrackRead for Track {
 
     fn default_basis(&self) -> MatchBasis {
         self.spec.default_basis
+    }
+
+    fn options(&self) -> &Form {
+        &self.spec.options
     }
 
     fn snapshot(&self) -> Arc<TrackSnapshot> {

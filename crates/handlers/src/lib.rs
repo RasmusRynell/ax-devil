@@ -114,6 +114,15 @@ mod tests {
                     field.key
                 );
             }
+            if let FieldKind::DecoderOptions { handler_field } = &field.kind {
+                assert!(
+                    form.fields.iter().any(
+                        |other| other.key == *handler_field && other.kind == FieldKind::Handler
+                    ),
+                    "{who}: {} takes the options of a Handler field",
+                    field.key
+                );
+            }
             if field.cli == Cli::Positional {
                 assert!(field.required, "{who}: a positional is required");
             }

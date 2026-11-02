@@ -401,11 +401,6 @@ fn bad_lines_are_skipped_and_counted_by_line_number() {
         .map(|(position, _)| *position)
         .collect();
     assert_eq!(positions, [2, 3, 5, 6]);
-    assert!(
-        run.sink.skips[0].1.starts_with("line 2: "),
-        "{:?}",
-        run.sink.skips[0]
-    );
 }
 
 fn a_failure_keeps_the_samples_and_quotes_stderr() {

@@ -2,7 +2,7 @@
 
 use super::*;
 
-/// A line decoder: a line starting with `bad` is skipped, any other gives a frame Scene numbered by the line.
+/// A line decoder: a line starting with `bad` is skipped, any other gives a Scene timed by the line.
 struct Lines(Spec);
 
 impl Decoder for Lines {
@@ -21,7 +21,8 @@ impl Decoder for Lines {
             if record.bytes.starts_with(b"bad") {
                 sink.skip(record.position, "not a record".into());
             } else {
-                let scene = entities(SceneTime::Frame(record.position), 1);
+                let time = MediaTime(record.position as i64 * 1_000);
+                let scene = entities(SceneTime::Timestamp(time), 1);
                 let _ = sink.sample(scene, OnEqualKey::Replace);
             }
         }
@@ -37,40 +38,82 @@ impl Decoder for Lines {
     }
 }
 
-#[test]
-fn the_host_frames_lines_and_counts_the_ones_a_decoder_skips() {
+/// The track of a file with `text` read by `decoder`.
+fn open(decoder: impl Decoder + 'static, text: &[u8]) -> Arc<Track> {
     let dir = tempfile::tempdir().expect("temp dir");
     let source = dir.path().join("overlay.txt");
-    fs::write(&source, b"  one \n\nbad\n two\r\n").expect("source");
-    let decoder = Arc::new(Lines(Spec {
-        framing: Framing::Records,
-        ..spec(1)
-    }));
-    let registry = TrackRegistry::new(move |_| Some(decoder.clone() as Arc<dyn Decoder>), None);
+    fs::write(&source, text).expect("source");
+    let decoder: Arc<dyn Decoder> = Arc::new(decoder);
+    let registry = TrackRegistry::new(move |_| Some(decoder.clone()), None);
     let overlay = OverlayRef {
         label: "lane".into(),
         slot: "lane".into(),
         path: source,
         handler: "TEST".into(),
-        options: Settings::from_iter([("unknown".to_owned(), "x".into())]),
+        options: Settings::new(),
     };
+    registry.open(&overlay, &CancelToken::new()).expect("opens")
+}
 
-    let track = registry.open(&overlay, &CancelToken::new()).expect("opens");
+#[test]
+fn the_host_frames_lines_and_a_skipped_one_keeps_its_frame() {
+    let decoder = Lines(Spec {
+        framing: Framing::Records,
+        ..spec(1)
+    });
+    let track = open(decoder, b"  one \n\nbad\n two\r\n");
 
     assert_eq!(
-        track.snapshot().keys,
-        frame_keys(&[1, 4]),
-        "blank lines are not records"
+        track.snapshot().keys.frames,
+        Some(in_order(&[0, 2])),
+        "blank lines are not records and a skipped one holds its frame"
     );
     let warnings = track.warnings();
-    let [undeclared, skipped] = &warnings[..] else {
+    let [skipped] = &warnings[..] else {
         panic!("{warnings:?}")
     };
-    assert_eq!(
-        undeclared.reasons,
-        ["'unknown'"],
-        "an option the decoder does not declare"
-    );
     assert_eq!(skipped.problem, "Skipped 1 of 3 lines");
     assert_eq!(skipped.reasons, ["line 3: not a record"]);
+}
+
+/// A decoder that reads the file itself, as a converter does, and gives up on lines of its own.
+struct ReadsPath(Spec);
+
+impl Decoder for ReadsPath {
+    fn spec(&self) -> &Spec {
+        &self.0
+    }
+
+    fn decode(
+        &self,
+        _input: &mut dyn Input,
+        _options: &Values,
+        sink: &mut dyn SceneSink,
+        _cancel: &CancelToken,
+    ) -> Result<DecodeSummary, Interrupt<DecodeError>> {
+        let _ = sink.sample(entities(SceneTime::Frame(0), 1), OnEqualKey::Merge);
+        sink.skip(2, "not a sample".into());
+        let _ = sink.sample(entities(SceneTime::Frame(1), 1), OnEqualKey::Merge);
+        Ok(DecodeSummary {
+            warnings: Vec::new(),
+            filter: FilterPolicy {
+                name: "reads-path",
+                options: Vec::new(),
+            },
+            metadata: Vec::new(),
+            coverage: Coverage::Sparse,
+        })
+    }
+}
+
+#[test]
+fn a_decoder_that_reads_the_file_itself_counts_its_own_lines_in_the_skipped_warning() {
+    let track = open(ReadsPath(spec(1)), b"unread\n");
+
+    let warnings = track.warnings();
+    let [skipped] = &warnings[..] else {
+        panic!("{warnings:?}")
+    };
+    assert_eq!(skipped.problem, "Skipped 1 of 3 lines");
+    assert_eq!(skipped.reasons, ["line 2: not a sample"]);
 }

@@ -1,6 +1,6 @@
 //! The host's framing of an overlay file into the records a decoder reads.
 
-use std::path::Path;
+use std::{cell::Cell, path::Path};
 
 use foundation::{CancelToken, Interrupt};
 use handler_api::{DecodeError, Framing, Input, Record};
@@ -20,24 +20,19 @@ pub(crate) struct FileInput<'a> {
     next_start: usize,
     /// The number of the last line read.
     line: u64,
-    /// How many records were given.
-    records: u64,
+    /// How many records were given. The ingest's sink reads it, so a Scene is placed by the record being read.
+    records: &'a Cell<u64>,
 }
 
 impl<'a> FileInput<'a> {
-    pub(crate) fn new(source: &'a LazySource, framing: Framing) -> Self {
+    pub(crate) fn new(source: &'a LazySource, framing: Framing, records: &'a Cell<u64>) -> Self {
         Self {
             source,
             framing,
             next_start: 0,
             line: 0,
-            records: 0,
+            records,
         }
-    }
-
-    /// How many records were given so far.
-    pub(crate) fn records(&self) -> u64 {
-        self.records
     }
 }
 
@@ -49,7 +44,7 @@ impl Input for FileInput<'_> {
     fn next(&mut self, cancel: &CancelToken) -> Result<Option<Record<'_>>, Interrupt<DecodeError>> {
         let bytes = self.source.bytes(cancel)?;
         let (bytes, position) = match self.framing {
-            Framing::Whole if self.records == 0 => (bytes, 0),
+            Framing::Whole if self.records.get() == 0 => (bytes, 0),
             Framing::Whole => return Ok(None),
             Framing::Records => loop {
                 if self.next_start > bytes.len() {
@@ -68,7 +63,7 @@ impl Input for FileInput<'_> {
                 }
             },
         };
-        self.records += 1;
+        self.records.set(self.records.get() + 1);
         Ok(Some(Record {
             bytes,
             position,

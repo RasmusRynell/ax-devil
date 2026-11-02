@@ -6,6 +6,7 @@ use foundation::{CancelToken, ErrorCode, HostPath, Interrupt, ItemId, Location, 
 use handler_api::{FieldKind, Form, Settings, Values};
 use handlers::Handlers;
 use overlay_sync::MatchPolicy;
+use serde_json::Value;
 use std::{collections::BTreeMap, fs, io, path::Path};
 
 /// A video file to open, with the overlay files drawn on it.
@@ -154,13 +155,15 @@ fn resolve_video(
 }
 
 /// `settings` checked against `form`, and every decoder id a `Handler` field holds known to `handlers`: a playlist
-/// whose settings name an overlay format the app lacks is refused before it reads any folder.
+/// whose settings name an overlay format the app lacks is refused before it reads any folder. The options of a
+/// `DecoderOptions` field are checked against the chosen decoder's form and come back with its defaults filled in; an
+/// error about them is located at that field and names the option.
 pub(crate) fn check_settings(
     form: &Form,
     settings: &Settings,
     handlers: &Handlers,
 ) -> Result<Values, UserError> {
-    let values = form.validate(settings)?;
+    let mut values = form.validate(settings)?;
     for field in &form.fields {
         if matches!(field.kind, FieldKind::Handler)
             && let Some(id) = values.text(&field.key)
@@ -173,7 +176,94 @@ pub(crate) fn check_settings(
             .at(Location::field(&field.key)));
         }
     }
+    for field in &form.fields {
+        let FieldKind::DecoderOptions { handler_field } = &field.kind else {
+            continue;
+        };
+        let Some(id) = values.text(handler_field) else {
+            continue;
+        };
+        let checked =
+            decoder_options(handlers, id, &values.options(&field.key)).map_err(|error| {
+                let named = match &error.location {
+                    Some(Location::Field(key)) => handlers
+                        .decoder(id)
+                        .and_then(|decoder| {
+                            decoder.spec().options.fields.iter().find(|o| o.key == *key)
+                        })
+                        .map_or(key.as_str(), |option| option.label.as_str()),
+                    _ => "Options",
+                };
+                UserError::new(
+                    ErrorCode::PlaylistInvalid,
+                    format!("{named}: {}", error.reason),
+                )
+                .at(Location::field(&field.key))
+            })?;
+        values.set_options(&field.key, checked);
+    }
     Ok(values)
+}
+
+/// `options` checked against the form of the decoder `handler`: the options it will be given, with defaults filled
+/// in and file and folder paths made absolute. A missing required option, an unknown decoder or an option the
+/// decoder does not declare is refused, naming the key.
+pub(crate) fn decoder_options(
+    handlers: &Handlers,
+    handler: &str,
+    options: &Settings,
+) -> Result<Settings, UserError> {
+    let form = handlers
+        .decoder(handler)
+        .map(|decoder| &decoder.spec().options)
+        .ok_or_else(|| {
+            UserError::new(
+                ErrorCode::UnknownHandler,
+                format!("No overlay format \"{handler}\""),
+            )
+        })?;
+    let values = form.validate(options).map_err(|error| UserError {
+        code: ErrorCode::OverlayInvalid,
+        ..error
+    })?;
+    if let Some(key) = values.unknown_keys().first() {
+        return Err(UserError::new(
+            ErrorCode::OverlayInvalid,
+            format!("Not an option of {handler}"),
+        )
+        .at(Location::field(*key)));
+    }
+    let mut options = values.declared();
+    absolute_paths(form, &mut options, handlers);
+    Ok(options)
+}
+
+/// Makes the file and folder paths in `settings` absolute, including those in the options of a decoder a
+/// `DecoderOptions` field belongs to, so a stored path means the same file whatever the working folder.
+pub(crate) fn absolute_paths(form: &Form, settings: &mut Settings, handlers: &Handlers) {
+    for field in &form.fields {
+        match &field.kind {
+            FieldKind::Folder | FieldKind::File { .. } => {
+                if let Some(Value::String(path)) = settings.get_mut(&field.key)
+                    && let Ok(absolute) = std::path::absolute(&*path)
+                {
+                    *path = absolute.to_string_lossy().into_owned();
+                }
+            }
+            FieldKind::DecoderOptions { handler_field } => {
+                let chosen = settings
+                    .get(handler_field)
+                    .and_then(Value::as_str)
+                    .and_then(|id| handlers.decoder(id));
+                if let (Some(decoder), Some(Value::Object(options))) =
+                    (chosen, settings.get_mut(&field.key))
+                {
+                    absolute_paths(&decoder.spec().options, options, handlers);
+                }
+            }
+            _ => {}
+        }
+    }
 }
 
 /// Fails, about `path`, when `handlers` has no decoder with the id `handler`.

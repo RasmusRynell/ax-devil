@@ -149,11 +149,15 @@ fn track(id: &str, times: &[(&str, f64)], class: &str) -> Json {
 
 #[test]
 fn a_consolidated_track_becomes_one_scene_per_observation_time() {
-    let one = track(
+    let mut one = track(
         "t1",
         &[("2024-07-01T12:00:00Z", 0.1), ("2024-07-01T12:00:01Z", 0.2)],
         "Car",
     );
+    // The picture's box may be given as `crop_box`; picture and end reason belong to the last observation.
+    one["image"] = json!({"timestamp": "2024-07-01T12:00:01Z", "data": "aW1n",
+        "crop_box": {"left": 0.2, "top": 0.2, "right": 0.5, "bottom": 0.6}});
+    one["end_reason"] = json!("lost");
     let two = track("t2", &[("2024-07-01T12:00:01Z", 0.5)], "Bike");
     let document = json!({"version": "1.0.0", "tracks": [two, null, one]});
     let (scenes, skipped) = decode("ADF_V1_CONSOLIDATED", &[document.to_string()]);
@@ -173,6 +177,11 @@ fn a_consolidated_track_becomes_one_scene_per_observation_time() {
     let late = scenes[1].entity("t1").expect("t1 at the second second");
     assert_eq!(late.observations()[0].geometry.bounds().left(), 0.2);
     assert_eq!(late.observations()[0].classifications[0].class_type, "car");
+    assert_eq!(late.images.len(), 1);
+    assert_eq!(late.images[0].bounding_box.left(), 0.2);
+    assert_eq!(late.end_reason.as_deref(), Some("lost"));
+    let early = scenes[0].entity("t1").expect("t1 at the first second");
+    assert!(early.images.is_empty() && early.end_reason.is_none());
 }
 
 #[test]

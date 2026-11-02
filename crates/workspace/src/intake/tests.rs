@@ -1,8 +1,10 @@
 use super::*;
 use crate::{Content, ContentId, VideoRef};
 use foundation::{CancelToken, Interrupt, Location};
+use handler_api::{Field, FieldKind, Form, Values};
 use std::fs;
 use std::path::PathBuf;
+use std::sync::Arc;
 
 #[test]
 fn a_video_path_becomes_an_item_labelled_with_the_file_name_whatever_the_working_folder() {
@@ -56,6 +58,49 @@ fn resolving_checks_only_that_the_path_is_a_readable_regular_file() {
         };
         assert_eq!(error.location, Some(HostPath::new(&unreadable).into()));
         assert!(!error.reason.is_empty());
+    }
+}
+
+/// A decoder that reads `.acme.dat` files and takes a `calib` file option; it never decodes.
+struct Acme(handler_api::Spec);
+
+impl Acme {
+    fn handlers() -> Handlers {
+        let option = Field::new(
+            "calib",
+            "Calibration",
+            FieldKind::File { extensions: vec![] },
+        );
+        let mot = Handlers::built_in()
+            .decoder("MOT_FILE")
+            .unwrap()
+            .spec()
+            .clone();
+        let spec = handler_api::Spec {
+            id: "ACME".into(),
+            extensions: vec![".acme.dat".into()],
+            options: Form {
+                fields: vec![option],
+            },
+            ..mot
+        };
+        Handlers::built_in().with_decoders([Arc::new(Self(spec)) as Arc<dyn handler_api::Decoder>])
+    }
+}
+
+impl handler_api::Decoder for Acme {
+    fn spec(&self) -> &handler_api::Spec {
+        &self.0
+    }
+
+    fn decode(
+        &self,
+        _input: &mut dyn handler_api::Input,
+        _options: &Values,
+        _sink: &mut dyn handler_api::SceneSink,
+        _cancel: &CancelToken,
+    ) -> Result<handler_api::DecodeSummary, Interrupt<handler_api::DecodeError>> {
+        Err(Interrupt::Cancelled)
     }
 }
 
@@ -146,6 +191,23 @@ fn an_overlay_keeps_the_options_its_decoder_declares_and_is_refused_for_a_missin
     assert_eq!(
         with(options).unwrap_err().location,
         Some(Location::field("nope"))
+    );
+
+    // A file option is stored absolute, and a multi-dot extension finds its decoder.
+    let acme = Acme::handlers();
+    let calibrated = NewOverlay {
+        options: Settings::from_iter([("calib".to_owned(), "calib.json".into())]),
+        ..overlay(Path::new("run.ACME.dat"), None)
+    };
+    let item = video(Path::new("gate.mp4"), &[calibrated], &acme).unwrap();
+    let Source::Video(recipe) = &item.recipe.source else {
+        panic!("a video item has a video recipe");
+    };
+    assert_eq!(recipe.overlays[0].handler, "ACME");
+    let calib = recipe.overlays[0].options["calib"].as_str().unwrap();
+    assert!(
+        Path::new(calib).is_absolute() && calib.ends_with("calib.json"),
+        "{calib}"
     );
 }
 
@@ -339,6 +401,58 @@ fn a_playlist_the_schema_or_resolver_refuses_is_refused_naming_the_setting() {
         matches!(&error.location, Some(Location::Host(path)) if path.as_path().ends_with("no/such/folder")),
         "{error:?}"
     );
+}
+
+#[test]
+fn a_folder_pair_gives_every_overlay_the_options_of_its_decoder_and_is_refused_without_a_required_one()
+ {
+    let dir = tempfile::tempdir().unwrap();
+    for file in ["v/clip.mp4", "o/clip.txt"] {
+        fs::create_dir_all(dir.path().join(file).parent().unwrap()).unwrap();
+        fs::write(dir.path().join(file), "data").unwrap();
+    }
+    let handlers = Handlers::built_in();
+    let settings = |options: Option<Settings>| {
+        let mut settings = Settings::from_iter([
+            (
+                "videos_dir".to_owned(),
+                dir.path().join("v").to_str().unwrap().into(),
+            ),
+            (
+                "overlays_dir".to_owned(),
+                dir.path().join("o").to_str().unwrap().into(),
+            ),
+            ("handler_type".to_owned(), "MOT_FILE".into()),
+        ]);
+        settings.extend(options.map(|options| ("options".to_owned(), options.into())));
+        settings
+    };
+
+    let error = playlist("folder_pair", settings(None), None, &handlers).unwrap_err();
+    assert_eq!(error.location, Some(Location::field("options")));
+    assert!(
+        error.reason.contains("Image width") && error.reason.contains("Required"),
+        "{error}"
+    );
+
+    let options = Settings::from_iter([
+        ("width".to_owned(), 64.into()),
+        ("height".to_owned(), 48.into()),
+    ]);
+    let item = playlist(
+        "folder_pair",
+        settings(Some(options.clone())),
+        None,
+        &handlers,
+    )
+    .unwrap();
+    let Ok(Content::Playlist(content)) =
+        item.recipe
+            .resolve(&item.id, &handlers, &CancelToken::new())
+    else {
+        panic!("a folder pair with the options resolves");
+    };
+    assert_eq!(content.entries[0].overlays[0].options, options);
 }
 
 fn resolved_entry(name: &str, labels: &[&str]) -> handler_api::ResolvedEntry {

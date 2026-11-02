@@ -3,6 +3,7 @@
 use std::sync::{Arc, Weak};
 
 use foundation::{UserError, Warning};
+use handler_api::Form;
 use overlay_sync::MatchBasis;
 use scene::{Coverage, Fields, FilterPolicy, Scene};
 
@@ -16,6 +17,9 @@ pub trait TrackRead: Send + Sync {
 
     /// The basis a lane starts with.
     fn default_basis(&self) -> MatchBasis;
+
+    /// The options the source's decoder takes.
+    fn options(&self) -> &Form;
 
     /// What is published now: the keys, which frames they decide and how far the ingest has got.
     fn snapshot(&self) -> Arc<TrackSnapshot>;

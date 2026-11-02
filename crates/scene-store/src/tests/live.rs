@@ -130,11 +130,12 @@ fn a_live_track_keeps_samples_in_time_order_and_drops_its_oldest_half_at_once() 
     drop(go);
 
     let deadline = Instant::now() + Duration::from_secs(10);
-    while track.snapshot().decided
-        != (Decided::Below {
-            frame: None,
-            time: Some(MediaTime(70)),
-        })
+    while track.snapshot().keys.len() != 4
+        || track.snapshot().decided
+            != (Decided::Below {
+                frame: None,
+                time: Some(MediaTime(70)),
+            })
     {
         assert!(
             Instant::now() < deadline,
@@ -143,10 +144,10 @@ fn a_live_track_keeps_samples_in_time_order_and_drops_its_oldest_half_at_once() 
         std::thread::sleep(Duration::from_millis(2));
     }
 
-    // The sample open when the first session ended was published by the second; the key repeated in the first was
-    // merged, and the two that came after a later one were dropped and counted.
+    // The sample open when a session ended was published then; the key repeated in the first was merged, and the two
+    // that came after a later one were dropped and counted, the second session's restart among them.
     let now = track.snapshot();
-    assert_eq!(times(&track, &now), [40, 50, 60]);
+    assert_eq!(times(&track, &now), [40, 50, 60, 70]);
     assert!(
         now.warnings
             .iter()

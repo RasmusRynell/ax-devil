@@ -2,7 +2,6 @@
 //! them.
 
 use foundation::Warning;
-use handler_api::Values;
 
 /// The most warnings kept.
 const MAX_WARNINGS: usize = 64;
@@ -58,17 +57,6 @@ impl Warnings {
         }
         .into_list()
     }
-}
-
-/// The warning for options a decoder does not declare, which are not passed to it; `None` when there are none.
-pub(crate) fn undeclared_options(decoder: &str, options: &Values) -> Option<Warning> {
-    let keys = options.unknown_keys();
-    (!keys.is_empty()).then(|| Warning {
-        problem: format!("{decoder} does not take some of the options"),
-        reasons: keys.iter().take(3).map(|key| format!("'{key}'")).collect(),
-        consequence: "They were not passed to it.".to_owned(),
-        more_reasons: keys.len() > 3,
-    })
 }
 
 #[cfg(test)]

@@ -120,7 +120,8 @@ pub trait SceneSink {
     fn sample(&mut self, scene: Scene, on_equal_key: OnEqualKey) -> ControlFlow<()>;
 
     /// The record at `position` (see [`Record::position`]) could not be decoded. The host counts these and shows one
-    /// warning naming the first few reasons, so a [`Framing::Records`] decoder reports each bad record here.
+    /// warning naming the first few reasons, so a [`Framing::Records`] decoder reports each bad record here. The
+    /// record keeps its place among the file's records, so the Frame key of the ones after it does not move.
     fn skip(&mut self, position: u64, reason: String);
 
     /// A problem found while decoding, shown to the user. A warning goes here or into the [`DecodeSummary`], not

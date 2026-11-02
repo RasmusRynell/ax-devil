@@ -9,12 +9,19 @@ import { Refusal } from "./SettingField";
 
 const NO_DECODERS: readonly DecoderInfo[] = [];
 
-/** The decoders that read a file named `path`, else all of them, so a file of an unknown kind can still be assigned. */
-function decodersFor(decoders: readonly DecoderInfo[], path: string): readonly DecoderInfo[] {
-  const name = path.trim().split(/[\\/]/).pop() ?? "";
-  const dot = name.lastIndexOf(".");
-  const extension = dot < 0 ? "" : name.slice(dot).toLowerCase();
-  const reading = decoders.filter((decoder) => decoder.extensions.includes(extension));
+/**
+ * The decoders that read a file named `path`, else all of them, so a file of an unknown kind can still be assigned.
+ * A decoder reads a file whose lowercase name ends with one of its extensions, which may hold several dots
+ * (`.acme.dat`): the rule of `Handlers::decoders_for`, which the intake applies when no decoder is named.
+ */
+export function decodersFor(
+  decoders: readonly DecoderInfo[],
+  path: string,
+): readonly DecoderInfo[] {
+  const name = (path.trim().split(/[\\/]/).pop() ?? "").toLowerCase();
+  const reading = decoders.filter((decoder) =>
+    decoder.extensions.some((extension) => name.endsWith(extension)),
+  );
   return reading.length ? reading : decoders;
 }
 

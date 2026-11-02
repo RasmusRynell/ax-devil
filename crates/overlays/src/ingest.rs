@@ -10,6 +10,7 @@ use std::{
 };
 
 use foundation::{Timeline, UserError, Warning};
+use handler_api::{Form, OverlayRef};
 use overlay_sync::{Alignment, MatchBasis, MatchPolicy, Tolerance, Verdict, alignment};
 use scene::Coverage;
 use scene_store::{Ingest, TrackRead, TrackSnapshot};
@@ -121,17 +122,20 @@ impl State {
         }
     }
 
-    /// The status of `source` once its file is loaded.
+    /// The status of `source` once its file is loaded. The source's own options are checked here, not by the track,
+    /// which is shared by sources that differ only in options its decoder does not take.
     fn ready(&self, source: usize) -> Option<LaneReady> {
         let slot = &self.sources[source];
         let Load::Ready(track, snapshot) = &slot.load else {
             return None;
         };
+        let mut warnings = snapshot.warnings.to_vec();
+        warnings.extend(undeclared_options(&slot.overlay, track.options()));
         Some(LaneReady {
             bases: track.bases().to_vec(),
             default_basis: track.default_basis(),
             filter: track.filter().clone(),
-            warnings: snapshot.warnings.to_vec(),
+            warnings,
             alignment: None,
             samples: snapshot.keys.len(),
             data_revision: slot.data_revision,
@@ -285,6 +289,21 @@ impl Aligned {
             && self.basis == job.matching.basis
             && self.tolerance == job.matching.tolerance
     }
+}
+
+/// The warning for options of `overlay` that its decoder, which takes `form`, does not declare and never receives.
+fn undeclared_options(overlay: &OverlayRef, form: &Form) -> Option<Warning> {
+    let keys: Vec<&String> = overlay
+        .options
+        .keys()
+        .filter(|key| form.fields.iter().all(|field| field.key != **key))
+        .collect();
+    (!keys.is_empty()).then(|| Warning {
+        problem: format!("{} does not take some of the options", overlay.handler),
+        reasons: keys.iter().take(3).map(|key| format!("'{key}'")).collect(),
+        consequence: "They were not passed to it.".to_owned(),
+        more_reasons: keys.len() > 3,
+    })
 }
 
 /// The warning for samples that do not line up with the video's frames: by time, the last one far from the last

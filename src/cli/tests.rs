@@ -76,6 +76,19 @@ fn folder_pair_arguments_are_positional_folders_then_a_registered_handler() {
         Value::Object(settings),
         json!({ "videos_dir": "/v", "overlays_dir": "/o", "handler_type": "MOT_FILE" })
     );
+
+    let (_, settings) = playlist(&[
+        "folder_pair",
+        "/v",
+        "/o",
+        "--handler-type",
+        "MOT_FILE",
+        "--option",
+        "width=64",
+        "--option",
+        "height=48",
+    ]);
+    assert_eq!(settings["options"], json!({ "width": 64, "height": 48 }));
 }
 
 #[test]

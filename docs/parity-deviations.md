@@ -16,3 +16,7 @@ Where [parity](parity.md) rows differ from the reference. The offline decisions 
 | OF-01 | The client ends the session when the protocol version in `Opened` differs from its own | A stale window stops with a message, not misparsed frames |
 | OF-01 | Playback commands sit in a View > Playback submenu; the keys, including Left and Right for 10 frames, are the reference's | There is no Playback menu |
 | ST-01 | `storage.cache_dir` and `storage.catalog_dir` take no `$NAME` reference; [08](rebuild/08-settings-cli.md) asked for references in storage fields | Browse yields an absolute path; a reference would have to resolve before the first window opens |
+| PL-02 | ADF beta lists the Bags filter before Faces; the reference listed Faces first | Beta and v1 share one filter list, in the v1 order |
+| PL-02 | ADF v1 frame keeps a class it does not know, lowercased, including unknown, bag and face; the reference refused the record | Every ADF decoder reads a class through one function, which is the reference's beta and consolidated rule |
+| PL-02 | ADF `Person` becomes `human` in beta frame and both consolidated formats; the reference kept `person` there (only v1 frame mapped it) | The same function maps the alias for every ADF decoder |
+| PL-02 | `.json` overlays no longer auto-pick UVG-VCM: `local v.mp4 --overlay x.json` is refused naming the candidate decoders; choose one with `--handler-type` | A `.json` file fits several decoders, so the pick is the user's |

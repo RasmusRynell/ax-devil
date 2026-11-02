@@ -7,6 +7,7 @@
 //! artifact that replaces the published one as the next generation.
 
 use std::{
+    cell::Cell,
     cmp::Ordering,
     fs::File,
     io::BufWriter,
@@ -19,7 +20,8 @@ use std::{
 
 use foundation::{CancelToken, ErrorCode, Interrupt, UserError, Warning};
 use handler_api::{
-    DecodeError, DecodeSummary, Decoder, Header, OnEqualKey, SceneSink, SkippedRecords, Values,
+    DecodeError, DecodeSummary, Decoder, Framing, Header, OnEqualKey, SceneSink, SkippedRecords,
+    Values,
 };
 use overlay_sync::MatchBasis;
 use scene::{Scene, SceneTime, TimeKind};
@@ -37,7 +39,7 @@ use crate::{
     sort::{Entry, SORT_BUDGET_BYTES, Sorter, sort_key},
     source::LazySource,
     track::{Decided, Ingest as State, Meta, Track},
-    warnings::{Warnings, undeclared_options},
+    warnings::Warnings,
     writer::RecordWriter,
 };
 
@@ -118,29 +120,33 @@ fn run(job: Job) {
         spec.clone(),
         first,
     );
-    let mut store = match Store::start(artifact, tuning, by_position, cancel.clone()) {
+    let store = match Store::start(artifact, tuning, by_position, cancel.clone()) {
         Ok(store) => store,
         Err(reason) => {
             link.fail(Interrupt::Failed(link.error(ErrorCode::Internal, reason)));
             return;
         }
     };
-    if let Some(warning) = undeclared_options(&spec.name, &options) {
-        store.warnings.push(warning);
-    }
-    let mut input = FileInput::new(&source, spec.framing);
+    let records = Cell::new(0);
+    let mut input = FileInput::new(&source, spec.framing, &records);
     let mut feed = Feed {
         link,
         store,
+        framing: spec.framing,
+        records: &records,
+        arrivals: 0,
         skipped: SkippedRecords::new("lines", "Those lines are not drawn."),
+        skips: 0,
     };
     let result = decoder.decode(&mut input, &options, &mut feed, &cancel);
+    let total = feed.lines();
     let Feed {
         mut link,
         mut store,
         skipped,
+        ..
     } = feed;
-    if let Some(warning) = skipped.warning(usize::try_from(input.records()).unwrap_or(usize::MAX)) {
+    if let Some(warning) = skipped.warning(total) {
         store.warnings.push(warning);
     }
     if let Err(interrupt) = store.conclude(&mut link, result, &source, identity) {
@@ -149,11 +155,41 @@ fn run(job: Job) {
 }
 
 /// The sink the decoder feeds.
-struct Feed {
+struct Feed<'a> {
     link: Link,
     store: Store,
+    framing: Framing,
+    /// How many records the input has given; the last is the one the decoder is working on.
+    records: &'a Cell<u64>,
+    /// How many Scenes have arrived.
+    arrivals: u64,
     /// The records the decoder gave up on; the warning names them with the count of lines read.
     skipped: SkippedRecords,
+    /// How many records were given up on.
+    skips: usize,
+}
+
+impl Feed<'_> {
+    /// Where the file puts the Scene that arrives now, from 0, for matching by frame. A line is placed by its
+    /// own place among the file's records, so one that gave no Scene (skipped, or with nothing to draw) still
+    /// holds its frame; a whole file has no records to count, so its Scenes are placed by arrival.
+    fn ordinal(&self) -> u64 {
+        match self.framing {
+            Framing::Records => self.records.get().saturating_sub(1),
+            Framing::Whole => self.arrivals,
+        }
+    }
+
+    /// The lines the skipped warning counts against. A decoder that reads the file itself (a converter) never takes
+    /// a record, so its Scenes and skips are its lines.
+    fn lines(&self) -> usize {
+        match self.framing {
+            Framing::Records => usize::try_from(self.records.get()).unwrap_or(usize::MAX),
+            Framing::Whole => usize::try_from(self.arrivals)
+                .unwrap_or(usize::MAX)
+                .saturating_add(self.skips),
+        }
+    }
 }
 
 /// What the store keeps while Scenes arrive.
@@ -167,8 +203,6 @@ struct Store {
     /// The group of the highest key so far and the position in the file of its record; `None` once the ingest is
     /// frozen or nothing has arrived.
     open: Option<(SceneTime, Group, u64)>,
-    /// How many Scenes have arrived: the position in the file of the next.
-    arrivals: u64,
     /// Set when a key below the open one arrived: from then on Scenes are fragments to be sorted.
     frozen: Option<Sorter>,
     /// How many Scenes replaced earlier ones of their key while ascending; the pass adds its own.
@@ -186,7 +220,7 @@ struct Store {
     published_records: usize,
 }
 
-impl SceneSink for Feed {
+impl SceneSink for Feed<'_> {
     fn header(&mut self, header: Header) {
         let store = &mut self.store;
         if store.header.is_some() || store.clock.is_some() {
@@ -197,11 +231,13 @@ impl SceneSink for Feed {
     }
 
     fn sample(&mut self, scene: Scene, on_equal_key: OnEqualKey) -> ControlFlow<()> {
+        let ordinal = self.ordinal();
         let store = &mut self.store;
         if store.refused.is_some() || store.cancel.is_cancelled() {
             return ControlFlow::Break(());
         }
-        match store.accept(&mut self.link, scene, on_equal_key) {
+        self.arrivals += 1;
+        match store.accept(&mut self.link, scene, on_equal_key, ordinal) {
             Ok(()) => ControlFlow::Continue(()),
             Err(reason) => {
                 store.refused = Some(reason);
@@ -211,6 +247,7 @@ impl SceneSink for Feed {
     }
 
     fn skip(&mut self, position: u64, reason: String) {
+        self.skips += 1;
         self.skipped.add(format!("line {position}: {reason}"));
     }
 
@@ -238,7 +275,6 @@ impl Store {
             clock: None,
             header: None,
             open: None,
-            arrivals: 0,
             frozen: None,
             replaced: 0,
             keys: KeyLog::new(TimeKind::Frame, by_position),
@@ -256,6 +292,7 @@ impl Store {
         link: &mut Link,
         scene: Scene,
         on_equal_key: OnEqualKey,
+        ordinal: u64,
     ) -> Result<(), String> {
         let start = scene.time().start();
         match self.clock {
@@ -271,8 +308,6 @@ impl Store {
             Some(_) => {}
         }
         let replace = on_equal_key == OnEqualKey::Replace;
-        let ordinal = self.arrivals;
-        self.arrivals += 1;
         if let Some(sorter) = &mut self.frozen {
             return add_fragment(sorter, &mut self.writer, start, &scene, replace, ordinal);
         }

@@ -185,8 +185,9 @@ pub(super) fn measurements(measurements: Measurements) -> Option<Box<Measurement
     (measurements != Measurements::default()).then(|| Box::new(measurements))
 }
 
-/// A picture with its time, box and base64 data.
-pub(super) fn image(value: &Json) -> Result<Image, String> {
+/// A picture with its time, box and base64 data. `crop_box` says whether a `crop_box` stands in for a missing
+/// `bounding_box`.
+pub(super) fn image(value: &Json, crop_box: bool) -> Result<Image, String> {
     let fields = object(value, "image")?;
     let data = fields
         .get("data")
@@ -195,7 +196,11 @@ pub(super) fn image(value: &Json) -> Result<Image, String> {
         .ok_or("the image lacks data")?;
     Ok(Image {
         timestamp: timestamp(fields, "timestamp", "the image timestamp")?,
-        bounding_box: bounding_box(fields.get("bounding_box"))?,
+        bounding_box: bounding_box(
+            fields
+                .get("bounding_box")
+                .or_else(|| crop_box.then(|| fields.get("crop_box")).flatten()),
+        )?,
         data: STANDARD
             .decode(data)
             .map_err(|error| format!("the image data is not base64: {error}"))?

@@ -203,3 +203,34 @@ async fn a_lanes_alignment_warning_follows_its_tolerance() {
     viewer.set_policy(0, 2, Some(by_time), true);
     assert!(ready_warnings(&mut viewer).await.is_empty());
 }
+
+#[tokio::test]
+async fn an_option_the_decoder_does_not_take_is_warned_on_its_lane_whichever_opened_the_shared_file_first()
+ {
+    // Both lanes read one scene cache: the key leaves its identity.
+    let env = Env::new();
+    let clean = env.overlay("one.xml", "ONVIF_XML", &onvif_at([0]));
+    let mut stale = clean.clone();
+    stale.options.insert("stale".into(), 1.into());
+
+    for stale_first in [false, true] {
+        let lanes = if stale_first {
+            [&stale, &clean]
+        } else {
+            [&clean, &stale]
+        };
+        let mut first = env.open(vec![Some(lanes[0].clone())], 1);
+        let mut second = env.open(vec![Some(lanes[1].clone())], 1);
+        let (first, second) = (
+            ready_warnings(&mut first).await,
+            ready_warnings(&mut second).await,
+        );
+        let (unflagged, flagged) = if stale_first {
+            (second, first)
+        } else {
+            (first, second)
+        };
+        assert!(unflagged.is_empty(), "{unflagged:?}");
+        assert_eq!(flagged, ["ONVIF_XML does not take some of the options"]);
+    }
+}

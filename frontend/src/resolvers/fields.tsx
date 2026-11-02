@@ -63,6 +63,20 @@ function PathField({
   );
 }
 
+/**
+ * The options of the decoder a `DecoderOptions` field edits, none for any other kind or while no decoder is chosen. The
+ * text of an option is held in `values` under `<field key>.<option key>`.
+ */
+export function decoderOptions(
+  field: FieldInfo,
+  values: Settings,
+  decoders: readonly DecoderInfo[],
+): readonly FieldInfo[] {
+  if (field.kind.kind !== "DecoderOptions") return [];
+  const chosen = values[field.kind.handler_field];
+  return decoders.find((decoder) => decoder.handler === chosen)?.options ?? [];
+}
+
 /** The control for each kind of field; a new kind is a new entry here, not a branch. */
 const CONTROLS: Record<FieldKindWire["kind"], Control> = {
   Folder: (field, form) => <PathField field={field} form={form} pick={form.pickFolder} />,
@@ -90,6 +104,18 @@ const CONTROLS: Record<FieldKindWire["kind"], Control> = {
       options={form.decoders.map((decoder) => [decoder.handler, decoder.display_name] as const)}
       onChange={(value) => form.set(field.key, value)}
     />
+  ),
+  // The chosen decoder's own options, drawn by the controls of their kinds.
+  DecoderOptions: (field, form) => (
+    <div className="flex flex-col gap-l">
+      {decoderOptions(field, form.values, form.decoders).map((option) => (
+        <FieldControl
+          key={option.key}
+          field={{ ...option, key: `${field.key}.${option.key}` }}
+          form={form}
+        />
+      ))}
+    </div>
   ),
   Scan: (field, form) => {
     const view = form.scans[field.key];

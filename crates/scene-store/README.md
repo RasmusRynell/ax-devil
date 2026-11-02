@@ -85,7 +85,8 @@ per frame.
 
 `TrackRead` is what a viewer reads of a track; `Track` implements it, and so does `LiveTrack`, which decodes the
 `Input`s a `Feed` gives, one session each, with the same `Decoder` and keeps its newest Scenes in memory. It matches by
-time only, its ingest stays `Reading`, and the newest sample stays open until a later key arrives (an earlier key is
-dropped and counted in a warning). Past `cap` published samples it drops the oldest half at once and renumbers the
-rest as a new generation: every renumbering starts a new revision for all lanes of the source, so it must happen once
-per batch, never once per sample.
+time only, its ingest stays `Reading`, and the newest sample stays open until a later key arrives or its session ends
+(an earlier key is dropped and counted in a warning). Past `cap` published samples it drops the oldest half at once and
+renumbers the rest as a new generation: every renumbering starts a new revision for all lanes of the source, so it must
+happen once per batch, never once per sample. Known limits: timestamps that restart in a later session are dropped as
+late for good. A header from a later session is ignored.

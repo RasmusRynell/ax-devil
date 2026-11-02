@@ -1050,7 +1050,11 @@ extensions: Array<string>, } | { "kind": "Text" } | { "kind": "Integer",
 /**
  * The smallest value allowed.
  */
-min: bigint, } | { "kind": "Handler" } | { "kind": "Scan", 
+min: bigint, } | { "kind": "Handler" } | { "kind": "DecoderOptions", 
+/**
+ * The key of the `Handler` field.
+ */
+handler_field: string, } | { "kind": "Scan", 
 /**
  * The settings the scan reads, whose change invalidates its result.
  */

@@ -2,13 +2,12 @@
 //! come through here, so they accept and refuse the same input.
 
 use crate::item::{
-    OverlayRecipe, PlaylistRecipe, Recipe, Source, VideoRecipe, WorkspaceItem, check_settings,
-    file_name,
+    OverlayRecipe, PlaylistRecipe, Recipe, Source, VideoRecipe, WorkspaceItem, absolute_paths,
+    check_settings, decoder_options, file_name,
 };
-use foundation::{ErrorCode, HostPath, ItemId, Location, UserError};
-use handler_api::{FieldKind, Settings};
+use foundation::{ErrorCode, HostPath, ItemId, UserError};
+use handler_api::Settings;
 use handlers::Handlers;
-use serde_json::Value;
 use std::path::{Path, PathBuf};
 
 /// An overlay file the user chose to add to a video.
@@ -130,38 +129,8 @@ fn overlay_recipe(
     })
 }
 
-/// `options` checked against the form of the decoder `handler`, which must exist: the options it will be given, with
-/// defaults filled in. A missing required option or one the decoder does not declare is refused, naming the key.
-fn decoder_options(
-    handlers: &Handlers,
-    handler: &str,
-    options: &Settings,
-) -> Result<Settings, UserError> {
-    let form = handlers
-        .decoder(handler)
-        .map(|decoder| &decoder.spec().options)
-        .ok_or_else(|| {
-            UserError::new(
-                ErrorCode::UnknownHandler,
-                format!("No overlay format \"{handler}\""),
-            )
-        })?;
-    let values = form.validate(options).map_err(|error| UserError {
-        code: ErrorCode::OverlayInvalid,
-        ..error
-    })?;
-    if let Some(key) = values.unknown_keys().first() {
-        return Err(UserError::new(
-            ErrorCode::OverlayInvalid,
-            format!("Not an option of {handler}"),
-        )
-        .at(Location::field(*key)));
-    }
-    Ok(values.declared())
-}
-
 /// Builds the item for a playlist of `resolver` with `settings`, labelled `label` or with the resolver's name. The
-/// settings are checked against the resolver's schema, and the paths in them made absolute; reading the folders is
+/// settings are checked against the resolver's schema, and the paths in them (in a decoder's options too) made absolute; reading the folders is
 /// for resolving to do.
 pub fn playlist(
     resolver: &str,
@@ -177,16 +146,7 @@ pub fn playlist(
     };
     let form = &found.spec().form;
     check_settings(form, &settings, handlers)?;
-    for field in &form.fields {
-        if !matches!(field.kind, FieldKind::Folder | FieldKind::File { .. }) {
-            continue;
-        }
-        if let Some(Value::String(path)) = settings.get_mut(&field.key)
-            && let Ok(absolute) = std::path::absolute(&*path)
-        {
-            *path = absolute.to_string_lossy().into_owned();
-        }
-    }
+    absolute_paths(form, &mut settings, handlers);
     let label = label
         .map(|label| label.trim().to_owned())
         .filter(|label| !label.is_empty())
