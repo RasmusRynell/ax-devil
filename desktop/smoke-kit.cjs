@@ -44,9 +44,28 @@ async function setView(window, [width, height], zoom) {
   );
 }
 
-// The window as drawn: its pixels (device pixels, four bytes each) and the device pixels per CSS pixel.
+// The transport lies over the bottom of the picture until the pointer has rested: waits until it has faded out, first
+// crossing the video with the pointer and leaving it when the controls were never hidden.
+async function hideChrome(window) {
+  const { js } = page(window);
+  const opacity = () =>
+    js(
+      "(() => { const t = document.querySelector('[data-keeps-chrome]'); return t ? Number(getComputedStyle(t).opacity) : 0; })()",
+    );
+  if ((await opacity()) === 0) return;
+  const video = await js(
+    "(() => { const r = document.querySelector('[data-chrome-idle]').getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; })()",
+  );
+  await moveTo(window, video.x, video.y);
+  await moveTo(window, 4, 4);
+  await until(async () => (await opacity()) === 0, "the transport fades out");
+}
+
+// The window as drawn: its pixels (device pixels, four bytes each) and the device pixels per CSS pixel. The picture
+// is bare: the transport is faded out.
 async function capture(window) {
   const { js } = page(window);
+  await hideChrome(window);
   await frames({ js });
   const image = await window.webContents.capturePage();
   const { width, height } = image.getSize();

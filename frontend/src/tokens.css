@@ -17,7 +17,7 @@
   --color-caution: light-dark(#8a5300, #e0b04a);
   --color-danger: light-dark(#b3261e, #f28b82);
   /* The video surface and the controls over it look the same in both themes: near-black with white controls. */
-  --color-canvas: #0a0a0a;
+  --color-canvas: #0e0f10;
   --color-on-canvas: #ffffff;
   --color-on-canvas-muted: #b8bec6;
   --color-canvas-hover: #ffffff24;
@@ -49,6 +49,8 @@
 
   --shadow-*: initial;
   --shadow-popup: 0 4px 12px light-dark(#26344526, #00000066);
+
+  --ease-out-cubic: cubic-bezier(0.33, 1, 0.68, 1);
 
   --stroke-edge: 2px;
   --stroke-focus: 2px;

@@ -20,6 +20,10 @@ function timecode(us: number): string {
 
 const BUTTON = "size-row rounded-control";
 
+// The controls fade with the pointer's rest (see chromeVisibility) and stay while a control has the keyboard focus ring.
+const CONTROLS =
+  "pointer-events-auto flex flex-col gap-xs bg-canvas-scrim px-m py-s text-on-canvas transition-opacity duration-200 ease-out-cubic motion-reduce:transition-none group-data-[chrome=hidden]:not-has-[:focus-visible]:opacity-0 group-data-[chrome=hidden]:not-has-[:focus-visible]:delay-200";
+
 /** The speed field: edits commit as they become a number; leaving it shows the speed the session settled on. */
 function SpeedField({
   speed,
@@ -61,7 +65,7 @@ interface Props {
 }
 
 /**
- * The playback controls under the video: seek bar, play and step buttons, the frame and time of the
+ * The playback controls over the bottom of the video, with a frame error above them that stays when they fade: seek bar, play and step buttons, the frame and time of the
  * frame on screen, and the speed. The frame count and time describe the frame shown, the seek bar the position asked
  * for. A frame that failed to decode says why.
  */
@@ -69,65 +73,70 @@ export function Transport({ controls, view, disabled = false }: Props) {
   const last = view.frameCount - 1;
   const { shown, playing, frameError } = view;
   return (
-    <div className="flex shrink-0 flex-col gap-xs px-m py-s text-on-canvas">
+    <div className="pointer-events-none absolute inset-x-0 bottom-0 flex flex-col items-start text-on-canvas">
       {frameError && (
-        <p role="alert" className="m-0 w-fit rounded-control bg-canvas-scrim px-m py-xs">
+        <p
+          role="alert"
+          className="pointer-events-auto m-0 w-fit rounded-control bg-canvas-scrim px-m py-xs"
+        >
           Frame {frameError.sequenceId} cannot be shown: {frameError.reason}
         </p>
       )}
-      <input
-        type="range"
-        aria-label="Timeline"
-        data-cursor-id="transport:seek"
-        aria-valuetext={`Frame ${view.playhead} of ${last}`}
-        min={0}
-        max={last}
-        step={1}
-        disabled={disabled}
-        value={view.playhead}
-        onChange={(event) => controls.seek(event.target.valueAsNumber)}
-        className="m-0 h-icon w-full accent-on-canvas"
-      />
-      <div className="flex flex-wrap items-center gap-x-xs">
-        <IconButton
-          onCanvas
-          icon={playing ? "pause" : "play"}
-          label={playing ? "Pause" : "Play"}
-          data-cursor-id="transport:play"
+      <div data-keeps-chrome="" className={`w-full ${CONTROLS}`}>
+        <input
+          type="range"
+          aria-label="Timeline"
+          data-cursor-id="transport:seek"
+          aria-valuetext={`Frame ${view.playhead} of ${last}`}
+          min={0}
+          max={last}
+          step={1}
           disabled={disabled}
-          onClick={() => controls.togglePlay()}
-          className={BUTTON}
+          value={view.playhead}
+          onChange={(event) => controls.seek(event.target.valueAsNumber)}
+          className="m-0 h-icon w-full accent-on-canvas"
         />
-        <IconButton
-          onCanvas
-          icon="step-back"
-          label="Back 1 frame"
-          data-cursor-id="transport:step-back"
-          disabled={disabled}
-          onClick={() => controls.step(-1)}
-          className={BUTTON}
-        />
-        <IconButton
-          onCanvas
-          icon="step-forward"
-          label="Forward 1 frame"
-          data-cursor-id="transport:step-forward"
-          disabled={disabled}
-          onClick={() => controls.step(1)}
-          className={BUTTON}
-        />
-        <span className="flex-1" />
-        <output aria-label="Frame" className="px-xs tabular-nums">
-          {shown?.sequenceId ?? "…"} / {last}
-        </output>
-        <output aria-label="Time" className="px-xs tabular-nums">
-          {shown ? timecode(shown.timestampUs) : "…"}
-        </output>
-        <SpeedField
-          speed={view.speed}
-          disabled={disabled}
-          onChange={(speed) => controls.setSpeed(speed)}
-        />
+        <div className="flex flex-wrap items-center gap-x-xs">
+          <IconButton
+            onCanvas
+            icon={playing ? "pause" : "play"}
+            label={playing ? "Pause" : "Play"}
+            data-cursor-id="transport:play"
+            disabled={disabled}
+            onClick={() => controls.togglePlay()}
+            className={BUTTON}
+          />
+          <IconButton
+            onCanvas
+            icon="step-back"
+            label="Back 1 frame"
+            data-cursor-id="transport:step-back"
+            disabled={disabled}
+            onClick={() => controls.step(-1)}
+            className={BUTTON}
+          />
+          <IconButton
+            onCanvas
+            icon="step-forward"
+            label="Forward 1 frame"
+            data-cursor-id="transport:step-forward"
+            disabled={disabled}
+            onClick={() => controls.step(1)}
+            className={BUTTON}
+          />
+          <span className="flex-1" />
+          <output aria-label="Frame" className="px-xs tabular-nums">
+            {shown?.sequenceId ?? "…"} / {last}
+          </output>
+          <output aria-label="Time" className="px-xs tabular-nums">
+            {shown ? timecode(shown.timestampUs) : "…"}
+          </output>
+          <SpeedField
+            speed={view.speed}
+            disabled={disabled}
+            onChange={(speed) => controls.setSpeed(speed)}
+          />
+        </div>
       </div>
     </div>
   );
