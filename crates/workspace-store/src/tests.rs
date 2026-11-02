@@ -223,4 +223,12 @@ fn a_lane_matching_lands_in_the_recipe_by_slot_and_resolves_nothing() {
             "a slot or item the workspace lacks changes nothing"
         );
     }
+    let (resolving, _) = apply(&state, DocCommand::OpenViewer(id));
+    assert!(
+        set(&resolving, id, "later").workspace.items[0]
+            .recipe
+            .lane_matching
+            .contains_key("later"),
+        "an item that is resolving again keeps the choice"
+    );
 }

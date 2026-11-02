@@ -2,13 +2,17 @@
 
 use std::{
     ops::ControlFlow,
-    sync::{Arc, Mutex, OnceLock, PoisonError, RwLock, Weak},
+    sync::{
+        Arc, Mutex, OnceLock, PoisonError, RwLock, Weak,
+        atomic::{AtomicUsize, Ordering as AtomicOrdering},
+    },
     thread,
 };
 
 use foundation::{CancelToken, ErrorCode, HostPath, Interrupt, MediaTime, UserError, Warning};
 use handler_api::{
-    DecodeSummary, Decoder, Form, Header, Input, OnEqualKey, SceneSink, SkippedRecords, Values,
+    DecodeError, DecodeSummary, Decoder, Form, Header, Input, OnEqualKey, Record, SceneSink,
+    SkippedRecords, Values,
 };
 use overlay_sync::{KeyChunks, MatchBasis, SampleKeys};
 use scene::{
@@ -29,6 +33,26 @@ pub trait Feed: Send {
     /// The input of the next session, waiting for the source to offer one; `None` when no session will come, or
     /// when `cancel` fires. The previous input has been read to its end or given up on.
     fn next_input(&mut self, cancel: &CancelToken) -> Option<Box<dyn Input + Send>>;
+}
+
+/// An input that counts the records it gives, for the skipped warning.
+struct Counted {
+    inner: Box<dyn Input + Send>,
+    records: Arc<AtomicUsize>,
+}
+
+impl Input for Counted {
+    fn path(&self) -> Option<&std::path::Path> {
+        self.inner.path()
+    }
+
+    fn next(&mut self, cancel: &CancelToken) -> Result<Option<Record<'_>>, Interrupt<DecodeError>> {
+        let next = self.inner.next(cancel)?;
+        if next.is_some() {
+            self.records.fetch_add(1, AtomicOrdering::Relaxed);
+        }
+        Ok(next)
+    }
 }
 
 /// The Scenes of one numbering of a live track, in sample order. A snapshot reads its own numbering, so one the track
@@ -128,7 +152,7 @@ impl LiveTrack {
             closed: None,
             generation: 0,
             late: 0,
-            records: 0,
+            records: Arc::default(),
             skipped: SkippedRecords::new("records", "They are not drawn."),
             warnings: Warnings::default(),
         };
@@ -198,6 +222,7 @@ impl TrackRead for LiveTrack {
             return Ok(item);
         }
         let scene = samples.scene(index)?;
+        let given = self.heard.given.get().is_some();
         let encoded = encode_sample_item(&scene, self.filter()).map_err(|error| {
             UserError::new(
                 ErrorCode::Internal,
@@ -207,7 +232,12 @@ impl TrackRead for LiveTrack {
         })?;
         let item: Arc<[u8]> = encoded.into();
         let bytes = item.len();
-        samples.items().insert(index, item.clone(), bytes);
+        // A header or summary that came while this encoded under the default filter replaces the cache (see
+        // `Sink::ended`), so under the cache's lock an item made without it is not kept.
+        let mut items = samples.items();
+        if given || self.heard.given.get().is_none() {
+            items.insert(index, item.clone(), bytes);
+        }
         Ok(item)
     }
 }
@@ -246,8 +276,12 @@ fn run(
     sink: &mut Sink,
     cancel: &CancelToken,
 ) {
-    while let Some(mut input) = feed.next_input(cancel) {
-        match decoder.decode(&mut *input, values, sink, cancel) {
+    while let Some(input) = feed.next_input(cancel) {
+        let mut input = Counted {
+            inner: input,
+            records: sink.records.clone(),
+        };
+        match decoder.decode(&mut input, values, sink, cancel) {
             Ok(summary) => sink.ended(summary),
             Err(Interrupt::Cancelled) => return,
             Err(Interrupt::Failed(error)) => sink.warnings.push(Warning {
@@ -282,8 +316,8 @@ struct Sink {
     generation: u32,
     /// How many Scenes arrived with a key below the open one and were dropped.
     late: usize,
-    /// How many records the decoders gave or skipped, for the skipped warning.
-    records: usize,
+    /// How many records the inputs gave, for the skipped warning.
+    records: Arc<AtomicUsize>,
     skipped: SkippedRecords,
     warnings: Warnings,
 }
@@ -298,7 +332,6 @@ impl SceneSink for Sink {
         if self.cancel.is_cancelled() {
             return ControlFlow::Break(());
         }
-        self.records += 1;
         let SceneTime::Timestamp(time) = scene.time().start() else {
             self.skipped.add("a live sample needs a timestamp");
             return ControlFlow::Continue(());
@@ -329,7 +362,6 @@ impl SceneSink for Sink {
     }
 
     fn skip(&mut self, _position: u64, reason: String) {
-        self.records += 1;
         self.skipped.add(reason);
     }
 
@@ -384,7 +416,7 @@ impl Sink {
                 more_reasons: false,
             });
         }
-        let total = self.records;
+        let total = self.records.load(AtomicOrdering::Relaxed);
         warnings.extend(self.skipped.clone().warning(total));
         let frontier = self.open.as_ref().map(|(time, _)| *time).or(self.closed);
         self.growth.publish(snapshot(

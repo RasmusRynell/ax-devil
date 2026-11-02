@@ -134,9 +134,8 @@ fn run(job: Job) {
         store,
         framing: spec.framing,
         records: &records,
-        arrivals: 0,
+        whole: Whole::default(),
         skipped: SkippedRecords::new("lines", "Those lines are not drawn."),
-        skips: 0,
     };
     let result = decoder.decode(&mut input, &options, &mut feed, &cancel);
     let total = feed.lines();
@@ -161,34 +160,56 @@ struct Feed<'a> {
     framing: Framing,
     /// How many records the input has given; the last is the one the decoder is working on.
     records: &'a Cell<u64>,
-    /// How many Scenes have arrived.
-    arrivals: u64,
+    /// The records of a decoder that reads the file itself, which no input counts.
+    whole: Whole,
     /// The records the decoder gave up on; the warning names them with the count of lines read.
     skipped: SkippedRecords,
-    /// How many records were given up on.
-    skips: usize,
+}
+
+/// The records of a decoder that reads the file itself (a converter): a skip is one, and so are the consecutive
+/// Scenes of one start key, which the host joins.
+#[derive(Default)]
+struct Whole {
+    /// How many records have been seen.
+    count: u64,
+    /// The start key of the record the last Scene joined; a skip clears it.
+    key: Option<SceneTime>,
+}
+
+impl Whole {
+    /// The place of a Scene with start `key`, from 0.
+    fn sample(&mut self, key: SceneTime) -> u64 {
+        if self.key != Some(key) {
+            self.count += 1;
+            self.key = Some(key);
+        }
+        self.count - 1
+    }
+
+    fn skip(&mut self) {
+        self.count += 1;
+        self.key = None;
+    }
 }
 
 impl Feed<'_> {
-    /// Where the file puts the Scene that arrives now, from 0, for matching by frame. A line is placed by its
-    /// own place among the file's records, so one that gave no Scene (skipped, or with nothing to draw) still
-    /// holds its frame; a whole file has no records to count, so its Scenes are placed by arrival.
-    fn ordinal(&self) -> u64 {
+    /// Where the file puts the Scene with start `key` that arrives now, from 0, for matching by frame. A record is
+    /// placed by its own place among the file's records, so one that gave no Scene (skipped, or with nothing to
+    /// draw) still holds its frame.
+    fn ordinal(&mut self, key: SceneTime) -> u64 {
         match self.framing {
             Framing::Records => self.records.get().saturating_sub(1),
-            Framing::Whole => self.arrivals,
+            Framing::Whole => self.whole.sample(key),
         }
     }
 
-    /// The lines the skipped warning counts against. A decoder that reads the file itself (a converter) never takes
-    /// a record, so its Scenes and skips are its lines.
+    /// The records the skipped warning counts against.
     fn lines(&self) -> usize {
-        match self.framing {
-            Framing::Records => usize::try_from(self.records.get()).unwrap_or(usize::MAX),
-            Framing::Whole => usize::try_from(self.arrivals)
-                .unwrap_or(usize::MAX)
-                .saturating_add(self.skips),
-        }
+        let count = match self.framing {
+            Framing::Records => self.records.get(),
+            Framing::Whole => self.whole.count,
+        };
+        usize::try_from(count).unwrap_or(usize::MAX)
     }
 }
 
@@ -231,12 +252,11 @@ impl SceneSink for Feed<'_> {
     }
 
     fn sample(&mut self, scene: Scene, on_equal_key: OnEqualKey) -> ControlFlow<()> {
-        let ordinal = self.ordinal();
+        let ordinal = self.ordinal(scene.time().start());
         let store = &mut self.store;
         if store.refused.is_some() || store.cancel.is_cancelled() {
             return ControlFlow::Break(());
         }
-        self.arrivals += 1;
         match store.accept(&mut self.link, scene, on_equal_key, ordinal) {
             Ok(()) => ControlFlow::Continue(()),
             Err(reason) => {
@@ -247,7 +267,7 @@ impl SceneSink for Feed<'_> {
     }
 
     fn skip(&mut self, position: u64, reason: String) {
-        self.skips += 1;
+        self.whole.skip();
         self.skipped.add(format!("line {position}: {reason}"));
     }
 

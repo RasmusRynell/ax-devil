@@ -223,7 +223,7 @@ describe("resolver form", () => {
     expect(settings()).toEqual({ root: "/data", sequences: ["B", "gone"], extra: 1 });
   });
 
-  it("starts a required field at its default, and accepts it left blank", () => {
+  it("starts a required field at its default, shows it while blank, and refuses an integer that is no whole number", () => {
     render(<Harness resolver={PAIR} />);
     const width = screen.getByLabelText("Image width") as HTMLInputElement;
     expect(width.value).toBe("1920");
@@ -233,5 +233,12 @@ describe("resolver form", () => {
     fireEvent.change(width, { target: { value: "" } });
     fireEvent.change(screen.getByLabelText("Scale"), { target: { value: "" } });
     expect(settings()).toEqual({ format: "MOT_FILE" });
+    expect(width.placeholder).toBe("1920");
+
+    fireEvent.change(width, { target: { value: "640px" } });
+    expect(settings()).toBeNull();
+    expect(screen.getByRole("alert").textContent).toBe("Whole number");
+    fireEvent.change(width, { target: { value: "640" } });
+    expect(settings()).toEqual({ format: "MOT_FILE", options: { width: 640 } });
   });
 });

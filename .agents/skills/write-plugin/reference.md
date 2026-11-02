@@ -21,7 +21,7 @@ field.
 | `env` | no | Names of environment variables to pass through besides the standard few. `AX_DEVIL_*` is refused |
 | `code` | no | Paths in the folder (files or folders, no `..`) whose bytes identify the converter; default the whole folder. Dot-names and `__pycache__` are skipped; at most 20,000 files and 256 MiB |
 | `idle_timeout_s` | no | 1 to 86,400; default 120. Seconds the converter may print nothing before it is killed |
-| `bases` | no | `["frame"]`, `["time"]` or both: what a lane may match your records to video frames by. Frame: record k belongs to frame k (or the frame number you key by). Time: by the records' timestamps. Default `["frame"]` |
+| `bases` | no | `["frame"]`, `["time"]` or both: what a lane may match your records to video frames by. Frame: record k belongs to frame k (or the frame number you key by); a record is a `skipped` line or the samples in a row with one start key. Time: by the records' timestamps. Default `["frame"]` |
 | `default_basis` | no | One of `bases`, the one a lane starts with; default the first listed |
 | `options` | no | `[{"key","label","kind","required","default"}]`: `key` is letters, digits, `_` or `-`; `kind` is `text`, `file` or `folder`; `required` defaults to false; `default` is text. Values are always text |
 

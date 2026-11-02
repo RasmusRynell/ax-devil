@@ -152,6 +152,7 @@ async function remote(local, shell) {
         path.join(SCREENSHOTS, `add-video-options-${theme}${zoom === 1 ? "" : "-200"}.png`),
         (await window.webContents.capturePage()).toPNG(),
       );
+      // A folder box scrolls its own long path, which the check reports as text cut off with no name.
       assert.deepEqual(
         (await js(`(${fit.dialog.toString()})()`)).filter((problem) => problem !== 'cut off: ""'),
         [],

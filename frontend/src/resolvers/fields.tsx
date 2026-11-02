@@ -3,6 +3,7 @@ import type { DecoderInfo, FieldInfo, FieldKindWire } from "../generated/api";
 import { Button } from "../kit/Button";
 import { CheckList, type CheckItem } from "../kit/CheckList";
 import { Select, TextField } from "../kit/Fields";
+import { Refusal } from "../shell/SettingField";
 import { listed, type ScanView, type Settings } from "./scan";
 
 /** What a field control reads and changes: the form's state, whichever resolver it belongs to. */
@@ -27,9 +28,19 @@ type Control = (field: FieldInfo, form: FieldForm) => ReactNode;
 /** The text a field shows: what was typed, else its default. */
 export function shown(field: FieldInfo, values: Settings): string {
   const value = values[field.key];
-  if (typeof value === "string") return value;
-  const fallback = field.default;
-  return typeof fallback === "string" || typeof fallback === "number" ? `${fallback}` : "";
+  return typeof value === "string" ? value : fallback(field);
+}
+
+/** The text of the default the backend uses while the field is empty. */
+const fallback = (field: FieldInfo) =>
+  typeof field.default === "string" || typeof field.default === "number" ? `${field.default}` : "";
+
+/** Why the typed text of an `Integer` field cannot be sent: the backend would take it for missing. */
+export function misread(field: FieldInfo, values: Settings): string | undefined {
+  const typed = shown(field, values).trim();
+  return field.kind.kind === "Integer" && typed !== "" && !/^-?\d+$/.test(typed)
+    ? "Whole number"
+    : undefined;
 }
 
 /** Whether the field must be filled in: required, with no default for the backend to use. */
@@ -51,6 +62,7 @@ function PathField({
     <TextField
       label={field.label}
       value={text(form, field)}
+      placeholder={fallback(field)}
       onChange={(value) => form.set(field.key, value)}
       action={
         pick && (
@@ -94,6 +106,7 @@ const CONTROLS: Record<FieldKindWire["kind"], Control> = {
     <TextField
       label={field.label}
       value={text(form, field)}
+      placeholder={fallback(field)}
       onChange={(value) => form.set(field.key, value)}
     />
   ),
@@ -102,6 +115,7 @@ const CONTROLS: Record<FieldKindWire["kind"], Control> = {
     <TextField
       label={field.label}
       value={text(form, field)}
+      placeholder={fallback(field)}
       onChange={(value) => form.set(field.key, value)}
     />
   ),
@@ -175,5 +189,11 @@ const CONTROLS: Record<FieldKindWire["kind"], Control> = {
 
 /** The control that edits `field`, chosen by the kind of value it holds. */
 export function FieldControl({ field, form }: { field: FieldInfo; form: FieldForm }) {
-  return CONTROLS[field.kind.kind](field, form);
+  const reason = misread(field, form.values);
+  return (
+    <div className="flex flex-col gap-s">
+      {CONTROLS[field.kind.kind](field, form)}
+      {reason && <Refusal reason={reason} />}
+    </div>
+  );
 }

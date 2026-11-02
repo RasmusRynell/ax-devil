@@ -91,9 +91,13 @@ impl Decoder for ReadsPath {
         sink: &mut dyn SceneSink,
         _cancel: &CancelToken,
     ) -> Result<DecodeSummary, Interrupt<DecodeError>> {
-        let _ = sink.sample(entities(SceneTime::Frame(0), 1), OnEqualKey::Merge);
-        sink.skip(2, "not a sample".into());
-        let _ = sink.sample(entities(SceneTime::Frame(1), 1), OnEqualKey::Merge);
+        let at = |ms: i64| SceneTime::Timestamp(MediaTime(ms * 1_000));
+        // One record of three Scenes (one per object), a record it gave up on, and a record.
+        let _ = sink.sample(entities(at(0), 1), OnEqualKey::Merge);
+        let _ = sink.sample(entities(at(0), 1), OnEqualKey::Merge);
+        let _ = sink.sample(entities(at(0), 1), OnEqualKey::Merge);
+        sink.skip(3, "not a sample".into());
+        let _ = sink.sample(entities(at(2), 1), OnEqualKey::Merge);
         Ok(DecodeSummary {
             warnings: Vec::new(),
             filter: FilterPolicy {
@@ -107,13 +111,18 @@ impl Decoder for ReadsPath {
 }
 
 #[test]
-fn a_decoder_that_reads_the_file_itself_counts_its_own_lines_in_the_skipped_warning() {
+fn a_decoder_that_reads_the_file_itself_places_its_records_by_frame() {
     let track = open(ReadsPath(spec(1)), b"unread\n");
 
+    assert_eq!(
+        track.snapshot().keys.frames,
+        Some(in_order(&[0, 2])),
+        "a record's Scenes share its frame and a skipped record holds its own"
+    );
     let warnings = track.warnings();
     let [skipped] = &warnings[..] else {
         panic!("{warnings:?}")
     };
     assert_eq!(skipped.problem, "Skipped 1 of 3 lines");
-    assert_eq!(skipped.reasons, ["line 2: not a sample"]);
+    assert_eq!(skipped.reasons, ["line 3: not a sample"]);
 }

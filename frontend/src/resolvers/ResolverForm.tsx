@@ -3,7 +3,7 @@ import { reasonOf } from "../errors";
 import type { DecoderInfo, ErrorWire, FieldInfo, ResolverInfo } from "../generated/api";
 import { Refusal } from "../shell/SettingField";
 import { useServerKind } from "../shell/windowBridge";
-import { decoderOptions, FieldControl, needsValue, shown, type FieldForm } from "./fields";
+import { decoderOptions, FieldControl, misread, needsValue, shown, type FieldForm } from "./fields";
 import {
   checkedCount,
   chosen,
@@ -89,7 +89,7 @@ function reduce(state: State, action: Action): State {
   }
 }
 
-/** What loading sends, or `null` while something is missing: a required text without a default, or a scan with a checked value. */
+/** What loading sends, or `null` while something is missing or misread: a required text without a default, a scan with a checked value, or an integer that is not a whole number. */
 function settingsOf(
   resolver: ResolverInfo,
   state: State,
@@ -108,10 +108,9 @@ function settingsOf(
     } else if (field.kind.kind === "DecoderOptions") {
       const options: Settings = {};
       for (const option of decoderOptions(field, state.values, decoders)) {
-        const value = typed(
-          option,
-          shown({ ...option, key: `${field.key}.${option.key}` }, state.values),
-        );
+        const prefixed = { ...option, key: `${field.key}.${option.key}` };
+        if (misread(prefixed, state.values)) return null;
+        const value = typed(option, shown(prefixed, state.values));
         if (value !== undefined) options[option.key] = value;
         else if (needsValue(option)) return null;
       }
@@ -120,6 +119,7 @@ function settingsOf(
       }
       if (Object.keys(options).length) settings[field.key] = options;
     } else {
+      if (misread(field, settings)) return null;
       const value = typed(field, shown(field, settings));
       if (value !== undefined) settings[field.key] = value;
       else if (needsValue(field)) return null;

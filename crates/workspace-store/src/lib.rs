@@ -215,12 +215,16 @@ pub fn apply(state: &WorkspaceState, command: DocCommand) -> (WorkspaceState, Ve
             slot,
             matching,
         } => {
-            let has_slot = matches!(
-                next.resolutions.get(&item),
-                Some(Resolution::Resolved { content, .. })
-                    if content.entries().iter().any(|entry| entry.lane_slots().contains(&slot.as_str()))
-            );
-            if has_slot
+            // A resolved item knows its slots; one that is resolving or failed has no content to check against, so
+            // the user's choice is kept for the next one.
+            let allowed = match next.resolutions.get(&item) {
+                Some(Resolution::Resolved { content, .. }) => content
+                    .entries()
+                    .iter()
+                    .any(|entry| entry.lane_slots().contains(&slot.as_str())),
+                _ => true,
+            };
+            if allowed
                 && let Some(existing) = next
                     .workspace
                     .items
