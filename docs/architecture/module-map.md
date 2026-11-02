@@ -43,7 +43,7 @@ Where code and files belong. Layers and the dependency rule are in the [overview
 | `frontend/src/session/` | The session client: the socket and its store (the Doc, each seat's view, commands), cursors and presence |
 | `frontend/src/shell/` | The window: title and activity bars, sidebar, and the sharing UI (`SessionsView`, `ShareControl`, `ConnectDialog`) |
 | `frontend/src/access.ts`, `api.ts` | The credential this page holds and its grants; `fetch` for its own backend |
-| `desktop/main.cjs` | The shell's lifecycle: which windows exist and how they move between local and remote |
+| `desktop/start.cjs`, `main.cjs` | The Electron entry (the shell, or the hidden renderer with `--render-host`) and the shell's lifecycle: which windows exist and how they move between local and remote |
 | `desktop/args.cjs`, `backend.cjs`, `window.cjs`, `links.cjs`, `remote.cjs` | The command line (what opens a server, what the backend gets), the local backend process, windows with their trusted origin and IPC, launch links and the single instance, another server's address and its checks |
 | `desktop/smoke*.cjs` | The smoke test and screenshot harness: `smoke.cjs` runs the scenarios, `smoke-kit.cjs` holds the page helpers, and one file per scenario (video, overlays, objects, panels, export, playlist, twice, sharing, remote) |
 | `assets/` | Packaged built-in resources: render catalogs, icons, banner. The app reads them in place and never writes them |

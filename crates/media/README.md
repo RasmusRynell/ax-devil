@@ -13,7 +13,7 @@ thumbnails later). It knows FFmpeg and file formats, not windows, threads or the
   stream at the first missing file, so the decoder reads the image files itself: a missing image then costs one frame,
   and a seek is exact.
 - Any change to the index file layout bumps `VERSION` in `index_file.rs`; a file of another version is rebuilt.
-- The encoder (`encoder.rs`) writes export output: H.264 MP4 through `libx264`, else `libopenh264`, else an error; a PNG
+- The encoder (`encoder.rs`) writes export output: H.264 MP4 through `libx264`, else `libopenh264`, else `h264_videotoolbox` (macOS), else an error; a PNG
   still through FFmpeg's `png`. The MP4 has no B-frames and a microsecond time base so variable frame rates survive. It
   writes a new sibling of the destination (`part.rs`: exclusive create, kept open, never a reused or followed name,
   FFmpeg given `/proc/self/fd/N` on Linux) and `finish` renames it over the destination; dropped earlier, it removes the sibling.

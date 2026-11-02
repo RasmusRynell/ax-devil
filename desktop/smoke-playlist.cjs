@@ -10,9 +10,9 @@ const { overlays } = require("./smoke-overlays.cjs");
 const { panels } = require("./smoke-panels.cjs");
 const { twice } = require("./smoke-twice.cjs");
 const kit = require("./smoke-kit.cjs");
-const { SCREENSHOTS, SHOWN, delay, frames, page, setView } = kit;
+const { SCREENSHOTS, SHOWN, SMOKE_ROOT, delay, frames, page, setView } = kit;
 
-const DATASET = path.resolve(__dirname, "../fixtures/datasets/mot");
+const DATASET = path.join(SMOKE_ROOT, "fixtures/datasets/mot");
 const THEMES_AND_ZOOMS = [
   ["light", 1],
   ["dark", 1],
@@ -67,7 +67,7 @@ module.exports.playlist = async (window) => {
     );
     window.webContents.insertText(DATASET);
     await wait(
-      "[...document.querySelectorAll('dialog[open] input')].some((i) => i.value.endsWith('datasets/mot'))",
+      `[...document.querySelectorAll('dialog[open] input')].some((i) => i.value === ${JSON.stringify(DATASET)})`,
     );
     await clickButton("Scan");
     await wait("/MINI-01/.test(document.querySelector('dialog[open]').innerText)");

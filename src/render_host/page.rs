@@ -144,11 +144,12 @@ impl Drop for Page {
     }
 }
 
-/// The spawner of the real page: Electron from `desktop`, running `render.cjs` offscreen with no display.
+/// The spawner of the real page: Electron running the desktop folder's renderer (`render.cjs`) offscreen with no
+/// display.
 pub(super) fn electron(desktop: &Path) -> Result<Spawn, RenderError> {
     let electron = desktop::electron(desktop).map_err(RenderError::new)?;
     desktop::render_page(desktop).map_err(RenderError::new)?;
-    let script = desktop.join("render.cjs");
+    let desktop = desktop.to_path_buf();
     Ok(Box::new(move |graphics, handshake| {
         let scratch = tempfile::Builder::new()
             .prefix("ax-devil-render-")
@@ -160,7 +161,8 @@ pub(super) fn electron(desktop: &Path) -> Result<Spawn, RenderError> {
         // Shells hosted in an Electron app export this, which would start Electron as plain Node and crash it at once.
         own_group(&mut command)
             .env_remove("ELECTRON_RUN_AS_NODE")
-            .arg(&script)
+            .arg(&desktop)
+            .arg("--render-host")
             .arg("--ozone-platform=headless")
             .args(graphics.flags())
             .arg(format!("--user-data-dir={}", scratch.path().display()))

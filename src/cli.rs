@@ -44,6 +44,10 @@ mod tests;
 /// How long open connections, such as the sockets, get to close after Ctrl+C before the backend exits anyway.
 const SHUTDOWN_GRACE: Duration = Duration::from_secs(2);
 
+/// Set to `1` by the desktop shell: the backend then stops when its standard input closes, so it never outlives the
+/// shell, even one that crashed. Unset, a closed standard input (a service, a container) changes nothing.
+const EXIT_ON_STDIN_CLOSE_VARIABLE: &str = "AX_DEVIL_EXIT_ON_STDIN_CLOSE";
+
 /// The environment variable that sets the server password for `serve`: printable ASCII without spaces, because a
 /// browser can send nothing else in a header. Unset or empty, a random password is generated.
 const PASSWORD_VARIABLE: &str = "AX_DEVIL_SERVER_PASSWORD";
@@ -311,7 +315,7 @@ struct Services {
 
 impl Services {
     /// Loads the settings, starts the video cache and queues `items` for the first Local session. Ctrl+C turns the
-    /// stop signal on.
+    /// stop signal on, and so does the end of the standard input when [`EXIT_ON_STDIN_CLOSE_VARIABLE`] asks for it.
     fn start(
         paths: &Paths,
         handlers: Handlers,
@@ -332,6 +336,14 @@ impl Services {
             let _ = tokio::signal::ctrl_c().await;
             stop_on_ctrl_c.send_replace(true);
         });
+        if std::env::var_os(EXIT_ON_STDIN_CLOSE_VARIABLE).is_some_and(|value| value == "1") {
+            let stop_on_eof = stop.clone();
+            // A plain thread: reading standard input blocks, and the thread may stay blocked until the process exits.
+            std::thread::spawn(move || {
+                let _ = std::io::copy(&mut std::io::stdin().lock(), &mut std::io::sink());
+                stop_on_eof.send_replace(true);
+            });
+        }
         Ok(Self {
             settings,
             catalogs,

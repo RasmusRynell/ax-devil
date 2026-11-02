@@ -1,6 +1,6 @@
 //! The hidden render page that draws an export's overlays, and the private socket the backend talks to it over.
 //!
-//! The host listens on a loopback port, starts Electron on `desktop/render.cjs` (offscreen, no display), and accepts
+//! The host listens on a loopback port, starts Electron on the desktop folder as `desktop/render.cjs` (offscreen, no display), and accepts
 //! one connection whose first message proves, with a secret given to the page process alone, that the backend
 //! started it. Then [`RenderHost::setup`] describes the job, and each frame is a [`RenderHost::submit`] (the new
 //! Sample envelopes, the picture, a `Render`) answered by one [`RenderHost::receive`] (the pixels). The protocol is

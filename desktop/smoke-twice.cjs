@@ -1,14 +1,15 @@
 // The smoke test's repeated-overlay scenario: one overlay file given twice for a video becomes two lanes, named after
 // the file and numbered, and both draw. Only the command line can give a video an overlay, so this runs a second
 // backend of its own, started like `ax-devil local --video V --overlay F --overlay F`, in a window of its own.
-const { BrowserWindow } = require("electron");
+const { BrowserWindow, app } = require("electron");
 const assert = require("node:assert/strict");
 const fs = require("node:fs/promises");
 const path = require("node:path");
-const { startProcess } = require("./backend.cjs");
+const { backendExecutable, startProcess } = require("./backend.cjs");
 const {
   SCREENSHOTS,
   SHOWN,
+  SMOKE_ROOT,
   colourCount,
   delay,
   goToFrame,
@@ -17,11 +18,12 @@ const {
   until,
 } = require("./smoke-kit.cjs");
 
-const VIDEO = path.resolve(__dirname, "../fixtures/video/long_gop_h264.mp4");
-const OVERLAY = path.resolve(__dirname, "../fixtures/datasets/mot/train/MINI-01-DPM/gt/gt.txt");
+const VIDEO = path.join(SMOKE_ROOT, "fixtures/video/long_gop_h264.mp4");
+const OVERLAY = path.join(SMOKE_ROOT, "fixtures/datasets/mot/train/MINI-01-DPM/gt/gt.txt");
 
 module.exports.twice = async () => {
   const served = await startProcess(
+    backendExecutable(app),
     ["local", "--video", VIDEO, "--overlay", OVERLAY, "--overlay", OVERLAY],
     { PORT: "0" },
     () => {},

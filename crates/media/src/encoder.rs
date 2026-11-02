@@ -1,7 +1,7 @@
 //! Pictures to a file: an H.264 MP4 whose frames keep the times they are given, or a single PNG still.
 //!
-//! The encoder is probed at run time, `libx264` first and `libopenh264` if that is missing, so a build of FFmpeg
-//! without either fails here with a message naming both. The MP4 has no B-frames and a microsecond time base, so
+//! The encoder is probed at run time: `libx264`, else `libopenh264`, else `h264_videotoolbox` (macOS), so a build of
+//! FFmpeg with none of them fails here with a message naming them. The MP4 has no B-frames and a microsecond time base, so
 //! every frame's time is stored exactly and a variable frame rate survives.
 
 use ffmpeg_next::codec::{self, Flags};
@@ -271,11 +271,11 @@ struct Mp4 {
 
 impl Mp4 {
     fn open(tmp: &Path, quality: Quality, width: u32, height: u32) -> Result<Self, UserError> {
-        let (codec, name) = ["libx264", "libopenh264"]
+        let (codec, name) = ["libx264", "libopenh264", "h264_videotoolbox"]
             .into_iter()
             .find_map(|name| encoder::find_by_name(name).map(|codec| (codec, name)))
             .ok_or_else(|| {
-                fail("this FFmpeg has no H.264 encoder: it needs libx264 or libopenh264")
+                fail("this FFmpeg has no H.264 encoder: it needs libx264, libopenh264 or h264_videotoolbox")
             })?;
         let mut video = codec::context::Context::new_with_codec(codec)
             .encoder()

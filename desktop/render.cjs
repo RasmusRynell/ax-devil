@@ -1,6 +1,7 @@
 // The hidden renderer `ax-devil` starts for export and `catalog render`: Electron with no display, one offscreen
 // window on the render page, and no way to reach anything but the backend's loopback socket the page opens itself.
-// Start it as `electron render.cjs --ozone-platform=headless <graphics switches>`; the backend writes one line of
+// Start it as `electron <desktop folder> --render-host --ozone-platform=headless <graphics switches>` (start.cjs picks
+// this file); the backend writes one line of
 // JSON, `{ "port": N, "secret": "..." }`, to stdin, and the page gets both in the fragment of its URL, which is never
 // sent or logged (see src/render_host.rs). The process exits when stdin closes, so it does not outlive the backend.
 const { app, BrowserWindow, session } = require("electron");

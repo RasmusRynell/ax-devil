@@ -2,7 +2,8 @@
 
 use std::path::{Path, PathBuf};
 
-/// The desktop folder: `AX_DEVIL_DESKTOP`, else the one in the checkout the binary was built in.
+/// The desktop folder: `AX_DEVIL_DESKTOP` (the shell sets it, to the app's own folder when packaged), else the one in
+/// the checkout the binary was built in.
 pub fn folder() -> Result<PathBuf, std::io::Error> {
     Ok(match std::env::var_os("AX_DEVIL_DESKTOP") {
         Some(folder) => PathBuf::from(folder),
@@ -15,20 +16,24 @@ pub fn folder() -> Result<PathBuf, std::io::Error> {
     })
 }
 
-/// The Electron binary the desktop folder installed, or why there is none.
+/// The Electron binary: `AX_DEVIL_ELECTRON` (the executable of the shell that started this backend, which in a
+/// packaged app is the app itself), else the one the desktop folder installed. Or why there is none.
 pub fn electron(desktop: &Path) -> Result<PathBuf, String> {
     let binary = if cfg!(windows) {
         "electron.cmd"
     } else {
         "electron"
     };
-    let electron = desktop.join("node_modules/.bin").join(binary);
+    let electron = std::env::var_os("AX_DEVIL_ELECTRON").map_or_else(
+        || desktop.join("node_modules/.bin").join(binary),
+        PathBuf::from,
+    );
     if electron.is_file() {
         Ok(electron)
     } else {
         Err(format!(
             "Cannot find the desktop shell's Electron at {}; set AX_DEVIL_DESKTOP to the desktop folder, \
-             installed with pnpm install",
+             installed with pnpm install, or AX_DEVIL_ELECTRON to the executable",
             electron.display()
         ))
     }

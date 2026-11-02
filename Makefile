@@ -7,7 +7,7 @@ PORT ?= 7330
 UI_PORT ?= 7331
 TEST ?=
 ROOT_FILES := desktop/*.cjs scripts/*.cjs vite.config.ts package.json pnpm-workspace.yaml
-.PHONY: help web desktop build check check-fast format tests tests-frontend tests-backend tests-integration \
+.PHONY: help web desktop build check check-fast format package tests tests-frontend tests-backend tests-integration \
 	tests-desktop bench bench-export bench-present bench-browser bench-browser-smoke _types _frontend-build _static _licenses _dev _dev-rust
 
 help:
@@ -16,6 +16,7 @@ help:
 	  '  web         Start website development with frontend and Rust reload' \
 	  '  desktop     Start desktop development with frontend and Rust reload' \
 	  '  build       Build the release app with the frontend embedded; do not launch' \
+	  '  package     Package the desktop app: make package OS=linux|win|mac FFMPEG_DIR=<shared FFmpeg>' \
 	  '  tests       Run all test suites' \
 	  '  check       Run every static check and all test suites' \
 	  '  bench       Run the Rust benchmarks (sample item encode); numbers on stdout' \
@@ -59,6 +60,9 @@ _frontend-build: node_modules/.installed _types
 
 build: _frontend-build
 	$(CARGO) build --locked --release
+
+package:
+	scripts/package-desktop.sh $(OS)
 
 web: _dev
 	PORT=$(PORT) UI_PORT=$(UI_PORT) node scripts/dev.cjs web

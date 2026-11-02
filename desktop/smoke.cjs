@@ -4,7 +4,16 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs/promises");
 const path = require("node:path");
 const fit = require("./fit.cjs");
-const { SCREENSHOTS, button, page, reload, setView, until, watchCsp } = require("./smoke-kit.cjs");
+const {
+  SCREENSHOTS,
+  SMOKE_ROOT,
+  button,
+  page,
+  reload,
+  setView,
+  until,
+  watchCsp,
+} = require("./smoke-kit.cjs");
 const { playlist } = require("./smoke-playlist.cjs");
 const { exportDialog } = require("./smoke-export.cjs");
 const { remote } = require("./smoke-remote.cjs");
@@ -75,9 +84,14 @@ module.exports = async (window, shell) => {
   }
   assert.notEqual(backgrounds.light, backgrounds.dark, "The window must follow the theme");
 
-  // The title bar has the window controls, and Ctrl+= and Ctrl+0 zoom the page.
-  for (const name of ["Minimize", "Maximize", "Close"])
-    assert.notEqual(await js(`document.querySelector('[aria-label=${name}]')`), null, name);
+  // The title bar has the window controls, and Ctrl+= and Ctrl+0 zoom the page. A window that fills a small screen
+  // counts as maximized, and then its second control is Restore.
+  for (const selector of [
+    "[aria-label=Minimize]",
+    "[aria-label=Maximize], [aria-label=Restore]",
+    "[aria-label=Close]",
+  ])
+    assert.ok(await js(`document.querySelector("${selector}") !== null`), selector);
   const press = (keyCode) =>
     window.webContents.sendInputEvent({ type: "keyDown", keyCode, modifiers: ["control"] });
   press("=");
@@ -200,12 +214,15 @@ module.exports = async (window, shell) => {
     }
   }
 
+  console.log("smoke: video");
   await video(window);
+  console.log("smoke: export");
   await exportDialog(window);
+  console.log("smoke: playlist");
   await playlist(window);
+  console.log("smoke: sharing");
   await sharing(window, shell, ownerCsp);
+  console.log("smoke: remote");
   await remote(window, shell);
-  console.log(
-    `PASS: app shell loaded; screenshots in ${path.relative(path.resolve(__dirname, ".."), SCREENSHOTS)}`,
-  );
+  console.log(`PASS: app shell loaded; screenshots in ${path.relative(SMOKE_ROOT, SCREENSHOTS)}`);
 };

@@ -2,15 +2,18 @@
 // their cursor ids, and a few checks on the page itself.
 const path = require("node:path");
 
-const SCREENSHOTS = path.resolve(__dirname, "../artifacts/screenshots");
+// Fixtures and screenshots live under the repository, or under `AX_DEVIL_SMOKE_ROOT` when the app is packaged.
+const SMOKE_ROOT = process.env.AX_DEVIL_SMOKE_ROOT || path.resolve(__dirname, "..");
+const SCREENSHOTS = path.join(SMOKE_ROOT, "artifacts/screenshots");
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-// Runs expressions in a window's page; `wait` polls one until it is true.
+// Runs expressions in a window's page; `wait` polls one until it is truthy. Results are copied out of the page, so
+// an expression must not evaluate to a DOM node.
 const page = (window) => {
   const js = (expression) => window.webContents.executeJavaScript(expression);
   const wait = async (expression) => {
     for (let i = 0; i < 100; i++) {
-      if (await js(expression)) return;
+      if (await js(`Boolean(${expression})`)) return;
       await delay(100);
     }
     throw new Error(`Timed out: ${expression}\n${await js("document.body.innerText")}`);
@@ -157,6 +160,7 @@ async function until(find, what) {
 }
 
 module.exports = {
+  SMOKE_ROOT,
   SCREENSHOTS,
   button,
   capture,
