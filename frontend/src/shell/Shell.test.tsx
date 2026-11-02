@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
-import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { GrantsContext } from "../access";
 import { DEFAULT_SETTINGS, FakeSettings } from "../fakeSettings";
 import type { Grant } from "../generated/api";
@@ -159,6 +159,31 @@ describe("about", () => {
   });
 });
 
+describe("about on the desktop", () => {
+  afterEach(() => void delete window.axDevilWindow);
+
+  it("shows the desktop's own version, and for a remote server also its address and version", async () => {
+    window.axDevilWindow = {
+      appVersion: async () => "0.9.0",
+      onMaximizedChange: () => () => undefined,
+    } as unknown as Window["axDevilWindow"];
+    for (const [grants, remote] of [
+      [["preferences", "sessions"], false],
+      [["sessions"], true],
+    ] as const) {
+      await renderShell({ grants: [...grants] });
+      fireEvent.click(screen.getByRole("menuitem", { name: "Help" }));
+      fireEvent.click(screen.getByRole("menuitem", { name: "About" }));
+      const dialog = screen.getByRole("dialog", { name: "About ax-devil" });
+      await waitFor(() => expect(dialog.textContent).toContain("Version 0.9.0"));
+      // The backend's version appears only as the server's, never as the app's.
+      expect(dialog.textContent?.includes("Connected to")).toBe(remote);
+      expect(dialog.textContent?.includes("1.2.3")).toBe(remote);
+      cleanup();
+    }
+  });
+});
+
 describe("sidebar", () => {
   it("hides from the View menu and from the shortcut, and from the active view's button", async () => {
     await renderShell();
@@ -188,6 +213,7 @@ describe("add video", () => {
       disconnect: () => Promise.resolve(),
       pickFolder: () => Promise.resolve(null),
       pickExportFile: () => Promise.resolve(null),
+      appVersion: async () => "0.0.0",
       onMaximizedChange: () => () => {},
     } satisfies WindowBridge;
   };

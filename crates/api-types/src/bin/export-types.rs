@@ -14,7 +14,8 @@ macro_rules! declarations {
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     use ::playback::ClockIntent;
     use api_types::{
-        catalogs::*, content::*, handlers::*, inspect::*, playback::*, window::*, workspace::*, *,
+        catalogs::*, content::*, handlers::*, inspect::*, playback::*, report::*, window::*,
+        workspace::*, *,
     };
     use export::{LaneStyle, Output, RenderLane, RenderSetup};
     use foundation::{ErrorCode, FrameSize};
@@ -36,6 +37,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         SettingsState,
         SettingsChange,
         WindowState,
+        PageError,
         ApiError,
         ErrorCode,
         ErrorParams,

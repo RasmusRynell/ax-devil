@@ -126,7 +126,7 @@ The offline decisions taken with the owner are in
 | ST-04 | `$VARIABLE` references | M | in progress | `crates/settings` tests | Backend done: rows with `env` store the reference and expand it on use; none takes one |
 | ST-05 | Keyboard shortcuts, dialog, override persistence | M | done | `crates/settings` tests, `frontend/src/shell/ShortcutsDialog.test.tsx`, `Shell.test.tsx` | Command table, override-only storage, conflict and reserved-key checks, the Shortcuts dialog, live key handling; actions follow each feature row |
 | ST-06 | Workspace credential references expand only for their bound host or a confirmed one; warn before saving a literal password (new) | M | in progress | `frontend/src/shell/SettingsDialog.test.tsx` | The Settings dialog warns under a secret field holding a literal (mocked). Left: the first real secret row, workspace half (M5) |
-| AP-01 | Uncaught errors logged; continue or close | M | done | `UncaughtErrors.test.tsx`, `desktop/uncaught.test.cjs` | The page's errors only reach the console |
+| AP-01 | Uncaught errors logged; continue or close | M | done | `UncaughtErrors.test.tsx`, `desktop/uncaught.test.cjs` | The page reports its errors to the backend's log |
 | AP-02 | Restart from inside the app | M | todo |  |  |
 | AP-03 | `clear-cache` | S | todo |  |  |
 | AP-04 | About dialog | S | done | `shell/Shell.test.tsx` |  |

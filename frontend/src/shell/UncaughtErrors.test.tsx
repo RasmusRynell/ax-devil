@@ -1,9 +1,10 @@
-import { afterEach, describe, expect, it } from "vite-plus/test";
+import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { UncaughtErrors } from "./UncaughtErrors";
 
 afterEach(() => {
   cleanup();
+  vi.unstubAllGlobals();
   delete window.axDevilWindow;
 });
 
@@ -42,6 +43,25 @@ describe("uncaught errors", () => {
       fireEvent.click(screen.getByRole("button", { name: "Continue" }));
     }
     expect(screen.queryByRole("dialog")).toBeNull();
+  });
+
+  it("tells the backend each error with the page's address but not its fragment, and offers Reload in a browser", () => {
+    const fetched = vi.fn(async () => new Response(null, { status: 204 }));
+    vi.stubGlobal("fetch", fetched);
+    window.history.replaceState(null, "", "/session#password=secret");
+    render(<UncaughtErrors />);
+    throwUncaught(new TypeError("reported"));
+    const [path, init] = fetched.mock.calls[0] as unknown as [string, RequestInit];
+    expect(path).toBe("/api/client-errors");
+    const body = JSON.parse(init.body as string) as Record<string, unknown>;
+    expect(body).toMatchObject({
+      summary: "TypeError: reported",
+      page: `${window.location.origin}/session`,
+      desktop: false,
+    });
+    expect(JSON.stringify(body)).not.toContain("secret");
+    expect(screen.getByRole("button", { name: "Reload" })).toBeTruthy();
+    window.history.replaceState(null, "", "/");
   });
 
   it("ignores the browser's own notices that carry no error", () => {
