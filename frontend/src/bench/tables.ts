@@ -1,0 +1,412 @@
+/**
+ * The objects list in a real page: the real `ObjectsPanel` over a made-up viewer, driven the way a user and a playing
+ * video drive it. Times how long the first rows take to paint, the frame intervals while scrolling and while a column
+ * divider is dragged, and what a new video frame every animation frame costs with the panel open and closed. Run by
+ * `BENCH_SUITE=tables make bench-browser`; only a run on the real display counts (`desktop/bench.cjs`).
+ */
+
+import { createElement, type ReactElement } from "react";
+import { flushSync } from "react-dom";
+import { createRoot, type Root } from "react-dom/client";
+import type { FileRowWire, FileSortWire } from "../generated/api";
+import type { LaneFrame } from "../playback/contract";
+import { LANE_DEFAULTS } from "../playback/fakeOpened";
+import type { FileScope } from "../playback/fileScope";
+import { LaneSet } from "../playback/lanes";
+import type { LaneStatusWire } from "../playback/protocol";
+import { INITIAL_VIEW, type PlaybackView } from "../playback/view";
+import { ObjectsPanel } from "../tools/ObjectsPanel";
+import { rememberedWidths } from "../tools/table/fit";
+import "../style.css";
+import { summarize } from "./stats";
+import { catalogNamed, laneRing } from "./synthetic";
+import type { Settings, Stat } from "./types";
+
+/** The refresh interval the budget is written for: scrolling and resizing keep to it at 100000 rows. */
+const BUDGET = 16.7;
+/** An interval this much over a refresh is a frame that was late. */
+const LATE = BUDGET * 1.1;
+const RING = 6;
+const CLASSES = ["car", "human", "head", "bus", "dog", "truck"];
+
+export type TableName = "first rows" | "scroll" | "resize" | "playback open" | "playback closed";
+export type TableScope = "Frame" | "File";
+
+/** One thing to time: `rows` objects in the frame (Frame scope) or matches in the file (File scope), for `seconds`. */
+export interface TableScenario {
+  name: TableName;
+  scope: TableScope;
+  rows: number;
+  seconds: number;
+}
+
+/** What one scenario measured, in milliseconds: the work it asks of the page and the animation frame intervals. */
+export interface TableResult {
+  scenario: TableScenario;
+  /** What the work is: time to paint, scroll event to updated rows, pointer move with layout, or a render. */
+  workOf: string;
+  work: Stat;
+  /** Intervals between animation frames; empty for the scenarios that are not driven by frames. */
+  intervals: Stat;
+  late: number;
+}
+
+export interface TablesApi {
+  plan(settings: Settings): TableScenario[];
+  run(scenario: TableScenario): Promise<TableResult>;
+  report(results: TableResult[]): string;
+}
+
+/** The scenarios to run: every one with 5000 objects in the frame and 100000 in the file; `smoke` is small and short. */
+export function plan(settings: Settings): TableScenario[] {
+  const smoke = Boolean(settings.smoke);
+  const objects = Number(settings.counts || (smoke ? 100 : 5000));
+  const file = smoke ? 1000 : 100_000;
+  const seconds = Number(settings.seconds || (smoke ? 1 : 2));
+  const scenario = (name: TableName, scope: TableScope, secs = seconds): TableScenario => ({
+    name,
+    scope,
+    rows: scope === "Frame" ? objects : file,
+    seconds: secs,
+  });
+  return [
+    scenario("first rows", "Frame"),
+    scenario("first rows", "File"),
+    scenario("scroll", "Frame"),
+    scenario("scroll", "File"),
+    scenario("resize", "Frame", Math.min(1, seconds)),
+    scenario("resize", "File", Math.min(1, seconds)),
+    scenario("playback closed", "Frame"),
+    scenario("playback open", "Frame"),
+  ];
+}
+
+const READY: Extract<LaneStatusWire, { status: "Ready" }> = {
+  status: "Ready",
+  bases: ["Frame"],
+  default_basis: "Frame",
+  filter: [],
+  warnings: [],
+  samples: 1000,
+  data_revision: 1,
+  alignment: null,
+  mean_sample_bytes: 100,
+  ingest: { state: "Complete" },
+};
+
+const fileRow = (index: number): FileRowWire => {
+  const first = (index * 37) % 900;
+  return {
+    id: `track-${index * 7919}`,
+    classes: [CLASSES[index % CLASSES.length]],
+    events: [],
+    first_frame: first,
+    last_frame: first + 50,
+    presence: [
+      [first, first + 20],
+      [first + 30, first + 50],
+    ],
+  };
+};
+
+type FileScopeView = ReturnType<FileScope["view"]>;
+
+/** The File scope client of a lane whose file has `total` objects; a page is answered a task after it is asked for. */
+class FakeFiles {
+  readonly #listeners = new Set<() => void>();
+  readonly #total: number;
+  #view: FileScopeView = { pending: false, page: null, unavailable: null };
+
+  constructor(total: number) {
+    this.#total = total;
+  }
+
+  subscribe = (listener: () => void): (() => void) => {
+    this.#listeners.add(listener);
+    return () => this.#listeners.delete(listener);
+  };
+  view = (_lane: number): FileScopeView => this.#view;
+  request = (_lane: number, _text: string, _sort: FileSortWire, offset: number, limit: number) => {
+    const rows = Array.from({ length: Math.min(limit, this.#total - offset) }, (_, k) =>
+      fileRow(offset + k),
+    );
+    setTimeout(() => {
+      this.#view = {
+        pending: false,
+        page: { total: this.#total, matched: this.#total, offset, rows },
+        unavailable: null,
+      };
+      this.#listeners.forEach((listener) => listener());
+    }, 0);
+  };
+  release = (_lane: number) => {};
+}
+
+const rings = new Map<number, LaneFrame[]>();
+/** `RING` frames of `objects` objects each, made once. */
+function ringOf(objects: number): LaneFrame[] {
+  let ring = rings.get(objects);
+  if (!ring) {
+    ring = laneRing(catalogNamed("standard"), 1, objects, RING).map((step) => step[0]);
+    rings.set(objects, ring);
+  }
+  return ring;
+}
+
+/** A viewer 1280 x 720 with the panel in a column beside the picture, as it is in a wide window. */
+class Rig {
+  readonly host = document.createElement("div");
+  readonly root: Root;
+  readonly #ring: LaneFrame[];
+  readonly #view: PlaybackView;
+  readonly #source;
+  #current = 0;
+  playhead = 0;
+
+  constructor(readonly scenario: TableScenario) {
+    this.host.style.cssText =
+      "position:relative;display:flex;width:1280px;height:720px;container-type:size";
+    document.body.append(this.host);
+    this.root = createRoot(this.host);
+    const lanes = new LaneSet();
+    lanes.open([{ label: "bench", source: 0 }], LANE_DEFAULTS);
+    lanes.setStatus(0, READY);
+    this.#view = { ...INITIAL_VIEW, status: "ready", frameCount: 1000, lanes: lanes.states };
+    const objects = scenario.scope === "Frame" ? scenario.rows : 5000;
+    this.#ring = ringOf(objects);
+    this.#source = {
+      files: new FakeFiles(scenario.scope === "File" ? scenario.rows : 0),
+      shown: () => this.#ring[this.#current],
+      select: () => {},
+      seek: () => {},
+    };
+  }
+
+  /** The viewer with the panel open or without it, showing the sample of `frame`; renders before returning. */
+  show(open: boolean, frame = 0): void {
+    this.#current = frame % RING;
+    const view = { ...this.#view, playhead: ++this.playhead };
+    const panel = createElement(ObjectsPanel, {
+      source: this.#source,
+      view,
+      canSeek: true,
+      selectable: true,
+      onClose: () => {},
+    });
+    const picture = createElement("div", { style: { flex: "1 1 0" } });
+    flushSync(() =>
+      this.root.render(
+        createElement(
+          "div",
+          { style: { display: "contents" } },
+          picture,
+          open ? panel : null,
+        ) as ReactElement,
+      ),
+    );
+  }
+
+  get scroller(): HTMLElement {
+    return this.host.querySelector('[role="listbox"]')!.parentElement!;
+  }
+
+  /** Whether rows are drawn and none waits for its page. */
+  get loaded(): boolean {
+    const rows = this.host.querySelectorAll('[role="option"]');
+    return rows.length > 0 && !this.host.querySelector('[role="option"][aria-busy="true"]');
+  }
+
+  close(): void {
+    this.root.unmount();
+    this.host.remove();
+  }
+}
+
+const nextFrame = (): Promise<number> => new Promise((done) => requestAnimationFrame(done));
+/** Resolves after the frame that follows has been painted. */
+const painted = (): Promise<void> =>
+  nextFrame().then(() => new Promise<void>((done) => setTimeout(done, 0)));
+
+async function until(rig: Rig, ready: () => boolean): Promise<void> {
+  if (ready()) return;
+  await new Promise<void>((done) => {
+    const watch = new MutationObserver(() => {
+      if (!ready()) return;
+      watch.disconnect();
+      done();
+    });
+    watch.observe(rig.host, { childList: true, subtree: true, attributes: true });
+  });
+}
+
+/** Calls `step` once per animation frame for `seconds`; the intervals between the frames. */
+async function frames(seconds: number, step: (index: number) => void): Promise<number[]> {
+  const intervals: number[] = [];
+  let last = await nextFrame();
+  const end = last + seconds * 1000;
+  for (let index = 0; last < end; index++) {
+    step(index);
+    const now = await nextFrame();
+    intervals.push(now - last);
+    last = now;
+  }
+  return intervals;
+}
+
+const result = (
+  scenario: TableScenario,
+  workOf: string,
+  work: number[],
+  intervals: number[] = [],
+): TableResult => ({
+  scenario,
+  workOf,
+  work: summarize(work),
+  intervals: summarize(intervals),
+  late: intervals.filter((interval) => interval > LATE).length,
+});
+
+async function firstRows(scenario: TableScenario): Promise<TableResult> {
+  const times: number[] = [];
+  for (let rep = 0; rep < 10; rep++) {
+    const rig = new Rig(scenario);
+    let start = performance.now();
+    if (scenario.scope === "Frame") rig.show(true);
+    else {
+      rig.show(true);
+      await painted();
+      start = performance.now();
+      const button = [...rig.host.querySelectorAll("button")].find((b) => b.textContent === "File");
+      button!.click();
+    }
+    await until(rig, () => rig.loaded);
+    await painted();
+    times.push(performance.now() - start);
+    rig.close();
+  }
+  return result(scenario, "to painted rows", times);
+}
+
+async function scroll(scenario: TableScenario): Promise<TableResult> {
+  const rig = new Rig(scenario);
+  rig.show(true);
+  if (scenario.scope === "File")
+    [...rig.host.querySelectorAll("button")].find((b) => b.textContent === "File")!.click();
+  await until(rig, () => rig.loaded);
+  await painted();
+  const { scroller } = rig;
+  const row = scroller.querySelector<HTMLElement>('[role="option"]')!.offsetHeight;
+  const latency: number[] = [];
+  let scrolled = 0;
+  const onScroll = () => (scrolled = performance.now());
+  const rowsChanged = new MutationObserver(() => {
+    if (scrolled > 0) latency.push(performance.now() - scrolled);
+    scrolled = 0;
+  });
+  document.addEventListener("scroll", onScroll, true);
+  rowsChanged.observe(scroller, { childList: true, subtree: true, attributes: true });
+  const wrap = scroller.scrollHeight - scroller.clientHeight;
+  // 12 rows a frame: every frame moves the window.
+  const intervals = await frames(scenario.seconds, (index) => {
+    scroller.scrollTop = (index * 12 * row) % wrap;
+  });
+  document.removeEventListener("scroll", onScroll, true);
+  rowsChanged.disconnect();
+  rig.close();
+  if (latency.length === 0) throw new Error("scrolling never changed the rows drawn");
+  return result(scenario, "scroll event to rows", latency, intervals);
+}
+
+async function resize(scenario: TableScenario): Promise<TableResult> {
+  const rig = new Rig(scenario);
+  rig.show(true);
+  if (scenario.scope === "File")
+    [...rig.host.querySelectorAll("button")].find((b) => b.textContent === "File")!.click();
+  await until(rig, () => rig.loaded);
+  await painted();
+  // No pointer is active for a synthetic event to capture.
+  const proto = HTMLElement.prototype as { setPointerCapture: unknown };
+  const capture = proto.setPointerCapture;
+  proto.setPointerCapture = () => {};
+  const divider = rig.host.querySelector<HTMLElement>('[role="separator"]')!;
+  const x = divider.getBoundingClientRect().left;
+  const send = (type: string, clientX: number) =>
+    divider.dispatchEvent(
+      new PointerEvent(type, { bubbles: true, pointerId: 1, pointerType: "mouse", clientX }),
+    );
+  send("pointerdown", x);
+  const widths = new Set<string | null>();
+  const work: number[] = [];
+  const intervals = await frames(scenario.seconds, (index) => {
+    const start = performance.now();
+    send("pointermove", x + 60 * Math.sin(index / 10));
+    // Layout is part of what a move costs.
+    void rig.scroller.offsetHeight;
+    work.push(performance.now() - start);
+    widths.add(divider.getAttribute("aria-valuenow"));
+  });
+  send("pointerup", x);
+  proto.setPointerCapture = capture;
+  rememberedWidths("objects-frame").clear();
+  rememberedWidths("objects-file").clear();
+  rig.close();
+  if (widths.size < 2) throw new Error("dragging the divider never changed the column width");
+  return result(scenario, "pointer move and layout", work, intervals);
+}
+
+async function playback(scenario: TableScenario): Promise<TableResult> {
+  const open = scenario.name === "playback open";
+  const rig = new Rig(scenario);
+  rig.show(open);
+  await painted();
+  const work: number[] = [];
+  const intervals = await frames(scenario.seconds, (index) => {
+    const start = performance.now();
+    rig.show(open, index);
+    work.push(performance.now() - start);
+  });
+  rig.close();
+  return result(scenario, "render of a new frame", work, intervals);
+}
+
+const RUNNERS: Record<TableName, (scenario: TableScenario) => Promise<TableResult>> = {
+  "first rows": firstRows,
+  scroll,
+  resize,
+  "playback open": playback,
+  "playback closed": playback,
+};
+
+/** Runs `scenario` in a fresh page-sized rig and removes it after. */
+export const run = (scenario: TableScenario): Promise<TableResult> =>
+  RUNNERS[scenario.name](scenario);
+
+const f = (value: number): string => value.toFixed(2).padStart(7);
+
+/** The table of results, with the budget each is held to: frame interval p95 <= one refresh at 100k rows. */
+export function report(results: TableResult[]): string {
+  const lines = [
+    `${"scenario".padEnd(16)} ${"scope".padEnd(5)} ${"rows".padStart(6)} | ${"work".padEnd(24)} p50    p95    max | frame interval p50    p95 | late`,
+  ];
+  for (const { scenario: s, workOf, work, intervals, late } of results) {
+    const driven = intervals.n > 0;
+    lines.push(
+      `${s.name.padEnd(16)} ${s.scope.padEnd(5)} ${String(s.rows).padStart(6)} | ${workOf.padEnd(24)}${f(work.p50)}${f(work.p95)}${f(work.max)} | ${driven ? `${f(intervals.p50)}${f(intervals.p95)}` : " ".repeat(14)} | ${driven ? `${late}/${intervals.n}` : ""}`,
+    );
+  }
+  const budgeted = results.filter(
+    ({ scenario: s }) =>
+      (s.name === "scroll" || s.name === "resize") && s.scope === "File" && s.rows >= 100_000,
+  );
+  lines.push(
+    "",
+    `Budget: frame interval p95 <= ${BUDGET.toFixed(1)} ms scrolling and resizing at 100000 rows. late: intervals over ${LATE.toFixed(1)} ms.`,
+    ...budgeted.map(
+      ({ scenario: s, intervals }) =>
+        `${s.name} ${s.scope}: ${intervals.p95 <= BUDGET ? "within" : "OVER"} (${intervals.p95.toFixed(2)} ms)`,
+    ),
+  );
+  return lines.join("\n");
+}
+
+export const tables: TablesApi = { plan, run, report };

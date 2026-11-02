@@ -3,6 +3,9 @@
 // only starts it, runs the scenarios one at a time and prints and saves what the page reports.
 //   BENCH_DISPLAY=real  use the machine's GPU (default: SwiftShader, Chromium's software renderer, which proves the
 //                       bench works but whose numbers do not count)
+//   BENCH_SUITE=tables  time the objects list (the real ObjectsPanel: first rows, scroll, divider drag, playback with the
+//                       panel open and closed) instead of the renderer; BENCH_SMOKE, BENCH_SECONDS and BENCH_COUNTS
+//                       (objects in a frame) narrow it
 //   BENCH_SMOKE=1, BENCH_SECONDS, BENCH_RESOLUTIONS, BENCH_CATALOGS, BENCH_LANES, BENCH_COUNTS, BENCH_MODES
 //                       narrow the matrix (frontend/src/bench/plan.ts)
 const { app, BrowserWindow } = require("electron");
@@ -58,16 +61,49 @@ const settings = {
   modes: process.env.BENCH_MODES,
 };
 
+// The tables suite: the page runs each scenario; this prints and saves what it reports.
+async function runTables(js, environment, machine) {
+  const scenarios = await js(`benchApi.tables.plan(${JSON.stringify(settings)})`);
+  console.log("ax-devil browser bench: the objects list, the real ObjectsPanel over made-up data.");
+  console.log(`GL renderer: ${environment.glRenderer}${environment.software ? "  SOFTWARE" : ""}`);
+  console.log(`${scenarios.length} scenarios; times in ms\n`);
+  const results = [];
+  for (const scenario of scenarios) {
+    process.stderr.write(
+      `[${results.length + 1}/${scenarios.length}] ${scenario.name} ${scenario.scope} ${scenario.rows}\n`,
+    );
+    results.push(await js(`benchApi.tables.run(${JSON.stringify(scenario)})`));
+  }
+  console.log(await js(`benchApi.tables.report(${JSON.stringify(results)})`));
+  fs.mkdirSync(OUT, { recursive: true });
+  const file = path.join(OUT, "result-tables.json");
+  fs.writeFileSync(file, JSON.stringify({ machine, environment, settings, results }, null, 2));
+  console.log(`\nJSON: ${file}`);
+}
+
 async function run() {
   const server = await serve();
   const window = new BrowserWindow({
     width: 1280,
     height: 720,
+    useContentSize: true,
     webPreferences: { sandbox: true, contextIsolation: true, backgroundThrottling: false },
   });
   await window.loadURL(`http://127.0.0.1:${server.address().port}/bench.html`);
   const js = (expression) => window.webContents.executeJavaScript(expression);
   const environment = await js("benchApi.environment()");
+  const machine = {
+    display: real ? "real" : "swiftshader",
+    electron: process.versions.electron,
+    chrome: process.versions.chrome,
+    platform: `${os.platform()} ${os.release()}`,
+    cpu: os.cpus()[0]?.model,
+  };
+  if (process.env.BENCH_SUITE === "tables") {
+    await runTables(js, environment, machine);
+    server.close();
+    return 0;
+  }
   const scenarios = await js(`benchApi.plan(${JSON.stringify(settings)})`);
   console.log(await js(`benchApi.header(${JSON.stringify(environment)})`));
   console.log(`\n${scenarios.length} scenarios, ${scenarios[0]?.seconds ?? 0} s each\n`);
@@ -84,13 +120,6 @@ async function run() {
     `benchApi.report(${JSON.stringify(environment)}, ${JSON.stringify(results)}, ${JSON.stringify(notes)})`,
   );
   console.log(text);
-  const machine = {
-    display: real ? "real" : "swiftshader",
-    electron: process.versions.electron,
-    chrome: process.versions.chrome,
-    platform: `${os.platform()} ${os.release()}`,
-    cpu: os.cpus()[0]?.model,
-  };
   fs.mkdirSync(OUT, { recursive: true });
   const file = path.join(OUT, "result.json");
   fs.writeFileSync(
