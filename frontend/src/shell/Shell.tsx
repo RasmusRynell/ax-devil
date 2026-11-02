@@ -136,6 +136,8 @@ export function Shell({ version }: { version: string }) {
   useEffect(() => {
     /** The command this key press runs, if the shell handles it. */
     const handled = (event: KeyboardEvent) => {
+      // A modal dialog the shell did not open (the uncaught-error dialog) owns the keyboard too.
+      if (document.querySelector("dialog[open]")) return undefined;
       const pressed = shortcutOf(event);
       const match =
         pressed && COMMANDS.find((item) => shortcuts[item.id] === pressed && find(item.id));

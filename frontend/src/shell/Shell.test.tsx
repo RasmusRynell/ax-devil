@@ -125,6 +125,17 @@ describe("quick setup", () => {
     expect(screen.queryByRole("menuitem", { name: "Quick Setup" })).toBeNull();
   });
 
+  it("keeps shortcuts from running under a dialog the shell did not open", async () => {
+    await renderShell();
+    const foreign = document.body.appendChild(document.createElement("dialog"));
+    foreign.setAttribute("open", "");
+    fireEvent.keyDown(document.body, { key: ",", ctrlKey: true });
+    expect(screen.queryByRole("dialog", { name: "Settings" })).toBeNull();
+    foreign.remove();
+    fireEvent.keyDown(document.body, { key: ",", ctrlKey: true });
+    expect(screen.getByRole("dialog", { name: "Settings" })).toBeTruthy();
+  });
+
   it("keeps the shortcuts of other dialogs from replacing it", async () => {
     await renderShell({ values: { "ui.quick_setup_done": false } });
     fireEvent.keyDown(document.body, { key: ",", ctrlKey: true });
