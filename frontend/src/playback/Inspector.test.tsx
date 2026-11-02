@@ -115,6 +115,20 @@ describe("inspector", () => {
     );
   });
 
+  it("copies the clicked row's value when several fields share a group and path", () => {
+    const writeText = vi.fn(async () => {});
+    vi.stubGlobal("navigator", { clipboard: { writeText } });
+    show(
+      ready([
+        { group: "classification", path: ["candidates", "car", "score"], value: 0.9 },
+        { group: "classification", path: ["candidates", "car", "score"], value: 0.4 },
+      ]),
+    );
+    const copies = screen.getAllByRole("button", { name: "Copy candidates.car.score" });
+    fireEvent.click(copies[1]!);
+    expect(writeText).toHaveBeenLastCalledWith("0.4");
+  });
+
   it("pins a field for the next object, says when it is missing, and drops the pinned list on the last unpin", () => {
     const view = show(ready(FIELDS));
     fireEvent.click(screen.getByRole("button", { name: "Pin class" }));

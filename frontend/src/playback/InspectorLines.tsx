@@ -25,7 +25,10 @@ const ON_ROW = "opacity-0 group-hover/row:opacity-100 group-focus-within/row:opa
 const BUTTON = "h-row px-xs";
 
 interface FieldProps {
+  /** The field's group and path; several rows can share it. */
   field: string;
+  /** This row's place in the pinned rows then the list's, which says which row a click is on. */
+  index: number;
   label: string;
   shown: string;
   full: string;
@@ -37,6 +40,7 @@ interface FieldProps {
 /** One field: pin, label, value and copy. Stateless; the list handles the clicks. */
 const FieldLine = memo(function FieldLine({
   field,
+  index,
   label,
   shown,
   full,
@@ -48,6 +52,7 @@ const FieldLine = memo(function FieldLine({
     <div
       role="listitem"
       data-field={field}
+      data-index={index}
       className="group/row grid h-row grid-cols-[auto_minmax(0,3fr)_minmax(0,2fr)_auto] items-center gap-s px-s hover:bg-hover"
     >
       <IconButton
@@ -128,6 +133,7 @@ const CaptionLine = memo(function CaptionLine({
 /** The rows of `lines` as elements; `pins` says which fields show as pinned. */
 function rows(
   lines: readonly Line[],
+  first: number,
   pins: ReadonlySet<string>,
   copied: string | null,
   keyOf: (line: Line, index: number) => string | number,
@@ -150,11 +156,12 @@ function rows(
       <FieldLine
         key={keyOf(line, i)}
         field={line.key}
+        index={first + i}
         label={line.label}
         shown={found ? displayValue(line.value) : ""}
         full={found ? copyValue(line.value) : ""}
         pinned={pins.has(line.key)}
-        copied={copied === line.key}
+        copied={copied === String(first + i)}
         missing={!found}
       />
     );
@@ -187,13 +194,14 @@ export function InspectorLines({
       if (line.kind !== "caption" && !found.has(line.key)) found.set(line.key, line);
     return found;
   }, [pinned, lines]);
+  const all = useMemo(() => [...pinned, ...lines], [pinned, lines]);
   const [copied, setCopied] = useState<string | null>(null);
   const [menuKey, setMenuKey] = useState<string | null>(null);
   const { ref, start, end, update } = useRowWindow(lines.length, ROW);
 
-  const copy = (text: string, key: string) => {
+  const copy = (text: string, id: string) => {
     void navigator.clipboard?.writeText(text);
-    setCopied(key);
+    setCopied(id);
   };
   const pin = (key: string) => {
     const line = byKey.get(key);
@@ -210,8 +218,9 @@ export function InspectorLines({
       if (!next.delete(group as FieldGroupWire)) next.add(group as FieldGroupWire);
       onMemory({ ...memory, folded: next });
     } else if (button.dataset.act === "copy") {
-      const line = field === undefined ? undefined : byKey.get(field);
-      if (line?.kind === "field") copy(copyValue(line.value), line.key);
+      const index = row.dataset.index;
+      const line = index === undefined ? undefined : all[Number(index)];
+      if (line?.kind === "field") copy(copyValue(line.value), index as string);
       else if (group === "raw") copy(rawJson(fields), RAW_COPIED);
     }
   };
@@ -249,7 +258,7 @@ export function InspectorLines({
                   role="list"
                   className="max-h-[calc(var(--spacing-row)*6)] overflow-y-auto [scrollbar-gutter:stable]"
                 >
-                  {rows(pinned, pinnedKeys, copied, (line) =>
+                  {rows(pinned, 0, pinnedKeys, copied, (line) =>
                     line.kind === "caption" ? "" : line.key,
                   )}
                 </div>
@@ -269,7 +278,13 @@ export function InspectorLines({
                 paddingBottom: `calc(${ROW_HEIGHT} * ${lines.length - end})`,
               }}
             >
-              {rows(lines.slice(start, end), pinnedKeys, copied, (_, i) => start + i)}
+              {rows(
+                lines.slice(start, end),
+                pinned.length + start,
+                pinnedKeys,
+                copied,
+                (_, i) => start + i,
+              )}
             </div>
           </div>
         </div>
