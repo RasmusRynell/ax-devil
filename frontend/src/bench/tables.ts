@@ -266,6 +266,12 @@ const result = (
   late: intervals.filter((interval) => interval > LATE).length,
 });
 
+/** Chooses the File scope the way a click on its segment does. */
+function chooseFile(rig: Rig): void {
+  const label = [...rig.host.querySelectorAll("label")].find((l) => l.textContent === "File");
+  label!.querySelector("input")!.click();
+}
+
 async function firstRows(scenario: TableScenario): Promise<TableResult> {
   const times: number[] = [];
   for (let rep = 0; rep < 10; rep++) {
@@ -276,8 +282,7 @@ async function firstRows(scenario: TableScenario): Promise<TableResult> {
       rig.show(true);
       await painted();
       start = performance.now();
-      const button = [...rig.host.querySelectorAll("button")].find((b) => b.textContent === "File");
-      button!.click();
+      chooseFile(rig);
     }
     await until(rig, () => rig.loaded);
     await painted();
@@ -290,8 +295,7 @@ async function firstRows(scenario: TableScenario): Promise<TableResult> {
 async function scroll(scenario: TableScenario): Promise<TableResult> {
   const rig = new Rig(scenario);
   rig.show(true);
-  if (scenario.scope === "File")
-    [...rig.host.querySelectorAll("button")].find((b) => b.textContent === "File")!.click();
+  if (scenario.scope === "File") chooseFile(rig);
   await until(rig, () => rig.loaded);
   await painted();
   const { scroller } = rig;
@@ -320,8 +324,7 @@ async function scroll(scenario: TableScenario): Promise<TableResult> {
 async function resize(scenario: TableScenario): Promise<TableResult> {
   const rig = new Rig(scenario);
   rig.show(true);
-  if (scenario.scope === "File")
-    [...rig.host.querySelectorAll("button")].find((b) => b.textContent === "File")!.click();
+  if (scenario.scope === "File") chooseFile(rig);
   await until(rig, () => rig.loaded);
   await painted();
   // No pointer is active for a synthetic event to capture.
