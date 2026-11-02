@@ -21,6 +21,7 @@ import { Transport } from "./Transport";
 import type { PlaybackView } from "./view";
 import { FIT, ZOOM_STEP } from "./viewport";
 import type { Connect } from "./wire";
+import { useFileScopeOwner } from "./useFileScopeOwner";
 
 /** What the pane says while the video is not ready: indexing with its progress, reconnecting, or why it failed. */
 function Status({ view, name }: { view: PlaybackView; name: string }) {
@@ -346,6 +347,7 @@ export function VideoViewer({
     };
   }, [item, entry.id, ticket, connect, setViewers, left]);
 
+  useFileScopeOwner(session, following);
   useEffect(() => {
     if (session && following && intent) session.follow(intent, () => clock.nowUs() ?? intent.atUs);
   }, [session, following, intent, clock]);

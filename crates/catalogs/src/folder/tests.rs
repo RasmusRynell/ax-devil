@@ -156,7 +156,8 @@ fn names_that_are_no_catalog_id_are_listed_by_a_safe_name_with_a_problem() {
     let root = folder.path();
     fs::write(root.join("esc\u{1b}ape.json"), "{}").unwrap();
     fs::write(root.join("back\\slash.json"), "{}").unwrap();
-    fs::write(root.join(OsStr::from_bytes(b"latin\xe9.json")), "{}").unwrap();
+    // macOS file systems refuse a name that is not UTF-8, so there the file cannot exist to be listed.
+    let latin = fs::write(root.join(OsStr::from_bytes(b"latin\xe9.json")), "{}").is_ok();
     fs::write(root.join("fine.json"), "{}").unwrap();
 
     let library = Library::with_folder(root.to_path_buf());
@@ -167,15 +168,15 @@ fn names_that_are_no_catalog_id_are_listed_by_a_safe_name_with_a_problem() {
         .skip(6)
         .map(|info| info.id.to_string())
         .collect();
-    assert_eq!(
-        ids,
-        [
-            "user:back\u{fffd}slash.json",
-            "user:esc\u{fffd}ape.json",
-            "user:fine.json",
-            "user:latin\u{fffd}.json"
-        ]
-    );
+    let mut expected = vec![
+        "user:back\u{fffd}slash.json",
+        "user:esc\u{fffd}ape.json",
+        "user:fine.json",
+    ];
+    if latin {
+        expected.push("user:latin\u{fffd}.json");
+    }
+    assert_eq!(ids, expected);
     for id in &ids {
         let CatalogId::User(file) = CatalogId::parse(id).unwrap() else {
             panic!("a user id");

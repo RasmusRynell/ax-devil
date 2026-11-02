@@ -14,7 +14,8 @@ use tokio::sync::watch;
 /// How many distinct catalogs a viewer is kept up to date with; asking for one more drops the one asked for longest ago.
 const MAX_ASKED: usize = 64;
 
-/// How many documents a viewer was served are kept for an export to draw with, the oldest dropped first.
+/// How many documents a viewer was served are kept for an export to draw with. Past it a document a newer one of the
+/// same catalog replaced is dropped first, the oldest of those; a catalog's newest document goes only when none is left.
 const MAX_KEPT: usize = 16;
 
 /// What one viewer has been told of the catalogs.
@@ -110,6 +111,29 @@ impl CatalogFeed {
         }
     }
 
+    /// Keeps the document of `id` at `revision`, making room by dropping, in this order, the oldest document that a
+    /// newer one of its catalog replaced, else the oldest. The viewer draws each catalog with the newest document it
+    /// was served, so reloading one catalog must not push out the others.
+    fn keep(&mut self, id: &str, revision: u32, text: &Arc<str>) {
+        if self.kept(id, revision).is_some() {
+            return;
+        }
+        if self.kept.len() == MAX_KEPT {
+            let replaced = (0..self.kept.len()).find(|&at| {
+                self.kept
+                    .iter()
+                    .skip(at + 1)
+                    .any(|(newer, _, _)| *newer == self.kept[at].0)
+            });
+            match replaced {
+                Some(at) => self.kept.remove(at),
+                None => self.kept.pop_front(),
+            };
+        }
+        self.kept
+            .push_back((id.to_owned(), revision, Arc::clone(text)));
+    }
+
     /// The message about the catalog `id`, which the viewer is then up to date with.
     fn reply(&mut self, id: String) -> Outgoing {
         let served = served(&self.library, &id);
@@ -118,13 +142,7 @@ impl CatalogFeed {
         }
         let (revision, document, problem) = match served {
             Served::Document { revision, text } => {
-                if self.kept(&id, revision).is_none() {
-                    if self.kept.len() == MAX_KEPT {
-                        self.kept.pop_front();
-                    }
-                    self.kept
-                        .push_back((id.clone(), revision, Arc::clone(&text)));
-                }
+                self.keep(&id, revision, &text);
                 (revision, Some(text.to_string()), None)
             }
             Served::Unreadable { revision, problem } => (revision, None, Some(problem)),
@@ -193,5 +211,19 @@ mod tests {
         assert_eq!(held.len(), MAX_ASKED);
         assert!(held.contains(&"user:0.json") && held.contains(&"user:new.json"));
         assert!(!held.contains(&"user:1.json"));
+    }
+
+    #[test]
+    fn reloading_one_catalog_many_times_keeps_the_others_documents_for_export() {
+        let mut feed = CatalogFeed::new(&Library::built_in());
+        let document: Arc<str> = "{}".into();
+        feed.keep("user:a.json", 1, &document);
+        for revision in 1..=(2 * MAX_KEPT as u32) {
+            feed.keep("user:b.json", revision, &document);
+        }
+
+        assert!(feed.kept("user:a.json", 1).is_some());
+        assert!(feed.kept("user:b.json", 2 * MAX_KEPT as u32).is_some());
+        assert_eq!(feed.kept.len(), MAX_KEPT);
     }
 }
