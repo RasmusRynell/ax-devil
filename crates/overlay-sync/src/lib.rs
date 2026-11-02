@@ -4,12 +4,14 @@
 //! same inputs always select the same sample, so the viewer and export agree. [`select`] is the one entry point; its
 //! documentation states the rules.
 
+mod alignment;
 mod keys;
 mod select;
 
 use foundation::MediaTime;
 use serde::{Deserialize, Serialize};
 
+pub use alignment::{Alignment, alignment};
 pub use keys::{CHUNK_KEYS, KeyChunks};
 pub use select::select;
 

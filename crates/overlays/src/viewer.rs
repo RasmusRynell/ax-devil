@@ -87,6 +87,7 @@ impl ViewerOverlays {
                 &self.shared.timeline,
             );
         });
+        self.shared.align();
     }
 
     /// Moves the data window: the playhead and direction the viewer's gate applied, with `ahead` and `behind` the
