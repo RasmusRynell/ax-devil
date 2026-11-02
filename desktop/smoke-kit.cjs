@@ -61,6 +61,31 @@ async function hideChrome(window) {
   await until(async () => (await opacity()) === 0, "the transport fades out");
 }
 
+// A faded transport takes no pointer, so a check that hit-tests its controls brings it back first: the pointer rests
+// over the video, and the transport is shown until it has rested for the idle time. Does nothing when no picture is on
+// screen: with no video open, or with a side panel filling a small window over it.
+async function showChrome(window) {
+  const { js } = page(window);
+  const video = await js(
+    "(() => { const r = document.querySelector('[data-chrome-idle]')?.getBoundingClientRect(); return r && r.width > 0 && r.height > 0 ? { x: r.left + r.width / 2, y: r.top + r.height / 2 } : null; })()",
+  );
+  if (!video) return;
+  const shown = () =>
+    js(
+      "(() => { const t = document.querySelector('[data-keeps-chrome]'); return document.querySelector('[data-chrome-idle]').closest('[data-chrome]')?.dataset.chrome === 'shown' && !!t && Number(getComputedStyle(t).opacity) === 1 && getComputedStyle(t).pointerEvents !== 'none'; })()",
+    );
+  await moveTo(window, video.x, video.y);
+  await until(shown, "the transport is shown");
+  // Resting over the transport holds the controls shown, so the idle timer cannot hide them during the check.
+  const controls = await js(
+    "(() => { const r = document.querySelector('[data-keeps-chrome]').getBoundingClientRect(); return r.width > 0 && r.height > 0 ? { x: r.left + r.width / 2, y: r.top + r.height / 2 } : null; })()",
+  );
+  if (!controls) return;
+  await moveTo(window, controls.x, controls.y);
+  await until(shown, "the transport is held shown");
+  await frames({ js });
+}
+
 // The window as drawn: its pixels (device pixels, four bytes each) and the device pixels per CSS pixel. The picture
 // is bare: the transport is faded out.
 async function capture(window) {
@@ -196,6 +221,7 @@ module.exports = {
   reload,
   SHOWN,
   setView,
+  showChrome,
   tag,
   until,
   watchCsp,

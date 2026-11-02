@@ -22,7 +22,7 @@ const BUTTON = "size-row rounded-control";
 
 // The controls fade with the pointer's rest (see chromeVisibility) and stay while a control has the keyboard focus ring.
 const CONTROLS =
-  "pointer-events-auto flex flex-col rounded-popup border border-canvas-line bg-canvas-scrim px-l py-xs text-on-canvas shadow-float transition-opacity duration-200 ease-out-cubic motion-reduce:transition-none group-data-[chrome=hidden]:not-has-[:focus-visible]:opacity-0 group-data-[chrome=hidden]:not-has-[:focus-visible]:delay-200";
+  "pointer-events-auto flex flex-col rounded-popup border border-canvas-line bg-canvas-scrim px-l py-xs text-on-canvas shadow-float transition-opacity duration-200 ease-out-cubic motion-reduce:transition-none group-data-[chrome=hidden]:not-has-[:focus-visible]:opacity-0 group-data-[chrome=hidden]:not-has-[:focus-visible]:pointer-events-none group-data-[chrome=hidden]:not-has-[:focus-visible]:delay-200";
 
 /** The speed field: edits commit as they become a number; leaving it shows the speed the session settled on. */
 function SpeedField({
