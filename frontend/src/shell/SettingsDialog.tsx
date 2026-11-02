@@ -3,6 +3,8 @@ import { useGrants } from "../access";
 import { SETTINGS } from "../generated/settings";
 import { Dialog } from "../kit/Dialog";
 import { Icon } from "../kit/Icon";
+import { SectionCaption } from "../kit/SectionCaption";
+import { Tabs } from "../kit/Tabs";
 import { useSettings } from "../settings";
 import { literalSecret, Refusal, SettingField, type Row } from "./SettingField";
 import { useSaveDialog } from "./useSaveDialog";
@@ -18,39 +20,25 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
   const { values, shortcuts } = useSettings();
   const configures = useGrants().includes("configuration");
   const shown = PAGED.filter((row) => configures || row.scope === "personal");
-  const pages = [...new Set(shown.map((row) => row.page))];
+  const pages = [...new Set(shown.flatMap((row) => row.page ?? []))];
   const [draft, setDraft] = useState(values);
-  const [page, setPage] = useState(pages[0]);
+  const [page, setPage] = useState(pages[0] ?? "");
   const { saving, refusal, submit } = useSaveDialog(onClose);
   const panel = useId();
   const ok = async () => {
     const refused = await submit({ values: draft, shortcuts });
     const at = shown.find((row) => row.key === refused?.location);
-    if (at) setPage(at.page);
+    if (at?.page) setPage(at.page);
   };
   const rows = shown.filter((row) => row.page === page);
   const refusedRow = shown.some((row) => row.key === refusal?.location);
   return (
     <Dialog title="Settings" onOk={() => void ok()} onCancel={onClose} busy={saving}>
-      <div role="tablist" className="flex border-b border-line">
-        {pages.map((name) => (
-          <button
-            key={name}
-            type="button"
-            role="tab"
-            aria-selected={name === page}
-            aria-controls={panel}
-            onClick={() => setPage(name)}
-            className={`-mb-hairline border-b-edge bg-transparent px-m py-s text-fg focus-ring ${name === page ? "border-accent" : "border-transparent"}`}
-          >
-            {name}
-          </button>
-        ))}
-      </div>
+      <Tabs label="Settings pages" tabs={pages} value={page} onChange={setPage} panelId={panel} />
       <div id={panel} role="tabpanel" className="flex min-h-0 flex-col gap-l overflow-y-auto">
         {[...new Set(rows.map((row) => row.section))].map((section) => (
           <section key={section} className="flex flex-col gap-m">
-            <h3 className="m-0 text-small font-semibold text-muted uppercase">{section}</h3>
+            <SectionCaption heading={section} />
             {rows
               .filter((row) => row.section === section)
               .map((row) => {

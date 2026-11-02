@@ -3,6 +3,7 @@ import { credential, holdPassword, PASSWORD_RULE, sendable } from "../access";
 import { Button } from "../kit/Button";
 import { Dialog } from "../kit/Dialog";
 import { TextField } from "../kit/Fields";
+import { Banner as Card } from "../shell/Banner";
 import { useServerKind } from "../shell/windowBridge";
 import type { Ending } from "./connection";
 import type { SessionState } from "./store";
@@ -92,7 +93,7 @@ interface Props {
   onDismiss: () => void;
 }
 
-/** The bar along the bottom that says the session is not as it should be; absent while all is well. */
+/** The card along the bottom that says the session is not as it should be; absent while all is well. */
 export function Banner({ connection, ownerAway, ended, onDismiss }: Props) {
   const remote = useServerKind() === "remote";
   const text = ended
@@ -108,19 +109,14 @@ export function Banner({ connection, ownerAway, ended, onDismiss }: Props) {
   // A server that has a password turns away a visit that brings none or the wrong one, and Dismiss would only visit again.
   const password =
     ended === "invalid" ? credential()?.kind === "password" : ended === "refused" && !credential();
+  const rejected = ended === "invalid" && remote;
   return (
-    <div
+    <Card
       role={ended ? "alert" : "status"}
-      className="fixed inset-x-0 bottom-0 z-40 flex items-center justify-center gap-m border-t border-line bg-popup p-s"
+      actions={rejected ? <RejectedPassword /> : password && <PasswordDialog />}
+      onDismiss={ended && !rejected && !password ? onDismiss : undefined}
     >
       {text}
-      {ended === "invalid" && remote ? (
-        <RejectedPassword />
-      ) : password ? (
-        <PasswordDialog />
-      ) : (
-        ended && <Button onClick={onDismiss}>Dismiss</Button>
-      )}
-    </div>
+    </Card>
   );
 }

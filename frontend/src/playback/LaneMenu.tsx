@@ -1,6 +1,7 @@
 import { useId, useState } from "react";
 import type { CatalogInfoWire } from "../generated/api";
 import { Button } from "../kit/Button";
+import { Tabs } from "../kit/Tabs";
 import type { LaneSettings, LaneState } from "./lanes";
 import { LaneMenuFilter } from "./LaneMenuFilter";
 import { LaneMenuLook } from "./LaneMenuLook";
@@ -37,21 +38,7 @@ export function LaneMenu({
   const panel = useId();
   return (
     <div className="flex min-w-[24ch] flex-col gap-m">
-      <div role="tablist" className="flex border-b border-line">
-        {TABS.map((name) => (
-          <button
-            key={name}
-            type="button"
-            role="tab"
-            aria-selected={name === tab}
-            aria-controls={panel}
-            onClick={() => setTab(name)}
-            className={`-mb-hairline border-b-edge bg-transparent px-m py-s text-fg focus-ring ${name === tab ? "border-accent" : "border-transparent"}`}
-          >
-            {name}
-          </button>
-        ))}
-      </div>
+      <Tabs label="Lane settings" tabs={TABS} value={tab} onChange={setTab} panelId={panel} />
       <div id={panel} role="tabpanel" aria-label={tab} className="flex flex-col gap-m">
         {tab === "Look" && <LaneMenuLook lane={lane} catalogs={catalogs} onChange={onChange} />}
         {tab === "Filter" && <LaneMenuFilter lane={lane} onChange={onChange} />}

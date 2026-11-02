@@ -209,7 +209,7 @@ module.exports.overlays = async (window, { setTheme }) => {
   assert.match(text, /^3 person\nscore 0\.51\n/);
   assert.match(
     text,
-    /Classification\n(?:.*\n)*?score\n0\.51\n/,
+    /Classification\n(?:.*\n)*?score\n0\.51\n/i,
     "The inspector must list the object's fields",
   );
   assert.doesNotMatch(text, /Loading|Not in this frame|not available/);

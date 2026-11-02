@@ -1,8 +1,8 @@
 import { Icon } from "./Icon";
-import type { Tone } from "./look";
+import type { Kind, Tone } from "./look";
 
-/** What colours the small square before the title: the muted default, the accent, or a status tone. */
-export type CaptionMark = "muted" | "accent" | Tone;
+/** What colours the small square before the title: the muted default, the accent, a status tone or a kind. */
+export type CaptionMark = "muted" | "accent" | Tone | Kind;
 
 const MARK: Record<CaptionMark, string> = {
   muted: "bg-muted",
@@ -11,6 +11,10 @@ const MARK: Record<CaptionMark, string> = {
   success: "bg-success",
   caution: "bg-caution",
   danger: "bg-danger",
+  live: "bg-kind-live",
+  video: "bg-kind-video",
+  playlist: "bg-kind-playlist",
+  lane: "bg-kind-lane",
 };
 
 interface Props {

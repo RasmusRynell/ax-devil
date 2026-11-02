@@ -79,7 +79,7 @@ devices and processes at their boundary.
 1. The screenshot harness (DT-02) renders the main surfaces in both themes, at normal zoom and 200%, wide and narrow.
 2. Fit measured at the window minimum and at 200% zoom.
 3. Every window joins the fit test; a guard test fails until it is listed or exempted with a reason
-   (`.agents/skills/write-ui/SKILL.md#check-it`).
+   (`.agents/skills/write-ui/SKILL.md#verify`).
 
 ## CI
 

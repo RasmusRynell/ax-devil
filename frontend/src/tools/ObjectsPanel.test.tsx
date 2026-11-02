@@ -106,7 +106,7 @@ const search = (text: string) =>
   fireEvent.change(screen.getByRole("textbox", { name: "Search objects" }), {
     target: { value: text },
   });
-const showFile = () => fireEvent.click(screen.getByRole("button", { name: "File" }));
+const showFile = () => fireEvent.click(screen.getByRole("radio", { name: "File" }));
 
 beforeEach(() => vi.stubGlobal("ResizeObserver", undefined));
 afterEach(() => {
@@ -203,7 +203,7 @@ describe("File scope", () => {
     showFile();
     answer([file("7", 3)]);
     expect(files.view(0).page).not.toBeNull();
-    fireEvent.click(screen.getByRole("button", { name: "Frame" }));
+    fireEvent.click(screen.getByRole("radio", { name: "Frame" }));
     expect(files.view(0)).toEqual({ pending: false, page: null, unavailable: null });
     showFile();
     expect(files.view(0).pending).toBe(true);

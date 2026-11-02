@@ -1,96 +1,80 @@
 ---
 name: write-ui
-description: Build or change ax-devil's interface — windows, dialogs, panels, toolbars, lists, labels, buttons, spacing, fonts, colors, light/dark appearance — in the React frontend and the Electron shell. Use whenever adding or restyling application UI so it matches the rest of the app; for overlays drawn on video, the render-catalog skill covers them once rendering lands.
+description: Build or change ax-devil's interface (windows, dialogs, panels, lists, buttons, fields, chips, spacing, colors, light/dark) in the React frontend. Use whenever adding or restyling application UI so it matches the rest of the app; overlays drawn on video are the render-catalog skill's.
 ---
 
 # Writing ax-devil UI
 
-ax-devil aims for a slick, compact interface with little wasted space, readable in light and dark appearance and
-at any browser zoom; the theme changes live and zoom is the browser's, with no app text-size setting. New UI fits in by reusing the shared
-building blocks below instead of choosing its own sizes and colors. The full UI requirements being ported are in
-[06](../../../docs/rebuild/06-ui-ux.md).
+One compact, restrained interface, one theme, readable in light and dark at any browser zoom up to 200%. A button is
+a button: every control gets its look from the shared kit, never from classes written in feature code. Requirements:
+[06](../../../docs/rebuild/06-ui-ux.md). Components project backend state and never own it or do file, network or
+decode work ([UI Lifecycle](../../../docs/domain/invariants.md#ui-lifecycle)).
 
-## The building blocks
+## I need a UI element
 
-The component kit is built during the rewrite (M0 and later, [docs/parity.md](../../../docs/parity.md)). Add each
-block to this table when it lands, and use what is listed instead of writing a local version.
+1. **A kit component fits:** use it (table below).
+2. **None fits:** compose the constants of `frontend/src/kit/look.ts` and import one only for the element no component
+   can render. Constants: `CONTROL` + `EDGE` (outlined button; `EDGE.default` is the Enter action), `CONTROL_IN` +
+   `CHOSEN` / `CHECKED` (label around a hidden radio / checkbox), `QUIET` (chrome without an outline), `FIELD`,
+   `FIELD_IN`, `PILL`, `SQUARE`, `TONE` (by `Tone`), `KIND` (by `Kind`).
+3. **A shape recurs, or two features need it:** add a block to `frontend/src/kit/`, built from `look.ts`, with an entry
+   in `Gallery.tsx` (`#kit-gallery`, captured in both themes by `desktop/smoke-gallery.cjs`). It is not done without
+   the Gallery entry.
 
-| Need | Use | Where |
-|------|-----|-------|
-| Styling | Tailwind utility classes in components; global rules only in the base layer | `frontend/src/style.css` |
-| Tokens: light/dark color pairs, spacing, radii, text roles, heights | Tailwind utilities generated from `@theme` (`bg-surface`, `text-muted`, `p-m`, `h-row`, `text-small`); values only in the token file | `frontend/src/tokens.css` |
-| Theme | The stored setting selects the colors through the root's `data-theme`, live | `frontend/src/settings.tsx` |
-| Icons | `Icon` over the Lucide SVGs; add a new one from Lucide to `assets/icons/` and to `icons.ts` | `assets/icons/`, `frontend/src/kit/` |
-| Buttons, menus, popups, context menus, dialogs, fields, row lists, key chips | The kit: `Button`, `IconButton`, `Menu`, `Popup`, `ContextMenu`, `Dialog`, `SearchField`, `Select`, `TextField`, `Checkbox`, `RowList`, `KeyChips` | `frontend/src/kit/` |
-| The look of any control, so a new element matches the rest | The class constants `CONTROL` and `EDGE` (outlined button), `QUIET` (chrome), `CHOSEN` and `CHECKED` (selected), `FIELD`, `PILL`, `SQUARE`, and the status `Tone` map `TONE`; compose them instead of writing local classes, and import one only where a kit component cannot render the element | `frontend/src/kit/look.ts` |
-| A compact action beside a field or in a row; a button that opens a menu; the folder button after a path field | `Button size="small"`, `MenuButton`, `BrowseButton` | `frontend/src/kit/Button.tsx` |
-| A question or notice that only a choice dismisses (Escape does nothing, Enter gives the default) | `ChoiceDialog` | `frontend/src/kit/ChoiceDialog.tsx` |
-| Buttons that act on a banner's message | `Banner`'s `actions` slot | `frontend/src/shell/Banner.tsx` |
-| Status tags, checkable chips, one-of-many choices, a mode switch | `Chip` (a `Tone`; clickable with `onClick`), `ToggleChip`, `ChoiceChips` and `ChipRow` (wrap whole), `SegmentedControl` | `frontend/src/kit/Chips.tsx` |
-| A strip of tabs over one panel | `Tabs` | `frontend/src/kit/Tabs.tsx` |
-| A group heading with count, note, aside, colour mark and fold | `SectionCaption` | `frontend/src/kit/SectionCaption.tsx` |
-| A sidebar view: header with action over a vertically scrolling body | `ViewPanel` | `frontend/src/kit/ViewPanel.tsx` |
-| Seeing every kit block in both themes | The kit gallery at `#kit-gallery`; add a new block to it | `frontend/src/kit/Gallery.tsx` |
-| A panel of controls beside a button (Escape closes, plain keys stay inside) | `Popover` | `frontend/src/kit/Popover.tsx` |
-| An on/off setting that applies as it flips | `Switch` | `frontend/src/kit/Switch.tsx` |
-| Windows | Created by the shell; the frontend never opens windows itself | `desktop/main.cjs` |
+| Need | Use (`frontend/src/kit/` unless noted) |
+|------|-----|
+| Action; the Enter action; icon-only; compact beside a field | `Button` (`type="submit"` is the Enter action; `label` without children makes it icon-only; `size="small"`) |
+| Menu opener; folder button after a path field | `MenuButton`, `BrowseButton` |
+| Borderless icon in a bar, header or over video | `IconButton` (`onCanvas` over video) |
+| Icon (Lucide SVG in `assets/icons/`, listed in `icons.ts`) | `Icon`; colour a kind with `KIND` |
+| Status tag, clickable tag | `Chip` (`tone`, `onClick`) |
+| Any-number choice; one-of-many; mode switch | `ToggleChip`, `ChoiceChips` in a `ChipRow`, `SegmentedControl` |
+| Tabs over one panel | `Tabs` |
+| Group heading (count, note, aside, mark, fold) | `SectionCaption` (`mark`: `muted`, `accent`, a `Tone` or a `Kind`) |
+| Sidebar view: header, action, scrolling body | `ViewPanel` |
+| Captioned action rows | `RowList` |
+| Banner with actions | `shell/Banner.tsx`, its `actions` slot |
+| Text input, drop-down, search | `TextField`, `Select`, `SearchField` |
+| Checkbox, checkbox list, on/off applied at once | `Checkbox`, `CheckList`, `Switch` |
+| Modal with OK / Cancel | `Dialog` |
+| Question only a choice dismisses (Escape does nothing, Enter gives `defaultId`) | `ChoiceDialog` |
+| Menu, context menu, free floating panel | `Menu`, `ContextMenu`, `Popup` |
+| Panel of controls beside a button | `Popover` |
+| Shortcut keys | `KeyChips` |
+| Windows | Created by the shell (`desktop/main.cjs`); the frontend never opens one |
 
-Before writing UI, read the [UI Lifecycle invariants](../../../docs/domain/invariants.md#ui-lifecycle): components
-project state owned by the backend, never own it, and never do file, network or decode work.
+A control that handles keys the shortcuts also use (Space, Enter, arrows) wraps them in `ownKeys` (`kit/keys.ts`).
 
-## Conventions
+## Rules
 
-- **Tokens, never literals.** Text sizes, spacing, radii, heights and colors come only from the token file; no pixel,
-  rem or color literals in components.
-- **Every color is a light/dark pair,** contrast-checked in both (target: WCAG AA). Muted text has its own token per
-  theme, never text at reduced opacity, which fails contrast on light.
-- **Buttons are outlined, and the Enter action carries the accent edge** (`type="submit"`). Chrome (menu-bar
-  triggers, list rows, tabs, headers, dismiss, icon buttons in bars) is quiet: no outline, a neutral tint on hover.
-  Accent marks only the Enter action, chosen (solid) and checked (tint and check) controls, the current tab or row
-  edge, and a focused field. Every control is one row high; keep a visible keyboard-focus outline and a muted
-  disabled state. Controls over video keep their white-on-scrim look; the video canvas stays near-black in both
-  themes.
-- **Icons, not glyphs.** Use an icon for buttons and markers instead of characters such as `×`, `⋯` or `«`; icon-only
-  controls get an accessible name and a tooltip.
-- **An ellipsis means work in progress.** Write it as the one character `…`, as in `Loading…`; commands, buttons,
-  tooltips and placeholders get none.
-- **No taglines, helper text or secondary labels.** If a screen needs them to make sense, fix the layout.
-- **Keyboard first.** Every action is reachable by keyboard, focus is always visible, Escape closes popovers and
-  Enter runs the default action.
-- **Size containers from their content.** Prefer flex and grid layouts over fixed widths; when a fixed size is
-  unavoidable, derive it from a text-size token so it grows with the zoom.
-- **Added content must fit the window it joins.** Each page opens without scrolling, a horizontal scroll bar or a
-  squeezed field at the window minimum and at browser zoom up to 200%. When it does not fit, take the more reasonable of:
-  - **Restructure** when the window is already long or dense, or the addition is a concept of its own: its own page,
-    tab or group, or a full-width list editor instead of a form row.
-  - **Enlarge** when the content is naturally wider and the window still has room, through content sizing, never a
-    fixed size.
+- **Tokens only.** Sizes, spacing, radii, heights and colours come from `frontend/src/tokens.css` as Tailwind
+  utilities (`bg-surface`, `text-muted`, `p-m`, `h-row`, `text-small`). No arbitrary values, inline styles or raw
+  colours. Every colour is a light/dark pair; muted text has its own token, never reduced opacity. A fixed size comes
+  from a text-size token so it grows with the zoom.
+- **Restrained.** Outlined or quiet, nothing more: no heavier rings, shadows or extra decoration. Every control is one
+  row high with a visible keyboard-focus ring and a muted disabled state.
+- **Colour carries meaning, only:** accent marks the Enter action, chosen (solid) and checked (tint and check)
+  controls, the current tab or row edge, and a focused field. Tones (`success`, `caution`, `danger`) mark status.
+  Kind colours mark video, playlist, live and lane, the same on icons and caption marks everywhere. Video controls
+  keep their white-on-scrim look; the canvas stays near-black in both themes.
+- **Terse copy.** No taglines, helper text or secondary labels; fix the layout instead. Icons, not glyphs (`×`, `⋯`);
+  icon-only controls carry a label. An ellipsis `…` means work in progress (`Loading…`) and appears in no command,
+  button, tooltip or placeholder.
+- **Keyboard first.** Every action is reachable by keyboard; Escape closes, Enter runs the default.
+- **Fit.** Size from content with flex and grid. Each page opens without scrolling, a horizontal scroll bar or a
+  squeezed field at the window minimum and 200% zoom. If it does not fit, restructure (own page, tab or group) when
+  the window is dense, enlarge through content sizing when it has room. Scroll only content that grows with the
+  user's data; long lists (sidebar trees, Objects, Events) are virtualized.
+- **Pointer sharing.** Give an element that others should see the pointer on a stable `data-cursor-id` inside a
+  `data-cursor-region`, named like its neighbours (`menu:<label>`, `row:<id>`, `tab:<item>`, `transport:<control>`,
+  `share…`, `sessions:…`). Popups and dialogs are regions of their own and share no pointer.
+- **A new user preference** is a row in the settings table
+  ([08](../../../docs/rebuild/08-settings-cli.md#settings-model)), applied live when possible.
 
-  Scrolling is right only for content that grows with the user's data, such as a list of rows. Lists that can grow
-  long (sidebar trees, Objects and Events) are virtualized.
-- **Shareable UI.** Others see a pointer through the `data-cursor-id` of the element under it, inside a
-  `data-cursor-region`; give an element that should show it a stable id. Popups and dialogs are regions of their own
-  that share no pointer, so they get none. Names: `menu:<label>`, `activity:<view>`, `window:<control>`,
-  `title:drag`, `row:<id>`, `sidebar:<id>`, `tab:<item>`, `tab-close:<item>`,
-  `transport:<control>` (seek, play, step-back, step-forward, speed), `frame:<item>` (laid exactly over a video's
-  picture, so a pointer lands on the same image pixel in every window size), `share…`, `session…`, `sessions:…`. The main
-  region's cursor scope is the active item id, or `welcome` without one. Characters inside a truncated label
-  are not tracked.
-- **A new user preference** is a row in the settings table ([08](../../../docs/rebuild/08-settings-cli.md#settings-model)),
-  applied live when possible; only a setting that cannot apply live carries the restart marker.
+## Verify
 
-## Check it
-
-1. Take screenshots before and after the change, isolated from the user's desktop and settings: `make tests-desktop`
-   writes `artifacts/screenshots/main-light.png` and `main-dark.png` (copy them aside between runs). Add the surface
-   you changed to `desktop/smoke.cjs` if it is missing.
-2. Open the PNGs and compare dark and light (and at 200% zoom in the smallest window, wide and narrow windows). The change is done when nothing is clipped, overlapping or unreadable and the new UI matches its
-   neighbours' sizes and spacing. To read one image instead of two, join them with ImageMagick:
-   `montage before.png after.png -tile 2x1 -geometry +4+0 compare.png`.
-3. Once the fit test exists (M0), add the window or dialog to it; it checks that no text or control is cut off in
-   both themes at the window minimum and 200% zoom, and a guard fails until every window is listed or exempted with
-   a reason.
-4. Test behavior (React Testing Library for components), and test cut-offs and overlaps that a size change could
-   bring back. Leave fonts, colors and paddings untested; the screenshots cover them.
-5. Report which screenshots you looked at and anything a virtual display cannot show (real GPU, compositor,
-   fractional scaling on a real screen).
+Run in isolation per [testing](../../../docs/runbooks/testing.md#desktop-suite-and-screenshots). `make tests-desktop`
+writes `artifacts/screenshots/` in both themes; add your surface to `desktop/smoke.cjs` (or the Gallery) and its fit
+check at the window minimum and 200%. Open the PNGs: nothing clipped, overlapping or unreadable, and the new UI
+matches its neighbours. Test behaviour and cut-offs, not fonts, colours or paddings. `make check` finishes. Report
+which screenshots you looked at and what a virtual display cannot show.

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { menusFor } from "../commands";
+import { QUIET } from "../kit/look";
 import { Menu, type MenuCommand } from "../kit/Menu";
 import { useAllowed } from "../session/session";
 import { useSettings } from "../settings";
@@ -100,7 +101,7 @@ export function MenuBar({ checked, wired, onSelect }: Props) {
             onFocus={() => setTabStop(index)}
             onClick={() => setOpen(open === index ? null : index)}
             onMouseEnter={() => open !== null && setOpen(index)}
-            className="h-row rounded-control bg-transparent px-m max-sm:px-s whitespace-nowrap text-fg hover:bg-hover focus-ring aria-expanded:bg-hover"
+            className={`${QUIET} whitespace-nowrap max-sm:px-s aria-expanded:bg-hover`}
           >
             {menu.label}
           </button>

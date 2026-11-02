@@ -3,12 +3,14 @@ import { useGrants } from "../access";
 import type { ControlCommand, SessionSummary } from "../generated/api";
 import { apiFetch } from "../api";
 import { Button } from "../kit/Button";
+import { Chip } from "../kit/Chips";
 import type { IconName } from "../kit/icons";
 import { ContextMenu } from "../kit/ContextMenu";
 import { Checkbox } from "../kit/Fields";
 import { Icon } from "../kit/Icon";
-import { QUIET } from "../kit/look";
+import { FIELD, QUIET } from "../kit/look";
 import type { MenuEntry } from "../kit/Menu";
+import { SectionCaption } from "../kit/SectionCaption";
 import { presenceColor } from "../session/Presence";
 import { useCommand, useParticipants, useSession } from "../session/session";
 import { ConnectDialog } from "./ConnectDialog";
@@ -102,7 +104,7 @@ function JoinLink({ link }: { link: string | null }) {
           aria-label="Join link"
           value={link}
           onFocus={(event) => event.currentTarget.select()}
-          className="h-row min-w-0 flex-1 rounded-control border border-line-strong bg-transparent px-m text-fg focus:border-accent focus:outline-none"
+          className={`${FIELD} min-w-0 flex-1`}
         />
       ) : (
         <span id="no-join-link" className="min-w-0 flex-1 text-muted">
@@ -122,8 +124,6 @@ function JoinLink({ link }: { link: string | null }) {
     </>
   );
 }
-
-const HEADING = "m-0 px-m text-small font-semibold text-muted uppercase";
 
 /** The sidebar's Sessions view: this window's Session and who is in it, how to connect elsewhere, and the shared Sessions to watch. */
 export function SessionsView() {
@@ -147,7 +147,7 @@ export function SessionsView() {
     <>
       {(granted || !unshared) && (
         <section aria-label="Session" className="flex flex-col gap-xs">
-          <h3 className={HEADING}>Session</h3>
+          <SectionCaption heading="Session" />
           {unshared && (
             <Action
               icon="users"
@@ -209,11 +209,7 @@ export function SessionsView() {
                     {participant.name}
                     {participant.id === you && <span className="text-muted"> (you)</span>}
                   </span>
-                  {participant.mode === "exploring" && (
-                    <span className="rounded-control border border-line px-s text-small text-muted">
-                      Exploring
-                    </span>
-                  )}
+                  {participant.mode === "exploring" && <Chip>Exploring</Chip>}
                   {participant.role === "owner" && (
                     <span role="img" aria-label="Owner" title="Owner" className="flex text-muted">
                       <Icon name="crown" />
@@ -246,7 +242,7 @@ export function SessionsView() {
       )}
       {shared.length > 0 && (
         <section aria-label="Shared sessions" className="flex flex-col gap-xs">
-          <h3 className={HEADING}>Shared sessions</h3>
+          <SectionCaption heading="Shared sessions" />
           <ul className="m-0 flex list-none flex-col p-0">
             {shared.map((other) => {
               const name = `Session ${other.id.slice(0, SHORT_ID)}`;

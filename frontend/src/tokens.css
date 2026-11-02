@@ -17,6 +17,11 @@
   --color-success: light-dark(#1b6e3c, #5fc27e);
   --color-caution: light-dark(#8a5300, #e0b04a);
   --color-danger: light-dark(#b3261e, #f28b82);
+  /* What kind of thing an icon or caption mark stands for; one color per kind wherever it shows. */
+  --color-kind-live: light-dark(#c4362e, #e5534b);
+  --color-kind-video: light-dark(#526477, #a8b3bf);
+  --color-kind-playlist: light-dark(#6f45c2, #b18cf0);
+  --color-kind-lane: light-dark(#607080, #8f9aa6);
   /* The video surface and the controls over it look the same in both themes: near-black with white controls. */
   --color-canvas: #0e0f10;
   --color-on-canvas: #ffffff;

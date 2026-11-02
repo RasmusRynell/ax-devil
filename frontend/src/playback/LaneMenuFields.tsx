@@ -1,4 +1,5 @@
 import { useId, useState, type ReactNode } from "react";
+import { FIELD } from "../kit/look";
 
 /** A number the user edits as text; the change applies when they press Enter or leave the field. */
 export function NumberField({
@@ -44,7 +45,7 @@ export function NumberField({
         onChange={(event) => setDraft(event.target.value)}
         onBlur={commit}
         onKeyDown={(event) => event.key === "Enter" && commit()}
-        className="h-row w-[10ch] rounded-control border border-line-strong bg-popup px-s text-right text-fg tabular-nums placeholder:text-muted focus:border-accent focus:outline-none"
+        className={`${FIELD} w-[10ch] text-right tabular-nums`}
       />
     </div>
   );
