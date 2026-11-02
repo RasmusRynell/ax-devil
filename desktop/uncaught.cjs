@@ -6,28 +6,34 @@ const MAX_RECENT = 10;
 const FORGET_MS = 5000;
 
 /**
- * Returns the handler for an uncaught error. `show(summary, details)` resolves to whether to continue; `log(text)`
- * records; `quit(status)` ends the app. A handled error is forgotten `FORGET_MS` later, and one that arrives with
- * `MAX_RECENT` still remembered ends the app with status 1, since the same failure is repeating.
+ * Returns the handler for an uncaught error; it resolves once the error has been dealt with. `show(summary, details)`
+ * resolves to whether to continue; `log(text)` records; `quit(status)` ends the app. Dialogs come one at a time, and an
+ * error waiting for its turn counts as handled. A handled error is forgotten `FORGET_MS` after its dialog closes, and
+ * one that arrives with `MAX_RECENT` still remembered ends the app with status 1, since the same failure is repeating.
  */
 function uncaughtHandler({ show, log, quit }) {
   let recent = 0;
-  return async (error) => {
+  let turn = Promise.resolve();
+  return (error) => {
     if (recent >= MAX_RECENT) {
       log("Too many exceptions occurred, terminating application");
       quit(1);
-      return;
+      return Promise.resolve();
     }
     recent++;
     const failure = error instanceof Error ? error : new Error(String(error));
     log(`Uncaught exception: ${failure.stack ?? failure.message}`);
-    setTimeout(() => recent--, FORGET_MS).unref();
-    try {
-      const keepGoing = await show(`${failure.name}: ${failure.message}`, failure.stack ?? "");
-      if (!keepGoing) quit(0);
-    } catch (shown) {
-      log(`Could not show the error: ${String(shown)}`);
-    }
+    turn = turn.then(async () => {
+      try {
+        const keepGoing = await show(`${failure.name}: ${failure.message}`, failure.stack ?? "");
+        if (!keepGoing) quit(0);
+      } catch (shown) {
+        log(`Could not show the error: ${String(shown)}`);
+      } finally {
+        setTimeout(() => recent--, FORGET_MS).unref();
+      }
+    });
+    return turn;
   };
 }
 

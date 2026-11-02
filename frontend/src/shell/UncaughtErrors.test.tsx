@@ -28,6 +28,22 @@ describe("uncaught errors", () => {
     expect(screen.queryByRole("dialog")).toBeNull();
   });
 
+  it("shows something for a reason that is not an Error, even one JSON cannot print", () => {
+    render(<UncaughtErrors />);
+    const circular: Record<string, unknown> = {};
+    circular.self = circular;
+    for (const reason of [undefined, circular, 10n]) {
+      const rejection = new Event("unhandledrejection");
+      Object.assign(rejection, { reason });
+      act(() => void window.dispatchEvent(rejection));
+    }
+    for (const shown of ["undefined", "[object Object]", "10"]) {
+      expect(screen.getByRole("dialog").textContent).toContain(`occurred:${shown}`);
+      fireEvent.click(screen.getByRole("button", { name: "Continue" }));
+    }
+    expect(screen.queryByRole("dialog")).toBeNull();
+  });
+
   it("ignores the browser's own notices that carry no error", () => {
     render(<UncaughtErrors />);
     act(

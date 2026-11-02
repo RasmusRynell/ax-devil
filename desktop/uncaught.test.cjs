@@ -35,3 +35,27 @@ void test("the eleventh error within the forgetting time ends the app instead of
   assert.deepEqual(calls.quit, [1]);
   assert.equal(calls.logged.at(-1), "Too many exceptions occurred, terminating application");
 });
+
+void test("errors wait for their turn: one dialog at a time, and the waiting ones count toward the limit", async () => {
+  const answers = [];
+  const calls = { shown: 0, quit: [] };
+  const handle = uncaughtHandler({
+    show: () => {
+      calls.shown++;
+      return new Promise((resolve) => answers.push(resolve));
+    },
+    log: () => {},
+    quit: (status) => calls.quit.push(status),
+  });
+  const handled = Array.from({ length: 10 }, (_, i) => handle(new Error(`failure ${i}`)));
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(calls.shown, 1);
+  await handle(new Error("one too many"));
+  assert.deepEqual(calls.quit, [1]);
+  for (let i = 0; i < 10; i++) {
+    answers[i]?.(true);
+    await new Promise((resolve) => setImmediate(resolve));
+  }
+  await Promise.all(handled);
+  assert.equal(calls.shown, 10);
+});

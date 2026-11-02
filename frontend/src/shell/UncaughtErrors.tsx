@@ -32,7 +32,13 @@ function describe(thrown: unknown): Uncaught {
         : `${summary}\n${thrown.stack ?? ""}`.trim(),
     };
   }
-  const summary = typeof thrown === "string" ? thrown : JSON.stringify(thrown);
+  let summary: string;
+  try {
+    summary = typeof thrown === "string" ? thrown : (JSON.stringify(thrown) ?? String(thrown));
+  } catch {
+    // A circular object or a BigInt: show what String makes of it.
+    summary = String(thrown);
+  }
   return { summary, details: summary };
 }
 
@@ -45,8 +51,10 @@ function describe(thrown: unknown): Uncaught {
 export function UncaughtErrors() {
   const [held, setHeld] = useState<Uncaught[]>([]);
   useEffect(() => {
-    const hold = (thrown: unknown) =>
-      setHeld((now) => (now.length < MAX_HELD ? [...now, describe(thrown)] : now));
+    const hold = (thrown: unknown) => {
+      const error = describe(thrown);
+      setHeld((now) => (now.length < MAX_HELD ? [...now, error] : now));
+    };
     // An error event without an error object is the browser's own notice, such as a ResizeObserver loop.
     const onError = (event: ErrorEvent) => event.error != null && hold(event.error);
     const onRejection = (event: PromiseRejectionEvent) => hold(event.reason);
