@@ -57,6 +57,7 @@ pub(crate) fn run(
     opened.on_change(Arc::downgrade(&listener));
     let mean = mean_item_bytes(shared, &opened);
     shared.update(|state| state.finish_load(source, Ok((opened.clone(), mean)), &shared.timeline));
+    shared.align();
     encode(shared, source, &opened);
 }
 
@@ -69,6 +70,7 @@ fn published(shared: &Shared, source: usize, track: &Track) {
     let measure = shared.lock().remeasure(source, &track.snapshot());
     let mean = measure.then(|| mean_item_bytes(shared, track));
     shared.update(|state| state.track_changed(source, mean, &shared.timeline));
+    shared.align();
 }
 
 /// The mean size of the items of up to `MEAN_SAMPLES` evenly spaced samples; samples that cannot be read do not

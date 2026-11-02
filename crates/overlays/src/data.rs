@@ -127,22 +127,12 @@ impl State {
         };
         slot.revision = revision;
         slot.policy.subscribed = subscribed;
-        let source = slot.source;
-        let before = (slot.policy.matching.basis, slot.policy.matching.tolerance);
         if let Some(matching) = matching {
             slot.policy.matching = matching;
         }
         slot.maps_sent.clear();
         slot.window = LaneWindow::default();
         self.fit(lane);
-        let policy = self.lanes[lane].policy.matching;
-        let after = (policy.basis, policy.tolerance);
-        if let Some(source) = source
-            && after != before
-        {
-            // The lane's alignment warning depends on its basis and tolerance.
-            self.announce(source, timeline);
-        }
         self.refresh(timeline);
     }
 

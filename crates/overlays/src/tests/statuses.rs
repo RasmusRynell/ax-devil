@@ -181,23 +181,6 @@ async fn a_lane_matched_by_record_order_gets_no_time_warning() {
 }
 
 #[tokio::test]
-async fn a_file_at_twice_the_video_rate_that_lines_up_gets_no_warning() {
-    let env = Env::new();
-    let overlay = env.overlay(
-        "fast.xml",
-        "ONVIF_XML",
-        &onvif_at((0..600).map(|sample| sample * 1_000_000 / 60)),
-    );
-    let mut viewer = env.open(vec![Some(overlay)], 300);
-    let by_time = overlay_sync::MatchPolicy {
-        basis: Some(overlay_sync::MatchBasis::Time),
-        ..overlay_sync::MatchPolicy::default()
-    };
-    viewer.set_policy(0, 1, Some(by_time), true);
-    assert!(ready_warnings(&mut viewer).await.is_empty());
-}
-
-#[tokio::test]
 async fn a_lanes_alignment_warning_follows_its_tolerance() {
     // A sample 10 ms after every 30 fps frame: within the default tolerance of the next frame, never exact.
     let env = Env::new();
@@ -210,13 +193,13 @@ async fn a_lanes_alignment_warning_follows_its_tolerance() {
         basis: Some(overlay_sync::MatchBasis::Time),
         ..overlay_sync::MatchPolicy::default()
     };
-    viewer.set_policy(0, 1, Some(by_time), true);
-    assert!(ready_warnings(&mut viewer).await.is_empty());
-
     let exact = overlay_sync::MatchPolicy {
         tolerance: overlay_sync::Tolerance::Exact,
         ..by_time
     };
-    viewer.set_policy(0, 2, Some(exact), true);
+    viewer.set_policy(0, 1, Some(exact), true);
     assert_eq!(ready_warnings(&mut viewer).await, [MISALIGNED]);
+
+    viewer.set_policy(0, 2, Some(by_time), true);
+    assert!(ready_warnings(&mut viewer).await.is_empty());
 }

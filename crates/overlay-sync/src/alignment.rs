@@ -219,4 +219,17 @@ mod tests {
         let by_time = alignment(&samples, Coverage::Dense, &video, &within_40());
         assert_eq!(by_time.matched, 0);
     }
+
+    #[test]
+    fn a_file_at_twice_the_video_rate_can_match_no_more_than_the_frames() {
+        let samples = times(&(0..8).map(|k| k * 20).collect::<Vec<_>>());
+        let video = timeline(&[0, 40, 80, 120]);
+        let aligned = alignment(
+            &samples,
+            Coverage::Sparse,
+            &video,
+            &by(MatchBasis::Time, Tolerance::Exact),
+        );
+        assert_eq!((aligned.matched, aligned.attainable()), (4, 4));
+    }
 }

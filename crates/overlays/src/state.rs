@@ -15,10 +15,11 @@ use std::{
 use foundation::{CancelToken, Timeline, UserError};
 use playback::{FrameSet, Want};
 use playlist_resolvers::OverlayRef;
+use scene_decoders::LoadWarning;
 use scene_store::{Track, TrackSnapshot};
 use tokio::sync::Notify;
 
-use crate::{LanePolicy, LaneStatus, OverlayEvent, SampleItem, data::LaneWindow};
+use crate::{LanePolicy, LaneStatus, OverlayEvent, SampleItem, data::LaneWindow, ingest::Aligned};
 
 /// Encoded items a source keeps waiting for the consumer; its thread stops encoding while they are full.
 pub(crate) const READY_PER_SOURCE: usize = 4;
@@ -116,6 +117,10 @@ pub(crate) struct Lane {
     pub(crate) maps_sent: FrameSet,
     /// The problems already reported since the source loaded.
     pub(crate) reported: HashSet<String>,
+    /// The alignment warning last computed for the lane's file and policy.
+    pub(crate) aligned: Option<Aligned>,
+    /// The alignment warning in the last status queued for the lane.
+    pub(crate) told: Option<LoadWarning>,
 }
 
 /// One overlay file of a viewer, shared by every lane that draws it.
@@ -194,6 +199,8 @@ impl State {
                     window: LaneWindow::default(),
                     maps_sent: FrameSet::new(),
                     reported: HashSet::new(),
+                    aligned: None,
+                    told: None,
                 }
             })
             .collect();
