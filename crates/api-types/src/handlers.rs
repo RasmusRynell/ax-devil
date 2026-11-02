@@ -104,8 +104,12 @@ pub struct FieldInfo {
     pub label: String,
     /// What kind of value it holds, and so which control it gets.
     pub kind: FieldKindWire,
-    /// Whether resolving fails without it.
+    /// Whether resolving fails without it, once the default is filled in.
     pub required: bool,
+    /// The value used when none is given; absent when there is none.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(type = "unknown", optional)]
+    pub default: Option<serde_json::Value>,
 }
 
 /// What kind of value a setting holds.

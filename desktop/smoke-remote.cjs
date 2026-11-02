@@ -6,10 +6,12 @@ const http = require("node:http");
 const path = require("node:path");
 const { backendExecutable, startProcess } = require("./backend.cjs");
 const { apiVersion, shellApi } = require("./generated/api.json");
-const { SCREENSHOTS, SMOKE_ROOT, click, frames, page, until } = require("./smoke-kit.cjs");
+const fit = require("./fit.cjs");
+const { SCREENSHOTS, SMOKE_ROOT, click, frames, page, setView, until } = require("./smoke-kit.cjs");
 
 const PASSWORD = "smoke-password";
 const FIXTURE = path.join(SMOKE_ROOT, "fixtures/video/long_gop_h264.mp4");
+const OVERLAY = path.join(SMOKE_ROOT, "fixtures/datasets/mot/test/MINI-02/det/det.txt");
 
 // A server that answers `/api/info` only, as a `shell` interface version: another one than this app's refuses it
 // before any page loads. With `dropPages` every other request is cut off, as a server that disconnects after
@@ -102,6 +104,45 @@ async function remote(local, shell) {
         (await window.webContents.capturePage()).toPNG(),
       );
     }
+
+    // An overlay path that selects MOT Annotations brings in that decoder's options: the dialog fits the smallest
+    // window at 200% zoom in both themes. The overlay is cleared again for the Add below.
+    const size = window.getSize();
+    const overlay =
+      "[...document.querySelectorAll('dialog[open] label')].find((l) => l.textContent === 'Overlay path').control";
+    await wait(`!!${overlay}`);
+    await js(`${overlay}.focus()`);
+    window.webContents.insertText(OVERLAY);
+    await wait(
+      `${overlay}.value === ${JSON.stringify(OVERLAY)} && /Image height/.test(document.querySelector('dialog[open]').innerText)`,
+    );
+    for (const [theme, zoom] of [
+      ["light", 1],
+      ["dark", 1],
+      ["light", 2],
+      ["dark", 2],
+    ]) {
+      await setView(window, [640, 480], zoom);
+      nativeTheme.themeSource = theme;
+      await wait(`matchMedia('(prefers-color-scheme: ${theme})').matches`);
+      await frames({ js });
+      await fs.writeFile(
+        path.join(SCREENSHOTS, `add-video-options-${theme}${zoom === 1 ? "" : "-200"}.png`),
+        (await window.webContents.capturePage()).toPNG(),
+      );
+      assert.deepEqual(
+        (await js(`(${fit.dialog.toString()})()`)).filter((problem) => problem !== 'cut off: ""'),
+        [],
+        `The Add video dialog with decoder options must fit the 640x480 window at ${zoom * 100}% zoom`,
+      );
+    }
+    window.webContents.setZoomFactor(1);
+    window.setSize(...size);
+    await js(`(() => {
+      const input = ${overlay};
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(input, '');
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+    })()`);
     await js(
       "[...document.querySelectorAll('dialog button')].find((b) => b.textContent === 'Add').click()",
     );

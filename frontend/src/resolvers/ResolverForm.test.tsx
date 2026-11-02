@@ -21,8 +21,36 @@ const MOT: ResolverInfo = {
   ],
 };
 const DECODERS: DecoderInfo[] = [
-  { handler: "MOT_FILE", display_name: "MOT Annotations", extensions: [".txt"], options: [] },
+  {
+    handler: "MOT_FILE",
+    display_name: "MOT Annotations",
+    extensions: [".txt"],
+    options: [
+      {
+        key: "width",
+        label: "Image width",
+        kind: { kind: "Integer", min: 1n },
+        required: true,
+        default: 1920,
+      },
+    ],
+  },
 ];
+const PAIR: ResolverInfo = {
+  id: "pair",
+  display_name: "Pair",
+  description: "",
+  fields: [
+    { key: "format", label: "Format", kind: { kind: "Handler" }, required: true },
+    {
+      key: "options",
+      label: "Options",
+      kind: { kind: "DecoderOptions", handler_field: "format" },
+      required: false,
+    },
+    { key: "scale", label: "Scale", kind: { kind: "Text" }, required: true, default: "1" },
+  ],
+};
 
 interface Scan {
   body: { field: string; settings: Settings };
@@ -58,8 +86,8 @@ function stubScans(ignoreAbort = false) {
 const found = (...names: string[]) =>
   names.map((name) => ({ value: name, label: name, detail: "64×48 · 25 fps" }));
 
-function Harness({ initial }: { initial?: Settings }) {
-  const form = useResolverForm(MOT, DECODERS, initial);
+function Harness({ initial, resolver = MOT }: { initial?: Settings; resolver?: ResolverInfo }) {
+  const form = useResolverForm(resolver, DECODERS, initial);
   return (
     <>
       <ResolverForm form={form} />
@@ -193,5 +221,17 @@ describe("resolver form", () => {
     expect((gone as HTMLInputElement).checked).toBe(true);
     expect(gone.closest("label")?.textContent).toContain("Not found");
     expect(settings()).toEqual({ root: "/data", sequences: ["B", "gone"], extra: 1 });
+  });
+
+  it("starts a required field at its default, and accepts it left blank", () => {
+    render(<Harness resolver={PAIR} />);
+    const width = screen.getByLabelText("Image width") as HTMLInputElement;
+    expect(width.value).toBe("1920");
+    expect((screen.getByLabelText("Scale") as HTMLInputElement).value).toBe("1");
+    expect(settings()).toEqual({ format: "MOT_FILE", options: { width: 1920 }, scale: "1" });
+
+    fireEvent.change(width, { target: { value: "" } });
+    fireEvent.change(screen.getByLabelText("Scale"), { target: { value: "" } });
+    expect(settings()).toEqual({ format: "MOT_FILE" });
   });
 });

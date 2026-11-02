@@ -135,6 +135,7 @@ fn consolidated_tracks_are_scenes_by_time_and_lines_of_one_time_stay_apart_for_t
             "2024-05-12T10:00:00Z\t{}",
             track("track-3", "2024-05-12T10:00:00Z", "Human")
         ),
+        json!({"object": track("track-4", "2024-05-12T10:00:02Z", "Car")}).to_string(),
     ];
     let (scenes, skipped) = decode("ADF_BETA_CONSOLIDATED", &lines);
 
@@ -156,6 +157,7 @@ fn consolidated_tracks_are_scenes_by_time_and_lines_of_one_time_stay_apart_for_t
             (time(0), vec!["track-1".to_owned()]),
             (time(1), vec!["track-2".to_owned()]),
             (time(0), vec!["track-3".to_owned()]),
+            (time(2), vec!["track-4".to_owned()]),
         ]
     );
     let bike = &scenes[1].entities()[0].observations()[0].classifications[0];

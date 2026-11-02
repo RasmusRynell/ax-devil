@@ -42,8 +42,25 @@ module.exports.playlist = async (window) => {
       "document.querySelector('[role=menu]') && document.querySelector('[aria-expanded=true]').click()",
     );
 
-  // File > Add Playlist, the MOT Challenge resolver, the dataset folder typed in and scanned.
-  const openAddPlaylist = async () => {
+  const choose = (select, text) =>
+    js(`(() => {
+      const select = ${select};
+      const option = [...select.options].find((o) => o.textContent === '${text}');
+      Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value').set.call(select, option.value);
+      select.dispatchEvent(new Event('change', { bubbles: true }));
+    })()`);
+  const labelled = (label) =>
+    `[...document.querySelectorAll('dialog[open] label')].find((l) => l.textContent.startsWith('${label}'))`;
+  const fill = async (label, text) => {
+    await wait(`!!${labelled(label)}`);
+    await js(`${labelled(label)}.control.focus()`);
+    window.webContents.insertText(text);
+    await wait(`${labelled(label)}.control.value === ${JSON.stringify(text)}`);
+  };
+
+  // File > Add Playlist and a resolver. MOT Challenge: the dataset folder typed in and scanned. Folder Pair: both
+  // folders typed in and MOT Annotations chosen, which brings in that decoder's options.
+  const openAddPlaylist = async (resolver = "MOT Challenge") => {
     await closeMenu();
     await js(
       "[...document.querySelectorAll('[data-top]')].find((b) => b.textContent === 'File').click()",
@@ -53,41 +70,45 @@ module.exports.playlist = async (window) => {
       "[...document.querySelectorAll('[role=menuitem]')].find((b) => b.textContent.startsWith('Add Playlist')).click()",
     );
     await wait("!!document.querySelector('dialog[open] select')");
-    await js(`(() => {
-      const select = document.querySelector('dialog[open] select');
-      const option = [...select.options].find((o) => o.textContent === 'MOT Challenge');
-      Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value').set.call(select, option.value);
-      select.dispatchEvent(new Event('change', { bubbles: true }));
-    })()`);
-    await wait(
-      "[...document.querySelectorAll('dialog[open] label')].some((l) => l.textContent === 'Dataset folder')",
-    );
-    await js(
-      "[...document.querySelectorAll('dialog[open] label')].find((l) => l.textContent === 'Dataset folder').control.focus()",
-    );
-    window.webContents.insertText(DATASET);
-    await wait(
-      `[...document.querySelectorAll('dialog[open] input')].some((i) => i.value === ${JSON.stringify(DATASET)})`,
-    );
+    await choose("document.querySelector('dialog[open] select')", resolver);
+    if (resolver === "Folder Pair") {
+      await fill("Videos folder", DATASET);
+      await fill("Overlays folder", DATASET);
+      await choose(`${labelled("Overlay format")}.control`, "MOT Annotations");
+      await wait(
+        "/Image width/.test(document.querySelector('dialog[open]').innerText) && /Image height/.test(document.querySelector('dialog[open]').innerText)",
+      );
+      // At 200% the options are below the fold of the fields' own scroll: show them.
+      await js(
+        "document.querySelector('dialog[open] select').closest('.overflow-y-auto').scrollTo(0, 1e6)",
+      );
+      return;
+    }
+    await fill("Dataset folder", DATASET);
     await clickButton("Scan");
     await wait("/MINI-01/.test(document.querySelector('dialog[open]').innerText)");
     await wait("/MINI-02/.test(document.querySelector('dialog[open]').innerText)");
   };
 
-  // The dialog at the smallest window, then Add at the normal size.
-  for (const [theme, zoom] of THEMES_AND_ZOOMS) {
-    await setView(window, [640, 480], zoom);
-    await setTheme(theme);
-    await openAddPlaylist();
-    await shoot(`add-playlist-${theme}${zoom === 1 ? "" : "-200"}.png`);
-    // The folder box scrolls its own long path, which the check reports as text cut off with no name.
-    assert.deepEqual(
-      (await js(`(${fit.dialog.toString()})()`)).filter((problem) => problem !== 'cut off: ""'),
-      [],
-      `The Add Playlist dialog must fit the 640x480 window at ${zoom * 100}% zoom`,
-    );
-    await clickButton("Cancel");
-    await wait("!document.querySelector('dialog')");
+  // Each form at the smallest window, then Add at the normal size.
+  for (const [resolver, name] of [
+    ["MOT Challenge", "add-playlist"],
+    ["Folder Pair", "add-playlist-pair"],
+  ]) {
+    for (const [theme, zoom] of THEMES_AND_ZOOMS) {
+      await setView(window, [640, 480], zoom);
+      await setTheme(theme);
+      await openAddPlaylist(resolver);
+      await shoot(`${name}-${theme}${zoom === 1 ? "" : "-200"}.png`);
+      // A folder box scrolls its own long path, which the check reports as text cut off with no name.
+      assert.deepEqual(
+        (await js(`(${fit.dialog.toString()})()`)).filter((problem) => problem !== 'cut off: ""'),
+        [],
+        `The Add Playlist dialog (${resolver}) must fit the 640x480 window at ${zoom * 100}% zoom`,
+      );
+      await clickButton("Cancel");
+      await wait("!document.querySelector('dialog')");
+    }
   }
   window.webContents.setZoomFactor(1);
   await setTheme("light");

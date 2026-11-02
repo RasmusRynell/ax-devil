@@ -24,10 +24,18 @@ export interface FieldForm {
 
 type Control = (field: FieldInfo, form: FieldForm) => ReactNode;
 
-const text = (form: FieldForm, key: string) => {
-  const value = form.values[key];
-  return typeof value === "string" ? value : "";
-};
+/** The text a field shows: what was typed, else its default. */
+export function shown(field: FieldInfo, values: Settings): string {
+  const value = values[field.key];
+  if (typeof value === "string") return value;
+  const fallback = field.default;
+  return typeof fallback === "string" || typeof fallback === "number" ? `${fallback}` : "";
+}
+
+/** Whether the field must be filled in: required, with no default for the backend to use. */
+export const needsValue = (field: FieldInfo) => field.required && field.default == null;
+
+const text = (form: FieldForm, field: FieldInfo) => shown(field, form.values);
 
 /** A text box, with Browse beside it in the desktop app when `pick` can choose the path. */
 function PathField({
@@ -42,7 +50,7 @@ function PathField({
   return (
     <TextField
       label={field.label}
-      value={text(form, field.key)}
+      value={text(form, field)}
       onChange={(value) => form.set(field.key, value)}
       action={
         pick && (
@@ -85,7 +93,7 @@ const CONTROLS: Record<FieldKindWire["kind"], Control> = {
   Text: (field, form) => (
     <TextField
       label={field.label}
-      value={text(form, field.key)}
+      value={text(form, field)}
       onChange={(value) => form.set(field.key, value)}
     />
   ),
@@ -93,14 +101,14 @@ const CONTROLS: Record<FieldKindWire["kind"], Control> = {
   Integer: (field, form) => (
     <TextField
       label={field.label}
-      value={text(form, field.key)}
+      value={text(form, field)}
       onChange={(value) => form.set(field.key, value)}
     />
   ),
   Handler: (field, form) => (
     <Select
       label={field.label}
-      value={text(form, field.key)}
+      value={text(form, field)}
       options={form.decoders.map((decoder) => [decoder.handler, decoder.display_name] as const)}
       onChange={(value) => form.set(field.key, value)}
     />

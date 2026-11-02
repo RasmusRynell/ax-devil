@@ -276,7 +276,7 @@ describe("add video with an overlay", () => {
     fireEvent.change(screen.getByRole("textbox", { name: "Path on the server" }), {
       target: { value: "/srv/a.mp4" },
     });
-    fireEvent.change(await screen.findByRole("textbox", { name: "Overlay path on the server" }), {
+    fireEvent.change(await screen.findByRole("textbox", { name: "Overlay path" }), {
       target: { value: "/srv/gt.txt" },
     });
     fireEvent.click(screen.getByRole("button", { name: "Add" }));

@@ -52,6 +52,7 @@ fn field_infos(form: &Form) -> Vec<FieldInfo> {
             label: field.label.clone(),
             kind: field_kind(&field.kind),
             required: field.required,
+            default: field.default.clone(),
         })
         .collect()
 }

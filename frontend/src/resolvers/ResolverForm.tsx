@@ -3,7 +3,7 @@ import { reasonOf } from "../errors";
 import type { DecoderInfo, ErrorWire, FieldInfo, ResolverInfo } from "../generated/api";
 import { Refusal } from "../shell/SettingField";
 import { useServerKind } from "../shell/windowBridge";
-import { decoderOptions, FieldControl, type FieldForm } from "./fields";
+import { decoderOptions, FieldControl, needsValue, shown, type FieldForm } from "./fields";
 import {
   checkedCount,
   chosen,
@@ -57,8 +57,8 @@ function start(
         for (const [option, value] of Object.entries(saved))
           values[`${field.key}.${option}`] = String(value);
       }
-    } else if (typeof values[field.key] !== "string") {
-      values[field.key] = field.kind.kind === "Handler" ? (decoders[0]?.handler ?? "") : "";
+    } else if (field.kind.kind === "Handler" && typeof values[field.key] !== "string") {
+      values[field.key] = decoders[0]?.handler ?? "";
     }
   }
   return { resolverId: resolver.id, values, scans };
@@ -89,7 +89,7 @@ function reduce(state: State, action: Action): State {
   }
 }
 
-/** What loading sends, or `null` while something is missing: a required text, or a scan with a checked value. */
+/** What loading sends, or `null` while something is missing: a required text without a default, or a scan with a checked value. */
 function settingsOf(
   resolver: ResolverInfo,
   state: State,
@@ -108,18 +108,21 @@ function settingsOf(
     } else if (field.kind.kind === "DecoderOptions") {
       const options: Settings = {};
       for (const option of decoderOptions(field, state.values, decoders)) {
-        const value = typed(option, state.values[`${field.key}.${option.key}`]);
+        const value = typed(
+          option,
+          shown({ ...option, key: `${field.key}.${option.key}` }, state.values),
+        );
         if (value !== undefined) options[option.key] = value;
-        else if (option.required) return null;
+        else if (needsValue(option)) return null;
       }
       for (const key of Object.keys(settings)) {
         if (key.startsWith(`${field.key}.`)) delete settings[key];
       }
       if (Object.keys(options).length) settings[field.key] = options;
     } else {
-      const value = typed(field, settings[field.key]);
+      const value = typed(field, shown(field, settings));
       if (value !== undefined) settings[field.key] = value;
-      else if (field.required) return null;
+      else if (needsValue(field)) return null;
       else delete settings[field.key];
     }
   }

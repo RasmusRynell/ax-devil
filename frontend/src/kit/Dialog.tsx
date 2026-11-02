@@ -54,3 +54,12 @@ export function Dialog({ title, children, onOk, onCancel, okLabel = "OK", busy =
     </dialog>
   );
 }
+
+/** The fields of a dialog: they scroll when the window is too small, and the title and buttons stay in view. */
+export function DialogBody({ children }: { children: ReactNode }) {
+  return (
+    <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-l overflow-y-auto [@media(max-height:20rem)]:gap-s">
+      {children}
+    </div>
+  );
+}

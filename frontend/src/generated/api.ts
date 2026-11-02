@@ -1035,9 +1035,13 @@ label: string,
  */
 kind: FieldKindWire, 
 /**
- * Whether resolving fails without it.
+ * Whether resolving fails without it, once the default is filled in.
  */
-required: boolean, };
+required: boolean, 
+/**
+ * The value used when none is given; absent when there is none.
+ */
+default?: unknown, };
 
 /**
  * What kind of value a setting holds.

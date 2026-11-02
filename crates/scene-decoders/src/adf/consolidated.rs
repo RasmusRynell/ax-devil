@@ -37,21 +37,23 @@ pub(super) fn read(record: &Object, v1: bool) -> Result<Vec<Scene>, String> {
 /// The tracks of a record: all of a document with a `version`, else the record itself.
 fn tracks(record: &Object) -> Result<Vec<&Object>, String> {
     if present(record.get("version")).is_none() {
-        return Ok(vec![record]);
+        return Ok(vec![unwrapped(record)?]);
     }
     let mut tracks = Vec::new();
     for track in list(record, "tracks")? {
-        if track.is_null() {
-            continue;
+        if !track.is_null() {
+            tracks.push(unwrapped(object(track, "a track")?)?);
         }
-        let track = object(track, "a track")?;
-        // A track may be wrapped as `{"object": {...}}`.
-        tracks.push(match present(track.get("object")) {
-            Some(inner) => object(inner, "a track")?,
-            None => track,
-        });
     }
     Ok(tracks)
+}
+
+/// A track may be wrapped as `{"object": {...}}`.
+fn unwrapped(track: &Object) -> Result<&Object, String> {
+    match present(track.get("object")) {
+        Some(inner) => object(inner, "a track"),
+        None => Ok(track),
+    }
 }
 
 /// Adds the track's observations to the Scenes of their times. Its picture and end reason are of the whole track, so

@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
 import type { DecoderInfo, HandlersInfo, ResolverInfo } from "../generated/api";
-import { Dialog } from "../kit/Dialog";
+import { Dialog, DialogBody } from "../kit/Dialog";
 import { Select, TextField } from "../kit/Fields";
 import { fetchHandlers } from "../resolvers/handlers";
+import { needsValue, shown } from "../resolvers/fields";
 import { ResolverForm, useResolverForm } from "../resolvers/ResolverForm";
 import { useCommand } from "../session/session";
 import { Refusal } from "./SettingField";
@@ -62,10 +63,9 @@ export function AddVideoDialog({ onClose }: { onClose: () => void }) {
   const candidates = overlay.trim() ? decodersFor(handlers?.decoders ?? NO_DECODERS, overlay) : [];
   const decoder = candidates.find((one) => one.handler === picked) ?? candidates[0];
   const form = useResolverForm(optionsForm(decoder), handlers?.decoders ?? NO_DECODERS);
-  const missing = form.resolver.fields.find((field) => {
-    const value = form.values[field.key];
-    return field.required && (typeof value !== "string" || !value.trim());
-  });
+  const missing = form.resolver.fields.find(
+    (field) => needsValue(field) && !shown(field, form.values).trim(),
+  );
 
   const ok = async () => {
     if (!path.trim()) {
@@ -109,39 +109,41 @@ export function AddVideoDialog({ onClose }: { onClose: () => void }) {
   };
   return (
     <Dialog title="Add video" okLabel="Add" onOk={() => void ok()} onCancel={onClose} busy={busy}>
-      <TextField
-        label="Path on the server"
-        value={path}
-        onChange={(text) => {
-          setPath(text);
-          setFailure(null);
-        }}
-      />
-      {handlers && (
+      <DialogBody>
         <TextField
-          label="Overlay path on the server"
-          value={overlay}
+          label="Path on the server"
+          value={path}
           onChange={(text) => {
-            setOverlay(text);
+            setPath(text);
             setFailure(null);
           }}
         />
-      )}
-      {candidates.length > 1 && (
-        <Select
-          label="Overlay format"
-          value={decoder?.handler ?? ""}
-          options={candidates.map((one) => [one.handler, one.display_name] as const)}
-          onChange={setPicked}
-        />
-      )}
-      {decoder && <ResolverForm form={form} />}
-      {tried && overlay.trim() && missing && <Refusal reason={`${missing.label} is required`} />}
-      {failure && (
-        <p role="alert" className="m-0">
-          {failure}
-        </p>
-      )}
+        {handlers && (
+          <TextField
+            label="Overlay path"
+            value={overlay}
+            onChange={(text) => {
+              setOverlay(text);
+              setFailure(null);
+            }}
+          />
+        )}
+        {candidates.length > 1 && (
+          <Select
+            label="Overlay format"
+            value={decoder?.handler ?? ""}
+            options={candidates.map((one) => [one.handler, one.display_name] as const)}
+            onChange={setPicked}
+          />
+        )}
+        {decoder && <ResolverForm form={form} />}
+        {tried && overlay.trim() && missing && <Refusal reason={`${missing.label} is required`} />}
+        {failure && (
+          <p role="alert" className="m-0">
+            {failure}
+          </p>
+        )}
+      </DialogBody>
     </Dialog>
   );
 }
