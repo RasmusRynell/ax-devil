@@ -61,19 +61,19 @@ async fn scene(
     }
     let backend =
         Backend::start_with_catalogs(Library::with_folder(catalogs.path().to_path_buf())).await;
-    // The MOT decoder reads the picture size from the seqinfo.ini beside its file.
-    fs::write(
-        backend.folder.path().join("seqinfo.ini"),
-        format!("[Sequence]\nframeRate=30\nseqLength=100\nimWidth={width}\nimHeight={height}\n"),
-    )
-    .unwrap();
     let files: Vec<_> = overlays
         .iter()
         .map(|(name, content)| {
             let path = backend.folder.path().join(name);
             fs::write(&path, content).unwrap();
-            // Several handlers read .xml; the others are named by their extension.
-            (path, name.ends_with(".xml").then_some("ONVIF_XML"))
+            // Several handlers read .xml; the others are named by their extension. MOT boxes are measured in the
+            // picture's size.
+            let options = if name.ends_with(".txt") {
+                common::mot_options((width, height))
+            } else {
+                Default::default()
+            };
+            (path, name.ends_with(".xml").then_some("ONVIF_XML"), options)
         })
         .collect();
     let added = backend.add_with_handlers(&fixture(video), &files).await;

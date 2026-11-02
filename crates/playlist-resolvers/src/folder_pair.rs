@@ -1,48 +1,16 @@
 use std::{
     collections::HashMap,
-    fs::{self, DirEntry, FileType},
+    fs,
     path::{Path, PathBuf},
 };
 
-use crate::schema::invalid_field;
-use foundation::{CancelToken, Cancelled, ErrorCode, HostPath, Interrupt, UserError};
-
-use crate::{
-    Choice, Cli, Field, FieldKind, OverlayRef, PlaylistResolver, ResolvedEntry, ResolvedPlaylist,
-    ResolverSchema, ResolverSpec, Settings, VideoRef, WatchPaths,
+use foundation::{CancelToken, ErrorCode, HostPath, Interrupt, UserError};
+use handler_api::{
+    Field, FieldKind, Form, OverlayRef, PlaylistResolver, ResolvedEntry, ResolvedPlaylist,
+    ResolverSpec, Settings, Values, VideoRef, invalid_field,
 };
 
-static SPEC: ResolverSpec = ResolverSpec {
-    id: "folder_pair",
-    display_name: "Folder Pair",
-    description: "Match videos and overlays from two folders by file name.",
-};
-
-static SCHEMA: ResolverSchema = ResolverSchema {
-    fields: &[
-        Field {
-            key: "videos_dir",
-            label: "Videos folder",
-            kind: FieldKind::Folder,
-            required: true,
-            cli: Cli::Positional,
-        },
-        Field {
-            key: "overlays_dir",
-            label: "Overlays folder",
-            kind: FieldKind::Folder,
-            required: true,
-            cli: Cli::Positional,
-        },
-        Field {
-            key: "handler_type",
-            label: "Overlay format",
-            kind: FieldKind::Handler,
-            required: true,
-            cli: Cli::Flag("handler-type"),
-        },
-    ],
-};
+use crate::resolved_file_type;
 
 const COMPRESSION_SUFFIXES: [&str; 4] = ["bz2", "gz", "xz", "zst"];
 
@@ -50,39 +18,54 @@ const COMPRESSION_SUFFIXES: [&str; 4] = ["bz2", "gz", "xz", "zst"];
 ///
 /// Names match after a trailing compression suffix and one more suffix are removed. Decoders read files as they are,
 /// so a matched file that is compressed fails the resolve and names the file instead of yielding an empty overlay.
-/// Settings are `videos_dir`, `overlays_dir` and `handler_type`, the decoder handler that reads the overlay files.
-pub struct FolderPairResolver;
+/// Settings are `videos_dir`, `overlays_dir` and `handler_type`, the decoder that reads the overlay files.
+pub struct FolderPairResolver {
+    spec: ResolverSpec,
+}
+
+impl FolderPairResolver {
+    pub(crate) fn new() -> Self {
+        Self {
+            spec: ResolverSpec {
+                id: "folder_pair".to_owned(),
+                name: "Folder Pair".to_owned(),
+                description: "Match videos and overlays from two folders by file name.".to_owned(),
+                form: Form {
+                    fields: vec![
+                        Field::new("videos_dir", "Videos folder", FieldKind::Folder)
+                            .required()
+                            .positional(),
+                        Field::new("overlays_dir", "Overlays folder", FieldKind::Folder)
+                            .required()
+                            .positional(),
+                        Field::new("handler_type", "Overlay format", FieldKind::Handler).required(),
+                    ],
+                },
+            },
+        }
+    }
+}
 
 impl PlaylistResolver for FolderPairResolver {
-    fn spec(&self) -> &'static ResolverSpec {
-        &SPEC
-    }
-
-    fn schema(&self) -> &'static ResolverSchema {
-        &SCHEMA
-    }
-
-    fn scan(
-        &self,
-        field: &str,
-        _settings: &Settings,
-        _cancel: &CancelToken,
-    ) -> Result<Vec<Choice>, Interrupt<UserError>> {
-        Err(Interrupt::Failed(invalid_field(
-            "This setting has nothing to scan",
-            field,
-        )))
+    fn spec(&self) -> &ResolverSpec {
+        &self.spec
     }
 
     fn resolve(
         &self,
-        settings: &Settings,
+        settings: &Values,
         cancel: &CancelToken,
     ) -> Result<ResolvedPlaylist, Interrupt<UserError>> {
-        let videos_dir = required_text(settings, "videos_dir").map_err(Interrupt::Failed)?;
-        let overlays_dir = required_text(settings, "overlays_dir").map_err(Interrupt::Failed)?;
-        let handler = required_text(settings, "handler_type").map_err(Interrupt::Failed)?;
-        let (videos_dir, overlays_dir) = (Path::new(videos_dir), Path::new(overlays_dir));
+        let required = |key: &str| {
+            settings
+                .text(key)
+                .ok_or_else(|| Interrupt::Failed(invalid_field("Required", key)))
+        };
+        let (videos_dir, overlays_dir) = (
+            Path::new(required("videos_dir")?),
+            Path::new(required("overlays_dir")?),
+        );
+        let handler = required("handler_type")?;
         cancel.check()?;
         require_dir(videos_dir, "Video directory does not exist").map_err(Interrupt::Failed)?;
         require_dir(overlays_dir, "Overlay directory does not exist").map_err(Interrupt::Failed)?;
@@ -105,6 +88,7 @@ impl PlaylistResolver for FolderPairResolver {
             }
             let overlay = OverlayRef {
                 label: name.clone(),
+                slot: "overlay".to_owned(),
                 path,
                 handler: handler.to_string(),
                 options: Settings::new(),
@@ -129,43 +113,10 @@ impl PlaylistResolver for FolderPairResolver {
         }
         entries.sort_by(|a, b| a.name.cmp(&b.name));
         Ok(ResolvedPlaylist {
-            display_name: SPEC.display_name.to_string(),
+            display_name: self.spec.name.clone(),
             entries,
+            warnings: Vec::new(),
         })
-    }
-
-    fn watch_paths(
-        &self,
-        settings: &Settings,
-        cancel: &CancelToken,
-    ) -> Result<WatchPaths, Cancelled> {
-        cancel.check()?;
-        let folders = ["videos_dir", "overlays_dir"]
-            .into_iter()
-            .filter_map(|key| required_text(settings, key).ok())
-            .map(PathBuf::from)
-            .collect();
-        Ok(WatchPaths {
-            folders,
-            ..WatchPaths::default()
-        })
-    }
-}
-
-/// The type of a directory entry, following a symlink to what it points at; `None` for a broken link.
-pub(crate) fn resolved_file_type(entry: &DirEntry) -> Option<FileType> {
-    let file_type = entry.file_type().ok()?;
-    if file_type.is_symlink() {
-        fs::metadata(entry.path()).ok().map(|meta| meta.file_type())
-    } else {
-        Some(file_type)
-    }
-}
-
-pub(crate) fn required_text<'a>(settings: &'a Settings, key: &str) -> Result<&'a str, UserError> {
-    match settings.get(key).and_then(|value| value.as_str()) {
-        Some(text) if !text.is_empty() => Ok(text),
-        _ => Err(invalid_field("Must be a non-empty string", key)),
     }
 }
 

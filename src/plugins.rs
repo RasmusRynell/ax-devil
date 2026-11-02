@@ -10,16 +10,16 @@ use std::{
 };
 
 /// The ids a converter may not take: every built-in decoder's handler and plugin id, and every resolver's id.
-pub fn reserved_ids(handlers: &Handlers) -> Vec<&'static str> {
-    let ids: HashSet<&'static str> = handlers
-        .file_decoders()
+pub fn reserved_ids(handlers: &Handlers) -> Vec<&str> {
+    let ids: HashSet<&str> = handlers
+        .decoders()
         .iter()
-        .flat_map(|decoder| [decoder.spec().handler, decoder.spec().plugin_id])
+        .flat_map(|decoder| [decoder.spec().id.as_str(), decoder.spec().plugin.as_str()])
         .chain(
             handlers
                 .resolvers()
                 .iter()
-                .map(|resolver| resolver.spec().id),
+                .map(|resolver| resolver.spec().id.as_str()),
         )
         .collect();
     ids.into_iter().collect()
@@ -32,7 +32,7 @@ pub fn load(registry: &Result<PathBuf, String>, built_in: Handlers) -> (Handlers
         Ok(file) => {
             let loaded = converters::load(file, &reserved_ids(&built_in));
             let info = describe(&loaded);
-            (built_in.with_file_decoders(loaded.decoders()), info)
+            (built_in.with_decoders(loaded.decoders()), info)
         }
         Err(reason) => (
             built_in,

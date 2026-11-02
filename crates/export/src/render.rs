@@ -6,7 +6,7 @@ use std::sync::Arc;
 use bytes::Bytes;
 use foundation::{FrameSize, UserError, VideoFrame};
 use media::Picture;
-use scene_store::{Track, TrackSnapshot};
+use scene_store::{TrackRead, TrackSnapshot};
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
@@ -69,7 +69,7 @@ pub struct RenderSetup {
 #[derive(Clone)]
 pub struct FrozenSource {
     /// The decoded file.
-    pub track: Arc<Track>,
+    pub track: Arc<dyn TrackRead>,
     /// The file as the viewer held it, once its ingest had ended; the sample indices of the job are of it.
     pub snapshot: Arc<TrackSnapshot>,
     /// The source revision the viewer held.

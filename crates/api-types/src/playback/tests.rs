@@ -167,11 +167,13 @@ fn opened_and_lane_status_carry_the_source_and_data_revision() {
         lanes: vec![
             LaneInfo {
                 label: "gate.mp4".into(),
+                slot: "gate.mp4".into(),
                 source: None,
                 policy: None,
             },
             LaneInfo {
                 label: "a.txt".into(),
+                slot: "a.txt".into(),
                 source: Some(0),
                 policy: None,
             },
@@ -198,7 +200,7 @@ fn opened_and_lane_status_carry_the_source_and_data_revision() {
     assert_eq!(json["catalogs"][0]["id"], "built-in:standard");
     assert_eq!(
         json["lanes"],
-        json!([{"label": "gate.mp4", "source": null}, {"label": "a.txt", "source": 0}])
+        json!([{"label": "gate.mp4", "slot": "gate.mp4", "source": null}, {"label": "a.txt", "slot": "a.txt", "source": 0}])
     );
     assert_eq!(json["lane_defaults"]["catalog"], "built-in:standard");
     assert_eq!(

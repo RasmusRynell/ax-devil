@@ -5,8 +5,9 @@ use std::{
     sync::{Mutex, PoisonError},
 };
 
+use foundation::Warning;
+use handler_api::DecodeSummary;
 use scene::{ClassRule, Coverage, Fields, FilterOption, FilterPolicy, serial};
-use scene_decoders::{DecodeSummary, LoadWarning};
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -41,7 +42,7 @@ pub(crate) struct Summary {
 /// A [`Summary`] turned back into what it was made from.
 pub(crate) struct Restored {
     pub coverage: Coverage,
-    pub warnings: Vec<LoadWarning>,
+    pub warnings: Vec<Warning>,
     pub filter: FilterPolicy,
     pub metadata: Fields,
 }
@@ -72,7 +73,7 @@ impl Summary {
     }
 
     /// Adds a warning the store itself found.
-    pub(crate) fn warn(&mut self, warning: &LoadWarning) {
+    pub(crate) fn warn(&mut self, warning: &Warning) {
         self.warnings.push(warning_wire(warning));
     }
 
@@ -86,7 +87,7 @@ impl Summary {
             warnings: self
                 .warnings
                 .into_iter()
-                .map(|w| LoadWarning {
+                .map(|w| Warning {
                     problem: w.problem,
                     reasons: w.reasons,
                     consequence: w.consequence,
@@ -115,7 +116,7 @@ impl Summary {
     }
 }
 
-fn warning_wire(warning: &LoadWarning) -> WarningWire {
+fn warning_wire(warning: &Warning) -> WarningWire {
     WarningWire {
         problem: warning.problem.clone(),
         reasons: warning.reasons.clone(),

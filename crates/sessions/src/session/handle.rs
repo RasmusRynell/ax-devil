@@ -10,9 +10,12 @@ use super::{
 use crate::{CursorOptions, Cursors, EndReason, Secret, SessionId};
 use overlay_sync::MatchPolicy;
 use playback::Authority;
-use std::sync::{
-    Arc,
-    atomic::{AtomicBool, Ordering},
+use std::{
+    collections::BTreeMap,
+    sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+    },
 };
 use tokio::sync::{broadcast, watch};
 use workspace::Content;
@@ -279,7 +282,7 @@ pub struct StreamLease {
     authority: watch::Receiver<Authority>,
     content: Content,
     entry: ContentEntry,
-    matching: Vec<Option<MatchPolicy>>,
+    matching: BTreeMap<String, MatchPolicy>,
     host_details: bool,
     release: Option<Box<dyn FnOnce() + Send + Sync>>,
 }
@@ -290,7 +293,7 @@ impl StreamLease {
         authority: watch::Receiver<Authority>,
         content: Content,
         entry: ContentEntry,
-        matching: Vec<Option<MatchPolicy>>,
+        matching: BTreeMap<String, MatchPolicy>,
         host_details: bool,
         release: impl FnOnce() + Send + Sync + 'static,
     ) -> Self {
@@ -320,9 +323,9 @@ impl StreamLease {
         &self.entry
     }
 
-    /// How the workspace says each lane of the entry matches its records to frames, as it was when the ticket was
-    /// redeemed; `None` is the default.
-    pub fn matching(&self) -> &[Option<MatchPolicy>] {
+    /// How the workspace says each lane matches its records to frames, by the lane's slot, as it was when the ticket
+    /// was redeemed; a lane without an entry is at the defaults.
+    pub fn matching(&self) -> &BTreeMap<String, MatchPolicy> {
         &self.matching
     }
 

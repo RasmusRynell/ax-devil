@@ -22,7 +22,7 @@ const READY: LaneStatusWire = {
 /** One subscribed lane of source 0 whose catalog has arrived. */
 function viewer() {
   const lanes = new LaneSet();
-  lanes.open([{ label: "DPM", source: 0 }], LANE_DEFAULTS);
+  lanes.open([{ label: "DPM", slot: "DPM", source: 0 }], LANE_DEFAULTS);
   lanes.setStatus(0, READY);
   const data = new ViewerData(
     lanes,
@@ -123,9 +123,9 @@ describe("viewer data", () => {
     const lanes = new LaneSet();
     lanes.open(
       [
-        { label: "a", source: 0 },
-        { label: "b", source: 0 },
-        { label: "c", source: 1 },
+        { label: "a", slot: "a", source: 0 },
+        { label: "b", slot: "b", source: 0 },
+        { label: "c", slot: "c", source: 1 },
       ],
       LANE_DEFAULTS,
     );
@@ -150,8 +150,8 @@ describe("viewer data", () => {
     const lanes = new LaneSet();
     lanes.open(
       [
-        { label: "a", source: 0 },
-        { label: "b", source: 0 },
+        { label: "a", slot: "a", source: 0 },
+        { label: "b", slot: "b", source: 0 },
       ],
       LANE_DEFAULTS,
     );

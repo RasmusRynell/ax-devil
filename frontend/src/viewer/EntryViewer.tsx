@@ -35,10 +35,10 @@ export function EntryViewer({
     [command, entry.id],
   );
   const keepMatching = useCallback(
-    (lane: number, policy: LanePolicyWire) =>
+    (slot: string, policy: LanePolicyWire) =>
       void command({
         type: "content",
-        command: { type: "setLaneMatching", item, lane, policy },
+        command: { type: "setLaneMatching", item, slot, policy },
       }).catch(() => undefined),
     [command, item],
   );

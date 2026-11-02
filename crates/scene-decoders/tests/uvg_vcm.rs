@@ -1,8 +1,8 @@
 //! The UVG-VCM decoder, through the registry as the host uses it.
 
 use foundation::CancelToken;
+use handler_api::{DecodeSummary, Settings};
 use scene::{Coverage, Geometry, Scene, SceneTime, Value};
-use scene_decoders::{DecodeContext, DecodeOptions, DecodeSummary, file_decoder};
 use serde_json::{Value as Json, json};
 
 mod common;
@@ -17,13 +17,10 @@ fn with(mut detection: Json, key: &str, value: Json) -> Json {
 }
 
 fn decode(document: &str) -> Result<(Vec<Scene>, DecodeSummary), String> {
-    let decoder = file_decoder("UVG_VCM").expect("the UVG-VCM decoder is built in");
     let (scenes, result) = common::run(
-        decoder,
+        &*common::decoder("UVG_VCM"),
         document.as_bytes(),
-        &DecodeContext {
-            options: &DecodeOptions::new(),
-        },
+        &Settings::new(),
         &CancelToken::new(),
     );
     let summary = result.map_err(|interrupt| format!("{interrupt:?}"))?;

@@ -72,12 +72,12 @@ const settingsOf = ({ catalog, policy }: LaneDefaultsWire): LaneSettings => ({
 /** The state of every lane of the opened entry, and the messages that change it. */
 export class LaneSet {
   #states: readonly LaneState[] = [];
-  readonly #onPolicy: (lane: number, policy: LanePolicyWire) => void;
+  readonly #onPolicy: (slot: string, policy: LanePolicyWire) => void;
   /** Counts the changes to what a lane's marks look like; the presenter caches by it. */
   #styles: number[] = [];
 
   /** `onPolicy` hears the matching of a lane whenever the user changes it, for the workspace to keep. */
-  constructor(onPolicy: (lane: number, policy: LanePolicyWire) => void = () => {}) {
+  constructor(onPolicy: (slot: string, policy: LanePolicyWire) => void = () => {}) {
     this.#onPolicy = onPolicy;
   }
 
@@ -124,6 +124,7 @@ export class LaneSet {
       }
       return {
         label: lane.label,
+        slot: lane.slot,
         source: lane.source,
         status: lane.source === null ? "plain" : { status: "Loading" },
         settings,
@@ -196,7 +197,8 @@ export class LaneSet {
       policyRevision,
       problem: sent ? undefined : state.problem,
     }));
-    if (!samePolicy(settings, state.settings)) this.#onPolicy(lane, this.#wirePolicy(settings));
+    if (!samePolicy(settings, state.settings))
+      this.#onPolicy(state.slot, this.#wirePolicy(settings));
     return sent ? this.#policy(lane, policyRevision, settings) : undefined;
   }
 

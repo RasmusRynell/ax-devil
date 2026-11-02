@@ -86,7 +86,7 @@ with different annotation coverage stay aligned when playing, seeking and steppi
 video, and switching playlist entries changes their shared video. Each lane keeps its own catalog, filter and theme,
 also when two lanes show one overlay source (D24); zoom and pan are the viewer's (D31). OF-08 separately accepts export with that timing.
 Synchronized comparison of different recordings from the reference is a recorded reduction, not satisfied by
-independent viewers (see the OF-02 deviation in the new-tree `docs/parity.md`).
+independent viewers (see the OF-02 deviation in the new-tree `docs/parity-deviations.md`).
 
 ### Inspection and display
 

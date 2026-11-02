@@ -21,6 +21,8 @@ pub struct DecoderInfo {
     pub display_name: String,
     /// The file extensions it reads: lowercase, with the dot.
     pub extensions: Vec<String>,
+    /// The options it takes, in the order they are shown; empty for a decoder without any.
+    pub options: Vec<FieldInfo>,
     /// The id of the converter that provides it; absent for the built-in decoders.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
@@ -93,7 +95,7 @@ pub struct ResolverInfo {
     pub fields: Vec<FieldInfo>,
 }
 
-/// One setting of a resolver.
+/// One setting of a resolver or option of a decoder.
 #[derive(Serialize, Deserialize, TS)]
 pub struct FieldInfo {
     /// The key in the settings.
@@ -119,6 +121,11 @@ pub enum FieldKindWire {
     },
     /// Free text.
     Text,
+    /// A whole number of at least `min`.
+    Integer {
+        /// The smallest value allowed.
+        min: i64,
+    },
     /// One file decoder handler id, chosen from `HandlersInfo.decoders`.
     Handler,
     /// Several of the values a scan finds; absent means all of them.

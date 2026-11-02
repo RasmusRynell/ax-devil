@@ -1,10 +1,10 @@
 //! Converters: installed programs that turn an overlay file into Scenes.
 //!
 //! A converter is a folder with an `ax-devil-converter.json` manifest, listed in the user's registry file
-//! ([`Registry`]). [`load`] turns the registry into [`ConverterDecoder`]s, which `Handlers::with_file_decoders` adds
+//! ([`Registry`]). [`load`] turns the registry into [`ConverterDecoder`]s, which `Handlers::with_decoders` adds
 //! beside the built-in decoders. Running one starts its process, writes a request on stdin, reads JSON Lines from
 //! stdout into the decode's `SceneSink`, and kills its whole process group whenever the run ends. A failure keeps
-//! the samples already delivered: `decode_file` returns `Err` and the host, which counts the samples, marks the lane
+//! the samples already delivered: `decode` returns `Err` and the host, which counts the samples, marks the lane
 //! incomplete.
 
 mod code;
@@ -23,14 +23,14 @@ use std::{
     sync::Arc,
 };
 
-use scene_decoders::FileSceneDecoder;
+use handler_api::Decoder;
 
 pub use decoder::ConverterDecoder;
-pub use manifest::{MANIFEST_FILE, Manifest, ManifestError, OptionField, OptionKind};
+pub use manifest::{MANIFEST_FILE, Manifest, ManifestError};
 pub use registry::{Registry, RegistryError};
 
 /// The converter protocol version, the plugin API version: manifests must declare it and requests carry it.
-pub const PROTOCOL: u32 = 1;
+pub const PROTOCOL: u32 = 2;
 
 /// One registry entry after loading.
 pub struct Plugin {
@@ -49,12 +49,12 @@ pub struct Loaded {
 }
 
 impl Loaded {
-    /// The converters that loaded, for `Handlers::with_file_decoders`.
-    pub fn decoders(&self) -> Vec<Arc<dyn FileSceneDecoder>> {
+    /// The converters that loaded, for `Handlers::with_decoders`.
+    pub fn decoders(&self) -> Vec<Arc<dyn Decoder>> {
         self.plugins
             .iter()
             .filter_map(|plugin| plugin.decoder.as_ref().ok())
-            .map(|decoder| Arc::clone(decoder) as Arc<dyn FileSceneDecoder>)
+            .map(|decoder| Arc::clone(decoder) as Arc<dyn Decoder>)
             .collect()
     }
 }

@@ -18,8 +18,8 @@ const READY: LaneStatusWire = {
   mean_sample_bytes: 10,
   ingest: { state: "Complete" },
 };
-const DPM: LaneInfo = { label: "DPM", source: 0 };
-const TWO_LANES: LaneInfo[] = [DPM, { label: "GT", source: 1 }];
+const DPM: LaneInfo = { label: "DPM", slot: "DPM", source: 0 };
+const TWO_LANES: LaneInfo[] = [DPM, { label: "GT", slot: "GT", source: 1 }];
 const policies = (sent: ClientMessage[]) => sent.filter((message) => message.type === "LanePolicy");
 const catalogs = (sent: ClientMessage[]) => sent.filter((message) => message.type === "Catalog");
 
@@ -63,7 +63,7 @@ describe("lanes", () => {
 
   it("holds the revision each lane's catalog compiled from, plain lanes included, and carries the export socket's word to the export", async () => {
     const { session, server, sent } = await setup();
-    server.open(10, [DPM, { label: "v", source: null }]);
+    server.open(10, [DPM, { label: "v", slot: "v", source: null }]);
     expect(session.getSnapshot().lanes.map((lane) => lane.catalogRevision)).toEqual([
       undefined,
       undefined,
@@ -86,7 +86,7 @@ describe("lanes", () => {
 
   it("subscribes every source lane when the entry opens and again after a reconnection", async () => {
     const { session, server, sent, retries } = await setup();
-    server.open(10, [...TWO_LANES, { label: "v", source: null }]);
+    server.open(10, [...TWO_LANES, { label: "v", slot: "v", source: null }]);
     expect(policies(sent)).toMatchObject([
       { lane: 0, revision: 1, subscribed: true, policy: { tolerance_ms: 50 } },
       { lane: 1, revision: 1, subscribed: true },
@@ -95,7 +95,7 @@ describe("lanes", () => {
     server.drop();
     retries[0].run();
     await flush();
-    server.open(10, [...TWO_LANES, { label: "v", source: null }]);
+    server.open(10, [...TWO_LANES, { label: "v", slot: "v", source: null }]);
     expect(policies(sent).slice(3)).toMatchObject([
       { lane: 0, revision: 3, subscribed: false },
       { lane: 1, revision: 2, subscribed: true },
@@ -363,9 +363,9 @@ describe("lanes", () => {
     const { session, server, presented, refresh } = await setup();
     server.open(10, [
       DPM,
-      { label: "GT", source: 1 },
-      { label: "FRCNN", source: 2 },
-      { label: "v", source: null },
+      { label: "GT", slot: "GT", source: 1 },
+      { label: "FRCNN", slot: "FRCNN", source: 2 },
+      { label: "v", slot: "v", source: null },
     ]);
     server.status(1, { status: "Failed", code: "OverlayInvalid", params: {}, reason: "bad file" });
     server.status(2, READY);

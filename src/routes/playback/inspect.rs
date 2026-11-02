@@ -13,7 +13,7 @@ use api_types::{
 };
 use overlays::ViewerOverlays;
 use scene::inspection::{InspectionField, Leaf, MAX_FIELDS, entity_fields};
-use scene_store::{Track, TrackSnapshot};
+use scene_store::{TrackRead, TrackSnapshot};
 use serde_json::Value;
 use std::sync::Arc;
 use tokio::task::JoinHandle;
@@ -35,7 +35,7 @@ struct Job {
     request: Request,
     /// The sample's track, the snapshot its index is of and the frame it ranks by; `None` when the viewer does not
     /// hold it.
-    target: Option<(Arc<Track>, Arc<TrackSnapshot>, u64)>,
+    target: Option<(Arc<dyn TrackRead>, Arc<TrackSnapshot>, u64)>,
 }
 
 /// A viewer's inspections: one runs at a time, the newest request waits for it.

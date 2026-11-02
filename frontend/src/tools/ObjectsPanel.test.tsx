@@ -42,7 +42,7 @@ const file = (id: string, first: number, classes = ["car"]): FileRowWire => ({
 function mount(selection: PlaybackView["selection"] = null) {
   vi.useFakeTimers();
   const lanes = new LaneSet();
-  lanes.open([{ label: "DPM", source: 0 }], LANE_DEFAULTS);
+  lanes.open([{ label: "DPM", slot: "DPM", source: 0 }], LANE_DEFAULTS);
   lanes.setStatus(0, READY);
   const sent: ClientMessage[] = [];
   const files = new FileScope(

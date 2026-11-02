@@ -12,52 +12,60 @@ mod tree;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 
 use foundation::{CancelToken, Interrupt};
-use overlay_sync::MatchBasis;
+use handler_api::{
+    DecodeError, DecodeSummary, Decoder, Form, Framing, Input, OnEqualKey, SceneSink,
+    SkippedRecords, Spec, Values,
+};
 use quick_xml::{
     Reader,
     events::{BytesStart, Event},
 };
-use scene::{ClassType, Coverage, EntityId, Fields, Name, Value};
+use scene::{ClassType, Coverage, EntityId, Fields, MatchBasis, Name, Value};
 
-use crate::{
-    DecodeContext, DecodeError, DecodeSummary, DecoderSpec, FileSceneDecoder, OnEqualKey,
-    SceneSink, SkippedRecords, SourceFile, Storage,
-};
 use frames::{FrameAcc, Pending, filter_policy};
 use meta::Essentials;
 use shape::{Draw, FrameRef, ShapeHead, attr, classification_attributes, int};
 use tree::{Node, TreeBuilder};
 
-static SPEC: DecoderSpec = DecoderSpec {
-    plugin_id: "axis-cvat",
-    handler: "CVAT",
-    display_name: "CVAT",
-    extensions: &[".xml"],
-    artifact_version: 1,
-    storage: Storage::DerivedCache,
-    bases: &[MatchBasis::Frame],
-    default_basis: MatchBasis::Frame,
-};
-
 /// Events between two checks of the cancel token.
 const CANCEL_EVERY: usize = 4096;
 
 /// Reads CVAT annotation XML.
-pub struct CvatDecoder;
+pub struct CvatDecoder {
+    spec: Spec,
+}
 
-impl FileSceneDecoder for CvatDecoder {
-    fn spec(&self) -> &'static DecoderSpec {
-        &SPEC
+impl CvatDecoder {
+    pub(crate) fn new() -> Self {
+        Self {
+            spec: Spec {
+                id: "CVAT".to_owned(),
+                plugin: "axis-cvat".to_owned(),
+                name: "CVAT".to_owned(),
+                extensions: vec![".xml".to_owned()],
+                framing: Framing::Whole,
+                bases: vec![MatchBasis::Frame],
+                default_basis: MatchBasis::Frame,
+                options: Form::default(),
+                version: 1,
+            },
+        }
+    }
+}
+
+impl Decoder for CvatDecoder {
+    fn spec(&self) -> &Spec {
+        &self.spec
     }
 
-    fn decode_file(
+    fn decode(
         &self,
-        source: &dyn SourceFile,
-        _context: &DecodeContext<'_>,
+        input: &mut dyn Input,
+        _options: &Values,
         sink: &mut dyn SceneSink,
         cancel: &CancelToken,
     ) -> Result<DecodeSummary, Interrupt<DecodeError>> {
-        let input = source.bytes(cancel)?;
+        let input = input.next(cancel)?.map_or(&[][..], |record| record.bytes);
         let mut parser = Parser::default();
         let mut reader = Reader::from_reader(input);
         reader.config_mut().expand_empty_elements = true;

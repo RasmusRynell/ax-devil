@@ -146,13 +146,13 @@ pub enum DocCommand {
         hidden: bool,
     },
     /// Sets how a lane matches its file's records to frames, in the item's recipe, so a saved workspace keeps it.
-    /// Does nothing for an unknown item or a lane its recipe has no overlay for, and resolves nothing: the Content
-    /// does not depend on it.
+    /// Does nothing for an unknown item or a slot no entry of its resolved Content has, and resolves nothing: the
+    /// Content does not depend on it.
     SetLaneMatching {
         /// The item.
         item: ItemId,
-        /// The lane's position in the entry.
-        lane: u16,
+        /// The lane's slot, which names it in every entry.
+        slot: String,
         /// The lane's matching.
         matching: MatchPolicy,
     },
@@ -212,25 +212,22 @@ pub fn apply(state: &WorkspaceState, command: DocCommand) -> (WorkspaceState, Ve
         }
         DocCommand::SetLaneMatching {
             item,
-            lane,
+            slot,
             matching,
         } => {
-            let recipe = next
-                .workspace
-                .items
-                .iter_mut()
-                .find(|existing| existing.id == item)
-                .map(|existing| &mut existing.recipe);
-            match recipe {
-                Some(Recipe::Video(video)) => {
-                    if let Some(overlay) = video.overlays.get_mut(usize::from(lane)) {
-                        overlay.matching = Some(matching);
-                    }
-                }
-                Some(Recipe::Playlist(playlist)) => {
-                    playlist.lane_matching.insert(lane, matching);
-                }
-                None => {}
+            let has_slot = matches!(
+                next.resolutions.get(&item),
+                Some(Resolution::Resolved { content, .. })
+                    if content.entries().iter().any(|entry| entry.lane_slots().contains(&slot.as_str()))
+            );
+            if has_slot
+                && let Some(existing) = next
+                    .workspace
+                    .items
+                    .iter_mut()
+                    .find(|existing| existing.id == item)
+            {
+                existing.recipe.lane_matching.insert(slot, matching);
             }
         }
     }

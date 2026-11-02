@@ -4,7 +4,7 @@
   "id": "shell-times",
   "name": "Shell times (text)",
   "version": "1.0.0",
-  "protocol": 1,
+  "protocol": 2,
   "scene_version": "4.0",
   "extensions": [".times.txt"],
   "bases": ["time", "frame"],

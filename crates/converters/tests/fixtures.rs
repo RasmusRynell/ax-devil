@@ -12,8 +12,8 @@ use std::{
 use common::{TestSink, decode};
 use converters::ConverterDecoder;
 use foundation::CancelToken;
+use handler_api::{OnEqualKey, Settings};
 use scene::{Coverage, Geometry, Operation, SceneTime, TimeKind, Value};
-use scene_decoders::{DecodeOptions, OnEqualKey};
 
 fn fixture(name: &str) -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -54,7 +54,7 @@ fn the_python_converter_gives_the_model_everything_it_covers() {
     if !python_available() {
         return;
     }
-    let mut options = DecodeOptions::new();
+    let mut options = Settings::new();
     options.insert("camera".to_owned(), "rear".into());
     options.insert("not_declared".to_owned(), "x".into());
     let run = decode(
@@ -111,22 +111,11 @@ fn the_python_converter_gives_the_model_everything_it_covers() {
         matches!(&renamed[0].operation, Operation::Rename { from, to } if from == "1" && to == "9")
     );
 
-    let [undeclared, skipped] = &run.sink.warnings[..] else {
-        panic!("{:?}", run.sink.warnings)
-    };
-    assert!(undeclared.reasons == ["'not_declared'"]);
-    assert_eq!(skipped.problem, "Skipped 2 of 7 records");
-    assert!(
-        skipped.reasons[0].starts_with("row 6:"),
-        "{:?}",
-        skipped.reasons
-    );
-    // A truncated row is skipped like a malformed one; it does not end the converter.
-    assert!(
-        skipped.reasons[1].starts_with("row 8:"),
-        "{:?}",
-        skipped.reasons
-    );
+    // A malformed row and a truncated one are skipped; neither ends the converter.
+    let skips = &run.sink.skips;
+    assert_eq!(skips.len(), 2, "{skips:?}");
+    assert!(skips[0].1.starts_with("row 6:"), "{skips:?}");
+    assert!(skips[1].1.starts_with("row 8:"), "{skips:?}");
 }
 
 #[test]
@@ -134,7 +123,7 @@ fn the_shell_converter_emits_times_out_of_order_and_a_replace() {
     let run = decode(
         &decoder("shell-times"),
         &fixture("shell-times/sample.times.txt"),
-        &DecodeOptions::new(),
+        &Settings::new(),
         &CancelToken::new(),
         TestSink::default(),
     );

@@ -13,22 +13,17 @@ use std::{
 };
 
 use foundation::CancelToken;
+use handler_api::OverlayRef;
 use handlers::Handlers;
-use playlist_resolvers::OverlayRef;
 use scene::serial::columns::encode_sample_item;
-use scene_store::TrackRegistry;
+use scene_store::{TrackRead, TrackRegistry};
 
 const SIZES: [usize; 4] = [1, 100, 1000, 5000];
 const RUNS: usize = 100;
 
 fn main() {
     let dir = tempfile::tempdir().expect("temp dir");
-    std::fs::write(
-        dir.path().join("seqinfo.ini"),
-        "[Sequence]\nframeRate=30\nseqLength=1\nimWidth=1920\nimHeight=1080\n",
-    )
-    .expect("write seqinfo.ini");
-    let registry = TrackRegistry::new(Handlers::built_in(), None);
+    let registry = TrackRegistry::new(Handlers::built_in().decoder_lookup(), None);
     println!("{RUNS} runs, median per item");
     for objects in SIZES {
         let path = dir.path().join(format!("det-{objects}.txt"));
@@ -46,9 +41,13 @@ fn main() {
         std::fs::write(&path, text).expect("write det.txt");
         let overlay = OverlayRef {
             label: "det".into(),
+            slot: "det".into(),
             path,
             handler: "MOT_FILE".into(),
-            options: serde_json::Map::new(),
+            options: serde_json::Map::from_iter([
+                ("width".to_owned(), 1920.into()),
+                ("height".to_owned(), 1080.into()),
+            ]),
         };
         let track = registry
             .open(&overlay, &CancelToken::new())

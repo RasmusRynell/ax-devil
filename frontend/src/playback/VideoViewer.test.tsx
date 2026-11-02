@@ -201,8 +201,8 @@ describe("video viewer", () => {
 
   describe("lanes", () => {
     const LANES: LaneInfo[] = [
-      { label: "DPM", source: 0 },
-      { label: "GT", source: 1 },
+      { label: "DPM", slot: "DPM", source: 0 },
+      { label: "GT", slot: "GT", source: 1 },
     ];
     const mountLanes = async (
       onHideLane?: (label: string) => void,
@@ -267,7 +267,10 @@ describe("video viewer", () => {
         subscribed: true,
       });
       expect(onLaneMatching).toHaveBeenCalledTimes(1);
-      expect(onLaneMatching).toHaveBeenCalledWith(1, (sent.at(-1) as { policy: unknown }).policy);
+      expect(onLaneMatching).toHaveBeenCalledWith(
+        "GT",
+        (sent.at(-1) as { policy: unknown }).policy,
+      );
     });
 
     it("hides a lane through the callback it is given, and offers no hiding without one", async () => {

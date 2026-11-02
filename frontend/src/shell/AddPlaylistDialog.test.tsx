@@ -6,7 +6,9 @@ import { SessionProvider } from "../session/session";
 import { AddPlaylistDialog } from "./AddPlaylistDialog";
 
 const HANDLERS: HandlersInfo = {
-  decoders: [{ handler: "MOT_FILE", display_name: "MOT Annotations", extensions: [".txt"] }],
+  decoders: [
+    { handler: "MOT_FILE", display_name: "MOT Annotations", extensions: [".txt"], options: [] },
+  ],
   resolvers: [
     {
       id: "mot_challenge",

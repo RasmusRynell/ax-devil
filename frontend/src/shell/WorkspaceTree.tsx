@@ -11,6 +11,8 @@ import type { IconName } from "../kit/icons";
 import { Icon } from "../kit/Icon";
 import { IconButton } from "../kit/IconButton";
 import { Menu, type MenuCommand, type MenuEntry } from "../kit/Menu";
+import { NoticeList, noticeOf } from "../kit/NoticeList";
+import { Popover } from "../kit/Popover";
 import { Popup } from "../kit/Popup";
 import { Switch } from "../kit/Switch";
 import { useCan, useCommand, useDoc } from "../session/session";
@@ -29,14 +31,15 @@ function iconOf({ info, playlist }: TreeRow): IconName {
 
 const NOTHING_CHECKED: ReadonlySet<string> = new Set();
 
-/** Why a row cannot be opened as it is, for assistive technology and the tooltip. */
+/** Why a row cannot be opened as it is or what resolving left out, for assistive technology and the tooltip. */
 function noteOf({ info, dimmed }: TreeRow): string {
   const { status } = info.status;
   // A seat that may not read the host's failures is told the failure, not why.
   if (status === "Unavailable")
     return info.status.reason ? `unavailable: ${info.status.reason}` : "unavailable";
   if (status === "Pending") return "opening";
-  return dimmed ? "hidden" : "";
+  const warned = info.warnings.map(({ problem }) => problem).join("; ");
+  return [dimmed ? "hidden" : "", warned].filter(Boolean).join(", ");
 }
 
 /**
@@ -235,6 +238,17 @@ export function WorkspaceTree() {
                   <Icon name={iconOf(row)} />
                   <span className="min-w-0 flex-1 truncate">{info.label}</span>
                   {note && <span className="sr-only">{`, ${note}`}</span>}
+                  {info.warnings.length > 0 && (
+                    <span onClick={(event) => event.stopPropagation()}>
+                      <Popover
+                        label={`${info.label}: warnings`}
+                        trigger={<Icon name="triangle-alert" />}
+                        className="size-row justify-center"
+                      >
+                        <NoticeList notices={info.warnings.map(noticeOf)} />
+                      </Popover>
+                    </span>
+                  )}
                   {row.target && (
                     <IconButton
                       icon={info.hidden ? "eye" : "eye-off"}

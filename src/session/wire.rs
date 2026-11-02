@@ -72,10 +72,10 @@ fn doc_command(wire: api_types::DocCommand, handlers: &Handlers) -> Result<DocCo
             target: hidden_ref(target),
             hidden,
         },
-        api_types::DocCommand::SetLaneMatching { item, lane, policy } => {
+        api_types::DocCommand::SetLaneMatching { item, slot, policy } => {
             DocCommand::SetLaneMatching {
                 item,
-                lane,
+                slot,
                 matching: policy_from_wire(policy).map_err(|reason| {
                     tracing::debug!("A lane matching was refused: {reason}");
                     Refusal::Invalid
@@ -95,6 +95,7 @@ fn intake(new: &NewItem, handlers: &Handlers) -> Result<WorkspaceItem, foundatio
                     path: overlay.path.clone().into(),
                     handler: overlay.handler.clone(),
                     label: overlay.label.clone(),
+                    options: overlay.options.clone(),
                 })
                 .collect();
             workspace::intake::video(Path::new(path), &overlays, handlers)

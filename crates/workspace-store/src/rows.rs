@@ -1,6 +1,6 @@
 //! The sidebar's rows: one projection of a workspace state.
 
-use foundation::UserError;
+use foundation::{UserError, Warning};
 use workspace::{Content, ContentId};
 
 use crate::{HiddenRef, Resolution, WorkspaceState};
@@ -42,6 +42,8 @@ pub struct Row {
     pub hidden: bool,
     /// The entry that opening the row opens.
     pub entry: Option<ContentId>,
+    /// What resolving left out of an item's Content; empty for entries and lanes.
+    pub warnings: Vec<Warning>,
 }
 
 /// The rows of `state` in tree order: each item, then for a playlist its entries, each followed by its lanes.
@@ -70,6 +72,7 @@ pub fn rows(state: &WorkspaceState) -> Vec<Row> {
             entry: content
                 .and_then(|content| content.entries().first())
                 .map(|entry| entry.id.clone()),
+            warnings: content.map_or_else(Vec::new, |content| content.warnings().to_vec()),
         });
         let Some(content) = content else {
             continue;
@@ -83,6 +86,7 @@ pub fn rows(state: &WorkspaceState) -> Vec<Row> {
                     status: RowStatus::Ready,
                     hidden: state.is_hidden(&HiddenRef::Entry(entry.id.clone())),
                     entry: Some(entry.id.clone()),
+                    warnings: Vec::new(),
                 });
             }
             for overlay in &entry.overlays {
@@ -94,6 +98,7 @@ pub fn rows(state: &WorkspaceState) -> Vec<Row> {
                     hidden: state
                         .is_hidden(&HiddenRef::Lane(entry.id.clone(), overlay.label.clone())),
                     entry: Some(entry.id.clone()),
+                    warnings: Vec::new(),
                 });
             }
         }
@@ -165,6 +170,12 @@ mod tests {
             )
             .unwrap();
         }
+        fs::create_dir_all(root.join("SEQ-03")).unwrap();
+        fs::write(
+            root.join("SEQ-03/seqinfo.ini"),
+            "[Sequence]\nimWidth=wide\n",
+        )
+        .unwrap();
     }
 
     fn summary(rows: &[Row]) -> Vec<(RowKind, &str, bool)> {
@@ -190,6 +201,10 @@ mod tests {
                 path: gt,
                 handler: None,
                 label: None,
+                options: [("width", 64), ("height", 48)]
+                    .map(|(key, size)| (key.to_owned(), size.into()))
+                    .into_iter()
+                    .collect(),
             }],
             &handlers,
         )
@@ -231,6 +246,17 @@ mod tests {
             "the item opens its first entry"
         );
         assert_eq!(listed[4].entry, Some(first.clone()));
+        assert_eq!(
+            listed[2].warnings.len(),
+            1,
+            "the skipped sequence is warned of"
+        );
+        assert!(
+            listed
+                .iter()
+                .enumerate()
+                .all(|(at, row)| at == 2 || row.warnings.is_empty())
+        );
         let keys: HashSet<_> = listed.iter().map(|row| &row.key).collect();
         assert_eq!(keys.len(), listed.len(), "keys are unique");
 

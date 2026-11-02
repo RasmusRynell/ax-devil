@@ -1,6 +1,6 @@
 use super::*;
 use serde_json::{Value, json};
-use workspace::Recipe;
+use workspace::Source;
 
 fn parse(args: &[&str]) -> Result<Cli, clap::Error> {
     args::try_parse_from(
@@ -112,6 +112,10 @@ fn local_pairs_overlays_with_handlers_in_order_or_leaves_them_all_to_the_extensi
         &video,
         "--overlay",
         &tracks,
+        "--overlay-option",
+        "width=64",
+        "--overlay-option",
+        "height=48",
         "--overlay",
         &onvif,
         "--handler-type",
@@ -119,7 +123,7 @@ fn local_pairs_overlays_with_handlers_in_order_or_leaves_them_all_to_the_extensi
         "--handler-type",
         "ONVIF_XML",
     ])[0];
-    let Recipe::Video(recipe) = &item.recipe else {
+    let Source::Video(recipe) = &item.recipe.source else {
         panic!("local opens a video");
     };
     assert_eq!(item.label, "a.mp4");
@@ -138,8 +142,19 @@ fn local_pairs_overlays_with_handlers_in_order_or_leaves_them_all_to_the_extensi
         [(tracks.as_str(), "MOT_FILE"), (onvif.as_str(), "ONVIF_XML")]
     );
 
-    let Recipe::Video(recipe) =
-        &items(&["local", "--video", &video, "--overlay", &tracks])[0].recipe
+    let Source::Video(recipe) = &items(&[
+        "local",
+        "--video",
+        &video,
+        "--overlay",
+        &tracks,
+        "--overlay-option",
+        "width=64",
+        "--overlay-option",
+        "height=48",
+    ])[0]
+        .recipe
+        .source
     else {
         panic!("local opens a video");
     };
@@ -180,9 +195,59 @@ fn local_pairs_overlays_with_handlers_in_order_or_leaves_them_all_to_the_extensi
 }
 
 #[test]
+fn an_overlay_option_belongs_to_the_nearest_preceding_overlay_and_is_typed_by_its_decoder() {
+    let args = |first: &[&'static str]| {
+        let head = ["local", "--video", "a.mp4", "--overlay", "x.txt"];
+        let tail = [
+            "--overlay",
+            "y.txt",
+            "--overlay-option",
+            "width=32",
+            "--overlay-option",
+            "height=24",
+        ];
+        [&head[..], first, &tail[..]].concat()
+    };
+    let both = args(&[
+        "--overlay-option",
+        "width=64",
+        "--overlay-option",
+        "height=48",
+    ]);
+    let [item] = &mut items(&both)[..] else {
+        panic!("local opens one video");
+    };
+    let Source::Video(recipe) = &item.recipe.source else {
+        panic!("local opens a video");
+    };
+    assert_eq!(
+        recipe.overlays[0].options["width"], 64,
+        "a number, as the decoder declares"
+    );
+    assert_eq!(recipe.overlays[0].options["height"], 48);
+    assert_eq!(recipe.overlays[1].options["width"], 32);
+
+    let early = [
+        "local",
+        "--overlay-option",
+        "width=1",
+        "--video",
+        "a.mp4",
+        "--overlay",
+        "x.txt",
+    ];
+    assert!(parse(&early).is_err(), "no overlay precedes it");
+    let missing = launch_items(parse(&args(&[])).unwrap().command, &Handlers::built_in());
+    assert!(
+        missing.unwrap_err().starts_with("width:"),
+        "the missing option is named"
+    );
+}
+
+#[test]
 fn a_playlist_command_line_becomes_the_item_the_dialog_would_add() {
     let items = items(&["playlist", "mot_challenge", "/data/mot"]);
-    let Recipe::Playlist(recipe) = &items[0].recipe else {
+    let Source::Playlist(recipe) = &items[0].recipe.source else {
         panic!("playlist opens a playlist");
     };
     assert_eq!(recipe.resolver, "mot_challenge");

@@ -12,12 +12,11 @@ use std::{
     time::Instant,
 };
 
-use foundation::{CancelToken, Timeline, UserError};
+use foundation::{CancelToken, Timeline, UserError, Warning};
+use handler_api::OverlayRef;
 use overlay_sync::Alignment;
 use playback::{FrameSet, Want};
-use playlist_resolvers::OverlayRef;
-use scene_decoders::LoadWarning;
-use scene_store::{Track, TrackSnapshot};
+use scene_store::{TrackRead, TrackSnapshot};
 use tokio::sync::Notify;
 
 use crate::{LanePolicy, LaneStatus, OverlayEvent, SampleItem, data::LaneWindow, ingest::Aligned};
@@ -102,7 +101,7 @@ pub(crate) struct State {
 pub(crate) enum Load {
     Loading,
     /// The track, and the snapshot of it the lanes' maps and the sample window were last made from.
-    Ready(Arc<Track>, Arc<TrackSnapshot>),
+    Ready(Arc<dyn TrackRead>, Arc<TrackSnapshot>),
     Failed,
 }
 
@@ -121,7 +120,7 @@ pub(crate) struct Lane {
     /// The alignment and warning last computed for the lane's file and policy.
     pub(crate) aligned: Option<Aligned>,
     /// The alignment and warning in the last status queued for the lane.
-    pub(crate) told: Option<(Alignment, Option<LoadWarning>)>,
+    pub(crate) told: Option<(Alignment, Option<Warning>)>,
 }
 
 /// One overlay file of a viewer, shared by every lane that draws it.
@@ -260,7 +259,7 @@ impl State {
     pub(crate) fn finish_load(
         &mut self,
         source: usize,
-        result: Result<(Arc<Track>, u32), UserError>,
+        result: Result<(Arc<dyn TrackRead>, u32), UserError>,
         timeline: &Timeline,
     ) {
         if self.closed || source >= self.sources.len() {

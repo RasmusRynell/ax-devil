@@ -15,9 +15,9 @@ use api_types::{
 };
 use ax_devil::{AppState, access::Policy, app, video_sources::VideoSources};
 use futures_util::{SinkExt, StreamExt};
+use handler_api::Settings;
 use handlers::Handlers;
 use playback::{CachePool, Registry};
-use playlist_resolvers::Settings;
 use sessions::{
     CursorOptions,
     session::{Command, ContentRef, Handle, Reply},
@@ -34,6 +34,17 @@ use tokio::net::TcpStream;
 use tokio_tungstenite::{MaybeTlsStream, WebSocketStream, tungstenite::Message};
 use workspace::{Content, ContentId, WorkspaceItem, intake::NewOverlay};
 use workspace_store::{DocCommand, Resolution};
+
+/// The image size in pixels the MOT files of these tests are measured in.
+pub const MOT_SIZE: (u32, u32) = (1920, 1080);
+
+/// The options of a MOT file measured in `width` by `height` pixels.
+pub fn mot_options((width, height): (u32, u32)) -> Settings {
+    Settings::from_iter([
+        ("width".to_owned(), width.into()),
+        ("height".to_owned(), height.into()),
+    ])
+}
 
 /// Bounds every wait, so a broken backend fails the test instead of hanging it.
 pub const WAIT: Duration = Duration::from_secs(20);
@@ -156,16 +167,10 @@ impl Backend {
         }
     }
 
-    /// A MOT ground-truth file with `rows`, in a sequence folder with the `seqinfo.ini` its decoder reads the image
-    /// size from (`<folder>/SEQ/gt/gt.txt`).
+    /// A MOT ground-truth file with `rows` (`<folder>/SEQ/gt/gt.txt`), measured in [`MOT_SIZE`].
     pub fn mot_file(&self, rows: &str) -> PathBuf {
         let sequence = self.folder.path().join("SEQ");
         std::fs::create_dir_all(sequence.join("gt")).unwrap();
-        std::fs::write(
-            sequence.join("seqinfo.ini"),
-            "[Sequence]\nframeRate=30\nseqLength=100\nimWidth=1920\nimHeight=1080\n",
-        )
-        .unwrap();
         let gt = sequence.join("gt").join("gt.txt");
         std::fs::write(&gt, rows).unwrap();
         gt
@@ -176,7 +181,8 @@ impl Backend {
         self.add_with_overlays(path, &[]).await
     }
 
-    /// Like [`Backend::add`], with one lane per overlay file, each read by the decoder its extension names.
+    /// Like [`Backend::add`], with one lane per overlay file, each read by the decoder its extension names. A `.txt`
+    /// file is MOT, whose decoder needs the image size its boxes are measured in: [`MOT_SIZE`].
     pub async fn add_with_overlays(&self, path: &Path, overlays: &[PathBuf]) -> Added {
         let overlays: Vec<_> = overlays
             .iter()
@@ -184,6 +190,11 @@ impl Backend {
                 path: path.clone(),
                 handler: None,
                 label: None,
+                options: if path.extension().is_some_and(|extension| extension == "txt") {
+                    mot_options(MOT_SIZE)
+                } else {
+                    Settings::new()
+                },
             })
             .collect();
         let item = workspace::intake::video(path, &overlays, &self.state.handlers).unwrap();

@@ -1,21 +1,18 @@
 //! The CVAT decoder, through the registry as the host uses it.
 
 use foundation::{CancelToken, Interrupt};
+use handler_api::{DecodeSummary, Settings};
 use scene::{Classification, Coverage, Geometry, Scene, Value};
-use scene_decoders::{DecodeContext, DecodeOptions, DecodeSummary, file_decoder};
 
 mod common;
 
 const SAMPLE: &str = include_str!("../../../fixtures/decoders/cvat/sample.xml");
 
 fn try_decode(xml: &str) -> Result<(Vec<Scene>, DecodeSummary), String> {
-    let decoder = file_decoder("CVAT").expect("the CVAT decoder is built in");
     match common::run(
-        decoder,
+        &*common::decoder("CVAT"),
         xml.as_bytes(),
-        &DecodeContext {
-            options: &DecodeOptions::new(),
-        },
+        &Settings::new(),
         &CancelToken::new(),
     ) {
         (scenes, Ok(summary)) => Ok((scenes, summary)),

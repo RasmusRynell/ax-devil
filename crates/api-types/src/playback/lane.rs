@@ -1,6 +1,7 @@
 //! Wire types of a lane: how it selects samples, what it offers and where its overlay load stands.
 
 use crate::ErrorWire;
+use foundation::Warning;
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
@@ -48,6 +49,8 @@ pub struct LaneDefaultsWire {
 pub struct LaneInfo {
     /// The lane's name.
     pub label: String,
+    /// The lane's identity within the entry, which the workspace keeps its matching under.
+    pub slot: String,
     /// The viewer's id of the source the lane draws; `null` for a plain lane. Lanes on the same file share one.
     pub source: Option<u16>,
     /// How the workspace says the lane matches its records to frames; absent is the defaults. The viewer starts the
@@ -79,6 +82,17 @@ pub struct WarningInfo {
     pub consequence: String,
     /// Whether more reasons exist than are listed.
     pub more_reasons: bool,
+}
+
+impl From<Warning> for WarningInfo {
+    fn from(warning: Warning) -> Self {
+        Self {
+            problem: warning.problem,
+            reasons: warning.reasons,
+            consequence: warning.consequence,
+            more_reasons: warning.more_reasons,
+        }
+    }
 }
 
 /// Where a lane's load stands.

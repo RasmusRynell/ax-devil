@@ -2,11 +2,10 @@
 
 use std::{ops::RangeInclusive, sync::Arc};
 
-use foundation::UserError;
+use foundation::{UserError, Warning};
 use overlay_sync::{Alignment, MatchBasis, MatchPolicy};
 use scene::FilterPolicy;
-use scene_decoders::LoadWarning;
-use scene_store::{Ingest, Track, TrackSnapshot};
+use scene_store::{Ingest, TrackRead, TrackSnapshot};
 
 /// How a lane selects samples for frames, and whether it wants any; the part of a lane's settings the backend needs.
 /// Session state of the viewer's socket.
@@ -33,13 +32,13 @@ pub enum LaneStatus {
 #[derive(Clone, Debug, PartialEq)]
 pub struct LaneReady {
     /// The bases the file's records can be matched by.
-    pub bases: &'static [MatchBasis],
+    pub bases: Vec<MatchBasis>,
     /// The basis the decoder recommends, one of `bases`.
     pub default_basis: MatchBasis,
     /// The class filters the file's content calls for.
     pub filter: FilterPolicy,
     /// Problems the decoder reported, and a misalignment with the video's frames.
-    pub warnings: Vec<LoadWarning>,
+    pub warnings: Vec<Warning>,
     /// How the samples line up with the video's frames under the lane's basis and tolerance; `None` until the file
     /// is read.
     pub alignment: Option<Alignment>,
@@ -87,7 +86,7 @@ pub struct LaneSnapshot {
 #[derive(Clone)]
 pub struct SourceSnapshot {
     /// The decoded file.
-    pub track: Arc<Track>,
+    pub track: Arc<dyn TrackRead>,
     /// The source's revision.
     pub data_revision: u32,
     /// The file as the lane held it, which numbers the samples of the revision.

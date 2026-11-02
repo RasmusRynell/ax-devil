@@ -27,19 +27,18 @@ async fn viewer(folder: &Path) -> (ViewerOverlays, u32) {
         .flat_map(|frame| (1..=2).map(move |id| format!("{frame},{id},10,10,20,20,1,1,1\n")))
         .collect();
     std::fs::write(&gt, rows).unwrap();
-    std::fs::write(
-        folder.join("seqinfo.ini"),
-        "[Sequence]\nframeRate=30\nseqLength=90\nimWidth=64\nimHeight=48\n",
-    )
-    .unwrap();
     let overlay = OverlayRef {
         label: "GT".into(),
+        slot: "GT".into(),
         path: gt,
         handler: "MOT_FILE".into(),
-        options: Default::default(),
+        options: handler_api::Settings::from_iter([
+            ("width".to_owned(), 64.into()),
+            ("height".to_owned(), 48.into()),
+        ]),
     };
     let service = OverlayService::new(scene_store::TrackRegistry::new(
-        handlers::Handlers::built_in(),
+        handlers::Handlers::built_in().decoder_lookup(),
         None,
     ));
     let mut viewer = service.open_viewer(vec![Some(overlay)], timeline(), SAMPLE_BUDGET);

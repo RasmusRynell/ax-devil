@@ -27,6 +27,7 @@ const READY: LaneStatusWire = {
 
 const lane = (label: string, state: Partial<LaneState>): LaneState => ({
   label,
+  slot: label,
   source: null,
   status: "plain",
   settings: LANE_SETTINGS,

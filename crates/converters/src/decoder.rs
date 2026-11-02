@@ -1,4 +1,4 @@
-//! A converter as a [`FileSceneDecoder`]: the handler the rest of the app picks by extension or id.
+//! A converter as a [`Decoder`]: the handler the rest of the app picks by extension or id.
 
 use std::{
     path::{Path, PathBuf},
@@ -6,49 +6,38 @@ use std::{
 };
 
 use foundation::{CancelToken, Interrupt};
+use handler_api::{DecodeError, DecodeSummary, Decoder, Framing, Input, SceneSink, Spec, Values};
 use scene::{Coverage, Fields, FilterPolicy};
-use scene_decoders::{
-    DecodeContext, DecodeError, DecodeOptions, DecodeSummary, DecoderSpec, FileSceneDecoder,
-    LoadWarning, SceneSink, SourceFile, Storage,
-};
-use serde_json::{Value, json};
+use serde_json::json;
 
 use crate::{
     PROTOCOL, code,
     manifest::{Manifest, ManifestError},
-    run::{self, End, Spec},
+    run::{self, End},
 };
 
-/// A file decoder that runs an installed converter process.
+/// A decoder that runs an installed converter process.
 pub struct ConverterDecoder {
     manifest: Manifest,
-    spec: &'static DecoderSpec,
+    spec: Spec,
     /// The files the identity hashes, as last seen, with their hash.
     code: Mutex<Option<(Vec<code::CodeFile>, [u8; 32])>>,
 }
 
 impl ConverterDecoder {
     /// The decoder for a validated manifest.
-    ///
-    /// The [`DecoderSpec`] must be `'static`, so its text is leaked: once per converter loaded, which the
-    /// registry bounds.
     pub fn new(manifest: Manifest) -> Self {
-        let extensions: Vec<&'static str> = manifest
-            .extensions
-            .iter()
-            .map(|extension| &*Box::leak(extension.clone().into_boxed_str()))
-            .collect();
-        let leak = |text: &str| -> &'static str { Box::leak(text.to_owned().into_boxed_str()) };
-        let spec = Box::leak(Box::new(DecoderSpec {
-            plugin_id: leak(&manifest.id),
-            handler: leak(&manifest.id),
-            display_name: leak(&manifest.name),
-            extensions: Box::leak(extensions.into_boxed_slice()),
-            artifact_version: 1,
-            storage: Storage::DerivedCache,
-            bases: Box::leak(manifest.bases.clone().into_boxed_slice()),
+        let spec = Spec {
+            id: manifest.id.clone(),
+            plugin: manifest.id.clone(),
+            name: manifest.name.clone(),
+            extensions: manifest.extensions.clone(),
+            framing: Framing::Whole,
+            bases: manifest.bases.clone(),
             default_basis: manifest.default_basis,
-        }));
+            options: manifest.options.clone(),
+            version: 1,
+        };
         Self {
             manifest,
             spec,
@@ -85,77 +74,23 @@ impl ConverterDecoder {
         *memo = Some((files, hash));
         Ok(hash)
     }
-
-    /// The options the converter receives for `given`: its declared keys only, defaults filled in. An explicit
-    /// default and an omitted key give the same result, so they share an artifact.
-    pub fn declared_options(&self, given: &DecodeOptions) -> Result<DecodeOptions, DecodeError> {
-        let mut options = DecodeOptions::new();
-        for field in &self.manifest.options {
-            let value = match given.get(&field.key) {
-                None | Some(Value::Null) => field.default.clone(),
-                Some(Value::String(text)) => Some(text.clone()),
-                Some(_) => {
-                    return Err(DecodeError(format!(
-                        "The option '{}' must be text",
-                        field.label
-                    )));
-                }
-            };
-            match value {
-                Some(value) if !(field.required && value.is_empty()) => {
-                    options.insert(field.key.clone(), Value::String(value));
-                }
-                _ if field.required => {
-                    return Err(DecodeError(format!(
-                        "The option '{}' is required",
-                        field.label
-                    )));
-                }
-                _ => {}
-            }
-        }
-        Ok(options)
-    }
-
-    fn undeclared(&self, given: &DecodeOptions) -> Option<LoadWarning> {
-        let keys: Vec<&String> = given
-            .keys()
-            .filter(|key| !self.manifest.options.iter().any(|field| &field.key == *key))
-            .collect();
-        (!keys.is_empty()).then(|| LoadWarning {
-            problem: format!("{} does not take some of the options", self.manifest.name),
-            reasons: keys.iter().take(3).map(|key| format!("'{key}'")).collect(),
-            consequence: "They were not passed to it.".to_owned(),
-            more_reasons: keys.len() > 3,
-        })
-    }
 }
 
-impl FileSceneDecoder for ConverterDecoder {
-    fn spec(&self) -> &'static DecoderSpec {
-        self.spec
+impl Decoder for ConverterDecoder {
+    fn spec(&self) -> &Spec {
+        &self.spec
     }
 
-    /// A converter whose files cannot be hashed has no identity (`None`), and then [`decode_file`] refuses to run
-    /// it, so nothing is built or cached under a missing identity.
-    ///
-    /// [`decode_file`]: FileSceneDecoder::decode_file
+    /// A converter whose files cannot be hashed has no identity (`None`), and then [`decode`](Decoder::decode)
+    /// refuses to run it, so nothing is built or cached under a missing identity.
     fn code_hash(&self) -> Option<[u8; 32]> {
         ConverterDecoder::code_hash(self).ok()
     }
 
-    fn declared_options(
+    fn decode(
         &self,
-        _path: &Path,
-        options: &DecodeOptions,
-    ) -> Result<DecodeOptions, DecodeError> {
-        ConverterDecoder::declared_options(self, options)
-    }
-
-    fn decode_file(
-        &self,
-        source: &dyn SourceFile,
-        context: &DecodeContext<'_>,
+        input: &mut dyn Input,
+        options: &Values,
         sink: &mut dyn SceneSink,
         cancel: &CancelToken,
     ) -> Result<DecodeSummary, Interrupt<DecodeError>> {
@@ -163,14 +98,13 @@ impl FileSceneDecoder for ConverterDecoder {
         let failed = |reason: String| Interrupt::Failed(DecodeError(reason));
         ConverterDecoder::code_hash(self)
             .map_err(|error| failed(format!("The converter's files cannot be read: {error}")))?;
-        let options = self
-            .declared_options(context.options)
-            .map_err(Interrupt::Failed)?;
-        if let Some(warning) = self.undeclared(context.options) {
-            sink.warn(warning);
-        }
+        let Some(file) = input.path() else {
+            return Err(failed(
+                "A converter reads a file, not a live source".to_owned(),
+            ));
+        };
         // The converter works in a folder of its own, so the path it is given must not depend on ours.
-        let overlay: PathBuf = std::path::absolute(source.path())
+        let overlay: PathBuf = std::path::absolute(file)
             .map_err(|error| failed(format!("Cannot resolve the overlay path: {error}")))?;
         let Some(overlay_text) = overlay.to_str() else {
             return Err(failed(
@@ -180,8 +114,8 @@ impl FileSceneDecoder for ConverterDecoder {
         let Some((program, args)) = self.manifest.command.split_first() else {
             return Err(failed("The converter has no command".to_owned()));
         };
-        let spec = Spec {
-            id: self.spec.handler,
+        let process = run::Spec {
+            id: &self.spec.id,
             program,
             args,
             env: &self.manifest.env,
@@ -189,12 +123,12 @@ impl FileSceneDecoder for ConverterDecoder {
             request: json!({
                 "protocol": PROTOCOL,
                 "path": overlay_text,
-                "options": options,
+                "options": options.declared(),
             })
             .to_string(),
             idle_timeout: self.manifest.idle_timeout,
         };
-        let outcome = run::run(&spec, sink, cancel);
+        let outcome = run::run(&process, sink, cancel);
         match outcome.end {
             End::Complete => {
                 let header = outcome.header;
@@ -208,7 +142,7 @@ impl FileSceneDecoder for ConverterDecoder {
                     None => DecodeSummary {
                         warnings: Vec::new(),
                         filter: FilterPolicy {
-                            name: self.spec.handler,
+                            name: crate::records::POLICY_NAME,
                             options: Vec::new(),
                         },
                         metadata: Fields::new(),

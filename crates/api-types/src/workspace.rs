@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 use workspace::ContentId;
 
-use crate::content::ContentInfo;
+use crate::{content::ContentInfo, playback::WarningInfo};
 
 /// The workspace and what is known about each item, as one audience may see it.
 #[derive(Serialize, Deserialize, TS)]
@@ -34,6 +34,8 @@ pub struct RowInfo {
     pub hidden: bool,
     /// The entry that opening the row opens, by the id the playback socket takes.
     pub entry: Option<String>,
+    /// What resolving left out of an item's Content; empty for entries and lanes.
+    pub warnings: Vec<WarningInfo>,
 }
 
 /// What a row stands for.
@@ -125,6 +127,10 @@ pub struct NewOverlayWire {
     /// The lane's name; the file name when absent, numbered ` (2)`, ` (3)` when the video already shows the file.
     #[serde(default)]
     pub label: Option<String>,
+    /// The options the decoder's form declares; checked by the intake.
+    #[serde(default)]
+    #[ts(type = "Record<string, unknown>")]
+    pub options: serde_json::Map<String, serde_json::Value>,
 }
 
 /// An entry or lane to hide or show.

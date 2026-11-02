@@ -2,21 +2,24 @@
 //! out Scenes by sample index from a bounded cache.
 //!
 //! [`TrackRegistry::open`] gives the [`Track`] of one overlay file and shares it while
-//! anyone holds it. A track can be read while its file is still being decoded; [`Track::snapshot`] says how much is
+//! anyone holds it. A track can be read while its file is still being decoded; [`TrackRead::snapshot`] says how much is
 //! final. The artifact format, the ingest rules and the memory bound are in the crate README.
 
 mod format;
 mod group;
 mod history;
 mod ingest;
+mod input;
 mod io;
 mod keylog;
 mod link;
+mod live;
 mod load;
 mod lru;
 mod output;
 mod placement;
 mod query;
+mod read;
 mod registry;
 mod settle;
 mod settled;
@@ -33,7 +36,9 @@ mod tests;
 
 pub use format::STORE_FORMAT_VERSION;
 pub use history::{EventRef, History, HistoryUnavailable};
+pub use live::{Feed, LiveTrack};
 pub use placement::Placement;
 pub use query::{Matches, Op, Query, Row, Search, Sort, SortKey, Term};
+pub use read::TrackRead;
 pub use registry::{SCENE_CACHE_BYTES, TrackKey, TrackRegistry};
 pub use track::{Decided, Ingest, Track, TrackSnapshot};

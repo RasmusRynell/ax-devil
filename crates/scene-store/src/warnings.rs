@@ -1,7 +1,8 @@
 //! The warnings a decode gives, bounded: a converter can repeat tiny warnings forever, and every publication carries
 //! them.
 
-use scene_decoders::LoadWarning;
+use foundation::Warning;
+use handler_api::Values;
 
 /// The most warnings kept.
 const MAX_WARNINGS: usize = 64;
@@ -11,14 +12,14 @@ const MAX_WARNING_BYTES: usize = 64 << 10;
 /// The warnings kept so far and how many were dropped after the limits were reached.
 #[derive(Default)]
 pub(crate) struct Warnings {
-    kept: Vec<LoadWarning>,
+    kept: Vec<Warning>,
     bytes: usize,
     suppressed: usize,
 }
 
 impl Warnings {
     /// Keeps `warning` unless the limits are reached, in which case it is counted.
-    pub(crate) fn push(&mut self, warning: LoadWarning) {
+    pub(crate) fn push(&mut self, warning: Warning) {
         let bytes = warning.problem.len()
             + warning.consequence.len()
             + warning.reasons.iter().map(String::len).sum::<usize>();
@@ -31,14 +32,14 @@ impl Warnings {
     }
 
     /// The kept warnings, then one saying how many were suppressed when any were.
-    pub(crate) fn into_list(self) -> Vec<LoadWarning> {
+    pub(crate) fn into_list(self) -> Vec<Warning> {
         let Self {
             mut kept,
             suppressed,
             ..
         } = self;
         if suppressed > 0 {
-            kept.push(LoadWarning {
+            kept.push(Warning {
                 problem: format!("{suppressed} more warnings suppressed"),
                 reasons: Vec::new(),
                 consequence: "They are not listed.".to_owned(),
@@ -49,7 +50,7 @@ impl Warnings {
     }
 
     /// [`into_list`](Self::into_list) for a copy.
-    pub(crate) fn list(&self) -> Vec<LoadWarning> {
+    pub(crate) fn list(&self) -> Vec<Warning> {
         Self {
             kept: self.kept.clone(),
             bytes: self.bytes,
@@ -59,12 +60,23 @@ impl Warnings {
     }
 }
 
+/// The warning for options a decoder does not declare, which are not passed to it; `None` when there are none.
+pub(crate) fn undeclared_options(decoder: &str, options: &Values) -> Option<Warning> {
+    let keys = options.unknown_keys();
+    (!keys.is_empty()).then(|| Warning {
+        problem: format!("{decoder} does not take some of the options"),
+        reasons: keys.iter().take(3).map(|key| format!("'{key}'")).collect(),
+        consequence: "They were not passed to it.".to_owned(),
+        more_reasons: keys.len() > 3,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    fn warning(problem: String) -> LoadWarning {
-        LoadWarning {
+    fn warning(problem: String) -> Warning {
+        Warning {
             problem,
             reasons: Vec::new(),
             consequence: String::new(),

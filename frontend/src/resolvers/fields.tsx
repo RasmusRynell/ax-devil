@@ -75,6 +75,14 @@ const CONTROLS: Record<FieldKindWire["kind"], Control> = {
       onChange={(value) => form.set(field.key, value)}
     />
   ),
+  // Typed as text; the form sends the number (see `settingsOf`).
+  Integer: (field, form) => (
+    <TextField
+      label={field.label}
+      value={text(form, field.key)}
+      onChange={(value) => form.set(field.key, value)}
+    />
+  ),
   Handler: (field, form) => (
     <Select
       label={field.label}

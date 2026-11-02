@@ -176,7 +176,7 @@ fn hiding_twice_changes_nothing_and_a_reference_to_nothing_is_kept_but_hides_not
 }
 
 #[test]
-fn a_lane_matching_lands_in_the_recipe_by_overlay_or_lane_position_and_resolves_nothing() {
+fn a_lane_matching_lands_in_the_recipe_by_slot_and_resolves_nothing() {
     let folder = tempfile::tempdir().unwrap();
     let (video, overlay) = (folder.path().join("gate.mp4"), folder.path().join("gt.txt"));
     std::fs::write(&video, "x").unwrap();
@@ -185,29 +185,25 @@ fn a_lane_matching_lands_in_the_recipe_by_overlay_or_lane_position_and_resolves_
         path: overlay,
         handler: None,
         label: None,
+        options: [("width", 64), ("height", 48)]
+            .map(|(key, size)| (key.to_owned(), size.into()))
+            .into_iter()
+            .collect(),
     }];
     let added = workspace::intake::video(&video, &overlays, &Handlers::built_in()).unwrap();
-    let playlist = WorkspaceItem {
-        id: ItemId::generate(),
-        label: "list".into(),
-        recipe: Recipe::Playlist(workspace::PlaylistRecipe {
-            resolver: "folder_pair".into(),
-            settings: Default::default(),
-            lane_matching: Default::default(),
-        }),
-    };
-    let (video_id, playlist_id) = (added.id, playlist.id);
-    let (state, _) = add(&WorkspaceState::default(), vec![added, playlist], false);
+    let id = added.id;
+    let (state, jobs) = add(&WorkspaceState::default(), vec![added], false);
+    let state = finish(&state, &jobs[0]);
     let matching = overlay_sync::MatchPolicy {
         basis: Some(overlay_sync::MatchBasis::Time),
         ..Default::default()
     };
-    let set = |state: &WorkspaceState, item, lane| {
+    let set = |state: &WorkspaceState, item, slot: &str| {
         let (next, jobs) = apply(
             state,
             DocCommand::SetLaneMatching {
                 item,
-                lane,
+                slot: slot.to_owned(),
                 matching,
             },
         );
@@ -215,21 +211,16 @@ fn a_lane_matching_lands_in_the_recipe_by_overlay_or_lane_position_and_resolves_
         next
     };
 
-    let state = set(&set(&state, video_id, 0), playlist_id, 2);
-    let recipes: Vec<_> = state
-        .workspace
-        .items
-        .iter()
-        .map(|item| &item.recipe)
-        .collect();
-    let (Recipe::Video(video), Recipe::Playlist(playlist)) = (recipes[0], recipes[1]) else {
-        panic!("the items keep their recipes");
-    };
-    assert_eq!(video.overlays[0].matching, Some(matching));
-    assert_eq!(playlist.lane_matching.get(&2), Some(&matching));
+    let state = set(&state, id, "gt.txt");
     assert_eq!(
-        set(&state, video_id, 7),
-        state,
-        "a lane the recipe has no overlay for changes nothing"
+        state.workspace.items[0].recipe.lane_matching.get("gt.txt"),
+        Some(&matching)
     );
+    for (item, slot) in [(id, "nope"), (ItemId::generate(), "gt.txt")] {
+        assert_eq!(
+            set(&state, item, slot),
+            state,
+            "a slot or item the workspace lacks changes nothing"
+        );
+    }
 }

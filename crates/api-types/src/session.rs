@@ -90,8 +90,8 @@ pub enum DocCommand {
         /// The item.
         #[ts(type = "string")]
         item: ItemId,
-        /// The lane's position in the entry.
-        lane: u16,
+        /// The lane's slot, which names it in every entry.
+        slot: String,
         /// How the lane matches.
         policy: LanePolicyWire,
     },

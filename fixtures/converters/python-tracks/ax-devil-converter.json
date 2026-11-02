@@ -4,7 +4,7 @@
   "id": "python-tracks",
   "name": "Python tracks (CSV)",
   "version": "1.0.0",
-  "protocol": 1,
+  "protocol": 2,
   "scene_version": "4.0",
   "extensions": [".tracks.csv"],
   "command": ["python3", "convert.py"],

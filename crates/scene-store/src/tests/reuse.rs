@@ -129,7 +129,7 @@ fn options_and_decoder_version_make_artifacts_that_coexist() {
     assert_eq!(fixture.decoder.runs(), 2, "every variant is still reusable");
 
     let newer = Arc::new(Counting {
-        spec: &SPEC_V2,
+        spec: spec(2),
         shape: SHAPE,
         runs: AtomicUsize::new(0),
         hook: Mutex::new(None),

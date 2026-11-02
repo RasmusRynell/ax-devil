@@ -9,6 +9,7 @@
 use api_types::{
     Audience, DocWire,
     content::{ContentInfo, EntryInfo},
+    playback::WarningInfo,
     project as project_error,
     workspace::{ItemState, ResolutionState, RowInfo, RowKindWire, RowStatusInfo, WorkspaceState},
 };
@@ -91,6 +92,7 @@ fn row_info(row: Row, audience: Audience) -> RowInfo {
         status,
         hidden,
         entry,
+        warnings,
     } = row;
     RowInfo {
         key,
@@ -109,6 +111,12 @@ fn row_info(row: Row, audience: Audience) -> RowInfo {
         },
         hidden,
         entry: entry.map(|entry| entry.to_string()),
+        // Reasons name host paths, as a lane's warnings do.
+        warnings: warnings
+            .into_iter()
+            .filter(|_| audience.host_details)
+            .map(WarningInfo::from)
+            .collect(),
     }
 }
 
@@ -153,19 +161,21 @@ fn entry_info(entry: &Entry) -> EntryInfo {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use foundation::{ErrorCode, HostPath, ItemId, UserError};
+    use foundation::{ErrorCode, HostPath, ItemId, UserError, Warning};
     use std::path::PathBuf;
-    use workspace::{ContentId, OverlayRef, PlaylistContent, Recipe, VideoRecipe, VideoRef};
+    use workspace::{
+        ContentId, OverlayRef, PlaylistContent, Recipe, Source, VideoRecipe, VideoRef,
+    };
     use workspace_store::{HiddenRef, WorkspaceState as State};
 
     fn item(id: ItemId, label: &str, folder: &str) -> WorkspaceItem {
         WorkspaceItem {
             id,
             label: label.into(),
-            recipe: Recipe::Video(VideoRecipe {
+            recipe: Recipe::new(Source::Video(VideoRecipe {
                 video: HostPath::new(format!("/home/{folder}/{label}")),
                 overlays: Vec::new(),
-            }),
+            })),
         }
     }
 
@@ -176,6 +186,7 @@ mod tests {
             video: VideoRef::File(PathBuf::from(format!("/home/{folder}/{label}"))),
             overlays: vec![OverlayRef {
                 label: "tracks.txt".into(),
+                slot: "tracks.txt".into(),
                 path: PathBuf::from(format!("/home/{folder}/tracks.txt")),
                 handler: "MOT_FILE".into(),
                 options: Default::default(),
@@ -200,6 +211,12 @@ mod tests {
                 entries: ["SEQ-01", "SEQ-02"]
                     .map(|label| entry(ContentId::of_entry(&item, label), label, folder))
                     .into(),
+                warnings: vec![Warning {
+                    problem: "Skipped 1 of 3 sequences".into(),
+                    reasons: vec!["/home/SECRET-SKIP/SEQ-03: bad seqinfo.ini".into()],
+                    consequence: "They are not in the playlist.".into(),
+                    more_reasons: false,
+                }],
             })
         };
         let failure = |folder: &str| {
@@ -279,6 +296,7 @@ mod tests {
         for host_only in [
             "SECRET-REASON",
             "SECRET-PATH-B",
+            "SECRET-SKIP",
             "closed.mp4",
             "closed playlist",
         ] {

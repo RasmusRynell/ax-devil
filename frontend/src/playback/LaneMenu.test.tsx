@@ -45,6 +45,7 @@ function setup(
   const onApplyAll = vi.fn();
   const state: LaneState = {
     label: "DPM",
+    slot: "DPM",
     source: 0,
     status,
     settings: LANE_SETTINGS,

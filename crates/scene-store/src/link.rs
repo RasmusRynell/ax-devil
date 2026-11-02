@@ -6,14 +6,17 @@ use std::{
     sync::{Arc, mpsc},
 };
 
-use foundation::{CancelToken, ErrorCode, HostPath, Interrupt, UserError};
+use foundation::{CancelToken, ErrorCode, HostPath, Interrupt, UserError, Warning};
+use handler_api::Spec;
 use overlay_sync::SampleKeys;
-use scene_decoders::{DecoderSpec, LoadWarning};
 
 use crate::{
     history::{HistoryUnavailable, Slot},
     ingest::First,
-    track::{Decided, Generation, Growth, Ingest as State, Meta, Records, Track, TrackSnapshot},
+    track::{
+        Decided, Generation, Growth, Ingest as State, Meta, Numbering, Records, Track,
+        TrackSnapshot,
+    },
 };
 
 /// How the ingest reaches the track and the opener.
@@ -21,11 +24,13 @@ pub(crate) struct Link {
     pub(crate) path: PathBuf,
     pub(crate) cache_bytes: usize,
     pub(crate) cancel: CancelToken,
-    pub(crate) spec: &'static DecoderSpec,
+    pub(crate) spec: Arc<Spec>,
     pub(crate) growth: Option<Arc<Growth>>,
     pub(crate) first: Option<mpsc::Sender<First>>,
     /// The generation of the latest snapshot.
     pub(crate) generation: u32,
+    /// The numbering the track serves now.
+    served: Option<Arc<Generation>>,
 }
 
 /// What [`Link::present`] shows.
@@ -35,7 +40,7 @@ pub(crate) struct Presented<'a> {
     pub(crate) keys: SampleKeys,
     /// Boundaries and checksums of the records readers do not have yet.
     pub(crate) records: (&'a [u64], &'a [u32]),
-    pub(crate) warnings: Vec<LoadWarning>,
+    pub(crate) warnings: Vec<Warning>,
     pub(crate) ingest: State,
     pub(crate) decided: Decided,
     pub(crate) stored: Option<PathBuf>,
@@ -50,7 +55,7 @@ impl Link {
         path: PathBuf,
         cache_bytes: usize,
         cancel: CancelToken,
-        spec: &'static DecoderSpec,
+        spec: Arc<Spec>,
         first: mpsc::Sender<First>,
     ) -> Self {
         Self {
@@ -61,6 +66,7 @@ impl Link {
             growth: None,
             first: Some(first),
             generation: 0,
+            served: None,
         }
     }
 
@@ -84,21 +90,22 @@ impl Link {
         let new_generation = fresh && self.growth.is_some();
         self.generation += u32::from(new_generation);
         // The records the track already serves keep their numbering unless this publication starts a new one.
-        let numbering = match &self.growth {
-            Some(growth) if !fresh => growth.snapshot().numbering.clone(),
+        let served = match &self.served {
+            Some(served) if !fresh => served.clone(),
             _ => Arc::new(Generation::new(
                 file,
                 Records::after_header(records),
                 self.cache_bytes,
             )),
         };
+        self.served = Some(served.clone());
         let snapshot = TrackSnapshot {
             keys,
             decided,
             ingest,
             generation: self.generation,
             warnings: warnings.into(),
-            numbering,
+            numbering: Numbering::Artifact(served.clone()),
         };
         let Some(growth) = self.growth.clone() else {
             let growth = Arc::new(Growth::new(snapshot, stored));
@@ -106,7 +113,7 @@ impl Link {
                 self.path.clone(),
                 growth.clone(),
                 meta(),
-                self.spec,
+                self.spec.clone(),
                 self.cancel.clone(),
             ));
             if let Some(slot) = history {
@@ -128,7 +135,9 @@ impl Link {
         if fresh {
             growth.publish(snapshot);
         } else {
-            growth.extend(records.0, records.1, snapshot);
+            // The records come first, so every index of a snapshot can be read.
+            served.extend(records.0, records.1);
+            growth.publish(snapshot);
         }
     }
 

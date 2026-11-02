@@ -43,6 +43,7 @@ describe("adjacent entry", () => {
         status: { status: "Ready" as const },
         hidden: true,
         entry: target.entry,
+        warnings: [],
       })),
     );
     expect(adjacentEntry(ENTRIES, hidden, 0, 1)?.label).toBe("D");

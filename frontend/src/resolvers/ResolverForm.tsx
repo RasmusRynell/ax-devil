@@ -91,6 +91,8 @@ function settingsOf(resolver: ResolverInfo, state: State): Settings | null {
     } else if (blank(settings[field.key])) {
       if (field.required) return null;
       delete settings[field.key];
+    } else if (field.kind.kind === "Integer") {
+      settings[field.key] = Number(settings[field.key]);
     }
   }
   return settings;

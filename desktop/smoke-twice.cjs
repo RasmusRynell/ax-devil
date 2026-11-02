@@ -19,12 +19,25 @@ const {
 } = require("./smoke-kit.cjs");
 
 const VIDEO = path.join(SMOKE_ROOT, "fixtures/video/long_gop_h264.mp4");
-const OVERLAY = path.join(SMOKE_ROOT, "fixtures/datasets/mot/train/MINI-01-DPM/gt/gt.txt");
+// ONVIF XML needs no options (a bare MOT file needs its image size), and several handlers read .xml, so it is named.
+const OVERLAY = path.join(SMOKE_ROOT, "fixtures/decoders/onvif_xml/frames.xml");
 
 module.exports.twice = async () => {
   const served = await startProcess(
     backendExecutable(app),
-    ["local", "--video", VIDEO, "--overlay", OVERLAY, "--overlay", OVERLAY],
+    [
+      "local",
+      "--video",
+      VIDEO,
+      "--overlay",
+      OVERLAY,
+      "--overlay",
+      OVERLAY,
+      "--handler-type",
+      "ONVIF_XML",
+      "--handler-type",
+      "ONVIF_XML",
+    ],
     { PORT: "0" },
     () => {},
   );
@@ -55,7 +68,7 @@ module.exports.twice = async () => {
     }, "two lanes");
     assert.deepEqual(
       cells.map((cell) => cell.label),
-      ["gt.txt", "gt.txt (2)"],
+      ["frames.xml", "frames.xml (2)"],
     );
     // Both lanes show their boxes of frame 0.
     for (const cell of cells) {

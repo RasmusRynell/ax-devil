@@ -364,43 +364,30 @@ fn artifacts_and_their_folder_are_private() {
 }
 
 #[test]
-fn equal_options_make_one_key_whatever_their_order() {
-    let json = |text: &str| match serde_json::from_str(text).expect("json") {
-        serde_json::Value::Object(map) => map,
-        other => panic!("{other}"),
-    };
-
-    let a = crate::registry::canonical_json(&json(r#"{"b":{"y":1,"x":[{"d":1,"c":2}]},"a":null}"#));
-    let b = crate::registry::canonical_json(&json(r#"{"a":null,"b":{"x":[{"c":2,"d":1}],"y":1}}"#));
-
-    assert_eq!(a, b);
-    assert_eq!(a, r#"{"a":null,"b":{"x":[{"c":2,"d":1}],"y":1}}"#);
-}
-
-#[test]
 fn the_real_mot_decoder_round_trips_through_an_artifact() {
     let dir = tempfile::tempdir().expect("temp dir");
-    let oracle = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../fixtures/oracle/mot");
-    let sequence = tempfile::tempdir().expect("sequence folder");
-    for file in ["gt.txt", "seqinfo.ini"] {
-        std::fs::copy(oracle.join(file), sequence.path().join(file)).expect("copy the fixture");
-    }
-    let overlay = OverlayRef {
+    let ground_truth =
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("../../fixtures/oracle/mot/gt.txt");
+    let overlay = |width: u32| OverlayRef {
         label: "GT".into(),
-        path: sequence.path().join("gt.txt"),
+        slot: "GT".into(),
+        path: ground_truth.clone(),
         handler: "MOT_FILE".into(),
-        options: Settings::new(),
+        options: Settings::from_iter([
+            ("width".to_owned(), width.into()),
+            ("height".to_owned(), 480.into()),
+        ]),
     };
     let token = CancelToken::new();
     let open = |overlay: &OverlayRef| {
-        TrackRegistry::new(Handlers::built_in(), Some(dir.path()))
+        TrackRegistry::new(Handlers::built_in().decoder_lookup(), Some(dir.path()))
             .open(overlay, &token)
             .map_err(|_| "open failed")
             .expect("opens")
     };
 
-    let cold = open(&overlay);
-    let warm = open(&overlay);
+    let cold = open(&overlay(640));
+    let warm = open(&overlay(640));
     let artifacts = || {
         std::fs::read_dir(dir.path().join("scenes"))
             .expect("scenes")
@@ -411,11 +398,8 @@ fn the_real_mot_decoder_round_trips_through_an_artifact() {
         1,
         "the video is no part of the key: reopening reuses the artifact"
     );
-    let ini = sequence.path().join("seqinfo.ini");
-    let wider = std::fs::read_to_string(&ini).expect("read seqinfo.ini");
-    std::fs::write(&ini, wider.replace("imWidth=640", "imWidth=1280")).expect("write seqinfo.ini");
-    drop(open(&overlay));
-    assert_eq!(artifacts(), 2, "the size in seqinfo.ini is");
+    drop(open(&overlay(1280)));
+    assert_eq!(artifacts(), 2, "the size option is");
 
     for track in [&cold, &warm] {
         assert_eq!(track.snapshot().keys, frame_keys(&[0, 1, 3]));

@@ -24,8 +24,8 @@ export interface SessionDeps {
   lanes?: readonly LaneSettings[];
   /** Where an earlier session of this video left off: this one opens there, paused, at that speed. */
   resume?: ResumeState;
-  /** Told the policy of a lane after the viewer changed it: the workspace keeps it with the lane's recipe. */
-  onPolicy?: (lane: number, policy: LanePolicyWire) => void;
+  /** Told the policy of a lane, by its slot, after the viewer changed it: the workspace keeps it with the recipe. */
+  onPolicy?: (slot: string, policy: LanePolicyWire) => void;
   /** Told what the clock is doing after every change the viewer makes: the intent a presenter publishes. */
   onIntent?: (intent: PlaybackIntent) => void;
 }

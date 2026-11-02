@@ -18,11 +18,11 @@ use std::{
 };
 
 use foundation::{CancelToken, FrameRate, Interrupt, Timeline, UserError};
+use handler_api::{Decoder, OverlayRef};
 use handlers::Handlers;
 use overlay_sync::MatchPolicy;
 use playback::{Direction, Priority, Want};
-use playlist_resolvers::OverlayRef;
-use scene_store::{Track, TrackRegistry};
+use scene_store::{TrackRead, TrackRegistry};
 use tempfile::TempDir;
 
 use crate::{
@@ -46,7 +46,7 @@ impl TrackSource for Tracks {
         &self,
         overlay: &OverlayRef,
         cancel: &CancelToken,
-    ) -> Result<Arc<Track>, Interrupt<UserError>> {
+    ) -> Result<Arc<dyn TrackRead>, Interrupt<UserError>> {
         let name = overlay.path.file_name().and_then(|name| name.to_str());
         assert!(name != Some("panic.txt"), "the source thread dies");
         if name == self.held {
@@ -57,7 +57,7 @@ impl TrackSource for Tracks {
             let _ = self.cancelled.lock().expect("sender").send(());
             return Err(Interrupt::Cancelled);
         }
-        self.registry.open(overlay, cancel)
+        TrackSource::open(&self.registry, overlay, cancel)
     }
 }
 
@@ -91,16 +91,10 @@ impl Env {
 
     fn with_handlers(handlers: Handlers, held: Option<&'static str>, cache: bool) -> Self {
         let dir = TempDir::new().expect("temp dir");
-        // The MOT decoder reads the size its boxes are measured in from the sequence folder.
-        fs::write(
-            dir.path().join("seqinfo.ini"),
-            "[Sequence]\nframeRate=30\nseqLength=100\nimWidth=1920\nimHeight=1080\n",
-        )
-        .expect("write seqinfo.ini");
         let cache_dir = cache.then(|| dir.path().join("cache"));
         let (sender, cancelled) = channel();
         let tracks = Arc::new(Tracks {
-            registry: TrackRegistry::new(handlers, cache_dir.as_deref()),
+            registry: TrackRegistry::new(handlers.decoder_lookup(), cache_dir.as_deref()),
             held,
             cancelled: Mutex::new(sender),
         });
@@ -113,12 +107,8 @@ impl Env {
     }
 
     /// An environment that also reads `.paced` files with `decoder`.
-    pub(super) fn with_decoder(decoder: Arc<dyn scene_decoders::FileSceneDecoder>) -> Self {
-        Self::with_handlers(
-            Handlers::built_in().with_file_decoders([decoder]),
-            None,
-            false,
-        )
+    pub(super) fn with_decoder(decoder: Arc<dyn Decoder>) -> Self {
+        Self::with_handlers(Handlers::built_in().with_decoders([decoder]), None, false)
     }
 
     /// The folder the files are written to.
@@ -150,11 +140,14 @@ impl Env {
 }
 
 pub(super) fn overlay_at(label: &str, handler: &str, path: PathBuf) -> OverlayRef {
+    // The MOT decoder needs the image size its boxes are measured in.
+    let size = |key: &str| (handler == "MOT_FILE").then(|| (key.to_owned(), 1920.into()));
     OverlayRef {
         label: label.into(),
+        slot: label.into(),
         path,
         handler: handler.into(),
-        options: serde_json::Map::new(),
+        options: ["width", "height"].into_iter().filter_map(size).collect(),
     }
 }
 

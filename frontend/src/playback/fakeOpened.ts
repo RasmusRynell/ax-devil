@@ -25,7 +25,7 @@ export const LANE_SETTINGS: LaneSettings = {
 export const opened = (
   frames: number,
   frameBytes: number,
-  lanes: LaneInfo[] = [{ label: "a.mp4", source: null }],
+  lanes: LaneInfo[] = [{ label: "a.mp4", slot: "a.mp4", source: null }],
 ): ServerMessage => ({
   type: "Opened",
   protocol: PLAYBACK_PROTOCOL,

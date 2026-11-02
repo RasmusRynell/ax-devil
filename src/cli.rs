@@ -18,9 +18,8 @@ use ax_devil::{
 use axum::Router;
 use catalogs::Library;
 use clap::{Args, Parser, Subcommand, ValueEnum, ValueHint};
-use foundation::{Location, UserError};
+use handler_api::Settings;
 use handlers::Handlers;
-use playlist_resolvers::Settings;
 use plugins::PluginsCommand;
 use sessions::Secret;
 use std::{
@@ -33,10 +32,12 @@ use std::{
     time::Duration,
 };
 use tokio::sync::watch;
-use workspace::{WorkspaceItem, intake::NewOverlay};
+use workspace::WorkspaceItem;
 
 mod args;
 mod catalog;
+mod launch;
+use launch::{describe, launch_items};
 mod plugins;
 #[cfg(test)]
 mod tests;
@@ -60,6 +61,14 @@ struct Cli {
     global: Global,
     #[command(subcommand)]
     command: Option<Command>,
+}
+
+/// One `--overlay-option`: the key and value as given, and the position of the `--overlay` it belongs to.
+#[derive(Clone, Debug)]
+struct OverlayOption {
+    overlay: usize,
+    key: String,
+    value: String,
 }
 
 /// The options every command takes.
@@ -105,6 +114,10 @@ enum Command {
         /// decoder by file extension.
         #[arg(long, value_name = "HANDLER")]
         handler_type: Vec<String>,
+        /// An option of the decoder of the nearest preceding --overlay, as KEY=VALUE; repeat for several. The decoder
+        /// declares its options.
+        #[arg(long, value_name = "KEY=VALUE", value_parser = args::parse_overlay_option)]
+        overlay_option: Vec<OverlayOption>,
     },
     /// Open a playlist in a new Untitled workspace.
     ///
@@ -253,47 +266,6 @@ async fn run_backend(
         tracing::error!("{error}");
         ExitCode::FAILURE
     })
-}
-
-/// The items `command` asks the first window to open, built by the same intake as the dialogs; none for a plain
-/// launch. The error says what was refused and why.
-fn launch_items(
-    command: Option<Command>,
-    handlers: &Handlers,
-) -> Result<Vec<WorkspaceItem>, String> {
-    let item = match command {
-        Some(Command::Local {
-            video,
-            overlay,
-            handler_type,
-        }) => {
-            let overlays: Vec<_> = overlay
-                .into_iter()
-                .enumerate()
-                .map(|(position, path)| NewOverlay {
-                    path,
-                    handler: handler_type.get(position).cloned(),
-                    label: None,
-                })
-                .collect();
-            workspace::intake::video(&video, &overlays, handlers)
-        }
-        Some(Command::Playlist { resolver, settings }) => {
-            workspace::intake::playlist(&resolver, settings, None, handlers)
-        }
-        _ => return Ok(Vec::new()),
-    };
-    item.map(|item| vec![item])
-        .map_err(|error| describe(&error))
-}
-
-/// What was refused and why, led by the file or setting it is about.
-fn describe(error: &UserError) -> String {
-    match &error.location {
-        Some(Location::Host(path)) => format!("{}: {}", path.as_path().display(), error.reason),
-        Some(Location::Field(key)) => format!("{key}: {}", error.reason),
-        Some(Location::Item(_)) | None => error.reason.clone(),
-    }
 }
 
 /// The folder of the user's render catalogs: the `storage.catalog_dir` setting, else the standard folder.

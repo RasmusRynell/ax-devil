@@ -1,6 +1,6 @@
 # Converter reference
 
-The one specification of the converter contract (protocol 1). Code that enforces it: `crates/converters`. The model
+The one specification of the converter contract (protocol 2). Code that enforces it: `crates/converters`. The model
 converter is `fixtures/converters/python-tracks`; a second, in POSIX shell and awk, is `fixtures/converters/shell-times`.
 
 ## Manifest `ax-devil-converter.json`
@@ -12,9 +12,9 @@ field.
 |-------|----------|---------|
 | `manifest` | yes | `1` |
 | `kind` | yes | `"file"` |
-| `id` | yes | 1-64 characters of `a-z 0-9 . _ -`, starting with a letter or digit. Also the handler id (`--handler-type`) and the filter policy name. Must differ from every built-in and installed id |
+| `id` | yes | 1-64 characters of `a-z 0-9 . _ -`, starting with a letter or digit. Also the handler id (`--handler-type`). Must differ from every built-in and installed id |
 | `name`, `version` | yes | Shown to the user; `version` is free text |
-| `protocol` | yes | `1`; any other value does not load |
+| `protocol` | yes | `2`; any other value does not load |
 | `scene_version` | yes | The Scene version written, `"4.0"`; a different major or a newer minor does not load |
 | `extensions` | no | File name endings the converter opens, lowercase with the dot, such as `.acme.jsonl`. Without any, it is picked only by id |
 | `command` | yes | Program and arguments. A program containing `/` is relative to the folder and must be executable; otherwise it is looked up on `PATH`. Later items that name a file or folder of the converter become absolute; items starting with `-` are passed as written. The overlay path is appended as the last argument |
@@ -42,10 +42,11 @@ absolute paths in the request. The environment holds only `PATH`, `HOME`, `LANG`
 `LC_ALL`, `LC_CTYPE`, `TZ` (on Windows also `SYSTEMROOT`) and the manifest's `env`. Stdin gets one line, then EOF:
 
 ```json
-{"protocol":1,"path":"/abs/overlay.file","options":{"camera":"front"}}
+{"protocol":2,"path":"/abs/overlay.file","options":{"camera":"front"}}
 ```
 
-`options` holds every declared option that has a value. Read stdin, then the file at `path`; write to stdout.
+`options` holds every declared option that has a value. The request says nothing of the video, so a file in pixels
+needs its image size as options. Read stdin, then the file at `path`; write to stdout.
 Stderr is drained: its last 20 lines (2 KiB) join a failure's reason, and it is logged at DEBUG only.
 
 ## Output: JSON Lines on stdout

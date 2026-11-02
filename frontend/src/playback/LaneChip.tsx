@@ -1,20 +1,12 @@
 import type { Cadence } from "./cadence";
 import { reasonOf } from "../errors";
 import { Icon } from "../kit/Icon";
+import { NoticeList, noticeOf, type Notice } from "../kit/NoticeList";
 import { Popover } from "../kit/Popover";
 import { LaneMenu } from "./LaneMenu";
 import { alignmentTone } from "./LaneMenuTiming";
 import type { LaneSettings, LaneState } from "./lanes";
 import type { CatalogInfoWire } from "./protocol";
-
-/** One thing to tell the user about a lane. */
-export type Notice = {
-  problem: string;
-  consequence?: string;
-  reasons?: readonly string[];
-  /** Whether more reasons exist than `reasons` lists. */
-  more?: boolean;
-};
 
 /** What the lane has to report: why it failed or stopped reading, why its last change was not applied, and what its file warned of. */
 export function laneNotices(lane: LaneState): Notice[] {
@@ -38,13 +30,7 @@ export function laneNotices(lane: LaneState): Notice[] {
         consequence: "The overlay ends where reading stopped.",
         reasons: status.ingest.location === undefined ? undefined : [status.ingest.location],
       });
-    for (const warning of status.warnings)
-      notices.push({
-        problem: warning.problem,
-        consequence: warning.consequence,
-        reasons: warning.reasons,
-        more: warning.more_reasons,
-      });
+    notices.push(...status.warnings.map(noticeOf));
   }
   return notices;
 }
@@ -59,26 +45,6 @@ function chipTone(lane: LaneState): string {
   const ready = lane.status !== "plain" && lane.status.status === "Ready" ? lane.status : null;
   const tone = alignmentTone(ready?.alignment);
   return tone ? TONE_ON_CANVAS[tone] : "";
-}
-
-/** Notices as a list: each problem with what follows from it and the reasons the backend gives. */
-export function NoticeList({ notices }: { notices: readonly Notice[] }) {
-  return (
-    <ul className="m-0 flex list-none flex-col gap-m p-0">
-      {notices.map((notice, index) => (
-        <li key={index} className="flex flex-col gap-xs">
-          <span className="font-semibold break-words">{notice.problem}</span>
-          {notice.consequence && <span className="break-words">{notice.consequence}</span>}
-          {notice.reasons?.map((reason, at) => (
-            <span key={at} className="text-small break-all text-muted">
-              {reason}
-            </span>
-          ))}
-          {notice.more && <span className="text-small text-muted">More are not listed</span>}
-        </li>
-      ))}
-    </ul>
-  );
 }
 
 /**

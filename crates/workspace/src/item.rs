@@ -2,10 +2,10 @@ use crate::content::{
     Content, ContentId, Entry, OverlayRef, SeekableVideoContent, VideoRef, check_unique_lanes,
     playlist_content,
 };
-use foundation::{CancelToken, ErrorCode, HostPath, Interrupt, ItemId, UserError};
+use foundation::{CancelToken, ErrorCode, HostPath, Interrupt, ItemId, Location, UserError};
+use handler_api::{FieldKind, Form, Settings, Values};
 use handlers::Handlers;
 use overlay_sync::MatchPolicy;
-use playlist_resolvers::Settings;
 use std::{collections::BTreeMap, fs, io, path::Path};
 
 /// A video file to open, with the overlay files drawn on it.
@@ -26,9 +26,8 @@ pub struct OverlayRecipe {
     pub handler: String,
     /// The lane's name, unique within the video.
     pub label: String,
-    /// How the lane matches the file's records to frames; `None` is the decoder's default basis and the app's
-    /// defaults.
-    pub matching: Option<MatchPolicy>,
+    /// Options handed to the decoder, checked against its form when the recipe was made.
+    pub options: Settings,
 }
 
 /// A playlist resolver and the settings it resolves.
@@ -38,18 +37,26 @@ pub struct PlaylistRecipe {
     pub resolver: String,
     /// The settings the resolver's schema declares.
     pub settings: Settings,
-    /// How each lane matches its file's records to frames, by the lane's position in every entry: a lane's name
-    /// is not shared by a playlist's entries (Folder Pair names it after the entry), its position is.
-    pub lane_matching: BTreeMap<u16, MatchPolicy>,
 }
 
-/// What an item was made from, and how to rebuild its Content.
+/// What an item was made from.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub enum Recipe {
+pub enum Source {
     /// A video file with overlays.
     Video(VideoRecipe),
     /// A playlist from a resolver.
     Playlist(PlaylistRecipe),
+}
+
+/// What an item was made from, and how to rebuild its Content.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Recipe {
+    /// What the Content is resolved from.
+    pub source: Source,
+    /// How each lane matches its file's records to frames, by the lane's slot: the slot is the same in every entry
+    /// of a playlist, where lane names can differ. A lane without an entry is at the decoder's default basis and the
+    /// app's defaults.
+    pub lane_matching: BTreeMap<String, MatchPolicy>,
 }
 
 /// One thing the user added to the workspace.
@@ -64,20 +71,12 @@ pub struct WorkspaceItem {
 }
 
 impl Recipe {
-    /// How the item's `lanes` lanes were last set to match their records to frames, by lane position: a video's
-    /// overlay carries its own, a playlist's lanes share their positions across entries. `None` is the default.
-    pub fn lane_matching(&self, lanes: usize) -> Vec<Option<MatchPolicy>> {
-        (0..lanes)
-            .map(|lane| match self {
-                Recipe::Video(video) => video
-                    .overlays
-                    .get(lane)
-                    .and_then(|overlay| overlay.matching),
-                Recipe::Playlist(playlist) => u16::try_from(lane)
-                    .ok()
-                    .and_then(|lane| playlist.lane_matching.get(&lane).copied()),
-            })
-            .collect()
+    /// A recipe for `source` with every lane at its defaults.
+    pub fn new(source: Source) -> Self {
+        Self {
+            source,
+            lane_matching: BTreeMap::new(),
+        }
     }
 
     /// Builds the Content of the item `item`. Reads the file system, so callers keep it off the UI's executor.
@@ -96,11 +95,11 @@ impl Recipe {
         cancel: &CancelToken,
     ) -> Result<Content, Interrupt<UserError>> {
         cancel.check()?;
-        match self {
-            Recipe::Video(recipe) => {
+        match &self.source {
+            Source::Video(recipe) => {
                 resolve_video(recipe, item, handlers).map_err(Interrupt::Failed)
             }
-            Recipe::Playlist(recipe) => {
+            Source::Playlist(recipe) => {
                 let resolver = handlers.resolver(&recipe.resolver).ok_or_else(|| {
                     Interrupt::Failed(
                         UserError::new(
@@ -110,11 +109,10 @@ impl Recipe {
                         .at(*item),
                     )
                 })?;
-                resolver
-                    .schema()
-                    .validate(&recipe.settings)
-                    .map_err(Interrupt::Failed)?;
-                let resolved = resolver.resolve(&recipe.settings, cancel)?;
+                let form = &resolver.spec().form;
+                let settings =
+                    check_settings(form, &recipe.settings, handlers).map_err(Interrupt::Failed)?;
+                let resolved = resolver.resolve(&settings, cancel)?;
                 playlist_content(item, resolved)
                     .map(Content::Playlist)
                     .map_err(Interrupt::Failed)
@@ -132,19 +130,14 @@ fn resolve_video(
     let mut overlays = Vec::with_capacity(recipe.overlays.len());
     for overlay in &recipe.overlays {
         let path = overlay.path.as_path();
-        if handlers.file_decoder(&overlay.handler).is_none() {
-            return Err(UserError::new(
-                ErrorCode::UnknownHandler,
-                format!("No overlay format \"{}\"", overlay.handler),
-            )
-            .at(overlay.path.clone()));
-        }
+        check_decoder_known(handlers, &overlay.handler, path)?;
         check_readable_file(path)?;
         overlays.push(OverlayRef {
             label: overlay.label.clone(),
+            slot: overlay.label.clone(),
             path: path.to_path_buf(),
             handler: overlay.handler.clone(),
-            options: Settings::new(),
+            options: overlay.options.clone(),
         });
     }
     let entry = Entry {
@@ -158,6 +151,41 @@ fn resolve_video(
         item_id: *item,
         entry,
     }))
+}
+
+/// `settings` checked against `form`, and every decoder id a `Handler` field holds known to `handlers`: a playlist
+/// whose settings name an overlay format the app lacks is refused before it reads any folder.
+pub(crate) fn check_settings(
+    form: &Form,
+    settings: &Settings,
+    handlers: &Handlers,
+) -> Result<Values, UserError> {
+    let values = form.validate(settings)?;
+    for field in &form.fields {
+        if matches!(field.kind, FieldKind::Handler)
+            && let Some(id) = values.text(&field.key)
+            && handlers.decoder(id).is_none()
+        {
+            return Err(UserError::new(
+                ErrorCode::UnknownHandler,
+                format!("No overlay format \"{id}\""),
+            )
+            .at(Location::field(&field.key)));
+        }
+    }
+    Ok(values)
+}
+
+/// Fails, about `path`, when `handlers` has no decoder with the id `handler`.
+fn check_decoder_known(handlers: &Handlers, handler: &str, path: &Path) -> Result<(), UserError> {
+    match handlers.decoder(handler) {
+        Some(_) => Ok(()),
+        None => Err(UserError::new(
+            ErrorCode::UnknownHandler,
+            format!("No overlay format \"{handler}\""),
+        )
+        .at(HostPath::new(path))),
+    }
 }
 
 /// The last component of `path` as text; empty when there is none.

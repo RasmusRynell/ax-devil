@@ -14,7 +14,7 @@ use crate::{EndReason, MAX_SEATS, Secret};
 use foundation::CancelToken;
 use overlay_sync::MatchPolicy;
 use playback::Authority;
-use std::sync::Arc;
+use std::{collections::BTreeMap, sync::Arc};
 use tokio::time::Instant;
 use workspace::{Content, Entry};
 use workspace_store::complete;
@@ -146,7 +146,7 @@ pub enum Outcome {
         /// The entry of `content` the stream plays; boxed, as it is far larger than the other outcomes.
         entry: Box<Entry>,
         /// How the workspace says each lane of `entry` matches its records to frames; `None` for the default.
-        matching: Vec<Option<MatchPolicy>>,
+        matching: BTreeMap<String, MatchPolicy>,
         /// Whether the holder may learn the host's paths and diagnostic text: it is the owner of a session whose
         /// owner holds the files grant.
         host_details: bool,

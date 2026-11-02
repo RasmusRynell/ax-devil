@@ -17,18 +17,18 @@ use std::{
     time::{Duration, Instant},
 };
 
-use foundation::{CancelToken, ErrorCode, Interrupt, UserError};
+use foundation::{CancelToken, ErrorCode, Interrupt, UserError, Warning};
+use handler_api::{
+    DecodeError, DecodeSummary, Decoder, Header, OnEqualKey, SceneSink, SkippedRecords, Values,
+};
 use overlay_sync::MatchBasis;
 use scene::{Scene, SceneTime, TimeKind};
-use scene_decoders::{
-    DecodeContext, DecodeError, DecodeOptions, DecodeSummary, FileSceneDecoder, Header,
-    LoadWarning, OnEqualKey, SceneSink,
-};
 
 use crate::{
     format::Identity,
     group::Group,
     history::{HISTORY_BYTES, HistoryBuilder},
+    input::FileInput,
     keylog::KeyLog,
     link::{Link, Presented},
     output::Output,
@@ -37,7 +37,7 @@ use crate::{
     sort::{Entry, SORT_BUDGET_BYTES, Sorter, sort_key},
     source::LazySource,
     track::{Decided, Ingest as State, Meta, Track},
-    warnings::Warnings,
+    warnings::{Warnings, undeclared_options},
     writer::RecordWriter,
 };
 
@@ -78,8 +78,8 @@ pub(crate) enum First {
 
 /// Everything the thread needs; it owns all of it.
 pub(crate) struct Job {
-    pub decoder: Arc<dyn FileSceneDecoder>,
-    pub options: DecodeOptions,
+    pub decoder: Arc<dyn Decoder>,
+    pub options: Values,
     pub source: LazySource,
     pub identity: Identity,
     pub artifact: Option<PathBuf>,
@@ -109,25 +109,40 @@ fn run(job: Job) {
         cancel,
         first,
     } = job;
-    let by_position = decoder.spec().bases.contains(&MatchBasis::Frame);
+    let spec = Arc::new(decoder.spec().clone());
+    let by_position = spec.bases.contains(&MatchBasis::Frame);
     let mut link = Link::new(
         source.path_buf(),
         cache_bytes,
         cancel.clone(),
-        decoder.spec(),
+        spec.clone(),
         first,
     );
-    let store = match Store::start(artifact, tuning, by_position, cancel.clone()) {
+    let mut store = match Store::start(artifact, tuning, by_position, cancel.clone()) {
         Ok(store) => store,
         Err(reason) => {
             link.fail(Interrupt::Failed(link.error(ErrorCode::Internal, reason)));
             return;
         }
     };
-    let mut feed = Feed { link, store };
-    let context = DecodeContext { options: &options };
-    let result = decoder.decode_file(&source, &context, &mut feed, &cancel);
-    let Feed { mut link, store } = feed;
+    if let Some(warning) = undeclared_options(&spec.name, &options) {
+        store.warnings.push(warning);
+    }
+    let mut input = FileInput::new(&source, spec.framing);
+    let mut feed = Feed {
+        link,
+        store,
+        skipped: SkippedRecords::new("lines", "Those lines are not drawn."),
+    };
+    let result = decoder.decode(&mut input, &options, &mut feed, &cancel);
+    let Feed {
+        mut link,
+        mut store,
+        skipped,
+    } = feed;
+    if let Some(warning) = skipped.warning(usize::try_from(input.records()).unwrap_or(usize::MAX)) {
+        store.warnings.push(warning);
+    }
     if let Err(interrupt) = store.conclude(&mut link, result, &source, identity) {
         link.fail(interrupt);
     }
@@ -137,6 +152,8 @@ fn run(job: Job) {
 struct Feed {
     link: Link,
     store: Store,
+    /// The records the decoder gave up on; the warning names them with the count of lines read.
+    skipped: SkippedRecords,
 }
 
 /// What the store keeps while Scenes arrive.
@@ -193,7 +210,11 @@ impl SceneSink for Feed {
         }
     }
 
-    fn warn(&mut self, warning: LoadWarning) {
+    fn skip(&mut self, position: u64, reason: String) {
+        self.skipped.add(format!("line {position}: {reason}"));
+    }
+
+    fn warn(&mut self, warning: Warning) {
         self.store.warnings.push(warning);
     }
 }

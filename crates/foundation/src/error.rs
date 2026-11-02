@@ -128,3 +128,16 @@ impl fmt::Display for UserError {
 }
 
 impl std::error::Error for UserError {}
+
+/// A problem that did not stop the work, in words for the user.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Warning {
+    /// What happened.
+    pub problem: String,
+    /// The first reasons, at most three, each at most 200 characters.
+    pub reasons: Vec<String>,
+    /// What the user can expect as a result.
+    pub consequence: String,
+    /// Whether more reasons exist than are listed.
+    pub more_reasons: bool,
+}

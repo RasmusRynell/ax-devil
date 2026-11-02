@@ -3,7 +3,7 @@
 use std::{sync::Arc, thread};
 
 use foundation::Timeline;
-use playlist_resolvers::OverlayRef;
+use handler_api::OverlayRef;
 use scene_store::TrackRegistry;
 
 use crate::{

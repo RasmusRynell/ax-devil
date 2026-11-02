@@ -3,8 +3,8 @@
 use std::sync::Arc;
 
 use foundation::{CancelToken, Interrupt, UserError};
-use playlist_resolvers::OverlayRef;
-use scene_store::{Track, TrackRegistry};
+use handler_api::OverlayRef;
+use scene_store::{TrackRead, TrackRegistry};
 
 /// Opens the track of an overlay file; blocking.
 pub(crate) trait TrackSource: Send + Sync {
@@ -12,7 +12,7 @@ pub(crate) trait TrackSource: Send + Sync {
         &self,
         overlay: &OverlayRef,
         cancel: &CancelToken,
-    ) -> Result<Arc<Track>, Interrupt<UserError>>;
+    ) -> Result<Arc<dyn TrackRead>, Interrupt<UserError>>;
 }
 
 impl TrackSource for TrackRegistry {
@@ -20,7 +20,8 @@ impl TrackSource for TrackRegistry {
         &self,
         overlay: &OverlayRef,
         cancel: &CancelToken,
-    ) -> Result<Arc<Track>, Interrupt<UserError>> {
-        TrackRegistry::open(self, overlay, cancel)
+    ) -> Result<Arc<dyn TrackRead>, Interrupt<UserError>> {
+        let track: Arc<dyn TrackRead> = TrackRegistry::open(self, overlay, cancel)?;
+        Ok(track)
     }
 }

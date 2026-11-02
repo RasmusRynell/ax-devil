@@ -16,16 +16,15 @@ use common::{
 };
 use export::{LaneStyle, Output, Pixels, RenderJob, RenderSetup, Renderer};
 use foundation::{CancelToken, ErrorCode, Interrupt, UserError};
+use handler_api::{
+    DecodeError, DecodeSummary, Decoder, Form, Framing, Header, Input, OnEqualKey, SceneSink, Spec,
+    Values,
+};
 use handlers::Handlers;
 use media::{FrameIndex, VideoInput};
-use overlay_sync::MatchBasis;
 use scene::{
-    BoundingBox, Coverage, Entity, EntityId, FilterPolicy, Geometry, Observation, Scene, SceneTime,
-    TimeSlice,
-};
-use scene_decoders::{
-    DecodeContext, DecodeError, DecodeSummary, DecoderSpec, FileSceneDecoder, Header, OnEqualKey,
-    SceneSink, SourceFile, Storage,
+    BoundingBox, Coverage, Entity, EntityId, FilterPolicy, Geometry, MatchBasis, Observation,
+    Scene, SceneTime, TimeSlice,
 };
 use sessions::{
     CursorOptions,
@@ -43,29 +42,37 @@ use std::{
     time::Duration,
 };
 
-static GATE: DecoderSpec = DecoderSpec {
-    plugin_id: "test",
-    handler: "GATE",
-    display_name: "Gate",
-    extensions: &[".gate"],
-    artifact_version: 1,
-    storage: Storage::DerivedCache,
-    bases: &[MatchBasis::Frame],
-    default_basis: MatchBasis::Frame,
-};
-
 /// Reads a `.gate` file as two samples, then keeps reading until the test drops its sender.
-struct Gate(Mutex<mpsc::Receiver<()>>);
+struct Gate(Mutex<mpsc::Receiver<()>>, Spec);
 
-impl FileSceneDecoder for Gate {
-    fn spec(&self) -> &'static DecoderSpec {
-        &GATE
+impl Gate {
+    fn new(released: mpsc::Receiver<()>) -> Self {
+        Self(
+            Mutex::new(released),
+            Spec {
+                id: "GATE".into(),
+                plugin: "test".into(),
+                name: "Gate".into(),
+                extensions: vec![".gate".into()],
+                framing: Framing::Whole,
+                bases: vec![MatchBasis::Frame],
+                default_basis: MatchBasis::Frame,
+                options: Form::default(),
+                version: 1,
+            },
+        )
+    }
+}
+
+impl Decoder for Gate {
+    fn spec(&self) -> &Spec {
+        &self.1
     }
 
-    fn decode_file(
+    fn decode(
         &self,
-        _source: &dyn SourceFile,
-        _context: &DecodeContext<'_>,
+        _input: &mut dyn Input,
+        _options: &Values,
         sink: &mut dyn SceneSink,
         cancel: &CancelToken,
     ) -> Result<DecodeSummary, Interrupt<DecodeError>> {
@@ -284,7 +291,7 @@ async fn an_owner_exports_what_it_holds_and_a_request_that_differs_from_it_is_re
 #[tokio::test]
 async fn an_export_waits_for_a_lane_that_is_still_being_read_to_finish() {
     let (release, released) = mpsc::channel::<()>();
-    let gate = Handlers::built_in().with_file_decoders([Arc::new(Gate(Mutex::new(released))) as _]);
+    let gate = Handlers::built_in().with_decoders([Arc::new(Gate::new(released)) as _]);
     let renders = Arc::new(Renders::default());
     let backend = backend_reading(&renders, gate).await;
     let slow = backend.folder.path().join("slow.gate");

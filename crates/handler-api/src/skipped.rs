@@ -1,20 +1,9 @@
+use foundation::Warning;
+
 /// Most reasons a warning lists.
 const MAX_REASONS: usize = 3;
 /// Longest a listed reason gets, in characters.
 const MAX_REASON_CHARS: usize = 200;
-
-/// A problem that did not stop a load, in words for the user.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct LoadWarning {
-    /// What happened.
-    pub problem: String,
-    /// The first reasons, at most three, each at most 200 characters.
-    pub reasons: Vec<String>,
-    /// What the user can expect as a result.
-    pub consequence: String,
-    /// Whether more reasons exist than are listed.
-    pub more_reasons: bool,
-}
 
 /// Collects the records a decoder skipped.
 #[derive(Clone, Debug)]
@@ -46,8 +35,8 @@ impl SkippedRecords {
     }
 
     /// The warning for `total` records read, or `None` when nothing was skipped.
-    pub fn warning(self, total: usize) -> Option<LoadWarning> {
-        (self.skipped > 0).then(|| LoadWarning {
+    pub fn warning(self, total: usize) -> Option<Warning> {
+        (self.skipped > 0).then(|| Warning {
             problem: format!("Skipped {} of {total} {}", self.skipped, self.noun),
             reasons: self.reasons,
             consequence: self.consequence,

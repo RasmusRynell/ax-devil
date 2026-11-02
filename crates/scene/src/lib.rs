@@ -24,7 +24,7 @@ pub use filter::{ClassRule, FilterChoice, FilterOption, FilterPolicy, SceneView}
 pub use geometry::{BoundingBox, Geometry, Point, Polygon};
 pub use observation::{Classification, Observation};
 pub use scene::{Entity, EntityRelation, Event, Operation, OperationKind, Scene};
-pub use time::{Coverage, SceneTime, TimeKind, TimeSlice};
+pub use time::{Coverage, MatchBasis, SceneTime, TimeKind, TimeSlice};
 pub use value::{Fields, MAX_VALUE_DEPTH, Name, Value};
 pub use values::{
     ClassType, Confidence, EntityId, GeographicCoordinates, Image, ImageVelocity, Measurements,
