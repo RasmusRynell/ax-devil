@@ -1,4 +1,4 @@
-import { useId, type KeyboardEvent, type ReactNode } from "react";
+import { useEffect, useId, useRef, type KeyboardEvent, type ReactNode } from "react";
 import { Icon } from "./Icon";
 import type { IconName } from "./icons";
 import { CHECKED, CHOSEN, CONTROL_IN, PILL, TONE, type Tone } from "./look";
@@ -110,7 +110,7 @@ interface ChoiceProps<T extends string> {
   options: readonly (readonly [T, string])[];
   /** The chosen value; the first option when it is none of them, so one is always chosen. */
   value: T;
-  /** Called only when another option is chosen. */
+  /** Called when another option is chosen, and once with the first option when `value` is none of them. */
   onChange: (value: T) => void;
 }
 
@@ -127,7 +127,14 @@ function Radios<T extends string>({
   itemClass,
 }: ChoiceProps<T> & { className: string; itemClass: string }) {
   const name = useId();
-  const chosen = options.some(([option]) => option === value) ? value : options[0]?.[0];
+  const known = options.some(([option]) => option === value);
+  const chosen = known ? value : options[0]?.[0];
+  const report = useRef(onChange);
+  report.current = onChange;
+  useEffect(() => {
+    // The first option is shown as chosen, so tell the parent instead of leaving it on a value nobody sees.
+    if (!known && chosen !== undefined) report.current(chosen);
+  }, [known, chosen]);
   return (
     <div
       role="radiogroup"

@@ -84,6 +84,7 @@ describe.each([
     render(<Choice label="Protocol" options={options} value="http" onChange={onChange} />);
     expect(screen.getByRole("radiogroup", { name: "Protocol" })).toBeTruthy();
     expect(chosen("HTTP")).toBe(true);
+    expect(onChange).not.toHaveBeenCalled();
     expect(
       screen.getAllByRole("radio").filter((radio) => (radio as HTMLInputElement).checked),
     ).toHaveLength(1);
@@ -96,9 +97,15 @@ describe.each([
 
   it("choose the first option for an unknown value, and keep arrow keys from the shortcuts", () => {
     const { heard, stop } = shortcuts();
-    render(
-      <Choice label="Protocol" options={options} value={"none" as "http"} onChange={vi.fn()} />,
+    const onChange = vi.fn();
+    const { rerender } = render(
+      <Choice label="Protocol" options={options} value={"none" as "http"} onChange={onChange} />,
     );
+    expect(onChange).toHaveBeenCalledExactlyOnceWith("https");
+    rerender(
+      <Choice label="Protocol" options={options} value={"none" as "http"} onChange={onChange} />,
+    );
+    expect(onChange).toHaveBeenCalledTimes(1);
     const first = screen.getByRole("radio", { name: "HTTPS" });
     expect(chosen("HTTPS")).toBe(true);
     fireEvent.keyDown(first, { key: "ArrowRight" });
