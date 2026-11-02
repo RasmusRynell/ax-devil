@@ -24,9 +24,16 @@ const READY: Extract<LaneStatusWire, { status: "Ready" }> = {
 };
 
 const FRAME = fullSample([
-  { id: "7", class: "car", score: 0.82, box: [0.1, 0.1, 0.3, 0.3] },
-  { id: "12", class: "human", score: 0.9, box: [0.5, 0.5, 0.6, 0.7] },
-  { id: "9", class: "car", score: 0.6, box: [0.2, 0.5, 0.4, 0.7] },
+  { id: "7", class: "car", score: 0.82, confidence: 0.4, box: [0.1, 0.1, 0.3, 0.3] },
+  {
+    id: "12",
+    class: "human",
+    score: 0.9,
+    confidence: 0.5,
+    motion: "moving",
+    box: [0.5, 0.5, 0.6, 0.7],
+  },
+  { id: "9", class: "car", score: 0.6, confidence: 0.9, box: [0.2, 0.5, 0.4, 0.7] },
 ]);
 
 const file = (id: string, first: number, classes = ["car"]): FileRowWire => ({
@@ -125,6 +132,13 @@ describe("Frame scope", () => {
     fireEvent.click(screen.getByRole("button", { name: /^Sort by ID/ }));
     expect(ids()).toEqual(["12", "9", "7"]);
 
+    // A number column starts with its greatest, and each row reads its values off the frame.
+    fireEvent.click(screen.getByRole("button", { name: "Sort by Conf" }));
+    expect(ids()).toEqual(["9", "12", "7"]);
+    expect(screen.getAllByRole("option")[1].textContent).toContain("0.5");
+    expect(screen.getAllByRole("option")[1].textContent).toContain("moving");
+    fireEvent.click(screen.getByRole("button", { name: "Sort by ID" }));
+
     search("class:car score>0.7");
     expect(ids()).toEqual(["7"]);
     expect(screen.getByText("1 of 3")).toBeTruthy();
@@ -157,6 +171,7 @@ describe("File scope", () => {
     expect(screen.getByText("2 of 90")).toBeTruthy();
     const [here, away] = screen.getAllByRole("option");
     expect(here.getAttribute("aria-selected")).toBe("true");
+    expect(here.textContent).toContain("3–23");
     expect(here.title).toBe("");
     expect(away.title).toBe("Not in this frame");
 
@@ -172,7 +187,7 @@ describe("File scope", () => {
     const { source, answer } = mount();
     showFile();
     answer([file("7", 3)]);
-    const strip = screen.getByRole("option").lastElementChild as HTMLElement;
+    const strip = screen.getByRole("option").children[2].firstElementChild as HTMLElement;
     vi.spyOn(strip, "getBoundingClientRect").mockReturnValue({ left: 10, width: 200 } as DOMRect);
     fireEvent.click(strip, { clientX: 110 });
     expect(source.seek).toHaveBeenCalledWith(50);
