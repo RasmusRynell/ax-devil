@@ -7,7 +7,37 @@ use axum::{
     extract::{ConnectInfo, DefaultBodyLimit},
     http::{HeaderMap, StatusCode, header::USER_AGENT},
 };
-use std::net::SocketAddr;
+use std::{
+    net::SocketAddr,
+    sync::{Mutex, PoisonError},
+    time::{Duration, Instant},
+};
+
+/// How many errors are logged in each [`PERIOD`], for every sender together; the rest are answered 429.
+const PER_PERIOD: u32 = 30;
+const PERIOD: Duration = Duration::from_secs(60);
+
+/// Counts the errors logged in the current period.
+struct Budget(Mutex<Option<(Instant, u32)>>);
+
+impl Budget {
+    /// Whether one more error may be logged at `now`.
+    fn admit(&self, now: Instant) -> bool {
+        let mut logged = self.0.lock().unwrap_or_else(PoisonError::into_inner);
+        match &mut *logged {
+            Some((start, count)) if now.duration_since(*start) < PERIOD => {
+                *count += 1;
+                *count <= PER_PERIOD
+            }
+            slot => {
+                *slot = Some((now, 1));
+                true
+            }
+        }
+    }
+}
+
+static BUDGET: Budget = Budget(Mutex::new(None));
 
 /// The largest body accepted; a stack trace is a few kilobytes.
 pub(crate) const BODY_LIMIT: usize = 16 * 1024;
@@ -28,17 +58,20 @@ fn clip(text: &str) -> &str {
 }
 
 /// Logs the error with who sent it: the credential it held, its address and its browser. Text goes through `Debug`,
-/// so a page cannot add log lines of its own.
+/// so a page cannot add log lines of its own, and a flood is cut off at [`PER_PERIOD`] a minute.
 pub(crate) async fn post(
     principal: Principal,
     ConnectInfo(peer): ConnectInfo<SocketAddr>,
     headers: HeaderMap,
     Json(error): Json<PageError>,
 ) -> StatusCode {
+    if !BUDGET.admit(Instant::now()) {
+        return StatusCode::TOO_MANY_REQUESTS;
+    }
     let caller = match principal {
         Principal::Local => "this machine",
         Principal::Server => "server password",
-        Principal::None => "join link",
+        Principal::None => "no credential",
     };
     let agent = headers
         .get(USER_AGENT)
@@ -59,14 +92,23 @@ pub(crate) async fn post(
 
 #[cfg(test)]
 mod tests {
-    use super::BODY_LIMIT;
+    use super::{BODY_LIMIT, Budget, PER_PERIOD, PERIOD};
     use crate::test_support::TestApp;
     use axum::{
         body::Body,
         extract::ConnectInfo,
         http::{Request, StatusCode},
     };
-    use std::net::SocketAddr;
+    use std::{net::SocketAddr, sync::Mutex, time::Instant};
+
+    #[test]
+    fn a_flood_is_cut_off_until_the_next_period() {
+        let budget = Budget(Mutex::new(None));
+        let start = Instant::now();
+        assert!((0..PER_PERIOD).all(|_| budget.admit(start)));
+        assert!(!budget.admit(start));
+        assert!(budget.admit(start + PERIOD));
+    }
 
     async fn post(body: String) -> StatusCode {
         let mut request = Request::builder()

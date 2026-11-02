@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { apiFetch } from "../api";
 import { Button } from "../kit/Button";
 import { Dialog } from "../kit/Dialog";
@@ -66,11 +66,15 @@ function describe(thrown: unknown): Uncaught {
  */
 export function UncaughtErrors() {
   const [held, setHeld] = useState<Uncaught[]>([]);
+  const count = useRef(0);
   useEffect(() => {
     const hold = (thrown: unknown) => {
+      // An error that is dropped is not reported either, so one that repeats every frame cannot flood the log.
+      if (count.current >= MAX_HELD) return;
+      count.current++;
       const error = describe(thrown);
       report(error);
-      setHeld((now) => (now.length < MAX_HELD ? [...now, error] : now));
+      setHeld((now) => [...now, error]);
     };
     // An error event without an error object is the browser's own notice, such as a ResizeObserver loop.
     const onError = (event: ErrorEvent) => event.error != null && hold(event.error);
@@ -90,7 +94,10 @@ export function UncaughtErrors() {
       title="Application Error"
       okLabel="Continue"
       focusOk
-      onOk={() => setHeld((now) => now.slice(1))}
+      onOk={() => {
+        count.current--;
+        setHeld((now) => now.slice(1));
+      }}
       footer={
         bridge ? (
           <Button onClick={() => bridge.close()}>Close</Button>

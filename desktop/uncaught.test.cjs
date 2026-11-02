@@ -26,6 +26,15 @@ void test("an error is logged with its stack and shown; Continue goes on, Close 
   assert.deepEqual(calls.quit, [0]);
 });
 
+void test("after Close, errors already waiting and new ones open no more dialogs", async () => {
+  const { handle, calls } = harness([false]);
+  const waiting = [handle(new Error("first")), handle(new Error("second"))];
+  await Promise.all(waiting);
+  await handle(new Error("third"));
+  assert.deepEqual(calls.shown, ["Error: first"]);
+  assert.deepEqual(calls.quit, [0]);
+});
+
 void test("the eleventh error within the forgetting time ends the app instead of showing another dialog", async () => {
   const { handle, calls } = harness([]);
   for (let i = 0; i < 10; i++) await handle(new Error(`failure ${i}`));

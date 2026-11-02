@@ -14,7 +14,10 @@ const FORGET_MS = 5000;
 function uncaughtHandler({ show, log, quit }) {
   let recent = 0;
   let turn = Promise.resolve();
+  // Once the user chose Close the app is going away: no more dialogs, and nothing more to handle.
+  let closing = false;
   return (error) => {
+    if (closing) return Promise.resolve();
     if (recent >= MAX_RECENT) {
       log("Too many exceptions occurred, terminating application");
       quit(1);
@@ -24,9 +27,13 @@ function uncaughtHandler({ show, log, quit }) {
     const failure = error instanceof Error ? error : new Error(String(error));
     log(`Uncaught exception: ${failure.stack ?? failure.message}`);
     turn = turn.then(async () => {
+      if (closing) return;
       try {
         const keepGoing = await show(`${failure.name}: ${failure.message}`, failure.stack ?? "");
-        if (!keepGoing) quit(0);
+        if (!keepGoing) {
+          closing = true;
+          quit(0);
+        }
       } catch (shown) {
         log(`Could not show the error: ${String(shown)}`);
       } finally {
