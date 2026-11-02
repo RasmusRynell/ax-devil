@@ -13,7 +13,8 @@ use std::{
     time::{Duration, Instant},
 };
 
-/// How many errors are logged in each [`PERIOD`], for every sender together; the rest are answered 429.
+/// How many errors are logged in each [`PERIOD`] for each kind of caller; the rest are answered 429. Callers without a
+/// credential have a budget of their own, so they cannot use up the others'.
 const PER_PERIOD: u32 = 30;
 const PERIOD: Duration = Duration::from_secs(60);
 
@@ -37,7 +38,9 @@ impl Budget {
     }
 }
 
-static BUDGET: Budget = Budget(Mutex::new(None));
+static LOCAL: Budget = Budget(Mutex::new(None));
+static SERVER: Budget = Budget(Mutex::new(None));
+static ANYONE: Budget = Budget(Mutex::new(None));
 
 /// The largest body accepted; a stack trace is a few kilobytes.
 pub(crate) const BODY_LIMIT: usize = 16 * 1024;
@@ -58,21 +61,21 @@ fn clip(text: &str) -> &str {
 }
 
 /// Logs the error with who sent it: the credential it held, its address and its browser. Text goes through `Debug`,
-/// so a page cannot add log lines of its own, and a flood is cut off at [`PER_PERIOD`] a minute.
+/// so a page cannot add log lines of its own, and a flood is cut off at [`PER_PERIOD`] a minute per kind of caller.
 pub(crate) async fn post(
     principal: Principal,
     ConnectInfo(peer): ConnectInfo<SocketAddr>,
     headers: HeaderMap,
     Json(error): Json<PageError>,
 ) -> StatusCode {
-    if !BUDGET.admit(Instant::now()) {
+    let (caller, budget) = match principal {
+        Principal::Local => ("this machine", &LOCAL),
+        Principal::Server => ("server password", &SERVER),
+        Principal::None => ("no credential", &ANYONE),
+    };
+    if !budget.admit(Instant::now()) {
         return StatusCode::TOO_MANY_REQUESTS;
     }
-    let caller = match principal {
-        Principal::Local => "this machine",
-        Principal::Server => "server password",
-        Principal::None => "no credential",
-    };
     let agent = headers
         .get(USER_AGENT)
         .and_then(|value| value.to_str().ok())
