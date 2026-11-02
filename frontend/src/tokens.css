@@ -17,11 +17,13 @@
   --color-caution: light-dark(#8a5300, #e0b04a);
   --color-danger: light-dark(#b3261e, #f28b82);
   /* The video surface and the controls over it look the same in both themes: near-black with white controls. */
-  --color-canvas: #0a0a0a;
+  --color-canvas: #0e0f10;
   --color-on-canvas: #ffffff;
   --color-on-canvas-muted: #b8bec6;
   --color-canvas-hover: #ffffff24;
   --color-canvas-scrim: #000000cc;
+  --color-canvas-line: #ffffff2e;
+  --color-canvas-accent: #3994bc;
   --color-on-canvas-caution: #f5c451;
   --color-on-canvas-danger: #ff8a80;
 
@@ -46,9 +48,13 @@
   --radius-*: initial;
   --radius-control: 4px;
   --radius-popup: 6px;
+  --radius-pill: 9999px;
 
   --shadow-*: initial;
   --shadow-popup: 0 4px 12px light-dark(#26344526, #00000066);
+  --shadow-float: 0 4px 16px #00000080;
+
+  --ease-out-cubic: cubic-bezier(0.33, 1, 0.68, 1);
 
   --stroke-edge: 2px;
   --stroke-focus: 2px;
@@ -86,6 +92,54 @@
   &:focus-visible {
     outline: var(--stroke-focus) solid var(--color-accent);
     outline-offset: calc(var(--stroke-focus) * -1);
+  }
+}
+
+/* The seek bar over video: a slim rounded track filled to --seek-fill (0 to 1) in the accent, with a thumb that
+   appears on hover and keyboard focus. The thumb travels inset by half its width, so the fill follows its center. */
+@utility seek-bar {
+  appearance: none;
+  background: transparent;
+  cursor: pointer;
+  &:disabled {
+    cursor: default;
+  }
+  &:focus-visible {
+    outline: none;
+  }
+  &::-webkit-slider-runnable-track {
+    height: var(--spacing-s);
+    border-radius: var(--radius-pill);
+    background: linear-gradient(
+      to right,
+      var(--color-canvas-accent)
+        calc(var(--spacing-l) / 2 + (100% - var(--spacing-l)) * var(--seek-fill, 0)),
+      var(--color-canvas-hover) 0
+    );
+  }
+  &::-webkit-slider-thumb {
+    appearance: none;
+    box-sizing: border-box;
+    width: var(--spacing-l);
+    height: var(--spacing-l);
+    margin-top: calc((var(--spacing-s) - var(--spacing-l)) / 2);
+    border: 0;
+    border-radius: var(--radius-pill);
+    background: var(--color-on-canvas);
+    transform: scale(0);
+    transition: transform 150ms var(--ease-out-cubic);
+  }
+  &:hover::-webkit-slider-thumb,
+  &:focus-visible::-webkit-slider-thumb {
+    transform: scale(1);
+  }
+  &:focus-visible::-webkit-slider-thumb {
+    box-shadow: 0 0 0 var(--stroke-focus) var(--color-canvas-accent);
+  }
+  @media (prefers-reduced-motion: reduce) {
+    &::-webkit-slider-thumb {
+      transition: none;
+    }
   }
 }
 

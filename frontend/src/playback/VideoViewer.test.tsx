@@ -56,6 +56,17 @@ describe("video viewer", () => {
     expect(screen.getByRole("button", { name: "Play" })).toBeTruthy();
   });
 
+  it("takes the keyboard when it opens, so the shell's shortcuts reach it at once", async () => {
+    render(
+      <SessionProvider>
+        <Viewer sent={[]} />
+      </SessionProvider>,
+    );
+    await act(async () => {});
+    act(() => FakeSocket.rooms.get("room-1")!.setItems([video("a")]));
+    expect(document.activeElement).toBe((await slider()).closest("[tabindex='-1']"));
+  });
+
   it("picks up a clock the accepted intent still has running when the owner reloads", async () => {
     // The page reloaded while playing frame 10 of "a" 400 ms (10 frames) of backend time ago.
     window.sessionStorage.removeItem("ax-devil.credential");

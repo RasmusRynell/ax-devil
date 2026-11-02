@@ -15,6 +15,7 @@ const {
   page,
   reload,
   setView,
+  showChrome,
   tag,
   until: waitFor,
   watchCsp,
@@ -50,6 +51,7 @@ module.exports.sharing = async (window, shell, ownerCsp) => {
   const fitsAtMinimum = async (win, driver, name) => {
     const bounds = win.getBounds();
     await setView(win, [640, 480], 2);
+    await showChrome(win);
     assert.deepEqual(
       await driver.js(`(${fit.page.toString()})()`),
       [],

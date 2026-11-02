@@ -6,6 +6,7 @@ import { useSettings } from "../settings";
 import { useCan, useFollowing, useServerClock, useStream, useView } from "../session/session";
 import { useViewerActions } from "../viewer/actions";
 import { NOTHING_HIDDEN, type Hidden } from "../viewer/hidden";
+import { useChromeVisibility } from "./chromeVisibility";
 import { NoticeList } from "./LaneChip";
 import { LaneGrid } from "./LaneGrid";
 import { Popover } from "../kit/Popover";
@@ -91,6 +92,7 @@ function Playback({
   const geometry = useRef<Geometry | null>(null);
   const [exporting, setExporting] = useState(false);
   const [tools, setTools] = useState(false);
+  useChromeVisibility(pane);
   const shownViewport = useRef(viewport);
   shownViewport.current = viewport;
   // A viewer that opens takes the keyboard, so its shortcuts work at once.
@@ -144,70 +146,68 @@ function Playback({
       ref={pane}
       tabIndex={-1}
       data-popover-bounds=""
-      className="relative flex min-h-0 flex-1 flex-col bg-canvas text-on-canvas outline-none @container"
+      className="group relative flex min-h-0 flex-1 flex-col bg-canvas text-on-canvas outline-none @container"
       onKeyDown={(event) => {
         if (event.key === "Escape" && !event.ctrlKey && !event.altKey && !event.metaKey)
           session.select(null);
       }}
     >
       {view.status === "ready" ? (
-        <>
-          <div className="flex min-h-0 flex-1">
-            <div className="relative min-h-0 min-w-0 flex-1">
-              <LaneGrid
-                session={session}
-                view={view}
-                name={name}
-                anchor={`frame:${item}`}
-                entry={entry}
-                hidden={hidden}
-                onHide={onHideLane}
-                viewport={viewport}
-                onViewport={onViewport}
-                objectDetails={objectDetails}
-                onHover={hover}
-                onSelect={(selection) => session.select(selection)}
-                onDrawn={drawn}
-              />
-              <ObjectLayer
-                selection={view.selection}
-                objectDetails={objectDetails}
-                handle={objects}
-              />
-              {view.warnings.length > 0 && (
-                <div className="absolute top-0 right-0 p-s">
-                  <div className="rounded-control bg-canvas-scrim">
-                    <Popover
-                      onCanvas
-                      label={`${name}: warnings`}
-                      trigger={<Icon name="triangle-alert" />}
-                      className="size-row justify-center"
-                    >
-                      <NoticeList notices={view.warnings.map((problem) => ({ problem }))} />
-                    </Popover>
-                  </div>
+        <div className="flex min-h-0 flex-1">
+          <div data-chrome-idle="" className="relative min-h-0 min-w-0 flex-1">
+            <LaneGrid
+              session={session}
+              view={view}
+              name={name}
+              anchor={`frame:${item}`}
+              entry={entry}
+              hidden={hidden}
+              onHide={onHideLane}
+              viewport={viewport}
+              onViewport={onViewport}
+              objectDetails={objectDetails}
+              onHover={hover}
+              onSelect={(selection) => session.select(selection)}
+              onDrawn={drawn}
+            />
+            <ObjectLayer
+              selection={view.selection}
+              objectDetails={objectDetails}
+              handle={objects}
+            />
+            {view.warnings.length > 0 && (
+              <div className="absolute top-0 right-0 p-s">
+                <div className="rounded-control bg-canvas-scrim">
+                  <Popover
+                    onCanvas
+                    label={`${name}: warnings`}
+                    trigger={<Icon name="triangle-alert" />}
+                    className="size-row justify-center"
+                  >
+                    <NoticeList notices={view.warnings.map((problem) => ({ problem }))} />
+                  </Popover>
                 </div>
-              )}
-            </div>
-            {tools && (
-              <ObjectsPanel
-                source={session}
-                view={view}
-                canSeek={canChange}
-                selectable={objectDetails}
-                onClose={() => setTools(false)}
-              />
+              </div>
             )}
-            {objectDetails && view.inspection.state !== "none" && (
-              <Inspector
-                inspection={view.inspection}
-                onClose={() => session.select(null)}
-                crowded={tools}
-              />
-            )}
+            <Transport controls={session} view={view} disabled={!canChange} />
           </div>
-          <Transport controls={session} view={view} disabled={!canChange} />
-        </>
+          {tools && (
+            <ObjectsPanel
+              source={session}
+              view={view}
+              canSeek={canChange}
+              selectable={objectDetails}
+              onClose={() => setTools(false)}
+            />
+          )}
+          {objectDetails && view.inspection.state !== "none" && (
+            <Inspector
+              inspection={view.inspection}
+              onClose={() => session.select(null)}
+              crowded={tools}
+            />
+          )}
+        </div>
       ) : (
         <Status view={view} name={name} />
       )}
@@ -249,7 +249,7 @@ export type VideoViewerProps = {
 };
 
 /**
- * Plays one entry from the backend: its lanes in a grid with the transport below them, or why there is no picture
+ * Plays one entry from the backend: its lanes in a grid with the transport over their bottom edge, or why there is no picture
  * yet. What the clock does is the window's view of this item, for the entry that view names. Whatever the viewer does
  * with the controls is published when the seat may change its view, also while following: that is what makes the
  * backend let the seat explore. The presenter's clock drives a following window and is never published back. Lane

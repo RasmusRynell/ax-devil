@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import { act, cleanup, render, screen } from "@testing-library/react";
+import { FakeSettings } from "../fakeSettings";
 import { hiddenOf } from "../viewer/hidden";
 import { LANE_SETTINGS } from "./fakeOpened";
 import { LaneGrid } from "./LaneGrid";
@@ -49,7 +50,12 @@ function lane(label: string, visible = true): LaneState {
   };
 }
 
-function mount(labels: string[], hiddenLabels: string[], views: Record<string, boolean> = {}) {
+function mount(
+  labels: string[],
+  hiddenLabels: string[],
+  views: Record<string, boolean> = {},
+  frame = { width: 0, height: 0 },
+) {
   vi.stubGlobal(
     "ResizeObserver",
     class {
@@ -63,6 +69,7 @@ function mount(labels: string[], hiddenLabels: string[], views: Record<string, b
   const session = { setLane: vi.fn() };
   const view = {
     lanes: labels.map((label) => lane(label, views[label] ?? true)),
+    ...frame,
   } as unknown as PlaybackView;
   const hidden = hiddenOf(
     hiddenLabels.map((label) => ({
@@ -76,15 +83,17 @@ function mount(labels: string[], hiddenLabels: string[], views: Record<string, b
   );
   act(() => {
     render(
-      <LaneGrid
-        session={session as unknown as PlaybackSession}
-        view={view}
-        name="clip"
-        anchor="frame:i"
-        entry="e"
-        hidden={hidden}
-        onHide={() => {}}
-      />,
+      <FakeSettings>
+        <LaneGrid
+          session={session as unknown as PlaybackSession}
+          view={view}
+          name="clip"
+          anchor="frame:i"
+          entry="e"
+          hidden={hidden}
+          onHide={() => {}}
+        />
+      </FakeSettings>,
     );
   });
   return session;
@@ -103,6 +112,13 @@ describe("lane grid", () => {
     const session = mount(["A", "B"], [], { B: false });
     expect(screen.getByText("B")).toBeTruthy();
     expect(session.setLane.mock.calls).toEqual([[1, { visible: true }]]);
+  });
+
+  it("puts a lane's tag at the corner of the visible picture, not of the cell around it", () => {
+    // A 4:3 video in an 800 x 300 cell is 400 wide with 200 pixels of bar on each side; the tag may run over the right bar.
+    mount(["A"], [], {}, { width: 400, height: 300 });
+    const tag = screen.getByText("A").closest(".absolute") as HTMLElement;
+    expect([tag.style.left, tag.style.top, tag.style.maxWidth]).toEqual(["200px", "0px", "600px"]);
   });
 
   it("says so when every lane is hidden", () => {

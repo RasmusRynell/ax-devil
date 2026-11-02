@@ -50,8 +50,8 @@ const LUMA_WEIGHTS: Record<Matrix, { kr: number; kb: number }> = {
   bt709: { kr: 0.2126, kb: 0.0722 },
 };
 
-/** The canvas token's near-black, `--color-canvas`, as GL color components. */
-const FIELD = 0x0a / 255;
+/** The canvas token's near-black, `--color-canvas` (#0e0f10), as GL color components. */
+const FIELD = { red: 0x0e / 255, green: 0x0f / 255, blue: 0x10 / 255 };
 
 const VERTEX = `#version 300 es
 in vec2 corner;
@@ -292,7 +292,7 @@ export class VideoRenderer {
     const gl = this.#gl;
     const { width: canvasWidth, height: canvasHeight } = this.#canvas;
     gl.viewport(0, 0, canvasWidth, canvasHeight);
-    gl.clearColor(FIELD, FIELD, FIELD, 1);
+    gl.clearColor(FIELD.red, FIELD.green, FIELD.blue, 1);
     gl.clearStencil(0);
     gl.clear(gl.COLOR_BUFFER_BIT | gl.STENCIL_BUFFER_BIT);
     this.#placed = [];

@@ -87,7 +87,7 @@ performance crutch.
 
 - Crisp video, overlays and UI at fractional scales and at 2.
 - Export at native source resolution whatever the desktop scale.
-- Verify with a forced scale factor in the isolated test environment (`docs/runbooks/testing.md#quick-renderer-verification`).
+- Verify with a forced scale factor in the isolated test environment.
 
 ## Overlay drawing
 
