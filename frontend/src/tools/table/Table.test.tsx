@@ -65,11 +65,11 @@ describe("Table", () => {
     const onActivate = vi.fn();
     const { rerender } = render(table("moving", 3, [a, b, c], onActivate));
     fireEvent.keyDown(screen.getByRole("listbox"), { key: "ArrowDown" });
-    rerender(table("moving", 3, [c, b, a], onActivate));
+    rerender(table("moving", 3, [c, a, b], onActivate));
     fireEvent.keyDown(screen.getByRole("listbox"), { key: "Enter" });
-    expect(onActivate).toHaveBeenCalledWith(b, 1);
+    expect(onActivate).toHaveBeenCalledWith(b, 2);
 
-    // A cursor whose row has gone stays where it was.
+    // A cursor whose row has gone stays where it was, within the rows left.
     rerender(table("moving", 2, [c, a], onActivate));
     fireEvent.keyDown(screen.getByRole("listbox"), { key: "Enter" });
     expect(onActivate).toHaveBeenLastCalledWith(a, 1);
