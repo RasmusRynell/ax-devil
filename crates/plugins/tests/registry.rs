@@ -69,6 +69,27 @@ fn the_registry_installs_lists_removes_and_keeps_unknown_keys() {
         .update(1, &second_path, &Reserved::default())
         .expect_err("the duplicate stays refused");
     assert_eq!(error.field.as_deref(), Some("id"));
+    // It is also refused when its manifest takes the id of a later plugin that loads, which would stop loading.
+    let mut beta_manifest = base();
+    beta_manifest["id"] = json!("beta");
+    beta_manifest["handlers"][0]["id"] = json!("beta_tracks");
+    let beta = install(&root.path().join("beta"), &beta_manifest);
+    let mut taking = base();
+    taking["handlers"][0]["id"] = json!("beta_tracks");
+    let taking = install(&root.path().join("taking"), &taking);
+    let mut with_beta = registry.clone();
+    with_beta
+        .install(&beta, &Reserved::default())
+        .expect("beta installs");
+    let before = with_beta.manifests();
+    let error = with_beta
+        .update(0, &taking, &Reserved::default())
+        .expect_err("beta would stop loading");
+    assert!(
+        error.reason.contains("beta") && error.reason.contains("beta_tracks"),
+        "{error}"
+    );
+    assert_eq!(with_beta.manifests(), before);
     let error = registry.remove("acme").expect_err("the id names two");
     assert!(error.0.contains("declared by 2 plugins"), "{error}");
     assert_eq!(registry.manifests().len(), 2);
