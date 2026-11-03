@@ -49,14 +49,14 @@ frame rates or bursts can exhaust the frame buffer"):
 
 Startup order (*current:* `Application.start()` in `src/ax_devil/app.py`):
 
-1. (Python app only: resolve the installation's plugin selection; D29 has none.)
-2. Logging to console; load settings; ensure storage folders; logging to file.
-3. Register built-in handlers and the installed converters from the registry; record failures.
-4. Create the UI; apply theme; install shortcuts.
-5. Create the catalog manager.
-6. Show the main window and launch: CLI items → new Untitled workspace; `open FILE` → that workspace; plain launch →
+1. Logging to console; load settings; ensure storage folders; logging to file.
+2. Register built-in handlers and the installed plugins from the registry; record failures. A running app follows the
+   registry afterwards (D29).
+3. Create the UI; apply theme; install shortcuts.
+4. Create the catalog manager.
+5. Show the main window and launch: CLI items → new Untitled workspace; `open FILE` → that workspace; plain launch →
    restore the recovery copy if it is the newest recent, else start panel.
-7. Start the background scan if enabled; open start-up windows one at a time (Quick Setup on first start, then the
+6. Start the background scan if enabled; open start-up windows one at a time (Quick Setup on first start, then the
    catalog window for `ax-devil catalog`).
 
 - **MUST** never prompt at startup (`docs/domain/invariants.md#workspace-and-viewers`). Plain launch, recovery and

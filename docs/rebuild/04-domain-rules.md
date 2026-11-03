@@ -21,14 +21,15 @@
 | UI Lifecycle, Workspace And Viewers | GUI thread, worker threads, `BackgroundJobs`/`JobScope`, `ItemResolver`, `open_entry_media` | The UI never waits; owned cancellable tasks; resources destroyed on the executor they require ([03](03-runtime.md#concurrency-guarantees-must)) |
 | UI Lifecycle | `CancelToken` raising `Cancelled`, no other mechanism | One runtime cancellation contract; cancellation propagates through it and generic error handling cannot swallow it |
 | UI Lifecycle | `sourceReconnecting`, `sourceError` | Reconnecting and error notifications with a reason |
-| Plugin System | Entry-point groups | The new discovery mechanism (D1) |
+| Plugin System | Entry-point groups | The registry of manifest paths (D29) |
 | Data Pipeline | Windows ctime caveat | Use content digests where the platform lacks a change time |
 
 ## Drop
 
 - UI Lifecycle: the GC freeze and collection rules (Python-specific; the guarantee is in [03](03-runtime.md)).
-- Plugin System: uv project, interpreter selection, `AX_DEVIL_LAUNCH_COMMAND`/`AX_DEVIL_PLUGIN_ROOT`; keep the
-  guarantees (a converter's dependencies are its own; install and remove change only the registry).
+- Plugin System: uv project, interpreter selection, `AX_DEVIL_LAUNCH_COMMAND`/`AX_DEVIL_PLUGIN_ROOT`; dropped. The
+  guarantees stay (a plugin's dependencies are its own, through its manifest's `command`; install and remove change
+  only the registry).
 - Data Pipeline: "one process pool" for the cache allowance; keep "one allowance shared by open offline sources".
 - Class and method names quoted as requirements (`add_observation()`, `SplitView`, `WorkspaceIntake`).
 

@@ -96,8 +96,8 @@ Documented, not fixed.
 
 ## Plugin trust (MUST)
 
-State that converters run with the user's permissions and are not sandboxed (`docs/plugins.md#trust`). Keep credentials
-out of converter manifests and the registry.
+State that plugins run with the user's permissions and are not sandboxed (`docs/plugins.md#trust`). Keep credentials
+out of plugin manifests and the registry.
 
 ## File safety (MUST)
 
@@ -111,8 +111,8 @@ Atomic writes and the rule about built-in resources: [05](05-formats-and-extensi
 | Channel | PyPI wheel; `uv tool install`, pip, source with `uv sync --locked` | D6; default: one self-contained Linux package (AppImage or Flatpak) plus source build; CLI named `ax-devil` |
 | Native dependencies | Qt and FFmpeg system libraries per distro | Bundle where licenses allow; one installation page for the rest |
 | Versioning | SemVer, Keep a Changelog, tag matches package version | Keep |
-| Release | Tag, CI, clean-container install check, publish (`docs/runbooks/testing.md#package-artifacts`) | Keep the clean-environment check: install as documented, render catalogs, install the example plugin, play a generated video in the isolated environment, upgrade, check converters still load |
-| Upgrades | Converters do not depend on the app | An upgrade changes no converter; one that no longer loads is listed |
+| Release | Tag, CI, clean-container install check, publish (`docs/runbooks/testing.md#package-artifacts`) | Keep the clean-environment check: install as documented, render catalogs, install the example plugin, play a generated video in the isolated environment, upgrade, check plugins still load |
+| Upgrades | Plugins do not depend on the app | An upgrade changes no plugin; one that no longer loads is listed |
 
 ### Desktop package
 
@@ -126,7 +126,7 @@ Builds are unsigned. Linux: `chmod +x` the AppImage; where FUSE is missing run i
 on Ubuntu 24.04+ the Chromium sandbox may need `--no-sandbox`. Windows: SmartScreen "More info", then "Run anyway".
 macOS: System Settings, Privacy & Security, "Open Anyway", or `xattr -dr com.apple.quarantine ax-devil.app`.
 
-D6 and D29: converters are the user's own programs, so a bundle ships no interpreter for them.
+D6 and D29: plugins are the user's own programs and bring their own environment (`command`), so a bundle ships no interpreter for them.
 
 ## Observability
 

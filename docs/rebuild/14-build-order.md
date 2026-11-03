@@ -14,12 +14,12 @@ decisions taken; the open ones are in [15](15-open-decisions.md).
 | Live theme changes, fractional HiDPI, accessibility API | [06](06-ui-ux.md) |
 | Offscreen or private-display rendering, toolkit-level test input, window capture | [09](09-testing.md#isolation-must) |
 | Strict typing, formatter, linter, dependency-rule checker | [10](10-quality-gates.md) |
-| A plugin story compatible with D1 and D6 | [05](05-formats-and-extensions.md#plugin-runtime) |
+| A plugin story compatible with D1 and D6 (settled by D29) | [05](05-formats-and-extensions.md#plugin-runtime) |
 
 ## D0: stack choice
 
 Run throwaway spikes against the criteria: decode and seek, RTSP/ONVIF capture time,
-offscreen rendering of video plus overlays, plugin bridge feasibility if D1 keeps one, and the D4 schema
+offscreen rendering of video plus overlays, and the D4 schema
 against both built-in resolvers. The owner signs D0 on the results; spike code is not committed.
 
 **Taken at the start of the rewrite: the stack of the owner's Rust prototype**: a Rust backend (axum on tokio)
@@ -37,7 +37,7 @@ Decode and seek is decided ([below](#decisions-taken-for-offline-video)). Spikes
 |-------|---------------------------------|
 | Live capture time | Per-frame capture time from RTSP (ONVIF replay extension or RTCP sender reports) for video and the ONVIF metadata track with `retina`; MQTT; WebSocket with Digest (D14) |
 | One surface, two targets | D22 S0: 4 lanes of 1000 and of 5000 objects presented within the main-thread budget ([03](03-runtime.md#performance)) on a real GPU; then the same code offscreen in Electron at native size for export |
-| Plugins | The D1 runtime: a file decoder, a payload decoder and a resolver; the D4 schema against both built-in resolvers |
+| Plugins | The D29 runtime: a file decoder and a resolver as plugins (a payload decoder with live sources); the D4 schema against both built-in resolvers |
 | Platform | Fractional HiDPI and the accessibility tree in Electron; Windows and macOS builds (D2) |
 
 ## Decisions taken for the foundation
@@ -95,7 +95,7 @@ The owner approved D22–D30 together and D31–D36 with S4 and S5 ([slices](#ne
 | D26: Scene stays the store's data model. A Sample Item is the immutable encoding of one sample, keyed by source revision and sample; a Frame Map per lane assigns samples to frames. The backend owns tolerance, sticky and sequence selection; revisions replace per-seek epochs; colour lists are a typed Scene value; class filters use a backend-computed class mask | Lanes and viewers share a source's items and differ only in their maps; the decoder's class rules stay in Rust |
 | D27: a lane never draws another sample's marks. During play it shows a loading state and the video is not held; after a seek or step a frame waits at most about 250 ms; export always waits. Supersedes "a frame is shown only when every visible lane holds its overlay" | A slow backend must neither freeze playback nor mark the wrong frame |
 | D28: live uses a bounded deadline (jitter buffer); the gate covers all lanes sharing the viewer's video; the start value is 1.5 s until camera skew is measured | Late metadata must neither stall video nor mark the wrong frame |
-| D29: ingest runs converter processes (any language, JSON Lines) with a manifest, an allowlisted environment, drained stderr, a 16 MiB line cap and process-group kill; a failure marks the lane incomplete and cache identity includes the script hash. The host groups equal-timestamp records and sorts when ingest ends. Settles D1: no in-process Python bridge | A process boundary isolates and kills; only the host writes the store |
+| D29: ingest runs plugin processes (any language, JSON Lines; protocol 3 ops decode, scan, resolve) described by one manifest listing typed handlers (decoder, playlist resolver) and owning their environment through `command`, with an allowlisted environment, drained stderr, a 16 MiB line cap and process-group kill; a failure marks the lane incomplete and cache identity includes the script hash. The host groups equal-timestamp records and sorts when ingest ends. Settles D1: no in-process Python bridge | A process boundary isolates and kills; only the host writes the store |
 | D30: file-scope queries stay a separate restricted backend query (a track that was car, then bus, matches both); the whole-file filter (IN-02) is built in S8 | Sample Items hold only the latest observation, so a file-wide question cannot use them |
 | D31: one viewport per viewer, shared by its lanes: zoom 1 to 10 and pan, held by the client; the window decides aspect. Image zoom keys are `=`, `-` and `0` | IN-05 syncs zoom across lanes; Ctrl+=, Ctrl+- and Ctrl+0 are the page zoom's |
 | D32: page zoom never scales an overlay's pixel lengths: layout divides them by Electron's zoom factor (a plain browser has none, so there they follow the page) | A label's size on screen is the catalog's, whatever the page zoom |
@@ -119,7 +119,7 @@ owner selects them.
 | M4 | Offline depth: lanes (several overlays on one video; playlist entries switch the video), playlists, both resolvers, hide, cache marks, sticky, diagnostics, media tools, bookmarks, export | OF-02 parity case; alignment TSVs match the oracle; cache-build crash safety |
 | M5 | Live: RTSP, ONVIF metadata, MQTT, DataHub, sync, status, scan, Live view | Fake-transport and burst tests; one manual camera session |
 | M6 | Catalogs complete: six built-ins, manager, selection scopes, visibility, catalog window | Canonical comparison for all built-ins; catalog conformance suite ([09](09-testing.md#pyramid)) |
-| M7 | Plugin runtime, all built-in decoders, external install/update/remove, Plugins view | The write-plugin example installs and decodes in a fresh process |
+| M7 | Plugin runtime, all built-in decoders, install/update/remove with live reload, Plugins view | The write-plugin example installs and decodes in a fresh process |
 | M8 | Settings dialog, Quick Setup, Shortcuts dialog, accessibility pass, polish | Fit test for every window at the window minimum and at 200% zoom |
 | M9 | Packaging and release; owner-selected S rows (benchmarks, release check, soak) | Every M row done or dropped by the owner in writing |
 
@@ -131,7 +131,7 @@ decoders live payloads when live sources land. Packaging feasibility needs a dec
 
 The overlay pipeline (D22–D36) goes first among overlay work: S0 the evaluator spike, S1 the data wire and switch, S2
 the remaining built-ins and `catalog check`, S3 deleting the Rust render path, S4 lane presentation and user catalogs
-S5 picking and the inspector, S6 export, S7 converters and S8 file-scope queries are built; S9 live follows.
+S5 picking and the inspector, S6 export, S7 plugins and S8 file-scope queries are built; S9 live follows.
 
 Every new slice extends SH-01–04: decide what follows the presenter, what stays private, and how removal or
 permission changes revoke access. Replacement acceptance covers user workflows; existing S capabilities need an
