@@ -40,8 +40,13 @@ declare global {
 /** Puts the whole application into or out of fullscreen: the window in the desktop, the page in a browser. */
 export function toggleAppFullscreen(): void {
   if (window.axDevilWindow) window.axDevilWindow.toggleFullScreen();
-  else if (document.fullscreenElement) void document.exitFullscreen();
-  else void document.documentElement.requestFullscreen();
+  else if (document.fullscreenElement === document.documentElement) void document.exitFullscreen();
+  else {
+    // A lane or another element may be fullscreen: it gives way to the page. A refused request leaves things as they are.
+    void Promise.resolve(document.fullscreenElement && document.exitFullscreen())
+      .then(() => document.documentElement.requestFullscreen())
+      .catch(() => {});
+  }
 }
 
 /**

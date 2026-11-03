@@ -1,6 +1,7 @@
 import { act, fireEvent, render, screen } from "@testing-library/react";
 import type { ComponentProps, ReactNode } from "react";
 import { describe, expect, it, vi } from "vite-plus/test";
+import { installFakeFullscreen } from "../fakeFullscreen";
 import { DEFAULT_SETTINGS } from "../fakeSettings";
 import { FakeSocket, video } from "../session/fakeSession";
 import { SessionProvider } from "../session/session";
@@ -24,6 +25,7 @@ vi.mock("./VideoCanvas", () => ({
 }));
 
 installViewerHarness();
+const fullscreen = installFakeFullscreen();
 
 const SELECTION = { lane: 0, source: 0, entity: "7" };
 const PICKED: Picked = {
@@ -97,22 +99,6 @@ describe("video viewer objects", () => {
   });
 
   it("shows one lane alone in fullscreen while the others keep playing, and Escape only leaves it", async () => {
-    let element: Element | null = null;
-    const changed = () => document.dispatchEvent(new Event("fullscreenchange"));
-    Object.defineProperty(document, "fullscreenElement", {
-      configurable: true,
-      get: () => element,
-    });
-    const exit = vi.fn(async () => {
-      element = null;
-      changed();
-    });
-    document.exitFullscreen = exit;
-    // Only the viewer's pane asks for fullscreen.
-    HTMLElement.prototype.requestFullscreen = async () => {
-      element = document.querySelector("[data-popover-bounds]");
-      changed();
-    };
     const lanes: LaneInfo[] = [
       { label: "DPM", slot: "DPM", source: 0 },
       { label: "GT", slot: "GT", source: 1 },
@@ -128,12 +114,11 @@ describe("video viewer objects", () => {
     act(() => props().onSelect?.(SELECTION));
     fireEvent.keyDown(inspector() as HTMLElement, { key: "Escape" });
     // The Escape that leaves fullscreen does not also clear the selection.
-    expect(exit).toHaveBeenCalledOnce();
+    expect(fullscreen.exit).toHaveBeenCalledOnce();
     expect(inspector()).toBeTruthy();
     expect(props().cells?.map(({ lane }) => lane)).toEqual([0, 1]);
     fireEvent.keyDown(inspector() as HTMLElement, { key: "Escape" });
     expect(inspector()).toBeNull();
-    Reflect.deleteProperty(document, "fullscreenElement");
   });
 
   it("keeps the selection when Escape closes a lane menu", async () => {
