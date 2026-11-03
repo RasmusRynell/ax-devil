@@ -12,9 +12,9 @@ use std::{
     time::Instant,
 };
 
-use foundation::{CancelToken, Timeline, UserError, Warning};
+use foundation::{CancelToken, MediaTime, Timeline, UserError, Warning};
 use handler_api::OverlayRef;
-use overlay_sync::Alignment;
+use overlay_sync::{Alignment, SampleKeys};
 use playback::{FrameSet, Want};
 use scene_store::{TrackRead, TrackSnapshot};
 use tokio::sync::Notify;
@@ -383,17 +383,50 @@ impl State {
         sample: u64,
         serial: u64,
         item: Arc<[u8]>,
+        timeline: &Timeline,
     ) -> SampleItem {
         let slot = &self.sources[source];
+        let (time, frame_number) = match &slot.load {
+            Load::Ready(_, snapshot) => sample_clock(&snapshot.keys, sample, timeline),
+            Load::Loading | Load::Failed => (None, None),
+        };
         SampleItem {
             source: lane_id(source),
             data_revision: slot.data_revision,
             sample,
+            time,
+            frame_number,
             frame: slot.window.get(&sample).copied().unwrap_or_default(),
             serial,
             item,
         }
     }
+}
+
+/// A sample's time on the video clock and its frame number in its file. A frame-keyed file numbers its samples by
+/// frame, and the video says when that frame is; a time-keyed file has the time, and its records' frame numbers are
+/// not the video's.
+fn sample_clock(
+    keys: &SampleKeys,
+    sample: u64,
+    timeline: &Timeline,
+) -> (Option<MediaTime>, Option<u64>) {
+    let Ok(index) = usize::try_from(sample) else {
+        return (None, None);
+    };
+    let frame_number = match &keys.times {
+        Some(_) => None,
+        None => keys
+            .frames
+            .as_ref()
+            .and_then(|frames| frames.get(index))
+            .map(|key| key.frame),
+    };
+    let time = match &keys.times {
+        Some(times) => times.get(index),
+        None => frame_number.and_then(|frame| timeline.time(frame)),
+    };
+    (time, frame_number)
 }
 
 /// The wire index of lane or source `index`; lanes beyond `u16::MAX` are not opened.

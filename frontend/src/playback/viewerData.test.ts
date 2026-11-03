@@ -43,7 +43,15 @@ function viewer() {
       kinds: new Uint8Array(samples.length),
     });
   const sample = (index: number) =>
-    data.addSample({ kind: "sample", source: 0, dataRevision: 1, sample: index, item: item() });
+    data.addSample({
+      kind: "sample",
+      source: 0,
+      dataRevision: 1,
+      sample: index,
+      timeUs: null,
+      frame: null,
+      item: item(),
+    });
   const state = (frame: number) => data.draw?.at(0, frame).state;
   return { lanes, data, map, sample, state };
 }
@@ -115,7 +123,15 @@ describe("viewer data", () => {
     data.refresh();
     sample(1);
     expect(data.samples.count).toBe(0);
-    data.addSample({ kind: "sample", source: 0, dataRevision: 2, sample: 1, item: item() });
+    data.addSample({
+      kind: "sample",
+      source: 0,
+      dataRevision: 2,
+      sample: 1,
+      timeUs: null,
+      frame: null,
+      item: item(),
+    });
     expect(data.samples.count).toBe(1);
   });
 
@@ -166,7 +182,15 @@ describe("viewer data", () => {
     data.refresh();
     data.catalogs.receive(LANE_DEFAULTS.catalog, 1, catalogDocument(), null);
     data.window(0, 9);
-    data.addSample({ kind: "sample", source: 0, dataRevision: 1, sample: 0, item: item() });
+    data.addSample({
+      kind: "sample",
+      source: 0,
+      dataRevision: 1,
+      sample: 0,
+      timeUs: null,
+      frame: null,
+      item: item(),
+    });
     const map = (lane: number, cells: number[]) =>
       data.addMap({
         kind: "map",

@@ -42,6 +42,8 @@ impl Renderer for HostRenderer {
                 source: new.source.source,
                 data_revision: new.source.data_revision,
                 sample: u64::from(new.index),
+                time: None,
+                frame_number: None,
                 frame: 0,
                 serial: 0,
                 item: new.source.item(index)?,

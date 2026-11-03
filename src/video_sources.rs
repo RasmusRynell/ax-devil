@@ -7,7 +7,7 @@
 use foundation::{
     CancelToken, ErrorCode, FrameFailure, FrameSize, HostPath, Interrupt, UserError, VideoFrame,
 };
-use media::{Decoder, FrameIndex, ImageSequenceInput, VideoInput};
+use media::{Decoder, FrameIndex, ImageSequenceInput, PtsTiming, VideoInput};
 use playback::{DecoderFactory, Registry, Session, SourceKey, SourceSpec, SpanDecoder};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -71,6 +71,8 @@ pub struct OpenedVideo {
     /// Things worth telling the user about the video, such as a missing last image. They name the host's files, so
     /// only an audience with host details is told.
     pub warnings: Vec<String>,
+    /// How the frame times come from the container's timestamps; `None` for an image sequence.
+    pub pts: Option<PtsTiming>,
 }
 
 /// The path errors about `video` name: its file, or the pattern of its images.
@@ -181,6 +183,7 @@ impl VideoSources {
                 session,
                 size: details.size,
                 warnings: details.warnings.clone(),
+                pts: details.index.pts_timing(),
             });
         }
         let input = input_of(video);
@@ -232,6 +235,7 @@ impl VideoSources {
             session,
             size: details.size,
             warnings: details.warnings.clone(),
+            pts: details.index.pts_timing(),
         })
     }
 }

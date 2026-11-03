@@ -55,6 +55,7 @@ fn same(a: &FrameIndex, b: &FrameIndex) -> bool {
         && a.keyframes() == b.keyframes()
         && a.info() == b.info()
         && a.scan() == b.scan()
+        && a.pts_timing() == b.pts_timing()
 }
 
 #[test]
@@ -70,6 +71,10 @@ fn an_unchanged_video_reloads_the_same_index_from_its_cache_file() {
         (Some(&0.0), Some(&1.0))
     );
     assert_eq!(index_files(&s.cache).len(), 1);
+    assert!(
+        built.pts_timing().is_some(),
+        "a file has container timestamps"
+    );
 
     let (reloaded, reported) = load(&s.video, &s.cache);
     assert!(reported.is_empty(), "a cache hit does no scan");

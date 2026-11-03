@@ -124,6 +124,8 @@ fn item(sample: u64) -> SampleItem {
         source: 0,
         data_revision: 1,
         sample,
+        time: None,
+        frame_number: None,
         frame: 0,
         serial: 0,
         item: Arc::from(vec![0_u8; 8]),
