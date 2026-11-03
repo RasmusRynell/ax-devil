@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { HandlersInfo } from "../generated/api";
-import { FakeSocket } from "../session/fakeSession";
+import { FakeSocket, type Room } from "../session/fakeSession";
 import { SessionProvider } from "../session/session";
 import { AddPlaylistDialog } from "./AddPlaylistDialog";
 
@@ -191,6 +191,29 @@ describe("add playlist dialog", () => {
 
     expect(onClose).toHaveBeenCalledTimes(1);
     expect(commands()).toEqual([]);
+  });
+
+  it("closes once on Cancel while the add is in flight, and the add completes", async () => {
+    const onClose = vi.fn();
+    const held = deferred();
+    stubBackend(() => held.promise);
+    await open(onClose);
+    choose("mot_challenge");
+    await scanRoot();
+    fireEvent.click(add());
+    await screen.findByRole("status");
+    FakeSocket.latest.defer = true;
+    held.settle(reply(200, { item: "p1" }));
+    await waitFor(() => expect(commands()).toHaveLength(1));
+
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(onClose).toHaveBeenCalledTimes(1);
+    expect(resolveCalls()[0][1]?.signal?.aborted).toBe(false);
+    act(() => FakeSocket.latest.flush());
+    await new Promise((done) => setTimeout(done, 10));
+
+    expect(onClose).toHaveBeenCalledTimes(1);
+    expect((FakeSocket.rooms.get("room-1") as Room).items).toHaveLength(1);
   });
 
   it("keeps Load enabled with nothing checked, and says so instead of adding", async () => {

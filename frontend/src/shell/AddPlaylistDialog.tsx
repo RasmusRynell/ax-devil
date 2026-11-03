@@ -33,16 +33,23 @@ export function AddPlaylistDialog({ onClose }: { onClose: () => void }) {
   const latestName = useRef("");
   const [resolving, setResolving] = useState(false);
   const [refused, setRefused] = useState<{ reason: string; stamp: string } | null>(null);
+  // The resolve in flight; null once its result is being added, which Cancel can no longer undo.
   const request = useRef<AbortController | null>(null);
+  const closed = useRef(false);
 
   // A refusal is about the settings it answered; any change since makes it stale.
   const stamp = JSON.stringify([resolver.id, form.settings]);
   const refusal = refused?.stamp === stamp ? refused.reason : null;
 
   useEffect(() => () => request.current?.abort(), []);
+  const close = () => {
+    if (closed.current) return;
+    closed.current = true;
+    onClose();
+  };
   const cancel = () => {
     request.current?.abort();
-    onClose();
+    close();
   };
 
   const add = async () => {
@@ -69,6 +76,8 @@ export function AddPlaylistDialog({ onClose }: { onClose: () => void }) {
         setResolving(false);
         return;
       }
+      // Sent, the add is committed: Cancel now only closes.
+      request.current = null;
       await command({
         type: "content",
         command: {
@@ -77,9 +86,9 @@ export function AddPlaylistDialog({ onClose }: { onClose: () => void }) {
           label: latestName.current.trim() || null,
         },
       });
-      onClose();
+      close();
     } catch (error) {
-      if (controller.signal.aborted) return;
+      if (controller.signal.aborted || closed.current) return;
       setRefused({ reason: error instanceof Error ? error.message : String(error), stamp });
       setResolving(false);
     }
