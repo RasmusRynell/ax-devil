@@ -130,6 +130,8 @@ class Rig {
       view,
       canSeek: true,
       selectable: true,
+      width: null,
+      onWidth: () => {},
       onClose: () => {},
     });
     const picture = createElement("div", { style: { flex: "1 1 0" } });

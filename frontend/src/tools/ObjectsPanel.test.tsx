@@ -46,7 +46,10 @@ const file = (id: string, first: number, classes = ["car"]): FileRowWire => ({
 });
 
 /** A viewer of one lane showing `FRAME`, with the real File scope client over a recording socket. */
-function mount(selection: PlaybackView["selection"] = null) {
+function mount(
+  selection: PlaybackView["selection"] = null,
+  props: Partial<Parameters<typeof ObjectsPanel>[0]> = {},
+) {
   vi.useFakeTimers();
   const lanes = new LaneSet();
   lanes.open([{ label: "DPM", slot: "DPM", source: 0 }], LANE_DEFAULTS);
@@ -78,7 +81,21 @@ function mount(selection: PlaybackView["selection"] = null) {
     lanes: lanes.states,
     selection,
   };
-  const panel = <ObjectsPanel source={source} view={view} canSeek selectable onClose={() => {}} />;
+  const panel = (
+    <>
+      <div />
+      <ObjectsPanel
+        source={source}
+        view={view}
+        canSeek
+        selectable
+        width={null}
+        onWidth={() => {}}
+        onClose={() => {}}
+        {...props}
+      />
+    </>
+  );
   const shown = render(panel);
   const queries = () => sent.filter((message) => message.type === "FileQuery");
   /** Lets the debounced request go and answers it. */
@@ -224,5 +241,74 @@ describe("File scope", () => {
     expect(files.view(0).pending).toBe(true);
     unmount();
     expect(files.view(0)).toEqual({ pending: false, page: null, unavailable: null });
+  });
+});
+
+describe("Copying", () => {
+  const copyRow = async (writeText: () => Promise<void>) => {
+    vi.stubGlobal("navigator", { clipboard: { writeText } });
+    mount();
+    fireEvent.keyDown(screen.getByRole("listbox", { name: "Objects" }), {
+      key: "c",
+      ctrlKey: true,
+    });
+    await act(async () => {});
+  };
+
+  it("copies a row's whole text on Ctrl+C and confirms once the clipboard has it", async () => {
+    const writeText = vi.fn(() => Promise.resolve());
+    await copyRow(writeText);
+    // The best-scored object, every column, hidden ones too.
+    expect(writeText).toHaveBeenCalledWith("12\thuman\t0.9\t0.5\tmoving");
+    expect(screen.getByText("Copied")).toBeTruthy();
+  });
+
+  it("confirms nothing where the clipboard refuses", async () => {
+    await copyRow(() => Promise.reject(new Error("insecure origin")));
+    expect(screen.queryByText("Copied")).toBeNull();
+  });
+});
+
+describe("Resizing", () => {
+  let panelWidth = 400;
+  beforeEach(() => {
+    panelWidth = 400;
+    // The panel is 400 wide with a 300-wide video beside it, and its content needs 280.
+    vi.spyOn(Element.prototype, "getBoundingClientRect").mockImplementation(
+      () => ({ width: panelWidth }) as DOMRect,
+    );
+    vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockReturnValue(300);
+    document.head.insertAdjacentHTML("beforeend", "<style>aside { min-width: 280px }</style>");
+  });
+  afterEach(() => {
+    vi.restoreAllMocks();
+    document.head.querySelector("style")?.remove();
+  });
+
+  const divider = () => screen.getByRole("separator", { name: "Resize media tools" });
+
+  it("keeps the content whole and the video 160 wide, and the chosen width through a close", () => {
+    const onWidth = vi.fn();
+    const { unmount } = mount(null, { onWidth });
+    expect(divider().getAttribute("aria-valuemin")).toBe("280");
+    expect(divider().getAttribute("aria-valuemax")).toBe("540");
+
+    fireEvent.keyDown(divider(), { key: "ArrowLeft" });
+    const wider = onWidth.mock.calls.at(-1)?.[0] as number;
+    expect(wider).toBeGreaterThan(400);
+    fireEvent.keyDown(divider(), { key: "End" });
+    expect(onWidth).toHaveBeenLastCalledWith(540);
+    fireEvent.keyDown(divider(), { key: "Home" });
+    expect(onWidth).toHaveBeenLastCalledWith(280);
+    panelWidth = 280;
+    fireEvent.keyDown(divider(), { key: "ArrowRight" });
+    expect(onWidth).toHaveBeenLastCalledWith(280);
+
+    // Closed and opened again, the panel takes the width it was given.
+    unmount();
+    mount(null, { width: wider });
+    expect(screen.getByRole("complementary", { name: "Media tools" }).style.cssText).toContain(
+      `${wider}px`,
+    );
   });
 });

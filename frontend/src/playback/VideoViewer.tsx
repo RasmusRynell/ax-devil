@@ -22,6 +22,7 @@ import { shownLanes } from "./laneCells";
 import { useLaneFullscreen } from "./laneFullscreen";
 import { Popover } from "../kit/Popover";
 import { ObjectsPanel } from "../tools/ObjectsPanel";
+import { VIDEO_LEAST } from "../tools/panelWidth";
 import type { LaneSettings, Viewport } from "./contract";
 import { FRESH_MEMORY, type InspectorMemory } from "./fields";
 import { Inspector } from "./Inspector";
@@ -111,6 +112,8 @@ function Playback({
   // Export is open, for every lane or for the one the lane menu was used on.
   const [exporting, setExporting] = useState<{ lane: number | null } | null>(null);
   const [tools, setTools] = useState(false);
+  // The width the user gave the media tools, kept while they are closed.
+  const [toolsWidth, setToolsWidth] = useState<number | null>(null);
   useChromeVisibility(pane);
   const shown = useMemo(() => shownLanes(view.lanes, hidden, entry), [view.lanes, hidden, entry]);
   const fullscreen = useLaneFullscreen(pane, shown);
@@ -182,7 +185,12 @@ function Playback({
     >
       {view.status === "ready" ? (
         <div className="flex min-h-0 flex-1">
-          <div data-chrome-idle="" className="relative min-h-0 min-w-0 flex-1">
+          <div
+            data-chrome-idle=""
+            // The columns beside the video give way before it gets narrower than this.
+            style={{ minWidth: tools ? VIDEO_LEAST : 0 }}
+            className="relative min-h-0 flex-1"
+          >
             <ContextMenu
               className="absolute inset-0"
               entries={laneContextEntries(allowed, shortcuts, onHideLane !== undefined)}
@@ -240,6 +248,8 @@ function Playback({
               view={view}
               canSeek={canChange}
               selectable={objectDetails}
+              width={toolsWidth}
+              onWidth={setToolsWidth}
               onClose={() => setTools(false)}
             />
           )}

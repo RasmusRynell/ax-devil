@@ -52,6 +52,38 @@ module.exports.objects = async (window, { setTheme, shoot }) => {
     await shoot(`objects-frame-${theme}.png`);
   }
 
+  // Dragging the divider on the panel's left edge left widens it, and it keeps that width through a close.
+  const width = () => js(`document.querySelector('${PANEL}').getBoundingClientRect().width`);
+  const grip = await js(`(() => {
+    const box = document.querySelector('${PANEL} [role=separator]').getBoundingClientRect();
+    return { x: Math.round(box.left + box.width / 2), y: Math.round(box.top + box.height / 2) };
+  })()`);
+  const initial = await width();
+  const mouse = (type, x, extra = {}) =>
+    window.webContents.sendInputEvent({
+      type,
+      x,
+      y: grip.y,
+      button: "left",
+      clickCount: 1,
+      ...extra,
+    });
+  mouse("mouseDown", grip.x);
+  for (const step of [20, 60, 100])
+    mouse("mouseMove", grip.x - step, { modifiers: ["leftButtonDown"] });
+  mouse("mouseUp", grip.x - 100);
+  await wait(`document.querySelector('${PANEL}').getBoundingClientRect().width > ${initial + 50}`);
+  const widened = await width();
+  for (const theme of THEMES) {
+    await setTheme(theme);
+    await shoot(`objects-resized-${theme}.png`);
+  }
+  key("B", ["control"]);
+  await wait(`!document.querySelector('${PANEL}')`);
+  key("B", ["control"]);
+  await wait(`document.querySelector('${PANEL}')`);
+  assert.equal(await width(), widened, "The panel opens at the width it was given");
+
   // File scope: every object of the file; the ones of the frame are not dimmed. Searching narrows it.
   await scope("File");
   await wait(`document.querySelectorAll('${PANEL} [role=option]:not([aria-busy])').length > 0`);

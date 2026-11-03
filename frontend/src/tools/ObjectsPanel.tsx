@@ -4,6 +4,7 @@ import {
   useMemo,
   useState,
   useSyncExternalStore,
+  type CSSProperties,
   type ReactNode,
 } from "react";
 import { reasonOf } from "../errors";
@@ -25,6 +26,7 @@ import {
   type Sort,
   type SortKey,
 } from "./objects";
+import { PanelDivider } from "./PanelDivider";
 import { SearchBar } from "./SearchBar";
 import { nextSort, type Column } from "./table/columns";
 import { Table } from "./table/Table";
@@ -339,13 +341,16 @@ function ObjectsList({
  * The media tools of a viewer: a searchable list of the objects of one lane, in the frame on screen or in the whole
  * file. A row selects its object; one that is not in the frame on screen also goes to where it first is. A column
  * beside the picture when the viewer, a size container that is its nearest positioned ancestor, is wide enough; else it
- * covers the whole viewer.
+ * covers the whole viewer. Beside the picture, a divider on its left edge resizes it; `width` is the pixels the user
+ * chose, for the viewer to keep while the panel is closed, and `onWidth` hears each choice.
  */
 export function ObjectsPanel({
   source,
   view,
   canSeek,
   selectable,
+  width,
+  onWidth,
   onClose,
 }: {
   source: ObjectSource;
@@ -354,8 +359,12 @@ export function ObjectsPanel({
   canSeek: boolean;
   /** Whether selecting an object is switched on. */
   selectable: boolean;
+  /** The width the user gave the panel, or `null` for the default. */
+  width: number | null;
+  onWidth: (width: number) => void;
   onClose: () => void;
 }) {
+  const [live, setLive] = useState(width);
   const lanes = view.lanes.flatMap((lane, index) => (lane.source === null ? [] : [index]));
   const [chosen, setChosen] = useState<number | null>(null);
   const lane = chosen !== null && lanes.includes(chosen) ? chosen : lanes[0];
@@ -363,13 +372,21 @@ export function ObjectsPanel({
   return (
     <aside
       aria-label="Media tools"
+      style={live === null ? undefined : ({ "--panel-width": `${live}px` } as CSSProperties)}
       onKeyDown={(event) => {
         if (!event.ctrlKey && !event.altKey && !event.metaKey && event.key !== "Escape")
           event.stopPropagation();
       }}
       onKeyUp={(event) => event.stopPropagation()}
-      className="absolute inset-0 z-10 flex flex-col bg-panel text-fg @min-[72ch]:static @min-[72ch]:w-[min(calc(var(--spacing-sidebar)*1.25),60%)] @min-[72ch]:shrink-0 @min-[72ch]:border-l @min-[72ch]:border-line"
+      className="absolute inset-0 z-10 flex flex-col bg-panel text-fg @min-[72ch]:relative @min-[72ch]:w-[var(--panel-width,min(calc(var(--spacing-sidebar)*1.25),60%))] @min-[72ch]:min-w-sidebar @min-[72ch]:border-l @min-[72ch]:border-line"
     >
+      <PanelDivider
+        onResize={(next, final) => {
+          setLive(next);
+          if (final) onWidth(next);
+        }}
+        onClose={onClose}
+      />
       {lane === undefined ? (
         <>
           <div className="flex justify-end border-b border-line py-xs pr-xs">{close}</div>
