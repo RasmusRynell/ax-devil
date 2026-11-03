@@ -223,7 +223,7 @@ mod tests {
         let expected = fs::read(&path).unwrap_or_default();
         assert!(
             expected == bytes,
-            "{name} is missing or stale; regenerate with UPDATE_GOLDENS=1 make tests-backend TEST=envelope_goldens"
+            "{name} is missing or stale; regenerate with UPDATE_GOLDENS=1 make test-backend TEST=envelope_goldens"
         );
     }
 

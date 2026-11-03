@@ -163,7 +163,7 @@ describe("envelope", () => {
 });
 
 describe("the backend's envelopes", () => {
-  // Written by the Rust encoder (`UPDATE_GOLDENS=1 make tests-backend TEST=envelope_goldens`).
+  // Written by the Rust encoder (`UPDATE_GOLDENS=1 make test-backend TEST=envelope_goldens`).
   const golden = (name: string): ArrayBuffer => {
     const bytes = readFileSync(new URL(`../../../fixtures/wire/${name}`, import.meta.url));
     return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);

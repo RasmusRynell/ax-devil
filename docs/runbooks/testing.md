@@ -6,14 +6,14 @@ test policy being ported is [09](../rebuild/09-testing.md).
 ## Running tests
 
 ```bash
-make tests                         # Every suite
-make tests-frontend TEST=App       # React component tests (Vitest, jsdom); TEST filters by name or file
-make tests-backend TEST=info       # Rust tests, without and with the embedded frontend
-make tests-integration             # Development supervisor (starts the services, stops the whole tree) and the desktop's argument forwarding
-make tests-desktop                 # Electron app on a private display; screenshots in artifacts/screenshots/
+make test                          # Every suite
+make test-frontend TEST=App        # React component tests (Vitest, jsdom); TEST filters by name or file
+make test-backend TEST=info        # Rust tests, without and with the embedded frontend
+make test-integration              # Development supervisor (starts the services, stops the whole tree) and the desktop's argument forwarding
+make test-desktop                  # Electron app on a private display; screenshots in artifacts/screenshots/
 make bench                         # Rust benchmarks (sample item encode); numbers on stdout, nothing asserted
 make bench-export                  # Export speed through the real render page, SwiftShader and GPU; numbers on stdout
-make check                         # Every static check, then every suite
+make check                         # The gate: every static check, then every suite
 make check-fast                    # Static checks only, file-size check on changed files only
 ```
 
@@ -36,9 +36,8 @@ Every suite runs through `scripts/isolated`:
 - Before and after, it records path, size and modification time under `~/.ax_devil` and the `ax-devil` folders in
   the user's XDG config, data, cache and state homes, and fails the run if anything changed.
 
-Run any ad-hoc GUI check the same way, for example
-`scripts/isolated --display pnpm --dir desktop exec electron . --ozone-platform=x11 --smoke-test`. What a virtual
-display cannot verify (physical GPU, compositor, window manager, fractional scaling on a real screen) is reported as
+Run any ad-hoc GUI check the same way: `make app ISOLATE=1 ARGS=...` runs the release app on a private display and
+`make cli ISOLATE=1 ARGS=...` the backend. What a virtual display cannot verify (physical GPU, compositor, window manager, fractional scaling on a real screen) is reported as
 not run.
 
 What an ad-hoc check creates outside `artifacts/` and the run's temporary folder is removed when the check finishes
@@ -49,8 +48,8 @@ What an ad-hoc check creates outside `artifacts/` and the run's temporary folder
 `tests/export.rs` and `tests/catalog_render.rs` run the real Electron render page, forced to SwiftShader so pixels do
 not depend on the machine's graphics (`AX_DEVIL_RENDER_GRAPHICS=software`), through the routes and the command, and
 read the written MP4 and PNG back with `media`. They skip, saying why on stderr, when Electron or the built render
-page is missing; `make tests-backend` builds both and sets `AX_DEVIL_REQUIRE_ELECTRON`, which makes a skip a failure.
-The overview golden `fixtures/render/standard-overview.png` is regenerated with `UPDATE_GOLDENS=1 make tests-backend
+page is missing; `make test-backend` builds both and sets `AX_DEVIL_REQUIRE_ELECTRON`, which makes a skip a failure.
+The overview golden `fixtures/render/standard-overview.png` is regenerated with `UPDATE_GOLDENS=1 make test-backend
 TEST=catalog_render` and reviewed by eye; the test allows 2% of pixels to differ by more than 24/255 because system
 fonts vary.
 
@@ -62,7 +61,7 @@ set, which makes the skip a failure.
 
 ## Desktop suite and screenshots
 
-`make tests-desktop` builds the release app, starts Electron with `--smoke-test` and runs `desktop/smoke.cjs` in the
+`make test-desktop` builds the release app, starts Electron with `--smoke-test` and runs `desktop/smoke.cjs` in the
 window: it waits for the app shell, then switches the theme to light and dark and saves
 `artifacts/screenshots/main-<theme>.png`. Screenshots are captured only after the compositor has drawn a frame for
 the current state; capturing earlier fails. It also captures the View menu and Settings dialog at the window
@@ -102,9 +101,17 @@ caches; nothing is shared between tests through the filesystem.
 
 ## CI
 
-`.github/workflows/ci.yml` runs on pull requests to and pushes on `main` and `rewrite`, and on `v*` tags. `check` (Ubuntu 24.04) runs `make check`,
-fails when generated files are stale, checks on tags that the tag matches the `Cargo.toml` version, and uploads the
-screenshots. `test-macos` runs the frontend and backend suites. Both jobs install the FFmpeg development libraries
-and clang that the `media` crate builds against (`pkg-config` finds FFmpeg). A newer push to a pull request cancels
-its superseded run. Windows, the lowest-dependency job and the release check are not set up yet
-([14](../rebuild/14-build-order.md#decisions-taken-for-the-foundation)).
+`make check` is the gate. CI runs exactly it once, on Linux; the per-OS jobs only build and smoke-test the packaged
+app. `.github/workflows/ci.yml` runs on pull requests to and pushes on `main` and `rewrite`, and on `v*` tags, with
+every job starting at once:
+
+- `check` (Ubuntu 24.04) runs `make check` once: no other job runs a check or a test. It installs the FFmpeg
+  development libraries and clang that the `media` crate builds against (`pkg-config` finds FFmpeg), and uploads the
+  screenshots. The make target fails when its checks leave generated files changed.
+- `package` (Linux, Windows, macOS) runs `make package` and `make smoke-packaged` against a pinned shared FFmpeg
+  (downloaded for Linux and Windows, built from source on macOS, both cached). Windows runs make from Git Bash.
+- `version` and `release` run on tags only. `version` runs `make verify-release-version`; `release` waits for all
+  three other jobs and drafts the release from the packages.
+
+A newer push to a pull request cancels its superseded run. Versions are pinned once each: Node in `.node-version`,
+pnpm in `packageManager`, Rust in `rust-toolchain.toml`, actions by commit SHA in the workflow.

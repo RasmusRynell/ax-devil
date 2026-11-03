@@ -5,6 +5,8 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 if rustup="$(command -v rustup)"; then
+  # rustup 1.28 and later no longer install the toolchain a rust-toolchain.toml names on first use.
+  rustup show active-toolchain >/dev/null 2>&1 || rustup toolchain install
   # The cargo proxy installed beside rustup; another cargo earlier on PATH may not honor the toolchain file.
   exec "$(dirname "$rustup")/cargo" "$@"
 fi

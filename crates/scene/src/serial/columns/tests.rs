@@ -300,7 +300,7 @@ fn golden(name: &str, scene: &Scene) {
     let expected = fs::read(&path).unwrap_or_default();
     assert!(
         expected == item,
-        "{name}.bin is missing or stale; regenerate with UPDATE_GOLDENS=1 make tests-backend TEST=sample_item_goldens"
+        "{name}.bin is missing or stale; regenerate with UPDATE_GOLDENS=1 make test-backend TEST=sample_item_goldens"
     );
 }
 

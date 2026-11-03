@@ -53,7 +53,7 @@ prototype-matching option; the owner can revisit each.
 | `scripts/` and `desktop/` JavaScript is linted with type-aware rules and formatted, not type-checked | Type-checking CommonJS needs Node and Electron types and a second TypeScript config; add them when it grows |
 | The architecture check reads `cargo metadata`; each crate declares `[package.metadata.ax-devil] layer`. Frontend import rules come with frontend modules | The smallest check that enforces layer direction and keeps layers 1–3 free of the HTTP server |
 | License gate: `cargo-deny` for crates and `scripts/check-js-licenses.cjs` for npm packages, one allow list in `deny.toml` | [13](13-security-packaging-ops.md#licensing) asks for a check of every dependency |
-| Stale generated files fail CI through a clean-tree check after `make check` | The build regenerates them locally; the check covers all of them |
+| Stale generated files fail `make check`, which compares the tree before and after its own run | The build regenerates them locally; the check covers all of them |
 | The `rewrite` branch is the whole rewrite and the only PR that merges to `main`, at parity. Later work lands on it or as PRs with base `rewrite`; CI runs for both branches | `main` keeps the Python app until one reviewed merge replaces it |
 | No pre-commit hooks; `make check-fast` locally and CI enforce the gates | Hooks need a setup step per clone |
 | Every suite runs through `scripts/isolated`; it guards the `ax-devil` folders under the XDG config, data, cache and state homes (and the prototype's `~/.ax_devil`). Electron's data goes to `ax-devil-chromium` in the cache home, outside the guard | Every path the app uses resolves in `src/paths.rs` to one of those folders; whoever adds one updates both |
@@ -62,7 +62,7 @@ prototype-matching option; the owner can revisit each.
 | Zoom is the browser's; no text-size setting. Electron zooms with Ctrl+=, Ctrl+- and Ctrl+0, remembered per host; layouts must fit the window minimum and zoom up to 200% | A web app inherits zoom, so `ui.text_size` is dropped; a config holding the key keeps it untouched |
 | No root `ARCHITECTURE.md`; the prototype's content lives in `docs/architecture/overview.md` | One home ([11](11-docs-structure.md#docs-map)) |
 | Development ports 7330 (backend) and 7331 (frontend); the API version has one source in `crates/api-types`; the shell reads it from the generated `desktop/generated/api.json` | Distinct from the prototype's ports, so both run; one version source |
-| CI has an Ubuntu `check` job and a macOS frontend/backend job. Not yet: Windows, a lowest-dependency job (Cargo needs nightly), the release check (DT-05) | Added with packaging (D6, M9) or earlier on request |
+| One `ci.yml`: `make check` once on Ubuntu, and a package-and-smoke job per OS. No test runs on macOS or Windows; no lowest-dependency job (Cargo needs nightly) | The gate runs once; the other systems only prove the packaged app starts |
 
 ## Decisions taken for offline video
 

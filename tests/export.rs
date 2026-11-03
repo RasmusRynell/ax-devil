@@ -1,6 +1,6 @@
 //! Export end to end: the real routes, the real Electron render page on SwiftShader and the real encoder, then the
 //! written file decoded and its pixels read. Skipped, with the reason on stderr, when this machine has no Electron or
-//! no built render page (`make tests-backend` builds both and then requires them to run); see `common::export_kit::can_export`.
+//! no built render page (`make test-backend` builds both and then requires them to run); see `common::export_kit::can_export`.
 
 mod common;
 

@@ -1,4 +1,4 @@
-// Desktop smoke test and screenshot harness, run by `make tests-desktop` on a private display.
+// Desktop smoke test and screenshot harness, run by `make test-desktop` on a private display.
 const { nativeTheme } = require("electron");
 const assert = require("node:assert/strict");
 const fs = require("node:fs/promises");

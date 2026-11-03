@@ -10,15 +10,14 @@ their files. Everything runs through `scripts/isolated` ([testing runbook](../..
 
 ## Loop
 
-1. **Pick the narrowest check.** A focused suite first: `make tests-frontend TEST=<name>`,
-   `make tests-backend TEST=<name>`. The desktop app and screenshots: `make tests-desktop`.
-2. **Run anything else isolated.** Prefix the command with `scripts/isolated`, adding `--display` for anything that
-   opens a window:
+1. **Pick the narrowest check.** A focused suite first: `make test-frontend TEST=<name>`,
+   `make test-backend TEST=<name>`. The desktop app and screenshots: `make test-desktop`.
+2. **Run anything else isolated.** `ISOLATE=1` gives the release app (`make app`) a private home and display and the
+   backend (`make cli`) a private home:
 
    ```bash
-   make build
-   scripts/isolated --display pnpm --dir desktop exec electron . --ozone-platform=x11 --smoke-test
-   PORT=7400 scripts/isolated target/release/ax-devil   # backend alone, on a port no session uses
+   make app ISOLATE=1 ARGS=--smoke-test
+   make cli ISOLATE=1 PORT=7400   # backend alone, on a port no session uses
    ```
 
    Use your own `PORT` and `UI_PORT` when a session may already be running, and stop only processes you started.

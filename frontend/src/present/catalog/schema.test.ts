@@ -10,6 +10,6 @@ it("assets/catalogs/catalog.schema.json is the schema the compiler's tables desc
   if (process.env.UPDATE_GOLDENS) writeFileSync(FILE, fresh);
   expect(
     readFileSync(FILE, "utf8"),
-    "stale: regenerate with UPDATE_GOLDENS=1 make tests-frontend TEST=schema",
+    "stale: regenerate with UPDATE_GOLDENS=1 make test-frontend TEST=schema",
   ).toBe(fresh);
 });

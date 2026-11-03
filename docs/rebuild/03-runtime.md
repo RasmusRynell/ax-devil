@@ -109,7 +109,7 @@ upload included) at four lanes of 1000 objects, 1080p and 4K (D22, measured by t
 
 ## Logging (MUST)
 
-- One logger factory per module; app code never prints. *Current:* `get_logger`, enforced by `scripts/check_logging.py`.
+- One logger factory per module; app code never prints. *Current:* enforced by Clippy and Oxlint lints.
 - Levels DEBUG, INFO, WARNING, ERROR from a global CLI flag; console plus a rotating file in the logs folder.
 - Toolkit and library logs go to the same sink; repeated per-frame errors are rate-limited.
 - Credentials and URL userinfo are redacted before logging. *Current:* logs may contain them (`docs/settings.md#configuration-and-local-data`).

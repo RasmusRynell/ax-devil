@@ -150,7 +150,7 @@ fn catalog_render_writes_the_overview_with_its_boxes_where_the_sheet_puts_them_a
     let share = differing as f64 / (WIDTH * HEIGHT) as f64;
     assert!(
         share <= DIFFERING,
-        "{:.2}% of the pixels differ from {GOLDEN}; regenerate with UPDATE_GOLDENS=1 make tests-backend TEST=catalog_render",
+        "{:.2}% of the pixels differ from {GOLDEN}; regenerate with UPDATE_GOLDENS=1 make test-backend TEST=catalog_render",
         share * 100.0
     );
 }

@@ -1,5 +1,5 @@
 .DEFAULT_GOAL := help
-SHELL := /bin/bash
+SHELL := bash
 .SHELLFLAGS := -eu -o pipefail -c
 CARGO := scripts/cargo
 ISOLATED := scripts/isolated
@@ -7,8 +7,11 @@ PORT ?= 7330
 UI_PORT ?= 7331
 TEST ?=
 ROOT_FILES := desktop/*.cjs scripts/*.cjs vite.config.ts package.json pnpm-workspace.yaml
-.PHONY: help web desktop build check check-fast format package tests tests-frontend tests-backend tests-integration \
-	tests-desktop bench bench-export bench-present bench-tables bench-browser bench-browser-smoke _types _frontend-build _static _licenses _dev _dev-rust
+# The loader paths of a FFmpeg outside the system's (package builds): Linux, macOS and Windows each read one of them.
+FFMPEG_LOADER := $(if $(FFMPEG_DIR),LD_LIBRARY_PATH="$(FFMPEG_DIR)/lib$${LD_LIBRARY_PATH:+:$$LD_LIBRARY_PATH}" DYLD_LIBRARY_PATH="$(FFMPEG_DIR)/lib$${DYLD_LIBRARY_PATH:+:$$DYLD_LIBRARY_PATH}" PATH="$$(cygpath -u '$(FFMPEG_DIR)/bin' 2>/dev/null || echo '$(FFMPEG_DIR)/bin'):$$PATH")
+.PHONY: help web desktop build app cli check check-fast format package smoke-packaged verify-release-version test \
+	test-frontend test-backend test-integration test-desktop bench bench-export bench-present bench-tables bench-browser \
+	bench-browser-smoke _check _types _frontend-build _static _licenses _dev _dev-rust
 
 help:
 	@printf '%s\n' \
@@ -17,22 +20,27 @@ help:
 	  '  desktop     Start desktop development with frontend and Rust reload' \
 	  '  build       Build the release app with the frontend embedded; do not launch' \
 	  '  package     Package the desktop app: make package OS=linux|win|mac FFMPEG_DIR=<shared FFmpeg>' \
-	  '  tests       Run all test suites' \
-	  '  check       Run every static check and all test suites' \
+	  '  app         Run the release app with ARGS (ISOLATE=1: private home and display): make app ARGS="playlist mot_challenge <folder>"' \
+	  '  cli         Run the release backend with ARGS (ISOLATE=1: private home): make cli ARGS=serve PORT=7400' \
+	  '  smoke-packaged  Smoke-test the packaged app that make package left in desktop/dist: make smoke-packaged OS=linux|win|mac' \
+	  '  verify-release-version  Fail unless TAG names the version in Cargo.toml and desktop/package.json: make verify-release-version TAG=v1.2.3' \
+	  '  test        Run all test suites' \
+	  '  check       The gate: every static check, all test suites, and a check that they left no generated file changed' \
 	  '  bench       Run the Rust benchmarks (sample item encode); numbers on stdout' \
 	  '  bench-export  Time export (1080p, 4K) through the real render page, on SwiftShader and the GPU when it can render there' \
 	  '  bench-present  Time the frontend presentation path in plain Node (AX_BENCH_SIZES, _CATALOGS, _MODES, _REPEAT)' \
 	  '  bench-tables  Time the per-frame work of the objects list (filter, search, sort, column fit) in plain Node (AX_BENCH_SIZES, _RUNS)' \
 	  '  bench-browser  Time the real renderer in Electron (SwiftShader; BENCH_DISPLAY=real for the local GPU; BENCH_* narrow it; BENCH_SUITE=tables times the objects list)' \
+	  '  bench-browser-smoke  One second per bench-browser mode, to keep it working; not part of check' \
 	  '  check-fast  Run the static checks, file-size check on changed files only; no tests' \
 	  '  format      Format Rust and TypeScript/JavaScript, and apply lint fixes' \
 	  '' \
-	  'Test suites (isolated home; tests-desktop on a private display):' \
-	  '  tests-frontend     React component tests' \
-	  '  tests-backend      Rust tests, with and without the embedded frontend' \
-	  '  tests-integration  Development supervisor lifecycle' \
-	  '  tests-desktop      Electron app on a private display, screenshots in artifacts/screenshots' \
-	  '  Filter frontend/backend tests: make tests-frontend TEST=App' \
+	  'Test suites (isolated home; test-desktop on a private display; make test runs all four):' \
+	  '  test-frontend     React component tests' \
+	  '  test-backend      Rust tests, with and without the embedded frontend' \
+	  '  test-integration  Development supervisor lifecycle' \
+	  '  test-desktop      Electron app on a private display, screenshots in artifacts/screenshots' \
+	  '  Filter frontend/backend tests: make test-frontend TEST=App' \
 	  '' \
 	  'Dependencies, including Rust when missing, install on first use; there is no setup step.' \
 	  'Optional ports: make web PORT=7330 UI_PORT=7331'
@@ -53,8 +61,11 @@ desktop/node_modules/.electron-ready: node_modules/.installed
 	$(CARGO) install cargo-deny --version 0.20.2 --locked --root .tools
 
 # API types do not depend on the server or the embedded frontend.
+# The export crate links FFmpeg, so a FFmpeg outside the system's is put on the loader path. The binary runs
+# directly: macOS drops DYLD_* from a script started through /usr/bin/env, as cargo's wrapper is.
 _types:
-	$(CARGO) run --locked -q -p api-types --bin export-types
+	$(CARGO) build --locked -q -p api-types --bin export-types
+	$(FFMPEG_LOADER) target/debug/export-types
 
 _frontend-build: node_modules/.installed _types
 	pnpm --dir frontend build
@@ -64,6 +75,19 @@ build: _frontend-build
 
 package:
 	scripts/package-desktop.sh $(OS)
+
+smoke-packaged:
+	scripts/smoke-packaged.sh $(OS)
+
+verify-release-version:
+	scripts/check-release-version.sh "$(TAG)"
+
+# The release app or backend with arguments. ISOLATE=1 gives it a private home, and the app a private display.
+app: build desktop/node_modules/.electron-ready
+	$(if $(ISOLATE),$(ISOLATED) --display )pnpm --dir desktop exec electron . $(if $(ISOLATE),--ozone-platform=x11 )$(ARGS)
+
+cli: build
+	$(if $(ISOLATE),$(ISOLATED) )target/release/ax-devil $(ARGS)
 
 web: _dev
 	PORT=$(PORT) UI_PORT=$(UI_PORT) node scripts/dev.cjs web
@@ -77,24 +101,24 @@ _dev-rust: _types
 	$(CARGO) build --locked --no-default-features --bin ax-devil
 
 # Tests are separate from static checks; shared prerequisites run once per invocation.
-tests-frontend: node_modules/.installed
+test-frontend: node_modules/.installed
 	$(ISOLATED) pnpm --dir frontend exec vp test run $(TEST)
 
 # The real-Electron export tests and the Python plugin tests skip on a machine without Electron, the render page or
 # python3; here they are all provided, so a skip must fail.
-tests-backend: export AX_DEVIL_REQUIRE_ELECTRON = 1
-tests-backend: export AX_DEVIL_REQUIRE_PYTHON = 1
-tests-backend: _frontend-build desktop/node_modules/.electron-ready
+test-backend: export AX_DEVIL_REQUIRE_ELECTRON = 1
+test-backend: export AX_DEVIL_REQUIRE_PYTHON = 1
+test-backend: _frontend-build desktop/node_modules/.electron-ready
 	$(ISOLATED) $(CARGO) test --workspace --no-default-features --locked $(TEST)
 	$(ISOLATED) $(CARGO) test --workspace --locked $(TEST)
 
-tests-integration: _dev _dev-rust
+test-integration: _dev _dev-rust
 	$(ISOLATED) node --test scripts/dev.test.cjs desktop/args.test.cjs desktop/window-state.test.cjs desktop/backend.test.cjs desktop/uncaught.test.cjs desktop/workspace-dialogs.test.cjs scripts/check-architecture.test.cjs
 
-tests-desktop: build desktop/node_modules/.electron-ready
+test-desktop: build desktop/node_modules/.electron-ready
 	timeout 180s $(ISOLATED) --display pnpm --dir desktop exec electron . --ozone-platform=x11 --smoke-test
 
-tests: tests-frontend tests-backend tests-integration tests-desktop
+test: test-frontend test-backend test-integration test-desktop
 
 # Timed with std::time::Instant; numbers go to stdout, nothing is asserted.
 bench:
@@ -144,9 +168,17 @@ _licenses: node_modules/.installed .tools/bin/cargo-deny
 check-fast: CHANGED := --changed
 check-fast: _static
 
-check: _static _frontend-build _licenses
+_check: _static _frontend-build _licenses
 	$(CARGO) clippy --workspace --all-targets --no-default-features --locked -- -D warnings
-	$(MAKE) --no-print-directory tests
+	$(MAKE) --no-print-directory test
+
+# The gate. Regenerating files must not change the tree: a stale generated file fails here, on a developer's machine
+# and in CI alike, by comparing the tree before and after.
+TREE_STATE := { git status --porcelain -uall; git diff; } | git hash-object --stdin
+check:
+	before="$$($(TREE_STATE))"; \
+	$(MAKE) --no-print-directory _check; \
+	if [[ "$$($(TREE_STATE))" != "$$before" ]]; then echo 'make check changed tracked or new files (stale generated files):' >&2; git status --short >&2; exit 1; fi
 
 format: node_modules/.installed _types
 	$(CARGO) fmt --all

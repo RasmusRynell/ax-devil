@@ -1,12 +1,11 @@
 #!/usr/bin/env bash
-# Packages the desktop app for one OS: builds the release backend with the frontend embedded, stages it with only
+# Packages the desktop app for one OS (`make package OS=...`): runs `make build`, stages the release backend with only
 # the FFmpeg libraries it loads, and runs electron-builder. Linux needs patchelf and macOS needs install_name_tool,
 # so the libraries load from beside the backend. Output lands in desktop/dist.
 #
-#   FFMPEG_DIR=/path/to/ffmpeg scripts/package-desktop.sh linux|win|mac
+#   make package OS=linux|win|mac FFMPEG_DIR=/path/to/ffmpeg
 #
-# FFMPEG_DIR is a shared (dynamic) FFmpeg build with include/ and lib/ (also bin/ on Windows). SKIP_BUILD=1 reuses
-# the release binary already built against it.
+# FFMPEG_DIR is a shared (dynamic) FFmpeg build with include/ and lib/ (also bin/ on Windows).
 # MACOSX_DEPLOYMENT_TARGET must be the one FFmpeg was built with.
 set -euo pipefail
 shopt -s extglob
@@ -23,7 +22,7 @@ linux) executable=ax-devil builder=(--linux) ;;
 win) executable=ax-devil.exe builder=(--win) ;;
 mac) executable=ax-devil builder=(--mac --arm64) ;;
 *)
-  echo "usage: FFMPEG_DIR=<ffmpeg> scripts/package-desktop.sh linux|win|mac" >&2
+  echo "usage: make package OS=linux|win|mac FFMPEG_DIR=<ffmpeg>" >&2
   exit 2
   ;;
 esac
@@ -31,20 +30,8 @@ esac
 # The version has one source, Cargo.toml.
 version="$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -1)"
 
-# The steps of `make build`, spelled out because a Windows runner has no make to count on.
-if [[ -z ${SKIP_BUILD:-} ]]; then
-  pnpm install --frozen-lockfile
-  # export-types links FFmpeg (through the export crate) while the libraries are still only in FFMPEG_DIR, so the
-  # loader is told where they are. It is run directly: macOS drops DYLD_* from a script started through /usr/bin/env.
-  scripts/cargo build --locked -q -p api-types --bin export-types
-  case "$os" in
-  linux) LD_LIBRARY_PATH="$FFMPEG_DIR/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" target/debug/export-types ;;
-  win) PATH="$(cygpath -u "$FFMPEG_DIR/bin"):$PATH" target/debug/export-types ;;
-  mac) DYLD_LIBRARY_PATH="$FFMPEG_DIR/lib${DYLD_LIBRARY_PATH:+:$DYLD_LIBRARY_PATH}" target/debug/export-types ;;
-  esac
-  pnpm --dir frontend build
-  scripts/cargo build --locked --release
-fi
+# FFMPEG_DIR is exported above, so the build finds the libraries it links.
+make build
 # rust-embed builds without a frontend instead of failing, so a release without one would serve nothing.
 if [[ ! -f frontend/dist/index.html ]]; then
   echo "frontend/dist/index.html is missing: the backend would embed no frontend." >&2

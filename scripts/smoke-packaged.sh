@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# Runs the desktop smoke test of the app that scripts/package-desktop.sh left in desktop/dist, on a private home
+# Runs the desktop smoke test of the app that `make package` left in desktop/dist, on a private home
 # (and, on Linux, a private X display), against this checkout's fixtures. Screenshots go to artifacts/screenshots.
 #
 # The app is a GUI program: on Windows it may not write to a pipe at all, and its exit code is not reliable. So it runs
 # in the background with its output in files, and the verdict is the file named by AX_DEVIL_SMOKE_RESULT, which the
 # app's smoke mode writes: PASS, or FAIL: and the reason. Everything lands in artifacts/smoke-logs.
 #
-#   scripts/smoke-packaged.sh linux|win|mac
+#   make smoke-packaged OS=linux|win|mac
 set -euo pipefail
 cd "$(dirname "$0")/.."
 os="${1:-}"
@@ -43,7 +43,7 @@ win)
   run=("$exe")
   ;;
 *)
-  echo "usage: scripts/smoke-packaged.sh linux|win|mac" >&2
+  echo "usage: make smoke-packaged OS=linux|win|mac" >&2
   exit 2
   ;;
 esac

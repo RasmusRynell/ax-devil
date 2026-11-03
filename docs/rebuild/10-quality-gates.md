@@ -1,19 +1,19 @@
 # 10 Quality Gates
 
-Sources: `Makefile`, `pyproject.toml`, `.pre-commit-config.yaml`, `scripts/`, `.github/workflows/ci.yml`,
+Sources: `Makefile`, `scripts/`, `.github/workflows/ci.yml`,
 `.agents/skills/review/SKILL.md`, `AGENTS.md` "Done".
 
 ## Gates (MUST)
 
 | Gate | Current | Requirement |
 |------|---------|-------------|
-| Formatter | `ruff format` | Standard formatter; check in CI, fix locally |
-| Linter | `ruff check` | Standard linter with import ordering |
-| Types | `mypy --strict` on src, tests, tools | Strictest practical checking, tests and tools included |
-| Architecture | `scripts/check_architecture.py` | Automated dependency-rule check for [02](02-architecture.md#layers-and-dependency-direction) |
-| Logging | `scripts/check_logging.py` | Enforce the logging rules in [03](03-runtime.md#logging-must) |
-| File size | `scripts/check_file_tokens.py`: 5,000 tokens (bytes/4) per authored file | Same limit and exemptions, pre-commit and CI |
-| Generated artifacts | Catalog JSON Schema and language reference generated from the TypeScript catalog definitions | One source of truth; CI fails on stale generated files |
+| Formatter | `cargo fmt`, `vp fmt` | Standard formatter; check in CI, fix locally |
+| Linter | `cargo clippy`, `vp lint` | Standard linter with import ordering |
+| Types | `vp check` (strict TypeScript), rustc | Strictest practical checking, tests and tools included |
+| Architecture | `scripts/check-architecture.cjs` | Automated dependency-rule check for [02](02-architecture.md#layers-and-dependency-direction) |
+| Logging | Clippy and Oxlint lints | Enforce the logging rules in [03](03-runtime.md#logging-must) |
+| File size | `scripts/check-file-tokens.cjs`: 5,000 tokens (bytes/4) per authored file | Same limit and exemptions, `make check-fast` and CI |
+| Generated artifacts | Catalog JSON Schema and language reference generated from the TypeScript catalog definitions | One source of truth; `make check` fails on stale generated files |
 | Dependencies | Bounded ranges; lowest-direct CI job | Same, plus license check ([13](13-security-packaging-ops.md#licensing)) |
 | Fast mode | `make check-fast` | Changed-file mode for agents (SHOULD) |
 
@@ -40,4 +40,5 @@ triggers, tests worth merging, docs at their layer. Findings carry file and line
 ## CI
 
 Runs on PRs to and pushes on `main` and `rewrite`, and on release tags; required checks block merge; tag must match the package version; publish only
-from tags after all jobs and the clean-environment install check pass.
+from tags after all jobs and the clean-environment install check pass. `make check` is the gate and CI runs it once
+(`docs/runbooks/testing.md#ci`).

@@ -33,7 +33,7 @@ Dependencies point down only.
 - **MUST** let domain code take values, never read settings; the settings service is wired at bootstrap.
   *Current:* settings sit below everything as a process-wide singleton. **change**.
 - **MUST** enforce the boundaries automatically ([10](10-quality-gates.md)); start from the forbidden-import table in
-  `scripts/check_architecture.py`.
+  `scripts/check-architecture.cjs`.
 
 ## Seams to keep
 

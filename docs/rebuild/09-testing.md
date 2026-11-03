@@ -24,7 +24,7 @@ devices and processes at their boundary.
 | UI behavior | Few | Fit (no clipped text, both themes, window minimum and 200% zoom), focus and keyboard | `tests/modules/chrome/test_surface_fit.py` |
 | Crash safety | Few | Kill the process during a recovery-copy write and during a cache build; the next launch recovers | new |
 | CLI | Few | Commands build the right items; headless catalog commands' exit codes | `tests/core/` |
-| Installation | Separate target | Real install and plugin lifecycle in isolated storage | `make tests-integration` |
+| Installation | Separate target | Real install and plugin lifecycle in isolated storage | `make test-integration` |
 | Performance and soak | Scheduled | Benchmarks against a ref (DT-03), with the presentation benches run in Node (no retained growth over hundreds of frames, minor-GC pause time within budget, an order-of-magnitude ceiling) and GPU numbers measured by hand on real GPUs; playback memory; hours of synthetic live input with bursts: bounded memory, no stall | `tools/bench`, `docs/runbooks/testing.md#playback-memory` |
 
 ## Isolation (MUST)
@@ -33,8 +33,7 @@ devices and processes at their boundary.
   config, catalogs and plugin data and fails if they changed (`docs/runbooks/testing.md#tests-never-touch-the-users-files`).
 - GUI tests never use the user's session. They run on the stack's offscreen renderer or a private virtual display,
   one per parallel worker so windows never compete for focus. A missing environment fails the run.
-  *Current:* Xvfb with Mesa software GL on Linux, started by `tests/__init__.py`; `tools/private_display.py` for
-  standalone tools.
+  *Current:* Xvfb with Mesa software GL on Linux, started by `scripts/isolated --display`.
 - On CI machines without a user session (Windows, macOS runners) the native platform is acceptable, run serially.
 - Only built-in plugins load; regular tests are offline and mock RTSP, MQTT and device APIs.
 - What the virtual display cannot verify (physical GPU, compositor, window manager) is reported as unrun.
@@ -83,5 +82,5 @@ devices and processes at their boundary.
 
 ## CI
 
-Port the jobs in `docs/runbooks/testing.md#running-tests`: quality (checks, suite, install smoke, build), suite per
-supported OS (D2), lowest allowed dependencies, clean-environment release check on tags (DT-05).
+One workflow, `.github/workflows/ci.yml` (`docs/runbooks/testing.md#ci`): `make check` once on Linux, a packaged-app
+build and smoke test per supported OS (D2), the release check on tags (DT-05). Lowest allowed dependencies are not set up.

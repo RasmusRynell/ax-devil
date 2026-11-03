@@ -13,17 +13,18 @@ overlays, inspecting objects frame by frame, and comparing results side by side.
 
 ## Build from source
 
-Requirements: Linux, Make, Node 22.18+, 24.11+ or 26+, pnpm 12.14.0, curl, a C toolchain (`cc`) with clang and
-`pkg-config`, the FFmpeg 6.1+ development libraries (`libavcodec`, `libavformat`, `libavutil`, `libswscale`;
-Debian/Ubuntu: `libavcodec-dev libavformat-dev libavutil-dev libswscale-dev`, macOS: `brew install ffmpeg`), and
-Xvfb for the desktop tests. Rust comes from [rustup](https://rustup.rs) if installed; otherwise `make` installs the
-pinned toolchain inside the checkout on first use.
+Requirements: Make, Node 24 (`.node-version`), the pnpm in `package.json`, curl, a C toolchain (`cc`) with clang and
+`pkg-config`, and the FFmpeg 6.1+ development libraries (`libavcodec`, `libavformat`, `libavutil`, `libswscale`;
+Debian/Ubuntu: `libavcodec-dev libavformat-dev libavutil-dev libswscale-dev`, macOS: `brew install ffmpeg`). Linux,
+macOS and Windows (in Git Bash) build and package; the desktop tests need Linux with Xvfb. Rust comes from
+[rustup](https://rustup.rs) if installed; otherwise `make` installs the pinned toolchain inside the checkout on first
+use.
 
 ```bash
 make desktop   # The app in an Electron window, with live reload
 make web       # The same app at http://127.0.0.1:7331
 make build     # Release build: target/release/ax-devil with the frontend embedded
-make check     # Every check and test suite
+make check     # The gate: every check and test suite
 ```
 
 `make help` lists every target; there is no separate setup step. Testing is described in

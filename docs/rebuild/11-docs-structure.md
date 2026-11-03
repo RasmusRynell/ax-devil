@@ -47,7 +47,7 @@ test. The scaffold, in this order:
    short), `port-module`, `verify-headless`; `.claude/skills` as a symlink to `../.agents/skills` ([12](12-agent-setup.md)).
 3. `CONTEXT.md` and `docs/domain/invariants.md` ported; `docs/parity.md` with every row from [01](01-product-scope.md).
 4. `docs/architecture/overview.md` and `module-map.md` for the new layers; `docs/runbooks/testing.md`.
-5. Task-runner targets, gates, pre-commit hooks and CI ([10](10-quality-gates.md)).
+5. Task-runner targets, gates and CI ([10](10-quality-gates.md)).
 6. The isolated GUI test environment and the screenshot harness (DT-01, DT-02).
 7. Minimal `README.md` (what this is, build from source), fresh `CHANGELOG.md`, `.gitignore` for the stack plus
    `/docs/local/`.
@@ -58,7 +58,7 @@ READMEs, the `render-catalog` skill (M2), the `write-plugin` skill (M7).
 
 ## Deleted by the rewrite
 
-`src/`, `tests/`, `tools/`, `scripts/`, `pyproject.toml`, `uv.lock`, `Makefile`, `.pre-commit-config.yaml`,
+`src/`, `tests/`, `tools/`, `scripts/`, `pyproject.toml`, `uv.lock`, `Makefile`,
 `.github/workflows/ci.yml`, `.agents/skills/*`, every doc above marked Rewrite, Port or Drop (recreated from scratch
 where kept; `LICENSE` stays). Artifacts carried over by hand are listed in [migration.md](migration.md).
 

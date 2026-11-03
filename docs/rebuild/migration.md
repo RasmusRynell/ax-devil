@@ -23,7 +23,7 @@ recreate for the new stack using the old as reference; Drop = do not bring over.
 | Dataset docs | `docs/datasets/` | Port | Commands change |
 | `LICENSE` | root | Carried (kept) | Unchanged |
 | `CHANGELOG.md` | root | Ported by the foundation | Fresh Unreleased entry |
-| Task runner, CI, pre-commit, check scripts | `Makefile`, `.github/workflows/ci.yml`, `.pre-commit-config.yaml`, `scripts/` | Ported by the foundation ([14](14-build-order.md#decisions-taken-for-the-foundation)) | Gates of [10](10-quality-gates.md) |
+| Task runner, CI, check scripts | `Makefile`, `.github/workflows/ci.yml`, `scripts/` | Ported by the foundation ([14](14-build-order.md#decisions-taken-for-the-foundation)) | Gates of [10](10-quality-gates.md) |
 | Developer tools | `tools/` | Port per DT row; drop `tools/show_timestamps.py` | DT-04 covers alignment |
 | Shaders, QML, packaging metadata, lockfile | `video_player/engine/quick/`, `pyproject.toml`, `uv.lock` | Drop | Stack-specific |
 | Demo media | `docs/media/` | Drop | Re-record with DT-06 |

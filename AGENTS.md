@@ -52,17 +52,18 @@ has them; they are optional and not part of this repository.
 
 - Rust edition 2024 on the toolchain pinned in `rust-toolchain.toml`; one Cargo workspace.
 - TypeScript in strict mode with React, built, linted, formatted and tested through Vite+ (`vp`).
-- Node 22.18+, 24.11+ or 26+ and pnpm 12.14.0; one pnpm workspace with one root lockfile.
+- Node 24 (`.node-version`) and the pnpm named by `packageManager` in `package.json`; one pnpm workspace with one
+  root lockfile.
 
 ### Commands
 
 ```bash
-make check       # Every static check, then every test suite
-make check-fast  # Formatting, lint, types, architecture; file-size check on changed files; no tests
+make check       # The gate: every static check, then every test suite
+make check-fast  # Formatting, lint, clippy, types, architecture; file-size check on changed files; no tests
 make format      # cargo fmt, Vite+ format and lint fixes
-make tests       # Every suite on an isolated home; tests-frontend, -backend, -integration, -desktop run one
+make test        # Every suite on an isolated home; test-frontend, -backend, -integration, -desktop run one
 make desktop     # Launch the app with live reload (interactive launches are for the user)
-make help        # Every target
+make help        # Every target, with its arguments
 ```
 
 Targets install what they need on first use; there is no setup step. Use the Make targets rather than parallel
@@ -104,7 +105,7 @@ entry points, and keep reusable build and test steps in the Makefile.
   that removes or merges code leaves test lines flat or lower; a net increase needs a stated reason.
 - Docs: most changes need no doc edit. Before adding to a doc, apply the placement rule under Where A Fact Belongs and delete
   or collapse what the new text makes redundant. Net doc growth needs a stated reason.
-- UI changes: screenshots in both themes from the harness (`make tests-desktop`), and, once the fit test exists, at
+- UI changes: screenshots in both themes from the harness (`make test-desktop`), and, once the fit test exists, at
   200% zoom with the fit test updated (write-ui skill).
 - Rendering changes: oracle canonical rows (`fixtures/oracle`) and in-stack goldens reviewed; a benchmark when on the hot path.
 - A parity row: its line in [docs/parity.md](docs/parity.md) updated with the test that proves it.

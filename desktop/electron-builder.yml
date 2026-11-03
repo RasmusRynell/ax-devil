@@ -1,4 +1,4 @@
-# Built by scripts/package-desktop.sh, which stages the backend and its FFmpeg libraries in staging/bin first.
+# Built by `make package` (scripts/package-desktop.sh), which stages the backend and its FFmpeg libraries in staging/bin first.
 appId: io.github.rasmusrynell.ax-devil
 productName: ax-devil
 artifactName: ${productName}-${version}-${os}-${arch}.${ext}
