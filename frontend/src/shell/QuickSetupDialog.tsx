@@ -1,5 +1,4 @@
 import { useState, type ReactNode } from "react";
-import { useGrants } from "../access";
 import { SETTINGS, type SettingKey } from "../generated/settings";
 import { SegmentedControl, TileChoice } from "../kit/Chips";
 import { Dialog } from "../kit/Dialog";
@@ -10,11 +9,6 @@ import { useSaveDialog } from "./useSaveDialog";
 
 /** The rows Quick Setup asks for: the settings a new user is most likely to want to choose first. */
 const ROWS: readonly Row[] = SETTINGS.filter((row) => row.quick_setup);
-
-/** A section's heading where it differs from the row's own label. */
-const CAPTIONS: Partial<Record<SettingKey, string>> = {
-  "defaults.device.protocol": "Camera protocol",
-};
 
 /** The classes of a miniature window's parts in each theme, whatever theme the app itself shows. */
 const WINDOW = {
@@ -107,14 +101,11 @@ export function QuickSetupDialog({
   onNotice: (message: string) => void;
 }) {
   const { values, shortcuts } = useSettings();
-  // The same rule as the Settings dialog: Server rows are for whoever may configure the server.
-  const configures = useGrants().includes("configuration");
-  const rows = ROWS.filter((row) => configures || row.scope === "personal");
   const [draft, setDraft] = useState(values);
   useAppearance(String(draft["ui.theme"]), String(draft["ui.text_size"]));
   const { saving, submit } = useSaveDialog(onClose);
   const changed =
-    !values["ui.quick_setup_done"] || rows.some((row) => draft[row.key] !== values[row.key]);
+    !values["ui.quick_setup_done"] || ROWS.some((row) => draft[row.key] !== values[row.key]);
   const done = async () => {
     if (!changed) return onClose();
     const outcome = await submit({ values: { ...draft, "ui.quick_setup_done": true }, shortcuts });
@@ -131,10 +122,9 @@ export function QuickSetupDialog({
         disabled={saving}
         className="m-0 flex min-w-0 flex-col gap-m border-0 p-0 [@media(max-height:20rem)]:gap-0"
       >
-        {rows.map((row) => {
-          const label = CAPTIONS[row.key] ?? row.label;
+        {ROWS.map((row) => {
           const choice = {
-            label,
+            label: row.label,
             options: row.kind.options ?? [],
             value: String(draft[row.key]),
             onChange: (value: string) => setDraft({ ...draft, [row.key]: value }),
@@ -142,7 +132,7 @@ export function QuickSetupDialog({
           const preview = PREVIEWS[row.key];
           return (
             <section key={row.key} className="flex flex-col gap-s">
-              <SectionCaption heading={label} plain />
+              <SectionCaption heading={row.label} plain />
               {preview ? (
                 <TileChoice {...choice} preview={preview} />
               ) : (

@@ -145,31 +145,6 @@ export const SETTINGS = [
     "scope": "server"
   },
   {
-    "key": "defaults.device.protocol",
-    "kind": {
-      "type": "choice",
-      "options": [
-        [
-          "https",
-          "HTTPS"
-        ],
-        [
-          "http",
-          "HTTP"
-        ]
-      ],
-      "default": "https"
-    },
-    "label": "Protocol",
-    "page": "Stream defaults",
-    "section": "Device",
-    "live": true,
-    "env": false,
-    "secret": false,
-    "quick_setup": true,
-    "scope": "server"
-  },
-  {
     "key": "storage.cache_dir",
     "kind": {
       "type": "folder"

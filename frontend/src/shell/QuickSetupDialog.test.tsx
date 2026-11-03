@@ -1,6 +1,5 @@
 import { afterEach, beforeAll, describe, expect, it, vi } from "vite-plus/test";
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { GrantsContext } from "../access";
 import { DEFAULT_SETTINGS, FakeSettings } from "../fakeSettings";
 import { QuickSetupDialog } from "./QuickSetupDialog";
 
@@ -26,11 +25,9 @@ function open(
   { onClose = () => {}, onNotice = () => {} } = {},
 ) {
   render(
-    <GrantsContext.Provider value={["configuration"]}>
-      <FakeSettings state={state} save={save as never}>
-        <QuickSetupDialog onClose={onClose} onNotice={onNotice} />
-      </FakeSettings>
-    </GrantsContext.Provider>,
+    <FakeSettings state={state} save={save as never}>
+      <QuickSetupDialog onClose={onClose} onNotice={onNotice} />
+    </FakeSettings>,
   );
 }
 
@@ -46,7 +43,6 @@ describe("quick setup dialog", () => {
     open(firstRun, save, { onClose });
     pick("Theme", "Dark");
     pick("Text size", "Larger");
-    pick("Camera protocol", "HTTP");
     expect(document.documentElement.dataset.theme).toBe("dark");
     expect(document.documentElement.dataset.textSize).toBe("larger");
     expect(save).not.toHaveBeenCalled();
@@ -58,7 +54,6 @@ describe("quick setup dialog", () => {
         ...firstRun.values,
         "ui.theme": "dark",
         "ui.text_size": "larger",
-        "defaults.device.protocol": "http",
         "ui.quick_setup_done": true,
       },
       shortcuts: firstRun.shortcuts,
@@ -114,15 +109,5 @@ describe("quick setup dialog", () => {
     fireEvent.click(screen.getByRole("button", { name: "Done" }));
     await waitFor(() => expect(onClose).toHaveBeenCalledTimes(2));
     expect(save).not.toHaveBeenCalled();
-  });
-
-  it("asks for the camera protocol only of someone who may configure the server", () => {
-    render(
-      <FakeSettings state={firstRun}>
-        <QuickSetupDialog onClose={() => {}} onNotice={() => {}} />
-      </FakeSettings>,
-    );
-    expect(screen.getByRole("radiogroup", { name: "Theme" })).toBeTruthy();
-    expect(screen.queryByRole("radiogroup", { name: "Camera protocol" })).toBeNull();
   });
 });

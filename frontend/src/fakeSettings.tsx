@@ -12,7 +12,6 @@ export const DEFAULT_SETTINGS: SettingsState = {
     "overlays.object_details": true,
     "overlays.lane_names": true,
     "overlays.default_catalog": "",
-    "defaults.device.protocol": "https",
     "playback.video_cache": "auto",
     "storage.cache_dir": "",
     "storage.catalog_dir": "",

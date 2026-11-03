@@ -151,21 +151,6 @@ pub const TABLE: &[Setting] = &[
         scope: Scope::Server,
     },
     Setting {
-        key: "defaults.device.protocol",
-        kind: Kind::Choice {
-            options: &[("https", "HTTPS"), ("http", "HTTP")],
-            default: "https",
-        },
-        label: "Protocol",
-        page: Some("Stream defaults"),
-        section: "Device",
-        live: true,
-        env: false,
-        secret: false,
-        quick_setup: true,
-        scope: Scope::Server,
-    },
-    Setting {
         key: "storage.cache_dir",
         // Empty is the standard XDG cache folder. `--cache-dir` wins over the setting.
         kind: Kind::Folder,

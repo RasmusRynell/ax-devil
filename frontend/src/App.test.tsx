@@ -214,7 +214,6 @@ describe("access", () => {
     const put = fetchMock.mock.calls.find(([, init]) => init?.method === "PUT");
     const sent = JSON.parse(put?.[1]?.body as string) as SettingsChange;
     expect(sent.values).toEqual({
-      "defaults.device.protocol": "https",
       "playback.video_cache": "auto",
       "storage.cache_dir": "/var/cache",
       "storage.catalog_dir": "",

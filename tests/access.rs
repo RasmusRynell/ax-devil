@@ -181,7 +181,6 @@ async fn a_server_answers_settings_and_sessions_only_to_the_password() {
     // The password holder sees and replaces the Server settings, and may touch neither a Personal setting nor a
     // shortcut.
     let server = json!({
-        "defaults.device.protocol": "https",
         "playback.video_cache": "auto",
         "storage.cache_dir": "",
         "storage.catalog_dir": "",

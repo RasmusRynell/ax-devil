@@ -23,14 +23,14 @@ decode work ([UI Lifecycle](../../../docs/domain/invariants.md#ui-lifecycle)).
 
 | Need | Use (`frontend/src/kit/` unless noted) |
 |------|-----|
-| Action; the Enter action; icon-only; compact beside a field | `Button` (`type="submit"` is the Enter action, looking like any button; `label` without children makes it icon-only; `size="small"`) |
+| Action; the Enter action; icon-only; compact beside a field | `Button` (`type="submit"` is the Enter action; `label` without children makes it icon-only; `size="small"`) |
 | Menu opener; folder button after a path field | `MenuButton`, `BrowseButton` |
 | Borderless icon in a bar, header or over video | `IconButton` (`onCanvas` over video) |
 | Icon (Lucide SVG in `assets/icons/`, listed in `icons.ts`) | `Icon`; colour a kind with `KIND` |
 | Status tag, clickable tag | `Chip` (`tone`, `onClick`) |
 | Any-number choice; one-of-many; mode switch; one-of-many by picture | `ToggleChip`, `ChoiceChips` in a `ChipRow`, `SegmentedControl`, `TileChoice` |
 | Tabs over one panel | `Tabs` |
-| Group heading (count, note, aside, mark, fold; `plain` for a dialog's or start page's own heading) | `SectionCaption` (`mark`: `muted`, `accent`, a `Tone` or a `Kind`) |
+| Group heading (count, note, aside, mark, fold) | `SectionCaption` (`mark`: `muted`, `accent`, a `Tone` or a `Kind`) |
 | Sidebar view: header, action, scrolling body | `ViewPanel` |
 | Captioned action rows | `RowList` |
 | Banner with actions | `shell/Banner.tsx`, its `actions` slot |
@@ -53,8 +53,7 @@ A control that handles keys the shortcuts also use (Space, Enter, arrows) wraps 
   from a text-size token so it grows with the zoom.
 - **Restrained.** Outlined or quiet, nothing more: no heavier rings, shadows or extra decoration. Every control is one
   row high with a visible keyboard-focus ring and a muted disabled state.
-- **Colour carries meaning, only:** accent marks chosen (a segment's tint with accent text, a tile's full border,
-  a chip's solid fill) and checked (tint and check) controls, the current tab or row edge, and a focused field.
+- **Colour carries meaning, only:** accent marks chosen and checked controls, the current tab or row edge, and a focused field.
   Tones (`success`, `caution`, `danger`) mark status.
   Kind colours mark video, playlist, live and lane, the same on icons and caption marks everywhere. Video controls
   keep their white-on-scrim look; the canvas stays near-black in both themes.

@@ -8,7 +8,6 @@ fn values(theme: &str) -> BTreeMap<String, Value> {
         ("ui.theme".into(), json!(theme)),
         ("ui.text_size".into(), json!("system")),
         ("ui.quick_setup_done".into(), json!(true)),
-        ("defaults.device.protocol".into(), json!("https")),
         ("playback.video_cache".into(), json!("auto")),
         ("overlays.object_details".into(), json!(true)),
         ("overlays.lane_names".into(), json!(true)),
