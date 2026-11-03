@@ -128,5 +128,14 @@ describe("lane layouts", () => {
         category: 7,
       });
     });
+
+    it("says speed after the other facts and rounds ties to even, as the reference prints them", () => {
+      const rows = fullSample([
+        { id: "a", score: 0.125, confidence: 0.9, speed: 0.25 },
+        { id: "b", speed: 2.5 },
+      ]);
+      expect(describeRow(rows, 0).detail).toBe("score 0.12 · confidence 0.90 · speed 0.2");
+      expect(describeRow(rows, 1).detail).toBe("speed 2.5");
+    });
   });
 });

@@ -22,6 +22,7 @@
 //! | `poly_points` | `f32` x, y | |
 //! | `motion` | `u8` per row: 0 none, 1 moving, 2 stationary, 3 unknown | 0 |
 //! | `velocity` | `f32` vx, vy per row (image velocity) | NaN |
+//! | `speed` | `f64` per row, the world velocity's speed | NaN |
 //! | `class` | `u32` string id of the primary classification's type | `u32::MAX` |
 //! | `score`, `confidence` | `f64` per row, of the primary classification | NaN |
 //! | `class_mask` | `mask_words` `u32` per row, see below | |
@@ -71,7 +72,7 @@ use crate::{
 };
 
 /// The item format version; the reader refuses another.
-pub const VERSION: u32 = 1;
+pub const VERSION: u32 = 2;
 
 /// The first word of an item: the bytes `AXSI`.
 const MAGIC: u32 = u32::from_le_bytes(*b"AXSI");
@@ -88,6 +89,7 @@ enum Section {
     PolyPoints,
     Motion,
     Velocity,
+    Speed,
     Class,
     Score,
     Confidence,
@@ -327,6 +329,15 @@ pub fn encode_sample_item(scene: &Scene, policy: &FilterPolicy) -> Result<Vec<u8
             }
         };
         f32s(out, rows.iter().flat_map(velocity));
+    })?;
+    item.section(Section::Speed, |out| {
+        let speed = |row: &Row| {
+            let measured = row.observation.measurements.as_ref();
+            measured
+                .and_then(|measured| measured.world_velocity)
+                .map_or(f64::NAN, |velocity| velocity.speed)
+        };
+        f64s(out, rows.iter().map(speed));
     })?;
     item.section(Section::Class, |out| u32s(out, classes.iter().copied()))?;
     let number = |pick: fn(&Classification) -> Option<f64>| {

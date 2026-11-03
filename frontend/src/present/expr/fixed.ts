@@ -1,4 +1,4 @@
-import type { CodePoints } from "./codePoints";
+import { CodePoints, codePointString } from "./codePoints";
 
 /** 10^0 .. 10^22: every power of ten a double holds exactly. */
 const POW10 = [
@@ -140,4 +140,11 @@ export function emitFixed(value: number, places: number, out: CodePoints): boole
     out.push(48 + (i < padding ? 0 : digits[i - padding]));
   }
   return true;
+}
+
+/** `value` with `places` decimals, rounded as `emitFixed` does; empty for a value that is not a finite number. */
+export function fixed(value: number, places: number): string {
+  const out = new CodePoints();
+  emitFixed(value, places, out);
+  return codePointString(out.data, 0, out.length);
 }

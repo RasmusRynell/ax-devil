@@ -15,6 +15,8 @@ export interface FixtureEntity {
   readonly confidence?: number;
   readonly motion?: "moving" | "stationary" | "unknown";
   readonly velocity?: readonly [number, number];
+  /** The world velocity's speed. */
+  readonly speed?: number;
   readonly box?: readonly [number, number, number, number];
   /** Class mask words of the row; every row has as many words as the longest. */
   readonly mask?: readonly number[];
@@ -124,6 +126,7 @@ export function makeSample(
     box: new Float32Array(rows * 4),
     motion: new Uint8Array(rows),
     velocity: new Float32Array(rows * 2).fill(Number.NaN),
+    speed: new Float64Array(rows).fill(Number.NaN),
     classId: new Int32Array(rows).fill(-1),
     score: new Float64Array(rows).fill(Number.NaN),
     confidence: new Float64Array(rows).fill(Number.NaN),
@@ -140,6 +143,7 @@ export function makeSample(
       ? ["moving", "stationary", "unknown"].indexOf(entity.motion) + 1
       : 0;
     if (entity.velocity) sample.velocity.set(entity.velocity, row * 2);
+    sample.speed[row] = entity.speed ?? Number.NaN;
     if (entity.class !== undefined) sample.classId[row] = strings.add(entity.class);
     sample.score[row] = entity.score ?? Number.NaN;
     sample.confidence[row] = entity.confidence ?? Number.NaN;

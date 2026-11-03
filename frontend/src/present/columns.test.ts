@@ -21,7 +21,10 @@ interface Scene {
     observations: {
       geometry: { box?: number[]; polygon?: number[][] };
       classifications: { type: string; score: number | null; confidence: number | null }[];
-      measurements?: { image_velocity?: { vx: number; vy: number } };
+      measurements?: {
+        image_velocity?: { vx: number; vy: number };
+        world_velocity?: { speed: number };
+      };
     }[];
     motion_state: string | null;
   }[];
@@ -60,8 +63,9 @@ function itemWith(rows: number, attributes: number, laidOut: number): ArrayBuffe
   const strings = ["moving", "stationary", "unknown"].map((name) => new TextEncoder().encode(name));
   const stringBytes = strings.reduce((n, text) => n + text.length, 0);
   const align = (n: number): number => Math.ceil(n / 8) * 8;
-  const header = 31 * 4;
-  const sizes = [rows * 4, rows * 16, rows * 8, 0, rows, rows * 8, rows * 4, rows * 8, rows * 8, 0];
+  const header = 32 * 4;
+  const sizes = [rows * 4, rows * 16, rows * 8, 0, rows, rows * 8, rows * 8, rows * 4, rows * 8];
+  sizes.push(rows * 8, 0);
   sizes.push(attributes * 12, 0, 0, 0, 0, 0, 0, 16, stringBytes);
   let cursor = align(header);
   const columns = Array.from({ length: laidOut }, () => {
@@ -75,14 +79,14 @@ function itemWith(rows: number, attributes: number, laidOut: number): ArrayBuffe
     return at;
   });
   const words = new Uint32Array(cursor / 4);
-  words.set([0x4953_5841, 1, rows, 0, 0, 0, attributes, 0, 3, 3, 3, stringBytes, ...sections]);
-  const index = sections[10] / 4;
+  words.set([0x4953_5841, 2, rows, 0, 0, 0, attributes, 0, 3, 3, 3, stringBytes, ...sections]);
+  const index = sections[11] / 4;
   for (let i = 0; i < attributes; i++) words.set([0, 2, columns[i] ?? sections[0]], index + i * 3);
-  const offsets = sections[17] / 4;
+  const offsets = sections[18] / 4;
   words.set([0, 6, 16, stringBytes], offsets);
   new Uint8Array(words.buffer).set(
     strings.flatMap((text) => [...text]),
-    sections[18],
+    sections[19],
   );
   return words.buffer;
 }
@@ -112,6 +116,7 @@ describe("readSample", () => {
         expect([...view.velocity.subarray(row * 2, row * 2 + 2)], where).toEqual(
           velocity ? [velocity.vx, velocity.vy].map(Math.fround) : [NaN, NaN],
         );
+        expect(view.speed[row], where).toBe(latest.measurements?.world_velocity?.speed ?? NaN);
         // With several classes the primary is the best ranked one; `history` and the masks cover that case.
         const [only] = latest.classifications.length === 1 ? latest.classifications : [undefined];
         if (latest.classifications.length <= 1) {
@@ -184,7 +189,7 @@ describe("readSample", () => {
       golden.slice(0, 64),
       golden.slice(0, golden.byteLength - 8),
       damaged((b) => (b[0] = 0)),
-      damaged((b) => (b[4] = 2)),
+      damaged((b) => (b[4] = 3)),
       damaged((b) => (b[48 + 3] = 0xff)),
       damaged((b) => (b[36] = 4)),
     ];
@@ -202,18 +207,18 @@ describe("readSample", () => {
     };
     expect(() => readSample(golden)).not.toThrow();
     // An end offset of a middle string far past the bytes: it once decoded a million code points.
-    expect(() => readSample(damaged((w) => (w[section(17) + 21] = 1_000_000)))).toThrowError(
+    expect(() => readSample(damaged((w) => (w[section(18) + 21] = 1_000_000)))).toThrowError(
       SampleFormatError,
     );
     // A string offset that goes back.
     expect(() =>
-      readSample(damaged((w) => (w[section(17) + 5] = w[section(17) + 4] - 1))),
+      readSample(damaged((w) => (w[section(18) + 5] = w[section(18) + 4] - 1))),
     ).toThrowError(SampleFormatError);
     // An entity or a class the item does not have (an entity id also may not be "none"), and an outline outside the points.
     for (const [n, value] of [
       [0, 99_999],
       [0, 0xffffffff],
-      [6, 99_999],
+      [7, 99_999],
       [2, 99_999],
     ]) {
       expect(() => readSample(damaged((w) => (w[section(n)] = value)))).toThrowError(
@@ -225,7 +230,7 @@ describe("readSample", () => {
       readSample(
         damaged((w) => {
           const bytes = new Uint8Array(w.buffer);
-          bytes[section(18) * 4 + 30] = 0xff;
+          bytes[section(19) * 4 + 30] = 0xff;
         }),
       ),
     ).toThrowError(SampleFormatError);
