@@ -1,0 +1,22 @@
+{
+  "manifest": 2,
+  "id": "python-runs",
+  "name": "Python runs",
+  "version": "1.0.0",
+  "protocol": 3,
+  "command": ["python3", "runs.py"],
+  "code": ["runs.py"],
+  "idle_timeout_s": 30,
+  "handlers": [
+    {
+      "kind": "playlist_resolver",
+      "id": "python-runs",
+      "name": "Python runs",
+      "description": "One entry per run folder",
+      "settings": [
+        { "key": "root", "label": "Runs folder", "kind": "folder", "required": true, "positional": true },
+        { "key": "runs", "label": "Runs", "kind": "scan", "depends_on": ["root"] }
+      ]
+    }
+  ]
+}

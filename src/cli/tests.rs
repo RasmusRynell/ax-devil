@@ -259,6 +259,40 @@ fn an_overlay_option_belongs_to_the_nearest_preceding_overlay_and_is_typed_by_it
 }
 
 #[test]
+fn an_installed_resolver_is_a_playlist_subcommand_with_its_settings_as_arguments() {
+    let manifest = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("fixtures/plugins/python-runs/ax-devil-plugin.json");
+    let plugin = ::plugins::LoadedPlugin::load(&manifest).unwrap();
+    let handlers = Handlers::built_in().with_resolvers(
+        plugin
+            .resolvers
+            .iter()
+            .map(|resolver| Arc::clone(resolver) as Arc<dyn handler_api::PlaylistResolver>),
+    );
+    let cli = args::try_parse_from(
+        &handlers,
+        [
+            "ax-devil",
+            "playlist",
+            "python-runs",
+            "/data/runs",
+            "--runs",
+            "a,b",
+        ],
+    )
+    .unwrap();
+
+    let Some(Command::Playlist { resolver, settings }) = cli.command else {
+        panic!("a playlist command opens a playlist");
+    };
+    assert_eq!(resolver, "python-runs");
+    assert_eq!(
+        Value::Object(settings),
+        json!({ "root": "/data/runs", "runs": ["a", "b"] })
+    );
+}
+
+#[test]
 fn a_playlist_command_line_becomes_the_item_the_dialog_would_add() {
     let items = items(&["playlist", "mot_challenge", "/data/mot"]);
     let Source::Playlist(recipe) = &items[0].recipe.source else {

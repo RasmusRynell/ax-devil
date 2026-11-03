@@ -5,7 +5,7 @@ use api_types::handlers::{
     HandlerKind, HandlerSummary, PluginInfo, PluginSource, PluginStatus, PluginsInfo,
 };
 use foundation::{ErrorCode, UserError};
-use handler_api::Decoder;
+use handler_api::{Decoder, PlaylistResolver};
 use handlers::{HandlerSet, Handlers};
 use plugins::{Loaded, Registry, Reserved};
 use std::{
@@ -304,7 +304,12 @@ impl Plugins {
             plugins,
             problem: loaded.registry.as_ref().map(ToString::to_string),
         };
-        (self.built_in.clone().with_decoders(loaded.decoders()), info)
+        let handlers = self
+            .built_in
+            .clone()
+            .with_decoders(loaded.decoders())
+            .with_resolvers(loaded.resolvers());
+        (handlers, info)
     }
 
     fn swap(&self, handlers: Handlers, info: PluginsInfo) {
@@ -334,6 +339,16 @@ fn decoder_summary(decoder: &Arc<dyn Decoder>) -> HandlerSummary {
     }
 }
 
+fn resolver_summary(resolver: &Arc<dyn PlaylistResolver>) -> HandlerSummary {
+    let spec = resolver.spec();
+    HandlerSummary {
+        kind: HandlerKind::PlaylistResolver,
+        id: spec.id.clone(),
+        name: spec.name.clone(),
+        extensions: Vec::new(),
+    }
+}
+
 /// One entry per built-in plugin, in the order its first handler appears.
 fn built_in_info(built_in: &Handlers) -> Vec<PluginInfo> {
     let mut groups: Vec<(String, Vec<HandlerSummary>)> = Vec::new();
@@ -348,14 +363,7 @@ fn built_in_info(built_in: &Handlers) -> Vec<PluginInfo> {
         add(&decoder.spec().plugin, decoder_summary(decoder));
     }
     for resolver in built_in.resolvers() {
-        let spec = resolver.spec();
-        let summary = HandlerSummary {
-            kind: HandlerKind::PlaylistResolver,
-            id: spec.id.clone(),
-            name: spec.name.clone(),
-            extensions: Vec::new(),
-        };
-        add(&spec.plugin, summary);
+        add(&resolver.spec().plugin, resolver_summary(resolver));
     }
     groups
         .into_iter()
@@ -399,6 +407,11 @@ fn installed_info(loaded: &Loaded) -> Vec<PluginInfo> {
                             .map(|decoder| {
                                 decoder_summary(&(Arc::clone(decoder) as Arc<dyn Decoder>))
                             })
+                            .chain(plugin.resolvers.iter().map(|resolver| {
+                                resolver_summary(
+                                    &(Arc::clone(resolver) as Arc<dyn PlaylistResolver>),
+                                )
+                            }))
                             .collect(),
                     }
                 }

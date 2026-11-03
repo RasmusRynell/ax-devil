@@ -1,14 +1,16 @@
 ---
 name: write-plugin
-description: Make ax-devil read overlay data in a format it does not read, by writing, checking and installing a plugin (a program in any language whose decoder handler prints Scenes as JSON Lines). Use when the user wants their own annotation, tracking or detection files drawn on a video, or a change to such a plugin.
+description: Make ax-devil read overlay data in a format it does not read, by writing, checking and installing a plugin (a program in any language whose decoder handler prints Scenes, or whose playlist resolver handler prints a playlist, as JSON Lines). Use when the user wants their own annotation, tracking or detection files drawn on a video, or a change to such a plugin.
 ---
 
 # Write a plugin
 
 A plugin is a program in the user's own folder, outside this repository, with a manifest listing the handlers it
 provides. For an overlay format that is a decoder handler: ax-devil runs the program on an overlay file, reads Scenes
-from its stdout and draws them like any built-in format. A decoder shipped with ax-devil is a built-in in
-`crates/scene-decoders` and is development work; playlist resolvers are built in only. The contract is in
+from its stdout and draws them like any built-in format. For a dataset layout it does not know that is a playlist
+resolver handler: the program turns settings (a folder, choices it scans for) into videos with their overlay files.
+A handler shipped with ax-devil is a built-in in `crates/scene-decoders` or `crates/playlist-resolvers` and is
+development work. The contract is in
 [reference.md](reference.md); `docs/plugins.md` says what installing one means for the user's safety.
 
 ## Steps
@@ -18,7 +20,8 @@ from its stdout and draws them like any built-in format. A decoder shipped with 
    every frame has a sample (`dense`) or only some (`sparse`), what the object ids and classes are, and what is in the
    file besides geometry.
 3. Create a folder with `ax-devil-plugin.json` and the program. Start from `fixtures/plugins/python-tracks`
-   (Python, every Scene part) or `fixtures/plugins/shell-times` (sh and awk, time keys, `replace`).
+   (Python, every Scene part) or `fixtures/plugins/shell-times` (sh and awk, time keys, `replace`); a resolver from
+   `fixtures/plugins/python-runs`. A resolver prints absolute paths and names a decoder id for each overlay.
 4. Install it and prove it on the user's real file, not only a toy one:
 
    ```bash
@@ -31,6 +34,9 @@ from its stdout and draws them like any built-in format. A decoder shipped with 
 5. Open the video with the file (`ax-devil local --video V --overlay FILE`; the extension picks the decoder, or
    `--handler-type HANDLER`). Compare the boxes, labels and the inspector's fields with what the file says. To see it without the
    user's desktop, follow [verify-headless](../verify-headless/SKILL.md).
+
+A resolver has no `check`: `ax-devil playlist ID --help` shows its settings, and `ax-devil playlist ID ARGS` opens the
+playlist; a wrong path or name fails with the line it came from.
 
 After an edit, run `check` again: it starts a new process and sees the manifest as well as the code. A running app
 rereads code on the next open and the manifest within a second or two.

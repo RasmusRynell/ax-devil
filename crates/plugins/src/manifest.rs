@@ -96,6 +96,8 @@ pub struct Manifest {
 pub enum Handler {
     /// Turns an overlay file into Scenes.
     Decoder(DecoderHandler),
+    /// Turns settings into a playlist.
+    PlaylistResolver(ResolverHandler),
 }
 
 impl Handler {
@@ -103,6 +105,7 @@ impl Handler {
     pub fn id(&self) -> &str {
         match self {
             Self::Decoder(decoder) => &decoder.id,
+            Self::PlaylistResolver(resolver) => &resolver.id,
         }
     }
 }
@@ -124,6 +127,19 @@ pub struct DecoderHandler {
     pub bases: Vec<MatchBasis>,
     /// The basis a lane starts with, one of `bases`.
     pub default_basis: MatchBasis,
+}
+
+/// A playlist resolver the plugin declares.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ResolverHandler {
+    /// The handler id, which `playlist <id>` and workspaces name the resolver by.
+    pub id: String,
+    /// What the user reads.
+    pub name: String,
+    /// One sentence on what the resolver does.
+    pub description: String,
+    /// The settings the resolver takes.
+    pub settings: Form,
 }
 
 impl Manifest {

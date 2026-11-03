@@ -215,7 +215,7 @@ fn a_plugin_that_writes_out_of_order_has_its_samples_sorted_and_the_replaced_one
 #[tokio::test]
 async fn the_plugins_route_lists_the_plugins_that_loaded_and_the_one_that_did_not() {
     let home = tempfile::tempdir().unwrap();
-    let registry = install(home.path(), "shell-times");
+    let registry = install(home.path(), "python-runs");
     let gone = home.path().join("gone/ax-devil-plugin.json");
     let text = std::fs::read_to_string(&registry).unwrap();
     let mut document: serde_json::Value = serde_json::from_str(&text).unwrap();
@@ -233,7 +233,8 @@ async fn the_plugins_route_lists_the_plugins_that_loaded_and_the_one_that_did_no
     assert_eq!(mot["source"]["kind"], "built_in");
     assert_eq!(loaded["source"]["kind"], "installed");
     assert_eq!(loaded["status"]["state"], "loaded");
-    assert_eq!(loaded["status"]["id"], "shell-times");
+    assert_eq!(loaded["status"]["id"], "python-runs");
+    assert_eq!(loaded["status"]["handlers"][0]["kind"], "playlist_resolver");
     assert_eq!(failed["status"]["state"], "failed");
     assert!(
         failed["status"]["reason"]

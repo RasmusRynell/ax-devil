@@ -7,12 +7,7 @@ use handler_api::{DecodeError, DecodeSummary, Decoder, Framing, Input, SceneSink
 use scene::{Coverage, Fields, FilterPolicy};
 use serde_json::json;
 
-use crate::{
-    PROTOCOL,
-    manifest::DecoderHandler,
-    program::Program,
-    run::{self, End},
-};
+use crate::{PROTOCOL, manifest::DecoderHandler, program::Program, records::Records, run::End};
 
 /// A decoder that runs an installed plugin's process.
 pub struct PluginDecoder {
@@ -79,28 +74,20 @@ impl Decoder for PluginDecoder {
                 "The overlay path is not valid UTF-8, which plugins need".to_owned(),
             ));
         };
-        let manifest = self.program.manifest();
-        let Some((command, args)) = manifest.command.split_first() else {
-            return Err(failed("The plugin has no command".to_owned()));
-        };
-        let process = run::Spec {
-            id: &self.spec.id,
-            program: command,
-            args,
-            env: &manifest.env,
-            request: json!({
-                "protocol": PROTOCOL,
-                "op": "decode",
-                "handler": self.spec.id,
-                "input": { "path": overlay_text },
-                "options": options.declared(),
-            })
-            .to_string(),
-            idle_timeout: manifest.idle_timeout,
-        };
-        let outcome = run::run(&process, sink, cancel);
-        match outcome.end {
-            End::Complete => Ok(match outcome.header {
+        let request = json!({
+            "protocol": PROTOCOL,
+            "op": "decode",
+            "handler": self.spec.id,
+            "input": { "path": overlay_text },
+            "options": options.declared(),
+        });
+        let mut records = Records::new(sink);
+        let end = self
+            .program
+            .run(&self.spec.id, &request, &mut records, cancel);
+        let header = records.finish();
+        match end {
+            End::Complete => Ok(match header {
                 Some(header) => DecodeSummary {
                     warnings: Vec::new(),
                     filter: header.filter,

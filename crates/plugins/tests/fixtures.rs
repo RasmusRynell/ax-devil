@@ -10,9 +10,9 @@ use std::{
 };
 
 use common::{TestSink, decode};
-use foundation::CancelToken;
-use handler_api::{OnEqualKey, Settings};
-use plugins::{LoadedPlugin, PluginDecoder};
+use foundation::{CancelToken, Interrupt, Location, UserError};
+use handler_api::{OnEqualKey, PlaylistResolver, Settings, Values, VideoRef};
+use plugins::{LoadedPlugin, PluginDecoder, PluginResolver};
 use scene::{Coverage, Geometry, Operation, SceneTime, TimeKind, Value};
 use std::sync::Arc;
 
@@ -27,6 +27,25 @@ fn decoder(name: &str) -> Arc<PluginDecoder> {
         .expect("the fixture manifest loads")
         .decoders
         .remove(0)
+}
+
+fn resolver(name: &str) -> Arc<PluginResolver> {
+    LoadedPlugin::load(&fixture(name).join("ax-devil-plugin.json"))
+        .expect("the fixture manifest loads")
+        .resolvers
+        .remove(0)
+}
+
+/// `settings` checked against the resolver's form, as the host does before it scans or resolves.
+fn values(resolver: &PluginResolver, settings: serde_json::Value) -> Values {
+    let serde_json::Value::Object(settings) = settings else {
+        panic!("settings are an object");
+    };
+    resolver
+        .spec()
+        .form
+        .validate(&settings)
+        .expect("the settings fit")
 }
 
 fn python_available() -> bool {
@@ -173,4 +192,162 @@ fn the_shell_plugin_reads_a_file_whose_name_has_a_quote_and_a_backslash() {
 
     assert_eq!(run.sink.samples.len(), 6);
     assert!(run.sink.warnings.is_empty() && run.sink.skips.is_empty());
+}
+
+#[test]
+fn the_python_resolver_scans_run_folders_and_resolves_the_chosen_ones_into_entries() {
+    if !python_available() {
+        return;
+    }
+    let root = tempfile::tempdir().expect("a temporary folder");
+    for run in ["run-a", "run-b"] {
+        std::fs::create_dir(root.path().join(run)).expect("run folder");
+    }
+    std::fs::write(root.path().join("run-a/gt.txt"), "").expect("ground truth");
+    let resolver = resolver("python-runs");
+    let settings = |extra: serde_json::Value| {
+        let mut settings = serde_json::json!({ "root": root.path() });
+        settings
+            .as_object_mut()
+            .unwrap()
+            .extend(extra.as_object().unwrap().clone());
+        values(&resolver, settings)
+    };
+
+    let choices = resolver
+        .scan(
+            "runs",
+            &settings(serde_json::json!({})),
+            &CancelToken::new(),
+        )
+        .expect("scan");
+    let found: Vec<_> = choices
+        .iter()
+        .map(|c| (c.value.as_str(), c.label.as_str(), c.detail.as_str()))
+        .collect();
+    assert_eq!(
+        found,
+        [("run-a", "run-a", "1 files"), ("run-b", "run-b", "0 files")]
+    );
+
+    let all = resolver
+        .resolve(&settings(serde_json::json!({})), &CancelToken::new())
+        .expect("resolve");
+    let folder = root.path().file_name().unwrap().to_str().unwrap();
+    assert_eq!(all.display_name, folder);
+    let names: Vec<_> = all.entries.iter().map(|e| e.name.as_str()).collect();
+    assert_eq!(names, ["run-a", "run-b"]);
+    assert_eq!(
+        all.entries[0].video,
+        VideoRef::File(root.path().join("run-a/video.mp4"))
+    );
+    let overlay = &all.entries[0].overlays[0];
+    assert_eq!(
+        (overlay.slot.as_str(), overlay.handler.as_str()),
+        ("gt", "MOT_FILE")
+    );
+    assert!(all.entries[1].overlays.is_empty());
+    assert_eq!(all.warnings.len(), 1, "run-b has no gt.txt");
+
+    let chosen = resolver
+        .resolve(
+            &settings(serde_json::json!({ "runs": ["run-b"] })),
+            &CancelToken::new(),
+        )
+        .expect("resolve");
+    assert_eq!(chosen.entries.len(), 1);
+}
+
+#[test]
+fn a_reported_error_names_the_setting_it_is_about() {
+    if !python_available() {
+        return;
+    }
+    let resolver = resolver("python-runs");
+    let missing = values(&resolver, serde_json::json!({ "root": "/no/such/folder" }));
+    let Err(Interrupt::Failed(error)) = resolver.resolve(&missing, &CancelToken::new()) else {
+        panic!("a missing folder fails the resolve");
+    };
+    assert_eq!(error.location, Some(Location::field("root")));
+    assert_eq!(error.reason, "Not a folder");
+}
+
+/// A resolver whose program is `script` run by `sh -c`, which prints what it likes.
+fn scripted(folder: &Path, script: &str) -> Arc<PluginResolver> {
+    let manifest = serde_json::json!({
+        "manifest": 2, "id": "scripted", "name": "Scripted", "version": "1", "protocol": 3,
+        "command": ["sh", "-c", script], "code": ["ax-devil-plugin.json"],
+        "handlers": [{
+            "kind": "playlist_resolver", "id": "scripted", "name": "Scripted", "description": "Prints",
+            "settings": [
+                { "key": "root", "label": "Root", "kind": "folder" },
+                { "key": "runs", "label": "Runs", "kind": "scan", "depends_on": ["root"] }
+            ]
+        }]
+    });
+    let path = folder.join("ax-devil-plugin.json");
+    std::fs::write(&path, manifest.to_string()).expect("manifest");
+    LoadedPlugin::load(&path)
+        .expect("loads")
+        .resolvers
+        .remove(0)
+}
+
+fn failure(resolver: &PluginResolver) -> UserError {
+    match resolver.resolve(
+        &values(resolver, serde_json::json!({})),
+        &CancelToken::new(),
+    ) {
+        Err(Interrupt::Failed(error)) => error,
+        _ => panic!("the resolve fails"),
+    }
+}
+
+#[test]
+fn a_resolve_that_breaks_the_rules_fails_naming_the_line_and_a_failing_plugin_leaves_no_playlist() {
+    let folder = tempfile::tempdir().expect("folder");
+    let entry = |name: &str, video: &str| {
+        format!(r#"{{"entry":{{"name":"{name}","video":{{"file":"{video}"}}}}}}"#)
+    };
+    let print = |lines: &[String], exit: i32| {
+        let script = format!(
+            "cat >/dev/null; printf '%s\\n' '{}'; exit {exit}",
+            lines.join("' '")
+        );
+        scripted(folder.path(), &script)
+    };
+
+    let twice = failure(&print(&[entry("a", "/v/1.mp4"), entry("a", "/v/2.mp4")], 0));
+    assert!(
+        twice.reason.starts_with("line 2:") && twice.reason.contains("'a'"),
+        "{}",
+        twice.reason
+    );
+    let relative = failure(&print(&[entry("a", "v/1.mp4")], 0));
+    assert!(
+        relative.reason.starts_with("line 1:") && relative.reason.contains("absolute"),
+        "{}",
+        relative.reason
+    );
+    let halfway = failure(&print(&[entry("a", "/v/1.mp4")], 3));
+    assert!(halfway.reason.contains("exit code 3"), "{}", halfway.reason);
+}
+
+#[test]
+fn cancelling_stops_a_scan_that_is_still_running() {
+    let folder = tempfile::tempdir().expect("folder");
+    let resolver = scripted(folder.path(), "sleep 60");
+    let cancel = CancelToken::new();
+    let stopper = cancel.clone();
+    let thread = std::thread::spawn(move || {
+        std::thread::sleep(std::time::Duration::from_millis(200));
+        stopper.cancel();
+    });
+
+    let started = std::time::Instant::now();
+    let result = resolver.scan("runs", &values(&resolver, serde_json::json!({})), &cancel);
+    thread.join().expect("the stopper");
+
+    assert!(matches!(result, Err(Interrupt::Cancelled)));
+    assert!(started.elapsed() < std::time::Duration::from_secs(10));
 }

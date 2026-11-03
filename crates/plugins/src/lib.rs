@@ -1,11 +1,13 @@
-//! Plugins: installed programs that provide handlers, today decoders that turn an overlay file into Scenes.
+//! Plugins: installed programs that provide handlers: decoders that turn an overlay file into Scenes, and playlist
+//! resolvers that turn settings into a playlist.
 //!
 //! A plugin is a folder with an `ax-devil-plugin.json` manifest listing its handlers, listed in the user's registry
-//! file ([`Registry`]). [`load`] turns the registry into [`PluginDecoder`]s, which `Handlers::with_decoders` adds
-//! beside the built-in decoders. One handler call is one run of the plugin's program: it writes a request on stdin,
-//! reads JSON Lines from stdout into the decode's `SceneSink`, and kills its whole process group whenever the run
-//! ends. A failure keeps the samples already delivered: `decode` returns `Err` and the host, which counts the
-//! samples, marks the lane incomplete.
+//! file ([`Registry`]). [`load`] turns the registry into [`PluginDecoder`]s and [`PluginResolver`]s, which
+//! `Handlers::with_decoders` and `with_resolvers` add beside the built-ins. One handler call is one run of the
+//! plugin's program: it writes a request on stdin, reads JSON Lines from stdout, and kills its whole process group
+//! whenever the run ends. A decode feeds the lines to a `SceneSink`; a failure keeps the samples already delivered:
+//! `decode` returns `Err` and the host, which counts the samples, marks the lane incomplete. A scan or resolve is
+//! used only if the plugin exits 0.
 
 mod code;
 mod decoder;
@@ -16,22 +18,28 @@ mod program;
 mod records;
 mod registry;
 mod reserved;
+mod resolved;
+mod resolver;
 mod run;
 mod spawn;
 mod stderr;
+mod wire;
 
 use std::{
     path::{Path, PathBuf},
     sync::Arc,
 };
 
-use handler_api::Decoder;
+use handler_api::{Decoder, PlaylistResolver};
 
 pub use decoder::PluginDecoder;
-pub use manifest::{DecoderHandler, Handler, MANIFEST_FILE, Manifest, ManifestError};
+pub use manifest::{
+    DecoderHandler, Handler, MANIFEST_FILE, Manifest, ManifestError, ResolverHandler,
+};
 pub use program::Program;
 pub use registry::{Registry, RegistryError};
 pub use reserved::Reserved;
+pub use resolver::PluginResolver;
 
 /// The plugin protocol version, the plugin API version: manifests must declare it and requests carry it.
 pub const PROTOCOL: u32 = 3;
@@ -42,6 +50,8 @@ pub struct LoadedPlugin {
     pub manifest: Manifest,
     /// Its decoders, in manifest order.
     pub decoders: Vec<Arc<PluginDecoder>>,
+    /// Its playlist resolvers, in manifest order.
+    pub resolvers: Vec<Arc<PluginResolver>>,
 }
 
 impl LoadedPlugin {
@@ -53,16 +63,26 @@ impl LoadedPlugin {
     /// The handlers of a validated manifest, sharing one [`Program`].
     pub fn new(manifest: Manifest) -> Self {
         let program = Arc::new(Program::new(manifest.clone()));
-        let decoders = manifest
-            .handlers
-            .iter()
-            .map(|handler| match handler {
+        let mut decoders = Vec::new();
+        let mut resolvers = Vec::new();
+        for handler in &manifest.handlers {
+            match handler {
                 Handler::Decoder(decoder) => {
-                    Arc::new(PluginDecoder::new(Arc::clone(&program), decoder))
+                    decoders.push(Arc::new(PluginDecoder::new(Arc::clone(&program), decoder)));
                 }
-            })
-            .collect();
-        Self { manifest, decoders }
+                Handler::PlaylistResolver(resolver) => {
+                    resolvers.push(Arc::new(PluginResolver::new(
+                        Arc::clone(&program),
+                        resolver,
+                    )));
+                }
+            }
+        }
+        Self {
+            manifest,
+            decoders,
+            resolvers,
+        }
     }
 }
 
@@ -90,6 +110,16 @@ impl Loaded {
             .filter_map(|entry| entry.plugin.as_ref().ok())
             .flat_map(|plugin| &plugin.decoders)
             .map(|decoder| Arc::clone(decoder) as Arc<dyn Decoder>)
+            .collect()
+    }
+
+    /// The playlist resolvers of the plugins that loaded, for `Handlers::with_resolvers`.
+    pub fn resolvers(&self) -> Vec<Arc<dyn PlaylistResolver>> {
+        self.entries
+            .iter()
+            .filter_map(|entry| entry.plugin.as_ref().ok())
+            .flat_map(|plugin| &plugin.resolvers)
+            .map(|resolver| Arc::clone(resolver) as Arc<dyn PlaylistResolver>)
             .collect()
     }
 }

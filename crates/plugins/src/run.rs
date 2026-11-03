@@ -11,11 +11,9 @@ use std::{
 };
 
 use foundation::CancelToken;
-use handler_api::{Header, SceneSink};
 
 use crate::{
     lines::{LineBuffer, TooLong},
-    records::{Next, Records},
     spawn,
     stderr::StderrTail,
 };
@@ -42,6 +40,21 @@ pub(crate) struct Spec<'a> {
     pub idle_timeout: Duration,
 }
 
+/// What the lines of a run are given to.
+pub(crate) trait LineHandler {
+    /// Handles one line, without its `\n`.
+    fn line(&mut self, number: usize, bytes: &[u8]) -> Next;
+}
+
+/// What the run does after a line.
+pub(crate) enum Next {
+    Continue,
+    /// The handler cannot take more: the run ends as [`End::Stopped`].
+    SinkFull,
+    /// The plugin reported an error or broke the protocol in a way that stops the run.
+    Stop(String),
+}
+
 /// How a run ended.
 pub(crate) enum End {
     /// Exit 0 after the last line.
@@ -50,12 +63,6 @@ pub(crate) enum End {
     Incomplete(String),
     /// The caller cancelled, or the sink could not take more.
     Stopped,
-}
-
-/// The end of a run and the header the plugin declared, if any.
-pub(crate) struct Outcome {
-    pub end: End,
-    pub header: Option<Header>,
 }
 
 /// Why the loop stopped before the plugin finished by itself.
@@ -69,21 +76,15 @@ enum Chunk {
     Failed(String),
 }
 
-/// Runs the plugin to its end, handing its lines to `sink`. The plugin's whole process group is killed
+/// Runs the plugin to its end, handing its lines to `handler`. The plugin's whole process group is killed
 /// whenever the run ends, and its working folder removed.
-pub(crate) fn run(spec: &Spec<'_>, sink: &mut dyn SceneSink, cancel: &CancelToken) -> Outcome {
-    let mut records = Records::new(sink);
-    let end = match supervise(spec, &mut records, cancel) {
-        Ok(end) => end,
-        Err(reason) => End::Incomplete(reason),
-    };
-    let header = records.finish();
-    Outcome { end, header }
+pub(crate) fn run(spec: &Spec<'_>, handler: &mut dyn LineHandler, cancel: &CancelToken) -> End {
+    supervise(spec, handler, cancel).unwrap_or_else(End::Incomplete)
 }
 
 fn supervise(
     spec: &Spec<'_>,
-    records: &mut Records<'_>,
+    handler: &mut dyn LineHandler,
     cancel: &CancelToken,
 ) -> Result<End, String> {
     let folder = tempfile::Builder::new()
@@ -98,7 +99,7 @@ fn supervise(
                 spec.program.to_string_lossy()
             )
         })?;
-    let outcome = watch(spec, &mut child, records, cancel);
+    let outcome = watch(spec, &mut child, handler, cancel);
     // The group is killed on every path, also when the plugin ended by itself: a grandchild it left behind
     // must not outlive the lane.
     spawn::kill_group(&mut child);
@@ -124,7 +125,7 @@ fn supervise(
 fn watch(
     spec: &Spec<'_>,
     child: &mut Child,
-    records: &mut Records<'_>,
+    handler: &mut dyn LineHandler,
     cancel: &CancelToken,
 ) -> Result<(Option<Stop>, StderrTail), String> {
     let thread_error = |error: io::Error| format!("Cannot start a thread for the plugin: {error}");
@@ -197,7 +198,7 @@ fn watch(
             match chunks.recv_timeout(POLL) {
                 Ok(Chunk::Data(chunk)) => {
                     last_output = Instant::now();
-                    stop = feed(&mut lines, records, &chunk);
+                    stop = feed(&mut lines, handler, &chunk);
                 }
                 Ok(Chunk::Failed(error)) => {
                     stop = Some(Stop::Failed(format!(
@@ -208,7 +209,7 @@ fn watch(
                 Err(RecvTimeoutError::Disconnected) => {
                     ended = true;
                     last_output = Instant::now();
-                    let flow = lines.finish(|number, bytes| match records.line(number, bytes) {
+                    let flow = lines.finish(|number, bytes| match handler.line(number, bytes) {
                         Next::Continue => ControlFlow::Continue(()),
                         other => ControlFlow::Break(other),
                     });
@@ -238,10 +239,10 @@ fn watch(
     Ok((stop, tail))
 }
 
-/// Gives a chunk of stdout to the line reader and the records; `Some` when the run must stop.
-fn feed(lines: &mut LineBuffer, records: &mut Records<'_>, chunk: &[u8]) -> Option<Stop> {
+/// Gives a chunk of stdout to the line reader and the handler; `Some` when the run must stop.
+fn feed(lines: &mut LineBuffer, handler: &mut dyn LineHandler, chunk: &[u8]) -> Option<Stop> {
     let number = lines.next_number();
-    match lines.push(chunk, |number, bytes| match records.line(number, bytes) {
+    match lines.push(chunk, |number, bytes| match handler.line(number, bytes) {
         Next::Continue => ControlFlow::Continue(()),
         other => ControlFlow::Break(other),
     }) {
