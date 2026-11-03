@@ -215,31 +215,38 @@ impl Plugins {
         })
     }
 
-    /// Stops loading the plugin `target` names: its id, or the path of its manifest or folder. Its files stay.
-    /// Work that already runs keeps the plugin until it ends. Blocking.
+    /// Stops loading the plugin `target` names: the path of its manifest or folder, or its id when only one declares
+    /// it. Its files stay. Work that already runs keeps the plugin until it ends. Blocking.
     pub fn remove(&self, target: &str) -> Result<Arc<PluginsInfo>, UserError> {
-        self.change(target, |installed, _| Ok(installed.remove(target)))
+        self.change(target, |installed, _| {
+            installed.remove(target).map_err(ambiguous)
+        })
     }
 
     /// Replaces the plugin `target` names by the one at `path`, reading and checking its manifest again. Blocking.
     pub fn update(&self, target: &str, path: &Path) -> Result<Arc<PluginsInfo>, UserError> {
-        self.change(target, |installed, reserved| {
-            installed
-                .update(target, path, reserved)
-                .map(|updated| updated.is_some())
-                .map_err(|error| invalid(path, &error))
-        })
+        self.replace(target, |_| path.to_path_buf())
     }
 
     /// Replaces the plugin `target` names by what its own manifest says now, in the same place in the order. Blocking.
     pub fn reread(&self, target: &str) -> Result<Arc<PluginsInfo>, UserError> {
+        self.replace(target, |current| current.to_path_buf())
+    }
+
+    /// Replaces the plugin `target` names by the manifest at `path_of(its current manifest)`.
+    fn replace(
+        &self,
+        target: &str,
+        path_of: impl FnOnce(&Path) -> PathBuf,
+    ) -> Result<Arc<PluginsInfo>, UserError> {
         self.change(target, |installed, reserved| {
-            let Some(path) = installed.manifest_of(target) else {
+            let Some(index) = installed.find(target).map_err(ambiguous)? else {
                 return Ok(false);
             };
+            let path = path_of(&installed.manifests()[index]);
             installed
-                .update(target, &path, reserved)
-                .map(|updated| updated.is_some())
+                .update(index, &path, reserved)
+                .map(|_| true)
                 .map_err(|error| invalid(&path, &error))
         })
     }
@@ -334,6 +341,10 @@ impl Plugins {
         );
         log_new_problems(&before, &self.info());
     }
+}
+
+fn ambiguous(error: plugins::RegistryError) -> UserError {
+    UserError::new(ErrorCode::PluginInvalid, error.to_string())
 }
 
 fn invalid(path: &Path, error: &plugins::ManifestError) -> UserError {

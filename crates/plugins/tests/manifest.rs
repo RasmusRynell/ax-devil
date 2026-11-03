@@ -285,11 +285,23 @@ fn the_registry_installs_lists_removes_and_keeps_unknown_keys() {
     let mut text: Value =
         serde_json::from_str(&fs::read_to_string(&registry_path).expect("file")).expect("json");
     text["future"] = json!({"kept": true});
+    // A second folder that declares the same id, as one can once the first failed to load when it was installed.
+    let second = fs::canonicalize(install(&root.path().join("second"), &base())).expect("second");
+    text["plugins"]
+        .as_array_mut()
+        .expect("plugins")
+        .push(json!({ "manifest": second }));
     fs::write(&registry_path, text.to_string()).expect("edit");
     let mut registry = Registry::read(&registry_path).expect("reads");
-    assert_eq!(registry.manifests().len(), 1);
-    assert!(registry.remove("acme"));
-    assert!(!registry.remove("acme"));
+    let first = registry.manifests().remove(0);
+    assert_eq!(registry.manifests().len(), 2);
+    let error = registry.remove("acme").expect_err("the id names two");
+    assert!(error.0.contains("declared by 2 plugins"), "{error}");
+    assert_eq!(registry.manifests().len(), 2);
+    assert_eq!(registry.remove(first.to_str().expect("utf-8")), Ok(true));
+    assert_eq!(registry.manifests(), [second]);
+    assert_eq!(registry.remove("acme"), Ok(true));
+    assert_eq!(registry.remove("acme"), Ok(false));
     registry.save().expect("saves");
     let saved: Value =
         serde_json::from_str(&fs::read_to_string(&registry_path).expect("file")).expect("json");

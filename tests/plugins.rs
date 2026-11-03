@@ -277,7 +277,7 @@ async fn a_plugin_installed_while_the_app_runs_is_used_and_one_removed_ends_only
     viewer.open(&added.ticket(), None).await;
     viewer.opened().await;
     let mut registry = Registry::read(&file).unwrap();
-    assert!(registry.remove("shell-times"));
+    assert_eq!(registry.remove("shell-times"), Ok(true));
     registry.save().unwrap();
     assert!(plugins.refresh());
     let ingest = loop {

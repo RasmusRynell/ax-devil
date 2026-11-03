@@ -102,22 +102,45 @@ impl Registry {
         Ok(manifest)
     }
 
-    /// Replaces the plugin that `target` names (see [`remove`](Self::remove)) by the one at `path`, in the same
-    /// place in the order, after reading and validating its manifest again; the replaced plugin's ids are free for
-    /// it. `None` when `target` names no plugin.
+    /// The position of the plugin that `target` names: its manifest or folder path, which always names exactly one,
+    /// or the id its manifest declares. `None` when it names no plugin; an error when an id is declared by more
+    /// than one (a plugin that fails to load takes no id, so two can end up declaring the same one).
+    pub fn find(&self, target: &str) -> Result<Option<usize>, RegistryError> {
+        let by_path = self.entries.iter().position(|entry| {
+            let manifest = entry_manifest(entry);
+            manifest == Path::new(target)
+                || manifest
+                    .parent()
+                    .is_some_and(|folder| folder == Path::new(target))
+        });
+        if by_path.is_some() {
+            return Ok(by_path);
+        }
+        let mut declaring = self.entries.iter().enumerate().filter(|(_, entry)| {
+            Manifest::load(&entry_manifest(entry)).is_ok_and(|loaded| loaded.id == target)
+        });
+        let first = declaring.next().map(|(index, _)| index);
+        match declaring.count() {
+            0 => Ok(first),
+            more => Err(RegistryError(format!(
+                "'{target}' is declared by {} plugins; name its manifest or folder",
+                more + 1
+            ))),
+        }
+    }
+
+    /// Replaces the plugin at `index` (from [`find`](Self::find)) by the one at `path`, in the same place in the
+    /// order, after reading and validating its manifest again; the replaced plugin's ids are free for it.
     pub fn update(
         &mut self,
-        target: &str,
+        index: usize,
         path: &Path,
         reserved: &Reserved,
-    ) -> Result<Option<Manifest>, ManifestError> {
-        let Some(index) = self.entries.iter().position(|entry| names(entry, target)) else {
-            return Ok(None);
-        };
+    ) -> Result<Manifest, ManifestError> {
         let (file, manifest) = read_manifest(path)?;
         self.taken(Some(index), reserved).claim(&manifest)?;
         self.entries[index] = entry_of(&file);
-        Ok(Some(manifest))
+        Ok(manifest)
     }
 
     /// `reserved` and the ids of the installed plugins that load, except the one at `skip`.
@@ -134,20 +157,14 @@ impl Registry {
         taken
     }
 
-    /// The manifest path of the plugin that `target` names (see [`remove`](Self::remove)).
-    pub fn manifest_of(&self, target: &str) -> Option<PathBuf> {
-        self.entries
-            .iter()
-            .find(|entry| names(entry, target))
-            .map(entry_manifest)
-    }
-
-    /// Removes the plugin whose manifest declares the id `target`, or whose manifest or folder path is `target`
-    /// (the only way to remove one that no longer loads). Its files are left alone. Returns whether one was removed.
-    pub fn remove(&mut self, target: &str) -> bool {
-        let before = self.entries.len();
-        self.entries.retain(|entry| !names(entry, target));
-        self.entries.len() != before
+    /// Removes the plugin [`find`](Self::find) returns for `target` (the only way to remove one that no longer loads
+    /// is its manifest or folder path). Its files are left alone. Returns whether one was removed.
+    pub fn remove(&mut self, target: &str) -> Result<bool, RegistryError> {
+        let found = self.find(target)?;
+        if let Some(index) = found {
+            self.entries.remove(index);
+        }
+        Ok(found.is_some())
     }
 
     /// Writes the registry atomically: a temporary file beside it, private to the user, renamed into place.
@@ -194,16 +211,6 @@ fn entry_of(manifest: &Path) -> Map<String, Value> {
         "manifest".to_owned(),
         Value::String(manifest.to_string_lossy().into_owned()),
     )])
-}
-
-/// Whether `target` is the entry's manifest path, its folder, or the id its manifest declares.
-fn names(entry: &Map<String, Value>, target: &str) -> bool {
-    let manifest = entry_manifest(entry);
-    manifest == Path::new(target)
-        || manifest
-            .parent()
-            .is_some_and(|folder| folder == Path::new(target))
-        || Manifest::load(&manifest).is_ok_and(|loaded| loaded.id == target)
 }
 
 fn entry_manifest(entry: &Map<String, Value>) -> PathBuf {
