@@ -495,6 +495,11 @@ async fn a_leftover_of_this_crate_or_the_python_client_is_taken_over_and_left_in
         messages.close().await;
         assert_eq!(*status.borrow(), Status::Closed, "{client_id}");
         assert!(!vapix.analytics(|a| a.active), "{client_id} left inactive");
+        let config = vapix.analytics(|a| a.config.clone());
+        assert!(
+            config.get("username").is_none() && config.get("password").is_none(),
+            "{client_id}: the broker login is cleared: {config}"
+        );
         assert_eq!(publishers(&vapix), publishers_before, "{client_id}");
     }
 }

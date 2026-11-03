@@ -169,6 +169,16 @@ impl Lease {
         let config = &saved["config"];
         if config.as_object().is_some_and(|config| !config.is_empty()) {
             self.device.mqtt_client_configure(config).await?;
+        } else {
+            // There was no configuration to give back, and deactivating alone would leave the broker login written
+            // at acquisition on the camera. The API has no call that clears a configuration, so replace it with
+            // the lease's own, without the login; the client is left inactive below.
+            let mut bare = client_config(&self.plan);
+            if let Some(config) = bare.as_object_mut() {
+                config.remove("username");
+                config.remove("password");
+            }
+            self.device.mqtt_client_configure(&bare).await?;
         }
         self.device
             .mqtt_client_activate(saved["status"]["state"] == "active")
