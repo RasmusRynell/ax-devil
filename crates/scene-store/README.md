@@ -8,7 +8,8 @@ second cache of encoded Sample Items (16 MiB per track), shared by every viewer 
 
 ## Artifact
 
-`<cache>/scenes/<sha256 of TrackKey>.axscene`, one per (file, handler, options), created private (0600,
+`<cache>/scenes/<sha256 of TrackKey>.axscene`, one per (file, handler, options; the key also holds the decoder's
+code hash, so a track held under old plugin code is not shared with an open under edited code), created private (0600,
 folder 0700), written to a temporary sibling and renamed into place. Without a cache folder the artifact is an unnamed
 temporary file for the life of the track.
 
