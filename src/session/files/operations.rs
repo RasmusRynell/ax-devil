@@ -31,15 +31,16 @@ impl WorkspaceFiles {
     ) -> Result<(), Failure> {
         // Unsaved work that cannot be kept stays where it is, so the user can save it elsewhere.
         self.sync(files, &handle.state().doc.workspace).await?;
-        files.copy = None;
-        files.listed = false;
-        files.synced = None;
         let replace = DocCommand::Replace {
             workspace,
             file: file.map(HostPath::new),
             saved,
         };
+        // A refusal changes nothing; after the replacement, nothing awaits before the copy is let go of.
         handle.command(Command::Content(replace))?;
+        files.copy = None;
+        files.listed = false;
+        files.synced = None;
         Ok(())
     }
 

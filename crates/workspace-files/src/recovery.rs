@@ -143,8 +143,15 @@ impl RecoveryCopy {
     /// Removes the copy and its lock file. The lock is kept until this copy is dropped, so a failure can be retried.
     pub fn delete(&self) -> io::Result<()> {
         let removed = fs::remove_file(&self.path);
-        // Unlinked while still locked: nobody can lock this sidecar and find the copy gone under them.
-        let _ = fs::remove_file(lock_path(&self.path));
+        // Unlinked while still locked: nobody can lock this sidecar and find the copy gone under them. A copy that
+        // is still there keeps its lock.
+        if removed.is_ok()
+            || removed
+                .as_ref()
+                .is_err_and(|e| e.kind() == io::ErrorKind::NotFound)
+        {
+            let _ = fs::remove_file(lock_path(&self.path));
+        }
         match removed {
             Err(error) if error.kind() != io::ErrorKind::NotFound => Err(error),
             _ => Ok(()),

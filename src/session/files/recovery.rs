@@ -43,6 +43,8 @@ impl WorkspaceFiles {
         if files.synced.as_ref() == Some(&key) {
             return Ok(());
         }
+        // Invalid while the disk is being changed, valid again only once every step has succeeded.
+        files.synced = None;
         if key.2 {
             // The copy stays in `files` across every await: a command that is cancelled midway must not lose it.
             let copy = match &files.copy {
@@ -85,17 +87,17 @@ impl WorkspaceFiles {
             // The entry goes first: a copy that stays on disk without one is only unlisted, never offered twice.
             let forgotten = self.forget(files, &path).await;
             files.listed = !forgotten;
-            let deleted = files
-                .off(move || if forgotten { copy.delete() } else { Ok(()) })
-                .await;
-            let failed = deleted.is_err() || !forgotten;
-            if let Err(error) = deleted {
-                tracing::warn!("Cannot delete the recovery copy: {error}");
-            }
-            if failed {
+            if !forgotten {
                 return Ok(());
             }
+            // Deleting unlinks the copy's lock file, so nothing may write through this handle afterwards.
             files.copy = None;
+            let held = Arc::clone(&copy);
+            if let Err(error) = files.off(move || copy.delete()).await {
+                tracing::warn!("Cannot delete the recovery copy: {error}");
+                files.copy = Some(held);
+                return Ok(());
+            }
         }
         files.synced = Some(key);
         Ok(())

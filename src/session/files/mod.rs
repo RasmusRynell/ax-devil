@@ -3,6 +3,9 @@
 //! A session that holds the files grant is attached: every 2 seconds, and when it ends, its modified workspace is
 //! written to a recovery copy, and an unmodified one deletes the copy. New, Open, Save and Discard run one at a time
 //! per session. Opening or starting over keeps the copy of the work it leaves behind; the next launch offers it.
+//!
+//! A command future can be dropped at any await. Bookkeeping (`synced`, `listed`, `copy`) is therefore made invalid
+//! before the disk changes and valid only after it succeeded, so a cancelled step is repaired by the next sync.
 
 mod operations;
 mod recovery;
