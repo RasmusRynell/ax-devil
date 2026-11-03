@@ -292,6 +292,39 @@ async fn a_plugin_installed_while_the_app_runs_is_used_and_one_removed_ends_only
 
     let refused = workspace::intake::video(&video, &overlays, &plugins.handlers());
     assert_eq!(refused.unwrap_err().code, ErrorCode::UnknownHandler);
+
+    // A manifest edited before its script is copied fails to load; the script appearing brings the plugin back
+    // without touching the manifest again.
+    let folder = home.path().join("shell-times");
+    std::fs::create_dir(&folder).unwrap();
+    for name in ["ax-devil-plugin.json", "convert.sh"] {
+        std::fs::copy(plugin("shell-times").join(name), folder.join(name)).unwrap();
+    }
+    let mut registry = Registry::read(&file).unwrap();
+    registry.install(&folder, &Reserved::default()).unwrap();
+    registry.save().unwrap();
+    assert!(plugins.refresh());
+    let script = std::fs::read(folder.join("convert.sh")).unwrap();
+    std::fs::remove_file(folder.join("convert.sh")).unwrap();
+    let manifest = folder.join("ax-devil-plugin.json");
+    let edited = std::fs::read_to_string(&manifest)
+        .unwrap()
+        .replace("1.0.0", "1.0.1");
+    std::fs::write(&manifest, edited).unwrap();
+    let failed = |plugins: &Plugins| {
+        let info = plugins.info();
+        matches!(
+            info.plugins.last().map(|plugin| &plugin.status),
+            Some(api_types::handlers::PluginStatus::Failed { .. })
+        )
+    };
+    assert!(plugins.refresh() && failed(&plugins));
+    assert!(
+        !plugins.refresh(),
+        "a plugin that stays failed is not reloaded again"
+    );
+    std::fs::write(folder.join("convert.sh"), script).unwrap();
+    assert!(plugins.refresh() && !failed(&plugins));
 }
 
 /// The JSON body of a GET to the local backend.

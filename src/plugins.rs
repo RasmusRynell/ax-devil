@@ -145,17 +145,31 @@ impl Plugins {
         Arc::clone(&self.info.read().unwrap_or_else(PoisonError::into_inner))
     }
 
-    /// Reloads when the registry or a manifest it lists changed since the last load. Blocking. Returns whether it did.
+    /// Reloads when the registry or a manifest it lists changed since the last load, or, while an installed plugin
+    /// is failed, when loading again gives another result: a code file that was missing may be back, and the stamp
+    /// does not cover code files. Blocking. Returns whether the handlers were replaced.
     pub fn refresh(&self) -> bool {
         let Ok(registry) = &self.registry else {
             return false;
         };
         let mut seen = self.locked();
-        if Stamp::of(registry) == *seen {
+        let unchanged = Stamp::of(registry) == *seen;
+        if unchanged && !self.has_failed() {
             return false;
         }
-        self.load(registry, &mut seen);
+        let (handlers, info) = self.read(registry, &mut seen);
+        if unchanged && info == *self.info() {
+            return false;
+        }
+        self.swap(handlers, info);
         true
+    }
+
+    fn has_failed(&self) -> bool {
+        self.info().plugins.iter().any(|plugin| {
+            matches!(plugin.source, PluginSource::Installed { .. })
+                && matches!(plugin.status, PluginStatus::Failed { .. })
+        })
     }
 
     /// Installs the plugin in the folder, or at the manifest file, `path`, and loads it. Blocking.
@@ -240,6 +254,12 @@ impl Plugins {
 
     /// Reads the registry and swaps in what it lists.
     fn load(&self, registry: &Path, seen: &mut Stamp) {
+        let (handlers, info) = self.read(registry, seen);
+        self.swap(handlers, info);
+    }
+
+    /// The handlers and info the registry lists now.
+    fn read(&self, registry: &Path, seen: &mut Stamp) -> (Handlers, PluginsInfo) {
         // Before the files are read, so a change made meanwhile is seen by the next refresh.
         *seen = Stamp::of(registry);
         let loaded = plugins::load(registry, &reserved(&self.built_in));
@@ -249,8 +269,11 @@ impl Plugins {
             plugins,
             problem: loaded.registry.as_ref().map(ToString::to_string),
         };
-        self.set
-            .replace(self.built_in.clone().with_decoders(loaded.decoders()));
+        (self.built_in.clone().with_decoders(loaded.decoders()), info)
+    }
+
+    fn swap(&self, handlers: Handlers, info: PluginsInfo) {
+        self.set.replace(handlers);
         *self.info.write().unwrap_or_else(PoisonError::into_inner) = Arc::new(info);
     }
 }

@@ -26,7 +26,7 @@ pub struct DecoderInfo {
 }
 
 /// The body of `GET /api/plugins`: the built-in plugins, then the installed ones, whether or not they loaded.
-#[derive(Clone, Default, Serialize, Deserialize, TS)]
+#[derive(Clone, Default, PartialEq, Serialize, Deserialize, TS)]
 pub struct PluginsInfo {
     /// The built-ins, then one per registry entry in install order.
     pub plugins: Vec<PluginInfo>,
@@ -37,7 +37,7 @@ pub struct PluginsInfo {
 }
 
 /// One plugin.
-#[derive(Clone, Serialize, Deserialize, TS)]
+#[derive(Clone, PartialEq, Serialize, Deserialize, TS)]
 pub struct PluginInfo {
     /// Where it comes from.
     pub source: PluginSource,
@@ -46,7 +46,7 @@ pub struct PluginInfo {
 }
 
 /// Where a plugin comes from.
-#[derive(Clone, Serialize, Deserialize, TS)]
+#[derive(Clone, PartialEq, Serialize, Deserialize, TS)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum PluginSource {
     /// It ships with the app.
@@ -61,7 +61,7 @@ pub enum PluginSource {
 }
 
 /// Whether a plugin can be used.
-#[derive(Clone, Serialize, Deserialize, TS)]
+#[derive(Clone, PartialEq, Serialize, Deserialize, TS)]
 #[serde(tag = "state", rename_all = "snake_case")]
 pub enum PluginStatus {
     /// It provides handlers.
@@ -83,7 +83,7 @@ pub enum PluginStatus {
 }
 
 /// One handler a plugin provides.
-#[derive(Clone, Serialize, Deserialize, TS)]
+#[derive(Clone, PartialEq, Serialize, Deserialize, TS)]
 pub struct HandlerSummary {
     /// What it does.
     pub kind: HandlerKind,
