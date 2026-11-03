@@ -42,8 +42,11 @@ function Cell<Row>({ column, row }: { column: Column<Row>; row: Row }) {
   );
 }
 
-/** What a table keeps for the next time it is shown: how far it was scrolled and the key of the row its cursor was on. */
-export type TableMemory = { top: number; cursor: string | null };
+/**
+ * What a table keeps for the next time it is shown: how far it was scrolled, the key of the row its cursor was on and
+ * the position it had, for when that row is not loaded.
+ */
+export type TableMemory = { top: number; cursor: string | null; index: number };
 
 /** The cursor: the row it follows, and the position it falls back to while that row is not in the order. */
 type Cursor = { key: string | null; index: number };
@@ -198,17 +201,19 @@ export function Table<Row>({
   const found = cursor.key === null ? -1 : indexOf(cursor.key);
   const fallback = cursor.key === null ? cursor.index : resolved.current;
   const at = Math.min(found >= 0 ? found : fallback, Math.max(count - 1, 0));
+  // The remembered scroll and cursor come back once, when there are rows to scroll to; until then the cursor is not
+  // the one to remember.
+  const restored = useRef(false);
   useLayoutEffect(() => {
     resolved.current = at;
+    if (memory && restored.current) memory.index = at;
   });
-
-  // The remembered scroll and cursor come back once, when there are rows to scroll to.
-  const restored = useRef(false);
   useLayoutEffect(() => {
     if (restored.current || message != null || count === 0) return;
     restored.current = true;
     if (!memory) return;
-    setCursor({ key: memory.cursor, index: 0 });
+    resolved.current = memory.index;
+    setCursor({ key: memory.cursor, index: memory.index });
     if (ref.current) ref.current.scrollTop = memory.top;
     update();
   });

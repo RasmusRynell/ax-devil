@@ -207,8 +207,8 @@ function ObjectsList({
   const [offset, setOffset] = useState(0);
   // Where each scope's table was scrolled and where its cursor was, for when the scope is shown again.
   const memory = useRef<Record<Scope, TableMemory>>({
-    frame: { top: 0, cursor: null },
-    file: { top: 0, cursor: null },
+    frame: { top: 0, cursor: null, index: 0 },
+    file: { top: 0, cursor: null, index: 0 },
   });
   const sort = sorts[scope];
   const { wire } = useMemo(() => parseSearch(text), [text]);

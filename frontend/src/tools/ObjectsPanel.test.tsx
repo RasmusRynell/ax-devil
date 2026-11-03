@@ -206,11 +206,18 @@ describe("Frame scope", () => {
     fireEvent.scroll(scroller());
 
     showFile();
-    answer([file("7", 3)]);
+    answer([file("50", 3), file("51", 4), file("52", 5)]);
+    fireEvent.keyDown(list(), { key: "ArrowDown" });
     fireEvent.click(screen.getByRole("radio", { name: "Frame" }));
     expect(scroller().scrollTop).toBe(120);
     fireEvent.keyDown(list(), { key: "Enter" });
     expect(source.select).toHaveBeenCalledWith({ lane: 0, source: 0, entity: "7" });
+
+    // File scope's cursor row is not in the page listed next: the cursor keeps its position.
+    showFile();
+    answer([file("60", 3), file("61", 4), file("62", 5)]);
+    fireEvent.keyDown(list(), { key: "Enter" });
+    expect(source.select).toHaveBeenLastCalledWith({ lane: 0, source: 0, entity: "61" });
   });
 });
 
