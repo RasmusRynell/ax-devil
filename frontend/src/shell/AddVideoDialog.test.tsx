@@ -83,6 +83,11 @@ it("chooses a handler for the user only when one reads the file, else waits for 
   await overlay("/data/c.xml");
   expect((screen.getByLabelText("Data handler") as HTMLSelectElement).value).toBe("");
   expect(add()).toHaveProperty("disabled", true);
+
+  // ... and does not come back for a later file it could read.
+  await overlay("/data/other.jsonl");
+  expect((screen.getByLabelText("Data handler") as HTMLSelectElement).value).toBe("");
+  expect(add()).toHaveProperty("disabled", true);
 });
 
 it("says why the handlers could not be loaded and asks again on Retry", async () => {

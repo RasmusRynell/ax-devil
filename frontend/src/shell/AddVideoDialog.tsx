@@ -124,6 +124,10 @@ export function AddVideoDialog({ onClose }: { onClose: () => void }) {
             value={overlay}
             onChange={(text) => {
               setOverlay(text);
+              // A pick that does not read this file is forgotten, so it cannot return for a later one.
+              if (!decodersFor(handlers.decoders, text).some((one) => one.handler === picked)) {
+                setPicked("");
+              }
               setFailure(null);
             }}
           />
