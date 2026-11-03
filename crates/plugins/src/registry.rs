@@ -97,7 +97,7 @@ impl Registry {
     /// it.
     pub fn install(&mut self, path: &Path, reserved: &Reserved) -> Result<Manifest, ManifestError> {
         let (file, manifest) = read_manifest(path)?;
-        self.taken(None, reserved).claim(&manifest)?;
+        self.taken(self.entries.len(), reserved).claim(&manifest)?;
         self.entries.push(entry_of(&file));
         Ok(manifest)
     }
@@ -130,7 +130,8 @@ impl Registry {
     }
 
     /// Replaces the plugin at `index` (from [`find`](Self::find)) by the one at `path`, in the same place in the
-    /// order, after reading and validating its manifest again; the replaced plugin's ids are free for it.
+    /// order, after reading and validating its manifest again. It may take the ids the replaced plugin had, and is
+    /// refused only those that `reserved` or an earlier plugin has, as it would be when loading.
     pub fn update(
         &mut self,
         index: usize,
@@ -138,19 +139,18 @@ impl Registry {
         reserved: &Reserved,
     ) -> Result<Manifest, ManifestError> {
         let (file, manifest) = read_manifest(path)?;
-        self.taken(Some(index), reserved).claim(&manifest)?;
+        self.taken(index, reserved).claim(&manifest)?;
         self.entries[index] = entry_of(&file);
         Ok(manifest)
     }
 
-    /// `reserved` and the ids of the installed plugins that load, except the one at `skip`.
-    fn taken(&self, skip: Option<usize>, reserved: &Reserved) -> Reserved {
+    /// `reserved` and the ids of the installed plugins before position `before` that load: what `load` has claimed
+    /// when it reaches that position. Later plugins lose their ids to it, so they claim none here.
+    fn taken(&self, before: usize, reserved: &Reserved) -> Reserved {
         let mut taken = reserved.clone();
-        for (index, entry) in self.entries.iter().enumerate() {
+        for entry in &self.entries[..before] {
             // One that does not load took no ids, as in `load`.
-            if Some(index) != skip
-                && let Ok(other) = Manifest::load(&entry_manifest(entry))
-            {
+            if let Ok(other) = Manifest::load(&entry_manifest(entry)) {
                 let _ = taken.claim(&other);
             }
         }
