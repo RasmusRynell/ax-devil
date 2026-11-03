@@ -72,7 +72,7 @@ interface Props {
   okLabel?: string;
   /** Opens with OK focused, for a dialog with nothing to fill in, so Enter confirms. */
   focusOk?: boolean;
-  /** Extra buttons before OK, for a choice that Escape must not make. */
+  /** Extra buttons after OK, for a choice that Escape must not make. */
   footer?: ReactNode;
   /** A button at the left of the footer, apart from the answers, for an action on the dialog's own state. */
   footerStart?: ReactNode;
@@ -80,7 +80,7 @@ interface Props {
   busy?: boolean;
 }
 
-/** A modal dialog with OK and Cancel. Enter runs OK and Escape cancels; the browser traps focus inside. */
+/** A modal dialog with OK, then Cancel. Enter runs OK and Escape cancels; the browser traps focus inside. */
 export function Dialog({
   title,
   children,
@@ -109,11 +109,11 @@ export function Dialog({
         <div className="flex gap-m">
           {footerStart}
           <div className="ml-auto flex gap-m">
-            {onCancel && <Button onClick={onCancel}>Cancel</Button>}
-            {footer}
             <Button type="submit" disabled={busy}>
               {okLabel}
             </Button>
+            {footer}
+            {onCancel && <Button onClick={onCancel}>Cancel</Button>}
           </div>
         </div>
       }

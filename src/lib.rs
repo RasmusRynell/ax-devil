@@ -236,12 +236,8 @@ pub fn app(state: AppState) -> Router {
 }
 
 /// What `principal` may read of the settings: its scopes' values, the shortcuts when it holds the `preferences`
-/// grant, and which of those need a restart.
-fn snapshot(
-    settings: &settings::Settings,
-    state: &settings::State,
-    principal: Principal,
-) -> SettingsState {
+/// grant.
+fn snapshot(state: &settings::State, principal: Principal) -> SettingsState {
     let scopes = principal.scopes();
     let shortcuts = if scopes.contains(&Scope::Personal) {
         state
@@ -255,11 +251,6 @@ fn snapshot(
     SettingsState {
         values: state.values(&scopes),
         shortcuts,
-        restart: settings
-            .restart_pending(&scopes)
-            .into_iter()
-            .map(str::to_owned)
-            .collect(),
     }
 }
 
@@ -267,7 +258,7 @@ pub(crate) async fn get_settings(
     principal: Principal,
     State(AppState { settings, .. }): State<AppState>,
 ) -> Json<SettingsState> {
-    Json(snapshot(&settings, &settings.state(), principal))
+    Json(snapshot(&settings.state(), principal))
 }
 
 /// Replaces every setting and shortcut the caller may change; a rejected or unsaved change leaves the stored state
@@ -305,7 +296,7 @@ pub(crate) async fn put_settings(
     let saved = tokio::task::spawn_blocking(move || {
         settings
             .replace(&scopes, &change)
-            .map(|state| snapshot(&settings, &state, principal))
+            .map(|state| snapshot(&state, principal))
     })
     .await
     .map_err(|error| {
@@ -426,7 +417,6 @@ mod tests {
         let test = TestApp::new();
         let (_, body) = test.send(get_settings_request()).await;
         let mut change = json(&body);
-        assert_eq!(change["restart"], serde_json::json!([]));
         assert_eq!(change["shortcuts"]["save-workspace"], "Ctrl+S");
         change["values"]["ui.theme"] = "dark".into();
         change["shortcuts"]["save-workspace"] = "Ctrl+Alt+S".into();

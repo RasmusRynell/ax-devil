@@ -82,12 +82,8 @@ export function Gallery() {
       <Section title="Buttons">
         <div className="flex flex-wrap items-center gap-m">
           <Button>Normal</Button>
-          <Button type="submit">Default</Button>
           <Button icon="plus">With icon</Button>
           <Button disabled>Disabled</Button>
-          <Button type="submit" disabled>
-            Default disabled
-          </Button>
         </div>
         <div className="flex flex-wrap items-center gap-m">
           <Button size="small">Small</Button>
@@ -266,6 +262,7 @@ export function Gallery() {
       <Section title="Captions">
         <div className="flex flex-col border border-line">
           <SectionCaption heading="Lanes" />
+          <SectionCaption heading="Plain" plain />
           <SectionCaption heading="Lanes" count={12} note="local" />
           <SectionCaption heading="Lanes" count={3} aside="metadata.json" />
           <SectionCaption

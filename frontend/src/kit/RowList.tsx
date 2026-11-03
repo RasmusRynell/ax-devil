@@ -26,7 +26,7 @@ interface Props {
 export function RowList({ heading, rows, onSelect }: Props) {
   return (
     <section className="flex flex-col gap-xs">
-      <SectionCaption heading={heading} />
+      <SectionCaption heading={heading} plain />
       <ul className="m-0 flex list-none flex-col p-0">
         {rows.map((row) => (
           <li key={row.id}>

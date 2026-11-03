@@ -224,22 +224,9 @@ impl State {
     }
 }
 
-/// The keys of the settings that do not apply live and differ between `started` (the state the app started with) and
-/// `now`: a restart is needed for them.
-pub fn restart_pending(started: &State, now: &State) -> Vec<&'static str> {
-    now.table
-        .iter()
-        .filter(|setting| {
-            !setting.live && started.values.get(setting.key) != now.values.get(setting.key)
-        })
-        .map(|setting| setting.key)
-        .collect()
-}
-
 /// The settings service for one config file.
 pub struct Settings {
     path: PathBuf,
-    started: Arc<State>,
     state: watch::Sender<Arc<State>>,
     /// Held while a change is validated, saved and published, so changes apply one at a time.
     writing: Mutex<()>,
@@ -295,11 +282,9 @@ impl Settings {
         if migrated {
             file::write(path, state.version, &state.document)?;
         }
-        let started = Arc::new(state);
         Ok(Self {
             path: path.to_owned(),
-            state: watch::Sender::new(Arc::clone(&started)),
-            started,
+            state: watch::Sender::new(Arc::new(state)),
             writing: Mutex::new(()),
         })
     }
@@ -307,19 +292,6 @@ impl Settings {
     /// The current state.
     pub fn state(&self) -> Arc<State> {
         self.state.borrow().clone()
-    }
-
-    /// The keys of the settings in `scopes` changed since the app started that only apply after a restart.
-    pub fn restart_pending(&self, scopes: &[Scope]) -> Vec<&'static str> {
-        let state = self.state();
-        let mut keys = restart_pending(&self.started, &state);
-        keys.retain(|key| {
-            state
-                .table
-                .iter()
-                .any(|setting| setting.key == *key && scopes.contains(&setting.scope))
-        });
-        keys
     }
 
     /// A receiver that holds the current state and is woken by every successful [`replace`](Self::replace).

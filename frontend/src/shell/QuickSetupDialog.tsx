@@ -97,7 +97,7 @@ const PREVIEWS: Partial<Record<SettingKey, (value: string) => ReactNode>> = {
 /**
  * The first-run choices, built from the settings table. Theme and text size apply as they are picked; Done, or any
  * other way of closing, stores the choices and marks Quick Setup done so it is not offered again. A refused write
- * restores the stored theme and text size, closes the dialog and goes to `onNotice`, without marking it done.
+ * restores the stored theme and text size, closes the dialog and goes to `onNotice`, which the shell shows as a dialog, without marking it done.
  */
 export function QuickSetupDialog({
   onClose,
@@ -142,7 +142,7 @@ export function QuickSetupDialog({
           const preview = PREVIEWS[row.key];
           return (
             <section key={row.key} className="flex flex-col gap-s">
-              <SectionCaption heading={label} />
+              <SectionCaption heading={label} plain />
               {preview ? (
                 <TileChoice {...choice} preview={preview} />
               ) : (

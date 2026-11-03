@@ -405,7 +405,6 @@ fn the_cache_folder_is_empty_or_an_absolute_path_that_need_not_exist() {
             .folder("storage.cache_dir"),
         Some(PathBuf::from("/unplugged/drive/cache"))
     );
-    assert_eq!(settings.restart_pending(&Scope::ALL), ["storage.cache_dir"]);
     settings.replace(&Scope::ALL, &with(json!(""))).unwrap();
     assert_eq!(settings.state().folder("storage.cache_dir"), None);
 }
@@ -462,8 +461,7 @@ const NET: &[Setting] = &[
 ];
 
 #[test]
-fn a_reference_is_stored_as_written_checked_when_resolved_and_a_restart_is_asked_for_non_live_changes()
- {
+fn a_reference_is_stored_as_written_and_checked_when_resolved() {
     let folder = tempfile::tempdir().unwrap();
     let path = folder.path().join("settings.json");
     let lookup = |name: &str| match name {
@@ -488,7 +486,6 @@ fn a_reference_is_stored_as_written_checked_when_resolved_and_a_restart_is_asked
         "the expanded value must fit the setting"
     );
     assert!(!error.reason.contains("secret-mode"), "{}", error.reason);
-    assert!(settings.restart_pending(&Scope::ALL).is_empty());
 
     let state = settings
         .replace(&Scope::ALL, &edit("$ADDRESS", "b"))
@@ -499,13 +496,4 @@ fn a_reference_is_stored_as_written_checked_when_resolved_and_a_restart_is_asked
         "the reference is stored, not the value"
     );
     assert_eq!(state.resolved("net.address"), Some(json!("10.0.0.2")));
-    assert_eq!(
-        settings.restart_pending(&Scope::ALL),
-        ["net.address", "net.mode"]
-    );
-
-    let state = settings
-        .replace(&Scope::ALL, &edit("10.0.0.9", "a"))
-        .unwrap();
-    assert_eq!(restart_pending(&settings.started, &state), ["net.address"]);
 }

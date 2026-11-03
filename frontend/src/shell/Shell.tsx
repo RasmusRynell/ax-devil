@@ -75,6 +75,8 @@ export function Shell({ version }: { version: string }) {
   // The file a typed Save As would replace, until the user answers.
   const [replacing, setReplacing] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  // A failed save of a setting: a notice the user acknowledges, as the app's own dialogs do.
+  const [refused, setRefused] = useState<{ title: string; message: string } | null>(null);
   const [viewerActions, setViewerActions] = useState<ViewerActions>(NO_ACTIONS);
   const { values, shortcuts, save } = useSettings();
   // Quick Setup configures the server, so only someone who may configure it is offered it.
@@ -169,14 +171,21 @@ export function Shell({ version }: { version: string }) {
         id,
         () =>
           void save({ values: { ...values, [key]: values[key] !== true }, shortcuts }).then(
-            (refusal) => refusal && setNotice(`Could not save this preference: ${refusal.reason}`),
+            (refusal) =>
+              refusal &&
+              setRefused({
+                title: "Settings",
+                message: `Could not save this preference: ${refusal.reason}`,
+              }),
           ),
       ]),
     ),
   };
   // A modal dialog owns the keyboard and the window: no command, from a shortcut or a menu, runs while one is open.
   const find = (id: string) =>
-    dialog || replacing || !allowed[scopeOf(id)] ? undefined : (actions[id] ?? viewerActions[id]);
+    dialog || replacing || refused || !allowed[scopeOf(id)]
+      ? undefined
+      : (actions[id] ?? viewerActions[id]);
   const run = (id: string) => {
     if (!id.startsWith(RECENT_ID)) return find(id)?.();
     if (!dialog && !replacing && allowed.host)
@@ -311,7 +320,10 @@ export function Shell({ version }: { version: string }) {
           />
         )}
         {dialog === "quick-setup" && (
-          <QuickSetupDialog onClose={closer("quick-setup")} onNotice={setNotice} />
+          <QuickSetupDialog
+            onClose={closer("quick-setup")}
+            onNotice={(message) => setRefused({ title: "Quick Setup", message })}
+          />
         )}
         {dialog === "about" && <AboutDialog version={version} onClose={closer("about")} />}
         {dialog === "add-video" && <AddVideoDialog onClose={closer("add-video")} />}
@@ -347,6 +359,15 @@ export function Shell({ version }: { version: string }) {
           />
         )}
         {dialog === "shortcuts" && <ShortcutsDialog onClose={closer("shortcuts")} />}
+        {refused && (
+          <ChoiceDialog
+            title={refused.title}
+            message={refused.message}
+            choices={[{ id: "ok", label: "OK" }]}
+            defaultId="ok"
+            onChoose={() => setRefused(null)}
+          />
+        )}
       </div>
     </ViewerActionsContext.Provider>
   );

@@ -51,7 +51,7 @@ export function StartPanel({ onRun }: { onRun: (id: string) => void }) {
           />
         ) : (
           <section className="flex flex-col gap-xs">
-            <SectionCaption heading="Recent workspaces" />
+            <SectionCaption heading="Recent workspaces" plain />
             <p className="m-0 px-m text-muted">No recent workspaces</p>
           </section>
         )}

@@ -118,6 +118,10 @@
   border-left-width: var(--stroke-edge);
   border-left-style: solid;
 }
+@utility border-edge {
+  border-width: var(--stroke-edge);
+  border-style: solid;
+}
 /* One row square at zero specificity, so a size class from the caller overrides it whatever the stylesheet order. */
 @utility square-row {
   :where(&) {

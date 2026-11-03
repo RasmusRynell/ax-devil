@@ -87,7 +87,7 @@ async function remote(local, shell) {
     );
     await wait("!document.querySelector('dialog')");
     await js(
-      "document.querySelector('aside h2')?.textContent !== 'Workspace' && document.querySelector('[aria-label=Workspace]').click()",
+      "!document.querySelector('[aria-label=\"Workspace items\"]') && document.querySelector('[aria-label=Workspace]').click()",
     );
     await wait("document.querySelector('[data-cursor-id=\"sidebar:add-video\"]')");
     await frames({ js });

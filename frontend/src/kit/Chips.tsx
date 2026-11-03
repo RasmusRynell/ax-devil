@@ -172,7 +172,8 @@ export function ChoiceChips<T extends string>(props: ChoiceProps<T>) {
   );
 }
 
-const SEGMENT = `inline-flex h-segment min-w-0 items-center rounded-control px-m text-small text-fg focus-ring-within not-has-checked:hover:bg-hover ${CHOSEN}`;
+const SEGMENT =
+  "inline-flex h-segment min-w-0 items-center rounded-control px-m text-small text-fg focus-ring-within not-has-checked:hover:bg-hover has-checked:bg-hover has-checked:text-accent";
 
 /** Two or three joined segments of which exactly one is chosen: a setting that switches between modes; `wide` fills the width. */
 export function SegmentedControl<T extends string>({
@@ -188,7 +189,11 @@ export function SegmentedControl<T extends string>({
   );
 }
 
-const TILE = `${CONTROL_IN} ${CHECKED} flex-col py-s [@media(max-height:20rem)]:px-s [@media(max-height:20rem)]:py-0`;
+/** The chosen tile: a full accent edge that grows into the gap, so choosing one moves nothing, and a faint fill. */
+const TILE_CHOSEN =
+  "has-checked:-m-hairline has-checked:border-edge has-checked:border-accent has-checked:bg-accent/15 has-checked:font-semibold has-disabled:has-checked:border-line-strong/50";
+
+const TILE = `${CONTROL_IN} ${TILE_CHOSEN} flex-col py-s [@media(max-height:20rem)]:px-s [@media(max-height:20rem)]:py-0`;
 
 /** Cards of which exactly one is chosen, each a `preview` above its label: a choice that is easier to pick by looking. */
 export function TileChoice<T extends string>({

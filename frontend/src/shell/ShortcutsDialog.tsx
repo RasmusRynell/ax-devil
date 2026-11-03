@@ -121,7 +121,7 @@ export function ShortcutsDialog({ onClose }: { onClose: () => void }) {
           {sections.length === 0 && <li className="px-m text-muted">No shortcuts match</li>}
           {sections.map(({ category, commands }) => (
             <li key={category}>
-              <SectionCaption heading={category} />
+              <SectionCaption heading={category} plain />
               <ul className="m-0 flex list-none flex-col p-0">
                 {commands.map(({ id, label, key: standard }) => {
                   const shown = note?.id === id ? note : null;

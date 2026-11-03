@@ -17,7 +17,7 @@ type Props = BaseProps &
   );
 
 /**
- * The outlined action button; `type="submit"`, the Enter action, carries the accent edge. With `label` and no
+ * The outlined action button; `type="submit"` is the Enter action and looks like any other. With `label` and no
  * children it is icon-only: a square whose accessible name and tooltip are the label.
  */
 export function Button({
@@ -29,7 +29,7 @@ export function Button({
   type = "button",
   ...rest
 }: Props) {
-  const look = `${CONTROL} ${type === "submit" ? EDGE.default : EDGE.rest}`;
+  const look = `${CONTROL} ${EDGE}`;
   return (
     <button
       type={type}

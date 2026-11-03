@@ -20,7 +20,6 @@ export const DEFAULT_SETTINGS: SettingsState = {
   shortcuts: Object.fromEntries(
     COMMANDS.map((command) => [command.id, command.key]),
   ) as SettingsState["shortcuts"],
-  restart: [],
 };
 
 /** Provides settings to a component under test without a backend. */

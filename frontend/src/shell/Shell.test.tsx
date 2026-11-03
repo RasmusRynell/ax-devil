@@ -209,9 +209,8 @@ describe("view settings", () => {
     await renderShell({ save });
     fireEvent.click(screen.getByRole("menuitem", { name: "View" }));
     fireEvent.click(screen.getByRole("menuitemcheckbox", { name: /Lane Names/ }));
-    expect((await screen.findByRole("alert")).textContent).toBe(
-      "Could not save this preference: full",
-    );
+    const box = await screen.findByRole("dialog", { name: "Settings" });
+    expect(box.textContent).toContain("preference: full");
   });
 });
 
