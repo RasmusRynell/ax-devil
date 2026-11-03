@@ -62,6 +62,26 @@ async fn a_window_fills_with_the_right_frames_starting_at_the_playhead() {
 }
 
 #[tokio::test]
+async fn the_backend_reports_the_frames_it_holds_decoded_while_frames_keep_coming() {
+    let backend = Backend::start().await;
+    let id = backend.add(&fixture("open_gop_h264.mkv")).await;
+    let mut viewer = backend.viewer().await;
+    viewer.open(&id.ticket(), None).await;
+    viewer.opened().await;
+
+    viewer.want(0, 25, 0, Direction::Forward).await;
+    viewer.frames(0..=25).await;
+
+    // The report is due every half second; the first may predate the decoding.
+    loop {
+        let ranges = viewer.cached().await;
+        if ranges.iter().any(|&[first, last]| first == 0 && last >= 25) {
+            break;
+        }
+    }
+}
+
+#[tokio::test]
 async fn a_jump_far_away_and_back_delivers_each_new_window_with_the_right_frames() {
     let backend = Backend::start().await;
     let id = backend.add(&fixture("long_gop_h264.mp4")).await;

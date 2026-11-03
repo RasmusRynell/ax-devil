@@ -21,11 +21,13 @@
 //!
 //! A frame belongs to the viewer's one video, so the head has no lane. A Sample (kind 4) is one Sample Item of one
 //! source; the item is the self-describing column format of `scene::serial::columns`. Its head's `sequence_id` is the
-//! sample index and `timestamp_us` is reserved (0) for the capture time of live samples:
+//! sample index, and `timestamp_us` is the sample's time on the video clock when [`FLAG_SAMPLE_TIME`] is set (0
+//! otherwise):
 //!
 //! ```text
 //! 28 u16 source (the viewer's source id, `LaneInfo::source`) | 30 u16 reserved
-//! 32 u32 data_revision (the source revision the item belongs to) | 36 u32 reserved
+//! 32 u32 data_revision (the source revision the item belongs to)
+//! 36 u32 frame (the sample's frame number in its file, or SAMPLE_NO_FRAME)
 //! 40 the item, to the end of the message
 //! ```
 //!
@@ -68,7 +70,7 @@ pub(crate) use constants;
 
 constants! {
     /// Raised when the messages or the envelope change in a way an older frontend cannot read.
-    PLAYBACK_PROTOCOL: u32 = 5;
+    PLAYBACK_PROTOCOL: u32 = 6;
     /// "AXDV" read as a little-endian u32.
     ENVELOPE_MAGIC: u32 = 0x5644_5841;
     /// The envelope format version, byte 4.
@@ -91,6 +93,8 @@ constants! {
     FLAG_KEYFRAME: u32 = 1;
     /// Flag bit 1: the frame is the last of the video.
     FLAG_LAST_FRAME: u32 = 2;
+    /// Flag bit 2 of a Sample: the head's `timestamp_us` is the sample's time on the video clock.
+    FLAG_SAMPLE_TIME: u32 = 4;
     /// Video header layout byte: planar Y, U, V with 4:2:0 subsampling.
     LAYOUT_I420: u8 = 1;
     /// Video header layout byte: planar Y, then interleaved U and V.
@@ -104,6 +108,8 @@ constants! {
     /// Where the item of a Sample starts: the head plus the sample header, a multiple of 8 so the item's typed views
     /// need no copy.
     SAMPLE_HEADER_BYTES: u16 = 40;
+    /// A Sample's `frame` when it has no frame number in its file, or one that does not fit.
+    SAMPLE_NO_FRAME: u32 = u32::MAX;
     /// Where the sample column of a FrameMap starts: the head plus the map header.
     FRAME_MAP_HEADER_BYTES: u16 = 48;
     /// Frames of a map chunk; a run never spans two chunks.
@@ -256,6 +262,16 @@ pub enum ClientMessage {
     Close,
 }
 
+/// How the video's frame times come from its timestamps, when its container has them.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
+pub struct VideoPtsWire {
+    /// The stream's time base as numerator and denominator, seconds per tick.
+    pub time_base: [i32; 2],
+    /// The first frame's timestamp in ticks.
+    #[ts(type = "number")]
+    pub first_pts: i64,
+}
+
 /// What the backend sends as text. `Opened` is followed by a Timeline envelope.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, TS)]
 #[serde(tag = "type")]
@@ -290,6 +306,8 @@ pub enum ServerMessage {
         lane_defaults: LaneDefaultsWire,
         /// The catalogs a lane may draw with, built-ins first and Standard first among them.
         catalogs: Vec<CatalogInfoWire>,
+        /// The video's PTS time base and first PTS; `null` for an image sequence.
+        video_pts: Option<VideoPtsWire>,
     },
     /// A lane's overlay load changed.
     LaneStatus {
@@ -355,6 +373,13 @@ pub enum ServerMessage {
         /// The last frame.
         #[ts(type = "number")]
         last: u64,
+    },
+    /// The frames the backend holds decoded for the video, which the timeline shades. Sent when they change, at most
+    /// every 500 ms.
+    Cached {
+        /// Sorted, disjoint, non-adjacent inclusive runs `[first, last]` of sequence ids.
+        #[ts(type = "Array<[number, number]>")]
+        ranges: Vec<[u64; 2]>,
     },
     /// The viewer no longer holds these samples of the source. Ignored for another data revision; a sample not held
     /// is ignored.

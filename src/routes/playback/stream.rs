@@ -4,6 +4,7 @@
 
 use super::{
     End, Flow, Incoming, Outbox, Outgoing,
+    cached::CachedFeed,
     catalogs::CatalogFeed,
     export::{Exports, Request},
     file_scope::{self, FileScopes},
@@ -19,7 +20,7 @@ use crate::{
 use api_types::{
     Audience,
     playback::{
-        ClientMessage, Direction as WireDirection, PLAYBACK_PROTOCOL, ServerMessage,
+        ClientMessage, Direction as WireDirection, PLAYBACK_PROTOCOL, ServerMessage, VideoPtsWire,
         Want as WireWant, envelope,
     },
     project,
@@ -27,6 +28,7 @@ use api_types::{
 use axum::extract::ws::Message;
 use catalogs::Library;
 use foundation::{ErrorCode, FrameSize, HostPath, UserError};
+use media::PtsTiming;
 use overlay_sync::MatchPolicy;
 use overlays::OverlayService;
 use playback::{Delivery, Direction, Priority, Session, Want};
@@ -57,6 +59,8 @@ pub(super) struct Setup<'a> {
     pub(super) size: FrameSize,
     /// The video's warnings, which name the host's files.
     pub(super) warnings: Vec<String>,
+    /// How the video's frame times come from its timestamps; `None` for an image sequence.
+    pub(super) pts: Option<PtsTiming>,
     /// The catalogs a lane may draw with, which the viewer asks for by id.
     pub(super) library: &'a Library,
     /// Opens the lanes' overlays.
@@ -73,6 +77,8 @@ enum Next {
     Inspection(Outgoing),
     Export(Outgoing),
     FileScope(file_scope::Reply),
+    /// The cache is due to be looked at.
+    Cached,
     Lane(LaneEvent),
     /// `None` when the session or its source closed.
     Delivery(Option<Delivery>),
@@ -87,6 +93,7 @@ struct Playing<'a, I> {
     inspections: Inspections,
     exports: Exports,
     file_scopes: FileScopes,
+    cached: CachedFeed,
     incoming: &'a mut I,
     outbox: &'a Outbox,
     closing: &'a mut watch::Receiver<bool>,
@@ -132,6 +139,10 @@ pub(super) async fn stream(
         lanes: lanes.infos(setup.entry, setup.matching),
         lane_defaults: lanes::lane_defaults(setup.library),
         catalogs: catalogs.listing(),
+        video_pts: setup.pts.map(|pts| VideoPtsWire {
+            time_base: [pts.time_base.0, pts.time_base.1],
+            first_pts: pts.first_pts,
+        }),
     });
     // The overlays stop with `Playing`, which goes when the session ends, a revoked one included.
     let mut playing = Playing {
@@ -142,6 +153,7 @@ pub(super) async fn stream(
         inspections: Inspections::default(),
         exports: Exports::new(setup.entry, setup.audience, setup.exports, setup.videos),
         file_scopes: FileScopes::new(setup.audience),
+        cached: CachedFeed::new(),
         incoming,
         outbox,
         closing,
@@ -312,6 +324,7 @@ impl<I: Incoming> Playing<'_, I> {
                     &mut self.inspections,
                     &mut self.exports,
                     &mut self.file_scopes,
+                    &mut self.cached,
                     &mut self.lanes,
                 ), if room.is_some() => {
                     if let Some(message) = self.encode(next)?
@@ -334,6 +347,7 @@ impl<I: Incoming> Playing<'_, I> {
                 Ok(Some(message))
             }
             Next::FileScope(reply) => Ok(Some(reply.outgoing(self.gate.is_own()))),
+            Next::Cached => Ok(self.cached.message(self.session.cached())),
             Next::Lane(event) => Ok(self.lanes.encode(event)),
             Next::Delivery(delivery) => {
                 let delivery = delivery.ok_or(End::Closed)?;
@@ -350,15 +364,18 @@ impl<I: Incoming> Playing<'_, I> {
     }
 }
 
-/// The next thing to send: the catalogs', inspections', exports' and file queries' messages and the lanes' notices, then their data or the next frame, whichever ranks first, the data
-/// first on a tie. The lanes hold an item back while a frame ranks before it; the rank is read again whenever this
-/// is called, which is after every message sent and every message of the viewer.
+/// The next thing to send: the catalogs', inspections', exports' and file queries' messages and the lanes' notices, then
+/// the cache when it is due, then their data or the next frame, whichever ranks first, the data first on a tie. The
+/// cache comes before the frames so that a continuous flow of them cannot starve it. The lanes hold an item back while
+/// a frame ranks before it; the rank is read again whenever this is called, which is after every message sent and
+/// every message of the viewer.
 async fn next(
     session: &mut Session,
     catalogs: &mut CatalogFeed,
     inspections: &mut Inspections,
     exports: &mut Exports,
     file_scopes: &mut FileScopes,
+    cached: &mut CachedFeed,
     lanes: &mut Lanes,
 ) -> Next {
     let rank = session.next_rank();
@@ -368,6 +385,7 @@ async fn next(
         message = inspections.next() => Next::Inspection(message),
         message = exports.next() => Next::Export(message),
         reply = file_scopes.next() => Next::FileScope(reply),
+        () = cached.tick() => Next::Cached,
         event = lanes.next(rank) => Next::Lane(event),
         delivery = session.next_delivery() => Next::Delivery(delivery),
     }

@@ -194,9 +194,17 @@ fn opened_and_lane_status_carry_the_source_and_data_revision() {
             name: "Standard".into(),
             description: String::new(),
         }],
+        video_pts: Some(VideoPtsWire {
+            time_base: [1, 90_000],
+            first_pts: 7_200,
+        }),
     };
     let json = serde_json::to_value(&opened).unwrap();
-    assert_eq!(json["protocol"], 5);
+    assert_eq!(json["protocol"], 6);
+    assert_eq!(
+        json["video_pts"],
+        json!({"time_base": [1, 90_000], "first_pts": 7_200})
+    );
     assert_eq!(json["catalogs"][0]["id"], "built-in:standard");
     assert_eq!(
         json["lanes"],
@@ -252,6 +260,17 @@ fn opened_and_lane_status_carry_the_source_and_data_revision() {
     assert_eq!(
         serde_json::to_value(&failed).unwrap(),
         json!({"type": "LaneStatus", "lane": 1, "status": {"status": "Failed", "code": "OverlayInvalid", "params": {}}})
+    );
+}
+
+#[test]
+fn cached_frames_are_runs_of_first_and_last() {
+    let cached = ServerMessage::Cached {
+        ranges: vec![[0, 4], [9, 9]],
+    };
+    assert_eq!(
+        serde_json::to_value(&cached).unwrap(),
+        json!({"type": "Cached", "ranges": [[0, 4], [9, 9]]})
     );
 }
 

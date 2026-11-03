@@ -51,6 +51,15 @@ impl VideoInfo {
     }
 }
 
+/// How a file's frame times come from its packet timestamps: `(pts - first_pts) * time_base`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct PtsTiming {
+    /// The stream's time base as numerator and denominator, seconds per tick.
+    pub time_base: (i32, i32),
+    /// The timestamp of the first frame, in ticks.
+    pub first_pts: i64,
+}
+
 /// What the timeline was made from.
 enum Origin {
     /// A file's packets, as saved in the cache file.
@@ -206,6 +215,17 @@ impl FrameIndex {
     pub fn scan(&self) -> Option<ScanKind> {
         match &self.origin {
             Origin::Packets(stored) => Some(stored.scan),
+            Origin::Images { .. } => None,
+        }
+    }
+
+    /// How the frame times come from the container's timestamps; `None` for an image sequence, which has none.
+    pub fn pts_timing(&self) -> Option<PtsTiming> {
+        match &self.origin {
+            Origin::Packets(stored) => Some(PtsTiming {
+                time_base: stored.time_base,
+                first_pts: stored.first_pts,
+            }),
             Origin::Images { .. } => None,
         }
     }

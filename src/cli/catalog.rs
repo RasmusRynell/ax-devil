@@ -215,6 +215,8 @@ pub fn render_in(
         source: 0,
         data_revision: 0,
         sample: 0,
+        time: None,
+        frame_number: None,
         frame: 0,
         serial: 0,
         item: Arc::from(sheet_data.item),

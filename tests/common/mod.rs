@@ -378,8 +378,27 @@ impl Viewer {
         .await;
     }
 
-    /// The next thing the backend sent; fails if nothing comes.
+    /// The next thing the backend sent, but for the reports of its cache, which come at any time and which only
+    /// [`cached`](Self::cached) reads; fails if nothing comes.
     pub async fn next(&mut self) -> Event {
+        loop {
+            match self.read().await {
+                Event::Message(ServerMessage::Cached { .. }) => {}
+                event => return event,
+            }
+        }
+    }
+
+    /// The next report of the backend's cache, skipping everything else; fails if none comes.
+    pub async fn cached(&mut self) -> Vec<[u64; 2]> {
+        loop {
+            if let Event::Message(ServerMessage::Cached { ranges }) = self.read().await {
+                return ranges;
+            }
+        }
+    }
+
+    async fn read(&mut self) -> Event {
         loop {
             let received = tokio::time::timeout(WAIT, self.socket.next())
                 .await
