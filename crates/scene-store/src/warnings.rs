@@ -1,4 +1,4 @@
-//! The warnings a decode gives, bounded: a converter can repeat tiny warnings forever, and every publication carries
+//! The warnings a decode gives, bounded: a plugin can repeat tiny warnings forever, and every publication carries
 //! them.
 
 use foundation::Warning;

@@ -23,33 +23,33 @@ pub struct DecoderInfo {
     pub extensions: Vec<String>,
     /// The options it takes, in the order they are shown; empty for a decoder without any.
     pub options: Vec<FieldInfo>,
-    /// The id of the converter that provides it; absent for the built-in decoders.
+    /// The id of the plugin that provides it; absent for the built-in decoders.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
     pub plugin: Option<String>,
 }
 
-/// The body of `GET /api/plugins`: the converters the user installed, whether or not they loaded.
+/// The body of `GET /api/plugins`: the plugins the user installed, whether or not they loaded.
 #[derive(Clone, Default, Serialize, Deserialize, TS)]
 pub struct PluginsInfo {
     /// One per registry entry, in install order.
-    pub converters: Vec<PluginInfo>,
-    /// Why the registry itself could not be used, in which case no converter loaded.
+    pub plugins: Vec<PluginInfo>,
+    /// Why the registry itself could not be used, in which case no plugin loaded.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
     pub problem: Option<String>,
 }
 
 impl PluginsInfo {
-    /// Whether `handler` is the id of a loaded converter.
-    pub fn provides(&self, handler: &str) -> bool {
-        self.converters.iter().any(
-            |plugin| matches!(&plugin.status, PluginStatus::Loaded { id, .. } if id == handler),
-        )
+    /// Whether `plugin` is the id of a loaded plugin.
+    pub fn provides(&self, plugin: &str) -> bool {
+        self.plugins
+            .iter()
+            .any(|entry| matches!(&entry.status, PluginStatus::Loaded { id, .. } if id == plugin))
     }
 }
 
-/// One installed converter.
+/// One installed plugin.
 #[derive(Clone, Serialize, Deserialize, TS)]
 pub struct PluginInfo {
     /// The manifest file the registry names.
@@ -60,22 +60,22 @@ pub struct PluginInfo {
     pub status: PluginStatus,
 }
 
-/// Whether an installed converter can be used.
+/// Whether an installed plugin can be used.
 #[derive(Clone, Serialize, Deserialize, TS)]
 #[serde(tag = "state")]
 pub enum PluginStatus {
-    /// It is a handler.
+    /// It provides handlers.
     Loaded {
-        /// The plugin id and handler id.
+        /// The plugin id.
         id: String,
         /// What the user reads.
         name: String,
         /// Free text from the manifest.
         version: String,
-        /// The file extensions it reads: lowercase, with the dot.
+        /// The file extensions its decoders read: lowercase, with the dot.
         extensions: Vec<String>,
     },
-    /// It is not a handler.
+    /// It provides none.
     Failed {
         /// What is wrong, naming the manifest field when there is one.
         reason: String,

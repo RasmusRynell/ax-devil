@@ -1,6 +1,6 @@
 //! The one registry of decoders and playlist resolvers.
 //!
-//! The built-ins come from their crates; installed converters are added behind the same type. Everything that picks
+//! The built-ins come from their crates; installed plugins are added behind the same type. Everything that picks
 //! a decoder or resolver by id or by file name asks a [`Handlers`], never the crates' own lists.
 
 use std::{path::Path, sync::Arc};

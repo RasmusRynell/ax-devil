@@ -59,7 +59,7 @@ describe("lane chip", () => {
         state: "Incomplete",
         code: "OverlayInvalid",
         params: {},
-        reason: "The converter stopped with exit code 3",
+        reason: "The plugin stopped with exit code 3",
       },
     };
     render(
@@ -74,7 +74,7 @@ describe("lane chip", () => {
     );
     fireEvent.click(screen.getByRole("button", { name: "DET: warnings" }));
     expect(screen.getByRole("dialog", { name: "DET: warnings" }).textContent).toContain(
-      "The converter stopped with exit code 3",
+      "The plugin stopped with exit code 3",
     );
   });
 

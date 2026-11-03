@@ -2,7 +2,7 @@
 //! playlist resolvers that turn settings into playlists, with the one settings schema ([`Form`]) both declare.
 //!
 //! Handlers know nothing of the host: it frames the input ([`Input`]), validates the options ([`Form::validate`]),
-//! stores what a decoder emits ([`SceneSink`]) and shows its warnings. Built-ins and installed converters implement
+//! stores what a decoder emits ([`SceneSink`]) and shows its warnings. Built-ins and installed plugins implement
 //! the same traits.
 
 mod decoder;

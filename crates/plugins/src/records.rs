@@ -1,4 +1,4 @@
-//! The converter's JSON Lines turned into calls on a [`SceneSink`] (the format in the write-plugin skill).
+//! The plugin's JSON Lines turned into calls on a [`SceneSink`] (the format in the write-plugin skill).
 
 use std::borrow::Cow;
 
@@ -8,7 +8,7 @@ use scene::{ClassRule, Coverage, Fields, FilterOption, FilterPolicy, Value, seri
 use serde::Deserialize;
 use serde_json::value::RawValue;
 
-/// Most reasons a converter's warning lists, and the longest any of its texts is.
+/// Most reasons a plugin's warning lists, and the longest any of its texts is.
 const MAX_REASONS: usize = 3;
 const MAX_TEXT_CHARS: usize = 200;
 
@@ -24,6 +24,14 @@ struct LineIn<'a> {
     replace: Option<&'a RawValue>,
     warning: Option<WarningIn>,
     skipped: Option<String>,
+    error: Option<ErrorIn>,
+}
+
+/// A failure the plugin reports: it ends the run. The line may also carry `field` and `path`, which say what a
+/// scan or resolve was about and mean nothing to a decode.
+#[derive(Deserialize)]
+struct ErrorIn {
+    reason: String,
 }
 
 #[derive(Deserialize)]
@@ -77,6 +85,7 @@ enum Parsed {
     Sample(scene::Scene, OnEqualKey),
     Warning(Warning),
     Skipped(String),
+    Error(String),
 }
 
 /// What the host does after a line.
@@ -84,12 +93,12 @@ pub(crate) enum Next {
     Continue,
     /// The sink cannot take more.
     SinkFull,
-    /// The converter broke the protocol in a way that stops the run.
-    Protocol(String),
+    /// The plugin reported an error or broke the protocol in a way that stops the run.
+    Stop(String),
 }
 
-/// The name of the filter policy of every converter.
-pub(crate) const POLICY_NAME: &str = "converter";
+/// The name of the filter policy of every plugin.
+pub(crate) const POLICY_NAME: &str = "plugin";
 
 /// Feeds a sink from lines.
 pub(crate) struct Records<'a> {
@@ -116,7 +125,7 @@ impl<'a> Records<'a> {
         match self.parse(bytes) {
             Ok(Parsed::Header(header)) => {
                 if self.header.is_some() || self.sampled {
-                    return Next::Protocol(format!(
+                    return Next::Stop(format!(
                         "line {number}: a header must come once, before the first sample"
                     ));
                 }
@@ -131,6 +140,7 @@ impl<'a> Records<'a> {
                 }
             }
             Ok(Parsed::Skipped(reason)) => self.sink.skip(number as u64, reason),
+            Ok(Parsed::Error(reason)) => return Next::Stop(reason),
             Err(reason) => self.sink.skip(number as u64, reason),
         }
         Next::Continue
@@ -147,43 +157,31 @@ impl<'a> Records<'a> {
         let scene = |raw: &RawValue| {
             serial::scene_from_json_slice(raw.get().as_bytes()).map_err(|error| error.to_string())
         };
-        match line {
-            LineIn {
-                header: Some(raw),
-                sample: None,
-                replace: None,
-                warning: None,
-                skipped: None,
-            } => self.header_from(raw).map(Parsed::Header),
-            LineIn {
-                header: None,
-                sample: Some(raw),
-                replace: None,
-                warning: None,
-                skipped: None,
-            } => Ok(Parsed::Sample(scene(raw)?, OnEqualKey::Merge)),
-            LineIn {
-                header: None,
-                sample: None,
-                replace: Some(raw),
-                warning: None,
-                skipped: None,
-            } => Ok(Parsed::Sample(scene(raw)?, OnEqualKey::Replace)),
-            LineIn {
-                header: None,
-                sample: None,
-                replace: None,
-                warning: Some(warning),
-                skipped: None,
-            } => Ok(Parsed::Warning(load_warning(warning))),
-            LineIn {
-                header: None,
-                sample: None,
-                replace: None,
-                warning: None,
-                skipped: Some(reason),
-            } => Ok(Parsed::Skipped(cut(&reason))),
-            _ => Err("needs exactly one of header, sample, replace, warning or skipped".to_owned()),
+        let LineIn {
+            header,
+            sample,
+            replace,
+            warning,
+            skipped,
+            error,
+        } = line;
+        match (header, sample, replace, warning, skipped, error) {
+            (Some(raw), None, None, None, None, None) => self.header_from(raw).map(Parsed::Header),
+            (None, Some(raw), None, None, None, None) => {
+                Ok(Parsed::Sample(scene(raw)?, OnEqualKey::Merge))
+            }
+            (None, None, Some(raw), None, None, None) => {
+                Ok(Parsed::Sample(scene(raw)?, OnEqualKey::Replace))
+            }
+            (None, None, None, Some(warning), None, None) => {
+                Ok(Parsed::Warning(load_warning(warning)))
+            }
+            (None, None, None, None, Some(reason), None) => Ok(Parsed::Skipped(cut(&reason))),
+            (None, None, None, None, None, Some(error)) => Ok(Parsed::Error(cut(&error.reason))),
+            _ => Err(
+                "needs exactly one of header, sample, replace, warning, skipped or error"
+                    .to_owned(),
+            ),
         }
     }
 
@@ -223,7 +221,7 @@ impl<'a> Records<'a> {
     }
 }
 
-/// A converter's warning, cut to what a lane shows.
+/// A plugin's warning, cut to what a lane shows.
 fn load_warning(warning: WarningIn) -> Warning {
     Warning {
         problem: cut(&warning.problem),

@@ -240,13 +240,13 @@ fn opened_and_lane_status_carry_the_source_and_data_revision() {
     let stopped = IngestWire::Incomplete(ErrorWire {
         code: foundation::ErrorCode::OverlayInvalid,
         params: crate::ErrorParams::default(),
-        reason: Some("The converter stopped with exit code 3".into()),
+        reason: Some("The plugin stopped with exit code 3".into()),
         location: None,
     });
     assert_eq!(
         serde_json::to_value(&stopped).unwrap(),
         json!({"state": "Incomplete", "code": "OverlayInvalid", "params": {},
-               "reason": "The converter stopped with exit code 3"})
+               "reason": "The plugin stopped with exit code 3"})
     );
     let failed = ServerMessage::LaneStatus {
         lane: 1,

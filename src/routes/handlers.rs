@@ -84,7 +84,7 @@ pub(crate) async fn get_handlers(State(state): State<AppState>) -> Json<Handlers
     })
 }
 
-/// The converters the user installed, with the reason for each that did not load.
+/// The plugins the user installed, with the reason for each that did not load.
 pub(crate) async fn get_plugins(State(state): State<AppState>) -> Json<PluginsInfo> {
     Json(PluginsInfo::clone(&state.plugins))
 }

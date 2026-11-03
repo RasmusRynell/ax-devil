@@ -119,7 +119,7 @@ impl Decoder for Script {
                 gate(n, cancel);
             }
             cancel.check()?;
-            // A converter that is told to stop answers as if it had been cancelled.
+            // A plugin that is told to stop answers as if it had been cancelled.
             if sink.sample(scene_of(step), step.on_equal_key).is_break() {
                 return Err(Interrupt::Cancelled);
             }
@@ -476,7 +476,7 @@ fn a_decoder_that_fails_after_samples_keeps_them_and_stores_nothing() {
     let mut script = Script::new(steps);
     script.header = true;
     script.code = Some([7; 32]);
-    script.fail = Some("The converter stopped with exit code 3");
+    script.fail = Some("The plugin stopped with exit code 3");
     let rig = Rig::new(script, eager());
 
     let track = rig.open().expect("the rows read are kept");

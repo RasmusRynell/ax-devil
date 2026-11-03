@@ -1,13 +1,13 @@
-//! What makes a converter loadable: the manifest's rules, the code identity, and the registry.
+//! What makes a plugin loadable: the manifest's rules, the code identity, and the registry.
 
 mod common;
 
-use std::{fs, path::Path};
+use std::{fs, path::Path, sync::Arc};
 
 use common::{TestSink, decode};
-use converters::{ConverterDecoder, MANIFEST_FILE, Manifest, Registry, load};
 use foundation::CancelToken;
 use handler_api::{Decoder, Settings};
+use plugins::{LoadedPlugin, MANIFEST_FILE, Manifest, PluginDecoder, Registry, Reserved, load};
 use serde_json::{Value, json};
 
 /// Changes the base manifest into one a field of which is wrong.
@@ -15,14 +15,30 @@ type Edit = Box<dyn FnOnce(&mut Value)>;
 
 fn base() -> Value {
     json!({
-        "manifest": 1, "kind": "file", "id": "acme", "name": "ACME", "version": "1", "protocol": 2,
-        "scene_version": "4.0", "extensions": [".acme"], "command": ["python3", "convert.py"],
-        "env": ["PYTHONPATH"], "code": ["convert.py"],
-        "options": [{ "key": "camera", "label": "Camera", "kind": "text", "default": "front" }]
+        "manifest": 2, "id": "acme", "name": "ACME", "version": "1", "protocol": 3,
+        "command": ["python3", "convert.py"], "env": ["PYTHONPATH"], "code": ["convert.py"],
+        "handlers": [{
+            "kind": "decoder", "id": "acme", "name": "ACME", "input": "path", "scene_version": "4.0",
+            "extensions": [".acme"],
+            "options": [{ "key": "camera", "label": "Camera", "kind": "text", "default": "front" }]
+        }]
     })
 }
 
-/// A converter folder holding `manifest` and a `convert.py`; returns the manifest path.
+/// The ids a build with these built-ins would have taken.
+fn reserved(plugin: &str, handler: &str) -> Reserved {
+    Reserved {
+        plugins: [plugin.to_owned()].into(),
+        handlers: [handler.to_owned()].into(),
+    }
+}
+
+/// The first decoder of the plugin at `path`.
+fn decoder(path: &Path) -> Arc<PluginDecoder> {
+    LoadedPlugin::load(path).expect("loads").decoders.remove(0)
+}
+
+/// A plugin folder holding `manifest` and a `convert.py`; returns the manifest path.
 fn install(folder: &Path, manifest: &Value) -> std::path::PathBuf {
     fs::create_dir_all(folder).expect("folder");
     fs::write(folder.join("convert.py"), "print('hi')\n").expect("script");
@@ -32,7 +48,7 @@ fn install(folder: &Path, manifest: &Value) -> std::path::PathBuf {
 }
 
 /// The manifest field a refusal names, for a manifest with `edit` applied to the base one.
-fn refused(edit: impl FnOnce(&mut Value)) -> (Option<&'static str>, String) {
+fn refused(edit: impl FnOnce(&mut Value)) -> (Option<String>, String) {
     let folder = tempfile::tempdir().expect("folder");
     let mut manifest = base();
     edit(&mut manifest);
@@ -44,15 +60,15 @@ fn refused(edit: impl FnOnce(&mut Value)) -> (Option<&'static str>, String) {
 #[test]
 fn every_refusal_names_the_manifest_field() {
     let cases: Vec<(&str, Edit)> = vec![
-        ("manifest", Box::new(|m| m["manifest"] = json!(2))),
-        ("protocol", Box::new(|m| m["protocol"] = json!(3))),
+        ("manifest", Box::new(|m| m["manifest"] = json!(3))),
+        ("protocol", Box::new(|m| m["protocol"] = json!(2))),
         (
-            "scene_version",
-            Box::new(|m| m["scene_version"] = json!("5.0")),
+            "handlers[0].scene_version",
+            Box::new(|m| m["handlers"][0]["scene_version"] = json!("5.0")),
         ),
         (
-            "scene_version",
-            Box::new(|m| m["scene_version"] = json!("4.1")),
+            "handlers[0].scene_version",
+            Box::new(|m| m["handlers"][0]["scene_version"] = json!("4.1")),
         ),
         (
             "env",
@@ -69,8 +85,8 @@ fn every_refusal_names_the_manifest_field() {
         ),
         ("id", Box::new(|m| m["id"] = json!("Not Valid"))),
         (
-            "extensions",
-            Box::new(|m| m["extensions"] = json!([".ACME"])),
+            "handlers[0].extensions",
+            Box::new(|m| m["handlers"][0]["extensions"] = json!([".ACME"])),
         ),
         ("code", Box::new(|m| m["code"] = json!(["../elsewhere"]))),
         ("code", Box::new(|m| m["code"] = json!(["no-such-file.py"]))),
@@ -79,15 +95,19 @@ fn every_refusal_names_the_manifest_field() {
             Box::new(|m| m["idle_timeout_s"] = json!(0)),
         ),
         (
-            "options",
-            Box::new(|m| m["options"] = json!([{ "key": "a", "label": "A", "kind": "slider" }])),
+            "handlers[0].options[0].kind",
+            Box::new(|m| m["handlers"][0]["options"][0]["kind"] = json!("slider")),
+        ),
+        (
+            "handlers[0].kind",
+            Box::new(|m| m["handlers"][0]["kind"] = json!("playlist_resolver")),
         ),
     ];
     for (field, edit) in cases {
         let (named, reason) = refused(edit);
-        assert_eq!(named, Some(field), "{reason}");
+        assert_eq!(named.as_deref(), Some(field), "{reason}");
     }
-    let (_, reason) = refused(|m| m["manifest"] = json!(2));
+    let (_, reason) = refused(|m| m["manifest"] = json!(3));
     assert!(reason.contains("newer ax-devil"), "{reason}");
 }
 
@@ -103,7 +123,7 @@ fn more_than_20000_files_of_code_are_refused() {
         fs::write(data.join(number.to_string()), "").expect("file");
     }
     let error = Manifest::load(&path).expect_err("too much code");
-    assert_eq!(error.field, Some("code"));
+    assert_eq!(error.field.as_deref(), Some("code"));
 }
 
 #[test]
@@ -112,14 +132,14 @@ fn the_code_hash_follows_the_hashed_files_and_not_dot_files() {
     let mut manifest = base();
     manifest["code"] = json!(["."]);
     let path = install(folder.path(), &manifest);
-    let decoder = ConverterDecoder::load(&path).expect("loads");
-    let first = decoder.code_hash().expect("hash");
+    let decoder = decoder(&path);
+    let first = decoder.program().code_hash().expect("hash");
 
     fs::write(folder.path().join(".hidden"), "x").expect("dot file");
     fs::create_dir(folder.path().join("__pycache__")).expect("cache folder");
     fs::write(folder.path().join("__pycache__/convert.pyc"), "x").expect("cache file");
     assert_eq!(
-        decoder.code_hash().expect("hash"),
+        decoder.program().code_hash().expect("hash"),
         first,
         "skipped files are not identity"
     );
@@ -129,12 +149,12 @@ fn the_code_hash_follows_the_hashed_files_and_not_dot_files() {
         "print('edited, and longer')\n",
     )
     .expect("edit");
-    let edited = decoder.code_hash().expect("hash");
+    let edited = decoder.program().code_hash().expect("hash");
     assert_ne!(edited, first);
 
     fs::write(folder.path().join("helper.py"), "x = 1\n").expect("new file");
     assert_ne!(
-        decoder.code_hash().expect("hash"),
+        decoder.program().code_hash().expect("hash"),
         edited,
         "a new file is identity"
     );
@@ -146,33 +166,36 @@ fn the_code_hash_names_the_manifest_that_was_loaded_not_the_file_on_disk() {
     let mut manifest = base();
     manifest["code"] = json!(["."]);
     let path = install(folder.path(), &manifest);
-    let decoder = ConverterDecoder::load(&path).expect("loads");
-    let loaded = decoder.code_hash().expect("hash");
+    let decoder = decoder(&path);
+    let loaded = decoder.program().code_hash().expect("hash");
 
     manifest["name"] = json!("Edited while running");
     install(folder.path(), &manifest);
     assert_eq!(
-        decoder.code_hash().expect("hash"),
+        decoder.program().code_hash().expect("hash"),
         loaded,
         "the running decoder keeps the identity of the manifest it runs"
     );
-    let restarted = ConverterDecoder::load(&path).expect("loads again");
-    assert_ne!(restarted.code_hash().expect("hash"), loaded);
+    let restarted = self::decoder(&path);
+    assert_ne!(restarted.program().code_hash().expect("hash"), loaded);
 }
 
 #[test]
-fn the_store_gets_the_code_hash_and_a_converter_whose_files_cannot_be_hashed_refuses_to_run() {
+fn the_store_gets_the_code_hash_and_a_plugin_whose_files_cannot_be_hashed_refuses_to_run() {
     let folder = tempfile::tempdir().expect("folder");
     let mut manifest = base();
     manifest["code"] = json!(["convert.py"]);
     let path = install(folder.path(), &manifest);
-    let decoder = ConverterDecoder::load(&path).expect("loads");
-    assert_eq!(Decoder::code_hash(&decoder), decoder.code_hash().ok());
-    assert!(Decoder::code_hash(&decoder).is_some());
+    let decoder = decoder(&path);
+    assert_eq!(
+        Decoder::code_hash(&*decoder),
+        decoder.program().code_hash().ok()
+    );
+    assert!(Decoder::code_hash(&*decoder).is_some());
 
     fs::remove_file(folder.path().join("convert.py")).expect("remove");
 
-    assert_eq!(Decoder::code_hash(&decoder), None);
+    assert_eq!(Decoder::code_hash(&*decoder), None);
     let run = decode(
         &decoder,
         &folder.path().join("a.test"),
@@ -191,7 +214,7 @@ fn the_store_gets_the_code_hash_and_a_converter_whose_files_cannot_be_hashed_ref
 #[test]
 fn options_are_filled_from_defaults_and_restricted_to_the_declared_keys() {
     let folder = tempfile::tempdir().expect("folder");
-    let decoder = ConverterDecoder::load(&install(folder.path(), &base())).expect("loads");
+    let decoder = decoder(&install(folder.path(), &base()));
     let given = |pairs: &[(&str, &str)]| {
         pairs
             .iter()
@@ -221,14 +244,22 @@ fn the_registry_installs_lists_removes_and_keeps_unknown_keys() {
 
     let mut registry = Registry::read(&registry_path).expect("a missing registry is empty");
     assert!(registry.manifests().is_empty());
-    let manifest = registry.install(&first, &["mot"]).expect("installs");
+    let manifest = registry
+        .install(&first, &reserved("mot", "MOT_FILE"))
+        .expect("installs");
     assert_eq!(manifest.id, "acme");
-    let again = registry.install(&first, &[]).expect_err("the id is taken");
-    assert_eq!(again.field, Some("id"));
-    let reserved = registry
-        .install(&first, &["acme"])
-        .expect_err("the id is reserved");
-    assert_eq!(reserved.field, Some("id"));
+    let field = |taken: Reserved| {
+        let error = registry.clone().install(&first, &taken).expect_err("taken");
+        error.field
+    };
+    assert_eq!(field(Reserved::default()).as_deref(), Some("id"));
+    assert_eq!(field(reserved("acme", "")).as_deref(), Some("id"));
+    // Plugin ids and handler ids are separate: only a taken handler id refuses the handler.
+    let mut elsewhere = Registry::read(&registry_path).expect("empty");
+    let error = elsewhere
+        .install(&first, &reserved("mot", "acme"))
+        .expect_err("the handler id is reserved");
+    assert_eq!(error.field.as_deref(), Some("handlers[0].id"));
     fs::create_dir_all(registry_path.parent().expect("parent")).expect("folder");
     registry.save().expect("saves");
 
@@ -244,7 +275,7 @@ fn the_registry_installs_lists_removes_and_keeps_unknown_keys() {
     let saved: Value =
         serde_json::from_str(&fs::read_to_string(&registry_path).expect("file")).expect("json");
     assert_eq!(saved["future"], json!({"kept": true}));
-    assert_eq!(saved["converters"], json!([]));
+    assert_eq!(saved["plugins"], json!([]));
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
@@ -257,7 +288,7 @@ fn the_registry_installs_lists_removes_and_keeps_unknown_keys() {
 }
 
 #[test]
-fn a_broken_registry_or_converter_loads_the_rest_and_is_listed() {
+fn a_broken_registry_or_plugin_loads_the_rest_and_is_listed() {
     let root = tempfile::tempdir().expect("root");
     let registry_path = root.path().join("plugins.json");
     let good = install(&root.path().join("good"), &base());
@@ -265,35 +296,70 @@ fn a_broken_registry_or_converter_loads_the_rest_and_is_listed() {
     broken_manifest["id"] = json!("broken");
     broken_manifest["protocol"] = json!(9);
     let broken = install(&root.path().join("broken"), &broken_manifest);
-    let missing = root.path().join("gone/ax-devil-converter.json");
+    let missing = root.path().join("gone/ax-devil-plugin.json");
     let entry = |manifest: &Path| json!({ "manifest": manifest });
     fs::write(
         &registry_path,
-        json!({ "version": 1, "converters": [entry(&broken), entry(&missing), entry(&good), entry(&good)] }).to_string(),
+        json!({ "version": 2, "plugins": [entry(&broken), entry(&missing), entry(&good), entry(&good)] }).to_string(),
     )
     .expect("registry");
 
-    let loaded = load(&registry_path, &[]);
+    let loaded = load(&registry_path, &Reserved::default());
     assert!(loaded.registry.is_none());
     let outcome: Vec<Option<&str>> = loaded
-        .plugins
+        .entries
         .iter()
-        .map(|plugin| {
-            plugin
-                .decoder
+        .map(|entry| {
+            entry
+                .plugin
                 .as_ref()
                 .err()
-                .map(|error| error.field.unwrap_or("file"))
+                .map(|error| error.field.as_deref().unwrap_or("file"))
         })
         .collect();
     assert_eq!(outcome, [Some("protocol"), Some("file"), None, Some("id")]);
     assert_eq!(loaded.decoders().len(), 1);
 
     fs::write(&registry_path, "{ not json").expect("registry");
-    let loaded = load(&registry_path, &[]);
-    assert!(loaded.registry.is_some() && loaded.plugins.is_empty() && loaded.decoders().is_empty());
+    let loaded = load(&registry_path, &Reserved::default());
+    assert!(loaded.registry.is_some() && loaded.entries.is_empty() && loaded.decoders().is_empty());
 
-    fs::write(&registry_path, r#"{"version":2,"converters":[]}"#).expect("registry");
-    let reason = load(&registry_path, &[]).registry.expect("refused").0;
+    fs::write(&registry_path, r#"{"version":3,"plugins":[]}"#).expect("registry");
+    let reason = load(&registry_path, &Reserved::default())
+        .registry
+        .expect("refused")
+        .0;
     assert!(reason.contains("newer ax-devil"), "{reason}");
+}
+
+#[test]
+fn a_plugin_provides_several_decoders_and_refuses_a_handler_id_twice() {
+    let folder = tempfile::tempdir().expect("folder");
+    let mut manifest = base();
+    let second = json!({
+        "kind": "decoder", "id": "acme_times", "name": "ACME times", "input": "path",
+        "scene_version": "4.0", "extensions": [".times"]
+    });
+    manifest["handlers"]
+        .as_array_mut()
+        .expect("list")
+        .push(second.clone());
+    let plugin = LoadedPlugin::load(&install(folder.path(), &manifest)).expect("two decoders load");
+    let ids: Vec<&str> = plugin
+        .decoders
+        .iter()
+        .map(|d| d.spec().id.as_str())
+        .collect();
+    assert_eq!(ids, ["acme", "acme_times"]);
+    assert!(Arc::ptr_eq(
+        plugin.decoders[0].program(),
+        plugin.decoders[1].program()
+    ));
+
+    let (field, reason) = refused(|m| {
+        let mut twin = second;
+        twin["id"] = json!("acme");
+        m["handlers"].as_array_mut().expect("list").push(twin);
+    });
+    assert_eq!(field.as_deref(), Some("handlers[1].id"), "{reason}");
 }

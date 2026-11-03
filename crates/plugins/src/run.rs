@@ -1,10 +1,9 @@
-//! One converter run: start the process, feed its lines to the sink, and end it on every path.
+//! One plugin run: start the process, feed its lines to the sink, and end it on every path.
 
 use std::{
     ffi::{OsStr, OsString},
     io::{self, Read, Write},
     ops::ControlFlow,
-    path::Path,
     process::{Child, ExitStatus},
     sync::mpsc::{self, RecvTimeoutError},
     thread,
@@ -33,12 +32,11 @@ const READ_AHEAD: usize = 8;
 
 /// What to run.
 pub(crate) struct Spec<'a> {
-    /// The converter's id, for thread names and logs.
+    /// The plugin's id, for thread names and logs.
     pub id: &'a str,
     pub program: &'a OsStr,
     pub args: &'a [OsString],
     pub env: &'a [String],
-    pub overlay: &'a Path,
     /// The request line, without its newline.
     pub request: String,
     pub idle_timeout: Duration,
@@ -54,13 +52,13 @@ pub(crate) enum End {
     Stopped,
 }
 
-/// The end of a run and the header the converter declared, if any.
+/// The end of a run and the header the plugin declared, if any.
 pub(crate) struct Outcome {
     pub end: End,
     pub header: Option<Header>,
 }
 
-/// Why the loop stopped before the converter finished by itself.
+/// Why the loop stopped before the plugin finished by itself.
 enum Stop {
     Failed(String),
     Stopped,
@@ -71,7 +69,7 @@ enum Chunk {
     Failed(String),
 }
 
-/// Runs the converter to its end, handing its lines to `sink`. The converter's whole process group is killed
+/// Runs the plugin to its end, handing its lines to `sink`. The plugin's whole process group is killed
 /// whenever the run ends, and its working folder removed.
 pub(crate) fn run(spec: &Spec<'_>, sink: &mut dyn SceneSink, cancel: &CancelToken) -> Outcome {
     let mut records = Records::new(sink);
@@ -89,25 +87,19 @@ fn supervise(
     cancel: &CancelToken,
 ) -> Result<End, String> {
     let folder = tempfile::Builder::new()
-        .prefix("ax-devil-converter-")
+        .prefix("ax-devil-plugin-")
         .tempdir()
-        .map_err(|error| format!("Cannot create a working folder for the converter: {error}"))?;
-    let mut child = spawn::command(
-        spec.program,
-        spec.args,
-        spec.overlay,
-        spec.env,
-        folder.path(),
-    )
-    .spawn()
-    .map_err(|error| {
-        format!(
-            "Cannot start the converter ({}): {error}",
-            spec.program.to_string_lossy()
-        )
-    })?;
+        .map_err(|error| format!("Cannot create a working folder for the plugin: {error}"))?;
+    let mut child = spawn::command(spec.program, spec.args, spec.env, folder.path())
+        .spawn()
+        .map_err(|error| {
+            format!(
+                "Cannot start the plugin ({}): {error}",
+                spec.program.to_string_lossy()
+            )
+        })?;
     let outcome = watch(spec, &mut child, records, cancel);
-    // The group is killed on every path, also when the converter ended by itself: a grandchild it left behind
+    // The group is killed on every path, also when the plugin ended by itself: a grandchild it left behind
     // must not outlive the lane.
     spawn::kill_group(&mut child);
     let status = child.wait();
@@ -119,10 +111,10 @@ fn supervise(
         None => match status {
             Ok(status) if status.success() => End::Complete,
             Ok(status) => End::Incomplete(with_tail(
-                &format!("The converter stopped with {}", describe(status)),
+                &format!("The plugin stopped with {}", describe(status)),
                 &tail,
             )),
-            Err(error) => End::Incomplete(format!("Cannot wait for the converter: {error}")),
+            Err(error) => End::Incomplete(format!("Cannot wait for the plugin: {error}")),
         },
     })
 }
@@ -135,19 +127,18 @@ fn watch(
     records: &mut Records<'_>,
     cancel: &CancelToken,
 ) -> Result<(Option<Stop>, StderrTail), String> {
-    let thread_error =
-        |error: io::Error| format!("Cannot start a thread for the converter: {error}");
+    let thread_error = |error: io::Error| format!("Cannot start a thread for the plugin: {error}");
     let (Some(mut stdin), Some(mut stdout), Some(stderr)) =
         (child.stdin.take(), child.stdout.take(), child.stderr.take())
     else {
-        return Err("The converter has no pipes".to_owned());
+        return Err("The plugin has no pipes".to_owned());
     };
 
     let request = spec.request.clone();
     thread::Builder::new()
-        .name(format!("converter-stdin-{}", spec.id))
+        .name(format!("plugin-stdin-{}", spec.id))
         .spawn(move || {
-            // A converter that does not read its request closes the pipe; that is its business.
+            // A plugin that does not read its request closes the pipe; that is its business.
             let _ = stdin.write_all(request.as_bytes());
             let _ = stdin.write_all(b"\n");
         })
@@ -157,7 +148,7 @@ fn watch(
     tail.drain(stderr, spec.id.to_owned(), stderr_done);
     let (sender, chunks) = mpsc::sync_channel(READ_AHEAD);
     thread::Builder::new()
-        .name(format!("converter-stdout-{}", spec.id))
+        .name(format!("plugin-stdout-{}", spec.id))
         .spawn(move || {
             loop {
                 let mut chunk = vec![0_u8; CHUNK];
@@ -192,7 +183,7 @@ fn watch(
         match exited {
             None if last_output.elapsed() >= spec.idle_timeout => {
                 stop = Some(Stop::Failed(format!(
-                    "The converter produced nothing for {} s",
+                    "The plugin produced nothing for {} s",
                     spec.idle_timeout.as_secs()
                 )));
                 break;
@@ -210,7 +201,7 @@ fn watch(
                 }
                 Ok(Chunk::Failed(error)) => {
                     stop = Some(Stop::Failed(format!(
-                        "Reading the converter's output failed: {error}"
+                        "Reading the plugin's output failed: {error}"
                     )));
                 }
                 Err(RecvTimeoutError::Timeout) => {}
@@ -234,9 +225,7 @@ fn watch(
                 }
                 Ok(None) => {}
                 Err(error) => {
-                    stop = Some(Stop::Failed(format!(
-                        "Cannot wait for the converter: {error}"
-                    )));
+                    stop = Some(Stop::Failed(format!("Cannot wait for the plugin: {error}")));
                 }
             }
         }
@@ -257,7 +246,7 @@ fn feed(lines: &mut LineBuffer, records: &mut Records<'_>, chunk: &[u8]) -> Opti
         other => ControlFlow::Break(other),
     }) {
         Err(TooLong) => Some(Stop::Failed(format!(
-            "Line {number} of the converter's output is longer than 16 MiB"
+            "Line {number} of the plugin's output is longer than 16 MiB"
         ))),
         Ok(flow) => stop_for(flow),
     }
@@ -266,7 +255,7 @@ fn feed(lines: &mut LineBuffer, records: &mut Records<'_>, chunk: &[u8]) -> Opti
 fn stop_for(flow: ControlFlow<Next>) -> Option<Stop> {
     match flow {
         ControlFlow::Break(Next::SinkFull) => Some(Stop::Stopped),
-        ControlFlow::Break(Next::Protocol(reason)) => Some(Stop::Failed(reason)),
+        ControlFlow::Break(Next::Stop(reason)) => Some(Stop::Failed(reason)),
         ControlFlow::Break(Next::Continue) | ControlFlow::Continue(()) => None,
     }
 }

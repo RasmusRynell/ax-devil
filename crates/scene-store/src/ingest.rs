@@ -166,7 +166,7 @@ struct Feed<'a> {
     skipped: SkippedRecords,
 }
 
-/// The records of a decoder that reads the file itself (a converter): a skip is one, and so are the consecutive
+/// The records of a decoder that reads the file itself (a plugin): a skip is one, and so are the consecutive
 /// Scenes of one start key, which the host joins.
 #[derive(Default)]
 struct Whole {
@@ -423,7 +423,7 @@ impl Store {
         Ok(())
     }
 
-    /// Whether a failed decode leaves rows worth showing: the decoder is a converter or gave a header, so readers
+    /// Whether a failed decode leaves rows worth showing: the decoder is a plugin or gave a header, so readers
     /// were promised them, and at least one sample arrived. A built-in that fails fails the open.
     fn keeps_rows(&self, incremental: bool) -> bool {
         (incremental || self.header.is_some()) && (self.open.is_some() || self.writer.records() > 0)

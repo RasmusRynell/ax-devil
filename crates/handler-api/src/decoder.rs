@@ -10,7 +10,7 @@ use crate::{Form, Values};
 /// How the host cuts an overlay file into the records a decoder reads.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Framing {
-    /// The whole file is one record: CVAT, MOT, UVG-VCM and the converters.
+    /// The whole file is one record: CVAT, MOT, UVG-VCM and the plugins.
     Whole,
     /// One record per line: ONVIF, ADF. Blank lines are skipped and the rest are trimmed.
     Records,
@@ -56,7 +56,7 @@ pub struct Record<'a> {
 
 /// The records of one overlay file, as the host frames them.
 pub trait Input {
-    /// The file the records come from; `None` for a live source. A decoder that reads the file itself (a converter)
+    /// The file the records come from; `None` for a live source. A decoder that reads the file itself (a plugin)
     /// takes this and asks for no records.
     fn path(&self) -> Option<&Path>;
 
@@ -134,7 +134,7 @@ pub trait Decoder: Send + Sync {
     /// What the host needs to know about the decoder.
     fn spec(&self) -> &Spec;
 
-    /// SHA-256 of the code that makes the Scenes when that code is not part of the app, such as a converter's
+    /// SHA-256 of the code that makes the Scenes when that code is not part of the app, such as a plugin's
     /// manifest and files. It is part of the identity of the scene cache: another hash rebuilds. `None` for built-ins.
     fn code_hash(&self) -> Option<[u8; 32]> {
         None

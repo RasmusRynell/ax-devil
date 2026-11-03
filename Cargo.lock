@@ -96,7 +96,6 @@ dependencies = [
  "bytes",
  "catalogs",
  "clap",
- "converters",
  "export",
  "foundation",
  "futures-util",
@@ -108,6 +107,7 @@ dependencies = [
  "overlay-sync",
  "overlays",
  "playback",
+ "plugins",
  "rust-embed",
  "rustix",
  "scene",
@@ -351,22 +351,6 @@ name = "const-oid"
 version = "0.10.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a6ef517f0926dd24a1582492c791b6a4818a4d94e789a334894aa15b0d12f55c"
-
-[[package]]
-name = "converters"
-version = "0.1.0"
-dependencies = [
- "foundation",
- "handler-api",
- "memchr",
- "rustix",
- "scene",
- "serde",
- "serde_json",
- "sha2",
- "tempfile",
- "tracing",
-]
 
 [[package]]
 name = "cpufeatures"
@@ -953,6 +937,22 @@ dependencies = [
  "handler-api",
  "serde_json",
  "tempfile",
+]
+
+[[package]]
+name = "plugins"
+version = "0.1.0"
+dependencies = [
+ "foundation",
+ "handler-api",
+ "memchr",
+ "rustix",
+ "scene",
+ "serde",
+ "serde_json",
+ "sha2",
+ "tempfile",
+ "tracing",
 ]
 
 [[package]]

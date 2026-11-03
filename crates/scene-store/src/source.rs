@@ -16,7 +16,7 @@ use crate::{io::user_error, stat::Stat};
 /// Bytes read from a source between cancellation checks.
 const CHUNK: usize = 4 << 20;
 
-/// A source file whose bytes are read on the first request. A decoder that takes the path (a converter) never asks,
+/// A source file whose bytes are read on the first request. A decoder that takes the path (a plugin) never asks,
 /// so a file of any size is never held in memory for it.
 pub(crate) struct LazySource {
     path: PathBuf,

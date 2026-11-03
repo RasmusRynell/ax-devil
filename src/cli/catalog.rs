@@ -40,7 +40,7 @@ pub struct Report {
 }
 
 impl Report {
-    /// `list-handlers`: the decoders and resolvers `handlers` holds, and the converters that did not load.
+    /// `list-handlers`: the decoders and resolvers `handlers` holds, and the plugins that did not load.
     pub fn listing(handlers: &Handlers, installed: &PluginsInfo) -> Self {
         Self {
             text: args::handlers_listing(handlers, installed),

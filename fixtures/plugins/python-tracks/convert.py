@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Converts a CSV of per-object rows into ax-devil Scenes.
 
-The model converter: read the request line from stdin, the overlay file from the path in it, and write one JSON
+The model plugin: read the request line from stdin, the overlay file from the path in it, and write one JSON
 line per fragment on stdout. Rows of one frame become several `sample` lines; ax-devil merges them by start key.
 Geometry is in pixels in the CSV and normalised here with the `width` and `height` options. See the write-plugin
 skill for the format.
@@ -88,7 +88,7 @@ def main():
             }
         }
     )
-    with open(request["path"], newline="") as handle:
+    with open(request["input"]["path"], newline="") as handle:
         for line, row in enumerate(csv.DictReader(handle), start=2):
             try:
                 if None in row.values():  # a short row: DictReader leaves its missing cells None

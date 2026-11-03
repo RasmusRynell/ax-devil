@@ -959,25 +959,25 @@ extensions: Array<string>,
  */
 options: Array<FieldInfo>, 
 /**
- * The id of the converter that provides it; absent for the built-in decoders.
+ * The id of the plugin that provides it; absent for the built-in decoders.
  */
 plugin?: string, };
 
 /**
- * The body of `GET /api/plugins`: the converters the user installed, whether or not they loaded.
+ * The body of `GET /api/plugins`: the plugins the user installed, whether or not they loaded.
  */
 export type PluginsInfo = { 
 /**
  * One per registry entry, in install order.
  */
-converters: Array<PluginInfo>, 
+plugins: Array<PluginInfo>, 
 /**
- * Why the registry itself could not be used, in which case no converter loaded.
+ * Why the registry itself could not be used, in which case no plugin loaded.
  */
 problem?: string, };
 
 /**
- * One installed converter.
+ * One installed plugin.
  */
 export type PluginInfo = { 
 /**
@@ -994,11 +994,11 @@ folder: string,
 status: PluginStatus, };
 
 /**
- * Whether an installed converter can be used.
+ * Whether an installed plugin can be used.
  */
 export type PluginStatus = { "state": "Loaded", 
 /**
- * The plugin id and handler id.
+ * The plugin id.
  */
 id: string, 
 /**
@@ -1010,7 +1010,7 @@ name: string,
  */
 version: string, 
 /**
- * The file extensions it reads: lowercase, with the dot.
+ * The file extensions its decoders read: lowercase, with the dot.
  */
 extensions: Array<string>, } | { "state": "Failed", 
 /**

@@ -63,7 +63,7 @@ pub struct AppState {
     windows: Option<Arc<Windows>>,
     /// The decoders and playlist resolvers the app knows.
     pub handlers: Handlers,
-    /// The converters the user installed, as loaded at startup.
+    /// The plugins the user installed, as loaded at startup.
     pub plugins: Arc<PluginsInfo>,
     /// The open videos, which the playback socket draws its viewers from.
     pub videos: Arc<video_sources::VideoSources>,
