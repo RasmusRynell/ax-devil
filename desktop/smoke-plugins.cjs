@@ -7,7 +7,15 @@ const fs = require("node:fs/promises");
 const os = require("node:os");
 const path = require("node:path");
 const fit = require("./fit.cjs");
-const { SCREENSHOTS, SMOKE_ROOT, button, frames, page, setView, showChrome } = require("./smoke-kit.cjs");
+const {
+  SCREENSHOTS,
+  SMOKE_ROOT,
+  button,
+  frames,
+  page,
+  setView,
+  showChrome,
+} = require("./smoke-kit.cjs");
 
 const THEMES = ["light", "dark"];
 
