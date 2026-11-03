@@ -1,39 +1,53 @@
-# Converter reference
+# Plugin reference
 
-The one specification of the converter contract (protocol 2). Code that enforces it: `crates/converters`. The model
-converter is `fixtures/converters/python-tracks`; a second, in POSIX shell and awk, is `fixtures/converters/shell-times`.
+The one specification of the plugin contract (protocol 3). Code that enforces it: `crates/plugins`. The model plugin
+is `fixtures/plugins/python-tracks`; a second, in POSIX shell and awk, is `fixtures/plugins/shell-times`.
 
-## Manifest `ax-devil-converter.json`
+A plugin is a program and a manifest that lists the **handlers** it provides. The only kind today is `decoder`. One
+handler call is one run of the program.
 
-A JSON object in the converter's folder. Unknown fields, a wrong type or a missing required field refuse it, naming the
-field.
+## Manifest `ax-devil-plugin.json`
+
+A JSON object in the plugin's folder. Unknown fields, a wrong type or a missing required field refuse it, naming the
+field by its path, such as `handlers[1].options[0].kind`.
 
 | Field | Required | Meaning |
 |-------|----------|---------|
-| `manifest` | yes | `1` |
-| `kind` | yes | `"file"` |
-| `id` | yes | 1-64 characters of `a-z 0-9 . _ -`, starting with a letter or digit. Also the handler id (`--handler-type`). Must differ from every built-in and installed id |
+| `manifest` | yes | `2` |
+| `id` | yes | The plugin id: 1-64 characters of `a-z 0-9 . _ -`, starting with a letter or digit. Must differ from every built-in and installed plugin id |
 | `name`, `version` | yes | Shown to the user; `version` is free text |
-| `protocol` | yes | `2`; any other value does not load |
-| `scene_version` | yes | The Scene version written, `"4.0"`; a different major or a newer minor does not load |
-| `extensions` | no | File name endings the converter opens, lowercase with the dot, such as `.acme.jsonl`. Without any, it is picked only by id |
-| `command` | yes | Program and arguments. A program containing `/` is relative to the folder and must be executable; otherwise it is looked up on `PATH`. Later items that name a file or folder of the converter become absolute; items starting with `-` are passed as written. The overlay path is appended as the last argument |
+| `protocol` | yes | `3`; any other value does not load |
+| `command` | yes | Program and arguments. A program containing `/` is relative to the folder and must be executable; otherwise it is looked up on `PATH`. Later items that name a file or folder of the plugin become absolute; items starting with `-` are passed as written. Nothing is appended: the request carries the path |
 | `env` | no | Names of environment variables to pass through besides the standard few. `AX_DEVIL_*` is refused |
-| `code` | no | Paths in the folder (files or folders, no `..`) whose bytes identify the converter; default the whole folder. Dot-names and `__pycache__` are skipped; at most 20,000 files and 256 MiB |
-| `idle_timeout_s` | no | 1 to 86,400; default 120. Seconds the converter may print nothing before it is killed |
+| `code` | no | Paths in the folder (files or folders, no `..`) whose bytes identify the plugin; default the whole folder. Dot-names and `__pycache__` are skipped; at most 20,000 files and 256 MiB |
+| `idle_timeout_s` | no | 1 to 86,400; default 120. Seconds the plugin may print nothing before it is killed |
+| `handlers` | yes | A non-empty list of handlers, below |
+
+Every handler has `kind` and `id` (same characters as the plugin id; it may equal the plugin's own id, and must
+differ from every other handler id, built-in or installed, of any kind; `--handler-type` takes it) and `name`. A
+`kind` this ax-devil does not know refuses the plugin.
+
+Decoder handler (`"kind": "decoder"`):
+
+| Field | Required | Meaning |
+|-------|----------|---------|
+| `input` | yes | `"path"`: the request carries the overlay file's path |
+| `scene_version` | yes | The Scene version written, `"4.0"`; a different major or a newer minor does not load |
+| `extensions` | no | File name endings the decoder opens, lowercase with the dot, such as `.acme.jsonl`. Without any, it is picked only by id |
 | `bases` | no | `["frame"]`, `["time"]` or both: what a lane may match your records to video frames by. Frame: record k belongs to frame k (or the frame number you key by); a record is a `skipped` line or the samples in a row with one start key. Time: by the records' timestamps. Default `["frame"]` |
 | `default_basis` | no | One of `bases`, the one a lane starts with; default the first listed |
-| `options` | no | `[{"key","label","kind","required","default"}]`: `key` is letters, digits, `_` or `-`; `kind` is `text`, `file` or `folder`; `required` defaults to false; `default` is text. Values are always text |
+| `options` | no | `[{"key","label","kind","required","default","positional","extensions"}]`: `key` is letters, digits, `_` or `-` and is the flag `--<key>` (`_` as `-`) unless `positional`; `kind` is `text`, `file` (with optional `extensions`) or `folder`; `required` defaults to false; `default` is text. Values are always text |
 
-The cache of a file's samples is keyed by the converter's id, the SHA-256 of the manifest and its `code` files, the
-declared options (defaults filled in; undeclared keys are dropped with a warning). Editing a code file reruns the converter the next time the file opens; the app reads the manifest itself only at start.
+The cache of a file's samples is keyed by the handler id, the SHA-256 of the manifest and the plugin's `code` files,
+the declared options (defaults filled in; undeclared keys are dropped with a warning). Editing a code file reruns the
+plugin the next time the file opens; the app reads the manifest itself only at start.
 
 ## Registry `$XDG_DATA_HOME/ax-devil/plugins.json`
 
-`{"version": 1, "converters": [{"manifest": "/absolute/path/ax-devil-converter.json"}]}` (default
-`~/.local/share/ax-devil/plugins.json`). `plugins install` and `plugins remove` write it atomically; a converter is
+`{"version": 2, "plugins": [{"manifest": "/absolute/path/ax-devil-plugin.json"}]}` (default
+`~/.local/share/ax-devil/plugins.json`). `plugins install` and `plugins remove` write it atomically; a plugin is
 never found by scanning folders. The app reads it at start, so a change applies on the next start. A broken registry
-loads no converter; a broken entry fails alone. Both are listed by `plugins list`.
+loads no plugin; a broken entry fails alone. Both are listed by `plugins list`.
 
 ## Running
 
@@ -42,11 +56,12 @@ absolute paths in the request. The environment holds only `PATH`, `HOME`, `LANG`
 `LC_ALL`, `LC_CTYPE`, `TZ` (on Windows also `SYSTEMROOT`) and the manifest's `env`. Stdin gets one line, then EOF:
 
 ```json
-{"protocol":2,"path":"/abs/overlay.file","options":{"camera":"front"}}
+{"protocol":3,"op":"decode","handler":"acme_tracks","input":{"path":"/abs/overlay.file"},"options":{"camera":"front"}}
 ```
 
-`options` holds every declared option that has a value. The request says nothing of the video, so a file in pixels
-needs its image size as options. Read stdin, then the file at `path`; write to stdout.
+`handler` is the id of the decoder called, so one program can serve several. `options` holds every declared option
+that has a value. The request says nothing of the video, so a file in pixels needs its image size as options. Read
+stdin, then the file at `input.path`; write to stdout.
 Stderr is drained: its last 20 lines (2 KiB) join a failure's reason, and it is logged at DEBUG only.
 
 ## Output: JSON Lines on stdout
@@ -61,15 +76,16 @@ exactly one key:
 | `{"replace": Scene}` | Like `sample`, but drops what its start key already held |
 | `{"warning": {"problem","reasons":[],"consequence"}}` | A problem the user should see; texts cut to 200 characters, three reasons |
 | `{"skipped": "reason"}` | A record you could not convert; counted |
+| `{"error": {"reason","field"?,"path"?}}` | The run cannot go on. Ends it at once as Incomplete with `reason` (`field` and `path` are for other operations and ignored here); later lines are not read |
 
 A line that is not valid JSON, has none or several of these keys, or holds a Scene that breaks a model rule is skipped
 and counted by line number. At the end one warning gives "Skipped N of M records" with up to three reasons. A header
 that comes late or twice ends the run as a protocol error.
 
-The run ends **Complete** when the converter exits 0 after its last line. Any other end is **Incomplete**: a nonzero
+The run ends **Complete** when the plugin exits 0 after its last line. Any other end is **Incomplete**: an `error` line, a nonzero
 exit or signal, nothing printed for `idle_timeout_s`, a line over 16 MiB, a protocol error, an unreadable pipe. The
 samples already read stay and the lane shows the reason; if none arrived, the overlay fails to open. On every end,
-and when the lane is closed, the host kills the converter and (not on Windows) everything it started.
+and when the lane is closed, the host kills the plugin and (not on Windows) everything it started.
 
 ## Scene
 
@@ -97,7 +113,7 @@ parts may be left out.
 - `measurements` (all optional): `image_velocity {vx, vy}`, `world_velocity {pitch, speed, yaw}`,
   `geographic {latitude, longitude, elevation?}`, `world {distance, azimuth, elevation}`.
 - `events` operations: `delete {entity}`, `rename {from, to}`, `merge {sources, target}`, `split {source, targets}`.
-- `source_data` holds what the file said verbatim; `debug` what the converter computed. Both hold only null, bool,
+- `source_data` holds what the file said verbatim; `debug` what the plugin computed. Both hold only null, bool,
   number, string, list and map.
 - A classification attribute that is a list of `{"rgb": [r, g, b], "name"?, "score"?}` is a colour list a catalog can
   colour by; bool, number and string attributes are also shown.
@@ -107,4 +123,4 @@ parts may be left out.
 
 The lane fills as samples arrive, but only when a header came first and keys ascend. Without a header, or after a
 key below an earlier one, frames wait for the end of the run, where the host sorts and joins them. Reopening an
-unchanged file reads the stored result and does not run the converter.
+unchanged file reads the stored result and does not run the plugin.

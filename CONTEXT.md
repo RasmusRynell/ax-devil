@@ -56,7 +56,8 @@ Shared language for ax-devil's inspection workspace. Code, docs and UI use these
 | File Scope | The Objects list mode that lists every object a lane's whole overlay file holds, kept by the lane's class toggles (on every class the object was recorded with) and the search, asked of the backend once the file is read and never of a Following viewer; Frame Scope lists the frame on screen's objects from its Sample Item. | Whole-file mode, history |
 | Export Job | One export of a viewer's lanes to an MP4 file or a PNG of one frame: the Owner asks on the viewer's playback socket, the backend freezes the lanes' catalogs, Lane Styles, Lane Policies and data revisions, and runs it, one at a time, until it ends or the socket closes. | Recording, render job |
 | Render Page | The hidden offscreen Electron page that draws an Export Job's (and `catalog render`'s) pictures from the frozen inputs, with the same presentation code as the screen. | Export window, headless browser |
-| Converter | An installed program that turns an overlay file into Scenes as JSON Lines, listed in the plugin registry and run as the user ([plugins](docs/plugins.md)). | Plugin, script, adapter |
+| Plugin | An installed program, listed in the plugin registry and run as the user, that provides Handlers ([plugins](docs/plugins.md)). | Converter, script, adapter |
+| Handler | One decoder or playlist resolver, built in or provided by a Plugin, selected by its handler id. A Plugin's decoder turns an overlay file into Scenes as JSON Lines. | Converter, driver |
 | Ingest Watermark | While a file is still being read, the sample key below which every frame is decided. Frame Map cells exist only below it, and the first out-of-order key stops it until the read ends. | Progress, loaded up to |
 | Marks | The boxes, lines, circles, points, paths and labels a catalog produces from a Sample Item in a lane, laid out and painted by the frontend. | Drawing Instruction, Prepared Drawing |
 
