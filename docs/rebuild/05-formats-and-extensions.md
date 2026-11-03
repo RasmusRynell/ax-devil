@@ -90,9 +90,9 @@ Guarantees any mechanism must meet (`docs/domain/invariants.md#plugin-system`, [
 
 - Discovery only through a declared registry; never by folder presence.
 - Protocol and Scene version checks before registration; failures listed, never fatal.
-- Plugin dependencies isolated from the app's; installing a plugin never changes the app.
-- Install and remove from the CLI, validated before activation and applied on restart; update and the Plugins view are
-  not built (PL-03).
+- A plugin owns its environment through its manifest's `command`; installing a plugin never changes the app.
+- Install, update and remove from the CLI and the Plugins view, validated before activation and applied to the
+  running app within a second or two: the app polls the registry and each listed manifest (PL-03).
 - Authoring stays cheap for an agent: one small folder, a local install command, a check command that runs it on real
   data.
 
@@ -101,16 +101,24 @@ declared schema (D4), filter predicates become declarative classification polici
 the host-owned store fed by the decoder's stream, and Scene free-form values are schema value types only.
 
 D1 is settled by D29: built-in decoders and resolvers are native; third-party authors port their plugins to the new
-contract; unchanged plugins are not supported (PL-05); there is no in-process Python bridge. Other data enters through
-converter processes (any language, JSON Lines; the spec is the
+contract; unchanged plugins are not supported (PL-05, not planned); there is no in-process Python bridge. Other data
+enters through plugin processes (any language, JSON Lines; the spec is the
 [write-plugin reference](../../.agents/skills/write-plugin/reference.md), the host's rules
-[`crates/converters/README.md`](../../crates/converters/README.md)):
+[`crates/plugins/README.md`](../../crates/plugins/README.md)):
 
-- A manifest declares the converter; it runs with an allowlisted environment, its stderr is drained, a line over
-  16 MiB fails it, and a kill takes its whole process group (on Windows only the process).
+- One manifest (`ax-devil-plugin.json`, version 2) lists typed handlers: `decoder` and `playlist_resolver`. A handler
+  kind the host does not know is skipped and listed; the plugin's other handlers still load. The manifest is the capability declaration; listing a plugin
+  never runs it. The registry (version 2) lists manifest paths.
+- One handler call is one process run speaking protocol 3: a request line on stdin, then `decode`, `scan` or `resolve`
+  output as JSON Lines. It runs with an allowlisted environment, its stderr is drained, a line over 16 MiB fails it,
+  and a kill takes its whole process group (on Windows only the process).
 - A failure marks the lane incomplete; cache identity includes the hash of its manifest and code files
   (`docs/domain/invariants.md#data-pipeline`).
-- There is no sandbox: a converter runs with the user's rights ([trust](../plugins.md#trust)).
+- A resolver plugin turns settings into a playlist; its settings are the declared schema (D4).
+- The Plugins view lists built-in and installed plugins and the reason for each failure; a folder installs, updates
+  and removes from it.
+- Payload and live decoders wait for live sources (PL-01).
+- There is no sandbox: a plugin runs with the user's rights ([trust](../plugins.md#trust)).
 
 ## Other extension points (keep)
 

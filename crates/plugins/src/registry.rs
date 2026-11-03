@@ -97,49 +97,89 @@ impl Registry {
     /// it.
     pub fn install(&mut self, path: &Path, reserved: &Reserved) -> Result<Manifest, ManifestError> {
         let (file, manifest) = read_manifest(path)?;
-        self.taken(None, reserved).claim(&manifest)?;
+        let mut manifests = self.load_all();
+        manifests.push(Ok(manifest.clone()));
+        if let Some(Err(error)) = reserved.claim_in_order(manifests).last() {
+            return Err(error);
+        }
         self.entries.push(entry_of(&file));
         Ok(manifest)
     }
 
-    /// Replaces the plugin that `target` names (see [`remove`](Self::remove)) by the one at `path`, in the same
-    /// place in the order, after reading and validating its manifest again; the replaced plugin's ids are free for
-    /// it. `None` when `target` names no plugin.
+    /// The position of the plugin that `target` names: its manifest or folder path, which always names exactly one,
+    /// or the id its manifest declares. `None` when it names no plugin; an error when an id is declared by more
+    /// than one (a plugin that fails to load takes no id, so two can end up declaring the same one).
+    pub fn find(&self, target: &str) -> Result<Option<usize>, RegistryError> {
+        let by_path = self.entries.iter().position(|entry| {
+            let manifest = entry_manifest(entry);
+            manifest == Path::new(target)
+                || manifest
+                    .parent()
+                    .is_some_and(|folder| folder == Path::new(target))
+        });
+        if by_path.is_some() {
+            return Ok(by_path);
+        }
+        let mut declaring = self.entries.iter().enumerate().filter(|(_, entry)| {
+            Manifest::load(&entry_manifest(entry)).is_ok_and(|loaded| loaded.id == target)
+        });
+        let first = declaring.next().map(|(index, _)| index);
+        match declaring.count() {
+            0 => Ok(first),
+            more => Err(RegistryError(format!(
+                "'{target}' is declared by {} plugins; name its manifest or folder",
+                more + 1
+            ))),
+        }
+    }
+
+    /// Replaces the plugin at `index` (from [`find`](Self::find)) by the one at `path`, in the same place in the
+    /// order, after reading and validating its manifest again. The whole registry is claimed in load order, as `load`
+    /// does, with and without the replacement. It is refused when the new manifest does not load in its place, or
+    /// when any plugin that loads today would stop loading.
     pub fn update(
         &mut self,
-        target: &str,
+        index: usize,
         path: &Path,
         reserved: &Reserved,
-    ) -> Result<Option<Manifest>, ManifestError> {
-        let Some(index) = self.entries.iter().position(|entry| names(entry, target)) else {
-            return Ok(None);
-        };
+    ) -> Result<Manifest, ManifestError> {
         let (file, manifest) = read_manifest(path)?;
-        self.taken(Some(index), reserved).claim(&manifest)?;
-        self.entries[index] = entry_of(&file);
-        Ok(Some(manifest))
-    }
-
-    /// `reserved` and the ids of the installed plugins that load, except the one at `skip`.
-    fn taken(&self, skip: Option<usize>, reserved: &Reserved) -> Reserved {
-        let mut taken = reserved.clone();
-        for (index, entry) in self.entries.iter().enumerate() {
-            // One that does not load took no ids, as in `load`.
-            if Some(index) != skip
-                && let Ok(other) = Manifest::load(&entry_manifest(entry))
-            {
-                let _ = taken.claim(&other);
+        let today = self.load_all();
+        let mut replaced = today.clone();
+        replaced[index] = Ok(manifest.clone());
+        let before: Vec<_> = reserved.claim_in_order(today).collect();
+        let after: Vec<_> = reserved.claim_in_order(replaced).collect();
+        if let Err(error) = &after[index] {
+            return Err(error.clone());
+        }
+        for (before, after) in before.iter().zip(&after) {
+            if let (Ok(plugin), Err(error)) = (before, after) {
+                return Err(ManifestError::file(format!(
+                    "plugin '{}' would stop loading: {}",
+                    plugin.id, error.reason
+                )));
             }
         }
-        taken
+        self.entries[index] = entry_of(&file);
+        Ok(manifest)
     }
 
-    /// Removes the plugin whose manifest declares the id `target`, or whose manifest or folder path is `target`
-    /// (the only way to remove one that no longer loads). Its files are left alone. Returns whether one was removed.
-    pub fn remove(&mut self, target: &str) -> bool {
-        let before = self.entries.len();
-        self.entries.retain(|entry| !names(entry, target));
-        self.entries.len() != before
+    /// Every entry's manifest, read again, in install order.
+    fn load_all(&self) -> Vec<Result<Manifest, ManifestError>> {
+        self.entries
+            .iter()
+            .map(|entry| Manifest::load(&entry_manifest(entry)))
+            .collect()
+    }
+
+    /// Removes the plugin [`find`](Self::find) returns for `target` (the only way to remove one that no longer loads
+    /// is its manifest or folder path). Its files are left alone. Returns whether one was removed.
+    pub fn remove(&mut self, target: &str) -> Result<bool, RegistryError> {
+        let found = self.find(target)?;
+        if let Some(index) = found {
+            self.entries.remove(index);
+        }
+        Ok(found.is_some())
     }
 
     /// Writes the registry atomically: a temporary file beside it, private to the user, renamed into place.
@@ -186,16 +226,6 @@ fn entry_of(manifest: &Path) -> Map<String, Value> {
         "manifest".to_owned(),
         Value::String(manifest.to_string_lossy().into_owned()),
     )])
-}
-
-/// Whether `target` is the entry's manifest path, its folder, or the id its manifest declares.
-fn names(entry: &Map<String, Value>, target: &str) -> bool {
-    let manifest = entry_manifest(entry);
-    manifest == Path::new(target)
-        || manifest
-            .parent()
-            .is_some_and(|folder| folder == Path::new(target))
-        || Manifest::load(&manifest).is_ok_and(|loaded| loaded.id == target)
 }
 
 fn entry_manifest(entry: &Map<String, Value>) -> PathBuf {

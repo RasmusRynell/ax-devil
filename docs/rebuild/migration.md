@@ -28,4 +28,4 @@ recreate for the new stack using the old as reference; Drop = do not bring over.
 | Shaders, QML, packaging metadata, lockfile | `video_player/engine/quick/`, `pyproject.toml`, `uv.lock` | Drop | Stack-specific |
 | Demo media | `docs/media/` | Drop | Re-record with DT-06 |
 | Users' configs, workspace files, caches, recents, recovery copies, plugin environments | `~/.ax_devil/`, XDG data folder | Drop | The new app does not read old data |
-| Third-party Python plugins | users' own packages | Port by their authors | Default of D1; PL-05 not planned |
+| Third-party Python plugins | users' own packages | Port by their authors | Default of D1 and D29; PL-05 not planned |

@@ -34,7 +34,7 @@ has them; they are optional and not part of this repository.
 | `.agents/skills/review/SKILL.md` | Reviewing changes for real problems, module depth, architectural ownership, tests worth merging, and documentation placement |
 | `.agents/skills/write-tests/SKILL.md` | Deciding whether a test is worth having, deleting tests, writing regression coverage, changing assertions, or repairing flaky tests |
 | `.agents/skills/write-ui/SKILL.md` | Adding or restyling application UI: windows, dialogs, panels, fonts, spacing, colors |
-| `.agents/skills/write-plugin/SKILL.md` | Making ax-devil read an overlay format it does not: writing, checking and installing a converter |
+| `.agents/skills/write-plugin/SKILL.md` | Making ax-devil read an overlay format it does not: writing, checking and installing a plugin |
 | `.agents/skills/port-module/SKILL.md` | Building one module or parity row of the rewrite from the reference commit |
 | `.agents/skills/verify-headless/SKILL.md` | Running the app, a command or the screenshot harness in isolation and inspecting the result |
 

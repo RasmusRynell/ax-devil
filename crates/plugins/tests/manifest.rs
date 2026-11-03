@@ -1,50 +1,21 @@
-//! What makes a plugin loadable: the manifest's rules, the code identity, and the registry.
+//! What makes a plugin loadable: the manifest's rules and the code identity.
 
 mod common;
 
 use std::{fs, path::Path, sync::Arc};
 
-use common::{TestSink, decode};
+use common::{TestSink, base, decode, install};
 use foundation::CancelToken;
 use handler_api::{Cli, Decoder, FieldKind, PlaylistResolver, Settings};
-use plugins::{LoadedPlugin, MANIFEST_FILE, Manifest, PluginDecoder, Registry, Reserved, load};
+use plugins::{LoadedPlugin, Manifest, PluginDecoder};
 use serde_json::{Value, json};
 
 /// Changes the base manifest into one a field of which is wrong.
 type Edit = Box<dyn FnOnce(&mut Value)>;
 
-fn base() -> Value {
-    json!({
-        "manifest": 2, "id": "acme", "name": "ACME", "version": "1", "protocol": 3,
-        "command": ["python3", "convert.py"], "env": ["PYTHONPATH"], "code": ["convert.py"],
-        "handlers": [{
-            "kind": "decoder", "id": "acme", "name": "ACME", "input": "path", "scene_version": "4.0",
-            "extensions": [".acme"],
-            "options": [{ "key": "camera", "label": "Camera", "kind": "text", "default": "front" }]
-        }]
-    })
-}
-
-/// The ids a build with these built-ins would have taken.
-fn reserved(plugin: &str, handler: &str) -> Reserved {
-    Reserved {
-        plugins: [plugin.to_owned()].into(),
-        handlers: [handler.to_owned()].into(),
-    }
-}
-
 /// The first decoder of the plugin at `path`.
 fn decoder(path: &Path) -> Arc<PluginDecoder> {
     LoadedPlugin::load(path).expect("loads").decoders.remove(0)
-}
-
-/// A plugin folder holding `manifest` and a `convert.py`; returns the manifest path.
-fn install(folder: &Path, manifest: &Value) -> std::path::PathBuf {
-    fs::create_dir_all(folder).expect("folder");
-    fs::write(folder.join("convert.py"), "print('hi')\n").expect("script");
-    let path = folder.join(MANIFEST_FILE);
-    fs::write(&path, manifest.to_string()).expect("manifest");
-    path
 }
 
 /// The manifest field a refusal names, for a manifest with `edit` applied to the base one.
@@ -255,103 +226,6 @@ fn options_are_filled_from_defaults_and_restricted_to_the_declared_keys() {
 }
 
 #[test]
-fn the_registry_installs_lists_removes_and_keeps_unknown_keys() {
-    let root = tempfile::tempdir().expect("root");
-    let registry_path = root.path().join("data/ax-devil/plugins.json");
-    let first = root.path().join("first");
-    install(&first, &base());
-
-    let mut registry = Registry::read(&registry_path).expect("a missing registry is empty");
-    assert!(registry.manifests().is_empty());
-    let manifest = registry
-        .install(&first, &reserved("mot", "MOT_FILE"))
-        .expect("installs");
-    assert_eq!(manifest.id, "acme");
-    let field = |taken: Reserved| {
-        let error = registry.clone().install(&first, &taken).expect_err("taken");
-        error.field
-    };
-    assert_eq!(field(Reserved::default()).as_deref(), Some("id"));
-    assert_eq!(field(reserved("acme", "")).as_deref(), Some("id"));
-    // Plugin ids and handler ids are separate: only a taken handler id refuses the handler.
-    let mut elsewhere = Registry::read(&registry_path).expect("empty");
-    let error = elsewhere
-        .install(&first, &reserved("mot", "acme"))
-        .expect_err("the handler id is reserved");
-    assert_eq!(error.field.as_deref(), Some("handlers[0].id"));
-    fs::create_dir_all(registry_path.parent().expect("parent")).expect("folder");
-    registry.save().expect("saves");
-
-    let mut text: Value =
-        serde_json::from_str(&fs::read_to_string(&registry_path).expect("file")).expect("json");
-    text["future"] = json!({"kept": true});
-    fs::write(&registry_path, text.to_string()).expect("edit");
-    let mut registry = Registry::read(&registry_path).expect("reads");
-    assert_eq!(registry.manifests().len(), 1);
-    assert!(registry.remove("acme"));
-    assert!(!registry.remove("acme"));
-    registry.save().expect("saves");
-    let saved: Value =
-        serde_json::from_str(&fs::read_to_string(&registry_path).expect("file")).expect("json");
-    assert_eq!(saved["future"], json!({"kept": true}));
-    assert_eq!(saved["plugins"], json!([]));
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        let mode = fs::metadata(&registry_path)
-            .expect("stat")
-            .permissions()
-            .mode();
-        assert_eq!(mode & 0o077, 0, "the registry is private");
-    }
-}
-
-#[test]
-fn a_broken_registry_or_plugin_loads_the_rest_and_is_listed() {
-    let root = tempfile::tempdir().expect("root");
-    let registry_path = root.path().join("plugins.json");
-    let good = install(&root.path().join("good"), &base());
-    let mut broken_manifest = base();
-    broken_manifest["id"] = json!("broken");
-    broken_manifest["protocol"] = json!(9);
-    let broken = install(&root.path().join("broken"), &broken_manifest);
-    let missing = root.path().join("gone/ax-devil-plugin.json");
-    let entry = |manifest: &Path| json!({ "manifest": manifest });
-    fs::write(
-        &registry_path,
-        json!({ "version": 2, "plugins": [entry(&broken), entry(&missing), entry(&good), entry(&good)] }).to_string(),
-    )
-    .expect("registry");
-
-    let loaded = load(&registry_path, &Reserved::default());
-    assert!(loaded.registry.is_none());
-    let outcome: Vec<Option<&str>> = loaded
-        .entries
-        .iter()
-        .map(|entry| {
-            entry
-                .plugin
-                .as_ref()
-                .err()
-                .map(|error| error.field.as_deref().unwrap_or("file"))
-        })
-        .collect();
-    assert_eq!(outcome, [Some("protocol"), Some("file"), None, Some("id")]);
-    assert_eq!(loaded.decoders().len(), 1);
-
-    fs::write(&registry_path, "{ not json").expect("registry");
-    let loaded = load(&registry_path, &Reserved::default());
-    assert!(loaded.registry.is_some() && loaded.entries.is_empty() && loaded.decoders().is_empty());
-
-    fs::write(&registry_path, r#"{"version":3,"plugins":[]}"#).expect("registry");
-    let reason = load(&registry_path, &Reserved::default())
-        .registry
-        .expect("refused")
-        .0;
-    assert!(reason.contains("newer ax-devil"), "{reason}");
-}
-
-#[test]
 fn a_plugin_provides_decoders_and_resolvers_skips_unknown_kinds_and_refuses_a_handler_id_twice() {
     let folder = tempfile::tempdir().expect("folder");
     let mut manifest = base();
@@ -417,13 +291,15 @@ fn resolver_settings_of_every_kind_load_and_each_refusal_names_the_field() {
         manifest
     };
     let folder = tempfile::tempdir().expect("folder");
-    let valid = setting(json!({ "key": "more", "label": "More", "kind": "text" }));
+    let valid = setting(json!({ "key": "all", "label": "All", "kind": "scan" }));
     let plugin = LoadedPlugin::load(&install(folder.path(), &valid)).expect("every kind loads");
     let form = &plugin.resolvers[0].spec().form;
     assert_eq!(form.fields.len(), 8);
     assert_eq!(form.fields[0].cli, Cli::Positional);
     assert_eq!(form.fields[3].kind, FieldKind::Integer { min: 1 });
     assert_eq!(form.fields[4].cli, Cli::Flag("handler-type".to_owned()));
+    let empty = setting(json!({ "key": "all", "label": "All", "kind": "scan", "depends_on": [] }));
+    LoadedPlugin::load(&install(folder.path(), &empty)).expect("empty depends_on");
 
     // Refusals in the settings, and a kind only a resolver's settings take.
     let cases = [

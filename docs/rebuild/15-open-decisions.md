@@ -13,7 +13,7 @@ and D20 belongs to M2. Decisions already taken are in [14](14-build-order.md).
 
 | ID | Question | Recommended answer |
 |----|----------|--------------------|
-| D1 | How do plugins (file decoders, message decoders, playlist resolvers) run, and do existing third-party Python plugins keep working (PL-05)? | Settled by D29: the built-in ones are native code and other data enters through converter processes; authors port third-party plugins to the new contract ([05](05-formats-and-extensions.md#plugin-runtime)) |
+| D1 | How do plugins (file decoders, message decoders, playlist resolvers) run, and do existing third-party Python plugins keep working (PL-05)? | Settled by D29: the built-in ones are native code and other data enters through plugin processes (one manifest of typed handlers; the plugin owns its environment through `command`); authors port third-party plugins to the new contract and the Python bridge (PL-05) stays not planned ([05](05-formats-and-extensions.md#plugin-runtime)) |
 | D15 | Do we write a throwaway script in the old Python app that dumps what it decodes and draws, to compare the new code against? | Yes; commit the outputs with a note on where they came from |
 
 ## By M3
@@ -27,7 +27,7 @@ and D20 belongs to M2. Decisions already taken are in [14](14-build-order.md).
 | ID | Question | Recommended answer |
 |----|----------|--------------------|
 | D4 | Should a playlist resolver (the plugin that turns a folder or file into a playlist) declare its settings as data, so the app and the command line both build the form from it ([05](05-formats-and-extensions.md#resolver-contract))? | Yes; tested against both built-in resolvers |
-| D6 | How is the app packaged, which FFmpeg build does it ship, and may it include a GPL video encoder for export? | A single Linux package (AppImage or Flatpak) plus a source build; FFmpeg as a dynamically linked LGPL build; no GPL encoder; Python only if D1 keeps a bridge |
+| D6 | How is the app packaged, which FFmpeg build does it ship, and may it include a GPL video encoder for export? | A single Linux package (AppImage or Flatpak) plus a source build; FFmpeg as a dynamically linked LGPL build; no GPL encoder; no Python (D1 keeps no bridge) |
 
 ## By M5
 

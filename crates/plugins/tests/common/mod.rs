@@ -3,6 +3,7 @@
 #![allow(dead_code)] // each test binary uses a different part
 
 use std::{
+    fs,
     ops::ControlFlow,
     path::{Path, PathBuf},
 };
@@ -11,8 +12,9 @@ use foundation::{CancelToken, Interrupt, Warning};
 use handler_api::{
     DecodeError, DecodeSummary, Decoder, Header, Input, OnEqualKey, Record, SceneSink, Settings,
 };
-use plugins::PluginDecoder;
+use plugins::{MANIFEST_FILE, PluginDecoder};
 use scene::Scene;
+use serde_json::{Value, json};
 
 /// Records what a decoder gives its sink; optionally cancels after some samples.
 #[derive(Default)]
@@ -119,4 +121,26 @@ pub fn manifest_text(command: &str, extra: &str) -> String {
             "handlers":[{{"kind":"decoder","id":"test-conv","name":"Test","input":"path","scene_version":"4.0",
             "extensions":[".test"]}}]}}"#
     )
+}
+
+/// A valid manifest for one plugin, `acme`, with one decoder.
+pub fn base() -> Value {
+    json!({
+        "manifest": 2, "id": "acme", "name": "ACME", "version": "1", "protocol": 3,
+        "command": ["python3", "convert.py"], "env": ["PYTHONPATH"], "code": ["convert.py"],
+        "handlers": [{
+            "kind": "decoder", "id": "acme", "name": "ACME", "input": "path", "scene_version": "4.0",
+            "extensions": [".acme"],
+            "options": [{ "key": "camera", "label": "Camera", "kind": "text", "default": "front" }]
+        }]
+    })
+}
+
+/// A plugin folder holding `manifest` and a `convert.py`; returns the manifest path.
+pub fn install(folder: &Path, manifest: &Value) -> std::path::PathBuf {
+    fs::create_dir_all(folder).expect("folder");
+    fs::write(folder.join("convert.py"), "print('hi')\n").expect("script");
+    let path = folder.join(MANIFEST_FILE);
+    fs::write(&path, manifest.to_string()).expect("manifest");
+    path
 }

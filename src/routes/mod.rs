@@ -8,6 +8,7 @@
 mod client_errors;
 mod handlers;
 pub mod playback;
+mod plugins;
 pub mod window;
 mod workspaces;
 
@@ -59,7 +60,8 @@ pub(crate) struct Route {
 const EVERY: &[Listener] = &[Listener::Local, Listener::Lan, Listener::Server];
 /// Listeners whose callers can be the person at this machine or hold the server password.
 const MEMBERS: &[Listener] = &[Listener::Local, Listener::Server];
-/// The desktop's own files: window positions belong to this machine, so no other listener serves them.
+/// The desktop's own files: window positions and installed plugins belong to this machine, so no other listener
+/// serves them.
 const LOCAL: &[Listener] = &[Listener::Local];
 
 /// Every route the backend mounts.
@@ -119,6 +121,27 @@ pub(crate) const ROUTES: &[Route] = &[
         listeners: MEMBERS,
         who: Who::Files,
         handler: |method| on(method, handlers::get_plugins),
+    },
+    Route {
+        method: MethodFilter::POST,
+        path: "/api/plugins/install",
+        listeners: LOCAL,
+        who: Who::Preferences,
+        handler: |method| on(method, plugins::install),
+    },
+    Route {
+        method: MethodFilter::POST,
+        path: "/api/plugins/remove",
+        listeners: LOCAL,
+        who: Who::Preferences,
+        handler: |method| on(method, plugins::remove),
+    },
+    Route {
+        method: MethodFilter::POST,
+        path: "/api/plugins/update",
+        listeners: LOCAL,
+        who: Who::Preferences,
+        handler: |method| on(method, plugins::update),
     },
     Route {
         method: MethodFilter::POST,

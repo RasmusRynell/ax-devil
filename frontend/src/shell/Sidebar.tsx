@@ -1,6 +1,7 @@
 import type { SidebarView } from "../generated/api";
 import { SearchField } from "../kit/Fields";
 import { ViewPanel } from "../kit/ViewPanel";
+import { PluginsView } from "../plugins/PluginsView";
 import { SessionsView } from "./SessionsView";
 import { StartPanel } from "./StartPanel";
 import { WorkspaceTree } from "./WorkspaceTree";
@@ -28,9 +29,7 @@ export function Sidebar({ view, onRun }: { view: SidebarView; onRun: (id: string
           )}
           {view === "bookmarks" && <p className="m-0 px-m text-muted">No bookmarks</p>}
           {view === "sessions" && <SessionsView />}
-          {view === "plugins" && (
-            <p className="m-0 px-m text-muted">Plugin changes apply after a restart.</p>
-          )}
+          {view === "plugins" && <PluginsView />}
         </div>
       </ViewPanel>
     </aside>

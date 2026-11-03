@@ -46,7 +46,7 @@ Optional further guidance: the owner's user-global `writing-for-agents` and `wri
 | `write-tests` | Add, delete, repair tests | Delete-first, the four questions, choose-and-assert, flaky policy | Runbook links and fixture names |
 | `write-ui` | Build or restyle application UI | Principles, button and accent conventions, fit rules, the check loop | Building-blocks table, code sample, screenshot commands (all Qt today) |
 | `render-catalog` | Change how overlays look by editing catalog JSON | The whole loop and writing guidance (rewritten for catalog v4) | Command names if the CLI changes; built-in catalog paths |
-| `write-plugin` (with its `reference.md`) | Write a converter for the user's data | The loop: real data, contract, package outside the repo, map to Scene, prove, install, hand over | Reference for the converter contract (D29); Scene type names; install commands; example package |
+| `write-plugin` (with its `reference.md`) | Write a plugin for the user's data | The loop: real data, contract, package outside the repo, map to Scene, prove, install, hand over | Reference for the plugin contract (D29); Scene type names; install commands; example package |
 
 New skills:
 

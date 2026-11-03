@@ -142,16 +142,14 @@ pub fn load(registry: &Path, reserved: &Reserved) -> Loaded {
             };
         }
     };
-    let mut taken = reserved.clone();
-    let entries = registry
-        .manifests()
-        .into_iter()
-        .map(|manifest| {
-            let plugin = LoadedPlugin::load(&manifest).and_then(|plugin| {
-                taken.claim(&plugin.manifest)?;
-                Ok(plugin)
-            });
-            Entry { manifest, plugin }
+    let manifests = registry.manifests();
+    let read: Vec<_> = manifests.iter().map(|path| Manifest::load(path)).collect();
+    let entries = reserved
+        .claim_in_order(read)
+        .zip(manifests)
+        .map(|(plugin, manifest)| Entry {
+            manifest,
+            plugin: plugin.map(LoadedPlugin::new),
         })
         .collect();
     Loaded {

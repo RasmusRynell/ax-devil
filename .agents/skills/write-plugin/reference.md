@@ -55,7 +55,7 @@ starts with a letter or digit, and in a resolver is not `help`, `config`, `cache
 | `integer` | whole number | `min` (default 0) |
 | `handler` | one decoder id | |
 | `decoder_options` | a map of that decoder's options | `handler_field`: the key of the `handler` field it belongs to |
-| `scan` | a list of values the plugin's `scan` found; left out means all | `depends_on`: keys of the other settings the scan reads, not a `scan` or `decoder_options` |
+| `scan` | a list of values the plugin's `scan` found; left out means all | `depends_on` (optional): keys of the other settings the scan reads, not a `scan` or `decoder_options` |
 
 The cache of a file's samples is keyed by the handler id, the SHA-256 of the manifest and the plugin's `code` files,
 the declared options (defaults filled in; undeclared keys are dropped with a warning). Editing a code file reruns the

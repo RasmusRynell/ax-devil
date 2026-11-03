@@ -18,7 +18,7 @@ owner's written decision. A new feature gets a row in 01 first.
 | WS-08 | Hide/Unhide entries and lanes | M | done | `crates/workspace-store` tests, `crates/sessions/tests/session/matrix.rs`, `src/session/project.rs`, `frontend/src/{shell/WorkspaceTree,viewer/{PlaylistViewer,hidden},playback/{LaneGrid,VideoViewer}}.test.*` | Kept in the Doc, never saved ([CONTEXT](../CONTEXT.md)). "Show hidden" lists hidden rows dimmed; next/previous skip hidden entries; hidden lanes undrawn |
 | WS-09 | Bookmarks and reviewed marks; Bookmarks view; open at frame | M | in progress | `crates/workspace-files` tests | Data model, validation and the file round trip only; no commands, view or CSV |
 | WS-10 | Bookmarks to CSV | S | todo |  |  |
-| WS-11 | Sidebar views Workspace, Live, Offline, Bookmarks, Plugins; search, sort, filter | M | in progress | `shell/Shell.test.tsx`, `shell/WorkspaceTree.test.tsx` | The Workspace view is a tree of items, entries and lanes from the backend's rows. Other views and search fields are placeholders; no sort or filter |
+| WS-11 | Sidebar views Workspace, Live, Offline, Bookmarks, Plugins; search, sort, filter | M | in progress | `shell/Shell.test.tsx`, `shell/WorkspaceTree.test.tsx` | The Workspace view is a tree of items, entries and lanes from the backend's rows. The Plugins view lists, installs a folder, updates and removes plugins. Other views and search fields are placeholders; no sort or filter |
 | WS-12 | Start panel and welcome area | M | in progress | `shell/Shell.test.tsx`, `shell/WorkspaceFiles.test.tsx` | Add Video, Add Playlist, Open Workspace and recent workspaces work; live intake remains |
 | WS-13 | Split viewer area: drag to split, preview vs pinned panes | M | todo |  |  |
 | WS-14 | Long playlists load collapsed | S | todo |  |  |
@@ -95,10 +95,10 @@ Listed in [parity deviations](parity-deviations.md).
 
 | ID | Feature | P | Status | Test | Notes |
 |----|---------|---|--------|------|-------|
-| PL-01 | Decoder plugins (file, payload) and playlist resolver plugins | M | in progress | `crates/plugins/tests/`, `tests/plugins.rs` | Plugins with decoder and playlist resolver handlers ([plugins](plugins.md), D29). Left: payload decoders |
+| PL-01 | Decoder plugins (file, payload) and playlist resolver plugins | M | in progress | `crates/plugins/tests/`, `tests/plugins.rs` | Plugins with decoder and playlist resolver handlers ([plugins](plugins.md), D29). Left: payload and live decoders, which wait for live sources |
 | PL-02 | Built-in decoders and resolvers listed by `list-handlers` and `playlist --help` | M | in progress | `src/cli/tests.rs`, `src/routes/handlers.rs`, `crates/handlers` tests, `crates/scene-decoders/tests/adf_*.rs` | MOT, UVG-VCM, ONVIF XML, CVAT, ADF beta/v1 (frame and consolidated) and plugin decoders; both resolvers. ADF as live payload decoders waits for live sources. CLI help is generated, untested |
-| PL-03 | Install, update, remove, list from CLI and Plugins view | M | in progress | `tests/plugins.rs`, `src/cli/tests.rs` | `plugins install/update/remove/list/check`; applied to the running app. Left: Plugins view |
-| PL-04 | Load failures never stop the app and are listed | M | in progress | `tests/plugins.rs` | `plugins list` shows load failures; a failed run leaves its lane Incomplete. Left: Plugins view |
+| PL-03 | Install, update, remove, list from CLI and Plugins view | M | done | `tests/plugins.rs`, `src/cli/tests.rs`, `src/routes/plugins.rs`, `frontend/src/plugins/PluginsView.test.tsx` | `plugins install/update/remove/list/check` from the CLI; the Plugins view lists, installs a folder, updates (reads the manifest again) and removes; applied to the running app. An edited manifest is also picked up by itself |
+| PL-04 | Load failures never stop the app and are listed | M | done | `tests/plugins.rs`, `frontend/src/plugins/PluginsView.test.tsx` | `plugins list` and the Plugins view show load failures with their reason; a failed run leaves its lane Incomplete |
 | PL-05 | Unchanged third-party Python plugins run (bridge); not planned by default | S | todo |  |  |
 
 ## Settings and application
