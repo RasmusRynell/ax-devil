@@ -205,6 +205,35 @@ describe("add playlist dialog", () => {
     ]);
   });
 
+  it("keeps each source's form while the user switches between sources", async () => {
+    stubBackend();
+    await open();
+    choose("folder_pair");
+    fireEvent.change(screen.getByLabelText("Videos folder"), { target: { value: "/videos" } });
+    fireEvent.change(screen.getByLabelText("Overlay format"), { target: { value: "MOT_FILE" } });
+    choose("mot_challenge");
+    await scanRoot("/data");
+    fireEvent.click(screen.getByRole("checkbox", { name: /SEQ-02/ }));
+
+    choose("folder_pair");
+    expect((screen.getByLabelText("Videos folder") as HTMLInputElement).value).toBe("/videos");
+    expect((screen.getByLabelText("Overlay format") as HTMLSelectElement).value).toBe("MOT_FILE");
+    choose("mot_challenge");
+    expect((screen.getByLabelText("Dataset folder") as HTMLInputElement).value).toBe("/data");
+    expect((screen.getByRole("checkbox", { name: /SEQ-01/ }) as HTMLInputElement).checked).toBe(
+      true,
+    );
+    expect((screen.getByRole("checkbox", { name: /SEQ-02/ }) as HTMLInputElement).checked).toBe(
+      false,
+    );
+    // Only the source on show is added.
+    fireEvent.click(add());
+    await waitFor(() => expect(commands()).toHaveLength(1));
+    expect(commands()).toMatchObject([
+      { cmd: { command: { items: [{ resolver: "mot_challenge" }] } } },
+    ]);
+  });
+
   it("says why the handlers could not be loaded, in the backend's words when it sends them, and retries", async () => {
     const failure = (error: unknown) => vi.stubGlobal("fetch", async () => reply(403, error));
     failure({ code: "Internal", params: {}, reason: "Handlers unavailable" });

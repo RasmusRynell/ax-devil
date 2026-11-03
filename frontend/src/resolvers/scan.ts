@@ -29,13 +29,15 @@ export interface ScanView {
   missing: readonly string[];
   /** The values that will load: found ones and saved ones alike. */
   selected: ReadonlySet<string>;
-  /** Whether the saved settings named no list, so loading every found value omits the key. */
+  /** Whether the next scan checks every value it finds: no list is saved. */
   everything: boolean;
+  /** Whether loading every found value omits the key: restored settings that named no list. A new form lists its names. */
+  leaveOut: boolean;
   failure: ErrorWire | null;
 }
 
-/** A field that has not scanned. `saved` is the list the settings hold for it, if any. */
-export function idleScan(saved: unknown): ScanView {
+/** A field that has not scanned. `saved` is the list the settings hold for it, if any; `restored` that they were saved. */
+export function idleScan(saved: unknown, restored = false): ScanView {
   const names = Array.isArray(saved) ? saved.filter((name) => typeof name === "string") : null;
   return {
     phase: "idle",
@@ -43,6 +45,7 @@ export function idleScan(saved: unknown): ScanView {
     missing: [],
     selected: new Set(names ?? []),
     everything: names === null,
+    leaveOut: restored && names === null,
     failure: null,
   };
 }
@@ -61,6 +64,7 @@ export function scanInvalidated(view: ScanView): ScanView {
     missing: [],
     selected: new Set(),
     everything: true,
+    leaveOut: false,
     failure: null,
   };
 }
@@ -117,6 +121,6 @@ export function checkedCount(view: ScanView): number {
 /** What the settings hold for the field: the checked values, or `undefined` for the key to be left out. */
 export function chosen(view: ScanView): string[] | undefined {
   const all = listed(view);
-  if (view.everything && all.every((value) => view.selected.has(value))) return undefined;
+  if (view.leaveOut && all.every((value) => view.selected.has(value))) return undefined;
   return all.filter((value) => view.selected.has(value));
 }

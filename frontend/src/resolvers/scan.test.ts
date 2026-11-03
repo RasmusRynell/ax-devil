@@ -14,12 +14,14 @@ const found = (...names: string[]) =>
 const selectedOf = (view: ScanView) => [...view.selected].sort();
 
 describe("scan selection", () => {
-  it("selects everything found and leaves the key out while it all stays checked", () => {
-    const view = scanFinished(idleScan(undefined), found("a", "b"));
-    expect(selectedOf(view)).toEqual(["a", "b"]);
-    expect(chosen(view)).toBeUndefined();
-    expect(chosen(toggled(view, "b"))).toEqual(["a"]);
-    expect(chosen(toggled(toggled(view, "b"), "b"))).toBeUndefined();
+  it("selects everything found and names it, unless restored settings named no list", () => {
+    const fresh = scanFinished(idleScan(undefined), found("a", "b"));
+    expect(selectedOf(fresh)).toEqual(["a", "b"]);
+    expect(chosen(fresh)).toEqual(["a", "b"]);
+    const restored = scanFinished(idleScan(undefined, true), found("a", "b"));
+    expect(chosen(restored)).toBeUndefined();
+    expect(chosen(toggled(restored, "b"))).toEqual(["a"]);
+    expect(chosen(toggled(toggled(restored, "b"), "b"))).toBeUndefined();
   });
 
   it("keeps a saved list as the selection, and the saved names not found as missing", () => {
@@ -33,7 +35,9 @@ describe("scan selection", () => {
   it("forgets the saved selection when the root changes, so the next scan checks everything", () => {
     const view = scanInvalidated(scanFinished(idleScan(["b", "gone"]), found("a", "b")));
     expect(selectedOf(view)).toEqual([]);
-    expect(selectedOf(scanFinished(view, found("a", "c")))).toEqual(["a", "c"]);
+    const next = scanFinished(view, found("a", "c"));
+    expect(selectedOf(next)).toEqual(["a", "c"]);
+    expect(chosen(next)).toEqual(["a", "c"]);
   });
 
   it("checks everything, or unchecks it when it was all checked", () => {

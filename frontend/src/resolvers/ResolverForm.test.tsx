@@ -139,7 +139,7 @@ afterEach(() => {
 });
 
 describe("resolver form", () => {
-  it("loads only what is checked, and leaves the key out while everything is", async () => {
+  it("loads exactly what is checked, naming every sequence of a new form", async () => {
     const scans = stubScans();
     render(<Harness />);
     expect(screen.getByRole("button", { name: "Scan" })).toHaveProperty("disabled", true);
@@ -150,7 +150,7 @@ describe("resolver form", () => {
     expect(screen.getByRole("status").textContent).toBe("Scanning…");
     expect(settings()).toBeNull();
     await respond(scans, 0, "SEQ-01", "SEQ-02");
-    expect(settings()).toEqual({ root: "/data", stride: 2 });
+    expect(settings()).toEqual({ root: "/data", stride: 2, sequences: ["SEQ-01", "SEQ-02"] });
 
     fireEvent.click(screen.getByRole("checkbox", { name: /SEQ-02/ }));
     expect(settings()).toEqual({ root: "/data", stride: 2, sequences: ["SEQ-01"] });
