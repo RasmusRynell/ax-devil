@@ -53,15 +53,11 @@ describe("evaluate", () => {
         expect(marks.layerEnd[layer]).toBeGreaterThanOrEqual(marks.layerEnd[layer - 1]);
   });
 
-  it("skips and counts a mark whose needed field is null, without touching the rest", () => {
-    // The text mark needs a colour that only some rows have; the box beside it does not.
+  it("leaves out every mark of a row with a failing mark, in every layer, and only that row", () => {
+    // The text mark needs a colour that only some rows have; the box in the layer before it does not.
     const catalog = compile([
-      {
-        marks: [
-          { mark: "box", stroke: "#ffffff", width: "1px" },
-          { mark: "text", text: "id", color: "top(attr.tint)", size: "10px", place },
-        ],
-      },
+      { marks: [{ mark: "box", stroke: "#ffffff", width: "1px" }] },
+      { marks: [{ mark: "text", text: "id", color: "top(attr.tint)", size: "10px", place }] },
     ]);
     const sample = fullSample([
       { id: "a", attrs: { tint: [{ rgba: 0xff0000ff, score: 1 }] } },
@@ -69,7 +65,8 @@ describe("evaluate", () => {
       { id: "c" },
     ]);
     const { marks, report } = run(catalog, sample);
-    expect(marks.count).toBe(4);
+    expect(marks.count).toBe(2);
+    expect(marks.layerEnd[0]).toBe(1);
     expect(Array.from(report.skipped)).toEqual([0, 2]);
     expect(report.total()).toBe(2);
   });

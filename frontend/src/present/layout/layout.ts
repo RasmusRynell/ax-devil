@@ -1,7 +1,7 @@
 import type { CompiledCatalog } from "../catalog/types";
 import type { SampleView } from "../columns";
 import type { EvalReport } from "../evaluate/report";
-import { Flag, type MarkBuffer, Rec } from "../marks/buffer";
+import { Flag, type MarkBuffer, Rec, RowFaults } from "../marks/buffer";
 import { Kind, Len, type MarkPlan, programOf } from "../marks/plan";
 import { AtlasFull, type TextSource } from "../text/source";
 import { Labels } from "./labels";
@@ -43,6 +43,10 @@ export class Layouter {
   private readonly rect: Rect = { x: 0, y: 0, w: 0, h: 0 };
   private readonly head = new Float32Array(6);
   private report: EvalReport | null = null;
+  /** The rows with a mark whose lengths do not work at this view; they are cleared by every `run`, never kept in the buffer. */
+  private readonly faults = new RowFaults();
+  /** A row failed during the pass, so what it already drew must be taken back by another pass. */
+  private again = false;
 
   constructor(private readonly text: TextSource) {
     this.labels = new Labels(text, this.sizes);
@@ -50,8 +54,9 @@ export class Layouter {
 
   /**
    * Lay out `marks` and write the result to `sink`. When the atlas page fills up it is reset and the layout runs
-   * once more on the fresh page, leaving out the glyphs that still do not fit. Marks whose lengths do not work are
-   * counted in `report` when given.
+   * once more on the fresh page, leaving out the glyphs that still do not fit. A mark whose lengths do not work
+   * leaves out every mark of its entity row or relation in every layer, as evaluation does, and the row is counted
+   * once in `report` when given.
    */
   run(
     marks: MarkBuffer,
@@ -62,8 +67,9 @@ export class Layouter {
     report: EvalReport | null = null,
   ): void {
     this.report = report;
+    this.faults.clear();
     try {
-      this.pass(marks, catalog, cols, view, sink);
+      this.passes(marks, catalog, cols, view, sink);
     } catch (error) {
       if (!(error instanceof AtlasFull)) throw error;
       const text = this.text;
@@ -71,13 +77,29 @@ export class Layouter {
       text.reset();
       text.dropOverflow = true;
       try {
-        this.pass(marks, catalog, cols, view, sink);
+        // Rows that failed before the page filled up stay failed and are not counted again.
+        this.passes(marks, catalog, cols, view, sink);
       } finally {
         text.dropOverflow = dropping;
         // Runs measured while glyphs were dropped lack some; the next pass measures them again.
         this.labels.discardRuns();
       }
     }
+  }
+
+  /** One pass, and a second one when a row failed in it, so the second leaves out what the failed row drew before. */
+  private passes(
+    marks: MarkBuffer,
+    catalog: CompiledCatalog,
+    cols: SampleView,
+    view: LayoutView,
+    sink: PrimitiveSink,
+  ): void {
+    this.again = false;
+    this.pass(marks, catalog, cols, view, sink);
+    if (!this.again) return;
+    this.again = false;
+    this.pass(marks, catalog, cols, view, sink);
   }
 
   private pass(
@@ -110,6 +132,8 @@ export class Layouter {
     sink: PrimitiveSink,
   ): void {
     const base = record * 12;
+    const word = marks.words[base + Rec.Row];
+    if (this.faults.failed(word)) return;
     const { width, height } = view;
     const f32 = marks.f32;
     const sizes = this.sizes;
@@ -148,7 +172,9 @@ export class Layouter {
         ok = this.labels.draw(plan, marks, record, l, t, r, b, view, sink);
         break;
     }
-    if (!ok && this.report) this.report.skipped[plan.index]++;
+    if (ok) return;
+    if (this.faults.fail(word) && this.report) this.report.skipped[plan.index]++;
+    this.again = true;
   }
 
   /**
