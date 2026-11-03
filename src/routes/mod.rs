@@ -9,6 +9,7 @@ mod client_errors;
 mod handlers;
 pub mod playback;
 pub mod window;
+mod workspaces;
 
 #[cfg(test)]
 mod conformance;
@@ -125,6 +126,13 @@ pub(crate) const ROUTES: &[Route] = &[
         listeners: MEMBERS,
         who: Who::Files,
         handler: |method| on(method, handlers::scan),
+    },
+    Route {
+        method: MethodFilter::GET,
+        path: "/api/workspaces/recent",
+        listeners: MEMBERS,
+        who: Who::Files,
+        handler: |method| on(method, workspaces::recent),
     },
     Route {
         method: MethodFilter::GET,

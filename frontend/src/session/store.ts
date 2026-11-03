@@ -1,5 +1,5 @@
 import { credential } from "../access";
-import { CommandRefused } from "../errors";
+import { CommandFailed, CommandRefused } from "../errors";
 import type {
   CursorOptions,
   CursorPoint,
@@ -402,6 +402,7 @@ export class SessionStore {
     const asked = this.#asked.get(seq);
     this.#asked.delete(seq);
     if (outcome.status === "ok") asked?.resolve(ticket);
+    else if (outcome.status === "failed") asked?.reject(new CommandFailed(outcome.error));
     else asked?.reject(new CommandRefused(outcome.code));
   }
 

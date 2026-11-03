@@ -173,6 +173,8 @@ export class Room {
   /** What the owner hid in the workspace tree. */
   hidden: HiddenTarget[] = [];
   docRev = 0;
+  /** Whether changes restored from a recovery copy await Keep or Discard. */
+  recovered = false;
   presenter: View = EMPTY_VIEW;
   /** What watchers may do while sharing is on; null while it is off. */
   access: Access | null = null;
@@ -349,7 +351,15 @@ export class FakeSocket {
         type: "doc",
         docRev: room.docRev,
         doc: {
-          workspace: { name: null, items: room.items, rows: rowsOf(room.items, room.hidden) },
+          workspace: {
+            name: null,
+            modified: room.recovered,
+            recovered: room.recovered,
+            epoch: 0,
+            file: null,
+            items: room.items,
+            rows: rowsOf(room.items, room.hidden),
+          },
         },
       });
     }
@@ -455,6 +465,12 @@ export class FakeSocket {
         room.seats.slice(1).forEach((other) => other.socket?.endWith(4404, "stopped"));
         room.seats.splice(1);
       } else room.secret += "x";
+    } else if (cmd.type === "workspace") {
+      if (!seat.owner) return refuse();
+      if (cmd.command.type === "keep" || cmd.command.type === "discard") {
+        room.recovered = false;
+        room.setItems(room.items);
+      }
     } else {
       const edits = seat.owner || room.access === "edit";
       if (!edits) return refuse();

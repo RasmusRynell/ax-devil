@@ -16,19 +16,30 @@ use api_types::{
 use sessions::session::Doc;
 use std::collections::HashSet;
 use workspace::{Content, Entry, SeekableVideoContent, Workspace, WorkspaceItem};
-use workspace_store::{ContentGen, Resolution, Row, RowKind, RowStatus, WorkspaceParts, rows};
+use workspace_store::{
+    ContentGen, Resolution, Row, RowKind, RowStatus, Saved, WorkspaceParts, rows,
+};
 
 /// `doc` as `audience` may see it.
 pub fn project(doc: &Doc, audience: Audience) -> DocWire {
     let Doc { workspace: state } = doc;
     let WorkspaceParts {
         workspace,
+        file,
+        saved,
+        epoch,
         resolutions,
         open,
         // The rows carry what the user hid.
         hidden: _,
     } = state.parts();
-    let Workspace { name, items } = workspace;
+    let Workspace {
+        name,
+        items,
+        // No view of them yet.
+        bookmarks: _,
+        reviewed: _,
+    } = workspace;
     let sees_everything = audience.host_details;
     let listed: Vec<&WorkspaceItem> = items
         .iter()
@@ -78,6 +89,14 @@ pub fn project(doc: &Doc, audience: Audience) -> DocWire {
     DocWire {
         workspace: WorkspaceState {
             name: name.clone(),
+            modified: state.modified(),
+            recovered: matches!(saved, Saved::Recovered { offer: true }),
+            epoch,
+            // The path names the host's folders, so only an audience with host details learns it.
+            file: file
+                .as_ref()
+                .filter(|_| sees_everything)
+                .map(|file| file.as_path().to_string_lossy().into_owned()),
             items,
             rows,
         },
@@ -256,6 +275,7 @@ mod tests {
         state
             .resolutions
             .insert(closed, Resolution::Failed(failure("SECRET-PATH-C")));
+        state.file = Some(HostPath::new("/data/SECRET-FILE.ax-devil.workspace"));
         state.open.extend([shown, playlist, failed]);
         state
             .hidden
@@ -297,6 +317,7 @@ mod tests {
             "SECRET-REASON",
             "SECRET-PATH-B",
             "SECRET-SKIP",
+            "SECRET-FILE",
             "closed.mp4",
             "closed playlist",
         ] {

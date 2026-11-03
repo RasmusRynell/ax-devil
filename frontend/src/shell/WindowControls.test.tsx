@@ -20,6 +20,8 @@ function bridge() {
     disconnect: vi.fn(),
     pickFolder: vi.fn(() => Promise.resolve(null)),
     pickExportFile: vi.fn(() => Promise.resolve(null)),
+    pickOpenWorkspace: vi.fn(() => Promise.resolve(null)),
+    pickSaveWorkspace: vi.fn(() => Promise.resolve(null)),
     appVersion: async () => "0.0.0",
     onMaximizedChange: vi.fn((listener: (maximized: boolean) => void) => {
       report = listener;

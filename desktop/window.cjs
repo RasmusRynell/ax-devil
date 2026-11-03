@@ -2,6 +2,7 @@
 // may use the shell's IPC, navigation to any other origin is blocked, and new windows are denied. The one link a page
 // may open is the project's, in the default browser.
 const { app, BrowserWindow, dialog, ipcMain, shell } = require("electron");
+const fs = require("node:fs");
 const path = require("node:path");
 
 const { reserved } = require("./generated/api.json");
@@ -12,6 +13,9 @@ const VIDEO_EXTENSIONS = ["mp4", "avi", "mkv", "mov"];
 
 // What an export writes, by file extension; the page names one of these.
 const EXPORT_EXTENSIONS = ["mp4", "png"];
+
+// The extension of a saved workspace file.
+const WORKSPACE_SUFFIX = ".ax-devil.workspace";
 
 // Zoom keys the shell handles itself (the backend refuses them as shortcuts), by the key that triggers them.
 const ZOOM_STEPS = { "=": 0.5, "+": 0.5, "-": -0.5, 0: null };
@@ -149,6 +153,48 @@ function installIpc({ connect, disconnect }) {
     return chosen.filePath.toLowerCase().endsWith(`.${extension}`)
       ? chosen.filePath
       : `${chosen.filePath}.${extension}`;
+  });
+  // The absolute path of a workspace file to open, null when the dialog is cancelled. Only the local backend's page
+  // may browse this machine's files.
+  handle("workspace:pick-open", async ({ remote, window }) => {
+    if (remote) throw new Error("Not allowed");
+    const chosen = await dialog.showOpenDialog(window, {
+      title: "Open Workspace",
+      properties: ["openFile"],
+      filters: [{ name: "Workspaces (*.ax-devil.workspace)", extensions: ["ax-devil.workspace"] }],
+    });
+    return chosen.canceled ? null : chosen.filePaths[0];
+  });
+  // The absolute path a workspace is saved to, null when cancelled. `name` is the suggested file name, cleaned of path
+  // separators and control characters; `currentPath` (the workspace's file, when it has one) is the default instead.
+  // The suffix is appended unless the chosen name has it; only an appended name that already exists asks first.
+  handle("workspace:pick-save", async ({ remote, window }, name, currentPath) => {
+    if (remote) throw new Error("Not allowed");
+    if (
+      typeof name !== "string" ||
+      (currentPath !== undefined && currentPath !== null && typeof currentPath !== "string")
+    )
+      throw new Error("Expected a workspace name and an optional current path");
+    const stem = name.replace(/[/\\\p{Cc}]/gu, "-");
+    const file = /^\.*$/.test(stem) ? "-" : stem;
+    const chosen = await dialog.showSaveDialog(window, {
+      title: "Save Workspace As",
+      defaultPath: currentPath || path.join(app.getPath("home"), `${file}${WORKSPACE_SUFFIX}`),
+    });
+    if (chosen.canceled) return null;
+    if (chosen.filePath.endsWith(WORKSPACE_SUFFIX)) return chosen.filePath;
+    const target = `${chosen.filePath}${WORKSPACE_SUFFIX}`;
+    if (fs.existsSync(target)) {
+      const answer = await dialog.showMessageBox(window, {
+        type: "warning",
+        message: `Replace ${path.basename(target)}?`,
+        buttons: ["Replace", "Cancel"],
+        defaultId: 1,
+        cancelId: 1,
+      });
+      if (answer.response !== 0) return null;
+    }
+    return target;
   });
   // The chosen absolute path, null when the dialog is cancelled; the page saves it through the settings. Only the
   // local backend's page may browse this machine's folders.

@@ -240,8 +240,7 @@ implementing module closes.
 - Settings apply on OK. Settings that need a restart carry one shared marker, and saving one offers to restart after
   the exit-time saves. Quick Setup is the one exception.
 - Saves validate every editable field, replace the configuration atomically, and only then notify; a failed save
-  changes nothing. Startup storage folders stay active until restart, except recovery copies and recent workspaces,
-  which follow the newly saved folder.
+  changes nothing. Startup storage folders stay active until restart.
 - Settings live in one immutable state replaced whole; consumers subscribe to changes, never poll.
 - Each settings row is Personal (how my app behaves) or Server (what the server works with). A client without the
   `preferences` grant keeps Personal settings in its browser. A masked secret sent back means unchanged.

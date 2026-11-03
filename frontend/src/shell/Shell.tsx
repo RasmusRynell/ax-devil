@@ -1,13 +1,14 @@
 import { useEffect, useState } from "react";
 import { useGrants } from "../access";
 import { scopeOf } from "../commands";
-import type { SidebarView } from "../generated/api";
+import type { SidebarView, WorkspaceCommand } from "../generated/api";
 import { COMMANDS, SETTINGS } from "../generated/settings";
+import { Button } from "../kit/Button";
 import type { MenuCommand } from "../kit/Menu";
 import { shortcutOf } from "../kit/shortcut";
 import type { Scopes } from "../session/cursor";
 import { Presence } from "../session/Presence";
-import { useAllowed, useCommand, useView } from "../session/session";
+import { useAllowed, useCommand, useDoc, useView } from "../session/session";
 import { useSettings } from "../settings";
 import { NO_ACTIONS, ViewerActionsContext, type ViewerActions } from "../viewer/actions";
 import { useFrontViewer, useViewers } from "../viewer/useViewers";
@@ -19,6 +20,7 @@ import { AddVideoDialog } from "./AddVideoDialog";
 import { Banner } from "./Banner";
 import { TitleBar } from "./TitleBar";
 import { QuickSetupDialog } from "./QuickSetupDialog";
+import { RECENT_ID } from "./recents";
 import { SettingsDialog } from "./SettingsDialog";
 import { ShortcutsDialog } from "./ShortcutsDialog";
 import { Sidebar } from "./Sidebar";
@@ -56,6 +58,7 @@ export function Shell({ version }: { version: string }) {
   useFrontViewer();
   const allowed = useAllowed();
   const command = useCommand();
+  const workspace = useDoc()?.workspace;
   const [checked, setChecked] = useState<ReadonlySet<string>>(new Set());
   const [notice, setNotice] = useState<string | null>(null);
   const [viewerActions, setViewerActions] = useState<ViewerActions>(NO_ACTIONS);
@@ -71,8 +74,10 @@ export function Shell({ version }: { version: string }) {
 
   // Only the local backend's window may browse this machine's files; any other asks for a path on the server.
   const local = useServerKind() === "local";
+  const bridge = local ? window.axDevilWindow : undefined;
+  const fail = (error: unknown) =>
+    setNotice(error instanceof Error ? error.message : String(error));
   const addVideo = () => {
-    const bridge = local ? window.axDevilWindow : undefined;
     if (!bridge) return setDialog("add-video");
     bridge
       .pickVideos()
@@ -89,8 +94,23 @@ export function Shell({ version }: { version: string }) {
           : undefined,
       )
       .then(() => setNotice(null))
-      .catch((error: unknown) => setNotice(error instanceof Error ? error.message : String(error)));
+      .catch(fail);
   };
+
+  // A refused or failed workspace command shows why, as any other command does.
+  const ask = (change: WorkspaceCommand) =>
+    command({ type: "workspace", command: change }).then(() => setNotice(null), fail);
+  const openWorkspace = () =>
+    void bridge
+      ?.pickOpenWorkspace()
+      .then((path) => (path ? ask({ type: "open", path }) : undefined))
+      .catch(fail);
+  const saveAs = () =>
+    void bridge
+      ?.pickSaveWorkspace(workspace?.name ?? "Untitled", workspace?.file ?? null)
+      .then((path) => (path ? ask({ type: "save", path }) : undefined))
+      .catch(fail);
+  const saveFile = () => (workspace?.file ? void ask({ type: "save" }) : saveAs());
 
   const startSharing = () => {
     setSidebar({ view: "sessions", open: true });
@@ -111,6 +131,9 @@ export function Shell({ version }: { version: string }) {
     ...(configures && { "quick-setup": () => setDialog("quick-setup") }),
     about: () => setDialog("about"),
     "add-video": addVideo,
+    "new-workspace": () => void ask({ type: "new" }),
+    ...(bridge && { "open-workspace": openWorkspace, "save-workspace-as": saveAs }),
+    ...((bridge || workspace?.file) && { "save-workspace": saveFile }),
     "add-playlist": () => setDialog("add-playlist"),
     ...Object.fromEntries(
       Object.entries(SETTING_CHECKS).map(([id, key]) => [
@@ -122,7 +145,10 @@ export function Shell({ version }: { version: string }) {
   // A modal dialog owns the keyboard and the window: no command, from a shortcut or a menu, runs while one is open.
   const find = (id: string) =>
     dialog || !allowed[scopeOf(id)] ? undefined : (actions[id] ?? viewerActions[id]);
-  const run = (id: string) => find(id)?.();
+  const run = (id: string) => {
+    if (!id.startsWith(RECENT_ID)) return find(id)?.();
+    if (!dialog && allowed.host) void ask({ type: "open", path: id.slice(RECENT_ID.length) });
+  };
   const select = (item: MenuCommand) => {
     if (item.kind === "check" && !(item.id in SETTING_CHECKS))
       setChecked((now) => {
@@ -189,6 +215,29 @@ export function Shell({ version }: { version: string }) {
         {notice && (
           <Banner role="alert" onDismiss={() => setNotice(null)}>
             {notice}
+          </Banner>
+        )}
+        {workspace?.recovered && (
+          <Banner
+            role="status"
+            actions={
+              <>
+                <Button
+                  size="small"
+                  disabled={!allowed.content}
+                  onClick={() => void ask({ type: "keep" })}
+                >
+                  Keep
+                </Button>
+                {allowed.host && (
+                  <Button size="small" onClick={() => void ask({ type: "discard" })}>
+                    Discard
+                  </Button>
+                )}
+              </>
+            }
+          >
+            Restored unsaved changes
           </Banner>
         )}
         {restart.length > 0 && (

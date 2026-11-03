@@ -12,11 +12,31 @@ use crate::{content::ContentInfo, playback::WarningInfo};
 pub struct WorkspaceState {
     /// The user's name for the workspace; `null` is Untitled.
     pub name: Option<String>,
+    /// Whether the workspace differs from what was last opened or saved.
+    pub modified: bool,
+    /// Whether changes restored from a recovery copy await Keep or Discard.
+    pub recovered: bool,
+    /// Counts replacements of the workspace; every viewer closes when it changes.
+    #[ts(type = "number")]
+    pub epoch: u64,
+    /// The workspace file on the host. Only for an audience with host details.
+    pub file: Option<String>,
     /// Every item in the order it was added.
     pub items: Vec<ItemState>,
     /// The sidebar tree flattened: each item, its entries and their lanes, in tree order. Lists only the items
     /// `items` lists.
     pub rows: Vec<RowInfo>,
+}
+
+/// A workspace file opened or saved lately.
+#[derive(Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct RecentWorkspace {
+    /// The file, absolute.
+    pub path: String,
+    /// When it was last used, in Unix milliseconds.
+    #[ts(type = "number")]
+    pub used_ms: u64,
 }
 
 /// One row of the workspace tree.

@@ -9,16 +9,17 @@
 //! Whoever holds the state decides where it lives and who may change it: a Session holds one per session, under its
 //! own lock (`sessions::session`). [`rows`] is the sidebar's projection of a state.
 //!
-//! TODO(M3): saving and recovery copies come behind this same interface.
+//! The state also knows which file the workspace belongs to and what it is compared with to tell unsaved edits
+//! ([`Saved`]); reading and writing files is the caller's business.
 
 mod rows;
 
-use foundation::{CancelToken, Interrupt, UserError};
+use foundation::{CancelToken, HostPath, Interrupt, UserError};
 use handlers::Handlers;
 use overlay_sync::MatchPolicy;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
-use workspace::{Content, ContentId, ItemId, Recipe, Workspace, WorkspaceItem};
+use workspace::{Content, ContentId, ItemId, Recipe, Source, Workspace, WorkspaceItem};
 
 pub use rows::{Row, RowKind, RowStatus, rows};
 
@@ -45,11 +46,35 @@ pub enum Resolution {
     Failed(UserError),
 }
 
+/// What the workspace is compared with to tell unsaved edits.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Saved {
+    /// The value last opened or saved; an empty Untitled workspace counts as saved.
+    As(Workspace),
+    /// Restored from a recovery copy: modified until saved. `offer` while Keep/Discard is offered.
+    Recovered {
+        /// Whether the user has yet to keep or discard the restored changes.
+        offer: bool,
+    },
+}
+
+impl Default for Saved {
+    fn default() -> Self {
+        Self::As(Workspace::default())
+    }
+}
+
 /// One immutable snapshot of the workspace and what is known about its items.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct WorkspaceState {
     /// The items, in the order they were added.
     pub workspace: Workspace,
+    /// The file Save writes, as the user chose it: a symlink stays the link.
+    pub file: Option<HostPath>,
+    /// What the workspace is compared with to tell unsaved edits.
+    pub saved: Saved,
+    /// Counts [`DocCommand::Replace`]; every viewer closes when it changes.
+    pub epoch: u64,
     /// The resolution of every item in the workspace.
     pub resolutions: HashMap<ItemId, Resolution>,
     /// Items with a viewer requested: a viewer should open for each once it resolves. Closing a viewer removes the
@@ -75,6 +100,12 @@ pub enum HiddenRef {
 pub struct WorkspaceParts<'a> {
     /// The items, in the order they were added.
     pub workspace: &'a Workspace,
+    /// The file Save writes.
+    pub file: &'a Option<HostPath>,
+    /// What the workspace is compared with to tell unsaved edits.
+    pub saved: &'a Saved,
+    /// Counts replacements of the workspace.
+    pub epoch: u64,
     /// The resolution of every item in the workspace.
     pub resolutions: &'a HashMap<ItemId, Resolution>,
     /// Items with a viewer requested.
@@ -89,6 +120,9 @@ impl WorkspaceState {
     pub fn parts(&self) -> WorkspaceParts<'_> {
         let Self {
             workspace,
+            file,
+            saved,
+            epoch,
             resolutions,
             open,
             hidden,
@@ -97,10 +131,18 @@ impl WorkspaceState {
         } = self;
         WorkspaceParts {
             workspace,
+            file,
+            saved,
+            epoch: *epoch,
             resolutions,
             open,
             hidden,
         }
+    }
+
+    /// Whether the workspace differs from what was last opened or saved.
+    pub fn modified(&self) -> bool {
+        !matches!(&self.saved, Saved::As(saved) if *saved == self.workspace)
     }
 
     /// Whether the user hid this entry or lane.
@@ -156,6 +198,26 @@ pub enum DocCommand {
         /// The lane's matching.
         matching: MatchPolicy,
     },
+    /// Makes `workspace` current: every item pending and resolving again, `open` and `hidden` empty, `epoch` + 1.
+    /// `next_attempt` and `next_generation` keep counting up, so a [`ContentGen`] is never reused.
+    Replace {
+        /// The new workspace.
+        workspace: Workspace,
+        /// The file it belongs to.
+        file: Option<HostPath>,
+        /// What it is compared with.
+        saved: Saved,
+    },
+    /// `workspace`, the snapshot that was written, is now saved in `file`. Edits made after the snapshot stay
+    /// modified.
+    MarkSaved {
+        /// The snapshot that was written.
+        workspace: Workspace,
+        /// Where it was written.
+        file: HostPath,
+    },
+    /// Dismisses the Keep/Discard offer of a restored copy; does nothing otherwise.
+    Keep,
 }
 
 /// Work a transition asks its caller to run: resolve `recipe`, then hand the result to [`complete`].
@@ -210,6 +272,31 @@ pub fn apply(state: &WorkspaceState, command: DocCommand) -> (WorkspaceState, Ve
                 next.hidden.remove(&target);
             }
         }
+        DocCommand::Replace {
+            workspace,
+            file,
+            saved,
+        } => {
+            next.workspace = workspace;
+            next.file = file;
+            next.saved = saved;
+            next.epoch += 1;
+            next.open.clear();
+            next.hidden.clear();
+            next.resolutions.clear();
+            for item in next.workspace.items.clone() {
+                jobs.push(next.start(&item));
+            }
+        }
+        DocCommand::MarkSaved { workspace, file } => {
+            next.saved = Saved::As(workspace);
+            next.file = Some(file);
+        }
+        DocCommand::Keep => {
+            if let Saved::Recovered { offer } = &mut next.saved {
+                *offer = false;
+            }
+        }
         DocCommand::SetLaneMatching {
             item,
             slot,
@@ -224,12 +311,14 @@ pub fn apply(state: &WorkspaceState, command: DocCommand) -> (WorkspaceState, Ve
                     .any(|entry| entry.lane_slots().contains(&slot.as_str())),
                 _ => true,
             };
+            // An unreadable item is written back exactly as read, so it takes no matching.
             if allowed
                 && let Some(existing) = next
                     .workspace
                     .items
                     .iter_mut()
                     .find(|existing| existing.id == item)
+                && !matches!(existing.recipe.source, Source::Unreadable(_))
             {
                 existing.recipe.lane_matching.insert(slot, matching);
             }

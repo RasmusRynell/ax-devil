@@ -31,7 +31,7 @@ use catalogs::Library;
 use overlays::OverlayService;
 use routes::Listener;
 use scene_store::TrackRegistry;
-use session::{GRACE, LaunchQueue, Sessions};
+use session::{GRACE, LaunchQueue, Sessions, WorkspaceFiles, WorkspaceStorage};
 use sessions::session::OnRuntime;
 use settings::Scope;
 use share::Hosting;
@@ -79,6 +79,8 @@ pub struct AppState {
     pub sessions: Sessions,
     /// Items the first Local session takes when it starts.
     launch: Arc<LaunchQueue>,
+    /// Opens, saves and recovers the workspaces of the sessions; see [`AppState::with_files`].
+    files: Arc<WorkspaceFiles>,
     /// Where the join links of the sessions point.
     hosting: Arc<Hosting>,
 }
@@ -123,6 +125,7 @@ impl AppState {
             policy: Arc::new(policy),
             admission: Arc::new(Admission::new(limits)),
             launch: Arc::new(LaunchQueue::default()),
+            files: Arc::new(WorkspaceFiles::new(None)),
             hosting: Arc::new(Hosting::None),
         }
     }
@@ -134,11 +137,25 @@ impl AppState {
         self
     }
 
-    /// The same state with `launch` as the items the first Local session takes.
+    /// The same state with `launch` as what the first Local session starts from.
     #[must_use]
     pub fn with_launch(mut self, launch: Arc<LaunchQueue>) -> Self {
         self.launch = launch;
         self
+    }
+
+    /// The same state with `files` running every session's workspace files. The default keeps no recovery copies and
+    /// no recent workspaces.
+    #[must_use]
+    pub fn with_files(mut self, files: Arc<WorkspaceFiles>) -> Self {
+        self.files = files;
+        self
+    }
+
+    /// The same state keeping recovery copies and recent workspaces in `storage`.
+    #[must_use]
+    pub fn with_workspace_storage(self, storage: WorkspaceStorage) -> Self {
+        self.with_files(Arc::new(WorkspaceFiles::new(Some(storage))))
     }
 
     /// The same state with window positions saved in `file`, which need not exist yet.

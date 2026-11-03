@@ -9,17 +9,17 @@ owner's written decision. A new feature gets a row in 01 first.
 | ID | Feature | P | Status | Test | Notes |
 |----|---------|---|--------|------|-------|
 | WS-01 | Ordered items (video, live stream, playlist); Untitled until named | M | in progress | `crates/workspace/src/intake.rs`, `crates/workspace-store` tests, `src/session/project.rs`, `tests/{local_video,mot_playlist}.rs` | Video and playlist items, in memory; no live streams, naming or saving (M3) |
-| WS-02 | New, Open, Save, Save As, recent workspaces | M | todo |  |  |
-| WS-03 | No prompts; recovery copy, restore banner, per-instance lock | M | todo |  |  |
-| WS-04 | Unreadable items preserved | M | todo |  |  |
+| WS-02 | New, Open, Save, Save As, recent workspaces | M | done | `crates/workspace-files` tests, `tests/workspace_files.rs`, `desktop/workspace-dialogs.test.cjs`, `shell/WorkspaceFiles.test.tsx` | Version 2 files; Python files are refused, with no importer |
+| WS-03 | No prompts; recovery copy, restore banner, per-instance lock | M | done | `crates/workspace-files` and `crates/workspace-store` tests, `tests/workspace_files.rs`, `shell/WorkspaceFiles.test.tsx` | The lock is per window, an OS lock on a sidecar file. Copies are named after the workspace, with no timestamp, in the XDG state folder (no storage setting) |
+| WS-04 | Unreadable items preserved | M | done | `crates/workspace-files` tests | An item with an unknown kind, an unknown key or a malformed body is kept and written back as read |
 | WS-05 | Background resolution; pending and unavailable rows | M | in progress | `crates/workspace-store` tests, `crates/playlist-resolvers/tests/mot_challenge.rs`, `frontend/src/{viewer/ViewerHost,shell/WorkspaceTree}.test.tsx`, `tests/local_video.rs` | A pending or failed item has a sidebar row; a failed one keeps its reason, a playlist's skipped sequences are a warning on its row. Left: an unavailable row should not open (invariants) but opens a viewer showing the reason |
 | WS-06 | Re-resolve on file change; reload offered to open viewers | M | todo |  |  |
 | WS-07 | Rename, Edit, Remove, item information | M | todo |  |  |
 | WS-08 | Hide/Unhide entries and lanes | M | done | `crates/workspace-store` tests, `crates/sessions/tests/session/matrix.rs`, `src/session/project.rs`, `frontend/src/{shell/WorkspaceTree,viewer/{PlaylistViewer,hidden},playback/{LaneGrid,VideoViewer}}.test.*` | Kept in the Doc, never saved ([CONTEXT](../CONTEXT.md)). "Show hidden" lists hidden rows dimmed; next/previous skip hidden entries; hidden lanes undrawn |
-| WS-09 | Bookmarks and reviewed marks; Bookmarks view; open at frame | M | todo |  |  |
+| WS-09 | Bookmarks and reviewed marks; Bookmarks view; open at frame | M | in progress | `crates/workspace-files` tests | Data model, validation and the file round trip only; no commands, view or CSV |
 | WS-10 | Bookmarks to CSV | S | todo |  |  |
 | WS-11 | Sidebar views Workspace, Live, Offline, Bookmarks, Plugins; search, sort, filter | M | in progress | `shell/Shell.test.tsx`, `shell/WorkspaceTree.test.tsx` | The Workspace view is a tree of items, entries and lanes from the backend's rows. Other views and search fields are placeholders; no sort or filter |
-| WS-12 | Start panel and welcome area | M | in progress | `shell/Shell.test.tsx` | Add Video and Add Playlist work; workspace open, live intake and recent workspaces remain |
+| WS-12 | Start panel and welcome area | M | in progress | `shell/Shell.test.tsx`, `shell/WorkspaceFiles.test.tsx` | Add Video, Add Playlist, Open Workspace and recent workspaces work; live intake remains |
 | WS-13 | Split viewer area: drag to split, preview vs pinned panes | M | todo |  |  |
 | WS-14 | Long playlists load collapsed | S | todo |  |  |
 | WS-15 | Hover cards with thumbnails | S | todo |  |  |

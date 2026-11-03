@@ -2,9 +2,11 @@
 //!
 //! [`socket`] admits a connection and runs its two halves: `reader` applies what the client sends on three lanes,
 //! `writer` sends the Doc, the seat's part, the roster and the cursors as they change. [`project`] decides what each
-//! audience learns of the Doc; `wire` converts between the wire types and the sessions crate.
+//! audience learns of the Doc; `wire` converts between the wire types and the sessions crate; `files` runs the
+//! workspace's own file commands and keeps the recovery copy of unsaved work.
 
 mod exit;
+mod files;
 mod launch;
 mod list;
 pub mod project;
@@ -13,7 +15,8 @@ mod socket;
 mod wire;
 mod writer;
 
-pub use launch::LaunchQueue;
+pub use files::{WorkspaceFiles, WorkspaceStorage};
+pub use launch::{Launch, LaunchQueue};
 pub(crate) use list::list;
 pub(crate) use socket::socket;
 

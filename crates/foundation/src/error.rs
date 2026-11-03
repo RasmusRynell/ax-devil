@@ -42,6 +42,12 @@ pub enum ErrorCode {
     PluginInvalid,
     /// A render catalog cannot be loaded or compiled.
     CatalogInvalid,
+    /// A workspace file or item is not valid, or an item cannot be read by this build.
+    WorkspaceInvalid,
+    /// A recovery copy is open in another window.
+    WorkspaceInUse,
+    /// A workspace file could not be written.
+    SaveFailed,
     /// A fault of the backend itself.
     Internal,
 }

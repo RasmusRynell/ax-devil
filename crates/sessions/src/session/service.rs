@@ -301,6 +301,14 @@ impl<C: Clone + Send + 'static> Service<C> {
         list
     }
 
+    /// The session's state as it changes, or `None` for a session that is gone. The last value stays readable after
+    /// the session ends.
+    pub fn subscribe(&self, id: SessionId) -> Option<watch::Receiver<Arc<SessionState>>> {
+        common::locked(&self.inner.sessions)
+            .get(&id)
+            .map(|live| live.tx.subscribe())
+    }
+
     /// Starts a session for a new window. Its owner's seat is the returned handle; nothing is shared. With `files`
     /// the owner may run commands that read the host's files. Refused with [`Refusal::Full`] at
     /// [`MAX_SESSIONS`], counted under the same lock that inserts, so sessions in their grace period hold a place.

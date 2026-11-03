@@ -16,6 +16,13 @@ export interface WindowBridge {
    * `.extension`; null when cancelled.
    */
   pickExportFile(name: string, extension: "mp4" | "png"): Promise<string | null>;
+  /** Opens the native file dialog for a saved workspace. Resolves to the absolute path chosen; null when cancelled. */
+  pickOpenWorkspace(): Promise<string | null>;
+  /**
+   * Opens the native save dialog for a workspace, suggesting `name`, or `currentPath` when it has a file. Resolves to
+   * the absolute path chosen, with the workspace suffix; null when cancelled.
+   */
+  pickSaveWorkspace(name: string, currentPath: string | null): Promise<string | null>;
   /** Reports the current state at once and every change after; returns the way to stop listening. */
   onMaximizedChange(listener: (maximized: boolean) => void): () => void;
   /**

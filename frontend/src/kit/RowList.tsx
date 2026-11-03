@@ -11,6 +11,8 @@ export interface Row {
   trailing?: ReactNode;
   icon?: IconName;
   disabled?: boolean;
+  /** Shown on hover. */
+  title?: string;
 }
 
 interface Props {
@@ -32,6 +34,7 @@ export function RowList({ heading, rows, onSelect }: Props) {
               type="button"
               data-cursor-id={`row:${row.id}`}
               disabled={row.disabled}
+              title={row.title}
               onClick={() => onSelect(row.id)}
               className={`${QUIET} w-full py-xs text-left`}
             >

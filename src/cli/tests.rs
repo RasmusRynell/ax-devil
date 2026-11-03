@@ -1,7 +1,7 @@
-use super::*;
+use super::{launch::launch_items, *};
 use api_types::handlers::PluginsInfo;
 use serde_json::{Value, json};
-use workspace::Source;
+use workspace::{Source, WorkspaceItem};
 
 fn parse(args: &[&str]) -> Result<Cli, clap::Error> {
     args::try_parse_from(

@@ -3,7 +3,7 @@
 
 use crate::routes::playback::policy_from_wire;
 use api_types::{
-    CURSOR_NAME_MAX, CursorElement, CursorPoint, SessionCommand,
+    CURSOR_NAME_MAX, CursorElement, CursorPoint, SessionCommand, WorkspaceCommand,
     workspace::{HiddenTarget, NewItem},
 };
 use handlers::Handlers;
@@ -38,18 +38,56 @@ pub(super) fn scope(wire: &SessionCommand) -> Option<Scope> {
         SessionCommand::Follow => Some(Scope::Follow),
         SessionCommand::Control { .. } => Some(Scope::Control),
         SessionCommand::RequestTicket { .. } => None,
+        // New replaces the workspace, which only a seat with the files grant may.
+        SessionCommand::Workspace { command } => Some(match command {
+            WorkspaceCommand::Keep => Scope::Content,
+            WorkspaceCommand::New
+            | WorkspaceCommand::Open { .. }
+            | WorkspaceCommand::Save { .. }
+            | WorkspaceCommand::Discard => Scope::Host,
+        }),
     }
 }
 
-/// The command a client asked for. A command whose own content is not valid, such as a path that names no file or a
+/// What a valid command asks the backend to do.
+pub(super) enum Request {
+    /// A change to the session.
+    Session(Command),
+    /// A workspace file command, which the adapter runs itself.
+    Workspace(WorkspaceCommand),
+}
+
+/// The request a client made. A command whose own content is not valid, such as a path that names no file or a
 /// resolver the app does not have, is `Invalid` before it reaches the Session.
-pub(super) fn command(wire: SessionCommand, handlers: &Handlers) -> Result<Command, Refusal> {
+pub(super) fn command(wire: SessionCommand, handlers: &Handlers) -> Result<Request, Refusal> {
     Ok(match wire {
-        SessionCommand::Content { command } => Command::Content(doc_command(command, handlers)?),
-        SessionCommand::Follow => Command::Follow,
-        SessionCommand::Control { control } => Command::Control(control),
-        SessionCommand::RequestTicket { key } => Command::RequestTicket(key),
+        SessionCommand::Content { command } => {
+            Request::Session(Command::Content(doc_command(command, handlers)?))
+        }
+        SessionCommand::Follow => Request::Session(Command::Follow),
+        SessionCommand::Control { control } => Request::Session(Command::Control(control)),
+        SessionCommand::RequestTicket { key } => Request::Session(Command::RequestTicket(key)),
+        SessionCommand::Workspace { command } => Request::Workspace(workspace_command(command)?),
     })
+}
+
+/// Paths are absolute, and Save As names a workspace file.
+fn workspace_command(wire: WorkspaceCommand) -> Result<WorkspaceCommand, Refusal> {
+    let valid = match &wire {
+        WorkspaceCommand::Open { path } => Path::new(path).is_absolute(),
+        WorkspaceCommand::Save { path: Some(path) } => {
+            Path::new(path).is_absolute() && path.ends_with(workspace_files::SUFFIX)
+        }
+        WorkspaceCommand::New
+        | WorkspaceCommand::Save { path: None }
+        | WorkspaceCommand::Keep
+        | WorkspaceCommand::Discard => true,
+    };
+    if valid {
+        Ok(wire)
+    } else {
+        Err(Refusal::Invalid)
+    }
 }
 
 fn doc_command(wire: api_types::DocCommand, handlers: &Handlers) -> Result<DocCommand, Refusal> {

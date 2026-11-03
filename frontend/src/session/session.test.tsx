@@ -147,7 +147,17 @@ describe("session", () => {
       socket.emit({
         type: "doc",
         docRev: 9,
-        doc: { workspace: { name: null, items: [], rows: [] } },
+        doc: {
+          workspace: {
+            name: null,
+            modified: false,
+            recovered: false,
+            epoch: 0,
+            file: null,
+            items: [],
+            rows: [],
+          },
+        },
       }),
     );
     expect(screen.getByText("live open editable")).toBeTruthy();

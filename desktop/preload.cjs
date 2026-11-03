@@ -1,6 +1,6 @@
 // The only bridge from the page to the shell: the in-page title bar's window controls, the native dialogs that add
-// videos, save an export and choose a folder, and moving the window between the local backend and another machine's
-// server. Main answers only a window's trusted page.
+// videos, open and save workspaces, save an export and choose a folder, and moving the window between the local
+// backend and another machine's server. Main answers only a window's trusted page.
 const { contextBridge, ipcRenderer, webFrame } = require("electron");
 
 contextBridge.exposeInMainWorld("axDevilWindow", {
@@ -13,6 +13,12 @@ contextBridge.exposeInMainWorld("axDevilWindow", {
   // Opens the native save dialog for an export (a suggested file name and `mp4` or `png`); resolves to the chosen
   // absolute path, null when it is cancelled.
   pickExportFile: (name, extension) => ipcRenderer.invoke("export:pick-file", name, extension),
+  // Opens the native file dialog for a workspace to open; resolves to the chosen absolute path, null when cancelled.
+  pickOpenWorkspace: () => ipcRenderer.invoke("workspace:pick-open"),
+  // Opens the native save dialog for a workspace, suggesting `name` or, when the workspace has a file, `currentPath`;
+  // resolves to the chosen absolute path, null when cancelled.
+  pickSaveWorkspace: (name, currentPath) =>
+    ipcRenderer.invoke("workspace:pick-save", name, currentPath),
   // Opens the native folder dialog; resolves to the chosen absolute path, null when it is cancelled.
   pickFolder: () => ipcRenderer.invoke("settings:pick-folder"),
   // Reports the current state at once and every change after; returns the way to stop listening.

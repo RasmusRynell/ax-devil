@@ -10,7 +10,7 @@ use ax_devil::{
     access::{Limits, Policy},
     app, desktop,
     plugins::Plugins,
-    session::LaunchQueue,
+    session::{Launch, LaunchQueue, WorkspaceFiles, WorkspaceStorage},
     share::{self, Hosting, LinkBase, ShareListener},
     video_cache,
     video_sources::VideoSources,
@@ -32,12 +32,12 @@ use std::{
     time::Duration,
 };
 use tokio::sync::watch;
-use workspace::WorkspaceItem;
+use workspace_files::{Recents, RecoveryFolder};
 
 mod args;
 mod catalog;
 mod launch;
-use launch::{describe, launch_items};
+use launch::{describe, launch};
 mod plugins;
 #[cfg(test)]
 mod tests;
@@ -118,6 +118,12 @@ enum Command {
         /// declares its options.
         #[arg(long, value_name = "KEY=VALUE", value_parser = args::parse_overlay_option)]
         overlay_option: Vec<OverlayOption>,
+    },
+    /// Open a saved workspace.
+    Open {
+        /// The workspace file, ending in .ax-devil.workspace.
+        #[arg(value_name = "FILE", value_hint = ValueHint::FilePath)]
+        file: PathBuf,
     },
     /// Open a playlist in a new Untitled workspace.
     ///
@@ -243,13 +249,19 @@ async fn run_backend(global: Global, command: Option<Command>, plugins: Arc<Plug
     logging::init(global.log_level, log_file.filter(|_| !launcher));
     ax_devil::plugins::log_problems(&plugins.info());
     let result = match command {
-        Some(Command::App(args)) => launch(&args),
+        Some(Command::App(args)) => launch_app(&args),
         command => match paths {
             Err(error) => Err(error.into()),
             Ok(paths) => match command {
                 Some(Command::Serve(args)) => serve(&paths, args, plugins).await,
-                command => match launch_items(command, &plugins.handlers()) {
-                    Ok(items) => host_desktop(&paths, global.share_address, plugins, items).await,
+                command => match launch(
+                    command,
+                    &plugins.handlers(),
+                    &RecoveryFolder::new(paths.recovery_dir.clone()),
+                ) {
+                    Ok(launch) => {
+                        host_desktop(&paths, global.share_address, plugins, launch).await
+                    }
                     Err(reason) => Err(reason.into()),
                 },
             },
@@ -271,6 +283,7 @@ struct Services {
     settings: Arc<settings::Settings>,
     catalogs: Library,
     launch: Arc<LaunchQueue>,
+    files: Arc<WorkspaceFiles>,
     videos: Arc<VideoSources>,
     plugins: Arc<Plugins>,
     cache_dir: PathBuf,
@@ -278,12 +291,12 @@ struct Services {
 }
 
 impl Services {
-    /// Loads the settings, starts the video cache and queues `items` for the first Local session. Ctrl+C turns the
+    /// Loads the settings, starts the video cache and queues `launch` for the first Local session. Ctrl+C turns the
     /// stop signal on, and so does the end of the standard input when [`EXIT_ON_STDIN_CLOSE_VARIABLE`] asks for it.
     fn start(
         paths: &Paths,
         plugins: Arc<Plugins>,
-        items: Vec<WorkspaceItem>,
+        launch: Option<Launch>,
     ) -> Result<Self, Box<dyn Error>> {
         let settings = Arc::new(settings::Settings::load(&paths.config_file)?);
         tracing::info!("Loaded settings from {}", paths.config_file.display());
@@ -311,7 +324,11 @@ impl Services {
         Ok(Self {
             settings,
             catalogs,
-            launch: Arc::new(LaunchQueue::new(items)),
+            launch: Arc::new(LaunchQueue::new(launch)),
+            files: Arc::new(WorkspaceFiles::new(Some(WorkspaceStorage {
+                recents: Recents::new(paths.recent_file.clone()),
+                recovery: RecoveryFolder::new(paths.recovery_dir.clone()),
+            }))),
             videos,
             plugins,
             cache_dir,
@@ -330,6 +347,7 @@ impl Services {
             &self.cache_dir,
         )
         .with_launch(Arc::clone(&self.launch))
+        .with_files(Arc::clone(&self.files))
         .with_catalogs(self.catalogs.clone())
     }
 
@@ -360,6 +378,7 @@ impl Services {
         };
         // Whatever ended the server, every viewer ends.
         self.stop.send_replace(true);
+        self.files.flush_all().await;
         let videos = self.videos;
         let retired =
             tokio::task::spawn_blocking(move || videos.registry().wait_retired(SHUTDOWN_GRACE))
@@ -376,9 +395,9 @@ async fn host_desktop(
     paths: &Paths,
     share_address: SocketAddr,
     plugins: Arc<Plugins>,
-    items: Vec<WorkspaceItem>,
+    launch: Option<Launch>,
 ) -> Result<ExitCode, Box<dyn Error>> {
-    let services = Services::start(paths, plugins, items)?;
+    let services = Services::start(paths, plugins, launch)?;
     let port = std::env::var("PORT")
         .unwrap_or_else(|_| "7330".into())
         .parse::<u16>()?;
@@ -403,7 +422,7 @@ async fn serve(
     plugins: Arc<Plugins>,
 ) -> Result<ExitCode, Box<dyn Error>> {
     share::refuse_development_build().map_err(|reason| format!("serve: {reason}"))?;
-    let services = Services::start(paths, plugins, Vec::new())?;
+    let services = Services::start(paths, plugins, None)?;
     let chosen = std::env::var(PASSWORD_VARIABLE)
         .ok()
         .filter(|text| !text.is_empty());
@@ -447,7 +466,7 @@ async fn serve(
 }
 
 /// Starts the desktop shell and waits for it, passing on its exit code.
-fn launch(args: &AppArgs) -> Result<ExitCode, Box<dyn Error>> {
+fn launch_app(args: &AppArgs) -> Result<ExitCode, Box<dyn Error>> {
     let desktop = desktop::folder()?;
     let electron = desktop::electron(&desktop)?;
     let mut shell = Process::new(electron);
