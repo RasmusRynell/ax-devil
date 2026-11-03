@@ -225,6 +225,11 @@ export function useResolverForm(
   const slot = (key: string) => `${resolver.id}/${key}`;
   // Counts the edits, so a scan that was waited for can tell whether the form changed meanwhile.
   const edits = useRef(0);
+  // Every change the user makes to what would be submitted goes through here; scan progress does not.
+  const edit = (action: Action) => {
+    edits.current += 1;
+    dispatch(action);
+  };
 
   const canScanWith = (key: string, values: Settings) => {
     const kind = resolver.fields.find((field) => field.key === key)?.kind;
@@ -321,14 +326,13 @@ export function useResolverForm(
       if (canScanWith(key, state.values)) void run(key, state.values);
     },
     set: (key, value, commit = false) => {
-      edits.current += 1;
       const values = { ...state.values, [key]: value };
       const dependants = resolver.fields.filter(
         (field) => field.kind.kind === "Scan" && field.kind.depends_on.includes(key),
       );
       const invalidated = dependants.map((field) => field.key);
       for (const dependant of invalidated) stop(dependant);
-      dispatch({ type: "set", resolver, key, value, invalidated });
+      edit({ type: "set", resolver, key, value, invalidated });
       if (commit) {
         for (const field of dependants.filter((dependant) => !isCount(dependant))) {
           if (canScanWith(field.key, values)) void run(field.key, values);
@@ -336,8 +340,8 @@ export function useResolverForm(
       }
     },
     toggle: (key, value) =>
-      dispatch({ type: "scan", resolver, key, update: (view) => toggled(view, value) }),
-    toggleAll: (key) => dispatch({ type: "scan", resolver, key, update: toggledAll }),
+      edit({ type: "scan", resolver, key, update: (view) => toggled(view, value) }),
+    toggleAll: (key) => edit({ type: "scan", resolver, key, update: toggledAll }),
   };
 }
 

@@ -102,6 +102,20 @@ const COUNT: ResolverInfo = {
   ],
 };
 
+const BOTH: ResolverInfo = {
+  ...COUNT,
+  id: "both",
+  fields: [
+    ...COUNT.fields,
+    {
+      key: "sequences",
+      label: "Sequences",
+      kind: { kind: "Scan", depends_on: ["videos"] },
+      required: false,
+    },
+  ],
+};
+
 interface Scan {
   body: { field: string; settings: Settings };
   signal: AbortSignal;
@@ -380,6 +394,17 @@ describe("resolver form", () => {
     await waitFor(() => expect(scans).toHaveLength(5));
     fireEvent.change(screen.getByLabelText("Format"), { target: { value: "" } });
     await respond(scans, 4, "d");
+    await waitFor(() => expect(screen.getByTestId("after").textContent).toBe("null"));
+  });
+
+  it("does not load what was unchecked while the pairs were being counted", async () => {
+    const scans = stubScans();
+    render(<Harness resolver={BOTH} initial={{ videos: "/v", format: "MOT_FILE" }} />);
+    await respond(scans, 0, "a", "b");
+    fireEvent.click(screen.getByRole("button", { name: "After" }));
+    await waitFor(() => expect(scans).toHaveLength(2));
+    fireEvent.click(screen.getByRole("checkbox", { name: /b/ }));
+    await respond(scans, 1, "p");
     await waitFor(() => expect(screen.getByTestId("after").textContent).toBe("null"));
   });
 });
