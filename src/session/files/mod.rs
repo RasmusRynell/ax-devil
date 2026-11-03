@@ -46,7 +46,7 @@ type Key = (Workspace, Option<PathBuf>, bool);
 struct SessionFiles {
     rx: watch::Receiver<Arc<SessionState>>,
     /// The recovery copy this session holds, if any.
-    copy: Option<RecoveryCopy>,
+    copy: Option<Arc<RecoveryCopy>>,
     /// Whether the copy is in the recent workspaces.
     listed: bool,
     synced: Option<Key>,

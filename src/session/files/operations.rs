@@ -3,7 +3,7 @@
 use super::{Failure, SessionFiles, WorkspaceFiles, name_of, off};
 use foundation::{ErrorCode, HostPath, UserError};
 use sessions::session::{Command, Handle, Refusal};
-use std::path::PathBuf;
+use std::{path::PathBuf, sync::Arc};
 use workspace::Workspace;
 use workspace_files::{Claim, resolved};
 use workspace_store::{DocCommand, Saved};
@@ -118,11 +118,13 @@ impl WorkspaceFiles {
         let saved = Saved::Recovered { offer: true };
         self.swap(handle, files, workspace.clone(), recovers.clone(), saved)
             .await?;
-        files.synced = Some((workspace, recovers, true));
-        files.listed = true;
         let copy = claimed.path().to_owned();
-        files.copy = Some(claimed);
-        self.record(&copy).await;
+        files.copy = Some(Arc::new(claimed));
+        // Marked synced only once listed: a command cancelled before that leaves the next sync to finish the job.
+        files.listed = self.record(&copy).await;
+        if files.listed {
+            files.synced = Some((workspace, recovers, true));
+        }
         Ok(())
     }
 

@@ -44,15 +44,21 @@ impl WorkspaceFiles {
             return Ok(());
         }
         if key.2 {
-            let copy = match files.copy.take() {
-                Some(copy) => copy,
+            // The copy stays in `files` across every await: a command that is cancelled midway must not lose it.
+            let copy = match &files.copy {
+                Some(copy) => Arc::clone(copy),
                 None => {
                     let (storage, stem) = (
                         Arc::clone(storage),
                         file_stem(state.workspace.name.as_deref()),
                     );
                     match off(move || storage.recovery.reserve(&stem)).await {
-                        Ok(copy) => copy,
+                        Ok(copy) => {
+                            let copy = Arc::new(copy);
+                            files.copy = Some(Arc::clone(&copy));
+                            files.listed = false;
+                            copy
+                        }
                         Err(error) => {
                             tracing::warn!("Cannot start a recovery copy: {error}");
                             return Err(unkept(&error));
@@ -61,13 +67,8 @@ impl WorkspaceFiles {
                 }
             };
             let (workspace, recovers) = (key.0.clone(), key.1.clone());
-            let (copy, written) = off(move || {
-                let written = copy.write(&workspace, recovers.as_deref());
-                (copy, written)
-            })
-            .await;
             let path = copy.path().to_owned();
-            files.copy = Some(copy);
+            let written = off(move || copy.write(&workspace, recovers.as_deref())).await;
             if let Err(error) = written {
                 tracing::warn!("Cannot write the recovery copy: {}", error.reason);
                 return Err(error);
@@ -77,24 +78,20 @@ impl WorkspaceFiles {
             if !files.listed {
                 return Err(unkept(&"the recent workspaces cannot be updated"));
             }
-        } else if let Some(copy) = files.copy.take() {
+        } else if let Some(copy) = files.copy.clone() {
             let path = copy.path().to_owned();
             // The entry goes first: a copy that stays on disk without one is only unlisted, never offered twice.
             let forgotten = self.forget(&path).await;
             files.listed = !forgotten;
-            let (copy, deleted) = off(move || {
-                let deleted = if forgotten { copy.delete() } else { Ok(()) };
-                (copy, deleted)
-            })
-            .await;
+            let deleted = off(move || if forgotten { copy.delete() } else { Ok(()) }).await;
             let failed = deleted.is_err() || !forgotten;
             if let Err(error) = deleted {
                 tracing::warn!("Cannot delete the recovery copy: {error}");
             }
             if failed {
-                files.copy = Some(copy);
                 return Ok(());
             }
+            files.copy = None;
         }
         files.synced = Some(key);
         Ok(())
