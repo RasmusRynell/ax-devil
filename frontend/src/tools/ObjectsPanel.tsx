@@ -16,6 +16,8 @@ import { IconButton } from "../kit/IconButton";
 import type { LaneFrame, Selection } from "../playback/contract";
 import type { FileScope } from "../playback/fileScope";
 import type { PlaybackView } from "../playback/view";
+import { CodePoints, codePointString } from "../present/expr/codePoints";
+import { emitFixed } from "../present/expr/fixed";
 import { matches, missingPaths } from "../search/match";
 import { parseSearch } from "../search/query";
 import {
@@ -73,7 +75,14 @@ const STEP = 50;
 /** How many marks a presence strip can draw. */
 const BINS = 64;
 
-const score = (value: number | null): string => (value === null ? "" : value.toFixed(2));
+const digits = new CodePoints();
+/** A score or confidence to two decimals, rounded as Python prints it; blank when there is none. */
+const score = (value: number | null): string => {
+  digits.clear();
+  return value !== null && emitFixed(value, 2, digits)
+    ? codePointString(digits.data, 0, digits.length)
+    : "";
+};
 
 /** What File scope says when the query names a field it does not search; it searches these. */
 const FILE_PATHS: ReadonlySet<string> = new Set(["id", "class", "event"]);
@@ -207,8 +216,8 @@ function ObjectsList({
   const [offset, setOffset] = useState(0);
   // Where each scope's table was scrolled and where its cursor was, for when the scope is shown again.
   const memory = useRef<Record<Scope, TableMemory>>({
-    frame: { top: 0, cursor: null, index: 0 },
-    file: { top: 0, cursor: null, index: 0 },
+    frame: { top: 0, cursor: null },
+    file: { top: 0, cursor: null },
   });
   const sort = sorts[scope];
   const { wire } = useMemo(() => parseSearch(text), [text]);

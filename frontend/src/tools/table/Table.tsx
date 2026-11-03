@@ -42,13 +42,10 @@ function Cell<Row>({ column, row }: { column: Column<Row>; row: Row }) {
   );
 }
 
-/**
- * What a table keeps for the next time it is shown: how far it was scrolled, the key of the row its cursor was on and
- * the position it had, for when that row is not loaded.
- */
-export type TableMemory = { top: number; cursor: string | null; index: number };
+/** What a table keeps for the next time it is shown: how far it was scrolled and the key of the row its cursor was on. */
+export type TableMemory = { top: number; cursor: string | null };
 
-/** The cursor: the row it follows, and the position it falls back to while that row is not in the order. */
+/** The cursor: the row it follows, or, with no key, the position it was put on (the first row, or a row not loaded). */
 type Cursor = { key: string | null; index: number };
 
 type RowProps<Row> = {
@@ -168,9 +165,8 @@ export function Table<Row>({
   memory?: TableMemory;
 }) {
   const base = useId();
-  // The cursor stays on its row as the order changes; while that row is not in the order it keeps its last position.
+  // The cursor stays on its row as the order changes; once that row is not in the order the cursor is on no row.
   const [cursor, setCursor] = useState<Cursor>({ key: null, index: 0 });
-  const resolved = useRef(0);
   const { ref, start, end, update, reveal } = useRowWindow(count, '[role="option"]');
   const inView = Array.from({ length: end - start }, (_, i) => rowAt(start + i));
   const { root, header, shown, divider } = useColumns(tableKey, columns, inView, ref);
@@ -198,22 +194,16 @@ export function Table<Row>({
     [place],
   );
 
-  const found = cursor.key === null ? -1 : indexOf(cursor.key);
-  const fallback = cursor.key === null ? cursor.index : resolved.current;
-  const at = Math.min(found >= 0 ? found : fallback, Math.max(count - 1, 0));
-  // The remembered scroll and cursor come back once, when there are rows to scroll to; until then the cursor is not
-  // the one to remember.
+  /** The position of the cursor, or -1 when it is on no row. */
+  const at =
+    cursor.key === null ? Math.min(cursor.index, Math.max(count - 1, 0)) : indexOf(cursor.key);
+  // The remembered scroll and cursor come back once, when there are rows to scroll to.
   const restored = useRef(false);
-  useLayoutEffect(() => {
-    resolved.current = at;
-    if (memory && restored.current) memory.index = at;
-  });
   useLayoutEffect(() => {
     if (restored.current || message != null || count === 0) return;
     restored.current = true;
     if (!memory) return;
-    resolved.current = memory.index;
-    setCursor({ key: memory.cursor, index: memory.index });
+    setCursor({ key: memory.cursor, index: 0 });
     if (ref.current) ref.current.scrollTop = memory.top;
     update();
   });
@@ -247,15 +237,15 @@ export function Table<Row>({
     const page = end - start;
     const keys: Record<string, () => void> = {
       ArrowDown: () => go(at + 1),
-      ArrowUp: () => go(at - 1),
+      ArrowUp: () => go(at < 0 ? count - 1 : at - 1),
       PageDown: () => go(at + page),
       PageUp: () => go(at - page),
       Home: () => go(0),
       End: () => go(count - 1),
-      Enter: () => pick(at),
+      Enter: () => at >= 0 && pick(at),
     };
     if (event.key === "c" && (event.ctrlKey || event.metaKey)) {
-      const row = rowAt(at);
+      const row = at < 0 ? undefined : rowAt(at);
       if (row !== undefined) void copy(keyOf(row), rowText(columns, row));
       return;
     }
@@ -325,7 +315,7 @@ export function Table<Row>({
             <div
               role="listbox"
               aria-label={label}
-              aria-activedescendant={`${base}-${at}`}
+              aria-activedescendant={at < 0 ? undefined : `${base}-${at}`}
               aria-busy={busy}
               tabIndex={0}
               onKeyDown={onKeyDown}

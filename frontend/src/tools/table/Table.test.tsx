@@ -69,10 +69,10 @@ describe("Table", () => {
     fireEvent.keyDown(screen.getByRole("listbox"), { key: "Enter" });
     expect(onActivate).toHaveBeenCalledWith(b, 2);
 
-    // A cursor whose row has gone stays where it was, within the rows left.
+    // A cursor whose row has gone is on no row, so Enter activates nothing.
     rerender(table("moving", 2, [c, a], onActivate));
     fireEvent.keyDown(screen.getByRole("listbox"), { key: "Enter" });
-    expect(onActivate).toHaveBeenLastCalledWith(a, 1);
+    expect(onActivate).toHaveBeenCalledTimes(1);
   });
 
   it("keeps the width the user gave a column when the table is drawn again", () => {

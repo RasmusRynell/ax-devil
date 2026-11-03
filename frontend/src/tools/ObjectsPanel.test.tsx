@@ -213,11 +213,12 @@ describe("Frame scope", () => {
     fireEvent.keyDown(list(), { key: "Enter" });
     expect(source.select).toHaveBeenCalledWith({ lane: 0, source: 0, entity: "7" });
 
-    // File scope's cursor row is not in the page listed next: the cursor keeps its position.
+    // File scope's cursor row is not in the page listed next: Enter picks no other object.
     showFile();
     answer([file("60", 3), file("61", 4), file("62", 5)]);
+    const picks = vi.mocked(source.select).mock.calls.length;
     fireEvent.keyDown(list(), { key: "Enter" });
-    expect(source.select).toHaveBeenLastCalledWith({ lane: 0, source: 0, entity: "61" });
+    expect(source.select).toHaveBeenCalledTimes(picks);
   });
 });
 
