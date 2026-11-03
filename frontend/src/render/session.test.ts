@@ -80,6 +80,7 @@ describe("render session", () => {
       [{ width: 200, height: 100 }, 2, "I420", 400, 100],
       [{ width: 200, height: 100 }, 4, "I420", 400, 200],
       [{ width: 3840, height: 2160 }, 4, "I420", 3840, 2160],
+      [{ width: 7680, height: 4320 }, 1, "I420", 7680, 4320],
     ];
     for (const [picture, lanes, output, width, height] of sizes) {
       const { said, session, setup } = page();
@@ -87,7 +88,7 @@ describe("render session", () => {
       setup(
         Array.from({ length: lanes }, (_, i) => lane(i)),
         picture,
-        3840,
+        16384,
         output,
       );
       expect(said).toEqual([

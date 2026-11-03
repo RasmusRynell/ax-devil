@@ -11,10 +11,12 @@ use crate::{
     RenderSetup, Renderer, destination, fail,
 };
 
-/// The largest picture an export makes.
+/// The largest picture an export accepts from the render page: a safety bound, not a size policy. A single lane keeps
+/// its native size; the page scales tiled lanes down to 3840x2160 itself. A GPU with smaller textures fails the page's
+/// setup with its own limit.
 const MAX_OUTPUT: FrameSize = FrameSize {
-    width: 3840,
-    height: 2160,
+    width: 16384,
+    height: 16384,
 };
 /// FFmpeg threads of the export's decoder.
 const DECODE_THREADS: usize = 2;

@@ -25,6 +25,10 @@ const QUALITIES: readonly (readonly [ExportQualityWire, string])[] = [
 /** The dialog's title in every state. */
 const TITLE = "Export Video with Overlays";
 
+/** `path` as it is when it ends in `.kind` (any case), otherwise with `.kind` appended: `clip.mov` becomes `clip.mov.mp4`. */
+const withExtension = (path: string, kind: Kind): string =>
+  path.toLowerCase().endsWith(`.${kind}`) ? path : `${path}.${kind}`;
+
 /** A whole number from its text; `null` for anything else. */
 const wholeNumber = (text: string): number | null =>
   /^\d+$/.test(text.trim()) ? Number(text) : null;
@@ -129,8 +133,9 @@ export function ExportDialog({
     setChoosing(true);
     try {
       const stem = name.replace(/\.[^.]*$/, "") || name;
-      const target = bridge ? await bridge.pickExportFile(`${stem}.${kind}`, kind) : path.trim();
-      if (!target) return;
+      const picked = bridge ? await bridge.pickExportFile(`${stem}.${kind}`, kind) : path.trim();
+      if (!picked) return;
+      const target = withExtension(picked, kind);
       // The lanes are read now: the picker may have been open while they changed.
       const now = choicesOf(latest.current.lanes);
       const lanes = now.flatMap((choice) =>

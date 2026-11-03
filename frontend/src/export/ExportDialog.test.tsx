@@ -210,6 +210,20 @@ describe("export dialog", () => {
     expect(exported()[0]).toMatchObject({ first: 40, last: 40, format: { format: "Png" } });
   });
 
+  it("appends the format's extension to a path that lacks it, and keeps one that has it", () => {
+    for (const [typed, saved] of [
+      ["/out/clip", "/out/clip.mp4"],
+      ["/out/clip.mov", "/out/clip.mov.mp4"],
+      ["/out/CLIP.MP4", "/out/CLIP.MP4"],
+    ]) {
+      const { exported } = open();
+      type("Path on the server", typed);
+      press("Export");
+      expect(exported()[0]).toMatchObject({ path: saved });
+      cleanup();
+    }
+  });
+
   it("refuses a range outside the video", () => {
     open();
     type("Path on the server", "/out/clip.mp4");
