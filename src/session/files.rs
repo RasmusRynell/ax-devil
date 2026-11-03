@@ -383,7 +383,7 @@ impl WorkspaceFiles {
         let target = path.or(own).ok_or(Refusal::Invalid)?;
         // A recovery copy is written only by the window that holds it.
         if let Some(storage) = &self.storage
-            && storage.recovery.reaches(&target)
+            && storage.recovery.contains(&target)
         {
             return Err(Refusal::Invalid.into());
         }

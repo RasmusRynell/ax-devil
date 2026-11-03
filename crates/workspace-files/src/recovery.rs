@@ -43,16 +43,10 @@ impl RecoveryFolder {
         }
     }
 
-    /// Whether `path` is inside this folder, lexically.
+    /// Whether `path` is inside this folder once symlinks and `..` are resolved, so an alias is the file it names.
     pub fn contains(&self, path: &Path) -> bool {
-        let path = normalize(path);
-        path != self.dir && path.starts_with(&self.dir)
-    }
-
-    /// Whether writing to `path` would land in this folder, following symlinks, so an alias cannot dodge
-    /// [`contains`](Self::contains).
-    pub fn reaches(&self, path: &Path) -> bool {
-        self.contains(path) || resolved(path).starts_with(resolved(&self.dir))
+        let (path, dir) = (resolved(path), resolved(&self.dir));
+        path != dir && path.starts_with(dir)
     }
 
     /// Creates and locks a new empty copy named `<stem><SUFFIX>`, then `<stem> 2<SUFFIX>`, `<stem> 3<SUFFIX>`, and so
@@ -89,7 +83,11 @@ impl RecoveryFolder {
 
     /// Locks the existing copy `path`.
     pub fn claim(&self, path: &Path) -> Result<RecoveryCopy, Claim> {
-        let path = normalize(path);
+        // Named as this folder spells it, so an alias claims the same lock and the same recent entry.
+        let path = match resolved(path).strip_prefix(resolved(&self.dir)) {
+            Ok(inside) => self.dir.join(inside),
+            Err(_) => normalize(path),
+        };
         let missing = || {
             let reason = format!("{} was not found.", file_name(&path));
             let error = UserError::new(ErrorCode::FileNotFound, reason).at(HostPath::new(&path));
@@ -122,9 +120,9 @@ impl RecoveryCopy {
         &self.path
     }
 
-    /// Whether `path` names this copy.
+    /// Whether `path` names this copy, possibly through a symlink.
     pub fn is_at(&self, path: &Path) -> bool {
-        self.path == normalize(path)
+        resolved(path) == resolved(&self.path)
     }
 
     /// Replaces the copy with `workspace` atomically. Paths are written absolute; `recovers` is the workspace file

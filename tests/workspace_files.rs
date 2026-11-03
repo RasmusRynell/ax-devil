@@ -202,6 +202,23 @@ async fn unsaved_work_survives_the_window_and_one_window_holds_a_copy_at_a_time(
     let outcome = ack(&mut second, 1).await;
     assert_eq!(outcome["status"], "failed");
     assert_eq!(outcome["error"]["code"], "WorkspaceInUse");
+    // Through a symlinked folder it is the same copy: held by the window that has it, taken for the other.
+    #[cfg(unix)]
+    {
+        let alias = folder.path().join("alias");
+        std::os::unix::fs::symlink(folder.path().join("unsaved"), &alias).unwrap();
+        let through = |seq| {
+            let path = alias.join(copy.file_name().unwrap());
+            workspace(
+                seq,
+                json!({"type": "open", "path": path.display().to_string()}),
+            )
+        };
+        window.say(through(6)).await;
+        assert_eq!(ack(&mut window, 6).await, json!({"status": "ok"}));
+        second.say(through(2)).await;
+        assert_eq!(ack(&mut second, 2).await["error"]["code"], "WorkspaceInUse");
+    }
 
     // `ax-devil open` of a copy another window holds starts empty, and no window writes over the copy.
     let held = Launch::Open {
@@ -228,7 +245,6 @@ async fn unsaved_work_survives_the_window_and_one_window_holds_a_copy_at_a_time(
     #[cfg(unix)]
     {
         let alias = folder.path().join("alias");
-        std::os::unix::fs::symlink(folder.path().join("unsaved"), &alias).unwrap();
         window
             .say(over(&alias.join(copy.file_name().unwrap())))
             .await;
