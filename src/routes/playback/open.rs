@@ -52,6 +52,7 @@ pub(super) async fn run(
         mut session,
         size,
         warnings,
+        pts,
     } = opened;
     let setup = Setup {
         entry,
@@ -61,6 +62,7 @@ pub(super) async fn run(
         audience,
         size,
         warnings,
+        pts,
         library: &state.catalogs,
         overlays: &state.overlays,
         exports: &state.exports,

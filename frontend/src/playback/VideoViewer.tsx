@@ -219,7 +219,7 @@ function Playback({
               handle={objects}
             />
             {view.warnings.length > 0 && (
-              <div className="absolute top-0 right-0 p-s">
+              <div data-keeps-chrome="warnings" className="absolute top-0 right-0 p-s">
                 <div className="rounded-control bg-canvas-scrim">
                   <Popover
                     onCanvas
@@ -326,6 +326,8 @@ export function VideoViewer({
   const [session, setSession] = useState<PlaybackSession | null>(null);
   // How the pictures are zoomed belongs to the viewer, so it stays across entries and reconnections.
   const [viewport, setViewport] = useState<Viewport>(FIT);
+  // The speed belongs to the viewer too: the entry that opens next plays at the speed the last one left.
+  const heldSpeed = useRef<number | undefined>(undefined);
   // Pinned fields and folded groups belong to the viewer too: they follow the user from object to object.
   const [inspector, setInspector] = useState<InspectorMemory>(FRESH_MEMORY);
   const { values } = useSettings();
@@ -360,7 +362,10 @@ export function VideoViewer({
     // A window that follows takes the presenter's clock, never a position of its own, and forgets any it had.
     const carried = latest.current.following ? undefined : left.get(entry.id);
     left.delete(entry.id);
-    const start = carried ?? (anchor && { frame: anchor.frame, speed: anchor.speedCenti / 100 });
+    const start = {
+      frame: carried?.frame ?? anchor?.frame,
+      speed: heldSpeed.current ?? carried?.speed ?? (anchor && anchor.speedCenti / 100),
+    };
     // A window that reloads and takes its seat back finds its clock still running in the accepted intent, which
     // the watchers keep following: it picks the clock up where it is by now, as a following window does.
     const running = !carried && !latest.current.following && anchor?.playing ? anchor : undefined;
@@ -395,6 +400,7 @@ export function VideoViewer({
       if (!latest.current.following) {
         publish({ frame, playing: false, speed });
         left.set(entry.id, { frame, speed });
+        heldSpeed.current = speed;
       }
     };
   }, [item, entry.id, ticket, connect, setViewers, left]);

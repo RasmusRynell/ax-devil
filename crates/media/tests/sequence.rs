@@ -59,6 +59,7 @@ fn the_timeline_is_the_frame_rate_times_the_index_and_nothing_is_scanned_or_cach
         assert_eq!(index.timeline().as_slice(), expected, "{text}");
         assert_eq!(index.keyframes().as_slice(), (0..12).collect::<Vec<_>>());
         assert_eq!(index.scan(), None);
+        assert_eq!(index.pts_timing(), None);
         assert!(index.warnings().is_empty());
         assert_eq!((index.info().width, index.info().height), (64, 48));
         assert!(progress.is_empty(), "there is nothing to report");

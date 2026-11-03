@@ -7,6 +7,7 @@
 
 use std::{cell::OnceCell, cmp::Reverse, ops::RangeInclusive};
 
+use foundation::Timeline;
 use playback::{Rank, Want, rank};
 
 use crate::{
@@ -39,7 +40,11 @@ impl State {
     /// the rank. A map run is sliced from the lane's window now and counted as sent. A sample leaves `ready` and is
     /// counted as sent; when it does not fit the budget, the sent samples that rank after it are evicted first, and
     /// it goes on a later pull.
-    pub(crate) fn pull(&mut self, frame_rank: Option<Rank>) -> Option<OverlayEvent> {
+    pub(crate) fn pull(
+        &mut self,
+        frame_rank: Option<Rank>,
+        timeline: &Timeline,
+    ) -> Option<OverlayEvent> {
         if let Some(notice) = self.pop_notice() {
             return Some(notice);
         }
@@ -82,7 +87,7 @@ impl State {
                     .sent
                     .insert(sample, Held { serial, bytes });
                 Some(OverlayEvent::Sample(
-                    self.sample_item(source, sample, serial, item),
+                    self.sample_item(source, sample, serial, item, timeline),
                 ))
             }
             Pick::Map { lane, run } => {

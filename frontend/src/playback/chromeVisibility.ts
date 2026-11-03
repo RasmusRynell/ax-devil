@@ -67,8 +67,8 @@ function keepsChrome(event: Event): boolean {
 /**
  * Shows and hides the controls over the video as the pointer moves over `pane`, by setting its `data-chrome` to
  * `shown` or `hidden` for the stylesheet to fade. Nothing is held in React state, so a pointer move costs no render. An
- * element under the pane marks what the pointer is over: `data-keeps-chrome` for the controls, `data-chrome-idle` for
- * the video; the rest, such as the side panels, keeps the controls too.
+ * element under the pane marks what the pointer is over: `data-keeps-chrome` for the controls and the warnings on the
+ * video, `data-chrome-idle` for the rest of the video; the rest, such as the side panels, keeps the controls too.
  */
 export function useChromeVisibility(pane: RefObject<HTMLElement | null>): void {
   useEffect(() => {

@@ -113,7 +113,7 @@ impl ViewerOverlays {
             let notified = self.shared.wake.notified();
             let (event, closed) = {
                 let mut state = self.shared.lock();
-                (state.pull(frame_rank), state.closed)
+                (state.pull(frame_rank, &self.shared.timeline), state.closed)
             };
             match event {
                 Some(event) => {
