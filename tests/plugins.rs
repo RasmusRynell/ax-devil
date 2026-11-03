@@ -324,7 +324,8 @@ async fn a_plugin_installed_while_the_app_runs_is_used_and_one_removed_ends_only
         "a plugin that stays failed is not reloaded again"
     );
     std::fs::write(folder.join("convert.sh"), script).unwrap();
-    assert!(plugins.refresh() && !failed(&plugins));
+    // Retries back off, but never past 30 looks.
+    assert!((0..30).any(|_| plugins.refresh()) && !failed(&plugins));
 }
 
 /// The JSON body of a GET to the local backend.

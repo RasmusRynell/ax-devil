@@ -20,6 +20,9 @@ use tokio::{sync::watch, time::MissedTickBehavior};
 /// a running app after one or two of these.
 const WATCH_POLL: Duration = Duration::from_secs(1);
 
+/// The most [`WATCH_POLL`]s between two retries of a failed plugin whose files did not change.
+const MAX_RETRY_WAIT: u32 = 30;
+
 /// The ids a plugin may not take: every built-in's plugin id, and every built-in decoder's and resolver's handler
 /// id.
 pub fn reserved(handlers: &Handlers) -> Reserved {
@@ -79,6 +82,26 @@ impl Stamp {
     }
 }
 
+/// What the last load read, and how long to wait before loading again for a failed plugin: loading walks the
+/// plugins' folders, so a failure that may never clear by itself is retried less and less often.
+struct Seen {
+    stamp: Stamp,
+    /// [`WATCH_POLL`]s between retries.
+    wait: u32,
+    /// [`WATCH_POLL`]s since the last load.
+    waited: u32,
+}
+
+impl Default for Seen {
+    fn default() -> Self {
+        Self {
+            stamp: Stamp::default(),
+            wait: 1,
+            waited: 0,
+        }
+    }
+}
+
 /// The handlers the app runs with and what loading the installed plugins said, replaced as plugins change.
 ///
 /// Work takes a snapshot ([`handlers`](Self::handlers), or the [`set`](Self::set) for a long-lived holder) and keeps
@@ -90,7 +113,7 @@ pub struct Plugins {
     set: Arc<HandlerSet>,
     info: RwLock<Arc<PluginsInfo>>,
     /// What the last load read. Held for a whole refresh, install, remove or update, so they do not interleave.
-    seen: Mutex<Stamp>,
+    seen: Mutex<Seen>,
 }
 
 impl Plugins {
@@ -147,18 +170,24 @@ impl Plugins {
 
     /// Reloads when the registry or a manifest it lists changed since the last load, or, while an installed plugin
     /// is failed, when loading again gives another result: a code file that was missing may be back, and the stamp
-    /// does not cover code files. Blocking. Returns whether the handlers were replaced.
+    /// does not cover code files. Those retries come after 1, 2, 4 ... up to [`MAX_RETRY_WAIT`] calls, starting over
+    /// whenever the plugins change. Blocking. Returns whether the handlers were replaced.
     pub fn refresh(&self) -> bool {
         let Ok(registry) = &self.registry else {
             return false;
         };
         let mut seen = self.locked();
-        let unchanged = Stamp::of(registry) == *seen;
-        if unchanged && !self.has_failed() {
-            return false;
+        let unchanged = Stamp::of(registry) == seen.stamp;
+        if unchanged {
+            seen.waited += 1;
+            if !self.has_failed() || seen.waited < seen.wait {
+                return false;
+            }
         }
+        let wait = seen.wait;
         let (handlers, info) = self.read(registry, &mut seen);
         if unchanged && info == *self.info() {
+            seen.wait = (wait * 2).min(MAX_RETRY_WAIT);
             return false;
         }
         self.swap(handlers, info);
@@ -216,7 +245,7 @@ impl Plugins {
         }
     }
 
-    fn locked(&self) -> MutexGuard<'_, Stamp> {
+    fn locked(&self) -> MutexGuard<'_, Seen> {
         self.seen.lock().unwrap_or_else(PoisonError::into_inner)
     }
 
@@ -253,15 +282,18 @@ impl Plugins {
     }
 
     /// Reads the registry and swaps in what it lists.
-    fn load(&self, registry: &Path, seen: &mut Stamp) {
+    fn load(&self, registry: &Path, seen: &mut Seen) {
         let (handlers, info) = self.read(registry, seen);
         self.swap(handlers, info);
     }
 
     /// The handlers and info the registry lists now.
-    fn read(&self, registry: &Path, seen: &mut Stamp) -> (Handlers, PluginsInfo) {
+    fn read(&self, registry: &Path, seen: &mut Seen) -> (Handlers, PluginsInfo) {
         // Before the files are read, so a change made meanwhile is seen by the next refresh.
-        *seen = Stamp::of(registry);
+        *seen = Seen {
+            stamp: Stamp::of(registry),
+            ..Seen::default()
+        };
         let loaded = plugins::load(registry, &reserved(&self.built_in));
         let mut plugins = built_in_info(&self.built_in);
         plugins.extend(installed_info(&loaded));
