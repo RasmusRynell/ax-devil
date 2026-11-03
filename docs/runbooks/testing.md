@@ -54,9 +54,9 @@ The overview golden `fixtures/render/standard-overview.png` is regenerated with 
 TEST=catalog_render` and reviewed by eye; the test allows 2% of pixels to differ by more than 24/255 because system
 fonts vary.
 
-## Converter tests
+## Plugin tests
 
-`crates/converters/tests` and `tests/converters.rs` run the converters in `fixtures/converters` as real processes. The
+`crates/plugins/tests` and `tests/plugins.rs` run the plugins in `fixtures/plugins` as real processes. The
 Python one needs `python3`; without it that test skips, saying why on stderr, unless `AX_DEVIL_REQUIRE_PYTHON` is set,
 which makes the skip a failure.
 

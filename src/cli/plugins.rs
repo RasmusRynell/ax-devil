@@ -1,14 +1,14 @@
-//! `plugins`: install, remove, list and check converters. These commands only print, so they need no server,
+//! `plugins`: install, remove, list and check plugins. These commands only print, so they need no server,
 //! settings or log file. Installing and removing take effect on the next start.
 
 use super::{catalog::Report, describe};
 use api_types::handlers::{PluginStatus, PluginsInfo};
-use ax_devil::plugins::reserved_ids;
+use ax_devil::plugins::reserved;
 use clap::{Subcommand, ValueHint};
-use converters::Registry;
 use foundation::{CancelToken, Interrupt};
 use handler_api::{OverlayRef, Settings};
 use handlers::Handlers;
+use plugins::Registry;
 use scene::SceneTime;
 use scene_store::{Ingest, TrackRead, TrackRegistry};
 use std::{
@@ -23,35 +23,35 @@ const POLL: Duration = Duration::from_millis(20);
 /// What `plugins` was asked to do.
 #[derive(Subcommand)]
 pub enum PluginsCommand {
-    /// Install the converter in a folder, or by its manifest file; it loads on the next start.
+    /// Install the plugin in a folder, or by its manifest file; it loads on the next start.
     Install {
-        /// The folder holding ax-devil-converter.json, or that file.
+        /// The folder holding ax-devil-plugin.json, or that file.
         #[arg(value_name = "PATH", value_hint = ValueHint::AnyPath)]
         path: PathBuf,
     },
-    /// Stop loading a converter; its files stay where they are.
+    /// Stop loading a plugin; its files stay where they are.
     Remove {
-        /// The converter's id, or the path of its folder or manifest when it no longer loads.
+        /// The plugin's id, or the path of its folder or manifest when it no longer loads.
         #[arg(value_name = "ID")]
         id: String,
     },
-    /// List the installed converters and whether each one loads.
+    /// List the installed plugins and whether each one loads.
     List {
         /// Print the list as JSON, as `GET /api/plugins` answers.
         #[arg(long)]
         json: bool,
     },
-    /// Run an installed converter on a file and print what it produced.
+    /// Run an installed plugin's decoder on a file and print what it produced.
     ///
-    /// Exits with a failure when the converter stops early or produces no samples.
+    /// Exits with a failure when the decoder stops early or produces no samples.
     Check {
-        /// The converter's id.
+        /// The decoder's handler id.
         #[arg(value_name = "ID")]
         id: String,
         /// The overlay file.
         #[arg(value_name = "FILE", value_hint = ValueHint::FilePath)]
         file: PathBuf,
-        /// An option the converter declares; repeat for several.
+        /// An option the decoder declares; repeat for several.
         #[arg(long = "option", value_name = "KEY=VALUE", value_parser = parse_option)]
         options: Vec<(String, String)>,
     },
@@ -72,7 +72,7 @@ fn failed(text: String) -> Report {
 
 /// What `command` prints. `registry` is the registry file, or why it is not known; `handlers` and `loaded` are what
 /// startup loaded from it. Blocking work, such as a check, runs off the async workers and is cancelled by Ctrl+C,
-/// which stops the converter.
+/// which stops the plugin.
 pub async fn run(
     command: PluginsCommand,
     registry: Result<PathBuf, String>,
@@ -91,11 +91,15 @@ pub async fn run(
         (PluginsCommand::Install { path }, Ok(file)) => install(&file, &path, &handlers),
         (PluginsCommand::Remove { id }, Ok(file)) => remove(&file, &id),
         (PluginsCommand::Check { id, file, options }, Ok(_)) => {
-            if loaded.provides(&id) {
+            let installed = handlers
+                .decoders()
+                .iter()
+                .any(|decoder| decoder.spec().id == id && loaded.provides(&decoder.spec().plugin));
+            if installed {
                 check(&handlers, &id, &file, options, &cancel)
             } else {
                 failed(format!(
-                    "No converter '{id}' is loaded; `ax-devil plugins list` shows what is installed"
+                    "No plugin provides the decoder '{id}'; `ax-devil plugins list` shows what is installed"
                 ))
             }
         }
@@ -109,7 +113,7 @@ fn install(registry: &Path, path: &Path, handlers: &Handlers) -> Report {
         .map_err(|error| error.to_string())
         .and_then(|mut installed| {
             let manifest = installed
-                .install(path, &reserved_ids(handlers))
+                .install(path, &reserved(handlers))
                 .map_err(|error| format!("{}: {error}", path.display()))?;
             installed
                 .save()
@@ -145,7 +149,7 @@ fn remove(registry: &Path, id: &str) -> Report {
             text: format!("Removed {id}. It applies on the next start; its files were left.\n"),
             ok: true,
         },
-        Ok(false) => failed(format!("No installed converter matches '{id}'")),
+        Ok(false) => failed(format!("No installed plugin matches '{id}'")),
         Err(reason) => failed(reason),
     }
 }
@@ -164,7 +168,7 @@ fn list(loaded: &PluginsInfo, json: bool) -> Report {
         return failed(problem.clone());
     }
     let mut text = String::new();
-    for plugin in &loaded.converters {
+    for plugin in &loaded.plugins {
         let line = match &plugin.status {
             PluginStatus::Loaded {
                 id,
@@ -184,12 +188,12 @@ fn list(loaded: &PluginsInfo, json: bool) -> Report {
         text.push('\n');
     }
     if text.is_empty() {
-        text.push_str("No converters are installed.\n");
+        text.push_str("No plugins are installed.\n");
     }
     Report { text, ok: true }
 }
 
-/// Runs the converter `id` on `file` into a private store and says what came out.
+/// Runs the plugin decoder `id` on `file` into a private store and says what came out.
 fn check(
     handlers: &Handlers,
     id: &str,
@@ -259,7 +263,7 @@ fn check(
             false
         }
         _ if samples == 0 => {
-            text.push_str("The converter produced no samples.\n");
+            text.push_str("The decoder produced no samples.\n");
             false
         }
         _ => true,

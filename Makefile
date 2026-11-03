@@ -80,7 +80,7 @@ _dev-rust: _types
 tests-frontend: node_modules/.installed
 	$(ISOLATED) pnpm --dir frontend exec vp test run $(TEST)
 
-# The real-Electron export tests and the Python converter tests skip on a machine without Electron, the render page or
+# The real-Electron export tests and the Python plugin tests skip on a machine without Electron, the render page or
 # python3; here they are all provided, so a skip must fail.
 tests-backend: export AX_DEVIL_REQUIRE_ELECTRON = 1
 tests-backend: export AX_DEVIL_REQUIRE_PYTHON = 1

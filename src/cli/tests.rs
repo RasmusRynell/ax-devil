@@ -345,12 +345,12 @@ async fn plugins_installed_and_removed_through_the_registry_load_on_the_next_sta
     let folder = tempfile::tempdir().unwrap();
     let registry = Ok(folder.path().join("data/plugins.json"));
     let fixture =
-        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("fixtures/converters/shell-times");
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("fixtures/plugins/shell-times");
     let broken = folder.path().join("broken");
     std::fs::create_dir(&broken).unwrap();
     std::fs::write(
-        broken.join("ax-devil-converter.json"),
-        r#"{"manifest":1,"protocol":2}"#,
+        broken.join("ax-devil-plugin.json"),
+        r#"{"manifest":2,"protocol":3}"#,
     )
     .unwrap();
     // Each command starts as the app does: the registry is read before the command line.
@@ -386,7 +386,7 @@ async fn plugins_installed_and_removed_through_the_registry_load_on_the_next_sta
         listed.text
     );
     let json: Value = serde_json::from_str(&plugins(&["list", "--json"]).await.text).unwrap();
-    assert_eq!(json["converters"][0]["status"]["state"], "Loaded");
+    assert_eq!(json["plugins"][0]["status"]["state"], "Loaded");
     let handlers = ax_devil::plugins::load(&registry, Handlers::built_in()).0;
     assert!(
         args::try_parse_from(
@@ -407,5 +407,5 @@ async fn plugins_installed_and_removed_through_the_registry_load_on_the_next_sta
 
     assert!(plugins(&["remove", "shell-times"]).await.ok);
     assert!(!plugins(&["remove", "shell-times"]).await.ok);
-    assert!(plugins(&["list"]).await.text.contains("No converters"));
+    assert!(plugins(&["list"]).await.text.contains("No plugins"));
 }

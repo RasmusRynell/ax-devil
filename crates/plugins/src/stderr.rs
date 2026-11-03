@@ -1,4 +1,4 @@
-//! What a converter wrote to stderr: drained so it never blocks, kept only as a short tail.
+//! What a plugin wrote to stderr: drained so it never blocks, kept only as a short tail.
 
 use std::{
     collections::VecDeque,
@@ -13,7 +13,7 @@ const KEEP_BYTES: usize = 64 << 10;
 const QUOTE_LINES: usize = 20;
 const QUOTE_BYTES: usize = 2 << 10;
 
-/// The last [`KEEP_BYTES`] of a converter's stderr.
+/// The last [`KEEP_BYTES`] of a plugin's stderr.
 #[derive(Clone, Default)]
 pub(crate) struct StderrTail(Arc<Mutex<VecDeque<u8>>>);
 
@@ -38,7 +38,7 @@ impl StderrTail {
         kept.iter().copied().collect()
     }
 
-    /// The last 20 lines, at most 2 KiB, for a failure reason; empty when the converter wrote nothing.
+    /// The last 20 lines, at most 2 KiB, for a failure reason; empty when the plugin wrote nothing.
     pub(crate) fn quote(&self) -> String {
         let bytes: Vec<u8> = {
             let kept = self
@@ -65,12 +65,12 @@ impl StderrTail {
     pub(crate) fn drain(
         &self,
         mut stderr: ChildStderr,
-        converter: String,
+        plugin: String,
         done: std::sync::mpsc::Sender<()>,
     ) {
         let tail = self.clone();
         let spawned = std::thread::Builder::new()
-            .name(format!("converter-stderr-{converter}"))
+            .name(format!("plugin-stderr-{plugin}"))
             .spawn(move || {
                 let mut chunk = vec![0_u8; 16 << 10];
                 while let Ok(read) = stderr.read(&mut chunk) {
@@ -78,7 +78,7 @@ impl StderrTail {
                         break;
                     }
                     tracing::debug!(
-                        converter,
+                        plugin,
                         "stderr: {}",
                         String::from_utf8_lossy(&chunk[..read])
                     );

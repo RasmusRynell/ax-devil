@@ -20,7 +20,7 @@ Where code and files belong. Layers and the dependency rule are in the [overview
 | `crates/handler-api/` | Layer 2: what a handler is: the `Decoder` and `PlaylistResolver` traits, the `Input` and `SceneSink` they run against, the `Form` of options and settings both declare and validate, and the overlay and video references |
 | `crates/scene-decoders/` | Layer 2: built-in decoders from overlay records to Scenes (MOT, UVG-VCM, ONVIF XML, CVAT, ADF) |
 | `crates/playlist-resolvers/` | Layer 2: built-in resolvers from settings to playlists of videos and overlay files (folder pair, MOT Challenge) |
-| `crates/handlers/` | Layer 2: the one registry of decoders and playlist resolvers; the built-ins and the installed converters |
+| `crates/handlers/` | Layer 2: the one registry of decoders and playlist resolvers; the built-ins and the installed plugins' handlers |
 | `crates/overlay-sync/` | Layer 2: Overlay Lookup, the pure choice of the sample that belongs to a frame (matching, coverage, sticky) |
 | `crates/media/` | Layer 3: video file or image sequence to frame index and frames (FFmpeg); the only crate that links it ([README](../../crates/media/README.md)) |
 | `crates/playback/` | Layer 3: what to decode and cache around each viewer's playhead, and its delivery; never depends on `media` ([README](../../crates/playback/README.md)) |
@@ -29,7 +29,7 @@ Where code and files belong. Layers and the dependency rule are in the [overview
 | `crates/scene-store/` | Layer 3: an overlay file decoded once into an on-disk artifact, shared by every viewer, with Scenes served from a bounded cache, and the file history that File scope queries ([README](../../crates/scene-store/README.md)) |
 | `crates/catalogs/` | Layer 3: the catalog documents the app offers, the six built-in v4 documents and the `*.json` files of the user's folder, listed, polled for changes and served as text to the frontend, which compiles them ([README](../../crates/catalogs/README.md)) |
 | `crates/overlays/` | Layer 3: a viewer's overlay data feed: Sample Items per source and Frame Maps per lane inside the sample window ([README](../../crates/overlays/README.md)) |
-| `crates/converters/` | Services layer: installed converter programs as file decoders: the manifest, the registry file and the process supervisor that feeds a decode's sink |
+| `crates/plugins/` | Services layer: installed plugin programs and the handlers they provide (decoders today): the manifest, the registry file and the process supervisor that feeds a decode's sink |
 | `crates/export/` | Services layer: an export job from frozen inputs to an encoded file, knowing no window, socket or Electron ([README](../../crates/export/README.md)) |
 | `crates/settings/` | Layer 3: the settings file, its declared settings (each Personal or Server) and shortcuts, and the window-state file ([README](../../crates/settings/README.md)) |
 | `crates/api-types/` | Rust types sent to the frontend and the API version; `export-types` writes them and the settings and command tables to `frontend/src/generated/`, and the versions and reserved keys to `desktop/generated/api.json`; `session.rs` is the Session socket's wire protocol; plain data that already has an owning crate is not redefined here |

@@ -1,5 +1,5 @@
-//! Installed converters end to end: the command line installs, lists and checks them, and a lane over a video reads
-//! the converter's samples to the end. The Python converter needs `python3`; without it that test says so and
+//! Installed plugins end to end: the command line installs, lists and checks them, and a lane over a video reads
+//! the plugin's samples to the end. The Python plugin needs `python3`; without it that test says so and
 //! passes, unless `AX_DEVIL_REQUIRE_PYTHON` is set (CI sets it).
 #![allow(clippy::print_stderr)] // the skip message is the test's only way to speak
 
@@ -12,12 +12,12 @@ use api_types::{
         LaneStatusWire, MATCH_EXACT, ServerMessage, StickyWire,
     },
 };
-use ax_devil::plugins;
+use ax_devil::plugins as app;
 use common::{Backend, Event, fixture};
-use converters::Registry;
 use foundation::CancelToken;
 use handler_api::OverlayRef;
 use handlers::Handlers;
+use plugins::{Registry, Reserved};
 use scene_store::{TrackRead, TrackRegistry};
 use std::{
     path::{Path, PathBuf},
@@ -30,9 +30,9 @@ async fn started(handlers: Handlers, installed: PluginsInfo) -> Backend {
     Backend::start_with(false, handlers, |state| state.plugins = Arc::new(installed)).await
 }
 
-fn converter(name: &str) -> PathBuf {
+fn plugin(name: &str) -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("fixtures/converters")
+        .join("fixtures/plugins")
         .join(name)
 }
 
@@ -68,24 +68,26 @@ fn ax_devil(home: &Path, args: &[&std::ffi::OsStr]) -> Output {
         .unwrap()
 }
 
-/// Installs the fixture converter `name` into the registry under `home` without the command line.
+/// Installs the fixture plugin `name` into the registry under `home` without the command line.
 fn install(home: &Path, name: &str) -> PathBuf {
     let file = home.join("data/ax-devil/plugins.json");
     let mut registry = Registry::read(&file).unwrap();
-    registry.install(&converter(name), &[]).unwrap();
+    registry
+        .install(&plugin(name), &Reserved::default())
+        .unwrap();
     registry.save().unwrap();
     file
 }
 
 #[test]
-fn the_command_line_installs_lists_and_checks_a_converter_and_fails_a_check_that_proves_nothing() {
+fn the_command_line_installs_lists_and_checks_a_plugin_and_fails_a_check_that_proves_nothing() {
     if !python_available() {
         return;
     }
     let home = tempfile::tempdir().unwrap();
     let run = |args: &[&std::ffi::OsStr]| ax_devil(home.path(), args);
     let text = |bytes: &[u8]| String::from_utf8_lossy(bytes).into_owned();
-    let tracks = converter("python-tracks");
+    let tracks = plugin("python-tracks");
     let sample = tracks.join("sample.tracks.csv");
     let empty = home.path().join("empty.tracks.csv");
     std::fs::write(&empty, "").unwrap();
@@ -110,7 +112,7 @@ fn the_command_line_installs_lists_and_checks_a_converter_and_fails_a_check_that
         "{}",
         text(&checked.stdout)
     );
-    for (id, file) in [("python-tracks", &empty), ("no-such-converter", &sample)] {
+    for (id, file) in [("python-tracks", &empty), ("no-such-plugin", &sample)] {
         let failed = run(&[
             "plugins".as_ref(),
             "check".as_ref(),
@@ -130,18 +132,18 @@ fn the_command_line_installs_lists_and_checks_a_converter_and_fails_a_check_that
 }
 
 #[tokio::test]
-async fn a_lane_over_a_converters_file_gets_its_samples_and_ends_complete() {
+async fn a_lane_over_a_plugins_file_gets_its_samples_and_ends_complete() {
     if !python_available() {
         return;
     }
     let home = tempfile::tempdir().unwrap();
     let registry = install(home.path(), "python-tracks");
-    let (handlers, installed) = plugins::load(&Ok(registry), Handlers::built_in());
+    let (handlers, installed) = app::load(&Ok(registry), Handlers::built_in());
     let backend = started(handlers, installed).await;
     let added = backend
         .add_with_overlays(
             &fixture("cfr_h264_gop10_bf2.mp4"),
-            &[converter("python-tracks/sample.tracks.csv")],
+            &[plugin("python-tracks/sample.tracks.csv")],
         )
         .await;
     let mut viewer = backend.viewer().await;
@@ -170,14 +172,14 @@ async fn a_lane_over_a_converters_file_gets_its_samples_and_ends_complete() {
 }
 
 #[test]
-fn a_converter_that_writes_out_of_order_has_its_samples_sorted_and_the_replaced_one_dropped() {
+fn a_plugin_that_writes_out_of_order_has_its_samples_sorted_and_the_replaced_one_dropped() {
     let home = tempfile::tempdir().unwrap();
     let registry = install(home.path(), "shell-times");
-    let (handlers, _) = plugins::load(&Ok(registry), Handlers::built_in());
+    let (handlers, _) = app::load(&Ok(registry), Handlers::built_in());
     let overlay = OverlayRef {
         label: "times".into(),
         slot: "times".into(),
-        path: converter("shell-times/sample.times.txt"),
+        path: plugin("shell-times/sample.times.txt"),
         handler: "shell-times".into(),
         options: Default::default(),
     };
@@ -215,22 +217,22 @@ fn a_converter_that_writes_out_of_order_has_its_samples_sorted_and_the_replaced_
 }
 
 #[tokio::test]
-async fn the_plugins_route_lists_the_converters_that_loaded_and_the_one_that_did_not() {
+async fn the_plugins_route_lists_the_plugins_that_loaded_and_the_one_that_did_not() {
     let home = tempfile::tempdir().unwrap();
     let registry = install(home.path(), "shell-times");
-    let gone = home.path().join("gone/ax-devil-converter.json");
+    let gone = home.path().join("gone/ax-devil-plugin.json");
     let text = std::fs::read_to_string(&registry).unwrap();
     let mut document: serde_json::Value = serde_json::from_str(&text).unwrap();
-    document["converters"]
+    document["plugins"]
         .as_array_mut()
         .unwrap()
         .push(serde_json::json!({ "manifest": gone }));
     std::fs::write(&registry, document.to_string()).unwrap();
-    let (handlers, installed) = plugins::load(&Ok(registry), Handlers::built_in());
+    let (handlers, installed) = app::load(&Ok(registry), Handlers::built_in());
     let backend = started(handlers, installed).await;
 
     let plugins = get(&backend, "/api/plugins").await;
-    let [loaded, failed] = &plugins["converters"].as_array().unwrap()[..] else {
+    let [loaded, failed] = &plugins["plugins"].as_array().unwrap()[..] else {
         panic!("{plugins}");
     };
     assert_eq!(loaded["status"]["state"], "Loaded");
@@ -272,14 +274,14 @@ async fn get(backend: &Backend, path: &str) -> serde_json::Value {
 }
 
 #[tokio::test]
-async fn a_lane_over_a_converter_that_defaults_to_time_is_matched_by_time_without_being_told() {
+async fn a_lane_over_a_plugin_that_defaults_to_time_is_matched_by_time_without_being_told() {
     let home = tempfile::tempdir().unwrap();
     let registry = install(home.path(), "shell-times");
-    let (handlers, installed) = plugins::load(&Ok(registry), Handlers::built_in());
+    let (handlers, installed) = app::load(&Ok(registry), Handlers::built_in());
     let backend = started(handlers, installed).await;
-    // `.txt` is also a MOT file, so the converter is named.
+    // `.txt` is also a MOT file, so the plugin is named.
     let overlays = [workspace::intake::NewOverlay {
-        path: converter("shell-times/sample.times.txt"),
+        path: plugin("shell-times/sample.times.txt"),
         handler: Some("shell-times".into()),
         label: None,
         options: Default::default(),

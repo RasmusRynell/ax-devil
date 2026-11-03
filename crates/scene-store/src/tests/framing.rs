@@ -76,7 +76,7 @@ fn the_host_frames_lines_and_a_skipped_one_keeps_its_frame() {
     assert_eq!(skipped.reasons, ["line 3: not a record"]);
 }
 
-/// A decoder that reads the file itself, as a converter does, and gives up on lines of its own.
+/// A decoder that reads the file itself, as a plugin does, and gives up on lines of its own.
 struct ReadsPath(Spec);
 
 impl Decoder for ReadsPath {

@@ -61,7 +61,7 @@ impl Paths {
     }
 }
 
-/// The registry of installed converters, `plugins.json` in the data folder. It has no command-line override, so the
+/// The registry of installed plugins, `plugins.json` in the data folder. It has no command-line override, so the
 /// handlers can be built before the command line is read.
 pub fn plugins_file(env: Env) -> Result<PathBuf, String> {
     Ok(data_folder(env)?.join("plugins.json"))

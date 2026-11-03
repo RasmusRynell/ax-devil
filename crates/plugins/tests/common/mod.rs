@@ -1,4 +1,4 @@
-//! Shared by the converter tests: a recording sink, a file source and manifest helpers.
+//! Shared by the plugin tests: a recording sink, a file source and manifest helpers.
 
 #![allow(dead_code)] // each test binary uses a different part
 
@@ -7,11 +7,11 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use converters::ConverterDecoder;
 use foundation::{CancelToken, Interrupt, Warning};
 use handler_api::{
     DecodeError, DecodeSummary, Decoder, Header, Input, OnEqualKey, Record, SceneSink, Settings,
 };
+use plugins::PluginDecoder;
 use scene::Scene;
 
 /// Records what a decoder gives its sink; optionally cancels after some samples.
@@ -50,7 +50,7 @@ impl SceneSink for TestSink {
     }
 }
 
-/// A file the decoder is pointed at; converters never ask for its bytes.
+/// A file the decoder is pointed at; plugin decoders never ask for its bytes.
 pub struct FileSource(pub PathBuf);
 
 impl Input for FileSource {
@@ -59,7 +59,7 @@ impl Input for FileSource {
     }
 
     fn next(&mut self, _: &CancelToken) -> Result<Option<Record<'_>>, Interrupt<DecodeError>> {
-        panic!("a converter reads the file itself");
+        panic!("a plugin decoder reads the file itself");
     }
 }
 
@@ -91,7 +91,7 @@ impl Run {
 
 /// Decodes `file` with `decoder` into a fresh sink.
 pub fn decode(
-    decoder: &ConverterDecoder,
+    decoder: &PluginDecoder,
     file: &Path,
     options: &Settings,
     cancel: &CancelToken,
@@ -101,7 +101,7 @@ pub fn decode(
         .spec()
         .options
         .validate(options)
-        .expect("the options fit the converter's form");
+        .expect("the options fit the decoder's form");
     let result = decoder.decode(
         &mut FileSource(file.to_path_buf()),
         &options,
@@ -111,10 +111,12 @@ pub fn decode(
     Run { result, sink }
 }
 
-/// A manifest document with these fields; `extra` is inserted before the closing brace as `, "key": value` text.
+/// A manifest document with these fields; `extra` is inserted before the handlers as `,"key":value` text. Its one
+/// decoder, `test-conv`, reads `.test` files.
 pub fn manifest_text(command: &str, extra: &str) -> String {
     format!(
-        r#"{{"manifest":1,"kind":"file","id":"test-conv","name":"Test","version":"1","protocol":2,
-            "scene_version":"4.0","extensions":[".test"],"command":{command}{extra}}}"#
+        r#"{{"manifest":2,"id":"test-plugin","name":"Test","version":"1","protocol":3,"command":{command}{extra},
+            "handlers":[{{"kind":"decoder","id":"test-conv","name":"Test","input":"path","scene_version":"4.0",
+            "extensions":[".test"]}}]}}"#
     )
 }

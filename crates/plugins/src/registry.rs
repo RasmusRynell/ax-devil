@@ -1,4 +1,4 @@
-//! `plugins.json`: which converter manifests the app loads. Written only by install and remove, never by scanning
+//! `plugins.json`: which plugin manifests the app loads. Written only by install and remove, never by scanning
 //! folders.
 
 use std::{
@@ -9,10 +9,13 @@ use std::{
 
 use serde_json::{Map, Value, json};
 
-use crate::manifest::{MANIFEST_FILE, Manifest, ManifestError};
+use crate::{
+    manifest::{MANIFEST_FILE, Manifest, ManifestError},
+    reserved::Reserved,
+};
 
 /// The registry file version this build reads and writes.
-const VERSION: u64 = 1;
+const VERSION: u64 = 2;
 
 /// The registry file could not be used.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -26,13 +29,13 @@ impl std::fmt::Display for RegistryError {
 
 impl std::error::Error for RegistryError {}
 
-/// The converters the user installed, in install order. Keys this build does not know are kept when it writes.
+/// The plugins the user installed, in install order. Keys this build does not know are kept when it writes.
 #[derive(Clone, Debug)]
 pub struct Registry {
     path: PathBuf,
-    /// Top-level keys besides `version` and `converters`.
+    /// Top-level keys besides `version` and `plugins`.
     other: Map<String, Value>,
-    /// One object per converter; `manifest` is its absolute manifest path.
+    /// One object per plugin; `manifest` is its absolute manifest path.
     entries: Vec<Map<String, Value>>,
 }
 
@@ -65,17 +68,17 @@ impl Registry {
                     "version {newer} was written by a newer ax-devil"
                 )));
             }
-            _ => return Err(unusable("version must be 1".to_owned())),
+            _ => return Err(unusable(format!("version must be {VERSION}"))),
         }
-        let Some(Value::Array(converters)) = fields.remove("converters") else {
-            return Err(unusable("converters must be a list".to_owned()));
+        let Some(Value::Array(plugins)) = fields.remove("plugins") else {
+            return Err(unusable("plugins must be a list".to_owned()));
         };
-        for converter in converters {
-            match converter {
+        for plugin in plugins {
+            match plugin {
                 Value::Object(entry) if entry.get("manifest").is_some_and(Value::is_string) => {
                     registry.entries.push(entry);
                 }
-                _ => return Err(unusable("every converter needs a manifest path".to_owned())),
+                _ => return Err(unusable("every plugin needs a manifest path".to_owned())),
             }
         }
         registry.other = fields;
@@ -87,11 +90,12 @@ impl Registry {
         self.entries.iter().map(entry_manifest).collect()
     }
 
-    /// Adds the converter at `path`, a folder holding `ax-devil-converter.json` or the manifest itself. Nothing is
-    /// written until [`save`](Self::save). `reserved` holds the ids and handler ids that are taken.
+    /// Adds the plugin at `path`, a folder holding `ax-devil-plugin.json` or the manifest itself. Nothing is written
+    /// until [`save`](Self::save). `reserved` holds the ids the built-ins take.
     ///
-    /// The id must be new: an installed converter with the same id, or a reserved one, refuses it.
-    pub fn install(&mut self, path: &Path, reserved: &[&str]) -> Result<Manifest, ManifestError> {
+    /// The plugin id and every handler id must be new: an installed plugin that has one, or a reserved one, refuses
+    /// it.
+    pub fn install(&mut self, path: &Path, reserved: &Reserved) -> Result<Manifest, ManifestError> {
         let manifest_path = if path.is_dir() {
             path.join(MANIFEST_FILE)
         } else {
@@ -101,19 +105,14 @@ impl Registry {
             ManifestError::file(format!("cannot read {}: {error}", manifest_path.display()))
         })?;
         let manifest = Manifest::load(&manifest_path)?;
-        let taken = reserved.contains(&manifest.id.as_str())
-            || self.manifests().iter().any(|installed| {
-                Manifest::load(installed).is_ok_and(|other| other.id == manifest.id)
-            });
-        if taken {
-            return Err(ManifestError::new(
-                "id",
-                format!(
-                    "'{}' is already taken by a built-in or installed handler",
-                    manifest.id
-                ),
-            ));
+        let mut taken = reserved.clone();
+        for installed in self.manifests() {
+            // One that does not load took no ids, as in `load`.
+            if let Ok(other) = Manifest::load(&installed) {
+                let _ = taken.claim(&other);
+            }
         }
+        taken.claim(&manifest)?;
         self.entries.push(Map::from_iter([(
             "manifest".to_owned(),
             Value::String(manifest_path.to_string_lossy().into_owned()),
@@ -121,7 +120,7 @@ impl Registry {
         Ok(manifest)
     }
 
-    /// Removes the converter whose manifest declares the id `target`, or whose manifest or folder path is `target`
+    /// Removes the plugin whose manifest declares the id `target`, or whose manifest or folder path is `target`
     /// (the only way to remove one that no longer loads). Its files are left alone. Returns whether one was removed.
     pub fn remove(&mut self, target: &str) -> bool {
         let before = self.entries.len();
@@ -144,7 +143,7 @@ impl Registry {
         let mut document = Map::new();
         document.insert("version".to_owned(), json!(VERSION));
         document.insert(
-            "converters".to_owned(),
+            "plugins".to_owned(),
             Value::Array(self.entries.iter().cloned().map(Value::Object).collect()),
         );
         document.extend(self.other.clone());

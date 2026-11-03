@@ -1,6 +1,6 @@
-//! The converter host against converters that misbehave. The converter is this test binary run again: the command
-//! names it with `--converter=MODE`, and `main` plays the converter instead of running the tests. The binary has
-//! no libtest harness because libtest would print its own lines on the converter's stdout.
+//! The plugin host against plugins that misbehave. The plugin is this test binary run again: the command
+//! names it with `--plugin=MODE`, and `main` plays the plugin instead of running the tests. The binary has
+//! no libtest harness because libtest would print its own lines on the plugin's stdout.
 #![allow(clippy::print_stdout, clippy::print_stderr)] // a test runner without a harness reports with prints
 
 mod common;
@@ -14,12 +14,12 @@ use std::{
 };
 
 use common::{Run, TestSink, decode, manifest_text};
-use converters::ConverterDecoder;
 use foundation::{CancelToken, Interrupt};
 use handler_api::{OnEqualKey, Settings};
+use plugins::{LoadedPlugin, PluginDecoder};
 use scene::SceneTime;
 
-const MODE_PREFIX: &str = "--converter=";
+const MODE_PREFIX: &str = "--plugin=";
 const SECRET_NAMES: [&str; 3] = [
     "AX_DEVIL_TARGET_PASS",
     "AWS_SECRET_ACCESS_KEY",
@@ -31,7 +31,7 @@ fn main() {
         .nth(1)
         .and_then(|arg| arg.strip_prefix(MODE_PREFIX).map(str::to_owned))
     {
-        converter(&mode);
+        plugin(&mode);
         return;
     }
     // SAFETY: nothing else runs yet, so no other thread reads the environment.
@@ -46,8 +46,8 @@ fn main() {
         ("environment_is_an_allowlist", environment_is_an_allowlist),
         ("wire_lines_reach_the_sink", wire_lines_reach_the_sink),
         (
-            "a_silent_converter_is_killed_after_the_idle_timeout",
-            a_silent_converter_is_killed_after_the_idle_timeout,
+            "a_silent_plugin_is_killed_after_the_idle_timeout",
+            a_silent_plugin_is_killed_after_the_idle_timeout,
         ),
         (
             "the_whole_process_group_is_killed",
@@ -70,8 +70,8 @@ fn main() {
             a_late_header_is_a_protocol_error,
         ),
         (
-            "cancelling_kills_the_converter_and_removes_its_folder",
-            cancelling_kills_the_converter_and_removes_its_folder,
+            "cancelling_kills_the_plugin_and_removes_its_folder",
+            cancelling_kills_the_plugin_and_removes_its_folder,
         ),
     ];
     let mut failed = 0;
@@ -100,7 +100,7 @@ fn main() {
     }
 }
 
-// The converter side ------------------------------------------------------------------------------------------
+// The plugin side ------------------------------------------------------------------------------------------
 
 fn sample_line(frame: u64) -> String {
     format!(
@@ -121,7 +121,7 @@ fn sleep_forever() -> ! {
     }
 }
 
-fn converter(mode: &str) {
+fn plugin(mode: &str) {
     match mode {
         "env-dump" => {
             let mut debug: Vec<String> = std::env::vars()
@@ -154,7 +154,7 @@ fn converter(mode: &str) {
         }
         "hang" => sleep_forever(),
         "grandchild" => {
-            // The orphan is the point: the host must kill it, and this converter never waits for it.
+            // The orphan is the point: the host must kill it, and this plugin never waits for it.
             #[allow(clippy::zombie_processes)]
             let child = Command::new("sleep")
                 .arg("300")
@@ -203,6 +203,12 @@ fn converter(mode: &str) {
             eprintln!("boom: cannot read record 4");
             std::process::exit(3);
         }
+        "error-after-2" => {
+            out(&sample_line(0));
+            out(&sample_line(1));
+            out(r#"{"error":{"reason":"cannot read record 3","field":"camera"}}"#);
+            out(&sample_line(2));
+        }
         "stderr-flood" => {
             let mut stderr = std::io::stderr().lock();
             let line = format!("{}\n", "e".repeat(99));
@@ -227,11 +233,11 @@ fn converter(mode: &str) {
                 std::thread::sleep(Duration::from_millis(50));
             }
         }
-        other => panic!("unknown converter mode {other}"),
+        other => panic!("unknown plugin mode {other}"),
     }
 }
 
-/// JSON text for `text`, without a JSON library on the converter side.
+/// JSON text for `text`, without a JSON library on the plugin side.
 fn serde_json_string(text: &str) -> String {
     let mut quoted = String::from('"');
     for c in text.chars() {
@@ -249,15 +255,18 @@ fn serde_json_string(text: &str) -> String {
 // The host side ---------------------------------------------------------------------------------------------
 
 /// A decoder for this binary playing `mode`, with `FAKE_LISTED` passed through and `extra` manifest fields.
-fn fake(folder: &Path, mode: &str, extra: &str) -> ConverterDecoder {
+fn fake(folder: &Path, mode: &str, extra: &str) -> std::sync::Arc<PluginDecoder> {
     let exe = std::env::current_exe().expect("test binary path");
     let command = serde_json::json!([exe, format!("{MODE_PREFIX}{mode}")]);
     let text = manifest_text(
         &command.to_string(),
         &format!(r#","env":["FAKE_LISTED"]{extra}"#),
     );
-    std::fs::write(folder.join("ax-devil-converter.json"), text).expect("manifest written");
-    ConverterDecoder::load(&folder.join("ax-devil-converter.json")).expect("manifest loads")
+    std::fs::write(folder.join("ax-devil-plugin.json"), text).expect("manifest written");
+    LoadedPlugin::load(&folder.join("ax-devil-plugin.json"))
+        .expect("manifest loads")
+        .decoders
+        .remove(0)
 }
 
 fn run_fake(mode: &str, extra: &str, cancel: &CancelToken, sink: TestSink) -> Run {
@@ -285,12 +294,12 @@ fn environment_is_an_allowlist() {
     let debug = run.sink.samples[0].0.debug();
     let has = |name: &str| debug.iter().any(|(key, _)| key == name);
     for name in SECRET_NAMES {
-        assert!(!has(name), "{name} reached the converter");
+        assert!(!has(name), "{name} reached the plugin");
     }
     let everything = format!("{debug:?}");
     assert!(
         !everything.contains("SECRET"),
-        "a secret value reached the converter"
+        "a secret value reached the plugin"
     );
     assert!(has("PATH"), "PATH is passed");
     assert!(has("FAKE_LISTED"), "a name the manifest lists is passed");
@@ -316,7 +325,7 @@ fn wire_lines_reach_the_sink() {
     assert_eq!(run.sink.skips, [(7, "row 9 has no id".to_owned())]);
 }
 
-fn a_silent_converter_is_killed_after_the_idle_timeout() {
+fn a_silent_plugin_is_killed_after_the_idle_timeout() {
     let started = Instant::now();
     let run = run_fake(
         "hang",
@@ -409,7 +418,17 @@ fn a_failure_keeps_the_samples_and_quotes_stderr() {
     assert!(reason.contains("exit code 3"), "{reason}");
     assert!(reason.contains("boom: cannot read record 4"), "{reason}");
 
-    // Stderr is drained: ten megabytes of it do not block the converter.
+    // An error line ends the run even when the plugin goes on and exits 0.
+    let run = run_fake(
+        "error-after-2",
+        "",
+        &CancelToken::new(),
+        TestSink::default(),
+    );
+    assert_eq!(run.sink.samples.len(), 2);
+    assert_eq!(run.failure(), "cannot read record 3");
+
+    // Stderr is drained: ten megabytes of it do not block the plugin.
     let run = run_fake("stderr-flood", "", &CancelToken::new(), TestSink::default());
     run.summary();
     assert_eq!(run.sink.samples.len(), 1);
@@ -426,7 +445,7 @@ fn a_late_header_is_a_protocol_error() {
     assert!(run.sink.header.is_none());
 }
 
-fn cancelling_kills_the_converter_and_removes_its_folder() {
+fn cancelling_kills_the_plugin_and_removes_its_folder() {
     let cancel = CancelToken::new();
     let sink = TestSink {
         cancel_after: Some((2, cancel.clone())),

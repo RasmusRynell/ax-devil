@@ -1,4 +1,4 @@
-//! Starting a converter in a process group of its own, with an environment that carries no credentials, and
+//! Starting a plugin in a process group of its own, with an environment that carries no credentials, and
 //! killing that group.
 
 use std::{
@@ -7,7 +7,7 @@ use std::{
     process::{Child, Command, Stdio},
 };
 
-/// The only variables a converter inherits from the app, each only when set. The manifest's `env` adds names;
+/// The only variables a plugin inherits from the app, each only when set. The manifest's `env` adds names;
 /// nothing else passes, so no `AX_DEVIL_*`, server password, or cloud or proxy credential reaches it.
 const PASSED_ENV: &[&str] = &[
     "PATH",
@@ -20,19 +20,17 @@ const PASSED_ENV: &[&str] = &[
     "SYSTEMROOT",
 ];
 
-/// The converter process: `program args... overlay`, working in `folder` (also its `TMPDIR`), with stdin, stdout
+/// The plugin process: `program args...`, working in `folder` (also its `TMPDIR`), with stdin, stdout
 /// and stderr piped.
 pub(crate) fn command(
     program: &OsStr,
     args: &[OsString],
-    overlay: &Path,
     extra_env: &[String],
     folder: &Path,
 ) -> Command {
     let mut process = Command::new(program);
     process
         .args(args)
-        .arg(overlay)
         .env_clear()
         .current_dir(folder)
         .stdin(Stdio::piped())
@@ -57,7 +55,7 @@ pub(crate) fn command(
     process
 }
 
-/// Kills the converter and everything it started. Safe to call after the child exited or was killed.
+/// Kills the plugin and everything it started. Safe to call after the child exited or was killed.
 pub(crate) fn kill_group(child: &mut Child) {
     #[cfg(unix)]
     {

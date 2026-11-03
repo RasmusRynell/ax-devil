@@ -1,4 +1,4 @@
-//! Splits a converter's stdout into lines without ever holding more than one capped line.
+//! Splits a plugin's stdout into lines without ever holding more than one capped line.
 
 use std::ops::ControlFlow;
 

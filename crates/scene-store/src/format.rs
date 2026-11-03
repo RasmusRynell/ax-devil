@@ -40,7 +40,7 @@ pub(crate) struct Identity {
     pub scene_major: u16,
     pub scene_minor: u16,
     pub options: String,
-    /// SHA-256 of the code of a decoder that is not part of the app (a converter's manifest and files); `None` for
+    /// SHA-256 of the code of a decoder that is not part of the app (a plugin's manifest and files); `None` for
     /// built-ins.
     pub code: Option<[u8; 32]>,
     /// The source's stat when the artifact was built or last republished.

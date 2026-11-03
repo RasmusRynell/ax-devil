@@ -141,7 +141,7 @@ fn typed_options<'a>(
     Ok(settings)
 }
 
-/// The decoders and resolvers `list-handlers` prints, one per line, then the converters that did not load.
+/// The decoders and resolvers `list-handlers` prints, one per line, then the plugins that did not load.
 pub(super) fn handlers_listing(handlers: &Handlers, installed: &PluginsInfo) -> String {
     let decoders: Vec<_> = handlers
         .decoders()
@@ -185,7 +185,7 @@ pub(super) fn handlers_listing(handlers: &Handlers, installed: &PluginsInfo) -> 
         .cloned()
         .chain(
             installed
-                .converters
+                .plugins
                 .iter()
                 .filter_map(|plugin| match &plugin.status {
                     PluginStatus::Failed { reason } => {
@@ -196,7 +196,7 @@ pub(super) fn handlers_listing(handlers: &Handlers, installed: &PluginsInfo) -> 
         )
         .collect();
     if !problems.is_empty() {
-        listing.push_str("\nConverters that did not load (ax-devil plugins list):\n");
+        listing.push_str("\nPlugins that did not load (ax-devil plugins list):\n");
         for problem in problems {
             listing.push_str(&format!("  {problem}\n"));
         }

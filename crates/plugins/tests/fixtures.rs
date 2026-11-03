@@ -1,4 +1,4 @@
-//! The sample converters in `fixtures/converters/`, run for real. They need `python3` and `sh`; without python3
+//! The sample plugins in `fixtures/plugins/`, run for real. They need `python3` and `sh`; without python3
 //! the Python test says so and passes, unless `AX_DEVIL_REQUIRE_PYTHON` is set (CI sets it).
 #![allow(clippy::print_stderr)] // the skip message is the test's only way to speak
 
@@ -10,20 +10,23 @@ use std::{
 };
 
 use common::{TestSink, decode};
-use converters::ConverterDecoder;
 use foundation::CancelToken;
 use handler_api::{OnEqualKey, Settings};
+use plugins::{LoadedPlugin, PluginDecoder};
 use scene::{Coverage, Geometry, Operation, SceneTime, TimeKind, Value};
+use std::sync::Arc;
 
 fn fixture(name: &str) -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../../fixtures/converters")
+        .join("../../fixtures/plugins")
         .join(name)
 }
 
-fn decoder(name: &str) -> ConverterDecoder {
-    ConverterDecoder::load(&fixture(name).join("ax-devil-converter.json"))
+fn decoder(name: &str) -> Arc<PluginDecoder> {
+    LoadedPlugin::load(&fixture(name).join("ax-devil-plugin.json"))
         .expect("the fixture manifest loads")
+        .decoders
+        .remove(0)
 }
 
 fn python_available() -> bool {
@@ -50,7 +53,7 @@ fn key(scene: &scene::Scene) -> SceneTime {
 }
 
 #[test]
-fn the_python_converter_gives_the_model_everything_it_covers() {
+fn the_python_plugin_gives_the_model_everything_it_covers() {
     if !python_available() {
         return;
     }
@@ -84,7 +87,7 @@ fn the_python_converter_gives_the_model_everything_it_covers() {
             .all(|(_, mode)| *mode == OnEqualKey::Merge)
     );
 
-    // Pixels were normalised by the converter's width and height options (defaults 1920 and 1080).
+    // Pixels were normalised by the plugin's width and height options (defaults 1920 and 1080).
     let car = run.sink.samples[0].0.entity("1").expect("entity 1");
     let observation = &car.observations()[0];
     let Geometry::Box(bounds) = &observation.geometry else {
@@ -111,7 +114,7 @@ fn the_python_converter_gives_the_model_everything_it_covers() {
         matches!(&renamed[0].operation, Operation::Rename { from, to } if from == "1" && to == "9")
     );
 
-    // A malformed row and a truncated one are skipped; neither ends the converter.
+    // A malformed row and a truncated one are skipped; neither ends the plugin.
     let skips = &run.sink.skips;
     assert_eq!(skips.len(), 2, "{skips:?}");
     assert!(skips[0].1.starts_with("row 6:"), "{skips:?}");
@@ -119,7 +122,7 @@ fn the_python_converter_gives_the_model_everything_it_covers() {
 }
 
 #[test]
-fn the_shell_converter_emits_times_out_of_order_and_a_replace() {
+fn the_shell_plugin_emits_times_out_of_order_and_a_replace() {
     let run = decode(
         &decoder("shell-times"),
         &fixture("shell-times/sample.times.txt"),
@@ -151,4 +154,23 @@ fn the_shell_converter_emits_times_out_of_order_and_a_replace() {
         5
     );
     assert!(run.sink.warnings.is_empty());
+}
+
+#[test]
+fn the_shell_plugin_reads_a_file_whose_name_has_a_quote_and_a_backslash() {
+    // The request carries the path as a JSON string, so the quote and the backslash arrive escaped.
+    let folder = tempfile::tempdir().expect("a temporary folder");
+    let file = folder.path().join(r#"a"b\c.times.txt"#);
+    std::fs::copy(fixture("shell-times/sample.times.txt"), &file).expect("the copy");
+
+    let run = decode(
+        &decoder("shell-times"),
+        &file,
+        &Settings::new(),
+        &CancelToken::new(),
+        TestSink::default(),
+    );
+
+    assert_eq!(run.sink.samples.len(), 6);
+    assert!(run.sink.warnings.is_empty() && run.sink.skips.is_empty());
 }

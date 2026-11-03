@@ -134,7 +134,7 @@ enum Command {
     /// List the render catalogs, check a catalog file or draw one, then exit.
     #[command(subcommand)]
     Catalog(CatalogCommand),
-    /// Install, remove, list or check converters, which read overlay files of other formats, then exit.
+    /// Install, remove, list or check plugins, which read overlay files of other formats, then exit.
     #[command(subcommand)]
     Plugins(PluginsCommand),
     /// Serve the app to other machines, protected by a server password.

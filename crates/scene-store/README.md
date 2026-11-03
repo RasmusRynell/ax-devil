@@ -18,7 +18,7 @@ records  one postcard Scene each (scene::serial::encode), back to back; record r
 index    postcard: sample keys (frame numbers, µs, or both; timestamps ascend, frame numbers are unique), record boundaries, CRC-32 per record
 summary  postcard: coverage, decoder warnings, filter policy, file metadata
 identity postcard: handler, artifact version, Scene version, canonical options (the decoder's declared options with
-         defaults filled in; keys it does not declare are no part of it), decoder code hash or none (converters), source stat (size, mtime, ctime where the platform has one), source SHA-256 or none
+         defaults filled in; keys it does not declare are no part of it), decoder code hash or none (plugins), source stat (size, mtime, ctime where the platform has one), source SHA-256 or none
 history  CRC-32 then postcard: the file history (see File history), or a mark that it was too large
 footer   index, summary, identity and history offsets u64 LE | CRC-32 of index..history u32 LE | "AXSE"
 ```
@@ -60,7 +60,7 @@ holds no `Arc<Track>`, so dropping the last track stops it.
   `TrackRead::scene_in` / `item_in` and the snapshot it came from, never with `TrackRead::scene` across an `await` or
   thread hop. Listeners (`TrackRead::on_change`) hear every publication.
 - **End.** A complete decode writes the tail and renames the artifact into place before `Complete` is published. A
-  failure after a sample, from a converter or a decoder that gave a header, leaves the rows read, `Incomplete(why)` and
+  failure after a sample, from a plugin or a decoder that gave a header, leaves the rows read, `Incomplete(why)` and
   no stored artifact; any other failure fails the open.
 
 ## File history

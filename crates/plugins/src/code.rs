@@ -1,4 +1,4 @@
-//! A converter's code identity: the manifest as it was loaded and the files it names, hashed into the cache key of its
+//! A plugin's code identity: the manifest as it was loaded and the files it names, hashed into the cache key of its
 //! output.
 
 use std::{
@@ -19,7 +19,7 @@ pub(crate) struct Limits {
     pub bytes: u64,
 }
 
-/// A converter is a script and a few modules; more than this is a data folder named by mistake.
+/// A plugin is a script and a few modules; more than this is a data folder named by mistake.
 pub(crate) const LIMITS: Limits = Limits {
     files: 20_000,
     bytes: 256 << 20,
@@ -84,7 +84,7 @@ pub(crate) fn collect(manifest: &Manifest, limits: Limits) -> Result<Vec<CodeFil
         let named = Path::new(entry);
         if !is_inside(named) {
             return Err(refuse(format!(
-                "'{entry}' must be a path inside the converter's folder"
+                "'{entry}' must be a path inside the plugin's folder"
             )));
         }
         let start = folder.join(named);

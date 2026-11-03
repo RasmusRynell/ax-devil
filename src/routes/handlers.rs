@@ -66,7 +66,10 @@ pub(crate) async fn get_handlers(State(state): State<AppState>) -> Json<Handlers
             display_name: spec.name.clone(),
             extensions: spec.extensions.clone(),
             options: field_infos(&spec.options),
-            plugin: state.plugins.provides(&spec.id).then(|| spec.id.clone()),
+            plugin: state
+                .plugins
+                .provides(&spec.plugin)
+                .then(|| spec.plugin.clone()),
         }
     });
     let resolvers = state.handlers.resolvers().iter().map(|resolver| {
@@ -84,7 +87,7 @@ pub(crate) async fn get_handlers(State(state): State<AppState>) -> Json<Handlers
     })
 }
 
-/// The converters the user installed, with the reason for each that did not load.
+/// The plugins the user installed, with the reason for each that did not load.
 pub(crate) async fn get_plugins(State(state): State<AppState>) -> Json<PluginsInfo> {
     Json(PluginsInfo::clone(&state.plugins))
 }
@@ -161,8 +164,14 @@ pub(crate) async fn scan(
 mod tests {
     use super::*;
     use crate::test_support::{TestApp, json};
+    use api_types::handlers::{PluginInfo, PluginStatus};
     use axum::{body::Body, http::Request};
-    use handler_api::{Field, Form, ResolvedPlaylist, ResolverSpec, Values};
+    use handler_api::{
+        DecodeError, DecodeSummary, Decoder, Field, Form, Framing, Input, ResolvedPlaylist,
+        ResolverSpec, SceneSink, Spec, Values,
+    };
+    use handlers::Handlers;
+    use scene::MatchBasis;
     use serde_json::json;
     use std::{
         sync::{
@@ -228,6 +237,89 @@ mod tests {
             mot["fields"][1]["kind"],
             json!({ "kind": "Scan", "depends_on": ["root"] })
         );
+    }
+
+    /// A decoder that is only listed, never run.
+    struct Listed(Spec);
+
+    impl Decoder for Listed {
+        fn spec(&self) -> &Spec {
+            &self.0
+        }
+
+        fn decode(
+            &self,
+            _input: &mut dyn Input,
+            _options: &Values,
+            _sink: &mut dyn SceneSink,
+            _cancel: &CancelToken,
+        ) -> Result<DecodeSummary, Interrupt<DecodeError>> {
+            unreachable!("the route only lists decoders")
+        }
+    }
+
+    fn listed(handler: &str, plugin: &str) -> Arc<dyn Decoder> {
+        Arc::new(Listed(Spec {
+            id: handler.into(),
+            plugin: plugin.into(),
+            name: format!("{handler} from {plugin}"),
+            extensions: vec![".listed".into()],
+            framing: Framing::Whole,
+            bases: vec![MatchBasis::Frame],
+            default_basis: MatchBasis::Frame,
+            options: Form::default(),
+            version: 1,
+        }))
+    }
+
+    fn loaded(id: &str) -> PluginInfo {
+        PluginInfo {
+            manifest: format!("{id}/ax-devil-plugin.json"),
+            folder: id.into(),
+            status: PluginStatus::Loaded {
+                id: id.into(),
+                name: id.into(),
+                version: "1".into(),
+                extensions: vec![".listed".into()],
+            },
+        }
+    }
+
+    #[tokio::test]
+    async fn a_plugin_decoder_names_the_plugin_that_ships_it_not_its_handler_id() {
+        // Each handler id is the id of the other loaded plugin, so a lookup by handler id names the wrong plugin.
+        let handlers = Handlers::built_in().with_decoders([
+            listed("beta", "alpha"),
+            listed("alpha", "beta"),
+            listed("orphan", "gone"),
+        ]);
+        let plugins = PluginsInfo {
+            plugins: vec![loaded("alpha"), loaded("beta")],
+            problem: None,
+        };
+        let test = TestApp::with(handlers, plugins);
+        let request = Request::builder()
+            .uri("/api/handlers")
+            .body(Body::empty())
+            .unwrap();
+        let (status, body) = test.send(request).await;
+        assert_eq!(status, StatusCode::OK);
+        let info = json(&body);
+
+        let decoder = |handler: &str| {
+            info["decoders"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|decoder| decoder["handler"] == handler)
+                .expect("the decoder is listed")
+                .clone()
+        };
+        assert_eq!(decoder("beta")["plugin"], "alpha");
+        assert_eq!(decoder("alpha")["plugin"], "beta");
+        // A plugin that did not load is not named, and neither is a built-in.
+        assert!(decoder("orphan").get("plugin").is_none());
+        assert!(decoder("MOT_FILE").get("plugin").is_none());
     }
 
     #[tokio::test]

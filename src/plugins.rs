@@ -1,43 +1,48 @@
-//! The converters the user installed, as the app starts with them: their decoders join the built-in ones, and what
+//! The plugins the user installed, as the app starts with them: their decoders join the built-in ones, and what
 //! `GET /api/plugins` and `plugins list` say comes from the same load.
 
 use api_types::handlers::{PluginInfo, PluginStatus, PluginsInfo};
-use converters::Loaded;
+use handler_api::Decoder;
 use handlers::Handlers;
-use std::{
-    collections::HashSet,
-    path::{Path, PathBuf},
-};
+use plugins::{Loaded, Reserved};
+use std::path::{Path, PathBuf};
 
-/// The ids a converter may not take: every built-in decoder's handler and plugin id, and every resolver's id.
-pub fn reserved_ids(handlers: &Handlers) -> Vec<&str> {
-    let ids: HashSet<&str> = handlers
-        .decoders()
-        .iter()
-        .flat_map(|decoder| [decoder.spec().id.as_str(), decoder.spec().plugin.as_str()])
-        .chain(
-            handlers
-                .resolvers()
-                .iter()
-                .map(|resolver| resolver.spec().id.as_str()),
-        )
-        .collect();
-    ids.into_iter().collect()
+/// The ids a plugin may not take: every built-in decoder's plugin id, and every built-in decoder's and resolver's
+/// handler id.
+pub fn reserved(handlers: &Handlers) -> Reserved {
+    Reserved {
+        plugins: handlers
+            .decoders()
+            .iter()
+            .map(|decoder| decoder.spec().plugin.clone())
+            .collect(),
+        handlers: handlers
+            .decoders()
+            .iter()
+            .map(|decoder| decoder.spec().id.clone())
+            .chain(
+                handlers
+                    .resolvers()
+                    .iter()
+                    .map(|resolver| resolver.spec().id.clone()),
+            )
+            .collect(),
+    }
 }
 
-/// `built_in` plus the converters the registry file lists, and what loading them said. `registry` is the file's
+/// `built_in` plus the plugins the registry file lists, and what loading them said. `registry` is the file's
 /// place, or why it is not known; then only the built-ins load and the reason is reported.
 pub fn load(registry: &Result<PathBuf, String>, built_in: Handlers) -> (Handlers, PluginsInfo) {
     match registry {
         Ok(file) => {
-            let loaded = converters::load(file, &reserved_ids(&built_in));
+            let loaded = plugins::load(file, &reserved(&built_in));
             let info = describe(&loaded);
             (built_in.with_decoders(loaded.decoders()), info)
         }
         Err(reason) => (
             built_in,
             PluginsInfo {
-                converters: Vec::new(),
+                plugins: Vec::new(),
                 problem: Some(reason.clone()),
             },
         ),
@@ -46,25 +51,29 @@ pub fn load(registry: &Result<PathBuf, String>, built_in: Handlers) -> (Handlers
 
 /// What loading said, one entry per registry entry.
 pub fn describe(loaded: &Loaded) -> PluginsInfo {
-    let converters = loaded
-        .plugins
+    let plugins = loaded
+        .entries
         .iter()
-        .map(|plugin| PluginInfo {
-            manifest: plugin.manifest.display().to_string(),
-            folder: plugin
+        .map(|entry| PluginInfo {
+            manifest: entry.manifest.display().to_string(),
+            folder: entry
                 .manifest
                 .parent()
                 .unwrap_or_else(|| Path::new("."))
                 .display()
                 .to_string(),
-            status: match &plugin.decoder {
-                Ok(decoder) => {
-                    let manifest = decoder.manifest();
+            status: match &entry.plugin {
+                Ok(plugin) => {
+                    let manifest = &plugin.manifest;
                     PluginStatus::Loaded {
                         id: manifest.id.clone(),
                         name: manifest.name.clone(),
                         version: manifest.version.clone(),
-                        extensions: manifest.extensions.clone(),
+                        extensions: plugin
+                            .decoders
+                            .iter()
+                            .flat_map(|decoder| decoder.spec().extensions.iter().cloned())
+                            .collect(),
                     }
                 }
                 Err(error) => PluginStatus::Failed {
@@ -74,7 +83,7 @@ pub fn describe(loaded: &Loaded) -> PluginsInfo {
         })
         .collect();
     PluginsInfo {
-        converters,
+        plugins,
         problem: loaded.registry.as_ref().map(ToString::to_string),
     }
 }
@@ -82,11 +91,11 @@ pub fn describe(loaded: &Loaded) -> PluginsInfo {
 /// Logs what did not load, which `load` could not because logging starts after the command line is read.
 pub fn log_problems(info: &PluginsInfo) {
     if let Some(problem) = &info.problem {
-        tracing::warn!("converters not loaded: {problem}");
+        tracing::warn!("plugins not loaded: {problem}");
     }
-    for plugin in &info.converters {
+    for plugin in &info.plugins {
         if let PluginStatus::Failed { reason } = &plugin.status {
-            tracing::warn!("converter {} not loaded: {reason}", plugin.manifest);
+            tracing::warn!("plugin {} not loaded: {reason}", plugin.manifest);
         }
     }
 }
