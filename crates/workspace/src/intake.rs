@@ -131,7 +131,8 @@ fn overlay_recipe(
 
 /// Builds the item for a playlist of `resolver` with `settings`, unlabelled: its name is the default, the resolver
 /// id. The settings are checked against the resolver's schema, defaults filled in, and the paths in them (in a decoder's
-/// options too) made absolute; reading the folders is for resolving to do.
+/// options too) made absolute; keys the schema does not declare are kept, since the resolver only ever sees the
+/// declared ones. Reading the folders is for resolving to do.
 pub fn playlist(
     resolver: &str,
     settings: Settings,
@@ -144,7 +145,7 @@ pub fn playlist(
         ));
     };
     let form = &found.spec().form;
-    let mut settings = check_settings(form, &settings, handlers)?.declared();
+    let mut settings = check_settings(form, &settings, handlers)?.all();
     absolute_paths(form, &mut settings, handlers);
     Ok(WorkspaceItem {
         id: ItemId::generate(),

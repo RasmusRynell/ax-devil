@@ -427,7 +427,8 @@ fn a_playlist_the_schema_or_resolver_refuses_is_refused_naming_the_setting() {
         "{error:?}"
     );
 
-    // A folder left at its relative default is stored as that folder in the working folder.
+    // A folder left at its relative default is stored as that folder in the working folder, and a key the schema
+    // does not declare is stored as given.
     let runs = handler_api::ResolverSpec {
         id: "runs".into(),
         plugin: "runs".into(),
@@ -442,7 +443,12 @@ fn a_playlist_the_schema_or_resolver_refuses_is_refused_naming_the_setting() {
     };
     let handlers =
         handlers.with_resolvers([Arc::new(Runs(runs)) as Arc<dyn handler_api::PlaylistResolver>]);
-    let item = playlist("runs", Settings::new(), &handlers).unwrap();
+    let item = playlist(
+        "runs",
+        Settings::from_iter([("note".to_owned(), "kept".into())]),
+        &handlers,
+    )
+    .unwrap();
     let Source::Playlist(recipe) = &item.recipe.source else {
         panic!("a playlist item has a playlist recipe");
     };
@@ -450,6 +456,7 @@ fn a_playlist_the_schema_or_resolver_refuses_is_refused_naming_the_setting() {
         Path::new(recipe.settings["dir"].as_str().unwrap()),
         std::env::current_dir().unwrap().join("runs")
     );
+    assert_eq!(recipe.settings["note"], "kept");
 }
 
 #[test]
