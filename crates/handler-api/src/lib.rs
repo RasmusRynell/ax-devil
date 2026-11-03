@@ -17,7 +17,9 @@ pub use decoder::{
 };
 pub use form::{Cli, Field, FieldKind, Form, Selection, Values, invalid_field};
 pub use refs::{ImageSequence, OverlayRef, VideoRef};
-pub use resolver::{Choice, PlaylistResolver, ResolvedEntry, ResolvedPlaylist, ResolverSpec};
+pub use resolver::{
+    Choice, PlaylistResolver, ResolvedEntry, ResolvedPlaylist, ResolvedPlaylists, ResolverSpec,
+};
 pub use skipped::SkippedRecords;
 
 /// Settings or options as the user, a playlist or a workspace holds them: not yet checked against a [`Form`].

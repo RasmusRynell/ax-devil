@@ -3,7 +3,7 @@
 use std::{fs, path::Path, sync::Arc};
 
 use foundation::{CancelToken, HostPath, Interrupt, Location};
-use handler_api::{PlaylistResolver, ResolvedPlaylist, Settings, VideoRef};
+use handler_api::{PlaylistResolver, ResolvedPlaylists, Settings, VideoRef};
 use playlist_resolvers::resolvers;
 use serde_json::json;
 
@@ -32,7 +32,7 @@ fn settings(videos: &Path, overlays: &Path) -> Settings {
 fn resolve(
     settings: &Settings,
     cancel: &CancelToken,
-) -> Result<ResolvedPlaylist, Interrupt<foundation::UserError>> {
+) -> Result<ResolvedPlaylists, Interrupt<foundation::UserError>> {
     let values = resolver()
         .spec()
         .form
@@ -73,9 +73,12 @@ fn pairs_files_by_stripped_name_in_name_order() {
     }
     fs::create_dir(overlays.join("folder.json")).unwrap();
 
-    let playlist = resolve(&settings(&videos, &overlays), &CancelToken::new()).unwrap();
+    let resolved = resolve(&settings(&videos, &overlays), &CancelToken::new()).unwrap();
+    let [playlist] = resolved.playlists.as_slice() else {
+        panic!("one playlist");
+    };
 
-    assert_eq!(playlist.display_name, "Folder Pair");
+    assert_eq!(playlist.name, "Folder Pair");
     let names: Vec<_> = playlist
         .entries
         .iter()
@@ -130,7 +133,10 @@ fn follows_symlinked_files() {
     std::os::unix::fs::symlink(store.join("real.mp4"), videos.join("clip.mp4")).unwrap();
     std::os::unix::fs::symlink(store.join("gone.mp4"), videos.join("broken.mp4")).unwrap();
 
-    let playlist = resolve(&settings(&videos, &overlays), &CancelToken::new()).unwrap();
+    let resolved = resolve(&settings(&videos, &overlays), &CancelToken::new()).unwrap();
+    let [playlist] = resolved.playlists.as_slice() else {
+        panic!("one playlist");
+    };
 
     assert_eq!(playlist.entries.len(), 1);
     assert_eq!(playlist.entries[0].name, "clip");

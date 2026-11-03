@@ -98,8 +98,9 @@ impl Recipe {
     /// fails when the viewer opens it. Each overlay is a lane with its recipe's label, so two overlays with the
     /// same label fail.
     ///
-    /// A playlist recipe asks its resolver, then checks that entry names and the lane names within each entry are
-    /// unique, since they are the identity of entries and lanes. Resolving twice gives the same ids.
+    /// A playlist recipe asks its resolver for playlists, then checks that entry names within each playlist and the
+    /// lane names within each entry are unique, since they are the identity of entries and lanes. Resolving twice
+    /// gives the same ids.
     pub fn resolve(
         &self,
         item: &ItemId,
@@ -125,7 +126,7 @@ impl Recipe {
                 let settings =
                     check_settings(form, &recipe.settings, handlers).map_err(Interrupt::Failed)?;
                 let resolved = resolver.resolve(&settings, cancel)?;
-                playlist_content(item, resolved)
+                playlist_content(item, &resolver.spec().name, resolved)
                     .map(Content::Playlist)
                     .map_err(Interrupt::Failed)
             }

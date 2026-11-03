@@ -4,7 +4,7 @@ use std::sync::Arc;
 
 use foundation::{CancelToken, ErrorCode, HostPath, Interrupt, Location, UserError};
 use handler_api::{
-    Choice, FieldKind, PlaylistResolver, ResolvedPlaylist, ResolverSpec, Values, invalid_field,
+    Choice, FieldKind, PlaylistResolver, ResolvedPlaylists, ResolverSpec, Values, invalid_field,
 };
 use serde_json::json;
 
@@ -102,7 +102,7 @@ impl PlaylistResolver for PluginResolver {
         &self,
         settings: &Values,
         cancel: &CancelToken,
-    ) -> Result<ResolvedPlaylist, Interrupt<UserError>> {
+    ) -> Result<ResolvedPlaylists, Interrupt<UserError>> {
         let request = json!({
             "protocol": PROTOCOL,
             "op": "resolve",
@@ -110,6 +110,6 @@ impl PlaylistResolver for PluginResolver {
             "settings": settings.declared(),
         });
         self.call(Op::Resolve, &request, cancel)
-            .map(|collected| collected.into_playlist(&self.spec.name))
+            .map(|collected| collected.into_playlists(&self.spec.name))
     }
 }

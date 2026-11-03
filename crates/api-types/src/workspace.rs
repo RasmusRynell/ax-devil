@@ -66,6 +66,8 @@ pub struct RowInfo {
 pub enum RowKindWire {
     /// A workspace item.
     Item,
+    /// One of an item's several playlists.
+    Playlist,
     /// An entry of an item.
     Entry,
     /// A lane of an entry.

@@ -67,6 +67,16 @@ pub enum DocCommand {
         /// Whether a viewer should open for each item once it resolves.
         open: bool,
     },
+    /// Add the item that `POST /api/resolvers/{id}/resolve` resolved and answered with, open. The ticket is redeemed
+    /// once; an id the backend does not hold is refused.
+    AddResolved {
+        /// The item the resolve answered with.
+        #[ts(type = "string")]
+        item: ItemId,
+        /// The row's label; the resolver's name when absent or blank.
+        #[serde(default)]
+        label: Option<String>,
+    },
     /// Request a viewer for an item.
     OpenViewer {
         /// The item.

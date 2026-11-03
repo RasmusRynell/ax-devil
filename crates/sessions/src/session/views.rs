@@ -220,7 +220,7 @@ mod tests {
 
     fn entry(item: &ItemId, label: &str) -> Entry {
         Entry {
-            id: ContentId::of_entry(item, label),
+            id: ContentId::of_entry(item, "P", label),
             label: label.into(),
             video: workspace::VideoRef::File(format!("{label}.mp4").into()),
             overlays: Vec::new(),
@@ -254,8 +254,8 @@ mod tests {
             restrict(&viewer(asked), &doc).viewers[&item].entry.clone()
         };
         let (a, b) = (
-            ContentId::of_entry(&item, "A"),
-            ContentId::of_entry(&item, "B"),
+            ContentId::of_entry(&item, "P", "A"),
+            ContentId::of_entry(&item, "P", "B"),
         );
         assert_eq!(
             shown(&state, Some(a.clone())),
@@ -268,12 +268,17 @@ mod tests {
             item_id: item,
             display_name: "P".into(),
             entries: vec![entry(&item, "A"), entry(&item, "B")],
+            playlists: vec![workspace::PlaylistSpan {
+                id: ContentId::of_playlist(&item, "P"),
+                name: "P".into(),
+                entries: 2,
+            }],
             warnings: Vec::new(),
         });
         let resolved = workspace_store::complete(&state, item, jobs[0].attempt, Ok(content));
         assert_eq!(shown(&resolved, Some(b.clone())), Some(b.clone()));
         assert_eq!(shown(&resolved, None), Some(a.clone()));
-        let gone = ContentId::of_entry(&item, "GONE");
+        let gone = ContentId::of_entry(&item, "P", "GONE");
         assert_eq!(shown(&resolved, Some(gone.clone())), Some(a.clone()));
 
         let (hidden, _) = workspace_store::apply(
@@ -296,6 +301,9 @@ mod tests {
                 hidden: true,
             },
         );
-        assert_eq!(shown(&all, None), Some(ContentId::of_entry(&item, "A")));
+        assert_eq!(
+            shown(&all, None),
+            Some(ContentId::of_entry(&item, "P", "A"))
+        );
     }
 }

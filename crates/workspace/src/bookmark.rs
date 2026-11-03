@@ -1,11 +1,12 @@
 use foundation::{BookmarkId, ItemId, MediaTime};
 
-/// What is reviewed or bookmarked: a video item (`entry: None`) or one entry of a playlist item, by its entry name.
+/// What is reviewed or bookmarked: a video item (`entry: None`) or one entry of a playlist item, by its playlist and entry name.
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct BookmarkTarget {
     /// The item.
     pub item: ItemId,
-    /// The playlist entry's name; `None` for a video item. The entry may have left the playlist since.
+    /// The playlist entry as `{playlist name}/{entry name}`, the playlist name numbered as its item numbers it; `None`
+    /// for a video item. The entry may have left the playlist since.
     pub entry: Option<String>,
 }
 

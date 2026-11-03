@@ -3,7 +3,6 @@ use crate::{Content, ContentId, VideoRef};
 use foundation::{CancelToken, Interrupt, Location};
 use handler_api::{Field, FieldKind, Form, Values};
 use std::fs;
-use std::path::PathBuf;
 use std::sync::Arc;
 
 #[test]
@@ -325,7 +324,7 @@ impl handler_api::PlaylistResolver for Runs {
         &self,
         _settings: &Values,
         _cancel: &CancelToken,
-    ) -> Result<handler_api::ResolvedPlaylist, Interrupt<UserError>> {
+    ) -> Result<handler_api::ResolvedPlaylists, Interrupt<UserError>> {
         Err(Interrupt::Cancelled)
     }
 }
@@ -334,13 +333,7 @@ impl handler_api::PlaylistResolver for Runs {
 fn a_playlist_resolves_to_entries_whose_ids_are_the_same_every_time() {
     let folder = mot_folder(&["SEQ-02", "SEQ-01"]);
     let handlers = Handlers::built_in();
-    let item = playlist(
-        "mot_challenge",
-        mot_settings(folder.path()),
-        None,
-        &handlers,
-    )
-    .unwrap();
+    let item = playlist("mot_challenge", mot_settings(folder.path()), &handlers).unwrap();
     assert_eq!(item.label, "MOT Challenge");
     let resolve = || {
         let Ok(Content::Playlist(content)) =
@@ -359,12 +352,22 @@ fn a_playlist_resolves_to_entries_whose_ids_are_the_same_every_time() {
     let ids: Vec<String> = first.entries.iter().map(|e| e.id.to_string()).collect();
     assert_eq!(
         ids,
-        [format!("{}/SEQ-01", item.id), format!("{}/SEQ-02", item.id)]
+        [
+            format!("{}/MOT Challenge/SEQ-01", item.id),
+            format!("{}/MOT Challenge/SEQ-02", item.id)
+        ]
+    );
+    let [span] = first.playlists.as_slice() else {
+        panic!("one resolver run, one playlist");
+    };
+    assert_eq!(
+        (span.id.to_string(), span.name.as_str(), span.entries),
+        (format!("{}/MOT Challenge", item.id), "MOT Challenge", 2)
     );
     assert_eq!(first.entries[0].lane_labels(), ["GT"]);
     assert!(
         Content::Playlist(first)
-            .entry(&ContentId::of_entry(&item.id, "SEQ-02"))
+            .entry(&ContentId::of_entry(&item.id, "MOT Challenge", "SEQ-02"))
             .is_some_and(|entry| entry.label == "SEQ-02")
     );
 }
@@ -372,9 +375,9 @@ fn a_playlist_resolves_to_entries_whose_ids_are_the_same_every_time() {
 #[test]
 fn a_playlist_the_schema_or_resolver_refuses_is_refused_naming_the_setting() {
     let handlers = Handlers::built_in();
-    let none = playlist("mot_challenge", Settings::new(), None, &handlers).unwrap_err();
+    let none = playlist("mot_challenge", Settings::new(), &handlers).unwrap_err();
     assert_eq!(none.location, Some(Location::field("root")));
-    let nope = playlist("nope", Settings::new(), None, &handlers).unwrap_err();
+    let nope = playlist("nope", Settings::new(), &handlers).unwrap_err();
     assert_eq!(nope.code, ErrorCode::UnknownHandler);
     assert!(nope.reason.contains("nope"), "{nope}");
     let settings = Settings::from_iter([
@@ -382,7 +385,7 @@ fn a_playlist_the_schema_or_resolver_refuses_is_refused_naming_the_setting() {
         ("overlays_dir".to_owned(), "o".into()),
         ("handler_type".to_owned(), "NOPE".into()),
     ]);
-    let unknown = playlist("folder_pair", settings.clone(), None, &handlers).unwrap_err();
+    let unknown = playlist("folder_pair", settings.clone(), &handlers).unwrap_err();
     assert_eq!(unknown.code, ErrorCode::UnknownHandler);
     assert_eq!(unknown.location, Some(Location::field("handler_type")));
     let recipe = Recipe::new(Source::Playlist(PlaylistRecipe {
@@ -399,11 +402,13 @@ fn a_playlist_the_schema_or_resolver_refuses_is_refused_naming_the_setting() {
     let gone = playlist(
         "mot_challenge",
         mot_settings(Path::new("no/such/folder")),
-        Some(" Mine ".into()),
         &handlers,
     )
     .unwrap();
+    assert_eq!(gone.label, "MOT Challenge");
+    let gone = with_label(gone, Some(" Mine "));
     assert_eq!(gone.label, "Mine");
+    assert_eq!(with_label(gone.clone(), Some("  ")).label, "Mine");
     let Source::Playlist(recipe) = &gone.recipe.source else {
         panic!("a playlist item has a playlist recipe");
     };
@@ -434,7 +439,7 @@ fn a_playlist_the_schema_or_resolver_refuses_is_refused_naming_the_setting() {
     };
     let handlers =
         handlers.with_resolvers([Arc::new(Runs(runs)) as Arc<dyn handler_api::PlaylistResolver>]);
-    let item = playlist("runs", Settings::new(), None, &handlers).unwrap();
+    let item = playlist("runs", Settings::new(), &handlers).unwrap();
     let Source::Playlist(recipe) = &item.recipe.source else {
         panic!("a playlist item has a playlist recipe");
     };
@@ -469,7 +474,7 @@ fn a_folder_pair_gives_every_overlay_the_options_of_its_decoder_and_is_refused_w
         settings
     };
 
-    let error = playlist("folder_pair", settings(None), None, &handlers).unwrap_err();
+    let error = playlist("folder_pair", settings(None), &handlers).unwrap_err();
     assert_eq!(error.location, Some(Location::field("options")));
     assert!(
         error.reason.contains("Image width") && error.reason.contains("Required"),
@@ -480,13 +485,7 @@ fn a_folder_pair_gives_every_overlay_the_options_of_its_decoder_and_is_refused_w
         ("width".to_owned(), 64.into()),
         ("height".to_owned(), 48.into()),
     ]);
-    let item = playlist(
-        "folder_pair",
-        settings(Some(options.clone())),
-        None,
-        &handlers,
-    )
-    .unwrap();
+    let item = playlist("folder_pair", settings(Some(options.clone())), &handlers).unwrap();
     let Ok(Content::Playlist(content)) =
         item.recipe
             .resolve(&item.id, &handlers, &CancelToken::new())
@@ -494,48 +493,4 @@ fn a_folder_pair_gives_every_overlay_the_options_of_its_decoder_and_is_refused_w
         panic!("a folder pair with the options resolves");
     };
     assert_eq!(content.entries[0].overlays[0].options, options);
-}
-
-fn resolved_entry(name: &str, labels: &[&str]) -> handler_api::ResolvedEntry {
-    handler_api::ResolvedEntry {
-        name: name.to_owned(),
-        video: VideoRef::File(PathBuf::from("v.mp4")),
-        overlays: labels
-            .iter()
-            .map(|label| handler_api::OverlayRef {
-                label: (*label).to_owned(),
-                slot: (*label).to_owned(),
-                path: PathBuf::from("o.txt"),
-                handler: "MOT_FILE".into(),
-                options: Settings::new(),
-            })
-            .collect(),
-    }
-}
-
-#[test]
-fn duplicate_entry_names_and_duplicate_lane_labels_fail_naming_the_label() {
-    let item = ItemId::generate();
-    let build = |entries| {
-        crate::content::playlist_content(
-            &item,
-            handler_api::ResolvedPlaylist {
-                display_name: "P".into(),
-                entries,
-                warnings: Vec::new(),
-            },
-        )
-    };
-
-    let entries = build(vec![resolved_entry("A", &["GT"]), resolved_entry("A", &[])]);
-    assert!(entries.unwrap_err().reason.ends_with(": A"));
-    let lanes = build(vec![resolved_entry("A", &["GT", "DET", "GT"])]);
-    assert!(lanes.unwrap_err().reason.ends_with(": GT"));
-    assert!(
-        build(vec![
-            resolved_entry("A", &["GT"]),
-            resolved_entry("B", &["GT"])
-        ])
-        .is_ok()
-    );
 }

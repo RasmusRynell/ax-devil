@@ -11,8 +11,8 @@ use foundation::{
 };
 use handler_api::{
     Choice, Field, FieldKind, Form, ImageSequence, OverlayRef, PlaylistResolver, ResolvedEntry,
-    ResolvedPlaylist, ResolverSpec, Selection, Settings, SkippedRecords, Values, VideoRef,
-    invalid_field,
+    ResolvedPlaylist, ResolvedPlaylists, ResolverSpec, Selection, Settings, SkippedRecords, Values,
+    VideoRef, invalid_field,
 };
 
 use crate::resolved_file_type;
@@ -88,7 +88,7 @@ impl PlaylistResolver for MotChallengeResolver {
         &self,
         settings: &Values,
         cancel: &CancelToken,
-    ) -> Result<ResolvedPlaylist, Interrupt<UserError>> {
+    ) -> Result<ResolvedPlaylists, Interrupt<UserError>> {
         let root = root(settings).map_err(Interrupt::Failed)?;
         let Discovered {
             mut sequences,
@@ -117,9 +117,11 @@ impl PlaylistResolver for MotChallengeResolver {
                     .at(HostPath::new(root)),
             ));
         }
-        Ok(ResolvedPlaylist {
-            display_name: self.spec.name.clone(),
-            entries,
+        Ok(ResolvedPlaylists {
+            playlists: vec![ResolvedPlaylist {
+                name: self.spec.name.clone(),
+                entries,
+            }],
             warnings,
         })
     }

@@ -10,6 +10,8 @@ use crate::{HiddenRef, Resolution, WorkspaceState};
 pub enum RowKind {
     /// A workspace item.
     Item,
+    /// One of the several playlists of an item, shown only when there are two or more.
+    Playlist,
     /// An entry of an item's Content.
     Entry,
     /// A lane of an entry.
@@ -46,7 +48,8 @@ pub struct Row {
     pub warnings: Vec<Warning>,
 }
 
-/// The rows of `state` in tree order: each item, then for a playlist its entries, each followed by its lanes.
+/// The rows of `state` in tree order: each item, then for a playlist its entries, each followed by its lanes. An
+/// item of several playlists has a playlist row before the entries of each; one playlist adds no row.
 ///
 /// A video item is one row followed by its lanes (none when it has no overlays), since its single entry would only
 /// repeat the item. Opening an item row opens its first entry; opening an entry or lane row opens that entry. An
@@ -77,7 +80,28 @@ pub fn rows(state: &WorkspaceState) -> Vec<Row> {
         let Some(content) = content else {
             continue;
         };
+        let spans = match content {
+            Content::Playlist(playlist) if playlist.playlists.len() > 1 => &playlist.playlists[..],
+            _ => &[],
+        };
+        let mut next_span = spans.iter();
+        let mut left_in_span = 0;
         for entry in content.entries() {
+            if left_in_span == 0
+                && let Some(span) = next_span.next()
+            {
+                left_in_span = span.entries;
+                rows.push(Row {
+                    key: span.id.to_string(),
+                    kind: RowKind::Playlist,
+                    label: span.name.clone(),
+                    status: RowStatus::Ready,
+                    hidden: false,
+                    entry: Some(entry.id.clone()),
+                    warnings: Vec::new(),
+                });
+            }
+            left_in_span = left_in_span.saturating_sub(1);
             if is_playlist {
                 rows.push(Row {
                     key: entry.id.to_string(),
@@ -157,7 +181,7 @@ mod tests {
     fn mot_item(root: &Path) -> WorkspaceItem {
         let mut settings = serde_json::Map::new();
         settings.insert("root".into(), root.display().to_string().into());
-        intake::playlist("mot_challenge", settings, None, &Handlers::built_in()).unwrap()
+        intake::playlist("mot_challenge", settings, &Handlers::built_in()).unwrap()
     }
 
     fn mot_folder(root: &Path) {
@@ -248,7 +272,7 @@ mod tests {
         assert_eq!(pending_row.status, RowStatus::Pending);
         assert_eq!(broken_row.status, RowStatus::Unavailable(not_found));
         assert!(pending_row.entry.is_none() && broken_row.entry.is_none());
-        let first = ContentId::of_entry(&playlist.id, "SEQ-01");
+        let first = ContentId::of_entry(&playlist.id, "MOT Challenge", "SEQ-01");
         let mot_row = row(RowKind::Item, "MOT Challenge");
         assert_eq!(
             mot_row.entry,
@@ -274,10 +298,12 @@ mod tests {
             .insert(HiddenRef::Lane(first.clone(), "GT".into()));
         state.hidden.insert(HiddenRef::Entry(ContentId::of_entry(
             &playlist.id,
+            "MOT Challenge",
             "SEQ-02",
         )));
         state.hidden.insert(HiddenRef::Entry(ContentId::of_entry(
             &playlist.id,
+            "MOT Challenge",
             "SEQ-99",
         )));
         let hidden: Vec<_> = rows(&state).iter().map(|row| row.hidden).collect();
@@ -285,6 +311,73 @@ mod tests {
             hidden,
             [false, false, false, false, true, true, false, false, false],
             "an unknown reference hides nothing"
+        );
+    }
+
+    #[test]
+    fn several_playlists_each_get_a_row_before_their_entries_and_open_their_first_entry() {
+        let item = mot_item(Path::new("/runs"));
+        let playlist = |name: &str, labels: &[&str]| {
+            let entries: Vec<_> = labels
+                .iter()
+                .map(|label| workspace::Entry {
+                    id: ContentId::of_entry(&item.id, name, label),
+                    label: (*label).to_owned(),
+                    video: workspace::VideoRef::File("/v.mp4".into()),
+                    overlays: Vec::new(),
+                })
+                .collect();
+            let span = workspace::PlaylistSpan {
+                id: ContentId::of_playlist(&item.id, name),
+                name: name.to_owned(),
+                entries: entries.len(),
+            };
+            (span, entries)
+        };
+        let ((first, mut entries), (second, more)) =
+            (playlist("A", &["x"]), playlist("A (2)", &["y", "z"]));
+        entries.extend(more);
+        let content = Content::Playlist(workspace::PlaylistContent {
+            id: ContentId::of_item(&item.id),
+            item_id: item.id,
+            display_name: "Runs".into(),
+            entries,
+            playlists: vec![first, second],
+            warnings: Vec::new(),
+        });
+        let (state, jobs) = apply(
+            &WorkspaceState::default(),
+            DocCommand::AddItems {
+                items: vec![item.clone()],
+                open: false,
+            },
+        );
+        let state = complete(&state, jobs[0].item, jobs[0].attempt, Ok(content));
+
+        let listed = rows(&state);
+
+        let kinds: Vec<_> = listed
+            .iter()
+            .map(|row| (row.kind, row.label.as_str()))
+            .collect();
+        assert_eq!(
+            kinds,
+            [
+                (RowKind::Item, "MOT Challenge"),
+                (RowKind::Playlist, "A"),
+                (RowKind::Entry, "x"),
+                (RowKind::Playlist, "A (2)"),
+                (RowKind::Entry, "y"),
+                (RowKind::Entry, "z"),
+            ]
+        );
+        assert_eq!(
+            listed[3].key,
+            ContentId::of_playlist(&item.id, "A (2)").to_string()
+        );
+        assert_eq!(
+            listed[3].entry, listed[4].entry,
+            "a playlist opens its first entry"
         );
     }
 }
