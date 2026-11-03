@@ -1,10 +1,10 @@
 import type { ReactNode } from "react";
-import type { DecoderInfo, FieldInfo, FieldKindWire } from "../generated/api";
+import type { DecoderInfo, FieldInfo, FieldKindWire, ScanCountInfo } from "../generated/api";
 import { Button } from "../kit/Button";
 import { CheckList, type CheckItem } from "../kit/CheckList";
 import { Select, TextField } from "../kit/Fields";
 import { Refusal } from "../shell/SettingField";
-import { listed, type ScanView, type Settings } from "./scan";
+import { countStatus, listed, type ScanView, type Settings } from "./scan";
 
 /** What a field control reads and changes: the form's state, whichever resolver it belongs to. */
 export interface FieldForm {
@@ -21,6 +21,8 @@ export interface FieldForm {
   scan: (key: string) => void;
   toggle: (key: string, value: string) => void;
   toggleAll: (key: string) => void;
+  /** The dialog's own action, drawn beside the Scan button of a count-only scan, else on a row of its own. */
+  action?: ReactNode;
 }
 
 type Control = (field: FieldInfo, form: FieldForm) => ReactNode;
@@ -97,6 +99,87 @@ export function decoderOptions(
   return decoders.find((decoder) => decoder.handler === chosen)?.options ?? [];
 }
 
+/** A `Scan` field whose found values are checked: Scan beside the label, the found values below. */
+function ScanListControl({ field, form }: { field: FieldInfo; form: FieldForm }) {
+  const view = form.scans[field.key];
+  const items: CheckItem[] = view
+    ? [
+        ...view.choices.map((choice) => ({
+          id: choice.value,
+          label: choice.label,
+          detail: choice.detail,
+        })),
+        ...view.missing.map((name) => ({ id: name, label: name, detail: "Not found" })),
+      ]
+    : [];
+  return (
+    <div className="flex flex-col gap-s">
+      <div className="flex items-center justify-between gap-xl">
+        {field.label}
+        <Button
+          icon="rotate-cw"
+          disabled={!form.canScan(field.key)}
+          onClick={() => form.scan(field.key)}
+        >
+          Scan
+        </Button>
+      </div>
+      {view?.phase === "scanning" && (
+        <p role="status" className="m-0 text-muted">
+          Scanning…
+        </p>
+      )}
+      {view?.phase === "done" &&
+        (listed(view).length === 0 ? (
+          <p role="status" className="m-0 text-muted">
+            Nothing found
+          </p>
+        ) : (
+          <CheckList
+            label={field.label}
+            items={items}
+            checked={view.selected}
+            onToggle={(value) => form.toggle(field.key, value)}
+            onToggleAll={() => form.toggleAll(field.key)}
+          />
+        ))}
+    </div>
+  );
+}
+
+/** A `Scan` field that only counts: Scan and the dialog's action in one row, what the scan found below. */
+function ScanCountControl({
+  field,
+  count,
+  form,
+}: {
+  field: FieldInfo;
+  count: ScanCountInfo;
+  form: FieldForm;
+}) {
+  const view = form.scans[field.key];
+  const status = countStatus(view, count, form.canScan(field.key));
+  return (
+    <div className="flex flex-col gap-s">
+      <div className="flex justify-end gap-m">
+        <Button icon="rotate-cw" onClick={() => form.scan(field.key)}>
+          Scan
+        </Button>
+        {form.action}
+      </div>
+      {view?.phase === "failed" ? (
+        <Refusal reason={status} />
+      ) : (
+        status && (
+          <p role="status" className="m-0 text-muted">
+            {status}
+          </p>
+        )
+      )}
+    </div>
+  );
+}
+
 /** The control for each kind of field; a new kind is a new entry here, not a branch. */
 const CONTROLS: Record<FieldKindWire["kind"], Control> = {
   Folder: (field, form) => <PathField field={field} form={form} pick={form.pickFolder} />,
@@ -125,7 +208,9 @@ const CONTROLS: Record<FieldKindWire["kind"], Control> = {
       value={text(form, field)}
       options={[
         ["", "Select a decoder"],
-        ...form.decoders.map((decoder) => [decoder.handler, decoder.display_name] as const),
+        ...form.decoders.map(
+          (decoder) => [decoder.handler, `${decoder.display_name} (${decoder.handler})`] as const,
+        ),
       ]}
       onChange={(value) => form.set(field.key, value)}
     />
@@ -142,52 +227,12 @@ const CONTROLS: Record<FieldKindWire["kind"], Control> = {
       ))}
     </div>
   ),
-  Scan: (field, form) => {
-    const view = form.scans[field.key];
-    const items: CheckItem[] = view
-      ? [
-          ...view.choices.map((choice) => ({
-            id: choice.value,
-            label: choice.label,
-            detail: choice.detail,
-          })),
-          ...view.missing.map((name) => ({ id: name, label: name, detail: "Not found" })),
-        ]
-      : [];
-    return (
-      <div className="flex flex-col gap-s">
-        <div className="flex items-center justify-between gap-xl">
-          {field.label}
-          <Button
-            icon="rotate-cw"
-            disabled={!form.canScan(field.key)}
-            onClick={() => form.scan(field.key)}
-          >
-            Scan
-          </Button>
-        </div>
-        {view?.phase === "scanning" && (
-          <p role="status" className="m-0 text-muted">
-            Scanning…
-          </p>
-        )}
-        {view?.phase === "done" &&
-          (listed(view).length === 0 ? (
-            <p role="status" className="m-0 text-muted">
-              Nothing found
-            </p>
-          ) : (
-            <CheckList
-              label={field.label}
-              items={items}
-              checked={view.selected}
-              onToggle={(value) => form.toggle(field.key, value)}
-              onToggleAll={() => form.toggleAll(field.key)}
-            />
-          ))}
-      </div>
-    );
-  },
+  Scan: (field, form) =>
+    field.kind.kind === "Scan" && field.kind.count ? (
+      <ScanCountControl field={field} count={field.kind.count} form={form} />
+    ) : (
+      <ScanListControl field={field} form={form} />
+    ),
 };
 
 /** The control that edits `field`, chosen by the kind of value it holds. */

@@ -53,7 +53,7 @@ export function Select<T extends string>({ label, value, options, onChange }: Se
       <select
         value={value}
         onChange={(event) => onChange(event.target.value as T)}
-        className={FIELD}
+        className={`${FIELD} min-w-0`}
       >
         {options.map(([option, name]) => (
           <option key={option} value={option}>

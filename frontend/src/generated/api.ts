@@ -1210,7 +1210,28 @@ handler_field: string, } | { "kind": "Scan",
 /**
  * The settings the scan reads, whose change invalidates its result.
  */
-depends_on: Array<string>, };
+depends_on: Array<string>, 
+/**
+ * What a count-only scan says; absent for a scan whose values are picked.
+ */
+count?: ScanCountInfo, };
+
+/**
+ * The sentences of a count-only scan.
+ */
+export type ScanCountInfo = { 
+/**
+ * Shown while a setting the scan reads is empty.
+ */
+missing: string, 
+/**
+ * Shown when the scan found something; `{count}` stands for how many.
+ */
+found: string, 
+/**
+ * Shown when the scan found nothing.
+ */
+none: string, };
 
 /**
  * The body of `POST /api/resolvers/{id}/scan`.

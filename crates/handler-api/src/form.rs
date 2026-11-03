@@ -56,10 +56,24 @@ pub enum FieldKind {
         handler_field: String,
     },
     /// Several of the values `scan` finds; the key absent means all of them, an explicit list means those.
+    /// With `count` the scan only reports how many it finds, and the key holds no value.
     Scan {
         /// The settings the scan reads, whose change invalidates its result.
         depends_on: Vec<String>,
+        /// What a count-only scan tells the user; `None` for a scan whose values are picked.
+        count: Option<ScanCount>,
     },
+}
+
+/// The sentences of a count-only scan, which are all the user sees of what it found.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ScanCount {
+    /// Shown while a setting the scan reads is empty.
+    pub missing: String,
+    /// Shown when the scan found something; `{count}` stands for how many.
+    pub found: String,
+    /// Shown when the scan found nothing.
+    pub none: String,
 }
 
 /// How a setting is given on the command line.
@@ -96,6 +110,11 @@ impl Field {
     pub fn positional(mut self) -> Self {
         self.cli = Cli::Positional;
         self
+    }
+
+    /// Whether the setting holds a value; a count-only scan has none.
+    pub fn holds_value(&self) -> bool {
+        !matches!(self.kind, FieldKind::Scan { count: Some(_), .. })
     }
 }
 
@@ -145,6 +164,7 @@ impl Form {
 
 fn check(field: &Field, value: &Value) -> Result<(), UserError> {
     let reason = match (&field.kind, value) {
+        (FieldKind::Scan { count: Some(_), .. }, _) => Some("Takes no value".to_owned()),
         (FieldKind::Scan { .. }, Value::Array(items)) if items.iter().all(Value::is_string) => None,
         (FieldKind::Scan { .. }, _) => Some("Must be a list of names".to_owned()),
         (FieldKind::DecoderOptions { .. }, Value::Object(_)) => None,

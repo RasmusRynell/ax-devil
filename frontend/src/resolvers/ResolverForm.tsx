@@ -1,6 +1,6 @@
-import { useEffect, useReducer, useRef } from "react";
+import { useEffect, useReducer, useRef, type ReactNode } from "react";
 import { reasonOf } from "../errors";
-import type { DecoderInfo, ErrorWire, FieldInfo, ResolverInfo } from "../generated/api";
+import type { ChoiceInfo, DecoderInfo, ErrorWire, FieldInfo, ResolverInfo } from "../generated/api";
 import { Refusal } from "../shell/SettingField";
 import { useServerKind } from "../shell/windowBridge";
 import { decoderOptions, FieldControl, misread, needsValue, shown, type FieldForm } from "./fields";
@@ -35,8 +35,13 @@ type Action = { resolver: ResolverInfo } & (
 
 const blank = (value: unknown) => typeof value !== "string" || value.trim() === "";
 
+const isScan = (field: FieldInfo) => field.kind.kind === "Scan";
+const isCount = (field: FieldInfo) => field.kind.kind === "Scan" && !!field.kind.count;
+/** The scans whose found values are checked, which gate loading and scan on their own. */
 const scanFields = (resolver: ResolverInfo) =>
-  resolver.fields.filter((field) => field.kind.kind === "Scan");
+  resolver.fields.filter((field) => isScan(field) && !isCount(field));
+/** The scans that only count, which gate loading only when they come up empty or fail. */
+const countFields = (resolver: ResolverInfo) => resolver.fields.filter(isCount);
 
 /**
  * The fields' starting text: the saved settings, whatever else they hold kept. A decoder choice starts blank unless
@@ -135,6 +140,11 @@ function settingsOf(
   decoders: readonly DecoderInfo[],
 ): Settings | null {
   const { settings, complete } = effective(resolver, state.values, decoders);
+  for (const field of countFields(resolver)) {
+    const view = state.scans[field.key];
+    if (view?.phase === "scanning" || view?.phase === "failed") return null;
+    if (view?.phase === "done" && view.choices.length === 0) return null;
+  }
   for (const field of scanFields(resolver)) {
     const view = state.scans[field.key];
     // Nothing checked still loads: the dialog tells that it is nothing (`unchosen`) rather than disabling Load.
@@ -179,6 +189,11 @@ export interface ResolverFormState extends FieldForm {
   resolver: ResolverInfo;
   /** What loading sends, or `null` while the form cannot load. */
   settings: Settings | null;
+  /**
+   * Present while a count-only scan has not answered: scans, then gives `settings` if it found something and nothing
+   * was edited meanwhile, else `null`.
+   */
+  settingsAfterScan?: () => Promise<Settings | null>;
   /** Why loading must not go on although `settings` is complete: a scan found values and none is checked. */
   unchosen: string | null;
 }
@@ -187,6 +202,7 @@ export interface ResolverFormState extends FieldForm {
  * The state of the form a resolver's schema declares. Each resolver the hook is given keeps its own form, so going
  * back to one finds it as it was. A `Scan` field scans when asked or when a picked path it reads changes; editing
  * anything it reads empties it and stops its scan, the newest scan alone fills it, and unmounting stops them all.
+ * A count-only scan never starts by itself, and an edit anywhere keeps `settingsAfterScan` from giving settings.
  * `initial` holds the first resolver's saved settings: unknown keys are kept, a saved list is the selection (saved
  * names the scan lacks stay, marked), and the fields scan at once.
  */
@@ -207,6 +223,8 @@ export function useResolverForm(
   // Scans by `<resolver id>/<field key>`: a resolver left for another keeps scanning into its own form.
   const controllers = useRef(new Map<string, AbortController>());
   const slot = (key: string) => `${resolver.id}/${key}`;
+  // Counts the edits, so a scan that was waited for can tell whether the form changed meanwhile.
+  const edits = useRef(0);
 
   const canScanWith = (key: string, values: Settings) => {
     const kind = resolver.fields.find((field) => field.key === key)?.kind;
@@ -221,12 +239,12 @@ export function useResolverForm(
     };
     return !kind.depends_on.some(unmet);
   };
-  const run = (key: string, values: Settings) => {
+  const run = (key: string, values: Settings): Promise<readonly ChoiceInfo[] | null> => {
     controllers.current.get(slot(key))?.abort();
     const controller = new AbortController();
     controllers.current.set(slot(key), controller);
     dispatch({ type: "scan", resolver, key, update: scanStarted });
-    scanChoices(
+    return scanChoices(
       resolver.id,
       key,
       effective(resolver, values, decoders).settings,
@@ -234,7 +252,7 @@ export function useResolverForm(
     ).then(
       (answer) => {
         // A superseded or cancelled scan changes nothing.
-        if (controller.signal.aborted) return;
+        if (controller.signal.aborted) return null;
         controllers.current.delete(slot(key));
         dispatch({
           type: "scan",
@@ -243,8 +261,9 @@ export function useResolverForm(
           update: (view) =>
             answer.ok ? scanFinished(view, answer.value) : scanFailed(view, answer.refusal),
         });
+        return answer.ok ? answer.value : null;
       },
-      () => undefined, // only an abort rejects
+      () => null, // only an abort rejects
     );
   };
   const stop = (key: string) => {
@@ -255,7 +274,7 @@ export function useResolverForm(
   useEffect(() => {
     if (initial) {
       for (const field of scanFields(resolver)) {
-        if (canScanWith(field.key, state.values)) run(field.key, state.values);
+        if (canScanWith(field.key, state.values)) void run(field.key, state.values);
       }
     }
     // Leaving the form cancels what is still scanning.
@@ -267,26 +286,52 @@ export function useResolverForm(
     // eslint-disable-next-line react-hooks/exhaustive-deps -- once: the saved settings are only the start
   }, []);
 
+  const settings = settingsOf(resolver, state, decoders);
+  const unanswered = countFields(resolver).filter(
+    (field) => state.scans[field.key]?.phase !== "done",
+  );
+  const settingsAfterScan =
+    settings && unanswered.length > 0
+      ? async () => {
+          const before = edits.current;
+          const answers = await Promise.all(
+            unanswered.map((field) =>
+              canScanWith(field.key, state.values)
+                ? run(field.key, state.values)
+                : Promise.resolve(null),
+            ),
+          );
+          return answers.every((found) => found?.length) && edits.current === before
+            ? settings
+            : null;
+        }
+      : undefined;
+
   return {
     resolver,
     decoders,
     pickFolder: bridge && (() => bridge.pickFolder()),
     values: state.values,
     scans: state.scans,
-    settings: settingsOf(resolver, state, decoders),
+    settings,
+    settingsAfterScan,
     unchosen: unchosenOf(resolver, state),
     canScan: (key) => canScanWith(key, state.values),
-    scan: (key) => run(key, state.values),
+    scan: (key) => {
+      if (canScanWith(key, state.values)) void run(key, state.values);
+    },
     set: (key, value, commit = false) => {
+      edits.current += 1;
       const values = { ...state.values, [key]: value };
-      const invalidated = scanFields(resolver)
-        .filter((field) => field.kind.kind === "Scan" && field.kind.depends_on.includes(key))
-        .map((field) => field.key);
+      const dependants = resolver.fields.filter(
+        (field) => field.kind.kind === "Scan" && field.kind.depends_on.includes(key),
+      );
+      const invalidated = dependants.map((field) => field.key);
       for (const dependant of invalidated) stop(dependant);
       dispatch({ type: "set", resolver, key, value, invalidated });
       if (commit) {
-        for (const dependant of invalidated) {
-          if (canScanWith(dependant, values)) run(dependant, values);
+        for (const field of dependants.filter((dependant) => !isCount(dependant))) {
+          if (canScanWith(field.key, values)) void run(field.key, values);
         }
       }
     },
@@ -296,18 +341,25 @@ export function useResolverForm(
   };
 }
 
-/** The fields of a resolver, each with the failed scans that are about it. */
-export function ResolverForm({ form }: { form: ResolverFormState }) {
+/**
+ * The fields of a resolver, each with the failed scans that are about it. `action` is the dialog's own button: it
+ * sits beside the Scan button of a count-only scan, or else closes the form on a row of its own.
+ */
+export function ResolverForm({ form, action }: { form: ResolverFormState; action?: ReactNode }) {
+  const fieldForm = { ...form, action };
   return (
     <>
       {form.resolver.fields.map((field) => (
         <div key={field.key} className="flex flex-col gap-s">
-          <FieldControl field={field} form={form} />
+          <FieldControl field={field} form={fieldForm} />
           {failuresAt(form.resolver, form.scans, field).map((problem) => (
             <Refusal key={reasonOf(problem)} reason={reasonOf(problem)} />
           ))}
         </div>
       ))}
+      {action && countFields(form.resolver).length === 0 && (
+        <div className="flex justify-end">{action}</div>
+      )}
     </>
   );
 }

@@ -291,12 +291,15 @@ fn resolver_settings_of_every_kind_load_and_each_refusal_names_the_field() {
         manifest
     };
     let folder = tempfile::tempdir().expect("folder");
-    let valid = setting(json!({ "key": "all", "label": "All", "kind": "scan" }));
+    let counted =
+        json!({ "missing": "Pick a root.", "found": "{count} runs.", "none": "No runs." });
+    let valid = setting(json!({ "key": "all", "label": "All", "kind": "scan", "count": counted }));
     let plugin = LoadedPlugin::load(&install(folder.path(), &valid)).expect("every kind loads");
     let form = &plugin.resolvers[0].spec().form;
     assert_eq!(form.fields.len(), 8);
     assert_eq!(form.fields[0].cli, Cli::Positional);
     assert_eq!(form.fields[3].kind, FieldKind::Integer { min: 1 });
+    assert!(!form.fields[7].holds_value());
     assert_eq!(form.fields[4].cli, Cli::Flag("handler-type".to_owned()));
     let empty = setting(json!({ "key": "all", "label": "All", "kind": "scan", "depends_on": [] }));
     LoadedPlugin::load(&install(folder.path(), &empty)).expect("empty depends_on");
@@ -310,6 +313,10 @@ fn resolver_settings_of_every_kind_load_and_each_refusal_names_the_field() {
         (
             json!({ "key": "a", "label": "A", "kind": "scan", "depends_on": ["nope"] }),
             "handlers[0].settings[7].depends_on",
+        ),
+        (
+            json!({ "key": "a", "label": "A", "kind": "scan", "count": { "missing": "m", "found": "none", "none": "n" } }),
+            "handlers[0].settings[7].count.found",
         ),
         (
             json!({ "key": "a", "label": "A", "kind": "decoder_options", "handler_field": "note" }),

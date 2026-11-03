@@ -3,7 +3,7 @@
 
 use std::collections::HashSet;
 
-use handler_api::{Field, FieldKind, Form};
+use handler_api::{Field, FieldKind, Form, ScanCount};
 use scene::{MatchBasis, SCENE_VERSION, SceneVersion};
 use serde_json::{Map, Value};
 
@@ -110,6 +110,27 @@ impl<'a> Fields<'a> {
             Some(Value::Bool(flag)) => Ok(flag),
             Some(_) => Err(self.error(key, "must be true or false")),
         }
+    }
+
+    /// The optional `count` of a scan: the sentences of a scan that only counts.
+    fn scan_count(&mut self) -> Result<Option<ScanCount>, ManifestError> {
+        let Some(value) = self.map.remove("count") else {
+            return Ok(None);
+        };
+        let Value::Object(mut map) = value else {
+            return Err(self.error("count", "must be an object"));
+        };
+        let mut sentences = Fields::new(&mut map, self.path("count."));
+        let count = ScanCount {
+            missing: sentences.non_empty("missing")?,
+            found: sentences.non_empty("found")?,
+            none: sentences.non_empty("none")?,
+        };
+        sentences.finish()?;
+        if !count.found.contains("{count}") {
+            return Err(self.error("count.found", "must contain {count}"));
+        }
+        Ok(Some(count))
     }
 
     /// A list of text; absent is `None` unless `required`, which refuses an empty list as well.
@@ -336,7 +357,7 @@ impl<'a> Fields<'a> {
         for (at, field) in &fields {
             let named = |name: &str| fields.iter().find(|(_, other)| other.key == name);
             let broken = match &field.kind {
-                FieldKind::Scan { depends_on } => depends_on
+                FieldKind::Scan { depends_on, .. } => depends_on
                     .iter()
                     .find(|name| {
                         !named(name).is_some_and(|(_, other)| {
@@ -411,6 +432,7 @@ impl<'a> Fields<'a> {
             },
             "scan" if all_kinds => FieldKind::Scan {
                 depends_on: self.strings("depends_on", false)?.unwrap_or_default(),
+                count: self.scan_count()?,
             },
             other => {
                 let kinds = if all_kinds {

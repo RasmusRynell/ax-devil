@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { GrantsContext } from "../access";
@@ -81,6 +82,26 @@ const DEPTH: ResolverInfo = {
   ],
 };
 
+const COUNT: ResolverInfo = {
+  id: "count",
+  display_name: "Count",
+  description: "",
+  fields: [
+    { key: "videos", label: "Videos", kind: { kind: "Folder" }, required: true },
+    { key: "format", label: "Format", kind: { kind: "Handler" }, required: true },
+    {
+      key: "pairs",
+      label: "Pairs",
+      kind: {
+        kind: "Scan",
+        depends_on: ["videos"],
+        count: { missing: "Pick videos.", found: "Found {count}.", none: "None found." },
+      },
+      required: false,
+    },
+  ],
+};
+
 interface Scan {
   body: { field: string; settings: Settings };
   signal: AbortSignal;
@@ -117,10 +138,18 @@ const found = (...names: string[]) =>
 
 function Harness({ initial, resolver = MOT }: { initial?: Settings; resolver?: ResolverInfo }) {
   const form = useResolverForm(resolver, DECODERS, initial);
+  const [after, setAfter] = useState("unset");
   return (
     <>
       <ResolverForm form={form} />
       <div data-testid="settings">{JSON.stringify(form.settings)}</div>
+      <button
+        disabled={!form.settingsAfterScan}
+        onClick={() => void form.settingsAfterScan?.().then((s) => setAfter(JSON.stringify(s)))}
+      >
+        After
+      </button>
+      <div data-testid="after">{after}</div>
     </>
   );
 }
@@ -299,5 +328,58 @@ describe("resolver form", () => {
     expect(screen.getByRole("button", { name: "Scan" })).toHaveProperty("disabled", false);
     fireEvent.change(screen.getByLabelText("Depth"), { target: { value: "x" } });
     expect(screen.getByRole("button", { name: "Scan" })).toHaveProperty("disabled", true);
+  });
+
+  it("counts pairs without gating Load on a scan, and goes on after one only if nothing was edited", async () => {
+    const scans = stubScans();
+    render(<Harness resolver={COUNT} />);
+    // Scan stays enabled; with nothing to scan it says what is missing and asks nothing.
+    expect(screen.getByRole("status").textContent).toBe("Pick videos.");
+    scan();
+    expect(scans).toHaveLength(0);
+    fireEvent.change(screen.getByLabelText("Videos"), { target: { value: "/v" } });
+    fireEvent.change(screen.getByLabelText("Format"), { target: { value: "MOT_FILE" } });
+    expect(scans).toHaveLength(0);
+    expect(screen.queryByRole("status")).toBeNull();
+    expect(settings()).toEqual({ videos: "/v", format: "MOT_FILE" });
+
+    // An empty answer blocks Load; a failure says so and blocks it too.
+    scan();
+    expect(settings()).toBeNull();
+    await respond(scans, 0);
+    expect(screen.getByRole("status").textContent).toBe("None found.");
+    expect(settings()).toBeNull();
+    scan();
+    await act(async () =>
+      scans[1].answer(422, { code: "PlaylistInvalid", params: {}, reason: "No such folder" }),
+    );
+    expect(screen.getByRole("alert").textContent).toContain("Scan failed: No such folder");
+    expect(settings()).toBeNull();
+
+    // The count survives a new decoder; a new folder forgets it.
+    scan();
+    await respond(scans, 2, "a", "b");
+    expect(screen.getByRole("status").textContent).toBe("Found 2.");
+    fireEvent.change(screen.getByLabelText("Format"), { target: { value: "" } });
+    fireEvent.change(screen.getByLabelText("Format"), { target: { value: "MOT_FILE" } });
+    expect(screen.getByRole("status").textContent).toBe("Found 2.");
+    expect(settings()).toEqual({ videos: "/v", format: "MOT_FILE" });
+    expect(screen.getByRole("button", { name: "After" })).toHaveProperty("disabled", true);
+    fireEvent.change(screen.getByLabelText("Videos"), { target: { value: "/w" } });
+    expect(screen.queryByRole("status")).toBeNull();
+
+    // Loading before any scan scans first, and goes on only if nothing else was edited meanwhile.
+    fireEvent.click(screen.getByRole("button", { name: "After" }));
+    await waitFor(() => expect(scans).toHaveLength(4));
+    await respond(scans, 3, "c");
+    await waitFor(() =>
+      expect(screen.getByTestId("after").textContent).toBe('{"videos":"/w","format":"MOT_FILE"}'),
+    );
+    fireEvent.change(screen.getByLabelText("Videos"), { target: { value: "/x" } });
+    fireEvent.click(screen.getByRole("button", { name: "After" }));
+    await waitFor(() => expect(scans).toHaveLength(5));
+    fireEvent.change(screen.getByLabelText("Format"), { target: { value: "" } });
+    await respond(scans, 4, "d");
+    await waitFor(() => expect(screen.getByTestId("after").textContent).toBe("null"));
   });
 });

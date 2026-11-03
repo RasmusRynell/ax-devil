@@ -1,7 +1,7 @@
 //! Settings checked against a form: defaults, required keys, kinds, and the text two equal settings share.
 
 use foundation::Location;
-use handler_api::{Field, FieldKind, Form, Selection};
+use handler_api::{Field, FieldKind, Form, ScanCount, Selection};
 use serde_json::{Value, json};
 
 fn form() -> Form {
@@ -21,6 +21,19 @@ fn form() -> Form {
                 "Pick",
                 FieldKind::Scan {
                     depends_on: vec!["root".into()],
+                    count: None,
+                },
+            ),
+            Field::new(
+                "tally",
+                "Tally",
+                FieldKind::Scan {
+                    depends_on: vec!["root".into()],
+                    count: Some(ScanCount {
+                        missing: "Pick a folder.".into(),
+                        found: "Found {count}.".into(),
+                        none: "None.".into(),
+                    }),
                 },
             ),
         ],
@@ -57,6 +70,11 @@ fn settings_are_checked_against_the_declared_kinds_and_defaults_fill_the_gaps() 
             json!({ "root": "/d", "pick": [1] }),
             "Must be a list of names",
             "pick",
+        ),
+        (
+            json!({ "root": "/d", "tally": ["a"] }),
+            "Takes no value",
+            "tally",
         ),
     ];
     for (value, reason, key) in rejected {

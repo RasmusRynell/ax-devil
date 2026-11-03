@@ -6,8 +6,8 @@ use std::{
 
 use foundation::{CancelToken, ErrorCode, HostPath, Interrupt, UserError};
 use handler_api::{
-    Cli, Field, FieldKind, Form, OverlayRef, PlaylistResolver, ResolvedEntry, ResolvedPlaylist,
-    ResolvedPlaylists, ResolverSpec, Values, VideoRef, invalid_field,
+    Choice, Cli, Field, FieldKind, Form, OverlayRef, PlaylistResolver, ResolvedEntry,
+    ResolvedPlaylist, ResolvedPlaylists, ResolverSpec, ScanCount, Values, VideoRef, invalid_field,
 };
 
 use crate::resolved_file_type;
@@ -16,9 +16,8 @@ const COMPRESSION_SUFFIXES: [&str; 4] = ["bz2", "gz", "xz", "zst"];
 
 /// Matches the videos of one folder with the overlay files of another by file name.
 ///
-/// Names match after a trailing compression suffix and one more suffix are removed. Decoders read files as they are,
-/// so a matched file that is compressed fails the resolve and names the file instead of yielding an empty overlay.
-/// Settings are `videos_dir`, `overlays_dir`, `handler_type`, the decoder that reads the overlay files, and its
+/// Names match after a trailing compression suffix and one more suffix are removed; the files are not read until an
+/// entry opens. Its count-only `pairs` scan reports how many pairs the folders hold. Settings are `videos_dir`, `overlays_dir`, `handler_type`, the decoder that reads the overlay files, and its
 /// `options`, which every overlay is given as they are.
 pub struct FolderPairResolver {
     spec: ResolverSpec,
@@ -34,13 +33,13 @@ impl FolderPairResolver {
                 description: "Match videos and overlays from two folders by file name.".to_owned(),
                 form: Form {
                     fields: vec![
-                        Field::new("videos_dir", "Videos folder", FieldKind::Folder)
+                        Field::new("videos_dir", "Videos", FieldKind::Folder)
                             .required()
                             .positional(),
-                        Field::new("overlays_dir", "Overlays folder", FieldKind::Folder)
+                        Field::new("overlays_dir", "Overlays", FieldKind::Folder)
                             .required()
                             .positional(),
-                        Field::new("handler_type", "Overlay format", FieldKind::Handler).required(),
+                        Field::new("handler_type", "Decoder", FieldKind::Handler).required(),
                         Field {
                             cli: Cli::Flag("option".to_owned()),
                             ..Field::new(
@@ -51,6 +50,21 @@ impl FolderPairResolver {
                                 },
                             )
                         },
+                        Field::new(
+                            "pairs",
+                            "Pairs",
+                            FieldKind::Scan {
+                                depends_on: vec![
+                                    "videos_dir".to_owned(),
+                                    "overlays_dir".to_owned(),
+                                ],
+                                count: Some(ScanCount {
+                                    missing: "Select video and overlay folders.".to_owned(),
+                                    found: "Found {count} matched pair(s).".to_owned(),
+                                    none: "No matched video/overlay pairs found.".to_owned(),
+                                }),
+                            },
+                        ),
                     ],
                 },
             },
@@ -63,68 +77,67 @@ impl PlaylistResolver for FolderPairResolver {
         &self.spec
     }
 
+    fn scan(
+        &self,
+        field: &str,
+        settings: &Values,
+        cancel: &CancelToken,
+    ) -> Result<Vec<Choice>, Interrupt<UserError>> {
+        if field != "pairs" {
+            return Err(Interrupt::Failed(invalid_field(
+                "This setting has nothing to scan",
+                field,
+            )));
+        }
+        let (videos_dir, overlays_dir) = folders(settings)?;
+        let pairs = discover(videos_dir, overlays_dir, cancel)?;
+        Ok(pairs
+            .into_iter()
+            .map(|pair| Choice {
+                label: pair.name.clone(),
+                value: pair.name,
+                detail: String::new(),
+            })
+            .collect())
+    }
+
     fn resolve(
         &self,
         settings: &Values,
         cancel: &CancelToken,
     ) -> Result<ResolvedPlaylists, Interrupt<UserError>> {
-        let required = |key: &str| {
-            settings
-                .text(key)
-                .ok_or_else(|| Interrupt::Failed(invalid_field("Required", key)))
-        };
-        let (videos_dir, overlays_dir) = (
-            Path::new(required("videos_dir")?),
-            Path::new(required("overlays_dir")?),
-        );
-        let handler = required("handler_type")?;
+        let (videos_dir, overlays_dir) = folders(settings)?;
+        let handler = settings
+            .text("handler_type")
+            .ok_or_else(|| Interrupt::Failed(invalid_field("Required", "handler_type")))?;
         let options = settings.options("options");
-        cancel.check()?;
-        require_dir(videos_dir, "Video directory does not exist").map_err(Interrupt::Failed)?;
-        require_dir(overlays_dir, "Overlay directory does not exist").map_err(Interrupt::Failed)?;
-
-        let videos = index_files(videos_dir, "video", cancel)?;
-        let mut overlays = index_files(overlays_dir, "overlay", cancel)?;
-        let mut entries = Vec::with_capacity(videos.len().min(overlays.len()));
-        for (name, video) in videos {
-            let Some(path) = overlays.remove(&name) else {
-                continue;
-            };
-            if let Some(compressed) = [&video, &path].into_iter().find(|p| is_compressed(p)) {
-                return Err(Interrupt::Failed(
-                    UserError::new(
-                        ErrorCode::UnsupportedFormat,
-                        "Compressed files are not supported; decompress the file first",
-                    )
-                    .at(HostPath::new(compressed)),
-                ));
-            }
-            let overlay = OverlayRef {
-                label: name.clone(),
-                slot: "overlay".to_owned(),
-                path,
-                handler: handler.to_string(),
-                options: options.clone(),
-            };
-            entries.push(ResolvedEntry {
-                name,
-                video: VideoRef::File(video),
-                overlays: vec![overlay],
-            });
-        }
+        let entries: Vec<_> = discover(videos_dir, overlays_dir, cancel)?
+            .into_iter()
+            .map(|pair| ResolvedEntry {
+                overlays: vec![OverlayRef {
+                    label: pair.name.clone(),
+                    slot: "overlay".to_owned(),
+                    path: pair.overlay,
+                    handler: handler.to_string(),
+                    options: options.clone(),
+                }],
+                name: pair.name,
+                video: VideoRef::File(pair.video),
+            })
+            .collect();
         if entries.is_empty() {
             return Err(Interrupt::Failed(
                 UserError::new(
                     ErrorCode::PlaylistInvalid,
                     format!(
-                        "No video file name matches an overlay file name in {}",
+                        "No matched video/overlay pairs in '{}' and '{}'.",
+                        videos_dir.display(),
                         overlays_dir.display()
                     ),
                 )
                 .at(HostPath::new(videos_dir)),
             ));
         }
-        entries.sort_by(|a, b| a.name.cmp(&b.name));
         Ok(ResolvedPlaylists {
             playlists: vec![ResolvedPlaylist {
                 name: self.spec.name.clone(),
@@ -133,6 +146,49 @@ impl PlaylistResolver for FolderPairResolver {
             warnings: Vec::new(),
         })
     }
+}
+
+/// The two folders the settings name.
+fn folders(settings: &Values) -> Result<(&Path, &Path), Interrupt<UserError>> {
+    let required = |key: &str| {
+        settings
+            .path(key)
+            .ok_or_else(|| Interrupt::Failed(invalid_field("Required", key)))
+    };
+    Ok((required("videos_dir")?, required("overlays_dir")?))
+}
+
+/// A video and the overlay file that goes with it.
+struct Pair {
+    name: String,
+    video: PathBuf,
+    overlay: PathBuf,
+}
+
+/// The pairs of files with the same match name in the two folders, in name order. Nothing is read from the files.
+fn discover(
+    videos_dir: &Path,
+    overlays_dir: &Path,
+    cancel: &CancelToken,
+) -> Result<Vec<Pair>, Interrupt<UserError>> {
+    cancel.check()?;
+    require_dir(videos_dir, "Video directory does not exist").map_err(Interrupt::Failed)?;
+    require_dir(overlays_dir, "Overlay directory does not exist").map_err(Interrupt::Failed)?;
+    let videos = index_files(videos_dir, "video", cancel)?;
+    let mut overlays = index_files(overlays_dir, "overlay", cancel)?;
+    let mut pairs: Vec<_> = videos
+        .into_iter()
+        .filter_map(|(name, video)| {
+            let overlay = overlays.remove(&name)?;
+            Some(Pair {
+                name,
+                video,
+                overlay,
+            })
+        })
+        .collect();
+    pairs.sort_by(|a, b| a.name.cmp(&b.name));
+    Ok(pairs)
 }
 
 fn require_dir(path: &Path, reason: &str) -> Result<(), UserError> {
@@ -193,17 +249,6 @@ fn index_files(
         )
         .at(HostPath::new(dir)),
     ))
-}
-
-/// Whether the file name ends in a compression suffix.
-fn is_compressed(path: &Path) -> bool {
-    path.extension()
-        .and_then(|ext| ext.to_str())
-        .is_some_and(|ext| {
-            COMPRESSION_SUFFIXES
-                .iter()
-                .any(|compression| ext.eq_ignore_ascii_case(compression))
-        })
 }
 
 /// The file name without a trailing compression suffix and one more suffix.

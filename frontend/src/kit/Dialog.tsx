@@ -66,7 +66,8 @@ export function DialogFrame({
 interface Props {
   title: string;
   children: ReactNode;
-  onOk: () => void;
+  /** Without it the dialog has no OK button: its body holds the submit button, and Enter clicks that. */
+  onOk?: () => void;
   /** Without it the dialog has only OK, and Escape runs OK. */
   onCancel?: () => void;
   okLabel?: string;
@@ -98,20 +99,22 @@ export function Dialog({
       focusSubmit={focusOk}
       onSubmit={(event) => {
         event.preventDefault();
-        if (!busy) onOk();
+        if (!busy) onOk?.();
       }}
       onCancel={(event) => {
         event.preventDefault();
         if (onCancel) onCancel();
-        else if (!busy) onOk();
+        else if (!busy) onOk?.();
       }}
       footer={
         <div className="flex gap-m">
           {footerStart}
           <div className="ml-auto flex gap-m">
-            <Button type="submit" disabled={busy}>
-              {okLabel}
-            </Button>
+            {onOk && (
+              <Button type="submit" disabled={busy}>
+                {okLabel}
+              </Button>
+            )}
             {footer}
             {onCancel && <Button onClick={onCancel}>Cancel</Button>}
           </div>

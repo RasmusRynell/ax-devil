@@ -74,7 +74,7 @@ module.exports.multiplaylist = async (window) => {
         : window.realFetch(url, init);
     })()`);
     await js(
-      "[...document.querySelectorAll('dialog[open] button')].find((b) => b.textContent === 'Add').click()",
+      "[...document.querySelectorAll('dialog[open] button')].find((b) => b.textContent === 'Load Playlist').click()",
     );
     await wait("/Finding playlists/.test(document.querySelector('dialog[open]').innerText)");
     assert.equal(
