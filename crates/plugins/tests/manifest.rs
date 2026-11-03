@@ -442,6 +442,18 @@ fn resolver_settings_of_every_kind_load_and_each_refusal_names_the_field() {
             json!({ "key": "handler-type", "label": "A", "kind": "text" }),
             "handlers[0].settings[7].key",
         ),
+        (
+            json!({ "key": "-x", "label": "A", "kind": "text" }),
+            "handlers[0].settings[7].key",
+        ),
+        (
+            json!({ "key": "_x", "label": "A", "kind": "text" }),
+            "handlers[0].settings[7].key",
+        ),
+        (
+            json!({ "key": "log_level", "label": "A", "kind": "text" }),
+            "handlers[0].settings[7].key",
+        ),
     ];
     for (extra, field) in cases {
         let folder = tempfile::tempdir().expect("folder");

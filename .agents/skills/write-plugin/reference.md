@@ -42,9 +42,9 @@ Decoder handler (`"kind": "decoder"`):
 Playlist resolver handler (`"kind": "playlist_resolver"`): `description` (one sentence, required) and `settings`, an
 optional list of fields, below. The settings become a form in the app and arguments of `ax-devil playlist ID`.
 
-A field is `{"key","label","kind","required","default","positional", ...}`. `key` is letters, digits, `_` or `-`, not
-`help`, and is the flag `--<key>` (`_` as `-`) unless `positional` (which needs `required`, no `default`, and a
-single value).
+A field is `{"key","label","kind","required","default","positional", ...}`. `key` is letters, digits, `_` or `-`,
+starts with a letter or digit, and in a resolver is not `help`, `config`, `cache-dir` or `log-level`. It is the flag
+`--<key>` (`_` as `-`) unless `positional` (which needs `required`, no `default`, and a single value).
 `required` defaults to false. `default` is text, or a whole number for an integer. `kind` and what it adds:
 
 | Kind | Value | Adds |

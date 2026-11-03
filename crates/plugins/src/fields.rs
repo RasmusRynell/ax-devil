@@ -9,6 +9,10 @@ use serde_json::{Map, Value};
 
 use crate::manifest::{DecoderHandler, Handler, ManifestError, ResolverHandler, valid_id};
 
+/// The flag names (`_` written as `-`) that every `ax-devil` command line already takes, so no resolver setting may
+/// be named one: clap refuses an argument that repeats them. A test of the real command keeps this in step.
+pub const RESERVED_SETTING_KEYS: [&str; 4] = ["help", "config", "cache-dir", "log-level"];
+
 /// One JSON object being read; `prefix` is the path to it, ending in `.` unless it is the manifest itself.
 pub(crate) struct Fields<'a> {
     map: &'a mut Map<String, Value>,
@@ -352,14 +356,23 @@ impl<'a> Fields<'a> {
     /// One declared field. Its value is text, except for an integer, a scan's list and decoder options' map.
     fn field(&mut self, all_kinds: bool) -> Result<Field, ManifestError> {
         let key = self.non_empty("key")?;
-        if !key
-            .chars()
-            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '-'))
-            || key == "help"
+        if !key.starts_with(|c: char| c.is_ascii_alphanumeric())
+            || !key
+                .chars()
+                .all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '-'))
         {
             return Err(self.error(
                 "key",
-                format!("'{key}' must be letters, digits, '_' or '-', and not help"),
+                format!(
+                    "'{key}' must be letters, digits, '_' or '-', starting with a letter or digit"
+                ),
+            ));
+        }
+        // Only a resolver's settings become arguments of the command line.
+        if all_kinds && RESERVED_SETTING_KEYS.contains(&key.replace('_', "-").as_str()) {
+            return Err(self.error(
+                "key",
+                format!("'{key}' is an argument ax-devil already takes"),
             ));
         }
         let label = self.non_empty("label")?;

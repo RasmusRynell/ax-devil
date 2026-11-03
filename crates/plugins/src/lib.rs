@@ -33,6 +33,7 @@ use std::{
 use handler_api::{Decoder, PlaylistResolver};
 
 pub use decoder::PluginDecoder;
+pub use fields::RESERVED_SETTING_KEYS;
 pub use manifest::{
     DecoderHandler, Handler, MANIFEST_FILE, Manifest, ManifestError, ResolverHandler,
 };

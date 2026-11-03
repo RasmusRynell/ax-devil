@@ -290,6 +290,22 @@ fn an_installed_resolver_is_a_playlist_subcommand_with_its_settings_as_arguments
         Value::Object(settings),
         json!({ "root": "/data/runs", "runs": ["a", "b"] })
     );
+
+    // A setting may not repeat an argument every command takes; the plugins crate keeps that list.
+    use clap::CommandFactory;
+    for arg in Cli::command()
+        .get_arguments()
+        .filter(|arg| arg.is_global_set())
+    {
+        let id = arg.get_id().as_str().replace('_', "-");
+        let long = arg.get_long().expect("a global option is a flag");
+        for name in [id.as_str(), long] {
+            assert!(
+                ::plugins::RESERVED_SETTING_KEYS.contains(&name),
+                "RESERVED_SETTING_KEYS lacks '{name}'"
+            );
+        }
+    }
 }
 
 #[test]
