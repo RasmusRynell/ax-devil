@@ -19,6 +19,7 @@ export const ERRORS: Record<ErrorCode, string> = {
   UnknownHandler: "No handler is installed for that.",
   OverlayInvalid: "The overlay file could not be read.",
   PlaylistInvalid: "The playlist could not be loaded.",
+  PluginInvalid: "The plugin cannot be used.",
   CatalogInvalid: "The render catalog is not valid.",
   Internal: "The backend failed.",
 };

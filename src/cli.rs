@@ -5,11 +5,11 @@
 //! schema); the items the command line asks for wait in the [`LaunchQueue`] for the first Local session.
 
 use crate::paths::{self, Paths};
-use api_types::handlers::PluginsInfo;
 use ax_devil::{
     AppState,
     access::{Limits, Policy},
     app, desktop,
+    plugins::Plugins,
     session::LaunchQueue,
     share::{self, Hosting, LinkBase, ShareListener},
     video_cache,
@@ -206,14 +206,14 @@ struct AppArgs {
 /// Runs the command the user gave.
 pub async fn run() -> ExitCode {
     let registry = paths::plugins_file(&|name| std::env::var_os(name));
-    let (handlers, installed) = ax_devil::plugins::load(&registry, Handlers::built_in());
-    let Cli { global, command } = args::parse(&handlers);
+    let plugins = Plugins::new(registry, Handlers::built_in());
+    let Cli { global, command } = args::parse(&plugins.handlers());
     // These commands only print: no logging, settings file or port.
     match command {
-        Some(Command::ListHandlers) => catalog::Report::listing(&handlers, &installed).print(),
-        Some(Command::Plugins(command)) => plugins::run(command, registry, handlers, installed)
-            .await
-            .print(),
+        Some(Command::ListHandlers) => {
+            catalog::Report::listing(&plugins.handlers(), &plugins.info()).print()
+        }
+        Some(Command::Plugins(command)) => plugins::run(command, plugins).await.print(),
         Some(Command::Catalog(catalog)) => {
             let folder = Paths::resolve(
                 &|name| std::env::var_os(name),
@@ -227,17 +227,12 @@ pub async fn run() -> ExitCode {
             });
             catalog::run(&catalog, folder).print()
         }
-        command => run_backend(global, command, handlers, installed).await,
+        command => run_backend(global, command, plugins).await,
     }
 }
 
 /// Starts what `command` asks for: the desktop backend, `serve` or the shell.
-async fn run_backend(
-    global: Global,
-    command: Option<Command>,
-    handlers: Handlers,
-    installed: PluginsInfo,
-) -> ExitCode {
+async fn run_backend(global: Global, command: Option<Command>, plugins: Arc<Plugins>) -> ExitCode {
     let paths = Paths::resolve(
         &|name| std::env::var_os(name),
         global.config,
@@ -246,17 +241,15 @@ async fn run_backend(
     let launcher = matches!(command, Some(Command::App(_)));
     let log_file = paths.as_ref().ok().map(|paths| paths.log_file.as_path());
     logging::init(global.log_level, log_file.filter(|_| !launcher));
-    ax_devil::plugins::log_problems(&installed);
+    ax_devil::plugins::log_problems(&plugins.info());
     let result = match command {
         Some(Command::App(args)) => launch(&args),
         command => match paths {
             Err(error) => Err(error.into()),
             Ok(paths) => match command {
-                Some(Command::Serve(args)) => serve(&paths, args, handlers, installed).await,
-                command => match launch_items(command, &handlers) {
-                    Ok(items) => {
-                        host_desktop(&paths, global.share_address, handlers, installed, items).await
-                    }
+                Some(Command::Serve(args)) => serve(&paths, args, plugins).await,
+                command => match launch_items(command, &plugins.handlers()) {
+                    Ok(items) => host_desktop(&paths, global.share_address, plugins, items).await,
                     Err(reason) => Err(reason.into()),
                 },
             },
@@ -279,8 +272,7 @@ struct Services {
     catalogs: Library,
     launch: Arc<LaunchQueue>,
     videos: Arc<VideoSources>,
-    handlers: Handlers,
-    plugins: PluginsInfo,
+    plugins: Arc<Plugins>,
     cache_dir: PathBuf,
     stop: watch::Sender<bool>,
 }
@@ -290,8 +282,7 @@ impl Services {
     /// stop signal on, and so does the end of the standard input when [`EXIT_ON_STDIN_CLOSE_VARIABLE`] asks for it.
     fn start(
         paths: &Paths,
-        handlers: Handlers,
-        plugins: PluginsInfo,
+        plugins: Arc<Plugins>,
         items: Vec<WorkspaceItem>,
     ) -> Result<Self, Box<dyn Error>> {
         let settings = Arc::new(settings::Settings::load(&paths.config_file)?);
@@ -303,6 +294,7 @@ impl Services {
         tracing::info!("Reading user catalogs from {}", catalog_dir.display());
         let catalogs = Library::with_folder(catalog_dir);
         let (stop, _) = watch::channel(false);
+        tokio::spawn(Arc::clone(&plugins).watch(stop.subscribe()));
         let stop_on_ctrl_c = stop.clone();
         tokio::spawn(async move {
             let _ = tokio::signal::ctrl_c().await;
@@ -321,7 +313,6 @@ impl Services {
             catalogs,
             launch: Arc::new(LaunchQueue::new(items)),
             videos,
-            handlers,
             plugins,
             cache_dir,
             stop,
@@ -335,10 +326,9 @@ impl Services {
             policy,
             Arc::clone(&self.videos),
             self.stop.subscribe(),
-            self.handlers.clone(),
+            Arc::clone(&self.plugins),
             &self.cache_dir,
         )
-        .with_plugins(self.plugins.clone())
         .with_launch(Arc::clone(&self.launch))
         .with_catalogs(self.catalogs.clone())
     }
@@ -385,11 +375,10 @@ impl Services {
 async fn host_desktop(
     paths: &Paths,
     share_address: SocketAddr,
-    handlers: Handlers,
-    plugins: PluginsInfo,
+    plugins: Arc<Plugins>,
     items: Vec<WorkspaceItem>,
 ) -> Result<ExitCode, Box<dyn Error>> {
-    let services = Services::start(paths, handlers, plugins, items)?;
+    let services = Services::start(paths, plugins, items)?;
     let port = std::env::var("PORT")
         .unwrap_or_else(|_| "7330".into())
         .parse::<u16>()?;
@@ -411,11 +400,10 @@ async fn host_desktop(
 async fn serve(
     paths: &Paths,
     args: ServeArgs,
-    handlers: Handlers,
-    plugins: PluginsInfo,
+    plugins: Arc<Plugins>,
 ) -> Result<ExitCode, Box<dyn Error>> {
     share::refuse_development_build().map_err(|reason| format!("serve: {reason}"))?;
-    let services = Services::start(paths, handlers, plugins, Vec::new())?;
+    let services = Services::start(paths, plugins, Vec::new())?;
     let chosen = std::env::var(PASSWORD_VARIABLE)
         .ok()
         .filter(|text| !text.is_empty());

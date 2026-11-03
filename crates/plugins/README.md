@@ -10,7 +10,7 @@ caching.
 
 - **Manifest is validated whole** (`manifest.rs`, `fields.rs`): an error names the field by its path, such as
   `handlers[1].options[0].kind`. Plugin ids and handler ids are separate namespaces (`Reserved`). The registry
-  (`registry.rs`) is written only by install and remove, atomically and private to the user, and keeps keys it does
+  (`registry.rs`) is written only by install, update and remove, atomically and private to the user, and keeps keys it does
   not know.
 - **Identity.** `code_hash` is SHA-256 over the manifest and the files its `code` names, re-read only when a size or
   modification time changed. A plugin whose files cannot be hashed is not run, so nothing is cached under a

@@ -5,7 +5,7 @@
 //! Parsing stays pure: it returns what the user asked for, and `run` decides what to start.
 
 use super::{Cli, Command, Global, OverlayOption, describe};
-use api_types::handlers::{PluginStatus, PluginsInfo};
+use api_types::handlers::{PluginSource, PluginStatus, PluginsInfo};
 use clap::{
     Arg, ArgAction, ArgMatches, CommandFactory, FromArgMatches, ValueHint,
     builder::PossibleValuesParser, error::ErrorKind,
@@ -183,17 +183,14 @@ pub(super) fn handlers_listing(handlers: &Handlers, installed: &PluginsInfo) -> 
         .problem
         .iter()
         .cloned()
-        .chain(
-            installed
-                .plugins
-                .iter()
-                .filter_map(|plugin| match &plugin.status {
-                    PluginStatus::Failed { reason } => {
-                        Some(format!("{}: {reason}", plugin.manifest))
-                    }
-                    PluginStatus::Loaded { .. } => None,
-                }),
-        )
+        .chain(installed.plugins.iter().filter_map(|plugin| {
+            match (&plugin.source, &plugin.status) {
+                (PluginSource::Installed { manifest, .. }, PluginStatus::Failed { reason }) => {
+                    Some(format!("{manifest}: {reason}"))
+                }
+                _ => None,
+            }
+        }))
         .collect();
     if !problems.is_empty() {
         listing.push_str("\nPlugins that did not load (ax-devil plugins list):\n");

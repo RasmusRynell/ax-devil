@@ -38,6 +38,8 @@ pub enum ErrorCode {
     OverlayInvalid,
     /// A playlist's settings or folder cannot be turned into entries.
     PlaylistInvalid,
+    /// A plugin to install or update cannot be used.
+    PluginInvalid,
     /// A render catalog cannot be loaded or compiled.
     CatalogInvalid,
     /// A fault of the backend itself.

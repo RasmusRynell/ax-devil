@@ -180,19 +180,18 @@ implementing module closes.
 - Plugins load only from the registry that install wrote, never because their files exist. Plugin ids are unique
   among plugins and handler ids among all decoders and resolvers.
 - Load failures never stop the application; each is recorded and listed.
-- A plugin runs in an empty working folder with an allowlisted environment (no ax-devil credentials); its process
-  group is killed whenever the run ends ([trust](../plugins.md#trust)).
-- Install and remove change only the registry, atomically, and apply on restart; a plugin's dependencies are its
-  own, never the app's.
+- A plugin runs in an empty working folder with an allowlisted environment; its process group is killed whenever the
+  run ends ([trust](../plugins.md#trust)).
+- Install, update and remove change only the registry, atomically, and reach the running app: work in flight
+  keeps its handlers, new opens use the current ones. A plugin's dependencies are its own.
 - Resolver settings are a declared schema the host renders as a form and as CLI arguments, never plugin UI code.
 
 ## Data Pipeline
 
 - Pausing RTSP keeps its connection alive. Stopping is terminal; reopening creates a new source.
 - Scene file artifacts are invalid unless their complete identity matches: source content digest (a stat fingerprint
-  only spares hashing an unchanged file; where the platform has no change time, the digest decides), decoder name (for
-  a plugin, the hash of its manifest and code files), artifact version, Scene version, decode options
-  and store format version. If the source changed during the build, the artifact is persisted without a digest, so the
+  only spares hashing an unchanged file), decoder name (for a plugin, the hash of its manifest and code files),
+  artifact version, Scene version, decode options and store format version. If the source changed during the build, the artifact is persisted without a digest, so the
   next open sees the file as changed. Cache files are private and always rebuildable.
 - Samples with one start key are one group, merged or replaced as the decoder asks. A key below an earlier one freezes
   the stream: the rest is sorted at the end into a new generation with its own numbering and revision.

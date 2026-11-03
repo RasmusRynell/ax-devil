@@ -33,7 +33,7 @@ from its stdout and draws them like any built-in format. A decoder shipped with 
    user's desktop, follow [verify-headless](../verify-headless/SKILL.md).
 
 After an edit, run `check` again: it starts a new process and sees the manifest as well as the code. A running app
-rereads code on the next open and the manifest only at start.
+rereads code on the next open and the manifest within a second or two.
 
 ## Rules
 

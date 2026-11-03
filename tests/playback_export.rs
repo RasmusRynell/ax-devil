@@ -8,7 +8,7 @@ use api_types::playback::{
     CatalogRefWire, ClientMessage, ExportFormatWire, ExportLaneWire, ExportQualityWire,
     ExportStateWire, IngestWire, LaneStatusWire, ServerMessage,
 };
-use ax_devil::exports::ExportService;
+use ax_devil::{exports::ExportService, plugins::Plugins};
 use common::{
     Backend, Viewer, WAIT,
     export_kit::{files, finished, serve_lanes, state_of, until},
@@ -179,7 +179,10 @@ async fn backend_reading(renders: &Arc<Renders>, handlers: Handlers) -> Backend 
             submitted: VecDeque::new(),
         }))
     }));
-    Backend::start_with(false, handlers, |state| state.exports = Arc::new(exports)).await
+    Backend::start_with(false, Plugins::fixed(handlers), |state| {
+        state.exports = Arc::new(exports)
+    })
+    .await
 }
 
 /// An owner's viewer on the fixture with one subscribed lane and the Standard catalog served: the lane's policy

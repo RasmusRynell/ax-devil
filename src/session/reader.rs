@@ -151,7 +151,7 @@ async fn answer(
     {
         return refused(refusal);
     }
-    let command = match wire::command(cmd, &state.handlers) {
+    let command = match wire::command(cmd, &state.plugins.handlers()) {
         Ok(command) => command,
         Err(code) => return refused(code),
     };

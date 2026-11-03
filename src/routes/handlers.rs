@@ -59,20 +59,17 @@ fn field_infos(form: &Form) -> Vec<FieldInfo> {
 
 /// The decoders and resolvers the app knows, with the form each decoder's options and resolver's settings take.
 pub(crate) async fn get_handlers(State(state): State<AppState>) -> Json<HandlersInfo> {
-    let decoders = state.handlers.decoders().iter().map(|decoder| {
+    let handlers = state.plugins.handlers();
+    let decoders = handlers.decoders().iter().map(|decoder| {
         let spec = decoder.spec();
         DecoderInfo {
             handler: spec.id.clone(),
             display_name: spec.name.clone(),
             extensions: spec.extensions.clone(),
             options: field_infos(&spec.options),
-            plugin: state
-                .plugins
-                .provides(&spec.plugin)
-                .then(|| spec.plugin.clone()),
         }
     });
-    let resolvers = state.handlers.resolvers().iter().map(|resolver| {
+    let resolvers = handlers.resolvers().iter().map(|resolver| {
         let spec = resolver.spec();
         ResolverInfo {
             id: spec.id.clone(),
@@ -87,9 +84,9 @@ pub(crate) async fn get_handlers(State(state): State<AppState>) -> Json<Handlers
     })
 }
 
-/// The plugins the user installed, with the reason for each that did not load.
+/// The built-in and installed plugins, with the reason for each that did not load.
 pub(crate) async fn get_plugins(State(state): State<AppState>) -> Json<PluginsInfo> {
-    Json(PluginsInfo::clone(&state.plugins))
+    Json(PluginsInfo::clone(&state.plugins.info()))
 }
 
 /// Runs the resolver's scan of `field` on a blocking thread. Dropping the returned future, as the server does when
@@ -134,7 +131,7 @@ pub(crate) async fn scan(
     Path(id): Path<String>,
     Json(request): Json<ScanRequest>,
 ) -> Result<Json<Vec<ChoiceInfo>>, Refusal> {
-    let Some(resolver) = state.handlers.resolver(&id).cloned() else {
+    let Some(resolver) = state.plugins.handlers().resolver(&id).cloned() else {
         return Err(refuse(
             StatusCode::NOT_FOUND,
             &UserError::new(ErrorCode::UnknownHandler, "No such playlist resolver"),
@@ -164,7 +161,7 @@ pub(crate) async fn scan(
 mod tests {
     use super::*;
     use crate::test_support::{TestApp, json};
-    use api_types::handlers::{PluginInfo, PluginStatus};
+    use api_types::handlers::PluginStatus;
     use axum::{body::Body, http::Request};
     use handler_api::{
         DecodeError, DecodeSummary, Decoder, Field, Form, Framing, Input, ResolvedPlaylist,
@@ -272,54 +269,33 @@ mod tests {
         }))
     }
 
-    fn loaded(id: &str) -> PluginInfo {
-        PluginInfo {
-            manifest: format!("{id}/ax-devil-plugin.json"),
-            folder: id.into(),
-            status: PluginStatus::Loaded {
-                id: id.into(),
-                name: id.into(),
-                version: "1".into(),
-                extensions: vec![".listed".into()],
-            },
-        }
-    }
-
     #[tokio::test]
-    async fn a_plugin_decoder_names_the_plugin_that_ships_it_not_its_handler_id() {
-        // Each handler id is the id of the other loaded plugin, so a lookup by handler id names the wrong plugin.
-        let handlers = Handlers::built_in().with_decoders([
-            listed("beta", "alpha"),
-            listed("alpha", "beta"),
-            listed("orphan", "gone"),
-        ]);
-        let plugins = PluginsInfo {
-            plugins: vec![loaded("alpha"), loaded("beta")],
-            problem: None,
-        };
-        let test = TestApp::with(handlers, plugins);
+    async fn a_built_in_plugin_lists_the_handlers_it_ships_not_those_named_like_it() {
+        // Each handler id is the id of the other plugin, so grouping by handler id would swap them.
+        let handlers =
+            Handlers::built_in().with_decoders([listed("beta", "alpha"), listed("alpha", "beta")]);
+        let test = TestApp::with(handlers);
         let request = Request::builder()
-            .uri("/api/handlers")
+            .uri("/api/plugins")
             .body(Body::empty())
             .unwrap();
         let (status, body) = test.send(request).await;
         assert_eq!(status, StatusCode::OK);
-        let info = json(&body);
+        let info: PluginsInfo = serde_json::from_slice(&body).unwrap();
 
-        let decoder = |handler: &str| {
-            info["decoders"]
-                .as_array()
-                .unwrap()
+        let handler_ids = |plugin: &str| -> Vec<String> {
+            info.plugins
                 .iter()
-                .find(|decoder| decoder["handler"] == handler)
-                .expect("the decoder is listed")
-                .clone()
+                .find_map(|entry| match &entry.status {
+                    PluginStatus::Loaded { id, handlers, .. } if id == plugin => {
+                        Some(handlers.iter().map(|handler| handler.id.clone()).collect())
+                    }
+                    _ => None,
+                })
+                .expect("the plugin is listed")
         };
-        assert_eq!(decoder("beta")["plugin"], "alpha");
-        assert_eq!(decoder("alpha")["plugin"], "beta");
-        // A plugin that did not load is not named, and neither is a built-in.
-        assert!(decoder("orphan").get("plugin").is_none());
-        assert!(decoder("MOT_FILE").get("plugin").is_none());
+        assert_eq!(handler_ids("alpha"), ["beta"]);
+        assert_eq!(handler_ids("beta"), ["alpha"]);
     }
 
     #[tokio::test]
@@ -389,6 +365,7 @@ mod tests {
 
     static WAITING_SPEC: LazyLock<ResolverSpec> = LazyLock::new(|| ResolverSpec {
         id: "waiting".into(),
+        plugin: "waiting".into(),
         name: "Waiting".into(),
         description: "Scans until cancelled.".into(),
         form: Form {

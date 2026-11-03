@@ -4,7 +4,9 @@
 use ax_devil::{
     AppState,
     access::{Admission, Limits, Policy, Refused},
-    app, lan_app, video_cache,
+    app, lan_app,
+    plugins::Plugins,
+    video_cache,
 };
 use axum::{
     Router,
@@ -38,7 +40,7 @@ fn state(policy: Policy) -> (AppState, Keep) {
         policy,
         videos,
         stopping,
-        Handlers::built_in(),
+        Plugins::fixed(Handlers::built_in()),
         &cache,
     );
     (state, (folder, stop))

@@ -5,16 +5,13 @@
 
 mod common;
 
-use api_types::{
-    handlers::PluginsInfo,
-    playback::{
-        BasisWire, ClientMessage, Direction, FRAME_MAP_NONE, IngestWire, LanePolicyWire,
-        LaneStatusWire, MATCH_EXACT, ServerMessage, StickyWire,
-    },
+use api_types::playback::{
+    BasisWire, ClientMessage, Direction, FRAME_MAP_NONE, IngestWire, LanePolicyWire,
+    LaneStatusWire, MATCH_EXACT, ServerMessage, StickyWire,
 };
-use ax_devil::plugins as app;
+use ax_devil::plugins::Plugins;
 use common::{Backend, Event, fixture};
-use foundation::CancelToken;
+use foundation::{CancelToken, ErrorCode};
 use handler_api::OverlayRef;
 use handlers::Handlers;
 use plugins::{Registry, Reserved};
@@ -25,9 +22,9 @@ use std::{
     sync::Arc,
 };
 
-/// A backend that decodes with `handlers` and reports `installed`.
-async fn started(handlers: Handlers, installed: PluginsInfo) -> Backend {
-    Backend::start_with(false, handlers, |state| state.plugins = Arc::new(installed)).await
+/// A backend over the plugins the registry at `registry` lists.
+async fn started(plugins: &Arc<Plugins>) -> Backend {
+    Backend::start_with(false, Arc::clone(plugins), |_| {}).await
 }
 
 fn plugin(name: &str) -> PathBuf {
@@ -138,8 +135,7 @@ async fn a_lane_over_a_plugins_file_gets_its_samples_and_ends_complete() {
     }
     let home = tempfile::tempdir().unwrap();
     let registry = install(home.path(), "python-tracks");
-    let (handlers, installed) = app::load(&Ok(registry), Handlers::built_in());
-    let backend = started(handlers, installed).await;
+    let backend = started(&Plugins::new(Ok(registry), Handlers::built_in())).await;
     let added = backend
         .add_with_overlays(
             &fixture("cfr_h264_gop10_bf2.mp4"),
@@ -175,7 +171,7 @@ async fn a_lane_over_a_plugins_file_gets_its_samples_and_ends_complete() {
 fn a_plugin_that_writes_out_of_order_has_its_samples_sorted_and_the_replaced_one_dropped() {
     let home = tempfile::tempdir().unwrap();
     let registry = install(home.path(), "shell-times");
-    let (handlers, _) = app::load(&Ok(registry), Handlers::built_in());
+    let plugins = Plugins::new(Ok(registry), Handlers::built_in());
     let overlay = OverlayRef {
         label: "times".into(),
         slot: "times".into(),
@@ -184,7 +180,7 @@ fn a_plugin_that_writes_out_of_order_has_its_samples_sorted_and_the_replaced_one
         options: Default::default(),
     };
 
-    let track = TrackRegistry::new(handlers.decoder_lookup(), None)
+    let track = TrackRegistry::new(plugins.set().decoder_lookup(), None)
         .open(&overlay, &CancelToken::new())
         .unwrap();
     let snapshot = loop {
@@ -228,31 +224,74 @@ async fn the_plugins_route_lists_the_plugins_that_loaded_and_the_one_that_did_no
         .unwrap()
         .push(serde_json::json!({ "manifest": gone }));
     std::fs::write(&registry, document.to_string()).unwrap();
-    let (handlers, installed) = app::load(&Ok(registry), Handlers::built_in());
-    let backend = started(handlers, installed).await;
+    let backend = started(&Plugins::new(Ok(registry), Handlers::built_in())).await;
 
     let plugins = get(&backend, "/api/plugins").await;
-    let [loaded, failed] = &plugins["plugins"].as_array().unwrap()[..] else {
+    let [mot, .., loaded, failed] = &plugins["plugins"].as_array().unwrap()[..] else {
         panic!("{plugins}");
     };
-    assert_eq!(loaded["status"]["state"], "Loaded");
+    assert_eq!(mot["source"]["kind"], "built_in");
+    assert_eq!(loaded["source"]["kind"], "installed");
+    assert_eq!(loaded["status"]["state"], "loaded");
     assert_eq!(loaded["status"]["id"], "shell-times");
-    assert_eq!(failed["status"]["state"], "Failed");
+    assert_eq!(failed["status"]["state"], "failed");
     assert!(
         failed["status"]["reason"]
             .as_str()
             .unwrap()
             .contains("gone")
     );
+}
 
-    let handlers = get(&backend, "/api/handlers").await;
-    let plugin_of = |handler: &str| {
-        let decoders = handlers["decoders"].as_array().unwrap();
-        let decoder = decoders.iter().find(|d| d["handler"] == handler).unwrap();
-        decoder.get("plugin").cloned()
+#[tokio::test]
+async fn a_plugin_installed_while_the_app_runs_is_used_and_one_removed_ends_only_new_opens() {
+    let home = tempfile::tempdir().unwrap();
+    let file = home.path().join("data/ax-devil/plugins.json");
+    let plugins = Plugins::new(Ok(file.clone()), Handlers::built_in());
+    let backend = started(&plugins).await;
+    let decoders = |handlers: serde_json::Value| -> Vec<String> {
+        let ids = handlers["decoders"].as_array().unwrap().iter();
+        ids.map(|decoder| decoder["handler"].as_str().unwrap().to_owned())
+            .collect()
     };
-    assert_eq!(plugin_of("shell-times"), Some("shell-times".into()));
-    assert_eq!(plugin_of("MOT_FILE"), None);
+    assert!(!decoders(get(&backend, "/api/handlers").await).contains(&"shell-times".into()));
+
+    // Another process installs it, as the command line does; the app notices on its next look.
+    install(home.path(), "shell-times");
+    assert!(plugins.refresh());
+    assert!(decoders(get(&backend, "/api/handlers").await).contains(&"shell-times".into()));
+
+    // `.txt` is also a MOT file, so the plugin is named.
+    let overlays = [workspace::intake::NewOverlay {
+        path: plugin("shell-times/sample.times.txt"),
+        handler: Some("shell-times".into()),
+        label: None,
+        options: Default::default(),
+    }];
+    let video = fixture("cfr_h264_gop10_bf2.mp4");
+    let added = backend
+        .add_item(workspace::intake::video(&video, &overlays, &plugins.handlers()).unwrap())
+        .await;
+    let mut viewer = backend.viewer().await;
+    viewer.open(&added.ticket(), None).await;
+    viewer.opened().await;
+    let mut registry = Registry::read(&file).unwrap();
+    assert!(registry.remove("shell-times"));
+    registry.save().unwrap();
+    assert!(plugins.refresh());
+    let ingest = loop {
+        match viewer.next().await {
+            Event::Message(ServerMessage::LaneStatus {
+                status: LaneStatusWire::Ready { ingest, .. },
+                ..
+            }) if ingest != IngestWire::Reading => break ingest,
+            _ => {}
+        }
+    };
+    assert_eq!(ingest, IngestWire::Complete);
+
+    let refused = workspace::intake::video(&video, &overlays, &plugins.handlers());
+    assert_eq!(refused.unwrap_err().code, ErrorCode::UnknownHandler);
 }
 
 /// The JSON body of a GET to the local backend.
@@ -277,8 +316,8 @@ async fn get(backend: &Backend, path: &str) -> serde_json::Value {
 async fn a_lane_over_a_plugin_that_defaults_to_time_is_matched_by_time_without_being_told() {
     let home = tempfile::tempdir().unwrap();
     let registry = install(home.path(), "shell-times");
-    let (handlers, installed) = app::load(&Ok(registry), Handlers::built_in());
-    let backend = started(handlers, installed).await;
+    let plugins = Plugins::new(Ok(registry), Handlers::built_in());
+    let backend = started(&plugins).await;
     // `.txt` is also a MOT file, so the plugin is named.
     let overlays = [workspace::intake::NewOverlay {
         path: plugin("shell-times/sample.times.txt"),
@@ -289,7 +328,7 @@ async fn a_lane_over_a_plugin_that_defaults_to_time_is_matched_by_time_without_b
     let item = workspace::intake::video(
         &fixture("cfr_h264_gop10_bf2.mp4"),
         &overlays,
-        &backend.state.handlers,
+        &plugins.handlers(),
     )
     .unwrap();
     let added = backend.add_item(item).await;

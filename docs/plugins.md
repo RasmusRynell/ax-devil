@@ -11,10 +11,10 @@ are built in and not plugins you install.
 
 `ax-devil plugins install FOLDER` adds a plugin's folder (the one holding `ax-devil-plugin.json`) to your list,
 `plugins.json` under `$XDG_DATA_HOME/ax-devil` (`~/.local/share/ax-devil`). Only that list loads plugins; a folder
-is never picked up for being there. Install and remove apply the next time ax-devil starts; removing leaves the files.
-There is no update command: edit the folder in place (a changed script runs again the next time its file opens; a
-changed manifest needs a restart) or remove and install again. `plugins --help` lists the rest, including the check
-that runs a plugin's decoder on a file and says what came out.
+is never picked up for being there. Install, update and remove reach a running ax-devil within a second or two, for
+files opened from then on; removing leaves the files. `plugins update ID FOLDER` swaps in another folder after
+checking its manifest again; a plugin edited in place is picked up as it is. `plugins --help` lists the rest,
+including the check that runs a plugin's decoder on a file and says what came out.
 
 A plugin that fails to load, or fails while it runs, never stops ax-devil: the lane shows what was read and the
 reason, and `plugins list` says why one did not load.

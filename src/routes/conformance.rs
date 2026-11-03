@@ -6,6 +6,7 @@ use crate::{
     AppState,
     access::{Policy, Principal},
     app, lan_app,
+    plugins::Plugins,
 };
 use axum::{
     Router,
@@ -79,7 +80,7 @@ fn router(listener: Listener) -> (Router, tempfile::TempDir, tokio::sync::watch:
         policy,
         videos,
         stopping,
-        Handlers::built_in(),
+        Plugins::fixed(Handlers::built_in()),
         &cache,
     );
     let router = match listener {

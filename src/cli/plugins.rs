@@ -1,19 +1,19 @@
-//! `plugins`: install, remove, list and check plugins. These commands only print, so they need no server,
-//! settings or log file. Installing and removing take effect on the next start.
+//! `plugins`: install, update, remove, list and check plugins. These commands only print, so they need no server,
+//! settings or log file. A running ax-devil picks the change up within a second or two.
 
 use super::{catalog::Report, describe};
-use api_types::handlers::{PluginStatus, PluginsInfo};
-use ax_devil::plugins::reserved;
+use api_types::handlers::{PluginSource, PluginStatus, PluginsInfo};
+use ax_devil::plugins::Plugins;
 use clap::{Subcommand, ValueHint};
-use foundation::{CancelToken, Interrupt};
+use foundation::{CancelToken, Interrupt, UserError};
 use handler_api::{OverlayRef, Settings};
 use handlers::Handlers;
-use plugins::Registry;
 use scene::SceneTime;
 use scene_store::{Ingest, TrackRead, TrackRegistry};
 use std::{
     fmt::Write,
     path::{Path, PathBuf},
+    sync::Arc,
     time::Duration,
 };
 
@@ -23,8 +23,17 @@ const POLL: Duration = Duration::from_millis(20);
 /// What `plugins` was asked to do.
 #[derive(Subcommand)]
 pub enum PluginsCommand {
-    /// Install the plugin in a folder, or by its manifest file; it loads on the next start.
+    /// Install the plugin in a folder, or by its manifest file.
     Install {
+        /// The folder holding ax-devil-plugin.json, or that file.
+        #[arg(value_name = "PATH", value_hint = ValueHint::AnyPath)]
+        path: PathBuf,
+    },
+    /// Replace an installed plugin by the one in another folder or manifest file, after checking it again.
+    Update {
+        /// The plugin's id, or the path of its folder or manifest when it no longer loads.
+        #[arg(value_name = "ID")]
+        id: String,
         /// The folder holding ax-devil-plugin.json, or that file.
         #[arg(value_name = "PATH", value_hint = ValueHint::AnyPath)]
         path: PathBuf,
@@ -70,36 +79,39 @@ fn failed(text: String) -> Report {
     }
 }
 
-/// What `command` prints. `registry` is the registry file, or why it is not known; `handlers` and `loaded` are what
-/// startup loaded from it. Blocking work, such as a check, runs off the async workers and is cancelled by Ctrl+C,
+/// What `command` prints. Blocking work, such as a check, runs off the async workers and is cancelled by Ctrl+C,
 /// which stops the plugin.
-pub async fn run(
-    command: PluginsCommand,
-    registry: Result<PathBuf, String>,
-    handlers: Handlers,
-    loaded: PluginsInfo,
-) -> Report {
+pub async fn run(command: PluginsCommand, plugins: Arc<Plugins>) -> Report {
     let cancel = CancelToken::new();
     let on_ctrl_c = cancel.clone();
     tokio::spawn(async move {
         let _ = tokio::signal::ctrl_c().await;
         on_ctrl_c.cancel();
     });
-    let job = tokio::task::spawn_blocking(move || match (command, registry) {
-        (PluginsCommand::List { json }, _) => list(&loaded, json),
-        (_, Err(reason)) => failed(reason),
-        (PluginsCommand::Install { path }, Ok(file)) => install(&file, &path, &handlers),
-        (PluginsCommand::Remove { id }, Ok(file)) => remove(&file, &id),
-        (PluginsCommand::Check { id, file, options }, Ok(_)) => {
-            let installed = handlers
-                .decoders()
-                .iter()
-                .any(|decoder| decoder.spec().id == id && loaded.provides(&decoder.spec().plugin));
-            if installed {
-                check(&handlers, &id, &file, options, &cancel)
+    let job = tokio::task::spawn_blocking(move || match command {
+        PluginsCommand::List { json } => list(&plugins.info(), json),
+        PluginsCommand::Install { path } => changed(plugins.install(&path), |info| {
+            // An install goes last.
+            match info.plugins.last().map(|plugin| &plugin.status) {
+                Some(PluginStatus::Loaded { id, version, .. }) => {
+                    format!("Installed {id} {version}.")
+                }
+                _ => "Installed.".to_owned(),
+            }
+        }),
+        PluginsCommand::Update { id, path } => {
+            changed(plugins.update(&id, &path), |_| format!("Updated {id}."))
+        }
+        PluginsCommand::Remove { id } => changed(plugins.remove(&id), |_| {
+            format!("Removed {id}; its files were left.")
+        }),
+        PluginsCommand::Check { id, file, options } => {
+            let info = plugins.info();
+            if provided_by_installed(&info, &id) {
+                check(&plugins.handlers(), &id, &file, options, &cancel)
             } else {
                 failed(format!(
-                    "No plugin provides the decoder '{id}'; `ax-devil plugins list` shows what is installed"
+                    "No installed plugin provides the decoder '{id}'; `ax-devil plugins list` shows what is installed"
                 ))
             }
         }
@@ -108,49 +120,26 @@ pub async fn run(
         .unwrap_or_else(|error| failed(format!("The command stopped unexpectedly: {error}")))
 }
 
-fn install(registry: &Path, path: &Path, handlers: &Handlers) -> Report {
-    let installed = Registry::read(registry)
-        .map_err(|error| error.to_string())
-        .and_then(|mut installed| {
-            let manifest = installed
-                .install(path, &reserved(handlers))
-                .map_err(|error| format!("{}: {error}", path.display()))?;
-            installed
-                .save()
-                .map_err(|error| format!("Cannot save {}: {error}", registry.display()))?;
-            Ok(manifest)
-        });
-    match installed {
-        Ok(manifest) => Report {
-            text: format!(
-                "Installed {} {}. It applies on the next start.\n",
-                manifest.id, manifest.version
-            ),
-            ok: true,
-        },
-        Err(reason) => failed(reason),
-    }
+/// Whether a loaded installed plugin lists the handler `id`.
+fn provided_by_installed(info: &PluginsInfo, id: &str) -> bool {
+    info.plugins.iter().any(|plugin| {
+        matches!(plugin.source, PluginSource::Installed { .. })
+            && matches!(&plugin.status, PluginStatus::Loaded { handlers, .. }
+                if handlers.iter().any(|handler| handler.id == id))
+    })
 }
 
-fn remove(registry: &Path, id: &str) -> Report {
-    let removed = Registry::read(registry)
-        .map_err(|error| error.to_string())
-        .and_then(|mut installed| {
-            let found = installed.remove(id);
-            if found {
-                installed
-                    .save()
-                    .map_err(|error| format!("Cannot save {}: {error}", registry.display()))?;
-            }
-            Ok(found)
-        });
-    match removed {
-        Ok(true) => Report {
-            text: format!("Removed {id}. It applies on the next start; its files were left.\n"),
+/// The report of a change to the registry: `done` words the new state when it succeeded.
+fn changed(
+    result: Result<Arc<PluginsInfo>, UserError>,
+    done: impl FnOnce(&PluginsInfo) -> String,
+) -> Report {
+    match result {
+        Ok(info) => Report {
+            text: format!("{}\n", done(&info)),
             ok: true,
         },
-        Ok(false) => failed(format!("No installed plugin matches '{id}'")),
-        Err(reason) => failed(reason),
+        Err(error) => failed(error.reason),
     }
 }
 
@@ -169,20 +158,23 @@ fn list(loaded: &PluginsInfo, json: bool) -> Report {
     }
     let mut text = String::new();
     for plugin in &loaded.plugins {
+        let PluginSource::Installed { manifest, folder } = &plugin.source else {
+            continue;
+        };
         let line = match &plugin.status {
             PluginStatus::Loaded {
                 id,
                 version,
-                extensions,
+                handlers,
                 ..
-            } => format!(
-                "{id}  {version}  {}  {}",
-                extensions.join(", "),
-                plugin.folder
-            ),
-            PluginStatus::Failed { reason } => {
-                format!("not loaded  {}  {reason}", plugin.manifest)
+            } => {
+                let extensions: Vec<_> = handlers
+                    .iter()
+                    .flat_map(|handler| handler.extensions.iter().map(String::as_str))
+                    .collect();
+                format!("{id}  {version}  {}  {folder}", extensions.join(", "))
             }
+            PluginStatus::Failed { reason } => format!("not loaded  {manifest}  {reason}"),
         };
         text.push_str(&line);
         text.push('\n');

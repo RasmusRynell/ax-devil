@@ -37,6 +37,7 @@ impl MotChallengeResolver {
         Self {
             spec: ResolverSpec {
                 id: "mot_challenge".to_owned(),
+                plugin: "mot_challenge".to_owned(),
                 name: "MOT Challenge".to_owned(),
                 description: "Load the train and test sequences of a MOT Challenge dataset folder."
                     .to_owned(),

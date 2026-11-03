@@ -1,7 +1,7 @@
 //! What the export tests share beyond the backend and viewer: serving lanes, reading the export's notices, and
 //! whether the real Electron render page can run here.
 
-use super::{Added, Backend, Event, Handlers, Viewer};
+use super::{Added, Backend, Event, Handlers, Plugins, Viewer};
 use api_types::playback::{
     BasisWire, ClientMessage, ExportStateWire, FilterOptionInfo, LanePolicyWire, LaneStatusWire,
     ServerMessage, StickyWire,
@@ -211,7 +211,7 @@ impl Backend {
 impl Backend {
     /// A backend whose exports run on `exports`.
     pub async fn start_with_exports(exports: ExportService) -> Self {
-        Self::start_with(false, Handlers::built_in(), |state| {
+        Self::start_with(false, Plugins::fixed(Handlers::built_in()), |state| {
             state.exports = Arc::new(exports);
         })
         .await

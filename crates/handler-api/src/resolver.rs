@@ -9,6 +9,8 @@ use crate::{Form, OverlayRef, Values, VideoRef, invalid_field};
 pub struct ResolverSpec {
     /// The id workspaces and the CLI name the resolver by.
     pub id: String,
+    /// The id of the plugin the resolver ships as.
+    pub plugin: String,
     /// What the user reads.
     pub name: String,
     /// One sentence on what the resolver does.
