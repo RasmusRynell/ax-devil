@@ -73,7 +73,7 @@ impl WorkspaceFiles {
         };
         self.replace(handle, files, workspace, Some(path.clone()))
             .await?;
-        self.record(files, &path).await;
+        self.record(files, &path, None).await;
         Ok(())
     }
 
@@ -123,7 +123,7 @@ impl WorkspaceFiles {
         let copy = claimed.path().to_owned();
         files.copy = Some(Arc::new(claimed));
         // Marked synced only once listed: a command cancelled before that leaves the next sync to finish the job.
-        files.listed = self.record(files, &copy).await;
+        files.listed = self.record(files, &copy, recovers.as_deref()).await;
         if files.listed {
             files.synced = Some((workspace, recovers, true));
         }
@@ -167,7 +167,7 @@ impl WorkspaceFiles {
         };
         handle.command(Command::Content(saved))?;
         let _ = self.sync(files, &handle.state().doc.workspace).await;
-        self.record(files, &target).await;
+        self.record(files, &target, None).await;
         Ok(())
     }
 
@@ -204,7 +204,7 @@ impl WorkspaceFiles {
         // Unmodified now, so the sync deletes the copy.
         let _ = self.sync(files, &handle.state().doc.workspace).await;
         if let Some(file) = file {
-            self.record(files, &file).await;
+            self.record(files, &file, None).await;
         }
         Ok(())
     }

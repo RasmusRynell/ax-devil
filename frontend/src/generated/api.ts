@@ -783,9 +783,13 @@ rows: Array<RowInfo>, };
  */
 export type RecentWorkspace = { 
 /**
- * The file, absolute.
+ * The file to open, absolute: a workspace file, or the recovery copy of unsaved changes to one.
  */
 path: string, 
+/**
+ * The workspace file name this row is for, with its suffix: the saved file's for a recovery copy of it.
+ */
+name: string, 
 /**
  * When it was last used, in Unix milliseconds.
  */

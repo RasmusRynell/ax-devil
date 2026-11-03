@@ -38,10 +38,12 @@ const sent = () =>
 
 describe("workspace files", () => {
   it("opens a recent workspace from the start panel", async () => {
-    const path = "/work/Gate review.ax-devil.workspace";
+    // A recovery copy: the row is named for the saved file, and opens the copy.
+    const path = "/state/unsaved/Untitled.ax-devil.workspace";
+    const name = "Gate review.ax-devil.workspace";
     vi.stubGlobal(
       "fetch",
-      vi.fn(() => Promise.resolve(Response.json([{ path, usedMs: Date.now() }]))),
+      vi.fn(() => Promise.resolve(Response.json([{ path, name, usedMs: Date.now() }]))),
     );
     await renderShell();
     const row = await screen.findByRole("button", { name: /Gate review/ });

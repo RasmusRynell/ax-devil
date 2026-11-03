@@ -9,9 +9,8 @@ export const RECENT_ID = "recent:";
 /** What a workspace file name ends with. */
 export const SUFFIX = ".ax-devil.workspace";
 
-/** The file's name without its folder and the workspace suffix. */
-export function recentName(path: string): string {
-  const name = path.split(/[/\\]/).pop() ?? path;
+/** A workspace file name without the workspace suffix. */
+export function recentLabel(name: string): string {
   return name.endsWith(SUFFIX) ? name.slice(0, -SUFFIX.length) : name;
 }
 

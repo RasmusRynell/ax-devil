@@ -1,7 +1,7 @@
 import { COMMANDS, type CommandId } from "./generated/settings";
 import type { RecentWorkspace } from "./generated/api";
 import type { MenuEntry } from "./kit/Menu";
-import { RECENT_ID, recentName } from "./shell/recents";
+import { RECENT_ID, recentLabel } from "./shell/recents";
 
 /**
  * What a command needs of the seat, as the backend's `Can` names it: `host` (read the host's files), `content` (change
@@ -179,10 +179,10 @@ export function menusFor(
         }
         if (item.kind === "recents") {
           if (!wired.has("open-workspace")) return [];
-          const entries: MenuEntry[] = recents.map(({ path }) => ({
+          const entries: MenuEntry[] = recents.map(({ path, name }) => ({
             kind: "action",
             id: `${RECENT_ID}${path}`,
-            label: recentName(path),
+            label: recentLabel(name),
             disabled: !allowed.host,
           }));
           return [

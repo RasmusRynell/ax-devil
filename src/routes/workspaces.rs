@@ -14,6 +14,12 @@ pub(crate) async fn recent(State(state): State<AppState>) -> Json<Vec<RecentWork
     Json(
         list.into_iter()
             .map(|recent| RecentWorkspace {
+                name: recent
+                    .recovers
+                    .as_ref()
+                    .unwrap_or(&recent.path)
+                    .file_name()
+                    .map_or_else(String::new, |name| name.to_string_lossy().into_owned()),
                 path: recent.path.to_string_lossy().into_owned(),
                 used_ms: recent.used_ms,
             })

@@ -32,8 +32,10 @@ pub struct WorkspaceState {
 #[derive(Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]
 pub struct RecentWorkspace {
-    /// The file, absolute.
+    /// The file to open, absolute: a workspace file, or the recovery copy of unsaved changes to one.
     pub path: String,
+    /// The workspace file name this row is for, with its suffix: the saved file's for a recovery copy of it.
+    pub name: String,
     /// When it was last used, in Unix milliseconds.
     #[ts(type = "number")]
     pub used_ms: u64,

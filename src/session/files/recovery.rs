@@ -78,7 +78,7 @@ impl WorkspaceFiles {
                 return Err(error);
             }
             // Without its recent entry the copy would not be offered on the next launch, so try again next time.
-            files.listed = files.listed || self.record(files, &path).await;
+            files.listed = files.listed || self.record(files, &path, key.1.as_deref()).await;
             if !files.listed {
                 return Err(unkept(&"the recent workspaces cannot be updated"));
             }
@@ -108,19 +108,31 @@ impl WorkspaceFiles {
         let _ = self.sync(files, &state.doc.workspace).await;
         // The copy that outlives the window is what the next launch restores, so it is the newest recent again.
         if let Some(copy) = files.copy.take() {
-            self.record(files, copy.path()).await;
+            let recovers = state.doc.workspace.file.as_ref();
+            self.record(files, copy.path(), recovers.map(|file| file.as_path()))
+                .await;
         }
         files.closed = true;
     }
 
     /// Puts `path` first among the recent workspaces; false when that failed.
-    pub(super) async fn record(&self, files: &SessionFiles, path: &Path) -> bool {
+    pub(super) async fn record(
+        &self,
+        files: &SessionFiles,
+        path: &Path,
+        recovers: Option<&Path>,
+    ) -> bool {
         let Some(storage) = &self.storage else {
             return true;
         };
         let (storage, path) = (Arc::clone(storage), path.to_owned());
+        let recovers = recovers.map(Path::to_owned);
         let done = files
-            .off(move || storage.recents.record(&path, now_ms()))
+            .off(move || {
+                storage
+                    .recents
+                    .record_copy(&path, recovers.as_deref(), now_ms())
+            })
             .await;
         done.inspect_err(|error| tracing::warn!("Cannot record a recent workspace: {error}"))
             .is_ok()

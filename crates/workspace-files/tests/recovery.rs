@@ -106,3 +106,26 @@ fn a_symlink_stays_distinct_from_its_target() {
     recents.record(&link, 2).unwrap();
     assert_eq!(recents.list().len(), 2);
 }
+
+#[test]
+fn a_saved_file_with_a_recovery_copy_is_listed_once_as_the_copy() {
+    let dir = tempfile::tempdir().unwrap();
+    let recents = Recents::new(dir.path().join("recent.json"));
+    let file = |n: usize| dir.path().join(format!("w{n}{SUFFIX}"));
+    let copy = dir.path().join(format!("unsaved/w0{SUFFIX}"));
+    for n in 0..8 {
+        recents.record(&file(n), n as u64).unwrap();
+    }
+    recents.record_copy(&copy, Some(&file(0)), 10).unwrap();
+
+    // One row for the workspace, and the eight rows are eight workspaces: the file is hidden, not counted.
+    let listed = recents.list();
+    assert_eq!(listed.len(), 8);
+    assert_eq!(listed[0].path, copy);
+    assert_eq!(listed[0].recovers, Some(file(0)));
+    assert!(listed.iter().all(|recent| recent.path != file(0)));
+
+    // Without the copy the file is back.
+    recents.forget(&copy).unwrap();
+    assert!(recents.list().iter().any(|recent| recent.path == file(0)));
+}
