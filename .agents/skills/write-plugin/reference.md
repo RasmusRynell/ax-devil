@@ -127,7 +127,7 @@ which a form shows at that setting.
 | `{"entry": {"name","video","overlays"?}}` | resolve | One video. `video` is `{"file": "/abs/v.mp4"}` or `{"image_sequence": {"pattern": "/abs/img1/%06d.jpg","start_number","frame_rate": {"num","den"},"width","height","frame_count"}}`. An overlay is `{"label","slot","path","handler","options"?}`: `slot` is the lane's identity, the same in every entry that has that lane; `handler` is a decoder id |
 
 The host fails the operation, naming the line, when a line is not valid JSON or has the wrong keys, a path is not
-absolute, a playlist name is empty, an entry name repeats within its playlist, or a slot or label repeats within an entry. A playlist with no entry, or no playlist at all, fails the resolve with "<resolver name> has nothing to open." Nothing is used unless the plugin then
+absolute, a playlist name is empty, an entry name repeats within its playlist, or a slot or label repeats within an entry. A playlist with no entry fails the resolve with "Playlists require at least one entry.", and no playlist at all with "<item name> has nothing to open." Nothing is used unless the plugin then
 exits 0; a failed start, a nonzero exit or no output for `idle_timeout_s` fails with the reason and the end of stderr.
 A scan or resolve keeps the first 64 warnings and summarizes the rest in one; one that prints more than 50,000 choices or 50,000 entries and playlists is stopped and fails, naming the limit.
 A scan or resolve the user abandons kills the plugin.

@@ -80,6 +80,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         RowStatusInfo,
         ContentInfo,
         EntryInfo,
+        PlaylistSpanInfo,
         NewItem,
         NewOverlayWire,
         HiddenTarget,

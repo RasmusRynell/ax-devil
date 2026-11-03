@@ -353,7 +353,7 @@ fn a_playlist_command_line_becomes_the_item_the_dialog_would_add() {
         panic!("playlist opens a playlist");
     };
     assert_eq!(recipe.resolver, "mot_challenge");
-    assert_eq!(items[0].label, "MOT Challenge");
+    assert_eq!(items[0].label, "");
 }
 
 #[test]

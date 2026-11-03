@@ -12,7 +12,7 @@ import type {
   SessionServerMessage,
   View,
 } from "../generated/api";
-import { hides, rowsOf, type GroupedItem } from "./fakeRows";
+import { hides, rowsOf } from "./fakeRows";
 import { EMPTY_VIEW } from "./views";
 
 export const resolved = (id: string): ResolutionState => ({
@@ -34,30 +34,34 @@ export const entry = (id: string, label = id, lanes: string[] = [label]): EntryI
 });
 
 /** A playlist item that resolved to these entries. */
-export const playlist = (id: string, entries: EntryInfo[], open = true): ItemState => ({
-  id,
-  label: id,
-  open,
-  resolution: {
-    status: "Resolved",
-    content: { kind: "Playlist", id, generation: 1, display_name: id, entries },
-  },
-});
+export const playlist = (id: string, entries: EntryInfo[], open = true): ItemState =>
+  playlists(id, [[id, entries]], open);
 
 /** A playlist item that resolved to several named playlists, their entries in order. */
 export const playlists = (
   id: string,
   groups: readonly (readonly [name: string, entries: EntryInfo[]])[],
   open = true,
-): ItemState =>
-  ({
-    ...playlist(
+): ItemState => ({
+  id,
+  label: id,
+  open,
+  resolution: {
+    status: "Resolved",
+    content: {
+      kind: "Playlist",
       id,
-      groups.flatMap(([, entries]) => entries),
-      open,
-    ),
-    groups: groups.map(([name, entries]) => ({ name, entries: entries.length })),
-  }) as GroupedItem;
+      generation: 1,
+      display_name: id,
+      entries: groups.flatMap(([, entries]) => entries),
+      playlists: groups.map(([name, entries]) => ({
+        id: `${id}/${name}`,
+        label: groups.length > 1 ? `${id} / ${name}` : id,
+        entries: entries.length,
+      })),
+    },
+  },
+});
 
 /** An item that failed; `reason` is what a seat with host details also reads. */
 export const failed = (id: string, reason?: string): ItemState => ({

@@ -89,7 +89,7 @@ describe("rows", () => {
     expect(entryRow.getAttribute("aria-setsize")).toBe("1");
   });
 
-  it("nests the entries of several playlists under a row each, which opens its first entry and cannot be hidden", async () => {
+  it("lists each of several playlists as a row of its own, named by the item, which opens its first entry and cannot be hidden", async () => {
     const runs = playlists("runs", [
       ["Train", [entry("runs/Train/A", "A", ["GT"])]],
       ["Train (2)", [entry("runs/Train (2)/A", "A", ["GT"])]],
@@ -100,20 +100,19 @@ describe("rows", () => {
       "1",
       "2",
       "3",
-      "4",
+      "1",
       "2",
       "3",
-      "4",
     ]);
-    expect(labels()).toEqual(["runs", "Train", "A", "GT", "Train (2)", "A", "GT"]);
+    expect(labels()).toEqual(["runs / Train", "A", "GT", "runs / Train (2)", "A", "GT"]);
 
-    fireEvent.click(rows[4]);
+    fireEvent.click(rows[3]);
     await act(async () => {});
     expect(shown()).toMatchObject({
       active: "runs",
       viewers: { runs: { entry: "runs/Train (2)/A" } },
     });
-    fireEvent.contextMenu(rows[4]);
+    fireEvent.contextMenu(rows[3]);
     expect(screen.queryByRole("menuitem", { name: "Hide" })).toBeNull();
   });
 

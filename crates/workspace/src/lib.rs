@@ -12,7 +12,7 @@ mod workspace;
 pub use bookmark::{Bookmark, BookmarkKind, BookmarkTarget};
 pub use content::{
     Content, ContentId, Entry, ImageSequence, OverlayRef, PlaylistContent, PlaylistSpan,
-    SeekableVideoContent, VideoRef,
+    SeekableVideoContent, VideoRef, playlist_label,
 };
 pub use foundation::{BookmarkId, ItemId};
 pub use item::{

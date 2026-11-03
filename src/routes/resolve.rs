@@ -82,7 +82,7 @@ async fn stage(
     let _cancel_when_dropped = CancelOnDrop(cancel.clone());
     let job = {
         let item = item.clone();
-        tokio::task::spawn_blocking(move || item.recipe.resolve(&item.id, &handlers, &cancel))
+        tokio::task::spawn_blocking(move || item.resolve(&handlers, &cancel))
     };
     let content = job.await.unwrap_or_else(|error| {
         tracing::error!("Finding the playlists of {resolver} failed: {error}");
@@ -313,11 +313,7 @@ mod tests {
             let mut settings = Settings::new();
             settings.insert("root".into(), folder.path().display().to_string().into());
             let item = workspace::intake::playlist("mot_challenge", settings, &handlers).unwrap();
-            let content = item
-                .recipe
-                .resolve(&item.id, &handlers, &CancelToken::new())
-                .ok()
-                .unwrap();
+            let content = item.resolve(&handlers, &CancelToken::new()).ok().unwrap();
             let id = item.id;
             staged.put(session, item, content, |key| live.contains(&key));
             id

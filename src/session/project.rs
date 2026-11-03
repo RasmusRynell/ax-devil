@@ -8,14 +8,14 @@
 
 use api_types::{
     Audience, DocWire,
-    content::{ContentInfo, EntryInfo},
+    content::{ContentInfo, EntryInfo, PlaylistSpanInfo},
     playback::WarningInfo,
     project as project_error,
     workspace::{ItemState, ResolutionState, RowInfo, RowKindWire, RowStatusInfo, WorkspaceState},
 };
 use sessions::session::Doc;
 use std::collections::HashSet;
-use workspace::{Content, Entry, SeekableVideoContent, Workspace, WorkspaceItem};
+use workspace::{Content, Entry, SeekableVideoContent, Workspace, WorkspaceItem, playlist_label};
 use workspace_store::{
     ContentGen, Resolution, Row, RowKind, RowStatus, Saved, WorkspaceParts, rows,
 };
@@ -51,19 +51,19 @@ pub fn project(doc: &Doc, audience: Audience) -> DocWire {
         .map(|item| {
             let WorkspaceItem {
                 id,
-                label,
+                label: _,
                 recipe: _,
             } = item;
             ItemState {
                 id: id.to_string(),
-                label: label.clone(),
+                label: item.display_name(),
                 open: open.contains(id),
                 resolution: match resolutions.get(id) {
                     Some(Resolution::Resolved {
                         content,
                         generation,
                     }) => ResolutionState::Resolved {
-                        content: content_info(content, *generation),
+                        content: content_info(item, content, *generation),
                     },
                     Some(Resolution::Failed(error)) => {
                         ResolutionState::Failed(project_error(error, audience))
@@ -73,17 +73,9 @@ pub fn project(doc: &Doc, audience: Audience) -> DocWire {
             }
         })
         .collect();
-    // Rows come in tree order, each item's own row first, so the rows of an unlisted item are the ones between its
-    // row and the next item's.
-    let mut shown = false;
     let rows = rows(state)
         .into_iter()
-        .filter(|row| {
-            if row.kind == RowKind::Item {
-                shown = keys.contains(&row.key);
-            }
-            shown
-        })
+        .filter(|row| keys.contains(&row.item.to_string()))
         .map(|row| row_info(row, audience))
         .collect();
     DocWire {
@@ -106,6 +98,7 @@ pub fn project(doc: &Doc, audience: Audience) -> DocWire {
 fn row_info(row: Row, audience: Audience) -> RowInfo {
     let Row {
         key,
+        item,
         kind,
         label,
         status,
@@ -115,6 +108,7 @@ fn row_info(row: Row, audience: Audience) -> RowInfo {
     } = row;
     RowInfo {
         key,
+        item: item.to_string(),
         kind: match kind {
             RowKind::Item => RowKindWire::Item,
             RowKind::Playlist => RowKindWire::Playlist,
@@ -140,7 +134,7 @@ fn row_info(row: Row, audience: Audience) -> RowInfo {
     }
 }
 
-fn content_info(content: &Content, generation: ContentGen) -> ContentInfo {
+fn content_info(item: &WorkspaceItem, content: &Content, generation: ContentGen) -> ContentInfo {
     let id = content.id().to_string();
     let generation = generation.0;
     let display_name = content.display_name().to_owned();
@@ -159,6 +153,15 @@ fn content_info(content: &Content, generation: ContentGen) -> ContentInfo {
             generation,
             display_name,
             entries: playlist.entries.iter().map(entry_info).collect(),
+            playlists: playlist
+                .playlists
+                .iter()
+                .map(|span| PlaylistSpanInfo {
+                    id: span.id.to_string(),
+                    label: playlist_label(item, span, playlist.playlists.len() > 1),
+                    entries: u32::try_from(span.entries).unwrap_or(u32::MAX),
+                })
+                .collect(),
         },
     }
 }

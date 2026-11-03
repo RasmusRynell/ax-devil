@@ -1,3 +1,4 @@
+use crate::item::WorkspaceItem;
 use foundation::{ErrorCode, ItemId, UserError, Warning};
 use handler_api::ResolvedPlaylists;
 use serde::{Deserialize, Deserializer, Serialize, Serializer, de};
@@ -129,6 +130,16 @@ pub struct PlaylistSpan {
     pub entries: usize,
 }
 
+/// What a playlist of `item` is called: the playlist's own name when the item is unlabelled; else the label, followed
+/// by ` / ` and the playlist's name when the item has `several` playlists. Derived each time, never stored.
+pub fn playlist_label(item: &WorkspaceItem, span: &PlaylistSpan, several: bool) -> String {
+    match (item.label.as_str(), several) {
+        ("", _) => span.name.clone(),
+        (label, true) => format!("{label} / {}", span.name),
+        (label, false) => label.to_owned(),
+    }
+}
+
 /// Several videos in order, each opened as an entry; the playlists of an item split them into runs.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct PlaylistContent {
@@ -204,10 +215,10 @@ pub(crate) fn playlist_content(
     resolver: &str,
     resolved: ResolvedPlaylists,
 ) -> Result<PlaylistContent, UserError> {
-    if resolved.playlists.is_empty() || resolved.playlists.iter().any(|p| p.entries.is_empty()) {
+    if resolved.playlists.iter().any(|p| p.entries.is_empty()) {
         return Err(UserError::new(
             ErrorCode::PlaylistInvalid,
-            format!("{resolver} has nothing to open."),
+            "Playlists require at least one entry.",
         )
         .at(*item));
     }
@@ -396,10 +407,9 @@ mod tests {
         );
 
         let reason = |playlists| build(playlists).unwrap_err().reason;
-        assert_eq!(reason(Vec::new()), "Runs has nothing to open.");
         assert_eq!(
             reason(vec![playlist("run", &["a"]), playlist("empty", &[])]),
-            "Runs has nothing to open."
+            "Playlists require at least one entry."
         );
         assert!(reason(vec![playlist("run", &["a", "a"])]).ends_with(": a"));
         let mut lanes = playlist("run", &["a"]);

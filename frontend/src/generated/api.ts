@@ -777,7 +777,7 @@ file: string | null,
  */
 items: Array<ItemState>, 
 /**
- * The sidebar tree flattened: each item, its entries and their lanes, in tree order. Lists only the items
+ * The sidebar tree flattened: each video or unresolved item, each playlist, their entries and lanes, in tree order. Lists only the items
  * `items` lists.
  */
 rows: Array<RowInfo>, };
@@ -808,7 +808,7 @@ export type ItemState = {
  */
 id: string, 
 /**
- * The name the item's row shows.
+ * The name the item shows: what the user named it, or its default.
  */
 label: string, 
 /**
@@ -838,6 +838,10 @@ export type RowInfo = {
  * Names the row for as long as what it stands for exists.
  */
 key: string, 
+/**
+ * The item the row belongs to, which a viewer is opened on.
+ */
+item: string, 
 /**
  * What the row stands for.
  */
@@ -907,9 +911,13 @@ generation: number,
  */
 display_name: string, 
 /**
- * The entries in playlist order.
+ * The entries of every playlist, in order.
  */
-entries: Array<EntryInfo>, };
+entries: Array<EntryInfo>, 
+/**
+ * The playlists, each covering the next run of `entries`; at least one.
+ */
+playlists: Array<PlaylistSpanInfo>, };
 
 /**
  * One video and its lanes: what a viewer opens.
@@ -927,6 +935,23 @@ label: string,
  * The lane names, in order.
  */
 lanes: Array<string>, };
+
+/**
+ * One playlist of a playlist item: a run of its entries a viewer steps within.
+ */
+export type PlaylistSpanInfo = { 
+/**
+ * Names the playlist.
+ */
+id: string, 
+/**
+ * What rows and the viewer's header show.
+ */
+label: string, 
+/**
+ * How many entries it holds; the first playlist starts at the first entry.
+ */
+entries: number, };
 
 /**
  * What the user asked to add; the intake turns each into an item.

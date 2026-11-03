@@ -172,6 +172,7 @@ impl WorkspaceState {
         ResolveJob {
             item: item.id,
             attempt,
+            name: item.display_name(),
             recipe: item.recipe.clone(),
         }
     }
@@ -251,6 +252,8 @@ pub struct ResolveJob {
     pub item: ItemId,
     /// The attempt the item waits on; pass it back to [`complete`].
     pub attempt: u64,
+    /// The item's name at the time, for a failure that speaks of it.
+    pub name: String,
     /// What to resolve.
     pub recipe: Recipe,
 }
@@ -394,7 +397,7 @@ pub fn resolve(
     handlers: &Handlers,
     cancel: &CancelToken,
 ) -> Result<Content, Interrupt<UserError>> {
-    job.recipe.resolve(&job.item, handlers, cancel)
+    job.recipe.resolve(&job.item, &job.name, handlers, cancel)
 }
 
 #[cfg(test)]

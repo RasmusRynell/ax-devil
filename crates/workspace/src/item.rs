@@ -76,10 +76,36 @@ pub struct Recipe {
 pub struct WorkspaceItem {
     /// Names the item.
     pub id: ItemId,
-    /// The name the item's row shows.
+    /// What the user named the item, or empty for the default name (see [`WorkspaceItem::display_name`]). A default is
+    /// derived, never stored.
     pub label: String,
     /// What the item resolves from.
     pub recipe: Recipe,
+}
+
+impl WorkspaceItem {
+    /// The name the item shows while it has no Content to name: the label, or else the default of its recipe, which
+    /// is the resolver id of a playlist and the file name of a video.
+    pub fn display_name(&self) -> String {
+        if !self.label.is_empty() {
+            return self.label.clone();
+        }
+        match &self.recipe.source {
+            Source::Video(video) => file_name(video.video.as_path()),
+            Source::Playlist(playlist) => playlist.resolver.clone(),
+            Source::Unreadable(_) => "Unreadable item".to_owned(),
+        }
+    }
+
+    /// Builds the item's Content: [`Recipe::resolve`] with the item's own id and name.
+    pub fn resolve(
+        &self,
+        handlers: &Handlers,
+        cancel: &CancelToken,
+    ) -> Result<Content, Interrupt<UserError>> {
+        self.recipe
+            .resolve(&self.id, &self.display_name(), handlers, cancel)
+    }
 }
 
 impl Recipe {
@@ -91,7 +117,7 @@ impl Recipe {
         }
     }
 
-    /// Builds the Content of the item `item`. Reads the file system, so callers keep it off the UI's executor.
+    /// Builds the Content of the item `item`, named `name` where a failure speaks of it. Reads the file system, so callers keep it off the UI's executor.
     ///
     /// A video recipe checks that its path is a readable regular file, and each overlay that its decoder is known and
     /// its file readable; opening the media is the viewer's job, so a file that is not a video resolves here and
@@ -100,10 +126,11 @@ impl Recipe {
     ///
     /// A playlist recipe asks its resolver for playlists, then checks that entry names within each playlist and the
     /// lane names within each entry are unique, since they are the identity of entries and lanes. Resolving twice
-    /// gives the same ids.
+    /// gives the same ids. What the resolver or those checks refuse reads `Playlist resolver '<id>' failed: <why>`.
     pub fn resolve(
         &self,
         item: &ItemId,
+        name: &str,
         handlers: &Handlers,
         cancel: &CancelToken,
     ) -> Result<Content, Interrupt<UserError>> {
@@ -115,26 +142,50 @@ impl Recipe {
             Source::Playlist(recipe) => {
                 let resolver = handlers.resolver(&recipe.resolver).ok_or_else(|| {
                     Interrupt::Failed(
-                        UserError::new(
-                            ErrorCode::UnknownHandler,
-                            format!("No playlist resolver \"{}\"", recipe.resolver),
-                        )
-                        .at(*item),
+                        UserError::new(ErrorCode::UnknownHandler, not_installed(&recipe.resolver))
+                            .at(*item),
                     )
                 })?;
                 let form = &resolver.spec().form;
                 let settings =
                     check_settings(form, &recipe.settings, handlers).map_err(Interrupt::Failed)?;
-                let resolved = resolver.resolve(&settings, cancel)?;
+                let failed = |error: UserError| UserError {
+                    reason: format!(
+                        "Playlist resolver '{}' failed: {}",
+                        recipe.resolver, error.reason
+                    ),
+                    ..error
+                };
+                let resolved =
+                    resolver
+                        .resolve(&settings, cancel)
+                        .map_err(|error| match error {
+                            Interrupt::Failed(error) => Interrupt::Failed(failed(error)),
+                            Interrupt::Cancelled => Interrupt::Cancelled,
+                        })?;
+                if resolved.playlists.is_empty() {
+                    return Err(Interrupt::Failed(
+                        UserError::new(
+                            ErrorCode::PlaylistInvalid,
+                            format!("{name} has nothing to open."),
+                        )
+                        .at(*item),
+                    ));
+                }
                 playlist_content(item, &resolver.spec().name, resolved)
                     .map(Content::Playlist)
-                    .map_err(Interrupt::Failed)
+                    .map_err(|error| Interrupt::Failed(failed(error)))
             }
             Source::Unreadable(unreadable) => Err(Interrupt::Failed(
                 UserError::new(ErrorCode::WorkspaceInvalid, unreadable.reason.clone()).at(*item),
             )),
         }
     }
+}
+
+/// Why an item's playlist resolver cannot run: the handlers hold none with this id.
+pub(crate) fn not_installed(resolver: &str) -> String {
+    format!("Playlist resolver '{resolver}' is not installed.")
 }
 
 fn resolve_video(
@@ -331,6 +382,7 @@ mod tests {
         let recipe = Recipe::new(source);
         match recipe.resolve(
             &ItemId::generate(),
+            "item",
             &Handlers::built_in(),
             &CancelToken::new(),
         ) {

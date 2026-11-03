@@ -23,7 +23,7 @@ pub struct WorkspaceState {
     pub file: Option<String>,
     /// Every item in the order it was added.
     pub items: Vec<ItemState>,
-    /// The sidebar tree flattened: each item, its entries and their lanes, in tree order. Lists only the items
+    /// The sidebar tree flattened: each video or unresolved item, each playlist, their entries and lanes, in tree order. Lists only the items
     /// `items` lists.
     pub rows: Vec<RowInfo>,
 }
@@ -46,6 +46,8 @@ pub struct RecentWorkspace {
 pub struct RowInfo {
     /// Names the row for as long as what it stands for exists.
     pub key: String,
+    /// The item the row belongs to, which a viewer is opened on.
+    pub item: String,
     /// What the row stands for.
     pub kind: RowKindWire,
     /// What the user reads.
@@ -64,9 +66,9 @@ pub struct RowInfo {
 #[derive(Clone, Copy, Serialize, Deserialize, TS)]
 #[serde(rename_all = "lowercase")]
 pub enum RowKindWire {
-    /// A workspace item.
+    /// A video item, or an item with no Content yet.
     Item,
-    /// One of an item's several playlists.
+    /// One playlist of a playlist item.
     Playlist,
     /// An entry of an item.
     Entry,
@@ -91,7 +93,7 @@ pub enum RowStatusInfo {
 pub struct ItemState {
     /// Names the item.
     pub id: String,
-    /// The name the item's row shows.
+    /// The name the item shows: what the user named it, or its default.
     pub label: String,
     /// Whether a viewer should open for the item once it resolves. Stays set; the frontend remembers which
     /// viewers it has opened.

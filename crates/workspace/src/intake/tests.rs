@@ -34,10 +34,7 @@ fn resolving_checks_only_that_the_path_is_a_readable_regular_file() {
 
     let handlers = Handlers::built_in();
     let item = video(&not_a_video, &[], &handlers).unwrap();
-    let Content::SeekableVideo(content) = item
-        .recipe
-        .resolve(&item.id, &handlers, &CancelToken::new())
-        .unwrap()
+    let Content::SeekableVideo(content) = item.resolve(&handlers, &CancelToken::new()).unwrap()
     else {
         panic!("a video recipe resolves to a video");
     };
@@ -49,10 +46,7 @@ fn resolving_checks_only_that_the_path_is_a_readable_regular_file() {
 
     for unreadable in [folder.path().join("missing.mp4"), folder.path().to_owned()] {
         let item = video(&unreadable, &[], &handlers).unwrap();
-        let Err(Interrupt::Failed(error)) =
-            item.recipe
-                .resolve(&item.id, &handlers, &CancelToken::new())
-        else {
+        let Err(Interrupt::Failed(error)) = item.resolve(&handlers, &CancelToken::new()) else {
             panic!("an unreadable path fails to resolve");
         };
         assert_eq!(error.location, Some(HostPath::new(&unreadable).into()));
@@ -224,8 +218,7 @@ fn a_video_with_overlays_resolves_to_one_lane_per_overlay_and_checks_each_file()
     let handlers = Handlers::built_in();
     let resolve = |overlays: &[NewOverlay]| {
         let item = video(&video_file, overlays, &handlers).unwrap();
-        item.recipe
-            .resolve(&item.id, &handlers, &CancelToken::new())
+        item.resolve(&handlers, &CancelToken::new())
     };
 
     let Ok(Content::SeekableVideo(content)) = resolve(&[overlay(&gt, None), overlay(&det, None)])
@@ -334,12 +327,13 @@ fn a_playlist_resolves_to_entries_whose_ids_are_the_same_every_time() {
     let folder = mot_folder(&["SEQ-02", "SEQ-01"]);
     let handlers = Handlers::built_in();
     let item = playlist("mot_challenge", mot_settings(folder.path()), &handlers).unwrap();
-    assert_eq!(item.label, "MOT Challenge");
+    assert_eq!(
+        (item.label.as_str(), item.display_name().as_str()),
+        ("", "mot_challenge"),
+        "a default name is derived, not stored"
+    );
     let resolve = || {
-        let Ok(Content::Playlist(content)) =
-            item.recipe
-                .resolve(&item.id, &handlers, &CancelToken::new())
-        else {
+        let Ok(Content::Playlist(content)) = item.resolve(&handlers, &CancelToken::new()) else {
             panic!("a playlist recipe resolves to a playlist");
         };
         content
@@ -379,7 +373,7 @@ fn a_playlist_the_schema_or_resolver_refuses_is_refused_naming_the_setting() {
     assert_eq!(none.location, Some(Location::field("root")));
     let nope = playlist("nope", Settings::new(), &handlers).unwrap_err();
     assert_eq!(nope.code, ErrorCode::UnknownHandler);
-    assert!(nope.reason.contains("nope"), "{nope}");
+    assert_eq!(nope.reason, "Playlist resolver 'nope' is not installed.");
     let settings = Settings::from_iter([
         ("videos_dir".to_owned(), "v".into()),
         ("overlays_dir".to_owned(), "o".into()),
@@ -393,7 +387,7 @@ fn a_playlist_the_schema_or_resolver_refuses_is_refused_naming_the_setting() {
         settings,
     }));
     let Err(Interrupt::Failed(unknown)) =
-        recipe.resolve(&ItemId::generate(), &handlers, &CancelToken::new())
+        recipe.resolve(&ItemId::generate(), "item", &handlers, &CancelToken::new())
     else {
         panic!("an unknown overlay format fails to resolve");
     };
@@ -405,22 +399,31 @@ fn a_playlist_the_schema_or_resolver_refuses_is_refused_naming_the_setting() {
         &handlers,
     )
     .unwrap();
-    assert_eq!(gone.label, "MOT Challenge");
+    assert_eq!(gone.label, "");
     let gone = with_label(gone, Some(" Mine "));
     assert_eq!(gone.label, "Mine");
-    assert_eq!(with_label(gone.clone(), Some("  ")).label, "Mine");
+    for default in ["  ", "mot_challenge"] {
+        assert_eq!(
+            with_label(gone.clone(), Some(default)).label,
+            "",
+            "{default:?} clears the label"
+        );
+    }
     let Source::Playlist(recipe) = &gone.recipe.source else {
         panic!("a playlist item has a playlist recipe");
     };
     assert!(Path::new(recipe.settings["root"].as_str().unwrap()).is_absolute());
-    let Err(Interrupt::Failed(error)) =
-        gone.recipe
-            .resolve(&gone.id, &handlers, &CancelToken::new())
-    else {
+    let Err(Interrupt::Failed(error)) = gone.resolve(&handlers, &CancelToken::new()) else {
         panic!("a missing folder fails to resolve");
     };
     assert!(
         matches!(&error.location, Some(Location::Host(path)) if path.as_path().ends_with("no/such/folder")),
+        "{error:?}"
+    );
+    assert!(
+        error
+            .reason
+            .starts_with("Playlist resolver 'mot_challenge' failed: "),
         "{error:?}"
     );
 
@@ -486,10 +489,7 @@ fn a_folder_pair_gives_every_overlay_the_options_of_its_decoder_and_is_refused_w
         ("height".to_owned(), 48.into()),
     ]);
     let item = playlist("folder_pair", settings(Some(options.clone())), &handlers).unwrap();
-    let Ok(Content::Playlist(content)) =
-        item.recipe
-            .resolve(&item.id, &handlers, &CancelToken::new())
-    else {
+    let Ok(Content::Playlist(content)) = item.resolve(&handlers, &CancelToken::new()) else {
         panic!("a folder pair with the options resolves");
     };
     assert_eq!(content.entries[0].overlays[0].options, options);

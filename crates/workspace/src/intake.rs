@@ -3,7 +3,7 @@
 
 use crate::item::{
     OverlayRecipe, PlaylistRecipe, Recipe, Source, VideoRecipe, WorkspaceItem, absolute_paths,
-    check_settings, decoder_options, file_name,
+    check_settings, decoder_options, file_name, not_installed,
 };
 use foundation::{ErrorCode, HostPath, ItemId, UserError};
 use handler_api::Settings;
@@ -129,8 +129,8 @@ fn overlay_recipe(
     })
 }
 
-/// Builds the item for a playlist of `resolver` with `settings`, labelled with the resolver's name. The
-/// settings are checked against the resolver's schema, defaults filled in, and the paths in them (in a decoder's
+/// Builds the item for a playlist of `resolver` with `settings`, unlabelled: its name is the default, the resolver
+/// id. The settings are checked against the resolver's schema, defaults filled in, and the paths in them (in a decoder's
 /// options too) made absolute; reading the folders is for resolving to do.
 pub fn playlist(
     resolver: &str,
@@ -140,7 +140,7 @@ pub fn playlist(
     let Some(found) = handlers.resolver(resolver) else {
         return Err(UserError::new(
             ErrorCode::UnknownHandler,
-            format!("No playlist resolver \"{resolver}\""),
+            not_installed(resolver),
         ));
     };
     let form = &found.spec().form;
@@ -148,7 +148,7 @@ pub fn playlist(
     absolute_paths(form, &mut settings, handlers);
     Ok(WorkspaceItem {
         id: ItemId::generate(),
-        label: found.spec().name.clone(),
+        label: String::new(),
         recipe: Recipe::new(Source::Playlist(PlaylistRecipe {
             resolver: resolver.to_owned(),
             settings,
@@ -156,15 +156,19 @@ pub fn playlist(
     })
 }
 
-/// `item` labelled `label`: the one rule for naming an item the user named. A label that is empty once trimmed keeps
-/// the item's default.
+/// `item` labelled `label`: the one rule for naming an item the user named. A label that is empty once trimmed, or
+/// that is the item's default name, clears the label so the default shows.
 pub fn with_label(item: WorkspaceItem, label: Option<&str>) -> WorkspaceItem {
-    match label.map(str::trim).filter(|label| !label.is_empty()) {
-        Some(label) => WorkspaceItem {
+    let unnamed = WorkspaceItem {
+        label: String::new(),
+        ..item
+    };
+    match label.map(str::trim) {
+        Some(label) if label != unnamed.display_name() => WorkspaceItem {
             label: label.to_owned(),
-            ..item
+            ..unnamed
         },
-        None => item,
+        _ => unnamed,
     }
 }
 

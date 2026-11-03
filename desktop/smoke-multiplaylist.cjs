@@ -1,6 +1,6 @@
 // The smoke test's several-playlists scenario: a resolver plugin that returns two playlists of one name is added
 // through the Add Playlist dialog, which stays open and locks its source while the resolve is held in flight; once
-// added, the sidebar tree nests the entries under a row per playlist. No screenshots: the unit tests own the
+// added, the sidebar tree has a top-level row per playlist, with its entries inside. No screenshots: the unit tests own the
 // dialog's states, and the smoke has little time to spare.
 const assert = require("node:assert/strict");
 const fs = require("node:fs/promises");
@@ -86,17 +86,17 @@ module.exports.multiplaylist = async (window) => {
     );
     await js("(() => { window.fetch = window.realFetch; window.release(); })()");
 
-    // Added: one item whose two playlists, "Run" and "Run (2)", are rows of their own under it.
+    // Added: one item whose two playlists, "Run" and "Run (2)", are top-level rows of their own.
     await wait(
       "!document.querySelector('dialog') && [...document.querySelectorAll('[role=treeitem]')].some((row) => row.textContent.startsWith('Run (2)'))",
     );
     const levels = await js(
       "[...document.querySelectorAll('[role=treeitem]')].filter((row) => /^Run( \\(2\\))?$/.test(row.textContent)).map((row) => row.getAttribute('aria-level'))",
     );
-    assert.deepEqual(levels, ["2", "2"], "Each playlist is a row under the item");
+    assert.deepEqual(levels, ["1", "1"], "Each playlist is a top-level row");
 
     await js(
-      "[...document.querySelectorAll('[aria-label^=\"Close \"]')].find((b) => b.ariaLabel === 'Close Two runs')?.click()",
+      "[...document.querySelectorAll('[aria-label^=\"Close \"]')].find((b) => b.ariaLabel === 'Close two-runs')?.click()",
     );
     await post("/api/plugins/remove", { target: "two-runs" });
   } finally {

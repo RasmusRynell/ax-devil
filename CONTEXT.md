@@ -20,7 +20,7 @@ Shared language for ax-devil's inspection workspace. Code, docs and UI use these
 | Workspace Item | A recipe for one thing to work with, with a stable id and a kind; it resolves into Content. Without a label it is shown by its default name, derived from the recipe and never saved. | Startup request, entry, source |
 | Video Item | A Workspace Item for a video file with optional overlay files and decoders. | Video file request |
 | Live Stream Item | A Workspace Item for a camera stream with optional live overlay settings; credentials are kept as entered. | Live startup |
-| Playlist Item | A Workspace Item holding a playlist resolver id and that resolver's settings. | Resolved playlist |
+| Playlist Item | A Workspace Item holding a playlist resolver id and that resolver's settings. Each playlist it resolves to is a sidebar row, named by the item's label alone, or `label / playlist` when there are several, and a viewer steps only within one playlist. | Resolved playlist |
 | Bookmark | A frame of a local video or playlist entry that the user marked while reviewing, with a kind and an optional note; saved in the Workspace with each Bookmark Target's reviewed mark. Never on live streams. | Marker, annotation, flag |
 | Bookmark Target | What is reviewed: a Video Item, or one entry of a Playlist Item, named by its playlist's name and its label. | Entry index, content id |
 | Session | What one window shows, held by one backend from the window's first connect until it ends; every window has one. Private until its Owner uses Start sharing (Stop sharing makes it private again); Sessions of one backend are isolated from each other. | Room, window |
