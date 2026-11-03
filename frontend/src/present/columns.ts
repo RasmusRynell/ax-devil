@@ -38,6 +38,13 @@ const CRC_TABLE = Uint32Array.from({ length: 256 }, (_, n) => {
   return c >>> 0;
 });
 
+/** The CRC-32 (IEEE, as `crc32fast`) of `bytes`, unsigned. */
+export function crc32(bytes: Uint8Array): number {
+  let crc = 0xffffffff;
+  for (const byte of bytes) crc = CRC_TABLE[(crc ^ byte) & 0xff] ^ (crc >>> 8);
+  return (crc ^ 0xffffffff) >>> 0;
+}
+
 /** The kinds of attribute column, as stored in the attribute index. */
 export const AttrKind = { Bool: 0, Number: 1, String: 2, Colors: 3 } as const;
 export type AttrKind = (typeof AttrKind)[keyof typeof AttrKind];
@@ -111,10 +118,7 @@ export class StringTable {
   /** The CRC-32 (IEEE, as `crc32fast`) of the UTF-8 bytes of string `id`, unsigned. */
   crc32(id: number): number {
     this.check(id);
-    let crc = 0xffffffff;
-    for (let i = this.offsets[id], end = this.offsets[id + 1]; i < end; i++)
-      crc = CRC_TABLE[(crc ^ this.data[i]) & 0xff] ^ (crc >>> 8);
-    return (crc ^ 0xffffffff) >>> 0;
+    return crc32(this.data.subarray(this.offsets[id], this.offsets[id + 1]));
   }
 
   /** String `id` as text. Allocates the string; the Objects list calls it per visible row each frame. */

@@ -29,10 +29,21 @@
   --color-canvas-hover: #ffffff24;
   --color-canvas-scrim: #000000cc;
   --color-canvas-line: #ffffff2e;
+  --color-canvas-chip: #0e0f10e6; /* the hover chip's scrim: the canvas at alpha 230 */
+  --color-canvas-chip-line: #ffffff28; /* and its border: white at alpha 40 */
   --color-canvas-cached: #ffffff2d; /* the frames the backend holds decoded, on the seek bar */
   --color-canvas-accent: #3994bc;
   --color-on-canvas-caution: #f5c451;
   --color-on-canvas-danger: #ff8a80;
+  /* The dot of the hover chip: one per class, picked by the class name, so a class keeps its color in every session. */
+  --color-category-0: #6ea8f7;
+  --color-category-1: #e0a35c;
+  --color-category-2: #8bc47c;
+  --color-category-3: #e07f9d;
+  --color-category-4: #4fc3c3;
+  --color-category-5: #b18cf0;
+  --color-category-6: #d6c25a;
+  --color-category-7: #e5806b;
 
   /* Participant colors, indexed by the backend's color number modulo the count; text on them is --presence-fg. */
   --presence-0: light-dark(#b42318, #f87171);

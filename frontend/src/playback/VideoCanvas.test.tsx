@@ -133,6 +133,7 @@ describe("video canvas", () => {
       entity,
       label: `${entity} car`,
       detail: "",
+      category: 5,
       box: { x: 1, y: 2, width: 3, height: 4 },
     });
     const zoomed: Viewport = { zoom: 2, panX: 0, panY: 0 };
@@ -189,6 +190,30 @@ describe("video canvas", () => {
       expect(onHover.mock.calls).toEqual([[picked("t7")]]);
       fireEvent.pointerLeave(surface);
       expect(onHover).toHaveBeenLastCalledWith(null);
+    });
+
+    it("drops the object on a zoom, and finds it again when the pointer moves or the next picture arrives", () => {
+      let surface: Surface | null = null;
+      const { surface: element, onHover } = mount({
+        session: { setSurface: (next: Surface | null) => (surface = next) } as never,
+      });
+      drawn.renderer?.pick.mockReturnValue(picked("t7"));
+      drawn.renderer?.zoomAt.mockReturnValue(zoomed);
+      const redrawn = () => (drawn.renderer as unknown as { onDrawn: () => void }).onDrawn();
+      fireEvent.pointerMove(element, { clientX: 5, clientY: 5 });
+      fireEvent.wheel(element, { deltaY: -100, clientX: 5, clientY: 5 });
+      expect(onHover).toHaveBeenLastCalledWith(null);
+      // The zoom itself redraws; that does not bring the object back.
+      redrawn();
+      expect(onHover).toHaveBeenLastCalledWith(null);
+      fireEvent.pointerMove(element, { clientX: 6, clientY: 5 });
+      expect(onHover).toHaveBeenLastCalledWith(picked("t7"));
+
+      fireEvent.wheel(element, { deltaY: -100, clientX: 5, clientY: 5 });
+      expect(onHover).toHaveBeenLastCalledWith(null);
+      act(() => surface?.present({ width: 4, height: 4 } as VideoFrame, []));
+      redrawn();
+      expect(onHover).toHaveBeenLastCalledWith(picked("t7"));
     });
 
     it("reports no object and selects nothing while object details are off", () => {

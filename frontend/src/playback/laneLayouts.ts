@@ -2,6 +2,7 @@
 
 import type { LaneDrawing } from "../overlay/painter";
 import {
+  crc32,
   LanePresenter,
   pick,
   type LayoutView,
@@ -26,27 +27,38 @@ export type FoundRow = { columns: SampleView; row: number };
 
 const encoder = new TextEncoder();
 
-/** A score or confidence to at most two decimals, such as `0.82`. */
+/** The class of an object that has no classification. */
+const UNKNOWN_CLASS = "unknown";
+
+/** How many colours the hover chip's dot picks from. */
+export const CATEGORY_COLORS = 8;
+
+/** A score or confidence to two decimals, such as `0.82`. */
 function decimals(value: number): string {
-  return String(Number(value.toFixed(2)));
+  return value.toFixed(2);
 }
 
-/** What the hover chip says of a row: `"<id> <class>"` and `"score S · confidence C"`, leaving out what is missing. */
+/**
+ * What the hover chip says of a row: `"<id> <class>"`, `"score S · confidence C"` leaving out what is missing, and the
+ * dot's colour, which the class names (whatever its case) the same in every session.
+ */
 export function describeRow(
   columns: SampleView,
   row: number,
-): { entity: string; label: string; detail: string } {
+): { entity: string; label: string; detail: string; category: number } {
   const { strings } = columns;
   const entity = strings.string(columns.entityId[row]);
   const classId = columns.classId[row];
+  const className = classId < 0 ? UNKNOWN_CLASS : strings.string(classId);
   const detail: string[] = [];
   const { score, confidence } = columns;
   if (!Number.isNaN(score[row])) detail.push(`score ${decimals(score[row])}`);
   if (!Number.isNaN(confidence[row])) detail.push(`confidence ${decimals(confidence[row])}`);
   return {
     entity,
-    label: classId < 0 ? entity : `${entity} ${strings.string(classId)}`,
+    label: `${entity} ${className}`,
     detail: detail.join(" · "),
+    category: crc32(encoder.encode(className.toLowerCase())) % CATEGORY_COLORS,
   };
 }
 

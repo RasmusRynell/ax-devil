@@ -17,6 +17,7 @@ import type { LaneFrame, Picked, Selection, Viewport } from "./contract";
 import { describeRow, LaneLayouts, type FoundRow } from "./laneLayouts";
 import { NameTags } from "./nameTags";
 import type { Matrix, VideoFrame } from "./protocol";
+import { FRAGMENT, VERTEX } from "./shaders";
 import { FIT, intersection, panBy, pictureRect, toImage, zoomAt } from "./viewport";
 
 export type { CellRect } from "../overlay/painter";
@@ -55,35 +56,6 @@ const LUMA_WEIGHTS: Record<Matrix, { kr: number; kb: number }> = {
 
 /** The canvas token's near-black, `--color-canvas` (#0e0f10), as GL color components. */
 const FIELD = { red: 0x0e / 255, green: 0x0f / 255, blue: 0x10 / 255 };
-
-const VERTEX = `#version 300 es
-in vec2 corner;
-out vec2 uv;
-uniform vec4 crop;
-void main() {
-  uv = crop.xy + crop.zw * vec2(corner.x * .5 + .5, .5 - corner.y * .5);
-  gl_Position = vec4(corner, 0., 1.);
-}`;
-
-// mode 0: planar Y, U, V. mode 1: Y, then interleaved UV in the second texture. mode 2: RGBA in the first.
-const FRAGMENT = `#version 300 es
-precision highp float;
-in vec2 uv;
-out vec4 color;
-uniform sampler2D plane0, plane1, plane2;
-uniform int mode;
-uniform float kr, kb, limited;
-void main() {
-  if (mode == 2) { color = vec4(texture(plane0, uv).rgb, 1.); return; }
-  float y = texture(plane0, uv).r;
-  vec2 chroma = mode == 1 ? texture(plane1, uv).rg : vec2(texture(plane1, uv).r, texture(plane2, uv).r);
-  float u = chroma.x - .5, v = chroma.y - .5;
-  if (limited > .5) { y = (y - 16. / 255.) * 255. / 219.; u *= 255. / 224.; v *= 255. / 224.; }
-  float r = y + 2. * (1. - kr) * v;
-  float b = y + 2. * (1. - kb) * u;
-  float g = (y - kr * r - kb * b) / (1. - kr - kb);
-  color = vec4(r, g, b, 1.);
-}`;
 
 type Planes = { key: string; textures: WebGLTexture[] };
 

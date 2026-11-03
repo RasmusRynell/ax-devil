@@ -2,7 +2,17 @@
 // theme or the page zoom, and what the pointer shows (outline, chip, inspector) must sit on the marks that are drawn.
 // Run on frame 0 of MINI-02 (one lane, DET), whose object 3 is the box 31,22 16x24 of its 64x48 picture.
 const assert = require("node:assert/strict");
-const { capture, colourful, delay, moveTo, page, setView } = require("./smoke-kit.cjs");
+const fs = require("node:fs/promises");
+const path = require("node:path");
+const {
+  SCREENSHOTS,
+  capture,
+  colourful,
+  delay,
+  moveTo,
+  page,
+  setView,
+} = require("./smoke-kit.cjs");
 
 const IMAGE = { width: 64, height: 48 };
 const OBJECT = { x: 31, y: 22, width: 16, height: 24 };
@@ -178,19 +188,38 @@ module.exports.overlays = async (window, { setTheme }) => {
     "document.querySelector('[data-outline=hover]') && document.querySelector('[role=tooltip]')",
   );
   const outline = await js(
-    "(() => { const r = document.querySelector('[data-outline=hover]').getBoundingClientRect(); return { left: r.left, right: r.right, top: r.top }; })()",
+    "(() => { const r = document.querySelector('[data-outline=hover]').getBoundingClientRect(); return { left: r.left, right: r.right, top: r.top, bottom: r.bottom }; })()",
   );
-  // The chip never covers the object's own id label, which sits above the box's top edge.
-  const chipTop = await js("document.querySelector('[role=tooltip]').getBoundingClientRect().top");
+  // The chip stays inside the viewer and clear of the object it names.
+  const chip = await js(
+    "(() => { const r = document.querySelector('[role=tooltip]').getBoundingClientRect(); const c = document.querySelector('canvas').getBoundingClientRect(); return { left: r.left, right: r.right, top: r.top, bottom: r.bottom, within: r.left >= c.left && r.right <= c.right && r.top >= c.top && r.bottom <= c.bottom }; })()",
+  );
+  assert.ok(chip.within, "The hover chip must stay inside the viewer");
   assert.ok(
-    chipTop >= outline.top - 1,
-    `The hover chip at ${chipTop} must not reach above the box's top edge at ${outline.top}`,
+    chip.right <= outline.left ||
+      outline.right <= chip.left ||
+      chip.bottom <= outline.top ||
+      outline.bottom <= chip.top,
+    `The hover chip ${JSON.stringify(chip)} must not cover the hovered box ${JSON.stringify(outline)}`,
   );
   for (const edge of ["left", "right", "top"])
     assert.ok(
       Math.abs(drawnEdges[edge] - outline[edge]) <= 2.5,
       `After a wheel zoom the hover outline's ${edge} edge is at ${outline[edge]}, the drawn box's at ${drawnEdges[edge]}`,
     );
+
+  // The chip in both themes.
+  for (const theme of ["light", "dark"]) {
+    await setTheme(theme);
+    await moveTo(window, hoverX, hoverY);
+    await wait("document.querySelector('[role=tooltip]')");
+    await js("new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done)))");
+    await fs.writeFile(
+      path.join(SCREENSHOTS, `drw012-chip-${theme}.png`),
+      (await window.webContents.capturePage()).toPNG(),
+    );
+  }
+  await setTheme("light");
 
   // (d) The chip names the object; a click opens the inspector with its fields; Escape closes it.
   assert.match(await js("document.querySelector('[role=tooltip]').textContent"), /^3/);

@@ -30,6 +30,13 @@ function samePicked(a: Picked | null, b: Picked | null): boolean {
   );
 }
 
+/** Where the cells are, as text, to tell a layout that moved from one that was merely rebuilt. */
+function cellsKey(cells: readonly LaneLayout[] | undefined): string {
+  return (cells ?? [])
+    .map(({ lane, rect }) => `${lane}:${rect.x},${rect.y},${rect.width},${rect.height}`)
+    .join(" ");
+}
+
 /** The object clicked, as a selection. */
 function selectionOf(picked: Picked | null): Selection {
   return picked && { lane: picked.lane, source: picked.source, entity: picked.entity };
@@ -144,7 +151,9 @@ function Anchors({
  * `viewport` zooms and pans every picture; the wheel zooms toward the pointer, a drag pans a zoomed picture and a
  * double click resets, each asking for the new viewport through `onViewport`. While `objectDetails` is on, the
  * object under the pointer is reported to `onHover` (null: none), a click that was not a drag to `onSelect`
- * (null: empty space), and `onDrawn` gets the geometry of the pictures after every draw.
+ * (null: empty space), and `onDrawn` gets the geometry of the pictures after every draw. As in the reference, the
+ * hovered object is dropped when the canvas resizes, zooms or pans, or the pointer leaves, and found again when the
+ * pointer moves or the next picture arrives.
  */
 export function VideoCanvas({
   session,
@@ -180,6 +189,9 @@ export function VideoCanvas({
   const shown = useRef(viewport);
   const hovered = useRef<Picked | null>(null);
   const pointer = useRef<Point | null>(null);
+  /** Whether the pointer may be over an object; the moves and pictures that follow a drop set it again. */
+  const armed = useRef(false);
+  const placed = useRef(cellsKey(cells));
   const press = useRef<{ start: Point; last: Point; dragged: boolean } | null>(null);
   /** Whether the last press moved far enough to be a drag, which the click after it must not count as. */
   const dragged = useRef(false);
@@ -190,11 +202,16 @@ export function VideoCanvas({
   };
   const hover = () => {
     const at = pointer.current;
-    const picking = live.current.objectDetails && at && !press.current?.dragged;
+    const picking = armed.current && live.current.objectDetails && at && !press.current?.dragged;
     const next = (picking && renderer.current?.pick(at.x, at.y)) || null;
     if (samePicked(hovered.current, next)) return;
     hovered.current = next;
     live.current.onHover?.(next);
+  };
+  /** Drops the hovered object until the pointer moves or a picture arrives. */
+  const drop = () => {
+    armed.current = false;
+    hover();
   };
   const change = (next: Viewport) => {
     if (next === shown.current) return;
@@ -209,11 +226,16 @@ export function VideoCanvas({
   useEffect(() => {
     shown.current = viewport;
     renderer.current?.setViewport(viewport);
+    drop();
   }, [viewport]);
   useEffect(() => {
     layout.current = cells;
     const element = canvas.current;
     if (element) renderer.current?.setCells(deviceCells(cells, element));
+    if (placed.current !== cellsKey(cells)) {
+      placed.current = cellsKey(cells);
+      drop();
+    }
   }, [cells]);
   useEffect(() => {
     const element = canvas.current;
@@ -231,6 +253,7 @@ export function VideoCanvas({
       current.setCells(deviceCells(layout.current, element));
       session.setSurface({
         present: (frame, lanes) => {
+          armed.current = true;
           current.present(frame, lanes);
           const { width, height } = frame;
           setPicture((now) =>
@@ -247,6 +270,7 @@ export function VideoCanvas({
     }
     const observer = new ResizeObserver(([entry]) => {
       const [width, height] = devicePixels(entry);
+      drop();
       current.resize(width, height);
       current.setCells(deviceCells(layout.current, element));
     });
@@ -254,6 +278,7 @@ export function VideoCanvas({
     // Page zoom changes the pixel density without always changing the canvas's device size; overlays follow it.
     let density: MediaQueryList;
     const redrawOnDensity = () => {
+      drop();
       current.redraw();
       watchDensity();
     };
@@ -275,6 +300,7 @@ export function VideoCanvas({
       event.preventDefault();
       const lines = event.deltaMode === WheelEvent.DOM_DELTA_LINE ? 33 : 1;
       const notches = Math.max(-1, Math.min(1, (-event.deltaY * lines) / 100));
+      drop();
       change(current.zoomAt(shown.current, ZOOM_STEP ** notches, pointAt(event)));
     };
     const surface = box.current as HTMLDivElement;
@@ -314,7 +340,10 @@ export function VideoCanvas({
         const at = pointAt(event);
         pointer.current = at;
         const held = press.current;
-        if (!held) return hover();
+        if (!held) {
+          armed.current = true;
+          return hover();
+        }
         if (!held.dragged && Math.hypot(at.x - held.start.x, at.y - held.start.y) <= CLICK_SLOP)
           return;
         held.dragged = true;
@@ -328,7 +357,7 @@ export function VideoCanvas({
           ) ?? shown.current,
         );
         held.last = at;
-        hover();
+        drop();
       }}
       onPointerUp={(event) => {
         if (!press.current) return;

@@ -37,6 +37,7 @@ const PICKED: Picked = {
   entity: "7",
   label: "7 car",
   detail: "score 0.82",
+  category: 5,
   box: { x: 10, y: 20, width: 30, height: 40 },
 };
 const OFF = {

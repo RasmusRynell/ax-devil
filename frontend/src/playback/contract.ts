@@ -111,6 +111,8 @@ export type Picked = {
   label: string;
   /** The chip's second line, such as `score 0.82 · confidence 0.9`. */
   detail: string;
+  /** Which of the chip's category colours marks the object's class, from 0. */
+  category: number;
   /** The object's box in CSS pixels of the canvas. */
   box: CellRect;
 };
