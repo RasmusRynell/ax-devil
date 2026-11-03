@@ -7,12 +7,12 @@ import type {
   ItemState,
   RefusalCode,
   ResolutionState,
-  RowInfo,
   SeatAccess,
   SessionClientMessage,
   SessionServerMessage,
   View,
 } from "../generated/api";
+import { hides, rowsOf, type GroupedItem } from "./fakeRows";
 import { EMPTY_VIEW } from "./views";
 
 export const resolved = (id: string): ResolutionState => ({
@@ -43,6 +43,21 @@ export const playlist = (id: string, entries: EntryInfo[], open = true): ItemSta
     content: { kind: "Playlist", id, generation: 1, display_name: id, entries },
   },
 });
+
+/** A playlist item that resolved to several named playlists, their entries in order. */
+export const playlists = (
+  id: string,
+  groups: readonly (readonly [name: string, entries: EntryInfo[]])[],
+  open = true,
+): ItemState =>
+  ({
+    ...playlist(
+      id,
+      groups.flatMap(([, entries]) => entries),
+      open,
+    ),
+    groups: groups.map(([name, entries]) => ({ name, entries: entries.length })),
+  }) as GroupedItem;
 
 /** An item that failed; `reason` is what a seat with host details also reads. */
 export const failed = (id: string, reason?: string): ItemState => ({
@@ -83,9 +98,6 @@ const entriesOf = ({ resolution }: ItemState): EntryInfo[] => {
   return content.kind === "Playlist" ? content.entries : [content.entry];
 };
 
-const hides = (hidden: readonly HiddenTarget[], entry: string, lane?: string) =>
-  hidden.some((target) => target.entry === entry && target.lane === lane);
-
 /**
  * `view` cut down to the viewers the Doc has open, each naming an entry: the one it asked for, else the first of its
  * item's Content that is not hidden, else the first. The backend also swaps an entry the Content does not have; the
@@ -106,61 +118,6 @@ function restrict(view: View, items: readonly ItemState[], hidden: readonly Hidd
     active: view.active && open.has(view.active) ? view.active : undefined,
     viewers,
   };
-}
-
-/** The sidebar tree for these items, as the backend flattens it. */
-function rowsOf(items: readonly ItemState[], hidden: readonly HiddenTarget[]): RowInfo[] {
-  const ready = { status: "Ready" } as const;
-  const lanes = (entry: EntryInfo): RowInfo[] =>
-    entry.lanes.map((lane) => ({
-      key: `${entry.id}\u001f${lane}`,
-      kind: "lane",
-      label: lane,
-      status: ready,
-      hidden: hides(hidden, entry.id, lane),
-      entry: entry.id,
-      warnings: [],
-    }));
-  return items.flatMap((item): RowInfo[] => {
-    const { resolution } = item;
-    const base = {
-      key: item.id,
-      kind: "item" as const,
-      label: item.label,
-      hidden: false,
-      warnings: [],
-    };
-    if (resolution.status === "Pending")
-      return [{ ...base, status: { status: "Pending" }, entry: null }];
-    if (resolution.status === "Failed")
-      return [{ ...base, status: { ...resolution, status: "Unavailable" }, entry: null }];
-    const { content } = resolution;
-    if (content.kind === "SeekableVideo")
-      return [
-        {
-          ...base,
-          status: ready,
-          hidden: hides(hidden, content.entry.id),
-          entry: content.entry.id,
-        },
-        ...lanes(content.entry),
-      ];
-    return [
-      { ...base, status: ready, entry: content.entries[0]?.id ?? null },
-      ...content.entries.flatMap((entry): RowInfo[] => [
-        {
-          key: entry.id,
-          kind: "entry",
-          label: entry.label,
-          status: ready,
-          hidden: hides(hidden, entry.id),
-          entry: entry.id,
-          warnings: [],
-        },
-        ...lanes(entry),
-      ]),
-    ];
-  });
 }
 
 /**
