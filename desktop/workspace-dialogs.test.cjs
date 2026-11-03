@@ -12,7 +12,7 @@ const root = fs.mkdtempSync(path.join(os.tmpdir(), "ax-devil-workspace-dialogs-"
 const home = path.join(root, "home");
 const origin = "http://127.0.0.1:7331";
 const handlers = new Map();
-const calls = { saves: [], messages: [] };
+const calls = { opens: [], saves: [], messages: [] };
 let picked;
 let answer;
 
@@ -53,7 +53,10 @@ const electron = {
   app: { getPath: () => home, getVersion: () => "0.0.0" },
   BrowserWindow: FakeBrowserWindow,
   dialog: {
-    showOpenDialog: async () => ({ canceled: true, filePaths: [] }),
+    showOpenDialog: async (_window, options) => {
+      calls.opens.push(options);
+      return { canceled: true, filePaths: [] };
+    },
     showSaveDialog: async (_window, options) => {
       calls.saves.push(options);
       return picked;
@@ -93,7 +96,13 @@ function save(contents, name, currentPath) {
   return handlers.get("workspace:pick-save")(event, name, currentPath);
 }
 
+function open(contents) {
+  const event = { sender: contents, senderFrame: contents.mainFrame };
+  return handlers.get("workspace:pick-open")(event);
+}
+
 beforeEach(() => {
+  calls.opens = [];
   calls.saves = [];
   calls.messages = [];
   picked = { canceled: true, filePaths: [] };
@@ -111,6 +120,11 @@ void test("the chosen name gets the workspace suffix unless it already has it; a
   picked = { canceled: true, filePaths: [] };
   assert.equal(await save(page, "Untitled"), null);
   assert.deepEqual(calls.messages, []);
+  assert.equal(await open(page), null);
+  assert.deepEqual(
+    calls.opens.map((options) => options.filters[0].extensions),
+    [["workspace"]],
+  );
 });
 
 void test("the suggested name becomes one file name in the home folder, unless the workspace has a file", async () => {
@@ -125,6 +139,9 @@ void test("the suggested name becomes one file name in the home folder, unless t
       path.join(home, "-.ax-devil.workspace"),
       path.join(root, "current.ax-devil.workspace"),
     ],
+  );
+  assert.ok(
+    calls.saves.every((options) => options.properties.includes("showOverwriteConfirmation")),
   );
 });
 

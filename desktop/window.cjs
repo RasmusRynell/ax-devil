@@ -161,7 +161,7 @@ function installIpc({ connect, disconnect }) {
     const chosen = await dialog.showOpenDialog(window, {
       title: "Open Workspace",
       properties: ["openFile"],
-      filters: [{ name: "Workspaces (*.ax-devil.workspace)", extensions: ["ax-devil.workspace"] }],
+      filters: [{ name: "Workspaces (*.ax-devil.workspace)", extensions: ["workspace"] }],
     });
     return chosen.canceled ? null : chosen.filePaths[0];
   });
@@ -180,6 +180,7 @@ function installIpc({ connect, disconnect }) {
     const chosen = await dialog.showSaveDialog(window, {
       title: "Save Workspace As",
       defaultPath: currentPath || path.join(app.getPath("home"), `${file}${WORKSPACE_SUFFIX}`),
+      properties: ["showOverwriteConfirmation"],
     });
     if (chosen.canceled) return null;
     if (chosen.filePath.endsWith(WORKSPACE_SUFFIX)) return chosen.filePath;
