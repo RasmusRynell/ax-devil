@@ -52,8 +52,12 @@ export function AddPlaylistDialog({ onClose }: { onClose: () => void }) {
     close();
   };
 
+  // Adding needs a source, its settings, a session to add to and no resolve already running; Add is disabled otherwise.
+  const settings = form.settings;
+  const canAdd = !resolving && resolver.id !== "" && settings !== null && session !== undefined;
+
   const add = async () => {
-    if (resolving || !resolver.id || !form.settings || !session) return;
+    if (!canAdd) return;
     if (form.unchosen) {
       setRefused({ reason: form.unchosen, stamp });
       return;
@@ -63,12 +67,7 @@ export function AddPlaylistDialog({ onClose }: { onClose: () => void }) {
     setResolving(true);
     setRefused(null);
     try {
-      const resolved = await resolvePlaylists(
-        resolver.id,
-        form.settings,
-        session,
-        controller.signal,
-      );
+      const resolved = await resolvePlaylists(resolver.id, settings, session, controller.signal);
       // A cancelled resolve adds nothing, even when its answer was already on its way.
       if (controller.signal.aborted) return;
       if (!resolved.ok) {
@@ -99,7 +98,7 @@ export function AddPlaylistDialog({ onClose }: { onClose: () => void }) {
       okLabel="Add"
       onOk={() => void add()}
       onCancel={cancel}
-      busy={resolving || !resolver.id || !form.settings}
+      busy={!canAdd}
     >
       {handlers ? (
         <DialogBody>
