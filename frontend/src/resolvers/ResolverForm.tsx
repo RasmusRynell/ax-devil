@@ -122,7 +122,7 @@ function effective(
       for (const key of Object.keys(settings)) {
         if (key.startsWith(`${field.key}.`)) delete settings[key];
       }
-      if (Object.keys(options).length) settings[field.key] = options;
+      if (Object.keys(options).length || needsValue(field)) settings[field.key] = options;
     } else {
       const value = misread(field, settings) ? undefined : typed(field, shown(field, settings));
       if (value !== undefined) settings[field.key] = value;

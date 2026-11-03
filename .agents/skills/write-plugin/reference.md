@@ -128,6 +128,7 @@ which a form shows at that setting.
 The host fails the operation, naming the line, when a line is not valid JSON or has the wrong keys, a path is not
 absolute, an entry name repeats, or a slot or label repeats within an entry. Nothing is used unless the plugin then
 exits 0; a failed start, a nonzero exit or no output for `idle_timeout_s` fails with the reason and the end of stderr.
+A scan or resolve that prints more than 64 warnings, 50,000 choices or 50,000 entries is stopped and fails, naming the limit.
 A scan the user abandons kills the plugin.
 
 ## Scene

@@ -261,7 +261,7 @@ pub(crate) fn decoder_options(
 
 /// Makes the file and folder paths in `settings` absolute, including those in the options of a decoder a
 /// `DecoderOptions` field belongs to, so a stored path means the same file whatever the working folder.
-pub(crate) fn absolute_paths(form: &Form, settings: &mut Settings, handlers: &Handlers) {
+pub fn absolute_paths(form: &Form, settings: &mut Settings, handlers: &Handlers) {
     for field in &form.fields {
         match &field.kind {
             FieldKind::Folder | FieldKind::File { .. } => {

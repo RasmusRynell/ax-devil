@@ -16,6 +16,7 @@ use axum::{
 };
 use foundation::{CancelToken, ErrorCode, Interrupt, Location, UserError};
 use handler_api::{Choice, FieldKind, Form, PlaylistResolver, Settings};
+use handlers::Handlers;
 use std::sync::Arc;
 
 /// A refused request: the status and the error as the host sees it. Both routes need the `Files` grant, so the
@@ -92,9 +93,10 @@ pub(crate) async fn get_plugins(State(state): State<AppState>) -> Json<PluginsIn
 /// Runs the resolver's scan of `field` on a blocking thread. Dropping the returned future, as the server does when
 /// the client closes the request, cancels the scan.
 async fn scan_choices(
+    handlers: &Handlers,
     resolver: Arc<dyn PlaylistResolver>,
     field: String,
-    settings: Settings,
+    mut settings: Settings,
 ) -> Result<Vec<Choice>, Interrupt<UserError>> {
     let form = &resolver.spec().form;
     let scannable = form
@@ -110,6 +112,8 @@ async fn scan_choices(
             .at(Location::field(field)),
         ));
     }
+    // The plugin runs in its own working folder, so a relative path would not mean what the user typed.
+    workspace::absolute_paths(form, &mut settings, handlers);
     let settings = form.validate(&settings).map_err(Interrupt::Failed)?;
     let cancel = CancelToken::new();
     let _cancel_when_dropped = CancelOnDrop(cancel.clone());
@@ -131,13 +135,14 @@ pub(crate) async fn scan(
     Path(id): Path<String>,
     Json(request): Json<ScanRequest>,
 ) -> Result<Json<Vec<ChoiceInfo>>, Refusal> {
-    let Some(resolver) = state.plugins.handlers().resolver(&id).cloned() else {
+    let handlers = state.plugins.handlers();
+    let Some(resolver) = handlers.resolver(&id).cloned() else {
         return Err(refuse(
             StatusCode::NOT_FOUND,
             &UserError::new(ErrorCode::UnknownHandler, "No such playlist resolver"),
         ));
     };
-    match scan_choices(resolver, request.field, request.settings).await {
+    match scan_choices(&handlers, resolver, request.field, request.settings).await {
         Ok(choices) => Ok(Json(
             choices
                 .into_iter()
@@ -167,7 +172,6 @@ mod tests {
         DecodeError, DecodeSummary, Decoder, Field, Form, Framing, Input, ResolvedPlaylist,
         ResolverSpec, SceneSink, Spec, Values,
     };
-    use handlers::Handlers;
     use scene::MatchBasis;
     use serde_json::json;
     use std::{
@@ -325,6 +329,20 @@ mod tests {
             ])
         );
 
+        // A folder typed relative to the backend's working folder is the same folder to the plugin.
+        let cwd = std::env::current_dir().unwrap();
+        let up = std::path::PathBuf::from_iter(cwd.components().skip(1).map(|_| ".."));
+        let relative = up.join(folder.path().strip_prefix("/").unwrap());
+        let (status, again) = test
+            .send(scan(
+                "mot_challenge",
+                "sequences",
+                json!({ "root": relative }),
+            ))
+            .await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(json(&again), json(&body));
+
         let failures = [
             (
                 scan("mot_challenge", "sequences", json!({})),
@@ -426,11 +444,16 @@ mod tests {
     #[tokio::test]
     async fn a_scan_is_cancelled_when_the_client_drops_the_request() {
         let resolver = Arc::new(Waiting::default());
-        let request = tokio::spawn(scan_choices(
-            resolver.clone(),
-            "items".to_owned(),
-            Settings::new(),
-        ));
+        let scanned = resolver.clone();
+        let request = tokio::spawn(async move {
+            scan_choices(
+                &Handlers::built_in(),
+                scanned,
+                "items".to_owned(),
+                Settings::new(),
+            )
+            .await
+        });
         assert!(until(&resolver.started).await, "the scan started");
         assert!(!resolver.cancelled.load(Ordering::Acquire));
 

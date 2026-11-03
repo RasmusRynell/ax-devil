@@ -283,6 +283,10 @@ describe("resolver form", () => {
       options: { width: 640 },
       depth: 1,
     });
+    // A required option map with nothing in it is still sent, as an empty map.
+    fireEvent.change(screen.getByLabelText("Image width"), { target: { value: "" } });
+    scan();
+    expect(scans[1].body.settings).toEqual({ format: "MOT_FILE", options: {}, depth: 1 });
     fireEvent.change(screen.getByLabelText("Depth"), { target: { value: "" } });
     expect(screen.getByRole("button", { name: "Scan" })).toHaveProperty("disabled", false);
     fireEvent.change(screen.getByLabelText("Depth"), { target: { value: "x" } });

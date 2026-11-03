@@ -16,6 +16,13 @@ use crate::{
     wire::{ErrorIn, WarningIn, cut, json_reason, load_warning},
 };
 
+/// The most warnings a scan or resolve may print; the bound the scene store keeps for a decode's warnings.
+const MAX_WARNINGS: usize = 64;
+/// The most choices a scan may print.
+const MAX_CHOICES: usize = 50_000;
+/// The most entries a resolve may print.
+const MAX_ENTRIES: usize = 50_000;
+
 /// Which operation the lines answer, and so which of them are allowed.
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Op {
@@ -151,7 +158,10 @@ impl Collected {
                     entry: None,
                 },
                 _,
-            ) => self.warnings.push(load_warning(warning)),
+            ) => {
+                check_room(self.warnings.len(), MAX_WARNINGS, "warnings")?;
+                self.warnings.push(load_warning(warning));
+            }
             (
                 LineIn {
                     warning: None,
@@ -177,11 +187,14 @@ impl Collected {
                     entry: None,
                 },
                 Op::Scan,
-            ) => self.choices.push(Choice {
-                label: choice.label.unwrap_or_else(|| choice.value.clone()),
-                value: choice.value,
-                detail: choice.detail,
-            }),
+            ) => {
+                check_room(self.choices.len(), MAX_CHOICES, "choices")?;
+                self.choices.push(Choice {
+                    label: choice.label.unwrap_or_else(|| choice.value.clone()),
+                    value: choice.value,
+                    detail: choice.detail,
+                });
+            }
             (
                 LineIn {
                     warning: None,
@@ -234,6 +247,7 @@ impl Collected {
     }
 
     fn add_entry(&mut self, entry: EntryIn) -> Result<(), String> {
+        check_room(self.entries.len(), MAX_ENTRIES, "entries")?;
         if entry.name.is_empty() {
             return Err("the entry name is empty".to_owned());
         }
@@ -285,6 +299,15 @@ impl Collected {
     }
 }
 
+/// Fails, so the run stops, when `kept` lines of a kind already fill its `limit`: a plugin that never stops printing
+/// must not grow the host's memory without end.
+fn check_room(kept: usize, limit: usize, what: &str) -> Result<(), String> {
+    if kept >= limit {
+        return Err(format!("more than {limit} {what}"));
+    }
+    Ok(())
+}
+
 fn absolute(what: &str, path: String) -> Result<std::path::PathBuf, String> {
     if Path::new(&path).is_absolute() {
         Ok(path.into())
@@ -308,5 +331,44 @@ impl LineHandler for Collected {
             (Ok(()), Some(error)) => Next::Stop(error.reason.clone()),
             (Ok(()), None) => Next::Continue,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn feed(op: Op, line: &str, count: usize) -> Option<String> {
+        let mut collected = Collected::new(op);
+        (1..=count + 1).find_map(|number| match collected.line(number, line.as_bytes()) {
+            Next::Stop(reason) => Some(reason),
+            Next::Continue | Next::SinkFull => None,
+        })
+    }
+
+    #[test]
+    fn a_plugin_that_prints_without_end_is_stopped_naming_the_limit() {
+        let warning = r#"{"warning": {"problem": "p", "consequence": "c"}}"#;
+        let choice = r#"{"choice": {"value": "a"}}"#;
+        let entry =
+            |n: usize| format!(r#"{{"entry": {{"name": "e{n}", "video": {{"file": "/v.mp4"}}}}}}"#);
+        assert_eq!(
+            feed(Op::Scan, warning, MAX_WARNINGS).as_deref(),
+            Some("line 65: more than 64 warnings")
+        );
+        assert_eq!(
+            feed(Op::Scan, choice, MAX_CHOICES).as_deref(),
+            Some("line 50001: more than 50000 choices")
+        );
+        let mut collected = Collected::new(Op::Resolve);
+        let stopped =
+            (1..=MAX_ENTRIES + 1).find_map(|n| match collected.line(n, entry(n).as_bytes()) {
+                Next::Stop(reason) => Some(reason),
+                Next::Continue | Next::SinkFull => None,
+            });
+        assert_eq!(
+            stopped.as_deref(),
+            Some("line 50001: more than 50000 entries")
+        );
     }
 }
