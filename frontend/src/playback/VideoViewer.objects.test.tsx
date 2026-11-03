@@ -136,6 +136,19 @@ describe("video viewer objects", () => {
     Reflect.deleteProperty(document, "fullscreenElement");
   });
 
+  it("keeps the selection when Escape closes a lane menu", async () => {
+    const lanes: LaneInfo[] = [
+      { label: "DPM", slot: "DPM", source: null },
+      { label: "GT", slot: "GT", source: null },
+    ];
+    const { props } = await mount(undefined, lanes);
+    act(() => props().onSelect?.(SELECTION));
+    fireEvent.contextMenu(screen.getByText("DPM"));
+    fireEvent.keyDown(screen.getByRole("menuitem", { name: /Export Video/ }), { key: "Escape" });
+    expect(screen.queryByRole("menu")).toBeNull();
+    expect(inspector()).toBeTruthy();
+  });
+
   it("opens and closes the media tools by their command or their button", async () => {
     const { run } = await mount();
     const tools = () => screen.queryByRole("complementary", { name: "Media tools" });

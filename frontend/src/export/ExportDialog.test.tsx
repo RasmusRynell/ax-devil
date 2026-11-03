@@ -116,6 +116,17 @@ describe("export dialog", () => {
     ]);
   });
 
+  it("starts with just the lane a lane menu was used on checked", () => {
+    const both = {
+      ...VIEW,
+      lanes: [lane("DPM", { source: 0, status: READY }), lane("GT", { source: 1, status: READY })],
+    };
+    const jobs = new ExportJobs(() => {});
+    render(<ExportDialog jobs={jobs} view={both} name="clip.mp4" only={1} onClose={() => {}} />);
+    const checked = (name: string) => (screen.getByLabelText(name) as HTMLInputElement).checked;
+    expect([checked("DPM"), checked("GT")]).toEqual([false, true]);
+  });
+
   it("exports the frame on screen as a PNG", () => {
     const { exported } = open();
     fireEvent.change(screen.getByLabelText("Format"), { target: { value: "png" } });

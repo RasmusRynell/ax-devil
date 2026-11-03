@@ -108,7 +108,8 @@ function Playback({
   const pane = useRef<HTMLDivElement>(null);
   const objects = useRef<ObjectLayerHandle>(null);
   const geometry = useRef<Geometry | null>(null);
-  const [exporting, setExporting] = useState(false);
+  // Export is open, for every lane or for the one the lane menu was used on.
+  const [exporting, setExporting] = useState<{ lane: number | null } | null>(null);
   const [tools, setTools] = useState(false);
   useChromeVisibility(pane);
   const shown = useMemo(() => shownLanes(view.lanes, hidden, entry), [view.lanes, hidden, entry]);
@@ -138,6 +139,14 @@ function Playback({
     geometry.current = next;
     objects.current?.drawn(next);
   }, []);
+  const exportLane = useCallback(
+    (lane: number | null) => {
+      if (session.getSnapshot().status !== "ready") return;
+      session.pause();
+      setExporting({ lane });
+    },
+    [session],
+  );
   const actions = useViewerActions(
     useMemo(
       () => ({
@@ -153,13 +162,9 @@ function Playback({
         "speed-down": () => session.stepSpeed(-1),
         "media-tools": () => setTools((open) => !open),
         "lane-fullscreen": fullscreen.toggle,
-        "export-video": () => {
-          if (session.getSnapshot().status !== "ready") return;
-          session.pause();
-          setExporting(true);
-        },
+        "export-video": () => exportLane(null),
       }),
-      [session, zoom, onViewport, fullscreen.toggle],
+      [session, zoom, onViewport, fullscreen.toggle, exportLane],
     ),
   );
   return (
@@ -169,8 +174,9 @@ function Playback({
       data-popover-bounds=""
       className="group relative flex min-h-0 flex-1 flex-col bg-canvas text-on-canvas outline-none @container"
       onKeyDown={(event) => {
-        // In fullscreen, Escape only leaves it.
-        if (event.key === "Escape" && !event.ctrlKey && !event.altKey && !event.metaKey)
+        // An Escape a popup closed is spent, and in fullscreen Escape only leaves it.
+        const plain = !event.ctrlKey && !event.altKey && !event.metaKey;
+        if (event.key === "Escape" && plain && !event.nativeEvent.defaultPrevented)
           if (!fullscreen.leave()) session.select(null);
       }}
     >
@@ -182,8 +188,10 @@ function Playback({
               entries={laneContextEntries(allowed, shortcuts, onHideLane !== undefined)}
               onSelect={({ id }) => {
                 const lane = fullscreen.target();
-                if (id !== HIDE_LANE) actions[id]?.();
-                else if (lane !== null) onHideLane?.(view.lanes[lane].label);
+                if (id === HIDE_LANE) {
+                  if (lane !== null) onHideLane?.(view.lanes[lane].label);
+                } else if (id === "export-video") exportLane(lane);
+                else actions[id]?.();
               }}
             >
               <LaneGrid
@@ -250,10 +258,11 @@ function Playback({
       )}
       {exporting && (
         <ExportDialog
+          only={exporting.lane ?? undefined}
           jobs={session.exports}
           view={view}
           name={name}
-          onClose={() => setExporting(false)}
+          onClose={() => setExporting(null)}
         />
       )}
     </div>
