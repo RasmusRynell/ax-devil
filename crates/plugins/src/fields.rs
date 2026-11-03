@@ -352,6 +352,20 @@ impl<'a> Fields<'a> {
                     ),
                 ));
             }
+            // The Load Playlist button sits beside a counted scan, so a second one would repeat it.
+            let counted =
+                |field: &Field| matches!(field.kind, FieldKind::Scan { count: Some(_), .. });
+            if counted(&field)
+                && let Some((_, first)) = fields.iter().find(|(_, other)| counted(other))
+            {
+                return Err(ManifestError::new(
+                    format!("{at}.count"),
+                    format!(
+                        "'{}' is a second counting scan; '{}' is the only one allowed",
+                        field.key, first.key
+                    ),
+                ));
+            }
             fields.push((at, field));
         }
         for (at, field) in &fields {
