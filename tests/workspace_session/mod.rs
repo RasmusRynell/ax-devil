@@ -33,7 +33,7 @@ pub async fn backend(folder: &Path, launch: Option<Launch>) -> String {
         Policy::Local,
         videos,
         stopping,
-        handlers::Handlers::built_in(),
+        ax_devil::plugins::Plugins::fixed(handlers::Handlers::built_in()),
         &cache,
     )
     .with_workspace_storage(WorkspaceStorage {

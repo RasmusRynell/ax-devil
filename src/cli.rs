@@ -259,9 +259,7 @@ async fn run_backend(global: Global, command: Option<Command>, plugins: Arc<Plug
                     &plugins.handlers(),
                     &RecoveryFolder::new(paths.recovery_dir.clone()),
                 ) {
-                    Ok(launch) => {
-                        host_desktop(&paths, global.share_address, plugins, launch).await
-                    }
+                    Ok(launch) => host_desktop(&paths, global.share_address, plugins, launch).await,
                     Err(reason) => Err(reason.into()),
                 },
             },
