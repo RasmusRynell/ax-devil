@@ -7,12 +7,15 @@ import {
   useRef,
   useState,
   type KeyboardEvent,
+  type MouseEvent,
   type ReactElement,
   type ReactNode,
 } from "react";
+import { ContextMenu } from "../../kit/ContextMenu";
 import { Icon } from "../../kit/Icon";
+import type { MenuEntry } from "../../kit/Menu";
 import { useRowWindow } from "../../shell/useRowWindow";
-import { KINDS, type Column, type SortOf } from "./columns";
+import { KINDS, rowText, type Column, type SortOf } from "./columns";
 import { useColumns } from "./useColumns";
 
 /** The grid every row and the header share; `--cols` is written by `useColumns`. */
@@ -21,6 +24,9 @@ const GRID = "grid grid-cols-[var(--cols,minmax(0,1fr))] items-center";
 const LEAD = "border-l-edge pl-m";
 /** The characters of an elided id that always show. */
 const TAIL = 5;
+/** How long a copied row shows its check, in milliseconds. */
+const COPIED_MS = 1500;
+const MENU: readonly MenuEntry[] = [{ kind: "action", id: "copy", label: "Copy row" }];
 
 /** One cell: text with a tooltip, an id elided in the middle, or what the column renders. */
 function Cell<Row>({ column, row }: { column: Column<Row>; row: Row }) {
@@ -55,6 +61,8 @@ type RowProps<Row> = {
   active: boolean;
   /** Why the row is dimmed, when it is. */
   absent: string | undefined;
+  /** Whether the row was just copied. */
+  copied: boolean;
   cursor: string | undefined;
   onPick: (index: number) => void;
 };
@@ -70,6 +78,7 @@ const TableRow = memo(function TableRow<Row>({
   selected,
   active,
   absent,
+  copied,
   cursor,
   onPick,
 }: RowProps<Row>) {
@@ -84,7 +93,7 @@ const TableRow = memo(function TableRow<Row>({
       title={absent}
       data-cursor-id={cursor}
       onClick={() => onPick(index)}
-      className={`${GRID} ${LEAD} h-row cursor-pointer hover:bg-hover ${
+      className={`${GRID} ${LEAD} relative h-row cursor-pointer hover:bg-hover ${
         absent ? "text-muted" : "text-fg"
       } ${selected ? "border-accent bg-hover" : "border-transparent"} ${
         active
@@ -94,6 +103,15 @@ const TableRow = memo(function TableRow<Row>({
     >
       {row !== undefined &&
         shown.map((i) => <Cell key={columns[i].key} column={columns[i]} row={row} />)}
+      {copied && (
+        <span
+          role="status"
+          className="absolute inset-y-0 right-0 flex items-center bg-hover px-m text-accent"
+        >
+          <Icon name="check" />
+          <span className="sr-only">Copied</span>
+        </span>
+      )}
     </div>
   );
 }) as <Row>(props: RowProps<Row>) => ReactElement;
@@ -101,7 +119,7 @@ const TableRow = memo(function TableRow<Row>({
 /**
  * A windowed, sortable list of rows in resizable columns, as a listbox. Columns give way to a narrow table (see
  * `fitColumns`) and the widths the user gives them are remembered for the session under `tableKey`. Only the rows in
- * view are drawn, each a memoized element without state.
+ * view are drawn, each a memoized element without state. Ctrl+C and the row's context menu copy a row's text.
  */
 export function Table<Row>({
   tableKey,
@@ -168,6 +186,25 @@ export function Table<Row>({
     setActive(next);
     reveal(next);
   };
+  const [copied, setCopied] = useState<number | null>(null);
+  useEffect(() => {
+    if (copied === null) return;
+    const timer = setTimeout(() => setCopied(null), COPIED_MS);
+    return () => clearTimeout(timer);
+  }, [copied]);
+  const copy = (index: number) => {
+    const row = rowAt(index);
+    if (row === undefined) return;
+    void navigator.clipboard?.writeText(rowText(columns, row));
+    setCopied(index);
+  };
+  // The row a context menu was opened on; a right click off the rows leaves the browser's own menu.
+  const [menuRow, setMenuRow] = useState(0);
+  const onContextMenu = (event: MouseEvent) => {
+    const row = (event.target as Element).closest('[role="option"]');
+    if (row) setMenuRow(Number(row.getAttribute("aria-posinset")) - 1);
+    else event.stopPropagation();
+  };
   const onKeyDown = (event: KeyboardEvent) => {
     const page = end - start;
     const keys: Record<string, () => void> = {
@@ -179,6 +216,7 @@ export function Table<Row>({
       End: () => go(count - 1),
       Enter: () => pick(at),
     };
+    if (event.key === "c" && (event.ctrlKey || event.metaKey)) return copy(at);
     keys[event.key === " " ? "Enter" : event.key]?.();
     if (event.key in keys || event.key === " ") event.preventDefault();
   };
@@ -235,39 +273,43 @@ export function Table<Row>({
         className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto [scrollbar-gutter:stable]"
       >
         {message ?? (
-          <div
-            role="listbox"
-            aria-label={label}
-            aria-activedescendant={`${base}-${at}`}
-            aria-busy={busy}
-            tabIndex={0}
-            onKeyDown={onKeyDown}
-            className="group/list focus:outline-none"
-            style={{
-              paddingTop: `calc(var(--spacing-row) * ${start})`,
-              paddingBottom: `calc(var(--spacing-row) * ${count - end})`,
-            }}
-          >
-            {inView.map((row, i) => {
-              const index = start + i;
-              return (
-                <TableRow
-                  key={index}
-                  id={`${base}-${index}`}
-                  index={index}
-                  count={count}
-                  row={row}
-                  columns={columns}
-                  shown={shown}
-                  selected={row !== undefined && keyOf(row) === selected}
-                  active={index === at}
-                  absent={row === undefined ? undefined : absent?.(row)}
-                  cursor={row === undefined ? undefined : cursorId(row)}
-                  onPick={pick}
-                />
-              );
-            })}
-          </div>
+          <ContextMenu entries={MENU} onSelect={() => copy(menuRow)}>
+            <div
+              role="listbox"
+              aria-label={label}
+              aria-activedescendant={`${base}-${at}`}
+              aria-busy={busy}
+              tabIndex={0}
+              onKeyDown={onKeyDown}
+              onContextMenu={onContextMenu}
+              className="group/list focus:outline-none"
+              style={{
+                paddingTop: `calc(var(--spacing-row) * ${start})`,
+                paddingBottom: `calc(var(--spacing-row) * ${count - end})`,
+              }}
+            >
+              {inView.map((row, i) => {
+                const index = start + i;
+                return (
+                  <TableRow
+                    key={index}
+                    id={`${base}-${index}`}
+                    index={index}
+                    count={count}
+                    row={row}
+                    columns={columns}
+                    shown={shown}
+                    selected={row !== undefined && keyOf(row) === selected}
+                    active={index === at}
+                    absent={row === undefined ? undefined : absent?.(row)}
+                    copied={copied === index}
+                    cursor={row === undefined ? undefined : cursorId(row)}
+                    onPick={pick}
+                  />
+                );
+              })}
+            </div>
+          </ContextMenu>
         )}
       </div>
     </div>

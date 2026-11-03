@@ -56,3 +56,7 @@ export function nextSort<Key extends string>(
   const kind = columns.find((column) => column.key === key)?.kind;
   return { key, descending: sort.key === key ? !sort.descending : kind === "number" };
 }
+
+/** What copying a row puts on the clipboard: the text of every column that has text, hidden ones too, tab-separated. */
+export const rowText = <Row>(columns: readonly Column<Row>[], row: Row): string =>
+  columns.flatMap((column) => (column.text ? [column.text(row)] : [])).join("\t");

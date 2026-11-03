@@ -97,6 +97,8 @@ function Playback({
   const geometry = useRef<Geometry | null>(null);
   const [exporting, setExporting] = useState(false);
   const [tools, setTools] = useState(false);
+  // The width the user gave the media tools, kept while they are closed.
+  const [toolsWidth, setToolsWidth] = useState<number | null>(null);
   useChromeVisibility(pane);
   const shownViewport = useRef(viewport);
   shownViewport.current = viewport;
@@ -202,6 +204,8 @@ function Playback({
               view={view}
               canSeek={canChange}
               selectable={objectDetails}
+              width={toolsWidth}
+              onWidth={setToolsWidth}
               onClose={() => setTools(false)}
             />
           )}
