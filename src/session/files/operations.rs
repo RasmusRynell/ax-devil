@@ -30,7 +30,24 @@ impl WorkspaceFiles {
         saved: Saved,
     ) -> Result<(), Failure> {
         // Unsaved work that cannot be kept stays where it is, so the user can save it elsewhere.
-        self.sync(files, &handle.state().doc.workspace).await?;
+        let outgoing = handle.state();
+        self.sync(files, &outgoing.doc.workspace).await?;
+        // Other windows can push the copy out of the recents, so it is put back rather than trusted to be there.
+        if let Some(copy) = files.copy.clone()
+            && outgoing.doc.workspace.modified()
+        {
+            let recovers = outgoing
+                .doc
+                .workspace
+                .file
+                .as_ref()
+                .map(|file| file.as_path());
+            if !self.record(files, copy.path(), recovers).await {
+                let reason =
+                    "Could not keep the unsaved changes: the recent workspaces cannot be updated";
+                return Err(UserError::new(ErrorCode::SaveFailed, reason).into());
+            }
+        }
         let replace = DocCommand::Replace {
             workspace,
             file: file.map(HostPath::new),
