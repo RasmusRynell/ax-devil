@@ -138,6 +138,13 @@ pub(crate) const ROUTES: &[Route] = &[
     },
     Route {
         method: MethodFilter::POST,
+        path: "/api/plugins/update",
+        listeners: LOCAL,
+        who: Who::Preferences,
+        handler: |method| on(method, plugins::update),
+    },
+    Route {
+        method: MethodFilter::POST,
         path: "/api/resolvers/{id}/scan",
         listeners: MEMBERS,
         who: Who::Files,

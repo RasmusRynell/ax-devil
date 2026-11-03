@@ -231,6 +231,19 @@ impl Plugins {
         })
     }
 
+    /// Replaces the plugin `target` names by what its own manifest says now, in the same place in the order. Blocking.
+    pub fn reread(&self, target: &str) -> Result<Arc<PluginsInfo>, UserError> {
+        self.change(target, |installed, reserved| {
+            let Some(path) = installed.manifest_of(target) else {
+                return Ok(false);
+            };
+            installed
+                .update(target, &path, reserved)
+                .map(|updated| updated.is_some())
+                .map_err(|error| invalid(&path, &error))
+        })
+    }
+
     /// Reloads every second until `stopping` turns true.
     pub async fn watch(self: Arc<Self>, mut stopping: watch::Receiver<bool>) {
         let mut tick = tokio::time::interval(WATCH_POLL);

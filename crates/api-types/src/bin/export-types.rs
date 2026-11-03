@@ -98,6 +98,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         ScanRequest,
         InstallRequest,
         RemoveRequest,
+        UpdateRequest,
         ChoiceInfo,
         CatalogInfoWire,
         Direction,

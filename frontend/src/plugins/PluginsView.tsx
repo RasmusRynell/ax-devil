@@ -8,6 +8,8 @@ import type {
   PluginInfo,
   PluginsInfo,
   RemoveRequest,
+  SkippedHandlerInfo,
+  UpdateRequest,
 } from "../generated/api";
 import { BrowseButton, Button } from "../kit/Button";
 import { Chip } from "../kit/Chips";
@@ -21,6 +23,9 @@ const KINDS: Record<HandlerKind, string> = {
   decoder: "Decoders",
   playlist_resolver: "Playlists",
 };
+
+/** What the buttons of an installed plugin are called, by the route they call. */
+const ACTIONS = { update: "Update", remove: "Remove" } as const;
 
 type Section = "Failed" | "Installed" | "Built-in";
 
@@ -46,7 +51,10 @@ const nameOf = ({ source, status }: PluginInfo) =>
     ? status.name
     : lastPart(source.kind === "installed" ? source.folder : "");
 
-const post = <T,>(url: string, body: InstallRequest | RemoveRequest): Promise<Answer<T>> =>
+const post = <T,>(
+  url: string,
+  body: InstallRequest | RemoveRequest | UpdateRequest,
+): Promise<Answer<T>> =>
   ask<T>(url, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -91,8 +99,14 @@ function usePlugins() {
   return { info, apply, failure, reload };
 }
 
-/** A plugin's handlers by kind, then the file extensions its decoders read. */
-function Handlers({ handlers }: { handlers: readonly HandlerSummary[] }) {
+/** A plugin's handlers by kind, then the file extensions its decoders read, then the ones it lists that are not used. */
+function Handlers({
+  handlers,
+  skipped,
+}: {
+  handlers: readonly HandlerSummary[];
+  skipped: readonly SkippedHandlerInfo[];
+}) {
   const extensions = [...new Set(handlers.flatMap((handler) => handler.extensions))];
   return (
     <>
@@ -112,6 +126,11 @@ function Handlers({ handlers }: { handlers: readonly HandlerSummary[] }) {
         );
       })}
       {extensions.length > 0 && <span className="text-muted">{extensions.join(" ")}</span>}
+      {skipped.map((handler, index) => (
+        <span key={index} className="text-muted [overflow-wrap:anywhere]">
+          {`${handler.kind} ${handler.id ?? "-"}: ${handler.reason}`}
+        </span>
+      ))}
     </>
   );
 }
@@ -119,11 +138,11 @@ function Handlers({ handlers }: { handlers: readonly HandlerSummary[] }) {
 function Row({
   plugin,
   busy,
-  onRemove,
+  onChange,
 }: {
   plugin: PluginInfo;
   busy: boolean;
-  onRemove?: (manifest: string) => void;
+  onChange?: (action: "update" | "remove", manifest: string) => void;
 }) {
   const { source, status } = plugin;
   const installed = source.kind === "installed" ? source : null;
@@ -135,28 +154,33 @@ function Row({
           {name}
         </span>
         {status.state === "loaded" && <span className="text-muted">{status.version}</span>}
-        {installed && onRemove && (
-          <Button
-            size="small"
-            disabled={busy}
-            aria-label={`Remove ${name}`}
-            data-cursor-id={`plugin:remove:${installed.manifest}`}
-            onClick={() => onRemove(installed.manifest)}
-          >
-            Remove
-          </Button>
-        )}
       </div>
       {status.state === "loaded" ? (
-        <Handlers handlers={status.handlers} />
+        <Handlers handlers={status.handlers} skipped={status.skipped} />
       ) : (
         <Refusal reason={status.reason} />
+      )}
+      {installed && onChange && (
+        <div className="flex justify-end gap-s">
+          {(["update", "remove"] as const).map((action) => (
+            <Button
+              key={action}
+              size="small"
+              disabled={busy}
+              aria-label={`${ACTIONS[action]} ${name}`}
+              data-cursor-id={`plugin:${action}:${installed.manifest}`}
+              onClick={() => onChange(action, installed.manifest)}
+            >
+              {ACTIONS[action]}
+            </Button>
+          ))}
+        </div>
       )}
     </li>
   );
 }
 
-/** The sidebar's Plugins view: the plugins that failed, are installed and ship with the app, and installing and removing. */
+/** The sidebar's Plugins view: the plugins that failed, are installed and ship with the app, and installing, updating and removing. */
 export function PluginsView() {
   const { info, apply, failure, reload } = usePlugins();
   // Installing and removing change this machine's files: only the person at it may.
@@ -167,7 +191,7 @@ export function PluginsView() {
   const [refused, setRefused] = useState<string | null>(null);
   const bridge = window.axDevilWindow;
 
-  const change = async (url: string, body: InstallRequest | RemoveRequest) => {
+  const change = async (url: string, body: InstallRequest | RemoveRequest | UpdateRequest) => {
     setBusy(true);
     setRefused(null);
     try {
@@ -249,9 +273,10 @@ export function PluginsView() {
                     key={keyOf(plugin)}
                     plugin={plugin}
                     busy={busy}
-                    onRemove={
+                    onChange={
                       mayChange
-                        ? (manifest) => void change("/api/plugins/remove", { target: manifest })
+                        ? (action, manifest) =>
+                            void change(`/api/plugins/${action}`, { target: manifest })
                         : undefined
                     }
                   />

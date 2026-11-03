@@ -50,6 +50,13 @@ pub struct RemoveRequest {
     pub target: String,
 }
 
+/// The body of `POST /api/plugins/update`.
+#[derive(Serialize, Deserialize, TS)]
+pub struct UpdateRequest {
+    /// The id of an installed plugin, or the absolute path of its manifest or folder.
+    pub target: String,
+}
+
 /// One plugin.
 #[derive(Clone, PartialEq, Serialize, Deserialize, TS)]
 pub struct PluginInfo {

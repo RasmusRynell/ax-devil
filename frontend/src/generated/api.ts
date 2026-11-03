@@ -1227,6 +1227,15 @@ export type RemoveRequest = {
 target: string, };
 
 /**
+ * The body of `POST /api/plugins/update`.
+ */
+export type UpdateRequest = { 
+/**
+ * The id of an installed plugin, or the absolute path of its manifest or folder.
+ */
+target: string, };
+
+/**
  * One value a scan found.
  */
 export type ChoiceInfo = { 

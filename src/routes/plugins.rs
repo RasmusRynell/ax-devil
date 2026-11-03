@@ -3,7 +3,7 @@
 
 use super::handlers::{Refusal, refuse};
 use crate::AppState;
-use api_types::handlers::{InstallRequest, PluginsInfo, RemoveRequest};
+use api_types::handlers::{InstallRequest, PluginsInfo, RemoveRequest, UpdateRequest};
 use axum::{Json, extract::State, http::StatusCode};
 use foundation::{ErrorCode, UserError};
 use std::{path::PathBuf, sync::Arc};
@@ -61,6 +61,14 @@ pub(crate) async fn remove(
     changed(move || state.plugins.remove(&request.target)).await
 }
 
+/// Reads an installed plugin's manifest again, which also retries one that failed.
+pub(crate) async fn update(
+    State(state): State<AppState>,
+    Json(request): Json<UpdateRequest>,
+) -> Result<Json<PluginsInfo>, Refusal> {
+    changed(move || state.plugins.reread(&request.target)).await
+}
+
 #[cfg(test)]
 mod tests {
     use crate::{
@@ -84,7 +92,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn a_plugin_is_installed_listed_and_removed_and_a_refusal_says_why() {
+    async fn a_plugin_is_installed_listed_updated_and_removed_and_a_refusal_says_why() {
         let test = TestApp::over(|folder| {
             Plugins::new(Ok(folder.join("plugins.json")), Handlers::built_in())
         });
@@ -113,6 +121,20 @@ mod tests {
             assert_eq!(status, StatusCode::BAD_REQUEST, "{path}");
             assert_eq!(json(&body)["code"], "PluginInvalid", "{path}");
         }
+
+        // Updating reads the manifest again, by id or by folder, and refuses what is not installed.
+        for target in ["shell-times", plugin] {
+            let (status, body) = test
+                .send(post("/api/plugins/update", json!({ "target": target })))
+                .await;
+            assert_eq!(status, StatusCode::OK, "{target}");
+            assert_eq!(installed(&json(&body)), ["shell-times"], "{target}");
+        }
+        let (status, body) = test
+            .send(post("/api/plugins/update", json!({ "target": "nobody" })))
+            .await;
+        assert_eq!(status, StatusCode::NOT_FOUND);
+        assert_eq!(json(&body)["code"], "UnknownHandler");
 
         let (status, body) = test
             .send(post("/api/plugins/remove", json!({ "target": "nobody" })))

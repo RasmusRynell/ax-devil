@@ -11,6 +11,7 @@ const MOT: PluginInfo = {
     id: "mot",
     name: "mot",
     version: "0.1.0",
+    skipped: [],
     handlers: [{ kind: "decoder", id: "MOT_FILE", name: "MOT", extensions: [".txt"] }],
   },
 };
@@ -21,6 +22,10 @@ const ACME: PluginInfo = {
     id: "acme",
     name: "Acme",
     version: "1.4.0",
+    skipped: [
+      { kind: "encoder", id: "acme_out", reason: "this version has no encoders" },
+      { kind: "gadget", reason: "unknown kind" },
+    ],
     handlers: [
       { kind: "decoder", id: "acme_tracks", name: "Acme tracks", extensions: [".acme.jsonl"] },
       { kind: "playlist_resolver", id: "acme_runs", name: "Acme runs", extensions: [] },
@@ -32,7 +37,7 @@ const BROKEN: PluginInfo = {
   status: { state: "failed", reason: "handlers[0].id: 'MOT_FILE' is already taken" },
 };
 
-/** A backend whose installed plugins `remove` takes away. */
+/** A backend whose installed plugins `remove` takes away; `update` shows a plugin's version as 2.0.0 and refuses a failed one. */
 function backend(plugins: PluginInfo[]) {
   const calls: string[] = [];
   vi.stubGlobal(
@@ -43,6 +48,24 @@ function backend(plugins: PluginInfo[]) {
         const { target } = JSON.parse(init?.body as string) as { target: string };
         plugins = plugins.filter(
           (plugin) => plugin.source.kind !== "installed" || plugin.source.manifest !== target,
+        );
+      }
+      if (url === "/api/plugins/update") {
+        const { target } = JSON.parse(init?.body as string) as { target: string };
+        const plugin = plugins.find(
+          (entry) => entry.source.kind === "installed" && entry.source.manifest === target,
+        );
+        if (plugin?.status.state === "failed") {
+          return {
+            ok: false,
+            status: 400,
+            json: async () => ({ code: "PluginInvalid", params: {}, reason: "not valid JSON" }),
+          };
+        }
+        plugins = plugins.map((entry) =>
+          entry === plugin && entry.status.state === "loaded"
+            ? { ...entry, status: { ...entry.status, version: "2.0.0" } }
+            : entry,
         );
       }
       const info: PluginsInfo = { plugins };
@@ -65,7 +88,7 @@ const view = () =>
   );
 
 describe("plugins view", () => {
-  it("lists failed, installed and built-in plugins, says why one failed, removes one, and installs only a typed folder", async () => {
+  it("lists failed, installed and built-in plugins, says why one failed, shows what it skipped, updates and removes, and installs only a typed folder", async () => {
     const calls = backend([MOT, ACME, BROKEN]);
     view();
 
@@ -80,6 +103,21 @@ describe("plugins view", () => {
     expect(
       within(screen.getByRole("region", { name: "Built-in" })).queryByRole("button"),
     ).toBeNull();
+
+    // What a plugin lists but the app does not use is said, one line each.
+    expect(
+      within(installed).getByText("encoder acme_out: this version has no encoders"),
+    ).toBeTruthy();
+    expect(within(installed).getByText("gadget -: unknown kind")).toBeTruthy();
+
+    // Update reads the manifest again: a good one shows its new version, a broken one says why.
+    expect(within(installed).getByText("1.4.0")).toBeTruthy();
+    fireEvent.click(within(installed).getByRole("button", { name: "Update Acme" }));
+    await within(installed).findByText("2.0.0");
+    expect(calls).toContain("POST /api/plugins/update");
+    fireEvent.click(within(failed).getByRole("button", { name: "Update broken" }));
+    await screen.findByText("not valid JSON");
+    expect(within(failed).getByRole("button", { name: "Remove broken" })).toBeTruthy();
 
     fireEvent.click(within(failed).getByRole("button", { name: "Remove broken" }));
     await vi.waitFor(() => expect(screen.queryByRole("region", { name: "Failed" })).toBeNull());

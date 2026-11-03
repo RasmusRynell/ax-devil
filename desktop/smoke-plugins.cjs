@@ -1,6 +1,6 @@
-// The smoke test's Plugins view: only the built-in plugins to begin with, then one installed through the view and one
+// The smoke test's Plugins view: only the built-in plugins to begin with, then one installed through the view (with a handler it skips) and one
 // that stopped loading because its manifest was damaged after it was installed, in both themes at the smallest window
-// and 200% zoom. Removing both leaves the registry as it was.
+// and 200% zoom. Updating the first after editing its manifest shows the new version. Removing both leaves the registry as it was.
 const { nativeTheme } = require("electron");
 const assert = require("node:assert/strict");
 const fs = require("node:fs/promises");
@@ -58,6 +58,11 @@ module.exports.plugins = async (window) => {
     const broken = path.join(folder, "broken");
     await fs.cp(source, good, { recursive: true });
     await fs.cp(source, broken, { recursive: true });
+    // A handler of a kind this build does not know is listed as skipped.
+    const goodManifest = path.join(good, "ax-devil-plugin.json");
+    const goodJson = JSON.parse(await fs.readFile(goodManifest, "utf8"));
+    goodJson.handlers.push({ kind: "encoder", id: "shell-times-encode" });
+    await fs.writeFile(goodManifest, JSON.stringify(goodJson, null, 2));
     const manifest = path.join(broken, "ax-devil-plugin.json");
     await fs.writeFile(
       manifest,
@@ -102,6 +107,13 @@ module.exports.plugins = async (window) => {
       await fits(`${theme}, 1100x720`);
       await shoot(`plugins-${theme}.png`);
     });
+    // Update reads an edited manifest again.
+    goodJson.version = "1.1.0";
+    await fs.writeFile(goodManifest, JSON.stringify(goodJson, null, 2));
+    await js(`document.querySelector('aside button[aria-label="Update Shell times"]').click()`);
+    await wait(
+      "[...document.querySelectorAll('aside section[aria-label=Installed] li')].some((li) => li.textContent.includes('1.1.0'))",
+    );
     for (const name of ["Remove broken", "Remove Shell times"]) {
       await js(`document.querySelector('aside button[aria-label="${name}"]').click()`);
       await wait(`!document.querySelector('aside button[aria-label="${name}"]')`);

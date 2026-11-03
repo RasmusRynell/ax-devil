@@ -134,6 +134,14 @@ impl Registry {
         taken
     }
 
+    /// The manifest path of the plugin that `target` names (see [`remove`](Self::remove)).
+    pub fn manifest_of(&self, target: &str) -> Option<PathBuf> {
+        self.entries
+            .iter()
+            .find(|entry| names(entry, target))
+            .map(entry_manifest)
+    }
+
     /// Removes the plugin whose manifest declares the id `target`, or whose manifest or folder path is `target`
     /// (the only way to remove one that no longer loads). Its files are left alone. Returns whether one was removed.
     pub fn remove(&mut self, target: &str) -> bool {
