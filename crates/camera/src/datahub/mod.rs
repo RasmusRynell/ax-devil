@@ -4,7 +4,6 @@
 mod protocol;
 mod socket;
 
-use std::collections::VecDeque;
 use std::sync::Arc;
 use std::time::{Duration, SystemTime};
 
@@ -18,7 +17,7 @@ use crate::error::CameraError;
 use crate::live::{Counters, FeedOut, LiveMessages, Message, Reconnect, Status, Task};
 use crate::target::{Camera, Scheme};
 use protocol::{LIST_TOPICS, SUBSCRIBE, Sample, protocol};
-use socket::Socket;
+use socket::{Early, Socket};
 
 /// How many samples may wait for the app.
 const QUEUE: usize = 256;
@@ -29,7 +28,7 @@ impl Device {
         let socket = Socket::open(self).await;
         let mut socket = socket?;
         let result = socket
-            .call(LIST_TOPICS, &serde_json::json!({}), &mut VecDeque::new())
+            .call(LIST_TOPICS, &serde_json::json!({}), &mut Early::default())
             .await;
         socket.close().await;
         let topics = result?["topics"].as_array().cloned();
@@ -121,12 +120,14 @@ impl Link {
         stop: &mut oneshot::Receiver<()>,
     ) -> Result<(), CameraError> {
         let device = self.device.as_ref().map_err(Clone::clone)?;
-        let mut early = VecDeque::new();
+        let mut early = Early::default();
         let opened = tokio::select! {
             opened = Self::subscribe(device, &self.topic, self.channel, &mut early) => opened,
             _ = &mut *stop => return Ok(()),
         };
         let mut socket = opened?;
+        // The dropped ones were the oldest, so their gap comes ahead of the samples kept.
+        self.out.lose(early.dropped, &self.counters);
         let epoch = self.epoch.map_or(0, |last| last + 1);
         if epoch > 0 {
             Counters::add(&self.counters.reconnects, 1);
@@ -135,7 +136,7 @@ impl Link {
         self.attempt = 0;
         self.status.send_replace(Status::Live { epoch });
         let result = loop {
-            let sample = match early.pop_front() {
+            let sample = match early.samples.pop_front() {
                 Some(sample) => Ok(sample),
                 None => tokio::select! {
                     sample = socket.next_sample() => sample,
@@ -164,7 +165,7 @@ impl Link {
         device: &Device,
         topic: &str,
         channel: u32,
-        early: &mut VecDeque<Sample>,
+        early: &mut Early,
     ) -> Result<Socket, CameraError> {
         let mut socket = Socket::open(device).await?;
         let params = protocol::subscribe_params(topic, channel);

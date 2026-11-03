@@ -43,6 +43,11 @@ pub enum Fault {
     Silent {
         after: usize,
     },
+    /// Loses the one packet of delta frame `at` and sends no keyframe from then on, so the client never has a whole
+    /// picture again though packets keep arriving.
+    Damage {
+        at: u32,
+    },
 }
 
 #[derive(Clone)]
@@ -347,7 +352,8 @@ async fn stream(
         let rtp_time = FIRST_RTP_TIME + frame * 3000;
         let mut packets: Vec<(u8, usize, bool, Vec<u8>)> = Vec::new();
         if let Some(&channel) = channels.get("video") {
-            for (payload, marker) in video_payloads(frame) {
+            let keyframes = !matches!(fault, Fault::Damage { at } if frame >= at);
+            for (payload, marker) in video_payloads(frame, keyframes) {
                 packets.push((channel, 0, marker, payload));
             }
         }
@@ -367,6 +373,10 @@ async fn stream(
                     std::future::pending::<()>().await;
                 }
                 _ => {}
+            }
+            if lane == 0 && matches!(fault, Fault::Damage { at } if frame == at) {
+                seq[lane] = seq[lane].wrapping_add(1);
+                continue;
             }
             let packet = rtp(
                 if lane == 0 { 96 } else { 107 },
@@ -389,11 +399,11 @@ async fn stream(
 }
 
 /// The RTP payloads of frame `frame`, each with whether it ends the frame.
-fn video_payloads(frame: u32) -> Vec<(Vec<u8>, bool)> {
+fn video_payloads(frame: u32, keyframes: bool) -> Vec<(Vec<u8>, bool)> {
     let index = u16::try_from(frame)
         .expect("fewer than 65536 frames")
         .to_be_bytes();
-    if !frame.is_multiple_of(GOP) {
+    if !keyframes || !frame.is_multiple_of(GOP) {
         let mut nal = vec![0x41, 0xBB, index[0], index[1], 0xBB];
         nal.extend([0xAA; 200]);
         return vec![(nal, true)];

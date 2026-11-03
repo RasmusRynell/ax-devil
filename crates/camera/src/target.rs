@@ -75,6 +75,14 @@ impl Host {
     pub fn as_str(&self) -> &str {
         &self.0
     }
+
+    /// The host without the brackets of an IPv6 address, as a socket address wants it.
+    pub fn bare(&self) -> &str {
+        self.0
+            .strip_prefix('[')
+            .and_then(|rest| rest.strip_suffix(']'))
+            .unwrap_or(&self.0)
+    }
 }
 
 impl fmt::Display for Host {
@@ -228,6 +236,9 @@ mod tests {
             assert!(Host::parse(good).is_ok(), "{good}");
         }
         assert_eq!(Host::parse("::1").unwrap().as_str(), "[::1]");
+        assert_eq!(Host::parse("::1").unwrap().bare(), "::1");
+        assert_eq!(Host::parse("192.0.2.7").unwrap().bare(), "192.0.2.7");
+        assert_eq!(Host::parse("broker.local").unwrap().bare(), "broker.local");
         for bad in [
             "",
             "http://cam",

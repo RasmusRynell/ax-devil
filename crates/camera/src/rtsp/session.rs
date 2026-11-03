@@ -132,8 +132,10 @@ impl Link {
             let packet = Packet::from_received(received);
             let mut primary = opened.video.is_none();
             if let Some((_, assembler)) = opened.video.as_mut().filter(|(v, _)| *v == id) {
-                primary = true;
                 assembler.push(&packet, &mut frames);
+                // Time since the last whole frame counts, not the last packet: after damage the assembler waits for
+                // a keyframe and its packets show only that the camera is sending, not that there is video.
+                primary = !frames.is_empty();
                 Counters::add(&self.counters.video_dropped, assembler.take_dropped());
                 for frame in frames.drain(..) {
                     let unit = access_unit(epoch, &assembler.params, frame);

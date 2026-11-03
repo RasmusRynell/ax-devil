@@ -225,6 +225,25 @@ async fn a_silent_camera_is_reconnected() {
 }
 
 #[tokio::test]
+async fn packets_that_make_no_picture_do_not_count_as_video() {
+    let fake = FakeRtsp::with(Behaviour {
+        first_connection: Fault::Damage { at: 3 },
+        ..Behaviour::default()
+    })
+    .await;
+    let mut request = request(true, false);
+    request.reconnect.silence = Some(Duration::from_millis(300));
+    let mut stream = open_stream(&fake.camera(), request);
+    // Packets arrive every few milliseconds, but no frame is whole after the lost one.
+    let reconnecting =
+        status_where(&mut stream, |s| matches!(s, Status::Reconnecting { .. })).await;
+    assert!(
+        matches!(&reconnecting, Status::Reconnecting { error, .. } if error.kind == ErrorKind::Silent)
+    );
+    stream.close().await;
+}
+
+#[tokio::test]
 async fn a_slow_reader_loses_video_up_to_the_next_keyframe_and_is_told_how_many() {
     let fake = FakeRtsp::with(Behaviour {
         burst: 150,

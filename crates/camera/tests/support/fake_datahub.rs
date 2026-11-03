@@ -49,6 +49,8 @@ pub struct Behaviour {
     /// What the first connection does after the subscription, and what every later one does.
     pub first: After,
     pub later: After,
+    /// Samples sent before the subscription is confirmed.
+    pub early_samples: usize,
 }
 
 impl Default for Behaviour {
@@ -58,6 +60,7 @@ impl Default for Behaviour {
             offer_basic: false,
             first: After::Idle,
             later: After::Idle,
+            early_samples: 0,
         }
     }
 }
@@ -226,15 +229,21 @@ async fn conversation(mut socket: WebSocket, shared: Arc<Shared>, after: After, 
                     .expect("lock")
                     .subscriptions
                     .push(params.clone());
-                send(&mut socket, &reply(json!({ "subscriptionId": "sub-1" }))).await;
                 let filter = &params["filters"][0];
-                let sample = json!({ "jsonrpc": "2.0", "method": "data-hub_v1:topicSample", "params": {
-                    "topic": filter["topics"][0],
-                    "instance": { "channel_id": filter["instanceFilter"][0]["channel_id"] },
-                    "data": { "connection": index },
-                    "timestamp": "2026-01-01T00:00:00Z",
-                    "isHistorical": false,
-                }});
+                let sample_with = |data: Value| {
+                    json!({ "jsonrpc": "2.0", "method": "data-hub_v1:topicSample", "params": {
+                        "topic": filter["topics"][0],
+                        "instance": { "channel_id": filter["instanceFilter"][0]["channel_id"] },
+                        "data": data,
+                        "timestamp": "2026-01-01T00:00:00Z",
+                        "isHistorical": false,
+                    }})
+                };
+                for n in 0..shared.behaviour.early_samples {
+                    send(&mut socket, &sample_with(json!({ "early": n }))).await;
+                }
+                send(&mut socket, &reply(json!({ "subscriptionId": "sub-1" }))).await;
+                let sample = sample_with(json!({ "connection": index }));
                 match after {
                     After::Garbage => {
                         socket.send(Message::Text("not json".into())).await.ok();

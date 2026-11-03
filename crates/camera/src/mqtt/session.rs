@@ -24,7 +24,8 @@ const MAX_OUTGOING: usize = 10 * 1024;
 /// its end (`Ok`). The subscription is live, and the epoch grows, once the broker has accepted it.
 pub(super) async fn read(link: &mut Link) -> Result<(), CameraError> {
     let broker = &link.broker;
-    let mut options = MqttOptions::new(link.reader_id.as_str(), broker.host.as_str(), broker.port);
+    // The socket address takes an IPv6 host without the brackets a URL needs.
+    let mut options = MqttOptions::new(link.reader_id.as_str(), broker.host.bare(), broker.port);
     options
         .set_keep_alive(KEEP_ALIVE)
         .set_clean_session(true)

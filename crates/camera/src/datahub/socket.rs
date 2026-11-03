@@ -33,6 +33,13 @@ const LARGEST_MESSAGE: usize = 4 << 20;
 /// How many samples that arrive before the subscription is confirmed are kept; the oldest are dropped first.
 const EARLY: usize = 64;
 
+/// Samples that arrived before a request was answered: at most [`EARLY`], and how many older ones were dropped.
+#[derive(Default)]
+pub(super) struct Early {
+    pub(super) samples: VecDeque<Sample>,
+    pub(super) dropped: u64,
+}
+
 /// An open DataHub connection.
 pub(super) struct Socket {
     stream: WebSocketStream<MaybeTlsStream<TcpStream>>,
@@ -107,7 +114,7 @@ impl Socket {
         &mut self,
         method: &str,
         params: &serde_json::Value,
-        early: &mut VecDeque<Sample>,
+        early: &mut Early,
     ) -> Result<serde_json::Value, CameraError> {
         self.requests += 1;
         let id = format!("ax-devil-{}", self.requests);
@@ -118,13 +125,14 @@ impl Socket {
             loop {
                 match self.receive().await? {
                     Incoming::Sample(sample) => {
-                        if early.len() == EARLY {
-                            early.pop_front();
+                        if early.samples.len() == EARLY {
+                            early.samples.pop_front();
+                            early.dropped += 1;
                             warn!(
                                 "DataHub samples arrived faster than the subscription was confirmed; the oldest was dropped"
                             );
                         }
-                        early.push_back(sample);
+                        early.samples.push_back(sample);
                     }
                     Incoming::Response(response) => {
                         return protocol::result(&response, &id, method);

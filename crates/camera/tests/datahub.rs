@@ -162,6 +162,28 @@ async fn an_oversized_message_ends_the_subscription_without_a_retry() {
 }
 
 #[tokio::test]
+async fn samples_dropped_before_the_subscription_is_confirmed_are_a_gap() {
+    let fake = FakeDataHub::with(Behaviour {
+        early_samples: 70,
+        ..Behaviour::default()
+    })
+    .await;
+    let mut live = open_datahub(&fake.camera(), TOPIC, 1);
+    // The 64 newest are kept; the 6 oldest are reported lost ahead of them.
+    let first = timeout(WAIT, live.messages.recv()).await;
+    assert!(
+        matches!(first, Ok(Some(Feed::Gap { lost: 6 }))),
+        "{first:?}"
+    );
+    for n in 6..70 {
+        let sample = next_item(&mut live).await;
+        assert_eq!(sample.payload, format!(r#"{{"early":{n}}}"#).as_bytes());
+    }
+    assert_eq!(live.stats().feed_lost, 6);
+    live.close().await;
+}
+
+#[tokio::test]
 async fn a_lost_connection_is_made_again_with_the_next_epoch() {
     let fake = FakeDataHub::with(Behaviour {
         first: After::Close,
