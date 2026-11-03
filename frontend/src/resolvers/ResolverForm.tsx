@@ -8,6 +8,7 @@ import {
   checkedCount,
   chosen,
   idleScan,
+  listed,
   scanChoices,
   scanFailed,
   scanFinished,
@@ -36,14 +37,10 @@ const scanFields = (resolver: ResolverInfo) =>
   resolver.fields.filter((field) => field.kind.kind === "Scan");
 
 /**
- * The fields' starting text: the saved settings, whatever else they hold kept, with each decoder choice filled in. The
- * saved options of a decoder become the text of its option fields, under `<field key>.<option key>`.
+ * The fields' starting text: the saved settings, whatever else they hold kept. A decoder choice starts blank unless
+ * saved. The saved options of a decoder become the text of its option fields, under `<field key>.<option key>`.
  */
-function start(
-  resolver: ResolverInfo,
-  decoders: readonly DecoderInfo[],
-  initial: Settings = {},
-): State {
+function start(resolver: ResolverInfo, initial: Settings = {}): State {
   const values = { ...initial };
   const scans: Record<string, ScanView> = {};
   for (const field of resolver.fields) {
@@ -57,8 +54,6 @@ function start(
         for (const [option, value] of Object.entries(saved))
           values[`${field.key}.${option}`] = String(value);
       }
-    } else if (field.kind.kind === "Handler" && typeof values[field.key] !== "string") {
-      values[field.key] = decoders[0]?.handler ?? "";
     }
   }
   return { resolverId: resolver.id, values, scans };
@@ -144,11 +139,21 @@ function settingsOf(
   const { settings, complete } = effective(resolver, state.values, decoders);
   for (const field of scanFields(resolver)) {
     const view = state.scans[field.key];
-    if (view?.phase !== "done" || checkedCount(view) === 0) return null;
+    // Nothing checked still loads: the dialog tells that it is nothing (`unchosen`) rather than disabling Load.
+    if (view?.phase !== "done" || listed(view).length === 0) return null;
     const names = chosen(view);
     if (names) settings[field.key] = names;
   }
   return complete ? settings : null;
+}
+
+/** The message for a done scan that found values with none checked, else `null`. */
+function unchosenOf(resolver: ResolverInfo, state: State): string | null {
+  const empty = scanFields(resolver).find((field) => {
+    const view = state.scans[field.key];
+    return view?.phase === "done" && listed(view).length > 0 && checkedCount(view) === 0;
+  });
+  return empty ? `No ${empty.label.toLowerCase()} selected.` : null;
 }
 
 /** The failed scans to show at `field`, each at the setting it names or else at its own field. */
@@ -176,6 +181,8 @@ export interface ResolverFormState extends FieldForm {
   resolver: ResolverInfo;
   /** What loading sends, or `null` while the form cannot load. */
   settings: Settings | null;
+  /** Why loading must not go on although `settings` is complete: a scan found values and none is checked. */
+  unchosen: string | null;
 }
 
 /**
@@ -189,13 +196,13 @@ export function useResolverForm(
   decoders: readonly DecoderInfo[],
   initial?: Settings,
 ): ResolverFormState {
-  const [state, dispatch] = useReducer(reduce, undefined, () => start(resolver, decoders, initial));
+  const [state, dispatch] = useReducer(reduce, undefined, () => start(resolver, initial));
   // Only the backend's own window shares its machine's folders with it.
   const bridge = useServerKind() === "local" ? window.axDevilWindow : undefined;
   const controllers = useRef(new Map<string, AbortController>());
   // Another resolver is another form.
   if (state.resolverId !== resolver.id) {
-    dispatch({ type: "reset", state: start(resolver, decoders) });
+    dispatch({ type: "reset", state: start(resolver) });
   }
 
   const canScanWith = (key: string, values: Settings) => {
@@ -263,6 +270,7 @@ export function useResolverForm(
     values: state.values,
     scans: state.scans,
     settings: settingsOf(resolver, state, decoders),
+    unchosen: unchosenOf(resolver, state),
     canScan: (key) => canScanWith(key, state.values),
     scan: (key) => run(key, state.values),
     set: (key, value, commit = false) => {

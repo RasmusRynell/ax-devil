@@ -52,9 +52,17 @@ export function scanStarted(view: ScanView): ScanView {
   return { ...view, phase: "scanning", choices: [], missing: [], failure: null };
 }
 
-/** The field after a settings change it depends on: the list is gone and the field has to scan again. */
+/** The field after a settings change it depends on: the list and the saved selection are gone, so the next scan checks everything. */
 export function scanInvalidated(view: ScanView): ScanView {
-  return { ...view, phase: "idle", choices: [], missing: [], failure: null };
+  return {
+    ...view,
+    phase: "idle",
+    choices: [],
+    missing: [],
+    selected: new Set(),
+    everything: true,
+    failure: null,
+  };
 }
 
 /** The field after its scan found `choices`. Everything is selected when no list was saved. */
