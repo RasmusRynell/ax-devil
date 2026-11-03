@@ -116,6 +116,30 @@ describe("export dialog", () => {
     ]);
   });
 
+  it("says the render catalogs are still loading only while a lane is", () => {
+    const message = "Render catalogs are still loading.";
+    const { unmount } = render(
+      <ExportDialog
+        jobs={new ExportJobs(() => {})}
+        view={VIEW}
+        name="clip.mp4"
+        onClose={() => {}}
+      />,
+    );
+    expect(screen.getByText(message)).toBeTruthy();
+    unmount();
+    const warm = { ...VIEW, lanes: [lane("DPM", { source: 0, status: READY })] };
+    render(
+      <ExportDialog
+        jobs={new ExportJobs(() => {})}
+        view={warm}
+        name="clip.mp4"
+        onClose={() => {}}
+      />,
+    );
+    expect(screen.queryByText(message)).toBeNull();
+  });
+
   it("starts with just the lane a lane menu was used on checked", () => {
     const both = {
       ...VIEW,

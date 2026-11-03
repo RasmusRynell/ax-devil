@@ -4,15 +4,19 @@ import type { ExportLaneWire } from "../generated/api";
 import type { LaneState } from "../playback/contract";
 import { styleOf } from "../playback/laneStyle";
 
-/** A lane the export dialog offers. `wire` is absent while the lane cannot be drawn yet: its data or catalog is loading or failed. */
-type ExportChoice = { lane: number; label: string; wire: ExportLaneWire | null };
+/** Why a lane cannot be drawn yet: its data or catalog is still loading, or failed. */
+type Cold = "loading" | "failed";
 
-/** The lane as the backend should draw it, from what the viewer holds of it; `null` while that is incomplete. */
-function wireOf(state: LaneState, lane: number): ExportLaneWire | null {
+/** A lane the export dialog offers. `wire` is absent while the lane cannot be drawn yet, and `cold` then says why. */
+type ExportChoice = { lane: number; label: string; wire: ExportLaneWire | null; cold: Cold | null };
+
+/** The lane as the backend should draw it, from what the viewer holds of it; the reason while that is incomplete. */
+function wireOf(state: LaneState, lane: number): ExportLaneWire | Cold {
   const { status, catalogRevision } = state;
-  if (catalogRevision === undefined) return null;
+  if (status !== "plain" && status.status === "Failed") return "failed";
+  if (catalogRevision === undefined) return state.catalogProblem ? "failed" : "loading";
   const ready = status !== "plain" && status.status === "Ready" ? status : null;
-  if (state.source !== null && !ready) return null;
+  if (state.source !== null && !ready) return "loading";
   return {
     lane,
     catalog: { id: state.settings.catalog, revision: catalogRevision },
@@ -24,7 +28,10 @@ function wireOf(state: LaneState, lane: number): ExportLaneWire | null {
 
 /** The lanes the viewer shows, in the order they tile. */
 export function choicesOf(lanes: readonly LaneState[]): ExportChoice[] {
-  return lanes.flatMap((state, lane) =>
-    state.settings.visible ? [{ lane, label: state.label, wire: wireOf(state, lane) }] : [],
-  );
+  return lanes.flatMap((state, lane) => {
+    if (!state.settings.visible) return [];
+    const made = wireOf(state, lane);
+    const [wire, cold] = typeof made === "string" ? [null, made] : [made, null];
+    return [{ lane, label: state.label, wire, cold }];
+  });
 }

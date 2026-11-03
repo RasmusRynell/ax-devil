@@ -104,6 +104,7 @@ export function ExportDialog({
   const [failure, setFailure] = useState<string | null>(null);
   const [choosing, setChoosing] = useState(false);
 
+  const loading = choices.some((choice) => choice.cold === "loading");
   const picked = choices.filter((choice) => choice.wire && !unchecked.has(choice.lane));
   const first = kind === "png" ? view.playhead : wholeNumber(from);
   const last = kind === "png" ? view.playhead : wholeNumber(to);
@@ -191,6 +192,11 @@ export function ExportDialog({
           </>
         )}
         {!bridge && <TextField label="Path on the server" value={path} onChange={setPath} />}
+        {loading && (
+          <p role="status" className="m-0">
+            Render catalogs are still loading.
+          </p>
+        )}
         {failure && (
           <p role="alert" className="m-0">
             {failure}

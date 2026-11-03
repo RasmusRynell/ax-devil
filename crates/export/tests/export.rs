@@ -338,6 +338,29 @@ fn an_output_that_would_overwrite_an_input_or_cannot_be_written_is_refused() {
     assert_eq!(names(dir.path()), before);
 }
 
+#[cfg(unix)]
+#[test]
+fn an_output_that_links_to_the_source_is_refused() {
+    let dir = tempfile::tempdir().unwrap();
+    let (video, index) = source(dir.path());
+    let video_bytes = fs::read(&video).unwrap();
+    let hard = dir.path().join("hard.mp4");
+    let soft = dir.path().join("soft.mp4");
+    fs::hard_link(&video, &hard).unwrap();
+    std::os::unix::fs::symlink(&video, &soft).unwrap();
+
+    for destination in [hard, soft] {
+        let mut fake = Fake::new();
+        let result = export(&spec(&video, &index, 0..=5, destination.clone()), &mut fake);
+        assert!(
+            matches!(&result, Err(ExportError::Failed(error)) if error.code == ErrorCode::InvalidPath),
+            "{destination:?}: {result:?}"
+        );
+        assert!(fake.set_up.is_none());
+    }
+    assert_eq!(fs::read(&video).unwrap(), video_bytes);
+}
+
 /// The track of an ONVIF file with two samples, at 0 and 0.5 s on the video's clock, and the file.
 fn two_sample_track(dir: &Path) -> (PathBuf, Arc<Track>) {
     let mot = dir.join("det.xml");
