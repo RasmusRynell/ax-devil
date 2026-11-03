@@ -221,8 +221,12 @@ impl<'a> Fields<'a> {
     }
 
     fn resolver(&mut self) -> Result<ResolverHandler, ManifestError> {
+        let id = self.id("id")?;
+        if id == "help" {
+            return Err(self.error("id", "'help' is taken by the command line's own help"));
+        }
         Ok(ResolverHandler {
-            id: self.id("id")?,
+            id,
             name: self.non_empty("name")?,
             description: self.non_empty("description")?,
             settings: self.form("settings", true)?,

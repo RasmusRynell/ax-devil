@@ -102,6 +102,14 @@ fn every_refusal_names_the_manifest_field() {
             "handlers[0].kind",
             Box::new(|m| m["handlers"][0]["kind"] = json!("encoder")),
         ),
+        (
+            "handlers[0].id",
+            Box::new(|m| {
+                m["handlers"] = json!([{
+                    "kind": "playlist_resolver", "id": "help", "name": "Help", "description": "Runs"
+                }]);
+            }),
+        ),
     ];
     for (field, edit) in cases {
         let (named, reason) = refused(edit);

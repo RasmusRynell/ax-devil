@@ -39,7 +39,7 @@ Decoder handler (`"kind": "decoder"`):
 | `default_basis` | no | One of `bases`, the one a lane starts with; default the first listed |
 | `options` | no | A list of fields, below, of kind `text`, `file` or `folder` only. Values are always text |
 
-Playlist resolver handler (`"kind": "playlist_resolver"`): `description` (one sentence, required) and `settings`, an
+Playlist resolver handler (`"kind": "playlist_resolver"`): an `id` other than `help`, `description` (one sentence, required) and `settings`, an
 optional list of fields, below. The settings become a form in the app and arguments of `ax-devil playlist ID`.
 
 A field is `{"key","label","kind","required","default","positional", ...}`. `key` is letters, digits, `_` or `-`,
@@ -128,7 +128,7 @@ which a form shows at that setting.
 The host fails the operation, naming the line, when a line is not valid JSON or has the wrong keys, a path is not
 absolute, an entry name repeats, or a slot or label repeats within an entry. Nothing is used unless the plugin then
 exits 0; a failed start, a nonzero exit or no output for `idle_timeout_s` fails with the reason and the end of stderr.
-A scan or resolve that prints more than 64 warnings, 50,000 choices or 50,000 entries is stopped and fails, naming the limit.
+A scan or resolve keeps the first 64 warnings and summarizes the rest in one; one that prints more than 50,000 choices or 50,000 entries is stopped and fails, naming the limit.
 A scan the user abandons kills the plugin.
 
 ## Scene

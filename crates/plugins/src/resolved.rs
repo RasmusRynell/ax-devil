@@ -16,7 +16,7 @@ use crate::{
     wire::{ErrorIn, WarningIn, cut, json_reason, load_warning},
 };
 
-/// The most warnings a scan or resolve may print; the bound the scene store keeps for a decode's warnings.
+/// The most warnings a scan or resolve keeps, as the scene store does for a decode; later ones are counted, not kept.
 const MAX_WARNINGS: usize = 64;
 /// The most choices a scan may print.
 const MAX_CHOICES: usize = 50_000;
@@ -118,6 +118,8 @@ pub(crate) struct Collected {
     entries: Vec<ResolvedEntry>,
     names: HashSet<String>,
     warnings: Vec<Warning>,
+    /// Warnings printed after `MAX_WARNINGS` were kept.
+    suppressed: usize,
 }
 
 impl Collected {
@@ -130,6 +132,7 @@ impl Collected {
             entries: Vec::new(),
             names: HashSet::new(),
             warnings: Vec::new(),
+            suppressed: 0,
         }
     }
 
@@ -138,7 +141,15 @@ impl Collected {
     }
 
     /// The playlist, named `fallback` when the plugin named none.
-    pub(crate) fn into_playlist(self, fallback: &str) -> ResolvedPlaylist {
+    pub(crate) fn into_playlist(mut self, fallback: &str) -> ResolvedPlaylist {
+        if self.suppressed > 0 {
+            self.warnings.push(Warning {
+                problem: format!("{} more warnings suppressed", self.suppressed),
+                reasons: Vec::new(),
+                consequence: "They are not listed.".to_owned(),
+                more_reasons: false,
+            });
+        }
         ResolvedPlaylist {
             display_name: self.name.unwrap_or_else(|| fallback.to_owned()),
             entries: self.entries,
@@ -159,8 +170,11 @@ impl Collected {
                 },
                 _,
             ) => {
-                check_room(self.warnings.len(), MAX_WARNINGS, "warnings")?;
-                self.warnings.push(load_warning(warning));
+                if self.warnings.len() < MAX_WARNINGS {
+                    self.warnings.push(load_warning(warning));
+                } else {
+                    self.suppressed += 1;
+                }
             }
             (
                 LineIn {
@@ -299,8 +313,8 @@ impl Collected {
     }
 }
 
-/// Fails, so the run stops, when `kept` lines of a kind already fill its `limit`: a plugin that never stops printing
-/// must not grow the host's memory without end.
+/// Fails, so the run stops, when `kept` choices or entries already fill their `limit`: a plugin that never stops
+/// printing must not grow the host's memory without end.
 fn check_room(kept: usize, limit: usize, what: &str) -> Result<(), String> {
     if kept >= limit {
         return Err(format!("more than {limit} {what}"));
@@ -347,15 +361,30 @@ mod tests {
     }
 
     #[test]
-    fn a_plugin_that_prints_without_end_is_stopped_naming_the_limit() {
+    fn warnings_past_the_cap_are_summarized_but_choices_and_entries_stop_the_run() {
         let warning = r#"{"warning": {"problem": "p", "consequence": "c"}}"#;
         let choice = r#"{"choice": {"value": "a"}}"#;
         let entry =
             |n: usize| format!(r#"{{"entry": {{"name": "e{n}", "video": {{"file": "/v.mp4"}}}}}}"#);
+        let mut collected = Collected::new(Op::Resolve);
+        for number in 1..=MAX_WARNINGS + 10 {
+            assert!(matches!(
+                collected.line(number, warning.as_bytes()),
+                Next::Continue
+            ));
+        }
+        assert!(matches!(
+            collected.line(MAX_WARNINGS + 11, entry(0).as_bytes()),
+            Next::Continue
+        ));
+        let playlist = collected.into_playlist("fallback");
+        assert_eq!(playlist.entries.len(), 1);
+        assert_eq!(playlist.warnings.len(), MAX_WARNINGS + 1);
         assert_eq!(
-            feed(Op::Scan, warning, MAX_WARNINGS).as_deref(),
-            Some("line 65: more than 64 warnings")
+            playlist.warnings[MAX_WARNINGS].problem,
+            "10 more warnings suppressed"
         );
+
         assert_eq!(
             feed(Op::Scan, choice, MAX_CHOICES).as_deref(),
             Some("line 50001: more than 50000 choices")
