@@ -234,6 +234,9 @@ impl Collected {
     }
 
     fn add_entry(&mut self, entry: EntryIn) -> Result<(), String> {
+        if entry.name.is_empty() {
+            return Err("the entry name is empty".to_owned());
+        }
         if !self.names.insert(entry.name.clone()) {
             return Err(format!("the entry name '{}' is used twice", entry.name));
         }

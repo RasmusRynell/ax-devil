@@ -239,7 +239,8 @@ fn resolver_command(resolver: &dyn PlaylistResolver, handlers: &Handlers) -> cla
 }
 
 fn field_arg(field: &Field, handlers: &Handlers) -> Arg {
-    let arg = Arg::new(field.key.clone()).required(field.required);
+    // A default stands in for an omitted flag, as in `Form::validate`.
+    let arg = Arg::new(field.key.clone()).required(field.required && field.default.is_none());
     let arg = match &field.cli {
         CliPlacement::Positional => arg,
         CliPlacement::Flag(name) => arg.long(name.clone()),

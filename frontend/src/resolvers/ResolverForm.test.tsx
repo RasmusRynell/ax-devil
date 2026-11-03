@@ -18,6 +18,7 @@ const MOT: ResolverInfo = {
       kind: { kind: "Scan", depends_on: ["root"] },
       required: false,
     },
+    { key: "stride", label: "Stride", kind: { kind: "Integer", min: 1n }, required: false },
   ],
 };
 const DECODERS: DecoderInfo[] = [
@@ -115,15 +116,16 @@ describe("resolver form", () => {
     render(<Harness />);
     expect(screen.getByRole("button", { name: "Scan" })).toHaveProperty("disabled", true);
     type("/data");
+    fireEvent.change(screen.getByLabelText("Stride"), { target: { value: "2" } });
     scan();
-    expect(scans[0].body).toEqual({ field: "sequences", settings: { root: "/data" } });
+    expect(scans[0].body).toEqual({ field: "sequences", settings: { root: "/data", stride: 2 } });
     expect(screen.getByRole("status").textContent).toBe("Scanning…");
     expect(settings()).toBeNull();
     await respond(scans, 0, "SEQ-01", "SEQ-02");
-    expect(settings()).toEqual({ root: "/data" });
+    expect(settings()).toEqual({ root: "/data", stride: 2 });
 
     fireEvent.click(screen.getByRole("checkbox", { name: /SEQ-02/ }));
-    expect(settings()).toEqual({ root: "/data", sequences: ["SEQ-01"] });
+    expect(settings()).toEqual({ root: "/data", stride: 2, sequences: ["SEQ-01"] });
     fireEvent.click(screen.getByRole("checkbox", { name: /SEQ-01/ }));
     expect(settings()).toBeNull();
   });

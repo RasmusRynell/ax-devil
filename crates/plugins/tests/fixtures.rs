@@ -329,6 +329,12 @@ fn a_resolve_that_breaks_the_rules_fails_naming_the_line_and_a_failing_plugin_le
         "{}",
         relative.reason
     );
+    let nameless = failure(&print(&[entry("", "/v/1.mp4")], 0));
+    assert!(
+        nameless.reason.starts_with("line 1:") && nameless.reason.contains("empty"),
+        "{}",
+        nameless.reason
+    );
     let halfway = failure(&print(&[entry("a", "/v/1.mp4")], 3));
     assert!(halfway.reason.contains("exit code 3"), "{}", halfway.reason);
 }

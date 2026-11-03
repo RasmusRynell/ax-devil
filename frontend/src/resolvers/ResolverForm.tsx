@@ -89,6 +89,27 @@ function reduce(state: State, action: Action): State {
   }
 }
 
+/** The text of a field as it is sent: a number for an `Integer` field, nothing while blank. */
+const typed = (field: FieldInfo, text: unknown) =>
+  blank(text) ? undefined : field.kind.kind === "Integer" ? Number(text) : text;
+
+/** What a scan sends: the settings typed so far, with the whole-number text of an `Integer` field as a number. */
+function scanInputs(resolver: ResolverInfo, values: Settings): Settings {
+  const inputs: Settings = { ...values };
+  for (const field of resolver.fields) {
+    if (
+      field.kind.kind === "Integer" &&
+      typeof values[field.key] === "string" &&
+      !misread(field, values)
+    ) {
+      const value = typed(field, values[field.key]);
+      if (value === undefined) delete inputs[field.key];
+      else inputs[field.key] = value;
+    }
+  }
+  return inputs;
+}
+
 /** What loading sends, or `null` while something is missing or misread: a required text without a default, a scan with a checked value, or an integer that is not a whole number. */
 function settingsOf(
   resolver: ResolverInfo,
@@ -96,9 +117,6 @@ function settingsOf(
   decoders: readonly DecoderInfo[],
 ): Settings | null {
   const settings: Settings = { ...state.values };
-  // The text of a field as it is sent: a number for an `Integer` field, nothing while blank.
-  const typed = (field: FieldInfo, text: unknown) =>
-    blank(text) ? undefined : field.kind.kind === "Integer" ? Number(text) : text;
   for (const field of resolver.fields) {
     if (field.kind.kind === "Scan") {
       const view = state.scans[field.key];
@@ -185,7 +203,7 @@ export function useResolverForm(
     const controller = new AbortController();
     controllers.current.set(key, controller);
     dispatch({ type: "scan", key, update: scanStarted });
-    scanChoices(resolver.id, key, values, controller.signal).then(
+    scanChoices(resolver.id, key, scanInputs(resolver, values), controller.signal).then(
       (answer) => {
         // A superseded or cancelled scan changes nothing.
         if (controller.signal.aborted) return;

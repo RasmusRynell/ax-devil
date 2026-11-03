@@ -376,6 +376,12 @@ impl<'a> Fields<'a> {
             }
         };
         let required = self.optional_bool("required")?;
+        if required && matches!(kind, FieldKind::Scan { .. }) {
+            return Err(self.error(
+                "required",
+                "is not allowed for a scan: its values are picked",
+            ));
+        }
         let default = match (self.map.remove("default"), &kind) {
             (None | Some(Value::Null), _) => None,
             (

@@ -15,7 +15,8 @@
       "description": "One entry per run folder",
       "settings": [
         { "key": "root", "label": "Runs folder", "kind": "folder", "required": true, "positional": true },
-        { "key": "runs", "label": "Runs", "kind": "scan", "depends_on": ["root"] }
+        { "key": "runs", "label": "Runs", "kind": "scan", "depends_on": ["root"] },
+        { "key": "depth", "label": "Folder depth", "kind": "integer", "min": 1, "required": true, "default": 1 }
       ]
     }
   ]
