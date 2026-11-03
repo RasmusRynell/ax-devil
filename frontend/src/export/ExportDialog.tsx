@@ -22,16 +22,19 @@ const QUALITIES: readonly (readonly [ExportQualityWire, string])[] = [
   ["small", "Small"],
 ];
 
+/** The dialog's title in every state. */
+const TITLE = "Export Video with Overlays";
+
 /** A whole number from its text; `null` for anything else. */
 const wholeNumber = (text: string): number | null =>
   /^\d+$/.test(text.trim()) ? Number(text) : null;
 
-/** The text of an export that finished or could not start: shown in place of the form. */
+/** The text of an export that finished or could not start: shown under the bar in place of the form. */
 function Outcome({ status }: { status: Exclude<ExportStatus, { phase: "idle" | "running" }> }) {
   if (status.phase === "failed")
     return (
       <div role="alert" className="flex flex-col gap-s">
-        <p className="m-0 break-words">{status.reason}</p>
+        <p className="m-0 break-words text-danger">{`Error: ${status.reason}`}</p>
         {status.location && (
           <p className="m-0 text-small break-all text-muted">{status.location}</p>
         )}
@@ -39,30 +42,26 @@ function Outcome({ status }: { status: Exclude<ExportStatus, { phase: "idle" | "
     );
   return (
     <p role="status" className="m-0 break-all">
-      {status.phase === "done" ? `Saved ${status.path}` : "Export cancelled"}
+      {status.phase === "done" ? `Done: ${status.path}` : "Cancelled"}
     </p>
   );
 }
 
-/** The running export's bar and count. */
-function Progress({ done, total }: { done: number; total: number }) {
+/** The export's bar, with the percent done centered on it. */
+function ProgressBar({ done, total }: { done: number; total: number }) {
+  const percent = total > 0 ? Math.floor((done / total) * 100) : 0;
   return (
-    <div role="status" className="flex flex-col gap-s">
-      <div
-        role="progressbar"
-        aria-label="Export progress"
-        aria-valuemin={0}
-        aria-valuemax={total}
-        aria-valuenow={done}
-        className="h-s w-full overflow-hidden rounded-control bg-hover"
-      >
-        <div
-          className="h-full bg-accent"
-          style={{ width: `${total > 0 ? (done / total) * 100 : 0}%` }}
-        />
-      </div>
-      <span className="tabular-nums">
-        {done} / {total}
+    <div
+      role="progressbar"
+      aria-label="Export progress"
+      aria-valuemin={0}
+      aria-valuemax={total}
+      aria-valuenow={done}
+      className="relative h-row w-full overflow-hidden rounded-control bg-line-strong"
+    >
+      <div className="h-full bg-accent" style={{ width: `${percent}%` }} />
+      <span className="absolute inset-0 flex items-center justify-center text-on-canvas tabular-nums">
+        {percent}%
       </span>
     </div>
   );
@@ -141,48 +140,58 @@ export function ExportDialog({
     if (status.phase === "running")
       return (
         <Dialog
-          title="Exporting…"
+          title={TITLE}
           okLabel="Export"
           onOk={() => undefined}
           onCancel={() => jobs.cancel()}
           busy
         >
-          <Progress done={status.done} total={status.total} />
+          <div className="flex flex-col gap-m">
+            <ProgressBar done={status.done} total={status.total} />
+            <span role="status" className="tabular-nums">
+              {status.done > 0 ? `Frame ${status.done} / ${status.total}` : "Exporting…"}
+            </span>
+          </div>
         </Dialog>
       );
     if (status.phase !== "idle")
       return (
-        <Dialog title="Export" okLabel="Close" onOk={close}>
-          <Outcome status={status} />
+        <Dialog title={TITLE} okLabel="Close" onOk={close}>
+          <div className="flex flex-col gap-m">
+            <ProgressBar done={status.done} total={status.total} />
+            <Outcome status={status} />
+          </div>
         </Dialog>
       );
     return (
       <Dialog
-        title="Export"
+        title={TITLE}
         okLabel="Export"
         onOk={() => void start()}
         onCancel={close}
         busy={!ready || choosing}
       >
-        <fieldset className="m-0 flex min-w-0 flex-col gap-s border-0 p-0">
-          <legend className="p-0">Lanes</legend>
-          {choices.map(({ lane, label, wire }) => (
-            <Checkbox
-              key={lane}
-              label={label}
-              checked={wire !== null && !unchecked.has(lane)}
-              disabled={wire === null}
-              onChange={(on) =>
-                setUnchecked((now) => {
-                  const next = new Set(now);
-                  if (on) next.delete(lane);
-                  else next.add(lane);
-                  return next;
-                })
-              }
-            />
-          ))}
-        </fieldset>
+        {choices.length > 1 && (
+          <fieldset className="m-0 flex min-w-0 flex-col gap-s border-0 p-0">
+            <legend className="p-0">Lanes</legend>
+            {choices.map(({ lane, label, wire }) => (
+              <Checkbox
+                key={lane}
+                label={label}
+                checked={wire !== null && !unchecked.has(lane)}
+                disabled={wire === null}
+                onChange={(on) =>
+                  setUnchecked((now) => {
+                    const next = new Set(now);
+                    if (on) next.delete(lane);
+                    else next.add(lane);
+                    return next;
+                  })
+                }
+              />
+            ))}
+          </fieldset>
+        )}
         <Select label="Format" value={kind} options={KINDS} onChange={setKind} />
         {kind === "mp4" && (
           <>

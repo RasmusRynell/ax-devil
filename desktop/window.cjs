@@ -145,7 +145,7 @@ function installIpc({ connect, disconnect }) {
     if (typeof name !== "string" || !EXPORT_EXTENSIONS.includes(extension))
       throw new Error("Expected a file name and an export extension");
     const chosen = await dialog.showSaveDialog(window, {
-      title: "Export",
+      title: "Export Video",
       defaultPath: path.basename(name),
       filters: [{ name: extension.toUpperCase(), extensions: [extension] }],
     });
