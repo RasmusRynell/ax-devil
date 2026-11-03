@@ -239,8 +239,12 @@ fn resolver_command(resolver: &dyn PlaylistResolver, handlers: &Handlers) -> cla
 }
 
 fn field_arg(field: &Field, handlers: &Handlers) -> Arg {
-    // A default stands in for an omitted flag, as in `Form::validate`.
-    let arg = Arg::new(field.key.clone()).required(field.required && field.default.is_none());
+    // A default stands in for an omitted flag, as in `Form::validate`. Decoder options are never required here: a
+    // decoder without options has none to give, and `settings_from` sends an empty map for them.
+    let flag_required = field.required
+        && field.default.is_none()
+        && !matches!(field.kind, FieldKind::DecoderOptions { .. });
+    let arg = Arg::new(field.key.clone()).required(flag_required);
     let arg = match &field.cli {
         CliPlacement::Positional => arg,
         CliPlacement::Flag(name) => arg.long(name.clone()),
@@ -304,7 +308,8 @@ fn playlist_command_of(handlers: &Handlers, matches: &ArgMatches) -> Result<Comm
 }
 
 /// The settings the arguments gave: folders and files made absolute, a `Scan` field a list when given and left out
-/// when not (which means all of them), and decoder options typed by the chosen decoder.
+/// when not (which means all of them), and decoder options typed by the chosen decoder (an empty map when a required
+/// setting is given none).
 fn settings_from(
     handlers: &Handlers,
     resolver: &dyn PlaylistResolver,
@@ -332,7 +337,7 @@ fn settings_from(
                 let given = matches.get_many::<OverlayOption>(key).into_iter().flatten();
                 let options = typed_options(decoder, given)
                     .map_err(|error| usage_error(ErrorKind::InvalidValue, describe(&error)))?;
-                (!options.is_empty()).then_some(Value::Object(options))
+                (field.required || !options.is_empty()).then_some(Value::Object(options))
             }
             FieldKind::Text | FieldKind::Handler => {
                 matches.get_one::<String>(key).cloned().map(Value::String)
