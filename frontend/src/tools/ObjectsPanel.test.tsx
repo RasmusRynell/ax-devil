@@ -245,16 +245,27 @@ describe("File scope", () => {
 });
 
 describe("Copying", () => {
-  it("copies a row's whole text on Ctrl+C", () => {
-    const writeText = vi.fn();
+  const copyRow = async (writeText: () => Promise<void>) => {
     vi.stubGlobal("navigator", { clipboard: { writeText } });
     mount();
     fireEvent.keyDown(screen.getByRole("listbox", { name: "Objects" }), {
       key: "c",
       ctrlKey: true,
     });
+    await act(async () => {});
+  };
+
+  it("copies a row's whole text on Ctrl+C and confirms once the clipboard has it", async () => {
+    const writeText = vi.fn(() => Promise.resolve());
+    await copyRow(writeText);
     // The best-scored object, every column, hidden ones too.
     expect(writeText).toHaveBeenCalledWith("12\thuman\t0.9\t0.5\tmoving");
+    expect(screen.getByText("Copied")).toBeTruthy();
+  });
+
+  it("confirms nothing where the clipboard refuses", async () => {
+    await copyRow(() => Promise.reject(new Error("insecure origin")));
+    expect(screen.queryByText("Copied")).toBeNull();
   });
 });
 

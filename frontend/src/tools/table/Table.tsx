@@ -15,6 +15,7 @@ import { ContextMenu } from "../../kit/ContextMenu";
 import { Icon } from "../../kit/Icon";
 import type { MenuEntry } from "../../kit/Menu";
 import { useRowWindow } from "../../shell/useRowWindow";
+import { writeClipboard } from "./clipboard";
 import { KINDS, rowText, type Column, type SortOf } from "./columns";
 import { useColumns } from "./useColumns";
 
@@ -192,18 +193,21 @@ export function Table<Row>({
     const timer = setTimeout(() => setCopied(null), COPIED_MS);
     return () => clearTimeout(timer);
   }, [copied]);
-  const copy = (index: number) => {
+  /** Copies the row at `index`'s text, `text` when it was taken earlier; the check shows once the clipboard has it. */
+  const copy = async (index: number, text?: string) => {
     const row = rowAt(index);
-    if (row === undefined) return;
-    void navigator.clipboard?.writeText(rowText(columns, row));
-    setCopied(index);
+    const copying = text ?? (row === undefined ? undefined : rowText(columns, row));
+    if (copying !== undefined && (await writeClipboard(copying))) setCopied(index);
   };
-  // The row a context menu was opened on; a right click off the rows leaves the browser's own menu.
-  const [menuRow, setMenuRow] = useState(0);
+  // The row a context menu was opened on, as it was then: rows move while a video plays. A right click off the rows
+  // leaves the browser's own menu.
+  const [menuRow, setMenuRow] = useState<{ index: number; text: string } | null>(null);
   const onContextMenu = (event: MouseEvent) => {
     const row = (event.target as Element).closest('[role="option"]');
-    if (row) setMenuRow(Number(row.getAttribute("aria-posinset")) - 1);
-    else event.stopPropagation();
+    const index = row ? Number(row.getAttribute("aria-posinset")) - 1 : -1;
+    const found = index < 0 ? undefined : rowAt(index);
+    if (found === undefined) event.stopPropagation();
+    else setMenuRow({ index, text: rowText(columns, found) });
   };
   const onKeyDown = (event: KeyboardEvent) => {
     const page = end - start;
@@ -216,7 +220,7 @@ export function Table<Row>({
       End: () => go(count - 1),
       Enter: () => pick(at),
     };
-    if (event.key === "c" && (event.ctrlKey || event.metaKey)) return copy(at);
+    if (event.key === "c" && (event.ctrlKey || event.metaKey)) return void copy(at);
     keys[event.key === " " ? "Enter" : event.key]?.();
     if (event.key in keys || event.key === " ") event.preventDefault();
   };
@@ -273,7 +277,10 @@ export function Table<Row>({
         className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto [scrollbar-gutter:stable]"
       >
         {message ?? (
-          <ContextMenu entries={MENU} onSelect={() => copy(menuRow)}>
+          <ContextMenu
+            entries={MENU}
+            onSelect={() => menuRow && void copy(menuRow.index, menuRow.text)}
+          >
             <div
               role="listbox"
               aria-label={label}

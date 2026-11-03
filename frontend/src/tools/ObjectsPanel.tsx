@@ -27,7 +27,6 @@ import {
   type SortKey,
 } from "./objects";
 import { PanelDivider } from "./PanelDivider";
-import { VIDEO_LEAST } from "./panelWidth";
 import { SearchBar } from "./SearchBar";
 import { nextSort, type Column } from "./table/columns";
 import { Table } from "./table/Table";
@@ -373,17 +372,13 @@ export function ObjectsPanel({
   return (
     <aside
       aria-label="Media tools"
-      style={
-        live === null
-          ? undefined
-          : ({ "--panel-width": `min(${live}px, 100% - ${VIDEO_LEAST}px)` } as CSSProperties)
-      }
+      style={live === null ? undefined : ({ "--panel-width": `${live}px` } as CSSProperties)}
       onKeyDown={(event) => {
         if (!event.ctrlKey && !event.altKey && !event.metaKey && event.key !== "Escape")
           event.stopPropagation();
       }}
       onKeyUp={(event) => event.stopPropagation()}
-      className="absolute inset-0 z-10 flex flex-col bg-panel text-fg @min-[72ch]:relative @min-[72ch]:w-[var(--panel-width,min(calc(var(--spacing-sidebar)*1.25),60%))] @min-[72ch]:min-w-sidebar @min-[72ch]:shrink-0 @min-[72ch]:border-l @min-[72ch]:border-line"
+      className="absolute inset-0 z-10 flex flex-col bg-panel text-fg @min-[72ch]:relative @min-[72ch]:w-[var(--panel-width,min(calc(var(--spacing-sidebar)*1.25),60%))] @min-[72ch]:min-w-sidebar @min-[72ch]:border-l @min-[72ch]:border-line"
     >
       <PanelDivider
         onResize={(next, final) => {

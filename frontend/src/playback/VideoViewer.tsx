@@ -11,6 +11,7 @@ import { useChromeVisibility } from "./chromeVisibility";
 import { LaneGrid } from "./LaneGrid";
 import { Popover } from "../kit/Popover";
 import { ObjectsPanel } from "../tools/ObjectsPanel";
+import { VIDEO_LEAST } from "../tools/panelWidth";
 import type { LaneSettings, Viewport } from "./contract";
 import { FRESH_MEMORY, type InspectorMemory } from "./fields";
 import { Inspector } from "./Inspector";
@@ -161,7 +162,12 @@ function Playback({
     >
       {view.status === "ready" ? (
         <div className="flex min-h-0 flex-1">
-          <div data-chrome-idle="" className="relative min-h-0 min-w-0 flex-1">
+          <div
+            data-chrome-idle=""
+            // The columns beside the video give way before it gets narrower than this.
+            style={{ minWidth: tools ? VIDEO_LEAST : 0 }}
+            className="relative min-h-0 flex-1"
+          >
             <LaneGrid
               session={session}
               view={view}
