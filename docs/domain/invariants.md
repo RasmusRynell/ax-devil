@@ -118,8 +118,7 @@ implementing module closes.
 - The Doc holds the current Workspace, each item's resolution, Hidden refs and open items, and changes only by a
   command applied under its Session's lock; a refused command changes nothing, and each change reaches every seat as
   one new Doc. "Modified" is current ≠ saved. One projection turns the resolved Content and the open items into rows.
-- Playlists of an item that repeat a name, and entries of a playlist that do, are numbered ` (2)`, ` (3)`, so each keeps
-  an id and a bookmark target of its own.
+- Playlists of an item that repeat a name, and entries of a playlist that do, are numbered ` (2)`, ` (3)`.
 - Hidden refs identify current Workspace content, playlist entries or lanes; orphan and out-of-range refs are ignored.
 - A lane's matching (basis, tolerance, sticky) lives in its item's recipe, by the lane's slot (the same in every entry
   of an item's playlists, where lane names can differ), and changes only by a Doc command.
