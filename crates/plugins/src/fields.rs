@@ -7,11 +7,16 @@ use handler_api::{Field, FieldKind, Form};
 use scene::{MatchBasis, SCENE_VERSION, SceneVersion};
 use serde_json::{Map, Value};
 
-use crate::manifest::{DecoderHandler, Handler, ManifestError, ResolverHandler, valid_id};
+use crate::manifest::{
+    DecoderHandler, Handler, ManifestError, ResolverHandler, SkippedHandler, valid_id,
+};
 
 /// The flag names (`_` written as `-`) that every `ax-devil` command line already takes, so no resolver setting may
 /// be named one: clap refuses an argument that repeats them. A test of the real command keeps this in step.
 pub const RESERVED_SETTING_KEYS: [&str; 4] = ["help", "config", "cache-dir", "log-level"];
+
+/// Why a handler of an unknown kind is not used.
+const NEWER: &str = "needs a newer ax-devil";
 
 /// One JSON object being read; `prefix` is the path to it, ending in `.` unless it is the manifest itself.
 pub(crate) struct Fields<'a> {
@@ -153,8 +158,11 @@ impl<'a> Fields<'a> {
         Ok(extensions)
     }
 
-    /// The `handlers` list: at least one, with ids that differ.
-    pub(crate) fn handlers(&mut self) -> Result<Vec<Handler>, ManifestError> {
+    /// The `handlers` list: at least one, with ids that differ. A handler of a kind this build does not know is set
+    /// aside unread, since its fields are not ours to judge; the plugin fails only if none is left.
+    pub(crate) fn handlers(
+        &mut self,
+    ) -> Result<(Vec<Handler>, Vec<SkippedHandler>), ManifestError> {
         let Value::Array(items) = self.take("handlers")? else {
             return Err(self.error("handlers", "must be a list"));
         };
@@ -163,6 +171,7 @@ impl<'a> Fields<'a> {
         }
         let mut seen = HashSet::new();
         let mut handlers = Vec::with_capacity(items.len());
+        let mut skipped = Vec::new();
         for (index, item) in items.into_iter().enumerate() {
             let at = self.path(&format!("handlers[{index}]"));
             let Value::Object(mut map) = item else {
@@ -173,12 +182,16 @@ impl<'a> Fields<'a> {
                 "decoder" => Handler::Decoder(read.decoder()?),
                 "playlist_resolver" => Handler::PlaylistResolver(read.resolver()?),
                 other => {
-                    return Err(read.error(
-                        "kind",
-                        format!(
-                            "'{other}' is not a handler kind this ax-devil reads (decoder, playlist_resolver)"
-                        ),
-                    ));
+                    skipped.push(SkippedHandler {
+                        kind: other.to_owned(),
+                        id: read
+                            .map
+                            .get("id")
+                            .and_then(Value::as_str)
+                            .map(str::to_owned),
+                        reason: NEWER.to_owned(),
+                    });
+                    continue;
                 }
             };
             read.finish()?;
@@ -190,7 +203,10 @@ impl<'a> Fields<'a> {
             }
             handlers.push(handler);
         }
-        Ok(handlers)
+        if handlers.is_empty() {
+            return Err(self.error("handlers", NEWER));
+        }
+        Ok((handlers, skipped))
     }
 
     fn decoder(&mut self) -> Result<DecoderHandler, ManifestError> {

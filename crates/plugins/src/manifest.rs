@@ -84,11 +84,24 @@ pub struct Manifest {
     pub idle_timeout: Duration,
     /// What the plugin provides, in the order it lists them.
     pub handlers: Vec<Handler>,
+    /// The handlers of a kind this build does not know, which take no id.
+    pub skipped: Vec<SkippedHandler>,
     /// The manifest file.
     pub path: PathBuf,
     /// SHA-256 of the manifest text this was read from, so the code identity names the manifest that runs even if the
     /// file is edited afterwards.
     pub(crate) digest: [u8; 32],
+}
+
+/// A handler the manifest lists that this build cannot use: its kind is unknown, so nothing else of it is read.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct SkippedHandler {
+    /// The `kind` the manifest gives.
+    pub kind: String,
+    /// The handler's `id` when it has one that is text.
+    pub id: Option<String>,
+    /// Why it is not used.
+    pub reason: String,
 }
 
 /// One thing a plugin provides. A new kind of handler is a variant here and a `kind` value on the wire.
@@ -232,7 +245,7 @@ impl Manifest {
                 ));
             }
         });
-        let handlers = read.handlers()?;
+        let (handlers, skipped) = read.handlers()?;
         Ok(Self {
             id,
             name,
@@ -242,6 +255,7 @@ impl Manifest {
             code,
             idle_timeout,
             handlers,
+            skipped,
             path: path.to_path_buf(),
             digest,
         })

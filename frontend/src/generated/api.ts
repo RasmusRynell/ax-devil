@@ -1075,7 +1075,11 @@ version: string,
 /**
  * What it provides, in the order it lists them.
  */
-handlers: Array<HandlerSummary>, } | { "state": "failed", 
+handlers: Array<HandlerSummary>, 
+/**
+ * The handlers it lists that this build cannot run, such as a kind added by a newer ax-devil.
+ */
+skipped: Array<SkippedHandlerInfo>, } | { "state": "failed", 
 /**
  * What is wrong, naming the manifest field when there is one.
  */
@@ -1101,6 +1105,23 @@ name: string,
  * The file extensions a decoder reads, lowercase with the dot; empty for the other kinds.
  */
 extensions: Array<string>, };
+
+/**
+ * A handler of a plugin that is listed but not used.
+ */
+export type SkippedHandlerInfo = { 
+/**
+ * The kind the manifest gives.
+ */
+kind: string, 
+/**
+ * The handler id, when the manifest gives one.
+ */
+id?: string, 
+/**
+ * Why it is not used.
+ */
+reason: string, };
 
 /**
  * What a handler does.

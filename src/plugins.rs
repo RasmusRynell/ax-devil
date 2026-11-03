@@ -3,6 +3,7 @@
 
 use api_types::handlers::{
     HandlerKind, HandlerSummary, PluginInfo, PluginSource, PluginStatus, PluginsInfo,
+    SkippedHandlerInfo,
 };
 use foundation::{ErrorCode, UserError};
 use handler_api::{Decoder, PlaylistResolver};
@@ -374,6 +375,7 @@ fn built_in_info(built_in: &Handlers) -> Vec<PluginInfo> {
                 id,
                 version: env!("CARGO_PKG_VERSION").to_owned(),
                 handlers,
+                skipped: Vec::new(),
             },
         })
         .collect()
@@ -413,6 +415,15 @@ fn installed_info(loaded: &Loaded) -> Vec<PluginInfo> {
                                 )
                             }))
                             .collect(),
+                        skipped: plugin
+                            .skipped
+                            .iter()
+                            .map(|handler| SkippedHandlerInfo {
+                                kind: handler.kind.clone(),
+                                id: handler.id.clone(),
+                                reason: handler.reason.clone(),
+                            })
+                            .collect(),
                     }
                 }
                 Err(error) => PluginStatus::Failed {
@@ -442,6 +453,32 @@ fn log_new_problems(before: &PluginsInfo, info: &PluginsInfo) {
     for (manifest, reason) in failures(info).filter(|failure| !known.contains(failure)) {
         tracing::warn!("plugin {manifest} not loaded: {reason}");
     }
+    let known: Vec<_> = skips(before).collect();
+    for (manifest, handler) in skips(info).filter(|skip| !known.contains(skip)) {
+        let id = handler.id.as_deref().unwrap_or("without an id");
+        tracing::warn!(
+            "plugin {manifest}: handler {} ({id}) skipped: {}",
+            handler.kind,
+            handler.reason
+        );
+    }
+}
+
+/// The handlers of installed plugins that are listed but not used, with their plugin's manifest.
+fn skips(info: &PluginsInfo) -> impl Iterator<Item = (&str, &SkippedHandlerInfo)> {
+    info.plugins
+        .iter()
+        .filter_map(|plugin| match (&plugin.source, &plugin.status) {
+            (PluginSource::Installed { manifest, .. }, PluginStatus::Loaded { skipped, .. }) => {
+                Some(
+                    skipped
+                        .iter()
+                        .map(move |handler| (manifest.as_str(), handler)),
+                )
+            }
+            _ => None,
+        })
+        .flatten()
 }
 
 /// The installed plugins that did not load, as manifest and reason.

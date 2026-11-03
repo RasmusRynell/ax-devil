@@ -99,8 +99,19 @@ fn every_refusal_names_the_manifest_field() {
             Box::new(|m| m["handlers"][0]["options"][0]["kind"] = json!("slider")),
         ),
         (
-            "handlers[0].kind",
+            "handlers",
             Box::new(|m| m["handlers"][0]["kind"] = json!("encoder")),
+        ),
+        (
+            "handlers[0].kind",
+            Box::new(|m| {
+                drop(
+                    m["handlers"][0]
+                        .as_object_mut()
+                        .expect("object")
+                        .remove("kind"),
+                )
+            }),
         ),
         (
             "handlers[0].id",
@@ -341,7 +352,7 @@ fn a_broken_registry_or_plugin_loads_the_rest_and_is_listed() {
 }
 
 #[test]
-fn a_plugin_provides_decoders_and_resolvers_and_refuses_a_handler_id_twice_across_kinds() {
+fn a_plugin_provides_decoders_and_resolvers_skips_unknown_kinds_and_refuses_a_handler_id_twice() {
     let folder = tempfile::tempdir().expect("folder");
     let mut manifest = base();
     let second = json!({
@@ -354,6 +365,9 @@ fn a_plugin_provides_decoders_and_resolvers_and_refuses_a_handler_id_twice_acros
     let handlers = manifest["handlers"].as_array_mut().expect("list");
     handlers.push(second);
     handlers.push(runs.clone());
+    // A kind this build does not know is set aside unread, takes no id, and leaves the rest working.
+    handlers.push(json!({ "kind": "encoder", "id": "acme", "future": [1] }));
+    handlers.push(json!({ "kind": "encoder" }));
     let plugin = LoadedPlugin::load(&install(folder.path(), &manifest)).expect("three handlers");
     let ids: Vec<&str> = plugin
         .decoders
@@ -362,6 +376,13 @@ fn a_plugin_provides_decoders_and_resolvers_and_refuses_a_handler_id_twice_acros
         .collect();
     assert_eq!(ids, ["acme", "acme_times"]);
     assert_eq!(plugin.resolvers[0].spec().id, "acme_runs");
+    let skipped: Vec<_> = plugin
+        .skipped
+        .iter()
+        .map(|handler| (handler.kind.as_str(), handler.id.as_deref()))
+        .collect();
+    assert_eq!(skipped, [("encoder", Some("acme")), ("encoder", None)]);
+    assert!(plugin.skipped[0].reason.contains("newer ax-devil"));
     assert_eq!(plugin.resolvers[0].spec().plugin, "acme");
     assert!(Arc::ptr_eq(
         plugin.decoders[0].program(),

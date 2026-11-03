@@ -74,6 +74,9 @@ pub enum PluginStatus {
         version: String,
         /// What it provides, in the order it lists them.
         handlers: Vec<HandlerSummary>,
+        /// The handlers it lists that this build cannot run, such as a kind added by a newer ax-devil.
+        #[serde(default)]
+        skipped: Vec<SkippedHandlerInfo>,
     },
     /// It provides none.
     Failed {
@@ -93,6 +96,19 @@ pub struct HandlerSummary {
     pub name: String,
     /// The file extensions a decoder reads, lowercase with the dot; empty for the other kinds.
     pub extensions: Vec<String>,
+}
+
+/// A handler of a plugin that is listed but not used.
+#[derive(Clone, PartialEq, Serialize, Deserialize, TS)]
+pub struct SkippedHandlerInfo {
+    /// The kind the manifest gives.
+    pub kind: String,
+    /// The handler id, when the manifest gives one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub id: Option<String>,
+    /// Why it is not used.
+    pub reason: String,
 }
 
 /// What a handler does.

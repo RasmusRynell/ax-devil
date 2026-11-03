@@ -26,7 +26,8 @@ field by its path, such as `handlers[1].options[0].kind`.
 
 Every handler has `kind` and `id` (same characters as the plugin id; it may equal the plugin's own id, and must
 differ from every other handler id, built-in or installed, of any kind; `--handler-type` takes it) and `name`. A
-`kind` this ax-devil does not know refuses the plugin.
+`kind` this ax-devil does not know is skipped, unread and without an id, and listed under the plugin as needing
+a newer ax-devil; the plugin's other handlers work, and a plugin left with none fails.
 
 Decoder handler (`"kind": "decoder"`):
 

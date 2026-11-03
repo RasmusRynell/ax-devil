@@ -90,6 +90,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         PluginSource,
         PluginStatus,
         HandlerSummary,
+        SkippedHandlerInfo,
         HandlerKind,
         ResolverInfo,
         FieldInfo,

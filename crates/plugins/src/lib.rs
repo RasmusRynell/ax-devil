@@ -36,6 +36,7 @@ pub use decoder::PluginDecoder;
 pub use fields::RESERVED_SETTING_KEYS;
 pub use manifest::{
     DecoderHandler, Handler, MANIFEST_FILE, Manifest, ManifestError, ResolverHandler,
+    SkippedHandler,
 };
 pub use program::Program;
 pub use registry::{Registry, RegistryError};
@@ -53,6 +54,8 @@ pub struct LoadedPlugin {
     pub decoders: Vec<Arc<PluginDecoder>>,
     /// Its playlist resolvers, in manifest order.
     pub resolvers: Vec<Arc<PluginResolver>>,
+    /// The handlers it lists that this build does not know how to run.
+    pub skipped: Vec<SkippedHandler>,
 }
 
 impl LoadedPlugin {
@@ -80,6 +83,7 @@ impl LoadedPlugin {
             }
         }
         Self {
+            skipped: manifest.skipped.clone(),
             manifest,
             decoders,
             resolvers,

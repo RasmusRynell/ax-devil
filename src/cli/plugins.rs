@@ -166,13 +166,22 @@ fn list(loaded: &PluginsInfo, json: bool) -> Report {
                 id,
                 version,
                 handlers,
+                skipped,
                 ..
             } => {
                 let extensions: Vec<_> = handlers
                     .iter()
                     .flat_map(|handler| handler.extensions.iter().map(String::as_str))
                     .collect();
-                format!("{id}  {version}  {}  {folder}", extensions.join(", "))
+                let mut line = format!("{id}  {version}  {}  {folder}", extensions.join(", "));
+                for handler in skipped {
+                    let id = handler.id.as_deref().unwrap_or("-");
+                    line.push_str(&format!(
+                        "\n  skipped  {}  {id}  {}",
+                        handler.kind, handler.reason
+                    ));
+                }
+                line
             }
             PluginStatus::Failed { reason } => format!("not loaded  {manifest}  {reason}"),
         };
