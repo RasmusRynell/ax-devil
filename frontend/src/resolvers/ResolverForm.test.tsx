@@ -154,8 +154,9 @@ describe("resolver form", () => {
 
     fireEvent.click(screen.getByRole("checkbox", { name: /SEQ-02/ }));
     expect(settings()).toEqual({ root: "/data", stride: 2, sequences: ["SEQ-01"] });
+    // Nothing checked still loads; the dialog says why it does not go on.
     fireEvent.click(screen.getByRole("checkbox", { name: /SEQ-01/ }));
-    expect(settings()).toBeNull();
+    expect(settings()).toEqual({ root: "/data", stride: 2, sequences: [] });
   });
 
   it("empties the list when the root is edited, and stops the scan it started", async () => {
@@ -255,6 +256,11 @@ describe("resolver form", () => {
 
   it("starts a required field at its default, shows it while blank, and refuses an integer that is no whole number", () => {
     render(<Harness resolver={PAIR} />);
+    // A decoder is never chosen for the user.
+    expect((screen.getByLabelText("Format") as HTMLSelectElement).value).toBe("");
+    expect(screen.queryByLabelText("Image width")).toBeNull();
+    expect(settings()).toBeNull();
+    fireEvent.change(screen.getByLabelText("Format"), { target: { value: "MOT_FILE" } });
     const width = screen.getByLabelText("Image width") as HTMLInputElement;
     expect(width.value).toBe("1920");
     expect((screen.getByLabelText("Scale") as HTMLInputElement).value).toBe("1");
@@ -275,6 +281,7 @@ describe("resolver form", () => {
   it("scans with the values resolution would use: defaults, integers and decoder option maps", () => {
     const scans = stubScans();
     render(<Harness resolver={DEPTH} />);
+    fireEvent.change(screen.getByLabelText("Format"), { target: { value: "MOT_FILE" } });
     expect(screen.getByRole("button", { name: "Scan" })).toHaveProperty("disabled", false);
     fireEvent.change(screen.getByLabelText("Image width"), { target: { value: "640" } });
     scan();

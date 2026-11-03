@@ -28,8 +28,12 @@ describe("scan selection", () => {
     expect(chosen(view)).toEqual(["b", "gone"]);
     // A saved list stays a list, even when it names everything.
     expect(chosen(scanFinished(idleScan(["a", "b"]), found("a", "b")))).toEqual(["a", "b"]);
-    // The selection survives the list being emptied by a change of the root.
-    expect(selectedOf(scanInvalidated(view))).toEqual(["b", "gone"]);
+  });
+
+  it("forgets the saved selection when the root changes, so the next scan checks everything", () => {
+    const view = scanInvalidated(scanFinished(idleScan(["b", "gone"]), found("a", "b")));
+    expect(selectedOf(view)).toEqual([]);
+    expect(selectedOf(scanFinished(view, found("a", "c")))).toEqual(["a", "c"]);
   });
 
   it("checks everything, or unchecks it when it was all checked", () => {
