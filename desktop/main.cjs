@@ -164,7 +164,10 @@ async function showLocal(replace) {
     saved,
     screen.getAllDisplays().map((display) => display.workArea),
   );
-  const window = adopt(await openWindow(origin, { fatal: fail, bounds }), replace);
+  const window = adopt(
+    await openWindow(origin, { fatal: fail, bounds, restartable: backend.owned() }),
+    replace,
+  );
   if (first) {
     remembered = true;
     if (saved?.maximized) window.maximize();

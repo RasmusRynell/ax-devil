@@ -129,6 +129,8 @@ function createBackend({ port, devUrl, executable, args = [], onUnexpectedExit, 
   }
 
   return {
+    /** Whether this module started the backend, which a restart of the app then restarts; false for a reused one. */
+    owned: () => child !== undefined,
     /** The local backend's origin, starting or reusing it on first use. */
     ensure() {
       origin ??= start().catch((error) => {

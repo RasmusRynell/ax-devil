@@ -65,15 +65,22 @@ describe("quick setup dialog", () => {
     });
   });
 
-  it("says why a refused write was refused and closes", async () => {
+  it("says why a refused write was refused, closes, and takes the preview back", async () => {
     const save = vi.fn(async () => ({ reason: "disk full", location: "" }));
     const onClose = vi.fn();
     const onNotice = vi.fn();
+    // What the provider shows for the stored settings.
+    document.documentElement.dataset.theme = String(firstRun.values["ui.theme"]);
+    document.documentElement.dataset.textSize = String(firstRun.values["ui.text_size"]);
     open(firstRun, save, { onClose, onNotice });
     pick("Theme", "Light");
+    pick("Text size", "Larger");
+    expect(document.documentElement.dataset.theme).toBe("light");
     fireEvent.click(screen.getByRole("button", { name: "Done" }));
     await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
     expect(onNotice).toHaveBeenCalledWith("Could not save these choices: disk full");
+    expect(document.documentElement.dataset.theme).toBe(firstRun.values["ui.theme"]);
+    expect(document.documentElement.dataset.textSize).toBe(firstRun.values["ui.text_size"]);
   });
 
   it("takes one write at a time: a second Done or Escape while one is pending is not sent", async () => {

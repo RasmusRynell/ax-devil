@@ -23,16 +23,27 @@ const ZOOM_STEPS = { "=": 0.5, "+": 0.5, "-": -0.5, 0: null };
 // The project link the About dialog offers (the page and this constant must agree).
 const PROJECT_LINK = "https://github.com/rasmusrynell/ax-devil";
 
+// Tells the preload that the page may offer to restart the app.
+const RESTARTABLE_ARGUMENT = "--ax-devil-restartable";
+
 // Window contents -> { origin, remote }; `remote` is a page served by another machine's backend.
 const trusted = new WeakMap();
 
 /**
  * Opens a window on `origin` and resolves once its page has loaded; `url` (default: the origin) is what it loads.
- * `bounds` is its position and size (default: the standard size). A failed load destroys the window and rejects.
+ * `bounds` is its position and size (default: the standard size). `restartable` is whether the page may offer to
+ * restart the app, which only helps when the app started the backend the page shows. A failed load destroys the window
+ * and rejects.
  */
 async function openWindow(
   origin,
-  { url = origin, remote = false, fatal, bounds = windowBounds(undefined, []) },
+  {
+    url = origin,
+    remote = false,
+    restartable = false,
+    fatal,
+    bounds = windowBounds(undefined, []),
+  },
 ) {
   const window = new BrowserWindow({
     title: "ax-devil",
@@ -51,6 +62,7 @@ async function openWindow(
       // Smoke test windows overlap, and an overlapped page must keep drawing (see main.cjs).
       backgroundThrottling: !process.argv.includes("--smoke-test"),
       preload: path.join(__dirname, "preload.cjs"),
+      additionalArguments: restartable ? [RESTARTABLE_ARGUMENT] : [],
     },
   });
   const contents = window.webContents;

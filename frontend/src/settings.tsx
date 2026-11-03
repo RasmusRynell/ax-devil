@@ -109,14 +109,15 @@ const refusalOf = (error: unknown): ApiError =>
     ? (error as ApiError)
     : { reason: error instanceof Error ? error.message : String(error), location: "" };
 
-/** Applies the theme and text size to the document root; tokens.css selects the colours and the body size from them. */
+/** Puts the theme and text size on the document root; tokens.css selects the colours and the body size from them. */
+export function applyAppearance(theme: string, textSize: string) {
+  document.documentElement.dataset.theme = theme;
+  document.documentElement.dataset.textSize = textSize;
+}
+
+/** Applies the theme and text size to the document root whenever they change. */
 export function useAppearance(theme: string, textSize: string) {
-  useLayoutEffect(() => {
-    document.documentElement.dataset.theme = theme;
-  }, [theme]);
-  useLayoutEffect(() => {
-    document.documentElement.dataset.textSize = textSize;
-  }, [textSize]);
+  useLayoutEffect(() => applyAppearance(theme, textSize), [theme, textSize]);
 }
 
 /**

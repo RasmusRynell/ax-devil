@@ -4,7 +4,7 @@ import { SETTINGS, type SettingKey } from "../generated/settings";
 import { SegmentedControl, TileChoice } from "../kit/Chips";
 import { Dialog } from "../kit/Dialog";
 import { SectionCaption } from "../kit/SectionCaption";
-import { useAppearance, useSettings } from "../settings";
+import { applyAppearance, useAppearance, useSettings } from "../settings";
 import type { Row } from "./SettingField";
 import { useSaveDialog } from "./useSaveDialog";
 
@@ -97,7 +97,7 @@ const PREVIEWS: Partial<Record<SettingKey, (value: string) => ReactNode>> = {
 /**
  * The first-run choices, built from the settings table. Theme and text size apply as they are picked; Done, or any
  * other way of closing, stores the choices and marks Quick Setup done so it is not offered again. A refused write
- * closes the dialog and goes to `onNotice`, without marking it done.
+ * restores the stored theme and text size, closes the dialog and goes to `onNotice`, without marking it done.
  */
 export function QuickSetupDialog({
   onClose,
@@ -119,6 +119,8 @@ export function QuickSetupDialog({
     if (!changed) return onClose();
     const outcome = await submit({ values: { ...draft, "ui.quick_setup_done": true }, shortcuts });
     if (outcome.kind === "refused") {
+      // The preview showed choices that were not stored, so the app goes back to the stored ones.
+      applyAppearance(String(values["ui.theme"]), String(values["ui.text_size"]));
       onNotice(`Could not save these choices: ${outcome.refusal.reason}`);
       onClose();
     }

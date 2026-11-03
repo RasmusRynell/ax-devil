@@ -294,19 +294,19 @@ export function Shell({ version }: { version: string }) {
           <ChoiceDialog
             title="Restart ax-devil?"
             message="Some changes take effect after a restart."
-            // Only the desktop's own backend can be restarted from here.
+            // Only a backend the desktop started itself is restarted with it.
             choices={
-              bridge
+              bridge?.restart
                 ? [
                     { id: "now", label: "Restart Now" },
                     { id: "later", label: "Later" },
                   ]
                 : [{ id: "later", label: "OK" }]
             }
-            defaultId={bridge ? "now" : "later"}
+            defaultId={bridge?.restart ? "now" : "later"}
             onChoose={(choice) => {
               closer("restart")();
-              if (choice === "now") bridge?.restart();
+              if (choice === "now") bridge?.restart?.();
             }}
           />
         )}
