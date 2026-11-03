@@ -3,6 +3,7 @@ import type { CatalogInfoWire } from "../generated/api";
 import { Button } from "../kit/Button";
 import { Tabs } from "../kit/Tabs";
 import type { LaneSettings, LaneState } from "./lanes";
+import { HIDE_LANE_TIP } from "./laneContextMenu";
 import { LaneMenuFilter } from "./LaneMenuFilter";
 import { LaneMenuLook } from "./LaneMenuLook";
 import { LaneMenuTiming } from "./LaneMenuTiming";
@@ -48,7 +49,7 @@ export function LaneMenu({
         <div className="flex flex-wrap gap-s border-t border-line pt-m">
           {onApplyAll && <Button onClick={onApplyAll}>Apply to all lanes</Button>}
           {onHide && (
-            <Button icon="eye-off" onClick={onHide}>
+            <Button icon="eye-off" title={HIDE_LANE_TIP} onClick={onHide}>
               Hide lane
             </Button>
           )}

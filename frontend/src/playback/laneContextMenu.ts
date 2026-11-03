@@ -10,6 +10,10 @@ const LANE_COMMANDS: readonly CommandId[] = [
   "zoom-reset",
 ];
 
+/** What Hide lane tells in its tooltip, wherever it is offered. */
+export const HIDE_LANE_TIP =
+  "Skip this lane in playback. Bring it back with Unhide in the sidebar.";
+
 /** The entry that hides the clicked lane; it is no command, so it has no key. */
 export const HIDE_LANE = "hide-lane";
 
@@ -27,6 +31,10 @@ export function laneContextEntries(
     disabled: !allowed[scopeOf(id)],
   }));
   return canHide
-    ? [...entries, { kind: "separator" }, { kind: "action", id: HIDE_LANE, label: "Hide lane" }]
+    ? [
+        ...entries,
+        { kind: "separator" },
+        { kind: "action", id: HIDE_LANE, label: "Hide lane", tip: HIDE_LANE_TIP },
+      ]
     : entries;
 }
