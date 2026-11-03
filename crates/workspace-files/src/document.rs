@@ -138,15 +138,19 @@ fn real(path: &Path) -> PathBuf {
     path
 }
 
-/// A path as the file holds it: relative with `/` inside `base` (compared by where both really are), else absolute.
+/// A path as the file holds it: relative with `/` inside `base`, else absolute. Inside is decided by where the path's
+/// folder and `base` really are, so a link as the last part of the path stays the link.
 fn written(path: &HostPath, base: Option<&Path>) -> String {
     let path = normalize(path.as_path());
-    match base.and_then(|base| {
-        real(&path)
+    let inside = |base: &Path| match (path.parent(), path.file_name()) {
+        (Some(folder), Some(name)) => real(folder)
+            .join(name)
             .strip_prefix(real(base))
             .ok()
-            .map(Path::to_path_buf)
-    }) {
+            .map(Path::to_path_buf),
+        _ => None,
+    };
+    match base.and_then(inside) {
         Some(relative) => relative
             .components()
             .map(|part| part.as_os_str().to_string_lossy())

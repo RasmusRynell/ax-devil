@@ -198,6 +198,25 @@ fn saving_through_a_symlink_writes_the_target_and_anchors_to_its_folder() {
     let plain = real.join(format!("plain{SUFFIX}"));
     save(&workspace, &plain).unwrap();
     assert_eq!(read_json(&plain)["items"][0]["video"], "clips/a.mp4");
+
+    // A link as the video keeps its own name, so repointing it later still works.
+    fs::create_dir_all(real.join("clips")).unwrap();
+    fs::write(real.join("clips/v3.mp4"), "").unwrap();
+    std::os::unix::fs::symlink("v3.mp4", real.join("clips/latest.mp4")).unwrap();
+    let latest = item(
+        "latest",
+        video(&real.join("clips/latest.mp4"), &real.join("clips/a.xml")),
+    );
+    let workspace = Workspace {
+        items: vec![latest],
+        ..Workspace::default()
+    };
+    save(&workspace, &plain).unwrap();
+    assert_eq!(read_json(&plain)["items"][0]["video"], "clips/latest.mp4");
+    let Source::Video(recipe) = &load(&plain).unwrap().items[0].recipe.source else {
+        panic!("a video item stays a video");
+    };
+    assert_eq!(recipe.video.as_path(), real.join("clips/latest.mp4"));
 }
 
 #[test]
