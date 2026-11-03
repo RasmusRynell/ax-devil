@@ -192,6 +192,8 @@ export function Transport({ controls, view, disabled = false }: Props) {
           }}
           onKeyDown={(event) => SCRUB_KEYS.has(event.key) && controls.scrubStart()}
           onKeyUp={(event) => SCRUB_KEYS.has(event.key) && controls.scrubEnd()}
+          // A key released after focus moved on reaches another element, so losing focus ends the hold too.
+          onBlur={() => controls.scrubEnd()}
           style={{ "--seek-fill": last > 0 ? view.playhead / last : 0 } as CSSProperties}
           className="seek-bar m-0 h-l w-full"
         />

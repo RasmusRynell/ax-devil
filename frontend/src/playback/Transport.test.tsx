@@ -62,6 +62,15 @@ describe("transport", () => {
     expect(controls.scrubEnd).toHaveBeenCalledTimes(1);
   });
 
+  it("ends a key hold on the seek bar when focus leaves it before the key is released", () => {
+    const { controls } = setup();
+    const bar = screen.getByRole("slider", { name: "Timeline" });
+    fireEvent.keyDown(bar, { key: "PageUp" });
+    expect(controls.scrubStart).toHaveBeenCalledTimes(1);
+    fireEvent.blur(bar);
+    expect(controls.scrubEnd).toHaveBeenCalledTimes(1);
+  });
+
   it("has a seek bar of one position for a video without frames", () => {
     setup({ frameCount: 0 });
     const bar = screen.getByRole("slider", { name: "Timeline" }) as HTMLInputElement;
