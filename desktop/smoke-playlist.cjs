@@ -6,6 +6,7 @@ const fs = require("node:fs/promises");
 const path = require("node:path");
 const fit = require("./fit.cjs");
 const { objects } = require("./smoke-objects.cjs");
+const { multiplaylist } = require("./smoke-multiplaylist.cjs");
 const { overlays } = require("./smoke-overlays.cjs");
 const { panels } = require("./smoke-panels.cjs");
 const { twice } = require("./smoke-twice.cjs");
@@ -205,6 +206,9 @@ module.exports.playlist = async (window) => {
   await wait(
     "[...document.querySelectorAll('[role=tab]')].map((tab) => tab.textContent).join() === 'long_gop_h264.mp4'",
   );
+
+  // A resolver that returns two playlists: the dialog's states and the tree they make.
+  await multiplaylist(window);
 
   // One overlay file given twice is two lanes, in a window of its own on another backend.
   await twice();

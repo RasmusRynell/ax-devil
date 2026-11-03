@@ -64,7 +64,10 @@ const reply = (status: number, json: unknown) => ({
 });
 
 /** The backend: the handlers, a resolve that answers an item, and a scan that finds two sequences. */
-function stubBackend(resolve: () => ReturnType<typeof reply> = () => reply(200, { item: "p1" })) {
+function stubBackend(
+  resolve: () => ReturnType<typeof reply> | Promise<ReturnType<typeof reply>> = () =>
+    reply(200, { item: "p1" }),
+) {
   vi.stubGlobal(
     "fetch",
     vi.fn(async (url: string) => {
@@ -95,64 +98,99 @@ const scanRoot = async (root = "/data") => {
   fireEvent.click(screen.getByRole("button", { name: "Scan" }));
   await screen.findByRole("checkbox", { name: /SEQ-01/ });
 };
+/** The requests to the resolve route so far. */
+const resolveCalls = () =>
+  vi
+    .mocked(fetch)
+    .mock.calls.filter(([url]) => typeof url === "string" && url.endsWith("/resolve"));
 /** The JSON a request carried. */
 const bodyOf = (init?: RequestInit): unknown => JSON.parse(init?.body as string);
+/** Whether the field is disabled, by itself or by its fieldset. */
+const locked = (label: string) => screen.getByLabelText(label).matches(":disabled");
+/** A response the test settles when it chooses, to hold a request in flight. */
+function deferred() {
+  let settle: (response: ReturnType<typeof reply>) => void = () => {};
+  const promise = new Promise<ReturnType<typeof reply>>((done) => (settle = done));
+  return { promise, settle };
+}
 const add = () => screen.getByRole("button", { name: "Add" });
 const commands = () => FakeSocket.latest.received.filter((message) => message.type === "command");
 
 describe("add playlist dialog", () => {
-  it("resolves the scanned playlist, adds the result under its name and closes", async () => {
+  it("locks the settings while finding playlists, ignores a second submit and adds under the latest name", async () => {
     const onClose = vi.fn();
-    stubBackend();
+    const held = deferred();
+    stubBackend(() => held.promise);
     await open(onClose);
-    // No source is chosen for the user: the sources are listed, and nothing can be added.
-    expect((screen.getByLabelText("Playlist source") as HTMLSelectElement).value).toBe("");
-    expect(screen.getByText("MOT Challenge: Reads MOT sequences.")).toBeTruthy();
-    expect(add()).toHaveProperty("disabled", true);
     choose("mot_challenge");
-    expect(add()).toHaveProperty("disabled", true);
     await scanRoot();
     fireEvent.click(screen.getByRole("checkbox", { name: /SEQ-02/ }));
     fireEvent.change(screen.getByLabelText("Name"), { target: { value: " Train " } });
-    expect(add()).toHaveProperty("disabled", false);
     fireEvent.click(add());
+
+    expect((await screen.findByRole("status")).textContent).toBe("Finding playlists…");
+    expect(locked("Playlist source")).toBe(true);
+    expect(locked("Dataset folder")).toBe(true);
+    expect(locked("Name")).toBe(false);
+    expect(screen.getByRole("button", { name: "Cancel" }).matches(":disabled")).toBe(false);
+    fireEvent.submit(screen.getByLabelText("Name").closest("form")!);
+    fireEvent.change(screen.getByLabelText("Name"), { target: { value: " Later " } });
+    held.settle(reply(200, { item: "p1" }));
     await waitFor(() => expect(onClose).toHaveBeenCalled());
 
     expect(commands()).toMatchObject([
-      {
-        cmd: {
-          type: "content",
-          command: {
-            type: "addResolved",
-            item: "p1",
-            label: "Train",
-          },
-        },
-      },
+      { cmd: { type: "content", command: { type: "addResolved", item: "p1", label: "Later" } } },
     ]);
-    expect(bodyOf(vi.mocked(fetch).mock.calls.at(-1)?.[1])).toEqual({
+    const requests = resolveCalls();
+    expect(requests).toHaveLength(1);
+    expect(bodyOf(requests[0][1])).toEqual({
       session: "room-1",
       settings: { root: "/data", sequences: ["SEQ-01"] },
     });
   });
 
-  it("stays open with the refusal under the form, until the settings change", async () => {
+  it("shows a refusal in the dialog, unlocks the settings, adds nothing and lets the user retry", async () => {
     const onClose = vi.fn();
-    stubBackend(() =>
+    let answers = [
       reply(422, { code: "PlaylistInvalid", params: {}, reason: "No MOT sequences found" }),
-    );
+      reply(200, { item: "p1" }),
+    ];
+    stubBackend(() => answers.shift()!);
     await open(onClose);
     choose("mot_challenge");
     await scanRoot();
     fireEvent.click(add());
     const alert = await screen.findByRole("alert");
     expect(alert.textContent).toContain("No MOT sequences found");
+    expect(screen.queryByRole("status")).toBeNull();
     expect(commands()).toHaveLength(0);
     expect(onClose).not.toHaveBeenCalled();
+    expect(locked("Dataset folder")).toBe(false);
     expect(add()).toHaveProperty("disabled", false);
 
-    fireEvent.change(screen.getByLabelText("Dataset folder"), { target: { value: "/other" } });
-    expect(screen.queryByRole("alert")).toBeNull();
+    fireEvent.click(add());
+    await waitFor(() => expect(onClose).toHaveBeenCalled());
+    expect(commands()).toHaveLength(1);
+  });
+
+  it("aborts the request on Cancel and adds nothing when its success arrives late", async () => {
+    const onClose = vi.fn();
+    const held = deferred();
+    stubBackend(() => held.promise);
+    await open(onClose);
+    choose("mot_challenge");
+    await scanRoot();
+    fireEvent.click(add());
+    await screen.findByRole("status");
+
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    const [call] = resolveCalls();
+    expect(call?.[1]?.signal?.aborted).toBe(true);
+    held.settle(reply(200, { item: "p1" }));
+    await new Promise((done) => setTimeout(done, 10));
+
+    expect(onClose).toHaveBeenCalledTimes(1);
+    expect(commands()).toEqual([]);
   });
 
   it("keeps Load enabled with nothing checked, and says so instead of adding", async () => {

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { reasonOf } from "../errors";
 import type { DecoderInfo, ResolverInfo } from "../generated/api";
 import { Dialog, DialogBody } from "../kit/Dialog";
@@ -17,7 +17,8 @@ const NO_DECODERS: readonly DecoderInfo[] = [];
 /**
  * The Add Playlist dialog: the backend's handlers decide the resolvers and the form each takes. Until a source is
  * chosen, the sources are listed instead of a form. Adding resolves the playlists first and adds the item only when
- * that succeeds; a refusal stays here until the settings change.
+ * that succeeds, so the dialog stays open meanwhile with the settings locked and Name and Cancel live. Cancel,
+ * Escape and closing abort the resolve, and a refusal stays here until the settings change.
  */
 export function AddPlaylistDialog({ onClose }: { onClose: () => void }) {
   const { handlers, failure, retry } = useHandlers();
@@ -28,36 +29,59 @@ export function AddPlaylistDialog({ onClose }: { onClose: () => void }) {
   const resolver = resolvers.find((candidate) => candidate.id === resolverId) ?? NONE;
   const form = useResolverForm(resolver, handlers?.decoders ?? NO_DECODERS);
   const [name, setName] = useState("");
-  const [adding, setAdding] = useState(false);
+  // The name at the moment the resolve succeeds, which may have been edited since it started.
+  const latestName = useRef("");
+  const [resolving, setResolving] = useState(false);
   const [refused, setRefused] = useState<{ reason: string; stamp: string } | null>(null);
+  const request = useRef<AbortController | null>(null);
 
   // A refusal is about the settings it answered; any change since makes it stale.
   const stamp = JSON.stringify([resolver.id, form.settings]);
   const refusal = refused?.stamp === stamp ? refused.reason : null;
 
+  useEffect(() => () => request.current?.abort(), []);
+  const cancel = () => {
+    request.current?.abort();
+    onClose();
+  };
+
   const add = async () => {
-    if (!resolver.id || !form.settings || !session) return;
+    if (resolving || !resolver.id || !form.settings || !session) return;
     if (form.unchosen) {
       setRefused({ reason: form.unchosen, stamp });
       return;
     }
-    setAdding(true);
+    const controller = new AbortController();
+    request.current = controller;
+    setResolving(true);
     setRefused(null);
     try {
-      const resolved = await resolvePlaylists(resolver.id, form.settings, session);
+      const resolved = await resolvePlaylists(
+        resolver.id,
+        form.settings,
+        session,
+        controller.signal,
+      );
+      // A cancelled resolve adds nothing, even when its answer was already on its way.
+      if (controller.signal.aborted) return;
       if (!resolved.ok) {
         setRefused({ reason: reasonOf(resolved.refusal), stamp });
-        setAdding(false);
+        setResolving(false);
         return;
       }
       await command({
         type: "content",
-        command: { type: "addResolved", item: resolved.value.item, label: name.trim() || null },
+        command: {
+          type: "addResolved",
+          item: resolved.value.item,
+          label: latestName.current.trim() || null,
+        },
       });
       onClose();
     } catch (error) {
+      if (controller.signal.aborted) return;
       setRefused({ reason: error instanceof Error ? error.message : String(error), stamp });
-      setAdding(false);
+      setResolving(false);
     }
   };
   return (
@@ -65,13 +89,21 @@ export function AddPlaylistDialog({ onClose }: { onClose: () => void }) {
       title="Add Playlist"
       okLabel="Add"
       onOk={() => void add()}
-      onCancel={onClose}
-      busy={adding || !resolver.id || !form.settings}
+      onCancel={cancel}
+      busy={resolving || !resolver.id || !form.settings}
     >
       {handlers ? (
-        <fieldset disabled={adding} className="contents">
-          <DialogBody>
-            <TextField label="Name" value={name} placeholder="Optional" onChange={setName} />
+        <DialogBody>
+          <TextField
+            label="Name"
+            value={name}
+            placeholder="Optional"
+            onChange={(value) => {
+              latestName.current = value;
+              setName(value);
+            }}
+          />
+          <fieldset disabled={resolving} className="contents">
             <Select
               label="Playlist source"
               value={resolver.id}
@@ -95,13 +127,18 @@ export function AddPlaylistDialog({ onClose }: { onClose: () => void }) {
                 </p>
               ))
             )}
-          </DialogBody>
-        </fieldset>
+          </fieldset>
+        </DialogBody>
       ) : failure ? (
         <HandlersFailure failure={failure} retry={retry} />
       ) : (
         <p role="status" className="m-0 text-muted">
           Loading…
+        </p>
+      )}
+      {resolving && (
+        <p role="status" className="m-0 text-muted">
+          Finding playlists…
         </p>
       )}
       {refusal && <Refusal reason={refusal} />}
