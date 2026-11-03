@@ -7,7 +7,7 @@ const fs = require("node:fs/promises");
 const os = require("node:os");
 const path = require("node:path");
 const fit = require("./fit.cjs");
-const { SCREENSHOTS, SMOKE_ROOT, button, frames, page, setView } = require("./smoke-kit.cjs");
+const { SCREENSHOTS, SMOKE_ROOT, button, frames, page, setView, showChrome } = require("./smoke-kit.cjs");
 
 const THEMES = ["light", "dark"];
 
@@ -28,12 +28,14 @@ module.exports.plugins = async (window) => {
       await visit(theme);
     }
   };
-  const fits = async (what) =>
+  const fits = async (what) => {
+    await showChrome(window);
     assert.deepEqual(
       await js(`(${fit.page.toString()})()`),
       [],
       `The Plugins view must fit: ${what}`,
     );
+  };
   // A list that grows with the user's plugins scrolls, so only its width and the install form are held to the window.
   const keepsWidth = async (what) =>
     assert.ok(

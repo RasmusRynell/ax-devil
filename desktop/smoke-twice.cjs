@@ -45,7 +45,10 @@ module.exports.twice = async () => {
     width: 1100,
     height: 720,
     frame: false,
+    enableLargerThanScreen: true,
     webPreferences: {
+      // macOS must not hide this page, or nothing on it animates.
+      backgroundThrottling: false,
       contextIsolation: true,
       sandbox: true,
       preload: path.resolve(__dirname, "preload.cjs"),
