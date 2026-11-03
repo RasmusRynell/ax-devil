@@ -151,7 +151,7 @@ async fn answer(
     {
         return refused(refusal);
     }
-    let command = match wire::command(cmd, &state.plugins.handlers()) {
+    let command = match wire::command(cmd, &state.plugins.handlers(), &state.staged) {
         Ok(Request::Session(command)) => command,
         Ok(Request::Workspace(command)) => {
             let outcome = state.files.run(handle, command).await;

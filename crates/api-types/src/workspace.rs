@@ -127,17 +127,6 @@ pub enum NewItem {
         #[serde(default)]
         overlays: Vec<NewOverlayWire>,
     },
-    /// A playlist from a resolver.
-    Playlist {
-        /// The resolver id.
-        resolver: String,
-        /// The settings the resolver's schema declares.
-        #[ts(type = "Record<string, unknown>")]
-        settings: serde_json::Map<String, serde_json::Value>,
-        /// The row's label; the resolver's name when absent.
-        #[serde(default)]
-        label: Option<String>,
-    },
 }
 
 /// An overlay file to add to a video.

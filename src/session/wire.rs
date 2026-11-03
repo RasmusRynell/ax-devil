@@ -2,6 +2,7 @@
 //! and token-bucket limits on what a seat may send.
 
 use crate::routes::playback::policy_from_wire;
+use crate::routes::resolve::Staged;
 use api_types::{
     CURSOR_NAME_MAX, CursorElement, CursorPoint, SessionCommand, WorkspaceCommand,
     workspace::{HiddenTarget, NewItem},
@@ -20,9 +21,9 @@ pub(super) fn scope(wire: &SessionCommand) -> Option<Scope> {
     match wire {
         SessionCommand::Content { command } => Some(match command {
             api_types::DocCommand::AddItems { items, .. } => {
-                // Every kind of item reads the host's files, to open the file or to resolve the playlist.
+                // Every kind of item reads the host's files.
                 let reads_host = items.iter().any(|item| match item {
-                    NewItem::Video { .. } | NewItem::Playlist { .. } => true,
+                    NewItem::Video { .. } => true,
                 });
                 if reads_host {
                     Scope::Host
@@ -60,10 +61,14 @@ pub(super) enum Request {
 
 /// The request a client made. A command whose own content is not valid, such as a path that names no file or a
 /// resolver the app does not have, is `Invalid` before it reaches the Session.
-pub(super) fn command(wire: SessionCommand, handlers: &Handlers) -> Result<Request, Refusal> {
+pub(super) fn command(
+    wire: SessionCommand,
+    handlers: &Handlers,
+    staged: &Staged,
+) -> Result<Request, Refusal> {
     Ok(match wire {
         SessionCommand::Content { command } => {
-            Request::Session(Command::Content(doc_command(command, handlers)?))
+            Request::Session(Command::Content(doc_command(command, handlers, staged)?))
         }
         SessionCommand::Follow => Request::Session(Command::Follow),
         SessionCommand::Control { control } => Request::Session(Command::Control(control)),
@@ -91,7 +96,11 @@ fn workspace_command(wire: WorkspaceCommand) -> Result<WorkspaceCommand, Refusal
     }
 }
 
-fn doc_command(wire: api_types::DocCommand, handlers: &Handlers) -> Result<DocCommand, Refusal> {
+fn doc_command(
+    wire: api_types::DocCommand,
+    handlers: &Handlers,
+    staged: &Staged,
+) -> Result<DocCommand, Refusal> {
     Ok(match wire {
         api_types::DocCommand::AddItems { items, open } => {
             // The intake checks every entry first, so a request that has one bad entry adds nothing.
@@ -105,8 +114,15 @@ fn doc_command(wire: api_types::DocCommand, handlers: &Handlers) -> Result<DocCo
                 })?;
             DocCommand::AddItems { items, open }
         }
-        // Redeeming a resolved item needs the backend's staged store, which arrives with the resolve route.
-        api_types::DocCommand::AddResolved { .. } => return Err(Refusal::Invalid),
+        // The scope was checked before this lookup, so a seat without the grant cannot use up a staged item.
+        api_types::DocCommand::AddResolved { item, label } => {
+            let (item, content) = staged.take(&item).ok_or(Refusal::Invalid)?;
+            DocCommand::AddResolved {
+                item: workspace::intake::with_label(item, label.as_deref()),
+                content: Box::new(content),
+                open: true,
+            }
+        }
         api_types::DocCommand::OpenViewer { item } => DocCommand::OpenViewer(item),
         api_types::DocCommand::CloseViewer { item } => DocCommand::CloseViewer(item),
         api_types::DocCommand::SetHidden { target, hidden } => DocCommand::SetHidden {
@@ -141,12 +157,6 @@ fn intake(new: &NewItem, handlers: &Handlers) -> Result<WorkspaceItem, foundatio
                 .collect();
             workspace::intake::video(Path::new(path), &overlays, handlers)
         }
-        NewItem::Playlist {
-            resolver,
-            settings,
-            label,
-        } => workspace::intake::playlist(resolver, settings.clone(), handlers)
-            .map(|item| workspace::intake::with_label(item, label.as_deref())),
     }
 }
 
