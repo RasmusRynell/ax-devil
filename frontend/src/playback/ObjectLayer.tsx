@@ -11,6 +11,9 @@ export type ObjectLayerHandle = {
   drawn(geometry: Geometry): void;
 };
 
+/** Stroke width as a fraction of the picture's shorter side; the selected object reads heavier than the hovered one. */
+const STROKE = { hover: 0.004, selected: 0.009 };
+
 const NO_OUTLINES: readonly Outline[] = [];
 
 const sameOutlines = (a: readonly Outline[], b: readonly Outline[]): boolean =>
@@ -19,6 +22,7 @@ const sameOutlines = (a: readonly Outline[], b: readonly Outline[]): boolean =>
     (outline, i) =>
       outline.lane === b[i].lane &&
       outline.kind === b[i].kind &&
+      outline.scale === b[i].scale &&
       outline.rect.x === b[i].rect.x &&
       outline.rect.y === b[i].rect.y &&
       outline.rect.width === b[i].rect.width &&
@@ -98,12 +102,18 @@ export function ObjectLayer({
 
   return (
     <div className="pointer-events-none absolute inset-0 overflow-hidden">
-      {outlines.map(({ lane, rect, kind }, i) => (
+      {outlines.map(({ lane, rect, kind, scale }, i) => (
         <div
           key={`${lane}:${kind}:${i}`}
           data-outline={kind}
-          className={`absolute outline outline-canvas ${kind === "selected" ? "border-2 border-on-canvas" : "border border-on-canvas-muted"}`}
-          style={{ left: rect.x, top: rect.y, width: rect.width, height: rect.height }}
+          className={`absolute border-solid border-on-canvas ${kind === "hover" ? "bg-on-canvas/12" : ""}`}
+          style={{
+            left: rect.x,
+            top: rect.y,
+            width: rect.width,
+            height: rect.height,
+            borderWidth: STROKE[kind] * scale,
+          }}
         />
       ))}
       {chip && <Chip picked={chip} />}

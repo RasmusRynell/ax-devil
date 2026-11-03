@@ -23,6 +23,14 @@ describe("picking", () => {
     expect(pick(sample, kept, view, 990, 490)).toBe(-1);
   });
 
+  it("counts a point exactly on a box edge as inside", () => {
+    const edged = fullSample([{ id: "box", class: "car", box: [0.25, 0.25, 0.5, 0.5] }]);
+    const rows = filterRows(edged, null, all);
+    expect(pick(edged, rows, view, 250, 125)).toBe(0);
+    expect(pick(edged, rows, view, 500, 250)).toBe(0);
+    expect(pick(edged, rows, view, 501, 250)).toBe(-1);
+  });
+
   it("looks at kept rows only: a filtered-out object cannot be picked, and the one under it can", () => {
     const filter = { ctx: null, test: (row: number) => (row === 1 ? 0 : 1) };
     const rows = filterRows(sample, filter, all);
