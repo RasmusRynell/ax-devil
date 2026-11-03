@@ -44,6 +44,55 @@ async function setView(window, [width, height], zoom) {
   );
 }
 
+// Records the pointer events the page sees, for the report when the controls do not fade.
+const recordPointer = (window) =>
+  page(window).js(`(() => {
+    if (!window.smokePointer) {
+      window.smokePointer = [];
+      for (const type of ["pointerover", "pointerenter", "pointerleave", "pointermove"])
+        document.addEventListener(type, (e) => {
+          const t = e.target;
+          const where = t.closest?.("[data-chrome-idle]") ? "video" : t.closest?.("[data-keeps-chrome]") ? "controls" : t.localName;
+          window.smokePointer.push(type + "@" + e.clientX + "," + e.clientY + ":" + where);
+        }, true);
+    }
+    window.smokePointer.length = 0;
+  })()`);
+
+// What decides whether the controls over the video are shown, as one line for a failure report.
+async function chromeState(win) {
+  const state = await page(win).js(`(() => {
+    const t = document.querySelector("[data-keeps-chrome=transport]");
+    const pane = document.querySelector("[data-chrome-idle]")?.closest("[tabindex]");
+    const style = t && getComputedStyle(t);
+    const tag = (e) => (e ? e.outerHTML.slice(0, 100) : null);
+    return {
+      visibility: document.visibilityState,
+      pageFocused: document.hasFocus(),
+      paneChrome: pane?.dataset.chrome ?? "unset",
+      opacity: style?.opacity,
+      pointerEvents: style?.pointerEvents,
+      transition: style ? style.transitionProperty + " " + style.transitionDuration + " " + style.transitionDelay : null,
+      animations: t?.getAnimations().map((a) => a.playState + "@" + a.currentTime) ?? [],
+      focusInTransport: tag(t?.querySelector(":focus-visible")),
+      active: tag(document.activeElement),
+      atCorner: tag(document.elementFromPoint(4, 4)),
+      playing: !!document.querySelector("[aria-label=Pause]"),
+      frame: document.querySelector("input[aria-label=Frame]")?.value,
+      reducedMotion: matchMedia("(prefers-reduced-motion: reduce)").matches,
+      page: [innerWidth, innerHeight, devicePixelRatio],
+      pointer: window.smokePointer ?? [],
+    };
+  })()`);
+  const shell = {
+    focused: win.isFocused(),
+    visible: win.isVisible(),
+    bounds: win.getBounds(),
+    zoom: win.webContents.getZoomFactor(),
+  };
+  return JSON.stringify({ ...state, shell });
+}
+
 // The transport lies over the bottom of the picture until the pointer has rested: waits until it has faded out, first
 // crossing the video with the pointer and leaving it when the controls were never hidden.
 async function hideChrome(window) {
@@ -56,9 +105,24 @@ async function hideChrome(window) {
   const video = await js(
     "(() => { const r = document.querySelector('[data-chrome-idle]').getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; })()",
   );
+  await recordPointer(window);
+  // Moves sent together reach the page as one, and a pointer that never entered the video cannot leave it: the
+  // pointer leaves only once the page has seen it on the video.
   await moveTo(window, video.x, video.y);
-  await moveTo(window, 4, 4);
-  await until(async () => (await opacity()) === 0, "the transport fades out");
+  try {
+    await until(
+      () =>
+        js(
+          "document.querySelector('[data-chrome-idle]').closest('[tabindex]').dataset.chrome === 'shown'",
+        ),
+      "the pointer reaches the video",
+    );
+    await moveTo(window, 4, 4);
+    await until(async () => (await opacity()) === 0, "the transport fades out");
+  } catch (error) {
+    error.message += `\n${await chromeState(window)}`;
+    throw error;
+  }
 }
 
 // A faded transport takes no pointer, so a check that hit-tests its controls brings it back first: the pointer rests
