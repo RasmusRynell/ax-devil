@@ -2,7 +2,7 @@
 
 use std::{ops::RangeInclusive, sync::Arc};
 
-use foundation::{UserError, Warning};
+use foundation::{MediaTime, UserError, Warning};
 use overlay_sync::{Alignment, MatchBasis, MatchPolicy};
 use scene::FilterPolicy;
 use scene_store::{Ingest, TrackRead, TrackSnapshot};
@@ -62,6 +62,10 @@ pub struct SampleItem {
     pub data_revision: u32,
     /// The sample's index in the file.
     pub sample: u64,
+    /// The sample's time on the video clock: its own timestamp, or the time of its frame for a frame-keyed file.
+    pub time: Option<MediaTime>,
+    /// The sample's frame number in its file; `None` for a time-keyed file, whose records are not numbered by frame.
+    pub frame_number: Option<u64>,
     /// The frame the item ranks by: of the frames in the data window that map to the sample, the most urgent.
     pub frame: u64,
     /// Identifies this send of the sample, so that handing back an older send does not undo a newer one. Not on the

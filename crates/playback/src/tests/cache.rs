@@ -1,4 +1,5 @@
-use crate::testing::video_frame;
+use crate::Direction::Forward;
+use crate::testing::{Fixture, video_frame, want};
 use crate::{CachePool, FrameSet};
 use std::ops::RangeInclusive;
 use std::sync::Barrier;
@@ -137,4 +138,18 @@ fn concurrent_inserts_resizes_joins_and_leaves_never_deadlock() {
         });
     });
     assert_eq!(pool.source_count(), 0);
+}
+
+#[test]
+fn a_session_reports_the_frames_its_video_has_cached() {
+    let mut fx = Fixture::new(60, 10, 200);
+    let session = fx.session();
+    assert_eq!(session.cached(), FrameSet::new());
+    session.want(want(10, 3, 2, Forward));
+    fx.drain();
+    assert!(
+        session.cached().contains(10),
+        "the playhead was decoded into the cache"
+    );
+    assert_eq!(session.cached(), fx.cached());
 }

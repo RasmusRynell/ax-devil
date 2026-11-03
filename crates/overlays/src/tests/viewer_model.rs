@@ -233,7 +233,7 @@ impl Rig {
                 let item = self.track.item(sample as usize).expect("item");
                 self.state.finish_encode(0, revision, sample, item, None);
             }
-            let Some(event) = self.state.pull(None) else {
+            let Some(event) = self.state.pull(None, &self.timeline) else {
                 return pulled;
             };
             let data = matches!(event, OverlayEvent::Sample(_) | OverlayEvent::Map(_));

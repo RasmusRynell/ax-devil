@@ -314,6 +314,7 @@ async fn a_viewer_made_a_follower_gets_no_frame_or_data_outside_the_presenters_w
             height: 48,
         },
         warnings: Vec::new(),
+        pts: None,
         library: &library,
         overlays: &service,
         exports: &Arc::new(crate::exports::ExportService::electron()),

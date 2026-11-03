@@ -9,6 +9,7 @@ import {
   ENVELOPE_VERSION,
   FLAG_KEYFRAME,
   FLAG_LAST_FRAME,
+  FLAG_SAMPLE_TIME,
   FRAME_MAP_HEADER_BYTES,
   FRAME_MAP_RUN_FRAMES,
   KIND_FRAME_MAP,
@@ -21,6 +22,7 @@ import {
   MATRIX_BT601,
   MATRIX_BT709,
   SAMPLE_HEADER_BYTES,
+  SAMPLE_NO_FRAME,
   VIDEO_FRAME_HEADER_BYTES,
 } from "../generated/api";
 
@@ -32,6 +34,7 @@ export {
   ENVELOPE_VERSION,
   FLAG_KEYFRAME,
   FLAG_LAST_FRAME,
+  FLAG_SAMPLE_TIME,
   FRAME_MAP_EMPTY,
   FRAME_MAP_HEADER_BYTES,
   FRAME_MAP_NONE,
@@ -46,6 +49,7 @@ export {
   MAX_DATA_WINDOW_FRAMES,
   PLAYBACK_PROTOCOL,
   SAMPLE_HEADER_BYTES,
+  SAMPLE_NO_FRAME,
 } from "../generated/api";
 export type {
   CatalogInfoWire,
@@ -98,6 +102,10 @@ export type SampleEnvelope = {
   dataRevision: number;
   /** The sample's index in its source. */
   sample: number;
+  /** The sample's time on the video clock in microseconds; `null` when the backend has none. */
+  timeUs: number | null;
+  /** The sample's frame number in its file; `null` when it has none. */
+  frame: number | null;
   item: Uint8Array;
 };
 
@@ -239,11 +247,14 @@ function parseSample(view: DataView, bytes: Uint8Array, payload: number): Sample
   if (payload !== SAMPLE_HEADER_BYTES) throw new EnvelopeError("bad sample header length");
   if ((bytes.length - payload) % 8 !== 0)
     throw new EnvelopeError("sample item length is not a multiple of 8");
+  const frame = view.getUint32(36, true);
   return {
     kind: "sample",
     source: view.getUint16(28, true),
     dataRevision: view.getUint32(32, true),
     sample: readU64(view, 8),
+    timeUs: (view.getUint32(24, true) & FLAG_SAMPLE_TIME) !== 0 ? readI64(view, 16) : null,
+    frame: frame === SAMPLE_NO_FRAME ? null : frame,
     item: bytes.subarray(payload),
   };
 }

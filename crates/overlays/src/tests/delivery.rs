@@ -2,11 +2,12 @@
 
 use std::{fs, time::Duration};
 
-use foundation::CancelToken;
+use foundation::{CancelToken, MediaTime, Timeline};
 use overlay_sync::{MatchPolicy, Sticky};
 use playback::Rank;
 use scene_store::TrackRead;
 
+use super::statuses::onvif_at;
 use super::{Env, cells, next, quiet, sample_ids, settle, shown, timeline, until_ready, want};
 use crate::{
     LaneStatus, OverlayEvent, ViewerOverlays,
@@ -86,6 +87,38 @@ async fn runs_cover_the_data_window_once_inside_chunks_and_samples_go_nearest_fi
         .chain((200..300).rev())
         .collect();
     assert_eq!(sample_ids(&sent), expected);
+}
+
+#[tokio::test]
+async fn a_sample_tells_its_time_on_the_video_clock_and_the_frame_number_only_a_frame_keyed_file_has()
+ {
+    let env = Env::new();
+    let video = timeline(20);
+
+    let mut by_frame = env.open(vec![Some(env.mot("a.txt", [2, 5]))], 20);
+    until_ready(&mut by_frame, &[0]).await;
+    by_frame.set_policy(0, 1, shown().0, true);
+    by_frame.want(want(5, 5, 5));
+    let sent = settle(&mut by_frame).await;
+    let item = sent.samples.iter().find(|item| item.sample == 1);
+    let item = item.expect("the second box was sent");
+    assert_eq!(item.frame_number, Some(5));
+    assert_eq!(
+        item.time,
+        video.time(5),
+        "the time of its frame in the video"
+    );
+
+    let overlay = env.overlay("b.xml", "ONVIF_XML", &onvif_at([0, 100_000, 400_000]));
+    let mut by_time = env.open(vec![Some(overlay)], 20);
+    until_ready(&mut by_time, &[0]).await;
+    by_time.set_policy(0, 1, shown().0, true);
+    by_time.want(want(1, 1, 1));
+    let sent = settle(&mut by_time).await;
+    let item = sent.samples.iter().find(|item| item.sample == 1);
+    let item = item.expect("the second record was sent");
+    assert_eq!(item.frame_number, None);
+    assert_eq!(item.time, Some(MediaTime(100_000)), "its own timestamp");
 }
 
 #[tokio::test]
@@ -309,8 +342,8 @@ async fn encoded_items_wait_in_a_bounded_number_for_a_slow_consumer() {
 }
 
 /// Everything the state would send now.
-fn drain(state: &mut State) -> Vec<OverlayEvent> {
-    std::iter::from_fn(|| state.pull(None)).collect()
+fn drain(state: &mut State, timeline: &Timeline) -> Vec<OverlayEvent> {
+    std::iter::from_fn(|| state.pull(None, timeline)).collect()
 }
 
 #[tokio::test]
@@ -329,7 +362,7 @@ async fn a_new_load_takes_a_new_revision_and_starts_every_set_from_empty() {
     state.set_want(want(4, 1, 1), &timeline);
     state.set_policy(0, 1, shown().0, true, &timeline);
     state.finish_encode(0, 1, 4, item.clone(), None);
-    let first = drain(&mut state);
+    let first = drain(&mut state, &timeline);
     assert!(matches!(
         first[..],
         [
@@ -346,7 +379,7 @@ async fn a_new_load_takes_a_new_revision_and_starts_every_set_from_empty() {
 
     state.finish_load(0, Ok((track, 100)), &timeline);
 
-    let second = drain(&mut state);
+    let second = drain(&mut state, &timeline);
     let [
         OverlayEvent::Status {
             status: LaneStatus::Ready(ready),
@@ -368,7 +401,7 @@ async fn a_new_load_takes_a_new_revision_and_starts_every_set_from_empty() {
     );
     state.finish_encode(0, 1, 4, item, None);
     assert!(
-        drain(&mut state).is_empty(),
+        drain(&mut state, &timeline).is_empty(),
         "an item of the old revision is dropped"
     );
 }

@@ -8,7 +8,7 @@
 //! A ticket that is unknown, used, expired or not parseable closes the socket with 4401 and nothing else: the viewer
 //! learns nothing about why. After that the order of what a viewer receives is `Indexing`*, `Opened`, the Timeline
 //! envelope, then frame envelopes, `FrameError`s, `LaneStatus`es, `LaneProblem`s, `Catalog` answers and pushes,
-//! `Catalogs` lists, `DataWindow`s, `Evict`s and Sample and FrameMap envelopes as they are ready. Notices go first, then the `DataWindow` and the
+//! `Catalogs` lists, `Cached` ranges, `DataWindow`s, `Evict`s and Sample and FrameMap envelopes as they are ready. Notices go first, then the `DataWindow` and the
 //! `Evict`s, which are never held back or dropped for a frame; a Sample or FrameMap goes after them, and before a
 //! frame when its rank (`playback::rank` of the frame it is for) is at most the rank of the frame waiting, so data
 //! wins ties and the frames nearest the playhead are not held up by data far from it. `Error` is last: the socket closes after it. Errors,
@@ -28,6 +28,7 @@
 //! The owner can start an export (`export`): one per viewer and one per backend, which ends with the viewer. Its
 //! progress notices name no frame and are never held back.
 
+mod cached;
 mod catalogs;
 mod export;
 mod file_scope;
