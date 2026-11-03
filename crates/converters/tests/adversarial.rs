@@ -338,11 +338,11 @@ fn a_silent_converter_is_killed_after_the_idle_timeout() {
 
 fn process_is_gone(pid: u32) -> bool {
     match std::fs::read_to_string(format!("/proc/{pid}/stat")) {
-        // "pid (name) S ..." with S = Z for a zombie nobody has reaped yet.
+        // "pid (name) S ..." with S = Z (zombie not yet reaped) or X (dead, being reaped).
         Ok(stat) => stat
             .rsplit(')')
             .next()
-            .is_some_and(|rest| rest.trim_start().starts_with('Z')),
+            .is_some_and(|rest| rest.trim_start().starts_with(['Z', 'X'])),
         Err(_) if Path::new("/proc/self").exists() => true,
         Err(_) => !Command::new("kill")
             .args(["-0", &pid.to_string()])
@@ -366,13 +366,12 @@ fn the_whole_process_group_is_killed() {
         .parse()
         .expect("pid in the warning");
     let deadline = Instant::now() + Duration::from_secs(3);
-    while !process_is_gone(pid) && Instant::now() < deadline {
+    let mut gone = process_is_gone(pid);
+    while !gone && Instant::now() < deadline {
         std::thread::sleep(Duration::from_millis(50));
+        gone = process_is_gone(pid);
     }
-    assert!(
-        process_is_gone(pid),
-        "the grandchild {pid} outlived the run"
-    );
+    assert!(gone, "the grandchild {pid} outlived the run");
 }
 
 fn a_line_over_16_mib_ends_the_run_and_keeps_the_samples() {
