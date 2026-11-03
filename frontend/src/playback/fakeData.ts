@@ -3,12 +3,14 @@
 import { readFileSync } from "node:fs";
 import {
   ENVELOPE_MAGIC,
+  FLAG_SAMPLE_TIME,
   FRAME_MAP_EMPTY,
   FRAME_MAP_HEADER_BYTES,
   FRAME_MAP_NONE,
   KIND_FRAME_MAP,
   KIND_SAMPLE,
   SAMPLE_HEADER_BYTES,
+  SAMPLE_NO_FRAME,
 } from "./protocol";
 import {
   KIND_VIDEO_FRAME,
@@ -46,7 +48,16 @@ function head(kind: number, headerLen: number, length: number, sequenceId: numbe
 
 /** One kind 4 message: the 40 byte header, then `bytes`. */
 export function sampleBytes(
-  fields: { source?: number; dataRevision?: number; sample?: number; item?: Uint8Array } = {},
+  fields: {
+    source?: number;
+    dataRevision?: number;
+    sample?: number;
+    item?: Uint8Array;
+    /** The sample's time on the video clock; none without it. */
+    timeUs?: number;
+    /** The sample's frame number in its file; none without it. */
+    frame?: number;
+  } = {},
 ): ArrayBuffer {
   const bytes = fields.item ?? item();
   const view = head(
@@ -57,6 +68,11 @@ export function sampleBytes(
   );
   view.setUint16(28, fields.source ?? 0, true);
   view.setUint32(32, fields.dataRevision ?? 1, true);
+  view.setUint32(36, fields.frame ?? SAMPLE_NO_FRAME, true);
+  if (fields.timeUs !== undefined) {
+    view.setBigInt64(16, BigInt(fields.timeUs), true);
+    view.setUint32(24, view.getUint32(24, true) | FLAG_SAMPLE_TIME, true);
+  }
   new Uint8Array(view.buffer).set(bytes, SAMPLE_HEADER_BYTES);
   return view.buffer as ArrayBuffer;
 }

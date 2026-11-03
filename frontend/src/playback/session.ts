@@ -10,7 +10,6 @@ import { ExportJobs } from "../export/jobs";
 import {
   PlaybackClock,
   clampSpeed,
-  followFrame,
   steppedSpeed,
   type ClockIntent,
   type FrameSource,
@@ -19,10 +18,13 @@ import type { LaneControl, LaneFrame, LaneSettings, Selection, Surface } from ".
 import { dataWindow, sampleBudgetBytes } from "./data/dataWindow";
 import { FrameFailures } from "./failures";
 import type { FileScope } from "./fileScope";
+import { followClock } from "./follow";
 import { FrameBuffer, windowSize } from "./FrameBuffer";
 import { DataWait, displaySource } from "./frameSource";
 import { WantPlanner, sameWant } from "./direction";
+import type { LaneMatch } from "./laneData";
 import { LaneSet } from "./lanes";
+import { Scrub } from "./scrub";
 import {
   PLAYBACK_PROTOCOL,
   type Envelope,
@@ -88,8 +90,7 @@ export class PlaybackSession implements LaneControl {
   #planner: WantPlanner | undefined;
   #lastWant: Want | undefined;
   #speed = 1;
-  /** While the seek bar is held: whether the clock ran when it was grabbed. */
-  #scrub: boolean | undefined;
+  readonly #scrub = new Scrub();
   /** The frame to open on after a lost connection. */
   #resumeAt: number | undefined;
   #retries = 0;
@@ -102,6 +103,8 @@ export class PlaybackSession implements LaneControl {
   #failure: PlaybackView["failure"];
   #status: PlaybackView["status"] = "connecting";
   #progress = 0;
+  /** The frames the backend holds decoded. */
+  #cached: PlaybackView["cached"] = [];
 
   constructor(deps: SessionDeps) {
     this.#deps = deps;
@@ -145,6 +148,11 @@ export class PlaybackSession implements LaneControl {
   /** What `lane` drew on the frame on screen, which Frame scope lists. */
   shown(lane: number): LaneFrame | undefined {
     return this.#data.shown(lane);
+  }
+
+  /** How `lane` matched a sample to the frame on screen. */
+  matched(lane: number): LaneMatch | null {
+    return this.#data.matched(lane);
   }
 
   /** Sets where frames are drawn; `null` stops drawing. */
@@ -229,16 +237,12 @@ export class PlaybackSession implements LaneControl {
 
   /** The seek bar is held: playback pauses, so the position follows the hand. */
   scrubStart(): void {
-    if (!this.#clock || this.#scrub !== undefined) return;
-    this.#scrub = this.#clock.playing;
-    if (this.#scrub) this.pause();
+    if (this.#clock && this.#scrub.grab(this.#clock.playing)) this.pause();
   }
 
   /** The seek bar is let go: playback that ran when it was grabbed runs on, unless it was left at the end. */
   scrubEnd(): void {
-    const resume = this.#scrub;
-    this.#scrub = undefined;
-    if (resume && (this.#clock?.playhead ?? 0) < this.#frameCount - 1) this.play();
+    if (this.#scrub.release() && (this.#clock?.playhead ?? 0) < this.#frameCount - 1) this.play();
   }
 
   /** Sets the speed, rounded to hundredths and kept within 0.01 to 10; it stays across a reconnection. */
@@ -270,19 +274,9 @@ export class PlaybackSession implements LaneControl {
     const times = this.#times;
     if (!this.#followed || !clock || !times) return;
     const { intent, serverNowUs } = this.#followed;
-    const frame = followFrame(times, intent, serverNowUs());
-    this.#speed = clampSpeed(intent.speedCenti / 100);
-    clock.setSpeed(this.#speed);
-    if (intent.playing && frame < times.length - 1) {
-      clock.seek(frame);
-      if (!clock.playing) {
-        clock.play();
-        this.#planner?.played();
-      }
-    } else {
-      clock.pause();
-      clock.seek(frame);
-    }
+    const { speed, started } = followClock(clock, times, intent, serverNowUs());
+    this.#speed = speed;
+    if (started) this.#planner?.played();
     this.#wait.restart();
     this.#changed();
   }
@@ -327,11 +321,7 @@ export class PlaybackSession implements LaneControl {
   #onIncoming(incoming: Incoming): void {
     if (incoming.type === "message") this.#onMessage(incoming.message);
     else if (incoming.type === "envelope") this.#onEnvelope(incoming.envelope);
-    else if (incoming.type === "malformed")
-      this.#fail(
-        `The backend sent something this window cannot read: ${incoming.reason}`,
-        "playback",
-      );
+    else if (incoming.type === "malformed") this.#unreadable(incoming.reason);
     else if (this.#status !== "failed") {
       const ended = ENDED[incoming.code];
       if (ended) this.#fail(ended);
@@ -362,6 +352,8 @@ export class PlaybackSession implements LaneControl {
         this.represent();
         this.#onData();
       }
+    } else if (message.type === "Cached") {
+      this.#cached = message.ranges;
     } else if (message.type === "Export") {
       this.exports.receive(message);
     } else if (message.type === "FrameError") {
@@ -526,6 +518,7 @@ export class PlaybackSession implements LaneControl {
     this.#planner = undefined;
     this.#lastWant = undefined;
     this.#failures.clear();
+    this.#cached = [];
   }
 
   #publish(): void {
@@ -542,6 +535,7 @@ export class PlaybackSession implements LaneControl {
       opened: this.#opened,
       inspection: this.#data.inspections.view,
       cadence: this.#cadence,
+      cached: this.#cached,
     });
     if (sameView(view, this.#view)) return;
     this.#view = view;

@@ -168,35 +168,51 @@ export function Transport({ controls, view, disabled = false }: Props) {
         </p>
       )}
       <div data-keeps-chrome="transport" className={`w-full ${CONTROLS}`}>
-        <input
-          type="range"
-          aria-label="Timeline"
-          data-cursor-id="transport:seek"
-          aria-valuetext={`Frame ${view.playhead} of ${last}`}
-          min={0}
-          max={last}
-          step={1}
-          disabled={disabled}
-          value={view.playhead}
-          onChange={(event) => controls.seek(event.target.valueAsNumber)}
-          onPointerDown={() => {
-            controls.scrubStart();
-            // The press ends wherever the pointer is let go.
-            const end = () => {
-              controls.scrubEnd();
-              window.removeEventListener("pointerup", end);
-              window.removeEventListener("pointercancel", end);
-            };
-            window.addEventListener("pointerup", end);
-            window.addEventListener("pointercancel", end);
-          }}
-          onKeyDown={(event) => SCRUB_KEYS.has(event.key) && controls.scrubStart()}
-          onKeyUp={(event) => SCRUB_KEYS.has(event.key) && controls.scrubEnd()}
-          // A key released after focus moved on reaches another element, so losing focus ends the hold too.
-          onBlur={() => controls.scrubEnd()}
-          style={{ "--seek-fill": last > 0 ? view.playhead / last : 0 } as CSSProperties}
-          className="seek-bar m-0 h-l w-full"
-        />
+        <div className="relative h-l w-full">
+          <div className="absolute inset-x-0 top-1/2 h-s -translate-y-1/2 overflow-hidden rounded-pill bg-canvas-hover">
+            {view.cached.map(([first, final]) => (
+              <span
+                key={first}
+                style={
+                  {
+                    "--from": last > 0 ? first / last : 0,
+                    "--to": last > 0 ? final / last : 0,
+                  } as CSSProperties
+                }
+                className="seek-band"
+              />
+            ))}
+          </div>
+          <input
+            type="range"
+            aria-label="Timeline"
+            data-cursor-id="transport:seek"
+            aria-valuetext={`Frame ${view.playhead} of ${last}`}
+            min={0}
+            max={last}
+            step={1}
+            disabled={disabled}
+            value={view.playhead}
+            onChange={(event) => controls.seek(event.target.valueAsNumber)}
+            onPointerDown={() => {
+              controls.scrubStart();
+              // The press ends wherever the pointer is let go.
+              const end = () => {
+                controls.scrubEnd();
+                window.removeEventListener("pointerup", end);
+                window.removeEventListener("pointercancel", end);
+              };
+              window.addEventListener("pointerup", end);
+              window.addEventListener("pointercancel", end);
+            }}
+            onKeyDown={(event) => SCRUB_KEYS.has(event.key) && controls.scrubStart()}
+            onKeyUp={(event) => SCRUB_KEYS.has(event.key) && controls.scrubEnd()}
+            // A key released after focus moved on reaches another element, so losing focus ends the hold too.
+            onBlur={() => controls.scrubEnd()}
+            style={{ "--seek-fill": last > 0 ? view.playhead / last : 0 } as CSSProperties}
+            className="seek-bar relative m-0 h-l w-full"
+          />
+        </div>
         <div className="flex flex-wrap items-center gap-x-xs">
           <IconButton
             onCanvas

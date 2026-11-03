@@ -20,7 +20,7 @@ export type OpenedMessage = Extract<ServerMessage, { type: "Opened" }>;
 /** Lets the ticket the session asked for arrive, so it can open its socket. */
 export const flush = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
 
-function videoFrame(sequenceId: number): VideoFrame {
+export function videoFrame(sequenceId: number): VideoFrame {
   const empty = new Uint8Array(0);
   return {
     sequenceId,

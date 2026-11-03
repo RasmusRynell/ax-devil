@@ -33,7 +33,8 @@ async function shown() {
   t.refresh();
   t.server.window(0, 9);
   t.server.map({ cells: [0, 0, NONE, EMPTY], kinds: [0, 2, 0, 0] });
-  t.server.sample();
+  // The sample is frame 5 of its file, and the video clock has it at the first frame's time.
+  t.server.sample({ timeUs: 0, frame: 5 });
   t.refresh();
   expect(t.presented).toEqual([0]);
   return t;
@@ -315,6 +316,17 @@ describe("lanes", () => {
     expect(presented).toEqual([0, 2, 3]);
     expect(session.getSnapshot().lanes[0].pending).toBe(false);
     server.say({ type: "FrameError", sequence_id: 9, code: "DecodeFailed", params: {} });
+  });
+
+  it("tells how the lane matched a sample to the frame on screen", async () => {
+    const { session, refresh } = await shown();
+    expect(session.matched(0)).toEqual({ sample: 0, kind: 0, timeUs: 0, frame: 5 });
+    session.step(1);
+    refresh();
+    expect(session.matched(0)).toMatchObject({ sample: 0, kind: 2 });
+    session.step(1);
+    refresh();
+    expect(session.matched(0)).toEqual({ sample: null, kind: 0, timeUs: null, frame: null });
   });
 
   it("draws a retained sample at the lane's retained opacity", async () => {

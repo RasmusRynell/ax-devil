@@ -2,6 +2,7 @@
 
 import type { CatalogLook, LaneSettings, LaneState } from "./contract";
 import type {
+  BasisWire,
   CatalogInfoWire,
   ClientMessage,
   LaneDefaultsWire,
@@ -14,6 +15,14 @@ export type { LaneSettings, LaneState } from "./contract";
 
 /** The Ready status of a lane. */
 export type ReadyStatus = Extract<LaneStatusWire, { status: "Ready" }>;
+
+/** The basis `lane` matches by: its own setting when its file offers it, else the file's default; `undefined` until the file is ready. */
+export function basisOf({ settings, status }: LaneState): BasisWire | undefined {
+  if (status === "plain" || status.status !== "Ready") return undefined;
+  return settings.basis !== null && status.bases.includes(settings.basis)
+    ? settings.basis
+    : status.default_basis;
+}
 
 /** How a lane matches samples to frames, which the workspace keeps with the lane. */
 export const samePolicy = (a: LaneSettings, b: LaneSettings): boolean =>

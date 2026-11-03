@@ -54,7 +54,8 @@ export interface FrameSource {
   newestPresentable(atOrBefore: number, notBefore: number): number | undefined;
 }
 
-export type FrameInfo = { sequenceId: number; timestampUs: number };
+/** The frame on screen; `periodUs` is the time to the next frame (to the last one from the previous, at the last frame), `null` for a one-frame video. */
+export type FrameInfo = { sequenceId: number; timestampUs: number; periodUs: number | null };
 
 export class PlaybackClock {
   readonly #times: Float64Array;
@@ -100,7 +101,14 @@ export class PlaybackClock {
   /** The frame on screen, not the requested one. */
   info(): FrameInfo | undefined {
     if (this.#presented === undefined) return undefined;
-    return { sequenceId: this.#presented, timestampUs: this.#times[this.#presented] };
+    const at = this.#presented;
+    const times = this.#times;
+    const next = at + 1 < times.length ? times[at + 1] - times[at] : null;
+    return {
+      sequenceId: at,
+      timestampUs: times[at],
+      periodUs: next ?? (at > 0 ? times[at] - times[at - 1] : null),
+    };
   }
 
   /**

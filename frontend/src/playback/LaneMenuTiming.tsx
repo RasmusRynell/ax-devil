@@ -2,7 +2,7 @@ import { Select } from "../kit/Fields";
 import type { AlignmentWire, BasisWire } from "../generated/api";
 import { Switch } from "../kit/Switch";
 import type { Cadence } from "./cadence";
-import type { LaneSettings, LaneState } from "./lanes";
+import { basisOf, type LaneSettings, type LaneState } from "./lanes";
 import { Group, NumberField } from "./LaneMenuFields";
 
 /** The longest a kept sample may stay, which the backend enforces. */
@@ -84,10 +84,7 @@ export function LaneMenuTiming({
   const { settings } = lane;
   const ready = lane.status !== "plain" && lane.status.status === "Ready" ? lane.status : undefined;
   const bases = ready?.bases ?? [];
-  const basis =
-    settings.basis !== null && bases.includes(settings.basis)
-      ? settings.basis
-      : ready?.default_basis;
+  const basis = basisOf(lane);
   const sync: Sync = settings.tolerance_ms === null ? "exact" : "previous";
   const { sticky } = settings;
   return (

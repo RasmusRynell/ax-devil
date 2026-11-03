@@ -6,9 +6,14 @@
 
 import { SampleFormatError, readSample, type SampleView } from "../../present";
 
+/** When the sample is on the video clock and which frame of its file it is; `null` where the backend has none. */
+export type SampleKey = { timeUs: number | null; frame: number | null };
+
+const NO_KEY: SampleKey = { timeUs: null, frame: null };
+
 type Source = {
   revision: number;
-  items: Map<number, { view: SampleView; bytes: number }>;
+  items: Map<number, { view: SampleView; bytes: number; key: SampleKey }>;
   bytes: number;
 };
 
@@ -46,7 +51,13 @@ export class SampleStore {
    * item cannot be accepted, `null` otherwise: it cannot be read (and is not kept), or the items held outgrew the
    * limit with more than one of them.
    */
-  add(source: number, dataRevision: number, sample: number, item: Uint8Array): string | null {
+  add(
+    source: number,
+    dataRevision: number,
+    sample: number,
+    item: Uint8Array,
+    key: SampleKey = NO_KEY,
+  ): string | null {
     const held = this.#sources.get(source);
     if (held?.revision !== dataRevision) return null;
     let view: SampleView;
@@ -57,7 +68,7 @@ export class SampleStore {
       throw error;
     }
     const before = held.items.get(sample)?.bytes;
-    held.items.set(sample, { view, bytes: item.byteLength });
+    held.items.set(sample, { view, bytes: item.byteLength, key });
     held.bytes += item.byteLength - (before ?? 0);
     this.#bytes += item.byteLength - (before ?? 0);
     if (before === undefined) this.#count++;
@@ -82,6 +93,11 @@ export class SampleStore {
 
   get(source: number, sample: number): SampleView | undefined {
     return this.#sources.get(source)?.items.get(sample)?.view;
+  }
+
+  /** When the held sample is on the video clock and its frame in its file; `undefined` for a sample not held. */
+  keyOf(source: number, sample: number): SampleKey | undefined {
+    return this.#sources.get(source)?.items.get(sample)?.key;
   }
 
   clear(): void {

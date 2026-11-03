@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { Hidden } from "../viewer/hidden";
 import type { Picked, Selection, Viewport } from "./contract";
+import { InfoHud } from "./InfoHud";
 import { LaneChip } from "./LaneChip";
 import { laneAt, layoutLanes, shownLanes } from "./laneCells";
 import type { Geometry } from "./renderer";
@@ -26,7 +27,7 @@ function useSize(): [React.RefObject<HTMLDivElement | null>, { width: number; he
 }
 
 /**
- * The picture in a grid of lane cells, each with its name tag. Lanes the user hid leave the grid and stop being sent.
+ * The picture in a grid of lane cells, each with its name tag (and the info HUD, when asked for). Lanes the user hid leave the grid and stop being sent.
  * With `only` the grid lays out that lane alone and the others keep being sent, so they play on out of sight.
  */
 export function LaneGrid({
@@ -37,6 +38,7 @@ export function LaneGrid({
   entry,
   hidden,
   only = null,
+  info = false,
   onHide,
   onPoint,
   onPick,
@@ -57,6 +59,8 @@ export function LaneGrid({
   hidden: Hidden;
   /** Shows this lane alone, filling the grid, while it is shown at all. */
   only?: number | null;
+  /** Shows the info HUD over every lane's picture, in place of the lane's name. */
+  info?: boolean;
   /** Hides a lane by its label; absent for a seat that may not change the workspace. */
   onHide?: (label: string) => void;
   /** Told which lane the pointer is over (null: none) and which lane a press landed on. */
@@ -125,21 +129,30 @@ export function LaneGrid({
         return (
           <div
             key={lanes[index].label}
-            className="pointer-events-none absolute p-s *:pointer-events-auto"
-            style={{ left: rect.x, top: rect.y, maxWidth: cell.x + cell.width - rect.x }}
+            className="pointer-events-none absolute flex flex-col items-start gap-s p-s"
+            style={{
+              left: rect.x,
+              top: rect.y,
+              maxWidth: cell.x + cell.width - rect.x,
+              maxHeight: cell.y + cell.height - rect.y,
+            }}
           >
-            <LaneChip
-              lane={lanes[index]}
-              catalogs={view.catalogs}
-              cadence={view.cadence}
-              onChange={(change) => session.setLane(index, change)}
-              onApplyAll={
-                lanes.filter((lane) => lane.source !== null).length > 1
-                  ? () => session.applyToAll(index)
-                  : undefined
-              }
-              onHide={onHide && (() => onHide(lanes[index].label))}
-            />
+            <div className="pointer-events-auto max-w-full">
+              <LaneChip
+                lane={lanes[index]}
+                catalogs={view.catalogs}
+                cadence={view.cadence}
+                hideName={info}
+                onChange={(change) => session.setLane(index, change)}
+                onApplyAll={
+                  lanes.filter((lane) => lane.source !== null).length > 1
+                    ? () => session.applyToAll(index)
+                    : undefined
+                }
+                onHide={onHide && (() => onHide(lanes[index].label))}
+              />
+            </div>
+            {info && <InfoHud session={session} view={view} lane={index} />}
           </div>
         );
       })}

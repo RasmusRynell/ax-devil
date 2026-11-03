@@ -67,6 +67,7 @@ export type {
   LaneStatusWire,
   ServerMessage,
   StickyWire,
+  VideoPtsWire,
   Want,
   WarningInfo,
 } from "../generated/api";
