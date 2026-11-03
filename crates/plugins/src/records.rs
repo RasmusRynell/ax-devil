@@ -8,9 +8,10 @@ use scene::{ClassRule, Coverage, Fields, FilterOption, FilterPolicy, Value, seri
 use serde::Deserialize;
 use serde_json::value::RawValue;
 
-/// Most reasons a plugin's warning lists, and the longest any of its texts is.
-const MAX_REASONS: usize = 3;
-const MAX_TEXT_CHARS: usize = 200;
+use crate::{
+    run::{LineHandler, Next},
+    wire::{ErrorIn, WarningIn, cut, json_reason, load_warning},
+};
 
 /// One line: exactly one of these keys.
 #[derive(Deserialize)]
@@ -25,13 +26,6 @@ struct LineIn<'a> {
     warning: Option<WarningIn>,
     skipped: Option<String>,
     error: Option<ErrorIn>,
-}
-
-/// A failure the plugin reports: it ends the run. The line may also carry `field` and `path`, which say what a
-/// scan or resolve was about and mean nothing to a decode.
-#[derive(Deserialize)]
-struct ErrorIn {
-    reason: String,
 }
 
 #[derive(Deserialize)]
@@ -69,16 +63,6 @@ fn on() -> bool {
     true
 }
 
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-struct WarningIn {
-    problem: String,
-    #[serde(default)]
-    reasons: Vec<String>,
-    #[serde(default)]
-    consequence: String,
-}
-
 /// What a line asks for.
 enum Parsed {
     Header(Header),
@@ -86,15 +70,6 @@ enum Parsed {
     Warning(Warning),
     Skipped(String),
     Error(String),
-}
-
-/// What the host does after a line.
-pub(crate) enum Next {
-    Continue,
-    /// The sink cannot take more.
-    SinkFull,
-    /// The plugin reported an error or broke the protocol in a way that stops the run.
-    Stop(String),
 }
 
 /// The name of the filter policy of every plugin.
@@ -114,36 +89,6 @@ impl<'a> Records<'a> {
             header: None,
             sampled: false,
         }
-    }
-
-    /// Handles one line, without its `\n`. Blank lines do nothing.
-    pub(crate) fn line(&mut self, number: usize, bytes: &[u8]) -> Next {
-        let bytes = bytes.trim_ascii();
-        if bytes.is_empty() {
-            return Next::Continue;
-        }
-        match self.parse(bytes) {
-            Ok(Parsed::Header(header)) => {
-                if self.header.is_some() || self.sampled {
-                    return Next::Stop(format!(
-                        "line {number}: a header must come once, before the first sample"
-                    ));
-                }
-                self.sink.header(header.clone());
-                self.header = Some(header);
-            }
-            Ok(Parsed::Warning(warning)) => self.sink.warn(warning),
-            Ok(Parsed::Sample(scene, on_equal_key)) => {
-                self.sampled = true;
-                if self.sink.sample(scene, on_equal_key).is_break() {
-                    return Next::SinkFull;
-                }
-            }
-            Ok(Parsed::Skipped(reason)) => self.sink.skip(number as u64, reason),
-            Ok(Parsed::Error(reason)) => return Next::Stop(reason),
-            Err(reason) => self.sink.skip(number as u64, reason),
-        }
-        Next::Continue
     }
 
     /// The header the file declared.
@@ -221,31 +166,34 @@ impl<'a> Records<'a> {
     }
 }
 
-/// A plugin's warning, cut to what a lane shows.
-fn load_warning(warning: WarningIn) -> Warning {
-    Warning {
-        problem: cut(&warning.problem),
-        more_reasons: warning.reasons.len() > MAX_REASONS,
-        reasons: warning
-            .reasons
-            .iter()
-            .take(MAX_REASONS)
-            .map(|reason| cut(reason))
-            .collect(),
-        consequence: cut(&warning.consequence),
-    }
-}
-
-fn cut(text: &str) -> String {
-    text.chars().take(MAX_TEXT_CHARS).collect()
-}
-
-/// Why JSON failed to read, without the position inside the line.
-fn json_reason(error: &serde_json::Error) -> String {
-    if error.is_data() {
-        let text = error.to_string();
-        text.split(" at line ").next().unwrap_or(&text).to_owned()
-    } else {
-        "is not JSON".to_owned()
+impl LineHandler for Records<'_> {
+    /// Handles one line, without its `\n`. Blank lines do nothing.
+    fn line(&mut self, number: usize, bytes: &[u8]) -> Next {
+        let bytes = bytes.trim_ascii();
+        if bytes.is_empty() {
+            return Next::Continue;
+        }
+        match self.parse(bytes) {
+            Ok(Parsed::Header(header)) => {
+                if self.header.is_some() || self.sampled {
+                    return Next::Stop(format!(
+                        "line {number}: a header must come once, before the first sample"
+                    ));
+                }
+                self.sink.header(header.clone());
+                self.header = Some(header);
+            }
+            Ok(Parsed::Warning(warning)) => self.sink.warn(warning),
+            Ok(Parsed::Sample(scene, on_equal_key)) => {
+                self.sampled = true;
+                if self.sink.sample(scene, on_equal_key).is_break() {
+                    return Next::SinkFull;
+                }
+            }
+            Ok(Parsed::Skipped(reason)) => self.sink.skip(number as u64, reason),
+            Ok(Parsed::Error(reason)) => return Next::Stop(reason),
+            Err(reason) => self.sink.skip(number as u64, reason),
+        }
+        Next::Continue
     }
 }

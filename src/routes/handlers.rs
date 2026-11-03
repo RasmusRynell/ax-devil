@@ -16,6 +16,7 @@ use axum::{
 };
 use foundation::{CancelToken, ErrorCode, Interrupt, Location, UserError};
 use handler_api::{Choice, FieldKind, Form, PlaylistResolver, Settings};
+use handlers::Handlers;
 use std::sync::Arc;
 
 /// A refused request: the status and the error as the host sees it. Both routes need the `Files` grant, so the
@@ -92,6 +93,7 @@ pub(crate) async fn get_plugins(State(state): State<AppState>) -> Json<PluginsIn
 /// Runs the resolver's scan of `field` on a blocking thread. Dropping the returned future, as the server does when
 /// the client closes the request, cancels the scan.
 async fn scan_choices(
+    handlers: &Handlers,
     resolver: Arc<dyn PlaylistResolver>,
     field: String,
     settings: Settings,
@@ -110,7 +112,13 @@ async fn scan_choices(
             .at(Location::field(field)),
         ));
     }
-    let settings = form.validate(&settings).map_err(Interrupt::Failed)?;
+    // The plugin runs in its own working folder, so a relative path, a default too, would not mean what it does here.
+    let mut filled = form
+        .validate(&settings)
+        .map_err(Interrupt::Failed)?
+        .declared();
+    workspace::absolute_paths(form, &mut filled, handlers);
+    let settings = form.validate(&filled).map_err(Interrupt::Failed)?;
     let cancel = CancelToken::new();
     let _cancel_when_dropped = CancelOnDrop(cancel.clone());
     let location = field.clone();
@@ -131,13 +139,14 @@ pub(crate) async fn scan(
     Path(id): Path<String>,
     Json(request): Json<ScanRequest>,
 ) -> Result<Json<Vec<ChoiceInfo>>, Refusal> {
-    let Some(resolver) = state.plugins.handlers().resolver(&id).cloned() else {
+    let handlers = state.plugins.handlers();
+    let Some(resolver) = handlers.resolver(&id).cloned() else {
         return Err(refuse(
             StatusCode::NOT_FOUND,
             &UserError::new(ErrorCode::UnknownHandler, "No such playlist resolver"),
         ));
     };
-    match scan_choices(resolver, request.field, request.settings).await {
+    match scan_choices(&handlers, resolver, request.field, request.settings).await {
         Ok(choices) => Ok(Json(
             choices
                 .into_iter()
@@ -167,12 +176,12 @@ mod tests {
         DecodeError, DecodeSummary, Decoder, Field, Form, Framing, Input, ResolvedPlaylist,
         ResolverSpec, SceneSink, Spec, Values,
     };
-    use handlers::Handlers;
     use scene::MatchBasis;
     use serde_json::json;
     use std::{
+        path::Path,
         sync::{
-            LazyLock,
+            LazyLock, Mutex,
             atomic::{AtomicBool, Ordering},
         },
         time::{Duration, Instant},
@@ -325,6 +334,20 @@ mod tests {
             ])
         );
 
+        // A folder typed relative to the backend's working folder is the same folder to the plugin.
+        let cwd = std::env::current_dir().unwrap();
+        let up = std::path::PathBuf::from_iter(cwd.components().skip(1).map(|_| ".."));
+        let relative = up.join(folder.path().strip_prefix("/").unwrap());
+        let (status, again) = test
+            .send(scan(
+                "mot_challenge",
+                "sequences",
+                json!({ "root": relative }),
+            ))
+            .await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(json(&again), json(&body));
+
         let failures = [
             (
                 scan("mot_challenge", "sequences", json!({})),
@@ -361,6 +384,7 @@ mod tests {
     struct Waiting {
         started: AtomicBool,
         cancelled: AtomicBool,
+        dir: Mutex<String>,
     }
 
     static WAITING_SPEC: LazyLock<ResolverSpec> = LazyLock::new(|| ResolverSpec {
@@ -369,11 +393,13 @@ mod tests {
         name: "Waiting".into(),
         description: "Scans until cancelled.".into(),
         form: Form {
-            fields: vec![Field::new(
-                "items",
-                "Items",
-                FieldKind::Scan { depends_on: vec![] },
-            )],
+            fields: vec![
+                Field::new("items", "Items", FieldKind::Scan { depends_on: vec![] }),
+                Field {
+                    default: Some("runs".into()),
+                    ..Field::new("dir", "Folder", FieldKind::Folder)
+                },
+            ],
         },
     });
 
@@ -385,9 +411,10 @@ mod tests {
         fn scan(
             &self,
             _field: &str,
-            _settings: &Values,
+            settings: &Values,
             cancel: &CancelToken,
         ) -> Result<Vec<Choice>, Interrupt<UserError>> {
+            *self.dir.lock().unwrap() = settings.text("dir").unwrap_or_default().to_owned();
             self.started.store(true, Ordering::Release);
             let deadline = Instant::now() + Duration::from_secs(10);
             while Instant::now() < deadline {
@@ -426,12 +453,19 @@ mod tests {
     #[tokio::test]
     async fn a_scan_is_cancelled_when_the_client_drops_the_request() {
         let resolver = Arc::new(Waiting::default());
-        let request = tokio::spawn(scan_choices(
-            resolver.clone(),
-            "items".to_owned(),
-            Settings::new(),
-        ));
+        let scanned = resolver.clone();
+        let request = tokio::spawn(async move {
+            scan_choices(
+                &Handlers::built_in(),
+                scanned,
+                "items".to_owned(),
+                Settings::new(),
+            )
+            .await
+        });
         assert!(until(&resolver.started).await, "the scan started");
+        // The omitted folder setting reaches the plugin as its default made absolute.
+        assert!(Path::new(&*resolver.dir.lock().unwrap()).is_absolute());
         assert!(!resolver.cancelled.load(Ordering::Acquire));
 
         request.abort();

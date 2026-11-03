@@ -1,10 +1,11 @@
 # Plugin reference
 
 The one specification of the plugin contract (protocol 3). Code that enforces it: `crates/plugins`. The model plugin
-is `fixtures/plugins/python-tracks`; a second, in POSIX shell and awk, is `fixtures/plugins/shell-times`.
+is `fixtures/plugins/python-tracks`; a second, in POSIX shell and awk, is `fixtures/plugins/shell-times`. The model
+resolver is `fixtures/plugins/python-runs`.
 
-A plugin is a program and a manifest that lists the **handlers** it provides. The only kind today is `decoder`. One
-handler call is one run of the program.
+A plugin is a program and a manifest that lists the **handlers** it provides, of kind `decoder` (an overlay file in,
+Scenes out) or `playlist_resolver` (settings in, a playlist out). One handler call is one run of the program.
 
 ## Manifest `ax-devil-plugin.json`
 
@@ -25,7 +26,8 @@ field by its path, such as `handlers[1].options[0].kind`.
 
 Every handler has `kind` and `id` (same characters as the plugin id; it may equal the plugin's own id, and must
 differ from every other handler id, built-in or installed, of any kind; `--handler-type` takes it) and `name`. A
-`kind` this ax-devil does not know refuses the plugin.
+`kind` this ax-devil does not know is skipped, unread and without an id, and listed under the plugin as needing
+a newer ax-devil; the plugin's other handlers work, and a plugin left with none fails.
 
 Decoder handler (`"kind": "decoder"`):
 
@@ -36,7 +38,24 @@ Decoder handler (`"kind": "decoder"`):
 | `extensions` | no | File name endings the decoder opens, lowercase with the dot, such as `.acme.jsonl`. Without any, it is picked only by id |
 | `bases` | no | `["frame"]`, `["time"]` or both: what a lane may match your records to video frames by. Frame: record k belongs to frame k (or the frame number you key by); a record is a `skipped` line or the samples in a row with one start key. Time: by the records' timestamps. Default `["frame"]` |
 | `default_basis` | no | One of `bases`, the one a lane starts with; default the first listed |
-| `options` | no | `[{"key","label","kind","required","default","positional","extensions"}]`: `key` is letters, digits, `_` or `-` and is the flag `--<key>` (`_` as `-`) unless `positional`; `kind` is `text`, `file` (with optional `extensions`) or `folder`; `required` defaults to false; `default` is text. Values are always text |
+| `options` | no | A list of fields, below, of kind `text`, `file` or `folder` only. Values are always text |
+
+Playlist resolver handler (`"kind": "playlist_resolver"`): an `id` other than `help`, `description` (one sentence, required) and `settings`, an
+optional list of fields, below. The settings become a form in the app and arguments of `ax-devil playlist ID`.
+
+A field is `{"key","label","kind","required","default","positional", ...}`. `key` is letters, digits, `_` or `-`,
+starts with a letter or digit, and in a resolver is not `help`, `config`, `cache-dir` or `log-level`. It is the flag
+`--<key>` (`_` as `-`) unless `positional` (which needs `required`, no `default`, and a single value).
+`required` defaults to false. `default` is text, or a whole number for an integer. `kind` and what it adds:
+
+| Kind | Value | Adds |
+|------|-------|------|
+| `text`, `folder` | text | |
+| `file` | text | `extensions`: lowercase with the dot |
+| `integer` | whole number | `min` (default 0) |
+| `handler` | one decoder id | |
+| `decoder_options` | a map of that decoder's options | `handler_field`: the key of the `handler` field it belongs to |
+| `scan` | a list of values the plugin's `scan` found; left out means all | `depends_on`: keys of the other settings the scan reads, not a `scan` or `decoder_options` |
 
 The cache of a file's samples is keyed by the handler id, the SHA-256 of the manifest and the plugin's `code` files,
 the declared options (defaults filled in; undeclared keys are dropped with a warning). Editing a code file reruns the
@@ -64,6 +83,14 @@ that has a value. The request says nothing of the video, so a file in pixels nee
 stdin, then the file at `input.path`; write to stdout.
 Stderr is drained: its last 20 lines (2 KiB) join a failure's reason, and it is logged at DEBUG only.
 
+Scan and resolve send the settings the user has entered, checked against the form with defaults filled in, and no
+overlay path:
+
+```json
+{"protocol":3,"op":"scan","handler":"acme_runs","field":"runs","settings":{"root":"/abs/runs"}}
+{"protocol":3,"op":"resolve","handler":"acme_runs","settings":{"root":"/abs/runs","runs":["a","b"]}}
+```
+
 ## Output: JSON Lines on stdout
 
 UTF-8, one JSON object per line, `\n` or `\r\n`; blank lines are ignored; a line may be up to 16 MiB. Each line has
@@ -86,6 +113,24 @@ The run ends **Complete** when the plugin exits 0 after its last line. Any other
 exit or signal, nothing printed for `idle_timeout_s`, a line over 16 MiB, a protocol error, an unreadable pipe. The
 samples already read stay and the lane shows the reason; if none arrived, the overlay fails to open. On every end,
 and when the lane is closed, the host kills the plugin and (not on Windows) everything it started.
+
+## Output of scan and resolve
+
+Same framing and limits; each line has exactly one key. `warning` and `error` are as above, but a scan or resolve
+stops at an `error` and fails with its `reason`, about the setting `field` or the folder or file `path` when given,
+which a form shows at that setting.
+
+| Line | Op | Meaning |
+|------|----|---------|
+| `{"choice": {"value","label"?,"detail"?}}` | scan | One value of the `field`; `label` defaults to `value` |
+| `{"playlist": {"name"}}` | resolve | At most once, before the first entry; default the resolver's name |
+| `{"entry": {"name","video","overlays"?}}` | resolve | One video. `video` is `{"file": "/abs/v.mp4"}` or `{"image_sequence": {"pattern": "/abs/img1/%06d.jpg","start_number","frame_rate": {"num","den"},"width","height","frame_count"}}`. An overlay is `{"label","slot","path","handler","options"?}`: `slot` is the lane's identity, the same in every entry that has that lane; `handler` is a decoder id |
+
+The host fails the operation, naming the line, when a line is not valid JSON or has the wrong keys, a path is not
+absolute, an entry name repeats, or a slot or label repeats within an entry. Nothing is used unless the plugin then
+exits 0; a failed start, a nonzero exit or no output for `idle_timeout_s` fails with the reason and the end of stderr.
+A scan or resolve keeps the first 64 warnings and summarizes the rest in one; one that prints more than 50,000 choices or 50,000 entries is stopped and fails, naming the limit.
+A scan the user abandons kills the plugin.
 
 ## Scene
 

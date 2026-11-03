@@ -57,8 +57,8 @@ fonts vary.
 ## Plugin tests
 
 `crates/plugins/tests` and `tests/plugins.rs` run the plugins in `fixtures/plugins` as real processes. The
-Python one needs `python3`; without it that test skips, saying why on stderr, unless `AX_DEVIL_REQUIRE_PYTHON` is set,
-which makes the skip a failure.
+Python ones need `python3`; without it those tests skip, saying why on stderr, unless `AX_DEVIL_REQUIRE_PYTHON` is
+set, which makes the skip a failure.
 
 ## Desktop suite and screenshots
 

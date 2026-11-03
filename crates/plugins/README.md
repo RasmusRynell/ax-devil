@@ -1,10 +1,11 @@
 # plugins
 
-Installed programs and the handlers they provide, today file decoders. The contract authors follow is
+Installed programs and the handlers they provide: file decoders and playlist resolvers. The contract authors follow is
 [the write-plugin reference](../../.agents/skills/write-plugin/reference.md); this file holds what the host does and
 why. `load(registry, reserved)` reads `plugins.json` and returns one entry per listed manifest, failed ones included
 so they can be listed; a `LoadedPlugin` holds one `PluginDecoder` per decoder handler, each the `Decoder` that
-`Handlers::with_decoders` adds beside the built-ins. The handlers of a plugin share one `Program` (command,
+`Handlers::with_decoders` adds beside the built-ins, and one `PluginResolver` per resolver handler, added by
+`with_resolvers`. The handlers of a plugin share one `Program` (command,
 environment, idle timeout, code identity). The scene store drives it like any decoder and owns grouping, ordering and
 caching.
 
@@ -25,6 +26,11 @@ caching.
   behind never outlives the lane; output already written is still read, for up to 2 s. Windows has no process group here: only the plugin process itself is killed.
 - **stderr** is drained on its own thread so a full pipe cannot stall the plugin; the last 64 KiB is kept, the last
   20 lines (2 KiB) join a failure reason, and it is logged at DEBUG only because it may echo the user's data.
+- **Scan and resolve** (`resolver.rs`, `resolved.rs`) run the same process on the same runner, with the lines
+  collected instead of fed to a sink. Each line is checked as it arrives (absolute paths, unique entry names, unique
+  slots and labels per entry) and a bad one fails the operation naming its number; the result is used only after exit
+  0. An `error` line becomes a `UserError` at the setting `field` or the host `path` it names. Manifest fields share
+  `handler_api`'s `Field` in memory but are read by `fields.rs` with their paths, as the wire shape is nested.
 - **Failure is the host's call.** `decode` returns `Err` for an Incomplete end; the scene store knows whether
   samples arrived and marks the lane Incomplete (some) or failed (none). Bad lines never fail a run; they are counted
   into one warning (`records.rs`).

@@ -259,6 +259,94 @@ fn an_overlay_option_belongs_to_the_nearest_preceding_overlay_and_is_typed_by_it
 }
 
 #[test]
+fn an_installed_resolver_is_a_playlist_subcommand_with_its_settings_as_arguments() {
+    let manifest = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("fixtures/plugins/python-runs/ax-devil-plugin.json");
+    let plugin = ::plugins::LoadedPlugin::load(&manifest).unwrap();
+    let handlers = Handlers::built_in().with_resolvers(
+        plugin
+            .resolvers
+            .iter()
+            .map(|resolver| Arc::clone(resolver) as Arc<dyn handler_api::PlaylistResolver>),
+    );
+    let cli = args::try_parse_from(
+        &handlers,
+        [
+            "ax-devil",
+            "playlist",
+            "python-runs",
+            "/data/runs",
+            "--runs",
+            "a,b",
+        ],
+    )
+    .unwrap();
+
+    let Some(Command::Playlist { resolver, settings }) = cli.command else {
+        panic!("a playlist command opens a playlist");
+    };
+    assert_eq!(resolver, "python-runs");
+    assert_eq!(
+        Value::Object(settings),
+        json!({ "root": "/data/runs", "runs": ["a", "b"] })
+    );
+
+    // A required decoder-options setting needs no flag: a decoder without options has none to give.
+    let folder = tempfile::tempdir().unwrap();
+    let mut manifest: Value = serde_json::from_slice(&std::fs::read(&manifest).unwrap()).unwrap();
+    manifest["handlers"][0]["settings"]
+        .as_array_mut()
+        .unwrap()
+        .extend([
+            json!({ "key": "decoder", "label": "Decoder", "kind": "handler", "required": true }),
+            json!({ "key": "options", "label": "Options", "kind": "decoder_options",
+                "handler_field": "decoder", "required": true }),
+        ]);
+    let manifest_path = folder.path().join("ax-devil-plugin.json");
+    std::fs::write(&manifest_path, manifest.to_string()).unwrap();
+    std::fs::write(folder.path().join("runs.py"), "").unwrap();
+    let plugin = ::plugins::LoadedPlugin::load(&manifest_path).unwrap();
+    let handlers = Handlers::built_in().with_resolvers(
+        plugin
+            .resolvers
+            .iter()
+            .map(|resolver| Arc::clone(resolver) as Arc<dyn handler_api::PlaylistResolver>),
+    );
+    let cli = args::try_parse_from(
+        &handlers,
+        [
+            "ax-devil",
+            "playlist",
+            "python-runs",
+            "/r",
+            "--decoder",
+            "MOT_FILE",
+        ],
+    )
+    .unwrap();
+    let Some(Command::Playlist { settings, .. }) = cli.command else {
+        panic!("a playlist command opens a playlist");
+    };
+    assert_eq!(settings["options"], json!({}));
+
+    // A setting may not repeat an argument every command takes; the plugins crate keeps that list.
+    use clap::CommandFactory;
+    for arg in Cli::command()
+        .get_arguments()
+        .filter(|arg| arg.is_global_set())
+    {
+        let id = arg.get_id().as_str().replace('_', "-");
+        let long = arg.get_long().expect("a global option is a flag");
+        for name in [id.as_str(), long] {
+            assert!(
+                ::plugins::RESERVED_SETTING_KEYS.contains(&name),
+                "RESERVED_SETTING_KEYS lacks '{name}'"
+            );
+        }
+    }
+}
+
+#[test]
 fn a_playlist_command_line_becomes_the_item_the_dialog_would_add() {
     let items = items(&["playlist", "mot_challenge", "/data/mot"]);
     let Source::Playlist(recipe) = &items[0].recipe.source else {

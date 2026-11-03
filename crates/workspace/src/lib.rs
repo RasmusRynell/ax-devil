@@ -17,5 +17,6 @@ pub use content::{
 pub use foundation::{BookmarkId, ItemId};
 pub use item::{
     OverlayRecipe, PlaylistRecipe, Recipe, Source, Unreadable, VideoRecipe, WorkspaceItem,
+    absolute_paths,
 };
 pub use workspace::Workspace;

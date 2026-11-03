@@ -2,9 +2,13 @@
 
 use std::sync::Mutex;
 
+use foundation::CancelToken;
+use serde_json::Value;
+
 use crate::{
     code,
     manifest::{Manifest, ManifestError},
+    run::{self, End, LineHandler},
 };
 
 /// A plugin's command, environment, idle timeout and code identity. One per plugin, held by each of its handlers.
@@ -46,5 +50,28 @@ impl Program {
             .map_err(|error| ManifestError::new("code", error.to_string()))?;
         *memo = Some((files, hash));
         Ok(hash)
+    }
+
+    /// One run of the plugin for the handler `handler`, which is sent `request` on stdin; its output lines go to
+    /// `lines`.
+    pub(crate) fn run(
+        &self,
+        handler: &str,
+        request: &Value,
+        lines: &mut dyn LineHandler,
+        cancel: &CancelToken,
+    ) -> End {
+        let Some((command, args)) = self.manifest.command.split_first() else {
+            return End::Incomplete("The plugin has no command".to_owned());
+        };
+        let process = run::Spec {
+            id: handler,
+            program: command,
+            args,
+            env: &self.manifest.env,
+            request: request.to_string(),
+            idle_timeout: self.manifest.idle_timeout,
+        };
+        run::run(&process, lines, cancel)
     }
 }

@@ -18,6 +18,7 @@ const MOT: ResolverInfo = {
       kind: { kind: "Scan", depends_on: ["root"] },
       required: false,
     },
+    { key: "stride", label: "Stride", kind: { kind: "Integer", min: 1n }, required: false },
   ],
 };
 const DECODERS: DecoderInfo[] = [
@@ -49,6 +50,34 @@ const PAIR: ResolverInfo = {
       required: false,
     },
     { key: "scale", label: "Scale", kind: { kind: "Text" }, required: true, default: "1" },
+  ],
+};
+
+const DEPTH: ResolverInfo = {
+  id: "depth",
+  display_name: "Depth",
+  description: "",
+  fields: [
+    { key: "format", label: "Format", kind: { kind: "Handler" }, required: true },
+    {
+      key: "options",
+      label: "Options",
+      kind: { kind: "DecoderOptions", handler_field: "format" },
+      required: true,
+    },
+    {
+      key: "depth",
+      label: "Depth",
+      kind: { kind: "Integer", min: 1n },
+      required: false,
+      default: 1,
+    },
+    {
+      key: "sequences",
+      label: "Sequences",
+      kind: { kind: "Scan", depends_on: ["depth"] },
+      required: false,
+    },
   ],
 };
 
@@ -115,15 +144,16 @@ describe("resolver form", () => {
     render(<Harness />);
     expect(screen.getByRole("button", { name: "Scan" })).toHaveProperty("disabled", true);
     type("/data");
+    fireEvent.change(screen.getByLabelText("Stride"), { target: { value: "2" } });
     scan();
-    expect(scans[0].body).toEqual({ field: "sequences", settings: { root: "/data" } });
+    expect(scans[0].body).toEqual({ field: "sequences", settings: { root: "/data", stride: 2 } });
     expect(screen.getByRole("status").textContent).toBe("Scanning…");
     expect(settings()).toBeNull();
     await respond(scans, 0, "SEQ-01", "SEQ-02");
-    expect(settings()).toEqual({ root: "/data" });
+    expect(settings()).toEqual({ root: "/data", stride: 2 });
 
     fireEvent.click(screen.getByRole("checkbox", { name: /SEQ-02/ }));
-    expect(settings()).toEqual({ root: "/data", sequences: ["SEQ-01"] });
+    expect(settings()).toEqual({ root: "/data", stride: 2, sequences: ["SEQ-01"] });
     fireEvent.click(screen.getByRole("checkbox", { name: /SEQ-01/ }));
     expect(settings()).toBeNull();
   });
@@ -240,5 +270,26 @@ describe("resolver form", () => {
     expect(screen.getByRole("alert").textContent).toBe("Whole number");
     fireEvent.change(width, { target: { value: "640" } });
     expect(settings()).toEqual({ format: "MOT_FILE", options: { width: 640 } });
+  });
+
+  it("scans with the values resolution would use: defaults, integers and decoder option maps", () => {
+    const scans = stubScans();
+    render(<Harness resolver={DEPTH} />);
+    expect(screen.getByRole("button", { name: "Scan" })).toHaveProperty("disabled", false);
+    fireEvent.change(screen.getByLabelText("Image width"), { target: { value: "640" } });
+    scan();
+    expect(scans[0].body.settings).toEqual({
+      format: "MOT_FILE",
+      options: { width: 640 },
+      depth: 1,
+    });
+    // A required option map with nothing in it is still sent, as an empty map.
+    fireEvent.change(screen.getByLabelText("Image width"), { target: { value: "" } });
+    scan();
+    expect(scans[1].body.settings).toEqual({ format: "MOT_FILE", options: {}, depth: 1 });
+    fireEvent.change(screen.getByLabelText("Depth"), { target: { value: "" } });
+    expect(screen.getByRole("button", { name: "Scan" })).toHaveProperty("disabled", false);
+    fireEvent.change(screen.getByLabelText("Depth"), { target: { value: "x" } });
+    expect(screen.getByRole("button", { name: "Scan" })).toHaveProperty("disabled", true);
   });
 });

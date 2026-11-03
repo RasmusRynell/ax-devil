@@ -3,9 +3,10 @@
 
 use api_types::handlers::{
     HandlerKind, HandlerSummary, PluginInfo, PluginSource, PluginStatus, PluginsInfo,
+    SkippedHandlerInfo,
 };
 use foundation::{ErrorCode, UserError};
-use handler_api::Decoder;
+use handler_api::{Decoder, PlaylistResolver};
 use handlers::{HandlerSet, Handlers};
 use plugins::{Loaded, Registry, Reserved};
 use std::{
@@ -304,7 +305,12 @@ impl Plugins {
             plugins,
             problem: loaded.registry.as_ref().map(ToString::to_string),
         };
-        (self.built_in.clone().with_decoders(loaded.decoders()), info)
+        let handlers = self
+            .built_in
+            .clone()
+            .with_decoders(loaded.decoders())
+            .with_resolvers(loaded.resolvers());
+        (handlers, info)
     }
 
     fn swap(&self, handlers: Handlers, info: PluginsInfo) {
@@ -334,6 +340,16 @@ fn decoder_summary(decoder: &Arc<dyn Decoder>) -> HandlerSummary {
     }
 }
 
+fn resolver_summary(resolver: &Arc<dyn PlaylistResolver>) -> HandlerSummary {
+    let spec = resolver.spec();
+    HandlerSummary {
+        kind: HandlerKind::PlaylistResolver,
+        id: spec.id.clone(),
+        name: spec.name.clone(),
+        extensions: Vec::new(),
+    }
+}
+
 /// One entry per built-in plugin, in the order its first handler appears.
 fn built_in_info(built_in: &Handlers) -> Vec<PluginInfo> {
     let mut groups: Vec<(String, Vec<HandlerSummary>)> = Vec::new();
@@ -348,14 +364,7 @@ fn built_in_info(built_in: &Handlers) -> Vec<PluginInfo> {
         add(&decoder.spec().plugin, decoder_summary(decoder));
     }
     for resolver in built_in.resolvers() {
-        let spec = resolver.spec();
-        let summary = HandlerSummary {
-            kind: HandlerKind::PlaylistResolver,
-            id: spec.id.clone(),
-            name: spec.name.clone(),
-            extensions: Vec::new(),
-        };
-        add(&spec.plugin, summary);
+        add(&resolver.spec().plugin, resolver_summary(resolver));
     }
     groups
         .into_iter()
@@ -366,6 +375,7 @@ fn built_in_info(built_in: &Handlers) -> Vec<PluginInfo> {
                 id,
                 version: env!("CARGO_PKG_VERSION").to_owned(),
                 handlers,
+                skipped: Vec::new(),
             },
         })
         .collect()
@@ -399,6 +409,20 @@ fn installed_info(loaded: &Loaded) -> Vec<PluginInfo> {
                             .map(|decoder| {
                                 decoder_summary(&(Arc::clone(decoder) as Arc<dyn Decoder>))
                             })
+                            .chain(plugin.resolvers.iter().map(|resolver| {
+                                resolver_summary(
+                                    &(Arc::clone(resolver) as Arc<dyn PlaylistResolver>),
+                                )
+                            }))
+                            .collect(),
+                        skipped: plugin
+                            .skipped
+                            .iter()
+                            .map(|handler| SkippedHandlerInfo {
+                                kind: handler.kind.clone(),
+                                id: handler.id.clone(),
+                                reason: handler.reason.clone(),
+                            })
                             .collect(),
                     }
                 }
@@ -429,6 +453,32 @@ fn log_new_problems(before: &PluginsInfo, info: &PluginsInfo) {
     for (manifest, reason) in failures(info).filter(|failure| !known.contains(failure)) {
         tracing::warn!("plugin {manifest} not loaded: {reason}");
     }
+    let known: Vec<_> = skips(before).collect();
+    for (manifest, handler) in skips(info).filter(|skip| !known.contains(skip)) {
+        let id = handler.id.as_deref().unwrap_or("without an id");
+        tracing::warn!(
+            "plugin {manifest}: handler {} ({id}) skipped: {}",
+            handler.kind,
+            handler.reason
+        );
+    }
+}
+
+/// The handlers of installed plugins that are listed but not used, with their plugin's manifest.
+fn skips(info: &PluginsInfo) -> impl Iterator<Item = (&str, &SkippedHandlerInfo)> {
+    info.plugins
+        .iter()
+        .filter_map(|plugin| match (&plugin.source, &plugin.status) {
+            (PluginSource::Installed { manifest, .. }, PluginStatus::Loaded { skipped, .. }) => {
+                Some(
+                    skipped
+                        .iter()
+                        .map(move |handler| (manifest.as_str(), handler)),
+                )
+            }
+            _ => None,
+        })
+        .flatten()
 }
 
 /// The installed plugins that did not load, as manifest and reason.

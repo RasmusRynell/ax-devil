@@ -1,8 +1,8 @@
 # Plugins
 
 ax-devil reads other overlay formats through **plugins**: programs in any language that you install and ax-devil
-runs on an overlay file to get its Scenes. A plugin lists the **handlers** it provides in its manifest; today those
-are decoders. Writing one, with an agent or by hand, is in the
+runs on an overlay file to get its Scenes, or on a folder to get a playlist. A plugin lists the **handlers** it
+provides in its manifest: decoders and playlist resolvers. Writing one, with an agent or by hand, is in the
 [write-plugin skill](../.agents/skills/write-plugin/SKILL.md); the contract is its
 [reference](../.agents/skills/write-plugin/reference.md). The decoders and playlist resolvers that ship with ax-devil
 are built in and not plugins you install.
@@ -22,8 +22,8 @@ reason, and `plugins list` says why one did not load.
 ## Trust
 
 A plugin is code you install. It runs as you, can read your files and reach the network, and ax-devil does not
-sandbox it. ax-devil gives it only the overlay path, the options its manifest declares, a short
+sandbox it. ax-devil gives it only the overlay path or the settings a resolver is given, the options its manifest declares, a short
 allowlist of environment variables (none of ax-devil's credentials) and an empty private working folder, and kills it
 and, except on Windows, everything it started when the lane no longer needs it. A workspace from someone else can
-make ax-devil run an installed plugin on a file it names, as it does with a built-in decoder. Install only
-plugins you trust.
+make ax-devil run an installed decoder on a file it names, or an installed resolver with settings it chooses, and
+ax-devil then opens the paths the resolver returns. Install only plugins you trust.

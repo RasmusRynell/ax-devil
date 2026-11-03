@@ -7,7 +7,16 @@ use handler_api::{Field, FieldKind, Form};
 use scene::{MatchBasis, SCENE_VERSION, SceneVersion};
 use serde_json::{Map, Value};
 
-use crate::manifest::{DecoderHandler, Handler, ManifestError, valid_id};
+use crate::manifest::{
+    DecoderHandler, Handler, ManifestError, ResolverHandler, SkippedHandler, valid_id,
+};
+
+/// The flag names (`_` written as `-`) that every `ax-devil` command line already takes, so no resolver setting may
+/// be named one: clap refuses an argument that repeats them. A test of the real command keeps this in step.
+pub const RESERVED_SETTING_KEYS: [&str; 4] = ["help", "config", "cache-dir", "log-level"];
+
+/// Why a handler of an unknown kind is not used.
+const NEWER: &str = "needs a newer ax-devil";
 
 /// One JSON object being read; `prefix` is the path to it, ending in `.` unless it is the manifest itself.
 pub(crate) struct Fields<'a> {
@@ -85,6 +94,16 @@ impl<'a> Fields<'a> {
         }
     }
 
+    fn optional_integer(&mut self, key: &str) -> Result<Option<i64>, ManifestError> {
+        match self.map.remove(key) {
+            None => Ok(None),
+            Some(value) => value
+                .as_i64()
+                .map(Some)
+                .ok_or_else(|| self.error(key, "must be a whole number")),
+        }
+    }
+
     fn optional_bool(&mut self, key: &str) -> Result<bool, ManifestError> {
         match self.map.remove(key) {
             None => Ok(false),
@@ -139,8 +158,11 @@ impl<'a> Fields<'a> {
         Ok(extensions)
     }
 
-    /// The `handlers` list: at least one, with ids that differ.
-    pub(crate) fn handlers(&mut self) -> Result<Vec<Handler>, ManifestError> {
+    /// The `handlers` list: at least one, with ids that differ. A handler of a kind this build does not know is set
+    /// aside unread, since its fields are not ours to judge; the plugin fails only if none is left.
+    pub(crate) fn handlers(
+        &mut self,
+    ) -> Result<(Vec<Handler>, Vec<SkippedHandler>), ManifestError> {
         let Value::Array(items) = self.take("handlers")? else {
             return Err(self.error("handlers", "must be a list"));
         };
@@ -149,6 +171,7 @@ impl<'a> Fields<'a> {
         }
         let mut seen = HashSet::new();
         let mut handlers = Vec::with_capacity(items.len());
+        let mut skipped = Vec::new();
         for (index, item) in items.into_iter().enumerate() {
             let at = self.path(&format!("handlers[{index}]"));
             let Value::Object(mut map) = item else {
@@ -157,11 +180,18 @@ impl<'a> Fields<'a> {
             let mut read = Fields::new(&mut map, format!("{at}."));
             let handler = match read.string("kind")?.as_str() {
                 "decoder" => Handler::Decoder(read.decoder()?),
+                "playlist_resolver" => Handler::PlaylistResolver(read.resolver()?),
                 other => {
-                    return Err(read.error(
-                        "kind",
-                        format!("'{other}' is not a handler kind this ax-devil reads (decoder)"),
-                    ));
+                    skipped.push(SkippedHandler {
+                        kind: other.to_owned(),
+                        id: read
+                            .map
+                            .get("id")
+                            .and_then(Value::as_str)
+                            .map(str::to_owned),
+                        reason: NEWER.to_owned(),
+                    });
+                    continue;
                 }
             };
             read.finish()?;
@@ -173,7 +203,10 @@ impl<'a> Fields<'a> {
             }
             handlers.push(handler);
         }
-        Ok(handlers)
+        if handlers.is_empty() {
+            return Err(self.error("handlers", NEWER));
+        }
+        Ok((handlers, skipped))
     }
 
     fn decoder(&mut self) -> Result<DecoderHandler, ManifestError> {
@@ -190,7 +223,7 @@ impl<'a> Fields<'a> {
         }
         let scene_version = self.scene_version()?;
         let extensions = self.extensions()?;
-        let options = self.options()?;
+        let options = self.form("options", false)?;
         let (bases, default_basis) = self.bases()?;
         Ok(DecoderHandler {
             id,
@@ -200,6 +233,19 @@ impl<'a> Fields<'a> {
             options,
             bases,
             default_basis,
+        })
+    }
+
+    fn resolver(&mut self) -> Result<ResolverHandler, ManifestError> {
+        let id = self.id("id")?;
+        if id == "help" {
+            return Err(self.error("id", "'help' is taken by the command line's own help"));
+        }
+        Ok(ResolverHandler {
+            id,
+            name: self.non_empty("name")?,
+            description: self.non_empty("description")?,
+            settings: self.form("settings", true)?,
         })
     }
 
@@ -256,44 +302,97 @@ impl<'a> Fields<'a> {
         Ok((bases, default))
     }
 
-    fn options(&mut self) -> Result<Form, ManifestError> {
-        let Some(options) = self.map.remove("options") else {
+    /// The list `key` of fields; a decoder's options are text, files or folders, a resolver's settings may be any
+    /// kind (`all_kinds`).
+    fn form(&mut self, key: &str, all_kinds: bool) -> Result<Form, ManifestError> {
+        let Some(list) = self.map.remove(key) else {
             return Ok(Form::default());
         };
-        let Value::Array(items) = options else {
-            return Err(self.error("options", "must be a list"));
+        let Value::Array(items) = list else {
+            return Err(self.error(key, "must be a list"));
         };
-        let mut seen = HashSet::new();
-        let mut fields = Vec::with_capacity(items.len());
+        let mut flags = HashSet::new();
+        let mut fields: Vec<(String, Field)> = Vec::with_capacity(items.len());
         for (index, item) in items.into_iter().enumerate() {
-            let at = self.path(&format!("options[{index}]"));
+            let at = self.path(&format!("{key}[{index}]"));
             let Value::Object(mut map) = item else {
                 return Err(ManifestError::new(at, "must be an object"));
             };
             let mut read = Fields::new(&mut map, format!("{at}."));
-            let field = read.option()?;
+            let field = read.field(all_kinds)?;
             read.finish()?;
-            if !seen.insert(field.key.clone()) {
+            // `--a_b` and `--a-b` are one flag.
+            if !flags.insert(field.key.replace('_', "-")) {
                 return Err(ManifestError::new(
                     format!("{at}.key"),
-                    format!("'{}' is declared twice", field.key),
+                    format!(
+                        "'{}' is declared twice (a key's '_' and '-' make the same flag)",
+                        field.key
+                    ),
                 ));
             }
-            fields.push(field);
+            fields.push((at, field));
         }
-        Ok(Form { fields })
+        for (at, field) in &fields {
+            let named = |name: &str| fields.iter().find(|(_, other)| other.key == name);
+            let broken = match &field.kind {
+                FieldKind::Scan { depends_on } => depends_on
+                    .iter()
+                    .find(|name| {
+                        !named(name).is_some_and(|(_, other)| {
+                            !matches!(
+                                other.kind,
+                                FieldKind::Scan { .. } | FieldKind::DecoderOptions { .. }
+                            )
+                        })
+                    })
+                    .map(|bad| {
+                        (
+                            "depends_on",
+                            bad,
+                            "a text, file, folder, integer or handler setting",
+                        )
+                    }),
+                FieldKind::DecoderOptions { handler_field }
+                    if !named(handler_field)
+                        .is_some_and(|(_, other)| other.kind == FieldKind::Handler) =>
+                {
+                    Some(("handler_field", handler_field, "a handler setting"))
+                }
+                _ => None,
+            };
+            if let Some((name, bad, target)) = broken {
+                return Err(ManifestError::new(
+                    format!("{at}.{name}"),
+                    format!("'{bad}' must be the key of {target}"),
+                ));
+            }
+        }
+        Ok(Form {
+            fields: fields.into_iter().map(|(_, field)| field).collect(),
+        })
     }
 
-    /// One declared option of a decoder: text, a file or a folder, whose value is always text.
-    fn option(&mut self) -> Result<Field, ManifestError> {
+    /// One declared field. Its value is text, except for an integer, a scan's list and decoder options' map.
+    fn field(&mut self, all_kinds: bool) -> Result<Field, ManifestError> {
         let key = self.non_empty("key")?;
-        if !key
-            .chars()
-            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '-'))
+        if !key.starts_with(|c: char| c.is_ascii_alphanumeric())
+            || !key
+                .chars()
+                .all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '-'))
         {
             return Err(self.error(
                 "key",
-                format!("'{key}' must be letters, digits, '_' or '-'"),
+                format!(
+                    "'{key}' must be letters, digits, '_' or '-', starting with a letter or digit"
+                ),
+            ));
+        }
+        // Only a resolver's settings become arguments of the command line.
+        if all_kinds && RESERVED_SETTING_KEYS.contains(&key.replace('_', "-").as_str()) {
+            return Err(self.error(
+                "key",
+                format!("'{key}' is an argument ax-devil already takes"),
             ));
         }
         let label = self.non_empty("label")?;
@@ -303,17 +402,66 @@ impl<'a> Fields<'a> {
                 extensions: self.extensions()?,
             },
             "folder" => FieldKind::Folder,
+            "integer" if all_kinds => FieldKind::Integer {
+                min: self.optional_integer("min")?.unwrap_or(0),
+            },
+            "handler" if all_kinds => FieldKind::Handler,
+            "decoder_options" if all_kinds => FieldKind::DecoderOptions {
+                handler_field: self.non_empty("handler_field")?,
+            },
+            "scan" if all_kinds => FieldKind::Scan {
+                depends_on: self.strings("depends_on", true)?.unwrap_or_default(),
+            },
             other => {
-                return Err(self.error("kind", format!("'{other}' is not text, file or folder")));
+                let kinds = if all_kinds {
+                    "text, file, folder, integer, handler, decoder_options or scan"
+                } else {
+                    "text, file or folder"
+                };
+                return Err(self.error("kind", format!("'{other}' is not {kinds}")));
             }
         };
         let required = self.optional_bool("required")?;
-        let default = match self.map.remove("default") {
-            None | Some(Value::Null) => None,
-            Some(Value::String(default)) => Some(Value::String(default)),
-            Some(_) => return Err(self.error("default", "must be text")),
+        if required && matches!(kind, FieldKind::Scan { .. }) {
+            return Err(self.error(
+                "required",
+                "is not allowed for a scan: its values are picked",
+            ));
+        }
+        let default = match (self.map.remove("default"), &kind) {
+            (None | Some(Value::Null), _) => None,
+            (
+                Some(Value::String(text)),
+                FieldKind::Text | FieldKind::File { .. } | FieldKind::Folder,
+            ) => Some(Value::String(text)),
+            (Some(number), FieldKind::Integer { min }) => match number.as_i64() {
+                Some(value) if value >= *min => Some(number),
+                _ => {
+                    return Err(self.error(
+                        "default",
+                        format!("must be a whole number of at least {min}"),
+                    ));
+                }
+            },
+            (Some(_), FieldKind::Text | FieldKind::File { .. } | FieldKind::Folder) => {
+                return Err(self.error("default", "must be text"));
+            }
+            (Some(_), _) => return Err(self.error("default", "is not allowed for this kind")),
         };
         let positional = self.optional_bool("positional")?;
+        if positional
+            && (!required
+                || default.is_some()
+                || matches!(
+                    kind,
+                    FieldKind::Scan { .. } | FieldKind::DecoderOptions { .. }
+                ))
+        {
+            return Err(self.error(
+                "positional",
+                "is for a required setting with a single value and no default",
+            ));
+        }
         let field = Field {
             required,
             default,

@@ -6,7 +6,7 @@ use std::{fs, path::Path, sync::Arc};
 
 use common::{TestSink, decode};
 use foundation::CancelToken;
-use handler_api::{Decoder, Settings};
+use handler_api::{Cli, Decoder, FieldKind, PlaylistResolver, Settings};
 use plugins::{LoadedPlugin, MANIFEST_FILE, Manifest, PluginDecoder, Registry, Reserved, load};
 use serde_json::{Value, json};
 
@@ -99,8 +99,27 @@ fn every_refusal_names_the_manifest_field() {
             Box::new(|m| m["handlers"][0]["options"][0]["kind"] = json!("slider")),
         ),
         (
+            "handlers",
+            Box::new(|m| m["handlers"][0]["kind"] = json!("encoder")),
+        ),
+        (
             "handlers[0].kind",
-            Box::new(|m| m["handlers"][0]["kind"] = json!("playlist_resolver")),
+            Box::new(|m| {
+                drop(
+                    m["handlers"][0]
+                        .as_object_mut()
+                        .expect("object")
+                        .remove("kind"),
+                )
+            }),
+        ),
+        (
+            "handlers[0].id",
+            Box::new(|m| {
+                m["handlers"] = json!([{
+                    "kind": "playlist_resolver", "id": "help", "name": "Help", "description": "Runs"
+                }]);
+            }),
         ),
     ];
     for (field, edit) in cases {
@@ -333,33 +352,146 @@ fn a_broken_registry_or_plugin_loads_the_rest_and_is_listed() {
 }
 
 #[test]
-fn a_plugin_provides_several_decoders_and_refuses_a_handler_id_twice() {
+fn a_plugin_provides_decoders_and_resolvers_skips_unknown_kinds_and_refuses_a_handler_id_twice() {
     let folder = tempfile::tempdir().expect("folder");
     let mut manifest = base();
     let second = json!({
         "kind": "decoder", "id": "acme_times", "name": "ACME times", "input": "path",
         "scene_version": "4.0", "extensions": [".times"]
     });
-    manifest["handlers"]
-        .as_array_mut()
-        .expect("list")
-        .push(second.clone());
-    let plugin = LoadedPlugin::load(&install(folder.path(), &manifest)).expect("two decoders load");
+    let runs = json!({
+        "kind": "playlist_resolver", "id": "acme_runs", "name": "ACME runs", "description": "Runs"
+    });
+    let handlers = manifest["handlers"].as_array_mut().expect("list");
+    handlers.push(second);
+    handlers.push(runs.clone());
+    // A kind this build does not know is set aside unread, takes no id, and leaves the rest working.
+    handlers.push(json!({ "kind": "encoder", "id": "acme", "future": [1] }));
+    handlers.push(json!({ "kind": "encoder" }));
+    let plugin = LoadedPlugin::load(&install(folder.path(), &manifest)).expect("three handlers");
     let ids: Vec<&str> = plugin
         .decoders
         .iter()
         .map(|d| d.spec().id.as_str())
         .collect();
     assert_eq!(ids, ["acme", "acme_times"]);
+    assert_eq!(plugin.resolvers[0].spec().id, "acme_runs");
+    let skipped: Vec<_> = plugin
+        .skipped
+        .iter()
+        .map(|handler| (handler.kind.as_str(), handler.id.as_deref()))
+        .collect();
+    assert_eq!(skipped, [("encoder", Some("acme")), ("encoder", None)]);
+    assert!(plugin.skipped[0].reason.contains("newer ax-devil"));
+    assert_eq!(plugin.resolvers[0].spec().plugin, "acme");
     assert!(Arc::ptr_eq(
         plugin.decoders[0].program(),
         plugin.decoders[1].program()
     ));
 
     let (field, reason) = refused(|m| {
-        let mut twin = second;
+        let mut twin = runs;
         twin["id"] = json!("acme");
         m["handlers"].as_array_mut().expect("list").push(twin);
     });
     assert_eq!(field.as_deref(), Some("handlers[1].id"), "{reason}");
+}
+
+#[test]
+fn resolver_settings_of_every_kind_load_and_each_refusal_names_the_field() {
+    let setting = |extra: Value| {
+        let mut manifest = base();
+        manifest["handlers"] = json!([{
+            "kind": "playlist_resolver", "id": "acme_runs", "name": "ACME runs", "description": "Runs",
+            "settings": [
+                { "key": "root", "label": "Root", "kind": "folder", "required": true, "positional": true },
+                { "key": "list", "label": "List", "kind": "file", "extensions": [".txt"] },
+                { "key": "note", "label": "Note", "kind": "text", "default": "x" },
+                { "key": "depth", "label": "Depth", "kind": "integer", "min": 1, "default": 2 },
+                { "key": "handler_type", "label": "Decoder", "kind": "handler" },
+                { "key": "options", "label": "Options", "kind": "decoder_options", "handler_field": "handler_type" },
+                { "key": "runs", "label": "Runs", "kind": "scan", "depends_on": ["root"] },
+                extra
+            ]
+        }]);
+        manifest
+    };
+    let folder = tempfile::tempdir().expect("folder");
+    let valid = setting(json!({ "key": "more", "label": "More", "kind": "text" }));
+    let plugin = LoadedPlugin::load(&install(folder.path(), &valid)).expect("every kind loads");
+    let form = &plugin.resolvers[0].spec().form;
+    assert_eq!(form.fields.len(), 8);
+    assert_eq!(form.fields[0].cli, Cli::Positional);
+    assert_eq!(form.fields[3].kind, FieldKind::Integer { min: 1 });
+    assert_eq!(form.fields[4].cli, Cli::Flag("handler-type".to_owned()));
+
+    // Refusals in the settings, and a kind only a resolver's settings take.
+    let cases = [
+        (
+            json!({ "key": "a", "label": "A", "kind": "slider" }),
+            "handlers[0].settings[7].kind",
+        ),
+        (
+            json!({ "key": "a", "label": "A", "kind": "scan", "depends_on": ["nope"] }),
+            "handlers[0].settings[7].depends_on",
+        ),
+        (
+            json!({ "key": "a", "label": "A", "kind": "decoder_options", "handler_field": "note" }),
+            "handlers[0].settings[7].handler_field",
+        ),
+        (
+            json!({ "key": "a", "label": "A", "kind": "integer", "min": 1, "default": 0 }),
+            "handlers[0].settings[7].default",
+        ),
+        (
+            json!({ "key": "a", "label": "A", "kind": "scan", "depends_on": ["runs"] }),
+            "handlers[0].settings[7].depends_on",
+        ),
+        (
+            json!({ "key": "a", "label": "A", "kind": "scan", "depends_on": ["note"], "required": true }),
+            "handlers[0].settings[7].required",
+        ),
+        (
+            json!({ "key": "a", "label": "A", "kind": "text", "positional": true }),
+            "handlers[0].settings[7].positional",
+        ),
+        (
+            json!({ "key": "a", "label": "A", "kind": "text", "required": true, "default": "x", "positional": true }),
+            "handlers[0].settings[7].positional",
+        ),
+        (
+            json!({ "key": "a", "label": "A", "kind": "text", "min": 1 }),
+            "handlers[0].settings[7].min",
+        ),
+        (
+            json!({ "key": "note", "label": "A", "kind": "text" }),
+            "handlers[0].settings[7].key",
+        ),
+        (
+            json!({ "key": "handler-type", "label": "A", "kind": "text" }),
+            "handlers[0].settings[7].key",
+        ),
+        (
+            json!({ "key": "-x", "label": "A", "kind": "text" }),
+            "handlers[0].settings[7].key",
+        ),
+        (
+            json!({ "key": "_x", "label": "A", "kind": "text" }),
+            "handlers[0].settings[7].key",
+        ),
+        (
+            json!({ "key": "log_level", "label": "A", "kind": "text" }),
+            "handlers[0].settings[7].key",
+        ),
+    ];
+    for (extra, field) in cases {
+        let folder = tempfile::tempdir().expect("folder");
+        let path = install(folder.path(), &setting(extra));
+        let error = Manifest::load(&path).expect_err("refused");
+        assert_eq!(error.field.as_deref(), Some(field), "{error}");
+    }
+    let (field, _) = refused(|m| {
+        m["handlers"][0]["options"] = json!([{ "key": "n", "label": "N", "kind": "integer" }]);
+    });
+    assert_eq!(field.as_deref(), Some("handlers[0].options[0].kind"));
 }

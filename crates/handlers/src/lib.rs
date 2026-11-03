@@ -46,6 +46,16 @@ impl Handlers {
         self
     }
 
+    /// These handlers plus `resolvers`, after the built-ins, in the order given.
+    #[must_use]
+    pub fn with_resolvers(
+        mut self,
+        resolvers: impl IntoIterator<Item = Arc<dyn PlaylistResolver>>,
+    ) -> Self {
+        self.resolvers.extend(resolvers);
+        self
+    }
+
     /// The decoders in registry order.
     pub fn decoders(&self) -> &[Arc<dyn Decoder>] {
         &self.decoders
