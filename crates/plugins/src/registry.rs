@@ -97,7 +97,11 @@ impl Registry {
     /// it.
     pub fn install(&mut self, path: &Path, reserved: &Reserved) -> Result<Manifest, ManifestError> {
         let (file, manifest) = read_manifest(path)?;
-        self.taken(self.entries.len(), reserved).claim(&manifest)?;
+        let mut manifests = self.load_all();
+        manifests.push(Ok(manifest.clone()));
+        if let Some(Err(error)) = reserved.claim_in_order(manifests).last() {
+            return Err(error);
+        }
         self.entries.push(entry_of(&file));
         Ok(manifest)
     }
@@ -130,10 +134,9 @@ impl Registry {
     }
 
     /// Replaces the plugin at `index` (from [`find`](Self::find)) by the one at `path`, in the same place in the
-    /// order, after reading and validating its manifest again. Ids are claimed in load order: `reserved`, the
-    /// earlier plugins that load, then the new manifest, so it may take the ids the replaced plugin had. It is
-    /// refused when it takes an id of one of those, or when a later plugin that loads today would stop loading
-    /// because the new manifest took its id.
+    /// order, after reading and validating its manifest again. The whole registry is claimed in load order, as `load`
+    /// does, with and without the replacement. It is refused when the new manifest does not load in its place, or
+    /// when any plugin that loads today would stop loading.
     pub fn update(
         &mut self,
         index: usize,
@@ -141,23 +144,19 @@ impl Registry {
         reserved: &Reserved,
     ) -> Result<Manifest, ManifestError> {
         let (file, manifest) = read_manifest(path)?;
-        let mut today = self.taken(index, reserved);
-        let mut after = today.clone();
-        after.claim(&manifest)?;
-        // A plugin that does not load took no ids, so claiming for it fails without effect.
-        if let Ok(replaced) = Manifest::load(&entry_manifest(&self.entries[index])) {
-            let _ = today.claim(&replaced);
+        let today = self.load_all();
+        let mut replaced = today.clone();
+        replaced[index] = Ok(manifest.clone());
+        let before: Vec<_> = reserved.claim_in_order(today).collect();
+        let after: Vec<_> = reserved.claim_in_order(replaced).collect();
+        if let Err(error) = &after[index] {
+            return Err(error.clone());
         }
-        for entry in &self.entries[index + 1..] {
-            let Ok(later) = Manifest::load(&entry_manifest(entry)) else {
-                continue;
-            };
-            if today.claim(&later).is_ok()
-                && let Err(error) = after.claim(&later)
-            {
+        for (before, after) in before.iter().zip(&after) {
+            if let (Ok(plugin), Err(error)) = (before, after) {
                 return Err(ManifestError::file(format!(
                     "plugin '{}' would stop loading: {}",
-                    later.id, error.reason
+                    plugin.id, error.reason
                 )));
             }
         }
@@ -165,17 +164,12 @@ impl Registry {
         Ok(manifest)
     }
 
-    /// `reserved` and the ids of the installed plugins before position `before` that load: what `load` has claimed
-    /// when it reaches that position. Later plugins lose their ids to it, so they claim none here.
-    fn taken(&self, before: usize, reserved: &Reserved) -> Reserved {
-        let mut taken = reserved.clone();
-        for entry in &self.entries[..before] {
-            // One that does not load took no ids, as in `load`.
-            if let Ok(other) = Manifest::load(&entry_manifest(entry)) {
-                let _ = taken.claim(&other);
-            }
-        }
-        taken
+    /// Every entry's manifest, read again, in install order.
+    fn load_all(&self) -> Vec<Result<Manifest, ManifestError>> {
+        self.entries
+            .iter()
+            .map(|entry| Manifest::load(&entry_manifest(entry)))
+            .collect()
     }
 
     /// Removes the plugin [`find`](Self::find) returns for `target` (the only way to remove one that no longer loads

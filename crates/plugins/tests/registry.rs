@@ -90,6 +90,48 @@ fn the_registry_installs_lists_removes_and_keeps_unknown_keys() {
         "{error}"
     );
     assert_eq!(with_beta.manifests(), before);
+    // Releasing an id can make a plugin that fails today load, and take an id from one that loads: A owns `x`, B
+    // wants `x` and `y` and fails, C owns `y`. Updating A to drop `x` would load B and stop C.
+    let owning = |id: &str, handlers: &[&str]| {
+        let mut manifest = base();
+        manifest["id"] = json!(id);
+        let handler = manifest["handlers"][0].clone();
+        manifest["handlers"] = handlers
+            .iter()
+            .map(|handler_id| {
+                let mut declared = handler.clone();
+                declared["id"] = json!(handler_id);
+                declared
+            })
+            .collect();
+        let path = install(
+            &root.path().join(format!("abc-{id}-{}", handlers.join("-"))),
+            &manifest,
+        );
+        fs::canonicalize(path).expect("manifest")
+    };
+    let abc = [
+        owning("a", &["x"]),
+        owning("b", &["x", "y"]),
+        owning("c", &["y"]),
+    ];
+    let abc_path = root.path().join("abc.json");
+    fs::write(
+        &abc_path,
+        json!({ "version": 2, "plugins": abc.map(|manifest| json!({ "manifest": manifest })) })
+            .to_string(),
+    )
+    .expect("registry");
+    let mut abc = Registry::read(&abc_path).expect("reads");
+    let before = abc.manifests();
+    let error = abc
+        .update(0, &owning("a", &["z"]), &Reserved::default())
+        .expect_err("c would stop loading");
+    assert!(
+        error.reason.contains("'c'") && error.reason.contains("'y'"),
+        "{error}"
+    );
+    assert_eq!(abc.manifests(), before);
     let error = registry.remove("acme").expect_err("the id names two");
     assert!(error.0.contains("declared by 2 plugins"), "{error}");
     assert_eq!(registry.manifests().len(), 2);

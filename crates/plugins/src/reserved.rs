@@ -45,4 +45,19 @@ impl Reserved {
         );
         Ok(())
     }
+
+    /// The loader's claim order: from these ids, each manifest in turn takes its ids or is refused, and a refused one
+    /// takes nothing, so later ones see only the earlier successes. `load` and the registry's install and update
+    /// checks all go through it, so none can disagree with what loading does.
+    pub(crate) fn claim_in_order(
+        &self,
+        manifests: impl IntoIterator<Item = Result<Manifest, ManifestError>>,
+    ) -> impl Iterator<Item = Result<Manifest, ManifestError>> {
+        let mut taken = self.clone();
+        manifests.into_iter().map(move |manifest| {
+            let manifest = manifest?;
+            taken.claim(&manifest)?;
+            Ok(manifest)
+        })
+    }
 }
