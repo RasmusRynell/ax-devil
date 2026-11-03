@@ -77,11 +77,14 @@ export function ExportDialog({
   jobs,
   view,
   name,
+  only,
   onClose,
 }: {
   jobs: ExportJobs;
   view: PlaybackView;
   name: string;
+  /** Starts with just this lane checked, the one a lane menu was used on; every lane otherwise. */
+  only?: number;
   onClose: () => void;
 }) {
   const status = useSyncExternalStore(jobs.subscribe, jobs.getSnapshot);
@@ -89,7 +92,10 @@ export function ExportDialog({
   latest.current = view;
   const bridge = useServerKind() === "local" ? window.axDevilWindow : undefined;
   const choices = choicesOf(view.lanes);
-  const [unchecked, setUnchecked] = useState<ReadonlySet<number>>(new Set());
+  const [unchecked, setUnchecked] = useState<ReadonlySet<number>>(
+    () =>
+      new Set(only === undefined ? [] : choices.filter((c) => c.lane !== only).map((c) => c.lane)),
+  );
   const [kind, setKind] = useState<Kind>("mp4");
   const [quality, setQuality] = useState<ExportQualityWire>("balanced");
   const [from, setFrom] = useState("0");

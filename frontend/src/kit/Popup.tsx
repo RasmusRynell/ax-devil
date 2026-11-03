@@ -43,10 +43,11 @@ export function Popup({ onClose, boundary, at, className = "", children }: Props
       close.current();
     };
     document.addEventListener("pointerdown", outside);
-    document.addEventListener("keydown", escape);
+    // In the capture phase, so the Escape that closes a popup is spent before any handler around it sees it.
+    document.addEventListener("keydown", escape, true);
     return () => {
       document.removeEventListener("pointerdown", outside);
-      document.removeEventListener("keydown", escape);
+      document.removeEventListener("keydown", escape, true);
     };
   }, [boundary]);
 

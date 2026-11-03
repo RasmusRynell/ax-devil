@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { Hidden } from "../viewer/hidden";
 import type { Picked, Selection, Viewport } from "./contract";
 import { LaneChip } from "./LaneChip";
-import { layoutLanes } from "./laneCells";
+import { laneAt, layoutLanes, shownLanes } from "./laneCells";
 import type { Geometry } from "./renderer";
 import type { PlaybackSession } from "./session";
 import type { PlaybackView } from "./view";
@@ -27,6 +27,7 @@ function useSize(): [React.RefObject<HTMLDivElement | null>, { width: number; he
 
 /**
  * The picture in a grid of lane cells, each with its name tag. Lanes the user hid leave the grid and stop being sent.
+ * With `only` the grid lays out that lane alone and the others keep being sent, so they play on out of sight.
  */
 export function LaneGrid({
   session,
@@ -35,7 +36,10 @@ export function LaneGrid({
   anchor,
   entry,
   hidden,
+  only = null,
   onHide,
+  onPoint,
+  onPick,
   viewport,
   onViewport,
   objectDetails,
@@ -51,8 +55,13 @@ export function LaneGrid({
   /** The entry the lanes belong to, as the workspace names it. */
   entry: string;
   hidden: Hidden;
+  /** Shows this lane alone, filling the grid, while it is shown at all. */
+  only?: number | null;
   /** Hides a lane by its label; absent for a seat that may not change the workspace. */
   onHide?: (label: string) => void;
+  /** Told which lane the pointer is over (null: none) and which lane a press landed on. */
+  onPoint?: (lane: number | null) => void;
+  onPick?: (lane: number) => void;
   /** The zoom and pan of every lane's picture; see `VideoCanvas` for the gestures that ask to change it. */
   viewport?: Viewport;
   onViewport?: (viewport: Viewport) => void;
@@ -65,11 +74,16 @@ export function LaneGrid({
 }) {
   const [box, size] = useSize();
   const { lanes } = view;
-  const shown = useMemo(
-    () => lanes.flatMap((lane, index) => (hidden.lane(entry, lane.label) ? [] : [index])),
-    [lanes, hidden, entry],
+  const shown = useMemo(() => shownLanes(lanes, hidden, entry), [lanes, hidden, entry]);
+  const cells = useMemo(
+    () =>
+      layoutLanes(only !== null && shown.includes(only) ? [only] : shown, size.width, size.height),
+    [shown, only, size],
   );
-  const cells = useMemo(() => layoutLanes(shown, size.width, size.height), [shown, size]);
+  const laneOf = (event: { clientX: number; clientY: number }) => {
+    const at = (box.current as HTMLDivElement).getBoundingClientRect();
+    return laneAt(cells, event.clientX - at.left, event.clientY - at.top);
+  };
   useEffect(() => {
     lanes.forEach((lane, index) => {
       const visible = shown.includes(index);
@@ -77,7 +91,16 @@ export function LaneGrid({
     });
   }, [session, lanes, shown]);
   return (
-    <div ref={box} className="absolute inset-0 flex">
+    <div
+      ref={box}
+      className="absolute inset-0 flex"
+      onPointerMove={(event) => onPoint?.(laneOf(event))}
+      onPointerLeave={() => onPoint?.(null)}
+      onPointerDown={(event) => {
+        const lane = laneOf(event);
+        if (lane !== null) onPick?.(lane);
+      }}
+    >
       <VideoCanvas
         session={session}
         label={name}

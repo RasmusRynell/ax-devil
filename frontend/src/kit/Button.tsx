@@ -5,7 +5,7 @@ import { CONTROL, EDGE, SQUARE } from "./look";
 import { Menu, type MenuCommand, type MenuEntry } from "./Menu";
 import { Popup } from "./Popup";
 
-interface BaseProps extends Omit<ButtonHTMLAttributes<HTMLButtonElement>, "children" | "title"> {
+interface BaseProps extends Omit<ButtonHTMLAttributes<HTMLButtonElement>, "children"> {
   /** `small` is the compact action beside a field or in a row: small text at the same height. */
   size?: "small";
 }

@@ -86,7 +86,7 @@ describe("menu bar", () => {
     const view = screen.getByRole("menuitem", { name: "View" });
     view.focus();
     fireEvent.keyDown(view, { key: "ArrowDown" });
-    expect(document.activeElement?.textContent).toContain("Sidebar");
+    expect(document.activeElement?.textContent).toContain("Toggle Fullscreen");
     fireEvent.keyDown(document.activeElement as Element, { key: "Escape" });
     expect(screen.queryByRole("menu")).toBeNull();
     expect(document.activeElement).toBe(view);
@@ -208,6 +208,7 @@ describe("add video", () => {
       minimize() {},
       toggleMaximize() {},
       close() {},
+      toggleFullScreen() {},
       pickVideos: () => Promise.resolve(paths),
       connect: () => Promise.resolve(),
       disconnect: () => Promise.resolve(),
