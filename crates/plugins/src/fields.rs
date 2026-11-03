@@ -418,6 +418,7 @@ impl<'a> Fields<'a> {
         let positional = self.optional_bool("positional")?;
         if positional
             && (!required
+                || default.is_some()
                 || matches!(
                     kind,
                     FieldKind::Scan { .. } | FieldKind::DecoderOptions { .. }
@@ -425,7 +426,7 @@ impl<'a> Fields<'a> {
         {
             return Err(self.error(
                 "positional",
-                "is for a required setting with a single value",
+                "is for a required setting with a single value and no default",
             ));
         }
         let field = Field {

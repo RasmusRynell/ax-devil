@@ -93,21 +93,46 @@ function reduce(state: State, action: Action): State {
 const typed = (field: FieldInfo, text: unknown) =>
   blank(text) ? undefined : field.kind.kind === "Integer" ? Number(text) : text;
 
-/** What a scan sends: the settings typed so far, with the whole-number text of an `Integer` field as a number. */
-function scanInputs(resolver: ResolverInfo, values: Settings): Settings {
-  const inputs: Settings = { ...values };
+/**
+ * The typed values the fields hold: defaults applied, integers as numbers, each decoder's options gathered under its
+ * field, nothing for a blank or misread field. `complete` is false while a required field is missing or misread. Scan
+ * fields are left out: their selections come from the scans.
+ */
+function effective(
+  resolver: ResolverInfo,
+  values: Settings,
+  decoders: readonly DecoderInfo[],
+): { settings: Settings; complete: boolean } {
+  const settings: Settings = { ...values };
+  let complete = true;
   for (const field of resolver.fields) {
-    if (
-      field.kind.kind === "Integer" &&
-      typeof values[field.key] === "string" &&
-      !misread(field, values)
-    ) {
-      const value = typed(field, values[field.key]);
-      if (value === undefined) delete inputs[field.key];
-      else inputs[field.key] = value;
+    if (field.kind.kind === "Scan") continue;
+    if (field.kind.kind === "DecoderOptions") {
+      const options: Settings = {};
+      for (const option of decoderOptions(field, values, decoders)) {
+        const prefixed = { ...option, key: `${field.key}.${option.key}` };
+        if (misread(prefixed, values)) {
+          complete = false;
+          continue;
+        }
+        const value = typed(option, shown(prefixed, values));
+        if (value !== undefined) options[option.key] = value;
+        else if (needsValue(option)) complete = false;
+      }
+      for (const key of Object.keys(settings)) {
+        if (key.startsWith(`${field.key}.`)) delete settings[key];
+      }
+      if (Object.keys(options).length) settings[field.key] = options;
+    } else {
+      const value = misread(field, settings) ? undefined : typed(field, shown(field, settings));
+      if (value !== undefined) settings[field.key] = value;
+      else {
+        if (misread(field, settings) || needsValue(field)) complete = false;
+        delete settings[field.key];
+      }
     }
   }
-  return inputs;
+  return { settings, complete };
 }
 
 /** What loading sends, or `null` while something is missing or misread: a required text without a default, a scan with a checked value, or an integer that is not a whole number. */
@@ -116,35 +141,14 @@ function settingsOf(
   state: State,
   decoders: readonly DecoderInfo[],
 ): Settings | null {
-  const settings: Settings = { ...state.values };
-  for (const field of resolver.fields) {
-    if (field.kind.kind === "Scan") {
-      const view = state.scans[field.key];
-      if (view?.phase !== "done" || checkedCount(view) === 0) return null;
-      const names = chosen(view);
-      if (names) settings[field.key] = names;
-    } else if (field.kind.kind === "DecoderOptions") {
-      const options: Settings = {};
-      for (const option of decoderOptions(field, state.values, decoders)) {
-        const prefixed = { ...option, key: `${field.key}.${option.key}` };
-        if (misread(prefixed, state.values)) return null;
-        const value = typed(option, shown(prefixed, state.values));
-        if (value !== undefined) options[option.key] = value;
-        else if (needsValue(option)) return null;
-      }
-      for (const key of Object.keys(settings)) {
-        if (key.startsWith(`${field.key}.`)) delete settings[key];
-      }
-      if (Object.keys(options).length) settings[field.key] = options;
-    } else {
-      if (misread(field, settings)) return null;
-      const value = typed(field, shown(field, settings));
-      if (value !== undefined) settings[field.key] = value;
-      else if (needsValue(field)) return null;
-      else delete settings[field.key];
-    }
+  const { settings, complete } = effective(resolver, state.values, decoders);
+  for (const field of scanFields(resolver)) {
+    const view = state.scans[field.key];
+    if (view?.phase !== "done" || checkedCount(view) === 0) return null;
+    const names = chosen(view);
+    if (names) settings[field.key] = names;
   }
-  return settings;
+  return complete ? settings : null;
 }
 
 /** The failed scans to show at `field`, each at the setting it names or else at its own field. */
@@ -196,14 +200,28 @@ export function useResolverForm(
 
   const canScanWith = (key: string, values: Settings) => {
     const kind = resolver.fields.find((field) => field.key === key)?.kind;
-    return kind?.kind === "Scan" && !kind.depends_on.some((need) => blank(values[need]));
+    if (kind?.kind !== "Scan") return false;
+    const { settings } = effective(resolver, values, decoders);
+    // A blank setting with a default is met: the backend uses the default. A misread one is not.
+    const unmet = (need: string) => {
+      const field = resolver.fields.find((other) => other.key === need);
+      return field && misread(field, values)
+        ? true
+        : settings[need] === undefined && field?.default == null;
+    };
+    return !kind.depends_on.some(unmet);
   };
   const run = (key: string, values: Settings) => {
     controllers.current.get(key)?.abort();
     const controller = new AbortController();
     controllers.current.set(key, controller);
     dispatch({ type: "scan", key, update: scanStarted });
-    scanChoices(resolver.id, key, scanInputs(resolver, values), controller.signal).then(
+    scanChoices(
+      resolver.id,
+      key,
+      effective(resolver, values, decoders).settings,
+      controller.signal,
+    ).then(
       (answer) => {
         // A superseded or cancelled scan changes nothing.
         if (controller.signal.aborted) return;

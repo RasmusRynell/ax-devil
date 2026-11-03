@@ -427,6 +427,10 @@ fn resolver_settings_of_every_kind_load_and_each_refusal_names_the_field() {
             "handlers[0].settings[7].positional",
         ),
         (
+            json!({ "key": "a", "label": "A", "kind": "text", "required": true, "default": "x", "positional": true }),
+            "handlers[0].settings[7].positional",
+        ),
+        (
             json!({ "key": "a", "label": "A", "kind": "text", "min": 1 }),
             "handlers[0].settings[7].min",
         ),

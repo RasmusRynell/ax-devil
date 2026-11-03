@@ -53,6 +53,34 @@ const PAIR: ResolverInfo = {
   ],
 };
 
+const DEPTH: ResolverInfo = {
+  id: "depth",
+  display_name: "Depth",
+  description: "",
+  fields: [
+    { key: "format", label: "Format", kind: { kind: "Handler" }, required: true },
+    {
+      key: "options",
+      label: "Options",
+      kind: { kind: "DecoderOptions", handler_field: "format" },
+      required: true,
+    },
+    {
+      key: "depth",
+      label: "Depth",
+      kind: { kind: "Integer", min: 1n },
+      required: false,
+      default: 1,
+    },
+    {
+      key: "sequences",
+      label: "Sequences",
+      kind: { kind: "Scan", depends_on: ["depth"] },
+      required: false,
+    },
+  ],
+};
+
 interface Scan {
   body: { field: string; settings: Settings };
   signal: AbortSignal;
@@ -242,5 +270,22 @@ describe("resolver form", () => {
     expect(screen.getByRole("alert").textContent).toBe("Whole number");
     fireEvent.change(width, { target: { value: "640" } });
     expect(settings()).toEqual({ format: "MOT_FILE", options: { width: 640 } });
+  });
+
+  it("scans with the values resolution would use: defaults, integers and decoder option maps", () => {
+    const scans = stubScans();
+    render(<Harness resolver={DEPTH} />);
+    expect(screen.getByRole("button", { name: "Scan" })).toHaveProperty("disabled", false);
+    fireEvent.change(screen.getByLabelText("Image width"), { target: { value: "640" } });
+    scan();
+    expect(scans[0].body.settings).toEqual({
+      format: "MOT_FILE",
+      options: { width: 640 },
+      depth: 1,
+    });
+    fireEvent.change(screen.getByLabelText("Depth"), { target: { value: "" } });
+    expect(screen.getByRole("button", { name: "Scan" })).toHaveProperty("disabled", false);
+    fireEvent.change(screen.getByLabelText("Depth"), { target: { value: "x" } });
+    expect(screen.getByRole("button", { name: "Scan" })).toHaveProperty("disabled", true);
   });
 });
