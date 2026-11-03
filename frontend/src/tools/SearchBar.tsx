@@ -1,4 +1,4 @@
-import { useLayoutEffect, useMemo, useRef } from "react";
+import { useCallback, useLayoutEffect, useMemo, useRef } from "react";
 import { Icon } from "../kit/Icon";
 import { FIELD_IN } from "../kit/look";
 import { parseSearch, type SearchTokenKind } from "../search/query";
@@ -21,11 +21,14 @@ const LOOK: Record<SearchTokenKind, string> = {
  */
 export function SearchBar({
   label,
+  title,
   value,
   onChange,
 }: {
   /** The accessible name and the placeholder. */
   label: string;
+  /** What the search covers, as a tooltip. */
+  title?: string;
   value: string;
   onChange: (value: string) => void;
 }) {
@@ -33,10 +36,11 @@ export function SearchBar({
   const copy = useRef<HTMLSpanElement>(null);
   const { tokens } = useMemo(() => parseSearch(value), [value]);
   // A long text scrolls inside the input; the copy follows it.
-  const follow = () => {
+  const follow = useCallback(() => {
     if (input.current && copy.current) copy.current.scrollLeft = input.current.scrollLeft;
-  };
-  useLayoutEffect(follow);
+  }, []);
+  // The copy is rebuilt only when the text changes; the input's own scrolling is followed by `onScroll`.
+  useLayoutEffect(follow, [follow, value]);
   let at = 0;
   const parts = tokens.flatMap(({ start, end, kind }) => {
     const part = [
@@ -49,7 +53,7 @@ export function SearchBar({
     return part;
   });
   return (
-    <label className={`relative flex items-center gap-s ${FIELD_IN}`}>
+    <label title={title} className={`relative flex items-center gap-s ${FIELD_IN}`}>
       <span className="flex text-muted">
         <Icon name="search" />
       </span>

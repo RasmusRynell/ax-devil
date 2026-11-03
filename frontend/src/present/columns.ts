@@ -30,6 +30,7 @@ export const MOTION_STATES = ["moving", "stationary", "unknown"] as const;
 
 const encoder = new TextEncoder();
 const strict = new TextDecoder("utf-8", { fatal: true });
+const lenient = new TextDecoder();
 
 const CRC_TABLE = Uint32Array.from({ length: 256 }, (_, n) => {
   let c = n;
@@ -116,10 +117,10 @@ export class StringTable {
     return (crc ^ 0xffffffff) >>> 0;
   }
 
-  /** String `id` as text. Allocates: for the inspector and tests, not the per-frame path. */
+  /** String `id` as text. Allocates the string; the Objects list calls it per visible row each frame. */
   string(id: number): string {
     this.check(id);
-    return new TextDecoder().decode(this.data.subarray(this.offsets[id], this.offsets[id + 1]));
+    return lenient.decode(this.data.subarray(this.offsets[id], this.offsets[id + 1]));
   }
 
   private check(id: number): void {

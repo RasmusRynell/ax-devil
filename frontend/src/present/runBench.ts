@@ -3,34 +3,8 @@
 //   AX_BENCH_SIZES=1000 AX_BENCH_CATALOGS=standard AX_BENCH_MODES=warm AX_BENCH_REPEAT=3 make bench-present
 // Modes: warm (each lane re-shows its sample), cold (new samples, empty atlas page each frame), hit (warm through the
 // lane cache). The garbage column is exact only with big semi-spaces (see the Makefile target).
-// Node cannot read the sources as they are (extensionless imports, parameter properties), so this registers a loader
-// that finds `.ts` files and strips their types with the TypeScript compiler, the same output `tsc` would give.
-import { createRequire, registerHooks } from "node:module";
-import { readFileSync } from "node:fs";
-import { fileURLToPath } from "node:url";
-import type { BenchResult, Mode } from "./bench";
-
-const ts = createRequire(import.meta.url)("typescript") as typeof import("typescript");
-registerHooks({
-  resolve(specifier, context, next) {
-    try {
-      return next(specifier, context);
-    } catch (error) {
-      const missing = (error as { code?: string }).code === "ERR_MODULE_NOT_FOUND";
-      if (!missing || specifier.startsWith("node:")) throw error;
-      return next(`${specifier}.ts`, context);
-    }
-  },
-  load(url, context, next) {
-    if (!url.endsWith(".ts") || url.includes("/node_modules/")) return next(url, context);
-    const { outputText } = ts.transpileModule(readFileSync(fileURLToPath(url), "utf8"), {
-      compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext },
-    });
-    return { format: "module", source: outputText, shortCircuit: true };
-  },
-});
-
-const { scenario } = (await import("./bench")) as typeof import("./bench");
+// Node reads the sources through the loader of `bench/node.ts`, which the Makefile target preloads.
+import { scenario, type BenchResult, type Mode } from "./bench";
 
 const sizes = (process.env.AX_BENCH_SIZES ?? "1,100,1000,5000").split(",").map(Number);
 const modes = (process.env.AX_BENCH_MODES ?? "warm,cold,hit").split(",") as Mode[];

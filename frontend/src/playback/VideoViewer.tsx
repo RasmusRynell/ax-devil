@@ -12,6 +12,7 @@ import { LaneGrid } from "./LaneGrid";
 import { Popover } from "../kit/Popover";
 import { ObjectsPanel } from "../tools/ObjectsPanel";
 import type { LaneSettings, Viewport } from "./contract";
+import { FRESH_MEMORY, type InspectorMemory } from "./fields";
 import { Inspector } from "./Inspector";
 import { ObjectLayer, type ObjectLayerHandle } from "./ObjectLayer";
 import type { Geometry } from "./renderer";
@@ -74,6 +75,8 @@ function Playback({
   onHideLane,
   viewport,
   onViewport,
+  inspector,
+  onInspector,
 }: {
   session: PlaybackSession;
   item: string;
@@ -84,6 +87,8 @@ function Playback({
   onHideLane?: (label: string) => void;
   viewport: Viewport;
   onViewport: (viewport: Viewport) => void;
+  inspector: InspectorMemory;
+  onInspector: (memory: InspectorMemory) => void;
 }) {
   const view = useSyncExternalStore(session.subscribe, session.getSnapshot);
   const objectDetails = useSettings().values["overlays.object_details"] === true;
@@ -205,6 +210,8 @@ function Playback({
               inspection={view.inspection}
               onClose={() => session.select(null)}
               crowded={tools}
+              memory={inspector}
+              onMemory={onInspector}
             />
           )}
         </div>
@@ -280,6 +287,8 @@ export function VideoViewer({
   const [session, setSession] = useState<PlaybackSession | null>(null);
   // How the pictures are zoomed belongs to the viewer, so it stays across entries and reconnections.
   const [viewport, setViewport] = useState<Viewport>(FIT);
+  // Pinned fields and folded groups belong to the viewer too: they follow the user from object to object.
+  const [inspector, setInspector] = useState<InspectorMemory>(FRESH_MEMORY);
   const { values } = useSettings();
   // The lane settings of the entry that closed, which the next entry's lanes start from.
   const priorLanes = useRef<readonly LaneSettings[]>([]);
@@ -368,6 +377,8 @@ export function VideoViewer({
         onHideLane={onHideLane}
         viewport={viewport}
         onViewport={setViewport}
+        inspector={inspector}
+        onInspector={setInspector}
       />
     )
   );

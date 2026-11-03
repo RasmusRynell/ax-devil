@@ -3,11 +3,12 @@
 import { plan } from "./plan";
 import { header, report } from "./report";
 import { runScenario } from "./scenario";
+import { tables, type TablesApi } from "./tables";
 import type { BenchApi, Environment } from "./types";
 
 declare global {
   interface Window {
-    benchApi: BenchApi & { header(environment: Environment): string };
+    benchApi: BenchApi & { header(environment: Environment): string; tables: TablesApi };
   }
 }
 
@@ -27,4 +28,4 @@ function environment(): Environment {
   };
 }
 
-window.benchApi = { environment, plan, run: runScenario, report, header };
+window.benchApi = { environment, plan, run: runScenario, report, header, tables };

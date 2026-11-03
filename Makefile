@@ -8,7 +8,7 @@ UI_PORT ?= 7331
 TEST ?=
 ROOT_FILES := desktop/*.cjs scripts/*.cjs vite.config.ts package.json pnpm-workspace.yaml
 .PHONY: help web desktop build check check-fast format package tests tests-frontend tests-backend tests-integration \
-	tests-desktop bench bench-export bench-present bench-browser bench-browser-smoke _types _frontend-build _static _licenses _dev _dev-rust
+	tests-desktop bench bench-export bench-present bench-tables bench-browser bench-browser-smoke _types _frontend-build _static _licenses _dev _dev-rust
 
 help:
 	@printf '%s\n' \
@@ -22,7 +22,8 @@ help:
 	  '  bench       Run the Rust benchmarks (sample item encode); numbers on stdout' \
 	  '  bench-export  Time export (1080p, 4K) through the real render page, on SwiftShader and the GPU when it can render there' \
 	  '  bench-present  Time the frontend presentation path in plain Node (AX_BENCH_SIZES, _CATALOGS, _MODES, _REPEAT)' \
-	  '  bench-browser  Time the real renderer in Electron (SwiftShader; BENCH_DISPLAY=real for the local GPU; BENCH_* narrow it)' \
+	  '  bench-tables  Time the per-frame work of the objects list (filter, search, sort, column fit) in plain Node (AX_BENCH_SIZES, _RUNS)' \
+	  '  bench-browser  Time the real renderer in Electron (SwiftShader; BENCH_DISPLAY=real for the local GPU; BENCH_* narrow it; BENCH_SUITE=tables times the objects list)' \
 	  '  check-fast  Run the static checks, file-size check on changed files only; no tests' \
 	  '  format      Format Rust and TypeScript/JavaScript, and apply lint fixes' \
 	  '' \
@@ -105,10 +106,15 @@ bench-export: _frontend-build desktop/node_modules/.electron-ready
 
 # Plain Node, no test runner: p50/p95 per catalog, object count and mode; AX_BENCH_* narrow it (frontend/src/present/runBench.ts).
 bench-present: node_modules/.installed
-	node --expose-gc --min-semi-space-size=64 --max-semi-space-size=64 frontend/src/present/runBench.ts
+	node --import ./frontend/src/bench/node.ts --expose-gc --min-semi-space-size=64 --max-semi-space-size=64 frontend/src/present/runBench.ts
+
+# Plain Node: p50/p95 of the per-frame work behind the objects list at 1k to 50k objects (frontend/src/bench/tablesNode.ts).
+bench-tables: node_modules/.installed
+	node --import ./frontend/src/bench/node.ts frontend/src/bench/tablesNode.ts
 
 # The real VideoRenderer in Electron (desktop/bench.cjs). Only BENCH_DISPLAY=real, on the machine's own display and GPU,
 # gives numbers that count; the default private display uses SwiftShader and only proves the bench runs.
+# BENCH_SUITE=tables times the objects list instead of the renderer: scroll, resize and playback with the panel open.
 bench-browser: node_modules/.installed desktop/node_modules/.electron-ready
 	pnpm --dir frontend exec vp build --config vite.bench.config.ts
 ifeq ($(BENCH_DISPLAY),real)

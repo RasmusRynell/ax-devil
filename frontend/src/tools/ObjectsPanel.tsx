@@ -1,16 +1,14 @@
 import {
+  useCallback,
   useEffect,
-  useId,
   useMemo,
   useState,
   useSyncExternalStore,
-  type KeyboardEvent,
   type ReactNode,
 } from "react";
 import { reasonOf } from "../errors";
 import type { FileRowWire, FileScopeUnavailable } from "../generated/api";
 import { Select } from "../kit/Fields";
-import { Icon } from "../kit/Icon";
 import { SegmentedControl } from "../kit/Chips";
 import { IconButton } from "../kit/IconButton";
 import type { LaneFrame, Selection } from "../playback/contract";
@@ -18,16 +16,18 @@ import type { FileScope } from "../playback/fileScope";
 import type { PlaybackView } from "../playback/view";
 import { matches } from "../search/match";
 import { parseSearch } from "../search/query";
-import { useRowWindow } from "../shell/useRowWindow";
 import {
   frameObjects,
   isFileSort,
   recordOf,
   sortObjects,
+  type FrameObject,
   type Sort,
   type SortKey,
 } from "./objects";
 import { SearchBar } from "./SearchBar";
+import { nextSort, type Column } from "./table/columns";
+import { Table } from "./table/Table";
 
 /** What the panel reads of a viewer and asks of it: `PlaybackSession` is one. */
 interface ObjectSource {
@@ -40,28 +40,15 @@ interface ObjectSource {
 
 type Scope = "frame" | "file";
 
-/** What each scope lists: its columns (the last sorts by what it shows), how it starts sorted and what an empty list says. */
-const SCOPES: Record<
-  Scope,
-  { title: string; columns: readonly (readonly [SortKey, string])[]; sort: Sort; none: string }
-> = {
+/** What each scope starts sorted by and what an empty list says. */
+const SCOPES: Record<Scope, { title: string; sort: Sort; none: string }> = {
   frame: {
     title: "Frame",
-    columns: [
-      ["id", "ID"],
-      ["class", "Class"],
-      ["score", "Score"],
-    ],
     sort: { key: "score", descending: true },
     none: "No objects in this frame",
   },
   file: {
     title: "File",
-    columns: [
-      ["id", "ID"],
-      ["class", "Class"],
-      ["first_seen", "Seen"],
-    ],
     sort: { key: "id", descending: false },
     none: "No objects in the file",
   },
@@ -75,32 +62,52 @@ const UNAVAILABLE: Record<Exclude<FileScopeUnavailable["state"], "Failed">, stri
   PlainLane: "This lane has no objects",
 };
 
-/** The fields File scope can search. */
-const FILE_FIELDS = ["id", "class", "event"];
-
 /** Rows asked of the backend at once, and how many rows the window moves before another page is asked for. */
 const PAGE = 200;
 const STEP = 50;
 /** How many marks a presence strip can draw. */
 const BINS = 64;
 
-const GRID =
-  "grid grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)_minmax(0,1.2fr)] items-center gap-m px-m";
-
-/** A row as the list draws it, whichever scope it comes from. */
-type Entry = {
-  id: string;
-  className: string;
-  /** The last column: a score, or where the object is in the video. */
-  last: string | FileRowWire;
-  /** The object is not in the frame on screen. */
-  absent: boolean;
-  /** The frame to go to for an object that is not in the frame on screen. */
-  first?: number;
-};
-
 const score = (value: number | null): string =>
   value === null ? "" : String(Number(value.toFixed(2)));
+
+/** Why a row of File scope is dimmed. */
+const ABSENT = "Not in this frame";
+
+/** What Frame scope lists of an object; the first three are required, Motion goes first when the panel is narrow. */
+const FRAME_COLUMNS: readonly Column<FrameObject>[] = [
+  { key: "id", title: "ID", kind: "id", text: (object) => object.id, sortable: true },
+  {
+    key: "class",
+    title: "Class",
+    kind: "text",
+    text: (object) => object.className,
+    sortable: true,
+    stretch: true,
+  },
+  {
+    key: "score",
+    title: "Score",
+    kind: "number",
+    text: (object) => score(object.score),
+    sortable: true,
+  },
+  {
+    key: "confidence",
+    title: "Conf",
+    kind: "number",
+    text: (object) => score(object.confidence),
+    sortable: true,
+  },
+  {
+    key: "motion",
+    title: "Motion",
+    kind: "text",
+    text: (object) => object.motion,
+    sortable: true,
+    priority: 1,
+  },
+];
 
 /** Where an object is across the video: a mark for each span of frames, and a click goes to that frame. */
 function Presence({
@@ -142,43 +149,32 @@ function Presence({
   );
 }
 
-/** The sort buttons over the columns. */
-function Columns({
-  scope,
-  sort,
-  onSort,
-}: {
-  scope: Scope;
-  sort: Sort;
-  onSort: (key: SortKey) => void;
-}) {
-  return (
-    <div className={`${GRID} h-row text-small text-muted`}>
-      {SCOPES[scope].columns.map(([key, title], index) => {
-        const active = sort.key === key;
-        return (
-          <button
-            key={key}
-            type="button"
-            aria-label={`Sort by ${title}${active ? (sort.descending ? ", descending" : ", ascending") : ""}`}
-            aria-pressed={active}
-            onClick={() => onSort(key)}
-            className={`flex min-w-0 items-center gap-xs rounded-control bg-transparent p-0 hover:text-fg focus-ring ${
-              active ? "text-fg" : ""
-            } ${index === 2 && scope === "frame" ? "justify-end" : ""}`}
-          >
-            <span className="truncate">{title}</span>
-            {active && (
-              <span aria-hidden className={sort.descending ? "" : "rotate-180"}>
-                <Icon name="chevron-down" />
-              </span>
-            )}
-          </button>
-        );
-      })}
-    </div>
-  );
-}
+/** What File scope lists of an object: where it is across the video, and which frames that spans. */
+const fileColumns = (frames: number, seek?: (frame: number) => void): Column<FileRowWire>[] => [
+  { key: "id", title: "ID", kind: "id", text: (row) => row.id, sortable: true },
+  {
+    key: "class",
+    title: "Class",
+    kind: "text",
+    text: (row) => row.classes.join(", "),
+    sortable: true,
+  },
+  {
+    key: "presence",
+    title: "Presence",
+    kind: "presence",
+    render: (row) => <Presence row={row} frames={frames} onSeek={seek} />,
+    stretch: true,
+  },
+  {
+    key: "first_seen",
+    title: "Seen",
+    kind: "text",
+    text: (row) => `${row.first_frame}–${row.last_frame}`,
+    sortable: true,
+    priority: 1,
+  },
+];
 
 /** The list of one lane's objects, in Frame scope or File scope. */
 function ObjectsList({
@@ -197,14 +193,13 @@ function ObjectsList({
   /** What ends the top bar: the lane to list and the button that closes the panel. */
   trailing: ReactNode;
 }) {
-  const base = useId();
   const [scope, setScope] = useState<Scope>("frame");
   const [text, setText] = useState("");
   const [sorts, setSorts] = useState<Record<Scope, Sort>>({
     frame: SCOPES.frame.sort,
     file: SCOPES.file.sort,
   });
-  const [active, setActive] = useState(0);
+  const [offset, setOffset] = useState(0);
   const sort = sorts[scope];
   const { wire } = useMemo(() => parseSearch(text), [text]);
   const frame = source.shown(lane);
@@ -223,8 +218,13 @@ function ObjectsList({
   const { page } = files;
   const total = inFile ? (page?.total ?? 0) : objects.length;
   const count = inFile ? (page?.matched ?? 0) : found.length;
-  const { ref, start, end, update, reveal } = useRowWindow(count, '[role="option"]');
-  const offset = Math.floor(start / STEP) * STEP;
+  const seek = canSeek ? (frameNumber: number) => source.seek(frameNumber) : undefined;
+  const fileCols = useMemo(
+    () => fileColumns(view.frameCount, seek),
+    [view.frameCount, canSeek, source],
+  );
+  // The rows in view, bucketed so that scrolling asks the backend for a page only now and then.
+  const onRange = useCallback((start: number) => setOffset(Math.floor(start / STEP) * STEP), []);
 
   // File scope asks for the rows in view, and stops asking when it is not the scope shown or the panel goes away.
   useEffect(() => {
@@ -234,58 +234,11 @@ function ObjectsList({
     if (inFile) return () => source.files.release(lane);
   }, [source, lane, inFile]);
 
-  const entryAt = (index: number): Entry | undefined => {
-    if (!inFile) {
-      const object = found[index];
-      return (
-        object && {
-          id: object.id,
-          className: object.className,
-          last: score(object.score),
-          absent: false,
-        }
-      );
-    }
-    const row = page?.rows[index - page.offset];
-    return (
-      row && {
-        id: row.id,
-        className: row.classes.join(", "),
-        last: row,
-        absent: !present.has(row.id),
-        first: row.first_frame,
-      }
-    );
-  };
   const laneSource = view.lanes[lane].source;
-  const select = (entry: Entry) => {
-    if (selectable && laneSource !== null)
-      source.select({ lane, source: laneSource, entity: entry.id });
+  const choose = (id: string, goTo?: number) => {
+    if (selectable && laneSource !== null) source.select({ lane, source: laneSource, entity: id });
     // An object that is not on screen cannot be inspected; going to where it first is makes it so.
-    if (entry.absent && canSeek && entry.first !== undefined) source.seek(entry.first);
-  };
-  const go = (index: number) => {
-    const next = Math.max(0, Math.min(count - 1, index));
-    setActive(next);
-    reveal(next);
-  };
-  const at = Math.min(active, Math.max(count - 1, 0));
-  const onKeyDown = (event: KeyboardEvent) => {
-    const page = end - start;
-    const keys: Record<string, () => void> = {
-      ArrowDown: () => go(at + 1),
-      ArrowUp: () => go(at - 1),
-      PageDown: () => go(at + page),
-      PageUp: () => go(at - page),
-      Home: () => go(0),
-      End: () => go(count - 1),
-      Enter: () => {
-        const entry = entryAt(at);
-        if (entry) select(entry);
-      },
-    };
-    keys[event.key === " " ? "Enter" : event.key]?.();
-    if (event.key in keys || event.key === " ") event.preventDefault();
+    if (goTo !== undefined && canSeek) source.seek(goTo);
   };
 
   const selected = view.selection?.lane === lane ? view.selection.entity : null;
@@ -314,11 +267,20 @@ function ObjectsList({
         {total === 0 ? SCOPES[scope].none : "No matching objects"}
       </p>
     );
-  const outside =
-    inFile &&
-    wire.groups.some((group) =>
-      group.some((term) => term.path !== null && !FILE_FIELDS.includes(term.path.toLowerCase())),
-    );
+  const shared = {
+    label: "Objects",
+    count,
+    selected,
+    sort,
+    onSort: (key: string) =>
+      // Only the columns that sort have a header to click.
+      setSorts({
+        ...sorts,
+        [scope]: nextSort(inFile ? fileCols : FRAME_COLUMNS, sort, key as SortKey),
+      }),
+    busy: inFile && files.pending,
+    message,
+  };
 
   return (
     <>
@@ -327,90 +289,48 @@ function ObjectsList({
           label="Scope"
           options={(Object.keys(SCOPES) as Scope[]).map((key) => [key, SCOPES[key].title] as const)}
           value={scope}
-          onChange={setScope}
+          onChange={(key) => {
+            // The table for the new scope mounts at the top.
+            setScope(key);
+            setOffset(0);
+          }}
         />
         <span className="min-w-0 flex-1 truncate text-small text-muted">{`${count} of ${total}`}</span>
         {trailing}
       </div>
-      <div className="flex flex-col gap-s p-m pb-s">
-        <SearchBar label="Search objects" value={text} onChange={setText} />
-        {outside && (
-          <p className="m-0 text-small text-muted">File scope searches id, class and event</p>
-        )}
+      <div className="p-m pb-s">
+        <SearchBar
+          label="Search objects"
+          title={inFile ? "File scope searches id, class and event" : undefined}
+          value={text}
+          onChange={setText}
+        />
       </div>
-      <Columns
-        scope={scope}
-        sort={sort}
-        onSort={(key) =>
-          setSorts({
-            ...sorts,
-            [scope]: { key, descending: sort.key === key ? !sort.descending : key === "score" },
-          })
-        }
-      />
-      <div ref={ref} onScroll={update} className="min-h-0 flex-1 overflow-y-auto">
-        {message ?? (
-          <div
-            role="listbox"
-            aria-label="Objects"
-            aria-activedescendant={`${base}-${at}`}
-            aria-busy={inFile && files.pending}
-            tabIndex={0}
-            onKeyDown={onKeyDown}
-            className="group/list focus:outline-none"
-            style={{
-              paddingTop: `calc(var(--spacing-row) * ${start})`,
-              paddingBottom: `calc(var(--spacing-row) * ${count - end})`,
-            }}
-          >
-            {Array.from({ length: end - start }, (_, i) => {
-              const index = start + i;
-              const entry = entryAt(index);
-              const isActive = index === at;
-              return (
-                <div
-                  key={index}
-                  id={`${base}-${index}`}
-                  role="option"
-                  aria-selected={entry?.id === selected}
-                  aria-posinset={index + 1}
-                  aria-setsize={count}
-                  aria-busy={entry ? undefined : true}
-                  title={entry?.absent ? "Not in this frame" : undefined}
-                  data-cursor-id={entry && `row:object-${entry.id}`}
-                  onClick={() => {
-                    setActive(index);
-                    if (entry) select(entry);
-                  }}
-                  className={`${GRID} h-row cursor-pointer border-l-edge hover:bg-hover ${
-                    entry?.absent ? "text-muted" : "text-fg"
-                  } ${entry?.id === selected ? "border-accent bg-hover" : "border-transparent"} ${
-                    isActive
-                      ? "group-focus-visible/list:outline-(length:--stroke-focus) group-focus-visible/list:-outline-offset-(--stroke-focus) group-focus-visible/list:outline-accent"
-                      : ""
-                  }`}
-                >
-                  {entry && (
-                    <>
-                      <span className="truncate">{entry.id}</span>
-                      <span className="truncate">{entry.className}</span>
-                      {typeof entry.last === "string" ? (
-                        <span className="truncate text-right">{entry.last}</span>
-                      ) : (
-                        <Presence
-                          row={entry.last}
-                          frames={view.frameCount}
-                          onSeek={canSeek ? (target) => source.seek(target) : undefined}
-                        />
-                      )}
-                    </>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        )}
-      </div>
+      {inFile ? (
+        <Table<FileRowWire>
+          {...shared}
+          key="objects-file"
+          tableKey="objects-file"
+          columns={fileCols}
+          rowAt={(index) => page?.rows[index - page.offset]}
+          keyOf={(row) => row.id}
+          absent={(row) => (present.has(row.id) ? undefined : ABSENT)}
+          onActivate={(row) => choose(row.id, present.has(row.id) ? undefined : row.first_frame)}
+          onRange={onRange}
+          cursorId={(row) => `row:object-${row.id}`}
+        />
+      ) : (
+        <Table<FrameObject>
+          {...shared}
+          key="objects-frame"
+          tableKey="objects-frame"
+          columns={FRAME_COLUMNS}
+          rowAt={(index) => found[index]}
+          keyOf={(object) => object.id}
+          onActivate={(object) => choose(object.id)}
+          cursorId={(object) => `row:object-${object.id}`}
+        />
+      )}
     </>
   );
 }

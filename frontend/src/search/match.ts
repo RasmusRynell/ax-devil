@@ -40,9 +40,10 @@ function compares(term: TermWire, value: string | number): boolean {
 }
 
 function holds(term: TermWire, record: SearchRecord): boolean {
+  const needle = term.value.toLowerCase();
   const hit =
     term.path === null
-      ? record.text.some((text) => text.toLowerCase().includes(term.value.toLowerCase()))
+      ? record.text.some((text) => text.toLowerCase().includes(needle))
       : Object.entries(record.fields).some(
           ([key, values]) =>
             names(term.path!.toLowerCase(), key) && values.some((v) => compares(term, v)),

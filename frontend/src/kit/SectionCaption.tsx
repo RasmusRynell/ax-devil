@@ -42,7 +42,7 @@ export function SectionCaption({ heading, count, note, aside, mark = "muted", fo
           aria-label={heading}
           aria-expanded={fold.open}
           onClick={fold.onToggle}
-          className="flex w-l shrink-0 items-center justify-center rounded-control bg-transparent text-muted hover:bg-hover focus-ring"
+          className="flex square-row shrink-0 items-center justify-center rounded-control bg-transparent text-muted hover:bg-hover focus-ring"
         >
           <Icon name={fold.open ? "chevron-down" : "chevron-right"} />
         </button>
