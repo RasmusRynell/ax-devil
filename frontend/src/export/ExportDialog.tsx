@@ -104,7 +104,20 @@ export function ExportDialog({
   const [choosing, setChoosing] = useState(false);
 
   const loading = choices.some((choice) => choice.cold === "loading");
-  const picked = choices.filter((choice) => choice.wire && !unchecked.has(choice.lane));
+  // With one lane there is no checkbox to bring it back, so it is always taken.
+  const skipped = (all: readonly { lane: number }[], lane: number) =>
+    all.length > 1 && unchecked.has(lane);
+  const picked = choices.filter((choice) => choice.wire && !skipped(choices, choice.lane));
+  const alone =
+    choices.length === 1 && choices[0].cold === "failed" ? view.lanes[choices[0].lane] : null;
+  const aloneStatus = alone?.status;
+  const aloneWhy =
+    alone &&
+    (alone.catalogProblem ??
+      (aloneStatus && aloneStatus !== "plain" && aloneStatus.status === "Failed"
+        ? aloneStatus.reason
+        : undefined) ??
+      "Render catalog failed to load.");
   const first = kind === "png" ? view.playhead : wholeNumber(from);
   const last = kind === "png" ? view.playhead : wholeNumber(to);
   const framesOk = first !== null && last !== null && first <= last && last < view.frameCount;
@@ -119,8 +132,9 @@ export function ExportDialog({
       const target = bridge ? await bridge.pickExportFile(`${stem}.${kind}`, kind) : path.trim();
       if (!target) return;
       // The lanes are read now: the picker may have been open while they changed.
-      const lanes = choicesOf(latest.current.lanes).flatMap((choice) =>
-        choice.wire && !unchecked.has(choice.lane) ? [choice.wire] : [],
+      const now = choicesOf(latest.current.lanes);
+      const lanes = now.flatMap((choice) =>
+        choice.wire && !skipped(now, choice.lane) ? [choice.wire] : [],
       );
       const format: ExportFormatWire =
         kind === "png" ? { format: "Png" } : { format: "Mp4", quality };
@@ -204,6 +218,11 @@ export function ExportDialog({
         {loading && (
           <p role="status" className="m-0">
             Render catalogs are still loading.
+          </p>
+        )}
+        {aloneWhy && (
+          <p role="alert" className="m-0 break-words">
+            {aloneWhy}
           </p>
         )}
         {failure && (

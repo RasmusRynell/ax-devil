@@ -157,6 +157,40 @@ describe("export dialog", () => {
     expect(sent).toMatchObject([{ type: "Export", lanes: [{ lane: 0 }] }]);
   });
 
+  it("takes a single lane whatever was unchecked, and says why a single lane failed", () => {
+    const ready = { ...VIEW, lanes: [lane("DPM", { source: 0, status: READY })] };
+    const jobs = new ExportJobs(() => {});
+    const { rerender } = render(
+      <ExportDialog jobs={jobs} view={VIEW} name="clip.mp4" only={0} onClose={() => {}} />,
+    );
+    // GT, unchecked by `only`, is now the only visible lane.
+    const one = {
+      ...VIEW,
+      lanes: [VIEW.lanes[0], lane("GT", { ...VIEW.lanes[2], status: READY })],
+    };
+    one.lanes[0] = { ...one.lanes[0], settings: { ...LANE_SETTINGS, visible: false } };
+    rerender(<ExportDialog jobs={jobs} view={one} name="clip.mp4" only={0} onClose={() => {}} />);
+    type("Path on the server", "/out/clip.mp4");
+    expect((screen.getByRole("button", { name: "Export" }) as HTMLButtonElement).disabled).toBe(
+      false,
+    );
+    cleanup();
+
+    const failed = {
+      ...ready,
+      lanes: [
+        lane("DPM", {
+          source: 0,
+          status: { status: "Loading" },
+          catalogRevision: undefined,
+          catalogProblem: "Catalog broke.",
+        }),
+      ],
+    };
+    render(<ExportDialog jobs={jobs} view={failed} name="clip.mp4" onClose={() => {}} />);
+    expect(screen.getByRole("alert").textContent).toBe("Catalog broke.");
+  });
+
   it("starts with just the lane a lane menu was used on checked", () => {
     const both = {
       ...VIEW,
