@@ -170,8 +170,11 @@ fn original_raw(workspace: &Workspace, index: usize) -> Value {
 #[test]
 fn saving_through_a_symlink_writes_the_target_and_anchors_to_its_folder() {
     let temp = tempfile::tempdir().unwrap();
-    let real = temp.path().join("real");
-    let links = temp.path().join("links");
+    // Reach the folder through a symlinked parent, as macOS temp folders are (`/var` -> `/private/var`).
+    let aliases = tempfile::tempdir().unwrap();
+    let through = aliases.path().join("alias");
+    std::os::unix::fs::symlink(temp.path(), &through).unwrap();
+    let (real, links) = (through.join("real"), through.join("links"));
     fs::create_dir_all(&real).unwrap();
     fs::create_dir_all(&links).unwrap();
     let target = real.join(format!("ws{SUFFIX}"));
@@ -179,8 +182,7 @@ fn saving_through_a_symlink_writes_the_target_and_anchors_to_its_folder() {
     fs::write(&target, "").unwrap();
     std::os::unix::fs::symlink(&target, &link).unwrap();
 
-    let outside = temp.path().join("b.mp4");
-    let workspace = sample(&real, &outside);
+    let workspace = sample(&real, &temp.path().join("b.mp4"));
     save(&workspace, &link).unwrap();
 
     assert!(fs::symlink_metadata(&link).unwrap().is_symlink());
@@ -189,7 +191,60 @@ fn saving_through_a_symlink_writes_the_target_and_anchors_to_its_folder() {
     let Source::Video(recipe) = &loaded.items[0].recipe.source else {
         panic!("a video item stays a video");
     };
-    assert_eq!(recipe.video.as_path(), real.join("clips/a.mp4"));
+    let anchor = fs::canonicalize(&real).unwrap();
+    assert_eq!(recipe.video.as_path(), anchor.join("clips/a.mp4"));
+
+    // A plain file reached through the alias stores the same relative path.
+    let plain = real.join(format!("plain{SUFFIX}"));
+    save(&workspace, &plain).unwrap();
+    assert_eq!(read_json(&plain)["items"][0]["video"], "clips/a.mp4");
+}
+
+#[test]
+fn an_item_with_a_setting_the_format_does_not_know_is_kept_as_it_was() {
+    let dir = tempfile::tempdir().unwrap();
+    let item = |key: &str, matching: Value| {
+        json!({"kind": "playlist", "id": ItemId::generate().to_string(), "label": key,
+               "resolver": "r", "lane_matching": matching})
+    };
+    let slot = |extra: Value| {
+        let mut policy =
+            json!({"tolerance": "Exact", "sticky": {"enabled": false, "timeout": null}});
+        policy
+            .as_object_mut()
+            .unwrap()
+            .extend(extra.as_object().unwrap().clone());
+        json!({"slot": policy})
+    };
+    let mut newer_sticky = slot(json!({}));
+    newer_sticky["slot"]["sticky"]["newer"] = json!(1);
+    let items = vec![
+        item("plain", slot(json!({}))),
+        item("policy", slot(json!({"newer": true}))),
+        item("sticky", newer_sticky),
+    ];
+    let file = dir.path().join(format!("ws{SUFFIX}"));
+    fs::write(&file, json!({"version": 2, "items": items}).to_string()).unwrap();
+
+    let loaded = load(&file).unwrap();
+    let readable = |i: usize| !matches!(loaded.items[i].recipe.source, Source::Unreadable(_));
+    assert_eq!(
+        [readable(0), readable(1), readable(2)],
+        [true, false, false]
+    );
+    for i in [1, 2] {
+        let Source::Unreadable(unreadable) = &loaded.items[i].recipe.source else {
+            unreachable!();
+        };
+        assert!(
+            unreadable.reason.contains("does not know"),
+            "{}",
+            unreadable.reason
+        );
+    }
+    save(&loaded, &file).unwrap();
+    assert_eq!(read_json(&file)["items"][1], items[1]);
+    assert_eq!(read_json(&file)["items"][2], items[2]);
 }
 
 fn bookmark_json(item: &str, extra: Value) -> Value {

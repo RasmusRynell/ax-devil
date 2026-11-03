@@ -329,6 +329,10 @@ impl WorkspaceFiles {
         let Some(storage) = &self.storage else {
             return Ok(());
         };
+        // Reopening the copy this window holds changes nothing.
+        if files.copy.as_ref().is_some_and(|copy| copy.is_at(&path)) {
+            return Ok(());
+        }
         let claimed = match storage.recovery.claim(&path) {
             Ok(copy) => copy,
             Err(Claim::InUse) => {
@@ -500,7 +504,10 @@ impl WorkspaceFiles {
     async fn close(&self, files: &mut SessionFiles) {
         let state = Arc::clone(&files.rx.borrow());
         self.sync(files, &state.doc.workspace).await;
-        files.copy = None;
+        // The copy that outlives the window is what the next launch restores, so it is the newest recent again.
+        if let Some(copy) = files.copy.take() {
+            self.record(copy.path()).await;
+        }
         files.closed = true;
     }
 

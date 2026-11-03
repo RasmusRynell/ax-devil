@@ -191,6 +191,13 @@ async fn unsaved_work_survives_the_window_and_one_window_holds_a_copy_at_a_time(
         1,
         json!({"type": "open", "path": copy.display().to_string()}),
     );
+    // The window that holds the copy may open it from the recents: nothing changes, and it stays held.
+    let own = workspace(
+        5,
+        json!({"type": "open", "path": copy.display().to_string()}),
+    );
+    window.say(own).await;
+    assert_eq!(ack(&mut window, 5).await, json!({"status": "ok"}));
     second.say(open).await;
     let outcome = ack(&mut second, 1).await;
     assert_eq!(outcome["status"], "failed");

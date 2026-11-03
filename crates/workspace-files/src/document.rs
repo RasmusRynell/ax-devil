@@ -119,16 +119,54 @@ pub(crate) fn normalize(path: &Path) -> PathBuf {
     folded
 }
 
-/// A path as the file holds it: relative with `/` inside `base`, else absolute.
+/// `path` normalized with its existing part resolved through symlinks, so two spellings of one place (`/var` and
+/// `/private/var` on macOS) compare equal.
+fn real(path: &Path) -> PathBuf {
+    let path = normalize(path);
+    let mut head = path.as_path();
+    let mut rest = Vec::new();
+    while let (Some(parent), Some(name)) = (head.parent(), head.file_name()) {
+        if let Ok(resolved) = std::fs::canonicalize(head) {
+            return rest
+                .iter()
+                .rev()
+                .fold(resolved, |resolved, name| resolved.join(name));
+        }
+        rest.push(name);
+        head = parent;
+    }
+    path
+}
+
+/// A path as the file holds it: relative with `/` inside `base` (compared by where both really are), else absolute.
 fn written(path: &HostPath, base: Option<&Path>) -> String {
     let path = normalize(path.as_path());
-    match base.and_then(|base| path.strip_prefix(normalize(base)).ok()) {
+    match base.and_then(|base| {
+        real(&path)
+            .strip_prefix(real(base))
+            .ok()
+            .map(Path::to_path_buf)
+    }) {
         Some(relative) => relative
             .components()
             .map(|part| part.as_os_str().to_string_lossy())
             .collect::<Vec<_>>()
             .join("/"),
         None => path.to_string_lossy().into_owned(),
+    }
+}
+
+/// Whether everything in `raw` is in `kept`, the same data read and written again: a key `raw` has that the format
+/// does not know is missing from `kept`, while defaults only `kept` has do not count.
+fn covered(raw: &Value, kept: &Value) -> bool {
+    match (raw, kept) {
+        (Value::Object(raw), Value::Object(kept)) => raw
+            .iter()
+            .all(|(key, raw)| kept.get(key).is_some_and(|kept| covered(raw, kept))),
+        (Value::Array(raw), Value::Array(kept)) => {
+            raw.len() == kept.len() && raw.iter().zip(kept).all(|(raw, kept)| covered(raw, kept))
+        }
+        _ => raw == kept,
     }
 }
 
@@ -260,6 +298,16 @@ fn read_item(raw: Value, base: &Path) -> WorkspaceItem {
         }
     };
     match parsed {
+        Ok((_, _, _, lane_matching))
+            if object
+                .get("lane_matching")
+                .is_some_and(|raw| !covered(raw, &value(&lane_matching))) =>
+        {
+            unreadable(
+                raw,
+                "Its lane matching has a setting this version does not know.".into(),
+            )
+        }
         Ok((id, label, source, lane_matching)) => WorkspaceItem {
             id,
             label,

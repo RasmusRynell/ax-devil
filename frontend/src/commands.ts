@@ -24,7 +24,7 @@ export type Shortcuts = Record<CommandId, string | null>;
 
 /** What each command needs of the seat. */
 const SCOPES: Record<CommandId, Scope> = {
-  "new-workspace": "content",
+  "new-workspace": "host",
   "open-workspace": "host",
   "save-workspace": "host",
   "save-workspace-as": "host",

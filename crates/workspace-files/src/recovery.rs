@@ -122,6 +122,11 @@ impl RecoveryCopy {
         &self.path
     }
 
+    /// Whether `path` names this copy.
+    pub fn is_at(&self, path: &Path) -> bool {
+        self.path == normalize(path)
+    }
+
     /// Replaces the copy with `workspace` atomically. Paths are written absolute; `recovers` is the workspace file
     /// the copy belongs to, `None` for Untitled.
     pub fn write(&self, workspace: &Workspace, recovers: Option<&Path>) -> Result<(), UserError> {
