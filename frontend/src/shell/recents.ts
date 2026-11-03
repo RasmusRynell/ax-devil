@@ -16,9 +16,15 @@ export function recentName(path: string): string {
 
 const DAY_MS = 86_400_000;
 
-/** When a workspace was used: `today`, `yesterday` or `3 days ago` within a week, else the date. */
+const startOfDay = (ms: number): number => {
+  const date = new Date(ms);
+  return new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime();
+};
+
+/** When a workspace was used: `today`, `yesterday` or `3 days ago` within a week, else the date. Days are local. */
 export function usedOn(usedMs: number, now = Date.now()): string {
-  const days = Math.floor(now / DAY_MS) - Math.floor(usedMs / DAY_MS);
+  // Rounded, so a day of 23 or 25 hours at a clock change still counts as one.
+  const days = Math.round((startOfDay(now) - startOfDay(usedMs)) / DAY_MS);
   if (days < 0 || days >= 7) return new Date(usedMs).toLocaleDateString();
   return new Intl.RelativeTimeFormat(undefined, { numeric: "auto" }).format(-days, "day");
 }

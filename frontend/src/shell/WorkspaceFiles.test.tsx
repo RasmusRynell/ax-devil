@@ -4,6 +4,7 @@ import { GrantsContext } from "../access";
 import { DEFAULT_SETTINGS, FakeSettings } from "../fakeSettings";
 import { FakeSocket } from "../session/fakeSession";
 import { SessionProvider } from "../session/session";
+import { usedOn } from "./recents";
 import { Shell } from "./Shell";
 
 beforeEach(() => vi.stubGlobal("WebSocket", FakeSocket));
@@ -62,5 +63,16 @@ describe("workspace files", () => {
       await waitFor(() => expect(screen.queryByText("Restored unsaved changes")).toBeNull());
     }
     expect(sent()).toEqual([{ type: "keep" }, { type: "discard" }]);
+  });
+});
+
+describe("when a recent workspace was used", () => {
+  it("counts local calendar days, not 24-hour spans", () => {
+    const now = new Date(2026, 5, 15, 0, 30).getTime();
+    expect(usedOn(new Date(2026, 5, 15, 0, 5).getTime(), now)).toBe("today");
+    expect(usedOn(new Date(2026, 5, 14, 23, 30).getTime(), now)).toBe("yesterday");
+    expect(usedOn(new Date(2026, 5, 8, 12).getTime(), now)).toBe(
+      new Date(2026, 5, 8, 12).toLocaleDateString(),
+    );
   });
 });

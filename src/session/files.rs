@@ -149,7 +149,7 @@ impl WorkspaceFiles {
                     return;
                 }
                 let state = Arc::clone(&rx.borrow());
-                this.sync(&mut files, &state.doc.workspace).await;
+                let _ = this.sync(&mut files, &state.doc.workspace).await;
             }
         });
     }
@@ -273,7 +273,8 @@ impl WorkspaceFiles {
         file: Option<PathBuf>,
         saved: Saved,
     ) -> Result<(), Failure> {
-        self.sync(files, &handle.state().doc.workspace).await;
+        // Unsaved work that cannot be kept stays where it is, so the user can save it elsewhere.
+        self.sync(files, &handle.state().doc.workspace).await?;
         files.copy = None;
         files.listed = false;
         files.synced = None;
@@ -394,7 +395,7 @@ impl WorkspaceFiles {
             file: HostPath::new(&target),
         };
         handle.command(Command::Content(saved))?;
-        self.sync(files, &handle.state().doc.workspace).await;
+        let _ = self.sync(files, &handle.state().doc.workspace).await;
         self.record(&target).await;
         Ok(())
     }
@@ -423,7 +424,7 @@ impl WorkspaceFiles {
         };
         handle.command(Command::Content(saved))?;
         // Unmodified now, so the sync deletes the copy.
-        self.sync(files, &handle.state().doc.workspace).await;
+        let _ = self.sync(files, &handle.state().doc.workspace).await;
         if let Some(file) = file {
             self.record(&file).await;
         }
@@ -431,18 +432,28 @@ impl WorkspaceFiles {
     }
 
     /// Brings the recovery copy up to date with `state`: written while modified, deleted when not. A failure is
-    /// logged and the next sync tries again.
-    async fn sync(&self, files: &mut SessionFiles, state: &WorkspaceState) {
+    /// logged and the next sync tries again; keeping a modified workspace's copy is the one that reports it.
+    async fn sync(
+        &self,
+        files: &mut SessionFiles,
+        state: &WorkspaceState,
+    ) -> Result<(), UserError> {
         let Some(storage) = &self.storage else {
-            return;
+            return Ok(());
         };
         if files.closed {
-            return;
+            return Ok(());
         }
+        let unkept = |reason: &dyn std::fmt::Display| {
+            UserError::new(
+                ErrorCode::SaveFailed,
+                format!("Could not keep the unsaved changes: {reason}"),
+            )
+        };
         let file = state.file.as_ref().map(|file| file.as_path().to_owned());
         let key: Key = (state.workspace.clone(), file, state.modified());
         if files.synced.as_ref() == Some(&key) {
-            return;
+            return Ok(());
         }
         if key.2 {
             let copy = match files.copy.take() {
@@ -456,7 +467,7 @@ impl WorkspaceFiles {
                         Ok(copy) => copy,
                         Err(error) => {
                             tracing::warn!("Cannot start a recovery copy: {error}");
-                            return;
+                            return Err(unkept(&error));
                         }
                     }
                 }
@@ -471,12 +482,12 @@ impl WorkspaceFiles {
             files.copy = Some(copy);
             if let Err(error) = written {
                 tracing::warn!("Cannot write the recovery copy: {}", error.reason);
-                return;
+                return Err(error);
             }
             // Without its recent entry the copy would not be offered on the next launch, so try again next time.
             files.listed = files.listed || self.record(&path).await;
             if !files.listed {
-                return;
+                return Err(unkept(&"the recent workspaces cannot be updated"));
             }
         } else if let Some(copy) = files.copy.take() {
             let path = copy.path().to_owned();
@@ -494,16 +505,17 @@ impl WorkspaceFiles {
             }
             if failed {
                 files.copy = Some(copy);
-                return;
+                return Ok(());
             }
         }
         files.synced = Some(key);
+        Ok(())
     }
 
     /// Writes the session's last state and lets go of its copy, which stays on disk.
     async fn close(&self, files: &mut SessionFiles) {
         let state = Arc::clone(&files.rx.borrow());
-        self.sync(files, &state.doc.workspace).await;
+        let _ = self.sync(files, &state.doc.workspace).await;
         // The copy that outlives the window is what the next launch restores, so it is the newest recent again.
         if let Some(copy) = files.copy.take() {
             self.record(copy.path()).await;
