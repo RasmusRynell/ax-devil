@@ -257,6 +257,7 @@ impl Backend {
             return Viewer {
                 socket,
                 close_code: None,
+                cached: Vec::new(),
             };
         }
         let socket = tokio::net::TcpSocket::new_v4().unwrap();
@@ -268,6 +269,7 @@ impl Backend {
         Viewer {
             socket,
             close_code: None,
+            cached: Vec::new(),
         }
     }
 
@@ -301,6 +303,8 @@ pub struct Viewer {
     pub socket: WebSocketStream<MaybeTlsStream<TcpStream>>,
     /// The code of the close frame the backend ended the socket with, once it did.
     pub close_code: Option<u16>,
+    /// The backend's latest report of the frames it holds decoded, as inclusive runs.
+    pub cached: Vec<[u64; 2]>,
 }
 
 impl Viewer {
@@ -378,22 +382,27 @@ impl Viewer {
         .await;
     }
 
-    /// The next thing the backend sent, but for the reports of its cache, which come at any time and which only
-    /// [`cached`](Self::cached) reads; fails if nothing comes.
+    /// The next thing the backend sent, but for the reports of its cache, which come at any time: the latest is
+    /// kept for [`cached_covering`](Self::cached_covering). Fails if nothing comes.
     pub async fn next(&mut self) -> Event {
         loop {
             match self.read().await {
-                Event::Message(ServerMessage::Cached { .. }) => {}
+                Event::Message(ServerMessage::Cached { ranges }) => self.cached = ranges,
                 event => return event,
             }
         }
     }
 
-    /// The next report of the backend's cache, skipping everything else; fails if none comes.
-    pub async fn cached(&mut self) -> Vec<[u64; 2]> {
-        loop {
+    /// Waits until the backend's latest report of its cache has a run covering all of `frames`, whether the report
+    /// came before or comes now; fails if none does.
+    pub async fn cached_covering(&mut self, frames: RangeInclusive<u64>) {
+        while !self
+            .cached
+            .iter()
+            .any(|&[first, last]| first <= *frames.start() && last >= *frames.end())
+        {
             if let Event::Message(ServerMessage::Cached { ranges }) = self.read().await {
-                return ranges;
+                self.cached = ranges;
             }
         }
     }

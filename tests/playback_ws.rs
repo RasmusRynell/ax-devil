@@ -72,13 +72,7 @@ async fn the_backend_reports_the_frames_it_holds_decoded_while_frames_keep_comin
     viewer.want(0, 25, 0, Direction::Forward).await;
     viewer.frames(0..=25).await;
 
-    // The report is due every half second; the first may predate the decoding.
-    loop {
-        let ranges = viewer.cached().await;
-        if ranges.iter().any(|&[first, last]| first == 0 && last >= 25) {
-            break;
-        }
-    }
+    viewer.cached_covering(0..=25).await;
 }
 
 #[tokio::test]
