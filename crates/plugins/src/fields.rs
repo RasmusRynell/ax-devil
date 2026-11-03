@@ -314,8 +314,21 @@ impl<'a> Fields<'a> {
             let broken = match &field.kind {
                 FieldKind::Scan { depends_on } => depends_on
                     .iter()
-                    .find(|name| **name == field.key || named(name).is_none())
-                    .map(|bad| ("depends_on", bad, "another setting")),
+                    .find(|name| {
+                        !named(name).is_some_and(|(_, other)| {
+                            !matches!(
+                                other.kind,
+                                FieldKind::Scan { .. } | FieldKind::DecoderOptions { .. }
+                            )
+                        })
+                    })
+                    .map(|bad| {
+                        (
+                            "depends_on",
+                            bad,
+                            "a text, file, folder, integer or handler setting",
+                        )
+                    }),
                 FieldKind::DecoderOptions { handler_field }
                     if !named(handler_field)
                         .is_some_and(|(_, other)| other.kind == FieldKind::Handler) =>

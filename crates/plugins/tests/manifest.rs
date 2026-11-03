@@ -415,6 +415,10 @@ fn resolver_settings_of_every_kind_load_and_each_refusal_names_the_field() {
             "handlers[0].settings[7].default",
         ),
         (
+            json!({ "key": "a", "label": "A", "kind": "scan", "depends_on": ["runs"] }),
+            "handlers[0].settings[7].depends_on",
+        ),
+        (
             json!({ "key": "a", "label": "A", "kind": "scan", "depends_on": ["note"], "required": true }),
             "handlers[0].settings[7].required",
         ),
