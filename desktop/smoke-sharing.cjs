@@ -89,7 +89,7 @@ module.exports.sharing = async (window, shell, ownerCsp) => {
   await wait(`${participants} === 2`);
   const tabs = "[...document.querySelectorAll('[role=tab]')].map((tab) => tab.textContent)";
   await second.wait(`${tabs}.join() === 'long_gop_h264.mp4'`);
-  await second.wait("document.querySelector('output[aria-label=Frame]')");
+  await second.wait("document.querySelector('input[aria-label=Frame]')");
   assert.equal(await second.js(`${tabs}.join()`), await js(`${tabs}.join()`));
 
   // Reloading the watcher takes its seat back: same Guest N, and the owner still sees two participants.

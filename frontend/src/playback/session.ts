@@ -9,9 +9,9 @@ import { CommandRefused, reasonOf } from "../errors";
 import { ExportJobs } from "../export/jobs";
 import {
   PlaybackClock,
-  SPEED_STEP,
   clampSpeed,
   followFrame,
+  steppedSpeed,
   type ClockIntent,
   type FrameSource,
 } from "./clock";
@@ -22,7 +22,7 @@ import type { FileScope } from "./fileScope";
 import { FrameBuffer, windowSize } from "./FrameBuffer";
 import { DataWait, displaySource } from "./frameSource";
 import { WantPlanner, sameWant } from "./direction";
-import { LaneSet, startWith } from "./lanes";
+import { LaneSet } from "./lanes";
 import {
   PLAYBACK_PROTOCOL,
   type Envelope,
@@ -88,6 +88,8 @@ export class PlaybackSession implements LaneControl {
   #planner: WantPlanner | undefined;
   #lastWant: Want | undefined;
   #speed = 1;
+  /** While the seek bar is held: whether the clock ran when it was grabbed. */
+  #scrub: boolean | undefined;
   /** The frame to open on after a lost connection. */
   #resumeAt: number | undefined;
   #retries = 0;
@@ -225,6 +227,20 @@ export class PlaybackSession implements LaneControl {
     this.#intend();
   }
 
+  /** The seek bar is held: playback pauses, so the position follows the hand. */
+  scrubStart(): void {
+    if (!this.#clock || this.#scrub !== undefined) return;
+    this.#scrub = this.#clock.playing;
+    if (this.#scrub) this.pause();
+  }
+
+  /** The seek bar is let go: playback that ran when it was grabbed runs on, unless it was left at the end. */
+  scrubEnd(): void {
+    const resume = this.#scrub;
+    this.#scrub = undefined;
+    if (resume && (this.#clock?.playhead ?? 0) < this.#frameCount - 1) this.play();
+  }
+
   /** Sets the speed, rounded to hundredths and kept within 0.01 to 10; it stays across a reconnection. */
   setSpeed(speed: number): void {
     this.#speed = clampSpeed(speed);
@@ -233,9 +249,9 @@ export class PlaybackSession implements LaneControl {
     this.#intend();
   }
 
-  /** One 0.1 step up (`1`) or down (`-1`). */
+  /** One 0.1 step up (`1`) or down (`-1`), never below 0.1. */
   stepSpeed(direction: 1 | -1): void {
-    this.setSpeed(this.#speed + direction * SPEED_STEP);
+    this.setSpeed(steppedSpeed(this.#speed, direction));
   }
 
   /**
@@ -334,17 +350,7 @@ export class PlaybackSession implements LaneControl {
           "playback",
         );
       this.#opened = message;
-      const before = this.#lanes.states;
-      const defaults = startWith(
-        message.lane_defaults,
-        message.catalogs,
-        this.#deps.defaultCatalog?.(),
-      );
-      this.#lanes
-        .open(message.lanes, defaults, this.#deps.lanes)
-        .forEach((m) => this.#connection?.send(m));
-      this.#data.reopen(message, before);
-      this.#data.refresh();
+      this.#data.reopen(message, this.#deps.defaultCatalog?.(), this.#deps.lanes);
     } else if (message.type === "LaneStatus") {
       if (this.#lanes.setStatus(message.lane, message.status)) {
         this.#data.refresh();
@@ -356,22 +362,14 @@ export class PlaybackSession implements LaneControl {
         this.represent();
         this.#onData();
       }
-    } else if (message.type === "Inspected") {
-      this.#data.inspections.receive(message);
-    } else if (message.type === "DataWindow") {
-      this.#data.window(message.first, message.last);
-    } else if (message.type === "Evict") {
-      this.#data.evict(message);
-    } else if (message.type === "LaneProblem") {
-      this.#lanes.setProblem(message.lane, message.reason);
-    } else if (message.type === "FileRows" || message.type === "FileScope") {
-      this.#data.files.receive(message);
     } else if (message.type === "Export") {
       this.exports.receive(message);
     } else if (message.type === "FrameError") {
       this.#noteFailure(message.sequence_id, reasonOf(message));
     } else if (message.type === "Error") {
       return this.#fail(reasonOf(message), message.location);
+    } else {
+      this.#data.receive(message);
     }
     this.#publish();
   }

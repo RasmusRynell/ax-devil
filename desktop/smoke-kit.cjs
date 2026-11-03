@@ -50,7 +50,7 @@ async function hideChrome(window) {
   const { js } = page(window);
   const opacity = () =>
     js(
-      "(() => { const t = document.querySelector('[data-keeps-chrome]'); return t ? Number(getComputedStyle(t).opacity) : 0; })()",
+      "(() => { const t = document.querySelector('[data-keeps-chrome=transport]'); return t ? Number(getComputedStyle(t).opacity) : 0; })()",
     );
   if ((await opacity()) === 0) return;
   const video = await js(
@@ -72,13 +72,13 @@ async function showChrome(window) {
   if (!video) return;
   const shown = () =>
     js(
-      "(() => { const t = document.querySelector('[data-keeps-chrome]'); return document.querySelector('[data-chrome-idle]').closest('[data-chrome]')?.dataset.chrome === 'shown' && !!t && Number(getComputedStyle(t).opacity) === 1 && getComputedStyle(t).pointerEvents !== 'none'; })()",
+      "(() => { const t = document.querySelector('[data-keeps-chrome=transport]'); return document.querySelector('[data-chrome-idle]').closest('[data-chrome]')?.dataset.chrome === 'shown' && !!t && Number(getComputedStyle(t).opacity) === 1 && getComputedStyle(t).pointerEvents !== 'none'; })()",
     );
   await moveTo(window, video.x, video.y);
   await until(shown, "the transport is shown");
   // Resting over the transport holds the controls shown, so the idle timer cannot hide them during the check.
   const controls = await js(
-    "(() => { const r = document.querySelector('[data-keeps-chrome]').getBoundingClientRect(); return r.width > 0 && r.height > 0 ? { x: r.left + r.width / 2, y: r.top + r.height / 2 } : null; })()",
+    "(() => { const r = document.querySelector('[data-keeps-chrome=transport]').getBoundingClientRect(); return r.width > 0 && r.height > 0 ? { x: r.left + r.width / 2, y: r.top + r.height / 2 } : null; })()",
   );
   if (!controls) return;
   await moveTo(window, controls.x, controls.y);
@@ -104,7 +104,7 @@ function colourful({ bitmap, width }, x, y) {
 }
 
 // The frame number the transport shows.
-const SHOWN = `Number.parseInt(document.querySelector("output[aria-label=Frame]")?.textContent ?? "")`;
+const SHOWN = `Number.parseInt(document.querySelector("input[aria-label=Frame]")?.value ?? "")`;
 
 // Pauses and steps the viewer to this frame.
 async function goToFrame(window, target) {

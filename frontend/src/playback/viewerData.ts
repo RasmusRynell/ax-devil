@@ -7,8 +7,8 @@ import { SampleStore } from "./data/SampleStore";
 import { Inspections } from "./inspection";
 import { LaneCatalogs } from "./laneCatalog";
 import { LaneData } from "./laneData";
-import type { LaneFrame, Surface } from "./contract";
-import type { LaneSet, LaneState } from "./lanes";
+import type { LaneFrame, LaneSettings, Surface } from "./contract";
+import { startWith, type LaneSet } from "./lanes";
 import type {
   ClientMessage,
   FrameMapEnvelope,
@@ -25,6 +25,7 @@ const NOT_READY = -1;
 
 export class ViewerData {
   readonly #lanes: LaneSet;
+  readonly #send: (message: ClientMessage) => void;
   samples = new SampleStore(0);
   readonly catalogs: Catalogs;
   readonly inspections: Inspections;
@@ -48,6 +49,7 @@ export class ViewerData {
     after: (callback: () => void, ms: number) => () => void,
   ) {
     this.#lanes = lanes;
+    this.#send = send;
     this.files = new FileScope(lanes, send, after);
     this.catalogs = new Catalogs((id) => send({ type: "Catalog", id }));
     this.#laneCatalogs = new LaneCatalogs(this.catalogs, () => this.#fallback);
@@ -110,8 +112,18 @@ export class ViewerData {
     this.files.suspend();
   }
 
-  /** The backend opened the entry: what the old connection was asked is asked again, and lanes that changed forget their catalog. */
-  reopen(opened: Opened, before: readonly LaneState[]): void {
+  /**
+   * The backend opened the entry: its lanes open, starting from `prior` settings and the `personal` default catalog;
+   * what the old connection was asked is asked again, and lanes that changed forget their catalog.
+   */
+  reopen(
+    opened: Opened,
+    personal: string | null | undefined,
+    prior: readonly LaneSettings[] | undefined,
+  ): void {
+    const before = this.#lanes.states;
+    const defaults = startWith(opened.lane_defaults, opened.catalogs, personal);
+    this.#lanes.open(opened.lanes, defaults, prior).forEach(this.#send);
     this.#fallback = opened.lane_defaults.catalog;
     this.catalogs.open(opened.catalogs);
     this.inspections.reconnect();
@@ -120,6 +132,7 @@ export class ViewerData {
       if (before[index]?.label !== lane.label || before[index]?.source !== lane.source)
         this.#laneCatalogs.forget(index);
     });
+    this.refresh();
   }
 
   /**
@@ -133,6 +146,18 @@ export class ViewerData {
     )
       return false;
     this.catalogProblems();
+    return true;
+  }
+
+  /** Takes a message that only changes the data held (an inspector answer, the data window, evictions, a lane's problem, file lists); false for any other. */
+  receive(message: ServerMessage): boolean {
+    if (message.type === "Inspected") this.inspections.receive(message);
+    else if (message.type === "DataWindow") this.window(message.first, message.last);
+    else if (message.type === "Evict") this.evict(message);
+    else if (message.type === "LaneProblem") this.#lanes.setProblem(message.lane, message.reason);
+    else if (message.type === "FileRows" || message.type === "FileScope")
+      this.files.receive(message);
+    else return false;
     return true;
   }
 

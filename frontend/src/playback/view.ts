@@ -14,6 +14,8 @@ export type PlaybackView = {
   failure?: { reason: string; location?: string };
   /** How many frames the video has; 0 until it is ready. */
   frameCount: number;
+  /** The time of the last frame in microseconds; 0 until it is ready. */
+  durationUs: number;
   playing: boolean;
   speed: number;
   /** The position asked for, which the seek bar shows. */
@@ -44,6 +46,7 @@ export const INITIAL_VIEW: PlaybackView = {
   status: "connecting",
   progress: 0,
   frameCount: 0,
+  durationUs: 0,
   playing: false,
   speed: 1,
   playhead: 0,
@@ -66,6 +69,7 @@ export const sameView = (a: PlaybackView, b: PlaybackView): boolean =>
   a.progress === b.progress &&
   a.failure === b.failure &&
   a.frameCount === b.frameCount &&
+  a.durationUs === b.durationUs &&
   a.playing === b.playing &&
   a.speed === b.speed &&
   a.playhead === b.playhead &&
@@ -109,6 +113,7 @@ export function buildView(parts: ViewParts): PlaybackView {
     progress: parts.progress,
     failure: parts.failure,
     frameCount: parts.status === "ready" ? parts.frameCount : 0,
+    durationUs: clock?.durationUs ?? 0,
     playing: clock?.playing ?? false,
     speed: parts.speed,
     playhead,
