@@ -143,8 +143,12 @@ function panel(selector) {
     const name = (element.ariaLabel || element.textContent).trim().slice(0, 30);
     if (rect.width && (rect.left < bounds.left - 1 || rect.right > bounds.right + 1))
       problems.push(`outside the panel: "${name}"`);
+    // A table cell that ends in an ellipsis is elided on purpose, and its whole text is its tooltip.
+    const elided =
+      element.closest("[role=option]") && getComputedStyle(element).textOverflow === "ellipsis";
     if (
       element.localName !== "input" &&
+      !elided &&
       element.clientWidth > 2 &&
       element.scrollWidth > element.clientWidth + 1
     )
