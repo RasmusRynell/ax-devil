@@ -3,6 +3,7 @@ import { useDoc } from "../session/session";
 import "./windowBridge";
 import { MenuBar } from "./MenuBar";
 import { ShareControl } from "./ShareControl";
+import { UNTITLED, useWindowTitle } from "./useWindowTitle";
 import { WindowControls } from "./WindowControls";
 
 interface Props {
@@ -15,18 +16,22 @@ interface Props {
 }
 
 /**
- * The workspace's name, `Untitled` without one, and a dot while it has unsaved changes. A narrow window leaves the
+ * The workspace's name, `Untitled` without one, and a dot while it has unsaved changes; the window's title follows it. A narrow window leaves the
  * room to the menus, as it does for the app name, and keeps the dot.
  */
 function WorkspaceName() {
   const workspace = useDoc()?.workspace;
+  useWindowTitle(workspace);
   if (!workspace) return null;
+  const name = workspace.name ?? UNTITLED;
   return (
     <span
       data-cursor-id="title:workspace"
       className="flex min-w-0 items-center gap-s px-m text-muted max-sm:px-0"
     >
-      <span className="truncate max-sm:hidden">{workspace.name ?? "Untitled"}</span>
+      <span title={name} className="truncate max-sm:hidden">
+        {name}
+      </span>
       {workspace.modified && (
         <span role="img" aria-label="Modified" className="size-m shrink-0 rounded-full bg-accent" />
       )}

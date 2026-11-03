@@ -106,9 +106,9 @@ function sender(event) {
 
 /**
  * Registers every IPC handler, each answering only its own window's trusted page. `connect` is honoured from a
- * local window and `disconnect` from a remote one, by the callbacks given here.
+ * local window and `disconnect` from a remote one, and `restart` from a local one, by the callbacks given here.
  */
-function installIpc({ connect, disconnect }) {
+function installIpc({ connect, disconnect, restart }) {
   const on = (channel, act) =>
     ipcMain.on(channel, (event) => {
       try {
@@ -125,6 +125,10 @@ function installIpc({ connect, disconnect }) {
   );
   on("window:close", ({ window }) => window.close());
   on("window:toggle-fullscreen", ({ window }) => window.setFullScreen(!window.isFullScreen()));
+  // A remote page's settings belong to its server, which this app cannot restart.
+  on("app:restart", ({ remote }) => {
+    if (!remote) restart();
+  });
   handle("window:is-maximized", ({ window }) => window.isMaximized());
   handle("app:version", () => app.getVersion());
   // Only the native dialog: the page sends the chosen paths to the backend itself. Resolves to the absolute paths,

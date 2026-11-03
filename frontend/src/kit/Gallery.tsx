@@ -2,7 +2,7 @@ import { useState, type ReactNode } from "react";
 import { Banner } from "../shell/Banner";
 import { BrowseButton, Button, MenuButton } from "./Button";
 import { Checkbox, SearchField, Select, TextField } from "./Fields";
-import { Chip, ChipRow, ChoiceChips, SegmentedControl, ToggleChip } from "./Chips";
+import { Chip, ChipRow, ChoiceChips, SegmentedControl, TileChoice, ToggleChip } from "./Chips";
 import { IconButton } from "./IconButton";
 import { FIELD, type Tone } from "./look";
 import { RowList } from "./RowList";
@@ -170,6 +170,14 @@ export function Gallery() {
         <div className="w-[16ch]">
           <SegmentedControl label="Mode, narrow" options={MODES} value={mode} onChange={setMode} />
         </div>
+        <SegmentedControl label="Mode, wide" options={MODES} value={mode} onChange={setMode} wide />
+        <TileChoice
+          label="Speed, tiles"
+          options={SPEEDS}
+          value={speed}
+          onChange={setSpeed}
+          preview={() => <Icon name="eye" />}
+        />
       </Section>
 
       <Section title="Fields">

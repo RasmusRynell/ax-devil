@@ -23,7 +23,29 @@ function Catalog() {
   );
 }
 
+function TextSize() {
+  const { values, shortcuts, save } = useSettings();
+  return (
+    <button
+      onClick={() => void save({ values: { ...values, "ui.text_size": "large" }, shortcuts })}
+    >
+      Larger text
+    </button>
+  );
+}
+
 describe("settings", () => {
+  it("applies the theme and text size to the document root as they are saved", async () => {
+    render(
+      <SettingsProvider>
+        <TextSize />
+      </SettingsProvider>,
+    );
+    fireEvent.click(await screen.findByRole("button", { name: "Larger text" }));
+    await waitFor(() => expect(document.documentElement.dataset.textSize).toBe("large"));
+    expect(document.documentElement.dataset.theme).toBe("auto");
+  });
+
   it("keeps the Personal default catalog of a browser without a backend for it in the browser", async () => {
     render(
       <SettingsProvider>

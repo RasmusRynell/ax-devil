@@ -34,6 +34,8 @@ export interface WindowBridge {
   disconnect(): Promise<void>;
   /** The desktop app's own version. */
   appVersion(): Promise<string>;
+  /** Closes the app and starts it again; only the local page may ask. */
+  restart(): void;
   /** The page zoom factor (1 is 100%), read when asked. */
   zoomFactor?(): number;
 }

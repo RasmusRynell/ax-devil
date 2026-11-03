@@ -19,6 +19,10 @@ use crate::{
     track::Track,
 };
 
+/// The folder under the cache folder that holds the decoded artifacts.
+pub const SCENE_FOLDER: &str = "scenes";
+/// The extension of a decoded artifact.
+pub const SCENE_EXTENSION: &str = "axscene";
 /// How many bytes of decoded Scenes each track keeps in memory by default.
 pub const SCENE_CACHE_BYTES: usize = 32 << 20;
 
@@ -269,10 +273,10 @@ impl TrackRegistry {
         options: &Values,
         cancel: &CancelToken,
     ) -> Result<Arc<Track>, Interrupt<UserError>> {
-        let artifact = self
-            .cache_dir
-            .as_ref()
-            .map(|dir| dir.join("scenes").join(format!("{}.axscene", key.digest())));
+        let artifact = self.cache_dir.as_ref().map(|dir| {
+            dir.join(SCENE_FOLDER)
+                .join(format!("{}.{SCENE_EXTENSION}", key.digest()))
+        });
         load(
             decoder,
             &Request {

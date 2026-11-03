@@ -31,7 +31,8 @@ pub struct Paths {
 }
 
 impl Paths {
-    /// The paths for this launch; `config` and `cache_dir` are the `--config` and `--cache-dir` overrides.
+    /// The paths for this launch; `config` and `cache_dir` are the `--config` and `--cache-dir` overrides. A
+    /// `--config` file must exist, while the default settings file may be missing until it is first saved.
     pub fn resolve(
         env: Env,
         config: Option<PathBuf>,
@@ -40,6 +41,9 @@ impl Paths {
         let state = folder(env, "XDG_STATE_HOME", ".local/state")?;
         Ok(Self {
             config_file: match config {
+                Some(path) if !path.exists() => {
+                    return Err(format!("Config file does not exist: {}", path.display()));
+                }
                 Some(path) => path,
                 None => folder(env, "XDG_CONFIG_HOME", ".config")?.join("settings.json"),
             },
@@ -169,8 +173,9 @@ mod tests {
             ("XDG_CONFIG_HOME", "config"),
             ("XDG_CACHE_HOME", ""),
         ];
-        let found = paths(&relative, Some("/etc/mine.json")).unwrap();
-        assert_eq!(found.config_file, Path::new("/etc/mine.json"));
+        let mine = tempfile::NamedTempFile::new().unwrap();
+        let found = paths(&relative, mine.path().to_str()).unwrap();
+        assert_eq!(found.config_file, mine.path());
         assert_eq!(found.cache_dir(None), Path::new("/home/me/.cache/ax-devil"));
         assert_eq!(
             found.catalog_dir(None),
@@ -194,6 +199,16 @@ mod tests {
             windows.cache_dir(None),
             Path::new("/home/win/.cache/ax-devil")
         );
+    }
+
+    #[test]
+    fn a_config_file_named_on_the_command_line_must_exist_but_the_default_need_not() {
+        let vars = [("HOME", "/home/me")];
+        assert_eq!(
+            paths(&vars, Some("/no/such/dir/mine.json")).err().unwrap(),
+            "Config file does not exist: /no/such/dir/mine.json"
+        );
+        assert!(paths(&vars, None).is_ok());
     }
 
     #[test]

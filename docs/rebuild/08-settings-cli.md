@@ -39,7 +39,7 @@ and `ax-devil <command> --help` run from a worktree at the reference commit.
 
 | Command | Behavior |
 |---------|----------|
-| `ax-devil` | Launch (start panel or restored recovery copy); global `--log-level`, `--config`. With packaging (D6) it becomes `app` |
+| `ax-devil` | Launch (start panel or restored recovery copy); global `--log-level`, `--config` (the file must exist). With packaging (D6) it becomes `app` |
 | `serve` | Run the backend headless for other machines, protected by a server password ([13](13-security-packaging-ops.md#sharing-must)) |
 | `app` | Open the desktop app, on the local backend or another machine's server |
 | `local`, `live`, `playlist <resolver>` | Build one item into a new Untitled workspace (`local` has no per-overlay options yet) |

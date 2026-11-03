@@ -1,6 +1,6 @@
 const assert = require("node:assert/strict");
 const { test } = require("node:test");
-const { backendArgs, parseLaunch, userArgs } = require("./args.cjs");
+const { backendArgs, parseLaunch, relaunchArgs, userArgs } = require("./args.cjs");
 
 void test("the command and its options go to the backend, the shell's and Chromium's switches do not", () => {
   const argv = ["electron", ".", "--ozone-platform=x11", "--smoke-test", "--log-level", "DEBUG"];
@@ -35,4 +35,13 @@ void test("a server address or link opens a window and is not taken for the back
   assert.deepEqual(backendArgs(linked.rest), ["local", "--video", "a.mp4"]);
   assert.deepEqual(parseLaunch(["--server=http://nas"]).launch, { server: "http://nas" });
   assert.throws(() => parseLaunch(["--server"]), /needs a server address/);
+});
+
+void test("a restart keeps the command line but not the server or link it opened", () => {
+  const argv = ["electron", ".", "--server", "http://nas:7340", "--config=a.json", "local"];
+  assert.deepEqual(relaunchArgs(argv, true), [".", "--config=a.json", "local"]);
+  assert.deepEqual(
+    relaunchArgs(["ax-devil", "ax-devil://open?url=x", "--log-level=DEBUG"], false),
+    ["--log-level=DEBUG"],
+  );
 });

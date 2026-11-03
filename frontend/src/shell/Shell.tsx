@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { useGrants } from "../access";
 import { scopeOf } from "../commands";
 import type { SidebarView, WorkspaceCommand } from "../generated/api";
-import { COMMANDS, SETTINGS } from "../generated/settings";
+import { COMMANDS } from "../generated/settings";
 import { CommandFailed } from "../errors";
 import { Button } from "../kit/Button";
 import { ChoiceDialog } from "../kit/ChoiceDialog";
@@ -51,6 +51,7 @@ const SETTING_CHECKS = {
 
 type Dialog =
   | "settings"
+  | "restart"
   | "shortcuts"
   | "quick-setup"
   | "about"
@@ -75,7 +76,7 @@ export function Shell({ version }: { version: string }) {
   const [replacing, setReplacing] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [viewerActions, setViewerActions] = useState<ViewerActions>(NO_ACTIONS);
-  const { values, shortcuts, restart, save } = useSettings();
+  const { values, shortcuts, save } = useSettings();
   // Quick Setup configures the server, so only someone who may configure it is offered it.
   const configures = useGrants().includes("configuration");
   // Settings arrive before the shell renders, so a first run is known here.
@@ -166,7 +167,10 @@ export function Shell({ version }: { version: string }) {
     ...Object.fromEntries(
       Object.entries(SETTING_CHECKS).map(([id, key]) => [
         id,
-        () => void save({ values: { ...values, [key]: values[key] !== true }, shortcuts }),
+        () =>
+          void save({ values: { ...values, [key]: values[key] !== true }, shortcuts }).then(
+            (refusal) => refusal && setNotice(`Could not save this preference: ${refusal.reason}`),
+          ),
       ]),
     ),
   };
@@ -269,12 +273,6 @@ export function Shell({ version }: { version: string }) {
             Restored unsaved changes
           </Banner>
         )}
-        {restart.length > 0 && (
-          <Banner role="status">
-            Restart ax-devil to apply{" "}
-            {restart.map((key) => SETTINGS.find((row) => row.key === key)?.label).join(", ")}
-          </Banner>
-        )}
         <div className="flex min-h-0 flex-1 flex-col sm:flex-row">
           <ActivityBar active={sidebar.open ? sidebar.view : null} onSelect={activate} />
           {sidebar.open && <Sidebar view={sidebar.view} onRun={run} />}
@@ -286,8 +284,35 @@ export function Shell({ version }: { version: string }) {
           </main>
         </div>
         <Presence scopes={scopes} />
-        {dialog === "settings" && <SettingsDialog onClose={closer("settings")} />}
-        {dialog === "quick-setup" && <QuickSetupDialog onClose={closer("quick-setup")} />}
+        {dialog === "settings" && (
+          <SettingsDialog
+            onClose={closer("settings")}
+            onRestartNeeded={() => setDialog("restart")}
+          />
+        )}
+        {dialog === "restart" && (
+          <ChoiceDialog
+            title="Restart ax-devil?"
+            message="Some changes take effect after a restart."
+            // Only the desktop's own backend can be restarted from here.
+            choices={
+              bridge
+                ? [
+                    { id: "now", label: "Restart Now" },
+                    { id: "later", label: "Later" },
+                  ]
+                : [{ id: "later", label: "OK" }]
+            }
+            defaultId={bridge ? "now" : "later"}
+            onChoose={(choice) => {
+              closer("restart")();
+              if (choice === "now") bridge?.restart();
+            }}
+          />
+        )}
+        {dialog === "quick-setup" && (
+          <QuickSetupDialog onClose={closer("quick-setup")} onNotice={setNotice} />
+        )}
         {dialog === "about" && <AboutDialog version={version} onClose={closer("about")} />}
         {dialog === "add-video" && <AddVideoDialog onClose={closer("add-video")} />}
         {dialog === "add-playlist" && <AddPlaylistDialog onClose={closer("add-playlist")} />}

@@ -1,9 +1,16 @@
 import { useId, type LabelHTMLAttributes, type ReactNode } from "react";
 import { Icon } from "./Icon";
+import { IconButton } from "./IconButton";
 import { FIELD, FIELD_IN } from "./look";
 
+interface SearchProps {
+  placeholder: string;
+  /** Makes the field controlled, with a clear button while it has text. */
+  query?: { value: string; onChange: (value: string) => void };
+}
+
 /** A search input with a leading icon; the placeholder doubles as its accessible name. */
-export function SearchField({ placeholder }: { placeholder: string }) {
+export function SearchField({ placeholder, query }: SearchProps) {
   return (
     <label className={`flex items-center gap-s ${FIELD_IN}`}>
       <span className="flex text-muted">
@@ -13,8 +20,15 @@ export function SearchField({ placeholder }: { placeholder: string }) {
         type="search"
         aria-label={placeholder}
         placeholder={placeholder}
+        value={query?.value}
+        onChange={query && ((event) => query.onChange(event.target.value))}
+        // In a dialog, Enter is OK; here it only finishes typing.
+        onKeyDown={(event) => event.key === "Enter" && event.preventDefault()}
         className="min-w-0 flex-1 bg-transparent text-fg outline-none placeholder:text-muted"
       />
+      {query?.value && (
+        <IconButton icon="x" label="Clear search" onClick={() => query.onChange("")} />
+      )}
     </label>
   );
 }

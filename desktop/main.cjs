@@ -4,7 +4,7 @@ const { app, BrowserWindow, dialog, screen } = require("electron");
 const fs = require("node:fs");
 const path = require("node:path");
 
-const { backendArgs, parseLaunch, userArgs } = require("./args.cjs");
+const { backendArgs, parseLaunch, relaunchArgs, userArgs } = require("./args.cjs");
 const { backendExecutable, createBackend } = require("./backend.cjs");
 const { confirmLink, linkTarget, singleInstance } = require("./links.cjs");
 const { askAfterFailure, parseTarget, verifyServer } = require("./remote.cjs");
@@ -253,6 +253,11 @@ installIpc({
   },
   disconnect: (window) => {
     showLocal(window).catch(fail);
+  },
+  // Quitting stops the backend first (`before-quit`); the new process starts when this one has exited.
+  restart: () => {
+    app.relaunch({ args: relaunchArgs(process.argv, process.defaultApp) });
+    app.quit();
   },
 });
 

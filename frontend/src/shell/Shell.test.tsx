@@ -7,6 +7,7 @@ import type { CommandId } from "../generated/settings";
 import { FakeSocket, video } from "../session/fakeSession";
 import { SessionProvider } from "../session/session";
 import { useViewerActions } from "../viewer/actions";
+import type { SettingsApi } from "../settings";
 import { Shell } from "./Shell";
 import type { WindowBridge } from "./windowBridge";
 
@@ -40,10 +41,12 @@ async function showShell({
   shortcuts = {},
   values = {},
   grants = ["configuration"],
+  save,
 }: {
   shortcuts?: Partial<Record<CommandId, string | null>>;
   values?: Partial<typeof DEFAULT_SETTINGS.values>;
   grants?: Grant[];
+  save?: SettingsApi["save"];
 } = {}) {
   const state = {
     ...DEFAULT_SETTINGS,
@@ -52,7 +55,7 @@ async function showShell({
   };
   render(
     <GrantsContext.Provider value={grants}>
-      <FakeSettings state={state}>
+      <FakeSettings state={state} save={save}>
         <SessionProvider>
           <Shell version="1.2.3" />
         </SessionProvider>
@@ -86,7 +89,7 @@ describe("menu bar", () => {
     const view = screen.getByRole("menuitem", { name: "View" });
     view.focus();
     fireEvent.keyDown(view, { key: "ArrowDown" });
-    expect(document.activeElement?.textContent).toContain("Toggle Fullscreen");
+    expect(document.activeElement?.textContent).toBe("FullscreenF11");
     fireEvent.keyDown(document.activeElement as Element, { key: "Escape" });
     expect(screen.queryByRole("menu")).toBeNull();
     expect(document.activeElement).toBe(view);
@@ -200,6 +203,18 @@ describe("sidebar", () => {
   });
 });
 
+describe("view settings", () => {
+  it("shows a refused save", async () => {
+    const save = () => Promise.resolve({ reason: "full", location: "" });
+    await renderShell({ save });
+    fireEvent.click(screen.getByRole("menuitem", { name: "View" }));
+    fireEvent.click(screen.getByRole("menuitemcheckbox", { name: /Lane Names/ }));
+    expect((await screen.findByRole("alert")).textContent).toBe(
+      "Could not save this preference: full",
+    );
+  });
+});
+
 describe("add video", () => {
   // The desktop's own backend grants preferences, which is how a window knows it may browse this machine's files.
   const local: Grant[] = ["configuration", "preferences"];
@@ -212,6 +227,7 @@ describe("add video", () => {
       pickVideos: () => Promise.resolve(paths),
       connect: () => Promise.resolve(),
       disconnect: () => Promise.resolve(),
+      restart() {},
       pickFolder: () => Promise.resolve(null),
       pickExportFile: () => Promise.resolve(null),
       pickOpenWorkspace: () => Promise.resolve(null),

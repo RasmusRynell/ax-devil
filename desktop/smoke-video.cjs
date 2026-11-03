@@ -129,7 +129,7 @@ async function fullscreen(window) {
     );
     const expected = [
       "Export VideoCtrl+E",
-      "Media Tools PanelCtrl+B",
+      "Toggle Media Tools PanelCtrl+B",
       "Toggle Lane FullscreenF",
       "Reset Zoom0",
     ];

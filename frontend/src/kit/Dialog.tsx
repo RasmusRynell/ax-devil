@@ -74,6 +74,8 @@ interface Props {
   focusOk?: boolean;
   /** Extra buttons before OK, for a choice that Escape must not make. */
   footer?: ReactNode;
+  /** A button at the left of the footer, apart from the answers, for an action on the dialog's own state. */
+  footerStart?: ReactNode;
   /** While true, OK is disabled, so the action cannot run twice. */
   busy?: boolean;
 }
@@ -86,6 +88,7 @@ export function Dialog({
   onCancel,
   okLabel = "OK",
   footer,
+  footerStart,
   focusOk = false,
   busy = false,
 }: Props) {
@@ -103,12 +106,15 @@ export function Dialog({
         else if (!busy) onOk();
       }}
       footer={
-        <div className="flex justify-end gap-m">
-          {onCancel && <Button onClick={onCancel}>Cancel</Button>}
-          {footer}
-          <Button type="submit" disabled={busy}>
-            {okLabel}
-          </Button>
+        <div className="flex gap-m">
+          {footerStart}
+          <div className="ml-auto flex gap-m">
+            {onCancel && <Button onClick={onCancel}>Cancel</Button>}
+            {footer}
+            <Button type="submit" disabled={busy}>
+              {okLabel}
+            </Button>
+          </div>
         </div>
       }
     >

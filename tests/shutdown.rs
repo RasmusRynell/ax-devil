@@ -16,9 +16,12 @@ use std::{
 async fn ctrl_c_ends_open_viewers_and_the_backend_exits() {
     let folder = tempfile::tempdir().unwrap();
     let video = Path::new(env!("CARGO_MANIFEST_DIR")).join("fixtures/video/long_gop_h264.mp4");
+    let config = folder.path().join("default.json");
+    // A `--config` file must exist.
+    std::fs::write(&config, r#"{"version": 1}"#).unwrap();
     let mut backend = Command::new(env!("CARGO_BIN_EXE_ax-devil"))
         .arg("--config")
-        .arg(folder.path().join("default.json"))
+        .arg(&config)
         .arg("--cache-dir")
         .arg(folder.path().join("cache"))
         .args(["local", "--video"])
@@ -89,11 +92,14 @@ async fn ctrl_c_ends_open_viewers_and_the_backend_exits() {
 #[test]
 fn closing_stdin_stops_the_backend_only_when_asked_to() {
     let folder = tempfile::tempdir().unwrap();
+    let config = folder.path().join("default.json");
+    // A `--config` file must exist.
+    std::fs::write(&config, r#"{"version": 1}"#).unwrap();
     let start = |ask: bool| {
         let mut command = Command::new(env!("CARGO_BIN_EXE_ax-devil"));
         command
             .arg("--config")
-            .arg(folder.path().join("default.json"))
+            .arg(&config)
             .env("HOME", folder.path())
             .env("XDG_STATE_HOME", folder.path().join("state"))
             .env("XDG_CACHE_HOME", folder.path().join("cache-home"))

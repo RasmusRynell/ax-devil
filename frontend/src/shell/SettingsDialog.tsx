@@ -14,9 +14,16 @@ const PAGED: readonly Row[] = SETTINGS.filter((row) => row.page !== null);
 
 /**
  * The Settings dialog, built from the settings table: the Personal rows for everyone, the Server rows for whoever may
- * configure the server. Changes apply on OK.
+ * configure the server. Changes apply on OK; `onRestartNeeded` runs after a save that changed a setting that applies
+ * only after a restart.
  */
-export function SettingsDialog({ onClose }: { onClose: () => void }) {
+export function SettingsDialog({
+  onClose,
+  onRestartNeeded,
+}: {
+  onClose: () => void;
+  onRestartNeeded: () => void;
+}) {
   const { values, shortcuts } = useSettings();
   const configures = useGrants().includes("configuration");
   const shown = PAGED.filter((row) => configures || row.scope === "personal");
@@ -29,6 +36,8 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
     const refused = await submit({ values: draft, shortcuts });
     const at = shown.find((row) => row.key === refused?.location);
     if (at?.page) setPage(at.page);
+    if (!refused && shown.some((row) => !row.live && draft[row.key] !== values[row.key]))
+      onRestartNeeded();
   };
   const rows = shown.filter((row) => row.page === page);
   const refusedRow = shown.some((row) => row.key === refusal?.location);

@@ -70,7 +70,7 @@ describe("settings dialog", () => {
     render(
       <GrantsContext.Provider value={["configuration"]}>
         <FakeSettings state={state} save={save}>
-          <SettingsDialog onClose={() => {}} />
+          <SettingsDialog onClose={() => {}} onRestartNeeded={() => {}} />
         </FakeSettings>
       </GrantsContext.Provider>,
     );
@@ -111,7 +111,7 @@ describe("settings dialog", () => {
   it("offers the Server rows only to someone who may configure the server", () => {
     render(
       <FakeSettings>
-        <SettingsDialog onClose={() => {}} />
+        <SettingsDialog onClose={() => {}} onRestartNeeded={() => {}} />
       </FakeSettings>,
     );
     expect(screen.getAllByRole("tab").map((tab) => tab.textContent)).toEqual(["General"]);
@@ -124,7 +124,7 @@ describe("settings dialog", () => {
     render(
       <GrantsContext.Provider value={["configuration"]}>
         <FakeSettings state={{ ...DEFAULT_SETTINGS, values } as never} save={save}>
-          <SettingsDialog onClose={() => {}} />
+          <SettingsDialog onClose={() => {}} onRestartNeeded={() => {}} />
         </FakeSettings>
       </GrantsContext.Provider>,
     );

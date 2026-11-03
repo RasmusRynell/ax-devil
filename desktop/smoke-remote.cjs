@@ -66,7 +66,7 @@ async function remote(local, shell) {
     const { js, wait } = page(window);
     // The server's own embedded frontend booted and shows the app for the password it was given.
     await wait(
-      "document.title === 'ax-devil' && document.querySelector('h1')?.textContent === 'ax-devil'",
+      "document.title === 'Untitled — ax-devil' && document.querySelector('h1')?.textContent === 'ax-devil'",
     );
     assert.equal(await js("location.origin"), served.origin);
     await until(() => local.isDestroyed(), "the local window to close");

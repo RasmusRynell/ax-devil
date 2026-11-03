@@ -6,7 +6,9 @@ use std::fs;
 fn values(theme: &str) -> BTreeMap<String, Value> {
     BTreeMap::from([
         ("ui.theme".into(), json!(theme)),
+        ("ui.text_size".into(), json!("system")),
         ("ui.quick_setup_done".into(), json!(true)),
+        ("defaults.device.protocol".into(), json!("https")),
         ("playback.video_cache".into(), json!("auto")),
         ("overlays.object_details".into(), json!(true)),
         ("overlays.lane_names".into(), json!(true)),
@@ -54,7 +56,7 @@ fn a_saved_change_is_sparse_survives_a_restart_and_keeps_what_this_version_does_
     fs::create_dir_all(path.parent().unwrap()).unwrap();
     fs::write(
         &path,
-        r#"{"version": 1, "settings": {"ui.theme": "light", "ui.text_size": "large"},
+        r#"{"version": 1, "settings": {"ui.theme": "light", "ui.zoom": "large"},
             "shortcuts": {"exit": null, "gone": "Ctrl+J"}, "extra": [1]}"#,
     )
     .unwrap();
@@ -74,7 +76,7 @@ fn a_saved_change_is_sparse_survives_a_restart_and_keeps_what_this_version_does_
         read(&path),
         json!({
             "version": 1,
-            "settings": {"ui.theme": "dark", "ui.text_size": "large"},
+            "settings": {"ui.theme": "dark", "ui.zoom": "large"},
             "shortcuts": {"exit": "Ctrl+Alt+Q", "gone": "Ctrl+J"},
             "extra": [1],
         }),
@@ -96,7 +98,7 @@ fn a_saved_change_is_sparse_survives_a_restart_and_keeps_what_this_version_does_
     settings.replace(&Scope::ALL, &reset).unwrap();
     assert_eq!(
         read(&path)["settings"],
-        json!({"ui.text_size": "large"}),
+        json!({"ui.zoom": "large"}),
         "resetting deletes the key"
     );
 }

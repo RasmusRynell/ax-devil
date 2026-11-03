@@ -21,9 +21,12 @@ struct Backend {
 impl Backend {
     /// Starts `ax-devil` with the private files in `folder` and `command` after its options.
     fn start(folder: &Path, command: &[&OsStr]) -> Self {
+        let config = folder.join("default.json");
+        // A `--config` file must exist.
+        std::fs::write(&config, r#"{"version": 1}"#).unwrap();
         let mut child = Command::new(env!("CARGO_BIN_EXE_ax-devil"))
             .arg("--config")
-            .arg(folder.join("default.json"))
+            .arg(config)
             .arg("--cache-dir")
             .arg(folder.join("cache"))
             .args(command)

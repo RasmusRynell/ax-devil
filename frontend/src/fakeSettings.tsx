@@ -7,10 +7,12 @@ import { SettingsContext, type SettingsApi } from "./settings";
 export const DEFAULT_SETTINGS: SettingsState = {
   values: {
     "ui.theme": "auto",
+    "ui.text_size": "system",
     "ui.quick_setup_done": true,
     "overlays.object_details": true,
     "overlays.lane_names": true,
     "overlays.default_catalog": "",
+    "defaults.device.protocol": "https",
     "playback.video_cache": "auto",
     "storage.cache_dir": "",
     "storage.catalog_dir": "",

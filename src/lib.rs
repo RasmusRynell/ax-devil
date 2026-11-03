@@ -2,6 +2,7 @@
 
 pub mod access;
 pub mod desktop;
+pub mod disk_cache;
 pub mod exports;
 pub mod plugins;
 pub mod render_host;

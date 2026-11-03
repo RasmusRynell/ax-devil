@@ -66,6 +66,22 @@ module.exports = async (window, shell) => {
       `Quick Setup must fit the 640x480 window at ${zoom * 100}% zoom`,
     );
     await shoot(`quick-setup-${theme}${zoom === 1 ? "" : "-200"}.png`);
+    if (zoom === 1) {
+      // The largest text size previews live and the dialog still fits; System goes back before Done stores it.
+      const textSize = async (value) => {
+        await js(`document.querySelector("input[type=radio][value=${value}]").click()`);
+        await wait(`document.documentElement.dataset.textSize === "${value}"`);
+        await frame();
+      };
+      await textSize("larger");
+      assert.deepEqual(
+        await js(`(${fit.dialog.toString()})()`),
+        [],
+        "Quick Setup must fit the 640x480 window at the largest text size",
+      );
+      await shoot(`quick-setup-larger-${theme}.png`);
+      await textSize("system");
+    }
   }
   window.webContents.setZoomFactor(1);
   await js(

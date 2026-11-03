@@ -7,7 +7,7 @@ Current feel: `docs/media/demo-catalogs.webp`, `docs/media/demo-compare.webp`.
 ## Principles (MUST)
 
 - Compact: little wasted space, dense lists, the video gets the room.
-- Readable in light and dark and at any browser zoom up to 200%; the theme switches live. Zoom is the browser's: no app text-size setting.
+- Readable in light and dark and at any browser zoom up to 200%; the theme switches live. Zoom is the browser's; the app has its own text-size setting.
 - No taglines, helper text or secondary labels; if a screen needs them, fix the layout.
 - Every component comes from one shared kit; none picks its own sizes or colors.
 - Shell layout: activity bar and sidebar, split viewer area, title bar with the application menu and window controls (`docs/architecture/ui-framework.md#top-level-composition`). SHOULD.

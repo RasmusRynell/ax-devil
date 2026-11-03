@@ -2,15 +2,26 @@
    from text follow the one body size; spacing and radii stay fixed. Components use the generated utilities only. */
 @theme static {
   --color-*: initial;
-  --color-surface: light-dark(#f6f8fb, #121314);
-  --color-panel: light-dark(#edf2f7, #191a1b);
+  /* Colours the theme tiles draw in both themes at once have their light and dark half named. */
+  --color-surface-light: #f6f8fb;
+  --color-surface-dark: #121314;
+  --color-surface: light-dark(var(--color-surface-light), var(--color-surface-dark));
+  --color-panel-light: #edf2f7;
+  --color-panel-dark: #191a1b;
+  --color-panel: light-dark(var(--color-panel-light), var(--color-panel-dark));
   --color-popup: light-dark(#ffffff, #252627);
   --color-fg: light-dark(#263445, #cccccc);
-  --color-muted: light-dark(#5a6a7d, #858585);
+  --color-muted-light: #5a6a7d;
+  --color-muted-dark: #858585;
+  --color-muted: light-dark(var(--color-muted-light), var(--color-muted-dark));
   --color-disabled: light-dark(#7c8794, #6e6e6e);
   --color-line: light-dark(#d5dee8, #252627);
-  --color-line-strong: light-dark(#7b8d9f, #393a3b);
-  --color-accent: light-dark(#23678d, #3994bc);
+  --color-line-strong-light: #7b8d9f;
+  --color-line-strong-dark: #393a3b;
+  --color-line-strong: light-dark(var(--color-line-strong-light), var(--color-line-strong-dark));
+  --color-accent-light: #23678d;
+  --color-accent-dark: #3994bc;
+  --color-accent: light-dark(var(--color-accent-light), var(--color-accent-dark));
   --color-hover: light-dark(#26344514, #cccccc14);
   --color-scrim: light-dark(#f6f8fb99, #12131499);
   /* Status text: all is well (success), something needs a look (caution), something is wrong (danger). */
@@ -68,7 +79,15 @@
   --stroke-focus: 2px;
 
   --text-*: initial;
-  --text-body: 14px; /* the one base size; zoom is the browser's */
+  /* The body sizes the Text size setting chooses between; `system` is what no choice gives. */
+  --text-size-system: 14px;
+  --text-size-small: 13px;
+  --text-size-medium: 15px;
+  --text-size-large: 18px;
+  --text-size-larger: 21px;
+  --text-body: var(
+    --text-size-system
+  ); /* the one base size; the setting picks it, zoom is the browser's */
   --text-small: calc(var(--text-body) - 2px);
   --text-aside: calc(var(--text-body) - 1px);
   --text-heading: calc(var(--text-body) + 2px);
@@ -84,6 +103,10 @@
   --spacing-sidebar: 34ch;
   --spacing-welcome: 40ch;
   --spacing-field: 24ch;
+  --spacing-preview: calc(var(--text-size-system) * 6.4); /* the miniature window on a theme tile */
+  --spacing-sample: calc(
+    var(--text-size-larger) * 2
+  ); /* room for "Aa" at the largest size, whatever is chosen */
 }
 
 /* Strokes: the accent edge of a selected tab or view, and the keyboard focus ring (inset where an edge would clip it; `within` for a label around a hidden native input). */
@@ -117,6 +140,11 @@
     outline: var(--stroke-focus) solid var(--color-accent);
     outline-offset: calc(var(--stroke-focus) * -1);
   }
+}
+
+/* The lower-right half of a box: the dark half of the System theme tile. */
+@utility clip-diagonal {
+  clip-path: polygon(100% 0, 100% 100%, 0 100%);
 }
 
 /* A readout that keeps the room for --chars characters, inside xs padding and a hairline border, so it does not move
@@ -194,4 +222,18 @@
 }
 :root[data-theme="dark"] {
   color-scheme: dark;
+}
+
+/* Text size choices; "system" sets nothing, so the base size stays --text-size-system. */
+:root[data-text-size="small"] {
+  --text-body: var(--text-size-small);
+}
+:root[data-text-size="medium"] {
+  --text-body: var(--text-size-medium);
+}
+:root[data-text-size="large"] {
+  --text-body: var(--text-size-large);
+}
+:root[data-text-size="larger"] {
+  --text-body: var(--text-size-larger);
 }

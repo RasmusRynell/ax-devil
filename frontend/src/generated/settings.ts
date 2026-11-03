@@ -9,7 +9,7 @@ export const SETTINGS = [
       "options": [
         [
           "auto",
-          "Auto"
+          "System"
         ],
         [
           "light",
@@ -23,6 +23,43 @@ export const SETTINGS = [
       "default": "auto"
     },
     "label": "Theme",
+    "page": "General",
+    "section": "Appearance",
+    "live": true,
+    "env": false,
+    "secret": false,
+    "quick_setup": true,
+    "scope": "personal"
+  },
+  {
+    "key": "ui.text_size",
+    "kind": {
+      "type": "choice",
+      "options": [
+        [
+          "system",
+          "System"
+        ],
+        [
+          "small",
+          "Small"
+        ],
+        [
+          "medium",
+          "Medium"
+        ],
+        [
+          "large",
+          "Large"
+        ],
+        [
+          "larger",
+          "Larger"
+        ]
+      ],
+      "default": "system"
+    },
+    "label": "Text size",
     "page": "General",
     "section": "Appearance",
     "live": true,
@@ -108,6 +145,31 @@ export const SETTINGS = [
     "scope": "server"
   },
   {
+    "key": "defaults.device.protocol",
+    "kind": {
+      "type": "choice",
+      "options": [
+        [
+          "https",
+          "HTTPS"
+        ],
+        [
+          "http",
+          "HTTP"
+        ]
+      ],
+      "default": "https"
+    },
+    "label": "Protocol",
+    "page": "Stream defaults",
+    "section": "Device",
+    "live": true,
+    "env": false,
+    "secret": false,
+    "quick_setup": true,
+    "scope": "server"
+  },
+  {
     "key": "storage.cache_dir",
     "kind": {
       "type": "folder"
@@ -142,222 +204,259 @@ export const COMMANDS = [
   {
     "id": "new-workspace",
     "label": "New Workspace",
+    "category": "Application",
     "key": null,
     "repeats": false
   },
   {
     "id": "open-workspace",
     "label": "Open Workspace",
+    "category": "Application",
     "key": "Ctrl+O",
     "repeats": false
   },
   {
     "id": "save-workspace",
     "label": "Save Workspace",
+    "category": "Application",
     "key": "Ctrl+S",
     "repeats": false
   },
   {
     "id": "save-workspace-as",
     "label": "Save Workspace As",
+    "category": "Application",
     "key": "Ctrl+Shift+S",
     "repeats": false
   },
   {
     "id": "add-video",
     "label": "Add Video",
+    "category": "Application",
     "key": "Ctrl+N",
     "repeats": false
   },
   {
     "id": "add-live-stream",
     "label": "Add Live Stream",
+    "category": "Application",
     "key": "Ctrl+L",
     "repeats": false
   },
   {
     "id": "add-playlist",
     "label": "Add Playlist",
+    "category": "Application",
     "key": "Ctrl+Shift+N",
     "repeats": false
   },
   {
     "id": "keyboard-shortcuts",
     "label": "Keyboard Shortcuts",
+    "category": "Application",
     "key": "Ctrl+K",
     "repeats": false
   },
   {
     "id": "settings",
     "label": "Settings",
+    "category": "Application",
     "key": "Ctrl+,",
     "repeats": false
   },
   {
     "id": "exit",
     "label": "Exit",
+    "category": "Application",
     "key": "Ctrl+Q",
     "repeats": false
   },
   {
     "id": "fullscreen",
-    "label": "Toggle Fullscreen",
+    "label": "Fullscreen",
+    "category": "View",
     "key": "F11",
     "repeats": false
   },
   {
     "id": "lane-fullscreen",
     "label": "Toggle Lane Fullscreen",
+    "category": "View",
     "key": "F",
     "repeats": false
   },
   {
     "id": "zoom-in",
     "label": "Zoom In",
+    "category": "View",
     "key": "=",
     "repeats": true
   },
   {
     "id": "zoom-out",
     "label": "Zoom Out",
+    "category": "View",
     "key": "-",
     "repeats": true
   },
   {
     "id": "zoom-reset",
     "label": "Reset Zoom",
+    "category": "View",
     "key": "0",
     "repeats": false
   },
   {
     "id": "media-tools",
-    "label": "Media Tools Panel",
+    "label": "Toggle Media Tools Panel",
+    "category": "View",
     "key": "Ctrl+B",
     "repeats": false
   },
   {
     "id": "sidebar",
     "label": "Sidebar",
+    "category": "View",
     "key": "Ctrl+\\",
     "repeats": false
   },
   {
     "id": "play-pause",
     "label": "Play / Pause",
+    "category": "Playback",
     "key": "Space",
     "repeats": false
   },
   {
     "id": "step-forward",
     "label": "Step Forward 1 Frame",
+    "category": "Playback",
     "key": ".",
     "repeats": true
   },
   {
     "id": "step-back",
-    "label": "Step Back 1 Frame",
+    "label": "Step Backward 1 Frame",
+    "category": "Playback",
     "key": ",",
     "repeats": true
   },
   {
     "id": "step-forward-10",
     "label": "Step Forward 10 Frames",
+    "category": "Playback",
     "key": "Right",
     "repeats": true
   },
   {
     "id": "step-back-10",
-    "label": "Step Back 10 Frames",
+    "label": "Step Backward 10 Frames",
+    "category": "Playback",
     "key": "Left",
     "repeats": true
   },
   {
     "id": "previous-entry",
     "label": "Previous Playlist Entry",
+    "category": "Navigation",
     "key": "Ctrl+Left",
     "repeats": false
   },
   {
     "id": "next-entry",
     "label": "Next Playlist Entry",
+    "category": "Navigation",
     "key": "Ctrl+Right",
     "repeats": false
   },
   {
     "id": "speed-up",
     "label": "Playback Speed Up",
+    "category": "Playback",
     "key": "]",
     "repeats": true
   },
   {
     "id": "speed-down",
     "label": "Playback Speed Down",
+    "category": "Playback",
     "key": "[",
     "repeats": true
   },
   {
     "id": "lane-names",
     "label": "Show Lane Names",
+    "category": "View",
     "key": null,
     "repeats": false
   },
   {
     "id": "object-details",
     "label": "Object Hover and Click Details",
+    "category": "View",
     "key": null,
     "repeats": false
   },
   {
     "id": "info-overlay",
     "label": "Toggle Info Overlay",
+    "category": "View",
     "key": "I",
     "repeats": false
   },
   {
     "id": "add-bookmark",
     "label": "Add Bookmark",
+    "category": "View",
     "key": "M",
     "repeats": false
   },
   {
     "id": "export-video",
     "label": "Export Video",
+    "category": "View",
     "key": "Ctrl+E",
     "repeats": false
   },
   {
     "id": "render-catalogs",
     "label": "Render Catalogs",
+    "category": "View",
     "key": "Ctrl+R",
     "repeats": false
   },
   {
     "id": "debug-metrics",
     "label": "Debug Metrics",
+    "category": "Application",
     "key": "Ctrl+D",
     "repeats": false
   },
   {
     "id": "plugins",
     "label": "Plugins",
+    "category": "Application",
     "key": null,
     "repeats": false
   },
   {
     "id": "collect-metrics",
     "label": "Collect Debug Metrics",
+    "category": "Application",
     "key": null,
     "repeats": false
   },
   {
     "id": "quick-setup",
     "label": "Quick Setup",
+    "category": "Application",
     "key": null,
     "repeats": false
   },
   {
     "id": "about",
     "label": "About",
+    "category": "Application",
     "key": null,
     "repeats": false
   }

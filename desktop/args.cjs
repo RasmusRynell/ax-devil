@@ -45,4 +45,13 @@ function userArgs(argv, defaultApp) {
   return argv.slice(defaultApp ? 2 : 1);
 }
 
-module.exports = { backendArgs, parseLaunch, userArgs };
+/**
+ * The arguments a restarted shell starts with: the app (`.` in development) and the command line without the server
+ * address or link, because a restart opens the local backend whichever window asked.
+ */
+function relaunchArgs(argv, defaultApp) {
+  const app = defaultApp ? argv.slice(1, 2) : [];
+  return [...app, ...parseLaunch(userArgs(argv, defaultApp)).rest];
+}
+
+module.exports = { backendArgs, parseLaunch, relaunchArgs, userArgs };

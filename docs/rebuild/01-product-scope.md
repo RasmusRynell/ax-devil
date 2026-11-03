@@ -131,7 +131,7 @@ independent viewers (see the OF-02 deviation in the new-tree `docs/parity-deviat
 |----|---------|---|--------|
 | ST-01 | Settings dialog pages; restart marker | M | `docs/settings.md` |
 | ST-02 | Quick Setup on first start | M | `docs/settings.md#quick-setup` |
-| ST-03 | Theme (light, dark, auto), applied live; no text-size setting, zoom is the browser's | M | `docs/settings.md` |
+| ST-03 | Theme (light, dark, auto) and text size (system, small to larger), applied live | M | `docs/settings.md` |
 | ST-04 | `$VARIABLE` references | M | `docs/settings.md` |
 | ST-05 | Keyboard shortcuts, dialog, override persistence | M | `shortcuts/shortcuts.py` (`DEFAULT_SHORTCUTS`) |
 | ST-06 | Workspace credential references expand only for their bound host or a confirmed one; warn before saving a literal password (new) | M | D18, [13](13-security-packaging-ops.md#threat-model) |

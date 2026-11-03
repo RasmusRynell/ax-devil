@@ -119,7 +119,13 @@ function Radios<T extends string>({
   onChange,
   className,
   itemClass,
-}: ChoiceProps<T> & { className: string; itemClass: string }) {
+  preview,
+}: ChoiceProps<T> & {
+  className: string;
+  itemClass: string;
+  /** Drawn above an option's label. */
+  preview?: (value: T) => ReactNode;
+}) {
   const name = useId();
   const known = options.some(([option]) => option === value);
   const chosen = known ? value : options[0]?.[0];
@@ -147,6 +153,7 @@ function Radios<T extends string>({
             onChange={() => onChange(option)}
             className="sr-only"
           />
+          {preview?.(option)}
           <span className="truncate">{text}</span>
         </label>
       ))}
@@ -167,13 +174,33 @@ export function ChoiceChips<T extends string>(props: ChoiceProps<T>) {
 
 const SEGMENT = `inline-flex h-segment min-w-0 items-center rounded-control px-m text-small text-fg focus-ring-within not-has-checked:hover:bg-hover ${CHOSEN}`;
 
-/** Two or three joined segments of which exactly one is chosen: a setting that switches between modes. */
-export function SegmentedControl<T extends string>(props: ChoiceProps<T>) {
+/** Two or three joined segments of which exactly one is chosen: a setting that switches between modes; `wide` fills the width. */
+export function SegmentedControl<T extends string>({
+  wide = false,
+  ...props
+}: ChoiceProps<T> & { wide?: boolean }) {
   return (
     <Radios
       {...props}
-      className="inline-flex w-fit max-w-full gap-xs rounded-control border border-line-strong bg-panel p-xs"
-      itemClass={SEGMENT}
+      className={`${wide ? "flex w-full" : "inline-flex w-fit max-w-full"} gap-xs rounded-control border border-line-strong bg-panel p-xs`}
+      itemClass={wide ? `${SEGMENT} flex-1 justify-center` : SEGMENT}
+    />
+  );
+}
+
+const TILE = `${CONTROL_IN} ${CHECKED} flex-col py-s [@media(max-height:20rem)]:px-s [@media(max-height:20rem)]:py-0`;
+
+/** Cards of which exactly one is chosen, each a `preview` above its label: a choice that is easier to pick by looking. */
+export function TileChoice<T extends string>({
+  preview,
+  ...props
+}: ChoiceProps<T> & { preview: (value: T) => ReactNode }) {
+  return (
+    <Radios
+      {...props}
+      preview={preview}
+      className="grid w-fit max-w-full grid-flow-col auto-cols-fr gap-m"
+      itemClass={TILE}
     />
   );
 }

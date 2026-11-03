@@ -28,7 +28,7 @@ decode work ([UI Lifecycle](../../../docs/domain/invariants.md#ui-lifecycle)).
 | Borderless icon in a bar, header or over video | `IconButton` (`onCanvas` over video) |
 | Icon (Lucide SVG in `assets/icons/`, listed in `icons.ts`) | `Icon`; colour a kind with `KIND` |
 | Status tag, clickable tag | `Chip` (`tone`, `onClick`) |
-| Any-number choice; one-of-many; mode switch | `ToggleChip`, `ChoiceChips` in a `ChipRow`, `SegmentedControl` |
+| Any-number choice; one-of-many; mode switch; one-of-many by picture | `ToggleChip`, `ChoiceChips` in a `ChipRow`, `SegmentedControl`, `TileChoice` |
 | Tabs over one panel | `Tabs` |
 | Group heading (count, note, aside, mark, fold) | `SectionCaption` (`mark`: `muted`, `accent`, a `Tone` or a `Kind`) |
 | Sidebar view: header, action, scrolling body | `ViewPanel` |
