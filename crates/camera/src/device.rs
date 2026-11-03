@@ -21,6 +21,10 @@ pub struct Device {
     digest_only: bool,
 }
 
+/// The most bytes read from an ordinary device answer (JSON, parameter lists); they are kilobytes at most, and the
+/// address may be any host that answers on the web port.
+const LARGEST_ANSWER: usize = 1 << 20;
+
 /// One request to the device API.
 pub(crate) struct Call<'a> {
     pub(crate) method: Method,
@@ -57,9 +61,10 @@ impl Device {
         self
     }
 
-    /// Sends `call` and returns the body of a 2xx answer.
+    /// Sends `call` and returns the body of a 2xx answer, at most [`LARGEST_ANSWER`] bytes: a longer one is
+    /// [`ErrorKind::Malformed`].
     pub(crate) async fn call(&self, call: &Call<'_>) -> Result<Bytes, CameraError> {
-        self.call_up_to(call, usize::MAX).await
+        self.call_up_to(call, LARGEST_ANSWER).await
     }
 
     /// Like [`call`](Self::call), but stops reading the body once it exceeds `limit` bytes, so a camera cannot make

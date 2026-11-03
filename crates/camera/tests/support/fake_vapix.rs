@@ -45,6 +45,8 @@ pub struct Behaviour {
     pub throttle_logins: usize,
     /// Answer a snapshot with a chunked body that never ends.
     pub endless_snapshot: bool,
+    /// Answer the device info with a chunked body that never ends.
+    pub endless_info: bool,
 }
 
 impl Default for Behaviour {
@@ -59,6 +61,7 @@ impl Default for Behaviour {
             slow_create: Duration::ZERO,
             throttle_logins: 0,
             endless_snapshot: false,
+            endless_info: false,
         }
     }
 }
@@ -255,6 +258,12 @@ fn answer(behaviour: &Behaviour, path: &str, unrestricted: bool) -> Response {
             .into_response()
     };
     match path {
+        "/axis-cgi/basicdeviceinfo.cgi" if behaviour.endless_info => {
+            let chunks = futures_util::stream::repeat_with(|| {
+                Ok::<_, std::convert::Infallible>(bytes::Bytes::from(vec![b' '; 64 << 10]))
+            });
+            ([(header::CONTENT_TYPE, "application/json")], Body::from_stream(chunks)).into_response()
+        }
         "/axis-cgi/basicdeviceinfo.cgi" => {
             // Only a signed-in user is told the hardware.
             let hardware = if unrestricted {

@@ -192,6 +192,20 @@ async fn a_snapshot_is_abandoned_once_it_is_longer_than_the_limit() {
 }
 
 #[tokio::test]
+async fn an_ordinary_answer_is_abandoned_once_it_is_longer_than_the_limit() {
+    let fake = FakeVapix::with(Behaviour {
+        endless_info: true,
+        ..Behaviour::default()
+    })
+    .await;
+    let error = device(&fake.camera())
+        .identify()
+        .await
+        .expect_err("too long");
+    assert_eq!(error.kind, ErrorKind::Malformed, "{error}");
+}
+
+#[tokio::test]
 async fn resolutions_and_analytics_sources_parse() {
     let fake = FakeVapix::start().await;
     let device = device(&fake.camera());
