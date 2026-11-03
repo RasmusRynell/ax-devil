@@ -6,7 +6,7 @@ import { Kind, Len, type MarkPlan, programOf } from "../marks/plan";
 import { AtlasFull, type TextSource } from "../text/source";
 import { Labels } from "./labels";
 import { Resolver } from "./resolver";
-import type { LayoutView, PrimitiveSink, Region } from "./sink";
+import { DISCARD, type LayoutView, type PrimitiveSink, type Region } from "./sink";
 
 /** A pinned rect or a plain one, in target pixels. */
 interface Rect {
@@ -147,29 +147,33 @@ export class Layouter {
     else sizes.box(r - l, b - t);
     if (plan.len[Len.MinSize].present && !(sizes.boxMin > sizes.of(plan, Len.MinSize))) return;
     const visible = view.visible;
-    if (visible && this.outside(plan, marks, record, l, t, r, b, visible, view.dpr)) return;
+    // A mark outside the window is still checked, so a row's failure does not depend on what is on screen.
+    const culled = !!visible && this.outside(plan, marks, record, l, t, r, b, visible, view.dpr);
+    const out = culled ? DISCARD : sink;
     let ok: boolean;
     switch (plan.kind) {
       case Kind.Box:
-        ok = this.box(plan, marks, base, l, t, r, b, sink);
+        ok = this.box(plan, marks, base, l, t, r, b, out);
         break;
       case Kind.Circle:
-        ok = this.circle(plan, marks, base, l, t, r, b, sink);
+        ok = this.circle(plan, marks, base, l, t, r, b, out);
         break;
       case Kind.Bar:
-        ok = this.bar(plan, marks, base, l, t, r, b, sink);
+        ok = this.bar(plan, marks, base, l, t, r, b, out);
         break;
       case Kind.Line:
-        ok = this.line(plan, marks, base, l, t, r, b, sink);
+        ok = this.line(plan, marks, base, l, t, r, b, out);
         break;
       case Kind.Arrow:
-        ok = this.arrow(plan, marks, base, l, t, r, b, view, sink);
+        ok = this.arrow(plan, marks, base, l, t, r, b, view, out);
         break;
       case Kind.Polygon:
-        ok = this.polygon(plan, marks, base, cols, view, sink);
+        ok = this.polygon(plan, marks, base, cols, view, out);
         break;
       default:
-        ok = this.labels.draw(plan, marks, record, l, t, r, b, view, sink);
+        ok = culled
+          ? this.labels.usable(plan)
+          : this.labels.draw(plan, marks, record, l, t, r, b, view, sink);
         break;
     }
     if (ok) return;

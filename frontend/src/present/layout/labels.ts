@@ -21,6 +21,16 @@ export function devicePixels(size: number, dpr: number): number {
   return Math.max(0.5, Math.round(size * dpr * 2) / 2);
 }
 
+function lengthsWork(
+  size: number,
+  padX: number,
+  padY: number,
+  gap: number,
+  radius: number,
+): boolean {
+  return size > 0 && size < Infinity && padX >= 0 && padY >= 0 && gap >= 0 && radius >= 0;
+}
+
 /** Lays out the texts and labels of a lane: measures their runs, picks a placement and writes background, bars and glyphs. */
 export class Labels {
   private readonly cache: RunCache;
@@ -104,6 +114,18 @@ export class Labels {
     return font;
   }
 
+  /** Whether the lengths of a text or label work; `draw` fails with the same ones. */
+  usable(plan: MarkPlan): boolean {
+    const { sizes } = this;
+    return lengthsWork(
+      sizes.of(plan, Len.Size),
+      sizes.of(plan, Len.PadX),
+      sizes.of(plan, Len.PadY),
+      sizes.of(plan, Len.Gap),
+      sizes.of(plan, Len.Radius),
+    );
+  }
+
   /**
    * Lay out the text or label of the record at `base`, its reference rect (`l`, `t`, `r`, `b`) in target pixels.
    * False when its lengths do not work. A label with nothing to show, or no candidate placement, draws nothing.
@@ -128,8 +150,7 @@ export class Labels {
     const padY = sizes.of(plan, Len.PadY);
     const gap = sizes.of(plan, Len.Gap);
     const radius = sizes.of(plan, Len.Radius);
-    if (!(size > 0 && size < Infinity && padX >= 0 && padY >= 0 && gap >= 0 && radius >= 0))
-      return false;
+    if (!lengthsWork(size, padX, padY, gap, radius)) return false;
     const { dpr } = view;
     const pixels = devicePixels(size, dpr);
     const first = words[base + Rec.A];

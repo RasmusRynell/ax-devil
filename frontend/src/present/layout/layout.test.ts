@@ -119,6 +119,30 @@ describe("row failures", () => {
     expect(rows.labels).toHaveLength(1);
     expect(Array.from(report.skipped)).toEqual([0, 1]);
   });
+
+  it("fails a row the same whether or not its failing mark is inside the visible window", () => {
+    // The label sits in the middle and has no size; only the box reaches the window on the left.
+    const catalog = compile([
+      { marks: [{ mark: "box", stroke: "#ffffff", width: "1px" }] },
+      {
+        marks: [
+          {
+            mark: "label",
+            on: "inset(box, 0.4)",
+            size: "0px",
+            runs: [{ text: "id", color: "#ffffff" }],
+            place: [{ at: "top-left", anchor: "bottom-left" }],
+          },
+        ],
+      },
+    ]);
+    const sample = fullSample([{ id: "a", box: [0.1, 0.1, 0.9, 0.9] }]);
+    const visible = { left: 0, top: 0, right: 384, bottom: 720 };
+    expect(renderSample(catalog, sample, 0).rows.boxes).toHaveLength(0);
+    expect(renderSample(catalog, sample, 0, { ...ORACLE_VIEW, visible }).rows.boxes).toHaveLength(
+      0,
+    );
+  });
 });
 
 describe("units", () => {
