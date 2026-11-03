@@ -1209,6 +1209,24 @@ field: string,
 settings: Record<string, unknown>, };
 
 /**
+ * The body of `POST /api/plugins/install`.
+ */
+export type InstallRequest = { 
+/**
+ * The absolute path of the plugin's folder, or of its `ax-devil-plugin.json`.
+ */
+path: string, };
+
+/**
+ * The body of `POST /api/plugins/remove`.
+ */
+export type RemoveRequest = { 
+/**
+ * The id of an installed plugin, or the absolute path of its manifest or folder.
+ */
+target: string, };
+
+/**
  * One value a scan found.
  */
 export type ChoiceInfo = { 

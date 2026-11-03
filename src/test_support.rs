@@ -8,7 +8,7 @@ use axum::{
     response::Response,
 };
 use handlers::Handlers;
-use std::sync::Arc;
+use std::{path::Path, sync::Arc};
 use tower::ServiceExt;
 
 /// The app, kept with the temporary folder that holds its settings and caches. Must be created inside a Tokio runtime.
@@ -26,6 +26,11 @@ impl TestApp {
 
     /// The app over exactly these handlers.
     pub fn with(handlers: Handlers) -> Self {
+        Self::over(|_| Plugins::fixed(handlers))
+    }
+
+    /// The app over the plugins `plugins` makes, given the app's temporary folder to keep a registry in.
+    pub fn over(plugins: impl FnOnce(&Path) -> Arc<Plugins>) -> Self {
         let folder = tempfile::tempdir().unwrap();
         let settings = settings::Settings::load(&folder.path().join("default.json")).unwrap();
         let cache = folder.path().join("cache");
@@ -36,7 +41,7 @@ impl TestApp {
             Policy::Local,
             videos,
             stopping,
-            Plugins::fixed(handlers),
+            plugins(folder.path()),
             &cache,
         );
         let router = app(state.with_windows(folder.path().join("windows.json")));

@@ -96,6 +96,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         FieldInfo,
         FieldKindWire,
         ScanRequest,
+        InstallRequest,
+        RemoveRequest,
         ChoiceInfo,
         CatalogInfoWire,
         Direction,

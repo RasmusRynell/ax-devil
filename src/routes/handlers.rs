@@ -21,9 +21,9 @@ use std::sync::Arc;
 
 /// A refused request: the status and the error as the host sees it. Both routes need the `Files` grant, so the
 /// caller may read the host's paths and reasons.
-type Refusal = (StatusCode, Json<ErrorWire>);
+pub(super) type Refusal = (StatusCode, Json<ErrorWire>);
 
-fn refuse(status: StatusCode, error: &UserError) -> Refusal {
+pub(super) fn refuse(status: StatusCode, error: &UserError) -> Refusal {
     (status, Json(api_types::project(error, Audience::HOST)))
 }
 
