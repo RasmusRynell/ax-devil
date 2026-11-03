@@ -53,7 +53,10 @@ const post = <T,>(url: string, body: InstallRequest | RemoveRequest): Promise<An
     body: JSON.stringify(body),
   });
 
-/** The plugins the backend lists, fetched on mount and whenever the window gets focus; `reload` fetches again. */
+/**
+ * The plugins the backend lists, fetched on mount and whenever the window gets focus; `reload` fetches again and
+ * `apply` shows a newer list than any fetch still pending, which it cancels.
+ */
 function usePlugins() {
   const [info, setInfo] = useState<PluginsInfo | null>(null);
   const [failure, setFailure] = useState<string | null>(null);
@@ -64,6 +67,7 @@ function usePlugins() {
     latest.current = request;
     ask<PluginsInfo>("/api/plugins", { signal: request.signal }).then(
       (answer) => {
+        if (request.signal.aborted) return;
         if (answer.ok) {
           setInfo(answer.value);
           setFailure(null);
@@ -71,6 +75,10 @@ function usePlugins() {
       },
       () => undefined, // superseded or unmounted
     );
+  }, []);
+  const apply = useCallback((value: PluginsInfo) => {
+    latest.current?.abort();
+    setInfo(value);
   }, []);
   useEffect(() => {
     reload();
@@ -80,7 +88,7 @@ function usePlugins() {
       latest.current?.abort();
     };
   }, [reload]);
-  return { info, setInfo, failure, reload };
+  return { info, apply, failure, reload };
 }
 
 /** A plugin's handlers by kind, then the file extensions its decoders read. */
@@ -150,7 +158,7 @@ function Row({
 
 /** The sidebar's Plugins view: the plugins that failed, are installed and ship with the app, and installing and removing. */
 export function PluginsView() {
-  const { info, setInfo, failure, reload } = usePlugins();
+  const { info, apply, failure, reload } = usePlugins();
   // Installing and removing change this machine's files: only the person at it may.
   const mayChange = useGrants().includes("preferences");
   const [path, setPath] = useState("");
@@ -165,7 +173,7 @@ export function PluginsView() {
     try {
       const answer = await post<PluginsInfo>(url, body);
       if (answer.ok) {
-        setInfo(answer.value);
+        apply(answer.value);
         return true;
       }
       setRefused(reasonOf(answer.refusal));

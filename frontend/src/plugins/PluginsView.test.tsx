@@ -128,4 +128,29 @@ describe("plugins view", () => {
     await screen.findByText("backend restarting");
     expect(install.disabled).toBe(false);
   });
+
+  it("keeps an installed plugin listed when an older list fetch answers after the install", async () => {
+    let answerOldList = (_info: PluginsInfo) => {};
+    let first = true;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (_url: string, init?: RequestInit) => {
+        if (init?.method === "POST")
+          return { ok: true, json: async () => ({ plugins: [MOT, ACME] }) };
+        if (!first) return { ok: true, json: async () => ({ plugins: [MOT] }) };
+        first = false;
+        const old = await new Promise<PluginsInfo>((resolve) => (answerOldList = resolve));
+        return { ok: true, json: async () => old };
+      }),
+    );
+    view();
+    fireEvent.change(screen.getByLabelText("Folder"), { target: { value: "/p/acme" } });
+    fireEvent.click(screen.getByRole("button", { name: "Install" }));
+    await screen.findByRole("region", { name: "Installed" });
+
+    answerOldList({ plugins: [] });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(screen.getByRole("region", { name: "Installed" })).toBeTruthy();
+    expect(screen.getByText("Acme")).toBeTruthy();
+  });
 });
