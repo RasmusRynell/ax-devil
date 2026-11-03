@@ -1,6 +1,6 @@
 //! New, Open, Save and Discard: the operations that replace the workspace or write its file.
 
-use super::{Failure, SessionFiles, WorkspaceFiles, name_of, off};
+use super::{Failure, SessionFiles, WorkspaceFiles, name_of};
 use foundation::{ErrorCode, HostPath, UserError};
 use sessions::session::{Command, Handle, Refusal};
 use std::{path::PathBuf, sync::Arc};
@@ -62,17 +62,17 @@ impl WorkspaceFiles {
         let read = path.clone();
         let workspace = match loaded {
             Some(workspace) => workspace,
-            None => match off(move || workspace_files::load(&read)).await {
+            None => match files.off(move || workspace_files::load(&read)).await {
                 Ok(workspace) => workspace,
                 Err(error) => {
-                    self.forget(&path).await;
+                    self.forget(files, &path).await;
                     return Err(error.into());
                 }
             },
         };
         self.replace(handle, files, workspace, Some(path.clone()))
             .await?;
-        self.record(&path).await;
+        self.record(files, &path).await;
         Ok(())
     }
 
@@ -99,19 +99,20 @@ impl WorkspaceFiles {
                     .into());
             }
             Err(Claim::Failed(error)) => {
-                self.forget(&path).await;
+                self.forget(files, &path).await;
                 return Err(error.into());
             }
         };
-        let (claimed, read) = off(move || {
-            let read = claimed.read();
-            (claimed, read)
-        })
-        .await;
+        let (claimed, read) = files
+            .off(move || {
+                let read = claimed.read();
+                (claimed, read)
+            })
+            .await;
         let (workspace, recovers) = match read {
             Ok(read) => read,
             Err(error) => {
-                self.forget(&path).await;
+                self.forget(files, &path).await;
                 return Err(error.into());
             }
         };
@@ -121,7 +122,7 @@ impl WorkspaceFiles {
         let copy = claimed.path().to_owned();
         files.copy = Some(Arc::new(claimed));
         // Marked synced only once listed: a command cancelled before that leaves the next sync to finish the job.
-        files.listed = self.record(&copy).await;
+        files.listed = self.record(files, &copy).await;
         if files.listed {
             files.synced = Some((workspace, recovers, true));
         }
@@ -156,14 +157,16 @@ impl WorkspaceFiles {
         }
         let snapshot = doc.workspace.clone();
         let (written, to) = (snapshot.clone(), target.clone());
-        off(move || workspace_files::save(&written, &to)).await?;
+        files
+            .off(move || workspace_files::save(&written, &to))
+            .await?;
         let saved = DocCommand::MarkSaved {
             workspace: snapshot,
             file: HostPath::new(&target),
         };
         handle.command(Command::Content(saved))?;
         let _ = self.sync(files, &handle.state().doc.workspace).await;
-        self.record(&target).await;
+        self.record(files, &target).await;
         Ok(())
     }
 
@@ -181,7 +184,7 @@ impl WorkspaceFiles {
             .as_ref()
             .map(|file| file.as_path().to_owned());
         let workspace = match file.clone() {
-            Some(path) => off(move || workspace_files::load(&path)).await?,
+            Some(path) => files.off(move || workspace_files::load(&path)).await?,
             None => Workspace::default(),
         };
         let saved = DocCommand::Replace {
@@ -193,7 +196,7 @@ impl WorkspaceFiles {
         // Unmodified now, so the sync deletes the copy.
         let _ = self.sync(files, &handle.state().doc.workspace).await;
         if let Some(file) = file {
-            self.record(&file).await;
+            self.record(files, &file).await;
         }
         Ok(())
     }

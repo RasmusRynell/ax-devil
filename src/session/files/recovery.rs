@@ -1,6 +1,6 @@
 //! The recovery copy of a session's unsaved work, and the recent workspaces list it is kept in.
 
-use super::{Key, SessionFiles, WorkspaceFiles, off};
+use super::{Key, SessionFiles, WorkspaceFiles};
 use foundation::{ErrorCode, UserError};
 use std::{
     path::Path,
@@ -52,7 +52,7 @@ impl WorkspaceFiles {
                         Arc::clone(storage),
                         file_stem(state.workspace.name.as_deref()),
                     );
-                    match off(move || storage.recovery.reserve(&stem)).await {
+                    match files.off(move || storage.recovery.reserve(&stem)).await {
                         Ok(copy) => {
                             let copy = Arc::new(copy);
                             files.copy = Some(Arc::clone(&copy));
@@ -68,22 +68,26 @@ impl WorkspaceFiles {
             };
             let (workspace, recovers) = (key.0.clone(), key.1.clone());
             let path = copy.path().to_owned();
-            let written = off(move || copy.write(&workspace, recovers.as_deref())).await;
+            let written = files
+                .off(move || copy.write(&workspace, recovers.as_deref()))
+                .await;
             if let Err(error) = written {
                 tracing::warn!("Cannot write the recovery copy: {}", error.reason);
                 return Err(error);
             }
             // Without its recent entry the copy would not be offered on the next launch, so try again next time.
-            files.listed = files.listed || self.record(&path).await;
+            files.listed = files.listed || self.record(files, &path).await;
             if !files.listed {
                 return Err(unkept(&"the recent workspaces cannot be updated"));
             }
         } else if let Some(copy) = files.copy.clone() {
             let path = copy.path().to_owned();
             // The entry goes first: a copy that stays on disk without one is only unlisted, never offered twice.
-            let forgotten = self.forget(&path).await;
+            let forgotten = self.forget(files, &path).await;
             files.listed = !forgotten;
-            let deleted = off(move || if forgotten { copy.delete() } else { Ok(()) }).await;
+            let deleted = files
+                .off(move || if forgotten { copy.delete() } else { Ok(()) })
+                .await;
             let failed = deleted.is_err() || !forgotten;
             if let Err(error) = deleted {
                 tracing::warn!("Cannot delete the recovery copy: {error}");
@@ -103,29 +107,31 @@ impl WorkspaceFiles {
         let _ = self.sync(files, &state.doc.workspace).await;
         // The copy that outlives the window is what the next launch restores, so it is the newest recent again.
         if let Some(copy) = files.copy.take() {
-            self.record(copy.path()).await;
+            self.record(files, copy.path()).await;
         }
         files.closed = true;
     }
 
     /// Puts `path` first among the recent workspaces; false when that failed.
-    pub(super) async fn record(&self, path: &Path) -> bool {
+    pub(super) async fn record(&self, files: &SessionFiles, path: &Path) -> bool {
         let Some(storage) = &self.storage else {
             return true;
         };
         let (storage, path) = (Arc::clone(storage), path.to_owned());
-        let done = off(move || storage.recents.record(&path, now_ms())).await;
+        let done = files
+            .off(move || storage.recents.record(&path, now_ms()))
+            .await;
         done.inspect_err(|error| tracing::warn!("Cannot record a recent workspace: {error}"))
             .is_ok()
     }
 
     /// Removes `path` from the recent workspaces; false when that failed.
-    pub(super) async fn forget(&self, path: &Path) -> bool {
+    pub(super) async fn forget(&self, files: &SessionFiles, path: &Path) -> bool {
         let Some(storage) = &self.storage else {
             return true;
         };
         let (storage, path) = (Arc::clone(storage), path.to_owned());
-        let done = off(move || storage.recents.forget(&path)).await;
+        let done = files.off(move || storage.recents.forget(&path)).await;
         done.inspect_err(|error| tracing::warn!("Cannot forget a recent workspace: {error}"))
             .is_ok()
     }

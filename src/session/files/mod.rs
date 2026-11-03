@@ -52,6 +52,23 @@ struct SessionFiles {
     synced: Option<Key>,
     /// The session ended or the backend stopped; nothing more is written.
     closed: bool,
+    /// Held by blocking file work until that work ends, wherever its caller goes: see [`SessionFiles::off`].
+    disk: Arc<tokio::sync::Mutex<()>>,
+}
+
+impl SessionFiles {
+    /// Runs blocking file work after any earlier work of this session has ended. The work owns the disk lock, so a
+    /// caller that is dropped midway (its socket was cancelled) cannot let a later write overtake it.
+    async fn off<T: Send + 'static>(&self, work: impl FnOnce() -> T + Send + 'static) -> T {
+        let held = Arc::clone(&self.disk).lock_owned().await;
+        tokio::task::spawn_blocking(move || {
+            let done = work();
+            drop(held);
+            done
+        })
+        .await
+        .expect("file work does not panic or get cancelled")
+    }
 }
 
 /// Why a command did nothing.
@@ -77,13 +94,6 @@ pub struct WorkspaceFiles {
     /// `None` keeps no recovery copies and no recent workspaces.
     storage: Option<Arc<WorkspaceStorage>>,
     sessions: Mutex<HashMap<SessionId, Arc<tokio::sync::Mutex<SessionFiles>>>>,
-}
-
-/// Runs blocking file work off the async workers.
-async fn off<T: Send + 'static>(work: impl FnOnce() -> T + Send + 'static) -> T {
-    tokio::task::spawn_blocking(work)
-        .await
-        .expect("file work does not panic or get cancelled")
 }
 
 fn name_of(path: &Path) -> String {
@@ -115,6 +125,7 @@ impl WorkspaceFiles {
             listed: false,
             synced: None,
             closed: false,
+            disk: Arc::default(),
         }));
         self.sessions
             .lock()
@@ -248,5 +259,49 @@ impl WorkspaceFiles {
             .get(&handle.session())
             .cloned()?;
         Some(files.lock_owned().await)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use sessions::OwnerId;
+
+    /// Blocking work whose caller is dropped midway still finishes before the next work starts.
+    #[tokio::test]
+    async fn file_work_outlives_its_cancelled_caller_and_later_work_waits_for_it() {
+        let state = SessionState::new(SessionId::generate(), OwnerId::generate(), true);
+        let files = Arc::new(SessionFiles {
+            rx: watch::channel(Arc::new(state)).1,
+            copy: None,
+            listed: false,
+            synced: None,
+            closed: false,
+            disk: Arc::default(),
+        });
+        let order = Arc::new(Mutex::new(Vec::new()));
+        let (started, running) = tokio::sync::oneshot::channel();
+        let (release, gate) = std::sync::mpsc::channel::<()>();
+        let (slow, log) = (Arc::clone(&files), Arc::clone(&order));
+        let caller = tokio::spawn(async move {
+            slow.off(move || {
+                let _ = started.send(());
+                let _ = gate.recv();
+                log.lock().unwrap().push("first");
+            })
+            .await;
+        });
+        running.await.unwrap();
+        caller.abort();
+        let _ = caller.await;
+
+        let log = Arc::clone(&order);
+        let mut next = Box::pin(files.off(move || log.lock().unwrap().push("second")));
+        // The first work still owns the disk lock, so the second cannot finish however long it is given.
+        let waited = tokio::time::timeout(Duration::from_millis(100), &mut next).await;
+        assert!(waited.is_err(), "the second work overtook the first");
+        release.send(()).unwrap();
+        next.await;
+        assert_eq!(*order.lock().unwrap(), ["first", "second"]);
     }
 }
