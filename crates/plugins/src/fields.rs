@@ -410,7 +410,7 @@ impl<'a> Fields<'a> {
                 handler_field: self.non_empty("handler_field")?,
             },
             "scan" if all_kinds => FieldKind::Scan {
-                depends_on: self.strings("depends_on", true)?.unwrap_or_default(),
+                depends_on: self.strings("depends_on", false)?.unwrap_or_default(),
             },
             other => {
                 let kinds = if all_kinds {

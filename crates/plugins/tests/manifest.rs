@@ -429,13 +429,15 @@ fn resolver_settings_of_every_kind_load_and_each_refusal_names_the_field() {
         manifest
     };
     let folder = tempfile::tempdir().expect("folder");
-    let valid = setting(json!({ "key": "more", "label": "More", "kind": "text" }));
+    let valid = setting(json!({ "key": "all", "label": "All", "kind": "scan" }));
     let plugin = LoadedPlugin::load(&install(folder.path(), &valid)).expect("every kind loads");
     let form = &plugin.resolvers[0].spec().form;
     assert_eq!(form.fields.len(), 8);
     assert_eq!(form.fields[0].cli, Cli::Positional);
     assert_eq!(form.fields[3].kind, FieldKind::Integer { min: 1 });
     assert_eq!(form.fields[4].cli, Cli::Flag("handler-type".to_owned()));
+    let empty = setting(json!({ "key": "all", "label": "All", "kind": "scan", "depends_on": [] }));
+    LoadedPlugin::load(&install(folder.path(), &empty)).expect("empty depends_on");
 
     // Refusals in the settings, and a kind only a resolver's settings take.
     let cases = [
