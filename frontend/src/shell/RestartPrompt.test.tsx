@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test"
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { GrantsContext } from "../access";
 import { DEFAULT_SETTINGS, FakeSettings } from "../fakeSettings";
-import type { Grant } from "../generated/api";
+import type { ApiError, Grant } from "../generated/api";
 import { FakeSocket } from "../session/fakeSession";
 import { SessionProvider } from "../session/session";
 import { Shell } from "./Shell";
@@ -17,10 +17,10 @@ afterEach(() => {
   delete window.axDevilWindow;
 });
 
-async function showShell(grants: Grant[]) {
+async function showShell(grants: Grant[], save?: () => Promise<ApiError | null>) {
   render(
     <GrantsContext.Provider value={grants}>
-      <FakeSettings state={DEFAULT_SETTINGS}>
+      <FakeSettings state={DEFAULT_SETTINGS} save={save}>
         <SessionProvider>
           <Shell version="1.2.3" />
         </SessionProvider>
@@ -69,5 +69,22 @@ describe("restart prompt", () => {
     expect(screen.queryByRole("button", { name: "Restart Now" })).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "OK" }));
     expect(screen.queryByRole("dialog", { name: "Restart ax-devil?" })).toBeNull();
+  });
+
+  it("does not follow a refused save, or a save whose dialog was cancelled meanwhile", async () => {
+    const refused = { reason: "full", location: "" };
+    await showShell(["configuration"], () => Promise.resolve(refused));
+    saveSetting("Storage", "Cache folder", "/elsewhere");
+    await screen.findByText("full");
+    expect(screen.queryByRole("dialog", { name: "Restart ax-devil?" })).toBeNull();
+    cleanup();
+
+    let finish: (outcome: ApiError | null) => void = () => undefined;
+    await showShell(["configuration"], () => new Promise((resolve) => (finish = resolve)));
+    saveSetting("Storage", "Cache folder", "/elsewhere");
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    finish(null);
+    await new Promise((resolve) => setTimeout(resolve));
+    expect(screen.queryByRole("dialog")).toBeNull();
   });
 });

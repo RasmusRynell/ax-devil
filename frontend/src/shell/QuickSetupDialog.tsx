@@ -117,9 +117,9 @@ export function QuickSetupDialog({
     !values["ui.quick_setup_done"] || rows.some((row) => draft[row.key] !== values[row.key]);
   const done = async () => {
     if (!changed) return onClose();
-    const refused = await submit({ values: { ...draft, "ui.quick_setup_done": true }, shortcuts });
-    if (refused) {
-      onNotice(`Could not save these choices: ${refused.reason}`);
+    const outcome = await submit({ values: { ...draft, "ui.quick_setup_done": true }, shortcuts });
+    if (outcome.kind === "refused") {
+      onNotice(`Could not save these choices: ${outcome.refusal.reason}`);
       onClose();
     }
   };

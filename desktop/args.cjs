@@ -46,12 +46,28 @@ function userArgs(argv, defaultApp) {
 }
 
 /**
- * The arguments a restarted shell starts with: the app (`.` in development) and the command line without the server
- * address or link, because a restart opens the local backend whichever window asked.
+ * The arguments a restarted shell starts with: the app (`.` in development), the backend's global options and the
+ * shell's own and Chromium's switches. The server address, link and the command with its arguments are dropped,
+ * because a restart opens the local backend without content whichever window asked.
  */
 function relaunchArgs(argv, defaultApp) {
   const app = defaultApp ? argv.slice(1, 2) : [];
-  return [...app, ...parseLaunch(userArgs(argv, defaultApp)).rest];
+  const args = parseLaunch(userArgs(argv, defaultApp)).rest;
+  const kept = [];
+  let commandSeen = false;
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i];
+    if (!arg.startsWith("-")) {
+      commandSeen = true;
+      continue;
+    }
+    const global = GLOBAL_OPTIONS.has(arg.split("=")[0]);
+    // Past the command, only the backend's global options are kept; the rest are the command's.
+    if (commandSeen && !global) continue;
+    kept.push(arg);
+    if (global && !arg.includes("=") && i + 1 < args.length) kept.push(args[++i]);
+  }
+  return [...app, ...kept];
 }
 
 module.exports = { backendArgs, parseLaunch, relaunchArgs, userArgs };

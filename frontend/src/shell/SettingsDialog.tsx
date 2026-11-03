@@ -33,10 +33,15 @@ export function SettingsDialog({
   const { saving, refusal, submit } = useSaveDialog(onClose);
   const panel = useId();
   const ok = async () => {
-    const refused = await submit({ values: draft, shortcuts });
-    const at = shown.find((row) => row.key === refused?.location);
-    if (at?.page) setPage(at.page);
-    if (!refused && shown.some((row) => !row.live && draft[row.key] !== values[row.key]))
+    const outcome = await submit({ values: draft, shortcuts });
+    if (outcome.kind === "refused") {
+      const at = shown.find((row) => row.key === outcome.refusal.location);
+      if (at?.page) setPage(at.page);
+    }
+    if (
+      outcome.kind === "saved" &&
+      shown.some((row) => !row.live && draft[row.key] !== values[row.key])
+    )
       onRestartNeeded();
   };
   const rows = shown.filter((row) => row.page === page);

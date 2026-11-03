@@ -34,7 +34,13 @@ fn clear(
     input: &mut impl BufRead,
     out: &mut impl Write,
 ) -> Result<(), String> {
-    let locations = disk_cache::scan(folder)?;
+    let disk_cache::Scan { locations, skipped } = disk_cache::scan(folder)?;
+    for folder in &skipped {
+        say(
+            out,
+            format!("{}: not a plain folder, skipped", folder.display()),
+        )?;
+    }
     if locations.is_empty() {
         return say(out, "No cached files found to clear.".into());
     }

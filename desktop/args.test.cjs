@@ -37,11 +37,32 @@ void test("a server address or link opens a window and is not taken for the back
   assert.throws(() => parseLaunch(["--server"]), /needs a server address/);
 });
 
-void test("a restart keeps the command line but not the server or link it opened", () => {
-  const argv = ["electron", ".", "--server", "http://nas:7340", "--config=a.json", "local"];
-  assert.deepEqual(relaunchArgs(argv, true), [".", "--config=a.json", "local"]);
+void test("a restart keeps the global options and switches but not the server, link or intake command", () => {
+  const argv = [
+    "electron",
+    ".",
+    "--ozone-platform=x11",
+    "--server",
+    "http://nas:7340",
+    "--config=a.json",
+    "local",
+    "--video",
+    "recording.mp4",
+    "--cache-dir",
+    "/c",
+  ];
+  assert.deepEqual(relaunchArgs(argv, true), [
+    ".",
+    "--ozone-platform=x11",
+    "--config=a.json",
+    "--cache-dir",
+    "/c",
+  ]);
   assert.deepEqual(
-    relaunchArgs(["ax-devil", "ax-devil://open?url=x", "--log-level=DEBUG"], false),
+    relaunchArgs(
+      ["ax-devil", "ax-devil://open?url=x", "--log-level=DEBUG", "open", "a.ax-devil.workspace"],
+      false,
+    ),
     ["--log-level=DEBUG"],
   );
 });
