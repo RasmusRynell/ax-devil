@@ -12,12 +12,16 @@ export interface Font {
 /** The faces of a table and the padding a cell spends beside its text. */
 export interface Fonts {
   body: Font;
+  /** The face of a monospace cell. */
+  mono: Font;
   small: Font;
   pad: number;
 }
 
 /** Characters a header spends on the sort arrow beside its title. */
 const ARROW_CHARS = 3;
+/** The letter spacing of a header's capitals, in characters (0.08em). */
+const TRACKING_CHARS = 0.15;
 /** Most distinct texts kept per face before the cache starts over. */
 const CACHE_LIMIT = 4000;
 
@@ -63,8 +67,15 @@ function fontOf(element: Element): Font {
 /** The faces of a table's rows (read from `scroller`) and header (from `header`), and a cell's right padding. */
 export function fontsOf(scroller: Element, header: Element): Fonts {
   const cell = header.firstElementChild;
+  // A cell of a monospace column, as the table draws it, is the one thing to measure its face by.
+  const probe = document.createElement("span");
+  probe.className = "font-mono text-aside";
+  scroller.append(probe);
+  const mono = fontOf(probe);
+  probe.remove();
   return {
     body: fontOf(scroller),
+    mono,
     small: fontOf(header),
     pad: cell ? px(getComputedStyle(cell).paddingRight, 0) : 0,
   };
@@ -77,15 +88,18 @@ const tabular = (text: string): string => text.replace(/\d/g, "0");
 export function measureColumns<Row>(
   cols: readonly Column<Row>[],
   rows: readonly (Row | undefined)[],
-  { body, small, pad }: Fonts,
+  { body, mono, small, pad }: Fonts,
 ): Measure[] {
   return cols.map((column) => {
     const kind = KINDS[column.kind];
+    const face = kind.mono ? mono : body;
     const title =
-      measureText(small, column.title) + (column.sortable ? ARROW_CHARS * small.ch : 0) + 1;
+      measureText(small, column.title.toUpperCase()) +
+      (column.title.length * TRACKING_CHARS + (column.sortable ? ARROW_CHARS : 0)) * small.ch +
+      1;
     const leastChars = column.least ?? kind.least;
-    const least = Math.ceil(leastChars * body.ch) + 1;
-    let comfortable = Math.ceil(Math.max(kind.comfortable, leastChars) * body.ch) + 1;
+    const least = Math.ceil(leastChars * face.ch) + 1;
+    let comfortable = Math.ceil(Math.max(kind.comfortable, leastChars) * face.ch) + 1;
     let longest = comfortable;
     let empty = false;
     const read = column.text;
@@ -93,7 +107,7 @@ export function measureColumns<Row>(
       const texts = rows.flatMap((row) => (row === undefined ? [] : [read(row)]));
       longest = Math.max(
         0,
-        ...texts.map((text) => measureText(body, kind.numeric ? tabular(text) : text) + 1),
+        ...texts.map((text) => measureText(face, kind.numeric ? tabular(text) : text) + 1),
       );
       if ((column.priority ?? 0) > 0 && !column.stretch) comfortable = longest;
       empty = texts.every((text) => text === "");

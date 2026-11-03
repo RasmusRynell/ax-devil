@@ -18,7 +18,7 @@ module.exports.objects = async (window, { setTheme, shoot }) => {
   const rows = () =>
     js(`[...document.querySelectorAll('${PANEL} [role=option]')].map((row) => ({
       id: row.firstElementChild.textContent,
-      dimmed: row.title === 'Not in this frame',
+      dimmed: getComputedStyle(row.firstElementChild).opacity === '0.5',
       selected: row.getAttribute('aria-selected') === 'true',
     }))`);
   const count = () =>
@@ -51,6 +51,20 @@ module.exports.objects = async (window, { setTheme, shoot }) => {
     await setTheme(theme);
     await shoot(`objects-frame-${theme}.png`);
   }
+
+  // A searched field no object in the frame has is named under the search box.
+  await js(`document.querySelector('${PANEL} input:not([type=radio])').focus()`);
+  window.webContents.insertText("speed>3");
+  const noted = (text) =>
+    `[...document.querySelectorAll('${PANEL} [role=status]')].some((note) => note.textContent === '${text}')`;
+  await wait(noted("No object has speed in this frame"));
+  for (const theme of THEMES) {
+    await setTheme(theme);
+    await shoot(`objects-missing-${theme}.png`);
+  }
+  key("A", ["control"]);
+  key("Backspace");
+  await wait(`!(${noted("No object has speed in this frame")})`);
 
   // Dragging the divider on the panel's left edge left widens it, and it keeps that width through a close.
   const width = () => js(`document.querySelector('${PANEL}').getBoundingClientRect().width`);
@@ -123,7 +137,7 @@ module.exports.objects = async (window, { setTheme, shoot }) => {
   await setView(window, [1500, 720], 1);
   await goToFrame(window, 5);
   await wait(
-    `(() => { const rows = [...document.querySelectorAll('${PANEL} [role=option]')]; return rows.length > 0 && rows.every((row) => row.title); })()`,
+    `(() => { const rows = [...document.querySelectorAll('${PANEL} [role=option]')]; return rows.length > 0 && rows.every((row) => getComputedStyle(row.firstElementChild).opacity === '0.5'); })()`,
   );
   await js(`document.querySelector('${PANEL} [role=option]').click()`);
   await wait(

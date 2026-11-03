@@ -29,6 +29,19 @@ export const isFileSort = (sort: Sort): sort is FileSortWire => FILE_KEYS.has(so
 
 const number = (value: number): number | null => (Number.isNaN(value) ? null : value);
 
+/** What an object with no class is called. */
+const UNKNOWN_CLASS = "unknown";
+
+/** The id of every object `frame` drew, before the lane's class toggles and filter; none when the lane drew nothing. */
+export function drawnIds(frame: LaneFrame | undefined): Set<string> {
+  const ids = new Set<string>();
+  if (!frame) return ids;
+  const { columns } = frame;
+  for (let row = 0; row < columns.rows; row++)
+    ids.add(columns.strings.string(columns.entityId[row]));
+  return ids;
+}
+
 /** The objects `frame` shows after the lane's class toggles and frame filter; none when the lane drew nothing. */
 export function frameObjects(frame: LaneFrame | undefined): FrameObject[] {
   if (!frame) return [];
@@ -44,24 +57,21 @@ export function frameObjects(frame: LaneFrame | undefined): FrameObject[] {
   };
   return Array.from(kept.rows.subarray(0, kept.count), (row) => ({
     id: strings.string(columns.entityId[row]),
-    className: columns.classId[row] < 0 ? "" : classOf(columns.classId[row]),
+    className: columns.classId[row] < 0 ? UNKNOWN_CLASS : classOf(columns.classId[row]),
     motion: columns.motion[row] === 0 ? "" : MOTION_STATES[columns.motion[row] - 1],
     score: number(columns.score[row]),
     confidence: number(columns.confidence[row]),
   }));
 }
 
-/** What a search looks at in an object: its id, class, motion, score and confidence. */
+/** What a search looks at in an object: fields keyed as the inspection keys them, and its id, class and motion state as text. */
 export function recordOf(object: FrameObject): SearchRecord {
   const { id, className, motion, score, confidence } = object;
-  const fields: { [path: string]: (string | number)[] } = {
-    id: [id],
-    class: [className],
-    motion: [motion],
-  };
-  if (score !== null) fields.score = [score];
-  if (confidence !== null) fields.confidence = [confidence];
-  return { fields, text: [id, className, motion] };
+  const fields: { [path: string]: (string | number)[] } = { id: [id], class: [className] };
+  if (motion !== "") fields["motion.state"] = [motion];
+  if (score !== null) fields["classification.score"] = [score];
+  if (confidence !== null) fields["classification.confidence"] = [confidence];
+  return { fields, text: motion === "" ? [id, className] : [id, className, motion] };
 }
 
 /** Ids order with digit runs by value, so `id9` comes before `id10`. */

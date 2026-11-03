@@ -2,6 +2,7 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
   useSyncExternalStore,
   type CSSProperties,
@@ -15,9 +16,10 @@ import { IconButton } from "../kit/IconButton";
 import type { LaneFrame, Selection } from "../playback/contract";
 import type { FileScope } from "../playback/fileScope";
 import type { PlaybackView } from "../playback/view";
-import { matches } from "../search/match";
+import { matches, missingPaths } from "../search/match";
 import { parseSearch } from "../search/query";
 import {
+  drawnIds,
   frameObjects,
   isFileSort,
   recordOf,
@@ -29,7 +31,8 @@ import {
 import { PanelDivider } from "./PanelDivider";
 import { SearchBar } from "./SearchBar";
 import { nextSort, type Column } from "./table/columns";
-import { Table } from "./table/Table";
+import { MiddleCut } from "./table/MiddleCut";
+import { Table, type TableMemory } from "./table/Table";
 
 /** What the panel reads of a viewer and asks of it: `PlaybackSession` is one. */
 interface ObjectSource {
@@ -70,11 +73,11 @@ const STEP = 50;
 /** How many marks a presence strip can draw. */
 const BINS = 64;
 
-const score = (value: number | null): string =>
-  value === null ? "" : String(Number(value.toFixed(2)));
+const score = (value: number | null): string => (value === null ? "" : value.toFixed(2));
 
-/** Why a row of File scope is dimmed. */
-const ABSENT = "Not in this frame";
+/** What File scope says when the query names a field it does not search; it searches these. */
+const FILE_PATHS: ReadonlySet<string> = new Set(["id", "class", "event"]);
+const FILE_NOTE = "File scope filters id, class and event only";
 
 /** What Frame scope lists of an object; the first three are required, Motion goes first when the panel is narrow. */
 const FRAME_COLUMNS: readonly Column<FrameObject>[] = [
@@ -171,7 +174,7 @@ const fileColumns = (frames: number, seek?: (frame: number) => void): Column<Fil
   {
     key: "first_seen",
     title: "Seen",
-    kind: "text",
+    kind: "mono",
     text: (row) => `${row.first_frame}–${row.last_frame}`,
     sortable: true,
     priority: 1,
@@ -202,11 +205,24 @@ function ObjectsList({
     file: SCOPES.file.sort,
   });
   const [offset, setOffset] = useState(0);
+  // Where each scope's table was scrolled and where its cursor was, for when the scope is shown again.
+  const memory = useRef<Record<Scope, TableMemory>>({
+    frame: { top: 0, cursor: null },
+    file: { top: 0, cursor: null },
+  });
   const sort = sorts[scope];
   const { wire } = useMemo(() => parseSearch(text), [text]);
   const frame = source.shown(lane);
   const objects = useMemo(() => frameObjects(frame), [frame]);
-  const present = useMemo(() => new Set(objects.map(({ id }) => id)), [objects]);
+  // What is in the frame on screen, whatever the lane's toggles and filter hide; File scope dims the rest, and nothing
+  // while no frame is on screen.
+  const inFile = scope === "file";
+  const onScreen = view.shown !== undefined;
+  const drawn = useMemo(
+    () => (inFile && onScreen ? drawnIds(frame) : null),
+    [inFile, onScreen, frame],
+  );
+  const absent = (id: string) => drawn !== null && !drawn.has(id);
   const found = useMemo(
     () =>
       sortObjects(
@@ -215,8 +231,28 @@ function ObjectsList({
       ),
     [objects, wire, sorts.frame],
   );
+  const foundAt = useMemo(() => new Map(found.map(({ id }, index) => [id, index])), [found]);
+  const missing = useMemo(
+    () =>
+      missingPaths(
+        wire,
+        objects.map((object) => recordOf(object)),
+      ),
+    [objects, wire],
+  );
+  const fileNote = useMemo(
+    () =>
+      wire.groups.flat().some(({ path }) => path !== null && !FILE_PATHS.has(path.toLowerCase())),
+    [wire],
+  );
+  const notice = inFile
+    ? fileNote
+      ? FILE_NOTE
+      : null
+    : missing.length > 0
+      ? `No object has ${missing.join(", ")} in this frame`
+      : null;
   const files = useSyncExternalStore(source.files.subscribe, () => source.files.view(lane));
-  const inFile = scope === "file";
   const { page } = files;
   const total = inFile ? (page?.total ?? 0) : objects.length;
   const count = inFile ? (page?.matched ?? 0) : found.length;
@@ -265,7 +301,7 @@ function ObjectsList({
     );
   else if (count === 0)
     message = (
-      <p role="status" className="m-0 p-m text-muted">
+      <p role="status" className="m-0 pt-l text-center text-small text-muted">
         {total === 0 ? SCOPES[scope].none : "No matching objects"}
       </p>
     );
@@ -278,7 +314,7 @@ function ObjectsList({
       // Only the columns that sort have a header to click.
       setSorts({
         ...sorts,
-        [scope]: nextSort(inFile ? fileCols : FRAME_COLUMNS, sort, key as SortKey),
+        [scope]: nextSort(sort, key as SortKey),
       }),
     busy: inFile && files.pending,
     message,
@@ -291,22 +327,18 @@ function ObjectsList({
           label="Scope"
           options={(Object.keys(SCOPES) as Scope[]).map((key) => [key, SCOPES[key].title] as const)}
           value={scope}
-          onChange={(key) => {
-            // The table for the new scope mounts at the top.
-            setScope(key);
-            setOffset(0);
-          }}
+          onChange={setScope}
         />
-        <span className="min-w-0 flex-1 truncate text-small text-muted">{`${count} of ${total}`}</span>
+        <span className="min-w-0 flex-1 truncate text-right text-small text-muted">{`${count} of ${total}`}</span>
         {trailing}
       </div>
       <div className="p-m pb-s">
-        <SearchBar
-          label="Search objects"
-          title={inFile ? "File scope searches id, class and event" : undefined}
-          value={text}
-          onChange={setText}
-        />
+        <SearchBar label="Search objects" value={text} onChange={setText} />
+        {notice !== null && (
+          <div role="status" className="pt-xs text-small text-muted">
+            <MiddleCut text={notice} tail={13} />
+          </div>
+        )}
       </div>
       {inFile ? (
         <Table<FileRowWire>
@@ -316,8 +348,13 @@ function ObjectsList({
           columns={fileCols}
           rowAt={(index) => page?.rows[index - page.offset]}
           keyOf={(row) => row.id}
-          absent={(row) => (present.has(row.id) ? undefined : ABSENT)}
-          onActivate={(row) => choose(row.id, present.has(row.id) ? undefined : row.first_frame)}
+          indexOf={(key) => {
+            const at = page ? page.rows.findIndex((row) => row.id === key) : -1;
+            return at < 0 ? -1 : page!.offset + at;
+          }}
+          memory={memory.current.file}
+          dimmed={(row) => absent(row.id)}
+          onActivate={(row) => choose(row.id, absent(row.id) ? row.first_frame : undefined)}
           onRange={onRange}
           cursorId={(row) => `row:object-${row.id}`}
         />
@@ -329,6 +366,8 @@ function ObjectsList({
           columns={FRAME_COLUMNS}
           rowAt={(index) => found[index]}
           keyOf={(object) => object.id}
+          indexOf={(key) => foundAt.get(key) ?? -1}
+          memory={memory.current.frame}
           onActivate={(object) => choose(object.id)}
           cursorId={(object) => `row:object-${object.id}`}
         />

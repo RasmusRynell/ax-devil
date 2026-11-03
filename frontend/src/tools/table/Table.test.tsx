@@ -13,19 +13,25 @@ const COLUMNS: Column<Row>[] = [
 
 const rowAt = (index: number): Row => ({ id: `row-${index}`, name: `Name ${index}`, value: index });
 
-function table(tableKey: string, count = 100_000) {
+function table(
+  tableKey: string,
+  count = 100_000,
+  order: readonly Row[] | null = null,
+  onActivate: (row: Row) => void = () => {},
+) {
   return (
     <Table<Row>
       tableKey={tableKey}
       label="Rows"
       columns={COLUMNS}
       count={count}
-      rowAt={rowAt}
+      rowAt={(index) => (order ? order[index] : rowAt(index))}
       keyOf={(row) => row.id}
+      indexOf={(key) => (order ? order.findIndex((row) => row.id === key) : Number(key.slice(4)))}
       selected={null}
       sort={{ key: "id", descending: false }}
       onSort={() => {}}
-      onActivate={() => {}}
+      onActivate={onActivate}
       cursorId={(row) => `row:${row.id}`}
     />
   );
@@ -52,6 +58,21 @@ describe("Table", () => {
     expect(drawn.length).toBeGreaterThanOrEqual(10);
     expect(drawn.length).toBeLessThanOrEqual(10 + 2 * 8);
     expect(drawn[0].getAttribute("aria-setsize")).toBe("100000");
+  });
+
+  it("keeps the cursor on its row while the rows change places", () => {
+    const [a, b, c] = [rowAt(1), rowAt(2), rowAt(3)];
+    const onActivate = vi.fn();
+    const { rerender } = render(table("moving", 3, [a, b, c], onActivate));
+    fireEvent.keyDown(screen.getByRole("listbox"), { key: "ArrowDown" });
+    rerender(table("moving", 3, [c, b, a], onActivate));
+    fireEvent.keyDown(screen.getByRole("listbox"), { key: "Enter" });
+    expect(onActivate).toHaveBeenCalledWith(b, 1);
+
+    // A cursor whose row has gone stays where it was.
+    rerender(table("moving", 2, [c, a], onActivate));
+    fireEvent.keyDown(screen.getByRole("listbox"), { key: "Enter" });
+    expect(onActivate).toHaveBeenLastCalledWith(a, 1);
   });
 
   it("keeps the width the user gave a column when the table is drawn again", () => {
