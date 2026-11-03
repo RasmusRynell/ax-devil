@@ -46,6 +46,8 @@ pub enum ErrorCode {
     WorkspaceInvalid,
     /// A recovery copy is open in another window.
     WorkspaceInUse,
+    /// Save As names a file that already exists and replacing it was not allowed.
+    WorkspaceExists,
     /// A workspace file could not be written.
     SaveFailed,
     /// A fault of the backend itself.

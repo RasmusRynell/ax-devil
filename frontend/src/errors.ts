@@ -23,6 +23,7 @@ export const ERRORS: Record<ErrorCode, string> = {
   CatalogInvalid: "The render catalog is not valid.",
   WorkspaceInvalid: "The workspace file is not valid.",
   WorkspaceInUse: "The workspace is open in another window.",
+  WorkspaceExists: "That file already exists.",
   SaveFailed: "The workspace could not be saved.",
   Internal: "The backend failed.",
 };

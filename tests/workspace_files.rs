@@ -315,3 +315,32 @@ async fn work_that_cannot_be_kept_is_not_replaced() {
     assert_eq!(outcome, json!({"status": "ok"}));
     assert_eq!(empty["modified"], false);
 }
+
+#[tokio::test]
+async fn save_as_replaces_another_file_only_when_allowed() {
+    let folder = tempfile::tempdir().unwrap();
+    let other = folder.path().join(format!("other{SUFFIX}"));
+    std::fs::write(&other, "someone else's").unwrap();
+    let address = backend(folder.path(), None).await;
+    let mut owner = Socket::own(&address, None).await;
+    owner.say(add_video(1)).await;
+    let save = |seq, replace| {
+        let path = other.display().to_string();
+        workspace(
+            seq,
+            json!({"type": "save", "path": path, "replace": replace}),
+        )
+    };
+
+    owner.say(save(2, false)).await;
+    let outcome = ack(&mut owner, 2).await;
+    assert_eq!(outcome["error"]["code"], "WorkspaceExists");
+    assert_eq!(std::fs::read_to_string(&other).unwrap(), "someone else's");
+
+    owner.say(save(3, true)).await;
+    assert_eq!(ack(&mut owner, 3).await, json!({"status": "ok"}));
+    assert_eq!(items_in(&other), Some(1));
+    // It is the workspace's own file now, which never asks.
+    owner.say(save(4, false)).await;
+    assert_eq!(ack(&mut owner, 4).await, json!({"status": "ok"}));
+}

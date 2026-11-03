@@ -75,11 +75,11 @@ pub(super) fn command(wire: SessionCommand, handlers: &Handlers) -> Result<Reque
 fn workspace_command(wire: WorkspaceCommand) -> Result<WorkspaceCommand, Refusal> {
     let valid = match &wire {
         WorkspaceCommand::Open { path } => Path::new(path).is_absolute(),
-        WorkspaceCommand::Save { path: Some(path) } => {
-            Path::new(path).is_absolute() && path.ends_with(workspace_files::SUFFIX)
-        }
+        WorkspaceCommand::Save {
+            path: Some(path), ..
+        } => Path::new(path).is_absolute() && path.ends_with(workspace_files::SUFFIX),
         WorkspaceCommand::New
-        | WorkspaceCommand::Save { path: None }
+        | WorkspaceCommand::Save { path: None, .. }
         | WorkspaceCommand::Keep
         | WorkspaceCommand::Discard => true,
     };

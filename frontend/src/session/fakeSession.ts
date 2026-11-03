@@ -248,6 +248,8 @@ export class FakeSocket {
   static clockOffsetUs = 5_000_000;
   /** While set, the backend refuses every change to the workspace with this code. */
   static refuseContent: RefusalCode | null = null;
+  /** The workspace files that exist on the fake host; a Save onto one of them fails unless it replaces. */
+  static existingFiles = new Set<string>();
   /** While true, the backend refuses every stream ticket, as it does for content the Doc no longer lets the seat play. */
   static refuseTickets = false;
   /** The server password the fake backend asks of a caller who is not joining by a link; null for a server without one. */
@@ -255,6 +257,7 @@ export class FakeSocket {
 
   static reset() {
     FakeSocket.refuseTickets = false;
+    FakeSocket.existingFiles.clear();
     FakeSocket.refuseContent = null;
     FakeSocket.serverPassword = null;
     FakeSocket.sockets = [];
@@ -467,6 +470,18 @@ export class FakeSocket {
       } else room.secret += "x";
     } else if (cmd.type === "workspace") {
       if (!seat.owner) return refuse();
+      const { command: change } = cmd;
+      if (
+        change.type === "save" &&
+        change.path &&
+        !change.replace &&
+        FakeSocket.existingFiles.has(change.path)
+      )
+        return this.emit({
+          type: "ack",
+          seq,
+          outcome: { status: "failed", error: { code: "WorkspaceExists", params: {} } },
+        });
       if (cmd.command.type === "keep" || cmd.command.type === "discard") {
         room.recovered = false;
         room.setItems(room.items);

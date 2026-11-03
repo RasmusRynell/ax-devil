@@ -8,7 +8,7 @@ mod recovery;
 
 pub use disk::{load, save};
 pub use recents::{Recent, Recents};
-pub use recovery::{Claim, RecoveryCopy, RecoveryFolder, file_stem};
+pub use recovery::{Claim, RecoveryCopy, RecoveryFolder, file_stem, resolved};
 
 /// The ending of every workspace file name.
 pub const SUFFIX: &str = ".ax-devil.workspace";

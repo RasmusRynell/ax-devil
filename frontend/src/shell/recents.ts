@@ -6,7 +6,8 @@ import { useCan, useDoc } from "../session/session";
 /** The id of a menu entry or start-panel row that opens the recent workspace at the path after it. */
 export const RECENT_ID = "recent:";
 
-const SUFFIX = ".ax-devil.workspace";
+/** What a workspace file name ends with. */
+export const SUFFIX = ".ax-devil.workspace";
 
 /** The file's name without its folder and the workspace suffix. */
 export function recentName(path: string): string {

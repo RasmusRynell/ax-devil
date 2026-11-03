@@ -151,6 +151,10 @@ pub enum WorkspaceCommand {
         #[serde(default)]
         #[ts(optional)]
         path: Option<String>,
+        /// Whether Save As may replace a file that is already there.
+        #[serde(default)]
+        #[ts(optional)]
+        replace: Option<bool>,
     },
     /// Keep the changes restored from a recovery copy.
     Keep,

@@ -50,6 +50,41 @@ describe("workspace files", () => {
     expect(sent()).toEqual([{ type: "open", path }]);
   });
 
+  it("opens a workspace by the path typed where the window has no file dialog", async () => {
+    await renderShell();
+    fireEvent.click(screen.getByRole("menuitem", { name: "File" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: /Open Workspace/ }));
+    fireEvent.change(screen.getByRole("textbox", { name: "Path on the server" }), {
+      target: { value: " /srv/Gate.ax-devil.workspace " },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Open" }));
+    expect(sent()).toEqual([{ type: "open", path: "/srv/Gate.ax-devil.workspace" }]);
+  });
+
+  it("asks before a typed Save As replaces a file, and only then sends it again", async () => {
+    FakeSocket.existingFiles.add("/srv/Gate.ax-devil.workspace");
+    await renderShell();
+    const saveAs = async (answer: string) => {
+      fireEvent.click(screen.getByRole("menuitem", { name: "File" }));
+      fireEvent.click(screen.getByRole("menuitem", { name: /Save Workspace As/ }));
+      fireEvent.change(screen.getByRole("textbox", { name: "Path on the server" }), {
+        target: { value: "/srv/Gate" },
+      });
+      fireEvent.click(screen.getByRole("button", { name: "Save" }));
+      fireEvent.click(await screen.findByRole("button", { name: answer }));
+    };
+    const path = "/srv/Gate.ax-devil.workspace";
+    await saveAs("Cancel");
+    expect(sent()).toEqual([{ type: "save", path }]);
+    expect(screen.queryByRole("alert")).toBeNull();
+    await saveAs("Replace");
+    expect(sent()).toEqual([
+      { type: "save", path },
+      { type: "save", path },
+      { type: "save", path, replace: true },
+    ]);
+  });
+
   it("offers Keep and Discard for restored changes, even with nothing in the workspace", async () => {
     const room = await renderShell();
     const restore = () =>

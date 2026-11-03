@@ -138,7 +138,7 @@ location: string, };
  * The public kind of a failure. A code and the ids in a [`Location::Item`] are all a viewer who may not see the
  * host's files is told; the reason and any path stay with the host.
  */
-export type ErrorCode = "InvalidPath" | "FileNotFound" | "FileUnreadable" | "NotAVideo" | "UnsupportedFormat" | "IndexingFailed" | "FileChanged" | "DecodeFailed" | "ContentNotFound" | "ProtocolViolation" | "VideoClosed" | "UnknownHandler" | "OverlayInvalid" | "PlaylistInvalid" | "PluginInvalid" | "CatalogInvalid" | "WorkspaceInvalid" | "WorkspaceInUse" | "SaveFailed" | "Internal";
+export type ErrorCode = "InvalidPath" | "FileNotFound" | "FileUnreadable" | "NotAVideo" | "UnsupportedFormat" | "IndexingFailed" | "FileChanged" | "DecodeFailed" | "ContentNotFound" | "ProtocolViolation" | "VideoClosed" | "UnknownHandler" | "OverlayInvalid" | "PlaylistInvalid" | "PluginInvalid" | "CatalogInvalid" | "WorkspaceInvalid" | "WorkspaceInUse" | "WorkspaceExists" | "SaveFailed" | "Internal";
 
 /**
  * The values a client may fill into the message for a code. Only ids, never text.
@@ -386,7 +386,11 @@ path: string, } | { "type": "save",
 /**
  * The file to save as; the workspace's own file when absent.
  */
-path?: string, } | { "type": "keep" } | { "type": "discard" };
+path?: string, 
+/**
+ * Whether Save As may replace a file that is already there.
+ */
+replace?: boolean, } | { "type": "keep" } | { "type": "discard" };
 
 /**
  * The part of the window a cursor position belongs to.

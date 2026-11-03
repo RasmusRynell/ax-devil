@@ -178,8 +178,9 @@ pub fn file_stem(name: Option<&str>) -> String {
 }
 
 /// The lock file beside the copy: the atomic replace gives the copy a new inode, so the lock cannot live on it.
-/// Where `path` really is, whether or not it exists yet: its symlinks followed, or its folder's.
-fn resolved(path: &Path) -> PathBuf {
+/// Where `path` really is, whether or not it exists yet: its symlinks followed, or its folder's. Two paths name the
+/// same file when they resolve alike.
+pub fn resolved(path: &Path) -> PathBuf {
     let path = normalize(path);
     if let Ok(real) = fs::canonicalize(&path) {
         return real;
