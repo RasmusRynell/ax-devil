@@ -63,12 +63,13 @@ const reply = (status: number, json: unknown) => ({
   json: async () => json,
 });
 
-/** The backend: the handlers, and a scan that finds two sequences. */
-function stubBackend() {
+/** The backend: the handlers, a resolve that answers an item, and a scan that finds two sequences. */
+function stubBackend(resolve: () => ReturnType<typeof reply> = () => reply(200, { item: "p1" })) {
   vi.stubGlobal(
     "fetch",
     vi.fn(async (url: string) => {
       if (url === "/api/handlers") return reply(200, HANDLERS);
+      if (url.endsWith("/resolve")) return resolve();
       return reply(200, [
         { value: "SEQ-01", label: "SEQ-01", detail: "64×48" },
         { value: "SEQ-02", label: "SEQ-02", detail: "64×48" },
@@ -94,11 +95,13 @@ const scanRoot = async (root = "/data") => {
   fireEvent.click(screen.getByRole("button", { name: "Scan" }));
   await screen.findByRole("checkbox", { name: /SEQ-01/ });
 };
+/** The JSON a request carried. */
+const bodyOf = (init?: RequestInit): unknown => JSON.parse(init?.body as string);
 const add = () => screen.getByRole("button", { name: "Add" });
 const commands = () => FakeSocket.latest.received.filter((message) => message.type === "command");
 
 describe("add playlist dialog", () => {
-  it("adds the scanned playlist under its name, to resolve in the background, and closes", async () => {
+  it("resolves the scanned playlist, adds the result under its name and closes", async () => {
     const onClose = vi.fn();
     stubBackend();
     await open(onClose);
@@ -120,32 +123,30 @@ describe("add playlist dialog", () => {
         cmd: {
           type: "content",
           command: {
-            type: "addItems",
-            items: [
-              {
-                type: "Playlist",
-                resolver: "mot_challenge",
-                settings: { root: "/data", sequences: ["SEQ-01"] },
-                label: "Train",
-              },
-            ],
-            open: true,
+            type: "addResolved",
+            item: "p1",
+            label: "Train",
           },
         },
       },
     ]);
+    expect(bodyOf(vi.mocked(fetch).mock.calls.at(-1)?.[1])).toEqual({
+      settings: { root: "/data", sequences: ["SEQ-01"] },
+    });
   });
 
   it("stays open with the refusal under the form, until the settings change", async () => {
     const onClose = vi.fn();
-    stubBackend();
+    stubBackend(() =>
+      reply(422, { code: "PlaylistInvalid", params: {}, reason: "No MOT sequences found" }),
+    );
     await open(onClose);
     choose("mot_challenge");
     await scanRoot();
-    FakeSocket.refuseContent = "Invalid";
     fireEvent.click(add());
     const alert = await screen.findByRole("alert");
-    expect(alert.textContent).toContain("cannot open");
+    expect(alert.textContent).toContain("No MOT sequences found");
+    expect(commands()).toHaveLength(0);
     expect(onClose).not.toHaveBeenCalled();
     expect(add()).toHaveProperty("disabled", false);
 
@@ -185,24 +186,13 @@ describe("add playlist dialog", () => {
     expect(add()).toHaveProperty("disabled", false);
     fireEvent.click(add());
     await waitFor(() => expect(commands()).toHaveLength(1));
-    expect(commands()).toMatchObject([
-      {
-        cmd: {
-          command: {
-            items: [
-              {
-                resolver: "folder_pair",
-                settings: {
-                  videos_dir: "/videos",
-                  handler_type: "MOT_FILE",
-                  options: { width: 1920 },
-                },
-              },
-            ],
-          },
-        },
-      },
-    ]);
+    const [url, init] =
+      vi.mocked(fetch).mock.calls.find(([url]) => url === "/api/resolvers/folder_pair/resolve") ??
+      [];
+    expect(url).toBe("/api/resolvers/folder_pair/resolve");
+    expect(bodyOf(init)).toEqual({
+      settings: { videos_dir: "/videos", handler_type: "MOT_FILE", options: { width: 1920 } },
+    });
   });
 
   it("says why the handlers could not be loaded, in the backend's words when it sends them, and retries", async () => {

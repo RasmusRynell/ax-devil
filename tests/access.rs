@@ -134,6 +134,7 @@ async fn the_local_listener_answers_only_pages_it_served_and_every_response_forb
             ("GET", "/api/handlers"),
             ("GET", "/api/plugins"),
             ("POST", "/api/resolvers/mot_challenge/scan"),
+            ("POST", "/api/resolvers/mot_challenge/resolve"),
             ("GET", "/api/session"),
             ("GET", "/api/playback"),
             ("GET", "/"),
@@ -170,6 +171,7 @@ async fn a_server_answers_settings_and_sessions_only_to_the_password() {
             ("GET", "/api/handlers"),
             ("GET", "/api/plugins"),
             ("POST", "/api/resolvers/mot_challenge/scan"),
+            ("POST", "/api/resolvers/mot_challenge/resolve"),
         ] {
             let (status, _) = send(&app, method, path, headers, "{}").await;
             assert_eq!(status, StatusCode::UNAUTHORIZED, "{method} {path}");

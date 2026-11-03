@@ -132,3 +132,23 @@ pub async fn get(address: &str, path: &str, password: &str) -> Value {
     .await
     .unwrap()
 }
+
+/// `POST path` with the JSON `body` to the backend at `address`, and the JSON body of the answer.
+pub async fn post(address: &str, path: &str, body: &Value) -> Value {
+    let (address, path, body) = (address.to_owned(), path.to_owned(), body.to_string());
+    tokio::task::spawn_blocking(move || {
+        let mut stream = std::net::TcpStream::connect(&address).unwrap();
+        write!(
+            stream,
+            "POST {path} HTTP/1.1\r\nHost: {address}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+            body.len()
+        )
+        .unwrap();
+        let mut response = String::new();
+        stream.read_to_string(&mut response).unwrap();
+        assert!(response.starts_with("HTTP/1.1 200"), "{response}");
+        serde_json::from_str(response.split_once("\r\n\r\n").unwrap().1).unwrap()
+    })
+    .await
+    .unwrap()
+}

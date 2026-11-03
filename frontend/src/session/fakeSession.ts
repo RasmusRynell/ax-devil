@@ -497,19 +497,16 @@ export class FakeSocket {
         });
       const doc = cmd.command;
       if (doc.type === "addItems") {
-        const added = doc.items.map((item, at): ItemState => {
-          const id = String.fromCharCode(97 + room.items.length + at);
-          // A playlist is added now and resolves later, as the backend does it.
-          return item.type === "Video"
-            ? video(id, doc.open)
-            : {
-                id,
-                label: item.label ?? item.resolver,
-                open: doc.open,
-                resolution: { status: "Pending" },
-              };
+        const added = doc.items.map((_, at): ItemState => {
+          return video(String.fromCharCode(97 + room.items.length + at), doc.open);
         });
         room.setItems([...room.items, ...added]);
+      } else if (doc.type === "addResolved") {
+        const id = String.fromCharCode(97 + room.items.length);
+        room.setItems([
+          ...room.items,
+          { id, label: doc.label ?? "Playlist", open: true, resolution: { status: "Pending" } },
+        ]);
       } else if (doc.type === "setHidden") room.setHidden(doc.target, doc.hidden);
       else if (doc.type !== "setLaneMatching") {
         const open = doc.type === "openViewer";

@@ -77,6 +77,8 @@ pub struct AppState {
     pub admission: Arc<Admission>,
     /// Every session this backend holds, whichever listener its socket arrives on.
     pub sessions: Sessions,
+    /// Playlist items resolved by the resolve route and waiting for `addResolved`.
+    pub staged: Arc<routes::resolve::Staged>,
     /// Items the first Local session takes when it starts.
     launch: Arc<LaunchQueue>,
     /// Opens, saves and recovers the workspaces of the sessions; see [`AppState::with_files`].
@@ -124,6 +126,7 @@ impl AppState {
             windows: None,
             policy: Arc::new(policy),
             admission: Arc::new(Admission::new(limits)),
+            staged: Arc::default(),
             launch: Arc::new(LaunchQueue::default()),
             files: Arc::new(WorkspaceFiles::new(None)),
             hosting: Arc::new(Hosting::None),

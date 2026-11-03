@@ -943,19 +943,7 @@ path: string,
 /**
  * The overlay files, each shown as its own lane.
  */
-overlays: Array<NewOverlayWire>, } | { "type": "Playlist", 
-/**
- * The resolver id.
- */
-resolver: string, 
-/**
- * The settings the resolver's schema declares.
- */
-settings: Record<string, unknown>, 
-/**
- * The row's label; the resolver's name when absent.
- */
-label: string | null, };
+overlays: Array<NewOverlayWire>, };
 
 /**
  * An overlay file to add to a video.
