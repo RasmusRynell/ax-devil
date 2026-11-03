@@ -1,7 +1,6 @@
 //! Shared by the route tests: the app over a private settings file.
 
-use crate::{AppState, access::Policy, app};
-use api_types::handlers::PluginsInfo;
+use crate::{AppState, access::Policy, app, plugins::Plugins};
 use axum::{
     Router,
     body::{Body, to_bytes},
@@ -22,11 +21,11 @@ pub struct TestApp {
 
 impl TestApp {
     pub fn new() -> Self {
-        Self::with(Handlers::built_in(), PluginsInfo::default())
+        Self::with(Handlers::built_in())
     }
 
-    /// The app over these handlers, reporting these plugins as the ones installed.
-    pub fn with(handlers: Handlers, plugins: PluginsInfo) -> Self {
+    /// The app over exactly these handlers.
+    pub fn with(handlers: Handlers) -> Self {
         let folder = tempfile::tempdir().unwrap();
         let settings = settings::Settings::load(&folder.path().join("default.json")).unwrap();
         let cache = folder.path().join("cache");
@@ -37,10 +36,9 @@ impl TestApp {
             Policy::Local,
             videos,
             stopping,
-            handlers,
+            Plugins::fixed(handlers),
             &cache,
-        )
-        .with_plugins(plugins);
+        );
         let router = app(state.with_windows(folder.path().join("windows.json")));
         Self {
             router,

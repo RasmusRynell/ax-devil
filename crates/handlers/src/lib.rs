@@ -3,7 +3,10 @@
 //! The built-ins come from their crates; installed plugins are added behind the same type. Everything that picks
 //! a decoder or resolver by id or by file name asks a [`Handlers`], never the crates' own lists.
 
-use std::{path::Path, sync::Arc};
+use std::{
+    path::Path,
+    sync::{Arc, PoisonError, RwLock},
+};
 
 use handler_api::{Decoder, PlaylistResolver};
 
@@ -89,6 +92,35 @@ impl Handlers {
         self.resolvers
             .iter()
             .find(|resolver| resolver.spec().id == id)
+    }
+}
+
+/// The [`Handlers`] the app uses right now, replaced as plugins are installed, removed or edited. Work takes one
+/// snapshot with [`current`](Self::current) and keeps it, so what is already running never changes underneath it.
+pub struct HandlerSet(RwLock<Arc<Handlers>>);
+
+impl HandlerSet {
+    /// A set that starts with `handlers`.
+    pub fn new(handlers: Handlers) -> Arc<Self> {
+        Arc::new(Self(RwLock::new(Arc::new(handlers))))
+    }
+
+    /// The handlers as they are now.
+    pub fn current(&self) -> Arc<Handlers> {
+        Arc::clone(&self.0.read().unwrap_or_else(PoisonError::into_inner))
+    }
+
+    /// Makes `handlers` what [`current`](Self::current) answers from now on.
+    pub fn replace(&self, handlers: Handlers) {
+        *self.0.write().unwrap_or_else(PoisonError::into_inner) = Arc::new(handlers);
+    }
+
+    /// A function that finds decoders by id in whatever the set holds when it is called.
+    pub fn decoder_lookup(
+        self: &Arc<Self>,
+    ) -> impl Fn(&str) -> Option<Arc<dyn Decoder>> + Send + Sync + 'static {
+        let set = Arc::clone(self);
+        move |id| set.current().decoder(id).cloned()
     }
 }
 

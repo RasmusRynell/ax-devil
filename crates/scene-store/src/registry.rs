@@ -34,6 +34,10 @@ pub struct TrackKey {
     pub handler: String,
     /// The decoder's declared options as canonical JSON ([`Values::canonical`]).
     pub options: String,
+    /// The hash of the code outside the app that makes the Scenes ([`Decoder::code_hash`]). It is not in the cache
+    /// file name, so an edited plugin finds its old artifact and rebuilds it; but a track still held under the old
+    /// hash is not shared with an open under the new one.
+    pub code: Option<[u8; 32]>,
 }
 
 impl TrackKey {
@@ -180,6 +184,7 @@ impl TrackRegistry {
             path,
             handler: overlay.handler.clone(),
             options: options.canonical(),
+            code: decoder.code_hash(),
         };
         loop {
             let pending = match self.claim(&key) {

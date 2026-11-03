@@ -13,7 +13,7 @@ use api_types::{
     CursorPoint, ErrorWire,
     playback::{ClientMessage, Direction, LaneInfo, PLAYBACK_PROTOCOL, ServerMessage, Want},
 };
-use ax_devil::{AppState, access::Policy, app, video_sources::VideoSources};
+use ax_devil::{AppState, access::Policy, app, plugins::Plugins, video_sources::VideoSources};
 use futures_util::{SinkExt, StreamExt};
 use handler_api::Settings;
 use handlers::Handlers;
@@ -103,27 +103,27 @@ impl Added {
 
 impl Backend {
     pub async fn start() -> Self {
-        Self::start_with(false, Handlers::built_in(), |_| {}).await
+        Self::start_with(false, Plugins::fixed(Handlers::built_in()), |_| {}).await
     }
 
     /// A backend and viewers whose sockets hold only a few kilobytes, so a viewer that stops reading backs the
     /// backend up after a few frames.
     pub async fn start_squeezed() -> Self {
-        Self::start_with(true, Handlers::built_in(), |_| {}).await
+        Self::start_with(true, Plugins::fixed(Handlers::built_in()), |_| {}).await
     }
 
     /// A backend whose catalogs are `catalogs`, which the test polls itself with `rescan`.
     pub async fn start_with_catalogs(catalogs: catalogs::Library) -> Self {
-        Self::start_with(false, Handlers::built_in(), |state| {
+        Self::start_with(false, Plugins::fixed(Handlers::built_in()), |state| {
             state.catalogs = Arc::new(catalogs);
         })
         .await
     }
 
-    /// A backend that decodes with `handlers`, over the state `configure` adjusts.
+    /// A backend that decodes with `plugins`' handlers, over the state `configure` adjusts.
     pub async fn start_with(
         squeezed: bool,
-        handlers: Handlers,
+        plugins: Arc<Plugins>,
         configure: impl FnOnce(&mut AppState),
     ) -> Self {
         let folder = tempfile::tempdir().unwrap();
@@ -137,7 +137,7 @@ impl Backend {
             Policy::Local,
             videos.clone(),
             stopping,
-            handlers,
+            plugins,
             &cache,
         );
         configure(&mut state);
@@ -197,7 +197,8 @@ impl Backend {
                 },
             })
             .collect();
-        let item = workspace::intake::video(path, &overlays, &self.state.handlers).unwrap();
+        let item =
+            workspace::intake::video(path, &overlays, &self.state.plugins.handlers()).unwrap();
         self.add_item(item).await
     }
 

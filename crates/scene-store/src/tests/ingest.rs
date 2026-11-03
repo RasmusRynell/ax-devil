@@ -139,6 +139,8 @@ impl Decoder for Script {
 struct Rig {
     dir: TempDir,
     decoder: Arc<Script>,
+    /// What the registry finds, so a test can edit the decoder under a registry that holds tracks.
+    live: Arc<Mutex<Arc<Script>>>,
     registry: TrackRegistry,
 }
 
@@ -147,25 +149,27 @@ impl Rig {
         let dir = tempfile::tempdir().expect("temp dir");
         fs::write(dir.path().join("overlay.txt"), b"rows\n").expect("source");
         let decoder = Arc::new(decoder);
-        let registry = Self::registry(&decoder, &dir, tuning);
+        let live = Arc::new(Mutex::new(decoder.clone()));
+        let registry = Self::registry(&live, &dir, tuning);
         Self {
             dir,
             decoder,
+            live,
             registry,
         }
     }
 
-    fn registry(decoder: &Arc<Script>, dir: &TempDir, tuning: Tuning) -> TrackRegistry {
-        let decoder = decoder.clone();
+    fn registry(live: &Arc<Mutex<Arc<Script>>>, dir: &TempDir, tuning: Tuning) -> TrackRegistry {
+        let live = live.clone();
         TrackRegistry::new(
-            move |handler| (handler == "TEST").then(|| decoder.clone() as Arc<dyn Decoder>),
+            move |handler| (handler == "TEST").then(|| live.lock().expect("live").clone() as _),
             Some(&dir.path().join("cache")),
         )
         .with_tuning(tuning)
     }
 
     fn restart(&mut self, tuning: Tuning) {
-        self.registry = Self::registry(&self.decoder, &self.dir, tuning);
+        self.registry = Self::registry(&self.live, &self.dir, tuning);
     }
 
     fn overlay(&self) -> OverlayRef {
@@ -555,14 +559,18 @@ fn the_code_hash_and_the_declared_options_are_part_of_the_cache_identity() {
         "an explicit default and an omitted option share an artifact"
     );
 
-    // The same decoder with other code is another decode of the same cache file.
+    // The same decoder with other code is another decode of the same cache file, even for a viewer that holds the
+    // track made by the old code.
+    let held = rig.open().expect("opens");
     let mut changed = Script::new(vec![step(0, &[(1, 1)], OnEqualKey::Merge)]);
     changed.code = Some([2; 32]);
     changed.spec.options.fields[0].default = Some("default".into());
     rig.decoder = Arc::new(changed);
-    rig.restart(Tuning::default());
-    drop(rig.open().expect("opens"));
+    *rig.live.lock().expect("live") = rig.decoder.clone();
+    let rebuilt = rig.open().expect("opens");
     assert_eq!(rig.decoder.runs(), 1, "edited code rebuilds");
+    assert!(!Arc::ptr_eq(&held, &rebuilt), "and is not the held track");
+    drop((held, rebuilt));
     rig.restart(Tuning::default());
     drop(rig.open().expect("opens"));
     assert_eq!(rig.decoder.runs(), 1, "and the rebuilt artifact is reused");

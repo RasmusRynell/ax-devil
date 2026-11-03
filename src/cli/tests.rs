@@ -1,4 +1,5 @@
 use super::*;
+use api_types::handlers::PluginsInfo;
 use serde_json::{Value, json};
 use workspace::Source;
 
@@ -341,7 +342,8 @@ fn catalog_commands_list_the_built_ins_and_resolve_the_file_to_check() {
 }
 
 #[tokio::test]
-async fn plugins_installed_and_removed_through_the_registry_load_on_the_next_start() {
+async fn plugins_installed_updated_and_removed_through_the_registry_are_listed_and_usable_by_the_next_command()
+ {
     let folder = tempfile::tempdir().unwrap();
     let registry = Ok(folder.path().join("data/plugins.json"));
     let fixture =
@@ -355,18 +357,20 @@ async fn plugins_installed_and_removed_through_the_registry_load_on_the_next_sta
     .unwrap();
     // Each command starts as the app does: the registry is read before the command line.
     let plugins = |args: &[&str]| {
-        let (handlers, installed) = ax_devil::plugins::load(&registry, Handlers::built_in());
         let command = match parse(&[&["plugins"], args].concat()).unwrap().command {
             Some(Command::Plugins(command)) => command,
             _ => panic!("a plugins command is a plugins command"),
         };
-        plugins::run(command, registry.clone(), handlers, installed)
+        plugins::run(
+            command,
+            Plugins::new(registry.clone(), Handlers::built_in()),
+        )
     };
     let fixture = fixture.to_str().unwrap();
 
     let installed = plugins(&["install", fixture]).await;
     assert!(
-        installed.ok && installed.text.contains("next start"),
+        installed.ok && installed.text.contains("Installed shell-times 1.0.0"),
         "{}",
         installed.text
     );
@@ -386,8 +390,11 @@ async fn plugins_installed_and_removed_through_the_registry_load_on_the_next_sta
         listed.text
     );
     let json: Value = serde_json::from_str(&plugins(&["list", "--json"]).await.text).unwrap();
-    assert_eq!(json["plugins"][0]["status"]["state"], "Loaded");
-    let handlers = ax_devil::plugins::load(&registry, Handlers::built_in()).0;
+    assert_eq!(
+        json["plugins"].as_array().unwrap().last().unwrap()["status"]["state"],
+        "loaded"
+    );
+    let handlers = Plugins::new(registry.clone(), Handlers::built_in()).handlers();
     assert!(
         args::try_parse_from(
             &handlers,
@@ -404,6 +411,19 @@ async fn plugins_installed_and_removed_through_the_registry_load_on_the_next_sta
         )
         .is_ok()
     );
+
+    // Another folder with the same plugin replaces it in place; one that is not valid changes nothing.
+    let moved = folder.path().join("moved");
+    std::fs::create_dir(&moved).unwrap();
+    for file in ["ax-devil-plugin.json", "convert.sh"] {
+        std::fs::copy(std::path::Path::new(fixture).join(file), moved.join(file)).unwrap();
+    }
+    let update =
+        |path: &std::path::Path| plugins(&["update", "shell-times", path.to_str().unwrap()]);
+    assert!(update(&moved).await.ok);
+    assert!(!update(&broken).await.ok);
+    let listed = plugins(&["list"]).await;
+    assert!(listed.text.contains("moved"), "{}", listed.text);
 
     assert!(plugins(&["remove", "shell-times"]).await.ok);
     assert!(!plugins(&["remove", "shell-times"]).await.ok);

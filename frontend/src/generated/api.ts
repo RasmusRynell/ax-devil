@@ -138,7 +138,7 @@ location: string, };
  * The public kind of a failure. A code and the ids in a [`Location::Item`] are all a viewer who may not see the
  * host's files is told; the reason and any path stay with the host.
  */
-export type ErrorCode = "InvalidPath" | "FileNotFound" | "FileUnreadable" | "NotAVideo" | "UnsupportedFormat" | "IndexingFailed" | "FileChanged" | "DecodeFailed" | "ContentNotFound" | "ProtocolViolation" | "VideoClosed" | "UnknownHandler" | "OverlayInvalid" | "PlaylistInvalid" | "CatalogInvalid" | "Internal";
+export type ErrorCode = "InvalidPath" | "FileNotFound" | "FileUnreadable" | "NotAVideo" | "UnsupportedFormat" | "IndexingFailed" | "FileChanged" | "DecodeFailed" | "ContentNotFound" | "ProtocolViolation" | "VideoClosed" | "UnknownHandler" | "OverlayInvalid" | "PlaylistInvalid" | "PluginInvalid" | "CatalogInvalid" | "Internal";
 
 /**
  * The values a client may fill into the message for a code. Only ids, never text.
@@ -957,29 +957,38 @@ extensions: Array<string>,
 /**
  * The options it takes, in the order they are shown; empty for a decoder without any.
  */
-options: Array<FieldInfo>, 
-/**
- * The id of the plugin that provides it; absent for the built-in decoders.
- */
-plugin?: string, };
+options: Array<FieldInfo>, };
 
 /**
- * The body of `GET /api/plugins`: the plugins the user installed, whether or not they loaded.
+ * The body of `GET /api/plugins`: the built-in plugins, then the installed ones, whether or not they loaded.
  */
 export type PluginsInfo = { 
 /**
- * One per registry entry, in install order.
+ * The built-ins, then one per registry entry in install order.
  */
 plugins: Array<PluginInfo>, 
 /**
- * Why the registry itself could not be used, in which case no plugin loaded.
+ * Why the registry itself could not be used, in which case no installed plugin loaded.
  */
 problem?: string, };
 
 /**
- * One installed plugin.
+ * One plugin.
  */
 export type PluginInfo = { 
+/**
+ * Where it comes from.
+ */
+source: PluginSource, 
+/**
+ * Whether it loaded.
+ */
+status: PluginStatus, };
+
+/**
+ * Where a plugin comes from.
+ */
+export type PluginSource = { "kind": "built_in" } | { "kind": "installed", 
 /**
  * The manifest file the registry names.
  */
@@ -987,16 +996,12 @@ manifest: string,
 /**
  * The folder the manifest is in.
  */
-folder: string, 
-/**
- * Whether it loaded.
- */
-status: PluginStatus, };
+folder: string, };
 
 /**
- * Whether an installed plugin can be used.
+ * Whether a plugin can be used.
  */
-export type PluginStatus = { "state": "Loaded", 
+export type PluginStatus = { "state": "loaded", 
 /**
  * The plugin id.
  */
@@ -1006,17 +1011,43 @@ id: string,
  */
 name: string, 
 /**
- * Free text from the manifest.
+ * Free text from the manifest; the app's version for a built-in.
  */
 version: string, 
 /**
- * The file extensions its decoders read: lowercase, with the dot.
+ * What it provides, in the order it lists them.
  */
-extensions: Array<string>, } | { "state": "Failed", 
+handlers: Array<HandlerSummary>, } | { "state": "failed", 
 /**
  * What is wrong, naming the manifest field when there is one.
  */
 reason: string, };
+
+/**
+ * One handler a plugin provides.
+ */
+export type HandlerSummary = { 
+/**
+ * What it does.
+ */
+kind: HandlerKind, 
+/**
+ * The id that selects it.
+ */
+id: string, 
+/**
+ * What the user reads.
+ */
+name: string, 
+/**
+ * The file extensions a decoder reads, lowercase with the dot; empty for the other kinds.
+ */
+extensions: Array<string>, };
+
+/**
+ * What a handler does.
+ */
+export type HandlerKind = "decoder" | "playlist_resolver";
 
 /**
  * A playlist resolver and the form its settings take.

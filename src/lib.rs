@@ -15,9 +15,7 @@ pub mod video_cache;
 pub mod video_sources;
 
 use access::{Admission, Limits, Policy, Principal};
-use api_types::{
-    API_VERSION, ApiError, AppInfo, SHELL_API, SettingsChange, SettingsState, handlers::PluginsInfo,
-};
+use api_types::{API_VERSION, ApiError, AppInfo, SHELL_API, SettingsChange, SettingsState};
 use axum::{
     Json, Router,
     extract::{FromRef, State},
@@ -30,7 +28,6 @@ use axum::{
     response::{IntoResponse, Response},
 };
 use catalogs::Library;
-use handlers::Handlers;
 use overlays::OverlayService;
 use routes::Listener;
 use scene_store::TrackRegistry;
@@ -61,10 +58,8 @@ pub struct AppState {
     pub settings: Arc<settings::Settings>,
     /// Where the saved window positions are, when this backend keeps any; see [`AppState::with_windows`].
     windows: Option<Arc<Windows>>,
-    /// The decoders and playlist resolvers the app knows.
-    pub handlers: Handlers,
-    /// The plugins the user installed, as loaded at startup.
-    pub plugins: Arc<PluginsInfo>,
+    /// The decoders and playlist resolvers the app knows, and the plugins that provide them.
+    pub plugins: Arc<plugins::Plugins>,
     /// The open videos, which the playback socket draws its viewers from.
     pub videos: Arc<video_sources::VideoSources>,
     /// Opens the overlays of viewers.
@@ -97,12 +92,12 @@ impl AppState {
         policy: Policy,
         videos: Arc<video_sources::VideoSources>,
         stopping: watch::Receiver<bool>,
-        handlers: Handlers,
+        plugins: Arc<plugins::Plugins>,
         cache_dir: &Path,
     ) -> Self {
         let runtime = tokio::runtime::Handle::current();
         let catalogs = Library::built_in();
-        let tracks = TrackRegistry::new(handlers.decoder_lookup(), Some(cache_dir));
+        let tracks = TrackRegistry::new(plugins.set().decoder_lookup(), Some(cache_dir));
         let limits = match policy {
             // Every client of the Local listener is this machine, so a per-address cap would only limit the person
             // using it: all their windows and viewers share one address.
@@ -118,11 +113,10 @@ impl AppState {
                 GRACE,
                 Arc::new(OnRuntime {
                     runtime,
-                    handlers: handlers.clone(),
+                    handlers: plugins.set(),
                 }),
             ),
-            handlers,
-            plugins: Arc::default(),
+            plugins,
             videos,
             stopping,
             windows: None,
@@ -144,13 +138,6 @@ impl AppState {
     #[must_use]
     pub fn with_launch(mut self, launch: Arc<LaunchQueue>) -> Self {
         self.launch = launch;
-        self
-    }
-
-    /// The same state reporting `plugins`, which `handlers` must already hold the decoders of.
-    #[must_use]
-    pub fn with_plugins(mut self, plugins: PluginsInfo) -> Self {
-        self.plugins = Arc::new(plugins);
         self
     }
 
@@ -504,7 +491,7 @@ mod tests {
             Policy::Local,
             videos,
             stopping,
-            handlers::Handlers::built_in(),
+            plugins::Plugins::fixed(handlers::Handlers::built_in()),
             &cache,
         )
         .with_catalogs(library.clone());

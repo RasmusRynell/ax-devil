@@ -29,6 +29,7 @@ impl FolderPairResolver {
         Self {
             spec: ResolverSpec {
                 id: "folder_pair".to_owned(),
+                plugin: "folder_pair".to_owned(),
                 name: "Folder Pair".to_owned(),
                 description: "Match videos and overlays from two folders by file name.".to_owned(),
                 form: Form {

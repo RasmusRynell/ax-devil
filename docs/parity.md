@@ -97,7 +97,7 @@ Listed in [parity deviations](parity-deviations.md).
 |----|---------|---|--------|------|-------|
 | PL-01 | Decoder plugins (file, payload) and playlist resolver plugins | M | in progress | `crates/plugins/tests/`, `tests/plugins.rs` | Plugins with decoder handlers ([plugins](plugins.md), D29). Left: payload decoders, resolver handlers |
 | PL-02 | Built-in decoders and resolvers listed by `list-handlers` and `playlist --help` | M | in progress | `src/cli/tests.rs`, `src/routes/handlers.rs`, `crates/handlers` tests, `crates/scene-decoders/tests/adf_*.rs` | MOT, UVG-VCM, ONVIF XML, CVAT, ADF beta/v1 (frame and consolidated) and plugin decoders; both resolvers. ADF as live payload decoders waits for live sources. CLI help is generated, untested |
-| PL-03 | Install, update, remove, list from CLI and Plugins view | M | in progress | `tests/plugins.rs`, `src/cli/tests.rs` | `plugins install/remove/list/check`; applied on restart. Left: `update`, Plugins view |
+| PL-03 | Install, update, remove, list from CLI and Plugins view | M | in progress | `tests/plugins.rs`, `src/cli/tests.rs` | `plugins install/update/remove/list/check`; applied to the running app. Left: Plugins view |
 | PL-04 | Load failures never stop the app and are listed | M | in progress | `tests/plugins.rs` | `plugins list` shows load failures; a failed run leaves its lane Incomplete. Left: Plugins view |
 | PL-05 | Unchanged third-party Python plugins run (bridge); not planned by default | S | todo |  |  |
 

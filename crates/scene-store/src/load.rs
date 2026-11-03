@@ -57,7 +57,7 @@ pub(crate) fn load(
         scene_major: SCENE_VERSION.major,
         scene_minor: SCENE_VERSION.minor,
         options: key.options.clone(),
-        code: decoder.code_hash(),
+        code: key.code,
         stat,
         digest: None,
     };

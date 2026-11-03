@@ -2,7 +2,8 @@
 
 use super::{Completion, Spawn, Work};
 use foundation::{ErrorCode, Interrupt, UserError};
-use handlers::Handlers;
+use handlers::HandlerSet;
+use std::sync::Arc;
 use tokio::runtime;
 
 /// Runs the jobs a session asks for. The session does not care how: a runner starts the work and reports its
@@ -33,13 +34,13 @@ impl Completer {
 pub struct OnRuntime {
     /// Where the jobs run.
     pub runtime: runtime::Handle,
-    /// The resolvers and decoders recipes name.
-    pub handlers: Handlers,
+    /// The resolvers and decoders recipes name; each job takes the handlers as they are when it starts.
+    pub handlers: Arc<HandlerSet>,
 }
 
 impl Runner for OnRuntime {
     fn run(&self, spawn: Spawn, done: Completer) {
-        let handlers = self.handlers.clone();
+        let handlers = self.handlers.current();
         self.runtime.spawn(async move {
             if spawn.cancel.is_cancelled() {
                 return;

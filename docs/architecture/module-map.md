@@ -6,7 +6,7 @@ Where code and files belong. Layers and the dependency rule are in the [overview
 |------|------|
 | `src/main.rs`, `src/cli.rs`, `src/cli/`, `src/runtime.rs` | Backend startup and shutdown and the command line (the local backend, `local`, `serve`, `app`, and `playlist <resolver>`, `list-handlers`, `catalog` generated from the registry); the items the command line asks for wait in the launch queue; prints the readiness line the shell and supervisor wait for |
 | `src/paths.rs` | Where the settings file, caches, logs, window state and the user's catalog folder live: the XDG folders, or the command-line overrides |
-| `src/lib.rs` | The backend's two entry points (`app`, `lan_app`), the state every route reaches, settings and info handlers, the embedded frontend |
+| `src/lib.rs`, `src/plugins.rs` | The backend's two entry points (`app`, `lan_app`), the state every route reaches, settings and info handlers, the embedded frontend; the `Plugins` service that loads, installs, removes, updates and live-reloads plugins and is the only code that swaps the handlers |
 | `src/routes/` | The route table, the window-position routes, the handler and scan routes, and the playback WebSocket (redeems a ticket into a stream lease and enforces its authority) with its lane overlays, catalog feed (`playback/catalogs.rs`) inspections (`playback/inspect.rs`) and File scope queries (`playback/file_scope.rs`): adapters over the services that hold only per-viewer state (File scope's per-lane job scheduler and cache, the export request frozen into an `ExportSpec`) |
 | `src/exports.rs`, `src/render_host.rs`, `src/desktop.rs`, `src/routes/playback/export.rs` | The backend's one export job, the Render Page's host and its private socket, the desktop folder and its Electron, and the playback socket's export messages |
 | `src/video_sources.rs`, `src/video_cache.rs` | Where `media` meets `playback` (the decoder adapter, opening viewers on files) and how the `playback.video_cache` setting sizes the cache |
@@ -20,7 +20,7 @@ Where code and files belong. Layers and the dependency rule are in the [overview
 | `crates/handler-api/` | Layer 2: what a handler is: the `Decoder` and `PlaylistResolver` traits, the `Input` and `SceneSink` they run against, the `Form` of options and settings both declare and validate, and the overlay and video references |
 | `crates/scene-decoders/` | Layer 2: built-in decoders from overlay records to Scenes (MOT, UVG-VCM, ONVIF XML, CVAT, ADF) |
 | `crates/playlist-resolvers/` | Layer 2: built-in resolvers from settings to playlists of videos and overlay files (folder pair, MOT Challenge) |
-| `crates/handlers/` | Layer 2: the one registry of decoders and playlist resolvers; the built-ins and the installed plugins' handlers |
+| `crates/handlers/` | Layer 2: the one registry of decoders and playlist resolvers (the built-ins and the installed plugins' handlers), and the swappable set of it that running work takes snapshots of |
 | `crates/overlay-sync/` | Layer 2: Overlay Lookup, the pure choice of the sample that belongs to a frame (matching, coverage, sticky) |
 | `crates/media/` | Layer 3: video file or image sequence to frame index and frames (FFmpeg); the only crate that links it ([README](../../crates/media/README.md)) |
 | `crates/playback/` | Layer 3: what to decode and cache around each viewer's playhead, and its delivery; never depends on `media` ([README](../../crates/playback/README.md)) |

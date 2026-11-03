@@ -36,7 +36,7 @@ async fn serve(folder: &Path) -> String {
         policy,
         videos,
         stopping,
-        handlers::Handlers::built_in(),
+        ax_devil::plugins::Plugins::fixed(handlers::Handlers::built_in()),
         &cache,
     )
     .with_hosting(Hosting::Server(LinkBase::for_listener(None, address)));

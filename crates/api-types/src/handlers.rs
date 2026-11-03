@@ -23,46 +23,46 @@ pub struct DecoderInfo {
     pub extensions: Vec<String>,
     /// The options it takes, in the order they are shown; empty for a decoder without any.
     pub options: Vec<FieldInfo>,
-    /// The id of the plugin that provides it; absent for the built-in decoders.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    #[ts(optional)]
-    pub plugin: Option<String>,
 }
 
-/// The body of `GET /api/plugins`: the plugins the user installed, whether or not they loaded.
-#[derive(Clone, Default, Serialize, Deserialize, TS)]
+/// The body of `GET /api/plugins`: the built-in plugins, then the installed ones, whether or not they loaded.
+#[derive(Clone, Default, PartialEq, Serialize, Deserialize, TS)]
 pub struct PluginsInfo {
-    /// One per registry entry, in install order.
+    /// The built-ins, then one per registry entry in install order.
     pub plugins: Vec<PluginInfo>,
-    /// Why the registry itself could not be used, in which case no plugin loaded.
+    /// Why the registry itself could not be used, in which case no installed plugin loaded.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
     pub problem: Option<String>,
 }
 
-impl PluginsInfo {
-    /// Whether `plugin` is the id of a loaded plugin.
-    pub fn provides(&self, plugin: &str) -> bool {
-        self.plugins
-            .iter()
-            .any(|entry| matches!(&entry.status, PluginStatus::Loaded { id, .. } if id == plugin))
-    }
-}
-
-/// One installed plugin.
-#[derive(Clone, Serialize, Deserialize, TS)]
+/// One plugin.
+#[derive(Clone, PartialEq, Serialize, Deserialize, TS)]
 pub struct PluginInfo {
-    /// The manifest file the registry names.
-    pub manifest: String,
-    /// The folder the manifest is in.
-    pub folder: String,
+    /// Where it comes from.
+    pub source: PluginSource,
     /// Whether it loaded.
     pub status: PluginStatus,
 }
 
-/// Whether an installed plugin can be used.
-#[derive(Clone, Serialize, Deserialize, TS)]
-#[serde(tag = "state")]
+/// Where a plugin comes from.
+#[derive(Clone, PartialEq, Serialize, Deserialize, TS)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum PluginSource {
+    /// It ships with the app.
+    BuiltIn,
+    /// The user installed it.
+    Installed {
+        /// The manifest file the registry names.
+        manifest: String,
+        /// The folder the manifest is in.
+        folder: String,
+    },
+}
+
+/// Whether a plugin can be used.
+#[derive(Clone, PartialEq, Serialize, Deserialize, TS)]
+#[serde(tag = "state", rename_all = "snake_case")]
 pub enum PluginStatus {
     /// It provides handlers.
     Loaded {
@@ -70,16 +70,39 @@ pub enum PluginStatus {
         id: String,
         /// What the user reads.
         name: String,
-        /// Free text from the manifest.
+        /// Free text from the manifest; the app's version for a built-in.
         version: String,
-        /// The file extensions its decoders read: lowercase, with the dot.
-        extensions: Vec<String>,
+        /// What it provides, in the order it lists them.
+        handlers: Vec<HandlerSummary>,
     },
     /// It provides none.
     Failed {
         /// What is wrong, naming the manifest field when there is one.
         reason: String,
     },
+}
+
+/// One handler a plugin provides.
+#[derive(Clone, PartialEq, Serialize, Deserialize, TS)]
+pub struct HandlerSummary {
+    /// What it does.
+    pub kind: HandlerKind,
+    /// The id that selects it.
+    pub id: String,
+    /// What the user reads.
+    pub name: String,
+    /// The file extensions a decoder reads, lowercase with the dot; empty for the other kinds.
+    pub extensions: Vec<String>,
+}
+
+/// What a handler does.
+#[derive(Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "snake_case")]
+pub enum HandlerKind {
+    /// It turns an overlay file into Scenes.
+    Decoder,
+    /// It turns settings into a playlist.
+    PlaylistResolver,
 }
 
 /// A playlist resolver and the form its settings take.

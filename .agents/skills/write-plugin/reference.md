@@ -40,13 +40,13 @@ Decoder handler (`"kind": "decoder"`):
 
 The cache of a file's samples is keyed by the handler id, the SHA-256 of the manifest and the plugin's `code` files,
 the declared options (defaults filled in; undeclared keys are dropped with a warning). Editing a code file reruns the
-plugin the next time the file opens; the app reads the manifest itself only at start.
+plugin the next time the file opens, and a lane already open keeps what it read.
 
 ## Registry `$XDG_DATA_HOME/ax-devil/plugins.json`
 
 `{"version": 2, "plugins": [{"manifest": "/absolute/path/ax-devil-plugin.json"}]}` (default
-`~/.local/share/ax-devil/plugins.json`). `plugins install` and `plugins remove` write it atomically; a plugin is
-never found by scanning folders. The app reads it at start, so a change applies on the next start. A broken registry
+`~/.local/share/ax-devil/plugins.json`). `plugins install`, `update` and `remove` write it atomically; a plugin is
+never found by scanning folders. A running app rereads it when it or a listed manifest changes. A broken registry
 loads no plugin; a broken entry fails alone. Both are listed by `plugins list`.
 
 ## Running

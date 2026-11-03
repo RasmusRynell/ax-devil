@@ -96,43 +96,49 @@ impl Registry {
     /// The plugin id and every handler id must be new: an installed plugin that has one, or a reserved one, refuses
     /// it.
     pub fn install(&mut self, path: &Path, reserved: &Reserved) -> Result<Manifest, ManifestError> {
-        let manifest_path = if path.is_dir() {
-            path.join(MANIFEST_FILE)
-        } else {
-            path.to_path_buf()
+        let (file, manifest) = read_manifest(path)?;
+        self.taken(None, reserved).claim(&manifest)?;
+        self.entries.push(entry_of(&file));
+        Ok(manifest)
+    }
+
+    /// Replaces the plugin that `target` names (see [`remove`](Self::remove)) by the one at `path`, in the same
+    /// place in the order, after reading and validating its manifest again; the replaced plugin's ids are free for
+    /// it. `None` when `target` names no plugin.
+    pub fn update(
+        &mut self,
+        target: &str,
+        path: &Path,
+        reserved: &Reserved,
+    ) -> Result<Option<Manifest>, ManifestError> {
+        let Some(index) = self.entries.iter().position(|entry| names(entry, target)) else {
+            return Ok(None);
         };
-        let manifest_path = fs::canonicalize(&manifest_path).map_err(|error| {
-            ManifestError::file(format!("cannot read {}: {error}", manifest_path.display()))
-        })?;
-        let manifest = Manifest::load(&manifest_path)?;
+        let (file, manifest) = read_manifest(path)?;
+        self.taken(Some(index), reserved).claim(&manifest)?;
+        self.entries[index] = entry_of(&file);
+        Ok(Some(manifest))
+    }
+
+    /// `reserved` and the ids of the installed plugins that load, except the one at `skip`.
+    fn taken(&self, skip: Option<usize>, reserved: &Reserved) -> Reserved {
         let mut taken = reserved.clone();
-        for installed in self.manifests() {
+        for (index, entry) in self.entries.iter().enumerate() {
             // One that does not load took no ids, as in `load`.
-            if let Ok(other) = Manifest::load(&installed) {
+            if Some(index) != skip
+                && let Ok(other) = Manifest::load(&entry_manifest(entry))
+            {
                 let _ = taken.claim(&other);
             }
         }
-        taken.claim(&manifest)?;
-        self.entries.push(Map::from_iter([(
-            "manifest".to_owned(),
-            Value::String(manifest_path.to_string_lossy().into_owned()),
-        )]));
-        Ok(manifest)
+        taken
     }
 
     /// Removes the plugin whose manifest declares the id `target`, or whose manifest or folder path is `target`
     /// (the only way to remove one that no longer loads). Its files are left alone. Returns whether one was removed.
     pub fn remove(&mut self, target: &str) -> bool {
         let before = self.entries.len();
-        self.entries.retain(|entry| {
-            let manifest = entry_manifest(entry);
-            let named = manifest == Path::new(target)
-                || manifest
-                    .parent()
-                    .is_some_and(|folder| folder == Path::new(target));
-            let declared = Manifest::load(&manifest).is_ok_and(|loaded| loaded.id == target);
-            !(named || declared)
-        });
+        self.entries.retain(|entry| !names(entry, target));
         self.entries.len() != before
     }
 
@@ -160,6 +166,36 @@ impl Registry {
         file.persist(&self.path).map_err(|error| error.error)?;
         Ok(())
     }
+}
+
+/// The manifest file `path` names, canonical, and what it declares.
+fn read_manifest(path: &Path) -> Result<(PathBuf, Manifest), ManifestError> {
+    let file = if path.is_dir() {
+        path.join(MANIFEST_FILE)
+    } else {
+        path.to_path_buf()
+    };
+    let file = fs::canonicalize(&file)
+        .map_err(|error| ManifestError::file(format!("cannot read {}: {error}", file.display())))?;
+    let manifest = Manifest::load(&file)?;
+    Ok((file, manifest))
+}
+
+fn entry_of(manifest: &Path) -> Map<String, Value> {
+    Map::from_iter([(
+        "manifest".to_owned(),
+        Value::String(manifest.to_string_lossy().into_owned()),
+    )])
+}
+
+/// Whether `target` is the entry's manifest path, its folder, or the id its manifest declares.
+fn names(entry: &Map<String, Value>, target: &str) -> bool {
+    let manifest = entry_manifest(entry);
+    manifest == Path::new(target)
+        || manifest
+            .parent()
+            .is_some_and(|folder| folder == Path::new(target))
+        || Manifest::load(&manifest).is_ok_and(|loaded| loaded.id == target)
 }
 
 fn entry_manifest(entry: &Map<String, Value>) -> PathBuf {
