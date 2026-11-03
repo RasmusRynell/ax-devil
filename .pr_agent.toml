@@ -1,0 +1,29 @@
+# PR-Agent review settings. Model and trigger settings live in .github/workflows/pr-agent.yml; max_model_tokens here caps how much diff the reviewer sends.
+# PR-Agent reads this file from the default branch, so edits apply after merge.
+
+[pr_reviewer]
+extra_instructions = """\
+This is a Python 3.10+ PySide6 desktop app (strict mypy, Ruff). Report only findings a maintainer should act on:
+- Logic bugs and incorrect behavior, including edge cases and unhandled error paths.
+- Security problems, including secrets, unsafe file or network handling, and untrusted plugin input.
+- Races, deadlocks and thread misuse, especially Qt GUI-thread rules and background workers.
+- Performance regressions on frame, decode or paint hot paths.
+- Type-safety and API-contract violations, and breaking changes to config, plugin or CLI behavior.
+- Missing tests only for deep modules or rules with real user consequences; the repo deliberately avoids shallow tests.
+For each finding cite the file and line, say why it matters, and suggest a concrete fix.
+Skip style, naming and formatting (Ruff and mypy enforce them), compliments and long summaries.
+Stay silent when unsure: prefer no finding over a speculative one.
+"""
+num_max_findings = 5
+require_estimate_effort_to_review = false
+require_ticket_analysis_review = false
+enable_review_labels_security = false
+enable_review_labels_effort = false
+enable_intro_text = false
+persistent_comment = true
+
+[config]
+max_model_tokens = 200000
+
+[ignore]
+glob = ['Cargo.lock']

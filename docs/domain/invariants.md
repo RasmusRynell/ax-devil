@@ -1,0 +1,256 @@
+# Domain Invariants
+
+Rules that code in more than one module must keep, and that no type, validation or test enforces on its own.
+Read the sections for the area you change. How things fit together is in the architecture docs.
+
+Not here: user-visible behavior, rules one module keeps to itself, Qt workarounds and measurements. See the placement
+rule in [AGENTS.md](../../AGENTS.md#where-a-fact-belongs).
+
+## Content Model
+
+- Workspace content (`SeekableVideoContent`, `LiveVideoContent`, `OverlayContent`, `EntryLane`, `PlaylistContent`)
+  describes what a Workspace Item resolves to. It stores source specs and metadata, never instantiated sources or
+  factories.
+  Runtime sources are created when a viewer opens content: offline by `open_entry_media`, live by
+  `StreamMediaController`.
+- Workspace Items are the truth and Content is derived: everything that adds content creates items, and Content comes
+  only from `WorkspaceItem.resolve`. The Workspace, the store, and the file format never branch on item kind.
+- Content ids derive from the owning item's id and never change between resolutions (see
+  [Workspace](../architecture/workspace.md)), and Content records its item's id. Content built outside resolution has
+  empty ids and is never top-level Content.
+- Live Stream Items store connection values as entered; a `$VARIABLE` reference is expanded only during resolution.
+  A camera property (protocol, ports) is stored on the item and editable in the Add dialog; changed defaults only
+  prefill new items. An environment preference (connection timeout) is never stored; it is read when the stream connects.
+- An item's label is what the user named it, or empty. An empty label shows `default_name`, derived from the recipe
+  when displayed; derived names such as an expanded host are never stored or saved.
+- An item that fails to resolve stays in the Workspace with its `ItemResolutionError` recorded. An item the file format
+  cannot read is an `UnreadableItem` that always fails to resolve and is saved back unchanged; see
+  [Workspace](../architecture/workspace.md#file-format).
+- Each overlay source spec owns its `OverlaySourceKind`; overlay content and lanes derive the kind from the spec.
+- Seekable video accepts file overlays. Live video accepts at most one RTSP, MQTT, or DataHub WebSocket overlay, chosen
+  explicitly as `LiveOverlayMode`; config and CLI strings are converted at their boundaries.
+- Every playlist lane references `SeekableVideoContent`. Playlists are offline workflows.
+- `WorkspaceIntake` validates decoder selections and live connection settings for every video and live stream
+  opened through a dialog, the CLI or a file drop, so those paths share one set of requirements. Playlists from a
+  resolver plugin enter as built; the resolver owns their validity.
+- `workspace/core` imports no PySide6, directly or through other modules; `workspace/ui` holds everything Qt.
+
+## Coordinates
+
+- `BoundingBox`, `Polygon`, and `NormalizedPoint` use normalized `[0,1]` image space. Catalog lengths resolve against
+  the current target, not source-video dimensions.
+- Prepared drawings and styles are immutable values. Never mutate shared vertex bytes, Qt value objects or text
+  layouts after publication.
+
+## Display Rendering
+
+- Video and overlay data are handed to the display as one synchronized pair; queued updates may coalesce to the
+  latest pair. Offline delivery presents only the newest frame queued for the GUI thread; seeks and frame steps still
+  present the requested frame.
+- Offline playback follows the clock: a delivery worker that falls behind skips to the frame due now instead of
+  slowing down; the video's final frame is always delivered.
+- Scene and catalog interpretation stay on the GUI side of the renderer boundary; scene graph callbacks consume
+  prepared data only. GPU resources are created and retired only in Qt's scene graph phase.
+- Display and export use the same Quick renderer, without Scene semantics.
+
+## Frame Identity
+
+- Every frame has `FrameIdentifier.sequence_id` and `FrameIdentifier.timestamp_us`: integer microseconds on the media
+  clock, a Scene datetime's time since the Unix epoch. Live frames carry capture time; an offline video's first frame is
+  0, so timestamp-keyed files for a recording count from the epoch. Convert units only through `core/time_units`.
+- Timestamp matching is a synchronization policy: exact timestamp first, then the latest previous overlay timestamp
+  within the configured tolerance. Future overlay timestamps are never selected early.
+- Frame-keyed files (MOT/CVAT) match annotation sequence IDs and resolve sample age through the video's actual frame
+  timeline, never synthetic keys or FPS.
+- With sticky overlays enabled, offline playback and export select the latest sample at or before the requested time,
+  regardless of navigation history. Age is measured from the original sample timestamp, never the last matched frame.
+  The timeout includes its boundary; no timeout means unlimited retention. Matching tolerance distinguishes normal
+  matches from retained samples, which are the ones drawn at the retained opacity; it does not limit sticky
+  retention. With sticky disabled, unmatched frames have no overlay. Empty scene updates replace previous geometry;
+  missing updates may retain it.
+- Live synchronization consumes the newest queued sample at or before the frame within an inclusive, fixed 10 ms
+  tolerance, independent of FPS. Stale samples are discarded before persistence; late older samples cannot replace
+  newer state.
+- File overlay packets retain the matched sample timestamp, and its sequence when the provider knows one; the
+  requested frame stays in lookup metadata.
+- Alignment diagnostics compare on the provider's actual basis: timestamps for timestamp-keyed overlays, frame numbers
+  for sequence-keyed overlays.
+
+## Scene Model
+
+- `Scene` is the exchange format for decoded world-model data. All decoders produce it; filtering, inspection, and
+  rendering consume it.
+- Published Scenes are snapshots. Publish a replacement Scene when content changes instead of mutating a delivered one;
+  unchanged identities may reuse filtered and prepared rendering data.
+- `Entity.observations` stays time-sorted; decoders add through `Entity.add_observation()`.
+- `Classification.type` is a dynamic string; `KnownClassificationType` is only a convenience for recognized values.
+  Recipe routing is catalog policy: UI code never switches on classification strings.
+- `Classification.score` and `Classification.confidence` are separate: a decoder sets what its source provides and never
+  derives or invents one from the other or a default; a missing value is `None` and the sample is kept. Score is any
+  finite number shown plain, and so is confidence, which is only what a source reports as one. A bar for a value in
+  0..1 is a display hint, not a range requirement. The primary classification ranks scored
+  before unscored, then by score, then by confidence.
+- `EntityRelation` is a directed link between entity IDs. A relation with a missing endpoint is valid Scene data but is
+  not rendered.
+- `Observation.source_data` holds what the source supplied verbatim; `Observation.debug` holds what the decoder
+  computed. Both are free-form and picklable, and inspection shows and queries them under Debug, each field with its
+  `FieldOrigin`. `Scene.debug` is free-form decoder-owned frame diagnostics, never displayed and without origin.
+  Scene filtering, rendering, synchronization, and hit-testing never read any of them.
+- Changing the Scene contract requires bumping `SCENE_MODEL_VERSION`: major when breaking, including stricter value
+  requirements, minor when additive. Scene datetimes must be timezone-aware. Decoder plugins declaring another major,
+  or a newer minor, fail to load.
+
+## Workspace And Viewers
+
+- Open, focused, pinned, current on-screen, and live stream status viewer facts come from the hosted `ViewerWidget`
+  instances; they are not copied into parallel state records.
+- Video Viewer navigation reads consideration through the read-only `ConsiderationQuery` contract, not the mutable
+  `WorkspaceStore`.
+- `WorkspaceStore` owns the current and last saved Workspace, each item's resolution, consideration refs, and mutation
+  signals, and emits one notification per successful mutation; "modified" is `current != saved`.
+  `build_browser_sections` projects the resolved Content, with the open items, into browser rows. `state_changed` also
+  reports when the modified flag, name, or path changed; a failed `open_workspace` changes nothing.
+- Consideration refs identify current Workspace content, playlist entries, or lanes; orphan and out-of-range refs are
+  ignored.
+- Removing Content removes its whole item. Item removal closes every viewer widget showing that item's Content. Opening a Workspace file closes every viewer widget, even when item ids are kept.
+  `SplitView` exclusively owns hosted widget removal and deletion; callers use its removal API.
+- Every item is listed: an item that failed to resolve is one unavailable row that shows its reason and never opens;
+  an item still resolving is one pending row that opens nothing.
+- Workspace items resolve off the GUI thread through `ItemResolver`; `WorkspaceStore` commits a result only while its
+  item and Workspace are still current.
+- Only adding items opens a viewer. Opening or creating a Workspace lists its items and opens and connects
+  nothing.
+- Nothing prompts on launch, open, New or quit: a Workspace with unsaved edits has one recovery copy, never its own
+  file, that exists exactly while the edits do and is deleted when they are saved or discarded. The rest is in
+  [Workspace](../architecture/workspace.md#lifecycle).
+
+## Sidebar
+
+- The window is always in a Workspace; the activity bar has a Workspace zone and an app zone.
+- A Workspace-zone view is the whole Workspace or one part of it: it lists the Workspace's own items and offers ways to
+  add to them, and keeps no data of its own beyond what the Workspace file saves.
+- An app-zone view is about the application and never shows Workspace content; its `ViewGroup` is `APP`.
+- Bookmarks and review marks apply to local videos and playlists, never to live streams.
+- A sidebar view adds nothing to the viewer area; opening content from a view goes through `open_content`.
+
+## UI Lifecycle
+
+- UI is a projection of runtime state, not the owner of it. Widgets receive state from the module, service, or
+  controller that owns the concept, and widget construction never rebuilds shared runtime state as a side effect.
+- Work that discovers files, reads disk, validates, compiles, builds indexes, opens sources, or creates shared caches
+  belongs behind the owning runtime boundary, never in a widget constructor.
+- Text sizes, spacing, radii and chrome heights come from `modules/chrome/tokens.py`, never literals, and anything
+  sized from text or materializing a fixed palette color reruns through `chrome.appearance.follow_appearance`, so
+  the theme and **Text size** apply live. Pixels inside rendered frames (catalogs, sheets, export burn-ins) follow the frame instead.
+  The rest of the chrome rules are in the [chrome README](../../src/ax_devil/modules/chrome/README.md).
+- The video surface and its letterbox stay near-black (`chrome.theme.VIDEO_CANVAS`) in both themes: the Quick clear
+  color, the HUD and the letterbox in `video_player` do not follow the palette, and white playback controls belong on
+  that scrim, not on a theme-dependent panel.
+- Widgets that own runtime resources implement and call `cleanup()`.
+- Finite work that would block the GUI thread, such as a network scan, runs through `BackgroundJobs` in a `JobScope`
+  that closes when its owner cleans up or is destroyed. Work that changes something outside the app, or streams, keeps
+  its own runner; see the [background_jobs README](../../src/ax_devil/modules/background_jobs/README.md).
+- Cancellable work polls a `CancelToken` (`core/cancellation.py`), which raises `Cancelled`; there is no other
+  cancellation mechanism ([contract](../../src/ax_devil/modules/background_jobs/README.md#cancellation)).
+- The GUI thread never waits for offline file work and never spins the event loop to wait. `open_entry_media` opens an
+  entry's sources on a worker thread and delivers `EntryMedia` on the GUI thread; whoever holds the media owns every
+  source in it until `release_media`. Worker threads never hold the last reference to objects they hand to the GUI
+  thread.
+- Queued callbacks from replaced or cleaned-up live sources cannot affect the live viewer. Sources own their workers
+  and defer their own deletion until the worker finishes; the controller never inspects worker internals. Quit waits
+  for retiring workers, bounded by a deadline, so transport cleanup such as restoring camera state completes.
+- Live sources report failures they retry themselves with `sourceReconnecting` and failures needing a manual retry
+  with `sourceError`; the viewer shows both with their reason, never only in logs.
+- Automatic cyclic GC is disabled after startup; `app.py` freezes the startup heap and collects on a GUI-thread timer
+  so worker threads never finalize Qt objects held in reference cycles. Do not re-enable `gc`, call `gc.collect()` off
+  the GUI thread, or change thresholds to improve a benchmark. Keep long-lived Scene history light for the collector.
+
+## Synchronization
+
+- `StreamSync` syncs live data by capture time, not arrival time, and is event-driven with no wall-clock timer, so an
+  idle tail frame stays buffered until another input arrives. Sharing an RTSP connection does not pair frame and
+  overlay arrivals; both inputs keep their capture timestamps.
+- Offline lanes pull overlay data from an `OverlayLookup` by `FrameIdentifier`; file overlays have no playback
+  lifecycle and their owning runtime closes them explicitly. Live overlays are push-based through `overlayReady`.
+
+## Plugin System
+
+- External plugins are installed distributions discovered only through the supported entry-point groups, and must
+  declare the host's plugin API version. The base runtime never imports an external plugin merely because its source
+  directory exists.
+- Plugin IDs are unique within each plugin type; decoder `handler_type` strings are unique across loaded decoders for
+  each capability.
+- The launcher tells the plugin interpreter how to start the app again and where this installation keeps its plugin
+  selection (`AX_DEVIL_LAUNCH_COMMAND`, `AX_DEVIL_PLUGIN_ROOT`). Restarting and changing plugins from the running app go
+  through that command, so management stays in the base app and a restart picks up the current selection.
+- Plugin load failures must not stop the application. Load, validation and registration failures, including a
+  built-in plugin that fails to import, are recorded in `RuntimePluginRegistry` and listed in the Plugins view.
+- `ax-devil` selects the prepared plugin interpreter before importing application code. Plugin dependencies live in a
+  separate locked uv project constrained to the app's exact dependency closure; plugin upgrades never upgrade the app,
+  and installation activates a prepared project only after validation.
+- App, Python, installed-dependency, or editable-project metadata changes trigger a refresh on the next launch; a
+  failed refresh starts the base app without external plugins and is not retried for the same fingerprint; a
+  later metadata change or an explicit plugin change retries it.
+
+## Data Pipeline
+
+- Pausing RTSP keeps its connection alive. Stopping is terminal; reopening creates a new source.
+- Scene file provider artifacts invalidate unless their complete identity matches: source content digest (the stat
+  fingerprint only spares hashing an unchanged file, and never on Windows, where ctime is not a change time), decoder
+  name, explicit artifact version, Scene model version, provider-owned decode options, and store format version. When
+  only the stat fingerprint differs, the artifact is accepted and republished with the new one. The fingerprint is
+  taken from the held handle before the source is read. If the source changed during the build, a source-indexed store
+  skips persisting and a derived one persists without a digest, so a file written during indexing reads as changed on
+  the next open (except where the platform has no change time, Windows, and the original is restored); cache files are replaced atomically and read through the handle that wrote them.
+  Cache files can always be rebuilt. An open source-indexed store holds its source file open, and stops serving once
+  that file is rewritten in place, since its byte offsets no longer match; a replaced file leaves it valid.
+- Both storage modes persist Scene history records built from the sample lookup serves for each timestamp. Offline
+  history places a timestamp-keyed event on the first video frame at or after its sample and a frame-keyed one on its
+  sequence frame, and omits events outside the video; an object is present on exactly the frames whose looked-up sample
+  contains it, under the same matching and sticky selection as the lane's lookup.
+- Whole-file entity filtering judges each distinct set of recorded classification types through the same
+  classification policy as Scene entities; it is unavailable unless every filter option declares one, and history
+  never fabricates Entity data.
+- One process pool shares the Playback cache allowance across open offline sources. Cache pressure must not change
+  frame identity or timing; a frame larger than the budget is delivered without caching.
+
+## Export
+
+- Export writes to an owned temporary sibling file and replaces the destination only after success. Source/output
+  aliases are rejected; cancellation and failure cleanup never delete the destination.
+- Exports preserve relative source frame timestamps and frame durations; unreadable frames fail the export. Export
+  borrows a frozen filter snapshot and the catalog variant active when it starts, so later edits cannot alter an
+  export in progress.
+
+## Rendering
+
+- Scene rendering lives under `ax_devil.modules.scene.rendering`; drawing preparation and submission live under
+  `ax_devil.modules.video_player`, which never imports or interprets `Scene`.
+- Overlay draw order is shapes, then text, then labels. Order across entities and within shapes, text or
+  labels is not preserved, so a catalog never relies on one shape covering another.
+- Each recipe evaluates once per frame for all its routed entities or relations. A row that fails a demanded check
+  emits none of its recipe's output, and a recipe whose evaluation raises emits nothing for that frame; other rows
+  and recipes are unaffected.
+- Built-in catalogs are read in place from the installed package and never copied into the store, written or
+  deleted. Every JSON file in the user catalog directory is a user catalog, and startup and listing never overwrite
+  one. The one write the app makes is an explicit copy,
+  which validates before atomically replacing its destination. A copy of a built-in catalog records it in
+  `metadata.origin`; that is shown, never acted on.
+- The default catalog is the only catalog choice remembered across restarts. Overlay visibility belongs to each view or
+  lane, independently of filters and catalog authoring; hiding a feature keeps its inspection and hover data.
+- A failed catalog load or reload keeps the last compiled catalog in use and reports the error; it never leaves a view
+  without a catalog.
+
+## Settings And Shortcuts
+
+- Settings changes apply on OK. Settings that need a restart carry one shared marker, and saving one offers to restart
+  after the exit-time saves. [Quick Setup](../settings.md#quick-setup) is the one exception.
+- Saves validate every editable field, replace the configuration atomically, and only then emit runtime change
+  signals; failed saves leave active viewers untouched. Startup storage locations stay active until restart, except the unsaved-workspace copies and recent workspaces, which use
+  the storage folder saved now.
+- Runtime-mutable settings are consumed through `GlobalSettings` signals, not by polling `ConfigManager`. Settings
+  live in one immutable `SettingsState` that setters replace whole.
+- On/off overlay preferences are `OverlayPreference` members; adding a member adds it to the View menu, Settings and
+  the saved config.
+- All shortcuts are defined in `DEFAULT_SHORTCUTS`; persistence is override-only, so an empty `"shortcuts"` means all
+  defaults apply.
