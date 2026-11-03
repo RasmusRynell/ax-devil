@@ -80,7 +80,7 @@ function usePlugins() {
       latest.current?.abort();
     };
   }, [reload]);
-  return { info, setInfo, failure, setFailure, reload };
+  return { info, setInfo, failure, reload };
 }
 
 /** A plugin's handlers by kind, then the file extensions its decoders read. */
@@ -150,25 +150,32 @@ function Row({
 
 /** The sidebar's Plugins view: the plugins that failed, are installed and ship with the app, and installing and removing. */
 export function PluginsView() {
-  const { info, setInfo, failure, setFailure, reload } = usePlugins();
+  const { info, setInfo, failure, reload } = usePlugins();
   // Installing and removing change this machine's files: only the person at it may.
   const mayChange = useGrants().includes("preferences");
   const [path, setPath] = useState("");
   const [busy, setBusy] = useState(false);
+  // Why the last install or remove failed; a list reload never clears it.
+  const [refused, setRefused] = useState<string | null>(null);
   const bridge = window.axDevilWindow;
 
   const change = async (url: string, body: InstallRequest | RemoveRequest) => {
     setBusy(true);
-    const answer = await post<PluginsInfo>(url, body);
-    setBusy(false);
-    if (answer.ok) {
-      setInfo(answer.value);
-      setFailure(null);
-      return true;
+    setRefused(null);
+    try {
+      const answer = await post<PluginsInfo>(url, body);
+      if (answer.ok) {
+        setInfo(answer.value);
+        return true;
+      }
+      setRefused(reasonOf(answer.refusal));
+      // What it refused may be stale, such as a plugin another window already removed.
+      reload();
+    } catch (error) {
+      setRefused(error instanceof Error ? error.message : String(error));
+    } finally {
+      setBusy(false);
     }
-    setFailure(reasonOf(answer.refusal));
-    // What it refused may be stale, such as a plugin another window already removed.
-    reload();
     return false;
   };
   const install = (event: FormEvent) => {
@@ -185,7 +192,10 @@ export function PluginsView() {
           <TextField
             label="Folder"
             value={path}
-            onChange={setPath}
+            onChange={(value) => {
+              setPath(value);
+              setRefused(null);
+            }}
             action={
               bridge && (
                 <BrowseButton
@@ -209,6 +219,7 @@ export function PluginsView() {
           </Button>
         </form>
       )}
+      {refused && <Refusal reason={refused} />}
       {failure && <Refusal reason={failure} />}
       {info?.problem && <Refusal reason={info.problem} />}
       {info === null && !failure && (

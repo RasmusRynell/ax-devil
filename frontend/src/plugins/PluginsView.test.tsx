@@ -92,4 +92,40 @@ describe("plugins view", () => {
     fireEvent.change(screen.getByLabelText("Folder"), { target: { value: "/p/new" } });
     expect(install.disabled).toBe(false);
   });
+
+  it("keeps a refused install visible after the list reloads, and recovers when the request fails outright", async () => {
+    let outcome: "refused" | "unreachable" = "refused";
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (_url: string, init?: RequestInit) => {
+        if (init?.method !== "POST") return { ok: true, json: async () => ({ plugins: [MOT] }) };
+        if (outcome === "unreachable") throw new TypeError("backend restarting");
+        return {
+          ok: false,
+          status: 400,
+          json: async () => ({
+            code: "PluginInvalid",
+            params: {},
+            reason: "no manifest in /p/new",
+          }),
+        };
+      }),
+    );
+    view();
+    await screen.findByRole("region", { name: "Built-in" });
+    const install = screen.getByRole("button", { name: "Install" }) as HTMLButtonElement;
+    const folder = screen.getByLabelText("Folder");
+
+    fireEvent.change(folder, { target: { value: "/p/new" } });
+    fireEvent.click(install);
+    await screen.findByText("no manifest in /p/new");
+    window.dispatchEvent(new Event("focus")); // a list reload answers after the refusal
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(screen.getByText("no manifest in /p/new")).toBeTruthy();
+
+    outcome = "unreachable";
+    fireEvent.click(install);
+    await screen.findByText("backend restarting");
+    expect(install.disabled).toBe(false);
+  });
 });
