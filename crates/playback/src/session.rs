@@ -74,6 +74,11 @@ impl Session {
         self.source.next_rank(self.id)
     }
 
+    /// Every frame the video's cache holds now: cached frames only, not frames parked for a viewer.
+    pub fn cached(&self) -> FrameSet {
+        self.source.cache.ranges()
+    }
+
     /// Leaves the source now.
     pub fn close(self) {}
 }

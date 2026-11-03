@@ -4,7 +4,15 @@ import { FakeSocket, video } from "../session/fakeSession";
 import { SessionProvider } from "../session/session";
 import { SessionStore } from "../session/store";
 import type { ClientMessage } from "./protocol";
-import { Viewer, flushFrames, installViewerHarness, slider, sockets } from "./videoViewerHarness";
+import {
+  Viewer,
+  flushFrames,
+  installViewerHarness,
+  setSpeed,
+  slider,
+  sockets,
+  speed,
+} from "./videoViewerHarness";
 
 // The picture needs WebGL; this suite is about the session behind it.
 vi.mock("./VideoCanvas", () => ({ VideoCanvas: () => null }));
@@ -60,12 +68,16 @@ describe("video viewer entries", () => {
     const room = await mount(sent);
     act(() => room.setItems([video("a")]));
     fireEvent.change(await slider(), { target: { value: "37" } });
+    setSpeed("2");
     flushFrames();
 
     act(() => room.publish({ ...room.presenter, viewers: { a: { entry: "content-b" } } }));
     await act(async () => {});
     expect((await slider()).value).toBe("0");
+    // The speed belongs to the viewer: the last one set plays on in whichever entry opens next.
+    expect(speed().textContent).toBe("2×");
     fireEvent.change(await slider(), { target: { value: "5" } });
+    setSpeed("3");
     flushFrames();
 
     // Choosing an entry again leaves the view without a clock for it; the viewer remembers its own.
@@ -73,6 +85,7 @@ describe("video viewer entries", () => {
     act(() => room.publish({ ...room.presenter, viewers: { a: { entry: "content-a" } } }));
     await act(async () => {});
     expect((await slider()).value).toBe("37");
+    expect(speed().textContent).toBe("3×");
     expect(sent.find((message) => message.type === "Open")).toMatchObject({ start_frame: 37 });
     act(() => room.publish({ ...room.presenter, viewers: { a: { entry: "content-b" } } }));
     await act(async () => {});

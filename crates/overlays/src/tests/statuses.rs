@@ -132,7 +132,7 @@ async fn a_source_thread_that_dies_fails_its_lane_and_then_the_viewer_ends() {
 }
 
 /// An ONVIF XML file with one empty frame at each time, in microseconds since the epoch.
-fn onvif_at(times_us: impl IntoIterator<Item = i64>) -> String {
+pub(super) fn onvif_at(times_us: impl IntoIterator<Item = i64>) -> String {
     times_us
         .into_iter()
         .map(|us| {

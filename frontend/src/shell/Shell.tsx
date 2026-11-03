@@ -24,7 +24,7 @@ import { ShortcutsDialog } from "./ShortcutsDialog";
 import { Sidebar } from "./Sidebar";
 import { Welcome } from "./Welcome";
 import type { ActivityItem } from "./views";
-import { useServerKind } from "./windowBridge";
+import { toggleAppFullscreen, useServerKind } from "./windowBridge";
 
 const TEXT_INPUTS = new Set(["text", "search", "number", "email", "url", "tel", "password"]);
 
@@ -103,6 +103,9 @@ export function Shell({ version }: { version: string }) {
   // Commands with behavior; every other command is a placeholder that does nothing yet. The open viewer adds its own.
   const actions: Record<string, () => void> = {
     sidebar: () => setSidebar({ ...sidebar, open: !sidebar.open }),
+    fullscreen: toggleAppFullscreen,
+    // A browser tab cannot close itself.
+    ...(window.axDevilWindow && { exit: () => window.axDevilWindow?.close() }),
     settings: () => setDialog("settings"),
     "keyboard-shortcuts": () => setDialog("shortcuts"),
     ...(configures && { "quick-setup": () => setDialog("quick-setup") }),

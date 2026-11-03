@@ -1,4 +1,4 @@
-import { act, cleanup, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, screen } from "@testing-library/react";
 import { useMemo } from "react";
 import { afterEach, beforeEach, vi } from "vite-plus/test";
 import { FakeSettings } from "../fakeSettings";
@@ -120,8 +120,15 @@ export const answer = (message: ServerMessage) =>
 /** The timeline slider, once the viewer has opened its stream. */
 export const slider = () =>
   screen.findByRole("slider", { name: "Timeline" }) as Promise<HTMLInputElement>;
-/** The speed input. */
-export const speed = () => screen.getByRole("spinbutton", { name: "Speed" }) as HTMLInputElement;
+/** The speed button, which shows the speed. */
+export const speed = () => screen.getByRole("button", { name: "Speed" });
+/** Sets the speed through the speed menu. */
+export function setSpeed(value: string) {
+  fireEvent.click(speed());
+  const field = screen.getByRole("textbox", { name: "Custom" });
+  fireEvent.change(field, { target: { value } });
+  fireEvent.submit(field);
+}
 /** The view updates the newest session socket was sent. */
 export const viewsSent = () =>
   FakeSocket.latest.received.filter((message) => message.type === "view");

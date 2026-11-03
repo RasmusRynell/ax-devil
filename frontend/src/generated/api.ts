@@ -1408,6 +1408,19 @@ fields: Array<FieldWire>,
 truncated: boolean, } | { "state": "Absent" } | { "state": "Unavailable" };
 
 /**
+ * How the video's frame times come from its timestamps, when its container has them.
+ */
+export type VideoPtsWire = { 
+/**
+ * The stream's time base as numerator and denominator, seconds per tick.
+ */
+time_base: [number, number], 
+/**
+ * The first frame's timestamp in ticks.
+ */
+first_pts: number, };
+
+/**
  * What the frontend sends.
  */
 export type ClientMessage = { "type": "Open", 
@@ -1573,7 +1586,11 @@ lane_defaults: LaneDefaultsWire,
 /**
  * The catalogs a lane may draw with, built-ins first and Standard first among them.
  */
-catalogs: Array<CatalogInfoWire>, } | { "type": "LaneStatus", 
+catalogs: Array<CatalogInfoWire>, 
+/**
+ * The video's PTS time base and first PTS; `null` for an image sequence.
+ */
+video_pts: VideoPtsWire | null, } | { "type": "LaneStatus", 
 /**
  * The lane's position in `Opened.lanes`.
  */
@@ -1658,7 +1675,11 @@ first: number,
 /**
  * The last frame.
  */
-last: number, } | { "type": "Evict", 
+last: number, } | { "type": "Cached", 
+/**
+ * Sorted, disjoint, non-adjacent inclusive runs `[first, last]` of sequence ids.
+ */
+ranges: Array<[number, number]>, } | { "type": "Evict", 
 /**
  * The viewer's source id, `LaneInfo::source`.
  */
@@ -2023,7 +2044,7 @@ kinds: Array<number>, };
 /**
  * Raised when the messages or the envelope change in a way an older frontend cannot read.
  */
-export const PLAYBACK_PROTOCOL = 5;
+export const PLAYBACK_PROTOCOL = 6;
 
 /**
  * "AXDV" read as a little-endian u32.
@@ -2081,6 +2102,11 @@ export const FLAG_KEYFRAME = 1;
 export const FLAG_LAST_FRAME = 2;
 
 /**
+ * Flag bit 2 of a Sample: the head's `timestamp_us` is the sample's time on the video clock.
+ */
+export const FLAG_SAMPLE_TIME = 4;
+
+/**
  * Video header layout byte: planar Y, U, V with 4:2:0 subsampling.
  */
 export const LAYOUT_I420 = 1;
@@ -2110,6 +2136,11 @@ export const MATRIX_BT709 = 1;
  * need no copy.
  */
 export const SAMPLE_HEADER_BYTES = 40;
+
+/**
+ * A Sample's `frame` when it has no frame number in its file, or one that does not fit.
+ */
+export const SAMPLE_NO_FRAME = 4294967295;
 
 /**
  * Where the sample column of a FrameMap starts: the head plus the map header.

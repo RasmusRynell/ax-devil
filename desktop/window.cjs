@@ -120,6 +120,7 @@ function installIpc({ connect, disconnect }) {
     window.isMaximized() ? window.unmaximize() : window.maximize(),
   );
   on("window:close", ({ window }) => window.close());
+  on("window:toggle-fullscreen", ({ window }) => window.setFullScreen(!window.isFullScreen()));
   handle("window:is-maximized", ({ window }) => window.isMaximized());
   handle("app:version", () => app.getVersion());
   // Only the native dialog: the page sends the chosen paths to the backend itself. Resolves to the absolute paths,

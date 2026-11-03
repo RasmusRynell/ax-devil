@@ -1,11 +1,12 @@
 // The smoke test's video scenario: add a video the way a user does, then check the picture on the real canvas.
-const { dialog } = require("electron");
+const { dialog, nativeTheme } = require("electron");
+const fs = require("node:fs/promises");
 const assert = require("node:assert/strict");
 const path = require("node:path");
-const { SMOKE_ROOT, click, frames, page } = require("./smoke-kit.cjs");
+const { SCREENSHOTS, SMOKE_ROOT, click, frames, page, until } = require("./smoke-kit.cjs");
 
 const FIXTURE = path.join(SMOKE_ROOT, "fixtures/video/long_gop_h264.mp4");
-const SHOWN = `Number.parseInt(document.querySelector("output[aria-label=Frame]")?.textContent ?? "")`;
+const SHOWN = `Number.parseInt(document.querySelector("input[aria-label=Frame]")?.value ?? "")`;
 /** A pixel this bright is the picture: the field around it is near-black. */
 const LIT = 40;
 
@@ -81,4 +82,76 @@ module.exports.video = async (window) => {
     Math.abs(anchor.top - canvas.top - (canvas.bottom - anchor.bottom)) <= 2,
     "The pointer anchor must be centred like the picture",
   );
+  await fullscreen(window);
 };
+
+// Lane fullscreen takes the viewer pane with its transport, Escape leaves it and Space plays; application fullscreen
+// (F11) is the window's and survives Escape.
+async function fullscreen(window) {
+  const { js, wait } = page(window);
+  const key = async (keyCode) => {
+    for (const type of ["keyDown", "keyUp"]) window.webContents.sendInputEvent({ type, keyCode });
+    await frames({ js });
+  };
+  const fullscreenPane = `document.fullscreenElement?.querySelector('canvas') && document.fullscreenElement.querySelector('[data-keeps-chrome]')`;
+  const playing = "document.querySelector('[aria-label=Pause]')";
+  const shoot = async (name) => {
+    await frames({ js });
+    await fs.mkdir(SCREENSHOTS, { recursive: true });
+    await fs.writeFile(
+      path.join(SCREENSHOTS, name),
+      (await window.webContents.capturePage()).toPNG(),
+    );
+  };
+
+  for (const theme of ["light", "dark"]) {
+    nativeTheme.themeSource = theme;
+    await wait(`matchMedia('(prefers-color-scheme: ${theme})').matches`);
+    await key("F");
+    await wait(fullscreenPane);
+    await shoot(`video-lane-fullscreen-${theme}.png`);
+    await key("Escape");
+    await wait("!document.fullscreenElement");
+    // A right click on the picture offers the lane's commands, each with its key.
+    const { x, y } = await js(
+      "(() => { const r = document.querySelector('canvas').getBoundingClientRect(); return { x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height / 3) }; })()",
+    );
+    for (const type of ["mouseMove", "mouseDown", "mouseUp"])
+      window.webContents.sendInputEvent({ type, x, y, button: "right", clickCount: 1 });
+    await wait("document.querySelector('[role=menu] [role=menuitem]')");
+    const items = await js(
+      "[...document.querySelectorAll('[role=menu] [role=menuitem]')].map((item) => item.textContent)",
+    );
+    const expected = [
+      "Export VideoCtrl+E",
+      "Media Tools PanelCtrl+B",
+      "Toggle Lane FullscreenF",
+      "Reset Zoom0",
+    ];
+    assert.deepEqual(items.slice(0, 4), expected, "The lane menu lists the lane's commands");
+    await shoot(`video-lane-menu-${theme}.png`);
+    await key("Escape");
+    await wait("!document.querySelector('[role=menu]')");
+  }
+  assert.equal(
+    await js(
+      "document.activeElement === document.querySelector('[data-chrome-idle]').closest('[tabindex]')",
+    ),
+    true,
+    "Leaving lane fullscreen puts the keyboard back on the viewer",
+  );
+  await key("Space");
+  await wait(playing);
+  await key("Space");
+  await wait("!document.querySelector('[aria-label=Pause]')");
+
+  await key("F11");
+  await until(() => window.isFullScreen() || undefined, "the window to fill the screen");
+  await key("F");
+  await wait(fullscreenPane);
+  await key("Escape");
+  await wait("!document.fullscreenElement");
+  assert.equal(window.isFullScreen(), true, "Escape leaves lane fullscreen, not the window's");
+  await key("F11");
+  await until(() => !window.isFullScreen() || undefined, "the window to leave fullscreen");
+}

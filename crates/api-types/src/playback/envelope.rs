@@ -2,10 +2,10 @@
 //! [`crate::playback`], and `frontend/src/playback/protocol.ts` parses them.
 
 use super::{
-    ENVELOPE_MAGIC, ENVELOPE_VERSION, FLAG_KEYFRAME, FLAG_LAST_FRAME, FRAME_MAP_HEADER_BYTES,
-    KIND_FRAME_MAP, KIND_SAMPLE, KIND_TIMELINE, KIND_VIDEO_FRAME, LAYOUT_I420, LAYOUT_NV12,
-    LAYOUT_RGBA, MATRIX_BT601, MATRIX_BT709, SAMPLE_HEADER_BYTES, TIMELINE_HEADER_BYTES,
-    VIDEO_FRAME_HEADER_BYTES,
+    ENVELOPE_MAGIC, ENVELOPE_VERSION, FLAG_KEYFRAME, FLAG_LAST_FRAME, FLAG_SAMPLE_TIME,
+    FRAME_MAP_HEADER_BYTES, KIND_FRAME_MAP, KIND_SAMPLE, KIND_TIMELINE, KIND_VIDEO_FRAME,
+    LAYOUT_I420, LAYOUT_NV12, LAYOUT_RGBA, MATRIX_BT601, MATRIX_BT709, SAMPLE_HEADER_BYTES,
+    SAMPLE_NO_FRAME, TIMELINE_HEADER_BYTES, VIDEO_FRAME_HEADER_BYTES,
 };
 use bytes::{BufMut, Bytes, BytesMut};
 use foundation::{FrameId, Matrix, MediaTime, PixelFormat, Timeline, VideoFrame};
@@ -82,8 +82,8 @@ pub fn video_frame(frame: &VideoFrame, last: bool) -> Bytes {
     out.freeze()
 }
 
-/// The head of an item: `sequence_id` is its first frame or sample, and the time is reserved.
-fn item_head(out: &mut BytesMut, kind: u8, header_len: u16, sequence_id: u64) {
+/// The head of a Frame Map run: `sequence_id` is its first frame, and the time is reserved.
+fn map_head(out: &mut BytesMut, kind: u8, header_len: u16, sequence_id: u64) {
     let id = FrameId {
         sequence_id,
         timestamp: MediaTime::ZERO,
@@ -91,7 +91,8 @@ fn item_head(out: &mut BytesMut, kind: u8, header_len: u16, sequence_id: u64) {
     head(out, kind, header_len, id, 0);
 }
 
-/// The Sample envelope of `sample`. The item starts at a multiple of 8, so the receiver views its columns in place.
+/// The Sample envelope of `sample`: its time on the video clock and its frame number in its file ride in the head and
+/// the sample header. The item starts at a multiple of 8, so the receiver views its columns in place.
 pub fn sample(sample: &SampleItem) -> Bytes {
     debug_assert_eq!(
         sample.item.len() % 8,
@@ -99,11 +100,25 @@ pub fn sample(sample: &SampleItem) -> Bytes {
         "an item is a whole number of words"
     );
     let mut out = BytesMut::with_capacity(usize::from(SAMPLE_HEADER_BYTES) + sample.item.len());
-    item_head(&mut out, KIND_SAMPLE, SAMPLE_HEADER_BYTES, sample.sample);
+    let id = FrameId {
+        sequence_id: sample.sample,
+        timestamp: sample.time.unwrap_or(MediaTime::ZERO),
+    };
+    let flags = if sample.time.is_some() {
+        FLAG_SAMPLE_TIME
+    } else {
+        0
+    };
+    head(&mut out, KIND_SAMPLE, SAMPLE_HEADER_BYTES, id, flags);
     out.put_u16_le(sample.source);
     out.put_u16_le(0);
     out.put_u32_le(sample.data_revision);
-    out.put_u32_le(0);
+    out.put_u32_le(
+        sample
+            .frame_number
+            .and_then(|frame| u32::try_from(frame).ok())
+            .unwrap_or(SAMPLE_NO_FRAME),
+    );
     out.extend_from_slice(&sample.item);
     out.freeze()
 }
@@ -113,7 +128,7 @@ pub fn frame_map(run: &MapRun) -> Bytes {
     debug_assert_eq!(run.samples.len(), run.kinds.len());
     let count = run.samples.len();
     let mut out = BytesMut::with_capacity(usize::from(FRAME_MAP_HEADER_BYTES) + count * 5);
-    item_head(&mut out, KIND_FRAME_MAP, FRAME_MAP_HEADER_BYTES, run.first);
+    map_head(&mut out, KIND_FRAME_MAP, FRAME_MAP_HEADER_BYTES, run.first);
     out.put_u16_le(run.lane);
     out.put_u16_le(0);
     out.put_u32_le(run.policy_revision);
@@ -222,6 +237,8 @@ mod tests {
             source: 1,
             data_revision: 7,
             sample: 42,
+            time: Some(MediaTime::from_us(1_400_000)),
+            frame_number: Some(42),
             frame: 0,
             serial: 0,
             item: item.into(),

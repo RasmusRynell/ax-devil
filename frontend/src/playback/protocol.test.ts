@@ -3,7 +3,13 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vite-plus/test";
 import { readSample } from "../present/columns";
 import { EMPTY, item, mapBytes, NONE, sampleBytes } from "./fakeData";
-import { EnvelopeError, ENVELOPE_MAGIC, frameBytes, parseEnvelope } from "./protocol";
+import {
+  EnvelopeError,
+  ENVELOPE_MAGIC,
+  frameBytes,
+  parseEnvelope,
+  SAMPLE_NO_FRAME,
+} from "./protocol";
 import { decode } from "./wire";
 
 function head(
@@ -167,11 +173,22 @@ describe("the backend's envelopes", () => {
     const message = golden("sample.bin");
     const parsed = parseEnvelope(message);
     if (parsed?.kind !== "sample") throw new Error("expected a sample");
-    expect(parsed).toMatchObject({ source: 1, dataRevision: 7, sample: 42 });
+    expect(parsed).toMatchObject({
+      source: 1,
+      dataRevision: 7,
+      sample: 42,
+      timeUs: 1_400_000,
+      frame: 42,
+    });
     expect(parsed.item.buffer).toBe(message);
     expect(parsed.item.byteOffset).toBe(40);
     expect(parsed.item).toEqual(item("classes"));
     expect(readSample(parsed.item).rows).toBeGreaterThan(0);
+
+    const bare = new DataView(golden("sample.bin").slice(0));
+    bare.setUint32(24, 0, true);
+    bare.setUint32(36, SAMPLE_NO_FRAME, true);
+    expect(parseEnvelope(bare.buffer)).toMatchObject({ timeUs: null, frame: null });
   });
 
   it("reads the Frame Map run the backend wrote", () => {

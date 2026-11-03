@@ -7,6 +7,7 @@ contextBridge.exposeInMainWorld("axDevilWindow", {
   minimize: () => ipcRenderer.send("window:minimize"),
   toggleMaximize: () => ipcRenderer.send("window:toggle-maximize"),
   close: () => ipcRenderer.send("window:close"),
+  toggleFullScreen: () => ipcRenderer.send("window:toggle-fullscreen"),
   // Opens the native file dialog; resolves to the chosen absolute paths, none when it is cancelled.
   pickVideos: () => ipcRenderer.invoke("workspace:pick-videos"),
   // Opens the native save dialog for an export (a suggested file name and `mp4` or `png`); resolves to the chosen

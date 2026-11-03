@@ -1,12 +1,13 @@
 import { act, fireEvent, render, screen } from "@testing-library/react";
 import type { ComponentProps, ReactNode } from "react";
 import { describe, expect, it, vi } from "vite-plus/test";
+import { installFakeFullscreen } from "../fakeFullscreen";
 import { DEFAULT_SETTINGS } from "../fakeSettings";
 import { FakeSocket, video } from "../session/fakeSession";
 import { SessionProvider } from "../session/session";
 import { NO_ACTIONS, ViewerActionsContext, type ViewerActions } from "../viewer/actions";
 import type { Picked } from "./contract";
-import type { ClientMessage } from "./protocol";
+import type { ClientMessage, LaneInfo } from "./protocol";
 import type { Geometry } from "./renderer";
 import type { VideoCanvas } from "./VideoCanvas";
 import { Viewer, installViewerHarness, slider } from "./videoViewerHarness";
@@ -24,6 +25,7 @@ vi.mock("./VideoCanvas", () => ({
 }));
 
 installViewerHarness();
+const fullscreen = installFakeFullscreen();
 
 const SELECTION = { lane: 0, source: 0, entity: "7" };
 const PICKED: Picked = {
@@ -53,17 +55,18 @@ const tree = (viewer: ReactNode) => (
 );
 
 /** The viewer of an open video; `show` renders it again with other settings or another entry. */
-async function mount(settings?: typeof OFF) {
+async function mount(settings?: typeof OFF, lanes?: LaneInfo[]) {
   registry.current = NO_ACTIONS;
   // One array for the life of the viewer: another would give it a new connection and restart playback.
   const sent: ClientMessage[] = [];
-  const view = render(tree(<Viewer sent={sent} settings={settings} />));
+  const view = render(tree(<Viewer sent={sent} settings={settings} lanes={lanes} />));
   await act(async () => {});
   act(() => FakeSocket.rooms.get("room-1")?.setItems([video("a")]));
   await slider();
   const props = () => canvas.props as ComponentProps<typeof VideoCanvas>;
   return {
     props,
+    sent,
     show: (next: Partial<Parameters<typeof Viewer>[0]>) =>
       view.rerender(tree(<Viewer sent={sent} {...next} />)),
     run: (id: string) => act(() => registry.current[id]?.()),
@@ -93,6 +96,42 @@ describe("video viewer objects", () => {
     act(() => props().onSelect?.(SELECTION));
     fireEvent.click(screen.getByRole("button", { name: "Close inspector" }));
     expect(inspector()).toBeNull();
+  });
+
+  it("shows one lane alone in fullscreen while the others keep playing, and Escape only leaves it", async () => {
+    const lanes: LaneInfo[] = [
+      { label: "DPM", slot: "DPM", source: 0 },
+      { label: "GT", slot: "GT", source: 1 },
+    ];
+    const { props, run, sent } = await mount(undefined, lanes);
+    expect(props().cells?.map(({ lane }) => lane)).toEqual([0, 1]);
+
+    run("lane-fullscreen");
+    expect(props().cells?.map(({ lane }) => lane)).toEqual([0]);
+    expect(sent.some((message) => "subscribed" in message && !message.subscribed)).toBe(false);
+    expect(sent.some((message) => "subscribed" in message)).toBe(true);
+
+    act(() => props().onSelect?.(SELECTION));
+    fireEvent.keyDown(inspector() as HTMLElement, { key: "Escape" });
+    // The Escape that leaves fullscreen does not also clear the selection.
+    expect(fullscreen.exit).toHaveBeenCalledOnce();
+    expect(inspector()).toBeTruthy();
+    expect(props().cells?.map(({ lane }) => lane)).toEqual([0, 1]);
+    fireEvent.keyDown(inspector() as HTMLElement, { key: "Escape" });
+    expect(inspector()).toBeNull();
+  });
+
+  it("keeps the selection when Escape closes a lane menu", async () => {
+    const lanes: LaneInfo[] = [
+      { label: "DPM", slot: "DPM", source: null },
+      { label: "GT", slot: "GT", source: null },
+    ];
+    const { props } = await mount(undefined, lanes);
+    act(() => props().onSelect?.(SELECTION));
+    fireEvent.contextMenu(screen.getByText("DPM"));
+    fireEvent.keyDown(screen.getByRole("menuitem", { name: /Export Video/ }), { key: "Escape" });
+    expect(screen.queryByRole("menu")).toBeNull();
+    expect(inspector()).toBeTruthy();
   });
 
   it("opens and closes the media tools by their command or their button", async () => {
