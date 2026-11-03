@@ -29,6 +29,10 @@ export function decodersFor(
   return reading.length ? reading : decoders;
 }
 
+/** The decoders to choose from for the overlay typed as `text`: none while it is blank. */
+const candidatesFor = (decoders: readonly DecoderInfo[], text: string) =>
+  text.trim() ? decodersFor(decoders, text) : [];
+
 /** A decoder's options as the form a resolver's settings are, so the same field controls draw them. */
 const optionsForm = (decoder?: DecoderInfo): ResolverInfo => ({
   id: decoder?.handler ?? "",
@@ -51,7 +55,7 @@ export function AddVideoDialog({ onClose }: { onClose: () => void }) {
   const [tried, setTried] = useState(false);
   const [failure, setFailure] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const candidates = overlay.trim() ? decodersFor(handlers?.decoders ?? NO_DECODERS, overlay) : [];
+  const candidates = candidatesFor(handlers?.decoders ?? NO_DECODERS, overlay);
   // Only a sole candidate is chosen for the user; with several, a pick stays only while it is still a candidate.
   const decoder =
     candidates.length === 1 ? candidates[0] : candidates.find((one) => one.handler === picked);
@@ -125,7 +129,7 @@ export function AddVideoDialog({ onClose }: { onClose: () => void }) {
             onChange={(text) => {
               setOverlay(text);
               // A pick that does not read this file is forgotten, so it cannot return for a later one.
-              if (!decodersFor(handlers.decoders, text).some((one) => one.handler === picked)) {
+              if (!candidatesFor(handlers.decoders, text).some((one) => one.handler === picked)) {
                 setPicked("");
               }
               setFailure(null);
