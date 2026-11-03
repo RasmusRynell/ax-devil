@@ -204,8 +204,7 @@ impl Backend {
 
     /// Adds a playlist of `resolver` with `settings`, as the dialog would, and returns it once it resolved.
     pub async fn add_playlist(&self, resolver: &str, settings: Settings) -> Added {
-        let item =
-            workspace::intake::playlist(resolver, settings, None, &Handlers::built_in()).unwrap();
+        let item = workspace::intake::playlist(resolver, settings, &Handlers::built_in()).unwrap();
         self.add_item(item).await
     }
 

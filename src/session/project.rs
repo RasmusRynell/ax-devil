@@ -117,6 +117,7 @@ fn row_info(row: Row, audience: Audience) -> RowInfo {
         key,
         kind: match kind {
             RowKind::Item => RowKindWire::Item,
+            RowKind::Playlist => RowKindWire::Playlist,
             RowKind::Entry => RowKindWire::Entry,
             RowKind::Lane => RowKindWire::Lane,
         },
@@ -183,7 +184,7 @@ mod tests {
     use foundation::{ErrorCode, HostPath, ItemId, UserError, Warning};
     use std::path::PathBuf;
     use workspace::{
-        ContentId, OverlayRef, PlaylistContent, Recipe, Source, VideoRecipe, VideoRef,
+        ContentId, OverlayRef, PlaylistContent, PlaylistSpan, Recipe, Source, VideoRecipe, VideoRef,
     };
     use workspace_store::{HiddenRef, WorkspaceState as State};
 
@@ -228,8 +229,13 @@ mod tests {
                 item_id: item,
                 display_name: name.into(),
                 entries: ["SEQ-01", "SEQ-02"]
-                    .map(|label| entry(ContentId::of_entry(&item, label), label, folder))
+                    .map(|label| entry(ContentId::of_entry(&item, name, label), label, folder))
                     .into(),
+                playlists: vec![PlaylistSpan {
+                    id: ContentId::of_playlist(&item, name),
+                    name: name.into(),
+                    entries: 2,
+                }],
                 warnings: vec![Warning {
                     problem: "Skipped 1 of 3 sequences".into(),
                     reasons: vec!["/home/SECRET-SKIP/SEQ-03: bad seqinfo.ini".into()],
@@ -277,9 +283,11 @@ mod tests {
             .insert(closed, Resolution::Failed(failure("SECRET-PATH-C")));
         state.file = Some(HostPath::new("/data/SECRET-FILE.ax-devil.workspace"));
         state.open.extend([shown, playlist, failed]);
-        state
-            .hidden
-            .insert(HiddenRef::Entry(ContentId::of_entry(&playlist, "SEQ-02")));
+        state.hidden.insert(HiddenRef::Entry(ContentId::of_entry(
+            &playlist,
+            "MOT sequences",
+            "SEQ-02",
+        )));
         (Doc { workspace: state }, ids)
     }
 

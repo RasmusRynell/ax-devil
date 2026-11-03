@@ -215,6 +215,22 @@ pub struct ScanRequest {
     pub settings: serde_json::Map<String, serde_json::Value>,
 }
 
+/// The body of `POST /api/resolvers/{id}/resolve`.
+#[derive(Serialize, Deserialize, TS)]
+pub struct ResolveRequest {
+    /// The settings the resolver's schema declares.
+    #[ts(type = "Record<string, unknown>")]
+    pub settings: serde_json::Map<String, serde_json::Value>,
+}
+
+/// The answer to a resolve: the resolved item, held by the backend until a `DocCommand::AddResolved` adds it.
+#[derive(Serialize, Deserialize, TS)]
+pub struct ResolvedInfo {
+    /// The item's id.
+    #[ts(type = "string")]
+    pub item: foundation::ItemId,
+}
+
 /// One value a scan found.
 #[derive(Serialize, Deserialize, TS)]
 pub struct ChoiceInfo {

@@ -30,10 +30,11 @@ pub struct Choice {
     pub detail: String,
 }
 
-/// Turns settings into a playlist.
+/// Turns settings into playlists.
 ///
 /// A playlist's entry names are unique, and so are the overlay labels and slots within an entry: the name is the
-/// identity of an entry, the slot that of a lane.
+/// identity of an entry, the slot that of a lane. A playlist's name is its identity too, so a resolver returns the
+/// same names in the same order on every run.
 pub trait PlaylistResolver: Send + Sync {
     /// What the host needs to know about the resolver.
     fn spec(&self) -> &ResolverSpec;
@@ -52,24 +53,31 @@ pub trait PlaylistResolver: Send + Sync {
         )))
     }
 
-    /// Reads the folders the settings name and returns the playlist. A `UserError` names the setting key or path
+    /// Reads the folders the settings name and returns the playlists. A `UserError` names the setting key or path
     /// the problem is about.
     fn resolve(
         &self,
         settings: &Values,
         cancel: &CancelToken,
-    ) -> Result<ResolvedPlaylist, Interrupt<UserError>>;
+    ) -> Result<ResolvedPlaylists, Interrupt<UserError>>;
+}
+
+/// What one resolver run returns.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct ResolvedPlaylists {
+    /// The playlists in order.
+    pub playlists: Vec<ResolvedPlaylist>,
+    /// Problems that left something out without stopping the run, such as a skipped sequence.
+    pub warnings: Vec<Warning>,
 }
 
 /// A resolved playlist: one video per entry.
 #[derive(Clone, Debug, PartialEq)]
 pub struct ResolvedPlaylist {
-    /// What the user reads.
-    pub display_name: String,
+    /// What the user reads, and the identity of the playlist among its item's.
+    pub name: String,
     /// The entries in playlist order.
     pub entries: Vec<ResolvedEntry>,
-    /// Problems that left something out of the playlist without stopping it, such as a skipped sequence.
-    pub warnings: Vec<Warning>,
 }
 
 /// One video and the overlays drawn on it.

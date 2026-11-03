@@ -292,7 +292,15 @@ items: Array<NewItem>,
 /**
  * Whether a viewer should open for each item once it resolves.
  */
-open: boolean, } | { "type": "openViewer", 
+open: boolean, } | { "type": "addResolved", 
+/**
+ * The item the resolve answered with.
+ */
+item: string, 
+/**
+ * The row's label; the resolver's name when absent or blank.
+ */
+label: string | null, } | { "type": "openViewer", 
 /**
  * The item.
  */
@@ -862,7 +870,7 @@ warnings: Array<WarningInfo>, };
 /**
  * What a row stands for.
  */
-export type RowKindWire = "item" | "entry" | "lane";
+export type RowKindWire = "item" | "playlist" | "entry" | "lane";
 
 /**
  * Whether what a row stands for can be opened.
@@ -1207,6 +1215,24 @@ field: string,
  * The settings entered so far.
  */
 settings: Record<string, unknown>, };
+
+/**
+ * The body of `POST /api/resolvers/{id}/resolve`.
+ */
+export type ResolveRequest = { 
+/**
+ * The settings the resolver's schema declares.
+ */
+settings: Record<string, unknown>, };
+
+/**
+ * The answer to a resolve: the resolved item, held by the backend until a `DocCommand::AddResolved` adds it.
+ */
+export type ResolvedInfo = { 
+/**
+ * The item's id.
+ */
+item: string, };
 
 /**
  * The body of `POST /api/plugins/install`.

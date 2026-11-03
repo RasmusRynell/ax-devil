@@ -234,19 +234,22 @@ fn the_python_resolver_scans_run_folders_and_resolves_the_chosen_ones_into_entri
         .resolve(&settings(serde_json::json!({})), &CancelToken::new())
         .expect("resolve");
     let folder = root.path().file_name().unwrap().to_str().unwrap();
-    assert_eq!(all.display_name, folder);
-    let names: Vec<_> = all.entries.iter().map(|e| e.name.as_str()).collect();
+    let [playlist] = all.playlists.as_slice() else {
+        panic!("one playlist");
+    };
+    assert_eq!(playlist.name, folder);
+    let names: Vec<_> = playlist.entries.iter().map(|e| e.name.as_str()).collect();
     assert_eq!(names, ["run-a", "run-b"]);
     assert_eq!(
-        all.entries[0].video,
+        playlist.entries[0].video,
         VideoRef::File(root.path().join("run-a/video.mp4"))
     );
-    let overlay = &all.entries[0].overlays[0];
+    let overlay = &playlist.entries[0].overlays[0];
     assert_eq!(
         (overlay.slot.as_str(), overlay.handler.as_str()),
         ("gt", "MOT_FILE")
     );
-    assert!(all.entries[1].overlays.is_empty());
+    assert!(playlist.entries[1].overlays.is_empty());
     assert_eq!(all.warnings.len(), 1, "run-b has no gt.txt");
 
     let chosen = resolver
@@ -255,7 +258,7 @@ fn the_python_resolver_scans_run_folders_and_resolves_the_chosen_ones_into_entri
             &CancelToken::new(),
         )
         .expect("resolve");
-    assert_eq!(chosen.entries.len(), 1);
+    assert_eq!(chosen.playlists[0].entries.len(), 1);
 }
 
 #[test]

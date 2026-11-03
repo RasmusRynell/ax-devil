@@ -30,6 +30,7 @@ pub(super) fn scope(wire: &SessionCommand) -> Option<Scope> {
                     Scope::Content
                 }
             }
+            api_types::DocCommand::AddResolved { .. } => Scope::Host,
             api_types::DocCommand::OpenViewer { .. }
             | api_types::DocCommand::CloseViewer { .. }
             | api_types::DocCommand::SetHidden { .. }
@@ -104,6 +105,8 @@ fn doc_command(wire: api_types::DocCommand, handlers: &Handlers) -> Result<DocCo
                 })?;
             DocCommand::AddItems { items, open }
         }
+        // Redeeming a resolved item needs the backend's staged store, which arrives with the resolve route.
+        api_types::DocCommand::AddResolved { .. } => return Err(Refusal::Invalid),
         api_types::DocCommand::OpenViewer { item } => DocCommand::OpenViewer(item),
         api_types::DocCommand::CloseViewer { item } => DocCommand::CloseViewer(item),
         api_types::DocCommand::SetHidden { target, hidden } => DocCommand::SetHidden {
@@ -142,7 +145,8 @@ fn intake(new: &NewItem, handlers: &Handlers) -> Result<WorkspaceItem, foundatio
             resolver,
             settings,
             label,
-        } => workspace::intake::playlist(resolver, settings.clone(), label.clone(), handlers),
+        } => workspace::intake::playlist(resolver, settings.clone(), handlers)
+            .map(|item| workspace::intake::with_label(item, label.as_deref())),
     }
 }
 

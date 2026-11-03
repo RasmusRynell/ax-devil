@@ -129,13 +129,12 @@ fn overlay_recipe(
     })
 }
 
-/// Builds the item for a playlist of `resolver` with `settings`, labelled `label` or with the resolver's name. The
+/// Builds the item for a playlist of `resolver` with `settings`, labelled with the resolver's name. The
 /// settings are checked against the resolver's schema, defaults filled in, and the paths in them (in a decoder's
 /// options too) made absolute; reading the folders is for resolving to do.
 pub fn playlist(
     resolver: &str,
     settings: Settings,
-    label: Option<String>,
     handlers: &Handlers,
 ) -> Result<WorkspaceItem, UserError> {
     let Some(found) = handlers.resolver(resolver) else {
@@ -147,18 +146,26 @@ pub fn playlist(
     let form = &found.spec().form;
     let mut settings = check_settings(form, &settings, handlers)?.declared();
     absolute_paths(form, &mut settings, handlers);
-    let label = label
-        .map(|label| label.trim().to_owned())
-        .filter(|label| !label.is_empty())
-        .unwrap_or_else(|| found.spec().name.clone());
     Ok(WorkspaceItem {
         id: ItemId::generate(),
-        label,
+        label: found.spec().name.clone(),
         recipe: Recipe::new(Source::Playlist(PlaylistRecipe {
             resolver: resolver.to_owned(),
             settings,
         })),
     })
+}
+
+/// `item` labelled `label`: the one rule for naming an item the user named. A label that is empty once trimmed keeps
+/// the item's default.
+pub fn with_label(item: WorkspaceItem, label: Option<&str>) -> WorkspaceItem {
+    match label.map(str::trim).filter(|label| !label.is_empty()) {
+        Some(label) => WorkspaceItem {
+            label: label.to_owned(),
+            ..item
+        },
+        None => item,
+    }
 }
 
 #[cfg(test)]

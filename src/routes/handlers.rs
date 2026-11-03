@@ -173,7 +173,7 @@ mod tests {
     use api_types::handlers::PluginStatus;
     use axum::{body::Body, http::Request};
     use handler_api::{
-        DecodeError, DecodeSummary, Decoder, Field, Form, Framing, Input, ResolvedPlaylist,
+        DecodeError, DecodeSummary, Decoder, Field, Form, Framing, Input, ResolvedPlaylists,
         ResolverSpec, SceneSink, Spec, Values,
     };
     use scene::MatchBasis;
@@ -431,7 +431,7 @@ mod tests {
             &self,
             _settings: &Values,
             _cancel: &CancelToken,
-        ) -> Result<ResolvedPlaylist, Interrupt<UserError>> {
+        ) -> Result<ResolvedPlaylists, Interrupt<UserError>> {
             Err(Interrupt::Failed(
                 UserError::new(ErrorCode::PlaylistInvalid, "Not resolvable")
                     .at(Location::field("items")),

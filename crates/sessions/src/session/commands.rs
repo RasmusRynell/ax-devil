@@ -89,6 +89,13 @@ fn content_scope(command: &DocCommand) -> Scope {
                 Scope::Content
             }
         }
+        DocCommand::AddResolved { item, .. } => {
+            if reads_host(&item.recipe) {
+                Scope::Host
+            } else {
+                Scope::Content
+            }
+        }
         DocCommand::Replace { .. } | DocCommand::MarkSaved { .. } => Scope::Host,
         DocCommand::OpenViewer(_)
         | DocCommand::CloseViewer(_)
