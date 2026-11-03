@@ -177,7 +177,8 @@ impl Plugins {
             return false;
         };
         let mut seen = self.locked();
-        let unchanged = Stamp::of(registry) == seen.stamp;
+        let stamp = Stamp::of(registry);
+        let unchanged = stamp == seen.stamp;
         if unchanged {
             seen.waited += 1;
             if !self.has_failed() || seen.waited < seen.wait {
@@ -186,7 +187,9 @@ impl Plugins {
         }
         let wait = seen.wait;
         let (handlers, info) = self.read(registry, &mut seen);
-        if unchanged && info == *self.info() {
+        // `info` leaves out what a manifest edit may change, so it only tells a retry apart from a reload when the
+        // files were the same before and when `read` stamped them.
+        if unchanged && seen.stamp == stamp && info == *self.info() {
             seen.wait = (wait * 2).min(MAX_RETRY_WAIT);
             return false;
         }
