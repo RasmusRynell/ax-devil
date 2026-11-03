@@ -26,7 +26,7 @@ interface State {
 }
 
 /** The form of each resolver the user has opened, by resolver id. */
-type Forms = Record<string, State>;
+type Forms = ReadonlyMap<string, State>;
 
 type Action = { resolver: ResolverInfo } & (
   | { type: "set"; key: string; value: string; invalidated: readonly string[] }
@@ -62,29 +62,23 @@ function start(resolver: ResolverInfo, initial?: Settings): State {
 }
 
 function reduce(forms: Forms, action: Action): Forms {
-  const state = forms[action.resolver.id] ?? start(action.resolver);
+  const state = forms.get(action.resolver.id) ?? start(action.resolver);
   switch (action.type) {
     case "set":
-      return {
-        ...forms,
-        [action.resolver.id]: {
-          values: { ...state.values, [action.key]: action.value },
-          scans: {
-            ...state.scans,
-            ...Object.fromEntries(
-              action.invalidated.map((key) => [key, scanInvalidated(state.scans[key])]),
-            ),
-          },
+      return new Map(forms).set(action.resolver.id, {
+        values: { ...state.values, [action.key]: action.value },
+        scans: {
+          ...state.scans,
+          ...Object.fromEntries(
+            action.invalidated.map((key) => [key, scanInvalidated(state.scans[key])]),
+          ),
         },
-      };
+      });
     case "scan":
-      return {
-        ...forms,
-        [action.resolver.id]: {
-          ...state,
-          scans: { ...state.scans, [action.key]: action.update(state.scans[action.key]) },
-        },
-      };
+      return new Map(forms).set(action.resolver.id, {
+        ...state,
+        scans: { ...state.scans, [action.key]: action.update(state.scans[action.key]) },
+      });
   }
 }
 
@@ -201,11 +195,13 @@ export function useResolverForm(
   decoders: readonly DecoderInfo[],
   initial?: Settings,
 ): ResolverFormState {
-  const [forms, dispatch] = useReducer(reduce, undefined, () => ({
-    [resolver.id]: start(resolver, initial),
-  }));
+  const [forms, dispatch] = useReducer(
+    reduce,
+    undefined,
+    (): Forms => new Map([[resolver.id, start(resolver, initial)]]),
+  );
   // A resolver not opened yet starts blank; its form is stored with its first edit.
-  const state = forms[resolver.id] ?? start(resolver);
+  const state = forms.get(resolver.id) ?? start(resolver);
   // Only the backend's own window shares its machine's folders with it.
   const bridge = useServerKind() === "local" ? window.axDevilWindow : undefined;
   // Scans by `<resolver id>/<field key>`: a resolver left for another keeps scanning into its own form.

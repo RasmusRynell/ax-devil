@@ -141,7 +141,8 @@ afterEach(() => {
 describe("resolver form", () => {
   it("loads exactly what is checked, naming every sequence of a new form", async () => {
     const scans = stubScans();
-    render(<Harness />);
+    // An id that is also an inherited property name must not find a form that was never kept.
+    render(<Harness resolver={{ ...MOT, id: "constructor" }} />);
     expect(screen.getByRole("button", { name: "Scan" })).toHaveProperty("disabled", true);
     type("/data");
     fireEvent.change(screen.getByLabelText("Stride"), { target: { value: "2" } });
