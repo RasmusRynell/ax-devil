@@ -85,9 +85,8 @@ impl WorkspaceFiles {
         } else if let Some(copy) = files.copy.clone() {
             let path = copy.path().to_owned();
             // The entry goes first: a copy that stays on disk without one is only unlisted, never offered twice.
-            let forgotten = self.forget(files, &path).await;
-            files.listed = !forgotten;
-            if !forgotten {
+            files.listed = false;
+            if !self.forget(files, &path).await {
                 return Ok(());
             }
             // Deleting unlinks the copy's lock file, so nothing may write through this handle afterwards.

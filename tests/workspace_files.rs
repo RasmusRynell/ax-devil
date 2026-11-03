@@ -344,3 +344,36 @@ async fn save_as_replaces_another_file_only_when_allowed() {
     owner.say(save(4, false)).await;
     assert_eq!(ack(&mut owner, 4).await, json!({"status": "ok"}));
 }
+
+#[tokio::test]
+async fn discarding_changes_whose_saved_file_is_gone_starts_empty() {
+    let folder = tempfile::tempdir().unwrap();
+    let saved = folder.path().join(format!("gate{SUFFIX}"));
+    let address = backend(folder.path(), None).await;
+    let mut owner = Socket::own(&address, None).await;
+    owner.say(add_video(1)).await;
+    let save = json!({"type": "save", "path": saved.display().to_string()});
+    owner.say(workspace(2, save)).await;
+    assert_eq!(ack(&mut owner, 2).await, json!({"status": "ok"}));
+    owner.say(add_video(3)).await;
+    owner.say(json!({"type": "leave"})).await;
+    let unsaved = RecoveryFolder::new(folder.path().join("unsaved"));
+    eventually("the copy of the edit", || {
+        let copy = copies(folder.path()).pop();
+        copy.as_deref().and_then(items_in) == Some(2)
+            && newest_recent(folder.path()) == copy
+            && copy.is_some_and(|copy| unsaved.claim(&copy).is_ok())
+    })
+    .await;
+    std::fs::remove_file(&saved).unwrap();
+
+    let address = backend(folder.path(), Some(Launch::Restore)).await;
+    let mut window = Socket::own(&address, None).await;
+    doc(&mut window, |ws| ws["recovered"] == true).await;
+    window.say(workspace(1, json!({"type": "discard"}))).await;
+    let (outcome, empty) = settle(&mut window, 1, |ws| ws["recovered"] == false).await;
+    assert_eq!(outcome, json!({"status": "ok"}));
+    assert_eq!(empty["items"], json!([]));
+    assert_eq!(empty["modified"], false);
+    assert!(copies(folder.path()).is_empty());
+}

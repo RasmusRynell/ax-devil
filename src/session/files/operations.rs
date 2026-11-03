@@ -177,17 +177,24 @@ impl WorkspaceFiles {
         handle: &Handle<api_types::CursorPoint>,
         files: &mut SessionFiles,
     ) -> Result<(), Failure> {
-        let file = handle
+        let mut file = handle
             .state()
             .doc
             .workspace
             .file
             .as_ref()
             .map(|file| file.as_path().to_owned());
-        let workspace = match file.clone() {
-            Some(path) => files.off(move || workspace_files::load(&path)).await?,
-            None => Workspace::default(),
-        };
+        let mut workspace = Workspace::default();
+        if let Some(path) = file.clone() {
+            // A file that is gone or unreadable cannot be gone back to, but the changes are still dropped.
+            match files.off(move || workspace_files::load(&path)).await {
+                Ok(loaded) => workspace = loaded,
+                Err(error) => {
+                    tracing::warn!("Discard starts empty: {}", error.reason);
+                    file = None;
+                }
+            }
+        }
         let saved = DocCommand::Replace {
             workspace: workspace.clone(),
             file: file.clone().map(HostPath::new),
