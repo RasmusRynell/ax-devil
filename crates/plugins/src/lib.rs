@@ -116,9 +116,6 @@ pub fn load(registry: &Path, reserved: &Reserved) -> Loaded {
                 taken.claim(&plugin.manifest)?;
                 Ok(plugin)
             });
-            if let Err(error) = &plugin {
-                tracing::warn!("plugin {} not loaded: {error}", manifest.display());
-            }
             Entry { manifest, plugin }
         })
         .collect();

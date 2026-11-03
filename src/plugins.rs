@@ -274,7 +274,11 @@ impl Plugins {
 
     fn swap(&self, handlers: Handlers, info: PluginsInfo) {
         self.set.replace(handlers);
-        *self.info.write().unwrap_or_else(PoisonError::into_inner) = Arc::new(info);
+        let before = std::mem::replace(
+            &mut *self.info.write().unwrap_or_else(PoisonError::into_inner),
+            Arc::new(info),
+        );
+        log_new_problems(&before, &self.info());
     }
 }
 
@@ -373,14 +377,33 @@ fn installed_info(loaded: &Loaded) -> Vec<PluginInfo> {
 
 /// Logs what did not load, which loading could not because logging starts after the command line is read.
 pub fn log_problems(info: &PluginsInfo) {
-    if let Some(problem) = &info.problem {
+    log_new_problems(&PluginsInfo::default(), info);
+}
+
+/// Logs the problems in `info` that `before` did not have, so a plugin that stays broken is logged once, not on every
+/// reload retry.
+fn log_new_problems(before: &PluginsInfo, info: &PluginsInfo) {
+    if let Some(problem) = info
+        .problem
+        .as_ref()
+        .filter(|_| info.problem != before.problem)
+    {
         tracing::warn!("plugins not loaded: {problem}");
     }
-    for plugin in &info.plugins {
-        if let (PluginSource::Installed { manifest, .. }, PluginStatus::Failed { reason }) =
-            (&plugin.source, &plugin.status)
-        {
-            tracing::warn!("plugin {manifest} not loaded: {reason}");
-        }
+    let known: Vec<_> = failures(before).collect();
+    for (manifest, reason) in failures(info).filter(|failure| !known.contains(failure)) {
+        tracing::warn!("plugin {manifest} not loaded: {reason}");
     }
+}
+
+/// The installed plugins that did not load, as manifest and reason.
+fn failures(info: &PluginsInfo) -> impl Iterator<Item = (&str, &str)> {
+    info.plugins
+        .iter()
+        .filter_map(|plugin| match (&plugin.source, &plugin.status) {
+            (PluginSource::Installed { manifest, .. }, PluginStatus::Failed { reason }) => {
+                Some((manifest.as_str(), reason.as_str()))
+            }
+            _ => None,
+        })
 }
