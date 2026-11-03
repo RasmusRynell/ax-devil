@@ -5,8 +5,8 @@ import type { CompiledCatalog } from "../catalog/types";
 import { builtIn, hiddenBits } from "../canonical/render";
 import { RowSet, filterRows } from "../filter/filter";
 import { fullSample } from "../fixtures";
-import { Rec } from "../marks/buffer";
-import { MarkBuffer } from "../marks/buffer";
+import { codePointString } from "../expr/codePoints";
+import { MarkBuffer, Rec, RUN_WORDS, WORDS } from "../marks/buffer";
 import { evaluate } from "./evaluate";
 import { EvalReport } from "./report";
 
@@ -59,16 +59,38 @@ describe("evaluate", () => {
       { marks: [{ mark: "box", stroke: "#ffffff", width: "1px" }] },
       { marks: [{ mark: "text", text: "id", color: "top(attr.tint)", size: "10px", place }] },
     ]);
+    const tint = [{ rgba: 0xff0000ff, score: 1 }];
     const sample = fullSample([
-      { id: "a", attrs: { tint: [{ rgba: 0xff0000ff, score: 1 }] } },
-      { id: "b", attrs: { tint: [] } },
-      { id: "c" },
+      { id: "a", box: [0.125, 0.25, 0.375, 0.5], attrs: { tint } },
+      { id: "bbbb", box: [0.5, 0.5, 0.75, 0.75], attrs: { tint: [] } },
+      { id: "cc", box: [0.625, 0.125, 0.875, 0.25], attrs: { tint } },
     ]);
     const { marks, report } = run(catalog, sample);
-    expect(marks.count).toBe(2);
-    expect(marks.layerEnd[0]).toBe(1);
-    expect(Array.from(report.skipped)).toEqual([0, 2]);
-    expect(report.total()).toBe(2);
+    expect(Array.from(marks.layerEnd.subarray(0, marks.layerCount))).toEqual([2, 4]);
+    expect(report.total()).toBe(1);
+    // Rows a and c survive in order, each with its own box and its own text.
+    const kept = Array.from({ length: marks.count }, (_, i) => {
+      const at = i * WORDS;
+      const run = marks.words[at + Rec.A] * RUN_WORDS;
+      return {
+        row: marks.words[at + Rec.Row],
+        box: Array.from(marks.f32.subarray(at + Rec.Geometry, at + Rec.Geometry + 4)),
+        text:
+          i < 2
+            ? null
+            : codePointString(
+                marks.cps.data,
+                marks.runs[run],
+                marks.runs[run] + marks.runs[run + 1],
+              ),
+      };
+    });
+    expect(kept).toEqual([
+      { row: 0, box: [0.125, 0.25, 0.375, 0.5], text: null },
+      { row: 2, box: [0.625, 0.125, 0.875, 0.25], text: null },
+      { row: 0, box: [0.125, 0.25, 0.375, 0.5], text: "a" },
+      { row: 2, box: [0.625, 0.125, 0.875, 0.25], text: "cc" },
+    ]);
   });
 
   it("drops a label with no visible run silently and skips a null run", () => {
