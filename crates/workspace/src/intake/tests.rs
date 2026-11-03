@@ -313,6 +313,23 @@ fn mot_settings(folder: &Path) -> Settings {
     settings
 }
 
+/// A resolver with a folder setting that defaults to a relative path.
+struct Runs(handler_api::ResolverSpec);
+
+impl handler_api::PlaylistResolver for Runs {
+    fn spec(&self) -> &handler_api::ResolverSpec {
+        &self.0
+    }
+
+    fn resolve(
+        &self,
+        _settings: &Values,
+        _cancel: &CancelToken,
+    ) -> Result<handler_api::ResolvedPlaylist, Interrupt<UserError>> {
+        Err(Interrupt::Cancelled)
+    }
+}
+
 #[test]
 fn a_playlist_resolves_to_entries_whose_ids_are_the_same_every_time() {
     let folder = mot_folder(&["SEQ-02", "SEQ-01"]);
@@ -400,6 +417,30 @@ fn a_playlist_the_schema_or_resolver_refuses_is_refused_naming_the_setting() {
     assert!(
         matches!(&error.location, Some(Location::Host(path)) if path.as_path().ends_with("no/such/folder")),
         "{error:?}"
+    );
+
+    // A folder left at its relative default is stored as that folder in the working folder.
+    let runs = handler_api::ResolverSpec {
+        id: "runs".into(),
+        plugin: "runs".into(),
+        name: "Runs".into(),
+        description: String::new(),
+        form: Form {
+            fields: vec![Field {
+                default: Some("runs".into()),
+                ..Field::new("dir", "Folder", FieldKind::Folder)
+            }],
+        },
+    };
+    let handlers =
+        handlers.with_resolvers([Arc::new(Runs(runs)) as Arc<dyn handler_api::PlaylistResolver>]);
+    let item = playlist("runs", Settings::new(), None, &handlers).unwrap();
+    let Source::Playlist(recipe) = &item.recipe.source else {
+        panic!("a playlist item has a playlist recipe");
+    };
+    assert_eq!(
+        Path::new(recipe.settings["dir"].as_str().unwrap()),
+        std::env::current_dir().unwrap().join("runs")
     );
 }
 

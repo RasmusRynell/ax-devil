@@ -96,7 +96,7 @@ async fn scan_choices(
     handlers: &Handlers,
     resolver: Arc<dyn PlaylistResolver>,
     field: String,
-    mut settings: Settings,
+    settings: Settings,
 ) -> Result<Vec<Choice>, Interrupt<UserError>> {
     let form = &resolver.spec().form;
     let scannable = form
@@ -112,9 +112,13 @@ async fn scan_choices(
             .at(Location::field(field)),
         ));
     }
-    // The plugin runs in its own working folder, so a relative path would not mean what the user typed.
-    workspace::absolute_paths(form, &mut settings, handlers);
-    let settings = form.validate(&settings).map_err(Interrupt::Failed)?;
+    // The plugin runs in its own working folder, so a relative path, a default too, would not mean what it does here.
+    let mut filled = form
+        .validate(&settings)
+        .map_err(Interrupt::Failed)?
+        .declared();
+    workspace::absolute_paths(form, &mut filled, handlers);
+    let settings = form.validate(&filled).map_err(Interrupt::Failed)?;
     let cancel = CancelToken::new();
     let _cancel_when_dropped = CancelOnDrop(cancel.clone());
     let location = field.clone();
@@ -175,8 +179,9 @@ mod tests {
     use scene::MatchBasis;
     use serde_json::json;
     use std::{
+        path::Path,
         sync::{
-            LazyLock,
+            LazyLock, Mutex,
             atomic::{AtomicBool, Ordering},
         },
         time::{Duration, Instant},
@@ -379,6 +384,7 @@ mod tests {
     struct Waiting {
         started: AtomicBool,
         cancelled: AtomicBool,
+        dir: Mutex<String>,
     }
 
     static WAITING_SPEC: LazyLock<ResolverSpec> = LazyLock::new(|| ResolverSpec {
@@ -387,11 +393,13 @@ mod tests {
         name: "Waiting".into(),
         description: "Scans until cancelled.".into(),
         form: Form {
-            fields: vec![Field::new(
-                "items",
-                "Items",
-                FieldKind::Scan { depends_on: vec![] },
-            )],
+            fields: vec![
+                Field::new("items", "Items", FieldKind::Scan { depends_on: vec![] }),
+                Field {
+                    default: Some("runs".into()),
+                    ..Field::new("dir", "Folder", FieldKind::Folder)
+                },
+            ],
         },
     });
 
@@ -403,9 +411,10 @@ mod tests {
         fn scan(
             &self,
             _field: &str,
-            _settings: &Values,
+            settings: &Values,
             cancel: &CancelToken,
         ) -> Result<Vec<Choice>, Interrupt<UserError>> {
+            *self.dir.lock().unwrap() = settings.text("dir").unwrap_or_default().to_owned();
             self.started.store(true, Ordering::Release);
             let deadline = Instant::now() + Duration::from_secs(10);
             while Instant::now() < deadline {
@@ -455,6 +464,8 @@ mod tests {
             .await
         });
         assert!(until(&resolver.started).await, "the scan started");
+        // The omitted folder setting reaches the plugin as its default made absolute.
+        assert!(Path::new(&*resolver.dir.lock().unwrap()).is_absolute());
         assert!(!resolver.cancelled.load(Ordering::Acquire));
 
         request.abort();
