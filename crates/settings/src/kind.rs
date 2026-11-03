@@ -1,8 +1,60 @@
 //! What a setting holds: its type, default and the check a value must pass.
 
 use serde::Serialize;
-use serde_json::Value;
+use serde_json::{Value, json};
 use std::path::Path;
+
+/// The longest a kept sample may stay, in milliseconds, which the playback backend enforces.
+const MAX_STICKY_MS: u64 = 100_000;
+
+/// How sticky overlays start in a new view; the value of a [`Kind::Sticky`] setting.
+#[derive(Clone, Copy, Debug, PartialEq, Serialize)]
+pub struct StickyValue {
+    /// Whether samples are kept.
+    pub enabled: bool,
+    /// How old a kept sample may be, in milliseconds; `None` is without limit.
+    pub timeout_ms: Option<u64>,
+    /// How strongly a kept sample is drawn, from 0 to 1.
+    pub opacity: f64,
+}
+
+impl StickyValue {
+    /// The setting as JSON, which is also how the config file stores it.
+    fn to_json(self) -> Value {
+        json!({"enabled": self.enabled, "timeout_ms": self.timeout_ms, "opacity": self.opacity})
+    }
+
+    /// The value `value` holds, if it is an object of exactly `enabled`, `timeout_ms` and `opacity` in range.
+    fn read(value: &Value) -> Result<Self, String> {
+        let fields = value
+            .as_object()
+            .filter(|fields| fields.len() == 3)
+            .ok_or("expected enabled, timeout_ms and opacity")?;
+        let enabled = fields
+            .get("enabled")
+            .and_then(Value::as_bool)
+            .ok_or("expected enabled to be true or false")?;
+        let timeout_ms = match fields.get("timeout_ms") {
+            Some(Value::Null) => None,
+            Some(timeout) => Some(timeout.as_u64().filter(|ms| *ms <= MAX_STICKY_MS).ok_or(
+                format!(
+                    "expected timeout_ms to be null or a whole number from 0 to {MAX_STICKY_MS}"
+                ),
+            )?),
+            None => return Err("expected enabled, timeout_ms and opacity".into()),
+        };
+        let opacity = fields
+            .get("opacity")
+            .and_then(Value::as_f64)
+            .filter(|opacity| (0.0..=1.0).contains(opacity))
+            .ok_or("expected opacity to be a number from 0 to 1")?;
+        Ok(Self {
+            enabled,
+            timeout_ms,
+            opacity,
+        })
+    }
+}
 
 /// What a setting holds, and its default.
 #[derive(Debug, Serialize)]
@@ -12,6 +64,12 @@ pub enum Kind {
     Bool {
         /// The value when the config has none.
         default: bool,
+    },
+    /// How sticky overlays start in a new view.
+    Sticky {
+        /// The value when the config has none. Must equal `overlay_sync::Sticky::default()`, which a lane the
+        /// backend opens starts with, plus full opacity.
+        default: StickyValue,
     },
     /// One of a closed set of names.
     Choice {
@@ -42,6 +100,7 @@ impl Kind {
     pub fn default_value(&self) -> Value {
         match self {
             Self::Bool { default } => Value::Bool(*default),
+            Self::Sticky { default } => default.to_json(),
             Self::Choice { default, .. } | Self::Text { default } => {
                 Value::String((*default).into())
             }
@@ -50,11 +109,20 @@ impl Kind {
         }
     }
 
+    /// Whether `value` is the default. A number is compared by what it is, so `1` and `1.0` are the same opacity.
+    pub fn is_default(&self, value: &Value) -> bool {
+        match self {
+            Self::Sticky { default } => StickyValue::read(value).is_ok_and(|read| read == *default),
+            _ => *value == self.default_value(),
+        }
+    }
+
     /// Accepts `value` only if it has this kind's type and is one of its options. The reason never contains the value.
     pub fn validate(&self, value: &Value) -> Result<(), String> {
         match (self, value) {
             (Self::Bool { .. }, Value::Bool(_)) | (Self::Text { .. }, Value::String(_)) => Ok(()),
             (Self::Bool { .. }, _) => Err("expected true or false".into()),
+            (Self::Sticky { .. }, value) => StickyValue::read(value).map(|_| ()),
             (Self::Text { .. }, _) => Err("expected text".into()),
             (Self::Choice { options, .. }, Value::String(name))
                 if options.iter().any(|(option, _)| option == name) =>

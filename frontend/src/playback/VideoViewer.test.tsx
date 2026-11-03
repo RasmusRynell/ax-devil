@@ -270,12 +270,13 @@ describe("video viewer", () => {
       fireEvent.click(screen.getByRole("checkbox", { name: "Pedestrian" }));
       expect(sent).toHaveLength(before);
       fireEvent.click(screen.getByRole("tab", { name: "Timing" }));
+      // The lane started from the saved default, which is on.
       fireEvent.click(screen.getByRole("switch", { name: "Sticky" }));
       expect(sent.at(-1)).toEqual({
         type: "LanePolicy",
         lane: 1,
         revision: 2,
-        policy: { basis: null, tolerance_ms: 50, sticky: { enabled: true, timeout_ms: 2050 } },
+        policy: { basis: null, tolerance_ms: 50, sticky: { enabled: false, timeout_ms: 2050 } },
         subscribed: true,
       });
       expect(onLaneMatching).toHaveBeenCalledTimes(1);

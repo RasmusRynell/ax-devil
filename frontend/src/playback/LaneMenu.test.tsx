@@ -151,19 +151,19 @@ describe("lane menu", () => {
 
     it("saves the lane's catalog as the Personal default, unless it failed or already is", async () => {
       const { save, show } = setup();
-      fireEvent.click(screen.getByRole("button", { name: "Use as default" }));
+      fireEvent.click(screen.getByRole("button", { name: "Make default" }));
       expect(save).toHaveBeenCalledWith({
         values: { ...DEFAULT_SETTINGS.values, "overlays.default_catalog": "built-in:standard" },
         shortcuts: DEFAULT_SETTINGS.shortcuts,
       });
       show({ catalogProblem: "/layers: unknown" });
-      const use = screen.getByRole("button", { name: "Use as default" }) as HTMLButtonElement;
+      const use = screen.getByRole("button", { name: "Make default" }) as HTMLButtonElement;
       expect(use.disabled).toBe(true);
       show({ look: undefined });
       expect(use.disabled).toBe(true);
       cleanup();
       setup({}, READY, async () => ({ reason: "no room", location: "" }));
-      fireEvent.click(screen.getByRole("button", { name: "Use as default" }));
+      fireEvent.click(screen.getByRole("button", { name: "Make default" }));
       await waitFor(() => expect(screen.getByRole("alert").textContent).toBe("no room"));
     });
   });
@@ -295,6 +295,23 @@ describe("lane menu", () => {
       fireEvent.change(opacity, { target: { value: "0.4" } });
       fireEvent.keyDown(opacity, { key: "Enter" });
       expect(onChange).toHaveBeenLastCalledWith({ sticky: { ...sticky, opacity: 0.4 } });
+    });
+
+    it("saves the lane's sticky settings as the Personal default, and says so when they already are", () => {
+      const sticky = { enabled: false, timeout_ms: null, opacity: 0.4 };
+      const { save } = setup({ settings: { ...LANE_SETTINGS, sticky } });
+      tab("Timing");
+      fireEvent.click(screen.getByRole("button", { name: "Make default" }));
+      expect(save).toHaveBeenCalledWith({
+        values: { ...DEFAULT_SETTINGS.values, "overlays.default_sticky": sticky },
+        shortcuts: DEFAULT_SETTINGS.shortcuts,
+      });
+      cleanup();
+      const saved = DEFAULT_SETTINGS.values["overlays.default_sticky"] as typeof sticky;
+      setup({ settings: { ...LANE_SETTINGS, sticky: saved } });
+      tab("Timing");
+      expect(screen.getByText("Default for new views")).toBeTruthy();
+      expect(screen.queryByRole("button", { name: "Make default" })).toBeNull();
     });
 
     it("limits the timeout to what the backend accepts", () => {

@@ -1,5 +1,9 @@
 import { useId, useState, type ReactNode } from "react";
+import type { SettingsState } from "../generated/api";
+import type { SettingKey } from "../generated/settings";
+import { Button } from "../kit/Button";
 import { FIELD } from "../kit/look";
+import { useSettings } from "../settings";
 
 /** A number the user edits as text; the change applies when they press Enter or leave the field. */
 export function NumberField({
@@ -60,6 +64,47 @@ export function Group({ label, children }: { label: string; children: ReactNode 
       className="flex flex-col gap-s border-t border-line pt-m first:border-t-0 first:pt-0"
     >
       {children}
+    </div>
+  );
+}
+
+/**
+ * Saves the lane's `value` as the Personal setting new views start with. While the lane already has the saved
+ * default it says so instead; a refusal shows beside the button. `usable` is false when the lane's value cannot be a
+ * default.
+ */
+export function MakeDefault({
+  setting,
+  value,
+  isDefault,
+  usable = true,
+}: {
+  setting: SettingKey;
+  value: SettingsState["values"][SettingKey];
+  isDefault: boolean;
+  usable?: boolean;
+}) {
+  const { values, shortcuts, save } = useSettings();
+  const [refusal, setRefusal] = useState<string | null>(null);
+  return (
+    <div className="flex flex-col items-start gap-s">
+      {isDefault ? (
+        <span className="text-muted">Default for new views</span>
+      ) : (
+        <Button
+          disabled={!usable}
+          title="Start new viewers and lanes with these settings."
+          onClick={() => {
+            setRefusal(null);
+            void save({ values: { ...values, [setting]: value }, shortcuts }).then((refused) =>
+              setRefusal(refused?.reason ?? null),
+            );
+          }}
+        >
+          Make default
+        </Button>
+      )}
+      {refusal && <span role="alert">{refusal}</span>}
     </div>
   );
 }

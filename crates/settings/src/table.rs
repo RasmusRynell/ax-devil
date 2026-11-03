@@ -1,6 +1,9 @@
 //! The one declaration of every setting. Defaults, parsing and validation are generated from it.
 
-use crate::{env, kind::Kind};
+use crate::{
+    env,
+    kind::{Kind, StickyValue},
+};
 use serde::Serialize;
 use serde_json::Value;
 
@@ -126,6 +129,25 @@ pub const TABLE: &[Setting] = &[
         // A catalog id such as `built-in:standard`; empty is the built-in default. Chosen from a lane's menu.
         kind: Kind::Text { default: "" },
         label: "Default catalog",
+        page: None,
+        section: "",
+        live: true,
+        env: false,
+        secret: false,
+        quick_setup: false,
+        scope: Scope::Personal,
+    },
+    Setting {
+        key: "overlays.default_sticky",
+        // What a new viewer or lane starts with; set from a lane's menu.
+        kind: Kind::Sticky {
+            default: StickyValue {
+                enabled: true,
+                timeout_ms: Some(2050),
+                opacity: 1.0,
+            },
+        },
+        label: "Default sticky overlays",
         page: None,
         section: "",
         live: true,

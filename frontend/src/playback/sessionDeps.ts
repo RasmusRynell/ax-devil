@@ -1,6 +1,6 @@
 /** What a playback session is given, and what it reports of the clock. */
 
-import type { LaneSettings } from "./contract";
+import type { LaneSettings, Sticky } from "./contract";
 import type { LanePolicyWire } from "./protocol";
 import type { Connect } from "./wire";
 
@@ -20,6 +20,8 @@ export interface SessionDeps {
   budgetBytes?: number;
   /** The Personal default catalog id, or `null` for the built-in default; read when the lanes open. */
   defaultCatalog?: () => string | null;
+  /** The Personal default sticky settings new lanes start with; read when the lanes open. */
+  defaultSticky?: () => Sticky;
   /** The lane settings of the entry before this one, by lane position: this entry's lanes start from them. */
   lanes?: readonly LaneSettings[];
   /** Where an earlier session left off and the speed it ran at: this one opens there, paused, at that speed. A missing frame opens at the start. */

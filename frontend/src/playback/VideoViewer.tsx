@@ -24,7 +24,7 @@ import { useLaneFullscreen } from "./laneFullscreen";
 import { Popover } from "../kit/Popover";
 import { ObjectsPanel } from "../tools/ObjectsPanel";
 import { VIDEO_LEAST } from "../tools/panelWidth";
-import type { LaneSettings, Viewport } from "./contract";
+import type { LaneSettings, Sticky, Viewport } from "./contract";
 import { FRESH_MEMORY, type InspectorMemory } from "./fields";
 import { Inspector } from "./Inspector";
 import { ObjectLayer, type ObjectLayerHandle } from "./ObjectLayer";
@@ -355,8 +355,10 @@ export function VideoViewer({
   // The effect that creates the session reads these as they are then, and must not restart when they change.
   const latest = useRef({ intent, canChange, following, clock, onLaneMatching });
   latest.current = { intent, canChange, following, clock, onLaneMatching };
-  const defaultCatalog = useRef(values["overlays.default_catalog"]);
-  defaultCatalog.current = values["overlays.default_catalog"];
+  const defaultCatalog = useRef(values["overlays.default_catalog"] as string);
+  defaultCatalog.current = values["overlays.default_catalog"] as string;
+  const defaultSticky = useRef(values["overlays.default_sticky"] as Sticky);
+  defaultSticky.current = values["overlays.default_sticky"] as Sticky;
   // Where each entry was left, for the session that replaces the one that closed. The published intent still names the
   // last anchor when the replacement starts, so reading it there would reopen at the frame playback began from.
   const own = useRef<EntryMemory>(new Map());
@@ -393,7 +395,8 @@ export function VideoViewer({
       connect,
       resume: start,
       lanes: priorLanes.current,
-      defaultCatalog: () => String(defaultCatalog.current) || null,
+      defaultCatalog: () => defaultCatalog.current || null,
+      defaultSticky: () => defaultSticky.current,
       onIntent: publish,
       onPolicy: (slot, policy) => latest.current.onLaneMatching?.(slot, policy),
       now: () => performance.now(),

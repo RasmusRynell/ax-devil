@@ -12,7 +12,7 @@ import type { LaneFrame } from "../playback/contract";
 import type { FieldGroupWire, FieldWire } from "../playback/protocol";
 import type { InspectorMemory } from "../playback/fields";
 import { Inspector } from "../playback/Inspector";
-import { LANE_DEFAULTS } from "../playback/fakeOpened";
+import { LANE_SETTINGS } from "../playback/fakeOpened";
 import { LaneSet } from "../playback/lanes";
 import { INITIAL_VIEW, type PlaybackView } from "../playback/view";
 import { ObjectsPanel } from "../tools/ObjectsPanel";
@@ -108,7 +108,7 @@ class Rig {
     document.body.append(this.host);
     this.root = createRoot(this.host);
     const lanes = new LaneSet();
-    lanes.open([{ label: "bench", slot: "bench", source: 0 }], LANE_DEFAULTS);
+    lanes.open([{ label: "bench", slot: "bench", source: 0 }], LANE_SETTINGS);
     lanes.setStatus(0, READY);
     this.#view = { ...INITIAL_VIEW, status: "ready", frameCount: 1000, lanes: lanes.states };
     const objects = scenario.scope === "Frame" ? scenario.rows : 5000;

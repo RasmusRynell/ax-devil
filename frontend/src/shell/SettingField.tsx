@@ -7,7 +7,7 @@ import { Icon } from "../kit/Icon";
 
 /** A setting's value as the backend stores it. */
 export type Value = SettingsState["values"][SettingKey];
-type KindTag = "bool" | "choice" | "auto_or_whole" | "text" | "folder";
+type KindTag = "bool" | "sticky" | "choice" | "auto_or_whole" | "text" | "folder";
 
 /** A table row as the fields read it. */
 export interface Row {
@@ -27,12 +27,15 @@ export interface Row {
   readonly quick_setup: boolean;
 }
 
+/** The value as text; only the sticky setting is not text, and no field shows it. */
+const textOf = (value: Value) => (typeof value === "object" ? "" : String(value));
+
 /** Whether the whole value is a `$NAME` reference to an environment variable. */
 const isReference = (value: string) => /^\$[A-Za-z_][A-Za-z0-9_]*$/.test(value);
 
 /** Whether a secret row holds the secret itself, which is then masked and warned about, not a reference to it. */
 export function literalSecret(row: Row, value: Value) {
-  const text = String(value);
+  const text = textOf(value);
   return row.secret && text !== "" && !(row.env && isReference(text));
 }
 
@@ -49,10 +52,12 @@ const FIELDS: Record<KindTag, (props: FieldProps) => ReactNode> = {
   bool: ({ label, value, onChange }) => (
     <Checkbox label={label} checked={value === true} onChange={onChange} />
   ),
+  // Set from a lane's menu, so no settings page lists it.
+  sticky: () => null,
   choice: ({ row, label, value, onChange }) => (
     <Select
       label={label}
-      value={String(value)}
+      value={textOf(value)}
       options={row.kind.options ?? []}
       onChange={onChange}
     />
@@ -60,14 +65,14 @@ const FIELDS: Record<KindTag, (props: FieldProps) => ReactNode> = {
   auto_or_whole: ({ label, value, onChange }) => (
     <TextField
       label={label}
-      value={String(value)}
+      value={textOf(value)}
       onChange={(text) => onChange(/^\d+$/.test(text) ? Number(text) : text)}
     />
   ),
   text: ({ row, label, value, describedBy, onChange }) => (
     <TextField
       label={label}
-      value={String(value)}
+      value={textOf(value)}
       masked={literalSecret(row, value)}
       describedBy={describedBy}
       onChange={onChange}
@@ -78,7 +83,7 @@ const FIELDS: Record<KindTag, (props: FieldProps) => ReactNode> = {
     return (
       <TextField
         label={label}
-        value={String(value)}
+        value={textOf(value)}
         onChange={onChange}
         action={
           bridge && (

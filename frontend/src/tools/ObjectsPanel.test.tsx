@@ -2,7 +2,7 @@ import { act, cleanup, fireEvent, render, screen, within } from "@testing-librar
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import type { FileRowWire, FileScopeUnavailable } from "../generated/api";
 import type { LaneFrame } from "../playback/contract";
-import { LANE_DEFAULTS } from "../playback/fakeOpened";
+import { LANE_SETTINGS } from "../playback/fakeOpened";
 import { FileScope } from "../playback/fileScope";
 import { LaneSet } from "../playback/lanes";
 import type { ClientMessage, LaneStatusWire } from "../playback/protocol";
@@ -53,7 +53,7 @@ function mount(
 ) {
   vi.useFakeTimers();
   const lanes = new LaneSet();
-  lanes.open([{ label: "DPM", slot: "DPM", source: 0 }], LANE_DEFAULTS);
+  lanes.open([{ label: "DPM", slot: "DPM", source: 0 }], LANE_SETTINGS);
   lanes.setStatus(0, READY);
   const sent: ClientMessage[] = [];
   const files = new FileScope(

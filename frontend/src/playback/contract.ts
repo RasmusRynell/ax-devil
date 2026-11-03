@@ -53,6 +53,9 @@ export type LaneSettings = {
   visible: boolean;
 };
 
+/** How a lane keeps old samples on screen; also what new lanes start with, as the Personal setting holds it. */
+export type Sticky = LaneSettings["sticky"];
+
 /** What the catalog a lane draws with offers its menu. */
 export type CatalogLook = {
   /** The catalog's theme names. */

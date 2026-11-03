@@ -2,7 +2,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import type { FileRowWire } from "../generated/api";
 import { FileScope } from "./fileScope";
-import { LANE_DEFAULTS } from "./fakeOpened";
+import { LANE_SETTINGS } from "./fakeOpened";
 import { setup } from "./fakePlayback";
 import { LaneSet } from "./lanes";
 import type { ClientMessage, LaneStatusWire, ServerMessage } from "./protocol";
@@ -38,7 +38,7 @@ type Scope = Extract<ServerMessage, { type: "FileScope" }>;
 /** A file scope over one Ready lane, a recording socket and fake timers. */
 function scope() {
   const lanes = new LaneSet();
-  lanes.open([{ label: "DPM", slot: "DPM", source: 0 }], LANE_DEFAULTS);
+  lanes.open([{ label: "DPM", slot: "DPM", source: 0 }], LANE_SETTINGS);
   lanes.setStatus(0, READY);
   const sent: ClientMessage[] = [];
   const files = new FileScope(

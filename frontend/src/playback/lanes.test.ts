@@ -23,7 +23,7 @@ const LANES = [
 
 function opened(): LaneSet {
   const lanes = new LaneSet();
-  lanes.open(LANES, LANE_DEFAULTS);
+  lanes.open(LANES, LANE_SETTINGS);
   return lanes;
 }
 
@@ -74,22 +74,22 @@ describe("lanes", () => {
       sticky: { enabled: false, timeout_ms: null },
     };
     const seed = { ...LANE_SETTINGS, tolerance_ms: 100 };
-    const sent = lanes.open([{ ...LANES[0], policy: kept }, LANES[1]], LANE_DEFAULTS, [seed, seed]);
+    const sent = lanes.open([{ ...LANES[0], policy: kept }, LANES[1]], LANE_SETTINGS, [seed, seed]);
     expect(sent).toMatchObject([{ policy: kept }]);
     expect(lanes.states[0].settings.sticky.opacity).toBe(1);
   });
 
   it("subscribes every source lane when the entry opens, keeping the user's settings across a reconnection", () => {
     const lanes = new LaneSet();
-    expect(lanes.open(LANES, LANE_DEFAULTS)).toMatchObject([
+    expect(lanes.open(LANES, LANE_SETTINGS)).toMatchObject([
       { lane: 0, revision: 1, subscribed: true },
     ]);
     lanes.set(0, { visible: false });
-    expect(lanes.open(LANES, LANE_DEFAULTS)).toMatchObject([
+    expect(lanes.open(LANES, LANE_SETTINGS)).toMatchObject([
       { lane: 0, revision: 3, subscribed: false },
     ]);
     expect(lanes.states[0].status).toEqual({ status: "Loading" });
-    lanes.open([{ label: "other", slot: "other", source: 0 }], LANE_DEFAULTS);
+    lanes.open([{ label: "other", slot: "other", source: 0 }], LANE_SETTINGS);
     expect(lanes.states[0]).toMatchObject({ policyRevision: 1, settings: { visible: true } });
   });
 
@@ -107,8 +107,8 @@ describe("lanes", () => {
 
   it("shows a lane without a source again after it inherited being hidden, sending no policy", () => {
     const lanes = new LaneSet();
-    lanes.open(LANES, LANE_DEFAULTS, [{ ...opened().states[0].settings, visible: false }]);
-    lanes.open([LANES[1]], LANE_DEFAULTS, [{ ...opened().states[0].settings, visible: false }]);
+    lanes.open(LANES, LANE_SETTINGS, [{ ...opened().states[0].settings, visible: false }]);
+    lanes.open([LANES[1]], LANE_SETTINGS, [{ ...opened().states[0].settings, visible: false }]);
     expect(lanes.states[0].settings.visible).toBe(false);
 
     expect(lanes.set(0, { visible: true })).toBeUndefined();
@@ -119,11 +119,11 @@ describe("lanes", () => {
   it("starts new lanes from the seeds by position, else the defaults, and a reconnection from what the user set", () => {
     const seeds = [{ ...opened().states[0].settings, theme: "night", visible: false }];
     const lanes = new LaneSet();
-    lanes.open(LANES, LANE_DEFAULTS, seeds);
+    lanes.open(LANES, LANE_SETTINGS, seeds);
     expect(lanes.states.map((lane) => lane.settings.theme)).toEqual(["night", null]);
     expect(lanes.states[0].settings.visible).toBe(false);
     lanes.set(0, { theme: "day" });
-    lanes.open(LANES, LANE_DEFAULTS, seeds);
+    lanes.open(LANES, LANE_SETTINGS, seeds);
     expect(lanes.states[0].settings.theme).toBe("day");
   });
 
@@ -136,7 +136,7 @@ describe("lanes", () => {
         { label: "v", slot: "v", source: null },
         { label: "c", slot: "c", source: 2 },
       ],
-      LANE_DEFAULTS,
+      LANE_SETTINGS,
     );
     lanes.set(1, { visible: false });
     lanes.set(0, {
@@ -161,8 +161,20 @@ describe("lanes", () => {
   it("starts with the Personal default catalog only when the backend lists it", () => {
     const listed = [{ id: "user:a.json", name: "A", description: "" }];
     expect(startWith(LANE_DEFAULTS, listed, "user:a.json").catalog).toBe("user:a.json");
-    expect(startWith(LANE_DEFAULTS, listed, "user:gone.json")).toBe(LANE_DEFAULTS);
-    expect(startWith(LANE_DEFAULTS, listed, "")).toBe(LANE_DEFAULTS);
-    expect(startWith(LANE_DEFAULTS, listed, null)).toBe(LANE_DEFAULTS);
+    for (const personal of ["user:gone.json", "", null])
+      expect(startWith(LANE_DEFAULTS, listed, personal)).toEqual(LANE_SETTINGS);
+  });
+
+  it("starts new lanes from the saved sticky default, opacity included, below the seeds and the workspace's matching", () => {
+    const saved = { enabled: true, timeout_ms: null, opacity: 0.4 };
+    const defaults = startWith(LANE_DEFAULTS, [], null, saved);
+    expect(defaults.sticky).toEqual(saved);
+    const kept = { basis: null, tolerance_ms: 50, sticky: { enabled: false, timeout_ms: 500 } };
+    const lanes = new LaneSet();
+    lanes.open([LANES[0], { ...LANES[0], policy: kept }, LANES[0]], defaults, [LANE_SETTINGS]);
+    const [seeded, workspace, fresh] = lanes.states.map((state) => state.settings.sticky);
+    expect(seeded).toEqual(LANE_SETTINGS.sticky);
+    expect(workspace).toEqual({ enabled: false, timeout_ms: 500, opacity: 0.4 });
+    expect(fresh).toEqual(saved);
   });
 });

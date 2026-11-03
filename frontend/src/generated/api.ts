@@ -50,7 +50,7 @@ export type SettingsState = {
  * The settings the caller may read by dotted key, such as `"ui.theme"`, with the default when unset: those of
  * its scopes, a `$NAME` reference as written and a literal secret masked.
  */
-values: Record<SettingKey, string | boolean | number>, 
+values: Record<SettingKey, string | boolean | number | { enabled: boolean; timeout_ms: number | null; opacity: number }>, 
 /**
  * The key of every command once the user's changes apply; `null` when unbound. Empty unless the caller holds
  * the `preferences` grant: shortcuts are Personal.
@@ -65,7 +65,7 @@ export type SettingsChange = {
 /**
  * Every setting of the caller's scopes by dotted key.
  */
-values: Record<SettingKey, string | boolean | number>, 
+values: Record<SettingKey, string | boolean | number | { enabled: boolean; timeout_ms: number | null; opacity: number }>, 
 /**
  * The key of every command; `null` when unbound. Empty unless the caller holds the `preferences` grant.
  */
