@@ -2,7 +2,7 @@
 //! folders.
 
 use std::{
-    fs,
+    fs::{self, File, OpenOptions},
     io::{self, Write},
     path::{Path, PathBuf},
 };
@@ -182,6 +182,27 @@ impl Registry {
         Ok(found.is_some())
     }
 
+    /// Locks `plugins.lock` beside the registry file at `path` without waiting, so processes changing the registry
+    /// take turns and none loses another's change. The OS releases the lock when the file is dropped or the process
+    /// ends; hold it from reading the registry until it is saved. Its error is in words for the user.
+    ///
+    /// On Unix this is a POSIX record lock, not `flock`: a `flock` lives as long as any copy of the file, and a
+    /// plugin process forked while the lock is held keeps a copy until it runs its program, which would turn the
+    /// next change into a false "another installation". Changes within one process take turns on [`Plugins`]'s own
+    /// mutex, which this lock does not cover.
+    pub fn try_lock(path: &Path) -> io::Result<File> {
+        if let Some(folder) = path.parent() {
+            create_private_folder(folder)?;
+        }
+        let lock = OpenOptions::new()
+            .create(true)
+            .write(true)
+            .truncate(false)
+            .open(path.with_file_name("plugins.lock"))?;
+        lock_exclusive(&lock)?;
+        Ok(lock)
+    }
+
     /// Writes the registry atomically: a temporary file beside it, private to the user, renamed into place.
     pub fn save(&self) -> io::Result<()> {
         let folder = self.path.parent().unwrap_or_else(|| Path::new("."));
@@ -235,6 +256,30 @@ fn entry_manifest(entry: &Map<String, Value>) -> PathBuf {
             .and_then(Value::as_str)
             .unwrap_or_default(),
     )
+}
+
+#[cfg(unix)]
+fn lock_exclusive(file: &File) -> io::Result<()> {
+    use rustix::{fs::FlockOperation, io::Errno};
+    match rustix::fs::fcntl_lock(file, FlockOperation::NonBlockingLockExclusive) {
+        Ok(()) => Ok(()),
+        Err(Errno::AGAIN | Errno::ACCESS) => Err(busy()),
+        Err(error) => Err(error.into()),
+    }
+}
+
+#[cfg(not(unix))]
+fn lock_exclusive(file: &File) -> io::Result<()> {
+    use std::fs::TryLockError;
+    match file.try_lock() {
+        Ok(()) => Ok(()),
+        Err(TryLockError::WouldBlock) => Err(busy()),
+        Err(TryLockError::Error(error)) => Err(error),
+    }
+}
+
+fn busy() -> io::Error {
+    io::Error::other("Another plugin installation is running")
 }
 
 fn create_private_folder(folder: &Path) -> io::Result<()> {

@@ -274,7 +274,9 @@ impl Plugins {
     }
 
     /// Edits the registry file with `edit`, which says whether it found something to change, saves it and reloads.
-    /// When it did not, `target` is reported as matching no plugin and the file is left alone.
+    /// When it did not, `target` is reported as matching no plugin and the file is left alone. Every caller is an
+    /// explicit change, so another process changing the registry fails it at once; [`refresh`](Self::refresh) only
+    /// reads the atomically saved file and takes no lock.
     fn change(
         &self,
         target: &str,
@@ -287,6 +289,8 @@ impl Plugins {
             )
         })?;
         let mut seen = self.locked();
+        let _lock = Registry::try_lock(registry)
+            .map_err(|error| UserError::new(ErrorCode::PluginInvalid, error.to_string()))?;
         let mut installed = Registry::read(registry)
             .map_err(|error| UserError::new(ErrorCode::PluginInvalid, error.to_string()))?;
         if !edit(&mut installed, &reserved(&self.built_in))? {
