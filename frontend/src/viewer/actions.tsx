@@ -11,12 +11,13 @@ export const ViewerActionsContext = createContext<Dispatch<SetStateAction<Viewer
   null,
 );
 
-/** Offers a viewer's commands to the shell while it is mounted. `actions` must be stable between renders. */
-export function useViewerActions(actions: ViewerActions): void {
+/** Offers a viewer's commands to the shell while it is mounted, and returns them. `actions` must be stable between renders. */
+export function useViewerActions(actions: ViewerActions): ViewerActions {
   const offer = useContext(ViewerActionsContext);
   useEffect(() => {
     if (!offer) return;
     offer(actions);
     return () => offer((now) => (now === actions ? NO_ACTIONS : now));
   }, [offer, actions]);
+  return actions;
 }

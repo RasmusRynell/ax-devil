@@ -14,6 +14,7 @@ function bridge() {
     minimize: vi.fn(),
     toggleMaximize: vi.fn(),
     close: vi.fn(),
+    toggleFullScreen: vi.fn(),
     pickVideos: vi.fn(() => Promise.resolve([])),
     connect: vi.fn(),
     disconnect: vi.fn(),

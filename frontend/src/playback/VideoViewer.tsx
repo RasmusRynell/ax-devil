@@ -1,14 +1,25 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import type { ContentInfo, ContentRef, EntryInfo, LanePolicyWire } from "../generated/api";
 import { ExportDialog } from "../export/ExportDialog";
+import { ContextMenu } from "../kit/ContextMenu";
 import { Icon } from "../kit/Icon";
 import { useSettings } from "../settings";
-import { useCan, useFollowing, useServerClock, useStream, useView } from "../session/session";
+import {
+  useAllowed,
+  useCan,
+  useFollowing,
+  useServerClock,
+  useStream,
+  useView,
+} from "../session/session";
 import { useViewerActions } from "../viewer/actions";
 import { NOTHING_HIDDEN, type Hidden } from "../viewer/hidden";
 import { NoticeList } from "../kit/NoticeList";
 import { useChromeVisibility } from "./chromeVisibility";
 import { LaneGrid } from "./LaneGrid";
+import { HIDE_LANE, laneContextEntries } from "./laneContextMenu";
+import { shownLanes } from "./laneCells";
+import { useLaneFullscreen } from "./laneFullscreen";
 import { Popover } from "../kit/Popover";
 import { ObjectsPanel } from "../tools/ObjectsPanel";
 import type { LaneSettings, Viewport } from "./contract";
@@ -91,13 +102,17 @@ function Playback({
   onInspector: (memory: InspectorMemory) => void;
 }) {
   const view = useSyncExternalStore(session.subscribe, session.getSnapshot);
-  const objectDetails = useSettings().values["overlays.object_details"] === true;
+  const { values, shortcuts } = useSettings();
+  const objectDetails = values["overlays.object_details"] === true;
+  const allowed = useAllowed();
   const pane = useRef<HTMLDivElement>(null);
   const objects = useRef<ObjectLayerHandle>(null);
   const geometry = useRef<Geometry | null>(null);
   const [exporting, setExporting] = useState(false);
   const [tools, setTools] = useState(false);
   useChromeVisibility(pane);
+  const shown = useMemo(() => shownLanes(view.lanes, hidden, entry), [view.lanes, hidden, entry]);
+  const fullscreen = useLaneFullscreen(pane, shown);
   const shownViewport = useRef(viewport);
   shownViewport.current = viewport;
   // A viewer that opens takes the keyboard, so its shortcuts work at once.
@@ -123,7 +138,7 @@ function Playback({
     geometry.current = next;
     objects.current?.drawn(next);
   }, []);
-  useViewerActions(
+  const actions = useViewerActions(
     useMemo(
       () => ({
         "zoom-in": () => zoom(ZOOM_STEP),
@@ -137,13 +152,14 @@ function Playback({
         "speed-up": () => session.stepSpeed(1),
         "speed-down": () => session.stepSpeed(-1),
         "media-tools": () => setTools((open) => !open),
+        "lane-fullscreen": fullscreen.toggle,
         "export-video": () => {
           if (session.getSnapshot().status !== "ready") return;
           session.pause();
           setExporting(true);
         },
       }),
-      [session, zoom, onViewport],
+      [session, zoom, onViewport, fullscreen.toggle],
     ),
   );
   return (
@@ -153,28 +169,42 @@ function Playback({
       data-popover-bounds=""
       className="group relative flex min-h-0 flex-1 flex-col bg-canvas text-on-canvas outline-none @container"
       onKeyDown={(event) => {
+        // In fullscreen, Escape only leaves it.
         if (event.key === "Escape" && !event.ctrlKey && !event.altKey && !event.metaKey)
-          session.select(null);
+          if (!fullscreen.leave()) session.select(null);
       }}
     >
       {view.status === "ready" ? (
         <div className="flex min-h-0 flex-1">
           <div data-chrome-idle="" className="relative min-h-0 min-w-0 flex-1">
-            <LaneGrid
-              session={session}
-              view={view}
-              name={name}
-              anchor={`frame:${item}`}
-              entry={entry}
-              hidden={hidden}
-              onHide={onHideLane}
-              viewport={viewport}
-              onViewport={onViewport}
-              objectDetails={objectDetails}
-              onHover={hover}
-              onSelect={(selection) => session.select(selection)}
-              onDrawn={drawn}
-            />
+            <ContextMenu
+              className="absolute inset-0"
+              entries={laneContextEntries(allowed, shortcuts, onHideLane !== undefined)}
+              onSelect={({ id }) => {
+                const lane = fullscreen.target();
+                if (id !== HIDE_LANE) actions[id]?.();
+                else if (lane !== null) onHideLane?.(view.lanes[lane].label);
+              }}
+            >
+              <LaneGrid
+                session={session}
+                view={view}
+                name={name}
+                anchor={`frame:${item}`}
+                entry={entry}
+                hidden={hidden}
+                only={fullscreen.solo}
+                onHide={onHideLane}
+                onPoint={fullscreen.point}
+                onPick={fullscreen.pick}
+                viewport={viewport}
+                onViewport={onViewport}
+                objectDetails={objectDetails}
+                onHover={hover}
+                onSelect={(selection) => session.select(selection)}
+                onDrawn={drawn}
+              />
+            </ContextMenu>
             <ObjectLayer
               selection={view.selection}
               objectDetails={objectDetails}

@@ -5,6 +5,8 @@ export interface WindowBridge {
   minimize(): void;
   toggleMaximize(): void;
   close(): void;
+  /** Puts the whole window into or out of fullscreen. */
+  toggleFullScreen(): void;
   /** Opens the native file dialog for video files. Resolves to the absolute paths chosen; none when cancelled. */
   pickVideos(): Promise<string[]>;
   /** Opens the native folder dialog. Resolves to the absolute path chosen; null when cancelled. */
@@ -33,6 +35,13 @@ declare global {
   interface Window {
     axDevilWindow?: WindowBridge;
   }
+}
+
+/** Puts the whole application into or out of fullscreen: the window in the desktop, the page in a browser. */
+export function toggleAppFullscreen(): void {
+  if (window.axDevilWindow) window.axDevilWindow.toggleFullScreen();
+  else if (document.fullscreenElement) void document.exitFullscreen();
+  else void document.documentElement.requestFullscreen();
 }
 
 /**
