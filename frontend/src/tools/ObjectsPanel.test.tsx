@@ -49,6 +49,7 @@ const file = (id: string, first: number, classes = ["car"]): FileRowWire => ({
 function mount(
   selection: PlaybackView["selection"] = null,
   props: Partial<Parameters<typeof ObjectsPanel>[0]> = {},
+  frame = FRAME,
 ) {
   vi.useFakeTimers();
   const lanes = new LaneSet();
@@ -67,8 +68,8 @@ function mount(
     files,
     shown: () =>
       ({
-        columns: FRAME,
-        classMask: { enabled: new Uint32Array(FRAME.maskWords), options: 0 },
+        columns: frame,
+        classMask: { enabled: new Uint32Array(frame.maskWords), options: 0 },
         filter: null,
       }) as unknown as LaneFrame,
     select: vi.fn(),
@@ -171,19 +172,25 @@ describe("Frame scope", () => {
     search("state:moving");
     expect(ids()).toEqual(["12"]);
 
-    // A field no object in the frame has is named.
-    search("speed>3 color:red");
-    expect(says("No object has speed, color in this frame")).toBe(true);
-    search("motion:moving");
-    expect(says("No object has motion in this frame")).toBe(true);
-    search("class:car");
-    expect(says("No object has speed, color in this frame")).toBe(false);
-
     search("");
     fireEvent.keyDown(screen.getByRole("listbox"), { key: "ArrowDown" });
     fireEvent.keyDown(screen.getByRole("listbox"), { key: "Enter" });
     expect(source.select).toHaveBeenCalledWith({ lane: 0, source: 0, entity: "9" });
     expect(source.seek).not.toHaveBeenCalled();
+  });
+
+  it("names a searched field no object has, only where it can tell", () => {
+    mount(null, {}, fullSample([{ id: "7", class: "car", score: 0.8, box: [0.1, 0.1, 0.3, 0.3] }]));
+    // Motion state and confidence are in what is searched here, and the object has neither.
+    search("state:moving confidence>0.5");
+    expect(says("No object has state, confidence in this frame")).toBe(true);
+    // Any other field may be in the inspection data, so its absence is not claimed.
+    search("speed>3");
+    expect(
+      screen
+        .queryAllByRole("status")
+        .some((status) => status.textContent?.startsWith("No object has")),
+    ).toBe(false);
   });
 
   it("is where it was left, cursor and scroll, when the scope is shown again", () => {

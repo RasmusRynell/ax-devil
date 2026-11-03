@@ -4,7 +4,7 @@ import type { FileSortKey, FileSortWire } from "../generated/api";
 import type { LaneFrame } from "../playback/contract";
 import { filterRows } from "../present";
 import { MOTION_STATES } from "../present/columns";
-import type { SearchRecord } from "../search/match";
+import { names, type SearchRecord } from "../search/match";
 
 /** One object of the frame on screen. */
 export type FrameObject = {
@@ -64,13 +64,29 @@ export function frameObjects(frame: LaneFrame | undefined): FrameObject[] {
   }));
 }
 
+/** The keys a Frame object's search record can have, as the inspection names them. */
+const KEY = {
+  id: "id",
+  class: "class",
+  motion: "motion.state",
+  score: "classification.score",
+  confidence: "classification.confidence",
+} as const;
+
+/** Whether `path` names a field a Frame object's search record can carry; for any other, its absence is unknown. */
+export const inRecord = (path: string): boolean =>
+  Object.values(KEY).some((key) => names(path.toLowerCase(), key));
+
 /** What a search looks at in an object: fields keyed as the inspection keys them, and its id, class and motion state as text. */
 export function recordOf(object: FrameObject): SearchRecord {
   const { id, className, motion, score, confidence } = object;
-  const fields: { [path: string]: (string | number)[] } = { id: [id], class: [className] };
-  if (motion !== "") fields["motion.state"] = [motion];
-  if (score !== null) fields["classification.score"] = [score];
-  if (confidence !== null) fields["classification.confidence"] = [confidence];
+  const fields: { [path: string]: (string | number)[] } = {
+    [KEY.id]: [id],
+    [KEY.class]: [className],
+  };
+  if (motion !== "") fields[KEY.motion] = [motion];
+  if (score !== null) fields[KEY.score] = [score];
+  if (confidence !== null) fields[KEY.confidence] = [confidence];
   return { fields, text: motion === "" ? [id, className] : [id, className, motion] };
 }
 

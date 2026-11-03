@@ -47,19 +47,19 @@ module.exports.objects = async (window, { setTheme, shoot }) => {
     await shoot(`objects-frame-${theme}.png`);
   }
 
-  // A searched field no object in the frame has is named under the search box.
+  // A searched motion state no object in the frame has is named under the search box.
   await js(`document.querySelector('${PANEL} input:not([type=radio])').focus()`);
-  window.webContents.insertText("speed>3");
+  window.webContents.insertText("state:moving");
   const noted = (text) =>
     `[...document.querySelectorAll('${PANEL} [role=status]')].some((note) => note.textContent === '${text}')`;
-  await wait(noted("No object has speed in this frame"));
+  await wait(noted("No object has state in this frame"));
   for (const theme of THEMES) {
     await setTheme(theme);
     await shoot(`objects-missing-${theme}.png`);
   }
   key("A", ["control"]);
   key("Backspace");
-  await wait(`!(${noted("No object has speed in this frame")})`);
+  await wait(`!(${noted("No object has state in this frame")})`);
 
   // Dragging the divider on the panel's left edge left widens it, and it keeps that width through a close.
   const width = () => js(`document.querySelector('${PANEL}').getBoundingClientRect().width`);

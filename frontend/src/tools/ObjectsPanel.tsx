@@ -24,6 +24,7 @@ import {
   drawnIds,
   frameObjects,
   isFileSort,
+  inRecord,
   recordOf,
   sortObjects,
   type FrameObject,
@@ -246,7 +247,7 @@ function ObjectsList({
       missingPaths(
         wire,
         objects.map((object) => recordOf(object)),
-      ),
+      ).filter(inRecord),
     [objects, wire],
   );
   const fileNote = useMemo(

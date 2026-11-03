@@ -14,7 +14,7 @@ export type SearchRecord = {
 };
 
 /** Whether `path` names `key`: it equals the key or a trailing run of its dotted parts, ignoring case. */
-const names = (path: string, key: string): boolean => {
+export const names = (path: string, key: string): boolean => {
   const name = key.toLowerCase();
   return name === path || name.endsWith(`.${path}`);
 };
