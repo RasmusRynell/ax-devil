@@ -155,3 +155,22 @@ fn the_shell_plugin_emits_times_out_of_order_and_a_replace() {
     );
     assert!(run.sink.warnings.is_empty());
 }
+
+#[test]
+fn the_shell_plugin_reads_a_file_whose_name_has_a_quote_and_a_backslash() {
+    // The request carries the path as a JSON string, so the quote and the backslash arrive escaped.
+    let folder = tempfile::tempdir().expect("a temporary folder");
+    let file = folder.path().join(r#"a"b\c.times.txt"#);
+    std::fs::copy(fixture("shell-times/sample.times.txt"), &file).expect("the copy");
+
+    let run = decode(
+        &decoder("shell-times"),
+        &file,
+        &Settings::new(),
+        &CancelToken::new(),
+        TestSink::default(),
+    );
+
+    assert_eq!(run.sink.samples.len(), 6);
+    assert!(run.sink.warnings.is_empty() && run.sink.skips.is_empty());
+}
