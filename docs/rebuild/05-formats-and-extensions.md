@@ -91,8 +91,8 @@ Guarantees any mechanism must meet (`docs/domain/invariants.md#plugin-system`, [
 - Discovery only through a declared registry; never by folder presence.
 - Protocol and Scene version checks before registration; failures listed, never fatal.
 - Plugin dependencies isolated from the app's; installing a plugin never changes the app.
-- Install and remove from the CLI, validated before activation and applied on restart; update and the Plugins view are
-  not built (PL-03).
+- Install and remove from the CLI and the Plugins view, validated before activation and applied to the running app
+  (PL-03).
 - Authoring stays cheap for an agent: one small folder, a local install command, a check command that runs it on real
   data.
 
