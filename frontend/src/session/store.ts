@@ -48,6 +48,8 @@ export interface SessionState {
    * granted to one of them: a stream opened under an earlier one is ended.
    */
   seatings: number;
+  /** How many workspace commands the backend has answered, whatever the answer: the files they touch have settled. */
+  workspaceAnswers: number;
 }
 
 export interface SessionDeps {
@@ -95,6 +97,7 @@ export class SessionStore {
     following: false,
     synced: false,
     seatings: 0,
+    workspaceAnswers: 0,
   };
   #connection: Connection | null = null;
   #doc: { rev: number; wire: DocWire } | null = null;
@@ -201,7 +204,15 @@ export class SessionStore {
 
   /** Asks the backend for a change; settles when it answers and rejects with `CommandRefused` when it refuses. */
   command(command: SessionCommand): Promise<void> {
-    return this.#ask(command).then(() => undefined);
+    const asked = this.#ask(command).then(() => undefined);
+    if (command.type === "workspace") {
+      const answered = () => {
+        this.#state = { ...this.#state, workspaceAnswers: this.#state.workspaceAnswers + 1 };
+        this.#notify();
+      };
+      asked.then(answered, answered);
+    }
+    return asked;
   }
 
   /** A ticket for one playback socket, once the session is connected; every socket needs its own. */

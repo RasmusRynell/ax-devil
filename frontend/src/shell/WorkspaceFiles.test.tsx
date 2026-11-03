@@ -41,15 +41,17 @@ describe("workspace files", () => {
     // A recovery copy: the row is named for the saved file, and opens the copy.
     const path = "/state/unsaved/Untitled.ax-devil.workspace";
     const name = "Gate review.ax-devil.workspace";
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(() => Promise.resolve(Response.json([{ path, name, usedMs: Date.now() }]))),
+    const recents = vi.fn(() =>
+      Promise.resolve(Response.json([{ path, name, usedMs: Date.now() }])),
     );
+    vi.stubGlobal("fetch", recents);
     await renderShell();
     const row = await screen.findByRole("button", { name: /Gate review/ });
     expect(row.title).toBe(path);
     fireEvent.click(row);
     expect(sent()).toEqual([{ type: "open", path }]);
+    // The list is asked again once the command is answered, as the opened file's entry may have changed.
+    await waitFor(() => expect(recents).toHaveBeenCalledTimes(2));
   });
 
   it("opens a workspace by the path typed where the window has no file dialog", async () => {

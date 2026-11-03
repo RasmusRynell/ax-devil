@@ -143,13 +143,15 @@ impl Recents {
     }
 }
 
-/// Which entries are saved files whose recovery copy is also in `list`. Compared as spelled, so nothing is touched.
+/// Which entries are saved files whose recovery copy is also in `list` and at least as new: a file used after its
+/// copy was written is the latest thing the user did. Compared as spelled, so nothing is touched.
 fn hidden(list: &[Recent]) -> Vec<bool> {
-    let recovered: Vec<&PathBuf> = list
-        .iter()
-        .filter_map(|recent| recent.recovers.as_ref())
-        .collect();
     list.iter()
-        .map(|recent| recent.recovers.is_none() && recovered.contains(&&recent.path))
+        .map(|recent| {
+            recent.recovers.is_none()
+                && list.iter().any(|copy| {
+                    copy.recovers.as_ref() == Some(&recent.path) && copy.used_ms >= recent.used_ms
+                })
+        })
         .collect()
 }

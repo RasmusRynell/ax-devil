@@ -128,4 +128,10 @@ fn a_saved_file_with_a_recovery_copy_is_listed_once_as_the_copy() {
     // Without the copy the file is back.
     recents.forget(&copy).unwrap();
     assert!(recents.list().iter().any(|recent| recent.path == file(0)));
+
+    // A file used after its copy was written is what the user did last: both are listed, the file first.
+    recents.record_copy(&copy, Some(&file(0)), 11).unwrap();
+    recents.record(&file(0), 12).unwrap();
+    let listed = recents.list();
+    assert_eq!((&listed[0].path, &listed[1].path), (&file(0), &copy));
 }

@@ -106,8 +106,11 @@ impl WorkspaceFiles {
     pub(super) async fn close(&self, files: &mut SessionFiles) {
         let state = Arc::clone(&files.rx.borrow());
         let _ = self.sync(files, &state.doc.workspace).await;
-        // The copy that outlives the window is what the next launch restores, so it is the newest recent again.
-        if let Some(copy) = files.copy.take() {
+        // A modified workspace's copy outlives the window and is what the next launch restores, so it is the newest
+        // recent again. An unmodified workspace's copy that could not be deleted stays unlisted: it was discarded or saved.
+        if let Some(copy) = files.copy.take()
+            && state.doc.workspace.modified()
+        {
             let recovers = state.doc.workspace.file.as_ref();
             self.record(files, copy.path(), recovers.map(|file| file.as_path()))
                 .await;
