@@ -95,7 +95,7 @@ const COUNT: ResolverInfo = {
       kind: {
         kind: "Scan",
         depends_on: ["videos"],
-        count: { missing: "Pick videos.", found: "Found {count}.", none: "None found." },
+        count: { missing: "Pick videos.", found: "Found {count} of {count}.", none: "None found." },
       },
       required: false,
     },
@@ -359,10 +359,10 @@ describe("resolver form", () => {
     // The count survives a new decoder; a new folder forgets it.
     scan();
     await respond(scans, 2, "a", "b");
-    expect(screen.getByRole("status").textContent).toBe("Found 2.");
+    expect(screen.getByRole("status").textContent).toBe("Found 2 of 2.");
     fireEvent.change(screen.getByLabelText("Format"), { target: { value: "" } });
     fireEvent.change(screen.getByLabelText("Format"), { target: { value: "MOT_FILE" } });
-    expect(screen.getByRole("status").textContent).toBe("Found 2.");
+    expect(screen.getByRole("status").textContent).toBe("Found 2 of 2.");
     expect(settings()).toEqual({ videos: "/v", format: "MOT_FILE" });
     expect(screen.getByRole("button", { name: "After" })).toHaveProperty("disabled", true);
     fireEvent.change(screen.getByLabelText("Videos"), { target: { value: "/w" } });

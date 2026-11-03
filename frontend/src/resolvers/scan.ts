@@ -109,7 +109,7 @@ export function countStatus(
     case "done":
       return view.choices.length === 0
         ? count.none
-        : count.found.replace("{count}", String(view.choices.length));
+        : count.found.replaceAll("{count}", String(view.choices.length));
     default:
       return ready ? "" : count.missing;
   }
