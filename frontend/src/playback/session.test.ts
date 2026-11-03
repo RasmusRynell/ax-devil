@@ -18,7 +18,7 @@ describe("opening", () => {
     expect(presented).toEqual([0]);
     expect(session.getSnapshot()).toMatchObject({
       playing: false,
-      shown: { sequenceId: 0, timestampUs: 0 },
+      shown: { sequenceId: 0, timestampUs: 0, periodUs: 40_000 },
     });
   });
 
@@ -47,6 +47,27 @@ describe("opening", () => {
       protocol: PLAYBACK_PROTOCOL + 1,
     });
     expect(session.getSnapshot().status).toBe("failed");
+  });
+});
+
+describe("cached frames", () => {
+  it("reports the frames the backend holds decoded, and none once the connection is lost", async () => {
+    const { session, server } = await setup();
+    server.open();
+    expect(session.getSnapshot().cached).toEqual([]);
+    server.say({
+      type: "Cached",
+      ranges: [
+        [0, 3],
+        [7, 9],
+      ],
+    });
+    expect(session.getSnapshot().cached).toEqual([
+      [0, 3],
+      [7, 9],
+    ]);
+    server.drop();
+    expect(session.getSnapshot().cached).toEqual([]);
   });
 });
 

@@ -5,7 +5,7 @@ import type { FrameInfo, PlaybackClock } from "./clock";
 import type { InspectionView, Selection } from "./contract";
 import type { FrameFailures } from "./failures";
 import type { LaneState } from "./lanes";
-import type { CatalogInfoWire, ServerMessage } from "./protocol";
+import type { CatalogInfoWire, ServerMessage, VideoPtsWire } from "./protocol";
 
 export type PlaybackView = {
   status: "connecting" | "indexing" | "ready" | "reconnecting" | "failed";
@@ -39,6 +39,10 @@ export type PlaybackView = {
   warnings: readonly string[];
   /** How evenly the video's frames are spaced; `null` until it is ready or for a one-frame video. */
   cadence: Cadence | null;
+  /** The frames the backend holds decoded, as sorted inclusive `[first, last]` runs, which the seek bar shades. */
+  cached: readonly (readonly [number, number])[];
+  /** How the video's frame times come from its timestamps; `null` for an image sequence or until it is described. */
+  videoPts: VideoPtsWire | null;
 };
 
 /** The view before the backend has said anything. */
@@ -58,6 +62,8 @@ export const INITIAL_VIEW: PlaybackView = {
   height: 0,
   warnings: [],
   cadence: null,
+  cached: [],
+  videoPts: null,
 };
 
 const sameShown = (a: FrameInfo | undefined, b: FrameInfo | undefined): boolean =>
@@ -82,7 +88,9 @@ export const sameView = (a: PlaybackView, b: PlaybackView): boolean =>
   a.width === b.width &&
   a.height === b.height &&
   a.warnings === b.warnings &&
-  a.cadence === b.cadence;
+  a.cadence === b.cadence &&
+  a.cached === b.cached &&
+  a.videoPts === b.videoPts;
 
 /** What the session knows when it publishes a view. */
 export type ViewParts = {
@@ -98,6 +106,7 @@ export type ViewParts = {
   opened: Extract<ServerMessage, { type: "Opened" }> | undefined;
   inspection: InspectionView;
   cadence: Cadence | null;
+  cached: PlaybackView["cached"];
 };
 
 /** The view of the session's state now. */
@@ -127,5 +136,7 @@ export function buildView(parts: ViewParts): PlaybackView {
     height: opened?.height ?? 0,
     warnings: opened?.warnings ?? INITIAL_VIEW.warnings,
     cadence: parts.cadence,
+    cached: parts.cached,
+    videoPts: opened?.video_pts ?? null,
   };
 }

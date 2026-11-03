@@ -29,6 +29,7 @@
   --color-canvas-hover: #ffffff24;
   --color-canvas-scrim: #000000cc;
   --color-canvas-line: #ffffff2e;
+  --color-canvas-cached: #ffffff2d; /* the frames the backend holds decoded, on the seek bar */
   --color-canvas-accent: #3994bc;
   --color-on-canvas-caution: #f5c451;
   --color-on-canvas-danger: #ff8a80;
@@ -143,7 +144,7 @@
       to right,
       var(--color-canvas-accent)
         calc(var(--spacing-l) / 2 + (100% - var(--spacing-l)) * var(--seek-fill, 0)),
-      var(--color-canvas-hover) 0
+      transparent 0
     );
   }
   &::-webkit-slider-thumb {
@@ -170,6 +171,17 @@
       transition: none;
     }
   }
+}
+
+/* A run of cached frames on the seek bar's rail, from --from to --to (0 to 1) by the same mapping as the fill, and at
+   least one pixel wide. */
+@utility seek-band {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: calc(var(--spacing-l) / 2 + (100% - var(--spacing-l)) * var(--from));
+  width: max(1px, (100% - var(--spacing-l)) * (var(--to) - var(--from)));
+  background: var(--color-canvas-cached);
 }
 
 /* Theme choices; "auto" follows the operating system live. */

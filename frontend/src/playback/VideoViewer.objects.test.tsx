@@ -10,7 +10,8 @@ import type { Picked } from "./contract";
 import type { ClientMessage, LaneInfo } from "./protocol";
 import type { Geometry } from "./renderer";
 import type { VideoCanvas } from "./VideoCanvas";
-import { Viewer, installViewerHarness, slider } from "./videoViewerHarness";
+import { videoFrame } from "./fakePlayback";
+import { Viewer, flushFrames, installViewerHarness, slider, sockets } from "./videoViewerHarness";
 import { FIT, ZOOM_STEP } from "./viewport";
 
 // What the canvas was last given; the picture needs WebGL, and these tests are about what the viewer does with it.
@@ -132,6 +133,20 @@ describe("video viewer objects", () => {
     fireEvent.keyDown(screen.getByRole("menuitem", { name: /Export Video/ }), { key: "Escape" });
     expect(screen.queryByRole("menu")).toBeNull();
     expect(inspector()).toBeTruthy();
+  });
+
+  it("shows the frame info over the pictures by its command, and hides it by the same", async () => {
+    const { run } = await mount();
+    act(() =>
+      sockets.at(-1)?.({ type: "envelope", envelope: { kind: "frame", frame: videoFrame(0) } }),
+    );
+    flushFrames();
+    const info = () => screen.queryByRole("region", { name: /frame info/ });
+    expect(info()).toBeNull();
+    run("info-overlay");
+    expect(info()?.textContent).toContain("Status: NO OVERLAY");
+    run("info-overlay");
+    expect(info()).toBeNull();
   });
 
   it("opens and closes the media tools by their command or their button", async () => {

@@ -114,6 +114,8 @@ function Playback({
   const [tools, setTools] = useState(false);
   // The width the user gave the media tools, kept while they are closed.
   const [toolsWidth, setToolsWidth] = useState<number | null>(null);
+  // One switch for every lane; it lives here so it stays across entries.
+  const [info, setInfo] = useState(false);
   useChromeVisibility(pane);
   const shown = useMemo(() => shownLanes(view.lanes, hidden, entry), [view.lanes, hidden, entry]);
   const fullscreen = useLaneFullscreen(pane, shown);
@@ -164,6 +166,7 @@ function Playback({
         "speed-up": () => session.stepSpeed(1),
         "speed-down": () => session.stepSpeed(-1),
         "media-tools": () => setTools((open) => !open),
+        "info-overlay": () => setInfo((shown) => !shown),
         "lane-fullscreen": fullscreen.toggle,
         "export-video": () => exportLane(null),
       }),
@@ -210,6 +213,7 @@ function Playback({
                 entry={entry}
                 hidden={hidden}
                 only={fullscreen.solo}
+                info={info}
                 onHide={onHideLane}
                 onPoint={fullscreen.point}
                 onPick={fullscreen.pick}

@@ -51,7 +51,7 @@ function chipTone(lane: LaneState): string {
 /**
  * The name tag over a lane's top-left corner: its label, that it is loading, a button for what there is to report,
  * and the button that opens the lane's menu. A lane without a source has neither warnings nor settings.
- * With Show Lane Names off the label goes and the rest stays.
+ * With Show Lane Names off, or with `hideName` while the info HUD covers the picture, the label goes and the rest stays.
  * Without `onHide` the menu cannot hide the lane, without `onApplyAll` it cannot copy to the others.
  */
 export function LaneChip({
@@ -61,6 +61,7 @@ export function LaneChip({
   onChange,
   onHide,
   onApplyAll,
+  hideName = false,
 }: {
   lane: LaneState;
   catalogs: readonly CatalogInfoWire[];
@@ -69,8 +70,9 @@ export function LaneChip({
   onChange: (change: Partial<LaneSettings>) => void;
   onHide?: () => void;
   onApplyAll?: () => void;
+  hideName?: boolean;
 }) {
-  const showName = useSettings().values["overlays.lane_names"] === true;
+  const showName = useSettings().values["overlays.lane_names"] === true && !hideName;
   const notices = laneNotices(lane);
   const loading = lane.pending || (lane.status !== "plain" && lane.status.status === "Loading");
   return (

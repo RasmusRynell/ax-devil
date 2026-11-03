@@ -16,6 +16,14 @@ import { MATCH_RETAINED } from "./protocol";
  */
 type LaneDraw = { state: "draw"; frame: LaneFrame } | { state: "none" } | { state: "pending" };
 
+/** How a lane's Frame Map assigned a sample to a frame: the sample (`null` for none) with its `MATCH_*` kind, its time on the video clock and its frame in its file. */
+export type LaneMatch = {
+  sample: number | null;
+  kind: number;
+  timeUs: number | null;
+  frame: number | null;
+};
+
 const NONE: LaneDraw = { state: "none" };
 const PENDING: LaneDraw = { state: "pending" };
 
@@ -63,6 +71,18 @@ export class LaneData {
         retained: this.#maps.kind(lane, frame) === MATCH_RETAINED,
       }),
     };
+  }
+
+  /** How `lane` matched a sample to `frame`; `null` for a lane without a source, or while the cell or the sample has not arrived. */
+  match(lane: number, frame: number): LaneMatch | null {
+    const source = this.#lanes.states[lane]?.source;
+    if (!this.#lanes.awaited(lane) || source == null) return null;
+    const sample = this.#maps.at(lane, frame);
+    if (sample === UNKNOWN) return null;
+    const kind = this.#maps.kind(lane, frame);
+    if (sample < 0) return { sample: null, kind, timeUs: null, frame: null };
+    const key = this.#samples.keyOf(source, sample);
+    return key ? { sample, kind, ...key } : null;
   }
 
   /** Whether no shown lane waits for data of `frame`. */

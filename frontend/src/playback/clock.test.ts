@@ -166,9 +166,21 @@ describe("clock position (B27, B28)", () => {
     expect(clock.info()?.sequenceId).toBe(0);
     load([3]);
     expect(tick()).toBe(3);
-    expect(clock.info()).toEqual({ sequenceId: 3, timestampUs: 120_000 });
+    expect(clock.info()).toEqual({ sequenceId: 3, timestampUs: 120_000, periodUs: 40_000 });
     clock.step(-2);
     expect(clock.playhead).toBe(1);
+  });
+
+  it("reports the time to the next frame, and at the last frame the time from the one before", () => {
+    const { clock, tick } = setup(Float64Array.of(0, 40_000, 100_000));
+    tick();
+    expect(clock.info()?.periodUs).toBe(40_000);
+    clock.seek(2);
+    tick();
+    expect(clock.info()?.periodUs).toBe(60_000);
+    const one = setup(Float64Array.of(0));
+    one.tick();
+    expect(one.clock.info()?.periodUs).toBeNull();
   });
 
   it("steps from the requested position while playing and delivery lags behind it", () => {

@@ -6,7 +6,7 @@ import { FrameMaps } from "./data/FrameMaps";
 import { SampleStore } from "./data/SampleStore";
 import { Inspections } from "./inspection";
 import { LaneCatalogs } from "./laneCatalog";
-import { LaneData } from "./laneData";
+import { LaneData, type LaneMatch } from "./laneData";
 import type { LaneFrame, LaneSettings, Surface } from "./contract";
 import { startWith, type LaneSet } from "./lanes";
 import type {
@@ -41,6 +41,8 @@ export class ViewerData {
   #waiting: number[] = [];
   /** What each lane drew on the frame last composed; `undefined` for a lane that drew nothing. */
   #shown: readonly (LaneFrame | undefined)[] = [];
+  /** How each lane's sample was matched to the frame last composed. */
+  #matched: readonly (LaneMatch | null)[] = [];
 
   /** `send` asks the backend for a catalog document, an object's fields or a file's list; `after` times the asking. */
   constructor(
@@ -75,6 +77,7 @@ export class ViewerData {
     });
     this.#waiting = waiting;
     this.#shown = frames;
+    this.#matched = this.#lanes.states.map((_, lane) => draw.match(lane, frame));
     surface?.present(video, frames);
     let changed = this.inspections.follow(frames);
     this.#lanes.states.forEach((_, lane) => {
@@ -86,6 +89,11 @@ export class ViewerData {
   /** What `lane` drew on the frame on screen. */
   shown(lane: number): LaneFrame | undefined {
     return this.#shown[lane];
+  }
+
+  /** How `lane` matched a sample to the frame on screen; `null` for a lane without a source or that waited for its data. */
+  matched(lane: number): LaneMatch | null {
+    return this.#matched[lane] ?? null;
   }
 
   /** Whether any lane that waited for the data of the frame last composed no longer does. */
@@ -108,6 +116,7 @@ export class ViewerData {
     this.#draw = undefined;
     this.#waiting = [];
     this.#shown = [];
+    this.#matched = [];
     this.samples.clear();
     this.files.suspend();
   }
@@ -167,8 +176,8 @@ export class ViewerData {
   }
 
   /** Keeps a Sample Item; an item that cannot be read is not kept and its reason is returned. */
-  addSample({ source, dataRevision, sample, item }: SampleEnvelope): string | null {
-    return this.samples.add(source, dataRevision, sample, item);
+  addSample({ source, dataRevision, sample, item, timeUs, frame }: SampleEnvelope): string | null {
+    return this.samples.add(source, dataRevision, sample, item, { timeUs, frame });
   }
 
   /** Keeps a run of a lane's map; reports whether it was kept. */

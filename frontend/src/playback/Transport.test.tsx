@@ -13,7 +13,7 @@ const view = (change: Partial<PlaybackView> = {}): PlaybackView => ({
   playing: false,
   speed: 1,
   playhead: 30,
-  shown: { sequenceId: 29, timestampUs: 1_160_000 },
+  shown: { sequenceId: 29, timestampUs: 1_160_000, periodUs: 40_000 },
   lanes: [],
   catalogs: [],
   width: 64,
