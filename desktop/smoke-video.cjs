@@ -5,7 +5,7 @@ const path = require("node:path");
 const { SMOKE_ROOT, click, frames, page } = require("./smoke-kit.cjs");
 
 const FIXTURE = path.join(SMOKE_ROOT, "fixtures/video/long_gop_h264.mp4");
-const SHOWN = `Number.parseInt(document.querySelector("output[aria-label=Frame]")?.textContent ?? "")`;
+const SHOWN = `Number.parseInt(document.querySelector("input[aria-label=Frame]")?.value ?? "")`;
 /** A pixel this bright is the picture: the field around it is near-black. */
 const LIT = 40;
 

@@ -1,6 +1,6 @@
 // @vitest-environment node
 import { describe, expect, it } from "vite-plus/test";
-import { PlaybackClock, clampSpeed, followFrame, type ClockIntent } from "./clock";
+import { PlaybackClock, clampSpeed, followFrame, steppedSpeed, type ClockIntent } from "./clock";
 import { FrameBuffer } from "./FrameBuffer";
 
 type Frame = { byteLength: number };
@@ -114,14 +114,12 @@ describe("clock (B26)", () => {
   it.each([
     { from: 1, direction: 1, to: 1.1 },
     { from: 1, direction: -1, to: 0.9 },
-    { from: 0.01, direction: -1, to: 0.01 },
-    { from: 0.01, direction: 1, to: 0.11 },
+    { from: 0.1, direction: -1, to: 0.1 },
+    { from: 0.01, direction: 1, to: 0.1 },
+    { from: 0.15, direction: -1, to: 0.1 },
     { from: 9.95, direction: 1, to: 10 },
   ] as const)("steps speed $from by $direction to $to", ({ from, direction, to }) => {
-    const { clock } = setup();
-    clock.setSpeed(from);
-    clock.stepSpeed(direction);
-    expect(clock.speed).toBe(to);
+    expect(steppedSpeed(from, direction)).toBe(to);
   });
 
   it("keeps its position when the speed changes while playing", () => {

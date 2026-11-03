@@ -10,10 +10,18 @@ export type { ClockIntent };
 export const MIN_SPEED = 0.01;
 export const MAX_SPEED = 10;
 export const SPEED_STEP = 0.1;
+/** The slowest speed a step reaches. */
+export const SPEED_FLOOR = 0.1;
 
 /** Speed rounded to hundredths and clamped to 0.01..10. */
 export function clampSpeed(speed: number): number {
   return Math.min(MAX_SPEED, Math.max(MIN_SPEED, Math.round(speed * 100) / 100));
+}
+
+/** One 0.1 step up (`1`) or down (`-1`) from `speed`; never below 0.1, which a speed under it steps up to. */
+export function steppedSpeed(speed: number, direction: 1 | -1): number {
+  if (direction > 0 && speed < SPEED_FLOOR) return SPEED_FLOOR;
+  return Math.max(SPEED_FLOOR, clampSpeed(speed + direction * SPEED_STEP));
 }
 
 /** The last frame whose time is at or before `timeUs`; 0 for a time before the first frame. */
@@ -79,6 +87,11 @@ export class PlaybackClock {
     return this.#speed;
   }
 
+  /** The time of the last frame in microseconds. */
+  get durationUs(): number {
+    return this.#times[this.#last];
+  }
+
   /** The position the user asked for, or while playing the frame due now. This is the `Want` playhead. */
   get playhead(): number {
     return this.#requested;
@@ -130,11 +143,6 @@ export class PlaybackClock {
   setSpeed(speed: number): void {
     if (this.#playing) this.#anchor(this.#mediaTime());
     this.#speed = clampSpeed(speed);
-  }
-
-  /** One 0.1 step up (`1`) or down (`-1`). */
-  stepSpeed(direction: 1 | -1): void {
-    this.setSpeed(this.#speed + direction * SPEED_STEP);
   }
 
   /**

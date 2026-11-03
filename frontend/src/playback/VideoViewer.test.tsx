@@ -11,6 +11,7 @@ import {
   flushFrames,
   installViewerHarness,
   slider,
+  setSpeed,
   speed,
   viewsSent,
 } from "./videoViewerHarness";
@@ -32,7 +33,7 @@ describe("video viewer", () => {
     const room = FakeSocket.rooms.get("room-1")!;
     act(() => room.setItems([video("a")]));
     fireEvent.change(await slider(), { target: { value: "37" } });
-    fireEvent.change(speed(), { target: { value: "2.5" } });
+    setSpeed("2.5");
     expect(sent[0]).toMatchObject({ type: "Open", ticket: expect.any(String) });
     view.rerender(<SessionProvider>{null}</SessionProvider>);
     flushFrames();
@@ -51,7 +52,7 @@ describe("video viewer", () => {
       </SessionProvider>,
     );
     expect((await slider()).value).toBe("37");
-    expect(speed().value).toBe("2.5");
+    expect(speed().textContent).toBe("2.5×");
     expect(sent[0]).toMatchObject({ type: "Open", start_frame: 37 });
     expect(screen.getByRole("button", { name: "Play" })).toBeTruthy();
   });

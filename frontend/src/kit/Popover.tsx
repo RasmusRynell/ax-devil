@@ -32,8 +32,9 @@ function within(start: number, size: number, from: number, to: number): number {
 }
 
 /**
- * Where a panel opens for its button: below it when it fits, else moved to stay inside the nearest ancestor marked
- * with `data-popover-bounds` (the window without one), and no larger than that area, so it scrolls instead of leaving it.
+ * Where a panel opens for its button: below it when it fits, else above it when there is more room there, kept inside
+ * the nearest ancestor marked with `data-popover-bounds` (the window without one), and no larger than that area, so it
+ * scrolls instead of leaving it.
  */
 function placement(button: HTMLElement, panel: HTMLElement): CSSProperties {
   const at = button.getBoundingClientRect();
@@ -46,12 +47,14 @@ function placement(button: HTMLElement, panel: HTMLElement): CSSProperties {
   };
   const width = Math.min(panel.offsetWidth, right - left);
   const height = Math.min(panel.offsetHeight, bottom - top);
-  const y = within(at.bottom, height, top, bottom);
+  // Below the button; above it when it does not fit below and there is more room above.
+  const above = height > bottom - at.bottom && at.top - top > bottom - at.bottom;
+  const y = within(above ? at.top - height : at.bottom, height, top, bottom);
   return {
     left: within(at.left, width, left, right),
     top: y,
     maxWidth: `min(48ch, ${right - left}px)`,
-    maxHeight: bottom - y,
+    maxHeight: (above ? at.top : bottom) - y,
   };
 }
 

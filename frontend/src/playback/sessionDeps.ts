@@ -22,8 +22,8 @@ export interface SessionDeps {
   defaultCatalog?: () => string | null;
   /** The lane settings of the entry before this one, by lane position: this entry's lanes start from them. */
   lanes?: readonly LaneSettings[];
-  /** Where an earlier session of this video left off: this one opens there, paused, at that speed. */
-  resume?: ResumeState;
+  /** Where an earlier session left off and the speed it ran at: this one opens there, paused, at that speed. A missing frame opens at the start. */
+  resume?: Partial<ResumeState>;
   /** Told the policy of a lane, by its slot, after the viewer changed it: the workspace keeps it with the recipe. */
   onPolicy?: (slot: string, policy: LanePolicyWire) => void;
   /** Told what the clock is doing after every change the viewer makes: the intent a presenter publishes. */

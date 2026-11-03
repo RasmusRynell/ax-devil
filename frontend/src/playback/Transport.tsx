@@ -1,11 +1,16 @@
 import { type CSSProperties, useState } from "react";
+import { TextField } from "../kit/Fields";
 import { IconButton } from "../kit/IconButton";
-import { MAX_SPEED } from "./clock";
+import { Menu, type MenuEntry } from "../kit/Menu";
+import { Popover } from "../kit/Popover";
 import type { PlaybackSession } from "./session";
 import type { PlaybackView } from "./view";
 
 /** What the transport asks of the session. */
-export type Controls = Pick<PlaybackSession, "togglePlay" | "step" | "seek" | "setSpeed">;
+export type Controls = Pick<
+  PlaybackSession,
+  "togglePlay" | "step" | "seek" | "setSpeed" | "scrubStart" | "scrubEnd"
+>;
 
 /** Microseconds as `m:ss.cc`, or `h:mm:ss.cc` from one hour. */
 function timecode(us: number): string {
@@ -18,14 +23,41 @@ function timecode(us: number): string {
     : `${minutes}:${seconds}`;
 }
 
+/** The keys that move the seek bar by themselves; Left and Right are the viewer's shortcuts. */
+const SCRUB_KEYS = new Set(["ArrowUp", "ArrowDown", "Home", "End", "PageUp", "PageDown"]);
+
 const BUTTON = "size-row rounded-control";
 
 // The controls fade with the pointer's rest (see chromeVisibility) and stay while a control has the keyboard focus ring.
 const CONTROLS =
   "pointer-events-auto flex flex-col rounded-popup border border-canvas-line bg-canvas-scrim px-l py-xs text-on-canvas shadow-float transition-opacity duration-200 ease-out-cubic motion-reduce:transition-none group-data-[chrome=hidden]:not-has-[:focus-visible]:opacity-0 group-data-[chrome=hidden]:not-has-[:focus-visible]:pointer-events-none group-data-[chrome=hidden]:not-has-[:focus-visible]:delay-200";
 
-/** The speed field: edits commit as they become a number; leaving it shows the speed the session settled on. */
-function SpeedField({
+const PRESETS = [0.25, 0.5, 1, 1.5, 2, 4];
+const PRESET_ENTRIES: readonly MenuEntry[] = PRESETS.map((speed) => ({
+  kind: "check",
+  id: String(speed),
+  label: `${speed}×`,
+}));
+
+/** A speed of any value, for the one the presets lack; Enter sets it, and the session keeps it within its range. */
+function CustomSpeed({ speed, onSet }: { speed: number; onSet: (speed: number) => void }) {
+  const [text, setText] = useState(String(speed));
+  return (
+    <form
+      onSubmit={(event) => {
+        event.preventDefault();
+        const typed = Number(text);
+        if (text.trim() !== "" && Number.isFinite(typed)) onSet(typed);
+        else setText(String(speed));
+      }}
+    >
+      <TextField label="Custom" value={text} onChange={setText} />
+    </form>
+  );
+}
+
+/** The speed button, which opens the presets with the current one checked and a field for any other speed. */
+function SpeedPicker({
   speed,
   disabled,
   onChange,
@@ -34,26 +66,79 @@ function SpeedField({
   disabled: boolean;
   onChange: (speed: number) => void;
 }) {
-  const [draft, setDraft] = useState<string | null>(null);
+  const shown = <span className="px-s tabular-nums">{speed}×</span>;
   return (
-    <label data-cursor-id="transport:speed" className="flex items-center">
-      <span className="sr-only">Speed</span>
-      <input
-        type="number"
-        disabled={disabled}
-        max={MAX_SPEED}
-        step={0.1}
-        value={draft ?? String(speed)}
-        onChange={(event) => {
-          setDraft(event.target.value);
-          if (event.target.value !== "" && Number.isFinite(event.target.valueAsNumber))
-            onChange(event.target.valueAsNumber);
-        }}
-        onBlur={() => setDraft(null)}
-        className="h-row w-[6ch] rounded-control border border-transparent bg-transparent px-xs text-right text-on-canvas tabular-nums hover:border-on-canvas-muted focus:border-on-canvas focus:outline-none"
-      />
-      <span aria-hidden>×</span>
-    </label>
+    <span data-cursor-id="transport:speed" className="flex">
+      {disabled ? (
+        <span className="flex h-row items-center text-on-canvas-muted">{shown}</span>
+      ) : (
+        <Popover onCanvas label="Speed" trigger={shown}>
+          {(close) => (
+            <div className="flex flex-col gap-s">
+              <Menu
+                entries={PRESET_ENTRIES}
+                checked={new Set([String(speed)])}
+                onSelect={(preset) => {
+                  onChange(Number(preset.id));
+                  close();
+                }}
+              />
+              <CustomSpeed
+                speed={speed}
+                onSet={(typed) => {
+                  onChange(typed);
+                  close();
+                }}
+              />
+            </div>
+          )}
+        </Popover>
+      )}
+    </span>
+  );
+}
+
+/** The frame on screen as a field: Enter or leaving it goes to the frame typed, within the video; Escape and text that is no frame put back the frame on screen. */
+function FrameField({
+  shown,
+  last,
+  playhead,
+  disabled,
+  onSeek,
+}: {
+  shown: number | undefined;
+  last: number;
+  playhead: number;
+  disabled: boolean;
+  onSeek: (frame: number) => void;
+}) {
+  const [draft, setDraft] = useState<string | null>(null);
+  const commit = () => {
+    const typed = draft?.trim();
+    setDraft(null);
+    if (typed === undefined || !/^\d+$/.test(typed)) return;
+    const frame = Math.min(last, Number(typed));
+    if (frame !== playhead) onSeek(frame);
+  };
+  return (
+    <input
+      type="text"
+      inputMode="numeric"
+      aria-label="Frame"
+      data-cursor-id="transport:frame"
+      autoComplete="off"
+      spellCheck={false}
+      disabled={disabled}
+      value={draft ?? String(shown ?? "")}
+      onChange={(event) => setDraft(event.target.value)}
+      onBlur={commit}
+      onKeyDown={(event) => {
+        if (event.key === "Enter") event.currentTarget.blur();
+        else if (event.key === "Escape") setDraft(null);
+      }}
+      style={{ "--chars": String(last).length } as CSSProperties}
+      className="chars-wide h-row w-0 rounded-control border border-transparent bg-transparent px-xs text-right text-on-canvas tabular-nums enabled:hover:border-on-canvas-muted focus:border-on-canvas focus:outline-none disabled:text-on-canvas"
+    />
   );
 }
 
@@ -70,7 +155,7 @@ interface Props {
  * for. A frame that failed to decode says why.
  */
 export function Transport({ controls, view, disabled = false }: Props) {
-  const last = view.frameCount - 1;
+  const last = Math.max(0, view.frameCount - 1);
   const { shown, playing, frameError } = view;
   return (
     <div className="pointer-events-none absolute inset-x-0 bottom-0 flex flex-col items-start gap-s p-m text-on-canvas">
@@ -82,7 +167,7 @@ export function Transport({ controls, view, disabled = false }: Props) {
           Frame {frameError.sequenceId} cannot be shown: {frameError.reason}
         </p>
       )}
-      <div data-keeps-chrome="" className={`w-full ${CONTROLS}`}>
+      <div data-keeps-chrome="transport" className={`w-full ${CONTROLS}`}>
         <input
           type="range"
           aria-label="Timeline"
@@ -94,6 +179,19 @@ export function Transport({ controls, view, disabled = false }: Props) {
           disabled={disabled}
           value={view.playhead}
           onChange={(event) => controls.seek(event.target.valueAsNumber)}
+          onPointerDown={() => {
+            controls.scrubStart();
+            // The press ends wherever the pointer is let go.
+            const end = () => {
+              controls.scrubEnd();
+              window.removeEventListener("pointerup", end);
+              window.removeEventListener("pointercancel", end);
+            };
+            window.addEventListener("pointerup", end);
+            window.addEventListener("pointercancel", end);
+          }}
+          onKeyDown={(event) => SCRUB_KEYS.has(event.key) && controls.scrubStart()}
+          onKeyUp={(event) => SCRUB_KEYS.has(event.key) && controls.scrubEnd()}
           style={{ "--seek-fill": last > 0 ? view.playhead / last : 0 } as CSSProperties}
           className="seek-bar m-0 h-l w-full"
         />
@@ -126,14 +224,22 @@ export function Transport({ controls, view, disabled = false }: Props) {
             className={BUTTON}
           />
           <span className="flex-1" />
-          <output aria-label="Frame" className="px-xs tabular-nums">
-            {shown?.sequenceId ?? "…"}
-            <span className="text-on-canvas-muted"> / {last}</span>
-          </output>
-          <output aria-label="Time" className="px-xs tabular-nums text-on-canvas-muted">
+          <FrameField
+            shown={shown?.sequenceId}
+            last={last}
+            playhead={view.playhead}
+            disabled={disabled}
+            onSeek={(frame) => controls.seek(frame)}
+          />
+          <span className="text-on-canvas-muted tabular-nums">/ {last}</span>
+          <output
+            aria-label="Time"
+            style={{ "--chars": timecode(view.durationUs).length } as CSSProperties}
+            className="chars-wide border border-transparent px-xs text-right tabular-nums text-on-canvas-muted"
+          >
             {shown ? timecode(shown.timestampUs) : "…"}
           </output>
-          <SpeedField
+          <SpeedPicker
             speed={view.speed}
             disabled={disabled}
             onChange={(speed) => controls.setSpeed(speed)}
