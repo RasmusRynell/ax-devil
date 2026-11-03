@@ -89,6 +89,11 @@ export function useDoc(): DocWire | null {
   return useSelect((state) => state.doc);
 }
 
+/** How many workspace commands the backend has answered; it changes when the files they touch have settled. */
+export function useWorkspaceAnswers(): number {
+  return useSelect((state) => state.workspaceAnswers);
+}
+
 /** Changes several parts of what the window shows in one step; see `useView`. */
 export function useSetView(): (change: (shown: View) => View) => void {
   const store = useStore();

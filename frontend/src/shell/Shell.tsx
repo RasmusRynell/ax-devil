@@ -1,13 +1,16 @@
 import { useEffect, useState } from "react";
 import { useGrants } from "../access";
 import { scopeOf } from "../commands";
-import type { SidebarView } from "../generated/api";
+import type { SidebarView, WorkspaceCommand } from "../generated/api";
 import { COMMANDS, SETTINGS } from "../generated/settings";
+import { CommandFailed } from "../errors";
+import { Button } from "../kit/Button";
+import { ChoiceDialog } from "../kit/ChoiceDialog";
 import type { MenuCommand } from "../kit/Menu";
 import { shortcutOf } from "../kit/shortcut";
 import type { Scopes } from "../session/cursor";
 import { Presence } from "../session/Presence";
-import { useAllowed, useCommand, useView } from "../session/session";
+import { useAllowed, useCommand, useDoc, useView } from "../session/session";
 import { useSettings } from "../settings";
 import { NO_ACTIONS, ViewerActionsContext, type ViewerActions } from "../viewer/actions";
 import { useFrontViewer, useViewers } from "../viewer/useViewers";
@@ -19,10 +22,12 @@ import { AddVideoDialog } from "./AddVideoDialog";
 import { Banner } from "./Banner";
 import { TitleBar } from "./TitleBar";
 import { QuickSetupDialog } from "./QuickSetupDialog";
+import { RECENT_ID } from "./recents";
 import { SettingsDialog } from "./SettingsDialog";
 import { ShortcutsDialog } from "./ShortcutsDialog";
 import { Sidebar } from "./Sidebar";
 import { Welcome } from "./Welcome";
+import { WorkspaceFileDialog } from "./WorkspaceFileDialog";
 import type { ActivityItem } from "./views";
 import { toggleAppFullscreen, useServerKind } from "./windowBridge";
 
@@ -44,7 +49,15 @@ const SETTING_CHECKS = {
   "lane-names": "overlays.lane_names",
 } as const;
 
-type Dialog = "settings" | "shortcuts" | "quick-setup" | "about" | "add-video" | "add-playlist";
+type Dialog =
+  | "settings"
+  | "shortcuts"
+  | "quick-setup"
+  | "about"
+  | "add-video"
+  | "add-playlist"
+  | "open-workspace"
+  | "save-workspace-as";
 
 /**
  * The application layout: menu bar over the activity bar, sidebar and central area. What the window shows comes from
@@ -56,7 +69,10 @@ export function Shell({ version }: { version: string }) {
   useFrontViewer();
   const allowed = useAllowed();
   const command = useCommand();
+  const workspace = useDoc()?.workspace;
   const [checked, setChecked] = useState<ReadonlySet<string>>(new Set());
+  // The file a typed Save As would replace, until the user answers.
+  const [replacing, setReplacing] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [viewerActions, setViewerActions] = useState<ViewerActions>(NO_ACTIONS);
   const { values, shortcuts, restart, save } = useSettings();
@@ -71,8 +87,10 @@ export function Shell({ version }: { version: string }) {
 
   // Only the local backend's window may browse this machine's files; any other asks for a path on the server.
   const local = useServerKind() === "local";
+  const bridge = local ? window.axDevilWindow : undefined;
+  const fail = (error: unknown) =>
+    setNotice(error instanceof Error ? error.message : String(error));
   const addVideo = () => {
-    const bridge = local ? window.axDevilWindow : undefined;
     if (!bridge) return setDialog("add-video");
     bridge
       .pickVideos()
@@ -89,8 +107,37 @@ export function Shell({ version }: { version: string }) {
           : undefined,
       )
       .then(() => setNotice(null))
-      .catch((error: unknown) => setNotice(error instanceof Error ? error.message : String(error)));
+      .catch(fail);
   };
+
+  // A refused or failed workspace command shows why, as any other command does.
+  const ask = (change: WorkspaceCommand) =>
+    command({ type: "workspace", command: change }).then(() => setNotice(null), fail);
+  const openWorkspace = () => {
+    if (!bridge) return setDialog("open-workspace");
+    bridge
+      .pickOpenWorkspace()
+      .then((path) => (path ? ask({ type: "open", path }) : undefined))
+      .catch(fail);
+  };
+  const saveAs = () => {
+    if (!bridge) return setDialog("save-workspace-as");
+    bridge
+      .pickSaveWorkspace(workspace?.name ?? "Untitled", workspace?.file ?? null)
+      // The native dialog has asked about an existing file already.
+      .then((path) => (path ? ask({ type: "save", path, replace: true }) : undefined))
+      .catch(fail);
+  };
+  // A typed path is saved to unless it names another file that exists, which the user is asked about.
+  const saveTo = (path: string) =>
+    command({ type: "workspace", command: { type: "save", path } }).then(
+      () => setNotice(null),
+      (error: unknown) =>
+        error instanceof CommandFailed && error.error.code === "WorkspaceExists"
+          ? setReplacing(path)
+          : fail(error),
+    );
+  const saveFile = () => (workspace?.file ? void ask({ type: "save" }) : saveAs());
 
   const startSharing = () => {
     setSidebar({ view: "sessions", open: true });
@@ -111,6 +158,10 @@ export function Shell({ version }: { version: string }) {
     ...(configures && { "quick-setup": () => setDialog("quick-setup") }),
     about: () => setDialog("about"),
     "add-video": addVideo,
+    "new-workspace": () => void ask({ type: "new" }),
+    "open-workspace": openWorkspace,
+    "save-workspace": saveFile,
+    "save-workspace-as": saveAs,
     "add-playlist": () => setDialog("add-playlist"),
     ...Object.fromEntries(
       Object.entries(SETTING_CHECKS).map(([id, key]) => [
@@ -121,8 +172,12 @@ export function Shell({ version }: { version: string }) {
   };
   // A modal dialog owns the keyboard and the window: no command, from a shortcut or a menu, runs while one is open.
   const find = (id: string) =>
-    dialog || !allowed[scopeOf(id)] ? undefined : (actions[id] ?? viewerActions[id]);
-  const run = (id: string) => find(id)?.();
+    dialog || replacing || !allowed[scopeOf(id)] ? undefined : (actions[id] ?? viewerActions[id]);
+  const run = (id: string) => {
+    if (!id.startsWith(RECENT_ID)) return find(id)?.();
+    if (!dialog && !replacing && allowed.host)
+      void ask({ type: "open", path: id.slice(RECENT_ID.length) });
+  };
   const select = (item: MenuCommand) => {
     if (item.kind === "check" && !(item.id in SETTING_CHECKS))
       setChecked((now) => {
@@ -191,6 +246,29 @@ export function Shell({ version }: { version: string }) {
             {notice}
           </Banner>
         )}
+        {workspace?.recovered && (
+          <Banner
+            role="status"
+            actions={
+              <>
+                <Button
+                  size="small"
+                  disabled={!allowed.content}
+                  onClick={() => void ask({ type: "keep" })}
+                >
+                  Keep
+                </Button>
+                {allowed.host && (
+                  <Button size="small" onClick={() => void ask({ type: "discard" })}>
+                    Discard
+                  </Button>
+                )}
+              </>
+            }
+          >
+            Restored unsaved changes
+          </Banner>
+        )}
         {restart.length > 0 && (
           <Banner role="status">
             Restart ax-devil to apply{" "}
@@ -213,6 +291,36 @@ export function Shell({ version }: { version: string }) {
         {dialog === "about" && <AboutDialog version={version} onClose={closer("about")} />}
         {dialog === "add-video" && <AddVideoDialog onClose={closer("add-video")} />}
         {dialog === "add-playlist" && <AddPlaylistDialog onClose={closer("add-playlist")} />}
+        {dialog === "open-workspace" && (
+          <WorkspaceFileDialog
+            mode="open"
+            onSubmit={(path) => void ask({ type: "open", path })}
+            onClose={closer("open-workspace")}
+          />
+        )}
+        {dialog === "save-workspace-as" && (
+          <WorkspaceFileDialog
+            mode="save"
+            path={workspace?.file ?? ""}
+            onSubmit={(path) => void saveTo(path)}
+            onClose={closer("save-workspace-as")}
+          />
+        )}
+        {replacing && (
+          <ChoiceDialog
+            title="Save workspace as"
+            message={`Replace ${replacing.split(/[/\\]/).pop()}?`}
+            choices={[
+              { id: "replace", label: "Replace" },
+              { id: "cancel", label: "Cancel" },
+            ]}
+            defaultId="cancel"
+            onChoose={(choice) => {
+              setReplacing(null);
+              if (choice === "replace") void ask({ type: "save", path: replacing, replace: true });
+            }}
+          />
+        )}
         {dialog === "shortcuts" && <ShortcutsDialog onClose={closer("shortcuts")} />}
       </div>
     </ViewerActionsContext.Provider>

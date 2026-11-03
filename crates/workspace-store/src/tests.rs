@@ -232,3 +232,101 @@ fn a_lane_matching_lands_in_the_recipe_by_slot_and_resolves_nothing() {
         "an item that is resolving again keeps the choice"
     );
 }
+
+fn replace(workspace: Workspace, saved: Saved) -> DocCommand {
+    DocCommand::Replace {
+        workspace,
+        file: None,
+        saved,
+    }
+}
+
+#[test]
+fn edits_are_modified_until_reverted_or_saved_and_a_recovered_workspace_is_modified_until_saved() {
+    let folder = tempfile::tempdir().unwrap();
+    let file = folder.path().join("gate.mp4");
+    std::fs::write(&file, "x").unwrap();
+    let original = item(&file);
+    let saved_as = Workspace {
+        items: vec![original.clone()],
+        ..Default::default()
+    };
+    let (state, _) = apply(
+        &WorkspaceState::default(),
+        replace(saved_as.clone(), Saved::As(saved_as.clone())),
+    );
+    assert!(!state.modified());
+
+    let mut renamed = original.clone();
+    renamed.label = "renamed".into();
+    let (edited, _) = add(&state, vec![renamed], false);
+    assert!(edited.modified());
+    let (reverted, _) = add(&edited, vec![original], false);
+    assert!(!reverted.modified(), "putting the value back is unmodified");
+
+    let (recovered, _) = apply(
+        &state,
+        replace(saved_as.clone(), Saved::Recovered { offer: true }),
+    );
+    assert!(
+        recovered.modified(),
+        "a restored copy is modified though equal"
+    );
+    let (kept, _) = apply(&recovered, DocCommand::Keep);
+    assert_eq!(kept.saved, Saved::Recovered { offer: false });
+    assert!(kept.modified(), "keeping is not saving");
+    assert_eq!(apply(&state, DocCommand::Keep).0, state);
+
+    let file = HostPath::new(folder.path().join("ws.ax-devil.workspace"));
+    let saved = |workspace: &Workspace| DocCommand::MarkSaved {
+        workspace: workspace.clone(),
+        file: file.clone(),
+    };
+    let (saved_now, _) = apply(&recovered, saved(&saved_as));
+    assert!(!saved_now.modified());
+    assert_eq!(saved_now.file.as_ref(), Some(&file));
+
+    let (later, _) = add(
+        &recovered,
+        vec![item(&folder.path().join("other.mp4"))],
+        false,
+    );
+    let (partly, _) = apply(&later, saved(&saved_as));
+    assert!(
+        partly.modified(),
+        "edits made after the snapshot stay modified"
+    );
+}
+
+#[test]
+fn replacing_the_workspace_closes_viewers_bumps_the_epoch_and_never_reuses_a_generation() {
+    let folder = tempfile::tempdir().unwrap();
+    let file = folder.path().join("gate.mp4");
+    std::fs::write(&file, "x").unwrap();
+    let added = item(&file);
+    let (state, jobs) = add(&WorkspaceState::default(), vec![added.clone()], true);
+    let state = finish(&state, &jobs[0]);
+    let (state, _) = apply(
+        &state,
+        DocCommand::SetHidden {
+            target: HiddenRef::Entry(ContentId::of_item(&added.id)),
+            hidden: true,
+        },
+    );
+    let before = generation(&state, added.id);
+
+    let incoming = Workspace {
+        items: vec![added.clone()],
+        ..Default::default()
+    };
+    let (replaced, jobs) = apply(&state, replace(incoming.clone(), Saved::As(incoming)));
+    assert_eq!(replaced.epoch, state.epoch + 1);
+    assert!(replaced.open.is_empty() && replaced.hidden.is_empty());
+    assert_eq!(jobs.len(), 1, "every item resolves again");
+    assert!(matches!(
+        replaced.resolutions[&added.id],
+        Resolution::Pending { .. }
+    ));
+    let resolved = finish(&replaced, &jobs[0]);
+    assert!(generation(&resolved, added.id) > before);
+}

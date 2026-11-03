@@ -138,7 +138,7 @@ location: string, };
  * The public kind of a failure. A code and the ids in a [`Location::Item`] are all a viewer who may not see the
  * host's files is told; the reason and any path stay with the host.
  */
-export type ErrorCode = "InvalidPath" | "FileNotFound" | "FileUnreadable" | "NotAVideo" | "UnsupportedFormat" | "IndexingFailed" | "FileChanged" | "DecodeFailed" | "ContentNotFound" | "ProtocolViolation" | "VideoClosed" | "UnknownHandler" | "OverlayInvalid" | "PlaylistInvalid" | "PluginInvalid" | "CatalogInvalid" | "Internal";
+export type ErrorCode = "InvalidPath" | "FileNotFound" | "FileUnreadable" | "NotAVideo" | "UnsupportedFormat" | "IndexingFailed" | "FileChanged" | "DecodeFailed" | "ContentNotFound" | "ProtocolViolation" | "VideoClosed" | "UnknownHandler" | "OverlayInvalid" | "PlaylistInvalid" | "PluginInvalid" | "CatalogInvalid" | "WorkspaceInvalid" | "WorkspaceInUse" | "WorkspaceExists" | "SaveFailed" | "Internal";
 
 /**
  * The values a client may fill into the message for a code. Only ids, never text.
@@ -369,7 +369,28 @@ control: ControlCommand, } | { "type": "requestTicket",
 /**
  * The stream.
  */
-key: ContentRef, };
+key: ContentRef, } | { "type": "workspace", 
+/**
+ * The change.
+ */
+command: WorkspaceCommand, };
+
+/**
+ * What a seat asks of the workspace file. A path is absolute, on the host.
+ */
+export type WorkspaceCommand = { "type": "new" } | { "type": "open", 
+/**
+ * The file.
+ */
+path: string, } | { "type": "save", 
+/**
+ * The file to save as; the workspace's own file when absent.
+ */
+path?: string, 
+/**
+ * Whether Save As may replace a file that is already there.
+ */
+replace?: boolean, } | { "type": "keep" } | { "type": "discard" };
 
 /**
  * The part of the window a cursor position belongs to.
@@ -570,7 +591,11 @@ export type AckOutcome = { "status": "ok" } | { "status": "refused",
 /**
  * Why.
  */
-code: RefusalCode, };
+code: RefusalCode, } | { "status": "failed", 
+/**
+ * Why.
+ */
+error: ErrorWire, };
 
 /**
  * Why a Session's socket was told it is over.
@@ -728,6 +753,22 @@ export type WorkspaceState = {
  */
 name: string | null, 
 /**
+ * Whether the workspace differs from what was last opened or saved.
+ */
+modified: boolean, 
+/**
+ * Whether changes restored from a recovery copy await Keep or Discard.
+ */
+recovered: boolean, 
+/**
+ * Counts replacements of the workspace; every viewer closes when it changes.
+ */
+epoch: number, 
+/**
+ * The workspace file on the host. Only for an audience with host details.
+ */
+file: string | null, 
+/**
  * Every item in the order it was added.
  */
 items: Array<ItemState>, 
@@ -736,6 +777,23 @@ items: Array<ItemState>,
  * `items` lists.
  */
 rows: Array<RowInfo>, };
+
+/**
+ * A workspace file opened or saved lately.
+ */
+export type RecentWorkspace = { 
+/**
+ * The file to open, absolute: a workspace file, or the recovery copy of unsaved changes to one.
+ */
+path: string, 
+/**
+ * The workspace file name this row is for, with its suffix: the saved file's for a recovery copy of it.
+ */
+name: string, 
+/**
+ * When it was last used, in Unix milliseconds.
+ */
+usedMs: number, };
 
 /**
  * One workspace item and how far it has resolved.

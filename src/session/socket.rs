@@ -20,11 +20,10 @@ use axum::{
 use futures_util::{StreamExt, stream::SplitStream};
 use sessions::{
     JoinLink, Secret, SessionId,
-    session::{Command, Handle, Refusal},
+    session::{Handle, Refusal},
 };
 use std::net::SocketAddr;
 use tokio::{sync::mpsc, time::timeout};
-use workspace_store::DocCommand;
 
 /// Frames and messages bigger than this are not this protocol.
 const MAX_FRAME_BYTES: usize = 16 * 1024;
@@ -127,12 +126,13 @@ async fn hello(
             let handle = sessions
                 .create(files, cursors)
                 .map_err(|error| refuse(error, ENDED))?;
-            if principal == Principal::Local {
-                let items = state.launch.take();
-                if !items.is_empty() {
-                    // The owner of a Local session holds the files grant, so this cannot be refused.
-                    let _ = handle
-                        .command(Command::Content(DocCommand::AddItems { items, open: true }));
+            if files && let Some(rx) = sessions.subscribe(handle.session()) {
+                state.files.attach(handle.session(), rx);
+                // Only the first Local session starts from what the command line asked for.
+                if principal == Principal::Local
+                    && let Some(launch) = state.launch.take()
+                {
+                    state.files.launch(&handle, launch).await;
                 }
             }
             Ok(handle)

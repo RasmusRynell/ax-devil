@@ -1,5 +1,7 @@
 import { COMMANDS, type CommandId } from "./generated/settings";
+import type { RecentWorkspace } from "./generated/api";
 import type { MenuEntry } from "./kit/Menu";
+import { RECENT_ID, recentLabel } from "./shell/recents";
 
 /**
  * What a command needs of the seat, as the backend's `Can` names it: `host` (read the host's files), `content` (change
@@ -22,10 +24,10 @@ export type Shortcuts = Record<CommandId, string | null>;
 
 /** What each command needs of the seat. */
 const SCOPES: Record<CommandId, Scope> = {
-  "new-workspace": "content",
+  "new-workspace": "host",
   "open-workspace": "host",
-  "save-workspace": "content",
-  "save-workspace-as": "content",
+  "save-workspace": "host",
+  "save-workspace-as": "host",
   "add-video": "host",
   "add-live-stream": "content",
   "add-playlist": "host",
@@ -64,6 +66,7 @@ const SCOPES: Record<CommandId, Scope> = {
 type Layout =
   | { kind: "separator" }
   | { kind: "action" | "check"; id: CommandId }
+  | { kind: "recents" }
   | { kind: "submenu"; label: string; items: readonly Layout[] };
 
 const SEPARATOR: Layout = { kind: "separator" };
@@ -82,7 +85,7 @@ export const MENUS: readonly { label: string; items: readonly Layout[] }[] = [
     items: [
       action("new-workspace"),
       action("open-workspace"),
-      submenu("Open Recent", []),
+      { kind: "recents" },
       action("save-workspace"),
       action("save-workspace-as"),
       SEPARATOR,
@@ -158,11 +161,13 @@ function tidy(entries: readonly MenuEntry[]): MenuEntry[] {
 /**
  * The menus as this window shows them: only the `wired` commands (those that do something today), each with its
  * label and its key in `shortcuts`, and disabled outside the `allowed` scopes. A menu left with nothing drops out.
+ * Open Recent lists `recents` and comes with Open Workspace.
  */
 export function menusFor(
   allowed: Record<Scope, boolean>,
   wired: ReadonlySet<string>,
   shortcuts: Shortcuts,
+  recents: readonly RecentWorkspace[] = [],
 ): { label: string; entries: MenuEntry[] }[] {
   const build = (items: readonly Layout[]): MenuEntry[] =>
     tidy(
@@ -171,6 +176,24 @@ export function menusFor(
         if (item.kind === "submenu") {
           const entries = build(item.items);
           return entries.length > 0 ? [{ kind: "submenu", label: item.label, items: entries }] : [];
+        }
+        if (item.kind === "recents") {
+          if (!wired.has("open-workspace")) return [];
+          const entries: MenuEntry[] = recents.map(({ path, name }) => ({
+            kind: "action",
+            id: `${RECENT_ID}${path}`,
+            label: recentLabel(name),
+            disabled: !allowed.host,
+          }));
+          return [
+            {
+              kind: "submenu",
+              label: "Open Recent",
+              items: entries.length
+                ? entries
+                : [{ kind: "action", id: "recent-none", label: "None", disabled: true }],
+            },
+          ];
         }
         if (!wired.has(item.id)) return [];
         return [

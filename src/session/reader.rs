@@ -10,7 +10,7 @@
 
 use super::{
     exit::{Exit, INVALID_DATA, NOT_ALLOWED, TOO_BIG, TOO_MANY_COMMANDS},
-    wire::{self, Bucket},
+    wire::{self, Bucket, Request},
 };
 use crate::AppState;
 use api_types::{AckOutcome, CursorPoint, SessionClientMessage, SessionServerMessage};
@@ -152,7 +152,11 @@ async fn answer(
         return refused(refusal);
     }
     let command = match wire::command(cmd, &state.plugins.handlers()) {
-        Ok(command) => command,
+        Ok(Request::Session(command)) => command,
+        Ok(Request::Workspace(command)) => {
+            let outcome = state.files.run(handle, command).await;
+            return SessionServerMessage::Ack { seq, outcome };
+        }
         Err(code) => return refused(code),
     };
     if matches!(command, Command::Control(Control::Share { .. }))

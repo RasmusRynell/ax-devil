@@ -1,4 +1,4 @@
-import type { ErrorCode, RefusalCode } from "./generated/api";
+import type { ErrorCode, ErrorWire, RefusalCode } from "./generated/api";
 
 /**
  * What each public failure code says to someone who is not told the backend's own wording: the Session socket and
@@ -21,6 +21,10 @@ export const ERRORS: Record<ErrorCode, string> = {
   PlaylistInvalid: "The playlist could not be loaded.",
   PluginInvalid: "The plugin cannot be used.",
   CatalogInvalid: "The render catalog is not valid.",
+  WorkspaceInvalid: "The workspace file is not valid.",
+  WorkspaceInUse: "The workspace is open in another window.",
+  WorkspaceExists: "That file already exists.",
+  SaveFailed: "The workspace could not be saved.",
   Internal: "The backend failed.",
 };
 
@@ -50,5 +54,15 @@ export class CommandRefused extends Error {
     super(REFUSALS[code]);
     this.name = "CommandRefused";
     this.code = code;
+  }
+}
+
+/** A command the backend accepted but could not carry out; nothing changed. */
+export class CommandFailed extends Error {
+  readonly error: ErrorWire;
+  constructor(error: ErrorWire) {
+    super(reasonOf(error));
+    this.name = "CommandFailed";
+    this.error = error;
   }
 }

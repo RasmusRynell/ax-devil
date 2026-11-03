@@ -214,6 +214,8 @@ describe("add video", () => {
       disconnect: () => Promise.resolve(),
       pickFolder: () => Promise.resolve(null),
       pickExportFile: () => Promise.resolve(null),
+      pickOpenWorkspace: () => Promise.resolve(null),
+      pickSaveWorkspace: () => Promise.resolve(null),
       appVersion: async () => "0.0.0",
       onMaximizedChange: () => () => {},
     } satisfies WindowBridge;

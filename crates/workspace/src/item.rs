@@ -47,6 +47,17 @@ pub enum Source {
     Video(VideoRecipe),
     /// A playlist from a resolver.
     Playlist(PlaylistRecipe),
+    /// An item a workspace file held that this build cannot read.
+    Unreadable(Unreadable),
+}
+
+/// An item the file held that this build cannot read; written back exactly as read, never resolves.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Unreadable {
+    /// The item as the file had it.
+    pub raw: Value,
+    /// Why it cannot be read.
+    pub reason: String,
 }
 
 /// What an item was made from, and how to rebuild its Content.
@@ -118,6 +129,9 @@ impl Recipe {
                     .map(Content::Playlist)
                     .map_err(Interrupt::Failed)
             }
+            Source::Unreadable(unreadable) => Err(Interrupt::Failed(
+                UserError::new(ErrorCode::WorkspaceInvalid, unreadable.reason.clone()).at(*item),
+            )),
         }
     }
 }
@@ -133,12 +147,19 @@ fn resolve_video(
         let path = overlay.path.as_path();
         check_decoder_known(handlers, &overlay.handler, path)?;
         check_readable_file(path)?;
+        let options =
+            decoder_options(handlers, &overlay.handler, &overlay.options).map_err(|error| {
+                UserError {
+                    location: Some(Location::Host(HostPath::new(path))),
+                    ..error
+                }
+            })?;
         overlays.push(OverlayRef {
             label: overlay.label.clone(),
             slot: overlay.label.clone(),
             path: path.to_path_buf(),
             handler: overlay.handler.clone(),
-            options: overlay.options.clone(),
+            options,
         });
     }
     let entry = Entry {
@@ -299,4 +320,53 @@ fn check_readable_file(path: &Path) -> Result<(), UserError> {
     }
     fs::File::open(path).map_err(unreadable)?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn resolve(source: Source) -> UserError {
+        let recipe = Recipe::new(source);
+        match recipe.resolve(
+            &ItemId::generate(),
+            &Handlers::built_in(),
+            &CancelToken::new(),
+        ) {
+            Err(Interrupt::Failed(error)) => error,
+            _ => panic!("the recipe should fail to resolve"),
+        }
+    }
+
+    #[test]
+    fn a_loaded_recipe_is_checked_like_one_made_by_intake() {
+        let folder = tempfile::tempdir().unwrap();
+        let (video, xml) = (folder.path().join("a.mp4"), folder.path().join("a.xml"));
+        fs::write(&video, "").unwrap();
+        fs::write(&xml, "").unwrap();
+        let overlay = |options: &str| OverlayRecipe {
+            path: HostPath::new(&xml),
+            handler: "ONVIF_XML".into(),
+            label: "a.xml".into(),
+            options: serde_json::from_str(options).unwrap(),
+        };
+        let error = resolve(Source::Video(VideoRecipe {
+            video: HostPath::new(&video),
+            overlays: vec![overlay(r#"{"not_an_option": 1}"#)],
+        }));
+        assert_eq!(error.code, ErrorCode::OverlayInvalid);
+        assert_eq!(error.location, Some(HostPath::new(&xml).into()));
+    }
+
+    #[test]
+    fn an_unreadable_item_never_resolves() {
+        let error = resolve(Source::Unreadable(Unreadable {
+            raw: Value::Null,
+            reason: "newer".into(),
+        }));
+        assert_eq!(
+            (error.code, error.reason.as_str()),
+            (ErrorCode::WorkspaceInvalid, "newer")
+        );
+    }
 }

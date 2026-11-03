@@ -1,9 +1,37 @@
 //! The items a command line asks the first window to open.
 
 use super::{Command, args};
+use ax_devil::session::Launch;
 use foundation::{Location, UserError};
 use handlers::Handlers;
 use workspace::{WorkspaceItem, intake::NewOverlay};
+use workspace_files::RecoveryFolder;
+
+/// What `command` asks the first window to start from: the workspace file or items it names, or, for a plain launch,
+/// the unsaved work of the last window. The error says what was refused and why.
+pub(super) fn launch(
+    command: Option<Command>,
+    handlers: &Handlers,
+    recovery: &RecoveryFolder,
+) -> Result<Option<Launch>, String> {
+    match command {
+        None => Ok(Some(Launch::Restore)),
+        Some(Command::Open { file }) => {
+            let path = std::path::absolute(&file)
+                .map_err(|error| format!("{}: {error}", file.display()))?;
+            let workspace = if recovery.contains(&path) {
+                None
+            } else {
+                Some(workspace_files::load(&path).map_err(|error| describe(&error))?)
+            };
+            Ok(Some(Launch::Open { path, workspace }))
+        }
+        command => {
+            let items = launch_items(command, handlers)?;
+            Ok((!items.is_empty()).then_some(Launch::Items(items)))
+        }
+    }
+}
 
 /// The items `command` asks the first window to open, built by the same intake as the dialogs; none for a plain
 /// launch. The error says what was refused and why.

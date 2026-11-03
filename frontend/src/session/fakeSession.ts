@@ -173,6 +173,8 @@ export class Room {
   /** What the owner hid in the workspace tree. */
   hidden: HiddenTarget[] = [];
   docRev = 0;
+  /** Whether changes restored from a recovery copy await Keep or Discard. */
+  recovered = false;
   presenter: View = EMPTY_VIEW;
   /** What watchers may do while sharing is on; null while it is off. */
   access: Access | null = null;
@@ -246,6 +248,8 @@ export class FakeSocket {
   static clockOffsetUs = 5_000_000;
   /** While set, the backend refuses every change to the workspace with this code. */
   static refuseContent: RefusalCode | null = null;
+  /** The workspace files that exist on the fake host; a Save onto one of them fails unless it replaces. */
+  static existingFiles = new Set<string>();
   /** While true, the backend refuses every stream ticket, as it does for content the Doc no longer lets the seat play. */
   static refuseTickets = false;
   /** The server password the fake backend asks of a caller who is not joining by a link; null for a server without one. */
@@ -253,6 +257,7 @@ export class FakeSocket {
 
   static reset() {
     FakeSocket.refuseTickets = false;
+    FakeSocket.existingFiles.clear();
     FakeSocket.refuseContent = null;
     FakeSocket.serverPassword = null;
     FakeSocket.sockets = [];
@@ -349,7 +354,15 @@ export class FakeSocket {
         type: "doc",
         docRev: room.docRev,
         doc: {
-          workspace: { name: null, items: room.items, rows: rowsOf(room.items, room.hidden) },
+          workspace: {
+            name: null,
+            modified: room.recovered,
+            recovered: room.recovered,
+            epoch: 0,
+            file: null,
+            items: room.items,
+            rows: rowsOf(room.items, room.hidden),
+          },
         },
       });
     }
@@ -455,6 +468,24 @@ export class FakeSocket {
         room.seats.slice(1).forEach((other) => other.socket?.endWith(4404, "stopped"));
         room.seats.splice(1);
       } else room.secret += "x";
+    } else if (cmd.type === "workspace") {
+      if (!seat.owner) return refuse();
+      const { command: change } = cmd;
+      if (
+        change.type === "save" &&
+        change.path &&
+        !change.replace &&
+        FakeSocket.existingFiles.has(change.path)
+      )
+        return this.emit({
+          type: "ack",
+          seq,
+          outcome: { status: "failed", error: { code: "WorkspaceExists", params: {} } },
+        });
+      if (cmd.command.type === "keep" || cmd.command.type === "discard") {
+        room.recovered = false;
+        room.setItems(room.items);
+      }
     } else {
       const edits = seat.owner || room.access === "edit";
       if (!edits) return refuse();

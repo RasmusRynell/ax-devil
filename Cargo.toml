@@ -31,6 +31,7 @@ members = [
   "crates/sessions",
   "crates/settings",
   "crates/workspace",
+  "crates/workspace-files",
   "crates/workspace-store",
 ]
 resolver = "3"
@@ -74,6 +75,7 @@ scene-store = { path = "crates/scene-store" }
 sessions = { path = "crates/sessions" }
 settings = { path = "crates/settings" }
 workspace = { path = "crates/workspace" }
+workspace-files = { path = "crates/workspace-files" }
 workspace-store = { path = "crates/workspace-store" }
 
 [workspace.lints.rust]
@@ -119,6 +121,7 @@ sessions.workspace = true
 settings.workspace = true
 tracing.workspace = true
 workspace.workspace = true
+workspace-files.workspace = true
 workspace-store.workspace = true
 mime_guess = { version = "2", optional = true }
 rust-embed = { version = "8", optional = true }

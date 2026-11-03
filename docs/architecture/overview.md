@@ -63,6 +63,9 @@ a job outside the lock and commits through it. A playlist resolves to Content wi
 video is one entry whose id is the Content's id. Each seat is sent the Doc as `project` builds it for its audience,
 sidebar rows included, so a watcher sees open items only, never a path or a failure's reason. Which entry a viewer
 shows is decided in one place, `restrict`, and a stream is ticketed for one entry of one generation of the Content.
+Opening, saving and recovering a workspace is `src/session/files/` over `workspace-files`: it reads and writes
+files, then tells the Session what happened through `Replace` and `MarkSaved`, and the store only compares the
+workspace with what was last saved.
 
 ## Overlays
 

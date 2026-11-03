@@ -3,8 +3,10 @@ import type { CommandId } from "../generated/settings";
 import { Icon } from "../kit/Icon";
 import type { IconName } from "../kit/icons";
 import { KIND, QUIET, type Kind } from "../kit/look";
+import { RowList } from "../kit/RowList";
 import { SectionCaption } from "../kit/SectionCaption";
 import { useAllowed } from "../session/session";
+import { RECENT_ID, recentLabel, usedOn, useRecents } from "./recents";
 
 const OPEN: readonly [id: CommandId, icon: IconName, kind?: Kind][] = [
   ["open-workspace", "folder"],
@@ -16,6 +18,7 @@ const OPEN: readonly [id: CommandId, icon: IconName, kind?: Kind][] = [
 /** The Workspace view's start panel: the ways to open content, and the recent workspaces. */
 export function StartPanel({ onRun }: { onRun: (id: string) => void }) {
   const allowed = useAllowed();
+  const recents = useRecents(true);
   return (
     <div className="flex flex-col gap-l">
       <div className="grid max-sm:grid-cols-2">
@@ -33,10 +36,26 @@ export function StartPanel({ onRun }: { onRun: (id: string) => void }) {
           </button>
         ))}
       </div>
-      <section className="flex flex-col gap-xs [@media(max-height:20rem)]:hidden">
-        <SectionCaption heading="Recent workspaces" />
-        <p className="m-0 px-m text-muted">No recent workspaces</p>
-      </section>
+      <div className="[@media(max-height:20rem)]:hidden">
+        {recents.length > 0 ? (
+          <RowList
+            heading="Recent workspaces"
+            rows={recents.map(({ path, name, usedMs }) => ({
+              id: `${RECENT_ID}${path}`,
+              label: recentLabel(name),
+              title: path,
+              disabled: !allowed.host,
+              trailing: <span className="shrink-0 text-muted">{usedOn(usedMs)}</span>,
+            }))}
+            onSelect={onRun}
+          />
+        ) : (
+          <section className="flex flex-col gap-xs">
+            <SectionCaption heading="Recent workspaces" />
+            <p className="m-0 px-m text-muted">No recent workspaces</p>
+          </section>
+        )}
+      </div>
     </div>
   );
 }

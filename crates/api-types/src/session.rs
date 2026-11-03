@@ -6,6 +6,7 @@
 //! watcher may learn of the Doc is decided in one place.
 
 use crate::{
+    ErrorWire,
     playback::LanePolicyWire,
     workspace::{HiddenTarget, NewItem, WorkspaceState},
 };
@@ -122,6 +123,43 @@ pub enum SessionCommand {
         /// The stream.
         key: ContentRef,
     },
+    /// Open, save or close the workspace file; the owner only.
+    Workspace {
+        /// The change.
+        command: WorkspaceCommand,
+    },
+}
+
+/// What a seat asks of the workspace file. A path is absolute, on the host.
+#[derive(Deserialize, TS, Clone, Debug, PartialEq, Eq)]
+#[serde(
+    tag = "type",
+    rename_all = "camelCase",
+    rename_all_fields = "camelCase"
+)]
+pub enum WorkspaceCommand {
+    /// An empty Untitled workspace.
+    New,
+    /// The workspace saved at `path`; a path inside the recovery folder restores that copy.
+    Open {
+        /// The file.
+        path: String,
+    },
+    /// Write the workspace: to its own file, or with `path` to that file (Save As; ends with the workspace suffix).
+    Save {
+        /// The file to save as; the workspace's own file when absent.
+        #[serde(default)]
+        #[ts(optional)]
+        path: Option<String>,
+        /// Whether Save As may replace a file that is already there.
+        #[serde(default)]
+        #[ts(optional)]
+        replace: Option<bool>,
+    },
+    /// Keep the changes restored from a recovery copy.
+    Keep,
+    /// Drop the changes restored from a recovery copy: back to the saved file, or an empty Untitled workspace.
+    Discard,
 }
 
 /// The part of the window a cursor position belongs to.
@@ -269,7 +307,7 @@ pub struct DocWire {
 }
 
 /// How a command ended.
-#[derive(Serialize, TS, Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Serialize, TS, Clone, Debug, PartialEq, Eq)]
 #[serde(
     tag = "status",
     rename_all = "camelCase",
@@ -282,6 +320,11 @@ pub enum AckOutcome {
     Refused {
         /// Why.
         code: Refusal,
+    },
+    /// Could not be done; nothing changed.
+    Failed {
+        /// Why.
+        error: ErrorWire,
     },
 }
 
