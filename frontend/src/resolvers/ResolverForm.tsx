@@ -1,4 +1,4 @@
-import { useEffect, useReducer, useRef, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useReducer, useRef, type ReactNode } from "react";
 import { reasonOf } from "../errors";
 import type { ChoiceInfo, DecoderInfo, ErrorWire, FieldInfo, ResolverInfo } from "../generated/api";
 import { Refusal } from "../shell/SettingField";
@@ -87,9 +87,15 @@ function reduce(forms: Forms, action: Action): Forms {
   }
 }
 
-/** The text of a field as it is sent: a number for an `Integer` field, nothing while blank. */
+/** The text of a field as it is sent: a number for an `Integer` field, a folder without its padding, nothing while blank. */
 const typed = (field: FieldInfo, text: unknown) =>
-  blank(text) ? undefined : field.kind.kind === "Integer" ? Number(text) : text;
+  blank(text)
+    ? undefined
+    : field.kind.kind === "Integer"
+      ? Number(text)
+      : field.kind.kind === "Folder"
+        ? String(text).trim()
+        : text;
 
 /**
  * The typed values the fields hold: defaults applied, integers as numbers, each decoder's options gathered under its
@@ -133,14 +139,19 @@ function effective(
   return { settings, complete };
 }
 
-/** What loading sends, or `null` while something is missing or misread: a required text without a default, a scan with a checked value, or an integer that is not a whole number. */
+/**
+ * What loading sends, or `null` while something is missing or misread: a required text without a default, a scan with
+ * a checked value, or an integer that is not a whole number. `asked` leaves the counts out of it, which is what
+ * loading sends once they come up with pairs.
+ */
 function settingsOf(
   resolver: ResolverInfo,
   state: State,
   decoders: readonly DecoderInfo[],
+  asked = false,
 ): Settings | null {
   const { settings, complete } = effective(resolver, state.values, decoders);
-  for (const field of countFields(resolver)) {
+  for (const field of asked ? [] : countFields(resolver)) {
     const view = state.scans[field.key];
     if (view?.phase === "scanning" || view?.phase === "failed") return null;
     if (view?.phase === "done" && view.choices.length === 0) return null;
@@ -184,14 +195,25 @@ function failuresAt(
     );
 }
 
+/** Whether two settings hold the same values, whatever order their keys were added in. */
+function sameSettings(a: Settings | null, b: Settings | null): boolean {
+  const canonical = (settings: Settings | null) =>
+    JSON.stringify(settings, (_key, value: unknown) =>
+      value && typeof value === "object" && !Array.isArray(value)
+        ? Object.fromEntries(Object.entries(value).sort(([x], [y]) => (x < y ? -1 : 1)))
+        : value,
+    );
+  return canonical(a) === canonical(b);
+}
+
 /** A resolver form's state and what to do with it. */
 export interface ResolverFormState extends FieldForm {
   resolver: ResolverInfo;
   /** What loading sends, or `null` while the form cannot load. */
   settings: Settings | null;
   /**
-   * Present while a count-only scan has not answered: scans, then gives `settings` if it found something and nothing
-   * was edited meanwhile, else `null`.
+   * Present while a count-only scan has not answered: scans, then gives `settings` if it found something and the form
+   * holds the same settings as when asked, else `null`.
    */
   settingsAfterScan?: () => Promise<Settings | null>;
   /** Why loading must not go on although `settings` is complete: a scan found values and none is checked. */
@@ -202,8 +224,9 @@ export interface ResolverFormState extends FieldForm {
  * The state of the form a resolver's schema declares. Each resolver the hook is given keeps its own form, so going
  * back to one finds it as it was. A `Scan` field scans when asked or when a picked path it reads changes; editing
  * anything it reads empties it and stops its scan, the newest scan alone fills it, and unmounting stops them all.
- * A count-only scan never starts by itself, and an edit anywhere keeps `settingsAfterScan` from giving settings.
- * `initial` holds the first resolver's saved settings: unknown keys are kept, a saved list is the selection (saved
+ * A count-only scan never starts by itself, and `settingsAfterScan` gives nothing if the form shows another resolver
+ * or other settings when it answers (a change undone counts as none). `initial` holds the first resolver's saved
+ * settings: unknown keys are kept, a saved list is the selection (saved
  * names the scan lacks stay, marked), and the fields scan at once.
  */
 export function useResolverForm(
@@ -223,13 +246,8 @@ export function useResolverForm(
   // Scans by `<resolver id>/<field key>`: a resolver left for another keeps scanning into its own form.
   const controllers = useRef(new Map<string, AbortController>());
   const slot = (key: string) => `${resolver.id}/${key}`;
-  // Counts the edits, so a scan that was waited for can tell whether the form changed meanwhile.
-  const edits = useRef(0);
-  // Every change the user makes to what would be submitted goes through here; scan progress does not.
-  const edit = (action: Action) => {
-    edits.current += 1;
-    dispatch(action);
-  };
+  // The resolver and settings the form shows now, for a scan that was waited for to compare against.
+  const latest = useRef<{ resolver: string; settings: Settings | null } | null>(null);
 
   const canScanWith = (key: string, values: Settings) => {
     const kind = resolver.fields.find((field) => field.key === key)?.kind;
@@ -292,13 +310,16 @@ export function useResolverForm(
   }, []);
 
   const settings = settingsOf(resolver, state, decoders);
+  const asked = settingsOf(resolver, state, decoders, true);
+  useLayoutEffect(() => {
+    latest.current = { resolver: resolver.id, settings: asked };
+  });
   const unanswered = countFields(resolver).filter(
     (field) => state.scans[field.key]?.phase !== "done",
   );
   const settingsAfterScan =
     settings && unanswered.length > 0
       ? async () => {
-          const before = edits.current;
           const answers = await Promise.all(
             unanswered.map((field) =>
               canScanWith(field.key, state.values)
@@ -306,7 +327,9 @@ export function useResolverForm(
                 : Promise.resolve(null),
             ),
           );
-          return answers.every((found) => found?.length) && edits.current === before
+          return answers.every((found) => found?.length) &&
+            latest.current?.resolver === resolver.id &&
+            sameSettings(latest.current.settings, settings)
             ? settings
             : null;
         }
@@ -332,7 +355,7 @@ export function useResolverForm(
       );
       const invalidated = dependants.map((field) => field.key);
       for (const dependant of invalidated) stop(dependant);
-      edit({ type: "set", resolver, key, value, invalidated });
+      dispatch({ type: "set", resolver, key, value, invalidated });
       if (commit) {
         for (const field of dependants.filter((dependant) => !isCount(dependant))) {
           if (canScanWith(field.key, values)) void run(field.key, values);
@@ -340,8 +363,8 @@ export function useResolverForm(
       }
     },
     toggle: (key, value) =>
-      edit({ type: "scan", resolver, key, update: (view) => toggled(view, value) }),
-    toggleAll: (key) => edit({ type: "scan", resolver, key, update: toggledAll }),
+      dispatch({ type: "scan", resolver, key, update: (view) => toggled(view, value) }),
+    toggleAll: (key) => dispatch({ type: "scan", resolver, key, update: toggledAll }),
   };
 }
 

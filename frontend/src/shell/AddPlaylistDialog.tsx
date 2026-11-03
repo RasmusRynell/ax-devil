@@ -20,7 +20,7 @@ const NO_DECODERS: readonly DecoderInfo[] = [];
  * chosen, the sources are listed instead of a form. Loading, the form's own button, resolves the playlists first and
  * adds the item only when that succeeds, so the dialog stays open meanwhile with the settings locked and Name and
  * Cancel live. A form with a count-only scan that has not answered scans first and goes on only if it found something
- * and nothing was edited meanwhile. Cancel, Escape and closing abort the resolve, and a refusal stays here until the
+ * and the settings are the same when it answers. Cancel, Escape and closing abort the resolve, and a refusal stays here until the
  * settings change.
  */
 export function AddPlaylistDialog({ onClose }: { onClose: () => void }) {

@@ -250,7 +250,8 @@ describe("add playlist dialog", () => {
     expect(screen.queryByRole("alert")).toBeNull();
   });
 
-  it("loads a folder pair after counting its pairs, and not when the decoder changed meanwhile", async () => {
+  /** The dialog on a filled Folder Pair form whose pair count is held until `held` settles. */
+  async function filledFolderPair() {
     const held = deferred();
     stubBackend(undefined, () => held.promise);
     await open();
@@ -268,30 +269,48 @@ describe("add playlist dialog", () => {
     expect(add()).toHaveProperty("disabled", true);
     fireEvent.change(screen.getByLabelText("Image width"), { target: { value: "1920" } });
     expect(add()).toHaveProperty("disabled", false);
+    return { held, decoder };
+  }
+
+  const FOLDER_PAIR_SETTINGS = {
+    videos_dir: "/videos",
+    overlays_dir: "/overlays",
+    handler_type: "MOT_FILE",
+    options: { width: 1920 },
+  };
+
+  it("loads a folder pair after counting its pairs, and not when another decoder is chosen meanwhile", async () => {
+    const { held, decoder } = await filledFolderPair();
 
     // Load scans first; a decoder picked meanwhile keeps it from going on.
     fireEvent.click(add());
     await screen.findByText("Scanning…");
     expect(add()).toHaveProperty("disabled", true);
     fireEvent.change(decoder, { target: { value: "" } });
-    fireEvent.change(decoder, { target: { value: "MOT_FILE" } });
     held.settle(reply(200, [{ value: "a", label: "a", detail: "" }]));
     await screen.findByText("Found 1 pair(s).");
     expect(resolveCalls()).toHaveLength(0);
 
-    // The count is kept, so Load goes straight on.
+    // The count is kept, so loading with a decoder goes straight on.
+    fireEvent.change(decoder, { target: { value: "MOT_FILE" } });
     fireEvent.click(add());
     await waitFor(() => expect(commands()).toHaveLength(1));
     const [url, init] = resolveCalls()[0];
     expect(url).toBe("/api/resolvers/folder_pair/resolve");
-    expect(bodyOf(init)).toEqual({
+    expect(bodyOf(init)).toEqual({ session: "room-1", settings: FOLDER_PAIR_SETTINGS });
+  });
+
+  it("loads a folder pair whose decoder was changed away and back while its pairs were counted", async () => {
+    const { held, decoder } = await filledFolderPair();
+    fireEvent.click(add());
+    await screen.findByText("Scanning…");
+    fireEvent.change(decoder, { target: { value: "" } });
+    fireEvent.change(decoder, { target: { value: "MOT_FILE" } });
+    held.settle(reply(200, [{ value: "a", label: "a", detail: "" }]));
+    await waitFor(() => expect(commands()).toHaveLength(1));
+    expect(bodyOf(resolveCalls()[0][1])).toEqual({
       session: "room-1",
-      settings: {
-        videos_dir: "/videos",
-        overlays_dir: "/overlays",
-        handler_type: "MOT_FILE",
-        options: { width: 1920 },
-      },
+      settings: FOLDER_PAIR_SETTINGS,
     });
   });
 

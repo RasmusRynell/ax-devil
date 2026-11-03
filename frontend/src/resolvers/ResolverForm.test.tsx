@@ -344,14 +344,15 @@ describe("resolver form", () => {
     expect(screen.getByRole("button", { name: "Scan" })).toHaveProperty("disabled", true);
   });
 
-  it("counts pairs without gating Load on a scan, and goes on after one only if nothing was edited", async () => {
+  it("counts pairs without gating Load on a scan, and goes on after one only if the settings are as asked", async () => {
     const scans = stubScans();
     render(<Harness resolver={COUNT} />);
     // Scan stays enabled; with nothing to scan it says what is missing and asks nothing.
     expect(screen.getByRole("status").textContent).toBe("Pick videos.");
     scan();
     expect(scans).toHaveLength(0);
-    fireEvent.change(screen.getByLabelText("Videos"), { target: { value: "/v" } });
+    // A folder is sent without the spaces around it.
+    fireEvent.change(screen.getByLabelText("Videos"), { target: { value: " /v " } });
     fireEvent.change(screen.getByLabelText("Format"), { target: { value: "MOT_FILE" } });
     expect(scans).toHaveLength(0);
     expect(screen.queryByRole("status")).toBeNull();
@@ -382,7 +383,7 @@ describe("resolver form", () => {
     fireEvent.change(screen.getByLabelText("Videos"), { target: { value: "/w" } });
     expect(screen.queryByRole("status")).toBeNull();
 
-    // Loading before any scan scans first, and goes on only if nothing else was edited meanwhile.
+    // Loading before any scan scans first, and goes on only if the settings are the same when it answers.
     fireEvent.click(screen.getByRole("button", { name: "After" }));
     await waitFor(() => expect(scans).toHaveLength(4));
     await respond(scans, 3, "c");
@@ -395,6 +396,18 @@ describe("resolver form", () => {
     fireEvent.change(screen.getByLabelText("Format"), { target: { value: "" } });
     await respond(scans, 4, "d");
     await waitFor(() => expect(screen.getByTestId("after").textContent).toBe("null"));
+
+    // A decoder changed away and back is the decoder that was asked for.
+    fireEvent.change(screen.getByLabelText("Videos"), { target: { value: "/y" } });
+    fireEvent.change(screen.getByLabelText("Format"), { target: { value: "MOT_FILE" } });
+    fireEvent.click(screen.getByRole("button", { name: "After" }));
+    await waitFor(() => expect(scans).toHaveLength(6));
+    fireEvent.change(screen.getByLabelText("Format"), { target: { value: "" } });
+    fireEvent.change(screen.getByLabelText("Format"), { target: { value: "MOT_FILE" } });
+    await respond(scans, 5, "e");
+    await waitFor(() =>
+      expect(screen.getByTestId("after").textContent).toBe('{"videos":"/y","format":"MOT_FILE"}'),
+    );
   });
 
   it("does not load what was unchecked while the pairs were being counted", async () => {
