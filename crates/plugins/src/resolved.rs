@@ -120,8 +120,6 @@ pub(crate) struct Collected {
     playlists: Vec<(Option<String>, Vec<ResolvedEntry>)>,
     /// Entries and playlist lines so far.
     printed: usize,
-    /// The entry names of the last playlist.
-    names: HashSet<String>,
     warnings: Vec<Warning>,
     /// Warnings printed after `MAX_WARNINGS` were kept.
     suppressed: usize,
@@ -135,7 +133,6 @@ impl Collected {
             choices: Vec::new(),
             playlists: Vec::new(),
             printed: 0,
-            names: HashSet::new(),
             warnings: Vec::new(),
             suppressed: 0,
         }
@@ -237,7 +234,6 @@ impl Collected {
                 }
                 self.printed += 1;
                 self.playlists.push((Some(cut(&playlist.name)), Vec::new()));
-                self.names.clear();
             }
             (
                 LineIn {
@@ -279,9 +275,6 @@ impl Collected {
         check_room(self.printed, MAX_ENTRIES, "entries and playlists")?;
         if entry.name.is_empty() {
             return Err("the entry name is empty".to_owned());
-        }
-        if !self.names.insert(entry.name.clone()) {
-            return Err(format!("the entry name '{}' is used twice", entry.name));
         }
         let video = match entry.video {
             VideoIn::File(file) => VideoRef::File(absolute("the video", file)?),
@@ -463,12 +456,6 @@ mod tests {
             ]
         );
 
-        assert_eq!(
-            run(&[playlist("p"), entry("a"), entry("a")])
-                .err()
-                .as_deref(),
-            Some("line 3: the entry name 'a' is used twice")
-        );
         assert_eq!(
             run(&[playlist("")]).err().as_deref(),
             Some("line 1: the playlist name is empty")

@@ -124,9 +124,9 @@ impl Recipe {
     /// fails when the viewer opens it. Each overlay is a lane with its recipe's label, so two overlays with the
     /// same label fail.
     ///
-    /// A playlist recipe asks its resolver for playlists, then checks that entry names within each playlist and the
-    /// lane names within each entry are unique, since they are the identity of entries and lanes. Resolving twice
-    /// gives the same ids. What the resolver or those checks refuse reads `Playlist resolver '<id>' failed: <why>`.
+    /// A playlist recipe asks its resolver for playlists, numbers repeated playlist and entry names, then checks
+    /// that the lane names within each entry are unique, since they are the identity of lanes. Resolving twice gives
+    /// the same ids. What the resolver or those checks refuse reads `Playlist resolver '<id>' failed: <why>`.
     pub fn resolve(
         &self,
         item: &ItemId,

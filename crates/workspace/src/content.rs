@@ -206,10 +206,10 @@ impl Content {
 }
 
 /// Builds the Content of the playlist item `item` from what the resolver `resolver` returned. Playlists that
-/// share a name are numbered ` (2)`, ` (3)` (skipping suffixes already taken), and the playlist and entry names give
-/// the ids `{item}/{playlist}` and `{item}/{playlist}/{entry}`. Fails when the resolver returned no playlist or an
-/// empty one; when two entries of a playlist share a name or two ids of the item collide, naming the entry; or
-/// when two overlays of an entry share a lane label.
+/// share a name are numbered ` (2)`, ` (3)` (skipping suffixes already taken), and so are entries of a playlist
+/// that share a name; the numbered names give the ids `{item}/{playlist}` and `{item}/{playlist}/{entry}`. Fails when
+/// the resolver returned no playlist or an empty one, when two ids of the item collide (a `/` in a name can do
+/// that), naming the entry, or when two overlays of an entry share a lane label.
 pub(crate) fn playlist_content(
     item: &ItemId,
     resolver: &str,
@@ -240,21 +240,19 @@ pub(crate) fn playlist_content(
             name: name.clone(),
             entries: playlist.entries.len(),
         });
-        for entry in playlist.entries {
-            let id = ContentId::of_entry(item, &name, &entry.name);
+        let entry_names = numbered(playlist.entries.iter().map(|entry| entry.name.as_str()));
+        for (entry, entry_name) in playlist.entries.into_iter().zip(entry_names) {
+            let id = ContentId::of_entry(item, &name, &entry_name);
             if !ids.insert(id.clone()) {
                 return Err(UserError::new(
                     ErrorCode::PlaylistInvalid,
-                    format!(
-                        "Two entries of the playlist have the same name: {}",
-                        entry.name
-                    ),
+                    format!("Two entries of the item have the same id: {entry_name}"),
                 )
                 .at(*item));
             }
             let entry = Entry {
                 id,
-                label: entry.name,
+                label: entry_name,
                 video: entry.video,
                 overlays: entry.overlays,
             };
@@ -380,7 +378,7 @@ mod tests {
         let content = build(vec![
             playlist("run", &["a", "b"]),
             playlist("run", &["a"]),
-            playlist("x/y", &["z"]),
+            playlist("x/y", &["z", "z"]),
         ])
         .unwrap();
         let spans: Vec<_> = content
@@ -388,7 +386,7 @@ mod tests {
             .iter()
             .map(|span| (span.name.as_str(), span.entries))
             .collect();
-        assert_eq!(spans, [("run", 2), ("run (2)", 1), ("x/y", 1)]);
+        assert_eq!(spans, [("run", 2), ("run (2)", 1), ("x/y", 2)]);
         assert_eq!(content.display_name, "Runs");
         let item = content.item_id;
         let ids: Vec<_> = content
@@ -403,15 +401,20 @@ mod tests {
                 ContentId::of_entry(&item, "run", "b"),
                 ContentId::of_entry(&item, "run (2)", "a"),
                 ContentId::of_entry(&item, "x/y", "z"),
+                ContentId::of_entry(&item, "x/y", "z (2)"),
             ]
         );
+        assert_eq!(content.entries[4].label, "z (2)");
 
         let reason = |playlists| build(playlists).unwrap_err().reason;
         assert_eq!(
             reason(vec![playlist("run", &["a"]), playlist("empty", &[])]),
             "Playlists require at least one entry."
         );
-        assert!(reason(vec![playlist("run", &["a", "a"])]).ends_with(": a"));
+        // `run/a/b` names both the entry `a/b` of `run` and the entry `b` of `run/a`.
+        assert!(
+            reason(vec![playlist("run", &["a/b"]), playlist("run/a", &["b"])]).ends_with(": b")
+        );
         let mut lanes = playlist("run", &["a"]);
         let overlay = handler_api::OverlayRef {
             label: "GT".into(),

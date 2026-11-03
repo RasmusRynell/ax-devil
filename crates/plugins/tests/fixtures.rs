@@ -320,12 +320,6 @@ fn a_resolve_that_breaks_the_rules_fails_naming_the_line_and_a_failing_plugin_le
         scripted(folder.path(), &script)
     };
 
-    let twice = failure(&print(&[entry("a", "/v/1.mp4"), entry("a", "/v/2.mp4")], 0));
-    assert!(
-        twice.reason.starts_with("line 2:") && twice.reason.contains("'a'"),
-        "{}",
-        twice.reason
-    );
     let relative = failure(&print(&[entry("a", "v/1.mp4")], 0));
     assert!(
         relative.reason.starts_with("line 1:") && relative.reason.contains("absolute"),
