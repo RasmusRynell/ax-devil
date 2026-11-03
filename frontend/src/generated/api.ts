@@ -1205,6 +1205,10 @@ settings: Record<string, unknown>, };
  */
 export type ResolveRequest = { 
 /**
+ * The Session of the window that asks; only a seat of that Session can add the resolved item.
+ */
+session: string, 
+/**
  * The settings the resolver's schema declares.
  */
 settings: Record<string, unknown>, };

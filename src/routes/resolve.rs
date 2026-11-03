@@ -16,34 +16,43 @@ use foundation::{CancelToken, ErrorCode, Interrupt, ItemId, UserError};
 use handler_api::Settings;
 use handlers::Handlers;
 use std::{
-    collections::VecDeque,
+    collections::{HashMap, VecDeque},
     sync::{Arc, Mutex, PoisonError},
 };
 use workspace::{Content, WorkspaceItem};
 
-/// How many resolved items wait to be added. A resolve that finishes as its dialog is cancelled leaves one that is
-/// never added; the oldest makes room.
+/// How many resolved items wait to be added per session. A resolve that finishes as its dialog is cancelled leaves
+/// one that is never added; the oldest of that session makes room. The session id is only a partition, so one
+/// session's abandoned dialogs never evict another's items: it is not a credential, and the callers of one backend
+/// are trusted collaborators.
 const MAX_STAGED: usize = 4;
 
-/// Items resolved by `POST /api/resolvers/{id}/resolve` and not yet added. The item's id is the ticket.
+/// Items resolved by `POST /api/resolvers/{id}/resolve` and not yet added, by the session that asked. The item's id
+/// is the ticket, redeemed only through a seat of that session.
 #[derive(Default)]
-pub struct Staged(Mutex<VecDeque<(WorkspaceItem, Content)>>);
+pub struct Staged(Mutex<HashMap<String, VecDeque<(WorkspaceItem, Content)>>>);
 
 impl Staged {
-    /// Holds a resolved item; with [`MAX_STAGED`] already held, the oldest is dropped.
-    pub(crate) fn put(&self, item: WorkspaceItem, content: Content) {
+    /// Holds a resolved item for `session`; with [`MAX_STAGED`] of its items already held, its oldest is dropped.
+    pub(crate) fn put(&self, session: &str, item: WorkspaceItem, content: Content) {
         let mut held = self.0.lock().unwrap_or_else(PoisonError::into_inner);
-        if held.len() == MAX_STAGED {
-            held.pop_front();
+        let queue = held.entry(session.to_owned()).or_default();
+        if queue.len() == MAX_STAGED {
+            queue.pop_front();
         }
-        held.push_back((item, content));
+        queue.push_back((item, content));
     }
 
-    /// Hands over the item with this id, once.
-    pub(crate) fn take(&self, id: &ItemId) -> Option<(WorkspaceItem, Content)> {
+    /// Hands over the item with this id once, to the session that staged it and no other.
+    pub(crate) fn take(&self, session: &str, id: &ItemId) -> Option<(WorkspaceItem, Content)> {
         let mut held = self.0.lock().unwrap_or_else(PoisonError::into_inner);
-        let at = held.iter().position(|(item, _)| item.id == *id)?;
-        held.remove(at)
+        let queue = held.get_mut(session)?;
+        let at = queue.iter().position(|(item, _)| item.id == *id)?;
+        let taken = queue.remove(at);
+        if queue.is_empty() {
+            held.remove(session);
+        }
+        taken
     }
 }
 
@@ -53,6 +62,7 @@ impl Staged {
 async fn stage(
     handlers: Arc<Handlers>,
     staged: &Staged,
+    session: &str,
     resolver: &str,
     settings: Settings,
 ) -> Result<ItemId, Interrupt<UserError>> {
@@ -72,7 +82,7 @@ async fn stage(
         )))
     })?;
     let id = item.id;
-    staged.put(item, content);
+    staged.put(session, item, content);
     Ok(id)
 }
 
@@ -90,7 +100,15 @@ pub(crate) async fn resolve(
             &UserError::new(ErrorCode::UnknownHandler, "No such playlist resolver"),
         ));
     }
-    match stage(handlers, &state.staged, &id, request.settings).await {
+    match stage(
+        handlers,
+        &state.staged,
+        &request.session,
+        &id,
+        request.settings,
+    )
+    .await
+    {
         Ok(item) => Ok(Json(ResolvedInfo { item })),
         Err(Interrupt::Failed(error)) => Err(refuse(StatusCode::UNPROCESSABLE_ENTITY, &error)),
         // Only a dropped request cancels a resolve, so nobody reads this answer.
@@ -121,7 +139,9 @@ mod tests {
             .method("POST")
             .uri(format!("/api/resolvers/{id}/resolve"))
             .header("content-type", "application/json")
-            .body(Body::from(json!({ "settings": settings }).to_string()))
+            .body(Body::from(
+                json!({ "session": "s1", "settings": settings }).to_string(),
+            ))
             .unwrap()
     }
 
@@ -218,7 +238,7 @@ mod tests {
         let staged = Arc::new(Staged::default());
         let request = tokio::spawn({
             let staged = staged.clone();
-            async move { stage(handlers, &staged, "waiting", Settings::new()).await }
+            async move { stage(handlers, &staged, "s1", "waiting", Settings::new()).await }
         });
         assert!(until(&resolver.started).await, "the resolver started");
 
@@ -232,32 +252,40 @@ mod tests {
     }
 
     #[test]
-    fn only_the_latest_four_items_wait_and_each_is_handed_over_once() {
+    fn each_session_keeps_its_latest_four_items_and_only_that_session_takes_them_once() {
         let staged = Staged::default();
         let folder = mot_folder();
         let handlers = Handlers::built_in();
-        let ids: Vec<ItemId> = (0..=MAX_STAGED)
-            .map(|_| {
-                let mut settings = Settings::new();
-                settings.insert("root".into(), folder.path().display().to_string().into());
-                let item =
-                    workspace::intake::playlist("mot_challenge", settings, &handlers).unwrap();
-                let content = item
-                    .recipe
-                    .resolve(&item.id, &handlers, &CancelToken::new())
-                    .ok()
-                    .unwrap();
-                let id = item.id;
-                staged.put(item, content);
-                id
-            })
-            .collect();
+        let stage_one = |session: &str| {
+            let mut settings = Settings::new();
+            settings.insert("root".into(), folder.path().display().to_string().into());
+            let item = workspace::intake::playlist("mot_challenge", settings, &handlers).unwrap();
+            let content = item
+                .recipe
+                .resolve(&item.id, &handlers, &CancelToken::new())
+                .ok()
+                .unwrap();
+            let id = item.id;
+            staged.put(session, item, content);
+            id
+        };
+        let first: Vec<ItemId> = (0..=MAX_STAGED).map(|_| stage_one("a")).collect();
+        let other = stage_one("b");
 
-        assert!(staged.take(&ids[0]).is_none(), "the oldest made room");
-        assert!(staged.take(&ids[1]).is_some());
         assert!(
-            staged.take(&ids[1]).is_none(),
-            "an item is handed over once"
+            staged.take("a", &first[0]).is_none(),
+            "its oldest made room"
+        );
+        assert!(staged.take("a", &other).is_none(), "another session's item");
+        assert!(
+            staged.take("b", &first[1]).is_none(),
+            "not another session's"
+        );
+        assert!(staged.take("a", &first[1]).is_some());
+        assert!(staged.take("a", &first[1]).is_none(), "handed over once");
+        assert!(
+            staged.take("b", &other).is_some(),
+            "b's was never evicted by a"
         );
     }
 }

@@ -1,7 +1,10 @@
 use foundation::{ErrorCode, ItemId, UserError, Warning};
 use handler_api::ResolvedPlaylists;
 use serde::{Deserialize, Deserializer, Serialize, Serializer, de};
-use std::{collections::HashSet, fmt};
+use std::{
+    collections::{HashMap, HashSet},
+    fmt,
+};
 
 pub use handler_api::{ImageSequence, OverlayRef, VideoRef};
 
@@ -259,27 +262,28 @@ pub(crate) fn playlist_content(
 }
 
 /// `names` with the second and later of equal names numbered ` (2)`, ` (3)`, skipping a number when that name is
-/// already one of `names` or was just given out. Names compare as exact strings.
+/// already one of `names`. Names compare as exact strings. A name's numbers are handed out in order from one counter
+/// per name, so the work is linear however many playlists share a name.
 fn numbered<'a>(names: impl IntoIterator<Item = &'a str>) -> Vec<String> {
     let names: Vec<&str> = names.into_iter().collect();
-    let mut taken: HashSet<String> = names.iter().map(|name| (*name).to_owned()).collect();
-    let mut seen = HashSet::new();
+    let present: HashSet<&str> = names.iter().copied().collect();
+    // The next number to try for each name seen; two names never produce the same numbered name, so only the
+    // names given by the resolver can collide.
+    let mut next_number: HashMap<&str, usize> = HashMap::new();
     names
-        .into_iter()
-        .map(|name| {
-            if seen.insert(name.to_owned()) {
+        .iter()
+        .map(|&name| {
+            let Some(number) = next_number.get_mut(name) else {
+                next_number.insert(name, 2);
                 return name.to_owned();
-            }
-            let mut number = 2;
-            let next = loop {
-                let candidate = format!("{name} ({number})");
-                if !taken.contains(&candidate) {
-                    break candidate;
-                }
-                number += 1;
             };
-            taken.insert(next.clone());
-            next
+            loop {
+                let candidate = format!("{name} ({number})");
+                *number += 1;
+                if !present.contains(candidate.as_str()) {
+                    return candidate;
+                }
+            }
         })
         .collect()
 }
@@ -353,6 +357,11 @@ mod tests {
     fn shared_names_are_numbered_around_the_suffixes_already_there() {
         let names = numbered(["a", "a", "a (2)", "b", "a", "A"]);
         assert_eq!(names, ["a", "a (3)", "a (2)", "b", "a (4)", "A"]);
+
+        // Linear in the number of names: this would take half a minute if every duplicate searched from 2.
+        let many = numbered(vec!["run"; 20_000]);
+        assert_eq!(many[19_999], "run (20000)");
+        assert_eq!(many.iter().collect::<HashSet<_>>().len(), 20_000);
     }
 
     #[test]

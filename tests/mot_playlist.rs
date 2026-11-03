@@ -31,10 +31,11 @@ impl Playlist {
     async fn add(backend: &Backend) -> Self {
         let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("fixtures/datasets/mot");
         let mut owner = Socket::own(&backend.address.to_string(), None).await;
+        let welcome = owner.until(|message| message["type"] == "welcome").await;
         let resolved = session_client::post(
             &backend.address.to_string(),
             "/api/resolvers/mot_challenge/resolve",
-            &json!({"settings": {"root": root}}),
+            &json!({"session": welcome["session"], "settings": {"root": root}}),
         )
         .await;
         let add = json!({"type": "content", "command": {"type": "addResolved", "item": resolved["item"], "label": null}});

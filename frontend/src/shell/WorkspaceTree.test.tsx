@@ -1,7 +1,15 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import type { ItemState } from "../generated/api";
-import { entry, failed, FakeSocket, playlist, video, type Room } from "../session/fakeSession";
+import {
+  entry,
+  failed,
+  FakeSocket,
+  playlist,
+  playlists,
+  video,
+  type Room,
+} from "../session/fakeSession";
 import { SessionProvider, useView } from "../session/session";
 import { WorkspaceTree } from "./WorkspaceTree";
 
@@ -79,6 +87,34 @@ describe("rows", () => {
     const [item, entryRow] = screen.getAllByRole("treeitem");
     expect(item.getAttribute("aria-expanded")).toBe("true");
     expect(entryRow.getAttribute("aria-setsize")).toBe("1");
+  });
+
+  it("nests the entries of several playlists under a row each, which opens its first entry and cannot be hidden", async () => {
+    const runs = playlists("runs", [
+      ["Train", [entry("runs/Train/A", "A", ["GT"])]],
+      ["Train (2)", [entry("runs/Train (2)/A", "A", ["GT"])]],
+    ]);
+    await renderTree([runs], []);
+    const rows = screen.getAllByRole("treeitem");
+    expect(rows.map((row) => row.getAttribute("aria-level"))).toEqual([
+      "1",
+      "2",
+      "3",
+      "4",
+      "2",
+      "3",
+      "4",
+    ]);
+    expect(labels()).toEqual(["runs", "Train", "A", "GT", "Train (2)", "A", "GT"]);
+
+    fireEvent.click(rows[4]);
+    await act(async () => {});
+    expect(shown()).toMatchObject({
+      active: "runs",
+      viewers: { runs: { entry: "runs/Train (2)/A" } },
+    });
+    fireEvent.contextMenu(rows[4]);
+    expect(screen.queryByRole("menuitem", { name: "Hide" })).toBeNull();
   });
 
   it("names no reason for a failed item when the wire carries none", async () => {

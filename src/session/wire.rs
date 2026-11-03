@@ -65,11 +65,12 @@ pub(super) fn command(
     wire: SessionCommand,
     handlers: &Handlers,
     staged: &Staged,
+    session: &str,
 ) -> Result<Request, Refusal> {
     Ok(match wire {
-        SessionCommand::Content { command } => {
-            Request::Session(Command::Content(doc_command(command, handlers, staged)?))
-        }
+        SessionCommand::Content { command } => Request::Session(Command::Content(doc_command(
+            command, handlers, staged, session,
+        )?)),
         SessionCommand::Follow => Request::Session(Command::Follow),
         SessionCommand::Control { control } => Request::Session(Command::Control(control)),
         SessionCommand::RequestTicket { key } => Request::Session(Command::RequestTicket(key)),
@@ -100,6 +101,7 @@ fn doc_command(
     wire: api_types::DocCommand,
     handlers: &Handlers,
     staged: &Staged,
+    session: &str,
 ) -> Result<DocCommand, Refusal> {
     Ok(match wire {
         api_types::DocCommand::AddItems { items, open } => {
@@ -116,7 +118,7 @@ fn doc_command(
         }
         // The scope was checked before this lookup, so a seat without the grant cannot use up a staged item.
         api_types::DocCommand::AddResolved { item, label } => {
-            let (item, content) = staged.take(&item).ok_or(Refusal::Invalid)?;
+            let (item, content) = staged.take(session, &item).ok_or(Refusal::Invalid)?;
             DocCommand::AddResolved {
                 item: workspace::intake::with_label(item, label.as_deref()),
                 content: Box::new(content),

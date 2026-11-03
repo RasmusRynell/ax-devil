@@ -131,6 +131,7 @@ describe("add playlist dialog", () => {
       },
     ]);
     expect(bodyOf(vi.mocked(fetch).mock.calls.at(-1)?.[1])).toEqual({
+      session: "room-1",
       settings: { root: "/data", sequences: ["SEQ-01"] },
     });
   });
@@ -191,6 +192,7 @@ describe("add playlist dialog", () => {
       [];
     expect(url).toBe("/api/resolvers/folder_pair/resolve");
     expect(bodyOf(init)).toEqual({
+      session: "room-1",
       settings: { videos_dir: "/videos", handler_type: "MOT_FILE", options: { width: 1920 } },
     });
   });

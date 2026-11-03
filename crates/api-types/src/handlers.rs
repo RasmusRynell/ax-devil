@@ -218,6 +218,8 @@ pub struct ScanRequest {
 /// The body of `POST /api/resolvers/{id}/resolve`.
 #[derive(Serialize, Deserialize, TS)]
 pub struct ResolveRequest {
+    /// The Session of the window that asks; only a seat of that Session can add the resolved item.
+    pub session: String,
     /// The settings the resolver's schema declares.
     #[ts(type = "Record<string, unknown>")]
     pub settings: serde_json::Map<String, serde_json::Value>,
