@@ -93,13 +93,15 @@ export function WorkspaceTree() {
   const onLose = useCallback((id: SectionId) => {
     lost.current = id;
   }, []);
-  // The focus follows the keyboard's row: if it was in one of the trees (or left with one that went away), it goes to
+  // The focus follows the keyboard's row: if it was on one of the trees (or left with one that went away), it goes to
   // the tree of the row the keyboard is on, else to the caption of the section that lost its rows.
   useLayoutEffect(() => {
     const gone = lost.current;
     lost.current = null;
-    const within = document.activeElement?.closest('[role="tree"]');
-    if (gone === null && !(within && root.current?.contains(within))) return;
+    const on = document.activeElement;
+    // Only a tree itself follows; a control inside one, such as a warnings button, keeps the focus it took.
+    if (gone === null && !(on?.getAttribute("role") === "tree" && root.current?.contains(on)))
+      return;
     const next = walk.rows[at];
     const tree = next && inSection(next.id, '[role="tree"]');
     if (next && tree) {

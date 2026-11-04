@@ -170,7 +170,7 @@ describe("opening", () => {
   });
 
   it("walks on from one section's last row into the next and back, and Home and End span them all", async () => {
-    await renderTree();
+    const room = await renderTree();
     const videos = screen.getByRole("tree", { name: "Videos" });
     const playlists = screen.getByRole("tree", { name: "Playlists" });
     const ids = (tree: HTMLElement) =>
@@ -191,6 +191,12 @@ describe("opening", () => {
     expect(playlists.getAttribute("aria-activedescendant")).toBe(ids(playlists)[2]);
     fireEvent.keyDown(playlists, { key: "Home" });
     expect(videos.getAttribute("aria-activedescendant")).toBe(ids(videos)[0]);
+
+    // A control inside another tree keeps the focus it took when the workspace changes.
+    const hide = screen.getByRole("button", { name: "Hide A" });
+    hide.focus();
+    act(() => room.setItems([...ITEMS]));
+    expect(document.activeElement).toBe(hide);
   });
 
   it("opens an item that failed, so the viewer can say why", async () => {
