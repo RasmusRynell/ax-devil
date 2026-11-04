@@ -85,8 +85,9 @@ export function AddVideoDialog({ onClose }: { onClose: () => void }) {
         />
         {handlers && (
           <>
-            {entries.map((entry) => (
+            {entries.map((entry, at) => (
               <OverlayRow
+                number={at + 1}
                 key={entry.key}
                 entry={entry}
                 decoders={decoders}

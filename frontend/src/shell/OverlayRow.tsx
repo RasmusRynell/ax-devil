@@ -76,6 +76,7 @@ const optionsForm = (decoder?: DecoderInfo): ResolverInfo => ({
  * asks for the options when OK is pressed; `tried` shows what a required option still lacks.
  */
 export function OverlayRow({
+  number,
   entry,
   decoders,
   focus,
@@ -84,6 +85,8 @@ export function OverlayRow({
   onRemove,
   register,
 }: {
+  /** The row's place in the dialog, counting from 1, which tells its controls from the other rows'. */
+  number: number;
   entry: OverlayEntry;
   decoders: readonly DecoderInfo[];
   /** Puts the cursor in the file field when the row appears. */
@@ -108,12 +111,19 @@ export function OverlayRow({
     return () => register(entry.key, null);
   });
   return (
-    <div ref={row} className="flex flex-col gap-s">
+    <div ref={row} role="group" aria-label={`Overlay ${number}`} className="flex flex-col gap-s">
       <TextField
         label="Overlay path"
         value={entry.path}
         onChange={(path) => onChange(withPath(entry, path, decoders))}
-        action={<Button size="small" icon="trash-2" label="Remove overlay" onClick={onRemove} />}
+        action={
+          <Button
+            size="small"
+            icon="trash-2"
+            label={`Remove overlay ${number}`}
+            onClick={onRemove}
+          />
+        }
       />
       <Select
         label="Data handler"

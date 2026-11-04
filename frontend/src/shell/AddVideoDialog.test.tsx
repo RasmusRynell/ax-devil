@@ -121,8 +121,12 @@ it("adds overlays one by one, ignores a blank one and needs a video", async () =
 
   await overlay("/data/a.jsonl", 0);
   await overlay("/data/gt.txt", 2);
-  fireEvent.click(screen.getAllByRole("button", { name: "Remove overlay" })[0]);
+  fireEvent.click(screen.getByRole("button", { name: "Remove overlay 1" }));
   expect(await overlays()).toHaveLength(2);
+  expect(screen.getAllByRole("group").map((row) => row.getAttribute("aria-label"))).toEqual([
+    "Overlay 1",
+    "Overlay 2",
+  ]);
   expect(handlerAt(1).value).toBe("MOT");
 
   fireEvent.change(screen.getByLabelText("Path on the server"), { target: { value: "" } });
