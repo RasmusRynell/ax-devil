@@ -197,7 +197,7 @@ impl NewLive {
         if !same_camera {
             return Ok(());
         }
-        let user_blank = match self.username.as_deref().map(str::trim) {
+        let user_blank = match self.username.as_deref() {
             Some(user) if !user.is_empty() && user != source.username => return Ok(()),
             Some(user) => user.is_empty(),
             None => true,
@@ -205,7 +205,7 @@ impl NewLive {
         let password_blank = self
             .password
             .as_ref()
-            .is_none_or(|entered| entered.expose().trim().is_empty());
+            .is_none_or(|entered| entered.expose().is_empty());
         if !user_blank && !password_blank {
             return Ok(());
         }
@@ -283,11 +283,18 @@ fn text(entered: &Option<String>, default: &str) -> String {
     }
 }
 
+/// The `entered` user exactly as typed, spaces included, or `default` when it is none or empty.
+fn login(entered: &Option<String>, default: &str) -> String {
+    match entered.as_deref() {
+        Some(entered) if !entered.is_empty() => entered.to_owned(),
+        _ => default.to_owned(),
+    }
+}
+
+/// The `entered` password exactly as typed, spaces included, or `default` when it is none or empty.
 fn secret(entered: &Option<Secret>, default: &Secret) -> Secret {
     match entered {
-        Some(entered) if !entered.expose().trim().is_empty() => {
-            Secret::new(entered.expose().trim())
-        }
+        Some(entered) if !entered.expose().is_empty() => entered.clone(),
         _ => default.clone(),
     }
 }
@@ -353,7 +360,7 @@ pub fn live(
                     "broker_port",
                     "MQTT Port must be between 1 and 65535.",
                 )?,
-                broker_user: text(&mqtt.broker_user, &broker.user),
+                broker_user: login(&mqtt.broker_user, &broker.user),
                 broker_pass: secret(&mqtt.broker_pass, &broker.password),
                 source_key: text(&mqtt.source_key, &broker.source_key),
             }
@@ -373,13 +380,13 @@ pub fn live(
     };
     let recipe = LiveRecipe {
         host: text(&new.host, &defaults.host),
-        username: text(&new.username, &defaults.username),
+        username: login(&new.username, &defaults.username),
         password: secret(&new.password, &defaults.password),
         protocol,
         port,
         head,
         rtsp_port,
-        resolution: Some(text(&new.resolution, &defaults.resolution)).filter(|r| !r.is_empty()),
+        resolution: Some(text(&new.resolution, "")).filter(|r| !r.is_empty()),
         url: Some(text(&new.url, "")).filter(|url| !url.is_empty()),
         overlay,
     };
