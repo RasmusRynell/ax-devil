@@ -235,11 +235,11 @@ impl Network {
     }
 }
 
-/// `$NAME` as the variable's value, anything else as written.
-fn expand(text: &str) -> String {
-    match text.strip_prefix('$') {
-        Some(name) if !name.is_empty() => std::env::var(name).unwrap_or_default(),
-        _ => text.to_owned(),
+/// A whole-value `$NAME` reference as what `lookup` gives for it (empty when unset), anything else as written.
+fn expand(text: &str, lookup: impl Fn(&str) -> Option<String>) -> String {
+    match settings::reference(text) {
+        Some(name) => lookup(name).unwrap_or_default(),
+        None => text.to_owned(),
     }
 }
 
@@ -256,7 +256,7 @@ fn configured_logins(state: &settings::State) -> Vec<Login> {
                 record
                     .get(name)
                     .and_then(|value| value.as_str())
-                    .map(expand)
+                    .map(|text| expand(text, |name| std::env::var(name).ok()))
                     .unwrap_or_default()
             };
             Login {
@@ -415,6 +415,16 @@ mod tests {
         let pressed = request_from_settings(&state, None, ScanLoad::Normal).unwrap();
         network.rescan(pressed);
         assert_eq!(requests.recv().await, Some(1));
+    }
+
+    #[test]
+    fn only_a_whole_name_reference_in_a_scan_login_expands() {
+        let lookup = |name: &str| (name == "AX_DEVIL_TARGET_PASS").then(|| "pw".to_owned());
+        assert_eq!(expand("$AX_DEVIL_TARGET_PASS", lookup), "pw");
+        assert_eq!(expand("$UNSET", lookup), "");
+        for literal in ["$1A", "$A-B", "$ecret!", "$"] {
+            assert_eq!(expand(literal, lookup), literal);
+        }
     }
 
     fn found_signed_in(index: usize) -> Found {
