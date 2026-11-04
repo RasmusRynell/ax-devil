@@ -3,7 +3,7 @@ import type { Hidden } from "../viewer/hidden";
 import type { LaneDisplay, Picked, Selection, Viewport } from "./contract";
 import { InfoHud } from "./InfoHud";
 import { LaneChip } from "./LaneChip";
-import { laneAt, layoutLanes, shownLanes } from "./laneCells";
+import { allHidden, laneAt, layoutLanes, shownLanes } from "./laneCells";
 import type { Geometry } from "./renderer";
 import type { PlaybackView } from "./view";
 import { VideoCanvas } from "./VideoCanvas";
@@ -162,7 +162,7 @@ export function LaneGrid({
           </div>
         );
       })}
-      {shown.length === 0 && lanes.length > 0 && (
+      {allHidden(lanes, shown) && (
         <p role="status" className="m-auto text-on-canvas-muted">
           All lanes are hidden
         </p>

@@ -19,7 +19,7 @@ import { NoticeList } from "../kit/NoticeList";
 import { useChromeVisibility } from "./chromeVisibility";
 import { LaneGrid } from "./LaneGrid";
 import { HIDE_LANE, laneContextEntries } from "./laneContextMenu";
-import { shownLanes } from "./laneCells";
+import { allHidden, shownLanes } from "./laneCells";
 import { savedTiming } from "./lanes";
 import { useLaneFullscreen } from "./laneFullscreen";
 import { Popover } from "../kit/Popover";
@@ -243,7 +243,7 @@ function Playback({
               </div>
             )}
             {/* With every lane hidden there is nothing to play: no transport, so no pick or press outlives the lanes. */}
-            {(shown.length > 0 || view.lanes.length === 0) && (
+            {!allHidden(view.lanes, shown) && (
               <Transport controls={session} view={view} disabled={!canChange} />
             )}
           </div>
