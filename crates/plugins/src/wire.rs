@@ -1,10 +1,12 @@
 //! The lines every operation shares: a warning and an error, and how a plugin's text is cut to what the UI shows.
 
 use foundation::Warning;
+use handler_api::shorten;
 use serde::Deserialize;
 
-/// Most reasons a plugin's warning lists.
+/// Most reasons a plugin's warning lists, and the longest any of its texts is.
 const MAX_REASONS: usize = 3;
+const MAX_TEXT_CHARS: usize = 200;
 
 /// A failure the plugin reports: it ends the run. `field` and `path` say what a scan or resolve was about and mean
 /// nothing to a decode.
@@ -28,20 +30,22 @@ pub(crate) struct WarningIn {
 /// A plugin's warning, cut to what a lane shows.
 pub(crate) fn load_warning(warning: WarningIn) -> Warning {
     Warning {
-        problem: cut(&warning.problem),
+        problem: shorten(&warning.problem),
         more_reasons: warning.reasons.len() > MAX_REASONS,
         reasons: warning
             .reasons
             .iter()
             .take(MAX_REASONS)
-            .map(|reason| cut(reason))
+            .map(|reason| shorten(reason))
             .collect(),
-        consequence: cut(&warning.consequence),
+        consequence: shorten(&warning.consequence),
     }
 }
 
-// A plugin's text, cut to the length a warning shows.
-pub(crate) use handler_api::shorten as cut;
+/// Text that is not a warning, such as a name that identifies a playlist: hard-cut, never given an ellipsis.
+pub(crate) fn cut(text: &str) -> String {
+    text.chars().take(MAX_TEXT_CHARS).collect()
+}
 
 /// Why JSON failed to read, without the position inside the line.
 pub(crate) fn json_reason(error: &serde_json::Error) -> String {
@@ -58,14 +62,15 @@ mod tests {
     use super::*;
 
     #[test]
-    fn a_long_plugin_warning_is_cut_to_the_limit_and_ends_with_an_ellipsis() {
+    fn a_long_warning_ends_with_an_ellipsis_but_a_name_is_hard_cut() {
+        let text = "ü".repeat(250);
         let warning: WarningIn =
-            serde_json::from_value(serde_json::json!({"problem": "ü".repeat(250)}))
-                .expect("a warning");
+            serde_json::from_value(serde_json::json!({"problem": text})).expect("a warning");
 
         assert_eq!(
             load_warning(warning).problem,
             format!("{}…", "ü".repeat(199))
         );
+        assert_eq!(cut(&text), "ü".repeat(200));
     }
 }
