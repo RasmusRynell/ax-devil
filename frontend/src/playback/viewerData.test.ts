@@ -1,7 +1,7 @@
 // @vitest-environment node
 import { describe, expect, it } from "vite-plus/test";
 import { catalogDocument, item } from "./fakeData";
-import { LANE_DEFAULTS } from "./fakeOpened";
+import { LANE_DEFAULTS, LANE_SETTINGS } from "./fakeOpened";
 import { LaneSet } from "./lanes";
 import type { LaneStatusWire } from "./protocol";
 import { ViewerData } from "./viewerData";
@@ -22,7 +22,7 @@ const READY: LaneStatusWire = {
 /** One subscribed lane of source 0 whose catalog has arrived. */
 function viewer() {
   const lanes = new LaneSet();
-  lanes.open([{ label: "DPM", slot: "DPM", source: 0 }], LANE_DEFAULTS);
+  lanes.open([{ label: "DPM", slot: "DPM", source: 0 }], LANE_SETTINGS);
   lanes.setStatus(0, READY);
   const data = new ViewerData(
     lanes,
@@ -143,7 +143,7 @@ describe("viewer data", () => {
         { label: "b", slot: "b", source: 0 },
         { label: "c", slot: "c", source: 1 },
       ],
-      LANE_DEFAULTS,
+      LANE_SETTINGS,
     );
     const data = new ViewerData(
       lanes,
@@ -169,7 +169,7 @@ describe("viewer data", () => {
         { label: "a", slot: "a", source: 0 },
         { label: "b", slot: "b", source: 0 },
       ],
-      LANE_DEFAULTS,
+      LANE_SETTINGS,
     );
     lanes.setStatus(0, READY);
     lanes.setStatus(1, READY);

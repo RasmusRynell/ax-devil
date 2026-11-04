@@ -1,11 +1,9 @@
-import { useState } from "react";
 import type { CatalogInfoWire } from "../generated/api";
-import { Button } from "../kit/Button";
 import { Checkbox, Select } from "../kit/Fields";
 import { FEATURES } from "../present";
 import { useSettings } from "../settings";
 import type { LaneSettings, LaneState } from "./lanes";
-import { Group } from "./LaneMenuFields";
+import { Group, MakeDefault } from "./LaneMenuFields";
 
 const DEFAULT_CATALOG = "overlays.default_catalog";
 const USER_PREFIX = "user:";
@@ -34,28 +32,6 @@ function choices(catalogs: readonly CatalogInfoWire[], chosen: string): [string,
   return options;
 }
 
-/** Remembers the lane's catalog as the one new lanes start with. */
-function UseAsDefault({ catalog, usable }: { catalog: string; usable: boolean }) {
-  const { values, shortcuts, save } = useSettings();
-  const [refusal, setRefusal] = useState<string | null>(null);
-  return (
-    <>
-      <Button
-        disabled={!usable || values[DEFAULT_CATALOG] === catalog}
-        onClick={() => {
-          setRefusal(null);
-          void save({ values: { ...values, [DEFAULT_CATALOG]: catalog }, shortcuts }).then(
-            (refused) => setRefusal(refused?.reason ?? null),
-          );
-        }}
-      >
-        Use as default
-      </Button>
-      {refusal && <span role="alert">{refusal}</span>}
-    </>
-  );
-}
-
 /** How the lane looks: the catalog it draws with, its theme, and which of the catalog's features show. */
 export function LaneMenuLook({
   lane,
@@ -67,6 +43,7 @@ export function LaneMenuLook({
   onChange: (change: Partial<LaneSettings>) => void;
 }) {
   const { settings, look } = lane;
+  const { values } = useSettings();
   const features = FEATURES.flatMap((feature, bit) =>
     look && (look.features & (1 << bit)) !== 0 ? [{ feature, bit }] : [],
   );
@@ -78,12 +55,12 @@ export function LaneMenuLook({
         options={choices(catalogs, settings.catalog)}
         onChange={(catalog) => onChange({ catalog, theme: null })}
       />
-      <div className="flex flex-col items-start gap-s">
-        <UseAsDefault
-          catalog={settings.catalog}
-          usable={look !== undefined && lane.catalogProblem === undefined}
-        />
-      </div>
+      <MakeDefault
+        setting={DEFAULT_CATALOG}
+        value={settings.catalog}
+        isDefault={values[DEFAULT_CATALOG] === settings.catalog}
+        usable={look !== undefined && lane.catalogProblem === undefined}
+      />
       {look && look.themes.length > 0 && (
         <Select
           label="Theme"

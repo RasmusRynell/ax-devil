@@ -2,6 +2,7 @@ import { afterEach, beforeAll, describe, expect, it, vi } from "vite-plus/test";
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { DEFAULT_SETTINGS, FakeSettings } from "../fakeSettings";
 import { QuickSetupDialog } from "./QuickSetupDialog";
+import { textOf } from "./SettingField";
 
 beforeAll(() => {
   HTMLDialogElement.prototype.showModal = function showModal() {
@@ -65,8 +66,8 @@ describe("quick setup dialog", () => {
     const onClose = vi.fn();
     const onNotice = vi.fn();
     // What the provider shows for the stored settings.
-    document.documentElement.dataset.theme = String(firstRun.values["ui.theme"]);
-    document.documentElement.dataset.textSize = String(firstRun.values["ui.text_size"]);
+    document.documentElement.dataset.theme = textOf(firstRun.values["ui.theme"]);
+    document.documentElement.dataset.textSize = textOf(firstRun.values["ui.text_size"]);
     open(firstRun, save, { onClose, onNotice });
     pick("Theme", "Light");
     pick("Text size", "Larger");

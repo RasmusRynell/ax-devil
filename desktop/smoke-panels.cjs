@@ -55,6 +55,18 @@ module.exports.panels = async (window, { setTheme, shoot, showEntry, point }) =>
   await js("document.querySelector('[aria-label=\"Close inspector\"]').click()");
   await wait("!document.querySelector('aside[aria-label=Inspector]')");
 
+  // Types a timeout into the open lane menu's sticky group and commits it, as the user does with Enter.
+  const timeout = (ms) =>
+    js(`(() => {
+      const label = [...document.querySelectorAll('[role=group][aria-label=Sticky] label')].find(
+        (l) => l.textContent === 'Timeout (ms)',
+      );
+      const input = document.getElementById(label.htmlFor);
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(input, '${ms}');
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+      input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    })()`);
+
   // A double click on the picture shows it whole again. Then a lane of the entry with three lanes, which has every
   // button the menu can have.
   const middle = [window.getContentSize()[0] / 4, window.getContentSize()[1] / 4];
@@ -100,6 +112,35 @@ module.exports.panels = async (window, { setTheme, shoot, showEntry, point }) =>
       );
       await shoot(`lane-menu-${tab.toLowerCase()}-${theme}-200.png`);
     }
+    // A new lane starts as the saved default says, so the Timing tab says so until the lane differs, then offers to
+    // save its settings.
+    const sticky = `${menu} [role=group][aria-label=Sticky]`;
+    const has = (text) =>
+      `document.querySelector(${JSON.stringify(sticky)}).textContent.includes(${JSON.stringify(text)})`;
+    // The menu scrolls at this size: the shots show the end of the Timing tab, where the button is.
+    const toEnd = () =>
+      js(`(() => {
+        const menu = document.querySelector(${JSON.stringify(menu)});
+        for (const element of [menu, ...menu.querySelectorAll('*')])
+          if (element.scrollHeight > element.clientHeight && getComputedStyle(element).overflowY !== 'visible')
+            element.scrollTop = element.scrollHeight;
+      })()`);
+    assert.ok(
+      await js(has("Default for new views")),
+      `A lane at the saved default says so, ${theme}`,
+    );
+    await toEnd();
+    await shoot(`lane-menu-default-state-${theme}-200.png`);
+    await timeout(3000);
+    await wait(has("Make default"));
+    await fits(
+      menu,
+      `The Timing tab with Make default must fit the 640x480 window at 200% zoom, ${theme}`,
+    );
+    await toEnd();
+    await shoot(`lane-menu-make-default-${theme}-200.png`);
+    await timeout(2050);
+    await wait(has("Default for new views"));
   }
   window.webContents.sendInputEvent({ type: "keyDown", keyCode: "Escape" });
   window.webContents.sendInputEvent({ type: "keyUp", keyCode: "Escape" });

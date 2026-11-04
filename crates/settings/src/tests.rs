@@ -12,6 +12,10 @@ fn values(theme: &str) -> BTreeMap<String, Value> {
         ("overlays.object_details".into(), json!(true)),
         ("overlays.lane_names".into(), json!(true)),
         ("overlays.default_catalog".into(), json!("")),
+        (
+            "overlays.default_sticky".into(),
+            json!({"enabled": true, "timeout_ms": 2050, "opacity": 1}),
+        ),
         ("storage.cache_dir".into(), json!("")),
         ("storage.catalog_dir".into(), json!("")),
     ])
@@ -46,6 +50,56 @@ fn every_default_is_valid_for_its_own_setting() {
             setting.key
         );
     }
+}
+
+#[test]
+fn the_sticky_default_takes_a_whole_object_in_range_and_is_not_written_while_it_is_the_default() {
+    let sticky = TABLE
+        .iter()
+        .find(|setting| setting.key == "overlays.default_sticky")
+        .unwrap();
+    for ok in [
+        json!({"enabled": true, "timeout_ms": null, "opacity": 0.5}),
+        json!({"enabled": false, "timeout_ms": 100_000, "opacity": 0}),
+        sticky.kind.default_value(),
+    ] {
+        assert_eq!(sticky.kind.validate(&ok), Ok(()), "{ok}");
+    }
+    for bad in [
+        json!({"enabled": true, "opacity": 1}),
+        json!({"enabled": true, "timeout_ms": 100_001, "opacity": 1}),
+        json!({"enabled": true, "timeout_ms": -1, "opacity": 1}),
+        json!({"enabled": true, "timeout_ms": null, "opacity": 1.5}),
+        json!({"enabled": true, "timeout_ms": null, "opacity": "1"}),
+        json!({"enabled": true, "timeout_ms": null, "opacity": 1, "extra": 0}),
+        json!(true),
+    ] {
+        assert!(sticky.kind.validate(&bad).is_err(), "{bad}");
+    }
+    let folder = tempfile::tempdir().unwrap();
+    let path = folder.path().join("settings.json");
+    let settings = Settings::load(&path).unwrap();
+    let mut edit = change("auto");
+    edit.values.insert(
+        "overlays.default_sticky".into(),
+        json!({"enabled": true, "timeout_ms": 2050, "opacity": 1.0}),
+    );
+    settings.replace(&Scope::ALL, &edit).unwrap();
+    assert!(
+        read(&path)["settings"]
+            .get("overlays.default_sticky")
+            .is_none(),
+        "the default writes nothing"
+    );
+    edit.values.insert(
+        "overlays.default_sticky".into(),
+        json!({"enabled": false, "timeout_ms": null, "opacity": 0.5}),
+    );
+    settings.replace(&Scope::ALL, &edit).unwrap();
+    assert_eq!(
+        read(&path)["settings"]["overlays.default_sticky"],
+        json!({"enabled": false, "timeout_ms": null, "opacity": 0.5})
+    );
 }
 
 #[test]

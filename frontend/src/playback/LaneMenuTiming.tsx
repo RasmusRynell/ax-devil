@@ -2,13 +2,17 @@ import { Select } from "../kit/Fields";
 import type { AlignmentWire, BasisWire } from "../generated/api";
 import { Switch } from "../kit/Switch";
 import type { Cadence } from "./cadence";
-import { basisOf, type LaneSettings, type LaneState } from "./lanes";
-import { Group, NumberField } from "./LaneMenuFields";
+import { useSettings } from "../settings";
+import { basisOf, sameSticky, type LaneSettings, type LaneState } from "./lanes";
+import type { Sticky } from "./contract";
+import { Group, MakeDefault, NumberField } from "./LaneMenuFields";
 
 /** The longest a kept sample may stay, which the backend enforces. */
 const MAX_STICKY_MS = 100_000;
 /** How far back a previous sample may be when the user switches from exact and the lane has not said. */
 const DEFAULT_PREVIOUS_MS = 50;
+
+const DEFAULT_STICKY = "overlays.default_sticky";
 
 type Sync = "exact" | "previous";
 
@@ -87,6 +91,7 @@ export function LaneMenuTiming({
   const basis = basisOf(lane);
   const sync: Sync = settings.tolerance_ms === null ? "exact" : "previous";
   const { sticky } = settings;
+  const saved = useSettings().values[DEFAULT_STICKY] as Sticky;
   return (
     <>
       {ready && <Alignment cadence={cadence} alignment={ready.alignment} />}
@@ -154,6 +159,11 @@ export function LaneMenuTiming({
             />
           </>
         )}
+        <MakeDefault
+          setting={DEFAULT_STICKY}
+          value={sticky}
+          isDefault={sameSticky(sticky, saved)}
+        />
       </Group>
     </>
   );

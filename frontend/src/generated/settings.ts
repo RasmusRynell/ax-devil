@@ -129,6 +129,25 @@ export const SETTINGS = [
     "scope": "personal"
   },
   {
+    "key": "overlays.default_sticky",
+    "kind": {
+      "type": "sticky",
+      "default": {
+        "enabled": true,
+        "timeout_ms": 2050,
+        "opacity": 1.0
+      }
+    },
+    "label": "Default sticky overlays",
+    "page": null,
+    "section": "",
+    "live": true,
+    "env": false,
+    "secret": false,
+    "quick_setup": false,
+    "scope": "personal"
+  },
+  {
     "key": "playback.video_cache",
     "kind": {
       "type": "auto_or_whole",

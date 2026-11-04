@@ -340,7 +340,12 @@ export class PlaybackSession implements LaneControl {
           "playback",
         );
       this.#opened = message;
-      this.#data.reopen(message, this.#deps.defaultCatalog?.(), this.#deps.lanes);
+      this.#data.reopen(
+        message,
+        this.#deps.defaultCatalog?.(),
+        this.#deps.lanes,
+        this.#deps.defaultSticky?.(),
+      );
     } else if (message.type === "LaneStatus") {
       if (this.#lanes.setStatus(message.lane, message.status)) {
         this.#data.refresh();

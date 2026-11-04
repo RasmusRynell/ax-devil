@@ -16,7 +16,7 @@ pub mod shortcuts;
 mod table;
 pub mod window;
 
-pub use kind::Kind;
+pub use kind::{Kind, StickyValue};
 pub use migrate::VERSION;
 use serde_json::{Map, Value};
 use std::{
@@ -107,7 +107,7 @@ impl State {
             setting
                 .check(&value, &**lookup)
                 .map_err(|reason| invalid(setting.key, &reason))?;
-            if value != setting.kind.default_value() {
+            if !setting.kind.is_default(&value) {
                 settings.insert(setting.key.to_owned(), value.clone());
             }
             values.insert(setting.key.to_owned(), value);

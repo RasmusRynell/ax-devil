@@ -66,7 +66,9 @@ pub struct AppInfo {
 pub struct SettingsState {
     /// The settings the caller may read by dotted key, such as `"ui.theme"`, with the default when unset: those of
     /// its scopes, a `$NAME` reference as written and a literal secret masked.
-    #[ts(type = "Record<SettingKey, string | boolean | number>")]
+    #[ts(
+        type = "Record<SettingKey, string | boolean | number | { enabled: boolean; timeout_ms: number | null; opacity: number }>"
+    )]
     pub values: BTreeMap<String, serde_json::Value>,
     /// The key of every command once the user's changes apply; `null` when unbound. Empty unless the caller holds
     /// the `preferences` grant: shortcuts are Personal.
@@ -79,7 +81,9 @@ pub struct SettingsState {
 #[derive(Deserialize, TS)]
 pub struct SettingsChange {
     /// Every setting of the caller's scopes by dotted key.
-    #[ts(type = "Record<SettingKey, string | boolean | number>")]
+    #[ts(
+        type = "Record<SettingKey, string | boolean | number | { enabled: boolean; timeout_ms: number | null; opacity: number }>"
+    )]
     pub values: BTreeMap<String, serde_json::Value>,
     /// The key of every command; `null` when unbound. Empty unless the caller holds the `preferences` grant.
     #[ts(type = "Record<CommandId, string | null>")]

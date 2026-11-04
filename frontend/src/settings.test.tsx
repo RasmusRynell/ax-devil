@@ -18,7 +18,7 @@ function Catalog() {
         })
       }
     >
-      {String(values["overlays.default_catalog"]) || "built-in"}
+      {(values["overlays.default_catalog"] as string) || "built-in"}
     </button>
   );
 }

@@ -1,6 +1,6 @@
 /** The lanes of a viewer's entry: what each shows, how the user has set it, and what the backend says about it. */
 
-import type { CatalogLook, LaneSettings, LaneState } from "./contract";
+import type { CatalogLook, LaneSettings, LaneState, Sticky } from "./contract";
 import type {
   BasisWire,
   CatalogInfoWire,
@@ -31,6 +31,10 @@ export const samePolicy = (a: LaneSettings, b: LaneSettings): boolean =>
   a.sticky.enabled === b.sticky.enabled &&
   a.sticky.timeout_ms === b.sticky.timeout_ms;
 
+/** Whether two sticky settings are the same, opacity included. */
+export const sameSticky = (a: Sticky, b: Sticky): boolean =>
+  a.enabled === b.enabled && a.timeout_ms === b.timeout_ms && a.opacity === b.opacity;
+
 /** What the backend needs of a lane: if any of it differs, the lane's Frame Maps are selected again. */
 const sameSent = (a: LaneSettings, b: LaneSettings): boolean =>
   samePolicy(a, b) && a.visible === b.visible;
@@ -47,15 +51,23 @@ function sameStyle(a: LaneSettings, b: LaneSettings): boolean {
   );
 }
 
-/** What new lanes start with: the Personal default catalog when the backend lists it, else the backend's own. */
+/**
+ * What new lanes start with: the backend's defaults, but the Personal default catalog when the backend lists it and
+ * the Personal default sticky settings when there are any.
+ */
 export function startWith(
   defaults: LaneDefaultsWire,
   catalogs: readonly CatalogInfoWire[],
   personal: string | null | undefined,
-): LaneDefaultsWire {
-  return personal && catalogs.some((catalog) => catalog.id === personal)
-    ? { ...defaults, catalog: personal }
-    : defaults;
+  sticky?: Sticky,
+): LaneSettings {
+  const settings = settingsOf(defaults);
+  return {
+    ...settings,
+    catalog:
+      personal && catalogs.some((catalog) => catalog.id === personal) ? personal : settings.catalog,
+    sticky: sticky ?? settings.sticky,
+  };
 }
 
 /** `settings` with the matching the workspace keeps for the lane, which wins over what the viewer carried. */
@@ -113,7 +125,7 @@ export class LaneSet {
    */
   open(
     lanes: readonly LaneInfo[],
-    defaults: LaneDefaultsWire,
+    defaults: LaneSettings,
     seeds: readonly LaneSettings[] = [],
   ): ClientMessage[] {
     const before = this.#states;
@@ -124,7 +136,7 @@ export class LaneSet {
     this.#styles = lanes.map((_, i) => (same ? (this.#styles[i] ?? 0) : 0));
     this.#states = lanes.map((lane, index) => {
       const kept = same ? before[index] : undefined;
-      const carried = kept?.settings ?? seeds[index] ?? settingsOf(defaults);
+      const carried = kept?.settings ?? seeds[index] ?? defaults;
       const settings = lane.policy ? withPolicy(carried, lane.policy) : carried;
       let policyRevision = kept?.policyRevision ?? 0;
       if (lane.source !== null) {

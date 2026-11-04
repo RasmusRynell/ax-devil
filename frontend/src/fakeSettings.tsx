@@ -12,6 +12,7 @@ export const DEFAULT_SETTINGS: SettingsState = {
     "overlays.object_details": true,
     "overlays.lane_names": true,
     "overlays.default_catalog": "",
+    "overlays.default_sticky": { enabled: true, timeout_ms: 2050, opacity: 1 },
     "playback.video_cache": "auto",
     "storage.cache_dir": "",
     "storage.catalog_dir": "",
