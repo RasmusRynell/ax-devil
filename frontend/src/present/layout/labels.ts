@@ -264,7 +264,8 @@ export class Labels {
     if (entry.atX === 0 && entry.anchorX === 1 && box.x < -EDGE) return false;
     if (entry.atX === 1 && entry.anchorX === 0 && box.x + box.width > view.width + EDGE)
       return false;
-    if (entry.atY === 0 && entry.anchorY === 1 && box.y < -EDGE) return false;
+    // A baseline candidate puts the box above its point, like an anchor at the bottom.
+    if (entry.atY === 0 && (entry.anchorY === 1 || entry.baseline) && box.y < -EDGE) return false;
     if (entry.atY === 1 && entry.anchorY === 0 && box.y + box.height > view.height + EDGE)
       return false;
     return true;

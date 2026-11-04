@@ -333,6 +333,13 @@ describe("primitive quads", () => {
       expect(rect?.y).toBe(Math.round(180 - 3 - 18.56));
     });
 
+    it("falls through to the next candidate when the first line would leave the image at the top", () => {
+      const place = (anchor: string) => ({ at: "top-left", anchor, dy: "-176px" });
+      // The point is 4px from the top, but the line's ink reaches 15px above it, and 3px of padding more.
+      const { glyphs } = lines("Ag", "baseline", { place: [place("baseline"), place("top-left")] });
+      expect(glyphs[0].y).toBe(4 + 3);
+    });
+
     it("moves the first line up with each line added when anchored at the bottom", () => {
       const tops = TEXTS.map((text) => topGlyph(text, "bottom-left"));
       expect(tops[1]).toBeLessThan(tops[0]);
