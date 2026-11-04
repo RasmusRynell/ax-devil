@@ -63,6 +63,8 @@ export function LoginsEditor({ logins, onSave, onChange }: Props) {
   // What the backend holds, and what it will once the saves in flight are accepted (null: none in flight).
   const held = useRef(logins);
   const expected = useRef<readonly Login[] | null>(null);
+  // Where a refusal of the latest save puts the logins back (null: what the backend holds).
+  const back = useRef<readonly Login[] | null>(null);
 
   // What the backend holds changed: show it, unless it is what the draft already says or what this editor saved.
   useEffect(() => {
@@ -70,7 +72,7 @@ export function LoginsEditor({ logins, onSave, onChange }: Props) {
     held.current = logins;
     const saved = submitted.current.get(shape(logins));
     if (!saved || (expected.current && shape(expected.current) === shape(logins)))
-      expected.current = null;
+      expected.current = back.current = null;
     if (saved) {
       // Unchanged since the save: show what the backend holds, which masks the literal passwords.
       setDraft((now) => (same(kept(now), saved) ? logins : now));
@@ -87,14 +89,20 @@ export function LoginsEditor({ logins, onSave, onChange }: Props) {
     if (!onSave || same(wanted, before ?? logins) || sent.current === key) return;
     sent.current = key;
     expected.current = wanted;
+    back.current = before;
     submitted.current.set(shape(wanted), wanted);
     void onSave(wanted).then((reason) => {
-      // A newer submission is not undone by an older answer.
-      if (reason !== null && sent.current === key) {
-        sent.current = null;
-        expected.current = before;
-        // Back to what the backend holds, unless the user has edited on since.
-        setDraft((now) => (same(kept(now), wanted) ? (before ?? held.current) : now));
+      if (reason !== null) {
+        if (sent.current === key) {
+          sent.current = null;
+          const target = back.current;
+          expected.current = target;
+          // Back to what the backend holds, unless the user has edited on since.
+          setDraft((now) => (same(kept(now), wanted) ? (target ?? held.current) : now));
+        } else if (back.current && same(back.current, wanted)) {
+          // A newer submission is not undone by an older answer, but it no longer has this save to go back to.
+          back.current = before;
+        }
       }
       setRefused(reason);
     });

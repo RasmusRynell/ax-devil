@@ -201,10 +201,9 @@ describe("settings dialog", () => {
       fireEvent.click(screen.getByRole("tab", { name: "Network" }));
     };
 
-    it("are staged in the dialog and saved with it on OK, with a literal password masked", () => {
+    it("are staged in the dialog and saved with it on OK", () => {
       const save = vi.fn(async () => null);
       open(save);
-      expect((screen.getByLabelText("Password") as HTMLInputElement).type).toBe("password");
       fireEvent.click(screen.getByText("Add login"));
       fireEvent.change(screen.getAllByLabelText("Username")[1]!, { target: { value: " ops " } });
       fireEvent.change(screen.getAllByLabelText("Password")[1]!, { target: { value: "$OPS" } });

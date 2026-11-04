@@ -75,7 +75,7 @@ describe("logins editor", () => {
     expect(saved).toEqual([[{ user: "root", password: "" }]]);
   });
 
-  it("puts a refused edit back, keeping what was typed after it", async () => {
+  it("leaves the rows as typed when an edit is refused after the user typed on", async () => {
     let refuse = (_reason: string) => {};
     const onSave = () =>
       new Promise<string | null>((resolve) => {
@@ -103,6 +103,24 @@ describe("logins editor", () => {
     const user = screen.getByLabelText("Username") as HTMLInputElement;
     fireEvent.change(user, { target: { value: "ops" } });
     await act(async () => fireEvent.keyDown(user, { key: "Enter" }));
+    expect(user.value).toBe("root");
+  });
+
+  it("puts back what the backend holds when two saves in a row are both refused", async () => {
+    const answers: ((reason: string) => void)[] = [];
+    const onSave = () =>
+      new Promise<string | null>((resolve) => {
+        answers.push(resolve);
+      });
+    render(<LoginsEditor logins={[{ user: "root", password: "$PASS" }]} onSave={onSave} />);
+    const user = screen.getByLabelText("Username") as HTMLInputElement;
+    fireEvent.change(user, { target: { value: "ops" } });
+    fireEvent.keyDown(user, { key: "Enter" });
+    fireEvent.change(user, { target: { value: "dev" } });
+    fireEvent.keyDown(user, { key: "Enter" });
+
+    await act(async () => answers.forEach((refuse) => refuse("Could not reach the backend")));
+
     expect(user.value).toBe("root");
   });
 
