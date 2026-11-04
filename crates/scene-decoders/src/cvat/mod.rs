@@ -43,6 +43,7 @@ impl CvatDecoder {
                 plugin: "axis-cvat".to_owned(),
                 name: "CVAT".to_owned(),
                 extensions: vec![".xml".to_owned()],
+                description: None,
                 framing: Framing::Whole,
                 bases: vec![MatchBasis::Frame],
                 default_basis: MatchBasis::Frame,

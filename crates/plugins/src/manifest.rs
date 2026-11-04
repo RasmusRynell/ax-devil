@@ -130,9 +130,11 @@ pub struct DecoderHandler {
     pub id: String,
     /// What the user reads.
     pub name: String,
+    /// One sentence on what the decoder reads, if the manifest gives one.
+    pub description: Option<String>,
     /// The Scene model version the decoder writes.
     pub scene_version: SceneVersion,
-    /// File name endings the decoder reads: lowercase, with the dot; may be empty.
+    /// File name endings the decoder reads: lowercase, with the dot; empty means any file.
     pub extensions: Vec<String>,
     /// The options the decoder takes.
     pub options: Form,

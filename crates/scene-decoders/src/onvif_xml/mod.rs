@@ -51,6 +51,7 @@ impl OnvifXmlDecoder {
                 plugin: "axis-onvif-xml".to_owned(),
                 name: "Axis ONVIF XML".to_owned(),
                 extensions: vec![".xml".to_owned()],
+                description: None,
                 framing: Framing::Records,
                 bases: vec![MatchBasis::Frame, MatchBasis::Time],
                 default_basis: MatchBasis::Frame,

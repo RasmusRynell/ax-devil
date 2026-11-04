@@ -1077,7 +1077,11 @@ handler: string,
  */
 display_name: string, 
 /**
- * The file extensions it reads: lowercase, with the dot.
+ * One sentence on what it reads; absent when it has none.
+ */
+description?: string, 
+/**
+ * The file name endings it reads: lowercase, with the dot. Empty means any file.
  */
 extensions: Array<string>, 
 /**

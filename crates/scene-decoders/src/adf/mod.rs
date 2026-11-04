@@ -176,6 +176,7 @@ impl AdfDecoder {
                 plugin: plugin.to_owned(),
                 name: name.to_owned(),
                 extensions: vec![".jsonl".to_owned(), ".json".to_owned()],
+                description: None,
                 framing: Framing::Records,
                 bases,
                 default_basis,

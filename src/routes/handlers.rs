@@ -71,6 +71,7 @@ pub(crate) async fn get_handlers(State(state): State<AppState>) -> Json<Handlers
         DecoderInfo {
             handler: spec.id.clone(),
             display_name: spec.name.clone(),
+            description: spec.description.clone(),
             extensions: spec.extensions.clone(),
             options: field_infos(&spec.options),
             live: decoder.reads_live(),
@@ -250,6 +251,25 @@ mod tests {
             .map(|decoder| decoder["handler"].as_str().unwrap())
             .collect();
         assert!(handlers.contains(&"MOT_FILE"), "{handlers:?}");
+        let described = |handler: &str| {
+            info["decoders"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|decoder| decoder["handler"] == handler)
+                .map(|decoder| decoder.get("description").cloned())
+        };
+        assert_eq!(
+            described("UVG_VCM"),
+            Some(Some(json!(
+                "UVG-VCM v1.0 detection/tracking JSON with optional segmentation polygons."
+            )))
+        );
+        assert_eq!(
+            described("MOT_FILE"),
+            Some(None),
+            "no description is left out"
+        );
         let resolvers = info["resolvers"].as_array().unwrap();
         let ids: Vec<_> = resolvers
             .iter()
@@ -292,6 +312,7 @@ mod tests {
             plugin: plugin.into(),
             name: format!("{handler} from {plugin}"),
             extensions: vec![".listed".into()],
+            description: None,
             framing: Framing::Whole,
             bases: vec![MatchBasis::Frame],
             default_basis: MatchBasis::Frame,

@@ -54,6 +54,7 @@ impl Gate {
                 plugin: "test".into(),
                 name: "Gate".into(),
                 extensions: vec![".gate".into()],
+                description: None,
                 framing: Framing::Whole,
                 bases: vec![MatchBasis::Frame],
                 default_basis: MatchBasis::Frame,

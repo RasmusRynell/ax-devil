@@ -92,6 +92,7 @@ impl MotDecoder {
                 plugin: "mot".to_owned(),
                 name: "MOT Annotations".to_owned(),
                 extensions: vec![".txt".to_owned()],
+                description: None,
                 framing: Framing::Whole,
                 bases: vec![MatchBasis::Frame],
                 default_basis: MatchBasis::Frame,
