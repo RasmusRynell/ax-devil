@@ -160,12 +160,15 @@ export function WorkspaceTree({
       return next;
     });
   };
-  const toggleFolded = (id: SectionId) =>
+  // The search opens sections on its own account; the user's folds change only when it is off.
+  const toggleFolded = (id: SectionId) => {
+    if (searching) return;
     setFolded((now) => {
       const next = new Set(now);
       if (!next.delete(id)) next.add(id);
       return next;
     });
+  };
   const toggleHidden = (row: TreeRow) => {
     if (!row.target) return;
     command({

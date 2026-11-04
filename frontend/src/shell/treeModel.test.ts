@@ -87,6 +87,9 @@ describe("search", () => {
     expect(list(tree, "  dpm ")).toEqual(["mot", "B", "DPM"]);
     expect(list(tree, "B")).toEqual(["mot", "B", "DPM"]);
     expect(list(tree, "nothing")).toEqual([]);
+    const folded = rows([playlist("Straße", []), playlist("οδος", [])]);
+    expect(list(folded, "STRASSE")).toEqual(["Straße"]);
+    expect(list(folded, "οδοσ")).toEqual(["οδος"]);
   });
 
   it("leaves hidden matches out and counts them", () => {
@@ -104,12 +107,41 @@ describe("search", () => {
       playlist("b", [entry("b/1", "1", ["Z"]), entry("b/0", "0", ["Y"])]),
       playlist("a", [entry("a/1", "1", ["X"])]),
       playlist("B", []),
+      playlist("zebra", []),
+      playlist("éclair", []),
+      playlist("eagle", []),
     ];
     const names = (order: Order) =>
       sectionsOf(rows(items), new Set(), ["playlists"], order)[0].rows.map(
         ({ info }) => info.label,
       );
-    expect(names("workspace")).toEqual(["b", "1", "Z", "0", "Y", "a", "1", "X", "B"]);
-    expect(names("name")).toEqual(["a", "1", "X", "b", "1", "Z", "0", "Y", "B"]);
+    expect(names("workspace")).toEqual([
+      "b",
+      "1",
+      "Z",
+      "0",
+      "Y",
+      "a",
+      "1",
+      "X",
+      "B",
+      "zebra",
+      "éclair",
+      "eagle",
+    ]);
+    expect(names("name")).toEqual([
+      "a",
+      "1",
+      "X",
+      "b",
+      "1",
+      "Z",
+      "0",
+      "Y",
+      "B",
+      "eagle",
+      "zebra",
+      "éclair",
+    ]);
   });
 });

@@ -35,6 +35,8 @@ describe("search", () => {
     expect(screen.queryByRole("tree", { name: "Playlists" })).toBeNull();
     search("GT");
     expect(labels()).toEqual(["mot", "A", "GT"]);
+    // The caption does not change the saved fold while the search holds the section open.
+    fireEvent.click(screen.getByRole("button", { name: "Playlists" }));
     search("");
     expect(screen.queryByRole("tree", { name: "Playlists" })).toBeNull();
   });

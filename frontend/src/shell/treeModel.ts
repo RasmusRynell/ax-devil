@@ -63,6 +63,9 @@ export function treeOf({ rows, items }: WorkspaceState): TreeRow[] {
   return tree;
 }
 
+/** Text with case and compatibility forms folded away, so `Straße` equals `STRASSE` and `ς` equals `σ`. */
+const casefold = (text: string): string => text.normalize("NFKC").toUpperCase().toLowerCase();
+
 /**
  * The keys of the rows `allowed` lets through that the search leaves in: all of them without a query, else those whose
  * label contains it (case and surrounding spaces ignored), with what is inside a match and what a match is inside.
@@ -73,10 +76,10 @@ export function shownKeys(
   allowed: (row: TreeRow) => boolean,
   query: string,
 ): Set<string> {
-  const needle = query.trim().toLowerCase();
+  const needle = casefold(query.trim());
   const inMatch = new Set<string>();
   for (const row of rows) {
-    if (row.info.label.toLowerCase().includes(needle) || (row.parent && inMatch.has(row.parent)))
+    if (casefold(row.info.label).includes(needle) || (row.parent && inMatch.has(row.parent)))
       inMatch.add(row.info.key);
   }
   const shown = new Set<string>();
@@ -163,7 +166,10 @@ export type Order = (typeof ORDERS)[number][0];
 /** How two top-level rows compare in each order; 0 keeps them in the saved order. */
 const COMPARE: Record<Order, (a: TreeRow, b: TreeRow) => number> = {
   workspace: () => 0,
-  name: (a, b) => a.info.label.localeCompare(b.info.label, undefined, { sensitivity: "base" }),
+  name: (a, b) => {
+    const [x, y] = [casefold(a.info.label), casefold(b.info.label)];
+    return x < y ? -1 : x > y ? 1 : 0;
+  },
 };
 
 /**
