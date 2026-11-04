@@ -282,9 +282,9 @@ describe("add playlist dialog", () => {
     // Only the source on show is added.
     fireEvent.click(add());
     await waitFor(() => expect(commands()).toHaveLength(1));
-    expect(commands()).toMatchObject([
-      { cmd: { command: { items: [{ resolver: "mot_challenge" }] } } },
-    ]);
+    const requests = resolveCalls();
+    expect(requests).toHaveLength(1);
+    expect(String(requests[0][0])).toContain("mot_challenge");
   });
 
   it("says why the handlers could not be loaded, in the backend's words when it sends them, and retries", async () => {
