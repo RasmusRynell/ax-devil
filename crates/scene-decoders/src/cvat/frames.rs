@@ -25,7 +25,7 @@ pub(super) struct Pending {
 pub(super) struct FrameAcc {
     /// The `image` element's context, when the frame has one.
     pub image: Option<Value>,
-    /// The width and height that image gives; zero for none.
+    /// The width and height that image gives; zero for none. Any other value is used, as Python does.
     pub size: [i64; 2],
     /// Shapes kept as debug data only.
     pub unrendered: Vec<Value>,
@@ -39,8 +39,8 @@ impl FrameAcc {
         self.size = size;
     }
 
-    /// The frame's Scene. A frame size of its own wins over `fallback`, the size the task gives; a frame with shapes
-    /// to draw needs one of them.
+    /// The frame's Scene. A frame size of its own wins over `fallback`, the size the task gives; each side is at
+    /// least 1, so a file with no size still draws.
     pub(super) fn into_scene(
         self,
         frame: u64,
@@ -48,17 +48,13 @@ impl FrameAcc {
         index: &mut HashMap<EntityId, usize>,
     ) -> Result<Scene, String> {
         let [width, height] = [0, 1].map(|axis| {
-            if self.size[axis] > 0 {
+            if self.size[axis] != 0 {
                 self.size[axis]
             } else {
                 fallback[axis]
             }
+            .max(1)
         });
-        if !self.shapes.is_empty() && (width <= 0 || height <= 0) {
-            return Err(format!(
-                "frame {frame} has shapes but no image size: give original_size in the task or width and height on the image"
-            ));
-        }
         let time = SceneTime::Frame(frame);
         let mut entities: Vec<Entity> = Vec::new();
         index.clear();

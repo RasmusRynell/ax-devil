@@ -303,9 +303,14 @@ fn filters_are_one_per_label_and_a_file_without_labels_gets_unlabeled() {
 }
 
 #[test]
-fn shapes_cannot_be_drawn_without_an_image_size() {
-    let error = try_decode(&SAMPLE.replace("<width>1280</width>", "")).expect_err("no width");
-    assert!(error.contains("image size"), "{error}");
+fn a_missing_image_size_counts_as_one_pixel() {
+    let (scenes, _) = decode(&SAMPLE.replace("<width>1280</width>", ""));
+
+    let [left, top, right, bottom] = bounds(&scenes[0], "cvat_track_10");
+    near(left, 100.0);
+    near(top, 200.0 / 720.0);
+    near(right, 200.0);
+    near(bottom, 400.0 / 720.0);
 }
 
 #[test]
@@ -317,14 +322,26 @@ fn a_file_without_meta_or_with_broken_xml_fails() {
 }
 
 #[test]
-fn a_shape_with_a_bad_frame_or_a_track_with_a_bad_id_is_a_warning() {
+fn a_shape_with_a_bad_frame_is_a_warning_and_a_track_with_a_bad_id_numbers_its_shapes() {
+    // The zero-area box is tried and rejected, and still takes number 0.
     let xml = SAMPLE
         .replace(r#"<box frame="1""#, r#"<box frame="x""#)
-        .replace(r#"<track id="11""#, r#"<track id="eleven""#);
+        .replace(
+            r#"<track id="11" label="Person">"#,
+            r#"<track id="eleven" label="Person"><box frame="1" xtl="1" ytl="1" xbr="1" ybr="2"/>"#,
+        );
     let (scenes, summary) = decode(&xml);
 
-    assert_eq!(scenes.len(), 1);
+    assert_eq!(scenes.len(), 2);
     assert_eq!(ids(&scenes[0]), ["cvat_track_10"]);
-    assert_eq!(summary.warnings.len(), 1);
-    assert_eq!(summary.warnings[0].problem, "Skipped 2 of 3 shapes");
+    assert_eq!(ids(&scenes[1]), ["cvat_shape_1"]);
+    assert_eq!(
+        at(
+            source(&scenes[1], "cvat_shape_1"),
+            &["track", "@attributes", "id"]
+        )
+        .as_str(),
+        Some("eleven")
+    );
+    assert_eq!(summary.warnings[0].problem, "Skipped 1 of 4 shapes");
 }

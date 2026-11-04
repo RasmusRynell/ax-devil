@@ -7,8 +7,8 @@ mod common;
 mod session_client;
 
 use api_types::playback::{
-    ClientMessage, Direction, FRAME_MAP_EMPTY, IngestWire, LanePolicyWire, LaneStatusWire,
-    ServerMessage, StickyWire,
+    ClientMessage, Direction, FRAME_MAP_EMPTY, FRAME_MAP_NONE, IngestWire, LanePolicyWire,
+    LaneStatusWire, ServerMessage, StickyWire,
 };
 use common::{Backend, Event, Viewer};
 use serde_json::{Value, json};
@@ -223,10 +223,10 @@ async fn the_dataset_opens_as_two_entries_whose_lanes_map_each_frame_to_its_file
     assert_eq!([rows(DPM, 0), rows(GT, 0), rows(2, 0)], [2, 3, 2]);
     assert_eq!([rows(DPM, 3), rows(GT, 3), rows(2, 3)], [1, 3, 2]);
 
-    // Nothing is mapped on the frame without rows, and a lane that keeps its last object (sticky) still maps none:
-    // the file covers every frame, so the frame is empty rather than missing.
+    // The frame without rows is missing, not empty: nothing is mapped on it, and a lane that keeps its last
+    // objects (sticky) maps the previous frame's rows there.
     for lane in 0..3 {
-        assert_eq!(lanes.cell(lane, EMPTY_FRAME, 1), FRAME_MAP_EMPTY);
+        assert_eq!(lanes.cell(lane, EMPTY_FRAME, 1), FRAME_MAP_NONE);
     }
     for lane in 0..3 {
         viewer.send(&subscribe(lane, 2, true)).await;
@@ -235,8 +235,12 @@ async fn the_dataset_opens_as_two_entries_whose_lanes_map_each_frame_to_its_file
         .read_until(&mut viewer, |lanes| lanes.has_all(3, 2))
         .await;
     for lane in 0..3 {
-        assert_eq!(lanes.cell(lane, EMPTY_FRAME, 2), FRAME_MAP_EMPTY);
         assert!(lanes.rows(lane, 4, 2) > 0);
+        assert_eq!(
+            lanes.rows(lane, EMPTY_FRAME, 2),
+            lanes.rows(lane, 4, 2),
+            "lane {lane}"
+        );
     }
 }
 

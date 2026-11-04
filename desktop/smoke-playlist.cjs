@@ -129,11 +129,12 @@ module.exports.playlist = async (window) => {
     await wait(`${SHOWN} >= 0`);
   };
 
-  // Every lane has boxes on frame 0; frame 5 has no rows in any file, so nothing is drawn on it.
+  // Every lane has boxes on frame 0; frame 5 has no rows in any file, which the files leave open, so sticky keeps
+  // frame 4's boxes on it.
   const expectOverlays = async (lanes) => {
     for (const [at, drawn] of [
       [0, true],
-      [5, false],
+      [5, true],
       [0, true],
     ]) {
       await goToFrame(at);
