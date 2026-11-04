@@ -59,12 +59,6 @@ fn camera(
         overlay: Some(NewLiveOverlayWire::None),
         ..NewLiveWire::default()
     });
-    if principal.grants().contains(&Grant::Preferences)
-        && let Some(held) = like.and_then(|item| state.sessions.find_item(item))
-        && let Source::Live(saved) = &held.item.recipe.source
-    {
-        new.copy_login(saved, &defaults);
-    }
     let invalid = |error: &UserError| {
         problem(
             StatusCode::UNPROCESSABLE_ENTITY,
@@ -73,6 +67,13 @@ fn camera(
             },
         )
     };
+    if principal.grants().contains(&Grant::Preferences)
+        && let Some(held) = like.and_then(|item| state.sessions.find_item(item))
+        && let Source::Live(saved) = &held.item.recipe.source
+    {
+        new.copy_login(saved, &defaults)
+            .map_err(|error| invalid(&error))?;
+    }
     let item = intake::live(new, &defaults, &handlers).map_err(|error| invalid(&error))?;
     let env = environment(&settings);
     match item.recipe.resolve(

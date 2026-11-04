@@ -3,7 +3,7 @@
 use crate::{
     credentials::Secret,
     item::{Recipe, Source, WorkspaceItem},
-    live::{LiveOverlay, LiveRecipe, Protocol},
+    live::{LiveOverlay, LiveRecipe, Protocol, url_endpoint},
 };
 use foundation::{ErrorCode, ItemId, Location, UserError};
 use handlers::Handlers;
@@ -166,7 +166,14 @@ impl NewLive {
     /// the same host text, protocol and port once `defaults` fill what is blank. Another host gets nothing, so a saved
     /// password is never sent where the person who adds the stream did not first see it go. A user entered and not
     /// `source`'s keeps its own password too, which `source`'s does not belong to.
-    pub fn copy_login(&mut self, source: &LiveRecipe, defaults: &LiveDefaults) {
+    ///
+    /// A stream URL is where the RTSP login goes, so a copy needs it to name the host and port `source` already
+    /// sends its login to; any other is refused, as the person must then enter the login for that server.
+    pub fn copy_login(
+        &mut self,
+        source: &LiveRecipe,
+        defaults: &LiveDefaults,
+    ) -> Result<(), UserError> {
         let protocol = self.protocol.unwrap_or(defaults.protocol);
         let port = |protocol: Protocol, port: i64| match port {
             0 => i64::from(protocol.default_port()),
@@ -176,20 +183,39 @@ impl NewLive {
             && protocol == source.protocol
             && port(protocol, self.port.unwrap_or(0)) == port(source.protocol, source.port.into());
         if !same_camera {
-            return;
+            return Ok(());
         }
-        match self.username.as_deref().map(str::trim) {
-            Some(user) if !user.is_empty() && user != source.username => return,
-            Some(user) if !user.is_empty() => {}
-            _ => self.username = Some(source.username.clone()),
-        }
-        if self
+        let user_blank = match self.username.as_deref().map(str::trim) {
+            Some(user) if !user.is_empty() && user != source.username => return Ok(()),
+            Some(user) => user.is_empty(),
+            None => true,
+        };
+        let password_blank = self
             .password
             .as_ref()
-            .is_none_or(|entered| entered.expose().trim().is_empty())
+            .is_none_or(|entered| entered.expose().trim().is_empty());
+        if !user_blank && !password_blank {
+            return Ok(());
+        }
+        if let Some(url) = self
+            .url
+            .as_deref()
+            .map(str::trim)
+            .filter(|url| !url.is_empty())
+            && url_endpoint(url).ok() != Some(source.rtsp_endpoint())
         {
+            return Err(invalid(
+                "password",
+                "A saved login is not sent to another stream URL; enter the user and password for it.",
+            ));
+        }
+        if user_blank {
+            self.username = Some(source.username.clone());
+        }
+        if password_blank {
             self.password = Some(source.password.clone());
         }
+        Ok(())
     }
 }
 

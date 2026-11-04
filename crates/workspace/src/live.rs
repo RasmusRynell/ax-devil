@@ -176,8 +176,8 @@ fn invalid(field: &str, reason: impl Into<String>) -> UserError {
     UserError::new(ErrorCode::WorkspaceInvalid, reason).at(Location::field(field))
 }
 
-/// The host of a stream URL, lowercase, or why the URL cannot be used.
-fn url_host(url: &str) -> Result<String, UserError> {
+/// The host and port of a stream URL, the host lowercase, or why the URL cannot be used. No port is RTSP's 554.
+pub(crate) fn url_endpoint(url: &str) -> Result<(String, u16), UserError> {
     let field = "url";
     let lower = url.to_ascii_lowercase();
     // The camera crate speaks plain RTSP only; an rtsps:// URL would retry forever.
@@ -188,15 +188,40 @@ fn url_host(url: &str) -> Result<String, UserError> {
     if authority.contains('@') {
         return Err(invalid(field, "The stream URL must not contain a login."));
     }
-    let host = match authority.strip_prefix('[') {
-        Some(inside) => inside.split_once(']').map(|(ip, _)| format!("[{ip}]")),
-        None => authority.split(':').next().map(str::to_owned),
+    let (host, port) = match authority.strip_prefix('[') {
+        Some(inside) => inside
+            .split_once(']')
+            .map(|(ip, after)| (format!("[{ip}]"), after.strip_prefix(':'))),
+        None => Some(match authority.split_once(':') {
+            Some((host, port)) => (host.to_owned(), Some(port)),
+            None => (authority.to_owned(), None),
+        }),
+    }
+    .filter(|(host, _)| !host.is_empty())
+    .ok_or_else(|| invalid(field, "The stream URL has no host."))?;
+    let port = match port {
+        None => 554,
+        Some(port) => port
+            .parse()
+            .map_err(|_| invalid(field, "The stream URL has no valid port."))?,
     };
-    host.filter(|host| !host.is_empty())
-        .ok_or_else(|| invalid(field, "The stream URL has no host."))
+    Ok((host, port))
+}
+
+/// The host of a stream URL, lowercase, or why the URL cannot be used.
+fn url_host(url: &str) -> Result<String, UserError> {
+    url_endpoint(url).map(|(host, _)| host)
 }
 
 impl LiveRecipe {
+    /// The host and port the stream's RTSP requests, and so its login, go to: the stream URL's, or the camera's.
+    pub(crate) fn rtsp_endpoint(&self) -> (String, u16) {
+        self.url
+            .as_deref()
+            .and_then(|url| url_endpoint(url).ok())
+            .unwrap_or_else(|| (self.host.trim().to_ascii_lowercase(), self.rtsp_port))
+    }
+
     /// The name shown when the item has none: the host as entered, or `Live stream` when it is a reference.
     pub fn default_name(&self) -> String {
         match reference(&self.host) {
