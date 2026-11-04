@@ -3,6 +3,7 @@ import { act, useState } from "react";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import type { InspectionView, Summary } from "./contract";
 import { LANE_SETTINGS } from "./fakeOpened";
+import { ICONS } from "../kit/icons";
 import { FRESH_MEMORY } from "./fields";
 import { FileScope } from "./fileScope";
 import { Inspector, type Reach } from "./Inspector";
@@ -197,6 +198,98 @@ describe("inspector", () => {
     const copies = screen.getAllByRole("button", { name: "Copy candidates.car.score" });
     fireEvent.click(copies[1]!);
     expect(writeText).toHaveBeenLastCalledWith("0.4");
+  });
+
+  describe("copy check", () => {
+    const FEEDBACK = ready([
+      { group: "classification", path: ["class"], value: "car" },
+      { group: "motion", path: ["speed"], value: 0.5 },
+    ]);
+    const clipboard = (writeText: () => Promise<void>) =>
+      vi.stubGlobal("navigator", { clipboard: { writeText } });
+    const copy = (name: string) =>
+      act(async () => {
+        fireEvent.click(screen.getByRole("button", { name }));
+      });
+    /** The rows whose copy button shows the check. */
+    const checked = () =>
+      ["Copy class", "Copy speed"].filter((name) =>
+        screen
+          .getByRole("button", { name })
+          .querySelector("span")
+          ?.getAttribute("style")
+          ?.includes(ICONS.check),
+      );
+
+    afterEach(() => vi.useRealTimers());
+
+    it("marks the last copied row for 1500 ms, restarting for each copy and moving to another row", async () => {
+      vi.useFakeTimers();
+      clipboard(async () => {});
+      show(FEEDBACK);
+      await copy("Copy class");
+      expect(checked()).toEqual(["Copy class"]);
+      act(() => {
+        vi.advanceTimersByTime(1000);
+      });
+      await copy("Copy class");
+      act(() => {
+        vi.advanceTimersByTime(1000);
+      });
+      expect(checked()).toEqual(["Copy class"]);
+      await copy("Copy speed");
+      expect(checked()).toEqual(["Copy speed"]);
+      act(() => {
+        vi.advanceTimersByTime(1499);
+      });
+      expect(checked()).toEqual(["Copy speed"]);
+      act(() => {
+        vi.advanceTimersByTime(1);
+      });
+      expect(checked()).toEqual([]);
+    });
+
+    it("marks nothing when the clipboard is missing or refuses, or when a newer copy has come since", async () => {
+      vi.stubGlobal("navigator", {});
+      show(FEEDBACK);
+      await copy("Copy class");
+      expect(checked()).toEqual([]);
+      clipboard(async () => {
+        throw new Error("denied");
+      });
+      await copy("Copy class");
+      expect(checked()).toEqual([]);
+      let slow = () => {};
+      const writeText = vi
+        .fn<(text: string) => Promise<void>>()
+        .mockImplementationOnce(() => new Promise<void>((done) => (slow = done)))
+        .mockResolvedValue();
+      vi.stubGlobal("navigator", { clipboard: { writeText } });
+      await copy("Copy class");
+      await copy("Copy speed");
+      await act(async () => slow());
+      expect(checked()).toEqual(["Copy speed"]);
+    });
+
+    it("ends the mark when the copied value changes, and Ctrl+C copies the row holding focus", async () => {
+      const writeText = vi.fn(async () => {});
+      vi.stubGlobal("navigator", { clipboard: { writeText } });
+      const view = show(FEEDBACK);
+      const button = screen.getByRole("button", { name: "Copy speed" });
+      button.focus();
+      await act(async () => {
+        fireEvent.keyDown(button, { key: "c", ctrlKey: true });
+      });
+      expect(writeText).toHaveBeenLastCalledWith("0.5");
+      expect(checked()).toEqual(["Copy speed"]);
+      view.next(
+        ready([
+          { group: "classification", path: ["class"], value: "car" },
+          { group: "motion", path: ["speed"], value: 0.75 },
+        ]),
+      );
+      expect(checked()).toEqual([]);
+    });
   });
 
   it("pins a field for the next object, says when it is missing, and drops the pinned list on the last unpin", () => {
