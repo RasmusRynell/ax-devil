@@ -17,9 +17,11 @@ use handlers::Handlers;
 use plugins::{Registry, Reserved};
 use scene_store::{TrackRead, TrackRegistry};
 use std::{
+    io::Read,
     path::{Path, PathBuf},
     process::{Command, Output, Stdio},
     sync::Arc,
+    time::{Duration, Instant},
 };
 
 /// A backend over the plugins the registry at `registry` lists.
@@ -242,6 +244,55 @@ async fn the_plugins_route_lists_the_plugins_that_loaded_and_the_one_that_did_no
             .unwrap()
             .contains("gone")
     );
+}
+
+/// Not a test: the process `an_install_while_another_process...` starts, this binary run again, to hold the lock.
+/// It says it holds the lock by creating `lock-held` beside the registry, then waits for its input to close.
+#[test]
+#[ignore = "started by an_install_while_another_process_changes_the_registry_fails_at_once_and_loses_nothing"]
+fn hold_the_registry_lock() {
+    let Some(registry) = std::env::var_os("AX_DEVIL_HOLD_LOCK") else {
+        return;
+    };
+    let registry = PathBuf::from(registry);
+    let _lock = Registry::try_lock(&registry).unwrap();
+    std::fs::write(registry.with_file_name("lock-held"), "").unwrap();
+    std::io::stdin().read_to_end(&mut Vec::new()).unwrap();
+}
+
+#[test]
+fn an_install_while_another_process_changes_the_registry_fails_at_once_and_loses_nothing() {
+    let home = tempfile::tempdir().unwrap();
+    let file = install(home.path(), "python-runs");
+    let before = std::fs::read_to_string(&file).unwrap();
+    let plugins = Plugins::new(Ok(file.clone()), Handlers::built_in());
+    // Another ax-devil process in the middle of its own change holds the lock until its input closes.
+    let mut other = Command::new(std::env::current_exe().unwrap())
+        .args(["--ignored", "--exact", "hold_the_registry_lock"])
+        .env("AX_DEVIL_HOLD_LOCK", &file)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::null())
+        .spawn()
+        .unwrap();
+    let deadline = Instant::now() + Duration::from_secs(30);
+    while !file.with_file_name("lock-held").exists() {
+        assert!(
+            other.try_wait().unwrap().is_none() && Instant::now() < deadline,
+            "the second process did not take the registry lock"
+        );
+        std::thread::sleep(Duration::from_millis(20));
+    }
+
+    let Err(error) = plugins.install(&plugin("python-tracks")) else {
+        panic!("the install went ahead while the registry was locked");
+    };
+
+    assert_eq!(error.reason, "Another plugin installation is running");
+    assert_eq!(std::fs::read_to_string(&file).unwrap(), before);
+    drop(other.stdin.take());
+    other.wait().unwrap();
+    plugins.install(&plugin("python-tracks")).unwrap();
+    assert_eq!(Registry::read(&file).unwrap().manifests().len(), 2);
 }
 
 #[tokio::test]
