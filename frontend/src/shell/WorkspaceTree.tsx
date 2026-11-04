@@ -88,26 +88,26 @@ export function WorkspaceTree() {
     root.current?.querySelector<HTMLElement>(`[data-section="${id}"] ${selector}`);
   const go = (index: number) => {
     const next = walk.rows[Math.max(0, Math.min(walk.rows.length - 1, index))];
-    if (!next) return;
-    // The focus first: a tree that takes it starts on its first row, which this move then overrides.
-    inSection(next.id, '[role="tree"]')?.focus({ preventScroll: true });
-    setCurrent(next.key);
+    if (next) setCurrent(next.key);
   };
   const onLose = useCallback((id: SectionId) => {
     lost.current = id;
   }, []);
-  // A tree that went away with the focus hands it to the row that took its place, else to its section's caption.
+  // The focus follows the keyboard's row: if it was in one of the trees (or left with one that went away), it goes to
+  // the tree of the row the keyboard is on, else to the caption of the section that lost its rows.
   useLayoutEffect(() => {
-    const id = lost.current;
-    if (id === null) return;
+    const gone = lost.current;
     lost.current = null;
+    const within = document.activeElement?.closest('[role="tree"]');
+    if (gone === null && !(within && root.current?.contains(within))) return;
     const next = walk.rows[at];
-    if (next) {
-      inSection(next.id, '[role="tree"]')?.focus({ preventScroll: true });
-      setCurrent(next.key);
-    } else
+    const tree = next && inSection(next.id, '[role="tree"]');
+    if (next && tree) {
+      if (!tree.contains(document.activeElement)) tree.focus({ preventScroll: true });
+      if (next.key !== current) setCurrent(next.key);
+    } else if (gone !== null)
       (
-        inSection(id, "button[aria-expanded]") ??
+        inSection(gone, "button[aria-expanded]") ??
         root.current?.querySelector<HTMLElement>('[role="switch"]')
       )?.focus();
   });

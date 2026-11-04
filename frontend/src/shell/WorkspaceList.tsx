@@ -53,7 +53,7 @@ interface Props {
   onOpen: (row: TreeRow) => void;
   /** Puts the keyboard on a row. */
   onCurrent: (key: string) => void;
-  /** Moves the keyboard to the row at a place in the sequence of all sections' rows, and the focus to its tree. */
+  /** Moves the keyboard to the row at a place in the sequence of all sections' rows. */
   onGo: (index: number) => void;
   /** The tree took the focus with it when it went away, which the owner gives to a row or caption that stays. */
   onLose: (id: SectionId) => void;
@@ -178,8 +178,9 @@ export function WorkspaceList({
             aria-busy={info.status.status === "Pending" || undefined}
             title={note || undefined}
             onClick={() => {
-              onCurrent(info.key);
+              // The focus first: a tree that takes it starts on its first row, which the click then overrides.
               ref.current?.focus({ preventScroll: true });
+              onCurrent(info.key);
               onOpen(row);
             }}
             onPointerEnter={(event) =>

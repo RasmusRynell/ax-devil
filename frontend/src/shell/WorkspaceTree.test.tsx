@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
-import { entry, failed, FakeSocket, playlists } from "../session/fakeSession";
+import { entry, failed, FakeSocket, playlists, video } from "../session/fakeSession";
 import { SessionProvider } from "../session/session";
 import {
   CLIP,
@@ -177,6 +177,8 @@ describe("opening", () => {
       within(tree)
         .getAllByRole("treeitem")
         .map((row) => row.id);
+    fireEvent.click(screen.getByRole("treeitem", { name: /^A/ }));
+    expect(playlists.getAttribute("aria-activedescendant")).toBe(ids(playlists)[1]);
     videos.focus();
     fireEvent.keyDown(videos, { key: "ArrowDown" });
     fireEvent.keyDown(videos, { key: "ArrowDown" });
@@ -273,6 +275,22 @@ describe("hiding", () => {
   });
 
   it("keeps the focus when hiding takes the focused tree's last row away", async () => {
+    // The section keeps a row, so its tree stays, but the keyboard's row is in the next section.
+    await renderTree([CLIP, video("w", false), MOT], []);
+    const first = screen.getByRole("tree", { name: "Videos" });
+    first.focus();
+    fireEvent.keyDown(first, { key: "ArrowDown" });
+    fireEvent.keyDown(first, { key: "F10", shiftKey: true });
+    fireEvent.click(screen.getByRole("menuitem", { name: "Hide" }));
+    await act(async () => {});
+    const next = screen.getByRole("tree", { name: "Playlists" });
+    expect(document.activeElement).toBe(next);
+    fireEvent.keyDown(next, { key: "Enter" });
+    await act(async () => {});
+    expect(shown().active).toBe("mot");
+
+    cleanup();
+    FakeSocket.reset();
     await renderTree([CLIP, MOT], []);
     const videos = screen.getByRole("tree", { name: "Videos" });
     videos.focus();
