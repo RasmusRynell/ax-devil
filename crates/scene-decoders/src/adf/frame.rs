@@ -8,9 +8,13 @@ use scene::{
 };
 use serde_json::Value as Json;
 
-use super::parse::{
-    Object, bounding_box, classification, entity_id, geographic, image, image_velocity, list,
-    measurements, object, present, timestamp, world_position, world_velocity,
+use super::{
+    Notes,
+    parse::{
+        Object, beta_classification, bounding_box, entity_id, geographic, image, image_velocity,
+        list, measurements, object, present, timestamp, truthy, v1_classification, world_position,
+        world_velocity,
+    },
 };
 
 /// The entity of `entities` with this id, added when it is not there: objects with one id are sightings of one entity.
@@ -34,7 +38,7 @@ fn scene(time: TimeSlice, entities: Vec<Entity>, events: Vec<Event>) -> Result<V
 }
 
 /// A v1 frame record, which may be wrapped as `{"frame": {...}}`.
-pub(super) fn read_v1(record: &Object) -> Result<Vec<Scene>, String> {
+pub(super) fn read_v1(record: &Object, _notes: &mut Notes) -> Result<Vec<Scene>, String> {
     let frame = match record.get("frame") {
         Some(frame) => object(frame, "the frame")?,
         None => record,
@@ -53,7 +57,7 @@ pub(super) fn read_v1(record: &Object) -> Result<Vec<Scene>, String> {
         if let Some(class) = present(detection.get("class")) {
             observation
                 .classifications
-                .push(classification(object(class, "a class")?)?);
+                .push(v1_classification(object(class, "a class")?)?);
         }
         // In a frame, `velocity` is the speed in the world.
         observation.measurements = measurements(Measurements {
@@ -96,7 +100,7 @@ fn track_event(event: &Json, at: TimeSlice) -> Result<Event, String> {
 
 /// A beta record: one frame, `{frame: {...}}`, or `{frames: [...]}`. The Scene spans the frames' times, and each
 /// observation keeps its own.
-pub(super) fn read_beta(record: &Object) -> Result<Vec<Scene>, String> {
+pub(super) fn read_beta(record: &Object, notes: &mut Notes) -> Result<Vec<Scene>, String> {
     let listed = list(record, "frames")?;
     let frames: Vec<&Object> = if listed.is_empty() {
         let frame =
@@ -122,9 +126,12 @@ pub(super) fn read_beta(record: &Object) -> Result<Vec<Scene>, String> {
 
     let mut entities = Vec::new();
     let mut events = Vec::new();
+    let mut world_velocities = 0;
     for (frame, time) in frames.into_iter().zip(times) {
         for observation in list(frame, "observations")? {
-            beta_observation(object(observation, "an observation")?, &mut entities)?;
+            let observation = object(observation, "an observation")?;
+            world_velocities += usize::from(observation.get("world_velocity").is_some_and(truthy));
+            beta_observation(observation, &mut entities)?;
         }
         let at = TimeSlice::at(SceneTime::Timestamp(time));
         for operation in list(frame, "operations")? {
@@ -146,7 +153,11 @@ pub(super) fn read_beta(record: &Object) -> Result<Vec<Scene>, String> {
             }
         }
     }
-    scene(span, entities, events)
+    let scenes = scene(span, entities, events)?;
+    // Only a record that is shown counts.
+    notes.world_velocity += world_velocities;
+    notes.differing_times += usize::from(first != last);
+    Ok(scenes)
 }
 
 /// Adds the observation, and its picture, to its entity. Only the first of `classes` is used.
@@ -164,13 +175,13 @@ fn beta_observation(payload: &Object, entities: &mut Vec<Entity>) -> Result<(), 
     if let Some(class) = class {
         observation
             .classifications
-            .push(classification(object(class, "a class")?)?);
+            .extend(beta_classification(object(class, "a class")?)?);
     }
     observation.measurements = measurements(Measurements {
         image_velocity: image_velocity(payload.get("velocity"))?,
         geographic: geographic(payload.get("geoposition"))?,
         world: world_position(payload.get("world_position"))?,
-        // The beta format's world velocity has no known shape, so it is not read.
+        // The beta format's world velocity has no known shape, so it is not read; `read_beta` counts it.
         ..Measurements::default()
     });
     let picture = present(payload.get("image"))

@@ -41,11 +41,14 @@ fn a_frame_keeps_the_time_box_class_and_colors_of_each_observation() {
     let car = json!({"type": "Car", "score": 0.8, "colors": [{"name": "Blue", "score": 0.7}]});
     let record =
         json!({"timestamp": timestamp, "observations": [observation("track-1", timestamp, car)]});
-    // The wrapper form, behind a timestamp column and a tab.
-    let wrapped = format!("{timestamp}\t{}", json!({"frame": record}));
-    let (scenes, skipped) = decode("ADF_BETA_FRAME", &[record.to_string(), wrapped]);
+    // Beta frames are plain JSON: the wrapper form reads, a timestamp column and a tab before it does not.
+    let wrapped = json!({"frame": record}).to_string();
+    let tsv = format!("{timestamp}\t{wrapped}");
+    let (scenes, skipped) = decode("ADF_BETA_FRAME", &[record.to_string(), wrapped, tsv]);
 
-    assert!(skipped.is_empty(), "{skipped:?}");
+    assert_eq!(skipped.len(), 1);
+    assert_eq!(skipped[0].0, 3);
+    assert!(skipped[0].1.contains("invalid JSON"), "{skipped:?}");
     for scene in &scenes {
         assert_eq!(scene.time().start(), time(0));
         let seen = &scene.entity("track-1").expect("the track").observations()[0];
@@ -105,6 +108,80 @@ fn frames_join_in_one_scene_and_only_the_first_class_is_used() {
     );
     let labels: Vec<_> = scene.events().iter().map(Event::label).collect();
     assert_eq!(labels, ["Delete gone", "Rename a → b"]);
+}
+
+#[test]
+fn beta_names_classes_by_exact_spelling_and_gives_them_only_its_own_details() {
+    let at = "2024-05-12T10:00:00Z";
+    let blue = json!([{"name": "Blue", "score": 0.7}]);
+    let seen = |class: Json| {
+        let line = json!({"timestamp": at, "observations": [observation("a", at, class)]});
+        let (scenes, skipped) = decode("ADF_BETA_FRAME", &[line.to_string()]);
+        (
+            scenes
+                .first()
+                .map(|scene| scene.entities()[0].observations()[0].clone()),
+            skipped,
+        )
+    };
+    let classes = |class: Json| seen(class).0.expect("read").classifications;
+
+    let person = &classes(json!({"type": "Person", "upper_clothing_colors": blue}))[0];
+    assert_eq!(person.class_type, "person");
+    assert!(person.attribute("upper_clothing_colors").is_none());
+    let human = &classes(json!({"type": "Human", "upper_clothing_colors": blue}))[0];
+    assert_eq!(human.class_type, "human");
+    assert!(human.attribute("upper_clothing_colors").is_some());
+    let plate =
+        &classes(json!({"type": "LicensePlate", "state_code": "CA", "plate_number": "ABC"}))[0];
+    assert_eq!(plate.class_type, "license_plate");
+    assert!(plate.attribute("state_code").is_none() && plate.attribute("plate_number").is_some());
+    assert_eq!(
+        classes(json!({"type": "Licenseplate"}))[0].class_type,
+        "licenseplate"
+    );
+    assert!(
+        classes(json!({"type": "Bike", "colors": blue}))[0]
+            .attribute("vehicle_colors")
+            .is_none()
+    );
+    // A false type is no class; the object is still shown. A missing type rejects the record.
+    for kind in [json!(null), json!(""), json!(0)] {
+        assert!(classes(json!({"type": kind, "score": 0.5})).is_empty());
+    }
+    assert!(seen(json!({"score": 0.5})).0.is_none());
+}
+
+#[test]
+fn frames_at_different_times_and_world_velocity_are_warned_about() {
+    let at = |seconds: u32| format!("2024-05-12T10:00:0{seconds}Z");
+    let mut moving = observation("a", &at(0), Json::Null);
+    moving["world_velocity"] = json!({"x": 1.0});
+    let frame = |seconds, observations: Vec<Json>| json!({"timestamp": at(seconds), "observations": observations});
+    let lines = [
+        json!({"frames": [frame(0, vec![moving]), frame(2, vec![])]}).to_string(),
+        frame(0, vec![]).to_string(),
+    ];
+    let (_, result) = common::run_input(
+        &*common::decoder("ADF_BETA_FRAME"),
+        &mut common::lines(lines.join("\n").as_bytes()),
+        &Settings::new(),
+        &CancelToken::new(),
+    );
+    let problems: Vec<_> = result
+        .expect("decoded")
+        .warnings
+        .into_iter()
+        .map(|w| w.problem)
+        .collect();
+
+    assert_eq!(
+        problems,
+        [
+            "Frames at different times in 1 of 2 records",
+            "World velocity in 1 observations"
+        ]
+    );
 }
 
 fn track(id: &str, at: &str, class: &str) -> Json {

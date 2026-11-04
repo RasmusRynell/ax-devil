@@ -40,6 +40,28 @@ static ALIASES: [(&str, &str); 3] = [
     ("licenseplate", "license_plate"),
 ];
 
+/// The only class spellings a v1 frame accepts (in any case), and the class each names.
+static V1_CLASSES: [(&str, &str); 12] = [
+    ("human", "human"),
+    ("person", "human"),
+    ("vehicle", "vehicle"),
+    ("car", "car"),
+    ("bus", "bus"),
+    ("truck", "truck"),
+    ("bike", "bike"),
+    ("bicycle", "bicycle"),
+    ("vehicleother", "vehicle_other"),
+    ("animal", "animal"),
+    ("head", "head"),
+    ("licenseplate", "license_plate"),
+];
+
+/// The beta spellings that are not their class name lowercased; any other type is just lowercased.
+static BETA_CLASSES: [(&str, &str); 2] = [
+    ("VehicleOther", "vehicle_other"),
+    ("LicensePlate", "license_plate"),
+];
+
 /// `value` as an object.
 pub(super) fn object<'a>(value: &'a Json, what: &str) -> Result<&'a Object, String> {
     value
@@ -61,10 +83,28 @@ pub(super) fn list<'a>(parent: &'a Object, key: &str) -> Result<&'a [Json], Stri
     }
 }
 
+/// A finite number written as a JSON number or as text.
 fn finite(value: &Json, what: &str) -> Result<f64, String> {
-    value
-        .as_f64()
+    let number = match value {
+        Json::Number(number) => number.as_f64(),
+        Json::String(text) => text.trim().parse().ok(),
+        _ => None,
+    };
+    number
+        .filter(|number| number.is_finite())
         .ok_or_else(|| format!("{what} must be a number"))
+}
+
+/// Whether Python would call `value` true: not `false`, `null`, zero, or an empty string, list or object.
+pub(super) fn truthy(value: &Json) -> bool {
+    match value {
+        Json::Null => false,
+        Json::Bool(flag) => *flag,
+        Json::Number(number) => number.as_f64() != Some(0.0),
+        Json::String(text) => !text.is_empty(),
+        Json::Array(items) => !items.is_empty(),
+        Json::Object(fields) => !fields.is_empty(),
+    }
 }
 
 fn optional_number(parent: &Object, key: &str) -> Result<Option<f64>, String> {
@@ -208,7 +248,7 @@ pub(super) fn image(value: &Json, crop_box: bool) -> Result<Image, String> {
     })
 }
 
-/// A class given as `{type, score, ...attributes}`.
+/// A class given as `{type, score, ...attributes}`, named by any non-empty type.
 pub(super) fn classification(payload: &Object) -> Result<Classification, String> {
     let name = payload
         .get("type")
@@ -221,48 +261,105 @@ pub(super) fn classification(payload: &Object) -> Result<Classification, String>
         .iter()
         .find(|(alias, _)| *alias == lower)
         .map_or(lower, |(_, class)| (*class).to_owned());
-    let class_type = ClassType::new(name).map_err(|error| error.to_string())?;
-    let score = optional_number(payload, "score")?
+    classified(
+        ClassType::new(name).map_err(|error| error.to_string())?,
+        payload,
+    )
+}
+
+/// A class of a v1 frame, which accepts only the spellings of `V1_CLASSES` and rejects any other.
+pub(super) fn v1_classification(payload: &Object) -> Result<Classification, String> {
+    let kind = present(payload.get("type")).ok_or("a class lacks its type")?;
+    let class = kind
+        .as_str()
+        .map(str::to_lowercase)
+        .and_then(|lower| V1_CLASSES.iter().find(|(spelling, _)| *spelling == lower))
+        .ok_or_else(|| format!("unknown class type {kind}"))?;
+    classified(
+        ClassType::new(class.1).map_err(|error| error.to_string())?,
+        payload,
+    )
+}
+
+/// A class of a beta frame, or `None` when its type is false, null, zero or empty. Beta tells its classes apart by
+/// their exact spelling, so `Human` has clothing colors and `human` does not.
+pub(super) fn beta_classification(payload: &Object) -> Result<Option<Classification>, String> {
+    let kind = payload.get("type").ok_or("a class lacks its type")?;
+    let score = score(payload)?;
+    if !truthy(kind) {
+        return Ok(None);
+    }
+    let spelling = kind.as_str().ok_or("a class type must be text")?;
+    let name = BETA_CLASSES
+        .iter()
+        .find(|(known, _)| *known == spelling)
+        .map_or_else(|| spelling.to_lowercase(), |(_, class)| (*class).to_owned());
+    let mut fields = Fields::new();
+    match spelling {
+        "Car" | "Bus" | "Truck" | "Vehicle" => {
+            push(&mut fields, "vehicle_colors", colors(payload, "colors")?);
+        }
+        "Human" => {
+            for key in ["upper_clothing_colors", "lower_clothing_colors"] {
+                push(&mut fields, key, colors(payload, key)?);
+            }
+        }
+        "LicensePlate" => {
+            for key in ["country_code", "plate_number"] {
+                push(&mut fields, key, text(payload, key));
+            }
+        }
+        _ => {}
+    }
+    Ok(Some(Classification {
+        score,
+        attributes: fields,
+        ..Classification::new(ClassType::new(name).map_err(|error| error.to_string())?)
+    }))
+}
+
+fn score(payload: &Object) -> Result<Option<Score>, String> {
+    optional_number(payload, "score")?
         .map(Score::new)
         .transpose()
-        .map_err(|error| error.to_string())?;
+        .map_err(|error| error.to_string())
+}
+
+fn classified(class_type: ClassType, payload: &Object) -> Result<Classification, String> {
     Ok(Classification {
-        score,
+        score: score(payload)?,
         attributes: attributes(&class_type, payload)?,
         ..Classification::new(class_type)
     })
 }
 
+fn push(fields: &mut Fields, name: &'static str, value: Option<Value>) {
+    if let Some(value) = value {
+        fields.push((name.into(), value));
+    }
+}
+
 /// The class's own details, such as colors, by what the class is.
 fn attributes(class_type: &ClassType, payload: &Object) -> Result<Fields, String> {
     let mut fields = Fields::new();
-    let mut add = |name: &'static str, value: Option<Value>| {
-        if let Some(value) = value {
-            fields.push((name.into(), value));
-        }
-    };
     match class_type.as_str() {
         "human" => {
-            add(
-                "upper_clothing_colors",
-                colors(payload, "upper_clothing_colors")?,
-            );
-            add(
-                "lower_clothing_colors",
-                colors(payload, "lower_clothing_colors")?,
-            );
-            add("carries_bag", flag(payload, "carries_bag")?);
-            add(
+            for key in ["upper_clothing_colors", "lower_clothing_colors"] {
+                push(&mut fields, key, colors(payload, key)?);
+            }
+            push(&mut fields, "carries_bag", flag(payload, "carries_bag"));
+            push(
+                &mut fields,
                 "face_visible",
                 optional_number(payload, "face_visible")?.map(Value::Float),
             );
         }
         "vehicle" | "vehicle_other" | "car" | "truck" | "bus" | "bike" | "bicycle" => {
-            add("vehicle_colors", colors(payload, "colors")?);
+            push(&mut fields, "vehicle_colors", colors(payload, "colors")?);
         }
         "license_plate" => {
             for key in ["country_code", "state_code", "plate_number"] {
-                add(key, text(payload, key));
+                push(&mut fields, key, text(payload, key));
             }
         }
         _ => {}
@@ -278,12 +375,9 @@ fn text(payload: &Object, key: &str) -> Option<Value> {
     }
 }
 
-fn flag(payload: &Object, key: &str) -> Result<Option<Value>, String> {
-    match payload.get(key) {
-        None | Some(Json::Null) => Ok(None),
-        Some(Json::Bool(flag)) => Ok(Some(Value::Bool(*flag))),
-        Some(_) => Err(format!("{key} must be true or false")),
-    }
+/// A flag of any JSON value, true as [`truthy`] says; `None` when the key is absent.
+fn flag(payload: &Object, key: &str) -> Option<Value> {
+    payload.get(key).map(|value| Value::Bool(truthy(value)))
 }
 
 /// A list of `{name, score}` colors as `{name, rgb, score}`; `None` when there are none.
