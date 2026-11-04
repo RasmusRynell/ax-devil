@@ -22,9 +22,9 @@ use super::{
     status::STALL_CHECK,
 };
 
-/// How many units the gate holds: about the deadline's worth at 80 frames a second. A faster stream releases its oldest
+/// How many units the gate holds: about the deadline's worth at 66 frames a second. A faster stream releases its oldest
 /// unit early instead of waiting out the deadline.
-const GATE_BOUND: usize = 120;
+const GATE_BOUND: usize = 100;
 
 /// Reads one video connection until it is stopped.
 pub struct VideoTask {
@@ -160,7 +160,15 @@ impl VideoTask {
         };
         self.next_sequence += 1;
         let decided = self.decided();
-        for (id, unit) in self.gate.push(id, now, unit, settled(decided.as_deref())) {
+        let was_early = self.gate.released_early();
+        let released = self.gate.push(id, now, unit, settled(decided.as_deref()));
+        if !was_early && self.gate.released_early() {
+            tracing::warn!(
+                "Live playback buffer is releasing frames before their {} ms delay ({GATE_BOUND} frame capacity). High frame rates or bursts shorten overlay matching time; reduce the source frame rate. Reported once until synchronization resets.",
+                LIVE_DEADLINE.as_millis()
+            );
+        }
+        for (id, unit) in released {
             self.show(id, unit).await;
         }
     }
@@ -175,13 +183,9 @@ impl VideoTask {
         }
     }
 
-    /// What the overlay has decided, while a frame should wait for it: only an overlay that delivers is coming.
+    /// What the overlay has decided, while a frame should wait for it: a frame waits for any overlay the feed has.
     fn decided(&self) -> Option<Arc<TrackSnapshot>> {
-        self.shared
-            .track
-            .as_ref()
-            .filter(|_| self.shared.board.overlay_expected())
-            .map(|track| track.snapshot())
+        self.shared.track.as_ref().map(|track| track.snapshot())
     }
 
     /// Publishes the unit's place in time with the picture it decodes to, if any. Every unit is published, so the

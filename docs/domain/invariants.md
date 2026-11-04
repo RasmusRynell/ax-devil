@@ -164,7 +164,7 @@ implementing module closes.
 
 ## Synchronization
 
-- Live sync pairs data by capture time, not arrival time. While the overlay delivers, a live frame waits until its
+- Live sync pairs data by capture time, not arrival time. While the feed has an overlay, a live frame waits until its
   overlay is settled or a bounded wait ends (D28), and frames leave one per arriving frame; no future sample shows
   early. Sharing an RTSP connection does not pair frame and overlay arrivals; both keep their capture timestamps.
 - Every live queue is bounded with an overflow policy its owner defines, and every drop is counted in the timing

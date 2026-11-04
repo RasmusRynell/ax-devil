@@ -41,7 +41,7 @@ owner's written decision. A new feature gets a row in 01 first.
 | LV-01 | RTSP video with one overlay: embedded ONVIF metadata, MQTT or DataHub | M | in progress | `camera/tests/`, `live_sources` | |
 | LV-02 | Per-feed status: connected, reconnecting, error, stalled; Retry | M | in progress | `live_sources`, `LiveView.test.tsx` | |
 | LV-03 | Pause keeps the connection; stop is terminal | M | in progress | `live_sources`, `LiveView.test.tsx` | |
-| LV-04 | Capture-time synchronization of frames and overlays | M | in progress | `overlay-sync` | |
+| LV-04 | Capture-time synchronization of frames and overlays | M | in progress | `overlay-sync`, `live_sources` | |
 | LV-05 | Network scan with optional sign-in; add found camera | M | in progress | `camera/tests/scan.rs`, `LiveView.test.tsx` | |
 | LV-06 | Streams start only on explicit action | M | in progress | `live_sources`, `LiveView.test.tsx` | |
 | LV-07 | Live Events list keeps recording while hidden; no seekable history | M | in progress | `live/session.test.ts` | |

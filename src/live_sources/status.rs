@@ -250,17 +250,6 @@ impl Board {
             || matches!(wire.video, LiveFeedStatus::Stalled { .. })
             || wire.overlay.as_ref().is_some_and(failed)
     }
-
-    /// Whether a frame can still gain an overlay: the overlay delivers and its decoder keeps up, so its samples are
-    /// coming soon. With no overlay, before its first document, while it fails or reconnects, or while its decoder is
-    /// behind, nothing is worth waiting for and the video plays on.
-    pub fn overlay_expected(&self) -> bool {
-        let inner = self
-            .inner
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
-        !inner.behind && inner.overlay.as_ref().is_some_and(FeedState::delivers)
-    }
 }
 
 #[cfg(test)]
@@ -336,21 +325,18 @@ mod tests {
     }
 
     #[test]
-    fn embedded_metadata_stands_where_the_video_stands_and_a_frame_waits_only_for_a_connection_that_delivered()
+    fn embedded_metadata_stands_where_the_video_stands_and_the_status_says_waiting_only_until_the_connection_delivered()
      {
         let board = Board::new(OverlayLink::Embedded, at(0));
-        let expected = |waiting| {
-            assert_eq!(board.current().waiting, waiting);
-            board.overlay_expected()
-        };
-        assert!(!expected(false));
+        let waiting = |waiting| assert_eq!(board.current().waiting, waiting);
+        waiting(false);
         board.video_link(&Status::Live { epoch: 1 }, at(0));
         assert_eq!(board.current().overlay, Some(LiveFeedStatus::Live));
-        assert!(!expected(true));
+        waiting(true);
         board.overlay_data(1, at(0));
-        assert!(expected(false));
+        waiting(false);
         board.video_link(&reconnecting(ErrorKind::Silent), at(1));
-        assert!(!expected(false));
+        waiting(false);
         assert_eq!(
             board.current().overlay,
             Some(LiveFeedStatus::Reconnecting {
@@ -360,10 +346,10 @@ mod tests {
         );
         // The last connection's data does not count for the next; data that beats its own Live does.
         board.video_link(&Status::Live { epoch: 2 }, at(2));
-        assert!(!expected(true));
+        waiting(true);
         board.video_link(&reconnecting(ErrorKind::Lost), at(3));
         board.overlay_data(3, at(4));
         board.video_link(&Status::Live { epoch: 3 }, at(4));
-        assert!(expected(false));
+        waiting(false);
     }
 }

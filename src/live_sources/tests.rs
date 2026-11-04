@@ -10,6 +10,7 @@ use overlays::NONE_CELL;
 use tokio::{sync::mpsc, time::timeout};
 use workspace::{LiveOverlay, LiveVideoContent};
 
+mod gate;
 mod retry;
 
 use super::{
