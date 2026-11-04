@@ -63,8 +63,23 @@ export function treeOf({ rows, items }: WorkspaceState): TreeRow[] {
   return tree;
 }
 
-/** Text with case and compatibility forms folded away, so `Straße` equals `STRASSE` and `ς` equals `σ`. */
-const casefold = (text: string): string => text.normalize("NFKC").toUpperCase().toLowerCase();
+/**
+ * Text with case folded away as Python's `str.casefold` does for names: each code point alone (so `ς` equals `σ`
+ * whatever surrounds it), `ß` and `ẞ` as `ss`.
+ */
+const casefold = (text: string): string =>
+  Array.from(text, (c) => (c === "ß" || c === "ẞ" ? "ss" : c.toUpperCase().toLowerCase())).join("");
+
+/** Orders two texts by code point, which UTF-16 order does not for characters beyond the first 65,536. */
+function compareCodePoints(a: string, b: string): number {
+  const [x, y] = [
+    Array.from(a, (c) => c.codePointAt(0) ?? 0),
+    Array.from(b, (c) => c.codePointAt(0) ?? 0),
+  ];
+  for (let at = 0; at < Math.min(x.length, y.length); at++)
+    if (x[at] !== y[at]) return x[at] < y[at] ? -1 : 1;
+  return x.length - y.length;
+}
 
 /**
  * The keys of the rows `allowed` lets through that the search leaves in: all of them without a query, else those whose
@@ -166,10 +181,7 @@ export type Order = (typeof ORDERS)[number][0];
 /** How two top-level rows compare in each order; 0 keeps them in the saved order. */
 const COMPARE: Record<Order, (a: TreeRow, b: TreeRow) => number> = {
   workspace: () => 0,
-  name: (a, b) => {
-    const [x, y] = [casefold(a.info.label), casefold(b.info.label)];
-    return x < y ? -1 : x > y ? 1 : 0;
-  },
+  name: (a, b) => compareCodePoints(casefold(a.info.label), casefold(b.info.label)),
 };
 
 /**

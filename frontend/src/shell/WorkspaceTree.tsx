@@ -24,6 +24,13 @@ import { WorkspaceList } from "./WorkspaceList";
 
 const NOTHING_CHECKED: ReadonlySet<string> = new Set();
 const NO_FOLDS: ReadonlySet<string> = new Set();
+/** `now` with `key` added or removed. */
+function withKey<T>(now: ReadonlySet<T>, key: T, on: boolean): Set<T> {
+  const next = new Set(now);
+  if (on) next.add(key);
+  else next.delete(key);
+  return next;
+}
 const ORDER_IDS: ReadonlySet<string> = new Set(ORDERS.map(([id]) => id));
 const ORDER_ENTRIES: MenuEntry[] = ORDERS.map(([id, label]) => ({ kind: "check", id, label }));
 
@@ -54,6 +61,8 @@ export function WorkspaceTree({
   const [query, setQuery] = useState("");
   const [order, setOrder] = useState<Order>("workspace");
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set());
+  // What the user closed since the search text last changed; the search ignores the saved folds above.
+  const [closed, setClosed] = useState<ReadonlySet<string>>(NO_FOLDS);
   const [folded, setFolded] = useState<ReadonlySet<SectionId>>(new Set());
   const [current, setCurrent] = useState<string | null>(null);
   const [menu, setMenu] = useState<{ key: string; x: number; y: number } | null>(null);
@@ -73,7 +82,7 @@ export function WorkspaceTree({
     [statuses],
   );
   const searching = query.trim() !== "";
-  const folds = searching ? NO_FOLDS : collapsed;
+  const folds = searching ? closed : collapsed;
   const sections = useMemo(
     () =>
       sectionsOf(tree, live, listed, order).map((section) => {
@@ -82,10 +91,12 @@ export function WorkspaceTree({
           section,
           shown,
           out: filteredOut(section.rows, showHidden, query),
-          unfolded: !folded.has(section.id) || (searching && shown.length > 0),
+          unfolded: searching
+            ? shown.length > 0 && !closed.has(`section:${section.id}`)
+            : !folded.has(section.id),
         };
       }),
-    [tree, live, listed, order, folds, showHidden, query, folded, searching],
+    [tree, live, listed, order, folds, showHidden, query, folded, closed, searching],
   );
   const noMatches =
     searching && sections.length > 0 && sections.every(({ shown, out }) => !shown.length && !out);
@@ -150,24 +161,12 @@ export function WorkspaceTree({
       () => setProblem(null),
       fail,
     );
-  // While searching every row with a match inside stays expanded.
-  const setCollapsedState = (key: string, collapse: boolean) => {
-    if (searching) return;
-    setCollapsed((now) => {
-      const next = new Set(now);
-      if (collapse) next.add(key);
-      else next.delete(key);
-      return next;
-    });
-  };
-  // The search opens sections on its own account; the user's folds change only when it is off.
+  // The search opens every row and section with a match; folding meanwhile lasts until the search text changes.
+  const setCollapsedState = (key: string, collapse: boolean) =>
+    (searching ? setClosed : setCollapsed)((now) => withKey(now, key, collapse));
   const toggleFolded = (id: SectionId) => {
-    if (searching) return;
-    setFolded((now) => {
-      const next = new Set(now);
-      if (!next.delete(id)) next.add(id);
-      return next;
-    });
+    if (searching) setClosed((now) => withKey(now, `section:${id}`, !now.has(`section:${id}`)));
+    else setFolded((now) => withKey(now, id, !now.has(id)));
   };
   const toggleHidden = (row: TreeRow) => {
     if (!row.target) return;
@@ -212,7 +211,13 @@ export function WorkspaceTree({
       <div className="flex shrink-0 flex-wrap items-center gap-s">
         <SearchField
           placeholder={search}
-          query={{ value: query, onChange: setQuery }}
+          query={{
+            value: query,
+            onChange: (text) => {
+              setQuery(text);
+              setClosed(NO_FOLDS);
+            },
+          }}
           className="min-w-search-least flex-1"
         />
         <MenuButton
