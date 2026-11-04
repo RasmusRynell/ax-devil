@@ -3,7 +3,7 @@ import { cleanup, fireEvent, screen, within } from "@testing-library/react";
 import { DEFAULT_SETTINGS } from "../fakeSettings";
 import type { BasisWire } from "../generated/api";
 import { LANE_SETTINGS } from "./fakeOpened";
-import { READY, setup, tab } from "./laneMenuRig";
+import { box, READY, setup, tab } from "./laneMenuRig";
 
 afterEach(() => {
   cleanup();
@@ -56,7 +56,6 @@ describe("lane menu timing", () => {
   it("switches sticky on, and sets its timeout and opacity when the field is left", () => {
     const { onChange, state, show } = setup();
     tab("Timing");
-    expect(screen.queryByRole("spinbutton", { name: "Timeout (ms)" })).toBeNull();
     fireEvent.click(screen.getByRole("switch", { name: "Sticky" }));
     expect(onChange).toHaveBeenLastCalledWith({
       sticky: { ...state.settings.sticky, enabled: true },
@@ -68,13 +67,35 @@ describe("lane menu timing", () => {
     expect(onChange).toHaveBeenCalledTimes(1);
     fireEvent.blur(timeout);
     expect(onChange).toHaveBeenLastCalledWith({ sticky: { ...sticky, timeout_ms: 500 } });
-    fireEvent.change(timeout, { target: { value: "" } });
-    fireEvent.blur(timeout);
-    expect(onChange).toHaveBeenLastCalledWith({ sticky: { ...sticky, timeout_ms: null } });
-    const opacity = screen.getByRole("spinbutton", { name: "Opacity" });
+    const opacity = screen.getByRole("spinbutton", { name: "Reused overlay opacity" });
     fireEvent.change(opacity, { target: { value: "0.4" } });
     fireEvent.keyDown(opacity, { key: "Enter" });
     expect(onChange).toHaveBeenLastCalledWith({ sticky: { ...sticky, opacity: 0.4 } });
+  });
+
+  it("unchecking expiry keeps the timeout, disabled, and checking it again restores it", () => {
+    const sticky = { enabled: true, timeout_ms: 700, opacity: 1 };
+    const { onChange, state, show } = setup({ settings: { ...LANE_SETTINGS, sticky } });
+    tab("Timing");
+    const timeout = screen.getByRole("spinbutton", { name: "Timeout (ms)" }) as HTMLInputElement;
+    expect(timeout.step).toBe("1");
+    expect(
+      (screen.getByRole("spinbutton", { name: "Reused overlay opacity" }) as HTMLInputElement).step,
+    ).toBe("0.05");
+    fireEvent.click(box("Expire after (ms)"));
+    expect(onChange).toHaveBeenLastCalledWith({ sticky: { ...sticky, timeout_ms: null } });
+    show({ settings: { ...state.settings, sticky: { ...sticky, timeout_ms: null } } });
+    expect(timeout.disabled).toBe(true);
+    expect(timeout.value).toBe("700");
+    fireEvent.click(box("Expire after (ms)"));
+    expect(onChange).toHaveBeenLastCalledWith({ sticky });
+    show({ settings: { ...state.settings, sticky: { ...sticky, enabled: false } } });
+    expect(box("Expire after (ms)").disabled).toBe(true);
+    expect(timeout.disabled).toBe(true);
+    expect(
+      (screen.getByRole("spinbutton", { name: "Reused overlay opacity" }) as HTMLInputElement)
+        .disabled,
+    ).toBe(true);
   });
 
   it("saves the lane's sticky settings as the Personal default, and says so when they already are", () => {

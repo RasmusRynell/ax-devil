@@ -1,4 +1,5 @@
-import { Select } from "../kit/Fields";
+import { useState } from "react";
+import { Checkbox, Select } from "../kit/Fields";
 import type { AlignmentWire, BasisWire } from "../generated/api";
 import { Switch } from "../kit/Switch";
 import type { Cadence } from "./cadence";
@@ -18,6 +19,8 @@ import { Group, MakeDefault, NumberField } from "./LaneMenuFields";
 const MAX_MS = 100_000;
 /** How far back a previous sample may be when the user switches from exact and the lane has not said. */
 const DEFAULT_PREVIOUS_MS = 50;
+/** The timeout a lane gets when the user limits a retention that has never had one. */
+const DEFAULT_TIMEOUT_MS = 2050;
 
 type Sync = "exact" | "previous";
 
@@ -101,6 +104,10 @@ export function LaneMenuTiming({
   const { sticky } = settings;
   const { values } = useSettings();
   const saved = savedTiming(values);
+  // The timeout the user last had, kept while retention is unlimited so that limiting it again restores it.
+  const [kept, setKept] = useState<number | null>(null);
+  const timeout = sticky.timeout_ms ?? kept ?? DEFAULT_TIMEOUT_MS;
+  const limited = sticky.timeout_ms !== null;
   return (
     <>
       {ready && !live && <Alignment cadence={cadence} alignment={ready.alignment} />}
@@ -152,29 +159,37 @@ export function LaneMenuTiming({
           checked={sticky.enabled}
           onChange={(enabled) => onChange({ sticky: { ...sticky, enabled } })}
         />
-        {sticky.enabled && (
-          <>
-            <NumberField
-              label="Timeout (ms)"
-              value={sticky.timeout_ms}
-              min={0}
-              max={MAX_MS}
-              step={100}
-              placeholder="Unlimited"
-              onCommit={(timeout_ms) => onChange({ sticky: { ...sticky, timeout_ms } })}
-            />
-            <NumberField
-              label="Opacity"
-              value={sticky.opacity}
-              min={0}
-              max={1}
-              step={0.1}
-              onCommit={(opacity) =>
-                opacity !== null && onChange({ sticky: { ...sticky, opacity } })
-              }
-            />
-          </>
-        )}
+        <div className="flex items-center justify-between gap-xl">
+          <Checkbox
+            leading
+            label="Expire after (ms)"
+            disabled={!sticky.enabled}
+            checked={limited}
+            onChange={(expires) => {
+              if (!expires) setKept(sticky.timeout_ms);
+              onChange({ sticky: { ...sticky, timeout_ms: expires ? timeout : null } });
+            }}
+          />
+          <NumberField
+            hideLabel
+            label="Timeout (ms)"
+            value={timeout}
+            min={0}
+            max={MAX_MS}
+            step={1}
+            disabled={!sticky.enabled || !limited}
+            onCommit={(timeout_ms) => onChange({ sticky: { ...sticky, timeout_ms } })}
+          />
+        </div>
+        <NumberField
+          label="Reused overlay opacity"
+          value={sticky.opacity}
+          min={0}
+          max={1}
+          step={0.05}
+          disabled={!sticky.enabled}
+          onCommit={(opacity) => opacity !== null && onChange({ sticky: { ...sticky, opacity } })}
+        />
         <MakeDefault
           setting={DEFAULT_STICKY}
           value={sticky}
