@@ -49,6 +49,7 @@ fn lookup(name: &str) -> Option<String> {
         "MODE" => Some("secret-mode".to_owned()),
         "PORT" => Some(" 8554 ".to_owned()),
         "LOW" => Some("0".to_owned()),
+        "PORT2" => Some("9000".to_owned()),
         "WORD" => Some("rtsp".to_owned()),
         "DIR" => Some("/data/cache".to_owned()),
         "REL" => Some("cache".to_owned()),
@@ -133,6 +134,25 @@ fn a_number_may_be_a_reference_that_resolves_to_a_whole_number_in_range() {
             .resolved("net.port"),
         Some(json!(8554))
     );
+
+    let state = settings
+        .update("net.port", |_| Some(json!("$PORT2")))
+        .unwrap();
+    assert_eq!(
+        state.stored("net.port"),
+        Some(&json!(9000)),
+        "an update refreshes it"
+    );
+    let state = settings.replace(&Scope::ALL, &port(json!(7000))).unwrap();
+    assert_eq!(
+        state.stored("net.port"),
+        Some(&json!(7000)),
+        "a literal replaces it"
+    );
+    let state = settings
+        .replace(&Scope::ALL, &port(json!("$PORT")))
+        .unwrap();
+    assert_eq!(state.stored("net.port"), Some(&json!(8554)));
 
     for rejected in [
         json!("$LOW"),

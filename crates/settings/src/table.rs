@@ -267,6 +267,8 @@ pub const TABLE: &[Setting] = &[
     },
     Setting {
         key: "camera.head",
+        // No `$NAME` reference yet: frontend/src/shell/liveForm.ts:116 prefills the Add Live Stream form with the
+        // raw value, which problemOf (liveForm.ts:212) refuses unless it is digits.
         kind: Kind::Whole {
             min: 1,
             max: 255,
@@ -277,7 +279,7 @@ pub const TABLE: &[Setting] = &[
         page: None,
         section: "",
         live: true,
-        env: true,
+        env: false,
         secret: false,
         quick_setup: false,
         scope: Scope::Server,
@@ -432,6 +434,8 @@ pub const TABLE: &[Setting] = &[
     },
     Setting {
         key: "broker.port",
+        // No `$NAME` reference yet: frontend/src/shell/liveForm.ts:125 prefills the Add Live Stream form with the
+        // raw value, which problemOf (liveForm.ts:212) refuses unless it is digits.
         kind: Kind::Whole {
             min: 1,
             max: 65535,
@@ -442,7 +446,7 @@ pub const TABLE: &[Setting] = &[
         page: None,
         section: "",
         live: true,
-        env: true,
+        env: false,
         secret: false,
         quick_setup: false,
         scope: Scope::Server,
@@ -494,6 +498,8 @@ pub const TABLE: &[Setting] = &[
     },
     Setting {
         key: "datahub.channel",
+        // No `$NAME` reference yet: frontend/src/shell/liveForm.ts:128 prefills the Add Live Stream form with the
+        // raw value, which problemOf (liveForm.ts:212) refuses unless it is digits.
         kind: Kind::Whole {
             min: 1,
             max: 4_294_967_295,
@@ -504,7 +510,7 @@ pub const TABLE: &[Setting] = &[
         page: None,
         section: "",
         live: true,
-        env: true,
+        env: false,
         secret: false,
         quick_setup: false,
         scope: Scope::Server,

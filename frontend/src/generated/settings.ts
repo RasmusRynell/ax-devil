@@ -279,7 +279,7 @@ export const SETTINGS = [
     "page": null,
     "section": "",
     "live": true,
-    "env": true,
+    "env": false,
     "secret": false,
     "quick_setup": false,
     "scope": "server"
@@ -468,7 +468,7 @@ export const SETTINGS = [
     "page": null,
     "section": "",
     "live": true,
-    "env": true,
+    "env": false,
     "secret": false,
     "quick_setup": false,
     "scope": "server"
@@ -534,7 +534,7 @@ export const SETTINGS = [
     "page": null,
     "section": "",
     "live": true,
-    "env": true,
+    "env": false,
     "secret": false,
     "quick_setup": false,
     "scope": "server"
