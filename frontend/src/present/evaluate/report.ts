@@ -1,6 +1,9 @@
 /** What an evaluation left out, for the lane's warnings. Nothing here is ever thrown. */
 export class EvalReport {
-  /** Per mark (`MarkSpec.index`): rows skipped because a field the mark needs was null or its lengths did not work. */
+  /**
+   * Per mark (`MarkSpec.index`): rows left out because a field the mark needs was null or its lengths did not work.
+   * A row is counted once, against its first failing mark.
+   */
   skipped = new Uint32Array(0);
   /** Attribute columns the sample has in another kind than the catalog reads them in, read as null. */
   mismatched = 0;

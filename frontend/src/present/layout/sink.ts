@@ -117,3 +117,17 @@ export interface LayoutView {
    */
   visible?: Region | null;
 }
+
+/** A sink that takes nothing: culled marks run their checks against it so a row fails the same wherever it is. */
+export const DISCARD: PrimitiveSink = {
+  begin() {},
+  endLayer() {},
+  box() {},
+  circle() {},
+  line() {},
+  polygon() {},
+  text() {},
+  label() {},
+  rect() {},
+  glyphs() {},
+};

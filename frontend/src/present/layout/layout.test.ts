@@ -94,6 +94,57 @@ describe("placement lists", () => {
   });
 });
 
+describe("row failures", () => {
+  it("leaves out the earlier layers' marks of a row whose label size is unusable, and only that row", () => {
+    // The label's size follows the score, so a score of 0 fails layout after the box of layer 0 was drawn.
+    const catalog = compile([
+      { marks: [{ mark: "box", stroke: "#ffffff", width: "1px" }] },
+      {
+        marks: [
+          {
+            mark: "label",
+            size: "score * 20px",
+            runs: [{ text: "id", color: "#ffffff" }],
+            place: [{ at: "top-left", anchor: "bottom-left" }],
+          },
+        ],
+      },
+    ]);
+    const sample = fullSample([
+      { id: "a", score: 0, box: [0.1, 0.2, 0.3, 0.4] },
+      { id: "b", score: 0.5, box: [0.5, 0.2, 0.7, 0.4] },
+    ]);
+    const { rows, report } = renderSample(catalog, sample, 0);
+    expect(rows.boxes.map((box) => box.x)).toEqual([0.5]);
+    expect(rows.labels).toHaveLength(1);
+    expect(Array.from(report.skipped)).toEqual([0, 1]);
+  });
+
+  it("fails a row the same whether or not its failing mark is inside the visible window", () => {
+    // The label sits in the middle and has no size; only the box reaches the window on the left.
+    const catalog = compile([
+      { marks: [{ mark: "box", stroke: "#ffffff", width: "1px" }] },
+      {
+        marks: [
+          {
+            mark: "label",
+            on: "inset(box, 0.4)",
+            size: "0px",
+            runs: [{ text: "id", color: "#ffffff" }],
+            place: [{ at: "top-left", anchor: "bottom-left" }],
+          },
+        ],
+      },
+    ]);
+    const sample = fullSample([{ id: "a", box: [0.1, 0.1, 0.9, 0.9] }]);
+    const visible = { left: 0, top: 0, right: 384, bottom: 720 };
+    expect(renderSample(catalog, sample, 0).rows.boxes).toHaveLength(0);
+    expect(renderSample(catalog, sample, 0, { ...ORACLE_VIEW, visible }).rows.boxes).toHaveLength(
+      0,
+    );
+  });
+});
+
 describe("units", () => {
   const catalog = compile([
     { marks: [{ mark: "box", stroke: "#ffffff", width: "4px", outset: "box.min * 0.1" }] },

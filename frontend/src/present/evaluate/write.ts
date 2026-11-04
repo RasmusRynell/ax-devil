@@ -1,7 +1,6 @@
 import type { SampleView } from "../columns";
 import { Flag, MarkBuffer, RELATION_BIT, Rec } from "../marks/buffer";
 import { Kind, Len, type MarkPlan } from "../marks/plan";
-import type { EvalReport } from "./report";
 
 /** A bar value clamped to 0..1 and rounded to hundredths with ties to even, as the reference's `{:.2}` did. */
 export function hundredths(value: number): number {
@@ -20,37 +19,39 @@ type Made = (typeof Made)[keyof typeof Made];
 export class MarkWriter {
   private cols!: SampleView;
   private out!: MarkBuffer;
-  private report!: EvalReport;
 
   /** Point at the sample and the buffer for the marks that follow. */
-  start(cols: SampleView, out: MarkBuffer, report: EvalReport): void {
+  start(cols: SampleView, out: MarkBuffer): void {
     this.cols = cols;
     this.out = out;
-    this.report = report;
   }
 
-  /** Evaluate `plan` for a row (an entity row, or a relation index when `relation`) and append its record. */
-  write(plan: MarkPlan, row: number, relation: boolean): void {
-    if (plan.never || (plan.when !== null && plan.when.fn(row) !== 1)) return;
+  /**
+   * Evaluate `plan` for a row (an entity row, or a relation index when `relation`) and append its record. False when
+   * the row failed a check and nothing was written; true when a record was written or the mark legitimately has
+   * nothing to show.
+   */
+  write(plan: MarkPlan, row: number, relation: boolean): boolean {
+    if (plan.never || (plan.when !== null && plan.when.fn(row) !== 1)) return true;
     const { cols, out } = this;
     const kind = plan.kind;
     const polygonFirst = kind === Kind.Polygon ? cols.polyIndex[2 * row] : 0;
     const polygonCount = kind === Kind.Polygon ? cols.polyIndex[2 * row + 1] : 0;
-    if (kind === Kind.Polygon && polygonCount === 0) return;
+    if (kind === Kind.Polygon && polygonCount === 0) return true;
     let vx = 0;
     let vy = 0;
     if (kind === Kind.Arrow) {
       vx = plan.vx ? plan.vx.fn(row) : cols.velocity[2 * row];
       vy = plan.vy ? plan.vy.fn(row) : cols.velocity[2 * row + 1];
       // No velocity, no arrow: that is not a fault.
-      if (!(vx === vx && vy === vy)) return;
+      if (!(vx === vx && vy === vy)) return true;
     }
     let mask = 0;
     for (let i = 0; i < plan.place.length; i++) {
       const when = plan.place[i].when;
       if (when === null || when.fn(row) === 1) mask |= 1 << i;
     }
-    if (plan.place.length > 0 && mask === 0) return;
+    if (plan.place.length > 0 && mask === 0) return true;
 
     const base = out.reserveRecord();
     const cpsMark = out.cps.length;
@@ -60,7 +61,7 @@ export class MarkWriter {
     const f32 = out.f32;
     words[base + Rec.Spec] = plan.index;
     words[base + Rec.Row] = relation ? (row | RELATION_BIT) >>> 0 : row;
-    if (!this.geometry(plan, row, base)) return this.skip(plan, cpsMark, runMark, numsMark);
+    if (!this.geometry(plan, row, base)) return this.skip(cpsMark, runMark, numsMark);
 
     let flags = mask << 8;
     if (plan.stroke) {
@@ -116,8 +117,9 @@ export class MarkWriter {
         break;
     }
     if (!ok || !this.lengths(plan, row, base, numsMark))
-      return this.skip(plan, cpsMark, runMark, numsMark);
+      return this.skip(cpsMark, runMark, numsMark);
     out.count++;
+    return true;
   }
 
   /** The reference rect (or a line's ends) into words 2 to 5; false when a part is null. */
@@ -218,15 +220,18 @@ export class MarkWriter {
     return true;
   }
 
-  private skip(plan: MarkPlan, cps: number, runs: number, nums: number): void {
-    this.report.skipped[plan.index]++;
+  /** Give back what the mark wrote beyond its record: the row failed, so `write` returns false. */
+  private skip(cps: number, runs: number, nums: number): false {
     this.drop(cps, runs, nums);
+    return false;
   }
 
-  private drop(cps: number, runs: number, nums: number): void {
+  /** Give back what the mark wrote beyond its record: it has nothing to show, which is not a fault. */
+  private drop(cps: number, runs: number, nums: number): true {
     const out = this.out;
     out.cps.length = cps;
     out.runCount = runs;
     out.numsLength = nums;
+    return true;
   }
 }

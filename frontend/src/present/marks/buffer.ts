@@ -35,6 +35,59 @@ export const RELATION_BIT = 0x8000_0000;
 export const RUN_WORDS = 4;
 
 /**
+ * The rows that failed a check, keyed by a record's `Rec.Row` word, so everything such a row has is left out. Entity
+ * rows and relations are separate rows. Clearing costs the faults, not the rows.
+ */
+export class RowFaults {
+  private readonly flags = [new Uint8Array(256), new Uint8Array(256)];
+  private touched = new Uint32Array(64);
+  private touchedCount = 0;
+
+  /** Whether any row failed since the last `clear`. */
+  get any(): boolean {
+    return this.touchedCount > 0;
+  }
+
+  /** Forget every fault, keeping the memory. */
+  clear(): void {
+    for (let i = 0; i < this.touchedCount; i++) {
+      const word = this.touched[i];
+      this.flags[word >>> 31][word & ~RELATION_BIT] = 0;
+    }
+    this.touchedCount = 0;
+  }
+
+  /** Whether the row of `word` has failed. */
+  failed(word: number): boolean {
+    if (this.touchedCount === 0) return false;
+    const flags = this.flags[word >>> 31];
+    const index = word & ~RELATION_BIT;
+    return index < flags.length && flags[index] !== 0;
+  }
+
+  /** Mark the row of `word` as failed; true when it was not already. */
+  fail(word: number): boolean {
+    const which = word >>> 31;
+    const index = word & ~RELATION_BIT;
+    let flags = this.flags[which];
+    if (index >= flags.length) {
+      const grown = new Uint8Array(Math.max(flags.length * 2, index + 1));
+      grown.set(flags);
+      flags = this.flags[which] = grown;
+    }
+    if (flags[index] !== 0) return false;
+    flags[index] = 1;
+    if (this.touchedCount === this.touched.length) {
+      const grown = new Uint32Array(this.touched.length * 2);
+      grown.set(this.touched);
+      this.touched = grown;
+    }
+    this.touched[this.touchedCount++] = word >>> 0;
+    return true;
+  }
+}
+
+/**
  * The marks of one lane's sample, evaluated and not yet laid out: records of `WORDS` words plus side arrays, all
  * growing by doubling and reused from frame to frame. Reserve before writing, then read the arrays again: a reserve
  * may replace them.
@@ -102,6 +155,26 @@ export class MarkBuffer {
     this.runs[at + 2] = rgba;
     this.runs[at + 3] = weight;
     this.runBars[this.runCount++] = bar;
+  }
+
+  /**
+   * Leave out every record of a row in `faults`, keeping the order of the rest and the layer boundaries. The runs,
+   * code points and numbers of the records left out stay behind unused: records address them by offset.
+   */
+  compact(faults: RowFaults): void {
+    const words = this.words;
+    let kept = 0;
+    let at = 0;
+    for (let layer = 0; layer < this.layerCount; layer++) {
+      const end = this.layerEnd[layer];
+      for (; at < end; at++) {
+        if (faults.failed(words[at * WORDS + Rec.Row])) continue;
+        if (kept !== at) words.copyWithin(kept * WORDS, at * WORDS, (at + 1) * WORDS);
+        kept++;
+      }
+      this.layerEnd[layer] = kept;
+    }
+    this.count = kept;
   }
 
   /** Close layer `index`: the records so far belong to it or to earlier layers. */

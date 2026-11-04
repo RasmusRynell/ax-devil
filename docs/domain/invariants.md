@@ -223,8 +223,9 @@ implementing module closes.
   selection (an entity id, shown in every lane of its source, kept across seeks) are client view state, never sent.
 - Overlay draw order is the catalog's layer order; inside a layer, rows in sample order, each row's marks in listed
   order.
-- A mark whose evaluation fails at runtime (a null required field, a non-finite result, an invalid length
-  combination) is skipped and counted; other marks and rows are unaffected, and evaluation never throws.
+- A mark whose evaluation or layout fails at runtime (a null required field, a non-finite result, an invalid length
+  combination) leaves out every mark its entity row or relation has in every shown layer; the row is counted once,
+  against the first failing mark. Other rows are unaffected, and evaluation never throws.
 - Built-in catalogs are read in place and never copied into the store, written or deleted.
   Every JSON file in the user catalog folder is a user catalog, and startup and listing never overwrite one. The app
   writes only an explicit copy, validated before it atomically replaces its destination. A copy of a built-in catalog
