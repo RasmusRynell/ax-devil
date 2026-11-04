@@ -3,7 +3,6 @@ import { act, useState } from "react";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import type { InspectionView, Summary } from "./contract";
 import { LANE_SETTINGS } from "./fakeOpened";
-import { ICONS } from "../kit/icons";
 import { FRESH_MEMORY } from "./fields";
 import { FileScope } from "./fileScope";
 import { Inspector, type Reach } from "./Inspector";
@@ -200,78 +199,86 @@ describe("inspector", () => {
     expect(writeText).toHaveBeenLastCalledWith("0.4");
   });
 
-  describe("copy check", () => {
+  describe("copy confirmation", () => {
     const FEEDBACK = ready([
       { group: "classification", path: ["class"], value: "car" },
+      { group: "classification", path: ["kind"], value: "car" },
       { group: "motion", path: ["speed"], value: 0.5 },
     ]);
+    const without = (path: string) => ({
+      ...FEEDBACK,
+      fields: FEEDBACK.fields.filter((field) => field.path[0] !== path),
+    });
+    const other = { ...FEEDBACK, selection: { ...SELECTION, entity: "8" } };
     const clipboard = (writeText: () => Promise<void>) =>
       vi.stubGlobal("navigator", { clipboard: { writeText } });
     const copy = (name: string) =>
       act(async () => {
-        fireEvent.click(screen.getByRole("button", { name }));
+        fireEvent.click(screen.getByRole("button", { name: new RegExp(`^Cop(y|ied) ${name}$`) }));
       });
-    /** The rows whose copy button shows the check. */
-    const checked = () =>
-      ["Copy class", "Copy speed"].filter((name) =>
-        screen
-          .getByRole("button", { name })
-          .querySelector("span")
-          ?.getAttribute("style")
-          ?.includes(ICONS.check),
-      );
+    /** The rows that say they were copied. */
+    const copied = () =>
+      screen.queryAllByRole("button", { name: /^Copied / }).map((button) => button.ariaLabel);
 
     afterEach(() => vi.useRealTimers());
 
-    it("marks the last copied row for 1500 ms, restarting for each copy and moving to another row", async () => {
+    it("confirms the last copied row for 1500 ms, restarting for each copy and moving to another row", async () => {
       vi.useFakeTimers();
       clipboard(async () => {});
       show(FEEDBACK);
-      await copy("Copy class");
-      expect(checked()).toEqual(["Copy class"]);
+      await copy("class");
+      expect(copied()).toEqual(["Copied class"]);
       act(() => {
         vi.advanceTimersByTime(1000);
       });
-      await copy("Copy class");
+      await copy("class");
       act(() => {
         vi.advanceTimersByTime(1000);
       });
-      expect(checked()).toEqual(["Copy class"]);
-      await copy("Copy speed");
-      expect(checked()).toEqual(["Copy speed"]);
+      expect(copied()).toEqual(["Copied class"]);
+      await copy("speed");
+      expect(copied()).toEqual(["Copied speed"]);
       act(() => {
         vi.advanceTimersByTime(1499);
       });
-      expect(checked()).toEqual(["Copy speed"]);
+      expect(copied()).toEqual(["Copied speed"]);
       act(() => {
         vi.advanceTimersByTime(1);
       });
-      expect(checked()).toEqual([]);
+      expect(copied()).toEqual([]);
     });
 
-    it("marks nothing when the clipboard is missing or refuses, or when a newer copy has come since", async () => {
+    it("confirms nothing when the clipboard is missing or refuses, or the answer is out of date", async () => {
       vi.stubGlobal("navigator", {});
-      show(FEEDBACK);
-      await copy("Copy class");
-      expect(checked()).toEqual([]);
+      const view = show(FEEDBACK);
+      await copy("class");
+      expect(copied()).toEqual([]);
       clipboard(async () => {
         throw new Error("denied");
       });
-      await copy("Copy class");
-      expect(checked()).toEqual([]);
-      let slow = () => {};
+      await copy("class");
+      expect(copied()).toEqual([]);
+      const slow: (() => void)[] = [];
       const writeText = vi
         .fn<(text: string) => Promise<void>>()
-        .mockImplementationOnce(() => new Promise<void>((done) => (slow = done)))
-        .mockResolvedValue();
+        .mockImplementationOnce(() => new Promise<void>((done) => slow.push(done)))
+        .mockResolvedValueOnce()
+        .mockImplementationOnce(() => new Promise<void>((done) => slow.push(done)));
       vi.stubGlobal("navigator", { clipboard: { writeText } });
-      await copy("Copy class");
-      await copy("Copy speed");
-      await act(async () => slow());
-      expect(checked()).toEqual(["Copy speed"]);
+      await copy("class");
+      await copy("speed");
+      await act(async () => slow[0]!());
+      expect(copied()).toEqual(["Copied speed"]);
+      view.next(other);
+      expect(copied()).toEqual([]);
+      view.next(FEEDBACK);
+      await copy("class");
+      view.next(other);
+      await act(async () => slow[1]!());
+      expect(copied()).toEqual([]);
     });
 
-    it("ends the mark when the copied value changes, and Ctrl+C copies the row holding focus", async () => {
+    it("ends the confirmation when the copied value or field goes, and Ctrl+C copies the row holding focus", async () => {
       const writeText = vi.fn(async () => {});
       vi.stubGlobal("navigator", { clipboard: { writeText } });
       const view = show(FEEDBACK);
@@ -281,14 +288,15 @@ describe("inspector", () => {
         fireEvent.keyDown(button, { key: "c", ctrlKey: true });
       });
       expect(writeText).toHaveBeenLastCalledWith("0.5");
-      expect(checked()).toEqual(["Copy speed"]);
-      view.next(
-        ready([
-          { group: "classification", path: ["class"], value: "car" },
-          { group: "motion", path: ["speed"], value: 0.75 },
-        ]),
-      );
-      expect(checked()).toEqual([]);
+      expect(copied()).toEqual(["Copied speed"]);
+      view.next({
+        ...FEEDBACK,
+        fields: [...without("speed").fields, { group: "motion", path: ["speed"], value: 0.75 }],
+      });
+      expect(copied()).toEqual([]);
+      await copy("class");
+      view.next(without("class"));
+      expect(copied()).toEqual([]);
     });
   });
 

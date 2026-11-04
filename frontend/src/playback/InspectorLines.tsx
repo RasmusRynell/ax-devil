@@ -31,7 +31,7 @@ import { useCopied, type Copied } from "./useCopied";
 
 const ROW = '[role="listitem"]';
 const ROW_HEIGHT = "var(--spacing-row)";
-/** Names the Raw caption's copy button in the one "last copied" mark; a row's index is never this. */
+/** Names the Raw caption's copy button in the one "last copied" mark; no field's id is this. */
 const RAW_COPIED = "raw";
 /** Hidden until the row is pointed at or holds focus; a pinned row keeps its pin showing. */
 const ON_ROW = "opacity-0 group-hover/row:opacity-100 group-focus-within/row:opacity-100";
@@ -118,7 +118,7 @@ const FieldLine = memo(function FieldLine({
       data-field={field}
       data-index={index}
       tabIndex={-1}
-      className="group/row grid h-row outline-none grid-cols-[auto_minmax(0,var(--label))_minmax(0,1fr)_auto] items-center gap-s px-s hover:bg-hover"
+      className="group/row focus-ring-inset grid h-row grid-cols-[auto_minmax(0,var(--label))_minmax(0,1fr)_auto] items-center gap-s px-s hover:bg-hover"
     >
       {pinnable ? (
         <IconButton
@@ -161,7 +161,7 @@ const FieldLine = memo(function FieldLine({
           </span>
           <IconButton
             icon={copied ? "check" : "copy"}
-            label={`Copy ${label}`}
+            label={`${copied ? "Copied" : "Copy"} ${label}`}
             data-act="copy"
             className={copied ? "" : ON_ROW}
           />
@@ -196,7 +196,7 @@ const CaptionLine = memo(function CaptionLine({
       role="listitem"
       data-group={group ?? undefined}
       tabIndex={-1}
-      className="group/row flex items-center outline-none"
+      className="group/row focus-ring-inset flex items-center"
     >
       {group ? (
         <div className="min-w-0 flex-1">
@@ -212,7 +212,7 @@ const CaptionLine = memo(function CaptionLine({
       {copyable && (
         <IconButton
           icon={copied ? "check" : "copy"}
-          label={`Copy ${heading}`}
+          label={`${copied ? "Copied" : "Copy"} ${heading}`}
           data-act="copy"
           className={copied ? "" : ON_ROW}
         />
@@ -221,6 +221,27 @@ const CaptionLine = memo(function CaptionLine({
   );
 });
 
+/**
+ * What tells each field row of the pinned rows then the list's from the others, for the copy mark: its section, group
+ * and path, and which of the rows sharing them it is. It follows the field when rows come and go, unlike a position.
+ */
+function rowIds(pinned: readonly Line[], lines: readonly Line[]): string[] {
+  const ids: string[] = [];
+  for (const [section, part] of [pinned, lines].entries()) {
+    const seen = new Map<string, number>();
+    for (const line of part) {
+      if (line.kind !== "field") {
+        ids.push("");
+        continue;
+      }
+      const n = seen.get(line.key) ?? 0;
+      seen.set(line.key, n + 1);
+      ids.push(`${section}:${line.key}#${n}`);
+    }
+  }
+  return ids;
+}
+
 /** The rows of `lines` as elements; `pins` says which fields show as pinned. */
 function rows(
   fields: readonly FieldWire[],
@@ -228,6 +249,7 @@ function rows(
   first: number,
   pins: ReadonlySet<string>,
   copied: Copied,
+  ids: readonly string[],
   onFold: (group: FieldGroupWire) => void,
   keyOf: (line: Line, index: number) => string | number,
 ) {
@@ -272,7 +294,7 @@ function rows(
         elide={found ? line.elide : undefined}
         pinnable={line.id !== null}
         pinned={pins.has(line.key)}
-        copied={found && copied.is(String(first + i), full)}
+        copied={found && copied.is(ids[first + i] ?? "", full)}
         missing={!found}
       />
     );
@@ -287,12 +309,15 @@ function rows(
 export function InspectorLines({
   fields,
   entity,
+  scope,
   memory,
   onMemory,
 }: {
   fields: readonly FieldWire[];
   /** The object's id, which leads the list. */
   entity: string;
+  /** What the object is, lane and all; a copy mark does not outlast it. */
+  scope: string;
   memory: InspectorMemory;
   onMemory: (memory: InspectorMemory) => void;
 }) {
@@ -314,7 +339,8 @@ export function InspectorLines({
   const [menuKey, setMenuKey] = useState<string | null>(null);
   const { ref, start, end, update } = useRowWindow(lines.length, ROW);
 
-  const copied = useCopied();
+  const copied = useCopied(scope);
+  const ids = useMemo(() => rowIds(pinned, lines), [pinned, lines]);
   const pin = (key: string) => {
     const line = byKey.get(key);
     if (line?.id) onMemory({ ...memory, pins: togglePin(pins, line.id) });
@@ -333,7 +359,7 @@ export function InspectorLines({
   const copyRow = (row: HTMLElement): boolean => {
     const { index, group } = row.dataset;
     const line = index === undefined ? undefined : all[Number(index)];
-    if (line?.kind === "field") copied.copy(index as string, copyValue(line));
+    if (line?.kind === "field") copied.copy(ids[Number(index)] ?? "", copyValue(line));
     else if (group === "raw") copied.copy(RAW_COPIED, rawJson(fields));
     else return false;
     return true;
@@ -388,7 +414,7 @@ export function InspectorLines({
                   role="list"
                   className="max-h-[calc(var(--spacing-row)*6)] overflow-y-auto [scrollbar-gutter:stable]"
                 >
-                  {rows(fields, pinned, 0, pinnedKeys, copied, onFold, (line) =>
+                  {rows(fields, pinned, 0, pinnedKeys, copied, ids, onFold, (line) =>
                     line.kind === "field" || line.kind === "unavailable" ? line.key : "",
                   )}
                 </div>
@@ -414,6 +440,7 @@ export function InspectorLines({
                 pinned.length + start,
                 pinnedKeys,
                 copied,
+                ids,
                 onFold,
                 (_, i) => start + i,
               )}

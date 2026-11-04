@@ -167,6 +167,7 @@ export function Inspector({
           <InspectorLines
             fields={fields}
             entity={inspection.selection.entity}
+            scope={`${inspection.selection.lane}:${inspection.selection.source}:${inspection.selection.entity}`}
             memory={memory}
             onMemory={onMemory}
           />
