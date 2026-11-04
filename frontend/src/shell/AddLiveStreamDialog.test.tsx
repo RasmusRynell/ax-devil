@@ -24,14 +24,18 @@ const HANDLERS = {
 let listings: string[] = [];
 /** The connection of each question put to the camera. */
 let asked: { like?: string }[] = [];
+/** While set, the camera's lists wait for it, as a slow camera would. */
+let gate: Promise<void> | null = null;
 
 beforeEach(() => {
   listings = [];
   asked = [];
+  gate = null;
   vi.stubGlobal("WebSocket", FakeSocket);
   vi.stubGlobal("fetch", async (url: string, init?: RequestInit) => {
     if (url === "/api/live/sources") listings.push(JSON.parse(init?.body as string).overlay);
     if (url.startsWith("/api/live/")) asked.push(JSON.parse(init?.body as string).connection);
+    if (url === "/api/live/sources") await gate;
     const json =
       url === "/api/handlers"
         ? HANDLERS
@@ -216,6 +220,30 @@ describe("add live stream dialog", () => {
     expect(screen.queryByRole("option", { name: "com.axis.scene.frame.v1" })).toBeNull();
     expect(screen.getByRole("alert").textContent).toBe(
       "Topic is required for WebSocket overlay mode.",
+    );
+  });
+
+  it("forgets the camera's lists when the connection changes, even back to an earlier one, and ignores a late answer", async () => {
+    let release = () => {};
+    gate = new Promise((resolve) => (release = resolve));
+    await open();
+    await waitFor(() => expect(listings).toEqual(["datahub"]));
+    type("Host", "10.0.0.8");
+    type("Host", "");
+    release();
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    // The first answer was for a connection the form has left, and coming back does not ask again by itself.
+    expect(screen.getByRole("option", { name: "Refresh to load DataHub topics" })).toBeTruthy();
+    expect(listings).toEqual(["datahub"]);
+    expect(ok().disabled).toBe(true);
+
+    refresh("DataHub Topic");
+    await listed();
+    // Refreshing under the same connection keeps the topic.
+    refresh("DataHub Topic");
+    await screen.findByRole("option", { name: "Select DataHub topics" });
+    expect((screen.getByLabelText("DataHub Topic") as HTMLSelectElement).value).toBe(
+      "com.axis.scene.frame.v1",
     );
   });
 
