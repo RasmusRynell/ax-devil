@@ -98,18 +98,18 @@ Listed in [parity deviations](parity-deviations.md).
 | PL-01 | Decoder plugins (file, payload) and playlist resolver plugins | M | in progress | `crates/plugins/tests/`, `tests/plugins.rs` | Plugins with decoder and playlist resolver handlers ([plugins](plugins.md), D29). Left: payload and live decoders (M7) |
 | PL-02 | Built-in decoders and resolvers listed by `list-handlers` and `playlist --help` | M | in progress | `src/cli/tests.rs`, `src/routes/handlers.rs`, `crates/handlers` tests, `crates/scene-decoders/tests/adf_*.rs` | MOT, UVG-VCM, ONVIF XML, CVAT, ADF beta/v1 (frame and consolidated) and plugin decoders; both resolvers. CLI help is generated, untested |
 | PL-03 | Install, update, remove, list from CLI and Plugins view | M | done | `tests/plugins.rs`, `src/cli/tests.rs`, `src/routes/plugins.rs`, `frontend/src/plugins/PluginsView.test.tsx` | `plugins install/update/remove/list/check` from the CLI; the Plugins view lists, installs a folder, updates (reads the manifest again) and removes; applied to the running app. An edited manifest is also picked up by itself |
-| PL-04 | Load failures never stop the app and are listed | M | done | `tests/plugins.rs`, `frontend/src/plugins/PluginsView.test.tsx` | `plugins list` and the Plugins view show load failures with their reason; a failed run leaves its lane Incomplete |
+| PL-04 | Load failures never stop the app and are listed | M | done | `tests/plugins.rs`, `PluginsView.test.tsx` | `plugins list` and the Plugins view show load failures and why; a failed run marks its lane Incomplete |
 | PL-05 | Unchanged third-party Python plugins run (bridge); not planned by default | S | todo |  |  |
 
 ## Settings and application
 
 | ID | Feature | P | Status | Test | Notes |
 |----|---------|---|--------|------|-------|
-| ST-01 | Settings dialog pages; restart marker | M | in progress | `frontend/src/shell/SettingsDialog.test.tsx`, `Shell.test.tsx` | Generated from the settings table (pages, sections, restart marker, Browse fields); page-less rows stay out. Left: the other settings (M4/M5) |
+| ST-01 | Settings dialog pages; restart marker | M | in progress | `SettingsDialog.test.tsx`, `Shell.test.tsx` | Generated from the settings table (pages, sections, restart marker, Browse); page-less rows stay out. Left: the other settings (M4/M5) |
 | ST-02 | Quick Setup on first start | M | done | `frontend/src/shell/QuickSetupDialog.test.tsx`, `Shell.test.tsx` | Opens on first run and from Help; any close stores the choices and marks setup done; a refused write does not |
 | ST-03 | Theme (light, dark, auto) and text size (system, small to larger), applied live | M | done | `crates/settings` tests, `App.test.tsx`, `settings.test.tsx` | Stored through `/api/settings`; applied live; zoom stays the browser's |
-| ST-04 | `$VARIABLE` references | M | in progress | `crates/settings` tests | Rows with `env` store the reference and expand it on use; storage rows take none |
-| ST-05 | Keyboard shortcuts, dialog, override persistence | M | done | `crates/settings` tests, `frontend/src/shell/ShortcutsDialog.test.tsx`, `Shell.test.tsx` | Command table, override-only storage, conflict and reserved-key checks, the Shortcuts dialog, live key handling; actions follow each feature row |
+| ST-04 | `$VARIABLE` references | M | in progress | `reference_tests.rs`, `SettingsDialog.test.tsx` | Numbers and storage folders (also `~`) store the reference raw; unresolved, it loads, defaults at use, and is refused on save |
+| ST-05 | Keyboard shortcuts, dialog, override persistence | M | done | `crates/settings` tests, `ShortcutsDialog.test.tsx`, `Shell.test.tsx` | Command table, override-only storage, conflict and reserved-key checks, the dialog, live keys; actions follow each feature row |
 | ST-06 | Workspace credential references expand only for their bound host or a confirmed one; warn before saving a literal password (new) | M | in progress | `shell/{SettingsDialog,AddLiveStreamDialog}.test.tsx` | The dialog warns under a secret field holding a literal (mocked). Left: the warning on a real secret row |
 | AP-01 | Uncaught errors logged; continue or close | M | done | `UncaughtErrors.test.tsx`, `desktop/uncaught.test.cjs` | The page reports its errors to the backend's log |
 | AP-02 | Restart from inside the app | M | done | `frontend/src/shell/Shell.test.tsx`, `desktop/args.test.cjs` | A setting that needs a restart offers to relaunch the desktop app on its own backend; a browser or remote window is only told |

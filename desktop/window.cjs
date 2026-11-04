@@ -213,11 +213,12 @@ function installIpc({ connect, disconnect, restart }) {
     }
     return target;
   });
-  // The chosen absolute path, null when the dialog is cancelled; the page saves it through the settings. Only the
-  // local backend's page may browse this machine's folders.
-  handle("settings:pick-folder", async ({ remote, window }) => {
+  // The chosen absolute path, null when the dialog is cancelled; the page saves it through the settings. `title`
+  // names what is chosen. Only the local backend's page may browse this machine's folders.
+  handle("settings:pick-folder", async ({ remote, window }, title) => {
     if (remote) throw new Error("Not allowed");
-    const chosen = await dialog.showOpenDialog(window, { properties: ["openDirectory"] });
+    if (title !== undefined && typeof title !== "string") throw new Error("Expected a title");
+    const chosen = await dialog.showOpenDialog(window, { title, properties: ["openDirectory"] });
     return chosen.canceled ? null : chosen.filePaths[0];
   });
   handle("window:connect", ({ remote, window }, target, password) => {

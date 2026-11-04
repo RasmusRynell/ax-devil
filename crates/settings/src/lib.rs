@@ -9,6 +9,7 @@
 //! A change reaches subscribers as the new state, replaced whole; a subscriber that is busy sees only the newest.
 
 mod env;
+mod expand;
 mod file;
 mod kind;
 mod migrate;
@@ -107,9 +108,13 @@ impl State {
             let value = stored
                 .remove(setting.key)
                 .unwrap_or_else(|| setting.kind.default_value());
-            setting
-                .check(&value, &**lookup)
-                .map_err(|reason| invalid(setting.key, &reason))?;
+            // A reference whose variable is unset or wrong here still loads, as it does in Python, which checks it
+            // only when it is saved: `replace` and `update` refuse it, and `resolved` falls back to the default.
+            if let Err(reason) = setting.check(&value, &**lookup)
+                && !setting.holds_reference(&value)
+            {
+                return Err(invalid(setting.key, &reason));
+            }
             if !setting.kind.is_default(&value) {
                 settings.insert(setting.key.to_owned(), value.clone());
             }
@@ -203,15 +208,18 @@ impl State {
     }
 
     /// The value of the declared setting `key` as it is used: a `$NAME` reference in a setting that takes them is
-    /// replaced by the variable's value, empty when it is unset.
+    /// replaced by the variable's value, empty when it is unset (a number in a whole-number setting), and a folder's
+    /// leading `~` by the home folder. A reference that gives a value the setting cannot hold is logged and the
+    /// default is used instead.
     pub fn resolved(&self, key: &str) -> Option<Value> {
         let setting = self.table.iter().find(|setting| setting.key == key)?;
         let value = self.values.get(key)?;
-        Some(if setting.env {
-            env::resolve(value, &*self.lookup)
-        } else {
-            value.clone()
-        })
+        let used = setting.expand(value, &*self.lookup);
+        if setting.kind.validate(&used).is_err() {
+            tracing::warn!("{key} does not resolve to a valid value; using the default");
+            return Some(setting.kind.default_value());
+        }
+        Some(used)
     }
 
     /// The value of the declared setting `key` as stored: a `$NAME` reference as written and a literal secret in full,
@@ -221,10 +229,11 @@ impl State {
         self.values.get(key)
     }
 
-    /// The folder a setting of kind `Folder` holds; `None` when it is empty (the standard folder) or `key` is not such
-    /// a setting.
+    /// The folder a setting of kind `Folder` holds, as [`resolved`](Self::resolved); `None` when it is empty (the
+    /// standard folder) or `key` is not such a setting.
     pub fn folder(&self, key: &str) -> Option<PathBuf> {
-        let path = self.values.get(key)?.as_str()?;
+        let path = self.resolved(key)?;
+        let path = path.as_str()?;
         (!path.is_empty()).then(|| PathBuf::from(path))
     }
 
@@ -343,6 +352,9 @@ impl Settings {
             let kept = setting
                 .unmasked(value, current.values.get(setting.key))
                 .map_err(|reason| invalid(setting.key, &reason))?;
+            setting
+                .check(&kept, &*current.lookup)
+                .map_err(|reason| invalid(setting.key, &reason))?;
             values.insert(setting.key.to_owned(), kept);
         }
         let overrides = if scopes.contains(&Scope::Personal) {
@@ -367,16 +379,22 @@ impl Settings {
     ) -> Result<Arc<State>, Error> {
         let _writing = self.writing.lock().unwrap_or_else(PoisonError::into_inner);
         let current = self.state();
+        let invalid = |location: &str, reason: &str| Error {
+            location: location.to_owned(),
+            reason: reason.to_owned(),
+            invalid: true,
+        };
         let Some(stored) = current.values.get(key) else {
-            return Err(Error {
-                location: key.to_owned(),
-                reason: "unknown setting".to_owned(),
-                invalid: true,
-            });
+            return Err(invalid(key, "unknown setting"));
         };
         let Some(value) = edit(stored) else {
             return Ok(current);
         };
+        if let Some(setting) = current.table.iter().find(|setting| setting.key == key) {
+            setting
+                .check(&value, &*current.lookup)
+                .map_err(|reason| invalid(key, &reason))?;
+        }
         let mut values = current.values.clone();
         values.insert(key.to_owned(), value);
         let overrides = current.overrides.clone();
@@ -429,6 +447,8 @@ impl Settings {
     }
 }
 
+#[cfg(test)]
+mod reference_tests;
 #[cfg(test)]
 mod scope_tests;
 #[cfg(test)]

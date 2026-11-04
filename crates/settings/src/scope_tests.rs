@@ -25,6 +25,7 @@ const MIXED: &[Setting] = &[
         key: "me.mode",
         kind: Kind::Choice {
             options: &[("a", "A"), ("b", "B")],
+            toggle: false,
             default: "a",
         },
         label: "Mode",

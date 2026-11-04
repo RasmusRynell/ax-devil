@@ -1,8 +1,9 @@
 import type { ReactNode } from "react";
 import type { SettingsState } from "../generated/api";
 import type { SettingKey } from "../generated/settings";
-import { Button } from "../kit/Button";
-import { Checkbox, Select, TextField } from "../kit/Fields";
+import { BrowseButton } from "../kit/Button";
+import { SegmentedControl } from "../kit/Chips";
+import { Checkbox, LABELLED, Select, TextField } from "../kit/Fields";
 import { Icon } from "../kit/Icon";
 import { TONE } from "../kit/look";
 
@@ -28,6 +29,8 @@ export interface Row {
   readonly kind: {
     readonly type: KindTag;
     readonly options?: readonly (readonly [string, string])[];
+    /** For a choice: whether it is a segmented control. */
+    readonly toggle?: boolean;
   };
   /** Whom the setting is for: `personal` is one person's own, `server` is for whoever may configure the server. */
   readonly scope: "personal" | "server";
@@ -67,14 +70,25 @@ const FIELDS: Record<KindTag, (props: FieldProps) => ReactNode> = {
   // Set from a lane's menu, so no settings page lists them.
   sticky: () => null,
   sync: () => null,
-  choice: ({ row, label, value, onChange }) => (
-    <Select
-      label={label}
-      value={textOf(value)}
-      options={row.kind.options ?? []}
-      onChange={onChange}
-    />
-  ),
+  choice: ({ row, label, value, onChange }) =>
+    row.kind.toggle ? (
+      <div className={LABELLED}>
+        {label}
+        <SegmentedControl
+          label={row.label}
+          value={textOf(value)}
+          options={row.kind.options ?? []}
+          onChange={onChange}
+        />
+      </div>
+    ) : (
+      <Select
+        label={label}
+        value={textOf(value)}
+        options={row.kind.options ?? []}
+        onChange={onChange}
+      />
+    ),
   auto_or_whole: ({ label, value, onChange }) => (
     <TextField
       label={label}
@@ -100,7 +114,7 @@ const FIELDS: Record<KindTag, (props: FieldProps) => ReactNode> = {
       onChange={onChange}
     />
   ),
-  folder: ({ label, value, onChange }) => {
+  folder: ({ row, label, value, onChange }) => {
     const bridge = window.axDevilWindow;
     return (
       <TextField
@@ -109,16 +123,14 @@ const FIELDS: Record<KindTag, (props: FieldProps) => ReactNode> = {
         onChange={onChange}
         action={
           bridge && (
-            <Button
-              className="shrink-0"
-              onClick={() =>
-                void bridge.pickFolder().then((folder) => {
+            <BrowseButton
+              what={row.label}
+              onBrowse={() =>
+                void bridge.pickFolder(row.label).then((folder) => {
                   if (folder !== null) onChange(folder);
                 })
               }
-            >
-              Browse
-            </Button>
+            />
           )
         }
       />

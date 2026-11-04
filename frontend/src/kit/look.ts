@@ -3,7 +3,7 @@
 
 /** Box of a bordered control (button, pill); an edge from `EDGE` supplies the border colour and text. */
 export const CONTROL =
-  "inline-flex min-h-row items-center gap-m rounded-control border bg-transparent px-m focus-ring disabled:border-line-strong/50 disabled:text-disabled";
+  "inline-flex min-h-row cursor-pointer items-center gap-m rounded-control border bg-transparent px-m focus-ring disabled:border-line-strong/50 disabled:text-disabled";
 
 /** Border, text and hover tint of a `CONTROL`; the Enter action looks like any other action. */
 export const EDGE = "border-line-strong text-fg enabled:hover:bg-hover";

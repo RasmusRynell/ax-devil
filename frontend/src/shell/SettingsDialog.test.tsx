@@ -30,6 +30,24 @@ vi.mock(import("../generated/settings"), async (original) => ({
       { label: "Size", page: "Network", section: "Memory", live: false, scope: "server" },
     ),
     row(
+      "t.mode",
+      {
+        type: "choice",
+        options: [
+          ["https", "HTTPS"],
+          ["http", "HTTP"],
+        ],
+        default: "https",
+        toggle: true,
+      },
+      { label: "Mode", page: "Network", section: "Memory", scope: "server" },
+    ),
+    row(
+      "t.port",
+      { type: "whole" },
+      { label: "Port", page: "Network", section: "Memory", env: true, scope: "server" },
+    ),
+    row(
       "t.dir",
       { type: "folder" },
       { label: "Dir", page: "Network", section: "Folders", live: false, scope: "server" },
@@ -64,6 +82,8 @@ describe("settings dialog", () => {
       "t.flag": false,
       "t.hidden": true,
       "t.size": "auto",
+      "t.mode": "https",
+      "t.port": 554,
       "t.dir": "",
       "t.token": "hunter2",
     };
@@ -99,16 +119,27 @@ describe("settings dialog", () => {
     expect(token.type).toBe("text");
     expect(screen.queryByText(/^Saved as plain text/)).toBeNull();
     expect(token.getAttribute("aria-describedby")).toBeNull();
-    expect(screen.queryByRole("button", { name: "Browse" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Choose Dir" })).toBeNull();
     expect(
       within(screen.getByRole("tabpanel")).getAllByTitle("Applies after a restart"),
     ).toHaveLength(2);
     fireEvent.change(screen.getByLabelText("Size"), { target: { value: "512" } });
+    fireEvent.click(
+      within(screen.getByRole("radiogroup", { name: "Mode" })).getByLabelText("HTTP"),
+    );
+    fireEvent.change(screen.getByLabelText("Port"), { target: { value: "$PORT" } });
     fireEvent.change(screen.getByLabelText("Dir"), { target: { value: "/data/cache" } });
 
     fireEvent.click(screen.getByRole("button", { name: "OK" }));
     expect(save).toHaveBeenCalledWith({
-      values: { ...values, "t.size": 512, "t.dir": "/data/cache", "t.token": "$TOKEN" },
+      values: {
+        ...values,
+        "t.mode": "http",
+        "t.size": 512,
+        "t.port": "$PORT",
+        "t.dir": "/data/cache",
+        "t.token": "$TOKEN",
+      },
       shortcuts: DEFAULT_SETTINGS.shortcuts,
     });
   });
@@ -123,7 +154,8 @@ describe("settings dialog", () => {
   });
 
   it("fills a folder field from the native folder dialog", async () => {
-    window.axDevilWindow = { pickFolder: () => Promise.resolve("/mnt/cache") } as never;
+    const pickFolder = vi.fn(() => Promise.resolve("/mnt/cache"));
+    window.axDevilWindow = { pickFolder } as never;
     const save = vi.fn(async () => null);
     const values = { ...DEFAULT_SETTINGS.values, "t.dir": "" };
     render(
@@ -134,7 +166,8 @@ describe("settings dialog", () => {
       </GrantsContext.Provider>,
     );
     fireEvent.click(screen.getByRole("tab", { name: "Network" }));
-    fireEvent.click(screen.getByRole("button", { name: "Browse" }));
+    fireEvent.click(screen.getByRole("button", { name: "Choose Dir" }));
+    expect(pickFolder).toHaveBeenCalledWith("Dir");
     await waitFor(() =>
       expect((screen.getByLabelText("Dir") as HTMLInputElement).value).toBe("/mnt/cache"),
     );

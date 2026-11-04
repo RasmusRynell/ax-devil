@@ -20,6 +20,7 @@ export const SETTINGS = [
           "Dark"
         ]
       ],
+      "toggle": false,
       "default": "auto"
     },
     "label": "Theme",
@@ -58,6 +59,7 @@ export const SETTINGS = [
           "Larger"
         ]
       ],
+      "toggle": false,
       "default": "system"
     },
     "label": "Text size",
@@ -190,36 +192,6 @@ export const SETTINGS = [
     "scope": "server"
   },
   {
-    "key": "storage.cache_dir",
-    "kind": {
-      "type": "folder"
-    },
-    "label": "Cache folder",
-    "description": null,
-    "page": "Storage",
-    "section": "Folders",
-    "live": false,
-    "env": false,
-    "secret": false,
-    "quick_setup": false,
-    "scope": "server"
-  },
-  {
-    "key": "storage.catalog_dir",
-    "kind": {
-      "type": "folder"
-    },
-    "label": "Render catalog folder",
-    "description": null,
-    "page": "Storage",
-    "section": "Folders",
-    "live": false,
-    "env": false,
-    "secret": false,
-    "quick_setup": false,
-    "scope": "server"
-  },
-  {
     "key": "camera.host",
     "kind": {
       "type": "text",
@@ -281,12 +253,13 @@ export const SETTINGS = [
           "HTTP"
         ]
       ],
+      "toggle": true,
       "default": "https"
     },
     "label": "Camera protocol",
     "description": null,
-    "page": null,
-    "section": "",
+    "page": "Stream defaults",
+    "section": "Device",
     "live": true,
     "env": false,
     "secret": false,
@@ -306,7 +279,7 @@ export const SETTINGS = [
     "page": null,
     "section": "",
     "live": true,
-    "env": false,
+    "env": true,
     "secret": false,
     "quick_setup": false,
     "scope": "server"
@@ -324,7 +297,7 @@ export const SETTINGS = [
     "page": null,
     "section": "",
     "live": true,
-    "env": false,
+    "env": true,
     "secret": false,
     "quick_setup": false,
     "scope": "server"
@@ -367,6 +340,7 @@ export const SETTINGS = [
           "DataHub WebSocket"
         ]
       ],
+      "toggle": false,
       "default": "datahub"
     },
     "label": "Overlay",
@@ -408,7 +382,7 @@ export const SETTINGS = [
     "page": null,
     "section": "",
     "live": true,
-    "env": false,
+    "env": true,
     "secret": false,
     "quick_setup": false,
     "scope": "server"
@@ -494,7 +468,7 @@ export const SETTINGS = [
     "page": null,
     "section": "",
     "live": true,
-    "env": false,
+    "env": true,
     "secret": false,
     "quick_setup": false,
     "scope": "server"
@@ -560,7 +534,7 @@ export const SETTINGS = [
     "page": null,
     "section": "",
     "live": true,
-    "env": false,
+    "env": true,
     "secret": false,
     "quick_setup": false,
     "scope": "server"
@@ -651,6 +625,36 @@ export const SETTINGS = [
     "live": true,
     "env": true,
     "secret": true,
+    "quick_setup": false,
+    "scope": "server"
+  },
+  {
+    "key": "storage.cache_dir",
+    "kind": {
+      "type": "folder"
+    },
+    "label": "Cache folder",
+    "description": null,
+    "page": "Storage",
+    "section": "Folders",
+    "live": false,
+    "env": true,
+    "secret": false,
+    "quick_setup": false,
+    "scope": "server"
+  },
+  {
+    "key": "storage.catalog_dir",
+    "kind": {
+      "type": "folder"
+    },
+    "label": "Render catalog folder",
+    "description": null,
+    "page": "Storage",
+    "section": "Folders",
+    "live": false,
+    "env": true,
+    "secret": false,
     "quick_setup": false,
     "scope": "server"
   }
