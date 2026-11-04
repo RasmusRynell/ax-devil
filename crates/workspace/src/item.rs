@@ -125,10 +125,13 @@ impl Recipe {
 
     /// Builds the Content of the item `item`, named `name` where a failure speaks of it. Reads the file system, so callers keep it off the UI's executor.
     ///
-    /// A video recipe checks that its path is a readable regular file, and each overlay that its decoder is known and
-    /// its file readable; opening the media is the viewer's job, so a file that is not a video resolves here and
-    /// fails when the viewer opens it. Each overlay is a lane with its recipe's label, so two overlays with the
-    /// same label fail.
+    /// A video recipe checks that its path and every overlay's path are readable regular files, then that each
+    /// overlay's decoder is known and its options valid, so a missing file is reported before a missing decoder;
+    /// opening the media is the viewer's job, so a file that is not a video resolves here and fails when the viewer
+    /// opens it. Each overlay is a lane with its recipe's label, so two overlays with the same label fail.
+    ///
+    /// Cancellation is polled between files and overlays and once more after the work, so a cancelled attempt
+    /// returns [`Interrupt::Cancelled`] and never a Content.
     ///
     /// A playlist recipe asks its resolver for playlists, numbers repeated playlist and entry names, then checks
     /// that the lane names within each entry are unique, since they are the identity of lanes. Resolving twice gives
@@ -146,10 +149,22 @@ impl Recipe {
         cancel: &CancelToken,
     ) -> Result<Content, Interrupt<UserError>> {
         cancel.check()?;
+        let content = self.build(item, name, handlers, env, cancel)?;
+        // The attempt may have been replaced while it worked: nothing is published for it.
+        cancel.check()?;
+        Ok(content)
+    }
+
+    fn build(
+        &self,
+        item: &ItemId,
+        name: &str,
+        handlers: &Handlers,
+        env: &Environment,
+        cancel: &CancelToken,
+    ) -> Result<Content, Interrupt<UserError>> {
         match &self.source {
-            Source::Video(recipe) => {
-                resolve_video(recipe, item, handlers).map_err(Interrupt::Failed)
-            }
+            Source::Video(recipe) => resolve_video(recipe, item, handlers, cancel),
             Source::Playlist(recipe) => {
                 let resolver = handlers.resolver(&recipe.resolver).ok_or_else(|| {
                     Interrupt::Failed(
@@ -206,19 +221,23 @@ fn resolve_video(
     recipe: &VideoRecipe,
     item: &ItemId,
     handlers: &Handlers,
-) -> Result<Content, UserError> {
-    check_readable_file(recipe.video.as_path())?;
+    cancel: &CancelToken,
+) -> Result<Content, Interrupt<UserError>> {
+    let files = std::iter::once(&recipe.video).chain(recipe.overlays.iter().map(|o| &o.path));
+    for file in files {
+        cancel.check()?;
+        check_readable_file(file.as_path()).map_err(Interrupt::Failed)?;
+    }
     let mut overlays = Vec::with_capacity(recipe.overlays.len());
     for overlay in &recipe.overlays {
+        cancel.check()?;
         let path = overlay.path.as_path();
-        check_decoder_known(handlers, &overlay.handler, path)?;
-        check_readable_file(path)?;
         let options =
             decoder_options(handlers, &overlay.handler, &overlay.options).map_err(|error| {
-                UserError {
+                Interrupt::Failed(UserError {
                     location: Some(Location::Host(HostPath::new(path))),
                     ..error
-                }
+                })
             })?;
         overlays.push(OverlayRef {
             label: overlay.label.clone(),
@@ -234,7 +253,7 @@ fn resolve_video(
         video: VideoRef::File(recipe.video.as_path().to_path_buf()),
         overlays,
     };
-    check_unique_lanes(item, &entry)?;
+    check_unique_lanes(item, &entry).map_err(Interrupt::Failed)?;
     Ok(Content::SeekableVideo(SeekableVideoContent {
         item_id: *item,
         entry,
@@ -350,18 +369,6 @@ pub fn absolute_paths(form: &Form, settings: &mut Settings, handlers: &Handlers)
             }
             _ => {}
         }
-    }
-}
-
-/// Fails, about `path`, when `handlers` has no decoder with the id `handler`.
-fn check_decoder_known(handlers: &Handlers, handler: &str, path: &Path) -> Result<(), UserError> {
-    match handlers.decoder(handler) {
-        Some(_) => Ok(()),
-        None => Err(UserError::new(
-            ErrorCode::UnknownHandler,
-            format!("No overlay format \"{handler}\""),
-        )
-        .at(HostPath::new(path))),
     }
 }
 
