@@ -92,6 +92,10 @@ describe("search", () => {
     expect(list(folded, "STRAẞE")).toEqual(["Straße"]);
     expect(list(folded, "οδοσ")).toEqual(["οδος"]);
     expect(list(folded, "σ")).toEqual(["οδος"]);
+    const dots = rows([playlist("irmak", []), playlist("ırmak", []), playlist("İstanbul", [])]);
+    expect(list(dots, "irmak")).toEqual(["irmak"]);
+    expect(list(dots, "ırmak")).toEqual(["ırmak"]);
+    expect(list(dots, "i̇stanbul")).toEqual(["İstanbul"]);
   });
 
   it("leaves hidden matches out and counts them", () => {
@@ -114,6 +118,8 @@ describe("search", () => {
       playlist("eagle", []),
       playlist("😀", []),
       playlist("\uE000", []),
+      playlist("ırmak", []),
+      playlist("irmak", []),
     ];
     const names = (order: Order) =>
       sectionsOf(rows(items), new Set(), ["playlists"], order)[0].rows.map(
@@ -134,6 +140,8 @@ describe("search", () => {
       "eagle",
       "😀",
       "\uE000",
+      "ırmak",
+      "irmak",
     ]);
     expect(names("name")).toEqual([
       "a",
@@ -146,8 +154,10 @@ describe("search", () => {
       "Y",
       "B",
       "eagle",
+      "irmak",
       "zebra",
       "éclair",
+      "ırmak",
       "\uE000",
       "😀",
     ]);

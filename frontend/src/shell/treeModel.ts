@@ -64,11 +64,13 @@ export function treeOf({ rows, items }: WorkspaceState): TreeRow[] {
 }
 
 /**
- * Text with case folded away as Python's `str.casefold` does for names: each code point alone (so `ς` equals `σ`
- * whatever surrounds it), `ß` and `ẞ` as `ss`.
+ * Text with case folded away as Python's `str.casefold` does (Cherokee aside): each code point alone, so `ς` equals
+ * `σ` whatever surrounds it. `ß` and ligatures expand through the upper case; `ẞ` is `ss` and the dotless `ı` stays.
  */
 const casefold = (text: string): string =>
-  Array.from(text, (c) => (c === "ß" || c === "ẞ" ? "ss" : c.toUpperCase().toLowerCase())).join("");
+  Array.from(text, (c) => (c === "ẞ" ? "ss" : c === "ı" ? c : c.toUpperCase().toLowerCase())).join(
+    "",
+  );
 
 /** Orders two texts by code point, which UTF-16 order does not for characters beyond the first 65,536. */
 function compareCodePoints(a: string, b: string): number {
