@@ -314,6 +314,40 @@ describe("add playlist dialog", () => {
     });
   });
 
+  it("keeps Cancel aborting a load of another source when an earlier load's count answers late", async () => {
+    const counting = deferred();
+    const resolving = deferred();
+    let scans = 0;
+    stubBackend(
+      () => resolving.promise,
+      () =>
+        scans++ === 0
+          ? counting.promise
+          : reply(200, [{ value: "SEQ-01", label: "SEQ-01", detail: "" }]),
+    );
+    await open();
+    choose("folder_pair");
+    fireEvent.change(screen.getByLabelText("Videos"), { target: { value: "/videos" } });
+    fireEvent.change(screen.getByLabelText("Overlays"), { target: { value: "/overlays" } });
+    fireEvent.change(screen.getByLabelText("Decoder"), { target: { value: "MOT_FILE" } });
+    fireEvent.change(screen.getByLabelText("Image width"), { target: { value: "1920" } });
+    fireEvent.click(add());
+    await screen.findByText("Scanning…");
+
+    choose("mot_challenge");
+    await scanRoot();
+    fireEvent.click(add());
+    await waitFor(() => expect(resolveCalls()).toHaveLength(1));
+    counting.settle(reply(200, [{ value: "a", label: "a", detail: "" }]));
+    await new Promise((done) => setTimeout(done, 10));
+
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(resolveCalls()[0][1]?.signal?.aborted).toBe(true);
+    resolving.settle(reply(200, { item: "p1" }));
+    await new Promise((done) => setTimeout(done, 10));
+    expect(commands()).toEqual([]);
+  });
+
   it("keeps each source's form while the user switches between sources", async () => {
     stubBackend();
     await open();

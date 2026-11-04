@@ -67,12 +67,14 @@ export function AddPlaylistDialog({ onClose }: { onClose: () => void }) {
       return;
     }
     const controller = new AbortController();
+    // A load still counting pairs for another source is superseded.
+    request.current?.abort();
     request.current = controller;
     setRefused(null);
     try {
       const loadable = form.settingsAfterScan ? await form.settingsAfterScan() : settings;
       if (!loadable || controller.signal.aborted) {
-        request.current = null;
+        if (request.current === controller) request.current = null;
         return;
       }
       setResolving(true);
