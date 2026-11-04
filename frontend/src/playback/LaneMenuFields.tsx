@@ -31,13 +31,16 @@ export function NumberField({
 }) {
   const id = useId();
   const [draft, setDraft] = useState<string | null>(null);
+  // The field holds no finer a fraction than its step does: whole milliseconds, opacity in hundredths.
+  const decimals = (String(step).split(".")[1] ?? "").length;
   const commit = () => {
     if (draft === null) return;
     setDraft(null);
     const typed = draft.trim() === "" ? null : Number(draft);
     if (typed === null && placeholder === undefined) return;
     if (typed !== null && !Number.isFinite(typed)) return;
-    const next = typed === null ? null : Math.min(max, Math.max(min, typed));
+    const next =
+      typed === null ? null : Number(Math.min(max, Math.max(min, typed)).toFixed(decimals));
     if (next !== value) onCommit(next);
   };
   return (

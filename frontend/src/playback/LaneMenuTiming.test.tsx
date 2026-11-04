@@ -94,8 +94,6 @@ describe("lane menu timing", () => {
     show({ settings: kept });
     expect(timeout.disabled).toBe(true);
     expect(timeout.value).toBe("700");
-    tab("Look");
-    tab("Timing");
     cleanup();
     const reopened = setup({ settings: kept });
     tab("Timing");
@@ -104,7 +102,6 @@ describe("lane menu timing", () => {
     ).toBe("700");
     fireEvent.click(box("Expire after (ms)"));
     expect(reopened.onChange).toHaveBeenLastCalledWith({ sticky, kept_timeout_ms: 700 });
-    reopened.show({ settings: { ...kept, sticky } });
     reopened.show({ settings: { ...kept, sticky: { ...sticky, enabled: false } } });
     expect(box("Expire after (ms)").disabled).toBe(true);
     expect(
@@ -141,6 +138,9 @@ describe("lane menu timing", () => {
     fireEvent.change(timeout, { target: { value: "250000" } });
     fireEvent.blur(timeout);
     expect(onChange).toHaveBeenLastCalledWith({ sticky: { ...sticky, timeout_ms: 100_000 } });
+    fireEvent.change(timeout, { target: { value: "500.5" } });
+    fireEvent.blur(timeout);
+    expect(onChange).toHaveBeenLastCalledWith({ sticky: { ...sticky, timeout_ms: 501 } });
   });
 
   it("offers a basis only when the file offers two, and sync, savable as the default, only under time", () => {
