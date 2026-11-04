@@ -188,16 +188,19 @@ pub async fn check(addr: Ipv4Addr, web: Web, login: Login) -> Option<Found> {
 
 #[cfg(test)]
 mod tests {
-    use std::time::Instant;
-
-    use tokio::io::{AsyncReadExt, AsyncWriteExt};
-    use tokio::net::TcpListener;
-
     use super::*;
 
+    // The drain test needs a second loopback address, which only Linux has without setup.
+    #[cfg(target_os = "linux")]
+    use {
+        std::time::Instant,
+        tokio::io::{AsyncReadExt, AsyncWriteExt},
+        tokio::net::TcpListener,
+    };
+
+    #[cfg(target_os = "linux")]
     const INFO: &str = r#"{"apiVersion":"1.3","data":{"propertyList":{"Brand":"AXIS","ProdShortName":"AXIS Q1656","SerialNumber":"ACCC8E000001","Version":"11.11.1","ProdType":"Box Camera"}}}"#;
 
-    // Needs a second loopback address, which only Linux has without setup.
     #[cfg(target_os = "linux")]
     #[tokio::test]
     async fn a_host_still_being_identified_after_the_drain_is_stopped_and_the_scan_ends() {
