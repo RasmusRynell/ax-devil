@@ -9,7 +9,7 @@ import type { LaneSettings, Sticky, Viewport } from "../playback/contract";
 import { connectWorker } from "../playback/connect";
 import { FRESH_MEMORY, type InspectorMemory } from "../playback/fields";
 import { shownLanes } from "../playback/laneCells";
-import { HIDE_LANE, laneContextEntries } from "../playback/laneContextMenu";
+import { laneContextEntries } from "../playback/laneContextMenu";
 import { useLaneFullscreen } from "../playback/laneFullscreen";
 import { LaneGrid } from "../playback/LaneGrid";
 import { ObjectLayer, type ObjectLayerHandle } from "../playback/ObjectLayer";
@@ -25,9 +25,9 @@ import { EMPTY, jump, topObject, type PageStack } from "../tools/pageStack";
 import { VIDEO_LEAST } from "../tools/panelWidth";
 import type { ViewerProps } from "../viewers";
 import { useViewerActions } from "./actions";
-import { useHidden } from "./useViewers";
+import { NOTHING_HIDDEN } from "./hidden";
 
-/** The lane menu of a live viewer: what a recording's has, without exporting, which a stream cannot do. */
+/** The lane menu of a live viewer: what a recording's has, without exporting, which a stream cannot do, or hiding. */
 const exportable = (entry: { kind: string; id?: string }) => entry.id !== "export-video";
 
 function Live({
@@ -35,14 +35,12 @@ function Live({
   item,
   entry,
   name,
-  canHide,
 }: {
   session: LiveSession;
   item: string;
   /** The Content's id: a live video's one entry. */
   entry: string;
   name: string;
-  canHide: boolean;
 }) {
   const view = useSyncExternalStore(session.subscribe, session.getSnapshot);
   useReportStatus(item, view);
@@ -51,7 +49,6 @@ function Live({
   const allowed = useAllowed();
   const following = useFollowing();
   const command = useCommand();
-  const hidden = useHidden();
   const pane = useRef<HTMLDivElement>(null);
   const objects = useRef<ObjectLayerHandle>(null);
   const geometry = useRef<Geometry | null>(null);
@@ -68,7 +65,7 @@ function Live({
   const [list, setList] = useState<ListState>(FRESH_LIST);
   // Whether the selected object is outlined on the picture: clearing the selection there does not close its page.
   const [outlined, setOutlined] = useState(true);
-  const shown = useMemo(() => shownLanes(view.lanes, hidden, entry), [view.lanes, hidden, entry]);
+  const shown = useMemo(() => shownLanes(view.lanes, NOTHING_HIDDEN, entry), [view.lanes, entry]);
   const fullscreen = useLaneFullscreen(pane, shown);
   const shownViewport = useRef(viewport);
   shownViewport.current = viewport;
@@ -105,15 +102,6 @@ function Live({
     shownViewport.current = next;
     setViewport(next);
   }, []);
-  const hideLane = useCallback(
-    (label: string) =>
-      // A refused hide leaves the lane on screen, which says so.
-      void command({
-        type: "content",
-        command: { type: "setHidden", target: { entry, lane: label }, hidden: true },
-      }).catch(() => undefined),
-    [command, entry],
-  );
   const togglePause = useCallback(() => {
     if (!controllable) return;
     if (session.getSnapshot().paused) session.resume();
@@ -164,12 +152,9 @@ function Live({
           >
             <ContextMenu
               className="absolute inset-0"
-              entries={laneContextEntries(allowed, shortcuts, canHide, false).filter(exportable)}
+              entries={laneContextEntries(allowed, shortcuts, false, false).filter(exportable)}
               onSelect={({ id }) => {
-                const lane = fullscreen.target();
-                if (id === HIDE_LANE) {
-                  if (lane !== null) hideLane(view.lanes[lane].label);
-                } else actions[id]?.();
+                actions[id]?.();
               }}
             >
               <LaneGrid
@@ -178,10 +163,9 @@ function Live({
                 name={name}
                 anchor={`frame:${item}`}
                 entry={entry}
-                hidden={hidden}
+                hidden={NOTHING_HIDDEN}
                 only={fullscreen.solo}
                 live
-                onHide={canHide ? hideLane : undefined}
                 onPoint={fullscreen.point}
                 onPick={fullscreen.pick}
                 viewport={viewport}
@@ -303,14 +287,6 @@ export function LiveVideoViewer({
   }, [ticket, connect]);
 
   return (
-    session && (
-      <Live
-        session={session}
-        item={item}
-        entry={content.id}
-        name={content.display_name}
-        canHide={changes}
-      />
-    )
+    session && <Live session={session} item={item} entry={content.id} name={content.display_name} />
   );
 }
