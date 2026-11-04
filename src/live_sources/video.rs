@@ -1,6 +1,6 @@
 //! The video side of a feed: encoded units wait in the live gate until their overlay is settled (or 1.5 s, D28) and
-//! leave one per unit that arrives (or, for an arrival that let none out, once the overlay settles one), then decode in arrival order and go to every viewer. A unit without a capture time
-//! cannot be synchronized and is dropped.
+//! leave one per unit that arrives, as it arrives or once the overlay settles it, then decode in arrival order and go
+//! to every viewer. A unit without a capture time cannot be synchronized and is dropped.
 //! While nobody watches, units pass the gate but are not decoded, so the Events list goes on recording. The video is
 //! live while pictures are shown (or, with nobody watching, units arrive): a stream that delivers only pictures that
 //! cannot be decoded stalls.
@@ -73,10 +73,7 @@ impl VideoTask {
         }
         let shared = Arc::clone(&self.shared);
         loop {
-            let due = self
-                .gate
-                .next_deadline()
-                .map(|time| shared.clock.instant(time));
+            let wake = self.gate.next_wake().map(|time| shared.clock.instant(time));
             tokio::select! {
                 // A connection's state is read before the data that follows it.
                 biased;
@@ -101,13 +98,13 @@ impl VideoTask {
                     None => units = None,
                 },
                 _ = tick.tick() => shared.board.tick(shared.clock.now()),
-                () = shared.published.notified() => self.settle().await,
+                () = shared.published.notified() => self.release().await,
                 () = async {
-                    match due {
-                        Some(due) => sleep_until(due).await,
+                    match wake {
+                        Some(wake) => sleep_until(wake).await,
                         None => std::future::pending().await,
                     }
-                } => self.expire().await,
+                } => self.release().await,
             }
         }
     }
@@ -165,11 +162,12 @@ impl VideoTask {
         }
     }
 
-    /// Shows the held unit the overlay's newest publication settled, if the gate lets it out now.
-    async fn settle(&mut self) {
+    /// Shows what the gate lets out now: units that waited out the deadline, and the unit the newest arrival owes
+    /// once the overlay settles it.
+    async fn release(&mut self) {
         let now = self.shared.clock.now();
         let decided = self.decided();
-        if let Some((id, unit)) = self.gate.settle(now, settled(decided.as_deref())) {
+        for (id, unit) in self.gate.release(now, settled(decided.as_deref())) {
             self.show(id, unit).await;
         }
     }
@@ -181,14 +179,6 @@ impl VideoTask {
             .as_ref()
             .filter(|_| self.shared.board.overlay_expected())
             .map(|track| track.snapshot())
-    }
-
-    /// Decodes and publishes the units that waited out the deadline.
-    async fn expire(&mut self) {
-        let now = self.shared.clock.now();
-        for (id, unit) in self.gate.expire(now) {
-            self.show(id, unit).await;
-        }
     }
 
     /// Publishes the unit's place in time with the picture it decodes to, if any. Every unit is published, so the
