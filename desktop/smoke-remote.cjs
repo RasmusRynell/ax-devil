@@ -165,6 +165,10 @@ async function remote(local, shell) {
       Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(input, '');
       input.dispatchEvent(new Event('input', { bubbles: true }));
     })()`);
+    // Add waits for the backend's word on the files typed.
+    await wait(
+      "[...document.querySelectorAll('dialog button')].find((b) => b.textContent === 'Add').disabled === false",
+    );
     await js(
       "[...document.querySelectorAll('dialog button')].find((b) => b.textContent === 'Add').click()",
     );

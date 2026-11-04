@@ -1,10 +1,12 @@
 import { afterEach, beforeEach, expect, it, vi } from "vite-plus/test";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { DecoderInfo } from "../generated/api";
+import { GrantsContext } from "../access";
 import { FakeSocket } from "../session/fakeSession";
 import { SessionProvider } from "../session/session";
 import { AddVideoDialog } from "./AddVideoDialog";
 import { decodersFor } from "./OverlayRow";
+import type { WindowBridge } from "./windowBridge";
 
 const decoder = (handler: string, ...extensions: string[]): DecoderInfo => ({
   handler,
@@ -18,6 +20,7 @@ beforeEach(() => vi.stubGlobal("WebSocket", FakeSocket));
 afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
+  delete window.axDevilWindow;
   window.sessionStorage.clear();
   FakeSocket.reset();
 });
@@ -43,21 +46,34 @@ const reply = (status: number, json: unknown) => ({
   status,
   json: async () => json,
 });
+/** The backend: the handlers, and every file readable except those named in `missing`. */
+const serve = (decoders: unknown[], missing: string[] = []) =>
+  vi.stubGlobal("fetch", async (url: string, init?: RequestInit) =>
+    url === "/api/files/check"
+      ? reply(
+          200,
+          (JSON.parse(init?.body as string) as { paths: string[] }).paths.map((path) => ({
+            path,
+            ...(missing.includes(path) && { problem: "File not found" }),
+          })),
+        )
+      : reply(200, { decoders, resolvers: [] }),
+  );
 const open = async () => {
   render(
     <SessionProvider>
       <AddVideoDialog onClose={() => {}} />
     </SessionProvider>,
   );
-  fireEvent.change(await screen.findByLabelText("Path on the server"), {
-    target: { value: "/a.mp4" },
-  });
+  fireEvent.change(await screen.findByLabelText("Video path"), { target: { value: "/a.mp4" } });
 };
 const overlays = () => screen.findAllByLabelText("Overlay path");
 const overlay = async (path: string, at = 0) =>
   fireEvent.change((await overlays())[at], { target: { value: path } });
 const handlerAt = (at = 0) => screen.getAllByLabelText("Data handler")[at] as HTMLSelectElement;
 const add = () => screen.getByRole("button", { name: "Add" });
+/** Waits for the backend to answer about the files typed, which Add waits for too. */
+const answered = () => waitFor(() => expect(add()).toHaveProperty("disabled", false));
 const sentOverlays = () =>
   FakeSocket.latest.received.flatMap((message) =>
     message.type === "command" &&
@@ -75,14 +91,14 @@ it("offers every handler, chooses the sole one that reads the file, and waits fo
     decoder("X1", ".xml"),
     decoder("MOT", ".txt"),
   ];
-  vi.stubGlobal("fetch", async () => reply(200, { decoders, resolvers: [] }));
+  serve(decoders);
   await open();
   expect(handlerAt().disabled).toBe(true);
 
   await overlay("/data/gt.txt");
   expect(handlerAt().value).toBe("MOT");
   expect(handlerAt().options).toHaveLength(5);
-  expect(add()).toHaveProperty("disabled", false);
+  await answered();
 
   // Any handler can be chosen by hand, then replaced by the one that reads the next file.
   fireEvent.change(handlerAt(), { target: { value: "X1" } });
@@ -99,7 +115,7 @@ it("offers every handler, chooses the sole one that reads the file, and waits fo
 
   fireEvent.change(handlerAt(), { target: { value: "V2" } });
   expect(screen.queryByRole("alert")).toBeNull();
-  expect(add()).toHaveProperty("disabled", false);
+  await answered();
 
   // A pick that does not read the new file is dropped, and does not come back for a later one.
   await overlay("/data/c.mp3");
@@ -110,9 +126,7 @@ it("offers every handler, chooses the sole one that reads the file, and waits fo
 });
 
 it("adds overlays one by one, ignores a blank one and needs a video", async () => {
-  vi.stubGlobal("fetch", async () =>
-    reply(200, { decoders: [decoder("V1", ".jsonl"), decoder("MOT", ".txt")], resolvers: [] }),
-  );
+  serve([decoder("V1", ".jsonl"), decoder("MOT", ".txt")]);
   await open();
   fireEvent.click(screen.getByRole("button", { name: "Add overlay" }));
   fireEvent.click(screen.getByRole("button", { name: "Add overlay" }));
@@ -129,10 +143,11 @@ it("adds overlays one by one, ignores a blank one and needs a video", async () =
   ]);
   expect(handlerAt(1).value).toBe("MOT");
 
-  fireEvent.change(screen.getByLabelText("Path on the server"), { target: { value: "" } });
+  fireEvent.change(screen.getByLabelText("Video path"), { target: { value: "" } });
   expect(add()).toHaveProperty("disabled", true);
   expect(screen.getByRole("alert").textContent).toBe("Choose a video file to continue.");
-  fireEvent.change(screen.getByLabelText("Path on the server"), { target: { value: "/a.mp4" } });
+  fireEvent.change(screen.getByLabelText("Video path"), { target: { value: "/a.mp4" } });
+  await answered();
   fireEvent.click(add());
   await waitFor(() => expect(sentOverlays()).toEqual([[["/data/gt.txt", "MOT"]]]));
 });
@@ -163,8 +178,66 @@ it("says why the handlers could not be loaded and asks again on Retry", async ()
   );
   await open();
   expect((await screen.findByRole("alert")).textContent).toContain("Handlers unavailable");
-  vi.stubGlobal("fetch", async () => reply(200, { decoders: [], resolvers: [] }));
+  serve([]);
   fireEvent.click(screen.getByRole("button", { name: "Retry" }));
   expect(await screen.findByLabelText("Overlay path")).toBeTruthy();
   expect(screen.queryByRole("alert")).toBeNull();
+});
+
+it("keeps Add off, with the reason, while the backend cannot read the video or an overlay", async () => {
+  serve([decoder("MOT", ".txt")], ["/gone.mp4", "/gone.txt"]);
+  await open();
+  await overlay("/gone.txt");
+  // Add also waits for the answer.
+  expect(add()).toHaveProperty("disabled", true);
+  await waitFor(() => expect(screen.getByRole("alert").textContent).toBe("File not found"));
+  expect(add()).toHaveProperty("disabled", true);
+
+  await overlay("/gt.txt");
+  await answered();
+  expect(screen.queryByRole("alert")).toBeNull();
+
+  fireEvent.change(screen.getByLabelText("Video path"), { target: { value: "/gone.mp4" } });
+  await waitFor(() => expect(screen.getByRole("alert").textContent).toBe("File not found"));
+  expect(add()).toHaveProperty("disabled", true);
+});
+
+it("fills the path from the file chooser, keeps it when the chooser is cancelled, and names the video as typed or by its file", async () => {
+  serve([]);
+  const picks = [["/clips/b.mp4"], []];
+  window.axDevilWindow = {
+    pickVideos: () => Promise.resolve(picks.shift() ?? []),
+  } as unknown as WindowBridge;
+  render(
+    <GrantsContext.Provider value={["preferences"]}>
+      <SessionProvider>
+        <AddVideoDialog onClose={() => {}} />
+      </SessionProvider>
+    </GrantsContext.Provider>,
+  );
+  const video = (await screen.findByLabelText("Video path")) as HTMLInputElement;
+  const name = screen.getByLabelText("Name") as HTMLInputElement;
+  expect(name.placeholder).toBe("Optional");
+
+  fireEvent.click(screen.getByRole("button", { name: "Choose video file" }));
+  await waitFor(() => expect(video.value).toBe("/clips/b.mp4"));
+  expect(name.placeholder).toBe("b.mp4");
+  fireEvent.click(screen.getByRole("button", { name: "Choose video file" }));
+  await act(async () => {});
+  expect(video.value).toBe("/clips/b.mp4");
+
+  await answered();
+  fireEvent.change(name, { target: { value: " Take 2 " } });
+  fireEvent.click(add());
+  await waitFor(() =>
+    expect(FakeSocket.latest.received).toContainEqual(
+      expect.objectContaining({
+        cmd: expect.objectContaining({
+          command: expect.objectContaining({
+            items: [expect.objectContaining({ path: "/clips/b.mp4", label: "Take 2" })],
+          }),
+        }),
+      }),
+    ),
+  );
 });

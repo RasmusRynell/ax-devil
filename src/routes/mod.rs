@@ -9,6 +9,7 @@ mod catalogs;
 mod client_errors;
 mod glance;
 mod handlers;
+mod intake;
 mod live;
 mod network;
 pub mod playback;
@@ -218,6 +219,13 @@ pub(crate) const ROUTES: &[Route] = &[
         listeners: LOCAL,
         who: Who::Preferences,
         handler: |method| on(method, glance::expansions),
+    },
+    Route {
+        method: MethodFilter::POST,
+        path: "/api/files/check",
+        listeners: MEMBERS,
+        who: Who::Files,
+        handler: |method| on(method, intake::check),
     },
     Route {
         method: MethodFilter::GET,

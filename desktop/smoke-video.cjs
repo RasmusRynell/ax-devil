@@ -37,7 +37,7 @@ module.exports.video = async (window) => {
   const { js, wait } = page(window);
   window.setSize(1100, 720);
   window.webContents.setZoomFactor(1);
-  // The native file dialog answers with the fixture; the page sends its Session the Add Video command as usual.
+  // Add Video opens its dialog; the native file dialog behind Browse answers with the fixture, and Add sends the command.
   const original = dialog.showOpenDialog.bind(dialog);
   dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [FIXTURE] });
   try {
@@ -47,6 +47,12 @@ module.exports.video = async (window) => {
     await wait("document.querySelector('[data-cursor-id=\"sidebar:add-video\"]')");
     await frames({ js });
     await click(window, "sidebar:add-video");
+    await wait("document.querySelector('dialog[open] [aria-label=\"Choose video file\"]')");
+    await js("document.querySelector('dialog[open] [aria-label=\"Choose video file\"]').click()");
+    const add =
+      "[...document.querySelectorAll('dialog[open] button')].find((b) => b.textContent === 'Add')";
+    await wait(`${add}.disabled === false`);
+    await js(`${add}.click()`);
     await wait(`${SHOWN} >= 0`);
   } finally {
     dialog.showOpenDialog = original;

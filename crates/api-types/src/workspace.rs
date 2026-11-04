@@ -141,6 +141,10 @@ pub enum NewItem {
     Video {
         /// The file; a relative path is relative to the backend's working folder.
         path: String,
+        /// The item's name; the file name when absent or blank.
+        #[serde(default)]
+        #[ts(optional)]
+        label: Option<String>,
         /// The overlay files, each shown as its own lane.
         #[serde(default)]
         overlays: Vec<NewOverlayWire>,
@@ -164,6 +168,24 @@ pub struct NewOverlayWire {
     #[serde(default)]
     #[ts(type = "Record<string, unknown>")]
     pub options: serde_json::Map<String, serde_json::Value>,
+}
+
+/// The body of `POST /api/files/check`: the files a form is about to add, as typed.
+#[derive(Serialize, Deserialize, TS, Clone, Debug, PartialEq, Eq)]
+pub struct CheckFilesRequest {
+    /// The paths; a relative one is relative to the backend's working folder.
+    pub paths: Vec<String>,
+}
+
+/// What the backend host makes of one path.
+#[derive(Serialize, Deserialize, TS, Clone, Debug, PartialEq, Eq)]
+pub struct FileCheck {
+    /// The path as asked.
+    pub path: String,
+    /// Why it cannot be read as a file; absent when it can.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub problem: Option<String>,
 }
 
 /// An entry or lane to hide or show.

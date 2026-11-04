@@ -97,26 +97,6 @@ export function Shell({ version }: { version: string }) {
   const bridge = local ? window.axDevilWindow : undefined;
   const fail = (error: unknown) =>
     setNotice(error instanceof Error ? error.message : String(error));
-  const addVideo = () => {
-    if (!bridge) return setDialog("add-video");
-    bridge
-      .pickVideos()
-      .then((paths) =>
-        paths.length
-          ? command({
-              type: "content",
-              command: {
-                type: "addItems",
-                items: paths.map((path) => ({ type: "Video" as const, path, overlays: [] })),
-                open: true,
-              },
-            })
-          : undefined,
-      )
-      .then(() => setNotice(null))
-      .catch(fail);
-  };
-
   // A refused or failed workspace command shows why, as any other command does.
   const ask = (change: WorkspaceCommand) =>
     command({ type: "workspace", command: change }).then(() => setNotice(null), fail);
@@ -164,7 +144,7 @@ export function Shell({ version }: { version: string }) {
     "keyboard-shortcuts": () => setDialog("shortcuts"),
     ...(configures && { "quick-setup": () => setDialog("quick-setup") }),
     about: () => setDialog("about"),
-    "add-video": addVideo,
+    "add-video": () => setDialog("add-video"),
     "new-workspace": () => void ask({ type: "new" }),
     "open-workspace": openWorkspace,
     "save-workspace": saveFile,

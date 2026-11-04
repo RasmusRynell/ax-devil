@@ -379,7 +379,8 @@ pub(crate) fn file_name(path: &Path) -> String {
         .unwrap_or_default()
 }
 
-fn check_readable_file(path: &Path) -> Result<(), UserError> {
+/// Why `path` cannot be read as a file (missing, not a file, or refused by the host), in words for the user.
+pub fn check_readable_file(path: &Path) -> Result<(), UserError> {
     let fail = |code, reason: String| UserError::new(code, reason).at(HostPath::new(path));
     let unreadable = |error: io::Error| match error.kind() {
         io::ErrorKind::NotFound => fail(ErrorCode::FileNotFound, "File not found".into()),
