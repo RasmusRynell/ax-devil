@@ -1,6 +1,6 @@
 // The smoke test's media tools: the Objects list of a lane of MINI-01 (lanes DPM, GT, FRCNN, boxes on frame 0 and none on
-// frame 5), opened with its shortcut. Frame scope lists the frame's objects, File scope the file's with the ones that are
-// not in the frame dimmed, a click on one of those goes to its first frame and inspects it. Shown in both themes, then at
+// frame 5), opened with its shortcut. Frame scope lists the frame's objects, File scope the file's, where a click on an
+// object that is not in the frame goes to its first frame and inspects it. Shown in both themes, then at
 // the smallest window at 200% zoom, where the list must fit.
 const assert = require("node:assert/strict");
 const fit = require("./fit.cjs");
@@ -18,7 +18,6 @@ module.exports.objects = async (window, { setTheme, shoot }) => {
   const rows = () =>
     js(`[...document.querySelectorAll('${PANEL} [role=option]')].map((row) => ({
       id: row.firstElementChild.textContent,
-      dimmed: row.title === 'Not in this frame',
       selected: row.getAttribute('aria-selected') === 'true',
     }))`);
   const count = () =>
@@ -31,6 +30,14 @@ module.exports.objects = async (window, { setTheme, shoot }) => {
     js(
       `[...document.querySelectorAll('${PANEL} input[type=radio]')].find((r) => r.parentElement.textContent === '${name}').click()`,
     );
+  // Empties the search box the way React sees an edit, with no shortcut: Ctrl+A is not select-all on macOS.
+  const clearSearch = async () => {
+    const input = `document.querySelector('${PANEL} input:not([type=radio])')`;
+    await js(
+      `Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(${input}, '')`,
+    );
+    await js(`${input}.dispatchEvent(new Event('input', { bubbles: true }))`);
+  };
   const fits = async (what) =>
     assert.deepEqual(await js(`(${fit.panel.toString()})(${JSON.stringify(PANEL)})`), [], what);
 
@@ -42,15 +49,24 @@ module.exports.objects = async (window, { setTheme, shoot }) => {
   // Frame scope: what the lane draws on frame 0.
   await wait(`document.querySelectorAll('${PANEL} [role=option]').length > 0`);
   const inFrame = await rows();
-  assert.ok(
-    inFrame.every((row) => !row.dimmed),
-    "Frame scope dims nothing",
-  );
   assert.equal((await count())[0], inFrame.length);
   for (const theme of THEMES) {
     await setTheme(theme);
     await shoot(`objects-frame-${theme}.png`);
   }
+
+  // A searched motion state no object in the frame has is named under the search box.
+  await js(`document.querySelector('${PANEL} input:not([type=radio])').focus()`);
+  window.webContents.insertText("state:moving");
+  const noted = (text) =>
+    `[...document.querySelectorAll('${PANEL} [role=status]')].some((note) => note.textContent === '${text}')`;
+  await wait(noted("No object has state in this frame"));
+  for (const theme of THEMES) {
+    await setTheme(theme);
+    await shoot(`objects-missing-${theme}.png`);
+  }
+  await clearSearch();
+  await wait(`!(${noted("No object has state in this frame")})`);
 
   // Dragging the divider on the panel's left edge left widens it, and it keeps that width through a close.
   const width = () => js(`document.querySelector('${PANEL}').getBoundingClientRect().width`);
@@ -84,20 +100,17 @@ module.exports.objects = async (window, { setTheme, shoot }) => {
   await wait(`document.querySelector('${PANEL}')`);
   assert.equal(await width(), widened, "The panel opens at the width it was given");
 
-  // File scope: every object of the file; the ones of the frame are not dimmed. Searching narrows it.
+  // File scope: every object of the file, the frame's among them. Searching narrows it.
   await scope("File");
   await wait(`document.querySelectorAll('${PANEL} [role=option]:not([aria-busy])').length > 0`);
   const inFile = await rows();
   const [matched, total] = await count();
   assert.equal(matched, total);
   assert.ok(total > inFrame.length, "The file has objects the frame has not");
-  assert.deepEqual(
-    inFile
-      .filter((row) => !row.dimmed)
-      .map((row) => row.id)
-      .sort(),
-    inFrame.map((row) => row.id).sort(),
-    "File scope dims exactly the objects that are not in the frame",
+  const inFileIds = new Set(inFile.map((row) => row.id));
+  assert.ok(
+    inFrame.every((row) => inFileIds.has(row.id)),
+    "File scope lists the objects of the frame",
   );
   for (const theme of THEMES) {
     await setTheme(theme);
@@ -110,28 +123,21 @@ module.exports.objects = async (window, { setTheme, shoot }) => {
     (await rows()).map((row) => row.id),
     [inFile[0].id],
   );
-  await js(
-    `Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(document.querySelector('${PANEL} input:not([type=radio])'), '')`,
-  );
-  await js(
-    `document.querySelector('${PANEL} input:not([type=radio])').dispatchEvent(new Event('input', { bubbles: true }))`,
-  );
+  await clearSearch();
   await shows(total, total);
 
   // On frame 5 nothing is in the frame. A click on an object goes to the frame it first is on and inspects it. The window
   // is wide enough for the inspector to take a column beside the list.
   await setView(window, [1500, 720], 1);
   await goToFrame(window, 5);
-  await wait(
-    `(() => { const rows = [...document.querySelectorAll('${PANEL} [role=option]')]; return rows.length > 0 && rows.every((row) => row.title); })()`,
-  );
+  await wait(`document.querySelector('${PANEL} [role=option]:not([aria-busy])')`);
   await js(`document.querySelector('${PANEL} [role=option]').click()`);
   await wait(
     "document.querySelector('aside[aria-label=Inspector] [aria-busy=false]') && !document.querySelector('aside[aria-label=Inspector]').innerText.includes('Not in this frame')",
   );
   assert.ok(
-    (await rows()).some((row) => row.selected && !row.dimmed),
-    "The object is selected and now in the frame",
+    (await rows()).some((row) => row.selected),
+    "The object is selected",
   );
   // A pinned field rises into a section of its own.
   const INSPECTOR = "aside[aria-label=Inspector]";

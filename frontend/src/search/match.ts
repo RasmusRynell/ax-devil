@@ -14,7 +14,7 @@ export type SearchRecord = {
 };
 
 /** Whether `path` names `key`: it equals the key or a trailing run of its dotted parts, ignoring case. */
-const names = (path: string, key: string): boolean => {
+export const names = (path: string, key: string): boolean => {
   const name = key.toLowerCase();
   return name === path || name.endsWith(`.${path}`);
 };
@@ -54,3 +54,14 @@ function holds(term: TermWire, record: SearchRecord): boolean {
 /** Whether `record` passes the search; a search with no groups keeps everything. */
 export const matches = (search: SearchWire, record: SearchRecord): boolean =>
   search.groups.every((group) => group.some((term) => holds(term, record)));
+
+/**
+ * The field paths the search names that no record in `records` has, in search order without repeats; none when
+ * `records` is empty. A path counts as present when some record has a key it names, whatever the key's values.
+ */
+export function missingPaths(search: SearchWire, records: readonly SearchRecord[]): string[] {
+  if (records.length === 0) return [];
+  const keys = records.flatMap((record) => Object.keys(record.fields));
+  const paths = search.groups.flat().flatMap((term) => (term.path === null ? [] : [term.path]));
+  return [...new Set(paths)].filter((path) => !keys.some((key) => names(path.toLowerCase(), key)));
+}

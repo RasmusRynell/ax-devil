@@ -17,39 +17,36 @@ import type { MenuEntry } from "../../kit/Menu";
 import { useRowWindow } from "../../shell/useRowWindow";
 import { writeClipboard } from "./clipboard";
 import { KINDS, rowText, type Column, type SortOf } from "./columns";
+import { MiddleCut, tipIfCut } from "./MiddleCut";
 import { useColumns } from "./useColumns";
 
 /** The grid every row and the header share; `--cols` is written by `useColumns`. */
 const GRID = "grid grid-cols-[var(--cols,minmax(0,1fr))] items-center";
 /** Where a row starts: the accent edge a selected row shows, then the padding before the first cell. */
 const LEAD = "border-l-edge pl-m";
-/** The characters of an elided id that always show. */
-const TAIL = 5;
 /** How long a copied row shows its check, in milliseconds. */
 const COPIED_MS = 1500;
 const MENU: readonly MenuEntry[] = [{ kind: "action", id: "copy", label: "Copy row" }];
 
-/** One cell: text with a tooltip, an id elided in the middle, or what the column renders. */
+/** One cell: text, an id elided in the middle, or what the column renders; a cut text shows in full as a tooltip. */
 function Cell<Row>({ column, row }: { column: Column<Row>; row: Row }) {
   const kind = KINDS[column.kind];
   if (!column.text) return <div className="min-w-0 pr-m">{column.render?.(row)}</div>;
   const text = column.text(row);
-  if (kind.elide === "middle" && text.length > 2 * TAIL)
-    return (
-      <div title={text} className="flex min-w-0 pr-m">
-        <span className="truncate">{text.slice(0, -TAIL)}</span>
-        <span className="shrink-0">{text.slice(-TAIL)}</span>
-      </div>
-    );
+  const look = `pr-m ${kind.mono ? "font-mono text-aside" : ""} ${kind.numeric ? "text-right tabular-nums" : ""}`;
+  if (kind.elide === "middle") return <MiddleCut text={text} className={look} />;
   return (
-    <div
-      title={text}
-      className={`min-w-0 truncate pr-m ${kind.numeric ? "text-right tabular-nums" : ""}`}
-    >
+    <div onMouseEnter={tipIfCut(text)} className={`min-w-0 truncate ${look}`}>
       {text}
     </div>
   );
 }
+
+/** What a table keeps for the next time it is shown: how far it was scrolled and the key of the row its cursor was on. */
+export type TableMemory = { top: number; cursor: string | null };
+
+/** The cursor: the row it follows, or, with no key, the position it was put on (the first row, or a row not loaded). */
+type Cursor = { key: string | null; index: number };
 
 type RowProps<Row> = {
   id: string;
@@ -60,8 +57,7 @@ type RowProps<Row> = {
   shown: readonly number[];
   selected: boolean;
   active: boolean;
-  /** Why the row is dimmed, when it is. */
-  absent: string | undefined;
+  dimmed: boolean;
   /** Whether the row was just copied. */
   copied: boolean;
   cursor: string | undefined;
@@ -78,7 +74,7 @@ const TableRow = memo(function TableRow<Row>({
   shown,
   selected,
   active,
-  absent,
+  dimmed,
   copied,
   cursor,
   onPick,
@@ -91,11 +87,10 @@ const TableRow = memo(function TableRow<Row>({
       aria-posinset={index + 1}
       aria-setsize={count}
       aria-busy={row === undefined ? true : undefined}
-      title={absent}
       data-cursor-id={cursor}
       onClick={() => onPick(index)}
       className={`${GRID} ${LEAD} relative h-row cursor-pointer hover:bg-hover ${
-        absent ? "text-muted" : "text-fg"
+        dimmed ? "text-muted [&>*]:opacity-50" : "text-fg"
       } ${selected ? "border-accent bg-hover" : "border-transparent"} ${
         active
           ? "group-focus-visible/list:outline-(length:--stroke-focus) group-focus-visible/list:-outline-offset-(--stroke-focus) group-focus-visible/list:outline-accent"
@@ -129,8 +124,9 @@ export function Table<Row>({
   count,
   rowAt,
   keyOf,
+  indexOf,
   selected,
-  absent,
+  dimmed,
   sort,
   onSort,
   onActivate,
@@ -138,6 +134,7 @@ export function Table<Row>({
   cursorId,
   busy,
   message,
+  memory,
 }: {
   /** Names the table for the widths it remembers; a table of its own columns has its own key. */
   tableKey: string;
@@ -147,13 +144,15 @@ export function Table<Row>({
   /** The row at `index`, or `undefined` while it is not loaded. */
   rowAt: (index: number) => Row | undefined;
   keyOf: (row: Row) => string;
+  /** The position of the row with this key in the current order, or -1 while it is not loaded or gone. */
+  indexOf: (key: string) => number;
   /** The key of the selected row. */
   selected: string | null;
-  /** Why a row is dimmed; `undefined` for one that is not. */
-  absent?: (row: Row) => string | undefined;
+  /** Whether a row is dimmed. */
+  dimmed?: (row: Row) => boolean;
   sort: SortOf<string>;
   onSort: (key: string) => void;
-  /** A click, or Enter or Space, on a row. */
+  /** A click, or Enter, on a row. */
   onActivate: (row: Row, index: number) => void;
   /** The rows in view changed. */
   onRange?: (start: number, end: number) => void;
@@ -162,74 +161,103 @@ export function Table<Row>({
   busy?: boolean;
   /** Shown instead of the rows. */
   message?: ReactNode;
+  /** Written as the list scrolls and the cursor moves, and read once the rows first show. */
+  memory?: TableMemory;
 }) {
   const base = useId();
-  const [active, setActive] = useState(0);
+  // The cursor stays on its row as the order changes; once that row is not in the order the cursor is on no row.
+  const [cursor, setCursor] = useState<Cursor>({ key: null, index: 0 });
   const { ref, start, end, update, reveal } = useRowWindow(count, '[role="option"]');
   const inView = Array.from({ length: end - start }, (_, i) => rowAt(start + i));
   const { root, header, shown, divider } = useColumns(tableKey, columns, inView, ref);
 
   useEffect(() => onRange?.(start, end), [onRange, start, end]);
 
-  const latest = useRef({ rowAt, onActivate });
+  const latest = useRef({ rowAt, keyOf, onActivate, memory });
   useLayoutEffect(() => {
-    latest.current = { rowAt, onActivate };
+    latest.current = { rowAt, keyOf, onActivate, memory };
   });
-  const pick = useCallback((index: number) => {
-    setActive(index);
-    const row = latest.current.rowAt(index);
-    if (row !== undefined) latest.current.onActivate(row, index);
+  /** Puts the cursor on the row at `index`. */
+  const place = useCallback((index: number) => {
+    const { rowAt, keyOf, memory } = latest.current;
+    const row = rowAt(index);
+    const key = row === undefined ? null : keyOf(row);
+    setCursor({ key, index });
+    if (memory) memory.cursor = key;
+    return row;
   }, []);
+  const pick = useCallback(
+    (index: number) => {
+      const row = place(index);
+      if (row !== undefined) latest.current.onActivate(row, index);
+    },
+    [place],
+  );
 
-  const at = Math.min(active, Math.max(count - 1, 0));
+  /** The position of the cursor, or -1 when it is on no row. */
+  const at =
+    cursor.key === null ? Math.min(cursor.index, Math.max(count - 1, 0)) : indexOf(cursor.key);
+  // The remembered scroll and cursor come back once, when there are rows to scroll to.
+  const restored = useRef(false);
+  useLayoutEffect(() => {
+    if (restored.current || message != null || count === 0) return;
+    restored.current = true;
+    if (!memory) return;
+    setCursor({ key: memory.cursor, index: 0 });
+    if (ref.current) ref.current.scrollTop = memory.top;
+    update();
+  });
+
   const go = (index: number) => {
     const next = Math.max(0, Math.min(count - 1, index));
-    setActive(next);
+    place(next);
     reveal(next);
   };
-  const [copied, setCopied] = useState<number | null>(null);
+  const [copied, setCopied] = useState<string | null>(null);
   useEffect(() => {
     if (copied === null) return;
     const timer = setTimeout(() => setCopied(null), COPIED_MS);
     return () => clearTimeout(timer);
   }, [copied]);
-  /** Copies the row at `index`'s text, `text` when it was taken earlier; the check shows once the clipboard has it. */
-  const copy = async (index: number, text?: string) => {
-    const row = rowAt(index);
-    const copying = text ?? (row === undefined ? undefined : rowText(columns, row));
-    if (copying !== undefined && (await writeClipboard(copying))) setCopied(index);
+  /** Copies the text of the row with `key`; the check shows once the clipboard has it. */
+  const copy = async (key: string, text: string) => {
+    if (await writeClipboard(text)) setCopied(key);
   };
   // The row a context menu was opened on, as it was then: rows move while a video plays. A right click off the rows
   // leaves the browser's own menu.
-  const [menuRow, setMenuRow] = useState<{ index: number; text: string } | null>(null);
+  const [menuRow, setMenuRow] = useState<{ key: string; text: string } | null>(null);
   const onContextMenu = (event: MouseEvent) => {
     const row = (event.target as Element).closest('[role="option"]');
     const index = row ? Number(row.getAttribute("aria-posinset")) - 1 : -1;
     const found = index < 0 ? undefined : rowAt(index);
     if (found === undefined) event.stopPropagation();
-    else setMenuRow({ index, text: rowText(columns, found) });
+    else setMenuRow({ key: keyOf(found), text: rowText(columns, found) });
   };
   const onKeyDown = (event: KeyboardEvent) => {
     const page = end - start;
     const keys: Record<string, () => void> = {
       ArrowDown: () => go(at + 1),
-      ArrowUp: () => go(at - 1),
+      ArrowUp: () => go(at < 0 ? count - 1 : at - 1),
       PageDown: () => go(at + page),
       PageUp: () => go(at - page),
       Home: () => go(0),
       End: () => go(count - 1),
-      Enter: () => pick(at),
+      Enter: () => at >= 0 && pick(at),
     };
-    if (event.key === "c" && (event.ctrlKey || event.metaKey)) return void copy(at);
-    keys[event.key === " " ? "Enter" : event.key]?.();
-    if (event.key in keys || event.key === " ") event.preventDefault();
+    if (event.key === "c" && (event.ctrlKey || event.metaKey)) {
+      const row = at < 0 ? undefined : rowAt(at);
+      if (row !== undefined) void copy(keyOf(row), rowText(columns, row));
+      return;
+    }
+    keys[event.key]?.();
+    if (event.key in keys) event.preventDefault();
   };
 
   return (
     <div ref={root} className="flex min-h-0 flex-1 flex-col">
       <div
         ref={header}
-        className={`${GRID} ${LEAD} h-row shrink-0 overflow-hidden border-transparent text-small text-muted [scrollbar-gutter:stable]`}
+        className={`${GRID} ${LEAD} h-row shrink-0 overflow-hidden border-b border-transparent border-b-line text-small font-semibold tracking-caption text-muted uppercase [scrollbar-gutter:stable]`}
       >
         {shown.map((i) => {
           const column = columns[i];
@@ -265,7 +293,7 @@ export function Table<Row>({
                 aria-label={`Resize ${column.title}`}
                 tabIndex={0}
                 {...divider(i)}
-                className="absolute inset-y-0 right-0 w-s cursor-col-resize hover:bg-line-strong focus-ring"
+                className="absolute inset-y-0 right-0 w-s cursor-col-resize after:absolute after:inset-y-s after:right-0 after:w-hairline after:bg-fg/15 hover:after:inset-y-xs hover:after:bg-fg/60 focus-ring"
               />
             </div>
           );
@@ -273,18 +301,21 @@ export function Table<Row>({
       </div>
       <div
         ref={ref}
-        onScroll={update}
+        onScroll={(event) => {
+          if (memory) memory.top = event.currentTarget.scrollTop;
+          update();
+        }}
         className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto [scrollbar-gutter:stable]"
       >
         {message ?? (
           <ContextMenu
             entries={MENU}
-            onSelect={() => menuRow && void copy(menuRow.index, menuRow.text)}
+            onSelect={() => menuRow && void copy(menuRow.key, menuRow.text)}
           >
             <div
               role="listbox"
               aria-label={label}
-              aria-activedescendant={`${base}-${at}`}
+              aria-activedescendant={at < 0 ? undefined : `${base}-${at}`}
               aria-busy={busy}
               tabIndex={0}
               onKeyDown={onKeyDown}
@@ -308,8 +339,8 @@ export function Table<Row>({
                     shown={shown}
                     selected={row !== undefined && keyOf(row) === selected}
                     active={index === at}
-                    absent={row === undefined ? undefined : absent?.(row)}
-                    copied={copied === index}
+                    dimmed={row !== undefined && dimmed?.(row) === true}
+                    copied={row !== undefined && copied === keyOf(row)}
                     cursor={row === undefined ? undefined : cursorId(row)}
                     onPick={pick}
                   />

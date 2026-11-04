@@ -1,7 +1,10 @@
 import type { ReactNode } from "react";
 
-/** How a column's cells look and size: ids elide in the middle, numbers sit at the end, a presence strip has no text. */
-export type CellKind = "id" | "text" | "number" | "presence";
+/**
+ * How a column's cells look and size: ids elide in the middle, numbers sit at the end, ids, numbers and `mono` text are
+ * monospace, a presence strip has no text.
+ */
+export type CellKind = "id" | "text" | "mono" | "number" | "presence";
 
 /**
  * What each kind decides. `comfortable` and `least` are characters: the width a column keeps while other columns
@@ -13,14 +16,23 @@ export const KINDS: Record<
     align: "start" | "end";
     elide: "end" | "middle";
     numeric: boolean;
+    mono: boolean;
     comfortable: number;
     least: number;
   }
 > = {
-  id: { align: "start", elide: "middle", numeric: false, comfortable: 20, least: 10 },
-  text: { align: "start", elide: "end", numeric: false, comfortable: 10, least: 8 },
-  number: { align: "end", elide: "end", numeric: true, comfortable: 6, least: 4 },
-  presence: { align: "start", elide: "end", numeric: false, comfortable: 12, least: 4 },
+  id: { align: "start", elide: "middle", numeric: false, mono: true, comfortable: 20, least: 10 },
+  text: { align: "start", elide: "end", numeric: false, mono: false, comfortable: 10, least: 8 },
+  mono: { align: "start", elide: "end", numeric: false, mono: true, comfortable: 10, least: 8 },
+  number: { align: "end", elide: "end", numeric: true, mono: true, comfortable: 6, least: 4 },
+  presence: {
+    align: "start",
+    elide: "end",
+    numeric: false,
+    mono: false,
+    comfortable: 12,
+    least: 4,
+  },
 };
 
 /** One column of a table: its header, how its cells look and how it gives way when the table is narrow. */
@@ -47,15 +59,11 @@ export interface Column<Row> {
 /** A sort and its direction. */
 export type SortOf<Key extends string> = { key: Key; descending: boolean };
 
-/** The sort after a click on the header of `key`: the same column flips; a number column starts greatest first. */
-export function nextSort<Key extends string>(
-  columns: readonly Column<never>[],
-  sort: SortOf<Key>,
-  key: Key,
-): SortOf<Key> {
-  const kind = columns.find((column) => column.key === key)?.kind;
-  return { key, descending: sort.key === key ? !sort.descending : kind === "number" };
-}
+/** The sort after a click on the header of `key`: the same column flips; another starts ascending. */
+export const nextSort = <Key extends string>(sort: SortOf<Key>, key: Key): SortOf<Key> => ({
+  key,
+  descending: sort.key === key ? !sort.descending : false,
+});
 
 /** What copying a row puts on the clipboard: the text of every column that has text, hidden ones too, tab-separated. */
 export const rowText = <Row>(columns: readonly Column<Row>[], row: Row): string =>

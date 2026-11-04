@@ -33,6 +33,7 @@ Object.assign(globalThis, { OffscreenCanvas: FakeCanvas });
 
 const FONTS: Fonts = {
   body: { css: "14px sans-serif", ch: 7 },
+  mono: { css: "13px monospace", ch: 8 },
   small: { css: "12px sans-serif", ch: 6 },
   pad: 12,
 };

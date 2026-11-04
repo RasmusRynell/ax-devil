@@ -49,6 +49,7 @@ const file = (id: string, first: number, classes = ["car"]): FileRowWire => ({
 function mount(
   selection: PlaybackView["selection"] = null,
   props: Partial<Parameters<typeof ObjectsPanel>[0]> = {},
+  frame = FRAME,
 ) {
   vi.useFakeTimers();
   const lanes = new LaneSet();
@@ -67,8 +68,8 @@ function mount(
     files,
     shown: () =>
       ({
-        columns: FRAME,
-        classMask: { enabled: new Uint32Array(FRAME.maskWords), options: 0 },
+        columns: frame,
+        classMask: { enabled: new Uint32Array(frame.maskWords), options: 0 },
         filter: null,
       }) as unknown as LaneFrame,
     select: vi.fn(),
@@ -79,6 +80,7 @@ function mount(
     status: "ready",
     frameCount: 100,
     lanes: lanes.states,
+    shown: { sequenceId: 0, timestampUs: 0, periodUs: null },
     selection,
   };
   const panel = (
@@ -130,11 +132,15 @@ const search = (text: string) =>
   fireEvent.change(screen.getByRole("textbox", { name: "Search objects" }), {
     target: { value: text },
   });
+/** Whether a status line says `text`; a notice cut in the middle is in two parts. */
+const says = (text: string) =>
+  screen.queryAllByRole("status").some((status) => status.textContent === text);
 const showFile = () => fireEvent.click(screen.getByRole("radio", { name: "File" }));
 
 beforeEach(() => vi.stubGlobal("ResizeObserver", undefined));
 afterEach(() => {
   cleanup();
+  vi.restoreAllMocks();
   vi.useRealTimers();
   vi.unstubAllGlobals();
 });
@@ -149,10 +155,10 @@ describe("Frame scope", () => {
     fireEvent.click(screen.getByRole("button", { name: /^Sort by ID/ }));
     expect(ids()).toEqual(["12", "9", "7"]);
 
-    // A number column starts with its greatest, and each row reads its values off the frame.
+    // Another column starts ascending, and each row reads its values off the frame.
     fireEvent.click(screen.getByRole("button", { name: "Sort by Conf" }));
-    expect(ids()).toEqual(["9", "12", "7"]);
-    expect(screen.getAllByRole("option")[1].textContent).toContain("0.5");
+    expect(ids()).toEqual(["7", "12", "9"]);
+    expect(screen.getAllByRole("option")[1].textContent).toContain("0.50");
     expect(screen.getAllByRole("option")[1].textContent).toContain("moving");
     fireEvent.click(screen.getByRole("button", { name: "Sort by ID" }));
 
@@ -162,11 +168,64 @@ describe("Frame scope", () => {
     search("class:bus");
     expect(screen.getByText("No matching objects")).toBeTruthy();
 
+    // Motion is searched as the inspection names it, `motion.state`.
+    search("state:moving");
+    expect(ids()).toEqual(["12"]);
+
     search("");
     fireEvent.keyDown(screen.getByRole("listbox"), { key: "ArrowDown" });
     fireEvent.keyDown(screen.getByRole("listbox"), { key: "Enter" });
     expect(source.select).toHaveBeenCalledWith({ lane: 0, source: 0, entity: "9" });
     expect(source.seek).not.toHaveBeenCalled();
+  });
+
+  it("names a searched field no object has, only where it can tell", () => {
+    mount(null, {}, fullSample([{ id: "7", class: "car", score: 0.8, box: [0.1, 0.1, 0.3, 0.3] }]));
+    // Motion state and confidence are in what is searched here, and the object has neither.
+    search("state:moving confidence>0.5");
+    expect(says("No object has state, confidence in this frame")).toBe(true);
+    // Any other field may be in the inspection data, so its absence is not claimed.
+    search("speed>3");
+    expect(
+      screen
+        .queryAllByRole("status")
+        .some((status) => status.textContent?.startsWith("No object has")),
+    ).toBe(false);
+  });
+
+  it("is where it was left, cursor and scroll, when the scope is shown again", () => {
+    // Each scroll container keeps the position it is given, as in a browser.
+    const tops = new WeakMap<Element, number>();
+    vi.spyOn(Element.prototype, "scrollTop", "get").mockImplementation(function (this: Element) {
+      return tops.get(this) ?? 0;
+    });
+    vi.spyOn(Element.prototype, "scrollTop", "set").mockImplementation(function (
+      this: Element,
+      value: number,
+    ) {
+      tops.set(this, value);
+    });
+    const { source, answer } = mount();
+    const list = () => screen.getByRole("listbox");
+    const scroller = () => list().parentElement!.parentElement!;
+    fireEvent.keyDown(list(), { key: "ArrowDown" });
+    scroller().scrollTop = 120;
+    fireEvent.scroll(scroller());
+
+    showFile();
+    answer([file("50", 3), file("51", 4), file("52", 5)]);
+    fireEvent.keyDown(list(), { key: "ArrowDown" });
+    fireEvent.click(screen.getByRole("radio", { name: "Frame" }));
+    expect(scroller().scrollTop).toBe(120);
+    fireEvent.keyDown(list(), { key: "Enter" });
+    expect(source.select).toHaveBeenCalledWith({ lane: 0, source: 0, entity: "7" });
+
+    // File scope's cursor row is not in the page listed next: Enter picks no other object.
+    showFile();
+    answer([file("60", 3), file("61", 4), file("62", 5)]);
+    const picks = vi.mocked(source.select).mock.calls.length;
+    fireEvent.keyDown(list(), { key: "Enter" });
+    expect(source.select).toHaveBeenCalledTimes(picks);
   });
 });
 
@@ -189,8 +248,6 @@ describe("File scope", () => {
     const [here, away] = screen.getAllByRole("option");
     expect(here.getAttribute("aria-selected")).toBe("true");
     expect(here.textContent).toContain("3–23");
-    expect(here.title).toBe("");
-    expect(away.title).toBe("Not in this frame");
 
     // An object in the frame is only selected; one that is not also goes to where it first is.
     fireEvent.click(here);
@@ -198,6 +255,12 @@ describe("File scope", () => {
     fireEvent.click(away);
     expect(source.select).toHaveBeenLastCalledWith({ lane: 0, source: 0, entity: "40" });
     expect(source.seek).toHaveBeenCalledWith(55);
+
+    // A field outside what File scope searches is said so.
+    search("score>0.5");
+    expect(says("File scope filters id, class and event only")).toBe(true);
+    search("event:motion");
+    expect(says("File scope filters id, class and event only")).toBe(false);
   });
 
   it("seeks to the frame under a click on the presence strip", () => {
@@ -259,7 +322,7 @@ describe("Copying", () => {
     const writeText = vi.fn(() => Promise.resolve());
     await copyRow(writeText);
     // The best-scored object, every column, hidden ones too.
-    expect(writeText).toHaveBeenCalledWith("12\thuman\t0.9\t0.5\tmoving");
+    expect(writeText).toHaveBeenCalledWith("12\thuman\t0.90\t0.50\tmoving");
     expect(screen.getByText("Copied")).toBeTruthy();
   });
 
