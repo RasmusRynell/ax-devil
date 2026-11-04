@@ -242,7 +242,10 @@ function Playback({
                 </div>
               </div>
             )}
-            <Transport controls={session} view={view} disabled={!canChange} />
+            {/* With every lane hidden there is nothing to play: no transport, so no pick or press outlives the lanes. */}
+            {(shown.length > 0 || view.lanes.length === 0) && (
+              <Transport controls={session} view={view} disabled={!canChange} />
+            )}
           </div>
           {tools && (
             <ObjectsPanel

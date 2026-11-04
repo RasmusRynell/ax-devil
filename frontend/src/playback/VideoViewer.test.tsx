@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vite-plus/test";
 import { FakeSocket, video } from "../session/fakeSession";
 import { SessionProvider } from "../session/session";
 import { SessionStore } from "../session/store";
+import { NOTHING_HIDDEN, type Hidden } from "../viewer/hidden";
 import { videoFrame } from "./fakePlayback";
 import type { ClientMessage, LaneInfo, ServerMessage } from "./protocol";
 import type { VideoViewerProps } from "./VideoViewer";
@@ -330,6 +331,28 @@ describe("video viewer", () => {
       await mountLanes();
       fireEvent.click(screen.getByRole("button", { name: "DPM: settings" }));
       expect(screen.queryByRole("button", { name: "Hide lane" })).toBeNull();
+    });
+
+    it("has no transport while every lane is hidden, and has it again once one is shown", async () => {
+      const sent: ClientMessage[] = [];
+      const hide = (...labels: string[]): Hidden => ({
+        entry: () => false,
+        lane: (_, label) => labels.includes(label),
+      });
+      const view = (hidden: Hidden) => (
+        <SessionProvider>
+          <Viewer sent={sent} lanes={LANES} hidden={hidden} />
+        </SessionProvider>
+      );
+      const mounted = render(view(NOTHING_HIDDEN));
+      await act(async () => {});
+      act(() => FakeSocket.rooms.get("room-1")!.setItems([video("a")]));
+      await slider();
+      mounted.rerender(view(hide("DPM", "GT")));
+      expect(screen.getByRole("status").textContent).toBe("All lanes are hidden");
+      expect(screen.queryByRole("slider", { name: "Timeline" })).toBeNull();
+      mounted.rerender(view(hide("DPM")));
+      expect(screen.getByRole("slider", { name: "Timeline" })).toBeTruthy();
     });
 
     it("lists a lane's warnings on its tag", async () => {
