@@ -309,6 +309,38 @@ describe("primitive quads", () => {
     expect(glyphs[0].y).toBe(Math.round(180 + 3 + 18.56) - 15);
   });
 
+  describe("baseline anchor", () => {
+    // 20px text: ascent 18.56, glyphs 15px tall above the baseline, padding 2px by 3px.
+    const lines = (text: string, anchor: string, extra: object = {}) => {
+      const quads = quadsOf({
+        mark: "label",
+        size: "20px",
+        pad: ["2px", "3px"],
+        runs: [{ text: `'${text}'`, color: "#ffffff" }],
+        place: [{ at: "top-left", anchor }],
+        ...extra,
+      });
+      return { rect: quads.find((q) => q.kind === 0), glyphs: quads.filter((q) => q.kind !== 0) };
+    };
+    const TEXTS = ["Ag", "Ag\nlonger", "Ag\r\nx", "Ag x"];
+    const topGlyph = (text: string, anchor: string) =>
+      Math.min(...lines(text, anchor).glyphs.map((q) => q.y));
+
+    it("puts the first line's baseline on the point however many lines follow", () => {
+      expect(TEXTS.map((text) => topGlyph(text, "baseline"))).toEqual([165, 165, 165, 165]);
+      const { rect } = lines("Ag\nlonger", "baseline", { background: "#000000" });
+      expect(rect?.x).toBe(320);
+      expect(rect?.y).toBe(Math.round(180 - 3 - 18.56));
+    });
+
+    it("moves the first line up with each line added when anchored at the bottom", () => {
+      const tops = TEXTS.map((text) => topGlyph(text, "bottom-left"));
+      expect(tops[1]).toBeLessThan(tops[0]);
+      expect(tops[2]).toBe(tops[1]);
+      expect(tops[3]).toBe(tops[0]);
+    });
+  });
+
   it("draws only the track for zero and a dot for the smallest value", () => {
     expect(meter(0)).toHaveLength(1);
     // 1% of 50px is 0.5px, narrower than the pill is tall.

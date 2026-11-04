@@ -203,20 +203,8 @@ export class Labels {
     if (!box.size(padX, padY, gap, dpr, inkOnly)) return true;
     if (!this.choose(plan, marks, base, l, t, r, b, view)) return true;
     const placed = plan.place[this.chosen];
-    if (plain) sink.text(record, this.x, this.y, placed.anchorX, placed.anchorY, size);
-    else
-      sink.label(
-        record,
-        this.x,
-        this.y,
-        placed.anchorX,
-        placed.anchorY,
-        size,
-        padX,
-        padY,
-        radius,
-        gap,
-      );
+    if (plain) sink.text(record, this.x, this.y, placed, size);
+    else sink.label(record, this.x, this.y, placed, size, padX, padY, radius, gap);
     this.emit(marks, base, first, count, size, radius, dpr, plain, sink);
     return true;
   }
@@ -266,7 +254,7 @@ export class Labels {
     this.x = l + entry.atX * (r - l) + dx;
     this.y = t + entry.atY * (b - t) + dy;
     this.chosen = i;
-    return this.box.place(this.x, this.y, entry.anchorX, entry.anchorY, view.dpr);
+    return this.box.place(this.x, this.y, entry.anchorX, entry.anchorY, view.dpr, entry.baseline);
   }
 
   /** Whether candidate `i`, already placed, stays inside the image on the axes where it lies outside its reference rect. */

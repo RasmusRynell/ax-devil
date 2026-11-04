@@ -100,10 +100,13 @@ export class LabelBox {
     return true;
   }
 
-  /** Put the box with the anchor factors (`ax`, `ay`: 0, 0.5 or 1 across and down) at (`px`, `py`), snapped to device pixels. */
-  place(px: number, py: number, ax: number, ay: number, dpr: number): boolean {
+  /**
+   * Put the box with the anchor factors (`ax`, `ay`: 0, 0.5 or 1 across and down) at (`px`, `py`), snapped to device
+   * pixels. With `baseline` the first run's baseline is at `py` instead and `ay` is ignored.
+   */
+  place(px: number, py: number, ax: number, ay: number, dpr: number, baseline = false): boolean {
     const exactX = px - ax * this.width;
-    const exactY = py - ay * this.height;
+    const exactY = py - (baseline ? this.relativeBaseline : ay * this.height);
     if (!Number.isFinite(exactX) || !Number.isFinite(exactY)) return false;
     this.x = Math.round(exactX * dpr) / dpr;
     this.y = Math.round(exactY * dpr) / dpr;
