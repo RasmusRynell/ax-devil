@@ -12,6 +12,7 @@ pub mod session;
 pub mod share;
 #[cfg(test)]
 mod test_support;
+mod thumbnails;
 pub mod video_cache;
 pub mod video_sources;
 
@@ -63,6 +64,8 @@ pub struct AppState {
     pub plugins: Arc<plugins::Plugins>,
     /// The open videos, which the playback socket draws its viewers from.
     pub videos: Arc<video_sources::VideoSources>,
+    /// The cached first pictures of videos.
+    pub(crate) thumbnails: Arc<thumbnails::Thumbnails>,
     /// Opens the overlays of viewers.
     pub overlays: Arc<OverlayService>,
     /// Runs the backend's one export at a time.
@@ -121,6 +124,9 @@ impl AppState {
                     handlers: plugins.set(),
                 }),
             ),
+            thumbnails: Arc::new(thumbnails::Thumbnails::new(
+                cache_dir.join(thumbnails::FOLDER),
+            )),
             plugins,
             videos,
             stopping,

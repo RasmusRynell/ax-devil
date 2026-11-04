@@ -1,24 +1,26 @@
-//! The files ax-devil keeps in the cache folder (frame indexes and decoded overlay artifacts), found and removed for
-//! `clear-cache`.
+//! The files ax-devil keeps in the cache folder (frame indexes, decoded overlay artifacts and thumbnails), found and
+//! removed for `clear-cache`.
 //!
 //! Only files of the extensions ax-devil writes, directly in its own subfolders, count: a `--cache-dir` shared with
 //! other files loses nothing else, and symbolic links are never followed: not a file's, and not a subfolder's, so a
 //! link to a folder elsewhere is skipped whole. Removal checks the subfolder again just before it removes from it;
 //! std cannot remove relative to an opened folder, so a swap within that instant is not excluded.
 
+use crate::thumbnails;
 use std::{
     fs, io,
     path::{Path, PathBuf},
 };
 
 /// Where each kind of cache file lives under the cache folder: its label, subfolder and file extension.
-const KINDS: [(&str, &str, &str); 2] = [
+const KINDS: [(&str, &str, &str); 3] = [
     ("Frame indexes", media::INDEX_FOLDER, media::INDEX_EXTENSION),
     (
         "Overlay scenes",
         scene_store::SCENE_FOLDER,
         scene_store::SCENE_EXTENSION,
     ),
+    ("Thumbnails", thumbnails::FOLDER, thumbnails::EXTENSION),
 ];
 
 /// The cache files of one kind.
@@ -151,6 +153,7 @@ mod tests {
         write("frame-index/a-1.axidx", 100);
         write("frame-index/b-2.axidx", 28);
         write("scenes/c.axscene", 1000);
+        write("thumbnails/e.jpg", 10);
         write("frame-index/notes.txt", 5);
         write("settings.json", 5);
         write("scenes/nested/d.axscene", 5);
@@ -160,10 +163,10 @@ mod tests {
             .iter()
             .map(|location| (location.file_count(), location.bytes()))
             .collect();
-        assert_eq!(counts, [(2, 128), (1, 1000)]);
+        assert_eq!(counts, [(2, 128), (1, 1000), (1, 10)]);
 
         let cleared = clear(&found);
-        assert_eq!((cleared.files, cleared.bytes), (3, 1128));
+        assert_eq!((cleared.files, cleared.bytes), (4, 1138));
         assert!(cleared.failures.is_empty());
         assert!(scan(cache.path()).unwrap().locations.is_empty());
         for kept in [

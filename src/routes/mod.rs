@@ -10,6 +10,7 @@ mod handlers;
 pub mod playback;
 mod plugins;
 pub(crate) mod resolve;
+mod thumbnails;
 pub mod window;
 mod workspaces;
 
@@ -164,6 +165,13 @@ pub(crate) const ROUTES: &[Route] = &[
         listeners: MEMBERS,
         who: Who::Files,
         handler: |method| on(method, workspaces::recent),
+    },
+    Route {
+        method: MethodFilter::GET,
+        path: "/api/thumbnail",
+        listeners: MEMBERS,
+        who: Who::Files,
+        handler: |method| on(method, thumbnails::get),
     },
     Route {
         method: MethodFilter::GET,

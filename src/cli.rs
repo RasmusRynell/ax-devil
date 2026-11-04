@@ -138,7 +138,7 @@ enum Command {
     },
     /// List the overlay decoders and playlist resolvers, then exit.
     ListHandlers,
-    /// Remove the cached frame indexes and decoded overlays, then exit.
+    /// Remove the cached frame indexes, decoded overlays and thumbnails, then exit.
     ClearCache {
         /// Remove them without asking.
         #[arg(long)]

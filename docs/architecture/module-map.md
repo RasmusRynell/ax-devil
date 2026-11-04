@@ -11,6 +11,7 @@ Where code and files belong. Layers and the dependency rule are in the [overview
 | `src/exports.rs`, `src/render_host.rs`, `src/desktop.rs`, `src/routes/playback/export.rs` | The backend's one export job, the Render Page's host and its private socket, the desktop folder and its Electron, and the playback socket's export messages |
 | `src/video_sources.rs`, `src/video_cache.rs` | Where `media` meets `playback` (the decoder adapter, opening viewers on files) and how the `playback.video_cache` setting sizes the cache |
 | `src/disk_cache.rs` | Which files under the cache folder are ax-devil's own, found and removed for `clear-cache` |
+| `src/thumbnails.rs` | The first-picture JPEGs of videos kept in the cache folder, keyed by the file's identity so a changed video is a new picture; the thumbnail route serves them |
 | `src/access.rs` | Principals and grants, the Local guard, security headers, socket admission limits |
 | `src/share.rs` | Where other machines reach the backend: join-link base, the desktop's listener for them while a session is shared, the development-build refusal |
 | `src/session/` | The Session socket's adapter: admission, liveness and close codes (`socket`, `exit`), the three lanes (`reader`), what each seat is sent (`writer`), wire-to-service conversion (`wire`), the launch queue, the session list, and `project.rs`, the only constructor of the Doc's wire form, which decides what each audience learns of it |

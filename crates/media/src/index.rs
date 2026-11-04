@@ -11,7 +11,6 @@ mod tests;
 use crate::fingerprint::Fingerprint;
 use crate::index_file::{self, Stored};
 use crate::input::VideoInput;
-use crate::sequence::Numbering;
 use crate::source::{self, Opened};
 use foundation::{
     CancelToken, ColorDesc, ErrorCode, Interrupt, Keyframes, MediaTime, PixelFormat, Timeline,
@@ -270,14 +269,11 @@ impl FrameIndex {
     /// Whether `input` is still what was indexed: the same file, or for a sequence the same first image.
     pub(crate) fn describes(&self, input: &VideoInput) -> bool {
         match (&self.origin, input) {
-            (Origin::Packets(stored), VideoInput::File(path)) => {
-                Fingerprint::of_path(path).is_ok_and(|now| now == stored.fingerprint)
+            (Origin::Packets(stored), VideoInput::File(_)) => {
+                Fingerprint::of_input(input).is_ok_and(|now| now == stored.fingerprint)
             }
-            (Origin::Images { first, .. }, VideoInput::ImageSequence(sequence)) => {
-                Numbering::parse(&sequence.pattern).is_ok_and(|numbering| {
-                    let path = numbering.path(u64::from(sequence.start_number));
-                    Fingerprint::of_path(&path).is_ok_and(|now| now == *first)
-                })
+            (Origin::Images { first, .. }, VideoInput::ImageSequence(_)) => {
+                Fingerprint::of_input(input).is_ok_and(|now| now == *first)
             }
             _ => false,
         }

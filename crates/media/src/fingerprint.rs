@@ -2,6 +2,8 @@
 //! multi-gigabyte video in full would defeat instant reopening, so edits in the middle that keep size, times and
 //! both ends are not noticed; that is the accepted trade-off.
 
+use crate::input::VideoInput;
+use crate::sequence::Numbering;
 use std::fs::{File, Metadata};
 use std::io::{self, Read, Seek, SeekFrom};
 use std::path::Path;
@@ -43,6 +45,30 @@ impl Fingerprint {
     /// Fingerprints the file currently at `path`.
     pub(crate) fn of_path(path: &Path) -> io::Result<Self> {
         Self::of_handle(&File::open(path)?)
+    }
+
+    /// Fingerprints what identifies `input` right now: its file, or for an image sequence its first image. The
+    /// error is a reason for the user.
+    pub(crate) fn of_input(input: &VideoInput) -> Result<Self, String> {
+        let path = match input {
+            VideoInput::File(path) => path.clone(),
+            VideoInput::ImageSequence(sequence) => {
+                Numbering::parse(&sequence.pattern)?.path(u64::from(sequence.start_number))
+            }
+        };
+        Self::of_path(&path).map_err(|e| format!("{} cannot be read: {e}", path.display()))
+    }
+
+    /// One number that is equal while the fingerprint is.
+    pub(crate) fn digest(&self) -> u64 {
+        let mut hash = Xxh3::new();
+        hash.update(&self.device.to_le_bytes());
+        hash.update(&self.inode.to_le_bytes());
+        hash.update(&self.size.to_le_bytes());
+        hash.update(&self.mtime_ns.to_le_bytes());
+        hash.update(&self.ctime_ns.to_le_bytes());
+        hash.update(&self.sample.to_le_bytes());
+        hash.digest()
     }
 
     #[cfg(unix)]

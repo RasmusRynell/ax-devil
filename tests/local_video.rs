@@ -7,7 +7,7 @@ use serde_json::Value;
 use session_client::Socket;
 use std::{
     ffi::OsStr,
-    io::{BufRead, BufReader},
+    io::{BufRead, BufReader, Read, Write},
     path::Path,
     process::{Child, Command, Stdio},
 };
@@ -53,6 +53,74 @@ impl Drop for Backend {
         let _ = self.child.kill();
         let _ = self.child.wait();
     }
+}
+
+/// `GET path` with an optional `If-None-Match`: the status, the headers as lower-cased `name: value` lines, the body.
+async fn fetch(address: &str, path: &str, none_match: Option<&str>) -> (u16, Vec<String>, Vec<u8>) {
+    let (address, path) = (address.to_owned(), path.to_owned());
+    let condition = none_match.map_or(String::new(), |tag| format!("If-None-Match: {tag}\r\n"));
+    tokio::task::spawn_blocking(move || {
+        let mut stream = std::net::TcpStream::connect(&address).unwrap();
+        write!(
+            stream,
+            "GET {path} HTTP/1.1\r\nHost: {address}\r\n{condition}Connection: close\r\n\r\n"
+        )
+        .unwrap();
+        let mut response = Vec::new();
+        stream.read_to_end(&mut response).unwrap();
+        let split = response.windows(4).position(|w| w == b"\r\n\r\n").unwrap();
+        let head = String::from_utf8(response[..split].to_vec()).unwrap();
+        let mut lines = head.lines();
+        let status = lines
+            .next()
+            .unwrap()
+            .split(' ')
+            .nth(1)
+            .unwrap()
+            .parse()
+            .unwrap();
+        let headers = lines.map(str::to_lowercase).collect();
+        (status, headers, response[split + 4..].to_vec())
+    })
+    .await
+    .unwrap()
+}
+
+#[tokio::test]
+async fn a_thumbnail_is_a_jpeg_with_a_tag_and_a_client_that_holds_it_is_told_it_is_current() {
+    let folder = tempfile::tempdir().unwrap();
+    let video = Path::new(env!("CARGO_MANIFEST_DIR")).join("fixtures/video/cfr_h264_gop10_bf2.mp4");
+    let backend = Backend::start(
+        folder.path(),
+        &["local".as_ref(), "--video".as_ref(), video.as_ref()],
+    );
+    let mut window = Socket::own(&backend.address, None).await;
+    let session = window.until(|m| m["type"] == "welcome").await["session"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    let doc = window.settled_doc().await;
+    let entry = doc["doc"]["workspace"]["items"][0]["resolution"]["content"]["id"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    let path = format!("/api/thumbnail?session={session}&entry={entry}");
+
+    let (status, headers, body) = fetch(&backend.address, &path, None).await;
+    assert_eq!(status, 200);
+    assert_eq!(&body[..2], [0xFF, 0xD8], "a JPEG starts with SOI");
+    assert!(headers.contains(&"content-type: image/jpeg".to_owned()));
+    let tag = headers
+        .iter()
+        .find_map(|line| line.strip_prefix("etag: "))
+        .expect("a tag")
+        .to_owned();
+
+    let (status, _, body) = fetch(&backend.address, &path, Some(&tag)).await;
+    assert_eq!((status, body.len()), (304, 0));
+
+    let unknown = format!("{path}/other");
+    assert_eq!(fetch(&backend.address, &unknown, None).await.0, 404);
 }
 
 #[tokio::test]
