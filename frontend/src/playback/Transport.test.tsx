@@ -22,11 +22,17 @@ const view = (change: Partial<PlaybackView> = {}): PlaybackView => ({
   ...change,
 });
 
-function setup(change: Partial<PlaybackView> = {}) {
+/** `paused`: a seek moves the playhead at once, in the same update, as the session does when paused. */
+function setup(change: Partial<PlaybackView> = {}, paused = false) {
   const controls = {
     togglePlay: vi.fn(),
     step: vi.fn(),
-    seek: vi.fn(),
+    seek: vi.fn((frame: number) => {
+      if (paused)
+        result.rerender(
+          <Transport controls={controls} view={view({ ...change, playhead: frame })} />,
+        );
+    }),
     setSpeed: vi.fn(),
     frameTime: vi.fn((frame: number) => frame * 40_000),
   };
@@ -102,7 +108,7 @@ describe("transport", () => {
 
   it("lets go of the pick when its frame fails, even sought back from a later frame, or another seek is made", () => {
     const later = { sequenceId: 90, timestampUs: 3_600_000, periodUs: 40_000 };
-    const { controls, rerender } = setup({ playhead: 90, shown: later });
+    const { controls, rerender } = setup({ playhead: 90, shown: later }, true);
     const bar = screen.getByRole("slider", { name: "Timeline" });
     const field = screen.getByRole("textbox", { name: "Frame" }) as HTMLInputElement;
     const release = () => {
@@ -121,6 +127,32 @@ describe("transport", () => {
     release();
     fireEvent.click(screen.getByRole("button", { name: "Forward 1 frame" }));
     expect(field.value).toBe("90");
+  });
+
+  it("lets go of a paused pick when a step or seek elsewhere moves the playhead off its frame", () => {
+    const { controls, rerender } = setup({}, true);
+    const bar = screen.getByRole("slider", { name: "Timeline" });
+    const field = screen.getByRole("textbox", { name: "Frame" }) as HTMLInputElement;
+    fireEvent.pointerDown(bar, { pointerId: 1 });
+    fireEvent.change(bar, { target: { value: "31" } });
+    fireEvent.pointerUp(window, { pointerId: 1 });
+    expect(field.value).toBe("31");
+    // A shortcut steps back before frame 31 arrives: nothing new is shown, and the pick would never settle.
+    rerender(<Transport controls={controls} view={view({ playhead: 30 })} />);
+    expect(field.value).toBe("29");
+  });
+
+  it("keeps a drag held when the frame field commits meanwhile, and still seeks once on release", () => {
+    const { controls } = setup();
+    const bar = screen.getByRole("slider", { name: "Timeline" });
+    const field = screen.getByRole("textbox", { name: "Frame" });
+    fireEvent.change(field, { target: { value: "7" } });
+    fireEvent.pointerDown(bar, { pointerId: 1 });
+    fireEvent.blur(field);
+    fireEvent.change(bar, { target: { value: "64" } });
+    fireEvent.change(bar, { target: { value: "65" } });
+    fireEvent.pointerUp(window, { pointerId: 1 });
+    expect(controls.seek.mock.calls).toEqual([[7], [65]]);
   });
 
   it("is held by the pointer that pressed: another one's up or cancel does not seek", () => {

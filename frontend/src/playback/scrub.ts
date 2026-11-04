@@ -9,23 +9,26 @@ type Held = { frame: number; pointer: number | null; from?: number; playing?: bo
 
 /**
  * What ends a released pick: its frame is on screen or failed, the screen moved on from the frame it showed at
- * release, or playback started or stopped since (a pause drops the seek that was pending, and shows nothing new).
+ * release, playback started or stopped since (a pause drops the seek that was pending, and shows nothing new), or,
+ * paused, the playhead left the pick's frame (a step or seek made elsewhere superseded it, and a paused playhead
+ * never moves on its own).
  */
-type Progress = Pick<PlaybackView, "shown" | "frameError" | "playing">;
+type Progress = Pick<PlaybackView, "shown" | "frameError" | "playing" | "playhead">;
 
-const settled = (pick: Held, { shown, frameError, playing }: Progress) =>
+const settled = (pick: Held, { shown, frameError, playing, playhead }: Progress) =>
   pick.pointer === null &&
   (shown?.sequenceId === pick.frame ||
     shown?.sequenceId !== pick.from ||
     frameError?.sequenceId === pick.frame ||
-    playing !== pick.playing);
+    playing !== pick.playing ||
+    (!playing && playhead !== pick.frame));
 
 /**
  * The frame picked on the seek bar, which the readouts show instead of the frame on screen. The drag only moves the
  * pick; playback goes on, and the one seek is made when the pointer that pressed is let go (or the press ends in a
  * cancel or lost focus), as the reference does. After it the pick stays until its frame is on screen or fails, delivery
  * shows another frame, or playback starts or stops, and so never outlives a seek that goes wrong; a new press, `clear` or a new player
- * ends it too. A change with no press, such as a key, seeks at once.
+ * ends it too (a press ends only with its own pointer or blur). A change with no press, such as a key, seeks at once.
  */
 export function useScrub(
   player: { seek(frame: number): void },
@@ -38,7 +41,7 @@ export function useScrub(
   change: (frame: number) => void;
   /** Ends a press now, with its seek; does nothing without one. */
   release: () => void;
-  /** Another seek is made: drops a pick that waits for its own. */
+  /** Another seek is made: drops a pick that waits for its own, never a press still held. */
   clear: () => void;
 } {
   const [pick, setPick] = useState<Held | null>(null);
@@ -100,6 +103,8 @@ export function useScrub(
       } else set({ ...held, frame });
     },
     release,
-    clear: () => set(null),
+    clear: () => {
+      if (current.current?.pointer === null) set(null);
+    },
   };
 }
