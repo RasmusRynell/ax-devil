@@ -30,6 +30,14 @@ module.exports.objects = async (window, { setTheme, shoot }) => {
     js(
       `[...document.querySelectorAll('${PANEL} input[type=radio]')].find((r) => r.parentElement.textContent === '${name}').click()`,
     );
+  // Empties the search box the way React sees an edit, with no shortcut: Ctrl+A is not select-all on macOS.
+  const clearSearch = async () => {
+    const input = `document.querySelector('${PANEL} input:not([type=radio])')`;
+    await js(
+      `Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(${input}, '')`,
+    );
+    await js(`${input}.dispatchEvent(new Event('input', { bubbles: true }))`);
+  };
   const fits = async (what) =>
     assert.deepEqual(await js(`(${fit.panel.toString()})(${JSON.stringify(PANEL)})`), [], what);
 
@@ -57,8 +65,7 @@ module.exports.objects = async (window, { setTheme, shoot }) => {
     await setTheme(theme);
     await shoot(`objects-missing-${theme}.png`);
   }
-  key("A", ["control"]);
-  key("Backspace");
+  await clearSearch();
   await wait(`!(${noted("No object has state in this frame")})`);
 
   // Dragging the divider on the panel's left edge left widens it, and it keeps that width through a close.
@@ -116,12 +123,7 @@ module.exports.objects = async (window, { setTheme, shoot }) => {
     (await rows()).map((row) => row.id),
     [inFile[0].id],
   );
-  await js(
-    `Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(document.querySelector('${PANEL} input:not([type=radio])'), '')`,
-  );
-  await js(
-    `document.querySelector('${PANEL} input:not([type=radio])').dispatchEvent(new Event('input', { bubbles: true }))`,
-  );
+  await clearSearch();
   await shows(total, total);
 
   // On frame 5 nothing is in the frame. A click on an object goes to the frame it first is on and inspects it. The window
