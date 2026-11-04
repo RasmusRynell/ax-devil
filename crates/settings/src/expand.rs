@@ -45,6 +45,20 @@ impl Setting {
         }
     }
 
+    /// `value` as it is used (see [`expand`](Self::expand)); a value the setting cannot hold, such as a reference to
+    /// a missing variable, is logged and the default is used instead. The log never contains the value.
+    pub(crate) fn used(&self, value: &Value, lookup: &dyn Fn(&str) -> Option<String>) -> Value {
+        let used = self.expand(value, lookup);
+        if self.kind.validate(&used).is_err() {
+            tracing::warn!(
+                "{} does not resolve to a valid value; using the default",
+                self.key
+            );
+            return self.kind.default_value();
+        }
+        used
+    }
+
     /// Whether `value` is a whole-value `$NAME` reference in a row that takes them.
     pub(crate) fn holds_reference(&self, value: &Value) -> bool {
         self.env && value.as_str().and_then(env::reference).is_some()

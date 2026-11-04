@@ -71,6 +71,9 @@ pub struct State {
     lookup: Lookup,
     version: u64,
     values: BTreeMap<String, Value>,
+    /// The number each whole-number setting that holds a reference gives, read when the state was built; see
+    /// [`stored`](Self::stored).
+    numbers: BTreeMap<String, Value>,
     /// The validated shortcut overrides of known commands, in canonical form.
     overrides: BTreeMap<String, Option<String>>,
     /// What the file holds: only values that differ from the default, plus everything this version does not know.
@@ -103,6 +106,7 @@ impl State {
         };
         let mut stored = object("settings")?;
         let mut values = BTreeMap::new();
+        let mut numbers = BTreeMap::new();
         let mut settings = Map::new();
         for setting in table {
             let value = stored
@@ -114,6 +118,9 @@ impl State {
                 && !setting.holds_reference(&value)
             {
                 return Err(invalid(setting.key, &reason));
+            }
+            if matches!(setting.kind, Kind::Whole { .. }) && setting.holds_reference(&value) {
+                numbers.insert(setting.key.to_owned(), setting.used(&value, &**lookup));
             }
             if !setting.kind.is_default(&value) {
                 settings.insert(setting.key.to_owned(), value.clone());
@@ -160,6 +167,7 @@ impl State {
             lookup: Arc::clone(lookup),
             version,
             values,
+            numbers,
             overrides,
             document,
         })
@@ -214,19 +222,16 @@ impl State {
     pub fn resolved(&self, key: &str) -> Option<Value> {
         let setting = self.table.iter().find(|setting| setting.key == key)?;
         let value = self.values.get(key)?;
-        let used = setting.expand(value, &*self.lookup);
-        if setting.kind.validate(&used).is_err() {
-            tracing::warn!("{key} does not resolve to a valid value; using the default");
-            return Some(setting.kind.default_value());
-        }
-        Some(used)
+        Some(setting.used(value, &*self.lookup))
     }
 
     /// The value of the declared setting `key` as stored: a `$NAME` reference as written and a literal secret in full,
     /// for copying into something new (a Live Stream Item starts from the camera defaults). Never show it to a person;
-    /// [`values`](Self::values) is the shown form.
+    /// [`values`](Self::values) is the shown form. A whole-number setting that holds a reference gives its number
+    /// instead (the default when the reference does not resolve), as read when the state was built, so a caller that
+    /// reads numbers never meets text.
     pub fn stored(&self, key: &str) -> Option<&Value> {
-        self.values.get(key)
+        self.numbers.get(key).or_else(|| self.values.get(key))
     }
 
     /// The folder a setting of kind `Folder` holds, as [`resolved`](Self::resolved); `None` when it is empty (the
@@ -237,9 +242,10 @@ impl State {
         (!path.is_empty()).then(|| PathBuf::from(path))
     }
 
-    /// The number a setting of kind `AutoOrWhole` holds; `None` for `auto`, or when `key` is not such a setting.
+    /// The number a whole-number setting holds, as [`resolved`](Self::resolved); `None` for `auto`, or when `key` is not
+    /// such a setting.
     pub fn auto_or_whole(&self, key: &str) -> Option<u64> {
-        self.values.get(key)?.as_u64()
+        self.resolved(key)?.as_u64()
     }
 }
 

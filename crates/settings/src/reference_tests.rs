@@ -121,6 +121,12 @@ fn a_number_may_be_a_reference_that_resolves_to_a_whole_number_in_range() {
     );
     assert_eq!(state.resolved("net.port"), Some(json!(8554)));
     assert_eq!(
+        state.stored("net.port"),
+        Some(&json!(8554)),
+        "a caller that copies the number never meets text"
+    );
+    assert_eq!(state.auto_or_whole("net.port"), Some(8554));
+    assert_eq!(
         Settings::open(&path, NET, &[], Arc::new(lookup))
             .unwrap()
             .state()
@@ -194,6 +200,13 @@ fn a_saved_reference_that_does_not_resolve_loads_and_falls_back_but_is_refused_o
         state.resolved("net.port"),
         Some(json!(554)),
         "the default is used"
+    );
+    assert_eq!(state.stored("net.port"), Some(&json!(554)));
+    assert_eq!(state.auto_or_whole("net.port"), Some(554));
+    assert_eq!(
+        state.stored("net.mode"),
+        Some(&json!("$MODE")),
+        "text stays as written"
     );
     assert_eq!(state.folder("net.dir"), None, "the standard folder is used");
 
