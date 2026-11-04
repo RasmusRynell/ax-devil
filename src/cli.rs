@@ -17,7 +17,7 @@ use ax_devil::{
 };
 use axum::Router;
 use catalogs::Library;
-use clap::{Args, Parser, Subcommand, ValueEnum, ValueHint};
+use clap::{Args, Parser, Subcommand, ValueHint};
 use handler_api::Settings;
 use handlers::Handlers;
 use plugins::PluginsCommand;
@@ -36,6 +36,7 @@ use workspace_files::{Recents, RecoveryFolder};
 
 mod args;
 mod catalog;
+use catalog::CatalogCommand;
 mod clear_cache;
 mod launch;
 use launch::{describe, launch};
@@ -158,40 +159,6 @@ enum Command {
     App(AppArgs),
 }
 
-/// What `catalog` was asked to do.
-#[derive(Subcommand)]
-enum CatalogCommand {
-    /// List the built-in catalogs and the files of the user's catalog folder.
-    List,
-    /// Validate a catalog file; every problem is listed with its JSON location.
-    Check {
-        /// The catalog file, or a catalog of the user's folder as `user:<file name>`.
-        #[arg(value_name = "FILE", value_hint = ValueHint::FilePath)]
-        file: PathBuf,
-    },
-    /// Draw a sheet of example objects with a catalog and write it as a PNG; needs no display.
-    ///
-    /// The catalog is checked first, and a catalog with problems is listed as `check` does.
-    Render {
-        /// The catalog file, or a catalog of the user's folder as `user:<file name>`.
-        #[arg(value_name = "FILE", value_hint = ValueHint::FilePath)]
-        file: PathBuf,
-        /// The folder to write the picture to; made when missing. The file is named after the sheet.
-        #[arg(long, value_name = "DIR", value_hint = ValueHint::DirPath)]
-        out: PathBuf,
-        /// The sheet to draw.
-        #[arg(long, value_enum, default_value_t = SheetName::Overview)]
-        sheet: SheetName,
-    },
-}
-
-/// The example sheets `catalog render` can draw.
-#[derive(Clone, Copy, ValueEnum)]
-enum SheetName {
-    /// One object for every class the built-in decoders name, and a relation.
-    Overview,
-}
-
 #[derive(Args)]
 struct ServeArgs {
     /// The address to listen on.
@@ -233,10 +200,11 @@ pub async fn run() -> ExitCode {
             clear_cache::run(folder, force)
         }
         Some(Command::Plugins(command)) => plugins::run(command, plugins).await.print(),
-        Some(Command::Catalog(catalog)) => {
-            let folder = settings_folder(global, catalog_folder);
-            catalog::run(&catalog, folder).print()
-        }
+        Some(Command::Catalog(catalog)) => catalog::run(
+            &catalog,
+            catalog::Home::resolve(global.config, global.cache_dir),
+        )
+        .print(),
         command => run_backend(global, command, plugins).await,
     }
 }

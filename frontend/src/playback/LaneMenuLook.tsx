@@ -2,11 +2,9 @@ import type { CatalogInfoWire } from "../generated/api";
 import { Checkbox, Select } from "../kit/Fields";
 import { FEATURES } from "../present";
 import { useSettings } from "../settings";
-import type { LaneSettings, LaneState } from "./lanes";
-import { Group, MakeDefault } from "./LaneMenuFields";
-
-const DEFAULT_CATALOG = "overlays.default_catalog";
-const USER_PREFIX = "user:";
+import { effectiveDefault, type LaneSettings, type LaneState } from "./lanes";
+import { DEFAULT_CATALOG, LaneCatalogActions, USER_PREFIX } from "./LaneCatalogActions";
+import { Group } from "./LaneMenuFields";
 
 /** What the user reads for each feature. */
 const FEATURE_LABELS: Record<(typeof FEATURES)[number], string> = {
@@ -21,15 +19,25 @@ const FEATURE_LABELS: Record<(typeof FEATURES)[number], string> = {
   relations: "Relations",
 };
 
-/** The catalogs as `[id, name]`; a user catalog whose name another catalog has too is told apart by its file name. */
-function choices(catalogs: readonly CatalogInfoWire[], chosen: string): [string, string][] {
-  const options = catalogs.map((catalog): [string, string] => {
+/**
+ * The catalogs the picker offers as `{id, label}`, in the order the backend sends them. A catalog with a problem is
+ * offered only while the lane has it chosen, as "(invalid)"; a chosen one the backend does not list is "(missing)". A
+ * user catalog whose name another catalog has too is told apart by its file name.
+ */
+function choices(catalogs: readonly CatalogInfoWire[], chosen: string) {
+  const fileOf = (id: string) => (id.startsWith(USER_PREFIX) ? id.slice(USER_PREFIX.length) : null);
+  const entries = catalogs.flatMap((catalog) => {
+    const file = fileOf(catalog.id);
+    if (catalog.problem !== undefined)
+      return catalog.id === chosen
+        ? [{ id: catalog.id, label: `${file ?? catalog.name} (invalid)` }]
+        : [];
     const twin = catalogs.some((other) => other !== catalog && other.name === catalog.name);
-    const file = catalog.id.startsWith(USER_PREFIX) ? catalog.id.slice(USER_PREFIX.length) : null;
-    return [catalog.id, twin && file ? `${catalog.name} (${file})` : catalog.name];
+    return [{ id: catalog.id, label: twin && file ? `${catalog.name} (${file})` : catalog.name }];
   });
-  if (!catalogs.some((catalog) => catalog.id === chosen)) options.unshift([chosen, chosen]);
-  return options;
+  if (!catalogs.some((catalog) => catalog.id === chosen))
+    entries.unshift({ id: chosen, label: `${fileOf(chosen) ?? chosen} (missing)` });
+  return entries;
 }
 
 /** How the lane looks: the catalog it draws with, its theme, and which of the catalog's features show. */
@@ -43,23 +51,30 @@ export function LaneMenuLook({
   onChange: (change: Partial<LaneSettings>) => void;
 }) {
   const { settings, look } = lane;
-  const { values } = useSettings();
   const features = FEATURES.flatMap((feature, bit) =>
     look && (look.features & (1 << bit)) !== 0 ? [{ feature, bit }] : [],
   );
+  const { values } = useSettings();
+  const defaultId = effectiveDefault(catalogs, values[DEFAULT_CATALOG]);
+  const entries = choices(catalogs, settings.catalog);
   return (
     <>
       <Select
         label="Catalog"
         value={settings.catalog}
-        options={choices(catalogs, settings.catalog)}
+        options={entries.map(({ id, label }): [string, string] => [
+          id,
+          id === defaultId ? `${label} (default)` : label,
+        ])}
         onChange={(catalog) => onChange({ catalog, theme: null })}
       />
-      <MakeDefault
-        setting={DEFAULT_CATALOG}
-        value={settings.catalog}
-        isDefault={values[DEFAULT_CATALOG] === settings.catalog}
+      <LaneCatalogActions
+        catalog={settings.catalog}
+        label={entries.find(({ id }) => id === settings.catalog)?.label ?? settings.catalog}
+        catalogs={catalogs}
+        defaultId={defaultId}
         usable={look !== undefined && lane.catalogProblem === undefined}
+        onChange={onChange}
       />
       {look && look.themes.length > 0 && (
         <Select

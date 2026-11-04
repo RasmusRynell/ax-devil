@@ -5,6 +5,7 @@
 //! for a path is answered with 405 whoever asks. `scripts/check-architecture.cjs` rejects `.route(` anywhere else.
 //! Which setting rows or sessions a caller may see is decided by the handler from its [`Principal`](crate::access).
 
+mod catalogs;
 mod client_errors;
 mod handlers;
 pub mod playback;
@@ -144,6 +145,20 @@ pub(crate) const ROUTES: &[Route] = &[
         listeners: LOCAL,
         who: Who::Preferences,
         handler: |method| on(method, plugins::update),
+    },
+    Route {
+        method: MethodFilter::POST,
+        path: "/api/catalogs/copy",
+        listeners: LOCAL,
+        who: Who::Preferences,
+        handler: |method| on(method, catalogs::copy),
+    },
+    Route {
+        method: MethodFilter::POST,
+        path: "/api/catalogs/delete",
+        listeners: LOCAL,
+        who: Who::Preferences,
+        handler: |method| on(method, catalogs::delete),
     },
     Route {
         method: MethodFilter::POST,

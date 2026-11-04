@@ -1,3 +1,5 @@
+import type { Position } from "../catalog/locate";
+
 /** A half-open range of UTF-16 code units inside an expression string. */
 export type Span = readonly [start: number, end: number];
 
@@ -16,6 +18,8 @@ export type DiagnosticCode =
   | "unknown-key" // A key the closed object does not have.
   | "missing-key" // A required key that is absent.
   | "value" // A well-typed value outside its allowed set.
+  | "duplicate-key" // An object that names one key twice; JSON.parse would silently keep the last.
+  | "skipped" // A mark that could not be drawn for a row of an example, found by `catalog check`.
   | "limit" // An expression or catalog larger or more deeply nested than compiling accepts.
   | "internal"; // A failure of the compiler itself; reported instead of thrown.
 
@@ -25,6 +29,8 @@ export interface Diagnostic {
   readonly code: DiagnosticCode;
   readonly pointer: string;
   readonly span?: Span;
+  /** The document position, when the pointer cannot name it (a duplicate key's value is not what `JSON.parse` keeps). */
+  readonly at?: Position;
   readonly message: string;
 }
 

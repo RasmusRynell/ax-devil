@@ -10,13 +10,15 @@ use std::{
     },
 };
 
+use foundation::{ErrorCode, UserError};
 use serde::Deserialize;
 use tokio::sync::watch;
 
 use crate::{
-    CatalogId,
+    CatalogId, MAX_USER_CATALOGS,
     built_in::DOCUMENTS,
-    folder::{Change, Content, Folder},
+    copy::{copy_of, slug, write_new},
+    folder::{Change, Content, Folder, ODD_NAME},
 };
 
 /// What the revision of every built-in catalog is; the user's files count up from 2.
@@ -32,8 +34,11 @@ pub struct CatalogInfo {
     pub id: CatalogId,
     /// What the user reads.
     pub name: String,
-    /// What the catalog is for.
+    /// What the catalog is for; empty when the document does not say.
     pub description: String,
+    /// Why the catalog is not usable as a catalog, when it is not: unreadable, not JSON, no name, or a file name to
+    /// change. `None` for a valid one and for every built-in.
+    pub problem: Option<String>,
 }
 
 /// What [`Library::document`] has for an id.
@@ -101,7 +106,8 @@ struct User {
 
 struct Shared {
     built_in: Vec<BuiltIn>,
-    /// Only the polls touch the folder, one at a time; nothing that serves a request waits for the disk.
+    /// Only the polls, copies and deletes touch the folder, one at a time; nothing that serves a request waits for the
+    /// disk.
     folder: Option<Mutex<Folder>>,
     user: Mutex<User>,
     /// Counts the changes to what is listed or served.
@@ -142,11 +148,13 @@ impl Library {
                         id,
                         name,
                         description,
+                        problem: None,
                     },
                     _ => CatalogInfo {
                         name: (*name).to_owned(),
                         description: "The catalog does not describe itself".into(),
                         id,
+                        problem: None,
                     },
                 };
                 BuiltIn {
@@ -165,15 +173,25 @@ impl Library {
         }
     }
 
-    /// The catalogs the playback socket serves: the built-ins, Standard first, then the user's files by file name.
-    /// Named by what their documents say, or by the file name when a document does not say.
+    /// The catalogs the playback socket serves: the built-ins, Standard first; then the user's valid files by name,
+    /// ignoring case, then by file name; then the invalid ones (`problem` set) by file name. A file is named by what
+    /// its document says, or by its file name when the document does not.
     pub fn documents(&self) -> Vec<CatalogInfo> {
         let user = lock(&self.shared.user);
+        // `files` is by file name and the sort is stable, so a file name breaks a tie.
+        let mut files: Vec<&CatalogInfo> = user.files.values().map(|listed| &listed.info).collect();
+        files.sort_by_cached_key(|info| {
+            (
+                info.problem.is_some(),
+                info.problem.is_none().then(|| info.name.to_lowercase()),
+            )
+        });
         self.shared
             .built_in
             .iter()
-            .map(|built_in| built_in.info.clone())
-            .chain(user.files.values().map(|listed| listed.info.clone()))
+            .map(|built_in| &built_in.info)
+            .chain(files)
+            .cloned()
             .collect()
     }
 
@@ -233,6 +251,144 @@ impl Library {
     /// Blocks on the disk.
     pub fn rescan(&self) -> bool {
         self.poll(false)
+    }
+
+    /// Saves a copy of the catalog `from` in the user's folder, named `name`, in a new file that is listed at once; its
+    /// id. The file is `<slug of name>.json`, else `-2`, `-3` and on, so no file is ever replaced. A copy of a
+    /// built-in records it as the `origin`. Blocks on the disk.
+    ///
+    /// # Errors
+    /// The library has no folder, `from` is not a readable catalog, `name` is blank, the folder holds
+    /// [`MAX_USER_CATALOGS`] files already, or the file cannot be written.
+    pub fn copy(&self, from: &CatalogId, name: &str) -> Result<CatalogId, UserError> {
+        if self.shared.folder.is_none() {
+            return Err(no_folder());
+        }
+        let (source_name, text, origin) = self.source(from)?;
+        self.save(&text, &source_name, name, origin.as_deref())
+    }
+
+    /// Saves a copy of the catalog document `text`, which does not come from the library (a file elsewhere), as
+    /// [`copy`](Self::copy) does; no `origin` is recorded. The copy is based on the document's own `name`.
+    ///
+    /// # Errors
+    /// As for [`copy`](Self::copy), and `text` is not a catalog document with a name and a description.
+    pub fn copy_document(&self, text: &str, name: &str) -> Result<CatalogId, UserError> {
+        if self.shared.folder.is_none() {
+            return Err(no_folder());
+        }
+        let source_name = serde_json::from_str::<Described>(text)
+            .ok()
+            .and_then(|described| described.name)
+            .unwrap_or_default();
+        self.save(text, &source_name, name, None)
+    }
+
+    /// Writes the copy of `text` named `name` into a new file of the folder and lists it.
+    fn save(
+        &self,
+        text: &str,
+        source_name: &str,
+        name: &str,
+        origin: Option<&str>,
+    ) -> Result<CatalogId, UserError> {
+        let Some(folder) = &self.shared.folder else {
+            return Err(no_folder());
+        };
+        let copy = copy_of(text, source_name, name, origin)?;
+        let mut folder = lock(folder);
+        if lock(&self.shared.user).files.len() >= MAX_USER_CATALOGS {
+            return Err(UserError::new(
+                ErrorCode::CatalogInvalid,
+                format!(
+                    "The catalog folder holds {MAX_USER_CATALOGS} catalogs, the most that are listed"
+                ),
+            ));
+        }
+        let file = write_new(folder.path(), &slug(name), &copy)?;
+        folder.adopt(&file);
+        // Listed as written: the next poll reads the same text, which is no change.
+        lock(&self.shared.user).set(file.clone(), Content::Text(copy.into()));
+        self.shared.generation.send_modify(|count| *count += 1);
+        Ok(CatalogId::User(file))
+    }
+
+    /// Deletes the user's catalog `id` from the folder; it is listed as missing at once. Blocks on the disk.
+    ///
+    /// # Errors
+    /// `id` is a built-in, is not listed, or is a file whose name cannot be an id (rename it first), or the file
+    /// cannot be removed.
+    pub fn delete(&self, id: &CatalogId) -> Result<(), UserError> {
+        let CatalogId::User(file) = id else {
+            return Err(UserError::new(
+                ErrorCode::CatalogInvalid,
+                "Built-in catalogs cannot be deleted",
+            ));
+        };
+        let Some(folder) = &self.shared.folder else {
+            return Err(no_folder());
+        };
+        let folder = lock(folder);
+        match lock(&self.shared.user).files.get(file) {
+            None => return Err(not_found()),
+            Some(Listed {
+                content: Content::Problem(problem),
+                ..
+            }) if problem == ODD_NAME => {
+                return Err(UserError::new(
+                    ErrorCode::CatalogInvalid,
+                    "The file name has characters a catalog name cannot have; rename the file first",
+                ));
+            }
+            Some(_) => {}
+        }
+        match std::fs::remove_file(folder.path().join(file)) {
+            Err(error) if error.kind() != std::io::ErrorKind::NotFound => {
+                return Err(UserError::new(
+                    ErrorCode::SaveFailed,
+                    format!("Cannot delete the catalog: {error}"),
+                ));
+            }
+            _ => {}
+        }
+        if lock(&self.shared.user).remove(file) {
+            self.shared.generation.send_modify(|count| *count += 1);
+        }
+        Ok(())
+    }
+
+    /// What copying `id` starts from: its name, its text, and the origin to record when it is a built-in.
+    fn source(&self, id: &CatalogId) -> Result<(String, Arc<str>, Option<String>), UserError> {
+        match id {
+            CatalogId::BuiltIn(_) => self
+                .shared
+                .built_in
+                .iter()
+                .find(|built_in| built_in.info.id == *id)
+                .map(|built_in| {
+                    (
+                        built_in.info.name.clone(),
+                        Arc::clone(&built_in.text),
+                        Some(id.to_string()),
+                    )
+                })
+                .ok_or_else(not_found),
+            CatalogId::User(file) => match lock(&self.shared.user).files.get(file) {
+                Some(Listed {
+                    content: Content::Text(text),
+                    info,
+                    ..
+                }) => Ok((info.name.clone(), Arc::clone(text), None)),
+                Some(Listed {
+                    content: Content::Problem(problem),
+                    ..
+                }) => Err(UserError::new(
+                    ErrorCode::CatalogInvalid,
+                    format!("Cannot copy: {problem}"),
+                )),
+                None => Err(not_found()),
+            },
+        }
     }
 
     fn poll(&self, first: bool) -> bool {
@@ -304,24 +460,37 @@ fn next_revision() -> u32 {
     NEXT_REVISION.fetch_add(1, Ordering::Relaxed)
 }
 
-/// What the picker shows of a user's file: the document's own name and description, else the file name and the
-/// reason.
+fn no_folder() -> UserError {
+    UserError::new(ErrorCode::CatalogInvalid, "There is no catalog folder")
+}
+
+fn not_found() -> UserError {
+    UserError::new(ErrorCode::FileNotFound, "There is no such catalog")
+}
+
+/// What the picker shows of a user's file: the document's own name and description, else the file name; and the
+/// reason the file is not a usable catalog, if it is not.
 fn describe(file: &str, content: &Content) -> CatalogInfo {
-    let id = CatalogId::User(file.to_owned());
-    let (name, description) = match content {
+    let (name, description, problem) = match content {
         Content::Text(text) => match serde_json::from_str::<Described>(text) {
-            Ok(Described { name, description }) => (
-                name.filter(|name| !name.trim().is_empty()),
+            Ok(Described {
+                name: Some(name),
+                description,
+            }) if !name.trim().is_empty() => (Some(name), description.unwrap_or_default(), None),
+            Ok(Described { description, .. }) => (
+                None,
                 description.unwrap_or_default(),
+                Some("The catalog has no name".to_owned()),
             ),
-            Err(error) => (None, format!("Not a catalog: {error}")),
+            Err(error) => (None, String::new(), Some(format!("Not a catalog: {error}"))),
         },
-        Content::Problem(problem) => (None, problem.clone()),
+        Content::Problem(problem) => (None, String::new(), Some(problem.clone())),
     };
     CatalogInfo {
-        id,
+        id: CatalogId::User(file.to_owned()),
         name: name.unwrap_or_else(|| file.to_owned()),
         description,
+        problem,
     }
 }
 

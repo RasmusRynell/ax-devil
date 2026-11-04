@@ -152,6 +152,7 @@ fn inspection_and_catalog_listing_use_the_names_the_frontend_parses() {
             id: "user:mine.json".into(),
             name: "Mine".into(),
             description: String::new(),
+            problem: None,
         }],
     };
     assert_eq!(
@@ -199,6 +200,7 @@ fn opened_and_lane_status_carry_the_source_and_data_revision() {
             id: "built-in:standard".into(),
             name: "Standard".into(),
             description: String::new(),
+            problem: None,
         }],
         video_pts: Some(VideoPtsWire {
             time_base: [1, 90_000],

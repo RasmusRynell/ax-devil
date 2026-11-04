@@ -6,6 +6,7 @@ import { FIELDS } from "../expr/fields";
 import { TypeVar } from "../expr/types";
 import { arrayAt, closedObject, objectAt, pointerTo, stringAt } from "./document";
 import { compileMark } from "./marks";
+import { duplicateKeys, MAX_DUPLICATES } from "./locate";
 import { LAYER, LAYER_TARGETS, ROOT, RULE } from "./shape";
 import { Session } from "./session";
 import { FEATURES, type Feature, type LayerSpec, type MarkSpec } from "./types";
@@ -290,7 +291,10 @@ export function compileCatalogDocument(document: unknown): CatalogResult {
   }
 }
 
-/** Compile catalog JSON text; a text that is not JSON is one problem at the root. */
+/**
+ * Compile catalog JSON text; a text that is not JSON is one problem at the root. A key repeated in an object is a
+ * problem, listed with the compiler's own, so a document that says two things never compiles as valid.
+ */
 export function compileCatalog(source: string): CatalogResult {
   let document: unknown;
   try {
@@ -302,5 +306,30 @@ export function compileCatalog(source: string): CatalogResult {
       diagnostics: [{ severity: "error", code: "syntax", pointer: "", message }],
     };
   }
-  return compileCatalogDocument(document);
+  const duplicates = duplicateKeys(source);
+  const result = compileCatalogDocument(document);
+  if (duplicates.length === 0) return result;
+  return {
+    ok: false,
+    diagnostics: [
+      ...(result.ok ? [] : result.diagnostics),
+      ...duplicates.slice(0, MAX_DUPLICATES).map(({ pointer, key, line, column }): Diagnostic => ({
+        severity: "error",
+        code: "duplicate-key",
+        pointer,
+        at: { line, column },
+        message: `duplicate key '${key}'`,
+      })),
+      ...(duplicates.length > MAX_DUPLICATES
+        ? [
+            {
+              severity: "error",
+              code: "duplicate-key",
+              pointer: "",
+              message: "more duplicate keys not listed",
+            } satisfies Diagnostic,
+          ]
+        : []),
+    ],
+  };
 }

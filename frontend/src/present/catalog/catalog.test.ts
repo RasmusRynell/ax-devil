@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vite-plus/test";
 import { makeSample } from "../expr/sampleFixture";
 import { compileCatalog, compileCatalogDocument } from "./compile";
+import { checkCatalog } from "./check";
 import { locate } from "./locate";
 import { computeVars, themeIndex } from "./program";
 
@@ -325,6 +326,107 @@ describe("every compile error is located in the document", () => {
     const found = result.diagnostics.find((d) => d.code === "unknown-name");
     expect(found?.span).toEqual([14, 18]);
     expect(locate(found as NonNullable<typeof found>, text)?.column).toBe(text.indexOf("scor") + 1);
+  });
+});
+
+describe("locating in a deeply nested document", () => {
+  it("skips values nested far deeper than the stack allows recursion", () => {
+    const depth = 20_000;
+    const text = `{"a":${"[".repeat(depth)}${"]".repeat(depth)},"b":1}`;
+    expect(locate({ pointer: "/b" }, text)).toEqual({ line: 1, column: text.indexOf('"b"') + 5 });
+  });
+});
+
+describe("a key repeated in an object", () => {
+  const text = `{
+  "schema": 4, "name": "T", "description": "d",
+  "layers": [{ "marks": [{ "mark": "box", "stroke": "#111111", "stroke": "#222222" }] }]
+}`;
+
+  it("is reported at the later occurrence, and the document does not compile", () => {
+    const result = compileCatalog(text);
+    if (result.ok) throw new Error("compiled");
+    const found = result.diagnostics.filter((d) => d.code === "duplicate-key");
+    expect(found).toMatchObject([
+      { pointer: "/layers/0/marks/0/stroke", message: "duplicate key 'stroke'" },
+    ]);
+    const later = text.indexOf('"#222222"');
+    expect(locate(found[0], text)).toEqual({
+      line: 3,
+      column: later - text.lastIndexOf("\n", later),
+    });
+  });
+
+  it("keeps the scanner's position when JSON.parse has dropped the first object", () => {
+    const nested = '{"a":{"x":1,"x":2},"a":{}}';
+    const result = compileCatalog(nested);
+    if (result.ok) throw new Error("compiled");
+    const found = result.diagnostics.find((d) => d.code === "duplicate-key");
+    expect(found).toMatchObject({
+      pointer: "/a/x",
+      at: { line: 1, column: nested.indexOf("2") + 1 },
+    });
+    expect(locate(found as NonNullable<typeof found>, nested)).toEqual(found?.at);
+  });
+
+  it("is found in a hostile document in bounded time, and the document does not compile", () => {
+    const depth = 6000;
+    const hostile = `${'{"x":0,"x":'.repeat(depth)}0${"}".repeat(depth)}`;
+    const started = performance.now();
+    const result = compileCatalog(hostile);
+    expect(performance.now() - started).toBeLessThan(1000);
+    if (result.ok) throw new Error("compiled");
+    const found = result.diagnostics.filter((d) => d.code === "duplicate-key");
+    expect(found.length).toBeGreaterThan(1);
+    expect(found.length).toBeLessThan(1000);
+    expect(found.at(-1)?.message).toBe("more duplicate keys not listed");
+  });
+
+  it("is listed with the compiler's own problems", () => {
+    const result = compileCatalog(text.replace('"mark": "box"', '"mark": "bx"'));
+    if (result.ok) throw new Error("compiled");
+    expect(result.diagnostics.map((d) => d.code).sort()).toEqual(["duplicate-key", "value"]);
+  });
+});
+
+describe("drawing the examples", () => {
+  const sheet = {
+    name: "classes",
+    item: new Uint8Array(
+      readFileSync(new URL("../../../../fixtures/oracle/items/classes.bin", import.meta.url)),
+    ),
+  };
+  const withLayers = (layers: unknown[]) =>
+    JSON.stringify({ schema: 4, name: "T", description: "d", layers });
+
+  it("counts the marks of a catalog that draws them", () => {
+    const report = checkCatalog(builtIn("standard"), "standard.json", [sheet]);
+    expect(report.ok).toBe(true);
+    expect(report.text).toMatch(/^standard\.json: Standard\n {2}classes: \d+ marks\n$/);
+  });
+
+  it("reports a mark skipped on the example, with the sheet and where the mark is", () => {
+    const report = checkCatalog(
+      withLayers([
+        {
+          marks: [
+            {
+              mark: "text",
+              text: "id",
+              color: "top(attr.tint)",
+              size: "10px",
+              place: [{ at: "top-left", anchor: "bottom-left" }],
+            },
+          ],
+        },
+      ]),
+      "t.json",
+      [sheet],
+    );
+    expect(report.ok).toBe(false);
+    expect(report.text).toMatch(
+      /^Drawing the examples failed:\n {2}1:\d+ \/layers\/0\/marks\/0: classes: skipped for \d+ rows \[skipped\]\n$/,
+    );
   });
 });
 

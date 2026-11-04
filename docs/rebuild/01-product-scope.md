@@ -17,7 +17,7 @@ object and frame by frame, and for comparing results side by side. Take the pitc
 | Coding agent for any of the above | Write decoders, resolvers, catalogs; verify headlessly |
 
 - **MUST** stay AI-first: decoders, resolvers and render catalogs are text an agent edits, each with a headless
-  verification command. No in-app catalog editor (`docs/architecture/catalog-viewer.md#design-rules`).
+  verification command. No in-app catalog editor: Copy and Delete of catalog files in the lane menu are management, not editing.
 - **MUST** treat live viewing and offline review as equals sharing display, rendering, inspection and catalogs.
 - Platform: Linux supported; CI runs the suite on Windows and macOS; plugin management is Linux-only (D2). No audio.
 
@@ -112,7 +112,7 @@ independent viewers (see the OF-02 deviation in the new-tree `docs/parity-deviat
 |----|---------|---|--------|
 | RC-01 | Catalog language (schema v4) and the six built-ins | M | `.agents/skills/render-catalog/SKILL.md` |
 | RC-02 | Per-view selection, Apply to all, Use as default, hot reload | M | `src/ax_devil/modules/scene/rendering/README.md#catalog-files-and-selection` |
-| RC-03 | Catalog viewer window with seeded sheets, New copy, Delete | M | `docs/architecture/catalog-viewer.md` |
+| RC-03 | Catalog management: Copy and Delete in the lane menu's Look page | M | `docs/architecture/catalog-viewer.md` |
 | RC-04 | `catalog list/check/render/new/use/reference` | M | same |
 
 ### Plugins

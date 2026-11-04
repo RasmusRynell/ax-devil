@@ -232,11 +232,11 @@ async fn opened_lists_the_served_catalogs_and_what_every_lane_starts_with() {
         ids,
         [
             "built-in:standard",
-            "built-in:tracking",
-            "built-in:classic",
+            "built-in:minimal",
             "built-in:chunky",
             "built-in:glass",
-            "built-in:minimal"
+            "built-in:tracking",
+            "built-in:classic"
         ]
     );
     assert_eq!(

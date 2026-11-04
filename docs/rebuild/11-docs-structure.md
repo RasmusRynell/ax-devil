@@ -25,7 +25,6 @@ decisions with lasting rules go to the doc that owns the rule.
 | `docs/architecture/workspace.md` | Workspace model, lifecycle, file format, resolver contract | Developers, agents | same | Port: mostly stack-neutral |
 | `docs/architecture/draw-system.md` | Semantic/generic rendering boundary | Developers, agents | same | Rewrite: boundary kept, mechanisms change |
 | `docs/architecture/ui-framework.md` | Shell composition and ownership | Developers, agents | same | Rewrite: toolkit-specific today |
-| `docs/architecture/catalog-viewer.md` | Catalog window design rules | Developers, agents | same | Rewrite lightly when RC-03 lands |
 | `docs/usage.md`, `docs/settings.md`, `docs/plugins.md` | User rules the UI and `--help` cannot show | Users | same | Rewrite: keep the rules, drop toolkit and Python details |
 | `docs/installation.md` | Prerequisites, source build, packages | Users | same | Rewrite for D6 |
 | `docs/datasets/*.md` | Dataset preparation, decoder behavior, attribution | Users | same | Port: content stays, commands change |
@@ -53,7 +52,7 @@ test. The scaffold, in this order:
    `/docs/local/`.
 
 Created as features land: `docs/usage.md`, `settings.md`, `plugins.md`, `installation.md`, `docs/datasets/`,
-`docs/architecture/workspace.md` (M3), `draw-system.md` (M2), `ui-framework.md`, `catalog-viewer.md` (M6), module
+`docs/architecture/workspace.md` (M3), `draw-system.md` (M2), `ui-framework.md`, module
 READMEs, the `render-catalog` skill (M2), the `write-plugin` skill (M7).
 
 ## Deleted by the rewrite

@@ -12,11 +12,12 @@ async function refusalOf(response: Response): Promise<ErrorWire> {
     : { code: "Internal", params: {}, reason: `the backend answered ${response.status}` };
 }
 
-/** Sends a request and reads the answer; an unreachable backend is a refusal too. An abort stays an error. */
+/** Sends a request and reads the answer (`undefined` for a 204); an unreachable backend is a refusal too. An abort stays an error. */
 export async function ask<T>(url: string, init: RequestInit): Promise<Answer<T>> {
   try {
     const response = await apiFetch(url, init);
     if (!response.ok) return { ok: false, refusal: await refusalOf(response) };
+    if (response.status === 204) return { ok: true, value: undefined as T };
     return { ok: true, value: (await response.json()) as T };
   } catch (error) {
     if (error instanceof DOMException && error.name === "AbortError") throw error;

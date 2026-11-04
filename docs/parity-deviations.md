@@ -22,3 +22,9 @@ Where [parity](parity.md) rows differ from the reference. The offline decisions 
 | PL-02 | ADF `Person` becomes `human` in beta frame and both consolidated formats; the reference kept `person` there (only v1 frame mapped it) | The same function maps the alias for every ADF decoder |
 | PL-02 | `.json` overlays no longer auto-pick UVG-VCM: `local v.mp4 --overlay x.json` is refused naming the candidate decoders; choose one with `--handler-type` | A `.json` file fits several decoders, so the pick is the user's |
 | IN-03 | Hover and click pick over the lane's filtered rows, not what was drawn, so an object that draws nothing can still be hovered and selected; the reference picked from the drawing | D36: picking is frontend only, with no drawing pass to ask |
+| RC-03 | Copy is an inline Name field in the lane menu's Look page, not a dialog | The lane menu is where a catalog is chosen |
+| RC-03 | A copy records `origin` as a plain string with no base hash, so there is no "modified" note | A copy is the source text under a new name |
+| RC-03 | Copy refuses a source with a duplicate top-level key; the file name is lowercased, not casefolded | The compiler would silently keep the last key |
+| RC-03 | A file name that cannot be an id is listed invalid and cannot be deleted; at most 256 files are listed | A catalog id is the file name as text; the folder poll is bounded |
+| RC-04 | `catalog use` writes the settings file. A running app keeps the settings it loaded: the choice applies at its next start, and any settings save in the running app first overwrites it | The default is a Personal setting that only the settings service writes in a running app |
+| RC-02 | The default catalog is a Personal setting, so it does not follow `storage.catalog_dir` | A Personal setting travels with the person, not with a folder |

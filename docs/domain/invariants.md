@@ -227,9 +227,9 @@ implementing module closes.
   combination) leaves out every mark its entity row or relation has in every shown layer; the row is counted once,
   against the first failing mark. Other rows are unaffected, and evaluation never throws.
 - Built-in catalogs are read in place and never copied into the store, written or deleted.
-  Every JSON file in the user catalog folder is a user catalog, and startup and listing never overwrite one. The app
-  writes only an explicit copy, validated before it atomically replaces its destination. A copy of a built-in catalog
-  records it as its origin; that is shown, never acted on.
+  Every JSON file in the user catalog folder is a user catalog, and startup and listing never write one. The app
+  writes a catalog only as a copy of one it serves, never over an existing file, and deletes only a user catalog the
+  user chose.
 - The default catalog is the only catalog choice remembered across restarts. Overlay visibility belongs to each view
   or lane, independent of filters and catalog authoring; hiding a feature keeps its inspection and hover data.
 - A failed catalog load or reload keeps the lane's last drawn catalog in use and reports the error; a lane is never

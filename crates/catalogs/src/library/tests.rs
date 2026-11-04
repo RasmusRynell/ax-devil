@@ -53,11 +53,11 @@ fn the_built_ins_are_listed_by_their_own_names_and_served_at_revision_one() {
         ids,
         [
             "built-in:standard",
-            "built-in:tracking",
-            "built-in:classic",
+            "built-in:minimal",
             "built-in:chunky",
             "built-in:glass",
-            "built-in:minimal"
+            "built-in:tracking",
+            "built-in:classic"
         ]
     );
     assert_eq!(listed[0].name, "Standard");
@@ -102,10 +102,10 @@ fn the_folder_lists_its_json_files_after_the_built_ins_and_serves_what_each_hold
     assert_eq!(
         user_ids(&library),
         [
+            "user:night.json",
             "user:big.json",
             "user:binary.json",
             "user:broken.json",
-            "user:night.json",
             "user:plain.json"
         ]
     );
@@ -125,7 +125,18 @@ fn the_folder_lists_its_json_files_after_the_built_ins_and_serves_what_each_hold
     // A document that does not say its name is named by its file; the compiler tells the user why it is no catalog.
     assert_eq!(info("plain.json").name, "plain.json");
     assert_eq!(info("broken.json").name, "broken.json");
-    assert!(info("broken.json").description.starts_with("Not a catalog"));
+    assert!(info("broken.json").description.is_empty());
+    assert!(
+        info("broken.json")
+            .problem
+            .unwrap()
+            .starts_with("Not a catalog")
+    );
+    assert_eq!(
+        info("plain.json").problem.as_deref(),
+        Some("The catalog has no name")
+    );
+    assert_eq!(info("night.json").problem, None);
     assert!(matches!(
         served(&library, "night.json"),
         Served::Document { .. }
@@ -139,7 +150,7 @@ fn the_folder_lists_its_json_files_after_the_built_ins_and_serves_what_each_hold
             panic!("{unreadable} cannot be served");
         };
         assert!(!problem.contains(unreadable), "{problem}");
-        assert_eq!(info(unreadable).description, problem);
+        assert_eq!(info(unreadable).problem, Some(problem));
     }
     assert_eq!(
         served(&library, "notes.txt"),
@@ -256,4 +267,186 @@ fn a_folder_that_does_not_exist_yet_lists_nothing_and_fills_when_it_appears() {
     assert!(library.rescan());
 
     assert_eq!(user_ids(&library), ["user:night.json"]);
+}
+
+#[test]
+fn slugs_are_file_name_stems() {
+    for (name, slug) in [
+        ("Night Shift", "night-shift"),
+        ("  Night   Shift  ", "night-shift"),
+        ("a.b_c-d", "a.b_c-d"),
+        ("--..__x__..--", "x"),
+        ("Å/ö: 3", "3"),
+        ("a\u{1b}\\b/../c", "a-b-..-c"),
+        ("", "catalog"),
+        (" !!! ", "catalog"),
+        (
+            format!("{} {}", "a".repeat(99), "b".repeat(200)).as_str(),
+            "a".repeat(99).as_str(),
+        ),
+    ] {
+        assert_eq!(super::slug(name), slug, "{name:?}");
+    }
+}
+
+#[test]
+fn a_copy_keeps_the_text_of_the_source_is_listed_at_once_and_never_replaces_a_file() {
+    let parent = tempfile::tempdir().unwrap();
+    let root = parent.path().join("catalogs");
+    let library = Library::with_folder(root.clone());
+    let standard = CatalogId::BuiltIn("standard");
+    let source = crate::built_in::DOCUMENTS[0].1;
+
+    let first = library.copy(&standard, "  Night Shift ").unwrap();
+
+    assert_eq!(first, CatalogId::User("night-shift.json".into()));
+    let Served::Document { revision, text } = library.document(&first) else {
+        panic!("a copy is served at once");
+    };
+    assert_eq!(
+        fs::read_to_string(root.join("night-shift.json")).unwrap(),
+        *text
+    );
+    let key_order = |text: &str| -> Vec<String> {
+        crate::copy::Members::deserialize(&mut serde_json::Deserializer::from_str(text))
+            .unwrap()
+            .0
+            .into_iter()
+            .map(|(key, raw)| format!("{key}={}", raw.get()))
+            .collect()
+    };
+    let mut expected = key_order(source);
+    expected[1] = r#"name="Night Shift""#.into();
+    expected[2] = r#"description="Based on Standard.""#.into();
+    expected.insert(3, r#"origin="built-in:standard""#.into());
+    assert_eq!(key_order(&text), expected);
+    let info = library
+        .documents()
+        .into_iter()
+        .find(|info| info.id == first)
+        .unwrap();
+    assert_eq!((info.name.as_str(), info.problem), ("Night Shift", None));
+    assert_eq!(info.description, "Based on Standard.");
+
+    // The same name again, and a copy of a copy, which keeps the origin it has.
+    let second = library.copy(&standard, "Night Shift").unwrap();
+    let third = library.copy(&first, "Night Shift").unwrap();
+    assert_eq!(second, CatalogId::User("night-shift-2.json".into()));
+    assert_eq!(third, CatalogId::User("night-shift-3.json".into()));
+    let Served::Document {
+        text: third_text, ..
+    } = library.document(&third)
+    else {
+        panic!("served");
+    };
+    assert!(third_text.contains("Based on Night Shift."));
+    assert_eq!(third_text.matches("\"origin\"").count(), 1);
+    assert!(third_text.contains("built-in:standard"));
+    assert_eq!(
+        fs::read_dir(&root).unwrap().count(),
+        3,
+        "no temporary file stays"
+    );
+
+    // The polls read what was written and find nothing new.
+    assert!(!library.rescan());
+    assert!(!library.rescan());
+    assert_eq!(library.document(&first).revision(), revision);
+
+    for refused in ["  ", ""] {
+        assert!(library.copy(&standard, refused).is_err());
+    }
+    assert!(
+        library
+            .copy(&CatalogId::User("nope.json".into()), "x")
+            .is_err()
+    );
+    assert!(Library::built_in().copy(&standard, "x").is_err());
+}
+
+#[test]
+fn a_copy_is_refused_for_a_document_that_is_no_object_or_repeats_a_key() {
+    for (text, why) in [
+        ("[]", "object"),
+        (r#"{"name":"a","name":"b","description":""}"#, "twice"),
+        (r#"{"name":"a"}"#, "description"),
+        (r#"{"description":"a"}"#, "name"),
+    ] {
+        let error = crate::copy::copy_of(text, "A", "B", None).unwrap_err();
+        assert!(error.reason.contains(why), "{text}: {}", error.reason);
+    }
+}
+
+#[test]
+fn a_deleted_catalog_is_missing_at_once_and_a_built_in_cannot_be_deleted() {
+    let folder = tempfile::tempdir().unwrap();
+    let root = folder.path();
+    fs::write(root.join("night.json"), document("Night", 0)).unwrap();
+    #[cfg(unix)]
+    fs::write(root.join("odd\u{1}.json"), document("Odd", 0)).unwrap();
+    let library = Library::with_folder(root.to_path_buf());
+    let night = CatalogId::User("night.json".into());
+    let before = revision(&library.document(&night));
+
+    library.delete(&night).unwrap();
+
+    let Served::Missing { revision: deleted } = library.document(&night) else {
+        panic!("a deleted catalog is missing");
+    };
+    assert!(deleted > before);
+    assert!(!root.join("night.json").exists());
+    assert!(!user_ids(&library).contains(&"user:night.json".to_owned()));
+    assert!(!library.rescan());
+    assert!(!library.rescan());
+    assert!(library.delete(&night).is_err(), "already gone");
+    let error = library.delete(&CatalogId::BuiltIn("standard")).unwrap_err();
+    assert_eq!(error.reason, "Built-in catalogs cannot be deleted");
+
+    // A file whose name cannot be an id is listed with a problem and has to be renamed first.
+    #[cfg(unix)]
+    {
+        let odd = CatalogId::User("odd\u{fffd}.json".into());
+        assert!(
+            library
+                .documents()
+                .iter()
+                .any(|info| info.id == odd && info.problem.is_some())
+        );
+        assert!(library.delete(&odd).unwrap_err().reason.contains("rename"));
+        assert!(root.join("odd\u{1}.json").exists());
+    }
+}
+
+#[test]
+fn user_catalogs_follow_the_built_ins_sorted_by_name_without_case_and_invalid_ones_come_last() {
+    let folder = tempfile::tempdir().unwrap();
+    let root = folder.path();
+    for (file, text) in [
+        ("1.json", document("beta", 0)),
+        ("2.json", document("Alpha", 0)),
+        ("3.json", document("alpha", 0)),
+        ("a-broken.json", "{ nope".into()),
+        ("empty.json", "{}".into()),
+        ("standard.json", document("Zed", 0)),
+    ] {
+        fs::write(root.join(file), text).unwrap();
+    }
+
+    let listed = Library::with_folder(root.to_path_buf()).documents();
+
+    let ids: Vec<String> = listed.iter().map(|info| info.id.to_string()).collect();
+    assert_eq!(
+        ids[6..],
+        [
+            "user:2.json",
+            "user:3.json",
+            "user:1.json",
+            "user:standard.json",
+            "user:a-broken.json",
+            "user:empty.json"
+        ]
+    );
+    let problems: Vec<bool> = listed.iter().map(|info| info.problem.is_some()).collect();
+    assert_eq!(problems[..10], [false; 10]);
+    assert_eq!(problems[10..], [true; 2]);
 }

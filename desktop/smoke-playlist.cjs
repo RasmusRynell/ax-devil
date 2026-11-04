@@ -120,7 +120,6 @@ module.exports.playlist = async (window) => {
   await wait("!document.querySelector('dialog')");
 
   const laneCells = () => kit.laneCells(window);
-  const colourful = (cell) => kit.colourCount(window, cell);
   const goToFrame = (target) => kit.goToFrame(window, target);
   const showEntry = async (label, lanes) => {
     await wait(`document.querySelector('[aria-label="Entry: ${label}"]')`);
@@ -143,17 +142,38 @@ module.exports.playlist = async (window) => {
         cells.map((cell) => cell.label),
         lanes,
       );
-      for (const cell of cells) {
-        // Marks are drawn once the lane's sample is held, and again when its lane is resized: wait until they are on screen.
-        const found = async () => (await colourful(cell)) > 0;
-        const deadline = Date.now() + 5000;
-        while ((await found()) !== drawn && Date.now() < deadline) await delay(100);
+      // Marks are drawn once the lane's sample is held, and again when its lane is resized: wait until they are on
+      // screen. One capture serves every lane.
+      const drawnCells = async () => {
+        const shot = await kit.capture(window);
+        return cells.map((cell) => {
+          for (
+            let y = Math.round(cell.y * shot.scale);
+            y < Math.round(cell.bottom * shot.scale);
+            y++
+          )
+            for (
+              let x = Math.round(cell.x * shot.scale);
+              x < Math.round(cell.right * shot.scale);
+              x++
+            )
+              if (kit.colourful(shot, x, y)) return true;
+          return false;
+        });
+      };
+      const deadline = Date.now() + 5000;
+      let seen = await drawnCells();
+      while (!seen.every((found) => found === drawn) && Date.now() < deadline) {
+        await delay(100);
+        seen = await drawnCells();
+      }
+      cells.forEach((cell, i) =>
         assert.equal(
-          await found(),
+          seen[i],
           drawn,
           `${cell.label}, frame ${at}: boxes ${drawn ? "missing" : "left over"}`,
-        );
-      }
+        ),
+      );
     }
   };
 
@@ -176,11 +196,17 @@ module.exports.playlist = async (window) => {
   // The smallest window, at normal zoom and 200%, with the sidebar closed: the lanes still fit and still draw.
   await setView(window, [640, 480], 1);
   await js("document.querySelector('[aria-label=Workspace]').click()");
+  // The transport takes two seconds to fade each time it has been shown, and the picture is captured without it: draw
+  // and shoot every view first, then show it and check the fit in every view.
   for (const [theme, zoom] of THEMES_AND_ZOOMS) {
     await setView(window, [640, 480], zoom);
     await setTheme(theme);
     await expectOverlays(entries[1].lanes);
     await shoot(`playlist-min-${theme}${zoom === 1 ? "" : "-200"}.png`);
+  }
+  for (const [theme, zoom] of THEMES_AND_ZOOMS) {
+    await setView(window, [640, 480], zoom);
+    await setTheme(theme);
     await showChrome(window);
     assert.deepEqual(
       await js(`(${fit.page.toString()})()`),
