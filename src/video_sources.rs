@@ -117,7 +117,7 @@ fn source_key(video: &VideoRef) -> Result<SourceKey, UserError> {
 }
 
 /// What the media crate opens `video` as.
-fn input_of(video: &VideoRef) -> VideoInput {
+pub(crate) fn input_of(video: &VideoRef) -> VideoInput {
     match video {
         VideoRef::File(path) => VideoInput::File(path.clone()),
         VideoRef::ImageSequence(sequence) => VideoInput::ImageSequence(ImageSequenceInput {

@@ -21,8 +21,8 @@ CONFIGURE=(
   --enable-demuxer=mov,matroska,nut,avi,mpegts,h264,hevc,image2,mjpeg,rtsp,rtp,sdp
   --enable-decoder=h264,hevc,mjpeg,png,rawvideo,mpeg4,vp9
   --enable-parser=h264,hevc,mjpeg,png,vp9
-  # Export: PNG stills, and H.264 in MP4 through the system encoder (x264 is GPL; none is built here).
-  --enable-encoder=png,h264_videotoolbox --enable-muxer=mp4 --enable-videotoolbox
+  # Export: PNG stills, JPEG thumbnails, and H.264 in MP4 through the system encoder (x264 is GPL; none is built here).
+  --enable-encoder=png,mjpeg,h264_videotoolbox --enable-muxer=mp4 --enable-videotoolbox
 )
 
 # Downloads $1 to $2 and fails unless it has the SHA-256 $3.

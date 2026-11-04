@@ -53,23 +53,50 @@ impl Scaler {
         matrix: Matrix,
         source_full: bool,
     ) -> Result<Self, Error> {
-        let mut context = Context::get(source, width, height, target, width, height, flags)?;
-        let standard = match matrix {
+        let target_full = source_full || is_rgb(target);
+        Self::resizing(
+            (source, (width, height)),
+            (target, (width, height)),
+            flags,
+            (matrix, matrix),
+            (source_full, target_full),
+        )
+    }
+
+    /// Converts frames of the `source` format and size to the `target` format and size. YUV sources use the first
+    /// matrix and YUV targets the second; the two flags say whether the source's and the target's samples span the
+    /// full range.
+    pub(crate) fn resizing(
+        (source, (width, height)): (Pixel, (u32, u32)),
+        (target, (target_width, target_height)): (Pixel, (u32, u32)),
+        flags: Flags,
+        (source_matrix, target_matrix): (Matrix, Matrix),
+        (source_full, target_full): (bool, bool),
+    ) -> Result<Self, Error> {
+        let mut context = Context::get(
+            source,
+            width,
+            height,
+            target,
+            target_width,
+            target_height,
+            flags,
+        )?;
+        let standard = |matrix| match matrix {
             Matrix::Bt601 => ffi::SWS_CS_ITU601,
             Matrix::Bt709 => ffi::SWS_CS_ITU709,
         };
-        let target_full = i32::from(source_full || is_rgb(target));
+        let (source_full, target_full) = (i32::from(source_full), i32::from(target_full));
         // SAFETY: `context` is the valid `SwsContext` created above and `&mut` makes this the only use. The
         // coefficient tables come from `sws_getCoefficients`, which returns pointers to static data for any
         // standard. swscale returns an error and leaves the context unchanged when the source is RGB, where there
         // is no matrix to set, so the result is deliberately ignored.
         unsafe {
-            let table = ffi::sws_getCoefficients(standard);
             ffi::sws_setColorspaceDetails(
                 context.as_mut_ptr(),
-                table,
-                i32::from(source_full),
-                table,
+                ffi::sws_getCoefficients(standard(source_matrix)),
+                source_full,
+                ffi::sws_getCoefficients(standard(target_matrix)),
                 target_full,
                 0,
                 1 << 16,

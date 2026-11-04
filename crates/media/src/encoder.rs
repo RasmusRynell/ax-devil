@@ -225,12 +225,12 @@ fn check_size(format: EncodeFormat, width: u32, height: u32) -> Result<(), UserE
 }
 
 /// An error that is the encoder's own.
-fn fail(reason: impl Into<String>) -> UserError {
+pub(crate) fn fail(reason: impl Into<String>) -> UserError {
     UserError::new(ErrorCode::Internal, reason)
 }
 
 /// An FFmpeg error as a user error.
-fn coded(error: Error) -> UserError {
+pub(crate) fn coded(error: Error) -> UserError {
     fail(format!("encoding failed: {error}"))
 }
 

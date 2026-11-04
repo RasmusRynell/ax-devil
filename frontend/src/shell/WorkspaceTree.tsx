@@ -19,7 +19,9 @@ import { SectionCaption } from "../kit/SectionCaption";
 import { Switch } from "../kit/Switch";
 import { useCan, useCommand, useDoc } from "../session/session";
 import { useShow } from "../viewer/useViewers";
+import { HoverPicture } from "./HoverPicture";
 import { treeOf, visibleRows, type TreeRow } from "./treeModel";
+import { pictureOf, useRowThumbnail } from "./useRowThumbnail";
 import { useRowWindow } from "./useRowWindow";
 
 const ROW_HEIGHT = "var(--spacing-row)";
@@ -75,6 +77,7 @@ export function WorkspaceTree() {
     () => visibleRows(tree, collapsed, showHidden),
     [tree, collapsed, showHidden],
   );
+  const thumbnail = useRowThumbnail(shown);
   const { ref, start, end, update, reveal } = useRowWindow(shown.length);
 
   // A row that went away (hidden, say) leaves the position where it was, on the row that took its place.
@@ -223,6 +226,10 @@ export function WorkspaceTree() {
                     ref.current?.focus({ preventScroll: true });
                     void open(row);
                   }}
+                  onPointerEnter={(event) =>
+                    thumbnail.enter(pictureOf(row), event.clientX, event.clientY)
+                  }
+                  onPointerLeave={thumbnail.leave}
                   onContextMenu={(event) => {
                     event.preventDefault();
                     menuAt(row, event.clientX, event.clientY);
@@ -284,6 +291,7 @@ export function WorkspaceTree() {
           </div>
         </div>
       )}
+      {thumbnail.shown && <HoverPicture {...thumbnail.shown} />}
       {menu && (
         <Popup at={menu} onClose={closeMenu} className="z-20 min-w-max">
           <Menu
