@@ -4,7 +4,7 @@ import { SegmentedControl, TileChoice } from "../kit/Chips";
 import { Dialog } from "../kit/Dialog";
 import { SectionCaption } from "../kit/SectionCaption";
 import { applyAppearance, useAppearance, useSettings } from "../settings";
-import type { Row } from "./SettingField";
+import { textOf, type Row } from "./SettingField";
 import { useSaveDialog } from "./useSaveDialog";
 
 /** The rows Quick Setup asks for: the settings a new user is most likely to want to choose first. */
@@ -102,7 +102,7 @@ export function QuickSetupDialog({
 }) {
   const { values, shortcuts } = useSettings();
   const [draft, setDraft] = useState(values);
-  useAppearance(String(draft["ui.theme"]), String(draft["ui.text_size"]));
+  useAppearance(textOf(draft["ui.theme"]), textOf(draft["ui.text_size"]));
   const { saving, submit } = useSaveDialog(onClose);
   const changed =
     !values["ui.quick_setup_done"] || ROWS.some((row) => draft[row.key] !== values[row.key]);
@@ -111,7 +111,7 @@ export function QuickSetupDialog({
     const outcome = await submit({ values: { ...draft, "ui.quick_setup_done": true }, shortcuts });
     if (outcome.kind === "refused") {
       // The preview showed choices that were not stored, so the app goes back to the stored ones.
-      applyAppearance(String(values["ui.theme"]), String(values["ui.text_size"]));
+      applyAppearance(textOf(values["ui.theme"]), textOf(values["ui.text_size"]));
       onNotice(`Could not save these choices: ${outcome.refusal.reason}`);
       onClose();
     }
@@ -126,7 +126,7 @@ export function QuickSetupDialog({
           const choice = {
             label: row.label,
             options: row.kind.options ?? [],
-            value: String(draft[row.key]),
+            value: textOf(draft[row.key]),
             onChange: (value: string) => setDraft({ ...draft, [row.key]: value }),
           };
           const preview = PREVIEWS[row.key];

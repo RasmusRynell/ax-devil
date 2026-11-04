@@ -28,7 +28,7 @@ export interface Row {
 }
 
 /** The value as text; only the sticky setting is not text, and no field shows it. */
-const textOf = (value: Value) => (typeof value === "object" ? "" : String(value));
+export const textOf = (value: Value) => (typeof value === "object" ? "" : String(value));
 
 /** Whether the whole value is a `$NAME` reference to an environment variable. */
 const isReference = (value: string) => /^\$[A-Za-z_][A-Za-z0-9_]*$/.test(value);
