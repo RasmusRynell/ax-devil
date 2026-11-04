@@ -15,7 +15,16 @@ use ax_devil::{
 use axum::Router;
 use catalogs::Library;
 use std::{
-    error::Error, future::IntoFuture, net::SocketAddr, path::PathBuf, sync::Arc, time::Duration,
+    error::Error,
+    future::IntoFuture,
+    net::SocketAddr,
+    path::PathBuf,
+    process::ExitCode,
+    sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+    },
+    time::Duration,
 };
 use tokio::sync::watch;
 use workspace_files::{Recents, RecoveryFolder};
@@ -26,6 +35,9 @@ const SHUTDOWN_GRACE: Duration = Duration::from_secs(2);
 /// How long a quit waits for the live connections to close, which removes the temporary MQTT publishers from the
 /// cameras.
 const LIVE_SHUTDOWN: Duration = Duration::from_secs(3);
+
+/// The exit status of a run that Ctrl+C ended: 128 plus SIGINT, as a shell reports an interrupted program.
+const INTERRUPTED: u8 = 130;
 
 /// Set to `1` by the desktop shell: the backend then stops when its standard input closes, so it never outlives the
 /// shell, even one that crashed. Unset, a closed standard input (a service, a container) changes nothing.
@@ -43,16 +55,28 @@ pub(super) struct Services {
     network: Arc<Network>,
     cache_dir: PathBuf,
     stop: watch::Sender<bool>,
+    /// Whether Ctrl+C turned the stop signal on.
+    interrupted: Arc<AtomicBool>,
 }
 
 impl Services {
     /// Loads the settings, starts the video cache and queues `launch` for the first Local session. Ctrl+C turns the
     /// stop signal on, and so does the end of the standard input when [`EXIT_ON_STDIN_CLOSE_VARIABLE`] asks for it.
+    /// Ctrl+C is watched before anything else, so one during startup still ends in [`Services::serve`]'s cleanup.
     pub(super) fn start(
         paths: &Paths,
         plugins: Arc<Plugins>,
         launch: Option<Launch>,
     ) -> Result<Self, Box<dyn Error>> {
+        let (stop, _) = watch::channel(false);
+        let interrupted = Arc::new(AtomicBool::new(false));
+        let (stop_on_ctrl_c, flag) = (stop.clone(), Arc::clone(&interrupted));
+        tokio::spawn(async move {
+            if tokio::signal::ctrl_c().await.is_ok() {
+                flag.store(true, Ordering::Release);
+            }
+            stop_on_ctrl_c.send_replace(true);
+        });
         let settings = Arc::new(settings::Settings::load(&paths.config_file)?);
         tracing::info!("Loaded settings from {}", paths.config_file.display());
         let cache_dir = paths.cache_dir(settings.state().folder("storage.cache_dir"));
@@ -63,13 +87,7 @@ impl Services {
         let catalogs = Library::with_folder(catalog_dir);
         let network = Network::new();
         network::scan_on_startup(&network, &settings.state());
-        let (stop, _) = watch::channel(false);
         tokio::spawn(Arc::clone(&plugins).watch(stop.subscribe()));
-        let stop_on_ctrl_c = stop.clone();
-        tokio::spawn(async move {
-            let _ = tokio::signal::ctrl_c().await;
-            stop_on_ctrl_c.send_replace(true);
-        });
         if std::env::var_os(EXIT_ON_STDIN_CLOSE_VARIABLE).is_some_and(|value| value == "1") {
             let stop_on_eof = stop.clone();
             // A plain thread: reading standard input blocks, and the thread may stay blocked until the process exits.
@@ -93,6 +111,7 @@ impl Services {
             network,
             cache_dir,
             stop,
+            interrupted,
         })
     }
 
@@ -114,12 +133,13 @@ impl Services {
     }
 
     /// Serves `router` until the stop signal, giving connections [`SHUTDOWN_GRACE`] to close, then ends every viewer,
-    /// closes the live connections and waits once for the decode threads to finish their frame and exit.
+    /// closes the live connections and waits once for the decode threads to finish their frame and exit. The exit
+    /// status is success, or [`INTERRUPTED`] when Ctrl+C ended the run.
     pub(super) async fn serve(
         self,
         listener: tokio::net::TcpListener,
         router: Router,
-    ) -> Result<(), Box<dyn Error>> {
+    ) -> Result<ExitCode, Box<dyn Error>> {
         let (mut graceful, mut expired) = (self.stop.subscribe(), self.stop.subscribe());
         let server = axum::serve(
             listener,
@@ -150,7 +170,12 @@ impl Services {
         if !matches!(retired, Ok(true)) {
             tracing::warn!("Some video decoders did not stop in time");
         }
-        Ok(served?)
+        served?;
+        if self.interrupted.load(Ordering::Acquire) {
+            tracing::warn!("Application interrupted by user");
+            return Ok(ExitCode::from(INTERRUPTED));
+        }
+        Ok(ExitCode::SUCCESS)
     }
 }
 
@@ -245,6 +270,7 @@ mod tests {
             network: Network::new(),
             cache_dir,
             stop,
+            interrupted: Arc::new(AtomicBool::new(false)),
         };
         let router = ax_devil::app(services.state(Policy::Local));
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();

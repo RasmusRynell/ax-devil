@@ -1,5 +1,5 @@
 //! Ctrl+C with a viewer on a playing video: the backend ends its sessions, stops its decoders and exits by itself,
-//! well within the time its own deadlines allow.
+//! well within the time its own deadlines allow, with the status of an interrupted program.
 
 mod session_client;
 
@@ -82,9 +82,10 @@ async fn ctrl_c_ends_open_viewers_and_the_backend_exits() {
     })
     .await
     .unwrap();
-    assert!(
-        exited.is_some_and(|status| status.success()),
-        "the backend must exit by itself, successfully"
+    assert_eq!(
+        exited.and_then(|status| status.code()),
+        Some(130),
+        "the backend must exit by itself, with the interrupted status"
     );
 }
 

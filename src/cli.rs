@@ -45,9 +45,15 @@ mod tests;
 /// browser can send nothing else in a header. Unset or empty, a random password is generated.
 const PASSWORD_VARIABLE: &str = "AX_DEVIL_SERVER_PASSWORD";
 
+/// The links `--help` ends with, which the subcommands' help does not repeat.
+const HELP_LINKS: &str = "\
+Documentation: https://github.com/RasmusRynell/ax-devil
+Agent guidance: https://github.com/RasmusRynell/ax-devil/blob/main/AGENTS.md
+Agent skills:   https://github.com/RasmusRynell/ax-devil/tree/main/.agents/skills";
+
 /// Desktop app for inspecting Axis camera streams, offline video, and analytics overlays.
 #[derive(Parser)]
-#[command(version)]
+#[command(version, after_help = HELP_LINKS)]
 struct Cli {
     #[command(flatten)]
     global: Global,
@@ -227,12 +233,12 @@ async fn run_backend(global: Global, command: Option<Command>, plugins: Arc<Plug
     let log_file = paths.as_ref().ok().map(|paths| paths.log_file.as_path());
     logging::init(global.log_level, log_file.filter(|_| !launcher));
     ax_devil::plugins::log_problems(&plugins.info());
-    let result = match command {
-        Some(Command::App(args)) => launch_app(&args),
+    match command {
+        Some(Command::App(args)) => started(launch_app(&args)),
         command => match paths {
-            Err(error) => Err(error.into()),
+            Err(error) => fail("", error.into()),
             Ok(paths) => match command {
-                Some(Command::Serve(args)) => serve(&paths, args, plugins).await,
+                Some(Command::Serve(args)) => started(serve(&paths, args, plugins).await),
                 command => match launch(
                     command,
                     &plugins.handlers(),
@@ -243,16 +249,36 @@ async fn run_backend(global: Global, command: Option<Command>, plugins: Arc<Plug
                             .map_err(|error| error.to_string())
                     },
                 ) {
-                    Ok(launch) => host_desktop(&paths, global.share_address, plugins, launch).await,
-                    Err(reason) => Err(reason.into()),
+                    Ok(launch) => {
+                        started(host_desktop(&paths, global.share_address, plugins, launch).await)
+                    }
+                    Err(reason) => fail("", reason.into()),
                 },
             },
         },
-    };
-    result.unwrap_or_else(|error| {
-        tracing::error!("{error}");
-        ExitCode::FAILURE
-    })
+    }
+}
+
+/// The exit status of what ran: its own, or failure with the reason logged as the app failing to start.
+fn started(result: Result<ExitCode, Box<dyn Error>>) -> ExitCode {
+    result.unwrap_or_else(|error| fail("Application failed to start: ", error))
+}
+
+/// Logs `error` after `prefix`, then its chain of causes at DEBUG, which is where Python shows its traceback.
+fn fail(prefix: &str, error: Box<dyn Error>) -> ExitCode {
+    tracing::error!("{prefix}{error}");
+    if let Some(causes) = causes(error.as_ref()) {
+        tracing::debug!("{causes}");
+    }
+    ExitCode::FAILURE
+}
+
+/// What caused `error`, one line for each link of its source chain; none when it has no source.
+fn causes(error: &dyn Error) -> Option<String> {
+    let lines: Vec<String> = std::iter::successors(error.source(), |cause| (*cause).source())
+        .map(|cause| format!("caused by: {cause}"))
+        .collect();
+    (!lines.is_empty()).then(|| lines.join("\n"))
 }
 
 /// The folder of the user's render catalogs: the `storage.catalog_dir` setting, else the standard folder.
@@ -281,8 +307,7 @@ async fn host_desktop(
     let hosting = Hosting::Lan(ShareListener::new(share_address, &state));
     services
         .serve(listener, app(state.with_hosting(hosting)))
-        .await?;
-    Ok(ExitCode::SUCCESS)
+        .await
 }
 
 /// The backend for other machines. It reads the same settings file, but only the Server settings are reachable.
@@ -331,8 +356,7 @@ async fn serve(
         })
         .with_limits(limits)
         .with_hosting(Hosting::Server(base));
-    services.serve(listener, app(state)).await?;
-    Ok(ExitCode::SUCCESS)
+    services.serve(listener, app(state)).await
 }
 
 /// Starts the desktop shell and waits for it, passing on its exit code.
