@@ -86,6 +86,7 @@ fn ask(request: u32, search: Option<(&str, &str)>, offset: u32, limit: u32) -> A
         offset,
         limit,
         bins: 4,
+        locate: None,
     }
 }
 
@@ -233,12 +234,18 @@ async fn a_released_lane_is_not_answered_and_keeps_nothing() {
     let mut scopes = FileScopes::new(Audience::HOST);
 
     scopes.ask(&viewer, true, ask(1, None, 0, 10)).ok().unwrap();
+    let spans = appearances::Ask {
+        lane: 0,
+        request: 1,
+        entity: "2".into(),
+    };
+    scopes.ask_appearances(&viewer, true, spans).ok().unwrap();
     scopes.release(&viewer, 0).ok().unwrap();
     assert!(
         tokio::time::timeout(Duration::from_millis(500), scopes.next())
             .await
             .is_err(),
-        "the query that was running is never answered"
+        "the queries that were running are never answered"
     );
     assert!(scopes.cache.held().is_empty(), "and keeps nothing");
 
@@ -282,4 +289,111 @@ async fn the_lanes_keep_no_more_than_the_budget_and_the_longest_unused_goes_firs
         1,
         "the lane used longest ago was dropped"
     );
+}
+
+#[tokio::test]
+async fn the_spans_of_an_object_come_beside_the_list_and_only_to_the_owner() {
+    let folder = tempfile::tempdir().unwrap();
+    let (viewer, revision) = viewer(folder.path()).await;
+    let mut scopes = FileScopes::new(Audience::HOST);
+    let spans = |entity: &str| appearances::Ask {
+        lane: 0,
+        request: 5,
+        entity: entity.into(),
+    };
+    let found = |message: ServerMessage| {
+        let ServerMessage::Appearances {
+            entity,
+            appearances:
+                FileAppearances::Found {
+                    data_revision,
+                    policy_revision,
+                    spans,
+                    truncated,
+                },
+            ..
+        } = message
+        else {
+            panic!("spans, got {message:?}");
+        };
+        (entity, data_revision, policy_revision, spans, truncated)
+    };
+
+    scopes.ask(&viewer, true, ask(1, None, 0, 10)).ok().unwrap();
+    scopes
+        .ask_appearances(&viewer, true, spans("2"))
+        .ok()
+        .unwrap();
+    let mut answers = [next(&mut scopes, true).await, next(&mut scopes, true).await];
+    answers.sort_by_key(|message| matches!(message, ServerMessage::Appearances { .. }));
+    let [rows_answer, spans_answer] = answers;
+    assert_eq!(rows(rows_answer).4.len(), 2, "the list is still answered");
+    assert_eq!(
+        found(spans_answer),
+        ("2".into(), revision, 1, vec![[0, 29]], false)
+    );
+
+    scopes
+        .ask_appearances(&viewer, true, spans("nobody"))
+        .ok()
+        .unwrap();
+    assert_eq!(
+        found(next(&mut scopes, true).await).3,
+        Vec::<[u64; 2]>::new()
+    );
+
+    // Of two requests for a lane in a row only the newer is answered, even though the older one ran.
+    for request in [6, 7] {
+        let ask = appearances::Ask {
+            request,
+            ..spans("2")
+        };
+        scopes.ask_appearances(&viewer, true, ask).ok().unwrap();
+    }
+    assert!(matches!(
+        next(&mut scopes, true).await,
+        ServerMessage::Appearances { request: 7, .. }
+    ));
+    assert!(
+        tokio::time::timeout(Duration::from_millis(300), scopes.next())
+            .await
+            .is_err(),
+        "the replaced request is never answered"
+    );
+
+    // Callers that need a lane's history and placement together read them once.
+    scopes.release(&viewer, 0).ok().unwrap();
+    scopes.cache.open(0);
+    let reads = std::sync::atomic::AtomicU32::new(0);
+    std::thread::scope(|threads| {
+        for _ in 0..2 {
+            let input = viewer.file_scope(0).ok().unwrap();
+            let (cache, reads) = (&scopes.cache, &reads);
+            threads.spawn(move || {
+                cache
+                    .prepared(0, &input, || {
+                        reads.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                        std::thread::sleep(Duration::from_millis(200));
+                        read(&input, &CancelToken::new(), Audience::HOST)
+                    })
+                    .ok()
+                    .unwrap();
+            });
+        }
+    });
+    assert_eq!(reads.into_inner(), 1);
+
+    scopes
+        .ask_appearances(&viewer, false, spans("2"))
+        .ok()
+        .unwrap();
+    assert!(matches!(
+        next(&mut scopes, false).await,
+        ServerMessage::Appearances {
+            appearances: FileAppearances::Unavailable {
+                unavailable: FileScopeUnavailable::Following
+            },
+            ..
+        }
+    ));
 }

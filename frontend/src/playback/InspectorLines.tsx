@@ -5,17 +5,20 @@ import {
   useMemo,
   useRef,
   useState,
+  type CSSProperties,
   type MouseEvent,
 } from "react";
 import { ContextMenu } from "../kit/ContextMenu";
 import { IconButton } from "../kit/IconButton";
 import type { MenuEntry } from "../kit/Menu";
+import { MiddleElided } from "../kit/MiddleElided";
 import { SectionCaption } from "../kit/SectionCaption";
 import { useRowWindow } from "../shell/useRowWindow";
 import {
   copyValue,
   displayValue,
   fieldKey,
+  hexOf,
   inspectorLines,
   rawJson,
   togglePin,
@@ -42,6 +45,53 @@ interface FieldProps {
   pinned: boolean;
   copied: boolean;
   missing: boolean;
+  /** The colour a colour field's value is the score of. */
+  rgb?: readonly [number, number, number];
+  /** How much of a bar the value fills, 0 to 1; no bar when absent. */
+  fraction?: number;
+  /** Where a value too long for its row loses its middle; it loses its end when absent. */
+  elide?: "middle";
+  /** Whether the field can be pinned; the object's id cannot. */
+  pinnable: boolean;
+}
+
+/** The most characters of a long value, such as an id, that the label column leaves room for where it can. */
+const VALUE_ROOM = 20;
+/** An average label character as a share of the label's text size. */
+const LABEL_CHAR = 0.55;
+/** What a row's pin and copy columns and the gaps between its four columns take of its width. */
+const AROUND = "(2 * var(--spacing-row) + 3 * var(--spacing-s))";
+
+/**
+ * The label column's width, as the rows' `--label`: as wide as the longest label, but at least a third of the room
+ * and leaving a long value its room where it can, so a value never starves beside a wide label.
+ */
+function labelWidth(lines: readonly Line[]): string {
+  let plain = 0;
+  let swatched = 0;
+  let value = 0;
+  for (const line of lines) {
+    if (line.kind === "unavailable") plain = Math.max(plain, line.label.length);
+    if (line.kind !== "field") continue;
+    if (line.rgb) swatched = Math.max(swatched, line.label.length);
+    else plain = Math.max(plain, line.label.length);
+    value = Math.max(value, (line.text ?? displayValue(line.value)).length);
+  }
+  const text = (chars: number) => `${chars * LABEL_CHAR} * var(--text-small)`;
+  const longest = `max(${text(plain)}, ${text(swatched)} + var(--spacing-m) + var(--spacing-s))`;
+  const inner = `(100% - ${AROUND})`;
+  const room = `${Math.min(value, VALUE_ROOM)}ch`;
+  return `min(${longest}, max(${inner} / 3, ${inner} - var(--spacing-s) - ${room}))`;
+}
+
+/** A value on one line, cut at its end, or in its middle when `middle` says so; the whole of it is the title. */
+function Shown({ text, title, middle }: { text: string; title: string; middle: boolean }) {
+  if (middle) return <MiddleElided text={text} title={title} className="flex-1 tabular-nums" />;
+  return (
+    <span title={title} className="min-w-0 flex-1 truncate tabular-nums">
+      {text}
+    </span>
+  );
 }
 
 /** One field: pin, label, value and copy. Stateless; the list handles the clicks. */
@@ -54,29 +104,56 @@ const FieldLine = memo(function FieldLine({
   pinned,
   copied,
   missing,
+  rgb,
+  fraction,
+  elide,
+  pinnable,
 }: FieldProps) {
   return (
     <div
       role="listitem"
       data-field={field}
       data-index={index}
-      className="group/row grid h-row grid-cols-[auto_minmax(0,3fr)_minmax(0,2fr)_auto] items-center gap-s px-s hover:bg-hover"
+      className="group/row grid h-row grid-cols-[auto_minmax(0,var(--label))_minmax(0,1fr)_auto] items-center gap-s px-s hover:bg-hover"
     >
-      <IconButton
-        icon="pin"
-        label={`${pinned ? "Unpin" : "Pin"} ${label}`}
-        data-act="pin"
-        className={pinned ? "" : ON_ROW}
-      />
-      <span title={label} className="truncate text-small text-muted">
-        {label}
+      {pinnable ? (
+        <IconButton
+          icon="pin"
+          label={`${pinned ? "Unpin" : "Pin"} ${label}`}
+          data-act="pin"
+          className={pinned ? "" : ON_ROW}
+        />
+      ) : (
+        <span aria-hidden className="square-row" />
+      )}
+      <span title={label} className="flex min-w-0 items-center gap-s text-small text-muted">
+        {rgb && (
+          <span
+            aria-hidden
+            title={hexOf(rgb)}
+            style={{ backgroundColor: `rgb(${rgb.join(" ")})` }}
+            className="size-m shrink-0 rounded-mark border border-line"
+          />
+        )}
+        <span className="truncate">{label}</span>
       </span>
       {missing ? (
         <span className="col-span-2 truncate text-muted">unavailable</span>
       ) : (
         <>
-          <span title={full} className="truncate tabular-nums">
-            {shown}
+          <span className="@container/value flex min-w-0 items-center gap-m">
+            <Shown text={shown} title={full} middle={elide === "middle"} />
+            {fraction !== undefined && (
+              <span
+                aria-hidden
+                className="hidden h-s w-[10ch] shrink-0 rounded-mark bg-line @min-[20ch]/value:block"
+              >
+                <span
+                  className="block h-full rounded-mark bg-accent"
+                  style={{ width: `${fraction * 100}%` }}
+                />
+              </span>
+            )}
           </span>
           <IconButton
             icon={copied ? "check" : "copy"}
@@ -93,6 +170,7 @@ const FieldLine = memo(function FieldLine({
 interface CaptionProps {
   group: FieldGroupWire | null;
   heading: string;
+  count?: number;
   folded: boolean;
   copyable: boolean;
   copied: boolean;
@@ -103,6 +181,7 @@ interface CaptionProps {
 const CaptionLine = memo(function CaptionLine({
   group,
   heading,
+  count,
   folded,
   copyable,
   copied,
@@ -114,6 +193,7 @@ const CaptionLine = memo(function CaptionLine({
         <div className="min-w-0 flex-1">
           <SectionCaption
             heading={heading}
+            count={count}
             fold={{ open: !folded, onToggle: () => onFold(group) }}
           />
         </div>
@@ -142,12 +222,24 @@ function rows(
   keyOf: (line: Line, index: number) => string | number,
 ) {
   return lines.map((line, i) => {
+    if (line.kind === "heading") {
+      return (
+        <div
+          key={keyOf(line, i)}
+          role="listitem"
+          className="flex h-row items-center px-m text-small text-muted"
+        >
+          <span className="truncate">{line.heading}</span>
+        </div>
+      );
+    }
     if (line.kind === "caption") {
       return (
         <CaptionLine
           key={keyOf(line, i)}
           group={line.fold}
           heading={line.heading}
+          count={line.count}
           folded={line.folded}
           copyable={line.copyable}
           copied={copied === RAW_COPIED}
@@ -162,8 +254,12 @@ function rows(
         field={line.key}
         index={first + i}
         label={line.label}
-        shown={found ? displayValue(line.value) : ""}
-        full={found ? copyValue(line.value) : ""}
+        shown={found ? (line.text ?? displayValue(line.value)) : ""}
+        full={found ? copyValue(line) : ""}
+        rgb={found ? line.rgb : undefined}
+        fraction={found ? line.fraction : undefined}
+        elide={found ? line.elide : undefined}
+        pinnable={line.id !== null}
         pinned={pins.has(line.key)}
         copied={copied === String(first + i)}
         missing={!found}
@@ -179,26 +275,31 @@ function rows(
  */
 export function InspectorLines({
   fields,
+  entity,
   memory,
   onMemory,
 }: {
   fields: readonly FieldWire[];
+  /** The object's id, which leads the list. */
+  entity: string;
   memory: InspectorMemory;
   onMemory: (memory: InspectorMemory) => void;
 }) {
   const { pins, folded } = memory;
   const { pinned, lines } = useMemo(
-    () => inspectorLines(fields, pins, folded),
-    [fields, pins, folded],
+    () => inspectorLines(fields, pins, folded, entity),
+    [fields, pins, folded, entity],
   );
   const pinnedKeys = useMemo(() => new Set(pins.map(fieldKey)), [pins]);
   const byKey = useMemo(() => {
-    const found = new Map<string, Line>();
+    const found = new Map<string, Extract<Line, { kind: "field" | "unavailable" }>>();
     for (const line of [...pinned, ...lines])
-      if (line.kind !== "caption" && !found.has(line.key)) found.set(line.key, line);
+      if ((line.kind === "field" || line.kind === "unavailable") && !found.has(line.key))
+        found.set(line.key, line);
     return found;
   }, [pinned, lines]);
   const all = useMemo(() => [...pinned, ...lines], [pinned, lines]);
+  const label = useMemo(() => labelWidth(all), [all]);
   const [copied, setCopied] = useState<string | null>(null);
   const [menuKey, setMenuKey] = useState<string | null>(null);
   const { ref, start, end, update } = useRowWindow(lines.length, ROW);
@@ -209,7 +310,7 @@ export function InspectorLines({
   };
   const pin = (key: string) => {
     const line = byKey.get(key);
-    if (line && line.kind !== "caption") onMemory({ ...memory, pins: togglePin(pins, line.id) });
+    if (line?.id) onMemory({ ...memory, pins: togglePin(pins, line.id) });
   };
   const latest = useRef({ memory, onMemory });
   useLayoutEffect(() => {
@@ -230,7 +331,7 @@ export function InspectorLines({
     else if (button.dataset.act === "copy") {
       const index = row.dataset.index;
       const line = index === undefined ? undefined : all[Number(index)];
-      if (line?.kind === "field") copy(copyValue(line.value), index as string);
+      if (line?.kind === "field") copy(copyValue(line), index as string);
       else if (group === "raw") copy(rawJson(fields), RAW_COPIED);
     }
   };
@@ -256,6 +357,7 @@ export function InspectorLines({
       <ContextMenu entries={entries} onSelect={() => menuKey !== null && pin(menuKey)}>
         <div
           className="flex h-full min-h-0 flex-col"
+          style={{ "--label": label } as CSSProperties}
           onClick={onClick}
           onContextMenu={onContextMenu}
           onBlur={() => setCopied(null)}
@@ -269,7 +371,7 @@ export function InspectorLines({
                   className="max-h-[calc(var(--spacing-row)*6)] overflow-y-auto [scrollbar-gutter:stable]"
                 >
                   {rows(pinned, 0, pinnedKeys, copied, onFold, (line) =>
-                    line.kind === "caption" ? "" : line.key,
+                    line.kind === "field" || line.kind === "unavailable" ? line.key : "",
                   )}
                 </div>
               </section>

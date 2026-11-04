@@ -206,6 +206,38 @@ fn class_toggles_judge_every_class_an_object_was_recorded_with() {
 }
 
 #[test]
+fn an_object_is_located_in_the_listing_the_toggles_and_the_sort_make() {
+    let policy = policy_of(&[("show_car", "car"), ("show_bus", "bus")]);
+    let history = history_of(
+        &[scene_of(
+            0,
+            &[
+                ("a", &["bus"]),
+                ("b", &["bus"]),
+                ("c", &["car"]),
+                ("d", &["car"]),
+            ],
+        )],
+        &policy,
+    );
+    let placement = one_to_one(1);
+    let row_of = |enabled: &[u32], descending, id: &str| {
+        query(enabled, Search::default(), SortKey::Id, descending)
+            .run(&history, &placement, &CancelToken::new())
+            .expect("not cancelled")
+            .row_of(&history, id)
+    };
+
+    assert_eq!(row_of(&[0b11], false, "d"), Some(3));
+    // Hiding the buses removes the rows before it, and a reversed sort turns the order around.
+    assert_eq!(row_of(&[0b01], false, "d"), Some(1));
+    assert_eq!(row_of(&[0b01], true, "d"), Some(0));
+    // Hidden by the toggles, and absent from the file.
+    assert_eq!(row_of(&[0b01], false, "a"), None);
+    assert_eq!(row_of(&[0b11], false, "zz"), None);
+}
+
+#[test]
 fn search_reads_id_class_and_event_and_lists_only_objects_the_video_shows() {
     let history = history_of(&scenes(), &policy_of(&[]));
     let placement = one_to_one(3);
@@ -484,6 +516,27 @@ fn placement_puts_objects_on_exactly_the_frames_the_lookup_shows_their_samples()
         &query(&[], Search::default(), SortKey::Id, false),
     );
     assert_eq!(listing, ids(&["a", "b", "d"]));
+}
+
+#[test]
+fn appearances_keep_every_gap() {
+    let history = history_of(
+        &[
+            scene_of(0, &[("a", &[]), ("b", &[])]),
+            scene_of(1, &[("a", &[]), ("b", &[])]),
+            scene_of(2, &[("b", &[])]),
+            scene_of(3, &[("b", &[])]),
+            scene_of(4, &[("a", &[]), ("b", &[])]),
+            scene_of(5, &[("a", &[]), ("b", &[])]),
+        ],
+        &policy_of(&[]),
+    );
+    let placement = one_to_one(6);
+    let spans = |id| crate::appearances(&history, &placement, id);
+
+    assert_eq!(spans("a"), [[0, 1], [4, 5]], "the gap stays two frames");
+    assert_eq!(spans("b"), [[0, 5]]);
+    assert!(spans("missing").is_empty());
 }
 
 #[test]

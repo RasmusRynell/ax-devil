@@ -61,6 +61,7 @@ function scope() {
     matched: 1,
     offset: 0,
     rows: [ROW],
+    located: null,
     ...over,
   });
   const ask = (text = "car") => {
@@ -103,6 +104,7 @@ describe("asking", () => {
         offset: 50,
         limit: 50,
         bins: 64,
+        locate: null,
       },
     ]);
     expect(files.view(0)).toEqual({ pending: true, page: null, unavailable: null });
@@ -123,7 +125,7 @@ describe("asking", () => {
     files.receive(rows(last()));
     expect(files.view(0)).toEqual({
       pending: false,
-      page: { total: 40, matched: 1, offset: 0, rows: [ROW] },
+      page: { total: 40, matched: 1, offset: 0, rows: [ROW], located: null },
       unavailable: null,
     });
     files.request(0, "bus", SORT, 0, 50, 64);
@@ -212,6 +214,28 @@ describe("asking again", () => {
   });
 });
 
+describe("a lane the list and an object's appearances share", () => {
+  it("is freed on the backend only once neither wants it", () => {
+    const t = scope();
+    const releases = () => t.sent.filter((message) => message.type === "FileRelease").length;
+    // An object page in Frame scope: the list is not wanted.
+    t.files.appearances.want(0, "7");
+    t.files.appearances.want(0, null);
+    expect(releases()).toBe(1);
+
+    // The list in File scope still wants the lane when the page closes, and the page when the list goes.
+    t.ask();
+    t.files.appearances.want(0, "7");
+    t.files.appearances.want(0, null);
+    expect(releases()).toBe(1);
+    t.files.appearances.want(0, "7");
+    t.files.release(0);
+    expect(releases()).toBe(1);
+    t.files.appearances.want(0, null);
+    expect(releases()).toBe(2);
+  });
+});
+
 describe("a viewer that follows", () => {
   const following: Scope = {
     type: "FileScope",
@@ -273,6 +297,7 @@ describe("in a playback session", () => {
       matched: 1,
       offset: 0,
       rows: [ROW],
+      located: null,
     });
     expect(session.files.view(0).page?.rows).toEqual([ROW]);
     session.follow({ frame: 0, playing: false, speedCenti: 100, atUs: 0 }, () => 0);

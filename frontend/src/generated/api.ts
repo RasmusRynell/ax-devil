@@ -1563,7 +1563,7 @@ export type AlignmentVerdictWire = "weak" | "ends_far" | "partial" | "good";
 /**
  * Sections of the inspection, in display order.
  */
-export type FieldGroupWire = "classification" | "motion" | "geometry" | "debug" | "raw";
+export type FieldGroupWire = "classification" | "motion" | "geometry" | "debug" | "raw" | "images";
 
 /**
  * Who produced a field of the Debug group.
@@ -1589,7 +1589,19 @@ path: Array<string>,
 /**
  * The leaf: a number, text, true or false, or `null`.
  */
-value: null | boolean | number | string, };
+value: null | boolean | number | string, 
+/**
+ * The colour the value is the score of, as red, green and blue; for an entry of a colour attribute.
+ */
+rgb?: [number, number, number], 
+/**
+ * What to show in place of the value: a score or confidence to two decimals. Copying takes the value.
+ */
+text?: string, 
+/**
+ * The value of a score, a confidence or a colour's score within 0 to 1, drawn as a bar.
+ */
+fraction?: number, };
 
 /**
  * What the backend knows of one object of one sample.
@@ -1730,11 +1742,27 @@ limit: number,
 /**
  * The most spans of presence per row, from 0 to 256; 0 sends none.
  */
-bins: number, } | { "type": "FileRelease", 
+bins: number, 
+/**
+ * An object whose row in the list is wanted whatever the page: the answer's `located`.
+ */
+locate: string | null, } | { "type": "FileRelease", 
 /**
  * The lane's position in `Opened.lanes`.
  */
-lane: number, } | { "type": "Close" };
+lane: number, } | { "type": "Appearances", 
+/**
+ * The lane's position in `Opened.lanes`.
+ */
+lane: number, 
+/**
+ * Names the request in its answer; the client drops answers of older requests.
+ */
+request: number, 
+/**
+ * The object's id.
+ */
+entity: string, } | { "type": "Close" };
 
 /**
  * What the backend sends as text. `Opened` is followed by a Timeline envelope.
@@ -1928,7 +1956,11 @@ offset: number,
 /**
  * Rows `offset` to `offset + rows.len()` of the list.
  */
-rows: Array<FileRowWire>, } | { "type": "FileScope", 
+rows: Array<FileRowWire>, 
+/**
+ * Where the request's `locate` object is in the list; `None` when the request named none.
+ */
+located: Located | null, } | { "type": "FileScope", 
 /**
  * The lane's position in `Opened.lanes`.
  */
@@ -1940,7 +1972,23 @@ request: number,
 /**
  * Why there are no rows.
  */
-unavailable: FileScopeUnavailable, } | { "type": "Error" } & ErrorWire;
+unavailable: FileScopeUnavailable, } | { "type": "Appearances", 
+/**
+ * The lane's position in `Opened.lanes`.
+ */
+lane: number, 
+/**
+ * The request answered.
+ */
+request: number, 
+/**
+ * The object's id from the request.
+ */
+entity: string, 
+/**
+ * The spans, or why there are none.
+ */
+appearances: FileAppearances, } | { "type": "Error" } & ErrorWire;
 
 /**
  * A catalog document as the backend served it to the viewer: the export draws with exactly that text.
@@ -2134,6 +2182,45 @@ presence: Array<[number, number]>, };
  * Why a File scope query has no rows.
  */
 export type FileScopeUnavailable = { "state": "Reading" } | { "state": "Following" } | { "state": "TooLarge" } | { "state": "Failed" } & ErrorWire | { "state": "PlainLane" };
+
+/**
+ * Where one object is on the video, the answer to `ClientMessage::Appearances`.
+ */
+export type FileAppearances = { "state": "Found", 
+/**
+ * The source revision they were made under; the client drops spans of any other.
+ */
+data_revision: number, 
+/**
+ * The lane policy revision they were placed under; the client drops spans of any other.
+ */
+policy_revision: number, 
+/**
+ * The frames the video shows the object on, as `[first, last]` spans of consecutive frames, ascending, with a
+ * frame between two. Empty when the file has no such object or no frame shows it.
+ */
+spans: Array<[number, number]>, 
+/**
+ * Whether the object has more spans than are sent: these are its first ones.
+ */
+truncated: boolean, } | { "state": "Unavailable", 
+/**
+ * Why the file cannot be asked.
+ */
+unavailable: FileScopeUnavailable, };
+
+/**
+ * Where an object is in a File scope list, the answer to `ClientMessage::FileQuery`'s `locate`.
+ */
+export type Located = { 
+/**
+ * The object's id from the request.
+ */
+id: string, 
+/**
+ * The index of its row in the whole list, whichever page was asked; `None` when the list does not hold it.
+ */
+row: number | null, };
 
 /**
  * Width and height of a decoded picture in pixels.

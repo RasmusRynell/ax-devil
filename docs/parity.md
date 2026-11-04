@@ -68,7 +68,7 @@ Listed in [parity deviations](parity-deviations.md).
 
 | ID | Feature | P | Status | Test | Notes |
 |----|---------|---|--------|------|-------|
-| IN-01 | Media tools panel per lane with Objects and Events lists, object and event pages | M | in progress | `frontend/src/{playback/{Inspector,inspection},tools/{ObjectsPanel,panelWidth,table/*}}.test.*`, `tests/playback_inspect.rs`, `make test-desktop` | Objects list and selected object's fields, Debug ones with origin (D36). The panel resizes by its left divider; a row copies as tab-separated text. Left: Events list, object and event pages |
+| IN-01 | Media tools panel per lane with Objects and Events lists, object and event pages | M | in progress | `crates/scene/src/inspection/tests.rs`, `frontend/src/{playback/{inspection,Inspector},tools/{ObjectsPanel,panelWidth,table/*}}.test.*`, `tests/playback_inspect.rs`, `make test-desktop` | Objects list and selected object's fields, Debug ones with origin (D36). The panel resizes by its left divider; a row copies as tab-separated text. Left: Events list, event pages |
 | IN-02 | Object filters by type and score/confidence range; whole-file filtering with declared policies | M | in progress | `crates/scene/src/filter.rs`, `frontend/src/present/filter/filter.test.ts`, `frontend/src/playback/LaneMenu.test.tsx`, `crates/scene-store/src/tests/history.rs`, `tests/mot_playlist.rs` | Class toggles apply in both scopes; File scope judges every recorded class (D30). The filter expression (`score >= 0.4`) filters the frame only |
 | IN-03 | Hover chip and click selection; can be turned off | M | done | `frontend/src/present/pick/pick.test.ts`, `frontend/src/playback/{VideoViewer.objects,VideoCanvas,chipPlacement}.test.*` | Smallest box in the lane's filtered rows; kept by id across seeks, shown in its source's lanes. `overlays.object_details` turns it off (D36) |
 | IN-04 | Frame info HUD, lane names | M | done | `frontend/src/playback/{hud,VideoViewer.objects}.test.*`, `make test-desktop` | Lane names are on the tags; the HUD (I) covers them while it shows. PTS rows need a time base of a microsecond or coarser |
@@ -79,7 +79,7 @@ Listed in [parity deviations](parity-deviations.md).
 | IN-09 | Frame vs File scope for objects | M | done | `frontend/src/tools/ObjectsPanel.test.tsx`, `make test-desktop` | File scope follows the lane's class toggles, not its frame filter; not for a followed window. A pick outside the frame seeks its first frame |
 | IN-10 | Pinned fields kept across object pages | S | done | `playback/{fields,Inspector}.test.*` |  |
 | IN-11 | Copy a field or section value | S | done | `playback/{fields,Inspector}.test.*` |  |
-| IN-12 | Presence strip with seeking; previous/next appearance | M | todo |  |  |
+| IN-12 | Presence strip with seeking; previous/next appearance | M | in progress | `frontend/src/playback/{appearanceJumps,Inspector}.test.*` | Previous/next appearance. Left: strip |
 | IN-13 | Event to frame (offline; live events have no seekable history); event/object cross-navigation | M | todo |  |  |
 
 ## Render catalogs

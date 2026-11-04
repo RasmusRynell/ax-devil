@@ -22,22 +22,12 @@ const VIDEO = path.join(SMOKE_ROOT, "fixtures/video/long_gop_h264.mp4");
 // ONVIF XML needs no options (a bare MOT file needs its image size), and several handlers read .xml, so it is named.
 const OVERLAY = path.join(SMOKE_ROOT, "fixtures/decoders/onvif_xml/frames.xml");
 
-module.exports.twice = async () => {
+// Runs `scenario(window)` in a window of its own, on a second backend started like `ax-devil local ...args`, and stops
+// that backend afterwards.
+async function inBackendWindow(args, scenario) {
   const served = await startProcess(
     backendExecutable(app),
-    [
-      "local",
-      "--video",
-      VIDEO,
-      "--overlay",
-      OVERLAY,
-      "--overlay",
-      OVERLAY,
-      "--handler-type",
-      "ONVIF_XML",
-      "--handler-type",
-      "ONVIF_XML",
-    ],
+    ["local", ...args],
     { PORT: "0" },
     () => {},
   );
@@ -62,27 +52,7 @@ module.exports.twice = async () => {
     await js(
       "[...document.querySelectorAll('dialog button')].find((b) => b.textContent === 'Done')?.click()",
     );
-    // The video the command line added is open at once; its two lanes are one file under two names.
-    await wait(`${SHOWN} >= 0`);
-    await goToFrame(window, 0);
-    const cells = await until(async () => {
-      const found = await laneCells(window);
-      return found.length === 2 && found;
-    }, "two lanes");
-    assert.deepEqual(
-      cells.map((cell) => cell.label),
-      ["frames.xml", "frames.xml (2)"],
-    );
-    // Both lanes show their boxes of frame 0.
-    for (const cell of cells) {
-      const deadline = Date.now() + 5000;
-      while ((await colourCount(window, cell)) === 0 && Date.now() < deadline) await delay(100);
-      assert.ok(await colourCount(window, cell), `${cell.label}: no boxes on frame 0`);
-    }
-    await fs.writeFile(
-      path.join(SCREENSHOTS, "overlay-twice.png"),
-      (await window.webContents.capturePage()).toPNG(),
-    );
+    await scenario(window);
   } finally {
     window.destroy();
     const exited = new Promise((resolve) => served.child.once("exit", resolve));
@@ -91,4 +61,47 @@ module.exports.twice = async () => {
     await exited;
     clearTimeout(killer);
   }
-};
+}
+
+module.exports.inBackendWindow = inBackendWindow;
+module.exports.VIDEO = VIDEO;
+
+module.exports.twice = () =>
+  inBackendWindow(
+    [
+      "--video",
+      VIDEO,
+      "--overlay",
+      OVERLAY,
+      "--overlay",
+      OVERLAY,
+      "--handler-type",
+      "ONVIF_XML",
+      "--handler-type",
+      "ONVIF_XML",
+    ],
+    async (window) => {
+      const { wait } = page(window);
+      // The video the command line added is open at once; its two lanes are one file under two names.
+      await wait(`${SHOWN} >= 0`);
+      await goToFrame(window, 0);
+      const cells = await until(async () => {
+        const found = await laneCells(window);
+        return found.length === 2 && found;
+      }, "two lanes");
+      assert.deepEqual(
+        cells.map((cell) => cell.label),
+        ["frames.xml", "frames.xml (2)"],
+      );
+      // Both lanes show their boxes of frame 0.
+      for (const cell of cells) {
+        const deadline = Date.now() + 5000;
+        while ((await colourCount(window, cell)) === 0 && Date.now() < deadline) await delay(100);
+        assert.ok(await colourCount(window, cell), `${cell.label}: no boxes on frame 0`);
+      }
+      await fs.writeFile(
+        path.join(SCREENSHOTS, "overlay-twice.png"),
+        (await window.webContents.capturePage()).toPNG(),
+      );
+    },
+  );

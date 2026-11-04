@@ -19,6 +19,18 @@ pub struct FieldWire {
     /// The leaf: a number, text, true or false, or `null`.
     #[ts(type = "null | boolean | number | string")]
     pub value: serde_json::Value,
+    /// The colour the value is the score of, as red, green and blue; for an entry of a colour attribute.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub rgb: Option<[u8; 3]>,
+    /// What to show in place of the value: a score or confidence to two decimals. Copying takes the value.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub text: Option<String>,
+    /// The value of a score, a confidence or a colour's score within 0 to 1, drawn as a bar.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub fraction: Option<f64>,
 }
 
 /// What the backend knows of one object of one sample.

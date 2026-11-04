@@ -3,12 +3,13 @@
 //! Hit-testing never reads `source_data` or `debug`, but inspecting an object shows both, under Debug with their
 //! origin. A Scene's own `debug` is never listed.
 
+use foundation::MediaTime;
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
 use crate::{
-    Classification, Entity, Geometry, MotionState, Name, Observation, SceneTime, Value,
-    WorldVelocity,
+    Classification, ColorEntry, Entity, Geometry, MotionState, Name, Observation, Rgb, SceneTime,
+    Value, WorldVelocity,
 };
 
 /// The most fields an inspection lists.
@@ -32,6 +33,22 @@ pub enum FieldGroup {
     Debug,
     /// Everything else the entity and its observation hold.
     Raw,
+    /// The pictures of the entity.
+    Images,
+}
+
+impl FieldGroup {
+    /// The group's name in a query: `classification`, `debug`, and so on.
+    pub const fn name(self) -> &'static str {
+        match self {
+            Self::Classification => "classification",
+            Self::Motion => "motion",
+            Self::Geometry => "geometry",
+            Self::Debug => "debug",
+            Self::Raw => "raw",
+            Self::Images => "images",
+        }
+    }
 }
 
 /// Who produced a field of the Debug group.
@@ -69,6 +86,60 @@ pub struct InspectionField {
     pub path: Vec<String>,
     /// The leaf.
     pub value: Leaf,
+    /// The colour the leaf is the score of, for an entry of a colour attribute.
+    pub color: Option<Rgb>,
+    /// What a view shows in place of the value: a score or confidence to two decimals.
+    pub text: Option<String>,
+    /// The value of a score, a confidence or a colour's score that lies within 0 to 1, for a view to draw as a bar.
+    pub fraction: Option<f64>,
+}
+
+/// A value a query compares, at the path a query names it by.
+#[derive(Clone, Debug, PartialEq)]
+pub struct QueryItem<'a> {
+    /// The field's group; a query writes it as [`FieldGroup::name`], then the dotted `path`.
+    pub group: FieldGroup,
+    /// The segments below the group; for a colour, those of its field, then `rgb` and a channel.
+    pub path: Vec<&'a str>,
+    /// The field's leaf, or a colour channel.
+    pub value: Leaf,
+}
+
+impl InspectionField {
+    /// What a query searches in this field: the field itself and, for a colour, its `rgb.r`, `rgb.g` and `rgb.b`.
+    /// Fields that share a path give an item each, so repeated values stay.
+    pub fn query_items(&self) -> impl Iterator<Item = QueryItem<'_>> {
+        let own = QueryItem {
+            group: self.group,
+            path: self.path.iter().map(String::as_str).collect(),
+            value: self.value.clone(),
+        };
+        let channels = self.color.into_iter().flat_map(|color| {
+            [("r", color.r), ("g", color.g), ("b", color.b)].map(|(channel, value)| {
+                let mut path: Vec<_> = self.path.iter().map(String::as_str).collect();
+                path.extend(["rgb", channel]);
+                QueryItem {
+                    group: self.group,
+                    path,
+                    value: Leaf::Number(f64::from(value)),
+                }
+            })
+        });
+        std::iter::once(own).chain(channels)
+    }
+}
+
+/// What a leaf is besides its value.
+#[derive(Default)]
+struct Marks {
+    color: Option<Rgb>,
+    text: Option<String>,
+    fraction: Option<f64>,
+}
+
+/// The fraction a score or confidence of `value` fills.
+fn fraction(value: f64) -> Option<f64> {
+    (0.0..=1.0).contains(&value).then_some(value)
 }
 
 /// The entity's fields from its latest observation, in display order: at most `limit`, and the flag says some were
@@ -91,6 +162,7 @@ pub fn entity_fields(entity: &Entity, limit: usize) -> (Vec<InspectionField>, bo
         walk.debug(observation);
     }
     walk.raw(entity, observation);
+    walk.images(entity);
     (walk.fields, walk.cut)
 }
 
@@ -107,6 +179,54 @@ const fn place(group: FieldGroup) -> Place {
     }
 }
 
+/// A number, or its name when the source's float is not finite.
+fn number_leaf(number: f64) -> Leaf {
+    if number.is_finite() {
+        Leaf::Number(number)
+    } else {
+        Leaf::Text(number.to_string())
+    }
+}
+
+/// A Scene datetime as Python's `isoformat` writes it in UTC, `2024-05-01T12:00:00.250000+00:00` (the fraction only when
+/// not zero); the number of microseconds itself when the year is outside 1 to 9999.
+fn datetime_leaf(time: MediaTime) -> Leaf {
+    const MICROS_PER_DAY: i64 = 86_400_000_000;
+    let (days, micros) = (
+        time.0.div_euclid(MICROS_PER_DAY),
+        time.0.rem_euclid(MICROS_PER_DAY),
+    );
+    // Days since 1970-01-01 to a civil date (Howard Hinnant's algorithm).
+    let shifted = days + 719_468;
+    let era = shifted.div_euclid(146_097);
+    let day_of_era = shifted.rem_euclid(146_097);
+    let year_of_era =
+        (day_of_era - day_of_era / 1460 + day_of_era / 36_524 - day_of_era / 146_096) / 365;
+    let day_of_year = day_of_era - (365 * year_of_era + year_of_era / 4 - year_of_era / 100);
+    let month_index = (5 * day_of_year + 2) / 153;
+    let day = day_of_year - (153 * month_index + 2) / 5 + 1;
+    let month = if month_index < 10 {
+        month_index + 3
+    } else {
+        month_index - 9
+    };
+    let year = year_of_era + era * 400 + i64::from(month <= 2);
+    if !(1..=9999).contains(&year) {
+        return Leaf::Number(time.0 as f64);
+    }
+    let seconds = micros / 1_000_000;
+    let fraction = match micros % 1_000_000 {
+        0 => String::new(),
+        micros => format!(".{micros:06}"),
+    };
+    Leaf::Text(format!(
+        "{year:04}-{month:02}-{day:02}T{:02}:{:02}:{:02}{fraction}+00:00",
+        seconds / 3600,
+        seconds / 60 % 60,
+        seconds % 60
+    ))
+}
+
 struct Walk {
     limit: usize,
     fields: Vec<InspectionField>,
@@ -118,6 +238,10 @@ struct Walk {
 impl Walk {
     /// Lists a leaf at the current path unless the limit is reached, which stops the walk.
     fn leaf(&mut self, place: Place, value: Leaf) {
+        self.push(place, value, Marks::default());
+    }
+
+    fn push(&mut self, place: Place, value: Leaf, marks: Marks) {
         if self.fields.len() >= self.limit {
             self.cut = true;
             return;
@@ -127,6 +251,9 @@ impl Walk {
             origin: place.origin,
             path: self.path.clone(),
             value,
+            color: marks.color,
+            text: marks.text,
+            fraction: marks.fraction,
         });
     }
 
@@ -137,11 +264,7 @@ impl Walk {
 
     /// A number, or its name when the source's float is not finite.
     fn number(&mut self, place: Place, number: f64) {
-        if number.is_finite() {
-            self.leaf(place, Leaf::Number(number));
-        } else {
-            self.text(place, &number.to_string());
-        }
+        self.leaf(place, number_leaf(number));
     }
 
     /// Whether the limit is reached, which is also when something is left out: called with a value still to list.
@@ -196,11 +319,23 @@ impl Walk {
     }
 
     fn scores(&mut self, place: Place, classification: &Classification) {
-        if let Some(score) = classification.score {
-            self.number_at(place, "score", score.value());
-        }
-        if let Some(confidence) = classification.confidence {
-            self.number_at(place, "confidence", confidence.value());
+        let measures = [
+            ("score", classification.score.map(|score| score.value())),
+            (
+                "confidence",
+                classification
+                    .confidence
+                    .map(|confidence| confidence.value()),
+            ),
+        ];
+        for (name, measure) in measures {
+            let Some(measure) = measure else { continue };
+            let marks = Marks {
+                text: Some(format!("{measure:.2}")),
+                fraction: fraction(measure),
+                ..Marks::default()
+            };
+            self.under(name, |walk| walk.push(place, number_leaf(measure), marks));
         }
     }
 
@@ -284,8 +419,33 @@ impl Walk {
         if let Some(observation) = observation {
             match observation.time {
                 SceneTime::Frame(frame) => self.number_at(place, "frame_number", frame as f64),
-                SceneTime::Timestamp(time) => self.number_at(place, "timestamp_us", time.0 as f64),
+                SceneTime::Timestamp(time) => {
+                    self.under("timestamp", |walk| walk.leaf(place, datetime_leaf(time)));
+                }
             }
+        }
+    }
+
+    fn images(&mut self, entity: &Entity) {
+        let place = place(FieldGroup::Images);
+        for (index, image) in entity.images.iter().enumerate() {
+            if self.stop() {
+                break;
+            }
+            self.under(&index.to_string(), |walk| {
+                walk.under("timestamp", |walk| {
+                    walk.leaf(place, datetime_leaf(image.timestamp));
+                });
+                walk.under("bounding_box", |walk| {
+                    let bounds = image.bounding_box;
+                    walk.number_at(place, "x", bounds.left());
+                    walk.number_at(place, "y", bounds.top());
+                    walk.number_at(place, "width", bounds.width());
+                    walk.number_at(place, "height", bounds.height());
+                });
+                let size = format!("{} bytes", image.data.len());
+                walk.under("data", |walk| walk.text(place, &size));
+            });
         }
     }
 
@@ -305,6 +465,10 @@ impl Walk {
             Value::Str(text) if text.is_empty() => {}
             Value::Map(fields) => self.map(place, fields),
             Value::List(items) => {
+                let colors: Option<Vec<_>> = items.iter().map(ColorEntry::read_exact).collect();
+                if let Some(colors) = colors.filter(|colors| !colors.is_empty()) {
+                    return self.colors(place, &colors);
+                }
                 for (index, item) in items.iter().enumerate() {
                     if self.stop() {
                         break;
@@ -313,6 +477,26 @@ impl Walk {
                 }
             }
             leaf => self.scalar(place, leaf),
+        }
+    }
+
+    /// A colour attribute: one leaf per colour, its score, named by the colour's name or its index.
+    fn colors(&mut self, place: Place, colors: &[ColorEntry]) {
+        for (index, color) in colors.iter().enumerate() {
+            if self.stop() {
+                break;
+            }
+            let segment = color
+                .name
+                .filter(|name| !name.is_empty())
+                .map_or_else(|| index.to_string(), str::to_owned);
+            let score = color.score.map_or(Leaf::Null, number_leaf);
+            let marks = Marks {
+                color: Some(color.rgb),
+                fraction: color.score.and_then(fraction),
+                ..Marks::default()
+            };
+            self.under(&segment, |walk| walk.push(place, score, marks));
         }
     }
 

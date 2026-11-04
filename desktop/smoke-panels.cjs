@@ -1,5 +1,5 @@
-// The smoke test's panels over the viewer, at the smallest window and 200% text size, in both themes: the inspector of a
-// selected object and a lane's settings menu in each of its tabs. Each must fit without anything clipped or sticking
+// The smoke test's panels over the viewer, at the smallest window and 200% text size, in both themes: the page of a
+// selected object in the media tools and a lane's settings menu in each of its tabs. Each must fit without anything clipped or sticking
 // out, and a screenshot of each lands in the screenshots folder.
 const assert = require("node:assert/strict");
 const fit = require("./fit.cjs");
@@ -17,8 +17,18 @@ module.exports.panels = async (window, { setTheme, shoot, showEntry, point }) =>
       button: "left",
       clickCount,
     });
-  const fits = async (selector, what) =>
-    assert.deepEqual(await js(`(${fit.panel.toString()})(${JSON.stringify(selector)})`), [], what);
+  const fits = async (selector, what, ellipsised = false) =>
+    assert.deepEqual(
+      await js(`(${fit.panel.toString()})(${JSON.stringify(selector)}, ${ellipsised})`),
+      [],
+      what,
+    );
+  const tools = () =>
+    ["keyDown", "keyUp"].forEach((type) =>
+      window.webContents.sendInputEvent({ type, keyCode: "B", modifiers: ["control"] }),
+    );
+  const PANEL = 'aside[aria-label="Media tools"]';
+  const PAGE = `${PANEL} section[aria-label="Object page"]`;
 
   // The picture stays zoomed on the object while it is chosen and while the interface is at 200%.
   for (const theme of THEMES) {
@@ -27,33 +37,27 @@ module.exports.panels = async (window, { setTheme, shoot, showEntry, point }) =>
   }
   await moveTo(window, ...point);
   for (const type of ["mouseDown", "mouseUp"]) click(type, point);
-  await wait("document.querySelector('aside[aria-label=Inspector] [aria-busy=false]')");
+  await wait("document.querySelector('[data-outline=selected]')");
   await setView(window, [640, 480], 2);
+  tools();
+  await wait(`document.querySelector('${PAGE} [aria-busy=false]')`);
   for (const theme of THEMES) {
     await setTheme(theme);
-    await fits(
-      "aside[aria-label=Inspector]",
-      `The inspector must fit the 640x480 window at 200% zoom, ${theme}`,
-    );
+    // Ids and values the page cuts with an ellipsis on purpose are not cut-off labels.
+    await fits(PAGE, `The object page must fit the 640x480 window at 200% zoom, ${theme}`, true);
     await shoot(`inspector-${theme}-200.png`);
   }
-  // At this size the inspector covers the viewer, with most of its height for the fields.
-  const inspector = await js(`(() => {
-    const aside = document.querySelector('aside[aria-label=Inspector]').getBoundingClientRect();
+  // At this size the media tools cover the viewer.
+  const covers = await js(`(() => {
+    const aside = document.querySelector('${PANEL}').getBoundingClientRect();
     const pane = document.querySelector('[data-popover-bounds]').getBoundingClientRect();
-    const body = document.querySelector('aside[aria-label=Inspector] [aria-busy]').getBoundingClientRect();
-    return { covers: aside.left <= pane.left && aside.right >= pane.right, share: body.height / aside.height };
+    return aside.left <= pane.left && aside.right >= pane.right;
   })()`);
-  assert.ok(
-    inspector.covers,
-    "A narrow viewer's inspector must cover the viewer, not take a column",
-  );
-  assert.ok(
-    inspector.share >= 0.65,
-    `The inspector's fields must get most of its height: ${inspector.share}`,
-  );
-  await js("document.querySelector('[aria-label=\"Close inspector\"]').click()");
-  await wait("!document.querySelector('aside[aria-label=Inspector]')");
+  assert.ok(covers, "A narrow viewer's media tools must cover the viewer, not take a column");
+  await js(`document.querySelector('${PAGE} button[aria-label^=Back]').click()`);
+  await wait(`!document.querySelector('${PAGE}')`);
+  tools();
+  await wait(`!document.querySelector('${PANEL}')`);
 
   // Types a timeout into the open lane menu's sticky group and commits it, as the user does with Enter.
   const timeout = (ms) =>

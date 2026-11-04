@@ -1,6 +1,7 @@
 //! What the lanes' last queries computed, kept so paging and typing a search do not read the file again, within a
 //! byte budget over all lanes.
 
+use overlays::FileScopeInput;
 use scene_store::{History, Matches, Placement, Query};
 use std::{
     collections::HashMap,
@@ -24,6 +25,11 @@ pub(super) struct Cached {
 }
 
 impl Cached {
+    /// Whether it was made under the revisions `input` has.
+    pub(super) fn is_for(&self, input: &FileScopeInput) -> bool {
+        (self.data_revision, self.policy_revision) == (input.data_revision, input.policy_revision)
+    }
+
     fn bytes(&self) -> usize {
         let listing = self
             .listing
@@ -37,6 +43,8 @@ impl Cached {
 #[derive(Default)]
 struct Slot {
     cached: Option<Cached>,
+    /// Held while the lane's history and placement are read, so the callers that need them read them once.
+    building: Arc<Mutex<()>>,
     /// When it was last put, to tell which lane used its entry longest ago.
     used: u64,
 }
@@ -71,24 +79,59 @@ impl Cache {
         self.slots().lanes.entry(lane).or_default();
     }
 
-    /// Takes the lane's entry out; it stays out until the query that took it puts it back.
-    pub(super) fn take(&self, lane: u16) -> Option<Cached> {
-        self.slots().lanes.get_mut(&lane)?.cached.take()
+    /// What the lane keeps, which stays kept. `None` when it keeps nothing or wants no list.
+    fn peek(&self, lane: u16) -> Option<Cached> {
+        self.slots().lanes.get(&lane)?.cached.clone()
+    }
+
+    /// The lane's history and placement for the revisions of `input`: the kept ones, else what `build` reads, which
+    /// is then kept. A caller that comes while another reads them for the lane waits and uses what that one kept, so
+    /// the file is read once.
+    pub(super) fn prepared<E>(
+        &self,
+        lane: u16,
+        input: &FileScopeInput,
+        build: impl FnOnce() -> Result<Cached, E>,
+    ) -> Result<Cached, E> {
+        let building = self
+            .slots()
+            .lanes
+            .get(&lane)
+            .map(|slot| Arc::clone(&slot.building));
+        let _reading = building
+            .as_ref()
+            .map(|building| building.lock().unwrap_or_else(PoisonError::into_inner));
+        match self.peek(lane).filter(|held| held.is_for(input)) {
+            Some(held) => Ok(held),
+            None => Ok(self.insert(lane, build()?, false)),
+        }
     }
 
     /// Keeps `cached` for the lane unless it was released, then drops the least recently used entries of other lanes
     /// while the budget is exceeded.
     pub(super) fn put(&self, lane: u16, cached: Cached) {
+        self.insert(lane, cached, true);
+    }
+
+    /// Keeps `cached` as [`Self::put`] does. Unless `replace`, an entry of the same revisions that the lane already
+    /// keeps stays, with its listing, and is returned; the entry the lane keeps afterwards is returned otherwise.
+    fn insert(&self, lane: u16, cached: Cached, replace: bool) -> Cached {
         let mut slots = self.slots();
         slots.clock += 1;
         let used = slots.clock;
         let Some(slot) = slots.lanes.get_mut(&lane) else {
-            return;
+            return cached;
         };
-        *slot = Slot {
-            cached: Some(cached),
-            used,
-        };
+        if !replace
+            && let Some(held) = slot.cached.as_ref().filter(|held| {
+                (held.data_revision, held.policy_revision)
+                    == (cached.data_revision, cached.policy_revision)
+            })
+        {
+            return held.clone();
+        }
+        slot.cached = Some(cached.clone());
+        slot.used = used;
         let mut total: usize = slots
             .lanes
             .values()
@@ -106,6 +149,7 @@ impl Cache {
             };
             total -= evicted.bytes();
         }
+        cached
     }
 
     /// The lane no longer wants its list: everything kept for it is dropped.

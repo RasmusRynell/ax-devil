@@ -118,10 +118,11 @@ function dialog() {
 }
 
 /**
- * A panel laid over or beside the viewer (a popover, the inspector): inside the window, not scrolling sideways, with no
- * control or text sticking out of it or cut off, and no horizontal scrollbar on the page. Height may scroll.
+ * A panel laid over or beside the viewer (a popover, the media tools): inside the window, not scrolling sideways, with no
+ * control or text sticking out of it or cut off, and no horizontal scrollbar on the page. Height may scroll. With
+ * `ellipsised`, a value cut with an ellipsis (a long id or path whose full text is its title) is not a cut-off label.
  */
-function panel(selector) {
+function panel(selector, ellipsised = false) {
   const problems = [];
   const box = document.querySelector(selector);
   if (!box) return [`no panel: ${selector}`];
@@ -149,6 +150,7 @@ function panel(selector) {
     if (
       element.localName !== "input" &&
       !elided &&
+      !(ellipsised && getComputedStyle(element).textOverflow === "ellipsis") &&
       element.clientWidth > 2 &&
       element.scrollWidth > element.clientWidth + 1
     )

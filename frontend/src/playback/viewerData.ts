@@ -165,7 +165,11 @@ export class ViewerData {
     else if (message.type === "DataWindow") this.window(message.first, message.last);
     else if (message.type === "Evict") this.evict(message);
     else if (message.type === "LaneProblem") this.#lanes.setProblem(message.lane, message.reason);
-    else if (message.type === "FileRows" || message.type === "FileScope")
+    else if (
+      message.type === "FileRows" ||
+      message.type === "FileScope" ||
+      message.type === "Appearances"
+    )
       this.files.receive(message);
     else return false;
     return true;

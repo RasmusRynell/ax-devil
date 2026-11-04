@@ -120,19 +120,32 @@ export type Picked = {
   box: CellRect;
 };
 
+/** Whether an object moves, as the Sample Item says. */
+export type Motion = "moving" | "stationary" | "unknown";
+
 /** What the held Sample Item says of the selected object, which is shown before the backend answers. */
 export type Summary = {
   entity: string;
   className: string | null;
   score: number | null;
   confidence: number | null;
+  /** `null` when the item gives the object no motion. */
+  motion: Motion | null;
 };
 
 /** What the inspector shows of the selection. */
 export type InspectionView =
   | { state: "none" }
-  /** The shown sample has no such object; the selection stays. */
-  | { state: "absent"; selection: NonNullable<Selection> }
+  /**
+   * The shown sample shows no such object; the selection stays. `gone`: the sample has none; `filtered`: it has one that
+   * the lane's class toggles or frame filter hide. `last` is the object's summary when it was last shown.
+   */
+  | {
+      state: "absent";
+      selection: NonNullable<Selection>;
+      reason: "gone" | "filtered";
+      last: Summary | null;
+    }
   | {
       /** `loading`: no reply for the shown sample yet; `fields` is the last reply's. */
       state: "loading" | "ready" | "unavailable";

@@ -54,6 +54,7 @@ export class FakeFiles {
     return () => this.#listeners.delete(listener);
   };
   view = (_lane: number): FileScopeView => this.#view;
+  appearances = { want: () => {}, view: () => null };
   request = (_lane: number, _text: string, _sort: FileSortWire, offset: number, limit: number) => {
     const rows = Array.from({ length: Math.min(limit, this.#total - offset) }, (_, k) =>
       fileRow(offset + k),
@@ -61,7 +62,7 @@ export class FakeFiles {
     setTimeout(() => {
       this.#view = {
         pending: false,
-        page: { total: this.#total, matched: this.#total, offset, rows },
+        page: { total: this.#total, matched: this.#total, offset, rows, located: null },
         unavailable: null,
       };
       this.#listeners.forEach((listener) => listener());

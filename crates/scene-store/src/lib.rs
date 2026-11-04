@@ -38,7 +38,7 @@ pub use format::STORE_FORMAT_VERSION;
 pub use history::{EventRef, History, HistoryUnavailable};
 pub use live::{Feed, LiveTrack};
 pub use placement::Placement;
-pub use query::{Matches, Op, Query, Row, Search, Sort, SortKey, Term};
+pub use query::{Matches, Op, Query, Row, Search, Sort, SortKey, Term, appearances};
 pub use read::TrackRead;
 pub use registry::{SCENE_CACHE_BYTES, SCENE_EXTENSION, SCENE_FOLDER, TrackKey, TrackRegistry};
 pub use track::{Decided, Ingest, Track, TrackSnapshot};

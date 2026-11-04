@@ -91,10 +91,10 @@ export class PlaybackSession implements LaneControl {
   #lastWant: Want | undefined;
   #speed = 1;
   readonly #scrub = new Scrub();
-  /** The frame to open on after a lost connection. */
+  /** The frame to reopen on. */
   #resumeAt: number | undefined;
   #retries = 0;
-  /** Set when a lost connection took a running clock: the reopened one is paused, so the intent is stale. */
+  /** A lost connection took a running clock: the reopened one is paused, so the intent is stale. */
   #stoppedByLoss = false;
   #cancelFrame: (() => void) | undefined;
   #cancelRetry: (() => void) | undefined;
@@ -113,7 +113,7 @@ export class PlaybackSession implements LaneControl {
     this.#speed = clampSpeed(deps.resume?.speed ?? 1);
   }
 
-  /** Where the next session should open: the position asked for, and the speed. Kept after the video is released. */
+  /** Where the next session should open: the position and the speed. Kept after the video is released. */
   resumeState(): ResumeState {
     return { frame: this.#clock?.playhead ?? this.#resumeAt ?? 0, speed: this.#speed };
   }
@@ -191,9 +191,14 @@ export class PlaybackSession implements LaneControl {
     return this.#lanes.states.map((lane) => lane.settings);
   }
 
-  /** Selects an object (`null`: none) for the inspector. Selection is this viewer's own and never reaches the backend. */
+  /** Selects an object (`null`: none) for the inspector; the selection never reaches the backend. */
   select(selection: Selection): void {
     if (this.#data.inspections.select(selection)) this.#publish();
+  }
+
+  /** Whether an inspector page shows; its fields are asked for only then. */
+  showInspector(shown: boolean): void {
+    if (this.#data.inspections.setVisible(shown)) this.#publish();
   }
 
   play(): void {
@@ -226,6 +231,11 @@ export class PlaybackSession implements LaneControl {
     this.#intend();
   }
 
+  /** A frame's time in microseconds. */
+  frameTime(sequenceId: number): number | undefined {
+    return this.#times?.[sequenceId];
+  }
+
   /** Jumps to a frame, as scrubbing the seek bar does. */
   seek(sequenceId: number): void {
     if (!this.#clock) return;
@@ -240,7 +250,7 @@ export class PlaybackSession implements LaneControl {
     if (this.#clock && this.#scrub.grab(this.#clock.playing)) this.pause();
   }
 
-  /** The seek bar is let go: playback that ran when it was grabbed runs on, unless it was left at the end. */
+  /** The seek bar is let go: playback that ran when it was grabbed runs on, unless left at the end. */
   scrubEnd(): void {
     if (this.#scrub.release() && (this.#clock?.playhead ?? 0) < this.#frameCount - 1) this.play();
   }
@@ -261,7 +271,7 @@ export class PlaybackSession implements LaneControl {
   /**
    * Follows a presenter: puts the clock where the presenter's is by now (`serverNowUs` reads the backend's time) and
    * runs it at the presenter's speed. Call it again whenever the presenter's intent changes; between two intents both
-   * clocks run alike on their own. A reconnection puts the clock back in step the same way.
+   * clocks run alike. A reconnection puts the clock back in step the same way.
    */
   follow(intent: ClockIntent, serverNowUs: () => number): void {
     this.#followed = { intent, serverNowUs };
@@ -283,7 +293,7 @@ export class PlaybackSession implements LaneControl {
 
   /** Tells the viewer what the clock is doing now, after the viewer changed it. */
   #intend(): void {
-    // What the viewer does is its own now; the presenter's clock no longer applies, nor after a reconnection.
+    // The viewer's own action ends following the presenter, even after a reconnection.
     this.#followed = undefined;
     this.#data.files.setOwner(true);
     const clock = this.#clock;
@@ -311,7 +321,7 @@ export class PlaybackSession implements LaneControl {
       },
       (error: unknown) => {
         if (!current()) return;
-        // Not getting a ticket because the session's own connection is down is worth another try.
+        // A ticket missed because the session's own connection is down is worth another try.
         if (error instanceof CommandRefused) this.#fail(error.message);
         else this.#lose();
       },
@@ -396,7 +406,7 @@ export class PlaybackSession implements LaneControl {
     this.#fail(`The backend sent something this window cannot read: ${reason}`, "playback");
   }
 
-  /** Data arrived: draw the shown frame again if a lane that waited can draw now, and let a held frame go. */
+  /** Data arrived: draw the shown frame again if a waiting lane can now, and let a held frame go. */
   #onData(): void {
     const clock = this.#clock;
     if (!clock) return;
@@ -427,7 +437,7 @@ export class PlaybackSession implements LaneControl {
     this.#frameCount = opened.frame_count;
     this.#applyFollowed();
     this.#wait.restart();
-    // The reopened clock is paused: tell the presenter's followers where this viewer really is now.
+    // The reopened clock is paused: tell the presenter's followers where this viewer is.
     if (this.#stoppedByLoss && !this.#followed) this.#intend();
     this.#stoppedByLoss = false;
     this.#sendWant();
@@ -435,9 +445,8 @@ export class PlaybackSession implements LaneControl {
   }
 
   /**
-   * One display refresh: present the newest due frame, if any, then report the window. Refreshes are only asked for
-   * while playing and when something changed or a frame the paused clock waits for arrived; an idle session asks for
-   * none.
+   * One display refresh: present the newest due frame, if any, then report the window. Refreshes are asked for only
+   * while playing or when something changed or an awaited frame arrived.
    */
   #tick = (): void => {
     this.#cancelFrame = undefined;
@@ -445,7 +454,7 @@ export class PlaybackSession implements LaneControl {
     if (!clock || !this.#buffer) return;
     const wasPlaying = clock.playing;
     const presented = clock.tick(this.#source);
-    // Playing ended on its own, at the last frame: the viewer's intent is a pause there, unless it follows a presenter.
+    // Playing ended on its own at the last frame: the intent is a pause there, unless it follows a presenter.
     if (wasPlaying && !clock.playing && !this.#followed) this.#intend();
     if (presented !== undefined) this.#draw(presented);
     this.#sendWant();
@@ -454,7 +463,7 @@ export class PlaybackSession implements LaneControl {
     if (clock.playing) this.#arm();
   };
 
-  /** A paused clock holding the video of its frame but not the lanes' data asks for a refresh when the wait is over. */
+  /** A paused clock holding its frame's video but not the lanes' data asks for a refresh when the wait ends. */
   #holdForData(clock: PlaybackClock, presented: boolean): void {
     if (clock.playing || presented || clock.info()?.sequenceId === clock.playhead) return;
     if (this.#buffer?.has(clock.playhead)) this.#wait.hold();
@@ -475,7 +484,7 @@ export class PlaybackSession implements LaneControl {
     this.#clock?.skip(sequenceId);
   }
 
-  /** Reports the window and sends it when it differs from the last one; the buffer keeps exactly that window. */
+  /** Sends the window when it differs from the last; the buffer keeps that window. */
   #sendWant(): void {
     const clock = this.#clock;
     const buffer = this.#buffer;
@@ -508,7 +517,7 @@ export class PlaybackSession implements LaneControl {
     this.#publish();
   }
 
-  /** Stops the display loop and drops the clock and every held frame, keeping the position for the next opening. */
+  /** Stops the display loop and drops the clock and held frames, keeping the position. */
   #releaseVideo(): void {
     this.#resumeAt = this.#clock?.playhead ?? this.#resumeAt;
     this.exports.lost();

@@ -111,12 +111,18 @@ fn inspection_and_catalog_listing_use_the_names_the_frontend_parses() {
                     origin: Some(FieldOrigin::Source),
                     path: vec!["tags".into(), "0".into()],
                     value: json!("x"),
+                    rgb: None,
+                    text: None,
+                    fraction: None,
                 },
                 FieldWire {
                     group: FieldGroup::Classification,
                     origin: None,
                     path: vec!["class".into()],
                     value: json!(null),
+                    rgb: None,
+                    text: None,
+                    fraction: None,
                 },
             ],
             truncated: false,
@@ -338,11 +344,13 @@ fn file_scope_messages_use_the_names_the_frontend_parses() {
     let query = json!({
         "type": "FileQuery", "lane": 1, "request": 7, "classes": [5],
         "query": {"groups": [[{"path": null, "op": "ge", "value": "3", "negated": true}]]},
-        "sort": {"key": "first_seen", "descending": true}, "offset": 20, "limit": 100, "bins": 64
+        "sort": {"key": "first_seen", "descending": true}, "offset": 20, "limit": 100, "bins": 64,
+        "locate": "4"
     });
     let ClientMessage::FileQuery {
         query: search,
         sort,
+        locate,
         ..
     } = serde_json::from_value(query).unwrap()
     else {
@@ -350,6 +358,7 @@ fn file_scope_messages_use_the_names_the_frontend_parses() {
     };
     assert_eq!(search.groups[0][0].op, Op::Ge);
     assert_eq!(sort.key, SortKey::FirstSeen);
+    assert_eq!(locate.as_deref(), Some("4"));
 
     assert!(matches!(
         serde_json::from_value(json!({"type": "FileRelease", "lane": 1})).unwrap(),
@@ -381,8 +390,46 @@ fn file_scope_messages_use_the_names_the_frontend_parses() {
             last_frame: 8,
             presence: vec![[3, 5], [7, 8]],
         }],
+        located: Some(Located {
+            id: "4".into(),
+            row: None,
+        }),
     };
     let json = serde_json::to_value(&rows).unwrap();
     assert_eq!(json["rows"][0]["events"], json!(["merge"]));
     assert_eq!(json["rows"][0]["presence"], json!([[3, 5], [7, 8]]));
+    assert_eq!(json["located"], json!({"id": "4", "row": null}));
+
+    assert!(matches!(
+        serde_json::from_value(json!({
+            "type": "Appearances", "lane": 1, "request": 8, "entity": "4"
+        }))
+        .unwrap(),
+        ClientMessage::Appearances {
+            lane: 1,
+            request: 8,
+            ..
+        }
+    ));
+    let spans = ServerMessage::Appearances {
+        lane: 1,
+        request: 8,
+        entity: "4".into(),
+        appearances: FileAppearances::Found {
+            data_revision: 2,
+            policy_revision: 3,
+            spans: vec![[3, 5], [7, 8]],
+            truncated: false,
+        },
+    };
+    assert_eq!(
+        serde_json::to_value(&spans).unwrap(),
+        json!({
+            "type": "Appearances", "lane": 1, "request": 8, "entity": "4",
+            "appearances": {
+                "state": "Found", "data_revision": 2, "policy_revision": 3,
+                "spans": [[3, 5], [7, 8]], "truncated": false
+            }
+        })
+    );
 }

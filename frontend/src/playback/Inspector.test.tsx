@@ -1,10 +1,13 @@
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
-import { useState } from "react";
+import { act, useState } from "react";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
-import type { InspectionView } from "./contract";
+import type { InspectionView, Summary } from "./contract";
+import { LANE_SETTINGS } from "./fakeOpened";
 import { FRESH_MEMORY } from "./fields";
-import { Inspector } from "./Inspector";
-import type { FieldWire } from "./protocol";
+import { FileScope } from "./fileScope";
+import { Inspector, type Reach } from "./Inspector";
+import { LaneSet } from "./lanes";
+import type { ClientMessage, FieldWire, LaneStatusWire } from "./protocol";
 
 afterEach(() => {
   cleanup();
@@ -13,7 +16,13 @@ afterEach(() => {
 });
 
 const SELECTION = { lane: 0, source: 0, entity: "7" };
-const SUMMARY = { entity: "7", className: "car", score: 0.8123, confidence: null };
+const SUMMARY: Summary = {
+  entity: "7",
+  className: "car",
+  score: 0.8123,
+  confidence: null,
+  motion: "moving",
+};
 const FIELDS: FieldWire[] = [
   { group: "classification", path: ["class"], value: "car" },
   { group: "debug", origin: "source", path: ["debug", "frame"], value: 12 },
@@ -23,19 +32,55 @@ const FIELDS: FieldWire[] = [
 
 type Shown = Exclude<InspectionView, { state: "none" }>;
 
-/** The inspector with the memory a viewer would hold for it. */
-function Viewer({ inspection, onClose }: { inspection: Shown; onClose: () => void }) {
-  const [memory, onMemory] = useState(FRESH_MEMORY);
-  return (
-    <Inspector inspection={inspection} onClose={onClose} memory={memory} onMemory={onMemory} />
+const READY: Extract<LaneStatusWire, { status: "Ready" }> = {
+  status: "Ready",
+  bases: ["Frame"],
+  default_basis: "Frame",
+  filter: [],
+  warnings: [],
+  samples: 1000,
+  data_revision: 1,
+  alignment: null,
+  mean_sample_bytes: 100,
+  ingest: { state: "Complete" },
+};
+
+/** The real File scope client of one Ready lane over a recording socket. */
+function backend() {
+  const lanes = new LaneSet();
+  lanes.open(
+    [
+      { label: "DPM", slot: "DPM", source: 0 },
+      { label: "GT", slot: "GT", source: 1 },
+    ],
+    LANE_SETTINGS,
   );
+  lanes.setStatus(0, READY);
+  lanes.setStatus(1, READY);
+  const sent: ClientMessage[] = [];
+  const files = new FileScope(
+    lanes,
+    (message) => sent.push(message),
+    () => () => {},
+  );
+  return { files, sent };
 }
 
-function show(inspection: Shown, onClose = vi.fn()) {
-  const view = render(<Viewer inspection={inspection} onClose={onClose} />);
-  return Object.assign(onClose, {
-    next: (other: Shown) => view.rerender(<Viewer inspection={other} onClose={onClose} />),
-  });
+/** The inspector with the memory a viewer would hold for it. */
+function Viewer({ inspection, reach }: { inspection: Shown; reach: Reach }) {
+  const [memory, onMemory] = useState(FRESH_MEMORY);
+  return <Inspector inspection={inspection} memory={memory} onMemory={onMemory} reach={reach} />;
+}
+
+/** Frames 40 ms apart, the first at 01:02:03.004 into the day. */
+const timeOf = (frame: number) => 3_723_004_000 + frame * 40_000;
+
+function show(inspection: Shown, reach: Reach = { source: backend().files, frame: 0, timeOf }) {
+  const view = render(<Viewer inspection={inspection} reach={reach} />);
+  return {
+    next: (other: Shown, over: Partial<Reach> = {}) =>
+      view.rerender(<Viewer inspection={other} reach={{ ...reach, ...over }} />),
+  };
 }
 
 const group = (name: string) => screen.getByRole("button", { name });
@@ -52,9 +97,15 @@ const ready = (
 });
 
 describe("inspector", () => {
+  it("shows the motion while the object is in the frame, and unknown for an object without a class", () => {
+    show({ ...ready(FIELDS), summary: { ...SUMMARY, className: null } });
+    expect(screen.getByText("moving")).toBeTruthy();
+    expect(screen.getByText("unknown")).toBeTruthy();
+  });
+
   it("shows the summary and, until a reply, Loading… without any group", () => {
     show(ready([], "loading"));
-    expect(screen.getByRole("heading", { name: "7 car" })).toBeTruthy();
+    expect(screen.getByText("car")).toBeTruthy();
     expect(screen.getByText("score 0.81")).toBeTruthy();
     expect(screen.getByText("Loading…")).toBeTruthy();
     expect(screen.queryByRole("list")).toBeNull();
@@ -84,13 +135,17 @@ describe("inspector", () => {
   });
 
   it("says when the object is not in the frame or the details are not available", () => {
-    show({ state: "absent", selection: SELECTION });
-    expect(screen.getByRole("heading", { name: "7" })).toBeTruthy();
+    show({ state: "absent", selection: SELECTION, reason: "gone", last: SUMMARY });
+    expect(screen.getByText("car")).toBeTruthy();
     expect(screen.getByText("Not in this frame")).toBeTruthy();
+    expect(screen.queryByText("moving")).toBeNull();
+    cleanup();
+    show({ state: "absent", selection: SELECTION, reason: "filtered", last: null });
+    expect(screen.getByText("Hidden by filter")).toBeTruthy();
     cleanup();
     show(ready([], "unavailable"));
     expect(screen.getByText("Details are not available")).toBeTruthy();
-    expect(screen.getByRole("heading", { name: "7 car" })).toBeTruthy();
+    expect(screen.getByText("car")).toBeTruthy();
   });
 
   it("shows numbers rounded and copies them, and the Raw group, whole", () => {
@@ -100,12 +155,16 @@ describe("inspector", () => {
       ready([
         ...FIELDS,
         { group: "motion", path: ["speed"], value: 0.123456 },
+        { group: "classification", path: ["score"], value: 0.8712, text: "0.87", fraction: 0.8712 },
         { group: "raw", path: ["blob"], value: "x".repeat(300) },
       ]),
     );
     expect(screen.getByText("0.1235")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Copy speed" }));
     expect(writeText).toHaveBeenLastCalledWith("0.123456");
+    expect(screen.getByText("0.87")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Copy score" }));
+    expect(writeText).toHaveBeenLastCalledWith("0.8712");
     fireEvent.click(screen.getByRole("button", { name: "Copy class" }));
     expect(writeText).toHaveBeenLastCalledWith("car");
     fireEvent.click(group("Raw"));
@@ -148,6 +207,80 @@ describe("inspector", () => {
     expect(screen.queryByRole("separator")).toBeNull();
   });
 
+  it("offers an absent object the frames it was last and will next be seen on, where there are some", () => {
+    const { files, sent } = backend();
+    const seek = vi.fn();
+    const absent: Shown = { state: "absent", selection: SELECTION, reason: "gone", last: SUMMARY };
+    const t = show(absent, { source: files, frame: 30, timeOf, seek });
+    const ask = sent.find((message) => message.type === "Appearances");
+    expect(ask).toMatchObject({ lane: 0, entity: "7" });
+    const answer = (spans: [number, number][], over = {}) =>
+      act(() =>
+        files.receive({
+          type: "Appearances",
+          lane: 0,
+          request: (ask as { request: number }).request,
+          entity: "7",
+          appearances: {
+            state: "Found",
+            data_revision: 1,
+            policy_revision: 1,
+            spans,
+            truncated: false,
+            ...over,
+          },
+        }),
+      );
+    // An answer made under another source revision is not the object's.
+    answer([[10, 20]], { data_revision: 2 });
+    expect(screen.queryByText("Go to last seen")).toBeNull();
+
+    answer([
+      [10, 20],
+      [40, 50],
+    ]);
+    fireEvent.click(screen.getByText("Go to last seen"));
+    fireEvent.click(screen.getByText("Next appearance"));
+    expect(seek.mock.calls).toEqual([[20], [40]]);
+    expect(screen.getByText("Last seen at 01:02:03.804 (0.4 s ago)")).toBeTruthy();
+
+    t.next(absent, { frame: 60 });
+    expect(screen.queryByText("Next appearance")).toBeNull();
+    expect(screen.getByText("Go to last seen")).toBeTruthy();
+    t.next(absent, { frame: 5 });
+    expect(screen.queryByText("Go to last seen")).toBeNull();
+    expect(screen.getByText("Next appearance")).toBeTruthy();
+    expect(screen.getByText("First seen at 01:02:03.404 (in 0.2 s)")).toBeTruthy();
+    t.next(ready(FIELDS), { frame: 45 });
+    expect(screen.queryByText("Next appearance")).toBeNull();
+  });
+
+  it("keeps what the backend holds for a lane while its page moves to another object, and frees it when the page closes or changes lane", () => {
+    const { files, sent } = backend();
+    const releases = () => sent.filter((message) => message.type === "FileRelease");
+    const absent = (selection: Shown["selection"]): Shown => ({
+      state: "absent",
+      selection,
+      reason: "gone",
+      last: SUMMARY,
+    });
+    const t = show(absent(SELECTION), { source: files, frame: 0, timeOf });
+    t.next(absent({ ...SELECTION, entity: "8" }));
+    expect(sent.filter((message) => message.type === "Appearances")).toMatchObject([
+      { lane: 0, entity: "7" },
+      { lane: 0, entity: "8" },
+    ]);
+    expect(releases()).toEqual([]);
+
+    t.next(absent({ lane: 1, source: 1, entity: "8" }));
+    expect(releases()).toEqual([{ type: "FileRelease", lane: 0 }]);
+    cleanup();
+    expect(releases()).toEqual([
+      { type: "FileRelease", lane: 0 },
+      { type: "FileRelease", lane: 1 },
+    ]);
+  });
+
   it("says when fields were left out", () => {
     show({ ...ready(FIELDS), truncated: true });
     expect(screen.getByTitle("Some fields are not listed").textContent).toBe("Truncated");
@@ -169,11 +302,5 @@ describe("inspector", () => {
     Object.defineProperty(list, "scrollTop", { value: 200 * 20, configurable: true });
     fireEvent.scroll(list);
     expect(screen.getByText("m200")).toBeTruthy();
-  });
-
-  it("closes from its button", () => {
-    const onClose = show(ready(FIELDS));
-    fireEvent.click(screen.getByRole("button", { name: "Close inspector" }));
-    expect(onClose).toHaveBeenCalledOnce();
   });
 });

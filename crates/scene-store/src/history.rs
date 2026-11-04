@@ -173,6 +173,11 @@ impl History {
         self.samples
     }
 
+    /// The entity with id `id`, if the file has one.
+    pub(crate) fn find(&self, id: &str) -> Option<u32> {
+        (0..self.ids.len() as u32).find(|&entity| self.ids.get(entity) == id)
+    }
+
     /// The id of `entity`.
     pub(crate) fn id(&self, entity: u32) -> &str {
         self.ids.get(entity)

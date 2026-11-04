@@ -139,6 +139,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         OperationKind,
         Row,
         FileScopeUnavailable,
+        FileAppearances,
+        Located,
         FrameSize,
         Output,
         RenderLane,

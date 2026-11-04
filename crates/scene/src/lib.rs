@@ -27,8 +27,8 @@ pub use scene::{Entity, EntityRelation, Event, Operation, OperationKind, Scene};
 pub use time::{Coverage, MatchBasis, SceneTime, TimeKind, TimeSlice};
 pub use value::{Fields, MAX_VALUE_DEPTH, Name, Value};
 pub use values::{
-    ClassType, Confidence, EntityId, GeographicCoordinates, Image, ImageVelocity, Measurements,
-    MotionState, Score, SphericalCoordinates, UNMAPPED_CLASS, WorldVelocity,
+    ClassType, ColorEntry, Confidence, EntityId, GeographicCoordinates, Image, ImageVelocity,
+    Measurements, MotionState, Rgb, Score, SphericalCoordinates, UNMAPPED_CLASS, WorldVelocity,
 };
 
 /// The version of the Scene model: a decoder declares the version it builds Scenes for.
