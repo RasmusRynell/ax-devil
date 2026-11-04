@@ -1,6 +1,6 @@
 /**
  * Where a label goes: fed its runs' sizes, it finds its box and its anchored, pixel-snapped position. The box is the
- * runs' ink and the font's ascent and descent plus the padding, rounded up to device pixels, and it lands on whole
+ * runs' ink and, behind a background, the font's ascent and descent plus the padding, rounded up to device pixels, and it lands on whole
  * device pixels, as do the glyph origins, which keeps the atlas bitmaps crisp. One instance is reused for every label.
  */
 export class LabelBox {
@@ -64,10 +64,11 @@ export class LabelBox {
   }
 
   /**
-   * Work out the box size from the runs added; `plain` labels (texts) have no background, so their box is the ink
-   * alone. False when nothing is shown or the size is not usable.
+   * Work out the box size from the runs added. With `inkOnly` (nothing is painted behind the runs) the font's ascent
+   * and descent are not reserved: the box spans the ink and the baseline origin. False when nothing is shown or the
+   * size is not usable.
    */
-  size(padX: number, padY: number, gap: number, dpr: number, plain: boolean): boolean {
+  size(padX: number, padY: number, gap: number, dpr: number, inkOnly: boolean): boolean {
     if (this.shownRuns === 0) return false;
     const runs = this.runs;
     let running = 0;
@@ -75,11 +76,11 @@ export class LabelBox {
       runs[run * 6 + 5] = running;
       if (runs[run * 6] === runs[run * 6]) running += runs[run * 6] + gap;
     }
-    const ascent = plain ? 0 : this.ascent;
+    const ascent = inkOnly ? 0 : this.ascent;
     let left = 0;
     let right = running - gap;
     let top = -ascent;
-    let bottom = plain ? 0 : this.descent;
+    let bottom = inkOnly ? 0 : this.descent;
     for (let run = 0; run < this.count; run++) {
       const at = run * 6;
       if (runs[at] !== runs[at]) continue;

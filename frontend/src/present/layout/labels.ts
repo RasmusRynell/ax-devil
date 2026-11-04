@@ -145,6 +145,8 @@ export class Labels {
     const words = marks.words;
     const base = record * 12;
     const plain = plan.kind === Kind.Text;
+    // Without a background the box is the ink and the origin alone; texts have none.
+    const inkOnly = plan.background === null;
     const size = sizes.of(plan, Len.Size);
     const padX = sizes.of(plan, Len.PadX);
     const padY = sizes.of(plan, Len.PadY);
@@ -180,8 +182,8 @@ export class Labels {
           ink[entry * INK + 1] / dpr,
           ink[entry * INK + 2] / dpr,
           ink[entry * INK + 3] / dpr,
-          plain ? 0 : ascent / dpr,
-          plain ? 0 : descent / dpr,
+          ascent / dpr,
+          descent / dpr,
         );
       } else {
         const middle = -capHeight / dpr / 2;
@@ -198,7 +200,7 @@ export class Labels {
         );
       }
     }
-    if (!box.size(padX, padY, gap, dpr, plain)) return true;
+    if (!box.size(padX, padY, gap, dpr, inkOnly)) return true;
     if (!this.choose(plan, marks, base, l, t, r, b, view)) return true;
     const placed = plan.place[this.chosen];
     if (plain) sink.text(record, this.x, this.y, placed.anchorX, placed.anchorY, size);

@@ -278,8 +278,9 @@ describe("primitive quads", () => {
     );
 
   it("draws a meter as a pill track centred on half the cap height with a fill of the value", () => {
-    // Thickness is 0.3 of the size (6px, at least 2px), length 2.5 sizes (50px); the baseline is 180 + 18.56.
-    const top = 180 + 18.56 - 14.6 / 2 - 3;
+    // Thickness is 0.3 of the size (6px, at least 2px), length 2.5 sizes (50px). Nothing is painted behind the meter,
+    // so its box is its ink and the track's top is the box's top.
+    const top = 180;
     const [track, fill, ...rest] = meter(0.5);
     expect(rest).toEqual([]);
     expect(track).toMatchObject({ x: 320, w: 50, h: 6, radius: 3, stroke: 0 });
@@ -287,6 +288,25 @@ describe("primitive quads", () => {
     expect(track.fill >>> 24).toBe(70);
     expect(fill).toMatchObject({ x: 320, w: 25, h: 6, radius: 3, fill: RED });
     expect(fill.y).toBeCloseTo(top, 3);
+  });
+
+  it("sizes a label without a background by its ink and a filled one by the font's ascent and descent", () => {
+    // 20px text: ascent 18.56, descent 4.72, glyphs 15px tall (cap height 14.6 rounded up), 2px by 3px padding.
+    const label = (extra: object) =>
+      quadsOf({
+        mark: "label",
+        size: "20px",
+        pad: ["2px", "3px"],
+        runs: [{ text: "'Ag'", color: "#ffffff" }],
+        place: [{ at: "top-left", anchor: "top-left" }],
+        ...extra,
+      });
+    const bare = label({});
+    expect(bare).toHaveLength(2);
+    expect(bare[0].y).toBe(180 + 3);
+    const [rect, ...glyphs] = label({ background: "#000000" });
+    expect(rect.h).toBe(Math.ceil(18.56 + 4.72 + 6));
+    expect(glyphs[0].y).toBe(Math.round(180 + 3 + 18.56) - 15);
   });
 
   it("draws only the track for zero and a dot for the smallest value", () => {
