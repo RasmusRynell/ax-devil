@@ -209,3 +209,50 @@ async fn a_holder_paused_on_its_own_is_shown_the_stream_again_when_it_begins_to_
         }
     }
 }
+
+#[tokio::test]
+async fn a_viewer_that_asks_without_reading_is_cut_off_instead_of_growing_the_backlog() {
+    let (fake, hold) = (FakeConnector::default(), Arc::new(Hold::default()));
+    let handlers = Handlers::built_in().with_decoders([Arc::new(TestDecoder(hold)) as _]);
+    let sources = LiveSources::new(Arc::new(fake));
+    let content = content("cam", rtsp());
+    let viewer = sources.open(&content, &handlers, matching()).await.unwrap();
+
+    let (_holder, authority) = watch::channel(Authority::default());
+    let gate = Gate::new(authority, || 0);
+    // Nothing reads the outbox, so the viewer is never sent more than its first message.
+    let (outbox, _unread) = mpsc::channel::<Outgoing>(1);
+    let (to_server, from_client) = mpsc::unbounded_channel();
+    let mut incoming = Box::pin(futures_util::stream::unfold(
+        from_client,
+        |mut from| async move { Some((from.recv().await?, from)) },
+    ));
+    let (_stop, mut closing) = watch::channel(false);
+    let library = Library::built_in();
+    for request in 0..=MAX_NOTICES as u32 {
+        to_server
+            .send(client(&ClientMessage::Appearances {
+                lane: 0,
+                request,
+                entity: "1".into(),
+            }))
+            .unwrap();
+    }
+    let ended = stream(
+        viewer,
+        Setup {
+            label: "Live",
+            matching: matching(),
+            library: &library,
+            audience: Audience::HOST,
+        },
+        &mut incoming,
+        &outbox,
+        &mut closing,
+        gate,
+    );
+    let ended = tokio::time::timeout(Duration::from_secs(20), ended)
+        .await
+        .expect("the session ended");
+    assert!(matches!(ended, Err(End::Failed(_))));
+}

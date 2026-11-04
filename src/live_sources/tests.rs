@@ -12,7 +12,10 @@ use workspace::{LiveOverlay, LiveVideoContent};
 
 use super::{
     LiveSources, LiveViewer, Shown, Spec, Update,
-    fake::{FakeConnector, Hold, TestDecoder, content, doc, matching, mqtt, rtsp, unit},
+    fake::{
+        FakeConnector, Hold, TestDecoder, content, damaged, doc, held_back, matching, mqtt, rtsp,
+        unit,
+    },
     feed::Feed,
     source::Slot,
 };
@@ -110,6 +113,29 @@ async fn a_frame_is_paired_with_the_overlay_sample_of_its_capture_time() {
 }
 
 #[tokio::test]
+async fn a_picture_a_decoder_held_back_is_paired_with_its_own_overlay_sample() {
+    let rig = rig();
+    let mut viewer = rig.open(&content("cam", rtsp())).await;
+    let video = rig.fake.videos()[0].clone();
+    let docs = video.docs.clone().expect("metadata was asked for");
+    video.status.send(Status::Live { epoch: 1 }).unwrap();
+
+    // The picture of the unit at 1 ms comes out with the unit at 5 ms, which has a sample of its own.
+    video.units.send(held_back(1, 1_000, 20)).await.unwrap();
+    video.units.send(held_back(1, 5_000, 21)).await.unwrap();
+    for time in ["1000", "5000", "9000"] {
+        docs.send(doc(1, time)).await.unwrap();
+    }
+    let shown = frame(&mut viewer).await;
+    let out = shown.out.as_ref().unwrap();
+    assert_eq!(shown.frame.id().timestamp, MediaTime(1_000));
+    assert_eq!((luma(&shown), out.map.samples.clone()), (20, vec![0]));
+    assert_eq!(out.map.first, shown.frame.id().sequence_id);
+    let revision = viewer.lane_ready().unwrap().data_revision;
+    assert!(viewer.inspect_target(0, revision, 0).is_some());
+}
+
+#[tokio::test]
 async fn a_decoder_that_falls_behind_costs_a_gap_but_never_the_video() {
     let rig = rig();
     let mut viewer = rig.open(&content("cam", rtsp())).await;
@@ -147,7 +173,7 @@ async fn a_decoder_that_falls_behind_costs_a_gap_but_never_the_video() {
         match update(&mut viewer).await {
             Update::Status(status) => caught_up |= !status.behind,
             Update::Gap { time_us } => gap = Some(time_us),
-            Update::Frame(_) => {}
+            Update::Frame(_) | Update::Events(_) => {}
         }
     }
     // The loss began while the video was at its newest frame.
@@ -237,15 +263,124 @@ async fn retry_reopens_a_stalled_video_and_leaves_a_live_one_alone() {
         .unwrap();
     update(&mut viewer).await;
 
-    viewer.retry().await;
+    viewer.retry();
+    tokio::time::sleep(Duration::from_millis(1)).await;
     assert_eq!(rig.fake.videos().len(), 1, "a live video is not reopened");
 
     let Update::Status(stalled) = update(&mut viewer).await else {
         panic!("a status");
     };
     assert_eq!(stalled.video, LiveFeedStatus::Stalled { seconds: 5 });
-    viewer.retry().await;
+    viewer.retry();
+    tokio::time::sleep(Duration::from_millis(1)).await;
     assert_eq!(rig.fake.videos().len(), 2, "a stalled video is reopened");
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_retry_does_not_reconnect_when_the_last_viewer_leaves_while_it_closes_the_old_connections()
+ {
+    let rig = rig();
+    let mut viewer = rig.open(&content("cam", LiveOverlay::None)).await;
+    let video = rig.fake.videos()[0].clone();
+    video.status.send(Status::Live { epoch: 1 }).unwrap();
+    update(&mut viewer).await;
+    let Update::Status(stalled) = update(&mut viewer).await else {
+        panic!("a status");
+    };
+    assert_eq!(stalled.video, LiveFeedStatus::Stalled { seconds: 5 });
+
+    // The retry is in the middle of closing the old connection when the window closes.
+    rig.fake.hold_closing(true);
+    viewer.retry();
+    while !video.closing.load(Ordering::Acquire) {
+        tokio::time::sleep(Duration::from_millis(1)).await;
+    }
+    drop(viewer);
+    rig.fake.hold_closing(false);
+    rig.sources.shutdown(Duration::from_secs(3)).await;
+    assert_eq!(rig.fake.videos().len(), 1, "no connection for nobody");
+    assert!(video.closed.load(Ordering::Acquire));
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_video_that_delivers_only_pictures_it_cannot_decode_stalls_and_offers_a_retry() {
+    let rig = rig();
+    let mut viewer = rig.open(&content("cam", LiveOverlay::None)).await;
+    let video = rig.fake.videos()[0].clone();
+    video.status.send(Status::Live { epoch: 1 }).unwrap();
+
+    // Units arrive every second, so the connection is not silent, yet no picture is ever shown.
+    let mut every = tokio::time::interval(Duration::from_secs(1));
+    let mut captured = 0;
+    let stalled = timeout(Duration::from_secs(30), async {
+        loop {
+            tokio::select! {
+                _ = every.tick() => {
+                    captured += 1_000;
+                    video.units.send(damaged(1, captured)).await.unwrap();
+                }
+                update = viewer.next() => {
+                    if let Some(Update::Status(wire)) = update
+                        && matches!(wire.video, LiveFeedStatus::Stalled { .. })
+                    {
+                        return;
+                    }
+                }
+            }
+        }
+    })
+    .await;
+    assert!(stalled.is_ok(), "the video was shown as live");
+
+    viewer.retry();
+    tokio::time::sleep(Duration::from_millis(1)).await;
+    assert_eq!(rig.fake.videos().len(), 2, "the stalled video is reopened");
+}
+
+#[tokio::test]
+async fn events_go_on_arriving_while_a_viewer_is_paused_and_while_every_viewer_is() {
+    let rig = rig();
+    let mut paused = rig.open(&content("cam", rtsp())).await;
+    let video = rig.fake.videos()[0].clone();
+    let docs = video.docs.clone().expect("metadata was asked for");
+    video.status.send(Status::Live { epoch: 1 }).unwrap();
+
+    // Nobody watches: the video is not decoded, and the event still reaches the Events list.
+    paused.pause(true);
+    video.units.send(unit(1, Some(1_000), 20)).await.unwrap();
+    docs.send(doc(1, "1000 events")).await.unwrap();
+    docs.send(doc(1, "2000")).await.unwrap();
+    loop {
+        match update(&mut paused).await {
+            Update::Events(events) => {
+                assert_eq!(events.samples[0].time, MediaTime(1_000));
+                break;
+            }
+            Update::Frame(_) => panic!("a paused viewer was shown a picture"),
+            Update::Status(_) | Update::Gap { .. } => {}
+        }
+    }
+
+    // Another window watches: it is shown the picture with its events, and the paused one still gets only the events.
+    let mut watching = rig.open(&content("cam", rtsp())).await;
+    video.units.send(unit(1, Some(3_000), 21)).await.unwrap();
+    docs.send(doc(1, "3000 events")).await.unwrap();
+    docs.send(doc(1, "4000")).await.unwrap();
+    let shown = frame(&mut watching).await;
+    assert_eq!(
+        shown.out.unwrap().events.unwrap().samples[0].time,
+        MediaTime(3_000)
+    );
+    loop {
+        match update(&mut paused).await {
+            Update::Events(events) => {
+                assert_eq!(events.samples[0].time, MediaTime(3_000));
+                break;
+            }
+            Update::Frame(_) => panic!("a paused viewer was shown a picture"),
+            Update::Status(_) | Update::Gap { .. } => {}
+        }
+    }
 }
 
 #[tokio::test]
@@ -298,7 +433,7 @@ async fn a_camera_whose_mqtt_client_is_taken_shows_its_overlay_as_failed_busy_an
                     });
             }
             Update::Frame(frame) => shown |= luma(&frame) == 7,
-            Update::Gap { .. } => {}
+            Update::Gap { .. } | Update::Events(_) => {}
         }
     }
 }

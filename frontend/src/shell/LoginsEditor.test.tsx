@@ -74,4 +74,20 @@ describe("logins editor", () => {
     fireEvent.blur(user);
     expect(saved).toEqual([[{ user: "root", password: "" }]]);
   });
+
+  it("sends a refused save again unchanged", async () => {
+    const answers: (string | null)[] = ["Could not reach the backend", null];
+    const saved: Login[][] = [];
+    const onSave = (next: Login[]) => {
+      saved.push(next);
+      return Promise.resolve(answers.shift() ?? null);
+    };
+    render(<LoginsEditor logins={[]} onSave={onSave} />);
+    fireEvent.click(screen.getByText("Add login"));
+    const user = screen.getByLabelText("Username");
+    fireEvent.change(user, { target: { value: "root" } });
+    await act(async () => fireEvent.keyDown(user, { key: "Enter" }));
+    await act(async () => fireEvent.keyDown(user, { key: "Enter" }));
+    expect(saved).toHaveLength(2);
+  });
 });

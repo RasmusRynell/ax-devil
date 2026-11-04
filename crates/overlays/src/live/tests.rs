@@ -2,7 +2,7 @@
 
 use std::{
     path::Path,
-    sync::{Arc, LazyLock},
+    sync::{Arc, LazyLock, mpsc},
     thread,
     time::{Duration, Instant},
 };
@@ -111,6 +111,37 @@ impl Decoder for Decode {
 struct Once(Option<Lines>);
 
 impl Feed for Once {
+    fn next_input(&mut self, _: &CancelToken) -> Option<Box<dyn Input + Send>> {
+        Some(Box::new(self.0.take()?))
+    }
+}
+
+/// Gives its records, then what the test sends, and holds the session open until the track is dropped: the last
+/// sample stays open.
+struct Open(Lines, mpsc::Receiver<&'static str>);
+
+impl Input for Open {
+    fn path(&self) -> Option<&Path> {
+        None
+    }
+
+    fn next(&mut self, cancel: &CancelToken) -> Result<Option<Record<'_>>, Interrupt<DecodeError>> {
+        if self.0.1 < self.0.0.len() {
+            return self.0.next(cancel);
+        }
+        while !cancel.is_cancelled() {
+            if let Ok(line) = self.1.recv_timeout(Duration::from_millis(2)) {
+                self.0 = Lines(vec![line], 0);
+                return self.0.next(cancel);
+            }
+        }
+        Err(Interrupt::Cancelled)
+    }
+}
+
+struct Held(Option<Open>);
+
+impl Feed for Held {
     fn next_input(&mut self, _: &CancelToken) -> Option<Box<dyn Input + Send>> {
         Some(Box::new(self.0.take()?))
     }
@@ -262,4 +293,49 @@ fn sticky_keeps_only_a_sample_that_matched_a_frame() {
     assert_eq!(cell(2, 1_200_000), (1, 2));
     // The sticky timeout counts from the admitted sample.
     assert_eq!(cell(3, 3_200_000), (NONE_CELL, 0));
+}
+
+#[test]
+fn events_that_join_a_sample_after_a_deadline_frame_showed_it_open_are_reported() {
+    let (more, later) = mpsc::channel();
+    let feed = Held(Some(Open(Lines(vec!["0", "100000 events"], 0), later)));
+    let values = SPEC.options.validate(&Settings::new()).unwrap();
+    let track = LiveTrack::start(Arc::new(Decode), values, Box::new(feed), 100).unwrap();
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while track.snapshot().keys.len() != 1 {
+        assert!(Instant::now() < deadline, "the first sample never arrived");
+        thread::sleep(Duration::from_millis(2));
+    }
+    let mut lane = lane_over(&track);
+    let policy = LanePolicy {
+        subscribed: true,
+        ..LanePolicy::default()
+    };
+
+    // The frame cannot wait for the sample at 100 ms to close, and reports the event it has.
+    let first = lane.release(frame(0, 100_000), &track.snapshot_with_open(), &policy);
+    assert_eq!(
+        first
+            .events
+            .expect("the open sample has an event")
+            .samples
+            .len(),
+        1
+    );
+
+    // More joins it: the track is numbered anew, and the new event is reported, only it.
+    more.send("100000 events").unwrap();
+    while track.snapshot().generation != 1 {
+        assert!(Instant::now() < deadline, "the second record never arrived");
+        thread::sleep(Duration::from_millis(2));
+    }
+    let second = lane.release(frame(1, 140_000), &track.snapshot_with_open(), &policy);
+    let reported = second.events.expect("the joined event is reported").samples;
+    assert_eq!((reported.len(), reported[0].events.len()), (1, 1));
+    assert_eq!(reported[0].time, MediaTime(100_000));
+    assert_eq!(
+        lane.release(frame(2, 180_000), &track.snapshot_with_open(), &policy)
+            .events,
+        None
+    );
 }

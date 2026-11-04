@@ -1,3 +1,5 @@
+mod login;
+
 use super::*;
 use crate::{Confirmation, Content, Environment, LiveOverlay, LiveRecipe, Protocol, Secret};
 use foundation::{CancelToken, Interrupt, Location};
@@ -465,91 +467,4 @@ fn a_frame_keyed_decoder_cannot_be_a_live_overlay() {
         error.reason,
         "CVAT cannot decode a live overlay; select another handler type."
     );
-}
-
-#[test]
-fn another_stream_copies_the_saved_login_only_for_the_same_camera() {
-    let saved = LiveRecipe {
-        host: "cam.local".into(),
-        username: "root".into(),
-        password: Secret::new("literal"),
-        protocol: Protocol::Https,
-        port: 0,
-        head: 1,
-        rtsp_port: 554,
-        resolution: None,
-        url: None,
-        overlay: LiveOverlay::None,
-    };
-    let copy = |change: fn(&mut NewLive)| {
-        let mut new = host("CAM.local");
-        change(&mut new);
-        new.copy_login(&saved, &defaults()).unwrap();
-        new
-    };
-    let login = |new: &NewLive| {
-        (
-            new.username.clone().unwrap_or_default(),
-            new.password
-                .as_ref()
-                .map(|secret| secret.expose().to_owned()),
-        )
-    };
-
-    // The same host, with the standard port written either way: the user and password fill in.
-    let same = (String::from("root"), Some(String::from("literal")));
-    assert_eq!(login(&copy(|_| {})), same);
-    assert_eq!(login(&copy(|new| new.port = Some(443))), same);
-    // A password the person entered stays.
-    let typed = copy(|new| new.password = Some(Secret::new("typed")));
-    assert_eq!(login(&typed).1.as_deref(), Some("typed"));
-    // Another host, protocol, port or user gets nothing of the saved password.
-    for change in [
-        (|new: &mut NewLive| new.host = Some("other.local".into())) as fn(&mut NewLive),
-        |new| new.protocol = Some(Protocol::Http),
-        |new| new.port = Some(8443),
-        |new| new.username = Some("viewer".into()),
-    ] {
-        assert_eq!(login(&copy(change)).1, None);
-    }
-}
-
-#[test]
-fn a_stream_url_elsewhere_gets_no_saved_login() {
-    let saved = LiveRecipe {
-        host: "cam.local".into(),
-        username: "root".into(),
-        password: Secret::new("literal"),
-        protocol: Protocol::Https,
-        port: 0,
-        head: 1,
-        rtsp_port: 554,
-        resolution: None,
-        url: None,
-        overlay: LiveOverlay::None,
-    };
-    let copy = |url: &str| {
-        let mut new = NewLive {
-            url: Some(url.into()),
-            ..host("cam.local")
-        };
-        new.copy_login(&saved, &defaults()).map(|()| new.password)
-    };
-    // The camera's own RTSP address, spelled in the URL, takes the login; another host or port is refused.
-    assert_eq!(
-        copy("rtsp://CAM.local/stream").unwrap().unwrap().expose(),
-        "literal"
-    );
-    for url in ["rtsp://other.example/s", "rtsp://cam.local:8554/s"] {
-        let error = copy(url).unwrap_err();
-        assert_eq!(error.location, Some(Location::field("password")));
-    }
-    // With the login entered there is nothing to copy, so the URL is free.
-    let mut typed = NewLive {
-        url: Some("rtsp://other.example/s".into()),
-        username: Some("root".into()),
-        password: Some(Secret::new("typed")),
-        ..host("cam.local")
-    };
-    typed.copy_login(&saved, &defaults()).unwrap();
 }

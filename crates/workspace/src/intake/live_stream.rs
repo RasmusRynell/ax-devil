@@ -167,8 +167,9 @@ impl NewLive {
     /// password is never sent where the person who adds the stream did not first see it go. A user entered and not
     /// `source`'s keeps its own password too, which `source`'s does not belong to.
     ///
-    /// A stream URL is where the RTSP login goes, so a copy needs it to name the host and port `source` already
-    /// sends its login to; any other is refused, as the person must then enter the login for that server.
+    /// The RTSP login goes to the stream URL's host and port, or the camera's with its RTSP port, so a copy needs
+    /// that endpoint to be the one `source` already sends its login to; any other is refused, as the person must then
+    /// enter the login for that server.
     pub fn copy_login(
         &mut self,
         source: &LiveRecipe,
@@ -197,18 +198,7 @@ impl NewLive {
         if !user_blank && !password_blank {
             return Ok(());
         }
-        if let Some(url) = self
-            .url
-            .as_deref()
-            .map(str::trim)
-            .filter(|url| !url.is_empty())
-            && url_endpoint(url).ok() != Some(source.rtsp_endpoint())
-        {
-            return Err(invalid(
-                "password",
-                "A saved login is not sent to another stream URL; enter the user and password for it.",
-            ));
-        }
+        self.check_login_destination(&source.rtsp_endpoint(), defaults)?;
         if user_blank {
             self.username = Some(source.username.clone());
         }
@@ -217,6 +207,45 @@ impl NewLive {
         }
         Ok(())
     }
+
+    /// Refuses, with the field `password`, when the host and port this stream's RTSP goes to, once `defaults` fill
+    /// what is blank, differ from `trusted`: the one endpoint a saved or scanned login may be sent to.
+    pub fn check_login_destination(
+        &self,
+        trusted: &(String, u16),
+        defaults: &LiveDefaults,
+    ) -> Result<(), UserError> {
+        let endpoint = match self.url.as_deref().map(str::trim) {
+            Some(url) if !url.is_empty() => url_endpoint(url).ok(),
+            _ => Some(self.camera_endpoint(defaults)),
+        };
+        if endpoint.as_ref().map(canonical_endpoint) == Some(canonical_endpoint(trusted)) {
+            return Ok(());
+        }
+        Err(invalid(
+            "password",
+            "A saved login is not sent to another RTSP address; enter the user and password for it.",
+        ))
+    }
+
+    /// The host and port the camera itself takes RTSP on: the endpoint a scan's login may be sent to.
+    pub fn camera_endpoint(&self, defaults: &LiveDefaults) -> (String, u16) {
+        let rtsp_port = self.rtsp_port.unwrap_or_else(|| defaults.rtsp_port.into());
+        (
+            text(&self.host, &defaults.host).to_ascii_lowercase(),
+            u16::try_from(rtsp_port).unwrap_or(0),
+        )
+    }
+}
+
+/// An endpoint with its host spelled one way: no IPv6 brackets, an address in its canonical form, a name lowercase.
+fn canonical_endpoint((host, port): &(String, u16)) -> (String, u16) {
+    let bare = host.trim_start_matches('[').trim_end_matches(']');
+    let host = match bare.parse::<std::net::IpAddr>() {
+        Ok(address) => address.to_string(),
+        Err(_) => bare.to_ascii_lowercase(),
+    };
+    (host, *port)
 }
 
 fn invalid(field: &str, reason: &str) -> UserError {

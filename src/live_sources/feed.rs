@@ -9,7 +9,7 @@ use std::{
     },
 };
 
-use foundation::{ErrorCode, UserError, VideoFrame};
+use foundation::{ErrorCode, FrameId, UserError, VideoFrame};
 use futures_util::future::join_all;
 use handler_api::{Decoder, Settings};
 use overlay_sync::Mono;
@@ -61,11 +61,13 @@ impl Clock {
     }
 }
 
-/// A frame the gate let out, with what the overlay knew when it did. Each viewer's lane selects from the snapshot, so
-/// its own policy decides what it draws.
+/// A unit the gate let out, with what the overlay knew when it did. Each viewer's lane selects from the snapshot, so
+/// its own policy decides what it draws. The Events list advances with every unit, picture or not.
 pub struct Released {
-    /// The decoded picture; its time is the camera's capture time.
-    pub frame: VideoFrame,
+    /// The unit's place on the video clock: its capture time.
+    pub id: FrameId,
+    /// The decoded picture; `None` when the unit gave none (nobody is watching, or it could not be decoded).
+    pub frame: Option<VideoFrame>,
     /// The overlay's track; `None` for a video without one.
     pub snapshot: Option<Arc<TrackSnapshot>>,
 }
@@ -302,18 +304,28 @@ impl Feed {
     }
 
     /// Reopens every connection when one has failed for good or the video is stalled, as the viewer's Retry offers;
-    /// otherwise there is nothing to retry. A feed that was closed stays closed.
+    /// otherwise there is nothing to retry. A feed that was closed stays closed, and so does one whose last viewer has
+    /// left: the pipeline is then being closed, and connecting again would configure a camera for nobody.
     pub async fn retry(&self) {
         let mut run = self.run.lock().await;
-        if !self.shared.board.needs_retry(self.shared.clock.now()) {
+        if !self.owned() || !self.shared.board.needs_retry(self.shared.clock.now()) {
             return;
         }
         let Some(failed) = run.take() else {
             return;
         };
         failed.end().await;
+        // Ending the connections can take several request timeouts; the viewers may have gone meanwhile.
+        if !self.owned() {
+            return;
+        }
         self.shared.board.restart(self.shared.clock.now());
         *run = Some(Self::connect(&self.shared));
+    }
+
+    /// Whether a viewer still holds the feed and it was not closed.
+    fn owned(&self) -> bool {
+        self.viewers.load(Ordering::Acquire) > 0 && !self.closed.load(Ordering::Acquire)
     }
 
     /// Ends the pipeline and waits until every connection is closed, a camera's MQTT publisher included. A closer

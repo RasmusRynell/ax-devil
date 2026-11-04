@@ -1,10 +1,13 @@
 //! The video side of a feed: encoded units wait in the live gate until their overlay is settled (or 1.5 s, D28), then
 //! decode in arrival order and go to every viewer. A unit without a capture time cannot be synchronized and is dropped.
+//! While nobody watches, units pass the gate but are not decoded, so the Events list goes on recording. The video is
+//! live while pictures are shown (or, with nobody watching, units arrive): a stream that delivers only pictures that
+//! cannot be decoded stalls.
 
 use std::sync::{Arc, atomic::Ordering};
 
 use camera::{AccessUnit, Status};
-use foundation::{FrameId, MediaTime};
+use foundation::{FrameId, MediaTime, VideoFrame};
 use overlay_sync::{LIVE_DEADLINE, LiveGate, MatchBasis};
 use scene_store::TrackRead;
 use tokio::{
@@ -134,20 +137,11 @@ impl VideoTask {
     /// Holds a unit for the gate, or drops it; a unit the gate lets out for being over its bound is shown at once.
     async fn accept(&mut self, unit: AccessUnit) {
         let now = self.shared.clock.now();
-        // Only a unit that can be shown is data: a stream whose units all lack a capture time stalls.
-        if unit.capture.is_some() {
-            self.shared.board.video_data(now);
-        }
         if self.epoch != Some(unit.epoch) {
             // A new connection: what is held belongs to the one before.
             self.gate.reset();
             self.decoder = None;
             self.epoch = Some(unit.epoch);
-        }
-        if self.shared.watching.load(Ordering::Acquire) == 0 {
-            self.gate.reset();
-            self.decoder = None;
-            return;
         }
         let Some(capture) = unit.capture else {
             if !self.warned_capture {
@@ -185,11 +179,42 @@ impl VideoTask {
         }
     }
 
+    /// Publishes the unit's place in time with the picture it decodes to, if any. Every unit is published, so the
+    /// Events list does not depend on pictures: not on a viewer being unpaused, nor on the unit being decodable.
     async fn show(&mut self, id: FrameId, unit: AccessUnit) {
+        let frame = self.decode(id, unit).await;
+        let now = self.shared.clock.now();
+        if frame.is_some() || self.shared.watching.load(Ordering::Acquire) == 0 {
+            self.shared.board.video_data(now);
+        }
+        // A frame the overlay has not decided (it waited out the deadline) still draws the sample that is open for
+        // it, which only the next timestamp or the session's end would publish.
+        let snapshot = self.shared.track.as_ref().map(|track| {
+            let snapshot = track.snapshot();
+            if snapshot.decides(id, MatchBasis::Time) {
+                snapshot
+            } else {
+                track.snapshot_with_open()
+            }
+        });
+        self.shared.frames.send_replace(Some(Arc::new(Released {
+            id,
+            frame,
+            snapshot,
+        })));
+    }
+
+    /// The picture of `unit`; `None` when nobody watches (the decoder is dropped, so a viewer that comes back starts at
+    /// a keyframe) or the unit gives none.
+    async fn decode(&mut self, id: FrameId, unit: AccessUnit) -> Option<VideoFrame> {
+        if self.shared.watching.load(Ordering::Acquire) == 0 {
+            self.decoder = None;
+            return None;
+        }
         if self.decoder.is_none() {
             // Decoding starts at a keyframe, which carries the parameter sets.
             if !unit.keyframe {
-                return;
+                return None;
             }
             let sets = if unit.codec.parameter_sets.is_empty() {
                 &unit.data
@@ -200,30 +225,13 @@ impl VideoTask {
                 Ok(decoder) => self.decoder = Some(decoder),
                 Err(error) => {
                     tracing::warn!("The live video cannot be decoded: {}", error.reason);
-                    return;
+                    return None;
                 }
             }
         }
-        let Some(decoder) = self.decoder.as_mut() else {
-            return;
-        };
+        let decoder = self.decoder.as_mut()?;
         match decoder.decode(unit.data, id).await {
-            Ok(Some(frame)) => {
-                // A frame the overlay has not decided (it waited out the deadline) still draws the sample that is
-                // open for it, which only the next timestamp or the session's end would publish.
-                let snapshot = self.shared.track.as_ref().map(|track| {
-                    let snapshot = track.snapshot();
-                    if snapshot.decides(id, MatchBasis::Time) {
-                        snapshot
-                    } else {
-                        track.snapshot_with_open()
-                    }
-                });
-                self.shared
-                    .frames
-                    .send_replace(Some(Arc::new(Released { frame, snapshot })));
-            }
-            Ok(None) => {}
+            Ok(frame) => frame,
             Err(failure) => {
                 // The decoder skips to the next keyframe by itself.
                 if !self.warned_decode {
@@ -238,6 +246,7 @@ impl VideoTask {
                         failure.error.reason
                     );
                 }
+                None
             }
         }
     }

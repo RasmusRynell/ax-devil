@@ -31,11 +31,15 @@ use axum::extract::ws::Message;
 use catalogs::Library;
 use foundation::{ErrorCode, UserError};
 use overlay_sync::{LIVE_TOLERANCE, MatchBasis, MatchPolicy, Tolerance};
-use overlays::{LaneReady, LaneStatus};
+use overlays::{LaneReady, LaneStatus, LiveEvents};
 use sessions::session::StreamLease;
 use std::collections::VecDeque;
 use tokio::sync::watch;
 use workspace::{LIVE_SLOT, LiveOverlay, LiveVideoContent};
+
+/// How many answers may wait for a viewer that is not reading. A viewer that goes on asking past this has its session
+/// ended, so one socket cannot make the backend hold an unbounded queue.
+const MAX_NOTICES: usize = 64;
 
 /// How a live lane matches before its viewer says otherwise: by time, within the live window.
 fn live_matching() -> MatchPolicy {
@@ -204,9 +208,9 @@ impl<I: Incoming> Live<'_, I> {
                 // A policy that cannot be applied keeps the matching and still adopts the revision.
                 match policy_from_wire(policy) {
                     Ok(matching) => self.matching = matching,
-                    Err(reason) if self.audience.host_details => self
-                        .notices
-                        .push_back(text(&ServerMessage::LaneProblem { lane, reason })),
+                    Err(reason) if self.audience.host_details => {
+                        self.notify(&ServerMessage::LaneProblem { lane, reason })?;
+                    }
                     Err(_) => {}
                 }
                 self.viewer.set_policy(revision, self.matching, subscribed);
@@ -228,28 +232,24 @@ impl<I: Incoming> Live<'_, I> {
                 Ok(())
             }
             Some(Ok(ClientMessage::FileQuery { lane, request, .. })) => {
-                self.notices.push_back(text(&ServerMessage::FileScope {
+                self.notify(&ServerMessage::FileScope {
                     lane,
                     request,
                     unavailable: FileScopeUnavailable::PlainLane,
-                }));
-                Ok(())
+                })
             }
             Some(Ok(ClientMessage::Appearances {
                 lane,
                 request,
                 entity,
-            })) => {
-                self.notices.push_back(text(&ServerMessage::Appearances {
-                    lane,
-                    request,
-                    entity,
-                    appearances: FileAppearances::Unavailable {
-                        unavailable: FileScopeUnavailable::PlainLane,
-                    },
-                }));
-                Ok(())
-            }
+            })) => self.notify(&ServerMessage::Appearances {
+                lane,
+                request,
+                entity,
+                appearances: FileAppearances::Unavailable {
+                    unavailable: FileScopeUnavailable::PlainLane,
+                },
+            }),
             Some(Ok(ClientMessage::Open { .. })) => Err(violation("The video is already open")),
             Some(Ok(
                 ClientMessage::Want(_)
@@ -260,6 +260,18 @@ impl<I: Incoming> Live<'_, I> {
             Some(Err(error)) => Err(End::Failed(error)),
             Some(Ok(ClientMessage::Close)) | None => Err(End::Closed),
         }
+    }
+
+    /// Queues an answer for the viewer, or ends the session when too many wait for one that is not reading.
+    fn notify(&mut self, message: &ServerMessage) -> Flow<()> {
+        if self.notices.len() >= MAX_NOTICES {
+            return Err(End::Failed(UserError::new(
+                ErrorCode::ProtocolViolation,
+                "The viewer asks faster than it reads the answers",
+            )));
+        }
+        self.notices.push_back(text(message));
+        Ok(())
     }
 
     /// Sends `message` once the outbox has room, while still hearing from the viewer and the backend.
@@ -316,21 +328,26 @@ impl<I: Incoming> Live<'_, I> {
             }))
             .await?;
         }
-        if let Some(events) = out.events {
-            self.send(text(&ServerMessage::LiveEvents(LiveEventsWire {
-                frame: events.frame.sequence_id,
-                samples: events
-                    .samples
-                    .iter()
-                    .map(|sample| LiveSampleEventsWire {
-                        time_us: sample.time.as_us(),
-                        events: sample.events.iter().map(LiveEventWire::from).collect(),
-                    })
-                    .collect(),
-            })))
-            .await?;
+        match out.events {
+            Some(events) => self.events(events).await,
+            None => Ok(()),
         }
-        Ok(())
+    }
+
+    /// The events a unit made visible.
+    async fn events(&mut self, events: LiveEvents) -> Flow<()> {
+        self.send(text(&ServerMessage::LiveEvents(LiveEventsWire {
+            frame: events.frame.sequence_id,
+            samples: events
+                .samples
+                .iter()
+                .map(|sample| LiveSampleEventsWire {
+                    time_us: sample.time.as_us(),
+                    events: sample.events.iter().map(LiveEventWire::from).collect(),
+                })
+                .collect(),
+        })))
+        .await
     }
 
     /// Applies the viewer's messages and sends what the feed produces until the session ends.
@@ -341,13 +358,13 @@ impl<I: Incoming> Live<'_, I> {
                 continue;
             }
             if std::mem::take(&mut self.retry) {
-                self.viewer.retry().await;
-                continue;
+                self.viewer.retry();
             }
             tokio::select! {
                 message = next_client(self.incoming) => self.apply(message)?,
                 update = self.viewer.next() => match update {
                     Some(Update::Frame(shown)) => self.show(*shown).await?,
+                    Some(Update::Events(events)) => self.events(*events).await?,
                     Some(Update::Status(status)) => {
                         self.send(text(&ServerMessage::LiveStatus(status))).await?;
                     }

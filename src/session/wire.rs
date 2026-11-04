@@ -194,7 +194,7 @@ fn intake(
             let like = new.like.take();
             let mut new = NewLive::from(*new);
             if let Some(address) = found {
-                scanned(&mut new, &address, network)?;
+                scanned(&mut new, &address, network, live)?;
             } else if let Some(recipe) = like.and_then(|item| saved.live(item)) {
                 new.copy_login(recipe, live)?;
             }
@@ -232,12 +232,14 @@ impl<'a> Saved<'a> {
     }
 }
 
-/// Points `new` at the camera the scan signed in to at `address`, with the login that worked. The password is
-/// written into the recipe here and nowhere else: it is neither logged nor named in the refusal.
+/// Points `new` at the camera the scan signed in to at `address`, with the login that worked, unless `new` names a
+/// stream URL on another server. The password is written into the recipe here and nowhere else: it is neither logged
+/// nor named in the refusal.
 fn scanned(
     new: &mut NewLive,
     address: &str,
     network: &Network,
+    defaults: &LiveDefaults,
 ) -> Result<(), foundation::UserError> {
     let Some((row, login)) = network.signed_in(address) else {
         return Err(foundation::UserError::new(
@@ -256,6 +258,8 @@ fn scanned(
     } else {
         row.port.into()
     });
+    // The login goes where the stream's RTSP goes, so a stream URL elsewhere than the camera gets none of it.
+    new.check_login_destination(&new.camera_endpoint(defaults), defaults)?;
     new.username = Some(login.user);
     new.password = Some(Secret::new(login.password.expose()));
     Ok(())

@@ -9,7 +9,7 @@ use std::{
 use api_types::live::LiveStatusWire;
 use foundation::VideoFrame;
 use overlay_sync::{MatchBasis, MatchPolicy};
-use overlays::{LanePolicy, LaneReady, LiveLane, LiveOut};
+use overlays::{LanePolicy, LaneReady, LiveEvents, LiveLane, LiveOut};
 use scene_store::{Ingest, TrackRead, TrackSnapshot};
 use tokio::sync::watch;
 
@@ -22,6 +22,8 @@ use super::{
 pub enum Update {
     /// A frame and, for a video with an overlay, what the lane draws on it.
     Frame(Box<Shown>),
+    /// The overlay's events up to a unit that gave this viewer no picture: it is paused or the unit could not be decoded.
+    Events(Box<LiveEvents>),
     /// A feed's status changed.
     Status(LiveStatusWire),
     /// The overlay lost samples from `time_us` on the video clock, microseconds.
@@ -141,9 +143,9 @@ impl LiveViewer {
         }
     }
 
-    /// Stops or resumes delivering frames to this viewer. The connection stays up, and so do the status and the gaps. A
-    /// viewer that resumes is shown the newest frame, not the ones it missed. When every viewer is paused the video
-    /// is read but not decoded.
+    /// Stops or resumes delivering frames to this viewer. The connection stays up, and so do the status, the gaps and
+    /// the events. A viewer that resumes is shown the newest frame, not the ones it missed. When every viewer is
+    /// paused the video is read but not decoded.
     pub fn pause(&mut self, paused: bool) {
         if paused == self.paused {
             return;
@@ -158,10 +160,12 @@ impl LiveViewer {
     }
 
     /// Reopens every connection of a feed that failed or whose video stalled, for every viewer of it, and resumes this
-    /// one. Does nothing to a feed that is up.
-    pub async fn retry(&mut self) {
+    /// one. Does nothing to a feed that is up. The feed does it in the background, and not at all once its last viewer
+    /// has gone, so the caller is never held up by a camera that is slow to give back its connections.
+    pub fn retry(&mut self) {
         self.pause(false);
-        self.feed.retry().await;
+        let feed = Arc::clone(&self.feed);
+        tokio::spawn(async move { feed.retry().await });
     }
 
     /// The next thing to tell the viewer; `None` only when the feed is gone. Cancel-safe.
@@ -181,29 +185,34 @@ impl LiveViewer {
                     self.gaps_waiting.extend(log.since(self.gaps_seen));
                     self.gaps_seen = log.count();
                 }
-                changed = self.frames.changed(), if !self.paused => {
+                changed = self.frames.changed() => {
                     changed.ok()?;
                     let released = self.frames.borrow_and_update().clone();
-                    if let Some(released) = released {
-                        return Some(Update::Frame(Box::new(self.show(&released))));
+                    if let Some(update) = released.and_then(|released| self.show(&released)) {
+                        return Some(update);
                     }
                 }
             }
         }
     }
 
-    fn show(&mut self, released: &Released) -> Shown {
-        let out = match (&mut self.lane, &released.snapshot) {
-            (Some(lane), Some(snapshot)) => {
-                self.shown = Some((Arc::clone(snapshot), released.frame.id().sequence_id));
-                Some(lane.release(released.frame.id(), snapshot, &self.policy))
-            }
-            _ => None,
+    /// What a released unit means to this viewer: the picture with its lane's cell, or, when it is paused or the unit
+    /// gave no picture, only the events the unit made visible.
+    fn show(&mut self, released: &Released) -> Option<Update> {
+        let picture = released.frame.clone().filter(|_| !self.paused);
+        let (Some(lane), Some(snapshot)) = (&mut self.lane, &released.snapshot) else {
+            return picture.map(|frame| Update::Frame(Box::new(Shown { frame, out: None })));
         };
-        Shown {
-            frame: released.frame.clone(),
-            out,
-        }
+        let Some(frame) = picture else {
+            let events = lane.unreported(released.id, snapshot)?;
+            return Some(Update::Events(Box::new(events)));
+        };
+        // A decoder that holds pictures back answers a unit with an earlier picture: the lane matches that one's own
+        // id, not the unit's.
+        let id = frame.id();
+        self.shown = Some((Arc::clone(snapshot), id.sequence_id));
+        let out = Some(lane.release(id, snapshot, &self.policy));
+        Some(Update::Frame(Box::new(Shown { frame, out })))
     }
 }
 

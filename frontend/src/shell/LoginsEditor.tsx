@@ -47,7 +47,7 @@ export function LoginsEditor({
   // The logins this editor has submitted since the backend last changed on its own, by shape, each with the latest
   // submitted as written: an acknowledgement says nothing the draft does not, and the draft may have moved on since.
   const submitted = useRef(new Map<string, readonly Login[]>());
-  // The logins sent last, so an Enter followed by the blur it causes sends them once.
+  // The logins sent last and not refused, so an Enter followed by the blur it causes sends them once.
   const sent = useRef<string | null>(null);
 
   // What the backend holds changed: show it, unless it is what the draft already says or what this editor saved.
@@ -65,10 +65,15 @@ export function LoginsEditor({
 
   const commit = (next: readonly Login[]) => {
     const wanted = kept(next);
-    if (same(wanted, logins) || sent.current === JSON.stringify(wanted)) return;
-    sent.current = JSON.stringify(wanted);
+    const key = JSON.stringify(wanted);
+    if (same(wanted, logins) || sent.current === key) return;
+    sent.current = key;
     submitted.current.set(shape(wanted), wanted);
-    void onSave(wanted).then(setRefused);
+    void onSave(wanted).then((reason) => {
+      // A refused save can be sent again unchanged; a newer submission is not forgotten by an older answer.
+      if (reason !== null && sent.current === key) sent.current = null;
+      setRefused(reason);
+    });
   };
   const edit = (at: number, field: "user" | "password", value: string) =>
     setDraft(draft.map((login, index) => (index === at ? { ...login, [field]: value } : login)));

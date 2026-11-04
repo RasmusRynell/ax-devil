@@ -18,16 +18,16 @@ use camera::{
     Status, VideoCodec,
 };
 use foundation::{
-    CancelToken, ColorDesc, FrameFailure, FrameId, FrameLayout, Interrupt, Matrix, MediaTime,
-    PixelFormat, Plane, UserError, VideoFrame,
+    CancelToken, ColorDesc, ErrorCode, FrameFailure, FrameId, FrameLayout, Interrupt, Matrix,
+    MediaTime, PixelFormat, Plane, UserError, VideoFrame,
 };
 use handler_api::{
     DecodeError, DecodeSummary, Decoder, Form, Framing, Input, OnEqualKey, SceneSink, Spec, Values,
 };
 use overlay_sync::{LIVE_TOLERANCE, MatchBasis as Basis, MatchPolicy, Sticky, Tolerance};
 use scene::{
-    BoundingBox, Coverage, Entity, EntityId, FilterPolicy, Geometry, MatchBasis, Observation,
-    Scene, SceneTime, TimeSlice,
+    BoundingBox, Coverage, Entity, EntityId, Event, FilterPolicy, Geometry, MatchBasis,
+    Observation, Operation, Scene, SceneTime, TimeSlice,
 };
 use tokio::sync::{mpsc, watch};
 use workspace::{LiveOverlay, LiveVideoContent, ResolvedCamera};
@@ -40,6 +40,8 @@ pub struct VideoWire {
     pub docs: Option<mpsc::Sender<Feed<MetadataDoc>>>,
     pub status: watch::Sender<Status>,
     pub closed: Arc<AtomicBool>,
+    /// Set when closing the connection has begun, which [`FakeConnector::hold_closing`] can keep from finishing.
+    pub closing: Arc<AtomicBool>,
 }
 
 /// What a test pushes into one MQTT or DataHub connection and reads of it.
@@ -55,6 +57,8 @@ struct World {
     messages: Mutex<Vec<Arc<MessageWire>>>,
     /// The cameras whose MQTT client a connection holds.
     leased: Mutex<HashSet<String>>,
+    /// While set, closing an RTSP connection does not finish.
+    closing_held: watch::Sender<bool>,
 }
 
 /// A connector over channels the test drives. Connections opened through it are listed in the order they opened.
@@ -66,6 +70,11 @@ fn lock<T>(mutex: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
 }
 
 impl FakeConnector {
+    /// Keeps the closing of RTSP connections from finishing (or lets it).
+    pub fn hold_closing(&self, held: bool) {
+        self.0.closing_held.send_replace(held);
+    }
+
     /// The RTSP connections opened so far.
     pub fn videos(&self) -> Vec<Arc<VideoWire>> {
         lock(&self.0.videos).clone()
@@ -120,8 +129,10 @@ impl Connector for FakeConnector {
             docs,
             status: status_tx,
             closed: Arc::default(),
+            closing: Arc::default(),
         });
         lock(&self.0.videos).push(Arc::clone(&wire));
+        let mut held = self.0.closing_held.subscribe();
         Transport::new(
             Inputs {
                 video: Some(unit_rx),
@@ -129,6 +140,8 @@ impl Connector for FakeConnector {
                 status,
             },
             async move {
+                wire.closing.store(true, Ordering::Release);
+                let _ = held.wait_for(|held| !*held).await;
                 wire.closed.store(true, Ordering::Release);
             },
         )
@@ -172,12 +185,16 @@ impl Connector for FakeConnector {
         _codec: VideoCodec,
         _parameter_sets: &[u8],
     ) -> Result<Box<dyn UnitDecoder>, UserError> {
-        Ok(Box::new(FakeCodec))
+        Ok(Box::new(FakeCodec::default()))
     }
 }
 
-/// A codec for units that are one byte: the luma of a 2x2 picture.
-struct FakeCodec;
+/// A codec for units that are one byte: the luma of a 2x2 picture. A unit without a byte cannot be decoded. A unit of
+/// two bytes (see [`held_back`]) is a picture the codec keeps until the next unit, as one reordering frames does.
+#[derive(Default)]
+struct FakeCodec {
+    held: Option<(u8, FrameId)>,
+}
 
 impl UnitDecoder for FakeCodec {
     fn decode<'a>(
@@ -186,6 +203,22 @@ impl UnitDecoder for FakeCodec {
         id: FrameId,
     ) -> Pin<Box<dyn Future<Output = Decoded> + Send + 'a>> {
         Box::pin(async move {
+            let (unit, id) = match (unit.len(), self.held.take()) {
+                (2, held) => {
+                    self.held = Some((unit[0], id));
+                    match held {
+                        Some((luma, id)) => (Bytes::from(vec![luma]), id),
+                        None => return Ok(None),
+                    }
+                }
+                (_, _) => (unit, id),
+            };
+            if unit.is_empty() {
+                return Err(FrameFailure {
+                    sequence_id: id.sequence_id,
+                    error: UserError::new(ErrorCode::DecodeFailed, "A damaged picture"),
+                });
+            }
             let plane = |stride, len| Plane { stride, len };
             let layout = FrameLayout {
                 width: 2,
@@ -206,6 +239,22 @@ impl UnitDecoder for FakeCodec {
                     error,
                 })
         })
+    }
+}
+
+/// A video unit of connection `epoch` that cannot be decoded, captured at `capture_us` microseconds.
+pub fn damaged(epoch: u32, capture_us: i64) -> AccessUnit {
+    AccessUnit {
+        data: Bytes::new(),
+        ..unit(epoch, Some(capture_us), 0)
+    }
+}
+
+/// Like [`unit`], but its picture comes out of the decoder with the next unit, under its own id.
+pub fn held_back(epoch: u32, capture_us: i64, luma: u8) -> AccessUnit {
+    AccessUnit {
+        data: Bytes::from(vec![luma, 0]),
+        ..unit(epoch, Some(capture_us), luma)
     }
 }
 
@@ -270,7 +319,8 @@ static SPEC: LazyLock<Spec> = LazyLock::new(|| Spec {
     version: 1,
 });
 
-/// A decoder of records `<microseconds>` (a Scene with one box at that time) and `<microseconds> empty`.
+/// A decoder of records `<microseconds>` (a Scene with one box at that time), `<microseconds> empty` and
+/// `<microseconds> events` (a Scene with one event).
 pub struct TestDecoder(pub Arc<Hold>);
 
 impl TestDecoder {
@@ -282,8 +332,17 @@ fn scene_of(line: &str) -> Scene {
     let mut parts = line.split(' ');
     let time = SceneTime::Timestamp(MediaTime(parts.next().unwrap_or("0").parse().unwrap_or(0)));
     let scene = Scene::new(TimeSlice::at(time));
-    if parts.next() == Some("empty") {
-        return scene;
+    match parts.next() {
+        Some("empty") => return scene,
+        Some("events") => {
+            let delete = Operation::Delete {
+                entity: EntityId::from(1u64),
+            };
+            return scene
+                .with_events(vec![Event::new(TimeSlice::at(time), delete)])
+                .expect("a scene");
+        }
+        _ => {}
     }
     let mut entity = Entity::new(EntityId::from(1u64));
     entity.push_observation(Observation::new(

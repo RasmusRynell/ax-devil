@@ -69,6 +69,9 @@ pub struct LiveLane {
     recent: VecDeque<u32>,
     /// The key of the newest sample whose events were reported.
     reported: Option<MediaTime>,
+    /// How many of that sample's events were reported. A sample still open when a frame is released at the deadline
+    /// can be joined by more events afterwards; those are reported when they arrive.
+    reported_events: usize,
     /// The key of the newest sample that matched a frame, within the tolerance. Only it can be retained by sticky: a
     /// sample that never matched one is stale and was discarded before it could persist.
     admitted: Option<MediaTime>,
@@ -84,10 +87,16 @@ impl LiveLane {
     /// reported to the viewers that were there, or are history for this one: a viewer that reconnects keeps the
     /// events it has, so repeating the retained ones would duplicate them.
     pub fn new(track: Arc<dyn TrackRead>, source: u16, lane: u16, policy_revision: u32) -> Self {
-        let reported = track.snapshot().keys.times.as_ref().and_then(|times| {
-            let last = times.len().checked_sub(1)?;
-            times.get(last)
-        });
+        let snapshot = track.snapshot();
+        let last = snapshot
+            .keys
+            .times
+            .as_ref()
+            .and_then(|times| times.len().checked_sub(1));
+        let reported = last.and_then(|last| snapshot.keys.times.as_ref()?.get(last));
+        let reported_events = last
+            .and_then(|last| track.scene_in(&snapshot, last).ok())
+            .map_or(0, |scene| scene.events().len());
         Self {
             track,
             source,
@@ -98,6 +107,7 @@ impl LiveLane {
             sent: BTreeSet::new(),
             recent: VecDeque::new(),
             reported,
+            reported_events,
             admitted: None,
             serial: 0,
             clock: Timeline::new(vec![MediaTime::ZERO]).expect("one frame at zero"),
@@ -253,28 +263,48 @@ impl LiveLane {
         }
     }
 
-    /// The events of every sample after the last reported one, up to the newest at or before the frame's time,
-    /// whether or not the policy selects any of them to draw: an event that falls outside the tolerance, or while
-    /// the lane is hidden, still reaches the Events list, once. One skipped between two frames reports as well.
-    fn unreported(&mut self, frame: FrameId, snap: &TrackSnapshot) -> Option<LiveEvents> {
+    /// The events not reported before, of every sample from the last reported one up to the newest at or before the
+    /// frame's time, whether or not the policy selects any of them to draw: an event that falls outside the
+    /// tolerance, or while the lane is hidden, still reaches the Events list, once. One skipped between two frames
+    /// reports as well, and so do events that joined the last reported sample since.
+    ///
+    /// Independent of the picture: the viewer calls it for a frame it does not show, so the Events list goes on
+    /// recording while the lane is paused.
+    pub fn unreported(&mut self, frame: FrameId, snap: &TrackSnapshot) -> Option<LiveEvents> {
         let times = snap.keys.times.as_ref()?;
         let from = self
             .reported
-            .map_or(0, |reported| times.partition_point(|&key| key <= reported));
+            .map_or(0, |reported| times.partition_point(|&key| key < reported));
         let to = times.partition_point(|&key| key <= frame.timestamp);
         if from >= to {
             return None;
         }
-        self.reported = times.get(to - 1);
-        let samples: Vec<SampleEvents> = (from..to)
-            .filter_map(|index| {
-                let scene = self.scene(snap, index)?;
-                (!scene.events().is_empty()).then(|| SampleEvents {
-                    time: times.get(index).unwrap_or(frame.timestamp),
-                    events: scene.events().to_vec(),
-                })
-            })
-            .collect();
+        let mut samples = Vec::new();
+        let mut last = (None, 0);
+        for index in from..to {
+            let key = times.get(index);
+            let scene = self.scene(snap, index);
+            let held = scene.as_ref().map_or(0, |scene| scene.events().len());
+            last = (key, held);
+            let Some(scene) = scene else {
+                continue;
+            };
+            let seen = if key == self.reported {
+                self.reported_events
+            } else {
+                0
+            };
+            let events = scene.events().get(seen..).unwrap_or_default();
+            if !events.is_empty() {
+                samples.push(SampleEvents {
+                    time: key.unwrap_or(frame.timestamp),
+                    events: events.to_vec(),
+                });
+            }
+        }
+        if last.0.is_some() {
+            (self.reported, self.reported_events) = last;
+        }
         (!samples.is_empty()).then_some(LiveEvents { frame, samples })
     }
 

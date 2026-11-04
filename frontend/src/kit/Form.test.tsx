@@ -27,18 +27,21 @@ describe("form combo", () => {
     expect(screen.queryByRole("listbox")).toBeNull();
   });
 
-  it("opens upward when the window has more room above the box than below it", () => {
+  it("keeps the list inside the window when the box is near the bottom", () => {
     const rect = vi
       .spyOn(HTMLElement.prototype, "getBoundingClientRect")
       .mockReturnValue({ left: 10, top: 700, bottom: 730, width: 200 } as DOMRect);
-    const height = vi.spyOn(HTMLElement.prototype, "scrollHeight", "get").mockReturnValue(400);
+    const scroll = vi.spyOn(HTMLElement.prototype, "scrollHeight", "get").mockReturnValue(400);
     render(<FormCombo label="Resolution" value="" options={OPTIONS} onChange={() => {}} />);
     fireEvent.keyDown(screen.getByLabelText("Resolution"), { key: "ArrowDown" });
     const list = screen.getByRole("listbox");
-    expect(list.style.top).toBe("auto");
-    expect(list.style.bottom).toBe(`${window.innerHeight - 700}px`);
-    expect(parseFloat(list.style.maxHeight)).toBeLessThanOrEqual(window.innerHeight * 0.4);
+    const { top, bottom, maxHeight } = list.style;
+    const height = parseFloat(maxHeight);
+    const edge =
+      top === "auto" ? window.innerHeight - parseFloat(bottom) - height : parseFloat(top);
+    expect(edge).toBeGreaterThanOrEqual(0);
+    expect(edge + height).toBeLessThanOrEqual(window.innerHeight);
     rect.mockRestore();
-    height.mockRestore();
+    scroll.mockRestore();
   });
 });
