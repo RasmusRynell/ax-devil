@@ -59,6 +59,12 @@ export class RunCache {
     // Give back what one huge run grew, so a reset frees memory rather than only forgetting it.
     if (this.cps.length > MAX_CODE_POINTS) this.cps = new Uint32Array(2048);
     if (this.glyphs.length > MAX_GLYPHS * GLYPH) this.glyphs = new Float64Array(GLYPH * 4096);
+    const scratch = this.scratch;
+    if (scratch.x.length > MAX_GLYPHS) {
+      scratch.x = new Float64Array(256);
+      scratch.y = new Float64Array(256);
+      scratch.glyphs = [];
+    }
     this.fontIds.clear();
   }
 
