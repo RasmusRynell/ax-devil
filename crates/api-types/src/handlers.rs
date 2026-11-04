@@ -23,6 +23,8 @@ pub struct DecoderInfo {
     pub extensions: Vec<String>,
     /// The options it takes, in the order they are shown; empty for a decoder without any.
     pub options: Vec<FieldInfo>,
+    /// Whether it can decode a live stream's overlay, not only a file.
+    pub live: bool,
 }
 
 /// The body of `GET /api/plugins`: the built-in plugins, then the installed ones, whether or not they loaded.

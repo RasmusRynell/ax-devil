@@ -1,6 +1,6 @@
 //! Shared by the route tests: the app over a private settings file.
 
-use crate::{AppState, access::Policy, app, plugins::Plugins};
+use crate::{AppState, access::Policy, app, network::Network, plugins::Plugins};
 use axum::{
     Router,
     body::{Body, to_bytes},
@@ -10,7 +10,13 @@ use axum::{
 use catalogs::Library;
 use handlers::Handlers;
 use std::{path::Path, sync::Arc};
+use tokio::sync::mpsc;
 use tower::ServiceExt;
+
+/// A network whose scans find nothing, so that no test probes a real network.
+pub fn idle_network() -> Arc<Network> {
+    Network::with_scanner(|_| mpsc::channel(1).1)
+}
 
 /// The app, kept with the temporary folder that holds its settings and caches. Must be created inside a Tokio runtime.
 pub struct TestApp {
@@ -35,12 +41,21 @@ impl TestApp {
 
     /// The app over the plugins `plugins` makes, given the app's temporary folder to keep a registry in.
     pub fn over(plugins: impl FnOnce(&Path) -> Arc<Plugins>) -> Self {
-        Self::build(plugins, false)
+        Self::build(plugins, idle_network(), false)
+    }
+
+    /// The app over built-in handlers and a network that scans with `network`.
+    pub fn scanning(network: Arc<Network>) -> Self {
+        Self::build(|_| Plugins::fixed(Handlers::built_in()), network, false)
     }
 
     /// The app over built-in handlers and a library with an empty catalog folder of its own.
     pub fn with_catalog_folder() -> Self {
-        Self::build(|_| Plugins::fixed(Handlers::built_in()), true)
+        Self::build(
+            |_| Plugins::fixed(Handlers::built_in()),
+            idle_network(),
+            true,
+        )
     }
 
     /// The library the app serves catalogs from.
@@ -48,7 +63,11 @@ impl TestApp {
         &self.catalogs
     }
 
-    fn build(plugins: impl FnOnce(&Path) -> Arc<Plugins>, catalog_folder: bool) -> Self {
+    fn build(
+        plugins: impl FnOnce(&Path) -> Arc<Plugins>,
+        network: Arc<Network>,
+        catalog_folder: bool,
+    ) -> Self {
         let folder = tempfile::tempdir().unwrap();
         let settings = settings::Settings::load(&folder.path().join("default.json")).unwrap();
         let cache = folder.path().join("cache");
@@ -67,7 +86,9 @@ impl TestApp {
             std::fs::create_dir(&catalogs).unwrap();
             state = state.with_catalogs(Library::with_folder(catalogs));
         }
-        let state = state.with_windows(folder.path().join("windows.json"));
+        let state = state
+            .with_network(network)
+            .with_windows(folder.path().join("windows.json"));
         let catalogs = Arc::clone(&state.catalogs);
         let router = app(state.clone());
         Self {

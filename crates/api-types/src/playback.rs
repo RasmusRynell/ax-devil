@@ -44,7 +44,12 @@
 //! failed source, and a Frame Map cell only outside the last `DataWindow` or on a revision change. `Open.data_bytes`
 //! bounds the Sample Items the backend keeps sent.
 
-use crate::{ErrorWire, catalogs::CatalogInfoWire, inspect::InspectionWire};
+use crate::{
+    ErrorWire,
+    catalogs::CatalogInfoWire,
+    inspect::InspectionWire,
+    live::{LiveAction, LiveEventsWire, LiveGapWire, LiveOpenedWire, LiveStatusWire},
+};
 use overlay_sync::MatchKind;
 use scene_store::{Row, Search, Sort};
 use serde::{Deserialize, Serialize};
@@ -54,9 +59,11 @@ pub mod envelope;
 mod export;
 mod file_scope;
 mod lane;
+mod want;
 pub use export::*;
 pub use file_scope::*;
 pub use lane::*;
+pub use want::*;
 
 /// Defines constants once for Rust and for `export-types`, which writes them to `api.ts`.
 macro_rules! constants {
@@ -70,7 +77,7 @@ pub(crate) use constants;
 
 constants! {
     /// Raised when the messages or the envelope change in a way an older frontend cannot read.
-    PLAYBACK_PROTOCOL: u32 = 6;
+    PLAYBACK_PROTOCOL: u32 = 7;
     /// "AXDV" read as a little-endian u32.
     ENVELOPE_MAGIC: u32 = 0x5644_5841;
     /// The envelope format version, byte 4.
@@ -126,35 +133,6 @@ constants! {
     MATCH_RETAINED: u8 = MatchKind::Retained as u8;
     /// Upper bound of `data_ahead + data_behind + 1` in a Want.
     MAX_DATA_WINDOW_FRAMES: u32 = 2048;
-}
-
-/// How a viewer steps through the video.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
-#[serde(rename_all = "lowercase")]
-pub enum Direction {
-    /// Playing or stepping forward.
-    Forward,
-    /// Stepping or scrubbing backward.
-    Backward,
-}
-
-/// The frames a viewer holds or wants: its window around the playhead. Each want replaces the viewer's previous one;
-/// the backend works on what is nearest the newest playhead first.
-#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize, TS)]
-pub struct Want {
-    /// The sequence id the viewer shows or is about to.
-    #[ts(type = "number")]
-    pub playhead: u64,
-    /// How many frames after the playhead the viewer keeps.
-    pub ahead: u32,
-    /// How many frames before the playhead the viewer keeps.
-    pub behind: u32,
-    /// Which way the viewer is travelling, which decides what to prefetch first.
-    pub direction: Direction,
-    /// How many frames after the playhead the viewer keeps Frame Maps and Sample Items for.
-    pub data_ahead: u32,
-    /// How many frames before the playhead the viewer keeps Frame Maps and Sample Items for.
-    pub data_behind: u32,
 }
 
 /// What the frontend sends.
@@ -260,6 +238,11 @@ pub enum ClientMessage {
         /// The lane's position in `Opened.lanes`.
         lane: u16,
     },
+    /// Pauses, resumes or retries a live feed. Ignored unless the holder's authority is its own.
+    Live {
+        /// What to do.
+        action: LiveAction,
+    },
     /// Asks where one object of a lane's file is on the video: the answer is `Appearances`. Independent of the lane's
     /// File scope list, which it does not cancel; a newer `request` for the lane stops an older one still running,
     /// which is then not answered. The lane's class toggles do not matter. Owners only.
@@ -273,16 +256,6 @@ pub enum ClientMessage {
     },
     /// Ends the session and releases the source.
     Close,
-}
-
-/// How the video's frame times come from its timestamps, when its container has them.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
-pub struct VideoPtsWire {
-    /// The stream's time base as numerator and denominator, seconds per tick.
-    pub time_base: [i32; 2],
-    /// The first frame's timestamp in ticks.
-    #[ts(type = "number")]
-    pub first_pts: i64,
 }
 
 /// What the backend sends as text. `Opened` is followed by a Timeline envelope.
@@ -444,6 +417,14 @@ pub enum ServerMessage {
         /// Why there are no rows.
         unavailable: FileScopeUnavailable,
     },
+    /// A live stream is open: the first message of its socket, instead of `Opened`. See [`crate::live`].
+    LiveOpened(LiveOpenedWire),
+    /// Where a live stream's feeds stand.
+    LiveStatus(LiveStatusWire),
+    /// Events a live frame made visible, for the Events list.
+    LiveEvents(LiveEventsWire),
+    /// Samples a live lane lost, for the Events list.
+    LiveGap(LiveGapWire),
     /// Where one object is on the video, the answer to an `Appearances` that was not replaced. Not held back for a
     /// frame.
     Appearances {

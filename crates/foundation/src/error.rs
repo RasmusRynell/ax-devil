@@ -44,6 +44,8 @@ pub enum ErrorCode {
     CatalogInvalid,
     /// A workspace file or item is not valid, or an item cannot be read by this build.
     WorkspaceInvalid,
+    /// An item would send a credential to a host the user has not confirmed.
+    NeedsConfirmation,
     /// A recovery copy is open in another window.
     WorkspaceInUse,
     /// Save As names a file that already exists and replacing it was not allowed.
@@ -102,6 +104,15 @@ impl From<ItemId> for Location {
     }
 }
 
+/// A reference the user allowed, or is asked to allow, a stream to send to a host. Names the variable, never its value.
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub struct Confirmation {
+    /// The variable's name, without the `$`.
+    pub reference: String,
+    /// The host it would be sent to, as the references in the item expand.
+    pub host: String,
+}
+
 /// A failure the user can be shown: its public kind, what went wrong and what it happened to.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct UserError {
@@ -111,6 +122,8 @@ pub struct UserError {
     pub reason: String,
     /// What it happened to; `None` when it is about no particular file or item.
     pub location: Option<Location>,
+    /// For [`ErrorCode::NeedsConfirmation`], every reference and host the user must confirm; empty otherwise.
+    pub confirmations: Vec<Confirmation>,
 }
 
 impl UserError {
@@ -120,6 +133,7 @@ impl UserError {
             code,
             reason: reason.into(),
             location: None,
+            confirmations: Vec::new(),
         }
     }
 

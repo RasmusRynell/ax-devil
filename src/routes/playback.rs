@@ -25,6 +25,9 @@
 //! The owner can ask for rows of a lane's whole file (`file_scope`): the answers name the revisions they were made
 //! under and no frame, so they are never held back, and a follower is told it follows.
 //!
+//! A live lease is served by `live`: it has no Timeline, window or export, and only its owner may pause, resume or
+//! retry it.
+//!
 //! The owner can start an export (`export`): one per viewer and one per backend, which ends with the viewer. Its
 //! progress notices name no frame and are never held back.
 
@@ -35,6 +38,7 @@ mod file_scope;
 mod gate;
 mod inspect;
 mod lanes;
+mod live;
 mod open;
 #[cfg(test)]
 mod revocation;

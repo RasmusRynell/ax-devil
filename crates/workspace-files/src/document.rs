@@ -6,6 +6,8 @@ use handler_api::Settings;
 use overlay_sync::MatchPolicy;
 use serde::{Deserialize, Serialize, de::DeserializeOwned, de::IgnoredAny};
 use serde_json::{Value, json};
+
+use crate::live::LiveItem;
 use std::{
     collections::{BTreeMap, BTreeSet, HashSet},
     path::{Component, Path, PathBuf},
@@ -210,6 +212,7 @@ fn write_item(item: &WorkspaceItem, base: Option<&Path>) -> Value {
             settings: recipe.settings.clone(),
             lane_matching,
         }),
+        Source::Live(recipe) => value(&LiveItem::new(id, label, recipe, lane_matching)),
         Source::Unreadable(unreadable) => unreadable.raw.clone(),
     }
 }
@@ -294,6 +297,7 @@ fn read_item(raw: Value, base: &Path) -> WorkspaceItem {
             });
             (dto.id, dto.label, source, dto.lane_matching)
         }),
+        Some("live") => serde_json::from_value::<LiveItem>(raw.clone()).map(LiveItem::into_parts),
         kind => {
             let kind = kind.unwrap_or("");
             let reason =

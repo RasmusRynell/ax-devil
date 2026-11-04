@@ -190,6 +190,417 @@ export const SETTINGS = [
     "secret": false,
     "quick_setup": false,
     "scope": "server"
+  },
+  {
+    "key": "camera.host",
+    "kind": {
+      "type": "text",
+      "default": "$AX_DEVIL_TARGET_ADDR"
+    },
+    "label": "Camera host",
+    "page": null,
+    "section": "",
+    "live": true,
+    "env": true,
+    "secret": false,
+    "quick_setup": false,
+    "scope": "server"
+  },
+  {
+    "key": "camera.user",
+    "kind": {
+      "type": "text",
+      "default": "$AX_DEVIL_TARGET_USER"
+    },
+    "label": "Camera username",
+    "page": null,
+    "section": "",
+    "live": true,
+    "env": true,
+    "secret": false,
+    "quick_setup": false,
+    "scope": "server"
+  },
+  {
+    "key": "camera.password",
+    "kind": {
+      "type": "text",
+      "default": "$AX_DEVIL_TARGET_PASS"
+    },
+    "label": "Camera password",
+    "page": null,
+    "section": "",
+    "live": true,
+    "env": true,
+    "secret": true,
+    "quick_setup": false,
+    "scope": "server"
+  },
+  {
+    "key": "camera.protocol",
+    "kind": {
+      "type": "choice",
+      "options": [
+        [
+          "https",
+          "HTTPS"
+        ],
+        [
+          "http",
+          "HTTP"
+        ]
+      ],
+      "default": "https"
+    },
+    "label": "Camera protocol",
+    "page": null,
+    "section": "",
+    "live": true,
+    "env": false,
+    "secret": false,
+    "quick_setup": false,
+    "scope": "server"
+  },
+  {
+    "key": "camera.head",
+    "kind": {
+      "type": "whole",
+      "min": 1,
+      "max": 255,
+      "default": 1
+    },
+    "label": "Camera head",
+    "page": null,
+    "section": "",
+    "live": true,
+    "env": false,
+    "secret": false,
+    "quick_setup": false,
+    "scope": "server"
+  },
+  {
+    "key": "camera.rtsp_port",
+    "kind": {
+      "type": "whole",
+      "min": 1,
+      "max": 65535,
+      "default": 554
+    },
+    "label": "RTSP port",
+    "page": null,
+    "section": "",
+    "live": true,
+    "env": false,
+    "secret": false,
+    "quick_setup": false,
+    "scope": "server"
+  },
+  {
+    "key": "camera.resolution",
+    "kind": {
+      "type": "text",
+      "default": ""
+    },
+    "label": "Resolution",
+    "page": null,
+    "section": "",
+    "live": true,
+    "env": false,
+    "secret": false,
+    "quick_setup": false,
+    "scope": "server"
+  },
+  {
+    "key": "camera.overlay",
+    "kind": {
+      "type": "choice",
+      "options": [
+        [
+          "none",
+          "None"
+        ],
+        [
+          "rtsp",
+          "RTSP Embedded"
+        ],
+        [
+          "mqtt",
+          "MQTT"
+        ],
+        [
+          "datahub",
+          "DataHub WebSocket"
+        ]
+      ],
+      "default": "datahub"
+    },
+    "label": "Overlay",
+    "page": null,
+    "section": "",
+    "live": true,
+    "env": false,
+    "secret": false,
+    "quick_setup": false,
+    "scope": "server"
+  },
+  {
+    "key": "camera.rtsp_handler",
+    "kind": {
+      "type": "text",
+      "default": "ONVIF_XML"
+    },
+    "label": "RTSP overlay format",
+    "page": null,
+    "section": "",
+    "live": true,
+    "env": false,
+    "secret": false,
+    "quick_setup": false,
+    "scope": "server"
+  },
+  {
+    "key": "camera.timeout",
+    "kind": {
+      "type": "whole",
+      "min": 1,
+      "max": 600,
+      "default": 10
+    },
+    "label": "Connection timeout (seconds)",
+    "page": null,
+    "section": "",
+    "live": true,
+    "env": false,
+    "secret": false,
+    "quick_setup": false,
+    "scope": "server"
+  },
+  {
+    "key": "camera.confirmed",
+    "kind": {
+      "type": "records",
+      "fields": [
+        "reference",
+        "host"
+      ],
+      "default": []
+    },
+    "label": "Confirmed references",
+    "page": null,
+    "section": "",
+    "live": true,
+    "env": false,
+    "secret": false,
+    "quick_setup": false,
+    "scope": "personal"
+  },
+  {
+    "key": "broker.host",
+    "kind": {
+      "type": "text",
+      "default": "$AX_DEVIL_MQTT_BROKER_ADDR"
+    },
+    "label": "MQTT host",
+    "page": null,
+    "section": "",
+    "live": true,
+    "env": true,
+    "secret": false,
+    "quick_setup": false,
+    "scope": "server"
+  },
+  {
+    "key": "broker.user",
+    "kind": {
+      "type": "text",
+      "default": "$AX_DEVIL_MQTT_BROKER_USER"
+    },
+    "label": "MQTT username",
+    "page": null,
+    "section": "",
+    "live": true,
+    "env": true,
+    "secret": false,
+    "quick_setup": false,
+    "scope": "server"
+  },
+  {
+    "key": "broker.password",
+    "kind": {
+      "type": "text",
+      "default": "$AX_DEVIL_MQTT_BROKER_PASS"
+    },
+    "label": "MQTT password",
+    "page": null,
+    "section": "",
+    "live": true,
+    "env": true,
+    "secret": true,
+    "quick_setup": false,
+    "scope": "server"
+  },
+  {
+    "key": "broker.port",
+    "kind": {
+      "type": "whole",
+      "min": 1,
+      "max": 65535,
+      "default": 1883
+    },
+    "label": "MQTT port",
+    "page": null,
+    "section": "",
+    "live": true,
+    "env": false,
+    "secret": false,
+    "quick_setup": false,
+    "scope": "server"
+  },
+  {
+    "key": "broker.source_key",
+    "kind": {
+      "type": "text",
+      "default": "com.axis.scene.frame.v1#1"
+    },
+    "label": "MQTT data source",
+    "page": null,
+    "section": "",
+    "live": true,
+    "env": false,
+    "secret": false,
+    "quick_setup": false,
+    "scope": "server"
+  },
+  {
+    "key": "broker.handler",
+    "kind": {
+      "type": "text",
+      "default": "ADF_V1_FRAME"
+    },
+    "label": "MQTT overlay format",
+    "page": null,
+    "section": "",
+    "live": true,
+    "env": false,
+    "secret": false,
+    "quick_setup": false,
+    "scope": "server"
+  },
+  {
+    "key": "datahub.topic",
+    "kind": {
+      "type": "text",
+      "default": "com.axis.scene.frame.v1"
+    },
+    "label": "DataHub topic",
+    "page": null,
+    "section": "",
+    "live": true,
+    "env": false,
+    "secret": false,
+    "quick_setup": false,
+    "scope": "server"
+  },
+  {
+    "key": "datahub.channel",
+    "kind": {
+      "type": "whole",
+      "min": 1,
+      "max": 4294967295,
+      "default": 1
+    },
+    "label": "DataHub channel",
+    "page": null,
+    "section": "",
+    "live": true,
+    "env": false,
+    "secret": false,
+    "quick_setup": false,
+    "scope": "server"
+  },
+  {
+    "key": "datahub.handler",
+    "kind": {
+      "type": "text",
+      "default": "ADF_V1_FRAME"
+    },
+    "label": "DataHub overlay format",
+    "page": null,
+    "section": "",
+    "live": true,
+    "env": false,
+    "secret": false,
+    "quick_setup": false,
+    "scope": "server"
+  },
+  {
+    "key": "scan.on_startup",
+    "kind": {
+      "type": "bool",
+      "default": true
+    },
+    "label": "Scan on startup",
+    "page": null,
+    "section": "",
+    "live": true,
+    "env": false,
+    "secret": false,
+    "quick_setup": false,
+    "scope": "server"
+  },
+  {
+    "key": "scan.sign_in",
+    "kind": {
+      "type": "bool",
+      "default": true
+    },
+    "label": "Sign in to found cameras",
+    "page": null,
+    "section": "",
+    "live": true,
+    "env": false,
+    "secret": false,
+    "quick_setup": false,
+    "scope": "server"
+  },
+  {
+    "key": "scan.range",
+    "kind": {
+      "type": "text",
+      "default": "192.168.1.0/24"
+    },
+    "label": "Scan range",
+    "page": null,
+    "section": "",
+    "live": true,
+    "env": false,
+    "secret": false,
+    "quick_setup": false,
+    "scope": "server"
+  },
+  {
+    "key": "scan.logins",
+    "kind": {
+      "type": "records",
+      "fields": [
+        "user",
+        "password"
+      ],
+      "default": [
+        [
+          "$AX_DEVIL_TARGET_USER",
+          "$AX_DEVIL_TARGET_PASS"
+        ]
+      ]
+    },
+    "label": "Scan logins",
+    "page": null,
+    "section": "",
+    "live": true,
+    "env": true,
+    "secret": true,
+    "quick_setup": false,
+    "scope": "server"
   }
 ] as const;
 

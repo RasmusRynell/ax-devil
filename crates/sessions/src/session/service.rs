@@ -25,6 +25,8 @@ use tokio::{
     sync::{broadcast, watch},
     time::Instant,
 };
+use workspace::{Content, ItemId, WorkspaceItem};
+use workspace_store::Resolution;
 
 /// A line of the list of shared sessions.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -37,6 +39,17 @@ pub struct Listing {
     pub seats: usize,
     /// The current link. Hand it only to callers allowed to see every session.
     pub link: JoinLink,
+}
+
+/// An item as the session that holds it has it.
+#[derive(Clone, Debug)]
+pub struct HeldItem {
+    /// The item, with its recipe as stored.
+    pub item: WorkspaceItem,
+    /// Whether its viewer was requested: the user started it.
+    pub open: bool,
+    /// What it resolved to, once it has.
+    pub content: Option<Content>,
 }
 
 /// What a seat keeps out of the published state.
@@ -301,6 +314,23 @@ impl<C: Clone + Send + 'static> Service<C> {
         list
     }
 
+    /// The item `id` of whichever session holds it. Item ids are unique across sessions.
+    pub fn find_item(&self, id: ItemId) -> Option<HeldItem> {
+        let sessions = common::locked(&self.inner.sessions);
+        sessions.values().find_map(|live| {
+            let parts = live.state.doc.workspace.parts();
+            let item = parts.workspace.items.iter().find(|item| item.id == id)?;
+            Some(HeldItem {
+                item: item.clone(),
+                open: parts.open.contains(&id),
+                content: match parts.resolutions.get(&id) {
+                    Some(Resolution::Resolved { content, .. }) => Some(content.clone()),
+                    _ => None,
+                },
+            })
+        })
+    }
+
     /// The session's state as it changes, or `None` for a session that is gone. The last value stays readable after
     /// the session ends.
     pub fn subscribe(&self, id: SessionId) -> Option<watch::Receiver<Arc<SessionState>>> {
@@ -440,7 +470,7 @@ impl<C: Clone + Send + 'static> Service<C> {
             grant,
             authority,
             content,
-            *entry,
+            entry.map(|entry| *entry),
             matching,
             host_details,
             move || {

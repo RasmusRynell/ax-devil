@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import type { Picked, Selection, Viewport } from "./contract";
+import type { LaneDisplay, Picked, Selection, Viewport } from "./contract";
 import {
   RendererUnavailable,
   VideoRenderer,
@@ -8,7 +8,6 @@ import {
   type LaneCell,
   type Point,
 } from "./renderer";
-import type { PlaybackSession } from "./session";
 import { FIT, ZOOM_STEP, pictureRect } from "./viewport";
 
 /** A pointer that moves farther than this many CSS pixels between press and release dragged; it did not click. */
@@ -167,7 +166,7 @@ export function VideoCanvas({
   onSelect,
   onDrawn,
 }: {
-  session: PlaybackSession;
+  session: LaneDisplay;
   label: string;
   anchor: string;
   cells?: readonly LaneLayout[];

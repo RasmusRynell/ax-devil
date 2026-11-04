@@ -54,13 +54,16 @@ pub fn lines(bytes: &[u8]) -> Memory<'_> {
 /// Every Scene, skip and warning a decoder gave, in order.
 #[derive(Default)]
 pub struct Collected {
+    pub header: Option<Header>,
     pub scenes: Vec<Scene>,
     pub skipped: Vec<(u64, String)>,
     pub warnings: Vec<Warning>,
 }
 
 impl SceneSink for Collected {
-    fn header(&mut self, _header: Header) {}
+    fn header(&mut self, header: Header) {
+        self.header = Some(header);
+    }
 
     fn sample(&mut self, scene: Scene, _on_equal_key: OnEqualKey) -> ControlFlow<()> {
         self.scenes.push(scene);

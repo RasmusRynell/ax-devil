@@ -55,9 +55,20 @@ impl Inspections {
         sample: u32,
         entity: String,
     ) {
-        let target = (entity.len() <= MAX_ENTITY_BYTES)
-            .then(|| overlays.inspect_target(source, data_revision, u64::from(sample)))
-            .flatten();
+        let target = overlays.inspect_target(source, data_revision, u64::from(sample));
+        self.ask_target(source, data_revision, sample, entity, target);
+    }
+
+    /// Takes a request whose sample the caller already found, the way [`ask`](Self::ask) does.
+    pub(super) fn ask_target(
+        &mut self,
+        source: u16,
+        data_revision: u32,
+        sample: u32,
+        entity: String,
+        target: Option<(Arc<dyn TrackRead>, Arc<TrackSnapshot>, u64)>,
+    ) {
+        let target = target.filter(|_| entity.len() <= MAX_ENTITY_BYTES);
         self.queued = Some(Job {
             request: Request {
                 source,

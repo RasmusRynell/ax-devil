@@ -165,9 +165,9 @@ implementing module closes.
 
 ## Synchronization
 
-- Live sync pairs data by capture time, not arrival time, and is event-driven with no wall-clock timer, so an idle
-  tail frame stays buffered until another input arrives. Sharing an RTSP connection does not pair frame and overlay
-  arrivals; both inputs keep their capture timestamps.
+- Live sync pairs data by capture time, not arrival time. A live frame is released once its overlay is settled or
+  after a bounded wait (D28); no future sample shows early. Sharing an RTSP
+  connection does not pair frame and overlay arrivals; both inputs keep their capture timestamps.
 - Every live queue is bounded with an overflow policy its owner defines, and every drop is counted in the timing
   diagnostics. Encoded video is discarded codec-aware and resyncs at the next decodable keyframe. Payload decode is
   lossless: its queue overflowing is a lane error ("overlay decoder behind") that holds until the queue drains, resets

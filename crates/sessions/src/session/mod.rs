@@ -24,7 +24,7 @@ pub use handle::{Change, Feed, Handle, Reply, StreamLease};
 pub use jobs::{Completion, JobOwner, Spawn, Work};
 pub use roster::RosterEntry;
 pub use runner::{Completer, OnRuntime, Runner};
-pub use service::{Listing, Service};
+pub use service::{HeldItem, Listing, Service};
 pub use state::{Doc, OWNER_SEAT, Seat, SeatKind, SessionState, Sharing};
 pub use streams::{TICKET_TTL, Ticket};
 pub use transition::{Effects, Fresh, Input, Outcome, transition};

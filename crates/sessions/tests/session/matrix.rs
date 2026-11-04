@@ -123,6 +123,10 @@ fn samples(world: &World) -> Vec<(Command, Needs)> {
             Needs::Content,
         ),
         (
+            Command::Content(DocCommand::Resolve(world.item)),
+            Needs::Content,
+        ),
+        (
             Command::Content(DocCommand::SetHidden {
                 target: HiddenRef::Entry(world.key.entry.clone()),
                 hidden: true,

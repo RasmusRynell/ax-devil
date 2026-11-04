@@ -139,6 +139,7 @@ dependencies = [
  "api-types",
  "axum",
  "bytes",
+ "camera",
  "catalogs",
  "clap",
  "export",

@@ -1,5 +1,6 @@
 //! Wire types for what a workspace item resolved to.
 
+use crate::live::{LiveOverlayKind, NewLiveWire};
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
@@ -33,6 +34,27 @@ pub enum ContentInfo {
         entries: Vec<EntryInfo>,
         /// The playlists, each covering the next run of `entries`; at least one.
         playlists: Vec<PlaylistSpanInfo>,
+    },
+    /// A camera's live stream. It is one video with one lane, and a ticket request names its stream by `id` as both
+    /// the Content and the entry. Connection details only in `recipe`, which an audience without host details never
+    /// gets.
+    LiveVideo {
+        /// Names the Content and its one stream.
+        id: String,
+        /// The commit of the Content's resolution, as for a video.
+        #[ts(type = "number")]
+        generation: u64,
+        /// The name the viewer shows: the user's label, or `Live stream`.
+        display_name: String,
+        /// The lane's slot, which names it across resolutions.
+        slot: String,
+        /// Where the overlay comes from.
+        overlay: LiveOverlayKind,
+        /// The lane names: the overlay's, or the display name for the plain lane of a video without one.
+        lanes: Vec<String>,
+        /// The request that would make this stream again, as stored: `$NAME` references stay references and a literal
+        /// password is left out. Only for an audience with host details; `null` for everyone else.
+        recipe: Option<Box<NewLiveWire>>,
     },
 }
 

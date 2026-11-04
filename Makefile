@@ -10,7 +10,7 @@ ROOT_FILES := desktop/*.cjs scripts/*.cjs vite.config.ts package.json pnpm-works
 # The loader paths of a FFmpeg outside the system's (package builds): Linux, macOS and Windows each read one of them.
 FFMPEG_LOADER := $(if $(FFMPEG_DIR),LD_LIBRARY_PATH="$(FFMPEG_DIR)/lib$${LD_LIBRARY_PATH:+:$$LD_LIBRARY_PATH}" DYLD_LIBRARY_PATH="$(FFMPEG_DIR)/lib$${DYLD_LIBRARY_PATH:+:$$DYLD_LIBRARY_PATH}" PATH="$$(cygpath -u '$(FFMPEG_DIR)/bin' 2>/dev/null || echo '$(FFMPEG_DIR)/bin'):$$PATH")
 .PHONY: help web desktop build app cli check check-fast format package smoke-packaged verify-release-version test \
-	test-frontend test-backend test-integration test-desktop bench bench-export bench-present bench-tables bench-browser \
+	test-frontend test-backend test-integration test-desktop test-camera bench bench-export bench-present bench-tables bench-browser \
 	bench-browser-smoke _check _types _frontend-build _static _licenses _dev _dev-rust
 
 help:
@@ -25,6 +25,7 @@ help:
 	  '  smoke-packaged  Smoke-test the packaged app that make package left in desktop/dist: make smoke-packaged OS=linux|win|mac' \
 	  '  verify-release-version  Fail unless TAG names the version in Cargo.toml and desktop/package.json: make verify-release-version TAG=v1.2.3' \
 	  '  test        Run all test suites' \
+	  '  test-camera  Run the real-camera checks (AX_DEVIL_TARGET_*, AX_DEVIL_MQTT_BROKER_*); not part of check or CI' \
 	  '  check       The gate: every static check, all test suites, and a check that they left no generated file changed' \
 	  '  bench       Run the Rust benchmarks (sample item encode); numbers on stdout' \
 	  '  bench-export  Time export (1080p, 4K) through the real render page, on SwiftShader and the GPU when it can render there' \
@@ -117,6 +118,10 @@ test-integration: _dev _dev-rust
 
 test-desktop: build desktop/node_modules/.electron-ready
 	timeout 180s $(ISOLATED) --display pnpm --dir desktop exec electron . --ozone-platform=x11 --smoke-test
+
+# Needs a real camera, so it is not part of `test` or `check`; each test skips itself when AX_DEVIL_TARGET_ADDR is unset.
+test-camera:
+	$(ISOLATED) $(CARGO) test --locked -p camera --test real_camera -- --ignored --test-threads=1
 
 test: test-frontend test-backend test-integration test-desktop
 

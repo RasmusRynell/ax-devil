@@ -7,7 +7,10 @@
 
 mod catalogs;
 mod client_errors;
+mod glance;
 mod handlers;
+mod live;
+mod network;
 pub mod playback;
 mod plugins;
 pub(crate) mod resolve;
@@ -166,6 +169,76 @@ pub(crate) const ROUTES: &[Route] = &[
         listeners: MEMBERS,
         who: Who::Files,
         handler: |method| on(method, handlers::scan),
+    },
+    Route {
+        method: MethodFilter::POST,
+        path: "/api/live/resolutions",
+        listeners: MEMBERS,
+        who: Who::Files,
+        handler: |method| on(method, live::resolutions),
+    },
+    Route {
+        method: MethodFilter::POST,
+        path: "/api/live/sources",
+        listeners: MEMBERS,
+        who: Who::Files,
+        handler: |method| on(method, live::sources),
+    },
+    Route {
+        method: MethodFilter::POST,
+        path: "/api/live/confirm",
+        listeners: LOCAL,
+        who: Who::Preferences,
+        handler: |method| on(method, live::confirm),
+    },
+    Route {
+        method: MethodFilter::GET,
+        path: "/api/live/snapshot/{item}",
+        listeners: MEMBERS,
+        who: Who::Files,
+        handler: |method| on(method, glance::snapshot),
+    },
+    Route {
+        method: MethodFilter::GET,
+        path: "/api/live/snapshot/network/{address}",
+        listeners: MEMBERS,
+        who: Who::Files,
+        handler: |method| on(method, glance::found_snapshot),
+    },
+    Route {
+        method: MethodFilter::POST,
+        path: "/api/live/check",
+        listeners: MEMBERS,
+        who: Who::Files,
+        handler: |method| on(method, glance::check),
+    },
+    Route {
+        method: MethodFilter::POST,
+        path: "/api/live/expansions",
+        listeners: LOCAL,
+        who: Who::Preferences,
+        handler: |method| on(method, glance::expansions),
+    },
+    Route {
+        method: MethodFilter::GET,
+        path: "/api/network",
+        listeners: MEMBERS,
+        who: Who::Files,
+        handler: |method| on(method, network::snapshots),
+    },
+    Route {
+        method: MethodFilter::POST,
+        path: "/api/network/scan",
+        listeners: MEMBERS,
+        who: Who::Files,
+        handler: |method| on(method, network::scan),
+    },
+    Route {
+        method: MethodFilter::POST,
+        path: "/api/network/cancel",
+        listeners: MEMBERS,
+        who: Who::Files,
+        handler: |method| on(method, network::cancel),
     },
     Route {
         method: MethodFilter::POST,

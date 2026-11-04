@@ -46,6 +46,10 @@ scratch="$(mktemp -d "${TMPDIR:-/tmp}/ax-devil-test.XXXXXX")"
 trap 'rm -rf "$scratch"' EXIT
 mkdir -p "$scratch"/{home,config,data,cache,state,runtime}
 chmod 700 "$scratch/runtime"
+# The app scans its /24 at launch by default; a test must never probe the network it runs on, so the private settings
+# start with the scan at launch off (a file older than the app's format is migrated).
+mkdir -p "$scratch/config/ax-devil"
+printf '{"version": 1, "settings": {"scan.on_startup": false}}\n' >"$scratch/config/ax-devil/settings.json"
 before="$(fingerprint)"
 export HOME="$scratch/home" XDG_CONFIG_HOME="$scratch/config" XDG_DATA_HOME="$scratch/data"
 export XDG_CACHE_HOME="$scratch/cache" XDG_STATE_HOME="$scratch/state" XDG_RUNTIME_DIR="$scratch/runtime"

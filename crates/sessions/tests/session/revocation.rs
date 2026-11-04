@@ -339,7 +339,11 @@ async fn a_follower_streams_only_the_entry_the_presenter_shows_and_loses_it_when
         "a follower gets no ticket for an entry the presenter does not show"
     );
     let own = stream(&rig.service, &owner, &second).unwrap();
-    assert_eq!(own.entry().id, second.entry, "the owner streams any entry");
+    assert_eq!(
+        own.entry().unwrap().id,
+        second.entry,
+        "the owner streams any entry"
+    );
 
     owner.view(showing(&second.entry), 1).unwrap();
 

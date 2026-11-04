@@ -89,6 +89,18 @@ pub enum DocCommand {
         #[ts(type = "string")]
         item: ItemId,
     },
+    /// Resolve an item again, such as a live stream that needed a confirmation. Ignored while it is resolving.
+    Resolve {
+        /// The item.
+        #[ts(type = "string")]
+        item: ItemId,
+    },
+    /// Remove an item from the workspace, closing its viewer.
+    Remove {
+        /// The item.
+        #[ts(type = "string")]
+        item: ItemId,
+    },
     /// Hide or show an entry or lane.
     SetHidden {
         /// What to hide or show.

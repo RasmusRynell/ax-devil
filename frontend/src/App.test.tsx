@@ -213,11 +213,12 @@ describe("access", () => {
     await waitFor(() => expect(document.documentElement.dataset.theme).toBe("light"));
     const put = fetchMock.mock.calls.find(([, init]) => init?.method === "PUT");
     const sent = JSON.parse(put?.[1]?.body as string) as SettingsChange;
-    expect(sent.values).toEqual({
+    expect(sent.values).toMatchObject({
       "playback.video_cache": "auto",
       "storage.cache_dir": "/var/cache",
       "storage.catalog_dir": "",
     });
+    expect(Object.keys(sent.values)).not.toContain("ui.theme");
     expect(JSON.parse(window.localStorage.getItem("ax-devil.preferences") ?? "{}")).toMatchObject({
       values: { "ui.theme": "light" },
     });

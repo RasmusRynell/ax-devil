@@ -229,6 +229,10 @@ impl<I: Incoming> Playing<'_, I> {
                 ErrorCode::ProtocolViolation,
                 "The video is already open",
             ))),
+            Some(Ok(ClientMessage::Live { .. })) => Err(End::Failed(UserError::new(
+                ErrorCode::ProtocolViolation,
+                "A recording has no live feed",
+            ))),
             Some(Ok(ClientMessage::Export {
                 job,
                 lanes,

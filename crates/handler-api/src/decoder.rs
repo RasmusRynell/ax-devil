@@ -140,6 +140,13 @@ pub trait Decoder: Send + Sync {
         None
     }
 
+    /// Whether the decoder can take a live source: records that arrive one at a time and carry timestamps. A
+    /// [`Framing::Whole`] decoder reads one document (or its file itself, see [`Input::path`]) and keys its Scenes by
+    /// frame, so a live source, which has neither, cannot feed it.
+    fn reads_live(&self) -> bool {
+        self.spec().framing == Framing::Records
+    }
+
     /// Reads `input`, handing each Scene to `sink`. Frame-keyed decoders give ascending frames, one Scene per
     /// frame; time-keyed ones give them in record order. `options` fit [`Spec::options`].
     fn decode(

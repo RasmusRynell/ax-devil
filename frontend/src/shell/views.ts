@@ -28,7 +28,6 @@ export const ACTIVITY: { top: readonly ActivityItem[]; bottom: readonly Activity
 /** The search field placeholder of the views that have one. */
 export const SEARCH: Partial<Record<string, string>> = {
   workspace: "Search items",
-  live: "Search cameras",
   offline: "Search files",
 };
 

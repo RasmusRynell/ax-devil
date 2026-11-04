@@ -281,7 +281,7 @@ pub struct StreamLease {
     grant: GrantId,
     authority: watch::Receiver<Authority>,
     content: Content,
-    entry: ContentEntry,
+    entry: Option<ContentEntry>,
     matching: BTreeMap<String, MatchPolicy>,
     host_details: bool,
     release: Option<Box<dyn FnOnce() + Send + Sync>>,
@@ -292,7 +292,7 @@ impl StreamLease {
         grant: GrantId,
         authority: watch::Receiver<Authority>,
         content: Content,
-        entry: ContentEntry,
+        entry: Option<ContentEntry>,
         matching: BTreeMap<String, MatchPolicy>,
         host_details: bool,
         release: impl FnOnce() + Send + Sync + 'static,
@@ -318,9 +318,10 @@ impl StreamLease {
         &self.content
     }
 
-    /// The entry of [`content`](Self::content) the stream plays, as it was resolved when the ticket was redeemed.
-    pub fn entry(&self) -> &ContentEntry {
-        &self.entry
+    /// The entry of [`content`](Self::content) the stream plays, as it was resolved when the ticket was redeemed;
+    /// `None` for a live video, which has none.
+    pub fn entry(&self) -> Option<&ContentEntry> {
+        self.entry.as_ref()
     }
 
     /// How the workspace says each lane matches its records to frames, by the lane's slot, as it was when the ticket

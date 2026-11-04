@@ -1,4 +1,5 @@
-//! A bare Session socket client for the tests that start the real backend: JSON in, JSON out.
+//! What the tests that start the real backend share: a bare Session socket client (JSON in, JSON out) and a settings
+//! file that keeps the backend off the network.
 
 // Each test crate that includes this module uses a different part of it.
 #![allow(dead_code)]
@@ -11,6 +12,13 @@ use std::{
 };
 use tokio::{net::TcpStream, time::timeout};
 use tokio_tungstenite::{MaybeTlsStream, WebSocketStream, connect_async, tungstenite::Message};
+
+/// Writes `path` as a settings file with the scan at launch off, so a backend started on it never probes the network
+/// the test runs on.
+pub fn quiet_config(path: &std::path::Path) {
+    let file = json!({"version": settings::VERSION, "settings": {"scan.on_startup": false}});
+    std::fs::write(path, file.to_string()).unwrap();
+}
 
 /// Bounds every wait, so a broken backend fails the test instead of hanging it.
 const WAIT: Duration = Duration::from_secs(20);

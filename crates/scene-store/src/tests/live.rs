@@ -172,3 +172,88 @@ fn a_live_track_keeps_samples_in_time_order_and_drops_its_oldest_half_at_once() 
         .expect("four samples were published");
     assert_eq!(times(&track, earlier), [10, 20, 30, 40]);
 }
+
+/// Gives its records, then what the test sends, and holds the session open until the track is dropped.
+struct Open(Lines, mpsc::Receiver<&'static str>);
+
+impl Input for Open {
+    fn path(&self) -> Option<&Path> {
+        None
+    }
+
+    fn next(&mut self, cancel: &CancelToken) -> Result<Option<Record<'_>>, Interrupt<DecodeError>> {
+        if self.0.next < self.0.lines.len() {
+            return self.0.next(cancel);
+        }
+        while !cancel.is_cancelled() {
+            if let Ok(line) = self.1.recv_timeout(Duration::from_millis(2)) {
+                self.0.lines = vec![line];
+                self.0.next = 0;
+                return self.0.next(cancel);
+            }
+        }
+        Err(Interrupt::Cancelled)
+    }
+}
+
+struct Held(Option<Open>);
+
+impl Feed for Held {
+    fn next_input(&mut self, _cancel: &CancelToken) -> Option<Box<dyn Input + Send>> {
+        Some(Box::new(self.0.take()?))
+    }
+}
+
+#[test]
+fn the_open_sample_is_readable_and_renumbers_the_track_when_more_joins_it_afterwards() {
+    let (more, later) = mpsc::channel();
+    let lines = Lines {
+        lines: vec!["10", "20"],
+        next: 0,
+    };
+    let feed = Held(Some(Open(lines, later)));
+    let values = SPEC.options.validate(&Settings::new()).expect("no options");
+    let track = LiveTrack::start(Arc::new(Stamps), values, Box::new(feed), 4).expect("starts");
+    let wait_for = |generation: u32, keys: usize| {
+        let deadline = Instant::now() + Duration::from_secs(10);
+        while (track.snapshot().generation, track.snapshot().keys.len()) != (generation, keys)
+            || track.snapshot().decided
+                != (Decided::Below {
+                    frame: None,
+                    time: Some(MediaTime(20)),
+                })
+        {
+            assert!(Instant::now() < deadline, "the samples never arrived");
+            std::thread::sleep(Duration::from_millis(2));
+        }
+    };
+    wait_for(0, 1);
+
+    // Sample 20 is open: published readers lack it, a deadline reader has it after the published one.
+    let published = track.snapshot();
+    assert_eq!(times(&track, &published), [10]);
+    let with_open = track.snapshot_with_open();
+    assert_eq!(times(&track, &with_open), [10, 20]);
+    assert_eq!(with_open.generation, published.generation);
+    assert!(track.item_in(&with_open, 1).is_ok());
+
+    // A Scene joining the sample after a reader took it renumbers the track; the reader's snapshot keeps its own.
+    more.send("20").expect("the session waits");
+    wait_for(1, 1);
+
+    // Nobody took it since, so a second join leaves the numbering alone.
+    more.send("20").expect("the session waits");
+    std::thread::sleep(Duration::from_millis(50));
+    assert_eq!(track.snapshot().generation, 1);
+    let renumbered = track.snapshot_with_open();
+    assert_eq!(times(&track, &renumbered), [10, 20]);
+    assert_eq!(times(&track, &with_open), [10, 20]);
+    let joined = track.scene_in(&renumbered, 1).expect("held");
+    assert_eq!(joined.entities()[0].observations().len(), 3);
+    assert_eq!(
+        track.scene_in(&with_open, 1).expect("held").entities()[0]
+            .observations()
+            .len(),
+        1
+    );
+}

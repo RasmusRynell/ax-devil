@@ -17,7 +17,7 @@ const offered = {
   "step-forward": () => playback.step(1),
 };
 
-// A viewer that offers the playback commands, so the shell's handling of them is tested without a socket.
+// A viewer offering the playback commands, so the shell's handling is tested without a socket.
 vi.mock("../playback/VideoViewer", () => ({
   VideoViewer: () => {
     useViewerActions(offered);
@@ -199,7 +199,7 @@ describe("sidebar", () => {
     fireEvent.click(screen.getByRole("button", { name: "Workspace" }));
     expect(screen.queryByRole("complementary")).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Live" }));
-    expect(screen.getByRole("heading", { name: "Live" })).toBeTruthy();
+    expect(screen.getAllByRole("heading", { name: "Live" })[0]).toBeTruthy();
   });
 });
 
@@ -443,7 +443,7 @@ describe("a watcher", () => {
       JSON.stringify({ kind: "join", session: room.id, secret: room.secret }),
     );
     await showShell({ grants: ["sessions"] });
-    expect(screen.getByRole("heading", { name: "Live" })).toBeTruthy();
+    expect(screen.getAllByRole("heading", { name: "Live" })[0]).toBeTruthy();
     expect(screen.getByRole("tab", { name: "a.mp4" }).getAttribute("aria-selected")).toBe("true");
     expect(
       (screen.getByRole("button", { name: "Close a.mp4" }) as HTMLButtonElement).disabled,

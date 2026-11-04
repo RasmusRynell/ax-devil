@@ -1,11 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { Hidden } from "../viewer/hidden";
-import type { Picked, Selection, Viewport } from "./contract";
+import type { LaneDisplay, Picked, Selection, Viewport } from "./contract";
 import { InfoHud } from "./InfoHud";
 import { LaneChip } from "./LaneChip";
 import { laneAt, layoutLanes, shownLanes } from "./laneCells";
 import type { Geometry } from "./renderer";
-import type { PlaybackSession } from "./session";
 import type { PlaybackView } from "./view";
 import { VideoCanvas } from "./VideoCanvas";
 import { FIT, intersection, pictureRect } from "./viewport";
@@ -39,6 +38,7 @@ export function LaneGrid({
   hidden,
   only = null,
   info = false,
+  live = false,
   onHide,
   onPoint,
   onPick,
@@ -49,7 +49,7 @@ export function LaneGrid({
   onSelect,
   onDrawn,
 }: {
-  session: PlaybackSession;
+  session: LaneDisplay;
   view: PlaybackView;
   name: string;
   /** Names the elements over the pictures for other windows' pointers; see `VideoCanvas`. */
@@ -61,6 +61,8 @@ export function LaneGrid({
   only?: number | null;
   /** Shows the info HUD over every lane's picture, in place of the lane's name. */
   info?: boolean;
+  /** The lanes are live: their menus offer only what a live lane has, which is sticky. */
+  live?: boolean;
   /** Hides a lane by its label; absent for a seat that may not change the workspace. */
   onHide?: (label: string) => void;
   /** Told which lane the pointer is over (null: none) and which lane a press landed on. */
@@ -143,6 +145,7 @@ export function LaneGrid({
                 catalogs={view.catalogs}
                 cadence={view.cadence}
                 hideName={info}
+                live={live}
                 onChange={(change) => session.setLane(index, change)}
                 onApplyAll={
                   lanes.filter((lane) => lane.source !== null).length > 1

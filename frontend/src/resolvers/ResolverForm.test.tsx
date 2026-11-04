@@ -27,6 +27,7 @@ const DECODERS: DecoderInfo[] = [
     handler: "MOT_FILE",
     display_name: "MOT Annotations",
     extensions: [".txt"],
+    live: true,
     options: [
       {
         key: "width",

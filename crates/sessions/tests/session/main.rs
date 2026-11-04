@@ -52,7 +52,12 @@ impl Jobs {
 
 /// Resolves `job` with the built-in handlers, as the real runner does.
 pub(crate) fn resolve(job: &ResolveJob) -> Result<Content, UserError> {
-    match workspace_store::resolve(job, &Handlers::built_in(), &CancelToken::new()) {
+    match workspace_store::resolve(
+        job,
+        &Handlers::built_in(),
+        &workspace::Environment::of_process(),
+        &CancelToken::new(),
+    ) {
         Ok(content) => Ok(content),
         Err(Interrupt::Failed(error)) => Err(error),
         Err(Interrupt::Cancelled) => panic!("nothing cancels a test job"),

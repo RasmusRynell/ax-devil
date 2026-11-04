@@ -17,6 +17,8 @@ import { useFrontViewer, useViewers } from "../viewer/useViewers";
 import { ViewerHost } from "../viewer/ViewerHost";
 import { AboutDialog } from "./AboutDialog";
 import { ActivityBar } from "./ActivityBar";
+import type { AddSeed } from "../live/cameras";
+import { AddLiveStreamDialog } from "./AddLiveStreamDialog";
 import { AddPlaylistDialog } from "./AddPlaylistDialog";
 import { AddVideoDialog } from "./AddVideoDialog";
 import { Banner } from "./Banner";
@@ -56,6 +58,7 @@ type Dialog =
   | "quick-setup"
   | "about"
   | "add-video"
+  | "add-live-stream"
   | "add-playlist"
   | "open-workspace"
   | "save-workspace-as";
@@ -86,6 +89,7 @@ export function Shell({ version }: { version: string }) {
     configures && values["ui.quick_setup_done"] === false ? "quick-setup" : null,
   );
   // A late close of one dialog cannot dismiss another that has opened since.
+  const [addSeed, setAddSeed] = useState<AddSeed>({});
   const closer = (which: Dialog) => () => setDialog((now) => (now === which ? null : now));
 
   // Only the local backend's window may browse this machine's files; any other asks for a path on the server.
@@ -165,6 +169,7 @@ export function Shell({ version }: { version: string }) {
     "open-workspace": openWorkspace,
     "save-workspace": saveFile,
     "save-workspace-as": saveAs,
+    "add-live-stream": () => setDialog("add-live-stream"),
     "add-playlist": () => setDialog("add-playlist"),
     ...Object.fromEntries(
       Object.entries(SETTING_CHECKS).map(([id, key]) => [
@@ -190,6 +195,12 @@ export function Shell({ version }: { version: string }) {
     if (!id.startsWith(RECENT_ID)) return find(id)?.();
     if (!dialog && !replacing && allowed.host)
       void ask({ type: "open", path: id.slice(RECENT_ID.length) });
+  };
+  // The sidebar's Add opens the dialog from a seed; the menu and shortcut open it without one.
+  const addLive = (seed: AddSeed) => {
+    if (!find("add-live-stream")) return;
+    setAddSeed(seed);
+    setDialog("add-live-stream");
   };
   const select = (item: MenuCommand) => {
     if (item.kind === "check" && !(item.id in SETTING_CHECKS))
@@ -284,7 +295,7 @@ export function Shell({ version }: { version: string }) {
         )}
         <div className="flex min-h-0 flex-1 flex-col sm:flex-row">
           <ActivityBar active={sidebar.open ? sidebar.view : null} onSelect={activate} />
-          {sidebar.open && <Sidebar view={sidebar.view} onRun={run} />}
+          {sidebar.open && <Sidebar view={sidebar.view} onRun={run} onAddLive={addLive} />}
           <main
             data-cursor-region="main"
             className={`flex min-h-0 min-w-0 flex-1 overflow-auto ${sidebar.open ? "max-sm:hidden" : ""}`}
@@ -327,6 +338,15 @@ export function Shell({ version }: { version: string }) {
         )}
         {dialog === "about" && <AboutDialog version={version} onClose={closer("about")} />}
         {dialog === "add-video" && <AddVideoDialog onClose={closer("add-video")} />}
+        {dialog === "add-live-stream" && (
+          <AddLiveStreamDialog
+            seed={addSeed}
+            onClose={() => {
+              setAddSeed({});
+              closer("add-live-stream")();
+            }}
+          />
+        )}
         {dialog === "add-playlist" && <AddPlaylistDialog onClose={closer("add-playlist")} />}
         {dialog === "open-workspace" && (
           <WorkspaceFileDialog

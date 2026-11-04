@@ -60,25 +60,47 @@ impl Group {
     pub(crate) fn into_scene(self) -> Result<Scene, SceneError> {
         match self.content {
             Content::Whole(scene) => Ok(scene),
-            Content::Joined(parts) => {
-                let Parts {
-                    slice,
-                    entities,
-                    events,
-                    relations,
-                    debug,
-                    ..
-                } = *parts;
-                let scene = Scene::new(slice)
-                    .with_entities(entities)?
-                    .with_events(events)?;
-                Ok(scene.with_relations(relations).with_debug(debug))
-            }
+            Content::Joined(parts) => parts.into_scene(),
+        }
+    }
+
+    /// The Scene the group is now, which later fragments do not change.
+    pub(crate) fn to_scene(&self) -> Result<Scene, SceneError> {
+        match &self.content {
+            Content::Whole(scene) => Ok(scene.clone()),
+            Content::Joined(parts) => parts.clone_parts().into_scene(),
         }
     }
 }
 
 impl Parts {
+    fn into_scene(self) -> Result<Scene, SceneError> {
+        let Self {
+            slice,
+            entities,
+            events,
+            relations,
+            debug,
+            ..
+        } = self;
+        let scene = Scene::new(slice)
+            .with_entities(entities)?
+            .with_events(events)?;
+        Ok(scene.with_relations(relations).with_debug(debug))
+    }
+
+    /// A copy of what the Scene is made of; the lookup is not needed to build it.
+    fn clone_parts(&self) -> Self {
+        Self {
+            slice: self.slice,
+            entities: self.entities.clone(),
+            at: HashMap::new(),
+            events: self.events.clone(),
+            relations: self.relations.clone(),
+            debug: self.debug.clone(),
+        }
+    }
+
     fn of(scene: &Scene) -> Self {
         let mut parts = Self {
             slice: scene.time(),

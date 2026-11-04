@@ -3,22 +3,15 @@ use migrate::Migration;
 use serde_json::json;
 use std::fs;
 
+/// Every setting at its default, with the theme `theme` and the quick setup done.
 fn values(theme: &str) -> BTreeMap<String, Value> {
-    BTreeMap::from([
-        ("ui.theme".into(), json!(theme)),
-        ("ui.text_size".into(), json!("system")),
-        ("ui.quick_setup_done".into(), json!(true)),
-        ("playback.video_cache".into(), json!("auto")),
-        ("overlays.object_details".into(), json!(true)),
-        ("overlays.lane_names".into(), json!(true)),
-        ("overlays.default_catalog".into(), json!("")),
-        (
-            "overlays.default_sticky".into(),
-            json!({"enabled": true, "timeout_ms": 2050, "opacity": 1}),
-        ),
-        ("storage.cache_dir".into(), json!("")),
-        ("storage.catalog_dir".into(), json!("")),
-    ])
+    let mut all: BTreeMap<String, Value> = TABLE
+        .iter()
+        .map(|setting| (setting.key.to_owned(), setting.kind.default_value()))
+        .collect();
+    all.insert("ui.theme".into(), json!(theme));
+    all.insert("ui.quick_setup_done".into(), json!(true));
+    all
 }
 
 fn change(theme: &str) -> Change {

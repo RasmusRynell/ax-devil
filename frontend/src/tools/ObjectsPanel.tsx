@@ -90,6 +90,7 @@ function ObjectsList({
   lane,
   canSeek,
   selectable,
+  frameOnly,
   list,
   onList,
   mark,
@@ -102,6 +103,8 @@ function ObjectsList({
   lane: number;
   canSeek: boolean;
   selectable: boolean;
+  /** Lists only the frame on screen, for a viewer with no file behind it: a live stream. */
+  frameOnly: boolean;
   /** The scope, search and sorts, which the viewer keeps while the panel is closed. */
   list: ListState;
   onList: (list: ListState) => void;
@@ -255,14 +258,16 @@ function ObjectsList({
     <div className="relative flex min-h-0 flex-1 flex-col">
       <div inert={open !== null} className="flex min-h-0 flex-1 flex-col">
         <div className="flex items-center gap-m border-b border-line py-xs pr-xs pl-m">
-          <SegmentedControl
-            label="Scope"
-            options={(Object.keys(SCOPES) as Scope[]).map(
-              (key) => [key, SCOPES[key].title] as const,
-            )}
-            value={scope}
-            onChange={(key) => onList({ ...list, scope: key })}
-          />
+          {!frameOnly && (
+            <SegmentedControl
+              label="Scope"
+              options={(Object.keys(SCOPES) as Scope[]).map(
+                (key) => [key, SCOPES[key].title] as const,
+              )}
+              value={scope}
+              onChange={(key) => onList({ ...list, scope: key })}
+            />
+          )}
           <span className="min-w-0 flex-1 truncate text-right text-small text-muted">{`${count} of ${total}`}</span>
           {trailing}
         </div>
@@ -336,6 +341,7 @@ export function ObjectsPanel({
   view,
   canSeek,
   selectable,
+  frameOnly = false,
   pages,
   onNavigate,
   list,
@@ -352,6 +358,8 @@ export function ObjectsPanel({
   canSeek: boolean;
   /** Whether selecting an object is switched on. */
   selectable: boolean;
+  /** Lists only the frame on screen, for a viewer with no file behind it: a live stream. */
+  frameOnly?: boolean;
   pages: PageStack;
   onNavigate: (pages: PageStack, at: Place) => void;
   /** What the viewer keeps of the objects list: the page steps through the list it was opened from. */
@@ -487,6 +495,7 @@ export function ObjectsPanel({
           lane={lane}
           canSeek={canSeek}
           selectable={selectable}
+          frameOnly={frameOnly}
           list={list}
           onList={onList}
           mark={pages.mark?.entity ?? null}

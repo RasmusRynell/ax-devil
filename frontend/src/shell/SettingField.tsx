@@ -4,10 +4,19 @@ import type { SettingKey } from "../generated/settings";
 import { Button } from "../kit/Button";
 import { Checkbox, Select, TextField } from "../kit/Fields";
 import { Icon } from "../kit/Icon";
+import { TONE } from "../kit/look";
 
 /** A setting's value as the backend stores it. */
 export type Value = SettingsState["values"][SettingKey];
-type KindTag = "bool" | "sticky" | "choice" | "auto_or_whole" | "text" | "folder";
+type KindTag =
+  | "bool"
+  | "sticky"
+  | "choice"
+  | "auto_or_whole"
+  | "whole"
+  | "text"
+  | "folder"
+  | "records";
 
 /** A table row as the fields read it. */
 export interface Row {
@@ -27,7 +36,7 @@ export interface Row {
   readonly quick_setup: boolean;
 }
 
-/** The value as text; only the sticky setting is not text, and no field shows it. */
+/** The value as text; the sticky setting and lists of records are not text, and no field shows them. */
 export const textOf = (value: Value) => (typeof value === "object" ? "" : String(value));
 
 /** Whether the whole value is a `$NAME` reference to an environment variable. */
@@ -69,6 +78,15 @@ const FIELDS: Record<KindTag, (props: FieldProps) => ReactNode> = {
       onChange={(text) => onChange(/^\d+$/.test(text) ? Number(text) : text)}
     />
   ),
+  whole: ({ label, value, onChange }) => (
+    <TextField
+      label={label}
+      value={textOf(value)}
+      onChange={(text) => onChange(/^\d+$/.test(text) ? Number(text) : text)}
+    />
+  ),
+  // Lists of records (confirmed references, scan logins) have no field yet; no row with one has a page.
+  records: () => null,
   text: ({ row, label, value, describedBy, onChange }) => (
     <TextField
       label={label}
@@ -114,10 +132,22 @@ export function SettingField({
   return <Field row={row} label={label} {...props} />;
 }
 
-/** Why the backend refused a value, shown at the value. */
-export function Refusal({ reason }: { reason: string }) {
+/** The warning under a secret field that holds the secret itself; `id` is what the field's `aria-describedby` names. */
+export function PlainTextNote({ id, reference }: { id: string; reference: boolean }) {
   return (
-    <p role="alert" className="m-0 flex items-center gap-s">
+    <p id={id} className="m-0 flex items-center gap-s text-muted">
+      <Icon name="triangle-alert" />
+      {reference
+        ? "Saved as plain text. Use $VARIABLE to read it from the environment."
+        : "Saved as plain text."}
+    </p>
+  );
+}
+
+/** Why the backend refused a value, shown at the value in the danger tone; `title` is the fuller reason on hover. */
+export function Refusal({ reason, title }: { reason: string; title?: string }) {
+  return (
+    <p role="alert" title={title} className={`m-0 flex items-center gap-s ${TONE.danger.text}`}>
       <Icon name="triangle-alert" />
       <span className="min-w-0 [overflow-wrap:anywhere]">{reason}</span>
     </p>

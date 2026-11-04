@@ -40,7 +40,7 @@ import type { Connect } from "./wire";
 import { useFileScopeOwner } from "./useFileScopeOwner";
 
 /** What the pane says while the video is not ready: indexing with its progress, reconnecting, or why it failed. */
-function Status({ view, name }: { view: PlaybackView; name: string }) {
+export function Status({ view, name }: { view: PlaybackView; name: string }) {
   if (view.status === "failed" && view.failure)
     return (
       <div role="alert" className="m-auto flex max-w-full flex-col gap-s p-xl text-center">

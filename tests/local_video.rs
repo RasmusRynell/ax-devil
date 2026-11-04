@@ -4,7 +4,7 @@
 mod session_client;
 
 use serde_json::Value;
-use session_client::Socket;
+use session_client::{Socket, quiet_config};
 use std::{
     ffi::OsStr,
     io::{BufRead, BufReader, Read, Write},
@@ -22,8 +22,7 @@ impl Backend {
     /// Starts `ax-devil` with the private files in `folder` and `command` after its options.
     fn start(folder: &Path, command: &[&OsStr]) -> Self {
         let config = folder.join("default.json");
-        // A `--config` file must exist.
-        std::fs::write(&config, r#"{"version": 1}"#).unwrap();
+        quiet_config(&config);
         let mut child = Command::new(env!("CARGO_BIN_EXE_ax-devil"))
             .arg("--config")
             .arg(config)

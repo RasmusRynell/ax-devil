@@ -42,6 +42,7 @@ export function rowsOf(items: readonly ItemState[], hidden: readonly HiddenTarge
         },
         ...lanes(item.id, content.entry),
       ];
+    if (content.kind === "LiveVideo") return [{ ...base, status: ready, entry: content.id }];
     const entryRows = (entry: EntryInfo): RowInfo[] => [
       {
         key: entry.id,

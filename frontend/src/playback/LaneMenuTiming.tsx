@@ -78,11 +78,14 @@ const BASES: readonly (readonly [BasisWire, string])[] = [
 export function LaneMenuTiming({
   lane,
   cadence,
+  live = false,
   onChange,
 }: {
   lane: LaneState;
   /** How evenly the video's frames are spaced. */
   cadence: Cadence | null;
+  /** The lane is live: only sticky is offered. */
+  live?: boolean;
   onChange: (change: Partial<LaneSettings>) => void;
 }) {
   const { settings } = lane;
@@ -94,8 +97,8 @@ export function LaneMenuTiming({
   const saved = useSettings().values[DEFAULT_STICKY] as Sticky;
   return (
     <>
-      {ready && <Alignment cadence={cadence} alignment={ready.alignment} />}
-      {(bases.length > 1 || basis === "Time") && (
+      {ready && !live && <Alignment cadence={cadence} alignment={ready.alignment} />}
+      {!live && (bases.length > 1 || basis === "Time") && (
         <Group label="Sync">
           {bases.length > 1 && (
             <Select<BasisWire>

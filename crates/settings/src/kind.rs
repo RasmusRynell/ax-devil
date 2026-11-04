@@ -85,6 +85,15 @@ pub enum Kind {
         /// The largest accepted number.
         max: u64,
     },
+    /// A whole number from `min` to `max`.
+    Whole {
+        /// The smallest accepted number.
+        min: u64,
+        /// The largest accepted number.
+        max: u64,
+        /// The value when the config has none; within `min` to `max`.
+        default: u64,
+    },
     /// Any text, including none.
     Text {
         /// The value when the config has none.
@@ -93,6 +102,13 @@ pub enum Kind {
     /// A folder the user picked: an absolute path, or empty for the app's standard folder. Never checked against
     /// the disk, so an unplugged drive does not stop startup.
     Folder,
+    /// A list of records, each an object that has exactly these text fields.
+    Records {
+        /// The names of the fields every record has.
+        fields: &'static [&'static str],
+        /// The records when the config has none, each the values of `fields` in order.
+        default: &'static [&'static [&'static str]],
+    },
 }
 
 impl Kind {
@@ -104,8 +120,23 @@ impl Kind {
             Self::Choice { default, .. } | Self::Text { default } => {
                 Value::String((*default).into())
             }
+            Self::Whole { default, .. } => Value::from(*default),
             Self::AutoOrWhole { .. } => Value::String("auto".into()),
             Self::Folder => Value::String(String::new()),
+            Self::Records { fields, default } => Value::Array(
+                default
+                    .iter()
+                    .map(|values| {
+                        Value::Object(
+                            fields
+                                .iter()
+                                .zip(*values)
+                                .map(|(field, value)| ((*field).to_owned(), Value::from(*value)))
+                                .collect(),
+                        )
+                    })
+                    .collect(),
+            ),
         }
     }
 
@@ -139,6 +170,29 @@ impl Kind {
                 Ok(())
             }
             (Self::Folder, _) => Err("expected an absolute folder path".into()),
+            (Self::Whole { min, max, .. }, value) => match value.as_u64() {
+                Some(number) if (*min..=*max).contains(&number) => Ok(()),
+                _ => Err(format!("expected a whole number from {min} to {max}")),
+            },
+            (Self::Records { fields, .. }, Value::Array(records)) => {
+                let fits = |record: &Value| {
+                    record.as_object().is_some_and(|record| {
+                        record.len() == fields.len()
+                            && fields
+                                .iter()
+                                .all(|field| record.get(*field).is_some_and(Value::is_string))
+                    })
+                };
+                if records.iter().all(fits) {
+                    Ok(())
+                } else {
+                    Err(format!(
+                        "expected a list of records with the text fields {}",
+                        fields.join(", ")
+                    ))
+                }
+            }
+            (Self::Records { .. }, _) => Err("expected a list".into()),
             (Self::AutoOrWhole { .. }, Value::String(name)) if name == "auto" => Ok(()),
             (Self::AutoOrWhole { min, max }, value) => match value.as_u64() {
                 Some(number) if (*min..=*max).contains(&number) => Ok(()),

@@ -1,22 +1,11 @@
 import type { ReactNode } from "react";
 import type { SettingsState } from "./generated/api";
 import { COMMANDS } from "./generated/settings";
-import { SettingsContext, type SettingsApi } from "./settings";
+import { DEFAULT_VALUES, SettingsContext, type SettingsApi } from "./settings";
 
 /** The state of a backend with no changes: every default, every command on its default key. */
 export const DEFAULT_SETTINGS: SettingsState = {
-  values: {
-    "ui.theme": "auto",
-    "ui.text_size": "system",
-    "ui.quick_setup_done": true,
-    "overlays.object_details": true,
-    "overlays.lane_names": true,
-    "overlays.default_catalog": "",
-    "overlays.default_sticky": { enabled: true, timeout_ms: 2050, opacity: 1 },
-    "playback.video_cache": "auto",
-    "storage.cache_dir": "",
-    "storage.catalog_dir": "",
-  },
+  values: { ...DEFAULT_VALUES, "ui.quick_setup_done": true },
   shortcuts: Object.fromEntries(
     COMMANDS.map((command) => [command.id, command.key]),
   ) as SettingsState["shortcuts"],

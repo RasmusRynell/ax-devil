@@ -6,7 +6,7 @@ import { Icon } from "../kit/Icon";
 import { SectionCaption } from "../kit/SectionCaption";
 import { Tabs } from "../kit/Tabs";
 import { useSettings } from "../settings";
-import { literalSecret, Refusal, SettingField, type Row } from "./SettingField";
+import { literalSecret, PlainTextNote, Refusal, SettingField, type Row } from "./SettingField";
 import { useSaveDialog } from "./useSaveDialog";
 
 /** Every setting that has a page. */
@@ -76,14 +76,7 @@ export function SettingsDialog({
                         </span>
                       }
                     />
-                    {warning && (
-                      <p id={note} className="m-0 flex items-center gap-s text-muted">
-                        <Icon name="triangle-alert" />
-                        {row.env
-                          ? "Saved as plain text. Use $VARIABLE to read it from the environment."
-                          : "Saved as plain text."}
-                      </p>
-                    )}
+                    {warning && <PlainTextNote id={note} reference={row.env} />}
                     {refusal?.location === row.key && <Refusal reason={refusal.reason} />}
                   </div>
                 );

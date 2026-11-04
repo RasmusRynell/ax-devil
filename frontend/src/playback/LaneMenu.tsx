@@ -21,6 +21,7 @@ export function LaneMenu({
   lane,
   catalogs,
   cadence,
+  live = false,
   onChange,
   onHide,
   onApplyAll,
@@ -30,6 +31,8 @@ export function LaneMenu({
   catalogs: readonly CatalogInfoWire[];
   /** How evenly the video's frames are spaced, shown with the lane's timing. */
   cadence: Cadence | null;
+  /** A live lane is matched by capture time with a fixed tolerance, so its timing is sticky alone. */
+  live?: boolean;
   onChange: (change: Partial<LaneSettings>) => void;
   onHide?: () => void;
   /** Gives the viewer's other lanes this lane's settings, but not its visibility. */
@@ -43,7 +46,9 @@ export function LaneMenu({
       <div id={panel} role="tabpanel" aria-label={tab} className="flex flex-col gap-m">
         {tab === "Look" && <LaneMenuLook lane={lane} catalogs={catalogs} onChange={onChange} />}
         {tab === "Filter" && <LaneMenuFilter lane={lane} onChange={onChange} />}
-        {tab === "Timing" && <LaneMenuTiming lane={lane} cadence={cadence} onChange={onChange} />}
+        {tab === "Timing" && (
+          <LaneMenuTiming lane={lane} cadence={cadence} live={live} onChange={onChange} />
+        )}
       </div>
       {(onApplyAll || onHide) && (
         <div className="flex flex-wrap gap-s border-t border-line pt-m">

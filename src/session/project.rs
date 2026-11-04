@@ -4,18 +4,27 @@
 //! rest pattern in this file), so a new Doc field does not compile until its projection is decided here. An audience
 //! without host details sees only items the Doc has open, with their entries and rows, and for a failed item only its
 //! public code and the item id: never a path, a recipe or the reason text. What a user wrote, such as labels and the
-//! workspace name, is shared on purpose.
+//! workspace name, is shared on purpose. A live stream shows only its label, overlay kind and lane: never the camera's
+//! host, a login or a broker, and an unnamed one is called `Live stream` to an audience without host details. An
+//! audience with host details also gets its recipe as stored, with `$NAME` references as references and no literal
+//! password.
 
 use api_types::{
     Audience, DocWire,
     content::{ContentInfo, EntryInfo, PlaylistSpanInfo},
+    live::{LiveOverlayKind, NewLiveWire},
     playback::WarningInfo,
     project as project_error,
-    workspace::{ItemState, ResolutionState, RowInfo, RowKindWire, RowStatusInfo, WorkspaceState},
+    workspace::{
+        ItemKind, ItemState, ResolutionState, RowInfo, RowKindWire, RowStatusInfo, WorkspaceState,
+    },
 };
 use sessions::session::Doc;
-use std::collections::HashSet;
-use workspace::{Content, Entry, SeekableVideoContent, Workspace, WorkspaceItem, playlist_label};
+use std::collections::HashMap;
+use workspace::{
+    Content, Entry, LiveVideoContent, SeekableVideoContent, Source, Workspace, WorkspaceItem,
+    playlist_label,
+};
 use workspace_store::{
     ContentGen, Resolution, Row, RowKind, RowStatus, Saved, WorkspaceParts, rows,
 };
@@ -45,25 +54,41 @@ pub fn project(doc: &Doc, audience: Audience) -> DocWire {
         .iter()
         .filter(|item| sees_everything || open.contains(&item.id))
         .collect();
-    let keys: HashSet<String> = listed.iter().map(|item| item.id.to_string()).collect();
+    let labels: HashMap<String, String> = listed
+        .iter()
+        .map(|item| (item.id.to_string(), item_label(item, audience)))
+        .collect();
     let items = listed
         .into_iter()
         .map(|item| {
             let WorkspaceItem {
                 id,
-                label: _,
-                recipe: _,
+                label: stored_label,
+                recipe,
             } = item;
+            let label = labels[&id.to_string()].clone();
             ItemState {
                 id: id.to_string(),
-                label: item.display_name(),
+                label: label.clone(),
+                kind: match &recipe.source {
+                    Source::Video(_) => ItemKind::Video,
+                    Source::Playlist(_) => ItemKind::Playlist,
+                    Source::Live(_) => ItemKind::Live,
+                    Source::Unreadable(_) => ItemKind::Unreadable,
+                },
                 open: open.contains(id),
                 resolution: match resolutions.get(id) {
                     Some(Resolution::Resolved {
                         content,
                         generation,
                     }) => ResolutionState::Resolved {
-                        content: content_info(item, content, *generation),
+                        content: content_info(
+                            item,
+                            content,
+                            *generation,
+                            &label,
+                            live_recipe(stored_label, &recipe.source, audience),
+                        ),
                     },
                     Some(Resolution::Failed(error)) => {
                         ResolutionState::Failed(project_error(error, audience))
@@ -75,8 +100,8 @@ pub fn project(doc: &Doc, audience: Audience) -> DocWire {
         .collect();
     let rows = rows(state)
         .into_iter()
-        .filter(|row| keys.contains(&row.item.to_string()))
-        .map(|row| row_info(row, audience))
+        .filter(|row| labels.contains_key(&row.item.to_string()))
+        .map(|row| row_info(row, audience, &labels))
         .collect();
     DocWire {
         workspace: WorkspaceState {
@@ -95,7 +120,20 @@ pub fn project(doc: &Doc, audience: Audience) -> DocWire {
     }
 }
 
-fn row_info(row: Row, audience: Audience) -> RowInfo {
+/// The name an item's row and viewer show to `audience`: its label, or when it has none (a live stream may) the host as
+/// entered to an audience with host details and `Live stream` to everyone else.
+fn item_label(item: &WorkspaceItem, audience: Audience) -> String {
+    match &item.recipe.source {
+        Source::Live(_) if item.label.is_empty() && !audience.host_details => {
+            "Live stream".to_owned()
+        }
+        Source::Video(_) | Source::Playlist(_) | Source::Live(_) | Source::Unreadable(_) => {
+            item.display_name()
+        }
+    }
+}
+
+fn row_info(row: Row, audience: Audience, labels: &HashMap<String, String>) -> RowInfo {
     let Row {
         key,
         item,
@@ -106,6 +144,11 @@ fn row_info(row: Row, audience: Audience) -> RowInfo {
         entry,
         warnings,
     } = row;
+    // An item's row is named as its item is; the store names an unnamed live stream by its host.
+    let label = match kind {
+        RowKind::Item => labels.get(&key).cloned().unwrap_or(label),
+        RowKind::Playlist | RowKind::Entry | RowKind::Lane => label,
+    };
     RowInfo {
         key,
         item: item.to_string(),
@@ -134,7 +177,28 @@ fn row_info(row: Row, audience: Audience) -> RowInfo {
     }
 }
 
-fn content_info(item: &WorkspaceItem, content: &Content, generation: ContentGen) -> ContentInfo {
+/// The request that would make a live item again, for an audience with host details. It is made from the stored
+/// recipe, so a `$NAME` reference stays one and a literal password is left out.
+fn live_recipe(label: &str, source: &Source, audience: Audience) -> Option<Box<NewLiveWire>> {
+    match source {
+        Source::Live(recipe) if audience.host_details => {
+            let mut wire = NewLiveWire::from(recipe);
+            wire.label = Some(label.to_owned()).filter(|label| !label.is_empty());
+            Some(Box::new(wire))
+        }
+        Source::Live(_) | Source::Video(_) | Source::Playlist(_) | Source::Unreadable(_) => None,
+    }
+}
+
+/// `content` of `item` as a viewer opens it; `label` is what the audience calls the item, which a live video shows
+/// instead of the camera's host, and `recipe` is what the audience may learn of its connection.
+fn content_info(
+    item: &WorkspaceItem,
+    content: &Content,
+    generation: ContentGen,
+    label: &str,
+    recipe: Option<Box<NewLiveWire>>,
+) -> ContentInfo {
     let id = content.id().to_string();
     let generation = generation.0;
     let display_name = content.display_name().to_owned();
@@ -163,6 +227,33 @@ fn content_info(item: &WorkspaceItem, content: &Content, generation: ContentGen)
                 })
                 .collect(),
         },
+        Content::LiveVideo(live) => {
+            let LiveVideoContent {
+                item_id: _,
+                id: _,
+                // The expanded host: the audience's label stands in for it.
+                label: _,
+                // The camera and the overlay's broker and topic are the host's to connect with, nobody's to read; the
+                // recipe passed in is the stored text, which an audience with host details may.
+                camera: _,
+                overlay,
+                slot,
+            } = &**live;
+            ContentInfo::LiveVideo {
+                id,
+                generation,
+                display_name: label.to_owned(),
+                slot: slot.clone(),
+                overlay: LiveOverlayKind::from(overlay),
+                // The overlay's lane is named by its transport; a video without one has a plain lane.
+                lanes: vec![
+                    overlay
+                        .handler()
+                        .map_or_else(|| label.to_owned(), |_| overlay.mode_name().to_owned()),
+                ],
+                recipe,
+            }
+        }
     }
 }
 
@@ -182,189 +273,4 @@ fn entry_info(entry: &Entry) -> EntryInfo {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use foundation::{ErrorCode, HostPath, ItemId, UserError, Warning};
-    use std::path::PathBuf;
-    use workspace::{
-        ContentId, OverlayRef, PlaylistContent, PlaylistSpan, Recipe, Source, VideoRecipe, VideoRef,
-    };
-    use workspace_store::{HiddenRef, WorkspaceState as State};
-
-    fn item(id: ItemId, label: &str, folder: &str) -> WorkspaceItem {
-        WorkspaceItem {
-            id,
-            label: label.into(),
-            recipe: Recipe::new(Source::Video(VideoRecipe {
-                video: HostPath::new(format!("/home/{folder}/{label}")),
-                overlays: Vec::new(),
-            })),
-        }
-    }
-
-    fn entry(id: ContentId, label: &str, folder: &str) -> Entry {
-        Entry {
-            id,
-            label: label.into(),
-            video: VideoRef::File(PathBuf::from(format!("/home/{folder}/{label}"))),
-            overlays: vec![OverlayRef {
-                label: "tracks.txt".into(),
-                slot: "tracks.txt".into(),
-                path: PathBuf::from(format!("/home/{folder}/tracks.txt")),
-                handler: "MOT_FILE".into(),
-                options: Default::default(),
-            }],
-        }
-    }
-
-    /// A Doc with a resolved open video, a resolved open playlist, a failed open item and two items with no viewer
-    /// (a failed one and a resolved playlist), all carrying sentinels in every place a watcher must not learn of.
-    fn doc() -> (Doc, [ItemId; 5]) {
-        let ids = [(); 5].map(|()| ItemId::generate());
-        let [shown, playlist, failed, closed, closed_playlist] = ids;
-        let video = Content::SeekableVideo(SeekableVideoContent {
-            item_id: shown,
-            entry: entry(ContentId::of_item(&shown), "gate.mp4", "SECRET-PATH-A"),
-        });
-        let playlist_of = |item: ItemId, name: &str, folder: &str| {
-            Content::Playlist(PlaylistContent {
-                id: ContentId::of_item(&item),
-                item_id: item,
-                display_name: name.into(),
-                entries: ["SEQ-01", "SEQ-02"]
-                    .map(|label| entry(ContentId::of_entry(&item, name, label), label, folder))
-                    .into(),
-                playlists: vec![PlaylistSpan {
-                    id: ContentId::of_playlist(&item, name),
-                    name: name.into(),
-                    entries: 2,
-                }],
-                warnings: vec![Warning {
-                    problem: "Skipped 1 of 3 sequences".into(),
-                    reasons: vec!["/home/SECRET-SKIP/SEQ-03: bad seqinfo.ini".into()],
-                    consequence: "They are not in the playlist.".into(),
-                    more_reasons: false,
-                }],
-            })
-        };
-        let failure = |folder: &str| {
-            let reason = "SECRET-REASON rtsp://root:SECRET-PASSWORD@camera";
-            UserError::new(ErrorCode::FileUnreadable, reason)
-                .at(HostPath::new(format!("/home/{folder}/lost.mp4")))
-        };
-        let mut state = State::default();
-        state.workspace.name = Some("Review".into());
-        state.workspace.items = vec![
-            item(shown, "gate.mp4", "SECRET-PATH-A"),
-            item(playlist, "MOT sequences", "SECRET-PATH-D"),
-            item(failed, "lost.mp4", "SECRET-PATH-B"),
-            item(closed, "closed.mp4", "SECRET-PATH-C"),
-            item(closed_playlist, "closed playlist", "SECRET-PATH-E"),
-        ];
-        let resolved = |content| Resolution::Resolved {
-            content,
-            generation: ContentGen(1),
-        };
-        state.resolutions.insert(shown, resolved(video));
-        state.resolutions.insert(
-            playlist,
-            resolved(playlist_of(playlist, "MOT sequences", "SECRET-PATH-D")),
-        );
-        state.resolutions.insert(
-            closed_playlist,
-            resolved(playlist_of(
-                closed_playlist,
-                "closed playlist",
-                "SECRET-PATH-E",
-            )),
-        );
-        state
-            .resolutions
-            .insert(failed, Resolution::Failed(failure("SECRET-PATH-B")));
-        state
-            .resolutions
-            .insert(closed, Resolution::Failed(failure("SECRET-PATH-C")));
-        state.file = Some(HostPath::new("/data/SECRET-FILE.ax-devil.workspace"));
-        state.open.extend([shown, playlist, failed]);
-        state.hidden.insert(HiddenRef::Entry(ContentId::of_entry(
-            &playlist,
-            "MOT sequences",
-            "SEQ-02",
-        )));
-        (Doc { workspace: state }, ids)
-    }
-
-    #[test]
-    fn a_watcher_learns_no_path_credential_or_reason_and_sees_only_what_is_open() {
-        let (doc, [_, _, failed, _, _]) = doc();
-        let public = Audience {
-            host_details: false,
-        };
-        let watcher = serde_json::to_string(&project(&doc, public)).unwrap();
-        for secret in [
-            "SECRET",
-            "/home",
-            "rtsp",
-            "closed.mp4",
-            "closed playlist",
-            "location",
-        ] {
-            assert!(!watcher.contains(secret), "{secret} reached {watcher}");
-        }
-        for shared in [
-            "gate.mp4",
-            "MOT sequences",
-            "SEQ-01",
-            "tracks.txt",
-            "Review",
-            "FileUnreadable",
-            &failed.to_string(),
-        ] {
-            assert!(watcher.contains(shared), "{shared} missing from {watcher}");
-        }
-
-        let owner = serde_json::to_string(&project(&doc, Audience::HOST)).unwrap();
-        for host_only in [
-            "SECRET-REASON",
-            "SECRET-PATH-B",
-            "SECRET-SKIP",
-            "SECRET-FILE",
-            "closed.mp4",
-            "closed playlist",
-        ] {
-            assert!(
-                owner.contains(host_only),
-                "{host_only} missing from {owner}"
-            );
-        }
-        for recipe_or_source in ["SECRET-PATH-A", "SECRET-PATH-D", "SECRET-PATH-E"] {
-            assert!(
-                !owner.contains(recipe_or_source),
-                "{recipe_or_source} reached {owner}"
-            );
-        }
-    }
-
-    #[test]
-    fn rows_follow_the_items_a_watcher_sees_and_carry_what_was_hidden() {
-        let (doc, _) = doc();
-        let public = Audience {
-            host_details: false,
-        };
-        let rows = |audience| -> Vec<(String, bool)> {
-            project(&doc, audience)
-                .workspace
-                .rows
-                .into_iter()
-                .map(|row| (row.label, row.hidden))
-                .collect()
-        };
-
-        let watcher = rows(public);
-        assert!(watcher.contains(&("SEQ-02".into(), true)), "{watcher:?}");
-        assert!(watcher.contains(&("SEQ-01".into(), false)), "{watcher:?}");
-        assert!(!watcher.iter().any(|(label, _)| label.starts_with("closed")));
-        let owner = rows(Audience::HOST);
-        assert!(owner.iter().any(|(label, _)| label == "closed playlist"));
-    }
-}
+mod tests;

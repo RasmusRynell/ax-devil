@@ -6,17 +6,12 @@
 
 use crate::paths::{self, Paths};
 use ax_devil::{
-    AppState,
     access::{Limits, Policy},
     app, desktop,
     plugins::Plugins,
-    session::{Launch, LaunchQueue, WorkspaceFiles, WorkspaceStorage},
+    session::Launch,
     share::{self, Hosting, LinkBase, ShareListener},
-    video_cache,
-    video_sources::VideoSources,
 };
-use axum::Router;
-use catalogs::Library;
 use clap::{Args, Parser, Subcommand, ValueHint};
 use handler_api::Settings;
 use handlers::Handlers;
@@ -24,15 +19,12 @@ use plugins::PluginsCommand;
 use sessions::Secret;
 use std::{
     error::Error,
-    future::IntoFuture,
     net::{IpAddr, SocketAddr},
     path::PathBuf,
     process::{Command as Process, ExitCode},
     sync::Arc,
-    time::Duration,
 };
-use tokio::sync::watch;
-use workspace_files::{Recents, RecoveryFolder};
+use workspace_files::RecoveryFolder;
 
 mod args;
 mod catalog;
@@ -40,16 +32,14 @@ use catalog::CatalogCommand;
 mod clear_cache;
 mod launch;
 use launch::{describe, launch};
+mod live;
 mod plugins;
+mod services;
+use services::Services;
+#[cfg(test)]
+mod catalog_tests;
 #[cfg(test)]
 mod tests;
-
-/// How long open connections, such as the sockets, get to close after Ctrl+C before the backend exits anyway.
-const SHUTDOWN_GRACE: Duration = Duration::from_secs(2);
-
-/// Set to `1` by the desktop shell: the backend then stops when its standard input closes, so it never outlives the
-/// shell, even one that crashed. Unset, a closed standard input (a service, a container) changes nothing.
-const EXIT_ON_STDIN_CLOSE_VARIABLE: &str = "AX_DEVIL_EXIT_ON_STDIN_CLOSE";
 
 /// The environment variable that sets the server password for `serve`: printable ASCII without spaces, because a
 /// browser can send nothing else in a header. Unset or empty, a random password is generated.
@@ -121,6 +111,8 @@ enum Command {
         #[arg(long, value_name = "KEY=VALUE", value_parser = args::parse_overlay_option)]
         overlay_option: Vec<OverlayOption>,
     },
+    /// Open a live stream in a new Untitled workspace, with the stream settings as defaults.
+    Live(live::LiveArgs),
     /// Open a saved workspace.
     Open {
         /// The workspace file, ending in .ax-devil.workspace.
@@ -245,6 +237,11 @@ async fn run_backend(global: Global, command: Option<Command>, plugins: Arc<Plug
                     command,
                     &plugins.handlers(),
                     &RecoveryFolder::new(paths.recovery_dir.clone()),
+                    || {
+                        settings::Settings::load(&paths.config_file)
+                            .map(|settings| ax_devil::session::live::defaults(&settings.state()))
+                            .map_err(|error| error.to_string())
+                    },
                 ) {
                     Ok(launch) => host_desktop(&paths, global.share_address, plugins, launch).await,
                     Err(reason) => Err(reason.into()),
@@ -261,118 +258,6 @@ async fn run_backend(global: Global, command: Option<Command>, plugins: Arc<Plug
 /// The folder of the user's render catalogs: the `storage.catalog_dir` setting, else the standard folder.
 fn catalog_folder(paths: &Paths, settings: &settings::Settings) -> PathBuf {
     paths.catalog_dir(settings.state().folder("storage.catalog_dir"))
-}
-
-/// What both backends start from: the services their routes are adapters over, and the stop signal.
-struct Services {
-    settings: Arc<settings::Settings>,
-    catalogs: Library,
-    launch: Arc<LaunchQueue>,
-    files: Arc<WorkspaceFiles>,
-    videos: Arc<VideoSources>,
-    plugins: Arc<Plugins>,
-    cache_dir: PathBuf,
-    stop: watch::Sender<bool>,
-}
-
-impl Services {
-    /// Loads the settings, starts the video cache and queues `launch` for the first Local session. Ctrl+C turns the
-    /// stop signal on, and so does the end of the standard input when [`EXIT_ON_STDIN_CLOSE_VARIABLE`] asks for it.
-    fn start(
-        paths: &Paths,
-        plugins: Arc<Plugins>,
-        launch: Option<Launch>,
-    ) -> Result<Self, Box<dyn Error>> {
-        let settings = Arc::new(settings::Settings::load(&paths.config_file)?);
-        tracing::info!("Loaded settings from {}", paths.config_file.display());
-        let cache_dir = paths.cache_dir(settings.state().folder("storage.cache_dir"));
-        tracing::info!("Caching in {}", cache_dir.display());
-        let videos = video_cache::start(&settings, &cache_dir);
-        let catalog_dir = catalog_folder(paths, &settings);
-        tracing::info!("Reading user catalogs from {}", catalog_dir.display());
-        let catalogs = Library::with_folder(catalog_dir);
-        let (stop, _) = watch::channel(false);
-        tokio::spawn(Arc::clone(&plugins).watch(stop.subscribe()));
-        let stop_on_ctrl_c = stop.clone();
-        tokio::spawn(async move {
-            let _ = tokio::signal::ctrl_c().await;
-            stop_on_ctrl_c.send_replace(true);
-        });
-        if std::env::var_os(EXIT_ON_STDIN_CLOSE_VARIABLE).is_some_and(|value| value == "1") {
-            let stop_on_eof = stop.clone();
-            // A plain thread: reading standard input blocks, and the thread may stay blocked until the process exits.
-            std::thread::spawn(move || {
-                let _ = std::io::copy(&mut std::io::stdin().lock(), &mut std::io::sink());
-                stop_on_eof.send_replace(true);
-            });
-        }
-        Ok(Self {
-            settings,
-            catalogs,
-            launch: Arc::new(LaunchQueue::new(launch)),
-            files: Arc::new(WorkspaceFiles::new(Some(WorkspaceStorage {
-                recents: Recents::new(paths.recent_file.clone()),
-                recovery: RecoveryFolder::new(paths.recovery_dir.clone()),
-            }))),
-            videos,
-            plugins,
-            cache_dir,
-            stop,
-        })
-    }
-
-    /// The state of one listener over these services.
-    fn state(&self, policy: Policy) -> AppState {
-        AppState::new(
-            Arc::clone(&self.settings),
-            policy,
-            Arc::clone(&self.videos),
-            self.stop.subscribe(),
-            Arc::clone(&self.plugins),
-            &self.cache_dir,
-        )
-        .with_launch(Arc::clone(&self.launch))
-        .with_files(Arc::clone(&self.files))
-        .with_catalogs(self.catalogs.clone())
-    }
-
-    /// Serves `router` until the stop signal, giving connections [`SHUTDOWN_GRACE`] to close, then ends every viewer
-    /// and waits once for the decode threads to finish their frame and exit.
-    async fn serve(
-        self,
-        listener: tokio::net::TcpListener,
-        router: Router,
-    ) -> Result<(), Box<dyn Error>> {
-        let (mut graceful, mut expired) = (self.stop.subscribe(), self.stop.subscribe());
-        let server = axum::serve(
-            listener,
-            router.into_make_service_with_connect_info::<SocketAddr>(),
-        )
-        .with_graceful_shutdown(async move {
-            let _ = graceful.wait_for(|stop| *stop).await;
-        });
-        let served = tokio::select! {
-            served = server.into_future() => served,
-            () = async {
-                let _ = expired.wait_for(|stop| *stop).await;
-                tokio::time::sleep(SHUTDOWN_GRACE).await;
-            } => {
-                tracing::warn!("Closing connections that stayed open after Ctrl+C");
-                Ok(())
-            }
-        };
-        // Whatever ended the server, every viewer ends.
-        self.stop.send_replace(true);
-        self.files.flush_all().await;
-        let videos = self.videos;
-        let retired =
-            tokio::task::spawn_blocking(move || videos.registry().wait_retired(SHUTDOWN_GRACE))
-                .await;
-        if !matches!(retired, Ok(true)) {
-            tracing::warn!("Some video decoders did not stop in time");
-        }
-        Ok(served?)
-    }
 }
 
 /// The backend for the desktop shell and development: loopback only, on `$PORT` (default 7330).

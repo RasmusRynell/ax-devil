@@ -1,6 +1,7 @@
 import type { BasisWire, FieldWire, LaneStatusWire } from "../generated/api";
 import type { CellRect } from "../overlay/painter";
 import type { ClassMask, CompiledCatalog, CompiledFilter, SampleView } from "../present";
+import type { LaneMatch } from "./laneData";
 import type { VideoFrame } from "./protocol";
 
 /**
@@ -90,6 +91,18 @@ export type LaneState = {
 /** How the UI changes a lane; `PlaybackSession` implements it (replacing `setLaneView` and `setLaneTargets`). */
 export interface LaneControl {
   setLane(lane: number, change: Partial<LaneSettings>): void;
+}
+
+/** What the lane grid and its canvas ask of a viewer's session: a playback session and a live session both implement it. */
+export interface LaneDisplay extends LaneControl {
+  /** Gives every other lane of the viewer the settings of `lane`, but its visibility. */
+  applyToAll(lane: number): void;
+  /** How `lane` matched a sample to the frame on screen. */
+  matched(lane: number): LaneMatch | null;
+  /** Sets where frames are drawn; `null` stops drawing. */
+  setSurface(surface: Surface | null): void;
+  /** Draws the shown frame again, for a surface that lost its picture. */
+  represent(): void;
 }
 
 /** How the viewer's pictures are zoomed: one for all of a viewer's lanes. Pan is a fraction of the zoomed picture. */

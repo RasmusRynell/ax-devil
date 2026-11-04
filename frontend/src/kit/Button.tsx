@@ -54,6 +54,10 @@ interface MenuButtonProps {
   checked?: ReadonlySet<string>;
   onSelect: (command: MenuCommand) => void;
   disabled?: boolean;
+  /** What the button does, on hover. */
+  title?: string;
+  /** The menu's right edge lines up with the button's, for a button at the right of its container. */
+  alignEnd?: boolean;
 }
 
 /** A button that opens `entries` as a menu below it at once, closing on a choice or Escape and returning focus to it. */
@@ -63,6 +67,8 @@ export function MenuButton({
   checked = NOTHING_CHECKED,
   onSelect,
   disabled,
+  title,
+  alignEnd = false,
 }: MenuButtonProps) {
   const [open, setOpen] = useState(false);
   const wrap = useRef<HTMLSpanElement>(null);
@@ -72,6 +78,7 @@ export function MenuButton({
         size="small"
         aria-haspopup="menu"
         aria-expanded={open}
+        title={title}
         disabled={disabled}
         onClick={() => setOpen((now) => !now)}
       >
@@ -82,7 +89,7 @@ export function MenuButton({
         <Popup
           boundary={wrap}
           onClose={() => setOpen(false)}
-          className="absolute top-full left-0 z-10 min-w-max"
+          className={`absolute top-full z-10 min-w-max ${alignEnd ? "right-0" : "left-0"}`}
         >
           <Menu
             entries={entries}

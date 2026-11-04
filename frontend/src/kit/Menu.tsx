@@ -3,6 +3,7 @@ import { Icon } from "./Icon";
 
 export type MenuEntry =
   | { kind: "separator" }
+  | { kind: "heading"; label: string }
   | {
       kind: "action" | "check";
       id: string;
@@ -86,6 +87,16 @@ function Entries({ entries, checked, expanded, toggle, onSelect }: EntriesProps)
   return entries.map((entry, index) => {
     if (entry.kind === "separator")
       return <div key={index} role="separator" className="my-xs border-t border-line" />;
+    if (entry.kind === "heading")
+      return (
+        <div
+          key={`heading ${entry.label}`}
+          role="presentation"
+          className="px-m pt-s text-small text-muted"
+        >
+          {entry.label}
+        </div>
+      );
     if (entry.kind === "submenu") {
       const open = expanded.has(entry.label);
       return (

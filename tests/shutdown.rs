@@ -4,7 +4,7 @@
 mod session_client;
 
 use serde_json::json;
-use session_client::Socket;
+use session_client::{Socket, quiet_config};
 use std::{
     io::{BufRead, BufReader},
     path::Path,
@@ -17,8 +17,7 @@ async fn ctrl_c_ends_open_viewers_and_the_backend_exits() {
     let folder = tempfile::tempdir().unwrap();
     let video = Path::new(env!("CARGO_MANIFEST_DIR")).join("fixtures/video/long_gop_h264.mp4");
     let config = folder.path().join("default.json");
-    // A `--config` file must exist.
-    std::fs::write(&config, r#"{"version": 1}"#).unwrap();
+    quiet_config(&config);
     let mut backend = Command::new(env!("CARGO_BIN_EXE_ax-devil"))
         .arg("--config")
         .arg(&config)
@@ -93,8 +92,7 @@ async fn ctrl_c_ends_open_viewers_and_the_backend_exits() {
 fn closing_stdin_stops_the_backend_only_when_asked_to() {
     let folder = tempfile::tempdir().unwrap();
     let config = folder.path().join("default.json");
-    // A `--config` file must exist.
-    std::fs::write(&config, r#"{"version": 1}"#).unwrap();
+    quiet_config(&config);
     let start = |ask: bool| {
         let mut command = Command::new(env!("CARGO_BIN_EXE_ax-devil"));
         command

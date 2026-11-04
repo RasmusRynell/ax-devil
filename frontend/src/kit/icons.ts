@@ -47,10 +47,11 @@ import triangleAlert from "../../../assets/icons/triangle-alert.svg";
 import users from "../../../assets/icons/users.svg";
 import video from "../../../assets/icons/video.svg";
 import videoDashed from "../../../assets/icons/video-dashed.svg";
+import videoFilled from "../../../assets/icons/video-filled.svg";
 import wifi from "../../../assets/icons/wifi.svg";
 import x from "../../../assets/icons/x.svg";
 
-/** The bundled Lucide icons the UI uses (`pin-filled` is `pin` with a solid shape); add one from `assets/icons/` here when a component needs it. */
+/** The bundled Lucide icons the UI uses (`pin-filled` and `video-filled` are `pin` and `video` with a solid shape); add one from `assets/icons/` here when a component needs it. */
 export const ICONS = {
   bookmark,
   check,
@@ -101,6 +102,7 @@ export const ICONS = {
   users,
   video,
   "video-dashed": videoDashed,
+  "video-filled": videoFilled,
   wifi,
   x,
 } as const;

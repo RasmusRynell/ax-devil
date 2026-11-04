@@ -1,6 +1,6 @@
+import type { LaneDisplay } from "./contract";
 import { hudSections } from "./hud";
 import { basisOf } from "./lanes";
-import type { PlaybackSession } from "./session";
 import type { PlaybackView } from "./view";
 
 /**
@@ -12,7 +12,7 @@ export function InfoHud({
   view,
   lane,
 }: {
-  session: PlaybackSession;
+  session: Pick<LaneDisplay, "matched">;
   view: PlaybackView;
   /** The lane's position in `view.lanes`. */
   lane: number;

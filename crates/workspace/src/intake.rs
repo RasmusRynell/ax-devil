@@ -10,6 +10,13 @@ use handler_api::Settings;
 use handlers::Handlers;
 use std::path::{Path, PathBuf};
 
+mod live_stream;
+
+pub use live_stream::{
+    DataHubDefaults, LiveDefaults, LiveMode, LoginUse, MqttDefaults, NewDataHub, NewLive,
+    NewLiveOverlay, NewMqtt, live,
+};
+
 /// An overlay file the user chose to add to a video.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct NewOverlay {
@@ -173,5 +180,7 @@ pub fn with_label(item: WorkspaceItem, label: Option<&str>) -> WorkspaceItem {
     }
 }
 
+#[cfg(test)]
+mod live_tests;
 #[cfg(test)]
 mod tests;

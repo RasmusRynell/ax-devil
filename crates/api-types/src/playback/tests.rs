@@ -84,6 +84,56 @@ fn messages_use_the_names_the_frontend_parses() {
             "type": "Catalog", "id": "built-in:standard", "revision": 1, "document": null, "problem": "too large"
         })
     );
+
+    // A live feed's messages name a reason by code and never carry text from the camera.
+    use crate::live::{LiveAction, LiveFeedStatus, LiveReason, LiveStatusWire};
+    assert_eq!(
+        serde_json::from_value::<ClientMessage>(json!({"type": "Live", "action": "retry"}))
+            .unwrap(),
+        ClientMessage::Live {
+            action: LiveAction::Retry
+        }
+    );
+    let status = ServerMessage::LiveStatus(LiveStatusWire {
+        video: LiveFeedStatus::Reconnecting {
+            attempt: 2,
+            reason: LiveReason::Unreachable,
+        },
+        overlay: Some(LiveFeedStatus::Failed {
+            reason: LiveReason::BrokerBadCredentials,
+        }),
+        behind: false,
+    });
+    assert_eq!(
+        serde_json::to_value(&status).unwrap(),
+        json!({"type": "LiveStatus", "behind": false,
+            "video": {"status": "Reconnecting", "attempt": 2, "reason": "Unreachable"},
+            "overlay": {"status": "Failed", "reason": "BrokerBadCredentials"}})
+    );
+}
+
+#[test]
+fn a_new_live_stream_arrives_with_what_the_user_entered_and_its_password_never_prints() {
+    use crate::workspace::NewItem;
+    let wire = json!({"type": "Live", "host": "$AX_DEVIL_TARGET_ADDR", "password": "hunter2",
+        "overlay": {"mode": "datahub", "topic": "t"}});
+    let item: NewItem = serde_json::from_value(wire).unwrap();
+    assert!(!format!("{item:?}").contains("hunter2"), "{item:?}");
+    let NewItem::Live(new) = item else {
+        panic!("a live stream");
+    };
+    let new = workspace::intake::NewLive::from(*new);
+    assert_eq!(new.host.as_deref(), Some("$AX_DEVIL_TARGET_ADDR"));
+    assert_eq!(new.password.unwrap().expose(), "hunter2");
+    assert_eq!(
+        new.overlay,
+        Some(workspace::intake::NewLiveOverlay::DataHub(
+            workspace::intake::NewDataHub {
+                topic: Some("t".into()),
+                ..Default::default()
+            }
+        ))
+    );
 }
 
 #[test]
@@ -208,7 +258,7 @@ fn opened_and_lane_status_carry_the_source_and_data_revision() {
         }),
     };
     let json = serde_json::to_value(&opened).unwrap();
-    assert_eq!(json["protocol"], 6);
+    assert_eq!(json["protocol"], 7);
     assert_eq!(
         json["video_pts"],
         json!({"time_base": [1, 90_000], "first_pts": 7_200})

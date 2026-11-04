@@ -82,7 +82,8 @@ fn router(listener: Listener) -> (Router, tempfile::TempDir, tokio::sync::watch:
         stopping,
         Plugins::fixed(Handlers::built_in()),
         &cache,
-    );
+    )
+    .with_network(crate::test_support::idle_network());
     let router = match listener {
         Listener::Lan => lan_app(state),
         Listener::Local | Listener::Server => app(state),
@@ -134,14 +135,15 @@ async fn every_route_answers_every_caller_as_the_table_says() {
                     assert_eq!(got, unmounted, "{at}");
                 } else if let Some(row) = row {
                     if row.who.allows(caller.principal) {
-                        // Past the gate. What the handler makes of an empty request is its own business.
+                        // Past the gate. What the handler makes of an empty request is its own business, and a path
+                        // that names a thing (`{item}`) may say there is no such thing.
                         let refused = [
                             StatusCode::UNAUTHORIZED,
                             StatusCode::FORBIDDEN,
-                            StatusCode::NOT_FOUND,
                             StatusCode::METHOD_NOT_ALLOWED,
                         ];
-                        assert!(!refused.contains(&got), "{at}: {got}");
+                        let missing = got == StatusCode::NOT_FOUND && !path.contains('{');
+                        assert!(!refused.contains(&got) && !missing, "{at}: {got}");
                     } else {
                         assert_eq!(got, StatusCode::UNAUTHORIZED, "{at}");
                     }

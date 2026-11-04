@@ -1,4 +1,5 @@
 use crate::item::WorkspaceItem;
+use crate::live::LiveVideoContent;
 use foundation::{ErrorCode, ItemId, UserError, Warning};
 use handler_api::ResolvedPlaylists;
 use serde::{Deserialize, Deserializer, Serialize, Serializer, de};
@@ -157,13 +158,15 @@ pub struct PlaylistContent {
     pub warnings: Vec<Warning>,
 }
 
-/// What a viewer opens, by kind. Viewers register by kind; live sources join this set later.
+/// What a viewer opens, by kind. Viewers register by kind.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Content {
     /// A recorded video.
     SeekableVideo(SeekableVideoContent),
     /// A playlist of recorded videos.
     Playlist(PlaylistContent),
+    /// A camera's live stream (boxed: it is much larger than the rest). It has no entries: a viewer opens it from the camera and overlay it names.
+    LiveVideo(Box<LiveVideoContent>),
 }
 
 impl Content {
@@ -172,6 +175,7 @@ impl Content {
         match self {
             Content::SeekableVideo(video) => &video.entry.id,
             Content::Playlist(playlist) => &playlist.id,
+            Content::LiveVideo(live) => &live.id,
         }
     }
 
@@ -180,21 +184,31 @@ impl Content {
         match self {
             Content::SeekableVideo(video) => &video.entry.label,
             Content::Playlist(playlist) => &playlist.display_name,
+            Content::LiveVideo(live) => &live.label,
         }
     }
 
-    /// The entries in order: the one entry of a video, or those of a playlist.
+    /// The entries in order: the one entry of a video, or those of a playlist; none for a live video.
     pub fn entries(&self) -> &[Entry] {
         match self {
             Content::SeekableVideo(video) => std::slice::from_ref(&video.entry),
             Content::Playlist(playlist) => &playlist.entries,
+            Content::LiveVideo(_) => &[],
+        }
+    }
+
+    /// The lane slots of every lane a viewer of this Content shows, including a live video's one overlay.
+    pub fn lane_slots(&self) -> Vec<&str> {
+        match self {
+            Content::LiveVideo(live) => vec![live.slot.as_str()],
+            _ => self.entries().iter().flat_map(Entry::lane_slots).collect(),
         }
     }
 
     /// What resolving left out of the Content, such as a skipped sequence.
     pub fn warnings(&self) -> &[Warning] {
         match self {
-            Content::SeekableVideo(_) => &[],
+            Content::SeekableVideo(_) | Content::LiveVideo(_) => &[],
             Content::Playlist(playlist) => &playlist.warnings,
         }
     }

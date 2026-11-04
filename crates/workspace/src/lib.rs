@@ -5,8 +5,11 @@
 
 mod bookmark;
 mod content;
+mod credentials;
 pub mod intake;
 mod item;
+mod live;
+mod references;
 mod workspace;
 
 pub use bookmark::{Bookmark, BookmarkKind, BookmarkTarget};
@@ -14,9 +17,14 @@ pub use content::{
     Content, ContentId, Entry, ImageSequence, OverlayRef, PlaylistContent, PlaylistSpan,
     SeekableVideoContent, VideoRef, playlist_label,
 };
+pub use credentials::{Confirmation, Environment, Secret};
 pub use foundation::{BookmarkId, ItemId};
 pub use item::{
     OverlayRecipe, PlaylistRecipe, Recipe, Source, Unreadable, VideoRecipe, WorkspaceItem,
     absolute_paths,
 };
+pub use live::{
+    LIVE_SLOT, LiveOverlay, LiveRecipe, LiveVideoContent, Login, Protocol, ResolvedCamera,
+};
+pub use references::{Connection, Previews, Shown, preview, vouches};
 pub use workspace::Workspace;

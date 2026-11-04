@@ -5,12 +5,13 @@ use playback::{Authority, ClockIntent, Priority};
 use sessions::{
     CursorOptions,
     session::{
-        Access, Command, Completion, Control, Refusal, Reply, Sidebar, SidebarView, View, ViewLane,
-        ViewerView,
+        Access, Command, Completion, ContentRef, Control, Refusal, Reply, Sidebar, SidebarView,
+        View, ViewLane, ViewerView,
     },
 };
 use std::time::Duration;
 use tokio::time::{Instant, advance};
+use workspace::{ContentId, ItemId, LiveOverlay, LiveRecipe, Protocol, Recipe, Secret, Source};
 use workspace_store::{DocCommand, Resolution};
 
 #[tokio::test(start_paused = true)]
@@ -314,4 +315,66 @@ async fn a_session_of_one_works_without_sharing() {
         owner.command(Command::Control(Control::Stop)).err(),
         Some(Refusal::NotSharing)
     );
+}
+
+/// A live video has no entry: its stream is named by the Content's id twice, a seat that follows only watches, and
+/// closing the viewer ends the stream (Stop).
+#[tokio::test(start_paused = true)]
+async fn a_live_stream_is_named_by_its_content_and_stops_when_its_viewer_closes() {
+    let rig = Rig::new();
+    let (owner, watcher) = rig.shared(Access::Watch);
+    let id = ItemId::generate();
+    let recipe = LiveRecipe {
+        host: "camera.local".into(),
+        username: String::new(),
+        password: Secret::default(),
+        protocol: Protocol::Https,
+        port: 0,
+        head: 1,
+        rtsp_port: 554,
+        resolution: None,
+        url: None,
+        overlay: LiveOverlay::None,
+    };
+    let item = workspace::WorkspaceItem {
+        id,
+        label: String::new(),
+        recipe: Recipe::new(Source::Live(recipe)),
+    };
+    owner
+        .command(Command::Content(DocCommand::AddItems {
+            items: vec![item],
+            open: true,
+        }))
+        .unwrap();
+    rig.jobs.finish_all();
+    let Resolution::Resolved { generation, .. } = owner.state().doc.workspace.resolutions[&id]
+    else {
+        panic!("the live stream resolves");
+    };
+    let key = ContentRef {
+        content: ContentId::of_item(&id),
+        generation,
+        entry: ContentId::of_item(&id),
+    };
+
+    let own = stream(&rig.service, &owner, &key).unwrap();
+    let watching = stream(&rig.service, &watcher, &key).unwrap();
+    assert!(own.entry().is_none() && watching.entry().is_none());
+    assert!(matches!(authority(&own), Authority::Own { .. }));
+    assert!(matches!(authority(&watching), Authority::Follow { .. }));
+    let other = ContentRef {
+        entry: ContentId::of_entry(&id, "P", "x"),
+        ..key.clone()
+    };
+    assert_eq!(
+        stream(&rig.service, &owner, &other).err(),
+        Some(Refusal::ContentUnavailable)
+    );
+
+    owner
+        .command(Command::Content(DocCommand::CloseViewer(id)))
+        .unwrap();
+    assert_eq!(authority(&own), Authority::Revoked);
+    assert_eq!(authority(&watching), Authority::Revoked);
 }

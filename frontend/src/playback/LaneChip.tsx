@@ -62,6 +62,7 @@ export function LaneChip({
   onHide,
   onApplyAll,
   hideName = false,
+  live = false,
 }: {
   lane: LaneState;
   catalogs: readonly CatalogInfoWire[];
@@ -71,6 +72,8 @@ export function LaneChip({
   onHide?: () => void;
   onApplyAll?: () => void;
   hideName?: boolean;
+  /** The lane is live: its menu offers only sticky. */
+  live?: boolean;
 }) {
   const showName = useSettings().values["overlays.lane_names"] === true && !hideName;
   const notices = laneNotices(lane);
@@ -109,6 +112,7 @@ export function LaneChip({
               lane={lane}
               catalogs={catalogs}
               cadence={cadence}
+              live={live}
               onChange={onChange}
               onApplyAll={
                 onApplyAll &&

@@ -73,6 +73,7 @@ pub(crate) async fn get_handlers(State(state): State<AppState>) -> Json<Handlers
             display_name: spec.name.clone(),
             extensions: spec.extensions.clone(),
             options: field_infos(&spec.options),
+            live: decoder.reads_live(),
         }
     });
     let resolvers = handlers.resolvers().iter().map(|resolver| {
