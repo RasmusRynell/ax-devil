@@ -66,6 +66,8 @@ export class PlaybackClock {
   #presented: number | undefined;
   /** Lowest sequence id the next tick may present: playing never goes backward. */
   #floor: number;
+  /** Where the current play or seek began: a failure from here on stops playing, however late it is reported. */
+  #origin: number;
   #playing = false;
   #speed = 1;
   #anchorNow = 0;
@@ -77,7 +79,7 @@ export class PlaybackClock {
     this.#now = now;
     this.#last = times.length - 1;
     this.#requested = this.#clamp(startFrame);
-    this.#floor = this.#requested;
+    this.#floor = this.#origin = this.#requested;
   }
 
   get playing(): boolean {
@@ -120,7 +122,7 @@ export class PlaybackClock {
   play(): void {
     if (this.#playing) return;
     if (this.#requested >= this.#last) this.#requested = 0;
-    this.#floor = this.#requested;
+    this.#floor = this.#origin = this.#requested;
     this.#playing = true;
     this.#anchor(this.#times[this.#requested]);
   }
@@ -134,7 +136,7 @@ export class PlaybackClock {
 
   seek(sequenceId: number): void {
     this.#requested = this.#clamp(sequenceId);
-    this.#floor = this.#requested;
+    this.#floor = this.#origin = this.#requested;
     if (this.#playing) this.#anchor(this.#times[this.#requested]);
   }
 
@@ -176,10 +178,10 @@ export class PlaybackClock {
     return frame;
   }
 
-  /** The first failed frame the clock has not passed and that is due by `due`, if any. */
+  /** The first failed frame from where this play began that is due by `due`, if any, even one a later frame passed. */
   #failedUpTo(due: number): number | undefined {
-    for (let id = this.#floor; id <= due; id++) if (this.#failed.has(id)) return id;
-    return undefined;
+    const inRange = [...this.#failed].filter((id) => id >= this.#origin && id <= due);
+    return inRange.length > 0 ? Math.min(...inRange) : undefined;
   }
 
   #anchor(mediaTimeUs: number): void {

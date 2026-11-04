@@ -244,6 +244,15 @@ describe("clock and frames that failed to decode", () => {
     expect(clock).toMatchObject({ playing: false, playhead: 4 });
   });
 
+  it("stops on a failure reported after a later frame was shown", () => {
+    const { clock, tick } = setup(undefined, [0, 1, 3, 4, 5]);
+    clock.play();
+    expect([tick(), tick(40), tick(80)]).toEqual([0, 1, 3]);
+    clock.fail(2);
+    expect(tick(40)).toBeUndefined();
+    expect(clock).toMatchObject({ playing: false, playhead: 2 });
+  });
+
   it("stops on a failed last frame", () => {
     const { clock, tick } = setup(undefined, [0, 1, 2, 3, 4, 5, 6, 7, 8]);
     clock.fail(9);
