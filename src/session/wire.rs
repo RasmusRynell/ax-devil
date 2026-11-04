@@ -196,7 +196,7 @@ fn intake(
             if let Some(address) = found {
                 scanned(&mut new, &address, network, live)?;
             } else if let Some(recipe) = like.and_then(|item| saved.live(item)) {
-                new.copy_login(recipe, live)?;
+                new.copy_login(recipe, live, workspace::intake::LoginUse::Stream)?;
             }
             workspace::intake::live(new, live, handlers)
         }

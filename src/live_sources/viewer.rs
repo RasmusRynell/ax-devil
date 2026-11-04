@@ -70,8 +70,9 @@ impl LiveViewer {
             frames: shared.frames.subscribe(),
             status: shared.board.subscribe(),
             lane: shared
-                .track_read()
-                .map(|track| LiveLane::new(track, 0, 0, 0)),
+                .track
+                .as_ref()
+                .map(|track| LiveLane::new(track.clone(), &track.snapshot_with_open(), 0, 0, 0)),
             gaps,
             gaps_seen,
             gaps_waiting: VecDeque::new(),

@@ -162,7 +162,7 @@ fn track_of(lines: &[&'static str]) -> Arc<LiveTrack> {
 
 /// A lane that has seen none of the samples the track holds, as if it had attached before they arrived.
 fn lane_over(track: &Arc<LiveTrack>) -> LiveLane {
-    let mut lane = LiveLane::new(track.clone(), 0, 0, 1);
+    let mut lane = LiveLane::new(track.clone(), &track.snapshot(), 0, 0, 1);
     lane.reported = None;
     lane
 }
@@ -211,7 +211,7 @@ fn a_sample_reports_its_events_once_the_first_time_it_is_shown() {
 #[test]
 fn a_lane_that_attaches_late_reports_only_what_arrives_after() {
     let track = track_of(&["0 events", "100000 events"]);
-    let mut lane = LiveLane::new(track.clone(), 0, 0, 1);
+    let mut lane = LiveLane::new(track.clone(), &track.snapshot(), 0, 0, 1);
     // The retained samples were reported to the viewers that were there, or are history for this one.
     assert_eq!(release(&mut lane, &track, frame(0, 100_000)).events, None);
 }
@@ -338,4 +338,25 @@ fn events_that_join_a_sample_after_a_deadline_frame_showed_it_open_are_reported(
             .events,
         None
     );
+}
+
+#[test]
+fn a_lane_attached_while_a_sample_is_open_does_not_repeat_the_events_already_shown_from_it() {
+    let (_more, later) = mpsc::channel();
+    let feed = Held(Some(Open(Lines(vec!["0", "100000 events"], 0), later)));
+    let values = SPEC.options.validate(&Settings::new()).unwrap();
+    let track = LiveTrack::start(Arc::new(Decode), values, Box::new(feed), 100).unwrap();
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while track.snapshot().keys.len() != 1 {
+        assert!(Instant::now() < deadline, "the first sample never arrived");
+        thread::sleep(Duration::from_millis(2));
+    }
+    let open = track.snapshot_with_open();
+    let mut lane = LiveLane::new(track.clone(), &open, 0, 0, 1);
+    let policy = LanePolicy {
+        subscribed: true,
+        ..LanePolicy::default()
+    };
+    let out = lane.release(frame(0, 100_000), &open, &policy);
+    assert_eq!(out.events, None);
 }

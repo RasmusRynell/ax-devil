@@ -19,7 +19,8 @@ fn another_stream_copies_the_saved_login_only_for_the_same_camera() {
     let copy = |change: fn(&mut NewLive)| {
         let mut new = host("CAM.local");
         change(&mut new);
-        new.copy_login(&saved, &defaults()).unwrap();
+        new.copy_login(&saved, &defaults(), LoginUse::Stream)
+            .unwrap();
         new
     };
     let login = |new: &NewLive| {
@@ -63,12 +64,17 @@ fn an_rtsp_endpoint_elsewhere_gets_no_saved_login() {
         url: None,
         overlay: LiveOverlay::None,
     };
+    let other_rtsp = || LiveRecipe {
+        rtsp_port: 8554,
+        ..saved.clone()
+    };
     let copy = |url: &str| {
         let mut new = NewLive {
             url: Some(url.into()),
             ..host("cam.local")
         };
-        new.copy_login(&saved, &defaults()).map(|()| new.password)
+        new.copy_login(&saved, &defaults(), LoginUse::Stream)
+            .map(|()| new.password)
     };
     // The camera's own RTSP address, spelled in the URL, takes the login; another host or port is refused.
     assert_eq!(
@@ -84,8 +90,16 @@ fn an_rtsp_endpoint_elsewhere_gets_no_saved_login() {
         rtsp_port: Some(8554),
         ..host("cam.local")
     };
-    let error = other_port.copy_login(&saved, &defaults()).unwrap_err();
+    let error = other_port
+        .copy_login(&saved, &defaults(), LoginUse::Stream)
+        .unwrap_err();
     assert_eq!(error.location, Some(Location::field("password")));
+    // Questions to the web interface alone take the login whatever the saved RTSP port or URL.
+    let mut discovery = host("cam.local");
+    discovery
+        .copy_login(&other_rtsp(), &defaults(), LoginUse::Discovery)
+        .unwrap();
+    assert_eq!(discovery.password.unwrap().expose(), "literal");
     // A scanned camera's login goes to its own address only: a URL elsewhere is refused.
     let scanned = |url: Option<&str>| {
         let new = NewLive {
@@ -104,7 +118,9 @@ fn an_rtsp_endpoint_elsewhere_gets_no_saved_login() {
         password: Some(Secret::new("typed")),
         ..host("cam.local")
     };
-    typed.copy_login(&saved, &defaults()).unwrap();
+    typed
+        .copy_login(&saved, &defaults(), LoginUse::Stream)
+        .unwrap();
 }
 
 #[test]
@@ -123,7 +139,8 @@ fn an_ipv6_camera_is_the_same_endpoint_however_it_is_spelled() {
     };
     // The saved URL brackets the address and the new stream's host does not.
     let mut new = host("2001:db8::1");
-    new.copy_login(&saved, &defaults()).unwrap();
+    new.copy_login(&saved, &defaults(), LoginUse::Stream)
+        .unwrap();
     assert_eq!(new.password.unwrap().expose(), "literal");
     // An expanded spelling of the address is the same destination.
     let expanded = host("2001:DB8:0:0:0:0:0:1");

@@ -71,7 +71,7 @@ fn camera(
         && let Some(held) = like.and_then(|item| state.sessions.find_item(item))
         && let Source::Live(saved) = &held.item.recipe.source
     {
-        new.copy_login(saved, &defaults)
+        new.copy_login(saved, &defaults, intake::LoginUse::Discovery)
             .map_err(|error| invalid(&error))?;
     }
     let item = intake::live(new, &defaults, &handlers).map_err(|error| invalid(&error))?;

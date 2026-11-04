@@ -161,19 +161,30 @@ pub struct NewLive {
     pub overlay: Option<NewLiveOverlay>,
 }
 
+/// What a copied login is for, which decides where the copy may send it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum LoginUse {
+    /// A new stream, which sends the login to its RTSP endpoint as well as to the web interface.
+    Stream,
+    /// Questions to the camera's web interface only, such as stream sizes and analytics sources.
+    Discovery,
+}
+
 impl NewLive {
     /// Fills a blank user and password from the login saved with `source`, when this stream is for the same camera:
     /// the same host text, protocol and port once `defaults` fill what is blank. Another host gets nothing, so a saved
     /// password is never sent where the person who adds the stream did not first see it go. A user entered and not
     /// `source`'s keeps its own password too, which `source`'s does not belong to.
     ///
-    /// The RTSP login goes to the stream URL's host and port, or the camera's with its RTSP port, so a copy needs
-    /// that endpoint to be the one `source` already sends its login to; any other is refused, as the person must then
-    /// enter the login for that server.
+    /// A [`LoginUse::Stream`] login also goes to the stream URL's host and port, or the camera's with its RTSP port,
+    /// so a copy needs that endpoint to be the one `source` already sends its login to; any other is refused, as the
+    /// person must then enter the login for that server. A [`LoginUse::Discovery`] login goes only to the web
+    /// interface the camera check above compares, so it has no further destination to check.
     pub fn copy_login(
         &mut self,
         source: &LiveRecipe,
         defaults: &LiveDefaults,
+        usage: LoginUse,
     ) -> Result<(), UserError> {
         let protocol = self.protocol.unwrap_or(defaults.protocol);
         let port = |protocol: Protocol, port: i64| match port {
@@ -198,7 +209,9 @@ impl NewLive {
         if !user_blank && !password_blank {
             return Ok(());
         }
-        self.check_login_destination(&source.rtsp_endpoint(), defaults)?;
+        if usage == LoginUse::Stream {
+            self.check_login_destination(&source.rtsp_endpoint(), defaults)?;
+        }
         if user_blank {
             self.username = Some(source.username.clone());
         }

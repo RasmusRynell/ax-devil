@@ -85,9 +85,15 @@ impl LiveLane {
     ///
     /// The lane reports the events of samples that arrive after it attaches. Those the track already holds were
     /// reported to the viewers that were there, or are history for this one: a viewer that reconnects keeps the
-    /// events it has, so repeating the retained ones would duplicate them.
-    pub fn new(track: Arc<dyn TrackRead>, source: u16, lane: u16, policy_revision: u32) -> Self {
-        let snapshot = track.snapshot();
+    /// events it has, so repeating the retained ones would duplicate them. `snapshot` is the view [`release`](Self::release)
+    /// would get now, the open sample included, so the events a frame already showed from it count as reported.
+    pub fn new(
+        track: Arc<dyn TrackRead>,
+        snapshot: &TrackSnapshot,
+        source: u16,
+        lane: u16,
+        policy_revision: u32,
+    ) -> Self {
         let last = snapshot
             .keys
             .times
@@ -95,7 +101,7 @@ impl LiveLane {
             .and_then(|times| times.len().checked_sub(1));
         let reported = last.and_then(|last| snapshot.keys.times.as_ref()?.get(last));
         let reported_events = last
-            .and_then(|last| track.scene_in(&snapshot, last).ok())
+            .and_then(|last| track.scene_in(snapshot, last).ok())
             .map_or(0, |scene| scene.events().len());
         Self {
             track,

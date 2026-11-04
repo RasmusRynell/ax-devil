@@ -83,26 +83,17 @@ pub fn confirm(
     settings: &settings::Settings,
     confirmation: &Confirmation,
 ) -> Result<(), settings::Error> {
-    let state = settings.state();
-    let scopes = [settings::Scope::Personal];
-    let mut values = state.values(&scopes);
     let record =
         serde_json::json!({ "reference": confirmation.reference, "host": confirmation.host });
-    let confirmed = values
-        .entry("camera.confirmed".to_owned())
-        .or_insert_with(|| serde_json::Value::Array(Vec::new()));
-    if let Some(list) = confirmed.as_array_mut()
-        && !list.contains(&record)
-    {
+    // One read and write under the settings' lock, so a concurrent confirmation or save is never overwritten.
+    settings.update("camera.confirmed", |stored| {
+        let mut list = stored.as_array().cloned().unwrap_or_default();
+        if list.contains(&record) {
+            return None;
+        }
         list.push(record);
-    }
-    // Personal settings travel with the shortcuts, which this leaves as they are.
-    let shortcuts = state
-        .shortcuts()
-        .into_iter()
-        .map(|(id, key)| (id.to_owned(), key))
-        .collect();
-    settings.replace(&scopes, &settings::Change { values, shortcuts })?;
+        Some(serde_json::Value::Array(list))
+    })?;
     Ok(())
 }
 
@@ -111,20 +102,26 @@ mod tests {
     use super::*;
 
     #[test]
-    fn a_confirmation_is_kept_once_in_the_settings() {
+    fn confirmations_from_concurrent_windows_are_all_kept_once() {
         let folder = tempfile::tempdir().unwrap();
         let settings = settings::Settings::load(&folder.path().join("default.json")).unwrap();
-        let confirmation = Confirmation {
-            reference: "CAM_PASS".into(),
-            host: "10.0.0.7".into(),
-        };
-        confirm(&settings, &confirmation).unwrap();
-        confirm(&settings, &confirmation).unwrap();
+        std::thread::scope(|scope| {
+            for window in 0..16 {
+                let settings = &settings;
+                scope.spawn(move || {
+                    let confirmation = Confirmation {
+                        reference: format!("CAM_PASS_{}", window % 8),
+                        host: "10.0.0.7".into(),
+                    };
+                    confirm(settings, &confirmation).unwrap();
+                });
+            }
+        });
         let reloaded = settings::Settings::load(&folder.path().join("default.json")).unwrap();
         let state = reloaded.state();
         let kept = state
             .stored("camera.confirmed")
             .and_then(|value| value.as_array());
-        assert_eq!(kept.map(Vec::len), Some(1));
+        assert_eq!(kept.map(Vec::len), Some(8));
     }
 }

@@ -13,8 +13,8 @@ use std::path::{Path, PathBuf};
 mod live_stream;
 
 pub use live_stream::{
-    DataHubDefaults, LiveDefaults, LiveMode, MqttDefaults, NewDataHub, NewLive, NewLiveOverlay,
-    NewMqtt, live,
+    DataHubDefaults, LiveDefaults, LiveMode, LoginUse, MqttDefaults, NewDataHub, NewLive,
+    NewLiveOverlay, NewMqtt, live,
 };
 
 /// An overlay file the user chose to add to a video.
