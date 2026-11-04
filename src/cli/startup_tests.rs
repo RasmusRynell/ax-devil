@@ -40,21 +40,19 @@ fn a_failure_logs_the_chain_of_causes_that_led_to_it() {
     assert_eq!(causes(&Because("alone", None)), None);
 }
 
-/// Ctrl+C before the first yield, when only a handler installed by `watch` itself can catch it, then a startup error:
-/// the run still ends as interrupted.
+/// Ctrl+C with no task listening for it, then a startup error: the run still ends as interrupted, so the answer does
+/// not wait for anything to be scheduled.
 #[cfg(unix)]
 #[tokio::test]
 async fn an_early_ctrl_c_wins_over_the_startup_error_that_follows() {
-    let interrupt = Interrupt::watch();
-    assert!(interrupt.status().is_none());
+    let interrupt = Interrupt::listen();
     let sent = std::process::Command::new("kill")
         .args(["-INT", &std::process::id().to_string()])
         .status()
         .unwrap();
     assert!(sent.success());
-    while interrupt.status().is_none() {
-        tokio::time::sleep(std::time::Duration::from_millis(5)).await;
-    }
+    // Lets the runtime hand the signal to its listeners.
+    tokio::time::sleep(std::time::Duration::from_millis(50)).await;
 
     let failed = Err("settings.json is not valid JSON".into());
     assert_eq!(

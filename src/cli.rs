@@ -226,13 +226,18 @@ fn settings_folder(
 
 /// Starts what `command` asks for: the desktop backend, `serve` or the shell.
 async fn run_backend(global: Global, command: Option<Command>, plugins: Arc<Plugins>) -> ExitCode {
-    let interrupt = Interrupt::watch();
+    let launcher = matches!(command, Some(Command::App(_)));
+    // The launcher only waits for the shell, which gets Ctrl+C from the terminal as well and ends itself.
+    let interrupt = if launcher {
+        Interrupt::ignore()
+    } else {
+        Interrupt::watch()
+    };
     let paths = Paths::resolve(
         &|name| std::env::var_os(name),
         global.config,
         global.cache_dir,
     );
-    let launcher = matches!(command, Some(Command::App(_)));
     let log_file = paths.as_ref().ok().map(|paths| paths.log_file.as_path());
     logging::init(global.log_level, log_file.filter(|_| !launcher));
     ax_devil::plugins::log_problems(&plugins.info());

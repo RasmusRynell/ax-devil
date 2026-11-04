@@ -19,13 +19,12 @@ use std::{
     future::IntoFuture,
     net::SocketAddr,
     path::PathBuf,
-    pin::Pin,
     process::ExitCode,
     sync::{
-        Arc,
+        Arc, Mutex, PoisonError,
         atomic::{AtomicBool, Ordering},
     },
-    task::{Context, Waker},
+    task::{Context, Poll, Waker},
     time::Duration,
 };
 use tokio::sync::watch;
@@ -41,40 +40,91 @@ const LIVE_SHUTDOWN: Duration = Duration::from_secs(3);
 /// The exit status of a run that Ctrl+C ended: 128 plus SIGINT, as a shell reports an interrupted program.
 const INTERRUPTED: u8 = 130;
 
+/// The source of Ctrl+C events.
+#[cfg(unix)]
+type Listener = tokio::signal::unix::Signal;
+/// The source of Ctrl+C events.
+#[cfg(windows)]
+type Listener = tokio::signal::windows::CtrlC;
+
 /// Ctrl+C, watched from before anything starts to the end of the run. It owns the stop signal, so an interruption
 /// is remembered whatever else happens: a startup error does not hide it.
-#[derive(Clone)]
 pub(super) struct Interrupt {
     stop: watch::Sender<bool>,
-    happened: Arc<AtomicBool>,
+    events: Arc<Events>,
+}
+
+/// The Ctrl+C events not yet taken, and whether one was.
+struct Events {
+    listener: Mutex<Option<Listener>>,
+    happened: AtomicBool,
+}
+
+impl Events {
+    /// Takes a pending event. `happened` is set while the listener is locked, so whoever takes the lock afterwards
+    /// sees either the flag or the event, never neither.
+    fn poll(&self, cx: &mut Context) -> Poll<()> {
+        let mut listener = self.listener.lock().unwrap_or_else(PoisonError::into_inner);
+        if self.happened.load(Ordering::Acquire) {
+            return Poll::Ready(());
+        }
+        if let Some(Poll::Ready(Some(()))) =
+            listener.as_mut().map(|listener| listener.poll_recv(cx))
+        {
+            self.happened.store(true, Ordering::Release);
+            return Poll::Ready(());
+        }
+        Poll::Pending
+    }
 }
 
 impl Interrupt {
-    /// Installs the Ctrl+C handler before returning. It turns the stop signal on.
+    /// Installs the Ctrl+C handler before returning, and turns the stop signal on when Ctrl+C comes. Needs a runtime.
     pub(super) fn watch() -> Self {
-        let (stop, _) = watch::channel(false);
-        let happened = Arc::new(AtomicBool::new(false));
-        let mut ctrl_c: Pin<Box<dyn Future<Output = std::io::Result<()>> + Send>> =
-            Box::pin(tokio::signal::ctrl_c());
-        // Tokio installs the handler when the future is first polled, not when a spawned task first runs.
-        let _ = ctrl_c
-            .as_mut()
-            .poll(&mut Context::from_waker(Waker::noop()));
-        let (stop_on_ctrl_c, flag) = (stop.clone(), Arc::clone(&happened));
+        let interrupt = Self::listen();
+        let (stop, events) = (interrupt.stop.clone(), Arc::clone(&interrupt.events));
         tokio::spawn(async move {
-            if ctrl_c.await.is_ok() {
-                flag.store(true, Ordering::Release);
-            }
-            stop_on_ctrl_c.send_replace(true);
+            std::future::poll_fn(|cx| events.poll(cx)).await;
+            stop.send_replace(true);
         });
-        Self { stop, happened }
+        interrupt
     }
 
-    /// The exit status of an interrupted run, once Ctrl+C has been pressed.
+    /// Installs the handler and nothing else: [`Interrupt::status`] still sees Ctrl+C, but nothing stops.
+    pub(super) fn listen() -> Self {
+        #[cfg(unix)]
+        let listener = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::interrupt());
+        #[cfg(windows)]
+        let listener = tokio::signal::windows::ctrl_c();
+        Self::with(listener.ok())
+    }
+
+    /// Ignores Ctrl+C, for the launcher whose child gets it from the terminal as well.
+    pub(super) fn ignore() -> Self {
+        Self::with(None)
+    }
+
+    fn with(listener: Option<Listener>) -> Self {
+        Self {
+            stop: watch::channel(false).0,
+            events: Arc::new(Events {
+                listener: Mutex::new(listener),
+                happened: AtomicBool::new(false),
+            }),
+        }
+    }
+
+    /// The exit status of an interrupted run, once Ctrl+C has been pressed. The answer does not wait for the task that
+    /// turns the stop signal on to run. Call it once the run is over: it takes the event the task would wait for.
     pub(super) fn status(&self) -> Option<ExitCode> {
-        self.happened
-            .load(Ordering::Acquire)
-            .then(|| ExitCode::from(INTERRUPTED))
+        let seen = self
+            .events
+            .poll(&mut Context::from_waker(Waker::noop()))
+            .is_ready();
+        seen.then(|| {
+            self.stop.send_replace(true);
+            ExitCode::from(INTERRUPTED)
+        })
     }
 }
 
