@@ -19,11 +19,13 @@ use std::{
     future::IntoFuture,
     net::SocketAddr,
     path::PathBuf,
+    pin::Pin,
     process::ExitCode,
     sync::{
         Arc,
         atomic::{AtomicBool, Ordering},
     },
+    task::{Context, Waker},
     time::Duration,
 };
 use tokio::sync::watch;
@@ -38,6 +40,43 @@ const LIVE_SHUTDOWN: Duration = Duration::from_secs(3);
 
 /// The exit status of a run that Ctrl+C ended: 128 plus SIGINT, as a shell reports an interrupted program.
 const INTERRUPTED: u8 = 130;
+
+/// Ctrl+C, watched from before anything starts to the end of the run. It owns the stop signal, so an interruption
+/// is remembered whatever else happens: a startup error does not hide it.
+#[derive(Clone)]
+pub(super) struct Interrupt {
+    stop: watch::Sender<bool>,
+    happened: Arc<AtomicBool>,
+}
+
+impl Interrupt {
+    /// Installs the Ctrl+C handler before returning. It turns the stop signal on.
+    pub(super) fn watch() -> Self {
+        let (stop, _) = watch::channel(false);
+        let happened = Arc::new(AtomicBool::new(false));
+        let mut ctrl_c: Pin<Box<dyn Future<Output = std::io::Result<()>> + Send>> =
+            Box::pin(tokio::signal::ctrl_c());
+        // Tokio installs the handler when the future is first polled, not when a spawned task first runs.
+        let _ = ctrl_c
+            .as_mut()
+            .poll(&mut Context::from_waker(Waker::noop()));
+        let (stop_on_ctrl_c, flag) = (stop.clone(), Arc::clone(&happened));
+        tokio::spawn(async move {
+            if ctrl_c.await.is_ok() {
+                flag.store(true, Ordering::Release);
+            }
+            stop_on_ctrl_c.send_replace(true);
+        });
+        Self { stop, happened }
+    }
+
+    /// The exit status of an interrupted run, once Ctrl+C has been pressed.
+    pub(super) fn status(&self) -> Option<ExitCode> {
+        self.happened
+            .load(Ordering::Acquire)
+            .then(|| ExitCode::from(INTERRUPTED))
+    }
+}
 
 /// Set to `1` by the desktop shell: the backend then stops when its standard input closes, so it never outlives the
 /// shell, even one that crashed. Unset, a closed standard input (a service, a container) changes nothing.
@@ -55,28 +94,19 @@ pub(super) struct Services {
     network: Arc<Network>,
     cache_dir: PathBuf,
     stop: watch::Sender<bool>,
-    /// Whether Ctrl+C turned the stop signal on.
-    interrupted: Arc<AtomicBool>,
 }
 
 impl Services {
     /// Loads the settings, starts the video cache and queues `launch` for the first Local session. Ctrl+C turns the
     /// stop signal on, and so does the end of the standard input when [`EXIT_ON_STDIN_CLOSE_VARIABLE`] asks for it.
-    /// Ctrl+C is watched before anything else, so one during startup still ends in [`Services::serve`]'s cleanup.
+    /// `interrupt` owns the stop signal, which is already on when Ctrl+C came during startup.
     pub(super) fn start(
         paths: &Paths,
         plugins: Arc<Plugins>,
         launch: Option<Launch>,
+        interrupt: &Interrupt,
     ) -> Result<Self, Box<dyn Error>> {
-        let (stop, _) = watch::channel(false);
-        let interrupted = Arc::new(AtomicBool::new(false));
-        let (stop_on_ctrl_c, flag) = (stop.clone(), Arc::clone(&interrupted));
-        tokio::spawn(async move {
-            if tokio::signal::ctrl_c().await.is_ok() {
-                flag.store(true, Ordering::Release);
-            }
-            stop_on_ctrl_c.send_replace(true);
-        });
+        let stop = interrupt.stop.clone();
         let settings = Arc::new(settings::Settings::load(&paths.config_file)?);
         tracing::info!("Loaded settings from {}", paths.config_file.display());
         let cache_dir = paths.cache_dir(settings.state().folder("storage.cache_dir"));
@@ -111,7 +141,6 @@ impl Services {
             network,
             cache_dir,
             stop,
-            interrupted,
         })
     }
 
@@ -133,13 +162,12 @@ impl Services {
     }
 
     /// Serves `router` until the stop signal, giving connections [`SHUTDOWN_GRACE`] to close, then ends every viewer,
-    /// closes the live connections and waits once for the decode threads to finish their frame and exit. The exit
-    /// status is success, or [`INTERRUPTED`] when Ctrl+C ended the run.
+    /// closes the live connections and waits once for the decode threads to finish their frame and exit.
     pub(super) async fn serve(
         self,
         listener: tokio::net::TcpListener,
         router: Router,
-    ) -> Result<ExitCode, Box<dyn Error>> {
+    ) -> Result<(), Box<dyn Error>> {
         let (mut graceful, mut expired) = (self.stop.subscribe(), self.stop.subscribe());
         let server = axum::serve(
             listener,
@@ -170,12 +198,7 @@ impl Services {
         if !matches!(retired, Ok(true)) {
             tracing::warn!("Some video decoders did not stop in time");
         }
-        served?;
-        if self.interrupted.load(Ordering::Acquire) {
-            tracing::warn!("Application interrupted by user");
-            return Ok(ExitCode::from(INTERRUPTED));
-        }
-        Ok(ExitCode::SUCCESS)
+        Ok(served?)
     }
 }
 
@@ -270,7 +293,6 @@ mod tests {
             network: Network::new(),
             cache_dir,
             stop,
-            interrupted: Arc::new(AtomicBool::new(false)),
         };
         let router = ax_devil::app(services.state(Policy::Local));
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();

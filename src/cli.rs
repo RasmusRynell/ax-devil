@@ -35,9 +35,11 @@ use launch::{describe, launch};
 mod live;
 mod plugins;
 mod services;
-use services::Services;
+use services::{Interrupt, Services};
 #[cfg(test)]
 mod catalog_tests;
+#[cfg(test)]
+mod startup_tests;
 #[cfg(test)]
 mod tests;
 
@@ -224,6 +226,7 @@ fn settings_folder(
 
 /// Starts what `command` asks for: the desktop backend, `serve` or the shell.
 async fn run_backend(global: Global, command: Option<Command>, plugins: Arc<Plugins>) -> ExitCode {
+    let interrupt = Interrupt::watch();
     let paths = Paths::resolve(
         &|name| std::env::var_os(name),
         global.config,
@@ -233,12 +236,15 @@ async fn run_backend(global: Global, command: Option<Command>, plugins: Arc<Plug
     let log_file = paths.as_ref().ok().map(|paths| paths.log_file.as_path());
     logging::init(global.log_level, log_file.filter(|_| !launcher));
     ax_devil::plugins::log_problems(&plugins.info());
-    match command {
-        Some(Command::App(args)) => started(launch_app(&args)),
+    let (prefix, result) = match command {
+        Some(Command::App(args)) => ("Application failed to start: ", launch_app(&args)),
         command => match paths {
-            Err(error) => fail("", error.into()),
+            Err(error) => ("", Err(error.into())),
             Ok(paths) => match command {
-                Some(Command::Serve(args)) => started(serve(&paths, args, plugins).await),
+                Some(Command::Serve(args)) => (
+                    "Application failed to start: ",
+                    serve(&paths, args, plugins, &interrupt).await,
+                ),
                 command => match launch(
                     command,
                     &plugins.handlers(),
@@ -249,19 +255,38 @@ async fn run_backend(global: Global, command: Option<Command>, plugins: Arc<Plug
                             .map_err(|error| error.to_string())
                     },
                 ) {
-                    Ok(launch) => {
-                        started(host_desktop(&paths, global.share_address, plugins, launch).await)
-                    }
-                    Err(reason) => fail("", reason.into()),
+                    Ok(launch) => (
+                        "Application failed to start: ",
+                        host_desktop(&paths, global.share_address, plugins, launch, &interrupt)
+                            .await,
+                    ),
+                    Err(reason) => ("", Err(reason.into())),
                 },
             },
         },
-    }
+    };
+    finish(&interrupt, prefix, result)
 }
 
-/// The exit status of what ran: its own, or failure with the reason logged as the app failing to start.
-fn started(result: Result<ExitCode, Box<dyn Error>>) -> ExitCode {
-    result.unwrap_or_else(|error| fail("Application failed to start: ", error))
+/// The exit status of the run. Ctrl+C decides it, and an error that came with or after it is only detail; otherwise
+/// it is the run's own status, or failure with the reason logged under `prefix`.
+fn finish(
+    interrupt: &Interrupt,
+    prefix: &str,
+    result: Result<ExitCode, Box<dyn Error>>,
+) -> ExitCode {
+    let Some(interrupted) = interrupt.status() else {
+        return result.unwrap_or_else(|error| fail(prefix, error));
+    };
+    // Error level, so every --log-level shows it, as Python prints it whatever the level.
+    tracing::error!("Application interrupted by user");
+    if let Err(error) = result {
+        tracing::debug!("{prefix}{error}");
+        if let Some(causes) = causes(error.as_ref()) {
+            tracing::debug!("{causes}");
+        }
+    }
+    interrupted
 }
 
 /// Logs `error` after `prefix`, then its chain of causes at DEBUG, which is where Python shows its traceback.
@@ -292,8 +317,9 @@ async fn host_desktop(
     share_address: SocketAddr,
     plugins: Arc<Plugins>,
     launch: Option<Launch>,
+    interrupt: &Interrupt,
 ) -> Result<ExitCode, Box<dyn Error>> {
-    let services = Services::start(paths, plugins, launch)?;
+    let services = Services::start(paths, plugins, launch, interrupt)?;
     let port = std::env::var("PORT")
         .unwrap_or_else(|_| "7330".into())
         .parse::<u16>()?;
@@ -307,7 +333,8 @@ async fn host_desktop(
     let hosting = Hosting::Lan(ShareListener::new(share_address, &state));
     services
         .serve(listener, app(state.with_hosting(hosting)))
-        .await
+        .await?;
+    Ok(ExitCode::SUCCESS)
 }
 
 /// The backend for other machines. It reads the same settings file, but only the Server settings are reachable.
@@ -315,9 +342,10 @@ async fn serve(
     paths: &Paths,
     args: ServeArgs,
     plugins: Arc<Plugins>,
+    interrupt: &Interrupt,
 ) -> Result<ExitCode, Box<dyn Error>> {
     share::refuse_development_build().map_err(|reason| format!("serve: {reason}"))?;
-    let services = Services::start(paths, plugins, None)?;
+    let services = Services::start(paths, plugins, None, interrupt)?;
     let chosen = std::env::var(PASSWORD_VARIABLE)
         .ok()
         .filter(|text| !text.is_empty());
@@ -356,7 +384,8 @@ async fn serve(
         })
         .with_limits(limits)
         .with_hosting(Hosting::Server(base));
-    services.serve(listener, app(state)).await
+    services.serve(listener, app(state)).await?;
+    Ok(ExitCode::SUCCESS)
 }
 
 /// Starts the desktop shell and waits for it, passing on its exit code.
