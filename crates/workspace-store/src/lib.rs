@@ -19,7 +19,9 @@ use handlers::Handlers;
 use overlay_sync::MatchPolicy;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
-use workspace::{Content, ContentId, ItemId, Recipe, Source, Workspace, WorkspaceItem};
+use workspace::{
+    Content, ContentId, Environment, ItemId, Recipe, Source, Workspace, WorkspaceItem,
+};
 
 pub use rows::{Row, RowKind, RowStatus, rows};
 
@@ -193,8 +195,8 @@ pub enum DocCommand {
     /// existed. An item whose id is already in the workspace is replaced in place. With `open`, a viewer should open
     /// for it.
     AddResolved {
-        /// The item to add.
-        item: WorkspaceItem,
+        /// The item to add (boxed: a live recipe makes an item much larger than the rest of the enum).
+        item: Box<WorkspaceItem>,
         /// What it resolved to.
         content: Box<Content>,
         /// Whether a viewer should open for it.
@@ -205,6 +207,12 @@ pub enum DocCommand {
     OpenViewer(ItemId),
     /// Withdraws the viewer request. Does nothing for an unknown item.
     CloseViewer(ItemId),
+    /// Resolves the item again under a new generation, whether or not its viewer is open: how an open item that failed
+    /// (a live stream waiting for a confirmation) tries again. Does nothing for an unknown item or one resolving.
+    Resolve(ItemId),
+    /// Removes the item from the workspace with its resolution, its viewer request, its bookmarks and its reviewed
+    /// marks. A result still resolving for it is dropped. Does nothing for an unknown item.
+    Remove(ItemId),
     /// Hides or shows an entry or lane.
     SetHidden {
         /// What to hide or show.
@@ -288,7 +296,7 @@ pub fn apply(state: &WorkspaceState, command: DocCommand) -> (WorkspaceState, Ve
                     generation: ContentGen(next.next_generation),
                 },
             );
-            next.put(item);
+            next.put(*item);
         }
         DocCommand::OpenViewer(id) => {
             let known = next.workspace.items.iter().find(|item| item.id == id);
@@ -300,6 +308,23 @@ pub fn apply(state: &WorkspaceState, command: DocCommand) -> (WorkspaceState, Ve
             }
         }
         DocCommand::CloseViewer(id) => {
+            next.open.remove(&id);
+        }
+        DocCommand::Resolve(id) => {
+            let known = next.workspace.items.iter().find(|item| item.id == id);
+            if let Some(item) = known.cloned()
+                && !matches!(next.resolutions.get(&id), Some(Resolution::Pending { .. }))
+            {
+                jobs.push(next.start(&item));
+            }
+        }
+        DocCommand::Remove(id) => {
+            next.workspace.items.retain(|item| item.id != id);
+            next.workspace
+                .bookmarks
+                .retain(|bookmark| bookmark.target.item != id);
+            next.workspace.reviewed.retain(|target| target.item != id);
+            next.resolutions.remove(&id);
             next.open.remove(&id);
         }
         DocCommand::SetHidden { target, hidden } => {
@@ -342,10 +367,9 @@ pub fn apply(state: &WorkspaceState, command: DocCommand) -> (WorkspaceState, Ve
             // A resolved item knows its slots; one that is resolving or failed has no content to check against, so
             // the user's choice is kept for the next one.
             let allowed = match next.resolutions.get(&item) {
-                Some(Resolution::Resolved { content, .. }) => content
-                    .entries()
-                    .iter()
-                    .any(|entry| entry.lane_slots().contains(&slot.as_str())),
+                Some(Resolution::Resolved { content, .. }) => {
+                    content.lane_slots().contains(&slot.as_str())
+                }
                 _ => true,
             };
             // An unreadable item is written back exactly as read, so it takes no matching.
@@ -390,14 +414,17 @@ pub fn complete(
     next
 }
 
-/// Runs a job with the installed `handlers`. Reads the file system, so callers keep it off an async executor's
-/// workers. A cancelled job gives [`Interrupt::Cancelled`], which the caller reports to no one.
+/// Runs a job with the installed `handlers`, expanding `$NAME` references from `env`. Reads the file system, so callers
+/// keep it off an async executor's workers. A cancelled job gives [`Interrupt::Cancelled`], which the caller reports
+/// to no one.
 pub fn resolve(
     job: &ResolveJob,
     handlers: &Handlers,
+    env: &Environment,
     cancel: &CancelToken,
 ) -> Result<Content, Interrupt<UserError>> {
-    job.recipe.resolve(&job.item, &job.name, handlers, cancel)
+    job.recipe
+        .resolve(&job.item, &job.name, handlers, env, cancel)
 }
 
 #[cfg(test)]

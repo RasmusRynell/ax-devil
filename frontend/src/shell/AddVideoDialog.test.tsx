@@ -9,6 +9,7 @@ const decoder = (handler: string, ...extensions: string[]): DecoderInfo => ({
   handler,
   display_name: handler,
   extensions,
+  live: true,
   options: [],
 });
 

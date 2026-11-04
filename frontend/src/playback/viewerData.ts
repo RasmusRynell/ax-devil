@@ -126,7 +126,7 @@ export class ViewerData {
    * and `sticky` settings; what the old connection was asked is asked again, and lanes that changed forget their catalog.
    */
   reopen(
-    opened: Opened,
+    opened: Pick<Opened, "lanes" | "lane_defaults" | "catalogs">,
     personal: string | null | undefined,
     prior: readonly LaneSettings[] | undefined,
     sticky?: Sticky,

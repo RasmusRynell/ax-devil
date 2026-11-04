@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 use workspace::ContentId;
 
-use crate::{content::ContentInfo, playback::WarningInfo};
+use crate::{content::ContentInfo, live::NewLiveWire, playback::WarningInfo};
 
 /// The workspace and what is known about each item, as one audience may see it.
 #[derive(Serialize, Deserialize, TS)]
@@ -95,11 +95,27 @@ pub struct ItemState {
     pub id: String,
     /// The name the item shows: what the user named it, or its default.
     pub label: String,
+    /// What the item is, which a sidebar view of one kind lists before it has resolved.
+    pub kind: ItemKind,
     /// Whether a viewer should open for the item once it resolves. Stays set; the frontend remembers which
     /// viewers it has opened.
     pub open: bool,
     /// Whether the item has Content yet.
     pub resolution: ResolutionState,
+}
+
+/// What an item is, from its recipe.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "lowercase")]
+pub enum ItemKind {
+    /// A video file with overlay files.
+    Video,
+    /// A playlist from a resolver.
+    Playlist,
+    /// A camera's live stream.
+    Live,
+    /// An item this build cannot read, kept as it was.
+    Unreadable,
 }
 
 /// How far an item has resolved.
@@ -129,6 +145,8 @@ pub enum NewItem {
         #[serde(default)]
         overlays: Vec<NewOverlayWire>,
     },
+    /// A camera's live stream. Adding it connects to nothing: the stream starts when its viewer opens.
+    Live(Box<NewLiveWire>),
 }
 
 /// An overlay file to add to a video.

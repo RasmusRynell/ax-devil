@@ -3,6 +3,7 @@
 
 mod disk;
 mod document;
+mod live;
 mod recents;
 mod recovery;
 

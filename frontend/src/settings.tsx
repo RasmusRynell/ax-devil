@@ -44,13 +44,20 @@ interface Local {
   shortcuts: Partial<Shortcuts>;
 }
 
+/** The value of *row* when the backend has none: a list of records is built from its rows of field values. */
+function defaultOf(row: Row) {
+  const kind = row.kind;
+  if (kind.type === "records")
+    return kind.default.map((values) =>
+      Object.fromEntries(kind.fields.map((field, at) => [field, values[at]])),
+    );
+  return "default" in kind ? kind.default : kind.type === "auto_or_whole" ? "auto" : "";
+}
+
 const LOCAL_KEY = "ax-devil.preferences";
 const PERSONAL = SETTINGS.filter((row) => row.scope === "personal");
-const DEFAULT_VALUES = Object.fromEntries(
-  SETTINGS.map((row) => [
-    row.key,
-    "default" in row.kind ? row.kind.default : row.kind.type === "auto_or_whole" ? "auto" : "",
-  ]),
+export const DEFAULT_VALUES = Object.fromEntries(
+  SETTINGS.map((row) => [row.key, defaultOf(row)]),
 ) as Values;
 const STANDARD_SHORTCUTS = Object.fromEntries(
   COMMANDS.map((command) => [command.id, command.key]),
@@ -80,7 +87,9 @@ const holds = (row: Row, value: unknown) =>
       ? isSticky(value)
       : row.kind.type === "text"
         ? typeof value === "string"
-        : row.kind.type === "choice" && row.kind.options.some(([name]) => name === value);
+        : row.kind.type === "records"
+          ? Array.isArray(value)
+          : row.kind.type === "choice" && row.kind.options.some(([name]) => name === value);
 
 /** What this browser kept: only what the Personal rows and commands still accept, ignoring anything unreadable. */
 function readLocal(): Local {

@@ -112,9 +112,19 @@
   --spacing-segment: calc(var(--spacing-row) - 2 * (var(--spacing-xs) + var(--spacing-hairline)));
   --spacing-activity: calc(var(--spacing-icon) * 2);
   --spacing-sidebar: 34ch;
-  --spacing-panel: 48ch;
+  --spacing-list-least: calc(
+    4 * var(--spacing-row)
+  ); /* the least a scrolling list keeps, so a short window scrolls its view instead */
+  --spacing-logins: calc(
+    5 * var(--spacing-row) + 4 * var(--spacing-s)
+  ); /* five login rows, more scroll */
+  --spacing-search-least: 12ch; /* the least the Live toolbar's search field keeps, so "Search" shows whole; the buttons wrap below it */
+  --spacing-title-least: 6ch; /* the least a list row keeps of its title, which its aside gives way to */
   --spacing-welcome: 40ch;
   --spacing-field: 24ch;
+  --spacing-field-wide: 42ch; /* a field that holds a `$NAME` reference */
+  --spacing-form: 72ch; /* the form of the Add Live Stream dialog */
+  --spacing-panel: 48ch;
   --spacing-preview: calc(var(--text-size-system) * 6.4); /* the miniature window on a theme tile */
   --spacing-sample: calc(
     var(--text-size-larger) * 2

@@ -6,7 +6,7 @@
 
 use super::{
     ContentRef, GrantId, Lease, Refusal, SeatId, SeatKind, SessionState, SharingGen, Use,
-    authorize::{authorize, authorize_stream, open_entry},
+    authorize::{authorize, authorize_stream, open_stream},
     transition::{Effects, Fresh, Outcome},
 };
 use crate::Secret;
@@ -134,7 +134,7 @@ pub(super) fn redeem(
     }
     let authority = authorize_stream(next, pending.seat, pending.lease, &pending.key)?;
     let (item, content, entry) =
-        open_entry(&next.doc, &pending.key).ok_or(Refusal::ContentUnavailable)?;
+        open_stream(&next.doc, &pending.key).ok_or(Refusal::ContentUnavailable)?;
     let matching = next
         .doc
         .workspace
@@ -144,7 +144,7 @@ pub(super) fn redeem(
         .find(|known| known.id == item)
         .map(|known| known.recipe.lane_matching.clone())
         .unwrap_or_default();
-    let (content, entry) = (content.clone(), Box::new(entry.clone()));
+    let (content, entry) = (content.clone(), entry.map(|entry| Box::new(entry.clone())));
     let host_details = next.files
         && next
             .seats

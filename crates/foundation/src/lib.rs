@@ -10,7 +10,7 @@ mod seqinfo;
 mod time;
 
 pub use cancel::{CancelToken, Cancelled, Interrupt};
-pub use error::{ErrorCode, HostPath, Location, UserError, Warning};
+pub use error::{Confirmation, ErrorCode, HostPath, Location, UserError, Warning};
 pub use frame::{ColorDesc, FrameFailure, FrameLayout, Matrix, PixelFormat, Plane, VideoFrame};
 pub use id::{BookmarkId, ItemId};
 pub use seqinfo::{SeqInfo, parse_seqinfo};

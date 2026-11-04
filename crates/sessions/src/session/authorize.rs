@@ -22,7 +22,7 @@ pub struct ContentRef {
     /// The commit of the Content's resolution, as the Doc names it. Re-resolving or reopening gives a new one.
     #[ts(type = "number")]
     pub generation: ContentGen,
-    /// The entry the stream plays.
+    /// The entry the stream plays; for a video or a live video, the Content's own id.
     #[ts(type = "string")]
     pub entry: ContentId,
 }
@@ -217,7 +217,7 @@ pub fn authorize_stream(
     key: &ContentRef,
 ) -> Result<Authority, Refusal> {
     let standing = standing(state, seat, lease)?;
-    let (item, content, _) = open_entry(&state.doc, key).ok_or(Refusal::ContentUnavailable)?;
+    let (item, content, _) = open_stream(&state.doc, key).ok_or(Refusal::ContentUnavailable)?;
     let follow = || {
         let presented = state.presenter.viewers.get(&item);
         let shown = shown_entry(
@@ -233,31 +233,48 @@ pub fn authorize_stream(
             .unwrap_or(AT_START);
         Ok(Authority::Follow { intent })
     };
-    // What a seat may demand of a stream depends on what the stream carries. Both kinds stream one entry at a time,
-    // so the rule is the same.
+    let own = Authority::Own {
+        priority: standing.priority(),
+    };
+    // What a seat may demand of a stream depends on what the stream carries.
     match content {
+        // Recordings stream one entry at a time; a seat that follows gets the presenter's clock.
         Content::SeekableVideo(_) | Content::Playlist(_) => match standing {
             Standing::Watching | Standing::Following => follow(),
-            Standing::Owner | Standing::Exploring | Standing::Editing => Ok(Authority::Own {
-                priority: standing.priority(),
-            }),
+            Standing::Owner | Standing::Exploring | Standing::Editing => Ok(own),
         },
+        // A live feed has no clock and no entry to present: any seat may watch while the item is open, and one that
+        // follows holds `Follow` authority, which only watches. The intent is unused.
+        Content::LiveVideo(_) => Ok(match standing {
+            Standing::Watching | Standing::Following => Authority::Follow { intent: AT_START },
+            Standing::Owner | Standing::Exploring | Standing::Editing => own,
+        }),
     }
 }
 
 /// The item, Content and entry `key` names, at exactly the generation it carries, while the item is open and
-/// resolved.
-pub(super) fn open_entry<'a>(
+/// resolved. A live video has no entry: its one stream is named by the Content's own id in both places, and the entry
+/// is `None`.
+pub(super) fn open_stream<'a>(
     doc: &'a Doc,
     key: &ContentRef,
-) -> Option<(ItemId, &'a Content, &'a Entry)> {
+) -> Option<(ItemId, &'a Content, Option<&'a Entry>)> {
     let workspace = &doc.workspace;
     workspace.open.iter().copied().find_map(|item| {
         let (content, generation) = current(workspace, &item)?;
         if content.id() != &key.content || generation != key.generation {
             return None;
         }
-        Some((item, content, content.entry(&key.entry)?))
+        let entry = match content {
+            Content::SeekableVideo(_) | Content::Playlist(_) => Some(content.entry(&key.entry)?),
+            Content::LiveVideo(_) => {
+                if key.entry != key.content {
+                    return None;
+                }
+                None
+            }
+        };
+        Some((item, content, entry))
     })
 }
 

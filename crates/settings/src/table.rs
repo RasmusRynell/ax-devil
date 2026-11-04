@@ -7,9 +7,6 @@ use crate::{
 use serde::Serialize;
 use serde_json::Value;
 
-/// Shown in place of a literal secret; sending it back keeps the stored secret.
-pub const MASK: &str = "********";
-
 /// Who a setting belongs to, which decides who may read and change it on a backend that several people use.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -198,27 +195,365 @@ pub const TABLE: &[Setting] = &[
         quick_setup: false,
         scope: Scope::Server,
     },
+    Setting {
+        key: "camera.host",
+        // What a new Live Stream starts from; a reference stays one in the item.
+        kind: Kind::Text {
+            default: "$AX_DEVIL_TARGET_ADDR",
+        },
+        label: "Camera host",
+        page: None,
+        section: "",
+        live: true,
+        env: true,
+        secret: false,
+        quick_setup: false,
+        scope: Scope::Server,
+    },
+    Setting {
+        key: "camera.user",
+        kind: Kind::Text {
+            default: "$AX_DEVIL_TARGET_USER",
+        },
+        label: "Camera username",
+        page: None,
+        section: "",
+        live: true,
+        env: true,
+        secret: false,
+        quick_setup: false,
+        scope: Scope::Server,
+    },
+    Setting {
+        key: "camera.password",
+        kind: Kind::Text {
+            default: "$AX_DEVIL_TARGET_PASS",
+        },
+        label: "Camera password",
+        page: None,
+        section: "",
+        live: true,
+        env: true,
+        secret: true,
+        quick_setup: false,
+        scope: Scope::Server,
+    },
+    Setting {
+        key: "camera.protocol",
+        kind: Kind::Choice {
+            options: &[("https", "HTTPS"), ("http", "HTTP")],
+            default: "https",
+        },
+        label: "Camera protocol",
+        page: None,
+        section: "",
+        live: true,
+        env: false,
+        secret: false,
+        quick_setup: false,
+        scope: Scope::Server,
+    },
+    Setting {
+        key: "camera.head",
+        kind: Kind::Whole {
+            min: 1,
+            max: 255,
+            default: 1,
+        },
+        label: "Camera head",
+        page: None,
+        section: "",
+        live: true,
+        env: false,
+        secret: false,
+        quick_setup: false,
+        scope: Scope::Server,
+    },
+    Setting {
+        key: "camera.rtsp_port",
+        kind: Kind::Whole {
+            min: 1,
+            max: 65535,
+            default: 554,
+        },
+        label: "RTSP port",
+        page: None,
+        section: "",
+        live: true,
+        env: false,
+        secret: false,
+        quick_setup: false,
+        scope: Scope::Server,
+    },
+    Setting {
+        key: "camera.resolution",
+        // Empty is the camera's own resolution.
+        kind: Kind::Text { default: "" },
+        label: "Resolution",
+        page: None,
+        section: "",
+        live: true,
+        env: false,
+        secret: false,
+        quick_setup: false,
+        scope: Scope::Server,
+    },
+    Setting {
+        key: "camera.overlay",
+        kind: Kind::Choice {
+            options: &[
+                ("none", "None"),
+                ("rtsp", "RTSP Embedded"),
+                ("mqtt", "MQTT"),
+                ("datahub", "DataHub WebSocket"),
+            ],
+            default: "datahub",
+        },
+        label: "Overlay",
+        page: None,
+        section: "",
+        live: true,
+        env: false,
+        secret: false,
+        quick_setup: false,
+        scope: Scope::Server,
+    },
+    Setting {
+        key: "camera.rtsp_handler",
+        kind: Kind::Text {
+            default: "ONVIF_XML",
+        },
+        label: "RTSP overlay format",
+        page: None,
+        section: "",
+        live: true,
+        env: false,
+        secret: false,
+        quick_setup: false,
+        scope: Scope::Server,
+    },
+    Setting {
+        key: "camera.timeout",
+        // Seconds one request or connection attempt may take; read when connecting, never stored on an item.
+        kind: Kind::Whole {
+            min: 1,
+            max: 600,
+            default: 10,
+        },
+        label: "Connection timeout (seconds)",
+        page: None,
+        section: "",
+        live: true,
+        env: false,
+        secret: false,
+        quick_setup: false,
+        scope: Scope::Server,
+    },
+    Setting {
+        key: "camera.confirmed",
+        // The `$NAME` references the user let a Live Stream send to a host: reference name and resolved host.
+        kind: Kind::Records {
+            fields: &["reference", "host"],
+            default: &[],
+        },
+        label: "Confirmed references",
+        page: None,
+        section: "",
+        live: true,
+        env: false,
+        secret: false,
+        quick_setup: false,
+        scope: Scope::Personal,
+    },
+    Setting {
+        key: "broker.host",
+        kind: Kind::Text {
+            default: "$AX_DEVIL_MQTT_BROKER_ADDR",
+        },
+        label: "MQTT host",
+        page: None,
+        section: "",
+        live: true,
+        env: true,
+        secret: false,
+        quick_setup: false,
+        scope: Scope::Server,
+    },
+    Setting {
+        key: "broker.user",
+        kind: Kind::Text {
+            default: "$AX_DEVIL_MQTT_BROKER_USER",
+        },
+        label: "MQTT username",
+        page: None,
+        section: "",
+        live: true,
+        env: true,
+        secret: false,
+        quick_setup: false,
+        scope: Scope::Server,
+    },
+    Setting {
+        key: "broker.password",
+        kind: Kind::Text {
+            default: "$AX_DEVIL_MQTT_BROKER_PASS",
+        },
+        label: "MQTT password",
+        page: None,
+        section: "",
+        live: true,
+        env: true,
+        secret: true,
+        quick_setup: false,
+        scope: Scope::Server,
+    },
+    Setting {
+        key: "broker.port",
+        kind: Kind::Whole {
+            min: 1,
+            max: 65535,
+            default: 1883,
+        },
+        label: "MQTT port",
+        page: None,
+        section: "",
+        live: true,
+        env: false,
+        secret: false,
+        quick_setup: false,
+        scope: Scope::Server,
+    },
+    Setting {
+        key: "broker.source_key",
+        kind: Kind::Text {
+            default: "com.axis.scene.frame.v1#1",
+        },
+        label: "MQTT data source",
+        page: None,
+        section: "",
+        live: true,
+        env: false,
+        secret: false,
+        quick_setup: false,
+        scope: Scope::Server,
+    },
+    Setting {
+        key: "broker.handler",
+        kind: Kind::Text {
+            default: "ADF_V1_FRAME",
+        },
+        label: "MQTT overlay format",
+        page: None,
+        section: "",
+        live: true,
+        env: false,
+        secret: false,
+        quick_setup: false,
+        scope: Scope::Server,
+    },
+    Setting {
+        key: "datahub.topic",
+        kind: Kind::Text {
+            default: "com.axis.scene.frame.v1",
+        },
+        label: "DataHub topic",
+        page: None,
+        section: "",
+        live: true,
+        env: false,
+        secret: false,
+        quick_setup: false,
+        scope: Scope::Server,
+    },
+    Setting {
+        key: "datahub.channel",
+        kind: Kind::Whole {
+            min: 1,
+            max: 4_294_967_295,
+            default: 1,
+        },
+        label: "DataHub channel",
+        page: None,
+        section: "",
+        live: true,
+        env: false,
+        secret: false,
+        quick_setup: false,
+        scope: Scope::Server,
+    },
+    Setting {
+        key: "datahub.handler",
+        kind: Kind::Text {
+            default: "ADF_V1_FRAME",
+        },
+        label: "DataHub overlay format",
+        page: None,
+        section: "",
+        live: true,
+        env: false,
+        secret: false,
+        quick_setup: false,
+        scope: Scope::Server,
+    },
+    Setting {
+        key: "scan.on_startup",
+        kind: Kind::Bool { default: true },
+        label: "Scan on startup",
+        page: None,
+        section: "",
+        live: true,
+        env: false,
+        secret: false,
+        quick_setup: false,
+        scope: Scope::Server,
+    },
+    Setting {
+        key: "scan.sign_in",
+        // Whether a scan the user starts signs in to a device that answered as an Axis camera; the scan at launch
+        // never does.
+        kind: Kind::Bool { default: true },
+        label: "Sign in to found cameras",
+        page: None,
+        section: "",
+        live: true,
+        env: false,
+        secret: false,
+        quick_setup: false,
+        scope: Scope::Server,
+    },
+    Setting {
+        key: "scan.range",
+        kind: Kind::Text {
+            default: "192.168.1.0/24",
+        },
+        label: "Scan range",
+        page: None,
+        section: "",
+        live: true,
+        env: false,
+        secret: false,
+        quick_setup: false,
+        scope: Scope::Server,
+    },
+    Setting {
+        key: "scan.logins",
+        // Tried in order on a device that answered as an Axis camera; each field may be a `$NAME` reference.
+        kind: Kind::Records {
+            fields: &["user", "password"],
+            default: &[&["$AX_DEVIL_TARGET_USER", "$AX_DEVIL_TARGET_PASS"]],
+        },
+        label: "Scan logins",
+        page: None,
+        section: "",
+        live: true,
+        env: true,
+        secret: true,
+        quick_setup: false,
+        scope: Scope::Server,
+    },
 ];
 
 impl Setting {
-    /// Whether `text` is the secret itself rather than empty or a `$NAME` reference to it.
-    fn literal(&self, text: &str) -> bool {
-        !text.is_empty() && !(self.env && env::reference(text).is_some())
-    }
-
-    /// `value` as shown to a person: the literal in a secret row is masked, everything else as written.
-    pub fn shown(&self, value: &Value) -> Value {
-        match value.as_str() {
-            Some(text) if self.secret && self.literal(text) => Value::String(MASK.into()),
-            _ => value.clone(),
-        }
-    }
-
-    /// Whether a person sent back the masked secret, which means "unchanged".
-    pub(crate) fn is_masked(&self, value: &Value) -> bool {
-        self.secret && value == MASK
-    }
-
     /// Accepts `value` if it fits the kind. A reference in a setting that takes them is expanded by `lookup` first,
     /// so what is checked is what will be used. The reason never contains the value.
     pub(crate) fn check(

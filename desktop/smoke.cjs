@@ -18,6 +18,7 @@ const { gallery } = require("./smoke-gallery.cjs");
 const { playlist } = require("./smoke-playlist.cjs");
 const { plugins } = require("./smoke-plugins.cjs");
 const { exportDialog } = require("./smoke-export.cjs");
+const { live } = require("./smoke-live.cjs");
 const { remote } = require("./smoke-remote.cjs");
 const { sharing } = require("./smoke-sharing.cjs");
 const { video } = require("./smoke-video.cjs");
@@ -255,6 +256,8 @@ module.exports = async (window, shell) => {
     }
   }
 
+  console.log("smoke: live");
+  await live(window);
   console.log("smoke: kit gallery");
   await gallery(window);
   console.log("smoke: video");

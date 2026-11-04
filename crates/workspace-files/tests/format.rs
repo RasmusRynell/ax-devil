@@ -2,12 +2,13 @@
 
 use foundation::{BookmarkId, HostPath, ItemId, MediaTime};
 use handler_api::Settings;
-use overlay_sync::MatchPolicy;
+use overlay_sync::{MatchPolicy, Sticky};
 use serde_json::{Value, json};
 use std::{fs, path::Path};
 use workspace::{
-    Bookmark, BookmarkKind, BookmarkTarget, OverlayRecipe, PlaylistRecipe, Recipe, Source,
-    Unreadable, VideoRecipe, Workspace, WorkspaceItem,
+    Bookmark, BookmarkKind, BookmarkTarget, LIVE_SLOT, LiveOverlay, LiveRecipe, OverlayRecipe,
+    PlaylistRecipe, Protocol, Recipe, Secret, Source, Unreadable, VideoRecipe, Workspace,
+    WorkspaceItem,
 };
 use workspace_files::{SUFFIX, load, save};
 
@@ -122,10 +123,61 @@ fn a_workspace_round_trips_with_paths_inside_its_folder_relative() {
             reason: "This item is not a JSON object.".into(),
         }),
     ));
+    let mut live = item(
+        "",
+        Source::Live(LiveRecipe {
+            host: "$AX_DEVIL_TARGET_ADDR".into(),
+            username: "root".into(),
+            password: Secret::new("$AX_DEVIL_TARGET_PASS"),
+            protocol: Protocol::Http,
+            port: 8080,
+            head: 2,
+            rtsp_port: 8554,
+            resolution: Some("1280x720".into()),
+            url: None,
+            overlay: LiveOverlay::Mqtt {
+                handler: "ADF_V1_FRAME".into(),
+                broker_host: "broker.local".into(),
+                broker_port: 1883,
+                broker_user: "mqtt".into(),
+                broker_pass: Secret::new("literal-secret"),
+                source_key: "com.axis.scene.frame.v1#1".into(),
+            },
+        }),
+    );
+    live.recipe.lane_matching.insert(
+        LIVE_SLOT.into(),
+        MatchPolicy {
+            sticky: Sticky {
+                enabled: false,
+                timeout: None,
+            },
+            ..MatchPolicy::default()
+        },
+    );
+    original.items.push(live);
     let file = dir.join(format!("ws{SUFFIX}"));
     save(&original, &file).unwrap();
 
     let json = read_json(&file);
+    let live = &json["items"][5];
+    assert_eq!(
+        (live["kind"].as_str(), live["label"].as_str()),
+        (Some("live"), Some(""))
+    );
+    assert_eq!(
+        live["password"], "$AX_DEVIL_TARGET_PASS",
+        "a reference is stored as written"
+    );
+    assert_eq!(live["overlay"]["mode"], "mqtt");
+    assert_eq!(
+        live["lane_matching"]["live"]["sticky"]["enabled"], false,
+        "a live stream keeps its matching under its one slot"
+    );
+    assert_eq!(
+        live["overlay"]["broker_pass"], "literal-secret",
+        "credentials are stored as entered"
+    );
     assert_eq!(json["version"], 2);
     assert_eq!(json["items"][0]["video"], "clips/a.mp4");
     assert_eq!(json["items"][0]["overlays"][0]["path"], "clips/a.xml");

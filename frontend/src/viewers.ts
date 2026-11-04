@@ -1,6 +1,7 @@
 import type { ComponentType } from "react";
 import type { ContentInfo } from "./generated/api";
 import { SeekableVideoViewer } from "./viewer/EntryViewer";
+import { LiveVideoViewer } from "./viewer/LiveViewer";
 import { PlaylistViewer } from "./viewer/PlaylistViewer";
 
 type Kind = ContentInfo["kind"];
@@ -15,6 +16,7 @@ export type ViewerProps<K extends Kind = Kind> = {
  * has one.
  */
 export const VIEWERS: { [K in Kind]: ComponentType<ViewerProps<K>> } = {
+  LiveVideo: LiveVideoViewer,
   Playlist: PlaylistViewer,
   SeekableVideo: SeekableVideoViewer,
 };

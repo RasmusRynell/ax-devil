@@ -11,6 +11,7 @@ const HANDLERS: HandlersInfo = {
       handler: "MOT_FILE",
       display_name: "MOT Annotations",
       extensions: [".txt"],
+      live: true,
       options: [
         { key: "width", label: "Image width", kind: { kind: "Integer", min: 1n }, required: true },
       ],

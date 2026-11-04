@@ -20,7 +20,7 @@ use std::{
     collections::{HashMap, VecDeque},
     sync::{Arc, Mutex, PoisonError},
 };
-use workspace::{Content, WorkspaceItem};
+use workspace::{Content, Environment, WorkspaceItem};
 
 /// How many resolved items wait to be added per session. A resolve that finishes as its dialog is cancelled leaves
 /// one that is never added; the oldest of that session makes room. The session id is only a partition, so one
@@ -82,7 +82,9 @@ async fn stage(
     let _cancel_when_dropped = CancelOnDrop(cancel.clone());
     let job = {
         let item = item.clone();
-        tokio::task::spawn_blocking(move || item.resolve(&handlers, &cancel))
+        tokio::task::spawn_blocking(move || {
+            item.resolve(&handlers, &Environment::of_process(), &cancel)
+        })
     };
     let content = job.await.unwrap_or_else(|error| {
         tracing::error!("Finding the playlists of {resolver} failed: {error}");
@@ -313,7 +315,10 @@ mod tests {
             let mut settings = Settings::new();
             settings.insert("root".into(), folder.path().display().to_string().into());
             let item = workspace::intake::playlist("mot_challenge", settings, &handlers).unwrap();
-            let content = item.resolve(&handlers, &CancelToken::new()).ok().unwrap();
+            let content = item
+                .resolve(&handlers, &Environment::of_process(), &CancelToken::new())
+                .ok()
+                .unwrap();
             let id = item.id;
             staged.put(session, item, content, |key| live.contains(&key));
             id

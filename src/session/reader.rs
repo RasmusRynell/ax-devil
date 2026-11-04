@@ -10,6 +10,7 @@
 
 use super::{
     exit::{Exit, INVALID_DATA, NOT_ALLOWED, TOO_BIG, TOO_MANY_COMMANDS},
+    live,
     wire::{self, Bucket, Request},
 };
 use crate::AppState;
@@ -151,11 +152,29 @@ async fn answer(
     {
         return refused(refusal);
     }
+    // The owner's passwords in the settings are for the owner's own streams: a seat that only edits the content adds
+    // streams without them.
+    let owner = authorize(
+        &handle.state(),
+        handle.seat(),
+        handle.lease(),
+        Use::Command(Scope::Control),
+    )
+    .is_ok();
+    let mut defaults = live::defaults(&state.settings.state());
+    if !owner {
+        defaults = defaults.without_secrets();
+    }
+    let session = handle.state();
+    let saved = wire::Saved::new(&session.doc.workspace.workspace, owner);
     let command = match wire::command(
         cmd,
         &state.plugins.handlers(),
         &state.staged,
         &handle.session().to_string(),
+        &defaults,
+        &state.network,
+        saved,
     ) {
         Ok(Request::Session(command)) => command,
         Ok(Request::Workspace(command)) => {
@@ -189,3 +208,6 @@ async fn answer(
         Err(refusal) => refused(refusal),
     }
 }
+
+#[cfg(test)]
+mod tests;

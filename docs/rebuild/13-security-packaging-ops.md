@@ -25,16 +25,20 @@ workspace can therefore name an attacker host and `$SOME_SECRET` and receive it.
 can pair its own host with `$AX_DEVIL_TARGET_PASS`. Recommended default:
 
 - A credential reference expands only together with its matching host reference (`$AX_DEVIL_TARGET_USER/PASS` with
-  `$AX_DEVIL_TARGET_ADDR`; the `$AX_DEVIL_MQTT_BROKER_*` set likewise), or for a resolved host the user confirmed for
-  that credential. Any other reference needs the same confirmation.
+  `$AX_DEVIL_TARGET_ADDR`; the `$AX_DEVIL_MQTT_BROKER_*` set likewise, but the camera relays the broker login, so
+  the camera host needs the user's confirmation too), or for a resolved host the user confirmed for that
+  credential. Any other reference needs the same confirmation.
 - The confirmation is asked once, on Start, showing the resolved host. It is stored in the app's user state (config),
   keyed by reference name and resolved host, never in the workspace file.
 - Opening a workspace sends no credentials (snapshots, login checks) to a host the user has not started or confirmed.
+  Started: a viewer was opened for the host in this run. Confirmed: the host is the reference bound to the camera host,
+  or the user confirmed a reference for it. A hover or a poll asks a camera only once per cooldown.
 
 ## Network (MUST)
 
 - Network scan sends no credentials until a device answered as Axis; then only over the identifying protocol, as
-  HTTP Digest (`device_discovery/network_scan.py`). Startup scan runs at reduced load and can be turned off.
+  HTTP Digest (`device_discovery/network_scan.py`). The startup scan runs at reduced load, can be turned off and
+  signs in to nothing: only a scan the user starts does.
 - DataHub: Digest before Basic; a rejected Digest never falls back to Basic; redirects rejected; no automatic
   HTTPS-to-HTTP fallback (`data_sources/README.md#live-transports`). Certificate verification: D12.
 - Device API defaults to HTTPS. No telemetry. Regular tests never use the network.

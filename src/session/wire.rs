@@ -1,17 +1,23 @@
 //! Between the Session socket's wire types and the sessions crate: what a received command asks for, and the cursor
 //! and token-bucket limits on what a seat may send.
 
+use crate::network::Network;
 use crate::routes::playback::policy_from_wire;
 use crate::routes::resolve::Staged;
 use api_types::{
     CURSOR_NAME_MAX, CursorElement, CursorPoint, SessionCommand, WorkspaceCommand,
+    live::LiveProtocol,
     workspace::{HiddenTarget, NewItem},
 };
+use foundation::{ErrorCode, ItemId};
 use handlers::Handlers;
 use sessions::session::{Command, Refusal, Scope};
 use std::path::Path;
 use tokio::time::Instant;
-use workspace::{WorkspaceItem, intake::NewOverlay};
+use workspace::{
+    LiveRecipe, Secret, Source, Workspace, WorkspaceItem,
+    intake::{LiveDefaults, NewLive, NewOverlay},
+};
 use workspace_store::{DocCommand, HiddenRef};
 
 /// The scope a wire command needs, known without looking at what it names, so the seat is authorized before the
@@ -21,12 +27,19 @@ pub(super) fn scope(wire: &SessionCommand) -> Option<Scope> {
     match wire {
         SessionCommand::Content { command } => Some(match command {
             api_types::DocCommand::AddItems { items, .. } => {
-                // Every kind of item reads the host's files.
+                // A video reads the host's files; a live stream is only a recipe until its viewer opens.
                 let reads_host = items.iter().any(|item| match item {
                     NewItem::Video { .. } => true,
+                    NewItem::Live(_) => false,
                 });
+                // A stream of a scanned camera carries the login the scan signed in with, which only the owner has.
+                let found = items
+                    .iter()
+                    .any(|item| matches!(item, NewItem::Live(new) if new.found.is_some()));
                 if reads_host {
                     Scope::Host
+                } else if found {
+                    Scope::Control
                 } else {
                     Scope::Content
                 }
@@ -34,6 +47,8 @@ pub(super) fn scope(wire: &SessionCommand) -> Option<Scope> {
             api_types::DocCommand::AddResolved { .. } => Scope::Host,
             api_types::DocCommand::OpenViewer { .. }
             | api_types::DocCommand::CloseViewer { .. }
+            | api_types::DocCommand::Resolve { .. }
+            | api_types::DocCommand::Remove { .. }
             | api_types::DocCommand::SetHidden { .. }
             | api_types::DocCommand::SetLaneMatching { .. } => Scope::Content,
         }),
@@ -66,10 +81,13 @@ pub(super) fn command(
     handlers: &Handlers,
     staged: &Staged,
     session: &str,
+    live: &LiveDefaults,
+    network: &Network,
+    saved: Saved<'_>,
 ) -> Result<Request, Refusal> {
     Ok(match wire {
         SessionCommand::Content { command } => Request::Session(Command::Content(doc_command(
-            command, handlers, staged, session,
+            command, handlers, staged, session, live, network, saved,
         )?)),
         SessionCommand::Follow => Request::Session(Command::Follow),
         SessionCommand::Control { control } => Request::Session(Command::Control(control)),
@@ -102,13 +120,16 @@ fn doc_command(
     handlers: &Handlers,
     staged: &Staged,
     session: &str,
+    live: &LiveDefaults,
+    network: &Network,
+    saved: Saved<'_>,
 ) -> Result<DocCommand, Refusal> {
     Ok(match wire {
         api_types::DocCommand::AddItems { items, open } => {
             // The intake checks every entry first, so a request that has one bad entry adds nothing.
             let items = items
                 .iter()
-                .map(|new| intake(new, handlers))
+                .map(|new| intake(new, handlers, live, network, saved))
                 .collect::<Result<Vec<_>, _>>()
                 .map_err(|error| {
                     tracing::debug!("An item was refused: {}", error.reason);
@@ -120,13 +141,15 @@ fn doc_command(
         api_types::DocCommand::AddResolved { item, label } => {
             let (item, content) = staged.take(session, &item).ok_or(Refusal::Invalid)?;
             DocCommand::AddResolved {
-                item: workspace::intake::with_label(item, label.as_deref()),
+                item: Box::new(workspace::intake::with_label(item, label.as_deref())),
                 content: Box::new(content),
                 open: true,
             }
         }
         api_types::DocCommand::OpenViewer { item } => DocCommand::OpenViewer(item),
         api_types::DocCommand::CloseViewer { item } => DocCommand::CloseViewer(item),
+        api_types::DocCommand::Resolve { item } => DocCommand::Resolve(item),
+        api_types::DocCommand::Remove { item } => DocCommand::Remove(item),
         api_types::DocCommand::SetHidden { target, hidden } => DocCommand::SetHidden {
             target: hidden_ref(target),
             hidden,
@@ -145,7 +168,13 @@ fn doc_command(
 }
 
 /// The item the intake makes of what the client asked to add: the same rules for every kind and every way in.
-fn intake(new: &NewItem, handlers: &Handlers) -> Result<WorkspaceItem, foundation::UserError> {
+fn intake(
+    new: &NewItem,
+    handlers: &Handlers,
+    live: &LiveDefaults,
+    network: &Network,
+    saved: Saved<'_>,
+) -> Result<WorkspaceItem, foundation::UserError> {
     match new {
         NewItem::Video { path, overlays } => {
             let overlays: Vec<_> = overlays
@@ -159,7 +188,77 @@ fn intake(new: &NewItem, handlers: &Handlers) -> Result<WorkspaceItem, foundatio
                 .collect();
             workspace::intake::video(Path::new(path), &overlays, handlers)
         }
+        NewItem::Live(new) => {
+            let mut new = new.clone();
+            let found = new.found.take();
+            let like = new.like.take();
+            let mut new = NewLive::from(*new);
+            if let Some(address) = found {
+                scanned(&mut new, &address, network)?;
+            } else if let Some(recipe) = like.and_then(|item| saved.live(item)) {
+                new.copy_login(recipe, live);
+            }
+            workspace::intake::live(new, live, handlers)
+        }
     }
+}
+
+/// The logins saved with the workspace's streams, for the seat that may copy them.
+#[derive(Clone, Copy)]
+pub(super) struct Saved<'a> {
+    workspace: &'a Workspace,
+    /// Whether the seat is the session's owner; any other copies no login.
+    owner: bool,
+}
+
+impl<'a> Saved<'a> {
+    pub(super) fn new(workspace: &'a Workspace, owner: bool) -> Self {
+        Self { workspace, owner }
+    }
+
+    /// The recipe of the live stream `item`, when the seat may copy its login.
+    fn live(self, item: ItemId) -> Option<&'a LiveRecipe> {
+        if !self.owner {
+            return None;
+        }
+        self.workspace
+            .items
+            .iter()
+            .find(|candidate| candidate.id == item)
+            .and_then(|found| match &found.recipe.source {
+                Source::Live(recipe) => Some(recipe),
+                _ => None,
+            })
+    }
+}
+
+/// Points `new` at the camera the scan signed in to at `address`, with the login that worked. The password is
+/// written into the recipe here and nowhere else: it is neither logged nor named in the refusal.
+fn scanned(
+    new: &mut NewLive,
+    address: &str,
+    network: &Network,
+) -> Result<(), foundation::UserError> {
+    let Some((row, login)) = network.signed_in(address) else {
+        return Err(foundation::UserError::new(
+            ErrorCode::WorkspaceInvalid,
+            "The scan has not signed in to that camera",
+        ));
+    };
+    let standard = match row.scheme {
+        LiveProtocol::Http => 80,
+        LiveProtocol::Https => 443,
+    };
+    new.host = Some(row.address);
+    new.protocol = Some(row.scheme.into());
+    new.port = Some(if row.port == standard {
+        0
+    } else {
+        row.port.into()
+    });
+    new.username = Some(login.user);
+    new.password = Some(Secret::new(login.password.expose()));
+    Ok(())
 }
 
 fn hidden_ref(target: HiddenTarget) -> HiddenRef {

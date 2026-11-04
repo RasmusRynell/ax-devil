@@ -21,6 +21,7 @@
 mod data;
 mod ingest;
 mod lane;
+mod live;
 mod map;
 mod pull;
 mod service;
@@ -37,6 +38,7 @@ pub use lane::{
     LanePolicy, LaneReady, LaneSnapshot, LaneStatus, MapRun, OverlayEvent, SampleItem,
     SourceSnapshot,
 };
+pub use live::{LIVE_KEEP_FRAMES, LiveEvents, LiveLane, LiveOut, SampleEvents};
 pub use map::cell;
 pub use service::OverlayService;
 pub use viewer::{FileScopeBlocked, FileScopeInput, ViewerOverlays};

@@ -143,8 +143,9 @@ pub enum Outcome {
         authority: Authority,
         /// The Content the stream carries, as it is resolved now.
         content: Content,
-        /// The entry of `content` the stream plays; boxed, as it is far larger than the other outcomes.
-        entry: Box<Entry>,
+        /// The entry of `content` the stream plays, boxed as it is far larger than the other outcomes; `None` for a
+        /// live video, which has none.
+        entry: Option<Box<Entry>>,
         /// How the workspace says each lane of `entry` matches its records to frames; `None` for the default.
         matching: BTreeMap<String, MatchPolicy>,
         /// Whether the holder may learn the host's paths and diagnostic text: it is the owner of a session whose

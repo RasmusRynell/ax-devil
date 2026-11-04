@@ -8,7 +8,7 @@ use crate::{HiddenRef, Resolution, WorkspaceState};
 /// What a row stands for.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum RowKind {
-    /// A video item, or an item with no Content yet.
+    /// A video or live item, or an item with no Content yet.
     Item,
     /// One playlist of a playlist item.
     Playlist,
@@ -107,6 +107,18 @@ pub fn rows(state: &WorkspaceState) -> Vec<Row> {
                     });
                     entry_rows(&mut rows, &video.entry, false);
                 }
+                // A live video has no entry; its one stream is named by its own id.
+                Content::LiveVideo(live) => rows.push(Row {
+                    entry: Some(live.id.clone()),
+                    hidden: state.is_hidden(&HiddenRef::Entry(live.id.clone())),
+                    ..row(
+                        item.id.to_string(),
+                        RowKind::Item,
+                        item.display_name(),
+                        None,
+                        false,
+                    )
+                }),
                 Content::Playlist(playlist) => {
                     let several = playlist.playlists.len() > 1;
                     let mut entries = playlist.entries.iter();
@@ -161,7 +173,7 @@ mod tests {
     use handlers::Handlers;
     use std::{collections::HashSet, fs, path::Path};
     use workspace::{
-        WorkspaceItem,
+        Environment, WorkspaceItem,
         intake::{self, NewOverlay},
     };
 
@@ -184,7 +196,13 @@ mod tests {
                 None => continue,
                 Some(Err(error)) => Err(error),
                 Some(Ok(())) => {
-                    match recipe.resolve(&id, "item", &Handlers::built_in(), &CancelToken::new()) {
+                    match recipe.resolve(
+                        &id,
+                        "item",
+                        &Handlers::built_in(),
+                        &Environment::of_process(),
+                        &CancelToken::new(),
+                    ) {
                         Ok(content) => Ok(content),
                         Err(Interrupt::Failed(error)) => {
                             panic!("the fixture item resolves: {error}")

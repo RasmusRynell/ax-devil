@@ -5,6 +5,7 @@ pub mod content;
 mod error;
 pub mod handlers;
 pub mod inspect;
+pub mod live;
 pub mod playback;
 pub mod render;
 pub mod report;
@@ -20,7 +21,7 @@ use std::collections::BTreeMap;
 use ts_rs::TS;
 
 /// Raised when a route changes in a way an older desktop shell or frontend cannot use.
-pub const API_VERSION: u32 = 11;
+pub const API_VERSION: u32 = 12;
 
 /// Raised when the desktop shell's own interface (the preload bridge and its IPC) changes in a way a frontend served
 /// by a remote backend cannot use. The shell loads a remote backend only when its [`AppInfo::shell`] matches.
@@ -67,7 +68,7 @@ pub struct SettingsState {
     /// The settings the caller may read by dotted key, such as `"ui.theme"`, with the default when unset: those of
     /// its scopes, a `$NAME` reference as written and a literal secret masked.
     #[ts(
-        type = "Record<SettingKey, string | boolean | number | { enabled: boolean; timeout_ms: number | null; opacity: number }>"
+        type = "Record<SettingKey, string | boolean | number | Array<Record<string, string>> | { enabled: boolean; timeout_ms: number | null; opacity: number }>"
     )]
     pub values: BTreeMap<String, serde_json::Value>,
     /// The key of every command once the user's changes apply; `null` when unbound. Empty unless the caller holds
@@ -82,7 +83,7 @@ pub struct SettingsState {
 pub struct SettingsChange {
     /// Every setting of the caller's scopes by dotted key.
     #[ts(
-        type = "Record<SettingKey, string | boolean | number | { enabled: boolean; timeout_ms: number | null; opacity: number }>"
+        type = "Record<SettingKey, string | boolean | number | Array<Record<string, string>> | { enabled: boolean; timeout_ms: number | null; opacity: number }>"
     )]
     pub values: BTreeMap<String, serde_json::Value>,
     /// The key of every command; `null` when unbound. Empty unless the caller holds the `preferences` grant.

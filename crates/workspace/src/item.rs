@@ -2,6 +2,8 @@ use crate::content::{
     Content, ContentId, Entry, OverlayRef, SeekableVideoContent, VideoRef, check_unique_lanes,
     playlist_content,
 };
+use crate::credentials::Environment;
+use crate::live::LiveRecipe;
 use foundation::{CancelToken, ErrorCode, HostPath, Interrupt, ItemId, Location, UserError};
 use handler_api::{FieldKind, Form, Settings, Values};
 use handlers::Handlers;
@@ -47,6 +49,8 @@ pub enum Source {
     Video(VideoRecipe),
     /// A playlist from a resolver.
     Playlist(PlaylistRecipe),
+    /// A camera's live stream.
+    Live(LiveRecipe),
     /// An item a workspace file held that this build cannot read.
     Unreadable(Unreadable),
 }
@@ -85,12 +89,13 @@ pub struct WorkspaceItem {
 
 impl WorkspaceItem {
     /// The name the item shows while it has no Content to name: the label, or else the default of its recipe, which
-    /// is the resolver id of a playlist and the file name of a video.
+    /// is the resolver id of a playlist, the file name of a video and the host of a live stream.
     pub fn display_name(&self) -> String {
         if !self.label.is_empty() {
             return self.label.clone();
         }
         match &self.recipe.source {
+            Source::Live(recipe) => recipe.default_name(),
             Source::Video(video) => file_name(video.video.as_path()),
             Source::Playlist(playlist) => playlist.resolver.clone(),
             Source::Unreadable(_) => "Unreadable item".to_owned(),
@@ -101,10 +106,11 @@ impl WorkspaceItem {
     pub fn resolve(
         &self,
         handlers: &Handlers,
+        env: &Environment,
         cancel: &CancelToken,
     ) -> Result<Content, Interrupt<UserError>> {
         self.recipe
-            .resolve(&self.id, &self.display_name(), handlers, cancel)
+            .resolve(&self.id, &self.display_name(), handlers, env, cancel)
     }
 }
 
@@ -127,11 +133,16 @@ impl Recipe {
     /// A playlist recipe asks its resolver for playlists, numbers repeated playlist and entry names, then checks
     /// that the lane names within each entry are unique, since they are the identity of lanes. Resolving twice gives
     /// the same ids. What the resolver or those checks refuse reads `Playlist resolver '<id>' failed: <why>`.
+    ///
+    /// A live recipe is checked like one just entered, then its `$NAME` references are expanded from `env`: one fails
+    /// with [`ErrorCode::NeedsConfirmation`] unless it is bound to its host or confirmed for it (see
+    /// [`LiveRecipe::needs_confirmation`]). Nothing is connected to; the viewer does that.
     pub fn resolve(
         &self,
         item: &ItemId,
         name: &str,
         handlers: &Handlers,
+        env: &Environment,
         cancel: &CancelToken,
     ) -> Result<Content, Interrupt<UserError>> {
         cancel.check()?;
@@ -176,6 +187,9 @@ impl Recipe {
                     .map(Content::Playlist)
                     .map_err(|error| Interrupt::Failed(failed(error)))
             }
+            Source::Live(recipe) => recipe
+                .resolve(item, handlers, env)
+                .map_err(Interrupt::Failed),
             Source::Unreadable(unreadable) => Err(Interrupt::Failed(
                 UserError::new(ErrorCode::WorkspaceInvalid, unreadable.reason.clone()).at(*item),
             )),
@@ -384,6 +398,7 @@ mod tests {
             &ItemId::generate(),
             "item",
             &Handlers::built_in(),
+            &Environment::of_process(),
             &CancelToken::new(),
         ) {
             Err(Interrupt::Failed(error)) => error,

@@ -10,7 +10,8 @@ use std::sync::Arc;
 
 use foundation::{CancelToken, Interrupt};
 use handler_api::{
-    DecodeError, DecodeSummary, Decoder, Form, Framing, Input, OnEqualKey, SceneSink, Spec, Values,
+    DecodeError, DecodeSummary, Decoder, Form, Framing, Header, Input, OnEqualKey, SceneSink, Spec,
+    Values,
 };
 use memchr::memchr;
 use parse::{Object, object};
@@ -144,6 +145,16 @@ impl Decoder for AdfDecoder {
         sink: &mut dyn SceneSink,
         cancel: &CancelToken,
     ) -> Result<DecodeSummary, Interrupt<DecodeError>> {
+        let filter = filter_policy(self.filters);
+        // A live source never ends, so it has its class filters from the start. A file is published once decoded, and
+        // a header would publish it while it is still being read.
+        if input.path().is_none() {
+            sink.header(Header {
+                filter: filter.clone(),
+                coverage: Coverage::Sparse,
+                metadata: Fields::new(),
+            });
+        }
         'records: while let Some(record) = input.next(cancel)? {
             let read =
                 parse_line(record.bytes).and_then(|value| (self.read)(object(&value, "the line")?));
@@ -160,7 +171,7 @@ impl Decoder for AdfDecoder {
         }
         Ok(DecodeSummary {
             warnings: Vec::new(),
-            filter: filter_policy(self.filters),
+            filter,
             metadata: Fields::new(),
             coverage: Coverage::Sparse,
         })

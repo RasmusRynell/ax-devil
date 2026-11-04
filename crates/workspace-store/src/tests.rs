@@ -18,7 +18,12 @@ fn add(
 
 /// Resolves the job as a session would and commits it.
 fn finish(state: &WorkspaceState, job: &ResolveJob) -> WorkspaceState {
-    let result = match resolve(job, &Handlers::built_in(), &CancelToken::new()) {
+    let result = match resolve(
+        job,
+        &Handlers::built_in(),
+        &Environment::of_process(),
+        &CancelToken::new(),
+    ) {
         Ok(content) => Ok(content),
         Err(Interrupt::Failed(error)) => Err(error),
         Err(Interrupt::Cancelled) => panic!("nothing cancels the job"),
@@ -91,7 +96,7 @@ fn an_already_resolved_item_is_added_ready_and_open_with_no_job() {
     let (state, jobs) = apply(
         &WorkspaceState::default(),
         DocCommand::AddResolved {
-            item: added,
+            item: Box::new(added),
             content: Box::new(content.clone()),
             open: true,
         },
@@ -161,6 +166,17 @@ fn closing_and_reopening_a_viewer_resolves_again_under_a_new_generation_with_the
     assert!(
         jobs.is_empty() && again == reopened,
         "an open viewer stays as it is"
+    );
+
+    let (resolving, jobs) = apply(&reopened, DocCommand::Resolve(id));
+    assert!(
+        resolving.open.contains(&id) && jobs.len() == 1,
+        "Resolve works on an open viewer"
+    );
+    let (waiting, jobs) = apply(&resolving, DocCommand::Resolve(id));
+    assert!(
+        jobs.is_empty() && waiting == resolving,
+        "and waits for the attempt in flight"
     );
 }
 
@@ -261,6 +277,69 @@ fn a_lane_matching_lands_in_the_recipe_by_slot_and_resolves_nothing() {
     );
 }
 
+#[test]
+fn a_live_streams_matching_is_kept_under_its_one_slot() {
+    let new = workspace::intake::NewLive {
+        host: Some("203.0.113.5".into()),
+        ..Default::default()
+    };
+    let defaults = workspace::intake::LiveDefaults {
+        host: String::new(),
+        username: String::new(),
+        password: workspace::Secret::new(""),
+        protocol: workspace::Protocol::Http,
+        head: 1,
+        rtsp_port: 554,
+        resolution: String::new(),
+        overlay: workspace::intake::LiveMode::None,
+        rtsp_handler: String::new(),
+        mqtt: workspace::intake::MqttDefaults {
+            handler: String::new(),
+            host: String::new(),
+            user: String::new(),
+            password: workspace::Secret::new(""),
+            port: 1883,
+            source_key: String::new(),
+        },
+        datahub: workspace::intake::DataHubDefaults {
+            handler: String::new(),
+            topic: String::new(),
+            channel: 1,
+        },
+    };
+    let added = workspace::intake::live(new, &defaults, &Handlers::built_in()).unwrap();
+    let id = added.id;
+    let (state, jobs) = add(&WorkspaceState::default(), vec![added], false);
+    let state = finish(&state, &jobs[0]);
+    let matching = overlay_sync::MatchPolicy {
+        basis: Some(overlay_sync::MatchBasis::Time),
+        ..Default::default()
+    };
+    let set = |slot: &str| {
+        apply(
+            &state,
+            DocCommand::SetLaneMatching {
+                item: id,
+                slot: slot.to_owned(),
+                matching,
+            },
+        )
+        .0
+    };
+    assert_eq!(
+        set(workspace::LIVE_SLOT).workspace.items[0]
+            .recipe
+            .lane_matching
+            .get(workspace::LIVE_SLOT),
+        Some(&matching)
+    );
+    assert_eq!(
+        set("nope"),
+        state,
+        "a slot the stream lacks changes nothing"
+    );
+}
+
 fn replace(workspace: Workspace, saved: Saved) -> DocCommand {
     DocCommand::Replace {
         workspace,
@@ -357,4 +436,49 @@ fn replacing_the_workspace_closes_viewers_bumps_the_epoch_and_never_reuses_a_gen
     ));
     let resolved = finish(&replaced, &jobs[0]);
     assert!(generation(&resolved, added.id) > before);
+}
+
+#[test]
+fn removing_an_item_takes_its_viewer_and_resolution_with_it_and_drops_a_result_still_on_its_way() {
+    let folder = tempfile::tempdir().unwrap();
+    let file = folder.path().join("gate.mp4");
+    std::fs::write(&file, "x").unwrap();
+    let (kept, removed) = (item(&file), item(&file));
+    let (kept_id, removed_id) = (kept.id, removed.id);
+    let (state, jobs) = add(&WorkspaceState::default(), vec![kept, removed], true);
+    let resolved = finish(&state, &jobs[0]);
+
+    let (gone, jobs) = apply(&resolved, DocCommand::Remove(removed_id));
+
+    assert!(jobs.is_empty());
+    let ids: Vec<_> = gone.workspace.items.iter().map(|item| item.id).collect();
+    assert_eq!(ids, [kept_id]);
+    assert!(gone.open.contains(&kept_id) && !gone.open.contains(&removed_id));
+    assert!(gone.resolutions.contains_key(&kept_id) && !gone.resolutions.contains_key(&removed_id));
+    assert_eq!(
+        finish(&gone, &jobs_of(&state, removed_id)),
+        gone,
+        "the result of the removed item's attempt is dropped"
+    );
+    let (again, _) = apply(&gone, DocCommand::Remove(removed_id));
+    assert_eq!(again, gone, "removing it twice changes nothing");
+}
+
+/// The job that was resolving `id` in `state`.
+fn jobs_of(state: &WorkspaceState, id: ItemId) -> ResolveJob {
+    let Some(Resolution::Pending { attempt }) = state.resolutions.get(&id) else {
+        panic!("the item waits on an attempt");
+    };
+    let item = state
+        .workspace
+        .items
+        .iter()
+        .find(|item| item.id == id)
+        .unwrap();
+    ResolveJob {
+        item: id,
+        attempt: *attempt,
+        name: item.display_name(),
+        recipe: item.recipe.clone(),
+    }
 }

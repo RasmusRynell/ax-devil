@@ -50,7 +50,7 @@ export type SettingsState = {
  * The settings the caller may read by dotted key, such as `"ui.theme"`, with the default when unset: those of
  * its scopes, a `$NAME` reference as written and a literal secret masked.
  */
-values: Record<SettingKey, string | boolean | number | { enabled: boolean; timeout_ms: number | null; opacity: number }>, 
+values: Record<SettingKey, string | boolean | number | Array<Record<string, string>> | { enabled: boolean; timeout_ms: number | null; opacity: number }>, 
 /**
  * The key of every command once the user's changes apply; `null` when unbound. Empty unless the caller holds
  * the `preferences` grant: shortcuts are Personal.
@@ -65,7 +65,7 @@ export type SettingsChange = {
 /**
  * Every setting of the caller's scopes by dotted key.
  */
-values: Record<SettingKey, string | boolean | number | { enabled: boolean; timeout_ms: number | null; opacity: number }>, 
+values: Record<SettingKey, string | boolean | number | Array<Record<string, string>> | { enabled: boolean; timeout_ms: number | null; opacity: number }>, 
 /**
  * The key of every command; `null` when unbound. Empty unless the caller holds the `preferences` grant.
  */
@@ -134,7 +134,7 @@ location: string, };
  * The public kind of a failure. A code and the ids in a [`Location::Item`] are all a viewer who may not see the
  * host's files is told; the reason and any path stay with the host.
  */
-export type ErrorCode = "InvalidPath" | "FileNotFound" | "FileUnreadable" | "NotAVideo" | "UnsupportedFormat" | "IndexingFailed" | "FileChanged" | "DecodeFailed" | "ContentNotFound" | "ProtocolViolation" | "VideoClosed" | "UnknownHandler" | "OverlayInvalid" | "PlaylistInvalid" | "PluginInvalid" | "CatalogInvalid" | "WorkspaceInvalid" | "WorkspaceInUse" | "WorkspaceExists" | "SaveFailed" | "Internal";
+export type ErrorCode = "InvalidPath" | "FileNotFound" | "FileUnreadable" | "NotAVideo" | "UnsupportedFormat" | "IndexingFailed" | "FileChanged" | "DecodeFailed" | "ContentNotFound" | "ProtocolViolation" | "VideoClosed" | "UnknownHandler" | "OverlayInvalid" | "PlaylistInvalid" | "PluginInvalid" | "CatalogInvalid" | "WorkspaceInvalid" | "NeedsConfirmation" | "WorkspaceInUse" | "WorkspaceExists" | "SaveFailed" | "Internal";
 
 /**
  * The values a client may fill into the message for a code. Only ids, never text.
@@ -143,7 +143,12 @@ export type ErrorParams = {
 /**
  * The workspace item the failure is about.
  */
-item?: string, };
+item?: string, 
+/**
+ * For `NeedsConfirmation`: every reference and host to confirm, each with `POST /api/live/confirm`. Only for an
+ * audience with host details: it names resolved hosts and environment variables.
+ */
+confirm?: Array<LiveConfirmation>, };
 
 /**
  * A failure as the wire carries it: the code and its parameters for everyone, and for an audience with host
@@ -304,6 +309,14 @@ item: string, } | { "type": "closeViewer",
 /**
  * The item.
  */
+item: string, } | { "type": "resolve", 
+/**
+ * The item.
+ */
+item: string, } | { "type": "remove", 
+/**
+ * The item.
+ */
 item: string, } | { "type": "setHidden", 
 /**
  * What to hide or show.
@@ -354,7 +367,7 @@ content: string,
  */
 generation: number, 
 /**
- * The entry the stream plays.
+ * The entry the stream plays; for a video or a live video, the Content's own id.
  */
 entry: string, };
 
@@ -812,6 +825,10 @@ id: string,
  */
 label: string, 
 /**
+ * What the item is, which a sidebar view of one kind lists before it has resolved.
+ */
+kind: ItemKind, 
+/**
  * Whether a viewer should open for the item once it resolves. Stays set; the frontend remembers which
  * viewers it has opened.
  */
@@ -820,6 +837,11 @@ open: boolean,
  * Whether the item has Content yet.
  */
 resolution: ResolutionState, };
+
+/**
+ * What an item is, from its recipe.
+ */
+export type ItemKind = "video" | "playlist" | "live" | "unreadable";
 
 /**
  * How far an item has resolved.
@@ -917,7 +939,36 @@ entries: Array<EntryInfo>,
 /**
  * The playlists, each covering the next run of `entries`; at least one.
  */
-playlists: Array<PlaylistSpanInfo>, };
+playlists: Array<PlaylistSpanInfo>, } | { "kind": "LiveVideo", 
+/**
+ * Names the Content and its one stream.
+ */
+id: string, 
+/**
+ * The commit of the Content's resolution, as for a video.
+ */
+generation: number, 
+/**
+ * The name the viewer shows: the user's label, or `Live stream`.
+ */
+display_name: string, 
+/**
+ * The lane's slot, which names it across resolutions.
+ */
+slot: string, 
+/**
+ * Where the overlay comes from.
+ */
+overlay: LiveOverlayKind, 
+/**
+ * The lane names: the overlay's, or the display name for the plain lane of a video without one.
+ */
+lanes: Array<string>, 
+/**
+ * The request that would make this stream again, as stored: `$NAME` references stay references and a literal
+ * password is left out. Only for an audience with host details; `null` for everyone else.
+ */
+recipe: NewLiveWire | null, };
 
 /**
  * One video and its lanes: what a viewer opens.
@@ -964,7 +1015,7 @@ path: string,
 /**
  * The overlay files, each shown as its own lane.
  */
-overlays: Array<NewOverlayWire>, };
+overlays: Array<NewOverlayWire>, } | { "type": "Live" } & NewLiveWire;
 
 /**
  * An overlay file to add to a video.
@@ -1032,7 +1083,11 @@ extensions: Array<string>,
 /**
  * The options it takes, in the order they are shown; empty for a decoder without any.
  */
-options: Array<FieldInfo>, };
+options: Array<FieldInfo>, 
+/**
+ * Whether it can decode a live stream's overlay, not only a file.
+ */
+live: boolean, };
 
 /**
  * The body of `GET /api/plugins`: the built-in plugins, then the installed ones, whether or not they loaded.
@@ -1785,7 +1840,11 @@ locate: string | null, } | { "type": "FileRelease",
 /**
  * The lane's position in `Opened.lanes`.
  */
-lane: number, } | { "type": "Appearances", 
+lane: number, } | { "type": "Live", 
+/**
+ * What to do.
+ */
+action: LiveAction, } | { "type": "Appearances", 
 /**
  * The lane's position in `Opened.lanes`.
  */
@@ -2007,7 +2066,7 @@ request: number,
 /**
  * Why there are no rows.
  */
-unavailable: FileScopeUnavailable, } | { "type": "Appearances", 
+unavailable: FileScopeUnavailable, } | { "type": "LiveOpened" } & LiveOpenedWire | { "type": "LiveStatus" } & LiveStatusWire | { "type": "LiveEvents" } & LiveEventsWire | { "type": "LiveGap" } & LiveGapWire | { "type": "Appearances", 
 /**
  * The lane's position in `Opened.lanes`.
  */
@@ -2024,6 +2083,542 @@ entity: string,
  * The spans, or why there are none.
  */
 appearances: FileAppearances, } | { "type": "Error" } & ErrorWire;
+
+/**
+ * The protocol of a camera's web interface.
+ */
+export type LiveProtocol = "http" | "https";
+
+/**
+ * Where a live video's overlay comes from. At most one per video.
+ */
+export type LiveOverlayKind = "none" | "rtsp" | "mqtt" | "datahub";
+
+/**
+ * Why a feed is not live: the kind of the camera error, as a stable code the client words. Never the device's own
+ * text, which can name the host.
+ */
+export type LiveReason = "LoginRequired" | "LoginRejected" | "Forbidden" | "NotAxis" | "NotFound" | "Unsupported" | "BrokerUnsupportedProtocol" | "BrokerClientIdRejected" | "BrokerBadCredentials" | "BrokerNotAuthorized" | "Busy" | "Unrestorable" | "InvalidTarget" | "Unreachable" | "TimedOut" | "Lost" | "Silent" | "Malformed" | "Throttled" | "DeviceFault";
+
+/**
+ * Where one feed (the video, or the overlay) stands.
+ */
+export type LiveFeedStatus = { "status": "Connecting" } | { "status": "Live" } | { "status": "Stalled", 
+/**
+ * How many seconds of silence make a feed stalled.
+ */
+seconds: number, } | { "status": "Reconnecting", 
+/**
+ * Which retry this is, from 1; reset when data flows again.
+ */
+attempt: number, 
+/**
+ * Why the last attempt failed.
+ */
+reason: LiveReason, } | { "status": "Failed", 
+/**
+ * Why.
+ */
+reason: LiveReason, };
+
+/**
+ * What a holder of a live stream asks of its feed.
+ */
+export type LiveAction = "pause" | "resume" | "retry";
+
+/**
+ * The answer to `Open` for a live stream; the first message of its socket.
+ */
+export type LiveOpenedWire = { 
+/**
+ * The protocol version, to compare with `PLAYBACK_PROTOCOL`.
+ */
+protocol: number, 
+/**
+ * The one lane: the overlay's, or a plain lane when the video has none. Its position in lane messages is 0.
+ */
+lane: LaneInfo, 
+/**
+ * What the lane starts with.
+ */
+lane_defaults: LaneDefaultsWire, 
+/**
+ * The catalogs the lane may draw with, built-ins first and Standard first among them.
+ */
+catalogs: Array<CatalogInfoWire>, };
+
+/**
+ * Where the feeds stand. Sent when any of it changes.
+ */
+export type LiveStatusWire = { 
+/**
+ * The video.
+ */
+video: LiveFeedStatus, 
+/**
+ * The overlay; `null` when the video has none.
+ */
+overlay: LiveFeedStatus | null, 
+/**
+ * Whether the overlay's decoder is behind: its queue overflowed and holds until it drains. The Events list gets a
+ * `LiveGap` for it.
+ */
+behind: boolean, };
+
+/**
+ * One change to object identity, as a line of the Events list.
+ */
+export type LiveEventWire = { 
+/**
+ * Which kind of change.
+ */
+kind: OperationKindWire, 
+/**
+ * A one-line description such as `Rename 12 → 57`.
+ */
+label: string, 
+/**
+ * The objects involved: the ones changed first, then the ones they become.
+ */
+entities: Array<string>, };
+
+/**
+ * The events of one sample.
+ */
+export type LiveSampleEventsWire = { 
+/**
+ * The sample's time on the video clock, in microseconds.
+ */
+time_us: number, 
+/**
+ * Its events, in the Scene's order; never empty.
+ */
+events: Array<LiveEventWire>, };
+
+/**
+ * Events a released frame made visible: those of every sample not reported before, up to the one it shows.
+ */
+export type LiveEventsWire = { 
+/**
+ * The frame that made them visible, by sequence id.
+ */
+frame: number, 
+/**
+ * The samples with events, oldest first.
+ */
+samples: Array<LiveSampleEventsWire>, };
+
+/**
+ * Where samples were lost: the overlay's decoder was behind and was reset. The Events list shows a marker.
+ */
+export type LiveGapWire = { 
+/**
+ * When the loss began, on the video clock in microseconds.
+ */
+time_us: number, };
+
+/**
+ * A password in a request. `Debug` prints `***`, so a logged request cannot leak it.
+ */
+export type WireSecret = string;
+
+/**
+ * The overlay the user chose for a new stream; anything left out takes the configured default. Mirrors
+ * `workspace::intake::NewLiveOverlay`.
+ */
+export type NewLiveOverlayWire = { "mode": "none" } | { "mode": "rtsp", 
+/**
+ * The decoder id.
+ */
+handler?: string, } | { "mode": "mqtt", 
+/**
+ * The decoder id.
+ */
+handler?: string, 
+/**
+ * The broker host.
+ */
+broker_host?: string, 
+/**
+ * The broker port, checked against 1 to 65535.
+ */
+broker_port?: number, 
+/**
+ * The broker user.
+ */
+broker_user?: string, 
+/**
+ * The broker password.
+ */
+broker_pass?: WireSecret, 
+/**
+ * The camera's analytics data source.
+ */
+source_key?: string, } | { "mode": "datahub", 
+/**
+ * The decoder id.
+ */
+handler?: string, 
+/**
+ * The topic.
+ */
+topic?: string, 
+/**
+ * The topic's instance, from 1.
+ */
+channel?: number, };
+
+/**
+ * What the user entered to add a live stream. Text that is absent or blank takes its configured default; numbers are
+ * checked against their range by the intake, so its message names the field. Mirrors `workspace::intake::NewLive`.
+ */
+export type NewLiveWire = { 
+/**
+ * The name; the host when empty.
+ */
+label?: string, 
+/**
+ * The camera host or a `$NAME` reference.
+ */
+host?: string, 
+/**
+ * The camera user or a reference.
+ */
+username?: string, 
+/**
+ * The camera password or a reference.
+ */
+password?: WireSecret, 
+/**
+ * The web interface's protocol.
+ */
+protocol?: LiveProtocol, 
+/**
+ * The web interface's port, 0 to 65535; 0 or absent is the standard one.
+ */
+port?: number, 
+/**
+ * The video channel, from 1.
+ */
+head?: number, 
+/**
+ * The RTSP port, 1 to 65535.
+ */
+rtsp_port?: number, 
+/**
+ * The resolution such as `1280x720`; blank is the camera's own.
+ */
+resolution?: string, 
+/**
+ * A stream URL to use instead of the one made from the host.
+ */
+url?: string, 
+/**
+ * The overlay; absent is the configured one.
+ */
+overlay?: NewLiveOverlayWire, 
+/**
+ * The address of a camera the network scan signed in to. The backend then takes the host, protocol, port and
+ * login from the scan, so the login never reaches the client, and the fields above fill in the rest. Only the
+ * session's owner may add such a stream. Never part of a stored recipe.
+ */
+found?: string, 
+/**
+ * A live stream this one is another of. The backend fills a blank user and password from that stream's saved
+ * login, so a literal password never reaches the client, and only while the host, protocol and port are the
+ * same as that stream's and the seat is the session's owner. Never part of a stored recipe.
+ */
+like?: string, };
+
+/**
+ * A `$NAME` reference the user lets a stream send to a host: the body of a confirmation, and what a failed item
+ * that needs one is asked for.
+ */
+export type LiveConfirmation = { 
+/**
+ * The variable's name, without the `$`.
+ */
+reference: string, 
+/**
+ * The host it would be sent to, as the references in the item expand.
+ */
+host: string, };
+
+/**
+ * What an Axis camera said about itself without a login.
+ */
+export type NetworkIdentity = { 
+/**
+ * The product name, such as `Q1656`.
+ */
+model: string, 
+/**
+ * The serial number.
+ */
+serial: string, 
+/**
+ * The firmware version.
+ */
+firmware: string, 
+/**
+ * The product type, such as `Box Camera`.
+ */
+product_type: string, };
+
+/**
+ * Whether the scan signed in to a camera. No password is in any of these.
+ */
+export type NetworkSignIn = { "state": "NotTried" } | { "state": "SignedIn", 
+/**
+ * Which of the scan's logins, by position in the `scan.logins` setting.
+ */
+login_index: number, 
+/**
+ * The architecture, such as `aarch64`; empty if the camera did not say.
+ */
+architecture: string, 
+/**
+ * The system on chip; empty if the camera did not say.
+ */
+soc: string, } | { "state": "Refused" } | { "state": "Failed" };
+
+/**
+ * An Axis camera the network scan found. Only the owner of a backend with the files grant sees these.
+ */
+export type NetworkRow = { 
+/**
+ * Its IPv4 address.
+ */
+address: string, 
+/**
+ * The web protocol that answered.
+ */
+scheme: LiveProtocol, 
+/**
+ * The web port that answered.
+ */
+port: number, 
+/**
+ * What it said about itself.
+ */
+identity: NetworkIdentity, 
+/**
+ * How long it has been up, in seconds, if it said.
+ */
+uptime_s: number | null, 
+/**
+ * The outcome of signing in.
+ */
+sign_in: NetworkSignIn, };
+
+/**
+ * A stream size a camera offers.
+ */
+export type LiveResolution = { 
+/**
+ * Width in pixels.
+ */
+width: number, 
+/**
+ * Height in pixels.
+ */
+height: number, };
+
+/**
+ * The stream sizes a camera head offers, the answer of the resolutions route.
+ */
+export type LiveResolutions = { 
+/**
+ * The sizes, in the camera's order.
+ */
+resolutions: Array<LiveResolution>, };
+
+/**
+ * The analytics data sources a camera publishes, the answer of the sources route.
+ */
+export type LiveSources = { 
+/**
+ * The sources' keys, such as `com.axis.scene.frame.v1#1`.
+ */
+sources: Array<string>, };
+
+/**
+ * The camera a question is about. Anything left out takes the configured default, and text may be a `$NAME`
+ * reference, which expands under the same rule as the references of a stream.
+ */
+export type LiveConnection = { 
+/**
+ * The camera host or a `$NAME` reference.
+ */
+host?: string, 
+/**
+ * The camera user or a reference.
+ */
+username?: string, 
+/**
+ * The camera password or a reference.
+ */
+password?: WireSecret, 
+/**
+ * The web interface's protocol.
+ */
+protocol?: LiveProtocol, 
+/**
+ * The web interface's port, 0 to 65535; 0 or absent is the standard one.
+ */
+port?: number, 
+/**
+ * The video channel, from 1.
+ */
+head?: number, 
+/**
+ * A live stream this connection is another of. The backend fills a blank user and password from that stream's
+ * saved login, as it does when the stream is added (see `NewLiveWire::like`), so the question authenticates as
+ * the stream will and no literal password reaches the client.
+ */
+like?: string, };
+
+/**
+ * The body of `POST /api/live/resolutions`.
+ */
+export type ResolutionsRequest = { 
+/**
+ * The camera and head to ask.
+ */
+connection: LiveConnection, };
+
+/**
+ * What kind of overlay the sources are for.
+ */
+export type SourcesOverlay = "mqtt" | "datahub";
+
+/**
+ * The body of `POST /api/live/sources`.
+ */
+export type SourcesRequest = { 
+/**
+ * The camera to ask.
+ */
+connection: LiveConnection, 
+/**
+ * Which list to return.
+ */
+overlay: SourcesOverlay, };
+
+/**
+ * The DataHub topics a camera offers.
+ */
+export type LiveTopics = { 
+/**
+ * The topics' names.
+ */
+topics: Array<string>, };
+
+/**
+ * The answer of `POST /api/live/sources`: the list the request's overlay asked for.
+ */
+export type SourcesAnswer = { "overlay": "mqtt" } & LiveSources | { "overlay": "datahub" } & LiveTopics;
+
+/**
+ * Why a question to a camera got no answer: the body of a failed `POST /api/live/resolutions` or
+ * `POST /api/live/sources`.
+ */
+export type LiveProblem = { "problem": "Invalid", 
+/**
+ * What to fix.
+ */
+error: ErrorWire, } | { "problem": "NeedsConfirmation", 
+/**
+ * What to ask the user to confirm.
+ */
+confirmation: LiveConfirmation, } | { "problem": "Camera", 
+/**
+ * Why, as a code the client words.
+ */
+reason: LiveReason, };
+
+/**
+ * The body of `POST /api/network/scan`.
+ */
+export type ScanRequestWire = { 
+/**
+ * The addresses and ranges to scan, such as `192.168.1.0/24`. Blank is the local network; absent is the
+ * `scan.range` setting.
+ */
+range?: string, };
+
+/**
+ * The cameras the scan has found so far; one line of the `GET /api/network` stream.
+ */
+export type NetworkSnapshot = { 
+/**
+ * Counts the scans started; rows of an older scan are never shown with a newer number.
+ */
+scan: number, 
+/**
+ * Whether the scan is still running.
+ */
+scanning: boolean, 
+/**
+ * The cameras, by address.
+ */
+rows: Array<NetworkRow>, };
+
+/**
+ * The body of `POST /api/live/check`: the stream whose own login is checked. The answer is the camera as a scan would
+ * report it (`NetworkRow`), or no content when nothing is known: the stream is not resolved, the user has not started
+ * or confirmed its host, its host is not an IPv4 address, it has no user, or no Axis camera answered.
+ */
+export type LiveCheckRequest = { 
+/**
+ * The workspace item.
+ */
+item: string, };
+
+/**
+ * The body of `POST /api/live/expansions`: the host texts of the Add Live Stream form as typed (blank takes the
+ * configured default, whose references are the ones answered).
+ */
+export type ExpansionsRequest = { 
+/**
+ * The camera host.
+ */
+host?: string, 
+/**
+ * The MQTT broker host.
+ */
+broker_host?: string, };
+
+/**
+ * What the references of the default connection texts show. A field is `null` unless its default is a `$NAME` reference
+ * that the user's binding or confirmations let expand for the host in the form; a variable that is not set is an
+ * empty text, and a password only says whether it is set.
+ */
+export type LiveExpansions = { 
+/**
+ * The camera host: the typed one when it is a reference, else the default.
+ */
+host: string | null, 
+/**
+ * The default camera user.
+ */
+username: string | null, 
+/**
+ * Whether the default camera password is set.
+ */
+password_set: boolean | null, 
+/**
+ * The MQTT broker host: the typed one when it is a reference, else the default.
+ */
+broker_host: string | null, 
+/**
+ * The default broker user.
+ */
+broker_user: string | null, 
+/**
+ * Whether the default broker password is set.
+ */
+broker_pass_set: boolean | null, };
 
 /**
  * A catalog document as the backend served it to the viewer: the export draws with exactly that text.
@@ -2363,7 +2958,7 @@ kinds: Array<number>, };
 /**
  * Raised when the messages or the envelope change in a way an older frontend cannot read.
  */
-export const PLAYBACK_PROTOCOL = 6;
+export const PLAYBACK_PROTOCOL = 7;
 
 /**
  * "AXDV" read as a little-endian u32.

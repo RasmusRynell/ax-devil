@@ -12,12 +12,14 @@ mod env;
 mod file;
 mod kind;
 mod migrate;
+mod secret;
 pub mod shortcuts;
 mod table;
 pub mod window;
 
 pub use kind::{Kind, StickyValue};
 pub use migrate::VERSION;
+pub use secret::MASK;
 use serde_json::{Map, Value};
 use std::{
     collections::BTreeMap,
@@ -25,7 +27,7 @@ use std::{
     path::{Path, PathBuf},
     sync::{Arc, Mutex, PoisonError},
 };
-pub use table::{MASK, Scope, Setting, TABLE};
+pub use table::{Scope, Setting, TABLE};
 use tokio::sync::watch;
 
 /// Why settings could not be loaded, validated or saved; the reason is meant for the user and never contains a
@@ -211,6 +213,13 @@ impl State {
         })
     }
 
+    /// The value of the declared setting `key` as stored: a `$NAME` reference as written and a literal secret in full,
+    /// for copying into something new (a Live Stream Item starts from the camera defaults). Never show it to a person;
+    /// [`values`](Self::values) is the shown form.
+    pub fn stored(&self, key: &str) -> Option<&Value> {
+        self.values.get(key)
+    }
+
     /// The folder a setting of kind `Folder` holds; `None` when it is empty (the standard folder) or `key` is not such
     /// a setting.
     pub fn folder(&self, key: &str) -> Option<PathBuf> {
@@ -330,9 +339,10 @@ impl Settings {
                 .values
                 .get(setting.key)
                 .ok_or_else(|| invalid(setting.key, "missing"))?;
-            if !setting.is_masked(value) {
-                values.insert(setting.key.to_owned(), value.clone());
-            }
+            let kept = setting
+                .unmasked(value, current.values.get(setting.key))
+                .map_err(|reason| invalid(setting.key, &reason))?;
+            values.insert(setting.key.to_owned(), kept);
         }
         let overrides = if scopes.contains(&Scope::Personal) {
             shortcuts::overrides_from(&change.shortcuts)?

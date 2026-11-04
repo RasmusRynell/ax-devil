@@ -4,7 +4,8 @@ mod shape;
 
 use foundation::{CancelToken, Interrupt, MediaTime};
 use handler_api::{
-    DecodeError, DecodeSummary, Decoder, Form, Framing, Input, OnEqualKey, SceneSink, Spec, Values,
+    DecodeError, DecodeSummary, Decoder, Form, Framing, Header, Input, OnEqualKey, SceneSink, Spec,
+    Values,
 };
 use quick_xml::{
     Reader,
@@ -70,6 +71,16 @@ impl Decoder for OnvifXmlDecoder {
         sink: &mut dyn SceneSink,
         cancel: &CancelToken,
     ) -> Result<DecodeSummary, Interrupt<DecodeError>> {
+        let filter = filter_policy();
+        // A live source never ends, so it has its class filters from the start. A file is published once decoded, and
+        // a header would publish it while it is still being read.
+        if input.path().is_none() {
+            sink.header(Header {
+                filter: filter.clone(),
+                coverage: Coverage::Sparse,
+                metadata: Fields::new(),
+            });
+        }
         while let Some(record) = input.next(cancel)? {
             match decode_record(record.bytes) {
                 Ok(Some(scene)) => {
@@ -83,7 +94,7 @@ impl Decoder for OnvifXmlDecoder {
         }
         Ok(DecodeSummary {
             warnings: Vec::new(),
-            filter: filter_policy(),
+            filter,
             metadata: Fields::new(),
             coverage: Coverage::Sparse,
         })

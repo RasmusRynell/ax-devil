@@ -4,7 +4,7 @@
 use super::{
     End, Flow, Incoming, Opening, Outbox,
     gate::Gate,
-    next_client, stopped,
+    live, next_client, stopped,
     stream::{self, Setup},
     text,
 };
@@ -20,6 +20,7 @@ use foundation::{CancelToken, ErrorCode, HostPath, Interrupt, UserError};
 use playback::Session;
 use sessions::session::StreamLease;
 use tokio::sync::{mpsc, watch};
+use workspace::Content;
 
 /// Indexing progress is reported at this granularity, so a fast scan sends a hundred messages, not a million.
 const PROGRESS_STEP: f32 = 0.01;
@@ -35,7 +36,18 @@ pub(super) async fn run(
     mut gate: Gate,
 ) -> Flow<()> {
     let mut closing = state.stopping.clone();
-    let entry = lease.entry();
+    let entry = match (lease.content(), lease.entry()) {
+        (Content::LiveVideo(live), _) => {
+            return live::run(state, lease, live, audience, incoming, outbox, gate).await;
+        }
+        (_, Some(entry)) => entry,
+        (_, None) => {
+            return Err(End::Failed(UserError::new(
+                ErrorCode::Internal,
+                "The stream has no entry",
+            )));
+        }
+    };
     let location = video_location(&entry.video);
     tracing::info!("Opening {} for a viewer", location.as_path().display());
     let (videos, video) = (state.videos.clone(), entry.video.clone());
@@ -142,7 +154,8 @@ pub(super) async fn open_video<T: Send + 'static>(
                     | ClientMessage::CancelExport { .. }
                     | ClientMessage::FileQuery { .. }
                     | ClientMessage::Appearances { .. }
-                    | ClientMessage::FileRelease { .. },
+                    | ClientMessage::FileRelease { .. }
+                    | ClientMessage::Live { .. },
                 )) => {}
                 Some(Err(error)) => return Err(End::Failed(error)),
                 Some(Ok(ClientMessage::Open { .. })) => {

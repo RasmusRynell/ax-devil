@@ -9,6 +9,7 @@ mod exit;
 mod files;
 mod launch;
 mod list;
+pub mod live;
 pub mod project;
 mod reader;
 mod socket;

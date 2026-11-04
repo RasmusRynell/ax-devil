@@ -4,15 +4,19 @@ use super::{Command, args};
 use ax_devil::session::Launch;
 use foundation::{Location, UserError};
 use handlers::Handlers;
-use workspace::{WorkspaceItem, intake::NewOverlay};
+use workspace::{
+    WorkspaceItem,
+    intake::{LiveDefaults, NewOverlay},
+};
 use workspace_files::RecoveryFolder;
 
 /// What `command` asks the first window to start from: the workspace file or items it names, or, for a plain launch,
-/// the unsaved work of the last window. The error says what was refused and why.
+/// the unsaved work of the last window. `defaults` is read only for `live`. The error says what was refused and why.
 pub(super) fn launch(
     command: Option<Command>,
     handlers: &Handlers,
     recovery: &RecoveryFolder,
+    defaults: impl FnOnce() -> Result<LiveDefaults, String>,
 ) -> Result<Option<Launch>, String> {
     match command {
         None => Ok(Some(Launch::Restore)),
@@ -27,17 +31,18 @@ pub(super) fn launch(
             Ok(Some(Launch::Open { path, workspace }))
         }
         command => {
-            let items = launch_items(command, handlers)?;
+            let items = launch_items(command, handlers, defaults)?;
             Ok((!items.is_empty()).then_some(Launch::Items(items)))
         }
     }
 }
 
 /// The items `command` asks the first window to open, built by the same intake as the dialogs; none for a plain
-/// launch. The error says what was refused and why.
+/// launch. `defaults` is read only for `live`. The error says what was refused and why.
 pub(super) fn launch_items(
     command: Option<Command>,
     handlers: &Handlers,
+    defaults: impl FnOnce() -> Result<LiveDefaults, String>,
 ) -> Result<Vec<WorkspaceItem>, String> {
     let item = match command {
         Some(Command::Local {
@@ -65,6 +70,10 @@ pub(super) fn launch_items(
         }
         Some(Command::Playlist { resolver, settings }) => {
             workspace::intake::playlist(&resolver, settings, handlers)
+        }
+        Some(Command::Live(args)) => {
+            let defaults = defaults()?;
+            workspace::intake::live(args.into_new_live(&defaults), &defaults, handlers)
         }
         _ => return Ok(Vec::new()),
     };

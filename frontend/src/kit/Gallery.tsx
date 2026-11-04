@@ -2,8 +2,10 @@ import { useState, type ReactNode } from "react";
 import { Banner } from "../shell/Banner";
 import { BrowseButton, Button, MenuButton } from "./Button";
 import { Checkbox, SearchField, Select, TextField } from "./Fields";
+import { Form, FormCombo, FormInput, FormNote, FormSelect } from "./Form";
 import { Chip, ChipRow, ChoiceChips, SegmentedControl, TileChoice, ToggleChip } from "./Chips";
 import { IconButton } from "./IconButton";
+import { IconToggle } from "./IconToggle";
 import { FIELD, type Tone } from "./look";
 import { RowList } from "./RowList";
 import { Switch } from "./Switch";
@@ -30,6 +32,7 @@ const SPEEDS = [
 ] as const;
 const MENU: readonly MenuEntry[] = [
   { kind: "action", id: "copy", label: "Copy" },
+  { kind: "heading", label: "Group" },
   { kind: "check", id: "pin", label: "Pin" },
   { kind: "separator" },
   { kind: "action", id: "remove", label: "Remove", disabled: true },
@@ -76,6 +79,7 @@ export function Gallery() {
   const [text, setText] = useState("");
   const [folded, setFolded] = useState(true);
   const [on, setOn] = useState(true);
+  const [eye, setEye] = useState(false);
   const [tab, setTab] = useState<(typeof TABS)[number]>("General");
   return (
     <main className="fixed inset-0 grid grid-cols-3 content-start items-start gap-xl overflow-y-auto p-xl">
@@ -162,6 +166,7 @@ export function Gallery() {
             ))}
           </ChipRow>
         </div>
+        <IconToggle icon="eye" label="Show hidden items" pressed={eye} onChange={setEye} />
         <SegmentedControl label="Mode" options={MODES} value={mode} onChange={setMode} />
         <div className="w-[16ch]">
           <SegmentedControl label="Mode, narrow" options={MODES} value={mode} onChange={setMode} />
@@ -207,6 +212,7 @@ export function Gallery() {
         />
         <Select label="Mode" value={mode} options={MODES} onChange={(value) => setMode(value)} />
         <Checkbox label="A checkbox" checked={open} onChange={setOpen} />
+        <Checkbox label="A checkbox with its box first" checked={open} onChange={setOpen} leading />
         <Switch label="A switch" checked={on} onChange={setOn} />
         <Narrow>
           <TextField label="A label that is long" value={text} onChange={setText} />
@@ -218,6 +224,25 @@ export function Gallery() {
           />
           <Checkbox label="A checkbox label" checked={open} onChange={setOpen} />
         </Narrow>
+      </Section>
+
+      <Section title="Form">
+        <Form>
+          <FormNote>Labels share one column; the controls fill the rest.</FormNote>
+          <FormInput label="Name" value={text} onChange={setText} placeholder="Optional" />
+          <FormSelect label="A longer label" value={mode} options={MODES} onChange={setMode} />
+          <FormCombo
+            label="Size"
+            value={text}
+            onChange={setText}
+            placeholder="Camera default"
+            options={[
+              { value: "", label: "Camera default" },
+              { value: "1920x1080", label: "1920x1080" },
+              { value: "none", label: "Not read yet", disabled: true },
+            ]}
+          />
+        </Form>
       </Section>
 
       <Section title="Tabs">
@@ -266,6 +291,22 @@ export function Gallery() {
           <SectionCaption heading="Lanes" count={12} note="local" />
           <SectionCaption heading="Lanes" count={3} aside="metadata.json" />
           <SectionCaption
+            heading="Scan"
+            aside="Scan failed"
+            asideTone="danger"
+            asideTitle="No route"
+          />
+          <SectionCaption
+            heading="Live"
+            count={2}
+            note="64 filtered out"
+            action={
+              <Button size="small" icon="plus">
+                Add stream
+              </Button>
+            }
+          />
+          <SectionCaption
             heading="Lanes"
             count={3}
             aside="a very long aside that cannot fit beside the heading"
@@ -286,6 +327,14 @@ export function Gallery() {
         </div>
         <Narrow>
           <SectionCaption heading="Objects" count={128} aside="cam-1 and cam-2" />
+        </Narrow>
+        <Narrow>
+          <SectionCaption
+            heading="Live"
+            count={128}
+            note="64 filtered out"
+            fold={{ open: true, onToggle: () => undefined }}
+          />
         </Narrow>
         <Narrow>
           <RowList

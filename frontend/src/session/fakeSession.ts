@@ -3,6 +3,7 @@ import type {
   Can,
   CursorPoint,
   EntryInfo,
+  ErrorWire,
   HiddenTarget,
   ItemState,
   RefusalCode,
@@ -45,6 +46,7 @@ export const playlists = (
 ): ItemState => ({
   id,
   label: id,
+  kind: "playlist",
   open,
   resolution: {
     status: "Resolved",
@@ -67,6 +69,7 @@ export const playlists = (
 export const failed = (id: string, reason?: string): ItemState => ({
   id,
   label: `${id}.mp4`,
+  kind: "video",
   open: false,
   resolution: { status: "Failed", code: "FileNotFound", params: {}, reason },
 });
@@ -74,6 +77,7 @@ export const failed = (id: string, reason?: string): ItemState => ({
 export const video = (id: string, open = true, resolution = resolved(id)): ItemState => ({
   id,
   label: `${id}.mp4`,
+  kind: "video",
   open,
   resolution,
 });
@@ -99,7 +103,8 @@ interface Seat {
 const entriesOf = ({ resolution }: ItemState): EntryInfo[] => {
   if (resolution.status !== "Resolved") return [];
   const { content } = resolution;
-  return content.kind === "Playlist" ? content.entries : [content.entry];
+  if (content.kind === "Playlist") return content.entries;
+  return content.kind === "SeekableVideo" ? [content.entry] : [];
 };
 
 /**
@@ -209,6 +214,8 @@ export class FakeSocket {
   static clockOffsetUs = 5_000_000;
   /** While set, the backend refuses every change to the workspace with this code. */
   static refuseContent: RefusalCode | null = null;
+  /** While set, the backend accepts a change to the workspace but fails it with this error. */
+  static failContent: ErrorWire | null = null;
   /** The workspace files that exist on the fake host; a Save onto one of them fails unless it replaces. */
   static existingFiles = new Set<string>();
   /** While true, the backend refuses every stream ticket, as it does for content the Doc no longer lets the seat play. */
@@ -220,6 +227,7 @@ export class FakeSocket {
     FakeSocket.refuseTickets = false;
     FakeSocket.existingFiles.clear();
     FakeSocket.refuseContent = null;
+    FakeSocket.failContent = null;
     FakeSocket.serverPassword = null;
     FakeSocket.sockets = [];
     FakeSocket.rooms.clear();
@@ -456,19 +464,42 @@ export class FakeSocket {
           seq,
           outcome: { status: "refused", code: FakeSocket.refuseContent },
         });
+      if (FakeSocket.failContent)
+        return this.emit({
+          type: "ack",
+          seq,
+          outcome: { status: "failed", error: FakeSocket.failContent },
+        });
       const doc = cmd.command;
       if (doc.type === "addItems") {
-        const added = doc.items.map((_, at): ItemState => {
-          return video(String.fromCharCode(97 + room.items.length + at), doc.open);
+        const added = doc.items.map((item, at): ItemState => {
+          const id = String.fromCharCode(97 + room.items.length + at);
+          // A live stream is added now and resolves later, as the backend does it.
+          return item.type === "Video"
+            ? video(id, doc.open)
+            : {
+                id,
+                label: item.label ?? "Live stream",
+                kind: "live",
+                open: doc.open,
+                resolution: { status: "Pending" },
+              };
         });
         room.setItems([...room.items, ...added]);
       } else if (doc.type === "addResolved") {
         const id = String.fromCharCode(97 + room.items.length);
         room.setItems([
           ...room.items,
-          { id, label: doc.label ?? "Playlist", open: true, resolution: { status: "Pending" } },
+          {
+            id,
+            label: doc.label ?? "Playlist",
+            kind: "playlist",
+            open: true,
+            resolution: { status: "Pending" },
+          },
         ]);
       } else if (doc.type === "setHidden") room.setHidden(doc.target, doc.hidden);
+      else if (doc.type === "remove") room.setItems(room.items.filter(({ id }) => id !== doc.item));
       else if (doc.type !== "setLaneMatching") {
         const open = doc.type === "openViewer";
         room.setItems(room.items.map((item) => (item.id === doc.item ? { ...item, open } : item)));

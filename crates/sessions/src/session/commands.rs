@@ -99,6 +99,8 @@ fn content_scope(command: &DocCommand) -> Scope {
         DocCommand::Replace { .. } | DocCommand::MarkSaved { .. } => Scope::Host,
         DocCommand::OpenViewer(_)
         | DocCommand::CloseViewer(_)
+        | DocCommand::Resolve(_)
+        | DocCommand::Remove(_)
         | DocCommand::SetHidden { .. }
         | DocCommand::SetLaneMatching { .. }
         | DocCommand::Keep => Scope::Content,
@@ -109,7 +111,7 @@ fn content_scope(command: &DocCommand) -> Scope {
 fn reads_host(recipe: &Recipe) -> bool {
     match recipe.source {
         Source::Video(_) | Source::Playlist(_) => true,
-        Source::Unreadable(_) => false,
+        Source::Live(_) | Source::Unreadable(_) => false,
     }
 }
 

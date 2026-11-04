@@ -114,7 +114,27 @@ pub struct LiveTrack {
     options: Form,
     growth: Arc<Growth>,
     heard: Arc<Heard>,
+    /// The sample the sink holds open, which [`LiveTrack::snapshot_with_open`] reads.
+    open: Arc<Mutex<Option<Open>>>,
     cancel: CancelToken,
+}
+
+/// The newest sample, which a Scene with its key may still join.
+struct Open {
+    time: MediaTime,
+    group: Group,
+    /// Whether a reader took the group as a sample of a snapshot: joining more into it then renumbers.
+    exposed: bool,
+}
+
+impl Open {
+    fn new(time: MediaTime, scene: Scene) -> Self {
+        Self {
+            time,
+            group: Group::new(scene),
+            exposed: false,
+        }
+    }
 }
 
 impl LiveTrack {
@@ -148,7 +168,7 @@ impl LiveTrack {
             cap,
             samples,
             keys: KeyChunks::new(),
-            open: None,
+            open: Arc::default(),
             closed: None,
             generation: 0,
             late: 0,
@@ -160,12 +180,52 @@ impl LiveTrack {
             options: decoder.spec().options.clone(),
             growth: sink.growth.clone(),
             heard,
+            open: sink.open.clone(),
             cancel: cancel.clone(),
         });
         thread::Builder::new()
             .name(format!("scene-live-{}", decoder.spec().id))
             .spawn(move || run(&*decoder, &values, feed, &mut sink, &cancel))?;
         Ok(track)
+    }
+
+    /// The snapshot with the sample still open as its newest sample, for a frame that cannot wait for the next one
+    /// to close it. Equal to [`TrackRead::snapshot`] when no sample is open.
+    ///
+    /// The open sample is numbered after the published ones and keeps its number when it is published. Taking it
+    /// freezes what it holds: a Scene that later joins it renumbers the track, so no reader keeps the old content.
+    pub fn snapshot_with_open(&self) -> Arc<TrackSnapshot> {
+        let mut slot = self.open.lock().unwrap_or_else(PoisonError::into_inner);
+        let base = self.growth.snapshot();
+        let Some(open) = slot.as_mut() else {
+            return base;
+        };
+        let (Some(times), Ok(samples)) = (&base.keys.times, base.numbering.memory()) else {
+            return base;
+        };
+        let Ok(scene) = open.group.to_scene() else {
+            return base;
+        };
+        let published = {
+            let held = samples
+                .scenes
+                .read()
+                .unwrap_or_else(PoisonError::into_inner);
+            held.get(..times.len()).map(<[_]>::to_vec)
+        };
+        let Some(mut scenes) = published else {
+            return base;
+        };
+        scenes.push(Arc::new(scene));
+        open.exposed = true;
+        Arc::new(TrackSnapshot {
+            keys: SampleKeys {
+                frames: None,
+                times: Some(times.appended(&[open.time])),
+            },
+            numbering: Numbering::Memory(Arc::new(Samples::new(scenes))),
+            ..(*base).clone()
+        })
     }
 }
 
@@ -294,8 +354,7 @@ fn run(
         if cancel.is_cancelled() {
             return;
         }
-        sink.close_open();
-        sink.publish();
+        sink.end_session();
     }
 }
 
@@ -309,8 +368,8 @@ struct Sink {
     samples: Arc<Samples>,
     /// The keys of the published samples.
     keys: KeyChunks<MediaTime>,
-    /// The newest sample, which a Scene with its key may still join.
-    open: Option<(MediaTime, Group)>,
+    /// The newest sample. Held while a transition changes it together with the snapshot, so a reader sees both agree.
+    open: Arc<Mutex<Option<Open>>>,
     /// The key of the newest published sample, which a later Scene must be above.
     closed: Option<MediaTime>,
     generation: u32,
@@ -336,27 +395,12 @@ impl SceneSink for Sink {
             self.skipped.add("a live sample needs a timestamp");
             return ControlFlow::Continue(());
         };
-        let Some((open, group)) = &mut self.open else {
-            if self.closed.is_some_and(|closed| time <= closed) {
-                self.late += 1;
-                return ControlFlow::Continue(());
-            }
-            self.open = Some((time, Group::new(scene)));
-            self.publish();
-            return ControlFlow::Continue(());
-        };
-        if time > *open {
-            self.close_open();
-            self.open = Some((time, Group::new(scene)));
-            self.publish();
-        } else if time < *open {
-            self.late += 1;
-        } else if on_equal_key == OnEqualKey::Replace {
-            *group = Group::new(scene);
-        } else if group.bytes() > GROUP_BYTES {
-            self.skipped.add("a sample is too large to be joined");
-        } else if let Err(error) = group.merge(&scene) {
-            self.skipped.add(error.to_string());
+        let slot = Arc::clone(&self.open);
+        let mut open = slot.lock().unwrap_or_else(PoisonError::into_inner);
+        let published = self.admit(&mut open, time, scene, on_equal_key);
+        drop(open);
+        if published {
+            self.growth.notify();
         }
         ControlFlow::Continue(())
     }
@@ -371,10 +415,63 @@ impl SceneSink for Sink {
 }
 
 impl Sink {
+    /// Joins `scene`, keyed `time`, to the open sample, or opens a new one. True when a snapshot was stored.
+    fn admit(
+        &mut self,
+        open: &mut Option<Open>,
+        time: MediaTime,
+        scene: Scene,
+        on_equal_key: OnEqualKey,
+    ) -> bool {
+        let Some(current) = open.as_mut() else {
+            if self.closed.is_some_and(|closed| time <= closed) {
+                self.late += 1;
+                return false;
+            }
+            *open = Some(Open::new(time, scene));
+            self.store(open);
+            return true;
+        };
+        if time > current.time {
+            self.close_open(open);
+            *open = Some(Open::new(time, scene));
+            self.store(open);
+            return true;
+        }
+        if time < current.time {
+            self.late += 1;
+            return false;
+        }
+        if on_equal_key == OnEqualKey::Replace {
+            current.group = Group::new(scene);
+        } else if current.group.bytes() > GROUP_BYTES {
+            self.skipped.add("a sample is too large to be joined");
+        } else if let Err(error) = current.group.merge(&scene) {
+            self.skipped.add(error.to_string());
+        }
+        if !std::mem::take(&mut current.exposed) {
+            return false;
+        }
+        // A reader holds the sample as it was: the track is numbered anew, so readers drop it.
+        self.generation += 1;
+        self.store(open);
+        true
+    }
+
+    /// Ends a session: the open sample is published as the newest one.
+    fn end_session(&mut self) {
+        let slot = Arc::clone(&self.open);
+        let mut open = slot.lock().unwrap_or_else(PoisonError::into_inner);
+        self.close_open(&mut open);
+        self.store(&open);
+        drop(open);
+        self.growth.notify();
+    }
+
     /// Publishes the open sample's Scene as the newest sample; drops the oldest half in one step when there are more
     /// than `cap`, so the samples are renumbered once per batch.
-    fn close_open(&mut self) {
-        let Some((time, group)) = self.open.take() else {
+    fn close_open(&mut self, open: &mut Option<Open>) {
+        let Some(Open { time, group, .. }) = open.take() else {
             return;
         };
         let scene = match group.into_scene() {
@@ -402,8 +499,8 @@ impl Sink {
         }
     }
 
-    /// Shows readers what the sink holds now.
-    fn publish(&mut self) {
+    /// Shows readers what the sink holds now, without telling the listeners.
+    fn store(&mut self, open: &Option<Open>) {
         let mut warnings = self.warnings.list();
         if self.late > 0 {
             warnings.push(Warning {
@@ -418,8 +515,8 @@ impl Sink {
         }
         let total = self.records.load(AtomicOrdering::Relaxed);
         warnings.extend(self.skipped.clone().warning(total));
-        let frontier = self.open.as_ref().map(|(time, _)| *time).or(self.closed);
-        self.growth.publish(snapshot(
+        let frontier = open.as_ref().map(|open| open.time).or(self.closed);
+        self.growth.store(snapshot(
             self.keys.clone(),
             frontier,
             self.generation,

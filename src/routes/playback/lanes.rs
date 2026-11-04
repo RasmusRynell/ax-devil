@@ -298,7 +298,7 @@ fn basis_wire(basis: MatchBasis) -> BasisWire {
 }
 
 /// The wire form of a lane's matching.
-fn policy_wire(policy: &MatchPolicy) -> LanePolicyWire {
+pub(super) fn policy_wire(policy: &MatchPolicy) -> LanePolicyWire {
     LanePolicyWire {
         basis: policy.basis.map(basis_wire),
         tolerance_ms: match policy.tolerance {
@@ -342,7 +342,7 @@ pub(crate) fn policy_from_wire(wire: LanePolicyWire) -> Result<MatchPolicy, Stri
 
 /// The wire form of a lane's load status for `audience`: the decoder's warnings name the host's files and lines, so
 /// only an audience with host details hears them.
-fn status_wire(status: LaneStatus, audience: Audience) -> LaneStatusWire {
+pub(super) fn status_wire(status: LaneStatus, audience: Audience) -> LaneStatusWire {
     match status {
         LaneStatus::Loading => LaneStatusWire::Loading,
         LaneStatus::Ready(ready) => LaneStatusWire::Ready {

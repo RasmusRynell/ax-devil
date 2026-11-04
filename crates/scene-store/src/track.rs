@@ -289,11 +289,20 @@ impl Growth {
 
     /// Publishes `snapshot` and tells the listeners. A snapshot of a new numbering starts serving it at once.
     pub(crate) fn publish(&self, snapshot: TrackSnapshot) {
+        self.store(snapshot);
+        self.notify();
+    }
+
+    /// Serves `snapshot` from now on without telling the listeners; follow with [`Growth::notify`].
+    pub(crate) fn store(&self, snapshot: TrackSnapshot) {
         *self
             .snapshot
             .write()
             .unwrap_or_else(PoisonError::into_inner) = Arc::new(snapshot);
-        // Called outside every lock, so a listener may read the track.
+    }
+
+    /// Calls every listener. Called outside every lock, so a listener may read the track.
+    pub(crate) fn notify(&self) {
         let live: Vec<Arc<dyn Fn() + Send + Sync>> = {
             let mut listeners = self
                 .listeners
