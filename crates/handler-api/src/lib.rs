@@ -20,7 +20,7 @@ pub use refs::{ImageSequence, OverlayRef, VideoRef};
 pub use resolver::{
     Choice, PlaylistResolver, ResolvedEntry, ResolvedPlaylist, ResolvedPlaylists, ResolverSpec,
 };
-pub use skipped::SkippedRecords;
+pub use skipped::{SkippedRecords, shorten};
 
 /// Settings or options as the user, a playlist or a workspace holds them: not yet checked against a [`Form`].
 pub type Settings = serde_json::Map<String, serde_json::Value>;
