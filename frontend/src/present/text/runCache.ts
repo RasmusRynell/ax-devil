@@ -10,6 +10,8 @@ export const GLYPH = 6;
 /** Past these a cache is emptied before the next layout, so it stays a few tens of megabytes however long the session runs. */
 const MAX_RUNS = 1 << 16;
 const MAX_GLYPHS = 1 << 19;
+/** Retained code points (4 MB); runs of spaces add no glyphs, so glyphs alone would not bound the stored text. */
+const MAX_CODE_POINTS = 1 << 20;
 
 /**
  * Laid-out runs by (font, code points): the ink box, advance and the glyph quads relative to the run origin, so a
@@ -41,7 +43,12 @@ export class RunCache {
 
   /** Start a layout pass on `text`: forget everything if the page was reset or the cache grew past its bounds. */
   begin(text: TextSource): void {
-    if (text.generation === this.generation && this.runs < MAX_RUNS && this.glyphCount < MAX_GLYPHS)
+    if (
+      text.generation === this.generation &&
+      this.runs < MAX_RUNS &&
+      this.glyphCount < MAX_GLYPHS &&
+      this.cpLength < MAX_CODE_POINTS
+    )
       return;
     this.generation = text.generation;
     this.epoch++;
@@ -49,6 +56,9 @@ export class RunCache {
     this.runs = 0;
     this.glyphCount = 0;
     this.cpLength = 0;
+    // Give back what one huge run grew, so a reset frees memory rather than only forgetting it.
+    if (this.cps.length > MAX_CODE_POINTS) this.cps = new Uint32Array(2048);
+    if (this.glyphs.length > MAX_GLYPHS * GLYPH) this.glyphs = new Float64Array(GLYPH * 4096);
     this.fontIds.clear();
   }
 
