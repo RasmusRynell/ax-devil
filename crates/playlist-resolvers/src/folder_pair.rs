@@ -7,7 +7,7 @@ use std::{
 use foundation::{CancelToken, ErrorCode, HostPath, Interrupt, UserError};
 use handler_api::{
     Cli, Field, FieldKind, Form, OverlayRef, PlaylistResolver, ResolvedEntry, ResolvedPlaylist,
-    ResolverSpec, Values, VideoRef, invalid_field,
+    ResolvedPlaylists, ResolverSpec, Values, VideoRef, invalid_field,
 };
 
 use crate::resolved_file_type;
@@ -67,7 +67,7 @@ impl PlaylistResolver for FolderPairResolver {
         &self,
         settings: &Values,
         cancel: &CancelToken,
-    ) -> Result<ResolvedPlaylist, Interrupt<UserError>> {
+    ) -> Result<ResolvedPlaylists, Interrupt<UserError>> {
         let required = |key: &str| {
             settings
                 .text(key)
@@ -125,9 +125,11 @@ impl PlaylistResolver for FolderPairResolver {
             ));
         }
         entries.sort_by(|a, b| a.name.cmp(&b.name));
-        Ok(ResolvedPlaylist {
-            display_name: self.spec.name.clone(),
-            entries,
+        Ok(ResolvedPlaylists {
+            playlists: vec![ResolvedPlaylist {
+                name: self.spec.name.clone(),
+                entries,
+            }],
             warnings: Vec::new(),
         })
     }

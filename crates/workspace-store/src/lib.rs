@@ -150,6 +150,19 @@ impl WorkspaceState {
         self.hidden.contains(target)
     }
 
+    /// Appends the item, or replaces the one with its id in place.
+    fn put(&mut self, item: WorkspaceItem) {
+        match self
+            .workspace
+            .items
+            .iter_mut()
+            .find(|existing| existing.id == item.id)
+        {
+            Some(existing) => *existing = item,
+            None => self.workspace.items.push(item),
+        }
+    }
+
     /// Marks the item pending under a new attempt and returns the job for it.
     fn start(&mut self, item: &WorkspaceItem) -> ResolveJob {
         self.next_attempt += 1;
@@ -159,6 +172,7 @@ impl WorkspaceState {
         ResolveJob {
             item: item.id,
             attempt,
+            name: item.display_name(),
             recipe: item.recipe.clone(),
         }
     }
@@ -173,6 +187,17 @@ pub enum DocCommand {
         /// The items to add.
         items: Vec<WorkspaceItem>,
         /// Whether a viewer should open for each.
+        open: bool,
+    },
+    /// Appends an item whose Content is already resolved, and starts no job: the caller resolved it before the item
+    /// existed. An item whose id is already in the workspace is replaced in place. With `open`, a viewer should open
+    /// for it.
+    AddResolved {
+        /// The item to add.
+        item: WorkspaceItem,
+        /// What it resolved to.
+        content: Box<Content>,
+        /// Whether a viewer should open for it.
         open: bool,
     },
     /// Requests a viewer for an item. An item whose viewer was not requested resolves again, so the viewer gets
@@ -227,6 +252,8 @@ pub struct ResolveJob {
     pub item: ItemId,
     /// The attempt the item waits on; pass it back to [`complete`].
     pub attempt: u64,
+    /// The item's name at the time, for a failure that speaks of it.
+    pub name: String,
     /// What to resolve.
     pub recipe: Recipe,
 }
@@ -242,16 +269,26 @@ pub fn apply(state: &WorkspaceState, command: DocCommand) -> (WorkspaceState, Ve
                     next.open.insert(item.id);
                 }
                 jobs.push(next.start(&item));
-                match next
-                    .workspace
-                    .items
-                    .iter_mut()
-                    .find(|existing| existing.id == item.id)
-                {
-                    Some(existing) => *existing = item,
-                    None => next.workspace.items.push(item),
-                }
+                next.put(item);
             }
+        }
+        DocCommand::AddResolved {
+            item,
+            content,
+            open,
+        } => {
+            if open {
+                next.open.insert(item.id);
+            }
+            next.next_generation += 1;
+            next.resolutions.insert(
+                item.id,
+                Resolution::Resolved {
+                    content: *content,
+                    generation: ContentGen(next.next_generation),
+                },
+            );
+            next.put(item);
         }
         DocCommand::OpenViewer(id) => {
             let known = next.workspace.items.iter().find(|item| item.id == id);
@@ -360,7 +397,7 @@ pub fn resolve(
     handlers: &Handlers,
     cancel: &CancelToken,
 ) -> Result<Content, Interrupt<UserError>> {
-    job.recipe.resolve(&job.item, handlers, cancel)
+    job.recipe.resolve(&job.item, &job.name, handlers, cancel)
 }
 
 #[cfg(test)]

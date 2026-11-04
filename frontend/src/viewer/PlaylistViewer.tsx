@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { EntryInfo } from "../generated/api";
+import type { EntryInfo, PlaylistSpanInfo } from "../generated/api";
 import { Icon } from "../kit/Icon";
 import { IconButton } from "../kit/IconButton";
 import { Menu } from "../kit/Menu";
@@ -27,15 +27,27 @@ export function adjacentEntry(
   return undefined;
 }
 
+/** The playlist holding the entry at `at`: its label and the run `[start, end)` of the item's entries it covers. */
+function playlistAt(playlists: readonly PlaylistSpanInfo[], at: number) {
+  let start = 0;
+  for (const { label, entries } of playlists.slice(0, -1)) {
+    if (at < start + entries) return { label, start, end: start + entries };
+    start += entries;
+  }
+  const last = playlists[playlists.length - 1];
+  return { label: last.label, start, end: start + last.entries };
+}
+
 /**
  * Shows a playlist: its entries one at a time in a video viewer, with buttons and a menu to move between them.
- * Hidden entries are skipped when stepping. The entry on screen is the window's view of this item, so it is the
+ * An item's playlists are separate: stepping, the count and the menu stay within the one holding the entry on
+ * screen, whose label the header shows. Hidden entries are skipped when stepping. The entry on screen is the window's view of this item, so it is the
  * presenter's for a following window and survives a reload. A position is kept for each entry that was left, until
  * the viewer closes or the entry leaves the playlist, so returning to an entry reopens it there; the view keeps only
  * the clock of the entry on screen.
  */
 export function PlaylistViewer({ item, content }: ViewerProps<"Playlist">) {
-  const { entries } = content;
+  const { entries, playlists } = content;
   const hidden = useHidden();
   const [viewers, setViewers] = useView("viewers");
   // What the entry's own viewer offers (play, step, speed) stays reachable next to the playlist's commands.
@@ -48,13 +60,13 @@ export function PlaylistViewer({ item, content }: ViewerProps<"Playlist">) {
 
   // The backend keeps the view naming an entry; until it has, the first one that is not hidden is its choice too.
   const chosen = viewers[item]?.entry;
-  const index = (() => {
-    const found = entries.findIndex((entry) => entry.id === chosen);
-    return found >= 0 ? found : entries.findIndex((entry) => !hidden.entry(entry.id));
-  })();
-  const current = entries[index] as EntryInfo | undefined;
-  const previous = adjacentEntry(entries, hidden, index, -1);
-  const next = adjacentEntry(entries, hidden, index, 1);
+  const found = entries.findIndex((entry) => entry.id === chosen);
+  const { label, start, end } = playlistAt(playlists, Math.max(found, 0));
+  const within = entries.slice(start, end);
+  const index = found >= 0 ? found - start : within.findIndex((entry) => !hidden.entry(entry.id));
+  const current = within[index] as EntryInfo | undefined;
+  const previous = adjacentEntry(within, hidden, index, -1);
+  const next = adjacentEntry(within, hidden, index, 1);
 
   // Another entry starts at its own beginning, so the view keeps the entry and no clock.
   const choose = useCallback(
@@ -79,7 +91,7 @@ export function PlaylistViewer({ item, content }: ViewerProps<"Playlist">) {
         {entries.length === 0 ? "This playlist has no entries" : "All entries are hidden"}
       </p>
     );
-  const listed = entries.filter((entry) => entry.id === current.id || !hidden.entry(entry.id));
+  const listed = within.filter((entry) => entry.id === current.id || !hidden.entry(entry.id));
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <div className="flex h-row shrink-0 items-center border-b border-line bg-panel">
@@ -123,8 +135,9 @@ export function PlaylistViewer({ item, content }: ViewerProps<"Playlist">) {
           onClick={() => next && choose(next.id)}
         />
         <output aria-label="Entry" className="px-m text-muted tabular-nums">
-          {index + 1} / {entries.length}
+          {index + 1} / {within.length}
         </output>
+        <span className="min-w-0 flex-1 truncate px-m text-muted">{label}</span>
       </div>
       <ViewerActionsContext.Provider value={setInner}>
         <EntryViewer item={item} content={content} entry={current} memory={memory.current} />

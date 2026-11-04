@@ -1,7 +1,7 @@
 # Plugins
 
 ax-devil reads other overlay formats through **plugins**: programs in any language that you install and ax-devil
-runs on an overlay file to get its Scenes, or on a folder to get a playlist. A plugin lists the **handlers** it
+runs on an overlay file to get its Scenes, or on a folder to get playlists. A plugin lists the **handlers** it
 provides in its manifest: decoders and playlist resolvers. Writing one, with an agent or by hand, is in the
 [write-plugin skill](../.agents/skills/write-plugin/SKILL.md); the contract is its
 [reference](../.agents/skills/write-plugin/reference.md). The decoders and playlist resolvers that ship with ax-devil

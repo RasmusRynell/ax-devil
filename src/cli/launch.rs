@@ -64,7 +64,7 @@ pub(super) fn launch_items(
             workspace::intake::video(&video, &overlays, handlers)
         }
         Some(Command::Playlist { resolver, settings }) => {
-            workspace::intake::playlist(&resolver, settings, None, handlers)
+            workspace::intake::playlist(&resolver, settings, handlers)
         }
         _ => return Ok(Vec::new()),
     };

@@ -4,7 +4,7 @@ use std::{fs, path::Path, sync::Arc};
 
 use foundation::{CancelToken, FrameRate, HostPath, Interrupt, Location, UserError};
 use handler_api::{
-    Choice, ImageSequence, PlaylistResolver, ResolvedEntry, ResolvedPlaylist, Settings, Values,
+    Choice, ImageSequence, PlaylistResolver, ResolvedEntry, ResolvedPlaylists, Settings, Values,
     VideoRef,
 };
 use playlist_resolvers::resolvers;
@@ -49,13 +49,15 @@ fn root_settings(root: &Path) -> Settings {
     settings(json!({ "root": root }))
 }
 
-fn resolve(settings: &Settings) -> Result<ResolvedPlaylist, Interrupt<UserError>> {
+fn resolve(settings: &Settings) -> Result<ResolvedPlaylists, Interrupt<UserError>> {
     let values = values(settings).map_err(Interrupt::Failed)?;
     resolver().resolve(&values, &CancelToken::new())
 }
 
 fn entries(settings: &Settings) -> Vec<ResolvedEntry> {
-    resolve(settings).unwrap().entries
+    let mut resolved = resolve(settings).unwrap();
+    assert_eq!(resolved.playlists.len(), 1);
+    resolved.playlists.remove(0).entries
 }
 
 fn names(entries: &[ResolvedEntry]) -> Vec<&str> {
@@ -108,11 +110,11 @@ fn a_sequence_with_a_bad_seqinfo_is_a_warning_and_the_rest_resolve() {
     )
     .unwrap();
 
-    let playlist = resolve(&root_settings(root)).unwrap();
+    let resolved = resolve(&root_settings(root)).unwrap();
 
-    assert_eq!(names(&playlist.entries), ["SEQ-01"]);
-    let [warning] = playlist.warnings.as_slice() else {
-        panic!("expected one warning, got {:?}", playlist.warnings);
+    assert_eq!(names(&resolved.playlists[0].entries), ["SEQ-01"]);
+    let [warning] = resolved.warnings.as_slice() else {
+        panic!("expected one warning, got {:?}", resolved.warnings);
     };
     assert_eq!(warning.problem, "Skipped 1 of 2 sequences");
     assert!(warning.reasons[0].contains("SEQ-02"), "{warning:?}");

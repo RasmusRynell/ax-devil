@@ -288,7 +288,15 @@ items: Array<NewItem>,
 /**
  * Whether a viewer should open for each item once it resolves.
  */
-open: boolean, } | { "type": "openViewer", 
+open: boolean, } | { "type": "addResolved", 
+/**
+ * The item the resolve answered with.
+ */
+item: string, 
+/**
+ * The row's label; the resolver's name when absent or blank.
+ */
+label: string | null, } | { "type": "openViewer", 
 /**
  * The item.
  */
@@ -769,7 +777,7 @@ file: string | null,
  */
 items: Array<ItemState>, 
 /**
- * The sidebar tree flattened: each item, its entries and their lanes, in tree order. Lists only the items
+ * The sidebar tree flattened: each video or unresolved item, each playlist, their entries and lanes, in tree order. Lists only the items
  * `items` lists.
  */
 rows: Array<RowInfo>, };
@@ -800,7 +808,7 @@ export type ItemState = {
  */
 id: string, 
 /**
- * The name the item's row shows.
+ * The name the item shows: what the user named it, or its default.
  */
 label: string, 
 /**
@@ -831,6 +839,10 @@ export type RowInfo = {
  */
 key: string, 
 /**
+ * The item the row belongs to, which a viewer is opened on.
+ */
+item: string, 
+/**
  * What the row stands for.
  */
 kind: RowKindWire, 
@@ -858,7 +870,7 @@ warnings: Array<WarningInfo>, };
 /**
  * What a row stands for.
  */
-export type RowKindWire = "item" | "entry" | "lane";
+export type RowKindWire = "item" | "playlist" | "entry" | "lane";
 
 /**
  * Whether what a row stands for can be opened.
@@ -899,9 +911,13 @@ generation: number,
  */
 display_name: string, 
 /**
- * The entries in playlist order.
+ * The entries of every playlist, in order.
  */
-entries: Array<EntryInfo>, };
+entries: Array<EntryInfo>, 
+/**
+ * The playlists, each covering the next run of `entries`; at least one.
+ */
+playlists: Array<PlaylistSpanInfo>, };
 
 /**
  * One video and its lanes: what a viewer opens.
@@ -921,6 +937,23 @@ label: string,
 lanes: Array<string>, };
 
 /**
+ * One playlist of a playlist item: a run of its entries a viewer steps within.
+ */
+export type PlaylistSpanInfo = { 
+/**
+ * Names the playlist.
+ */
+id: string, 
+/**
+ * What rows and the viewer's header show.
+ */
+label: string, 
+/**
+ * How many entries it holds; the first playlist starts at the first entry.
+ */
+entries: number, };
+
+/**
  * What the user asked to add; the intake turns each into an item.
  */
 export type NewItem = { "type": "Video", 
@@ -931,19 +964,7 @@ path: string,
 /**
  * The overlay files, each shown as its own lane.
  */
-overlays: Array<NewOverlayWire>, } | { "type": "Playlist", 
-/**
- * The resolver id.
- */
-resolver: string, 
-/**
- * The settings the resolver's schema declares.
- */
-settings: Record<string, unknown>, 
-/**
- * The row's label; the resolver's name when absent.
- */
-label: string | null, };
+overlays: Array<NewOverlayWire>, };
 
 /**
  * An overlay file to add to a video.
@@ -1203,6 +1224,28 @@ field: string,
  * The settings entered so far.
  */
 settings: Record<string, unknown>, };
+
+/**
+ * The body of `POST /api/resolvers/{id}/resolve`.
+ */
+export type ResolveRequest = { 
+/**
+ * The Session of the window that asks; only a seat of that Session can add the resolved item.
+ */
+session: string, 
+/**
+ * The settings the resolver's schema declares.
+ */
+settings: Record<string, unknown>, };
+
+/**
+ * The answer to a resolve: the resolved item, held by the backend until a `DocCommand::AddResolved` adds it.
+ */
+export type ResolvedInfo = { 
+/**
+ * The item's id.
+ */
+item: string, };
 
 /**
  * The body of `POST /api/plugins/install`.

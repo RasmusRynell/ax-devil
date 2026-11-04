@@ -261,22 +261,19 @@ async fn a_seat_without_the_files_grant_is_refused_alike_whatever_it_asks_to_add
                        "cursors": {"show": true, "share": true}});
     editor.say(hello).await;
 
-    // A resolver the app has, one it does not, and a file that does not exist: none shows through the refusal.
-    let dir = folder.path().display().to_string();
-    let settings =
-        json!({"videos_dir": dir, "overlays_dir": dir, "handler_type": "ADF_BETA_FRAME"});
-    let known = json!({"type": "Playlist", "resolver": "folder_pair", "settings": settings});
-    let unknown = json!({"type": "Playlist", "resolver": "no_such_resolver", "settings": settings});
+    // A resolved item nobody staged, and a file that does not exist: none shows through the refusal.
+    let unstaged = json!({"type": "addResolved", "item": workspace::ItemId::generate().to_string(), "label": null});
     let missing =
         json!({"type": "Video", "path": folder.path().join("lost.mp4").display().to_string()});
-    for (seq, item) in [known, unknown, missing].into_iter().enumerate() {
-        let add = json!({"type": "content", "command": {"type": "addItems", "open": false, "items": [item]}});
+    let add_video = json!({"type": "addItems", "open": false, "items": [missing]});
+    for (seq, doc) in [unstaged, add_video].into_iter().enumerate() {
+        let add = json!({"type": "content", "command": doc});
         editor.say(command(seq as u64 + 1, add)).await;
         let ack = editor.until(of_type("ack")).await;
         assert_eq!(
             ack["outcome"],
             json!({"status": "refused", "code": "NotAllowed"}),
-            "{item}"
+            "{doc}"
         );
     }
 }

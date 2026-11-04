@@ -219,6 +219,12 @@ impl Values {
             .collect()
     }
 
+    /// Every key with defaults filled in, declared or not: what a recipe keeps, because the settings of a resolver
+    /// are the user's and a key the form does not declare may belong to the next version of it.
+    pub fn all(&self) -> Map<String, Value> {
+        self.map.clone()
+    }
+
     /// The declared keys only, with defaults filled in: what a handler receives.
     pub fn declared(&self) -> Map<String, Value> {
         self.map

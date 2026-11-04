@@ -13,16 +13,16 @@ Shared language for ax-devil's inspection workspace. Code, docs and UI use these
 | Overlay Content | Companion data for a video lane, usually a time-varying Scene stream or file. | Overlay source, scene, track file, attachment |
 | Overlay Source Kind | The typed lane source identity: file, RTSP, MQTT, DataHub WebSocket, or none. | UI label switch, raw string |
 | Playlist Content | An ordered inspection sequence made from entries and lanes. | Playlist source, playlist viewer |
-| Lane Slot | A lane's identity within an entry, set by whoever made the overlay: a video's lane label, a Folder Pair's `overlay`, a MOT detector's name. The workspace keeps a lane's matching under it, so every entry of a playlist shares it; hiding a lane is per entry and by label, matching is per playlist and by slot. | Lane position, lane index |
+| Lane Slot | A lane's identity within an entry, set by whoever made the overlay: a video's lane label, a Folder Pair's `overlay`, a MOT detector's name. The workspace keeps a lane's matching under it, so every entry of every playlist of an item shares it; hiding a lane is per entry and by label, matching is per item and by slot. | Lane position, lane index |
 | Entry Lane | One visible comparison panel inside a playlist entry or standalone video expansion. | Overlay row, panel config |
 | Hidden | A playlist entry or lane skipped in playback and omitted from sidebar lists by default. Revealing hidden items lists it dimmed without restoring playback. | Left out, excluded, disabled |
 | Workspace | An ordered collection of Workspace Items, Untitled until named, and the name is saved in the file. Saved as a `.ax-devil.workspace` file; unsaved edits are kept as a recovery copy and restored on the next launch. Exclusions, open viewers, and browser rows are runtime state, not part of it. | Window, shell, content list, session |
 | Workspace Item | A recipe for one thing to work with, with a stable id and a kind; it resolves into Content. Without a label it is shown by its default name, derived from the recipe and never saved. | Startup request, entry, source |
 | Video Item | A Workspace Item for a video file with optional overlay files and decoders. | Video file request |
 | Live Stream Item | A Workspace Item for a camera stream with optional live overlay settings; credentials are kept as entered. | Live startup |
-| Playlist Item | A Workspace Item holding a playlist resolver id and that resolver's settings. | Resolved playlist |
+| Playlist Item | A Workspace Item holding a playlist resolver id and that resolver's settings; it resolves to one or more playlists. | Resolved playlist |
 | Bookmark | A frame of a local video or playlist entry that the user marked while reviewing, with a kind and an optional note; saved in the Workspace with each Bookmark Target's reviewed mark. Never on live streams. | Marker, annotation, flag |
-| Bookmark Target | What is reviewed: a Video Item, or one entry of a Playlist Item named by its label. | Entry index, content id |
+| Bookmark Target | What is reviewed: a Video Item, or one entry of a Playlist Item, named by its playlist's name and its label. | Entry index, content id |
 | Session | What one window shows, held by one backend from the window's first connect until it ends; every window has one. Private until its Owner uses Start sharing (Stop sharing makes it private again); Sessions of one backend are isolated from each other. | Room, window |
 | Owner | Whoever created a Session and the only one who can change what it shows. | Host, presenter |
 | Watcher | Anyone else in a Session: Following shows the Presenter View, Exploring shows its own view of what the Owner has open. | Viewer, guest, spectator |

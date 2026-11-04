@@ -1,15 +1,17 @@
 //! The sidebar's rows: one projection of a workspace state.
 
 use foundation::{UserError, Warning};
-use workspace::{Content, ContentId};
+use workspace::{Content, ContentId, Entry, ItemId, playlist_label};
 
 use crate::{HiddenRef, Resolution, WorkspaceState};
 
 /// What a row stands for.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum RowKind {
-    /// A workspace item.
+    /// A video item, or an item with no Content yet.
     Item,
+    /// One playlist of a playlist item.
+    Playlist,
     /// An entry of an item's Content.
     Entry,
     /// A lane of an entry.
@@ -32,6 +34,8 @@ pub enum RowStatus {
 pub struct Row {
     /// Names the row for as long as what it stands for exists.
     pub key: String,
+    /// The item the row belongs to, which a viewer is opened on.
+    pub item: ItemId,
     /// What the row stands for.
     pub kind: RowKind,
     /// What the user reads.
@@ -46,61 +50,101 @@ pub struct Row {
     pub warnings: Vec<Warning>,
 }
 
-/// The rows of `state` in tree order: each item, then for a playlist its entries, each followed by its lanes.
+/// The rows of `state` in tree order. A playlist item has no row of its own: each of its playlists is a top-level
+/// row, however many there are, named by [`playlist_label`], followed by the playlist's entries, each followed by
+/// its lanes. The item's warnings are on its first playlist row.
 ///
 /// A video item is one row followed by its lanes (none when it has no overlays), since its single entry would only
-/// repeat the item. Opening an item row opens its first entry; opening an entry or lane row opens that entry. An
-/// item still resolving, or one that failed, has only its own row. Hidden rows are included and flagged: whether
-/// to list them is the reader's choice.
+/// repeat the item. Opening a video row opens its entry, and a playlist row its first entry that is not hidden (the first if all are); opening an entry or lane row opens that
+/// entry. An item still resolving, or one that failed, has only its own row, named by its display name. Hidden rows
+/// are included and flagged: whether to list them is the reader's choice.
 pub fn rows(state: &WorkspaceState) -> Vec<Row> {
     let mut rows = Vec::new();
     for item in &state.workspace.items {
-        let (status, content) = match state.resolutions.get(&item.id) {
-            Some(Resolution::Resolved { content, .. }) => (RowStatus::Ready, Some(content)),
-            Some(Resolution::Failed(error)) => (RowStatus::Unavailable(error.clone()), None),
-            Some(Resolution::Pending { .. }) | None => (RowStatus::Pending, None),
+        let id = item.id;
+        let row = |key: String, kind, label: String, entry: Option<&Entry>, hidden| Row {
+            key,
+            item: id,
+            kind,
+            label,
+            status: RowStatus::Ready,
+            hidden,
+            entry: entry.map(|entry| entry.id.clone()),
+            warnings: Vec::new(),
         };
-        let is_playlist = matches!(content, Some(Content::Playlist(_)));
-        rows.push(Row {
-            key: item.id.to_string(),
-            kind: RowKind::Item,
-            label: item.label.clone(),
-            status,
-            hidden: content
-                .filter(|_| !is_playlist)
-                .is_some_and(|video| state.is_hidden(&HiddenRef::Entry(video.id().clone()))),
-            entry: content
-                .and_then(|content| content.entries().first())
-                .map(|entry| entry.id.clone()),
-            warnings: content.map_or_else(Vec::new, |content| content.warnings().to_vec()),
-        });
-        let Some(content) = content else {
-            continue;
-        };
-        for entry in content.entries() {
-            if is_playlist {
-                rows.push(Row {
-                    key: entry.id.to_string(),
-                    kind: RowKind::Entry,
-                    label: entry.label.clone(),
-                    status: RowStatus::Ready,
-                    hidden: state.is_hidden(&HiddenRef::Entry(entry.id.clone())),
-                    entry: Some(entry.id.clone()),
-                    warnings: Vec::new(),
-                });
+        let entry_rows = |rows: &mut Vec<Row>, entry: &Entry, own_row: bool| {
+            if own_row {
+                rows.push(row(
+                    entry.id.to_string(),
+                    RowKind::Entry,
+                    entry.label.clone(),
+                    Some(entry),
+                    state.is_hidden(&HiddenRef::Entry(entry.id.clone())),
+                ));
             }
             for overlay in &entry.overlays {
-                rows.push(Row {
-                    key: format!("{}{KEY_SEPARATOR}{}", entry.id, overlay.label),
-                    kind: RowKind::Lane,
-                    label: overlay.label.clone(),
-                    status: RowStatus::Ready,
-                    hidden: state
-                        .is_hidden(&HiddenRef::Lane(entry.id.clone(), overlay.label.clone())),
-                    entry: Some(entry.id.clone()),
-                    warnings: Vec::new(),
-                });
+                rows.push(row(
+                    format!("{}{KEY_SEPARATOR}{}", entry.id, overlay.label),
+                    RowKind::Lane,
+                    overlay.label.clone(),
+                    Some(entry),
+                    state.is_hidden(&HiddenRef::Lane(entry.id.clone(), overlay.label.clone())),
+                ));
             }
+        };
+        match state.resolutions.get(&item.id) {
+            Some(Resolution::Resolved { content, .. }) => match content {
+                Content::SeekableVideo(video) => {
+                    rows.push(Row {
+                        hidden: state.is_hidden(&HiddenRef::Entry(video.entry.id.clone())),
+                        ..row(
+                            item.id.to_string(),
+                            RowKind::Item,
+                            item.display_name(),
+                            Some(&video.entry),
+                            false,
+                        )
+                    });
+                    entry_rows(&mut rows, &video.entry, false);
+                }
+                Content::Playlist(playlist) => {
+                    let several = playlist.playlists.len() > 1;
+                    let mut entries = playlist.entries.iter();
+                    for (at, span) in playlist.playlists.iter().enumerate() {
+                        let own: Vec<&Entry> = entries.by_ref().take(span.entries).collect();
+                        let mut first = row(
+                            span.id.to_string(),
+                            RowKind::Playlist,
+                            playlist_label(item, span, several),
+                            own.iter()
+                                .find(|entry| !state.is_hidden(&HiddenRef::Entry(entry.id.clone())))
+                                .or(own.first())
+                                .copied(),
+                            false,
+                        );
+                        if at == 0 {
+                            first.warnings = playlist.warnings.clone();
+                        }
+                        rows.push(first);
+                        for entry in own {
+                            entry_rows(&mut rows, entry, true);
+                        }
+                    }
+                }
+            },
+            other => rows.push(Row {
+                status: match other {
+                    Some(Resolution::Failed(error)) => RowStatus::Unavailable(error.clone()),
+                    _ => RowStatus::Pending,
+                },
+                ..row(
+                    item.id.to_string(),
+                    RowKind::Item,
+                    item.display_name(),
+                    None,
+                    false,
+                )
+            }),
         }
     }
     rows
@@ -140,7 +184,7 @@ mod tests {
                 None => continue,
                 Some(Err(error)) => Err(error),
                 Some(Ok(())) => {
-                    match recipe.resolve(&id, &Handlers::built_in(), &CancelToken::new()) {
+                    match recipe.resolve(&id, "item", &Handlers::built_in(), &CancelToken::new()) {
                         Ok(content) => Ok(content),
                         Err(Interrupt::Failed(error)) => {
                             panic!("the fixture item resolves: {error}")
@@ -157,7 +201,7 @@ mod tests {
     fn mot_item(root: &Path) -> WorkspaceItem {
         let mut settings = serde_json::Map::new();
         settings.insert("root".into(), root.display().to_string().into());
-        intake::playlist("mot_challenge", settings, None, &Handlers::built_in()).unwrap()
+        intake::playlist("mot_challenge", settings, &Handlers::built_in()).unwrap()
     }
 
     fn mot_folder(root: &Path) {
@@ -227,7 +271,7 @@ mod tests {
             [
                 (RowKind::Item, "v.mp4", false),
                 (RowKind::Item, "gone.mp4", false),
-                (RowKind::Item, "MOT Challenge", false),
+                (RowKind::Playlist, "MOT Challenge", false),
                 (RowKind::Entry, "SEQ-01", false),
                 (RowKind::Lane, "GT", false),
                 (RowKind::Entry, "SEQ-02", false),
@@ -248,12 +292,12 @@ mod tests {
         assert_eq!(pending_row.status, RowStatus::Pending);
         assert_eq!(broken_row.status, RowStatus::Unavailable(not_found));
         assert!(pending_row.entry.is_none() && broken_row.entry.is_none());
-        let first = ContentId::of_entry(&playlist.id, "SEQ-01");
-        let mot_row = row(RowKind::Item, "MOT Challenge");
+        let first = ContentId::of_entry(&playlist.id, "MOT Challenge", "SEQ-01");
+        let mot_row = row(RowKind::Playlist, "MOT Challenge");
         assert_eq!(
             mot_row.entry,
             Some(first.clone()),
-            "the item opens its first entry"
+            "a playlist opens its first entry"
         );
         assert_eq!(row(RowKind::Lane, "GT").entry, Some(first.clone()));
         assert_eq!(
@@ -268,16 +312,22 @@ mod tests {
         );
         let keys: HashSet<_> = listed.iter().map(|row| &row.key).collect();
         assert_eq!(keys.len(), listed.len(), "keys are unique");
+        assert!(
+            listed[2..7].iter().all(|row| row.item == playlist.id),
+            "every row of a playlist item names the item"
+        );
 
         state
             .hidden
             .insert(HiddenRef::Lane(first.clone(), "GT".into()));
         state.hidden.insert(HiddenRef::Entry(ContentId::of_entry(
             &playlist.id,
+            "MOT Challenge",
             "SEQ-02",
         )));
         state.hidden.insert(HiddenRef::Entry(ContentId::of_entry(
             &playlist.id,
+            "MOT Challenge",
             "SEQ-99",
         )));
         let hidden: Vec<_> = rows(&state).iter().map(|row| row.hidden).collect();
@@ -285,6 +335,93 @@ mod tests {
             hidden,
             [false, false, false, false, true, true, false, false, false],
             "an unknown reference hides nothing"
+        );
+    }
+
+    #[test]
+    fn each_playlist_is_a_top_level_row_named_by_the_label_only_when_there_are_several() {
+        let playlist = |item: &WorkspaceItem, name: &str, labels: &[&str]| {
+            let entries: Vec<_> = labels
+                .iter()
+                .map(|label| workspace::Entry {
+                    id: ContentId::of_entry(&item.id, name, label),
+                    label: (*label).to_owned(),
+                    video: workspace::VideoRef::File("/v.mp4".into()),
+                    overlays: Vec::new(),
+                })
+                .collect();
+            let span = workspace::PlaylistSpan {
+                id: ContentId::of_playlist(&item.id, name),
+                name: name.to_owned(),
+                entries: entries.len(),
+            };
+            (span, entries)
+        };
+        let content = |item: &WorkspaceItem, playlists: Vec<(workspace::PlaylistSpan, Vec<_>)>| {
+            let (playlists, entries): (Vec<_>, Vec<_>) = playlists.into_iter().unzip();
+            Content::Playlist(workspace::PlaylistContent {
+                id: ContentId::of_item(&item.id),
+                item_id: item.id,
+                display_name: "Runs".into(),
+                entries: entries.concat(),
+                playlists,
+                warnings: Vec::new(),
+            })
+        };
+        let named = |label: &str| WorkspaceItem {
+            label: label.into(),
+            ..mot_item(Path::new("/runs"))
+        };
+        let (several, solo, plain) = (named("Mine"), named("Solo"), named(""));
+        let (mut state, jobs) = apply(
+            &WorkspaceState::default(),
+            DocCommand::AddItems {
+                items: vec![several.clone(), solo.clone(), plain.clone()],
+                open: false,
+            },
+        );
+        for (item, playlists) in [
+            (
+                &several,
+                vec![
+                    playlist(&several, "A", &["x"]),
+                    playlist(&several, "A (2)", &["y", "z"]),
+                ],
+            ),
+            (&solo, vec![playlist(&solo, "Run", &["w"])]),
+            (&plain, vec![playlist(&plain, "Run", &["v"])]),
+        ] {
+            let job = jobs.iter().find(|job| job.item == item.id).unwrap();
+            state = complete(&state, job.item, job.attempt, Ok(content(item, playlists)));
+        }
+
+        let listed = rows(&state);
+
+        let kinds: Vec<_> = listed
+            .iter()
+            .map(|row| (row.kind, row.label.as_str()))
+            .collect();
+        assert_eq!(
+            kinds,
+            [
+                (RowKind::Playlist, "Mine / A"),
+                (RowKind::Entry, "x"),
+                (RowKind::Playlist, "Mine / A (2)"),
+                (RowKind::Entry, "y"),
+                (RowKind::Entry, "z"),
+                (RowKind::Playlist, "Solo"),
+                (RowKind::Entry, "w"),
+                (RowKind::Playlist, "Run"),
+                (RowKind::Entry, "v"),
+            ]
+        );
+        assert_eq!(
+            listed[2].key,
+            ContentId::of_playlist(&several.id, "A (2)").to_string()
+        );
+        assert_eq!(
+            listed[2].entry, listed[3].entry,
+            "a playlist opens its first entry"
         );
     }
 }

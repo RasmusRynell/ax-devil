@@ -3,7 +3,7 @@
 
 use crate::item::{
     OverlayRecipe, PlaylistRecipe, Recipe, Source, VideoRecipe, WorkspaceItem, absolute_paths,
-    check_settings, decoder_options, file_name,
+    check_settings, decoder_options, file_name, not_installed,
 };
 use foundation::{ErrorCode, HostPath, ItemId, UserError};
 use handler_api::Settings;
@@ -129,36 +129,48 @@ fn overlay_recipe(
     })
 }
 
-/// Builds the item for a playlist of `resolver` with `settings`, labelled `label` or with the resolver's name. The
-/// settings are checked against the resolver's schema, defaults filled in, and the paths in them (in a decoder's
-/// options too) made absolute; reading the folders is for resolving to do.
+/// Builds the item for a playlist of `resolver` with `settings`, unlabelled: its name is the default, the resolver
+/// id. The settings are checked against the resolver's schema, defaults filled in, and the paths in them (in a decoder's
+/// options too) made absolute; keys the schema does not declare are kept, since the resolver only ever sees the
+/// declared ones. Reading the folders is for resolving to do.
 pub fn playlist(
     resolver: &str,
     settings: Settings,
-    label: Option<String>,
     handlers: &Handlers,
 ) -> Result<WorkspaceItem, UserError> {
     let Some(found) = handlers.resolver(resolver) else {
         return Err(UserError::new(
             ErrorCode::UnknownHandler,
-            format!("No playlist resolver \"{resolver}\""),
+            not_installed(resolver),
         ));
     };
     let form = &found.spec().form;
-    let mut settings = check_settings(form, &settings, handlers)?.declared();
+    let mut settings = check_settings(form, &settings, handlers)?.all();
     absolute_paths(form, &mut settings, handlers);
-    let label = label
-        .map(|label| label.trim().to_owned())
-        .filter(|label| !label.is_empty())
-        .unwrap_or_else(|| found.spec().name.clone());
     Ok(WorkspaceItem {
         id: ItemId::generate(),
-        label,
+        label: String::new(),
         recipe: Recipe::new(Source::Playlist(PlaylistRecipe {
             resolver: resolver.to_owned(),
             settings,
         })),
     })
+}
+
+/// `item` labelled `label`: the one rule for naming an item the user named. A label that is empty once trimmed, or
+/// that is the item's default name, clears the label so the default shows.
+pub fn with_label(item: WorkspaceItem, label: Option<&str>) -> WorkspaceItem {
+    let unnamed = WorkspaceItem {
+        label: String::new(),
+        ..item
+    };
+    match label.map(str::trim) {
+        Some(label) if label != unnamed.display_name() => WorkspaceItem {
+            label: label.to_owned(),
+            ..unnamed
+        },
+        _ => unnamed,
+    }
 }
 
 #[cfg(test)]

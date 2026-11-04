@@ -76,6 +76,34 @@ fn items_are_listed_in_the_order_added_and_one_that_cannot_resolve_stays_with_it
 }
 
 #[test]
+fn an_already_resolved_item_is_added_ready_and_open_with_no_job() {
+    let folder = tempfile::tempdir().unwrap();
+    let file = folder.path().join("gate.mp4");
+    std::fs::write(&file, "x").unwrap();
+    let added = item(&file);
+    let id = added.id;
+    let (pending, jobs) = add(&WorkspaceState::default(), vec![added.clone()], false);
+    let resolved = finish(&pending, &jobs[0]);
+    let Resolution::Resolved { content, .. } = &resolved.resolutions[&id] else {
+        panic!("the video resolves");
+    };
+
+    let (state, jobs) = apply(
+        &WorkspaceState::default(),
+        DocCommand::AddResolved {
+            item: added,
+            content: Box::new(content.clone()),
+            open: true,
+        },
+    );
+
+    assert!(jobs.is_empty());
+    assert_eq!(state.workspace.items.len(), 1);
+    assert!(state.open.contains(&id));
+    assert_eq!(content_id(&state, id), *content.id());
+}
+
+#[test]
 fn a_result_is_dropped_unless_its_item_still_waits_on_that_attempt() {
     let folder = tempfile::tempdir().unwrap();
     let file = folder.path().join("gate.mp4");

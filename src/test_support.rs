@@ -14,6 +14,8 @@ use tower::ServiceExt;
 /// The app, kept with the temporary folder that holds its settings and caches. Must be created inside a Tokio runtime.
 pub struct TestApp {
     router: Router,
+    /// The state the router runs over, to reach what a request cannot, such as a live session.
+    pub state: AppState,
     /// Keeps the app from seeing its stop signal; sending true stops it.
     pub _stop: tokio::sync::watch::Sender<bool>,
     pub _folder: tempfile::TempDir,
@@ -44,9 +46,11 @@ impl TestApp {
             plugins(folder.path()),
             &cache,
         );
-        let router = app(state.with_windows(folder.path().join("windows.json")));
+        let state = state.with_windows(folder.path().join("windows.json"));
+        let router = app(state.clone());
         Self {
             router,
+            state,
             _stop: stop,
             _folder: folder,
         }

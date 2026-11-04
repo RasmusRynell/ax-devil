@@ -29,9 +29,22 @@ pub enum ContentInfo {
         generation: u64,
         /// The name the viewer shows.
         display_name: String,
-        /// The entries in playlist order.
+        /// The entries of every playlist, in order.
         entries: Vec<EntryInfo>,
+        /// The playlists, each covering the next run of `entries`; at least one.
+        playlists: Vec<PlaylistSpanInfo>,
     },
+}
+
+/// One playlist of a playlist item: a run of its entries a viewer steps within.
+#[derive(Serialize, Deserialize, TS)]
+pub struct PlaylistSpanInfo {
+    /// Names the playlist.
+    pub id: String,
+    /// What rows and the viewer's header show.
+    pub label: String,
+    /// How many entries it holds; the first playlist starts at the first entry.
+    pub entries: u32,
 }
 
 /// One video and its lanes: what a viewer opens.

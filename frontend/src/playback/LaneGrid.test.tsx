@@ -75,6 +75,7 @@ function mount(
   const hidden = hiddenOf(
     hiddenLabels.map((label) => ({
       key: `e\u001f${label}`,
+      item: "e",
       kind: "lane" as const,
       label,
       status: { status: "Ready" as const },

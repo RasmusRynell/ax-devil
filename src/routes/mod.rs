@@ -9,6 +9,7 @@ mod client_errors;
 mod handlers;
 pub mod playback;
 mod plugins;
+pub(crate) mod resolve;
 pub mod window;
 mod workspaces;
 
@@ -149,6 +150,13 @@ pub(crate) const ROUTES: &[Route] = &[
         listeners: MEMBERS,
         who: Who::Files,
         handler: |method| on(method, handlers::scan),
+    },
+    Route {
+        method: MethodFilter::POST,
+        path: "/api/resolvers/{id}/resolve",
+        listeners: MEMBERS,
+        who: Who::Files,
+        handler: |method| on(method, resolve::resolve),
     },
     Route {
         method: MethodFilter::GET,

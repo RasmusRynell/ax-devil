@@ -1,5 +1,5 @@
-//! The committed MOT Challenge dataset (`fixtures/datasets/mot/generate.sh`) added as a playlist over the Session
-//! socket, an entry streamed with a ticket for it, and its lanes' data read from the playback socket: each frame's map
+//! The committed MOT Challenge dataset (`fixtures/datasets/mot/generate.sh`) resolved over HTTP and added as a playlist
+//! over the Session socket, an entry streamed with a ticket for it, and its lanes' data read from the playback socket: each frame's map
 //! cell names a Sample Item with the rows of the file's frame. The dataset's rows are the expectation: file frame 1
 //! is video frame 0, file frame 6 has no rows in any file, and DPM's `det.txt` has one malformed row.
 
@@ -31,9 +31,14 @@ impl Playlist {
     async fn add(backend: &Backend) -> Self {
         let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("fixtures/datasets/mot");
         let mut owner = Socket::own(&backend.address.to_string(), None).await;
-        let item =
-            json!({"type": "Playlist", "resolver": "mot_challenge", "settings": {"root": root}});
-        let add = json!({"type": "content", "command": {"type": "addItems", "open": true, "items": [item]}});
+        let welcome = owner.until(|message| message["type"] == "welcome").await;
+        let resolved = session_client::post(
+            &backend.address.to_string(),
+            "/api/resolvers/mot_challenge/resolve",
+            &json!({"session": welcome["session"], "settings": {"root": root}}),
+        )
+        .await;
+        let add = json!({"type": "content", "command": {"type": "addResolved", "item": resolved["item"], "label": null}});
         owner
             .say(json!({"type": "command", "seq": 1, "cmd": add}))
             .await;

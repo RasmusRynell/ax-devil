@@ -7,7 +7,8 @@ use std::{collections::HashSet, path::Path};
 
 use foundation::{FrameRate, Warning};
 use handler_api::{
-    Choice, ImageSequence, OverlayRef, ResolvedEntry, ResolvedPlaylist, Settings, VideoRef,
+    Choice, ImageSequence, OverlayRef, ResolvedEntry, ResolvedPlaylist, ResolvedPlaylists,
+    Settings, VideoRef,
 };
 use serde::Deserialize;
 
@@ -20,7 +21,7 @@ use crate::{
 const MAX_WARNINGS: usize = 64;
 /// The most choices a scan may print.
 const MAX_CHOICES: usize = 50_000;
-/// The most entries a resolve may print.
+/// The most entries and playlist lines a resolve may print.
 const MAX_ENTRIES: usize = 50_000;
 
 /// Which operation the lines answer, and so which of them are allowed.
@@ -114,9 +115,11 @@ pub(crate) struct Collected {
     /// The plugin's `error` line, which ends the run.
     pub error: Option<Reported>,
     choices: Vec<Choice>,
-    name: Option<String>,
-    entries: Vec<ResolvedEntry>,
-    names: HashSet<String>,
+    /// The playlists so far, the last one still taking entries; entries before any `playlist` line fill one with no
+    /// name yet.
+    playlists: Vec<(Option<String>, Vec<ResolvedEntry>)>,
+    /// Entries and playlist lines so far.
+    printed: usize,
     warnings: Vec<Warning>,
     /// Warnings printed after `MAX_WARNINGS` were kept.
     suppressed: usize,
@@ -128,9 +131,8 @@ impl Collected {
             op,
             error: None,
             choices: Vec::new(),
-            name: None,
-            entries: Vec::new(),
-            names: HashSet::new(),
+            playlists: Vec::new(),
+            printed: 0,
             warnings: Vec::new(),
             suppressed: 0,
         }
@@ -140,8 +142,9 @@ impl Collected {
         self.choices
     }
 
-    /// The playlist, named `fallback` when the plugin named none.
-    pub(crate) fn into_playlist(mut self, fallback: &str) -> ResolvedPlaylist {
+    /// The playlists in the order they were printed; entries printed before any playlist line form one named
+    /// `fallback`.
+    pub(crate) fn into_playlists(mut self, fallback: &str) -> ResolvedPlaylists {
         if self.suppressed > 0 {
             self.warnings.push(Warning {
                 problem: format!("{} more warnings suppressed", self.suppressed),
@@ -150,9 +153,15 @@ impl Collected {
                 more_reasons: false,
             });
         }
-        ResolvedPlaylist {
-            display_name: self.name.unwrap_or_else(|| fallback.to_owned()),
-            entries: self.entries,
+        ResolvedPlaylists {
+            playlists: self
+                .playlists
+                .into_iter()
+                .map(|(name, entries)| ResolvedPlaylist {
+                    name: name.unwrap_or_else(|| fallback.to_owned()),
+                    entries,
+                })
+                .collect(),
             warnings: self.warnings,
         }
     }
@@ -219,10 +228,12 @@ impl Collected {
                 },
                 Op::Resolve,
             ) => {
-                if self.name.is_some() || !self.entries.is_empty() {
-                    return Err("a playlist must come once, before the first entry".to_owned());
+                check_room(self.printed, MAX_ENTRIES, "entries and playlists")?;
+                if playlist.name.is_empty() {
+                    return Err("the playlist name is empty".to_owned());
                 }
-                self.name = Some(cut(&playlist.name));
+                self.printed += 1;
+                self.playlists.push((Some(cut(&playlist.name)), Vec::new()));
             }
             (
                 LineIn {
@@ -261,12 +272,9 @@ impl Collected {
     }
 
     fn add_entry(&mut self, entry: EntryIn) -> Result<(), String> {
-        check_room(self.entries.len(), MAX_ENTRIES, "entries")?;
+        check_room(self.printed, MAX_ENTRIES, "entries and playlists")?;
         if entry.name.is_empty() {
             return Err("the entry name is empty".to_owned());
-        }
-        if !self.names.insert(entry.name.clone()) {
-            return Err(format!("the entry name '{}' is used twice", entry.name));
         }
         let video = match entry.video {
             VideoIn::File(file) => VideoRef::File(absolute("the video", file)?),
@@ -304,11 +312,17 @@ impl Collected {
                 options: overlay.options,
             });
         }
-        self.entries.push(ResolvedEntry {
-            name: entry.name,
-            video,
-            overlays,
-        });
+        self.printed += 1;
+        if self.playlists.is_empty() {
+            self.playlists.push((None, Vec::new()));
+        }
+        if let Some((_, entries)) = self.playlists.last_mut() {
+            entries.push(ResolvedEntry {
+                name: entry.name,
+                video,
+                overlays,
+            });
+        }
         Ok(())
     }
 }
@@ -377,11 +391,11 @@ mod tests {
             collected.line(MAX_WARNINGS + 11, entry(0).as_bytes()),
             Next::Continue
         ));
-        let playlist = collected.into_playlist("fallback");
-        assert_eq!(playlist.entries.len(), 1);
-        assert_eq!(playlist.warnings.len(), MAX_WARNINGS + 1);
+        let resolved = collected.into_playlists("fallback");
+        assert_eq!(resolved.playlists[0].entries.len(), 1);
+        assert_eq!(resolved.warnings.len(), MAX_WARNINGS + 1);
         assert_eq!(
-            playlist.warnings[MAX_WARNINGS].problem,
+            resolved.warnings[MAX_WARNINGS].problem,
             "10 more warnings suppressed"
         );
 
@@ -397,7 +411,54 @@ mod tests {
             });
         assert_eq!(
             stopped.as_deref(),
-            Some("line 50001: more than 50000 entries")
+            Some("line 50001: more than 50000 entries and playlists")
+        );
+    }
+
+    #[test]
+    fn playlist_lines_split_the_entries_and_entries_before_the_first_one_take_the_resolvers_name() {
+        let entry = |name: &str| {
+            format!(r#"{{"entry": {{"name": "{name}", "video": {{"file": "/v.mp4"}}}}}}"#)
+        };
+        let playlist = |name: &str| format!(r#"{{"playlist": {{"name": "{name}"}}}}"#);
+        let run = |lines: &[String]| {
+            let mut collected = Collected::new(Op::Resolve);
+            for (number, line) in lines.iter().enumerate() {
+                if let Next::Stop(reason) = collected.line(number + 1, line.as_bytes()) {
+                    return Err(reason);
+                }
+            }
+            Ok(collected.into_playlists("resolver"))
+        };
+
+        let resolved = run(&[
+            entry("a"),
+            playlist("p"),
+            entry("a"),
+            entry("b"),
+            playlist("p"),
+        ])
+        .unwrap();
+        let shape: Vec<_> = resolved
+            .playlists
+            .iter()
+            .map(|playlist| {
+                let names: Vec<_> = playlist.entries.iter().map(|e| e.name.as_str()).collect();
+                (playlist.name.as_str(), names)
+            })
+            .collect();
+        assert_eq!(
+            shape,
+            [
+                ("resolver", vec!["a"]),
+                ("p", vec!["a", "b"]),
+                ("p", vec![])
+            ]
+        );
+
+        assert_eq!(
+            run(&[playlist("")]).err().as_deref(),
+            Some("line 1: the playlist name is empty")
         );
     }
 }

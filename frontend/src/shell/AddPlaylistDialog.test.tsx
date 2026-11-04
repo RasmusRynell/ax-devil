@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { HandlersInfo } from "../generated/api";
-import { FakeSocket } from "../session/fakeSession";
+import { FakeSocket, type Room } from "../session/fakeSession";
 import { SessionProvider } from "../session/session";
 import { AddPlaylistDialog } from "./AddPlaylistDialog";
 
@@ -63,12 +63,16 @@ const reply = (status: number, json: unknown) => ({
   json: async () => json,
 });
 
-/** The backend: the handlers, and a scan that finds two sequences. */
-function stubBackend() {
+/** The backend: the handlers, a resolve that answers an item, and a scan that finds two sequences. */
+function stubBackend(
+  resolve: () => ReturnType<typeof reply> | Promise<ReturnType<typeof reply>> = () =>
+    reply(200, { item: "p1" }),
+) {
   vi.stubGlobal(
     "fetch",
     vi.fn(async (url: string) => {
       if (url === "/api/handlers") return reply(200, HANDLERS);
+      if (url.endsWith("/resolve")) return resolve();
       return reply(200, [
         { value: "SEQ-01", label: "SEQ-01", detail: "64×48" },
         { value: "SEQ-02", label: "SEQ-02", detail: "64×48" },
@@ -94,63 +98,122 @@ const scanRoot = async (root = "/data") => {
   fireEvent.click(screen.getByRole("button", { name: "Scan" }));
   await screen.findByRole("checkbox", { name: /SEQ-01/ });
 };
+/** The requests to the resolve route so far. */
+const resolveCalls = () =>
+  vi
+    .mocked(fetch)
+    .mock.calls.filter(([url]) => typeof url === "string" && url.endsWith("/resolve"));
+/** The JSON a request carried. */
+const bodyOf = (init?: RequestInit): unknown => JSON.parse(init?.body as string);
+/** Whether the field is disabled, by itself or by its fieldset. */
+const locked = (label: string) => screen.getByLabelText(label).matches(":disabled");
+/** A response the test settles when it chooses, to hold a request in flight. */
+function deferred() {
+  let settle: (response: ReturnType<typeof reply>) => void = () => {};
+  const promise = new Promise<ReturnType<typeof reply>>((done) => (settle = done));
+  return { promise, settle };
+}
 const add = () => screen.getByRole("button", { name: "Add" });
 const commands = () => FakeSocket.latest.received.filter((message) => message.type === "command");
 
 describe("add playlist dialog", () => {
-  it("adds the scanned playlist under its name, to resolve in the background, and closes", async () => {
+  it("locks the settings while finding playlists, ignores a second submit and adds under the latest name", async () => {
     const onClose = vi.fn();
-    stubBackend();
+    const held = deferred();
+    stubBackend(() => held.promise);
     await open(onClose);
-    // No source is chosen for the user: the sources are listed, and nothing can be added.
-    expect((screen.getByLabelText("Playlist source") as HTMLSelectElement).value).toBe("");
-    expect(screen.getByText("MOT Challenge: Reads MOT sequences.")).toBeTruthy();
-    expect(add()).toHaveProperty("disabled", true);
     choose("mot_challenge");
-    expect(add()).toHaveProperty("disabled", true);
     await scanRoot();
     fireEvent.click(screen.getByRole("checkbox", { name: /SEQ-02/ }));
     fireEvent.change(screen.getByLabelText("Name"), { target: { value: " Train " } });
-    expect(add()).toHaveProperty("disabled", false);
     fireEvent.click(add());
+
+    expect((await screen.findByRole("status")).textContent).toBe("Finding playlists…");
+    expect(locked("Playlist source")).toBe(true);
+    expect(locked("Dataset folder")).toBe(true);
+    expect(locked("Name")).toBe(false);
+    expect(screen.getByRole("button", { name: "Cancel" }).matches(":disabled")).toBe(false);
+    fireEvent.submit(screen.getByLabelText("Name").closest("form")!);
+    fireEvent.change(screen.getByLabelText("Name"), { target: { value: " Later " } });
+    held.settle(reply(200, { item: "p1" }));
     await waitFor(() => expect(onClose).toHaveBeenCalled());
 
     expect(commands()).toMatchObject([
-      {
-        cmd: {
-          type: "content",
-          command: {
-            type: "addItems",
-            items: [
-              {
-                type: "Playlist",
-                resolver: "mot_challenge",
-                settings: { root: "/data", sequences: ["SEQ-01"] },
-                label: "Train",
-              },
-            ],
-            open: true,
-          },
-        },
-      },
+      { cmd: { type: "content", command: { type: "addResolved", item: "p1", label: "Later" } } },
     ]);
+    const requests = resolveCalls();
+    expect(requests).toHaveLength(1);
+    expect(bodyOf(requests[0][1])).toEqual({
+      session: "room-1",
+      settings: { root: "/data", sequences: ["SEQ-01"] },
+    });
   });
 
-  it("stays open with the refusal under the form, until the settings change", async () => {
+  it("shows a refusal in the dialog, unlocks the settings, adds nothing and lets the user retry", async () => {
     const onClose = vi.fn();
-    stubBackend();
+    let answers = [
+      reply(422, { code: "PlaylistInvalid", params: {}, reason: "No MOT sequences found" }),
+      reply(200, { item: "p1" }),
+    ];
+    stubBackend(() => answers.shift()!);
     await open(onClose);
     choose("mot_challenge");
     await scanRoot();
-    FakeSocket.refuseContent = "Invalid";
     fireEvent.click(add());
     const alert = await screen.findByRole("alert");
-    expect(alert.textContent).toContain("cannot open");
+    expect(alert.textContent).toContain("No MOT sequences found");
+    expect(screen.queryByRole("status")).toBeNull();
+    expect(commands()).toHaveLength(0);
     expect(onClose).not.toHaveBeenCalled();
+    expect(locked("Dataset folder")).toBe(false);
     expect(add()).toHaveProperty("disabled", false);
 
-    fireEvent.change(screen.getByLabelText("Dataset folder"), { target: { value: "/other" } });
-    expect(screen.queryByRole("alert")).toBeNull();
+    fireEvent.click(add());
+    await waitFor(() => expect(onClose).toHaveBeenCalled());
+    expect(commands()).toHaveLength(1);
+  });
+
+  it("aborts the request on Cancel and adds nothing when its success arrives late", async () => {
+    const onClose = vi.fn();
+    const held = deferred();
+    stubBackend(() => held.promise);
+    await open(onClose);
+    choose("mot_challenge");
+    await scanRoot();
+    fireEvent.click(add());
+    await screen.findByRole("status");
+
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    const [call] = resolveCalls();
+    expect(call?.[1]?.signal?.aborted).toBe(true);
+    held.settle(reply(200, { item: "p1" }));
+    await new Promise((done) => setTimeout(done, 10));
+
+    expect(onClose).toHaveBeenCalledTimes(1);
+    expect(commands()).toEqual([]);
+  });
+
+  it("closes once on Cancel while the add is in flight, and the add completes", async () => {
+    const onClose = vi.fn();
+    const held = deferred();
+    stubBackend(() => held.promise);
+    await open(onClose);
+    choose("mot_challenge");
+    await scanRoot();
+    fireEvent.click(add());
+    await screen.findByRole("status");
+    FakeSocket.latest.defer = true;
+    held.settle(reply(200, { item: "p1" }));
+    await waitFor(() => expect(commands()).toHaveLength(1));
+
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(onClose).toHaveBeenCalledTimes(1);
+    expect(resolveCalls()[0][1]?.signal?.aborted).toBe(false);
+    act(() => FakeSocket.latest.flush());
+    await new Promise((done) => setTimeout(done, 10));
+
+    expect(onClose).toHaveBeenCalledTimes(1);
+    expect((FakeSocket.rooms.get("room-1") as Room).items).toHaveLength(1);
   });
 
   it("keeps Load enabled with nothing checked, and says so instead of adding", async () => {
@@ -185,24 +248,14 @@ describe("add playlist dialog", () => {
     expect(add()).toHaveProperty("disabled", false);
     fireEvent.click(add());
     await waitFor(() => expect(commands()).toHaveLength(1));
-    expect(commands()).toMatchObject([
-      {
-        cmd: {
-          command: {
-            items: [
-              {
-                resolver: "folder_pair",
-                settings: {
-                  videos_dir: "/videos",
-                  handler_type: "MOT_FILE",
-                  options: { width: 1920 },
-                },
-              },
-            ],
-          },
-        },
-      },
-    ]);
+    const [url, init] =
+      vi.mocked(fetch).mock.calls.find(([url]) => url === "/api/resolvers/folder_pair/resolve") ??
+      [];
+    expect(url).toBe("/api/resolvers/folder_pair/resolve");
+    expect(bodyOf(init)).toEqual({
+      session: "room-1",
+      settings: { videos_dir: "/videos", handler_type: "MOT_FILE", options: { width: 1920 } },
+    });
   });
 
   it("keeps each source's form while the user switches between sources", async () => {
@@ -229,9 +282,9 @@ describe("add playlist dialog", () => {
     // Only the source on show is added.
     fireEvent.click(add());
     await waitFor(() => expect(commands()).toHaveLength(1));
-    expect(commands()).toMatchObject([
-      { cmd: { command: { items: [{ resolver: "mot_challenge" }] } } },
-    ]);
+    const requests = resolveCalls();
+    expect(requests).toHaveLength(1);
+    expect(String(requests[0][0])).toContain("mot_challenge");
   });
 
   it("says why the handlers could not be loaded, in the backend's words when it sends them, and retries", async () => {

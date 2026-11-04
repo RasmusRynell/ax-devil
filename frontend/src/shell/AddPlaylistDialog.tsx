@@ -1,10 +1,12 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { reasonOf } from "../errors";
 import type { DecoderInfo, ResolverInfo } from "../generated/api";
 import { Dialog, DialogBody } from "../kit/Dialog";
 import { Select, TextField } from "../kit/Fields";
 import { ResolverForm, useResolverForm } from "../resolvers/ResolverForm";
+import { resolvePlaylists } from "../resolvers/resolve";
 import { HandlersFailure, useHandlers } from "../resolvers/useHandlers";
-import { useCommand } from "../session/session";
+import { useCommand, useSession } from "../session/session";
 import { Refusal } from "./SettingField";
 
 /** Stands for no resolver while none is chosen. */
@@ -14,52 +16,80 @@ const NO_DECODERS: readonly DecoderInfo[] = [];
 
 /**
  * The Add Playlist dialog: the backend's handlers decide the resolvers and the form each takes. Until a source is
- * chosen, the sources are listed instead of a form. Adding hands the playlist to the backend, which resolves it in the
- * background and shows a failure on the item's row; only the intake's refusal stays here, until the settings change.
+ * chosen, the sources are listed instead of a form. Adding resolves the playlists first and adds the item only when
+ * that succeeds, so the dialog stays open meanwhile with the settings locked and Name and Cancel live. Cancel,
+ * Escape and closing abort the resolve, and a refusal stays here until the settings change.
  */
 export function AddPlaylistDialog({ onClose }: { onClose: () => void }) {
   const { handlers, failure, retry } = useHandlers();
   const resolvers = handlers?.resolvers ?? NO_RESOLVERS;
   const command = useCommand();
+  const session = useSession().session?.id;
   const [resolverId, setResolverId] = useState("");
   const resolver = resolvers.find((candidate) => candidate.id === resolverId) ?? NONE;
   const form = useResolverForm(resolver, handlers?.decoders ?? NO_DECODERS);
   const [name, setName] = useState("");
-  const [adding, setAdding] = useState(false);
+  // The name at the moment the resolve succeeds, which may have been edited since it started.
+  const latestName = useRef("");
+  const [resolving, setResolving] = useState(false);
   const [refused, setRefused] = useState<{ reason: string; stamp: string } | null>(null);
+  // The resolve in flight; null once its result is being added, which Cancel can no longer undo.
+  const request = useRef<AbortController | null>(null);
+  const closed = useRef(false);
 
   // A refusal is about the settings it answered; any change since makes it stale.
   const stamp = JSON.stringify([resolver.id, form.settings]);
   const refusal = refused?.stamp === stamp ? refused.reason : null;
 
+  useEffect(() => () => request.current?.abort(), []);
+  const close = () => {
+    if (closed.current) return;
+    closed.current = true;
+    onClose();
+  };
+  const cancel = () => {
+    request.current?.abort();
+    close();
+  };
+
+  // Adding needs a source, its settings, a session to add to and no resolve already running; Add is disabled otherwise.
+  const settings = form.settings;
+  const canAdd = !resolving && resolver.id !== "" && settings !== null && session !== undefined;
+
   const add = async () => {
-    if (!resolver.id || !form.settings) return;
+    if (!canAdd) return;
     if (form.unchosen) {
       setRefused({ reason: form.unchosen, stamp });
       return;
     }
-    setAdding(true);
+    const controller = new AbortController();
+    request.current = controller;
+    setResolving(true);
     setRefused(null);
     try {
+      const resolved = await resolvePlaylists(resolver.id, settings, session, controller.signal);
+      // A cancelled resolve adds nothing, even when its answer was already on its way.
+      if (controller.signal.aborted) return;
+      if (!resolved.ok) {
+        setRefused({ reason: reasonOf(resolved.refusal), stamp });
+        setResolving(false);
+        return;
+      }
+      // Sent, the add is committed: Cancel now only closes.
+      request.current = null;
       await command({
         type: "content",
         command: {
-          type: "addItems",
-          items: [
-            {
-              type: "Playlist",
-              resolver: resolver.id,
-              settings: form.settings,
-              label: name.trim() || null,
-            },
-          ],
-          open: true,
+          type: "addResolved",
+          item: resolved.value.item,
+          label: latestName.current.trim() || null,
         },
       });
-      onClose();
+      close();
     } catch (error) {
+      if (controller.signal.aborted || closed.current) return;
       setRefused({ reason: error instanceof Error ? error.message : String(error), stamp });
-      setAdding(false);
+      setResolving(false);
     }
   };
   return (
@@ -67,13 +97,21 @@ export function AddPlaylistDialog({ onClose }: { onClose: () => void }) {
       title="Add Playlist"
       okLabel="Add"
       onOk={() => void add()}
-      onCancel={onClose}
-      busy={adding || !resolver.id || !form.settings}
+      onCancel={cancel}
+      busy={!canAdd}
     >
       {handlers ? (
-        <fieldset disabled={adding} className="contents">
-          <DialogBody>
-            <TextField label="Name" value={name} placeholder="Optional" onChange={setName} />
+        <DialogBody>
+          <TextField
+            label="Name"
+            value={name}
+            placeholder="Optional"
+            onChange={(value) => {
+              latestName.current = value;
+              setName(value);
+            }}
+          />
+          <fieldset disabled={resolving} className="contents">
             <Select
               label="Playlist source"
               value={resolver.id}
@@ -97,13 +135,18 @@ export function AddPlaylistDialog({ onClose }: { onClose: () => void }) {
                 </p>
               ))
             )}
-          </DialogBody>
-        </fieldset>
+          </fieldset>
+        </DialogBody>
       ) : failure ? (
         <HandlersFailure failure={failure} retry={retry} />
       ) : (
         <p role="status" className="m-0 text-muted">
           Loading…
+        </p>
+      )}
+      {resolving && (
+        <p role="status" className="m-0 text-muted">
+          Finding playlists…
         </p>
       )}
       {refusal && <Refusal reason={refusal} />}

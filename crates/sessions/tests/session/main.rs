@@ -84,7 +84,7 @@ pub(crate) fn playlist_in(dir: &std::path::Path, names: &[&str]) -> WorkspaceIte
         "options".into(),
         serde_json::json!({"width": 64, "height": 48}),
     );
-    workspace::intake::playlist("folder_pair", settings, None, &Handlers::built_in()).unwrap()
+    workspace::intake::playlist("folder_pair", settings, &Handlers::built_in()).unwrap()
 }
 
 pub(crate) struct Rig {

@@ -11,8 +11,8 @@ mod workspace;
 
 pub use bookmark::{Bookmark, BookmarkKind, BookmarkTarget};
 pub use content::{
-    Content, ContentId, Entry, ImageSequence, OverlayRef, PlaylistContent, SeekableVideoContent,
-    VideoRef,
+    Content, ContentId, Entry, ImageSequence, OverlayRef, PlaylistContent, PlaylistSpan,
+    SeekableVideoContent, VideoRef, playlist_label,
 };
 pub use foundation::{BookmarkId, ItemId};
 pub use item::{

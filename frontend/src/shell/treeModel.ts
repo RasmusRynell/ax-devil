@@ -5,12 +5,12 @@ export type TreeRow = {
   info: RowInfo;
   /** The workspace item the row belongs to, which a viewer is opened on. */
   item: string;
-  /** 1 for items, 2 and 3 for what is inside them. */
+  /** 1 for videos and playlists, 2 and 3 for what is inside them. */
   level: number;
-  /** The key of the row this one is inside; `null` for items. */
+  /** The key of the row this one is inside; `null` at level 1. */
   parent: string | null;
   hasChildren: boolean;
-  /** Whether the item is a playlist, as opposed to one video. */
+  /** Whether the row is a playlist, as opposed to one video. */
   playlist: boolean;
   /** Hidden itself or inside a hidden entry. */
   dimmed: boolean;
@@ -22,29 +22,22 @@ export type TreeRow = {
 export type VisibleRow = { row: TreeRow; position: number; siblings: number };
 
 /**
- * Adds to the backend's rows what follows from their order: the item each belongs to, its level and its parent.
- * A video item's lanes sit directly under the item, since its one entry would only repeat it; a playlist item
- * itself cannot be hidden, only its entries and their lanes.
+ * Adds to the backend's rows what follows from their order: each one's level and parent. A video item's lanes sit
+ * directly under the item, since its one entry would only repeat it. A playlist item has no row of its own: each of
+ * its playlists is a row at level 1, with its entries inside. A playlist row cannot be hidden, only entries and lanes.
  */
-export function treeOf({ items, rows }: WorkspaceState): TreeRow[] {
-  const playlists = new Set(
-    items.flatMap((item) =>
-      item.resolution.status === "Resolved" && item.resolution.content.kind === "Playlist"
-        ? [item.id]
-        : [],
-    ),
-  );
+export function treeOf({ rows }: WorkspaceState): TreeRow[] {
   const tree: TreeRow[] = [];
-  let item: TreeRow | undefined;
+  let top: TreeRow | undefined;
   let entry: TreeRow | undefined;
   for (const info of rows) {
-    const parent =
-      info.kind === "item" ? undefined : info.kind === "entry" ? item : (entry ?? item);
+    const topLevel = info.kind === "item" || info.kind === "playlist";
+    const parent = topLevel ? undefined : info.kind === "entry" ? top : (entry ?? top);
     const { entry: opens } = info;
-    const playlist = info.kind === "item" && playlists.has(info.key);
+    const playlist = info.kind === "playlist";
     const row: TreeRow = {
       info,
-      item: item && parent ? item.info.key : info.key,
+      item: info.item,
       level: (parent?.level ?? 0) + 1,
       parent: parent?.info.key ?? null,
       hasChildren: false,
@@ -56,8 +49,8 @@ export function treeOf({ items, rows }: WorkspaceState): TreeRow[] {
           : null,
     };
     if (parent) parent.hasChildren = true;
-    if (info.kind === "item") {
-      item = row;
+    if (topLevel) {
+      top = row;
       entry = undefined;
     } else if (info.kind === "entry") entry = row;
     tree.push(row);

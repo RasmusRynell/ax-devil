@@ -29,7 +29,7 @@ implementing module closes.
   as a typed mode.
 - Every playlist lane references Seekable Video Content. Playlists are offline workflows.
 - One intake validates decoder selections and live connection settings for every video and live stream opened by a
-  dialog, the CLI or a file drop. Playlists from a resolver enter as built; the resolver owns their validity.
+  dialog, the CLI or a file drop. A resolver's playlists enter as built; it owns their validity.
 
 ## Coordinates
 
@@ -120,7 +120,7 @@ implementing module closes.
   one new Doc. "Modified" is current ≠ saved. One projection turns the resolved Content and the open items into rows.
 - Hidden refs identify current Workspace content, playlist entries or lanes; orphan and out-of-range refs are ignored.
 - A lane's matching (basis, tolerance, sticky) lives in its item's recipe, by the lane's slot (the same in every entry
-  of a playlist, where lane names can differ), and changes only by a Doc command.
+  of an item's playlists, where lane names can differ), and changes only by a Doc command.
 - Removing Content removes its whole item and closes every viewer showing it. Opening a Workspace file closes every
   viewer, even when item ids are kept. The split host alone removes and destroys hosted viewers.
 - Every item is listed: a failed one is an unavailable row showing its reason that never opens; one still resolving is

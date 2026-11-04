@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
-import type { EntryInfo, HiddenTarget } from "../generated/api";
-import { entry, FakeSocket, playlist, type Room } from "../session/fakeSession";
+import type { EntryInfo, HiddenTarget, ItemState } from "../generated/api";
+import { entry, FakeSocket, playlist, playlists, type Room } from "../session/fakeSession";
 import { SessionProvider, useDoc, useView } from "../session/session";
 import type { VideoViewerProps } from "../playback/VideoViewer";
 import { NO_ACTIONS, ViewerActionsContext, useViewerActions, type ViewerActions } from "./actions";
@@ -38,6 +38,7 @@ describe("adjacent entry", () => {
     const hidden = hiddenOf(
       hiding("B", "C").map((target) => ({
         key: target.entry,
+        item: "list",
         kind: "entry" as const,
         label: target.entry,
         status: { status: "Ready" as const },
@@ -77,7 +78,8 @@ async function mount({
   hidden = [],
   entries = ENTRIES,
   shown,
-}: { hidden?: HiddenTarget[]; entries?: EntryInfo[]; shown?: string } = {}) {
+  item,
+}: { hidden?: HiddenTarget[]; entries?: EntryInfo[]; shown?: string; item?: ItemState } = {}) {
   registry.current = NO_ACTIONS;
   render(
     <SessionProvider>
@@ -90,7 +92,7 @@ async function mount({
   const room = FakeSocket.rooms.get("room-1") as Room;
   room.hidden = hidden;
   act(() => {
-    room.setItems([playlist("list", entries)]);
+    room.setItems([item ?? playlist("list", entries)]);
     if (shown)
       room.publish({
         sidebar: room.presenter.sidebar,
@@ -133,6 +135,20 @@ describe("playlist viewer", () => {
     run("previous-entry");
     run("previous-entry");
     expect(screen.getByText("playing A")).toBeTruthy();
+  });
+
+  it("steps only within the playlist holding the entry on screen, and names it", async () => {
+    const both = playlists("list", [
+      ["P", ENTRIES.slice(0, 2)],
+      ["Q", ENTRIES.slice(2)],
+    ]);
+    await mount({ item: both, shown: "list/C" });
+    expect(screen.getByText("list / Q")).toBeTruthy();
+    expect(screen.getByLabelText("Entry").textContent).toBe("1 / 2");
+    expect(screen.getByRole("button", { name: "Previous entry" })).toHaveProperty("disabled", true);
+    fireEvent.click(screen.getByRole("button", { name: "Next entry" }));
+    expect(screen.getByText("playing D")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Next entry" })).toHaveProperty("disabled", true);
   });
 
   it("offers no command where there is no entry to go to, and keeps the entry viewer's own", async () => {
