@@ -110,6 +110,17 @@ describe("asking", () => {
     expect(files.view(0)).toEqual({ pending: true, page: null, unavailable: null });
   });
 
+  it("sends the wanted list at once when flushed, and waits again for the next change", () => {
+    const { files, queries } = scope();
+    files.request(0, "car", SORT, 0, 50, 64);
+    files.flush(0);
+    expect(queries()).toHaveLength(1);
+    vi.advanceTimersByTime(150);
+    expect(queries()).toHaveLength(1);
+    files.request(0, "bus", SORT, 0, 50, 64);
+    expect(queries()).toHaveLength(1);
+  });
+
   it("keeps showing the last rows while a newer list is awaited, and drops answers of older requests", () => {
     const { files, rows, ask, last } = scope();
     ask("car");

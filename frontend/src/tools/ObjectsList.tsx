@@ -38,7 +38,10 @@ import { useApplied } from "./useApplied";
 
 /** What the panel reads of a viewer and asks of it: `PlaybackSession` is one. */
 export interface ObjectSource {
-  readonly files: Pick<FileScope, "request" | "locating" | "release" | "subscribe" | "view"> &
+  readonly files: Pick<
+    FileScope,
+    "request" | "flush" | "locating" | "release" | "subscribe" | "view"
+  > &
     AppearanceSource;
   /** What the lane drew on the frame on screen. */
   shown(lane: number): LaneFrame | undefined;
@@ -107,6 +110,7 @@ export function ObjectsList({
   const sort = sorts[scope];
   // File scope's request has its own pause; the frame's objects are filtered here, once typing pauses or is committed.
   const [applied, apply] = useApplied(text);
+  const [committed, setCommitted] = useState(false);
   const { wire } = useMemo(() => parseSearch(applied), [applied]);
   const frame = source.shown(lane);
   const objects = useMemo(() => frameObjects(frame), [frame]);
@@ -182,6 +186,12 @@ export function ObjectsList({
         from ?? tables.current.file.cursor,
       );
   }, [source, lane, inFile, text, sort, wanted, from]);
+  // Return and Clear ask for the list at once; this runs after the request the committed text made.
+  useEffect(() => {
+    if (!committed) return;
+    source.files.flush(lane);
+    setCommitted(false);
+  }, [source, lane, committed]);
   useEffect(() => {
     if (inFile) return () => source.files.release(lane);
   }, [source, lane, inFile]);
@@ -233,7 +243,10 @@ export function ObjectsList({
             label="Search objects"
             value={text}
             onChange={(value) => onList({ ...list, text: value })}
-            onCommit={apply}
+            onCommit={(value) => {
+              apply(value);
+              setCommitted(true);
+            }}
           />
           {notice !== null && (
             <div role="status" className="pt-xs text-small text-muted">

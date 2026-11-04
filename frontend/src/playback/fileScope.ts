@@ -147,6 +147,15 @@ export class FileScope {
     this.#replace(lane, slot, { ...slot.view, pending: true });
   }
 
+  /** Sends the question the lane's list is waiting to ask now, instead of when the pause for more changes ends. */
+  flush(lane: number): void {
+    const slot = this.#slots.get(lane);
+    if (!slot?.cancel) return;
+    slot.cancel();
+    slot.cancel = null;
+    this.#ask(lane, slot);
+  }
+
   /**
    * Names the object whose row the lane's list page tells from now on, as the viewer's cursor moves. Nothing is sent
    * for it; the next question, a refresh or a re-ask included, carries it. If the answer awaited was asked about
@@ -255,25 +264,29 @@ export class FileScope {
     slot.cancel?.();
     slot.cancel = this.#after(() => {
       slot.cancel = null;
-      if (this.#slots.get(lane) !== slot) return;
-      const basis = listBasis(this.#lanes, lane, this.#owner);
-      slot.basis = JSON.stringify(basis);
-      slot.asked = ++this.#requests;
-      const { query, sort, offset, limit, bins, locate } = slot.wanted;
-      const classes = basis.classes;
-      this.#send({
-        type: "FileQuery",
-        lane,
-        request: slot.asked,
-        query,
-        classes,
-        sort,
-        offset,
-        limit,
-        bins,
-        locate,
-      });
+      this.#ask(lane, slot);
     }, ms);
+  }
+
+  #ask(lane: number, slot: Slot): void {
+    if (this.#slots.get(lane) !== slot) return;
+    const basis = listBasis(this.#lanes, lane, this.#owner);
+    slot.basis = JSON.stringify(basis);
+    slot.asked = ++this.#requests;
+    const { query, sort, offset, limit, bins, locate } = slot.wanted;
+    const classes = basis.classes;
+    this.#send({
+      type: "FileQuery",
+      lane,
+      request: slot.asked,
+      query,
+      classes,
+      sort,
+      offset,
+      limit,
+      bins,
+      locate,
+    });
   }
 
   #replace(lane: number, slot: Slot, view: FileScopeView): void {
