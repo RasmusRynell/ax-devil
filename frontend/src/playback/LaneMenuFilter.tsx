@@ -60,7 +60,7 @@ function Classes({
   if (!options.length) return null;
   const isOn = (option: FilterOptionInfo) => filter[option.id] ?? option.default_enabled;
   const setAll = (on: boolean) =>
-    onChange({ filter: Object.fromEntries(options.map((option) => [option.id, on])) });
+    onChange({ filter: options.reduce((next, option) => withClass(next, option, on), filter) });
   return (
     <Group label="Classes">
       <div className="flex items-center justify-between gap-xl">
@@ -245,6 +245,11 @@ function Expression({
 /** Which objects the lane shows: by class, by score and confidence range, and by an expression over their fields. */
 export function LaneMenuFilter({ lane, onChange }: { lane: LaneState; onChange: Change }) {
   const { filter, ranges, expression } = lane.settings;
+  // Anything stored can be cleared, including a class override the lane's file has no class for.
+  const stored =
+    Object.keys(filter).length > 0 ||
+    MEASURES.some((measure) => bounded(ranges, measure)) ||
+    !!expression;
   // Resetting remounts the fields, which drops what was typed and not applied.
   const [round, setRound] = useState(0);
   return (
@@ -259,7 +264,7 @@ export function LaneMenuFilter({ lane, onChange }: { lane: LaneState; onChange: 
       />
       <div className="flex justify-end">
         <Button
-          disabled={changedControls(lane) === 0}
+          disabled={!stored}
           onClick={() => {
             setRound(round + 1);
             onChange({ filter: {}, ranges: OPEN_RANGES, expression: "" });

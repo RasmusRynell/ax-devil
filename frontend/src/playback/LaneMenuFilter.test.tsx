@@ -18,9 +18,9 @@ describe("lane menu filter", () => {
     fireEvent.click(box("Pedestrian"));
     expect(onChange).toHaveBeenLastCalledWith({ filter: { pedestrian: false } });
     fireEvent.click(screen.getByRole("button", { name: "Show all" }));
-    expect(onChange).toHaveBeenLastCalledWith({ filter: { pedestrian: true, static: true } });
+    expect(onChange).toHaveBeenLastCalledWith({ filter: { static: true } });
     fireEvent.click(screen.getByRole("button", { name: "None" }));
-    expect(onChange).toHaveBeenLastCalledWith({ filter: { pedestrian: false, static: false } });
+    expect(onChange).toHaveBeenLastCalledWith({ filter: { pedestrian: false } });
   });
 
   it("applies a score or confidence bound at every keystroke, reading a comma as a decimal point, and refuses what is not a number", () => {
@@ -69,15 +69,17 @@ describe("lane menu filter", () => {
     expect(screen.getByRole("tab", { name: "Filter 3" })).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Reset" }));
     expect(onChange).toHaveBeenLastCalledWith({ filter: {}, ranges: OPEN_RANGES, expression: "" });
-    // A class switched off and on again is no override, so nothing differs and Reset is off.
+    // A class switched off and on again is no override; an override for an unknown class is not counted but can be reset.
     show({ settings: { ...LANE_SETTINGS, filter: { pedestrian: false, other: true } } });
     fireEvent.click(box("Pedestrian"));
     expect(onChange).toHaveBeenLastCalledWith({ filter: { other: true } });
     show({ settings: { ...LANE_SETTINGS, filter: { other: true } } });
     expect(screen.getByRole("tab", { name: "Filter" })).toBeTruthy();
     expect((screen.getByRole("button", { name: "Reset" }) as HTMLButtonElement).disabled).toBe(
-      true,
+      false,
     );
+    fireEvent.click(screen.getByRole("button", { name: "Reset" }));
+    expect(onChange).toHaveBeenLastCalledWith({ filter: {}, ranges: OPEN_RANGES, expression: "" });
   });
 
   it("does not apply a bound the expression cannot be combined with, or an expression the bounds cannot be added to", () => {
