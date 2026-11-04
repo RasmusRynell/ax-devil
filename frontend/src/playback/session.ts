@@ -5,7 +5,7 @@
  */
 
 import { cadence, type Cadence } from "./cadence";
-import { CommandRefused, reasonOf } from "../errors";
+import { reasonOf } from "../errors";
 import { ExportJobs } from "../export/jobs";
 import {
   PlaybackClock,
@@ -24,6 +24,7 @@ import { DataWait, displaySource } from "./frameSource";
 import { WantPlanner, sameWant } from "./direction";
 import type { LaneMatch } from "./laneData";
 import { LaneSet } from "./lanes";
+import { Link } from "./link";
 import {
   PLAYBACK_PROTOCOL,
   type Envelope,
@@ -31,16 +32,10 @@ import {
   type VideoFrame,
   type Want,
 } from "./protocol";
-import {
-  BUFFER_BUDGET_BYTES,
-  ENDED,
-  RETRY_MS,
-  type ResumeState,
-  type SessionDeps,
-} from "./sessionDeps";
+import { BUFFER_BUDGET_BYTES, ENDED, type ResumeState, type SessionDeps } from "./sessionDeps";
 import { INITIAL_VIEW, buildView, sameView, type PlaybackView } from "./view";
 import { ViewerData } from "./viewerData";
-import type { Connection, Incoming } from "./wire";
+import type { Incoming } from "./wire";
 
 export type { Surface } from "./contract";
 
@@ -53,7 +48,7 @@ export class PlaybackSession implements LaneControl {
   readonly #lanes = new LaneSet((slot, policy) => this.#deps.onPolicy?.(slot, policy));
   readonly #data = new ViewerData(
     this.#lanes,
-    (message) => this.#connection?.send(message),
+    (message) => this.#link.send(message),
     (callback, ms) => this.#deps.after(callback, ms),
   );
   /** A paused clock waits briefly for lane data after a seek or step. */
@@ -74,11 +69,9 @@ export class PlaybackSession implements LaneControl {
     () => this.#deps.now(),
   );
   /** The export this viewer's socket runs for the owner. */
-  readonly exports = new ExportJobs((message) => this.#connection?.send(message));
+  readonly exports = new ExportJobs((message) => this.#link.send(message));
+  readonly #link: Link;
   #surface: Surface | null = null;
-  #connection: Connection | undefined;
-  /** Names this connection, so a late message of an earlier one is ignored. */
-  #attempt: object = {};
   #opened: Extract<ServerMessage, { type: "Opened" }> | undefined;
   #buffer: FrameBuffer<VideoFrame> | undefined;
   #clock: PlaybackClock | undefined;
@@ -91,12 +84,9 @@ export class PlaybackSession implements LaneControl {
   #speed = 1;
   /** The frame to reopen on. */
   #resumeAt: number | undefined;
-  #retries = 0;
   /** A lost connection took a running clock: the reopened one is paused, so the intent is stale. */
   #stoppedByLoss = false;
   #cancelFrame: (() => void) | undefined;
-  #cancelRetry: (() => void) | undefined;
-  #closed = false;
   #frameCount = 0;
   #failure: PlaybackView["failure"];
   #status: PlaybackView["status"] = "connecting";
@@ -109,6 +99,16 @@ export class PlaybackSession implements LaneControl {
     this.#budget = deps.budgetBytes ?? BUFFER_BUDGET_BYTES;
     this.#resumeAt = deps.resume?.frame;
     this.#speed = clampSpeed(deps.resume?.speed ?? 1);
+    this.#link = new Link(deps, {
+      open: () => ({
+        type: "Open",
+        start_frame: this.#resumeAt,
+        data_bytes: sampleBudgetBytes(this.#budget),
+      }),
+      incoming: (incoming) => this.#onIncoming(incoming),
+      refused: (reason) => this.#fail(reason),
+      lost: () => this.#lose(),
+    });
   }
 
   /** Where the next session should open: the position and the speed. Kept after the video is released. */
@@ -118,16 +118,12 @@ export class PlaybackSession implements LaneControl {
 
   /** Connects and asks for the video. */
   start(): void {
-    this.#connect();
+    this.#link.connect();
   }
 
   /** Ends the session: tells the backend, stops the display loop and drops every frame. */
   close(): void {
-    this.#closed = true;
-    this.#connection?.send({ type: "Close" });
-    this.#connection?.close();
-    this.#connection = undefined;
-    this.#cancelRetry?.();
+    this.#link.close();
     this.#releaseVideo();
   }
 
@@ -170,7 +166,7 @@ export class PlaybackSession implements LaneControl {
    */
   setLane(lane: number, change: Partial<LaneSettings>): void {
     const message = this.#lanes.set(lane, change);
-    if (message) this.#connection?.send(message);
+    if (message) this.#link.send(message);
     this.#data.refresh();
     this.represent();
     this.#changed();
@@ -178,7 +174,7 @@ export class PlaybackSession implements LaneControl {
 
   /** Gives every other lane of this viewer the settings of `lane`, but its visibility. */
   applyToAll(lane: number): void {
-    this.#lanes.copyFrom(lane).forEach((message) => this.#connection?.send(message));
+    this.#lanes.copyFrom(lane).forEach((message) => this.#link.send(message));
     this.#data.refresh();
     this.represent();
     this.#changed();
@@ -289,33 +285,6 @@ export class PlaybackSession implements LaneControl {
       this.#deps.onIntent?.({ frame: clock.playhead, playing: clock.playing, speed: this.#speed });
   }
 
-  #connect(): void {
-    const attempt = {};
-    this.#attempt = attempt;
-    this.#opened = undefined;
-    const current = () => this.#attempt === attempt && !this.#closed;
-    this.#deps.ticket().then(
-      (ticket) => {
-        if (!current()) return;
-        this.#connection = this.#deps.connect((incoming) => {
-          if (current()) this.#onIncoming(incoming);
-        });
-        this.#connection.send({
-          type: "Open",
-          ticket,
-          start_frame: this.#resumeAt,
-          data_bytes: sampleBudgetBytes(this.#budget),
-        });
-      },
-      (error: unknown) => {
-        if (!current()) return;
-        // A ticket missed because the session's own connection is down is worth another try.
-        if (error instanceof CommandRefused) this.#fail(error.message);
-        else this.#lose();
-      },
-    );
-  }
-
   #onIncoming(incoming: Incoming): void {
     if (incoming.type === "message") this.#onMessage(incoming.message);
     else if (incoming.type === "envelope") this.#onEnvelope(incoming.envelope);
@@ -421,7 +390,7 @@ export class PlaybackSession implements LaneControl {
     this.#clock.setSpeed(this.#speed);
     this.#failures.clear();
     this.#status = "ready";
-    this.#retries = 0;
+    this.#link.settled();
     this.#frameCount = opened.frame_count;
     this.#applyFollowed();
     this.#wait.restart();
@@ -482,25 +451,23 @@ export class PlaybackSession implements LaneControl {
     if (sameWant(this.#lastWant, want)) return;
     this.#lastWant = want;
     buffer.setWindow(want);
-    this.#connection?.send({ type: "Want", ...want });
+    this.#link.send({ type: "Want", ...want });
   }
 
   /** The socket closed on its own: drop the video and open again where it left off, paused. */
   #lose(): void {
     this.#stoppedByLoss ||= this.#clock?.playing ?? false;
     this.#releaseVideo();
-    this.#connection = undefined;
+    this.#opened = undefined;
     this.#status = "reconnecting";
-    const wait = RETRY_MS[Math.min(this.#retries++, RETRY_MS.length - 1)];
-    this.#cancelRetry = this.#deps.after(() => this.#connect(), wait);
+    this.#link.retry();
     this.#publish();
   }
 
   #fail(reason: string, location?: string): void {
     this.#failure = { reason, location };
     this.#status = "failed";
-    this.#connection?.close();
-    this.#connection = undefined;
+    this.#link.drop();
     this.#releaseVideo();
     this.#publish();
   }
