@@ -11,7 +11,7 @@ use std::{
 };
 
 use foundation::{FrameId, MediaTime, Timeline};
-use overlay_sync::{MatchBasis, MatchKind, MatchPolicy, Selection, select};
+use overlay_sync::{MatchBasis, MatchKind, MatchPolicy, Selection, Sticky, select};
 use scene::{Event, Scene};
 use scene_store::{TrackRead, TrackSnapshot};
 use tracing::warn;
@@ -125,9 +125,13 @@ impl LiveLane {
         }
     }
 
-    /// The revision later maps carry: the lane's policy changed.
-    pub fn set_policy_revision(&mut self, revision: u32) {
+    /// The lane's policy changed: later maps carry `revision`, and with sticky off the lane forgets the sample it
+    /// would retain, even while no frame is released to see it.
+    pub fn set_policy(&mut self, revision: u32, sticky: Sticky) {
         self.policy_revision = revision;
+        if !sticky.enabled {
+            self.admitted = None;
+        }
     }
 
     /// The revision the items and maps carry now.

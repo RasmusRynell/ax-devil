@@ -140,7 +140,7 @@ impl LiveViewer {
             subscribed,
         };
         if let Some(lane) = &mut self.lane {
-            lane.set_policy_revision(revision);
+            lane.set_policy(revision, matching.sticky);
         }
     }
 
