@@ -59,7 +59,8 @@ fn linked(a: &Path, b: &Path) -> bool {
     }
 }
 
-/// Hard links are not detected here: only the resolved path is compared.
+/// Stable `std` offers no file identity off Unix (Windows' volume serial number and file index are unstable), so a
+/// hard link is not detected here and only the resolved path is compared.
 #[cfg(not(unix))]
 fn linked(_: &Path, _: &Path) -> bool {
     false
@@ -78,7 +79,7 @@ fn resolved(path: &Path) -> PathBuf {
 
 /// Whether `path` is an image of the sequence `pattern` (one `%d` or `%0Nd` in its file name): named like one in the
 /// sequence's folder, whatever the number, since an image outside the sequence's range is still not a file to replace;
-/// or the file a symlinked image of the sequence points at.
+/// or the file a symlinked or hard-linked image of the sequence is.
 fn in_sequence(pattern: &Path, path: &Path) -> bool {
     let (Some(pattern_name), Some(name), Some(folder)) = (
         pattern.file_name().and_then(|name| name.to_str()),
@@ -107,9 +108,15 @@ fn in_sequence(pattern: &Path, path: &Path) -> bool {
     }
     std::fs::read_dir(folder).is_ok_and(|entries| {
         entries.flatten().any(|entry| {
-            entry.file_type().is_ok_and(|kind| kind.is_symlink())
-                && entry.file_name().to_str().is_some_and(numbered)
-                && same(&entry.path(), path)
+            if !entry.file_name().to_str().is_some_and(numbered) {
+                return false;
+            }
+            // A symlink is followed to its target; any other image matches only as a hard link to `path`.
+            if entry.file_type().is_ok_and(|kind| kind.is_symlink()) {
+                same(&entry.path(), path)
+            } else {
+                linked(&entry.path(), path)
+            }
         })
     })
 }
@@ -137,6 +144,22 @@ mod tests {
         std::fs::create_dir_all(&original).unwrap();
         std::fs::write(original.join("frame.png"), "image").unwrap();
         std::os::unix::fs::symlink(original.join("frame.png"), seq.join("000001.png")).unwrap();
+        let pattern = seq.join("%06d.png");
+
+        assert!(in_sequence(&pattern, &original.join("frame.png")));
+        assert!(!in_sequence(&pattern, &original.join("other.png")));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_file_hard_linked_as_an_image_of_the_sequence_is_not_a_place_to_write() {
+        let dir = tempfile::tempdir().unwrap();
+        let (seq, original) = (dir.path().join("seq"), dir.path().join("original"));
+        std::fs::create_dir_all(&seq).unwrap();
+        std::fs::create_dir_all(&original).unwrap();
+        std::fs::write(original.join("frame.png"), "image").unwrap();
+        std::fs::write(original.join("other.png"), "other").unwrap();
+        std::fs::hard_link(original.join("frame.png"), seq.join("000001.png")).unwrap();
         let pattern = seq.join("%06d.png");
 
         assert!(in_sequence(&pattern, &original.join("frame.png")));

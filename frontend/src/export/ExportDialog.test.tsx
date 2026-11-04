@@ -310,11 +310,38 @@ describe("export dialog", () => {
     );
     expect(screen.queryByLabelText("Path on the server")).toBeNull();
     press("Export");
-    await waitFor(() => expect(pick).toHaveBeenCalledWith("clip.mp4", "mp4"));
+    await waitFor(() => expect(pick).toHaveBeenCalledWith("DPM.mp4", "mp4"));
     expect(sent).toEqual([]);
     press("Export");
     await waitFor(() =>
       expect(sent).toMatchObject([{ type: "Export", path: "/home/me/clip.mp4" }]),
     );
+  });
+
+  it("suggests the first checked lane's file name, following the selection", async () => {
+    const pick = vi.fn().mockResolvedValue(null);
+    window.axDevilWindow = { pickExportFile: pick } as unknown as typeof window.axDevilWindow;
+    const view = {
+      ...VIEW,
+      lanes: [
+        lane("front.v2.avi", { source: 0, status: READY }),
+        lane("detections.json", { source: 1, status: READY }),
+      ],
+    };
+    render(
+      <GrantsContext.Provider value={["preferences"]}>
+        <ExportDialog
+          jobs={new ExportJobs(() => {})}
+          view={view}
+          name="clip.mp4"
+          onClose={() => {}}
+        />
+      </GrantsContext.Provider>,
+    );
+    press("Export");
+    await waitFor(() => expect(pick).toHaveBeenLastCalledWith("front.v2.mp4", "mp4"));
+    fireEvent.click(screen.getByLabelText("front.v2.avi"));
+    press("Export");
+    await waitFor(() => expect(pick).toHaveBeenLastCalledWith("detections.mp4", "mp4"));
   });
 });

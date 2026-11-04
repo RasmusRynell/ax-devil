@@ -180,10 +180,12 @@ export function ExportDialog({
     setFailure(null);
     setChoosing(true);
     try {
-      const stem = name.replace(/\.[^.]*$/, "") || name;
-      const picked = bridge ? await bridge.pickExportFile(`${stem}.${kind}`, kind) : path.trim();
-      if (!picked) return;
-      const target = withExtension(picked, kind);
+      // Named for the first lane taken, as the selection stands when Export is pressed; the viewer's name when none is.
+      const source = picked[0]?.label ?? name;
+      const stem = source.replace(/\.[^.]*$/, "") || source;
+      const chosen = bridge ? await bridge.pickExportFile(`${stem}.${kind}`, kind) : path.trim();
+      if (!chosen) return;
+      const target = withExtension(chosen, kind);
       // The lanes are read now: the picker may have been open while they changed.
       const now = choicesOf(latest.current.lanes);
       const lanes = now.flatMap((choice) =>
