@@ -273,6 +273,8 @@ fn a_plugin_provides_decoders_and_resolvers_skips_unknown_kinds_and_refuses_a_ha
 
 #[test]
 fn resolver_settings_of_every_kind_load_and_each_refusal_names_the_field() {
+    let counted =
+        json!({ "missing": "Pick a root.", "found": "{count} runs.", "none": "No runs." });
     let setting = |extra: Value| {
         let mut manifest = base();
         manifest["handlers"] = json!([{
@@ -284,7 +286,7 @@ fn resolver_settings_of_every_kind_load_and_each_refusal_names_the_field() {
                 { "key": "depth", "label": "Depth", "kind": "integer", "min": 1, "default": 2 },
                 { "key": "handler_type", "label": "Decoder", "kind": "handler" },
                 { "key": "options", "label": "Options", "kind": "decoder_options", "handler_field": "handler_type" },
-                { "key": "runs", "label": "Runs", "kind": "scan", "depends_on": ["root"] },
+                { "key": "runs", "label": "Runs", "kind": "scan", "depends_on": ["root"], "count": counted },
                 extra
             ]
         }]);
@@ -297,6 +299,7 @@ fn resolver_settings_of_every_kind_load_and_each_refusal_names_the_field() {
     assert_eq!(form.fields.len(), 8);
     assert_eq!(form.fields[0].cli, Cli::Positional);
     assert_eq!(form.fields[3].kind, FieldKind::Integer { min: 1 });
+    assert!(!form.fields[6].holds_value());
     assert_eq!(form.fields[4].cli, Cli::Flag("handler-type".to_owned()));
     let empty = setting(json!({ "key": "all", "label": "All", "kind": "scan", "depends_on": [] }));
     LoadedPlugin::load(&install(folder.path(), &empty)).expect("empty depends_on");
@@ -310,6 +313,14 @@ fn resolver_settings_of_every_kind_load_and_each_refusal_names_the_field() {
         (
             json!({ "key": "a", "label": "A", "kind": "scan", "depends_on": ["nope"] }),
             "handlers[0].settings[7].depends_on",
+        ),
+        (
+            json!({ "key": "a", "label": "A", "kind": "scan", "count": { "missing": "m", "found": "none", "none": "n" } }),
+            "handlers[0].settings[7].count.found",
+        ),
+        (
+            json!({ "key": "a", "label": "A", "kind": "scan", "count": { "missing": "m", "found": "{count}", "none": "n" } }),
+            "handlers[0].settings[7].count",
         ),
         (
             json!({ "key": "a", "label": "A", "kind": "decoder_options", "handler_field": "note" }),

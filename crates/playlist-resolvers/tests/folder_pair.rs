@@ -65,7 +65,7 @@ fn pairs_files_by_stripped_name_in_name_order() {
     for file in [
         "alpha.json",
         "beta.jsonl",
-        "camera.1.json",
+        "camera.1.json.gz",
         "orphan.json",
         ".hidden.json",
     ] {
@@ -77,6 +77,14 @@ fn pairs_files_by_stripped_name_in_name_order() {
     let [playlist] = resolved.playlists.as_slice() else {
         panic!("one playlist");
     };
+
+    // The scan finds the pairs resolving gives.
+    let values = resolver()
+        .spec()
+        .form
+        .validate(&settings(&videos, &overlays));
+    let found = resolver().scan("pairs", &values.unwrap(), &CancelToken::new());
+    assert_eq!(found.unwrap().len(), playlist.entries.len());
 
     assert_eq!(playlist.name, "Folder Pair");
     let names: Vec<_> = playlist
@@ -99,23 +107,6 @@ fn pairs_files_by_stripped_name_in_name_order() {
         ("beta", "ADF_BETA_FRAME", &overlays.join("beta.jsonl"))
     );
     assert!(overlay.options.is_empty());
-}
-
-#[test]
-fn a_matched_compressed_file_is_refused_by_name() {
-    let dir = tempfile::tempdir().unwrap();
-    let (videos, overlays) = (dir.path().join("v"), dir.path().join("o"));
-    touch(videos.join("clip.mp4"));
-    touch(overlays.join("clip.txt.GZ"));
-    touch(overlays.join("orphan.txt.gz"));
-
-    let error = failure(&settings(&videos, &overlays));
-
-    assert!(error.reason.contains("Compressed"), "{error:?}");
-    assert_eq!(
-        error.location,
-        Some(HostPath::new(overlays.join("clip.txt.GZ")).into())
-    );
 }
 
 #[cfg(unix)]
@@ -173,7 +164,12 @@ fn duplicate_names_and_no_pairs_are_errors() {
     touch(overlays.join("other.json"));
     let no_pairs = failure(&settings(&videos, &overlays));
     assert!(
-        no_pairs.reason.starts_with("No video file name"),
+        no_pairs.reason
+            == format!(
+                "No matched video/overlay pairs in '{}' and '{}'.",
+                videos.display(),
+                overlays.display()
+            ),
         "{no_pairs:?}"
     );
 

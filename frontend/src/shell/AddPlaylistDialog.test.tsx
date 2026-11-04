@@ -36,12 +36,23 @@ const HANDLERS: HandlersInfo = {
       display_name: "Folder pair",
       description: "",
       fields: [
-        { key: "videos_dir", label: "Videos folder", kind: { kind: "Folder" }, required: true },
-        { key: "handler_type", label: "Overlay format", kind: { kind: "Handler" }, required: true },
+        { key: "videos_dir", label: "Videos", kind: { kind: "Folder" }, required: true },
+        { key: "overlays_dir", label: "Overlays", kind: { kind: "Folder" }, required: true },
+        { key: "handler_type", label: "Decoder", kind: { kind: "Handler" }, required: true },
         {
           key: "options",
           label: "Overlay options",
           kind: { kind: "DecoderOptions", handler_field: "handler_type" },
+          required: false,
+        },
+        {
+          key: "pairs",
+          label: "Pairs",
+          kind: {
+            kind: "Scan",
+            depends_on: ["videos_dir", "overlays_dir"],
+            count: { missing: "Select folders.", found: "Found {count} pair(s).", none: "None." },
+          },
           required: false,
         },
       ],
@@ -67,16 +78,18 @@ const reply = (status: number, json: unknown) => ({
 function stubBackend(
   resolve: () => ReturnType<typeof reply> | Promise<ReturnType<typeof reply>> = () =>
     reply(200, { item: "p1" }),
+  scan: () => ReturnType<typeof reply> | Promise<ReturnType<typeof reply>> = () =>
+    reply(200, [
+      { value: "SEQ-01", label: "SEQ-01", detail: "64×48" },
+      { value: "SEQ-02", label: "SEQ-02", detail: "64×48" },
+    ]),
 ) {
   vi.stubGlobal(
     "fetch",
     vi.fn(async (url: string) => {
       if (url === "/api/handlers") return reply(200, HANDLERS);
       if (url.endsWith("/resolve")) return resolve();
-      return reply(200, [
-        { value: "SEQ-01", label: "SEQ-01", detail: "64×48" },
-        { value: "SEQ-02", label: "SEQ-02", detail: "64×48" },
-      ]);
+      return scan();
     }),
   );
 }
@@ -89,7 +102,7 @@ const open = async (onClose = () => {}) => {
   );
   await screen.findByLabelText("Playlist source");
   // The form's dialog opens in an effect after it mounts.
-  await screen.findByRole("button", { name: "Add" });
+  await screen.findByRole("button", { name: "Cancel" });
 };
 const choose = (source: string) =>
   fireEvent.change(screen.getByLabelText("Playlist source"), { target: { value: source } });
@@ -113,7 +126,7 @@ function deferred() {
   const promise = new Promise<ReturnType<typeof reply>>((done) => (settle = done));
   return { promise, settle };
 }
-const add = () => screen.getByRole("button", { name: "Add" });
+const add = () => screen.getByRole("button", { name: "Load Playlist" });
 const commands = () => FakeSocket.latest.received.filter((message) => message.type === "command");
 
 describe("add playlist dialog", () => {
@@ -133,7 +146,7 @@ describe("add playlist dialog", () => {
     expect(locked("Dataset folder")).toBe(true);
     expect(locked("Name")).toBe(false);
     expect(screen.getByRole("button", { name: "Cancel" }).matches(":disabled")).toBe(false);
-    fireEvent.submit(screen.getByLabelText("Name").closest("form")!);
+    fireEvent.click(add());
     fireEvent.change(screen.getByLabelText("Name"), { target: { value: " Later " } });
     held.settle(reply(200, { item: "p1" }));
     await waitFor(() => expect(onClose).toHaveBeenCalled());
@@ -152,7 +165,11 @@ describe("add playlist dialog", () => {
   it("shows a refusal in the dialog, unlocks the settings, adds nothing and lets the user retry", async () => {
     const onClose = vi.fn();
     let answers = [
-      reply(422, { code: "PlaylistInvalid", params: {}, reason: "No MOT sequences found" }),
+      reply(422, {
+        code: "PlaylistInvalid",
+        params: {},
+        reason: "No MOT sequences found in '/data'.",
+      }),
       reply(200, { item: "p1" }),
     ];
     stubBackend(() => answers.shift()!);
@@ -161,7 +178,7 @@ describe("add playlist dialog", () => {
     await scanRoot();
     fireEvent.click(add());
     const alert = await screen.findByRole("alert");
-    expect(alert.textContent).toContain("No MOT sequences found");
+    expect(alert.textContent).toContain("No MOT sequences found in '/data'.");
     expect(screen.queryByRole("status")).toBeNull();
     expect(commands()).toHaveLength(0);
     expect(onClose).not.toHaveBeenCalled();
@@ -233,44 +250,117 @@ describe("add playlist dialog", () => {
     expect(screen.queryByRole("alert")).toBeNull();
   });
 
-  it("builds the form of the chosen resolver, with the chosen decoder's options sent as a map", async () => {
-    stubBackend();
+  /** The dialog on a filled Folder Pair form whose pair count is held until `held` settles. */
+  async function filledFolderPair() {
+    const held = deferred();
+    stubBackend(undefined, () => held.promise);
     await open();
     choose("folder_pair");
     expect(screen.queryByLabelText("Dataset folder")).toBeNull();
-    const format = screen.getByLabelText("Overlay format") as HTMLSelectElement;
-    expect(format.value).toBe("");
-    fireEvent.change(screen.getByLabelText("Videos folder"), { target: { value: "/videos" } });
+    const decoder = screen.getByLabelText("Decoder") as HTMLSelectElement;
+    expect(decoder.value).toBe("");
+    fireEvent.change(screen.getByLabelText("Videos"), { target: { value: "/videos" } });
+    fireEvent.change(screen.getByLabelText("Overlays"), { target: { value: "/overlays" } });
     expect(add()).toHaveProperty("disabled", true);
-    fireEvent.change(format, { target: { value: "MOT_FILE" } });
+    fireEvent.change(decoder, { target: { value: "MOT_FILE" } });
+    expect((decoder.selectedOptions[0] as HTMLOptionElement).text).toBe(
+      "MOT Annotations (MOT_FILE)",
+    );
     expect(add()).toHaveProperty("disabled", true);
     fireEvent.change(screen.getByLabelText("Image width"), { target: { value: "1920" } });
     expect(add()).toHaveProperty("disabled", false);
+    return { held, decoder };
+  }
+
+  const FOLDER_PAIR_SETTINGS = {
+    videos_dir: "/videos",
+    overlays_dir: "/overlays",
+    handler_type: "MOT_FILE",
+    options: { width: 1920 },
+  };
+
+  it("loads a folder pair after counting its pairs, and not when another decoder is chosen meanwhile", async () => {
+    const { held, decoder } = await filledFolderPair();
+
+    // Load scans first; a decoder picked meanwhile keeps it from going on.
+    fireEvent.click(add());
+    await screen.findByText("Scanning…");
+    expect(add()).toHaveProperty("disabled", true);
+    fireEvent.change(decoder, { target: { value: "" } });
+    held.settle(reply(200, [{ value: "a", label: "a", detail: "" }]));
+    await screen.findByText("Found 1 pair(s).");
+    expect(resolveCalls()).toHaveLength(0);
+
+    // The count is kept, so loading with a decoder goes straight on.
+    fireEvent.change(decoder, { target: { value: "MOT_FILE" } });
     fireEvent.click(add());
     await waitFor(() => expect(commands()).toHaveLength(1));
-    const [url, init] =
-      vi.mocked(fetch).mock.calls.find(([url]) => url === "/api/resolvers/folder_pair/resolve") ??
-      [];
+    const [url, init] = resolveCalls()[0];
     expect(url).toBe("/api/resolvers/folder_pair/resolve");
-    expect(bodyOf(init)).toEqual({
+    expect(bodyOf(init)).toEqual({ session: "room-1", settings: FOLDER_PAIR_SETTINGS });
+  });
+
+  it("loads a folder pair whose decoder was changed away and back while its pairs were counted", async () => {
+    const { held, decoder } = await filledFolderPair();
+    fireEvent.click(add());
+    await screen.findByText("Scanning…");
+    fireEvent.change(decoder, { target: { value: "" } });
+    fireEvent.change(decoder, { target: { value: "MOT_FILE" } });
+    held.settle(reply(200, [{ value: "a", label: "a", detail: "" }]));
+    await waitFor(() => expect(commands()).toHaveLength(1));
+    expect(bodyOf(resolveCalls()[0][1])).toEqual({
       session: "room-1",
-      settings: { videos_dir: "/videos", handler_type: "MOT_FILE", options: { width: 1920 } },
+      settings: FOLDER_PAIR_SETTINGS,
     });
+  });
+
+  it("keeps Cancel aborting a load of another source when an earlier load's count answers late", async () => {
+    const counting = deferred();
+    const resolving = deferred();
+    let scans = 0;
+    stubBackend(
+      () => resolving.promise,
+      () =>
+        scans++ === 0
+          ? counting.promise
+          : reply(200, [{ value: "SEQ-01", label: "SEQ-01", detail: "" }]),
+    );
+    await open();
+    choose("folder_pair");
+    fireEvent.change(screen.getByLabelText("Videos"), { target: { value: "/videos" } });
+    fireEvent.change(screen.getByLabelText("Overlays"), { target: { value: "/overlays" } });
+    fireEvent.change(screen.getByLabelText("Decoder"), { target: { value: "MOT_FILE" } });
+    fireEvent.change(screen.getByLabelText("Image width"), { target: { value: "1920" } });
+    fireEvent.click(add());
+    await screen.findByText("Scanning…");
+
+    choose("mot_challenge");
+    await scanRoot();
+    fireEvent.click(add());
+    await waitFor(() => expect(resolveCalls()).toHaveLength(1));
+    counting.settle(reply(200, [{ value: "a", label: "a", detail: "" }]));
+    await new Promise((done) => setTimeout(done, 10));
+
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(resolveCalls()[0][1]?.signal?.aborted).toBe(true);
+    resolving.settle(reply(200, { item: "p1" }));
+    await new Promise((done) => setTimeout(done, 10));
+    expect(commands()).toEqual([]);
   });
 
   it("keeps each source's form while the user switches between sources", async () => {
     stubBackend();
     await open();
     choose("folder_pair");
-    fireEvent.change(screen.getByLabelText("Videos folder"), { target: { value: "/videos" } });
-    fireEvent.change(screen.getByLabelText("Overlay format"), { target: { value: "MOT_FILE" } });
+    fireEvent.change(screen.getByLabelText("Videos"), { target: { value: "/videos" } });
+    fireEvent.change(screen.getByLabelText("Decoder"), { target: { value: "MOT_FILE" } });
     choose("mot_challenge");
     await scanRoot("/data");
     fireEvent.click(screen.getByRole("checkbox", { name: /SEQ-02/ }));
 
     choose("folder_pair");
-    expect((screen.getByLabelText("Videos folder") as HTMLInputElement).value).toBe("/videos");
-    expect((screen.getByLabelText("Overlay format") as HTMLSelectElement).value).toBe("MOT_FILE");
+    expect((screen.getByLabelText("Videos") as HTMLInputElement).value).toBe("/videos");
+    expect((screen.getByLabelText("Decoder") as HTMLSelectElement).value).toBe("MOT_FILE");
     choose("mot_challenge");
     expect((screen.getByLabelText("Dataset folder") as HTMLInputElement).value).toBe("/data");
     expect((screen.getByRole("checkbox", { name: /SEQ-01/ }) as HTMLInputElement).checked).toBe(

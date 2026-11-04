@@ -198,11 +198,27 @@ pub enum FieldKindWire {
         /// The key of the `Handler` field.
         handler_field: String,
     },
-    /// Several of the values a scan finds; absent means all of them.
+    /// Several of the values a scan finds; absent means all of them. With `count` the scan only reports how many it
+    /// finds, the key holds no value and is never sent.
     Scan {
         /// The settings the scan reads, whose change invalidates its result.
         depends_on: Vec<String>,
+        /// What a count-only scan says; absent for a scan whose values are picked.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[ts(optional)]
+        count: Option<ScanCountInfo>,
     },
+}
+
+/// The sentences of a count-only scan.
+#[derive(Clone, Serialize, Deserialize, TS)]
+pub struct ScanCountInfo {
+    /// Shown while a setting the scan reads is empty.
+    pub missing: String,
+    /// Shown when the scan found something; `{count}` stands for how many.
+    pub found: String,
+    /// Shown when the scan found nothing.
+    pub none: String,
 }
 
 /// The body of `POST /api/resolvers/{id}/scan`.

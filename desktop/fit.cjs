@@ -104,8 +104,8 @@ function dialog() {
       problems.push(`cut off: "${element.textContent.trim().slice(0, 30)}"`);
   }
 
-  // The footer buttons are on screen and nothing covers them.
-  for (const button of [...form.querySelectorAll("button")].slice(-2)) {
+  // The footer buttons (the form's last child) are on screen and nothing covers them.
+  for (const button of form.lastElementChild.querySelectorAll("button")) {
     const rect = button.getBoundingClientRect();
     const top = document.elementFromPoint(
       (rect.left + rect.right) / 2,

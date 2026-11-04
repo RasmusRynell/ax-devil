@@ -15,7 +15,7 @@ pub use decoder::{
     DecodeError, DecodeSummary, Decoder, Framing, Header, Input, OnEqualKey, Record, SceneSink,
     Spec,
 };
-pub use form::{Cli, Field, FieldKind, Form, Selection, Values, invalid_field};
+pub use form::{Cli, Field, FieldKind, Form, ScanCount, Selection, Values, invalid_field};
 pub use refs::{ImageSequence, OverlayRef, VideoRef};
 pub use resolver::{
     Choice, PlaylistResolver, ResolvedEntry, ResolvedPlaylist, ResolvedPlaylists, ResolverSpec,

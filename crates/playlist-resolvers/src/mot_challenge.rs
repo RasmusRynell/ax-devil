@@ -51,6 +51,7 @@ impl MotChallengeResolver {
                             "Sequences",
                             FieldKind::Scan {
                                 depends_on: vec!["root".to_owned()],
+                                count: None,
                             },
                         ),
                     ],
@@ -113,8 +114,11 @@ impl PlaylistResolver for MotChallengeResolver {
         let entries = build_entries(sequences, cancel)?;
         if entries.is_empty() {
             return Err(Interrupt::Failed(
-                UserError::new(ErrorCode::PlaylistInvalid, "No MOT sequences found")
-                    .at(HostPath::new(root)),
+                UserError::new(
+                    ErrorCode::PlaylistInvalid,
+                    format!("No MOT sequences found in '{}'.", root.display()),
+                )
+                .at(HostPath::new(root)),
             ));
         }
         Ok(ResolvedPlaylists {

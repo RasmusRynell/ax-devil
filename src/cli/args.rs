@@ -234,6 +234,7 @@ fn resolver_command(resolver: &dyn PlaylistResolver, handlers: &Handlers) -> cla
             spec.form
                 .fields
                 .iter()
+                .filter(|field| field.holds_value())
                 .map(|field| field_arg(field, handlers)),
         )
 }
@@ -317,7 +318,7 @@ fn settings_from(
 ) -> Result<Settings, clap::Error> {
     let form = &resolver.spec().form;
     let mut settings = Settings::new();
-    for field in &form.fields {
+    for field in form.fields.iter().filter(|field| field.holds_value()) {
         let key = field.key.as_str();
         let value = match &field.kind {
             FieldKind::Scan { .. } => matches

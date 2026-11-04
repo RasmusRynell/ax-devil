@@ -6,7 +6,7 @@ use api_types::{
     Audience, ErrorWire,
     handlers::{
         ChoiceInfo, DecoderInfo, FieldInfo, FieldKindWire, HandlersInfo, PluginsInfo, ResolverInfo,
-        ScanRequest,
+        ScanCountInfo, ScanRequest,
     },
 };
 use axum::{
@@ -15,7 +15,7 @@ use axum::{
     http::StatusCode,
 };
 use foundation::{CancelToken, ErrorCode, Interrupt, Location, UserError};
-use handler_api::{Choice, FieldKind, Form, PlaylistResolver, Settings};
+use handler_api::{Choice, Field, FieldKind, Form, PlaylistResolver, Settings};
 use handlers::Handlers;
 use std::sync::Arc;
 
@@ -39,8 +39,13 @@ fn field_kind(kind: &FieldKind) -> FieldKindWire {
         FieldKind::DecoderOptions { handler_field } => FieldKindWire::DecoderOptions {
             handler_field: handler_field.clone(),
         },
-        FieldKind::Scan { depends_on } => FieldKindWire::Scan {
+        FieldKind::Scan { depends_on, count } => FieldKindWire::Scan {
             depends_on: depends_on.clone(),
+            count: count.as_ref().map(|count| ScanCountInfo {
+                missing: count.missing.clone(),
+                found: count.found.clone(),
+                none: count.none.clone(),
+            }),
         },
     }
 }
@@ -99,11 +104,14 @@ async fn scan_choices(
     settings: Settings,
 ) -> Result<Vec<Choice>, Interrupt<UserError>> {
     let form = &resolver.spec().form;
-    let scannable = form
+    let reads = form
         .fields
         .iter()
-        .any(|declared| declared.key == field && matches!(declared.kind, FieldKind::Scan { .. }));
-    if !scannable {
+        .find_map(|declared| match &declared.kind {
+            FieldKind::Scan { depends_on, .. } if declared.key == field => Some(depends_on),
+            _ => None,
+        });
+    let Some(reads) = reads else {
         return Err(Interrupt::Failed(
             UserError::new(
                 ErrorCode::PlaylistInvalid,
@@ -111,7 +119,20 @@ async fn scan_choices(
             )
             .at(Location::field(field)),
         ));
-    }
+    };
+    // A scan needs only what it reads: a setting it does not read, such as the decoder a folder pair is loaded with,
+    // may still be blank.
+    let scan_form = Form {
+        fields: form
+            .fields
+            .iter()
+            .map(|declared| Field {
+                required: declared.required && reads.contains(&declared.key),
+                ..declared.clone()
+            })
+            .collect(),
+    };
+    let form = &scan_form;
     // The plugin runs in its own working folder, so a relative path, a default too, would not mean what it does here.
     let mut filled = form
         .validate(&settings)
@@ -348,6 +369,11 @@ mod tests {
         assert_eq!(status, StatusCode::OK);
         assert_eq!(json(&again), json(&body));
 
+        // A scan needs only what it reads: a folder pair counts its pairs before a decoder is chosen.
+        let both = json!({ "videos_dir": folder.path(), "overlays_dir": folder.path() });
+        let (status, body) = test.send(scan("folder_pair", "pairs", both)).await;
+        assert_eq!((status, json(&body)), (StatusCode::OK, json!([])));
+
         let failures = [
             (
                 scan("mot_challenge", "sequences", json!({})),
@@ -394,7 +420,14 @@ mod tests {
         description: "Scans until cancelled.".into(),
         form: Form {
             fields: vec![
-                Field::new("items", "Items", FieldKind::Scan { depends_on: vec![] }),
+                Field::new(
+                    "items",
+                    "Items",
+                    FieldKind::Scan {
+                        depends_on: vec![],
+                        count: None,
+                    },
+                ),
                 Field {
                     default: Some("runs".into()),
                     ..Field::new("dir", "Folder", FieldKind::Folder)

@@ -1,4 +1,5 @@
-import type { ChoiceInfo, ErrorWire, ScanRequest } from "../generated/api";
+import { reasonOf } from "../errors";
+import type { ChoiceInfo, ErrorWire, ScanCountInfo, ScanRequest } from "../generated/api";
 import { ask, type Answer } from "./handlers";
 
 /** Resolver settings as the backend takes them. */
@@ -92,6 +93,26 @@ export function scanFinished(view: ScanView, choices: readonly ChoiceInfo[]): Sc
 /** The field after its scan was refused. */
 export function scanFailed(view: ScanView, failure: ErrorWire): ScanView {
   return { ...view, phase: "failed", choices: [], missing: [], failure };
+}
+
+/** What the status line of a count-only scan says; `ready` is whether every setting the scan reads is filled in. */
+export function countStatus(
+  view: ScanView | undefined,
+  count: ScanCountInfo,
+  ready: boolean,
+): string {
+  switch (view?.phase) {
+    case "scanning":
+      return "Scanning…";
+    case "failed":
+      return `Scan failed: ${view.failure ? reasonOf(view.failure) : ""}`;
+    case "done":
+      return view.choices.length === 0
+        ? count.none
+        : count.found.replaceAll("{count}", String(view.choices.length));
+    default:
+      return ready ? "" : count.missing;
+  }
 }
 
 /** Every value the list shows: found ones, then saved ones that were not found. */

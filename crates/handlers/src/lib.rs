@@ -146,7 +146,7 @@ mod tests {
         let keys: HashSet<_> = form.fields.iter().map(|field| &field.key).collect();
         assert_eq!(keys.len(), form.fields.len(), "{who}: unique keys");
         for field in &form.fields {
-            if let FieldKind::Scan { depends_on } = &field.kind {
+            if let FieldKind::Scan { depends_on, .. } = &field.kind {
                 assert!(
                     !depends_on.is_empty()
                         && depends_on

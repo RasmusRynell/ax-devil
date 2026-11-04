@@ -73,9 +73,9 @@ module.exports.playlist = async (window) => {
     await wait("!!document.querySelector('dialog[open] select')");
     await choose("document.querySelector('dialog[open] select')", resolver);
     if (resolver === "Folder Pair") {
-      await fill("Videos folder", DATASET);
-      await fill("Overlays folder", DATASET);
-      await choose(`${labelled("Overlay format")}.control`, "MOT Annotations");
+      await fill("Videos", DATASET);
+      await fill("Overlays", DATASET);
+      await choose(`${labelled("Decoder")}.control`, "MOT Annotations (MOT_FILE)");
       await wait(
         "/Image width/.test(document.querySelector('dialog[open]').innerText) && /Image height/.test(document.querySelector('dialog[open]').innerText)",
       );
@@ -115,7 +115,7 @@ module.exports.playlist = async (window) => {
   await setTheme("light");
   window.setSize(1100, 720);
   await openAddPlaylist();
-  await clickButton("Add");
+  await clickButton("Load Playlist");
   await wait("!document.querySelector('dialog')");
 
   const laneCells = () => kit.laneCells(window);

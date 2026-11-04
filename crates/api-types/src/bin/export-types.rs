@@ -96,6 +96,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         ResolverInfo,
         FieldInfo,
         FieldKindWire,
+        ScanCountInfo,
         ScanRequest,
         ResolveRequest,
         ResolvedInfo,
