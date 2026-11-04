@@ -119,6 +119,11 @@ export class PlaybackSession implements LaneControl {
     return { frame: this.#clock?.playhead ?? this.#resumeAt ?? 0, speed: this.#speed };
   }
 
+  /** Whether an ordinary open still owes its autoplay: nothing was shown and the viewer has done nothing. */
+  get autoplayPending(): boolean {
+    return this.#autoplay;
+  }
+
   /** Connects and asks for the video. */
   start(): void {
     this.#link.connect();

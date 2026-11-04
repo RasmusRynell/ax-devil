@@ -350,6 +350,8 @@ export function VideoViewer({
   // last anchor when the replacement starts, so reading it there would reopen at the frame playback began from.
   const own = useRef<EntryMemory>(new Map());
   const left = memory ?? own.current;
+  // The stream whose autoplay a session replacement interrupted before anything was shown: the replacement plays.
+  const interrupted = useRef<string | undefined>(undefined);
 
   useEffect(() => {
     const publish = ({ frame, playing, speed }: PlaybackIntent) => {
@@ -370,8 +372,12 @@ export function VideoViewer({
     // A window that follows takes the presenter's clock, never a position of its own, and forgets any it had.
     const carried = latest.current.following ? undefined : left.get(entry.id);
     left.delete(entry.id);
+    const streamKey = `${item}/${entry.id}`;
+    const retried = interrupted.current === streamKey;
+    interrupted.current = undefined;
     const start = {
-      frame: carried?.frame ?? anchor?.frame,
+      // Frame 0 of a replaced session that showed nothing is no position to come back to.
+      frame: retried ? undefined : (carried?.frame ?? anchor?.frame),
       speed: heldSpeed.current ?? carried?.speed ?? (anchor && anchor.speedCenti / 100),
     };
     // A window that reloads and takes its seat back finds its clock still running in the accepted intent, which
@@ -405,6 +411,7 @@ export function VideoViewer({
     return () => {
       // Shown again later, the viewer opens where it was left, paused.
       const { frame, speed } = created.resumeState();
+      if (created.autoplayPending) interrupted.current = streamKey;
       const lanes = created.laneSettings();
       if (lanes.length > 0) priorLanes.current = lanes;
       created.close();

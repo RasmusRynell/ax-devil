@@ -165,7 +165,11 @@ export class PlaybackClock {
     this.#requested = failed ?? due;
     if (failed !== undefined) this.#playing = false;
     const frame = source.newestPresentable(failed === undefined ? due : failed - 1, this.#floor);
-    if (frame === undefined || frame === this.#presented) return undefined;
+    if (frame === undefined || frame === this.#presented) {
+      // The last frame is already on screen, as when a one-frame video begins playing: the end is reached.
+      if (due >= this.#last && this.#presented === this.#last) this.#playing = false;
+      return undefined;
+    }
     this.#presented = frame;
     this.#floor = frame + 1;
     if (frame >= this.#last) this.#playing = false;

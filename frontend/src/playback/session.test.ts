@@ -86,6 +86,17 @@ describe("autoplay", () => {
     expect(presented).toEqual([0, 1]);
   });
 
+  it("finishes playing a one-frame video that is already on screen", async () => {
+    const { session, server, intents, refresh } = await setup(undefined, { autoplay: true });
+    server.open(1);
+    server.frames(0);
+    refresh();
+    expect(session.getSnapshot().playing).toBe(true);
+    refresh(40);
+    expect(session.getSnapshot()).toMatchObject({ playing: false, shown: { sequenceId: 0 } });
+    expect(intents.at(-1)).toMatchObject({ playing: false });
+  });
+
   it("does not play after the viewer acted before the first frame came", async () => {
     const { session, server, refresh } = await setup(undefined, { autoplay: true });
     server.open();
