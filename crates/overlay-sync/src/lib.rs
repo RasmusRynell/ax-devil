@@ -14,7 +14,7 @@ use serde::{Deserialize, Serialize};
 
 pub use alignment::{Alignment, Verdict, alignment};
 pub use keys::{CHUNK_KEYS, KeyChunks};
-pub use live::{LIVE_DEADLINE, LIVE_TOLERANCE, LiveGate, Mono};
+pub use live::{LIVE_DEADLINE, LiveGate, Mono};
 pub use scene::MatchBasis;
 pub use select::select;
 

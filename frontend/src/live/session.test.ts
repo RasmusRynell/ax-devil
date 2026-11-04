@@ -53,7 +53,7 @@ async function setup(lane = OVERLAY) {
         catalogs: [],
       }),
     status: (video: LiveFeedStatus, overlay: LiveFeedStatus | null = null, behind = false) =>
-      say({ type: "LiveStatus", video, overlay, behind }),
+      say({ type: "LiveStatus", video, overlay, behind, waiting: false }),
     /** The overlay lane has loaded, with Standard's document, so what it draws can be told. */
     ready: () => {
       say({

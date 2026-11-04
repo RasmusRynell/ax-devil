@@ -190,6 +190,8 @@ pub struct LiveStatusWire {
     /// Whether the overlay's decoder is behind: its queue overflowed and holds until it drains. The Events list gets a
     /// `LiveGap` for it.
     pub behind: bool,
+    /// Whether the overlay is up but has delivered nothing on this connection yet; frames do not wait for it meanwhile.
+    pub waiting: bool,
 }
 
 /// One change to object identity, as a line of the Events list.

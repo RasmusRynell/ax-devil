@@ -103,10 +103,11 @@ fn messages_use_the_names_the_frontend_parses() {
             reason: LiveReason::BrokerBadCredentials,
         }),
         behind: false,
+        waiting: false,
     });
     assert_eq!(
         serde_json::to_value(&status).unwrap(),
-        json!({"type": "LiveStatus", "behind": false,
+        json!({"type": "LiveStatus", "behind": false, "waiting": false,
             "video": {"status": "Reconnecting", "attempt": 2, "reason": "Unreachable"},
             "overlay": {"status": "Failed", "reason": "BrokerBadCredentials"}})
     );

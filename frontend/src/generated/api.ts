@@ -50,7 +50,7 @@ export type SettingsState = {
  * The settings the caller may read by dotted key, such as `"ui.theme"`, with the default when unset: those of
  * its scopes, a `$NAME` reference as written and a literal secret masked.
  */
-values: Record<SettingKey, string | boolean | number | Array<Record<string, string>> | { enabled: boolean; timeout_ms: number | null; opacity: number }>, 
+values: Record<SettingKey, string | boolean | number | Array<Record<string, string>> | { enabled: boolean; timeout_ms: number | null; opacity: number } | { tolerance_ms: number | null }>, 
 /**
  * The key of every command once the user's changes apply; `null` when unbound. Empty unless the caller holds
  * the `preferences` grant: shortcuts are Personal.
@@ -65,7 +65,7 @@ export type SettingsChange = {
 /**
  * Every setting of the caller's scopes by dotted key.
  */
-values: Record<SettingKey, string | boolean | number | Array<Record<string, string>> | { enabled: boolean; timeout_ms: number | null; opacity: number }>, 
+values: Record<SettingKey, string | boolean | number | Array<Record<string, string>> | { enabled: boolean; timeout_ms: number | null; opacity: number } | { tolerance_ms: number | null }>, 
 /**
  * The key of every command; `null` when unbound. Empty unless the caller holds the `preferences` grant.
  */
@@ -2163,7 +2163,11 @@ overlay: LiveFeedStatus | null,
  * Whether the overlay's decoder is behind: its queue overflowed and holds until it drains. The Events list gets a
  * `LiveGap` for it.
  */
-behind: boolean, };
+behind: boolean, 
+/**
+ * Whether the overlay is up but has delivered nothing on this connection yet; frames do not wait for it meanwhile.
+ */
+waiting: boolean, };
 
 /**
  * One change to object identity, as a line of the Events list.

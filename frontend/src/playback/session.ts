@@ -354,7 +354,7 @@ export class PlaybackSession implements LaneControl {
         message,
         this.#deps.defaultCatalog?.(),
         this.#deps.lanes,
-        this.#deps.defaultSticky?.(),
+        this.#deps.defaultTiming?.(),
       );
     } else if (message.type === "LaneStatus") {
       if (this.#lanes.setStatus(message.lane, message.status)) {

@@ -12,7 +12,7 @@ use handler_api::{
     DecodeError, DecodeSummary, Decoder, Form, Framing, Input, OnEqualKey, Record, SceneSink,
     Settings, Spec, Values,
 };
-use overlay_sync::{LIVE_TOLERANCE, MatchPolicy, Tolerance};
+use overlay_sync::{MatchPolicy, Tolerance};
 use scene::{
     BoundingBox, Coverage, Entity, EntityId, Event, FilterPolicy, Geometry, MatchBasis,
     Observation, Operation, Scene, SceneTime, TimeSlice,
@@ -295,7 +295,7 @@ fn sticky_keeps_only_a_sample_that_matched_a_frame() {
     let mut lane = lane_over(&track);
     let policy = LanePolicy {
         matching: MatchPolicy {
-            tolerance: Tolerance::PreviousWithin(LIVE_TOLERANCE),
+            tolerance: Tolerance::PreviousWithin(MediaTime(10_000)),
             ..MatchPolicy::default()
         },
         subscribed: true,

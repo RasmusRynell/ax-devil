@@ -129,6 +129,23 @@ export const SETTINGS = [
     "scope": "personal"
   },
   {
+    "key": "overlays.default_sync",
+    "kind": {
+      "type": "sync",
+      "default": {
+        "tolerance_ms": 50
+      }
+    },
+    "label": "Default overlay sync",
+    "page": null,
+    "section": "",
+    "live": true,
+    "env": false,
+    "secret": false,
+    "quick_setup": false,
+    "scope": "personal"
+  },
+  {
     "key": "overlays.default_sticky",
     "kind": {
       "type": "sticky",

@@ -72,7 +72,7 @@ export function LaneChip({
   onHide?: () => void;
   onApplyAll?: () => void;
   hideName?: boolean;
-  /** The lane is live: its menu offers only sticky. */
+  /** The lane is live: its menu shows no alignment. */
   live?: boolean;
 }) {
   const showName = useSettings().values["overlays.lane_names"] === true && !hideName;

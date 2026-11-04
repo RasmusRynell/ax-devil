@@ -68,7 +68,7 @@ pub struct SettingsState {
     /// The settings the caller may read by dotted key, such as `"ui.theme"`, with the default when unset: those of
     /// its scopes, a `$NAME` reference as written and a literal secret masked.
     #[ts(
-        type = "Record<SettingKey, string | boolean | number | Array<Record<string, string>> | { enabled: boolean; timeout_ms: number | null; opacity: number }>"
+        type = "Record<SettingKey, string | boolean | number | Array<Record<string, string>> | { enabled: boolean; timeout_ms: number | null; opacity: number } | { tolerance_ms: number | null }>"
     )]
     pub values: BTreeMap<String, serde_json::Value>,
     /// The key of every command once the user's changes apply; `null` when unbound. Empty unless the caller holds
@@ -83,7 +83,7 @@ pub struct SettingsState {
 pub struct SettingsChange {
     /// Every setting of the caller's scopes by dotted key.
     #[ts(
-        type = "Record<SettingKey, string | boolean | number | Array<Record<string, string>> | { enabled: boolean; timeout_ms: number | null; opacity: number }>"
+        type = "Record<SettingKey, string | boolean | number | Array<Record<string, string>> | { enabled: boolean; timeout_ms: number | null; opacity: number } | { tolerance_ms: number | null }>"
     )]
     pub values: BTreeMap<String, serde_json::Value>,
     /// The key of every command; `null` when unbound. Empty unless the caller holds the `preferences` grant.

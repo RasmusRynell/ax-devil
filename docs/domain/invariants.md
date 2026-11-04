@@ -80,9 +80,8 @@ implementing module closes.
   The timeout includes its boundary; no timeout means unlimited. Matching tolerance separates normal matches
   from retained samples, drawn at the retained opacity; it does not limit retention. With sticky disabled, unmatched
   frames have no overlay. Empty scene updates replace previous geometry; missing updates may retain it.
-- Live synchronization consumes the newest queued sample at or before the frame within an inclusive, fixed 10 ms
-  tolerance, independent of FPS. Stale samples are discarded before persistence; late older ones cannot replace newer
-  state.
+- Live synchronization consumes the newest queued sample at or before the frame within the lane's sync tolerance,
+  as files do. Stale samples are discarded before persistence; late older ones cannot replace newer state.
 - File overlay packets keep the matched sample timestamp, and its sequence when known; the requested frame stays in
   lookup metadata.
 - Alignment diagnostics compare on the lane's match basis.
@@ -165,9 +164,9 @@ implementing module closes.
 
 ## Synchronization
 
-- Live sync pairs data by capture time, not arrival time. A live frame is released once its overlay is settled or
-  after a bounded wait (D28); no future sample shows early. Sharing an RTSP
-  connection does not pair frame and overlay arrivals; both inputs keep their capture timestamps.
+- Live sync pairs data by capture time, not arrival time. While the overlay delivers, a live frame waits until its
+  overlay is settled or a bounded wait ends (D28), and frames leave one per arriving frame; no future sample shows
+  early. Sharing an RTSP connection does not pair frame and overlay arrivals; both keep their capture timestamps.
 - Every live queue is bounded with an overflow policy its owner defines, and every drop is counted in the timing
   diagnostics. Encoded video is discarded codec-aware and resyncs at the next decodable keyframe. Payload decode is
   lossless: its queue overflowing is a lane error ("overlay decoder behind") that holds until the queue drains, resets

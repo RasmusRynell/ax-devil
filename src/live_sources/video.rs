@@ -1,5 +1,6 @@
-//! The video side of a feed: encoded units wait in the live gate until their overlay is settled (or 1.5 s, D28), then
-//! decode in arrival order and go to every viewer. A unit without a capture time cannot be synchronized and is dropped.
+//! The video side of a feed: encoded units wait in the live gate until their overlay is settled (or 1.5 s, D28) and
+//! leave one per unit that arrives, then decode in arrival order and go to every viewer. A unit without a capture time
+//! cannot be synchronized and is dropped.
 //! While nobody watches, units pass the gate but are not decoded, so the Events list goes on recording. The video is
 //! live while pictures are shown (or, with nobody watching, units arrive): a stream that delivers only pictures that
 //! cannot be decoded stalls.
@@ -100,15 +101,13 @@ impl VideoTask {
                     None => units = None,
                 },
                 _ = tick.tick() => shared.board.tick(shared.clock.now()),
-                () = shared.published.notified() => {}
                 () = async {
                     match due {
                         Some(due) => sleep_until(due).await,
                         None => std::future::pending().await,
                     }
-                } => {}
+                } => self.expire().await,
             }
-            self.release().await;
         }
     }
 
@@ -134,7 +133,7 @@ impl VideoTask {
         }
     }
 
-    /// Holds a unit for the gate, or drops it; a unit the gate lets out for being over its bound is shown at once.
+    /// Holds a unit for the gate, or drops it, and shows what the gate lets out for it.
     async fn accept(&mut self, unit: AccessUnit) {
         let now = self.shared.clock.now();
         if self.epoch != Some(unit.epoch) {
@@ -159,22 +158,27 @@ impl VideoTask {
             timestamp: MediaTime::from_us(time_us),
         };
         self.next_sequence += 1;
-        if let Some((id, unit)) = self.gate.push(id, now, unit) {
+        // A frame waits only for an overlay that delivers; otherwise nothing is coming for it.
+        let snapshot = self
+            .shared
+            .track
+            .as_ref()
+            .filter(|_| self.shared.board.overlay_expected())
+            .map(|track| track.snapshot());
+        let settled = |id: FrameId| {
+            snapshot
+                .as_ref()
+                .is_none_or(|snapshot| snapshot.decides(id, MatchBasis::Time))
+        };
+        for (id, unit) in self.gate.push(id, now, unit, settled) {
             self.show(id, unit).await;
         }
     }
 
-    /// Decodes and publishes every unit the gate lets out.
-    async fn release(&mut self) {
+    /// Decodes and publishes the units that waited out the deadline.
+    async fn expire(&mut self) {
         let now = self.shared.clock.now();
-        let snapshot = self.shared.track.as_ref().map(|track| track.snapshot());
-        // A frame waits only for an overlay that is connected; otherwise nothing is coming for it.
-        let expected = self.shared.board.overlay_expected();
-        let settled = |id: FrameId| match &snapshot {
-            Some(snapshot) if expected => snapshot.decides(id, MatchBasis::Time),
-            _ => true,
-        };
-        for (id, unit) in self.gate.release(settled, now) {
+        for (id, unit) in self.gate.expire(now) {
             self.show(id, unit).await;
         }
     }

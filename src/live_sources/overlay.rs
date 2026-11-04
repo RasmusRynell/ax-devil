@@ -263,6 +263,9 @@ impl OverlayTask {
                     }
                 } => match arrival {
                     Some(arrival) => {
+                        if let Arrival::Doc { epoch, .. } = arrival {
+                            self.shared.board.overlay_data(epoch, self.shared.clock.now());
+                        }
                         let effects = intake.take(arrival, self.shared.video_now());
                         self.apply(effects);
                     }

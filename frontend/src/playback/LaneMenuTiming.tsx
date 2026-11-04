@@ -3,16 +3,21 @@ import type { AlignmentWire, BasisWire } from "../generated/api";
 import { Switch } from "../kit/Switch";
 import type { Cadence } from "./cadence";
 import { useSettings } from "../settings";
-import { basisOf, sameSticky, type LaneSettings, type LaneState } from "./lanes";
-import type { Sticky } from "./contract";
+import {
+  DEFAULT_STICKY,
+  DEFAULT_SYNC,
+  basisOf,
+  sameSticky,
+  savedTiming,
+  type LaneSettings,
+  type LaneState,
+} from "./lanes";
 import { Group, MakeDefault, NumberField } from "./LaneMenuFields";
 
-/** The longest a kept sample may stay, which the backend enforces. */
-const MAX_STICKY_MS = 100_000;
+/** The longest a sample may match back or stay kept, which the backend enforces. */
+const MAX_MS = 100_000;
 /** How far back a previous sample may be when the user switches from exact and the lane has not said. */
 const DEFAULT_PREVIOUS_MS = 50;
-
-const DEFAULT_STICKY = "overlays.default_sticky";
 
 type Sync = "exact" | "previous";
 
@@ -84,7 +89,7 @@ export function LaneMenuTiming({
   lane: LaneState;
   /** How evenly the video's frames are spaced. */
   cadence: Cadence | null;
-  /** The lane is live: only sticky is offered. */
+  /** The lane is live: there is no recording to align, so alignment is not shown. */
   live?: boolean;
   onChange: (change: Partial<LaneSettings>) => void;
 }) {
@@ -94,11 +99,12 @@ export function LaneMenuTiming({
   const basis = basisOf(lane);
   const sync: Sync = settings.tolerance_ms === null ? "exact" : "previous";
   const { sticky } = settings;
-  const saved = useSettings().values[DEFAULT_STICKY] as Sticky;
+  const { values } = useSettings();
+  const saved = savedTiming(values);
   return (
     <>
       {ready && !live && <Alignment cadence={cadence} alignment={ready.alignment} />}
-      {!live && (bases.length > 1 || basis === "Time") && (
+      {(bases.length > 1 || basis === "Time") && (
         <Group label="Sync">
           {bases.length > 1 && (
             <Select<BasisWire>
@@ -126,9 +132,16 @@ export function LaneMenuTiming({
               label="Within (ms)"
               value={settings.tolerance_ms}
               min={0}
-              max={MAX_STICKY_MS}
+              max={MAX_MS}
               step={10}
               onCommit={(tolerance_ms) => onChange({ tolerance_ms })}
+            />
+          )}
+          {basis === "Time" && (
+            <MakeDefault
+              setting={DEFAULT_SYNC}
+              value={{ tolerance_ms: settings.tolerance_ms }}
+              isDefault={settings.tolerance_ms === saved.tolerance_ms}
             />
           )}
         </Group>
@@ -145,7 +158,7 @@ export function LaneMenuTiming({
               label="Timeout (ms)"
               value={sticky.timeout_ms}
               min={0}
-              max={MAX_STICKY_MS}
+              max={MAX_MS}
               step={100}
               placeholder="Unlimited"
               onCommit={(timeout_ms) => onChange({ sticky: { ...sticky, timeout_ms } })}
@@ -165,7 +178,7 @@ export function LaneMenuTiming({
         <MakeDefault
           setting={DEFAULT_STICKY}
           value={sticky}
-          isDefault={sameSticky(sticky, saved)}
+          isDefault={sameSticky(sticky, saved.sticky)}
         />
       </Group>
     </>

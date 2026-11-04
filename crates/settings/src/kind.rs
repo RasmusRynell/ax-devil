@@ -7,6 +7,45 @@ use std::path::Path;
 /// The longest a kept sample may stay, in milliseconds, which the playback backend enforces.
 const MAX_STICKY_MS: u64 = 100_000;
 
+/// The furthest back a previous sample may be, in milliseconds, as the lane menu offers.
+const MAX_TOLERANCE_MS: u64 = 100_000;
+
+/// How time-keyed samples are matched in a new view; the value of a [`Kind::Sync`] setting.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
+pub struct SyncValue {
+    /// How far back a previous sample may be, in milliseconds; `None` matches only a sample at the frame's time.
+    pub tolerance_ms: Option<u64>,
+}
+
+impl SyncValue {
+    /// The setting as JSON, which is also how the config file stores it.
+    fn to_json(self) -> Value {
+        json!({"tolerance_ms": self.tolerance_ms})
+    }
+
+    /// The value `value` holds, if it is an object of exactly `tolerance_ms`, null or in range.
+    fn read(value: &Value) -> Result<Self, String> {
+        let expected = format!(
+            "expected tolerance_ms to be null or a whole number from 0 to {MAX_TOLERANCE_MS}"
+        );
+        let fields = value
+            .as_object()
+            .filter(|fields| fields.len() == 1)
+            .ok_or("expected tolerance_ms")?;
+        let tolerance_ms = match fields.get("tolerance_ms") {
+            Some(Value::Null) => None,
+            Some(tolerance) => Some(
+                tolerance
+                    .as_u64()
+                    .filter(|ms| *ms <= MAX_TOLERANCE_MS)
+                    .ok_or(expected)?,
+            ),
+            None => return Err("expected tolerance_ms".into()),
+        };
+        Ok(Self { tolerance_ms })
+    }
+}
+
 /// How sticky overlays start in a new view; the value of a [`Kind::Sticky`] setting.
 #[derive(Clone, Copy, Debug, PartialEq, Serialize)]
 pub struct StickyValue {
@@ -65,6 +104,12 @@ pub enum Kind {
         /// The value when the config has none.
         default: bool,
     },
+    /// How time-keyed samples are matched in a new view.
+    Sync {
+        /// The value when the config has none. Must equal `overlay_sync::Tolerance::default()`, which a lane the
+        /// backend opens starts with.
+        default: SyncValue,
+    },
     /// How sticky overlays start in a new view.
     Sticky {
         /// The value when the config has none. Must equal `overlay_sync::Sticky::default()`, which a lane the
@@ -116,6 +161,7 @@ impl Kind {
     pub fn default_value(&self) -> Value {
         match self {
             Self::Bool { default } => Value::Bool(*default),
+            Self::Sync { default } => default.to_json(),
             Self::Sticky { default } => default.to_json(),
             Self::Choice { default, .. } | Self::Text { default } => {
                 Value::String((*default).into())
@@ -153,6 +199,7 @@ impl Kind {
         match (self, value) {
             (Self::Bool { .. }, Value::Bool(_)) | (Self::Text { .. }, Value::String(_)) => Ok(()),
             (Self::Bool { .. }, _) => Err("expected true or false".into()),
+            (Self::Sync { .. }, value) => SyncValue::read(value).map(|_| ()),
             (Self::Sticky { .. }, value) => StickyValue::read(value).map(|_| ()),
             (Self::Text { .. }, _) => Err("expected text".into()),
             (Self::Choice { options, .. }, Value::String(name))

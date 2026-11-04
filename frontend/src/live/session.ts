@@ -40,7 +40,7 @@ export type LiveDeps = Pick<
   | "frame"
   | "after"
   | "defaultCatalog"
-  | "defaultSticky"
+  | "defaultTiming"
   | "lanes"
   | "onPolicy"
 >;
@@ -259,8 +259,8 @@ export class LiveSession implements LaneDisplay {
         );
       this.#open(message);
     } else if (message.type === "LiveStatus") {
-      const { video, overlay, behind } = message;
-      Object.assign(this.#parts, { video, overlay, behind });
+      const { video, overlay, behind, waiting } = message;
+      Object.assign(this.#parts, { video, overlay, behind, waiting });
     } else if (message.type === "LiveEvents") {
       return this.events.addEvents(message);
     } else if (message.type === "LiveGap") {
@@ -291,7 +291,7 @@ export class LiveSession implements LaneDisplay {
       { lanes: [lane], lane_defaults, catalogs },
       this.#deps.defaultCatalog?.(),
       this.#deps.lanes,
-      this.#deps.defaultSticky?.(),
+      this.#deps.defaultTiming?.(),
     );
     this.#data.open(NEVER, this.#budget());
     this.#data.window(0, NEVER);
@@ -400,7 +400,8 @@ export class LiveSession implements LaneDisplay {
     this.#presented = undefined;
     this.#held = [];
     this.#data.close();
-    Object.assign(this.#parts, { video: REST.video, overlay: REST.overlay, behind: REST.behind });
+    const { video, overlay, behind, waiting } = REST;
+    Object.assign(this.#parts, { video, overlay, behind, waiting });
   }
 
   #publish(): void {

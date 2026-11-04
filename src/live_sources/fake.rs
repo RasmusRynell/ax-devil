@@ -24,7 +24,7 @@ use foundation::{
 use handler_api::{
     DecodeError, DecodeSummary, Decoder, Form, Framing, Input, OnEqualKey, SceneSink, Spec, Values,
 };
-use overlay_sync::{LIVE_TOLERANCE, MatchBasis as Basis, MatchPolicy, Sticky, Tolerance};
+use overlay_sync::{MatchBasis as Basis, MatchPolicy, Sticky};
 use scene::{
     BoundingBox, Coverage, Entity, EntityId, Event, FilterPolicy, Geometry, MatchBasis,
     Observation, Operation, Scene, SceneTime, TimeSlice,
@@ -433,14 +433,14 @@ pub fn mqtt(source_key: &str) -> LiveOverlay {
     }
 }
 
-/// How the live lane matches: by time, within the live window, nothing kept.
+/// How the live lane matches in these tests: by time, with the default tolerance, nothing kept.
 pub fn matching() -> MatchPolicy {
     MatchPolicy {
         basis: Some(Basis::Time),
-        tolerance: Tolerance::PreviousWithin(LIVE_TOLERANCE),
         sticky: Sticky {
             enabled: false,
             timeout: None,
         },
+        ..MatchPolicy::default()
     }
 }

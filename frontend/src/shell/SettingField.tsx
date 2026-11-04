@@ -11,6 +11,7 @@ export type Value = SettingsState["values"][SettingKey];
 type KindTag =
   | "bool"
   | "sticky"
+  | "sync"
   | "choice"
   | "auto_or_whole"
   | "whole"
@@ -36,7 +37,7 @@ export interface Row {
   readonly quick_setup: boolean;
 }
 
-/** The value as text; the sticky setting and lists of records are not text, and no field shows them. */
+/** The value as text; the sticky and sync settings and lists of records are not text, and no field shows them. */
 export const textOf = (value: Value) => (typeof value === "object" ? "" : String(value));
 
 /** Whether the whole value is a `$NAME` reference to an environment variable. */
@@ -61,8 +62,9 @@ const FIELDS: Record<KindTag, (props: FieldProps) => ReactNode> = {
   bool: ({ label, value, onChange }) => (
     <Checkbox label={label} checked={value === true} onChange={onChange} />
   ),
-  // Set from a lane's menu, so no settings page lists it.
+  // Set from a lane's menu, so no settings page lists them.
   sticky: () => null,
+  sync: () => null,
   choice: ({ row, label, value, onChange }) => (
     <Select
       label={label}

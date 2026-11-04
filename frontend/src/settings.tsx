@@ -63,21 +63,29 @@ const STANDARD_SHORTCUTS = Object.fromEntries(
   COMMANDS.map((command) => [command.id, command.key]),
 ) as Shortcuts;
 
+/** Whether *value* is null or a whole number of milliseconds the backend accepts. */
+const isMsOrNull = (value: unknown) =>
+  value === null ||
+  (typeof value === "number" && Number.isInteger(value) && value >= 0 && value <= 100_000);
+
 /** Whether *value* is sticky settings in range: `enabled`, a whole `timeout_ms` or null, an `opacity` from 0 to 1. */
 function isSticky(value: unknown) {
   const { enabled, timeout_ms: timeout, opacity } = (value ?? {}) as Record<string, unknown>;
   return (
     typeof enabled === "boolean" &&
-    (timeout === null ||
-      (typeof timeout === "number" &&
-        Number.isInteger(timeout) &&
-        timeout >= 0 &&
-        timeout <= 100_000)) &&
+    isMsOrNull(timeout) &&
     typeof opacity === "number" &&
     opacity >= 0 &&
     opacity <= 1
   );
 }
+
+/** Whether *value* is a sync default: only a `tolerance_ms` that is null (exact) or whole and in range. */
+const isSync = (value: unknown) =>
+  typeof value === "object" &&
+  value !== null &&
+  Object.keys(value).join() === "tolerance_ms" &&
+  isMsOrNull((value as { tolerance_ms: unknown }).tolerance_ms);
 
 /** Whether *value* is something this Personal row can hold; a stored value that is not is ignored. */
 const holds = (row: Row, value: unknown) =>
@@ -85,11 +93,13 @@ const holds = (row: Row, value: unknown) =>
     ? typeof value === "boolean"
     : row.kind.type === "sticky"
       ? isSticky(value)
-      : row.kind.type === "text"
-        ? typeof value === "string"
-        : row.kind.type === "records"
-          ? Array.isArray(value)
-          : row.kind.type === "choice" && row.kind.options.some(([name]) => name === value);
+      : row.kind.type === "sync"
+        ? isSync(value)
+        : row.kind.type === "text"
+          ? typeof value === "string"
+          : row.kind.type === "records"
+            ? Array.isArray(value)
+            : row.kind.type === "choice" && row.kind.options.some(([name]) => name === value);
 
 /** What this browser kept: only what the Personal rows and commands still accept, ignoring anything unreadable. */
 function readLocal(): Local {

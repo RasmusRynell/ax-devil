@@ -15,7 +15,7 @@ use handler_api::{Decoder, Settings};
 use overlay_sync::Mono;
 use scene_store::{LiveTrack, TrackRead, TrackSnapshot};
 use tokio::{
-    sync::{Mutex, Notify, watch},
+    sync::{Mutex, watch},
     task::JoinHandle,
     time::Instant,
 };
@@ -115,15 +115,11 @@ pub struct Shared {
     pub(super) track: Option<Arc<LiveTrack>>,
     /// The overlay task's way to start decoder sessions.
     pub(super) sessions: Option<Sessions>,
-    /// Woken after every publication of the track, so held frames are looked at again.
-    pub(super) published: Arc<Notify>,
     /// Viewers that are not paused. With none, the video is read and dropped, not decoded.
     pub(super) watching: AtomicUsize,
     /// The capture time of the newest video unit, microseconds, or `i64::MIN` before the first: the video clock
     /// where an overlay document has no time of its own.
     video_us: AtomicI64,
-    // Kept so the track's weak reference to it stays valid.
-    _listener: Option<Arc<dyn Fn() + Send + Sync>>,
 }
 
 impl Shared {
@@ -193,8 +189,7 @@ impl Feed {
             LiveOverlay::Rtsp { .. } => OverlayLink::Embedded,
             LiveOverlay::Mqtt { .. } | LiveOverlay::DataHub { .. } => OverlayLink::Separate,
         };
-        let published = Arc::new(Notify::new());
-        let (track, sessions, listener) = match decoder {
+        let (track, sessions) = match decoder {
             Some(decoder) => {
                 let values = decoder.spec().options.validate(&Settings::new())?;
                 let (sessions, feed) = sessions();
@@ -205,12 +200,9 @@ impl Feed {
                             format!("The live overlay could not start: {error}"),
                         )
                     })?;
-                let wake = Arc::clone(&published);
-                let listener: Arc<dyn Fn() + Send + Sync> = Arc::new(move || wake.notify_one());
-                track.on_change(Arc::downgrade(&listener));
-                (Some(track), Some(sessions), Some(listener))
+                (Some(track), Some(sessions))
             }
-            None => (None, None, None),
+            None => (None, None),
         };
         let shared = Arc::new(Shared {
             clock,
@@ -222,10 +214,8 @@ impl Feed {
             overlay: spec.overlay.clone(),
             track,
             sessions,
-            published,
             watching: AtomicUsize::new(0),
             video_us: AtomicI64::new(i64::MIN),
-            _listener: listener,
         });
         let run = Self::connect(&shared);
         Ok(Arc::new(Self {

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { DEFAULT_SETTINGS, FakeSettings } from "../fakeSettings";
 import type { BasisWire, CatalogInfoWire, LaneStatusWire } from "../generated/api";
 import type { SettingsApi } from "../settings";
@@ -380,7 +380,7 @@ describe("lane menu", () => {
       expect(onChange).toHaveBeenLastCalledWith({ sticky: { ...sticky, timeout_ms: 100_000 } });
     });
 
-    it("offers a basis only when the file offers two, and sync only under time", () => {
+    it("offers a basis only when the file offers two, and sync, savable as the default, only under time", () => {
       setup();
       tab("Timing");
       expect(screen.queryByRole("combobox", { name: "Match by" })).toBeNull();
@@ -400,7 +400,7 @@ describe("lane menu", () => {
       expect(onChange).toHaveBeenLastCalledWith({ basis: "Time" });
       cleanup();
       const timed = setup(
-        { settings: { ...LANE_SETTINGS, basis: "Time", tolerance_ms: 50 } },
+        { settings: { ...LANE_SETTINGS, basis: "Time", tolerance_ms: 80 } },
         both,
       );
       tab("Timing");
@@ -408,10 +408,16 @@ describe("lane menu", () => {
         target: { value: "exact" },
       });
       expect(timed.onChange).toHaveBeenLastCalledWith({ tolerance_ms: null });
-      const within = screen.getByRole("spinbutton", { name: "Within (ms)" });
-      fireEvent.change(within, { target: { value: "120" } });
-      fireEvent.blur(within);
+      const previous = screen.getByRole("spinbutton", { name: "Within (ms)" });
+      fireEvent.change(previous, { target: { value: "120" } });
+      fireEvent.blur(previous);
       expect(timed.onChange).toHaveBeenLastCalledWith({ tolerance_ms: 120 });
+      const sync = screen.getByRole("group", { name: "Sync" });
+      fireEvent.click(within(sync).getByRole("button", { name: "Make default" }));
+      expect(timed.save).toHaveBeenCalledWith({
+        values: { ...DEFAULT_SETTINGS.values, "overlays.default_sync": { tolerance_ms: 80 } },
+        shortcuts: DEFAULT_SETTINGS.shortcuts,
+      });
       cleanup();
       setup({ settings: { ...LANE_SETTINGS, basis: "Time" } });
       tab("Timing");

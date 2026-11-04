@@ -2,7 +2,7 @@
 
 use crate::{
     env,
-    kind::{Kind, StickyValue},
+    kind::{Kind, StickyValue, SyncValue},
 };
 use serde::Serialize;
 use serde_json::Value;
@@ -126,6 +126,23 @@ pub const TABLE: &[Setting] = &[
         // A catalog id such as `built-in:standard`; empty is the built-in default. Chosen from a lane's menu.
         kind: Kind::Text { default: "" },
         label: "Default catalog",
+        page: None,
+        section: "",
+        live: true,
+        env: false,
+        secret: false,
+        quick_setup: false,
+        scope: Scope::Personal,
+    },
+    Setting {
+        key: "overlays.default_sync",
+        // What a new viewer or lane starts with; set from a lane's menu.
+        kind: Kind::Sync {
+            default: SyncValue {
+                tolerance_ms: Some(50),
+            },
+        },
+        label: "Default overlay sync",
         page: None,
         section: "",
         live: true,
