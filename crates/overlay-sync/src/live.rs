@@ -3,12 +3,12 @@
 //!
 //! Pure and clock-free: the caller passes the time on every call, so the same calls always give the same releases.
 //! A frame may leave once the live track has decided what it shows (a future sample can never appear early) or it has
-//! waited the deadline. Settled frames leave one per frame that arrives, never in a burst a viewer would show only the
-//! newest of, so the delay sizes itself to how late the overlay runs. An arrival whose frame could not leave yet lets
-//! one out as soon as the overlay settles it, so a slow or stalled stream does not hold a settled frame until the
-//! next one. Delay the overlay has not needed for a second
-//! leaves at once, one skip instead of a minute behind. Units leave in arrival order, because they are decoded in that
-//! order.
+//! waited the deadline. Each frame that arrives lets one settled frame out, so the delay sizes itself to how late the
+//! overlay runs. The frame leaves when it arrives, or as soon as the overlay settles it, so a slow or stalled stream
+//! does not hold a settled frame until the next one. Released this way, frames leave at least three quarters of a
+//! frame interval apart, later if need be, never in a burst a viewer would show only the newest of. Delay the overlay
+//! has not needed for a second leaves at once, one skip instead of a minute behind. Units leave in arrival order,
+//! because they are decoded in that order.
 
 use std::{collections::VecDeque, time::Duration};
 
@@ -47,8 +47,10 @@ pub struct LiveGate<T> {
     arrived: Option<(Mono, Duration)>,
     /// When a unit last left.
     left: Option<Mono>,
-    /// Whether the newest arrival let nothing out, so one unit may still leave for it once the overlay settles it.
+    /// Whether the newest arrival has not let a unit out yet.
     owed: bool,
+    /// When the unit owed to the newest arrival may leave: it is settled but the last unit left too recently.
+    deferred: Option<Mono>,
 }
 
 impl<T> LiveGate<T> {
@@ -62,12 +64,13 @@ impl<T> LiveGate<T> {
             arrived: None,
             left: None,
             owed: false,
+            deferred: None,
         }
     }
 
-    /// Holds `unit`, the frame `id` that arrived at `now`, and lets out the oldest unit if it may leave (`settled` or
-    /// due): one out per one in. Over the bound the oldest leaves regardless. When more than a spare frame could have
-    /// left at every arrival for a second, all but the spare leave too, shedding the delay in one step.
+    /// Holds `unit`, the frame `id` that arrived at `now`, and lets out what [`Self::release`] does, the unit this
+    /// arrival owes included. Over the bound the oldest leaves regardless. When more than a spare frame could have left
+    /// at every arrival for a second, all but the spare leave too, shedding the delay in one step.
     pub fn push(
         &mut self,
         id: FrameId,
@@ -84,17 +87,14 @@ impl<T> LiveGate<T> {
             .arrived
             .map_or(Duration::ZERO, |(last, _)| now.0.saturating_sub(last.0));
         self.arrived = Some((now, interval));
-        let may_leave = |gate: &Self, held: &Pending<T>| settled(held.id) || now >= gate.due(held);
+        self.owed = true;
         let mut released = Vec::new();
-        if self.pending.len() > self.bound
-            || self
-                .pending
-                .front()
-                .is_some_and(|front| may_leave(self, front))
-        {
+        if self.pending.len() > self.bound {
             released.extend(self.pop(now));
+            self.owed = false;
         }
-        self.owed = released.is_empty();
+        released.extend(self.release(now, &settled));
+        let may_leave = |gate: &Self, held: &Pending<T>| settled(held.id) || now >= gate.due(held);
         let ready = self
             .pending
             .iter()
@@ -113,26 +113,11 @@ impl<T> LiveGate<T> {
         released
     }
 
-    /// Lets out the oldest unit at `now` if the overlay has `settled` it, the newest arrival let nothing out, and the
-    /// last unit left at least three quarters of a frame interval ago, so two never leave close enough to share a
-    /// viewer's refresh.
-    pub fn settle(&mut self, now: Mono, settled: impl Fn(FrameId) -> bool) -> Option<(FrameId, T)> {
-        let interval = self
-            .arrived
-            .map_or(Duration::ZERO, |(_, interval)| interval);
-        let spaced = self
-            .left
-            .is_none_or(|left| now.0 >= left.0 + interval * 3 / 4);
-        if !(self.owed && spaced && self.pending.front().is_some_and(|front| settled(front.id))) {
-            return None;
-        }
-        self.owed = false;
-        self.pop(now)
-    }
-
-    /// Takes the units that have waited the deadline at `now`, oldest first. Each is due a frame's interval after the
-    /// one before, so they too leave paced by the video.
-    pub fn expire(&mut self, now: Mono) -> Vec<(FrameId, T)> {
+    /// Lets out at `now`, oldest first, the units that have waited the deadline, then the unit the newest arrival owes
+    /// if the overlay has `settled` it and the last unit left at least three quarters of a frame interval ago. A
+    /// settled unit that would leave too soon is deferred to [`Self::next_wake`]. Due units leave a frame's interval
+    /// after the one before, so they too leave paced by the video.
+    pub fn release(&mut self, now: Mono, settled: impl Fn(FrameId) -> bool) -> Vec<(FrameId, T)> {
         let mut released = Vec::new();
         while self
             .pending
@@ -142,12 +127,29 @@ impl<T> LiveGate<T> {
             released.extend(self.pop(now));
             self.owed = false;
         }
+        self.deferred = None;
+        if self.owed && self.pending.front().is_some_and(|front| settled(front.id)) {
+            let interval = self
+                .arrived
+                .map_or(Duration::ZERO, |(_, interval)| interval);
+            let spaced = self
+                .left
+                .map_or(now, |left| Mono(left.0 + interval * 3 / 4));
+            if now >= spaced {
+                released.extend(self.pop(now));
+                self.owed = false;
+            } else {
+                self.deferred = Some(spaced);
+            }
+        }
         released
     }
 
-    /// When the oldest held unit reaches the deadline; `None` when nothing is held.
-    pub fn next_deadline(&self) -> Option<Mono> {
-        self.pending.front().map(|front| self.due(front))
+    /// When [`Self::release`] next lets a unit out without anything new: the oldest held unit reaches the deadline,
+    /// or a deferred unit may leave. `None` when nothing is held.
+    pub fn next_wake(&self) -> Option<Mono> {
+        let due = self.due(self.pending.front()?);
+        Some(self.deferred.map_or(due, |deferred| deferred.min(due)))
     }
 
     /// Drops everything held: the stream began anew.
@@ -157,6 +159,7 @@ impl<T> LiveGate<T> {
         self.arrived = None;
         self.left = None;
         self.owed = false;
+        self.deferred = None;
     }
 
     fn pop(&mut self, now: Mono) -> Option<(FrameId, T)> {
@@ -197,6 +200,11 @@ mod tests {
     /// Pushes frame `n` at `now` while frames below `settled_below` are settled; the units that leave.
     fn push(gate: &mut LiveGate<u64>, n: u64, now: Mono, settled_below: u64) -> Vec<u64> {
         units(gate.push(id(n), now, n, |f| f.sequence_id < settled_below))
+    }
+
+    /// Releases at `now` while frames below `settled_below` are settled; the units that leave.
+    fn release(gate: &mut LiveGate<u64>, now: Mono, settled_below: u64) -> Vec<u64> {
+        units(gate.release(now, |f| f.sequence_id < settled_below))
     }
 
     /// A 30 fps stream whose overlay settles each frame when the frame `late` after it arrives, from frame `from` to
@@ -263,37 +271,47 @@ mod tests {
                 },
             ),
             (
-                "an arrival that let nothing out lets its frame out once settled, never close after another",
+                "a frame leaves when it arrives or once settled, never close after another",
                 || {
                     let mut gate = gate(10);
-                    let settle = |gate: &mut LiveGate<u64>, ms| {
-                        gate.settle(at(ms), |_| true).map(|(_, unit)| unit)
-                    };
                     // Two frames a second: the frame leaves when its overlay settles, not at the next frame.
                     assert!(push(&mut gate, 0, at(0), 0).is_empty());
                     assert!(push(&mut gate, 1, at(500), 0).is_empty());
-                    assert_eq!(settle(&mut gate, 600), Some(0));
-                    assert_eq!(settle(&mut gate, 610), None, "one per arrival");
+                    assert_eq!(release(&mut gate, at(600), u64::MAX), [0]);
+                    assert!(
+                        release(&mut gate, at(610), u64::MAX).is_empty(),
+                        "one per arrival"
+                    );
                     assert_eq!(push(&mut gate, 2, at(1_000), 2), [1]);
-                    assert_eq!(settle(&mut gate, 1_010), None, "the arrival let one out");
-                    // 30 frames a second: frame 2 leaves once settled at 1 060, so frame 3, settled 10 ms later, waits
-                    // for the next arrival.
-                    assert!(push(&mut gate, 3, at(1_033), 0).is_empty());
-                    assert_eq!(settle(&mut gate, 1_060), Some(2));
+                    assert!(
+                        release(&mut gate, at(1_010), u64::MAX).is_empty(),
+                        "the arrival let one out"
+                    );
+                    // 30 frames a second: frame 3 settles late, just before frame 5 arrives, so frame 4 waits three
+                    // quarters of a frame after it, then pacing returns to arrivals.
+                    assert!(push(&mut gate, 3, at(1_033), 2).is_empty());
+                    assert_eq!(release(&mut gate, at(1_040), u64::MAX), [2]);
                     assert!(push(&mut gate, 4, at(1_066), 3).is_empty());
-                    assert_eq!(settle(&mut gate, 1_070), None, "too close after the last");
-                    assert_eq!(push(&mut gate, 5, at(1_099), 4), [3]);
+                    assert_eq!(release(&mut gate, at(1_080), u64::MAX), [3]);
+                    assert!(
+                        push(&mut gate, 5, at(1_099), 5).is_empty(),
+                        "too close after the last"
+                    );
+                    let spaced = Mono(Duration::from_micros(1_104_750));
+                    assert_eq!(gate.next_wake(), Some(spaced));
+                    assert_eq!(release(&mut gate, spaced, 5), [4]);
+                    assert_eq!(push(&mut gate, 6, at(1_132), 6), [5]);
                 },
             ),
             ("a unit leaves at its deadline, edge included", || {
                 let mut gate = gate(10);
                 push(&mut gate, 0, at(0), 0);
                 push(&mut gate, 1, at(33), 0);
-                assert!(gate.expire(at(1_499)).is_empty());
-                assert_eq!(units(gate.expire(at(1_500))), [0]);
-                assert_eq!(gate.next_deadline(), Some(at(1_533)));
-                assert_eq!(units(gate.expire(at(1_533))), [1]);
-                assert_eq!(gate.next_deadline(), None);
+                assert!(release(&mut gate, at(1_499), 0).is_empty());
+                assert_eq!(release(&mut gate, at(1_500), 0), [0]);
+                assert_eq!(gate.next_wake(), Some(at(1_533)));
+                assert_eq!(release(&mut gate, at(1_533), 0), [1]);
+                assert_eq!(gate.next_wake(), None);
             }),
             (
                 "a unit neither settled nor due holds those behind it",
@@ -303,7 +321,7 @@ mod tests {
                     let only_2 = |f: FrameId| f.sequence_id == 2;
                     assert_eq!(units(gate.push(id(1), at(10), 1, only_2)), [2]);
                     assert!(units(gate.push(id(3), at(20), 3, only_2)).is_empty());
-                    assert_eq!(units(gate.expire(at(1_510))), [1]);
+                    assert_eq!(release(&mut gate, at(1_510), 0), [1]);
                 },
             ),
             (
@@ -320,7 +338,7 @@ mod tests {
                     for n in 0..1_200u64 {
                         let now = Mono(Duration::from_micros(n * 1_000_000 / 120));
                         left += push(&mut gate, n, now, 0).len();
-                        left += gate.expire(now).len();
+                        left += release(&mut gate, now, 0).len();
                     }
                     assert_eq!(left, 1_200 - 120);
                 },
@@ -331,7 +349,7 @@ mod tests {
                     push(&mut gate, n, at(0), 0);
                 }
                 gate.reset();
-                assert_eq!(gate.next_deadline(), None);
+                assert_eq!(gate.next_wake(), None);
                 assert_eq!(push(&mut gate, 1, at(0), u64::MAX), [1]);
             }),
         ];
