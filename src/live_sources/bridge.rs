@@ -2,8 +2,10 @@
 //! each session of the overlay is a bounded queue the task pushes to and the track's decoder reads.
 
 use std::{
+    collections::VecDeque,
+    mem,
     sync::{
-        Arc, Mutex, PoisonError,
+        Arc, Condvar, Mutex, MutexGuard, PoisonError,
         atomic::{AtomicUsize, Ordering},
         mpsc::{self, Receiver, RecvTimeoutError, Sender},
     },
@@ -40,26 +42,36 @@ pub enum Refused {
     Closed,
 }
 
-/// What the two ends of a session count together.
+/// What a session does with the documents that wait for the decoder.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Waiting {
+    /// Every document waits its turn, up to the limit.
+    Queue,
+    /// Only the newest waits: a document arriving while another waits replaces it.
+    Newest,
+}
+
+/// What the two ends of a session share.
 #[derive(Default)]
 struct Held {
     /// Documents queued and not yet taken.
-    pending: usize,
+    queue: VecDeque<Doc>,
     /// Whether a document was ever queued.
     pushed: bool,
+    /// The task ended the session: once the queue is read, the decoder's input ends.
+    ended: bool,
     /// The decoder dropped its end: nothing more is queued.
     closed: bool,
 }
 
-type Slot = Arc<Mutex<Held>>;
+type Slot = Arc<(Mutex<Held>, Condvar)>;
 
-fn held(slot: &Slot) -> std::sync::MutexGuard<'_, Held> {
-    slot.lock().unwrap_or_else(PoisonError::into_inner)
+fn held(slot: &Slot) -> MutexGuard<'_, Held> {
+    slot.0.lock().unwrap_or_else(PoisonError::into_inner)
 }
 
 /// The write end of one session: what the overlay task pushes to.
 pub struct Session {
-    records: Sender<Doc>,
     slot: Slot,
     backlog: Arc<AtomicUsize>,
     capacity: usize,
@@ -67,25 +79,39 @@ pub struct Session {
 
 impl Session {
     /// Queues `doc` for the decoder, unless the documents waiting in this and the earlier sessions are at the limit.
-    pub fn push(&self, doc: Doc) -> Result<(), Refused> {
+    /// In [`Waiting::Newest`] a document already waiting in this session is replaced instead and handed back.
+    pub fn push(&self, doc: Doc, waiting: Waiting) -> Result<Option<Doc>, Refused> {
         let mut held = held(&self.slot);
         if held.closed {
             return Err(Refused::Closed);
+        }
+        if waiting == Waiting::Newest
+            && let Some(waiting) = held.queue.back_mut()
+        {
+            let replaced = mem::replace(waiting, doc);
+            return Ok(Some(replaced));
         }
         // Only this end adds to the backlog, so the check and the addition cannot interleave with another add.
         if self.backlog.load(Ordering::Acquire) >= self.capacity {
             return Err(Refused::Full(doc));
         }
-        self.records.send(doc).map_err(|_| Refused::Closed)?;
-        held.pending += 1;
+        held.queue.push_back(doc);
         held.pushed = true;
         self.backlog.fetch_add(1, Ordering::AcqRel);
-        Ok(())
+        self.slot.1.notify_one();
+        Ok(None)
     }
 
     /// Whether no document was ever queued here, so the decoder has nothing of it to reset from.
     pub fn is_unused(&self) -> bool {
         !held(&self.slot).pushed
+    }
+}
+
+impl Drop for Session {
+    fn drop(&mut self) {
+        held(&self.slot).ended = true;
+        self.slot.1.notify_one();
     }
 }
 
@@ -101,18 +127,15 @@ impl Sessions {
     /// is behind cannot pile up queues. The decoder of the previous one ends when it has read what is queued there,
     /// so the decoder is reset at the boundary and the open sample is published.
     pub fn start(&self, capacity: usize) -> Session {
-        let (records, queue) = mpsc::channel();
         let slot = Slot::default();
         // The track has stopped when this fails, and nothing more is read.
         let _ = self.offers.send(Reads {
-            queue,
             slot: Arc::clone(&slot),
             backlog: Arc::clone(&self.backlog),
             position: 0,
             current: None,
         });
         Session {
-            records,
             slot,
             backlog: Arc::clone(&self.backlog),
             capacity,
@@ -127,7 +150,6 @@ impl Sessions {
 
 /// The read end of one session: the decoder's [`Input`].
 struct Reads {
-    queue: Receiver<Doc>,
     slot: Slot,
     backlog: Arc<AtomicUsize>,
     position: u64,
@@ -139,8 +161,8 @@ impl Drop for Reads {
         // What was never read leaves the backlog, and nothing more is queued.
         let mut held = held(&self.slot);
         held.closed = true;
-        self.backlog.fetch_sub(held.pending, Ordering::AcqRel);
-        held.pending = 0;
+        self.backlog.fetch_sub(held.queue.len(), Ordering::AcqRel);
+        held.queue.clear();
     }
 }
 
@@ -150,18 +172,27 @@ impl Input for Reads {
     }
 
     fn next(&mut self, cancel: &CancelToken) -> Result<Option<Record<'_>>, Interrupt<DecodeError>> {
-        let doc = loop {
-            if cancel.is_cancelled() {
-                return Err(Interrupt::Cancelled);
-            }
-            match self.queue.recv_timeout(POLL) {
-                Ok(doc) => break doc,
-                Err(RecvTimeoutError::Timeout) => {}
-                // The task ended this session.
-                Err(RecvTimeoutError::Disconnected) => return Ok(None),
+        let doc = {
+            let mut held = held(&self.slot);
+            loop {
+                if cancel.is_cancelled() {
+                    return Err(Interrupt::Cancelled);
+                }
+                if let Some(doc) = held.queue.pop_front() {
+                    break doc;
+                }
+                // The task ended this session and everything queued is read.
+                if held.ended {
+                    return Ok(None);
+                }
+                held = self
+                    .slot
+                    .1
+                    .wait_timeout(held, POLL)
+                    .unwrap_or_else(PoisonError::into_inner)
+                    .0;
             }
         };
-        held(&self.slot).pending -= 1;
         self.backlog.fetch_sub(1, Ordering::AcqRel);
         self.position += 1;
         let doc = self.current.insert(doc);

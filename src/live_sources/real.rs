@@ -14,7 +14,10 @@ use media::{StreamCodec, StreamDecoder};
 use tokio::sync::{mpsc, watch};
 use workspace::{Login, Protocol, ResolvedCamera};
 
-use super::connector::{Broker, Connector, Decoded, Docs, Inputs, Transport, UnitDecoder};
+use super::{
+    bridge::Waiting,
+    connector::{Broker, Connector, Decoded, Docs, Inputs, Transport, UnitDecoder},
+};
 
 /// Talks to real cameras and brokers, with the connection timeout the settings hold when each one connects.
 pub struct CameraConnector {
@@ -109,13 +112,13 @@ fn stream_transport(mut stream: LiveStream, metadata: bool) -> Transport {
     )
 }
 
-fn messages_transport(mut live: LiveMessages) -> Transport {
+fn messages_transport(mut live: LiveMessages, waiting: Waiting) -> Transport {
     let messages = mem::replace(&mut live.messages, idle());
     let status = live.status.clone();
     Transport::new(
         Inputs {
             video: None,
-            docs: Some(Docs::Messages(messages)),
+            docs: Some(Docs::Messages { messages, waiting }),
             status,
         },
         live.close(),
@@ -165,14 +168,14 @@ impl Connector for CameraConnector {
             ))
         });
         match opened {
-            Ok(live) => messages_transport(live),
+            Ok(live) => messages_transport(live, Waiting::Newest),
             Err(error) => rejected(error),
         }
     }
 
     fn datahub(&self, resolved: &ResolvedCamera, topic: &str, channel: u32) -> Transport {
         match camera_of(resolved, self.timeout()) {
-            Ok(camera) => messages_transport(open_datahub(&camera, topic, channel)),
+            Ok(camera) => messages_transport(open_datahub(&camera, topic, channel), Waiting::Queue),
             Err(error) => rejected(error),
         }
     }
