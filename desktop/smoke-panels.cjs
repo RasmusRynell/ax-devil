@@ -3,7 +3,7 @@
 // out, and a screenshot of each lands in the screenshots folder.
 const assert = require("node:assert/strict");
 const fit = require("./fit.cjs");
-const { delay, moveTo, page, setView } = require("./smoke-kit.cjs");
+const { delay, frames, moveTo, page, setView } = require("./smoke-kit.cjs");
 
 const THEMES = ["light", "dark"];
 
@@ -94,7 +94,7 @@ module.exports.panels = async (window, { setTheme, shoot, showEntry, point }) =>
       await wait(
         `document.querySelector(${JSON.stringify(`${menu} [role=tabpanel][aria-label=${tab}]`)})`,
       );
-      await delay(100);
+      await frames({ js });
       await fits(
         menu,
         `The ${tab} tab of the lane menu must fit the 640x480 window at 200% zoom, ${theme}`,
@@ -146,6 +146,70 @@ module.exports.panels = async (window, { setTheme, shoot, showEntry, point }) =>
     await timeout(2050);
     await wait(has("Default for new views"));
   }
+
+  // Copy the lane's catalog from its Look page, then delete the copy: the name field and the confirmation fit, the
+  // dialog survives Escape and a press on it without the menu closing under it, and the lane ends where it began.
+  const press = async (selector, text) => {
+    const at = await js(`(() => {
+      const button = [...document.querySelectorAll(${JSON.stringify(`${selector} button`)})].find((b) => b.textContent === ${JSON.stringify(text)});
+      button.scrollIntoView({ block: 'nearest' });
+      const r = button.getBoundingClientRect();
+      return [r.left + r.width / 2, r.top + r.height / 2];
+    })()`);
+    await moveTo(window, ...at);
+    for (const type of ["mouseDown", "mouseUp"]) click(type, at);
+  };
+  const catalog = `document.querySelector(${JSON.stringify(`${menu} select`)}).value`;
+  await js(
+    `[...document.querySelectorAll(${JSON.stringify(`${menu} [role=tab]`)})].find((b) => b.textContent === 'Look').click()`,
+  );
+  await wait(`${catalog}.startsWith('built-in:')`);
+  const before = await js(catalog);
+  await press(menu, "Copy");
+  await wait(`document.querySelector(${JSON.stringify(`${menu} input`)})`);
+  for (const theme of THEMES) {
+    await setTheme(theme);
+    await frames({ js });
+    await fits(
+      menu,
+      `The Look tab with the copy name must fit the 640x480 window at 200% zoom, ${theme}`,
+    );
+    await shoot(`lane-menu-copy-${theme}-200.png`);
+  }
+  await press(menu, "Create");
+  await wait(`${catalog}.startsWith('user:')`);
+  await wait(
+    `[...document.querySelectorAll(${JSON.stringify(`${menu} button`)})].some((b) => b.textContent === 'Delete')`,
+  );
+  await press(menu, "Delete");
+  await wait("document.querySelector('dialog[open]')");
+  for (const theme of THEMES) {
+    await setTheme(theme);
+    await frames({ js });
+    assert.deepEqual(
+      await js(`(${fit.dialog.toString()})()`),
+      [],
+      `The delete confirmation must fit the 640x480 window at 200% zoom, ${theme}`,
+    );
+    await shoot(`lane-menu-delete-${theme}-200.png`);
+  }
+  window.webContents.sendInputEvent({ type: "keyDown", keyCode: "Escape" });
+  window.webContents.sendInputEvent({ type: "keyUp", keyCode: "Escape" });
+  await delay(300);
+  assert.ok(
+    await js(
+      `Boolean(document.querySelector('dialog[open]') && document.querySelector(${JSON.stringify(menu)}))`,
+    ),
+    "Escape must neither answer the confirmation nor close the lane menu under it",
+  );
+  await press("dialog[open]", "Delete");
+  await wait("!document.querySelector('dialog[open]')");
+  await wait(`${catalog} === ${JSON.stringify(before)}`);
+  assert.ok(
+    await js(`Boolean(document.querySelector(${JSON.stringify(menu)}))`),
+    "The lane menu stays open after the delete",
+  );
+
   window.webContents.sendInputEvent({ type: "keyDown", keyCode: "Escape" });
   window.webContents.sendInputEvent({ type: "keyUp", keyCode: "Escape" });
   await wait(`!document.querySelector(${JSON.stringify(menu)})`);

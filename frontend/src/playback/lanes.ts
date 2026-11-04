@@ -51,9 +51,23 @@ function sameStyle(a: LaneSettings, b: LaneSettings): boolean {
   );
 }
 
+/** The catalog `id` when the backend lists it and it compiled, else nothing: the one rule for what may be a default. */
+export function usableCatalog(
+  catalogs: readonly CatalogInfoWire[],
+  id: unknown,
+): CatalogInfoWire | undefined {
+  const chosen = catalogs.find((catalog) => catalog.id === id);
+  return chosen && chosen.problem === undefined ? chosen : undefined;
+}
+
+/** The catalog new views start with: the Personal setting when it is usable, else the first listed (Standard). */
+export function effectiveDefault(catalogs: readonly CatalogInfoWire[], setting: unknown): string {
+  return usableCatalog(catalogs, setting)?.id ?? catalogs[0]?.id ?? "";
+}
+
 /**
- * What new lanes start with: the backend's defaults, but the Personal default catalog when the backend lists it and
- * the Personal default sticky settings when there are any.
+ * What new lanes start with: the backend's defaults, but the Personal default catalog when it is usable and the
+ * Personal default sticky settings when there are any.
  */
 export function startWith(
   defaults: LaneDefaultsWire,
@@ -64,8 +78,7 @@ export function startWith(
   const settings = settingsOf(defaults);
   return {
     ...settings,
-    catalog:
-      personal && catalogs.some((catalog) => catalog.id === personal) ? personal : settings.catalog,
+    catalog: usableCatalog(catalogs, personal)?.id ?? settings.catalog,
     sticky: sticky ?? settings.sticky,
   };
 }

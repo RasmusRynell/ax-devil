@@ -45,7 +45,7 @@ and `ax-devil <command> --help` run from a worktree at the reference commit.
 | `local`, `live`, `playlist <resolver>` | Build one item into a new Untitled workspace (`local` has no per-overlay options yet) |
 | `open WORKSPACE_FILE` | Open a saved workspace |
 | `list-handlers` | List file overlay handler types |
-| `catalog`, `catalog list/check/render/new/use/reference` | Open the app with the catalog window, or headless catalog work |
+| `catalog list/check/render/new/use/reference` | Headless catalog work; `reference` is deferred |
 | `plugins install/update/remove/list/check` | Manage plugins from the base app; a running app follows within a second or two ([plugins](../plugins.md)) |
 | `clear-cache` | Remove caches with confirmation |
 

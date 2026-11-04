@@ -1,14 +1,17 @@
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { DEFAULT_SETTINGS, FakeSettings } from "../fakeSettings";
-import type { BasisWire, LaneStatusWire } from "../generated/api";
+import type { BasisWire, CatalogInfoWire, LaneStatusWire } from "../generated/api";
 import type { SettingsApi } from "../settings";
 import { LANE_SETTINGS } from "./fakeOpened";
 import { LaneMenu } from "./LaneMenu";
 import type { Cadence } from "./cadence";
 import type { LaneState } from "./lanes";
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  vi.unstubAllGlobals();
+});
 
 const CATALOGS = [
   { id: "built-in:standard", name: "Standard", description: "" },
@@ -34,11 +37,18 @@ const READY: LaneStatusWire = {
 
 const ALL_FEATURES = 0b1_1111_1111;
 
+interface Backend {
+  catalogs?: CatalogInfoWire[];
+  /** The Personal setting `overlays.default_catalog`. */
+  defaultCatalog?: string;
+}
+
 function setup(
   lane: Partial<LaneState> = {},
   status: LaneStatusWire = READY,
   save: SettingsApi["save"] = vi.fn(async () => null),
   cadence: Cadence | null = null,
+  { catalogs = CATALOGS, defaultCatalog = "" }: Backend = {},
 ) {
   const onChange = vi.fn();
   const onHide = vi.fn();
@@ -55,10 +65,16 @@ function setup(
     ...lane,
   };
   const menu = (shown: LaneState) => (
-    <FakeSettings save={save}>
+    <FakeSettings
+      save={save}
+      state={{
+        ...DEFAULT_SETTINGS,
+        values: { ...DEFAULT_SETTINGS.values, "overlays.default_catalog": defaultCatalog },
+      }}
+    >
       <LaneMenu
         lane={shown}
-        catalogs={CATALOGS}
+        catalogs={catalogs}
         cadence={cadence}
         onChange={onChange}
         onHide={onHide}
@@ -97,7 +113,7 @@ describe("lane menu", () => {
         ...screen.getByRole("combobox", { name: "Catalog" }).querySelectorAll("option"),
       ];
       expect(names.map((option) => option.textContent)).toEqual([
-        "Standard",
+        "Standard (default)",
         "Tracking",
         "Standard (night.json)",
       ]);
@@ -150,21 +166,61 @@ describe("lane menu", () => {
     });
 
     it("saves the lane's catalog as the Personal default, unless it failed or already is", async () => {
-      const { save, show } = setup();
-      fireEvent.click(screen.getByRole("button", { name: "Make default" }));
+      const { save, show } = setup({
+        settings: { ...LANE_SETTINGS, catalog: "built-in:tracking" },
+      });
+      fireEvent.click(screen.getByRole("button", { name: "Use as default" }));
       expect(save).toHaveBeenCalledWith({
-        values: { ...DEFAULT_SETTINGS.values, "overlays.default_catalog": "built-in:standard" },
+        values: { ...DEFAULT_SETTINGS.values, "overlays.default_catalog": "built-in:tracking" },
         shortcuts: DEFAULT_SETTINGS.shortcuts,
       });
       show({ catalogProblem: "/layers: unknown" });
-      const use = screen.getByRole("button", { name: "Make default" }) as HTMLButtonElement;
+      const use = screen.getByRole("button", { name: "Use as default" }) as HTMLButtonElement;
       expect(use.disabled).toBe(true);
       show({ look: undefined });
       expect(use.disabled).toBe(true);
+      show({ settings: LANE_SETTINGS });
+      expect(use.disabled).toBe(true);
       cleanup();
-      setup({}, READY, async () => ({ reason: "no room", location: "" }));
-      fireEvent.click(screen.getByRole("button", { name: "Make default" }));
+      setup({ settings: { ...LANE_SETTINGS, catalog: "built-in:tracking" } }, READY, async () => ({
+        reason: "no room",
+        location: "",
+      }));
+      fireEvent.click(screen.getByRole("button", { name: "Use as default" }));
       await waitFor(() => expect(screen.getByRole("alert").textContent).toBe("no room"));
+    });
+
+    it("names the default, hides catalogs that failed unless chosen, and says what is invalid or missing", () => {
+      const listed: CatalogInfoWire[] = [
+        ...CATALOGS.slice(0, 2),
+        { id: "user:good.json", name: "Good", description: "" },
+        { id: "user:broken.json", name: "Broken", description: "", problem: "/layers: unknown" },
+        { id: "user:other.json", name: "Other", description: "", problem: "not JSON" },
+      ];
+      const labels = () =>
+        [...screen.getByRole("combobox", { name: "Catalog" }).querySelectorAll("option")].map(
+          (option) => option.textContent,
+        );
+      setup({}, READY, undefined, null, { catalogs: listed, defaultCatalog: "user:good.json" });
+      expect(labels()).toEqual(["Standard", "Tracking", "Good (default)"]);
+      cleanup();
+      setup(
+        { settings: { ...LANE_SETTINGS, catalog: "user:broken.json" } },
+        READY,
+        undefined,
+        null,
+        {
+          catalogs: listed,
+          defaultCatalog: "user:broken.json",
+        },
+      );
+      // A default that does not compile is not the default: new views start from Standard.
+      expect(labels()).toEqual(["Standard (default)", "Tracking", "Good", "broken.json (invalid)"]);
+      cleanup();
+      setup({ settings: { ...LANE_SETTINGS, catalog: "user:gone.json" } }, READY, undefined, null, {
+        catalogs: listed,
+      });
+      expect(labels()).toEqual(["gone.json (missing)", "Standard (default)", "Tracking", "Good"]);
     });
   });
 

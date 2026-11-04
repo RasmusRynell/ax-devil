@@ -1,7 +1,7 @@
 // @vitest-environment node
 import { describe, expect, it } from "vite-plus/test";
 import { LANE_DEFAULTS, LANE_SETTINGS } from "./fakeOpened";
-import { LaneSet, startWith } from "./lanes";
+import { LaneSet, effectiveDefault, startWith } from "./lanes";
 import type { LaneStatusWire } from "./protocol";
 
 const ready: LaneStatusWire = {
@@ -176,5 +176,15 @@ describe("lanes", () => {
     expect(seeded).toEqual(LANE_SETTINGS.sticky);
     expect(workspace).toEqual({ enabled: false, timeout_ms: 500, opacity: 0.4 });
     expect(fresh).toEqual(saved);
+  });
+
+  it("treats a default with a problem as unusable for new lanes and for the menu alike", () => {
+    const listed = [
+      { id: "built-in:standard", name: "Standard", description: "" },
+      { id: "user:a.json", name: "A", description: "", problem: "not JSON" },
+    ];
+    expect(startWith(LANE_DEFAULTS, listed, "user:a.json")).toEqual(LANE_SETTINGS);
+    expect(effectiveDefault(listed, "user:a.json")).toBe("built-in:standard");
+    expect(effectiveDefault(listed, "built-in:standard")).toBe("built-in:standard");
   });
 });

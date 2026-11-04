@@ -7,6 +7,7 @@ use axum::{
     http::{HeaderValue, Request, StatusCode, header},
     response::Response,
 };
+use catalogs::Library;
 use handlers::Handlers;
 use std::{path::Path, sync::Arc};
 use tower::ServiceExt;
@@ -14,6 +15,7 @@ use tower::ServiceExt;
 /// The app, kept with the temporary folder that holds its settings and caches. Must be created inside a Tokio runtime.
 pub struct TestApp {
     router: Router,
+    catalogs: Arc<Library>,
     /// The state the router runs over, to reach what a request cannot, such as a live session.
     pub state: AppState,
     /// Keeps the app from seeing its stop signal; sending true stops it.
@@ -33,12 +35,26 @@ impl TestApp {
 
     /// The app over the plugins `plugins` makes, given the app's temporary folder to keep a registry in.
     pub fn over(plugins: impl FnOnce(&Path) -> Arc<Plugins>) -> Self {
+        Self::build(plugins, false)
+    }
+
+    /// The app over built-in handlers and a library with an empty catalog folder of its own.
+    pub fn with_catalog_folder() -> Self {
+        Self::build(|_| Plugins::fixed(Handlers::built_in()), true)
+    }
+
+    /// The library the app serves catalogs from.
+    pub fn catalogs(&self) -> &Library {
+        &self.catalogs
+    }
+
+    fn build(plugins: impl FnOnce(&Path) -> Arc<Plugins>, catalog_folder: bool) -> Self {
         let folder = tempfile::tempdir().unwrap();
         let settings = settings::Settings::load(&folder.path().join("default.json")).unwrap();
         let cache = folder.path().join("cache");
         let videos = crate::video_cache::start(&settings, &cache);
         let (stop, stopping) = tokio::sync::watch::channel(false);
-        let state = AppState::new(
+        let mut state = AppState::new(
             Arc::new(settings),
             Policy::Local,
             videos,
@@ -46,10 +62,17 @@ impl TestApp {
             plugins(folder.path()),
             &cache,
         );
+        if catalog_folder {
+            let catalogs = folder.path().join("catalogs");
+            std::fs::create_dir(&catalogs).unwrap();
+            state = state.with_catalogs(Library::with_folder(catalogs));
+        }
         let state = state.with_windows(folder.path().join("windows.json"));
+        let catalogs = Arc::clone(&state.catalogs);
         let router = app(state.clone());
         Self {
             router,
+            catalogs,
             state,
             _stop: stop,
             _folder: folder,

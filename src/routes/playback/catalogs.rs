@@ -173,6 +173,7 @@ fn infos(library: &Library) -> Vec<CatalogInfoWire> {
             id: info.id.to_string(),
             name: info.name,
             description: info.description,
+            problem: info.problem,
         })
         .collect()
 }

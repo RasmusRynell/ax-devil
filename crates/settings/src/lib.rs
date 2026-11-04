@@ -341,7 +341,45 @@ impl Settings {
         } else {
             current.overrides.clone()
         };
+        self.write(&current, values, overrides)
+    }
 
+    /// Changes the one setting `key` and nothing else. Under the same lock that orders every change, `edit` sees the
+    /// stored value as it is now and answers the value to store, or `None` to leave the setting alone and get the
+    /// current state back. It works on raw values (a `$NAME` reference as written, a secret as stored), so no secret
+    /// passes through it, and no other change falls between the read and the write. The stored value is validated as
+    /// by [`replace`](Self::replace); on any failure nothing changes.
+    pub fn update(
+        &self,
+        key: &str,
+        edit: impl FnOnce(&Value) -> Option<Value>,
+    ) -> Result<Arc<State>, Error> {
+        let _writing = self.writing.lock().unwrap_or_else(PoisonError::into_inner);
+        let current = self.state();
+        let Some(stored) = current.values.get(key) else {
+            return Err(Error {
+                location: key.to_owned(),
+                reason: "unknown setting".to_owned(),
+                invalid: true,
+            });
+        };
+        let Some(value) = edit(stored) else {
+            return Ok(current);
+        };
+        let mut values = current.values.clone();
+        values.insert(key.to_owned(), value);
+        let overrides = current.overrides.clone();
+        self.write(&current, values, overrides)
+    }
+
+    /// Validates `values` and `overrides` on top of `current`, writes the file and publishes the new state. The caller
+    /// holds the `writing` lock.
+    fn write(
+        &self,
+        current: &State,
+        values: BTreeMap<String, Value>,
+        overrides: BTreeMap<String, Option<String>>,
+    ) -> Result<Arc<State>, Error> {
         let mut rest = current.document.clone();
         let mut settings = Map::from_iter(values);
         if let Some(Value::Object(kept)) = rest.get("settings") {

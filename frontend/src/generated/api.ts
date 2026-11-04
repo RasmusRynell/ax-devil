@@ -1327,7 +1327,42 @@ name: string,
 /**
  * What the catalog is for.
  */
-description: string, };
+description: string, 
+/**
+ * Why the catalog cannot be used; absent for a usable catalog.
+ */
+problem?: string, };
+
+/**
+ * A request to copy a catalog under a new name.
+ */
+export type CopyCatalogRequest = { 
+/**
+ * The id of the catalog to copy: `built-in:<name>` or `user:<file>`.
+ */
+source: string, 
+/**
+ * What the user named the copy.
+ */
+name: string, };
+
+/**
+ * The reply to a copy: the id of the new catalog.
+ */
+export type CopiedCatalog = { 
+/**
+ * The id of the new user catalog, `user:<file>`.
+ */
+id: string, };
+
+/**
+ * A request to delete a user catalog.
+ */
+export type DeleteCatalogRequest = { 
+/**
+ * The id of the user catalog to delete, `user:<file>`.
+ */
+id: string, };
 
 /**
  * How a viewer steps through the video.

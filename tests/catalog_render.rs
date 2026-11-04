@@ -128,7 +128,7 @@ fn catalog_render_writes_the_overview_with_its_boxes_where_the_sheet_puts_them()
 }
 
 #[test]
-fn catalog_check_reports_a_catalog_or_every_problem_in_it_located_and_render_draws_nothing_for_a_bad_one()
+fn catalog_check_reports_a_catalog_or_every_problem_in_it_located_and_render_draws_nothing_for_one_that_does_not_compile()
  {
     if !can_export() {
         return;
@@ -157,7 +157,11 @@ fn catalog_check_reports_a_catalog_or_every_problem_in_it_located_and_render_dra
 
     let checked = run(&["check"], &good);
     assert!(checked.status.success(), "{}", text(&checked.stderr));
-    assert!(text(&checked.stdout).contains("Minimal"));
+    let report = text(&checked.stdout);
+    assert!(
+        report.contains("Minimal") && report.contains("overview: "),
+        "the catalog and the sheet it drew: {report}"
+    );
 
     let checked = run(&["check"], &bad);
     assert!(!checked.status.success());
@@ -181,7 +185,102 @@ fn catalog_check_reports_a_catalog_or_every_problem_in_it_located_and_render_dra
     assert_eq!(text(&rendered.stderr), problems);
     assert!(!out.exists());
 
+    // A catalog that compiles but skips a mark on the example sheet fails `check`; `render` draws it and lists the
+    // problem.
+    let skipping = write(
+        "skipping.json",
+        r#"{"schema":4,"name":"T","description":"d","layers":[{"marks":[{"mark":"text","text":"id",
+        "color":"top(attr.tint)","size":"10px","place":[{"at":"top-left","anchor":"bottom-left"}]}]}]}"#,
+    );
+    let checked = run(&["check"], &skipping);
+    assert!(!checked.status.success());
+    assert!(
+        text(&checked.stderr).contains("skipped"),
+        "{}",
+        text(&checked.stderr)
+    );
+    let sheets = folder.path().join("skipping-sheets");
+    let rendered = Command::new(env!("CARGO_BIN_EXE_ax-devil"))
+        .args(["catalog", "render"])
+        .arg(&skipping)
+        .arg("--out")
+        .arg(&sheets)
+        .output()
+        .unwrap();
+    assert!(rendered.status.success(), "{}", text(&rendered.stderr));
+    assert!(sheets.join("overview.png").is_file());
+    let printed = text(&rendered.stdout);
+    assert!(
+        printed.contains("  drawing error: ") && printed.contains("skipped"),
+        "{printed}"
+    );
+
     let missing = run(&["check"], &folder.path().join("missing.json"));
     assert!(!missing.status.success());
     assert!(text(&missing.stderr).contains("missing.json"));
+}
+
+#[test]
+fn catalog_use_makes_a_catalog_of_the_folder_the_default_and_new_copies_a_catalog_file_from_anywhere()
+ {
+    if !can_export() {
+        return;
+    }
+    let home = tempfile::tempdir().unwrap();
+    let folder = home.path().join("ax-devil/catalogs");
+    fs::create_dir_all(&folder).unwrap();
+    let night = folder.join("Night.json");
+    fs::write(&night, include_str!("../assets/catalogs/minimal.v4.json")).unwrap();
+    let settings = home.path().join("settings.json");
+    fs::write(&settings, r#"{"version": 1}"#).unwrap();
+    let run = |args: &[&str]| {
+        Command::new(env!("CARGO_BIN_EXE_ax-devil"))
+            .arg("--config")
+            .arg(&settings)
+            .args(["catalog"])
+            .args(args)
+            .env("XDG_DATA_HOME", home.path())
+            .output()
+            .unwrap()
+    };
+    let text = |bytes: &[u8]| String::from_utf8_lossy(bytes).into_owned();
+
+    let standard = run(&["check"]);
+    assert!(standard.status.success(), "{}", text(&standard.stderr));
+    assert!(text(&standard.stdout).contains("built-in:standard: Standard"));
+
+    let used = run(&["use", night.to_str().unwrap()]);
+    assert!(used.status.success(), "{}", text(&used.stderr));
+    assert_eq!(
+        text(&used.stdout),
+        format!("Default catalog: {}\n", night.display())
+    );
+    assert!(
+        fs::read_to_string(&settings)
+            .unwrap()
+            .contains("user:Night.json")
+    );
+    let checked = run(&["check"]);
+    assert!(
+        text(&checked.stdout).contains("Minimal"),
+        "{}",
+        text(&checked.stderr)
+    );
+
+    // `new` takes any catalog file, not only the folder's: here the one beside the settings.
+    let elsewhere = home.path().join("elsewhere.json");
+    fs::write(
+        &elsewhere,
+        include_str!("../assets/catalogs/minimal.v4.json"),
+    )
+    .unwrap();
+    let copied = run(&["new", "Copy", "--from", elsewhere.to_str().unwrap()]);
+    assert!(copied.status.success(), "{}", text(&copied.stderr));
+    let copy = folder.join("copy.json");
+    assert_eq!(text(&copied.stdout), format!("{}\n", copy.display()));
+    assert!(
+        fs::read_to_string(&copy)
+            .unwrap()
+            .contains("\"description\": \"Based on Minimal.\"")
+    );
 }

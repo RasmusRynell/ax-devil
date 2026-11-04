@@ -3,6 +3,7 @@ import {
   useContext,
   useEffect,
   useLayoutEffect,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
@@ -17,6 +18,11 @@ export interface SettingsApi extends SettingsState {
    * is a setting key or `shortcuts.<id>`, empty when the backend could not be reached), else null.
    */
   save: (change: SettingsChange) => Promise<ApiError | null>;
+  /**
+   * Reads the settings from the backend again, for a change the backend made itself; does nothing without one. A
+   * failed read keeps the settings already loaded.
+   */
+  reload: () => Promise<void>;
 }
 
 type Load =
@@ -152,6 +158,8 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
     hasBackend ? { state: "loading" } : { state: "ready", remote: null },
   );
   const [local, setLocal] = useState(readLocal);
+  // Bumped when a reload or a save starts or finishes, so a reload answer that a later one overtook is dropped.
+  const latest = useRef(0);
   useEffect(() => {
     if (!hasBackend) return;
     let current = true;
@@ -176,6 +184,7 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
   if (load.state === "loading") return <main aria-busy="true" />;
 
   const save = async (change: SettingsChange) => {
+    latest.current += 1;
     try {
       if (hasBackend) {
         // Without `preferences` the backend takes only the Server rows, and the shortcuts go back as they were read.
@@ -190,6 +199,7 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(sent),
         });
+        latest.current += 1;
         setLoad({ state: "ready", remote: replaced });
       }
       if (!keepsPreferences) {
@@ -202,11 +212,22 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
       return refusalOf(error);
     }
   };
+  const reload = async () => {
+    if (!hasBackend) return;
+    latest.current += 1;
+    const started = latest.current;
+    try {
+      const remote = await request();
+      if (latest.current === started) setLoad({ state: "ready", remote });
+    } catch {
+      // A failed refresh keeps the settings already read: the failed state would unmount the whole app.
+    }
+  };
   const shortcuts = mine
     ? { ...STANDARD_SHORTCUTS, ...mine.shortcuts }
     : (remote?.shortcuts ?? STANDARD_SHORTCUTS);
   return (
-    <SettingsContext.Provider value={{ values, shortcuts, save }}>
+    <SettingsContext.Provider value={{ values, shortcuts, save, reload }}>
       {children}
     </SettingsContext.Provider>
   );

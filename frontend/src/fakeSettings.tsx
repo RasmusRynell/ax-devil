@@ -26,11 +26,17 @@ export const DEFAULT_SETTINGS: SettingsState = {
 export function FakeSettings({
   state = DEFAULT_SETTINGS,
   save = () => Promise.resolve(null),
+  reload = () => Promise.resolve(),
   children,
 }: {
   state?: SettingsState;
   save?: SettingsApi["save"];
+  reload?: SettingsApi["reload"];
   children: ReactNode;
 }) {
-  return <SettingsContext.Provider value={{ ...state, save }}>{children}</SettingsContext.Provider>;
+  return (
+    <SettingsContext.Provider value={{ ...state, save, reload }}>
+      {children}
+    </SettingsContext.Provider>
+  );
 }

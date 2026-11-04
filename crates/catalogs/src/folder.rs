@@ -18,7 +18,7 @@ use crate::{MAX_CATALOG_BYTES, MAX_USER_CATALOGS, id::is_file_name};
 /// Why an entry that is not a regular file is listed but never read.
 const NOT_REGULAR: &str = "The catalog is not a regular file (links and special files are ignored)";
 /// Why a file whose name is no catalog id is listed but never read.
-const ODD_NAME: &str = "The file name has a control character, a backslash or bytes that are not UTF-8; rename the file";
+pub(crate) const ODD_NAME: &str = "The file name has a control character, a backslash or bytes that are not UTF-8; rename the file";
 
 /// What a catalog file held when it was read.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -107,6 +107,24 @@ impl Folder {
             tracked: BTreeMap::new(),
             capped: false,
         }
+    }
+
+    /// The folder's path.
+    pub(crate) fn path(&self) -> &Path {
+        &self.path
+    }
+
+    /// Starts tracking `name`, a file the app just wrote: the polls read it like any file, so a copy removed before
+    /// they did is still noticed.
+    pub(crate) fn adopt(&mut self, name: &str) {
+        self.tracked.insert(
+            name.to_owned(),
+            Tracked {
+                seen: None,
+                read: None,
+                missing: false,
+            },
+        );
     }
 
     /// One poll. With `first`, every file is read now: nothing is being served yet that a half-written file could
