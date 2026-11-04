@@ -19,6 +19,14 @@ const kept = (logins: readonly Login[]): Login[] =>
 
 const same = (a: readonly Login[], b: readonly Login[]) => JSON.stringify(a) === JSON.stringify(b);
 
+const literal = (password: string) => ROW !== undefined && literalSecret(ROW, password);
+
+/** The logins without their literal passwords, which the backend answers with a mask: a save and its answer share it. */
+const shape = (logins: readonly Login[]) =>
+  JSON.stringify(
+    kept(logins).map(({ user, password }) => [user, literal(password) ? null : password]),
+  );
+
 /**
  * The logins the scan tries, in order, a user and a password side by side; five rows show, more scroll. A finished edit
  * (Enter, or leaving the field) or a removal is saved at once; a row without a user is not kept. A literal password shows masked, a `$NAME`
@@ -36,16 +44,21 @@ export function LoginsEditor({
   const [added, setAdded] = useState<number | null>(null);
   const [refused, setRefused] = useState<string | null>(null);
 
-  // The logins this editor has submitted since the backend last changed on its own: their acknowledgements say
-  // nothing the draft does not, and the draft may have moved on since.
-  const submitted = useRef(new Set<string>());
+  // The logins this editor has submitted since the backend last changed on its own, by shape, each with the latest
+  // submitted as written: an acknowledgement says nothing the draft does not, and the draft may have moved on since.
+  const submitted = useRef(new Map<string, readonly Login[]>());
   // The logins sent last, so an Enter followed by the blur it causes sends them once.
   const sent = useRef<string | null>(null);
 
   // What the backend holds changed: show it, unless it is what the draft already says or what this editor saved.
   useEffect(() => {
     sent.current = null;
-    if (submitted.current.has(JSON.stringify(logins))) return;
+    const saved = submitted.current.get(shape(logins));
+    if (saved) {
+      // Unchanged since the save: show what the backend holds, which masks the literal passwords.
+      setDraft((now) => (same(kept(now), saved) ? logins : now));
+      return;
+    }
     submitted.current.clear();
     setDraft((now) => (same(kept(now), logins) ? now : logins));
   }, [logins]);
@@ -54,7 +67,7 @@ export function LoginsEditor({
     const wanted = kept(next);
     if (same(wanted, logins) || sent.current === JSON.stringify(wanted)) return;
     sent.current = JSON.stringify(wanted);
-    submitted.current.add(JSON.stringify(wanted));
+    submitted.current.set(shape(wanted), wanted);
     void onSave(wanted).then(setRefused);
   };
   const edit = (at: number, field: "user" | "password", value: string) =>
@@ -69,7 +82,7 @@ export function LoginsEditor({
     <div className="flex flex-col gap-s">
       <div className="flex max-h-logins flex-col gap-s overflow-y-auto">
         {draft.map((login, at) => {
-          const masked = ROW !== undefined && literalSecret(ROW, text(login, "password"));
+          const masked = literal(text(login, "password"));
           return (
             <div key={at} className="flex shrink-0 items-center gap-s">
               <input
