@@ -105,15 +105,15 @@ Listed in [parity deviations](parity-deviations.md).
 
 | ID | Feature | P | Status | Test | Notes |
 |----|---------|---|--------|------|-------|
-| ST-01 | Settings dialog pages; restart marker | M | in progress | `frontend/src/shell/SettingsDialog.test.tsx`, `Shell.test.tsx` | Generated from the settings table (pages, sections, restart marker and banner, Browse fields); page-less rows stay out. Left: the other settings (M4/M5) |
-| ST-02 | Quick Setup on first start | M | done | `frontend/src/shell/QuickSetupDialog.test.tsx`, `Shell.test.tsx` | Built from the `quick_setup` rows (the theme; the camera protocol joins in M5); opens on first run and from Help; each pick is stored live |
-| ST-03 | Theme (light, dark, auto), applied live; no text-size setting, zoom is the browser's | M | done | `crates/settings` tests, `App.test.tsx` | Stored through `/api/settings`; applied live by the frontend |
+| ST-01 | Settings dialog pages; restart marker | M | in progress | `frontend/src/shell/SettingsDialog.test.tsx`, `Shell.test.tsx` | Generated from the settings table (pages, sections, restart marker, Browse fields); page-less rows stay out. Left: the other settings (M4/M5) |
+| ST-02 | Quick Setup on first start | M | done | `frontend/src/shell/QuickSetupDialog.test.tsx`, `Shell.test.tsx` | Opens on first run and from Help; any close stores the choices and marks setup done; a refused write does not |
+| ST-03 | Theme (light, dark, auto) and text size (system, small to larger), applied live | M | done | `crates/settings` tests, `App.test.tsx`, `settings.test.tsx` | Stored through `/api/settings`; applied live; zoom stays the browser's |
 | ST-04 | `$VARIABLE` references | M | in progress | `crates/settings` tests | Backend done: rows with `env` store the reference and expand it on use; none takes one |
 | ST-05 | Keyboard shortcuts, dialog, override persistence | M | done | `crates/settings` tests, `frontend/src/shell/ShortcutsDialog.test.tsx`, `Shell.test.tsx` | Command table, override-only storage, conflict and reserved-key checks, the Shortcuts dialog, live key handling; actions follow each feature row |
 | ST-06 | Workspace credential references expand only for their bound host or a confirmed one; warn before saving a literal password (new) | M | in progress | `frontend/src/shell/SettingsDialog.test.tsx` | The Settings dialog warns under a secret field holding a literal (mocked). Left: the first real secret row, workspace half (M5) |
 | AP-01 | Uncaught errors logged; continue or close | M | done | `UncaughtErrors.test.tsx`, `desktop/uncaught.test.cjs` | The page reports its errors to the backend's log |
-| AP-02 | Restart from inside the app | M | todo |  |  |
-| AP-03 | `clear-cache` | S | todo |  |  |
+| AP-02 | Restart from inside the app | M | done | `frontend/src/shell/Shell.test.tsx`, `desktop/args.test.cjs` | A setting that needs a restart offers to relaunch the desktop app on its own backend; a browser or remote window is only told |
+| AP-03 | `clear-cache` | S | done | `src/disk_cache.rs` test | Lists, asks, removes, counts what it removed; only ax-devil's own files in its cache subfolders |
 | AP-04 | About dialog | S | done | `shell/Shell.test.tsx` |  |
 | AP-05 | Custom window frame: in-page title bar with window controls | S | done | `shell/WindowControls.test.tsx` | Frameless; dragging and maximize on a real window manager are untested |
 | AP-06 | Open logs folder / copy diagnostics (new) | S | todo |  |  |

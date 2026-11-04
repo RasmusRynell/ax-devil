@@ -42,7 +42,7 @@ function backend(
     if (init?.method === "PUT") {
       if (refuse) return { ok: false, status: 422, json: async () => refuse };
       const change = JSON.parse(init.body as string) as SettingsChange;
-      current = { ...current, ...change, restart: ["playback.video_cache"] };
+      current = { ...current, ...change };
     }
     return { ok: true, json: async () => current };
   });
@@ -83,7 +83,7 @@ describe("app shell", () => {
     expect((await screen.findByRole("alert")).textContent).toContain("settings file unreadable");
   });
 
-  it("stores the Settings dialog choice through the backend, applies it live and announces a pending restart", async () => {
+  it("stores the Settings dialog choice through the backend, and applies it live", async () => {
     const fetchMock = backend();
     render(<App />);
     fireEvent.click(await screen.findByRole("button", { name: "Settings" }));
@@ -95,7 +95,6 @@ describe("app shell", () => {
       values: { ...dark.values, "ui.theme": "light" },
       shortcuts: dark.shortcuts,
     });
-    expect((await screen.findByRole("status")).textContent).toContain("Memory for video caching");
   });
 
   it("keeps the dialog open and says why at the value the backend refused", async () => {

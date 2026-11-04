@@ -19,4 +19,5 @@ mod source;
 pub use decoder::Decoder;
 pub use encoder::{EncodeFormat, Encoder, Picture, Quality};
 pub use index::{FrameIndex, PtsTiming, ScanKind, VideoInfo};
+pub use index_file::{INDEX_EXTENSION, INDEX_FOLDER};
 pub use input::{ImageSequenceInput, VideoInput};

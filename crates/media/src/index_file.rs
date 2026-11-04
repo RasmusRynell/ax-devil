@@ -20,6 +20,10 @@ const VERSION: u8 = 2;
 const FINGERPRINT_BYTES: usize = 6 * 8;
 const HEAD_BYTES: usize = MAGIC.len() + 2 + FINGERPRINT_BYTES;
 const FIXED_BODY_BYTES: usize = 4 + 4 + 4 + 8 + 8 + 8 + 8;
+/// The folder under the cache folder that holds the index files.
+pub const INDEX_FOLDER: &str = "frame-index";
+/// The extension of an index file.
+pub const INDEX_EXTENSION: &str = "axidx";
 /// The longest part of an index file name taken from the video's own name, in UTF-8 bytes.
 const NAME_BYTES: usize = 120;
 
@@ -202,8 +206,8 @@ pub(crate) fn path_for(cache_dir: &Path, canonical: &Path) -> PathBuf {
         .map(|byte| format!("{byte:02x}"))
         .collect();
     cache_dir
-        .join("frame-index")
-        .join(format!("{name}-{hash}.axidx"))
+        .join(INDEX_FOLDER)
+        .join(format!("{name}-{hash}.{INDEX_EXTENSION}"))
 }
 
 /// Writes `path` so that readers see the old file or the new one, never part of one: the content goes to a private

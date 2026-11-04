@@ -57,4 +57,66 @@ describe("shortcuts dialog", () => {
       shortcuts: { ...DEFAULT_SETTINGS.shortcuts, "save-workspace": null },
     });
   });
+
+  it("stages every default again with Reset to Defaults, and keeps it for OK", async () => {
+    const save = vi.fn(async () => null);
+    render(
+      <FakeSettings save={save}>
+        <ShortcutsDialog onClose={() => {}} />
+      </FakeSettings>,
+    );
+    const key = (command: string) => screen.getByRole("button", { name: `Key for ${command}` });
+    fireEvent.click(screen.getByRole("button", { name: "Clear Exit" }));
+    fireEvent.click(key("Save Workspace"));
+    fireEvent.keyDown(key("Save Workspace"), { key: "j", ctrlKey: true });
+    fireEvent.click(screen.getByRole("button", { name: "Reset to Defaults" }));
+    expect(screen.getByRole("button", { name: "Reset Exit" }).hasAttribute("disabled")).toBe(true);
+    fireEvent.click(screen.getByRole("button", { name: "OK" }));
+    await act(async () => {});
+    expect(save).toHaveBeenLastCalledWith({
+      values: DEFAULT_SETTINGS.values,
+      shortcuts: DEFAULT_SETTINGS.shortcuts,
+    });
+  });
+
+  it("groups commands by category and filters them by label, category or key", () => {
+    render(
+      <FakeSettings>
+        <ShortcutsDialog onClose={() => {}} />
+      </FakeSettings>,
+    );
+    const search = screen.getByRole("searchbox", { name: "Search shortcuts" });
+    expect(search).toBe(document.activeElement);
+    const headings = () => screen.getAllByRole("heading", { level: 2 }).slice(1);
+    expect(headings().map((heading) => heading.textContent)).toEqual([
+      "Application",
+      "Navigation",
+      "Playback",
+      "View",
+    ]);
+
+    fireEvent.change(search, { target: { value: "PLAYBACK" } });
+    expect(headings().map((heading) => heading.textContent)).toEqual(["Playback"]);
+    expect(
+      screen.getAllByRole("button", { name: /^Key for / }).map((button) => button.ariaLabel),
+    ).toEqual([
+      "Key for Play / Pause",
+      "Key for Playback Speed Down",
+      "Key for Playback Speed Up",
+      "Key for Step Backward 1 Frame",
+      "Key for Step Backward 10 Frames",
+      "Key for Step Forward 1 Frame",
+      "Key for Step Forward 10 Frames",
+    ]);
+    expect(screen.queryByRole("button", { name: "Key for Exit" })).toBeNull();
+
+    fireEvent.change(search, { target: { value: "ctrl+q" } });
+    expect(screen.getByRole("button", { name: "Key for Exit" })).toBeTruthy();
+    expect(headings()).toHaveLength(1);
+
+    fireEvent.change(search, { target: { value: "nothing like this" } });
+    expect(screen.getByText("No shortcuts match")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Clear search" }));
+    expect(headings()).toHaveLength(4);
+  });
 });

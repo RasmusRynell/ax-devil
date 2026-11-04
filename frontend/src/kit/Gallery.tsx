@@ -2,7 +2,7 @@ import { useState, type ReactNode } from "react";
 import { Banner } from "../shell/Banner";
 import { BrowseButton, Button, MenuButton } from "./Button";
 import { Checkbox, SearchField, Select, TextField } from "./Fields";
-import { Chip, ChipRow, ChoiceChips, SegmentedControl, ToggleChip } from "./Chips";
+import { Chip, ChipRow, ChoiceChips, SegmentedControl, TileChoice, ToggleChip } from "./Chips";
 import { IconButton } from "./IconButton";
 import { FIELD, type Tone } from "./look";
 import { RowList } from "./RowList";
@@ -82,12 +82,8 @@ export function Gallery() {
       <Section title="Buttons">
         <div className="flex flex-wrap items-center gap-m">
           <Button>Normal</Button>
-          <Button type="submit">Default</Button>
           <Button icon="plus">With icon</Button>
           <Button disabled>Disabled</Button>
-          <Button type="submit" disabled>
-            Default disabled
-          </Button>
         </div>
         <div className="flex flex-wrap items-center gap-m">
           <Button size="small">Small</Button>
@@ -170,6 +166,14 @@ export function Gallery() {
         <div className="w-[16ch]">
           <SegmentedControl label="Mode, narrow" options={MODES} value={mode} onChange={setMode} />
         </div>
+        <SegmentedControl label="Mode, wide" options={MODES} value={mode} onChange={setMode} wide />
+        <TileChoice
+          label="Speed, tiles"
+          options={SPEEDS}
+          value={speed}
+          onChange={setSpeed}
+          preview={() => <Icon name="eye" />}
+        />
       </Section>
 
       <Section title="Fields">
@@ -258,6 +262,7 @@ export function Gallery() {
       <Section title="Captions">
         <div className="flex flex-col border border-line">
           <SectionCaption heading="Lanes" />
+          <SectionCaption heading="Plain" plain />
           <SectionCaption heading="Lanes" count={12} note="local" />
           <SectionCaption heading="Lanes" count={3} aside="metadata.json" />
           <SectionCaption

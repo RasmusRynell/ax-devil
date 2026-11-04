@@ -28,12 +28,22 @@ interface Props {
   aside?: string;
   /** Colour of the square before the heading; muted when omitted. */
   mark?: CaptionMark;
+  /** Only the heading, without the square and the rule: the caption of a dialog's or a start page's own group, not of a list. */
+  plain?: boolean;
   /** Makes the group foldable through a button at the far left; the caption itself is not clickable. */
   fold?: { open: boolean; onToggle: () => void };
 }
 
 /** A row-height group heading: small coloured square, capitals, count, a faint rule, then an optional aside. */
-export function SectionCaption({ heading, count, note, aside, mark = "muted", fold }: Props) {
+export function SectionCaption({
+  heading,
+  count,
+  note,
+  aside,
+  mark = "muted",
+  plain = false,
+  fold,
+}: Props) {
   return (
     <div className="flex h-row items-center gap-s px-m">
       {fold && (
@@ -47,7 +57,7 @@ export function SectionCaption({ heading, count, note, aside, mark = "muted", fo
           <Icon name={fold.open ? "chevron-down" : "chevron-right"} />
         </button>
       )}
-      <span aria-hidden className={`size-m shrink-0 rounded-mark ${MARK[mark]}`} />
+      {!plain && <span aria-hidden className={`size-m shrink-0 rounded-mark ${MARK[mark]}`} />}
       <h2 className="m-0 shrink-0 text-small font-semibold tracking-caption whitespace-nowrap text-muted uppercase">
         {heading}
         {count !== undefined && (
@@ -63,7 +73,7 @@ export function SectionCaption({ heading, count, note, aside, mark = "muted", fo
           </>
         )}
       </h2>
-      <span aria-hidden className="h-hairline min-w-s flex-1 bg-fg/12" />
+      {!plain && <span aria-hidden className="h-hairline min-w-s flex-1 bg-fg/12" />}
       {aside && (
         <span title={aside} className="min-w-0 truncate text-aside text-muted">
           {aside}

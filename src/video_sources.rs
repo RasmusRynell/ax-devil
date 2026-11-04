@@ -132,8 +132,8 @@ fn input_of(video: &VideoRef) -> VideoInput {
 /// Opens viewers on videos over one playback registry.
 pub struct VideoSources {
     registry: Registry,
-    /// Where frame indexes are kept.
-    index_dir: PathBuf,
+    /// The cache folder; `media` keeps the frame indexes in a folder of their own under it.
+    cache_dir: PathBuf,
     /// The details of each open source, held weakly by what the source itself keeps (its decoder factory), so an
     /// entry is found exactly as long as its source is open and never outlives it.
     details: Mutex<HashMap<SourceKey, Weak<Details>>>,
@@ -144,7 +144,7 @@ impl VideoSources {
     pub fn new(registry: Registry, cache_dir: &Path) -> Self {
         Self {
             registry,
-            index_dir: cache_dir.join("frame-index"),
+            cache_dir: cache_dir.to_path_buf(),
             details: Mutex::new(HashMap::new()),
         }
     }
@@ -189,7 +189,7 @@ impl VideoSources {
         let input = input_of(video);
         let index = Arc::new(FrameIndex::load_or_build(
             &input,
-            Some(&self.index_dir),
+            Some(&self.cache_dir),
             cancel,
             progress,
         )?);

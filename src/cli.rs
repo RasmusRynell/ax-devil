@@ -36,6 +36,7 @@ use workspace_files::{Recents, RecoveryFolder};
 
 mod args;
 mod catalog;
+mod clear_cache;
 mod launch;
 use launch::{describe, launch};
 mod plugins;
@@ -137,6 +138,12 @@ enum Command {
     },
     /// List the overlay decoders and playlist resolvers, then exit.
     ListHandlers,
+    /// Remove the cached frame indexes and decoded overlays, then exit.
+    ClearCache {
+        /// Remove them without asking.
+        #[arg(long)]
+        force: bool,
+    },
     /// List the render catalogs, check a catalog file or draw one, then exit.
     #[command(subcommand)]
     Catalog(CatalogCommand),
@@ -219,22 +226,34 @@ pub async fn run() -> ExitCode {
         Some(Command::ListHandlers) => {
             catalog::Report::listing(&plugins.handlers(), &plugins.info()).print()
         }
+        Some(Command::ClearCache { force }) => {
+            let folder = settings_folder(global, |paths, settings| {
+                paths.cache_dir(settings.state().folder("storage.cache_dir"))
+            });
+            clear_cache::run(folder, force)
+        }
         Some(Command::Plugins(command)) => plugins::run(command, plugins).await.print(),
         Some(Command::Catalog(catalog)) => {
-            let folder = Paths::resolve(
-                &|name| std::env::var_os(name),
-                global.config,
-                global.cache_dir,
-            )
-            .and_then(|paths| {
-                settings::Settings::load(&paths.config_file)
-                    .map(|settings| catalog_folder(&paths, &settings))
-                    .map_err(|error| error.to_string())
-            });
+            let folder = settings_folder(global, catalog_folder);
             catalog::run(&catalog, folder).print()
         }
         command => run_backend(global, command, plugins).await,
     }
+}
+
+/// A folder that depends on the settings file: resolves the paths of `global`, loads the settings and applies `pick`.
+fn settings_folder(
+    global: Global,
+    pick: impl FnOnce(&Paths, &settings::Settings) -> PathBuf,
+) -> Result<PathBuf, String> {
+    let paths = Paths::resolve(
+        &|name| std::env::var_os(name),
+        global.config,
+        global.cache_dir,
+    )?;
+    let settings =
+        settings::Settings::load(&paths.config_file).map_err(|error| error.to_string())?;
+    Ok(pick(&paths, &settings))
 }
 
 /// Starts what `command` asks for: the desktop backend, `serve` or the shell.

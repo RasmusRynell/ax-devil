@@ -72,9 +72,6 @@ pub struct SettingsState {
     /// the `preferences` grant: shortcuts are Personal.
     #[ts(type = "Record<CommandId, string | null>")]
     pub shortcuts: BTreeMap<String, Option<String>>,
-    /// The settings of the caller's scopes changed since the app started that only apply after a restart.
-    #[ts(type = "Array<SettingKey>")]
-    pub restart: Vec<String>,
 }
 
 /// The body of `PUT /api/settings`: every setting and shortcut the caller may change, which replace the stored ones.

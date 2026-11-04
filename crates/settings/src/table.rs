@@ -52,10 +52,31 @@ pub const TABLE: &[Setting] = &[
     Setting {
         key: "ui.theme",
         kind: Kind::Choice {
-            options: &[("auto", "Auto"), ("light", "Light"), ("dark", "Dark")],
+            options: &[("auto", "System"), ("light", "Light"), ("dark", "Dark")],
             default: "auto",
         },
         label: "Theme",
+        page: Some("General"),
+        section: "Appearance",
+        live: true,
+        env: false,
+        secret: false,
+        quick_setup: true,
+        scope: Scope::Personal,
+    },
+    Setting {
+        key: "ui.text_size",
+        kind: Kind::Choice {
+            options: &[
+                ("system", "System"),
+                ("small", "Small"),
+                ("medium", "Medium"),
+                ("large", "Large"),
+                ("larger", "Larger"),
+            ],
+            default: "system",
+        },
+        label: "Text size",
         page: Some("General"),
         section: "Appearance",
         live: true,

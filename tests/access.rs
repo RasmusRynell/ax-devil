@@ -180,15 +180,15 @@ async fn a_server_answers_settings_and_sessions_only_to_the_password() {
     }
     // The password holder sees and replaces the Server settings, and may touch neither a Personal setting nor a
     // shortcut.
-    let server =
-        json!({"playback.video_cache": "auto", "storage.cache_dir": "", "storage.catalog_dir": ""});
+    let server = json!({
+        "playback.video_cache": "auto",
+        "storage.cache_dir": "",
+        "storage.catalog_dir": "",
+    });
     let (status, settings) = send(&app, "GET", "/api/settings", &right, "").await;
     assert_eq!(
         (status, settings),
-        (
-            StatusCode::OK,
-            json!({"values": server, "shortcuts": {}, "restart": []})
-        )
+        (StatusCode::OK, json!({"values": server, "shortcuts": {}}))
     );
     let change = |values: serde_json::Value, shortcuts: serde_json::Value| {
         json!({"values": values, "shortcuts": shortcuts}).to_string()

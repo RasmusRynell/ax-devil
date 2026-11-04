@@ -7,7 +7,7 @@ Current feel: `docs/media/demo-catalogs.webp`, `docs/media/demo-compare.webp`.
 ## Principles (MUST)
 
 - Compact: little wasted space, dense lists, the video gets the room.
-- Readable in light and dark and at any browser zoom up to 200%; the theme switches live. Zoom is the browser's: no app text-size setting.
+- Readable in light and dark and at any browser zoom up to 200%; the theme switches live. Zoom is the browser's; `ui.text_size` is a separate choice ([14](14-build-order.md)).
 - No taglines, helper text or secondary labels; if a screen needs them, fix the layout.
 - Every component comes from one shared kit; none picks its own sizes or colors.
 - Shell layout: activity bar and sidebar, split viewer area, title bar with the application menu and window controls (`docs/architecture/ui-framework.md#top-level-composition`). SHOULD.
@@ -37,7 +37,7 @@ Port the token sets by purpose; take values from `chrome/tokens.py`.
 Rebuild the kit listed in the write-ui skill's building-blocks table (`.agents/skills/write-ui/SKILL.md`):
 window and dialog frames, segmented toggle, toggle chips, popover, ask/notify dialog, form layout, browse button,
 key chips, menu button, small button, sidebar view parts (panel, row list, caption, row, chip, banner), icons from
-one bundled set. Port its conventions (outlined buttons with an accent Enter action, accent only for checked/selected/focused, `…` only for work in
+one bundled set. Port its conventions (outlined buttons, accent only for checked/selected/focused, `…` only for work in
 progress, icons not glyphs) as the new write-ui skill ([12](12-agent-setup.md)).
 
 ## Layout and sizing (MUST)

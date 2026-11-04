@@ -9,6 +9,19 @@ use std::collections::BTreeMap;
 use crate::Error;
 use serde::Serialize;
 
+/// The group a command is listed under in the shortcuts dialog.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+pub enum Category {
+    /// Workspace, windows, settings and diagnostics.
+    Application,
+    /// Moving between playlist entries.
+    Navigation,
+    /// Stepping, speed and play state.
+    Playback,
+    /// Zoom, panels, overlays and what is shown.
+    View,
+}
+
 /// One command the user can run from the menus or the keyboard.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 pub struct Command {
@@ -16,6 +29,8 @@ pub struct Command {
     pub id: &'static str,
     /// Menu and dialog label.
     pub label: &'static str,
+    /// The dialog section the command is listed under.
+    pub category: Category,
     /// The default key in canonical form, or `None` when the command ships unbound.
     pub key: Option<&'static str>,
     /// Whether holding the key repeats the command.
@@ -25,12 +40,14 @@ pub struct Command {
 const fn command(
     id: &'static str,
     label: &'static str,
+    category: Category,
     key: Option<&'static str>,
     repeats: bool,
 ) -> Command {
     Command {
         id,
         label,
+        category,
         key,
         repeats,
     }
@@ -38,78 +55,217 @@ const fn command(
 
 /// Every command, in menu order.
 pub const COMMANDS: &[Command] = &[
-    command("new-workspace", "New Workspace", None, false),
-    command("open-workspace", "Open Workspace", Some("Ctrl+O"), false),
-    command("save-workspace", "Save Workspace", Some("Ctrl+S"), false),
+    command(
+        "new-workspace",
+        "New Workspace",
+        Category::Application,
+        None,
+        false,
+    ),
+    command(
+        "open-workspace",
+        "Open Workspace",
+        Category::Application,
+        Some("Ctrl+O"),
+        false,
+    ),
+    command(
+        "save-workspace",
+        "Save Workspace",
+        Category::Application,
+        Some("Ctrl+S"),
+        false,
+    ),
     command(
         "save-workspace-as",
         "Save Workspace As",
+        Category::Application,
         Some("Ctrl+Shift+S"),
         false,
     ),
-    command("add-video", "Add Video", Some("Ctrl+N"), false),
-    command("add-live-stream", "Add Live Stream", Some("Ctrl+L"), false),
-    command("add-playlist", "Add Playlist", Some("Ctrl+Shift+N"), false),
+    command(
+        "add-video",
+        "Add Video",
+        Category::Application,
+        Some("Ctrl+N"),
+        false,
+    ),
+    command(
+        "add-live-stream",
+        "Add Live Stream",
+        Category::Application,
+        Some("Ctrl+L"),
+        false,
+    ),
+    command(
+        "add-playlist",
+        "Add Playlist",
+        Category::Application,
+        Some("Ctrl+Shift+N"),
+        false,
+    ),
     command(
         "keyboard-shortcuts",
         "Keyboard Shortcuts",
+        Category::Application,
         Some("Ctrl+K"),
         false,
     ),
-    command("settings", "Settings", Some("Ctrl+,"), false),
-    command("exit", "Exit", Some("Ctrl+Q"), false),
-    command("fullscreen", "Toggle Fullscreen", Some("F11"), false),
+    command(
+        "settings",
+        "Settings",
+        Category::Application,
+        Some("Ctrl+,"),
+        false,
+    ),
+    command("exit", "Exit", Category::Application, Some("Ctrl+Q"), false),
+    command(
+        "fullscreen",
+        "Fullscreen",
+        Category::View,
+        Some("F11"),
+        false,
+    ),
     command(
         "lane-fullscreen",
         "Toggle Lane Fullscreen",
+        Category::View,
         Some("F"),
         false,
     ),
-    command("zoom-in", "Zoom In", Some("="), true),
-    command("zoom-out", "Zoom Out", Some("-"), true),
-    command("zoom-reset", "Reset Zoom", Some("0"), false),
-    command("media-tools", "Media Tools Panel", Some("Ctrl+B"), false),
-    command("sidebar", "Sidebar", Some("Ctrl+\\"), false),
-    command("play-pause", "Play / Pause", Some("Space"), false),
-    command("step-forward", "Step Forward 1 Frame", Some("."), true),
-    command("step-back", "Step Back 1 Frame", Some(","), true),
+    command("zoom-in", "Zoom In", Category::View, Some("="), true),
+    command("zoom-out", "Zoom Out", Category::View, Some("-"), true),
+    command("zoom-reset", "Reset Zoom", Category::View, Some("0"), false),
+    command(
+        "media-tools",
+        "Toggle Media Tools Panel",
+        Category::View,
+        Some("Ctrl+B"),
+        false,
+    ),
+    command("sidebar", "Sidebar", Category::View, Some("Ctrl+\\"), false),
+    command(
+        "play-pause",
+        "Play / Pause",
+        Category::Playback,
+        Some("Space"),
+        false,
+    ),
+    command(
+        "step-forward",
+        "Step Forward 1 Frame",
+        Category::Playback,
+        Some("."),
+        true,
+    ),
+    command(
+        "step-back",
+        "Step Backward 1 Frame",
+        Category::Playback,
+        Some(","),
+        true,
+    ),
     command(
         "step-forward-10",
         "Step Forward 10 Frames",
+        Category::Playback,
         Some("Right"),
         true,
     ),
-    command("step-back-10", "Step Back 10 Frames", Some("Left"), true),
+    command(
+        "step-back-10",
+        "Step Backward 10 Frames",
+        Category::Playback,
+        Some("Left"),
+        true,
+    ),
     command(
         "previous-entry",
         "Previous Playlist Entry",
+        Category::Navigation,
         Some("Ctrl+Left"),
         false,
     ),
     command(
         "next-entry",
         "Next Playlist Entry",
+        Category::Navigation,
         Some("Ctrl+Right"),
         false,
     ),
-    command("speed-up", "Playback Speed Up", Some("]"), true),
-    command("speed-down", "Playback Speed Down", Some("["), true),
-    command("lane-names", "Show Lane Names", None, false),
+    command(
+        "speed-up",
+        "Playback Speed Up",
+        Category::Playback,
+        Some("]"),
+        true,
+    ),
+    command(
+        "speed-down",
+        "Playback Speed Down",
+        Category::Playback,
+        Some("["),
+        true,
+    ),
+    command("lane-names", "Show Lane Names", Category::View, None, false),
     command(
         "object-details",
         "Object Hover and Click Details",
+        Category::View,
         None,
         false,
     ),
-    command("info-overlay", "Toggle Info Overlay", Some("I"), false),
-    command("add-bookmark", "Add Bookmark", Some("M"), false),
-    command("export-video", "Export Video", Some("Ctrl+E"), false),
-    command("render-catalogs", "Render Catalogs", Some("Ctrl+R"), false),
-    command("debug-metrics", "Debug Metrics", Some("Ctrl+D"), false),
-    command("plugins", "Plugins", None, false),
-    command("collect-metrics", "Collect Debug Metrics", None, false),
-    command("quick-setup", "Quick Setup", None, false),
-    command("about", "About", None, false),
+    command(
+        "info-overlay",
+        "Toggle Info Overlay",
+        Category::View,
+        Some("I"),
+        false,
+    ),
+    command(
+        "add-bookmark",
+        "Add Bookmark",
+        Category::View,
+        Some("M"),
+        false,
+    ),
+    command(
+        "export-video",
+        "Export Video",
+        Category::View,
+        Some("Ctrl+E"),
+        false,
+    ),
+    command(
+        "render-catalogs",
+        "Render Catalogs",
+        Category::View,
+        Some("Ctrl+R"),
+        false,
+    ),
+    command(
+        "debug-metrics",
+        "Debug Metrics",
+        Category::Application,
+        Some("Ctrl+D"),
+        false,
+    ),
+    command("plugins", "Plugins", Category::Application, None, false),
+    command(
+        "collect-metrics",
+        "Collect Debug Metrics",
+        Category::Application,
+        None,
+        false,
+    ),
+    command(
+        "quick-setup",
+        "Quick Setup",
+        Category::Application,
+        None,
+        false,
+    ),
+    command("about", "About", Category::Application, None, false),
 ];
 
 /// Keys the desktop shell keeps for page zoom (desktop/main.cjs); no command may use them.

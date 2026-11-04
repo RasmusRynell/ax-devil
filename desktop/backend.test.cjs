@@ -65,9 +65,11 @@ void test("a backend that never says it is ready is killed when startup times ou
 void test("a backend that is ready is stopped by closing its stdin", async () => {
   const child = fakeProcess();
   const backend = backendOf(child);
+  assert.equal(backend.owned(), false);
   const ensured = backend.ensure();
   child.stdout.write("ax-devil: http://127.0.0.1:7330\n");
   assert.equal(await ensured, "http://127.0.0.1:7330");
+  assert.equal(backend.owned(), true);
 
   await backend.stop();
 

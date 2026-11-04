@@ -4,7 +4,7 @@ const { app, BrowserWindow, dialog, screen } = require("electron");
 const fs = require("node:fs");
 const path = require("node:path");
 
-const { backendArgs, parseLaunch, userArgs } = require("./args.cjs");
+const { backendArgs, parseLaunch, relaunchArgs, userArgs } = require("./args.cjs");
 const { backendExecutable, createBackend } = require("./backend.cjs");
 const { confirmLink, linkTarget, singleInstance } = require("./links.cjs");
 const { askAfterFailure, parseTarget, verifyServer } = require("./remote.cjs");
@@ -164,7 +164,10 @@ async function showLocal(replace) {
     saved,
     screen.getAllDisplays().map((display) => display.workArea),
   );
-  const window = adopt(await openWindow(origin, { fatal: fail, bounds }), replace);
+  const window = adopt(
+    await openWindow(origin, { fatal: fail, bounds, restartable: backend.owned() }),
+    replace,
+  );
   if (first) {
     remembered = true;
     if (saved?.maximized) window.maximize();
@@ -253,6 +256,11 @@ installIpc({
   },
   disconnect: (window) => {
     showLocal(window).catch(fail);
+  },
+  // Quitting stops the backend first (`before-quit`); the new process starts when this one has exited.
+  restart: () => {
+    app.relaunch({ args: relaunchArgs(process.argv, process.defaultApp) });
+    app.quit();
   },
 });
 

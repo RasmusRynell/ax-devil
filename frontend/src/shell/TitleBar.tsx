@@ -3,6 +3,7 @@ import { useDoc } from "../session/session";
 import "./windowBridge";
 import { MenuBar } from "./MenuBar";
 import { ShareControl } from "./ShareControl";
+import { useWindowTitle } from "./useWindowTitle";
 import { WindowControls } from "./WindowControls";
 
 interface Props {
@@ -14,28 +15,10 @@ interface Props {
   onStartSharing: () => void;
 }
 
-/**
- * The workspace's name, `Untitled` without one, and a dot while it has unsaved changes. A narrow window leaves the
- * room to the menus, as it does for the app name, and keeps the dot.
- */
-function WorkspaceName() {
-  const workspace = useDoc()?.workspace;
-  if (!workspace) return null;
-  return (
-    <span
-      data-cursor-id="title:workspace"
-      className="flex min-w-0 items-center gap-s px-m text-muted max-sm:px-0"
-    >
-      <span className="truncate max-sm:hidden">{workspace.name ?? "Untitled"}</span>
-      {workspace.modified && (
-        <span role="img" aria-label="Modified" className="size-m shrink-0 rounded-full bg-accent" />
-      )}
-    </span>
-  );
-}
-
-/** The window's top bar: title, menus, the workspace's name, an empty stretch that drags the window, the share entry and the window controls. */
+/** The window's top bar: the app's name, menus, an empty stretch that drags the window, the share entry and the window controls. */
 export function TitleBar({ checked, wired, onSelect, onStartSharing }: Props) {
+  // The desktop window's title follows the workspace; the bar keeps the app's name.
+  useWindowTitle(useDoc()?.workspace);
   return (
     <header
       data-cursor-region="titleBar"
@@ -48,7 +31,6 @@ export function TitleBar({ checked, wired, onSelect, onStartSharing }: Props) {
         ax-devil
       </span>
       <MenuBar checked={checked} wired={wired} onSelect={onSelect} />
-      <WorkspaceName />
       <div
         data-cursor-id="title:drag"
         className="h-full min-w-0 flex-1"

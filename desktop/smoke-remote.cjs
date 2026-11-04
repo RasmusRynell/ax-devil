@@ -66,7 +66,7 @@ async function remote(local, shell) {
     const { js, wait } = page(window);
     // The server's own embedded frontend booted and shows the app for the password it was given.
     await wait(
-      "document.title === 'ax-devil' && document.querySelector('h1')?.textContent === 'ax-devil'",
+      "document.title === 'Untitled — ax-devil' && document.querySelector('h1')?.textContent === 'ax-devil'",
     );
     assert.equal(await js("location.origin"), served.origin);
     await until(() => local.isDestroyed(), "the local window to close");
@@ -87,7 +87,7 @@ async function remote(local, shell) {
     );
     await wait("!document.querySelector('dialog')");
     await js(
-      "document.querySelector('aside h2')?.textContent !== 'Workspace' && document.querySelector('[aria-label=Workspace]').click()",
+      "!document.querySelector('[aria-label=\"Workspace items\"]') && document.querySelector('[aria-label=Workspace]').click()",
     );
     await wait("document.querySelector('[data-cursor-id=\"sidebar:add-video\"]')");
     await frames({ js });

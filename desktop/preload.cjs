@@ -1,7 +1,10 @@
 // The only bridge from the page to the shell: the in-page title bar's window controls, the native dialogs that add
-// videos, open and save workspaces, save an export and choose a folder, and moving the window between the local
-// backend and another machine's server. Main answers only a window's trusted page.
+// videos, open and save workspaces, save an export and choose a folder, moving the window between the local backend
+// and another machine's server, and restarting the app. Main answers only a window's trusted page.
 const { contextBridge, ipcRenderer, webFrame } = require("electron");
+
+// The shell names the windows that may restart the app (window.cjs; a sandboxed preload cannot require it).
+const restartable = process.argv.includes("--ax-devil-restartable");
 
 contextBridge.exposeInMainWorld("axDevilWindow", {
   minimize: () => ipcRenderer.send("window:minimize"),
@@ -35,6 +38,9 @@ contextBridge.exposeInMainWorld("axDevilWindow", {
   disconnect: () => ipcRenderer.invoke("window:disconnect"),
   // The desktop app's own version, which a remote server's page cannot learn from its backend.
   appVersion: () => ipcRenderer.invoke("app:version"),
+  // Closes the app, which stops its backend, and starts it again; only the local page may ask. Absent when the app
+  // did not start the backend it shows (one already running, say), which a restart would leave as it was.
+  ...(restartable && { restart: () => ipcRenderer.send("app:restart") }),
   // The page zoom factor, 1 at 100%; overlays on the video keep their size when the page is zoomed.
   zoomFactor: () => webFrame.getZoomFactor(),
 });

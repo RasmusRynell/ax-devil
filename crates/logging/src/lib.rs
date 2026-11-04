@@ -1,12 +1,15 @@
 //! Logging for the whole backend: modules log through `tracing` macros and never print.
 //!
 //! The console (stderr, so stdout stays free for the readiness line) always receives the log; a plain file in the
-//! logs folder receives it too when it can be opened.
+//! logs folder receives it too when it can be opened. The file is rotated at 25 MiB, keeping 10 backups.
 //!
 //! TODO: redact credentials and URL userinfo before they are logged
-//! ([03](../../../docs/rebuild/03-runtime.md#logging-must)), and rotate the file.
+//! ([03](../../../docs/rebuild/03-runtime.md#logging-must)).
 
-use std::{fs::OpenOptions, path::Path, str::FromStr, sync::Arc};
+mod rotating;
+
+use rotating::RotatingFile;
+use std::{path::Path, str::FromStr, sync::Mutex};
 use tracing::level_filters::LevelFilter;
 use tracing_subscriber::{Layer, layer::SubscriberExt, util::SubscriberInitExt};
 
@@ -51,6 +54,11 @@ impl Level {
     }
 }
 
+/// The size at which the log file is rotated.
+const ROTATE_BYTES: u64 = 25 << 20;
+/// How many rotated log files are kept besides the live one.
+const BACKUPS: usize = 10;
+
 /// Starts logging to the console and, when it can be opened, to `file` (its folder is created). Call once at startup.
 pub fn init(level: Level, file: Option<&Path>) {
     let console = tracing_subscriber::fmt::layer()
@@ -59,7 +67,7 @@ pub fn init(level: Level, file: Option<&Path>) {
     let opened = file.map(|file| {
         file.parent()
             .map_or(Ok(()), std::fs::create_dir_all)
-            .and_then(|()| OpenOptions::new().create(true).append(true).open(file))
+            .and_then(|()| RotatingFile::open(file, ROTATE_BYTES, BACKUPS))
     });
     let (file_layer, failure) = match opened {
         None => (None, None),
@@ -67,7 +75,7 @@ pub fn init(level: Level, file: Option<&Path>) {
             Some(
                 tracing_subscriber::fmt::layer()
                     .with_ansi(false)
-                    .with_writer(Arc::new(handle))
+                    .with_writer(Mutex::new(handle))
                     .with_filter(level.filter()),
             ),
             None,

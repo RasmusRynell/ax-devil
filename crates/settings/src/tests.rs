@@ -6,6 +6,7 @@ use std::fs;
 fn values(theme: &str) -> BTreeMap<String, Value> {
     BTreeMap::from([
         ("ui.theme".into(), json!(theme)),
+        ("ui.text_size".into(), json!("system")),
         ("ui.quick_setup_done".into(), json!(true)),
         ("playback.video_cache".into(), json!("auto")),
         ("overlays.object_details".into(), json!(true)),
@@ -54,7 +55,7 @@ fn a_saved_change_is_sparse_survives_a_restart_and_keeps_what_this_version_does_
     fs::create_dir_all(path.parent().unwrap()).unwrap();
     fs::write(
         &path,
-        r#"{"version": 1, "settings": {"ui.theme": "light", "ui.text_size": "large"},
+        r#"{"version": 1, "settings": {"ui.theme": "light", "ui.zoom": "large"},
             "shortcuts": {"exit": null, "gone": "Ctrl+J"}, "extra": [1]}"#,
     )
     .unwrap();
@@ -74,7 +75,7 @@ fn a_saved_change_is_sparse_survives_a_restart_and_keeps_what_this_version_does_
         read(&path),
         json!({
             "version": 1,
-            "settings": {"ui.theme": "dark", "ui.text_size": "large"},
+            "settings": {"ui.theme": "dark", "ui.zoom": "large"},
             "shortcuts": {"exit": "Ctrl+Alt+Q", "gone": "Ctrl+J"},
             "extra": [1],
         }),
@@ -96,7 +97,7 @@ fn a_saved_change_is_sparse_survives_a_restart_and_keeps_what_this_version_does_
     settings.replace(&Scope::ALL, &reset).unwrap();
     assert_eq!(
         read(&path)["settings"],
-        json!({"ui.text_size": "large"}),
+        json!({"ui.zoom": "large"}),
         "resetting deletes the key"
     );
 }
@@ -403,7 +404,6 @@ fn the_cache_folder_is_empty_or_an_absolute_path_that_need_not_exist() {
             .folder("storage.cache_dir"),
         Some(PathBuf::from("/unplugged/drive/cache"))
     );
-    assert_eq!(settings.restart_pending(&Scope::ALL), ["storage.cache_dir"]);
     settings.replace(&Scope::ALL, &with(json!(""))).unwrap();
     assert_eq!(settings.state().folder("storage.cache_dir"), None);
 }
@@ -460,8 +460,7 @@ const NET: &[Setting] = &[
 ];
 
 #[test]
-fn a_reference_is_stored_as_written_checked_when_resolved_and_a_restart_is_asked_for_non_live_changes()
- {
+fn a_reference_is_stored_as_written_and_checked_when_resolved() {
     let folder = tempfile::tempdir().unwrap();
     let path = folder.path().join("settings.json");
     let lookup = |name: &str| match name {
@@ -486,7 +485,6 @@ fn a_reference_is_stored_as_written_checked_when_resolved_and_a_restart_is_asked
         "the expanded value must fit the setting"
     );
     assert!(!error.reason.contains("secret-mode"), "{}", error.reason);
-    assert!(settings.restart_pending(&Scope::ALL).is_empty());
 
     let state = settings
         .replace(&Scope::ALL, &edit("$ADDRESS", "b"))
@@ -497,13 +495,4 @@ fn a_reference_is_stored_as_written_checked_when_resolved_and_a_restart_is_asked
         "the reference is stored, not the value"
     );
     assert_eq!(state.resolved("net.address"), Some(json!("10.0.0.2")));
-    assert_eq!(
-        settings.restart_pending(&Scope::ALL),
-        ["net.address", "net.mode"]
-    );
-
-    let state = settings
-        .replace(&Scope::ALL, &edit("10.0.0.9", "a"))
-        .unwrap();
-    assert_eq!(restart_pending(&settings.started, &state), ["net.address"]);
 }

@@ -18,6 +18,7 @@ function bridge() {
     pickVideos: vi.fn(() => Promise.resolve([])),
     connect: vi.fn(),
     disconnect: vi.fn(),
+    restart: vi.fn(),
     pickFolder: vi.fn(() => Promise.resolve(null)),
     pickExportFile: vi.fn(() => Promise.resolve(null)),
     pickOpenWorkspace: vi.fn(() => Promise.resolve(null)),

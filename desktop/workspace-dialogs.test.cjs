@@ -83,7 +83,7 @@ function withFakeElectron(load) {
 }
 
 const { installIpc, openWindow } = withFakeElectron(() => require("./window.cjs"));
-installIpc({ connect: () => {}, disconnect: () => {} });
+installIpc({ connect: () => {}, disconnect: () => {}, restart: () => {} });
 
 async function pageContents(options = {}) {
   const window = await openWindow(origin, options);

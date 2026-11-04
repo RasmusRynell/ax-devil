@@ -55,11 +55,7 @@ values: Record<SettingKey, string | boolean | number>,
  * The key of every command once the user's changes apply; `null` when unbound. Empty unless the caller holds
  * the `preferences` grant: shortcuts are Personal.
  */
-shortcuts: Record<CommandId, string | null>, 
-/**
- * The settings of the caller's scopes changed since the app started that only apply after a restart.
- */
-restart: Array<SettingKey>, };
+shortcuts: Record<CommandId, string | null>, };
 
 /**
  * The body of `PUT /api/settings`: every setting and shortcut the caller may change, which replace the stored ones.

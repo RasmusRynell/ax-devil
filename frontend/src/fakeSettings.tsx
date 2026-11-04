@@ -7,6 +7,7 @@ import { SettingsContext, type SettingsApi } from "./settings";
 export const DEFAULT_SETTINGS: SettingsState = {
   values: {
     "ui.theme": "auto",
+    "ui.text_size": "system",
     "ui.quick_setup_done": true,
     "overlays.object_details": true,
     "overlays.lane_names": true,
@@ -18,7 +19,6 @@ export const DEFAULT_SETTINGS: SettingsState = {
   shortcuts: Object.fromEntries(
     COMMANDS.map((command) => [command.id, command.key]),
   ) as SettingsState["shortcuts"],
-  restart: [],
 };
 
 /** Provides settings to a component under test without a backend. */

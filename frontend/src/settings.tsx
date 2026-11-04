@@ -109,11 +109,22 @@ const refusalOf = (error: unknown): ApiError =>
     ? (error as ApiError)
     : { reason: error instanceof Error ? error.message : String(error), location: "" };
 
+/** Puts the theme and text size on the document root; tokens.css selects the colours and the body size from them. */
+export function applyAppearance(theme: string, textSize: string) {
+  document.documentElement.dataset.theme = theme;
+  document.documentElement.dataset.textSize = textSize;
+}
+
+/** Applies the theme and text size to the document root whenever they change. */
+export function useAppearance(theme: string, textSize: string) {
+  useLayoutEffect(() => applyAppearance(theme, textSize), [theme, textSize]);
+}
+
 /**
  * Where each setting lives follows the grants. Personal settings and shortcuts come from the backend only when it
  * grants `preferences`, so a server-password holder or a link watcher never changes someone else's theme; otherwise
  * this browser keeps them. Server settings come from the backend for `configuration` holders. Children render once
- * the settings are read, with the theme applied live to the document root; a failed read shows its reason instead.
+ * the settings are read, with the theme and text size applied live to the document root; a failed read shows its reason instead.
  */
 export function SettingsProvider({ children }: { children: ReactNode }) {
   const grants = useGrants();
@@ -140,11 +151,7 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
   const remote = load.state === "ready" ? load.remote : null;
   const mine = keepsPreferences ? null : local;
   const values = { ...DEFAULT_VALUES, ...remote?.values, ...mine?.values };
-  const theme = values["ui.theme"] as string;
-  useLayoutEffect(() => {
-    // tokens.css selects the color scheme from this attribute.
-    document.documentElement.dataset.theme = theme;
-  }, [theme]);
+  useAppearance(values["ui.theme"] as string, values["ui.text_size"] as string);
 
   if (load.state === "failed")
     return <p role="alert">ax-devil cannot read its settings: {load.reason}</p>;
@@ -181,7 +188,7 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
     ? { ...STANDARD_SHORTCUTS, ...mine.shortcuts }
     : (remote?.shortcuts ?? STANDARD_SHORTCUTS);
   return (
-    <SettingsContext.Provider value={{ values, shortcuts, restart: remote?.restart ?? [], save }}>
+    <SettingsContext.Provider value={{ values, shortcuts, save }}>
       {children}
     </SettingsContext.Provider>
   );
