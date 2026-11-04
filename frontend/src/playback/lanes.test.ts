@@ -1,5 +1,6 @@
 // @vitest-environment node
 import { describe, expect, it } from "vite-plus/test";
+import { OPEN_RANGES } from "../present";
 import { LANE_DEFAULTS, LANE_SETTINGS } from "./fakeOpened";
 import { LaneSet, effectiveDefault, startWith, type LaneSettings } from "./lanes";
 import type { LaneStatusWire } from "./protocol";
@@ -95,7 +96,12 @@ describe("lanes", () => {
 
   it("treats theme, hidden features and the expression as looks: a new style, no policy", () => {
     const lanes = opened();
-    for (const change of [{ theme: "night" }, { hidden: 0b101 }, { expression: "score > 0.4" }]) {
+    for (const change of [
+      { theme: "night" },
+      { hidden: 0b101 },
+      { expression: "score > 0.4" },
+      { ranges: { ...OPEN_RANGES, score: { min: 0.4, max: null } } },
+    ]) {
       const before = lanes.styleRevision(0);
       expect(lanes.set(0, change)).toBeUndefined();
       expect(lanes.styleRevision(0)).toBe(before + 1);

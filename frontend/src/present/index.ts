@@ -11,10 +11,16 @@ export type { Diagnostic, DiagnosticCode } from "./expr/diagnostic";
 export {
   compileFilter,
   filterRows,
+  MEASURES,
+  OPEN_RANGES,
   RowSet,
+  withRanges,
   type ClassMask,
   type CompiledFilter,
   type FilterResult,
+  type Measure,
+  type MeasureRange,
+  type MeasureRanges,
 } from "./filter/filter";
 export { crc32, readSample, SampleFormatError, type SampleView } from "./columns";
 export { CodePoints, codePointString } from "./expr/codePoints";

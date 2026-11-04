@@ -7,6 +7,7 @@
 import type { LaneStyleWire } from "../generated/api";
 import {
   compileFilter,
+  withRanges,
   type ClassMask,
   type CompiledCatalog,
   type CompiledFilter,
@@ -56,6 +57,7 @@ export function styleOf(
   options.forEach((option, index) => {
     if (settings.filter[option.id] ?? option.default_enabled) enabled.push(index);
   });
+  const filter = withRanges(settings.expression, settings.ranges);
   return {
     label,
     enabled_classes: enabled,
@@ -63,7 +65,7 @@ export function styleOf(
     hidden: settings.hidden,
     theme: settings.theme,
     retained_opacity: settings.sticky.opacity,
-    filter: settings.expression === "" ? null : settings.expression,
+    filter: filter === "" ? null : filter,
   };
 }
 

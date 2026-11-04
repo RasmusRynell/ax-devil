@@ -25,6 +25,56 @@ export function compileFilter(expression: string): FilterResult {
   return { ok: true, filter: { ctx, test: compiled.type === "bool" ? compiled.scalar.fn : null } };
 }
 
+/** A number a classification can carry, filterable by range; each is also the name of its field in an expression. */
+export type Measure = "score" | "confidence";
+
+/** Every measure, in the order a menu lists them. */
+export const MEASURES: readonly Measure[] = ["score", "confidence"];
+
+/** An inclusive range; `null` is an open end. A range judges only values that were reported. */
+export type MeasureRange = { readonly min: number | null; readonly max: number | null };
+
+/** The range of each measure. */
+export type MeasureRanges = Readonly<Record<Measure, MeasureRange>>;
+
+/** Ranges that keep every row. */
+export const OPEN_RANGES: MeasureRanges = {
+  score: { min: null, max: null },
+  confidence: { min: null, max: null },
+};
+
+/** A number as the expression language reads it, which has no exponent: `String(n)` with any exponent written out. */
+function literal(n: number): string {
+  const text = String(n);
+  const parts = /^(-?)(\d)(?:\.(\d+))?e([+-]\d+)$/.exec(text);
+  if (parts === null) return text;
+  const [, sign, lead, fraction = "", exponent] = parts;
+  const digits = `${lead}${fraction}`;
+  const point = 1 + Number(exponent);
+  if (point <= 0) return `${sign}0.${"0".repeat(-point)}${digits}`;
+  return `${sign}${digits.padEnd(point, "0")}`;
+}
+
+/** The test that keeps a row whose `measure` is absent or inside `range`; null for an open range. */
+function rangeClause(measure: Measure, { min, max }: MeasureRange): string | null {
+  const bounds: string[] = [];
+  if (min !== null && Number.isFinite(min)) bounds.push(`${measure} >= ${literal(min)}`);
+  if (max !== null && Number.isFinite(max)) bounds.push(`${measure} <= ${literal(max)}`);
+  return bounds.length === 0 ? null : `(${measure} == null || (${bounds.join(" && ")}))`;
+}
+
+/**
+ * The one expression that keeps the rows inside every range and passing the authored `expression`. A row with no
+ * reported value for a measure is not judged by that measure; the authored expression keeps its own rules. With open
+ * ranges it is `expression` itself.
+ */
+export function withRanges(expression: string, ranges: MeasureRanges): string {
+  const clauses = MEASURES.flatMap((measure) => rangeClause(measure, ranges[measure]) ?? []);
+  if (clauses.length === 0) return expression;
+  if (expression.trim() !== "") clauses.push(`(${expression})`);
+  return clauses.join(" && ");
+}
+
 /** Which class options a lane has switched on: option `i` of `options` is bit `i % 32` of word `i / 32`. */
 export interface ClassMask {
   readonly enabled: Uint32Array;

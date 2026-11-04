@@ -1,6 +1,7 @@
 // The backend's Opened message for tests: the test says how long the video is.
 import type { LaneDefaultsWire, LaneInfo, ServerMessage } from "../generated/api";
 import type { LaneSettings } from "./contract";
+import { OPEN_RANGES } from "../present";
 import { PLAYBACK_PROTOCOL } from "./protocol";
 
 export const LANE_DEFAULTS: LaneDefaultsWire = {
@@ -15,6 +16,7 @@ export const LANE_SETTINGS: LaneSettings = {
   hidden: 0,
   filter: {},
   expression: "",
+  ranges: OPEN_RANGES,
   basis: LANE_DEFAULTS.policy.basis,
   tolerance_ms: LANE_DEFAULTS.policy.tolerance_ms,
   sticky: { ...LANE_DEFAULTS.policy.sticky, opacity: 1 },
