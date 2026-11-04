@@ -48,7 +48,10 @@ export function SettingsDialog({
   const refusedRow = shown.some((row) => row.key === refusal?.location);
   return (
     <Dialog title="Settings" onOk={() => void ok()} onCancel={onClose} busy={saving}>
-      <Tabs label="Settings pages" tabs={pages} value={page} onChange={setPage} panelId={panel} />
+      {/* The pages wrap onto further rows when a narrow window or a large text size cannot hold them in one. */}
+      <div className="[&>[role=tablist]]:flex-wrap">
+        <Tabs label="Settings pages" tabs={pages} value={page} onChange={setPage} panelId={panel} />
+      </div>
       <div id={panel} role="tabpanel" className="flex min-h-0 flex-col gap-l overflow-y-auto">
         {[...new Set(rows.map((row) => row.section))].map((section) => (
           <section key={section} className="flex flex-col gap-m">

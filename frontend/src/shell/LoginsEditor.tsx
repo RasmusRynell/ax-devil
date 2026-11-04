@@ -27,19 +27,30 @@ const shape = (logins: readonly Login[]) =>
     kept(logins).map(({ user, password }) => [user, literal(password) ? null : password]),
   );
 
+/** A long value is shown from its start, not its end. */
+const atStart = (field: HTMLInputElement | null) => field?.setSelectionRange(0, 0);
+
+type Props = { logins: readonly Login[] } & (
+  | {
+      /** Resolves to why the backend refused the logins, else `null`. */
+      onSave: (logins: Login[]) => Promise<string | null>;
+      onChange?: never;
+    }
+  | {
+      /** Gets the logins after every edit; whoever holds them saves them later, as the Settings dialog does on OK. */
+      onChange: (logins: Login[]) => void;
+      onSave?: never;
+    }
+);
+
 /**
- * The logins the scan tries, in order, a user and a password side by side; five rows show, more scroll. A finished edit
- * (Enter, or leaving the field) or a removal is saved at once; a row without a user is not kept. A literal password shows masked, a `$NAME`
- * reference as it is. Why a save was refused shows under the list.
+ * The logins the scan tries, in order, a user and a password side by side; five rows show, more scroll. With `onSave`
+ * a finished edit (Enter, or leaving the field) or a removal is saved at once, and a refused save puts the logins
+ * back as they were, unless the user has edited on since; with `onChange` every edit is handed on and nothing is
+ * saved here. A row without a user is not kept. A literal password shows masked, a `$NAME` reference as it is. Why a
+ * save was refused shows under the list.
  */
-export function LoginsEditor({
-  logins,
-  onSave,
-}: {
-  logins: readonly Login[];
-  /** Resolves to why the backend refused the logins, else `null`. */
-  onSave: (logins: Login[]) => Promise<string | null>;
-}) {
+export function LoginsEditor({ logins, onSave, onChange }: Props) {
   const [draft, setDraft] = useState<readonly Login[]>(logins);
   const [added, setAdded] = useState<number | null>(null);
   const [refused, setRefused] = useState<string | null>(null);
@@ -49,11 +60,17 @@ export function LoginsEditor({
   const submitted = useRef(new Map<string, readonly Login[]>());
   // The logins sent last and not refused, so an Enter followed by the blur it causes sends them once.
   const sent = useRef<string | null>(null);
+  // What the backend holds, and what it will once the saves in flight are accepted (null: none in flight).
+  const held = useRef(logins);
+  const expected = useRef<readonly Login[] | null>(null);
 
   // What the backend holds changed: show it, unless it is what the draft already says or what this editor saved.
   useEffect(() => {
     sent.current = null;
+    held.current = logins;
     const saved = submitted.current.get(shape(logins));
+    if (!saved || (expected.current && shape(expected.current) === shape(logins)))
+      expected.current = null;
     if (saved) {
       // Unchanged since the save: show what the backend holds, which masks the literal passwords.
       setDraft((now) => (same(kept(now), saved) ? logins : now));
@@ -66,20 +83,31 @@ export function LoginsEditor({
   const commit = (next: readonly Login[]) => {
     const wanted = kept(next);
     const key = JSON.stringify(wanted);
-    if (same(wanted, logins) || sent.current === key) return;
+    const before = expected.current;
+    if (!onSave || same(wanted, before ?? logins) || sent.current === key) return;
     sent.current = key;
+    expected.current = wanted;
     submitted.current.set(shape(wanted), wanted);
     void onSave(wanted).then((reason) => {
-      // A refused save can be sent again unchanged; a newer submission is not forgotten by an older answer.
-      if (reason !== null && sent.current === key) sent.current = null;
+      // A newer submission is not undone by an older answer.
+      if (reason !== null && sent.current === key) {
+        sent.current = null;
+        expected.current = before;
+        // Back to what the backend holds, unless the user has edited on since.
+        setDraft((now) => (same(kept(now), wanted) ? (before ?? held.current) : now));
+      }
       setRefused(reason);
     });
   };
+  const change = (next: readonly Login[]) => {
+    setDraft(next);
+    onChange?.(kept(next));
+  };
   const edit = (at: number, field: "user" | "password", value: string) =>
-    setDraft(draft.map((login, index) => (index === at ? { ...login, [field]: value } : login)));
+    change(draft.map((login, index) => (index === at ? { ...login, [field]: value } : login)));
   const remove = (at: number) => {
     const next = draft.filter((_, index) => index !== at);
-    setDraft(next);
+    change(next);
     commit(next);
   };
 
@@ -91,6 +119,7 @@ export function LoginsEditor({
           return (
             <div key={at} className="flex shrink-0 items-center gap-s">
               <input
+                ref={atStart}
                 aria-label="Username"
                 placeholder="Username"
                 value={text(login, "user")}
@@ -103,6 +132,7 @@ export function LoginsEditor({
                 className={`${FIELD} min-w-0 flex-1 text-small`}
               />
               <input
+                ref={atStart}
                 aria-label="Password"
                 placeholder="Password"
                 type={masked ? "password" : "text"}
@@ -116,12 +146,7 @@ export function LoginsEditor({
                 onKeyDown={(event) => event.key === "Enter" && commit(draft)}
                 className={`${FIELD} min-w-0 flex-1 text-small`}
               />
-              <Button
-                size="small"
-                icon="trash-2"
-                label="Remove this login"
-                onClick={() => remove(at)}
-              />
+              <Button size="small" icon="trash-2" label="Remove login" onClick={() => remove(at)} />
             </div>
           );
         })}
