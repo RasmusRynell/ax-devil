@@ -88,6 +88,9 @@ describe("lane menu filter", () => {
     fireEvent.change(min, { target: { value: "0.5" } });
     expect(min.getAttribute("aria-invalid")).toBe("true");
     expect(onChange).not.toHaveBeenCalled();
+    show({ settings: { ...state.settings, expression: "score >= 0.4" } });
+    expect(min.getAttribute("aria-invalid")).toBe("true");
+    expect(onChange).not.toHaveBeenCalled();
     const ranges = { ...OPEN_RANGES, confidence: { min: 0.5, max: null } };
     show({ settings: { ...state.settings, expression: "", ranges } });
     const field = screen.getByRole("textbox", { name: "Filter expression" });

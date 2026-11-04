@@ -156,7 +156,15 @@ function Ranges({
       if (fits && bound !== current) onChange({ ranges: next(bound) });
       setDrafts({ ...drafts, [name]: { text: typed, base: fits ? bound : current } });
     };
-    return { name, text, invalid: value === undefined || found.length > 0, found, edit };
+    // A draft that differs from the applied bound was refused, and stays invalid even if it would fit later.
+    const unapplied = value !== undefined && value !== current;
+    return {
+      name,
+      text,
+      invalid: value === undefined || unapplied || found.length > 0,
+      found,
+      edit,
+    };
   };
   const fields = MEASURES.map((measure) => ({
     measure,
