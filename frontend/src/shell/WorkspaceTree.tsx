@@ -1,4 +1,4 @@
-import { useCallback, useId, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Menu, type MenuCommand, type MenuEntry } from "../kit/Menu";
 import { Popup } from "../kit/Popup";
 import { SectionCaption } from "../kit/SectionCaption";
@@ -35,10 +35,15 @@ export function WorkspaceTree() {
   const [showHidden, setShowHidden] = useState(false);
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set());
   const [folded, setFolded] = useState<ReadonlySet<SectionId>>(new Set());
+  const [current, setCurrent] = useState<string | null>(null);
   const [menu, setMenu] = useState<{ key: string; x: number; y: number } | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
   const prefix = useId();
+  const root = useRef<HTMLElement>(null);
   const scroller = useRef<HTMLDivElement>(null);
+  const lastAt = useRef(0);
+  // The section whose tree went away with the focus in it, until the focus is placed again.
+  const lost = useRef<SectionId | null>(null);
   // The tree a menu came from, which takes the focus back.
   const menuFrom = useRef<HTMLElement | null>(null);
 
@@ -58,6 +63,54 @@ export function WorkspaceTree() {
   const thumbnail = useRowThumbnail(
     useMemo(() => sections.flatMap(({ shown }) => shown), [sections]),
   );
+
+  // The rows of the unfolded sections in the order the keyboard walks them, and where each section's begin.
+  const walk = useMemo(() => {
+    const starts = new Map<SectionId, number>();
+    const rows: { id: SectionId; key: string }[] = [];
+    for (const { section, shown } of sections) {
+      if (folded.has(section.id)) continue;
+      starts.set(section.id, rows.length);
+      for (const { row } of shown) rows.push({ id: section.id, key: row.info.key });
+    }
+    return { rows, starts };
+  }, [sections, folded]);
+  // A row that went away (hidden, say) leaves the position where it was, on the row that took its place.
+  const found = walk.rows.findIndex(({ key }) => key === current);
+  const at =
+    current === null ? -1 : found >= 0 ? found : Math.min(lastAt.current, walk.rows.length - 1);
+  const onRow = walk.rows[at]?.key ?? null;
+  useEffect(() => {
+    lastAt.current = Math.max(at, 0);
+  });
+
+  const inSection = (id: SectionId, selector: string) =>
+    root.current?.querySelector<HTMLElement>(`[data-section="${id}"] ${selector}`);
+  const go = (index: number) => {
+    const next = walk.rows[Math.max(0, Math.min(walk.rows.length - 1, index))];
+    if (!next) return;
+    // The focus first: a tree that takes it starts on its first row, which this move then overrides.
+    inSection(next.id, '[role="tree"]')?.focus({ preventScroll: true });
+    setCurrent(next.key);
+  };
+  const onLose = useCallback((id: SectionId) => {
+    lost.current = id;
+  }, []);
+  // A tree that went away with the focus hands it to the row that took its place, else to its section's caption.
+  useLayoutEffect(() => {
+    const id = lost.current;
+    if (id === null) return;
+    lost.current = null;
+    const next = walk.rows[at];
+    if (next) {
+      inSection(next.id, '[role="tree"]')?.focus({ preventScroll: true });
+      setCurrent(next.key);
+    } else
+      (
+        inSection(id, "button[aria-expanded]") ??
+        root.current?.querySelector<HTMLElement>('[role="switch"]')
+      )?.focus();
+  });
 
   const fail = (error: unknown) =>
     setProblem(error instanceof Error ? error.message : String(error));
@@ -114,7 +167,11 @@ export function WorkspaceTree() {
   };
 
   return (
-    <section aria-label="Workspace items" className="flex min-h-0 flex-1 flex-col gap-xs">
+    <section
+      ref={root}
+      aria-label="Workspace items"
+      className="flex min-h-0 flex-1 flex-col gap-xs"
+    >
       <div className="flex justify-end pr-m">
         <Switch label="Show hidden" checked={showHidden} onChange={setShowHidden} />
       </div>
@@ -131,7 +188,7 @@ export function WorkspaceTree() {
             const out = filteredOut(section.rows, showHidden);
             const unfolded = !folded.has(section.id);
             return (
-              <section key={section.id} aria-label={section.title}>
+              <section key={section.id} data-section={section.id} aria-label={section.title}>
                 <SectionCaption
                   heading={section.title}
                   count={section.count}
@@ -141,13 +198,19 @@ export function WorkspaceTree() {
                 />
                 {unfolded && shown.length > 0 && (
                   <WorkspaceList
+                    id={section.id}
                     label={section.title}
                     prefix={`${prefix}-${section.id}`}
                     rows={shown}
+                    offset={walk.starts.get(section.id) ?? 0}
+                    current={onRow}
                     collapsed={collapsed}
                     scroller={scroller}
                     hides={hides}
                     onOpen={(row) => void open(row)}
+                    onCurrent={setCurrent}
+                    onGo={go}
+                    onLose={onLose}
                     onFold={setCollapsedState}
                     onHide={toggleHidden}
                     onMenu={(row, x, y, from) => {

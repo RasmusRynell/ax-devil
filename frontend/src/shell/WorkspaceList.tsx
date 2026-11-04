@@ -1,11 +1,11 @@
-import { useEffect, useRef, useState, type KeyboardEvent, type RefObject } from "react";
+import { useEffect, useLayoutEffect, type KeyboardEvent, type RefObject } from "react";
 import { Icon } from "../kit/Icon";
 import type { IconName } from "../kit/icons";
 import { IconButton } from "../kit/IconButton";
 import { KIND, type Kind } from "../kit/look";
 import { NoticeList, noticeOf } from "../kit/NoticeList";
 import { Popover } from "../kit/Popover";
-import type { TreeRow, VisibleRow } from "./treeModel";
+import type { SectionId, TreeRow, VisibleRow } from "./treeModel";
 import { pictureOf } from "./useRowThumbnail";
 import { useSpanWindow } from "./useSpanWindow";
 
@@ -36,16 +36,27 @@ function noteOf({ info, dimmed }: TreeRow): string {
 }
 
 interface Props {
+  id: SectionId;
   label: string;
   /** Makes the ids of the rows unique among the trees of the page. */
   prefix: string;
   rows: readonly VisibleRow[];
+  /** How many rows the sections before this one list, which the keyboard walks on from. */
+  offset: number;
+  /** The key of the row the keyboard is on, which may be in another section's tree. */
+  current: string | null;
   collapsed: ReadonlySet<string>;
   /** The scrolling element that holds the tree, which draws only the rows in view. */
   scroller: RefObject<HTMLElement | null>;
   /** Whether the seat may hide and unhide rows. */
   hides: boolean;
   onOpen: (row: TreeRow) => void;
+  /** Puts the keyboard on a row. */
+  onCurrent: (key: string) => void;
+  /** Moves the keyboard to the row at a place in the sequence of all sections' rows, and the focus to its tree. */
+  onGo: (index: number) => void;
+  /** The tree took the focus with it when it went away, which the owner gives to a row or caption that stays. */
+  onLose: (id: SectionId) => void;
   onFold: (key: string, collapse: boolean) => void;
   onHide: (row: TreeRow) => void;
   /** The menu of a row at a point, and the tree to give the focus back to when it closes. */
@@ -59,47 +70,51 @@ interface Props {
 
 /**
  * One section's rows as a tree that draws only the rows in view. Click or Enter opens a row in its viewer; the arrow
- * keys move, expand and collapse; the menu key or Shift+F10 opens the row's menu. Focusing the tree puts the keyboard
- * on its first row.
+ * keys move (on into the next section), expand and collapse; the menu key or Shift+F10 opens the row's menu.
+ * Focusing the tree puts the keyboard on its first row unless it is already on one of its rows.
  */
 export function WorkspaceList({
+  id,
   label,
   prefix,
   rows,
+  offset,
+  current,
   collapsed,
   scroller,
   hides,
   onOpen,
+  onCurrent,
+  onGo,
+  onLose,
   onFold,
   onHide,
   onMenu,
   thumbnail,
 }: Props) {
-  const [current, setCurrent] = useState<string | null>(null);
-  const lastAt = useRef(0);
   const { ref, start, end, before, after, reveal } = useSpanWindow(
     rows.map(({ row }) => row.info.key),
     scroller,
   );
 
-  // A row that went away (hidden, say) leaves the position where it was, on the row that took its place.
-  const found = rows.findIndex(({ row }) => row.info.key === current);
-  const at = current === null ? -1 : found >= 0 ? found : Math.min(lastAt.current, rows.length - 1);
+  const at = rows.findIndex(({ row }) => row.info.key === current);
   const from = Math.max(at, 0);
-  useEffect(() => {
-    lastAt.current = from;
-  });
   const idOf = (index: number) => `${prefix}-${index}`;
 
-  const go = (index: number) => {
-    const next = Math.max(0, Math.min(rows.length - 1, index));
-    const row = rows[next]?.row;
-    if (!row) return;
-    setCurrent(row.info.key);
-    reveal(next);
-  };
+  // The row the keyboard moved to scrolls into view, drawn yet or not.
+  useEffect(() => {
+    if (at >= 0) reveal(at);
+  }, [current]);
+  // A tree that goes away holding the focus leaves it to the owner to place.
+  useLayoutEffect(() => {
+    const tree = ref.current;
+    return () => {
+      if (tree?.contains(document.activeElement)) onLose(id);
+    };
+  }, [ref, id, onLose]);
+
   const menuAt = (row: TreeRow, x: number, y: number) => {
-    setCurrent(row.info.key);
+    onCurrent(row.info.key);
     onMenu(row, x, y, ref.current);
   };
 
@@ -108,16 +123,16 @@ export function WorkspaceList({
     if (event.ctrlKey || event.altKey || event.metaKey || !active) return;
     const hasKids = active.hasChildren;
     const isCollapsed = collapsed.has(active.info.key);
-    if (event.key === "ArrowDown") go(from + 1);
-    else if (event.key === "ArrowUp") go(from - 1);
-    else if (event.key === "Home") go(0);
-    else if (event.key === "End") go(rows.length - 1);
+    if (event.key === "ArrowDown") onGo(offset + from + 1);
+    else if (event.key === "ArrowUp") onGo(offset + from - 1);
+    else if (event.key === "Home") onGo(0);
+    else if (event.key === "End") onGo(Number.MAX_SAFE_INTEGER);
     else if (event.key === "ArrowRight" && hasKids && isCollapsed) onFold(active.info.key, false);
-    else if (event.key === "ArrowRight" && hasKids) go(from + 1);
+    else if (event.key === "ArrowRight" && hasKids) onGo(offset + from + 1);
     else if (event.key === "ArrowLeft" && hasKids && !isCollapsed) onFold(active.info.key, true);
     else if (event.key === "ArrowLeft") {
       const parent = rows.findIndex(({ row }) => row.info.key === active.parent);
-      if (parent >= 0) go(parent);
+      if (parent >= 0) onGo(offset + parent);
     } else if (event.key === "Enter" || event.key === " ") onOpen(active);
     else if (event.key === "ContextMenu" || (event.shiftKey && event.key === "F10")) {
       const box = document.getElementById(idOf(from))?.getBoundingClientRect();
@@ -137,8 +152,7 @@ export function WorkspaceList({
       onFocus={(event) => {
         // The keyboard starts on the first row, so the first arrow key moves on from it.
         const first = rows[0];
-        if (event.target === event.currentTarget && current === null && first)
-          setCurrent(first.row.info.key);
+        if (event.target === event.currentTarget && at < 0 && first) onCurrent(first.row.info.key);
       }}
       // The rows left out stand in as padding, which only their measured heights can give.
       style={{ paddingTop: before, paddingBottom: after }}
@@ -164,7 +178,7 @@ export function WorkspaceList({
             aria-busy={info.status.status === "Pending" || undefined}
             title={note || undefined}
             onClick={() => {
-              setCurrent(info.key);
+              onCurrent(info.key);
               ref.current?.focus({ preventScroll: true });
               onOpen(row);
             }}

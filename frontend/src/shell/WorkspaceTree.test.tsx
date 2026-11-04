@@ -169,6 +169,28 @@ describe("opening", () => {
     expect(shown()).toMatchObject({ active: "mot", viewers: { mot: { entry: "mot/A" } } });
   });
 
+  it("walks on from one section's last row into the next and back, and Home and End span them all", async () => {
+    await renderTree();
+    const videos = screen.getByRole("tree", { name: "Videos" });
+    const playlists = screen.getByRole("tree", { name: "Playlists" });
+    const ids = (tree: HTMLElement) =>
+      within(tree)
+        .getAllByRole("treeitem")
+        .map((row) => row.id);
+    videos.focus();
+    fireEvent.keyDown(videos, { key: "ArrowDown" });
+    fireEvent.keyDown(videos, { key: "ArrowDown" });
+    expect(document.activeElement).toBe(playlists);
+    expect(playlists.getAttribute("aria-activedescendant")).toBe(ids(playlists)[0]);
+    fireEvent.keyDown(playlists, { key: "ArrowUp" });
+    expect(document.activeElement).toBe(videos);
+    expect(videos.getAttribute("aria-activedescendant")).toBe(ids(videos)[1]);
+    fireEvent.keyDown(videos, { key: "End" });
+    expect(playlists.getAttribute("aria-activedescendant")).toBe(ids(playlists)[2]);
+    fireEvent.keyDown(playlists, { key: "Home" });
+    expect(videos.getAttribute("aria-activedescendant")).toBe(ids(videos)[0]);
+  });
+
   it("opens an item that failed, so the viewer can say why", async () => {
     await renderTree([{ ...failed("bad"), open: true }]);
     fireEvent.click(screen.getByRole("treeitem", { name: /^bad\.mp4/ }));
@@ -248,6 +270,25 @@ describe("hiding", () => {
     );
     fireEvent.contextMenu(screen.getByRole("treeitem", { name: /^A/ }));
     expect(screen.getByRole("menuitem", { name: "Hide" }).hasAttribute("disabled")).toBe(true);
+  });
+
+  it("keeps the focus when hiding takes the focused tree's last row away", async () => {
+    await renderTree([CLIP, MOT], []);
+    const videos = screen.getByRole("tree", { name: "Videos" });
+    videos.focus();
+    fireEvent.keyDown(videos, { key: "F10", shiftKey: true });
+    fireEvent.click(screen.getByRole("menuitem", { name: "Hide" }));
+    await act(async () => {});
+    expect(screen.queryByRole("tree", { name: "Videos" })).toBeNull();
+    expect(document.activeElement).toBe(screen.getByRole("tree", { name: "Playlists" }));
+
+    cleanup();
+    FakeSocket.reset();
+    await renderTree([CLIP], []);
+    screen.getByRole("tree", { name: "Videos" }).focus();
+    fireEvent.click(screen.getByRole("button", { name: "Hide v.mp4" }));
+    await act(async () => {});
+    expect(document.activeElement).toBe(screen.getByRole("button", { name: "Videos" }));
   });
 
   it("closes the row menu with Escape", async () => {
