@@ -35,18 +35,20 @@ pub struct VideoTask {
     gate: LiveGate<AccessUnit>,
     decoder: Option<Box<dyn UnitDecoder>>,
     epoch: Option<u32>,
+    attempt: u64,
     next_sequence: u64,
     warned_capture: bool,
     warned_decode: bool,
 }
 
 impl VideoTask {
-    /// A task reading `units` and following `link` until `stop` turns true.
+    /// A task reading `units` and following `link` until `stop` turns true, for connection number `attempt` of the feed.
     pub fn new(
         shared: Arc<Shared>,
         units: Option<mpsc::Receiver<AccessUnit>>,
         link: watch::Receiver<Status>,
         stop: watch::Receiver<bool>,
+        attempt: u64,
     ) -> Self {
         Self {
             shared,
@@ -56,6 +58,7 @@ impl VideoTask {
             gate: LiveGate::new(LIVE_DEADLINE, GATE_BOUND),
             decoder: None,
             epoch: None,
+            attempt,
             next_sequence: 0,
             warned_capture: false,
             warned_decode: false,
@@ -203,6 +206,7 @@ impl VideoTask {
             id,
             frame,
             snapshot,
+            attempt: self.attempt,
         })));
     }
 
