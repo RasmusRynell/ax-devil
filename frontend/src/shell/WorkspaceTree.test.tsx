@@ -26,18 +26,20 @@ afterEach(() => {
 describe("rows", () => {
   it("shows the backend's rows as a tree with levels, hidden ones left out", async () => {
     await renderTree();
-    expect(screen.getByRole("tree", { name: "Workspace" })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "Videos, 2" })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: /^Playlists, 1/ })).toBeTruthy();
     expect(screen.getAllByRole("treeitem").map((item) => item.getAttribute("aria-level"))).toEqual([
+      "1",
+      "1",
       "1",
       "2",
       "3",
-      "1",
-      "1",
     ]);
-    expect(labels()).toEqual(["mot", "A", "GT", "v.mp4", "bad.mp4, unavailable: File not found"]);
-    const [item, entryRow] = screen.getAllByRole("treeitem");
-    expect(item.getAttribute("aria-expanded")).toBe("true");
-    expect(entryRow.getAttribute("aria-setsize")).toBe("1");
+    expect(labels()).toEqual(["v.mp4", "bad.mp4, unavailable: File not found", "mot", "A", "GT"]);
+    expect(screen.getByRole("treeitem", { name: /^mot/ }).getAttribute("aria-expanded")).toBe(
+      "true",
+    );
+    expect(screen.getByRole("treeitem", { name: /^A/ }).getAttribute("aria-setsize")).toBe("1");
   });
 
   it("lists each of several playlists as a row of its own, named by the item, which opens its first entry and cannot be hidden", async () => {
@@ -74,30 +76,39 @@ describe("rows", () => {
 
   it("shows hidden rows dimmed, with their lanes, only with Show hidden", async () => {
     await renderTree();
+    expect(screen.getByRole("heading", { name: "Playlists, 1, 3 filtered out" })).toBeTruthy();
     fireEvent.click(screen.getByRole("switch", { name: "Show hidden" }));
-    expect(labels().slice(0, 6)).toEqual([
-      "mot",
-      "A",
-      "GT",
-      "DPM, hidden",
-      "B, hidden",
-      "GT, hidden",
-    ]);
+    expect(screen.getByRole("heading", { name: "Playlists, 1" })).toBeTruthy();
+    expect(labels().slice(2)).toEqual(["mot", "A", "GT", "DPM, hidden", "B, hidden", "GT, hidden"]);
   });
 
   it("collapses a row with the left arrow and expands it with the right arrow", async () => {
     await renderTree();
-    const tree = screen.getByRole("tree");
+    const tree = screen.getByRole("tree", { name: "Playlists" });
     fireEvent.keyDown(tree, { key: "ArrowLeft" });
-    expect(labels()).toEqual(["mot", "v.mp4", "bad.mp4, unavailable: File not found"]);
+    expect(labels()).toEqual(["v.mp4", "bad.mp4, unavailable: File not found", "mot"]);
     fireEvent.keyDown(tree, { key: "ArrowRight" });
     expect(labels()).toHaveLength(5);
   });
 
   it("draws only the rows in view of a long list", async () => {
-    const heights = { offsetHeight: 20, clientHeight: 100 };
-    for (const [name, value] of Object.entries(heights))
-      vi.spyOn(HTMLElement.prototype, name as "offsetHeight", "get").mockReturnValue(value);
+    // A browser measures the list when its scroller first reports a size.
+    vi.stubGlobal(
+      "ResizeObserver",
+      class {
+        constructor(private readonly measure: () => void) {}
+        observe() {
+          this.measure();
+        }
+        disconnect() {}
+      },
+    );
+    vi.spyOn(HTMLElement.prototype, "clientHeight", "get").mockReturnValue(100);
+    vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function (
+      this: HTMLElement,
+    ) {
+      return { top: 0, height: this.dataset.span ? 20 : 0 } as DOMRect;
+    });
     const many = Array.from({ length: 1000 }, (_, n) => ({
       ...CLIP,
       id: `v${n}`,
@@ -147,9 +158,11 @@ describe("opening", () => {
 
   it("moves with the arrow keys and opens the current row with Enter", async () => {
     await renderTree();
-    const tree = screen.getByRole("tree");
+    const tree = screen.getByRole("tree", { name: "Playlists" });
     fireEvent.keyDown(tree, { key: "ArrowDown" });
-    expect(tree.getAttribute("aria-activedescendant")).toBe(screen.getAllByRole("treeitem")[1].id);
+    expect(tree.getAttribute("aria-activedescendant")).toBe(
+      within(tree).getAllByRole("treeitem")[1].id,
+    );
     fireEvent.keyDown(tree, { key: "ArrowDown" });
     fireEvent.keyDown(tree, { key: "Enter" });
     await act(async () => {});
@@ -203,7 +216,7 @@ describe("hiding", () => {
     await renderTree();
     fireEvent.click(screen.getByRole("button", { name: "Hide v.mp4" }));
     await act(async () => {});
-    expect(labels()).toEqual(["mot", "A", "GT", "bad.mp4, unavailable: File not found"]);
+    expect(labels()).toEqual(["bad.mp4, unavailable: File not found", "mot", "A", "GT"]);
   });
 
   it("says why the backend refused", async () => {
@@ -239,9 +252,11 @@ describe("hiding", () => {
 
   it("closes the row menu with Escape", async () => {
     await renderTree();
-    fireEvent.keyDown(screen.getByRole("tree"), { key: "F10", shiftKey: true });
+    const tree = screen.getByRole("tree", { name: "Videos" });
+    fireEvent.keyDown(tree, { key: "F10", shiftKey: true });
     expect(screen.getByRole("menu")).toBeTruthy();
     fireEvent.keyDown(document, { key: "Escape" });
     expect(screen.queryByRole("menu")).toBeNull();
+    expect(document.activeElement).toBe(tree);
   });
 });

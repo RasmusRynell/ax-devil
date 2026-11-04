@@ -1,100 +1,64 @@
-import {
-  useCallback,
-  useEffect,
-  useId,
-  useMemo,
-  useRef,
-  useState,
-  type KeyboardEvent,
-} from "react";
-import type { IconName } from "../kit/icons";
-import { Icon } from "../kit/Icon";
-import { IconButton } from "../kit/IconButton";
+import { useCallback, useId, useMemo, useRef, useState } from "react";
 import { Menu, type MenuCommand, type MenuEntry } from "../kit/Menu";
-import { NoticeList, noticeOf } from "../kit/NoticeList";
-import { Popover } from "../kit/Popover";
-import { KIND, type Kind } from "../kit/look";
 import { Popup } from "../kit/Popup";
 import { SectionCaption } from "../kit/SectionCaption";
 import { Switch } from "../kit/Switch";
+import { useStreamStatuses } from "../live/streamState";
 import { useCan, useCommand, useDoc } from "../session/session";
 import { useShow } from "../viewer/useViewers";
 import { HoverPicture } from "./HoverPicture";
-import { treeOf, visibleRows, type TreeRow } from "./treeModel";
-import { pictureOf, useRowThumbnail } from "./useRowThumbnail";
-import { useRowWindow } from "./useRowWindow";
-
-const ROW_HEIGHT = "var(--spacing-row)";
-
-const KIND_ICONS: Record<Kind, IconName> = {
-  live: "video",
-  video: "square-play",
-  playlist: "list-video",
-  lane: "layers",
-};
-
-/** The icon in front of a row and its colour: its kind's, a warning when unavailable, muted when hidden or pending. */
-function iconOf({ info, playlist, dimmed }: TreeRow): { name: IconName; className: string } {
-  const { status } = info.status;
-  if (status === "Unavailable") return { name: "triangle-alert", className: "text-caution" };
-  const kind: Kind = info.kind === "lane" ? "lane" : playlist ? "playlist" : "video";
-  return { name: KIND_ICONS[kind], className: dimmed || status !== "Ready" ? "" : KIND[kind] };
-}
+import {
+  filteredOut,
+  sectionsOf,
+  treeOf,
+  visibleRows,
+  type SectionId,
+  type TreeRow,
+} from "./treeModel";
+import { useRowThumbnail } from "./useRowThumbnail";
+import { WorkspaceList } from "./WorkspaceList";
 
 const NOTHING_CHECKED: ReadonlySet<string> = new Set();
 
-/** Why a row cannot be opened as it is or what resolving left out, for assistive technology and the tooltip. */
-function noteOf({ info, dimmed }: TreeRow): string {
-  const { status } = info.status;
-  // A seat that may not read the host's failures is told the failure, not why.
-  if (status === "Unavailable")
-    return info.status.reason ? `unavailable: ${info.status.reason}` : "unavailable";
-  if (status === "Pending") return "opening";
-  const warned = info.warnings.map(({ problem }) => problem).join("; ");
-  return [dimmed ? "hidden" : "", warned].filter(Boolean).join(", ");
-}
-
 /**
- * The workspace's items as a tree: each item, then its entries and their lanes, from the backend's rows. Click or
- * Enter opens the row in its viewer; the arrow keys move, expand and collapse; the row menu (right click,
- * Shift+F10 or the Menu key) opens it or hides and unhides it. Hidden rows show, dimmed, only with Show hidden.
+ * The workspace's items as a tree in sections (Live, Videos, Playlists, Other; a click on a caption folds it): each
+ * item, then its entries and their lanes, from the backend's rows. Click or Enter opens the row in its viewer; the
+ * arrow keys move, expand and collapse; the row menu (right click, Shift+F10 or the Menu key) opens it or hides and
+ * unhides it. Hidden rows show, dimmed, only with Show hidden, and a section says how many that leaves out.
  */
 export function WorkspaceTree() {
   const workspace = useDoc()?.workspace;
   const command = useCommand();
   const show = useShow();
   const hides = useCan("content");
+  const statuses = useStreamStatuses();
   const [showHidden, setShowHidden] = useState(false);
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set());
-  const [current, setCurrent] = useState<string | null>(null);
+  const [folded, setFolded] = useState<ReadonlySet<SectionId>>(new Set());
   const [menu, setMenu] = useState<{ key: string; x: number; y: number } | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
   const prefix = useId();
-  const lastAt = useRef(0);
+  const scroller = useRef<HTMLDivElement>(null);
+  // The tree a menu came from, which takes the focus back.
+  const menuFrom = useRef<HTMLElement | null>(null);
 
   const tree = useMemo(() => (workspace ? treeOf(workspace) : []), [workspace]);
-  const shown = useMemo(
-    () => visibleRows(tree, collapsed, showHidden),
-    [tree, collapsed, showHidden],
+  const live = useMemo(
+    () => new Set([...statuses].flatMap(([item, { anyLive }]) => (anyLive ? [item] : []))),
+    [statuses],
   );
-  const thumbnail = useRowThumbnail(shown);
-  const { ref, start, end, update, reveal } = useRowWindow(shown.length);
+  const sections = useMemo(
+    () =>
+      sectionsOf(tree, live).map((section) => ({
+        section,
+        shown: visibleRows(section.rows, collapsed, showHidden),
+      })),
+    [tree, live, collapsed, showHidden],
+  );
+  const thumbnail = useRowThumbnail(
+    useMemo(() => sections.flatMap(({ shown }) => shown), [sections]),
+  );
 
-  // A row that went away (hidden, say) leaves the position where it was, on the row that took its place.
-  const found = shown.findIndex(({ row }) => row.info.key === current);
-  const at = found >= 0 ? found : Math.min(lastAt.current, shown.length - 1);
-  const active = shown[at]?.row;
-  useEffect(() => {
-    lastAt.current = Math.max(at, 0);
-  });
-
-  const go = (index: number) => {
-    const next = Math.max(0, Math.min(shown.length - 1, index));
-    const row = shown[next]?.row;
-    if (!row) return;
-    setCurrent(row.info.key);
-    reveal(next);
-  };
   const fail = (error: unknown) =>
     setProblem(error instanceof Error ? error.message : String(error));
   const open = (row: TreeRow) =>
@@ -109,6 +73,12 @@ export function WorkspaceTree() {
       else next.delete(key);
       return next;
     });
+  const toggleFolded = (id: SectionId) =>
+    setFolded((now) => {
+      const next = new Set(now);
+      if (!next.delete(id)) next.add(id);
+      return next;
+    });
   const toggleHidden = (row: TreeRow) => {
     if (!row.target) return;
     command({
@@ -118,13 +88,9 @@ export function WorkspaceTree() {
   };
   const closeMenu = useCallback(() => {
     setMenu(null);
-    ref.current?.focus({ preventScroll: true });
-  }, [ref]);
+    menuFrom.current?.focus({ preventScroll: true });
+  }, []);
 
-  const menuAt = (row: TreeRow, x: number, y: number) => {
-    setCurrent(row.info.key);
-    setMenu({ key: row.info.key, x, y });
-  };
   const menuRow = menu && tree.find((row) => row.info.key === menu.key);
   const menuEntries: MenuEntry[] = menuRow
     ? [
@@ -147,36 +113,9 @@ export function WorkspaceTree() {
     else toggleHidden(menuRow);
   };
 
-  const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
-    if (event.ctrlKey || event.altKey || event.metaKey || !active) return;
-    const hasKids = active.hasChildren;
-    const isCollapsed = collapsed.has(active.info.key);
-    if (event.key === "ArrowDown") go(at + 1);
-    else if (event.key === "ArrowUp") go(at - 1);
-    else if (event.key === "Home") go(0);
-    else if (event.key === "End") go(shown.length - 1);
-    else if (event.key === "ArrowRight" && hasKids && isCollapsed)
-      setCollapsedState(active.info.key, false);
-    else if (event.key === "ArrowRight" && hasKids) go(at + 1);
-    else if (event.key === "ArrowLeft" && hasKids && !isCollapsed)
-      setCollapsedState(active.info.key, true);
-    else if (event.key === "ArrowLeft") {
-      const parent = shown.findIndex(({ row }) => row.info.key === active.parent);
-      if (parent >= 0) go(parent);
-    } else if (event.key === "Enter" || event.key === " ") void open(active);
-    else if (event.key === "ContextMenu" || (event.shiftKey && event.key === "F10")) {
-      const box = document.getElementById(`${prefix}-${at}`)?.getBoundingClientRect();
-      menuAt(active, box?.left ?? 0, box?.bottom ?? 0);
-    } else return;
-    event.preventDefault();
-  };
-
   return (
     <section aria-label="Workspace items" className="flex min-h-0 flex-1 flex-col gap-xs">
-      <div className="flex items-center gap-m pr-m">
-        <div className="min-w-0 flex-1">
-          <SectionCaption heading="Items" />
-        </div>
+      <div className="flex justify-end pr-m">
         <Switch label="Show hidden" checked={showHidden} onChange={setShowHidden} />
       </div>
       {problem && (
@@ -184,111 +123,43 @@ export function WorkspaceTree() {
           {problem}
         </p>
       )}
-      {shown.length === 0 ? (
+      {sections.length === 0 ? (
         <p className="m-0 px-m text-muted">No items</p>
       ) : (
-        <div
-          ref={ref}
-          role="tree"
-          aria-label="Workspace"
-          aria-activedescendant={`${prefix}-${at}`}
-          tabIndex={0}
-          onKeyDown={onKeyDown}
-          onScroll={update}
-          className="group/tree min-h-0 flex-1 overflow-y-auto focus:outline-none"
-        >
-          <div
-            style={{
-              paddingTop: `calc(${ROW_HEIGHT} * ${start})`,
-              paddingBottom: `calc(${ROW_HEIGHT} * ${shown.length - end})`,
-            }}
-          >
-            {shown.slice(start, end).map(({ row, position, siblings }, offset) => {
-              const index = start + offset;
-              const { info } = row;
-              const isCurrent = index === at;
-              const note = noteOf(row);
-              const folded = collapsed.has(info.key);
-              return (
-                <div
-                  key={info.key}
-                  id={`${prefix}-${index}`}
-                  role="treeitem"
-                  data-cursor-id={`tree:${info.key}`}
-                  aria-level={row.level}
-                  aria-posinset={position}
-                  aria-setsize={siblings}
-                  aria-expanded={row.hasChildren ? !folded : undefined}
-                  aria-busy={info.status.status === "Pending" || undefined}
-                  title={note || undefined}
-                  onClick={() => {
-                    setCurrent(info.key);
-                    ref.current?.focus({ preventScroll: true });
-                    void open(row);
-                  }}
-                  onPointerEnter={(event) =>
-                    thumbnail.enter(pictureOf(row), event.clientX, event.clientY)
-                  }
-                  onPointerLeave={thumbnail.leave}
-                  onContextMenu={(event) => {
-                    event.preventDefault();
-                    menuAt(row, event.clientX, event.clientY);
-                  }}
-                  style={{
-                    paddingLeft: `calc(var(--spacing-m) + var(--spacing-xl) * ${row.level - 1})`,
-                  }}
-                  className={`group/row flex h-row cursor-pointer items-center gap-s rounded-control pr-s hover:bg-hover ${
-                    row.dimmed || info.status.status !== "Ready" ? "text-muted" : "text-fg"
-                  } ${isCurrent ? "bg-hover group-focus-visible/tree:outline-(length:--stroke-focus) group-focus-visible/tree:-outline-offset-(--stroke-focus) group-focus-visible/tree:outline-accent" : ""}`}
-                >
-                  {row.hasChildren ? (
-                    <span
-                      aria-hidden
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        setCollapsedState(info.key, !folded);
-                      }}
-                    >
-                      <Icon name={folded ? "chevron-right" : "chevron-down"} />
-                    </span>
-                  ) : (
-                    <span aria-hidden className="size-icon shrink-0" />
-                  )}
-                  <Icon {...iconOf(row)} />
-                  <span className="min-w-0 flex-1 truncate">{info.label}</span>
-                  {note && <span className="sr-only">{`, ${note}`}</span>}
-                  {info.warnings.length > 0 && (
-                    <span onClick={(event) => event.stopPropagation()}>
-                      <Popover
-                        label={`${info.label}: warnings`}
-                        trigger={<Icon name="triangle-alert" />}
-                        className="size-row justify-center"
-                      >
-                        <NoticeList notices={info.warnings.map(noticeOf)} />
-                      </Popover>
-                    </span>
-                  )}
-                  {row.target && (
-                    <IconButton
-                      icon={info.hidden ? "eye" : "eye-off"}
-                      label={`${info.hidden ? "Unhide" : "Hide"} ${info.label}`}
-                      tabIndex={-1}
-                      disabled={!hides}
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        toggleHidden(row);
-                      }}
-                      className={`rounded-control ${
-                        info.hidden || isCurrent
-                          ? ""
-                          : "opacity-0 group-hover/row:opacity-100 focus-visible:opacity-100"
-                      }`}
-                    />
-                  )}
-                </div>
-              );
-            })}
-          </div>
+        <div ref={scroller} className="flex min-h-0 flex-1 flex-col overflow-y-auto">
+          {sections.map(({ section, shown }) => {
+            const out = filteredOut(section.rows, showHidden);
+            const unfolded = !folded.has(section.id);
+            return (
+              <section key={section.id} aria-label={section.title}>
+                <SectionCaption
+                  heading={section.title}
+                  count={section.count}
+                  note={out ? `${out} filtered out` : undefined}
+                  mark={section.mark}
+                  fold={{ open: unfolded, onToggle: () => toggleFolded(section.id) }}
+                />
+                {unfolded && shown.length > 0 && (
+                  <WorkspaceList
+                    label={section.title}
+                    prefix={`${prefix}-${section.id}`}
+                    rows={shown}
+                    collapsed={collapsed}
+                    scroller={scroller}
+                    hides={hides}
+                    onOpen={(row) => void open(row)}
+                    onFold={setCollapsedState}
+                    onHide={toggleHidden}
+                    onMenu={(row, x, y, from) => {
+                      menuFrom.current = from;
+                      setMenu({ key: row.info.key, x, y });
+                    }}
+                    thumbnail={thumbnail}
+                  />
+                )}
+              </section>
+            );
+          })}
         </div>
       )}
       {thumbnail.shown && <HoverPicture {...thumbnail.shown} />}

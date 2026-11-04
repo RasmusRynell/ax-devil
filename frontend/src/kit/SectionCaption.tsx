@@ -21,7 +21,7 @@ const MARK: Record<CaptionMark, string> = {
 interface Props {
   /** The group name, drawn in capitals; it never shortens. */
   heading: string;
-  /** Shown right after the heading. */
+  /** Shown right after the heading, unless zero; the heading's accessible name always carries it. */
   count?: number;
   /** Shown after the count as ` · note`, in the heading's row but not in capitals; it shortens first. */
   note?: string;
@@ -72,10 +72,15 @@ export function SectionCaption({
           </button>
         )}
         {!plain && <span aria-hidden className={`size-m shrink-0 rounded-mark ${MARK[mark]}`} />}
-        <h2 className="m-0 flex min-w-0 text-small font-semibold tracking-caption whitespace-nowrap text-muted uppercase">
+        <h2
+          aria-label={
+            count === undefined ? undefined : `${heading}, ${count}${note ? `, ${note}` : ""}`
+          }
+          className="m-0 flex min-w-0 text-small font-semibold tracking-caption whitespace-nowrap text-muted uppercase"
+        >
           <span className="shrink-0">
             {heading}
-            {count !== undefined && (
+            {count !== undefined && count > 0 && (
               <>
                 {" "}
                 <span className="ml-s tabular-nums">{count}</span>
