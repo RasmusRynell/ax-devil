@@ -46,6 +46,31 @@ describe("Frame scope", () => {
     expect(source.seek).not.toHaveBeenCalled();
   });
 
+  it("filters 150 ms after typing stops, at once on Return or Clear, and Clear shows only with text", () => {
+    vi.useFakeTimers();
+    mount();
+    const box = screen.getByRole("textbox", { name: "Search objects" });
+    expect(screen.queryByRole("button", { name: "Clear" })).toBeNull();
+    fireEvent.change(box, { target: { value: "class:car score>0.7" } });
+    act(() => {
+      vi.advanceTimersByTime(149);
+    });
+    expect(ids()).toEqual(["12", "7", "9"]);
+    act(() => {
+      vi.advanceTimersByTime(1);
+    });
+    expect(ids()).toEqual(["7"]);
+
+    fireEvent.change(box, { target: { value: "id:12" } });
+    fireEvent.keyDown(box, { key: "Enter" });
+    expect(ids()).toEqual(["12"]);
+
+    fireEvent.click(screen.getByRole("button", { name: "Clear" }));
+    expect(ids()).toEqual(["12", "7", "9"]);
+    expect(document.activeElement).toBe(box);
+    expect(screen.queryByRole("button", { name: "Clear" })).toBeNull();
+  });
+
   it("names a searched field no object has, only where it can tell", () => {
     mount(
       {},

@@ -34,6 +34,7 @@ import { MiddleElided } from "../kit/MiddleElided";
 import { SearchBar } from "./SearchBar";
 import { nextSort } from "./table/columns";
 import { Table, type TableMemory } from "./table/Table";
+import { useApplied } from "./useApplied";
 
 /** What the panel reads of a viewer and asks of it: `PlaybackSession` is one. */
 export interface ObjectSource {
@@ -104,7 +105,9 @@ export function ObjectsList({
     file: { top: 0, cursor: null },
   });
   const sort = sorts[scope];
-  const { wire } = useMemo(() => parseSearch(text), [text]);
+  // File scope's request has its own pause; the frame's objects are filtered here, once typing pauses or is committed.
+  const [applied, apply] = useApplied(text);
+  const { wire } = useMemo(() => parseSearch(applied), [applied]);
   const frame = source.shown(lane);
   const objects = useMemo(() => frameObjects(frame), [frame]);
   // What is in the frame on screen, whatever the lane's toggles and filter hide; File scope dims the rest, and nothing
@@ -230,6 +233,7 @@ export function ObjectsList({
             label="Search objects"
             value={text}
             onChange={(value) => onList({ ...list, text: value })}
+            onCommit={apply}
           />
           {notice !== null && (
             <div role="status" className="pt-xs text-small text-muted">
