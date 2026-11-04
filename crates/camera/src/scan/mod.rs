@@ -197,6 +197,8 @@ mod tests {
 
     const INFO: &str = r#"{"apiVersion":"1.3","data":{"propertyList":{"Brand":"AXIS","ProdShortName":"AXIS Q1656","SerialNumber":"ACCC8E000001","Version":"11.11.1","ProdType":"Box Camera"}}}"#;
 
+    // Needs a second loopback address, which only Linux has without setup.
+    #[cfg(target_os = "linux")]
     #[tokio::test]
     async fn a_host_still_being_identified_after_the_drain_is_stopped_and_the_scan_ends() {
         // 127.0.0.1 answers at once on one port; 127.0.0.2 accepts on the other and never says a word.
