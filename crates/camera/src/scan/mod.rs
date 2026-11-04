@@ -7,9 +7,11 @@ mod targets;
 
 use std::net::Ipv4Addr;
 use std::sync::Arc;
+use std::time::Duration;
 
 use tokio::sync::{Semaphore, mpsc};
 use tokio::task::JoinSet;
+use tokio::time::timeout;
 
 use crate::target::{Login, Scheme, Web};
 use crate::vapix::Identity;
@@ -41,6 +43,14 @@ impl ScanLoad {
         match self {
             Self::Normal => 32,
             Self::Startup => 8,
+        }
+    }
+
+    /// The longest the scan waits for hosts still being identified once every address has been visited.
+    const fn drain(self) -> Duration {
+        match self {
+            Self::Normal => Duration::from_secs(20),
+            Self::Startup => Duration::from_secs(80),
         }
     }
 }
@@ -110,6 +120,9 @@ pub struct Found {
 /// particular order; the channel closes when the scan is over. Dropping the receiver stops the scan, including any
 /// sign-in not yet sent.
 ///
+/// Once every address has been visited, hosts still being identified get 20 s (80 s for [`ScanLoad::Startup`]); then
+/// they are stopped, nothing more is sent, and the channel closes with the cameras found so far.
+///
 /// A camera is found without a login. With `logins` it is also signed in to, in order, until one is accepted, but
 /// only once it has answered as an Axis camera, and only with Digest, never Basic. A camera that turns a login away
 /// for now (429, or 403 after a refusal) is asked again after 1 s, then 2 s. A login with no user name is skipped.
@@ -118,6 +131,17 @@ pub fn scan(
     logins: Vec<Login>,
     load: ScanLoad,
     ports: ScanPorts,
+) -> mpsc::Receiver<Found> {
+    scan_with(targets, logins, load, ports, load.drain())
+}
+
+/// [`scan`] with its own bound on how long the hosts still being identified are waited for.
+fn scan_with(
+    targets: Targets,
+    logins: Vec<Login>,
+    load: ScanLoad,
+    ports: ScanPorts,
+    drain: Duration,
 ) -> mpsc::Receiver<Found> {
     let (tx, rx) = mpsc::channel(QUEUE);
     tokio::spawn(async move {
@@ -136,7 +160,16 @@ pub fn scan(
                 };
                 hosts.spawn(host::visit(addr, Arc::clone(&shared), permit, tx.clone()));
             }
-            while hosts.join_next().await.is_some() {}
+            // The drain runs from the end of probing, as Python's does: every probe permit back means no host is
+            // still being probed, only identified.
+            let Ok(_probed) = probe.acquire_many(load.probes() as u32).await else {
+                return;
+            };
+            let finished = timeout(drain, async { while hosts.join_next().await.is_some() {} });
+            if finished.await.is_err() {
+                // Stopped here, before the channel closes, so no camera arrives after the deadline.
+                hosts.shutdown().await;
+            }
         };
         tokio::select! {
             () = tx.closed() => {}
@@ -155,7 +188,69 @@ pub async fn check(addr: Ipv4Addr, web: Web, login: Login) -> Option<Found> {
 
 #[cfg(test)]
 mod tests {
+    use std::time::Instant;
+
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    use tokio::net::TcpListener;
+
     use super::*;
+
+    const INFO: &str = r#"{"apiVersion":"1.3","data":{"propertyList":{"Brand":"AXIS","ProdShortName":"AXIS Q1656","SerialNumber":"ACCC8E000001","Version":"11.11.1","ProdType":"Box Camera"}}}"#;
+
+    #[tokio::test]
+    async fn a_host_still_being_identified_after_the_drain_is_stopped_and_the_scan_ends() {
+        // 127.0.0.1 answers at once on one port; 127.0.0.2 accepts on the other and never says a word.
+        let camera = TcpListener::bind("127.0.0.1:0").await.expect("bind");
+        let hung = TcpListener::bind("127.0.0.2:0").await.expect("bind");
+        let web = |listener: &TcpListener| Web {
+            scheme: Scheme::Http,
+            port: listener.local_addr().expect("addr").port(),
+        };
+        let ports = ScanPorts::new([web(&hung), web(&camera)]);
+        tokio::spawn(async move {
+            loop {
+                let (mut stream, _) = camera.accept().await.expect("accept");
+                tokio::spawn(async move {
+                    let _ = stream.read(&mut [0; 4096]).await;
+                    let reply = format!(
+                        "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{INFO}",
+                        INFO.len()
+                    );
+                    let _ = stream.write_all(reply.as_bytes()).await;
+                });
+            }
+        });
+        tokio::spawn(async move {
+            let mut held = Vec::new();
+            while let Ok((stream, _)) = hung.accept().await {
+                held.push(stream);
+            }
+        });
+
+        let targets = Targets::parse("127.0.0.1,127.0.0.2").expect("targets");
+        let started = Instant::now();
+        let mut found = scan_with(
+            targets,
+            Vec::new(),
+            ScanLoad::Normal,
+            ports,
+            Duration::from_millis(300),
+        );
+        let mut addrs = Vec::new();
+        while let Some(camera) = found.recv().await {
+            addrs.push(camera.addr);
+        }
+
+        assert_eq!(
+            addrs,
+            [Ipv4Addr::LOCALHOST],
+            "only the camera that answered"
+        );
+        assert!(
+            started.elapsed() < Duration::from_secs(1),
+            "the scan ended at the drain, not at the hung host's request timeout"
+        );
+    }
 
     #[test]
     fn the_preferred_scheme_is_asked_first_on_its_standard_port() {
