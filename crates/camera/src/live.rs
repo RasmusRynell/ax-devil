@@ -122,6 +122,17 @@ pub struct MetadataDoc {
     pub xml: Bytes,
 }
 
+/// What a DataHub sample says about itself, kept for diagnostics; never timing.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct DataHubStamp {
+    /// The channel the sample came from.
+    pub channel: i64,
+    /// The camera's timestamp for the sample, as it sent it.
+    pub timestamp: String,
+    /// Whether the sample is replayed from the past rather than new.
+    pub historical: bool,
+}
+
 /// One MQTT message, or one DataHub sample (its topic and its `data` as JSON).
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Message {
@@ -131,6 +142,8 @@ pub struct Message {
     pub topic: String,
     /// The payload.
     pub payload: Bytes,
+    /// The sample's envelope; `None` for MQTT.
+    pub stamp: Option<DataHubStamp>,
     /// When this machine received it.
     pub received: SystemTime,
 }

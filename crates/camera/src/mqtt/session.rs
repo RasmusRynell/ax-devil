@@ -67,6 +67,7 @@ pub(super) async fn read(link: &mut Link) -> Result<(), CameraError> {
                     epoch: link.epoch.unwrap_or_default(),
                     topic: publish.topic,
                     payload: publish.payload,
+                    stamp: None,
                     received: SystemTime::now(),
                 };
                 if link.out.send(message, &link.counters).is_err() {

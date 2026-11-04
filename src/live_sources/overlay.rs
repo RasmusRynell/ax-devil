@@ -7,7 +7,7 @@ use std::{
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
-use camera::{Feed, Message, MetadataDoc, Status};
+use camera::{DataHubStamp, Feed, Message, MetadataDoc, Status};
 use foundation::MediaTime;
 use tokio::{
     sync::watch,
@@ -143,15 +143,40 @@ impl Intake {
 
     fn queue(&mut self, doc: Doc, time_us: Option<i64>, effects: &mut Effects) {
         if self.trouble.is_some() {
+            log_lost(&doc);
             return;
         }
         match self.session.push(doc) {
             Ok(()) => self.last_us = time_us.or(self.last_us),
-            Err(Refused::Full) => self.fall_behind(time_us, effects),
+            Err(Refused::Full(doc)) => {
+                log_lost(&doc);
+                self.fall_behind(time_us, effects);
+            }
             // The track stopped reading; the feed is being closed.
             Err(Refused::Closed) => {}
         }
     }
+}
+
+/// Logs a document dropped while the decoder is behind, with the MQTT or DataHub topic and the DataHub envelope it
+/// carried.
+fn log_lost(doc: &Doc) {
+    let mut origin = doc
+        .topic
+        .iter()
+        .map(|topic| format!("topic {topic}"))
+        .collect::<Vec<_>>();
+    if let Some(DataHubStamp {
+        channel,
+        timestamp,
+        historical,
+    }) = &doc.stamp
+    {
+        origin.push(format!(
+            "channel {channel}, timestamp {timestamp}, historical {historical}"
+        ));
+    }
+    tracing::debug!("a live overlay document was lost ({})", origin.join(", "));
 }
 
 fn micros(time: SystemTime) -> Option<i64> {
@@ -173,6 +198,8 @@ impl Docs {
                     doc: Doc {
                         bytes: xml,
                         capture: capture.map(|time| MediaTime::from_us(time.0.div_euclid(1000))),
+                        topic: None,
+                        stamp: None,
                     },
                     time_us: capture.map(|time| time.0.div_euclid(1000)),
                 },
@@ -184,14 +211,17 @@ impl Docs {
             Docs::Messages(messages) => Some(match messages.recv().await? {
                 Feed::Item(Message {
                     epoch,
+                    topic,
                     payload,
+                    stamp,
                     received,
-                    ..
                 }) => Arrival::Doc {
                     epoch,
                     doc: Doc {
                         bytes: payload,
                         capture: None,
+                        topic: Some(topic),
+                        stamp,
                     },
                     time_us: micros(received),
                 },
@@ -309,6 +339,8 @@ mod tests {
         Doc {
             bytes: Bytes::from(vec![n]),
             capture: None,
+            topic: None,
+            stamp: None,
         }
     }
 

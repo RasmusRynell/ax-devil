@@ -188,6 +188,7 @@ fn message(epoch: u32, sample: Sample) -> Message {
         epoch,
         topic: sample.topic,
         payload: Bytes::from(sample.data.to_string()),
+        stamp: Some(sample.stamp),
         received: SystemTime::now(),
     }
 }

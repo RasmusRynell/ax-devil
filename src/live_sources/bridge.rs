@@ -11,6 +11,7 @@ use std::{
 };
 
 use bytes::Bytes;
+use camera::DataHubStamp;
 use foundation::{CancelToken, Interrupt, MediaTime};
 use handler_api::{DecodeError, Input, Record};
 use scene_store::Feed;
@@ -24,13 +25,17 @@ pub struct Doc {
     pub bytes: Bytes,
     /// When the camera captured it, if it said.
     pub capture: Option<MediaTime>,
+    /// The MQTT or DataHub topic it came from, for diagnostics; `None` for ONVIF.
+    pub topic: Option<String>,
+    /// The DataHub sample's envelope, for diagnostics; `None` for ONVIF and MQTT.
+    pub stamp: Option<DataHubStamp>,
 }
 
 /// Why a document was not queued.
-#[derive(Debug, PartialEq, Eq)]
 pub enum Refused {
-    /// The decoder is behind: the documents waiting, across every session, are at the limit.
-    Full,
+    /// The decoder is behind: the documents waiting, across every session, are at the limit. The document is handed
+    /// back.
+    Full(Doc),
     /// The decoder stopped reading this session.
     Closed,
 }
@@ -69,7 +74,7 @@ impl Session {
         }
         // Only this end adds to the backlog, so the check and the addition cannot interleave with another add.
         if self.backlog.load(Ordering::Acquire) >= self.capacity {
-            return Err(Refused::Full);
+            return Err(Refused::Full(doc));
         }
         self.records.send(doc).map_err(|_| Refused::Closed)?;
         held.pending += 1;
