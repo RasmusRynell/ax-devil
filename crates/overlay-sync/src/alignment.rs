@@ -3,7 +3,7 @@
 use foundation::{MediaTime, Timeline};
 use scene::Coverage;
 
-use crate::{MatchBasis, MatchKind, MatchPolicy, SampleKeys, Selection, Sticky, select};
+use crate::{MatchBasis, MatchKind, MatchPolicy, SampleKeys, Selection, Sticky, Tolerance, select};
 
 /// The smallest gap between the last sample and the end of the video that counts as far.
 const END_GAP_MIN: MediaTime = MediaTime(1_000_000);
@@ -30,6 +30,8 @@ pub enum Verdict {
 pub struct Alignment {
     /// What the samples were matched by.
     pub basis: MatchBasis,
+    /// The tolerance the counts were computed with.
+    pub tolerance: Tolerance,
     /// How many samples the file has.
     pub samples: usize,
     /// How many of them some frame selects exactly or, by time, within the tolerance; sticky does not count.
@@ -132,6 +134,7 @@ pub fn alignment(
         .flatten();
     Alignment {
         basis,
+        tolerance: policy.tolerance,
         samples: keys.len(),
         matched: selected.iter().filter(|seen| seen.is_some()).count(),
         exact: selected

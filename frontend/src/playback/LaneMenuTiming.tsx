@@ -24,6 +24,14 @@ type Sync = "exact" | "previous";
 const ms = (us: number) => `${us / 1000} ms`;
 /** The cadence modes the menu shows of the five kept. */
 const SHOWN_PERIODS = 3;
+
+/** The percentage `matched` is of `samples`, whole, rounded half to even as Python's `{:.0f}` does; 100 for none. */
+function percent(matched: number, samples: number): number {
+  if (samples === 0) return 100;
+  const whole = Math.floor((100 * matched) / samples);
+  const twiceRest = 2 * (100 * matched - whole * samples);
+  return whole + (twiceRest > samples || (twiceRest === samples && whole % 2 === 1) ? 1 : 0);
+}
 const seconds = (us: number) => `${(Math.abs(us) / 1e6).toFixed(1)} s`;
 
 /** How loudly an alignment speaks: a file mostly off the frames is wrong, one that ends far from the video needs a look. */
@@ -41,16 +49,11 @@ const TONE_TEXT = { danger: "text-danger", caution: "text-caution" } as const;
 function Alignment({
   cadence,
   alignment,
-  toleranceMs,
 }: {
   cadence: Cadence | null;
   alignment: AlignmentWire | null;
-  /** How far back a sample may match under time; `null` for exact. */
-  toleranceMs: number | null;
 }) {
-  const share =
-    alignment &&
-    (alignment.samples === 0 ? 100 : Math.round((100 * alignment.matched) / alignment.samples));
+  const share = alignment && percent(alignment.matched, alignment.samples);
   const tone = alignmentTone(alignment);
   const toned = tone ? TONE_TEXT[tone] : "";
   return (
@@ -65,7 +68,7 @@ function Alignment({
         <p className={`m-0 ${toned}`}>
           {alignment === null
             ? "Overlay: reading…"
-            : `Overlay: ${alignment.matched} of ${alignment.samples} on a frame (${share}%, ${alignment.basis === "Frame" ? `sequence ${alignment.matched}` : `exact ${alignment.exact}, tol ${toleranceMs ?? 0} ms`})`}
+            : `Overlay: ${alignment.matched} of ${alignment.samples} on a frame (${share}%, ${alignment.basis === "Frame" ? `sequence ${alignment.matched}` : `exact ${alignment.exact}, tol ${alignment.tolerance_ms ?? 0} ms`})`}
         </p>
         {alignment?.ends_far && alignment.end_gap_us !== null && (
           <p className={`m-0 ${toned}`}>
@@ -112,13 +115,7 @@ export function LaneMenuTiming({
   const limited = sticky.timeout_ms !== null;
   return (
     <>
-      {ready && !live && (
-        <Alignment
-          cadence={cadence}
-          alignment={ready.alignment}
-          toleranceMs={settings.tolerance_ms}
-        />
-      )}
+      {ready && !live && <Alignment cadence={cadence} alignment={ready.alignment} />}
       {(bases.length > 1 || basis === "Time") && (
         <Group label="Sync">
           {bases.length > 1 && (

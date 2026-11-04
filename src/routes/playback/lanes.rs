@@ -26,10 +26,6 @@ use workspace::Entry;
 const MAX_STICKY_TIMEOUT_MS: u32 = 100_000;
 
 /// What a viewer's lanes have to send.
-#[expect(
-    clippy::large_enum_variant,
-    reason = "one event is held at a time, between receiving it and encoding it; boxing would allocate for every event"
-)]
 pub(super) enum LaneEvent {
     /// A lane policy the viewer sent that cannot be applied.
     Problem(u16, String),
@@ -290,6 +286,13 @@ fn millis(time: MediaTime) -> u32 {
     u32::try_from(time.as_us() / 1000).unwrap_or(u32::MAX)
 }
 
+fn tolerance_ms(tolerance: Tolerance) -> Option<u32> {
+    match tolerance {
+        Tolerance::Exact => None,
+        Tolerance::PreviousWithin(time) => Some(millis(time)),
+    }
+}
+
 fn basis_wire(basis: MatchBasis) -> BasisWire {
     match basis {
         MatchBasis::Frame => BasisWire::Frame,
@@ -301,10 +304,7 @@ fn basis_wire(basis: MatchBasis) -> BasisWire {
 pub(super) fn policy_wire(policy: &MatchPolicy) -> LanePolicyWire {
     LanePolicyWire {
         basis: policy.basis.map(basis_wire),
-        tolerance_ms: match policy.tolerance {
-            Tolerance::Exact => None,
-            Tolerance::PreviousWithin(time) => Some(millis(time)),
-        },
+        tolerance_ms: tolerance_ms(policy.tolerance),
         sticky: StickyWire {
             enabled: policy.sticky.enabled,
             timeout_ms: policy.sticky.timeout.map(millis),
@@ -366,6 +366,7 @@ pub(super) fn status_wire(status: LaneStatus, audience: Audience) -> LaneStatusW
                 .collect(),
             alignment: ready.alignment.map(|alignment| AlignmentWire {
                 basis: basis_wire(alignment.basis),
+                tolerance_ms: tolerance_ms(alignment.tolerance),
                 samples: alignment.samples as u64,
                 matched: alignment.matched as u64,
                 exact: alignment.exact as u64,

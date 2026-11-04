@@ -155,7 +155,7 @@ impl State {
         ready
             .warnings
             .extend(aligned.iter().flat_map(|a| a.warning.clone()));
-        ready.alignment = aligned.as_ref().map(|a| a.alignment);
+        ready.alignment = aligned.as_ref().map(|a| Box::new(a.alignment));
         self.lanes[lane].told = aligned.map(|a| (a.alignment, a.warning));
         let status = LaneStatus::Ready(ready);
         let queued = self.notices.iter_mut().find(|notice| {

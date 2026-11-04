@@ -16,6 +16,7 @@ describe("lane menu timing", () => {
       ...READY,
       alignment: {
         basis: "Time" as const,
+        tolerance_ms: 30,
         samples: 334,
         matched: 300,
         exact: 173,
@@ -30,28 +31,29 @@ describe("lane menu timing", () => {
     const group = screen.getByRole("group", { name: "Alignment" });
     expect(group.textContent).toContain("Video: variable, 40 ms, 80 ms, 33.333 ms");
     expect(group.textContent).toContain(
-      "Overlay: 300 of 334 on a frame (90%, exact 173, tol 50 ms)",
+      "Overlay: 300 of 334 on a frame (90%, exact 173, tol 30 ms)",
     );
     expect(screen.getByText("Ends 19.1 s before the video").className).toContain("text-caution");
   });
 
-  it("a frame-matched lane's alignment shows its sequence count, with no exact count or end gap", () => {
+  it("a frame-matched lane's alignment shows its sequence count, with no exact count or end gap, and a half rounds to even", () => {
     const byFrame = {
       ...READY,
       alignment: {
         basis: "Frame" as const,
-        samples: 3,
-        matched: 3,
-        exact: 3,
+        tolerance_ms: null,
+        samples: 8,
+        matched: 1,
+        exact: 1,
         end_gap_us: null,
         ends_far: false,
-        verdict: "good" as const,
+        verdict: "weak" as const,
       },
     };
     setup({}, byFrame);
     tab("Timing");
     const group = screen.getByRole("group", { name: "Alignment" });
-    expect(group.textContent).toContain("Overlay: 3 of 3 on a frame (100%, sequence 3)");
+    expect(group.textContent).toContain("Overlay: 1 of 8 on a frame (12%, sequence 1)");
     expect(group.textContent).not.toMatch(/exact|tol|Ends/);
   });
 
