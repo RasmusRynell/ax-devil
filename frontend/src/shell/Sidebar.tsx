@@ -1,6 +1,6 @@
+import { useMemo } from "react";
 import type { SidebarView } from "../generated/api";
 import type { AddSeed } from "../live/cameras";
-import { SearchField } from "../kit/Fields";
 import { ViewPanel } from "../kit/ViewPanel";
 import { useDoc } from "../session/session";
 import { PluginsView } from "../plugins/PluginsView";
@@ -8,13 +8,30 @@ import { LiveView } from "./LiveView";
 import { useStreaming } from "../live/cameras";
 import { SessionsView } from "./SessionsView";
 import { StartPanel } from "./StartPanel";
+import { listedCount, treeOf, type SectionId } from "./treeModel";
 import { WorkspaceTree } from "./WorkspaceTree";
 import { UNTITLED } from "./useWindowTitle";
-import { SEARCH, VIEW_TITLES } from "./views";
+import { VIEW_TITLES } from "./views";
+
+/** The views that list the workspace's items: the sections each lists, its search placeholder and its empty message. */
+const LISTINGS: Partial<
+  Record<SidebarView, { listed: readonly SectionId[]; search: string; empty: string }>
+> = {
+  workspace: {
+    listed: ["live", "videos", "playlists", "other"],
+    search: "Search items",
+    empty: "No items",
+  },
+  offline: {
+    listed: ["videos", "playlists"],
+    search: "Search files",
+    empty: "No videos or playlists",
+  },
+};
 
 /**
- * The sidebar: a title, the view's search field where it has one, and the view's content; the Live view has its own
- * toolbar and says in the header how many streams run. The Workspace view is titled with the workspace's name,
+ * The sidebar: a title and the view's content; the Live view has its own toolbar and says in the header how many
+ * streams run, the Offline view how many videos and playlists it lists. The Workspace view is titled with the workspace's name,
  * `Untitled` without one, and a dot while it has unsaved changes.
  */
 export function Sidebar({
@@ -26,9 +43,16 @@ export function Sidebar({
   onRun: (id: string) => void;
   onAddLive: (seed: AddSeed) => void;
 }) {
-  const search = SEARCH[view];
+  const listing = LISTINGS[view];
   const streaming = useStreaming();
   const workspace = useDoc()?.workspace;
+  const offline = useMemo(
+    () =>
+      workspace && view === "offline" && listing
+        ? listedCount(treeOf(workspace), listing.listed)
+        : 0,
+    [workspace, view, listing],
+  );
   const named = view === "workspace" ? workspace : undefined;
   return (
     <aside
@@ -42,6 +66,8 @@ export function Sidebar({
         action={
           view === "live" && streaming > 0 ? (
             <span className="text-small text-muted">{`${streaming} streaming`}</span>
+          ) : offline > 0 ? (
+            <span className="text-small text-muted">{offline}</span>
           ) : named?.modified ? (
             <span
               role="img"
@@ -54,16 +80,9 @@ export function Sidebar({
         {view === "live" ? (
           <LiveView onAdd={onAddLive} />
         ) : (
-          <div
-            className={`flex flex-col gap-m px-s pb-s ${view === "workspace" ? "min-h-0 flex-1" : ""}`}
-          >
-            {search && <SearchField placeholder={search} />}
-            {view === "workspace" && (
-              <>
-                <StartPanel onRun={onRun} />
-                <WorkspaceTree />
-              </>
-            )}
+          <div className={`flex flex-col gap-m px-s pb-s ${listing ? "min-h-0 flex-1" : ""}`}>
+            {view === "workspace" && <StartPanel onRun={onRun} />}
+            {listing && <WorkspaceTree key={view} {...listing} />}
             {view === "bookmarks" && <p className="m-0 px-m text-muted">No bookmarks</p>}
             {view === "sessions" && <SessionsView />}
             {view === "plugins" && <PluginsView />}

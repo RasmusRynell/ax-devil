@@ -1,17 +1,21 @@
 import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { MenuButton } from "../kit/Button";
+import { SearchField } from "../kit/Fields";
+import { IconToggle } from "../kit/IconToggle";
 import { Menu, type MenuCommand, type MenuEntry } from "../kit/Menu";
 import { Popup } from "../kit/Popup";
 import { SectionCaption } from "../kit/SectionCaption";
-import { Switch } from "../kit/Switch";
 import { useStreamStatuses } from "../live/streamState";
 import { useCan, useCommand, useDoc } from "../session/session";
 import { useShow } from "../viewer/useViewers";
 import { HoverPicture } from "./HoverPicture";
 import {
   filteredOut,
+  ORDERS,
   sectionsOf,
   treeOf,
   visibleRows,
+  type Order,
   type SectionId,
   type TreeRow,
 } from "./treeModel";
@@ -19,20 +23,36 @@ import { useRowThumbnail } from "./useRowThumbnail";
 import { WorkspaceList } from "./WorkspaceList";
 
 const NOTHING_CHECKED: ReadonlySet<string> = new Set();
+const NO_FOLDS: ReadonlySet<string> = new Set();
+const ORDER_IDS: ReadonlySet<string> = new Set(ORDERS.map(([id]) => id));
+const ORDER_ENTRIES: MenuEntry[] = ORDERS.map(([id, label]) => ({ kind: "check", id, label }));
 
 /**
- * The workspace's items as a tree in sections (Live, Videos, Playlists, Other; a click on a caption folds it): each
- * item, then its entries and their lanes, from the backend's rows. Click or Enter opens the row in its viewer; the
- * arrow keys move, expand and collapse; the row menu (right click, Shift+F10 or the Menu key) opens it or hides and
- * unhides it. Hidden rows show, dimmed, only with Show hidden, and a section says how many that leaves out.
+ * The workspace's items as a tree in the `listed` sections (Live, Videos, Playlists, Other; a click on a caption folds
+ * it): each item, then its entries and their lanes, from the backend's rows. Click or Enter opens the row in its
+ * viewer; the arrow keys move, expand and collapse; the row menu (right click, Shift+F10 or the Menu key) opens it or
+ * hides and unhides it. Above the tree, Search (`search` is its placeholder), Sort and Show hidden items: hidden rows
+ * show, dimmed, only with Show hidden, and a section says how many that and the search leave out. While searching,
+ * every row with a match inside is expanded, and clearing the search brings the user's folds back. `empty` is said
+ * when the workspace has nothing to list.
  */
-export function WorkspaceTree() {
+export function WorkspaceTree({
+  listed,
+  search,
+  empty,
+}: {
+  listed: readonly SectionId[];
+  search: string;
+  empty: string;
+}) {
   const workspace = useDoc()?.workspace;
   const command = useCommand();
   const show = useShow();
   const hides = useCan("content");
   const statuses = useStreamStatuses();
   const [showHidden, setShowHidden] = useState(false);
+  const [query, setQuery] = useState("");
+  const [order, setOrder] = useState<Order>("workspace");
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set());
   const [folded, setFolded] = useState<ReadonlySet<SectionId>>(new Set());
   const [current, setCurrent] = useState<string | null>(null);
@@ -52,14 +72,23 @@ export function WorkspaceTree() {
     () => new Set([...statuses].flatMap(([item, { anyLive }]) => (anyLive ? [item] : []))),
     [statuses],
   );
+  const searching = query.trim() !== "";
+  const folds = searching ? NO_FOLDS : collapsed;
   const sections = useMemo(
     () =>
-      sectionsOf(tree, live).map((section) => ({
-        section,
-        shown: visibleRows(section.rows, collapsed, showHidden),
-      })),
-    [tree, live, collapsed, showHidden],
+      sectionsOf(tree, live, listed, order).map((section) => {
+        const shown = visibleRows(section.rows, folds, showHidden, query);
+        return {
+          section,
+          shown,
+          out: filteredOut(section.rows, showHidden, query),
+          unfolded: !folded.has(section.id) || (searching && shown.length > 0),
+        };
+      }),
+    [tree, live, listed, order, folds, showHidden, query, folded, searching],
   );
+  const noMatches =
+    searching && sections.length > 0 && sections.every(({ shown, out }) => !shown.length && !out);
   const thumbnail = useRowThumbnail(
     useMemo(() => sections.flatMap(({ shown }) => shown), [sections]),
   );
@@ -68,13 +97,13 @@ export function WorkspaceTree() {
   const walk = useMemo(() => {
     const starts = new Map<SectionId, number>();
     const rows: { id: SectionId; key: string }[] = [];
-    for (const { section, shown } of sections) {
-      if (folded.has(section.id)) continue;
+    for (const { section, shown, unfolded } of sections) {
+      if (!unfolded) continue;
       starts.set(section.id, rows.length);
       for (const { row } of shown) rows.push({ id: section.id, key: row.info.key });
     }
     return { rows, starts };
-  }, [sections, folded]);
+  }, [sections]);
   // A row that went away (hidden, say) leaves the position where it was, on the row that took its place.
   const found = walk.rows.findIndex(({ key }) => key === current);
   const at =
@@ -110,7 +139,7 @@ export function WorkspaceTree() {
     } else if (gone !== null)
       (
         inSection(gone, "button[aria-expanded]") ??
-        root.current?.querySelector<HTMLElement>('[role="switch"]')
+        root.current?.querySelector<HTMLElement>('input[type="search"]')
       )?.focus();
   });
 
@@ -121,13 +150,16 @@ export function WorkspaceTree() {
       () => setProblem(null),
       fail,
     );
-  const setCollapsedState = (key: string, collapse: boolean) =>
+  // While searching every row with a match inside stays expanded.
+  const setCollapsedState = (key: string, collapse: boolean) => {
+    if (searching) return;
     setCollapsed((now) => {
       const next = new Set(now);
       if (collapse) next.add(key);
       else next.delete(key);
       return next;
     });
+  };
   const toggleFolded = (id: SectionId) =>
     setFolded((now) => {
       const next = new Set(now);
@@ -174,21 +206,39 @@ export function WorkspaceTree() {
       aria-label="Workspace items"
       className="flex min-h-0 flex-1 flex-col gap-xs"
     >
-      <div className="flex justify-end pr-m">
-        <Switch label="Show hidden" checked={showHidden} onChange={setShowHidden} />
+      <div className="flex shrink-0 flex-wrap items-center gap-s">
+        <SearchField
+          placeholder={search}
+          query={{ value: query, onChange: setQuery }}
+          className="min-w-search-least flex-1"
+        />
+        <MenuButton
+          label="Sort"
+          alignEnd
+          title="The order of the rows"
+          entries={ORDER_ENTRIES}
+          checked={new Set([order])}
+          onSelect={({ id }: MenuCommand) => ORDER_IDS.has(id) && setOrder(id as Order)}
+        />
+        <IconToggle
+          icon="eye"
+          label="Show hidden items"
+          pressed={showHidden}
+          onChange={setShowHidden}
+        />
       </div>
+      {noMatches && <p className="m-0 px-m text-small text-muted">No matches</p>}
       {problem && (
         <p role="alert" className="m-0 px-m break-words">
           {problem}
         </p>
       )}
       {sections.length === 0 ? (
-        <p className="m-0 px-m text-muted">No items</p>
+        <p className="m-0 px-m text-muted">{empty}</p>
       ) : (
         <div ref={scroller} className="flex min-h-0 flex-1 flex-col overflow-y-auto">
-          {sections.map(({ section, shown }) => {
-            const out = filteredOut(section.rows, showHidden);
-            const unfolded = !folded.has(section.id);
+          {sections.map(({ section, shown, out, unfolded }) => {
+            if (shown.length === 0 && out === 0) return null;
             return (
               <section key={section.id} data-section={section.id} aria-label={section.title}>
                 <SectionCaption
@@ -206,7 +256,7 @@ export function WorkspaceTree() {
                     rows={shown}
                     offset={walk.starts.get(section.id) ?? 0}
                     current={onRow}
-                    collapsed={collapsed}
+                    collapsed={folds}
                     scroller={scroller}
                     hides={hides}
                     onOpen={(row) => void open(row)}
