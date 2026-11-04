@@ -152,36 +152,70 @@ fn beta_names_classes_by_exact_spelling_and_gives_them_only_its_own_details() {
     assert!(seen(json!({"score": 0.5})).0.is_none());
 }
 
+/// A file on disk, as opposed to the live source `common::Memory` stands for.
+struct OnDisk<'a>(common::Memory<'a>);
+
+impl handler_api::Input for OnDisk<'_> {
+    fn path(&self) -> Option<&std::path::Path> {
+        Some(std::path::Path::new("beta.jsonl"))
+    }
+
+    fn next(
+        &mut self,
+        cancel: &CancelToken,
+    ) -> Result<Option<handler_api::Record<'_>>, foundation::Interrupt<handler_api::DecodeError>>
+    {
+        self.0.next(cancel)
+    }
+}
+
 #[test]
-fn frames_at_different_times_and_world_velocity_are_warned_about() {
+fn frames_at_different_times_and_world_velocity_are_warned_about_once_a_file_and_once_a_kind_live()
+{
     let at = |seconds: u32| format!("2024-05-12T10:00:0{seconds}Z");
     let mut moving = observation("a", &at(0), Json::Null);
     moving["world_velocity"] = json!({"x": 1.0});
     let frame = |seconds, observations: Vec<Json>| json!({"timestamp": at(seconds), "observations": observations});
     let lines = [
-        json!({"frames": [frame(0, vec![moving]), frame(2, vec![])]}).to_string(),
+        json!({"frames": [frame(0, vec![moving.clone()]), frame(2, vec![])]}).to_string(),
+        frame(0, vec![moving]).to_string(),
         frame(0, vec![]).to_string(),
-    ];
-    let (_, result) = common::run_input(
-        &*common::decoder("ADF_BETA_FRAME"),
-        &mut common::lines(lines.join("\n").as_bytes()),
-        &Settings::new(),
-        &CancelToken::new(),
-    );
-    let problems: Vec<_> = result
-        .expect("decoded")
-        .warnings
-        .into_iter()
-        .map(|w| w.problem)
-        .collect();
+    ]
+    .join("\n");
+    let decoder = common::decoder("ADF_BETA_FRAME");
+    let run = |input: &mut dyn handler_api::Input| {
+        let (gave, result) =
+            common::run_input(&*decoder, input, &Settings::new(), &CancelToken::new());
+        let problems = |warnings: Vec<foundation::Warning>| -> Vec<String> {
+            warnings
+                .into_iter()
+                .map(|warning| warning.problem)
+                .collect()
+        };
+        (
+            problems(gave.warnings),
+            problems(result.expect("decoded").warnings),
+        )
+    };
 
+    let (sunk, summarized) = run(&mut OnDisk(common::lines(lines.as_bytes())));
+    assert!(sunk.is_empty());
     assert_eq!(
-        problems,
+        summarized,
         [
-            "Frames at different times in 1 of 2 records",
-            "World velocity in 1 observations"
+            "Records with frames at different times: 1",
+            "Observations with a world velocity: 2"
         ]
     );
+    let (sunk, summarized) = run(&mut common::lines(lines.as_bytes()));
+    assert_eq!(
+        sunk,
+        [
+            "Records with frames at different times: 1",
+            "Observations with a world velocity: 1"
+        ]
+    );
+    assert!(summarized.is_empty());
 }
 
 fn track(id: &str, at: &str, class: &str) -> Json {

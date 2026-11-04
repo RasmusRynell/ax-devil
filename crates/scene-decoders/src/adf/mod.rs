@@ -57,8 +57,8 @@ struct Notes {
 }
 
 impl Notes {
-    /// The warnings for a file of `records` records.
-    fn warnings(&self, records: usize) -> Vec<Warning> {
+    /// The warning for each kind of note, if any were made.
+    fn warnings(&self) -> [Option<Warning>; 2] {
         let warning = |count: usize, problem: String, consequence: &str| {
             (count > 0).then(|| Warning {
                 problem,
@@ -71,20 +71,20 @@ impl Notes {
             warning(
                 self.differing_times,
                 format!(
-                    "Frames at different times in {} of {records} records",
+                    "Records with frames at different times: {}",
                     self.differing_times
                 ),
-                "Each such record is one Scene over its whole time range.",
+                "Each is one Scene over its whole time range.",
             ),
             warning(
                 self.world_velocity,
-                format!("World velocity in {} observations", self.world_velocity),
+                format!(
+                    "Observations with a world velocity: {}",
+                    self.world_velocity
+                ),
                 "It is not shown.",
             ),
         ]
-        .into_iter()
-        .flatten()
-        .collect()
     }
 }
 
@@ -174,7 +174,7 @@ impl AdfDecoder {
                 bases,
                 default_basis,
                 options: Form::default(),
-                version: 1,
+                version: 2,
             },
             read,
             on_equal_key,
@@ -199,7 +199,8 @@ impl Decoder for AdfDecoder {
         let filter = filter_policy(self.filters);
         // A live source never ends, so it has its class filters from the start. A file is published once decoded, and
         // a header would publish it while it is still being read.
-        if input.path().is_none() {
+        let live = input.path().is_none();
+        if live {
             sink.header(Header {
                 filter: filter.clone(),
                 coverage: Coverage::Sparse,
@@ -207,13 +208,21 @@ impl Decoder for AdfDecoder {
             });
         }
         let mut notes = Notes::default();
-        let mut records = 0;
+        let mut told = [false; 2];
         'records: while let Some(record) = input.next(cancel)? {
-            records += 1;
             let read = parse_line(record.bytes, self.tsv_prefix)
                 .and_then(|value| (self.read)(object(&value, "the line")?, &mut notes));
             match read {
                 Ok(scenes) => {
+                    // A live source never finishes to give a summary, so each kind is told at its first sighting.
+                    if live {
+                        for (told, warning) in told.iter_mut().zip(notes.warnings()) {
+                            if let (false, Some(warning)) = (*told, warning) {
+                                *told = true;
+                                sink.warn(warning);
+                            }
+                        }
+                    }
                     for scene in scenes {
                         if sink.sample(scene, self.on_equal_key).is_break() {
                             break 'records;
@@ -224,7 +233,12 @@ impl Decoder for AdfDecoder {
             }
         }
         Ok(DecodeSummary {
-            warnings: notes.warnings(records),
+            // A warning goes to the sink or the summary, not both.
+            warnings: if live {
+                Vec::new()
+            } else {
+                notes.warnings().into_iter().flatten().collect()
+            },
             filter,
             metadata: Fields::new(),
             coverage: Coverage::Sparse,
