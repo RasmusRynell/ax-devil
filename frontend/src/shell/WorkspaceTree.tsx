@@ -208,7 +208,7 @@ export function WorkspaceTree({
       aria-label="Workspace items"
       className="flex min-h-0 flex-1 flex-col gap-xs"
     >
-      <div className="flex shrink-0 flex-wrap items-center gap-s">
+      <div className="flex shrink-0 flex-wrap items-center gap-s px-s pt-s">
         <SearchField
           placeholder={search}
           query={{
