@@ -198,6 +198,10 @@ async fn save_as_replaces_another_file_only_when_allowed() {
     let address = backend(folder.path(), None).await;
     let mut owner = Socket::own(&address, None).await;
     owner.say(add_video(1)).await;
+    let rename = json!({"type": "command", "seq": 5, "cmd": {"type": "content", "command": {
+        "type": "renameWorkspace", "name": "  Review  "}}});
+    owner.say(rename).await;
+    assert_eq!(ack(&mut owner, 5).await, json!({"status": "ok"}));
     let save = |seq, replace| {
         let path = other.display().to_string();
         workspace(
@@ -214,6 +218,8 @@ async fn save_as_replaces_another_file_only_when_allowed() {
     owner.say(save(3, true)).await;
     assert_eq!(ack(&mut owner, 3).await, json!({"status": "ok"}));
     assert_eq!(items_in(&other), Some(1));
+    let saved: serde_json::Value = serde_json::from_slice(&std::fs::read(&other).unwrap()).unwrap();
+    assert_eq!(saved["name"], "Review");
     // It is the workspace's own file now, which never asks.
     owner.say(save(4, false)).await;
     assert_eq!(ack(&mut owner, 4).await, json!({"status": "ok"}));

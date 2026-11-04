@@ -118,6 +118,12 @@ pub enum DocCommand {
         /// How the lane matches.
         policy: LanePolicyWire,
     },
+    /// Rename the workspace; surrounding whitespace is dropped and a blank name or `Untitled` is Untitled; the file
+    /// keeps its name. Senders throttle it: the session command budget is 10/s (`src/session/reader.rs`).
+    RenameWorkspace {
+        /// The name the user entered.
+        name: String,
+    },
 }
 
 /// What a seat asks for, settled by its own `Ack`. Changes to a seat's view travel the View lane instead.

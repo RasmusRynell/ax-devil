@@ -50,7 +50,8 @@ pub(super) fn scope(wire: &SessionCommand) -> Option<Scope> {
             | api_types::DocCommand::Resolve { .. }
             | api_types::DocCommand::Remove { .. }
             | api_types::DocCommand::SetHidden { .. }
-            | api_types::DocCommand::SetLaneMatching { .. } => Scope::Content,
+            | api_types::DocCommand::SetLaneMatching { .. }
+            | api_types::DocCommand::RenameWorkspace { .. } => Scope::Content,
         }),
         SessionCommand::Follow => Some(Scope::Follow),
         SessionCommand::Control { .. } => Some(Scope::Control),
@@ -154,6 +155,7 @@ fn doc_command(
             target: hidden_ref(target),
             hidden,
         },
+        api_types::DocCommand::RenameWorkspace { name } => DocCommand::RenameWorkspace(name),
         api_types::DocCommand::SetLaneMatching { item, slot, policy } => {
             DocCommand::SetLaneMatching {
                 item,

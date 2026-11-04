@@ -393,6 +393,21 @@ fn edits_are_modified_until_reverted_or_saved_and_a_recovered_workspace_is_modif
     assert!(!saved_now.modified());
     assert_eq!(saved_now.file.as_ref(), Some(&file));
 
+    let rename = |state: &WorkspaceState, entered: &str| {
+        let (next, jobs) = apply(state, DocCommand::RenameWorkspace(entered.into()));
+        assert!(jobs.is_empty());
+        assert_eq!(next.file, state.file, "the file keeps its name");
+        next
+    };
+    let named = rename(&saved_now, "  Review  ");
+    assert_eq!(named.workspace.name.as_deref(), Some("Review"));
+    assert!(named.modified());
+    assert!(
+        !rename(&named, "Untitled").modified(),
+        "Untitled is no name"
+    );
+    assert!(!rename(&named, "   ").modified(), "so is a blank one");
+
     let (later, _) = add(
         &recovered,
         vec![item(&folder.path().join("other.mp4"))],
