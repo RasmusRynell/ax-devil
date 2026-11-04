@@ -1,5 +1,6 @@
 // @vitest-environment node
 import { describe, expect, it } from "vite-plus/test";
+import { OPEN_RANGES } from "../present";
 import { catalogDocument, item } from "./fakeData";
 import { LANE_DEFAULTS, LANE_SETTINGS } from "./fakeOpened";
 import { LaneSet } from "./lanes";
@@ -214,6 +215,21 @@ describe("viewer data", () => {
     expect([first.frame.theme, first.frame.hidden]).toEqual([null, 0]);
     expect([second.frame.theme, second.frame.hidden]).toEqual(["night", 1]);
     expect(second.frame.styleRevision).not.toBe(first.frame.styleRevision);
+  });
+
+  it("filters by a lane's score range as soon as it is set, not only after the next other change", () => {
+    const { lanes, data, map, sample } = viewer();
+    data.window(0, 9);
+    map(0, [0]);
+    sample(0);
+    const filter = () => {
+      const drawn = data.draw?.at(0, 0);
+      if (drawn?.state !== "draw") throw new Error("not drawn");
+      return drawn.frame.filter;
+    };
+    expect(filter()).toBeNull();
+    lanes.set(0, { ranges: { ...OPEN_RANGES, score: { min: 0.5, max: null } } });
+    expect(filter()).not.toBeNull();
   });
 
   it("applies a lane's expression only if it compiles, and never draws nothing for a catalog that failed", () => {

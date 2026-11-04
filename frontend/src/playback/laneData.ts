@@ -100,6 +100,7 @@ export class LaneData {
       held.settings.filter === settings.filter &&
       held.settings.hidden === settings.hidden &&
       held.settings.expression === settings.expression &&
+      held.settings.ranges === settings.ranges &&
       held.settings.theme === settings.theme &&
       held.settings.sticky.opacity === settings.sticky.opacity
     )
