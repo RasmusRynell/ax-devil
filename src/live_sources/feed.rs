@@ -175,6 +175,8 @@ pub struct Feed {
     /// Viewers attached; read and changed under the registry's lock.
     pub(super) viewers: AtomicUsize,
     closed: AtomicBool,
+    /// Whether a retry is waiting for the run or reconnecting; a request meanwhile is already answered by it.
+    retrying: AtomicBool,
 }
 
 impl Feed {
@@ -232,6 +234,7 @@ impl Feed {
             run: Mutex::new(Some(run)),
             viewers: AtomicUsize::new(0),
             closed: AtomicBool::new(false),
+            retrying: AtomicBool::new(false),
         }))
     }
 
@@ -303,10 +306,23 @@ impl Feed {
         }
     }
 
+    /// Asks for [`retry`](Self::retry) in the background, unless one is already waiting or running: any number of
+    /// requests while the old connections close leave one task, not one each. Needs a running Tokio runtime.
+    pub fn request_retry(self: &Arc<Self>) {
+        if self.retrying.swap(true, Ordering::AcqRel) {
+            return;
+        }
+        let feed = Arc::clone(self);
+        tokio::spawn(async move {
+            feed.retry().await;
+            feed.retrying.store(false, Ordering::Release);
+        });
+    }
+
     /// Reopens every connection when one has failed for good or the video is stalled, as the viewer's Retry offers;
     /// otherwise there is nothing to retry. A feed that was closed stays closed, and so does one whose last viewer has
     /// left: the pipeline is then being closed, and connecting again would configure a camera for nobody.
-    pub async fn retry(&self) {
+    async fn retry(&self) {
         let mut run = self.run.lock().await;
         if !self.owned() || !self.shared.board.needs_retry(self.shared.clock.now()) {
             return;

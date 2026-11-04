@@ -69,9 +69,13 @@ pub struct LiveLane {
     recent: VecDeque<u32>,
     /// The key of the newest sample whose events were reported.
     reported: Option<MediaTime>,
-    /// How many of that sample's events were reported. A sample still open when a frame is released at the deadline
-    /// can be joined by more events afterwards; those are reported when they arrive.
-    reported_events: usize,
+    /// The events of that sample the viewer has. A sample still open when a frame is released at the deadline can
+    /// be joined by more events afterwards, or replaced by an ONVIF record with others; what the viewer lacks is
+    /// reported when it arrives. Events are compared by value, not counted: a count is a prefix of the sample only
+    /// when events are appended, and a replacement keeps no prefix.
+    reported_events: Vec<Event>,
+    /// Where the track dropped samples this lane had not reported, until [`take_gap`](Self::take_gap) tells the viewer.
+    lost: Option<MediaTime>,
     /// The key of the newest sample that matched a frame, within the tolerance. Only it can be retained by sticky: a
     /// sample that never matched one is stale and was discarded before it could persist.
     admitted: Option<MediaTime>,
@@ -102,7 +106,7 @@ impl LiveLane {
         let reported = last.and_then(|last| snapshot.keys.times.as_ref()?.get(last));
         let reported_events = last
             .and_then(|last| track.scene_in(snapshot, last).ok())
-            .map_or(0, |scene| scene.events().len());
+            .map_or_else(Vec::new, |scene| scene.events().to_vec());
         Self {
             track,
             source,
@@ -114,6 +118,7 @@ impl LiveLane {
             recent: VecDeque::new(),
             reported,
             reported_events,
+            lost: None,
             admitted: None,
             serial: 0,
             clock: Timeline::new(vec![MediaTime::ZERO]).expect("one frame at zero"),
@@ -272,12 +277,23 @@ impl LiveLane {
     /// The events not reported before, of every sample from the last reported one up to the newest at or before the
     /// frame's time, whether or not the policy selects any of them to draw: an event that falls outside the
     /// tolerance, or while the lane is hidden, still reaches the Events list, once. One skipped between two frames
-    /// reports as well, and so do events that joined the last reported sample since.
+    /// reports as well, and so do events that joined the last reported sample since or replaced its events.
     ///
     /// Independent of the picture: the viewer calls it for a frame it does not show, so the Events list goes on
     /// recording while the lane is paused.
     pub fn unreported(&mut self, frame: FrameId, snap: &TrackSnapshot) -> Option<LiveEvents> {
         let times = snap.keys.times.as_ref()?;
+        // The track drops its oldest half when it is full. A lane that did not read in time finds the sample it
+        // reported gone and later ones, never reported, in its place: it starts from the first one kept, and the
+        // viewer is told where it stopped seeing. (The sample dropped may have been the last the track made, so a
+        // gap can be told for a loss of nothing; a track keeps more than two samples, so that is rare.)
+        if let (Some(reported), Some(first)) = (self.reported, times.get(0))
+            && first > reported
+        {
+            self.lost = Some(reported);
+            self.reported = Some(first);
+            self.reported_events.clear();
+        }
         let from = self
             .reported
             .map_or(0, |reported| times.partition_point(|&key| key < reported));
@@ -286,25 +302,37 @@ impl LiveLane {
             return None;
         }
         let mut samples = Vec::new();
-        let mut last = (None, 0);
+        let mut last = (None, Vec::new());
         for index in from..to {
             let key = times.get(index);
-            let scene = self.scene(snap, index);
-            let held = scene.as_ref().map_or(0, |scene| scene.events().len());
-            last = (key, held);
-            let Some(scene) = scene else {
+            let Some(scene) = self.scene(snap, index) else {
+                last = (key, Vec::new());
                 continue;
             };
-            let seen = if key == self.reported {
-                self.reported_events
+            // The events of the sample the viewer lacks, each viewer's copy matched to one of the sample's by value:
+            // the same for events that joined it and for a replacement, and none reported twice.
+            let mut seen = if key == self.reported {
+                self.reported_events.clone()
             } else {
-                0
+                Vec::new()
             };
-            let events = scene.events().get(seen..).unwrap_or_default();
+            let events: Vec<Event> = scene
+                .events()
+                .iter()
+                .filter(|event| match seen.iter().position(|held| held == *event) {
+                    Some(at) => {
+                        seen.swap_remove(at);
+                        false
+                    }
+                    None => true,
+                })
+                .cloned()
+                .collect();
+            last = (key, scene.events().to_vec());
             if !events.is_empty() {
                 samples.push(SampleEvents {
                     time: key.unwrap_or(frame.timestamp),
-                    events: events.to_vec(),
+                    events,
                 });
             }
         }
@@ -312,6 +340,12 @@ impl LiveLane {
             (self.reported, self.reported_events) = last;
         }
         (!samples.is_empty()).then_some(LiveEvents { frame, samples })
+    }
+
+    /// Where the overlay lost samples this lane had not reported, once: the key of the last sample it did. The
+    /// viewer tells its window, so the Events list shows the gap.
+    pub fn take_gap(&mut self) -> Option<MediaTime> {
+        self.lost.take()
     }
 
     fn scene(&self, snap: &TrackSnapshot, index: usize) -> Option<Arc<Scene>> {

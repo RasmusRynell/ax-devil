@@ -1,7 +1,7 @@
 //! Intake of a Live Stream Item: what the user entered, with the configured defaults for what they left empty.
 
 use crate::{
-    credentials::Secret,
+    credentials::{Secret, reference},
     item::{Recipe, Source, WorkspaceItem},
     live::{LiveOverlay, LiveRecipe, Protocol, url_endpoint},
 };
@@ -191,7 +191,7 @@ impl NewLive {
             0 => i64::from(protocol.default_port()),
             port => port,
         };
-        let same_camera = text(&self.host, &defaults.host).eq_ignore_ascii_case(source.host.trim())
+        let same_camera = same_host(&text(&self.host, &defaults.host), source.host.trim())
             && protocol == source.protocol
             && port(protocol, self.port.unwrap_or(0)) == port(source.protocol, source.port.into());
         if !same_camera {
@@ -248,6 +248,16 @@ impl NewLive {
             text(&self.host, &defaults.host).to_ascii_lowercase(),
             u16::try_from(rtsp_port).unwrap_or(0),
         )
+    }
+}
+
+/// Whether two host texts are the same camera: a literal name ignores case, but an environment reference names a
+/// variable, and `$CAM` and `$cam` are two of them.
+fn same_host(a: &str, b: &str) -> bool {
+    if reference(a).is_some() || reference(b).is_some() {
+        a == b
+    } else {
+        a.eq_ignore_ascii_case(b)
     }
 }
 

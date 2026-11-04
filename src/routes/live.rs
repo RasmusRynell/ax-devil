@@ -38,8 +38,8 @@ fn camera_failed(reason: LiveReason) -> Problem {
 }
 
 /// The camera `connection` names, with the settings' defaults for what it leaves out and its references expanded.
-/// For the person at this machine, a blank login of a connection `like` a saved stream is that stream's, when the
-/// camera is the same one.
+/// For the person at this machine, a blank password is the configured one, and a blank login of a connection `like` a
+/// saved stream is that stream's, when the camera is the same one.
 fn camera(
     state: &AppState,
     principal: Principal,
@@ -47,7 +47,12 @@ fn camera(
 ) -> Result<ResolvedCamera, Problem> {
     let settings = state.settings.state();
     let handlers = state.plugins.handlers();
-    let defaults = defaults(&settings);
+    // The configured passwords are the person at this machine's: another principal names its own.
+    let owner = principal.grants().contains(&Grant::Preferences);
+    let mut defaults = defaults(&settings);
+    if !owner {
+        defaults = defaults.without_secrets();
+    }
     let like = connection.like;
     let mut new = intake::NewLive::from(NewLiveWire {
         host: connection.host,
@@ -67,7 +72,7 @@ fn camera(
             },
         )
     };
-    if principal.grants().contains(&Grant::Preferences)
+    if owner
         && let Some(held) = like.and_then(|item| state.sessions.find_item(item))
         && let Source::Live(saved) = &held.item.recipe.source
     {
@@ -252,7 +257,8 @@ mod tests {
     }
 
     /// Another stream of a camera asks the camera with that stream's saved login, for the person at this machine and
-    /// the same camera only; any other asks with the configured one.
+    /// the same camera only. The configured password is also the person at this machine's: another principal asks
+    /// with none, whatever host it names.
     #[tokio::test]
     async fn a_question_like_a_saved_stream_uses_its_login_for_the_owner_and_the_same_camera_only()
     {
@@ -269,6 +275,18 @@ mod tests {
             Plugins::fixed(Handlers::built_in()),
             &cache,
         );
+        let mut values = state.settings.state().values(&settings::Scope::ALL);
+        values.insert("camera.password".into(), "CONFIGURED-PASSWORD".into());
+        state
+            .settings
+            .replace(
+                &settings::Scope::ALL,
+                &settings::Change {
+                    values,
+                    shortcuts: Default::default(),
+                },
+            )
+            .unwrap();
         let configured = defaults(&state.settings.state());
         let saved = intake::live(
             intake::NewLive {
@@ -304,9 +322,8 @@ mod tests {
                 .login
                 .map(|login| login.password.expose().to_owned())
         };
-        // What the configured login gives, as a question that is not like any stream gets it.
         let default = password(Principal::Local, "cam.local", None);
-        assert_ne!(default.as_deref(), Some("SAVED-PASSWORD"));
+        assert_eq!(default.as_deref(), Some("CONFIGURED-PASSWORD"));
         assert_eq!(
             password(Principal::Local, "cam.local", Some(like)).as_deref(),
             Some("SAVED-PASSWORD")
@@ -315,11 +332,11 @@ mod tests {
             password(Principal::Local, "other.local", Some(like)),
             default
         );
-        assert_eq!(
-            password(Principal::Server, "cam.local", Some(like)),
-            default
-        );
-        assert_eq!(password(Principal::None, "cam.local", Some(like)), default);
+        for principal in [Principal::Server, Principal::None] {
+            for like in [None, Some(like)] {
+                assert_eq!(password(principal, "cam.local", like), None);
+            }
+        }
     }
 
     #[tokio::test]

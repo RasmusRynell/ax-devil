@@ -7,7 +7,7 @@ use std::{
 };
 
 use api_types::live::LiveStatusWire;
-use foundation::VideoFrame;
+use foundation::{MediaTime, VideoFrame};
 use overlay_sync::{MatchBasis, MatchPolicy};
 use overlays::{LanePolicy, LaneReady, LiveEvents, LiveLane, LiveOut};
 use scene_store::{Ingest, TrackRead, TrackSnapshot};
@@ -165,8 +165,7 @@ impl LiveViewer {
     /// has gone, so the caller is never held up by a camera that is slow to give back its connections.
     pub fn retry(&mut self) {
         self.pause(false);
-        let feed = Arc::clone(&self.feed);
-        tokio::spawn(async move { feed.retry().await });
+        self.feed.request_retry();
     }
 
     /// The next thing to tell the viewer; `None` only when the feed is gone. Cancel-safe.
@@ -205,14 +204,18 @@ impl LiveViewer {
             return picture.map(|frame| Update::Frame(Box::new(Shown { frame, out: None })));
         };
         let Some(frame) = picture else {
-            let events = lane.unreported(released.id, snapshot)?;
-            return Some(Update::Events(Box::new(events)));
+            let events = lane.unreported(released.id, snapshot);
+            self.gaps_waiting
+                .extend(lane.take_gap().map(MediaTime::as_us));
+            return Some(Update::Events(Box::new(events?)));
         };
         // A decoder that holds pictures back answers a unit with an earlier picture: the lane matches that one's own
         // id, not the unit's.
         let id = frame.id();
         self.shown = Some((Arc::clone(snapshot), id.sequence_id));
         let out = Some(lane.release(id, snapshot, &self.policy));
+        self.gaps_waiting
+            .extend(lane.take_gap().map(MediaTime::as_us));
         Some(Update::Frame(Box::new(Shown { frame, out })))
     }
 }

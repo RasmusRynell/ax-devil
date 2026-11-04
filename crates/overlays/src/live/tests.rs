@@ -34,17 +34,18 @@ static SPEC: LazyLock<Spec> = LazyLock::new(|| Spec {
     version: 1,
 });
 
-/// What a record asks for: a Scene with a box, with a Delete event, or with nothing.
+/// What a record asks for: a Scene with a box, with a Delete event of entity 1 or of entity 2 (`other`), or with
+/// nothing. A record that ends in `replace` replaces the events of the sample with its key.
 fn scene_of(line: &str) -> Scene {
     let mut parts = line.split(' ');
     let time = SceneTime::Timestamp(MediaTime(parts.next().unwrap().parse().unwrap()));
     let scene = Scene::new(TimeSlice::at(time));
     match parts.next() {
-        Some("events") => scene
+        Some(kind @ ("events" | "other")) => scene
             .with_events(vec![Event::new(
                 TimeSlice::at(time),
                 Operation::Delete {
-                    entity: EntityId::from(1u64),
+                    entity: EntityId::from(if kind == "events" { 1u64 } else { 2 }),
                 },
             )])
             .unwrap(),
@@ -93,7 +94,12 @@ impl Decoder for Decode {
     ) -> Result<DecodeSummary, Interrupt<DecodeError>> {
         while let Some(record) = input.next(cancel)? {
             let line = std::str::from_utf8(record.bytes).unwrap();
-            let _ = sink.sample(scene_of(line), OnEqualKey::Merge);
+            let on_equal_key = if line.ends_with(" replace") {
+                OnEqualKey::Replace
+            } else {
+                OnEqualKey::Merge
+            };
+            let _ = sink.sample(scene_of(line), on_equal_key);
         }
         Ok(DecodeSummary {
             warnings: Vec::new(),
@@ -149,11 +155,25 @@ impl Feed for Held {
 
 /// A track holding the samples the lines make, all published.
 fn track_of(lines: &[&'static str]) -> Arc<LiveTrack> {
+    track_keeping(lines, 100)
+}
+
+/// A track that keeps at most `cap` samples, with the newest of the lines published.
+fn track_keeping(lines: &[&'static str], cap: usize) -> Arc<LiveTrack> {
     let values = SPEC.options.validate(&Settings::new()).unwrap();
     let feed = Once(Some(Lines(lines.to_vec(), 0)));
-    let track = LiveTrack::start(Arc::new(Decode), values, Box::new(feed), 100).unwrap();
+    let track = LiveTrack::start(Arc::new(Decode), values, Box::new(feed), cap).unwrap();
+    let newest = lines.last().unwrap().split(' ').next().unwrap();
+    let newest = MediaTime(newest.parse().unwrap());
     let deadline = Instant::now() + Duration::from_secs(10);
-    while track.snapshot().keys.len() != lines.len() {
+    while track
+        .snapshot()
+        .keys
+        .times
+        .as_ref()
+        .and_then(|times| times.get(times.len().checked_sub(1)?))
+        != Some(newest)
+    {
         assert!(Instant::now() < deadline, "the samples never arrived");
         thread::sleep(Duration::from_millis(2));
     }
@@ -359,4 +379,79 @@ fn a_lane_attached_while_a_sample_is_open_does_not_repeat_the_events_already_sho
     };
     let out = lane.release(frame(0, 100_000), &open, &policy);
     assert_eq!(out.events, None);
+}
+
+#[test]
+fn events_that_replace_the_open_sample_after_attaching_are_reported() {
+    let (more, later) = mpsc::channel();
+    let feed = Held(Some(Open(Lines(vec!["0", "100000 events"], 0), later)));
+    let values = SPEC.options.validate(&Settings::new()).unwrap();
+    let track = LiveTrack::start(Arc::new(Decode), values, Box::new(feed), 100).unwrap();
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while track.snapshot().keys.len() != 1 {
+        assert!(Instant::now() < deadline, "the first sample never arrived");
+        thread::sleep(Duration::from_millis(2));
+    }
+    let mut lane = LiveLane::new(track.clone(), &track.snapshot_with_open(), 0, 0, 1);
+    let policy = LanePolicy {
+        subscribed: true,
+        ..LanePolicy::default()
+    };
+
+    // Another event takes the place of the one the viewer has, before the next frame.
+    more.send("100000 other replace").unwrap();
+    while track.snapshot().generation != 1 {
+        assert!(Instant::now() < deadline, "the replacement never arrived");
+        thread::sleep(Duration::from_millis(2));
+    }
+    let out = lane.release(frame(0, 140_000), &track.snapshot_with_open(), &policy);
+    let reported = out.events.expect("the replacing event is reported").samples;
+    assert_eq!((reported.len(), reported[0].events.len()), (1, 1));
+    assert_eq!(reported[0].time, MediaTime(100_000));
+    assert_eq!(
+        lane.release(frame(1, 180_000), &track.snapshot_with_open(), &policy)
+            .events,
+        None
+    );
+}
+
+#[test]
+fn a_lane_that_the_track_outran_reports_the_samples_it_kept_and_a_gap_once() {
+    let track = track_keeping(
+        &[
+            "0 events",
+            "100000 events",
+            "200000 events",
+            "300000 events",
+            "400000 events",
+            "500000",
+        ],
+        4,
+    );
+    // The viewer saw the first sample and then stopped reading while the track dropped the oldest samples.
+    let mut lane = lane_over(&track);
+    lane.reported = Some(MediaTime(0));
+    lane.reported_events = vec![scene_of("0 events").events()[0].clone()];
+
+    let out = release(&mut lane, &track, frame(0, 500_000));
+    let kept = track
+        .snapshot()
+        .keys
+        .times
+        .as_ref()
+        .unwrap()
+        .get(0)
+        .unwrap();
+    assert!(
+        kept > MediaTime(100_000),
+        "the track dropped unreported samples"
+    );
+    let reported = out.events.expect("the kept samples have events").samples;
+    assert_eq!(reported[0].time, kept);
+    assert_eq!(lane.take_gap(), Some(MediaTime(0)));
+    assert_eq!(lane.take_gap(), None);
+
+    // Reading again finds nothing more lost.
+    release(&mut lane, &track, frame(1, 540_000));
+    assert_eq!(lane.take_gap(), None);
 }

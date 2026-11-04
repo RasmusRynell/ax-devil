@@ -51,6 +51,30 @@ fn another_stream_copies_the_saved_login_only_for_the_same_camera() {
 }
 
 #[test]
+fn a_saved_login_for_an_environment_reference_is_not_copied_to_another_variable_by_case() {
+    let saved = LiveRecipe {
+        host: "$CAM".into(),
+        username: "root".into(),
+        password: Secret::new("literal"),
+        protocol: Protocol::Https,
+        port: 0,
+        head: 1,
+        rtsp_port: 554,
+        resolution: None,
+        url: None,
+        overlay: LiveOverlay::None,
+    };
+    let copied = |host_text: &str| {
+        let mut new = host(host_text);
+        new.copy_login(&saved, &defaults(), LoginUse::Discovery)
+            .unwrap();
+        new.password
+    };
+    assert_eq!(copied("$CAM").unwrap().expose(), "literal");
+    assert!(copied("$cam").is_none());
+}
+
+#[test]
 fn an_rtsp_endpoint_elsewhere_gets_no_saved_login() {
     let saved = LiveRecipe {
         host: "cam.local".into(),
