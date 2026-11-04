@@ -49,9 +49,6 @@ What an ad-hoc check creates outside `artifacts/` and the run's temporary folder
 not depend on the machine's graphics (`AX_DEVIL_RENDER_GRAPHICS=software`), through the routes and the command, and
 read the written MP4 and PNG back with `media`. They skip, saying why on stderr, when Electron or the built render
 page is missing; `make test-backend` builds both and sets `AX_DEVIL_REQUIRE_ELECTRON`, which makes a skip a failure.
-The overview golden `fixtures/render/standard-overview.png` is regenerated with `UPDATE_GOLDENS=1 make test-backend
-TEST=catalog_render` and reviewed by eye; the test allows 2% of pixels to differ by more than 24/255 because system
-fonts vary.
 
 ## Plugin tests
 
