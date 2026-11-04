@@ -21,21 +21,17 @@ pub struct Mono(pub Duration);
 struct Pending<T> {
     id: FrameId,
     arrived: Mono,
-    keyframe: bool,
     unit: T,
 }
 
 /// Encoded units held back until their overlay is settled or they have waited out the deadline.
 ///
-/// It holds at most `bound` units. Past that it drops the oldest and then everything up to the next keyframe, which
-/// the decoder could not use alone, and counts each drop; until a keyframe arrives, units that follow a dropped one
-/// are dropped too.
+/// It holds at most `bound` units. Past that the oldest leaves at once, as if its deadline had passed, so a stream
+/// faster than `bound` per deadline keeps flowing, a little earlier than the deadline, and no unit is ever dropped.
 pub struct LiveGate<T> {
     deadline: Duration,
     bound: usize,
     pending: VecDeque<Pending<T>>,
-    resync: bool,
-    dropped: u64,
 }
 
 impl<T> LiveGate<T> {
@@ -45,35 +41,20 @@ impl<T> LiveGate<T> {
             deadline,
             bound: bound.max(1),
             pending: VecDeque::new(),
-            resync: false,
-            dropped: 0,
         }
     }
 
-    /// Holds `unit`, the frame `id` that arrived at `now`; `keyframe` says whether decoding can start at it.
-    pub fn push(&mut self, id: FrameId, now: Mono, keyframe: bool, unit: T) {
-        if self.resync {
-            if !keyframe {
-                self.dropped += 1;
-                return;
-            }
-            self.resync = false;
-        }
+    /// Holds `unit`, the frame `id` that arrived at `now`. When that exceeds the bound, the oldest unit leaves instead.
+    pub fn push(&mut self, id: FrameId, now: Mono, unit: T) -> Option<(FrameId, T)> {
         self.pending.push_back(Pending {
             id,
             arrived: now,
-            keyframe,
             unit,
         });
         if self.pending.len() > self.bound {
-            self.pending.pop_front();
-            self.dropped += 1;
-            while self.pending.front().is_some_and(|front| !front.keyframe) {
-                self.pending.pop_front();
-                self.dropped += 1;
-            }
-            self.resync = self.pending.is_empty();
+            return self.pending.pop_front().map(|old| (old.id, old.unit));
         }
+        None
     }
 
     /// Takes the units that may leave at `now`, oldest first: from the front while the unit's frame is settled
@@ -100,15 +81,9 @@ impl<T> LiveGate<T> {
         self.pending.front().map(|front| self.due(front))
     }
 
-    /// Drops everything held, uncounted: the stream began anew.
+    /// Drops everything held: the stream began anew.
     pub fn reset(&mut self) {
         self.pending.clear();
-        self.resync = false;
-    }
-
-    /// How many units were dropped for the bound since the gate was made.
-    pub fn dropped(&self) -> u64 {
-        self.dropped
     }
 
     fn due(&self, held: &Pending<T>) -> Mono {
@@ -138,10 +113,10 @@ mod tests {
         LiveGate::new(LIVE_DEADLINE, bound)
     }
 
-    /// Frames 0 to 9 pushed at `now` 0, every fifth a keyframe; the unit is the frame number.
+    /// The frames pushed at `now` 0; the unit is the frame number.
     fn pushed(gate: &mut LiveGate<u64>, frames: impl IntoIterator<Item = u64>) {
         for n in frames {
-            gate.push(id(n), at(0), n % 5 == 0, n);
+            assert!(gate.push(id(n), at(0), n).is_none());
         }
     }
 
@@ -215,27 +190,25 @@ mod tests {
                 assert_eq!(units(gate.release(|_| false, at(1_500))), [1]);
             }),
             (
-                "over the bound drops to the next keyframe and counts",
+                "over the bound the oldest leaves at once, so a fast quiet stream keeps flowing",
                 || {
                     let mut gate = gate(4);
-                    pushed(&mut gate, 0..7);
-                    // Frames 0..=4 held at the fifth push; 5 pushes it over: 0 to 4 go, 5 (a keyframe) stays.
-                    assert_eq!(gate.dropped(), 5);
-                    assert_eq!(units(gate.release(|_| true, at(0))), [5, 6]);
-                },
-            ),
-            (
-                "with no keyframe left, units are dropped until one arrives",
-                || {
-                    let mut gate = gate(2);
-                    pushed(&mut gate, [1, 2, 3, 4]);
-                    assert_eq!(gate.dropped(), 4);
-                    pushed(&mut gate, [5]);
-                    assert_eq!(units(gate.release(|_| true, at(0))), [5]);
+                    pushed(&mut gate, 0..4);
+                    assert_eq!(gate.push(id(4), at(0), 4).map(|(_, unit)| unit), Some(0));
+                    assert!(gate.release(|_| false, at(0)).is_empty());
+                    // 120 frames a second for 10 s with an overlay that never decides: frames leave throughout.
+                    let mut gate = LiveGate::new(LIVE_DEADLINE, 120);
+                    let mut left = 0;
+                    for n in 0..1_200u64 {
+                        let now = Mono(Duration::from_micros(n * 1_000_000 / 120));
+                        left += usize::from(gate.push(id(n), now, n).is_some());
+                        left += gate.release(|_| false, now).len();
+                    }
+                    assert_eq!(left, 1_200 - 120);
                 },
             ),
             ("reset drops everything and restarts", || {
-                let mut gate = gate(2);
+                let mut gate = gate(3);
                 pushed(&mut gate, [1, 2, 3]);
                 gate.reset();
                 assert_eq!(gate.next_deadline(), None);

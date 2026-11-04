@@ -216,6 +216,16 @@ fn a_literal_password_in_a_list_of_logins_is_masked_and_a_masked_one_keeps_its_l
         read(&path)["settings"]["server.logins"],
         json!([login("root", "one"), login("root", "three")])
     );
+    // Deleting the first of them leaves one masked row that could stand for either: refused, nothing saved.
+    let error = replace(vec![login("root", MASK)]).unwrap_err();
+    assert!(
+        error.invalid && error.to_string().contains("root"),
+        "{error}"
+    );
+    assert_eq!(
+        read(&path)["settings"]["server.logins"],
+        json!([login("root", "one"), login("root", "three")])
+    );
     assert!(
         replace(vec![json!({"user": "x"})]).is_err(),
         "a record has all its fields"

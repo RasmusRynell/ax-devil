@@ -60,7 +60,8 @@ impl Setting {
     /// the same position when its other fields are unchanged, else of an unclaimed record with the same other fields,
     /// else of the unclaimed record at the same position (the user changed another field of it). A stored record
     /// keeps its password for one row only, and a masked secret with nothing to keep is refused rather than stored
-    /// empty.
+    /// empty. So is one whose login is stored more than once while the rows sent for it are not as many: which of the
+    /// passwords it stands for cannot be told.
     pub(crate) fn unmasked(&self, sent: &Value, stored: Option<&Value>) -> Result<Value, String> {
         const REENTER: &str = "Re-enter the password; the saved one cannot be kept for this entry.";
         if !self.secret {
@@ -74,6 +75,18 @@ impl Setting {
                     .and_then(Value::as_array)
                     .map_or(&[][..], Vec::as_slice);
                 let masked = |record: &Value| record.get(PASSWORD).is_some_and(|p| p == MASK);
+                // Several stored records of one login differ only in their passwords, so which one a masked row stands
+                // for is known only while the rows of that login keep their number and order: refuse otherwise.
+                for record in records.iter().filter(|record| masked(record)) {
+                    let stored = before.iter().filter(|old| same_login(old, record)).count();
+                    let sent = records.iter().filter(|row| same_login(row, record)).count();
+                    if stored > 1 && sent != stored {
+                        return Err(match record.get("user").and_then(Value::as_str) {
+                            Some(user) => format!("Re-enter the password for {user}."),
+                            None => REENTER.into(),
+                        });
+                    }
+                }
                 // The stored record each masked row takes its password from.
                 let mut taken: Vec<Option<usize>> = vec![None; records.len()];
                 let mut claimed = vec![false; before.len()];

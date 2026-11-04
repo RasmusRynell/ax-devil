@@ -18,7 +18,8 @@ use super::{
     status::STALL_CHECK,
 };
 
-/// How many units the gate holds: a little over the deadline at the highest rates a camera streams.
+/// How many units the gate holds: about the deadline's worth at 80 frames a second. A faster stream releases its oldest
+/// unit early instead of waiting out the deadline.
 const GATE_BOUND: usize = 120;
 
 /// Reads one video connection until it is stopped.
@@ -91,7 +92,7 @@ impl VideoTask {
                         None => std::future::pending().await,
                     }
                 } => match unit {
-                    Some(unit) => self.accept(unit),
+                    Some(unit) => self.accept(unit).await,
                     // The connection ended; its status says why.
                     None => units = None,
                 },
@@ -130,8 +131,8 @@ impl VideoTask {
         }
     }
 
-    /// Holds a unit for the gate, or drops it.
-    fn accept(&mut self, unit: AccessUnit) {
+    /// Holds a unit for the gate, or drops it; a unit the gate lets out for being over its bound is shown at once.
+    async fn accept(&mut self, unit: AccessUnit) {
         let now = self.shared.clock.now();
         // Only a unit that can be shown is data: a stream whose units all lack a capture time stalls.
         if unit.capture.is_some() {
@@ -164,7 +165,9 @@ impl VideoTask {
             timestamp: MediaTime::from_us(time_us),
         };
         self.next_sequence += 1;
-        self.gate.push(id, now, unit.keyframe, unit);
+        if let Some((id, unit)) = self.gate.push(id, now, unit) {
+            self.show(id, unit).await;
+        }
     }
 
     /// Decodes and publishes every unit the gate lets out.
