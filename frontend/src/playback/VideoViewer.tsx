@@ -47,6 +47,7 @@ function Playback({
   session,
   item,
   name,
+  title,
   entry,
   hidden,
   canChange,
@@ -59,6 +60,7 @@ function Playback({
   session: PlaybackSession;
   item: string;
   name: string;
+  title: string;
   entry: string;
   hidden: Hidden;
   canChange: boolean;
@@ -200,6 +202,7 @@ function Playback({
                 session={session}
                 view={view}
                 name={name}
+                title={title}
                 anchor={`frame:${item}`}
                 entry={entry}
                 hidden={hidden}
@@ -427,6 +430,7 @@ export function VideoViewer({
         session={session}
         item={item}
         name={entry.label}
+        title={content.display_name}
         entry={entry.id}
         hidden={hidden}
         canChange={canChange}

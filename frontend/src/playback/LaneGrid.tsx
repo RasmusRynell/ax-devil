@@ -33,6 +33,7 @@ export function LaneGrid({
   session,
   view,
   name,
+  title,
   anchor,
   entry,
   hidden,
@@ -52,6 +53,8 @@ export function LaneGrid({
   session: LaneDisplay;
   view: PlaybackView;
   name: string;
+  /** The viewer's title: a single lane named the same needs no name tag. */
+  title?: string;
   /** Names the elements over the pictures for other windows' pointers; see `VideoCanvas`. */
   anchor: string;
   /** The entry the lanes belong to, as the workspace names it. */
@@ -144,7 +147,7 @@ export function LaneGrid({
                 lane={lanes[index]}
                 catalogs={view.catalogs}
                 cadence={view.cadence}
-                hideName={info}
+                hideName={info || (shown.length === 1 && lanes[index].label === title)}
                 live={live}
                 onChange={(change) => session.setLane(index, change)}
                 onApplyAll={
