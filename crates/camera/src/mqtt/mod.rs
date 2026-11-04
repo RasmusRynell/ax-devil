@@ -224,9 +224,28 @@ fn unique(base: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::target::Host;
 
     #[test]
     fn ids_never_repeat() {
         assert_ne!(unique("a"), unique("a"));
+    }
+
+    #[test]
+    fn spellings_of_one_hostname_claim_the_same_camera() {
+        let camera = |host: &str| {
+            let mut camera = Camera::new(Host::parse(host).expect("host"));
+            camera.web.port = 48_123;
+            camera
+        };
+        let (upper, lower) = (camera("CAM-claim.local"), camera("cam-claim.local"));
+        let _held = Claim::take(&upper).expect("free");
+        let error = Claim::take(&lower).err().expect("held");
+        assert_eq!(error.kind, ErrorKind::Busy);
+        assert_eq!(
+            fingerprint(&format!("{}:{}", upper.host, upper.web.port)),
+            fingerprint(&format!("{}:{}", lower.host, lower.web.port)),
+            "the publisher id and topic derive from the same host"
+        );
     }
 }

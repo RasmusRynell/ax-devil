@@ -38,7 +38,8 @@ pub struct Login {
     pub password: Secret,
 }
 
-/// A host name or IP address, valid inside a URL authority (IPv6 is stored bracketed).
+/// A host name or IP address, valid inside a URL authority (IPv6 is stored bracketed). Host names are lower-cased and
+/// addresses written in canonical form, so spellings of one host compare equal.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Host(String);
 
@@ -62,7 +63,7 @@ impl Host {
                 .bytes()
                 .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'-' | b'.' | b'_'));
         if name_ok {
-            Ok(Self(text.to_owned()))
+            Ok(Self(text.to_ascii_lowercase()))
         } else {
             Err(CameraError::new(
                 ErrorKind::InvalidTarget,
@@ -236,6 +237,11 @@ mod tests {
             assert!(Host::parse(good).is_ok(), "{good}");
         }
         assert_eq!(Host::parse("::1").unwrap().as_str(), "[::1]");
+        assert_eq!(Host::parse("CAM-1.Local").unwrap().as_str(), "cam-1.local");
+        assert_eq!(
+            Host::parse("[2001:DB8:0::1]").unwrap(),
+            Host::parse("2001:db8::1").unwrap()
+        );
         assert_eq!(Host::parse("::1").unwrap().bare(), "::1");
         assert_eq!(Host::parse("192.0.2.7").unwrap().bare(), "192.0.2.7");
         assert_eq!(Host::parse("broker.local").unwrap().bare(), "broker.local");
