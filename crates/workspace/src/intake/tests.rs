@@ -281,6 +281,11 @@ fn one_file_may_be_several_lanes_named_by_the_caller_or_numbered_from_the_file_n
         "a generated name never takes one already in use"
     );
     assert_eq!(
+        lanes(&[plain.clone(), labelled("gt")]).unwrap(),
+        ["gt (2)", "gt"],
+        "a name the caller gives a later overlay is kept clear of too"
+    );
+    assert_eq!(
         lanes(&[plain.clone(), labelled(" Night "), labelled("Day")]).unwrap(),
         ["gt", "Night", "Day"]
     );

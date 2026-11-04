@@ -53,7 +53,11 @@ pub fn video(
         return Err(invalid("The path does not name a file"));
     }
     let mut recipes: Vec<OverlayRecipe> = Vec::with_capacity(overlays.len());
+    // Every name the caller chose is reserved first, so a name made from a file stem never takes a later one.
     let mut labels = LaneLabels::default();
+    labels
+        .taken
+        .extend(overlays.iter().filter_map(chosen_label).map(str::to_owned));
     for overlay in overlays {
         let recipe = overlay_recipe(overlay, &mut labels, handlers)?;
         recipes.push(recipe);
@@ -121,9 +125,9 @@ fn overlay_recipe(
     };
     let options = decoder_options(handlers, &handler, &overlay.options)?;
     let path = HostPath::new(path);
-    let label = match overlay.label.as_deref().map(str::trim) {
-        Some(label) if !label.is_empty() => labels.take(label.to_owned()),
-        _ => labels.unused(&file_stem(path.as_path())),
+    let label = match chosen_label(overlay) {
+        Some(label) => label.to_owned(),
+        None => labels.unused(&file_stem(path.as_path())),
     };
     Ok(OverlayRecipe {
         path,
@@ -131,6 +135,15 @@ fn overlay_recipe(
         label,
         options,
     })
+}
+
+/// The lane name the caller gave `overlay`, if it gave a non-blank one.
+fn chosen_label(overlay: &NewOverlay) -> Option<&str> {
+    overlay
+        .label
+        .as_deref()
+        .map(str::trim)
+        .filter(|label| !label.is_empty())
 }
 
 /// The lane labels a video has so far, so numbering a name costs the same however many lanes came before.
