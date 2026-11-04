@@ -20,6 +20,8 @@ const STORED_SEAT = "ax-devil.seat";
 /** Round trips at each connect, then one per period. */
 const SYNC_BURST = 5;
 const SYNC_EVERY_MS = 10_000;
+/** The least time between two renames sent: the session takes ten commands a second and closes the socket above it. */
+const RENAME_EVERY_MS = 200;
 
 type SeatPart = Extract<SessionServerMessage, { type: "seat" }>;
 
@@ -115,6 +117,10 @@ export class SessionStore {
   #syncLeft = 0;
   #syncTimer: ReturnType<typeof setTimeout> | undefined;
   #waiters: Asked[] = [];
+  /** The newest name typed and not sent, the timer that sends it, and when a name was last sent. */
+  #name: string | null = null;
+  #nameTimer: ReturnType<typeof setTimeout> | undefined;
+  #nameSentAt = -RENAME_EVERY_MS;
 
   constructor(deps: Partial<SessionDeps> = {}) {
     this.#deps = { ...browser, ...deps };
@@ -152,6 +158,7 @@ export class SessionStore {
     this.#cancelFrame?.();
     this.#cancelFrame = null;
     clearTimeout(this.#syncTimer);
+    this.#dropName();
     this.#refuse(new Error("The window closed."));
   }
 
@@ -204,6 +211,7 @@ export class SessionStore {
 
   /** Asks the backend for a change; settles when it answers and rejects with `CommandRefused` when it refuses. */
   command(command: SessionCommand): Promise<void> {
+    this.flushName();
     const asked = this.#ask(command).then(() => undefined);
     if (command.type === "workspace") {
       const answered = () => {
@@ -213,6 +221,33 @@ export class SessionStore {
       asked.then(answered, answered);
     }
     return asked;
+  }
+
+  /**
+   * Names the workspace as it is typed. Only the newest name waits, and names go out at most every
+   * `RENAME_EVERY_MS`. A refusal or a lost connection leaves the label as the backend has it.
+   */
+  renameWorkspace(name: string): void {
+    this.#name = name;
+    if (this.#nameTimer !== undefined) return;
+    const wait = this.#nameSentAt + RENAME_EVERY_MS - this.#deps.now();
+    if (wait <= 0) this.flushName();
+    else this.#nameTimer = setTimeout(() => this.flushName(), wait);
+  }
+
+  /** Sends the name that waits, so the next command sees the latest text. */
+  flushName(): void {
+    const name = this.#name;
+    this.#dropName();
+    if (name === null) return;
+    this.#nameSentAt = this.#deps.now();
+    this.#ask({ type: "content", command: { type: "renameWorkspace", name } }).catch(() => {});
+  }
+
+  #dropName(): void {
+    clearTimeout(this.#nameTimer);
+    this.#nameTimer = undefined;
+    this.#name = null;
   }
 
   /** A ticket for one playback socket, once the session is connected; every socket needs its own. */
@@ -292,6 +327,7 @@ export class SessionStore {
     this.#doc = null;
     this.#waiting = null;
     this.#pending = null;
+    this.#dropName();
     this.#seq = 0;
     this.#sent = 0;
     this.#estimator = new OffsetEstimator();

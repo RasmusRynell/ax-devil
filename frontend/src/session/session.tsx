@@ -145,6 +145,15 @@ export function useCommand(): (command: SessionCommand) => Promise<void> {
   return useCallback((command) => store.command(command), [store]);
 }
 
+/** Names the workspace as it is typed (`edit`, sent at a limited rate) and sends the last text at the end (`done`). */
+export function useRenameWorkspace(): { edit: (name: string) => void; done: () => void } {
+  const store = useStore();
+  return useMemo(
+    () => ({ edit: (name) => store.renameWorkspace(name), done: () => store.flushName() }),
+    [store],
+  );
+}
+
 /**
  * The way to get a ticket for a stream, for the playback socket's first message. A ticket works once, so every
  * connection asks again. `key` must be the same object between renders for as long as it names the same stream.
