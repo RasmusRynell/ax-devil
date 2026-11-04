@@ -140,6 +140,8 @@ fn plugin(mode: &str) {
             ));
         }
         "wire" => {
+            // A header with a repeated filter id is skipped, and a later valid one still counts.
+            out(r#"{"header":{"filter":[{"id":"a","label":"A"},{"id":"a","label":"B"}]}}"#);
             out(
                 r#"{"header":{"coverage":"dense","filter":[{"id":"show_car","label":"Cars","types":["car"]}],"metadata":{"source":"fake"}}}"#,
             );
@@ -322,7 +324,16 @@ fn wire_lines_reach_the_sink() {
     assert_eq!(warnings.len(), 1, "{warnings:?}");
     assert_eq!(warnings[0].reasons, ["a", "b", "c"]);
     assert!(warnings[0].more_reasons);
-    assert_eq!(run.sink.skips, [(7, "row 9 has no id".to_owned())]);
+    assert_eq!(
+        run.sink.skips,
+        [
+            (
+                1,
+                "the header's filter: filter option id 'a' appears twice".to_owned()
+            ),
+            (8, "row 9 has no id".to_owned())
+        ]
+    );
 }
 
 fn a_silent_plugin_is_killed_after_the_idle_timeout() {

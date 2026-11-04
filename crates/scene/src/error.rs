@@ -1,6 +1,6 @@
 use std::fmt;
 
-use crate::{EntityId, Name};
+use crate::Name;
 
 /// Why a Scene value was refused: words for the user.
 #[derive(Clone, Debug, PartialEq)]
@@ -25,8 +25,12 @@ pub enum SceneError {
     TooFewPolygonPoints(usize),
     /// An observation's source data and debug data use the same key.
     DetailKeyOverlap(Name),
-    /// Two entities in one Scene have the same id.
-    DuplicateEntity(EntityId),
+    /// A filter option's id was empty.
+    EmptyFilterId,
+    /// A filter option's label was empty; carries the option's id.
+    EmptyFilterLabel(Name),
+    /// Two filter options of one policy have the same id.
+    DuplicateFilterId(Name),
     /// A time is of another kind (frame number or timestamp) than the time it must agree with.
     TimeKindMismatch,
     /// A time slice ends before it starts.
@@ -49,7 +53,9 @@ impl fmt::Display for SceneError {
             Self::DetailKeyOverlap(key) => {
                 write!(f, "source data and debug data both use the key '{key}'")
             }
-            Self::DuplicateEntity(id) => write!(f, "entity id '{id}' appears twice in one scene"),
+            Self::EmptyFilterId => f.write_str("filter option id cannot be empty"),
+            Self::EmptyFilterLabel(id) => write!(f, "filter option '{id}' has an empty label"),
+            Self::DuplicateFilterId(id) => write!(f, "filter option id '{id}' appears twice"),
             Self::TimeKindMismatch => {
                 f.write_str("frame numbers and timestamps cannot be mixed in one scene")
             }

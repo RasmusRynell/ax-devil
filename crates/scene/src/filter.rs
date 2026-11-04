@@ -1,6 +1,6 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashSet};
 
-use crate::{Entity, Name, Scene, UNMAPPED_CLASS};
+use crate::{Entity, Name, Scene, SceneError, UNMAPPED_CLASS};
 
 /// Which class filters a decoder offers and their defaults.
 #[derive(Clone, Debug, PartialEq)]
@@ -75,6 +75,24 @@ pub struct FilterChoice {
 }
 
 impl FilterPolicy {
+    /// The policy `name` offers `options`, shown in this order. Fails on an empty id or label or on an id given
+    /// twice, as Python does. No options is the policy that keeps every entity.
+    pub fn try_new(name: &'static str, options: Vec<FilterOption>) -> Result<Self, SceneError> {
+        let mut ids = HashSet::with_capacity(options.len());
+        for option in &options {
+            if option.id.is_empty() {
+                return Err(SceneError::EmptyFilterId);
+            }
+            if option.label.is_empty() {
+                return Err(SceneError::EmptyFilterLabel(option.id.clone()));
+            }
+            if !ids.insert(&option.id) {
+                return Err(SceneError::DuplicateFilterId(option.id.clone()));
+            }
+        }
+        Ok(Self { name, options })
+    }
+
     /// Whether the option is on: the user's override, else the option's default; off for an id the policy lacks.
     pub fn is_enabled(&self, choice: &FilterChoice, option: &str) -> bool {
         choice.overrides.get(option).copied().unwrap_or_else(|| {
@@ -366,6 +384,38 @@ mod tests {
         let bare = Entity::new(EntityId::new("bare").unwrap());
         assert!(policy.keeps(&FilterChoice::default(), &bare));
         assert!(!policy.keeps(&off(&["show_unknown"]), &bare));
+    }
+
+    #[test]
+    fn a_policy_refuses_options_without_id_or_label_and_repeated_ids() {
+        let named = |id: &'static str, label: &'static str| FilterOption {
+            label: label.into(),
+            ..option(id, "car", true)
+        };
+        let refused = |options| FilterPolicy::try_new("test", options).unwrap_err();
+        assert_eq!(refused(vec![named("", "Cars")]), SceneError::EmptyFilterId);
+        assert_eq!(
+            refused(vec![named("show_car", "")]),
+            SceneError::EmptyFilterLabel("show_car".into())
+        );
+        assert_eq!(
+            refused(vec![named("a", "A"), named("b", "B"), named("a", "C")]),
+            SceneError::DuplicateFilterId("a".into())
+        );
+        let ids = |policy: FilterPolicy| -> Vec<String> {
+            policy.options.iter().map(|o| o.id.to_string()).collect()
+        };
+        let order = vec![named("b", "B"), named("a", "A")];
+        assert_eq!(
+            ids(FilterPolicy::try_new("test", order).unwrap()),
+            ["b", "a"]
+        );
+        assert!(
+            FilterPolicy::try_new("test", vec![])
+                .unwrap()
+                .options
+                .is_empty()
+        );
     }
 
     #[test]

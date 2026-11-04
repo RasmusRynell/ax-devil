@@ -2,8 +2,8 @@ use std::{collections::HashSet, fs, path::PathBuf};
 
 use super::*;
 use crate::{
-    BoundingBox, ClassRule, ClassType, EntityId, FilterChoice, FilterOption, SceneTime, TimeSlice,
-    Value, serial::from_json_str,
+    BoundingBox, ClassRule, ClassType, EntityId, EntityRelation, FilterChoice, FilterOption,
+    SceneTime, TimeSlice, Value, serial::from_json_str,
 };
 
 fn oracle() -> PathBuf {
@@ -226,6 +226,39 @@ fn strings_sit_in_three_regions_with_one_id_per_distinct_string() {
     assert_eq!(section(&item, Section::EntityId, 3), [0, 3, 4]);
     assert_eq!(section(&item, Section::Class, 3), [3, 3, u32::MAX]);
     assert_eq!(item[head[COUNTS + Section::Motion as usize] as usize], 2);
+}
+
+#[test]
+fn relations_ship_sorted_by_kind_source_and_target_whatever_order_the_scene_holds_them() {
+    let relation = |kind: &str, from: &str, to: &str| {
+        EntityRelation::new(
+            kind.to_owned(),
+            EntityId::new(from).expect("an id"),
+            EntityId::new(to).expect("an id"),
+        )
+        .expect("a relation")
+    };
+    let scene = scene_of(vec![
+        entity("a", Vec::new()),
+        entity("b", Vec::new()),
+        entity("c", Vec::new()),
+    ])
+    .with_relations([
+        relation("has_part", "b", "a"),
+        relation("attached", "c", "a"),
+        relation("has_part", "a", "c"),
+        relation("has_part", "a", "b"),
+    ]);
+
+    let item = encode_sample_item(&scene, &policy()).expect("encodes");
+    let table = strings(&item);
+    let kinds: Vec<&str> = section(&item, Section::RelKind, 4)
+        .into_iter()
+        .map(|id| table[id as usize].as_str())
+        .collect();
+    assert_eq!(kinds, ["attached", "has_part", "has_part", "has_part"]);
+    assert_eq!(section(&item, Section::RelSource, 4), [2, 0, 0, 1]);
+    assert_eq!(section(&item, Section::RelTarget, 4), [0, 1, 2, 0]);
 }
 
 #[test]

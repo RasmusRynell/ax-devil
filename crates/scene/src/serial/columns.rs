@@ -30,7 +30,7 @@
 //! | `color_rgba` | `u32` 0xRRGGBBAA per colour, alpha 255 | |
 //! | `color_score` | `f64` per colour | NaN |
 //! | `color_name` | `u32` string id per colour | `u32::MAX` |
-//! | `rel_kind` | `u32` string id per relation | |
+//! | `rel_kind` | `u32` string id per relation, sorted by kind, source id, target id | |
 //! | `rel_source`, `rel_target` | `u32` row of the endpoint | `u32::MAX`: no row |
 //! | `string_offsets` | `u32` start of each string in `string_bytes`, then the end of the last | |
 //! | `string_bytes` | UTF-8 | |
@@ -67,8 +67,8 @@ use std::collections::HashMap;
 use self::attributes::Attributes;
 use super::failed;
 use crate::{
-    Classification, Entity, FilterPolicy, Geometry, MotionState, Observation, Point, Scene,
-    SceneError,
+    Classification, Entity, EntityRelation, FilterPolicy, Geometry, MotionState, Observation,
+    Point, Scene, SceneError,
 };
 
 /// The item format version; the reader refuses another.
@@ -261,8 +261,9 @@ pub fn encode_sample_item(scene: &Scene, policy: &FilterPolicy) -> Result<Vec<u8
         })
         .collect();
     attributes.check_size(rows.len())?;
-    let relation_kinds: Vec<u32> = scene
-        .relations()
+    let mut relations: Vec<&EntityRelation> = scene.relations().iter().collect();
+    relations.sort_by_key(|r| (r.kind(), r.source().as_str(), r.target().as_str()));
+    let relation_kinds: Vec<u32> = relations
         .iter()
         .map(|relation| strings.intern(relation.kind()))
         .collect();
@@ -370,7 +371,6 @@ pub fn encode_sample_item(scene: &Scene, policy: &FilterPolicy) -> Result<Vec<u8
         u32s(out, attributes.name.iter().copied());
     })?;
     item.section(Section::RelKind, |out| u32s(out, relation_kinds))?;
-    let relations = scene.relations();
     item.section(Section::RelSource, |out| {
         u32s(out, relations.iter().map(|r| endpoint(r.source().as_str())));
     })?;
