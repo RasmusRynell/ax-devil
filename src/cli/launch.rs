@@ -4,11 +4,12 @@ use super::{Command, args};
 use ax_devil::session::Launch;
 use foundation::{Location, UserError};
 use handlers::Handlers;
+use std::path::Path;
 use workspace::{
     WorkspaceItem,
     intake::{LiveDefaults, NewOverlay},
 };
-use workspace_files::RecoveryFolder;
+use workspace_files::{Claim, RecoveryFolder};
 
 /// What `command` asks the first window to start from: the workspace file or items it names, or, for a plain launch,
 /// the unsaved work of the last window. `defaults` is read only for `live`. The error says what was refused and why.
@@ -24,6 +25,7 @@ pub(super) fn launch(
             let path = std::path::absolute(&file)
                 .map_err(|error| format!("{}: {error}", file.display()))?;
             let workspace = if recovery.contains(&path) {
+                check_recovery_copy(recovery, &path)?;
                 None
             } else {
                 Some(workspace_files::load(&path).map_err(|error| describe(&error))?)
@@ -34,6 +36,16 @@ pub(super) fn launch(
             let items = launch_items(command, handlers, defaults)?;
             Ok((!items.is_empty()).then_some(Launch::Items(items)))
         }
+    }
+}
+
+/// Refuses a recovery copy the window could not take over: one that is missing, held by another window, or not a
+/// readable workspace. The session claims and reads it again once the app is up; the lock is not kept in between.
+fn check_recovery_copy(recovery: &RecoveryFolder, path: &Path) -> Result<(), String> {
+    match recovery.claim(path) {
+        Ok(copy) => copy.read().map(drop).map_err(|error| describe(&error)),
+        Err(Claim::InUse) => Err(format!("{}: open in another window", path.display())),
+        Err(Claim::Failed(error)) => Err(describe(&error)),
     }
 }
 
@@ -54,6 +66,9 @@ pub(super) fn launch_items(
             let mut overlays = Vec::with_capacity(overlay.len());
             for (position, path) in overlay.into_iter().enumerate() {
                 let handler = handler_type.get(position).cloned();
+                if handler.is_none() {
+                    choose_handler(handlers, &path)?;
+                }
                 let given = overlay_option
                     .iter()
                     .filter(|option| option.overlay == position);
@@ -79,6 +94,31 @@ pub(super) fn launch_items(
     };
     item.map(|item| vec![item])
         .map_err(|error| describe(&error))
+}
+
+/// Whether the overlay file `path` has exactly one decoder to read it. Otherwise the error says how to correct the
+/// command line: the handlers to list, or the ones to choose between with `--handler-type`.
+fn choose_handler(handlers: &Handlers, path: &Path) -> Result<(), String> {
+    let name = path
+        .file_name()
+        .unwrap_or(path.as_os_str())
+        .to_string_lossy();
+    match handlers.decoders_for(path)[..] {
+        [_] => Ok(()),
+        [] => Err(format!(
+            "No overlay handler reads {name}. List them with: ax-devil list-handlers"
+        )),
+        ref candidates => {
+            let ids: Vec<_> = candidates
+                .iter()
+                .map(|decoder| decoder.spec().id.as_str())
+                .collect();
+            Err(format!(
+                "Several overlay handlers may read {name}: {}. Choose with --handler-type, once per --overlay, in the same order.",
+                ids.join(", ")
+            ))
+        }
+    }
 }
 
 /// What was refused and why, led by the file or setting it is about.
