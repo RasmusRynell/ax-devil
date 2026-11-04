@@ -1,5 +1,5 @@
 //! The video side of a feed: encoded units wait in the live gate until their overlay is settled (or 1.5 s, D28) and
-//! leave one per unit that arrives, then decode in arrival order and go to every viewer. A unit without a capture time
+//! leave one per unit that arrives (or, for an arrival that let none out, once the overlay settles one), then decode in arrival order and go to every viewer. A unit without a capture time
 //! cannot be synchronized and is dropped.
 //! While nobody watches, units pass the gate but are not decoded, so the Events list goes on recording. The video is
 //! live while pictures are shown (or, with nobody watching, units arrive): a stream that delivers only pictures that
@@ -10,7 +10,7 @@ use std::sync::{Arc, atomic::Ordering};
 use camera::{AccessUnit, Status};
 use foundation::{FrameId, MediaTime, VideoFrame};
 use overlay_sync::{LIVE_DEADLINE, LiveGate, MatchBasis};
-use scene_store::TrackRead;
+use scene_store::{TrackRead, TrackSnapshot};
 use tokio::{
     sync::{mpsc, watch},
     time::{MissedTickBehavior, interval, sleep_until},
@@ -101,6 +101,7 @@ impl VideoTask {
                     None => units = None,
                 },
                 _ = tick.tick() => shared.board.tick(shared.clock.now()),
+                () = shared.published.notified() => self.settle().await,
                 () = async {
                     match due {
                         Some(due) => sleep_until(due).await,
@@ -158,21 +159,28 @@ impl VideoTask {
             timestamp: MediaTime::from_us(time_us),
         };
         self.next_sequence += 1;
-        // A frame waits only for an overlay that delivers; otherwise nothing is coming for it.
-        let snapshot = self
-            .shared
+        let decided = self.decided();
+        for (id, unit) in self.gate.push(id, now, unit, settled(decided.as_deref())) {
+            self.show(id, unit).await;
+        }
+    }
+
+    /// Shows the held unit the overlay's newest publication settled, if the gate lets it out now.
+    async fn settle(&mut self) {
+        let now = self.shared.clock.now();
+        let decided = self.decided();
+        if let Some((id, unit)) = self.gate.settle(now, settled(decided.as_deref())) {
+            self.show(id, unit).await;
+        }
+    }
+
+    /// What the overlay has decided, while a frame should wait for it: only an overlay that delivers is coming.
+    fn decided(&self) -> Option<Arc<TrackSnapshot>> {
+        self.shared
             .track
             .as_ref()
             .filter(|_| self.shared.board.overlay_expected())
-            .map(|track| track.snapshot());
-        let settled = |id: FrameId| {
-            snapshot
-                .as_ref()
-                .is_none_or(|snapshot| snapshot.decides(id, MatchBasis::Time))
-        };
-        for (id, unit) in self.gate.push(id, now, unit, settled) {
-            self.show(id, unit).await;
-        }
+            .map(|track| track.snapshot())
     }
 
     /// Decodes and publishes the units that waited out the deadline.
@@ -254,4 +262,9 @@ impl VideoTask {
             }
         }
     }
+}
+
+/// Whether a frame may leave as far as its overlay goes: it has `decided` the frame, or nothing is coming.
+fn settled(decided: Option<&TrackSnapshot>) -> impl Fn(FrameId) -> bool {
+    move |id| decided.is_none_or(|snapshot| snapshot.decides(id, MatchBasis::Time))
 }
