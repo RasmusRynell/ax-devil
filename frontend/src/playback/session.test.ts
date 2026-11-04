@@ -183,35 +183,16 @@ describe("playing to the end", () => {
   });
 });
 
-describe("scrubbing the seek bar", () => {
-  it("holds playback while the bar is held and runs on from the chosen frame when it is let go", async () => {
+describe("seeking while playing", () => {
+  it("keeps the clock running from the chosen frame", async () => {
     const { session, server, refresh } = await setup();
     server.open();
     server.frames(0, 1, 2);
     refresh();
     session.play();
-    session.scrubStart();
     refresh(500);
-    expect(session.getSnapshot()).toMatchObject({ playing: false, playhead: 0 });
     session.seek(5);
-    session.scrubEnd();
     expect(session.getSnapshot()).toMatchObject({ playing: true, playhead: 5 });
-  });
-
-  it("stays paused when it was paused, and does not restart from the start after a scrub to the end", async () => {
-    const { session, server, refresh } = await setup();
-    server.open();
-    server.frames(0);
-    refresh();
-    session.scrubStart();
-    session.seek(4);
-    session.scrubEnd();
-    expect(session.getSnapshot().playing).toBe(false);
-    session.play();
-    session.scrubStart();
-    session.seek(9);
-    session.scrubEnd();
-    expect(session.getSnapshot()).toMatchObject({ playing: false, playhead: 9 });
   });
 });
 
@@ -251,6 +232,28 @@ describe("frames that failed to decode", () => {
     expect(session.getSnapshot()).toMatchObject({
       shown: { sequenceId: 3 },
       frameError: undefined,
+    });
+  });
+
+  it("shows the reason for a frame sought back from a later frame on screen", async () => {
+    const { session, server, refresh } = await setup();
+    server.open();
+    server.frames(0, 3);
+    server.say({
+      type: "FrameError",
+      sequence_id: 2,
+      code: "DecodeFailed",
+      params: {},
+      reason: "corrupt slice",
+    });
+    refresh();
+    session.seek(3);
+    refresh();
+    session.seek(2);
+    refresh();
+    expect(session.getSnapshot()).toMatchObject({
+      shown: { sequenceId: 3 },
+      frameError: { sequenceId: 2, reason: "corrupt slice" },
     });
   });
 

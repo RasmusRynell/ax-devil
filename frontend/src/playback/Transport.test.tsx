@@ -28,8 +28,7 @@ function setup(change: Partial<PlaybackView> = {}) {
     step: vi.fn(),
     seek: vi.fn(),
     setSpeed: vi.fn(),
-    scrubStart: vi.fn(),
-    scrubEnd: vi.fn(),
+    frameTime: vi.fn((frame: number) => frame * 40_000),
   };
   const result = render(<Transport controls={controls} view={view(change)} />);
   return { controls, ...result };
@@ -47,28 +46,114 @@ describe("transport", () => {
     expect(screen.getByRole("button", { name: "Pause" })).toBeTruthy();
   });
 
-  it("scrubs: the seek bar shows the position asked for, every move seeks, and holding it holds playback", () => {
-    const { controls } = setup();
+  it("drags: the bar and readouts follow the pick, and the one seek is made when the pointer is let go", () => {
+    const { controls, rerender } = setup();
     const bar = screen.getByRole("slider", { name: "Timeline" }) as HTMLInputElement;
+    const field = screen.getByRole("textbox", { name: "Frame" }) as HTMLInputElement;
     expect(bar.value).toBe("30");
     expect(bar.max).toBe("99");
-    fireEvent.pointerDown(bar);
+    fireEvent.pointerDown(bar, { pointerId: 1 });
     fireEvent.change(bar, { target: { value: "64" } });
     fireEvent.change(bar, { target: { value: "65" } });
-    expect(controls.seek.mock.calls).toEqual([[64], [65]]);
-    expect(controls.scrubEnd).not.toHaveBeenCalled();
-    fireEvent.pointerUp(window);
-    expect(controls.scrubStart).toHaveBeenCalledTimes(1);
-    expect(controls.scrubEnd).toHaveBeenCalledTimes(1);
+    // Playback goes on under the hand: its frames do not move the bar or the readouts.
+    rerender(<Transport controls={controls} view={view({ playing: true, playhead: 40 })} />);
+    expect(bar.value).toBe("65");
+    expect(field.value).toBe("65");
+    expect(screen.getByLabelText("Time").textContent).toBe("0:02.60");
+    expect(controls.seek).not.toHaveBeenCalled();
+    fireEvent.pointerUp(window, { pointerId: 1 });
+    fireEvent.blur(bar);
+    fireEvent.pointerUp(window, { pointerId: 1 });
+    expect(controls.seek.mock.calls).toEqual([[65]]);
   });
 
-  it("ends a key hold on the seek bar when focus leaves it before the key is released", () => {
+  it("keeps the pick after the release until a frame is delivered, even as the clock runs on", () => {
+    const { controls, rerender } = setup({ playing: true });
+    const bar = screen.getByRole("slider", { name: "Timeline" });
+    const field = screen.getByRole("textbox", { name: "Frame" }) as HTMLInputElement;
+    fireEvent.pointerDown(bar, { pointerId: 1 });
+    fireEvent.change(bar, { target: { value: "65" } });
+    fireEvent.pointerUp(window, { pointerId: 1 });
+    rerender(<Transport controls={controls} view={view({ playing: true, playhead: 66 })} />);
+    expect(field.value).toBe("65");
+    // Any frame delivered ends it: the sought one, or one the clock reached.
+    const delivered = { sequenceId: 66, timestampUs: 2_640_000, periodUs: 40_000 };
+    rerender(
+      <Transport
+        controls={controls}
+        view={view({ playing: true, playhead: 66, shown: delivered })}
+      />,
+    );
+    expect(field.value).toBe("66");
+  });
+
+  it("lets go of the pick when playback stops before the sought frame is delivered", () => {
+    const { controls, rerender } = setup({ playing: true });
+    const bar = screen.getByRole("slider", { name: "Timeline" });
+    const field = screen.getByRole("textbox", { name: "Frame" }) as HTMLInputElement;
+    fireEvent.pointerDown(bar, { pointerId: 1 });
+    fireEvent.change(bar, { target: { value: "65" } });
+    fireEvent.pointerUp(window, { pointerId: 1 });
+    expect(field.value).toBe("65");
+    // Pausing puts the playhead back on the frame on screen, so nothing arrives.
+    rerender(<Transport controls={controls} view={view({ playing: false })} />);
+    expect(field.value).toBe("29");
+  });
+
+  it("lets go of the pick when its frame fails, even sought back from a later frame, or another seek is made", () => {
+    const later = { sequenceId: 90, timestampUs: 3_600_000, periodUs: 40_000 };
+    const { controls, rerender } = setup({ playhead: 90, shown: later });
+    const bar = screen.getByRole("slider", { name: "Timeline" });
+    const field = screen.getByRole("textbox", { name: "Frame" }) as HTMLInputElement;
+    const release = () => {
+      fireEvent.pointerDown(bar, { pointerId: 1 });
+      fireEvent.change(bar, { target: { value: "65" } });
+      fireEvent.pointerUp(window, { pointerId: 1 });
+      expect(field.value).toBe("65");
+    };
+    release();
+    const frameError = { sequenceId: 65, reason: "corrupt" };
+    rerender(
+      <Transport controls={controls} view={view({ playhead: 65, shown: later, frameError })} />,
+    );
+    expect(field.value).toBe("90");
+    rerender(<Transport controls={controls} view={view({ playhead: 90, shown: later })} />);
+    release();
+    fireEvent.click(screen.getByRole("button", { name: "Forward 1 frame" }));
+    expect(field.value).toBe("90");
+  });
+
+  it("is held by the pointer that pressed: another one's up or cancel does not seek", () => {
     const { controls } = setup();
     const bar = screen.getByRole("slider", { name: "Timeline" });
-    fireEvent.keyDown(bar, { key: "PageUp" });
-    expect(controls.scrubStart).toHaveBeenCalledTimes(1);
+    fireEvent.pointerDown(bar, { pointerId: 1 });
+    fireEvent.pointerDown(bar, { pointerId: 2 });
+    fireEvent.pointerUp(window, { pointerId: 2 });
+    fireEvent.pointerCancel(window, { pointerId: 2 });
+    expect(controls.seek).not.toHaveBeenCalled();
+    fireEvent.pointerUp(window, { pointerId: 1 });
+    expect(controls.seek.mock.calls).toEqual([[30]]);
+  });
+
+  it("seeks a drag that ends in a cancel or in lost focus, once", () => {
+    const { controls } = setup();
+    const bar = screen.getByRole("slider", { name: "Timeline" }) as HTMLInputElement;
+    fireEvent.pointerDown(bar, { pointerId: 1 });
+    fireEvent.change(bar, { target: { value: "10" } });
+    fireEvent.pointerCancel(window, { pointerId: 1 });
+    fireEvent.pointerDown(bar, { pointerId: 1 });
+    fireEvent.change(bar, { target: { value: "20" } });
     fireEvent.blur(bar);
-    expect(controls.scrubEnd).toHaveBeenCalledTimes(1);
+    fireEvent.pointerUp(window, { pointerId: 1 });
+    expect(controls.seek.mock.calls).toEqual([[10], [20]]);
+  });
+
+  it("seeks at once for a key on the seek bar", () => {
+    const { controls } = setup();
+    const bar = screen.getByRole("slider", { name: "Timeline" });
+    fireEvent.change(bar, { target: { value: "31" } });
+    fireEvent.change(bar, { target: { value: "32" } });
+    expect(controls.seek.mock.calls).toEqual([[31], [32]]);
   });
 
   it("has a seek bar of one position for a video without frames", () => {
