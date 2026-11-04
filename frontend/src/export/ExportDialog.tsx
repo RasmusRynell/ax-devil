@@ -22,16 +22,23 @@ const QUALITIES: readonly (readonly [ExportQualityWire, string])[] = [
   ["small", "Small"],
 ];
 
+/** The dialog's title in every state. */
+const TITLE = "Export Video with Overlays";
+
+/** `path` as it is when it ends in `.kind` (any case), otherwise with `.kind` appended: `clip.mov` becomes `clip.mov.mp4`. */
+const withExtension = (path: string, kind: Kind): string =>
+  path.toLowerCase().endsWith(`.${kind}`) ? path : `${path}.${kind}`;
+
 /** A whole number from its text; `null` for anything else. */
 const wholeNumber = (text: string): number | null =>
   /^\d+$/.test(text.trim()) ? Number(text) : null;
 
-/** The text of an export that finished or could not start: shown in place of the form. */
+/** The text of an export that finished or could not start: shown under the bar in place of the form. */
 function Outcome({ status }: { status: Exclude<ExportStatus, { phase: "idle" | "running" }> }) {
   if (status.phase === "failed")
     return (
       <div role="alert" className="flex flex-col gap-s">
-        <p className="m-0 break-words">{status.reason}</p>
+        <p className="m-0 break-words text-danger">{`Error: ${status.reason}`}</p>
         {status.location && (
           <p className="m-0 text-small break-all text-muted">{status.location}</p>
         )}
@@ -39,30 +46,26 @@ function Outcome({ status }: { status: Exclude<ExportStatus, { phase: "idle" | "
     );
   return (
     <p role="status" className="m-0 break-all">
-      {status.phase === "done" ? `Saved ${status.path}` : "Export cancelled"}
+      {status.phase === "done" ? `Done: ${status.path}` : "Cancelled"}
     </p>
   );
 }
 
-/** The running export's bar and count. */
-function Progress({ done, total }: { done: number; total: number }) {
+/** The export's bar, with the percent done centered on it. */
+function ProgressBar({ done, total }: { done: number; total: number }) {
+  const percent = total > 0 ? Math.floor((done / total) * 100) : 0;
   return (
-    <div role="status" className="flex flex-col gap-s">
-      <div
-        role="progressbar"
-        aria-label="Export progress"
-        aria-valuemin={0}
-        aria-valuemax={total}
-        aria-valuenow={done}
-        className="h-s w-full overflow-hidden rounded-control bg-hover"
-      >
-        <div
-          className="h-full bg-accent"
-          style={{ width: `${total > 0 ? (done / total) * 100 : 0}%` }}
-        />
-      </div>
-      <span className="tabular-nums">
-        {done} / {total}
+    <div
+      role="progressbar"
+      aria-label="Export progress"
+      aria-valuemin={0}
+      aria-valuemax={total}
+      aria-valuenow={done}
+      className="relative h-row w-full overflow-hidden rounded-control bg-line-strong"
+    >
+      <div className="h-full bg-accent" style={{ width: `${percent}%` }} />
+      <span className="absolute inset-0 flex items-center justify-center text-on-canvas tabular-nums">
+        {percent}%
       </span>
     </div>
   );
@@ -104,7 +107,21 @@ export function ExportDialog({
   const [failure, setFailure] = useState<string | null>(null);
   const [choosing, setChoosing] = useState(false);
 
-  const picked = choices.filter((choice) => choice.wire && !unchecked.has(choice.lane));
+  const loading = choices.some((choice) => choice.cold === "loading");
+  // With one lane there is no checkbox to bring it back, so it is always taken.
+  const skipped = (all: readonly { lane: number }[], lane: number) =>
+    all.length > 1 && unchecked.has(lane);
+  const picked = choices.filter((choice) => choice.wire && !skipped(choices, choice.lane));
+  const alone =
+    choices.length === 1 && choices[0].cold === "failed" ? view.lanes[choices[0].lane] : null;
+  const aloneStatus = alone?.status;
+  const aloneWhy =
+    alone &&
+    (alone.catalogProblem ??
+      (aloneStatus && aloneStatus !== "plain" && aloneStatus.status === "Failed"
+        ? aloneStatus.reason
+        : undefined) ??
+      "Render catalog failed to load.");
   const first = kind === "png" ? view.playhead : wholeNumber(from);
   const last = kind === "png" ? view.playhead : wholeNumber(to);
   const framesOk = first !== null && last !== null && first <= last && last < view.frameCount;
@@ -116,11 +133,13 @@ export function ExportDialog({
     setChoosing(true);
     try {
       const stem = name.replace(/\.[^.]*$/, "") || name;
-      const target = bridge ? await bridge.pickExportFile(`${stem}.${kind}`, kind) : path.trim();
-      if (!target) return;
+      const picked = bridge ? await bridge.pickExportFile(`${stem}.${kind}`, kind) : path.trim();
+      if (!picked) return;
+      const target = withExtension(picked, kind);
       // The lanes are read now: the picker may have been open while they changed.
-      const lanes = choicesOf(latest.current.lanes).flatMap((choice) =>
-        choice.wire && !unchecked.has(choice.lane) ? [choice.wire] : [],
+      const now = choicesOf(latest.current.lanes);
+      const lanes = now.flatMap((choice) =>
+        choice.wire && !skipped(now, choice.lane) ? [choice.wire] : [],
       );
       const format: ExportFormatWire =
         kind === "png" ? { format: "Png" } : { format: "Mp4", quality };
@@ -140,48 +159,58 @@ export function ExportDialog({
     if (status.phase === "running")
       return (
         <Dialog
-          title="Exporting…"
+          title={TITLE}
           okLabel="Export"
           onOk={() => undefined}
           onCancel={() => jobs.cancel()}
           busy
         >
-          <Progress done={status.done} total={status.total} />
+          <div className="flex flex-col gap-m">
+            <ProgressBar done={status.done} total={status.total} />
+            <span role="status" className="tabular-nums">
+              {status.done > 0 ? `Frame ${status.done} / ${status.total}` : "Exporting…"}
+            </span>
+          </div>
         </Dialog>
       );
     if (status.phase !== "idle")
       return (
-        <Dialog title="Export" okLabel="Close" onOk={close}>
-          <Outcome status={status} />
+        <Dialog title={TITLE} okLabel="Close" onOk={close}>
+          <div className="flex flex-col gap-m">
+            <ProgressBar done={status.done} total={status.total} />
+            <Outcome status={status} />
+          </div>
         </Dialog>
       );
     return (
       <Dialog
-        title="Export"
+        title={TITLE}
         okLabel="Export"
         onOk={() => void start()}
         onCancel={close}
         busy={!ready || choosing}
       >
-        <fieldset className="m-0 flex min-w-0 flex-col gap-s border-0 p-0">
-          <legend className="p-0">Lanes</legend>
-          {choices.map(({ lane, label, wire }) => (
-            <Checkbox
-              key={lane}
-              label={label}
-              checked={wire !== null && !unchecked.has(lane)}
-              disabled={wire === null}
-              onChange={(on) =>
-                setUnchecked((now) => {
-                  const next = new Set(now);
-                  if (on) next.delete(lane);
-                  else next.add(lane);
-                  return next;
-                })
-              }
-            />
-          ))}
-        </fieldset>
+        {choices.length > 1 && (
+          <fieldset className="m-0 flex min-w-0 flex-col gap-s border-0 p-0">
+            <legend className="p-0">Lanes</legend>
+            {choices.map(({ lane, label, wire }) => (
+              <Checkbox
+                key={lane}
+                label={label}
+                checked={wire !== null && !unchecked.has(lane)}
+                disabled={wire === null}
+                onChange={(on) =>
+                  setUnchecked((now) => {
+                    const next = new Set(now);
+                    if (on) next.delete(lane);
+                    else next.add(lane);
+                    return next;
+                  })
+                }
+              />
+            ))}
+          </fieldset>
+        )}
         <Select label="Format" value={kind} options={KINDS} onChange={setKind} />
         {kind === "mp4" && (
           <>
@@ -191,6 +220,16 @@ export function ExportDialog({
           </>
         )}
         {!bridge && <TextField label="Path on the server" value={path} onChange={setPath} />}
+        {loading && (
+          <p role="status" className="m-0">
+            Render catalogs are still loading.
+          </p>
+        )}
+        {aloneWhy && (
+          <p role="alert" className="m-0 break-words">
+            {aloneWhy}
+          </p>
+        )}
         {failure && (
           <p role="alert" className="m-0">
             {failure}

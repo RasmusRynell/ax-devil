@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import type { ContentInfo, ContentRef, EntryInfo, LanePolicyWire } from "../generated/api";
 import { ExportDialog } from "../export/ExportDialog";
+import { choicesOf } from "../export/lanes";
 import { ContextMenu } from "../kit/ContextMenu";
 import { Icon } from "../kit/Icon";
 import { useSettings } from "../settings";
@@ -196,7 +197,11 @@ function Playback({
           >
             <ContextMenu
               className="absolute inset-0"
-              entries={laneContextEntries(allowed, shortcuts, onHideLane !== undefined)}
+              entries={() => {
+                const lane = fullscreen.target();
+                const cold = choicesOf(view.lanes).find((choice) => choice.lane === lane)?.cold;
+                return laneContextEntries(allowed, shortcuts, onHideLane !== undefined, !!cold);
+              }}
               onSelect={({ id }) => {
                 const lane = fullscreen.target();
                 if (id === HIDE_LANE) {

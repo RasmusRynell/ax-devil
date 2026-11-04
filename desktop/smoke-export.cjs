@@ -17,11 +17,13 @@ module.exports.exportDialog = async (window) => {
     window.webContents.sendInputEvent({ type, keyCode: "E", modifiers: ["control"] });
   key("keyDown");
   key("keyUp");
-  await wait("document.querySelector('dialog[open] h2')?.textContent === 'Export'");
-  // The lane's catalog and data are in: its box is checked and the dialog can start.
-  const lanes = "[...document.querySelectorAll('dialog[open] fieldset input[type=checkbox]')]";
-  await wait(`${lanes}.length === 1 && !${lanes}[0].disabled && ${lanes}[0].checked`);
+  await wait(
+    "document.querySelector('dialog[open] h2')?.textContent === 'Export Video with Overlays'",
+  );
+  // The video's one lane has no box to check; once its catalog and data are in, the dialog can start.
   const submit = "document.querySelector('dialog[open] button[type=submit]')";
+  assert.equal(await js("document.querySelector('dialog[open] fieldset')"), null);
+  await wait(`!${submit}.disabled`);
   assert.equal(
     await js(`${submit}.disabled`),
     false,

@@ -44,9 +44,25 @@ pub(crate) fn check(spec: &ExportSpec) -> Result<(), UserError> {
     Ok(())
 }
 
-/// Whether two paths name the same file, whether or not it exists yet.
+/// Whether two paths name the same file, whether or not it exists yet: the same resolved path, or a hard link.
 fn same(a: &Path, b: &Path) -> bool {
-    resolved(a) == resolved(b)
+    resolved(a) == resolved(b) || linked(a, b)
+}
+
+/// Whether two existing paths are hard links to one file (the same device and inode).
+#[cfg(unix)]
+fn linked(a: &Path, b: &Path) -> bool {
+    use std::os::unix::fs::MetadataExt;
+    match (a.metadata(), b.metadata()) {
+        (Ok(a), Ok(b)) => (a.dev(), a.ino()) == (b.dev(), b.ino()),
+        _ => false,
+    }
+}
+
+/// Hard links are not detected here: only the resolved path is compared.
+#[cfg(not(unix))]
+fn linked(_: &Path, _: &Path) -> bool {
+    false
 }
 
 /// The path with symlinks resolved as far as it exists: the file itself, else its folder with the name appended.

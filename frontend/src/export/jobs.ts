@@ -17,13 +17,16 @@ type ExportRequest = {
   path: string;
 };
 
-/** Where the session's export stands. A finished export stays until `dismiss`. */
+/** How far an export got, in frames. */
+type Frames = { done: number; total: number };
+
+/** Where the session's export stands. A finished export stays until `dismiss`, with how far it got. */
 export type ExportStatus =
   | { phase: "idle" }
-  | { phase: "running"; done: number; total: number; cancelling: boolean }
-  | { phase: "done"; path: string }
-  | { phase: "cancelled" }
-  | { phase: "failed"; reason: string; location?: string };
+  | ({ phase: "running"; cancelling: boolean } & Frames)
+  | ({ phase: "done"; path: string } & Frames)
+  | ({ phase: "cancelled" } & Frames)
+  | ({ phase: "failed"; reason: string; location?: string } & Frames);
 
 const IDLE: ExportStatus = { phase: "idle" };
 
@@ -71,18 +74,33 @@ export class ExportJobs {
   receive(message: Extract<ServerMessage, { type: "Export" }>): void {
     if (message.job !== this.#job || this.#status.phase !== "running") return;
     const { state } = message;
+    const { cancelling, done, total } = this.#status;
     if (state.state === "Running") {
-      const { cancelling } = this.#status;
       this.#set({ phase: "running", done: state.done, total: state.total, cancelling });
-    } else if (state.state === "Done") this.#set({ phase: "done", path: this.#path });
-    else if (state.state === "Cancelled") this.#set({ phase: "cancelled" });
-    else this.#set({ phase: "failed", reason: reasonOf(state), location: state.location });
+    } else if (state.state === "Done")
+      this.#set({ phase: "done", path: this.#path, done: total, total });
+    else if (state.state === "Cancelled") this.#set({ phase: "cancelled", done, total });
+    else
+      this.#set({
+        phase: "failed",
+        reason: reasonOf(state),
+        location: state.location,
+        done,
+        total,
+      });
   }
 
   /** The socket closed: a running export ended with it. */
   lost(): void {
-    if (this.#status.phase === "running")
-      this.#set({ phase: "failed", reason: "The connection to the backend was lost." });
+    if (this.#status.phase === "running") {
+      const { done, total } = this.#status;
+      this.#set({
+        phase: "failed",
+        reason: "The connection to the backend was lost.",
+        done,
+        total,
+      });
+    }
   }
 
   /** Forgets a finished export. */

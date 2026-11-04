@@ -116,6 +116,81 @@ describe("export dialog", () => {
     ]);
   });
 
+  it("says the render catalogs are still loading only while a lane is", () => {
+    const message = "Render catalogs are still loading.";
+    const { unmount } = render(
+      <ExportDialog
+        jobs={new ExportJobs(() => {})}
+        view={VIEW}
+        name="clip.mp4"
+        onClose={() => {}}
+      />,
+    );
+    expect(screen.getByText(message)).toBeTruthy();
+    unmount();
+    const warm = { ...VIEW, lanes: [lane("DPM", { source: 0, status: READY })] };
+    render(
+      <ExportDialog
+        jobs={new ExportJobs(() => {})}
+        view={warm}
+        name="clip.mp4"
+        onClose={() => {}}
+      />,
+    );
+    expect(screen.queryByText(message)).toBeNull();
+  });
+
+  it("offers no lane choice for one lane, which is exported", () => {
+    const sent: ClientMessage[] = [];
+    const view = { ...VIEW, lanes: [lane("DPM", { source: 0, status: READY })] };
+    render(
+      <ExportDialog
+        jobs={new ExportJobs((message) => sent.push(message))}
+        view={view}
+        name="clip.mp4"
+        onClose={() => {}}
+      />,
+    );
+    expect(screen.queryByText("Lanes")).toBeNull();
+    type("Path on the server", "/out/clip.mp4");
+    press("Export");
+    expect(sent).toMatchObject([{ type: "Export", lanes: [{ lane: 0 }] }]);
+  });
+
+  it("takes a single lane whatever was unchecked, and says why a single lane failed", () => {
+    const ready = { ...VIEW, lanes: [lane("DPM", { source: 0, status: READY })] };
+    const jobs = new ExportJobs(() => {});
+    const { rerender } = render(
+      <ExportDialog jobs={jobs} view={VIEW} name="clip.mp4" only={0} onClose={() => {}} />,
+    );
+    // GT, unchecked by `only`, is now the only visible lane.
+    const one = {
+      ...VIEW,
+      lanes: [VIEW.lanes[0], lane("GT", { ...VIEW.lanes[2], status: READY })],
+    };
+    one.lanes[0] = { ...one.lanes[0], settings: { ...LANE_SETTINGS, visible: false } };
+    rerender(<ExportDialog jobs={jobs} view={one} name="clip.mp4" only={0} onClose={() => {}} />);
+    type("Path on the server", "/out/clip.mp4");
+    expect((screen.getByRole("button", { name: "Export" }) as HTMLButtonElement).disabled).toBe(
+      false,
+    );
+    cleanup();
+
+    const failed = {
+      ...ready,
+      lanes: [
+        lane("DPM", {
+          source: 0,
+          status: { status: "Loading" },
+          catalogRevision: undefined,
+          catalogProblem: "Catalog broke.",
+        }),
+      ],
+    };
+    render(<ExportDialog jobs={jobs} view={failed} name="clip.mp4" onClose={() => {}} />);
+    expect(screen.getByRole("alert").textContent).toBe("Catalog broke.");
+  });
+
   it("starts with just the lane a lane menu was used on checked", () => {
     const both = {
       ...VIEW,
@@ -133,6 +208,20 @@ describe("export dialog", () => {
     type("Path on the server", "/out/frame.png");
     press("Export");
     expect(exported()[0]).toMatchObject({ first: 40, last: 40, format: { format: "Png" } });
+  });
+
+  it("appends the format's extension to a path that lacks it, and keeps one that has it", () => {
+    for (const [typed, saved] of [
+      ["/out/clip", "/out/clip.mp4"],
+      ["/out/clip.mov", "/out/clip.mov.mp4"],
+      ["/out/CLIP.MP4", "/out/CLIP.MP4"],
+    ]) {
+      const { exported } = open();
+      type("Path on the server", typed);
+      press("Export");
+      expect(exported()[0]).toMatchObject({ path: saved });
+      cleanup();
+    }
   });
 
   it("refuses a range outside the video", () => {
@@ -153,7 +242,8 @@ describe("export dialog", () => {
     press("Cancel");
     expect(sent.at(-1)).toEqual({ type: "CancelExport", job: 1 });
     say(jobs, 1, { state: "Cancelled" });
-    expect(screen.getByRole("status").textContent).toBe("Export cancelled");
+    expect(screen.getByRole("status").textContent).toBe("Cancelled");
+    expect(screen.getByRole("progressbar").getAttribute("aria-valuenow")).toBe("25");
   });
 
   it("tells where the file went, or why the export failed, and closes", () => {
@@ -161,7 +251,7 @@ describe("export dialog", () => {
     type("Path on the server", "/out/clip.mp4");
     press("Export");
     say(jobs, 1, { state: "Failed", code: "Internal", params: {}, reason: "No encoder." });
-    expect(screen.getByRole("alert").textContent).toBe("No encoder.");
+    expect(screen.getByRole("alert").textContent).toBe("Error: No encoder.");
     press("Close");
     expect(onClose).toHaveBeenCalled();
     expect(jobs.getSnapshot()).toEqual({ phase: "idle" });
