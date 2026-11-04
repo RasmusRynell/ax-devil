@@ -30,18 +30,22 @@ fn flat(n: u8) -> (Vec<u8>, Vec<u8>, Vec<u8>) {
 }
 
 #[test]
-fn an_mp4_keeps_the_times_the_frames_were_given_and_their_pictures() {
+fn an_mp4_of_every_quality_keeps_the_times_the_frames_were_given_and_their_pictures() {
+    for quality in [
+        Quality::Lossless,
+        Quality::High,
+        Quality::Balanced,
+        Quality::Small,
+    ] {
+        an_mp4_keeps_times_and_pictures(quality);
+    }
+}
+
+fn an_mp4_keeps_times_and_pictures(quality: Quality) {
     let folder = tempfile::tempdir().expect("a temporary folder");
     let path = folder.path().join("out.mp4");
-    let mut encoder = Encoder::create(
-        &path,
-        EncodeFormat::Mp4 {
-            quality: Quality::Balanced,
-        },
-        WIDTH,
-        HEIGHT,
-    )
-    .expect("an encoder");
+    let mut encoder =
+        Encoder::create(&path, EncodeFormat::Mp4 { quality }, WIDTH, HEIGHT).expect("an encoder");
     for (n, (start, duration)) in TIMES.into_iter().enumerate() {
         let (y, u, v) = flat(n as u8);
         let picture = Picture::I420 {
