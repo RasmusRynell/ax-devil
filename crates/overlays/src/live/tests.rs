@@ -12,7 +12,7 @@ use handler_api::{
     DecodeError, DecodeSummary, Decoder, Form, Framing, Input, OnEqualKey, Record, SceneSink,
     Settings, Spec, Values,
 };
-use overlay_sync::{MatchPolicy, Tolerance};
+use overlay_sync::{MatchPolicy, Sticky, Tolerance};
 use scene::{
     BoundingBox, Coverage, Entity, EntityId, Event, FilterPolicy, Geometry, MatchBasis,
     Observation, Operation, Scene, SceneTime, TimeSlice,
@@ -313,6 +313,35 @@ fn sticky_keeps_only_a_sample_that_matched_a_frame() {
     assert_eq!(cell(2, 1_200_000), (1, 2));
     // The sticky timeout counts from the admitted sample.
     assert_eq!(cell(3, 3_200_000), (NONE_CELL, 0));
+}
+
+#[test]
+fn sticky_turned_back_on_starts_empty_until_a_new_match() {
+    let track = track_of(&["1000000", "2000000"]);
+    let mut lane = lane_over(&track);
+    let policy = |enabled| LanePolicy {
+        matching: MatchPolicy {
+            sticky: Sticky {
+                enabled,
+                ..Sticky::default()
+            },
+            ..MatchPolicy::default()
+        },
+        subscribed: true,
+    };
+    let mut cell = |n: u64, at: i64, enabled: bool| {
+        let out = lane.release(frame(n, at), &track.snapshot(), &policy(enabled));
+        (out.map.samples[0], out.map.kinds[0])
+    };
+
+    assert_eq!(cell(0, 1_010_000, true), (0, 1));
+    assert_eq!(cell(1, 1_500_000, true), (0, 2));
+    // Sticky off shows nothing and forgets sample 0; on again, it does not come back.
+    assert_eq!(cell(2, 1_600_000, false), (NONE_CELL, 0));
+    assert_eq!(cell(3, 1_700_000, true), (NONE_CELL, 0));
+    // A new match is kept again.
+    assert_eq!(cell(4, 2_010_000, true), (1, 1));
+    assert_eq!(cell(5, 2_500_000, true), (1, 2));
 }
 
 #[test]
