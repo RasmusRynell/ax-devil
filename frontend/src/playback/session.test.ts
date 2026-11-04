@@ -71,6 +71,31 @@ describe("cached frames", () => {
   });
 });
 
+describe("autoplay", () => {
+  it("plays from the first frame once it is shown", async () => {
+    const { session, server, presented, intents, refresh } = await setup(undefined, {
+      autoplay: true,
+    });
+    server.open();
+    expect(session.getSnapshot().playing).toBe(false);
+    server.frames(0, 1, 2);
+    refresh();
+    expect(session.getSnapshot().playing).toBe(true);
+    expect(intents.at(-1)).toMatchObject({ frame: 0, playing: true });
+    refresh(40);
+    expect(presented).toEqual([0, 1]);
+  });
+
+  it("does not play after the viewer acted before the first frame came", async () => {
+    const { session, server, refresh } = await setup(undefined, { autoplay: true });
+    server.open();
+    session.seek(2);
+    server.frames(2);
+    refresh();
+    expect(session.getSnapshot()).toMatchObject({ playing: false, shown: { sequenceId: 2 } });
+  });
+});
+
 describe("resuming", () => {
   it("opens where an earlier session left off, paused, at the speed it had", async () => {
     const { session, server, sent, presented, refresh } = await setup({ frame: 7, speed: 2 });
@@ -257,10 +282,10 @@ describe("frames that failed to decode", () => {
     });
   });
 
-  it("finishes playing when the last frame failed instead of waiting for it", async () => {
-    const { session, server, refresh } = await setup();
-    server.open(3);
-    server.frames(0, 1);
+  it("stops playing on a failed frame instead of skipping it, and keeps its reason on screen", async () => {
+    const { session, server, intents, refresh } = await setup();
+    server.open();
+    server.frames(0, 1, 3);
     server.say({
       type: "FrameError",
       sequence_id: 2,
@@ -271,8 +296,15 @@ describe("frames that failed to decode", () => {
     refresh();
     session.play();
     refresh();
-    refresh(1000);
-    expect(session.getSnapshot()).toMatchObject({ playing: false, shown: { sequenceId: 1 } });
+    refresh(40);
+    refresh(80);
+    expect(session.getSnapshot()).toMatchObject({
+      playing: false,
+      playhead: 2,
+      shown: { sequenceId: 1 },
+      frameError: { sequenceId: 2, reason: "truncated" },
+    });
+    expect(intents.at(-1)).toEqual({ frame: 2, playing: false, speed: 1 });
   });
 });
 

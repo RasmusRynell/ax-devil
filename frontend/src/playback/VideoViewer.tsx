@@ -381,6 +381,9 @@ export function VideoViewer({
       ticket,
       connect,
       resume: start,
+      // An open with no position to come back to plays; a resumed tab or a followed clock stays as it is. A seat that
+      // cannot publish its clock would play again on every return, as nothing remembers it was left.
+      autoplay: start.frame === undefined && !latest.current.following && latest.current.canChange,
       lanes: priorLanes.current,
       defaultCatalog: () => defaultCatalog.current || null,
       defaultTiming: () => defaultTiming.current,

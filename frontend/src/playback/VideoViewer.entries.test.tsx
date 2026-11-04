@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vite-plus/test";
 import { FakeSocket, video } from "../session/fakeSession";
 import { SessionProvider } from "../session/session";
 import { SessionStore } from "../session/store";
+import { videoFrame } from "./fakePlayback";
 import type { ClientMessage } from "./protocol";
 import {
   Viewer,
@@ -32,6 +33,13 @@ describe("video viewer entries", () => {
     FakeSocket.sockets
       .flatMap((socket) => socket.received)
       .flatMap((m) => (m.type === "command" && m.cmd.type === "requestTicket" ? [m.cmd.key] : []));
+  /** The backend sends frame `id` on the newest playback socket, and the display refreshes. */
+  const showFrame = (id: number) => {
+    act(() =>
+      sockets.at(-1)?.({ type: "envelope", envelope: { kind: "frame", frame: videoFrame(id) } }),
+    );
+    flushFrames();
+  };
   const mount = async (sent: ClientMessage[], entryId?: string) => {
     render(
       <SessionProvider>
@@ -49,6 +57,9 @@ describe("video viewer entries", () => {
     act(() => room.setItems([video("a")]));
     expect((await slider()).value).toBe("37");
     expect(tickets().at(-1)).toMatchObject({ content: "content-a", entry: "content-a" });
+    // An entry opened at a frame stays paused there.
+    showFrame(37);
+    expect(screen.getByRole("button", { name: "Play" })).toBeTruthy();
 
     // The playlist viewer shows another entry: its position is its own, and none of entry A's goes into it.
     sent.length = 0;
@@ -61,6 +72,14 @@ describe("video viewer entries", () => {
     expect(tickets().at(-1)).toMatchObject({ entry: "content-b" });
     flushFrames();
     expect(room.presenter.viewers.a).toEqual({ entry: "content-b" });
+  });
+
+  it("plays an ordinary open from its first frame once that is shown", async () => {
+    const room = await mount([]);
+    act(() => room.setItems([video("a")]));
+    expect(await screen.findByRole("button", { name: "Play" })).toBeTruthy();
+    showFrame(0);
+    expect(screen.getByRole("button", { name: "Pause" })).toBeTruthy();
   });
 
   it("reopens an entry where it was left when the view comes back to it, and a first visit starts at its first frame", async () => {

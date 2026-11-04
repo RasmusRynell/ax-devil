@@ -84,6 +84,8 @@ export class PlaybackSession implements LaneControl {
   #speed = 1;
   /** The frame to reopen on. */
   #resumeAt: number | undefined;
+  /** An ordinary open plays from its first frame once that is shown, unless the viewer acts first. */
+  #autoplay: boolean;
   /** A lost connection took a running clock: the reopened one is paused, so the intent is stale. */
   #stoppedByLoss = false;
   #cancelFrame: (() => void) | undefined;
@@ -98,6 +100,7 @@ export class PlaybackSession implements LaneControl {
     this.#deps = deps;
     this.#budget = deps.budgetBytes ?? BUFFER_BUDGET_BYTES;
     this.#resumeAt = deps.resume?.frame;
+    this.#autoplay = deps.autoplay === true;
     this.#speed = clampSpeed(deps.resume?.speed ?? 1);
     this.#link = new Link(deps, {
       open: () => ({
@@ -196,6 +199,7 @@ export class PlaybackSession implements LaneControl {
   }
 
   play(): void {
+    this.#autoplay = false;
     const clock = this.#clock;
     if (!clock || clock.playing) return;
     clock.play();
@@ -205,6 +209,7 @@ export class PlaybackSession implements LaneControl {
   }
 
   pause(): void {
+    this.#autoplay = false;
     this.#clock?.pause();
     this.#changed();
     this.#intend();
@@ -218,6 +223,7 @@ export class PlaybackSession implements LaneControl {
   /** Steps relative to the requested position. Holding the key calls this repeatedly. */
   step(delta: number): void {
     if (!this.#clock) return;
+    this.#autoplay = false;
     this.#clock.step(delta);
     this.#wait.restart();
     this.#planner?.stepped(delta);
@@ -233,6 +239,7 @@ export class PlaybackSession implements LaneControl {
   /** Jumps to a frame; playing goes on from there. */
   seek(sequenceId: number): void {
     if (!this.#clock) return;
+    this.#autoplay = false;
     this.#clock.seek(sequenceId);
     this.#wait.restart();
     this.#changed();
@@ -258,6 +265,7 @@ export class PlaybackSession implements LaneControl {
    * clocks run alike. A reconnection puts the clock back in step the same way.
    */
   follow(intent: ClockIntent, serverNowUs: () => number): void {
+    this.#autoplay = false;
     this.#followed = { intent, serverNowUs };
     this.#data.files.setOwner(false);
     this.#applyFollowed();
@@ -413,7 +421,10 @@ export class PlaybackSession implements LaneControl {
     const presented = clock.tick(this.#source);
     // Playing ended on its own at the last frame: the intent is a pause there, unless it follows a presenter.
     if (wasPlaying && !clock.playing && !this.#followed) this.#intend();
-    if (presented !== undefined) this.#draw(presented);
+    if (presented !== undefined) {
+      this.#draw(presented);
+      if (this.#autoplay) this.play();
+    }
     this.#sendWant();
     this.#holdForData(clock, presented !== undefined);
     this.#publish();
@@ -438,7 +449,7 @@ export class PlaybackSession implements LaneControl {
 
   #noteFailure(sequenceId: number, reason: string): void {
     this.#failures.note(sequenceId, reason);
-    this.#clock?.skip(sequenceId);
+    this.#clock?.fail(sequenceId);
   }
 
   /** Sends the window when it differs from the last; the buffer keeps that window. */
