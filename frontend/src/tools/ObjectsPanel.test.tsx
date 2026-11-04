@@ -170,6 +170,15 @@ describe("File scope", () => {
     fireEvent.keyDown(list, { key: "ArrowDown" });
     fireEvent.keyDown(list, { key: "Enter" });
     expect(selected.at(-1)).toBe("r41");
+    fireEvent.keyDown(screen.getByRole("region", { name: "Object page" }), { key: "Escape" });
+
+    // A cursor that moves while a new sort is awaited is what that question locates.
+    fireEvent.click(screen.getByRole("button", { name: /^Sort by ID/ }));
+    fireEvent.keyDown(list, { key: "ArrowDown" });
+    act(() => {
+      vi.advanceTimersByTime(150);
+    });
+    expect(last().locate).toBe("r42");
   });
 
   it("seeks to the frame under a click on the presence strip", () => {

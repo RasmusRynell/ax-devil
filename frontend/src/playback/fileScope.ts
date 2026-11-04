@@ -147,6 +147,16 @@ export class FileScope {
     this.#replace(lane, slot, { ...slot.view, pending: true });
   }
 
+  /**
+   * Names the object whose row the lane's list page tells from now on, as the viewer's cursor moves. Nothing is sent
+   * for it; the next question, a refresh or a re-ask included, carries it. If the answer awaited was asked about
+   * another object and does not hold this one, it is asked again once that answer is in.
+   */
+  locating(lane: number, locate: string | null): void {
+    const slot = this.#slots.get(lane);
+    if (slot) slot.wanted.locate = locate;
+  }
+
   /** Stops wanting the lane's list, as when it is not shown, and tells the backend if it was ever asked on this socket. */
   release(lane: number): void {
     const slot = this.#slots.get(lane);
@@ -214,8 +224,12 @@ export class FileScope {
         return;
       const { total, matched, offset, rows, located } = message;
       slot.asked = null;
+      // The cursor moved to an object this page neither locates nor holds while the question was out.
+      const key = slot.wanted.locate;
+      const lost = key !== null && located?.id !== key && !rows.some(({ id }) => id === key);
+      if (lost) this.#schedule(message.lane, slot, DEBOUNCE_MS);
       this.#replace(message.lane, slot, {
-        pending: false,
+        pending: lost,
         page: { total, matched, offset, rows, located },
         unavailable: null,
       });

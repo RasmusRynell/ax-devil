@@ -37,7 +37,8 @@ import { Table, type TableMemory } from "./table/Table";
 
 /** What the panel reads of a viewer and asks of it: `PlaybackSession` is one. */
 export interface ObjectSource {
-  readonly files: Pick<FileScope, "request" | "release" | "subscribe" | "view"> & AppearanceSource;
+  readonly files: Pick<FileScope, "request" | "locating" | "release" | "subscribe" | "view"> &
+    AppearanceSource;
   /** What the lane drew on the frame on screen. */
   shown(lane: number): LaneFrame | undefined;
   frameTime(frame: number): number | undefined;
@@ -249,6 +250,7 @@ export function ObjectsList({
             dimmed={(row) => absent(row.id)}
             onActivate={(row) => choose(row.id, absent(row.id) ? row.first_frame : undefined)}
             onRange={onRange}
+            onCursor={(key) => from === null && source.files.locating(lane, key)}
             cursorId={(row) => `row:object-${row.id}`}
           />
         ) : (

@@ -154,6 +154,7 @@ export function Table<Row>({
   onSort,
   onActivate,
   onRange,
+  onCursor,
   cursorId,
   busy,
   message,
@@ -179,6 +180,8 @@ export function Table<Row>({
   onActivate: (row: Row, index: number) => void;
   /** The rows in view changed. */
   onRange?: (start: number, end: number) => void;
+  /** The cursor is on the row with this key. */
+  onCursor?: (key: string) => void;
   /** The shared-pointer id of a row. */
   cursorId: (row: Row) => string;
   busy?: boolean;
@@ -196,17 +199,18 @@ export function Table<Row>({
 
   useEffect(() => onRange?.(start, end), [onRange, start, end]);
 
-  const latest = useRef({ rowAt, keyOf, onActivate, memory });
+  const latest = useRef({ rowAt, keyOf, onActivate, onCursor, memory });
   useLayoutEffect(() => {
-    latest.current = { rowAt, keyOf, onActivate, memory };
+    latest.current = { rowAt, keyOf, onActivate, onCursor, memory };
   });
   /** Puts the cursor on the row at `index`. */
   const place = useCallback((index: number) => {
-    const { rowAt, keyOf, memory } = latest.current;
+    const { rowAt, keyOf, onCursor, memory } = latest.current;
     const row = rowAt(index);
     const key = row === undefined ? null : keyOf(row);
     setCursor({ key, index, waiting: row === undefined });
     if (memory) memory.cursor = key;
+    if (key !== null) onCursor?.(key);
     return row;
   }, []);
   const pick = useCallback(
@@ -239,6 +243,7 @@ export function Table<Row>({
     const key = keyOf(row);
     setCursor({ key, index: cursor.index });
     if (memory) memory.cursor = key;
+    onCursor?.(key);
   });
 
   const go = (index: number) => {
