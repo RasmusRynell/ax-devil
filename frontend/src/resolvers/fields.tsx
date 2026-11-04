@@ -123,7 +123,10 @@ const CONTROLS: Record<FieldKindWire["kind"], Control> = {
     <Select
       label={field.label}
       value={text(form, field)}
-      options={form.decoders.map((decoder) => [decoder.handler, decoder.display_name] as const)}
+      options={[
+        ["", "Select a decoder"],
+        ...form.decoders.map((decoder) => [decoder.handler, decoder.display_name] as const),
+      ]}
       onChange={(value) => form.set(field.key, value)}
     />
   ),

@@ -1,14 +1,17 @@
-import { useEffect, useState } from "react";
-import type { DecoderInfo, HandlersInfo, ResolverInfo } from "../generated/api";
+import { useState } from "react";
+import type { DecoderInfo, ResolverInfo } from "../generated/api";
 import { Dialog, DialogBody } from "../kit/Dialog";
 import { Select, TextField } from "../kit/Fields";
-import { fetchHandlers } from "../resolvers/handlers";
 import { needsValue, shown } from "../resolvers/fields";
 import { ResolverForm, useResolverForm } from "../resolvers/ResolverForm";
+import { HandlersFailure, useHandlers } from "../resolvers/useHandlers";
 import { useCommand } from "../session/session";
 import { Refusal } from "./SettingField";
 
 const NO_DECODERS: readonly DecoderInfo[] = [];
+
+/** The name of the file at `path`, without its folders. */
+const fileName = (path: string) => path.trim().split(/[\\/]/).pop() ?? "";
 
 /**
  * The decoders that read a file named `path`, else all of them, so a file of an unknown kind can still be assigned.
@@ -19,12 +22,16 @@ export function decodersFor(
   decoders: readonly DecoderInfo[],
   path: string,
 ): readonly DecoderInfo[] {
-  const name = (path.trim().split(/[\\/]/).pop() ?? "").toLowerCase();
+  const name = fileName(path).toLowerCase();
   const reading = decoders.filter((decoder) =>
     decoder.extensions.some((extension) => name.endsWith(extension)),
   );
   return reading.length ? reading : decoders;
 }
+
+/** The decoders to choose from for the overlay typed as `text`: none while it is blank. */
+const candidatesFor = (decoders: readonly DecoderInfo[], text: string) =>
+  text.trim() ? decodersFor(decoders, text) : [];
 
 /** A decoder's options as the form a resolver's settings are, so the same field controls draw them. */
 const optionsForm = (decoder?: DecoderInfo): ResolverInfo => ({
@@ -41,27 +48,18 @@ const optionsForm = (decoder?: DecoderInfo): ResolverInfo => ({
  */
 export function AddVideoDialog({ onClose }: { onClose: () => void }) {
   const command = useCommand();
-  const [handlers, setHandlers] = useState<HandlersInfo | null>(null);
+  const { handlers, failure: unavailable, retry } = useHandlers();
   const [path, setPath] = useState("");
   const [overlay, setOverlay] = useState("");
   const [picked, setPicked] = useState("");
   const [tried, setTried] = useState(false);
   const [failure, setFailure] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  useEffect(() => {
-    const request = new AbortController();
-    // Without the handlers the overlay is sent for the backend to judge, with no options to ask for.
-    fetchHandlers(request.signal).then(
-      (answer) => {
-        if (answer.ok) setHandlers(answer.value);
-      },
-      () => undefined, // aborted: the dialog closed
-    );
-    return () => request.abort();
-  }, []);
-
-  const candidates = overlay.trim() ? decodersFor(handlers?.decoders ?? NO_DECODERS, overlay) : [];
-  const decoder = candidates.find((one) => one.handler === picked) ?? candidates[0];
+  const candidates = candidatesFor(handlers?.decoders ?? NO_DECODERS, overlay);
+  // Only a sole candidate is chosen for the user; with several, a pick stays only while it is still a candidate.
+  const decoder =
+    candidates.length === 1 ? candidates[0] : candidates.find((one) => one.handler === picked);
+  const undecided = candidates.length > 1 && !decoder;
   const form = useResolverForm(optionsForm(decoder), handlers?.decoders ?? NO_DECODERS);
   const missing = form.resolver.fields.find(
     (field) => needsValue(field) && !shown(field, form.values).trim(),
@@ -108,7 +106,13 @@ export function AddVideoDialog({ onClose }: { onClose: () => void }) {
     }
   };
   return (
-    <Dialog title="Add video" okLabel="Add" onOk={() => void ok()} onCancel={onClose} busy={busy}>
+    <Dialog
+      title="Add video"
+      okLabel="Add"
+      onOk={() => void ok()}
+      onCancel={onClose}
+      busy={busy || undecided}
+    >
       <DialogBody>
         <TextField
           label="Path on the server"
@@ -124,19 +128,32 @@ export function AddVideoDialog({ onClose }: { onClose: () => void }) {
             value={overlay}
             onChange={(text) => {
               setOverlay(text);
+              // A pick that does not read this file is forgotten, so it cannot return for a later one.
+              if (!candidatesFor(handlers.decoders, text).some((one) => one.handler === picked)) {
+                setPicked("");
+              }
               setFailure(null);
             }}
           />
         )}
         {candidates.length > 1 && (
           <Select
-            label="Overlay format"
+            label="Data handler"
             value={decoder?.handler ?? ""}
-            options={candidates.map((one) => [one.handler, one.display_name] as const)}
+            options={[
+              ["", "(None)"],
+              ...candidates.map((one) => [one.handler, one.display_name] as const),
+            ]}
             onChange={setPicked}
           />
         )}
+        {undecided && (
+          <p role="status" className="m-0 text-muted">
+            {`Choose the data handler that reads ${fileName(overlay)}.`}
+          </p>
+        )}
         {decoder && <ResolverForm form={form} />}
+        {unavailable && <HandlersFailure failure={unavailable} retry={retry} />}
         {tried && overlay.trim() && missing && <Refusal reason={`${missing.label} is required`} />}
         {failure && <Refusal reason={failure} />}
       </DialogBody>

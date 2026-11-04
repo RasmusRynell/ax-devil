@@ -8,6 +8,7 @@ import {
   checkedCount,
   chosen,
   idleScan,
+  listed,
   scanChoices,
   scanFailed,
   scanFinished,
@@ -20,15 +21,17 @@ import {
 } from "./scan";
 
 interface State {
-  resolverId: string;
   values: Settings;
   scans: Record<string, ScanView>;
 }
 
-type Action =
-  | { type: "reset"; state: State }
+/** The form of each resolver the user has opened, by resolver id. */
+type Forms = ReadonlyMap<string, State>;
+
+type Action = { resolver: ResolverInfo } & (
   | { type: "set"; key: string; value: string; invalidated: readonly string[] }
-  | { type: "scan"; key: string; update: (view: ScanView) => ScanView };
+  | { type: "scan"; key: string; update: (view: ScanView) => ScanView }
+);
 
 const blank = (value: unknown) => typeof value !== "string" || value.trim() === "";
 
@@ -36,19 +39,15 @@ const scanFields = (resolver: ResolverInfo) =>
   resolver.fields.filter((field) => field.kind.kind === "Scan");
 
 /**
- * The fields' starting text: the saved settings, whatever else they hold kept, with each decoder choice filled in. The
- * saved options of a decoder become the text of its option fields, under `<field key>.<option key>`.
+ * The fields' starting text: the saved settings, whatever else they hold kept. A decoder choice starts blank unless
+ * saved. The saved options of a decoder become the text of its option fields, under `<field key>.<option key>`.
  */
-function start(
-  resolver: ResolverInfo,
-  decoders: readonly DecoderInfo[],
-  initial: Settings = {},
-): State {
+function start(resolver: ResolverInfo, initial?: Settings): State {
   const values = { ...initial };
   const scans: Record<string, ScanView> = {};
   for (const field of resolver.fields) {
     if (field.kind.kind === "Scan") {
-      scans[field.key] = idleScan(values[field.key]);
+      scans[field.key] = idleScan(values[field.key], initial !== undefined);
       delete values[field.key];
     } else if (field.kind.kind === "DecoderOptions") {
       const saved = values[field.key];
@@ -57,20 +56,16 @@ function start(
         for (const [option, value] of Object.entries(saved))
           values[`${field.key}.${option}`] = String(value);
       }
-    } else if (field.kind.kind === "Handler" && typeof values[field.key] !== "string") {
-      values[field.key] = decoders[0]?.handler ?? "";
     }
   }
-  return { resolverId: resolver.id, values, scans };
+  return { values, scans };
 }
 
-function reduce(state: State, action: Action): State {
+function reduce(forms: Forms, action: Action): Forms {
+  const state = forms.get(action.resolver.id) ?? start(action.resolver);
   switch (action.type) {
-    case "reset":
-      return action.state;
     case "set":
-      return {
-        ...state,
+      return new Map(forms).set(action.resolver.id, {
         values: { ...state.values, [action.key]: action.value },
         scans: {
           ...state.scans,
@@ -78,14 +73,12 @@ function reduce(state: State, action: Action): State {
             action.invalidated.map((key) => [key, scanInvalidated(state.scans[key])]),
           ),
         },
-      };
+      });
     case "scan":
-      // A scan of a resolver left a moment ago may still land.
-      if (!state.scans[action.key]) return state;
-      return {
+      return new Map(forms).set(action.resolver.id, {
         ...state,
         scans: { ...state.scans, [action.key]: action.update(state.scans[action.key]) },
-      };
+      });
   }
 }
 
@@ -144,11 +137,21 @@ function settingsOf(
   const { settings, complete } = effective(resolver, state.values, decoders);
   for (const field of scanFields(resolver)) {
     const view = state.scans[field.key];
-    if (view?.phase !== "done" || checkedCount(view) === 0) return null;
+    // Nothing checked still loads: the dialog tells that it is nothing (`unchosen`) rather than disabling Load.
+    if (view?.phase !== "done" || listed(view).length === 0) return null;
     const names = chosen(view);
     if (names) settings[field.key] = names;
   }
   return complete ? settings : null;
+}
+
+/** The message for a done scan that found values with none checked, else `null`. */
+function unchosenOf(resolver: ResolverInfo, state: State): string | null {
+  const empty = scanFields(resolver).find((field) => {
+    const view = state.scans[field.key];
+    return view?.phase === "done" && listed(view).length > 0 && checkedCount(view) === 0;
+  });
+  return empty ? `No ${empty.label.toLowerCase()} selected.` : null;
 }
 
 /** The failed scans to show at `field`, each at the setting it names or else at its own field. */
@@ -176,12 +179,15 @@ export interface ResolverFormState extends FieldForm {
   resolver: ResolverInfo;
   /** What loading sends, or `null` while the form cannot load. */
   settings: Settings | null;
+  /** Why loading must not go on although `settings` is complete: a scan found values and none is checked. */
+  unchosen: string | null;
 }
 
 /**
- * The state of the form a resolver's schema declares. A `Scan` field scans when asked or when a picked path it reads
- * changes; editing anything it reads empties it and stops its scan, the newest scan alone fills it, and leaving
- * stops them all. `initial` holds saved settings: unknown keys are kept, a saved list is the selection (saved
+ * The state of the form a resolver's schema declares. Each resolver the hook is given keeps its own form, so going
+ * back to one finds it as it was. A `Scan` field scans when asked or when a picked path it reads changes; editing
+ * anything it reads empties it and stops its scan, the newest scan alone fills it, and unmounting stops them all.
+ * `initial` holds the first resolver's saved settings: unknown keys are kept, a saved list is the selection (saved
  * names the scan lacks stay, marked), and the fields scan at once.
  */
 export function useResolverForm(
@@ -189,14 +195,18 @@ export function useResolverForm(
   decoders: readonly DecoderInfo[],
   initial?: Settings,
 ): ResolverFormState {
-  const [state, dispatch] = useReducer(reduce, undefined, () => start(resolver, decoders, initial));
+  const [forms, dispatch] = useReducer(
+    reduce,
+    undefined,
+    (): Forms => new Map([[resolver.id, start(resolver, initial)]]),
+  );
+  // A resolver not opened yet starts blank; its form is stored with its first edit.
+  const state = forms.get(resolver.id) ?? start(resolver);
   // Only the backend's own window shares its machine's folders with it.
   const bridge = useServerKind() === "local" ? window.axDevilWindow : undefined;
+  // Scans by `<resolver id>/<field key>`: a resolver left for another keeps scanning into its own form.
   const controllers = useRef(new Map<string, AbortController>());
-  // Another resolver is another form.
-  if (state.resolverId !== resolver.id) {
-    dispatch({ type: "reset", state: start(resolver, decoders) });
-  }
+  const slot = (key: string) => `${resolver.id}/${key}`;
 
   const canScanWith = (key: string, values: Settings) => {
     const kind = resolver.fields.find((field) => field.key === key)?.kind;
@@ -212,10 +222,10 @@ export function useResolverForm(
     return !kind.depends_on.some(unmet);
   };
   const run = (key: string, values: Settings) => {
-    controllers.current.get(key)?.abort();
+    controllers.current.get(slot(key))?.abort();
     const controller = new AbortController();
-    controllers.current.set(key, controller);
-    dispatch({ type: "scan", key, update: scanStarted });
+    controllers.current.set(slot(key), controller);
+    dispatch({ type: "scan", resolver, key, update: scanStarted });
     scanChoices(
       resolver.id,
       key,
@@ -225,9 +235,10 @@ export function useResolverForm(
       (answer) => {
         // A superseded or cancelled scan changes nothing.
         if (controller.signal.aborted) return;
-        controllers.current.delete(key);
+        controllers.current.delete(slot(key));
         dispatch({
           type: "scan",
+          resolver,
           key,
           update: (view) =>
             answer.ok ? scanFinished(view, answer.value) : scanFailed(view, answer.refusal),
@@ -237,8 +248,8 @@ export function useResolverForm(
     );
   };
   const stop = (key: string) => {
-    controllers.current.get(key)?.abort();
-    controllers.current.delete(key);
+    controllers.current.get(slot(key))?.abort();
+    controllers.current.delete(slot(key));
   };
 
   useEffect(() => {
@@ -247,14 +258,14 @@ export function useResolverForm(
         if (canScanWith(field.key, state.values)) run(field.key, state.values);
       }
     }
-    // Leaving the form, or the resolver, cancels what is still scanning.
+    // Leaving the form cancels what is still scanning.
     const running = controllers.current;
     return () => {
       for (const controller of running.values()) controller.abort();
       running.clear();
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- once per resolver: the saved settings are only the start
-  }, [resolver.id]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- once: the saved settings are only the start
+  }, []);
 
   return {
     resolver,
@@ -263,6 +274,7 @@ export function useResolverForm(
     values: state.values,
     scans: state.scans,
     settings: settingsOf(resolver, state, decoders),
+    unchosen: unchosenOf(resolver, state),
     canScan: (key) => canScanWith(key, state.values),
     scan: (key) => run(key, state.values),
     set: (key, value, commit = false) => {
@@ -271,15 +283,16 @@ export function useResolverForm(
         .filter((field) => field.kind.kind === "Scan" && field.kind.depends_on.includes(key))
         .map((field) => field.key);
       for (const dependant of invalidated) stop(dependant);
-      dispatch({ type: "set", key, value, invalidated });
+      dispatch({ type: "set", resolver, key, value, invalidated });
       if (commit) {
         for (const dependant of invalidated) {
           if (canScanWith(dependant, values)) run(dependant, values);
         }
       }
     },
-    toggle: (key, value) => dispatch({ type: "scan", key, update: (view) => toggled(view, value) }),
-    toggleAll: (key) => dispatch({ type: "scan", key, update: toggledAll }),
+    toggle: (key, value) =>
+      dispatch({ type: "scan", resolver, key, update: (view) => toggled(view, value) }),
+    toggleAll: (key) => dispatch({ type: "scan", resolver, key, update: toggledAll }),
   };
 }
 
