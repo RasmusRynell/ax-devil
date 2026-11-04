@@ -297,9 +297,10 @@ async fn two_lanes_tile_side_by_side_each_with_its_own_data_catalog_and_name() {
     if !can_export() {
         return;
     }
-    // Each lane's box is below the name tag its cell gets; frame 21 of the video is sequence 20.
-    let left = "21,1,36,28,20,16,1,1,1\n";
-    let right = "21,1,10,28,24,16,1,1,1\n";
+    // Each lane's box is below the name tag its cell gets, whose height follows the system font; frame 21 of the
+    // video is sequence 20.
+    let left = "21,1,36,34,20,10,1,1,1\n";
+    let right = "21,1,10,34,24,10,1,1,1\n";
     let overlays = [("left.txt", left), ("right.txt", right)];
     let mut scene = scene(
         "cfr_h264_gop10_bf2.mp4",
@@ -320,7 +321,7 @@ async fn two_lanes_tile_side_by_side_each_with_its_own_data_catalog_and_name() {
     let cell = WIDTH as usize;
     let frame = &frames[0];
     // Lane 0 is the left cell and draws red at its box; lane 1 the right cell, blue at its own box.
-    for (x, y) in [(36, 36), (56, 36), (46, 28), (46, 44)] {
+    for (x, y) in [(36, 38), (56, 38), (46, 34), (46, 44)] {
         assert_near(
             yuv_at(frame, x, y),
             yuv709(RED),
@@ -328,7 +329,7 @@ async fn two_lanes_tile_side_by_side_each_with_its_own_data_catalog_and_name() {
             &format!("red edge at {x},{y}"),
         );
     }
-    for (x, y) in [(10, 36), (34, 36), (22, 28), (22, 44)] {
+    for (x, y) in [(10, 38), (34, 38), (22, 34), (22, 44)] {
         let at = cell + x;
         assert_near(
             yuv_at(frame, at, y),
@@ -338,7 +339,7 @@ async fn two_lanes_tile_side_by_side_each_with_its_own_data_catalog_and_name() {
         );
     }
     // Each lane's catalog and data stay in its cell: the other's box position is plain picture.
-    for (x, y) in [(36, 36), (56, 36)] {
+    for (x, y) in [(36, 38), (56, 38)] {
         assert_near(
             yuv_at(frame, cell + x, y),
             [luma(20), 128, 128],
@@ -346,7 +347,7 @@ async fn two_lanes_tile_side_by_side_each_with_its_own_data_catalog_and_name() {
             "right cell, left box",
         );
     }
-    for (x, y) in [(10, 36), (22, 28)] {
+    for (x, y) in [(10, 38), (22, 34)] {
         assert_near(
             yuv_at(frame, x, y),
             [luma(20), 128, 128],
