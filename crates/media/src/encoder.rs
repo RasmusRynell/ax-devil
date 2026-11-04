@@ -436,3 +436,21 @@ impl Png {
             .ok_or_else(|| fail("no picture was written"))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::Quality;
+
+    #[test]
+    fn each_quality_has_its_rate_factor_and_speed_preset() {
+        let table = [
+            (Quality::Lossless, "0", "ultrafast"),
+            (Quality::High, "18", "veryfast"),
+            (Quality::Balanced, "23", "veryfast"),
+            (Quality::Small, "28", "fast"),
+        ];
+        for (quality, crf, preset) in table {
+            assert_eq!((quality.crf(), quality.preset()), (crf, preset));
+        }
+    }
+}
