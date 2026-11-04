@@ -1,5 +1,13 @@
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
-import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  createEvent,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import { GrantsContext } from "../access";
 import type { ClientMessage, ServerMessage } from "../generated/api";
 import type { LaneState } from "../playback/contract";
@@ -62,6 +70,16 @@ function open() {
 const press = (name: string) => fireEvent.click(screen.getByRole("button", { name }));
 const type = (label: string, value: string) =>
   fireEvent.change(screen.getByLabelText(label), { target: { value } });
+const disabled = (name: string) =>
+  (screen.getByRole("button", { name }) as HTMLButtonElement).disabled;
+/** Escape in the open dialog. */
+const escape = () =>
+  fireEvent(
+    document.querySelector("dialog") as HTMLDialogElement,
+    createEvent("cancel", document.querySelector("dialog") as HTMLDialogElement, {
+      cancelable: true,
+    }),
+  );
 const say = (
   jobs: ExportJobs,
   job: number,
@@ -202,6 +220,26 @@ describe("export dialog", () => {
     expect([checked("DPM"), checked("GT")]).toEqual([false, true]);
   });
 
+  it("has no Cancel to press before the export starts, and Escape still closes", () => {
+    const { onClose } = open();
+    expect(disabled("Cancel")).toBe(true);
+    escape();
+    expect(onClose).toHaveBeenCalled();
+  });
+
+  it("names a long lane in full while showing it elided", () => {
+    const name = "front-entrance-detections-2026-03-14";
+    const view = {
+      ...VIEW,
+      lanes: [lane(name, { source: 0, status: READY }), lane("GT", { source: 1, status: READY })],
+    };
+    render(
+      <ExportDialog jobs={new ExportJobs(() => {})} view={view} name="c.mp4" onClose={() => {}} />,
+    );
+    expect(screen.getByLabelText(name)).toBeTruthy();
+    expect(screen.getByTitle(name)).toBeTruthy();
+  });
+
   it("exports the frame on screen as a PNG", () => {
     const { exported } = open();
     fireEvent.change(screen.getByLabelText("Format"), { target: { value: "png" } });
@@ -244,6 +282,8 @@ describe("export dialog", () => {
     say(jobs, 1, { state: "Cancelled" });
     expect(screen.getByRole("status").textContent).toBe("Cancelled");
     expect(screen.getByRole("progressbar").getAttribute("aria-valuenow")).toBe("25");
+    expect(disabled("Cancel")).toBe(true);
+    expect(disabled("Close")).toBe(false);
   });
 
   it("tells where the file went, or why the export failed, and closes", () => {
@@ -252,6 +292,7 @@ describe("export dialog", () => {
     press("Export");
     say(jobs, 1, { state: "Failed", code: "Internal", params: {}, reason: "No encoder." });
     expect(screen.getByRole("alert").textContent).toBe("Error: No encoder.");
+    expect(disabled("Cancel")).toBe(true);
     press("Close");
     expect(onClose).toHaveBeenCalled();
     expect(jobs.getSnapshot()).toEqual({ phase: "idle" });
