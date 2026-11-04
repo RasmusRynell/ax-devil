@@ -13,6 +13,7 @@ layer = "entry"
 [workspace]
 members = [
   "crates/api-types",
+  "crates/camera",
   "crates/catalogs",
   "crates/export",
   "crates/foundation",

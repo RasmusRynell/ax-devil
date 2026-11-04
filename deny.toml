@@ -2,6 +2,8 @@
 # WTFPL is for ffmpeg-next, the FFmpeg binding of the media crate: it permits any use and redistribution, with no
 # conditions to meet in the packaged app. FFmpeg's own license is a separate question (docs/rebuild/13).
 # 0BSD (tslib) and Python-2.0 (argparse) come with electron-builder, packaging tools that are not part of the app.
+# CDLA-Permissive-2.0 (webpki-root-certs, the Mozilla CA bundle) is a permissive data licence.
+# The crate is only a wasm32 dependency of reqwest's rustls-platform-verifier, so no build of the app ships it.
 # Before adding a license, check its distribution terms for the packaged app (docs/rebuild/13-security-packaging-ops.md).
 [licenses]
 allow = [
@@ -13,6 +15,7 @@ allow = [
   "BSD-3-Clause",
   "BSL-1.0",
   "CC0-1.0",
+  "CDLA-Permissive-2.0",
   "ISC",
   "MIT",
   "MIT-0",

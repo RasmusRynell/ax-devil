@@ -47,6 +47,45 @@ void test("only media may depend on ffmpeg-next", () => {
   assert.match(problems[0], /export depends on ffmpeg-next/);
 });
 
+void test("camera depends on no workspace crate, and only camera may use the camera-side clients", () => {
+  assert.deepEqual(
+    problemsOf([
+      {
+        name: "camera",
+        layer: "services",
+        deps: ["reqwest", "http-auth", "retina", "rumqttc", "tokio-tungstenite"],
+      },
+    ]),
+    [],
+  );
+  const problems = problemsOf([
+    { name: "foundation", layer: "foundation" },
+    { name: "camera", layer: "services", deps: ["foundation"] },
+    { name: "sessions", layer: "services", deps: ["reqwest", "rumqttc", "tokio-tungstenite"] },
+  ]);
+  assert.equal(problems.length, 4);
+  assert.match(problems[0], /camera depends on foundation/);
+  assert.match(problems[1], /sessions depends on reqwest/);
+  assert.match(problems[2], /sessions depends on rumqttc/);
+  assert.match(problems[3], /sessions depends on tokio-tungstenite/);
+});
+
+void test("only the root crate may depend on camera", () => {
+  assert.deepEqual(
+    problemsOf([
+      { name: "camera", layer: "services" },
+      { name: "ax-devil", layer: "entry", deps: ["camera"] },
+    ]),
+    [],
+  );
+  const problems = problemsOf([
+    { name: "camera", layer: "services" },
+    { name: "sessions", layer: "services", deps: ["camera"] },
+  ]);
+  assert.equal(problems.length, 1);
+  assert.match(problems[0], /sessions depends on camera/);
+});
+
 void test("layers 1-3 may derive serde and ts-rs but stay free of the HTTP server", () => {
   assert.deepEqual(
     problemsOf([{ name: "sessions", layer: "services", deps: ["serde", "ts-rs"] }]),
