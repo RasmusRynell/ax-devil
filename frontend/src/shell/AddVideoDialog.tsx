@@ -112,6 +112,7 @@ export function AddVideoDialog({ onClose }: { onClose: () => void }) {
             </Button>
           </>
         )}
+        {!path.trim() && <Refusal reason="Choose a video file to continue." />}
         {unavailable && <HandlersFailure failure={unavailable} retry={retry} />}
         {failure && <Refusal reason={failure} />}
       </DialogBody>

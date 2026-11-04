@@ -92,13 +92,13 @@ it("offers every handler, chooses the sole one that reads the file, and waits fo
 
   await overlay("/data/v1.jsonl");
   expect(handlerAt().value).toBe("");
-  expect(screen.getByRole("status").textContent).toBe(
+  expect(screen.getByRole("alert").textContent).toBe(
     "Choose the data handler that reads v1.jsonl.",
   );
   expect(add()).toHaveProperty("disabled", true);
 
   fireEvent.change(handlerAt(), { target: { value: "V2" } });
-  expect(screen.queryByRole("status")).toBeNull();
+  expect(screen.queryByRole("alert")).toBeNull();
   expect(add()).toHaveProperty("disabled", false);
 
   // A pick that does not read the new file is dropped, and does not come back for a later one.
@@ -127,6 +127,7 @@ it("adds overlays one by one, ignores a blank one and needs a video", async () =
 
   fireEvent.change(screen.getByLabelText("Path on the server"), { target: { value: "" } });
   expect(add()).toHaveProperty("disabled", true);
+  expect(screen.getByRole("alert").textContent).toBe("Choose a video file to continue.");
   fireEvent.change(screen.getByLabelText("Path on the server"), { target: { value: "/a.mp4" } });
   fireEvent.click(add());
   await waitFor(() => expect(sentOverlays()).toEqual([[["/data/gt.txt", "MOT"]]]));

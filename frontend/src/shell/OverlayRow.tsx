@@ -126,9 +126,7 @@ export function OverlayRow({
         onChange={(picked) => onChange({ ...entry, picked })}
       />
       {undecided(entry) && (
-        <p role="status" className="m-0 text-muted">
-          {`Choose the data handler that reads ${fileName(entry.path)}.`}
-        </p>
+        <Refusal reason={`Choose the data handler that reads ${fileName(entry.path)}.`} />
       )}
       {named && decoder && <ResolverForm form={form} />}
       {tried && named && missing && <Refusal reason={`${missing.label} is required`} />}
