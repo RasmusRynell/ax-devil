@@ -134,14 +134,25 @@ describe("inspector", () => {
     expect(group("Classification")).toBeTruthy();
   });
 
-  it("says when the object is not in the frame or the details are not available", () => {
+  it("says why an absent object has no attributes, and not while it is in the frame", () => {
+    const note = "Attributes are only available while an object is in the frame.";
     show({ state: "absent", selection: SELECTION, reason: "gone", last: SUMMARY });
     expect(screen.getByText("car")).toBeTruthy();
     expect(screen.getByText("Not in this frame")).toBeTruthy();
+    expect(screen.getByText(`Not in the current frame. ${note}`)).toBeTruthy();
     expect(screen.queryByText("moving")).toBeNull();
     cleanup();
     show({ state: "absent", selection: SELECTION, reason: "filtered", last: null });
     expect(screen.getByText("Hidden by filter")).toBeTruthy();
+    expect(
+      screen.getByText(
+        "In this frame, but hidden by the overlay filter. Attributes are only available for objects that pass it.",
+      ),
+    ).toBeTruthy();
+    cleanup();
+    show(ready(FIELDS));
+    expect(screen.queryByText("Not in this frame")).toBeNull();
+    expect(screen.queryByText(/Attributes are only available/)).toBeNull();
     cleanup();
     show(ready([], "unavailable"));
     expect(screen.getByText("Details are not available")).toBeTruthy();
@@ -242,7 +253,9 @@ describe("inspector", () => {
     fireEvent.click(screen.getByText("Go to last seen"));
     fireEvent.click(screen.getByText("Next appearance"));
     expect(seek.mock.calls).toEqual([[20], [40]]);
-    expect(screen.getByText("Last seen at 01:02:03.804 (0.4 s ago)")).toBeTruthy();
+    expect(
+      screen.getByText(/^Last seen at 01:02:03.804 \(0.4 s ago\)\. Attributes are only/),
+    ).toBeTruthy();
 
     t.next(absent, { frame: 60 });
     expect(screen.queryByText("Next appearance")).toBeNull();
@@ -250,7 +263,9 @@ describe("inspector", () => {
     t.next(absent, { frame: 5 });
     expect(screen.queryByText("Go to last seen")).toBeNull();
     expect(screen.getByText("Next appearance")).toBeTruthy();
-    expect(screen.getByText("First seen at 01:02:03.404 (in 0.2 s)")).toBeTruthy();
+    expect(
+      screen.getByText(/^First seen at 01:02:03.404 \(in 0.2 s\)\. Attributes are only/),
+    ).toBeTruthy();
     t.next(ready(FIELDS), { frame: 45 });
     expect(screen.queryByText("Next appearance")).toBeNull();
   });
