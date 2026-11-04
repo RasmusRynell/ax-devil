@@ -23,33 +23,32 @@ describe("lane menu filter", () => {
     expect(onChange).toHaveBeenLastCalledWith({ filter: { pedestrian: false, static: false } });
   });
 
-  it("applies a score or confidence bound on Enter or blur, reading a comma as a decimal point, and refuses what is not a number", () => {
+  it("applies a score or confidence bound at every keystroke, reading a comma as a decimal point, and refuses what is not a number", () => {
     const { onChange, state, show } = setup();
     tab("Filter");
-    const min = screen.getByRole("textbox", { name: "Score min" });
-    fireEvent.change(min, { target: { value: "0,4" } });
-    expect(onChange).not.toHaveBeenCalled();
-    fireEvent.blur(min);
-    expect(onChange).toHaveBeenLastCalledWith({
-      ranges: { ...OPEN_RANGES, score: { min: 0.4, max: null } },
+    const min = screen.getByRole("textbox", { name: "Score min" }) as HTMLInputElement;
+    fireEvent.change(min, { target: { value: "0,5" } });
+    const half = { ...OPEN_RANGES, score: { min: 0.5, max: null } };
+    expect(onChange).toHaveBeenLastCalledWith({ ranges: half });
+    show({ settings: { ...state.settings, ranges: half } });
+    expect(min.value).toBe("0,5");
+    show({ settings: { ...state.settings, ranges: { ...half, score: { min: 0.7, max: null } } } });
+    expect(min.value).toBe("0.7");
+    fireEvent.change(min, { target: { value: "" } });
+    expect(onChange).toHaveBeenLastCalledWith({ ranges: OPEN_RANGES });
+    show({ settings: { ...state.settings, ranges: OPEN_RANGES } });
+    fireEvent.change(screen.getByRole("textbox", { name: "Confidence max" }), {
+      target: { value: " 0.9 " },
     });
-    const max = screen.getByRole("textbox", { name: "Confidence max" });
-    fireEvent.change(max, { target: { value: " 0.9 " } });
-    fireEvent.keyDown(max, { key: "Enter" });
     expect(onChange).toHaveBeenLastCalledWith({
       ranges: { ...OPEN_RANGES, confidence: { min: null, max: 0.9 } },
     });
-    const bounded = { ...OPEN_RANGES, score: { min: 0.4, max: null } };
-    show({ settings: { ...state.settings, ranges: bounded } });
-    expect((min as HTMLInputElement).value).toBe("0.4");
-    fireEvent.change(min, { target: { value: "" } });
-    fireEvent.blur(min);
-    expect(onChange).toHaveBeenLastCalledWith({ ranges: OPEN_RANGES });
+    show({ settings: { ...state.settings, ranges: half } });
     onChange.mockClear();
     for (const garbage of ["abc", "Infinity", "1e999"]) {
       fireEvent.change(min, { target: { value: garbage } });
+      expect(min.value).toBe(garbage);
       expect(min.getAttribute("aria-invalid")).toBe("true");
-      fireEvent.blur(min);
     }
     expect(onChange).not.toHaveBeenCalled();
   });
@@ -70,6 +69,15 @@ describe("lane menu filter", () => {
     expect(screen.getByRole("tab", { name: "Filter 3" })).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Reset" }));
     expect(onChange).toHaveBeenLastCalledWith({ filter: {}, ranges: OPEN_RANGES, expression: "" });
+    // A class switched off and on again is no override, so nothing differs and Reset is off.
+    show({ settings: { ...LANE_SETTINGS, filter: { pedestrian: false, other: true } } });
+    fireEvent.click(box("Pedestrian"));
+    expect(onChange).toHaveBeenLastCalledWith({ filter: { other: true } });
+    show({ settings: { ...LANE_SETTINGS, filter: { other: true } } });
+    expect(screen.getByRole("tab", { name: "Filter" })).toBeTruthy();
+    expect((screen.getByRole("button", { name: "Reset" }) as HTMLButtonElement).disabled).toBe(
+      true,
+    );
   });
 
   it("does not apply a bound the expression cannot be combined with, or an expression the bounds cannot be added to", () => {
@@ -79,7 +87,6 @@ describe("lane menu filter", () => {
     const min = screen.getByRole("textbox", { name: "Confidence min" });
     fireEvent.change(min, { target: { value: "0.5" } });
     expect(min.getAttribute("aria-invalid")).toBe("true");
-    fireEvent.blur(min);
     expect(onChange).not.toHaveBeenCalled();
     const ranges = { ...OPEN_RANGES, confidence: { min: 0.5, max: null } };
     show({ settings: { ...state.settings, expression: "", ranges } });

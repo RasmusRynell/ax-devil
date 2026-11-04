@@ -37,6 +37,16 @@ export function changedControls(lane: LaneState): number {
   );
 }
 
+/** The filter with one class switched; a class back at its default is no override, and other ids are carried. */
+function withClass(
+  filter: LaneSettings["filter"],
+  option: FilterOptionInfo,
+  on: boolean,
+): LaneSettings["filter"] {
+  const rest = Object.fromEntries(Object.entries(filter).filter(([id]) => id !== option.id));
+  return on === option.default_enabled ? rest : { ...rest, [option.id]: on };
+}
+
 /** The classes the lane's file calls for, with the buttons that switch them all on or all off. */
 function Classes({
   options,
@@ -69,7 +79,7 @@ function Classes({
           key={option.id}
           label={option.label}
           checked={isOn(option)}
-          onChange={(on) => onChange({ filter: { ...filter, [option.id]: on } })}
+          onChange={(on) => onChange({ filter: withClass(filter, option, on) })}
         />
       ))}
     </Group>
@@ -108,9 +118,16 @@ const ENDS = ["min", "max"] as const;
 
 const NAMES: Record<Measure, string> = { score: "Score", confidence: "Confidence" };
 
+/** What was typed in a range field, and the applied bound it was typed against: it shows only while that still holds. */
+interface Draft {
+  text: string;
+  base: number | null;
+}
+
 /**
- * The smallest and largest score and confidence to keep; an empty end is open. Each field is checked at every
- * keystroke and applied on Enter or when it is left, and only if it is a number and the lane's filter still compiles.
+ * The smallest and largest score and confidence to keep; an empty end is open. Each keystroke is applied when it is a
+ * number and the lane's filter still compiles with it; otherwise the field is marked invalid and the previous bound
+ * stays.
  */
 function Ranges({
   expression,
@@ -121,24 +138,25 @@ function Ranges({
   ranges: MeasureRanges;
   onChange: Change;
 }) {
-  const [drafts, setDrafts] = useState<Readonly<Record<string, string>>>({});
+  const [drafts, setDrafts] = useState<Readonly<Record<string, Draft>>>({});
   const field = (measure: Measure, end: (typeof ENDS)[number]) => {
     const name = `${measure}.${end}`;
     const current = ranges[measure][end];
     const draft = drafts[name];
-    const text = draft ?? (current === null ? "" : String(current));
-    const value = parseBound(text);
-    const next = (): MeasureRanges => ({
+    const text = draft?.base === current ? draft.text : current === null ? "" : String(current);
+    const next = (value: number | null): MeasureRanges => ({
       ...ranges,
       [measure]: { ...ranges[measure], [end]: value },
     });
-    const found = value === undefined ? [] : problems(expression, next());
-    const apply = () => {
-      if (draft === undefined || value === undefined || found.length > 0) return;
-      setDrafts(Object.fromEntries(Object.entries(drafts).filter(([key]) => key !== name)));
-      if (value !== current) onChange({ ranges: next() });
+    const value = parseBound(text);
+    const found = value === undefined ? [] : problems(expression, next(value));
+    const edit = (typed: string) => {
+      const bound = parseBound(typed);
+      const fits = bound !== undefined && problems(expression, next(bound)).length === 0;
+      if (fits && bound !== current) onChange({ ranges: next(bound) });
+      setDrafts({ ...drafts, [name]: { text: typed, base: fits ? bound : current } });
     };
-    return { name, text, invalid: value === undefined || found.length > 0, found, apply };
+    return { name, text, invalid: value === undefined || found.length > 0, found, edit };
   };
   const fields = MEASURES.map((measure) => ({
     measure,
@@ -150,7 +168,7 @@ function Ranges({
         <div key={measure} className="flex items-center justify-between gap-xl">
           <span>{NAMES[measure]}</span>
           <div className="flex gap-s">
-            {ends.map(({ name, text, invalid, apply }, at) => (
+            {ends.map(({ name, text, invalid, edit }, at) => (
               <input
                 key={name}
                 type="text"
@@ -161,9 +179,7 @@ function Ranges({
                 aria-invalid={invalid}
                 autoComplete="off"
                 spellCheck={false}
-                onChange={(event) => setDrafts({ ...drafts, [name]: event.target.value })}
-                onBlur={apply}
-                onKeyDown={(event) => event.key === "Enter" && apply()}
+                onChange={(event) => edit(event.target.value)}
                 className={`${FIELD} w-[6ch] min-w-0 text-right tabular-nums`}
               />
             ))}
@@ -223,8 +239,6 @@ export function LaneMenuFilter({ lane, onChange }: { lane: LaneState; onChange: 
   const { filter, ranges, expression } = lane.settings;
   // Resetting remounts the fields, which drops what was typed and not applied.
   const [round, setRound] = useState(0);
-  const differs =
-    Object.keys(filter).length > 0 || MEASURES.some((m) => bounded(ranges, m)) || expression !== "";
   return (
     <>
       <Classes options={classOptions(lane)} filter={filter} onChange={onChange} />
@@ -237,7 +251,7 @@ export function LaneMenuFilter({ lane, onChange }: { lane: LaneState; onChange: 
       />
       <div className="flex justify-end">
         <Button
-          disabled={!differs}
+          disabled={changedControls(lane) === 0}
           onClick={() => {
             setRound(round + 1);
             onChange({ filter: {}, ranges: OPEN_RANGES, expression: "" });
