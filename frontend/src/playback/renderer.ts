@@ -337,6 +337,13 @@ export class VideoRenderer {
     return this.#placed.map(({ lane, picture }) => ({ lane, rect: this.#css(picture) }));
   }
 
+  /** Whether the point (CSS pixels of the canvas) is on a lane's picture, not on the bars around it or between cells. */
+  overPicture(x: number, y: number): boolean {
+    const at = this.#device({ x, y });
+    const hit = this.#cellAt(at);
+    return hit !== undefined && toImage(hit.picture, at.x, at.y) !== null;
+  }
+
   /** The object under the point (CSS pixels of the canvas) in the lane cell there, or null. */
   pick(x: number, y: number): Picked | null {
     const at = this.#device({ x, y });

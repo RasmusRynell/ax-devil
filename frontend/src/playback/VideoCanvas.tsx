@@ -150,7 +150,7 @@ function Anchors({
  * `viewport` zooms and pans every picture; the wheel zooms toward the pointer, a drag pans a zoomed picture and a
  * double click resets, each asking for the new viewport through `onViewport`. While `objectDetails` is on, the
  * object under the pointer is reported to `onHover` (null: none), a click that was not a drag to `onSelect`
- * (null: empty space), and `onDrawn` gets the geometry of the pictures after every draw. As in the reference, the
+ * (null: empty picture; a click off the pictures selects nothing), and `onDrawn` gets the geometry of the pictures after every draw. As in the reference, the
  * hovered object is dropped when the canvas resizes, zooms or pans, or the pointer leaves, and found again when the
  * pointer moves or the next picture arrives.
  */
@@ -367,7 +367,9 @@ export function VideoCanvas({
         // The second click of a double click resets the viewport; it selects nothing more.
         if (dragged.current || event.detail > 1 || !live.current.objectDetails) return;
         const at = pointAt(event);
-        live.current.onSelect?.(selectionOf(renderer.current?.pick(at.x, at.y) ?? null));
+        // As in the reference, a click on the bars around a picture changes nothing; on the picture but no object it clears.
+        if (!renderer.current?.overPicture(at.x, at.y)) return;
+        live.current.onSelect?.(selectionOf(renderer.current.pick(at.x, at.y)));
       }}
       onPointerCancel={() => (press.current = null)}
       onPointerLeave={() => {

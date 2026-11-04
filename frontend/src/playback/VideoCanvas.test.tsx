@@ -20,6 +20,7 @@ vi.mock("./renderer", async (importOriginal) => ({
     setViewport = vi.fn();
     redraw = vi.fn();
     pick = vi.fn(() => null);
+    overPicture = vi.fn(() => true);
     zoomAt = vi.fn();
     panBy = vi.fn();
     dispose = vi.fn();
@@ -180,6 +181,19 @@ describe("video canvas", () => {
 
       fireEvent.doubleClick(surface);
       expect(onViewport).toHaveBeenLastCalledWith(FIT);
+    });
+
+    it("leaves the selection alone for a click on the bars around the picture", () => {
+      const { surface, onSelect } = mount();
+      // A picture letterboxed to x 50 to 250.
+      drawn.renderer?.overPicture.mockImplementation(
+        (x) => (x as number) >= 50 && (x as number) < 250,
+      );
+      drawn.renderer?.pick.mockReturnValue(null);
+      fireEvent.click(surface, { detail: 1, clientX: 10, clientY: 10 });
+      expect(onSelect).not.toHaveBeenCalled();
+      fireEvent.click(surface, { detail: 1, clientX: 100, clientY: 10 });
+      expect(onSelect).toHaveBeenCalledExactlyOnceWith(null);
     });
 
     it("reports the object under the pointer when it changes, and none once it leaves", () => {
