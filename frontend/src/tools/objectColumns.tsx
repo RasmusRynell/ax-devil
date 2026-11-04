@@ -1,7 +1,8 @@
 import type { FileRowWire } from "../generated/api";
 import { CodePoints, codePointString } from "../present/expr/codePoints";
 import { emitFixed } from "../present/expr/fixed";
-import type { FrameObject } from "./objects";
+import { categoryDot } from "./category";
+import { UNKNOWN_CLASS, type FrameObject } from "./objects";
 import type { Column } from "./table/columns";
 
 const digits = new CodePoints();
@@ -15,7 +16,14 @@ const score = (value: number | null): string => {
 
 /** What Frame scope lists of an object; the first three are required, Motion goes first when the panel is narrow. */
 export const FRAME_COLUMNS: readonly Column<FrameObject>[] = [
-  { key: "id", title: "ID", kind: "id", text: (object) => object.id, sortable: true },
+  {
+    key: "id",
+    title: "ID",
+    kind: "id",
+    text: (object) => object.id,
+    category: (object) => object.className,
+    sortable: true,
+  },
   {
     key: "class",
     title: "Class",
@@ -48,6 +56,9 @@ export const FRAME_COLUMNS: readonly Column<FrameObject>[] = [
   },
 ];
 
+/** The class that colors a File row, the first it had. */
+const categoryOf = (row: FileRowWire): string => row.classes[0] ?? UNKNOWN_CLASS;
+
 /** Where an object is across the video: a mark for each span of frames, and a click goes to that frame. */
 function Presence({
   row,
@@ -77,7 +88,7 @@ function Presence({
       {row.presence.map(([from, to]) => (
         <span
           key={from}
-          className="absolute inset-y-0 min-w-hairline bg-muted"
+          className={`absolute inset-y-0 min-w-hairline ${categoryDot(categoryOf(row))}`}
           style={{
             left: `${(from / frames) * 100}%`,
             width: `${((to - from + 1) / frames) * 100}%`,
@@ -93,7 +104,14 @@ export const fileColumns = (
   frames: number,
   seek?: (frame: number) => void,
 ): Column<FileRowWire>[] => [
-  { key: "id", title: "ID", kind: "id", text: (row) => row.id, sortable: true },
+  {
+    key: "id",
+    title: "ID",
+    kind: "id",
+    text: (row) => row.id,
+    category: categoryOf,
+    sortable: true,
+  },
   {
     key: "class",
     title: "Class",

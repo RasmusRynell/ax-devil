@@ -53,6 +53,10 @@ const BINS = 64;
 /** The page drawn over a list, and the object of the list it was opened from, if any. */
 export type Open = { from: string | null; render: (steps: Steps) => ReactNode };
 
+const SCOPE_KEYS = Object.keys(SCOPES) as Scope[];
+/** What the scope control says on hover, the scopes together as it has no tooltip per option. */
+const scopeHints = SCOPE_KEYS.map((key) => `${SCOPES[key].title}: ${SCOPES[key].hint}`).join("\n");
+
 const NO_STEPS: Steps = { previous: null, next: null };
 
 /**
@@ -163,7 +167,16 @@ export function ObjectsList({
   // File scope asks for the rows in view, and stops when another scope shows or the panel goes away.
   useEffect(() => {
     if (inFile && isFileSort(sort))
-      source.files.request(lane, text, sort, wanted, PAGE, BINS, from);
+      // Moving the cursor asks for nothing; the next request names where it is, for the table to find it.
+      source.files.request(
+        lane,
+        text,
+        sort,
+        wanted,
+        PAGE,
+        BINS,
+        from ?? tables.current.file.cursor,
+      );
   }, [source, lane, inFile, text, sort, wanted, from]);
   useEffect(() => {
     if (inFile) return () => source.files.release(lane);
@@ -199,14 +212,14 @@ export function ObjectsList({
       <div inert={open !== null} className="flex min-h-0 flex-1 flex-col">
         <div className="flex items-center gap-m border-b border-line py-xs pr-xs pl-m">
           {!frameOnly && (
-            <SegmentedControl
-              label="Scope"
-              options={(Object.keys(SCOPES) as Scope[]).map(
-                (key) => [key, SCOPES[key].title] as const,
-              )}
-              value={scope}
-              onChange={(key) => onList({ ...list, scope: key })}
-            />
+            <div className="min-w-0" title={scopeHints}>
+              <SegmentedControl
+                label="Scope"
+                options={SCOPE_KEYS.map((key) => [key, SCOPES[key].title] as const)}
+                value={scope}
+                onChange={(key) => onList({ ...list, scope: key })}
+              />
+            </div>
           )}
           <span className="min-w-0 flex-1 truncate text-right text-small text-muted">{`${count} of ${total}`}</span>
           {trailing}
@@ -231,10 +244,7 @@ export function ObjectsList({
             columns={fileCols}
             rowAt={(index) => page?.rows[index - page.offset]}
             keyOf={(row) => row.id}
-            indexOf={(key) => {
-              const at = page ? page.rows.findIndex((row) => row.id === key) : -1;
-              return at < 0 ? -1 : page!.offset + at;
-            }}
+            indexOf={(key) => openRow(key, page, null).row ?? -1}
             memory={tables.current.file}
             dimmed={(row) => absent(row.id)}
             onActivate={(row) => choose(row.id, absent(row.id) ? row.first_frame : undefined)}

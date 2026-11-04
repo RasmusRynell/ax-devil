@@ -44,6 +44,8 @@ export interface Column<Row> {
   kind: CellKind;
   /** The cell's text: measured, searched for emptiness, shown in the tooltip. Kinds without text omit it. */
   text?: (row: Row) => string;
+  /** The class a cell's dot takes its color from; the cell draws the dot before its text. */
+  category?: (row: Row) => string;
   /** The cell's content for a kind that is not text. */
   render?: (row: Row) => ReactNode;
   /** Whether the header sorts by this column. */

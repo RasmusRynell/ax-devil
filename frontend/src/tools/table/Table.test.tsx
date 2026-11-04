@@ -75,10 +75,26 @@ describe("Table", () => {
     expect(onActivate).toHaveBeenCalledTimes(1);
   });
 
+  it("goes to a row that is not loaded and stays on it once it is, wherever the rows then go", () => {
+    const rows = Array.from({ length: 40 }, (_, i) => rowAt(i));
+    const onActivate = vi.fn();
+    const { rerender } = render(table("unloaded", 40, rows.slice(0, 5), onActivate));
+    fireEvent.keyDown(screen.getByRole("listbox"), { key: "End" });
+    fireEvent.keyDown(screen.getByRole("listbox"), { key: "Enter" });
+    expect(onActivate).not.toHaveBeenCalled();
+
+    rerender(table("unloaded", 40, rows, onActivate));
+    rerender(table("unloaded", 40, [...rows].reverse(), onActivate));
+    fireEvent.keyDown(screen.getByRole("listbox"), { key: "Enter" });
+    expect(onActivate).toHaveBeenCalledWith(rows[39], 0);
+  });
+
   it("keeps the width the user gave a column when the table is drawn again", () => {
     const width = () =>
       Number(screen.getByRole("separator", { name: "Resize ID" }).getAttribute("aria-valuenow"));
     const { unmount } = render(table("resized"));
+    // The last column ends at the table's edge: nothing to resize it against.
+    expect(screen.queryByRole("separator", { name: "Resize Value" })).toBeNull();
     const before = width();
     expect(before).toBeGreaterThan(0);
     fireEvent.keyDown(screen.getByRole("separator", { name: "Resize ID" }), { key: "ArrowRight" });

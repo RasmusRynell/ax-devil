@@ -20,6 +20,8 @@ export interface Fonts {
 
 /** Characters a header spends on the sort arrow beside its title. */
 const ARROW_CHARS = 3;
+/** Characters a categorized cell spends on its dot and the gap after it. */
+const DOT_CHARS = 2;
 /** The letter spacing of a header's capitals, in characters (0.08em). */
 const TRACKING_CHARS = 0.15;
 /** Most distinct texts kept per face before the cache starts over. */
@@ -102,6 +104,8 @@ export function measureColumns<Row>(
     let comfortable = Math.ceil(Math.max(kind.comfortable, leastChars) * face.ch) + 1;
     let longest = comfortable;
     let empty = false;
+    // The dot before a categorized cell's text.
+    const dot = column.category ? DOT_CHARS * face.ch : 0;
     const read = column.text;
     if (read) {
       const texts = rows.flatMap((row) => (row === undefined ? [] : [read(row)]));
@@ -112,11 +116,11 @@ export function measureColumns<Row>(
       if ((column.priority ?? 0) > 0 && !column.stretch) comfortable = longest;
       empty = texts.every((text) => text === "");
     }
-    const floor = Math.max(Math.min(comfortable, longest), title) + pad;
+    const floor = Math.max(Math.min(comfortable, longest), title) + pad + dot;
     return {
-      natural: Math.max(longest, title) + pad,
+      natural: Math.max(longest, title) + pad + dot,
       floor,
-      least: Math.min(Math.max(least, title) + pad, floor),
+      least: Math.min(Math.max(least, title) + pad + dot, floor),
       empty,
     };
   });
