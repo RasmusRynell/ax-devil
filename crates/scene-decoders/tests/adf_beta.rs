@@ -1,6 +1,6 @@
 //! The ADF beta decoders, through the registry as the host uses it.
 
-use foundation::{CancelToken, MediaTime};
+use foundation::{CancelToken, Interrupt, MediaTime};
 use handler_api::Settings;
 use scene::{Event, Scene, SceneTime, Value};
 use serde_json::{Value as Json, json};
@@ -20,6 +20,21 @@ fn decode(id: &str, lines: &[String]) -> (Vec<Scene>, Vec<(u64, String)>) {
     );
     result.expect("a bad line never fails the file");
     (gave.scenes, gave.skipped)
+}
+
+/// Why a file fails as a whole.
+fn failure(id: &str, lines: &[String]) -> String {
+    let text = lines.join("\n");
+    let (_, result) = common::run_input(
+        &*common::decoder(id),
+        &mut common::lines(text.as_bytes()),
+        &Settings::new(),
+        &CancelToken::new(),
+    );
+    let Err(Interrupt::Failed(error)) = result else {
+        panic!("the file should fail");
+    };
+    error.0
 }
 
 fn time(seconds: i64) -> SceneTime {
@@ -242,10 +257,7 @@ fn consolidated_tracks_are_scenes_by_time_and_lines_of_one_time_stay_apart_for_t
     let lines = [
         document.to_string(),
         // The same moment in another line is another Scene of that time.
-        format!(
-            "2024-05-12T10:00:00Z\t{}",
-            track("track-3", "2024-05-12T10:00:00Z", "Human")
-        ),
+        track("track-3", "2024-05-12T10:00:00Z", "Human").to_string(),
         json!({"object": track("track-4", "2024-05-12T10:00:02Z", "Car")}).to_string(),
     ];
     let (scenes, skipped) = decode("ADF_BETA_CONSOLIDATED", &lines);
@@ -297,9 +309,71 @@ fn a_bad_record_is_skipped_by_its_line_number_and_the_rest_are_read() {
     assert_eq!(scenes.len(), 2);
     let positions: Vec<_> = skipped.iter().map(|(position, _)| *position).collect();
     assert_eq!(positions, [2, 3, 4]);
+}
 
-    let mut wrong_start = track("a", "2024-05-12T10:00:00Z", "Car");
-    wrong_start["start_time"] = json!("2024-05-12T09:00:00Z");
-    let (scenes, skipped) = decode("ADF_BETA_CONSOLIDATED", &[wrong_start.to_string()]);
-    assert!(scenes.is_empty() && skipped.len() == 1);
+#[test]
+fn a_bad_beta_track_fails_the_whole_file_and_of_one_id_the_last_track_wins() {
+    let at = "2024-05-12T10:00:00Z";
+    let good = track("a", at, "Car");
+    let with = |key: &str, value: Json| {
+        let mut changed = good.clone();
+        changed[key] = value;
+        changed
+    };
+    let cases = [
+        (json!({"version": "1.0.0", "tracks": [good]}), "version"),
+        (with("duration", Json::Null), "duration"),
+        (with("duration", json!("soon")), "duration"),
+        (with("duration", json!(5.0)), "duration"),
+        (with("id", json!(0)), "id"),
+        (
+            with("start_time", json!("2024-05-12T09:00:00Z")),
+            "start_time",
+        ),
+        // Beta takes no timestamp column.
+        (json!(format!("{at}\t{good}")), "invalid JSON"),
+    ];
+    for (line, wanted) in cases {
+        let line = line
+            .as_str()
+            .map_or_else(|| line.to_string(), str::to_owned);
+        let reason = failure("ADF_BETA_CONSOLIDATED", &[good.to_string(), line]);
+        assert!(
+            reason.starts_with("Line 2: ") && reason.contains(wanted),
+            "{reason}"
+        );
+    }
+
+    let document = json!({"version": "1.0.0-beta1", "tracks": [
+        track("a", at, "Car"),
+        with("id", json!("0")),
+        {"object": track("a", "2024-05-12T10:00:01Z", "Bus")},
+    ]});
+    let (scenes, _) = decode("ADF_BETA_CONSOLIDATED", &[document.to_string()]);
+    let seen: Vec<_> = scenes
+        .iter()
+        .map(|scene| (scene.time().start(), scene.entities()[0].id().to_string()))
+        .collect();
+    assert_eq!(seen, [(time(0), "0".to_owned()), (time(1), "a".to_owned())]);
+}
+
+#[test]
+fn a_beta_track_class_gets_the_details_of_what_its_name_becomes() {
+    let at = "2024-05-12T10:00:00Z";
+    let blue = json!([{"name": "Blue", "score": 0.7}]);
+    let mut one = track("a", at, "Car");
+    one["classes"] = json!([
+        {"type": "human", "upper_clothing_colors": blue, "carries_bag": true},
+        {"type": "VehicleOther", "colors": blue},
+        {"type": "Bike", "colors": blue},
+    ]);
+    let (scenes, _) = decode("ADF_BETA_CONSOLIDATED", &[one.to_string()]);
+
+    let classes = &scenes[0].entities()[0].observations()[0].classifications;
+    assert_eq!(classes[0].class_type, "human");
+    assert!(classes[0].attribute("upper_clothing_colors").is_some());
+    assert!(classes[0].attribute("carries_bag").is_none());
+    assert_eq!(classes[1].class_type, "vehicle_other");
+    assert!(classes[1].attribute("vehicle_colors").is_some());
+    assert!(classes[2].attribute("vehicle_colors").is_none());
 }
