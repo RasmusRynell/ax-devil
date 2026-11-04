@@ -401,7 +401,7 @@ export function VideoViewer({
     if (running) created.follow(running, () => latest.current.clock.nowUs() ?? running.atUs);
     setSession(created);
     return () => {
-      // Shown again later, the viewer opens where it was left, paused.
+      // A session that replaces this one on the same entry opens where it was left, paused.
       const { frame, speed } = created.resumeState();
       if (created.autoplayPending) interrupted.current = streamKey;
       const lanes = created.laneSettings();

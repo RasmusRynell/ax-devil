@@ -221,6 +221,16 @@ describe("playlist viewer", () => {
     expect(screen.queryByRole("button", { name: "Next entry" })).toBeNull();
     expect(screen.queryByLabelText("Entry")).toBeNull();
     cleanup();
+    // Of several playlists, the one with a single entry still says which it is.
+    await mount({
+      item: playlists("list", [
+        ["P", ENTRIES.slice(0, 1)],
+        ["Q", ENTRIES.slice(1)],
+      ]),
+    });
+    expect(screen.getByText("list / P")).toBeTruthy();
+    expect(screen.queryByLabelText("Entry")).toBeNull();
+    cleanup();
     await mount({ hidden: hiding("A", "B", "C", "D") });
     expect(screen.getByText("playing A")).toBeTruthy();
   });

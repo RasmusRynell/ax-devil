@@ -109,50 +109,54 @@ export function PlaylistViewer({ item, content }: ViewerProps<"Playlist">) {
   const listed = within.filter((entry) => entry.id === current.id || !hidden.entry(entry.id));
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      {within.length > 1 && (
+      {(within.length > 1 || playlists.length > 1) && (
         <div className="flex h-row shrink-0 items-center border-b border-line bg-panel">
-          <IconButton
-            icon="chevron-left"
-            label="Previous entry"
-            data-cursor-id="entry:previous"
-            disabled={!previous}
-            onClick={() => previous && choose(previous.id)}
-          />
-          <Popover
-            label={`Entry: ${current.label}`}
-            className="px-m"
-            trigger={
-              <>
-                <span className="truncate">{current.label}</span>
-                <Icon name="chevron-down" />
-              </>
-            }
-          >
-            {(close) => (
-              <Menu
-                entries={listed.map((entry) => ({
-                  kind: "check" as const,
-                  id: entry.id,
-                  label: entry.label,
-                }))}
-                checked={new Set([current.id])}
-                onSelect={({ id }) => {
-                  close();
-                  choose(id);
-                }}
+          {within.length > 1 && (
+            <>
+              <IconButton
+                icon="chevron-left"
+                label="Previous entry"
+                data-cursor-id="entry:previous"
+                disabled={!previous}
+                onClick={() => previous && choose(previous.id)}
               />
-            )}
-          </Popover>
-          <IconButton
-            icon="chevron-right"
-            label="Next entry"
-            data-cursor-id="entry:next"
-            disabled={!next}
-            onClick={() => next && choose(next.id)}
-          />
-          <output aria-label="Entry" className="px-m text-muted tabular-nums">
-            {index + 1} / {within.length}
-          </output>
+              <Popover
+                label={`Entry: ${current.label}`}
+                className="px-m"
+                trigger={
+                  <>
+                    <span className="truncate">{current.label}</span>
+                    <Icon name="chevron-down" />
+                  </>
+                }
+              >
+                {(close) => (
+                  <Menu
+                    entries={listed.map((entry) => ({
+                      kind: "check" as const,
+                      id: entry.id,
+                      label: entry.label,
+                    }))}
+                    checked={new Set([current.id])}
+                    onSelect={({ id }) => {
+                      close();
+                      choose(id);
+                    }}
+                  />
+                )}
+              </Popover>
+              <IconButton
+                icon="chevron-right"
+                label="Next entry"
+                data-cursor-id="entry:next"
+                disabled={!next}
+                onClick={() => next && choose(next.id)}
+              />
+              <output aria-label="Entry" className="px-m text-muted tabular-nums">
+                {index + 1} / {within.length}
+              </output>
+            </>
+          )}
           <span className="min-w-0 flex-1 truncate px-m text-muted">{label}</span>
         </div>
       )}
