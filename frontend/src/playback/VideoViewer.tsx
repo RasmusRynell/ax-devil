@@ -275,9 +275,6 @@ function Playback({
   );
 }
 
-/** Where each entry of an item was left, by entry id: kept by whoever shows the entries, for as long as it does. */
-export type EntryMemory = Map<string, ResumeState>;
-
 /** What the viewer is given besides the item: the Content to stream from and the entry of it to play. */
 export type VideoViewerProps = {
   /** The workspace item whose viewer this is; the window's view keeps this viewer's clock under it. */
@@ -292,11 +289,6 @@ export type VideoViewerProps = {
   onHideLane?: (label: string) => void;
   /** Keeps the matching of one of the entry's lanes, by its slot, in the workspace; absent when this seat may not. */
   onLaneMatching?: (slot: string, policy: LanePolicyWire) => void;
-  /**
-   * Where the entries this viewer was shown for were left, so that coming back to one reopens it there. A viewer
-   * shown for one entry needs none.
-   */
-  memory?: EntryMemory;
   connect?: Connect;
 };
 
@@ -314,7 +306,6 @@ export function VideoViewer({
   hidden = NOTHING_HIDDEN,
   onHideLane,
   onLaneMatching,
-  memory,
   connect = connectWorker,
 }: VideoViewerProps) {
   const key = useMemo<ContentRef>(
@@ -346,10 +337,10 @@ export function VideoViewer({
   defaultCatalog.current = values["overlays.default_catalog"] as string;
   const defaultTiming = useRef(savedTiming(values));
   defaultTiming.current = savedTiming(values);
-  // Where each entry was left, for the session that replaces the one that closed. The published intent still names the
-  // last anchor when the replacement starts, so reading it there would reopen at the frame playback began from.
-  const own = useRef<EntryMemory>(new Map());
-  const left = memory ?? own.current;
+  // Where the entry was left, for the session that replaces the one that closed on the same entry. The published intent
+  // still names the last anchor when the replacement starts, so reading it there would reopen at the frame playback
+  // began from. Another entry starts over: only the speed goes with the viewer.
+  const left = useRef<{ entry: string; state: ResumeState } | undefined>(undefined);
   // The stream whose autoplay a session replacement interrupted before anything was shown: the replacement plays.
   const interrupted = useRef<string | undefined>(undefined);
 
@@ -370,8 +361,9 @@ export function VideoViewer({
     };
     const anchor = latest.current.intent;
     // A window that follows takes the presenter's clock, never a position of its own, and forgets any it had.
-    const carried = latest.current.following ? undefined : left.get(entry.id);
-    left.delete(entry.id);
+    const kept = left.current;
+    left.current = undefined;
+    const carried = !latest.current.following && kept?.entry === entry.id ? kept.state : undefined;
     const streamKey = `${item}/${entry.id}`;
     const retried = interrupted.current === streamKey;
     interrupted.current = undefined;
@@ -418,11 +410,11 @@ export function VideoViewer({
       // A window that follows has not chosen anything, so leaving does not make it explore.
       if (!latest.current.following) {
         publish({ frame, playing: false, speed });
-        left.set(entry.id, { frame, speed });
+        left.current = { entry: entry.id, state: { frame, speed } };
         heldSpeed.current = speed;
       }
     };
-  }, [item, entry.id, ticket, connect, setViewers, left]);
+  }, [item, entry.id, ticket, connect, setViewers]);
 
   useFileScopeOwner(session, following);
   useEffect(() => {

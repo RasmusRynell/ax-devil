@@ -8,14 +8,12 @@ import { NO_ACTIONS, ViewerActionsContext, useViewerActions, type ViewerActions 
 import { hiddenOf, NOTHING_HIDDEN } from "./hidden";
 import { adjacentEntry, PlaylistViewer } from "./PlaylistViewer";
 
-const memories: (VideoViewerProps["memory"] | undefined)[] = [];
 const ownActions: ViewerActions = { "play-pause": () => undefined };
 
 // An entry's video viewer that says which entry it was given.
 vi.mock("../playback/VideoViewer", () => ({
-  VideoViewer: ({ entry: shown, memory }: VideoViewerProps) => {
+  VideoViewer: ({ entry: shown }: VideoViewerProps) => {
     useViewerActions(ownActions);
-    memories.push(memory);
     return <p>playing {shown.label}</p>;
   },
 }));
@@ -171,14 +169,20 @@ describe("playlist viewer", () => {
     expect(screen.queryByRole("dialog")).toBeNull();
   });
 
-  it("keeps the entry on screen when it is hidden, and leaves it by the next visible one", async () => {
-    const { room, run } = await mount();
-    run("next-entry");
-    act(() => room.setHidden({ entry: "list/B" }, true));
+  it("leaves the entry on screen for the next one that is not hidden when it is hidden, else the previous", async () => {
+    const { room, run } = await mount({ shown: "list/B" });
     act(() => room.setHidden({ entry: "list/C" }, true));
     expect(screen.getByText("playing B")).toBeTruthy();
-    run("next-entry");
+    act(() => room.setHidden({ entry: "list/B" }, true));
     expect(screen.getByText("playing D")).toBeTruthy();
+    act(() => room.setHidden({ entry: "list/D" }, true));
+    expect(screen.getByText("playing A")).toBeTruthy();
+    // Nowhere to go: the entry stays, and so do the buttons, with nothing to step to.
+    act(() => room.setHidden({ entry: "list/A" }, true));
+    expect(screen.getByText("playing A")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Next entry" })).toHaveProperty("disabled", true);
+    run("next-entry");
+    expect(screen.getByText("playing A")).toBeTruthy();
   });
 
   it("shows the entry the presenter moves to", async () => {
@@ -211,29 +215,17 @@ describe("playlist viewer", () => {
     expect(screen.queryByRole("alert")).toBeNull();
   });
 
-  it("shares one memory of the entries' positions, and drops an entry that leaves the playlist", async () => {
-    const { room } = await mount();
-    const memory = memories.at(-1);
-    expect(memory).toBeDefined();
-    memory?.set("list/A", { frame: 37, speed: 1 });
-    memory?.set("list/B", { frame: 5, speed: 1 });
-    fireEvent.click(screen.getByRole("button", { name: "Next entry" }));
-    expect(memories.at(-1)).toBe(memory);
-    act(() =>
-      room.setItems([
-        playlist(
-          "list",
-          ENTRIES.filter((e) => e.id !== "list/A"),
-        ),
-      ]),
-    );
-    expect([...(memory?.keys() ?? [])]).toEqual(["list/B"]);
+  it("offers no way to move between entries when there is one, and shows the first when all are hidden", async () => {
+    await mount({ entries: ENTRIES.slice(0, 1) });
+    expect(screen.getByText("playing A")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Next entry" })).toBeNull();
+    expect(screen.queryByLabelText("Entry")).toBeNull();
+    cleanup();
+    await mount({ hidden: hiding("A", "B", "C", "D") });
+    expect(screen.getByText("playing A")).toBeTruthy();
   });
 
   it("says why there is nothing to show", async () => {
-    await mount({ hidden: hiding("A", "B", "C", "D") });
-    expect(screen.getByRole("status").textContent).toBe("All entries are hidden");
-    cleanup();
     await mount({ entries: [] });
     expect(screen.getByRole("status").textContent).toBe("This playlist has no entries");
   });
