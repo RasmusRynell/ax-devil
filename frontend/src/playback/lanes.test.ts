@@ -1,7 +1,7 @@
 // @vitest-environment node
 import { describe, expect, it } from "vite-plus/test";
 import { LANE_DEFAULTS, LANE_SETTINGS } from "./fakeOpened";
-import { LaneSet, effectiveDefault, startWith } from "./lanes";
+import { LaneSet, effectiveDefault, startWith, type LaneSettings } from "./lanes";
 import type { LaneStatusWire } from "./protocol";
 
 const ready: LaneStatusWire = {
@@ -165,16 +165,19 @@ describe("lanes", () => {
       expect(startWith(LANE_DEFAULTS, listed, personal)).toEqual(LANE_SETTINGS);
   });
 
-  it("starts new lanes from the saved sticky default, opacity included, below the seeds and the workspace's matching", () => {
-    const saved = { enabled: true, timeout_ms: null, opacity: 0.4 };
+  it("starts new lanes from the saved sync and sticky defaults, opacity included, below the seeds and the workspace's matching", () => {
+    const saved = { tolerance_ms: null, sticky: { enabled: true, timeout_ms: null, opacity: 0.4 } };
     const defaults = startWith(LANE_DEFAULTS, [], null, saved);
-    expect(defaults.sticky).toEqual(saved);
     const kept = { basis: null, tolerance_ms: 50, sticky: { enabled: false, timeout_ms: 500 } };
     const lanes = new LaneSet();
     lanes.open([LANES[0], { ...LANES[0], policy: kept }, LANES[0]], defaults, [LANE_SETTINGS]);
-    const [seeded, workspace, fresh] = lanes.states.map((state) => state.settings.sticky);
-    expect(seeded).toEqual(LANE_SETTINGS.sticky);
-    expect(workspace).toEqual({ enabled: false, timeout_ms: 500, opacity: 0.4 });
+    const timing = ({ tolerance_ms, sticky }: LaneSettings) => ({ tolerance_ms, sticky });
+    const [seeded, workspace, fresh] = lanes.states.map(({ settings }) => timing(settings));
+    expect(seeded).toEqual(timing(LANE_SETTINGS));
+    expect(workspace).toEqual({
+      tolerance_ms: 50,
+      sticky: { enabled: false, timeout_ms: 500, opacity: 0.4 },
+    });
     expect(fresh).toEqual(saved);
   });
 

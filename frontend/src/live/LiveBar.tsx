@@ -2,6 +2,7 @@ import type { CSSProperties } from "react";
 import type { LiveFeedStatus } from "../generated/api";
 import { Button } from "../kit/Button";
 import { Chip, ToggleChip } from "../kit/Chips";
+import type { Tone } from "../kit/look";
 import { feedText, feedTone, needsRetry, utcTime } from "./words";
 import type { LiveView } from "./view";
 
@@ -20,14 +21,20 @@ function FeedChip({
   name,
   status,
   behind = false,
+  waiting = false,
 }: {
   name: string;
   status: LiveFeedStatus;
   behind?: boolean;
+  waiting?: boolean;
 }) {
   // A decoder that is behind is an error whatever the connection says, until its queue drains.
-  const text = behind && status.status !== "Failed" ? "Behind" : feedText(status);
-  const tone = behind && status.status !== "Failed" ? "danger" : feedTone(status);
+  const [text, tone]: [string, Tone] =
+    behind && status.status !== "Failed"
+      ? ["Behind", "danger"]
+      : waiting
+        ? ["Waiting for data…", "neutral"]
+        : [feedText(status), feedTone(status)];
   return (
     <Chip tone={tone} title={`${name}: ${text}`}>
       {`${name}: ${text}`}
@@ -53,7 +60,7 @@ export function LiveBar({
   panel: LivePanel | null;
   onPanel: (panel: LivePanel | null) => void;
 }) {
-  const { shown, paused, video, overlay, behind } = view;
+  const { shown, paused, video, overlay, behind, waiting } = view;
   const time = shown ? `${utcTime(shown.timestampUs)} UTC` : "";
   return (
     <div
@@ -64,7 +71,7 @@ export function LiveBar({
       {/* The feed tags give way (ending in an ellipsis, the full text on hover) before any control does. */}
       <div className="flex min-w-0 flex-1 items-center gap-m">
         <FeedChip name="Video" status={video} />
-        {overlay && <FeedChip name="Overlay" status={overlay} behind={behind} />}
+        {overlay && <FeedChip name="Overlay" status={overlay} behind={behind} waiting={waiting} />}
         {(needsRetry(video) || needsRetry(overlay)) && (
           <Button
             icon="refresh-cw"

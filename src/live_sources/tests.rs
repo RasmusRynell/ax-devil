@@ -7,7 +7,7 @@ use camera::{CameraError, ErrorKind, Status};
 use foundation::MediaTime;
 use handlers::Handlers;
 use overlays::NONE_CELL;
-use tokio::time::timeout;
+use tokio::{sync::mpsc, time::timeout};
 use workspace::{LiveOverlay, LiveVideoContent};
 
 mod retry;
@@ -65,6 +65,19 @@ async fn frame(viewer: &mut LiveViewer) -> Shown {
     }
 }
 
+/// Sends the overlay's `first` document and waits until it has arrived, so later frames wait for the overlay.
+async fn delivering<T>(viewer: &mut LiveViewer, overlay: &mpsc::Sender<T>, first: T) {
+    overlay.send(first).await.unwrap();
+    loop {
+        if let Update::Status(status) = update(viewer).await
+            && status.overlay == Some(LiveFeedStatus::Live)
+            && !status.waiting
+        {
+            return;
+        }
+    }
+}
+
 fn luma(shown: &Shown) -> u8 {
     shown.frame.data()[0]
 }
@@ -85,8 +98,8 @@ async fn a_frame_is_paired_with_the_overlay_sample_of_its_capture_time() {
     video.status.send(Status::Live { epoch: 1 }).unwrap();
 
     // The frame at 1 ms waits for the overlay to pass it, and gets the sample at 1 ms with its item.
+    delivering(&mut viewer, &docs, doc(1, "1000")).await;
     video.units.send(unit(1, Some(1_000), 20)).await.unwrap();
-    docs.send(doc(1, "1000")).await.unwrap();
     docs.send(doc(1, "2000")).await.unwrap();
     let shown = frame(&mut viewer).await;
     let out = shown.out.as_ref().unwrap();
@@ -120,9 +133,10 @@ async fn a_picture_a_decoder_held_back_is_paired_with_its_own_overlay_sample() {
     video.status.send(Status::Live { epoch: 1 }).unwrap();
 
     // The picture of the unit at 1 ms comes out with the unit at 5 ms, which has a sample of its own.
+    delivering(&mut viewer, &docs, doc(1, "1000")).await;
     video.units.send(held_back(1, 1_000, 20)).await.unwrap();
     video.units.send(held_back(1, 5_000, 21)).await.unwrap();
-    for time in ["1000", "5000", "9000"] {
+    for time in ["5000", "9000"] {
         docs.send(doc(1, time)).await.unwrap();
     }
     let shown = frame(&mut viewer).await;
@@ -262,8 +276,8 @@ async fn events_go_on_arriving_while_a_viewer_is_paused_and_while_every_viewer_i
 
     // Nobody watches: the video is not decoded, and the event still reaches the Events list.
     paused.pause(true);
+    delivering(&mut paused, &docs, doc(1, "1000 events")).await;
     video.units.send(unit(1, Some(1_000), 20)).await.unwrap();
-    docs.send(doc(1, "1000 events")).await.unwrap();
     docs.send(doc(1, "2000")).await.unwrap();
     loop {
         match update(&mut paused).await {
@@ -443,8 +457,8 @@ async fn a_frame_released_at_the_deadline_draws_the_sample_still_open_for_it() {
     video.status.send(Status::Live { epoch: 1 }).unwrap();
 
     // No later timestamp comes, so the sample at 1 ms stays open and the frame waits out the deadline.
+    delivering(&mut viewer, &docs, doc(1, "1000")).await;
     video.units.send(unit(1, Some(1_000), 20)).await.unwrap();
-    docs.send(doc(1, "1000")).await.unwrap();
     let shown = frame(&mut viewer).await;
     let out = shown.out.as_ref().unwrap();
     assert_eq!((luma(&shown), out.map.samples.clone()), (20, vec![0]));

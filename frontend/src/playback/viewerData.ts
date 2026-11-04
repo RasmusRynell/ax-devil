@@ -7,8 +7,8 @@ import { SampleStore } from "./data/SampleStore";
 import { Inspections } from "./inspection";
 import { LaneCatalogs } from "./laneCatalog";
 import { LaneData, type LaneMatch } from "./laneData";
-import type { LaneFrame, LaneSettings, Sticky, Surface } from "./contract";
-import { startWith, type LaneSet } from "./lanes";
+import type { LaneFrame, LaneSettings, Surface } from "./contract";
+import { startWith, type LaneSet, type Timing } from "./lanes";
 import type {
   ClientMessage,
   FrameMapEnvelope,
@@ -123,16 +123,16 @@ export class ViewerData {
 
   /**
    * The backend opened the entry: its lanes open, starting from `prior` settings, else the `personal` default catalog
-   * and `sticky` settings; what the old connection was asked is asked again, and lanes that changed forget their catalog.
+   * and `timing`; what the old connection was asked is asked again, and lanes that changed forget their catalog.
    */
   reopen(
     opened: Pick<Opened, "lanes" | "lane_defaults" | "catalogs">,
     personal: string | null | undefined,
     prior: readonly LaneSettings[] | undefined,
-    sticky?: Sticky,
+    timing?: Timing,
   ): void {
     const before = this.#lanes.states;
-    const defaults = startWith(opened.lane_defaults, opened.catalogs, personal, sticky);
+    const defaults = startWith(opened.lane_defaults, opened.catalogs, personal, timing);
     this.#lanes.open(opened.lanes, defaults, prior).forEach(this.#send);
     this.#fallback = opened.lane_defaults.catalog;
     this.catalogs.open(opened.catalogs);

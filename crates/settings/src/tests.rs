@@ -46,19 +46,22 @@ fn every_default_is_valid_for_its_own_setting() {
 }
 
 #[test]
-fn the_sticky_default_takes_a_whole_object_in_range_and_is_not_written_while_it_is_the_default() {
+fn the_timing_defaults_take_a_whole_object_in_range_and_sticky_is_not_written_while_it_is_the_default()
+ {
     let sticky = TABLE
         .iter()
         .find(|setting| setting.key == "overlays.default_sticky")
         .unwrap();
-    for ok in [
+    let sync = TABLE
+        .iter()
+        .find(|row| matches!(row.kind, Kind::Sync { .. }))
+        .unwrap();
+    let sticky_ok = [
         json!({"enabled": true, "timeout_ms": null, "opacity": 0.5}),
         json!({"enabled": false, "timeout_ms": 100_000, "opacity": 0}),
         sticky.kind.default_value(),
-    ] {
-        assert_eq!(sticky.kind.validate(&ok), Ok(()), "{ok}");
-    }
-    for bad in [
+    ];
+    let sticky_bad = [
         json!({"enabled": true, "opacity": 1}),
         json!({"enabled": true, "timeout_ms": 100_001, "opacity": 1}),
         json!({"enabled": true, "timeout_ms": -1, "opacity": 1}),
@@ -66,8 +69,28 @@ fn the_sticky_default_takes_a_whole_object_in_range_and_is_not_written_while_it_
         json!({"enabled": true, "timeout_ms": null, "opacity": "1"}),
         json!({"enabled": true, "timeout_ms": null, "opacity": 1, "extra": 0}),
         json!(true),
+    ];
+    let sync_ok = [
+        json!({"tolerance_ms": null}),
+        json!({"tolerance_ms": 100_000}),
+    ];
+    let sync_bad = [
+        json!({}),
+        json!({"tolerance_ms": 100_001}),
+        json!({"tolerance_ms": -1}),
+        json!({"tolerance_ms": 50, "extra": 0}),
+        json!(50),
+    ];
+    for (row, ok, bad) in [
+        (sticky, &sticky_ok[..], &sticky_bad[..]),
+        (sync, &sync_ok, &sync_bad),
     ] {
-        assert!(sticky.kind.validate(&bad).is_err(), "{bad}");
+        for ok in ok {
+            assert_eq!(row.kind.validate(ok), Ok(()), "{ok}");
+        }
+        for bad in bad {
+            assert!(row.kind.validate(bad).is_err(), "{bad}");
+        }
     }
     let folder = tempfile::tempdir().unwrap();
     let path = folder.path().join("settings.json");

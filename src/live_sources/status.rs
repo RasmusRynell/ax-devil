@@ -25,6 +25,8 @@ struct FeedState {
     /// When the connection last turned live.
     since: Mono,
     last_data: Option<Mono>,
+    /// The connection whose data last arrived, so data a reconnect left queued does not count for the new one.
+    delivered: Option<u32>,
     /// Whether silence on a live connection is a stall. Video only: a quiet MQTT or DataHub topic is normal.
     stalls: bool,
 }
@@ -36,6 +38,7 @@ impl FeedState {
             attempt: 0,
             since: now,
             last_data: None,
+            delivered: None,
             stalls,
         }
     }
@@ -49,14 +52,24 @@ impl FeedState {
                 self.last_data = None;
             }
             (_, Status::Reconnecting { .. }) => self.attempt += 1,
-            (_, Status::Connecting) => self.attempt = 0,
+            // A restart's connections count their epochs anew.
+            (_, Status::Connecting) => {
+                self.attempt = 0;
+                self.delivered = None;
+            }
             _ => {}
         }
         self.link = link.clone();
     }
 
-    fn is_live(&self) -> bool {
-        matches!(self.link, Status::Live { .. })
+    /// Whether the connection is live and its data has arrived.
+    fn delivers(&self) -> bool {
+        matches!(self.link, Status::Live { epoch } if self.delivered == Some(epoch))
+    }
+
+    /// Whether the connection is live but has delivered nothing yet.
+    fn waits(&self) -> bool {
+        matches!(self.link, Status::Live { .. }) && !self.delivers()
     }
 
     fn wire(&self, now: Mono) -> LiveFeedStatus {
@@ -113,6 +126,7 @@ impl Inner {
             video: self.video.wire(now),
             overlay: self.overlay.as_ref().map(|overlay| overlay.wire(now)),
             behind: self.behind,
+            waiting: self.overlay.as_ref().is_some_and(FeedState::waits),
         }
     }
 }
@@ -193,6 +207,15 @@ impl Board {
         self.update(now, |inner| inner.video.last_data = Some(now));
     }
 
+    /// An overlay document of connection `epoch` arrived.
+    pub fn overlay_data(&self, epoch: u32, now: Mono) {
+        self.update(now, |inner| {
+            if let Some(overlay) = &mut inner.overlay {
+                overlay.delivered = Some(epoch);
+            }
+        });
+    }
+
     /// Whether the overlay's decoder is behind.
     pub fn behind(&self, behind: bool, now: Mono) {
         self.update(now, |inner| inner.behind = behind);
@@ -228,15 +251,15 @@ impl Board {
             || wire.overlay.as_ref().is_some_and(failed)
     }
 
-    /// Whether a frame can still gain an overlay: the overlay is connected and its decoder keeps up, so its samples
-    /// are coming soon. With no overlay, while it connects, fails or reconnects, or while its decoder is behind,
-    /// nothing is worth waiting for.
+    /// Whether a frame can still gain an overlay: the overlay delivers and its decoder keeps up, so its samples are
+    /// coming soon. With no overlay, before its first document, while it fails or reconnects, or while its decoder is
+    /// behind, nothing is worth waiting for and the video plays on.
     pub fn overlay_expected(&self) -> bool {
         let inner = self
             .inner
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        !inner.behind && inner.overlay.as_ref().is_some_and(FeedState::is_live)
+        !inner.behind && inner.overlay.as_ref().is_some_and(FeedState::delivers)
     }
 }
 
@@ -313,14 +336,21 @@ mod tests {
     }
 
     #[test]
-    fn embedded_metadata_stands_where_the_video_stands_and_a_frame_waits_only_for_a_live_overlay() {
+    fn embedded_metadata_stands_where_the_video_stands_and_a_frame_waits_only_for_a_connection_that_delivered()
+     {
         let board = Board::new(OverlayLink::Embedded, at(0));
-        assert!(!board.overlay_expected());
+        let expected = |waiting| {
+            assert_eq!(board.current().waiting, waiting);
+            board.overlay_expected()
+        };
+        assert!(!expected(false));
         board.video_link(&Status::Live { epoch: 1 }, at(0));
-        assert!(board.overlay_expected());
         assert_eq!(board.current().overlay, Some(LiveFeedStatus::Live));
+        assert!(!expected(true));
+        board.overlay_data(1, at(0));
+        assert!(expected(false));
         board.video_link(&reconnecting(ErrorKind::Silent), at(1));
-        assert!(!board.overlay_expected());
+        assert!(!expected(false));
         assert_eq!(
             board.current().overlay,
             Some(LiveFeedStatus::Reconnecting {
@@ -328,5 +358,12 @@ mod tests {
                 reason: LiveReason::Silent
             })
         );
+        // The last connection's data does not count for the next; data that beats its own Live does.
+        board.video_link(&Status::Live { epoch: 2 }, at(2));
+        assert!(!expected(true));
+        board.video_link(&reconnecting(ErrorKind::Lost), at(3));
+        board.overlay_data(3, at(4));
+        board.video_link(&Status::Live { epoch: 3 }, at(4));
+        assert!(expected(false));
     }
 }

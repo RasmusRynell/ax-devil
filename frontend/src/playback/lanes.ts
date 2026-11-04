@@ -1,5 +1,6 @@
 /** The lanes of a viewer's entry: what each shows, how the user has set it, and what the backend says about it. */
 
+import type { SettingsState } from "../generated/api";
 import type { CatalogLook, LaneSettings, LaneState, Sticky } from "./contract";
 import type {
   BasisWire,
@@ -65,21 +66,34 @@ export function effectiveDefault(catalogs: readonly CatalogInfoWire[], setting: 
   return usableCatalog(catalogs, setting)?.id ?? catalogs[0]?.id ?? "";
 }
 
+/** How a lane's samples are held against its frames: how far back one may match, and how long one stays after. */
+export type Timing = Pick<LaneSettings, "tolerance_ms" | "sticky">;
+
+/** The Personal settings that hold the default timing. */
+export const DEFAULT_SYNC = "overlays.default_sync";
+export const DEFAULT_STICKY = "overlays.default_sticky";
+
+/** The Personal default timing new lanes start with, offline and live alike. */
+export const savedTiming = (values: SettingsState["values"]): Timing => ({
+  tolerance_ms: (values[DEFAULT_SYNC] as { tolerance_ms: number | null }).tolerance_ms,
+  sticky: values[DEFAULT_STICKY] as Sticky,
+});
+
 /**
  * What new lanes start with: the backend's defaults, but the Personal default catalog when it is usable and the
- * Personal default sticky settings when there are any.
+ * Personal default timing when there is one.
  */
 export function startWith(
   defaults: LaneDefaultsWire,
   catalogs: readonly CatalogInfoWire[],
   personal: string | null | undefined,
-  sticky?: Sticky,
+  timing?: Timing,
 ): LaneSettings {
   const settings = settingsOf(defaults);
   return {
     ...settings,
+    ...timing,
     catalog: usableCatalog(catalogs, personal)?.id ?? settings.catalog,
-    sticky: sticky ?? settings.sticky,
   };
 }
 

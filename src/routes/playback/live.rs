@@ -30,7 +30,7 @@ use api_types::{
 use axum::extract::ws::Message;
 use catalogs::Library;
 use foundation::{ErrorCode, UserError};
-use overlay_sync::{LIVE_TOLERANCE, MatchBasis, MatchPolicy, Tolerance};
+use overlay_sync::MatchPolicy;
 use overlays::{LaneReady, LaneStatus, LiveEvents};
 use sessions::session::StreamLease;
 use std::collections::VecDeque;
@@ -40,15 +40,6 @@ use workspace::{LIVE_SLOT, LiveOverlay, LiveVideoContent};
 /// How many answers may wait for a viewer that is not reading. A viewer that goes on asking past this has its session
 /// ended, so one socket cannot make the backend hold an unbounded queue.
 const MAX_NOTICES: usize = 64;
-
-/// How a live lane matches before its viewer says otherwise: by time, within the live window.
-fn live_matching() -> MatchPolicy {
-    MatchPolicy {
-        basis: Some(MatchBasis::Time),
-        tolerance: Tolerance::PreviousWithin(LIVE_TOLERANCE),
-        ..MatchPolicy::default()
-    }
-}
 
 /// Opens the lease's live video for the viewer and serves it until the viewer leaves, the backend stops or the
 /// authority is revoked. Dropping the viewer detaches it from the feed.
@@ -62,14 +53,10 @@ pub(super) async fn run(
     mut gate: Gate,
 ) -> Flow<()> {
     let mut closing = state.stopping.clone();
-    let matching = lease
-        .matching()
-        .get(LIVE_SLOT)
-        .copied()
-        .unwrap_or_else(live_matching);
+    let matching = lease.matching().get(LIVE_SLOT).copied();
     let handlers = state.plugins.handlers();
     let viewer = tokio::select! {
-        opened = state.live.open(content, &handlers, matching) => opened.map_err(End::Failed)?,
+        opened = state.live.open(content, &handlers, matching.unwrap_or_default()) => opened.map_err(End::Failed)?,
         () = stopped(&mut closing) => return Err(End::Closed),
         () = gate.revoked() => return Err(End::Revoked),
     };
@@ -97,8 +84,8 @@ pub(super) async fn run(
 pub(super) struct Setup<'a> {
     /// The lane's name.
     pub(super) label: &'a str,
-    /// How the lane starts matching.
-    pub(super) matching: MatchPolicy,
+    /// The matching the workspace keeps for the lane; without it the lane starts as a recording's would.
+    pub(super) matching: Option<MatchPolicy>,
     /// The catalogs the lane may draw with.
     pub(super) library: &'a Library,
     /// What the viewer may learn of an error.
@@ -152,7 +139,7 @@ pub(super) async fn stream(
             label: setup.label.to_owned(),
             slot: LIVE_SLOT.to_owned(),
             source: viewer.has_overlay().then_some(0),
-            policy: Some(policy_wire(&setup.matching)),
+            policy: setup.matching.as_ref().map(policy_wire),
         },
         lane_defaults: lane_defaults(setup.library),
         catalogs: catalogs.listing(),
@@ -167,7 +154,7 @@ pub(super) async fn stream(
         outbox,
         closing,
         audience: setup.audience,
-        matching: setup.matching,
+        matching: setup.matching.unwrap_or_default(),
         told: None,
         notices: VecDeque::new(),
         retry: false,

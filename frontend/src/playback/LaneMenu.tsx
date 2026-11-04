@@ -31,7 +31,7 @@ export function LaneMenu({
   catalogs: readonly CatalogInfoWire[];
   /** How evenly the video's frames are spaced, shown with the lane's timing. */
   cadence: Cadence | null;
-  /** A live lane is matched by capture time with a fixed tolerance, so its timing is sticky alone. */
+  /** A live lane has no recording to align, so its timing has no alignment. */
   live?: boolean;
   onChange: (change: Partial<LaneSettings>) => void;
   onHide?: () => void;

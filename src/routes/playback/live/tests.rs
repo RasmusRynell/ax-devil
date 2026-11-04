@@ -66,7 +66,7 @@ async fn a_follower_is_told_the_stream_then_each_frame_with_its_overlay_and_its_
         viewer,
         Setup {
             label: "Live",
-            matching: matching(),
+            matching: Some(matching()),
             library: &library,
             audience: Audience::HOST,
         },
@@ -94,11 +94,12 @@ async fn a_follower_is_told_the_stream_then_each_frame_with_its_overlay_and_its_
             action: api_types::live::LiveAction::Pause,
         }))
         .unwrap();
-    video.units.send(unit(1, Some(1_000), 20)).await.unwrap();
+    // The frame is sent once the overlay has delivered, so it waits for its sample.
     docs.send(doc(1, "1000")).await.unwrap();
     docs.send(doc(1, "2000")).await.unwrap();
 
     let mut order = Vec::new();
+    let mut framed = false;
     let mut asked = false;
     let mut inspected = false;
     while !inspected {
@@ -107,6 +108,15 @@ async fn a_follower_is_told_the_stream_then_each_frame_with_its_overlay_and_its_
             message = tokio::time::timeout(Duration::from_secs(20), sent.recv()) => {
                 let message = message.expect("a message in time").expect("the outbox is open").message;
                 order.push(kind(&message));
+                if let Message::Text(body) = &message
+                    && let Ok(ServerMessage::LiveStatus(status)) = serde_json::from_str(body)
+                    && status.overlay == Some(api_types::live::LiveFeedStatus::Live)
+                    && !status.waiting
+                    && !framed
+                {
+                    framed = true;
+                    video.units.send(unit(1, Some(1_000), 20)).await.unwrap();
+                }
                 if kind(&message) == format!("envelope {KIND_SAMPLE}") && !asked {
                     asked = true;
                     to_server.send(client(&ClientMessage::Inspect {
@@ -163,7 +173,7 @@ async fn a_holder_paused_on_its_own_is_shown_the_stream_again_when_it_begins_to_
         viewer,
         Setup {
             label: "Live",
-            matching: matching(),
+            matching: Some(matching()),
             library: &library,
             audience: Audience::HOST,
         },
@@ -242,7 +252,7 @@ async fn a_viewer_that_asks_without_reading_is_cut_off_instead_of_growing_the_ba
         viewer,
         Setup {
             label: "Live",
-            matching: matching(),
+            matching: Some(matching()),
             library: &library,
             audience: Audience::HOST,
         },

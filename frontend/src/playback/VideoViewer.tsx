@@ -20,13 +20,14 @@ import { useChromeVisibility } from "./chromeVisibility";
 import { LaneGrid } from "./LaneGrid";
 import { HIDE_LANE, laneContextEntries } from "./laneContextMenu";
 import { shownLanes } from "./laneCells";
+import { savedTiming } from "./lanes";
 import { useLaneFullscreen } from "./laneFullscreen";
 import { Popover } from "../kit/Popover";
 import { ObjectsPanel, type Place } from "../tools/ObjectsPanel";
 import { FRESH_LIST, type ListState } from "../tools/listState";
 import { EMPTY, jump, topObject, type PageStack } from "../tools/pageStack";
 import { VIDEO_LEAST } from "../tools/panelWidth";
-import type { LaneSettings, Sticky, Viewport } from "./contract";
+import type { LaneSettings, Viewport } from "./contract";
 import { FRESH_MEMORY, type InspectorMemory } from "./fields";
 import { ObjectLayer, type ObjectLayerHandle } from "./ObjectLayer";
 import type { Geometry } from "./renderer";
@@ -380,8 +381,8 @@ export function VideoViewer({
   latest.current = { intent, canChange, following, clock, onLaneMatching };
   const defaultCatalog = useRef(values["overlays.default_catalog"] as string);
   defaultCatalog.current = values["overlays.default_catalog"] as string;
-  const defaultSticky = useRef(values["overlays.default_sticky"] as Sticky);
-  defaultSticky.current = values["overlays.default_sticky"] as Sticky;
+  const defaultTiming = useRef(savedTiming(values));
+  defaultTiming.current = savedTiming(values);
   // Where each entry was left, for the session that replaces the one that closed. The published intent still names the
   // last anchor when the replacement starts, so reading it there would reopen at the frame playback began from.
   const own = useRef<EntryMemory>(new Map());
@@ -419,7 +420,7 @@ export function VideoViewer({
       resume: start,
       lanes: priorLanes.current,
       defaultCatalog: () => defaultCatalog.current || null,
-      defaultSticky: () => defaultSticky.current,
+      defaultTiming: () => defaultTiming.current,
       onIntent: publish,
       onPolicy: (slot, policy) => latest.current.onLaneMatching?.(slot, policy),
       now: () => performance.now(),

@@ -115,7 +115,7 @@ pub struct Shared {
     pub(super) track: Option<Arc<LiveTrack>>,
     /// The overlay task's way to start decoder sessions.
     pub(super) sessions: Option<Sessions>,
-    /// Woken after every publication of the track, so held frames are looked at again.
+    /// Woken after every publication of the track, so a held frame its overlay settled may leave.
     pub(super) published: Arc<Notify>,
     /// Viewers that are not paused. With none, the video is read and dropped, not decoded.
     pub(super) watching: AtomicUsize,
