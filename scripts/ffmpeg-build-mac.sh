@@ -3,14 +3,14 @@
 # app and its test fixtures use plus what export writes (PNG, H.264 in MP4), no TLS, nothing GPL or non-free.
 #
 #   scripts/ffmpeg-build-mac.sh PREFIX      installs include/ and lib/ under PREFIX, an empty or missing folder
-#   scripts/ffmpeg-build-mac.sh source DIR  puts the source tarball it builds from, ffmpeg-source-macos-<version>.tar.xz, in DIR
+#   scripts/ffmpeg-build-mac.sh source DIR  puts the source tarball it builds from, ffmpeg-source-macos-<version>.tar.gz, in DIR
 #   scripts/ffmpeg-build-mac.sh notice      prints the license notice for this build
 set -euo pipefail
 
 VERSION=9.0.2
-URL="https://ffmpeg.org/releases/ffmpeg-$VERSION.tar.xz"
-# ffmpeg.org publishes no checksums, only signatures; this is the hash of the tarball as first downloaded.
-SHA256=8c3850283eb25fa026482078a04051e0be17347b09ef81a0849bec15a96e002e
+# ffmpeg.org often times out from CI runners; this is the release tag on FFmpeg's GitHub mirror, as scripts/ffmpeg-fetch.sh uses.
+URL="https://github.com/FFmpeg/FFmpeg/archive/refs/tags/n$VERSION.tar.gz"
+SHA256=6e374ed621e48faa40639307dff48ba6fe574a509977956d2cce9669b7cc27e9
 # The install names are @rpath/..., so the backend finds the libraries from its own rpath.
 # shellcheck disable=SC2054 # the commas belong to the options
 CONFIGURE=(
@@ -39,7 +39,7 @@ if [[ ${1:-} == notice ]]; then
   cat <<NOTICE
 FFmpeg for macOS
 The macOS build uses FFmpeg $VERSION, LGPL version 2.1 or later, built from the official source $URL
-(attached as ffmpeg-source-macos-$VERSION.tar.xz) by scripts/ffmpeg-build-mac.sh with
+(attached as ffmpeg-source-macos-$VERSION.tar.gz) by scripts/ffmpeg-build-mac.sh with
 ./configure ${CONFIGURE[*]}
 The libraries in Contents/Resources/bin (libavcodec, libavformat, libavutil, libswscale and libswresample) are linked
 dynamically: replace them with libraries of the same version and install name.
@@ -50,7 +50,7 @@ fi
 if [[ ${1:-} == source ]]; then
   dir="${2:?usage: scripts/ffmpeg-build-mac.sh source DIR}"
   mkdir -p "$dir"
-  download "$URL" "$dir/ffmpeg-source-macos-$VERSION.tar.xz" "$SHA256"
+  download "$URL" "$dir/ffmpeg-source-macos-$VERSION.tar.gz" "$SHA256"
   exit 0
 fi
 
@@ -64,9 +64,9 @@ prefix="$(cd "$prefix" && pwd)"
 
 work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT
-download "$URL" "$work/ffmpeg.tar.xz" "$SHA256"
+download "$URL" "$work/ffmpeg.tar.gz" "$SHA256"
 mkdir "$work/src"
-tar -xf "$work/ffmpeg.tar.xz" -C "$work/src" --strip-components=1
+tar -xf "$work/ffmpeg.tar.gz" -C "$work/src" --strip-components=1
 
 cd "$work/src"
 ./configure --prefix="$prefix" "${CONFIGURE[@]}" | tee "$work/configure.log"
