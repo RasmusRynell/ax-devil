@@ -72,6 +72,7 @@
   --spacing-m: 8px;
   --spacing-l: 12px;
   --spacing-xl: 16px;
+  --spacing-inset: 10px; /* a chip on the video keeps this far from the picture's corner */
   --spacing-hairline: 1px;
 
   --radius-*: initial;
@@ -227,14 +228,14 @@
   }
 }
 
-/* A run of cached frames on the seek bar's rail, from --from to --to (0 to 1) by the same mapping as the fill, and at
-   least one pixel wide. */
+/* A run of cached frames on the seek bar's rail, from --from for --span (0 to 1 of the rail, see seekBand), and at least
+   one pixel wide. */
 @utility seek-band {
   position: absolute;
   top: 0;
   bottom: 0;
-  left: calc(var(--spacing-l) / 2 + (100% - var(--spacing-l)) * var(--from));
-  width: max(1px, (100% - var(--spacing-l)) * (var(--to) - var(--from)));
+  left: calc(100% * var(--from));
+  width: max(1px, 100% * var(--span));
   background: var(--color-canvas-cached);
 }
 

@@ -131,7 +131,7 @@ export function LaneGrid({
         return (
           <div
             key={lanes[index].label}
-            className="pointer-events-none absolute flex flex-col items-start gap-s p-s"
+            className="pointer-events-none absolute flex flex-col items-start gap-s p-inset"
             style={{
               left: rect.x,
               top: rect.y,
