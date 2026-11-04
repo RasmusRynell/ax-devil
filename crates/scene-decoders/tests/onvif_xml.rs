@@ -131,6 +131,14 @@ fn unusable_documents_are_errors_and_frameless_streams_are_not() {
         (String::new(), "no element"),
         ("<invalid>xml".to_string(), "left open"),
         ("<root><no_frames/></root>".to_string(), "No <tt:Frame>"),
+        (
+            r#"<m:MetadataStream xmlns:m="urn:other"/>"#.to_string(),
+            "No <tt:Frame>",
+        ),
+        (
+            "<tt:Frame UtcTime=\"2024-01-01T00:00:00Z\"/>".to_string(),
+            "unbound",
+        ),
         (format!("<tt:Frame {namespace}/>"), "UtcTime"),
         (
             format!("<tt:Frame {namespace} UtcTime=\"yesterday\"/>"),
@@ -149,6 +157,34 @@ fn unusable_documents_are_errors_and_frameless_streams_are_not() {
 
     let event = format!("<tt:MetadataStream {namespace}><tt:Event/></tt:MetadataStream>");
     assert_eq!(decode(event.as_bytes()), Ok(None));
+}
+
+#[test]
+fn a_frame_is_found_by_its_local_name_but_its_content_only_in_the_onvif_namespaces() {
+    let shape = r#"<Appearance><Shape><BoundingBox left="0" top="0" right="1" bottom="1"/></Shape></Appearance>"#;
+    let time = r#"UtcTime="2024-01-01T00:00:00Z""#;
+    let plain = format!(r#"<Frame {time}><Object ObjectId="a">{shape}</Object></Frame>"#);
+    let scene = decode_scene(plain.as_bytes());
+    assert_eq!(
+        scene.time().start(),
+        SceneTime::Timestamp(MediaTime(NEW_YEAR_2024))
+    );
+    assert!(
+        scene.entities().is_empty(),
+        "objects without the namespace are not read"
+    );
+
+    let tt = r#"xmlns:tt="http://www.onvif.org/ver10/schema""#;
+    let mixed = format!(
+        r#"<f:Frame xmlns:f="urn:other" {tt} {time}><tt:Object ObjectId="a"><tt:Appearance><tt:Shape><tt:BoundingBox left="0" top="0" right="1" bottom="1"/></tt:Shape></tt:Appearance></tt:Object></f:Frame>"#
+    );
+    assert_eq!(decode_scene(mixed.as_bytes()).entities().len(), 1);
+
+    let foreign = String::from_utf8_lossy(SAMPLE).replace("ver20/analytics/humanbody", "other");
+    let scene = decode_scene(foreign.as_bytes());
+    assert_eq!(scene.entities().len(), 8);
+    let person = classification(&scene, "103");
+    assert!(person.attribute("upper_clothing_colors").is_none());
 }
 
 #[test]
