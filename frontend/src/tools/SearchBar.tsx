@@ -1,4 +1,4 @@
-import { useCallback, useLayoutEffect, useMemo, useRef } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef } from "react";
 import { Icon } from "../kit/Icon";
 import { IconButton } from "../kit/IconButton";
 import { FIELD_IN } from "../kit/look";
@@ -91,7 +91,11 @@ export function SearchBar({
             autoComplete="off"
             spellCheck={false}
             onChange={(event) => onChange(event.target.value)}
-            onKeyDown={(event) => event.key === "Enter" && onCommit(event.currentTarget.value)}
+            onKeyDown={(event) => {
+              // Return that confirms an input-method candidate is not the user's Return.
+              if (event.key === "Enter" && !event.nativeEvent.isComposing && event.keyCode !== 229)
+                onCommit(event.currentTarget.value);
+            }}
             onScroll={follow}
             className="relative size-full bg-transparent text-transparent caret-fg outline-none placeholder:text-muted"
           />
@@ -113,15 +117,28 @@ export function SearchBar({
         trigger={<Icon name="circle-help" />}
         className="size-row justify-center"
       >
-        <dl className="m-0 grid grid-cols-[max-content_max-content] gap-x-l gap-y-s">
-          {SYNTAX.map(([example, meaning]) => (
-            <div key={example} className="contents">
-              <dt className="font-mono">{example}</dt>
-              <dd className="m-0 text-small text-muted">{meaning}</dd>
-            </div>
-          ))}
-        </dl>
+        <SyntaxSheet />
       </Popover>
     </div>
+  );
+}
+
+/** The syntax rows. They hold no control for the popover to focus, so the sheet takes focus itself when it opens. */
+function SyntaxSheet() {
+  const sheet = useRef<HTMLDListElement>(null);
+  useEffect(() => sheet.current?.focus(), []);
+  return (
+    <dl
+      ref={sheet}
+      tabIndex={0}
+      className="m-0 grid grid-cols-[max-content_max-content] gap-x-l gap-y-s focus-ring-inset"
+    >
+      {SYNTAX.map(([example, meaning]) => (
+        <div key={example} className="contents">
+          <dt className="font-mono">{example}</dt>
+          <dd className="m-0 text-small text-muted">{meaning}</dd>
+        </div>
+      ))}
+    </dl>
   );
 }

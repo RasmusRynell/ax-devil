@@ -71,6 +71,21 @@ describe("Frame scope", () => {
     expect(screen.queryByRole("button", { name: "Clear" })).toBeNull();
   });
 
+  it("ignores Return that confirms an input-method candidate, and opens the syntax help with focus in it", () => {
+    mount();
+    const box = screen.getByRole("textbox", { name: "Search objects" });
+    fireEvent.change(box, { target: { value: "id:12" } });
+    fireEvent.keyDown(box, { key: "Enter", isComposing: true });
+    expect(ids()).toEqual(["12", "7", "9"]);
+    fireEvent.keyDown(box, { key: "Enter" });
+    expect(ids()).toEqual(["12"]);
+
+    fireEvent.click(screen.getByRole("button", { name: "Query syntax" }));
+    expect(document.activeElement).toBe(
+      screen.getByRole("dialog", { name: "Query syntax" }).firstElementChild,
+    );
+  });
+
   it("names a searched field no object has, only where it can tell", () => {
     mount(
       {},
@@ -151,6 +166,13 @@ describe("File scope", () => {
     fireEvent.click(away);
     expect(selected).toEqual(["7", null, "40"]);
     expect(source.seek).toHaveBeenCalledWith(55);
+
+    // Return and Clear ask again without the pause typing has.
+    const asked = queries().length;
+    search("id:7");
+    expect(queries()).toHaveLength(asked + 1);
+    fireEvent.click(screen.getByRole("button", { name: "Clear" }));
+    expect(queries()).toHaveLength(asked + 2);
 
     // A field outside what File scope searches is said so.
     search("score>0.5");
