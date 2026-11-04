@@ -82,22 +82,29 @@ const geometry = (outlines: ReturnType<Geometry["boxes"]> = []) =>
     boxes: vi.fn(() => outlines),
   }) as unknown as Geometry & { boxes: ReturnType<typeof vi.fn> };
 
-const inspector = () => screen.queryByRole("complementary", { name: "Inspector" });
+/** One lane that reads a source, as an object can only be picked on one. */
+const OBJECTS: LaneInfo[] = [{ label: "DPM", slot: "DPM", source: 0 }];
+const page = () => screen.queryByRole("region", { name: "Object page" });
+const tools = () => screen.getByRole("complementary", { name: "Media tools" });
 
 describe("video viewer objects", () => {
-  it("opens the inspector for a click on an object and closes it by empty space, Escape or its button", async () => {
-    const { props } = await mount();
-    expect(inspector()).toBeNull();
+  it("shows the page of an object picked on the video when the media tools open, and keeps it when the selection is cleared there", async () => {
+    const { props, run } = await mount(undefined, OBJECTS);
+    const shown = geometry();
+    act(() => props().onDrawn?.(shown));
     act(() => props().onSelect?.(SELECTION));
-    expect(inspector()).toBeTruthy();
+    expect(shown.boxes).toHaveBeenLastCalledWith(SELECTION, null);
+    expect(page()).toBeNull();
+    run("media-tools");
+    expect(page()).toBeTruthy();
+
+    // Empty space on the video drops the outline, not the page; Back drops the selection too.
     act(() => props().onSelect?.(null));
-    expect(inspector()).toBeNull();
-    act(() => props().onSelect?.(SELECTION));
-    fireEvent.keyDown(inspector() as HTMLElement, { key: "Escape" });
-    expect(inspector()).toBeNull();
-    act(() => props().onSelect?.(SELECTION));
-    fireEvent.click(screen.getByRole("button", { name: "Close inspector" }));
-    expect(inspector()).toBeNull();
+    expect(shown.boxes).toHaveBeenLastCalledWith(null, null);
+    expect(page()).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Back to Objects" }));
+    expect(page()).toBeNull();
+    expect(shown.boxes).toHaveBeenLastCalledWith(null, null);
   });
 
   it("shows one lane alone in fullscreen while the others keep playing, and Escape only leaves it", async () => {
@@ -114,13 +121,14 @@ describe("video viewer objects", () => {
     expect(sent.some((message) => "subscribed" in message)).toBe(true);
 
     act(() => props().onSelect?.(SELECTION));
-    fireEvent.keyDown(inspector() as HTMLElement, { key: "Escape" });
-    // The Escape that leaves fullscreen does not also clear the selection.
+    run("media-tools");
+    // Escape in the media tools goes back a page; only one with no page to go back from leaves fullscreen.
+    fireEvent.keyDown(page() as HTMLElement, { key: "Escape" });
+    expect(page()).toBeNull();
+    expect(fullscreen.exit).not.toHaveBeenCalled();
+    fireEvent.keyDown(tools(), { key: "Escape" });
     expect(fullscreen.exit).toHaveBeenCalledOnce();
-    expect(inspector()).toBeTruthy();
     expect(props().cells?.map(({ lane }) => lane)).toEqual([0, 1]);
-    fireEvent.keyDown(inspector() as HTMLElement, { key: "Escape" });
-    expect(inspector()).toBeNull();
   });
 
   it("keeps the selection when Escape closes a lane menu", async () => {
@@ -129,11 +137,13 @@ describe("video viewer objects", () => {
       { label: "GT", slot: "GT", source: null },
     ];
     const { props } = await mount(undefined, lanes);
+    const shown = geometry();
+    act(() => props().onDrawn?.(shown));
     act(() => props().onSelect?.(SELECTION));
     fireEvent.contextMenu(screen.getByText("DPM"));
     fireEvent.keyDown(screen.getByRole("menuitem", { name: /Export Video/ }), { key: "Escape" });
     expect(screen.queryByRole("menu")).toBeNull();
-    expect(inspector()).toBeTruthy();
+    expect(shown.boxes).toHaveBeenLastCalledWith(SELECTION, null);
   });
 
   it("shows the frame info over the pictures by its command, and hides it by the same", async () => {
@@ -152,15 +162,15 @@ describe("video viewer objects", () => {
 
   it("opens and closes the media tools by their command or their button", async () => {
     const { run } = await mount();
-    const tools = () => screen.queryByRole("complementary", { name: "Media tools" });
-    expect(tools()).toBeNull();
+    const shown = () => screen.queryByRole("complementary", { name: "Media tools" });
+    expect(shown()).toBeNull();
     run("media-tools");
-    expect(tools()).toBeTruthy();
+    expect(shown()).toBeTruthy();
     run("media-tools");
-    expect(tools()).toBeNull();
+    expect(shown()).toBeNull();
     run("media-tools");
     fireEvent.click(screen.getByRole("button", { name: "Close media tools" }));
-    expect(tools()).toBeNull();
+    expect(shown()).toBeNull();
   });
 
   it("shows the hover chip of the object under the pointer", async () => {
@@ -172,12 +182,13 @@ describe("video viewer objects", () => {
     expect(screen.queryByRole("tooltip")).toBeNull();
   });
 
-  it("shows no chip, outline or inspector while object details are off, and forgets the selection", async () => {
-    const { props, show } = await mount();
+  it("shows no chip, outline or page while object details are off, and forgets the selection", async () => {
+    const { props, run, show } = await mount(undefined, OBJECTS);
     act(() => props().onSelect?.(SELECTION));
-    show({ settings: OFF });
+    show({ settings: OFF, lanes: OBJECTS });
     expect(props().objectDetails).toBe(false);
-    expect(inspector()).toBeNull();
+    run("media-tools");
+    expect(page()).toBeNull();
     const shown = geometry([{ lane: 0, rect: PICKED.box, kind: "selected", scale: 100 }]);
     act(() => {
       props().onDrawn?.(shown);
@@ -186,7 +197,7 @@ describe("video viewer objects", () => {
     expect(screen.queryByRole("tooltip")).toBeNull();
     expect(document.querySelector("[data-outline]")).toBeNull();
     show({});
-    expect(inspector()).toBeNull();
+    expect(page()).toBeNull();
   });
 
   it("places outlines where the pictures' geometry puts them", async () => {

@@ -14,10 +14,10 @@ import {
 import { ContextMenu } from "../../kit/ContextMenu";
 import { Icon } from "../../kit/Icon";
 import type { MenuEntry } from "../../kit/Menu";
+import { MiddleElided } from "../../kit/MiddleElided";
 import { useRowWindow } from "../../shell/useRowWindow";
 import { writeClipboard } from "./clipboard";
 import { KINDS, rowText, type Column, type SortOf } from "./columns";
-import { MiddleCut, tipIfCut } from "./MiddleCut";
 import { useColumns } from "./useColumns";
 
 /** The grid every row and the header share; `--cols` is written by `useColumns`. */
@@ -28,13 +28,19 @@ const LEAD = "border-l-edge pl-m";
 const COPIED_MS = 1500;
 const MENU: readonly MenuEntry[] = [{ kind: "action", id: "copy", label: "Copy row" }];
 
+/** On hover, gives the element `text` as its tooltip while it is cut short, and none otherwise. */
+const tipIfCut = (text: string) => (event: MouseEvent<HTMLElement>) => {
+  const element = event.currentTarget;
+  element.title = element.scrollWidth > element.clientWidth ? text : "";
+};
+
 /** One cell: text, an id elided in the middle, or what the column renders; a cut text shows in full as a tooltip. */
 function Cell<Row>({ column, row }: { column: Column<Row>; row: Row }) {
   const kind = KINDS[column.kind];
   if (!column.text) return <div className="min-w-0 pr-m">{column.render?.(row)}</div>;
   const text = column.text(row);
   const look = `pr-m ${kind.mono ? "font-mono text-aside" : ""} ${kind.numeric ? "text-right tabular-nums" : ""}`;
-  if (kind.elide === "middle") return <MiddleCut text={text} className={look} />;
+  if (kind.elide === "middle") return <MiddleElided text={text} className={look} />;
   return (
     <div onMouseEnter={tipIfCut(text)} className={`min-w-0 truncate ${look}`}>
       {text}

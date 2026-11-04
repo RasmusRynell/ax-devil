@@ -1,5 +1,5 @@
 // The smoke test's overlay scenarios on the real canvas: what the picture's marks are made of must not depend on the app
-// theme or the page zoom, and what the pointer shows (outline, chip, inspector) must sit on the marks that are drawn.
+// theme or the page zoom, and what the pointer shows (outline, chip, object page) must sit on the marks that are drawn.
 // Run on frame 0 of MINI-02 (one lane, DET), whose object 3 is the box 31,22 16x24 of its 64x48 picture.
 const assert = require("node:assert/strict");
 const fs = require("node:fs/promises");
@@ -221,7 +221,8 @@ module.exports.overlays = async (window, { setTheme }) => {
   }
   await setTheme("light");
 
-  // (d) The chip names the object; a click opens the inspector with its fields; Escape closes it.
+  // (d) The chip names the object; a click picks it, and the media tools, opened afterwards, show its page with its
+  // fields. Escape on the picture drops the outline and leaves the page; Back closes the page.
   assert.match(await js("document.querySelector('[role=tooltip]').textContent"), /^3/);
   for (const type of ["mouseDown", "mouseUp"])
     window.webContents.sendInputEvent({
@@ -231,15 +232,20 @@ module.exports.overlays = async (window, { setTheme }) => {
       button: "left",
       clickCount: 1,
     });
-  await wait("document.querySelector('aside[aria-label=Inspector] [aria-busy=false]')");
-  const inspector = () =>
-    js("document.querySelector('aside[aria-label=Inspector]')?.innerText ?? ''");
-  const text = await inspector();
-  assert.match(text, /^3 person\nscore 0\.51\n/);
+  await wait("document.querySelector('[data-outline=selected]')");
+  const PAGE = 'aside[aria-label="Media tools"] section[aria-label="Object page"]';
+  const tools = () =>
+    ["keyDown", "keyUp"].forEach((type) =>
+      window.webContents.sendInputEvent({ type, keyCode: "B", modifiers: ["control"] }),
+    );
+  tools();
+  await wait(`document.querySelector('${PAGE} [aria-busy=false]')`);
+  const text = await js(`document.querySelector('${PAGE}').innerText`);
+  assert.match(text, /^Objects\n3\nperson\nscore 0\.51\n/);
   assert.match(
     text,
-    /Classification\n(?:.*\n)*?score\n0\.51\n/i,
-    "The inspector must list the object's fields",
+    /Classification \d+\n(?:.*\n)*?score\n0\.51\n/i,
+    "The page must list the object's fields",
   );
   assert.doesNotMatch(text, /Loading|Not in this frame|not available/);
   assert.ok(
@@ -248,8 +254,14 @@ module.exports.overlays = async (window, { setTheme }) => {
   );
   window.webContents.sendInputEvent({ type: "keyDown", keyCode: "Escape" });
   window.webContents.sendInputEvent({ type: "keyUp", keyCode: "Escape" });
-  await wait(
-    "!document.querySelector('aside[aria-label=Inspector]') && !document.querySelector('[data-outline=selected]')",
+  await wait("!document.querySelector('[data-outline=selected]')");
+  assert.ok(
+    await js(`!!document.querySelector('${PAGE}')`),
+    "Escape on the picture keeps the page",
   );
+  await js(`document.querySelector('${PAGE} button[aria-label^=Back]').click()`);
+  await wait(`!document.querySelector('${PAGE}')`);
+  tools();
+  await wait("!document.querySelector('aside[aria-label=\"Media tools\"]')");
   return { point: [hoverX, hoverY] };
 };

@@ -112,6 +112,7 @@
   --spacing-segment: calc(var(--spacing-row) - 2 * (var(--spacing-xs) + var(--spacing-hairline)));
   --spacing-activity: calc(var(--spacing-icon) * 2);
   --spacing-sidebar: 34ch;
+  --spacing-panel: 48ch;
   --spacing-welcome: 40ch;
   --spacing-field: 24ch;
   --spacing-preview: calc(var(--text-size-system) * 6.4); /* the miniature window on a theme tile */

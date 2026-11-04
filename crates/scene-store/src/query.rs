@@ -138,6 +138,14 @@ impl Matches {
         self.order.len() as u64
     }
 
+    /// Where the object `id` is in the listing, as the index of its row; `None` when the file has no such object or
+    /// the class toggles, the search or the video's frames leave it out. `history` is the one the query ran over.
+    pub fn row_of(&self, history: &History, id: &str) -> Option<u32> {
+        let entity = history.find(id)?;
+        let row = self.order.iter().position(|&listed| listed == entity)?;
+        Some(row as u32)
+    }
+
     /// Rows `offset..offset + limit` of the listing. `history` and `placement` are those the query ran over.
     pub fn rows(
         &self,
@@ -162,6 +170,20 @@ impl Matches {
         })
         .collect()
     }
+}
+
+/// The frames `placement` shows the object `id` on, as ascending `[first, last]` spans of consecutive frames with at
+/// least one frame between two: every gap is kept, however short. The class toggles do not matter. Empty when the file
+/// has no such object or no frame shows it.
+pub fn appearances(history: &History, placement: &Placement, id: &str) -> Vec<[u64; 2]> {
+    let Some(entity) = history.find(id) else {
+        return Vec::new();
+    };
+    let spans = placement.spans(history.runs(entity));
+    spans
+        .into_iter()
+        .map(|[first, last]| [u64::from(first), u64::from(last)])
+        .collect()
 }
 
 impl Query {

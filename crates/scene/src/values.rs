@@ -3,7 +3,7 @@ use std::{fmt, sync::Arc};
 use bytes::Bytes;
 use foundation::MediaTime;
 
-use crate::{BoundingBox, Name, SceneError};
+use crate::{BoundingBox, Name, SceneError, Value};
 
 /// The class name of an unknown class id `N` is `?N`; this prefix marks it.
 pub const UNMAPPED_CLASS: &str = "?";
@@ -192,6 +192,72 @@ pub struct Image {
     pub bounding_box: BoundingBox,
     /// The encoded picture.
     pub data: Bytes,
+}
+
+/// An 8-bit colour.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Rgb {
+    /// Red.
+    pub r: u8,
+    /// Green.
+    pub g: u8,
+    /// Blue.
+    pub b: u8,
+}
+
+/// One colour of a colour attribute: a map with an `rgb` list of three channels and, optionally, a `score` and a
+/// `name`.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct ColorEntry<'a> {
+    /// The colour.
+    pub rgb: Rgb,
+    /// How sure the source is of it.
+    pub score: Option<f64>,
+    /// What the source calls it.
+    pub name: Option<&'a str>,
+}
+
+impl<'a> ColorEntry<'a> {
+    /// The colour `value` holds, or `None` when it is not one. A null field counts as absent; a score that is not a
+    /// number or a name that is not text means the value is not a colour.
+    pub fn read(value: &'a Value) -> Option<Self> {
+        let fields = value.as_map()?;
+        let field = |key: &str| {
+            fields
+                .iter()
+                .find(|(name, _)| name == key)
+                .map(|(_, value)| value)
+                .filter(|value| !matches!(value, Value::Null))
+        };
+        let [red, green, blue] = field("rgb")?.as_list()? else {
+            return None;
+        };
+        let channel = |value: &Value| u8::try_from(value.as_i64()?).ok();
+        let rgb = Rgb {
+            r: channel(red)?,
+            g: channel(green)?,
+            b: channel(blue)?,
+        };
+        let score = match field("score") {
+            None => None,
+            Some(score) => Some(score.as_f64()?),
+        };
+        let name = match field("name") {
+            None => None,
+            Some(name) => Some(name.as_str()?),
+        };
+        Some(Self { rgb, score, name })
+    }
+
+    /// The colour `value` holds, but only when it holds nothing besides `rgb`, `score` and `name`: for a view that
+    /// shows everything the Scene holds, which a colour with other fields would lose them in.
+    pub fn read_exact(value: &'a Value) -> Option<Self> {
+        let only_color_fields = value
+            .as_map()?
+            .iter()
+            .all(|(key, _)| matches!(key.as_ref(), "rgb" | "score" | "name"));
+        only_color_fields.then(|| Self::read(value)).flatten()
+    }
 }
 
 /// Speed in the image, in normalized units per second.

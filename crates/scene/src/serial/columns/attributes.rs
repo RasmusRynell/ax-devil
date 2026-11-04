@@ -3,7 +3,7 @@
 use std::collections::HashMap;
 
 use super::{NO_ID, Strings, f64s, failed, u32s};
-use crate::{Classification, SceneError, Value};
+use crate::{Classification, ColorEntry, SceneError, Value};
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
 pub(super) enum Kind {
@@ -76,28 +76,12 @@ impl Column<'_> {
 }
 
 fn colour(value: &Value) -> Option<Colour<'_>> {
-    let fields = value.as_map()?;
-    let field = |key: &str| {
-        fields
-            .iter()
-            .find(|(name, _)| name == key)
-            .map(|(_, value)| value)
-            .filter(|value| !matches!(value, Value::Null))
-    };
-    let [red, green, blue] = field("rgb")?.as_list()? else {
-        return None;
-    };
-    let channel = |value: &Value| u8::try_from(value.as_i64()?).ok();
-    let rgba = u32::from_be_bytes([channel(red)?, channel(green)?, channel(blue)?, 255]);
-    let score = match field("score") {
-        None => f64::NAN,
-        Some(score) => score.as_f64()?,
-    };
-    let name = match field("name") {
-        None => None,
-        Some(name) => Some(name.as_str()?),
-    };
-    Some(Colour { rgba, score, name })
+    let ColorEntry { rgb, score, name } = ColorEntry::read(value)?;
+    Some(Colour {
+        rgba: u32::from_be_bytes([rgb.r, rgb.g, rgb.b, 255]),
+        score: score.unwrap_or(f64::NAN),
+        name,
+    })
 }
 
 /// The cell of an attribute value, or `None` for a value an item does not ship.

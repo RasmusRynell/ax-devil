@@ -159,6 +159,9 @@ fn field(field: InspectionField) -> FieldWire {
         origin: field.origin,
         path: field.path,
         value,
+        rgb: field.color.map(|color| [color.r, color.g, color.b]),
+        text: field.text,
+        fraction: field.fraction,
     }
 }
 

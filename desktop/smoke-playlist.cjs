@@ -9,6 +9,7 @@ const { objects } = require("./smoke-objects.cjs");
 const { multiplaylist } = require("./smoke-multiplaylist.cjs");
 const { overlays } = require("./smoke-overlays.cjs");
 const { panels } = require("./smoke-panels.cjs");
+const { fields } = require("./smoke-fields.cjs");
 const { twice } = require("./smoke-twice.cjs");
 const kit = require("./smoke-kit.cjs");
 const { SCREENSHOTS, SHOWN, SMOKE_ROOT, delay, frames, page, setView, showChrome } = kit;
@@ -212,4 +213,6 @@ module.exports.playlist = async (window) => {
 
   // One overlay file given twice is two lanes, in a window of its own on another backend.
   await twice();
+  // Two ADF files on a video: the object page of an object with colours, a motion state and a picture.
+  await fields();
 };

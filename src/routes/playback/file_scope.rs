@@ -8,12 +8,17 @@
 //! and again if it became one while the query ran. The history, placement and listing of the last query of each lane are
 //! kept within a byte budget so paging and typing a search do not read them again; a lane the viewer releases keeps
 //! nothing.
+//!
+//! Where one object is (`Appearances`) is answered beside the list, from the same kept history and placement: it never
+//! cancels or waits for the lane's list query, and its own newer request replaces its older one ([`appearances`]).
 
+pub(super) use self::appearances::Ask as AppearancesAsk;
+use self::appearances::Spans;
 use self::cache::{CACHE_BYTES, Cache, Cached};
 use super::{End, Flow, Outgoing, text};
 use api_types::{
     Audience,
-    playback::{FileScopeUnavailable, ServerMessage},
+    playback::{FileAppearances, FileScopeUnavailable, Located, ServerMessage},
     project,
 };
 use foundation::{CancelToken, Cancelled, ErrorCode, UserError};
@@ -40,6 +45,7 @@ pub(super) struct Ask {
     pub(super) offset: u32,
     pub(super) limit: u32,
     pub(super) bins: u16,
+    pub(super) locate: Option<String>,
 }
 
 /// A message about one request.
@@ -63,6 +69,18 @@ impl Reply {
                 lane,
                 request,
                 unavailable: FileScopeUnavailable::Following,
+            },
+            ServerMessage::Appearances {
+                entity,
+                appearances: FileAppearances::Found { .. },
+                ..
+            } if !own => ServerMessage::Appearances {
+                lane,
+                request,
+                entity,
+                appearances: FileAppearances::Unavailable {
+                    unavailable: FileScopeUnavailable::Following,
+                },
             },
             other => other,
         };
@@ -101,6 +119,7 @@ pub(super) struct FileScopes {
     /// Answers already known, in the order asked.
     ready: VecDeque<Reply>,
     cache: Arc<Cache>,
+    spans: Spans,
 }
 
 impl FileScopes {
@@ -114,7 +133,21 @@ impl FileScopes {
             tasks: JoinSet::new(),
             ready: VecDeque::new(),
             cache: Arc::new(Cache::new(CACHE_BYTES)),
+            spans: Spans::new(audience),
         }
+    }
+
+    /// Takes a request for where one object is, replacing the lane's older one. A lane the video does not have ends
+    /// the session.
+    pub(super) fn ask_appearances(
+        &mut self,
+        overlays: &ViewerOverlays,
+        own: bool,
+        ask: AppearancesAsk,
+    ) -> Flow<()> {
+        check_lane(overlays, ask.lane)?;
+        self.spans.ask(overlays, &self.cache, own, ask);
+        Ok(())
     }
 
     /// Takes a request, replacing the lane's older one. `own` says whether the viewer chooses its own frames. A lane
@@ -178,22 +211,18 @@ impl FileScopes {
         Ok(())
     }
 
-    /// The lane's list is no longer wanted: its running and waiting queries are dropped without an answer, and what was
-    /// kept for it is freed. A lane the video does not have ends the session.
+    /// The lane's list and spans are no longer wanted: its running and waiting queries are dropped without an answer,
+    /// and what was kept for it is freed. A lane the video does not have ends the session.
     pub(super) fn release(&mut self, overlays: &ViewerOverlays, lane: u16) -> Flow<()> {
         self.drop_requests(overlays, lane)?;
+        self.spans.release(lane);
         self.cache.release(lane);
         Ok(())
     }
 
     /// Cancels the lane's running query, which is never answered, and forgets what waited or was ready for it.
     fn drop_requests(&mut self, overlays: &ViewerOverlays, lane: u16) -> Flow<()> {
-        if usize::from(lane) >= overlays.lane_sources().len() {
-            return Err(End::Failed(UserError::new(
-                ErrorCode::ProtocolViolation,
-                format!("The video has no lane {lane}"),
-            )));
-        }
+        check_lane(overlays, lane)?;
         if let Some(cancel) = self.running.get(&lane) {
             cancel.cancel();
         }
@@ -250,23 +279,37 @@ impl FileScopes {
             if let Some(reply) = self.ready.pop_front() {
                 return reply;
             }
-            // Only the set is polled, so a dropped call loses nothing.
-            match self.tasks.join_next_with_id().await {
-                None => return std::future::pending().await,
-                Some(Ok((id, reply))) => {
-                    if self.ended(id)
-                        && let Some(reply) = reply
-                    {
-                        return reply;
+            // Only the sets are polled, so a dropped call loses nothing. `spans` never ends, and a set with nothing
+            // running gives `None`, which no arm takes.
+            tokio::select! {
+                Some(joined) = self.tasks.join_next_with_id() => match joined {
+                    Ok((id, reply)) => {
+                        if self.ended(id)
+                            && let Some(reply) = reply
+                        {
+                            return reply;
+                        }
                     }
-                }
-                Some(Err(error)) => {
-                    tracing::warn!("A file query failed: {error}");
-                    self.ended(error.id());
-                }
+                    Err(error) => {
+                        tracing::warn!("A file query failed: {error}");
+                        self.ended(error.id());
+                    }
+                },
+                reply = self.spans.next() => return reply,
             }
         }
     }
+}
+
+/// Ends the session when the video has no `lane`.
+fn check_lane(overlays: &ViewerOverlays, lane: u16) -> Flow<()> {
+    if usize::from(lane) >= overlays.lane_sources().len() {
+        return Err(End::Failed(UserError::new(
+            ErrorCode::ProtocolViolation,
+            format!("The video has no lane {lane}"),
+        )));
+    }
+    Ok(())
 }
 
 impl Drop for FileScopes {
@@ -287,32 +330,7 @@ fn answer(
     audience: Audience,
 ) -> Result<ServerMessage, Stop> {
     let lane = ask.lane;
-    let held = cache.take(lane).filter(|held| {
-        (held.data_revision, held.policy_revision) == (input.data_revision, input.policy_revision)
-    });
-    let mut cached = match held {
-        Some(held) => held,
-        None => {
-            let history = input
-                .track
-                .history()
-                .map_err(|why| unavailable(why, audience))?;
-            let placement = Placement::new(
-                &input.snapshot.keys,
-                input.track.coverage(),
-                &input.timeline,
-                &input.matching,
-                cancel,
-            )?;
-            Cached {
-                data_revision: input.data_revision,
-                policy_revision: input.policy_revision,
-                history,
-                placement: Arc::new(placement),
-                listing: None,
-            }
-        }
-    };
+    let mut cached = cache.prepared(lane, input, || read(input, cancel, audience))?;
     let query = query(ask);
     let listed = match &cached.listing {
         Some((listed, matches)) if *listed == query => Some(Arc::clone(matches)),
@@ -336,6 +354,10 @@ fn answer(
         ask.limit as usize,
         ask.bins,
     );
+    let located = ask.locate.as_ref().map(|id| Located {
+        row: matches.row_of(&cached.history, id),
+        id: id.clone(),
+    });
     let message = ServerMessage::FileRows {
         lane,
         request: ask.request,
@@ -345,9 +367,32 @@ fn answer(
         matched: matches.matched(),
         offset: ask.offset,
         rows,
+        located,
     };
     cache.put(lane, cached);
     Ok(message)
+}
+
+/// The history and placement of `input`, read now.
+fn read(input: &FileScopeInput, cancel: &CancelToken, audience: Audience) -> Result<Cached, Stop> {
+    let history = input
+        .track
+        .history()
+        .map_err(|why| unavailable(why, audience))?;
+    let placement = Placement::new(
+        &input.snapshot.keys,
+        input.track.coverage(),
+        &input.timeline,
+        &input.matching,
+        cancel,
+    )?;
+    Ok(Cached {
+        data_revision: input.data_revision,
+        policy_revision: input.policy_revision,
+        history,
+        placement: Arc::new(placement),
+        listing: None,
+    })
 }
 
 fn unavailable(why: HistoryUnavailable, audience: Audience) -> Stop {
@@ -369,6 +414,7 @@ fn query(ask: &Ask) -> Query {
     }
 }
 
+mod appearances;
 mod cache;
 #[cfg(test)]
 mod tests;

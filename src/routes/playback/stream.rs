@@ -263,6 +263,7 @@ impl<I: Incoming> Playing<'_, I> {
                 offset,
                 limit,
                 bins,
+                locate,
             })) => self.file_scopes.ask(
                 self.lanes.overlays(),
                 self.gate.is_own(),
@@ -275,6 +276,20 @@ impl<I: Incoming> Playing<'_, I> {
                     offset,
                     limit,
                     bins,
+                    locate,
+                },
+            ),
+            Some(Ok(ClientMessage::Appearances {
+                lane,
+                request,
+                entity,
+            })) => self.file_scopes.ask_appearances(
+                self.lanes.overlays(),
+                self.gate.is_own(),
+                file_scope::AppearancesAsk {
+                    lane,
+                    request,
+                    entity,
                 },
             ),
             Some(Ok(ClientMessage::FileRelease { lane })) => {

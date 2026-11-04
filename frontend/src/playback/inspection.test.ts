@@ -1,5 +1,6 @@
 // @vitest-environment node
 import { describe, expect, it } from "vite-plus/test";
+import { compileFilter } from "../present";
 import { fullSample } from "../present/fixtures";
 import type { LaneFrame } from "./contract";
 import { Inspections } from "./inspection";
@@ -7,14 +8,37 @@ import type { ClientMessage, FieldWire, InspectionWire, ServerMessage } from "./
 
 const SELECTION = { lane: 0, source: 0, entity: "7" };
 const withCar = fullSample([
-  { id: "7", class: "car", score: 0.82, confidence: 0.9, box: [0.1, 0.1, 0.3, 0.3] },
+  {
+    id: "7",
+    class: "car",
+    score: 0.82,
+    confidence: 0.9,
+    motion: "moving",
+    mask: [0b01],
+    box: [0.1, 0.1, 0.3, 0.3],
+  },
   { id: "9", class: "human", box: [0.5, 0.5, 0.6, 0.7] },
 ]);
 const withoutCar = fullSample([{ id: "9", class: "human", box: [0.5, 0.5, 0.6, 0.7] }]);
 
 /** What a lane draws: only the parts the inspector reads are real. */
-const frame = (sample: number, columns = withCar, dataRevision = 1, source = 0): LaneFrame =>
-  ({ source, dataRevision, sample, columns }) as LaneFrame;
+const frame = (
+  sample: number,
+  columns = withCar,
+  dataRevision = 1,
+  source = 0,
+  style: Partial<LaneFrame> = {},
+): LaneFrame =>
+  ({
+    source,
+    dataRevision,
+    sample,
+    columns,
+    styleRevision: 0,
+    classMask: { enabled: new Uint32Array(1), options: 0 },
+    filter: null,
+    ...style,
+  }) as LaneFrame;
 
 const CLASS: FieldWire = { group: "classification", path: ["class"], value: "car" };
 const found = (...fields: FieldWire[]): InspectionWire => ({
@@ -53,7 +77,13 @@ describe("inspections", () => {
     expect(inspections.view).toMatchObject({
       state: "loading",
       selection: SELECTION,
-      summary: { entity: "7", className: "car", score: 0.82, confidence: 0.9 },
+      summary: {
+        entity: "7",
+        className: "car",
+        score: 0.82,
+        confidence: 0.9,
+        motion: "moving",
+      },
       fields: [],
     });
     // Drawing the same sample again, as every refresh does, changes nothing.
@@ -130,12 +160,43 @@ describe("inspections", () => {
     const { inspections, samples } = setup();
     inspections.follow([frame(0, withoutCar)]);
     inspections.select(SELECTION);
-    expect(inspections.view).toEqual({ state: "absent", selection: SELECTION });
+    expect(inspections.view).toEqual({
+      state: "absent",
+      selection: SELECTION,
+      reason: "gone",
+      last: null,
+    });
     expect(samples()).toEqual([]);
     inspections.follow([frame(1)]);
     expect(inspections.view).toMatchObject({ state: "loading", selection: SELECTION });
     inspections.receive(reply(1, { state: "Absent" }));
-    expect(inspections.view.state).toBe("absent");
+    expect(inspections.view).toMatchObject({ state: "absent", reason: "gone" });
+    inspections.follow([frame(2, withoutCar)]);
+    expect(inspections.view).toMatchObject({ state: "absent", last: { className: "car" } });
+  });
+
+  it("says filtered, and keeps the selection and the class, while the lane's toggles or filter hide the object", () => {
+    const { inspections, samples } = setup();
+    inspections.follow([frame(0)]);
+    inspections.select(SELECTION);
+    // The class toggled off, then on again; the sample and its columns are the same throughout.
+    const off = { classMask: { enabled: new Uint32Array([0b10]), options: 2 }, styleRevision: 1 };
+    expect(inspections.follow([frame(0, withCar, 1, 0, off)])).toBe(true);
+    expect(inspections.view).toMatchObject({
+      state: "absent",
+      selection: SELECTION,
+      reason: "filtered",
+      last: { className: "car" },
+    });
+    expect(inspections.follow([frame(0, withCar, 1, 0, { styleRevision: 2 })])).toBe(true);
+    expect(inspections.view.state).toBe("loading");
+
+    const compiled = compileFilter("score > 0.9");
+    if (!compiled.ok) throw new Error("the filter compiles");
+    inspections.follow([frame(0, withCar, 1, 0, { filter: compiled.filter, styleRevision: 3 })]);
+    expect(inspections.view).toMatchObject({ state: "absent", reason: "filtered" });
+    // Asked again only when the object was shown again.
+    expect(samples()).toEqual([0, 0]);
   });
 
   it("says unavailable for a sample the backend will not answer for, and asks again only when it is shown anew", () => {
@@ -211,6 +272,19 @@ describe("inspections", () => {
     inspections.reconnect();
     inspections.follow([frame(0)]);
     expect(samples()).toEqual([0, 0, 0]);
+  });
+
+  it("asks for the selection's fields only while an inspector page shows, and at once when one does", () => {
+    const { inspections, samples } = setup();
+    inspections.follow([frame(0)]);
+    inspections.setVisible(false);
+    inspections.select(SELECTION);
+    inspections.follow([frame(1)]);
+    inspections.follow([frame(2)]);
+    expect(samples()).toEqual([]);
+    expect(inspections.view).toMatchObject({ state: "loading", selection: SELECTION });
+    inspections.setVisible(true);
+    expect(samples()).toEqual([2]);
   });
 
   it("clears the selection", () => {

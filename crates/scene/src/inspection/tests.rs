@@ -1,8 +1,9 @@
 use super::*;
 use crate::{
     BoundingBox, ClassType, Classification, Confidence, EntityId, Fields, GeographicCoordinates,
-    ImageVelocity, Measurements, Name, Point, Polygon, Score,
+    Image, ImageVelocity, Measurements, Name, Point, Polygon, Score,
 };
+use bytes::Bytes;
 use foundation::MediaTime;
 
 fn entity(observation: Observation) -> Entity {
@@ -22,6 +23,13 @@ fn class(name: &'static str, score: Option<f64>, confidence: Option<f64>) -> Cla
         confidence: confidence.map(|c| Confidence::new(c).expect("finite")),
         ..Classification::new(ClassType::from_static(name))
     }
+}
+
+fn color(rgb: &[i64; 3], score: Option<f64>, name: Option<&'static str>) -> Value {
+    let mut fields = vec![pair("rgb", Value::List(rgb.map(Value::Int).to_vec()))];
+    fields.extend(score.map(|score| pair("score", Value::Float(score))));
+    fields.extend(name.map(|name| pair("name", Value::Str(name.into()))));
+    Value::Map(fields)
 }
 
 fn pair(key: &'static str, value: Value) -> (Name, Value) {
@@ -54,11 +62,30 @@ fn fields_are_grouped_in_display_order_and_debug_fields_say_who_produced_them() 
         pair("color", Value::Str("red".into())),
         pair("blank", Value::Str("".into())),
         pair(
+            "colors",
+            Value::List(vec![
+                color(&[200, 10, 0], Some(0.75), Some("red")),
+                color(&[0, 0, 255], None, None),
+            ]),
+        ),
+        pair(
             "parts",
             Value::List(vec![Value::Map(vec![pair("n", Value::Int(2))])]),
         ),
+        // Colour-shaped but with fields of its own: nothing is dropped for being read as a colour.
+        pair(
+            "tagged",
+            Value::List(vec![Value::Map(vec![
+                pair(
+                    "rgb",
+                    Value::List(vec![Value::Int(1), Value::Int(2), Value::Int(3)]),
+                ),
+                pair("area", Value::Int(5)),
+                pair("id", Value::Str("x".into())),
+            ])]),
+        ),
     ];
-    let mut other = class("truck", Some(0.3), None);
+    let mut other = class("truck", Some(-0.5), None);
     other.attributes = vec![pair("axles", Value::Int(3))];
     let mut observation = observation(SceneTime::Frame(4));
     observation.classifications = vec![other, primary];
@@ -90,6 +117,11 @@ fn fields_are_grouped_in_display_order_and_debug_fields_say_who_produced_them() 
     let mut entity = entity(observation.with_details(source, debug).expect("disjoint"));
     entity.motion_state = Some(MotionState::Moving);
     entity.end_reason = Some("lost".into());
+    entity.images.push(Image {
+        timestamp: MediaTime(900),
+        bounding_box: BoundingBox::new(0.5, 0.0, 0.75, 0.5).expect("a box"),
+        data: Bytes::from_static(&[1, 2, 3]),
+    });
 
     let (fields, cut) = entity_fields(&entity, MAX_FIELDS);
 
@@ -101,10 +133,17 @@ fn fields_are_grouped_in_display_order_and_debug_fields_say_who_produced_them() 
             "Classification score = Number(0.9)",
             "Classification confidence = Number(0.8)",
             "Classification attributes.color = \"red\"",
+            "Classification attributes.colors.red = Number(0.75)",
+            "Classification attributes.colors.1 = Null",
             "Classification attributes.parts.0.n = Number(2.0)",
+            "Classification attributes.tagged.0.rgb.0 = Number(1.0)",
+            "Classification attributes.tagged.0.rgb.1 = Number(2.0)",
+            "Classification attributes.tagged.0.rgb.2 = Number(3.0)",
+            "Classification attributes.tagged.0.area = Number(5.0)",
+            "Classification attributes.tagged.0.id = \"x\"",
             "Classification candidates.car.score = Number(0.9)",
             "Classification candidates.car.confidence = Number(0.8)",
-            "Classification candidates.truck.score = Number(0.3)",
+            "Classification candidates.truck.score = Number(-0.5)",
             "Classification candidates.truck.attributes.axles = Number(3.0)",
             "Motion state = \"moving\"",
             "Motion velocity_in_image_space.vx = Number(0.5)",
@@ -124,12 +163,106 @@ fn fields_are_grouped_in_display_order_and_debug_fields_say_who_produced_them() 
             "Debug/Decoder text = \"\"",
             "Raw end_reason = \"lost\"",
             "Raw frame_number = Number(4.0)",
+            "Images 0.timestamp = \"1970-01-01T00:00:00.000900+00:00\"",
+            "Images 0.bounding_box.x = Number(0.5)",
+            "Images 0.bounding_box.y = Number(0.0)",
+            "Images 0.bounding_box.width = Number(0.25)",
+            "Images 0.bounding_box.height = Number(0.5)",
+            "Images 0.data = \"3 bytes\"",
+        ]
+    );
+    let marks: Vec<_> = fields
+        .iter()
+        .filter(|field| field.text.is_some() || field.fraction.is_some() || field.color.is_some())
+        .map(|field| {
+            (
+                field.path.join("."),
+                field.text.as_deref(),
+                field.fraction,
+                field.color.map(|color| [color.r, color.g, color.b]),
+            )
+        })
+        .collect();
+    assert_eq!(
+        marks,
+        [
+            ("score".into(), Some("0.90"), Some(0.9), None),
+            ("confidence".into(), Some("0.80"), Some(0.8), None),
+            (
+                "attributes.colors.red".into(),
+                None,
+                Some(0.75),
+                Some([200, 10, 0])
+            ),
+            ("attributes.colors.1".into(), None, None, Some([0, 0, 255])),
+            ("candidates.car.score".into(), Some("0.90"), Some(0.9), None),
+            (
+                "candidates.car.confidence".into(),
+                Some("0.80"),
+                Some(0.8),
+                None
+            ),
+            ("candidates.truck.score".into(), Some("-0.50"), None, None),
         ]
     );
 }
 
 #[test]
-fn a_polygon_lists_its_bounds_and_point_count_and_a_timestamp_is_raw() {
+fn queries_address_fields_by_group_and_path_and_colours_add_their_channels() {
+    let mut primary = class("car", Some(0.9), None);
+    primary.attributes = vec![pair(
+        "colors",
+        Value::List(vec![
+            color(&[200, 10, 0], Some(0.75), Some("red")),
+            color(&[190, 20, 5], Some(0.25), Some("red")),
+        ]),
+    )];
+    let mut observation = observation(SceneTime::Frame(4));
+    observation.classifications = vec![primary];
+    let debug = vec![pair("vendor", Value::Map(vec![pair("id", Value::Int(7))]))];
+    let observation = observation.with_details(Vec::new(), debug).expect("ok");
+
+    let (fields, _) = entity_fields(&entity(observation), MAX_FIELDS);
+    let items: Vec<_> = fields
+        .iter()
+        .flat_map(InspectionField::query_items)
+        .map(|item| {
+            let value = match item.value {
+                Leaf::Number(number) => number.to_string(),
+                other => format!("{other:?}"),
+            };
+            format!("{}.{} = {value}", item.group.name(), item.path.join("."))
+        })
+        .filter(|item| {
+            [
+                "classification.score",
+                "classification.attributes",
+                "debug.",
+            ]
+            .iter()
+            .any(|wanted| item.starts_with(wanted))
+        })
+        .collect();
+
+    assert_eq!(
+        items,
+        [
+            "classification.score = 0.9",
+            "classification.attributes.colors.red = 0.75",
+            "classification.attributes.colors.red.rgb.r = 200",
+            "classification.attributes.colors.red.rgb.g = 10",
+            "classification.attributes.colors.red.rgb.b = 0",
+            "classification.attributes.colors.red = 0.25",
+            "classification.attributes.colors.red.rgb.r = 190",
+            "classification.attributes.colors.red.rgb.g = 20",
+            "classification.attributes.colors.red.rgb.b = 5",
+            "debug.vendor.id = 7",
+        ]
+    );
+}
+
+#[test]
+fn a_polygon_lists_its_bounds_and_point_count_and_a_timestamp_is_a_datetime() {
     let points = [(0.1, 0.1), (0.5, 0.2), (0.3, 0.9)]
         .map(|(x, y)| Point::new(x, y).expect("a point"))
         .to_vec();
@@ -145,7 +278,7 @@ fn a_polygon_lists_its_bounds_and_point_count_and_a_timestamp_is_raw() {
     );
     assert_eq!(
         shown.last().map(String::as_str),
-        Some("Raw timestamp_us = Number(1500.0)")
+        Some("Raw timestamp = \"1970-01-01T00:00:00.001500+00:00\"")
     );
     assert!(
         shown[0].starts_with("Geometry x = "),

@@ -3,26 +3,40 @@
  * says what list it wants per lane (`request`) and reads the latest answer (`view`); this keeps the backend asked for
  * exactly that list. It asks again when the answer would change: a new Ready revision, a new policy revision, the
  * class toggles, the file's ingest ending and the viewer becoming the owner of its frames again, for the backend
- * announces none of these. Answers of an older request, or made under other revisions, are dropped. Releasing a lane
- * tells the backend to free what it kept for the lane.
+ * announces none of these. Answers of an older request, or made under other revisions, are dropped. The backend frees
+ * what it kept for a lane when the list and the object's appearances have both been let go of. Where one object
+ * appears is asked and kept the same way, by `appearances`, which shares the lane's revisions, owner and socket but
+ * not its class toggles.
  */
 
-import type { FileRowWire, FileScopeUnavailable, FileSortWire } from "../generated/api";
-import { parseSearch } from "../search/query";
-import type { LaneState } from "./contract";
-import type { LaneSet, ReadyStatus } from "./lanes";
+import type { FileRowWire, FileScopeUnavailable, FileSortWire, Located } from "../generated/api";
+import { Appearances } from "./appearances";
+import { basisOf, FOLLOWING_RETRIES, FOLLOWING_RETRY_MS, readyOf } from "./fileBasis";
 import { styleOf } from "./laneStyle";
+import { parseSearch } from "../search/query";
+import type { LaneSet } from "./lanes";
 import type { ClientMessage, ServerMessage } from "./protocol";
+
+/** The lane's class toggles as the bitmask words a query sends: bit `i` of word `i >> 5` is class `i`. */
+function classesOf(lanes: LaneSet, lane: number): number[] {
+  const state = lanes.states[lane];
+  const ready = readyOf(state);
+  const words = new Uint32Array(Math.ceil((ready?.filter.length ?? 0) / 32));
+  if (ready)
+    for (const index of styleOf(state.label, state.settings, ready.filter).enabled_classes)
+      words[index >> 5] |= 1 << (index & 31);
+  return Array.from(words);
+}
+
+/** What the list's answer depends on: the lane's basis and its class toggles. */
+function listBasis(lanes: LaneSet, lane: number, owner: boolean) {
+  return { ...basisOf(lanes, lane, owner), classes: classesOf(lanes, lane) };
+}
 
 /** How long a change to the wanted list waits for another before it is sent. */
 const DEBOUNCE_MS = 150;
-/** How long to wait before asking again after a follower's answer to a viewer that believes it owns its frames. */
-const FOLLOWING_RETRY_MS = 1000;
-/** How often that is tried: the backend learns of a viewer's authority a moment after the viewer does. */
-const FOLLOWING_RETRIES = 3;
-
 /** One page of a lane's list. */
-type FilePage = {
+export type FilePage = {
   /** How many objects the video shows that the class toggles keep. */
   total: number;
   /** How many of them the search matches. */
@@ -30,6 +44,8 @@ type FilePage = {
   /** The position in the list of the first of `rows`. */
   offset: number;
   rows: readonly FileRowWire[];
+  /** Where the object asked about is in the whole list, whichever page this is; `null` when none was asked about. */
+  located: Located | null;
 };
 
 /** What a lane's list shows now. Replaced, never mutated, when it changes. */
@@ -51,13 +67,8 @@ type Wanted = {
   offset: number;
   limit: number;
   bins: number;
+  locate: string | null;
 };
-
-const readyOf = (state: LaneState | undefined): ReadyStatus | undefined =>
-  state && state.status !== "plain" && state.status.status === "Ready" ? state.status : undefined;
-
-/** What the backend's answer depends on: it is asked again when this changes. */
-type Basis = { data: number; policy: number; reading: boolean; owner: boolean; classes: number[] };
 
 type Slot = {
   wanted: Wanted;
@@ -76,6 +87,8 @@ export class FileScope {
   readonly #after: (callback: () => void, ms: number) => () => void;
   readonly #slots = new Map<number, Slot>();
   readonly #listeners = new Set<() => void>();
+  /** Where the object a lane's page is about appears. */
+  readonly appearances: Appearances;
   #requests = 0;
   #owner = true;
 
@@ -88,6 +101,16 @@ export class FileScope {
     this.#lanes = lanes;
     this.#send = send;
     this.#after = after;
+    this.appearances = new Appearances(
+      lanes,
+      send,
+      after,
+      () => this.#owner,
+      () => this.#changed(),
+      (lane) => {
+        if (!this.#slots.has(lane)) this.#send({ type: "FileRelease", lane });
+      },
+    );
   }
 
   /** Calls `listener` whenever a lane's view changes; returns how to stop. */
@@ -103,7 +126,8 @@ export class FileScope {
 
   /**
    * Wants the lane's list to be `limit` rows from `offset` of the objects `text` searches, in `sort` order, with
-   * presence in at most `bins` spans per row. Calls in quick succession send only the last.
+   * presence in at most `bins` spans per row. `locate` names an object whose row in the whole list the page tells too.
+   * Calls in quick succession send only the last.
    */
   request(
     lane: number,
@@ -112,8 +136,9 @@ export class FileScope {
     offset: number,
     limit: number,
     bins: number,
+    locate: string | null = null,
   ): void {
-    const wanted = { query: parseSearch(text).wire, sort, offset, limit, bins };
+    const wanted = { query: parseSearch(text).wire, sort, offset, limit, bins, locate };
     let slot = this.#slots.get(lane);
     if (slot) Object.assign(slot, { wanted, asked: null, retries: 0 });
     else slot = { wanted, view: IDLE, asked: null, basis: null, retries: 0, cancel: null };
@@ -128,7 +153,8 @@ export class FileScope {
     if (!slot) return;
     slot.cancel?.();
     this.#slots.delete(lane);
-    if (slot.basis !== null) this.#send({ type: "FileRelease", lane });
+    if (slot.basis !== null && !this.appearances.wants(lane))
+      this.#send({ type: "FileRelease", lane });
     this.#changed();
   }
 
@@ -141,6 +167,7 @@ export class FileScope {
 
   /** The lanes changed: ask again for each list whose answer would differ. */
   refresh(): void {
+    this.appearances.refresh();
     for (const [lane, slot] of this.#slots) {
       if (slot.cancel === null && this.#basisKey(lane) !== slot.basis) {
         slot.retries = 0;
@@ -159,6 +186,7 @@ export class FileScope {
 
   /** The socket is gone: stop sending and forget what was awaited. The lists wanted stay wanted. */
   suspend(): void {
+    this.appearances.suspend();
     for (const slot of this.#slots.values()) {
       slot.cancel?.();
       slot.cancel = null;
@@ -168,7 +196,13 @@ export class FileScope {
   }
 
   /** Takes the backend's answer to a request, unless a newer request or other revisions have made it stale. */
-  receive(message: Extract<ServerMessage, { type: "FileRows" | "FileScope" }>): void {
+  receive(
+    message: Extract<ServerMessage, { type: "FileRows" | "FileScope" | "Appearances" }>,
+  ): void {
+    if (message.type === "Appearances") {
+      this.appearances.receive(message);
+      return;
+    }
     const slot = this.#slots.get(message.lane);
     if (!slot || slot.asked !== message.request) return;
     if (message.type === "FileRows") {
@@ -178,11 +212,11 @@ export class FileScope {
         state.policyRevision !== message.policy_revision
       )
         return;
-      const { total, matched, offset, rows } = message;
+      const { total, matched, offset, rows, located } = message;
       slot.asked = null;
       this.#replace(message.lane, slot, {
         pending: false,
-        page: { total, matched, offset, rows },
+        page: { total, matched, offset, rows, located },
         unavailable: null,
       });
       return;
@@ -199,25 +233,8 @@ export class FileScope {
     this.#replace(message.lane, slot, { pending: retry, page: null, unavailable });
   }
 
-  /** What the lane's answer depends on now. */
-  #basis(lane: number): Basis {
-    const state = this.#lanes.states[lane];
-    const ready = readyOf(state);
-    const classes = new Uint32Array(Math.ceil((ready?.filter.length ?? 0) / 32));
-    if (ready)
-      for (const index of styleOf(state.label, state.settings, ready.filter).enabled_classes)
-        classes[index >> 5] |= 1 << (index & 31);
-    return {
-      data: ready?.data_revision ?? -1,
-      policy: state?.policyRevision ?? 0,
-      reading: ready?.ingest.state === "Reading",
-      owner: this.#owner,
-      classes: Array.from(classes),
-    };
-  }
-
   #basisKey(lane: number): string {
-    return JSON.stringify(this.#basis(lane));
+    return JSON.stringify(listBasis(this.#lanes, lane, this.#owner));
   }
 
   #schedule(lane: number, slot: Slot, ms: number): void {
@@ -225,10 +242,10 @@ export class FileScope {
     slot.cancel = this.#after(() => {
       slot.cancel = null;
       if (this.#slots.get(lane) !== slot) return;
-      const basis = this.#basis(lane);
+      const basis = listBasis(this.#lanes, lane, this.#owner);
       slot.basis = JSON.stringify(basis);
       slot.asked = ++this.#requests;
-      const { query, sort, offset, limit, bins } = slot.wanted;
+      const { query, sort, offset, limit, bins, locate } = slot.wanted;
       const classes = basis.classes;
       this.#send({
         type: "FileQuery",
@@ -240,6 +257,7 @@ export class FileScope {
         offset,
         limit,
         bins,
+        locate,
       });
     }, ms);
   }

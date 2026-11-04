@@ -1,12 +1,13 @@
 // The smoke test's media tools: the Objects list of a lane of MINI-01 (lanes DPM, GT, FRCNN, boxes on frame 0 and none on
 // frame 5), opened with its shortcut. Frame scope lists the frame's objects, File scope the file's, where a click on an
-// object that is not in the frame goes to its first frame and inspects it. Shown in both themes, then at
+// object that is not in the frame goes to its first frame and opens its page over the list. Shown in both themes, then at
 // the smallest window at 200% zoom, where the list must fit.
 const assert = require("node:assert/strict");
 const fit = require("./fit.cjs");
 const { delay, goToFrame, page, setView } = require("./smoke-kit.cjs");
 
 const PANEL = 'aside[aria-label="Media tools"]';
+const PAGE = `${PANEL} section[aria-label="Object page"]`;
 const THEMES = ["light", "dark"];
 
 module.exports.objects = async (window, { setTheme, shoot }) => {
@@ -126,29 +127,33 @@ module.exports.objects = async (window, { setTheme, shoot }) => {
   await clearSearch();
   await shows(total, total);
 
-  // On frame 5 nothing is in the frame. A click on an object goes to the frame it first is on and inspects it. The window
-  // is wide enough for the inspector to take a column beside the list.
+  // On frame 5 nothing is in the frame. A click on an object goes to the frame it first is on and opens its page.
   await setView(window, [1500, 720], 1);
   await goToFrame(window, 5);
   await wait(`document.querySelector('${PANEL} [role=option]:not([aria-busy])')`);
   await js(`document.querySelector('${PANEL} [role=option]').click()`);
   await wait(
-    "document.querySelector('aside[aria-label=Inspector] [aria-busy=false]') && !document.querySelector('aside[aria-label=Inspector]').innerText.includes('Not in this frame')",
+    `document.querySelector('${PAGE} [aria-busy=false]') && !document.querySelector('${PAGE}').innerText.includes('Not in this frame')`,
   );
   assert.ok(
     (await rows()).some((row) => row.selected),
     "The object is selected",
   );
   // A pinned field rises into a section of its own.
-  const INSPECTOR = "aside[aria-label=Inspector]";
-  await js(`document.querySelector('${INSPECTOR} [data-act=pin][aria-label^=Pin]').click()`);
-  await wait(`document.querySelector('${INSPECTOR} section[aria-label=Pinned]')`);
+  await js(`document.querySelector('${PAGE} [data-act=pin][aria-label^=Pin]').click()`);
+  await wait(`document.querySelector('${PAGE} section[aria-label=Pinned]')`);
   for (const theme of THEMES) {
     await setTheme(theme);
     await shoot(`objects-inspected-${theme}.png`);
   }
-  await js(`document.querySelector('${INSPECTOR} [data-act=pin][aria-label^=Unpin]').click()`);
-  await js("document.querySelector('[aria-label=\"Close inspector\"]').click()");
+  await js(`document.querySelector('${PAGE} [data-act=pin][aria-label^=Unpin]').click()`);
+  // Back shows the list again, with the row the page came from marked.
+  await js(`document.querySelector('${PAGE} button[aria-label^=Back]').click()`);
+  await wait(`!document.querySelector('${PAGE}')`);
+  assert.ok(
+    (await rows()).some((row) => row.selected),
+    "Back marks the row of the page it left",
+  );
 
   // The smallest window at 200%: the panel covers the viewer and nothing sticks out or is cut off.
   await setView(window, [640, 480], 2);

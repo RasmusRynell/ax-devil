@@ -4,8 +4,11 @@
  * one `Inspect` request per (source, data revision, sample, object): asking for a newer sample supersedes a request
  * still out (the backend keeps only the newest), and the last 16 replies are kept. A request whose reply never
  * comes (the backend may drop one) is asked again when its sample is wanted again, or after RESEND_AFTER draws.
+ * Nothing is asked while no inspector page shows; the selection is kept and asked about when one does.
  */
 
+import { MOTION_STATES } from "../present/columns";
+import { maskKeeps } from "../present/filter/filter";
 import type { InspectionView, LaneFrame, Selection, Summary } from "./contract";
 import type { ClientMessage, FieldWire, InspectionWire, ServerMessage } from "./protocol";
 
@@ -19,25 +22,37 @@ const encoder = new TextEncoder();
 
 type Reply = Extract<ServerMessage, { type: "Inspected" }>;
 
-/** The sample a selection is looked up in: the frame its lane draws. */
-type Shown = { frame: LaneFrame; summary: Summary } | "absent";
+/** The sample a selection is looked up in: the frame its lane draws, or why the object is not shown in it. */
+type Shown = { frame: LaneFrame; summary: Summary } | "gone" | "filtered";
 
 const keyOf = (source: number, revision: number, sample: number, entity: string): string =>
   `${source}:${revision}:${sample}:${entity}`;
 
-/** What the Sample Item says of the object, or null when it has no such object. */
-function summarize(frame: LaneFrame, entity: string): Summary | null {
+/**
+ * What the Sample Item says of the object; null when it has no such object, "filtered" when the lane's class toggles
+ * or frame filter keep it from being shown (the same test the lane's rows are kept by).
+ */
+function summarize(frame: LaneFrame, entity: string): Summary | "filtered" | null {
   const { columns } = frame;
   const bytes = encoder.encode(entity);
   for (let row = 0; row < columns.rows; row++) {
     if (!columns.strings.equals(columns.entityId[row], bytes)) continue;
+    const test = frame.filter?.test ?? null;
+    frame.filter?.ctx?.bind(columns);
+    if (
+      !maskKeeps(columns.classMask, row * columns.maskWords, frame.classMask) ||
+      (test !== null && test(row) !== 1)
+    )
+      return "filtered";
     const classId = columns.classId[row];
+    const motion = columns.motion[row];
     const number = (value: number) => (Number.isNaN(value) ? null : value);
     return {
       entity,
       className: classId < 0 ? null : columns.strings.string(classId),
       score: number(columns.score[row]),
       confidence: number(columns.confidence[row]),
+      motion: motion === 0 ? null : MOTION_STATES[motion - 1],
     };
   }
   return null;
@@ -47,7 +62,8 @@ const sameSummary = (a: Summary, b: Summary): boolean =>
   a.entity === b.entity &&
   a.className === b.className &&
   a.score === b.score &&
-  a.confidence === b.confidence;
+  a.confidence === b.confidence &&
+  a.motion === b.motion;
 
 export class Inspections {
   readonly #send: (message: ClientMessage) => void;
@@ -67,6 +83,8 @@ export class Inspections {
   #refused: { key: string; columns: unknown } | null = null;
   /** Draws so far, which time how long a request has been out. */
   #draws = 0;
+  /** Whether an inspector page shows the selection: only then are its fields asked for. */
+  #visible = true;
   /** Whether a connection opened and no frame of its data has been drawn yet: nothing is asked until one is. */
   #awaiting = false;
   /** The fields last shown, which stay until the shown sample's reply replaces them. */
@@ -76,8 +94,15 @@ export class Inspections {
     fields: readonly FieldWire[];
     truncated: boolean;
   } | null = null;
+  /** The summary last shown of the selected object, which an absent view keeps showing. */
+  #last: Summary | null = null;
   /** The sample the view was last made for, so that drawing the same one again costs nothing. */
-  #at: { selection: Selection; sample: string | null; columns: unknown } | null = null;
+  #at: {
+    selection: Selection;
+    sample: string | null;
+    columns: unknown;
+    style: number | null;
+  } | null = null;
   #view: InspectionView = { state: "none" };
 
   /** `send` asks the backend for an object's fields. */
@@ -95,11 +120,20 @@ export class Inspections {
     if (
       selection?.entity !== this.#selection?.entity ||
       selection?.source !== this.#selection?.source
-    )
+    ) {
       this.#fields = null;
+      this.#last = null;
+    }
     this.#selection = selection;
     this.#at = null;
     return this.#update();
+  }
+
+  /** Tells whether an inspector page shows. Showing one asks for the selection's fields at once. Reports whether the view changed. */
+  setVisible(visible: boolean): boolean {
+    if (visible === this.#visible) return false;
+    this.#visible = visible;
+    return visible && this.#update();
   }
 
   /** The lanes drew these frames: follows the selection to the shown samples. Reports whether the view changed. */
@@ -115,6 +149,7 @@ export class Inspections {
       held?.selection === this.#selection &&
       held.sample === at.sample &&
       held.columns === at.columns &&
+      held.style === at.style &&
       !resumed &&
       !this.#overdue()
     )
@@ -154,15 +189,17 @@ export class Inspections {
     return wanted !== null && this.#draws - wanted.at > RESEND_AFTER;
   }
 
-  /** Which sample the selection's lane shows. */
-  #sampleAt(): { sample: string | null; columns: unknown } {
+  /** Which sample the selection's lane shows, and in which style. */
+  #sampleAt(): { sample: string | null; columns: unknown; style: number | null } {
     const frame = this.#selection && this.#frames[this.#selection.lane];
     return frame
       ? {
           sample: keyOf(frame.source, frame.dataRevision, frame.sample, ""),
           columns: frame.columns,
+          // What the lane keeps of the sample (class toggles, frame filter) changes with the style.
+          style: frame.styleRevision,
         }
-      : { sample: null, columns: null };
+      : { sample: null, columns: null, style: null };
   }
 
   #remember(key: string, inspection: InspectionWire): void {
@@ -175,9 +212,10 @@ export class Inspections {
   /** What the selection's lane shows of the object. */
   #shown(selection: NonNullable<Selection>): Shown {
     const frame = this.#frames[selection.lane];
-    const summary =
-      frame && frame.source === selection.source && summarize(frame, selection.entity);
-    return frame && summary ? { frame, summary } : "absent";
+    if (!frame || frame.source !== selection.source) return "gone";
+    const summary = summarize(frame, selection.entity);
+    if (summary === null) return "gone";
+    return summary === "filtered" ? summary : { frame, summary };
   }
 
   /**
@@ -188,7 +226,7 @@ export class Inspections {
   #ask(frame: LaneFrame, entity: string): void {
     const key = keyOf(frame.source, frame.dataRevision, frame.sample, entity);
     const refused = this.#refused;
-    if (this.#awaiting || this.#cache.has(key)) return;
+    if (!this.#visible || this.#awaiting || this.#cache.has(key)) return;
     if (refused?.key === key && refused.columns === frame.columns) return;
     if (this.#inflight?.key === key && !this.#overdue()) return;
     this.#inflight = { key, at: this.#draws };
@@ -217,11 +255,15 @@ export class Inspections {
           before.selection.lane === next.selection.lane &&
           before.selection.source === next.selection.source &&
           before.selection.entity === next.selection.entity &&
-          (before.state === "absent" ||
-            (next.state !== "absent" &&
+          (before.state === "absent"
+            ? next.state === "absent" &&
+              before.reason === next.reason &&
+              (before.last === next.last ||
+                (before.last !== null && next.last !== null && sameSummary(before.last, next.last)))
+            : next.state !== "absent" &&
               sameSummary(before.summary, next.summary) &&
               before.fields === next.fields &&
-              before.truncated === next.truncated))));
+              before.truncated === next.truncated)));
     if (same) return false;
     this.#view = next;
     return true;
@@ -229,8 +271,10 @@ export class Inspections {
 
   #build(selection: NonNullable<Selection>): InspectionView {
     const shown = this.#shown(selection);
-    if (shown === "absent") return { state: "absent", selection };
+    if (typeof shown === "string")
+      return { state: "absent", selection, reason: shown, last: this.#last };
     const { frame, summary } = shown;
+    this.#last = summary;
     const key = keyOf(frame.source, frame.dataRevision, frame.sample, selection.entity);
     this.#wanted = key;
     const reply = this.#cache.get(key);
@@ -241,7 +285,8 @@ export class Inspections {
         fields: reply.fields,
         truncated: reply.truncated,
       };
-    if (reply?.state === "Absent") return { state: "absent", selection };
+    if (reply?.state === "Absent")
+      return { state: "absent", selection, reason: "gone", last: summary };
     this.#ask(frame, selection.entity);
     const held = this.#fields;
     return {

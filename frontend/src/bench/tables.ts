@@ -10,12 +10,14 @@ import { flushSync } from "react-dom";
 import { createRoot, type Root } from "react-dom/client";
 import type { LaneFrame } from "../playback/contract";
 import type { FieldGroupWire, FieldWire } from "../playback/protocol";
-import type { InspectorMemory } from "../playback/fields";
+import { FRESH_MEMORY, type InspectorMemory } from "../playback/fields";
 import { Inspector } from "../playback/Inspector";
 import { LANE_SETTINGS } from "../playback/fakeOpened";
 import { LaneSet } from "../playback/lanes";
 import { INITIAL_VIEW, type PlaybackView } from "../playback/view";
+import { FRESH_LIST, type ListState } from "../tools/listState";
 import { ObjectsPanel } from "../tools/ObjectsPanel";
+import { EMPTY } from "../tools/pageStack";
 import { rememberedWidths } from "../tools/table/fit";
 import "../style.css";
 import { summarize } from "./stats";
@@ -100,6 +102,8 @@ class Rig {
   readonly #view: PlaybackView;
   readonly #source;
   #current = 0;
+  #open = false;
+  #list: ListState = FRESH_LIST;
   playhead = 0;
 
   constructor(readonly scenario: TableScenario) {
@@ -116,7 +120,7 @@ class Rig {
     this.#source = {
       files: new FakeFiles(scenario.scope === "File" ? scenario.rows : 0),
       shown: () => this.#ring[this.#current],
-      select: () => {},
+      frameTime: () => undefined,
       seek: () => {},
     };
   }
@@ -124,37 +128,57 @@ class Rig {
   /** The viewer with the panel open or without it, showing the sample of `frame`; renders before returning. */
   show(open: boolean, frame = 0): void {
     this.#current = frame % RING;
+    this.#open = open;
+    flushSync(() => this.#render());
+  }
+
+  /** The list state lives here, as in the viewer: choosing a scope or a sort re-renders the panel with it. */
+  #render(): void {
     const view = { ...this.#view, playhead: ++this.playhead };
     const panel = createElement(ObjectsPanel, {
       source: this.#source,
       view,
       canSeek: true,
       selectable: true,
+      pages: EMPTY,
+      onNavigate: () => {},
+      list: this.#list,
+      onList: (list: ListState) => {
+        this.#list = list;
+        this.#render();
+      },
+      memory: FRESH_MEMORY,
+      onMemory: () => {},
       width: null,
       onWidth: () => {},
       onClose: () => {},
     });
     const picture = createElement("div", { style: { flex: "1 1 0" } });
-    flushSync(() =>
-      this.root.render(
-        createElement(
-          "div",
-          { style: { display: "contents" } },
-          picture,
-          open ? panel : null,
-        ) as ReactElement,
-      ),
+    this.root.render(
+      createElement(
+        "div",
+        { style: { display: "contents" } },
+        picture,
+        this.#open ? panel : null,
+      ) as ReactElement,
     );
   }
 
+  /** The element the rows scroll in: the listbox's nearest ancestor that scrolls vertically. */
   get scroller(): HTMLElement {
-    return this.host.querySelector('[role="listbox"]')!.parentElement!;
+    let element = this.host.querySelector('[role="listbox"]')!.parentElement!;
+    while (getComputedStyle(element).overflowY !== "auto") element = element.parentElement!;
+    return element;
   }
 
-  /** Whether rows are drawn and none waits for its page. */
+  /** Whether rows of the scenario's list are drawn and none waits for its page: a list of another size is never accepted. */
   get loaded(): boolean {
     const rows = this.host.querySelectorAll('[role="option"]');
-    return rows.length > 0 && !this.host.querySelector('[role="option"][aria-busy="true"]');
+    return (
+      rows.length > 0 &&
+      Number(rows[0].getAttribute("aria-setsize")) === this.scenario.rows &&
+      !this.host.querySelector('[role="option"][aria-busy="true"]')
+    );
   }
 
   close(): void {
@@ -190,11 +214,17 @@ class InspectorRig {
         inspection: {
           state: "ready",
           selection: { lane: 0, source: 0, entity: "track-1" },
-          summary: { entity: "track-1", className: "car", score: 0.9, confidence: 0.8 },
+          summary: {
+            entity: "track-1",
+            className: "car",
+            score: 0.9,
+            confidence: 0.8,
+            motion: null,
+          },
           fields: this.#fields,
           truncated: false,
         },
-        onClose: () => {},
+        reach: { source: new FakeFiles(0), frame: 0, timeOf: () => undefined },
         memory: this.#memory,
         onMemory: (memory: InspectorMemory) => {
           this.#memory = memory;
@@ -225,9 +255,14 @@ const painted = (): Promise<void> =>
 
 async function until(rig: Rig, ready: () => boolean): Promise<void> {
   if (ready()) return;
-  await new Promise<void>((done) => {
+  await new Promise<void>((done, fail) => {
+    const timer = setTimeout(() => {
+      watch.disconnect();
+      fail(new Error(`the ${rig.scenario.scope} list of ${rig.scenario.rows} rows never loaded`));
+    }, 10_000);
     const watch = new MutationObserver(() => {
       if (!ready()) return;
+      clearTimeout(timer);
       watch.disconnect();
       done();
     });

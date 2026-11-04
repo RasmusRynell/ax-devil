@@ -250,6 +250,8 @@ pub enum ClientMessage {
         limit: u32,
         /// The most spans of presence per row, from 0 to 256; 0 sends none.
         bins: u16,
+        /// An object whose row in the list is wanted whatever the page: the answer's `located`.
+        locate: Option<String>,
     },
     /// Stops wanting a lane's File scope list: the lane's running or waiting query is cancelled and never answered, and
     /// what the backend kept for the lane's paging is dropped. Nothing is sent back. A lane the video
@@ -257,6 +259,17 @@ pub enum ClientMessage {
     FileRelease {
         /// The lane's position in `Opened.lanes`.
         lane: u16,
+    },
+    /// Asks where one object of a lane's file is on the video: the answer is `Appearances`. Independent of the lane's
+    /// File scope list, which it does not cancel; a newer `request` for the lane stops an older one still running,
+    /// which is then not answered. The lane's class toggles do not matter. Owners only.
+    Appearances {
+        /// The lane's position in `Opened.lanes`.
+        lane: u16,
+        /// Names the request in its answer; the client drops answers of older requests.
+        request: u32,
+        /// The object's id.
+        entity: String,
     },
     /// Ends the session and releases the source.
     Close,
@@ -419,6 +432,8 @@ pub enum ServerMessage {
         offset: u32,
         /// Rows `offset` to `offset + rows.len()` of the list.
         rows: Vec<Row>,
+        /// Where the request's `locate` object is in the list; `None` when the request named none.
+        located: Option<Located>,
     },
     /// The answer to a `FileQuery` that cannot be answered, and why. Not held back for a frame.
     FileScope {
@@ -428,6 +443,18 @@ pub enum ServerMessage {
         request: u32,
         /// Why there are no rows.
         unavailable: FileScopeUnavailable,
+    },
+    /// Where one object is on the video, the answer to an `Appearances` that was not replaced. Not held back for a
+    /// frame.
+    Appearances {
+        /// The lane's position in `Opened.lanes`.
+        lane: u16,
+        /// The request answered.
+        request: u32,
+        /// The object's id from the request.
+        entity: String,
+        /// The spans, or why there are none.
+        appearances: FileAppearances,
     },
     /// The session cannot go on and ends.
     Error(ErrorWire),
