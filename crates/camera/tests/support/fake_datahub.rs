@@ -214,8 +214,7 @@ async fn upgrade(
 async fn conversation(mut socket: WebSocket, shared: Arc<Shared>, after: After, index: usize) {
     while let Some(Ok(Message::Text(text))) = socket.recv().await {
         let request: Value = serde_json::from_str(text.as_str()).expect("a JSON request");
-        let reply =
-            |result: Value| json!({ "jsonrpc": "2.0", "id": request["id"], "result": result });
+        let reply = |result: Value| json!({ "jsonrpc": "2.0", "id": request["id"], "method": request["method"], "result": result });
         match request["method"].as_str() {
             Some("data-hub_v1:listTopics") => {
                 let topics = json!({ "topics": [{ "name": "com.axis.scene.frame.v1" }, { "name": "other" }] });

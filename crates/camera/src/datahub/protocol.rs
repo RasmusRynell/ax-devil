@@ -54,6 +54,10 @@ pub(super) fn parse(text: &str) -> Result<Incoming, CameraError> {
             "the camera sent a JSON message that is not an object",
         ));
     }
+    // A camera's answer echoes the request's `method`, so an answer is told by its `result` or `error`.
+    if message.get("result").is_some() || message.get("error").is_some() {
+        return Ok(Incoming::Response(message));
+    }
     match message.get("method") {
         None => Ok(Incoming::Response(message)),
         Some(method) if method == SAMPLE_METHOD => sample(&message["params"]).map(Incoming::Sample),
@@ -146,6 +150,11 @@ mod tests {
         assert_eq!(parse(r#"{"method":"other"}"#), Ok(Incoming::Ignored));
         assert!(matches!(
             parse(r#"{"id":"1","result":{}}"#),
+            Ok(Incoming::Response(_))
+        ));
+        // The real camera echoes the method in its answers.
+        assert!(matches!(
+            parse(r#"{"id":"1","method":"data-hub_v1:listTopics","result":{}}"#),
             Ok(Incoming::Response(_))
         ));
     }
