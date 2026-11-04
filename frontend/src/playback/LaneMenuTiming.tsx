@@ -1,4 +1,3 @@
-import { useState } from "react";
 import { Checkbox, Select } from "../kit/Fields";
 import type { AlignmentWire, BasisWire } from "../generated/api";
 import { Switch } from "../kit/Switch";
@@ -19,8 +18,6 @@ import { Group, MakeDefault, NumberField } from "./LaneMenuFields";
 const MAX_MS = 100_000;
 /** How far back a previous sample may be when the user switches from exact and the lane has not said. */
 const DEFAULT_PREVIOUS_MS = 50;
-/** The timeout a lane gets when the user limits a retention that has never had one. */
-const DEFAULT_TIMEOUT_MS = 2050;
 
 type Sync = "exact" | "previous";
 
@@ -104,9 +101,7 @@ export function LaneMenuTiming({
   const { sticky } = settings;
   const { values } = useSettings();
   const saved = savedTiming(values);
-  // The timeout the user last had, kept while retention is unlimited so that limiting it again restores it.
-  const [kept, setKept] = useState<number | null>(null);
-  const timeout = sticky.timeout_ms ?? kept ?? DEFAULT_TIMEOUT_MS;
+  const timeout = sticky.timeout_ms ?? settings.kept_timeout_ms;
   const limited = sticky.timeout_ms !== null;
   return (
     <>
@@ -159,15 +154,17 @@ export function LaneMenuTiming({
           checked={sticky.enabled}
           onChange={(enabled) => onChange({ sticky: { ...sticky, enabled } })}
         />
-        <div className="flex items-center justify-between gap-xl">
+        <div className="flex items-center justify-between gap-s">
           <Checkbox
             leading
             label="Expire after (ms)"
             disabled={!sticky.enabled}
             checked={limited}
             onChange={(expires) => {
-              if (!expires) setKept(sticky.timeout_ms);
-              onChange({ sticky: { ...sticky, timeout_ms: expires ? timeout : null } });
+              onChange({
+                sticky: { ...sticky, timeout_ms: expires ? timeout : null },
+                kept_timeout_ms: timeout,
+              });
             }}
           />
           <NumberField

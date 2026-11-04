@@ -111,6 +111,9 @@ const withPolicy = (settings: LaneSettings, policy: LanePolicyWire): LaneSetting
   sticky: { ...policy.sticky, opacity: settings.sticky.opacity },
 });
 
+/** The timeout a lane gets when the user limits a retention that has never had one. */
+const DEFAULT_TIMEOUT_MS = 2050;
+
 const settingsOf = ({ catalog, policy }: LaneDefaultsWire): LaneSettings => ({
   catalog,
   theme: null,
@@ -121,6 +124,7 @@ const settingsOf = ({ catalog, policy }: LaneDefaultsWire): LaneSettings => ({
   basis: policy.basis,
   tolerance_ms: policy.tolerance_ms,
   sticky: { ...policy.sticky, opacity: 1 },
+  kept_timeout_ms: policy.sticky.timeout_ms ?? DEFAULT_TIMEOUT_MS,
   visible: true,
 });
 
@@ -241,6 +245,7 @@ export class LaneSet {
       !sent &&
       !style &&
       settings.sticky.opacity === state.settings.sticky.opacity &&
+      settings.kept_timeout_ms === state.settings.kept_timeout_ms &&
       settings.visible === state.settings.visible
     )
       return undefined;

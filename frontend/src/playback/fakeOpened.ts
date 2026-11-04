@@ -20,6 +20,7 @@ export const LANE_SETTINGS: LaneSettings = {
   basis: LANE_DEFAULTS.policy.basis,
   tolerance_ms: LANE_DEFAULTS.policy.tolerance_ms,
   sticky: { ...LANE_DEFAULTS.policy.sticky, opacity: 1 },
+  kept_timeout_ms: 2050,
   visible: true,
 };
 

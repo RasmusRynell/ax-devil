@@ -41,11 +41,12 @@ export function NumberField({
     if (next !== value) onCommit(next);
   };
   return (
-    <div className={`flex items-center justify-between gap-xl ${disabled ? "text-disabled" : ""}`}>
-      {!hideLabel && <label htmlFor={id}>{label}</label>}
+    <div className={`flex items-center justify-between gap-s ${disabled ? "text-disabled" : ""}`}>
+      <label htmlFor={id} className={hideLabel ? "sr-only" : undefined}>
+        {label}
+      </label>
       <input
         id={id}
-        aria-label={hideLabel ? label : undefined}
         type="number"
         min={min}
         max={max}

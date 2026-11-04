@@ -75,7 +75,9 @@ describe("lane menu timing", () => {
 
   it("unchecking expiry keeps the timeout, disabled, and checking it again restores it", () => {
     const sticky = { enabled: true, timeout_ms: 700, opacity: 1 };
-    const { onChange, state, show } = setup({ settings: { ...LANE_SETTINGS, sticky } });
+    const { onChange, state, show } = setup({
+      settings: { ...LANE_SETTINGS, sticky, kept_timeout_ms: 700 },
+    });
     tab("Timing");
     const timeout = screen.getByRole("spinbutton", { name: "Timeout (ms)" }) as HTMLInputElement;
     expect(timeout.step).toBe("1");
@@ -83,15 +85,31 @@ describe("lane menu timing", () => {
       (screen.getByRole("spinbutton", { name: "Reused overlay opacity" }) as HTMLInputElement).step,
     ).toBe("0.05");
     fireEvent.click(box("Expire after (ms)"));
-    expect(onChange).toHaveBeenLastCalledWith({ sticky: { ...sticky, timeout_ms: null } });
-    show({ settings: { ...state.settings, sticky: { ...sticky, timeout_ms: null } } });
+    const unlimited = { ...state.settings, sticky: { ...sticky, timeout_ms: null } };
+    expect(onChange).toHaveBeenLastCalledWith({
+      sticky: unlimited.sticky,
+      kept_timeout_ms: 700,
+    });
+    const kept = { ...unlimited, kept_timeout_ms: 700 };
+    show({ settings: kept });
     expect(timeout.disabled).toBe(true);
     expect(timeout.value).toBe("700");
+    tab("Look");
+    tab("Timing");
+    cleanup();
+    const reopened = setup({ settings: kept });
+    tab("Timing");
+    expect(
+      (screen.getByRole("spinbutton", { name: "Timeout (ms)" }) as HTMLInputElement).value,
+    ).toBe("700");
     fireEvent.click(box("Expire after (ms)"));
-    expect(onChange).toHaveBeenLastCalledWith({ sticky });
-    show({ settings: { ...state.settings, sticky: { ...sticky, enabled: false } } });
+    expect(reopened.onChange).toHaveBeenLastCalledWith({ sticky, kept_timeout_ms: 700 });
+    reopened.show({ settings: { ...kept, sticky } });
+    reopened.show({ settings: { ...kept, sticky: { ...sticky, enabled: false } } });
     expect(box("Expire after (ms)").disabled).toBe(true);
-    expect(timeout.disabled).toBe(true);
+    expect(
+      (screen.getByRole("spinbutton", { name: "Timeout (ms)" }) as HTMLInputElement).disabled,
+    ).toBe(true);
     expect(
       (screen.getByRole("spinbutton", { name: "Reused overlay opacity" }) as HTMLInputElement)
         .disabled,
