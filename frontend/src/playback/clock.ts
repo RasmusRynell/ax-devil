@@ -141,11 +141,9 @@ export class PlaybackClock {
     if (this.#playing) this.#anchor(this.#times[this.#requested]);
   }
 
-  /** Steps relative to the requested position, not the frame on screen, which may lag behind it; pauses. */
+  /** Steps relative to the requested position, not the frame on screen, which may lag behind it; playing goes on. */
   step(delta: number): void {
-    const from = this.#requested;
-    this.pause();
-    this.seek(from + delta);
+    this.seek(this.#requested + delta);
   }
 
   setSpeed(speed: number): void {
@@ -166,7 +164,7 @@ export class PlaybackClock {
     }
     const due = Math.min(this.#last, atOrBefore(this.#times, this.#mediaTime()));
     this.#requested = due;
-    const frame = source.newestPresentable(due, this.#floor);
+    const frame = source.newestPresentable(due, Math.min(this.#floor, this.#end()));
     if (frame === undefined || frame === this.#presented) {
       // Waiting for the end frame is over once it turns out to have failed.
       if (due >= this.#end() && this.#presented !== undefined && this.#presented >= this.#end())

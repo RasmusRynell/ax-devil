@@ -183,7 +183,7 @@ describe("clock position (B27, B28)", () => {
     expect(one.clock.info()?.periodUs).toBeNull();
   });
 
-  it("steps from the requested position while playing and delivery lags behind it", () => {
+  it("steps from the requested position while playing, without pausing, and delivery lags behind it", () => {
     const { clock, tick, load } = setup(undefined, [0, 1, 2]);
     clock.play();
     tick();
@@ -192,6 +192,7 @@ describe("clock position (B27, B28)", () => {
     expect(clock.playhead).toBe(5);
     expect(clock.info()?.sequenceId).toBe(2);
     clock.step(1);
+    expect(clock.playing).toBe(true);
     expect(clock.playhead).toBe(6);
     load([6]);
     expect(tick()).toBe(6);
@@ -236,6 +237,18 @@ describe("clock and frames that failed to decode", () => {
     clock.play();
     tick();
     expect(tick(1000)).toBe(8);
+    expect(clock.playing).toBe(false);
+  });
+
+  it("ends on the last decodable frame after a running step or seek past it", () => {
+    const { clock, tick } = setup(undefined, [0, 1, 2, 3, 4, 5, 6, 7, 8]);
+    clock.skip(9);
+    clock.seek(7);
+    clock.play();
+    tick();
+    clock.step(10);
+    expect(clock.playhead).toBe(9);
+    expect(tick()).toBe(8);
     expect(clock.playing).toBe(false);
   });
 

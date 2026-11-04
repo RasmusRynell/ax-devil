@@ -99,7 +99,7 @@ function SpeedPicker({
   );
 }
 
-/** The frame on screen as a field: Enter or leaving it goes to the frame typed, within the video; Escape and text that is no frame put back the frame on screen. */
+/** The frame on screen as a field: Enter or leaving it goes to the frame typed, within the video (below 0 is 0); Escape and text that is no frame put back the frame on screen. */
 function FrameField({
   shown,
   last,
@@ -117,8 +117,8 @@ function FrameField({
   const commit = () => {
     const typed = draft?.trim();
     setDraft(null);
-    if (typed === undefined || !/^\d+$/.test(typed)) return;
-    const frame = Math.min(last, Number(typed));
+    if (typed === undefined || !/^-?\d+$/.test(typed)) return;
+    const frame = Math.max(0, Math.min(last, Number(typed)));
     if (frame !== playhead) onSeek(frame);
   };
   return (

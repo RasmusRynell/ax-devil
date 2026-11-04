@@ -91,7 +91,7 @@ describe("transport", () => {
     expect(screen.getByLabelText("Time").textContent).toBe("…");
   });
 
-  it("goes to the frame typed, within the video, only when it is not where the seek bar is", () => {
+  it("goes to the frame typed, within the video (a negative one is the first), only when it is not where the seek bar is", () => {
     const { controls } = setup();
     const field = screen.getByRole("textbox", { name: "Frame" });
     const enter = (text: string) => {
@@ -101,12 +101,13 @@ describe("transport", () => {
     };
     enter("30");
     enter("500");
+    enter("-3");
     enter("abc");
     fireEvent.change(field, { target: { value: "12" } });
     fireEvent.keyDown(field, { key: "Escape" });
     fireEvent.blur(field);
     enter("7");
-    expect(controls.seek.mock.calls).toEqual([[99], [7]]);
+    expect(controls.seek.mock.calls).toEqual([[99], [0], [7]]);
     expect((field as HTMLInputElement).value).toBe("29");
   });
 

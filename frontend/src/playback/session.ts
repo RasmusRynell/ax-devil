@@ -221,7 +221,7 @@ export class PlaybackSession implements LaneControl {
     else this.play();
   }
 
-  /** Steps relative to the requested position, pausing first. Holding the key calls this repeatedly. */
+  /** Steps relative to the requested position. Holding the key calls this repeatedly. */
   step(delta: number): void {
     if (!this.#clock) return;
     this.#clock.step(delta);
