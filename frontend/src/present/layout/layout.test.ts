@@ -204,6 +204,112 @@ describe("quads", () => {
   });
 });
 
+describe("primitive quads", () => {
+  type Quad = Record<"kind" | "x" | "y" | "w" | "h" | "radius" | "stroke" | "dash", number> & {
+    fill: number;
+    pen: number;
+  };
+  /** The quads a mark draws for an entity whose box is (320, 180) to (640, 360) on the 1280 x 720 oracle view. */
+  const quadsOf = (mark: object, score = 0.5): Quad[] => {
+    const sample = fullSample([{ id: "a", score, box: [0.25, 0.25, 0.5, 0.5] }]);
+    const marks = new MarkBuffer();
+    const catalog = compile([{ marks: [mark] }]);
+    const set = filterRows(sample, null, { enabled: new Uint32Array(0), options: 0 }, new RowSet());
+    evaluate(sample, set, catalog, { hidden: 0, theme: null }, marks, new EvalReport());
+    const lane = new LaneQuads();
+    new Layouter(new FakeText()).run(marks, catalog, sample, ORACLE_VIEW, new QuadSink(lane));
+    const f = lane.quads.subarray();
+    const u = new Uint32Array(f.buffer, f.byteOffset, f.length);
+    return Array.from({ length: lane.quads.count }, (_, i) => ({
+      x: f[i * 12],
+      y: f[i * 12 + 1],
+      w: f[i * 12 + 4],
+      h: f[i * 12 + 5],
+      radius: f[i * 12 + 6],
+      stroke: f[i * 12 + 7],
+      dash: f[i * 12 + 8],
+      kind: f[i * 12 + 9],
+      fill: u[i * 12 + 10],
+      pen: u[i * 12 + 11],
+    }));
+  };
+  const RED = 0xff0000ff;
+
+  // The reference strokes inward from a quad grown by half the stroke, so ink straddles the contour (shape_quads.py).
+  it("grows a box by half its stroke, clamps its corner radius on the centre line and dashes by 6 widths", () => {
+    const plain = { mark: "box", stroke: "#ff0000", width: "4px" };
+    expect(quadsOf(plain)).toEqual([
+      { kind: 0, x: 318, y: 178, w: 324, h: 184, radius: 0, stroke: 4, dash: 0, fill: 0, pen: RED },
+    ]);
+    const [rounded] = quadsOf({ ...plain, radius: "10px", dash: "true" });
+    expect([rounded.radius, rounded.dash]).toEqual([12, 24]);
+    expect(quadsOf({ ...plain, radius: "1000px" })[0].radius).toBe(92);
+  });
+
+  it("draws a fill-only box for a zero-width stroke and premultiplies a translucent fill", () => {
+    const [box] = quadsOf({ mark: "box", stroke: "#ff0000", width: "0px", fill: "#0000ff80" });
+    expect(box).toMatchObject({ x: 320, y: 180, w: 320, h: 180, stroke: 0, dash: 0, pen: 0 });
+    expect(box.fill).toBe(0x80800000);
+  });
+
+  it("draws a circle as the ellipse in the square around its centre and a stroke-wide square for a point", () => {
+    const circle = { mark: "circle", pin: "center", r: "6px", stroke: "#ff0000", width: "2px" };
+    expect(quadsOf(circle)).toEqual([
+      { kind: 1, x: 473, y: 263, w: 14, h: 14, radius: 0, stroke: 2, dash: 0, fill: 0, pen: RED },
+    ]);
+    const centre = "anchor(box, 'center')";
+    const point = { mark: "line", from: centre, to: centre, stroke: "#ff0000", width: "5px" };
+    expect(quadsOf(point)).toEqual([
+      { kind: 0, x: 477.5, y: 267.5, w: 5, h: 5, radius: 0, stroke: 0, dash: 0, fill: RED, pen: 0 },
+    ]);
+  });
+
+  // A label of one bar run at the box's top-left, 20px tall text metrics: ascent 18.56, cap height 14.6 (FakeText).
+  const meter = (score: number, color = "#ff0000") =>
+    quadsOf(
+      {
+        mark: "label",
+        size: "20px",
+        pad: ["0px", "0px"],
+        runs: [{ bar: "score", color }],
+        place: [{ at: "top-left", anchor: "top-left" }],
+      },
+      score,
+    );
+
+  it("draws a meter as a pill track centred on half the cap height with a fill of the value", () => {
+    // Thickness is 0.3 of the size (6px, at least 2px), length 2.5 sizes (50px); the baseline is 180 + 18.56.
+    const top = 180 + 18.56 - 14.6 / 2 - 3;
+    const [track, fill, ...rest] = meter(0.5);
+    expect(rest).toEqual([]);
+    expect(track).toMatchObject({ x: 320, w: 50, h: 6, radius: 3, stroke: 0 });
+    expect(track.y).toBeCloseTo(top, 3);
+    expect(track.fill >>> 24).toBe(70);
+    expect(fill).toMatchObject({ x: 320, w: 25, h: 6, radius: 3, fill: RED });
+    expect(fill.y).toBeCloseTo(top, 3);
+  });
+
+  it("draws only the track for zero and a dot for the smallest value", () => {
+    expect(meter(0)).toHaveLength(1);
+    // 1% of 50px is 0.5px, narrower than the pill is tall.
+    expect(meter(0.01)[1].w).toBe(6);
+    expect(meter(1)[1].w).toBe(50);
+  });
+
+  it("scales a translucent colour's meter without moving it", () => {
+    const [track, fill] = meter(0.5, "#ff000080");
+    const [opaque, opaqueFill] = meter(0.5);
+    expect([track.x, track.y, track.w, track.h]).toEqual([opaque.x, opaque.y, opaque.w, opaque.h]);
+    expect([fill.x, fill.y, fill.w, fill.h]).toEqual([
+      opaqueFill.x,
+      opaqueFill.y,
+      opaqueFill.w,
+      opaqueFill.h,
+    ]);
+    expect([track.fill >>> 24, fill.fill >>> 24]).toEqual([35, 128]);
+  });
+});
+
 describe("culling", () => {
   /** The quads of `catalog` over `sample` on a 4x zoomed image, laid out for `visible` or for everything. */
   const quadsOf = (catalog: CompiledCatalog, visible: Region | null): Float32Array => {
