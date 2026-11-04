@@ -14,21 +14,30 @@ import { Refusal } from "./SettingField";
 const NONE: ResolverInfo = { id: "", display_name: "", description: "", fields: [] };
 const NO_RESOLVERS: readonly ResolverInfo[] = [];
 const NO_DECODERS: readonly DecoderInfo[] = [];
+const INTRODUCTION =
+  "Build a playlist from video and overlay files on disk. Choose a source above, fill in its settings, and load the playlist to add it to the workspace. Available sources:";
 
 /**
  * The Add Playlist dialog: the backend's handlers decide the resolvers and the form each takes. Until a source is
- * chosen, the sources are listed instead of a form. Loading, the form's own button, resolves the playlists first and
+ * chosen, the sources are listed instead of a form; `resolverId` opens on one, and a source that is not there leaves
+ * the list. Loading, the form's own button, resolves the playlists first and
  * adds the item only when that succeeds, so the dialog stays open meanwhile with the settings locked and Name and
  * Cancel live. A form with a count-only scan that has not answered scans first and goes on only if it found something
  * and the settings are the same when it answers. Cancel, Escape and closing abort the resolve, and a refusal stays here until the
  * settings change.
  */
-export function AddPlaylistDialog({ onClose }: { onClose: () => void }) {
+export function AddPlaylistDialog({
+  resolverId: initialResolverId = "",
+  onClose,
+}: {
+  resolverId?: string;
+  onClose: () => void;
+}) {
   const { handlers, failure, retry } = useHandlers();
   const resolvers = handlers?.resolvers ?? NO_RESOLVERS;
   const command = useCommand();
   const session = useSession().session?.id;
-  const [resolverId, setResolverId] = useState("");
+  const [resolverId, setResolverId] = useState(initialResolverId);
   const resolver = resolvers.find((candidate) => candidate.id === resolverId) ?? NONE;
   const form = useResolverForm(resolver, handlers?.decoders ?? NO_DECODERS);
   const [name, setName] = useState("");
@@ -139,13 +148,16 @@ export function AddPlaylistDialog({ onClose }: { onClose: () => void }) {
                 />
               </>
             ) : (
-              resolvers.map((candidate) => (
-                <p key={candidate.id} className="m-0">
-                  {candidate.description
-                    ? `${candidate.display_name}: ${candidate.description}`
-                    : candidate.display_name}
-                </p>
-              ))
+              <>
+                <p className="m-0">{INTRODUCTION}</p>
+                {resolvers.map((candidate) => (
+                  <p key={candidate.id} className="m-0">
+                    {candidate.description
+                      ? `${candidate.display_name}: ${candidate.description}`
+                      : candidate.display_name}
+                  </p>
+                ))}
+              </>
             )}
           </fieldset>
         </DialogBody>
