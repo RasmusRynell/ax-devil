@@ -37,6 +37,7 @@ const PICKED: Picked = {
   entity: "7",
   label: "7 car",
   detail: "score 0.82",
+  category: 5,
   box: { x: 10, y: 20, width: 30, height: 40 },
 };
 const OFF = {
@@ -177,7 +178,7 @@ describe("video viewer objects", () => {
     show({ settings: OFF });
     expect(props().objectDetails).toBe(false);
     expect(inspector()).toBeNull();
-    const shown = geometry([{ lane: 0, rect: PICKED.box, kind: "selected" }]);
+    const shown = geometry([{ lane: 0, rect: PICKED.box, kind: "selected", scale: 100 }]);
     act(() => {
       props().onDrawn?.(shown);
       props().onHover?.(PICKED);
@@ -191,7 +192,7 @@ describe("video viewer objects", () => {
   it("places outlines where the pictures' geometry puts them", async () => {
     const { props } = await mount();
     const rect = { x: 5, y: 6, width: 7, height: 8 };
-    const shown = geometry([{ lane: 0, rect, kind: "selected" }]);
+    const shown = geometry([{ lane: 0, rect, kind: "selected", scale: 100 }]);
     act(() => props().onDrawn?.(shown));
     act(() => props().onSelect?.(SELECTION));
     expect(shown.boxes).toHaveBeenLastCalledWith(SELECTION, null);

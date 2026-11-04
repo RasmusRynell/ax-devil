@@ -52,6 +52,8 @@ export interface SampleView {
   readonly motion: Uint8Array;
   /** Two numbers per row; NaN for missing. */
   readonly velocity: Float32Array;
+  /** The world velocity's speed per row; NaN for missing. */
+  readonly speed: Float64Array;
   /** String id of the primary class, -1 for none. */
   readonly classId: Int32Array;
   readonly score: Float64Array;

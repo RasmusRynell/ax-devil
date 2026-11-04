@@ -38,6 +38,13 @@ const CRC_TABLE = Uint32Array.from({ length: 256 }, (_, n) => {
   return c >>> 0;
 });
 
+/** The CRC-32 (IEEE, as `crc32fast`) of `bytes`, unsigned. */
+export function crc32(bytes: Uint8Array): number {
+  let crc = 0xffffffff;
+  for (const byte of bytes) crc = CRC_TABLE[(crc ^ byte) & 0xff] ^ (crc >>> 8);
+  return (crc ^ 0xffffffff) >>> 0;
+}
+
 /** The kinds of attribute column, as stored in the attribute index. */
 export const AttrKind = { Bool: 0, Number: 1, String: 2, Colors: 3 } as const;
 export type AttrKind = (typeof AttrKind)[keyof typeof AttrKind];
@@ -111,10 +118,7 @@ export class StringTable {
   /** The CRC-32 (IEEE, as `crc32fast`) of the UTF-8 bytes of string `id`, unsigned. */
   crc32(id: number): number {
     this.check(id);
-    let crc = 0xffffffff;
-    for (let i = this.offsets[id], end = this.offsets[id + 1]; i < end; i++)
-      crc = CRC_TABLE[(crc ^ this.data[i]) & 0xff] ^ (crc >>> 8);
-    return (crc ^ 0xffffffff) >>> 0;
+    return crc32(this.data.subarray(this.offsets[id], this.offsets[id + 1]));
   }
 
   /** String `id` as text. Allocates the string; the Objects list calls it per visible row each frame. */
@@ -159,6 +163,8 @@ export interface SampleView {
   readonly motion: Uint8Array;
   /** vx, vy per row; NaN when unknown. */
   readonly velocity: Float32Array;
+  /** The world velocity's speed per row; NaN when unknown. */
+  readonly speed: Float64Array;
   /** String id of the primary classification's type, -1 for none. */
   readonly classId: Int32Array;
   readonly score: Float64Array;
@@ -184,9 +190,9 @@ export interface SampleView {
 }
 
 const MAGIC = 0x4953_5841; // "AXSI"
-const VERSION = 1;
+const VERSION = 2;
 const HEADER_WORDS = 12;
-const SECTION_COUNT = 19;
+const SECTION_COUNT = 20;
 const HEADER_BYTES = (HEADER_WORDS + SECTION_COUNT) * 4;
 
 /** Positions in the header's offset table, in the encoder's `Section` order. */
@@ -197,19 +203,20 @@ const S = {
   polyPoints: 3,
   motion: 4,
   velocity: 5,
-  class: 6,
-  score: 7,
-  confidence: 8,
-  classMask: 9,
-  attrIndex: 10,
-  colorRgba: 11,
-  colorScore: 12,
-  colorName: 13,
-  relKind: 14,
-  relSource: 15,
-  relTarget: 16,
-  stringOffsets: 17,
-  stringBytes: 18,
+  speed: 6,
+  class: 7,
+  score: 8,
+  confidence: 9,
+  classMask: 10,
+  attrIndex: 11,
+  colorRgba: 12,
+  colorScore: 13,
+  colorName: 14,
+  relKind: 15,
+  relSource: 16,
+  relTarget: 17,
+  stringOffsets: 18,
+  stringBytes: 19,
 } as const;
 
 /** Bytes per cell of an attribute column of each kind, indexed by `AttrKind`. */
@@ -258,6 +265,7 @@ export function readSample(buffer: ArrayBuffer | Uint8Array): SampleView {
     polyPoints: points * 8,
     motion: rows,
     velocity: rows * 8,
+    speed: rows * 8,
     class: rows * 4,
     score: rows * 8,
     confidence: rows * 8,
@@ -366,6 +374,7 @@ export function readSample(buffer: ArrayBuffer | Uint8Array): SampleView {
     polyPoints: new Float32Array(data, at(S.polyPoints), points * 2),
     motion: new Uint8Array(data, at(S.motion), rows),
     velocity: new Float32Array(data, at(S.velocity), rows * 2),
+    speed: new Float64Array(data, at(S.speed), rows),
     classId: new Int32Array(data, at(S.class), rows),
     score: new Float64Array(data, at(S.score), rows),
     confidence: new Float64Array(data, at(S.confidence), rows),

@@ -228,6 +228,38 @@ fn strings_sit_in_three_regions_with_one_id_per_distinct_string() {
     assert_eq!(item[head[COUNTS + Section::Motion as usize] as usize], 2);
 }
 
+#[test]
+fn speed_is_the_latest_observations_world_speed_and_nan_without_one() {
+    let bounds = BoundingBox::new(0.1, 0.1, 0.2, 0.2).expect("a box");
+    let mut moving = Entity::new(EntityId::new("moving").expect("an id"));
+    for (frame, speed) in [(0, 1.5), (1, 2.5)] {
+        let mut observation = Observation::new(SceneTime::Frame(frame), Geometry::Box(bounds));
+        observation.measurements = Some(Box::new(crate::Measurements {
+            world_velocity: Some(crate::WorldVelocity {
+                pitch: 0.0,
+                speed,
+                yaw: 0.0,
+            }),
+            ..Default::default()
+        }));
+        moving.push_observation(observation);
+    }
+    let scene = scene_of(vec![moving, entity("still", Vec::new())]);
+
+    let item = encode_sample_item(&scene, &policy()).expect("encodes");
+
+    let at = header(&item)[COUNTS + Section::Speed as usize] as usize;
+    let speed = |row: usize| {
+        f64::from_le_bytes(
+            item[at + row * 8..at + row * 8 + 8]
+                .try_into()
+                .expect("8 bytes"),
+        )
+    };
+    assert_eq!(speed(0), 2.5);
+    assert!(speed(1).is_nan());
+}
+
 fn classes_of(name: &str) -> Vec<Classification> {
     vec![Classification::new(
         ClassType::new(name.to_string()).expect("a class"),

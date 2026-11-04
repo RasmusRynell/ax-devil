@@ -17,6 +17,7 @@ import type { LaneFrame, Picked, Selection, Viewport } from "./contract";
 import { describeRow, LaneLayouts, type FoundRow } from "./laneLayouts";
 import { NameTags } from "./nameTags";
 import type { Matrix, VideoFrame } from "./protocol";
+import { FRAGMENT, VERTEX } from "./shaders";
 import { FIT, intersection, panBy, pictureRect, toImage, zoomAt } from "./viewport";
 
 export type { CellRect } from "../overlay/painter";
@@ -30,8 +31,11 @@ type Placed = { lane: number; cell: CellRect; picture: CellRect };
 /** A point of the canvas in CSS pixels. */
 export type Point = { x: number; y: number };
 
-/** An outline to draw over the picture of a lane, in CSS pixels of the canvas and clipped to the lane's cell. */
-export type Outline = { lane: number; rect: CellRect; kind: "hover" | "selected" };
+/**
+ * An outline to draw over the picture of a lane, in CSS pixels of the canvas and clipped to the lane's cell.
+ * `scale` is the shorter side of the lane's zoomed picture, which the stroke width is a fraction of.
+ */
+export type Outline = { lane: number; rect: CellRect; kind: "hover" | "selected"; scale: number };
 
 /** What the renderer knows of where things are on the canvas; valid until the next draw. */
 export type Geometry = Pick<VideoRenderer, "pick" | "pictures" | "boxes" | "zoomAt" | "panBy">;
@@ -52,35 +56,6 @@ const LUMA_WEIGHTS: Record<Matrix, { kr: number; kb: number }> = {
 
 /** The canvas token's near-black, `--color-canvas` (#0e0f10), as GL color components. */
 const FIELD = { red: 0x0e / 255, green: 0x0f / 255, blue: 0x10 / 255 };
-
-const VERTEX = `#version 300 es
-in vec2 corner;
-out vec2 uv;
-uniform vec4 crop;
-void main() {
-  uv = crop.xy + crop.zw * vec2(corner.x * .5 + .5, .5 - corner.y * .5);
-  gl_Position = vec4(corner, 0., 1.);
-}`;
-
-// mode 0: planar Y, U, V. mode 1: Y, then interleaved UV in the second texture. mode 2: RGBA in the first.
-const FRAGMENT = `#version 300 es
-precision highp float;
-in vec2 uv;
-out vec4 color;
-uniform sampler2D plane0, plane1, plane2;
-uniform int mode;
-uniform float kr, kb, limited;
-void main() {
-  if (mode == 2) { color = vec4(texture(plane0, uv).rgb, 1.); return; }
-  float y = texture(plane0, uv).r;
-  vec2 chroma = mode == 1 ? texture(plane1, uv).rg : vec2(texture(plane1, uv).r, texture(plane2, uv).r);
-  float u = chroma.x - .5, v = chroma.y - .5;
-  if (limited > .5) { y = (y - 16. / 255.) * 255. / 219.; u *= 255. / 224.; v *= 255. / 224.; }
-  float r = y + 2. * (1. - kr) * v;
-  float b = y + 2. * (1. - kb) * u;
-  float g = (y - kr * r - kb * b) / (1. - kr - kb);
-  color = vec4(r, g, b, 1.);
-}`;
 
 type Planes = { key: string; textures: WebGLTexture[] };
 
@@ -223,25 +198,30 @@ export class VideoRenderer {
     const key = `${format}:${width}x${height}`;
     if (this.#planes?.key !== key) {
       this.#dropPlanes();
-      const texture = (internal: number, w: number, h: number) => {
+      // Full-resolution planes are sampled nearest so a pixel stays a pixel when zoomed. The half-resolution chroma
+      // planes stay linear: 4:2:0 chroma is interpolated, as in the reference's swscale conversion.
+      const texture = (internal: number, w: number, h: number, filter: number) => {
         const created = gl.createTexture();
         gl.bindTexture(gl.TEXTURE_2D, created);
         gl.texStorage2D(gl.TEXTURE_2D, 1, internal, w, h);
-        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
-        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, filter);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, filter);
         gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
         gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
         return created;
       };
       const textures =
         format === "rgba"
-          ? [texture(gl.RGBA8, width, height)]
+          ? [texture(gl.RGBA8, width, height, gl.NEAREST)]
           : format === "nv12"
-            ? [texture(gl.R8, width, height), texture(gl.RG8, chromaWidth, chromaHeight)]
+            ? [
+                texture(gl.R8, width, height, gl.NEAREST),
+                texture(gl.RG8, chromaWidth, chromaHeight, gl.LINEAR),
+              ]
             : [
-                texture(gl.R8, width, height),
-                texture(gl.R8, chromaWidth, chromaHeight),
-                texture(gl.R8, chromaWidth, chromaHeight),
+                texture(gl.R8, width, height, gl.NEAREST),
+                texture(gl.R8, chromaWidth, chromaHeight, gl.LINEAR),
+                texture(gl.R8, chromaWidth, chromaHeight, gl.LINEAR),
               ];
       this.#planes = { key, textures };
     }
@@ -377,6 +357,8 @@ export class VideoRenderer {
     for (const placed of this.#placed) {
       const frame = this.#lanes[placed.lane];
       if (!frame) continue;
+      const picture = this.#css(placed.picture);
+      const scale = Math.min(picture.width, picture.height);
       const wanted: [string, "hover" | "selected"][] = [];
       if (selection && selection.source === frame.source)
         wanted.push([selection.entity, "selected"]);
@@ -385,7 +367,7 @@ export class VideoRenderer {
         const found = this.#layouts.find(placed.lane, entity);
         const rect = found && frame.columns === found.columns && this.#rowRect(placed, found);
         const clipped = rect && intersection(rect, placed.cell);
-        if (clipped) outlines.push({ lane: placed.lane, rect: this.#css(clipped), kind });
+        if (clipped) outlines.push({ lane: placed.lane, rect: this.#css(clipped), kind, scale });
       }
     }
     return outlines;

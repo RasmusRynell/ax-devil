@@ -16,8 +16,9 @@ export {
   type CompiledFilter,
   type FilterResult,
 } from "./filter/filter";
-export { readSample, SampleFormatError, type SampleView } from "./columns";
+export { crc32, readSample, SampleFormatError, type SampleView } from "./columns";
 export { CodePoints, codePointString } from "./expr/codePoints";
+export { fixed } from "./expr/fixed";
 export { type EvalStyle, evaluate } from "./evaluate/evaluate";
 export { EvalReport } from "./evaluate/report";
 export { Layouter } from "./layout/layout";

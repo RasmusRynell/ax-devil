@@ -115,13 +115,27 @@ describe("lane layouts", () => {
       expect(layouts.find(0, "t7")).toBeNull();
     });
 
-    it("describes a row as the id and class, then the facts the decoder gave", () => {
-      expect(describeRow(sample, 0)).toEqual({
+    it("describes a row as the id and class, then the facts the decoder gave, as the reference does", () => {
+      expect(describeRow(sample, 0)).toMatchObject({
         entity: "t7",
         label: "t7 car",
-        detail: "score 0.82 · confidence 0.9",
+        detail: "score 0.82 · confidence 0.90",
+        category: 5,
       });
-      expect(describeRow(sample, 1)).toEqual({ entity: "t9", label: "t9", detail: "" });
+      expect(describeRow(sample, 1)).toMatchObject({
+        label: "t9 unknown",
+        detail: "",
+        category: 7,
+      });
+    });
+
+    it("says speed after the other facts and rounds ties to even, as the reference prints them", () => {
+      const rows = fullSample([
+        { id: "a", score: 0.125, confidence: 0.9, speed: 0.25 },
+        { id: "b", speed: 2.5 },
+      ]);
+      expect(describeRow(rows, 0).detail).toBe("score 0.12 · confidence 0.90 · speed 0.2");
+      expect(describeRow(rows, 1).detail).toBe("speed 2.5");
     });
   });
 });

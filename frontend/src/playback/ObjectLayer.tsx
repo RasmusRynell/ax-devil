@@ -1,5 +1,5 @@
 import { useEffect, useImperativeHandle, useLayoutEffect, useRef, useState, type Ref } from "react";
-import { placeChip } from "./chipPlacement";
+import { elideMiddle, GAP, LABEL_CEILING, labelRoom, MARGIN, placeChip } from "./chipPlacement";
 import type { Picked, Selection } from "./contract";
 import type { Geometry, Outline } from "./renderer";
 
@@ -11,6 +11,9 @@ export type ObjectLayerHandle = {
   drawn(geometry: Geometry): void;
 };
 
+/** Stroke width as a fraction of the picture's shorter side; the selected object reads heavier than the hovered one. */
+const STROKE = { hover: 0.004, selected: 0.009 };
+
 const NO_OUTLINES: readonly Outline[] = [];
 
 const sameOutlines = (a: readonly Outline[], b: readonly Outline[]): boolean =>
@@ -19,19 +22,55 @@ const sameOutlines = (a: readonly Outline[], b: readonly Outline[]): boolean =>
     (outline, i) =>
       outline.lane === b[i].lane &&
       outline.kind === b[i].kind &&
+      outline.scale === b[i].scale &&
       outline.rect.x === b[i].rect.x &&
       outline.rect.y === b[i].rect.y &&
       outline.rect.width === b[i].rect.width &&
       outline.rect.height === b[i].rect.height,
   );
 
-/** The chip beside the hovered object, where it does not cover the object's own label, kept inside the layer. */
+/** The dot's color by `Picked.category`, written out so the stylesheet generates them. */
+const DOTS = [
+  "bg-category-0",
+  "bg-category-1",
+  "bg-category-2",
+  "bg-category-3",
+  "bg-category-4",
+  "bg-category-5",
+  "bg-category-6",
+  "bg-category-7",
+];
+
+/**
+ * The chip beside the hovered object, as the reference shows it: a dot in the class's color, the id and class, and the
+ * facts. It sits on the side of the object with the most room, kept inside the layer. The id and class are elided in
+ * the middle and the facts at the end when the layer is too narrow for them.
+ */
 function Chip({ picked }: { picked: Picked }) {
   const chip = useRef<HTMLDivElement>(null);
+  const label = useRef<HTMLSpanElement>(null);
+  const detail = useRef<HTMLSpanElement>(null);
   useLayoutEffect(() => {
     const element = chip.current;
+    const name = label.current;
+    const facts = detail.current;
     const layer = element?.parentElement;
-    if (!element || !layer) return;
+    if (!element || !name || !layer) return;
+    // The text at its full length first, then fitted into the layer.
+    if (facts) facts.style.maxWidth = "";
+    name.textContent = "0".repeat(LABEL_CEILING);
+    const ceiling = name.offsetWidth;
+    name.textContent = picked.label;
+    const factsWidth = facts?.offsetWidth ?? 0;
+    const gap = facts ? GAP : 0;
+    const chrome = element.offsetWidth - name.offsetWidth - factsWidth - gap;
+    const room = layer.clientWidth - 2 * MARGIN - chrome;
+    const wanted = labelRoom(room, factsWidth, ceiling);
+    name.textContent = elideMiddle(picked.label, (text) => {
+      name.textContent = text;
+      return name.offsetWidth <= wanted;
+    });
+    if (facts) facts.style.maxWidth = `${Math.max(0, room - name.offsetWidth - GAP)}px`;
     const { left, top } = placeChip(
       picked.box,
       { width: element.offsetWidth, height: element.offsetHeight },
@@ -44,10 +83,20 @@ function Chip({ picked }: { picked: Picked }) {
     <div
       ref={chip}
       role="tooltip"
-      className="absolute flex max-w-full flex-col rounded-control bg-canvas-scrim px-m py-xs text-small text-on-canvas"
+      className="absolute flex w-max items-center gap-s rounded-control border border-canvas-chip-line bg-canvas-chip p-s whitespace-nowrap"
     >
-      <span className="truncate font-semibold">{picked.label}</span>
-      {picked.detail && <span className="truncate text-on-canvas-muted">{picked.detail}</span>}
+      <span aria-hidden className={`size-m shrink-0 rounded-full ${DOTS[picked.category]}`} />
+      <span ref={label} className="font-mono text-aside text-on-canvas">
+        {picked.label}
+      </span>
+      {picked.detail && (
+        <span
+          ref={detail}
+          className="ml-s overflow-hidden text-small text-ellipsis text-on-canvas-muted"
+        >
+          {picked.detail}
+        </span>
+      )}
     </div>
   );
 }
@@ -98,12 +147,18 @@ export function ObjectLayer({
 
   return (
     <div className="pointer-events-none absolute inset-0 overflow-hidden">
-      {outlines.map(({ lane, rect, kind }, i) => (
+      {outlines.map(({ lane, rect, kind, scale }, i) => (
         <div
           key={`${lane}:${kind}:${i}`}
           data-outline={kind}
-          className={`absolute outline outline-canvas ${kind === "selected" ? "border-2 border-on-canvas" : "border border-on-canvas-muted"}`}
-          style={{ left: rect.x, top: rect.y, width: rect.width, height: rect.height }}
+          className={`absolute border-solid border-on-canvas ${kind === "hover" ? "bg-on-canvas/12" : ""}`}
+          style={{
+            left: rect.x,
+            top: rect.y,
+            width: rect.width,
+            height: rect.height,
+            borderWidth: STROKE[kind] * scale,
+          }}
         />
       ))}
       {chip && <Chip picked={chip} />}
