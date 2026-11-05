@@ -18,8 +18,8 @@ pub use datahub::open_datahub;
 pub use device::Device;
 pub use error::{CameraError, ErrorKind, Refusal};
 pub use live::{
-    AccessUnit, CaptureTime, CodecParams, Feed, LiveMessages, LiveStream, Message, MetadataDoc,
-    Reconnect, Stats, Status, VideoCodec,
+    AccessUnit, CaptureTime, CodecParams, DataHubStamp, Feed, LiveMessages, LiveStream, Message,
+    MetadataDoc, Reconnect, Stats, Status, VideoCodec,
 };
 pub use mqtt::{Publisher, open_mqtt};
 pub use rtsp::{StreamRequest, open_stream};

@@ -3,6 +3,7 @@
 use serde_json::{Value, json};
 
 use crate::error::{CameraError, ErrorKind};
+use crate::live::DataHubStamp;
 
 pub(super) const SAMPLE_METHOD: &str = "data-hub_v1:topicSample";
 pub(super) const SUBSCRIBE: &str = "data-hub_v1:subscribe";
@@ -27,11 +28,12 @@ pub(super) fn request(id: &str, method: &str, params: &Value) -> String {
     json!({ "jsonrpc": "2.0", "id": id, "method": method, "params": params }).to_string()
 }
 
-/// One topic sample: its topic and its `data`, once the envelope has been checked.
+/// One topic sample: its topic, its `data` and the rest of its envelope, once the envelope has been checked.
 #[derive(Debug, PartialEq)]
 pub(super) struct Sample {
     pub(super) topic: String,
     pub(super) data: Value,
+    pub(super) stamp: DataHubStamp,
 }
 
 /// What an incoming JSON message is.
@@ -68,21 +70,25 @@ pub(super) fn parse(text: &str) -> Result<Incoming, CameraError> {
 /// The envelope of a sample: a topic, an integer channel, an object `data`, a timestamp and a historical flag.
 fn sample(params: &Value) -> Result<Sample, CameraError> {
     let topic = params["topic"].as_str().filter(|topic| !topic.is_empty());
-    let channel =
-        params["instance"]["channel_id"].is_i64() || params["instance"]["channel_id"].is_u64();
-    let stamped = params["timestamp"]
+    let channel = params["instance"]["channel_id"].as_i64();
+    let timestamp = params["timestamp"]
         .as_str()
-        .is_some_and(|stamp| !stamp.is_empty());
+        .filter(|stamp| !stamp.is_empty());
     match (
         topic,
         channel,
         params["data"].is_object(),
-        stamped,
-        params["isHistorical"].is_boolean(),
+        timestamp,
+        params["isHistorical"].as_bool(),
     ) {
-        (Some(topic), true, true, true, true) => Ok(Sample {
+        (Some(topic), Some(channel), true, Some(timestamp), Some(historical)) => Ok(Sample {
             topic: topic.to_owned(),
             data: params["data"].clone(),
+            stamp: DataHubStamp {
+                channel,
+                timestamp: timestamp.to_owned(),
+                historical,
+            },
         }),
         _ => Err(protocol("a DataHub sample has a damaged envelope")),
     }

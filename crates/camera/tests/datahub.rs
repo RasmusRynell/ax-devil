@@ -47,6 +47,11 @@ async fn exactly_the_chosen_topic_and_channel_is_subscribed_and_a_quiet_topic_is
     let sample = next_item(&mut live).await;
     assert_eq!(sample.topic, "chosen");
     assert_eq!(sample.epoch, 0);
+    let stamp = sample.stamp.expect("a DataHub sample carries its stamp");
+    assert_eq!(
+        (stamp.channel, stamp.timestamp.as_str(), stamp.historical),
+        (7, "2026-01-01T00:00:00Z", false)
+    );
     assert_eq!(sample.payload.as_ref(), br#"{"connection":0}"#);
 
     // The topic stays quiet: still live, not failed or reconnecting.
