@@ -9,8 +9,6 @@ import type { CatalogInfoWire, ServerMessage, VideoPtsWire } from "./protocol";
 
 export type PlaybackView = {
   status: "connecting" | "indexing" | "ready" | "reconnecting" | "failed";
-  /** Indexing progress, 0 to 1. */
-  progress: number;
   failure?: { reason: string; location?: string };
   /** How many frames the video has; 0 until it is ready. */
   frameCount: number;
@@ -48,7 +46,6 @@ export type PlaybackView = {
 /** The view before the backend has said anything. */
 export const INITIAL_VIEW: PlaybackView = {
   status: "connecting",
-  progress: 0,
   frameCount: 0,
   durationUs: 0,
   playing: false,
@@ -72,7 +69,6 @@ const sameShown = (a: FrameInfo | undefined, b: FrameInfo | undefined): boolean 
 /** Whether two views would draw the same; the session publishes a new one only when they differ. */
 export const sameView = (a: PlaybackView, b: PlaybackView): boolean =>
   a.status === b.status &&
-  a.progress === b.progress &&
   a.failure === b.failure &&
   a.frameCount === b.frameCount &&
   a.durationUs === b.durationUs &&
@@ -95,7 +91,6 @@ export const sameView = (a: PlaybackView, b: PlaybackView): boolean =>
 /** What the session knows when it publishes a view. */
 export type ViewParts = {
   status: PlaybackView["status"];
-  progress: number;
   failure: PlaybackView["failure"];
   frameCount: number;
   speed: number;
@@ -122,7 +117,6 @@ export function buildView(parts: ViewParts): PlaybackView {
   const frameError = waiting ? failed : undefined;
   return {
     status: parts.status,
-    progress: parts.progress,
     failure: parts.failure,
     frameCount: parts.status === "ready" ? parts.frameCount : 0,
     durationUs: clock?.durationUs ?? 0,

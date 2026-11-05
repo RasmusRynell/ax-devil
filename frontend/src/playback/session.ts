@@ -92,7 +92,6 @@ export class PlaybackSession implements LaneControl {
   #frameCount = 0;
   #failure: PlaybackView["failure"];
   #status: PlaybackView["status"] = "connecting";
-  #progress = 0;
   /** The frames the backend holds decoded. */
   #cached: PlaybackView["cached"] = [];
 
@@ -312,7 +311,6 @@ export class PlaybackSession implements LaneControl {
   #onMessage(message: ServerMessage): void {
     if (message.type === "Indexing") {
       this.#status = "indexing";
-      this.#progress = message.progress;
     } else if (message.type === "Opened") {
       if (message.protocol !== PLAYBACK_PROTOCOL)
         return this.#fail(
@@ -509,7 +507,6 @@ export class PlaybackSession implements LaneControl {
   #publish(): void {
     const view = buildView({
       status: this.#status,
-      progress: this.#progress,
       failure: this.#failure,
       frameCount: this.#frameCount,
       speed: this.#speed,

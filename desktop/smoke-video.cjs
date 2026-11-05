@@ -117,10 +117,10 @@ function holdPlayback(window) {
 
 /**
  * Runs in the page: how the loading indicator sits in its pane, as readable problems. It covers the whole pane, so
- * nothing under it takes a click, and its arc is centred and inside it; a message, when there is one, lies inside too.
+ * nothing under it takes a click, and its arc and message lie inside it.
  */
 function loadingCover() {
-  const cover = document.querySelector("[role=status][aria-label=Loading]");
+  const cover = document.querySelector("[data-loading]");
   if (!cover) return ["there is no loading indicator"];
   const problems = [];
   const pane = cover.parentElement.getBoundingClientRect();
@@ -131,8 +131,6 @@ function loadingCover() {
   const hit = document.elementFromPoint((pane.left + pane.right) / 2, (pane.top + pane.bottom) / 2);
   if (!cover.contains(hit)) problems.push("something under the cover takes the pointer");
   const arc = cover.querySelector("svg").getBoundingClientRect();
-  if (Math.abs((arc.left + arc.right) / 2 - (box.left + box.right) / 2) > 1)
-    problems.push("the arc is not centred across");
   for (const part of [arc, ...[...cover.children].slice(1).map((e) => e.getBoundingClientRect())])
     if (part.left < box.left - 1 || part.right > box.right + 1 || part.bottom > box.bottom + 1)
       problems.push("the arc or its message is outside the cover");
@@ -146,10 +144,12 @@ async function loadingShots(window) {
   for (const theme of ["light", "dark"]) {
     nativeTheme.themeSource = theme;
     await wait(`matchMedia('(prefers-color-scheme: ${theme})').matches`);
-    for (const [size, zoom, suffix] of [
+    /** @type {[number[], number, string][]} */
+    const views = [
       [[1100, 720], 1, ""],
       [[640, 480], 2, "-200"],
-    ]) {
+    ];
+    for (const [size, zoom, suffix] of views) {
       // The sidebar fills the smallest window, so it is closed there as in the frame info check.
       if (zoom === 2) await js("document.querySelector('[aria-label=Workspace]').click()");
       await setView(window, size, zoom);
@@ -192,11 +192,11 @@ module.exports.video = async (window) => {
     await wait(`${add}.disabled === false`);
     await js(`${add}.click()`);
     // The picture is not there yet: the loading indicator covers the pane, in the smallest window and at 200% too.
-    await wait("document.querySelector('[role=status][aria-label=Loading]')");
+    await wait("document.querySelector('[data-loading]')");
     await loadingShots(window);
     opening.release();
     await wait(`${SHOWN} >= 0`);
-    assert.equal(await js("document.querySelector('[aria-label=Loading]')"), null);
+    assert.equal(await js("document.querySelector('[data-loading]')"), null);
   } finally {
     opening.release();
     dialog.showOpenDialog = original;

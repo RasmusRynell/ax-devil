@@ -11,12 +11,10 @@ const ARC = 0.75 * 2 * Math.PI * RADIUS;
 export function LoadingIndicator({ message = "" }: { message?: string }) {
   return (
     <div
-      role="status"
-      aria-busy="true"
-      aria-label="Loading"
+      data-loading=""
       className="absolute inset-0 flex flex-col items-center justify-center gap-s bg-canvas-scrim px-m text-on-canvas-muted"
     >
-      <svg viewBox="0 0 31 31" aria-hidden="true" className="size-spinner motion-safe:animate-spin">
+      <svg viewBox="0 0 31 31" aria-hidden="true" className="size-spinner motion-safe:animate-arc">
         <circle
           cx="15.5"
           cy="15.5"
@@ -28,7 +26,14 @@ export function LoadingIndicator({ message = "" }: { message?: string }) {
           strokeDasharray={`${ARC} ${2 * Math.PI * RADIUS}`}
         />
       </svg>
-      {message && <MiddleElided text={message} className="max-w-full" />}
+      {/* The one live region: what the message says changes while the video opens. */}
+      <div role="status" className="flex max-w-full">
+        {message ? (
+          <MiddleElided text={message} className="max-w-full" />
+        ) : (
+          <span className="sr-only">Loading</span>
+        )}
+      </div>
     </div>
   );
 }

@@ -89,6 +89,14 @@
 
   --ease-out-cubic: cubic-bezier(0.33, 1, 0.68, 1);
 
+  /* The loading arc: 8 degrees every 25 ms, a turn in 1.125 s. */
+  --animate-arc: arc-turn 1.125s linear infinite;
+  @keyframes arc-turn {
+    to {
+      transform: rotate(360deg);
+    }
+  }
+
   --stroke-edge: 2px;
   --stroke-focus: 2px;
 
