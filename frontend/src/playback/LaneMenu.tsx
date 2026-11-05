@@ -4,7 +4,7 @@ import { Button } from "../kit/Button";
 import { Tabs } from "../kit/Tabs";
 import type { LaneSettings, LaneState } from "./lanes";
 import { HIDE_LANE_TIP } from "./laneContextMenu";
-import { LaneMenuFilter } from "./LaneMenuFilter";
+import { changedControls, LaneMenuFilter } from "./LaneMenuFilter";
 import { LaneMenuLook } from "./LaneMenuLook";
 import { LaneMenuTiming } from "./LaneMenuTiming";
 import type { Cadence } from "./cadence";
@@ -40,9 +40,18 @@ export function LaneMenu({
 }) {
   const [tab, setTab] = useState<(typeof TABS)[number]>("Look");
   const panel = useId();
+  // The Filter tab counts the controls that differ from their defaults, as `Filter 2`.
+  const changed = changedControls(lane);
+  const names = TABS.map((name) => (name === "Filter" && changed > 0 ? `Filter ${changed}` : name));
   return (
     <div className="flex min-w-[24ch] flex-col gap-m">
-      <Tabs label="Lane settings" tabs={TABS} value={tab} onChange={setTab} panelId={panel} />
+      <Tabs
+        label="Lane settings"
+        tabs={names}
+        value={names[TABS.indexOf(tab)]}
+        onChange={(name) => setTab(TABS[names.indexOf(name)])}
+        panelId={panel}
+      />
       <div id={panel} role="tabpanel" aria-label={tab} className="flex flex-col gap-m">
         {tab === "Look" && <LaneMenuLook lane={lane} catalogs={catalogs} onChange={onChange} />}
         {tab === "Filter" && <LaneMenuFilter lane={lane} onChange={onChange} />}
