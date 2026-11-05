@@ -51,6 +51,15 @@ impl Quality {
         }
     }
 
+    /// x264's speed preset: lossless needs no search, a small file gets a little more.
+    fn preset(self) -> &'static str {
+        match self {
+            Self::Lossless => "ultrafast",
+            Self::High | Self::Balanced => "veryfast",
+            Self::Small => "fast",
+        }
+    }
+
     /// Bits per pixel per frame at the nominal frame rate, for an encoder that is only given a bit rate.
     /// OpenH264 has no lossless mode; `Lossless` gets the most it is given here.
     fn bits_per_pixel(self) -> f64 {
@@ -295,7 +304,7 @@ impl Mp4 {
         video.set_flags(Flags::GLOBAL_HEADER);
         let mut options = Dictionary::new();
         if name == "libx264" {
-            options.set("preset", "veryfast");
+            options.set("preset", quality.preset());
             options.set("crf", quality.crf());
         } else {
             let pixels_per_second =
@@ -425,5 +434,23 @@ impl Png {
         self.bytes
             .as_deref()
             .ok_or_else(|| fail("no picture was written"))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Quality;
+
+    #[test]
+    fn each_quality_has_its_rate_factor_and_speed_preset() {
+        let table = [
+            (Quality::Lossless, "0", "ultrafast"),
+            (Quality::High, "18", "veryfast"),
+            (Quality::Balanced, "23", "veryfast"),
+            (Quality::Small, "28", "fast"),
+        ];
+        for (quality, crf, preset) in table {
+            assert_eq!((quality.crf(), quality.preset()), (crf, preset));
+        }
     }
 }
