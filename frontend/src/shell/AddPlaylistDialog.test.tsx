@@ -95,10 +95,10 @@ function stubBackend(
   );
 }
 
-const open = async (onClose = () => {}) => {
+const open = async (onClose = () => {}, resolverId?: string) => {
   render(
     <SessionProvider>
-      <AddPlaylistDialog onClose={onClose} />
+      <AddPlaylistDialog resolverId={resolverId} onClose={onClose} />
     </SessionProvider>,
   );
   await screen.findByLabelText("Playlist source");
@@ -399,5 +399,25 @@ describe("add playlist dialog", () => {
     stubBackend();
     fireEvent.click(screen.getByRole("button", { name: "Retry" }));
     expect(await screen.findByLabelText("Playlist source")).toBeTruthy();
+  });
+
+  it("explains the choice and lists the sources until one is chosen", async () => {
+    stubBackend();
+    await open();
+    expect(screen.getByText(/^Build a playlist from video and overlay files/)).toBeTruthy();
+    expect(screen.getByText("MOT Challenge: Reads MOT sequences.")).toBeTruthy();
+    choose("folder_pair");
+    expect(screen.queryByText(/^Build a playlist/)).toBeNull();
+  });
+
+  it("opens on the source it is given, and on the list when there is no such source", async () => {
+    stubBackend();
+    await open(() => {}, "folder_pair");
+    expect(screen.getByLabelText<HTMLSelectElement>("Playlist source").value).toBe("folder_pair");
+    expect(screen.getByLabelText("Videos")).toBeTruthy();
+    cleanup();
+    await open(() => {}, "gone");
+    expect(screen.getByLabelText<HTMLSelectElement>("Playlist source").value).toBe("");
+    expect(screen.getByText(/^Build a playlist/)).toBeTruthy();
   });
 });
