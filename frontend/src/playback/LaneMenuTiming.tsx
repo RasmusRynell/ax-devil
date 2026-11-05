@@ -21,9 +21,7 @@ const DEFAULT_PREVIOUS_MS = 50;
 
 type Sync = "exact" | "previous";
 
-const ms = (us: number) => `${us / 1000} ms`;
-/** The cadence modes the menu shows of the five kept. */
-const SHOWN_PERIODS = 3;
+const ms = (us: number) => `${Math.round(us / 100) / 10} ms`;
 
 /** The percentage `matched` is of `samples`, whole, rounded half to even as Python's `{:.0f}` does; 100 for none. */
 function percent(matched: number, samples: number): number {
@@ -63,7 +61,7 @@ function Alignment({
         <p className="m-0">
           {cadence === null
             ? "Video: unknown"
-            : `Video: ${cadence.variable ? "variable" : "constant"}, ${cadence.periodsUs.slice(0, SHOWN_PERIODS).map(ms).join(", ")}`}
+            : `Video: ${cadence.variable ? "variable" : "constant"}, ${cadence.periodsUs.map(ms).join(", ")}`}
         </p>
         <p className={`m-0 ${toned}`}>
           {alignment === null
