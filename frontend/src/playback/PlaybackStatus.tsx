@@ -1,6 +1,9 @@
+import { LoadingIndicator } from "../kit/LoadingIndicator";
 import type { PlaybackView } from "./view";
 
-/** What the pane says while the video is not ready: indexing with its progress, reconnecting, or why it failed. */
+const RECONNECTING = "Connection lost. Reconnecting…";
+
+/** What the live pane says while the stream is not ready: reconnecting, opening, or why it failed. */
 export function Status({ view, name }: { view: PlaybackView; name: string }) {
   if (view.status === "failed" && view.failure)
     return (
@@ -11,31 +14,25 @@ export function Status({ view, name }: { view: PlaybackView; name: string }) {
         )}
       </div>
     );
-  const text =
-    view.status === "indexing"
-      ? `Indexing ${name}… ${Math.round(view.progress * 100)}%`
-      : view.status === "reconnecting"
-        ? "Connection lost. Reconnecting…"
-        : `Opening ${name}…`;
   return (
-    <div
-      role="status"
-      aria-busy="true"
-      className="m-auto flex w-full max-w-md flex-col gap-m p-xl text-center"
-    >
-      <p className="m-0">{text}</p>
-      {view.status === "indexing" && (
-        <div
-          role="progressbar"
-          aria-label="Indexing progress"
-          aria-valuemin={0}
-          aria-valuemax={1}
-          aria-valuenow={view.progress}
-          className="h-s w-full overflow-hidden rounded-control bg-canvas-hover"
-        >
-          <div className="h-full bg-on-canvas" style={{ width: `${view.progress * 100}%` }} />
-        </div>
-      )}
+    <div role="status" aria-busy="true" className="m-auto w-full max-w-md p-xl text-center">
+      <p className="m-0">{view.status === "reconnecting" ? RECONNECTING : `Opening ${name}…`}</p>
     </div>
+  );
+}
+
+/** What the offline pane shows until the video is ready: a cover that says what is being built, or why it failed. */
+export function Opening({ view, name }: { view: PlaybackView; name: string }) {
+  if (view.status === "failed") return <Status view={view} name={name} />;
+  return (
+    <LoadingIndicator
+      message={
+        view.status === "indexing"
+          ? `Building frame index: ${name}`
+          : view.status === "reconnecting"
+            ? RECONNECTING
+            : ""
+      }
+    />
   );
 }

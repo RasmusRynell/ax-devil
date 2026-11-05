@@ -39,7 +39,7 @@ import { FIT, ZOOM_STEP } from "./viewport";
 import type { Connect } from "./wire";
 import { useFileScopeOwner } from "./useFileScopeOwner";
 
-import { Status } from "./PlaybackStatus";
+import { Opening, Status } from "./PlaybackStatus";
 
 export { Status };
 
@@ -266,7 +266,7 @@ function Playback({
           )}
         </div>
       ) : (
-        <Status view={view} name={name} />
+        <Opening view={view} name={name} />
       )}
       {exporting && (
         <ExportDialog

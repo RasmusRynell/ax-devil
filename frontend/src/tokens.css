@@ -114,6 +114,9 @@
   --spacing-bar: calc(var(--text-body) + 16px);
   --spacing-segment: calc(var(--spacing-row) - 2 * (var(--spacing-xs) + var(--spacing-hairline)));
   --spacing-activity: calc(var(--spacing-icon) * 2);
+  --spacing-spinner: calc(
+    var(--spacing-icon) * 1.8
+  ); /* the loading indicator's arc, stroke included */
   --spacing-sidebar: 34ch;
   --spacing-list-least: calc(
     4 * var(--spacing-row)
