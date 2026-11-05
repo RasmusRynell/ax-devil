@@ -8,8 +8,10 @@ use handler_api::{
     Values,
 };
 use quick_xml::{
-    Reader,
+    NsReader,
+    escape::unescape,
     events::{BytesStart, Event},
+    name::ResolveResult,
 };
 use scene::{
     ClassRule, Coverage, Entity, EntityId, Fields, FilterOption, FilterPolicy, MatchBasis, Name,
@@ -53,7 +55,7 @@ impl OnvifXmlDecoder {
                 bases: vec![MatchBasis::Frame, MatchBasis::Time],
                 default_basis: MatchBasis::Frame,
                 options: Form::default(),
-                version: 2,
+                version: 3,
             },
         }
     }
@@ -104,15 +106,26 @@ impl Decoder for OnvifXmlDecoder {
 /// One trimmed, non-empty record. `Ok(None)` means the record has no overlay; `Err` carries the reason it is skipped.
 fn decode_record(record: &[u8]) -> Result<Option<Scene>, String> {
     let mut document = Document::default();
-    let mut reader = Reader::from_reader(record);
+    let mut reader = NsReader::from_reader(record);
     loop {
-        match reader
-            .read_event()
-            .map_err(|error| format!("invalid XML: {error}"))?
-        {
-            Event::Start(element) => document.open(&element)?,
+        let (namespace, event) = reader
+            .read_resolved_event()
+            .map_err(|error| format!("invalid XML: {error}"))?;
+        if let ResolveResult::Unknown(prefix) = &namespace {
+            return Err(format!("invalid XML: unbound prefix {prefix:?}"));
+        }
+        // Python expands character and entity references in a namespace declaration.
+        let namespace = match &namespace {
+            ResolveResult::Bound(namespace) => {
+                Some(unescape(namespace.0).map_err(|error| format!("invalid XML: {error}"))?)
+            }
+            _ => None,
+        };
+        let namespace = namespace.as_deref();
+        match event {
+            Event::Start(element) => document.open(&element, namespace)?,
             Event::Empty(element) => {
-                document.open(&element)?;
+                document.open(&element, namespace)?;
                 document.close()?;
             }
             Event::End(_) => document.close()?,
@@ -179,8 +192,9 @@ struct Document {
 }
 
 impl Document {
-    fn open(&mut self, element: &BytesStart<'_>) -> Result<(), String> {
-        let tag = Tag::from_local(element.local_name().as_ref());
+    fn open(&mut self, element: &BytesStart<'_>, namespace: Option<&str>) -> Result<(), String> {
+        let local = element.local_name();
+        let tag = Tag::resolve(namespace, local.as_ref());
         if self.stack.is_empty() {
             if self.root.is_some() {
                 return Err("invalid XML: content after the root element".to_string());

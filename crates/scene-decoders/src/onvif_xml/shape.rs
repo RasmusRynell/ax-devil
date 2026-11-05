@@ -8,7 +8,12 @@ use scene::{
     Polygon, SceneTime, Score, Value,
 };
 
-/// Element names the decoder reads, matched by local name; every other element is `Other`.
+/// The ONVIF schema namespace, where Python looks up everything but clothing and the frame itself.
+const ONVIF: &str = "http://www.onvif.org/ver10/schema";
+/// The ONVIF human body namespace, of the clothing elements.
+const HUMAN_BODY: &str = "http://www.onvif.org/ver20/analytics/humanbody";
+
+/// Elements the decoder reads; every other element, and every one in the wrong namespace, is `Other`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) enum Tag {
     Frame,
@@ -32,43 +37,54 @@ pub(super) enum Tag {
     Clothing,
     Tops,
     Bottoms,
+    /// A `Color` of the human body namespace, which holds the clusters of a piece of clothing.
+    ClothingColor,
+    /// A `Color` of the ONVIF namespace: a cluster's own colour, or the holder of a vehicle's clusters.
     Color,
     ColorCluster,
     Other,
 }
 
 impl Tag {
-    pub(super) fn from_local(name: &str) -> Self {
-        match name {
-            "Frame" | "SampleFrame" => Self::Frame,
-            "MetadataStream" => Self::MetadataStream,
-            "Object" => Self::Object,
-            "ObjectTree" => Self::ObjectTree,
-            "Rename" => Self::Rename,
-            "Delete" => Self::Delete,
-            "from" => Self::From,
-            "to" => Self::To,
-            "Appearance" => Self::Appearance,
-            "Shape" => Self::Shape,
-            "BoundingBox" => Self::BoundingBox,
-            "CenterOfGravity" => Self::CenterOfGravity,
-            "Polygon" => Self::Polygon,
-            "Point" => Self::Point,
-            "Class" => Self::Class,
-            "Type" => Self::Type,
-            "VehicleInfo" => Self::VehicleInfo,
-            "HumanBody" => Self::HumanBody,
-            "Clothing" => Self::Clothing,
-            "Tops" => Self::Tops,
-            "Bottoms" => Self::Bottoms,
-            "Color" => Self::Color,
-            "ColorCluster" => Self::ColorCluster,
+    /// The element called `local` in namespace `namespace`, unescaped, if it has one. A frame is recognised in any
+    /// namespace, or none; the rest only in the namespace Python looks them up in.
+    pub(super) fn resolve(namespace: Option<&str>, local: &str) -> Self {
+        if matches!(local, "Frame" | "SampleFrame") {
+            return Self::Frame;
+        }
+        match (namespace, local) {
+            (Some(ONVIF), _) => match local {
+                "MetadataStream" => Self::MetadataStream,
+                "Object" => Self::Object,
+                "ObjectTree" => Self::ObjectTree,
+                "Rename" => Self::Rename,
+                "Delete" => Self::Delete,
+                "from" => Self::From,
+                "to" => Self::To,
+                "Appearance" => Self::Appearance,
+                "Shape" => Self::Shape,
+                "BoundingBox" => Self::BoundingBox,
+                "CenterOfGravity" => Self::CenterOfGravity,
+                "Polygon" => Self::Polygon,
+                "Point" => Self::Point,
+                "Class" => Self::Class,
+                "Type" => Self::Type,
+                "VehicleInfo" => Self::VehicleInfo,
+                "HumanBody" => Self::HumanBody,
+                "Color" => Self::Color,
+                "ColorCluster" => Self::ColorCluster,
+                _ => Self::Other,
+            },
+            (Some(HUMAN_BODY), "Clothing") => Self::Clothing,
+            (Some(HUMAN_BODY), "Tops") => Self::Tops,
+            (Some(HUMAN_BODY), "Bottoms") => Self::Bottoms,
+            (Some(HUMAN_BODY), "Color") => Self::ClothingColor,
             _ => Self::Other,
         }
     }
 }
 
-/// The values of the named attributes of `element`, matched by local name.
+/// The values of the named attributes of `element`; a prefixed attribute is another attribute, as in Python.
 pub(super) fn attrs<'a, const N: usize>(
     element: &'a BytesStart<'_>,
     names: [&str; N],
@@ -78,7 +94,7 @@ pub(super) fn attrs<'a, const N: usize>(
         let attribute = attribute.map_err(|error| format!("invalid attribute: {error}"))?;
         if let Some(slot) = names
             .iter()
-            .position(|name| attribute.key.local_name().as_ref() == *name)
+            .position(|name| attribute.key.as_ref() == *name)
         {
             let value = attribute
                 .normalized_value(XmlVersion::Implicit1_0)
@@ -231,8 +247,8 @@ impl RawObject {
     /// Reads an element at `path`, the element names below the `Object`.
     pub(super) fn open(&mut self, path: &[Tag], element: &BytesStart<'_>) -> Result<(), String> {
         use Tag::{
-            Appearance, Bottoms, BoundingBox, CenterOfGravity, Class, Clothing, Color,
-            ColorCluster, HumanBody, Point, Polygon, Shape, Tops, Type, VehicleInfo,
+            Appearance, Bottoms, BoundingBox, CenterOfGravity, Class, Clothing, ClothingColor,
+            Color, ColorCluster, HumanBody, Point, Polygon, Shape, Tops, Type, VehicleInfo,
         };
         match path {
             [Appearance, Shape, BoundingBox] if self.bounding_box.is_none() => {
@@ -281,7 +297,7 @@ impl RawObject {
                 HumanBody,
                 Clothing,
                 Tops,
-                Color,
+                ClothingColor,
                 ColorCluster,
                 Color,
             ] => {
@@ -292,7 +308,7 @@ impl RawObject {
                 HumanBody,
                 Clothing,
                 Bottoms,
-                Color,
+                ClothingColor,
                 ColorCluster,
                 Color,
             ] => {
