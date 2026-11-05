@@ -137,7 +137,7 @@ test-desktop: build desktop/node_modules/.electron-ready
 
 # Needs a real camera, so it is not part of `test` or `check`; each test skips itself when AX_DEVIL_TARGET_ADDR is unset.
 test-camera:
-	$(ISOLATED) $(CARGO) test --locked -p camera --test real_camera -- --ignored --test-threads=1
+	$(ISOLATED) $(CARGO) test --locked -p camera --test it real_camera:: -- --ignored --test-threads=1
 
 test: test-frontend test-backend test-integration test-desktop
 

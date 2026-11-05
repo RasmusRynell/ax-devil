@@ -28,6 +28,8 @@ into `.tools/` unless `PATH` has Watchexec 2.x, or cargo-deny at the Makefile's 
 Debug and test builds carry line tables only (backtraces keep `file:line`; dependencies have none) to keep `target/`
 small. For a debugger, add `--profile dev-full` to a `scripts/cargo` build or test; it builds into `target/dev-full`.
 
+A crate's integration tests are one binary, `tests/it/main.rs`: add a file there and a `mod` line, not a new `tests/*.rs`. The root crate keeps the tests that set environment variables in two more, `tests/export/` and `tests/live_transport.rs`.
+
 ## Tests never touch the user's files or session
 
 Every suite runs through `scripts/isolated`:
@@ -49,14 +51,14 @@ What an ad-hoc check creates outside `artifacts/` and the run's temporary folder
 
 ## Export end to end
 
-`tests/export.rs` and `tests/catalog_render.rs` run the real Electron render page, forced to SwiftShader so pixels do
+`tests/export/export.rs` and `tests/export/catalog_render.rs` run the real Electron render page, forced to SwiftShader so pixels do
 not depend on the machine's graphics (`AX_DEVIL_RENDER_GRAPHICS=software`), through the routes and the command, and
 read the written MP4 and PNG back with `media`. They skip, saying why on stderr, when Electron or the built render
 page is missing; `make test-backend` builds both and sets `AX_DEVIL_REQUIRE_ELECTRON`, which makes a skip a failure.
 
 ## Plugin tests
 
-`crates/plugins/tests` and `tests/plugins.rs` run the plugins in `fixtures/plugins` as real processes. The
+`crates/plugins/tests` and `tests/it/plugins.rs` run the plugins in `fixtures/plugins` as real processes. The
 Python ones need `python3`; without it those tests skip, saying why on stderr, unless `AX_DEVIL_REQUIRE_PYTHON` is
 set, which makes the skip a failure.
 
