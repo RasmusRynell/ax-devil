@@ -418,13 +418,18 @@ fn a_deleted_catalog_is_missing_at_once_and_a_built_in_cannot_be_deleted() {
 }
 
 #[test]
-fn user_catalogs_follow_the_built_ins_sorted_by_name_without_case_and_invalid_ones_come_last() {
+fn user_catalogs_follow_the_built_ins_sorted_by_case_folded_name_and_invalid_ones_come_last() {
     let folder = tempfile::tempdir().unwrap();
     let root = folder.path();
     for (file, text) in [
         ("1.json", document("beta", 0)),
         ("2.json", document("Alpha", 0)),
         ("3.json", document("alpha", 0)),
+        // `ß` folds to `ss`, so "Straße" ties with "STRASSE" (by file name) and sorts before "strasse x"; lowercasing
+        // alone would put "strasse x" first.
+        ("4.json", document("strasse x", 0)),
+        ("5.json", document("Straße", 0)),
+        ("6.json", document("STRASSE", 0)),
         ("a-broken.json", "{ nope".into()),
         ("empty.json", "{}".into()),
         ("standard.json", document("Zed", 0)),
@@ -441,12 +446,15 @@ fn user_catalogs_follow_the_built_ins_sorted_by_name_without_case_and_invalid_on
             "user:2.json",
             "user:3.json",
             "user:1.json",
+            "user:5.json",
+            "user:6.json",
+            "user:4.json",
             "user:standard.json",
             "user:a-broken.json",
             "user:empty.json"
         ]
     );
     let problems: Vec<bool> = listed.iter().map(|info| info.problem.is_some()).collect();
-    assert_eq!(problems[..10], [false; 10]);
-    assert_eq!(problems[10..], [true; 2]);
+    assert_eq!(problems[..13], [false; 13]);
+    assert_eq!(problems[13..], [true; 2]);
 }
