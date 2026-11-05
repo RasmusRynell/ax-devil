@@ -8,6 +8,7 @@ use crate::item::{
 use foundation::{ErrorCode, HostPath, ItemId, UserError};
 use handler_api::Settings;
 use handlers::Handlers;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
 mod live_stream;
@@ -24,8 +25,9 @@ pub struct NewOverlay {
     pub path: PathBuf,
     /// The decoder handler id; `None` picks the only decoder for the file's extension.
     pub handler: Option<String>,
-    /// The lane's name; `None` names it after the file, numbered ` (2)`, ` (3)` when an earlier overlay of the same
-    /// video is the same file, so one file can be shown under several catalogs, filters or themes.
+    /// The lane's name; `None` names it after the file's stem, numbered ` (2)`, ` (3)` when an earlier overlay of the
+    /// same video has that name, whether it is the same file (shown under several catalogs, filters or themes) or
+    /// another file of the same name in another folder.
     pub label: Option<String>,
     /// Options handed to the decoder, checked against its form when the lane opens.
     pub options: Settings,
@@ -51,8 +53,13 @@ pub fn video(
         return Err(invalid("The path does not name a file"));
     }
     let mut recipes: Vec<OverlayRecipe> = Vec::with_capacity(overlays.len());
+    // Every name the caller chose is reserved first, so a name made from a file stem never takes a later one.
+    let mut labels = LaneLabels::default();
+    labels
+        .taken
+        .extend(overlays.iter().filter_map(chosen_label).map(str::to_owned));
     for overlay in overlays {
-        let recipe = overlay_recipe(overlay, &recipes, handlers)?;
+        let recipe = overlay_recipe(overlay, &mut labels, handlers)?;
         recipes.push(recipe);
     }
     let overlays = recipes;
@@ -68,7 +75,7 @@ pub fn video(
 
 fn overlay_recipe(
     overlay: &NewOverlay,
-    earlier: &[OverlayRecipe],
+    labels: &mut LaneLabels,
     handlers: &Handlers,
 ) -> Result<OverlayRecipe, UserError> {
     let refuse =
@@ -118,15 +125,9 @@ fn overlay_recipe(
     };
     let options = decoder_options(handlers, &handler, &overlay.options)?;
     let path = HostPath::new(path);
-    let label = match overlay.label.as_deref().map(str::trim) {
-        Some(label) if !label.is_empty() => label.to_owned(),
-        _ => {
-            let name = file_name(path.as_path());
-            match earlier.iter().filter(|other| other.path == path).count() {
-                0 => name,
-                repeats => format!("{name} ({})", repeats + 1),
-            }
-        }
+    let label = match chosen_label(overlay) {
+        Some(label) => label.to_owned(),
+        None => labels.unused(&file_stem(path.as_path())),
     };
     Ok(OverlayRecipe {
         path,
@@ -134,6 +135,54 @@ fn overlay_recipe(
         label,
         options,
     })
+}
+
+/// The lane name the caller gave `overlay`, if it gave a non-blank one.
+fn chosen_label(overlay: &NewOverlay) -> Option<&str> {
+    overlay
+        .label
+        .as_deref()
+        .map(str::trim)
+        .filter(|label| !label.is_empty())
+}
+
+/// The lane labels a video has so far, so numbering a name costs the same however many lanes came before.
+#[derive(Default)]
+struct LaneLabels {
+    taken: HashSet<String>,
+    /// The highest number tried for a stem: every `stem (n)` below it is taken, so numbering resumes there.
+    tried: HashMap<String, usize>,
+}
+
+impl LaneLabels {
+    /// Records `label` as taken and returns it.
+    fn take(&mut self, label: String) -> String {
+        self.taken.insert(label.clone());
+        label
+    }
+
+    /// `stem`, or `stem (2)`, `stem (3)` ..., whichever is the first not taken yet.
+    fn unused(&mut self, stem: &str) -> String {
+        if !self.taken.contains(stem) {
+            return self.take(stem.to_owned());
+        }
+        let tried = self.tried.entry(stem.to_owned()).or_insert(1);
+        loop {
+            *tried += 1;
+            let label = format!("{stem} ({tried})");
+            if !self.taken.contains(&label) {
+                self.taken.insert(label.clone());
+                return label;
+            }
+        }
+    }
+}
+
+/// The file name of `path` without its last extension: `gt` for `gt.txt`.
+fn file_stem(path: &Path) -> String {
+    path.file_stem()
+        .map(|stem| stem.to_string_lossy().into_owned())
+        .unwrap_or_default()
 }
 
 /// Builds the item for a playlist of `resolver` with `settings`, unlabelled: its name is the default, the resolver
@@ -182,5 +231,7 @@ pub fn with_label(item: WorkspaceItem, label: Option<&str>) -> WorkspaceItem {
 
 #[cfg(test)]
 mod live_tests;
+#[cfg(test)]
+mod resolve_tests;
 #[cfg(test)]
 mod tests;

@@ -295,7 +295,7 @@ mod tests {
                 (RowKind::Entry, "SEQ-02", false),
                 (RowKind::Lane, "GT", false),
                 (RowKind::Item, "v.mp4", false),
-                (RowKind::Lane, "gt.txt", false),
+                (RowKind::Lane, "gt", false),
             ]
         );
         // The first row of a kind and label: the pending video, the playlist's first lane.

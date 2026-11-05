@@ -255,12 +255,12 @@ fn a_lane_matching_lands_in_the_recipe_by_slot_and_resolves_nothing() {
         next
     };
 
-    let state = set(&state, id, "gt.txt");
+    let state = set(&state, id, "gt");
     assert_eq!(
-        state.workspace.items[0].recipe.lane_matching.get("gt.txt"),
+        state.workspace.items[0].recipe.lane_matching.get("gt"),
         Some(&matching)
     );
-    for (item, slot) in [(id, "nope"), (ItemId::generate(), "gt.txt")] {
+    for (item, slot) in [(id, "nope"), (ItemId::generate(), "gt")] {
         assert_eq!(
             set(&state, item, slot),
             state,

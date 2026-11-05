@@ -91,7 +91,7 @@ module.exports.twice = () =>
       }, "two lanes");
       assert.deepEqual(
         cells.map((cell) => cell.label),
-        ["frames.xml", "frames.xml (2)"],
+        ["frames", "frames (2)"],
       );
       // Both lanes show their boxes of frame 0.
       for (const cell of cells) {

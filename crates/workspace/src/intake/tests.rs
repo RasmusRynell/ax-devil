@@ -101,7 +101,7 @@ impl handler_api::Decoder for Acme {
     }
 }
 
-fn overlay(path: &Path, handler: Option<&str>) -> NewOverlay {
+pub(super) fn overlay(path: &Path, handler: Option<&str>) -> NewOverlay {
     NewOverlay {
         path: path.to_owned(),
         handler: handler.map(str::to_owned),
@@ -229,7 +229,7 @@ fn a_video_with_overlays_resolves_to_one_lane_per_overlay_and_checks_each_file()
     else {
         panic!("readable files resolve");
     };
-    assert_eq!(content.entry.lane_labels(), ["gt.txt", "det.txt"]);
+    assert_eq!(content.entry.lane_labels(), ["gt", "det"]);
     assert_eq!(content.entry.overlays[0].handler, "MOT_FILE");
 
     let Err(Interrupt::Failed(missing)) =
@@ -241,20 +241,6 @@ fn a_video_with_overlays_resolves_to_one_lane_per_overlay_and_checks_each_file()
         missing.location,
         Some(HostPath::new(folder.path().join("none.txt")).into())
     );
-
-    let other = folder.path().join("other");
-    fs::create_dir(&other).unwrap();
-    fs::write(other.join("gt.txt"), "x").unwrap();
-    let Err(Interrupt::Failed(twice)) =
-        resolve(&[overlay(&gt, None), overlay(&other.join("gt.txt"), None)])
-    else {
-        panic!("two overlays with one file name fail");
-    };
-    assert!(
-        matches!(twice.location, Some(Location::Item(_))),
-        "{twice:?}"
-    );
-    assert!(twice.reason.ends_with("gt.txt"), "{twice}");
 }
 
 #[test]
@@ -280,15 +266,32 @@ fn one_file_may_be_several_lanes_named_by_the_caller_or_numbered_from_the_file_n
 
     assert_eq!(
         lanes(&[plain.clone(), plain.clone(), plain.clone()]).unwrap(),
-        ["gt.txt", "gt.txt (2)", "gt.txt (3)"]
+        ["gt", "gt (2)", "gt (3)"]
+    );
+    let named_like_a_number = overlay(Path::new("gt (2).txt"), None);
+    assert_eq!(
+        lanes(&[
+            named_like_a_number.clone(),
+            plain.clone(),
+            plain.clone(),
+            named_like_a_number
+        ])
+        .unwrap(),
+        ["gt (2)", "gt", "gt (3)", "gt (2) (2)"],
+        "a generated name never takes one already in use"
+    );
+    assert_eq!(
+        lanes(&[plain.clone(), labelled("gt")]).unwrap(),
+        ["gt (2)", "gt"],
+        "a name the caller gives a later overlay is kept clear of too"
     );
     assert_eq!(
         lanes(&[plain.clone(), labelled(" Night "), labelled("Day")]).unwrap(),
-        ["gt.txt", "Night", "Day"]
+        ["gt", "Night", "Day"]
     );
 }
 
-fn mot_folder(sequences: &[&str]) -> tempfile::TempDir {
+pub(super) fn mot_folder(sequences: &[&str]) -> tempfile::TempDir {
     let folder = tempfile::tempdir().unwrap();
     for name in sequences {
         let dir = folder.path().join(name);
@@ -303,7 +306,7 @@ fn mot_folder(sequences: &[&str]) -> tempfile::TempDir {
     folder
 }
 
-fn mot_settings(folder: &Path) -> Settings {
+pub(super) fn mot_settings(folder: &Path) -> Settings {
     let mut settings = Settings::new();
     settings.insert("root".into(), folder.display().to_string().into());
     settings
