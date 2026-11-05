@@ -25,9 +25,11 @@ export class ChromeVisibility {
     if (!held) this.#idle();
   }
 
-  /** The pointer entered the pane: the controls show, and nothing is timed until it moves. */
-  enter(): void {
+  /** The pointer came into the pane onto an element (`held` as for `pointer`): the controls show, and nothing is timed until it moves. */
+  enter(held: boolean): void {
+    this.#held = held;
     this.show(true);
+    this.#stop();
   }
 
   /** The pointer left the pane: from the video the controls hide now, from a held element they wait out the idle time. */
@@ -69,6 +71,7 @@ function keepsChrome(event: Event): boolean {
  * `shown` or `hidden` for the stylesheet to fade. Nothing is held in React state, so a pointer move costs no render. An
  * element under the pane marks what the pointer is over: `data-keeps-chrome` for the controls and the warnings on the
  * video, `data-chrome-idle` for the rest of the video; the rest, such as the side panels, keeps the controls too.
+ * A pointer coming in from outside the pane shows them untimed; the first move after it starts the idle time.
  */
 export function useChromeVisibility(pane: RefObject<HTMLElement | null>): void {
   useEffect(() => {
@@ -85,18 +88,21 @@ export function useChromeVisibility(pane: RefObject<HTMLElement | null>): void {
       },
     );
     const pointer = (event: Event) => visibility.pointer(keepsChrome(event));
-    const enter = () => visibility.enter();
+    // `pointerover` comes before `pointerenter` and names the element entered, which `pointerenter` on the pane does not.
+    const over = (event: PointerEvent) => {
+      const from = event.relatedTarget;
+      if (from instanceof Node && element.contains(from)) pointer(event);
+      else visibility.enter(keepsChrome(event));
+    };
     const leave = () => visibility.leave();
     element.addEventListener("pointermove", pointer);
-    element.addEventListener("pointerover", pointer);
+    element.addEventListener("pointerover", over);
     element.addEventListener("pointerdown", pointer);
-    element.addEventListener("pointerenter", enter);
     element.addEventListener("pointerleave", leave);
     return () => {
       element.removeEventListener("pointermove", pointer);
-      element.removeEventListener("pointerover", pointer);
+      element.removeEventListener("pointerover", over);
       element.removeEventListener("pointerdown", pointer);
-      element.removeEventListener("pointerenter", enter);
       element.removeEventListener("pointerleave", leave);
       visibility.dispose();
     };
