@@ -27,21 +27,52 @@ impl Drop for BasicOverTls {
     }
 }
 
+/// A TLS acceptor with a fresh self-signed certificate, which no client could verify.
+pub fn acceptor() -> TlsAcceptor {
+    let certified =
+        rcgen::generate_simple_self_signed(vec!["localhost".to_owned()]).expect("certificate");
+    let key = PrivateKeyDer::Pkcs8(PrivatePkcs8KeyDer::from(
+        certified.signing_key.serialize_der(),
+    ));
+    let provider = Arc::new(rustls::crypto::ring::default_provider());
+    let config = ServerConfig::builder_with_provider(provider)
+        .with_safe_default_protocol_versions()
+        .expect("versions")
+        .with_no_client_auth()
+        .with_single_cert(vec![certified.cert.der().clone()], key)
+        .expect("server config");
+    TlsAcceptor::from(Arc::new(config))
+}
+
+/// Lets `axum::serve` answer over TLS; a connection whose handshake fails is dropped.
+pub struct TlsListener {
+    pub tcp: TcpListener,
+    pub acceptor: TlsAcceptor,
+}
+
+impl axum::serve::Listener for TlsListener {
+    type Io = tokio_rustls::server::TlsStream<tokio::net::TcpStream>;
+    type Addr = SocketAddr;
+
+    async fn accept(&mut self) -> (Self::Io, Self::Addr) {
+        loop {
+            let Ok((stream, addr)) = self.tcp.accept().await else {
+                continue;
+            };
+            if let Ok(tls) = self.acceptor.accept(stream).await {
+                return (tls, addr);
+            }
+        }
+    }
+
+    fn local_addr(&self) -> std::io::Result<Self::Addr> {
+        self.tcp.local_addr()
+    }
+}
+
 impl BasicOverTls {
     pub async fn start() -> Self {
-        let certified =
-            rcgen::generate_simple_self_signed(vec!["localhost".to_owned()]).expect("certificate");
-        let key = PrivateKeyDer::Pkcs8(PrivatePkcs8KeyDer::from(
-            certified.signing_key.serialize_der(),
-        ));
-        let provider = Arc::new(rustls::crypto::ring::default_provider());
-        let config = ServerConfig::builder_with_provider(provider)
-            .with_safe_default_protocol_versions()
-            .expect("versions")
-            .with_no_client_auth()
-            .with_single_cert(vec![certified.cert.der().clone()], key)
-            .expect("server config");
-        let acceptor = TlsAcceptor::from(Arc::new(config));
+        let acceptor = acceptor();
         let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind");
         let addr = listener.local_addr().expect("address");
         let authorizations = Arc::new(Mutex::new(Vec::new()));

@@ -101,6 +101,18 @@ async fn digest_is_used_when_basic_is_offered_too_and_a_rejected_login_stops_the
 }
 
 #[tokio::test]
+async fn a_self_signed_https_camera_gives_the_token_and_the_subscription_over_tls() {
+    let fake = FakeDataHub::start_tls().await;
+    let mut live = open_datahub(&fake.camera(), TOPIC, 1);
+    let sample = next_item(&mut live).await;
+    assert_eq!(sample.payload.as_ref(), br#"{"connection":0}"#);
+    // The token came over the same TLS host, behind the Digest login.
+    assert_eq!(fake.seen(|seen| seen.token_requests), 2);
+    assert_eq!(fake.seen(|seen| seen.upgrades), 1);
+    live.close().await;
+}
+
+#[tokio::test]
 async fn a_redirect_ends_the_subscription() {
     for redirect in [Redirect::Token, Redirect::Upgrade] {
         let fake = FakeDataHub::with(Behaviour {

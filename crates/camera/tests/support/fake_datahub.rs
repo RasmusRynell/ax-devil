@@ -16,6 +16,7 @@ use tokio::task::JoinHandle;
 
 use super::digest::{self, Algorithm};
 use super::fake_vapix::{PASSWORD, USER};
+use super::tls_server;
 
 const REALM: &str = "AXIS_DATAHUB";
 const NONCE: &str = "dcd98b7102dd2f0e8b11d0f600bfb0c093";
@@ -85,6 +86,7 @@ struct Shared {
 pub struct FakeDataHub {
     pub addr: SocketAddr,
     shared: Arc<Shared>,
+    tls: bool,
     task: JoinHandle<()>,
 }
 
@@ -99,7 +101,16 @@ impl FakeDataHub {
         Self::with(Behaviour::default()).await
     }
 
+    /// The same camera on HTTPS with a self-signed certificate.
+    pub async fn start_tls() -> Self {
+        Self::serve(Behaviour::default(), true).await
+    }
+
     pub async fn with(behaviour: Behaviour) -> Self {
+        Self::serve(behaviour, false).await
+    }
+
+    async fn serve(behaviour: Behaviour, tls: bool) -> Self {
         let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind");
         let addr = listener.local_addr().expect("address");
         let shared = Arc::new(Shared {
@@ -111,16 +122,33 @@ impl FakeDataHub {
             .route("/vapix/ws/v1", axum::routing::get(upgrade))
             .with_state(shared.clone());
         let task = tokio::spawn(async move {
-            axum::serve(listener, app).await.expect("serve");
+            if tls {
+                let listener = tls_server::TlsListener {
+                    tcp: listener,
+                    acceptor: tls_server::acceptor(),
+                };
+                axum::serve(listener, app).await.expect("serve");
+            } else {
+                axum::serve(listener, app).await.expect("serve");
+            }
         });
-        Self { addr, shared, task }
+        Self {
+            addr,
+            shared,
+            tls,
+            task,
+        }
     }
 
     /// A camera pointing at this fake, with the right login.
     pub fn camera(&self) -> Camera {
         let mut camera = Camera::new(Host::parse("127.0.0.1").expect("host"));
         camera.web = Web {
-            scheme: Scheme::Http,
+            scheme: if self.tls {
+                Scheme::Https
+            } else {
+                Scheme::Http
+            },
             port: self.addr.port(),
         };
         camera.login = Some(Login {
