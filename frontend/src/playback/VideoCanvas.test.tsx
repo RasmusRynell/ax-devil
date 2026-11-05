@@ -146,12 +146,19 @@ describe("video canvas", () => {
       return { ...handlers, surface: view.container.firstElementChild as HTMLElement };
     }
 
-    it("zooms toward the pointer by one step per wheel notch", () => {
+    it("zooms toward the pointer by one step per wheel notch, by a fraction of it for a small delta, and not for a sideways scroll", () => {
       const { surface, onViewport } = mount();
       drawn.renderer?.zoomAt.mockReturnValue(zoomed);
       fireEvent.wheel(surface, { deltaY: -100, clientX: 30, clientY: 40 });
       expect(drawn.renderer?.zoomAt).toHaveBeenCalledWith(FIT, ZOOM_STEP, { x: 30, y: 40 });
       expect(onViewport).toHaveBeenCalledWith(zoomed);
+      fireEvent.wheel(surface, { deltaY: -10, clientX: 30, clientY: 40 });
+      expect(drawn.renderer?.zoomAt).toHaveBeenLastCalledWith(zoomed, ZOOM_STEP ** 0.1, {
+        x: 30,
+        y: 40,
+      });
+      fireEvent.wheel(surface, { deltaX: 100, deltaY: 0, clientX: 30, clientY: 40 });
+      expect(drawn.renderer?.zoomAt).toHaveBeenLastCalledWith(zoomed, 1, { x: 30, y: 40 });
     });
 
     it("pans by a drag, selects by a click that did not drag and resets by a double click", () => {
@@ -170,8 +177,9 @@ describe("video canvas", () => {
 
       drawn.renderer?.pick.mockReturnValue(picked("t7"));
       fireEvent.pointerDown(surface, { button: 0, clientX: 10, clientY: 10 });
+      fireEvent.pointerMove(surface, { clientX: 12, clientY: 10 });
       fireEvent.pointerUp(surface);
-      fireEvent.click(surface, { detail: 1, clientX: 10, clientY: 10 });
+      fireEvent.click(surface, { detail: 1, clientX: 12, clientY: 10 });
       expect(onSelect).toHaveBeenLastCalledWith({ lane: 0, source: 3, entity: "t7" });
       drawn.renderer?.pick.mockReturnValue(null);
       fireEvent.click(surface, { detail: 1 });

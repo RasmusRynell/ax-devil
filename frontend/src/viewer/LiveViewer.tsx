@@ -23,7 +23,6 @@ import { useSettings } from "../settings";
 import { ObjectsPanel, type Place } from "../tools/ObjectsPanel";
 import { FRESH_LIST, type ListState } from "../tools/listState";
 import { EMPTY, jump, topObject, type PageStack } from "../tools/pageStack";
-import { VIDEO_LEAST } from "../tools/panelWidth";
 import type { ViewerProps } from "../viewers";
 import { useViewerActions } from "./actions";
 import { NOTHING_HIDDEN } from "./hidden";
@@ -144,13 +143,8 @@ function Live({
         onPanel={setPanel}
       />
       {view.status === "ready" ? (
-        // Positioned, so that a panel that covers the viewer leaves the bar above it.
-        <div className="relative flex min-h-0 flex-1">
-          <div
-            // The columns beside the video give way before it gets narrower than this.
-            style={{ minWidth: panel ? VIDEO_LEAST : 0 }}
-            className="relative min-h-0 flex-1"
-          >
+        <div className="flex min-h-0 flex-1">
+          <div className="relative min-h-0 min-w-0 flex-1">
             <ContextMenu
               className="absolute inset-0"
               entries={laneContextEntries(allowed, shortcuts, false, false).filter(exportable)}

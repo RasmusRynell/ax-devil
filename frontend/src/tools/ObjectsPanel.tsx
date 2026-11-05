@@ -1,11 +1,4 @@
-import {
-  useLayoutEffect,
-  useRef,
-  useState,
-  type CSSProperties,
-  type KeyboardEvent,
-  type MouseEvent,
-} from "react";
+import { useLayoutEffect, useRef, useState, type KeyboardEvent, type MouseEvent } from "react";
 import { Select } from "../kit/Fields";
 import { IconButton } from "../kit/IconButton";
 import type { InspectorMemory } from "../playback/fields";
@@ -16,7 +9,7 @@ import type { ListState } from "./listState";
 import { ObjectsList, type ObjectSource, type Open } from "./ObjectsList";
 import { PageHeader } from "./PageHeader";
 import { PanelDivider } from "./PanelDivider";
-import { VIDEO_LEAST } from "./panelWidth";
+import { PANEL_CLASS, panelStyle } from "./panelWidth";
 
 export type { ObjectSource };
 
@@ -35,8 +28,7 @@ const editing = (target: EventTarget): boolean =>
  * viewer keeps while the panel is closed, and `onNavigate` hears each change of it with the lane it is about. Esc,
  * Backspace and the mouse's Back button go back one page. A column beside the picture, which the viewer (a size
  * container) keeps `VIDEO_LEAST` wide; in a viewer too narrow for both, the column keeps the width its content needs
- * and covers the picture's right edge, as the content comes before the picture, and in one narrower than that it
- * takes the whole viewer. A divider inside its left edge resizes it; `width` is the pixels the user chose, for the
+ * and the picture takes what is left (`panelStyle`). A divider inside its left edge resizes it; `width` is the pixels the user chose, for the
  * viewer to keep while the panel is closed, and `onWidth` hears each choice.
  */
 export function ObjectsPanel({
@@ -170,24 +162,15 @@ export function ObjectsPanel({
     <aside
       ref={aside}
       aria-label="Media tools"
-      style={
-        {
-          // What the list's required columns and the page need. Where that and the video's least do not both fit the
-          // viewer, the column slides over the video, and where the viewer is narrower still it takes the viewer.
-          "--panel-least": "min(40ch, 100cqw)",
-          marginLeft: `min(0px, calc(100cqw - var(--panel-least) - ${VIDEO_LEAST}px))`,
-          ...(live === null ? {} : { "--panel-width": `${live}px` }),
-        } as CSSProperties
-      }
+      style={panelStyle(live)}
       onKeyDown={onKeyDown}
       onKeyUp={(event) => event.stopPropagation()}
       onMouseDown={onMouse}
       onMouseUp={onMouse}
       onAuxClick={onMouse}
-      className="relative z-10 flex w-[var(--panel-width,min(var(--spacing-panel),50%))] min-w-(--panel-least) flex-col border-l border-line bg-panel text-fg"
+      className={PANEL_CLASS}
     >
       <PanelDivider
-        docked
         onResize={(next, final) => {
           setLive(next);
           if (final) onWidth(next);

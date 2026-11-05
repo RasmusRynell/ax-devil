@@ -17,6 +17,9 @@ describe("media tools width", () => {
   });
 
   it("puts the content before the video when the pane is too narrow for both", () => {
-    expect(roomOf(280, 100, 280).most).toBe(280);
+    // 380 wide in all: 280 for the content leaves the video 100, below its 160, and no drag takes more.
+    const narrow = roomOf(280, 100, 280);
+    expect(narrow.most).toBe(280);
+    expect(settle(900, narrow).width).toBe(280);
   });
 });
