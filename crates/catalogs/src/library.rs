@@ -19,6 +19,7 @@ use crate::{
     built_in::DOCUMENTS,
     copy::{copy_of, slug, write_new},
     folder::{Change, Content, Folder, ODD_NAME},
+    origin::{self, Origin},
 };
 
 /// What the revision of every built-in catalog is; the user's files count up from 2.
@@ -52,6 +53,8 @@ pub struct CatalogInfo {
     pub name: String,
     /// What the catalog is for; empty when the document does not say.
     pub description: String,
+    /// The built-in a user catalog is a copy of, and whether it has changed since; `None` for any other catalog.
+    pub origin: Option<Origin>,
     /// Why the catalog is not usable as a catalog, when it is not: unreadable, not JSON, no name, or a file name to
     /// change. `None` for a valid one and for every built-in.
     pub problem: Option<String>,
@@ -97,6 +100,7 @@ impl Served {
 struct Described {
     name: Option<String>,
     description: Option<String>,
+    origin: Option<String>,
 }
 
 /// A built-in catalog.
@@ -160,15 +164,18 @@ impl Library {
                     Ok(Described {
                         name: Some(name),
                         description: Some(description),
+                        ..
                     }) => CatalogInfo {
                         id,
                         name,
                         description,
+                        origin: None,
                         problem: None,
                     },
                     _ => CatalogInfo {
                         name: (*name).to_owned(),
                         description: "The catalog does not describe itself".into(),
+                        origin: None,
                         id,
                         problem: None,
                     },
@@ -487,25 +494,38 @@ fn not_found() -> UserError {
 /// What the picker shows of a user's file: the document's own name and description, else the file name; and the
 /// reason the file is not a usable catalog, if it is not.
 fn describe(file: &str, content: &Content) -> CatalogInfo {
-    let (name, description, problem) = match content {
+    let (name, description, origin, problem) = match content {
         Content::Text(text) => match serde_json::from_str::<Described>(text) {
             Ok(Described {
                 name: Some(name),
                 description,
-            }) if !name.trim().is_empty() => (Some(name), description.unwrap_or_default(), None),
+                origin,
+            }) if !name.trim().is_empty() => (
+                Some(name),
+                description.unwrap_or_default(),
+                origin.and_then(|origin| origin::read(&origin, text)),
+                None,
+            ),
             Ok(Described { description, .. }) => (
                 None,
                 description.unwrap_or_default(),
+                None,
                 Some("The catalog has no name".to_owned()),
             ),
-            Err(error) => (None, String::new(), Some(format!("Not a catalog: {error}"))),
+            Err(error) => (
+                None,
+                String::new(),
+                None,
+                Some(format!("Not a catalog: {error}")),
+            ),
         },
-        Content::Problem(problem) => (None, String::new(), Some(problem.clone())),
+        Content::Problem(problem) => (None, String::new(), None, Some(problem.clone())),
     };
     CatalogInfo {
         id: CatalogId::User(file.to_owned()),
         name: name.unwrap_or_else(|| file.to_owned()),
         description,
+        origin,
         problem,
     }
 }

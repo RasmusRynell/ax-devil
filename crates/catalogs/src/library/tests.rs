@@ -315,10 +315,15 @@ fn a_copy_keeps_the_text_of_the_source_is_listed_at_once_and_never_replaces_a_fi
             .map(|(key, raw)| format!("{key}={}", raw.get()))
             .collect()
     };
+    let origin = serde_json::from_str::<serde_json::Value>(&text).unwrap()["origin"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    assert!(origin.starts_with("built-in:standard@"), "{origin}");
     let mut expected = key_order(source);
     expected[1] = r#"name="Night Shift""#.into();
     expected[2] = r#"description="Based on Standard.""#.into();
-    expected.insert(3, r#"origin="built-in:standard""#.into());
+    expected.insert(3, format!(r#"origin="{origin}""#));
     assert_eq!(key_order(&text), expected);
     let info = library
         .documents()
@@ -341,7 +346,7 @@ fn a_copy_keeps_the_text_of_the_source_is_listed_at_once_and_never_replaces_a_fi
     };
     assert!(third_text.contains("Based on Night Shift."));
     assert_eq!(third_text.matches("\"origin\"").count(), 1);
-    assert!(third_text.contains("built-in:standard"));
+    assert!(third_text.contains(&origin));
     assert_eq!(
         fs::read_dir(&root).unwrap().count(),
         3,
