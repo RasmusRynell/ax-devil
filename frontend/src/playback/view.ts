@@ -114,9 +114,12 @@ export function buildView(parts: ViewParts): PlaybackView {
   const { clock, opened, inspection } = parts;
   const shown = clock?.info();
   const playhead = clock?.playhead ?? 0;
-  // The failure the screen is waiting on: the latest failed frame at or before the playhead that was not passed.
+  // The failure the screen is waiting on: the latest failed frame at or before the playhead that was not passed, or
+  // the playhead's own, which a seek back leaves behind the frame on screen.
   const failed = parts.failures.latestAtOrBefore(playhead);
-  const frameError = failed && failed.sequenceId > (shown?.sequenceId ?? -1) ? failed : undefined;
+  const waiting =
+    failed && (failed.sequenceId > (shown?.sequenceId ?? -1) || failed.sequenceId === playhead);
+  const frameError = waiting ? failed : undefined;
   return {
     status: parts.status,
     progress: parts.progress,

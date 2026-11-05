@@ -24,7 +24,6 @@ import { DataWait, displaySource } from "./frameSource";
 import { WantPlanner, sameWant } from "./direction";
 import type { LaneMatch } from "./laneData";
 import { LaneSet } from "./lanes";
-import { Scrub } from "./scrub";
 import {
   PLAYBACK_PROTOCOL,
   type Envelope,
@@ -90,7 +89,6 @@ export class PlaybackSession implements LaneControl {
   #planner: WantPlanner | undefined;
   #lastWant: Want | undefined;
   #speed = 1;
-  readonly #scrub = new Scrub();
   /** The frame to reopen on. */
   #resumeAt: number | undefined;
   #retries = 0;
@@ -236,23 +234,13 @@ export class PlaybackSession implements LaneControl {
     return this.#times?.[sequenceId];
   }
 
-  /** Jumps to a frame, as scrubbing the seek bar does. */
+  /** Jumps to a frame; playing goes on from there. */
   seek(sequenceId: number): void {
     if (!this.#clock) return;
     this.#clock.seek(sequenceId);
     this.#wait.restart();
     this.#changed();
     this.#intend();
-  }
-
-  /** The seek bar is held: playback pauses, so the position follows the hand. */
-  scrubStart(): void {
-    if (this.#clock && this.#scrub.grab(this.#clock.playing)) this.pause();
-  }
-
-  /** The seek bar is let go: playback that ran when it was grabbed runs on, unless left at the end. */
-  scrubEnd(): void {
-    if (this.#scrub.release() && (this.#clock?.playhead ?? 0) < this.#frameCount - 1) this.play();
   }
 
   /** Sets the speed, rounded to hundredths and kept within 0.01 to 10; it stays across a reconnection. */

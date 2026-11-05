@@ -3,6 +3,7 @@ import { TextField } from "../kit/Fields";
 import { IconButton } from "../kit/IconButton";
 import { Menu, type MenuEntry } from "../kit/Menu";
 import { Popover } from "../kit/Popover";
+import { useScrub } from "./scrub";
 import { seekBand } from "./seekBand";
 import type { PlaybackSession } from "./session";
 import type { PlaybackView } from "./view";
@@ -10,7 +11,7 @@ import type { PlaybackView } from "./view";
 /** What the transport asks of the session. */
 export type Controls = Pick<
   PlaybackSession,
-  "togglePlay" | "step" | "seek" | "setSpeed" | "scrubStart" | "scrubEnd"
+  "togglePlay" | "step" | "seek" | "setSpeed" | "frameTime"
 >;
 
 /** Microseconds as `m:ss.cc`, or `h:mm:ss.cc` from one hour. */
@@ -23,9 +24,6 @@ function timecode(us: number): string {
     ? `${hours}:${String(minutes).padStart(2, "0")}:${seconds}`
     : `${minutes}:${seconds}`;
 }
-
-/** The keys that move the seek bar by themselves; Left and Right are the viewer's shortcuts. */
-const SCRUB_KEYS = new Set(["ArrowUp", "ArrowDown", "Home", "End", "PageUp", "PageDown"]);
 
 const BUTTON = "size-row rounded-control";
 
@@ -152,12 +150,26 @@ interface Props {
 
 /**
  * The playback controls over the bottom of the video, with a frame error above them that stays when they fade: seek bar, play and step buttons, the frame and time of the
- * frame on screen, and the speed. The frame count and time describe the frame shown, the seek bar the position asked
- * for. A frame that failed to decode says why.
+ * frame on screen, and the speed. The frame count and time describe the frame shown, or the frame picked while the seek bar is held; the seek bar the
+ * position asked for. A frame that failed to decode says why.
  */
 export function Transport({ controls, view, disabled = false }: Props) {
   const last = Math.max(0, view.frameCount - 1);
   const { shown, playing, frameError } = view;
+  const scrub = useScrub(controls, view);
+  // While the bar is held the readouts follow the frame picked, not the one on screen.
+  const frame = scrub.picked ?? shown?.sequenceId;
+  const timeUs = scrub.picked === null ? shown?.timestampUs : controls.frameTime(scrub.picked);
+  const position = scrub.picked ?? view.playhead;
+  // Any seek made here ends a pick that still waits for its own.
+  const seekTo = (frame: number) => {
+    scrub.clear();
+    controls.seek(frame);
+  };
+  const stepBy = (delta: number) => {
+    scrub.clear();
+    controls.step(delta);
+  };
   return (
     <div className="pointer-events-none absolute inset-x-0 bottom-0 flex flex-col items-start gap-s text-on-canvas">
       {frameError && (
@@ -186,29 +198,18 @@ export function Transport({ controls, view, disabled = false }: Props) {
             type="range"
             aria-label="Timeline"
             data-cursor-id="transport:seek"
-            aria-valuetext={`Frame ${view.playhead} of ${last}`}
+            aria-valuetext={`Frame ${position} of ${last}`}
             min={0}
             max={last}
             step={1}
             disabled={disabled}
-            value={view.playhead}
-            onChange={(event) => controls.seek(event.target.valueAsNumber)}
-            onPointerDown={() => {
-              controls.scrubStart();
-              // The press ends wherever the pointer is let go.
-              const end = () => {
-                controls.scrubEnd();
-                window.removeEventListener("pointerup", end);
-                window.removeEventListener("pointercancel", end);
-              };
-              window.addEventListener("pointerup", end);
-              window.addEventListener("pointercancel", end);
-            }}
-            onKeyDown={(event) => SCRUB_KEYS.has(event.key) && controls.scrubStart()}
-            onKeyUp={(event) => SCRUB_KEYS.has(event.key) && controls.scrubEnd()}
-            // A key released after focus moved on reaches another element, so losing focus ends the hold too.
-            onBlur={() => controls.scrubEnd()}
-            style={{ "--seek-fill": last > 0 ? view.playhead / last : 0 } as CSSProperties}
+            value={position}
+            onChange={(event) => scrub.change(event.target.valueAsNumber)}
+            onPointerDown={(event) =>
+              event.button === 0 && scrub.press(view.playhead, event.pointerId)
+            }
+            onBlur={scrub.release}
+            style={{ "--seek-fill": last > 0 ? position / last : 0 } as CSSProperties}
             className="seek-bar relative m-0 h-l w-full"
           />
         </div>
@@ -228,7 +229,7 @@ export function Transport({ controls, view, disabled = false }: Props) {
             label="Back 1 frame"
             data-cursor-id="transport:step-back"
             disabled={disabled}
-            onClick={() => controls.step(-1)}
+            onClick={() => stepBy(-1)}
             className={BUTTON}
           />
           <IconButton
@@ -237,16 +238,16 @@ export function Transport({ controls, view, disabled = false }: Props) {
             label="Forward 1 frame"
             data-cursor-id="transport:step-forward"
             disabled={disabled}
-            onClick={() => controls.step(1)}
+            onClick={() => stepBy(1)}
             className={BUTTON}
           />
           <span className="flex-1" />
           <FrameField
-            shown={shown?.sequenceId}
+            shown={frame}
             last={last}
             playhead={view.playhead}
             disabled={disabled}
-            onSeek={(frame) => controls.seek(frame)}
+            onSeek={seekTo}
           />
           <span className="font-mono text-on-canvas-muted tabular-nums">/ {last}</span>
           <output
@@ -254,7 +255,7 @@ export function Transport({ controls, view, disabled = false }: Props) {
             style={{ "--chars": timecode(view.durationUs).length } as CSSProperties}
             className="chars-wide border border-transparent px-xs text-right font-mono tabular-nums text-on-canvas-muted"
           >
-            {shown ? timecode(shown.timestampUs) : "…"}
+            {timeUs === undefined ? "…" : timecode(timeUs)}
           </output>
           <SpeedPicker
             speed={view.speed}
