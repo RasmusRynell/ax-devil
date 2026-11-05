@@ -55,14 +55,16 @@ desktop/node_modules/.electron-ready: node_modules/.installed
 	cd desktop && node -e 'require("electron")' >/dev/null
 	touch $@
 
-# cargo-deny at the pinned version, and any watchexec, are used from PATH when installed; otherwise they are built into .tools/.
+# cargo-deny at the pinned version, and watchexec 2.x, are used from PATH when installed; otherwise they are built into .tools/.
 CARGO_DENY_VERSION := 0.20.2
 ifeq ($(shell cargo-deny --version 2>/dev/null),cargo-deny $(CARGO_DENY_VERSION))
 CARGO_DENY :=
 else
 CARGO_DENY := .tools/bin/cargo-deny
 endif
-export WATCHEXEC := $(or $(shell command -v watchexec 2>/dev/null || true),.tools/bin/watchexec)
+# No parentheses in the check (a ")" would end $(shell ...) early), and no early-exiting reader such as head or grep -q:
+# with pipefail from .SHELLFLAGS, watchexec would get SIGPIPE on its later lines and the check would fail at random.
+export WATCHEXEC := $(or $(shell watchexec --version 2>/dev/null | sed -n 1p | grep -q '^watchexec 2[.]' && command -v watchexec),.tools/bin/watchexec)
 
 .tools/bin/watchexec:
 	$(CARGO) install watchexec-cli --version 2.8.0 --locked --root .tools
