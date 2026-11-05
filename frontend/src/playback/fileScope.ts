@@ -48,11 +48,17 @@ export type FilePage = {
   located: Located | null;
 };
 
-/** What a lane's list shows now. Replaced, never mutated, when it changes. */
-type FileScopeView = {
+/**
+ * What a lane's list shows now. Replaced, never mutated, when it changes. The page is out of date when both it and
+ * `unavailable` are set: a refresh failed and the rows are those of the last answer, which the next one replaces.
+ */
+export type FileScopeView = {
   /** An answer is awaited, or the question is about to be asked again. */
   pending: boolean;
-  /** The last page accepted; kept while a newer one is awaited, `null` when the backend has no rows to give. */
+  /**
+   * The last page accepted; kept while a newer one is awaited and when a refresh of it failed, `null` when the backend
+   * has no rows to give.
+   */
   page: FilePage | null;
   /** Why the backend has no rows; `null` otherwise. */
   unavailable: FileScopeUnavailable | null;
@@ -73,6 +79,8 @@ type Wanted = {
 type Slot = {
   wanted: Wanted;
   view: FileScopeView;
+  /** The data revision of the page the view holds; a page of another revision is not kept through a failure. */
+  pageData: number | null;
   /** The request the answer awaited belongs to; `null` when none is awaited. */
   asked: number | null;
   /** What the last request was made under, as JSON; `null` when none stands. */
@@ -141,19 +149,30 @@ export class FileScope {
     const wanted = { query: parseSearch(text).wire, sort, offset, limit, bins, locate };
     let slot = this.#slots.get(lane);
     if (slot) Object.assign(slot, { wanted, asked: null, retries: 0 });
-    else slot = { wanted, view: IDLE, asked: null, basis: null, retries: 0, cancel: null };
+    else
+      slot = {
+        wanted,
+        view: IDLE,
+        pageData: null,
+        asked: null,
+        basis: null,
+        retries: 0,
+        cancel: null,
+      };
     this.#slots.set(lane, slot);
     this.#schedule(lane, slot, DEBOUNCE_MS);
     this.#replace(lane, slot, { ...slot.view, pending: true });
   }
 
-  /** Sends the question the lane's list is waiting to ask now, instead of when the pause for more changes ends. */
+  /** Asks for the wanted list now, instead of when the pause for more changes ends, and again if it was asked already. */
   flush(lane: number): void {
     const slot = this.#slots.get(lane);
-    if (!slot?.cancel) return;
-    slot.cancel();
+    if (!slot) return;
+    slot.cancel?.();
     slot.cancel = null;
+    slot.retries = 0;
     this.#ask(lane, slot);
+    this.#replace(lane, slot, { ...slot.view, pending: true });
   }
 
   /**
@@ -233,6 +252,7 @@ export class FileScope {
         return;
       const { total, matched, offset, rows, located } = message;
       slot.asked = null;
+      slot.pageData = message.data_revision;
       // The cursor moved to an object this page neither locates nor holds while the question was out.
       const key = slot.wanted.locate;
       const lost = key !== null && located?.id !== key && !rows.some(({ id }) => id === key);
@@ -253,7 +273,15 @@ export class FileScope {
       slot.retries++;
       this.#schedule(message.lane, slot, FOLLOWING_RETRY_MS);
     }
-    this.#replace(message.lane, slot, { pending: retry, page: null, unavailable });
+    // A page that could not be refreshed stays, flagged by `unavailable`, as long as the file's data is what it showed.
+    const keep =
+      unavailable.state === "Failed" &&
+      slot.pageData === readyOf(this.#lanes.states[message.lane])?.data_revision;
+    this.#replace(message.lane, slot, {
+      pending: retry,
+      page: keep ? slot.view.page : null,
+      unavailable,
+    });
   }
 
   #basisKey(lane: number): string {
