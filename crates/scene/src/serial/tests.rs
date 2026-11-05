@@ -335,14 +335,6 @@ fn a_document_that_breaks_a_model_rule_is_refused_with_the_reason() {
             document(frame, frame, r#"{"id":"","observations":[]}"#),
             Some("entity id"),
         ),
-        (
-            document(
-                frame,
-                frame,
-                r#"{"id":"a","observations":[]},{"id":"a","observations":[]}"#,
-            ),
-            Some("appears twice"),
-        ),
         (document(frame, r#"{"us":0}"#, ""), Some("cannot be mixed")),
         (document(r#"{"frame":2}"#, frame, ""), Some("ends before")),
     ];

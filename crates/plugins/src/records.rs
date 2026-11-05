@@ -152,11 +152,10 @@ impl<'a> Records<'a> {
                 },
             })
             .collect();
+        let filter = FilterPolicy::try_new(POLICY_NAME, options)
+            .map_err(|error| format!("the header's filter: {error}"))?;
         Ok(Header {
-            filter: FilterPolicy {
-                name: POLICY_NAME,
-                options,
-            },
+            filter,
             coverage: match header.coverage {
                 Some(CoverageIn::Dense) => Coverage::Dense,
                 Some(CoverageIn::Sparse) | None => Coverage::Sparse,

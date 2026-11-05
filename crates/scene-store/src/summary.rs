@@ -77,7 +77,25 @@ impl Summary {
         self.warnings.push(warning_wire(warning));
     }
 
+    /// The decode's summary, or why the stored one is unusable. A policy is rebuilt through the same checks as a
+    /// fresh decode, so an artifact written before a check existed is refused and decoded again.
     pub(crate) fn restore(self) -> Result<Restored, String> {
+        let options = self
+            .filter_options
+            .into_iter()
+            .map(|o| FilterOption {
+                id: o.id.into(),
+                label: o.label.into(),
+                default_enabled: o.default_enabled,
+                rule: ClassRule {
+                    types: o.types.into_iter().map(Into::into).collect(),
+                    include_empty: o.include_empty,
+                    exclude: o.exclude,
+                },
+            })
+            .collect();
+        let filter =
+            FilterPolicy::try_new(intern(&self.filter_name), options).map_err(|e| e.to_string())?;
         Ok(Restored {
             coverage: if self.dense {
                 Coverage::Dense
@@ -94,23 +112,7 @@ impl Summary {
                     more_reasons: w.more_reasons,
                 })
                 .collect(),
-            filter: FilterPolicy {
-                name: intern(&self.filter_name),
-                options: self
-                    .filter_options
-                    .into_iter()
-                    .map(|o| FilterOption {
-                        id: o.id.into(),
-                        label: o.label.into(),
-                        default_enabled: o.default_enabled,
-                        rule: ClassRule {
-                            types: o.types.into_iter().map(Into::into).collect(),
-                            include_empty: o.include_empty,
-                            exclude: o.exclude,
-                        },
-                    })
-                    .collect(),
-            },
+            filter,
             metadata: serial::decode_fields(&self.metadata).map_err(|e| e.to_string())?,
         })
     }
@@ -136,4 +138,32 @@ fn intern(name: &str) -> &'static str {
     let leaked: &'static str = Box::leak(name.to_owned().into_boxed_str());
     names.insert(leaked);
     leaked
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_stored_policy_that_fails_the_intake_checks_is_not_restored() {
+        let option = |id: &str| OptionWire {
+            id: id.into(),
+            label: "Label".into(),
+            default_enabled: true,
+            types: Vec::new(),
+            include_empty: false,
+            exclude: false,
+        };
+        let mut metadata = Vec::new();
+        serial::encode_fields(&Fields::new(), &mut metadata).expect("empty fields encode");
+        let summary = |options| Summary {
+            dense: true,
+            warnings: Vec::new(),
+            filter_name: "test".into(),
+            filter_options: options,
+            metadata: metadata.clone(),
+        };
+        assert!(summary(vec![option("a"), option("b")]).restore().is_ok());
+        assert!(summary(vec![option("a"), option("a")]).restore().is_err());
+    }
 }

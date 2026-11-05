@@ -27,7 +27,7 @@ impl PluginDecoder {
             bases: handler.bases.clone(),
             default_basis: handler.default_basis,
             options: handler.options.clone(),
-            version: 1,
+            version: 2,
         };
         Self { program, spec }
     }

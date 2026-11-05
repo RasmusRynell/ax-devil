@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet, hash_map::Entry};
 
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
@@ -255,19 +255,26 @@ impl Scene {
         }
     }
 
-    /// Sets the entities. Their ids must differ and every observation must be on the Scene's clock.
+    /// Sets the entities. Every observation must be on the Scene's clock.
+    ///
+    /// An id given twice keeps the position of its first entity and the value of its last.
     pub fn with_entities(mut self, entities: Vec<Entity>) -> Result<Self, SceneError> {
         let kind = self.time.kind();
-        let mut ids = HashSet::with_capacity(entities.len());
-        for entity in &entities {
-            if !ids.insert(entity.id.as_str()) {
-                return Err(SceneError::DuplicateEntity(entity.id.clone()));
-            }
+        let mut slots: HashMap<EntityId, usize> = HashMap::with_capacity(entities.len());
+        let mut unique: Vec<Entity> = Vec::with_capacity(entities.len());
+        for entity in entities {
             if entity.observations.iter().any(|o| o.time.kind() != kind) {
                 return Err(SceneError::TimeKindMismatch);
             }
+            match slots.entry(entity.id.clone()) {
+                Entry::Occupied(slot) => unique[*slot.get()] = entity,
+                Entry::Vacant(slot) => {
+                    slot.insert(unique.len());
+                    unique.push(entity);
+                }
+            }
         }
-        self.entities = entities;
+        self.entities = unique;
         Ok(self)
     }
 
@@ -431,7 +438,7 @@ mod tests {
     }
 
     #[test]
-    fn a_scene_holds_unique_entities_and_one_kind_of_time() {
+    fn a_scene_replaces_repeated_entities_and_holds_one_kind_of_time() {
         let scene = || Scene::new(TimeSlice::at(SceneTime::Frame(0)));
         let entity_at = |name: &str, time| {
             let mut entity = Entity::new(id(name));
@@ -446,10 +453,17 @@ mod tests {
                 .with_entities(vec![entity_at("a", frame), entity_at("b", frame)])
                 .is_ok()
         );
-        assert_eq!(
-            scene().with_entities(vec![entity_at("a", frame), entity_at("a", frame)]),
-            Err(SceneError::DuplicateEntity(id("a")))
-        );
+        // An id given twice keeps the first position and the last value.
+        let mut replaced = entity_at("a", frame);
+        replaced.motion_state = Some(MotionState::Stationary);
+        let merged = scene()
+            .with_entities(vec![
+                entity_at("a", frame),
+                entity_at("b", frame),
+                replaced.clone(),
+            ])
+            .expect("duplicates are replaced");
+        assert_eq!(merged.entities(), [replaced, entity_at("b", frame)]);
         assert_eq!(
             scene().with_entities(vec![entity_at("a", stamp)]),
             Err(SceneError::TimeKindMismatch)
