@@ -9,7 +9,7 @@ describe("opening", () => {
     const { session, server, sent, presented, refresh } = await setup();
     expect(sent).toEqual([{ type: "Open", ticket: "ticket-1", data_bytes: expect.any(Number) }]);
     server.say({ type: "Indexing", progress: 0.4 });
-    expect(session.getSnapshot()).toMatchObject({ status: "indexing", progress: 0.4 });
+    expect(session.getSnapshot()).toMatchObject({ status: "indexing" });
 
     server.open();
     expect(session.getSnapshot()).toMatchObject({ status: "ready", frameCount: 10 });

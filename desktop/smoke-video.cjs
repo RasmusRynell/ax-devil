@@ -96,6 +96,80 @@ async function expectInfoHud(window, what) {
   assert.deepEqual(found.problems, [], `The frame info must fit ${what}`);
 }
 
+/**
+ * Holds the playback socket's handshake, so a viewer stays in its first state, opening, until `release`. The workspace
+ * session's own socket is another path and goes through.
+ */
+function holdPlayback(window) {
+  const requests = window.webContents.session.webRequest;
+  const held = [];
+  requests.onBeforeRequest(
+    { urls: ["ws://*/api/playback", "wss://*/api/playback"] },
+    (_details, answer) => held.push(answer),
+  );
+  return {
+    release() {
+      requests.onBeforeRequest(null);
+      for (const answer of held.splice(0)) answer({});
+    },
+  };
+}
+
+/**
+ * Runs in the page: how the loading indicator sits in its pane, as readable problems. It covers the whole pane, so
+ * nothing under it takes a click, and its arc and message lie inside it.
+ */
+function loadingCover() {
+  const cover = document.querySelector("[data-loading]");
+  if (!cover) return ["there is no loading indicator"];
+  const problems = [];
+  const pane = cover.parentElement.getBoundingClientRect();
+  const box = cover.getBoundingClientRect();
+  for (const side of ["left", "top", "right", "bottom"])
+    if (Math.abs(box[side] - pane[side]) > 1)
+      problems.push(`the cover's ${side} is off the pane's`);
+  const hit = document.elementFromPoint((pane.left + pane.right) / 2, (pane.top + pane.bottom) / 2);
+  if (!cover.contains(hit)) problems.push("something under the cover takes the pointer");
+  const arc = cover.querySelector("svg").getBoundingClientRect();
+  for (const part of [arc, ...[...cover.children].slice(1).map((e) => e.getBoundingClientRect())])
+    if (part.left < box.left - 1 || part.right > box.right + 1 || part.bottom > box.bottom + 1)
+      problems.push("the arc or its message is outside the cover");
+  return problems;
+}
+
+/** Checks the loading indicator and takes a screenshot of it in both themes, at the normal view and the smallest at 200%. */
+async function loadingShots(window) {
+  const { js, wait } = page(window);
+  await fs.mkdir(SCREENSHOTS, { recursive: true });
+  for (const theme of ["light", "dark"]) {
+    nativeTheme.themeSource = theme;
+    await wait(`matchMedia('(prefers-color-scheme: ${theme})').matches`);
+    /** @type {[number[], number, string][]} */
+    const views = [
+      [[1100, 720], 1, ""],
+      [[640, 480], 2, "-200"],
+    ];
+    for (const [size, zoom, suffix] of views) {
+      // The sidebar fills the smallest window, so it is closed there as in the frame info check.
+      if (zoom === 2) await js("document.querySelector('[aria-label=Workspace]').click()");
+      await setView(window, size, zoom);
+      assert.deepEqual(
+        await js(`(${loadingCover.toString()})()`),
+        [],
+        `The loading indicator must cover the pane at ${size.join("x")} and ${zoom * 100}% zoom in the ${theme} theme`,
+      );
+      await fs.writeFile(
+        path.join(SCREENSHOTS, `video-loading-${theme}${suffix}.png`),
+        (await window.webContents.capturePage()).toPNG(),
+      );
+      if (zoom === 2) {
+        await setView(window, [1100, 720], 1);
+        await js("document.querySelector('[aria-label=Workspace]').click()");
+      }
+    }
+  }
+}
+
 module.exports.video = async (window) => {
   const { js, wait } = page(window);
   window.setSize(1100, 720);
@@ -103,6 +177,7 @@ module.exports.video = async (window) => {
   // Add Video opens its dialog; the native file dialog behind Browse answers with the fixture, and Add sends the command.
   const original = dialog.showOpenDialog.bind(dialog);
   dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [FIXTURE] });
+  const opening = holdPlayback(window);
   try {
     await js(
       "!document.querySelector('[aria-label=\"Workspace items\"]') && document.querySelector('[aria-label=Workspace]').click()",
@@ -116,8 +191,14 @@ module.exports.video = async (window) => {
       "[...document.querySelectorAll('dialog[open] button')].find((b) => b.textContent === 'Add')";
     await wait(`${add}.disabled === false`);
     await js(`${add}.click()`);
+    // The picture is not there yet: the loading indicator covers the pane, in the smallest window and at 200% too.
+    await wait("document.querySelector('[data-loading]')");
+    await loadingShots(window);
+    opening.release();
     await wait(`${SHOWN} >= 0`);
+    assert.equal(await js("document.querySelector('[data-loading]')"), null);
   } finally {
+    opening.release();
     dialog.showOpenDialog = original;
   }
 

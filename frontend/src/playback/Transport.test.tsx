@@ -8,7 +8,6 @@ afterEach(cleanup);
 const view = (change: Partial<PlaybackView> = {}): PlaybackView => ({
   ...INITIAL_VIEW,
   status: "ready",
-  progress: 1,
   frameCount: 100,
   playing: false,
   speed: 1,
