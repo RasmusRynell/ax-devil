@@ -31,7 +31,10 @@ const SECTIONS = [...new Set(COMMANDS.map((command) => command.category))]
 
 const labelOf = (id: CommandId) => COMMANDS.find((command) => command.id === id)?.label ?? id;
 
-/** The Keyboard Shortcuts dialog. Changes apply on OK, through the backend, which keeps only the differences. */
+/**
+ * The Keyboard Shortcuts dialog. Changes apply on OK, through the backend, which keeps only the differences. It cannot
+ * be dismissed while that write is pending, so whatever is open beneath never acts on shortcuts the write is replacing.
+ */
 export function ShortcutsDialog({ onClose }: { onClose: () => void }) {
   const { values, shortcuts } = useSettings();
   const [draft, setDraft] = useState<Shortcuts>(shortcuts);
@@ -108,7 +111,9 @@ export function ShortcutsDialog({ onClose }: { onClose: () => void }) {
     <Dialog
       title="Keyboard Shortcuts"
       onOk={() => void submit({ values, shortcuts: draft })}
-      onCancel={onClose}
+      onCancel={() => {
+        if (!saving) onClose();
+      }}
       busy={saving}
       footerStart={<Button onClick={resetAll}>Reset to Defaults</Button>}
     >

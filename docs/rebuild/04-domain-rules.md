@@ -37,7 +37,7 @@
 
 | Rule | Change | Reason |
 |------|--------|--------|
-| Live queues | Bounded per owner; codec-aware video discard; lossless payload decode, overflow is a lane error; drop-oldest only after decode; every drop counted ([03](03-runtime.md#real-time-delivery-must)) | Designs out the burst stall. *Current:* the oldest undecoded metadata is dropped with only a log warning (`data_sources/live/rtsp_source.py`, `_on_metadata`) |
+| Live queues | Bounded per owner; codec-aware video discard; lossless DataHub/embedded payload decode, overflow is a lane error (MQTT keeps only the newest waiting message); drop-oldest only after decode; every drop counted ([03](03-runtime.md#real-time-delivery-must)) | Designs out the burst stall. *Current:* the oldest undecoded metadata is dropped with only a log warning (`data_sources/live/rtsp_source.py`, `_on_metadata`) |
 | Settings access | Domain code takes values; no global settings | Testability ([02](02-architecture.md#seams-to-redraw)) |
 | Resolver settings | Declared schema, not a plugin widget (D4) | Plugins become UI-toolkit independent |
 

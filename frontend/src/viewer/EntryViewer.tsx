@@ -1,7 +1,7 @@
 import { useCallback } from "react";
 import type { ContentInfo, EntryInfo, LanePolicyWire } from "../generated/api";
 import { useCan, useCommand } from "../session/session";
-import { VideoViewer, type EntryMemory } from "../playback/VideoViewer";
+import { VideoViewer } from "../playback/VideoViewer";
 import type { ViewerProps } from "../viewers";
 import { useHidden } from "./useViewers";
 
@@ -14,13 +14,10 @@ export function EntryViewer({
   item,
   content,
   entry,
-  memory,
 }: {
   item: string;
   content: Pick<ContentInfo, "id" | "generation" | "display_name">;
   entry: EntryInfo;
-  /** Where the item's entries were left; see `VideoViewer`. */
-  memory?: EntryMemory;
 }) {
   const hidden = useHidden();
   const command = useCommand();
@@ -48,7 +45,6 @@ export function EntryViewer({
       content={content}
       entry={entry}
       hidden={hidden}
-      memory={memory}
       onHideLane={changes ? hideLane : undefined}
       onLaneMatching={changes ? keepMatching : undefined}
     />
