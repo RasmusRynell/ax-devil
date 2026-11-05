@@ -37,6 +37,7 @@ export async function showShell({
   await screen.findByRole("heading", { name: "ax-devil" });
 }
 
+/** Shows the shell as `showShell` does and returns the fake room the app joined, for the test to drive. */
 export const renderShell = async (options?: Parameters<typeof showShell>[0]) => {
   await showShell(options);
   return FakeSocket.rooms.get("room-1")!;
