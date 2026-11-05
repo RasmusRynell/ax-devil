@@ -4,7 +4,10 @@ use std::{
     fs::File,
     io::{self, Read, Seek, SeekFrom},
     path::{Path, PathBuf},
-    sync::OnceLock,
+    sync::{
+        OnceLock,
+        atomic::{AtomicBool, Ordering},
+    },
 };
 
 use foundation::{CancelToken, Interrupt, UserError};
@@ -76,6 +79,46 @@ impl LazySource {
         };
         let _ = self.digest.set(digest);
         Ok(self.bytes.get_or_init(|| bytes))
+    }
+}
+
+/// A track's own handle on its overlay file, kept to notice that the file was written in place. The artifact is a
+/// private snapshot, so reading it never shows an edit; this is what stops a track from serving Scenes of a file that
+/// is no longer the one it describes.
+pub(crate) struct SourceWatch {
+    path: PathBuf,
+    file: File,
+    stat: Stat,
+    rewritten: AtomicBool,
+}
+
+impl SourceWatch {
+    /// `file` is the handle `stat` was taken from, so the watch follows the file that is decoded.
+    pub(crate) fn new(path: PathBuf, file: File, stat: Stat) -> Self {
+        Self {
+            path,
+            file,
+            stat,
+            rewritten: AtomicBool::new(false),
+        }
+    }
+
+    /// Whether the file behind the handle has a different size or modification time than when the watch began.
+    /// Once true it stays true. The change time is left out on purpose: renaming or replacing the path changes it
+    /// but leaves the opened file's content alone, and that handle stays valid.
+    pub(crate) fn rewritten(&self) -> bool {
+        if self.rewritten.load(Ordering::Acquire) {
+            return true;
+        }
+        let same = Stat::of(&self.file)
+            .is_ok_and(|now| now.size == self.stat.size && now.mtime_ns == self.stat.mtime_ns);
+        if !same && !self.rewritten.swap(true, Ordering::AcqRel) {
+            tracing::warn!(
+                file = %self.path.display(),
+                "the overlay file changed while open; no longer serving overlays from it"
+            );
+        }
+        !same
     }
 }
 

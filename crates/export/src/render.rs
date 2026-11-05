@@ -4,7 +4,7 @@
 use std::sync::Arc;
 
 use bytes::Bytes;
-use foundation::{FrameSize, UserError, VideoFrame};
+use foundation::{ErrorCode, FrameSize, UserError, VideoFrame};
 use media::Picture;
 use scene_store::{TrackRead, TrackSnapshot};
 use serde::{Deserialize, Serialize};
@@ -79,9 +79,13 @@ pub struct FrozenSource {
 }
 
 impl FrozenSource {
-    /// The Sample Item of sample `index` of the frozen snapshot.
+    /// The Sample Item of sample `index` of the frozen snapshot. A file edited in place since it was opened gives an
+    /// empty item for a sample not read before, as an absent overlay does, and the export goes on.
     pub fn item(&self, index: usize) -> Result<Arc<[u8]>, UserError> {
-        self.track.item_in(&self.snapshot, index)
+        match self.track.item_in(&self.snapshot, index) {
+            Err(error) if error.code == ErrorCode::FileChanged => Ok(self.track.empty_item()),
+            read => read,
+        }
     }
 }
 

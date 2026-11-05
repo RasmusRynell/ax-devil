@@ -5,6 +5,7 @@ use std::{
     time::{Duration, SystemTime},
 };
 
+use foundation::ErrorCode;
 use scene::Coverage;
 
 use super::*;
@@ -205,8 +206,8 @@ fn a_source_that_changes_during_the_build_is_stored_without_a_digest() {
     let track = fixture.open();
 
     assert!(
-        track.scene(2).is_ok(),
-        "the build itself still serves this session"
+        track.scene(2).is_err(),
+        "the file is not the one the track began with"
     );
     assert_eq!(identity_of(&fixture.artifacts()[0]).digest, None);
     *fixture.decoder.hook.lock().expect("hook lock") = None;
@@ -222,6 +223,61 @@ fn a_source_that_changes_during_the_build_is_stored_without_a_digest() {
     fixture.restart();
     drop(fixture.open());
     assert_eq!(fixture.decoder.runs(), 2, "the rebuilt one is");
+}
+
+#[test]
+fn an_in_place_edit_stops_serving_unread_scenes_but_not_the_ones_already_read() {
+    let fixture = Fixture::new(SHAPE);
+    let track = fixture.open();
+    let read = track.scene(0).expect("scene");
+
+    fs::write(&fixture.source, b"rows rows rows rows\n").expect("rewritten in place");
+
+    assert_eq!(*track.scene(0).expect("still cached"), *read);
+    let error = track.scene(1).expect_err("not served");
+    assert_eq!(error.code, ErrorCode::FileChanged);
+    assert!(error.reason.contains("changed while open"), "{error}");
+    assert!(fixture.is_about_source(&error));
+    assert!(track.scene(2).is_err(), "and it stays so");
+    let reopened = fixture.open();
+    assert!(
+        !Arc::ptr_eq(&track, &reopened),
+        "the edited file is read again"
+    );
+    assert_eq!(fixture.decoder.runs(), 2);
+    assert!(reopened.scene(2).is_ok());
+}
+
+#[test]
+fn the_file_that_was_decoded_is_the_one_watched_after_the_path_is_replaced() {
+    let fixture = Fixture::new(SHAPE);
+    let decoded = File::options()
+        .write(true)
+        .open(&fixture.source)
+        .expect("a handle on the file to decode");
+    let (source, replacement) = (
+        fixture.source.clone(),
+        fixture.dir.path().join("replacement.txt"),
+    );
+    fixture.decoder.on_scene(move |frame, _| {
+        if frame == 1 {
+            fs::write(&replacement, b"other\n").expect("replacement");
+            fs::rename(&replacement, &source).expect("replaced");
+        }
+    });
+    let track = fixture.open();
+
+    fs::write(&fixture.source, b"the replacement is written in place\n")
+        .expect("replacement edited");
+    assert!(
+        track.scene(1).is_ok(),
+        "the replacement is not the file read"
+    );
+    assert!(Arc::ptr_eq(&track, &fixture.open()), "still the same track");
+    std::io::Write::write_all(&mut &decoded, b"the decoded file is written in place\n")
+        .expect("decoded file edited");
+    let error = track.scene(2).expect_err("not served");
+    assert_eq!(error.code, ErrorCode::FileChanged);
 }
 
 #[test]

@@ -18,7 +18,7 @@ use crate::{
     ingest::{First, Job, Tuning, spawn},
     io::user_error,
     output::temporary_beside,
-    source::{LazySource, read_through},
+    source::{LazySource, SourceWatch, read_through},
     stat::Stat,
     summary::Summary,
     track::{Decided, Generation, Growth, Ingest, Meta, Numbering, Records, Track, TrackSnapshot},
@@ -61,18 +61,29 @@ pub(crate) fn load(
         stat,
         digest: None,
     };
-    if let Some(path) = request.artifact
-        && let Some(track) = reuse(path, request, &wanted, &source, spec, cancel)?
-    {
-        return Ok(track);
-    }
-    build(
-        decoder,
-        request,
-        wanted,
-        LazySource::new(key.path.clone(), source, stat),
-        cancel,
-    )
+    // The watch shares this open's file, so an edit is judged against the file that is decoded even if the path is
+    // replaced meanwhile. The clone shares the file position, which is harmless: the watch only fstat()s.
+    let watch = source
+        .try_clone()
+        .map(|file| SourceWatch::new(key.path.clone(), file, stat))
+        .map_err(|e| failed(user_error("Cannot open the overlay file", &e, &key.path)))?;
+    let reused = match request.artifact {
+        Some(path) => reuse(path, request, &wanted, &source, spec, cancel)?,
+        None => None,
+    };
+    let track = match reused {
+        Some(track) => track,
+        None => build(
+            decoder,
+            request,
+            wanted,
+            LazySource::new(key.path.clone(), source, stat),
+            cancel,
+        )?,
+    };
+    // Nobody else holds the track yet: the ingest keeps only its growth, and the registry publishes it after this.
+    track.watch(watch);
+    Ok(track)
 }
 
 /// The track of a valid artifact, republishing its stat when only that differs; `None` when it cannot be used.
