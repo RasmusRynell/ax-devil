@@ -1,6 +1,6 @@
 //! The ADF v1 decoders, through the registry as the host uses it.
 
-use foundation::{CancelToken, MediaTime};
+use foundation::{CancelToken, Interrupt, MediaTime};
 use handler_api::Settings;
 use scene::{Event, Scene, SceneTime, Value};
 use serde_json::{Value as Json, json};
@@ -20,6 +20,21 @@ fn decode(id: &str, lines: &[String]) -> (Vec<Scene>, Vec<(u64, String)>) {
     );
     result.expect("a bad line never fails the file");
     (gave.scenes, gave.skipped)
+}
+
+/// Why a file fails as a whole.
+fn failure(id: &str, lines: &[String]) -> String {
+    let text = lines.join("\n");
+    let (_, result) = common::run_input(
+        &*common::decoder(id),
+        &mut common::lines(text.as_bytes()),
+        &Settings::new(),
+        &CancelToken::new(),
+    );
+    let Err(Interrupt::Failed(error)) = result else {
+        panic!("the file should fail");
+    };
+    error.0
 }
 
 fn time(micros: i64) -> SceneTime {
@@ -273,19 +288,64 @@ fn a_consolidated_track_becomes_one_scene_per_observation_time() {
 }
 
 #[test]
-fn a_track_that_contradicts_its_own_times_is_skipped() {
-    let mut wrong_end = track("t1", &[("2024-07-01T12:00:00Z", 0.1)], "Car");
-    wrong_end["end_time"] = json!("2024-07-01T12:00:05Z");
-    let mut empty = track("t2", &[("2024-07-01T12:00:00Z", 0.1)], "Car");
-    empty["path"] = json!([]);
-    let lines = [
-        wrong_end.to_string(),
-        empty.to_string(),
-        track("t3", &[("2024-07-01T12:00:00Z", 0.1)], "Car").to_string(),
+fn a_bad_v1_track_fails_the_whole_file() {
+    let at = "2024-07-01T12:00:00Z";
+    let good = track("t", &[(at, 0.1)], "Car");
+    let with = |key: &str, value: Json| {
+        let mut changed = good.clone();
+        changed[key] = value;
+        changed
+    };
+    let cases = [
+        (with("end_time", json!("2024-07-01T12:00:05Z")), "end_time"),
+        (with("path", json!([])), "no observations"),
+        (with("duration", json!(5.0)), "duration"),
+        (with("duration", json!("soon")), "duration"),
+        (json!({"object": good}), "id"),
+        (json!({"version": "1", "tracks": [3]}), "a track"),
     ];
-    let (scenes, skipped) = decode("ADF_V1_CONSOLIDATED", &lines);
+    for (line, wanted) in cases {
+        let reason = failure("ADF_V1_CONSOLIDATED", &[good.to_string(), line.to_string()]);
+        assert!(
+            reason.starts_with("Line 2: ") && reason.contains(wanted),
+            "{reason}"
+        );
+    }
+}
 
-    assert_eq!(scenes.len(), 1);
-    assert_eq!(skipped.len(), 2);
-    assert!(skipped[0].1.contains("end_time"), "{:?}", skipped[0]);
+#[test]
+fn a_v1_track_takes_any_version_a_zero_id_and_no_duration_and_of_one_id_the_last_track_wins() {
+    let at = "2024-07-01T12:00:00Z";
+    let mut zero = track("0", &[(at, 0.1)], "Person");
+    zero["id"] = json!(0);
+    zero["path"][0]["world_position"] = json!({"distance": 4.0, "azimuth": 0, "elevation": 0.5});
+    zero.as_object_mut().expect("an object").remove("duration");
+    let document = json!({"version": "next", "tracks": [
+        track("a", &[(at, 0.1)], "Car"),
+        zero,
+        track("a", &[("2024-07-01T12:00:01Z", 0.2)], "Bike"),
+    ]});
+    let (scenes, skipped) = decode("ADF_V1_CONSOLIDATED", &[document.to_string()]);
+
+    assert!(skipped.is_empty(), "{skipped:?}");
+    assert_eq!(scenes.len(), 2);
+    let first = &scenes[0].entities();
+    assert_eq!(first.len(), 1);
+    assert_eq!(first[0].id().to_string(), "0");
+    let observation = &first[0].observations()[0];
+    assert_eq!(observation.classifications[0].class_type, "person");
+    assert_eq!(
+        observation
+            .measurements
+            .as_ref()
+            .and_then(|m| m.world)
+            .map(|w| w.azimuth),
+        Some(0.0)
+    );
+    let second = &scenes[1].entities()[0];
+    assert_eq!(second.id().to_string(), "a");
+    assert_eq!(
+        second.observations()[0].classifications[0].class_type,
+        "bike"
+    );
 }

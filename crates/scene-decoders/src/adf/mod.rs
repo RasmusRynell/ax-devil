@@ -1,6 +1,7 @@
 //! Axis Analytics Data Format (ADF), beta and v1: JSON, one object per line, as frames or as consolidated tracks.
 //!
-//! A line of every format but the beta frame may start with a timestamp column and a tab, which is dropped.
+//! A line of v1 may start with a timestamp column and a tab, which is dropped; a beta line may not. A bad line of a
+//! frame file is skipped; a bad line of a consolidated file fails the whole file.
 
 mod consolidated;
 mod frame;
@@ -42,6 +43,15 @@ enum Lines {
     Frames,
     /// Tracks: their observations are Scenes of their own times, which join the others of that time.
     Tracks,
+}
+
+impl Lines {
+    fn on_equal_key(self) -> OnEqualKey {
+        match self {
+            Self::Frames => OnEqualKey::Replace,
+            Self::Tracks => OnEqualKey::Merge,
+        }
+    }
 }
 
 /// Reads one object of a line into the Scenes it gives, noting what the file's warnings should say.
@@ -92,7 +102,7 @@ impl Notes {
 struct AdfDecoder {
     spec: Spec,
     read: Read,
-    on_equal_key: OnEqualKey,
+    lines: Lines,
     /// Whether a line may start with a timestamp column and a tab.
     tsv_prefix: bool,
     /// The name of the decoder's filter policy.
@@ -123,7 +133,7 @@ pub(crate) fn decoders() -> Vec<Arc<dyn Decoder>> {
             "adf_beta",
             Lines::Tracks,
             |record, _| consolidated::read(record, false),
-            true,
+            false,
         ),
         adf(
             "ADF_V1_FRAME",
@@ -156,13 +166,9 @@ impl AdfDecoder {
         read: Read,
         tsv_prefix: bool,
     ) -> Self {
-        let (bases, default_basis, on_equal_key) = match lines {
-            Lines::Frames => (
-                vec![MatchBasis::Frame, MatchBasis::Time],
-                MatchBasis::Frame,
-                OnEqualKey::Replace,
-            ),
-            Lines::Tracks => (vec![MatchBasis::Time], MatchBasis::Time, OnEqualKey::Merge),
+        let (bases, default_basis) = match lines {
+            Lines::Frames => (vec![MatchBasis::Frame, MatchBasis::Time], MatchBasis::Frame),
+            Lines::Tracks => (vec![MatchBasis::Time], MatchBasis::Time),
         };
         Self {
             spec: Spec {
@@ -174,10 +180,10 @@ impl AdfDecoder {
                 bases,
                 default_basis,
                 options: Form::default(),
-                version: 2,
+                version: 3,
             },
             read,
-            on_equal_key,
+            lines,
             tsv_prefix,
             filters,
         }
@@ -224,12 +230,20 @@ impl Decoder for AdfDecoder {
                         }
                     }
                     for scene in scenes {
-                        if sink.sample(scene, self.on_equal_key).is_break() {
+                        if sink.sample(scene, self.lines.on_equal_key()).is_break() {
                             break 'records;
                         }
                     }
                 }
-                Err(reason) => sink.skip(record.position, reason),
+                Err(reason) => match self.lines {
+                    Lines::Frames => sink.skip(record.position, reason),
+                    Lines::Tracks => {
+                        return Err(Interrupt::Failed(DecodeError(format!(
+                            "Line {}: {reason}",
+                            record.position
+                        ))));
+                    }
+                },
             }
         }
         Ok(DecodeSummary {

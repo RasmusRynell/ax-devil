@@ -33,13 +33,6 @@ static COLORS: [(&str, [i64; 3]); 16] = [
     ("beige", [245, 245, 220]),
 ];
 
-/// Spellings that differ from the class name after lowercasing.
-static ALIASES: [(&str, &str); 3] = [
-    ("person", "human"),
-    ("vehicleother", "vehicle_other"),
-    ("licenseplate", "license_plate"),
-];
-
 /// The only class spellings a v1 frame accepts (in any case), and the class each names.
 static V1_CLASSES: [(&str, &str); 12] = [
     ("human", "human"),
@@ -56,7 +49,8 @@ static V1_CLASSES: [(&str, &str); 12] = [
     ("licenseplate", "license_plate"),
 ];
 
-/// The beta spellings that are not their class name lowercased; any other type is just lowercased.
+/// The spellings of a beta frame or a consolidated track that are not their class name lowercased; any other type is
+/// just lowercased.
 static BETA_CLASSES: [(&str, &str); 2] = [
     ("VehicleOther", "vehicle_other"),
     ("LicensePlate", "license_plate"),
@@ -84,7 +78,7 @@ pub(super) fn list<'a>(parent: &'a Object, key: &str) -> Result<&'a [Json], Stri
 }
 
 /// A finite number written as a JSON number or as text.
-fn finite(value: &Json, what: &str) -> Result<f64, String> {
+pub(super) fn finite(value: &Json, what: &str) -> Result<f64, String> {
     let number = match value {
         Json::Number(number) => number.as_f64(),
         Json::String(text) => text.trim().parse().ok(),
@@ -248,23 +242,27 @@ pub(super) fn image(value: &Json, crop_box: bool) -> Result<Image, String> {
     })
 }
 
-/// A class given as `{type, score, ...attributes}`, named by any non-empty type.
-pub(super) fn classification(payload: &Object) -> Result<Classification, String> {
-    let name = payload
+/// A class of a consolidated track, named by any non-empty type as beta names them. `v1` says whether the class has the
+/// details of v1.
+pub(super) fn track_classification(payload: &Object, v1: bool) -> Result<Classification, String> {
+    let spelling = payload
         .get("type")
         .and_then(Json::as_str)
-        .map(str::trim)
-        .filter(|name| !name.is_empty())
+        .filter(|spelling| !spelling.is_empty())
         .ok_or("a class lacks its type")?;
-    let lower = name.to_lowercase();
-    let name = ALIASES
-        .iter()
-        .find(|(alias, _)| *alias == lower)
-        .map_or(lower, |(_, class)| (*class).to_owned());
     classified(
-        ClassType::new(name).map_err(|error| error.to_string())?,
+        ClassType::new(class_name(spelling)).map_err(|error| error.to_string())?,
         payload,
+        v1,
     )
+}
+
+/// The class a beta spelling names.
+fn class_name(spelling: &str) -> String {
+    BETA_CLASSES
+        .iter()
+        .find(|(known, _)| *known == spelling)
+        .map_or_else(|| spelling.to_lowercase(), |(_, class)| (*class).to_owned())
 }
 
 /// A class of a v1 frame, which accepts only the spellings of `V1_CLASSES` and rejects any other.
@@ -278,6 +276,7 @@ pub(super) fn v1_classification(payload: &Object) -> Result<Classification, Stri
     classified(
         ClassType::new(class.1).map_err(|error| error.to_string())?,
         payload,
+        true,
     )
 }
 
@@ -290,10 +289,6 @@ pub(super) fn beta_classification(payload: &Object) -> Result<Option<Classificat
         return Ok(None);
     }
     let spelling = kind.as_str().ok_or("a class type must be text")?;
-    let name = BETA_CLASSES
-        .iter()
-        .find(|(known, _)| *known == spelling)
-        .map_or_else(|| spelling.to_lowercase(), |(_, class)| (*class).to_owned());
     let mut fields = Fields::new();
     match spelling {
         "Car" | "Bus" | "Truck" | "Vehicle" => {
@@ -314,7 +309,9 @@ pub(super) fn beta_classification(payload: &Object) -> Result<Option<Classificat
     Ok(Some(Classification {
         score,
         attributes: fields,
-        ..Classification::new(ClassType::new(name).map_err(|error| error.to_string())?)
+        ..Classification::new(
+            ClassType::new(class_name(spelling)).map_err(|error| error.to_string())?,
+        )
     }))
 }
 
@@ -325,10 +322,10 @@ fn score(payload: &Object) -> Result<Option<Score>, String> {
         .map_err(|error| error.to_string())
 }
 
-fn classified(class_type: ClassType, payload: &Object) -> Result<Classification, String> {
+fn classified(class_type: ClassType, payload: &Object, v1: bool) -> Result<Classification, String> {
     Ok(Classification {
         score: score(payload)?,
-        attributes: attributes(&class_type, payload)?,
+        attributes: attributes(&class_type, payload, v1)?,
         ..Classification::new(class_type)
     })
 }
@@ -339,26 +336,37 @@ fn push(fields: &mut Fields, name: &'static str, value: Option<Value>) {
     }
 }
 
-/// The class's own details, such as colors, by what the class is.
-fn attributes(class_type: &ClassType, payload: &Object) -> Result<Fields, String> {
+/// The class's own details, such as colors, by what the class is. Beta has fewer than v1: no bag or face of a human, no
+/// colors of a bike or bicycle and no state of a license plate.
+fn attributes(class_type: &ClassType, payload: &Object, v1: bool) -> Result<Fields, String> {
     let mut fields = Fields::new();
     match class_type.as_str() {
         "human" => {
             for key in ["upper_clothing_colors", "lower_clothing_colors"] {
                 push(&mut fields, key, colors(payload, key)?);
             }
-            push(&mut fields, "carries_bag", flag(payload, "carries_bag"));
-            push(
-                &mut fields,
-                "face_visible",
-                optional_number(payload, "face_visible")?.map(Value::Float),
-            );
+            if v1 {
+                push(&mut fields, "carries_bag", flag(payload, "carries_bag"));
+                push(
+                    &mut fields,
+                    "face_visible",
+                    optional_number(payload, "face_visible")?.map(Value::Float),
+                );
+            }
         }
-        "vehicle" | "vehicle_other" | "car" | "truck" | "bus" | "bike" | "bicycle" => {
+        "vehicle" | "vehicle_other" | "car" | "truck" | "bus" => {
+            push(&mut fields, "vehicle_colors", colors(payload, "colors")?);
+        }
+        "bike" | "bicycle" if v1 => {
             push(&mut fields, "vehicle_colors", colors(payload, "colors")?);
         }
         "license_plate" => {
-            for key in ["country_code", "state_code", "plate_number"] {
+            let keys: &[&'static str] = if v1 {
+                &["country_code", "state_code", "plate_number"]
+            } else {
+                &["country_code", "plate_number"]
+            };
+            for &key in keys {
                 push(&mut fields, key, text(payload, key));
             }
         }
