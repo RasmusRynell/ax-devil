@@ -51,6 +51,8 @@ pub struct LiveGate<T> {
     owed: bool,
     /// When the unit owed to the newest arrival may leave: it is settled but the last unit left too recently.
     deferred: Option<Mono>,
+    /// Whether a unit left before its deadline because the gate was full, since the last reset.
+    early: bool,
 }
 
 impl<T> LiveGate<T> {
@@ -65,6 +67,7 @@ impl<T> LiveGate<T> {
             left: None,
             owed: false,
             deferred: None,
+            early: false,
         }
     }
 
@@ -90,6 +93,10 @@ impl<T> LiveGate<T> {
         self.owed = true;
         let mut released = Vec::new();
         if self.pending.len() > self.bound {
+            self.early |= self
+                .pending
+                .front()
+                .is_some_and(|front| now < self.due(front));
             released.extend(self.pop(now));
             self.owed = false;
         }
@@ -160,6 +167,12 @@ impl<T> LiveGate<T> {
         self.left = None;
         self.owed = false;
         self.deferred = None;
+        self.early = false;
+    }
+
+    /// Whether a unit has left before its deadline because the gate was full, since the last [`Self::reset`].
+    pub fn released_early(&self) -> bool {
+        self.early
     }
 
     fn pop(&mut self, now: Mono) -> Option<(FrameId, T)> {
@@ -331,7 +344,17 @@ mod tests {
                     for n in 0..4 {
                         assert!(push(&mut gate, n, at(0), 0).is_empty());
                     }
+                    assert!(!gate.released_early());
                     assert_eq!(push(&mut gate, 4, at(0), 0), [0]);
+                    assert!(gate.released_early());
+                    gate.reset();
+                    assert!(!gate.released_early());
+                    // A full gate whose oldest unit is already due is not under pressure.
+                    for n in 0..4 {
+                        push(&mut gate, n, at(0), 0);
+                    }
+                    assert_eq!(push(&mut gate, 4, at(1_500), 0), [0, 1, 2, 3]);
+                    assert!(!gate.released_early());
                     // 120 frames a second for 10 s with an overlay that never decides: frames leave throughout.
                     let mut gate = LiveGate::new(LIVE_DEADLINE, 120);
                     let mut left = 0;
