@@ -100,7 +100,8 @@ impl Served {
 struct Described {
     name: Option<String>,
     description: Option<String>,
-    origin: Option<String>,
+    /// Any JSON: a malformed `origin` is for the catalog check to report, not a reason to hide the catalog.
+    origin: Option<serde_json::Value>,
 }
 
 /// A built-in catalog.
@@ -503,7 +504,10 @@ fn describe(file: &str, content: &Content) -> CatalogInfo {
             }) if !name.trim().is_empty() => (
                 Some(name),
                 description.unwrap_or_default(),
-                origin.and_then(|origin| origin::read(&origin, text)),
+                origin
+                    .as_ref()
+                    .and_then(serde_json::Value::as_str)
+                    .and_then(|origin| origin::read(origin, text)),
                 None,
             ),
             Ok(Described { description, .. }) => (

@@ -48,4 +48,16 @@ fn a_copy_is_modified_when_its_body_changes_and_not_when_it_is_only_renamed_or_d
         origin(&library).unwrap().note(),
         "copy of Standard, modified"
     );
+
+    // An origin that is not text is for the catalog check to report: the catalog stays listed, by name, without a note.
+    edit(&library, &|document| {
+        document["origin"] = json!({"based_on": "standard", "base_hash": "0"});
+    });
+    let info = library
+        .documents()
+        .into_iter()
+        .find(|info| info.id == copy)
+        .unwrap();
+    assert_eq!((info.origin, info.problem), (None, None));
+    assert_eq!(info.name, "Renamed, and described at length");
 }
