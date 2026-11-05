@@ -180,7 +180,7 @@ impl AdfDecoder {
                 bases,
                 default_basis,
                 options: Form::default(),
-                version: 2,
+                version: 3,
             },
             read,
             lines,
