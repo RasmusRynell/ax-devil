@@ -8,6 +8,7 @@ import {
   HIDDEN,
   ITEMS,
   labels,
+  LISTING,
   MOT,
   renderTree,
   shown,
@@ -77,7 +78,7 @@ describe("rows", () => {
   it("shows hidden rows dimmed, with their lanes, only with Show hidden", async () => {
     await renderTree();
     expect(screen.getByRole("heading", { name: "Playlists, 1, 3 filtered out" })).toBeTruthy();
-    fireEvent.click(screen.getByRole("switch", { name: "Show hidden" }));
+    fireEvent.click(screen.getByRole("button", { name: "Show hidden items" }));
     expect(screen.getByRole("heading", { name: "Playlists, 1" })).toBeTruthy();
     expect(labels().slice(2)).toEqual(["mot", "A", "GT", "DPM, hidden", "B, hidden", "GT, hidden"]);
   });
@@ -151,7 +152,7 @@ describe("opening", () => {
     );
     fireEvent.click(screen.getByRole("treeitem", { name: /^A/ }));
     expect(shown().viewers.mot).toEqual({ entry: "mot/A", clock });
-    fireEvent.click(screen.getByRole("switch", { name: "Show hidden" }));
+    fireEvent.click(screen.getByRole("button", { name: "Show hidden items" }));
     fireEvent.click(screen.getByRole("treeitem", { name: /^B/ }));
     expect(shown().viewers.mot).toEqual({ entry: "mot/B" });
   });
@@ -236,7 +237,7 @@ describe("hiding", () => {
     await renderTree();
     expect(screen.queryByRole("button", { name: /^Hide mot/ })).toBeNull();
     expect(screen.queryByRole("button", { name: /^Hide bad/ })).toBeNull();
-    fireEvent.click(screen.getByRole("switch", { name: "Show hidden" }));
+    fireEvent.click(screen.getByRole("button", { name: "Show hidden items" }));
     fireEvent.click(screen.getByRole("button", { name: "Unhide B" }));
     await act(async () => {});
     expect(commands()).toEqual([{ type: "setHidden", target: { entry: "mot/B" }, hidden: false }]);
@@ -269,7 +270,7 @@ describe("hiding", () => {
     );
     render(
       <SessionProvider>
-        <WorkspaceTree />
+        <WorkspaceTree {...LISTING} />
       </SessionProvider>,
     );
     await act(async () => {});

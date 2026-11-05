@@ -23,6 +23,12 @@ export const CLIP: ItemState = {
     },
   },
 };
+/** What the Workspace view lists. */
+export const LISTING = {
+  listed: ["live", "videos", "playlists", "other"],
+  search: "Search items",
+  empty: "No items",
+} as const;
 export const ITEMS = [MOT, CLIP, failed("bad", "File not found")];
 export const HIDDEN = [{ entry: "mot/A", lane: "DPM" }, { entry: "mot/B" }];
 
@@ -36,7 +42,7 @@ function View() {
 export async function renderTree(items: ItemState[] = ITEMS, hidden = HIDDEN) {
   render(
     <SessionProvider>
-      <WorkspaceTree />
+      <WorkspaceTree {...LISTING} />
       <View />
     </SessionProvider>,
   );

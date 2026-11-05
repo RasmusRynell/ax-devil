@@ -63,17 +63,71 @@ export function treeOf({ rows, items }: WorkspaceState): TreeRow[] {
   return tree;
 }
 
-/** The rows to draw: those inside a collapsed row are left out, hidden ones unless `showHidden`. */
+/**
+ * Text with case folded away as Python's `str.casefold` does (Cherokee aside): each code point alone, so `ς` equals
+ * `σ` whatever surrounds it. `ß` and ligatures expand through the upper case; `ẞ` is `ss` and the dotless `ı` stays.
+ */
+const casefold = (text: string): string =>
+  Array.from(text, (c) => (c === "ẞ" ? "ss" : c === "ı" ? c : c.toUpperCase().toLowerCase())).join(
+    "",
+  );
+
+/** Orders two texts by code point, which UTF-16 order does not for characters beyond the first 65,536. */
+function compareCodePoints(a: string, b: string): number {
+  const [x, y] = [
+    Array.from(a, (c) => c.codePointAt(0) ?? 0),
+    Array.from(b, (c) => c.codePointAt(0) ?? 0),
+  ];
+  for (let at = 0; at < Math.min(x.length, y.length); at++)
+    if (x[at] !== y[at]) return x[at] < y[at] ? -1 : 1;
+  return x.length - y.length;
+}
+
+/**
+ * The keys of the rows `allowed` lets through that the search leaves in: all of them without a query, else those whose
+ * label contains it (case and surrounding spaces ignored), with what is inside a match and what a match is inside.
+ * Folds play no part.
+ */
+export function shownKeys(
+  rows: readonly TreeRow[],
+  allowed: (row: TreeRow) => boolean,
+  query: string,
+): Set<string> {
+  const needle = casefold(query.trim());
+  const inMatch = new Set<string>();
+  for (const row of rows) {
+    if (casefold(row.info.label).includes(needle) || (row.parent && inMatch.has(row.parent)))
+      inMatch.add(row.info.key);
+  }
+  const shown = new Set<string>();
+  const parents = new Set<string>();
+  // Children follow their parent, so going backwards meets a shown child before its parent.
+  for (let at = rows.length - 1; at >= 0; at--) {
+    const { info, parent } = rows[at];
+    if (!allowed(rows[at])) continue;
+    if (needle !== "" && !inMatch.has(info.key) && !parents.has(info.key)) continue;
+    shown.add(info.key);
+    if (parent) parents.add(parent);
+  }
+  return shown;
+}
+
+/**
+ * The rows to draw: those inside a collapsed row are left out, hidden ones unless `showHidden`, and those the search
+ * (`query`) leaves out.
+ */
 export function visibleRows(
   tree: readonly TreeRow[],
   collapsed: ReadonlySet<string>,
   showHidden: boolean,
+  query: string,
 ): VisibleRow[] {
+  const allowed = shownKeys(tree, ({ dimmed }) => showHidden || !dimmed, query);
   const left = new Set<string>();
   const shown: TreeRow[] = [];
   for (const row of tree) {
     const inside = row.parent !== null && left.has(row.parent);
-    if (inside || (row.dimmed && !showHidden)) {
+    if (inside || !allowed.has(row.info.key)) {
       left.add(row.info.key);
       continue;
     }
@@ -119,13 +173,38 @@ export type TreeSection = {
   count: number;
 };
 
+/** The orders the Workspace view's items can be listed in. */
+export const ORDERS = [
+  ["workspace", "Workspace order"],
+  ["name", "Name"],
+] as const;
+export type Order = (typeof ORDERS)[number][0];
+
+/** How two top-level rows compare in each order; 0 keeps them in the saved order. */
+const COMPARE: Record<Order, (a: TreeRow, b: TreeRow) => number> = {
+  workspace: () => 0,
+  name: (a, b) => compareCodePoints(casefold(a.info.label), casefold(b.info.label)),
+};
+
 /**
- * Groups the tree into its sections, keeping the saved order, and leaves out those with no rows. Live is marked as
- * live only while a stream of one of its items (`live`) is.
+ * Groups the tree into the `listed` sections, in their fixed order, and leaves out those with no rows. Each section
+ * orders its top-level rows (`order`), each moving with what is inside it. Live is marked as live only while a stream
+ * of one of its items (`live`) is.
  */
-export function sectionsOf(tree: readonly TreeRow[], live: ReadonlySet<string>): TreeSection[] {
-  return SECTIONS.flatMap(({ id, title, mark }) => {
-    const rows = tree.filter(({ itemKind }) => SECTION_OF[itemKind] === id);
+export function sectionsOf(
+  tree: readonly TreeRow[],
+  live: ReadonlySet<string>,
+  listed: readonly SectionId[],
+  order: Order,
+): TreeSection[] {
+  return SECTIONS.filter(({ id }) => listed.includes(id)).flatMap(({ id, title, mark }) => {
+    const blocks: TreeRow[][] = [];
+    for (const row of tree) {
+      if (SECTION_OF[row.itemKind] !== id) continue;
+      if (row.level === 1) blocks.push([row]);
+      else blocks.at(-1)?.push(row);
+    }
+    const rows = blocks.sort(([a], [b]) => COMPARE[order](a, b)).flat();
     return rows.length === 0
       ? []
       : [
@@ -134,13 +213,20 @@ export function sectionsOf(tree: readonly TreeRow[], live: ReadonlySet<string>):
             title,
             mark: id === "live" && rows.some(({ item }) => live.has(item)) ? "live" : mark,
             rows,
-            count: rows.filter(({ level }) => level === 1).length,
+            count: blocks.length,
           },
         ];
   });
 }
 
-/** How many of `rows` Show hidden would add to the list: none while it is on. */
-export function filteredOut(rows: readonly TreeRow[], showHidden: boolean): number {
-  return showHidden ? 0 : rows.filter(({ dimmed }) => dimmed).length;
+/** How many top-level rows the `listed` sections hold, whatever is hidden. */
+export function listedCount(tree: readonly TreeRow[], listed: readonly SectionId[]): number {
+  return tree.filter(({ level, itemKind }) => level === 1 && listed.includes(SECTION_OF[itemKind]))
+    .length;
+}
+
+/** How many of `rows` Show hidden would add to the list of those the search leaves in: none while it is on. */
+export function filteredOut(rows: readonly TreeRow[], showHidden: boolean, query: string): number {
+  const allowed = shownKeys(rows, ({ dimmed }) => showHidden || !dimmed, query).size;
+  return shownKeys(rows, () => true, query).size - allowed;
 }
