@@ -5,7 +5,9 @@ mod common;
 
 use common::{file, fixture, index_of_input, open_input};
 use foundation::{CancelToken, FrameRate, Interrupt, VideoFrame};
-use media::{FirstFrame, ImageSequenceInput, VideoInput, first_frame, first_frame_identity};
+use media::{
+    FirstFrame, ImageSequenceInput, VideoInput, first_frame, first_frame_identity, whole_jpeg,
+};
 
 /// The picture the JPEG holds, found by decoding it as a one-image sequence.
 fn decoded(frame: &FirstFrame) -> VideoFrame {
@@ -87,6 +89,40 @@ fn the_identity_holds_until_the_file_is_rewritten() {
     assert_ne!(first_frame_identity(&input).expect("changed"), before);
     std::fs::remove_file(&path).expect("remove");
     assert!(first_frame_identity(&input).is_err());
+}
+
+#[test]
+fn the_identity_of_an_image_sequence_changes_with_its_settings() {
+    let sequence = |start_number, rate, frame_count| ImageSequenceInput {
+        pattern: fixture("seq/%06d.jpg"),
+        start_number,
+        frame_rate: FrameRate::parse(rate).expect("a rate"),
+        frame_count,
+    };
+    let identity = |s: ImageSequenceInput| {
+        first_frame_identity(&VideoInput::ImageSequence(s)).expect("an identity")
+    };
+    let base = identity(sequence(1, "30", 12));
+    assert_eq!(identity(sequence(1, "30", 12)), base);
+    assert_ne!(identity(sequence(2, "30", 12)), base, "start number");
+    assert_ne!(identity(sequence(1, "25", 12)), base, "frame rate");
+    assert_ne!(identity(sequence(1, "30", 11)), base, "frame count");
+}
+
+#[test]
+fn a_jpeg_is_whole_only_when_it_decodes() {
+    let jpeg = first_of(&file(&fixture("cfr_h264_gop10_bf2.mp4")), 560).jpeg;
+    assert!(whole_jpeg(&jpeg));
+    assert!(!whole_jpeg(&jpeg[..jpeg.len() / 2]), "cut short");
+    // Both markers and the headers stay; most of the picture data is garbage.
+    let mut damaged = jpeg.clone();
+    let scan = jpeg
+        .windows(2)
+        .position(|w| w == [0xFF, 0xDA])
+        .expect("a scan");
+    let start = scan + 2 + usize::from(jpeg[scan + 3]) + 16;
+    damaged[start..jpeg.len() - 4].fill(0x5A);
+    assert!(!whole_jpeg(&damaged), "damaged inside");
 }
 
 #[test]
