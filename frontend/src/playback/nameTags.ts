@@ -11,8 +11,8 @@ import { LabelBox } from "../present/text/labelBox";
 import { INK, runCacheOf } from "../present/text/runCache";
 import { Weight } from "../present/text/source";
 
-/** Sizes in CSS pixels. */
-const SIZE = 12;
+/** The tag's smallest font size, and the viewer's, in CSS pixels. Other sizes in CSS pixels too. */
+export const NAME_TAG_SIZE = 12;
 const PAD_X = 6;
 const PAD_Y = 3;
 const RADIUS = 4;
@@ -21,7 +21,14 @@ const MARGIN = 6;
 const BACKGROUND = 0x000000b3;
 const INK_COLOR = 0xffffffff;
 
-type Tag = { quads: LaneQuads; version: number; label: string; dpr: number; generation: number };
+type Tag = {
+  quads: LaneQuads;
+  version: number;
+  label: string;
+  size: number;
+  dpr: number;
+  generation: number;
+};
 
 export class NameTags {
   readonly #text: TextSource;
@@ -33,8 +40,9 @@ export class NameTags {
   }
 
   /**
-   * The drawing of tag `lane` for a cell of `width` by `height` CSS pixels; `undefined` for an empty label. Laid out
-   * again only when the label, the density or the atlas page changed. Glyphs that do not fit the page are left out
+   * The drawing of tag `lane` for a cell of `width` by `height` CSS pixels, its label set at `size` CSS pixels;
+   * `undefined` for an empty label. Laid out again only when the label, the size, the density or the atlas page
+   * changed. Glyphs that do not fit the page are left out
    * rather than starting a new page, which would strand the glyphs of the lanes laid out before.
    */
   drawing(
@@ -43,14 +51,22 @@ export class NameTags {
     dpr: number,
     width: number,
     height: number,
+    size: number,
   ): LaneDrawing | undefined {
     const text = this.#text;
     let tag = this.#tags[lane];
-    if (!tag || tag.label !== label || tag.dpr !== dpr || tag.generation !== text.generation) {
+    if (
+      !tag ||
+      tag.label !== label ||
+      tag.size !== size ||
+      tag.dpr !== dpr ||
+      tag.generation !== text.generation
+    ) {
       tag = {
         quads: tag?.quads ?? new LaneQuads(),
         version: (tag?.version ?? 0) + 1,
         label,
+        size,
         dpr,
         generation: text.generation,
       };
@@ -67,7 +83,7 @@ export class NameTags {
     };
   }
 
-  #layOut({ quads, label, dpr }: Tag): void {
+  #layOut({ quads, label, size, dpr }: Tag): void {
     const text = this.#text;
     const sink = new QuadSink(quads);
     sink.begin();
@@ -76,7 +92,7 @@ export class NameTags {
     if (points.length > 0) {
       const cache = runCacheOf(text);
       cache.begin(text);
-      const font = text.font("", devicePixels(SIZE, dpr), Weight.Semibold);
+      const font = text.font("", devicePixels(size, dpr), Weight.Semibold);
       text.dropOverflow = true;
       try {
         const entry = cache.run(text, font, cache.fontId(font), points, 0, points.length);

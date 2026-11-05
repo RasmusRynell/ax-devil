@@ -293,7 +293,8 @@ async fn one_lane_makes_an_mp4_of_the_picture_size_with_the_source_times_and_the
 }
 
 #[tokio::test]
-async fn two_lanes_tile_side_by_side_each_with_its_own_data_catalog_and_name() {
+async fn lanes_tile_in_equal_cells_each_with_its_own_data_catalog_and_name_and_the_spare_slot_is_black()
+ {
     if !can_export() {
         return;
     }
@@ -301,12 +302,17 @@ async fn two_lanes_tile_side_by_side_each_with_its_own_data_catalog_and_name() {
     // video is sequence 20.
     let left = "21,1,36,34,20,10,1,1,1\n";
     let right = "21,1,10,34,24,10,1,1,1\n";
-    let overlays = [("left.txt", left), ("right.txt", right)];
+    // A third lane fills the first slot of a second row and leaves the one beside it spare.
+    let overlays = [
+        ("left.txt", left),
+        ("right.txt", right),
+        ("third.txt", left),
+    ];
     let mut scene = scene(
         "cfr_h264_gop10_bf2.mp4",
         (WIDTH, HEIGHT),
         &overlays,
-        &[RED, BLUE],
+        &[RED, BLUE, RED],
         false,
     )
     .await;
@@ -315,7 +321,7 @@ async fn two_lanes_tile_side_by_side_each_with_its_own_data_catalog_and_name() {
     let (index, frames) = decoded(&VideoInput::File(path));
     assert_eq!(
         (index.info().width, index.info().height),
-        (2 * WIDTH, HEIGHT)
+        (2 * WIDTH, 2 * HEIGHT)
     );
     assert_eq!(frames.len(), 2);
     let cell = WIDTH as usize;
@@ -355,7 +361,14 @@ async fn two_lanes_tile_side_by_side_each_with_its_own_data_catalog_and_name() {
             "left cell, right box",
         );
     }
-    // Both cells carry a name tag, a dark box over the picture in the cell's corner.
+    // The slot no lane fills is black, not the picture and not stretched over by the lane beside it.
+    assert_near(
+        yuv_at(frame, cell + 8, HEIGHT as usize + 8),
+        yuv709([0, 0, 0]),
+        2,
+        "spare slot",
+    );
+    // Both cells of the first row carry a name tag, a dark box over the picture in the cell's corner.
     for corner in [0, cell] {
         let tag = yuv_at(frame, corner + 8, 8);
         assert!(

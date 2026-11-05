@@ -4,7 +4,7 @@ import type { OutputWire } from "../generated/api";
 import type { LaneFrame } from "../playback/contract";
 import type { VideoFrame } from "../playback/protocol";
 import { VideoRenderer } from "../playback/renderer";
-import type { Output } from "./output";
+import { OUTPUT_FIELD, type Output } from "./output";
 import { Readback } from "./readback";
 import type { Stage } from "./session";
 
@@ -24,11 +24,11 @@ export class GlStage implements Stage {
   open(output: OutputWire, size: Output, names: readonly string[] | null): string {
     this.dispose();
     const canvas = document.createElement("canvas");
-    const renderer = new VideoRenderer(canvas, 1);
+    const renderer = new VideoRenderer(canvas, 1, OUTPUT_FIELD);
     // The renderer made the context; asking the canvas again returns it.
     const gl = canvas.getContext("webgl2") as WebGL2RenderingContext;
     renderer.setCells(size.cells);
-    renderer.setNames(names);
+    renderer.setNames(names, size.nameSize);
     renderer.resize(size.width, size.height);
     if (gl.drawingBufferWidth !== size.width || gl.drawingBufferHeight !== size.height) {
       renderer.dispose();
