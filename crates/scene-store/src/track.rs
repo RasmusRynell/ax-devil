@@ -23,6 +23,7 @@ use crate::{
     live::Samples,
     lru::{ItemCache, SceneCache, footprint},
     read::TrackRead,
+    source::SourceWatch,
 };
 
 /// What the encoded Sample Items of one track may hold in memory.
@@ -332,6 +333,8 @@ pub struct Track {
     ingest: CancelToken,
     /// Set when a record failed its check; the registry then stops sharing this track.
     damaged: AtomicBool,
+    /// Notices an in-place edit of the file; set by the registry that opened the track.
+    watch: OnceLock<SourceWatch>,
 }
 
 impl Track {
@@ -349,7 +352,13 @@ impl Track {
             spec,
             ingest,
             damaged: AtomicBool::new(false),
+            watch: OnceLock::new(),
         }
+    }
+
+    /// Starts noticing in-place edits of the file; the first watch is kept.
+    pub(crate) fn watch(&self, source: SourceWatch) {
+        let _ = self.watch.set(source);
     }
 }
 
@@ -446,6 +455,19 @@ impl Track {
         if let Some(scene) = generation.cache().get(index) {
             return Ok(scene);
         }
+        if self.is_rewritten() {
+            return Err(UserError::new(
+                ErrorCode::FileUnreadable,
+                format!(
+                    "{} changed while open; no longer serving overlays from it",
+                    self.source
+                        .file_name()
+                        .unwrap_or_default()
+                        .to_string_lossy()
+                ),
+            )
+            .at(HostPath::new(&self.source)));
+        }
         // Read and decode outside the lock; two threads missing the same Scene both read it and one copy is kept.
         let scene = Arc::new(self.read(generation, index)?);
         let bytes = footprint(&scene);
@@ -453,10 +475,17 @@ impl Track {
         Ok(scene)
     }
 
-    /// Whether a new open may share this track: not once its artifact is damaged or its ingest ended Incomplete.
-    /// Readers that hold it keep it; the new open decodes again.
+    /// Whether a new open may share this track: not once its artifact is damaged, its file was written in place or
+    /// its ingest ended Incomplete. Readers that hold it keep it; the new open decodes again.
     pub(crate) fn is_reusable(&self) -> bool {
-        !self.is_damaged() && !matches!(self.snapshot().ingest, Ingest::Incomplete(_))
+        !self.is_damaged()
+            && !self.is_rewritten()
+            && !matches!(self.snapshot().ingest, Ingest::Incomplete(_))
+    }
+
+    /// Whether the file was written in place since the track was opened, so Scenes not yet read are not served.
+    fn is_rewritten(&self) -> bool {
+        self.watch.get().is_some_and(SourceWatch::rewritten)
     }
 
     /// Whether a record of the artifact failed its check, so the artifact is gone and a new open decodes again.
