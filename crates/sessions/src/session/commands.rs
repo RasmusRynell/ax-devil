@@ -103,7 +103,7 @@ fn content_scope(command: &DocCommand) -> Scope {
         | DocCommand::Remove(_)
         | DocCommand::SetHidden { .. }
         | DocCommand::SetLaneMatching { .. }
-        | DocCommand::RenameWorkspace(_)
+        | DocCommand::RenameWorkspace { .. }
         | DocCommand::Keep => Scope::Content,
     }
 }

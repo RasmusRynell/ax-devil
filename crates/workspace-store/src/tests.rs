@@ -394,7 +394,13 @@ fn edits_are_modified_until_reverted_or_saved_and_a_recovered_workspace_is_modif
     assert_eq!(saved_now.file.as_ref(), Some(&file));
 
     let rename = |state: &WorkspaceState, entered: &str| {
-        let (next, jobs) = apply(state, DocCommand::RenameWorkspace(entered.into()));
+        let (next, jobs) = apply(
+            state,
+            DocCommand::RenameWorkspace {
+                name: entered.into(),
+                epoch: state.epoch,
+            },
+        );
         assert!(jobs.is_empty());
         assert_eq!(next.file, state.file, "the file keeps its name");
         next
@@ -407,6 +413,17 @@ fn edits_are_modified_until_reverted_or_saved_and_a_recovered_workspace_is_modif
         "Untitled is no name"
     );
     assert!(!rename(&named, "   ").modified(), "so is a blank one");
+    let (stale, jobs) = apply(
+        &named,
+        DocCommand::RenameWorkspace {
+            name: "Old".into(),
+            epoch: named.epoch + 1,
+        },
+    );
+    assert!(
+        jobs.is_empty() && stale == named,
+        "another epoch's name is ignored"
+    );
 
     let (later, _) = add(
         &recovered,

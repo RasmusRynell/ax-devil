@@ -231,8 +231,14 @@ pub enum DocCommand {
         /// The lane's matching.
         matching: MatchPolicy,
     },
-    /// Names the workspace as the user entered it (see [`name_of`]); the file keeps its name.
-    RenameWorkspace(String),
+    /// Names the workspace as the user entered it (see [`name_of`]); the file keeps its name. Ignored unless `epoch`
+    /// is the state's, so a rename sent before a [`DocCommand::Replace`] does not name the replacement.
+    RenameWorkspace {
+        /// What the user typed.
+        name: String,
+        /// The `epoch` of the workspace it was typed for.
+        epoch: u64,
+    },
     /// Makes `workspace` current: every item pending and resolving again, `open` and `hidden` empty, `epoch` + 1.
     /// `next_attempt` and `next_generation` keep counting up, so a [`ContentGen`] is never reused.
     Replace {
@@ -386,7 +392,11 @@ pub fn apply(state: &WorkspaceState, command: DocCommand) -> (WorkspaceState, Ve
                 existing.recipe.lane_matching.insert(slot, matching);
             }
         }
-        DocCommand::RenameWorkspace(entered) => next.workspace.name = name_of(&entered),
+        DocCommand::RenameWorkspace { name, epoch } => {
+            if epoch == next.epoch {
+                next.workspace.name = name_of(&name);
+            }
+        }
     }
     (next, jobs)
 }

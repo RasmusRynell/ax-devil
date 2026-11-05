@@ -257,14 +257,16 @@ describe("session", () => {
     expect(commands()).toHaveLength(1);
     act(() => void vi.advanceTimersByTime(1_000));
     expect(commands().map((cmd) => (cmd.type === "content" ? cmd.command : cmd))).toEqual([
-      { type: "renameWorkspace", name: "Review 0" },
-      { type: "renameWorkspace", name: "Review 29" },
+      { type: "renameWorkspace", name: "Review 0", epoch: 0 },
+      { type: "renameWorkspace", name: "Review 29", epoch: 0 },
     ]);
 
     click("Type");
     click("Send");
     expect(commands().slice(-2)).toEqual([
-      expect.objectContaining({ command: { type: "renameWorkspace", name: "Review 29" } }),
+      expect.objectContaining({
+        command: { type: "renameWorkspace", name: "Review 29", epoch: 0 },
+      }),
       { type: "follow" },
     ]);
   });

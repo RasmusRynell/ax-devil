@@ -119,10 +119,15 @@ pub enum DocCommand {
         policy: LanePolicyWire,
     },
     /// Rename the workspace; surrounding whitespace is dropped and a blank name or `Untitled` is Untitled; the file
-    /// keeps its name. Senders throttle it: the session command budget is 10/s (`src/session/reader.rs`).
+    /// keeps its name. Ignored when `epoch` is not the workspace's, so a rename that was sent before another seat
+    /// replaced the workspace does not name the replacement. Senders throttle it: the session command budget is 10/s
+    /// (`src/session/reader.rs`).
     RenameWorkspace {
         /// The name the user entered.
         name: String,
+        /// The `epoch` of the workspace the name was entered for.
+        #[ts(type = "number")]
+        epoch: u64,
     },
 }
 

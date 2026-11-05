@@ -199,7 +199,7 @@ async fn save_as_replaces_another_file_only_when_allowed() {
     let mut owner = Socket::own(&address, None).await;
     owner.say(add_video(1)).await;
     let rename = json!({"type": "command", "seq": 5, "cmd": {"type": "content", "command": {
-        "type": "renameWorkspace", "name": "  Review  "}}});
+        "type": "renameWorkspace", "name": "  Review  ", "epoch": 0}}});
     owner.say(rename).await;
     assert_eq!(ack(&mut owner, 5).await, json!({"status": "ok"}));
     let save = |seq, replace| {

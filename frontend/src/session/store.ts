@@ -239,9 +239,12 @@ export class SessionStore {
   flushName(): void {
     const name = this.#name;
     this.#dropName();
-    if (name === null) return;
+    const epoch = this.#doc?.wire.workspace.epoch;
+    if (name === null || epoch === undefined) return;
     this.#nameSentAt = this.#deps.now();
-    this.#ask({ type: "content", command: { type: "renameWorkspace", name } }).catch(() => {});
+    this.#ask({ type: "content", command: { type: "renameWorkspace", name, epoch } }).catch(
+      () => {},
+    );
   }
 
   #dropName(): void {

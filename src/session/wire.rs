@@ -155,7 +155,9 @@ fn doc_command(
             target: hidden_ref(target),
             hidden,
         },
-        api_types::DocCommand::RenameWorkspace { name } => DocCommand::RenameWorkspace(name),
+        api_types::DocCommand::RenameWorkspace { name, epoch } => {
+            DocCommand::RenameWorkspace { name, epoch }
+        }
         api_types::DocCommand::SetLaneMatching { item, slot, policy } => {
             DocCommand::SetLaneMatching {
                 item,
