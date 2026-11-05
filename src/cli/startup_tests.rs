@@ -51,12 +51,35 @@ async fn an_early_ctrl_c_wins_over_the_startup_error_that_follows() {
         .status()
         .unwrap();
     assert!(sent.success());
-    // Lets the runtime hand the signal to its listeners.
-    tokio::time::sleep(std::time::Duration::from_millis(50)).await;
 
     let failed = Err("settings.json is not valid JSON".into());
     assert_eq!(
-        finish(&interrupt, "Application failed to start: ", failed),
+        finish(&interrupt, "Application failed to start: ", failed).await,
         ExitCode::from(130)
     );
+}
+
+/// The first Ctrl+C asks for the cleanup; a second one, while it is not done, ends the process.
+#[cfg(unix)]
+#[tokio::test]
+async fn a_second_ctrl_c_ends_a_stalled_run_at_once() {
+    let (ended, ending) = tokio::sync::oneshot::channel();
+    let interrupt = Interrupt::watch_then(move || ended.send(()).unwrap());
+    let ctrl_c = || {
+        let sent = std::process::Command::new("kill")
+            .args(["-INT", &std::process::id().to_string()])
+            .status()
+            .unwrap();
+        assert!(sent.success());
+    };
+    ctrl_c();
+    // The first one is taken before the second comes, which would otherwise be the same event.
+    interrupt
+        .stop
+        .subscribe()
+        .wait_for(|stop| *stop)
+        .await
+        .unwrap();
+    ctrl_c();
+    ending.await.unwrap();
 }

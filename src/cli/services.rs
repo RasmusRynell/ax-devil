@@ -50,7 +50,7 @@ type Listener = tokio::signal::windows::CtrlC;
 /// Ctrl+C, watched from before anything starts to the end of the run. It owns the stop signal, so an interruption
 /// is remembered whatever else happens: a startup error does not hide it.
 pub(super) struct Interrupt {
-    stop: watch::Sender<bool>,
+    pub(super) stop: watch::Sender<bool>,
     events: Arc<Events>,
 }
 
@@ -61,6 +61,15 @@ struct Events {
 }
 
 impl Events {
+    /// Takes the next event once the first was taken: the second Ctrl+C.
+    fn again(&self, cx: &mut Context) -> Poll<()> {
+        let mut listener = self.listener.lock().unwrap_or_else(PoisonError::into_inner);
+        match listener.as_mut().map(|listener| listener.poll_recv(cx)) {
+            Some(Poll::Ready(Some(()))) => Poll::Ready(()),
+            _ => Poll::Pending,
+        }
+    }
+
     /// Takes a pending event. `happened` is set while the listener is locked, so whoever takes the lock afterwards
     /// sees either the flag or the event, never neither.
     fn poll(&self, cx: &mut Context) -> Poll<()> {
@@ -79,13 +88,26 @@ impl Events {
 }
 
 impl Interrupt {
-    /// Installs the Ctrl+C handler before returning, and turns the stop signal on when Ctrl+C comes. Needs a runtime.
+    /// Installs the Ctrl+C handler before returning, and turns the stop signal on when Ctrl+C comes. A second Ctrl+C
+    /// ends the process at once. Needs a runtime.
     pub(super) fn watch() -> Self {
+        Self::watch_then(|| {
+            // A stalled startup step or shutdown never reaches the cleanup the first Ctrl+C asked for, and Python's
+            // KeyboardInterrupt ends such a startup at once too. Nothing is left to clean that exiting would skip.
+            #[allow(clippy::exit)]
+            std::process::exit(i32::from(INTERRUPTED))
+        })
+    }
+
+    /// Like [`Interrupt::watch`], with `second` run on the second Ctrl+C instead of ending the process.
+    pub(super) fn watch_then(second: impl FnOnce() + Send + 'static) -> Self {
         let interrupt = Self::listen();
         let (stop, events) = (interrupt.stop.clone(), Arc::clone(&interrupt.events));
         tokio::spawn(async move {
             std::future::poll_fn(|cx| events.poll(cx)).await;
             stop.send_replace(true);
+            std::future::poll_fn(|cx| events.again(cx)).await;
+            second();
         });
         interrupt
     }

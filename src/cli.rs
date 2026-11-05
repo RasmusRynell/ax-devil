@@ -270,16 +270,19 @@ async fn run_backend(global: Global, command: Option<Command>, plugins: Arc<Plug
             },
         },
     };
-    finish(&interrupt, prefix, result)
+    finish(&interrupt, prefix, result).await
 }
 
 /// The exit status of the run. Ctrl+C decides it, and an error that came with or after it is only detail; otherwise
 /// it is the run's own status, or failure with the reason logged under `prefix`.
-fn finish(
+async fn finish(
     interrupt: &Interrupt,
     prefix: &str,
     result: Result<ExitCode, Box<dyn Error>>,
 ) -> ExitCode {
+    // A startup step that failed may have run without awaiting, so the runtime's signal driver may not have handed
+    // over a Ctrl+C that came during it yet.
+    tokio::task::yield_now().await;
     let Some(interrupted) = interrupt.status() else {
         return result.unwrap_or_else(|error| fail(prefix, error));
     };
