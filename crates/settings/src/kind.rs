@@ -146,6 +146,12 @@ pub enum Kind {
         /// The value when the config has none.
         default: &'static str,
     },
+    /// The id of an overlay decoder: any text, which the dialog offers the installed live decoders for. A decoder that
+    /// is not installed stays the setting, and the Add Live Stream form then has no decoder chosen.
+    Decoder {
+        /// The value when the config has none.
+        default: &'static str,
+    },
     /// A folder the user picked: an absolute path once a leading `~` is the home folder, or empty for the app's
     /// standard folder. Never checked against the disk, so an unplugged drive does not stop startup.
     Folder,
@@ -165,7 +171,7 @@ impl Kind {
             Self::Bool { default } => Value::Bool(*default),
             Self::Sync { default } => default.to_json(),
             Self::Sticky { default } => default.to_json(),
-            Self::Choice { default, .. } | Self::Text { default } => {
+            Self::Choice { default, .. } | Self::Text { default } | Self::Decoder { default } => {
                 Value::String((*default).into())
             }
             Self::Whole { default, .. } => Value::from(*default),
@@ -199,11 +205,12 @@ impl Kind {
     /// Accepts `value` only if it has this kind's type and is one of its options. The reason never contains the value.
     pub fn validate(&self, value: &Value) -> Result<(), String> {
         match (self, value) {
-            (Self::Bool { .. }, Value::Bool(_)) | (Self::Text { .. }, Value::String(_)) => Ok(()),
+            (Self::Bool { .. }, Value::Bool(_))
+            | (Self::Text { .. } | Self::Decoder { .. }, Value::String(_)) => Ok(()),
             (Self::Bool { .. }, _) => Err("expected true or false".into()),
             (Self::Sync { .. }, value) => SyncValue::read(value).map(|_| ()),
             (Self::Sticky { .. }, value) => StickyValue::read(value).map(|_| ()),
-            (Self::Text { .. }, _) => Err("expected text".into()),
+            (Self::Text { .. } | Self::Decoder { .. }, _) => Err("expected text".into()),
             (Self::Choice { options, .. }, Value::String(name))
                 if options.iter().any(|(option, _)| option == name) =>
             {

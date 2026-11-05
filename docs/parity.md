@@ -105,12 +105,12 @@ Listed in [parity deviations](parity-deviations.md).
 
 | ID | Feature | P | Status | Test | Notes |
 |----|---------|---|--------|------|-------|
-| ST-01 | Settings pages; restart marker | M | in progress | `SettingsDialog.test.tsx`, `Shell.test.tsx` | Pages, restart marker, Browse, staged logins. Left: M4/M5 settings |
+| ST-01 | Settings pages; restart marker | M | in progress | `SettingsDialog{,.table}.test.tsx`, `Shell.test.tsx` | Pages but Advanced, restart marker, Browse, staged logins, decoder choice |
 | ST-02 | Quick Setup on first start | M | done | `frontend/src/shell/QuickSetupDialog.test.tsx`, `Shell.test.tsx` | Opens on first run and from Help; any close stores the choices and marks setup done; a refused write does not |
 | ST-03 | Theme (light, dark, auto) and text size (system, small to larger), applied live | M | done | `crates/settings` tests, `App.test.tsx`, `settings.test.tsx` | Stored through `/api/settings`; applied live; zoom stays the browser's |
-| ST-04 | `$VARIABLE` references | M | in progress | `reference_tests.rs`, `SettingsDialog.test.tsx` | RTSP port, timeout, storage folders (also `~`) keep the raw reference; unresolved: loads, defaults at use, save refused |
+| ST-04 | `$VARIABLE` references | M | in progress | `reference_tests.rs`, `SettingsDialog.test.tsx` | Host, login, RTSP port, timeout, scan range and logins, storage folders (also `~`) keep the raw reference; unresolved: loads, defaults at use, save refused. Left: see deviations |
 | ST-05 | Keyboard shortcuts and overrides | M | done | `crates/settings` tests, `ShortcutsDialog.test.tsx`, `SettingsDialog.test.tsx`, `Shell.test.tsx` | Command table, override storage, conflict checks, live keys; editor from General, OK saves, Cancel ignored while saving |
-| ST-06 | Workspace credential references expand only for their bound host or a confirmed one; warn before saving a literal password (new) | M | in progress | `shell/{SettingsDialog,AddLiveStreamDialog}.test.tsx` | The dialog warns under a secret field holding a literal (mocked). Left: the warning on a real secret row |
+| ST-06 | Workspace credential references expand only for their bound host or a confirmed one; warn before saving a literal password (new) | M | done | `shell/{SettingsDialog{,.table},AddLiveStreamDialog}.test.tsx` | Camera and broker passwords mask and warn on a literal, not a `$NAME` |
 | AP-01 | Uncaught errors logged; continue or close | M | done | `UncaughtErrors.test.tsx`, `desktop/uncaught.test.cjs` | The page reports its errors to the backend's log |
 | AP-02 | Restart from inside the app | M | done | `frontend/src/shell/Shell.test.tsx`, `desktop/args.test.cjs` | A setting that needs a restart offers to relaunch the desktop app on its own backend; a browser or remote window is only told |
 | AP-03 | `clear-cache` | S | done | `src/disk_cache.rs` test | Lists, asks, removes, counts what it removed; only ax-devil's own files in its cache subfolders |
