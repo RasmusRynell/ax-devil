@@ -1,8 +1,10 @@
 use super::{launch::launch_items, *};
 use api_types::handlers::PluginsInfo;
+use ax_devil::session::Launch;
 use serde_json::{Value, json};
 use workspace::intake::{DataHubDefaults, LiveDefaults, LiveMode, MqttDefaults};
 use workspace::{Source, WorkspaceItem};
+use workspace_files::RecoveryFolder;
 
 pub(super) fn parse(args: &[&str]) -> Result<Cli, clap::Error> {
     args::try_parse_from(
@@ -241,6 +243,65 @@ fn local_pairs_overlays_with_handlers_in_order_or_leaves_them_all_to_the_extensi
         .is_err(),
         "the handler must exist"
     );
+}
+
+#[test]
+fn a_local_overlay_no_single_handler_reads_fails_with_the_correction() {
+    let run = |overlay: &str| {
+        launch_items(
+            parse(&["local", "--video", "a.mp4", "--overlay", overlay])
+                .unwrap()
+                .command,
+            &Handlers::built_in(),
+            stream_defaults,
+        )
+        .unwrap_err()
+    };
+    let none = run("data.nothing");
+    assert!(
+        none.contains("data.nothing") && none.contains("ax-devil list-handlers"),
+        "{none}"
+    );
+    let several = run("data.jsonl");
+    assert!(
+        several.contains("ADF_V1_FRAME")
+            && several.contains("ADF_BETA_FRAME")
+            && several.contains("--handler-type"),
+        "{several}"
+    );
+}
+
+#[test]
+fn open_refuses_a_recovery_copy_the_window_could_not_take_over() {
+    let folder = tempfile::tempdir().unwrap();
+    let recovery = RecoveryFolder::new(folder.path().to_path_buf());
+    let open = |path: &std::path::Path| {
+        launch::launch(
+            parse(&["open", path.to_str().unwrap()]).unwrap().command,
+            &Handlers::built_in(),
+            &recovery,
+            stream_defaults,
+        )
+    };
+    let copy = recovery.reserve("Work").unwrap();
+    let held = copy.path().to_path_buf();
+    assert!(open(&held).err().unwrap().contains("another window"));
+    drop(copy);
+    assert!(
+        open(&held).err().unwrap().contains("Work"),
+        "empty file is not a workspace"
+    );
+    let copy = recovery.claim(&held).unwrap();
+    copy.write(&workspace::Workspace::default(), None).unwrap();
+    drop(copy);
+    assert!(matches!(
+        open(&held),
+        Ok(Some(Launch::Open {
+            workspace: None,
+            ..
+        }))
+    ));
+    assert!(open(&folder.path().join("gone.ax-devil.workspace")).is_err());
 }
 
 #[test]
