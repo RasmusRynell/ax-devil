@@ -182,6 +182,21 @@ export function compileProgram(
   fragment: string,
 ): WebGLProgram {
   const created = gl.createProgram();
+  try {
+    attachAll(gl, created, vertex, fragment);
+  } catch (error) {
+    gl.deleteProgram(created);
+    throw error;
+  }
+  return created;
+}
+
+function attachAll(
+  gl: WebGL2RenderingContext,
+  created: WebGLProgram,
+  vertex: string,
+  fragment: string,
+): void {
   for (const [type, source] of [
     [gl.VERTEX_SHADER, vertex],
     [gl.FRAGMENT_SHADER, fragment],
@@ -198,5 +213,4 @@ export function compileProgram(
   gl.linkProgram(created);
   if (!gl.getProgramParameter(created, gl.LINK_STATUS))
     throw new Error(gl.getProgramInfoLog(created) ?? "a program does not link");
-  return created;
 }

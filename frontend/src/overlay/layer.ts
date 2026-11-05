@@ -17,16 +17,27 @@ export class FadeLayer {
   #composite: { program: WebGLProgram; opacity: WebGLUniformLocation | null } | undefined;
 
   /**
-   * Binds the layer, cleared inside the current scissor box, for the lane's marks. Throws when the context cannot
-   * render into one.
+   * Makes the layer and its blending program ready, so `begin` and `composite` cannot fail. Throws when the context
+   * cannot render into a layer; the framebuffer binding and the render state are left as they were.
    */
-  begin(gl: WebGL2RenderingContext): void {
+  prepare(gl: WebGL2RenderingContext): void {
     const width = gl.drawingBufferWidth;
     const height = gl.drawingBufferHeight;
+    if (!this.#composite) {
+      const program = compileProgram(gl, COMPOSITE_VERTEX, COMPOSITE_FRAGMENT);
+      gl.useProgram(program);
+      gl.uniform1i(gl.getUniformLocation(program, "layer"), LAYER_UNIT);
+      this.#composite = { program, opacity: gl.getUniformLocation(program, "opacity") };
+    }
     if (this.#target?.width !== width || this.#target.height !== height) {
       this.#freeTarget(gl);
       this.#target = { ...create(gl, width, height), width, height };
     }
+  }
+
+  /** Binds the layer, cleared inside the current scissor box, for the lane's marks. Call `prepare` first. */
+  begin(gl: WebGL2RenderingContext): void {
+    if (!this.#target) return;
     gl.bindFramebuffer(gl.FRAMEBUFFER, this.#target.framebuffer);
     gl.clearColor(0, 0, 0, 0);
     gl.clearStencil(0);
@@ -35,13 +46,7 @@ export class FadeLayer {
 
   /** Blends the layer onto the canvas inside the current scissor box at `opacity`, and leaves the canvas bound. */
   composite(gl: WebGL2RenderingContext, opacity: number): void {
-    if (!this.#target) return;
-    if (!this.#composite) {
-      const program = compileProgram(gl, COMPOSITE_VERTEX, COMPOSITE_FRAGMENT);
-      gl.useProgram(program);
-      gl.uniform1i(gl.getUniformLocation(program, "layer"), LAYER_UNIT);
-      this.#composite = { program, opacity: gl.getUniformLocation(program, "opacity") };
-    }
+    if (!this.#target || !this.#composite) return;
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
     gl.activeTexture(gl.TEXTURE0 + LAYER_UNIT);
     gl.bindTexture(gl.TEXTURE_2D, this.#target.color);
@@ -68,25 +73,33 @@ export class FadeLayer {
 
 function create(gl: WebGL2RenderingContext, width: number, height: number): Target {
   const color = gl.createTexture();
-  gl.activeTexture(gl.TEXTURE0 + LAYER_UNIT);
-  gl.bindTexture(gl.TEXTURE_2D, color);
-  gl.texStorage2D(gl.TEXTURE_2D, 1, gl.RGBA8, width, height);
-  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
-  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
   const stencil = gl.createRenderbuffer();
-  gl.bindRenderbuffer(gl.RENDERBUFFER, stencil);
-  gl.renderbufferStorage(gl.RENDERBUFFER, gl.DEPTH24_STENCIL8, width, height);
   const framebuffer = gl.createFramebuffer();
-  gl.bindFramebuffer(gl.FRAMEBUFFER, framebuffer);
-  gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, color, 0);
-  gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.DEPTH_STENCIL_ATTACHMENT, gl.RENDERBUFFER, stencil);
-  const status = gl.checkFramebufferStatus(gl.FRAMEBUFFER);
-  if (status !== gl.FRAMEBUFFER_COMPLETE) {
-    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+  try {
+    gl.activeTexture(gl.TEXTURE0 + LAYER_UNIT);
+    gl.bindTexture(gl.TEXTURE_2D, color);
+    gl.texStorage2D(gl.TEXTURE_2D, 1, gl.RGBA8, width, height);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+    gl.bindRenderbuffer(gl.RENDERBUFFER, stencil);
+    gl.renderbufferStorage(gl.RENDERBUFFER, gl.DEPTH24_STENCIL8, width, height);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, framebuffer);
+    gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, color, 0);
+    gl.framebufferRenderbuffer(
+      gl.FRAMEBUFFER,
+      gl.DEPTH_STENCIL_ATTACHMENT,
+      gl.RENDERBUFFER,
+      stencil,
+    );
+    if (gl.checkFramebufferStatus(gl.FRAMEBUFFER) !== gl.FRAMEBUFFER_COMPLETE)
+      throw new Error("The overlay fade layer has no usable target");
+    return { framebuffer, color, stencil };
+  } catch (error) {
     gl.deleteFramebuffer(framebuffer);
     gl.deleteTexture(color);
     gl.deleteRenderbuffer(stencil);
-    throw new Error("The overlay fade layer has no usable target");
+    throw error;
+  } finally {
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
   }
-  return { framebuffer, color, stencil };
 }

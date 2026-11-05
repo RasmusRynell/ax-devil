@@ -134,6 +134,10 @@ export class OverlayPainter {
     )
       return;
     const gl = this.#gl;
+    // A faded lane is drawn at full strength into a layer of its own and then blended once at its opacity. The layer
+    // is made ready first, so a context that cannot make it fails before the draw changes any state.
+    const faded = opacity < 1;
+    if (faded) this.#fade.prepare(gl);
     const buffers = this.#upload(drawing);
     const canvasWidth = gl.drawingBufferWidth;
     const canvasHeight = gl.drawingBufferHeight;
@@ -141,33 +145,39 @@ export class OverlayPainter {
     gl.enable(gl.SCISSOR_TEST);
     gl.scissor(cell.x, canvasHeight - cell.y - cell.height, cell.width, cell.height);
     gl.enable(gl.BLEND);
-    gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
-    // A faded lane is drawn at full strength into a layer of its own and then blended once at its opacity.
-    const faded = opacity < 1;
-    if (faded) this.#fade.begin(gl);
-    for (const target of [this.#fills, this.#quads]) {
-      gl.useProgram(target.program);
-      gl.uniform2f(target.canvas, canvasWidth, canvasHeight);
-      gl.uniform2f(target.offset, picture.x, picture.y);
-      gl.uniform2f(target.scale, picture.width / view.width, picture.height / view.height);
+    try {
+      gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
+      if (faded) this.#fade.begin(gl);
+      for (const target of [this.#fills, this.#quads]) {
+        gl.useProgram(target.program);
+        gl.uniform2f(target.canvas, canvasWidth, canvasHeight);
+        gl.uniform2f(target.offset, picture.x, picture.y);
+        gl.uniform2f(target.scale, picture.width / view.width, picture.height / view.height);
+      }
+      gl.uniform2f(this.#uniforms.atlas, 1 / this.#pageSize, view.dpr);
+      // Whatever follows the last closed layer draws with it.
+      let quadFrom = 0;
+      let fillFrom = 0;
+      for (let layer = 0; layer <= quads.layerCount; layer++) {
+        const last = layer === quads.layerCount;
+        const quadTo = last ? count : quads.layerQuads[layer];
+        const fillTo = last ? quads.fills.length : quads.layerFills[layer];
+        this.#drawFills(buffers, quads, fillFrom, fillTo, view.width / picture.width);
+        this.#drawQuads(buffers, quadFrom, quadTo);
+        quadFrom = quadTo;
+        fillFrom = fillTo;
+      }
+      gl.bindVertexArray(null);
+      if (faded) this.#fade.composite(gl, opacity);
+    } finally {
+      // Whatever went wrong, the canvas is what the next draw finds bound, with the state it expects.
+      gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+      gl.bindVertexArray(null);
+      gl.colorMask(true, true, true, true);
+      gl.disable(gl.STENCIL_TEST);
+      gl.disable(gl.BLEND);
+      gl.disable(gl.SCISSOR_TEST);
     }
-    gl.uniform2f(this.#uniforms.atlas, 1 / this.#pageSize, view.dpr);
-    // Whatever follows the last closed layer draws with it.
-    let quadFrom = 0;
-    let fillFrom = 0;
-    for (let layer = 0; layer <= quads.layerCount; layer++) {
-      const last = layer === quads.layerCount;
-      const quadTo = last ? count : quads.layerQuads[layer];
-      const fillTo = last ? quads.fills.length : quads.layerFills[layer];
-      this.#drawFills(buffers, quads, fillFrom, fillTo, view.width / picture.width);
-      this.#drawQuads(buffers, quadFrom, quadTo);
-      quadFrom = quadTo;
-      fillFrom = fillTo;
-    }
-    gl.bindVertexArray(null);
-    if (faded) this.#fade.composite(gl, opacity);
-    gl.disable(gl.BLEND);
-    gl.disable(gl.SCISSOR_TEST);
   }
 
   /** Frees the buffers of every lane from `count` on. */
