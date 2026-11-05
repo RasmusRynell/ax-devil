@@ -76,6 +76,9 @@ function create(gl: WebGL2RenderingContext, width: number, height: number): Targ
   const stencil = gl.createRenderbuffer();
   const framebuffer = gl.createFramebuffer();
   try {
+    // Under resource pressure an allocation returns null, and binding null selects the canvas instead.
+    if (!color || !stencil || !framebuffer)
+      throw new Error("The overlay fade layer cannot be allocated");
     gl.activeTexture(gl.TEXTURE0 + LAYER_UNIT);
     gl.bindTexture(gl.TEXTURE_2D, color);
     gl.texStorage2D(gl.TEXTURE_2D, 1, gl.RGBA8, width, height);

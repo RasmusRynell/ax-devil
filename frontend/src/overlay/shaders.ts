@@ -182,6 +182,7 @@ export function compileProgram(
   fragment: string,
 ): WebGLProgram {
   const created = gl.createProgram();
+  if (!created) throw new Error("a program cannot be created");
   try {
     attachAll(gl, created, vertex, fragment);
   } catch (error) {
@@ -203,12 +204,16 @@ function attachAll(
   ] as const) {
     const shader = gl.createShader(type);
     if (!shader) throw new Error("a shader cannot be created");
-    gl.shaderSource(shader, source);
-    gl.compileShader(shader);
-    if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS))
-      throw new Error(gl.getShaderInfoLog(shader) ?? "a shader does not compile");
-    gl.attachShader(created, shader);
-    gl.deleteShader(shader);
+    try {
+      gl.shaderSource(shader, source);
+      gl.compileShader(shader);
+      if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS))
+        throw new Error(gl.getShaderInfoLog(shader) ?? "a shader does not compile");
+      gl.attachShader(created, shader);
+    } finally {
+      // An attached shader lives on until its program goes; one that failed goes now.
+      gl.deleteShader(shader);
+    }
   }
   gl.linkProgram(created);
   if (!gl.getProgramParameter(created, gl.LINK_STATUS))
