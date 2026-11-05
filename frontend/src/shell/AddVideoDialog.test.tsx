@@ -265,6 +265,13 @@ it.each([
     "The file dialog could not open",
   ],
   [
+    "throws",
+    () => {
+      throw new Error("The file dialog is unavailable");
+    },
+    "The file dialog is unavailable",
+  ],
+  [
     "returns several videos",
     () => Promise.resolve(["/clips/a.mp4", "/clips/b.mp4"]),
     "Select one video.",

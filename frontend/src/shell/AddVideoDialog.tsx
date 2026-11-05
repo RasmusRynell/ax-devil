@@ -38,19 +38,18 @@ export function AddVideoDialog({ onClose }: { onClose: () => void }) {
     ...new Set([path.trim(), ...named].filter(Boolean)),
   ]);
   const videoProblem = problems.get(path.trim());
-  const browse = () =>
-    void bridge
-      ?.pickVideos()
-      .then((chosen) => {
-        if (chosen.length > 1) setFailure("Select one video.");
-        else if (chosen.length) {
-          setPath(chosen[0]);
-          setFailure(null);
-        }
-      })
-      .catch((error: unknown) =>
-        setFailure(error instanceof Error ? error.message : String(error)),
-      );
+  const browse = async () => {
+    try {
+      const chosen = (await bridge?.pickVideos()) ?? [];
+      if (chosen.length > 1) setFailure("Select one video.");
+      else if (chosen.length) {
+        setPath(chosen[0]);
+        setFailure(null);
+      }
+    } catch (error) {
+      setFailure(error instanceof Error ? error.message : String(error));
+    }
+  };
 
   const edit = (entry: OverlayEntry) => {
     setEntries(entries.map((one) => (one.key === entry.key ? entry : one)));
@@ -113,7 +112,7 @@ export function AddVideoDialog({ onClose }: { onClose: () => void }) {
             setPath(text);
             setFailure(null);
           }}
-          action={bridge && <BrowseButton what="video file" onBrowse={browse} />}
+          action={bridge && <BrowseButton what="video file" onBrowse={() => void browse()} />}
         />
         {handlers && (
           <>
