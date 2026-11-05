@@ -128,10 +128,15 @@ describe("inspector", () => {
     expect(screen.queryByText("Loading…")).toBeNull();
   });
 
-  it("keeps the previous fields while the next sample's are on their way", () => {
-    show(ready(FIELDS, "loading"));
-    expect(screen.getByText("Loading…")).toBeTruthy();
-    expect(group("Classification")).toBeTruthy();
+  it("keeps the rows mounted under the pair shown before until the next sample's arrive", () => {
+    const { next } = show(ready(FIELDS));
+    const caption = group("Classification");
+    next(ready(FIELDS, "loading"));
+    expect(screen.queryByText("Loading…")).toBeNull();
+    expect(group("Classification")).toBe(caption);
+    next(ready(FIELDS.slice(0, 1)));
+    expect(group("Classification")).toBe(caption);
+    expect(screen.queryByRole("button", { name: "Debug" })).toBeNull();
   });
 
   it("says why an absent object has no attributes, and not while it is in the frame", () => {

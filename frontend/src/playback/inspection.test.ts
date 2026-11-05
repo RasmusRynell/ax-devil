@@ -113,15 +113,38 @@ describe("inspections", () => {
     expect(samples()).toEqual([1, 2, 3]);
   });
 
-  it("keeps the last fields under loading until the shown sample's reply replaces them", () => {
+  it("holds the shown summary and fields together until the next sample's reply, and withholds them from another object", () => {
     const { inspections } = setup();
+    const faster = fullSample([{ id: "7", class: "car", score: 0.5 }]);
     inspections.follow([frame(1)]);
     inspections.select(SELECTION);
     inspections.receive(reply(1, found(CLASS)));
-    inspections.follow([frame(2)]);
-    expect(inspections.view).toMatchObject({ state: "loading", fields: [CLASS] });
-    // Another object has none of them.
+    inspections.follow([frame(2, faster)]);
+    expect(inspections.view).toMatchObject({
+      state: "loading",
+      summary: { score: 0.82 },
+      fields: [CLASS],
+    });
+    // A late reply for the preceding sample changes nothing.
+    expect(inspections.receive(reply(1, found({ ...CLASS, value: "bus" })))).toBe(false);
+    inspections.receive(reply(2, found({ ...CLASS, value: "truck" })));
+    expect(inspections.view).toMatchObject({
+      state: "ready",
+      summary: { score: 0.5 },
+      fields: [{ value: "truck" }],
+    });
+    // A frame without the object shows its own state, and nothing held comes back after it.
+    inspections.follow([frame(3, withoutCar)]);
+    expect(inspections.view.state).toBe("absent");
+    inspections.follow([frame(4)]);
+    expect(inspections.view).toMatchObject({
+      state: "loading",
+      summary: { score: 0.82 },
+      fields: [],
+    });
+    inspections.receive(reply(4, found(CLASS)));
     inspections.select({ ...SELECTION, entity: "9" });
+    inspections.follow([frame(5)]);
     expect(inspections.view).toMatchObject({ state: "loading", fields: [] });
   });
 
@@ -291,8 +314,13 @@ describe("inspections", () => {
     const { inspections } = setup();
     inspections.follow([frame(0)]);
     inspections.select(SELECTION);
+    inspections.receive(reply(0, found(CLASS)));
     expect(inspections.select(null)).toBe(true);
     expect(inspections.view).toEqual({ state: "none" });
     expect(inspections.select(null)).toBe(false);
+    // The pair shown before the selection was cleared is not held for the object selected again.
+    inspections.follow([frame(1)]);
+    inspections.select(SELECTION);
+    expect(inspections.view).toMatchObject({ state: "loading", fields: [] });
   });
 });
