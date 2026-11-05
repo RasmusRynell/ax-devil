@@ -137,6 +137,26 @@ it("adds overlays one by one, ignores a blank one and needs a video", async () =
   await waitFor(() => expect(sentOverlays()).toEqual([[["/data/gt.txt", "MOT"]]]));
 });
 
+it("keeps a required option of the handler from being skipped: Add says it is required until it is filled", async () => {
+  const mot: DecoderInfo = {
+    ...decoder("MOT", ".txt"),
+    options: [
+      { key: "width", label: "Image width", kind: { kind: "Integer", min: 1n }, required: true },
+    ],
+  };
+  vi.stubGlobal("fetch", async () => reply(200, { decoders: [mot], resolvers: [] }));
+  await open();
+  await overlay("/data/gt.txt");
+
+  fireEvent.click(add());
+  expect((await screen.findByRole("alert")).textContent).toBe("Image width is required");
+  expect(sentOverlays()).toEqual([]);
+
+  fireEvent.change(screen.getByLabelText("Image width"), { target: { value: "1920" } });
+  fireEvent.click(add());
+  await waitFor(() => expect(sentOverlays()).toEqual([[["/data/gt.txt", "MOT"]]]));
+});
+
 it("says why the handlers could not be loaded and asks again on Retry", async () => {
   vi.stubGlobal("fetch", async () =>
     reply(403, { code: "Internal", params: {}, reason: "Handlers unavailable" }),
