@@ -66,6 +66,8 @@ export class PlaybackClock {
   #presented: number | undefined;
   /** Lowest sequence id the next tick may present: playing never goes backward. */
   #floor: number;
+  /** Where the current play or seek began: a failure from here on stops playing, however late it is reported. */
+  #origin: number;
   #playing = false;
   #speed = 1;
   #anchorNow = 0;
@@ -77,7 +79,7 @@ export class PlaybackClock {
     this.#now = now;
     this.#last = times.length - 1;
     this.#requested = this.#clamp(startFrame);
-    this.#floor = this.#requested;
+    this.#floor = this.#origin = this.#requested;
   }
 
   get playing(): boolean {
@@ -111,19 +113,16 @@ export class PlaybackClock {
     };
   }
 
-  /**
-   * Marks a frame the backend could not decode. It is never presented and the clock never waits for it; playback
-   * ends on the last frame that did not fail.
-   */
-  skip(sequenceId: number): void {
+  /** Marks a frame the backend could not decode: playing stops on it, as it does on the last frame. */
+  fail(sequenceId: number): void {
     this.#failed.add(sequenceId);
   }
 
   /** Starts playing from the requested position; from the last frame it restarts at 0. */
   play(): void {
     if (this.#playing) return;
-    if (this.#requested >= this.#end()) this.#requested = 0;
-    this.#floor = this.#requested;
+    if (this.#requested >= this.#last) this.#requested = 0;
+    this.#floor = this.#origin = this.#requested;
     this.#playing = true;
     this.#anchor(this.#times[this.#requested]);
   }
@@ -137,7 +136,7 @@ export class PlaybackClock {
 
   seek(sequenceId: number): void {
     this.#requested = this.#clamp(sequenceId);
-    this.#floor = this.#requested;
+    this.#floor = this.#origin = this.#requested;
     if (this.#playing) this.#anchor(this.#times[this.#requested]);
   }
 
@@ -154,7 +153,8 @@ export class PlaybackClock {
   /**
    * Decides what to present now: at most one frame, the newest due one. Playing, a missing frame never slows the
    * clock: the newest buffered frame at or before the due time is shown. The last frame is always shown, then
-   * playback finishes.
+   * playback finishes. A frame that failed to decode is never skipped: the frames before it are shown and the clock
+   * stops on it.
    */
   tick(source: FrameSource): number | undefined {
     if (!this.#playing) {
@@ -163,25 +163,25 @@ export class PlaybackClock {
       return this.#presented;
     }
     const due = Math.min(this.#last, atOrBefore(this.#times, this.#mediaTime()));
-    this.#requested = due;
-    const frame = source.newestPresentable(due, Math.min(this.#floor, this.#end()));
+    const failed = this.#failedUpTo(due);
+    this.#requested = failed ?? due;
+    if (failed !== undefined) this.#playing = false;
+    const frame = source.newestPresentable(failed === undefined ? due : failed - 1, this.#floor);
     if (frame === undefined || frame === this.#presented) {
-      // Waiting for the end frame is over once it turns out to have failed.
-      if (due >= this.#end() && this.#presented !== undefined && this.#presented >= this.#end())
-        this.#playing = false;
+      // The last frame is already on screen, as when a one-frame video begins playing: the end is reached.
+      if (due >= this.#last && this.#presented === this.#last) this.#playing = false;
       return undefined;
     }
     this.#presented = frame;
     this.#floor = frame + 1;
-    if (frame >= this.#end()) this.#playing = false;
+    if (frame >= this.#last) this.#playing = false;
     return frame;
   }
 
-  /** The frame playback ends on: the last one that did not fail. */
-  #end(): number {
-    let end = this.#last;
-    while (end > 0 && this.#failed.has(end)) end--;
-    return end;
+  /** The first failed frame from where this play began that is due by `due`, if any, even one a later frame passed. */
+  #failedUpTo(due: number): number | undefined {
+    const inRange = [...this.#failed].filter((id) => id >= this.#origin && id <= due);
+    return inRange.length > 0 ? Math.min(...inRange) : undefined;
   }
 
   #anchor(mediaTimeUs: number): void {

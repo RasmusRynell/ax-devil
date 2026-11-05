@@ -221,51 +221,50 @@ describe("clock position (B27, B28)", () => {
 });
 
 describe("clock and frames that failed to decode", () => {
-  it("never waits for a failed frame while playing", () => {
-    const { clock, tick, load } = setup(undefined, [0, 1, 2, 3]);
-    clock.skip(4);
+  it("shows the frames before a failed one, then stops on it instead of skipping it", () => {
+    const { clock, tick, load } = setup(undefined, [0, 1, 2, 3, 5, 6]);
+    clock.fail(4);
     clock.play();
-    const shown = [tick(), tick(40), tick(40), tick(40), tick(40)];
-    expect(shown).toEqual([0, 1, 2, 3, undefined]);
-    load([5]);
-    expect(tick(40)).toBe(5);
+    expect([tick(), tick(40), tick(40), tick(40)]).toEqual([0, 1, 2, 3]);
+    expect(tick(40)).toBeUndefined();
+    expect(clock).toMatchObject({ playing: false, playhead: 4 });
+    // Playing again from the failed frame goes nowhere.
+    load([7]);
+    clock.play();
+    expect(tick(400)).toBeUndefined();
+    expect(clock).toMatchObject({ playing: false, playhead: 4 });
   });
 
-  it("ends on the last frame that did not fail", () => {
+  it("stops on a failed frame the display is late for, after showing the newest one before it", () => {
+    const { clock, tick } = setup(undefined, [0, 1, 2, 3, 5, 6]);
+    clock.fail(4);
+    clock.play();
+    tick();
+    expect(tick(200)).toBe(3);
+    expect(clock).toMatchObject({ playing: false, playhead: 4 });
+  });
+
+  it("stops on a failure reported after a later frame was shown", () => {
+    const { clock, tick } = setup(undefined, [0, 1, 3, 4, 5]);
+    clock.play();
+    expect([tick(), tick(40), tick(80)]).toEqual([0, 1, 3]);
+    clock.fail(2);
+    expect(tick(40)).toBeUndefined();
+    expect(clock).toMatchObject({ playing: false, playhead: 2 });
+  });
+
+  it("stops on a failed last frame", () => {
     const { clock, tick } = setup(undefined, [0, 1, 2, 3, 4, 5, 6, 7, 8]);
-    clock.skip(9);
+    clock.fail(9);
     clock.play();
     tick();
     expect(tick(1000)).toBe(8);
-    expect(clock.playing).toBe(false);
-  });
-
-  it("ends on the last decodable frame after a running step or seek past it", () => {
-    const { clock, tick } = setup(undefined, [0, 1, 2, 3, 4, 5, 6, 7, 8]);
-    clock.skip(9);
-    clock.seek(7);
-    clock.play();
-    tick();
-    clock.step(10);
-    expect(clock.playhead).toBe(9);
-    expect(tick()).toBe(8);
-    expect(clock.playing).toBe(false);
-  });
-
-  it("stops waiting for the last frame once it is reported failed", () => {
-    const { clock, tick } = setup(undefined, [0, 1, 2, 3, 4, 5, 6, 7, 8]);
-    clock.play();
-    tick();
-    tick(1000);
-    expect(clock.playing).toBe(true);
-    clock.skip(9);
-    tick(40);
-    expect(clock.playing).toBe(false);
+    expect(clock).toMatchObject({ playing: false, playhead: 9 });
   });
 
   it("stays on the frame on screen when paused on a failed one, and steps on from there", () => {
     const { clock, tick } = setup(undefined, [0, 1, 3]);
-    clock.skip(2);
+    clock.fail(2);
     tick();
     clock.step(1);
     tick();

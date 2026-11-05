@@ -3,12 +3,35 @@ const { dialog, nativeTheme } = require("electron");
 const fs = require("node:fs/promises");
 const assert = require("node:assert/strict");
 const path = require("node:path");
-const { SCREENSHOTS, SMOKE_ROOT, click, frames, page, until } = require("./smoke-kit.cjs");
+const {
+  SCREENSHOTS,
+  SMOKE_ROOT,
+  click,
+  delay,
+  frames,
+  goToFrame,
+  page,
+  until,
+} = require("./smoke-kit.cjs");
 
 const FIXTURE = path.join(SMOKE_ROOT, "fixtures/video/long_gop_h264.mp4");
 const SHOWN = `Number.parseInt(document.querySelector("input[aria-label=Frame]")?.value ?? "")`;
 /** A pixel this bright is the picture: the field around it is near-black. */
 const LIT = 40;
+
+/**
+ * Pauses a video that just opened and steps back to its first frame: an ordinary open starts playing once that frame is
+ * shown, a clip that ended first paused itself, and an entry shown again opens paused where it was left, which the
+ * short wait lets pass.
+ */
+module.exports.pauseAtStart = async (window) => {
+  const { js } = page(window);
+  for (let i = 0; i < 30; i++) {
+    if (await js(`!!document.querySelector('[aria-label=Pause]') || ${SHOWN} > 0`)) break;
+    await delay(100);
+  }
+  await goToFrame(window, 0);
+};
 
 module.exports.video = async (window) => {
   const { js, wait } = page(window);
@@ -24,7 +47,7 @@ module.exports.video = async (window) => {
     await wait("document.querySelector('[data-cursor-id=\"sidebar:add-video\"]')");
     await frames({ js });
     await click(window, "sidebar:add-video");
-    await wait(`${SHOWN} === 0`);
+    await wait(`${SHOWN} >= 0`);
   } finally {
     dialog.showOpenDialog = original;
   }
@@ -44,7 +67,7 @@ module.exports.video = async (window) => {
     js(
       `(() => { const r = document.querySelector('${selector}').getBoundingClientRect(); return { left: r.left, top: r.top, right: r.right, bottom: r.bottom }; })()`,
     );
-  await js("document.querySelector('[aria-label=Pause]')?.click()");
+  await module.exports.pauseAtStart(window);
   const canvas = await box("canvas");
   const middle = { x: (canvas.left + canvas.right) / 2, y: (canvas.top + canvas.bottom) / 2 };
   const black = brightness(await snap(), middle.x, middle.y);

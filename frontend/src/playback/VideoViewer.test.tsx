@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vite-plus/test";
 import { FakeSocket, video } from "../session/fakeSession";
 import { SessionProvider } from "../session/session";
 import { SessionStore } from "../session/store";
+import { videoFrame } from "./fakePlayback";
 import type { ClientMessage, LaneInfo, ServerMessage } from "./protocol";
 import type { VideoViewerProps } from "./VideoViewer";
 import {
@@ -12,6 +13,7 @@ import {
   installViewerHarness,
   slider,
   setSpeed,
+  sockets,
   speed,
   viewsSent,
 } from "./videoViewerHarness";
@@ -149,6 +151,36 @@ describe("video viewer", () => {
       expect(opens(sent)).toHaveLength(2);
       expect(opens(sent)[1]).toMatchObject({ start_frame: told?.frame });
       expect(thumb.value).toBe(String(told?.frame));
+    });
+
+    it("still plays an ordinary open that restarted before its first frame, unless the viewer acted", async () => {
+      // The resume helper runs on fake timers, which also fake the display refresh.
+      const firstFrame = async () => {
+        act(() =>
+          sockets.at(-1)?.({ type: "envelope", envelope: { kind: "frame", frame: videoFrame(0) } }),
+        );
+        await act(() => vi.advanceTimersByTimeAsync(20));
+      };
+      await resume();
+      await firstFrame();
+      expect(screen.getByRole("button", { name: "Pause" })).toBeTruthy();
+
+      cleanup();
+      FakeSocket.reset();
+      vi.useRealTimers();
+      render(
+        <SessionProvider>
+          <Viewer sent={[]} />
+        </SessionProvider>,
+      );
+      await act(async () => {});
+      act(() => FakeSocket.rooms.get("room-1")!.setItems([video("a")]));
+      fireEvent.change(await slider(), { target: { value: "5" } });
+      vi.useFakeTimers();
+      act(() => FakeSocket.latest.drop());
+      await act(() => vi.advanceTimersByTimeAsync(60_000));
+      await firstFrame();
+      expect(screen.getByRole("button", { name: "Play" })).toBeTruthy();
     });
 
     it("stays failed, asking once, when the backend no longer lets the seat play it", async () => {

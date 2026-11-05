@@ -35,50 +35,13 @@ import { PlaybackSession } from "./session";
 import type { PlaybackIntent, ResumeState } from "./sessionDeps";
 import { connectWorker } from "./connect";
 import { Transport } from "./Transport";
-import type { PlaybackView } from "./view";
 import { FIT, ZOOM_STEP } from "./viewport";
 import type { Connect } from "./wire";
 import { useFileScopeOwner } from "./useFileScopeOwner";
 
-/** What the pane says while the video is not ready: indexing with its progress, reconnecting, or why it failed. */
-export function Status({ view, name }: { view: PlaybackView; name: string }) {
-  if (view.status === "failed" && view.failure)
-    return (
-      <div role="alert" className="m-auto flex max-w-full flex-col gap-s p-xl text-center">
-        <p className="m-0 font-semibold break-words">{view.failure.reason}</p>
-        {view.failure.location && (
-          <p className="m-0 text-small break-all text-on-canvas-muted">{view.failure.location}</p>
-        )}
-      </div>
-    );
-  const text =
-    view.status === "indexing"
-      ? `Indexing ${name}… ${Math.round(view.progress * 100)}%`
-      : view.status === "reconnecting"
-        ? "Connection lost. Reconnecting…"
-        : `Opening ${name}…`;
-  return (
-    <div
-      role="status"
-      aria-busy="true"
-      className="m-auto flex w-full max-w-md flex-col gap-m p-xl text-center"
-    >
-      <p className="m-0">{text}</p>
-      {view.status === "indexing" && (
-        <div
-          role="progressbar"
-          aria-label="Indexing progress"
-          aria-valuemin={0}
-          aria-valuemax={1}
-          aria-valuenow={view.progress}
-          className="h-s w-full overflow-hidden rounded-control bg-canvas-hover"
-        >
-          <div className="h-full bg-on-canvas" style={{ width: `${view.progress * 100}%` }} />
-        </div>
-      )}
-    </div>
-  );
-}
+import { Status } from "./PlaybackStatus";
+
+export { Status };
 
 function Playback({
   session,
@@ -387,6 +350,8 @@ export function VideoViewer({
   // last anchor when the replacement starts, so reading it there would reopen at the frame playback began from.
   const own = useRef<EntryMemory>(new Map());
   const left = memory ?? own.current;
+  // The stream whose autoplay a session replacement interrupted before anything was shown: the replacement plays.
+  const interrupted = useRef<string | undefined>(undefined);
 
   useEffect(() => {
     const publish = ({ frame, playing, speed }: PlaybackIntent) => {
@@ -407,8 +372,12 @@ export function VideoViewer({
     // A window that follows takes the presenter's clock, never a position of its own, and forgets any it had.
     const carried = latest.current.following ? undefined : left.get(entry.id);
     left.delete(entry.id);
+    const streamKey = `${item}/${entry.id}`;
+    const retried = interrupted.current === streamKey;
+    interrupted.current = undefined;
     const start = {
-      frame: carried?.frame ?? anchor?.frame,
+      // Frame 0 of a replaced session that showed nothing is no position to come back to.
+      frame: retried ? undefined : (carried?.frame ?? anchor?.frame),
       speed: heldSpeed.current ?? carried?.speed ?? (anchor && anchor.speedCenti / 100),
     };
     // A window that reloads and takes its seat back finds its clock still running in the accepted intent, which
@@ -418,6 +387,9 @@ export function VideoViewer({
       ticket,
       connect,
       resume: start,
+      // An open with no position to come back to plays; a resumed tab or a followed clock stays as it is. A seat that
+      // cannot publish its clock would play again on every return, as nothing remembers it was left.
+      autoplay: start.frame === undefined && !latest.current.following && latest.current.canChange,
       lanes: priorLanes.current,
       defaultCatalog: () => defaultCatalog.current || null,
       defaultTiming: () => defaultTiming.current,
@@ -439,6 +411,7 @@ export function VideoViewer({
     return () => {
       // Shown again later, the viewer opens where it was left, paused.
       const { frame, speed } = created.resumeState();
+      if (created.autoplayPending) interrupted.current = streamKey;
       const lanes = created.laneSettings();
       if (lanes.length > 0) priorLanes.current = lanes;
       created.close();
