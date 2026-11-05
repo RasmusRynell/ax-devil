@@ -74,6 +74,10 @@ let refuseScan = false;
 let loginRefused = false;
 // Holds the answer of the next scan request until the test releases it.
 let holdScan: Promise<void> | null = null;
+// The number of the scan the backend says it started.
+let startedScan = 1;
+// Whether the snapshot stream leaves out the snapshot it opens with.
+let withhold = false;
 // A snapshot stream that stays open, for a test to push scans' snapshots into.
 let follow: ((snapshot: NetworkSnapshot) => void) | null = null;
 
@@ -91,6 +95,7 @@ beforeEach(() => {
       if (url === "/api/network/scan" && refuseScan) return new Response("{}", { status: 422 });
       if (url === "/api/live/check" && loginRefused)
         return new Response(JSON.stringify(found("10.0.0.2", { state: "Refused" })));
+      if (url === "/api/network/scan") return new Response(JSON.stringify({ scan: startedScan }));
       if (url !== "/api/network") return new Response(null, { status: 204 });
       if (follow === null) return new Response(`${JSON.stringify(SNAPSHOT)}\n`);
       return new Response(
@@ -98,7 +103,7 @@ beforeEach(() => {
           start(controller) {
             const write = (snapshot: NetworkSnapshot) =>
               controller.enqueue(new TextEncoder().encode(`${JSON.stringify(snapshot)}\n`));
-            write(SNAPSHOT);
+            if (!withhold) write(SNAPSHOT);
             follow = write;
           },
         }),
@@ -115,6 +120,8 @@ afterEach(() => {
   loginRefused = false;
   follow = null;
   holdScan = null;
+  startedScan = 1;
+  withhold = false;
   window.sessionStorage.clear();
   FakeSocket.reset();
 });
@@ -218,23 +225,31 @@ describe("scanning", () => {
     expect(screen.queryByText("Scanning…")).toBeNull();
   });
 
-  it("holds the next scan back while the request is pending, whatever older snapshot arrives", async () => {
+  it("holds the next scan back until a snapshot of the scan started is shown, whatever older one arrives", async () => {
     let answer = () => {};
     holdScan = new Promise((resolve) => (answer = resolve));
+    startedScan = 3;
     follow = () => {};
-    SNAPSHOT = { scan: 1, scanning: false, rows: [], failure: null };
+    withhold = true;
     await renderView([]);
     const range = await screen.findByRole("textbox", { name: "IP range" });
+    const rescanButton = () => screen.getByRole("button", { name: "Rescan" }) as HTMLButtonElement;
+    const idle = (scan: number): NetworkSnapshot => ({
+      scan,
+      scanning: false,
+      rows: [],
+      failure: null,
+    });
     fireEvent.keyDown(range, { key: "Enter" });
-    await emit({ scan: 1, scanning: false, rows: [], failure: null });
+    await emit(idle(2));
+    fireEvent.keyDown(range, { key: "Enter" });
+    await act(async () => answer());
+    await emit(idle(2));
     fireEvent.keyDown(range, { key: "Enter" });
     expect(scansStarted()).toHaveLength(1);
-    expect((screen.getByRole("button", { name: "Rescan" }) as HTMLButtonElement).disabled).toBe(
-      true,
-    );
-    await act(async () => answer());
-    await emit({ scan: 2, scanning: true, rows: [], failure: null });
-    expect(screen.getByText("Scanning…")).toBeTruthy();
+    expect(rescanButton().disabled).toBe(true);
+    await emit(idle(3));
+    expect(rescanButton().disabled).toBe(false);
   });
 
   it("says a scan failed, with the reason, and keeps the cameras it found", async () => {

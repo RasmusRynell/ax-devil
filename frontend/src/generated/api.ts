@@ -2619,6 +2619,15 @@ range?: string,
 sign_in?: boolean, };
 
 /**
+ * The answer of `POST /api/network/scan`.
+ */
+export type ScanStarted = { 
+/**
+ * The number of the scan started; the `scan` of its snapshots, and of every later scan's.
+ */
+scan: number, };
+
+/**
  * The cameras the scan has found so far; one line of the `GET /api/network` stream.
  */
 export type NetworkSnapshot = { 

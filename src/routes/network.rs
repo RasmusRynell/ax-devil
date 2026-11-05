@@ -5,7 +5,7 @@
 
 use super::handlers::{Refusal, refuse};
 use crate::{AppState, network::request_from_settings};
-use api_types::live::{NetworkSnapshot, ScanRequestWire};
+use api_types::live::{NetworkSnapshot, ScanRequestWire, ScanStarted};
 use axum::{
     Json,
     body::{Body, Bytes},
@@ -17,11 +17,12 @@ use camera::ScanLoad;
 use futures_util::stream::unfold;
 use std::convert::Infallible;
 
-/// Starts a scan of the range, ending the one that is running; its cameras start from none.
+/// Starts a scan of the range, ending the one that is running; its cameras start from none. Answers with the scan's
+/// number, which its snapshots carry.
 pub(super) async fn scan(
     State(state): State<AppState>,
     Json(request): Json<ScanRequestWire>,
-) -> Result<StatusCode, Refusal> {
+) -> Result<Json<ScanStarted>, Refusal> {
     let scan = request_from_settings(
         &state.settings.state(),
         request.range.as_deref(),
@@ -29,8 +30,9 @@ pub(super) async fn scan(
         ScanLoad::Normal,
     )
     .map_err(|error| refuse(StatusCode::UNPROCESSABLE_ENTITY, &error))?;
-    state.network.rescan(scan);
-    Ok(StatusCode::NO_CONTENT)
+    Ok(Json(ScanStarted {
+        scan: state.network.rescan(scan),
+    }))
 }
 
 /// Stops the running scan, keeping what it found.
@@ -158,13 +160,19 @@ mod tests {
             }
         };
 
-        let (status, _) = test.send(post("/api/network/scan", "{}")).await;
-        assert_eq!(status, StatusCode::NO_CONTENT);
+        let (status, body) = test.send(post("/api/network/scan", "{}")).await;
+        assert_eq!(
+            (status, json(&body)["scan"].as_u64()),
+            (StatusCode::OK, Some(1))
+        );
         finished(1).await;
-        let (status, _) = test
+        let (status, body) = test
             .send(post("/api/network/scan", r#"{"range":"10.9.9.0/30"}"#))
             .await;
-        assert_eq!(status, StatusCode::NO_CONTENT);
+        assert_eq!(
+            (status, json(&body)["scan"].as_u64()),
+            (StatusCode::OK, Some(2))
+        );
         let last = finished(2).await;
         // The default `scan.range` is a /24 without its two ends; the range given is a /30 without them.
         assert_eq!(*sizes.lock().unwrap(), [254, 2]);

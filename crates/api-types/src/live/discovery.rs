@@ -202,6 +202,14 @@ pub struct ScanRequestWire {
     pub sign_in: Option<bool>,
 }
 
+/// The answer of `POST /api/network/scan`.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
+pub struct ScanStarted {
+    /// The number of the scan started; the `scan` of its snapshots, and of every later scan's.
+    #[ts(type = "number")]
+    pub scan: u64,
+}
+
 /// The cameras the scan has found so far; one line of the `GET /api/network` stream.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
 pub struct NetworkSnapshot {

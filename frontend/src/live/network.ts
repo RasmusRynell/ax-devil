@@ -2,9 +2,9 @@
 
 import { useEffect, useState } from "react";
 import { apiFetch } from "../api";
-import type { NetworkRow, NetworkSignIn, NetworkSnapshot } from "../generated/api";
+import type { NetworkRow, NetworkSignIn, NetworkSnapshot, ScanStarted } from "../generated/api";
 import type { Tone } from "../kit/look";
-import { post, send } from "./send";
+import { ask, send } from "./send";
 
 const RETRY_MS = 2000;
 
@@ -139,17 +139,22 @@ export type ScanProblem = { text: "Invalid IP range" | "Scan failed"; reason: st
 
 /**
  * Starts a scan of `range`; `undefined` scans the `scan.range` setting, blank the local network. `signIn` says for this
- * scan whether to try the logins on the cameras found; `undefined` follows the `scan.sign_in` setting. Resolves to why
- * it was refused, else `null`.
+ * scan whether to try the logins on the cameras found; `undefined` follows the `scan.sign_in` setting. Resolves to
+ * the started scan's number, which its snapshots carry, else to why it was refused.
  */
-export const rescan = (range?: string, signIn?: boolean): Promise<ScanProblem | null> =>
-  post("/api/network/scan", { range, sign_in: signIn }).then(
-    (refused) =>
-      refused && {
-        text: refused.status === 422 ? "Invalid IP range" : "Scan failed",
-        reason: refused.reason,
-      },
-  );
+export async function rescan(range?: string, signIn?: boolean): Promise<number | ScanProblem> {
+  const answer = await ask("/api/network/scan", { range, sign_in: signIn });
+  if (!(answer instanceof Response))
+    return {
+      text: answer.status === 422 ? "Invalid IP range" : "Scan failed",
+      reason: answer.reason,
+    };
+  try {
+    return ((await answer.json()) as ScanStarted).scan;
+  } catch {
+    return { text: "Scan failed", reason: "the backend's answer could not be read" };
+  }
+}
 
 /** Stops the running scan, keeping what it found. */
 export const cancelScan = (): Promise<string | null> => send("/api/network/cancel");
