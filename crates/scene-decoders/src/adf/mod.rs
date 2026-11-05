@@ -195,6 +195,11 @@ impl Decoder for AdfDecoder {
         &self.spec
     }
 
+    /// Only frames are live: tracks are consolidated after the fact, so a live source has none.
+    fn reads_live(&self) -> bool {
+        matches!(self.lines, Lines::Frames)
+    }
+
     fn decode(
         &self,
         input: &mut dyn Input,
@@ -205,7 +210,7 @@ impl Decoder for AdfDecoder {
         let filter = filter_policy(self.filters);
         // A live source never ends, so it has its class filters from the start. A file is published once decoded, and
         // a header would publish it while it is still being read.
-        let live = input.path().is_none();
+        let live = self.reads_live() && input.path().is_none();
         if live {
             sink.header(Header {
                 filter: filter.clone(),
