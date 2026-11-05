@@ -15,7 +15,17 @@ use ax_devil::{
 use axum::Router;
 use catalogs::Library;
 use std::{
-    error::Error, future::IntoFuture, net::SocketAddr, path::PathBuf, sync::Arc, time::Duration,
+    error::Error,
+    future::IntoFuture,
+    net::SocketAddr,
+    path::PathBuf,
+    process::ExitCode,
+    sync::{
+        Arc, Mutex, PoisonError,
+        atomic::{AtomicBool, Ordering},
+    },
+    task::{Context, Poll, Waker},
+    time::Duration,
 };
 use tokio::sync::watch;
 use workspace_files::{Recents, RecoveryFolder};
@@ -26,6 +36,119 @@ const SHUTDOWN_GRACE: Duration = Duration::from_secs(2);
 /// How long a quit waits for the live connections to close, which removes the temporary MQTT publishers from the
 /// cameras.
 const LIVE_SHUTDOWN: Duration = Duration::from_secs(3);
+
+/// The exit status of a run that Ctrl+C ended: 128 plus SIGINT, as a shell reports an interrupted program.
+const INTERRUPTED: u8 = 130;
+
+/// The source of Ctrl+C events.
+#[cfg(unix)]
+type Listener = tokio::signal::unix::Signal;
+/// The source of Ctrl+C events.
+#[cfg(windows)]
+type Listener = tokio::signal::windows::CtrlC;
+
+/// Ctrl+C, watched from before anything starts to the end of the run. It owns the stop signal, so an interruption
+/// is remembered whatever else happens: a startup error does not hide it.
+pub(super) struct Interrupt {
+    pub(super) stop: watch::Sender<bool>,
+    events: Arc<Events>,
+}
+
+/// The Ctrl+C events not yet taken, and whether one was.
+struct Events {
+    listener: Mutex<Option<Listener>>,
+    happened: AtomicBool,
+}
+
+impl Events {
+    /// Takes the next event once the first was taken: the second Ctrl+C.
+    fn again(&self, cx: &mut Context) -> Poll<()> {
+        let mut listener = self.listener.lock().unwrap_or_else(PoisonError::into_inner);
+        match listener.as_mut().map(|listener| listener.poll_recv(cx)) {
+            Some(Poll::Ready(Some(()))) => Poll::Ready(()),
+            _ => Poll::Pending,
+        }
+    }
+
+    /// Takes a pending event. `happened` is set while the listener is locked, so whoever takes the lock afterwards
+    /// sees either the flag or the event, never neither.
+    fn poll(&self, cx: &mut Context) -> Poll<()> {
+        let mut listener = self.listener.lock().unwrap_or_else(PoisonError::into_inner);
+        if self.happened.load(Ordering::Acquire) {
+            return Poll::Ready(());
+        }
+        if let Some(Poll::Ready(Some(()))) =
+            listener.as_mut().map(|listener| listener.poll_recv(cx))
+        {
+            self.happened.store(true, Ordering::Release);
+            return Poll::Ready(());
+        }
+        Poll::Pending
+    }
+}
+
+impl Interrupt {
+    /// Installs the Ctrl+C handler before returning, and turns the stop signal on when Ctrl+C comes. A second Ctrl+C
+    /// ends the process at once. Needs a runtime.
+    pub(super) fn watch() -> Self {
+        Self::watch_then(|| {
+            // A stalled startup step or shutdown never reaches the cleanup the first Ctrl+C asked for, and Python's
+            // KeyboardInterrupt ends such a startup at once too. Nothing is left to clean that exiting would skip.
+            #[allow(clippy::exit)]
+            std::process::exit(i32::from(INTERRUPTED))
+        })
+    }
+
+    /// Like [`Interrupt::watch`], with `second` run on the second Ctrl+C instead of ending the process.
+    pub(super) fn watch_then(second: impl FnOnce() + Send + 'static) -> Self {
+        let interrupt = Self::listen();
+        let (stop, events) = (interrupt.stop.clone(), Arc::clone(&interrupt.events));
+        tokio::spawn(async move {
+            std::future::poll_fn(|cx| events.poll(cx)).await;
+            stop.send_replace(true);
+            std::future::poll_fn(|cx| events.again(cx)).await;
+            second();
+        });
+        interrupt
+    }
+
+    /// Installs the handler and nothing else: [`Interrupt::status`] still sees Ctrl+C, but nothing stops.
+    pub(super) fn listen() -> Self {
+        #[cfg(unix)]
+        let listener = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::interrupt());
+        #[cfg(windows)]
+        let listener = tokio::signal::windows::ctrl_c();
+        Self::with(listener.ok())
+    }
+
+    /// Ignores Ctrl+C, for the launcher whose child gets it from the terminal as well.
+    pub(super) fn ignore() -> Self {
+        Self::with(None)
+    }
+
+    fn with(listener: Option<Listener>) -> Self {
+        Self {
+            stop: watch::channel(false).0,
+            events: Arc::new(Events {
+                listener: Mutex::new(listener),
+                happened: AtomicBool::new(false),
+            }),
+        }
+    }
+
+    /// The exit status of an interrupted run, once Ctrl+C has been pressed. The answer does not wait for the task that
+    /// turns the stop signal on to run. Call it once the run is over: it takes the event the task would wait for.
+    pub(super) fn status(&self) -> Option<ExitCode> {
+        let seen = self
+            .events
+            .poll(&mut Context::from_waker(Waker::noop()))
+            .is_ready();
+        seen.then(|| {
+            self.stop.send_replace(true);
+            ExitCode::from(INTERRUPTED)
+        })
+    }
+}
 
 /// Set to `1` by the desktop shell: the backend then stops when its standard input closes, so it never outlives the
 /// shell, even one that crashed. Unset, a closed standard input (a service, a container) changes nothing.
@@ -48,11 +171,14 @@ pub(super) struct Services {
 impl Services {
     /// Loads the settings, starts the video cache and queues `launch` for the first Local session. Ctrl+C turns the
     /// stop signal on, and so does the end of the standard input when [`EXIT_ON_STDIN_CLOSE_VARIABLE`] asks for it.
+    /// `interrupt` owns the stop signal, which is already on when Ctrl+C came during startup.
     pub(super) fn start(
         paths: &Paths,
         plugins: Arc<Plugins>,
         launch: Option<Launch>,
+        interrupt: &Interrupt,
     ) -> Result<Self, Box<dyn Error>> {
+        let stop = interrupt.stop.clone();
         let settings = Arc::new(settings::Settings::load(&paths.config_file)?);
         tracing::info!("Loaded settings from {}", paths.config_file.display());
         let cache_dir = paths.cache_dir(settings.state().folder("storage.cache_dir"));
@@ -63,13 +189,7 @@ impl Services {
         let catalogs = Library::with_folder(catalog_dir);
         let network = Network::new();
         network::scan_on_startup(&network, &settings.state());
-        let (stop, _) = watch::channel(false);
         tokio::spawn(Arc::clone(&plugins).watch(stop.subscribe()));
-        let stop_on_ctrl_c = stop.clone();
-        tokio::spawn(async move {
-            let _ = tokio::signal::ctrl_c().await;
-            stop_on_ctrl_c.send_replace(true);
-        });
         if std::env::var_os(EXIT_ON_STDIN_CLOSE_VARIABLE).is_some_and(|value| value == "1") {
             let stop_on_eof = stop.clone();
             // A plain thread: reading standard input blocks, and the thread may stay blocked until the process exits.

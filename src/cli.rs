@@ -35,9 +35,11 @@ use launch::{describe, launch};
 mod live;
 mod plugins;
 mod services;
-use services::Services;
+use services::{Interrupt, Services};
 #[cfg(test)]
 mod catalog_tests;
+#[cfg(test)]
+mod startup_tests;
 #[cfg(test)]
 mod tests;
 
@@ -45,9 +47,15 @@ mod tests;
 /// browser can send nothing else in a header. Unset or empty, a random password is generated.
 const PASSWORD_VARIABLE: &str = "AX_DEVIL_SERVER_PASSWORD";
 
+/// The links `--help` ends with, which the subcommands' help does not repeat.
+const HELP_LINKS: &str = "\
+Documentation: https://github.com/RasmusRynell/ax-devil
+Agent guidance: https://github.com/RasmusRynell/ax-devil/blob/main/AGENTS.md
+Agent skills:   https://github.com/RasmusRynell/ax-devil/tree/main/.agents/skills";
+
 /// Desktop app for inspecting Axis camera streams, offline video, and analytics overlays.
 #[derive(Parser)]
-#[command(version)]
+#[command(version, after_help = HELP_LINKS)]
 struct Cli {
     #[command(flatten)]
     global: Global,
@@ -218,21 +226,30 @@ fn settings_folder(
 
 /// Starts what `command` asks for: the desktop backend, `serve` or the shell.
 async fn run_backend(global: Global, command: Option<Command>, plugins: Arc<Plugins>) -> ExitCode {
+    let launcher = matches!(command, Some(Command::App(_)));
+    // The launcher only waits for the shell, which gets Ctrl+C from the terminal as well and ends itself.
+    let interrupt = if launcher {
+        Interrupt::ignore()
+    } else {
+        Interrupt::watch()
+    };
     let paths = Paths::resolve(
         &|name| std::env::var_os(name),
         global.config,
         global.cache_dir,
     );
-    let launcher = matches!(command, Some(Command::App(_)));
     let log_file = paths.as_ref().ok().map(|paths| paths.log_file.as_path());
     logging::init(global.log_level, log_file.filter(|_| !launcher));
     ax_devil::plugins::log_problems(&plugins.info());
-    let result = match command {
-        Some(Command::App(args)) => launch_app(&args),
+    let (prefix, result) = match command {
+        Some(Command::App(args)) => ("Application failed to start: ", launch_app(&args)),
         command => match paths {
-            Err(error) => Err(error.into()),
+            Err(error) => ("", Err(error.into())),
             Ok(paths) => match command {
-                Some(Command::Serve(args)) => serve(&paths, args, plugins).await,
+                Some(Command::Serve(args)) => (
+                    "Application failed to start: ",
+                    serve(&paths, args, plugins, &interrupt).await,
+                ),
                 command => match launch(
                     command,
                     &plugins.handlers(),
@@ -243,16 +260,58 @@ async fn run_backend(global: Global, command: Option<Command>, plugins: Arc<Plug
                             .map_err(|error| error.to_string())
                     },
                 ) {
-                    Ok(launch) => host_desktop(&paths, global.share_address, plugins, launch).await,
-                    Err(reason) => Err(reason.into()),
+                    Ok(launch) => (
+                        "Application failed to start: ",
+                        host_desktop(&paths, global.share_address, plugins, launch, &interrupt)
+                            .await,
+                    ),
+                    Err(reason) => ("", Err(reason.into())),
                 },
             },
         },
     };
-    result.unwrap_or_else(|error| {
-        tracing::error!("{error}");
-        ExitCode::FAILURE
-    })
+    finish(&interrupt, prefix, result).await
+}
+
+/// The exit status of the run. Ctrl+C decides it, and an error that came with or after it is only detail; otherwise
+/// it is the run's own status, or failure with the reason logged under `prefix`.
+async fn finish(
+    interrupt: &Interrupt,
+    prefix: &str,
+    result: Result<ExitCode, Box<dyn Error>>,
+) -> ExitCode {
+    // A startup step that failed may have run without awaiting, so the runtime's signal driver may not have handed
+    // over a Ctrl+C that came during it yet.
+    tokio::task::yield_now().await;
+    let Some(interrupted) = interrupt.status() else {
+        return result.unwrap_or_else(|error| fail(prefix, error));
+    };
+    // Error level, so every --log-level shows it, as Python prints it whatever the level.
+    tracing::error!("Application interrupted by user");
+    if let Err(error) = result {
+        tracing::debug!("{prefix}{error}");
+        if let Some(causes) = causes(error.as_ref()) {
+            tracing::debug!("{causes}");
+        }
+    }
+    interrupted
+}
+
+/// Logs `error` after `prefix`, then its chain of causes at DEBUG, which is where Python shows its traceback.
+fn fail(prefix: &str, error: Box<dyn Error>) -> ExitCode {
+    tracing::error!("{prefix}{error}");
+    if let Some(causes) = causes(error.as_ref()) {
+        tracing::debug!("{causes}");
+    }
+    ExitCode::FAILURE
+}
+
+/// What caused `error`, one line for each link of its source chain; none when it has no source.
+fn causes(error: &dyn Error) -> Option<String> {
+    let lines: Vec<String> = std::iter::successors(error.source(), |cause| (*cause).source())
+        .map(|cause| format!("caused by: {cause}"))
+        .collect();
+    (!lines.is_empty()).then(|| lines.join("\n"))
 }
 
 /// The folder of the user's render catalogs: the `storage.catalog_dir` setting, else the standard folder.
@@ -266,8 +325,9 @@ async fn host_desktop(
     share_address: SocketAddr,
     plugins: Arc<Plugins>,
     launch: Option<Launch>,
+    interrupt: &Interrupt,
 ) -> Result<ExitCode, Box<dyn Error>> {
-    let services = Services::start(paths, plugins, launch)?;
+    let services = Services::start(paths, plugins, launch, interrupt)?;
     let port = std::env::var("PORT")
         .unwrap_or_else(|_| "7330".into())
         .parse::<u16>()?;
@@ -290,9 +350,10 @@ async fn serve(
     paths: &Paths,
     args: ServeArgs,
     plugins: Arc<Plugins>,
+    interrupt: &Interrupt,
 ) -> Result<ExitCode, Box<dyn Error>> {
     share::refuse_development_build().map_err(|reason| format!("serve: {reason}"))?;
-    let services = Services::start(paths, plugins, None)?;
+    let services = Services::start(paths, plugins, None, interrupt)?;
     let chosen = std::env::var(PASSWORD_VARIABLE)
         .ok()
         .filter(|text| !text.is_empty());
