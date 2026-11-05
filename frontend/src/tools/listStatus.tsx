@@ -1,6 +1,7 @@
 import { reasonOf } from "../errors";
 import type { FileScopeUnavailable, SearchWire } from "../generated/api";
 import type { ReactNode } from "react";
+import type { FileScopeView } from "../playback/fileScope";
 import { SCOPES, type Scope } from "./listState";
 
 /** What File scope says when the backend has no rows, but for a failure, which says why. */
@@ -39,7 +40,8 @@ export function listMessage(
   count: number,
   total: number,
 ): ReactNode {
-  if (inFile && unavailable)
+  // A page that could not be refreshed keeps its rows; `staleOf` says so beside them.
+  if (inFile && unavailable && !loaded)
     return (
       <p role="status" aria-busy={unavailable.state === "Reading"} className="m-0 p-m text-muted">
         {unavailable.state === "Failed" ? reasonOf(unavailable) : UNAVAILABLE[unavailable.state]}
@@ -58,4 +60,11 @@ export function listMessage(
       </p>
     );
   return null;
+}
+
+/** What to say over rows that are the last ones the backend gave because it could not list them again, or `null`. */
+export function staleOf({ page, unavailable }: FileScopeView): string | null {
+  return page !== null && unavailable?.state === "Failed"
+    ? `Out of date: ${reasonOf(unavailable)}`
+    : null;
 }

@@ -266,6 +266,29 @@ describe("File scope", () => {
     expect(screen.queryByRole("listbox")).toBeNull();
   });
 
+  it("keeps the rows of a list that could not be refreshed, says so, and asks again on Retry", () => {
+    const { files, queries, answer } = mount();
+    showFile();
+    answer([file("7", 3)]);
+    search("car");
+    const request = (queries().at(-1) as { request: number }).request;
+    const unavailable = {
+      state: "Failed",
+      code: "Internal",
+      params: {},
+      reason: "Disk full",
+    } as const;
+    act(() => files.receive({ type: "FileScope", lane: 0, request, unavailable }));
+    expect(ids()).toEqual(["7"]);
+    expect(screen.getByText("Out of date: Disk full")).toBeTruthy();
+
+    const before = queries().length;
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    expect(queries()).toHaveLength(before + 1);
+    answer([file("7", 3)]);
+    expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
+  });
+
   it("stops asking for the list when Frame scope is shown again or the panel goes away", () => {
     const { files, answer, unmount } = mount();
     showFile();
