@@ -175,7 +175,10 @@ export function LaneMenuTiming({
             max={MAX_MS}
             step={1}
             disabled={!sticky.enabled || !limited}
-            onCommit={(timeout_ms) => onChange({ sticky: { ...sticky, timeout_ms } })}
+            onCommit={(timeout_ms) =>
+              timeout_ms !== null &&
+              onChange({ sticky: { ...sticky, timeout_ms }, kept_timeout_ms: timeout_ms })
+            }
           />
         </div>
         <NumberField

@@ -74,10 +74,18 @@ describe("lanes", () => {
       tolerance_ms: null,
       sticky: { enabled: false, timeout_ms: null },
     };
-    const seed = { ...LANE_SETTINGS, tolerance_ms: 100 };
+    const typed = { enabled: true, timeout_ms: 500, opacity: 1 };
+    const seed = { ...LANE_SETTINGS, tolerance_ms: 100, sticky: typed, kept_timeout_ms: 500 };
     const sent = lanes.open([{ ...LANES[0], policy: kept }, LANES[1]], LANE_SETTINGS, [seed, seed]);
     expect(sent).toMatchObject([{ policy: kept }]);
     expect(lanes.states[0].settings.sticky.opacity).toBe(1);
+    expect(lanes.states[0].settings).toMatchObject({
+      sticky: { timeout_ms: null },
+      kept_timeout_ms: 500,
+    });
+    const limited = { ...kept, sticky: { enabled: true, timeout_ms: 700 } };
+    lanes.open([{ ...LANES[0], policy: limited }, LANES[1]], LANE_SETTINGS);
+    expect(lanes.states[0].settings.kept_timeout_ms).toBe(700);
   });
 
   it("subscribes every source lane when the entry opens, keeping the user's settings across a reconnection", () => {

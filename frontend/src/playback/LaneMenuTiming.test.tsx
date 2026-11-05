@@ -66,7 +66,10 @@ describe("lane menu timing", () => {
     fireEvent.change(timeout, { target: { value: "500" } });
     expect(onChange).toHaveBeenCalledTimes(1);
     fireEvent.blur(timeout);
-    expect(onChange).toHaveBeenLastCalledWith({ sticky: { ...sticky, timeout_ms: 500 } });
+    expect(onChange).toHaveBeenLastCalledWith({
+      sticky: { ...sticky, timeout_ms: 500 },
+      kept_timeout_ms: 500,
+    });
     const opacity = screen.getByRole("spinbutton", { name: "Reused overlay opacity" });
     fireEvent.change(opacity, { target: { value: "0.4" } });
     fireEvent.keyDown(opacity, { key: "Enter" });
@@ -137,10 +140,16 @@ describe("lane menu timing", () => {
     const timeout = screen.getByRole("spinbutton", { name: "Timeout (ms)" });
     fireEvent.change(timeout, { target: { value: "250000" } });
     fireEvent.blur(timeout);
-    expect(onChange).toHaveBeenLastCalledWith({ sticky: { ...sticky, timeout_ms: 100_000 } });
+    expect(onChange).toHaveBeenLastCalledWith({
+      sticky: { ...sticky, timeout_ms: 100_000 },
+      kept_timeout_ms: 100_000,
+    });
     fireEvent.change(timeout, { target: { value: "500.5" } });
     fireEvent.blur(timeout);
-    expect(onChange).toHaveBeenLastCalledWith({ sticky: { ...sticky, timeout_ms: 501 } });
+    expect(onChange).toHaveBeenLastCalledWith({
+      sticky: { ...sticky, timeout_ms: 501 },
+      kept_timeout_ms: 501,
+    });
   });
 
   it("offers a basis only when the file offers two, and sync, savable as the default, only under time", () => {

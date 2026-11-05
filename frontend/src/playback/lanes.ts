@@ -99,6 +99,7 @@ export function startWith(
   return {
     ...settings,
     ...timing,
+    kept_timeout_ms: timing?.sticky.timeout_ms ?? settings.kept_timeout_ms,
     catalog: usableCatalog(catalogs, personal)?.id ?? settings.catalog,
   };
 }
@@ -109,6 +110,7 @@ const withPolicy = (settings: LaneSettings, policy: LanePolicyWire): LaneSetting
   basis: policy.basis,
   tolerance_ms: policy.tolerance_ms,
   sticky: { ...policy.sticky, opacity: settings.sticky.opacity },
+  kept_timeout_ms: policy.sticky.timeout_ms ?? settings.kept_timeout_ms,
 });
 
 /** The timeout a lane gets when the user limits a retention that has never had one. */
