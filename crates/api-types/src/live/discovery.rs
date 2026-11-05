@@ -198,6 +198,16 @@ pub struct ScanRequestWire {
     /// The addresses and ranges to scan, such as `192.168.1.0/24`. Blank is the local network; absent is the
     /// `scan.range` setting.
     pub range: Option<String>,
+    /// Whether to sign in to the cameras found, for this scan only; absent is the `scan.sign_in` setting.
+    pub sign_in: Option<bool>,
+}
+
+/// The answer of `POST /api/network/scan`.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
+pub struct ScanStarted {
+    /// The number of the scan started; the `scan` of its snapshots, and of every later scan's.
+    #[ts(type = "number")]
+    pub scan: u64,
 }
 
 /// The cameras the scan has found so far; one line of the `GET /api/network` stream.
@@ -210,4 +220,7 @@ pub struct NetworkSnapshot {
     pub scanning: bool,
     /// The cameras, by address.
     pub rows: Vec<NetworkRow>,
+    /// Why the scan stopped before it was over, with the cameras found until then in `rows`; `null` when it ended as
+    /// it should or was stopped. Free text for whoever may watch scans.
+    pub failure: Option<String>,
 }

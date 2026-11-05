@@ -162,6 +162,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         SourcesAnswer,
         LiveProblem,
         ScanRequestWire,
+        ScanStarted,
         NetworkSnapshot,
         LiveCheckRequest,
         ExpansionsRequest,

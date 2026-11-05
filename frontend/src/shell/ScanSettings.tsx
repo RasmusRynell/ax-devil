@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useGrants } from "../access";
+import type { NetworkSnapshot } from "../generated/api";
 import { type SettingKey } from "../generated/settings";
 import { Button } from "../kit/Button";
 import { Checkbox } from "../kit/Fields";
@@ -8,18 +9,28 @@ import { SectionCaption } from "../kit/SectionCaption";
 import { rescan, type ScanProblem } from "../live/network";
 import { useSettings } from "../settings";
 import { LoginsEditor } from "./LoginsEditor";
-import { Refusal, type Value } from "./SettingField";
+import { type Value } from "./SettingField";
+import { useScanGuard } from "./useScanGuard";
 
 const SIGN_IN_HINT =
   "Tries these logins in order on each Axis device found, to read more about it and add it with the login that worked.\nPasswords go only as HTTP Digest answers. Settings edits the same list.";
 
 /**
- * The foot of the Live view: the settings of the network scan. The IP range with Rescan, which waits while a scan
- * runs, and for whoever may configure the server, whether to sign in to found cameras and the logins to try. The
- * header says how the last scan went, with the reason on hover, and a thin line over the top edge shows a scan
- * running.
+ * The foot of the Live view: the settings of the network scan. The IP range with Rescan, which needs the snapshot
+ * stream to be open and waits from the press until the scan it started has run, and for whoever may configure the
+ * server, whether to sign in to found cameras and the logins to try. The sign-in box is this view's own choice for the scans it starts, which the `scan.sign_in`
+ * setting only seeds; the logins are the setting's, saved as they are edited. The header says how the last scan went,
+ * with the reason on hover, and a thin line over the top edge shows a scan running.
  */
-export function ScanSettings({ scanning }: { scanning: boolean }) {
+export function ScanSettings({
+  snapshot,
+  epoch,
+  connected,
+}: {
+  snapshot: NetworkSnapshot | null;
+  epoch: number;
+  connected: boolean;
+}) {
   const { values, shortcuts, save } = useSettings();
   const configures = useGrants().includes("configuration");
   const range = values["scan.range"];
@@ -28,7 +39,16 @@ export function ScanSettings({ scanning }: { scanning: boolean }) {
   const [typed, setTyped] = useState<string | null>(null);
   /** Why the last scan was refused; shown until the next one starts. */
   const [refused, setRefused] = useState<ScanProblem | null>(null);
-  const [problem, setProblem] = useState<string | null>(null);
+  // The box follows the setting until the user sets it, and again whenever the setting changes.
+  const setting = values["scan.sign_in"] !== false;
+  const [chosen, setChosen] = useState<boolean | null>(null);
+  const [seen, setSeen] = useState(setting);
+  if (seen !== setting) {
+    setSeen(setting);
+    setChosen(null);
+  }
+  const signIn = chosen ?? setting;
+  const { scanning, press } = useScanGuard(snapshot, epoch);
   const logins = values["scan.logins"];
 
   /** Saves one setting; resolves to why the backend refused it, else `null`. */
@@ -37,14 +57,24 @@ export function ScanSettings({ scanning }: { scanning: boolean }) {
       (refusal) => refusal?.reason ?? null,
     );
 
+  const ready = connected && !scanning;
   const scan = () => {
-    if (scanning) return;
-    const asked = typed?.trim();
-    void rescan(asked === undefined || asked === stored.trim() ? undefined : asked).then(
+    if (!ready) return;
+    const range = typed?.trim();
+    // Only a caller who configures may turn sign-in on for a scan; the others leave it to the setting.
+    press(
+      () =>
+        rescan(
+          range === undefined || range === stored.trim() ? undefined : range,
+          configures ? signIn : undefined,
+        ),
       setRefused,
     );
   };
-  const failed = scanning ? null : refused;
+  const reason = snapshot?.failure;
+  const failed = scanning
+    ? null
+    : (refused ?? (reason ? { text: "Scan failed" as const, reason } : null));
   const status = scanning
     ? { text: "Scanning…" }
     : failed
@@ -78,7 +108,7 @@ export function ScanSettings({ scanning }: { scanning: boolean }) {
             onKeyDown={(event) => event.key === "Enter" && scan()}
             className={`${FIELD} min-w-0 flex-1 text-small`}
           />
-          <Button size="small" icon="wifi" disabled={scanning} onClick={scan}>
+          <Button size="small" icon="wifi" disabled={!ready} onClick={scan}>
             Rescan
           </Button>
         </div>
@@ -90,10 +120,10 @@ export function ScanSettings({ scanning }: { scanning: boolean }) {
               label="Try to sign in to found cameras"
               title={SIGN_IN_HINT}
               className="text-small"
-              checked={values["scan.sign_in"] === true}
-              onChange={(on) => void store("scan.sign_in", on).then(setProblem)}
+              checked={signIn}
+              onChange={setChosen}
             />
-            {values["scan.sign_in"] === true && (
+            {signIn && (
               <LoginsEditor
                 logins={Array.isArray(logins) ? logins : []}
                 onSave={(next) => store("scan.logins", next)}
@@ -101,7 +131,6 @@ export function ScanSettings({ scanning }: { scanning: boolean }) {
             )}
           </div>
         )}
-        {problem && <Refusal reason={problem} />}
       </div>
     </section>
   );

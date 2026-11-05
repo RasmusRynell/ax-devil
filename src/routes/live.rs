@@ -11,7 +11,7 @@ use super::handlers::{Refusal, refuse};
 use crate::{
     AppState,
     access::Principal,
-    live_sources, network,
+    camera_questions, live_sources,
     session::live::{confirm as store, defaults, environment},
 };
 use api_types::{
@@ -118,7 +118,7 @@ pub(super) async fn resolutions(
 ) -> Result<Json<LiveResolutions>, Problem> {
     let camera = camera(&state, principal, request.connection)?;
     let timeout = live_sources::timeout(&state.settings.state());
-    network::resolutions(&camera, timeout)
+    camera_questions::resolutions(&camera, timeout)
         .await
         .map(Json)
         .map_err(camera_failed)
@@ -133,10 +133,10 @@ pub(super) async fn sources(
     let camera = camera(&state, principal, request.connection)?;
     let timeout = live_sources::timeout(&state.settings.state());
     let answer = match request.overlay {
-        SourcesOverlay::Mqtt => network::analytics_sources(&camera, timeout)
+        SourcesOverlay::Mqtt => camera_questions::analytics_sources(&camera, timeout)
             .await
             .map(SourcesAnswer::Mqtt),
-        SourcesOverlay::DataHub => network::datahub_topics(&camera, timeout)
+        SourcesOverlay::DataHub => camera_questions::datahub_topics(&camera, timeout)
             .await
             .map(|topics| SourcesAnswer::DataHub(LiveTopics { topics })),
     };

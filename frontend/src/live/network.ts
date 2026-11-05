@@ -2,9 +2,9 @@
 
 import { useEffect, useState } from "react";
 import { apiFetch } from "../api";
-import type { NetworkRow, NetworkSignIn, NetworkSnapshot } from "../generated/api";
+import type { NetworkRow, NetworkSignIn, NetworkSnapshot, ScanStarted } from "../generated/api";
 import type { Tone } from "../kit/look";
-import { post, send } from "./send";
+import { ask, send } from "./send";
 
 const RETRY_MS = 2000;
 
@@ -84,15 +84,28 @@ export function splitLines(pending: string, chunk: string): { lines: string[]; r
   return { lines: parts.filter((line) => line.trim() !== ""), rest };
 }
 
-/** The scan as the backend last said; `dropped` while the stream is down and being reopened. */
-export type Network = { snapshot: NetworkSnapshot | null; dropped: boolean };
+/**
+ * The scan as the backend last said; `dropped` while the stream is down and being reopened. `epoch` counts the times
+ * the stream has been opened, for what must not outlive a connection: a restarted backend numbers its scans again.
+ * `connected` is whether the stream has opened and not dropped since, so what is shown can be taken as current.
+ */
+export type Network = {
+  snapshot: NetworkSnapshot | null;
+  dropped: boolean;
+  epoch: number;
+  connected: boolean;
+};
 
 /**
  * Follows `GET /api/network` while `enabled`, reopening the stream after a drop. A snapshot of an older scan than one
  * already shown is ignored, within one connection.
  */
 export function useNetwork(enabled: boolean): Network {
-  const [state, setState] = useState<Network>({ snapshot: null, dropped: false });
+  const [state, setState] = useState<Omit<Network, "connected">>({
+    snapshot: null,
+    dropped: false,
+    epoch: 0,
+  });
   useEffect(() => {
     if (!enabled) return;
     const stop = new AbortController();
@@ -102,7 +115,7 @@ export function useNetwork(enabled: boolean): Network {
       try {
         const response = await apiFetch("/api/network", { signal: stop.signal });
         if (!response.ok || !response.body) throw new Error(`answered ${response.status}`);
-        setState((now) => ({ ...now, dropped: false }));
+        setState((now) => ({ ...now, dropped: false, epoch: now.epoch + 1 }));
         const reader = response.body.getReader();
         const decoder = new TextDecoder();
         let pending = "";
@@ -115,7 +128,7 @@ export function useNetwork(enabled: boolean): Network {
             const snapshot = JSON.parse(line) as NetworkSnapshot;
             if (snapshot.scan < latest) continue;
             latest = snapshot.scan;
-            setState({ snapshot, dropped: false });
+            setState((now) => ({ ...now, snapshot, dropped: false }));
           }
         }
       } catch {
@@ -131,24 +144,32 @@ export function useNetwork(enabled: boolean): Network {
       clearTimeout(timer);
     };
   }, [enabled]);
-  return enabled ? state : { snapshot: null, dropped: false };
+  return enabled
+    ? { ...state, connected: state.epoch > 0 && !state.dropped }
+    : { snapshot: null, dropped: false, epoch: 0, connected: false };
 }
 
 /** What a refused scan shows in the header: a range the backend cannot scan, or a scan that could not start. */
 export type ScanProblem = { text: "Invalid IP range" | "Scan failed"; reason: string };
 
 /**
- * Starts a scan of `range`; `undefined` scans the `scan.range` setting, blank the local network. Resolves to why it was
- * refused, else `null`.
+ * Starts a scan of `range`; `undefined` scans the `scan.range` setting, blank the local network. `signIn` says for this
+ * scan whether to try the logins on the cameras found; `undefined` follows the `scan.sign_in` setting. Resolves to
+ * the started scan's number, which its snapshots carry, else to why it was refused.
  */
-export const rescan = (range?: string): Promise<ScanProblem | null> =>
-  post("/api/network/scan", range === undefined ? {} : { range }).then(
-    (refused) =>
-      refused && {
-        text: refused.status === 422 ? "Invalid IP range" : "Scan failed",
-        reason: refused.reason,
-      },
-  );
+export async function rescan(range?: string, signIn?: boolean): Promise<number | ScanProblem> {
+  const answer = await ask("/api/network/scan", { range, sign_in: signIn });
+  if (!(answer instanceof Response))
+    return {
+      text: answer.status === 422 ? "Invalid IP range" : "Scan failed",
+      reason: answer.reason,
+    };
+  try {
+    return ((await answer.json()) as ScanStarted).scan;
+  } catch {
+    return { text: "Scan failed", reason: "the backend's answer could not be read" };
+  }
+}
 
 /** Stops the running scan, keeping what it found. */
 export const cancelScan = (): Promise<string | null> => send("/api/network/cancel");

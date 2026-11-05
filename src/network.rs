@@ -1,6 +1,5 @@
-//! The network scan and the questions the live form asks a camera: what the cameras found on a range of addresses
-//! are, which stream sizes a camera offers and which analytics it publishes. The routes that serve them are adapters
-//! over these functions.
+//! The network scan: what the cameras found on a range of addresses are. The routes that serve it are adapters over
+//! these functions.
 //!
 //! A scan is the only thing that contacts hosts on its own account, and only when the user (or the setting that
 //! starts one at launch) asks. Opening a viewer is what contacts a camera for a stream; the sidebar's snapshots and
@@ -9,24 +8,20 @@
 
 use std::{
     net::Ipv4Addr,
+    panic::AssertUnwindSafe,
     sync::{Arc, Mutex, PoisonError},
     time::Duration,
 };
 
-use api_types::live::{
-    LiveHeadResolutions, LiveProtocol, LiveReason, LiveResolution, LiveResolutions,
-    LiveSources as SourcesWire, NetworkIdentity, NetworkRow, NetworkSignIn, NetworkSnapshot,
-};
-use camera::{Device, Found, Login, ScanLoad, ScanPorts, Scheme, Secret, SignIn, Targets, scan};
+use api_types::live::{LiveProtocol, NetworkIdentity, NetworkRow, NetworkSignIn, NetworkSnapshot};
+use camera::{Found, Login, ScanLoad, ScanPorts, Scheme, Secret, SignIn, Targets, scan};
 use foundation::{ErrorCode, Location, UserError};
+use futures_util::FutureExt;
 use tokio::{
     sync::{mpsc, watch},
     task::JoinHandle,
     time::{MissedTickBehavior, interval},
 };
-use workspace::ResolvedCamera;
-
-use crate::live_sources::{camera_of, reason};
 
 /// How often a running scan publishes the cameras it found since the last time.
 pub const SNAPSHOT_EVERY: Duration = Duration::from_millis(100);
@@ -118,6 +113,7 @@ impl Network {
                 scan: 0,
                 scanning: false,
                 rows: Vec::new(),
+                failure: None,
             }))
             .0,
         })
@@ -146,6 +142,7 @@ impl Network {
             scan: number,
             scanning: true,
             rows: Vec::new(),
+            failure: None,
         }));
         let network = Arc::clone(self);
         running.task = Some(tokio::spawn(async move {
@@ -191,8 +188,15 @@ impl Network {
         Some((row.clone(), login))
     }
 
-    /// Publishes scan `number`'s state unless a newer scan began or it was cancelled.
-    fn publish(&self, number: u64, rows: &[(Ipv4Addr, NetworkRow)], scanning: bool) {
+    /// Publishes scan `number`'s state unless a newer scan began or it was cancelled, which keeps a scan that no
+    /// longer owns the snapshot from reporting its end.
+    fn publish(
+        &self,
+        number: u64,
+        rows: &[(Ipv4Addr, NetworkRow)],
+        scanning: bool,
+        failure: Option<String>,
+    ) {
         let running = self.running.lock().unwrap_or_else(PoisonError::into_inner);
         if running.scan != number || running.task.is_none() {
             return;
@@ -203,12 +207,31 @@ impl Network {
             scan: number,
             scanning,
             rows: rows.into_iter().map(|(_, row)| row).collect(),
+            failure,
         }));
     }
 
+    /// Runs scan `number` to its end. A scan that panics ends as a failure, with the cameras found until then.
     async fn run(&self, number: u64, request: ScanRequest) {
+        let mut rows = Vec::new();
+        let ended = AssertUnwindSafe(self.collect(number, request, &mut rows))
+            .catch_unwind()
+            .await;
+        let failure = ended.is_err().then(|| {
+            tracing::warn!("Scan {number} stopped unexpectedly");
+            "The scan stopped unexpectedly.".to_owned()
+        });
+        self.publish(number, &rows, false, failure);
+    }
+
+    /// Gathers what the scanner finds into `rows`, publishing them every [`SNAPSHOT_EVERY`] as they grow.
+    async fn collect(
+        &self,
+        number: u64,
+        request: ScanRequest,
+        rows: &mut Vec<(Ipv4Addr, NetworkRow)>,
+    ) {
         let mut found = (self.scanner)(request);
-        let mut rows: Vec<(Ipv4Addr, NetworkRow)> = Vec::new();
         let mut changed = false;
         let mut tick = interval(SNAPSHOT_EVERY);
         tick.set_missed_tick_behavior(MissedTickBehavior::Skip);
@@ -223,13 +246,12 @@ impl Network {
                 },
                 _ = tick.tick() => {
                     if changed {
-                        self.publish(number, &rows, true);
+                        self.publish(number, rows, true, None);
                         changed = false;
                     }
                 }
             }
         }
-        self.publish(number, &rows, false);
     }
 }
 
@@ -266,11 +288,13 @@ fn configured_logins(state: &settings::State) -> Vec<Login> {
 }
 
 /// The scan the settings describe, over `range` when given and else `scan.range`; blank is the local network. It asks
-/// each host over `camera.protocol` first. Its logins are `scan.logins` unless `scan.sign_in` is off, each field
-/// expanded when it is a `$NAME` reference. A range that cannot be scanned is refused with the field named.
+/// each host over `camera.protocol` first. Its logins are `scan.logins` unless sign-in is off, which `sign_in` says
+/// for this scan and else `scan.sign_in` does; each field is expanded when it is a `$NAME` reference. A range that
+/// cannot be scanned is refused with the field named.
 pub fn request_from_settings(
     state: &settings::State,
     range: Option<&str>,
+    sign_in: Option<bool>,
     load: ScanLoad,
 ) -> Result<ScanRequest, UserError> {
     let (text, field) = match range {
@@ -287,10 +311,12 @@ pub fn request_from_settings(
         UserError::new(ErrorCode::WorkspaceInvalid, error.detail().to_owned())
             .at(Location::field(field))
     })?;
-    let signs_in = state
-        .stored("scan.sign_in")
-        .and_then(|value| value.as_bool())
-        .unwrap_or(true);
+    let signs_in = sign_in.unwrap_or_else(|| {
+        state
+            .stored("scan.sign_in")
+            .and_then(|value| value.as_bool())
+            .unwrap_or(true)
+    });
     let logins = if signs_in {
         configured_logins(state)
     } else {
@@ -322,7 +348,7 @@ pub fn scan_on_startup(network: &Arc<Network>, state: &settings::State) {
     if !on {
         return;
     }
-    match request_from_settings(state, None, ScanLoad::Startup) {
+    match request_from_settings(state, None, None, ScanLoad::Startup) {
         Ok(request) => {
             network.rescan(ScanRequest {
                 logins: Vec::new(),
@@ -331,77 +357,6 @@ pub fn scan_on_startup(network: &Arc<Network>, state: &settings::State) {
         }
         Err(error) => tracing::warn!("The scan at launch cannot start: {}", error.reason),
     }
-}
-
-fn device(camera: &ResolvedCamera, timeout: Duration) -> Result<Device, LiveReason> {
-    camera_of(camera, timeout)
-        .and_then(|camera| Device::new(&camera))
-        .map_err(|error| {
-            tracing::warn!("A camera cannot be addressed: {error}");
-            reason(error.kind)
-        })
-}
-
-fn failed(what: &str, error: &camera::CameraError) -> LiveReason {
-    tracing::warn!("Asking a camera for {what} failed: {error}");
-    reason(error.kind)
-}
-
-/// The stream sizes of every head of `camera`. Contacts the camera, with its login.
-pub async fn resolutions(
-    camera: &ResolvedCamera,
-    timeout: Duration,
-) -> Result<LiveResolutions, LiveReason> {
-    let found = device(camera, timeout)?
-        .image_sizes()
-        .await
-        .map_err(|error| failed("its resolutions", &error))?;
-    let wire = |sizes: Vec<camera::Resolution>| {
-        sizes
-            .into_iter()
-            .map(|size| LiveResolution {
-                width: size.width,
-                height: size.height,
-            })
-            .collect()
-    };
-    Ok(LiveResolutions {
-        listed: found.listed,
-        common: wire(found.common),
-        heads: found
-            .heads
-            .into_iter()
-            .map(|(head, sizes)| LiveHeadResolutions {
-                head: head.number(),
-                resolutions: wire(sizes),
-            })
-            .collect(),
-    })
-}
-
-/// The analytics data sources `camera` can publish over MQTT. Contacts the camera, with its login.
-pub async fn analytics_sources(
-    camera: &ResolvedCamera,
-    timeout: Duration,
-) -> Result<SourcesWire, LiveReason> {
-    let sources = device(camera, timeout)?
-        .analytics_sources()
-        .await
-        .map_err(|error| failed("its analytics sources", &error))?;
-    Ok(SourcesWire {
-        sources: sources.into_iter().map(|source| source.0).collect(),
-    })
-}
-
-/// The DataHub topics `camera` offers. Contacts the camera, with its login.
-pub async fn datahub_topics(
-    camera: &ResolvedCamera,
-    timeout: Duration,
-) -> Result<Vec<String>, LiveReason> {
-    device(camera, timeout)?
-        .datahub_topics()
-        .await
-        .map_err(|error| failed("its DataHub topics", &error))
 }
 
 #[cfg(test)]
@@ -421,9 +376,12 @@ mod tests {
 
         scan_on_startup(&network, &state);
         assert_eq!(requests.recv().await, Some(0));
-        let pressed = request_from_settings(&state, None, ScanLoad::Normal).unwrap();
+        let pressed = request_from_settings(&state, None, None, ScanLoad::Normal).unwrap();
         network.rescan(pressed);
         assert_eq!(requests.recv().await, Some(1));
+        // The footer's choice for one scan wins over the setting, either way, and leaves the setting alone.
+        let off = request_from_settings(&state, None, Some(false), ScanLoad::Normal).unwrap();
+        assert!(off.logins.is_empty());
     }
 
     #[test]
@@ -497,13 +455,36 @@ mod tests {
         let number = network.rescan(request(&[]));
         network.cancel();
         // The scan's timer was waiting for the lock cancel held, and publishes once it has it.
-        network.publish(
-            number,
-            &[(Ipv4Addr::new(10, 9, 9, 2), row(&found_signed_in(0)))],
-            true,
+        let rows = [(Ipv4Addr::new(10, 9, 9, 2), row(&found_signed_in(0)))];
+        network.publish(number, &rows, true, None);
+        assert!(!network.snapshot().scanning);
+        network.publish(number, &rows, false, Some("failed".to_owned()));
+        assert!(!network.snapshot().scanning);
+        assert_eq!(network.snapshot().failure, None);
+    }
+
+    #[tokio::test]
+    async fn a_scan_that_panics_ends_as_a_failure_the_next_scan_clears() {
+        let calls = std::sync::atomic::AtomicUsize::new(0);
+        let network = Network::with_scanner(move |_| {
+            let earlier = calls.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            assert!(earlier > 0, "the first scan breaks");
+            mpsc::channel(1).1
+        });
+        let mut snapshots = network.subscribe();
+        let first = network.rescan(request(&[]));
+        let ended = snapshots
+            .wait_for(|now| now.scan == first && !now.scanning)
+            .await
+            .unwrap()
+            .clone();
+        assert!(ended.failure.is_some());
+
+        let second = network.rescan(request(&[]));
+        let now = network.snapshot();
+        assert_eq!(
+            (now.scan, now.scanning, now.failure.as_deref()),
+            (second, true, None)
         );
-        assert!(!network.snapshot().scanning);
-        network.publish(number, &[], false);
-        assert!(!network.snapshot().scanning);
     }
 }

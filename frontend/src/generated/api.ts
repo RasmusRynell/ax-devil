@@ -2612,7 +2612,20 @@ export type ScanRequestWire = {
  * The addresses and ranges to scan, such as `192.168.1.0/24`. Blank is the local network; absent is the
  * `scan.range` setting.
  */
-range?: string, };
+range?: string, 
+/**
+ * Whether to sign in to the cameras found, for this scan only; absent is the `scan.sign_in` setting.
+ */
+sign_in?: boolean, };
+
+/**
+ * The answer of `POST /api/network/scan`.
+ */
+export type ScanStarted = { 
+/**
+ * The number of the scan started; the `scan` of its snapshots, and of every later scan's.
+ */
+scan: number, };
 
 /**
  * The cameras the scan has found so far; one line of the `GET /api/network` stream.
@@ -2629,7 +2642,12 @@ scanning: boolean,
 /**
  * The cameras, by address.
  */
-rows: Array<NetworkRow>, };
+rows: Array<NetworkRow>, 
+/**
+ * Why the scan stopped before it was over, with the cameras found until then in `rows`; `null` when it ended as
+ * it should or was stopped. Free text for whoever may watch scans.
+ */
+failure: string | null, };
 
 /**
  * The body of `POST /api/live/check`: the stream whose own login is checked. The answer is the camera as a scan would
