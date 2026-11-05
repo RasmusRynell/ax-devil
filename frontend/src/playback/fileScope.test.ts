@@ -143,6 +143,38 @@ describe("asking", () => {
     expect(files.view(0)).toMatchObject({ pending: true, page: { matched: 1 } });
   });
 
+  it("keeps the rows when a refresh fails, resends on flush, and drops them once the file's data changed", () => {
+    const { files, lanes, queries, rows, ask, last } = scope();
+    const failed = { state: "Failed", code: "Internal", params: {}, reason: "Disk full" } as const;
+    const fail = () =>
+      files.receive({ type: "FileScope", lane: 0, request: last(), unavailable: failed });
+    ask();
+    files.receive(rows(last()));
+    lanes.set(0, { tolerance_ms: 120 });
+    files.refresh();
+    vi.advanceTimersByTime(150);
+    fail();
+    expect(files.view(0)).toMatchObject({
+      pending: false,
+      page: { rows: [ROW] },
+      unavailable: failed,
+    });
+
+    // Retry asks the same question again, once, and its rows end the failure.
+    files.flush(0);
+    const [, previous, retried] = queries().map((query) => ({ ...query, request: 0 }));
+    expect(queries()).toHaveLength(3);
+    expect(retried).toEqual(previous);
+    files.receive(rows(last(), { policy_revision: 2 }));
+    expect(files.view(0)).toMatchObject({ page: { rows: [ROW] }, unavailable: null });
+
+    lanes.setStatus(0, { ...READY, data_revision: 2 });
+    files.refresh();
+    vi.advanceTimersByTime(150);
+    fail();
+    expect(files.view(0)).toMatchObject({ page: null, unavailable: failed });
+  });
+
   it("carries the object the cursor moved to in the next question, and asks nothing for the move", () => {
     const { files, lanes, queries, rows, ask, last } = scope();
     const locate = () => (queries().at(-1) as { locate: string | null }).locate;

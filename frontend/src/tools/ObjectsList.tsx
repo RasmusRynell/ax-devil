@@ -8,6 +8,7 @@ import {
   type ReactNode,
 } from "react";
 import type { FileRowWire } from "../generated/api";
+import { Button } from "../kit/Button";
 import { SegmentedControl } from "../kit/Chips";
 import type { LaneFrame } from "../playback/contract";
 import type { FileScope } from "../playback/fileScope";
@@ -29,7 +30,7 @@ import { neighbour, type Steps } from "./pageStack";
 import { FRAME_COLUMNS, fileColumns } from "./objectColumns";
 import { openRow } from "./openRow";
 import { SCOPES, type ListState, type Scope } from "./listState";
-import { listMessage, noticeOf } from "./listStatus";
+import { listMessage, noticeOf, staleOf } from "./listStatus";
 import { MiddleElided } from "../kit/MiddleElided";
 import { SearchBar } from "./SearchBar";
 import { nextSort } from "./table/columns";
@@ -111,6 +112,7 @@ export function ObjectsList({
   // File scope's request has its own pause; the frame's objects are filtered here, once typing pauses or is committed.
   const [applied, apply] = useApplied(text);
   const [committed, setCommitted] = useState(false);
+  const searchBar = useRef<{ focus(): void }>(null);
   const { wire } = useMemo(() => parseSearch(applied), [applied]);
   const frame = source.shown(lane);
   const objects = useMemo(() => frameObjects(frame), [frame]);
@@ -143,6 +145,7 @@ export function ObjectsList({
   const notice = useMemo(() => noticeOf(inFile, wire, missing), [inFile, wire, missing]);
   const files = useSyncExternalStore(source.files.subscribe, () => source.files.view(lane));
   const { page } = files;
+  const stale = inFile ? staleOf(files) : null;
   const total = inFile ? (page?.total ?? 0) : objects.length;
   const count = inFile ? (page?.matched ?? 0) : found.length;
   const seek = canSeek ? (frameNumber: number) => source.seek(frameNumber) : undefined;
@@ -240,6 +243,7 @@ export function ObjectsList({
         </div>
         <div className="p-m pb-s">
           <SearchBar
+            handle={searchBar}
             label="Search objects"
             value={text}
             onChange={(value) => onList({ ...list, text: value })}
@@ -251,6 +255,21 @@ export function ObjectsList({
           {notice !== null && (
             <div role="status" className="pt-xs text-small text-muted">
               <MiddleElided text={notice} />
+            </div>
+          )}
+          {stale !== null && (
+            <div role="status" className="flex items-center gap-s pt-xs text-small text-muted">
+              <span className="min-w-0 flex-1">{stale}</span>
+              <Button
+                size="small"
+                onClick={() => {
+                  source.files.flush(lane);
+                  // The button goes when the rows arrive; focus is not left on it to be lost then.
+                  searchBar.current?.focus();
+                }}
+              >
+                Retry
+              </Button>
             </div>
           )}
         </div>
