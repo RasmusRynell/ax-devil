@@ -51,6 +51,8 @@ export function EditableLabel({
 
   const onKeyDown = (event: KeyboardEvent) => {
     OWN(event);
+    // Enter and Escape while composing (IME) pick or cancel a candidate; keyCode 229 is the Enter that ends one.
+    if (event.nativeEvent.isComposing || event.keyCode === 229) return;
     if (event.key === "Enter") finish(false, true);
     else if (event.key === "Escape") finish(true, true);
   };

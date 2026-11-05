@@ -57,4 +57,13 @@ describe("editable label", () => {
     const button = screen.getByRole("button", { name: "Alpine" });
     expect(document.activeElement).toBe(button);
   });
+
+  it("ignores Enter while an input method is composing", () => {
+    const { input, onDone } = setup();
+    fireEvent.keyDown(input, { key: "Enter", isComposing: true });
+    fireEvent.keyDown(input, { key: "Enter", keyCode: 229 });
+    expect(onDone).not.toHaveBeenCalled();
+    fireEvent.keyDown(input, { key: "Enter" });
+    expect(onDone).toHaveBeenCalledTimes(1);
+  });
 });
