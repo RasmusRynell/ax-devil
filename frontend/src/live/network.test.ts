@@ -61,6 +61,7 @@ describe("snapshot stream", () => {
       scan,
       scanning: false,
       rows: [row("10.0.0.2", "11.8.1")],
+      failure: null,
     });
     const opened = vi.fn();
     vi.stubGlobal(

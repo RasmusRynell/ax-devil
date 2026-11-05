@@ -2,8 +2,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test"
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { GrantsContext } from "../access";
 import { FakeSettings } from "../fakeSettings";
-import type { ItemState, NetworkRow, NetworkSnapshot, NewLiveWire } from "../generated/api";
+import type { Grant, ItemState, NetworkRow, NetworkSnapshot, NewLiveWire } from "../generated/api";
 import type { AddSeed } from "../live/cameras";
+import type { SettingsApi } from "../settings";
 import { FakeSocket, type Room } from "../session/fakeSession";
 import { SessionProvider } from "../session/session";
 import { LiveView } from "./LiveView";
@@ -21,6 +22,7 @@ let SNAPSHOT: NetworkSnapshot;
 const FOUND: NetworkSnapshot = {
   scan: 1,
   scanning: false,
+  failure: null,
   rows: [
     found("10.0.0.2", { state: "SignedIn", login_index: 0, architecture: "", soc: "" }),
     found("10.0.0.3", { state: "Refused" }),
@@ -70,6 +72,8 @@ const fetched = vi.fn();
 let resolvedFirst = true;
 let refuseScan = false;
 let loginRefused = false;
+// A snapshot stream that stays open, for a test to push scans' snapshots into.
+let follow: ((snapshot: NetworkSnapshot) => void) | null = null;
 
 beforeEach(() => {
   SNAPSHOT = FOUND;
@@ -85,7 +89,17 @@ beforeEach(() => {
       if (url === "/api/live/check" && loginRefused)
         return new Response(JSON.stringify(found("10.0.0.2", { state: "Refused" })));
       if (url !== "/api/network") return new Response(null, { status: 204 });
-      return new Response(`${JSON.stringify(SNAPSHOT)}\n`);
+      if (follow === null) return new Response(`${JSON.stringify(SNAPSHOT)}\n`);
+      return new Response(
+        new ReadableStream<Uint8Array>({
+          start(controller) {
+            const write = (snapshot: NetworkSnapshot) =>
+              controller.enqueue(new TextEncoder().encode(`${JSON.stringify(snapshot)}\n`));
+            write(SNAPSHOT);
+            follow = write;
+          },
+        }),
+      );
     }),
   );
 });
@@ -96,14 +110,22 @@ afterEach(() => {
   fetched.mockClear();
   refuseScan = false;
   loginRefused = false;
+  follow = null;
   window.sessionStorage.clear();
   FakeSocket.reset();
 });
 
-async function renderView(items: ItemState[], onAdd: (seed: AddSeed) => void = () => {}) {
+async function renderView(
+  items: ItemState[],
+  onAdd: (seed: AddSeed) => void = () => {},
+  {
+    grants = ["files", "preferences"],
+    save,
+  }: { grants?: Grant[]; save?: SettingsApi["save"] } = {},
+) {
   render(
-    <GrantsContext value={["files", "preferences"]}>
-      <FakeSettings>
+    <GrantsContext value={grants}>
+      <FakeSettings save={save}>
         <SessionProvider>
           <LiveView onAdd={onAdd} />
         </SessionProvider>
@@ -157,6 +179,59 @@ describe("scanning", () => {
     await renderView([]);
     fireEvent.click(await screen.findByRole("button", { name: "Rescan" }));
     expect(await screen.findByText("Invalid IP range")).toBeTruthy();
+  });
+
+  const scansStarted = () => fetched.mock.calls.filter(([url]) => url === "/api/network/scan");
+  const emit = (snapshot: NetworkSnapshot) =>
+    act(async () => {
+      follow?.(snapshot);
+    });
+
+  it("starts one scan however often Enter is pressed, and shows the cameras as they arrive", async () => {
+    SNAPSHOT = { scan: 0, scanning: false, rows: [], failure: null };
+    follow = () => {};
+    await renderView([]);
+    const range = await screen.findByRole("textbox", { name: "IP range" });
+    fireEvent.keyDown(range, { key: "Enter" });
+    fireEvent.keyDown(range, { key: "Enter" });
+    expect(scansStarted()).toHaveLength(1);
+    expect((screen.getByRole("button", { name: "Rescan" }) as HTMLButtonElement).disabled).toBe(
+      true,
+    );
+
+    await emit({ ...FOUND, scan: 1, scanning: true, rows: FOUND.rows.slice(0, 1) });
+    expect(await screen.findByText("10.0.0.2")).toBeTruthy();
+    expect(screen.getByText("Scanning…")).toBeTruthy();
+    fireEvent.keyDown(range, { key: "Enter" });
+    expect(scansStarted()).toHaveLength(1);
+
+    await emit(FOUND);
+    await waitFor(() =>
+      expect((screen.getByRole("button", { name: "Rescan" }) as HTMLButtonElement).disabled).toBe(
+        false,
+      ),
+    );
+    expect(screen.queryByText("Scanning…")).toBeNull();
+  });
+
+  it("says a scan failed, with the reason, and keeps the cameras it found", async () => {
+    SNAPSHOT = { scan: 0, scanning: false, rows: [], failure: null };
+    follow = () => {};
+    await renderView([]);
+    fireEvent.click(await screen.findByRole("button", { name: "Rescan" }));
+    await emit({ ...FOUND, scan: 1, failure: "The scan stopped unexpectedly." });
+    expect(await screen.findByText("Scan failed")).toBeTruthy();
+    expect(screen.getByTitle("The scan stopped unexpectedly.")).toBeTruthy();
+    expect(screen.getByText("10.0.0.2")).toBeTruthy();
+  });
+
+  it("takes the sign-in box for the scans it starts without saving it", async () => {
+    const save = vi.fn(() => Promise.resolve(null));
+    await renderView([], undefined, { grants: ["files", "configuration"], save });
+    fireEvent.click(await screen.findByRole("checkbox", { name: /sign in to found cameras/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Rescan" }));
+    expect(JSON.parse(scansStarted()[0][1] as string)).toEqual({ sign_in: false });
+    expect(save).not.toHaveBeenCalled();
   });
 });
 

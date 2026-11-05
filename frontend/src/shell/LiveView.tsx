@@ -170,7 +170,7 @@ export function LiveView({ onAdd }: { onAdd: (seed: AddSeed) => void }) {
         onAct={act}
         onConfirm={confirm}
       />
-      {scans && <ScanSettings scanning={snapshot?.scanning === true} />}
+      {scans && <ScanSettings snapshot={snapshot} />}
       {informing && <InformationDialog info={informing} onClose={() => setInforming(null)} />}
     </div>
   );

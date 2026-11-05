@@ -1,6 +1,7 @@
 //! The ax-devil backend: HTTP routes for the frontend and, in release builds, the embedded frontend itself.
 
 pub mod access;
+pub mod camera_questions;
 pub mod desktop;
 pub mod disk_cache;
 pub mod exports;

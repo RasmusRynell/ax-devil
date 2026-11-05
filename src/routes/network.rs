@@ -25,6 +25,7 @@ pub(super) async fn scan(
     let scan = request_from_settings(
         &state.settings.state(),
         request.range.as_deref(),
+        request.sign_in,
         ScanLoad::Normal,
     )
     .map_err(|error| refuse(StatusCode::UNPROCESSABLE_ENTITY, &error))?;

@@ -138,11 +138,12 @@ export function useNetwork(enabled: boolean): Network {
 export type ScanProblem = { text: "Invalid IP range" | "Scan failed"; reason: string };
 
 /**
- * Starts a scan of `range`; `undefined` scans the `scan.range` setting, blank the local network. Resolves to why it was
- * refused, else `null`.
+ * Starts a scan of `range`; `undefined` scans the `scan.range` setting, blank the local network. `signIn` says for this
+ * scan whether to try the logins on the cameras found; `undefined` follows the `scan.sign_in` setting. Resolves to why
+ * it was refused, else `null`.
  */
-export const rescan = (range?: string): Promise<ScanProblem | null> =>
-  post("/api/network/scan", range === undefined ? {} : { range }).then(
+export const rescan = (range?: string, signIn?: boolean): Promise<ScanProblem | null> =>
+  post("/api/network/scan", { range, sign_in: signIn }).then(
     (refused) =>
       refused && {
         text: refused.status === 422 ? "Invalid IP range" : "Scan failed",
