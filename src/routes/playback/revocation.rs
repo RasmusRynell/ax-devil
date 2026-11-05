@@ -313,6 +313,7 @@ async fn a_viewer_made_a_follower_gets_no_frame_or_data_outside_the_presenters_w
             width: 64,
             height: 48,
         },
+        wire: super::wire::Wire::Raw,
         warnings: Vec::new(),
         pts: None,
         library: &library,

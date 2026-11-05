@@ -1,12 +1,14 @@
 /**
  * The playback socket's thread. It owns the WebSocket, parses the head of every message, and hands frames, the
  * timeline, Sample Items and Frame Maps to the main thread by transferring the received buffer, so the browser's one
- * copy per message is the only one. The main thread's rendering, clock and typing never queue behind receiving; the
- * rules of the session live in session.ts.
+ * copy per message is the only one. A frame sent as a JPEG is decoded to RGBA here first, in the order the `Inbox`
+ * keeps. The main thread's rendering, clock and typing never queue behind receiving; the rules of the session live in
+ * session.ts.
  */
 
+import { decodeJpeg } from "./jpeg";
 import type { ClientMessage } from "./protocol";
-import { bufferOf, decode, type Incoming } from "./wire";
+import { bufferOf, decode, Inbox, type Incoming, type Received } from "./wire";
 
 export type ToWorker =
   | { type: "connect"; url: string }
@@ -26,7 +28,22 @@ let held: string[] = [];
 function deliver(incoming: Incoming): void {
   const transfer = incoming.type === "envelope" ? [bufferOf(incoming.envelope) as ArrayBuffer] : [];
   scope.postMessage(incoming, transfer);
+  if (incoming.type === "closed") scope.close();
 }
+
+async function settle(received: Received): Promise<Incoming> {
+  if (received.type !== "jpeg") return received;
+  try {
+    return {
+      type: "envelope",
+      envelope: { kind: "frame", frame: await decodeJpeg(received.frame) },
+    };
+  } catch (error) {
+    return { type: "malformed", reason: `a JPEG frame does not decode: ${String(error)}` };
+  }
+}
+
+const inbox = new Inbox(settle, deliver);
 
 scope.onmessage = ({ data }) => {
   if (data.type === "connect") {
@@ -39,13 +56,11 @@ scope.onmessage = ({ data }) => {
     };
     opened.onmessage = ({ data: received }: MessageEvent<string | ArrayBuffer>) => {
       const incoming = decode(received);
-      if (incoming) deliver(incoming);
+      if (incoming) inbox.push(incoming);
     };
-    opened.onclose = ({ code }) => {
-      deliver({ type: "closed", code });
-      scope.close();
-    };
+    opened.onclose = ({ code }) => inbox.push({ type: "closed", code });
   } else if (data.type === "send") {
+    if (data.message.type === "Want") inbox.want(data.message);
     const text = JSON.stringify(data.message);
     if (socket?.readyState === WebSocket.OPEN) socket.send(text);
     else held.push(text);

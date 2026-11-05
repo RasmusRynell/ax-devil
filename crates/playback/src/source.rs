@@ -2,8 +2,8 @@
 
 use crate::plan::{plan, reads_on};
 use crate::window::{prefetch_windows, send_window};
-use crate::{DecoderFactory, FrameSet, SourceCache, SourceSpec, Span, Want, lock};
-use foundation::{CancelToken, FrameFailure, HostPath, UserError, VideoFrame};
+use crate::{DecoderFactory, FrameSet, SharedFrame, SourceCache, SourceSpec, Span, Want, lock};
+use foundation::{CancelToken, FrameFailure, HostPath, UserError};
 use std::collections::BTreeMap;
 use std::ops::RangeInclusive;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
@@ -64,7 +64,7 @@ pub(crate) struct SessionState {
     /// Frames sent while inside the send window; leaving the window forgets them.
     pub(crate) sent: FrameSet,
     /// Frames the cache could not hold, waiting for this viewer: at most `PARKED_SLOTS`.
-    pub(crate) parked: Vec<VideoFrame>,
+    pub(crate) parked: Vec<SharedFrame>,
     /// Whether the viewer has been told the source failed.
     pub(crate) told: bool,
 }

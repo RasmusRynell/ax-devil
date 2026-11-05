@@ -1,8 +1,8 @@
 //! The decoded-frame cache: one byte allowance split equally across open sources, under a single mutex.
 
 use crate::FrameSet;
+use crate::SharedFrame;
 use crate::lock;
-use foundation::VideoFrame;
 use std::collections::BTreeMap;
 use std::ops::RangeInclusive;
 use std::sync::{Arc, Mutex};
@@ -27,7 +27,7 @@ struct PoolState {
 struct Slot {
     share: usize,
     used: usize,
-    frames: BTreeMap<u64, VideoFrame>,
+    frames: BTreeMap<u64, SharedFrame>,
     present: FrameSet,
     protected: FrameSet,
     protected_bytes: usize,
@@ -50,7 +50,7 @@ impl Slot {
         }
     }
 
-    fn add(&mut self, frame: VideoFrame) {
+    fn add(&mut self, frame: SharedFrame) {
         let id = frame.id().sequence_id;
         let bytes = frame.reserved_bytes();
         self.used += bytes;
@@ -184,7 +184,7 @@ impl SourceCache {
     }
 
     /// The cached frame, if still held. The frame is shared, so it stays valid after eviction.
-    pub fn get(&self, sequence_id: u64) -> Option<VideoFrame> {
+    pub fn get(&self, sequence_id: u64) -> Option<SharedFrame> {
         self.with(None, |slot| slot.frames.get(&sequence_id).cloned())
     }
 
@@ -202,7 +202,7 @@ impl SourceCache {
     /// is larger than the share or cannot fit beside the protected frames (nothing changes), when an unprotected
     /// frame would be the farthest one and so is refused instead of evicting nearer ones, and once the cache is
     /// closed.
-    pub fn insert(&self, frame: VideoFrame) -> bool {
+    pub fn insert(&self, frame: SharedFrame) -> bool {
         self.with(false, |slot| {
             let id = frame.id().sequence_id;
             let bytes = frame.reserved_bytes();
@@ -210,7 +210,7 @@ impl SourceCache {
                 return false;
             }
             let protected = slot.protected.contains(id);
-            let old = slot.frames.get(&id).map_or(0, VideoFrame::reserved_bytes);
+            let old = slot.frames.get(&id).map_or(0, |old| old.reserved_bytes());
             let others = slot.protected_bytes - if protected { old } else { 0 };
             if others + bytes > slot.share {
                 return false;

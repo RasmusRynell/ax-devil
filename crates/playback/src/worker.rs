@@ -3,8 +3,8 @@
 use crate::decoder::decode_threads;
 use crate::plan::reads_on;
 use crate::source::{ClaimShared, PARKED_SLOTS, Source, State};
-use crate::{FrameSet, SpanDecoder, lock};
-use foundation::{ErrorCode, FrameFailure, UserError, VideoFrame};
+use crate::{FrameSet, SharedFrame, SpanDecoder, lock};
+use foundation::{ErrorCode, FrameFailure, UserError};
 use std::ops::RangeInclusive;
 use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::sync::{Arc, PoisonError};
@@ -163,7 +163,7 @@ impl Source {
                     let id = frame.id().sequence_id;
                     produced.insert(id);
                     if (start..=end).contains(&id) {
-                        self.store(frame, shared);
+                        self.store(frame.into(), shared);
                     }
                     if id >= end {
                         break;
@@ -200,7 +200,7 @@ impl Source {
     /// protected frames of other viewers fill it, is parked for each viewer that needs it, in that viewer's own
     /// bounded slots. A worker never waits for a slot, so a viewer that stopped reading cannot stall decoding for the
     /// others.
-    fn store(&self, frame: VideoFrame, shared: &ClaimShared) {
+    fn store(&self, frame: SharedFrame, shared: &ClaimShared) {
         let id = frame.id().sequence_id;
         if self.cache.contains(id) {
             return;

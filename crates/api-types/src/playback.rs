@@ -77,7 +77,7 @@ pub(crate) use constants;
 
 constants! {
     /// Raised when the messages or the envelope change in a way an older frontend cannot read.
-    PLAYBACK_PROTOCOL: u32 = 7;
+    PLAYBACK_PROTOCOL: u32 = 8;
     /// "AXDV" read as a little-endian u32.
     ENVELOPE_MAGIC: u32 = 0x5644_5841;
     /// The envelope format version, byte 4.
@@ -108,6 +108,8 @@ constants! {
     LAYOUT_NV12: u8 = 2;
     /// Video header layout byte: one interleaved RGBA plane.
     LAYOUT_RGBA: u8 = 3;
+    /// Video header layout byte: plane 0 is a JPEG of width x height (full-range BT.601), stride 0.
+    LAYOUT_JPEG: u8 = 4;
     /// Video header matrix byte: BT.601 YUV to RGB.
     MATRIX_BT601: u8 = 0;
     /// Video header matrix byte: BT.709 YUV to RGB.
@@ -277,7 +279,8 @@ pub enum ServerMessage {
         /// Video length in microseconds.
         #[ts(type = "number")]
         duration_us: i64,
-        /// Total payload bytes of one frame: the sum of its plane lengths (planes are tightly packed).
+        /// Bytes one frame takes once the viewer holds it: the sum of its plane lengths (planes are tightly packed),
+        /// or width x height x 4 of the delivered size when frames arrive as JPEG and are decoded to RGBA.
         #[ts(type = "number")]
         frame_bytes: u64,
         /// Width of the decoded frames in pixels.

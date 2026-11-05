@@ -17,3 +17,5 @@ parts fit; this file keeps the decisions the code leaves unexplained.
   window worked out from the presenter's intent and constants alone, never from the holder's own `ahead` and `behind`.
   The route applies `clamp_demand` to each want, again whenever the authority or the presenter's clock moves, and to
   each frame before it is sent; the route owns the socket, so `playback` knows no sessions.
+- A frame's compressed form, kept on its `SharedFrame` for remote viewers, is not charged to the cache: a JPEG is a
+  small part of the planes, and it goes with the frame.

@@ -42,6 +42,10 @@ route is mounted: method, path, the listeners that serve it and who may call it.
 405, and a conformance test calls every row as every kind of caller. The rules are in
 [13](../rebuild/13-security-packaging-ops.md#sharing-must).
 
+The listener also decides how frames travel (`src/routes/playback/wire.rs`): decoded planes on the Local listener,
+compressed frames on the others, which the playback socket's worker decodes before the session sees them. However
+many viewers are sent a frame, it is compressed once, on the `playback::SharedFrame` they all hold.
+
 ### Desktop shell
 
 The shell starts the local backend on first use, or reuses a compatible one on its port. It can instead load another

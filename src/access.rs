@@ -251,7 +251,8 @@ pub struct Limits {
 impl Default for Limits {
     fn default() -> Self {
         Self {
-            sockets: 256,
+            // A viewer holds a session socket and a playback socket per pane: room for a few hundred viewers.
+            sockets: 1024,
             pending: 64,
             peer_sockets: 16,
             peer_pending: 4,

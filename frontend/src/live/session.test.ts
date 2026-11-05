@@ -89,7 +89,7 @@ async function setup(lane = OVERLAY) {
         mapBytes({ first: frame, cells: [index] }),
       ]) {
         const incoming = decode(bytes);
-        if (incoming) deliver(incoming);
+        if (incoming && incoming.type !== "jpeg") deliver(incoming);
       }
     },
     events: (count: number, label = "Rename 1 → 2") =>

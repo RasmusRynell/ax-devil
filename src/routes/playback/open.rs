@@ -7,6 +7,7 @@ use super::{
     live, next_client, stopped,
     stream::{self, Setup},
     text,
+    wire::Wire,
 };
 use crate::{
     AppState,
@@ -73,6 +74,7 @@ pub(super) async fn run(
         data_bytes: opening.data_bytes,
         audience,
         size,
+        wire: Wire::of(&state.policy),
         warnings,
         pts,
         library: &state.catalogs,
