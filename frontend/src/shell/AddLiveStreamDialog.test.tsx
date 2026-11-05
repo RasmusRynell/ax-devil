@@ -225,9 +225,11 @@ describe("add live stream dialog", () => {
     const box = screen.getByLabelText("Resolution") as HTMLInputElement;
     type("Resolution", "123x456");
     box.setSelectionRange(2, 4);
+    // The sizes arrive into the open list.
+    fireEvent.keyDown(box, { key: "ArrowDown" });
     release();
-    await waitFor(() => expect(screen.getByLabelText("Resolution")).toBe(box));
-    await new Promise((resolve) => setTimeout(resolve, 20));
+    await screen.findByRole("option", { name: "1280x720" });
+    expect(screen.getByRole("combobox", { name: "Resolution" })).toBe(box);
     expect(box.value).toBe("123x456");
     expect([box.selectionStart, box.selectionEnd]).toEqual([2, 4]);
   });
