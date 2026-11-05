@@ -139,6 +139,10 @@ fn unusable_documents_are_errors_and_frameless_streams_are_not() {
             "<tt:Frame UtcTime=\"2024-01-01T00:00:00Z\"/>".to_string(),
             "unbound",
         ),
+        (
+            r#"<m:MetadataStream xmlns:m="http://x/&bogus;"/>"#.to_string(),
+            "invalid XML",
+        ),
         (format!("<tt:Frame {namespace}/>"), "UtcTime"),
         (
             format!("<tt:Frame {namespace} UtcTime=\"yesterday\"/>"),
@@ -157,6 +161,8 @@ fn unusable_documents_are_errors_and_frameless_streams_are_not() {
 
     let event = format!("<tt:MetadataStream {namespace}><tt:Event/></tt:MetadataStream>");
     assert_eq!(decode(event.as_bytes()), Ok(None));
+    let encoded = r#"<MetadataStream xmlns="http://www.onvif.org/ver10/sch&#101;ma"/>"#;
+    assert_eq!(decode(encoded.as_bytes()), Ok(None));
 }
 
 #[test]

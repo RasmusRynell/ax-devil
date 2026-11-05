@@ -2,7 +2,7 @@
 
 use std::borrow::Cow;
 
-use quick_xml::{XmlVersion, events::BytesStart, name::ResolveResult};
+use quick_xml::{XmlVersion, events::BytesStart};
 use scene::{
     BoundingBox, ClassType, Classification, EntityId, Fields, Geometry, Observation, Point,
     Polygon, SceneTime, Score, Value,
@@ -46,14 +46,14 @@ pub(super) enum Tag {
 }
 
 impl Tag {
-    /// The element called `local` in namespace `namespace`. A frame is recognised in any namespace, or none; the
-    /// rest only in the namespace Python looks them up in.
-    pub(super) fn resolve(namespace: &ResolveResult<'_>, local: &str) -> Self {
+    /// The element called `local` in namespace `namespace`, unescaped, if it has one. A frame is recognised in any
+    /// namespace, or none; the rest only in the namespace Python looks them up in.
+    pub(super) fn resolve(namespace: Option<&str>, local: &str) -> Self {
         if matches!(local, "Frame" | "SampleFrame") {
             return Self::Frame;
         }
         match (namespace, local) {
-            (ResolveResult::Bound(namespace), _) if namespace.0 == ONVIF => match local {
+            (Some(ONVIF), _) => match local {
                 "MetadataStream" => Self::MetadataStream,
                 "Object" => Self::Object,
                 "ObjectTree" => Self::ObjectTree,
@@ -75,16 +75,10 @@ impl Tag {
                 "ColorCluster" => Self::ColorCluster,
                 _ => Self::Other,
             },
-            (ResolveResult::Bound(namespace), "Clothing") if namespace.0 == HUMAN_BODY => {
-                Self::Clothing
-            }
-            (ResolveResult::Bound(namespace), "Tops") if namespace.0 == HUMAN_BODY => Self::Tops,
-            (ResolveResult::Bound(namespace), "Bottoms") if namespace.0 == HUMAN_BODY => {
-                Self::Bottoms
-            }
-            (ResolveResult::Bound(namespace), "Color") if namespace.0 == HUMAN_BODY => {
-                Self::ClothingColor
-            }
+            (Some(HUMAN_BODY), "Clothing") => Self::Clothing,
+            (Some(HUMAN_BODY), "Tops") => Self::Tops,
+            (Some(HUMAN_BODY), "Bottoms") => Self::Bottoms,
+            (Some(HUMAN_BODY), "Color") => Self::ClothingColor,
             _ => Self::Other,
         }
     }

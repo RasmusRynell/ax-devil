@@ -9,6 +9,7 @@ use handler_api::{
 };
 use quick_xml::{
     NsReader,
+    escape::unescape,
     events::{BytesStart, Event},
     name::ResolveResult,
 };
@@ -113,10 +114,18 @@ fn decode_record(record: &[u8]) -> Result<Option<Scene>, String> {
         if let ResolveResult::Unknown(prefix) = &namespace {
             return Err(format!("invalid XML: unbound prefix {prefix:?}"));
         }
+        // Python expands character and entity references in a namespace declaration.
+        let namespace = match &namespace {
+            ResolveResult::Bound(namespace) => {
+                Some(unescape(namespace.0).map_err(|error| format!("invalid XML: {error}"))?)
+            }
+            _ => None,
+        };
+        let namespace = namespace.as_deref();
         match event {
-            Event::Start(element) => document.open(&element, &namespace)?,
+            Event::Start(element) => document.open(&element, namespace)?,
             Event::Empty(element) => {
-                document.open(&element, &namespace)?;
+                document.open(&element, namespace)?;
                 document.close()?;
             }
             Event::End(_) => document.close()?,
@@ -183,11 +192,7 @@ struct Document {
 }
 
 impl Document {
-    fn open(
-        &mut self,
-        element: &BytesStart<'_>,
-        namespace: &ResolveResult<'_>,
-    ) -> Result<(), String> {
+    fn open(&mut self, element: &BytesStart<'_>, namespace: Option<&str>) -> Result<(), String> {
         let local = element.local_name();
         let tag = Tag::resolve(namespace, local.as_ref());
         if self.stack.is_empty() {
