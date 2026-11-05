@@ -22,7 +22,7 @@ mod stream;
 
 pub use decoder::Decoder;
 pub use encoder::{EncodeFormat, Encoder, Picture, Quality};
-pub use first_frame::{FirstFrame, first_frame, first_frame_identity, whole_jpeg};
+pub use first_frame::{FirstFrame, MAX_JPEG_BYTES, first_frame, first_frame_identity, whole_jpeg};
 pub use index::{FrameIndex, PtsTiming, ScanKind, VideoInfo};
 pub use index_file::{INDEX_EXTENSION, INDEX_FOLDER};
 pub use input::{ImageSequenceInput, VideoInput};

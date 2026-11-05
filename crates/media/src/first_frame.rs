@@ -139,21 +139,33 @@ fn decode_first(
     }))
 }
 
-/// Whether `bytes` are a JPEG that decodes without error: it has its start (`FFD8`) and end (`FFD9`) markers, which
-/// a picture cut short by a crash or a full disk lacks, and a decoder reads a whole picture from it, which damage
-/// inside the file stops.
-pub fn whole_jpeg(bytes: &[u8]) -> bool {
-    bytes.starts_with(&[0xFF, 0xD8])
+/// The most bytes a cached thumbnail may have. A JPEG fitted to a few hundred pixels is far smaller; a larger file is
+/// not one this module wrote, and is not read or decoded.
+pub const MAX_JPEG_BYTES: u64 = 4 * 1024 * 1024;
+
+/// Whether `bytes` are a JPEG of a thumbnail at `edge` that decodes without error: at most [`MAX_JPEG_BYTES`], with
+/// its start (`FFD8`) and end (`FFD9`) markers, which a picture cut short by a crash or a full disk lacks, and a
+/// picture no larger than `edge` by `edge` pixels that a decoder reads whole, which damage inside the file stops.
+/// The cache folder is not trusted, so the size limits apply before anything is allocated for the picture.
+pub fn whole_jpeg(bytes: &[u8], edge: u32) -> bool {
+    u64::try_from(bytes.len()).is_ok_and(|len| len <= MAX_JPEG_BYTES)
+        && bytes.starts_with(&[0xFF, 0xD8])
         && bytes.ends_with(&[0xFF, 0xD9])
-        && decodes_cleanly(bytes).is_ok()
+        && decodes_cleanly(bytes, edge).is_ok()
 }
 
-/// Decodes the JPEG `bytes`; an error when the decoder fails, flags damage in the picture or gives none.
-fn decodes_cleanly(bytes: &[u8]) -> Result<(), Error> {
+/// Decodes the JPEG `bytes`; an error when the decoder fails, flags damage in the picture, finds it larger than
+/// `edge` by `edge` pixels, or gives none.
+fn decodes_cleanly(bytes: &[u8], edge: u32) -> Result<(), Error> {
     let codec = decoder::find(codec::Id::MJPEG).ok_or(Error::DecoderNotFound)?;
-    // The decoder hides damage in the picture data by default; `explode` makes it fail instead.
+    // The decoder hides damage in the picture data by default; `explode` makes it fail instead. `max_pixels` makes
+    // it refuse a larger picture from its header, before it allocates for it.
     let mut options = Dictionary::new();
     options.set("err_detect", "explode");
+    options.set(
+        "max_pixels",
+        &(u64::from(edge) * u64::from(edge)).to_string(),
+    );
     let mut video = codec::context::Context::new_with_codec(codec)
         .decoder()
         .open_as_with(codec, options)?

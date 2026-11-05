@@ -6,7 +6,8 @@ mod common;
 use common::{file, fixture, index_of_input, open_input};
 use foundation::{CancelToken, FrameRate, Interrupt, VideoFrame};
 use media::{
-    FirstFrame, ImageSequenceInput, VideoInput, first_frame, first_frame_identity, whole_jpeg,
+    FirstFrame, ImageSequenceInput, MAX_JPEG_BYTES, VideoInput, first_frame, first_frame_identity,
+    whole_jpeg,
 };
 
 /// The picture the JPEG holds, found by decoding it as a one-image sequence.
@@ -110,10 +111,10 @@ fn the_identity_of_an_image_sequence_changes_with_its_settings() {
 }
 
 #[test]
-fn a_jpeg_is_whole_only_when_it_decodes() {
+fn a_jpeg_is_whole_only_when_it_decodes_within_the_size_limits() {
     let jpeg = first_of(&file(&fixture("cfr_h264_gop10_bf2.mp4")), 560).jpeg;
-    assert!(whole_jpeg(&jpeg));
-    assert!(!whole_jpeg(&jpeg[..jpeg.len() / 2]), "cut short");
+    assert!(whole_jpeg(&jpeg, 560));
+    assert!(!whole_jpeg(&jpeg[..jpeg.len() / 2], 560), "cut short");
     // Both markers and the headers stay; most of the picture data is garbage.
     let mut damaged = jpeg.clone();
     let scan = jpeg
@@ -122,7 +123,14 @@ fn a_jpeg_is_whole_only_when_it_decodes() {
         .expect("a scan");
     let start = scan + 2 + usize::from(jpeg[scan + 3]) + 16;
     damaged[start..jpeg.len() - 4].fill(0x5A);
-    assert!(!whole_jpeg(&damaged), "damaged inside");
+    assert!(!whole_jpeg(&damaged, 560), "damaged inside");
+    // The 64x48 picture is refused from its header at an edge of 32, and a file over the byte limit unread.
+    assert!(whole_jpeg(&jpeg, 64));
+    assert!(!whole_jpeg(&jpeg, 32), "larger than the edge");
+    let padding = vec![0; usize::try_from(MAX_JPEG_BYTES).expect("fits")];
+    let mut huge = jpeg.clone();
+    huge.splice(jpeg.len() - 2..jpeg.len() - 2, padding);
+    assert!(!whole_jpeg(&huge, 560), "over the byte limit");
 }
 
 #[test]

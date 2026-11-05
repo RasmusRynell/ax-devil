@@ -12,11 +12,11 @@
 
 use bytes::Bytes;
 use foundation::{CancelToken, ErrorCode, Interrupt, UserError};
-use media::{VideoInput, first_frame, first_frame_identity, whole_jpeg};
+use media::{MAX_JPEG_BYTES, VideoInput, first_frame, first_frame_identity, whole_jpeg};
 use std::{
     collections::HashMap,
     fs::{self, File, OpenOptions},
-    io::{self, Write},
+    io::{self, Read, Write},
     path::{Path, PathBuf},
     sync::{
         Arc, Mutex, MutexGuard, PoisonError, Weak,
@@ -110,8 +110,8 @@ fn make(
     input: &VideoInput,
     cancel: &CancelToken,
 ) -> Result<Bytes, Interrupt<UserError>> {
-    if let Ok(jpeg) = fs::read(path)
-        && whole_jpeg(&jpeg)
+    if let Some(jpeg) = read_cached(path)
+        && whole_jpeg(&jpeg, EDGE)
     {
         renew(path);
         return Ok(Bytes::from(jpeg));
@@ -122,6 +122,18 @@ fn make(
         Err(error) => tracing::warn!("The thumbnail {} was not cached: {error}", path.display()),
     }
     Ok(Bytes::from(jpeg))
+}
+
+/// The bytes of the file at `path`, at most one more than [`MAX_JPEG_BYTES`], so that a huge file in the folder is
+/// never read whole; `whole_jpeg` rejects what is over the limit.
+fn read_cached(path: &Path) -> Option<Vec<u8>> {
+    let mut jpeg = Vec::new();
+    File::open(path)
+        .ok()?
+        .take(MAX_JPEG_BYTES + 1)
+        .read_to_end(&mut jpeg)
+        .ok()?;
+    Some(jpeg)
 }
 
 fn stopped(error: impl std::fmt::Display) -> UserError {
@@ -352,7 +364,7 @@ mod tests {
     fn tag_of(answer: Answer) -> String {
         match answer {
             Answer::Picture { tag, jpeg } => {
-                assert!(whole_jpeg(&jpeg), "a whole JPEG");
+                assert!(whole_jpeg(&jpeg, EDGE), "a whole JPEG");
                 tag
             }
             Answer::Unchanged => panic!("a client without a tag gets the picture"),
