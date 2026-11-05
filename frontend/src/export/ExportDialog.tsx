@@ -181,7 +181,7 @@ export function ExportDialog({
     setChoosing(true);
     try {
       // Named for the first lane taken, as the selection stands when Export is pressed; the viewer's name when none is.
-      const source = picked[0]?.label ?? name;
+      const source = (picked[0]?.label ?? name).split("/").pop() ?? name;
       const stem = source.replace(/\.[^.]*$/, "") || source;
       const chosen = bridge ? await bridge.pickExportFile(`${stem}.${kind}`, kind) : path.trim();
       if (!chosen) return;

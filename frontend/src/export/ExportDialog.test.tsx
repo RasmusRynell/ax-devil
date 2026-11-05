@@ -326,6 +326,7 @@ describe("export dialog", () => {
       lanes: [
         lane("front.v2.avi", { source: 0, status: READY }),
         lane("detections.json", { source: 1, status: READY }),
+        lane("camera.v2/tracks", { source: 2, status: READY }),
       ],
     };
     render(
@@ -343,5 +344,8 @@ describe("export dialog", () => {
     fireEvent.click(screen.getByLabelText("front.v2.avi"));
     press("Export");
     await waitFor(() => expect(pick).toHaveBeenLastCalledWith("detections.mp4", "mp4"));
+    fireEvent.click(screen.getByLabelText("detections.json"));
+    press("Export");
+    await waitFor(() => expect(pick).toHaveBeenLastCalledWith("tracks.mp4", "mp4"));
   });
 });
