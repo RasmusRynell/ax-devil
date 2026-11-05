@@ -54,7 +54,6 @@ export function useCopied(scope: string, textOf: (id: string) => string | undefi
   // same text later is another value. Before paint, so the check never shows on a changed row.
   useLayoutEffect(() => {
     if (mark === null || textOf(mark.id) === mark.text) return;
-    latest.current++;
     clearTimeout(timer.current);
     setMark(null);
   });

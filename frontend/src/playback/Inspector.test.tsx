@@ -263,6 +263,8 @@ describe("inspector", () => {
         .fn<(text: string) => Promise<void>>()
         .mockImplementationOnce(() => new Promise<void>((done) => slow.push(done)))
         .mockResolvedValueOnce()
+        .mockImplementationOnce(() => new Promise<void>((done) => slow.push(done)))
+        .mockResolvedValueOnce()
         .mockImplementationOnce(() => new Promise<void>((done) => slow.push(done)));
       vi.stubGlobal("navigator", { clipboard: { writeText } });
       await copy("class");
@@ -277,6 +279,12 @@ describe("inspector", () => {
       view.next(other);
       await act(async () => slow[1]!());
       expect(copied()).toEqual([]);
+      view.next(FEEDBACK);
+      await copy("speed");
+      await copy("class");
+      view.next(without("speed"));
+      await act(async () => slow[2]!());
+      expect(copied()).toEqual(["Copied class"]);
     });
 
     it("ends the confirmation when the copied value or field goes, and Ctrl+C copies the row holding focus", async () => {
