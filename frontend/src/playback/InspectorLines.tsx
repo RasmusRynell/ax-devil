@@ -223,8 +223,7 @@ const CaptionLine = memo(function CaptionLine({
 
 /**
  * What tells each field row of the pinned rows then the list's from the others, for the copy mark: its section, the
- * caption it sits under (which says a Debug field's origin), group and path, and which of the rows sharing them it is
- * out of how many. It follows the field when rows come and go, unlike a position, and a mark does not move to another
+ * origin, group and path, and which of the rows sharing them it is out of how many. It follows the field when rows come and go, unlike a position, and a mark does not move to another
  * row when a duplicate comes or goes.
  */
 function rowIds(pinned: readonly Line[], lines: readonly Line[]): string[] {
@@ -232,14 +231,12 @@ function rowIds(pinned: readonly Line[], lines: readonly Line[]): string[] {
   for (const [section, part] of [pinned, lines].entries()) {
     const bases: string[] = [];
     const counts = new Map<string, number>();
-    let under = "";
     for (const line of part) {
-      if (line.kind === "caption") under = line.heading;
       if (line.kind !== "field") {
         bases.push("");
         continue;
       }
-      const base = `${section}:${under}:${line.key}`;
+      const base = `${section}:${line.origin ?? ""}:${line.key}`;
       bases.push(base);
       counts.set(base, (counts.get(base) ?? 0) + 1);
     }
@@ -289,7 +286,7 @@ function rows(
           count={line.count}
           folded={line.folded}
           copyable={line.copyable}
-          copied={copied.is(RAW_COPIED, () => rawJson(fields))}
+          copied={copied.is(RAW_COPIED)}
           onFold={onFold}
         />
       );
@@ -309,7 +306,7 @@ function rows(
         elide={found ? line.elide : undefined}
         pinnable={line.id !== null}
         pinned={pins.has(line.key)}
-        copied={found && copied.is(ids[first + i] ?? "", full)}
+        copied={found && copied.is(ids[first + i] ?? "")}
         missing={!found}
       />
     );
@@ -354,8 +351,12 @@ export function InspectorLines({
   const [menuKey, setMenuKey] = useState<string | null>(null);
   const { ref, start, end, update } = useRowWindow(lines.length, ROW);
 
-  const copied = useCopied(scope);
   const ids = useMemo(() => rowIds(pinned, lines), [pinned, lines]);
+  const copied = useCopied(scope, (id) => {
+    if (id === RAW_COPIED) return rawJson(fields);
+    const line = all[ids.indexOf(id)];
+    return line?.kind === "field" ? copyValue(line) : undefined;
+  });
   const pin = (key: string) => {
     const line = byKey.get(key);
     if (line?.id) onMemory({ ...memory, pins: togglePin(pins, line.id) });

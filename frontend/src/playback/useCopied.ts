@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 
 /** How long the check stays on the copy button of the row last copied. */
 const COPIED_MS = 1500;
@@ -16,11 +16,11 @@ export type Copied = ReturnType<typeof useCopied>;
 /**
  * The one "last copied" mark of a list. `copy` puts text on the clipboard and, only once the browser accepts it, marks
  * the row `id` for 1500 ms; copying again, even the same row, restarts that time, and another row takes the mark. A
- * refused or missing clipboard marks nothing. A mark ends as soon as the row's text is no longer the text copied, and
- * when `scope`, which says what the rows belong to such as the object shown, changes. Answers that come after a newer
+ * refused or missing clipboard marks nothing. A mark ends for good as soon as `textOf` (what a row's text is now)
+ * no longer gives the text copied for its row, and when `scope`, which says what the rows belong to such as the object shown, changes. Answers that come after a newer
  * copy, after the scope changed or after the list is gone are ignored.
  */
-export function useCopied(scope: string) {
+export function useCopied(scope: string, textOf: (id: string) => string | undefined) {
   const [mark, setMark] = useState<Mark | null>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const latest = useRef(0);
@@ -50,10 +50,16 @@ export function useCopied(scope: string) {
     [scope],
   );
 
-  /** Whether row `id` shows the check for `text`, which is only worked out for the row marked. */
-  const is = (id: string, text: string | (() => string)): boolean =>
-    mark?.scope === scope &&
-    mark.id === id &&
-    mark.text === (typeof text === "string" ? text : text());
+  // A mark ends for good when its row's text is no longer what was copied, or the row is gone: coming back to the
+  // same text later is another value. Before paint, so the check never shows on a changed row.
+  useLayoutEffect(() => {
+    if (mark === null || textOf(mark.id) === mark.text) return;
+    latest.current++;
+    clearTimeout(timer.current);
+    setMark(null);
+  });
+
+  /** Whether row `id` shows the check. */
+  const is = (id: string): boolean => mark?.scope === scope && mark.id === id;
   return { copy, is };
 }

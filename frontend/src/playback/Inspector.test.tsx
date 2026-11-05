@@ -295,6 +295,8 @@ describe("inspector", () => {
         fields: [...without("speed").fields, { group: "motion", path: ["speed"], value: 0.75 }],
       });
       expect(copied()).toEqual([]);
+      view.next(FEEDBACK);
+      expect(copied()).toEqual([]);
       await copy("class");
       view.next(without("class"));
       expect(copied()).toEqual([]);
@@ -309,6 +311,16 @@ describe("inspector", () => {
       await copy("x");
       expect(copied()).toEqual(["Copied x"]);
       view.next(ready([debug("source"), debug("decoder")]));
+      const xs = () =>
+        screen.getAllByRole("button", { name: /^Cop(y|ied) x$/ }).map((button) => button.ariaLabel);
+      expect(xs()).toEqual(["Copy x", "Copied x"]);
+      fireEvent.click(screen.getAllByRole("button", { name: "Pin x" })[0]!);
+      const pinned = within(screen.getByRole("region", { name: "Pinned" }));
+      await act(async () => {
+        fireEvent.click(pinned.getByRole("button", { name: /^Cop(y|ied) debug\.x$/ }));
+      });
+      expect(copied()).toEqual(["Copied debug.x"]);
+      view.next(ready([debug("decoder")]));
       expect(copied()).toEqual([]);
     });
   });
