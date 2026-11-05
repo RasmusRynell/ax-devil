@@ -1,24 +1,50 @@
 //! The value of an inspected field, and the leaves the scalars of an entity become.
 
 use foundation::MediaTime;
+use serde::{Deserialize, Serialize};
+use ts_rs::TS;
 
-/// The value of a field: a leaf of the entity's data.
-#[derive(Clone, Debug, PartialEq)]
+/// The value of a field: a leaf of the entity's data. On the wire an integer is its decimal digits in a string, so
+/// that it stays exact in a JavaScript number-only world, and `Int(3)` differs from `Float(3.0)`.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, TS)]
+#[serde(tag = "kind", content = "value", rename_all = "lowercase")]
+#[ts(rename = "LeafWire")]
 pub enum Leaf {
     /// No value.
     Null,
     /// A truth value.
     Bool(bool),
+    /// A whole number, exactly.
+    Int(
+        #[serde(with = "int_text")]
+        #[ts(type = "string")]
+        i64,
+    ),
     /// A finite number.
-    Number(f64),
+    Float(f64),
     /// Text, at most [`MAX_TEXT_CHARS`](super::MAX_TEXT_CHARS) characters.
     Text(String),
+}
+
+/// An integer as the string of its decimal digits.
+mod int_text {
+    use serde::{Deserialize, Deserializer, Serializer, de::Error};
+
+    pub(super) fn serialize<S: Serializer>(whole: &i64, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.collect_str(whole)
+    }
+
+    pub(super) fn deserialize<'de, D: Deserializer<'de>>(deserializer: D) -> Result<i64, D::Error> {
+        String::deserialize(deserializer)?
+            .parse()
+            .map_err(|_| D::Error::custom("an integer in decimal digits"))
+    }
 }
 
 /// A number, or its name when the source's float is not finite.
 pub(super) fn number_leaf(number: f64) -> Leaf {
     if number.is_finite() {
-        Leaf::Number(number)
+        Leaf::Float(number)
     } else {
         Leaf::Text(number.to_string())
     }
@@ -48,7 +74,7 @@ pub(super) fn datetime_leaf(time: MediaTime) -> Leaf {
     };
     let year = year_of_era + era * 400 + i64::from(month <= 2);
     if !(1..=9999).contains(&year) {
-        return Leaf::Number(time.0 as f64);
+        return Leaf::Int(time.0);
     }
     let seconds = micros / 1_000_000;
     let fraction = match micros % 1_000_000 {

@@ -112,7 +112,7 @@ impl InspectionField {
                 QueryItem {
                     group: self.group,
                     path,
-                    value: Leaf::Number(f64::from(value)),
+                    value: Leaf::Int(i64::from(value)),
                 }
             })
         });
@@ -235,6 +235,12 @@ impl Walk {
         self.path.pop();
     }
 
+    /// A count at `segment`: a whole number, or a float when it exceeds `i64`.
+    fn count_at(&mut self, place: Place, segment: &str, count: u64) {
+        let leaf = i64::try_from(count).map_or(Leaf::Float(count as f64), Leaf::Int);
+        self.under(segment, |walk| walk.leaf(place, leaf));
+    }
+
     fn number_at(&mut self, place: Place, segment: &str, number: f64) {
         self.under(segment, |walk| walk.number(place, number));
     }
@@ -318,7 +324,7 @@ impl Walk {
         self.number_at(place, "width", bounds.width());
         self.number_at(place, "height", bounds.height());
         if let Geometry::Polygon(polygon) = &observation.geometry {
-            self.number_at(place, "points", polygon.points().len() as f64);
+            self.count_at(place, "points", polygon.points().len() as u64);
         }
         let measured = observation.measurements.as_deref();
         if let Some(geographic) = measured.and_then(|measured| measured.geographic) {
@@ -361,7 +367,7 @@ impl Walk {
         }
         if let Some(observation) = observation {
             match observation.time {
-                SceneTime::Frame(frame) => self.number_at(place, "frame_number", frame as f64),
+                SceneTime::Frame(frame) => self.count_at(place, "frame_number", frame),
                 SceneTime::Timestamp(time) => {
                     self.under("timestamp", |walk| walk.leaf(place, datetime_leaf(time)));
                 }
@@ -472,7 +478,7 @@ impl Walk {
     fn scalar(&mut self, place: Place, value: &Value) {
         match value {
             Value::Bool(truth) => self.leaf(place, Leaf::Bool(*truth)),
-            Value::Int(whole) => self.number(place, *whole as f64),
+            Value::Int(whole) => self.leaf(place, Leaf::Int(*whole)),
             Value::Float(number) => self.number(place, *number),
             Value::Str(text) => self.text(place, text),
             Value::Null | Value::List(_) | Value::Map(_) => {}

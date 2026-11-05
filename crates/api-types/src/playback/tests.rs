@@ -2,7 +2,7 @@ use super::*;
 use crate::inspect::FieldWire;
 use scene::{
     OperationKind,
-    inspection::{FieldGroup, FieldOrigin},
+    inspection::{FieldGroup, FieldOrigin, Leaf},
 };
 use scene_store::{Op, SortKey};
 use serde_json::json;
@@ -161,7 +161,7 @@ fn inspection_and_catalog_listing_use_the_names_the_frontend_parses() {
                     group: FieldGroup::Debug,
                     origin: Some(FieldOrigin::Source),
                     path: vec!["tags".into(), "0".into()],
-                    value: json!("x"),
+                    value: Leaf::Text("x".into()),
                     rgb: None,
                     text: None,
                     fraction: None,
@@ -170,7 +170,7 @@ fn inspection_and_catalog_listing_use_the_names_the_frontend_parses() {
                     group: FieldGroup::Classification,
                     origin: None,
                     path: vec!["class".into()],
-                    value: json!(null),
+                    value: Leaf::Null,
                     rgb: None,
                     text: None,
                     fraction: None,
@@ -184,8 +184,8 @@ fn inspection_and_catalog_listing_use_the_names_the_frontend_parses() {
         json!({
             "type": "Inspected", "source": 1, "data_revision": 2, "sample": 3, "entity": "7",
             "inspection": {"state": "Found", "truncated": false, "fields": [
-                {"group": "debug", "origin": "source", "path": ["tags", "0"], "value": "x"},
-                {"group": "classification", "path": ["class"], "value": null}
+                {"group": "debug", "origin": "source", "path": ["tags", "0"], "value": {"kind": "text", "value": "x"}},
+                {"group": "classification", "path": ["class"], "value": {"kind": "null"}}
             ]}
         })
     );

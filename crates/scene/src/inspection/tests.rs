@@ -130,44 +130,44 @@ fn fields_are_grouped_in_display_order_and_debug_fields_say_who_produced_them() 
         show(&fields),
         [
             "Classification type = \"car\"",
-            "Classification score = Number(0.9)",
-            "Classification confidence = Number(0.8)",
+            "Classification score = Float(0.9)",
+            "Classification confidence = Float(0.8)",
             "Classification attributes.color = \"red\"",
-            "Classification attributes.colors.red = Number(0.75)",
+            "Classification attributes.colors.red = Float(0.75)",
             "Classification attributes.colors.1 = Null",
-            "Classification attributes.parts.0.n = Number(2.0)",
-            "Classification attributes.tagged.0.rgb.0 = Number(1.0)",
-            "Classification attributes.tagged.0.rgb.1 = Number(2.0)",
-            "Classification attributes.tagged.0.rgb.2 = Number(3.0)",
-            "Classification attributes.tagged.0.area = Number(5.0)",
+            "Classification attributes.parts.0.n = Int(2)",
+            "Classification attributes.tagged.0.rgb.0 = Int(1)",
+            "Classification attributes.tagged.0.rgb.1 = Int(2)",
+            "Classification attributes.tagged.0.rgb.2 = Int(3)",
+            "Classification attributes.tagged.0.area = Int(5)",
             "Classification attributes.tagged.0.id = \"x\"",
-            "Classification candidates.car.score = Number(0.9)",
-            "Classification candidates.car.confidence = Number(0.8)",
-            "Classification candidates.truck.score = Number(-0.5)",
-            "Classification candidates.truck.attributes.axles = Number(3.0)",
+            "Classification candidates.car.score = Float(0.9)",
+            "Classification candidates.car.confidence = Float(0.8)",
+            "Classification candidates.truck.score = Float(-0.5)",
+            "Classification candidates.truck.attributes.axles = Int(3)",
             "Motion state = \"moving\"",
-            "Motion velocity_in_image_space.vx = Number(0.5)",
-            "Motion velocity_in_image_space.vy = Number(-1.0)",
-            "Geometry x = Number(0.125)",
-            "Geometry y = Number(0.25)",
-            "Geometry width = Number(0.25)",
-            "Geometry height = Number(0.5)",
-            "Geometry geographical_coordinates.latitude = Number(55.0)",
-            "Geometry geographical_coordinates.longitude = Number(13.0)",
-            "Debug/Source raw.k.0 = Number(1.0)",
+            "Motion velocity_in_image_space.vx = Float(0.5)",
+            "Motion velocity_in_image_space.vy = Float(-1.0)",
+            "Geometry x = Float(0.125)",
+            "Geometry y = Float(0.25)",
+            "Geometry width = Float(0.25)",
+            "Geometry height = Float(0.5)",
+            "Geometry geographical_coordinates.latitude = Float(55.0)",
+            "Geometry geographical_coordinates.longitude = Float(13.0)",
+            "Debug/Source raw.k.0 = Int(1)",
             "Debug/Source raw.k.1 = Bool(true)",
             "Debug/Source none = Null",
-            "Debug/Decoder latency = Number(2.5)",
+            "Debug/Decoder latency = Float(2.5)",
             "Debug/Decoder empty = \"{}\"",
             "Debug/Decoder list = \"[]\"",
             "Debug/Decoder text = \"\"",
             "Raw end_reason = \"lost\"",
-            "Raw frame_number = Number(4.0)",
+            "Raw frame_number = Int(4)",
             "Images 0.timestamp = \"1970-01-01T00:00:00.000900+00:00\"",
-            "Images 0.bounding_box.x = Number(0.5)",
-            "Images 0.bounding_box.y = Number(0.0)",
-            "Images 0.bounding_box.width = Number(0.25)",
-            "Images 0.bounding_box.height = Number(0.5)",
+            "Images 0.bounding_box.x = Float(0.5)",
+            "Images 0.bounding_box.y = Float(0.0)",
+            "Images 0.bounding_box.width = Float(0.25)",
+            "Images 0.bounding_box.height = Float(0.5)",
             "Images 0.data = \"3 bytes\"",
         ]
     );
@@ -228,7 +228,8 @@ fn queries_address_fields_by_group_and_path_and_colours_add_their_channels() {
         .flat_map(InspectionField::query_items)
         .map(|item| {
             let value = match item.value {
-                Leaf::Number(number) => number.to_string(),
+                Leaf::Int(whole) => whole.to_string(),
+                Leaf::Float(number) => number.to_string(),
                 other => format!("{other:?}"),
             };
             format!("{}.{} = {value}", item.group.name(), item.path.join("."))
@@ -273,7 +274,7 @@ fn a_polygon_lists_its_bounds_and_point_count_and_a_timestamp_is_a_datetime() {
 
     let shown = show(&fields);
     assert!(
-        shown.contains(&"Geometry points = Number(3.0)".to_owned()),
+        shown.contains(&"Geometry points = Int(3)".to_owned()),
         "{shown:?}"
     );
     assert_eq!(
@@ -283,6 +284,36 @@ fn a_polygon_lists_its_bounds_and_point_count_and_a_timestamp_is_a_datetime() {
     assert!(
         shown[0].starts_with("Geometry x = "),
         "no class, so geometry is first"
+    );
+}
+
+#[test]
+fn an_integer_reaches_the_wire_exactly_and_is_not_a_float() {
+    let source: Fields = vec![
+        pair("big", Value::Int(i64::MAX)),
+        pair("int", Value::Int(3)),
+        pair("float", Value::Float(3.0)),
+    ];
+    let entity = entity(
+        observation(SceneTime::Frame(0))
+            .with_details(source, Vec::new())
+            .expect("ok"),
+    );
+
+    let (fields, _) = entity_fields(&entity, MAX_FIELDS);
+
+    let wire: Vec<_> = fields
+        .iter()
+        .filter(|field| field.group == FieldGroup::Debug)
+        .map(|field| serde_json::to_string(&field.value).expect("json"))
+        .collect();
+    assert_eq!(
+        wire,
+        [
+            r#"{"kind":"int","value":"9223372036854775807"}"#,
+            r#"{"kind":"int","value":"3"}"#,
+            r#"{"kind":"float","value":3.0}"#,
+        ]
     );
 }
 

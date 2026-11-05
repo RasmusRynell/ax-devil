@@ -12,9 +12,8 @@ use api_types::{
     playback::ServerMessage,
 };
 use overlays::ViewerOverlays;
-use scene::inspection::{InspectionField, Leaf, MAX_FIELDS, entity_fields};
+use scene::inspection::{InspectionField, MAX_FIELDS, entity_fields};
 use scene_store::{TrackRead, TrackSnapshot};
-use serde_json::Value;
 use std::sync::Arc;
 use tokio::task::JoinHandle;
 
@@ -154,22 +153,11 @@ fn reply(request: &Request, inspection: InspectionWire, frame: Option<u64>) -> O
 }
 
 fn field(field: InspectionField) -> FieldWire {
-    let value = match field.value {
-        Leaf::Null => Value::Null,
-        Leaf::Bool(truth) => Value::Bool(truth),
-        Leaf::Number(number) if number.fract() == 0.0 && number.abs() < 9e15 => {
-            Value::from(number as i64)
-        }
-        Leaf::Number(number) => {
-            serde_json::Number::from_f64(number).map_or(Value::Null, Value::Number)
-        }
-        Leaf::Text(text) => Value::String(text),
-    };
     FieldWire {
         group: field.group,
         origin: field.origin,
         path: field.path,
-        value,
+        value: field.value,
         rgb: field.color.map(|color| [color.r, color.g, color.b]),
         text: field.text,
         fraction: field.fraction,

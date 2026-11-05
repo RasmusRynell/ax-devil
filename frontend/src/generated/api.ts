@@ -1696,6 +1696,12 @@ export type FieldGroupWire = "classification" | "motion" | "geometry" | "debug" 
 export type FieldOriginWire = "source" | "decoder";
 
 /**
+ * The value of a field: a leaf of the entity's data. On the wire an integer is its decimal digits in a string, so
+ * that it stays exact in a JavaScript number-only world, and `Int(3)` differs from `Float(3.0)`.
+ */
+export type LeafWire = { "kind": "null" } | { "kind": "bool", "value": boolean } | { "kind": "int", "value": string } | { "kind": "float", "value": number } | { "kind": "text", "value": string };
+
+/**
  * One leaf of an object's data.
  */
 export type FieldWire = { 
@@ -1712,9 +1718,9 @@ origin?: FieldOriginWire,
  */
 path: Array<string>, 
 /**
- * The leaf: a number, text, true or false, or `null`.
+ * The leaf: an integer exactly, a float, text, true or false, or null.
  */
-value: null | boolean | number | string, 
+value: LeafWire, 
 /**
  * The colour the value is the score of, as red, green and blue; for an entry of a colour attribute.
  */
