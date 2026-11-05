@@ -30,35 +30,68 @@ const REASONS: Record<LiveReason, string> = {
 /** The reason a feed is not live, in words. */
 export const reasonText = (reason: LiveReason): string => REASONS[reason];
 
-/** Where a feed stands in plain words: `Reconnecting (2) — Unreachable`, `Failed — Login rejected`, `Live`. */
-export function feedText(status: LiveFeedStatus): string {
-  switch (status.status) {
-    case "Connecting":
-      return "Connecting…";
-    case "Stalled":
-      return `Stalled — No frames for ${status.seconds} s`;
-    case "Reconnecting":
-      return `Reconnecting (${status.attempt}) — ${reasonText(status.reason)}`;
-    case "Failed":
-      return `Failed — ${reasonText(status.reason)}`;
-    case "Live":
-      return "Live";
-  }
-}
+type FeedState = LiveFeedStatus["status"];
+
+/** Each state of a feed as the viewer words it: its label, what it means, its tone, and whether it is a problem. */
+const STATES: Record<
+  FeedState,
+  { label: string; description: string; tone: Tone; problem: boolean }
+> = {
+  Connecting: {
+    label: "Connecting…",
+    description: "Waiting for the device to answer.",
+    tone: "caution",
+    problem: false,
+  },
+  Live: {
+    label: "● Live",
+    description: "Connected to the device.",
+    tone: "success",
+    problem: false,
+  },
+  Stalled: {
+    label: "Stalled",
+    description: "Connected, but no data has arrived recently.",
+    tone: "caution",
+    problem: true,
+  },
+  Reconnecting: {
+    label: "Reconnecting",
+    description: "The connection failed; the source is trying again.",
+    tone: "caution",
+    problem: true,
+  },
+  Failed: {
+    label: "✕ Failed",
+    description: "The connection failed and is not retried automatically.",
+    tone: "danger",
+    problem: true,
+  },
+};
+
+/** What a feed's state means, for its tooltip. */
+export const describe = (status: LiveFeedStatus): string => STATES[status.status].description;
 
 /** The tone of a feed's tag: trouble is told apart, a feed that is up or on its way is not. */
-export function feedTone(status: LiveFeedStatus): Tone {
-  switch (status.status) {
-    case "Live":
-      return "success";
-    case "Stalled":
-    case "Reconnecting":
-      return "caution";
-    case "Failed":
-      return "danger";
-    case "Connecting":
-      return "neutral";
-  }
+export const toneOf = (status: LiveFeedStatus): Tone => STATES[status.status].tone;
+
+/** A feed's short state text, with the attempt while it reconnects: `Reconnecting (2)`, `● Live`. */
+export function headline(status: LiveFeedStatus): string {
+  const { label } = STATES[status.status];
+  return status.status === "Reconnecting" ? `${label} (${status.attempt})` : label;
+}
+
+/** The line a problem gets under the bar, `Video: Failed — Login rejected`; `null` for a feed that is not in trouble. */
+export function problemLine(feed: string, status: LiveFeedStatus): string | null {
+  const { description, problem } = STATES[status.status];
+  if (!problem) return null;
+  const reason =
+    status.status === "Stalled"
+      ? `No frames for ${status.seconds} s`
+      : "reason" in status
+        ? reasonText(status.reason)
+        : description;
+  return `${feed}: ${headline(status)} — ${reason}`;
 }
 
 /** Whether a feed wants the user: it is stuck, or failed, and Retry reopens it. */

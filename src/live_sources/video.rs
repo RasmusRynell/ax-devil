@@ -59,7 +59,7 @@ impl VideoTask {
             decoder: None,
             epoch: None,
             attempt,
-            next_sequence: 0,
+            next_sequence: 1,
             warned_capture: false,
             warned_decode: false,
         }
