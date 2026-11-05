@@ -107,7 +107,7 @@ export function PanelDivider({
       onPointerUp={end}
       onPointerCancel={end}
       onLostPointerCapture={end}
-      className="absolute inset-y-0 right-full hidden w-s cursor-col-resize hover:bg-line-strong focus-ring @min-[72ch]:block"
+      className="absolute inset-y-0 right-full w-s cursor-col-resize hover:bg-line-strong focus-ring"
     />
   );
 }

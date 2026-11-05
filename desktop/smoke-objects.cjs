@@ -155,7 +155,7 @@ module.exports.objects = async (window, { setTheme, shoot }) => {
     "Back marks the row of the page it left",
   );
 
-  // The smallest window at 200%: the panel covers the viewer and nothing sticks out or is cut off.
+  // The smallest window at 200%: the panel fits and nothing sticks out or is cut off.
   await setView(window, [640, 480], 2);
   await js("document.querySelector('[aria-label=Workspace]').click()");
   await wait("!document.querySelector('[aria-label=\"Workspace items\"]')");

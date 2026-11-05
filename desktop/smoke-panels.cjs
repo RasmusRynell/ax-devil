@@ -47,13 +47,17 @@ module.exports.panels = async (window, { setTheme, shoot, showEntry, point }) =>
     await fits(PAGE, `The object page must fit the 640x480 window at 200% zoom, ${theme}`, true);
     await shoot(`inspector-${theme}-200.png`);
   }
-  // At this size the media tools cover the viewer.
-  const covers = await js(`(() => {
+  // At this size the media tools still sit beside the video, which keeps room, and their divider is there to use.
+  const docked = await js(`(() => {
     const aside = document.querySelector('${PANEL}').getBoundingClientRect();
     const pane = document.querySelector('[data-popover-bounds]').getBoundingClientRect();
-    return aside.left <= pane.left && aside.right >= pane.right;
+    const divider = document.querySelector('${PANEL} [role=separator]').getBoundingClientRect();
+    return aside.right <= pane.right + 1 && divider.width > 0 && divider.left >= pane.left - 1;
   })()`);
-  assert.ok(covers, "A narrow viewer's media tools must cover the viewer, not take a column");
+  assert.ok(
+    docked,
+    "A narrow viewer's media tools must take a column with a divider, not cover the viewer",
+  );
   await js(`document.querySelector('${PAGE} button[aria-label^=Back]').click()`);
   await wait(`!document.querySelector('${PAGE}')`);
   tools();

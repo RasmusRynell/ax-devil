@@ -346,4 +346,17 @@ describe("Resizing", () => {
       `${wider}px`,
     );
   });
+
+  it("keeps the divider at a viewer too narrow for the video's 160, with the content whole", () => {
+    panelWidth = 280;
+    vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockReturnValue(100);
+    const onWidth = vi.fn();
+    mount({ onWidth });
+    expect(divider().getAttribute("aria-valuemax")).toBe("280");
+    expect(divider().tabIndex).toBe(0);
+    fireEvent.keyDown(divider(), { key: "ArrowLeft" });
+    expect(onWidth).toHaveBeenLastCalledWith(280);
+    fireEvent.keyDown(divider(), { key: "End" });
+    expect(onWidth).toHaveBeenLastCalledWith(280);
+  });
 });
