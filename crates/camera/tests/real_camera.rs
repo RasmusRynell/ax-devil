@@ -90,7 +90,14 @@ async fn a_snapshot_is_a_jpeg_and_resolutions_are_listed() {
             .expect("snapshot")
             .is_empty()
     );
-    assert!(!device.image_sizes().await.expect("sizes").heads.is_empty());
+    // Head 1 offers its own list when the camera has one, otherwise the camera-wide sizes.
+    let sizes = device.image_sizes().await.expect("sizes");
+    let first = sizes
+        .heads
+        .iter()
+        .find(|(head, _)| *head == Head::FIRST)
+        .map_or(&sizes.common, |(_, listed)| listed);
+    assert!(!first.is_empty(), "no sizes for head 1: {sizes:?}");
 }
 
 #[tokio::test]
