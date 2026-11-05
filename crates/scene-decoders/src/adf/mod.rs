@@ -1,6 +1,6 @@
 //! Axis Analytics Data Format (ADF), beta and v1: JSON, one object per line, as frames or as consolidated tracks.
 //!
-//! A line may start with a timestamp column and a tab, which is dropped.
+//! A line of every format but the beta frame may start with a timestamp column and a tab, which is dropped.
 
 mod consolidated;
 mod frame;
@@ -8,7 +8,7 @@ mod parse;
 
 use std::sync::Arc;
 
-use foundation::{CancelToken, Interrupt};
+use foundation::{CancelToken, Interrupt, Warning};
 use handler_api::{
     DecodeError, DecodeSummary, Decoder, Form, Framing, Header, Input, OnEqualKey, SceneSink, Spec,
     Values,
@@ -44,22 +44,67 @@ enum Lines {
     Tracks,
 }
 
-/// Reads one object of a line into the Scenes it gives.
-type Read = fn(&Object) -> Result<Vec<Scene>, String>;
+/// Reads one object of a line into the Scenes it gives, noting what the file's warnings should say.
+type Read = fn(&Object, &mut Notes) -> Result<Vec<Scene>, String>;
+
+/// What the records that were read had in them that is worth a warning.
+#[derive(Default)]
+struct Notes {
+    /// Beta records whose frames are at different times.
+    differing_times: usize,
+    /// Beta observations that had a world velocity, which is not shown.
+    world_velocity: usize,
+}
+
+impl Notes {
+    /// The warning for each kind of note, if any were made.
+    fn warnings(&self) -> [Option<Warning>; 2] {
+        let warning = |count: usize, problem: String, consequence: &str| {
+            (count > 0).then(|| Warning {
+                problem,
+                reasons: Vec::new(),
+                consequence: consequence.to_owned(),
+                more_reasons: false,
+            })
+        };
+        [
+            warning(
+                self.differing_times,
+                format!(
+                    "Records with frames at different times: {}",
+                    self.differing_times
+                ),
+                "Each is one Scene over its whole time range.",
+            ),
+            warning(
+                self.world_velocity,
+                format!(
+                    "Observations with a world velocity: {}",
+                    self.world_velocity
+                ),
+                "It is not shown.",
+            ),
+        ]
+    }
+}
 
 /// One of the four ADF decoders.
 struct AdfDecoder {
     spec: Spec,
     read: Read,
     on_equal_key: OnEqualKey,
+    /// Whether a line may start with a timestamp column and a tab.
+    tsv_prefix: bool,
     /// The name of the decoder's filter policy.
     filters: &'static str,
 }
 
 /// Every ADF decoder: beta, then v1, each as frames and as consolidated tracks.
 pub(crate) fn decoders() -> Vec<Arc<dyn Decoder>> {
-    let adf = |id, plugin, name, filters, lines, read| -> Arc<dyn Decoder> {
-        Arc::new(AdfDecoder::new(id, plugin, name, filters, lines, read))
+    let adf = |id, plugin, name, filters, lines, read, tsv_prefix| -> Arc<dyn Decoder> {
+        Arc::new(AdfDecoder::new(
+            id, plugin, name, filters, lines, read, tsv_prefix,
+        ))
     };
     vec![
         adf(
@@ -69,6 +114,7 @@ pub(crate) fn decoders() -> Vec<Arc<dyn Decoder>> {
             "adf_beta",
             Lines::Frames,
             frame::read_beta,
+            false,
         ),
         adf(
             "ADF_BETA_CONSOLIDATED",
@@ -76,7 +122,8 @@ pub(crate) fn decoders() -> Vec<Arc<dyn Decoder>> {
             "ADF v1 Beta Consolidated",
             "adf_beta",
             Lines::Tracks,
-            |record| consolidated::read(record, false),
+            |record, _| consolidated::read(record, false),
+            true,
         ),
         adf(
             "ADF_V1_FRAME",
@@ -85,6 +132,7 @@ pub(crate) fn decoders() -> Vec<Arc<dyn Decoder>> {
             "adf_v1_frame",
             Lines::Frames,
             frame::read_v1,
+            true,
         ),
         adf(
             "ADF_V1_CONSOLIDATED",
@@ -92,7 +140,8 @@ pub(crate) fn decoders() -> Vec<Arc<dyn Decoder>> {
             "ADF v1 Consolidated Tracks",
             "adf_v1_frame",
             Lines::Tracks,
-            |record| consolidated::read(record, true),
+            |record, _| consolidated::read(record, true),
+            true,
         ),
     ]
 }
@@ -105,6 +154,7 @@ impl AdfDecoder {
         filters: &'static str,
         lines: Lines,
         read: Read,
+        tsv_prefix: bool,
     ) -> Self {
         let (bases, default_basis, on_equal_key) = match lines {
             Lines::Frames => (
@@ -124,10 +174,11 @@ impl AdfDecoder {
                 bases,
                 default_basis,
                 options: Form::default(),
-                version: 1,
+                version: 2,
             },
             read,
             on_equal_key,
+            tsv_prefix,
             filters,
         }
     }
@@ -148,18 +199,30 @@ impl Decoder for AdfDecoder {
         let filter = filter_policy(self.filters);
         // A live source never ends, so it has its class filters from the start. A file is published once decoded, and
         // a header would publish it while it is still being read.
-        if input.path().is_none() {
+        let live = input.path().is_none();
+        if live {
             sink.header(Header {
                 filter: filter.clone(),
                 coverage: Coverage::Sparse,
                 metadata: Fields::new(),
             });
         }
+        let mut notes = Notes::default();
+        let mut told = [false; 2];
         'records: while let Some(record) = input.next(cancel)? {
-            let read =
-                parse_line(record.bytes).and_then(|value| (self.read)(object(&value, "the line")?));
+            let read = parse_line(record.bytes, self.tsv_prefix)
+                .and_then(|value| (self.read)(object(&value, "the line")?, &mut notes));
             match read {
                 Ok(scenes) => {
+                    // A live source never finishes to give a summary, so each kind is told at its first sighting.
+                    if live {
+                        for (told, warning) in told.iter_mut().zip(notes.warnings()) {
+                            if let (false, Some(warning)) = (*told, warning) {
+                                *told = true;
+                                sink.warn(warning);
+                            }
+                        }
+                    }
                     for scene in scenes {
                         if sink.sample(scene, self.on_equal_key).is_break() {
                             break 'records;
@@ -170,7 +233,12 @@ impl Decoder for AdfDecoder {
             }
         }
         Ok(DecodeSummary {
-            warnings: Vec::new(),
+            // A warning goes to the sink or the summary, not both.
+            warnings: if live {
+                Vec::new()
+            } else {
+                notes.warnings().into_iter().flatten().collect()
+            },
             filter,
             metadata: Fields::new(),
             coverage: Coverage::Sparse,
@@ -178,11 +246,11 @@ impl Decoder for AdfDecoder {
     }
 }
 
-/// The JSON of a line, without the timestamp column and tab that may come before it.
-fn parse_line(line: &[u8]) -> Result<serde_json::Value, String> {
+/// The JSON of a line, without the timestamp column and tab that may come before it when `tsv_prefix` allows one.
+fn parse_line(line: &[u8], tsv_prefix: bool) -> Result<serde_json::Value, String> {
     let json = match memchr(b'\t', line) {
         // JSON does not start with a timestamp, and tabs inside an object are only spacing.
-        Some(tab) if line.first() != Some(&b'{') => &line[tab + 1..],
+        Some(tab) if tsv_prefix && line.first() != Some(&b'{') => &line[tab + 1..],
         _ => line,
     };
     if json.trim_ascii().is_empty() {

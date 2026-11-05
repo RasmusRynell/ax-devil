@@ -100,6 +100,8 @@ fn a_bad_line_is_skipped_by_its_line_number_and_the_rest_are_read() {
         .as_object_mut()
         .expect("an object")
         .remove("object_track_id");
+    let mut unknown_class = detection("1");
+    unknown_class["class"]["type"] = json!("Bag");
     let lines = [
         frame(vec![detection("1")], vec![]).to_string(),
         "{not json".to_owned(),
@@ -108,13 +110,14 @@ fn a_bad_line_is_skipped_by_its_line_number_and_the_rest_are_read() {
         frame(vec![no_id], vec![]).to_string(),
         frame(vec![], vec![json!({"type": "Rename", "from_id": "a"})]).to_string(),
         frame(vec![], vec![json!({"type": "Merge"})]).to_string(),
+        frame(vec![unknown_class], vec![]).to_string(),
         frame(vec![detection("2")], vec![]).to_string(),
     ];
     let (scenes, skipped) = decode("ADF_V1_FRAME", &lines);
 
     assert_eq!(scenes.len(), 2);
     let positions: Vec<_> = skipped.iter().map(|(position, _)| *position).collect();
-    assert_eq!(positions, [2, 3, 4, 5, 6, 7]);
+    assert_eq!(positions, [2, 3, 4, 5, 6, 7, 8]);
     for ((_, reason), wanted) in skipped.iter().zip([
         "invalid JSON",
         "timestamp",
@@ -122,11 +125,96 @@ fn a_bad_line_is_skipped_by_its_line_number_and_the_rest_are_read() {
         "object_track_id",
         "Rename to_id",
         "'Merge'",
+        "class type \"Bag\"",
     ]) {
         assert!(
             reason.contains(wanted),
             "{reason:?} should mention {wanted}"
         );
+    }
+}
+
+#[test]
+fn a_frame_reads_numbers_written_as_text_and_names_classes_by_its_own_table() {
+    let class = |kind: &str, extra: Json| {
+        let mut one = detection("1");
+        one["class"] = json!({"type": kind, "score": "0.5"});
+        one["class"]
+            .as_object_mut()
+            .expect("an object")
+            .extend(extra.as_object().expect("an object").clone());
+        frame(vec![one], vec![])
+    };
+    let mut text_box = detection("1");
+    text_box["bounding_box"] =
+        json!({"left": "0.1", "top": " 0.2 ", "right": "0.4", "bottom": "0.6"});
+    let mut not_finite = detection("1");
+    not_finite["bounding_box"]["left"] = json!("NaN");
+    // Only Python's table is accepted: `licenseplate` but not `license_plate`.
+    let lines = [
+        frame(vec![text_box], vec![]).to_string(),
+        frame(vec![not_finite], vec![]).to_string(),
+        class("Person", json!({})).to_string(),
+        class("VehicleOther", json!({})).to_string(),
+        class("licensePlate", json!({"plate_number": "ABC"})).to_string(),
+        class("license_plate", json!({})).to_string(),
+    ];
+    let (scenes, skipped) = decode("ADF_V1_FRAME", &lines);
+
+    let classes: Vec<_> = scenes
+        .iter()
+        .map(|scene| &scene.entities()[0].observations()[0].classifications)
+        .collect();
+    assert_eq!(skipped.iter().map(|s| s.0).collect::<Vec<_>>(), [2, 6]);
+    assert_eq!(
+        scenes[0].entities()[0].observations()[0]
+            .geometry
+            .bounds()
+            .top(),
+        0.2
+    );
+    let names: Vec<_> = classes[1..]
+        .iter()
+        .map(|c| c[0].class_type.as_str())
+        .collect();
+    assert_eq!(names, ["human", "vehicle_other", "license_plate"]);
+    assert_eq!(classes[1][0].score.map(scene::Score::value), Some(0.5));
+}
+
+#[test]
+fn carries_bag_is_true_as_python_counts_truth() {
+    let carries = |value: Json| {
+        let mut one = detection("1");
+        one["class"]["carries_bag"] = value;
+        decode("ADF_V1_FRAME", &[frame(vec![one], vec![]).to_string()]).0[0].entities()[0]
+            .observations()[0]
+            .classifications[0]
+            .attribute("carries_bag")
+            .cloned()
+    };
+    for falsey in [
+        json!(false),
+        json!(0),
+        json!(0.0),
+        json!(""),
+        json!(null),
+        json!([]),
+        json!({}),
+    ] {
+        assert_eq!(
+            carries(falsey.clone()),
+            Some(Value::Bool(false)),
+            "{falsey}"
+        );
+    }
+    for truthy in [
+        json!(true),
+        json!(1),
+        json!("false"),
+        json!([0]),
+        json!({"a": 0}),
+    ] {
+        assert_eq!(carries(truthy.clone()), Some(Value::Bool(true)), "{truthy}");
     }
 }
 
