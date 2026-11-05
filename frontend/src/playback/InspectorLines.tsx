@@ -138,7 +138,7 @@ const FieldLine = memo(function FieldLine({
         <span className="truncate">{label}</span>
       </span>
       {missing ? (
-        <span className="col-span-2 truncate text-muted">unavailable</span>
+        <span className="col-span-2 truncate text-muted italic">unavailable</span>
       ) : (
         <>
           <span className="@container/value flex min-w-0 items-center gap-m">

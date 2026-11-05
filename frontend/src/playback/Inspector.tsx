@@ -1,6 +1,7 @@
 import { Button } from "../kit/Button";
 import { Chip } from "../kit/Chips";
 import { fixed } from "../present/expr/fixed";
+import { categoryDot } from "../tools/category";
 import { jumpsFrom, type Jumps } from "./appearanceJumps";
 import type { Appearance } from "./appearances";
 import type { InspectionView, Summary } from "./contract";
@@ -9,6 +10,8 @@ import { InspectorLines } from "./InspectorLines";
 import type { FieldWire } from "./protocol";
 import type { PlaybackView } from "./view";
 import { useAppearance, type AppearanceSource } from "./useAppearance";
+
+const ATTRIBUTES_NOTE = "Attributes are only available while an object is in the frame.";
 
 const NO_FIELDS: readonly FieldWire[] = [];
 
@@ -96,26 +99,31 @@ export function Inspector({
   const fields = absent ? NO_FIELDS : inspection.fields;
   // Before any fields arrive nothing is known, so no pin could say whether its field is missing.
   const unknown = inspection.state === "loading" && fields.length === 0;
-  const motion = !absent && inspection.summary.motion;
+  const motion = absent ? null : inspection.summary.motion;
   const truncated = !absent && inspection.truncated;
   const { frame, seek } = reach;
   const jumps = appearance ? jumpsFrom(appearance.spans, frame, appearance.truncated) : null;
   const when = absent ? whenOf(appearance, jumps, reach) : "";
+  const filtered = absent && inspection.reason === "filtered";
+  const pill = !absent ? motion : filtered ? "Hidden by filter" : "Not in this frame";
+  const className = summarized ? (summarized.className ?? "unknown") : null;
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      {(summarized || motion || truncated) && (
+      {(summarized || pill || truncated) && (
         <div className="flex items-center gap-s border-b border-line py-xs pr-m pl-m">
+          {className !== null && (
+            <span
+              aria-hidden
+              className={`size-m shrink-0 rounded-full ${categoryDot(className)} ${absent ? "opacity-50" : ""}`}
+            />
+          )}
           <div className="flex min-w-0 flex-1 flex-wrap items-baseline gap-x-m">
-            {summarized && (
-              <span className={`font-semibold break-words ${absent ? "text-muted" : ""}`}>
-                {summarized.className ?? "unknown"}
-              </span>
-            )}
+            {className !== null && <span className="font-semibold break-words">{className}</span>}
             {summarized && !absent && detailOf(summarized) && (
               <span className="text-small text-muted">{detailOf(summarized)}</span>
             )}
           </div>
-          {motion && <Chip>{motion}</Chip>}
+          {pill && <Chip>{pill}</Chip>}
           {truncated && (
             <Chip tone="caution" title="Some fields are not listed">
               Truncated
@@ -125,12 +133,11 @@ export function Inspector({
       )}
       <div aria-busy={inspection.state === "loading"} className="flex min-h-0 flex-1 flex-col">
         {absent && (
-          <div className="shrink-0 p-m text-muted">
-            <p className="m-0">
-              {inspection.reason === "filtered" ? "Hidden by filter" : "Not in this frame"}
-            </p>
-            {when && <p className="m-0 text-small">{when}</p>}
-          </div>
+          <p className="m-0 shrink-0 p-m text-small text-muted">
+            {filtered
+              ? "In this frame, but hidden by the overlay filter. Attributes are only available for objects that pass it."
+              : `${when || "Not in the current frame"}. ${ATTRIBUTES_NOTE}`}
+          </p>
         )}
         {absent && jumps && (jumps.last !== null || jumps.next !== null) && (
           <div className="flex shrink-0 flex-wrap gap-s px-m pb-m">
