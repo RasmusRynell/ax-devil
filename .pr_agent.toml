@@ -1,4 +1,4 @@
-# PR-Agent review settings. Model and trigger settings live in .github/workflows/pr-agent.yml.
+# PR-Agent review settings. Model and trigger settings live in .github/workflows/pr-agent.yml; max_model_tokens here caps how much diff the reviewer sends.
 # PR-Agent reads this file from the default branch, so edits apply after merge.
 
 [pr_reviewer]
@@ -21,3 +21,9 @@ enable_review_labels_security = false
 enable_review_labels_effort = false
 enable_intro_text = false
 persistent_comment = true
+
+[config]
+max_model_tokens = 200000
+
+[ignore]
+glob = ['Cargo.lock']
