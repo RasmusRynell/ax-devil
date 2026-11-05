@@ -35,6 +35,7 @@ static PACED: LazyLock<Spec> = LazyLock::new(|| Spec {
     plugin: "test".into(),
     name: "Paced".into(),
     extensions: vec![".paced".into()],
+    description: None,
     framing: Framing::Whole,
     bases: vec![MatchBasis::Frame],
     default_basis: MatchBasis::Frame,

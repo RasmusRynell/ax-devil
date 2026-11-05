@@ -74,7 +74,13 @@ impl Handlers {
         move |id| handlers.decoder(id).cloned()
     }
 
-    /// The decoders whose declared extensions end the file name (case-insensitive), in registry order.
+    /// The decoders that may read the file called `path`, in registry order: the candidates to offer when the
+    /// user has not named one. A decoder named explicitly is taken whatever its extensions say.
+    ///
+    /// A decoder with no extensions may read any file. Otherwise one of its extensions must match the lowercased
+    /// file name: an extension with a single dot (`.json`) must equal the name's final suffix, as Python's
+    /// `Path.suffix` finds it (none for `.json` alone or `name.`); a compound extension (`.tar.gz`), which only a
+    /// decoder that declares it can be found by, must end the name.
     pub fn decoders_for(&self, path: &Path) -> Vec<&Arc<dyn Decoder>> {
         let Some(name) = path.file_name().and_then(|name| name.to_str()) else {
             return Vec::new();
@@ -83,11 +89,11 @@ impl Handlers {
         self.decoders
             .iter()
             .filter(|decoder| {
-                decoder
-                    .spec()
-                    .extensions
-                    .iter()
-                    .any(|extension| name.ends_with(extension))
+                let extensions = &decoder.spec().extensions;
+                extensions.is_empty()
+                    || extensions
+                        .iter()
+                        .any(|extension| matches_extension(&name, extension))
             })
             .collect()
     }
@@ -103,6 +109,16 @@ impl Handlers {
             .iter()
             .find(|resolver| resolver.spec().id == id)
     }
+}
+
+/// Whether the lowercased file `name` has this lowercase `extension` (see [`Handlers::decoders_for`]).
+fn matches_extension(name: &str, extension: &str) -> bool {
+    if extension.matches('.').count() > 1 {
+        return name.ends_with(extension);
+    }
+    name.rfind('.')
+        .filter(|dot| *dot > 0 && dot + 1 < name.len())
+        .is_some_and(|dot| &name[dot..] == extension)
 }
 
 /// The [`Handlers`] the app uses right now, replaced as plugins are installed, removed or edited. Work takes one
@@ -138,7 +154,10 @@ impl HandlerSet {
 mod tests {
     use std::collections::HashSet;
 
-    use handler_api::{Cli, FieldKind, Form};
+    use foundation::{CancelToken, Interrupt};
+    use handler_api::{
+        Cli, DecodeError, DecodeSummary, FieldKind, Form, Input, SceneSink, Spec, Values,
+    };
 
     use super::*;
 
@@ -220,5 +239,60 @@ mod tests {
         assert_eq!(decoders_for("/data/gt/GT.TXT"), ["MOT_FILE"]);
         assert!(decoders_for("/data/video.mp4").is_empty());
         assert_eq!(handlers.resolvers().len(), 2);
+    }
+
+    /// A decoder that is only listed, with the given extensions.
+    struct Reads(Spec);
+
+    impl Decoder for Reads {
+        fn spec(&self) -> &Spec {
+            &self.0
+        }
+
+        fn decode(
+            &self,
+            _input: &mut dyn Input,
+            _options: &Values,
+            _sink: &mut dyn SceneSink,
+            _cancel: &CancelToken,
+        ) -> Result<DecodeSummary, Interrupt<DecodeError>> {
+            Err(Interrupt::Cancelled)
+        }
+    }
+
+    #[test]
+    fn candidates_are_found_by_final_suffix_or_declared_compound_and_no_extensions_reads_any_file()
+    {
+        let like = |id: &str, extensions: &[&str]| -> Arc<dyn Decoder> {
+            let mot = Handlers::built_in()
+                .decoder("MOT_FILE")
+                .unwrap()
+                .spec()
+                .clone();
+            Arc::new(Reads(Spec {
+                id: id.into(),
+                extensions: extensions.iter().map(|&e| e.to_owned()).collect(),
+                ..mot
+            }))
+        };
+        let handlers =
+            Handlers::built_in().with_decoders([like("ANY", &[]), like("ARCHIVE", &[".tar.gz"])]);
+        let found = |name: &str| -> Vec<String> {
+            handlers
+                .decoders_for(Path::new(name))
+                .iter()
+                .map(|decoder| decoder.spec().id.clone())
+                .collect()
+        };
+
+        // The wildcard comes after the built-ins, in registry order.
+        assert_eq!(found("gt.TXT"), ["MOT_FILE", "ANY"]);
+        assert_eq!(found("video.mp4"), ["ANY"]);
+        assert_eq!(found("a.TAR.GZ"), ["ANY", "ARCHIVE"]);
+        // Only the final suffix counts for a simple extension, and a name that is all extension has none.
+        assert_eq!(found("gt.txt.bak"), ["ANY"]);
+        assert_eq!(found(".txt"), ["ANY"]);
+        // A named decoder is taken without looking at its extensions.
+        assert!(handlers.decoder("MOT_FILE").is_some());
     }
 }

@@ -23,6 +23,7 @@ impl PluginDecoder {
             plugin: program.manifest().id.clone(),
             name: handler.name.clone(),
             extensions: handler.extensions.clone(),
+            description: handler.description.clone(),
             framing: Framing::Whole,
             bases: handler.bases.clone(),
             default_basis: handler.default_basis,

@@ -19,7 +19,11 @@ pub struct DecoderInfo {
     pub handler: String,
     /// What the user reads.
     pub display_name: String,
-    /// The file extensions it reads: lowercase, with the dot.
+    /// One sentence on what it reads; absent when it has none.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub description: Option<String>,
+    /// The file name endings it reads: lowercase, with the dot. Empty means any file.
     pub extensions: Vec<String>,
     /// The options it takes, in the order they are shown; empty for a decoder without any.
     pub options: Vec<FieldInfo>,

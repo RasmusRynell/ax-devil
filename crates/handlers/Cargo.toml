@@ -16,3 +16,6 @@ workspace = true
 handler-api.workspace = true
 playlist-resolvers.workspace = true
 scene-decoders.workspace = true
+
+[dev-dependencies]
+foundation.workspace = true

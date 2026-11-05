@@ -59,6 +59,10 @@ fn every_refusal_names_the_manifest_field() {
             "handlers[0].extensions",
             Box::new(|m| m["handlers"][0]["extensions"] = json!([".ACME"])),
         ),
+        (
+            "handlers[0].description",
+            Box::new(|m| m["handlers"][0]["description"] = json!(" ")),
+        ),
         ("code", Box::new(|m| m["code"] = json!(["../elsewhere"]))),
         ("code", Box::new(|m| m["code"] = json!(["no-such-file.py"]))),
         (
@@ -199,6 +203,19 @@ fn the_store_gets_the_code_hash_and_a_plugin_whose_files_cannot_be_hashed_refuse
         run.failure()
     );
     assert!(run.sink.samples.is_empty());
+}
+
+#[test]
+fn a_decoder_description_is_optional_and_reaches_its_spec() {
+    let folder = tempfile::tempdir().expect("folder");
+    assert_eq!(
+        decoder(&install(folder.path(), &base())).spec().description,
+        None
+    );
+    let mut described = base();
+    described["handlers"][0]["description"] = json!("ACME tracks");
+    let decoder = decoder(&install(folder.path(), &described));
+    assert_eq!(decoder.spec().description.as_deref(), Some("ACME tracks"));
 }
 
 #[test]

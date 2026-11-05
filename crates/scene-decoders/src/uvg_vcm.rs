@@ -122,6 +122,10 @@ impl UvgVcmDecoder {
                 plugin: PLUGIN.to_owned(),
                 name: "UVG-VCM".to_owned(),
                 extensions: vec![".json".to_owned()],
+                description: Some(
+                    "UVG-VCM v1.0 detection/tracking JSON with optional segmentation polygons."
+                        .to_owned(),
+                ),
                 framing: Framing::Whole,
                 bases: vec![MatchBasis::Frame],
                 default_basis: MatchBasis::Frame,

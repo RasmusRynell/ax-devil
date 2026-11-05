@@ -58,6 +58,7 @@ fn open(decoder: impl Decoder + 'static, text: &[u8]) -> Arc<Track> {
 #[test]
 fn the_host_frames_lines_and_a_skipped_one_keeps_its_frame() {
     let decoder = Lines(Spec {
+        description: None,
         framing: Framing::Records,
         ..spec(1)
     });

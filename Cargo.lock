@@ -940,6 +940,7 @@ dependencies = [
 name = "handlers"
 version = "0.1.0"
 dependencies = [
+ "foundation",
  "handler-api",
  "playlist-resolvers",
  "scene-decoders",

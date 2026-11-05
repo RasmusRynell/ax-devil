@@ -29,7 +29,10 @@ pub struct Spec {
     pub plugin: String,
     /// What the user reads.
     pub name: String,
-    /// File extensions the decoder reads: lowercase, with the dot.
+    /// One sentence on what the decoder reads, for the lists that offer it; `None` when it has none.
+    pub description: Option<String>,
+    /// File name endings the decoder reads: lowercase, with the dot. Empty means it may read any file. See
+    /// `Handlers::decoders_for` for how they are compared.
     pub extensions: Vec<String>,
     /// How the host frames the file for it.
     pub framing: Framing,

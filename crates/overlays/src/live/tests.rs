@@ -27,6 +27,7 @@ static SPEC: LazyLock<Spec> = LazyLock::new(|| Spec {
     plugin: "test".into(),
     name: "Live lane".into(),
     extensions: Vec::new(),
+    description: None,
     framing: Framing::Whole,
     bases: vec![MatchBasis::Time],
     default_basis: MatchBasis::Time,

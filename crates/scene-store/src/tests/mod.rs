@@ -41,6 +41,7 @@ pub(super) fn spec(version: u32) -> Spec {
         plugin: "test".into(),
         name: "Test".into(),
         extensions: vec![".txt".into()],
+        description: None,
         framing: Framing::Whole,
         bases: vec![MatchBasis::Frame, MatchBasis::Time],
         default_basis: MatchBasis::Frame,
