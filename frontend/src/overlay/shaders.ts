@@ -63,7 +63,6 @@ in vec4 vFill;
 in vec4 vPen;
 out vec4 color;
 uniform sampler2D page;
-uniform float opacity;
 const float PI = 3.14159265;
 
 // Edge coverage from a signed distance; pixel is the size of one device pixel in shape units.
@@ -134,17 +133,91 @@ void main() {
       ink = (stroke > 0. ? mix(band, vFill, inner) : vFill) * coverage(d, pixel);
     }
   }
-  color = ink * opacity;
+  color = ink;
 }`;
 
-/** Polygon corners, drawn as triangle fans into the stencil and then filled where it is odd. */
+/**
+ * Polygon corners, drawn as triangle fans into the stencil and then filled where it is odd, and the faded ring around
+ * them. A vertex moves by its offset along `edge`: x outward for the ring's faded side (`side` 1), y inward for the
+ * filled one (`side` 0) but never past its room, so the polygon's true edge lies half way through the ring, where the
+ * coverage is one half.
+ */
 export const FILL_VERTEX = `#version 300 es
 layout(location = 0) in vec2 corner;
+layout(location = 1) in vec4 offsetSideRoom;
+uniform vec2 edge;
+out float vCoverage;
 ${PLACE}
-void main() { gl_Position = place(corner); }`;
+void main() {
+  vCoverage = 1. - offsetSideRoom.z;
+  float inset = min(edge.y, offsetSideRoom.w);
+  gl_Position = place(corner + offsetSideRoom.xy * mix(-inset, edge.x, offsetSideRoom.z));
+}`;
 
 export const FILL_FRAGMENT = `#version 300 es
 precision mediump float;
 uniform vec4 fill;
+in float vCoverage;
 out vec4 color;
-void main() { color = fill; }`;
+void main() { color = fill * vCoverage; }`;
+
+/** One triangle over the whole target, with no vertex data. */
+export const COMPOSITE_VERTEX = `#version 300 es
+void main() {
+  vec2 corner = vec2(float((gl_VertexID << 1) & 2), float(gl_VertexID & 2));
+  gl_Position = vec4(corner * 2. - 1., 0., 1.);
+}`;
+
+/** Copies a premultiplied layer of the target's size, one texel to one pixel, at `opacity`. */
+export const COMPOSITE_FRAGMENT = `#version 300 es
+precision highp float;
+precision highp sampler2D;
+uniform sampler2D layer;
+uniform float opacity;
+out vec4 color;
+void main() { color = texelFetch(layer, ivec2(gl_FragCoord.xy), 0) * opacity; }`;
+
+/** Compiles and links a program; throws with the driver's log when it cannot. */
+export function compileProgram(
+  gl: WebGL2RenderingContext,
+  vertex: string,
+  fragment: string,
+): WebGLProgram {
+  const created = gl.createProgram();
+  if (!created) throw new Error("a program cannot be created");
+  try {
+    attachAll(gl, created, vertex, fragment);
+  } catch (error) {
+    gl.deleteProgram(created);
+    throw error;
+  }
+  return created;
+}
+
+function attachAll(
+  gl: WebGL2RenderingContext,
+  created: WebGLProgram,
+  vertex: string,
+  fragment: string,
+): void {
+  for (const [type, source] of [
+    [gl.VERTEX_SHADER, vertex],
+    [gl.FRAGMENT_SHADER, fragment],
+  ] as const) {
+    const shader = gl.createShader(type);
+    if (!shader) throw new Error("a shader cannot be created");
+    try {
+      gl.shaderSource(shader, source);
+      gl.compileShader(shader);
+      if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS))
+        throw new Error(gl.getShaderInfoLog(shader) ?? "a shader does not compile");
+      gl.attachShader(created, shader);
+    } finally {
+      // An attached shader lives on until its program goes; one that failed goes now.
+      gl.deleteShader(shader);
+    }
+  }
+  gl.linkProgram(created);
+  if (!gl.getProgramParameter(created, gl.LINK_STATUS))
+    throw new Error(gl.getProgramInfoLog(created) ?? "a program does not link");
+}

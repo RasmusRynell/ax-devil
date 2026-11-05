@@ -7,35 +7,15 @@
 
 import type { LaneQuads } from "../present";
 import type { TextAtlas } from "./atlas";
-import { QUAD_FLOATS } from "./quads";
-import { FILL_FRAGMENT, FILL_VERTEX, QUAD_FRAGMENT, QUAD_VERTEX } from "./shaders";
+import { FILL_HEADER_FLOATS, FILL_VERTEX_FLOATS, QUAD_FLOATS } from "./quads";
+import { FadeLayer } from "./layer";
+import { FILL_FRAGMENT, FILL_VERTEX, QUAD_FRAGMENT, QUAD_VERTEX, compileProgram } from "./shaders";
 
 /** A rectangle of the canvas in device pixels, from its top-left corner. */
 export type CellRect = { x: number; y: number; width: number; height: number };
 
 /** The texture unit of the atlas page; the video planes use 0 to 2. */
 const ATLAS_UNIT = 3;
-
-function program(gl: WebGL2RenderingContext, vertex: string, fragment: string): WebGLProgram {
-  const created = gl.createProgram();
-  for (const [type, source] of [
-    [gl.VERTEX_SHADER, vertex],
-    [gl.FRAGMENT_SHADER, fragment],
-  ] as const) {
-    const shader = gl.createShader(type);
-    if (!shader) throw new Error("a shader cannot be created");
-    gl.shaderSource(shader, source);
-    gl.compileShader(shader);
-    if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS))
-      throw new Error(gl.getShaderInfoLog(shader) ?? "a shader does not compile");
-    gl.attachShader(created, shader);
-    gl.deleteShader(shader);
-  }
-  gl.linkProgram(created);
-  if (!gl.getProgramParameter(created, gl.LINK_STATUS))
-    throw new Error(gl.getProgramInfoLog(created) ?? "a program does not link");
-  return created;
-}
 
 type Placed = {
   program: WebGLProgram;
@@ -58,13 +38,14 @@ export type LaneDrawing = {
   version: number;
   /** The displayed picture the quads were laid out for, in CSS pixels, and the device pixel ratio of its glyphs. */
   view: { width: number; height: number; dpr: number };
-  /** 0 to 1, applied to everything the lane draws. */
+  /** 0 to 1, applied once to everything the lane draws, so overlapping marks do not darken each other. */
   opacity: number;
 };
 
 type LaneBuffers = { quads: WebGLBuffer; fills: WebGLBuffer; source: LaneQuads; version: number };
 
 const QUAD_STRIDE = QUAD_FLOATS * 4;
+const FILL_STRIDE = FILL_VERTEX_FLOATS * 4;
 
 /** The overlay painter of one WebGL2 context. */
 export class OverlayPainter {
@@ -73,24 +54,25 @@ export class OverlayPainter {
   readonly #fills: Placed;
   readonly #uniforms: {
     atlas: WebGLUniformLocation | null;
-    opacity: WebGLUniformLocation | null;
     fill: WebGLUniformLocation | null;
+    edge: WebGLUniformLocation | null;
   };
   readonly #quadArray: WebGLVertexArrayObject;
   readonly #fillArray: WebGLVertexArrayObject;
   readonly #lanes = new Map<number, LaneBuffers>();
+  readonly #fade = new FadeLayer();
   #page: WebGLTexture | undefined;
   #pageSize = 0;
 
   /** Compiles the overlay programs; throws when the context cannot. */
   constructor(gl: WebGL2RenderingContext) {
     this.#gl = gl;
-    this.#quads = placed(gl, program(gl, QUAD_VERTEX, QUAD_FRAGMENT));
-    this.#fills = placed(gl, program(gl, FILL_VERTEX, FILL_FRAGMENT));
+    this.#quads = placed(gl, compileProgram(gl, QUAD_VERTEX, QUAD_FRAGMENT));
+    this.#fills = placed(gl, compileProgram(gl, FILL_VERTEX, FILL_FRAGMENT));
     this.#uniforms = {
       atlas: gl.getUniformLocation(this.#quads.program, "atlas"),
-      opacity: gl.getUniformLocation(this.#quads.program, "opacity"),
       fill: gl.getUniformLocation(this.#fills.program, "fill"),
+      edge: gl.getUniformLocation(this.#fills.program, "edge"),
     };
     gl.useProgram(this.#quads.program);
     gl.uniform1i(gl.getUniformLocation(this.#quads.program, "page"), ATLAS_UNIT);
@@ -104,6 +86,7 @@ export class OverlayPainter {
     this.#fillArray = gl.createVertexArray();
     gl.bindVertexArray(this.#fillArray);
     gl.enableVertexAttribArray(0);
+    gl.enableVertexAttribArray(1);
     gl.bindVertexArray(null);
   }
 
@@ -142,10 +125,19 @@ export class OverlayPainter {
    * Draws the lane stretched onto `picture` and clipped to `cell`, both in canvas device pixels, layer after layer.
    */
   draw(drawing: LaneDrawing, picture: CellRect, cell: CellRect): void {
-    const { quads, view } = drawing;
+    const { quads, view, opacity } = drawing;
     const count = quads.quads.count;
-    if (!(view.width > 0 && view.height > 0) || (count === 0 && quads.fills.length === 0)) return;
+    if (
+      !(view.width > 0 && view.height > 0) ||
+      (count === 0 && quads.fills.length === 0) ||
+      !(opacity > 0)
+    )
+      return;
     const gl = this.#gl;
+    // A faded lane is drawn at full strength into a layer of its own and then blended once at its opacity. The layer
+    // is made ready first, so a context that cannot make it fails before the draw changes any state.
+    const faded = opacity < 1;
+    if (faded) this.#fade.prepare(gl);
     const buffers = this.#upload(drawing);
     const canvasWidth = gl.drawingBufferWidth;
     const canvasHeight = gl.drawingBufferHeight;
@@ -153,30 +145,39 @@ export class OverlayPainter {
     gl.enable(gl.SCISSOR_TEST);
     gl.scissor(cell.x, canvasHeight - cell.y - cell.height, cell.width, cell.height);
     gl.enable(gl.BLEND);
-    gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
-    for (const target of [this.#fills, this.#quads]) {
-      gl.useProgram(target.program);
-      gl.uniform2f(target.canvas, canvasWidth, canvasHeight);
-      gl.uniform2f(target.offset, picture.x, picture.y);
-      gl.uniform2f(target.scale, picture.width / view.width, picture.height / view.height);
+    try {
+      gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
+      if (faded) this.#fade.begin(gl);
+      for (const target of [this.#fills, this.#quads]) {
+        gl.useProgram(target.program);
+        gl.uniform2f(target.canvas, canvasWidth, canvasHeight);
+        gl.uniform2f(target.offset, picture.x, picture.y);
+        gl.uniform2f(target.scale, picture.width / view.width, picture.height / view.height);
+      }
+      gl.uniform2f(this.#uniforms.atlas, 1 / this.#pageSize, view.dpr);
+      // Whatever follows the last closed layer draws with it.
+      let quadFrom = 0;
+      let fillFrom = 0;
+      for (let layer = 0; layer <= quads.layerCount; layer++) {
+        const last = layer === quads.layerCount;
+        const quadTo = last ? count : quads.layerQuads[layer];
+        const fillTo = last ? quads.fills.length : quads.layerFills[layer];
+        this.#drawFills(buffers, quads, fillFrom, fillTo, view.width / picture.width);
+        this.#drawQuads(buffers, quadFrom, quadTo);
+        quadFrom = quadTo;
+        fillFrom = fillTo;
+      }
+      gl.bindVertexArray(null);
+      if (faded) this.#fade.composite(gl, opacity);
+    } finally {
+      // Whatever went wrong, the canvas is what the next draw finds bound, with the state it expects.
+      gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+      gl.bindVertexArray(null);
+      gl.colorMask(true, true, true, true);
+      gl.disable(gl.STENCIL_TEST);
+      gl.disable(gl.BLEND);
+      gl.disable(gl.SCISSOR_TEST);
     }
-    gl.uniform1f(this.#uniforms.opacity, drawing.opacity);
-    gl.uniform2f(this.#uniforms.atlas, 1 / this.#pageSize, view.dpr);
-    // Whatever follows the last closed layer draws with it.
-    let quadFrom = 0;
-    let fillFrom = 0;
-    for (let layer = 0; layer <= quads.layerCount; layer++) {
-      const last = layer === quads.layerCount;
-      const quadTo = last ? count : quads.layerQuads[layer];
-      const fillTo = last ? quads.fills.length : quads.layerFills[layer];
-      this.#drawFills(buffers, quads, fillFrom, fillTo, drawing.opacity);
-      this.#drawQuads(buffers, quadFrom, quadTo);
-      quadFrom = quadTo;
-      fillFrom = fillTo;
-    }
-    gl.bindVertexArray(null);
-    gl.disable(gl.BLEND);
-    gl.disable(gl.SCISSOR_TEST);
   }
 
   /** Frees the buffers of every lane from `count` on. */
@@ -184,10 +185,11 @@ export class OverlayPainter {
     for (const lane of this.#lanes.keys()) if (lane >= count) this.#free(lane);
   }
 
-  /** Frees the programs, buffers and the atlas page. */
+  /** Frees the programs, buffers, the fade layer and the atlas page. */
   dispose(): void {
     const gl = this.#gl;
     for (const lane of this.#lanes.keys()) this.#free(lane);
+    this.#fade.dispose(gl);
     gl.deleteProgram(this.#quads.program);
     gl.deleteProgram(this.#fills.program);
     gl.deleteVertexArray(this.#quadArray);
@@ -245,13 +247,18 @@ export class OverlayPainter {
     gl.drawArraysInstanced(gl.TRIANGLE_STRIP, 0, 4, to - from);
   }
 
-  /** Odd-even fills: each polygon's fan inverts the stencil, then the fan again paints where it is odd and clears it. */
+  /**
+   * Odd-even fills: each polygon's fan inverts the stencil, then the fan again paints where it is odd and clears it.
+   * The fan is the polygon pulled in by half a device pixel and the ring around it fades out half a device pixel
+   * beyond the true edge, so the edge is antialiased; a polygon thinner than that band keeps its own edge as the fan.
+   */
   #drawFills(
     buffers: LaneBuffers,
     { fills }: LaneQuads,
     from: number,
     to: number,
-    opacity: number,
+    /** The size of one device pixel in the lane's CSS pixels. */
+    pixel: number,
   ): void {
     if (to <= from) return;
     const gl = this.#gl;
@@ -260,20 +267,23 @@ export class OverlayPainter {
     gl.useProgram(this.#fills.program);
     gl.bindVertexArray(this.#fillArray);
     gl.bindBuffer(gl.ARRAY_BUFFER, buffers.fills);
-    gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 8, 0);
-    gl.enable(gl.STENCIL_TEST);
     for (let at = from; at < to;) {
       const corners = blocks[at];
       const color = words[at + 1];
-      const first = (at + 6) / 2;
+      const fringe = pixel / 2;
+      gl.uniform2f(this.#uniforms.edge, fringe, blocks[at + 2] < fringe ? 0 : fringe);
+      const base = (at + FILL_HEADER_FLOATS) * 4;
+      gl.vertexAttribPointer(0, 2, gl.FLOAT, false, FILL_STRIDE, base);
+      gl.vertexAttribPointer(1, 4, gl.FLOAT, false, FILL_STRIDE, base + 8);
+      gl.enable(gl.STENCIL_TEST);
       gl.colorMask(false, false, false, false);
       gl.stencilFunc(gl.ALWAYS, 0, 0xff);
       gl.stencilOp(gl.KEEP, gl.KEEP, gl.INVERT);
-      gl.drawArrays(gl.TRIANGLE_FAN, first, corners);
+      gl.drawArrays(gl.TRIANGLE_FAN, 0, corners);
       gl.colorMask(true, true, true, true);
       gl.stencilFunc(gl.NOTEQUAL, 0, 0xff);
       gl.stencilOp(gl.ZERO, gl.ZERO, gl.ZERO);
-      const scale = opacity / 255;
+      const scale = 1 / 255;
       gl.uniform4f(
         this.#uniforms.fill,
         (color & 0xff) * scale,
@@ -281,9 +291,10 @@ export class OverlayPainter {
         ((color >>> 16) & 0xff) * scale,
         (color >>> 24) * scale,
       );
-      gl.drawArrays(gl.TRIANGLE_FAN, first, corners);
-      at += 6 + corners * 2;
+      gl.drawArrays(gl.TRIANGLE_FAN, 0, corners);
+      gl.disable(gl.STENCIL_TEST);
+      gl.drawArrays(gl.TRIANGLE_STRIP, corners, 2 * corners + 2);
+      at += FILL_HEADER_FLOATS + (3 * corners + 2) * FILL_VERTEX_FLOATS;
     }
-    gl.disable(gl.STENCIL_TEST);
   }
 }

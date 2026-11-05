@@ -3,12 +3,17 @@
 
 use super::{Added, Backend, Event, Handlers, Plugins, Viewer};
 use api_types::playback::{
-    BasisWire, ClientMessage, ExportStateWire, FilterOptionInfo, LanePolicyWire, LaneStatusWire,
-    ServerMessage, StickyWire,
+    BasisWire, CatalogRefWire, ClientMessage, ExportFormatWire, ExportLaneWire, ExportStateWire,
+    FilterOptionInfo, LanePolicyWire, LaneStatusWire, ServerMessage, StickyWire,
 };
 use ax_devil::exports::ExportService;
+use catalogs::Library;
+use export::LaneStyle;
+use foundation::{CancelToken, VideoFrame};
 use handler_api::Settings;
+use media::{Decoder, FrameIndex, VideoInput};
 use std::{
+    fs,
     path::{Path, PathBuf},
     sync::Arc,
 };
@@ -96,6 +101,152 @@ pub async fn serve_lanes(viewer: &mut Viewer, sticky: bool, lanes: &[(u16, &str)
             }
         })
         .collect()
+}
+
+/// One owner's viewer of a video whose lanes read `overlays` (a file name, which picks the decoder, and its content,
+/// per lane) and draw with the catalog (its JSON) of the same position in `catalogs`; the lanes as an export request names them.
+pub struct Scene {
+    // Serves the viewer until the scene ends.
+    _backend: Backend,
+    viewer: Viewer,
+    lanes: Vec<ExportLaneWire>,
+    out: tempfile::TempDir,
+    _catalogs: tempfile::TempDir,
+}
+
+pub async fn scene(
+    video: &str,
+    (width, height): (u32, u32),
+    overlays: &[(&str, &str)],
+    catalogs: &[String],
+    sticky: bool,
+) -> Scene {
+    let folder = tempfile::tempdir().unwrap();
+    for (n, catalog) in catalogs.iter().enumerate() {
+        fs::write(folder.path().join(format!("c{n}.json")), catalog).unwrap();
+    }
+    let backend =
+        Backend::start_with_catalogs(Library::with_folder(folder.path().to_path_buf())).await;
+    let files: Vec<_> = overlays
+        .iter()
+        .map(|(name, content)| {
+            let path = backend.folder.path().join(name);
+            fs::write(&path, content).unwrap();
+            // Several handlers read .xml; the others are named by their extension. MOT boxes are measured in the
+            // picture's size.
+            let options = if name.ends_with(".txt") {
+                super::mot_options((width, height))
+            } else {
+                Default::default()
+            };
+            (path, name.ends_with(".xml").then_some("ONVIF_XML"), options)
+        })
+        .collect();
+    let added = backend
+        .add_with_handlers(&super::fixture(video), &files)
+        .await;
+    let mut viewer = backend.viewer().await;
+    viewer.open(&added.ticket(), None).await;
+    viewer.opened().await;
+    let ids: Vec<_> = (0..overlays.len())
+        .map(|n| format!("user:c{n}.json"))
+        .collect();
+    let wanted: Vec<_> = ids
+        .iter()
+        .enumerate()
+        .map(|(n, id)| (n as u16, id.as_str()))
+        .collect();
+    let lanes = serve_lanes(&mut viewer, sticky, &wanted)
+        .await
+        .into_iter()
+        .enumerate()
+        .map(|(n, served)| ExportLaneWire {
+            lane: n as u16,
+            catalog: CatalogRefWire {
+                id: ids[n].clone(),
+                revision: served.catalog,
+            },
+            style: LaneStyle {
+                label: format!("Lane {n}"),
+                // As the viewer's menu has them: the file's filters that start on.
+                enabled_classes: (0..served.filter.len() as u32)
+                    .filter(|at| served.filter[*at as usize].default_enabled)
+                    .collect(),
+                class_options: served.filter.len() as u16,
+                hidden: 0,
+                theme: None,
+                retained_opacity: 0.5,
+                filter: None,
+            },
+            policy_revision: 1,
+            data_revision: Some(served.data),
+        })
+        .collect();
+    Scene {
+        _backend: backend,
+        viewer,
+        lanes,
+        out: tempfile::tempdir().unwrap(),
+        _catalogs: folder,
+    }
+}
+
+impl Scene {
+    /// Exports frames `first` to `last` as `format` to `name` in the output folder and returns the path once the
+    /// export is done.
+    pub async fn export(
+        &mut self,
+        first: u64,
+        last: u64,
+        format: ExportFormatWire,
+        name: &str,
+    ) -> std::path::PathBuf {
+        let path = self.out.path().join(name);
+        self.viewer
+            .send(&ClientMessage::Export {
+                job: 1,
+                lanes: self.lanes.clone(),
+                first,
+                last,
+                format,
+                path: path.display().to_string(),
+            })
+            .await;
+        let (_, ended) = finished(&mut self.viewer, 1).await;
+        assert_eq!(ended, ExportStateWire::Done);
+        path
+    }
+}
+
+/// The frames of a video file, decoded, and its index.
+pub fn decoded(input: &VideoInput) -> (Arc<FrameIndex>, Vec<VideoFrame>) {
+    let index =
+        Arc::new(FrameIndex::load_or_build(input, None, &CancelToken::new(), &mut |_| {}).unwrap());
+    let mut decoder = Decoder::open(input, index.clone(), 1, CancelToken::new()).unwrap();
+    let mut frames = Vec::new();
+    while let Some(frame) = decoder.next_frame().unwrap() {
+        frames.push(frame);
+    }
+    (index, frames)
+}
+
+/// The Y, Cb and Cr samples of pixel (x, y) of a 4:2:0 frame.
+pub fn yuv_at(frame: &VideoFrame, x: usize, y: usize) -> [i32; 3] {
+    let planes = frame.layout().planes;
+    let at = |plane: usize, x: usize, y: usize| {
+        i32::from(frame.plane(plane)[y * planes[plane].stride as usize + x])
+    };
+    [at(0, x, y), at(1, x / 2, y / 2), at(2, x / 2, y / 2)]
+}
+
+/// Asserts the sample triple is within `by` of `want` in every component.
+pub fn assert_near(got: [i32; 3], want: [i32; 3], by: i32, what: &str) {
+    assert!(
+        got.iter()
+            .zip(want)
+            .all(|(got, want)| (got - want).abs() <= by),
+        "{what}: {got:?} is not within {by} of {want:?}"
+    );
 }
 
 /// The state the next `Export` notice of `job` reports, other jobs left out.
