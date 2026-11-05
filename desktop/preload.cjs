@@ -22,8 +22,9 @@ contextBridge.exposeInMainWorld("axDevilWindow", {
   // resolves to the chosen absolute path, null when cancelled.
   pickSaveWorkspace: (name, currentPath) =>
     ipcRenderer.invoke("workspace:pick-save", name, currentPath),
-  // Opens the native folder dialog; resolves to the chosen absolute path, null when it is cancelled.
-  pickFolder: () => ipcRenderer.invoke("settings:pick-folder"),
+  // Opens the native folder dialog, titled with `title` when given; resolves to the chosen absolute path, null when
+  // it is cancelled.
+  pickFolder: (title) => ipcRenderer.invoke("settings:pick-folder", title),
   // Reports the current state at once and every change after; returns the way to stop listening.
   onMaximizedChange: (listener) => {
     const changed = (_event, maximized) => listener(maximized);

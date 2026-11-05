@@ -1,11 +1,7 @@
 //! The one declaration of every setting. Defaults, parsing and validation are generated from it.
 
-use crate::{
-    env,
-    kind::{Kind, StickyValue, SyncValue},
-};
+use crate::kind::{Kind, StickyValue, SyncValue};
 use serde::Serialize;
-use serde_json::Value;
 
 /// Who a setting belongs to, which decides who may read and change it on a backend that several people use.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
@@ -62,6 +58,7 @@ pub const TABLE: &[Setting] = &[
         key: "ui.theme",
         kind: Kind::Choice {
             options: &[("auto", "System"), ("light", "Light"), ("dark", "Dark")],
+            toggle: false,
             default: "auto",
         },
         label: "Theme",
@@ -84,6 +81,7 @@ pub const TABLE: &[Setting] = &[
                 ("large", "Large"),
                 ("larger", "Larger"),
             ],
+            toggle: false,
             default: "system",
         },
         label: "Text size",
@@ -205,34 +203,6 @@ pub const TABLE: &[Setting] = &[
         scope: Scope::Server,
     },
     Setting {
-        key: "storage.cache_dir",
-        // Empty is the standard XDG cache folder. `--cache-dir` wins over the setting.
-        kind: Kind::Folder,
-        label: "Cache folder",
-        description: None,
-        page: Some("Storage"),
-        section: "Folders",
-        live: false,
-        env: false,
-        secret: false,
-        quick_setup: false,
-        scope: Scope::Server,
-    },
-    Setting {
-        key: "storage.catalog_dir",
-        // Empty is the standard XDG data folder's `ax-devil/catalogs`.
-        kind: Kind::Folder,
-        label: "Render catalog folder",
-        description: None,
-        page: Some("Storage"),
-        section: "Folders",
-        live: false,
-        env: false,
-        secret: false,
-        quick_setup: false,
-        scope: Scope::Server,
-    },
-    Setting {
         key: "camera.host",
         // What a new Live Stream starts from; a reference stays one in the item.
         kind: Kind::Text {
@@ -282,12 +252,13 @@ pub const TABLE: &[Setting] = &[
         key: "camera.protocol",
         kind: Kind::Choice {
             options: &[("https", "HTTPS"), ("http", "HTTP")],
+            toggle: true,
             default: "https",
         },
         label: "Camera protocol",
         description: None,
-        page: None,
-        section: "",
+        page: Some("Stream defaults"),
+        section: "Device",
         live: true,
         env: false,
         secret: false,
@@ -296,6 +267,8 @@ pub const TABLE: &[Setting] = &[
     },
     Setting {
         key: "camera.head",
+        // No `$NAME` reference yet: frontend/src/shell/liveForm.ts:116 prefills the Add Live Stream form with the
+        // raw value, which problemOf (liveForm.ts:212) refuses unless it is digits.
         kind: Kind::Whole {
             min: 1,
             max: 255,
@@ -323,7 +296,7 @@ pub const TABLE: &[Setting] = &[
         page: None,
         section: "",
         live: true,
-        env: false,
+        env: true,
         secret: false,
         quick_setup: false,
         scope: Scope::Server,
@@ -351,6 +324,7 @@ pub const TABLE: &[Setting] = &[
                 ("mqtt", "MQTT"),
                 ("datahub", "DataHub WebSocket"),
             ],
+            toggle: false,
             default: "datahub",
         },
         label: "Overlay",
@@ -391,7 +365,7 @@ pub const TABLE: &[Setting] = &[
         page: None,
         section: "",
         live: true,
-        env: false,
+        env: true,
         secret: false,
         quick_setup: false,
         scope: Scope::Server,
@@ -460,6 +434,8 @@ pub const TABLE: &[Setting] = &[
     },
     Setting {
         key: "broker.port",
+        // No `$NAME` reference yet: frontend/src/shell/liveForm.ts:125 prefills the Add Live Stream form with the
+        // raw value, which problemOf (liveForm.ts:212) refuses unless it is digits.
         kind: Kind::Whole {
             min: 1,
             max: 65535,
@@ -522,6 +498,8 @@ pub const TABLE: &[Setting] = &[
     },
     Setting {
         key: "datahub.channel",
+        // No `$NAME` reference yet: frontend/src/shell/liveForm.ts:128 prefills the Add Live Stream form with the
+        // raw value, which problemOf (liveForm.ts:212) refuses unless it is digits.
         kind: Kind::Whole {
             min: 1,
             max: 4_294_967_295,
@@ -612,25 +590,32 @@ pub const TABLE: &[Setting] = &[
         quick_setup: false,
         scope: Scope::Server,
     },
+    Setting {
+        key: "storage.cache_dir",
+        // Empty is the standard XDG cache folder. `--cache-dir` wins over the setting.
+        kind: Kind::Folder,
+        label: "Cache folder",
+        description: None,
+        page: Some("Storage"),
+        section: "Folders",
+        live: false,
+        env: true,
+        secret: false,
+        quick_setup: false,
+        scope: Scope::Server,
+    },
+    Setting {
+        key: "storage.catalog_dir",
+        // Empty is the standard XDG data folder's `ax-devil/catalogs`.
+        kind: Kind::Folder,
+        label: "Render catalog folder",
+        description: None,
+        page: Some("Storage"),
+        section: "Folders",
+        live: false,
+        env: true,
+        secret: false,
+        quick_setup: false,
+        scope: Scope::Server,
+    },
 ];
-
-impl Setting {
-    /// Accepts `value` if it fits the kind. A reference in a setting that takes them is expanded by `lookup` first,
-    /// so what is checked is what will be used. The reason never contains the value.
-    pub(crate) fn check(
-        &self,
-        value: &Value,
-        lookup: &dyn Fn(&str) -> Option<String>,
-    ) -> Result<(), String> {
-        if !self.env {
-            return self.kind.validate(value);
-        }
-        let reference = value.as_str().and_then(env::reference);
-        self.kind
-            .validate(&env::resolve(value, lookup))
-            .map_err(|reason| match reference {
-                Some(name) => format!("{reason} (from ${name})"),
-                None => reason,
-            })
-    }
-}

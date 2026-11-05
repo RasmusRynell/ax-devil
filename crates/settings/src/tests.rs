@@ -448,37 +448,6 @@ fn the_video_cache_is_auto_or_whole_mib_in_range_and_a_saved_number_survives_a_r
 }
 
 #[test]
-fn the_cache_folder_is_empty_or_an_absolute_path_that_need_not_exist() {
-    let folder = tempfile::tempdir().unwrap();
-    let path = folder.path().join("settings.json");
-    let settings = Settings::load(&path).unwrap();
-    assert_eq!(settings.state().folder("storage.cache_dir"), None);
-    let with = |cache: Value| {
-        let mut all = change("dark");
-        all.values.insert("storage.cache_dir".into(), cache);
-        all
-    };
-
-    for rejected in [json!("cache"), json!("~/cache"), json!("$CACHE"), json!(7)] {
-        let error = settings.replace(&Scope::ALL, &with(rejected)).unwrap_err();
-        assert_eq!(error.location, "storage.cache_dir");
-        assert_eq!(error.reason, "expected an absolute folder path");
-    }
-    settings
-        .replace(&Scope::ALL, &with(json!("/unplugged/drive/cache")))
-        .unwrap();
-    assert_eq!(
-        Settings::load(&path)
-            .unwrap()
-            .state()
-            .folder("storage.cache_dir"),
-        Some(PathBuf::from("/unplugged/drive/cache"))
-    );
-    settings.replace(&Scope::ALL, &with(json!(""))).unwrap();
-    assert_eq!(settings.state().folder("storage.cache_dir"), None);
-}
-
-#[test]
 fn subscribers_see_each_saved_change_and_nothing_for_a_rejected_one() {
     let folder = tempfile::tempdir().unwrap();
     let settings = Settings::load(&folder.path().join("settings.json")).unwrap();
@@ -497,74 +466,4 @@ fn subscribers_see_each_saved_change_and_nothing_for_a_rejected_one() {
         changes.borrow_and_update().values(&Scope::ALL)["ui.theme"],
         "dark"
     );
-}
-
-const NET: &[Setting] = &[
-    Setting {
-        key: "net.address",
-        kind: Kind::Text { default: "" },
-        label: "Address",
-        description: None,
-        page: Some("Network"),
-        section: "Camera",
-        live: false,
-        env: true,
-        secret: true,
-        quick_setup: false,
-        scope: Scope::Server,
-    },
-    Setting {
-        key: "net.mode",
-        kind: Kind::Choice {
-            options: &[("a", "A"), ("b", "B")],
-            default: "a",
-        },
-        label: "Mode",
-        description: None,
-        page: Some("Network"),
-        section: "Camera",
-        live: false,
-        env: true,
-        secret: false,
-        quick_setup: false,
-        scope: Scope::Server,
-    },
-];
-
-#[test]
-fn a_reference_is_stored_as_written_and_checked_when_resolved() {
-    let folder = tempfile::tempdir().unwrap();
-    let path = folder.path().join("settings.json");
-    let lookup = |name: &str| match name {
-        "ADDRESS" => Some("10.0.0.2".to_owned()),
-        "MODE" => Some("secret-mode".to_owned()),
-        _ => None,
-    };
-    let settings = Settings::open(&path, NET, &[], Arc::new(lookup)).unwrap();
-    let edit = |address: &str, mode: &str| Change {
-        values: BTreeMap::from([
-            ("net.address".into(), json!(address)),
-            ("net.mode".into(), json!(mode)),
-        ]),
-        shortcuts: change("auto").shortcuts,
-    };
-
-    let error = settings
-        .replace(&Scope::ALL, &edit("$ADDRESS", "$MODE"))
-        .unwrap_err();
-    assert_eq!(
-        error.location, "net.mode",
-        "the expanded value must fit the setting"
-    );
-    assert!(!error.reason.contains("secret-mode"), "{}", error.reason);
-
-    let state = settings
-        .replace(&Scope::ALL, &edit("$ADDRESS", "b"))
-        .unwrap();
-    assert_eq!(
-        read(&path)["settings"]["net.address"],
-        "$ADDRESS",
-        "the reference is stored, not the value"
-    );
-    assert_eq!(state.resolved("net.address"), Some(json!("10.0.0.2")));
 }

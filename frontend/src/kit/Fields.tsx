@@ -37,7 +37,7 @@ export function SearchField({ placeholder, query, className = "" }: SearchProps)
 
 const SPLIT = "flex items-center justify-between gap-xl";
 /** A label with its control; at a width too narrow for both on a line, the control drops under the label. */
-const LABELLED = "flex flex-wrap items-center justify-between gap-x-xl gap-y-s";
+export const LABELLED = "flex flex-wrap items-center justify-between gap-x-xl gap-y-s";
 
 interface SelectProps<T extends string> {
   label: ReactNode;

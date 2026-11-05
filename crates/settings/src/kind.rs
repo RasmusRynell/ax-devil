@@ -120,6 +120,8 @@ pub enum Kind {
     Choice {
         /// Every accepted `(value, label)`.
         options: &'static [(&'static str, &'static str)],
+        /// Whether the dialog shows the options as a segmented control, which suits a few modes of one thing.
+        toggle: bool,
         /// The value when the config has none; one of the option values.
         default: &'static str,
     },
@@ -144,8 +146,8 @@ pub enum Kind {
         /// The value when the config has none.
         default: &'static str,
     },
-    /// A folder the user picked: an absolute path, or empty for the app's standard folder. Never checked against
-    /// the disk, so an unplugged drive does not stop startup.
+    /// A folder the user picked: an absolute path once a leading `~` is the home folder, or empty for the app's
+    /// standard folder. Never checked against the disk, so an unplugged drive does not stop startup.
     Folder,
     /// A list of records, each an object that has exactly these text fields.
     Records {

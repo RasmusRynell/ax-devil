@@ -168,3 +168,13 @@ void test("a chosen name that already has the suffix is not asked about, and a f
   assert.equal(await save(page, "free"), path.join(root, "free.ax-devil.workspace"));
   assert.deepEqual(calls.messages, []);
 });
+
+void test("the folder dialog is titled with what is chosen, and only a text title is taken", async () => {
+  const page = await pageContents();
+  const event = { sender: page, senderFrame: page.mainFrame };
+  const pick = handlers.get("settings:pick-folder");
+  assert.equal(await pick(event, "Cache folder"), null);
+  assert.equal(calls.opens[0].title, "Cache folder");
+  assert.deepEqual(calls.opens[0].properties, ["openDirectory"]);
+  await assert.rejects(async () => pick(event, 7), /Expected a title/);
+});

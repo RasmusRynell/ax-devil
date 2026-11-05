@@ -9,6 +9,7 @@
 //! A change reaches subscribers as the new state, replaced whole; a subscriber that is busy sees only the newest.
 
 mod env;
+mod expand;
 mod file;
 mod kind;
 mod migrate;
@@ -70,6 +71,9 @@ pub struct State {
     lookup: Lookup,
     version: u64,
     values: BTreeMap<String, Value>,
+    /// The number each whole-number setting that holds a reference gives, read when the state was built; see
+    /// [`stored`](Self::stored).
+    numbers: BTreeMap<String, Value>,
     /// The validated shortcut overrides of known commands, in canonical form.
     overrides: BTreeMap<String, Option<String>>,
     /// What the file holds: only values that differ from the default, plus everything this version does not know.
@@ -102,14 +106,22 @@ impl State {
         };
         let mut stored = object("settings")?;
         let mut values = BTreeMap::new();
+        let mut numbers = BTreeMap::new();
         let mut settings = Map::new();
         for setting in table {
             let value = stored
                 .remove(setting.key)
                 .unwrap_or_else(|| setting.kind.default_value());
-            setting
-                .check(&value, &**lookup)
-                .map_err(|reason| invalid(setting.key, &reason))?;
+            // A reference whose variable is unset or wrong here still loads, as it does in Python, which checks it
+            // only when it is saved: `replace` and `update` refuse it, and `resolved` falls back to the default.
+            if let Err(reason) = setting.check(&value, &**lookup)
+                && !setting.holds_reference(&value)
+            {
+                return Err(invalid(setting.key, &reason));
+            }
+            if matches!(setting.kind, Kind::Whole { .. }) && setting.holds_reference(&value) {
+                numbers.insert(setting.key.to_owned(), setting.used(&value, &**lookup));
+            }
             if !setting.kind.is_default(&value) {
                 settings.insert(setting.key.to_owned(), value.clone());
             }
@@ -155,6 +167,7 @@ impl State {
             lookup: Arc::clone(lookup),
             version,
             values,
+            numbers,
             overrides,
             document,
         })
@@ -203,34 +216,36 @@ impl State {
     }
 
     /// The value of the declared setting `key` as it is used: a `$NAME` reference in a setting that takes them is
-    /// replaced by the variable's value, empty when it is unset.
+    /// replaced by the variable's value, empty when it is unset (a number in a whole-number setting), and a folder's
+    /// leading `~` by the home folder. A reference that gives a value the setting cannot hold is logged and the
+    /// default is used instead.
     pub fn resolved(&self, key: &str) -> Option<Value> {
         let setting = self.table.iter().find(|setting| setting.key == key)?;
         let value = self.values.get(key)?;
-        Some(if setting.env {
-            env::resolve(value, &*self.lookup)
-        } else {
-            value.clone()
-        })
+        Some(setting.used(value, &*self.lookup))
     }
 
     /// The value of the declared setting `key` as stored: a `$NAME` reference as written and a literal secret in full,
     /// for copying into something new (a Live Stream Item starts from the camera defaults). Never show it to a person;
-    /// [`values`](Self::values) is the shown form.
+    /// [`values`](Self::values) is the shown form. A whole-number setting that holds a reference gives its number
+    /// instead (the default when the reference does not resolve), as read when the state was built, so a caller that
+    /// reads numbers never meets text.
     pub fn stored(&self, key: &str) -> Option<&Value> {
-        self.values.get(key)
+        self.numbers.get(key).or_else(|| self.values.get(key))
     }
 
-    /// The folder a setting of kind `Folder` holds; `None` when it is empty (the standard folder) or `key` is not such
-    /// a setting.
+    /// The folder a setting of kind `Folder` holds, as [`resolved`](Self::resolved); `None` when it is empty (the
+    /// standard folder) or `key` is not such a setting.
     pub fn folder(&self, key: &str) -> Option<PathBuf> {
-        let path = self.values.get(key)?.as_str()?;
+        let path = self.resolved(key)?;
+        let path = path.as_str()?;
         (!path.is_empty()).then(|| PathBuf::from(path))
     }
 
-    /// The number a setting of kind `AutoOrWhole` holds; `None` for `auto`, or when `key` is not such a setting.
+    /// The number a whole-number setting holds, as [`resolved`](Self::resolved); `None` for `auto`, or when `key` is not
+    /// such a setting.
     pub fn auto_or_whole(&self, key: &str) -> Option<u64> {
-        self.values.get(key)?.as_u64()
+        self.resolved(key)?.as_u64()
     }
 }
 
@@ -343,6 +358,9 @@ impl Settings {
             let kept = setting
                 .unmasked(value, current.values.get(setting.key))
                 .map_err(|reason| invalid(setting.key, &reason))?;
+            setting
+                .check(&kept, &*current.lookup)
+                .map_err(|reason| invalid(setting.key, &reason))?;
             values.insert(setting.key.to_owned(), kept);
         }
         let overrides = if scopes.contains(&Scope::Personal) {
@@ -367,16 +385,22 @@ impl Settings {
     ) -> Result<Arc<State>, Error> {
         let _writing = self.writing.lock().unwrap_or_else(PoisonError::into_inner);
         let current = self.state();
+        let invalid = |location: &str, reason: &str| Error {
+            location: location.to_owned(),
+            reason: reason.to_owned(),
+            invalid: true,
+        };
         let Some(stored) = current.values.get(key) else {
-            return Err(Error {
-                location: key.to_owned(),
-                reason: "unknown setting".to_owned(),
-                invalid: true,
-            });
+            return Err(invalid(key, "unknown setting"));
         };
         let Some(value) = edit(stored) else {
             return Ok(current);
         };
+        if let Some(setting) = current.table.iter().find(|setting| setting.key == key) {
+            setting
+                .check(&value, &*current.lookup)
+                .map_err(|reason| invalid(key, &reason))?;
+        }
         let mut values = current.values.clone();
         values.insert(key.to_owned(), value);
         let overrides = current.overrides.clone();
@@ -429,6 +453,8 @@ impl Settings {
     }
 }
 
+#[cfg(test)]
+mod reference_tests;
 #[cfg(test)]
 mod scope_tests;
 #[cfg(test)]
