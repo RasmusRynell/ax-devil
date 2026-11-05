@@ -6,6 +6,7 @@ import { SegmentedControl } from "../kit/Chips";
 import { Checkbox, LABELLED, Select, TextField } from "../kit/Fields";
 import { Icon } from "../kit/Icon";
 import { TONE } from "../kit/look";
+import { LoginsEditor } from "./LoginsEditor";
 
 /** A setting's value as the backend stores it. */
 export type Value = SettingsState["values"][SettingKey];
@@ -103,8 +104,11 @@ const FIELDS: Record<KindTag, (props: FieldProps) => ReactNode> = {
       onChange={(text) => onChange(/^\d+$/.test(text) ? Number(text) : text)}
     />
   ),
-  // Lists of records (confirmed references, scan logins) have no field yet; no row with one has a page.
-  records: () => null,
+  // The scan logins are the only list of records on a page (the confirmed references have none): edited in place,
+  // saved with the rest on OK.
+  records: ({ value, onChange }) => (
+    <LoginsEditor logins={Array.isArray(value) ? value : []} onChange={onChange} />
+  ),
   text: ({ row, label, value, describedBy, onChange }) => (
     <TextField
       label={label}

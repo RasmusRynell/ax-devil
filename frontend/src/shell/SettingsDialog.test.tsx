@@ -53,6 +53,18 @@ vi.mock(import("../generated/settings"), async (original) => ({
       { label: "Dir", page: "Network", section: "Folders", live: false, scope: "server" },
     ),
     row(
+      "scan.logins",
+      { type: "records", fields: ["user", "password"], default: [] },
+      {
+        label: "Logins",
+        page: "Network",
+        section: "Sign-in",
+        env: true,
+        secret: true,
+        scope: "server",
+      },
+    ),
+    row(
       "t.token",
       { type: "text", default: "" },
       {
@@ -86,6 +98,7 @@ describe("settings dialog", () => {
       "t.port": 554,
       "t.dir": "",
       "t.token": "hunter2",
+      "scan.logins": [],
     };
     const state = { ...DEFAULT_SETTINGS, values } as never;
     render(
@@ -172,5 +185,48 @@ describe("settings dialog", () => {
       expect((screen.getByLabelText("Dir") as HTMLInputElement).value).toBe("/mnt/cache"),
     );
     delete window.axDevilWindow;
+  });
+
+  describe("scan logins", () => {
+    const logins = [{ user: "root", password: "********" }];
+    const open = (save: () => Promise<null>, onClose = () => {}) => {
+      const values = { ...DEFAULT_SETTINGS.values, "scan.logins": logins };
+      render(
+        <GrantsContext.Provider value={["configuration"]}>
+          <FakeSettings state={{ ...DEFAULT_SETTINGS, values } as never} save={save}>
+            <SettingsDialog onClose={onClose} onRestartNeeded={() => {}} />
+          </FakeSettings>
+        </GrantsContext.Provider>,
+      );
+      fireEvent.click(screen.getByRole("tab", { name: "Network" }));
+    };
+
+    it("are staged in the dialog and saved with it on OK", () => {
+      const save = vi.fn(async () => null);
+      open(save);
+      fireEvent.click(screen.getByText("Add login"));
+      fireEvent.change(screen.getAllByLabelText("Username")[1]!, { target: { value: " ops " } });
+      fireEvent.change(screen.getAllByLabelText("Password")[1]!, { target: { value: "$OPS" } });
+      expect(save).not.toHaveBeenCalled();
+
+      fireEvent.click(screen.getByRole("button", { name: "OK" }));
+      expect(save).toHaveBeenCalledWith(
+        expect.objectContaining({
+          values: expect.objectContaining({
+            "scan.logins": [...logins, { user: "ops", password: "$OPS" }],
+          }),
+        }),
+      );
+    });
+
+    it("are discarded on Cancel", () => {
+      const save = vi.fn(async () => null);
+      const onClose = vi.fn();
+      open(save, onClose);
+      fireEvent.click(screen.getByLabelText("Remove login"));
+      fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+      expect(onClose).toHaveBeenCalled();
+      expect(save).not.toHaveBeenCalled();
+    });
   });
 });

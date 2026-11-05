@@ -105,7 +105,7 @@ Listed in [parity deviations](parity-deviations.md).
 
 | ID | Feature | P | Status | Test | Notes |
 |----|---------|---|--------|------|-------|
-| ST-01 | Settings dialog pages; restart marker | M | in progress | `SettingsDialog.test.tsx`, `Shell.test.tsx` | Generated from the settings table (pages, sections, restart marker, Browse); page-less rows stay out. Left: the other settings (M4/M5) |
+| ST-01 | Settings dialog pages; restart marker | M | in progress | `SettingsDialog.test.tsx`, `Shell.test.tsx` | Generated from the settings table (pages, sections, restart marker, Browse, scan logins staged to OK); page-less rows stay out. Left: the other settings (M4/M5) |
 | ST-02 | Quick Setup on first start | M | done | `frontend/src/shell/QuickSetupDialog.test.tsx`, `Shell.test.tsx` | Opens on first run and from Help; any close stores the choices and marks setup done; a refused write does not |
 | ST-03 | Theme (light, dark, auto) and text size (system, small to larger), applied live | M | done | `crates/settings` tests, `App.test.tsx`, `settings.test.tsx` | Stored through `/api/settings`; applied live; zoom stays the browser's |
 | ST-04 | `$VARIABLE` references | M | in progress | `reference_tests.rs`, `SettingsDialog.test.tsx` | RTSP port, timeout and storage folders (also `~`) store the reference raw; unresolved, it loads, defaults at use, and is refused on save |
