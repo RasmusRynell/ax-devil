@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { GrantsContext } from "../access";
 import { DEFAULT_SETTINGS, FakeSettings } from "../fakeSettings";
 import { FakeSocket } from "../session/fakeSession";
@@ -24,14 +24,21 @@ const HANDLERS = {
 let listings: string[] = [];
 /** The connection of each question put to the camera. */
 let asked: { like?: string }[] = [];
+/** While set, the camera's lists wait for it, as a slow camera would. */
+let gate: Promise<void> | null = null;
+/** Called when the form reads the body of a camera's sources answer. */
+let onRead = () => {};
 
 beforeEach(() => {
   listings = [];
   asked = [];
+  gate = null;
+  onRead = () => {};
   vi.stubGlobal("WebSocket", FakeSocket);
   vi.stubGlobal("fetch", async (url: string, init?: RequestInit) => {
     if (url === "/api/live/sources") listings.push(JSON.parse(init?.body as string).overlay);
     if (url.startsWith("/api/live/")) asked.push(JSON.parse(init?.body as string).connection);
+    if (url === "/api/live/sources") await gate;
     const json =
       url === "/api/handlers"
         ? HANDLERS
@@ -40,7 +47,14 @@ beforeEach(() => {
           : JSON.parse(init?.body as string).overlay === "mqtt"
             ? { overlay: "mqtt", sources: ["com.axis.scene.frame.v1#1"] }
             : { overlay: "datahub", topics: ["com.axis.scene.frame.v1"] };
-    return { ok: true, status: 200, json: async () => json };
+    return {
+      ok: true,
+      status: 200,
+      json: async () => {
+        if (url === "/api/live/sources") onRead();
+        return json;
+      },
+    };
   });
 });
 afterEach(() => {
@@ -216,6 +230,34 @@ describe("add live stream dialog", () => {
     expect(screen.queryByRole("option", { name: "com.axis.scene.frame.v1" })).toBeNull();
     expect(screen.getByRole("alert").textContent).toBe(
       "Topic is required for WebSocket overlay mode.",
+    );
+  });
+
+  it("forgets the camera's lists when the connection changes, even back to an earlier one, and ignores a late answer", async () => {
+    let release = () => {};
+    gate = new Promise((resolve) => (release = resolve));
+    const read = new Promise<void>((resolve) => (onRead = resolve));
+    await open();
+    await waitFor(() => expect(listings).toEqual(["datahub"]));
+    type("Host", "10.0.0.8");
+    type("Host", "");
+    // The late answer is read and the form has handled it before anything is checked.
+    await act(async () => {
+      release();
+      await read;
+    });
+    // The first answer was for a connection the form has left, and coming back does not ask again by itself.
+    expect(screen.getByRole("option", { name: "Refresh to load DataHub topics" })).toBeTruthy();
+    expect(listings).toEqual(["datahub"]);
+    expect(ok().disabled).toBe(true);
+
+    refresh("DataHub Topic");
+    await listed();
+    // Refreshing under the same connection keeps the topic.
+    refresh("DataHub Topic");
+    await screen.findByRole("option", { name: "Select DataHub topics" });
+    expect((screen.getByLabelText("DataHub Topic") as HTMLSelectElement).value).toBe(
+      "com.axis.scene.frame.v1",
     );
   });
 

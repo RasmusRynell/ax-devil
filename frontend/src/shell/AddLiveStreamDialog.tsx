@@ -94,6 +94,7 @@ export function AddLiveStreamDialog({
   const [adding, setAdding] = useState(false);
   const [refused, setRefused] = useState<Refused | null>(null);
   // The connection the camera was last asked about for each mode's list, which is read on choosing the mode and on Refresh.
+  // A changed connection forgets both, so coming back to an earlier one lists nothing until a mode choice or Refresh.
   const [asked, setAsked] = useState<Record<Listed, string | null>>({ mqtt: null, datahub: null });
   // Whether the person at the form has chosen the overlay or its decoder, which the configured ones no longer replace.
   const edited = useRef(false);
@@ -111,8 +112,10 @@ export function AddLiveStreamDialog({
   const connectionKey = JSON.stringify(connection);
   const current = useRef(connectionKey);
   useEffect(() => {
+    if (current.current === connectionKey) return;
     current.current = connectionKey;
-  });
+    setAsked({ mqtt: null, datahub: null });
+  }, [connectionKey]);
   const mode = form.overlay;
   const lists = {
     mqtt: useListing("mqtt", connection, connectionKey, asked.mqtt, hostKnown),
