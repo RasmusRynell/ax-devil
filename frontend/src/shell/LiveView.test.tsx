@@ -319,7 +319,7 @@ describe("scanning", () => {
     ["answers late", () => new Response(JSON.stringify({ scan: 2 }))],
     ["is refused late", () => new Response("{}", { status: 422 })],
   ])("keeps the guard of a newer press when an older one %s", async (_, late) => {
-    let answer = (_: Response) => {};
+    let answer: (reply: Response) => void = () => {};
     scanReplies = [new Promise((resolve) => (answer = resolve))];
     startedScan = 7;
     SNAPSHOT = idle(1);
