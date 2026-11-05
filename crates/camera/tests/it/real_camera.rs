@@ -1,6 +1,7 @@
-//! Checks against a real Axis camera: `cargo test -p camera --test real_camera -- --ignored`. Every test is ignored, and skips itself unless
-//! `AX_DEVIL_TARGET_ADDR` is set (with `AX_DEVIL_TARGET_USER` and `AX_DEVIL_TARGET_PASS`; the MQTT round trip also
-//! needs `AX_DEVIL_MQTT_BROKER_ADDR`, `_USER` and `_PASS`, and `_PORT` when it is not 1883). Never part of CI.
+//! Checks against a real Axis camera: `cargo test -p camera --test it real_camera:: -- --ignored --test-threads=1`.
+//! Every test is ignored, and skips itself unless `AX_DEVIL_TARGET_ADDR` is set (with `AX_DEVIL_TARGET_USER` and
+//! `AX_DEVIL_TARGET_PASS`; the MQTT round trip also needs `AX_DEVIL_MQTT_BROKER_ADDR`, `_USER` and `_PASS`, and `_PORT`
+//! when it is not 1883). Never part of CI.
 // A skipped test says why on stderr; there is no logger in a test.
 #![allow(clippy::print_stderr)]
 
