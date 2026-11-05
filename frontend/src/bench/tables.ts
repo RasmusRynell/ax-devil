@@ -203,7 +203,10 @@ class InspectorRig {
     this.#fields = Array.from({ length: rows }, (_, i) => ({
       group: i < 60 ? groups[i % 3] : "raw",
       path: i < 60 ? [`field${i}`] : ["data", `list`, String(i)],
-      value: i % 3 === 0 ? i * 0.37 : `value of field ${i}`,
+      value:
+        i % 3 === 0
+          ? { kind: "float", value: i * 0.37 }
+          : { kind: "text", value: `value of field ${i}` },
     }));
   }
 

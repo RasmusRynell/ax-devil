@@ -1,7 +1,7 @@
 //! Wire types of an object's inspection: the answer to `Inspect` on the playback socket. The groups and origins of
 //! its fields are `scene::inspection`'s own types.
 
-use scene::inspection::{FieldGroup, FieldOrigin};
+use scene::inspection::{FieldGroup, FieldOrigin, Leaf};
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
@@ -16,9 +16,8 @@ pub struct FieldWire {
     pub origin: Option<FieldOrigin>,
     /// The field's place in the data; a list index is its decimal digits.
     pub path: Vec<String>,
-    /// The leaf: a number, text, true or false, or `null`.
-    #[ts(type = "null | boolean | number | string")]
-    pub value: serde_json::Value,
+    /// The leaf: an integer exactly, a float, text, true or false, or null.
+    pub value: Leaf,
     /// The colour the value is the score of, as red, green and blue; for an entry of a colour attribute.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(optional)]

@@ -8,7 +8,7 @@ use axum::extract::ws::Message;
 use foundation::{MediaTime, Timeline};
 use overlays::{LaneStatus, OverlayEvent, OverlayService, SampleItem};
 use playback::{Authority, ClockIntent, Direction, Priority, Want};
-use scene::inspection::FieldGroup;
+use scene::inspection::{FieldGroup, Leaf};
 use std::{path::Path, time::Duration};
 use tokio::sync::watch;
 use workspace::OverlayRef;
@@ -146,12 +146,9 @@ async fn a_held_sample_is_found_or_absent_and_anything_else_is_unavailable_witho
     };
     assert_eq!(
         at(FieldGroup::Geometry, "width"),
-        Some(serde_json::json!(20.0 / 64.0))
+        Some(Leaf::Float(20.0 / 64.0))
     );
-    assert_eq!(
-        at(FieldGroup::Raw, "frame_number"),
-        Some(serde_json::json!(10))
-    );
+    assert_eq!(at(FieldGroup::Raw, "frame_number"), Some(Leaf::Int(10)));
     let groups: Vec<_> = fields.iter().map(|field| field.group as u8).collect();
     assert!(groups.is_sorted(), "in display order");
 

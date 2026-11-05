@@ -10,7 +10,7 @@ use api_types::{
     },
 };
 use common::{Backend, Event, Viewer, fixture};
-use scene::inspection::FieldGroup;
+use scene::inspection::{FieldGroup, Leaf};
 
 /// A video whose one lane holds object 1 on frames 0 to 2 and object 2 on frame 1, with the lane's three samples
 /// sent. Returns the viewer and the source's data revision.
@@ -104,7 +104,7 @@ async fn an_object_of_a_held_sample_is_found_with_its_fields_and_a_missing_one_i
             .map(|field| field.value.clone())
     };
     assert!(value(FieldGroup::Geometry, "x").is_some());
-    assert_eq!(value(FieldGroup::Raw, "frame_number"), Some(1.into()));
+    assert_eq!(value(FieldGroup::Raw, "frame_number"), Some(Leaf::Int(1)));
     let order: Vec<_> = fields.iter().map(|field| field.group as u8).collect();
     assert!(order.is_sorted(), "groups are in display order");
     assert!(

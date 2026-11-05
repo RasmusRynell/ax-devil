@@ -21,7 +21,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     use foundation::{ErrorCode, FrameSize};
     use scene::{
         OperationKind,
-        inspection::{FieldGroup, FieldOrigin},
+        inspection::{FieldGroup, FieldOrigin, Leaf},
     };
     use scene_store::{Op, Row, Search, Sort, SortKey, Term};
     use sessions::{
@@ -126,6 +126,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         AlignmentVerdictWire,
         FieldGroup,
         FieldOrigin,
+        Leaf,
         FieldWire,
         InspectionWire,
         VideoPtsWire,

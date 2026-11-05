@@ -65,6 +65,7 @@ export type {
   LaneInfo,
   LanePolicyWire,
   LaneStatusWire,
+  LeafWire,
   ServerMessage,
   StickyWire,
   VideoPtsWire,
