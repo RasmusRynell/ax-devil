@@ -272,6 +272,7 @@ describe("inspector", () => {
       view.next(other);
       expect(copied()).toEqual([]);
       view.next(FEEDBACK);
+      expect(copied()).toEqual([]);
       await copy("class");
       view.next(other);
       await act(async () => slow[1]!());
@@ -296,6 +297,18 @@ describe("inspector", () => {
       expect(copied()).toEqual([]);
       await copy("class");
       view.next(without("class"));
+      expect(copied()).toEqual([]);
+      const debug = (origin: "source" | "decoder"): FieldWire => ({
+        group: "debug",
+        origin,
+        path: ["x"],
+        value: 7,
+      });
+      view.next(ready([debug("decoder")]));
+      fireEvent.click(group("Debug"));
+      await copy("x");
+      expect(copied()).toEqual(["Copied x"]);
+      view.next(ready([debug("source"), debug("decoder")]));
       expect(copied()).toEqual([]);
     });
   });

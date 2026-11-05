@@ -28,6 +28,7 @@ export function useCopied(scope: string) {
     () => () => {
       latest.current++;
       clearTimeout(timer.current);
+      setMark(null);
     },
     [scope],
   );

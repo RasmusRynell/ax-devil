@@ -222,21 +222,36 @@ const CaptionLine = memo(function CaptionLine({
 });
 
 /**
- * What tells each field row of the pinned rows then the list's from the others, for the copy mark: its section, group
- * and path, and which of the rows sharing them it is. It follows the field when rows come and go, unlike a position.
+ * What tells each field row of the pinned rows then the list's from the others, for the copy mark: its section, the
+ * caption it sits under (which says a Debug field's origin), group and path, and which of the rows sharing them it is
+ * out of how many. It follows the field when rows come and go, unlike a position, and a mark does not move to another
+ * row when a duplicate comes or goes.
  */
 function rowIds(pinned: readonly Line[], lines: readonly Line[]): string[] {
   const ids: string[] = [];
   for (const [section, part] of [pinned, lines].entries()) {
-    const seen = new Map<string, number>();
+    const bases: string[] = [];
+    const counts = new Map<string, number>();
+    let under = "";
     for (const line of part) {
+      if (line.kind === "caption") under = line.heading;
       if (line.kind !== "field") {
+        bases.push("");
+        continue;
+      }
+      const base = `${section}:${under}:${line.key}`;
+      bases.push(base);
+      counts.set(base, (counts.get(base) ?? 0) + 1);
+    }
+    const seen = new Map<string, number>();
+    for (const base of bases) {
+      if (base === "") {
         ids.push("");
         continue;
       }
-      const n = seen.get(line.key) ?? 0;
-      seen.set(line.key, n + 1);
-      ids.push(`${section}:${line.key}#${n}`);
+      const n = seen.get(base) ?? 0;
+      seen.set(base, n + 1);
+      ids.push(`${base}#${n}/${counts.get(base)}`);
     }
   }
   return ids;
