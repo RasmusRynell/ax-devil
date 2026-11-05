@@ -1,7 +1,16 @@
 // @vitest-environment node
 import { describe, expect, it } from "vite-plus/test";
 import { makeSample } from "../expr/sampleFixture";
-import { type ClassMask, RowSet, compileFilter, filterRows, maskKeeps } from "./filter";
+import {
+  type ClassMask,
+  type MeasureRanges,
+  OPEN_RANGES,
+  RowSet,
+  compileFilter,
+  filterRows,
+  maskKeeps,
+  withRanges,
+} from "./filter";
 
 /** Class options as the lane has them: the enabled option indexes out of `options`. */
 function choice(options: number, ...enabled: number[]): ClassMask {
@@ -34,6 +43,47 @@ function filtered(expression: string, mask = choice(0)) {
     relations: Array.from(set.relations.subarray(0, set.relationCount)),
   };
 }
+
+describe("measure ranges", () => {
+  // Rows: a 0.9/0.1, b 0.2/0.5, c 0.5 with no confidence, d reports nothing (no class, no score).
+  const sample = makeSample([
+    { id: "a", class: "car", score: 0.9, confidence: 0.1 },
+    { id: "b", class: "car", score: 0.2, confidence: 0.5 },
+    { id: "c", class: "car", score: 0.5 },
+    { id: "d" },
+  ]);
+  const range = (
+    measure: "score" | "confidence",
+    min: number | null,
+    max: number | null,
+  ): MeasureRanges => ({ ...OPEN_RANGES, [measure]: { min, max } });
+
+  it.each([
+    ["open ends keep everything", "", OPEN_RANGES, [0, 1, 2, 3]],
+    ["a minimum", "", range("score", 0.5, null), [0, 2, 3]],
+    ["a maximum", "", range("score", null, 0.5), [1, 2, 3]],
+    ["inclusive edges", "", range("score", 0.2, 0.9), [0, 1, 2, 3]],
+    ["a missing confidence is kept", "", range("confidence", 0.3, null), [1, 2, 3]],
+    ["a reversed interval rejects every reported value", "", range("score", 0.9, 0.2), [3]],
+    ["a bound too small to print without an exponent", "", range("score", null, 1e-7), [3]],
+    ["ranges and the expression both apply", "id != 'c'", range("score", 0.5, null), [0, 3]],
+    [
+      "each range applies",
+      "",
+      { score: { min: 0.2, max: null }, confidence: { min: null, max: 0.2 } },
+      [0, 2, 3],
+    ],
+  ])("%s", (_name, expression, ranges, rows) => {
+    const compiled = compileFilter(withRanges(expression, ranges));
+    if (!compiled.ok) throw new Error(compiled.diagnostics[0].message);
+    const set = filterRows(sample, compiled.filter, choice(0));
+    expect(Array.from(set.rows.subarray(0, set.count))).toEqual(rows);
+  });
+
+  it("leaves the authored expression alone while the ranges are open", () => {
+    expect(withRanges("score > 0.4", OPEN_RANGES)).toBe("score > 0.4");
+  });
+});
 
 describe("class mask", () => {
   // Rows whose classes the decoder lists are kept when one is enabled; unlisted rows stay while something is enabled.

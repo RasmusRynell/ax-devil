@@ -1,6 +1,12 @@
 import type { BasisWire, FieldWire, LaneStatusWire } from "../generated/api";
 import type { CellRect } from "../overlay/painter";
-import type { ClassMask, CompiledCatalog, CompiledFilter, SampleView } from "../present";
+import type {
+  ClassMask,
+  CompiledCatalog,
+  CompiledFilter,
+  MeasureRanges,
+  SampleView,
+} from "../present";
 import type { LaneMatch } from "./laneData";
 import type { VideoFrame } from "./protocol";
 
@@ -47,6 +53,8 @@ export type LaneSettings = {
   filter: Record<string, boolean>;
   /** The frame filter expression that is applied; `""` is none. Only an expression that compiles is stored. */
   expression: string;
+  /** Inclusive score and confidence ranges, `null` for an open end; a row without the value is kept. */
+  ranges: MeasureRanges;
   /** What the lane matches the file's records to frames by; `null` is the decoder's default, as is a basis the file lacks. */
   basis: BasisWire | null;
   tolerance_ms: number | null;

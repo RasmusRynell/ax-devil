@@ -1,6 +1,7 @@
 /** The lanes of a viewer's entry: what each shows, how the user has set it, and what the backend says about it. */
 
 import type { SettingsState } from "../generated/api";
+import { MEASURES, OPEN_RANGES } from "../present";
 import type { CatalogLook, LaneSettings, LaneState, Sticky } from "./contract";
 import type {
   BasisWire,
@@ -48,6 +49,11 @@ function sameStyle(a: LaneSettings, b: LaneSettings): boolean {
     a.theme === b.theme &&
     a.hidden === b.hidden &&
     a.expression === b.expression &&
+    MEASURES.every(
+      (measure) =>
+        a.ranges[measure].min === b.ranges[measure].min &&
+        a.ranges[measure].max === b.ranges[measure].max,
+    ) &&
     [...keys].every((key) => a.filter[key] === b.filter[key])
   );
 }
@@ -111,6 +117,7 @@ const settingsOf = ({ catalog, policy }: LaneDefaultsWire): LaneSettings => ({
   hidden: 0,
   filter: {},
   expression: "",
+  ranges: OPEN_RANGES,
   basis: policy.basis,
   tolerance_ms: policy.tolerance_ms,
   sticky: { ...policy.sticky, opacity: 1 },
