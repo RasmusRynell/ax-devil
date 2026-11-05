@@ -159,9 +159,10 @@ it("keeps a required option of the handler from being skipped: Add says it is re
       { key: "width", label: "Image width", kind: { kind: "Integer", min: 1n }, required: true },
     ],
   };
-  vi.stubGlobal("fetch", async () => reply(200, { decoders: [mot], resolvers: [] }));
+  serve([mot]);
   await open();
   await overlay("/data/gt.txt");
+  await answered();
 
   fireEvent.click(add());
   expect((await screen.findByRole("alert")).textContent).toBe("Image width is required");
@@ -198,6 +199,21 @@ it("keeps Add off, with the reason, while the backend cannot read the video or a
   expect(screen.queryByRole("alert")).toBeNull();
 
   fireEvent.change(screen.getByLabelText("Video path"), { target: { value: "/gone.mp4" } });
+  await waitFor(() => expect(screen.getByRole("alert").textContent).toBe("File not found"));
+  expect(add()).toHaveProperty("disabled", true);
+});
+
+it("asks again when a path comes back after an edit: the files may have changed, so Add waits for the new answer", async () => {
+  const missing: string[] = [];
+  serve([], missing);
+  await open();
+  await answered();
+
+  missing.push("/a.mp4");
+  const video = screen.getByLabelText("Video path");
+  fireEvent.change(video, { target: { value: "/b.mp4" } });
+  fireEvent.change(video, { target: { value: "/a.mp4" } });
+  expect(add()).toHaveProperty("disabled", true);
   await waitFor(() => expect(screen.getByRole("alert").textContent).toBe("File not found"));
   expect(add()).toHaveProperty("disabled", true);
 });

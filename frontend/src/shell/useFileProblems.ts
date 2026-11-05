@@ -9,8 +9,8 @@ const NONE: ReadonlyMap<string, string> = new Map();
 
 /**
  * What the backend host finds wrong with each of `paths` (blank ones left out by the caller), asked once typing
- * pauses. A change drops the question in flight, so an answer is never used for paths that have moved on. `checking`
- * holds from a change until its answer; a backend that cannot be asked leaves every path without a problem, and the
+ * pauses. A change drops the question in flight and the last answer, so an answer is never used for paths that have
+ * moved on, nor for ones that moved back. `checking` holds from a change until its answer; a backend that cannot be asked leaves every path without a problem, and the
  * add judges the files itself.
  */
 export function useFileProblems(paths: readonly string[]): {
@@ -19,6 +19,12 @@ export function useFileProblems(paths: readonly string[]): {
 } {
   const key = JSON.stringify(paths);
   const [answer, setAnswer] = useState<{ key: string; problems: ReadonlyMap<string, string> }>();
+  const [asked, setAsked] = useState(key);
+  if (asked !== key) {
+    // Any edit forgets the last answer, even for paths that come back: the files may have changed meanwhile.
+    setAsked(key);
+    setAnswer(undefined);
+  }
   useEffect(() => {
     const asked = JSON.parse(key) as string[];
     if (asked.length === 0) return;
