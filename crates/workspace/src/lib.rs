@@ -21,7 +21,7 @@ pub use credentials::{Confirmation, Environment, Secret};
 pub use foundation::{BookmarkId, ItemId};
 pub use item::{
     OverlayRecipe, PlaylistRecipe, Recipe, Source, Unreadable, VideoRecipe, WorkspaceItem,
-    absolute_paths,
+    absolute_paths, check_readable_file,
 };
 pub use live::{
     LIVE_SLOT, LiveOverlay, LiveRecipe, LiveVideoContent, Login, Protocol, ResolvedCamera,

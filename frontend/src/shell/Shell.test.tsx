@@ -1,15 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
-import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { GrantsContext } from "../access";
-import { DEFAULT_SETTINGS, FakeSettings } from "../fakeSettings";
-import type { Grant } from "../generated/api";
+import { act, cleanup, fireEvent, screen, waitFor } from "@testing-library/react";
 import type { CommandId } from "../generated/settings";
 import { FakeSocket, video } from "../session/fakeSession";
-import { SessionProvider } from "../session/session";
 import { useViewerActions } from "../viewer/actions";
-import type { SettingsApi } from "../settings";
-import { Shell } from "./Shell";
-import type { WindowBridge } from "./windowBridge";
+import { renderShell, showShell } from "./shellHarness";
 
 const playback = { togglePlay: vi.fn(), step: vi.fn() };
 const offered = {
@@ -35,40 +29,6 @@ afterEach(() => {
   FakeSocket.reset();
   delete window.axDevilWindow;
 });
-
-/** The shell under the given settings, grants and Session (the window's own by default), once it is seated. */
-async function showShell({
-  shortcuts = {},
-  values = {},
-  grants = ["configuration"],
-  save,
-}: {
-  shortcuts?: Partial<Record<CommandId, string | null>>;
-  values?: Partial<typeof DEFAULT_SETTINGS.values>;
-  grants?: Grant[];
-  save?: SettingsApi["save"];
-} = {}) {
-  const state = {
-    ...DEFAULT_SETTINGS,
-    values: { ...DEFAULT_SETTINGS.values, ...values },
-    shortcuts: { ...DEFAULT_SETTINGS.shortcuts, ...shortcuts },
-  };
-  render(
-    <GrantsContext.Provider value={grants}>
-      <FakeSettings state={state} save={save}>
-        <SessionProvider>
-          <Shell version="1.2.3" />
-        </SessionProvider>
-      </FakeSettings>
-    </GrantsContext.Provider>,
-  );
-  await screen.findByRole("heading", { name: "ax-devil" });
-}
-
-const renderShell = async (options?: Parameters<typeof showShell>[0]) => {
-  await showShell(options);
-  return FakeSocket.rooms.get("room-1")!;
-};
 
 describe("menu bar", () => {
   it("lists only the menus with a working command, each with its shortcut", async () => {
@@ -211,169 +171,6 @@ describe("view settings", () => {
     fireEvent.click(screen.getByRole("menuitemcheckbox", { name: /Lane Names/ }));
     const box = await screen.findByRole("dialog", { name: "Settings" });
     expect(box.textContent).toContain("preference: full");
-  });
-});
-
-describe("add video", () => {
-  // The desktop's own backend grants preferences, which is how a window knows it may browse this machine's files.
-  const local: Grant[] = ["configuration", "preferences"];
-  const chooses = (paths: string[]) => {
-    window.axDevilWindow = {
-      minimize() {},
-      toggleMaximize() {},
-      close() {},
-      toggleFullScreen() {},
-      pickVideos: () => Promise.resolve(paths),
-      connect: () => Promise.resolve(),
-      disconnect: () => Promise.resolve(),
-      restart() {},
-      pickFolder: () => Promise.resolve(null),
-      pickExportFile: () => Promise.resolve(null),
-      pickOpenWorkspace: () => Promise.resolve(null),
-      pickSaveWorkspace: () => Promise.resolve(null),
-      appVersion: async () => "0.0.0",
-      onMaximizedChange: () => () => {},
-    } satisfies WindowBridge;
-  };
-  const commands = () => FakeSocket.latest.received.filter((message) => message.type === "command");
-
-  it("asks for the chosen files with a viewer wanted, and says why the backend refused them", async () => {
-    chooses(["/clips/a.mp4", "/clips/b.txt"]);
-    await renderShell({ grants: local });
-    FakeSocket.latest.defer = true;
-    fireEvent.click(screen.getByRole("menuitem", { name: "File" }));
-    fireEvent.click(screen.getByRole("menuitem", { name: /Add Video/ }));
-    await act(async () => {});
-    expect(commands()).toMatchObject([
-      {
-        cmd: {
-          type: "content",
-          command: {
-            type: "addItems",
-            items: [
-              { type: "Video", path: "/clips/a.mp4", overlays: [] },
-              { type: "Video", path: "/clips/b.txt", overlays: [] },
-            ],
-            open: true,
-          },
-        },
-      },
-    ]);
-    const seq = commands()[0]!.seq;
-    await act(async () =>
-      FakeSocket.latest.emit({
-        type: "ack",
-        seq,
-        outcome: { status: "refused", code: "Invalid" },
-      }),
-    );
-    expect(screen.getByRole("alert").textContent).toContain("cannot open");
-    fireEvent.click(screen.getByRole("button", { name: "Dismiss" }));
-    expect(screen.queryByRole("alert")).toBeNull();
-  });
-
-  it("sends nothing when the dialog is cancelled", async () => {
-    chooses([]);
-    await renderShell({ grants: local });
-    fireEvent.keyDown(document, { key: "n", ctrlKey: true });
-    await act(async () => {});
-    expect(commands()).toEqual([]);
-    expect(screen.queryByRole("alert")).toBeNull();
-  });
-
-  it.each([
-    ["a remote server's window", true],
-    ["a browser", false],
-  ])(
-    "asks %s for a path on the server, and says why the backend refused it",
-    async (_, desktop) => {
-      const pick = vi.fn(() => Promise.resolve(["/clients/own.mp4"]));
-      if (desktop) {
-        chooses([]);
-        window.axDevilWindow!.pickVideos = pick;
-      }
-      await renderShell({ grants: ["files"] });
-      FakeSocket.latest.defer = true;
-      fireEvent.keyDown(document, { key: "n", ctrlKey: true });
-      fireEvent.change(screen.getByRole("textbox", { name: "Path on the server" }), {
-        target: { value: " /srv/clips/a.mp4 " },
-      });
-      fireEvent.click(screen.getByRole("button", { name: "Add" }));
-      await act(async () => {});
-      expect(pick).not.toHaveBeenCalled();
-      expect(commands()).toMatchObject([
-        {
-          cmd: {
-            type: "content",
-            command: {
-              type: "addItems",
-              items: [{ type: "Video", path: "/srv/clips/a.mp4", overlays: [] }],
-              open: true,
-            },
-          },
-        },
-      ]);
-      await act(async () =>
-        FakeSocket.latest.emit({
-          type: "ack",
-          seq: commands()[0]!.seq,
-          outcome: { status: "refused", code: "Invalid" },
-        }),
-      );
-      expect(screen.getByRole("dialog", { name: "Add video" }).textContent).toContain(
-        "cannot open",
-      );
-      // The dialog stays for another try, which closes it once accepted.
-      FakeSocket.latest.defer = false;
-      fireEvent.click(screen.getByRole("button", { name: "Add" }));
-      await act(async () => {});
-      expect(screen.queryByRole("dialog")).toBeNull();
-    },
-  );
-});
-
-describe("add video with an overlay", () => {
-  it("asks for the options its decoder declares, sends them as typed, and holds back a missing required one", async () => {
-    const options = [
-      { key: "width", label: "Image width", kind: { kind: "Integer", min: 1 }, required: true },
-    ];
-    const decoders = [
-      { handler: "MOT_FILE", display_name: "MOT", extensions: [".txt"], options },
-      { handler: "ONVIF_XML", display_name: "ONVIF", extensions: [".xml"], options: [] },
-    ];
-    vi.stubGlobal("fetch", async () => new Response(JSON.stringify({ decoders, resolvers: [] })));
-    await renderShell({ grants: ["files"] });
-    fireEvent.keyDown(document, { key: "n", ctrlKey: true });
-    fireEvent.change(screen.getByRole("textbox", { name: "Path on the server" }), {
-      target: { value: "/srv/a.mp4" },
-    });
-    fireEvent.change(await screen.findByRole("textbox", { name: "Overlay path" }), {
-      target: { value: "/srv/gt.txt" },
-    });
-    fireEvent.click(screen.getByRole("button", { name: "Add" }));
-    expect(screen.getByRole("alert").textContent).toContain("Image width is required");
-    const sent = () => FakeSocket.latest.received.filter((message) => message.type === "command");
-    expect(sent()).toEqual([]);
-
-    fireEvent.change(screen.getByRole("textbox", { name: "Image width" }), {
-      target: { value: "1920" },
-    });
-    fireEvent.click(screen.getByRole("button", { name: "Add" }));
-    await act(async () => {});
-    expect(sent()).toMatchObject([
-      {
-        cmd: {
-          command: {
-            items: [
-              {
-                path: "/srv/a.mp4",
-                overlays: [{ path: "/srv/gt.txt", handler: "MOT_FILE", options: { width: 1920 } }],
-              },
-            ],
-          },
-        },
-      },
-    ]);
   });
 });
 

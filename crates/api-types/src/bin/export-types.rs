@@ -84,6 +84,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         PlaylistSpanInfo,
         NewItem,
         NewOverlayWire,
+        CheckFilesRequest,
+        FileCheck,
         HiddenTarget,
         HandlersInfo,
         DecoderInfo,

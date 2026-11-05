@@ -80,6 +80,7 @@ export function OverlayRow({
   entry,
   decoders,
   focus,
+  problem,
   tried,
   onChange,
   onRemove,
@@ -91,6 +92,8 @@ export function OverlayRow({
   decoders: readonly DecoderInfo[];
   /** Puts the cursor in the file field when the row appears. */
   focus: boolean;
+  /** Why the backend cannot read the file, once it has said. */
+  problem?: string;
   tried: boolean;
   onChange: (entry: OverlayEntry) => void;
   onRemove: () => void;
@@ -135,8 +138,12 @@ export function OverlayRow({
         ]}
         onChange={(picked) => onChange({ ...entry, picked })}
       />
-      {undecided(entry) && (
-        <Refusal reason={`Choose the data handler that reads ${fileName(entry.path)}.`} />
+      {problem ? (
+        <Refusal reason={problem} />
+      ) : (
+        undecided(entry) && (
+          <Refusal reason={`Choose the data handler that reads ${fileName(entry.path)}.`} />
+        )
       )}
       {named && decoder && <ResolverForm form={form} />}
       {tried && named && missing && <Refusal reason={`${missing.label} is required`} />}

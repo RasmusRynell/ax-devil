@@ -1013,6 +1013,10 @@ export type NewItem = { "type": "Video",
  */
 path: string, 
 /**
+ * The item's name; the file name when absent or blank.
+ */
+label?: string, 
+/**
  * The overlay files, each shown as its own lane.
  */
 overlays: Array<NewOverlayWire>, } | { "type": "Live" } & NewLiveWire;
@@ -1037,6 +1041,28 @@ label: string | null,
  * The options the decoder's form declares; checked by the intake.
  */
 options: Record<string, unknown>, };
+
+/**
+ * The body of `POST /api/files/check`: the files a form is about to add, as typed.
+ */
+export type CheckFilesRequest = { 
+/**
+ * The paths; a relative one is relative to the backend's working folder.
+ */
+paths: Array<string>, };
+
+/**
+ * What the backend host makes of one path.
+ */
+export type FileCheck = { 
+/**
+ * The path as asked.
+ */
+path: string, 
+/**
+ * Why it cannot be read as a file; absent when it can.
+ */
+problem?: string, };
 
 /**
  * An entry or lane to hide or show.

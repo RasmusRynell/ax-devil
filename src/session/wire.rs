@@ -176,7 +176,11 @@ fn intake(
     saved: Saved<'_>,
 ) -> Result<WorkspaceItem, foundation::UserError> {
     match new {
-        NewItem::Video { path, overlays } => {
+        NewItem::Video {
+            path,
+            label,
+            overlays,
+        } => {
             let overlays: Vec<_> = overlays
                 .iter()
                 .map(|overlay| NewOverlay {
@@ -187,6 +191,7 @@ fn intake(
                 })
                 .collect();
             workspace::intake::video(Path::new(path), &overlays, handlers)
+                .map(|item| workspace::intake::with_label(item, label.as_deref()))
         }
         NewItem::Live(new) => {
             let mut new = new.clone();

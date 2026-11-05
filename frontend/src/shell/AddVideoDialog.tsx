@@ -1,24 +1,28 @@
 import { useRef, useState } from "react";
-import { Button } from "../kit/Button";
+import { BrowseButton, Button } from "../kit/Button";
 import { Dialog, DialogBody } from "../kit/Dialog";
 import { TextField } from "../kit/Fields";
 import { HandlersFailure, useHandlers } from "../resolvers/useHandlers";
 import { useCommand } from "../session/session";
-import { OverlayRow, undecided, type OverlayEntry, type OverlayRead } from "./OverlayRow";
+import { OverlayRow, fileName, undecided, type OverlayEntry, type OverlayRead } from "./OverlayRow";
 import { Refusal } from "./SettingField";
+import { useFileProblems } from "./useFileProblems";
+import { useServerKind } from "./windowBridge";
 
 const blankEntry = (key: number): OverlayEntry => ({ key, path: "", picked: "" });
 
 /**
- * Asks for the path of a video on the machine that runs the backend, where this window has no file dialog of its own
- * to show: a remote server's window, or a browser, and any number of overlay files, each with the handler that reads
- * it and the options that handler declares. A blank overlay is left out. OK waits for a video and a handler for every
- * overlay; the backend's intake judges the paths and options, and its refusal stays here.
+ * Asks for a video on the machine that runs the backend, by its path, with a name that is the file's when left blank,
+ * and any number of overlay files, each with the handler that reads it and the options that handler declares. The
+ * desktop's own window can choose the video in a file dialog; a remote server's window or a browser types the path. A
+ * blank overlay is left out. OK waits for a video that the backend finds readable, as it does each overlay, and a
+ * handler for every overlay; the backend's intake judges the options, and its refusal stays here.
  */
 export function AddVideoDialog({ onClose }: { onClose: () => void }) {
   const command = useCommand();
   const { handlers, failure: unavailable, retry } = useHandlers();
   const [path, setPath] = useState("");
+  const [name, setName] = useState("");
   const [entries, setEntries] = useState<readonly OverlayEntry[]>([blankEntry(0)]);
   const [added, setAdded] = useState<number | null>(null);
   const [tried, setTried] = useState(false);
@@ -27,6 +31,25 @@ export function AddVideoDialog({ onClose }: { onClose: () => void }) {
   const nextKey = useRef(1);
   const readers = useRef(new Map<number, () => OverlayRead>());
   const decoders = handlers?.decoders ?? [];
+  // Only the local backend's window may browse this machine's files.
+  const bridge = useServerKind() === "local" ? window.axDevilWindow : undefined;
+  const named = entries.map((entry) => entry.path.trim());
+  const { problems, checking } = useFileProblems([
+    ...new Set([path.trim(), ...named].filter(Boolean)),
+  ]);
+  const videoProblem = problems.get(path.trim());
+  const browse = async () => {
+    try {
+      const chosen = (await bridge?.pickVideos()) ?? [];
+      if (chosen.length > 1) setFailure("Select one video.");
+      else if (chosen.length) {
+        setPath(chosen[0]);
+        setFailure(null);
+      }
+    } catch (error) {
+      setFailure(error instanceof Error ? error.message : String(error));
+    }
+  };
 
   const edit = (entry: OverlayEntry) => {
     setEntries(entries.map((one) => (one.key === entry.key ? entry : one)));
@@ -49,6 +72,7 @@ export function AddVideoDialog({ onClose }: { onClose: () => void }) {
             {
               type: "Video",
               path: path.trim(),
+              label: name.trim() || undefined,
               overlays: overlays.map((entry, at) => ({
                 path: entry.path.trim(),
                 handler: entry.picked,
@@ -72,16 +96,23 @@ export function AddVideoDialog({ onClose }: { onClose: () => void }) {
       okLabel="Add"
       onOk={() => void ok()}
       onCancel={onClose}
-      busy={busy || !path.trim() || entries.some(undecided)}
+      busy={
+        busy ||
+        !path.trim() ||
+        entries.some(undecided) ||
+        checking ||
+        [path.trim(), ...named].some((one) => problems.has(one))
+      }
     >
       <DialogBody>
         <TextField
-          label="Path on the server"
+          label="Video path"
           value={path}
           onChange={(text) => {
             setPath(text);
             setFailure(null);
           }}
+          action={bridge && <BrowseButton what="video file" onBrowse={() => void browse()} />}
         />
         {handlers && (
           <>
@@ -92,6 +123,7 @@ export function AddVideoDialog({ onClose }: { onClose: () => void }) {
                 entry={entry}
                 decoders={decoders}
                 focus={entry.key === added}
+                problem={problems.get(entry.path.trim())}
                 tried={tried}
                 onChange={edit}
                 onRemove={() => setEntries(entries.filter((one) => one.key !== entry.key))}
@@ -113,7 +145,14 @@ export function AddVideoDialog({ onClose }: { onClose: () => void }) {
             </Button>
           </>
         )}
+        <TextField
+          label="Name"
+          value={name}
+          placeholder={path.trim() ? fileName(path) : "Optional"}
+          onChange={setName}
+        />
         {!path.trim() && <Refusal reason="Choose a video file to continue." />}
+        {videoProblem && <Refusal reason={videoProblem} />}
         {unavailable && <HandlersFailure failure={unavailable} retry={retry} />}
         {failure && <Refusal reason={failure} />}
       </DialogBody>
