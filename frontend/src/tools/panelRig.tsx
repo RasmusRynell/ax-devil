@@ -206,10 +206,12 @@ export const ids = () =>
   within(screen.getByRole("listbox", { name: "Objects" }))
     .getAllByRole("option")
     .map((row) => row.firstElementChild?.textContent);
-export const search = (text: string) =>
-  fireEvent.change(screen.getByRole("textbox", { name: "Search objects" }), {
-    target: { value: text },
-  });
+/** Types `text` into the search box and presses Return, which applies it without waiting. */
+export const search = (text: string) => {
+  const box = screen.getByRole("textbox", { name: "Search objects" });
+  fireEvent.change(box, { target: { value: text } });
+  fireEvent.keyDown(box, { key: "Enter" });
+};
 /** Whether a status line says `text`; a notice cut in the middle is in two parts. */
 export const says = (text: string) =>
   screen.queryAllByRole("status").some((status) => status.textContent === text);
