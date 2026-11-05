@@ -49,6 +49,8 @@ describe("window controls", () => {
     expect(mock.toggleMaximize).toHaveBeenCalledOnce();
     expect(mock.close).toHaveBeenCalledOnce();
     report(true);
+    for (const name of ["Minimize", "Restore", "Close"])
+      expect(screen.getByRole("button", { name }).tabIndex).toBe(-1);
     expect(screen.getByRole("button", { name: "Restore" })).toBeTruthy();
   });
 });

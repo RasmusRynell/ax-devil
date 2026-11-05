@@ -27,7 +27,7 @@ export const ACTIONS: Record<
   { menu: string; icon?: IconName; tip: string; group: number }
 > = {
   start: { menu: "Start stream", icon: "play", tip: "", group: 0 },
-  stop: { menu: "Stop stream", icon: "square", tip: "", group: 0 },
+  stop: { menu: "Stop stream", icon: "square-filled", tip: "", group: 0 },
   add: { menu: "Add", icon: "plus", tip: "", group: 0 },
   addStream: {
     menu: "Add stream",
