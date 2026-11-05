@@ -10,6 +10,7 @@ use std::sync::{Arc, atomic::Ordering};
 use camera::{AccessUnit, Status};
 use foundation::{FrameId, MediaTime, VideoFrame};
 use overlay_sync::{LIVE_DEADLINE, LiveGate, MatchBasis};
+use playback::SharedFrame;
 use scene_store::{TrackRead, TrackSnapshot};
 use tokio::{
     sync::{mpsc, watch},
@@ -208,7 +209,7 @@ impl VideoTask {
         });
         self.shared.frames.send_replace(Some(Arc::new(Released {
             id,
-            frame,
+            frame: frame.map(SharedFrame::new),
             snapshot,
             attempt: self.attempt,
         })));

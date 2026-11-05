@@ -66,7 +66,7 @@ Owns who may reach a backend and the limits that keep one peer or crowd from usi
 
 | Limit | Value |
 |-------|-------|
-| Open sockets, all / per IP | 256 / 16; every client of a proxy has the proxy's IP, so only the first applies when `serve` is started with the behind-proxy setting |
+| Open sockets, all / per IP | 1024 / 16; every client of a proxy has the proxy's IP, so only the first applies when `serve` is started with the behind-proxy setting |
 | Sockets still waiting for `Hello`, all / per IP | 64 / 4, and `Hello` within 5 s |
 | Frame, message | 16 KiB, 64 KiB |
 | Sessions per server, seats per Session | 64, 32 |
@@ -89,8 +89,9 @@ Documented, not fixed.
   against browsers and DNS rebinding; they do not authenticate a person. A per-launch credential is the known fix and
   is not implemented. Startup content is consumed by the first new Local owner Session, not bound to a
   requesting window. Video/playlist arguments are not forwarded when reusing an existing shell or backend.
-- **Remote video is raw.** A remote watcher receives raw frames, about 93 MB/s per 1080p30 viewer, so remote watching
-  suits the same machine or a fast LAN and a few watchers. Compressed delivery is future work.
+- **Remote video is one JPEG per frame.** About 40 to 65 Mbit/s per 1080p30 watcher, depending on the scene, and
+  compressed once whatever the number of watchers, so 1 Gbit/s carries 15 to 25 at full rate and more see fewer
+  frames. Inter-frame (H.264) delivery is future work.
 - **Edit access has no UI.** The backend supports an `Edit` access row for editing together, but nothing exposes it,
   and its projection lists only the Owner's open items. This is not a command-authorization guarantee that a
   retained item id cannot be reopened; settle that policy before exposing editing.

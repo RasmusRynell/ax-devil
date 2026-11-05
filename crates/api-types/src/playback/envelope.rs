@@ -4,11 +4,11 @@
 use super::{
     ENVELOPE_MAGIC, ENVELOPE_VERSION, FLAG_KEYFRAME, FLAG_LAST_FRAME, FLAG_SAMPLE_TIME,
     FRAME_MAP_HEADER_BYTES, KIND_FRAME_MAP, KIND_SAMPLE, KIND_TIMELINE, KIND_VIDEO_FRAME,
-    LAYOUT_I420, LAYOUT_NV12, LAYOUT_RGBA, MATRIX_BT601, MATRIX_BT709, SAMPLE_HEADER_BYTES,
-    SAMPLE_NO_FRAME, TIMELINE_HEADER_BYTES, VIDEO_FRAME_HEADER_BYTES,
+    LAYOUT_I420, LAYOUT_JPEG, LAYOUT_NV12, LAYOUT_RGBA, MATRIX_BT601, MATRIX_BT709,
+    SAMPLE_HEADER_BYTES, SAMPLE_NO_FRAME, TIMELINE_HEADER_BYTES, VIDEO_FRAME_HEADER_BYTES,
 };
 use bytes::{BufMut, Bytes, BytesMut};
-use foundation::{FrameId, Matrix, MediaTime, PixelFormat, Timeline, VideoFrame};
+use foundation::{FrameId, Matrix, MediaTime, PixelFormat, Plane, Timeline, VideoFrame};
 use overlays::{MapRun, SampleItem};
 
 /// The fixed head every envelope starts with.
@@ -52,13 +52,56 @@ pub fn video_frame(frame: &VideoFrame, last: bool) -> Bytes {
         Matrix::Bt601 => MATRIX_BT601,
         Matrix::Bt709 => MATRIX_BT709,
     };
+    let header = VideoHeader {
+        width: layout.width,
+        height: layout.height,
+        format,
+        matrix,
+        full_range: layout.color.full_range,
+        planes: layout.planes,
+    };
+    video_envelope(frame, last, &header, frame.data())
+}
+
+/// The VideoFrame envelope of `frame` compressed to `jpeg`, a `width` x `height` JPEG: the frame's identity and flags,
+/// and the JPEG as plane 0 in place of the planes.
+pub fn jpeg_frame(
+    frame: &VideoFrame,
+    last: bool,
+    (width, height): (u32, u32),
+    jpeg: &[u8],
+) -> Bytes {
+    // A JPEG of a frame is far below 4 GiB; the frontend rejects a length that disagrees with the message.
+    let len = u32::try_from(jpeg.len()).unwrap_or(u32::MAX);
+    let none = Plane { stride: 0, len: 0 };
+    let header = VideoHeader {
+        width,
+        height,
+        format: LAYOUT_JPEG,
+        matrix: MATRIX_BT601,
+        full_range: true,
+        planes: [Plane { stride: 0, len }, none, none],
+    };
+    video_envelope(frame, last, &header, jpeg)
+}
+
+/// What the video header of a VideoFrame says about its payload.
+struct VideoHeader {
+    width: u32,
+    height: u32,
+    format: u8,
+    matrix: u8,
+    full_range: bool,
+    planes: [Plane; 3],
+}
+
+fn video_envelope(frame: &VideoFrame, last: bool, header: &VideoHeader, payload: &[u8]) -> Bytes {
     let flags = if frame.is_keyframe() {
         FLAG_KEYFRAME
     } else {
         0
     } | if last { FLAG_LAST_FRAME } else { 0 };
-    let mut out =
-        BytesMut::with_capacity(usize::from(VIDEO_FRAME_HEADER_BYTES) + frame.data().len());
+    let mut out = BytesMut::with_capacity(usize::from(VIDEO_FRAME_HEADER_BYTES) + payload.len());
     head(
         &mut out,
         KIND_VIDEO_FRAME,
@@ -66,19 +109,19 @@ pub fn video_frame(frame: &VideoFrame, last: bool) -> Bytes {
         frame.id(),
         flags,
     );
-    out.put_u32_le(layout.width);
-    out.put_u32_le(layout.height);
-    out.put_u8(format);
-    out.put_u8(matrix);
-    out.put_u8(u8::from(layout.color.full_range));
+    out.put_u32_le(header.width);
+    out.put_u32_le(header.height);
+    out.put_u8(header.format);
+    out.put_u8(header.matrix);
+    out.put_u8(u8::from(header.full_range));
     out.put_u8(0);
-    for plane in &layout.planes {
+    for plane in &header.planes {
         out.put_u32_le(plane.stride);
     }
-    for plane in &layout.planes {
+    for plane in &header.planes {
         out.put_u32_le(plane.len);
     }
-    out.extend_from_slice(frame.data());
+    out.extend_from_slice(payload);
     out.freeze()
 }
 
@@ -146,7 +189,7 @@ pub fn frame_map(run: &MapRun) -> Bytes {
 mod tests {
     use super::*;
     use crate::playback::{FRAME_MAP_EMPTY, FRAME_MAP_NONE};
-    use foundation::{ColorDesc, FrameLayout, Plane};
+    use foundation::{ColorDesc, FrameLayout};
     use std::{fs, path::Path};
 
     /// A 2x2 I420 frame: Y plane 4 bytes with stride 2, then U and V of one byte each.
@@ -257,5 +300,8 @@ mod tests {
         });
         golden("frame-map.bin", &map);
         assert_eq!(map.len(), 48 + 5 * 5);
+
+        let jpeg = jpeg_frame(&frame(), true, (4, 2), &[0xFF, 0xD8, 0xFF, 0xD9]);
+        golden("jpeg-frame.bin", &jpeg);
     }
 }

@@ -43,6 +43,7 @@ mod open;
 #[cfg(test)]
 mod revocation;
 mod stream;
+mod wire;
 
 pub(crate) use lanes::policy_from_wire;
 

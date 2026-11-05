@@ -245,7 +245,7 @@ pub(crate) fn coded(error: Error) -> UserError {
 
 /// Copies `rows` rows of `row_len` bytes from `source` (rows `stride` apart) into the frame plane `index`, after
 /// checking that `source` holds them.
-fn copy_plane(
+pub(crate) fn copy_plane(
     target: &mut frame::Video,
     index: usize,
     (source, stride): (&[u8], usize),

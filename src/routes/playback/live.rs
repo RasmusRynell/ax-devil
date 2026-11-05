@@ -14,6 +14,7 @@ use super::{
     inspect::Inspections,
     lanes::{lane_defaults, policy_from_wire, policy_wire, status_wire},
     next_client, stopped, text,
+    wire::Wire,
 };
 use crate::{
     AppState,
@@ -71,6 +72,7 @@ pub(super) async fn run(
             matching,
             library: &state.catalogs,
             audience,
+            wire: Wire::of(&state.policy),
         },
         incoming,
         outbox,
@@ -90,6 +92,8 @@ pub(super) struct Setup<'a> {
     pub(super) library: &'a Library,
     /// What the viewer may learn of an error.
     pub(super) audience: Audience,
+    /// The form the viewer is sent frames in.
+    pub(super) wire: Wire,
 }
 
 /// What of the lane's status the viewer was told, to say it again when it changes: the numbering of the samples and the
@@ -115,6 +119,7 @@ struct Live<'a, I> {
     outbox: &'a Outbox,
     closing: &'a mut watch::Receiver<bool>,
     audience: Audience,
+    wire: Wire,
     matching: MatchPolicy,
     told: Option<(u32, Vec<String>)>,
     /// Answers to what the viewer sent, to go before anything else.
@@ -154,6 +159,7 @@ pub(super) async fn stream(
         outbox,
         closing,
         audience: setup.audience,
+        wire: setup.wire,
         matching: setup.matching.unwrap_or_default(),
         told: None,
         notices: VecDeque::new(),
@@ -295,13 +301,17 @@ impl<I: Incoming> Live<'_, I> {
     async fn show(&mut self, shown: Shown) -> Flow<()> {
         self.ready().await?;
         let Shown { frame, out } = shown;
+        let frame = self
+            .wire
+            .message(&frame, false)
+            .await
+            .map_err(End::Failed)?;
         if let Some(out) = &out {
             for item in &out.items {
                 self.send(Message::Binary(envelope::sample(item))).await?;
             }
         }
-        self.send(Message::Binary(envelope::video_frame(&frame, false)))
-            .await?;
+        self.send(frame).await?;
         let Some(out) = out else {
             return Ok(());
         };

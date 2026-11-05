@@ -242,6 +242,7 @@ async fn run_backend(global: Global, command: Option<Command>, plugins: Arc<Plug
     );
     let log_file = paths.as_ref().ok().map(|paths| paths.log_file.as_path());
     logging::init(global.log_level, log_file.filter(|_| !launcher));
+    ax_devil::runtime::raise_open_files();
     ax_devil::plugins::log_problems(&plugins.info());
     let (prefix, result) = match command {
         Some(Command::App(args)) => ("Application failed to start: ", launch_app(&args)),

@@ -9,10 +9,11 @@ use std::{
     },
 };
 
-use foundation::{ErrorCode, FrameId, UserError, VideoFrame};
+use foundation::{ErrorCode, FrameId, UserError};
 use futures_util::future::join_all;
 use handler_api::{Decoder, Settings};
 use overlay_sync::Mono;
+use playback::SharedFrame;
 use scene_store::{LiveTrack, TrackRead, TrackSnapshot};
 use tokio::{
     sync::{Mutex, Notify, watch},
@@ -67,7 +68,7 @@ pub struct Released {
     /// The unit's place on the video clock: its capture time.
     pub id: FrameId,
     /// The decoded picture; `None` when the unit gave none (nobody is watching, or it could not be decoded).
-    pub frame: Option<VideoFrame>,
+    pub frame: Option<SharedFrame>,
     /// The overlay's track; `None` for a video without one.
     pub snapshot: Option<Arc<TrackSnapshot>>,
     /// Which connection of the feed released it: 0 for the first, one more for each Retry that reconnected.

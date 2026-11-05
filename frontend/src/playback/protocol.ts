@@ -17,6 +17,7 @@ import {
   KIND_TIMELINE,
   KIND_VIDEO_FRAME,
   LAYOUT_I420,
+  LAYOUT_JPEG,
   LAYOUT_NV12,
   LAYOUT_RGBA,
   MATRIX_BT601,
@@ -125,12 +126,24 @@ export type FrameMapEnvelope = {
   kinds: Uint8Array;
 };
 
+/**
+ * A frame sent as a JPEG, as a viewer on another machine is sent frames: its identity and the size of the JPEG, which
+ * the socket's thread decodes to an RGBA `VideoFrame`.
+ */
+export type JpegFrame = Pick<
+  VideoFrame,
+  "sequenceId" | "timestampUs" | "keyframe" | "last" | "width" | "height"
+> & { jpeg: Uint8Array };
+
 export type Envelope =
   | { kind: "frame"; frame: VideoFrame }
   | SampleEnvelope
   | FrameMapEnvelope
   /** Presentation time in microseconds by sequence id. */
   | { kind: "timeline"; times: Float64Array };
+
+/** What a binary message holds: an envelope, or a frame still to decode. */
+export type Parsed = Envelope | { kind: "jpeg"; frame: JpegFrame };
 
 /** A binary message that breaks the envelope format. The session ends: the two sides disagree on the protocol. */
 export class EnvelopeError extends Error {
@@ -168,7 +181,7 @@ function readI64(view: DataView, offset: number): number {
  * Parses one binary message. Returns `null` for kinds this client ignores (kinds from a newer backend); throws
  * `EnvelopeError` for anything malformed.
  */
-export function parseEnvelope(data: ArrayBufferLike | ArrayBufferView): Envelope | null {
+export function parseEnvelope(data: ArrayBufferLike | ArrayBufferView): Parsed | null {
   const bytes = ArrayBuffer.isView(data)
     ? new Uint8Array(data.buffer, data.byteOffset, data.byteLength)
     : new Uint8Array(data);
@@ -186,9 +199,11 @@ export function parseEnvelope(data: ArrayBufferLike | ArrayBufferView): Envelope
 
   if (kind === KIND_VIDEO_FRAME) {
     if (payload < VIDEO_FRAME_HEADER_BYTES) throw new EnvelopeError("video header too short");
-    const format = FORMATS[view.getUint8(36)];
+    const layout = view.getUint8(36);
+    const format = FORMATS[layout];
     const matrix = MATRICES[view.getUint8(37)];
-    if (format === undefined) throw new EnvelopeError(`unknown pixel layout ${view.getUint8(36)}`);
+    if (format === undefined && layout !== LAYOUT_JPEG)
+      throw new EnvelopeError(`unknown pixel layout ${layout}`);
     if (matrix === undefined) throw new EnvelopeError(`unknown color matrix ${view.getUint8(37)}`);
     const flags = view.getUint32(24, true);
     const strides: [number, number, number] = [
@@ -201,15 +216,20 @@ export function parseEnvelope(data: ArrayBufferLike | ArrayBufferView): Envelope
     if (payload + byteLength > bytes.length) throw new EnvelopeError("frame planes are truncated");
     const planeAt = (start: number, length: number) =>
       bytes.subarray(payload + start, payload + start + length);
+    const identity = {
+      sequenceId: readU64(view, 8),
+      timestampUs: readI64(view, 16),
+      keyframe: (flags & FLAG_KEYFRAME) !== 0,
+      last: (flags & FLAG_LAST_FRAME) !== 0,
+      width: view.getUint32(28, true),
+      height: view.getUint32(32, true),
+    };
+    if (format === undefined)
+      return { kind: "jpeg", frame: { ...identity, jpeg: planeAt(0, lengths[0]) } };
     return {
       kind: "frame",
       frame: {
-        sequenceId: readU64(view, 8),
-        timestampUs: readI64(view, 16),
-        keyframe: (flags & FLAG_KEYFRAME) !== 0,
-        last: (flags & FLAG_LAST_FRAME) !== 0,
-        width: view.getUint32(28, true),
-        height: view.getUint32(32, true),
+        ...identity,
         format,
         matrix,
         fullRange: view.getUint8(38) !== 0,

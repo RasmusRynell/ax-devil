@@ -116,7 +116,7 @@ fn make(
         renew(path);
         return Ok(Bytes::from(jpeg));
     }
-    let jpeg = first_frame(input, EDGE, cancel)?.jpeg;
+    let jpeg = first_frame(input, EDGE, cancel)?.bytes;
     match store(path, &jpeg) {
         Ok(()) => prune(dir, MAX_FILES),
         Err(error) => tracing::warn!("The thumbnail {} was not cached: {error}", path.display()),
