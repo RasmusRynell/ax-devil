@@ -11,10 +11,12 @@ mod copy;
 mod folder;
 mod id;
 mod library;
+mod origin;
 pub mod sheets;
 
 pub use id::CatalogId;
 pub use library::{CatalogInfo, Library, Served};
+pub use origin::Origin;
 
 /// The setting that holds the id of the catalog new lanes start with; empty is Standard.
 pub const DEFAULT_SETTING: &str = "overlays.default_catalog";

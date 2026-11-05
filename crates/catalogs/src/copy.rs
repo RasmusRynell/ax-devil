@@ -16,7 +16,7 @@ use serde::{
 };
 use serde_json::{Value, value::RawValue};
 
-use crate::MAX_CATALOG_BYTES;
+use crate::{MAX_CATALOG_BYTES, origin};
 
 /// The most file names tried for one copy (`name.json`, `name-2.json`, ...).
 const MAX_NAMES: usize = 1000;
@@ -95,8 +95,8 @@ fn text_of(text: &str) -> String {
 
 /// The document of a copy of `source_text`, called `source_name`: its members in their order with their text as it
 /// was, except `name` (`name`, trimmed) and `description` (which says what the copy is based on). A built-in source
-/// passes its id as `origin`, which becomes the copy's `origin` member right after `description`; a user source keeps
-/// the `origin` it has.
+/// passes its id as `origin`, which becomes the copy's `origin` member right after `description`, with a hash of the
+/// source's body (see [`origin`]); a user source keeps the `origin` it has.
 pub(crate) fn copy_of(
     source_text: &str,
     source_name: &str,
@@ -116,14 +116,21 @@ pub(crate) fn copy_of(
             )));
         }
     }
+    let origin = match origin {
+        Some(id) => Some(
+            origin::recorded(id, source_text)
+                .ok_or_else(|| invalid("Cannot copy: the catalog is not an object"))?,
+        ),
+        None => None,
+    };
     let mut lines = Vec::with_capacity(members.len() + 1);
     for (key, raw) in &members {
         let line = |value: &str| format!("  {}: {value}", text_of(key));
-        match (key.as_str(), origin) {
+        match (key.as_str(), origin.as_deref()) {
             ("name", _) => lines.push(line(&text_of(name))),
             ("description", _) => {
                 lines.push(line(&text_of(&format!("Based on {source_name}."))));
-                if let Some(origin) = origin {
+                if let Some(origin) = &origin {
                     lines.push(format!("  \"origin\": {}", text_of(origin)));
                 }
             }

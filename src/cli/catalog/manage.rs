@@ -73,7 +73,10 @@ pub fn list(home: &Home) -> Report {
         let note = match (&info.id, &info.problem) {
             (_, Some(problem)) => format!("  (does not load: {problem})"),
             (CatalogId::BuiltIn(_), None) => "  (built-in, read-only)".to_owned(),
-            (CatalogId::User(_), None) => String::new(),
+            (CatalogId::User(_), None) => info
+                .origin
+                .as_ref()
+                .map_or_else(String::new, |origin| format!("  ({})", origin.note())),
         };
         let name = match (&info.id, &info.problem) {
             (CatalogId::User(file), Some(_)) => file,

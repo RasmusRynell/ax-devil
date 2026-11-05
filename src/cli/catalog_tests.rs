@@ -50,16 +50,26 @@ fn catalog_new_copies_without_overwriting_and_leaves_the_default_alone() {
     let listing = catalog(dir.path(), &["list"]).text;
     let lines: Vec<&str> = listing.lines().collect();
     assert!(lines[0].starts_with("* Standard") && lines[0].ends_with("(built-in, read-only)"));
-    for (line, file) in lines[6..]
-        .iter()
-        .zip(["night-shift-2.json", "night-shift.json"])
-    {
+    for (line, (file, note)) in lines[6..].iter().zip([
+        ("night-shift-2.json", "copy of Tracking"),
+        ("night-shift.json", "copy of Standard"),
+    ]) {
         assert!(
-            line.contains("Night Shift") && line.ends_with(file),
+            line.contains("Night Shift") && line.ends_with(&format!("{file}  ({note})")),
             "{listing}"
         );
     }
     assert_eq!(lines.len(), 8);
+    let edited = fs::read_to_string(file("night-shift.json"))
+        .unwrap()
+        .replacen("{\n", "{\n  \"extra\": 1,\n", 1);
+    fs::write(file("night-shift.json"), edited).unwrap();
+    let listing = catalog(dir.path(), &["list"]).text;
+    assert!(
+        listing
+            .lines()
+            .any(|line| line.ends_with("(copy of Standard, modified)"))
+    );
     assert!(!catalog(dir.path(), &["new", "Blank", "--from", "built-in:nope"]).ok);
 }
 
