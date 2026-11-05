@@ -1,8 +1,13 @@
 use crate::Direction::Forward;
-use crate::testing::{Fixture, video_frame, want};
+use crate::testing::{Fixture, want};
 use crate::{CachePool, FrameSet};
+use crate::{SharedFrame, testing};
 use std::ops::RangeInclusive;
 use std::sync::Barrier;
+
+fn video_frame(id: u64, bytes: usize) -> SharedFrame {
+    testing::video_frame(id, bytes).into()
+}
 
 fn one(range: RangeInclusive<u64>) -> [RangeInclusive<u64>; 1] {
     [range]

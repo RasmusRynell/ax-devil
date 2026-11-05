@@ -3,8 +3,8 @@
 use crate::plan::{Rank, nearest, rank};
 use crate::source::{SessionState, Source, State};
 use crate::window::send_window;
-use crate::{FrameSet, SourceSpec, Want};
-use foundation::{FrameFailure, UserError, VideoFrame};
+use crate::{FrameSet, SharedFrame, SourceSpec, Want};
+use foundation::{FrameFailure, UserError};
 use std::ops::RangeInclusive;
 use std::sync::Arc;
 
@@ -12,7 +12,7 @@ use std::sync::Arc;
 #[derive(Clone, Debug)]
 pub enum Delivery {
     /// A decoded frame.
-    Frame(VideoFrame),
+    Frame(SharedFrame),
     /// A frame that could not be decoded; the others are unaffected.
     Failure(FrameFailure),
     /// The source cannot decode at all, such as a file that was replaced while it was shown. It is the last thing

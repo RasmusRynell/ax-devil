@@ -301,8 +301,9 @@ fn behind_a_proxy_only_the_totals_bind() {
     let direct = Arc::new(Admission::new(Limits::default()));
     assert_eq!(fill(&direct, 17).err(), Some(Refused::PeerBusy));
 
-    let proxied = Arc::new(Admission::new(Limits::behind_proxy()));
-    let open = fill(&proxied, 256).unwrap();
+    let limits = Limits::behind_proxy();
+    let proxied = Arc::new(Admission::new(limits));
+    let open = fill(&proxied, limits.sockets).unwrap();
     assert_eq!(proxied.admit(proxy).err(), Some(Refused::Busy));
     drop(open);
 }

@@ -12,6 +12,7 @@ use super::{
     inspect::Inspections,
     lanes::{self, LaneEvent, Lanes},
     next_client, stopped, text,
+    wire::Wire,
 };
 use crate::{
     exports::ExportService,
@@ -57,6 +58,8 @@ pub(super) struct Setup<'a> {
     pub(super) audience: Audience,
     /// The size of the decoded pictures.
     pub(super) size: FrameSize,
+    /// The form the viewer is sent frames in.
+    pub(super) wire: Wire,
     /// The video's warnings, which name the host's files.
     pub(super) warnings: Vec<String>,
     /// How the video's frame times come from its timestamps; `None` for an image sequence.
@@ -100,6 +103,7 @@ struct Playing<'a, I> {
     /// The video's file, which the errors that end the session name when the layer that failed did not.
     location: HostPath,
     audience: Audience,
+    wire: Wire,
     last: u64,
     failures: u32,
     /// The data frames after and before the playhead the viewer asked for last.
@@ -118,7 +122,7 @@ pub(super) async fn stream(
     // What the viewer is told comes from the source it joined, which can be older than this open.
     let spec = session.spec();
     let timeline = spec.timeline.clone();
-    let frame_bytes = spec.frame_bytes as u64;
+    let frame_bytes = setup.wire.frame_bytes(setup.size, spec.frame_bytes as u64);
     let last = timeline.last();
     let location = video_location(&setup.entry.video);
     gate.open(timeline.clone());
@@ -159,6 +163,7 @@ pub(super) async fn stream(
         closing,
         location,
         audience: setup.audience,
+        wire: setup.wire,
         last,
         failures: 0,
         data: (INITIAL_AHEAD, INITIAL_BEHIND),
@@ -346,7 +351,7 @@ impl<I: Incoming> Playing<'_, I> {
                     &mut self.cached,
                     &mut self.lanes,
                 ), if room.is_some() => {
-                    if let Some(message) = self.encode(next)?
+                    if let Some(message) = self.encode(next).await?
                         && let Some(room) = room.take()
                     {
                         room.send(message);
@@ -360,7 +365,7 @@ impl<I: Incoming> Playing<'_, I> {
     }
 
     /// The message for what the session produced, if it is one.
-    fn encode(&mut self, next: Next) -> Flow<Option<Outgoing>> {
+    async fn encode(&mut self, next: Next) -> Flow<Option<Outgoing>> {
         match next {
             Next::Catalog(message) | Next::Inspection(message) | Next::Export(message) => {
                 Ok(Some(message))
@@ -372,11 +377,13 @@ impl<I: Incoming> Playing<'_, I> {
                 let delivery = delivery.ok_or(End::Closed)?;
                 encode(
                     delivery,
+                    self.wire,
                     self.last,
                     &self.location,
                     self.audience,
                     &mut self.failures,
                 )
+                .await
                 .map(Some)
             }
         }
@@ -410,9 +417,11 @@ async fn next(
     }
 }
 
-/// The message for something the session delivers. A source that cannot decode at all ends the session.
-fn encode(
+/// The message for something the session delivers. A source that cannot decode at all ends the session, and so does a
+/// frame that cannot be compressed for the viewer.
+async fn encode(
     delivery: Delivery,
+    wire: Wire,
     last: u64,
     location: &HostPath,
     audience: Audience,
@@ -421,10 +430,11 @@ fn encode(
     match delivery {
         Delivery::Frame(frame) => {
             let sequence_id = frame.id().sequence_id;
-            Ok(Outgoing::frame(
-                Message::Binary(envelope::video_frame(&frame, sequence_id == last)),
-                sequence_id,
-            ))
+            let message = wire
+                .message(&frame, sequence_id == last)
+                .await
+                .map_err(|error| End::Failed(error.at(location.clone())))?;
+            Ok(Outgoing::frame(message, sequence_id))
         }
         Delivery::Failure(failure) => {
             // A video with many bad frames would flood the log: the first is a warning, the rest are for diagnosis.
@@ -480,22 +490,23 @@ mod tests {
     use super::*;
     use foundation::Location;
 
-    #[test]
-    fn a_source_failure_ends_the_session_naming_the_file_unless_the_failure_already_names_one() {
-        let ended = |error| match encode(
-            Delivery::Failed(error),
-            9,
-            &HostPath::new("/clips/a.mp4"),
-            Audience::HOST,
-            &mut 0,
-        ) {
+    async fn ended(error: UserError) -> UserError {
+        let delivery = Delivery::Failed(error);
+        let location = HostPath::new("/clips/a.mp4");
+        match encode(delivery, Wire::Raw, 9, &location, Audience::HOST, &mut 0).await {
             Err(End::Failed(error)) => error,
             _ => panic!("a failed source must end the session"),
-        };
+        }
+    }
 
+    #[tokio::test]
+    async fn a_source_failure_ends_the_session_naming_the_file_unless_the_failure_already_names_one()
+     {
         let at = |path| Some(Location::Host(HostPath::new(path)));
         assert_eq!(
-            ended(UserError::new(ErrorCode::DecodeFailed, "no decoder")).location,
+            ended(UserError::new(ErrorCode::DecodeFailed, "no decoder"))
+                .await
+                .location,
             at("/clips/a.mp4")
         );
         assert_eq!(
@@ -503,6 +514,7 @@ mod tests {
                 UserError::new(ErrorCode::DecodeFailed, "no decoder")
                     .at(HostPath::new("/clips/b.mp4"))
             )
+            .await
             .location,
             at("/clips/b.mp4")
         );

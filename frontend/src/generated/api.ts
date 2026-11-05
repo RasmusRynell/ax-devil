@@ -1928,7 +1928,8 @@ frame_count: number,
  */
 duration_us: number, 
 /**
- * Total payload bytes of one frame: the sum of its plane lengths (planes are tightly packed).
+ * Bytes one frame takes once the viewer holds it: the sum of its plane lengths (planes are tightly packed),
+ * or width x height x 4 of the delivered size when frames arrive as JPEG and are decoded to RGBA.
  */
 frame_bytes: number, 
 /**
@@ -3051,7 +3052,7 @@ kinds: Array<number>, };
 /**
  * Raised when the messages or the envelope change in a way an older frontend cannot read.
  */
-export const PLAYBACK_PROTOCOL = 7;
+export const PLAYBACK_PROTOCOL = 8;
 
 /**
  * "AXDV" read as a little-endian u32.
@@ -3127,6 +3128,11 @@ export const LAYOUT_NV12 = 2;
  * Video header layout byte: one interleaved RGBA plane.
  */
 export const LAYOUT_RGBA = 3;
+
+/**
+ * Video header layout byte: plane 0 is a JPEG of width x height (full-range BT.601), stride 0.
+ */
+export const LAYOUT_JPEG = 4;
 
 /**
  * Video header matrix byte: BT.601 YUV to RGB.

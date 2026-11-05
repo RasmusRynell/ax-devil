@@ -191,6 +191,21 @@ describe("the backend's envelopes", () => {
     expect(parseEnvelope(bare.buffer)).toMatchObject({ timeUs: null, frame: null });
   });
 
+  it("reads the JPEG frame the backend wrote, for the socket's thread to decode", () => {
+    const parsed = parseEnvelope(golden("jpeg-frame.bin"));
+    if (parsed?.kind !== "jpeg") throw new Error("expected a JPEG frame");
+    const { jpeg, ...identity } = parsed.frame;
+    expect(identity).toEqual({
+      sequenceId: 5,
+      timestampUs: 1_234_567,
+      keyframe: true,
+      last: true,
+      width: 4,
+      height: 2,
+    });
+    expect([...jpeg]).toEqual([0xff, 0xd8, 0xff, 0xd9]);
+  });
+
   it("reads the Frame Map run the backend wrote", () => {
     const parsed = parseEnvelope(golden("frame-map.bin"));
     if (parsed?.kind !== "map") throw new Error("expected a frame map");

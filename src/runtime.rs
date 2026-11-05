@@ -17,6 +17,32 @@ pub fn run<F: Future>(future: F, grace: Duration) -> io::Result<F::Output> {
     Ok(output)
 }
 
+/// The open files the backend asks for: every socket [`crate::access::Limits`] admits, with room for the files and
+/// decoders beside them. Some systems start a process with 256 (macOS), fewer than the sockets alone.
+const OPEN_FILES: u64 = 4096;
+
+/// Raises the soft limit on open files to [`OPEN_FILES`], within the hard limit; a limit that stays below it is
+/// logged and kept.
+pub fn raise_open_files() {
+    #[cfg(unix)]
+    {
+        use rustix::process::{Resource, getrlimit, setrlimit};
+        let mut limit = getrlimit(Resource::Nofile);
+        let want = limit.maximum.map_or(OPEN_FILES, |max| max.min(OPEN_FILES));
+        if limit.current.is_some_and(|current| current < want) {
+            limit.current = Some(want);
+            if let Err(error) = setrlimit(Resource::Nofile, limit) {
+                tracing::warn!("Cannot raise the open file limit to {want}: {error}");
+            }
+        }
+        if want < OPEN_FILES {
+            tracing::warn!(
+                "The open file limit is {want}, below {OPEN_FILES}: busy sharing may refuse sockets"
+            );
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

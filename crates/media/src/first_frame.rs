@@ -6,33 +6,15 @@
 //! caller's [`CancelToken`] is what bounds the cost.
 
 use crate::convert::color_desc;
-use crate::encoder::{coded, fail};
-use crate::ffi::Scaler;
+use crate::encoder::fail;
 use crate::fingerprint::Fingerprint;
 use crate::input::VideoInput;
+use crate::jpeg::{self, Jpeg, encode, fitted};
 use crate::source::{self, Opened};
-use ffmpeg_next::codec::{self, Flags};
-use ffmpeg_next::color::Range;
 use ffmpeg_next::error::EAGAIN;
-use ffmpeg_next::format::Pixel;
-use ffmpeg_next::software::scaling::Flags as ScaleFlags;
-use ffmpeg_next::{Dictionary, Error, Packet, Rational, decoder, encoder, ffi, frame};
-use foundation::{CancelToken, ErrorCode, Interrupt, Matrix, UserError};
+use ffmpeg_next::{Dictionary, Error, Packet, codec, decoder, frame};
+use foundation::{CancelToken, ErrorCode, Interrupt, UserError};
 use xxhash_rust::xxh3::Xxh3;
-
-/// The JPEG quantiser scale: 4 gives about the size and look of libjpeg quality 85.
-const JPEG_QSCALE: i32 = 4;
-
-/// A first frame as a JPEG.
-#[derive(Clone, Debug)]
-pub struct FirstFrame {
-    /// The encoded JPEG.
-    pub jpeg: Vec<u8>,
-    /// Width of the picture in pixels.
-    pub width: u32,
-    /// Height of the picture in pixels.
-    pub height: u32,
-}
 
 /// A number that is equal while the first frame's source is unchanged: the video file, or for an image sequence its
 /// first image together with every setting of the sequence (pattern, start number, frame rate and frame count), as
@@ -67,7 +49,7 @@ pub fn first_frame(
     input: &VideoInput,
     edge: u32,
     cancel: &CancelToken,
-) -> Result<FirstFrame, Interrupt<UserError>> {
+) -> Result<Jpeg, Interrupt<UserError>> {
     let path = input.location();
     if edge == 0 {
         return Err(Interrupt::Failed(fail("a thumbnail needs a size above 0")));
@@ -86,9 +68,8 @@ pub fn first_frame(
     let small = scale(&picture, (width, height)).map_err(|reason| {
         Interrupt::Failed(source::error(ErrorCode::UnsupportedFormat, reason, path))
     })?;
-    let jpeg = encode(&small).map_err(Interrupt::Failed)?;
-    Ok(FirstFrame {
-        jpeg,
+    Ok(Jpeg {
+        bytes: encode(&small).map_err(Interrupt::Failed)?,
         width,
         height,
     })
@@ -190,66 +171,14 @@ fn receive(codec: &mut decoder::Video) -> Result<Option<frame::Video>, Error> {
     }
 }
 
-/// `size` shrunk so its long side is at most `edge`, in proportion and at least one pixel per side.
-fn fitted((width, height): (u32, u32), edge: u32) -> (u32, u32) {
-    let long = width.max(height);
-    if long <= edge {
-        return (width, height);
-    }
-    let shrink = |side: u32| {
-        let scaled = (u64::from(side) * u64::from(edge) + u64::from(long) / 2) / u64::from(long);
-        u32::try_from(scaled).unwrap_or(side).max(1)
-    };
-    (shrink(width), shrink(height))
-}
-
-/// `picture` scaled by area to `size`, as full-range BT.601 YUV 4:2:0, which is what JPEG holds and viewers assume.
+/// `picture` scaled by area to `size` as a JPEG holds it.
 fn scale(picture: &frame::Video, size: (u32, u32)) -> Result<frame::Video, String> {
-    let source = picture.format();
     let color = color_desc(
         picture.color_space(),
         picture.color_range(),
-        source,
+        picture.format(),
         picture.height(),
     );
-    let mut scaler = Scaler::resizing(
-        (source, (picture.width(), picture.height())),
-        (Pixel::YUVJ420P, size),
-        ScaleFlags::AREA,
-        (color.matrix, Matrix::Bt601),
-        (color.full_range, true),
-    )
-    .map_err(|error| format!("The picture cannot be scaled: {error}"))?;
-    let mut small = frame::Video::empty();
-    scaler
-        .run(picture, &mut small)
-        .map_err(|error| format!("The picture cannot be scaled: {error}"))?;
-    small.set_pts(Some(0));
-    Ok(small)
-}
-
-/// `picture` as a JPEG.
-fn encode(picture: &frame::Video) -> Result<Vec<u8>, UserError> {
-    let codec =
-        encoder::find(codec::Id::MJPEG).ok_or_else(|| fail("this FFmpeg has no JPEG encoder"))?;
-    let mut video = codec::context::Context::new_with_codec(codec)
-        .encoder()
-        .video()
-        .map_err(coded)?;
-    video.set_width(picture.width());
-    video.set_height(picture.height());
-    video.set_format(Pixel::YUVJ420P);
-    video.set_color_range(Range::JPEG);
-    video.set_time_base(Rational(1, 1));
-    video.set_flags(Flags::QSCALE);
-    video.set_global_quality(JPEG_QSCALE * ffi::FF_QP2LAMBDA);
-    let mut video = video.open_as(codec).map_err(coded)?;
-    video.send_frame(picture).map_err(coded)?;
-    video.send_eof().map_err(coded)?;
-    let mut packet = Packet::empty();
-    video.receive_packet(&mut packet).map_err(coded)?;
-    Ok(packet
-        .data()
-        .ok_or_else(|| fail("the JPEG is empty"))?
-        .to_vec())
+    jpeg::shrink(picture, (color.matrix, color.full_range), size)
+        .map_err(|error| format!("The picture cannot be scaled: {error}"))
 }

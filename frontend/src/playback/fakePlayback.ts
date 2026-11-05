@@ -110,14 +110,14 @@ export async function setup(
     /** A Sample Item of `source`; a real one from the oracle fixtures unless `fields.item` says otherwise. */
     sample: (fields: Parameters<typeof sampleBytes>[0] = {}) => {
       const incoming = decode(sampleBytes(fields));
-      if (incoming) deliver(incoming);
+      if (incoming && incoming.type !== "jpeg") deliver(incoming);
     },
     /** The data window the backend applied: the frames Frame Map cells are kept for, inclusive. */
     window: (first: number, last: number) => server.say({ type: "DataWindow", first, last }),
     /** A run of a lane's Frame Map. */
     map: (fields: Parameters<typeof mapBytes>[0]) => {
       const incoming = decode(mapBytes(fields));
-      if (incoming) deliver(incoming);
+      if (incoming && incoming.type !== "jpeg") deliver(incoming);
     },
     /** The answer to a `Catalog` request: Standard unless `document` says otherwise. */
     catalog: (

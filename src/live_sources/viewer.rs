@@ -7,9 +7,10 @@ use std::{
 };
 
 use api_types::live::LiveStatusWire;
-use foundation::{MediaTime, VideoFrame};
+use foundation::MediaTime;
 use overlay_sync::{MatchBasis, MatchPolicy};
 use overlays::{LanePolicy, LaneReady, LiveEvents, LiveLane, LiveOut};
+use playback::SharedFrame;
 use scene_store::{Ingest, TrackRead, TrackSnapshot};
 use tokio::sync::watch;
 
@@ -36,7 +37,7 @@ pub enum Update {
 /// A released frame as one viewer's lane sees it.
 pub struct Shown {
     /// The picture, timed by the camera's capture time.
-    pub frame: VideoFrame,
+    pub frame: SharedFrame,
     /// The lane's cell, the Sample Items the viewer lacks for it and the events it made visible; `None` when the video
     /// has no overlay.
     pub out: Option<LiveOut>,
