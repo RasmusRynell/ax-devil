@@ -57,13 +57,15 @@ export function ScanSettings({ snapshot }: { snapshot: NetworkSnapshot | null })
     if (scanning) return;
     const range = typed?.trim();
     setPressed({ scan: null });
-    void rescan(range === undefined || range === stored.trim() ? undefined : range, signIn).then(
-      (answer) => {
-        const problem = typeof answer === "number" ? null : answer;
-        setRefused(problem);
-        setPressed(typeof answer === "number" ? { scan: answer } : null);
-      },
-    );
+    // Only a caller who configures may turn sign-in on for a scan; the others leave it to the setting.
+    void rescan(
+      range === undefined || range === stored.trim() ? undefined : range,
+      configures ? signIn : undefined,
+    ).then((answer) => {
+      const problem = typeof answer === "number" ? null : answer;
+      setRefused(problem);
+      setPressed(typeof answer === "number" ? { scan: answer } : null);
+    });
   };
   const reason = snapshot?.failure;
   const failed = scanning

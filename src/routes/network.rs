@@ -3,36 +3,56 @@
 //! A scan is the backend's, not a request's: it goes on when the client that started it leaves, and any number of
 //! clients follow it. Only a caller who may use this machine's resources (the `Files` grant) can start or watch one.
 
-use super::handlers::{Refusal, refuse};
-use crate::{AppState, network::request_from_settings};
-use api_types::live::{NetworkSnapshot, ScanRequestWire, ScanStarted};
+use super::handlers::refuse;
+use crate::{AppState, access::Principal, failure, network::request_from_settings};
+use api_types::{
+    Grant,
+    live::{NetworkSnapshot, ScanRequestWire, ScanStarted},
+};
 use axum::{
     Json,
     body::{Body, Bytes},
     extract::State,
     http::{StatusCode, header},
-    response::Response,
+    response::{IntoResponse, Response},
 };
 use camera::ScanLoad;
 use futures_util::stream::unfold;
 use std::convert::Infallible;
 
+/// Whether a caller with `grants` may ask for `sign_in`. Turning sign-in off only narrows a scan, but turning it on
+/// sends the configured logins to hosts the caller names, which only the one who may change `scan.sign_in` decides.
+fn may_sign_in(grants: &[Grant], sign_in: Option<bool>) -> bool {
+    sign_in != Some(true) || grants.contains(&Grant::Configuration)
+}
+
 /// Starts a scan of the range, ending the one that is running; its cameras start from none. Answers with the scan's
-/// number, which its snapshots carry.
+/// number, which its snapshots carry. Asking to sign in needs the `Configuration` grant, else 403.
 pub(super) async fn scan(
+    principal: Principal,
     State(state): State<AppState>,
     Json(request): Json<ScanRequestWire>,
-) -> Result<Json<ScanStarted>, Refusal> {
-    let scan = request_from_settings(
+) -> Response {
+    if !may_sign_in(principal.grants(), request.sign_in) {
+        return failure(
+            StatusCode::FORBIDDEN,
+            "sign_in",
+            "signing in is not yours to turn on".into(),
+        )
+        .into_response();
+    }
+    match request_from_settings(
         &state.settings.state(),
         request.range.as_deref(),
         request.sign_in,
         ScanLoad::Normal,
-    )
-    .map_err(|error| refuse(StatusCode::UNPROCESSABLE_ENTITY, &error))?;
-    Ok(Json(ScanStarted {
-        scan: state.network.rescan(scan),
-    }))
+    ) {
+        Ok(scan) => Json(ScanStarted {
+            scan: state.network.rescan(scan),
+        })
+        .into_response(),
+        Err(error) => refuse(StatusCode::UNPROCESSABLE_ENTITY, &error).into_response(),
+    }
 }
 
 /// Stops the running scan, keeping what it found.
@@ -75,11 +95,15 @@ pub(super) async fn snapshots(State(state): State<AppState>) -> Response {
 
 #[cfg(test)]
 mod tests {
+    use super::may_sign_in;
     use crate::{
         network::Network,
         test_support::{TestApp, json},
     };
-    use api_types::live::{LiveProtocol, NetworkSignIn, NetworkSnapshot};
+    use api_types::{
+        Grant,
+        live::{LiveProtocol, NetworkSignIn, NetworkSnapshot},
+    };
     use axum::{
         body::Body,
         http::{Request, StatusCode},
@@ -120,6 +144,18 @@ mod tests {
             uptime: Some(Duration::from_secs(90)),
             sign_in: SignIn::NotTried,
         }
+    }
+
+    #[test]
+    fn only_a_caller_who_configures_may_turn_sign_in_on_for_a_scan() {
+        let files = [Grant::Files];
+        let configures = [Grant::Files, Grant::Configuration];
+        for sign_in in [None, Some(false)] {
+            assert!(may_sign_in(&files, sign_in));
+            assert!(may_sign_in(&configures, sign_in));
+        }
+        assert!(!may_sign_in(&files, Some(true)));
+        assert!(may_sign_in(&configures, Some(true)));
     }
 
     #[tokio::test]
