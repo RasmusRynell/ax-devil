@@ -55,6 +55,8 @@ pub struct LiveViewer {
     lane: Option<LiveLane>,
     policy: LanePolicy,
     paused: bool,
+    /// The connection of the feed whose frames the lane has seen last; a Retry's frames reset its sticky admission.
+    attempt: u64,
     /// The snapshot and sequence id of the frame shown last, which Sample Items the viewer holds are read from.
     shown: Option<(Arc<TrackSnapshot>, u64)>,
 }
@@ -81,6 +83,7 @@ impl LiveViewer {
                 subscribed: false,
             },
             paused: false,
+            attempt: 0,
             shown: None,
             sources,
             feed,
@@ -199,6 +202,12 @@ impl LiveViewer {
     /// What a released unit means to this viewer: the picture with its lane's cell, or, when it is paused or the unit
     /// gave no picture, only the events the unit made visible.
     fn show(&mut self, released: &Released) -> Option<Update> {
+        if released.attempt != self.attempt {
+            self.attempt = released.attempt;
+            if let Some(lane) = &mut self.lane {
+                lane.reconnected();
+            }
+        }
         let picture = released.frame.clone().filter(|_| !self.paused);
         let (Some(lane), Some(snapshot)) = (&mut self.lane, &released.snapshot) else {
             return picture.map(|frame| Update::Frame(Box::new(Shown { frame, out: None })));

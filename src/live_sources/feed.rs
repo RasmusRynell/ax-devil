@@ -70,6 +70,8 @@ pub struct Released {
     pub frame: Option<VideoFrame>,
     /// The overlay's track; `None` for a video without one.
     pub snapshot: Option<Arc<TrackSnapshot>>,
+    /// Which connection of the feed released it: 0 for the first, one more for each Retry that reconnected.
+    pub attempt: u64,
 }
 
 /// The samples a lane lost, newest last, for the Events list.
@@ -150,6 +152,8 @@ impl Shared {
 
 /// The tasks and connections of one attempt.
 struct Run {
+    /// 0 for the first connection, one more for each Retry that reconnected.
+    attempt: u64,
     stop: watch::Sender<bool>,
     tasks: Vec<JoinHandle<()>>,
     closers: Vec<Closer>,
@@ -227,7 +231,7 @@ impl Feed {
             video_us: AtomicI64::new(i64::MIN),
             _listener: listener,
         });
-        let run = Self::connect(&shared);
+        let run = Self::connect(&shared, 0);
         Ok(Arc::new(Self {
             shared,
             spec,
@@ -239,7 +243,7 @@ impl Feed {
     }
 
     /// Opens every connection of the pipeline and starts the tasks that read them.
-    fn connect(shared: &Arc<Shared>) -> Run {
+    fn connect(shared: &Arc<Shared>, attempt: u64) -> Run {
         let (stop, stopped) = watch::channel(false);
         let mut tasks = Vec::new();
         let mut closers = Vec::new();
@@ -283,6 +287,7 @@ impl Feed {
                 video.video,
                 video.status,
                 stopped.clone(),
+                attempt,
             )
             .run(),
         ));
@@ -300,6 +305,7 @@ impl Feed {
             ));
         }
         Run {
+            attempt,
             stop,
             tasks,
             closers,
@@ -330,13 +336,14 @@ impl Feed {
         let Some(failed) = run.take() else {
             return;
         };
+        let attempt = failed.attempt + 1;
         failed.end().await;
         // Ending the connections can take several request timeouts; the viewers may have gone meanwhile.
         if !self.owned() {
             return;
         }
         self.shared.board.restart(self.shared.clock.now());
-        *run = Some(Self::connect(&self.shared));
+        *run = Some(Self::connect(&self.shared, attempt));
     }
 
     /// Whether a viewer still holds the feed and it was not closed.

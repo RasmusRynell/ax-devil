@@ -134,6 +134,12 @@ impl LiveLane {
         }
     }
 
+    /// The feed was reconnected: the sample the lane would retain belongs to the old picture, so it is forgotten. What
+    /// the viewer holds and what has been reported stay.
+    pub fn reconnected(&mut self) {
+        self.admitted = None;
+    }
+
     /// The revision the items and maps carry now.
     pub fn data_revision(&self) -> u32 {
         self.data_revision
