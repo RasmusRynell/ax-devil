@@ -161,6 +161,10 @@ impl Intake {
 /// Logs a document dropped while the decoder is behind, with the MQTT or DataHub topic and the DataHub envelope it
 /// carried.
 fn log_lost(doc: &Doc) {
+    // Documents are lost in bulk under load, so build the origin text only when the event is recorded.
+    if !tracing::enabled!(tracing::Level::DEBUG) {
+        return;
+    }
     let mut origin = doc
         .topic
         .iter()
