@@ -1,7 +1,8 @@
 import { useEffect, useImperativeHandle, useLayoutEffect, useRef, useState, type Ref } from "react";
 import { elideMiddle, GAP, LABEL_CEILING, labelRoom, MARGIN, placeChip } from "./chipPlacement";
 import type { Picked, Selection } from "./contract";
-import type { Geometry, Outline } from "./renderer";
+import { strokeWidth, type Outline } from "./outlines";
+import type { CellRect, Geometry } from "./renderer";
 
 /** How the canvas reports to the layer; the layer renders by itself, so the viewer does not render per frame. */
 export type ObjectLayerHandle = {
@@ -11,10 +12,10 @@ export type ObjectLayerHandle = {
   drawn(geometry: Geometry): void;
 };
 
-/** Stroke width as a fraction of the picture's shorter side; the selected object reads heavier than the hovered one. */
-const STROKE = { hover: 0.004, selected: 0.009 };
-
 const NO_OUTLINES: readonly Outline[] = [];
+
+const sameRect = (a: CellRect, b: CellRect): boolean =>
+  a.x === b.x && a.y === b.y && a.width === b.width && a.height === b.height;
 
 const sameOutlines = (a: readonly Outline[], b: readonly Outline[]): boolean =>
   a.length === b.length &&
@@ -23,10 +24,8 @@ const sameOutlines = (a: readonly Outline[], b: readonly Outline[]): boolean =>
       outline.lane === b[i].lane &&
       outline.kind === b[i].kind &&
       outline.scale === b[i].scale &&
-      outline.rect.x === b[i].rect.x &&
-      outline.rect.y === b[i].rect.y &&
-      outline.rect.width === b[i].rect.width &&
-      outline.rect.height === b[i].rect.height,
+      sameRect(outline.rect, b[i].rect) &&
+      (outline.clip && b[i].clip ? sameRect(outline.clip, b[i].clip) : outline.clip === b[i].clip),
   );
 
 /** The dot's color by `Picked.category`, written out so the stylesheet generates them. */
@@ -147,20 +146,38 @@ export function ObjectLayer({
 
   return (
     <div className="pointer-events-none absolute inset-0 overflow-hidden">
-      {outlines.map(({ lane, rect, kind, scale }, i) => (
-        <div
-          key={`${lane}:${kind}:${i}`}
-          data-outline={kind}
-          className={`absolute border-solid border-on-canvas ${kind === "hover" ? "bg-on-canvas/12" : ""}`}
-          style={{
-            left: rect.x,
-            top: rect.y,
-            width: rect.width,
-            height: rect.height,
-            borderWidth: STROKE[kind] * scale,
-          }}
-        />
-      ))}
+      {outlines.map(({ lane, rect, clip, kind, scale }, i) => {
+        const stroke = strokeWidth(kind, scale);
+        return (
+          <div
+            key={`${lane}:${kind}:${i}`}
+            className={`absolute overflow-hidden ${clip ? "" : "inset-0"}`}
+            style={clip && { left: clip.x, top: clip.y, width: clip.width, height: clip.height }}
+          >
+            <div
+              data-outline={kind}
+              className={`absolute ${kind === "hover" ? "bg-on-canvas/12" : ""}`}
+              style={{
+                left: rect.x - (clip?.x ?? 0),
+                top: rect.y - (clip?.y ?? 0),
+                width: rect.width,
+                height: rect.height,
+              }}
+            >
+              {/* The stroke is centered on the contour, half inside and half out; the wrapper cuts it to the cell. */}
+              <svg aria-hidden className="absolute inset-0 size-full overflow-visible">
+                <rect
+                  width="100%"
+                  height="100%"
+                  fill="none"
+                  strokeWidth={stroke}
+                  className="stroke-on-canvas"
+                />
+              </svg>
+            </div>
+          </div>
+        );
+      })}
       {chip && <Chip picked={chip} />}
     </div>
   );

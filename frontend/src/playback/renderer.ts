@@ -18,6 +18,7 @@ import { describeRow, LaneLayouts, type FoundRow } from "./laneLayouts";
 import { NameTags } from "./nameTags";
 import type { Matrix, VideoFrame } from "./protocol";
 import { FRAGMENT, VERTEX } from "./shaders";
+import { reaches, strokeWidth, type Outline } from "./outlines";
 import { FIT, intersection, panBy, pictureRect, toImage, zoomAt } from "./viewport";
 
 export type { CellRect } from "../overlay/painter";
@@ -30,12 +31,6 @@ type Placed = { lane: number; cell: CellRect; picture: CellRect };
 
 /** A point of the canvas in CSS pixels. */
 export type Point = { x: number; y: number };
-
-/**
- * An outline to draw over the picture of a lane, in CSS pixels of the canvas and clipped to the lane's cell.
- * `scale` is the shorter side of the lane's zoomed picture, which the stroke width is a fraction of.
- */
-export type Outline = { lane: number; rect: CellRect; kind: "hover" | "selected"; scale: number };
 
 /** What the renderer knows of where things are on the canvas; valid until the next draw. */
 export type Geometry = Pick<VideoRenderer, "pick" | "pictures" | "boxes" | "zoomAt" | "panBy">;
@@ -357,7 +352,8 @@ export class VideoRenderer {
 
   /**
    * The outlines to draw: the selected object in every lane showing its source, and the hovered object in its lane.
-   * An object a lane's sample does not have or its filter dropped gets none, and an outline is clipped to its cell.
+   * An object a lane's sample does not have or its filter dropped gets none, as does one whose stroke is wholly outside
+   * its lane's cell. An outline keeps the object's contour and carries the lane's cell to clip to.
    */
   boxes(selection: Selection, hover: Picked | null): Outline[] {
     const outlines: Outline[] = [];
@@ -366,6 +362,7 @@ export class VideoRenderer {
       if (!frame) continue;
       const picture = this.#css(placed.picture);
       const scale = Math.min(picture.width, picture.height);
+      const clip = this.#css(placed.cell);
       const wanted: [string, "hover" | "selected"][] = [];
       if (selection && selection.source === frame.source)
         wanted.push([selection.entity, "selected"]);
@@ -373,8 +370,9 @@ export class VideoRenderer {
       for (const [entity, kind] of wanted) {
         const found = this.#layouts.find(placed.lane, entity);
         const rect = found && frame.columns === found.columns && this.#rowRect(placed, found);
-        const clipped = rect && intersection(rect, placed.cell);
-        if (clipped) outlines.push({ lane: placed.lane, rect: this.#css(clipped), kind, scale });
+        const contour = rect && this.#css(rect);
+        if (contour && reaches(contour, clip, strokeWidth(kind, scale)))
+          outlines.push({ lane: placed.lane, rect: contour, clip, kind, scale });
       }
     }
     return outlines;
