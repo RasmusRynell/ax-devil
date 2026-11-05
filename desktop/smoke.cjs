@@ -140,10 +140,11 @@ module.exports = async (window, shell) => {
     assert.ok(await js(`document.querySelector("${selector}") !== null`), selector);
   const zoomKey = (keyCode) =>
     window.webContents.sendInputEvent({ type: "keyDown", keyCode, modifiers: ["control"] });
+  const density = await js("window.devicePixelRatio");
   zoomKey("=");
-  await wait("window.devicePixelRatio > 1");
+  await wait(`window.devicePixelRatio > ${density}`);
   zoomKey("0");
-  await wait("window.devicePixelRatio === 1");
+  await wait(`window.devicePixelRatio === ${density}`);
 
   // The smallest window, at normal zoom and at 200%: the View menu, then the Settings and Keyboard Shortcuts dialogs, in both themes.
   const openShortcuts = async () => {

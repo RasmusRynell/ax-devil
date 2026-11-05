@@ -1,6 +1,7 @@
-import { useMemo, useState, useSyncExternalStore, type CSSProperties } from "react";
+import { useMemo, useState, useSyncExternalStore } from "react";
 import { IconButton } from "../kit/IconButton";
 import { PanelDivider } from "../tools/PanelDivider";
+import { PANEL_CLASS, panelStyle } from "../tools/panelWidth";
 import type { Column } from "../tools/table/columns";
 import { Table } from "../tools/table/Table";
 import type { EventLog, LogEntry } from "./eventLog";
@@ -38,8 +39,8 @@ const SORT = { key: "time", descending: true };
 /**
  * The recent events of a live stream, newest first, with a marker where the overlay's decoder fell behind and
  * samples were lost. The list lives in the session and keeps recording while this panel is closed; it holds a fixed
- * number of entries and says how many older ones were dropped. Laid out as the objects panel is: a column beside the
- * picture when the viewer is wide enough, else a cover; `width` is the pixels the user chose, kept by the viewer.
+ * number of entries and says how many older ones were dropped. Laid out as the objects panel is, a column beside the
+ * picture; `width` is the pixels the user chose, kept by the viewer.
  */
 export function EventsPanel({
   log,
@@ -58,13 +59,13 @@ export function EventsPanel({
   return (
     <aside
       aria-label="Events"
-      style={live === null ? undefined : ({ "--panel-width": `${live}px` } as CSSProperties)}
+      style={panelStyle(live)}
       onKeyDown={(event) => {
         if (!event.ctrlKey && !event.altKey && !event.metaKey && event.key !== "Escape")
           event.stopPropagation();
       }}
       onKeyUp={(event) => event.stopPropagation()}
-      className="absolute inset-0 z-10 flex flex-col bg-panel text-fg @min-[72ch]:relative @min-[72ch]:w-[var(--panel-width,min(calc(var(--spacing-sidebar)*1.25),60%))] @min-[72ch]:min-w-sidebar @min-[72ch]:border-l @min-[72ch]:border-line"
+      className={PANEL_CLASS}
     >
       <PanelDivider
         onResize={(next, final) => {

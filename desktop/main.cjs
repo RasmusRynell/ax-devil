@@ -40,6 +40,9 @@ if (smoke) {
   );
   app.commandLine.appendSwitch("disable-backgrounding-occluded-windows");
   app.commandLine.appendSwitch("disable-renderer-backgrounding");
+  // AX_DEVIL_SMOKE_DPR=2 runs the smoke test on a high-density screen.
+  if (process.env.AX_DEVIL_SMOKE_DPR)
+    app.commandLine.appendSwitch("force-device-scale-factor", process.env.AX_DEVIL_SMOKE_DPR);
 }
 // Electron's own data (Chromium profile, crash dumps) is browser state, not ax-devil data: the backend owns the
 // app's folders, so keep Electron out of them.
