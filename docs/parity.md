@@ -58,7 +58,7 @@ owner's written decision. A new feature gets a row in 01 first.
 | OF-05 | Timing and alignment diagnostics per lane | M | done | `crates/overlay-sync/src/alignment.rs`, `crates/overlays/src/tests/statuses.rs`, `frontend/src/playback/{cadence,LaneMenu}.test.*`, `make test-desktop` | The Timing tab shows the video's cadence and the lane's match; a lane warns when its samples end far from the video or under 80% sit on a frame |
 | OF-06 | Decoded-frame cache under one memory allowance | M | in progress | `crates/playback/src/tests/`, `tests/playback_ws.rs`, `src/video_cache.rs`, `crates/settings` tests | Allowance, equal shares, eviction, live resize and uncached oversized frames work. Cached frames are shaded on the seek bar |
 | OF-07 | Prepare next playlist entry in the background | S | todo |  |  |
-| OF-08 | Export with overlays: lane selection, quality presets, cancellable | M | in progress | `crates/{export,media}/tests/`, `tests/export.rs`, `src/render_host/`, `frontend/src/{export,render}/`, `make test-desktop` | New: PNG of one frame. [Speed](../crates/export/README.md#measured): `make bench-export` |
+| OF-08 | Export with overlays: lane selection, quality presets, cancellable | M | in progress | `crates/{export,media}/`, `tests/export.rs`, `src/render_host/`, `frontend/src/{export,render}/`, `make test-desktop` | New: PNG of one frame. [Speed](../crates/export/README.md#measured): `make bench-export`. Left: hard-link refusal off Unix |
 
 ### Deviations from the reference
 
@@ -70,7 +70,7 @@ Listed in [parity deviations](parity-deviations.md).
 |----|---------|---|--------|------|-------|
 | IN-01 | Media tools panel per lane: Objects and Events lists, object and event pages | M | in progress | `crates/scene/src/inspection/tests.rs`, `{playback/{inspection,Inspector},tools/**}.test.*`, `tests/playback_inspect.rs`, `make test-desktop` | Objects list (ID dots by class), selected object's fields, Debug ones with origin (D36). Left: Events, event pages |
 | IN-02 | Object filters by type and score/confidence range; whole-file filtering with declared policies | M | in progress | `crates/scene/src/filter.rs`, `present/filter/filter.test.ts`, `playback/LaneMenuFilter.test.tsx`, `crates/scene-store/src/tests/history.rs`, `tests/mot_playlist.rs` | Class toggles apply in both scopes; File scope judges every recorded class (D30). The expression (`score >= 0.4`) filters the frame only |
-| IN-03 | Hover chip and click selection; can be turned off | M | done | `present/pick/pick.test.ts`, `playback/{VideoViewer.objects,VideoCanvas,chipPlacement}.test.*` | Smallest box in the lane's filtered rows; kept by id across seeks, shown in its source's lanes. `overlays.object_details` turns it off (D36) |
+| IN-03 | Hover chip and click selection; can be turned off | M | done | `present/pick/pick.test.ts`, `playback/{VideoViewer.objects,VideoCanvas,chipPlacement,ObjectLayer}.test.*` | Smallest box in the lane's filtered rows; kept by id across seeks, shown in its source's lanes. `overlays.object_details` turns it off (D36) |
 | IN-04 | Frame info HUD, lane names | M | done | `playback/{hud,VideoViewer.objects}.test.*`, `make test-desktop` | Lane names are on the tags; the HUD (I) covers them while it shows. PTS rows need a time base of a microsecond or coarser |
 | IN-05 | Zoom, pan, reset, synced across lanes; lane and app fullscreen | M | done | `playback/{viewport,uiZoom,VideoCanvas,VideoViewer.objects}.test.*`, `desktop/smoke-video.cjs` | One viewport per viewer, shared by its lanes (D31); in Electron, overlay pixel lengths ignore page zoom (D32). Lane fullscreen is the browser Fullscreen API on the viewer pane; Esc leaves it and the app fullscreen (F11) stays. |
 | IN-06 | Per-view overlay detail visibility | M | done | `playback/LaneMenu.test.tsx`, `present/pick/pick.test.ts` | Features off per lane; hidden objects keep hover and inspection |
@@ -86,7 +86,7 @@ Listed in [parity deviations](parity-deviations.md).
 
 | ID | Feature | P | Status | Test | Notes |
 |----|---------|---|--------|------|-------|
-| RC-01 | Catalog language (schema v4) and the six built-ins | M | done | `frontend/src/present/{oracle.test.ts,catalog/{catalog,schema}.test.ts}`, `crates/catalogs` tests | All six match the reference on the oracle sheets. The editors' JSON Schema is generated from the compiler's tables |
+| RC-01 | Catalog language (schema v4) and the six built-ins | M | done | `present/{oracle.test.ts,catalog,layout,text}`, `crates/catalogs` tests | All six match the reference oracle sheets; JSON Schema comes from compiler tables |
 | RC-02 | Per-view selection, Apply to all, Use as default, hot reload | M | done | `frontend/src/playback/{LaneMenu,laneCatalog,catalogs}.test.*`, `crates/catalogs` tests, `tests/playback_catalogs.rs` | Built-in and `user:<file>` catalogs, hot-reloaded; a failing one keeps its last good one. Default: `overlays.default_catalog` |
 | RC-03 | Catalog Copy and Delete | M | done | `src/routes/catalogs.rs`, `playback/LaneCatalogActions.test.tsx` | Viewer window and preview sheets dropped by owner decision |
 | RC-04 | `catalog list/check/render/new/use/reference` | M | in progress | `src/cli/tests.rs`, `tests/catalog_render.rs` | `check` draws the Overview sheet; `reference` left |
