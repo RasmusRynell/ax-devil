@@ -92,18 +92,25 @@ describe("controls over the video, from the DOM events (VPC-004)", () => {
     expect(pane.dataset.chrome).toBe("hidden");
   });
 
-  it("coming back in cancels the wait left by leaving from the controls", () => {
+  it("coming back over the video keeps the deadline left by leaving from the controls", () => {
     vi.useFakeTimers();
     const { unmount } = render(<Pane />);
     const pane = screen.getByTestId("pane");
+    const video = screen.getByTestId("video");
     fireEvent.pointerOver(screen.getByTestId("controls"), { relatedTarget: document.body });
     fireEvent.pointerLeave(pane);
     vi.advanceTimersByTime(1500);
-    fireEvent.pointerOver(screen.getByTestId("video"), { relatedTarget: document.body });
+    fireEvent.pointerOver(video, { relatedTarget: document.body });
+    expect(pane.dataset.chrome).toBe("shown");
+    vi.advanceTimersByTime(500);
+    expect(pane.dataset.chrome).toBe("hidden");
+
+    // Entry arms no time of its own.
+    fireEvent.pointerOver(video, { relatedTarget: document.body });
     vi.advanceTimersByTime(10_000);
     expect(pane.dataset.chrome).toBe("shown");
 
-    fireEvent.pointerMove(screen.getByTestId("video"));
+    fireEvent.pointerMove(video);
     unmount();
     expect(vi.getTimerCount()).toBe(0);
   });

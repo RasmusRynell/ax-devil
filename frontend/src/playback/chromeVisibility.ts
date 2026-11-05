@@ -25,17 +25,21 @@ export class ChromeVisibility {
     if (!held) this.#idle();
   }
 
-  /** The pointer came into the pane onto an element (`held` as for `pointer`): the controls show, and nothing is timed until it moves. */
+  /**
+   * The pointer came into the pane onto an element (`held` as for `pointer`): the controls show and no new time is
+   * armed, but a wait already pending runs on, and hides them unless the pointer is on a held element by then.
+   */
   enter(held: boolean): void {
     this.#held = held;
     this.show(true);
-    this.#stop();
   }
 
   /** The pointer left the pane: from the video the controls hide now, from a held element they wait out the idle time. */
   leave(): void {
     this.#stop();
-    if (this.#held) this.#idle();
+    const held = this.#held;
+    this.#held = false;
+    if (held) this.#idle();
     else this.show(false);
   }
 
@@ -47,7 +51,7 @@ export class ChromeVisibility {
   #idle(): void {
     this.#cancel = this.after(() => {
       this.#cancel = null;
-      this.show(false);
+      if (!this.#held) this.show(false);
     }, IDLE_MS);
   }
 
@@ -71,7 +75,7 @@ function keepsChrome(event: Event): boolean {
  * `shown` or `hidden` for the stylesheet to fade. Nothing is held in React state, so a pointer move costs no render. An
  * element under the pane marks what the pointer is over: `data-keeps-chrome` for the controls and the warnings on the
  * video, `data-chrome-idle` for the rest of the video; the rest, such as the side panels, keeps the controls too.
- * A pointer coming in from outside the pane shows them untimed; the first move after it starts the idle time.
+ * A pointer coming in from outside the pane shows them and arms no time; the first move after it starts the idle time.
  */
 export function useChromeVisibility(pane: RefObject<HTMLElement | null>): void {
   useEffect(() => {
