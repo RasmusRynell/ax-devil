@@ -155,7 +155,8 @@ fn a_seek_to_a_non_keyframe_or_past_the_end_is_rejected_and_reading_goes_on() {
 
 #[test]
 fn a_file_with_several_video_streams_is_read_from_its_first() {
-    // The first stream is 64x48 with 20 frames, the second 128x96 with 30 (`fixtures/media/README.md`).
+    // Both streams have 20 frames; the first is 64x48, the second 128x96, so the size says which was read
+    // (`fixtures/media/README.md`).
     let path =
         Path::new(env!("CARGO_MANIFEST_DIR")).join("../../fixtures/media/two_video_streams.mkv");
     let index = index_of(&path);
