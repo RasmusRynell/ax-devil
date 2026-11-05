@@ -60,6 +60,7 @@ scope.onmessage = ({ data }) => {
     };
     opened.onclose = ({ code }) => inbox.push({ type: "closed", code });
   } else if (data.type === "send") {
+    if (data.message.type === "Want") inbox.want(data.message);
     const text = JSON.stringify(data.message);
     if (socket?.readyState === WebSocket.OPEN) socket.send(text);
     else held.push(text);

@@ -68,6 +68,17 @@ describe("Inbox", () => {
     expect(delivered).toEqual(["message", 1, 200]);
   });
 
+  it("drops the offline frames outside the newest Want's window, as the viewer would", async () => {
+    const { box, delivered, finish } = inbox();
+    box.want({ playhead: 0, ahead: 5, behind: 0 });
+    for (let id = 0; id <= 5; id++) box.push(jpeg(id));
+    box.want({ playhead: 100, ahead: 2, behind: 1 });
+    box.push(jpeg(4));
+    for (let id = 99; id <= 102; id++) box.push(jpeg(id));
+    for (let i = 0; i < 6; i++) await finish();
+    expect(delivered).toEqual([0, 99, 100, 101, 102]);
+  });
+
   it("drops the frames still waiting when the socket closes, and hands on the close", async () => {
     const { box, delivered, finish } = inbox();
     box.push(jpeg(1));
