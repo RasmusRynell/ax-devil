@@ -21,7 +21,13 @@ const SIGN_IN_HINT =
  * setting only seeds; the logins are the setting's, saved as they are edited. The header says how the last scan went,
  * with the reason on hover, and a thin line over the top edge shows a scan running.
  */
-export function ScanSettings({ snapshot }: { snapshot: NetworkSnapshot | null }) {
+export function ScanSettings({
+  snapshot,
+  epoch,
+}: {
+  snapshot: NetworkSnapshot | null;
+  epoch: number;
+}) {
   const { values, shortcuts, save } = useSettings();
   const configures = useGrants().includes("configuration");
   const range = values["scan.range"];
@@ -30,10 +36,11 @@ export function ScanSettings({ snapshot }: { snapshot: NetworkSnapshot | null })
   const [typed, setTyped] = useState<string | null>(null);
   /** Why the last scan was refused; shown until the next one starts. */
   const [refused, setRefused] = useState<ScanProblem | null>(null);
-  // The latest press, held until its scan has begun for this view: its number, `null` until the backend answers. A
-  // snapshot of that number or a later one ends it, which an older snapshot cannot be mistaken for, and a press
-  // that has ended holds nothing, so a backend that restarts and counts scans from zero again never blocks Rescan.
-  const [pressed, setPressed] = useState<{ scan: number | null } | null>(null);
+  // The latest press, held until its scan has begun for this view: its number, `null` until the backend answers, and
+  // the connection it was made on. A snapshot of that number or a later one ends it, which an older snapshot cannot
+  // be mistaken for, and so does a new connection, since a restarted backend numbers its scans again. A press that
+  // has ended holds nothing, so Rescan is never blocked by a scan number that will not come.
+  const [pressed, setPressed] = useState<{ scan: number | null; epoch: number } | null>(null);
   // The box follows the setting until the user sets it, and again whenever the setting changes.
   const setting = values["scan.sign_in"] !== false;
   const [chosen, setChosen] = useState<boolean | null>(null);
@@ -43,7 +50,11 @@ export function ScanSettings({ snapshot }: { snapshot: NetworkSnapshot | null })
     setChosen(null);
   }
   const signIn = chosen ?? setting;
-  if (pressed?.scan != null && snapshot && snapshot.scan >= pressed.scan) setPressed(null);
+  if (
+    pressed !== null &&
+    (pressed.epoch !== epoch || (pressed.scan !== null && (snapshot?.scan ?? -1) >= pressed.scan))
+  )
+    setPressed(null);
   const scanning = snapshot?.scanning === true || pressed !== null;
   const logins = values["scan.logins"];
 
@@ -56,7 +67,7 @@ export function ScanSettings({ snapshot }: { snapshot: NetworkSnapshot | null })
   const scan = () => {
     if (scanning) return;
     const range = typed?.trim();
-    setPressed({ scan: null });
+    setPressed({ scan: null, epoch });
     // Only a caller who configures may turn sign-in on for a scan; the others leave it to the setting.
     void rescan(
       range === undefined || range === stored.trim() ? undefined : range,
@@ -64,7 +75,7 @@ export function ScanSettings({ snapshot }: { snapshot: NetworkSnapshot | null })
     ).then((answer) => {
       const problem = typeof answer === "number" ? null : answer;
       setRefused(problem);
-      setPressed(typeof answer === "number" ? { scan: answer } : null);
+      setPressed(typeof answer === "number" ? { scan: answer, epoch } : null);
     });
   };
   const reason = snapshot?.failure;

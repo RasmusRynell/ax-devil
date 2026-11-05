@@ -84,15 +84,18 @@ export function splitLines(pending: string, chunk: string): { lines: string[]; r
   return { lines: parts.filter((line) => line.trim() !== ""), rest };
 }
 
-/** The scan as the backend last said; `dropped` while the stream is down and being reopened. */
-export type Network = { snapshot: NetworkSnapshot | null; dropped: boolean };
+/**
+ * The scan as the backend last said; `dropped` while the stream is down and being reopened. `epoch` counts the times
+ * the stream has been opened, for what must not outlive a connection: a restarted backend numbers its scans again.
+ */
+export type Network = { snapshot: NetworkSnapshot | null; dropped: boolean; epoch: number };
 
 /**
  * Follows `GET /api/network` while `enabled`, reopening the stream after a drop. A snapshot of an older scan than one
  * already shown is ignored, within one connection.
  */
 export function useNetwork(enabled: boolean): Network {
-  const [state, setState] = useState<Network>({ snapshot: null, dropped: false });
+  const [state, setState] = useState<Network>({ snapshot: null, dropped: false, epoch: 0 });
   useEffect(() => {
     if (!enabled) return;
     const stop = new AbortController();
@@ -102,7 +105,7 @@ export function useNetwork(enabled: boolean): Network {
       try {
         const response = await apiFetch("/api/network", { signal: stop.signal });
         if (!response.ok || !response.body) throw new Error(`answered ${response.status}`);
-        setState((now) => ({ ...now, dropped: false }));
+        setState((now) => ({ ...now, dropped: false, epoch: now.epoch + 1 }));
         const reader = response.body.getReader();
         const decoder = new TextDecoder();
         let pending = "";
@@ -115,7 +118,7 @@ export function useNetwork(enabled: boolean): Network {
             const snapshot = JSON.parse(line) as NetworkSnapshot;
             if (snapshot.scan < latest) continue;
             latest = snapshot.scan;
-            setState({ snapshot, dropped: false });
+            setState((now) => ({ ...now, snapshot, dropped: false }));
           }
         }
       } catch {
@@ -131,7 +134,7 @@ export function useNetwork(enabled: boolean): Network {
       clearTimeout(timer);
     };
   }, [enabled]);
-  return enabled ? state : { snapshot: null, dropped: false };
+  return enabled ? state : { snapshot: null, dropped: false, epoch: 0 };
 }
 
 /** What a refused scan shows in the header: a range the backend cannot scan, or a scan that could not start. */

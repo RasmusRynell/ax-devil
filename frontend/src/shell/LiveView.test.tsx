@@ -255,28 +255,38 @@ describe("scanning", () => {
     expect(rescanButton().disabled).toBe(false);
   });
 
-  it("lets a scan start again once the scan pressed has run, also when the backend restarts and counts from zero", async () => {
-    startedScan = 5;
+  it("lets a scan start again once the scan pressed has run or the backend restarted and counts from zero", async () => {
     SNAPSHOT = { scan: 4, scanning: false, rows: [], failure: null };
     follow = () => {};
     await renderView([]);
     const range = await screen.findByRole("textbox", { name: "IP range" });
     const rescanButton = () => screen.getByRole("button", { name: "Rescan" }) as HTMLButtonElement;
+    const reconnect = async (scan: number) => {
+      vi.useFakeTimers({ toFake: ["setTimeout"] });
+      SNAPSHOT = { scan, scanning: false, rows: [], failure: null };
+      await act(async () => {
+        hangUp();
+        await vi.advanceTimersByTimeAsync(5000);
+      });
+      vi.useRealTimers();
+    };
+    startedScan = 5;
     fireEvent.keyDown(range, { key: "Enter" });
     await emit({ scan: 5, scanning: false, rows: [], failure: null });
     expect(rescanButton().disabled).toBe(false);
+    await reconnect(1);
+    expect(rescanButton().disabled).toBe(false);
 
-    vi.useFakeTimers({ toFake: ["setTimeout"] });
-    SNAPSHOT = { scan: 1, scanning: false, rows: [], failure: null };
-    await act(async () => {
-      hangUp();
-      await vi.advanceTimersByTimeAsync(5000);
-    });
-    vi.useRealTimers();
-    expect(fetched.mock.calls.filter(([url]) => url === "/api/network")).toHaveLength(2);
+    // The backend answered scan 6, then restarted before any snapshot of it was shown.
+    startedScan = 6;
+    fireEvent.keyDown(range, { key: "Enter" });
+    await act(async () => {});
+    expect(rescanButton().disabled).toBe(true);
+    await reconnect(1);
+    expect(fetched.mock.calls.filter(([url]) => url === "/api/network")).toHaveLength(3);
     expect(rescanButton().disabled).toBe(false);
     fireEvent.keyDown(range, { key: "Enter" });
-    expect(scansStarted()).toHaveLength(2);
+    expect(scansStarted()).toHaveLength(3);
   });
 
   it("says a scan failed, with the reason, and keeps the cameras it found", async () => {
