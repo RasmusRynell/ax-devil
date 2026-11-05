@@ -18,10 +18,11 @@ make check-fast                    # Static checks only, file-size check on chan
 ```
 
 Targets install what they need and exit after one run. The first run downloads the Rust toolchain (into
-`.cargo-cache/` and `.toolchain/` when no `rustup` is on `PATH`), crates, npm packages, Watchexec and cargo-deny
-(both built into `.tools/`) and the Electron binary (into the user's download cache). After that, every target runs
-offline as long as `Cargo.lock`, `pnpm-lock.yaml`, `rust-toolchain.toml` and the pinned tool versions in the
-Makefile are unchanged. Test output and evidence go in `artifacts/`. The system FFmpeg libraries and clang that the
+`.cargo-cache/` and `.toolchain/` when no `rustup` is on `PATH`), crates, npm packages, Watchexec and cargo-deny (built
+into `.tools/` unless `PATH` has Watchexec 2.x, or cargo-deny at the Makefile's pinned version) and the Electron binary
+(into the user's download cache). After that, every target runs offline as long as `Cargo.lock`, `pnpm-lock.yaml`,
+`rust-toolchain.toml` and the pinned tool versions in the Makefile are unchanged. Test output and evidence go in
+`artifacts/`. The system FFmpeg libraries and clang that the
 `media` crate builds against are prerequisites no target installs ([README](../../README.md#build-from-source)).
 
 Debug and test builds carry line tables only (backtraces keep `file:line`; dependencies have none) to keep `target/`

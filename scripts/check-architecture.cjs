@@ -64,6 +64,12 @@ function check(metadata) {
   const problems = [];
 
   for (const pkg of workspace) {
+    // The Makefile's second test and clippy pass (`-p ax-devil --no-default-features`) covers every crate only while
+    // no other one has default features.
+    if (pkg.name !== "ax-devil" && "default" in (pkg.features ?? {}))
+      problems.push(
+        `${pkg.manifest_path}: declares a default feature; the Makefile's test-backend and _clippy-no-default run --no-default-features for ax-devil and camera only; extend them first`,
+      );
     const layer = layerOf.get(pkg.name);
     if (!LAYERS.includes(layer)) {
       problems.push(

@@ -78,7 +78,7 @@ process.on("SIGTERM", () => stop());
 (async () => {
   if (!(await available(origin))) {
     start(
-      ".tools/bin/watchexec",
+      process.env.WATCHEXEC || ".tools/bin/watchexec", // The Makefile exports the one on PATH, else .tools/.
       [
         "--restart",
         "--stop-signal",
