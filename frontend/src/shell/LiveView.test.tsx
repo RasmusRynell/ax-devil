@@ -336,6 +336,7 @@ describe("scanning", () => {
     expect(scansStarted()).toHaveLength(2);
     await emit(idle(7));
     expect(rescanButton().disabled).toBe(false);
+    expect(screen.queryByText("Invalid IP range")).toBeNull();
   });
 
   it("says a scan failed, with the reason, and keeps the cameras it found", async () => {
