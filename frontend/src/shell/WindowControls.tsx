@@ -8,7 +8,9 @@ export function WindowControls() {
   const [maximized, setMaximized] = useState(false);
   useEffect(() => bridge?.onMaximizedChange(setMaximized), [bridge]);
   if (!bridge) return null;
+  // Out of the tab order, like the desktop's own title bar; Close turns red under the pointer.
   const size = "h-bar w-bar";
+  const quiet = { tabIndex: -1 } as const;
   return (
     <div className="flex shrink-0 [-webkit-app-region:no-drag]">
       <IconButton
@@ -16,20 +18,23 @@ export function WindowControls() {
         label="Minimize"
         data-cursor-id="window:minimize"
         className={size}
+        {...quiet}
         onClick={() => bridge.minimize()}
       />
       <IconButton
-        icon="square"
+        icon={maximized ? "copy" : "square"}
         label={maximized ? "Restore" : "Maximize"}
         data-cursor-id="window:maximize"
         className={size}
+        {...quiet}
         onClick={() => bridge.toggleMaximize()}
       />
       <IconButton
         icon="x"
         label="Close"
         data-cursor-id="window:close"
-        className={size}
+        className={`${size} enabled:hover:bg-close! enabled:hover:text-on-canvas!`}
+        {...quiet}
         onClick={() => bridge.close()}
       />
     </div>

@@ -39,6 +39,7 @@ import search from "../../../assets/icons/search.svg";
 import settings from "../../../assets/icons/settings.svg";
 import slidersHorizontal from "../../../assets/icons/sliders-horizontal.svg";
 import square from "../../../assets/icons/square.svg";
+import squareFilled from "../../../assets/icons/square-filled.svg";
 import squarePlay from "../../../assets/icons/square-play.svg";
 import stepBack from "../../../assets/icons/step-back.svg";
 import stepForward from "../../../assets/icons/step-forward.svg";
@@ -51,7 +52,7 @@ import videoFilled from "../../../assets/icons/video-filled.svg";
 import wifi from "../../../assets/icons/wifi.svg";
 import x from "../../../assets/icons/x.svg";
 
-/** The bundled Lucide icons the UI uses (`pin-filled` and `video-filled` are `pin` and `video` with a solid shape); add one from `assets/icons/` here when a component needs it. */
+/** The bundled Lucide icons the UI uses (`pin-filled`, `video-filled` and `square-filled` are `pin`, `video` and `square` with a solid shape; `play` and `pause` are solid too, as Python draws them); add one from `assets/icons/` here when a component needs it. */
 export const ICONS = {
   bookmark,
   check,
@@ -94,6 +95,7 @@ export const ICONS = {
   settings,
   "sliders-horizontal": slidersHorizontal,
   square,
+  "square-filled": squareFilled,
   "square-play": squarePlay,
   "step-back": stepBack,
   "step-forward": stepForward,

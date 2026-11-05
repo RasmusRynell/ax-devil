@@ -28,6 +28,8 @@
   --color-success: light-dark(#1b6e3c, #5fc27e);
   --color-caution: light-dark(#8a5300, #e0b04a);
   --color-danger: light-dark(#b3261e, #f28b82);
+  /* The window Close button under the pointer: red at alpha 217, with white text, in both themes. */
+  --color-close: #e81123d9;
   /* What kind of thing an icon or caption mark stands for; one color per kind wherever it shows. */
   --color-kind-live: light-dark(#c4362e, #e5534b);
   --color-kind-video: light-dark(#526477, #a8b3bf);

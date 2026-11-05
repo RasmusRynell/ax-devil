@@ -25,7 +25,8 @@ function timecode(us: number): string {
     : `${minutes}:${seconds}`;
 }
 
-const BUTTON = "size-row rounded-control";
+/* Dimmed to 40% while disabled, as Python draws the white icons over the scrim. */
+const BUTTON = "size-row rounded-control disabled:opacity-40";
 
 // The controls fade with the pointer's rest (see chromeVisibility) and stay while a control has the keyboard focus ring.
 const CONTROLS =
