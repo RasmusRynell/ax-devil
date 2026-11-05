@@ -55,54 +55,40 @@ export function LoginsEditor({ logins, onSave, onChange }: Props) {
   const [added, setAdded] = useState<number | null>(null);
   const [refused, setRefused] = useState<string | null>(null);
 
-  // The logins this editor has submitted since the backend last changed on its own, by shape, each with the latest
-  // submitted as written: an acknowledgement says nothing the draft does not, and the draft may have moved on since.
-  const submitted = useRef(new Map<string, readonly Login[]>());
-  // The logins sent last and not refused, so an Enter followed by the blur it causes sends them once.
-  const sent = useRef<string | null>(null);
-  // What the backend holds, and what it will once the saves in flight are accepted (null: none in flight).
+  // What the backend holds, and the saves submitted since and not yet answered, oldest first, each by shape: an
+  // acknowledgement says nothing the draft does not, and the draft may have moved on since.
   const held = useRef(logins);
-  const expected = useRef<readonly Login[] | null>(null);
-  // Where a refusal of the latest save puts the logins back (null: what the backend holds).
-  const back = useRef<readonly Login[] | null>(null);
+  const pending = useRef<{ wanted: Login[]; key: string }[]>([]);
 
   // What the backend holds changed: show it, unless it is what the draft already says or what this editor saved.
   useEffect(() => {
-    sent.current = null;
     held.current = logins;
-    const saved = submitted.current.get(shape(logins));
-    if (!saved || (expected.current && shape(expected.current) === shape(logins)))
-      expected.current = back.current = null;
-    if (saved) {
-      // Unchanged since the save: show what the backend holds, which masks the literal passwords.
-      setDraft((now) => (same(kept(now), saved) ? logins : now));
+    const at = pending.current.findIndex((save) => save.key === shape(logins));
+    if (at < 0) {
+      pending.current = [];
+      setDraft((now) => (same(kept(now), logins) ? now : logins));
       return;
     }
-    submitted.current.clear();
-    setDraft((now) => (same(kept(now), logins) ? now : logins));
+    // Accepted, and with it the saves before it. Unchanged since: show what the backend holds, which masks passwords.
+    const saved = pending.current[at]!.wanted;
+    pending.current = pending.current.slice(at + 1);
+    setDraft((now) => (same(kept(now), saved) ? logins : now));
   }, [logins]);
 
   const commit = (next: readonly Login[]) => {
     const wanted = kept(next);
-    const key = JSON.stringify(wanted);
-    const before = expected.current;
-    if (!onSave || same(wanted, before ?? logins) || sent.current === key) return;
-    sent.current = key;
-    expected.current = wanted;
-    back.current = before;
-    submitted.current.set(shape(wanted), wanted);
+    if (!onSave || same(wanted, pending.current.at(-1)?.wanted ?? logins)) return;
+    const save = { wanted, key: shape(wanted) };
+    pending.current.push(save);
     void onSave(wanted).then((reason) => {
-      if (reason !== null) {
-        if (sent.current === key) {
-          sent.current = null;
-          const target = back.current;
-          expected.current = target;
-          // Back to what the backend holds, unless the user has edited on since.
-          setDraft((now) => (same(kept(now), wanted) ? (target ?? held.current) : now));
-        } else if (back.current && same(back.current, wanted)) {
-          // A newer submission is not undone by an older answer, but it no longer has this save to go back to.
-          back.current = before;
-        }
+      const at = pending.current.indexOf(save);
+      if (reason !== null && at >= 0) {
+        const latest = at === pending.current.length - 1;
+        pending.current.splice(at, 1);
+        // The latest save goes back to what the backend will hold, unless the user has edited on since; an older
+        // one, answered late, changes nothing on screen.
+        const target = pending.current.at(-1)?.wanted ?? held.current;
+        if (latest) setDraft((now) => (same(kept(now), wanted) ? target : now));
       }
       setRefused(reason);
     });

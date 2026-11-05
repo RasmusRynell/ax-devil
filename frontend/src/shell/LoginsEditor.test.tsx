@@ -106,7 +106,10 @@ describe("logins editor", () => {
     expect(user.value).toBe("root");
   });
 
-  it("puts back what the backend holds when two saves in a row are both refused", async () => {
+  it.each([
+    ["in order", [0, 1]],
+    ["in reverse", [1, 0]],
+  ])("puts back what the backend holds when two saves are refused %s", async (_, order) => {
     const answers: ((reason: string) => void)[] = [];
     const onSave = () =>
       new Promise<string | null>((resolve) => {
@@ -119,9 +122,35 @@ describe("logins editor", () => {
     fireEvent.change(user, { target: { value: "dev" } });
     fireEvent.keyDown(user, { key: "Enter" });
 
-    await act(async () => answers.forEach((refuse) => refuse("Could not reach the backend")));
+    await act(async () => order.forEach((at) => answers[at]!("Could not reach the backend")));
 
     expect(user.value).toBe("root");
+  });
+
+  it("puts back the accepted logins when a save is refused after an earlier one was accepted", async () => {
+    const answers: ((reason: string | null) => void)[] = [];
+    function Host() {
+      const [logins, setLogins] = useState<readonly Login[]>([{ user: "root", password: "$PASS" }]);
+      const onSave = (next: Login[]) =>
+        new Promise<string | null>((resolve) => {
+          answers.push((reason) => {
+            if (reason === null) setLogins(next);
+            resolve(reason);
+          });
+        });
+      return <LoginsEditor logins={logins} onSave={onSave} />;
+    }
+    render(<Host />);
+    const user = screen.getByLabelText("Username") as HTMLInputElement;
+    fireEvent.change(user, { target: { value: "ops" } });
+    fireEvent.keyDown(user, { key: "Enter" });
+    fireEvent.change(user, { target: { value: "dev" } });
+    fireEvent.keyDown(user, { key: "Enter" });
+
+    await act(async () => answers[0]!(null));
+    await act(async () => answers[1]!("Could not reach the backend"));
+
+    expect(user.value).toBe("ops");
   });
 
   it("shows a long value from its start", () => {
