@@ -26,7 +26,7 @@ let listings: string[] = [];
 let asked: { like?: string }[] = [];
 /** While set, the camera's lists wait for it, as a slow camera would. */
 let gate: Promise<void> | null = null;
-/** Called when the form reads the body of a camera answer. */
+/** Called when the form reads the body of a camera's sources answer. */
 let onRead = () => {};
 
 beforeEach(() => {
@@ -47,7 +47,14 @@ beforeEach(() => {
           : JSON.parse(init?.body as string).overlay === "mqtt"
             ? { overlay: "mqtt", sources: ["com.axis.scene.frame.v1#1"] }
             : { overlay: "datahub", topics: ["com.axis.scene.frame.v1"] };
-    return { ok: true, status: 200, json: async () => (onRead(), json) };
+    return {
+      ok: true,
+      status: 200,
+      json: async () => {
+        if (url === "/api/live/sources") onRead();
+        return json;
+      },
+    };
   });
 });
 afterEach(() => {
