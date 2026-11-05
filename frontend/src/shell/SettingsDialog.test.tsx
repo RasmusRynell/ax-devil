@@ -301,6 +301,17 @@ describe("settings dialog", () => {
       });
     });
 
+    it("cannot be opened while Settings is saving", async () => {
+      let answer = () => {};
+      const until = new Promise<void>((resolve) => (answer = resolve));
+      render(<Keeping save={vi.fn()} onClose={vi.fn()} until={until} />);
+      fireEvent.click(screen.getByRole("button", { name: "OK" }));
+      expect(
+        (screen.getByRole("button", { name: "Keyboard shortcuts" }) as HTMLButtonElement).disabled,
+      ).toBe(true);
+      await act(async () => answer());
+    });
+
     it("cannot be dismissed while saving, so OK in Settings then writes the saved ones", async () => {
       let answer = () => {};
       const until = new Promise<void>((resolve) => (answer = resolve));

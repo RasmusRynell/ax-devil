@@ -103,7 +103,11 @@ export function SettingsDialog({
             </section>
           ))}
           {page === "General" && (
-            <Button className="self-start" onClick={() => setEditingShortcuts(true)}>
+            <Button
+              className="self-start"
+              disabled={saving}
+              onClick={() => setEditingShortcuts(true)}
+            >
               Keyboard shortcuts
             </Button>
           )}
