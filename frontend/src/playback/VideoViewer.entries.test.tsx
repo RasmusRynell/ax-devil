@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vite-plus/test";
 import { FakeSocket, video } from "../session/fakeSession";
 import { SessionProvider } from "../session/session";
 import { SessionStore } from "../session/store";
+import { videoFrame } from "./fakePlayback";
 import type { ClientMessage } from "./protocol";
 import {
   Viewer,
@@ -32,6 +33,13 @@ describe("video viewer entries", () => {
     FakeSocket.sockets
       .flatMap((socket) => socket.received)
       .flatMap((m) => (m.type === "command" && m.cmd.type === "requestTicket" ? [m.cmd.key] : []));
+  /** The backend sends frame `id` on the newest playback socket, and the display refreshes. */
+  const showFrame = (id: number) => {
+    act(() =>
+      sockets.at(-1)?.({ type: "envelope", envelope: { kind: "frame", frame: videoFrame(id) } }),
+    );
+    flushFrames();
+  };
   const mount = async (sent: ClientMessage[], entryId?: string) => {
     render(
       <SessionProvider>
@@ -49,6 +57,9 @@ describe("video viewer entries", () => {
     act(() => room.setItems([video("a")]));
     expect((await slider()).value).toBe("37");
     expect(tickets().at(-1)).toMatchObject({ content: "content-a", entry: "content-a" });
+    // An entry opened at a frame stays paused there.
+    showFrame(37);
+    expect(screen.getByRole("button", { name: "Play" })).toBeTruthy();
 
     // The playlist viewer shows another entry: its position is its own, and none of entry A's goes into it.
     sent.length = 0;
@@ -63,7 +74,15 @@ describe("video viewer entries", () => {
     expect(room.presenter.viewers.a).toEqual({ entry: "content-b" });
   });
 
-  it("reopens an entry where it was left when the view comes back to it, and a first visit starts at its first frame", async () => {
+  it("plays an ordinary open from its first frame once that is shown", async () => {
+    const room = await mount([]);
+    act(() => room.setItems([video("a")]));
+    expect(await screen.findByRole("button", { name: "Play" })).toBeTruthy();
+    showFrame(0);
+    expect(screen.getByRole("button", { name: "Pause" })).toBeTruthy();
+  });
+
+  it("starts an entry chosen again from its first frame, playing at the speed the viewer holds", async () => {
     const sent: ClientMessage[] = [];
     const room = await mount(sent);
     act(() => room.setItems([video("a")]));
@@ -76,20 +95,22 @@ describe("video viewer entries", () => {
     expect((await slider()).value).toBe("0");
     // The speed belongs to the viewer: the last one set plays on in whichever entry opens next.
     expect(speed().textContent).toBe("2×");
-    fireEvent.change(await slider(), { target: { value: "5" } });
     setSpeed("3");
     flushFrames();
 
-    // Choosing an entry again leaves the view without a clock for it; the viewer remembers its own.
+    // Choosing the first entry again leaves the view without a clock for it, and nothing of its old position is kept.
     sent.length = 0;
     act(() => room.publish({ ...room.presenter, viewers: { a: { entry: "content-a" } } }));
     await act(async () => {});
-    expect((await slider()).value).toBe("37");
+    expect((await slider()).value).toBe("0");
     expect(speed().textContent).toBe("3×");
-    expect(sent.find((message) => message.type === "Open")).toMatchObject({ start_frame: 37 });
-    act(() => room.publish({ ...room.presenter, viewers: { a: { entry: "content-b" } } }));
-    await act(async () => {});
-    expect((await slider()).value).toBe("5");
+    expect(sent.find((message) => message.type === "Open")).toEqual({
+      type: "Open",
+      ticket: expect.any(String),
+      data_bytes: expect.any(Number),
+    });
+    showFrame(0);
+    expect(screen.getByRole("button", { name: "Pause" })).toBeTruthy();
   });
 
   it("keeps no position for a window that follows, which takes the presenter's clock", async () => {

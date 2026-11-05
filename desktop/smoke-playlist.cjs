@@ -12,6 +12,7 @@ const { panels } = require("./smoke-panels.cjs");
 const { fields } = require("./smoke-fields.cjs");
 const { twice } = require("./smoke-twice.cjs");
 const kit = require("./smoke-kit.cjs");
+const { pauseAtStart } = require("./smoke-video.cjs");
 const { SCREENSHOTS, SHOWN, SMOKE_ROOT, delay, frames, page, setView, showChrome } = kit;
 
 const DATASET = path.join(SMOKE_ROOT, "fixtures/datasets/mot");
@@ -127,6 +128,7 @@ module.exports.playlist = async (window) => {
       `document.querySelectorAll('canvas')[0]?.parentElement.parentElement.querySelectorAll(':scope > div.absolute:not(.inset-0)').length === ${lanes}`,
     );
     await wait(`${SHOWN} >= 0`);
+    await pauseAtStart(window);
   };
 
   // Every lane has boxes on frame 0; frame 5 has no rows in any file, which the files leave open, so sticky keeps

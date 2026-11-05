@@ -76,8 +76,9 @@ function whenOf(appearance: Appearance | null, jumps: Jumps | null, reach: Reach
 
 /**
  * The body of an object's page: its class, details and motion from the sample on screen at once, then every field
- * the backend knows of it, in groups, the pinned ones first. While a sample's fields are on their way the last ones
- * stay, under `Loading…`. An object that is not in the frame offers to go to where it was last and will next be. The
+ * the backend knows of it, in groups, the pinned ones first. While the next sample's fields are on their way, the view
+ * repeats the summary and fields shown before, together, and the rows stay mounted; with none to repeat, `Loading…`
+ * stands. An object that is not in the frame offers to go to where it was last and will next be. The
  * page's header, which names the object, is the panel's.
  */
 export function Inspector({
@@ -158,7 +159,7 @@ export function Inspector({
             Details are not available
           </p>
         )}
-        {inspection.state === "loading" && (
+        {unknown && (
           <p role="status" className="m-0 shrink-0 p-m text-muted">
             Loading…
           </p>

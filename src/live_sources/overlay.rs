@@ -1,13 +1,14 @@
 //! The overlay side of a feed: the camera's documents (ONVIF metadata, MQTT messages, DataHub samples) into the
 //! decoder of the live track, losslessly. When the decoder falls behind, or documents were lost on the way, the lane is
-//! behind until the queue drains, then the decoder starts a new session and the Events list gets a gap marker.
+//! behind until the queue drains, then the decoder starts a new session and the Events list gets a gap marker. MQTT is
+//! the exception: only its newest waiting message is kept, as a message replaced by a newer one is no loss to the lane.
 
 use std::{
     sync::Arc,
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
-use camera::{Feed, Message, MetadataDoc, Status};
+use camera::{DataHubStamp, Feed, Message, MetadataDoc, Status};
 use foundation::MediaTime;
 use tokio::{
     sync::watch,
@@ -15,7 +16,7 @@ use tokio::{
 };
 
 use super::{
-    bridge::{Doc, Refused, Session, Sessions},
+    bridge::{Doc, Refused, Session, Sessions, Waiting},
     connector::Docs,
     feed::Shared,
 };
@@ -55,20 +56,25 @@ struct Trouble {
 pub struct Intake {
     sessions: Sessions,
     capacity: usize,
+    waiting: Waiting,
     session: Session,
+    replacing: bool,
     epoch: Option<u32>,
     last_us: Option<i64>,
     trouble: Option<Trouble>,
 }
 
 impl Intake {
-    /// An intake starting its first session; at most `capacity` documents wait for the decoder across its sessions.
-    pub fn new(sessions: Sessions, capacity: usize) -> Self {
+    /// An intake starting its first session; at most `capacity` documents wait for the decoder across its sessions,
+    /// kept as `waiting` says.
+    pub fn new(sessions: Sessions, capacity: usize, waiting: Waiting) -> Self {
         let session = sessions.start(capacity);
         Self {
             sessions,
             capacity,
+            waiting,
             session,
+            replacing: false,
             epoch: None,
             last_us: None,
             trouble: None,
@@ -143,15 +149,75 @@ impl Intake {
 
     fn queue(&mut self, doc: Doc, time_us: Option<i64>, effects: &mut Effects) {
         if self.trouble.is_some() {
+            log_lost(&doc);
             return;
         }
-        match self.session.push(doc) {
-            Ok(()) => self.last_us = time_us.or(self.last_us),
-            Err(Refused::Full) => self.fall_behind(time_us, effects),
+        match self.session.push(doc, self.waiting) {
+            Ok(replaced) => {
+                self.last_us = time_us.or(self.last_us);
+                self.note_replaced(replaced);
+            }
+            Err(Refused::Full(doc)) => {
+                log_lost(&doc);
+                self.fall_behind(time_us, effects);
+            }
             // The track stopped reading; the feed is being closed.
             Err(Refused::Closed) => {}
         }
     }
+}
+
+impl Intake {
+    /// Logs a waiting document a newer one replaced: the first of a run at warn level, as the sparse decoder may miss
+    /// its state, the rest at debug. A replacement is no loss of the lane: it neither falls behind nor makes a gap.
+    fn note_replaced(&mut self, replaced: Option<Doc>) {
+        let Some(old) = replaced else {
+            self.replacing = false;
+            return;
+        };
+        if !self.replacing {
+            tracing::warn!(
+                "a live overlay document was replaced by a newer message; sparse decoder state may be incomplete ({})",
+                origin(&old)
+            );
+        } else if tracing::enabled!(tracing::Level::DEBUG) {
+            tracing::debug!(
+                "a live overlay document was replaced by a newer one ({})",
+                origin(&old)
+            );
+        }
+        self.replacing = true;
+    }
+}
+
+/// Logs a document dropped while the decoder is behind, with the MQTT or DataHub topic and the DataHub envelope it
+/// carried.
+fn log_lost(doc: &Doc) {
+    // Documents are lost in bulk under load, so build the origin text only when the event is recorded.
+    if !tracing::enabled!(tracing::Level::DEBUG) {
+        return;
+    }
+    tracing::debug!("a live overlay document was lost ({})", origin(doc));
+}
+
+/// Where a document came from, as `topic ..., channel ..., timestamp ..., historical ...`, for the log.
+fn origin(doc: &Doc) -> String {
+    let mut origin = doc
+        .topic
+        .iter()
+        .map(|topic| format!("topic {topic}"))
+        .collect::<Vec<_>>();
+    if let Some(DataHubStamp {
+        channel,
+        timestamp,
+        historical,
+    }) = &doc.stamp
+    {
+        origin.push(format!(
+            "channel {channel}, timestamp {timestamp}, historical {historical}"
+        ));
+    }
+    origin.join(", ")
 }
 
 fn micros(time: SystemTime) -> Option<i64> {
@@ -173,6 +239,8 @@ impl Docs {
                     doc: Doc {
                         bytes: xml,
                         capture: capture.map(|time| MediaTime::from_us(time.0.div_euclid(1000))),
+                        topic: None,
+                        stamp: None,
                     },
                     time_us: capture.map(|time| time.0.div_euclid(1000)),
                 },
@@ -181,17 +249,20 @@ impl Docs {
                     Arrival::Lost
                 }
             }),
-            Docs::Messages(messages) => Some(match messages.recv().await? {
+            Docs::Messages { messages, .. } => Some(match messages.recv().await? {
                 Feed::Item(Message {
                     epoch,
+                    topic,
                     payload,
+                    stamp,
                     received,
-                    ..
                 }) => Arrival::Doc {
                     epoch,
                     doc: Doc {
                         bytes: payload,
                         capture: None,
+                        topic: Some(topic),
+                        stamp,
                     },
                     time_us: micros(received),
                 },
@@ -244,7 +315,8 @@ impl OverlayTask {
         let Some(sessions) = self.shared.sessions.clone() else {
             return;
         };
-        let mut intake = Intake::new(sessions, QUEUE);
+        let waiting = self.docs.as_ref().map_or(Waiting::Queue, Docs::waiting);
+        let mut intake = Intake::new(sessions, QUEUE, waiting);
         let mut settle = interval(SETTLE_EVERY);
         settle.set_missed_tick_behavior(MissedTickBehavior::Skip);
         let (mut docs, mut link, mut stop) =
@@ -287,6 +359,10 @@ impl OverlayTask {
                 }
             }
         }
+        let waiting = intake.sessions.backlog();
+        if waiting > 0 {
+            tracing::warn!("{waiting} live overlay documents were never decoded: the feed stopped");
+        }
     }
 
     fn report(&self, link: &mut watch::Receiver<Status>) {
@@ -309,6 +385,8 @@ mod tests {
         Doc {
             bytes: Bytes::from(vec![n]),
             capture: None,
+            topic: None,
+            stamp: None,
         }
     }
 
@@ -324,7 +402,7 @@ mod tests {
     fn a_decoder_that_falls_behind_loses_documents_until_its_queue_drains_then_restarts_with_a_gap()
     {
         let (offers, mut feed) = sessions();
-        let mut intake = Intake::new(offers, 2);
+        let mut intake = Intake::new(offers, 2, Waiting::Queue);
         let cancel = CancelToken::new();
         let mut first = feed.next_input(&cancel).expect("the first session");
 
@@ -372,7 +450,7 @@ mod tests {
     #[test]
     fn lost_documents_and_new_connections_both_restart_the_decoder() {
         let (offers, mut feed) = sessions();
-        let mut intake = Intake::new(offers, 8);
+        let mut intake = Intake::new(offers, 8, Waiting::Queue);
         let cancel = CancelToken::new();
         let mut first = feed.next_input(&cancel).expect("the first session");
         intake.take(arrival(1, 1), None);
@@ -411,7 +489,7 @@ mod tests {
     #[test]
     fn reconnecting_while_the_decoder_is_behind_keeps_the_backlog_within_the_limit() {
         let (offers, mut feed) = sessions();
-        let mut intake = Intake::new(offers, 4);
+        let mut intake = Intake::new(offers, 4, Waiting::Queue);
         let cancel = CancelToken::new();
         let mut behind = false;
         // Twenty reconnects, one document each, and the decoder reads nothing.

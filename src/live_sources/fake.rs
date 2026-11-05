@@ -32,7 +32,10 @@ use scene::{
 use tokio::sync::{mpsc, watch};
 use workspace::{LiveOverlay, LiveVideoContent, ResolvedCamera};
 
-use super::connector::{Broker, Connector, Decoded, Docs, Inputs, Transport, UnitDecoder};
+use super::{
+    bridge::Waiting,
+    connector::{Broker, Connector, Decoded, Docs, Inputs, Transport, UnitDecoder},
+};
 
 /// What a test pushes into one RTSP connection and reads of it.
 pub struct VideoWire {
@@ -89,6 +92,7 @@ impl FakeConnector {
         &self,
         wire: Arc<MessageWire>,
         rx: mpsc::Receiver<Feed<Message>>,
+        waiting: Waiting,
         release: Option<String>,
     ) -> Transport {
         let status = wire.status.subscribe();
@@ -97,7 +101,10 @@ impl FakeConnector {
         Transport::new(
             Inputs {
                 video: None,
-                docs: Some(Docs::Messages(rx)),
+                docs: Some(Docs::Messages {
+                    messages: rx,
+                    waiting,
+                }),
                 status,
             },
             async move {
@@ -167,7 +174,7 @@ impl Connector for FakeConnector {
             status: watch::channel(Status::Connecting).0,
             closed: Arc::default(),
         });
-        self.message_transport(wire, rx, Some(camera.host.clone()))
+        self.message_transport(wire, rx, Waiting::Newest, Some(camera.host.clone()))
     }
 
     fn datahub(&self, _camera: &ResolvedCamera, _topic: &str, _channel: u32) -> Transport {
@@ -177,7 +184,7 @@ impl Connector for FakeConnector {
             status: watch::channel(Status::Connecting).0,
             closed: Arc::default(),
         });
-        self.message_transport(wire, rx, None)
+        self.message_transport(wire, rx, Waiting::Queue, None)
     }
 
     fn decoder(

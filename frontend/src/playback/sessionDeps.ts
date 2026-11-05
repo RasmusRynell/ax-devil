@@ -25,6 +25,8 @@ export interface SessionDeps {
   defaultTiming?: () => Timing;
   /** The lane settings of the entry before this one, by lane position: this entry's lanes start from them. */
   lanes?: readonly LaneSettings[];
+  /** Plays from the first frame once it is shown. For an ordinary open only: a resumed or followed one stays as it was. */
+  autoplay?: boolean;
   /** Where an earlier session left off and the speed it ran at: this one opens there, paused, at that speed. A missing frame opens at the start. */
   resume?: Partial<ResumeState>;
   /** Told the policy of a lane, by its slot, after the viewer changed it: the workspace keeps it with the recipe. */

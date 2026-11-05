@@ -33,8 +33,14 @@ impl Decoder for Stamps {
         cancel: &CancelToken,
     ) -> Result<DecodeSummary, Interrupt<DecodeError>> {
         while let Some(record) = input.next(cancel)? {
-            let text = std::str::from_utf8(record.bytes).expect("text");
-            let time = SceneTime::Timestamp(MediaTime(text.parse().expect("microseconds")));
+            let parsed = std::str::from_utf8(record.bytes)
+                .ok()
+                .and_then(|text| text.parse().ok());
+            let Some(micros) = parsed else {
+                sink.skip(record.position, "not microseconds".to_owned());
+                continue;
+            };
+            let time = SceneTime::Timestamp(MediaTime(micros));
             let _ = sink.sample(entities(time, 1), OnEqualKey::Merge);
         }
         Ok(DecodeSummary {
@@ -108,7 +114,7 @@ fn a_live_track_keeps_samples_in_time_order_and_drops_its_oldest_half_at_once() 
     let feed = Sessions {
         go: wait,
         inputs: VecDeque::from([
-            vec!["10", "20", "20", "15", "30", "40", "50", "60"],
+            vec!["10", "20", "20", "15", "garbage", "30", "40", "50", "60"],
             vec!["5", "70"],
         ]),
     };
@@ -152,6 +158,14 @@ fn a_live_track_keeps_samples_in_time_order_and_drops_its_oldest_half_at_once() 
         now.warnings
             .iter()
             .any(|warning| warning.problem.starts_with("Dropped 2 live samples")),
+        "{:?}",
+        now.warnings
+    );
+    // A malformed message is skipped and counted; the ones after it still arrive.
+    assert!(
+        now.warnings
+            .iter()
+            .any(|warning| warning.problem.starts_with("Skipped 1 of ")),
         "{:?}",
         now.warnings
     );

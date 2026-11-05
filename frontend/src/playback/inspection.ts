@@ -4,7 +4,9 @@
  * one `Inspect` request per (source, data revision, sample, object): asking for a newer sample supersedes a request
  * still out (the backend keeps only the newest), and the last 16 replies are kept. A request whose reply never
  * comes (the backend may drop one) is asked again when its sample is wanted again, or after RESEND_AFTER draws.
- * Nothing is asked while no inspector page shows; the selection is kept and asked about when one does.
+ * Nothing is asked while no inspector page shows; the selection is kept and asked about when one does. A view's summary
+ * and fields are one pair, of one sample: while the next sample's reply is out, the pair last ready for the same
+ * object stays whole, and with no such pair there are no fields.
  */
 
 import { MOTION_STATES } from "../present/columns";
@@ -87,10 +89,14 @@ export class Inspections {
   #visible = true;
   /** Whether a connection opened and no frame of its data has been drawn yet: nothing is asked until one is. */
   #awaiting = false;
-  /** The fields last shown, which stay until the shown sample's reply replaces them. */
-  #fields: {
-    source: number;
-    entity: string;
+  /**
+   * The pair the last ready view showed, which a loading view of the same object and data revision repeats, so that
+   * the summary is never shown with another sample's fields. Any other view forgets it.
+   */
+  #settled: {
+    selection: NonNullable<Selection>;
+    revision: number;
+    summary: Summary;
     fields: readonly FieldWire[];
     truncated: boolean;
   } | null = null;
@@ -121,7 +127,6 @@ export class Inspections {
       selection?.entity !== this.#selection?.entity ||
       selection?.source !== this.#selection?.source
     ) {
-      this.#fields = null;
       this.#last = null;
     }
     this.#selection = selection;
@@ -180,6 +185,7 @@ export class Inspections {
     this.#awaiting = true;
     this.#revisions.clear();
     this.#cache.clear();
+    this.#settled = null;
     this.#update();
   }
 
@@ -242,6 +248,7 @@ export class Inspections {
   #update(): boolean {
     const selection = this.#selection;
     this.#wanted = null;
+    if (!selection) this.#settled = null;
     const next = selection ? this.#build(selection) : ({ state: "none" } as const);
     // Asked for or refused, and no longer the shown sample: asked again if it is shown again.
     if (this.#inflight && this.#inflight.key !== this.#wanted) this.#inflight = null;
@@ -270,6 +277,34 @@ export class Inspections {
   }
 
   #build(selection: NonNullable<Selection>): InspectionView {
+    const view = this.#viewOf(selection);
+    const settled = this.#settled;
+    if (view.state === "ready")
+      this.#settled = {
+        selection,
+        revision: this.#revisions.get(selection.source) ?? -1,
+        summary: view.summary,
+        fields: view.fields,
+        truncated: view.truncated,
+      };
+    else if (view.state !== "loading") this.#settled = null;
+    else if (
+      settled?.selection.lane === selection.lane &&
+      settled.selection.source === selection.source &&
+      settled.selection.entity === selection.entity &&
+      settled.revision === this.#revisions.get(selection.source)
+    )
+      return {
+        ...view,
+        summary: settled.summary,
+        fields: settled.fields,
+        truncated: settled.truncated,
+      };
+    else this.#settled = null;
+    return view;
+  }
+
+  #viewOf(selection: NonNullable<Selection>): InspectionView {
     const shown = this.#shown(selection);
     if (typeof shown === "string")
       return { state: "absent", selection, reason: shown, last: this.#last };
@@ -278,23 +313,16 @@ export class Inspections {
     const key = keyOf(frame.source, frame.dataRevision, frame.sample, selection.entity);
     this.#wanted = key;
     const reply = this.#cache.get(key);
-    if (reply?.state === "Found")
-      this.#fields = {
-        source: selection.source,
-        entity: selection.entity,
-        fields: reply.fields,
-        truncated: reply.truncated,
-      };
     if (reply?.state === "Absent")
       return { state: "absent", selection, reason: "gone", last: summary };
     this.#ask(frame, selection.entity);
-    const held = this.#fields;
+    const found = reply?.state === "Found" ? reply : null;
     return {
       state: reply ? "ready" : this.#refused?.key === key ? "unavailable" : "loading",
       selection,
       summary,
-      fields: held?.fields ?? NO_FIELDS,
-      truncated: held?.truncated ?? false,
+      fields: found?.fields ?? NO_FIELDS,
+      truncated: found?.truncated ?? false,
     };
   }
 }

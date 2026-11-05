@@ -29,8 +29,10 @@ frame rates or bursts can exhaust the frame buffer"):
 - Every queue is bounded; its owner defines the overflow policy, and every drop is counted per stage in the timing
   diagnostics. A burst never stalls delivery.
 - Encoded video: codec-aware discard, then resync at the next decodable keyframe; exercised by the burst test.
-- Payload decode is lossless: its bounded input queue overflowing is a reported lane error ("overlay decoder behind"),
-  never a silent drop, because LV-07 needs every event and decoders may be stateful ([05](05-formats-and-extensions.md#decoder-contract)).
+- Payload decode is lossless for DataHub and embedded metadata: its bounded input queue overflowing is a reported lane
+  error ("overlay decoder behind"), never a silent drop, because LV-07 needs every event and decoders may be stateful
+  ([05](05-formats-and-extensions.md#decoder-contract)). MQTT input keeps only the newest waiting message, as the
+  Python source does; a replaced message is warned about with its topic, is not a gap and does not reset the decoder.
 - Drop-oldest (latest wins) applies only after decode, to independently consumable frames and synchronized pairs.
 - After "overlay decoder behind": the lane stays in that error state until the queue drains, the decoder is reset
   as on reconnect, and the Events list shows a gap marker; the burst test asserts all three.

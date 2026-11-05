@@ -35,50 +35,13 @@ import { PlaybackSession } from "./session";
 import type { PlaybackIntent, ResumeState } from "./sessionDeps";
 import { connectWorker } from "./connect";
 import { Transport } from "./Transport";
-import type { PlaybackView } from "./view";
 import { FIT, ZOOM_STEP } from "./viewport";
 import type { Connect } from "./wire";
 import { useFileScopeOwner } from "./useFileScopeOwner";
 
-/** What the pane says while the video is not ready: indexing with its progress, reconnecting, or why it failed. */
-export function Status({ view, name }: { view: PlaybackView; name: string }) {
-  if (view.status === "failed" && view.failure)
-    return (
-      <div role="alert" className="m-auto flex max-w-full flex-col gap-s p-xl text-center">
-        <p className="m-0 font-semibold break-words">{view.failure.reason}</p>
-        {view.failure.location && (
-          <p className="m-0 text-small break-all text-on-canvas-muted">{view.failure.location}</p>
-        )}
-      </div>
-    );
-  const text =
-    view.status === "indexing"
-      ? `Indexing ${name}… ${Math.round(view.progress * 100)}%`
-      : view.status === "reconnecting"
-        ? "Connection lost. Reconnecting…"
-        : `Opening ${name}…`;
-  return (
-    <div
-      role="status"
-      aria-busy="true"
-      className="m-auto flex w-full max-w-md flex-col gap-m p-xl text-center"
-    >
-      <p className="m-0">{text}</p>
-      {view.status === "indexing" && (
-        <div
-          role="progressbar"
-          aria-label="Indexing progress"
-          aria-valuemin={0}
-          aria-valuemax={1}
-          aria-valuenow={view.progress}
-          className="h-s w-full overflow-hidden rounded-control bg-canvas-hover"
-        >
-          <div className="h-full bg-on-canvas" style={{ width: `${view.progress * 100}%` }} />
-        </div>
-      )}
-    </div>
-  );
-}
+import { Status } from "./PlaybackStatus";
+
+export { Status };
 
 function Playback({
   session,
@@ -312,9 +275,6 @@ function Playback({
   );
 }
 
-/** Where each entry of an item was left, by entry id: kept by whoever shows the entries, for as long as it does. */
-export type EntryMemory = Map<string, ResumeState>;
-
 /** What the viewer is given besides the item: the Content to stream from and the entry of it to play. */
 export type VideoViewerProps = {
   /** The workspace item whose viewer this is; the window's view keeps this viewer's clock under it. */
@@ -329,11 +289,6 @@ export type VideoViewerProps = {
   onHideLane?: (label: string) => void;
   /** Keeps the matching of one of the entry's lanes, by its slot, in the workspace; absent when this seat may not. */
   onLaneMatching?: (slot: string, policy: LanePolicyWire) => void;
-  /**
-   * Where the entries this viewer was shown for were left, so that coming back to one reopens it there. A viewer
-   * shown for one entry needs none.
-   */
-  memory?: EntryMemory;
   connect?: Connect;
 };
 
@@ -351,7 +306,6 @@ export function VideoViewer({
   hidden = NOTHING_HIDDEN,
   onHideLane,
   onLaneMatching,
-  memory,
   connect = connectWorker,
 }: VideoViewerProps) {
   const key = useMemo<ContentRef>(
@@ -383,10 +337,12 @@ export function VideoViewer({
   defaultCatalog.current = values["overlays.default_catalog"] as string;
   const defaultTiming = useRef(savedTiming(values));
   defaultTiming.current = savedTiming(values);
-  // Where each entry was left, for the session that replaces the one that closed. The published intent still names the
-  // last anchor when the replacement starts, so reading it there would reopen at the frame playback began from.
-  const own = useRef<EntryMemory>(new Map());
-  const left = memory ?? own.current;
+  // Where the entry was left, for the session that replaces the one that closed on the same entry. The published intent
+  // still names the last anchor when the replacement starts, so reading it there would reopen at the frame playback
+  // began from. Another entry starts over: only the speed goes with the viewer.
+  const left = useRef<{ entry: string; state: ResumeState } | undefined>(undefined);
+  // The stream whose autoplay a session replacement interrupted before anything was shown: the replacement plays.
+  const interrupted = useRef<string | undefined>(undefined);
 
   useEffect(() => {
     const publish = ({ frame, playing, speed }: PlaybackIntent) => {
@@ -405,10 +361,15 @@ export function VideoViewer({
     };
     const anchor = latest.current.intent;
     // A window that follows takes the presenter's clock, never a position of its own, and forgets any it had.
-    const carried = latest.current.following ? undefined : left.get(entry.id);
-    left.delete(entry.id);
+    const kept = left.current;
+    left.current = undefined;
+    const carried = !latest.current.following && kept?.entry === entry.id ? kept.state : undefined;
+    const streamKey = `${item}/${entry.id}`;
+    const retried = interrupted.current === streamKey;
+    interrupted.current = undefined;
     const start = {
-      frame: carried?.frame ?? anchor?.frame,
+      // Frame 0 of a replaced session that showed nothing is no position to come back to.
+      frame: retried ? undefined : (carried?.frame ?? anchor?.frame),
       speed: heldSpeed.current ?? carried?.speed ?? (anchor && anchor.speedCenti / 100),
     };
     // A window that reloads and takes its seat back finds its clock still running in the accepted intent, which
@@ -418,6 +379,9 @@ export function VideoViewer({
       ticket,
       connect,
       resume: start,
+      // An open with no position to come back to plays; a resumed tab or a followed clock stays as it is. A seat that
+      // cannot publish its clock would play again on every return, as nothing remembers it was left.
+      autoplay: start.frame === undefined && !latest.current.following && latest.current.canChange,
       lanes: priorLanes.current,
       defaultCatalog: () => defaultCatalog.current || null,
       defaultTiming: () => defaultTiming.current,
@@ -437,19 +401,20 @@ export function VideoViewer({
     if (running) created.follow(running, () => latest.current.clock.nowUs() ?? running.atUs);
     setSession(created);
     return () => {
-      // Shown again later, the viewer opens where it was left, paused.
+      // A session that replaces this one on the same entry opens where it was left, paused.
       const { frame, speed } = created.resumeState();
+      if (created.autoplayPending) interrupted.current = streamKey;
       const lanes = created.laneSettings();
       if (lanes.length > 0) priorLanes.current = lanes;
       created.close();
       // A window that follows has not chosen anything, so leaving does not make it explore.
       if (!latest.current.following) {
         publish({ frame, playing: false, speed });
-        left.set(entry.id, { frame, speed });
+        left.current = { entry: entry.id, state: { frame, speed } };
         heldSpeed.current = speed;
       }
     };
-  }, [item, entry.id, ticket, connect, setViewers, left]);
+  }, [item, entry.id, ticket, connect, setViewers]);
 
   useFileScopeOwner(session, following);
   useEffect(() => {
