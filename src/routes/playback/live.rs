@@ -300,12 +300,13 @@ impl<I: Incoming> Live<'_, I> {
             .await
     }
 
-    /// A frame with what its lane selects. A frame that cannot be compressed is skipped, as a dropped frame would be.
+    /// A frame with what its lane selects. A frame that cannot be compressed is left out as a dropped frame would be;
+    /// its samples and map are still sent.
     async fn show(&mut self, shown: Shown) -> Flow<()> {
         self.ready().await?;
         let Shown { frame, out } = shown;
         let frame = match self.wire.message(&frame, false).await {
-            Ok(message) => message,
+            Ok(message) => Some(message),
             Err(error) => {
                 // A stream whose every frame fails would flood the log: the first is a warning, the rest are debug.
                 self.failures += 1;
@@ -314,7 +315,7 @@ impl<I: Incoming> Live<'_, I> {
                 } else {
                     tracing::debug!("Live frame skipped: {}", error.reason);
                 }
-                return Ok(());
+                None
             }
         };
         if let Some(out) = &out {
@@ -322,7 +323,9 @@ impl<I: Incoming> Live<'_, I> {
                 self.send(Message::Binary(envelope::sample(item))).await?;
             }
         }
-        self.send(frame).await?;
+        if let Some(frame) = frame {
+            self.send(frame).await?;
+        }
         let Some(out) = out else {
             return Ok(());
         };

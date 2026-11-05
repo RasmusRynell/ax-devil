@@ -3,7 +3,8 @@
 //! The index lists every frame's presentation time and where decoding can start; the [`Decoder`] turns a position
 //! in it into transport-ready frames; the [`StreamDecoder`] does the same for the units of a live stream, which have no
 //! index. The [`Encoder`] writes pictures back out as an MP4 or a PNG still, and [`first_frame`] reads a video's first
-//! picture as a JPEG without the index; [`frame_jpeg`] makes one of a decoded frame. All FFmpeg calls without a safe form are in one private module.
+//! picture as a JPEG without the index; [`frame_jpeg`] makes one of a decoded frame. All FFmpeg calls without a safe
+//! form are in one private module.
 
 mod convert;
 mod decoder;
