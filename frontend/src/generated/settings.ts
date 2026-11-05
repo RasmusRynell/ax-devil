@@ -23,6 +23,7 @@ export const SETTINGS = [
       "default": "auto"
     },
     "label": "Theme",
+    "description": null,
     "page": "General",
     "section": "Appearance",
     "live": true,
@@ -60,6 +61,7 @@ export const SETTINGS = [
       "default": "system"
     },
     "label": "Text size",
+    "description": null,
     "page": "General",
     "section": "Appearance",
     "live": true,
@@ -75,6 +77,7 @@ export const SETTINGS = [
       "default": false
     },
     "label": "Quick Setup done",
+    "description": null,
     "page": null,
     "section": "",
     "live": true,
@@ -90,6 +93,7 @@ export const SETTINGS = [
       "default": true
     },
     "label": "Show object details on hover and click",
+    "description": "Name the object under the pointer; click to select it and open its page.",
     "page": "General",
     "section": "Video overlays",
     "live": true,
@@ -105,6 +109,7 @@ export const SETTINGS = [
       "default": true
     },
     "label": "Show lane names",
+    "description": "Name each video lane; names hide while frame info is shown.",
     "page": "General",
     "section": "Video overlays",
     "live": true,
@@ -120,6 +125,7 @@ export const SETTINGS = [
       "default": ""
     },
     "label": "Default catalog",
+    "description": null,
     "page": null,
     "section": "",
     "live": true,
@@ -137,6 +143,7 @@ export const SETTINGS = [
       }
     },
     "label": "Default overlay sync",
+    "description": null,
     "page": null,
     "section": "",
     "live": true,
@@ -156,6 +163,7 @@ export const SETTINGS = [
       }
     },
     "label": "Default sticky overlays",
+    "description": null,
     "page": null,
     "section": "",
     "live": true,
@@ -172,6 +180,7 @@ export const SETTINGS = [
       "max": 1048576
     },
     "label": "Memory for video caching (MiB)",
+    "description": null,
     "page": "Playback",
     "section": "Memory",
     "live": true,
@@ -186,6 +195,7 @@ export const SETTINGS = [
       "type": "folder"
     },
     "label": "Cache folder",
+    "description": null,
     "page": "Storage",
     "section": "Folders",
     "live": false,
@@ -200,6 +210,7 @@ export const SETTINGS = [
       "type": "folder"
     },
     "label": "Render catalog folder",
+    "description": null,
     "page": "Storage",
     "section": "Folders",
     "live": false,
@@ -215,6 +226,7 @@ export const SETTINGS = [
       "default": "$AX_DEVIL_TARGET_ADDR"
     },
     "label": "Camera host",
+    "description": null,
     "page": null,
     "section": "",
     "live": true,
@@ -230,6 +242,7 @@ export const SETTINGS = [
       "default": "$AX_DEVIL_TARGET_USER"
     },
     "label": "Camera username",
+    "description": null,
     "page": null,
     "section": "",
     "live": true,
@@ -245,6 +258,7 @@ export const SETTINGS = [
       "default": "$AX_DEVIL_TARGET_PASS"
     },
     "label": "Camera password",
+    "description": null,
     "page": null,
     "section": "",
     "live": true,
@@ -270,6 +284,7 @@ export const SETTINGS = [
       "default": "https"
     },
     "label": "Camera protocol",
+    "description": null,
     "page": null,
     "section": "",
     "live": true,
@@ -287,6 +302,7 @@ export const SETTINGS = [
       "default": 1
     },
     "label": "Camera head",
+    "description": null,
     "page": null,
     "section": "",
     "live": true,
@@ -304,6 +320,7 @@ export const SETTINGS = [
       "default": 554
     },
     "label": "RTSP port",
+    "description": null,
     "page": null,
     "section": "",
     "live": true,
@@ -319,6 +336,7 @@ export const SETTINGS = [
       "default": ""
     },
     "label": "Resolution",
+    "description": null,
     "page": null,
     "section": "",
     "live": true,
@@ -352,6 +370,7 @@ export const SETTINGS = [
       "default": "datahub"
     },
     "label": "Overlay",
+    "description": null,
     "page": null,
     "section": "",
     "live": true,
@@ -367,6 +386,7 @@ export const SETTINGS = [
       "default": "ONVIF_XML"
     },
     "label": "RTSP overlay format",
+    "description": null,
     "page": null,
     "section": "",
     "live": true,
@@ -384,6 +404,7 @@ export const SETTINGS = [
       "default": 10
     },
     "label": "Connection timeout (seconds)",
+    "description": null,
     "page": null,
     "section": "",
     "live": true,
@@ -403,6 +424,7 @@ export const SETTINGS = [
       "default": []
     },
     "label": "Confirmed references",
+    "description": null,
     "page": null,
     "section": "",
     "live": true,
@@ -418,6 +440,7 @@ export const SETTINGS = [
       "default": "$AX_DEVIL_MQTT_BROKER_ADDR"
     },
     "label": "MQTT host",
+    "description": null,
     "page": null,
     "section": "",
     "live": true,
@@ -433,6 +456,7 @@ export const SETTINGS = [
       "default": "$AX_DEVIL_MQTT_BROKER_USER"
     },
     "label": "MQTT username",
+    "description": null,
     "page": null,
     "section": "",
     "live": true,
@@ -448,6 +472,7 @@ export const SETTINGS = [
       "default": "$AX_DEVIL_MQTT_BROKER_PASS"
     },
     "label": "MQTT password",
+    "description": null,
     "page": null,
     "section": "",
     "live": true,
@@ -465,6 +490,7 @@ export const SETTINGS = [
       "default": 1883
     },
     "label": "MQTT port",
+    "description": null,
     "page": null,
     "section": "",
     "live": true,
@@ -480,6 +506,7 @@ export const SETTINGS = [
       "default": "com.axis.scene.frame.v1#1"
     },
     "label": "MQTT data source",
+    "description": null,
     "page": null,
     "section": "",
     "live": true,
@@ -495,6 +522,7 @@ export const SETTINGS = [
       "default": "ADF_V1_FRAME"
     },
     "label": "MQTT overlay format",
+    "description": null,
     "page": null,
     "section": "",
     "live": true,
@@ -510,6 +538,7 @@ export const SETTINGS = [
       "default": "com.axis.scene.frame.v1"
     },
     "label": "DataHub topic",
+    "description": null,
     "page": null,
     "section": "",
     "live": true,
@@ -527,6 +556,7 @@ export const SETTINGS = [
       "default": 1
     },
     "label": "DataHub channel",
+    "description": null,
     "page": null,
     "section": "",
     "live": true,
@@ -542,6 +572,7 @@ export const SETTINGS = [
       "default": "ADF_V1_FRAME"
     },
     "label": "DataHub overlay format",
+    "description": null,
     "page": null,
     "section": "",
     "live": true,
@@ -557,6 +588,7 @@ export const SETTINGS = [
       "default": true
     },
     "label": "Scan on startup",
+    "description": null,
     "page": null,
     "section": "",
     "live": true,
@@ -572,6 +604,7 @@ export const SETTINGS = [
       "default": true
     },
     "label": "Sign in to found cameras",
+    "description": null,
     "page": null,
     "section": "",
     "live": true,
@@ -587,6 +620,7 @@ export const SETTINGS = [
       "default": "192.168.1.0/24"
     },
     "label": "Scan range",
+    "description": null,
     "page": null,
     "section": "",
     "live": true,
@@ -611,6 +645,7 @@ export const SETTINGS = [
       ]
     },
     "label": "Scan logins",
+    "description": null,
     "page": null,
     "section": "",
     "live": true,
@@ -628,259 +663,296 @@ export const COMMANDS = [
     "label": "New Workspace",
     "category": "Application",
     "key": null,
-    "repeats": false
+    "repeats": false,
+    "description": null
   },
   {
     "id": "open-workspace",
     "label": "Open Workspace",
     "category": "Application",
     "key": "Ctrl+O",
-    "repeats": false
+    "repeats": false,
+    "description": null
   },
   {
     "id": "save-workspace",
     "label": "Save Workspace",
     "category": "Application",
     "key": "Ctrl+S",
-    "repeats": false
+    "repeats": false,
+    "description": null
   },
   {
     "id": "save-workspace-as",
     "label": "Save Workspace As",
     "category": "Application",
     "key": "Ctrl+Shift+S",
-    "repeats": false
+    "repeats": false,
+    "description": null
   },
   {
     "id": "add-video",
     "label": "Add Video",
     "category": "Application",
     "key": "Ctrl+N",
-    "repeats": false
+    "repeats": false,
+    "description": null
   },
   {
     "id": "add-live-stream",
     "label": "Add Live Stream",
     "category": "Application",
     "key": "Ctrl+L",
-    "repeats": false
+    "repeats": false,
+    "description": null
   },
   {
     "id": "add-playlist",
     "label": "Add Playlist",
     "category": "Application",
     "key": "Ctrl+Shift+N",
-    "repeats": false
+    "repeats": false,
+    "description": null
   },
   {
     "id": "keyboard-shortcuts",
     "label": "Keyboard Shortcuts",
     "category": "Application",
     "key": "Ctrl+K",
-    "repeats": false
+    "repeats": false,
+    "description": null
   },
   {
     "id": "settings",
     "label": "Settings",
     "category": "Application",
     "key": "Ctrl+,",
-    "repeats": false
+    "repeats": false,
+    "description": null
   },
   {
     "id": "exit",
     "label": "Exit",
     "category": "Application",
     "key": "Ctrl+Q",
-    "repeats": false
+    "repeats": false,
+    "description": null
   },
   {
     "id": "fullscreen",
     "label": "Fullscreen",
     "category": "View",
     "key": "F11",
-    "repeats": false
+    "repeats": false,
+    "description": null
   },
   {
     "id": "lane-fullscreen",
     "label": "Toggle Lane Fullscreen",
     "category": "View",
     "key": "F",
-    "repeats": false
+    "repeats": false,
+    "description": null
   },
   {
     "id": "zoom-in",
     "label": "Zoom In",
     "category": "View",
     "key": "=",
-    "repeats": true
+    "repeats": true,
+    "description": null
   },
   {
     "id": "zoom-out",
     "label": "Zoom Out",
     "category": "View",
     "key": "-",
-    "repeats": true
+    "repeats": true,
+    "description": null
   },
   {
     "id": "zoom-reset",
     "label": "Reset Zoom",
     "category": "View",
     "key": "0",
-    "repeats": false
+    "repeats": false,
+    "description": null
   },
   {
     "id": "media-tools",
     "label": "Toggle Media Tools Panel",
     "category": "View",
     "key": "Ctrl+B",
-    "repeats": false
+    "repeats": false,
+    "description": null
   },
   {
     "id": "sidebar",
     "label": "Sidebar",
     "category": "View",
     "key": "Ctrl+\\",
-    "repeats": false
+    "repeats": false,
+    "description": null
   },
   {
     "id": "play-pause",
     "label": "Play / Pause",
     "category": "Playback",
     "key": "Space",
-    "repeats": false
+    "repeats": false,
+    "description": null
   },
   {
     "id": "step-forward",
     "label": "Step Forward 1 Frame",
     "category": "Playback",
     "key": ".",
-    "repeats": true
+    "repeats": true,
+    "description": null
   },
   {
     "id": "step-back",
     "label": "Step Backward 1 Frame",
     "category": "Playback",
     "key": ",",
-    "repeats": true
+    "repeats": true,
+    "description": null
   },
   {
     "id": "step-forward-10",
     "label": "Step Forward 10 Frames",
     "category": "Playback",
     "key": "Right",
-    "repeats": true
+    "repeats": true,
+    "description": null
   },
   {
     "id": "step-back-10",
     "label": "Step Backward 10 Frames",
     "category": "Playback",
     "key": "Left",
-    "repeats": true
+    "repeats": true,
+    "description": null
   },
   {
     "id": "previous-entry",
     "label": "Previous Playlist Entry",
     "category": "Navigation",
     "key": "Ctrl+Left",
-    "repeats": false
+    "repeats": false,
+    "description": null
   },
   {
     "id": "next-entry",
     "label": "Next Playlist Entry",
     "category": "Navigation",
     "key": "Ctrl+Right",
-    "repeats": false
+    "repeats": false,
+    "description": null
   },
   {
     "id": "speed-up",
     "label": "Playback Speed Up",
     "category": "Playback",
     "key": "]",
-    "repeats": true
+    "repeats": true,
+    "description": null
   },
   {
     "id": "speed-down",
     "label": "Playback Speed Down",
     "category": "Playback",
     "key": "[",
-    "repeats": true
+    "repeats": true,
+    "description": null
   },
   {
     "id": "lane-names",
     "label": "Show Lane Names",
     "category": "View",
     "key": null,
-    "repeats": false
+    "repeats": false,
+    "description": "Name each video lane; names hide while frame info is shown."
   },
   {
     "id": "object-details",
     "label": "Object Hover and Click Details",
     "category": "View",
     "key": null,
-    "repeats": false
+    "repeats": false,
+    "description": "Name the object under the pointer; click to select it and open its page."
   },
   {
     "id": "info-overlay",
     "label": "Toggle Info Overlay",
     "category": "View",
     "key": "I",
-    "repeats": false
+    "repeats": false,
+    "description": null
   },
   {
     "id": "add-bookmark",
     "label": "Add Bookmark",
     "category": "View",
     "key": "M",
-    "repeats": false
+    "repeats": false,
+    "description": null
   },
   {
     "id": "export-video",
     "label": "Export Video",
     "category": "View",
     "key": "Ctrl+E",
-    "repeats": false
+    "repeats": false,
+    "description": null
   },
   {
     "id": "render-catalogs",
     "label": "Render Catalogs",
     "category": "View",
     "key": "Ctrl+R",
-    "repeats": false
+    "repeats": false,
+    "description": null
   },
   {
     "id": "debug-metrics",
     "label": "Debug Metrics",
     "category": "Application",
     "key": "Ctrl+D",
-    "repeats": false
+    "repeats": false,
+    "description": null
   },
   {
     "id": "plugins",
     "label": "Plugins",
     "category": "Application",
     "key": null,
-    "repeats": false
+    "repeats": false,
+    "description": null
   },
   {
     "id": "collect-metrics",
     "label": "Collect Debug Metrics",
     "category": "Application",
     "key": null,
-    "repeats": false
+    "repeats": false,
+    "description": null
   },
   {
     "id": "quick-setup",
     "label": "Quick Setup",
     "category": "Application",
     "key": null,
-    "repeats": false
+    "repeats": false,
+    "description": null
   },
   {
     "id": "about",
     "label": "About",
     "category": "Application",
     "key": null,
-    "repeats": false
+    "repeats": false,
+    "description": null
   }
 ] as const;
 

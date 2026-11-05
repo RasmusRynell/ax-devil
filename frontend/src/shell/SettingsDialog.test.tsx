@@ -8,6 +8,7 @@ const row = vi.hoisted(() => (key: string, kind: object, over: object) => ({
   key,
   kind,
   label: key,
+  description: null,
   page: "General",
   section: "Appearance",
   live: true,
@@ -21,7 +22,7 @@ const row = vi.hoisted(() => (key: string, kind: object, over: object) => ({
 vi.mock(import("../generated/settings"), async (original) => ({
   ...(await original()),
   SETTINGS: [
-    row("t.flag", { type: "bool", default: false }, { label: "Flag" }),
+    row("t.flag", { type: "bool", default: false }, { label: "Flag", description: "Flags it." }),
     row("t.hidden", { type: "bool", default: false }, { page: null }),
     row(
       "t.size",
@@ -79,11 +80,15 @@ describe("settings dialog", () => {
       "Network",
     ]);
     expect(screen.getByRole("heading", { name: "Appearance" })).toBeTruthy();
-    expect(screen.getByLabelText("Flag")).toBeTruthy();
+    expect(screen.getByLabelText("Flag").closest("[title]")?.getAttribute("title")).toBe(
+      "Flags it.",
+    );
     expect(screen.queryByText("t.hidden")).toBeNull();
 
     fireEvent.click(screen.getByRole("tab", { name: "Network" }));
     const token = screen.getByLabelText("Token") as HTMLInputElement;
+    // A control's tooltip is its description, else its key.
+    expect(token.closest("[title]")?.getAttribute("title")).toBe("t.token");
     expect(token.type).toBe("password");
     const warning = screen.getByText(/^Saved as plain text/);
     expect(warning.textContent).toBe(

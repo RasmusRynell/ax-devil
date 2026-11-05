@@ -6,7 +6,10 @@
 
 use std::collections::BTreeMap;
 
-use crate::Error;
+use crate::{
+    Error,
+    table::{LANE_NAMES_DESCRIPTION, OBJECT_DETAILS_DESCRIPTION},
+};
 use serde::Serialize;
 
 /// The group a command is listed under in the shortcuts dialog.
@@ -35,6 +38,8 @@ pub struct Command {
     pub key: Option<&'static str>,
     /// Whether holding the key repeats the command.
     pub repeats: bool,
+    /// What the command does, shown as its menu item's tooltip; `None` shows none.
+    pub description: Option<&'static str>,
 }
 
 const fn command(
@@ -50,6 +55,15 @@ const fn command(
         category,
         key,
         repeats,
+        description: None,
+    }
+}
+
+/// `command` with a tooltip.
+const fn described(command: Command, description: &'static str) -> Command {
+    Command {
+        description: Some(description),
+        ..command
     }
 }
 
@@ -207,13 +221,19 @@ pub const COMMANDS: &[Command] = &[
         Some("["),
         true,
     ),
-    command("lane-names", "Show Lane Names", Category::View, None, false),
-    command(
-        "object-details",
-        "Object Hover and Click Details",
-        Category::View,
-        None,
-        false,
+    described(
+        command("lane-names", "Show Lane Names", Category::View, None, false),
+        LANE_NAMES_DESCRIPTION,
+    ),
+    described(
+        command(
+            "object-details",
+            "Object Hover and Click Details",
+            Category::View,
+            None,
+            false,
+        ),
+        OBJECT_DETAILS_DESCRIPTION,
     ),
     command(
         "info-overlay",

@@ -23,6 +23,8 @@ type KindTag =
 export interface Row {
   readonly key: SettingKey;
   readonly label: string;
+  /** What the setting does, or `null`. */
+  readonly description: string | null;
   readonly kind: {
     readonly type: KindTag;
     readonly options?: readonly (readonly [string, string])[];

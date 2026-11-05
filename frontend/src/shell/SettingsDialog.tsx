@@ -59,7 +59,11 @@ export function SettingsDialog({
                 const warning = literalSecret(row, draft[row.key]);
                 const note = `${panel}-${row.key}`;
                 return (
-                  <div key={row.key} className="flex flex-col gap-xs">
+                  <div
+                    key={row.key}
+                    title={row.description ?? row.key}
+                    className="flex flex-col gap-xs"
+                  >
                     <SettingField
                       row={row}
                       value={draft[row.key]}

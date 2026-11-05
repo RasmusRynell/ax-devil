@@ -183,6 +183,7 @@ export function menusFor(
             kind: "action",
             id: `${RECENT_ID}${path}`,
             label: recentLabel(name),
+            tip: path,
             disabled: !allowed.host,
           }));
           return [
@@ -201,6 +202,7 @@ export function menusFor(
             kind: item.kind,
             id: item.id,
             label: command(item.id).label,
+            tip: command(item.id).description ?? undefined,
             shortcut: shortcuts[item.id] ?? undefined,
             disabled: !allowed[SCOPES[item.id]],
           },
