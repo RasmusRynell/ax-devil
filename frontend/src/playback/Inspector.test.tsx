@@ -128,12 +128,6 @@ describe("inspector", () => {
     expect(screen.queryByText("Loading…")).toBeNull();
   });
 
-  it("keeps the previous fields while the next sample's are on their way", () => {
-    show(ready(FIELDS, "loading"));
-    expect(screen.getByText("Loading…")).toBeTruthy();
-    expect(group("Classification")).toBeTruthy();
-  });
-
   it("says why an absent object has no attributes, and not while it is in the frame", () => {
     const note = "Attributes are only available while an object is in the frame.";
     show({ state: "absent", selection: SELECTION, reason: "gone", last: SUMMARY });

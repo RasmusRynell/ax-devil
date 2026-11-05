@@ -76,8 +76,8 @@ function whenOf(appearance: Appearance | null, jumps: Jumps | null, reach: Reach
 
 /**
  * The body of an object's page: its class, details and motion from the sample on screen at once, then every field
- * the backend knows of it, in groups, the pinned ones first. While a sample's fields are on their way the last ones
- * stay, under `Loading…`. An object that is not in the frame offers to go to where it was last and will next be. The
+ * the backend knows of it, in groups, the pinned ones first. While a sample's fields are on their way there are none,
+ * under `Loading…`. An object that is not in the frame offers to go to where it was last and will next be. The
  * page's header, which names the object, is the panel's.
  */
 export function Inspector({
@@ -97,8 +97,8 @@ export function Inspector({
   const absent = inspection.state === "absent";
   const summarized = absent ? inspection.last : inspection.summary;
   const fields = absent ? NO_FIELDS : inspection.fields;
-  // Before any fields arrive nothing is known, so no pin could say whether its field is missing.
-  const unknown = inspection.state === "loading" && fields.length === 0;
+  // Until the sample's fields arrive nothing is known, so no pin could say whether its field is missing.
+  const unknown = inspection.state === "loading";
   const motion = absent ? null : inspection.summary.motion;
   const truncated = !absent && inspection.truncated;
   const { frame, seek } = reach;

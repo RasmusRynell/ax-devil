@@ -4,7 +4,8 @@
  * one `Inspect` request per (source, data revision, sample, object): asking for a newer sample supersedes a request
  * still out (the backend keeps only the newest), and the last 16 replies are kept. A request whose reply never
  * comes (the backend may drop one) is asked again when its sample is wanted again, or after RESEND_AFTER draws.
- * Nothing is asked while no inspector page shows; the selection is kept and asked about when one does.
+ * Nothing is asked while no inspector page shows; the selection is kept and asked about when one does. The fields
+ * shown are always those of the sample the summary is of: while its reply is out, there are none.
  */
 
 import { MOTION_STATES } from "../present/columns";
@@ -87,13 +88,6 @@ export class Inspections {
   #visible = true;
   /** Whether a connection opened and no frame of its data has been drawn yet: nothing is asked until one is. */
   #awaiting = false;
-  /** The fields last shown, which stay until the shown sample's reply replaces them. */
-  #fields: {
-    source: number;
-    entity: string;
-    fields: readonly FieldWire[];
-    truncated: boolean;
-  } | null = null;
   /** The summary last shown of the selected object, which an absent view keeps showing. */
   #last: Summary | null = null;
   /** The sample the view was last made for, so that drawing the same one again costs nothing. */
@@ -121,7 +115,6 @@ export class Inspections {
       selection?.entity !== this.#selection?.entity ||
       selection?.source !== this.#selection?.source
     ) {
-      this.#fields = null;
       this.#last = null;
     }
     this.#selection = selection;
@@ -278,23 +271,17 @@ export class Inspections {
     const key = keyOf(frame.source, frame.dataRevision, frame.sample, selection.entity);
     this.#wanted = key;
     const reply = this.#cache.get(key);
-    if (reply?.state === "Found")
-      this.#fields = {
-        source: selection.source,
-        entity: selection.entity,
-        fields: reply.fields,
-        truncated: reply.truncated,
-      };
     if (reply?.state === "Absent")
       return { state: "absent", selection, reason: "gone", last: summary };
     this.#ask(frame, selection.entity);
-    const held = this.#fields;
+    // Fields are those of the sample the summary is of, or none: never the preceding sample's.
+    const found = reply?.state === "Found" ? reply : null;
     return {
       state: reply ? "ready" : this.#refused?.key === key ? "unavailable" : "loading",
       selection,
       summary,
-      fields: held?.fields ?? NO_FIELDS,
-      truncated: held?.truncated ?? false,
+      fields: found?.fields ?? NO_FIELDS,
+      truncated: found?.truncated ?? false,
     };
   }
 }

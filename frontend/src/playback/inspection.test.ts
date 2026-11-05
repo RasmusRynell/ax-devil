@@ -113,16 +113,18 @@ describe("inspections", () => {
     expect(samples()).toEqual([1, 2, 3]);
   });
 
-  it("keeps the last fields under loading until the shown sample's reply replaces them", () => {
+  it("withholds the fields of the preceding sample while the shown sample's reply is out", () => {
     const { inspections } = setup();
     inspections.follow([frame(1)]);
     inspections.select(SELECTION);
     inspections.receive(reply(1, found(CLASS)));
     inspections.follow([frame(2)]);
-    expect(inspections.view).toMatchObject({ state: "loading", fields: [CLASS] });
-    // Another object has none of them.
-    inspections.select({ ...SELECTION, entity: "9" });
     expect(inspections.view).toMatchObject({ state: "loading", fields: [] });
+    // A late reply for the preceding sample is not sample 2's fields.
+    inspections.receive(reply(1, found({ ...CLASS, value: "bus" })));
+    expect(inspections.view).toMatchObject({ state: "loading", fields: [] });
+    inspections.receive(reply(2, found({ ...CLASS, value: "truck" })));
+    expect(inspections.view).toMatchObject({ state: "ready", fields: [{ value: "truck" }] });
   });
 
   it("answers from the last 16 replies without asking", () => {
