@@ -160,6 +160,32 @@ describe("video viewer objects", () => {
     expect(info()).toBeNull();
   });
 
+  it("ends a frame info taller than its room in a row of ellipsis", async () => {
+    // jsdom lays nothing out: the HUD box ends at 50 and its lines, in order, at 10, 20, 30; the fifth is the heading of Frame
+    const bottom = vi
+      .spyOn(Element.prototype, "getBoundingClientRect")
+      .mockImplementation(function (this: Element) {
+        const lines = [...document.querySelectorAll("[data-line]")];
+        return {
+          bottom: this.tagName === "SECTION" ? 50 : (lines.indexOf(this) + 1) * 10,
+        } as DOMRect;
+      });
+    const { run } = await mount();
+    act(() =>
+      sockets.at(-1)?.({ type: "envelope", envelope: { kind: "frame", frame: videoFrame(0) } }),
+    );
+    flushFrames();
+    run("info-overlay");
+    const lines = [...document.querySelectorAll("[data-line]:not(.invisible)")];
+    expect(lines.map((line) => line.textContent)).toEqual([
+      "Timing",
+      "Unit: microseconds",
+      "Status: NO OVERLAY",
+      "…",
+    ]);
+    bottom.mockRestore();
+  });
+
   it("opens and closes the media tools by their command or their button", async () => {
     const { run } = await mount();
     const shown = () => screen.queryByRole("complementary", { name: "Media tools" });

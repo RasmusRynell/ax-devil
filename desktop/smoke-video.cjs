@@ -11,6 +11,7 @@ const {
   frames,
   goToFrame,
   page,
+  setView,
   until,
 } = require("./smoke-kit.cjs");
 
@@ -32,6 +33,68 @@ module.exports.pauseAtStart = async (window) => {
   }
   await goToFrame(window, 0);
 };
+
+/**
+ * Runs in the page: how the open frame info sits in its room, as readable problems, and whether it is cut. Every line in
+ * sight lies whole inside the HUD's padding box, the last one of a cut HUD is the standalone `…` row and no heading
+ * is last in sight, the first row left out really has no room, and the HUD stays inside the video pane.
+ */
+function infoHud() {
+  const hud = document.querySelector('[aria-label$="frame info"]');
+  const pane = hud?.closest("[data-chrome-idle]");
+  if (!pane) return { problems: ["the frame info is not in a video pane"], cut: false };
+  const problems = [];
+  const style = getComputedStyle(hud);
+  const box = hud.getBoundingClientRect();
+  const room = {
+    top: box.top + parseFloat(style.paddingTop),
+    bottom: box.bottom - parseFloat(style.paddingBottom),
+  };
+  const lines = [...hud.querySelectorAll("[data-line]")];
+  const seen = lines.filter((line) => getComputedStyle(line).visibility !== "hidden");
+  const left = lines.filter((line) => !seen.includes(line));
+  for (const line of seen) {
+    const { top, bottom } = line.getBoundingClientRect();
+    if (top < room.top - 1 || bottom > room.bottom + 1)
+      problems.push(
+        `half cut: "${line.textContent}" at ${top}-${bottom} in ${room.top}-${room.bottom}`,
+      );
+  }
+  const last = seen.at(-1);
+  if (!last) problems.push("no line in sight");
+  else if (last.dataset.line === "heading")
+    problems.push(`heading last in sight: "${last.textContent}"`);
+  if (left.length > 0 && last?.textContent !== "…")
+    problems.push(`cut, but the last line in sight is "${last?.textContent}"`);
+  if (left.length === 0 && seen.some((line) => line.textContent === "…"))
+    problems.push("a row of … with nothing left out");
+  const next = left.find((line) => line.dataset.line === "row");
+  if (next && next.getBoundingClientRect().bottom <= room.bottom - 1)
+    problems.push(`left out with room: "${next.textContent}"`);
+  const into = pane.getBoundingClientRect();
+  if (
+    box.left < into.left - 1 ||
+    box.right > into.right + 1 ||
+    box.top < into.top - 1 ||
+    box.bottom > into.bottom + 1
+  )
+    problems.push("the frame info is outside the video pane");
+  return { problems, cut: left.length > 0 };
+}
+
+/**
+ * Waits for the frame info to settle after a change of view (a missed measurement stays missed, so the last check is
+ * the answer), then asserts it fits. Returns whether it is cut.
+ */
+async function expectInfoHud(window, what) {
+  let found;
+  for (let i = 0; i < 30; i++) {
+    found = await page(window).js(`(${infoHud.toString()})()`);
+    if (found.problems.length === 0) return found.cut;
+    await delay(100);
+  }
+  assert.deepEqual(found.problems, [], `The frame info must fit ${what}`);
+}
 
 module.exports.video = async (window) => {
   const { js, wait } = page(window);
@@ -146,6 +209,32 @@ async function fullscreen(window) {
       await key("Escape");
       await wait("!document.fullscreenElement");
     }
+    const info = "document.querySelector('[aria-label$=\"frame info\"]')";
+    await key("I");
+    await wait(info);
+    await shoot(`video-info-${theme}.png`);
+    assert.equal(await expectInfoHud(window, `the 1100x720 window in the ${theme} theme`), false);
+    // The frame info stays open while the window shrinks to its minimum and zooms to 200%, with the sidebar closed.
+    await js("document.querySelector('[aria-label=Workspace]').click()");
+    for (const zoom of [1, 2]) {
+      await setView(window, [640, 480], zoom);
+      const cut = await expectInfoHud(
+        window,
+        `the 640x480 window at ${zoom * 100}% zoom in the ${theme} theme`,
+      );
+      // Only the smallest view cannot hold every row, which is the case the cut is for.
+      if (zoom === 2)
+        assert.equal(cut, true, "The frame info is cut at 200% zoom in the smallest window");
+      await shoot(`video-info-min-${theme}${zoom === 1 ? "" : "-200"}.png`);
+    }
+    await setView(window, [1100, 720], 1);
+    await js("document.querySelector('[aria-label=Workspace]').click()");
+    assert.equal(
+      await expectInfoHud(window, `the 1100x720 window again in the ${theme} theme`),
+      false,
+    );
+    await key("I");
+    await wait(`!${info}`);
     // A right click on the picture offers the lane's commands, each with its key.
     const { x, y } = await js(
       "(() => { const r = document.querySelector('canvas').getBoundingClientRect(); return { x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height / 3) }; })()",

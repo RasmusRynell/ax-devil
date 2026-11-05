@@ -111,3 +111,17 @@ export function hudSections(
     },
   ];
 }
+
+/**
+ * How many of the HUD's lines (headings and rows, in order) fit above `limit`: the leading run whose `bottom` does, less
+ * a heading left with no row under it.
+ */
+export function linesFit(
+  lines: readonly { heading: boolean; bottom: number }[],
+  limit: number,
+): number {
+  let count = lines.findIndex((line) => line.bottom > limit);
+  if (count < 0) return lines.length;
+  if (count > 0 && lines[count - 1].heading) count -= 1;
+  return count;
+}
