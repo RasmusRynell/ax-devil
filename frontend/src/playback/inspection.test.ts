@@ -40,7 +40,11 @@ const frame = (
     ...style,
   }) as LaneFrame;
 
-const CLASS: FieldWire = { group: "classification", path: ["class"], value: "car" };
+const CLASS: FieldWire = {
+  group: "classification",
+  path: ["class"],
+  value: { kind: "text", value: "car" },
+};
 const found = (...fields: FieldWire[]): InspectionWire => ({
   state: "Found",
   fields,
@@ -106,8 +110,11 @@ describe("inspections", () => {
     // A late reply for a sample no longer shown is kept but not shown.
     expect(inspections.receive(reply(1, found(CLASS)))).toBe(false);
     expect(inspections.view.state).toBe("loading");
-    inspections.receive(reply(3, found({ ...CLASS, value: "bus" })));
-    expect(inspections.view).toMatchObject({ state: "ready", fields: [{ value: "bus" }] });
+    inspections.receive(reply(3, found({ ...CLASS, value: { kind: "text", value: "bus" } })));
+    expect(inspections.view).toMatchObject({
+      state: "ready",
+      fields: [{ value: { kind: "text", value: "bus" } }],
+    });
     inspections.follow([frame(1)]);
     expect(inspections.view.state).toBe("ready");
     expect(samples()).toEqual([1, 2, 3]);
@@ -126,12 +133,14 @@ describe("inspections", () => {
       fields: [CLASS],
     });
     // A late reply for the preceding sample changes nothing.
-    expect(inspections.receive(reply(1, found({ ...CLASS, value: "bus" })))).toBe(false);
-    inspections.receive(reply(2, found({ ...CLASS, value: "truck" })));
+    expect(
+      inspections.receive(reply(1, found({ ...CLASS, value: { kind: "text", value: "bus" } }))),
+    ).toBe(false);
+    inspections.receive(reply(2, found({ ...CLASS, value: { kind: "text", value: "truck" } })));
     expect(inspections.view).toMatchObject({
       state: "ready",
       summary: { score: 0.5 },
-      fields: [{ value: "truck" }],
+      fields: [{ value: { kind: "text", value: "truck" } }],
     });
     // A frame without the object shows its own state, and nothing held comes back after it.
     inspections.follow([frame(3, withoutCar)]);
@@ -269,7 +278,7 @@ describe("inspections", () => {
     const asked = sent.at(-1);
     expect(asked).toMatchObject({ type: "Inspect", source: 1, entity: "7" });
     // The first source's reply is a different request.
-    inspections.receive(reply(0, found({ ...CLASS, value: "bus" })));
+    inspections.receive(reply(0, found({ ...CLASS, value: { kind: "text", value: "bus" } })));
     expect(inspections.view).toMatchObject({ state: "loading", fields: [] });
     inspections.receive({ ...reply(0, { state: "Unavailable" }), source: 1 });
     expect(inspections.view).toMatchObject({ state: "unavailable", fields: [] });

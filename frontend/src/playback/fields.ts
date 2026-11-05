@@ -1,4 +1,4 @@
-import type { FieldGroupWire, FieldWire } from "./protocol";
+import type { FieldGroupWire, FieldWire, LeafWire } from "./protocol";
 
 /** The groups in display order, with their headings. */
 const GROUPS: readonly (readonly [FieldGroupWire, string])[] = [
@@ -66,7 +66,7 @@ const idLine = (entity: string): Line => ({
   key: "id",
   id: null,
   label: "id",
-  value: entity,
+  value: { kind: "text", value: entity },
   elide: "middle",
 });
 
@@ -189,15 +189,21 @@ export function inspectorLines(
   return { pinned, lines: [idLine(entity), ...groups] };
 }
 
-/** What the row shows: whole numbers as they are, others to four significant digits (one decimal from 10 000). */
-export function displayValue(value: FieldWire["value"]): string {
-  if (typeof value !== "number" || Number.isInteger(value)) return String(value);
+/** All of a leaf as text: an integer's digits as they are, a float as JavaScript prints it, null as "null". */
+export function leafText(leaf: LeafWire): string {
+  return leaf.kind === "null" ? "null" : String(leaf.value);
+}
+
+/** What the row shows: integers and other leaves in full, floats to four significant digits (one decimal from 10 000). */
+export function displayValue(leaf: LeafWire): string {
+  if (leaf.kind !== "float" || Number.isInteger(leaf.value)) return leafText(leaf);
+  const { value } = leaf;
   return Math.abs(value) >= 1e4 ? value.toFixed(1) : String(Number(value.toPrecision(4)));
 }
 
 /** What copying a field puts on the clipboard: all of its value, then ` #rrggbb` for a colour field. */
 export const copyValue = ({ value, rgb }: Pick<FieldWire, "value" | "rgb">): string =>
-  rgb ? `${value} ${hexOf(rgb)}` : String(value);
+  rgb ? `${leafText(value)} ${hexOf(rgb)}` : leafText(value);
 
 /** `#rrggbb`, in lowercase. */
 export const hexOf = (rgb: readonly number[]): string =>
@@ -216,7 +222,13 @@ export function rawJson(fields: readonly FieldWire[]): string {
     let key = dotted;
     for (let copy = 2; keys.has(key); copy++) key = `${dotted} (${copy})`;
     keys.add(key);
-    body.push(`  ${JSON.stringify(key)}: ${JSON.stringify(field.value)}`);
+    // An integer is written as its digits, not through a number, so it stays exact beyond 2^53.
+    const { value } = field;
+    const json =
+      value.kind === "int"
+        ? value.value
+        : JSON.stringify(value.kind === "null" ? null : value.value);
+    body.push(`  ${JSON.stringify(key)}: ${json}`);
   }
   return body.length === 0 ? "{}" : `{\n${body.join(",\n")}\n}`;
 }

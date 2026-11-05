@@ -24,10 +24,15 @@ const SUMMARY: Summary = {
   motion: "moving",
 };
 const FIELDS: FieldWire[] = [
-  { group: "classification", path: ["class"], value: "car" },
-  { group: "debug", origin: "source", path: ["debug", "frame"], value: 12 },
-  { group: "debug", origin: "decoder", path: ["flags", "0"], value: true },
-  { group: "raw", path: ["note"], value: null },
+  { group: "classification", path: ["class"], value: { kind: "text", value: "car" } },
+  {
+    group: "debug",
+    origin: "source",
+    path: ["debug", "frame"],
+    value: { kind: "int", value: "12" },
+  },
+  { group: "debug", origin: "decoder", path: ["flags", "0"], value: { kind: "bool", value: true } },
+  { group: "raw", path: ["note"], value: { kind: "null" } },
 ];
 
 type Shown = Exclude<InspectionView, { state: "none" }>;
@@ -170,9 +175,15 @@ describe("inspector", () => {
     show(
       ready([
         ...FIELDS,
-        { group: "motion", path: ["speed"], value: 0.123456 },
-        { group: "classification", path: ["score"], value: 0.8712, text: "0.87", fraction: 0.8712 },
-        { group: "raw", path: ["blob"], value: "x".repeat(300) },
+        { group: "motion", path: ["speed"], value: { kind: "float", value: 0.123456 } },
+        {
+          group: "classification",
+          path: ["score"],
+          value: { kind: "float", value: 0.8712 },
+          text: "0.87",
+          fraction: 0.8712,
+        },
+        { group: "raw", path: ["blob"], value: { kind: "text", value: "x".repeat(300) } },
       ]),
     );
     expect(screen.getByText("0.1235")).toBeTruthy();
@@ -195,8 +206,16 @@ describe("inspector", () => {
     vi.stubGlobal("navigator", { clipboard: { writeText } });
     show(
       ready([
-        { group: "classification", path: ["candidates", "car", "score"], value: 0.9 },
-        { group: "classification", path: ["candidates", "car", "score"], value: 0.4 },
+        {
+          group: "classification",
+          path: ["candidates", "car", "score"],
+          value: { kind: "float", value: 0.9 },
+        },
+        {
+          group: "classification",
+          path: ["candidates", "car", "score"],
+          value: { kind: "float", value: 0.4 },
+        },
       ]),
     );
     const copies = screen.getAllByRole("button", { name: "Copy candidates.car.score" });
@@ -206,9 +225,9 @@ describe("inspector", () => {
 
   describe("copy confirmation", () => {
     const FEEDBACK = ready([
-      { group: "classification", path: ["class"], value: "car" },
-      { group: "classification", path: ["kind"], value: "car" },
-      { group: "motion", path: ["speed"], value: 0.5 },
+      { group: "classification", path: ["class"], value: { kind: "text", value: "car" } },
+      { group: "classification", path: ["kind"], value: { kind: "text", value: "car" } },
+      { group: "motion", path: ["speed"], value: { kind: "float", value: 0.5 } },
     ]);
     const without = (path: string) => ({
       ...FEEDBACK,
@@ -305,7 +324,10 @@ describe("inspector", () => {
       expect(copied()).toEqual(["Copied speed"]);
       view.next({
         ...FEEDBACK,
-        fields: [...without("speed").fields, { group: "motion", path: ["speed"], value: 0.75 }],
+        fields: [
+          ...without("speed").fields,
+          { group: "motion", path: ["speed"], value: { kind: "float", value: 0.75 } },
+        ],
       });
       expect(copied()).toEqual([]);
       view.next(FEEDBACK);
@@ -317,7 +339,7 @@ describe("inspector", () => {
         group: "debug",
         origin,
         path: ["x"],
-        value: 7,
+        value: { kind: "int", value: "7" },
       });
       view.next(ready([debug("decoder")]));
       fireEvent.click(group("Debug"));
@@ -345,7 +367,7 @@ describe("inspector", () => {
     expect(pinned.getByText("classification.class")).toBeTruthy();
     expect(pinned.getByText("car")).toBeTruthy();
 
-    view.next(ready([{ group: "motion", path: ["speed"], value: 2 }]));
+    view.next(ready([{ group: "motion", path: ["speed"], value: { kind: "int", value: "2" } }]));
     const missing = within(screen.getByRole("region", { name: "Pinned" }));
     expect(missing.getByText("unavailable")).toBeTruthy();
     expect(missing.queryByRole("button", { name: /^Copy/ })).toBeNull();
@@ -447,7 +469,7 @@ describe("inspector", () => {
     const many = Array.from({ length: 300 }, (_, i) => ({
       group: "motion" as const,
       path: [`m${i}`],
-      value: i,
+      value: { kind: "int" as const, value: String(i) },
     }));
     show(ready(many));
     expect(screen.queryByText("m200")).toBeNull();
