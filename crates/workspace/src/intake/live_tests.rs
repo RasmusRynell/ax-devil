@@ -93,6 +93,28 @@ fn an_empty_form_takes_the_configured_defaults_as_written_and_an_entered_value_w
 }
 
 #[test]
+fn entered_credentials_are_kept_exactly_and_the_resolution_is_the_one_given_or_the_cameras_own() {
+    let mut configured = defaults();
+    configured.resolution = "1280x720".into();
+    let mut new = host("192.0.2.7");
+    new.username = Some(" root ".into());
+    new.password = Some(Secret::new(" p w "));
+    let item = live(new, &configured, &Handlers::built_in()).unwrap();
+    let entered = recipe(&item);
+    assert_eq!(entered.username, " root ");
+    assert_eq!(entered.password.expose(), " p w ");
+    assert_eq!(
+        entered.resolution, None,
+        "a configured resolution is not inherited"
+    );
+
+    let mut new = host("192.0.2.7");
+    new.resolution = Some("640x480".into());
+    let item = live(new, &configured, &Handlers::built_in()).unwrap();
+    assert_eq!(recipe(&item).resolution.as_deref(), Some("640x480"));
+}
+
+#[test]
 fn what_cannot_be_streamed_is_refused_naming_the_field_and_the_python_message() {
     let with = |change: &dyn Fn(&mut NewLive)| {
         let mut new = host("192.0.2.7");
