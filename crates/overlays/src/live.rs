@@ -11,7 +11,7 @@ use std::{
 };
 
 use foundation::{FrameId, MediaTime, Timeline};
-use overlay_sync::{MatchBasis, MatchKind, MatchPolicy, Selection, select};
+use overlay_sync::{MatchBasis, MatchKind, MatchPolicy, Selection, Sticky, select};
 use scene::{Event, Scene};
 use scene_store::{TrackRead, TrackSnapshot};
 use tracing::warn;
@@ -125,9 +125,13 @@ impl LiveLane {
         }
     }
 
-    /// The revision later maps carry: the lane's policy changed.
-    pub fn set_policy_revision(&mut self, revision: u32) {
+    /// The lane's policy changed: later maps carry `revision`, and with sticky off the lane forgets the sample it
+    /// would retain, even while no frame is released to see it.
+    pub fn set_policy(&mut self, revision: u32, sticky: Sticky) {
         self.policy_revision = revision;
+        if !sticky.enabled {
+            self.admitted = None;
+        }
     }
 
     /// The revision the items and maps carry now.
@@ -217,7 +221,8 @@ impl LiveLane {
 
     /// What `selection` leaves of the policy's pick once live synchronization has its say. A sample within the
     /// tolerance is admitted. Sticky retains only the newest admitted sample, never a newer one that missed the
-    /// tolerance and not one that was never admitted, for as long as the sticky timeout allows.
+    /// tolerance and not one that was never admitted, for as long as the sticky timeout allows. With sticky off the
+    /// lane holds none, so turning it back on starts empty until a new sample matches.
     fn synchronized(
         &mut self,
         frame: FrameId,
@@ -225,13 +230,18 @@ impl LiveLane {
         matching: &MatchPolicy,
         selection: Selection,
     ) -> Option<(usize, MatchKind)> {
+        if !matching.sticky.enabled {
+            self.admitted = None;
+        }
         let times = snap.keys.times.as_ref()?;
         let Selection::Sample { index, kind } = selection else {
             return None;
         };
         if kind != MatchKind::Retained {
             let key = times.get(index)?;
-            self.admitted = self.admitted.max(Some(key));
+            if matching.sticky.enabled {
+                self.admitted = self.admitted.max(Some(key));
+            }
             return Some((index, kind));
         }
         let admitted = self.admitted.filter(|&key| key <= frame.timestamp)?;

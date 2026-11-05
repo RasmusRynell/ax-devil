@@ -12,7 +12,7 @@ use handler_api::{
     DecodeError, DecodeSummary, Decoder, Form, Framing, Input, OnEqualKey, Record, SceneSink,
     Settings, Spec, Values,
 };
-use overlay_sync::{MatchPolicy, Tolerance};
+use overlay_sync::{MatchPolicy, Sticky, Tolerance};
 use scene::{
     BoundingBox, Coverage, Entity, EntityId, Event, FilterPolicy, Geometry, MatchBasis,
     Observation, Operation, Scene, SceneTime, TimeSlice,
@@ -313,6 +313,40 @@ fn sticky_keeps_only_a_sample_that_matched_a_frame() {
     assert_eq!(cell(2, 1_200_000), (1, 2));
     // The sticky timeout counts from the admitted sample.
     assert_eq!(cell(3, 3_200_000), (NONE_CELL, 0));
+}
+
+#[test]
+fn sticky_turned_back_on_starts_empty_until_a_new_match() {
+    let track = track_of(&["1000000", "2000000", "3000000"]);
+    let mut lane = lane_over(&track);
+    let sticky = |enabled| Sticky {
+        enabled,
+        ..Sticky::default()
+    };
+    let policy = |enabled| LanePolicy {
+        matching: MatchPolicy {
+            sticky: sticky(enabled),
+            ..MatchPolicy::default()
+        },
+        subscribed: true,
+    };
+    let cell = |lane: &mut LiveLane, n: u64, at: i64, enabled: bool| {
+        let out = lane.release(frame(n, at), &track.snapshot(), &policy(enabled));
+        (out.map.samples[0], out.map.kinds[0])
+    };
+
+    assert_eq!(cell(&mut lane, 0, 1_010_000, true), (0, 1));
+    assert_eq!(cell(&mut lane, 1, 1_500_000, true), (0, 2));
+    // Sticky toggled while no frame is released (a paused viewer) forgets sample 0.
+    lane.set_policy(2, sticky(false));
+    lane.set_policy(3, sticky(true));
+    assert_eq!(cell(&mut lane, 2, 1_600_000, true), (NONE_CELL, 0));
+    // A sample that matches while sticky is off is not kept for when it is on again.
+    assert_eq!(cell(&mut lane, 3, 2_010_000, false), (1, 1));
+    assert_eq!(cell(&mut lane, 4, 2_500_000, true), (NONE_CELL, 0));
+    // A new match is kept again.
+    assert_eq!(cell(&mut lane, 5, 3_010_000, true), (2, 1));
+    assert_eq!(cell(&mut lane, 6, 3_500_000, true), (2, 2));
 }
 
 #[test]
