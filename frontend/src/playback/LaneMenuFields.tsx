@@ -13,6 +13,8 @@ export function NumberField({
   max,
   step,
   placeholder,
+  disabled = false,
+  hideLabel = false,
   onCommit,
 }: {
   label: string;
@@ -22,22 +24,30 @@ export function NumberField({
   step: number;
   /** What an empty field means, when it can be empty. */
   placeholder?: string;
+  disabled?: boolean;
+  /** Another control beside the field already says what it is for; the label then only names it for assistive technology. */
+  hideLabel?: boolean;
   onCommit: (value: number | null) => void;
 }) {
   const id = useId();
   const [draft, setDraft] = useState<string | null>(null);
+  // The field holds no finer a fraction than its step does: whole milliseconds, opacity in hundredths.
+  const decimals = (String(step).split(".")[1] ?? "").length;
   const commit = () => {
     if (draft === null) return;
     setDraft(null);
     const typed = draft.trim() === "" ? null : Number(draft);
     if (typed === null && placeholder === undefined) return;
     if (typed !== null && !Number.isFinite(typed)) return;
-    const next = typed === null ? null : Math.min(max, Math.max(min, typed));
+    const next =
+      typed === null ? null : Number(Math.min(max, Math.max(min, typed)).toFixed(decimals));
     if (next !== value) onCommit(next);
   };
   return (
-    <div className="flex items-center justify-between gap-xl">
-      <label htmlFor={id}>{label}</label>
+    <div className={`flex items-center justify-between gap-s ${disabled ? "text-disabled" : ""}`}>
+      <label htmlFor={id} className={hideLabel ? "sr-only" : undefined}>
+        {label}
+      </label>
       <input
         id={id}
         type="number"
@@ -45,6 +55,7 @@ export function NumberField({
         max={max}
         step={step}
         placeholder={placeholder}
+        disabled={disabled}
         value={draft ?? (value === null ? "" : String(value))}
         onChange={(event) => setDraft(event.target.value)}
         onBlur={commit}

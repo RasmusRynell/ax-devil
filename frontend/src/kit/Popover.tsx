@@ -34,7 +34,8 @@ function within(start: number, size: number, from: number, to: number): number {
 /**
  * Where a panel opens for its button: below it when it fits, else above it when there is more room there, kept inside
  * the nearest ancestor marked with `data-popover-bounds` (the window without one), and no larger than that area, so it
- * scrolls instead of leaving it.
+ * scrolls instead of leaving it. Its height is its content's, not the height it was last capped to, so a placement
+ * made again for the same content comes out the same.
  */
 function placement(button: HTMLElement, panel: HTMLElement): CSSProperties {
   const at = button.getBoundingClientRect();
@@ -46,7 +47,8 @@ function placement(button: HTMLElement, panel: HTMLElement): CSSProperties {
     bottom: window.innerHeight,
   };
   const width = Math.min(panel.offsetWidth, right - left);
-  const height = Math.min(panel.offsetHeight, bottom - top);
+  const natural = panel.scrollHeight + panel.offsetHeight - panel.clientHeight;
+  const height = Math.min(natural, bottom - top);
   // Below the button; above it when it does not fit below and there is more room above.
   const above = height > bottom - at.bottom && at.top - top > bottom - at.bottom;
   const y = within(above ? at.top - height : at.bottom, height, top, bottom);
@@ -72,10 +74,17 @@ export function Popover({ label, trigger, children, onCanvas = false, className 
   const panelId = useId();
   const close = () => setOpen(false);
 
+  // The panel is placed when it opens and again whenever its content changes its size (another tab, a scrollbar).
   useLayoutEffect(() => {
     if (!open) return setPlace(undefined);
-    if (!button.current || !panel.current) return;
-    setPlace(placement(button.current, panel.current));
+    const [trigger, box] = [button.current, panel.current];
+    if (!trigger || !box) return;
+    const update = () => setPlace(placement(trigger, box));
+    update();
+    if (typeof ResizeObserver === "undefined") return;
+    const watch = new ResizeObserver(update);
+    watch.observe(box);
+    return () => watch.disconnect();
   }, [open]);
 
   useOutsidePress(() => root.current, close, open);

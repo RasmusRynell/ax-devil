@@ -59,6 +59,8 @@ export type LaneSettings = {
   basis: BasisWire | null;
   tolerance_ms: number | null;
   sticky: { enabled: boolean; timeout_ms: number | null; opacity: number };
+  /** The last timeout the lane had, which the expiry checkbox restores; read only while `sticky.timeout_ms` is null. */
+  kept_timeout_ms: number;
   visible: boolean;
 };
 
