@@ -63,7 +63,6 @@ in vec4 vFill;
 in vec4 vPen;
 out vec4 color;
 uniform sampler2D page;
-uniform float opacity;
 const float PI = 3.14159265;
 
 // Edge coverage from a signed distance; pixel is the size of one device pixel in shape units.
@@ -134,7 +133,7 @@ void main() {
       ink = (stroke > 0. ? mix(band, vFill, inner) : vFill) * coverage(d, pixel);
     }
   }
-  color = ink * opacity;
+  color = ink;
 }`;
 
 /** Polygon corners, drawn as triangle fans into the stencil and then filled where it is odd. */
@@ -148,3 +147,45 @@ precision mediump float;
 uniform vec4 fill;
 out vec4 color;
 void main() { color = fill; }`;
+
+/** One triangle over the whole target, with no vertex data. */
+export const COMPOSITE_VERTEX = `#version 300 es
+void main() {
+  vec2 corner = vec2(float((gl_VertexID << 1) & 2), float(gl_VertexID & 2));
+  gl_Position = vec4(corner * 2. - 1., 0., 1.);
+}`;
+
+/** Copies a premultiplied layer of the target's size, one texel to one pixel, at `opacity`. */
+export const COMPOSITE_FRAGMENT = `#version 300 es
+precision highp float;
+precision highp sampler2D;
+uniform sampler2D layer;
+uniform float opacity;
+out vec4 color;
+void main() { color = texelFetch(layer, ivec2(gl_FragCoord.xy), 0) * opacity; }`;
+
+/** Compiles and links a program; throws with the driver's log when it cannot. */
+export function compileProgram(
+  gl: WebGL2RenderingContext,
+  vertex: string,
+  fragment: string,
+): WebGLProgram {
+  const created = gl.createProgram();
+  for (const [type, source] of [
+    [gl.VERTEX_SHADER, vertex],
+    [gl.FRAGMENT_SHADER, fragment],
+  ] as const) {
+    const shader = gl.createShader(type);
+    if (!shader) throw new Error("a shader cannot be created");
+    gl.shaderSource(shader, source);
+    gl.compileShader(shader);
+    if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS))
+      throw new Error(gl.getShaderInfoLog(shader) ?? "a shader does not compile");
+    gl.attachShader(created, shader);
+    gl.deleteShader(shader);
+  }
+  gl.linkProgram(created);
+  if (!gl.getProgramParameter(created, gl.LINK_STATUS))
+    throw new Error(gl.getProgramInfoLog(created) ?? "a program does not link");
+  return created;
+}

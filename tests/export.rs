@@ -4,20 +4,12 @@
 
 mod common;
 
-use api_types::playback::{
-    CatalogRefWire, ClientMessage, ExportFormatWire, ExportLaneWire, ExportQualityWire,
-    ExportStateWire,
-};
-use catalogs::Library;
+use api_types::playback::{ExportFormatWire, ExportQualityWire};
 use common::{
-    Backend, Viewer,
-    export_kit::{can_export, finished, read_png, serve_lanes},
+    export_kit::{self, Scene, assert_near, can_export, decoded, read_png, yuv_at},
     fixture,
 };
-use export::LaneStyle;
-use foundation::{CancelToken, VideoFrame};
-use media::{Decoder, FrameIndex, VideoInput};
-use std::{fs, sync::Arc};
+use media::{FrameIndex, VideoInput};
 
 const WIDTH: u32 = 64;
 const HEIGHT: u32 = 48;
@@ -37,129 +29,16 @@ fn outline(color: [u8; 3]) -> String {
     )
 }
 
-/// One owner's viewer of a video whose lanes read `overlays` (a file name, which picks the decoder, and its content,
-/// per lane) and draw with the catalog of the same position in `colors`; the lanes as an export request names them.
-struct Scene {
-    // Serves the viewer until the scene ends.
-    _backend: Backend,
-    viewer: Viewer,
-    lanes: Vec<ExportLaneWire>,
-    out: tempfile::TempDir,
-    _catalogs: tempfile::TempDir,
-}
-
+/// [`scene`](export_kit::scene) with the lanes drawn by `outline` catalogs of `colors`.
 async fn scene(
     video: &str,
-    (width, height): (u32, u32),
+    size: (u32, u32),
     overlays: &[(&str, &str)],
     colors: &[[u8; 3]],
     sticky: bool,
 ) -> Scene {
-    let catalogs = tempfile::tempdir().unwrap();
-    for (n, color) in colors.iter().enumerate() {
-        fs::write(catalogs.path().join(format!("c{n}.json")), outline(*color)).unwrap();
-    }
-    let backend =
-        Backend::start_with_catalogs(Library::with_folder(catalogs.path().to_path_buf())).await;
-    let files: Vec<_> = overlays
-        .iter()
-        .map(|(name, content)| {
-            let path = backend.folder.path().join(name);
-            fs::write(&path, content).unwrap();
-            // Several handlers read .xml; the others are named by their extension. MOT boxes are measured in the
-            // picture's size.
-            let options = if name.ends_with(".txt") {
-                common::mot_options((width, height))
-            } else {
-                Default::default()
-            };
-            (path, name.ends_with(".xml").then_some("ONVIF_XML"), options)
-        })
-        .collect();
-    let added = backend.add_with_handlers(&fixture(video), &files).await;
-    let mut viewer = backend.viewer().await;
-    viewer.open(&added.ticket(), None).await;
-    viewer.opened().await;
-    let ids: Vec<_> = (0..overlays.len())
-        .map(|n| format!("user:c{n}.json"))
-        .collect();
-    let wanted: Vec<_> = ids
-        .iter()
-        .enumerate()
-        .map(|(n, id)| (n as u16, id.as_str()))
-        .collect();
-    let lanes = serve_lanes(&mut viewer, sticky, &wanted)
-        .await
-        .into_iter()
-        .enumerate()
-        .map(|(n, served)| ExportLaneWire {
-            lane: n as u16,
-            catalog: CatalogRefWire {
-                id: ids[n].clone(),
-                revision: served.catalog,
-            },
-            style: LaneStyle {
-                label: format!("Lane {n}"),
-                // As the viewer's menu has them: the file's filters that start on.
-                enabled_classes: (0..served.filter.len() as u32)
-                    .filter(|at| served.filter[*at as usize].default_enabled)
-                    .collect(),
-                class_options: served.filter.len() as u16,
-                hidden: 0,
-                theme: None,
-                retained_opacity: 0.5,
-                filter: None,
-            },
-            policy_revision: 1,
-            data_revision: Some(served.data),
-        })
-        .collect();
-    Scene {
-        _backend: backend,
-        viewer,
-        lanes,
-        out: tempfile::tempdir().unwrap(),
-        _catalogs: catalogs,
-    }
-}
-
-impl Scene {
-    /// Exports frames `first` to `last` as `format` to `name` in the output folder and returns the path once the
-    /// export is done.
-    async fn export(
-        &mut self,
-        first: u64,
-        last: u64,
-        format: ExportFormatWire,
-        name: &str,
-    ) -> std::path::PathBuf {
-        let path = self.out.path().join(name);
-        self.viewer
-            .send(&ClientMessage::Export {
-                job: 1,
-                lanes: self.lanes.clone(),
-                first,
-                last,
-                format,
-                path: path.display().to_string(),
-            })
-            .await;
-        let (_, ended) = finished(&mut self.viewer, 1).await;
-        assert_eq!(ended, ExportStateWire::Done);
-        path
-    }
-}
-
-/// The frames of a video file, decoded, and its index.
-fn decoded(input: &VideoInput) -> (Arc<FrameIndex>, Vec<VideoFrame>) {
-    let index =
-        Arc::new(FrameIndex::load_or_build(input, None, &CancelToken::new(), &mut |_| {}).unwrap());
-    let mut decoder = Decoder::open(input, index.clone(), 1, CancelToken::new()).unwrap();
-    let mut frames = Vec::new();
-    while let Some(frame) = decoder.next_frame().unwrap() {
-        frames.push(frame);
-    }
-    (index, frames)
+    let catalogs: Vec<_> = colors.iter().map(|color| outline(*color)).collect();
+    export_kit::scene(video, size, overlays, &catalogs, sticky).await
 }
 
 /// BT.709 limited range Y, Cb and Cr of an RGB color, as H.264 stores a picture that way.
@@ -172,25 +51,6 @@ fn yuv709(rgb: [u8; 3]) -> [i32; 3] {
         to_8_bit((b - y) / 1.8556, 128.0, 224.0),
         to_8_bit((r - y) / 1.5748, 128.0, 224.0),
     ]
-}
-
-/// The Y, Cb and Cr samples of pixel (x, y) of a 4:2:0 frame.
-fn yuv_at(frame: &VideoFrame, x: usize, y: usize) -> [i32; 3] {
-    let planes = frame.layout().planes;
-    let at = |plane: usize, x: usize, y: usize| {
-        i32::from(frame.plane(plane)[y * planes[plane].stride as usize + x])
-    };
-    [at(0, x, y), at(1, x / 2, y / 2), at(2, x / 2, y / 2)]
-}
-
-/// Asserts the sample triple is within `by` of `want` in every component.
-fn assert_near(got: [i32; 3], want: [i32; 3], by: i32, what: &str) {
-    assert!(
-        got.iter()
-            .zip(want)
-            .all(|(got, want)| (got - want).abs() <= by),
-        "{what}: {got:?} is not within {by} of {want:?}"
-    );
 }
 
 /// The times of the frames of `index` from `first` to `last`, relative to the first of them.
