@@ -55,6 +55,8 @@ export type Line =
       fraction?: FieldWire["fraction"];
       /** Where a value too long for its row loses its middle, as an id does; it loses its end otherwise. */
       elide?: "middle";
+      /** What reported the field, which tells apart fields of one path, such as a pinned one and its namesake. */
+      origin?: FieldWire["origin"];
     }
   | { kind: "unavailable"; key: string; id: FieldId; label: string };
 
@@ -131,6 +133,7 @@ function fieldLine(field: FieldWire): Line {
     rgb: field.rgb,
     text: field.text,
     fraction: field.fraction,
+    origin: field.origin,
   };
 }
 
@@ -164,6 +167,7 @@ export function inspectorLines(
           rgb: found.rgb,
           text: found.text,
           fraction: found.fraction,
+          origin: found.origin,
         }
       : { kind: "unavailable", key, id, label };
   });

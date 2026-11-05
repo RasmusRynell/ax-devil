@@ -199,6 +199,140 @@ describe("inspector", () => {
     expect(writeText).toHaveBeenLastCalledWith("0.4");
   });
 
+  describe("copy confirmation", () => {
+    const FEEDBACK = ready([
+      { group: "classification", path: ["class"], value: "car" },
+      { group: "classification", path: ["kind"], value: "car" },
+      { group: "motion", path: ["speed"], value: 0.5 },
+    ]);
+    const without = (path: string) => ({
+      ...FEEDBACK,
+      fields: FEEDBACK.fields.filter((field) => field.path[0] !== path),
+    });
+    const other = { ...FEEDBACK, selection: { ...SELECTION, entity: "8" } };
+    const clipboard = (writeText: () => Promise<void>) =>
+      vi.stubGlobal("navigator", { clipboard: { writeText } });
+    const copy = (name: string) =>
+      act(async () => {
+        fireEvent.click(screen.getByRole("button", { name: new RegExp(`^Cop(y|ied) ${name}$`) }));
+      });
+    /** The rows that say they were copied. */
+    const copied = () =>
+      screen.queryAllByRole("button", { name: /^Copied / }).map((button) => button.ariaLabel);
+
+    afterEach(() => vi.useRealTimers());
+
+    it("confirms the last copied row for 1500 ms, restarting for each copy and moving to another row", async () => {
+      vi.useFakeTimers();
+      clipboard(async () => {});
+      show(FEEDBACK);
+      await copy("class");
+      expect(copied()).toEqual(["Copied class"]);
+      act(() => {
+        vi.advanceTimersByTime(1000);
+      });
+      await copy("class");
+      act(() => {
+        vi.advanceTimersByTime(1000);
+      });
+      expect(copied()).toEqual(["Copied class"]);
+      await copy("speed");
+      expect(copied()).toEqual(["Copied speed"]);
+      act(() => {
+        vi.advanceTimersByTime(1499);
+      });
+      expect(copied()).toEqual(["Copied speed"]);
+      act(() => {
+        vi.advanceTimersByTime(1);
+      });
+      expect(copied()).toEqual([]);
+    });
+
+    it("confirms nothing when the clipboard is missing or refuses, or the answer is out of date", async () => {
+      vi.stubGlobal("navigator", {});
+      const view = show(FEEDBACK);
+      await copy("class");
+      expect(copied()).toEqual([]);
+      clipboard(async () => {
+        throw new Error("denied");
+      });
+      await copy("class");
+      expect(copied()).toEqual([]);
+      const slow: (() => void)[] = [];
+      const writeText = vi
+        .fn<(text: string) => Promise<void>>()
+        .mockImplementationOnce(() => new Promise<void>((done) => slow.push(done)))
+        .mockResolvedValueOnce()
+        .mockImplementationOnce(() => new Promise<void>((done) => slow.push(done)))
+        .mockResolvedValueOnce()
+        .mockImplementationOnce(() => new Promise<void>((done) => slow.push(done)));
+      vi.stubGlobal("navigator", { clipboard: { writeText } });
+      await copy("class");
+      await copy("speed");
+      await act(async () => slow[0]!());
+      expect(copied()).toEqual(["Copied speed"]);
+      view.next(other);
+      expect(copied()).toEqual([]);
+      view.next(FEEDBACK);
+      expect(copied()).toEqual([]);
+      await copy("class");
+      view.next(other);
+      await act(async () => slow[1]!());
+      expect(copied()).toEqual([]);
+      view.next(FEEDBACK);
+      await copy("speed");
+      await copy("class");
+      view.next(without("speed"));
+      await act(async () => slow[2]!());
+      expect(copied()).toEqual(["Copied class"]);
+    });
+
+    it("ends the confirmation when the copied value or field goes, and Ctrl+C copies the row holding focus", async () => {
+      const writeText = vi.fn(async () => {});
+      vi.stubGlobal("navigator", { clipboard: { writeText } });
+      const view = show(FEEDBACK);
+      const button = screen.getByRole("button", { name: "Copy speed" });
+      button.focus();
+      await act(async () => {
+        fireEvent.keyDown(button, { key: "c", ctrlKey: true });
+      });
+      expect(writeText).toHaveBeenLastCalledWith("0.5");
+      expect(copied()).toEqual(["Copied speed"]);
+      view.next({
+        ...FEEDBACK,
+        fields: [...without("speed").fields, { group: "motion", path: ["speed"], value: 0.75 }],
+      });
+      expect(copied()).toEqual([]);
+      view.next(FEEDBACK);
+      expect(copied()).toEqual([]);
+      await copy("class");
+      view.next(without("class"));
+      expect(copied()).toEqual([]);
+      const debug = (origin: "source" | "decoder"): FieldWire => ({
+        group: "debug",
+        origin,
+        path: ["x"],
+        value: 7,
+      });
+      view.next(ready([debug("decoder")]));
+      fireEvent.click(group("Debug"));
+      await copy("x");
+      expect(copied()).toEqual(["Copied x"]);
+      view.next(ready([debug("source"), debug("decoder")]));
+      const xs = () =>
+        screen.getAllByRole("button", { name: /^Cop(y|ied) x$/ }).map((button) => button.ariaLabel);
+      expect(xs()).toEqual(["Copy x", "Copied x"]);
+      fireEvent.click(screen.getAllByRole("button", { name: "Pin x" })[0]!);
+      const pinned = within(screen.getByRole("region", { name: "Pinned" }));
+      await act(async () => {
+        fireEvent.click(pinned.getByRole("button", { name: /^Cop(y|ied) debug\.x$/ }));
+      });
+      expect(copied()).toEqual(["Copied debug.x"]);
+      view.next(ready([debug("decoder")]));
+      expect(copied()).toEqual([]);
+    });
+  });
+
   it("pins a field for the next object, says when it is missing, and drops the pinned list on the last unpin", () => {
     const view = show(ready(FIELDS));
     fireEvent.click(screen.getByRole("button", { name: "Pin class" }));
