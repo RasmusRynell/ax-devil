@@ -248,6 +248,7 @@ export class Inspections {
   #update(): boolean {
     const selection = this.#selection;
     this.#wanted = null;
+    if (!selection) this.#settled = null;
     const next = selection ? this.#build(selection) : ({ state: "none" } as const);
     // Asked for or refused, and no longer the shown sample: asked again if it is shown again.
     if (this.#inflight && this.#inflight.key !== this.#wanted) this.#inflight = null;

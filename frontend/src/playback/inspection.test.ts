@@ -314,8 +314,13 @@ describe("inspections", () => {
     const { inspections } = setup();
     inspections.follow([frame(0)]);
     inspections.select(SELECTION);
+    inspections.receive(reply(0, found(CLASS)));
     expect(inspections.select(null)).toBe(true);
     expect(inspections.view).toEqual({ state: "none" });
     expect(inspections.select(null)).toBe(false);
+    // The pair shown before the selection was cleared is not held for the object selected again.
+    inspections.follow([frame(1)]);
+    inspections.select(SELECTION);
+    expect(inspections.view).toMatchObject({ state: "loading", fields: [] });
   });
 });
