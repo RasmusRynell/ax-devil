@@ -1,8 +1,11 @@
 import { FILL_HEADER_FLOATS, FILL_VERTEX_FLOATS, QuadWriter } from "../../overlay/quads";
-import { cornerOffsets } from "./fringe";
+import { CORNER_FLOATS, cornerOffsets } from "./fringe";
 
-/** The most corners a polygon has and still gets an antialiased edge (about 7 ms of layout at this size). */
-const FRINGED_CORNERS = 2048;
+/**
+ * What a lane's layout may spend on antialiased polygon edges, in squared corner counts: about 5 ms of layout, which
+ * is one polygon of 1,000 corners, four of 500 or a hundred of 100. Polygons past it keep hard edges.
+ */
+export const FRINGE_BUDGET = 1_000_000;
 
 /**
  * Polygon fills of a lane as blocks the painter fills through the stencil: corner count, fill (premultiplied RGBA
@@ -18,9 +21,12 @@ export class FillWriter {
   private corners: number[] = [];
   /** Floats written. */
   length = 0;
+  /** What is left of the layout's budget for corner offsets, in squared corner counts. */
+  budget = FRINGE_BUDGET;
 
   clear(): void {
     this.length = 0;
+    this.budget = FRINGE_BUDGET;
   }
 
   /** The blocks written, viewed in place. */
@@ -62,10 +68,13 @@ export class FillWriter {
       area += xy[corner * 2] * xy[next * 2 + 1] - xy[next * 2] * xy[corner * 2 + 1];
       perimeter += Math.hypot(xy[next * 2] - xy[corner * 2], xy[next * 2 + 1] - xy[corner * 2 + 1]);
     }
-    if (this.offsets.length < count * 2) this.offsets = new Float64Array(count * 2);
-    // The offsets cost the square of the corners; a polygon past the limit keeps hard edges.
-    if (count <= FRINGED_CORNERS) cornerOffsets(xy, count, this.offsets);
-    else this.offsets.fill(0, 0, count * 2);
+    if (this.offsets.length < count * CORNER_FLOATS)
+      this.offsets = new Float64Array(count * CORNER_FLOATS);
+    // The offsets cost the square of the corners, so a layout has a budget of them; a polygon past it keeps hard edges.
+    if (count * count <= this.budget) {
+      this.budget -= count * count;
+      cornerOffsets(xy, count, this.offsets);
+    } else this.offsets.fill(0, 0, count * CORNER_FLOATS);
     const needed = this.length + FILL_HEADER_FLOATS + (3 * count + 2) * FILL_VERTEX_FLOATS;
     if (needed > this.f32.length) {
       const grown = new Float32Array(Math.max(needed, this.f32.length * 2));
@@ -82,9 +91,10 @@ export class FillWriter {
     const vertex = (corner: number, side: number) => {
       f32[out] = xy[corner * 2];
       f32[out + 1] = xy[corner * 2 + 1];
-      f32[out + 2] = this.offsets[corner * 2];
-      f32[out + 3] = this.offsets[corner * 2 + 1];
+      f32[out + 2] = this.offsets[corner * CORNER_FLOATS];
+      f32[out + 3] = this.offsets[corner * CORNER_FLOATS + 1];
       f32[out + 4] = side;
+      f32[out + 5] = this.offsets[corner * CORNER_FLOATS + 2];
       out += FILL_VERTEX_FLOATS;
     };
     for (let corner = 0; corner < count; corner++) vertex(corner, 0);

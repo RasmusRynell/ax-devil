@@ -139,17 +139,19 @@ void main() {
 /**
  * Polygon corners, drawn as triangle fans into the stencil and then filled where it is odd, and the faded ring around
  * them. A vertex moves by its offset along `edge`: x outward for the ring's faded side (`side` 1), y inward for the
- * filled one (`side` 0), so the polygon's true edge lies half way through the ring, where the coverage is one half.
+ * filled one (`side` 0) but never past its room, so the polygon's true edge lies half way through the ring, where the
+ * coverage is one half.
  */
 export const FILL_VERTEX = `#version 300 es
 layout(location = 0) in vec2 corner;
-layout(location = 1) in vec3 offsetSide;
+layout(location = 1) in vec4 offsetSideRoom;
 uniform vec2 edge;
 out float vCoverage;
 ${PLACE}
 void main() {
-  vCoverage = 1. - offsetSide.z;
-  gl_Position = place(corner + offsetSide.xy * mix(-edge.y, edge.x, offsetSide.z));
+  vCoverage = 1. - offsetSideRoom.z;
+  float inset = min(edge.y, offsetSideRoom.w);
+  gl_Position = place(corner + offsetSideRoom.xy * mix(-inset, edge.x, offsetSideRoom.z));
 }`;
 
 export const FILL_FRAGMENT = `#version 300 es

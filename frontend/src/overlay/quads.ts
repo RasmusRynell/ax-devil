@@ -242,7 +242,10 @@ export function path(
   }
 }
 
-/** Floats of one fill vertex: x, y, the corner's offset vector, and 0 for the filled edge or 1 for the faded one. */
-export const FILL_VERTEX_FLOATS = 5;
+/**
+ * Floats of one fill vertex: x, y, the corner's offset vector, 0 for the filled edge or 1 for the faded one, and how far
+ * the filled edge may move in.
+ */
+export const FILL_VERTEX_FLOATS = 6;
 /** Floats before a fill block's vertices: the corner count, the premultiplied RGBA word and the measure. */
 export const FILL_HEADER_FLOATS = 3;

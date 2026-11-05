@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
 import { OverlayPainter, type LaneDrawing } from "./painter";
+import { FILL_HEADER_FLOATS, FILL_VERTEX_FLOATS } from "./quads";
 
 /**
  * A context that accepts every call and records it, with the capabilities switched on and the framebuffer bound at
@@ -45,7 +46,7 @@ const quads = {
   layerCount: 0,
 };
 /** One triangle's fill: the header and three corners with their ring. */
-const fill = new Float32Array(3 + 11 * 5);
+const fill = new Float32Array(FILL_HEADER_FLOATS + 11 * FILL_VERTEX_FLOATS);
 fill[0] = 3;
 const drawn = (parts: object) =>
   ({

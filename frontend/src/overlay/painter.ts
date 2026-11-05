@@ -274,7 +274,7 @@ export class OverlayPainter {
       gl.uniform2f(this.#uniforms.edge, fringe, blocks[at + 2] < fringe ? 0 : fringe);
       const base = (at + FILL_HEADER_FLOATS) * 4;
       gl.vertexAttribPointer(0, 2, gl.FLOAT, false, FILL_STRIDE, base);
-      gl.vertexAttribPointer(1, 3, gl.FLOAT, false, FILL_STRIDE, base + 8);
+      gl.vertexAttribPointer(1, 4, gl.FLOAT, false, FILL_STRIDE, base + 8);
       gl.enable(gl.STENCIL_TEST);
       gl.colorMask(false, false, false, false);
       gl.stencilFunc(gl.ALWAYS, 0, 0xff);
