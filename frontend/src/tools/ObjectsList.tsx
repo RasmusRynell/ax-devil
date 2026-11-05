@@ -112,6 +112,7 @@ export function ObjectsList({
   // File scope's request has its own pause; the frame's objects are filtered here, once typing pauses or is committed.
   const [applied, apply] = useApplied(text);
   const [committed, setCommitted] = useState(false);
+  const searchBar = useRef<{ focus(): void }>(null);
   const { wire } = useMemo(() => parseSearch(applied), [applied]);
   const frame = source.shown(lane);
   const objects = useMemo(() => frameObjects(frame), [frame]);
@@ -242,6 +243,7 @@ export function ObjectsList({
         </div>
         <div className="p-m pb-s">
           <SearchBar
+            handle={searchBar}
             label="Search objects"
             value={text}
             onChange={(value) => onList({ ...list, text: value })}
@@ -258,7 +260,14 @@ export function ObjectsList({
           {stale !== null && (
             <div role="status" className="flex items-center gap-s pt-xs text-small text-muted">
               <span className="min-w-0 flex-1">{stale}</span>
-              <Button size="small" onClick={() => source.files.flush(lane)}>
+              <Button
+                size="small"
+                onClick={() => {
+                  source.files.flush(lane);
+                  // The button goes when the rows arrive; focus is not left on it to be lost then.
+                  searchBar.current?.focus();
+                }}
+              >
                 Retry
               </Button>
             </div>

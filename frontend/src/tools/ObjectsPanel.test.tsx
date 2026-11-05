@@ -287,6 +287,7 @@ describe("File scope", () => {
     expect(queries()).toHaveLength(before + 1);
     answer([file("7", 3)]);
     expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
+    expect(document.activeElement).toBe(screen.getByRole("textbox", { name: "Search objects" }));
   });
 
   it("stops asking for the list when Frame scope is shown again or the panel goes away", () => {

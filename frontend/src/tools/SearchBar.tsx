@@ -1,4 +1,12 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef } from "react";
+import {
+  useCallback,
+  useEffect,
+  useImperativeHandle,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  type Ref,
+} from "react";
 import { Icon } from "../kit/Icon";
 import { IconButton } from "../kit/IconButton";
 import { FIELD_IN } from "../kit/look";
@@ -30,14 +38,18 @@ const SYNTAX = [
  * A search box for the query language of `parseSearch`: field names and operators are muted, and a word the language
  * cannot use (an incomplete term, a stray OR) is underlined. The text is typed in a transparent input over a colored
  * copy of itself. `onChange` follows every keystroke; Return and Clear also say `onCommit`, for the owner to apply the
- * text at once instead of when typing stops. Clear shows only with text and leaves the field focused.
+ * text at once instead of when typing stops. Clear shows only with text and leaves the field focused; `handle` lets
+ * the owner focus the field too.
  */
 export function SearchBar({
+  handle,
   label,
   value,
   onChange,
   onCommit,
 }: {
+  /** Gives the owner a way to focus the field. */
+  handle?: Ref<{ focus(): void }>;
   /** The accessible name and the placeholder. */
   label: string;
   value: string;
@@ -47,6 +59,7 @@ export function SearchBar({
 }) {
   const input = useRef<HTMLInputElement>(null);
   const copy = useRef<HTMLSpanElement>(null);
+  useImperativeHandle(handle, () => ({ focus: () => input.current?.focus() }), []);
   const { tokens } = useMemo(() => parseSearch(value), [value]);
   // A long text scrolls inside the input; the copy follows it.
   const follow = useCallback(() => {
