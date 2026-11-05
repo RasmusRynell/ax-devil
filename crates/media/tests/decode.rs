@@ -7,6 +7,7 @@ mod common;
 use common::{assert_explained, expected_luma, file, fixture, flat_luma, index_of, open, read_all};
 use foundation::{CancelToken, Interrupt, PixelFormat, VideoFrame};
 use media::{FrameIndex, ScanKind};
+use std::path::Path;
 
 /// (file, frame count, keyframe interval).
 const LUMA_FIXTURES: [(&str, u64, u64); 6] = [
@@ -150,6 +151,29 @@ fn a_seek_to_a_non_keyframe_or_past_the_end_is_rejected_and_reading_goes_on() {
     decoder.seek_to_keyframe(20).expect("a keyframe");
     let frame = decoder.next_frame().expect("decodes").expect("a frame");
     assert_eq!(flat_luma(&frame), expected_luma(20));
+}
+
+#[test]
+fn a_file_with_several_video_streams_is_read_from_its_first() {
+    // Both streams have 20 frames; the first is 64x48, the second 128x96, so the size says which was read
+    // (`fixtures/media/README.md`).
+    let path =
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("../../fixtures/media/two_video_streams.mkv");
+    let index = index_of(&path);
+    assert_eq!((index.info().width, index.info().height), (64, 48));
+    assert_eq!(index.timeline().len(), 20);
+    let frames: Vec<_> = read_all(&mut open(&path, &index, 2))
+        .into_iter()
+        .map(|result| result.expect("decodes"))
+        .collect();
+    assert_eq!(frames.len(), 20);
+    for (position, frame) in frames.iter().enumerate() {
+        assert_eq!(
+            flat_luma(frame),
+            expected_luma(position as u64),
+            "frame {position}"
+        );
+    }
 }
 
 #[test]

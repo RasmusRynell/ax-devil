@@ -27,10 +27,10 @@ pub(crate) fn error(code: ErrorCode, reason: impl Into<String>, path: &Path) -> 
     UserError::new(code, reason).at(HostPath::new(path))
 }
 
-/// Opens `input` and picks its best video stream. FFmpeg polls `cancel` while it opens the file and on every later
-/// read of the returned input, and stops with an error when it is cancelled; that error is reported as
-/// [`Interrupt::Cancelled`]. FFmpeg can only poll where it waits in its own code: a blocking system call, such as a
-/// read from a hung network mount, is not interrupted.
+/// Opens `input` and picks its first video stream that is not cover art, not FFmpeg's "best" one, which can be another
+/// stream. FFmpeg polls `cancel` while it opens the file and on every later read of the returned input, and stops with
+/// an error when it is cancelled; that error is reported as [`Interrupt::Cancelled`]. FFmpeg can only poll where it
+/// waits in its own code: a blocking system call, such as a read from a hung network mount, is not interrupted.
 ///
 /// An image sequence is opened through the `image2` demuxer at its first image, which tells the decoder what the
 /// images are; the demuxer is not used to read the frames (see [`crate::sequence`]).
@@ -85,10 +85,11 @@ pub(crate) fn open_input(
             path,
         )));
     }
-    let Some(stream) = input.streams().best(Type::Video).filter(|stream| {
-        !stream
-            .disposition()
-            .contains(format::stream::Disposition::ATTACHED_PIC)
+    let Some(stream) = input.streams().find(|stream| {
+        stream.parameters().medium() == Type::Video
+            && !stream
+                .disposition()
+                .contains(format::stream::Disposition::ATTACHED_PIC)
     }) else {
         return Err(Interrupt::Failed(error(
             ErrorCode::NotAVideo,
