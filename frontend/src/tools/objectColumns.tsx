@@ -99,9 +99,19 @@ function Presence({
   );
 }
 
-/** What File scope lists of an object: where it is across the video, and which frames that spans. */
+/** A frame time in microseconds as `m:ss`, or `h:mm:ss` from one hour, the whole seconds of its UTC day. */
+export function shortTime(us: number): string {
+  const seconds = Math.floor(us / 1_000_000);
+  const hours = Math.floor(seconds / 3600) % 24;
+  const minutes = Math.floor(seconds / 60) % 60;
+  const rest = String(seconds % 60).padStart(2, "0");
+  return hours > 0 ? `${hours}:${String(minutes).padStart(2, "0")}:${rest}` : `${minutes}:${rest}`;
+}
+
+/** What File scope lists of an object: where it is across the video, and the times of the frames that spans. */
 export const fileColumns = (
   frames: number,
+  timeOf: (frame: number) => number | undefined,
   seek?: (frame: number) => void,
 ): Column<FileRowWire>[] => [
   {
@@ -130,7 +140,13 @@ export const fileColumns = (
     key: "first_seen",
     title: "Seen",
     kind: "mono",
-    text: (row) => `${row.first_frame}–${row.last_frame}`,
+    text: (row) => {
+      const first = timeOf(row.first_frame);
+      const last = timeOf(row.last_frame);
+      return first === undefined || last === undefined
+        ? ""
+        : `${shortTime(first)}–${shortTime(last)}`;
+    },
     sortable: true,
     priority: 1,
   },

@@ -140,6 +140,13 @@ describe("Frame scope", () => {
 });
 
 describe("File scope", () => {
+  it("shows hours in an object's seen range from one hour", () => {
+    const { answer } = mount();
+    showFile();
+    answer([file("long", 7400)]);
+    expect(screen.getByRole("option").textContent).toContain("1:01:40–1:01:50");
+  });
+
   it("asks for the typed search and sort, lists the rows, and dims what is not in the frame", () => {
     const { source, selected, queries, answer } = mount();
     showFile();
@@ -156,7 +163,8 @@ describe("File scope", () => {
     expect(ids()).toEqual(["7", "40"]);
     expect(screen.getByText("2 of 90")).toBeTruthy();
     const [here, away] = screen.getAllByRole("option");
-    expect(here.textContent).toContain("3–23");
+    // Seen is the media times of the first and last frame, whole seconds: frames 3 and 23 are at 1.5 s and 11.5 s.
+    expect(here.textContent).toContain("0:01–0:11");
 
     // An object in the frame is only selected; one that is not also goes to where it first is.
     fireEvent.click(here);
