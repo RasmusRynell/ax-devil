@@ -28,7 +28,7 @@ use api_types::{
 };
 use axum::extract::ws::Message;
 use catalogs::Library;
-use foundation::{ErrorCode, FrameSize, HostPath, UserError};
+use foundation::{ErrorCode, FrameFailure, FrameSize, HostPath, UserError};
 use media::PtsTiming;
 use overlay_sync::MatchPolicy;
 use overlays::OverlayService;
@@ -417,8 +417,8 @@ async fn next(
     }
 }
 
-/// The message for something the session delivers. A source that cannot decode at all ends the session, and so does a
-/// frame that cannot be compressed for the viewer.
+/// The message for something the session delivers. A source that cannot decode at all ends the session; a frame that
+/// cannot be decoded or compressed for the viewer fails alone, as a local viewer would see it.
 async fn encode(
     delivery: Delivery,
     wire: Wire,
@@ -427,49 +427,50 @@ async fn encode(
     audience: Audience,
     failures: &mut u32,
 ) -> Flow<Outgoing> {
-    match delivery {
+    let failure = match delivery {
         Delivery::Frame(frame) => {
             let sequence_id = frame.id().sequence_id;
-            let message = wire
-                .message(&frame, sequence_id == last)
-                .await
-                .map_err(|error| End::Failed(error.at(location.clone())))?;
-            Ok(Outgoing::frame(message, sequence_id))
-        }
-        Delivery::Failure(failure) => {
-            // A video with many bad frames would flood the log: the first is a warning, the rest are for diagnosis.
-            *failures += 1;
-            let error = &failure.error;
-            if *failures == 1 {
-                tracing::warn!(
-                    "Frame {} failed: {:?}: {}",
-                    failure.sequence_id,
-                    error.location,
-                    error.reason
-                );
-            } else {
-                tracing::debug!(
-                    "Frame {} failed: {:?}: {}",
-                    failure.sequence_id,
-                    error.location,
-                    error.reason
-                );
+            match wire.message(&frame, sequence_id == last).await {
+                Ok(message) => return Ok(Outgoing::frame(message, sequence_id)),
+                Err(error) => FrameFailure {
+                    sequence_id,
+                    error: error.at(location.clone()),
+                },
             }
-            Ok(Outgoing::frame(
-                text(&ServerMessage::FrameError {
-                    sequence_id: failure.sequence_id,
-                    error: project(&failure.error, audience),
-                }),
-                failure.sequence_id,
-            ))
         }
+        Delivery::Failure(failure) => failure,
         Delivery::Failed(mut error) => {
             if error.location.is_none() {
                 error.location = Some(location.clone().into());
             }
-            Err(End::Failed(error))
+            return Err(End::Failed(error));
         }
+    };
+    // A video with many bad frames would flood the log: the first is a warning, the rest are for diagnosis.
+    *failures += 1;
+    let error = &failure.error;
+    if *failures == 1 {
+        tracing::warn!(
+            "Frame {} failed: {:?}: {}",
+            failure.sequence_id,
+            error.location,
+            error.reason
+        );
+    } else {
+        tracing::debug!(
+            "Frame {} failed: {:?}: {}",
+            failure.sequence_id,
+            error.location,
+            error.reason
+        );
     }
+    Ok(Outgoing::frame(
+        text(&ServerMessage::FrameError {
+            sequence_id: failure.sequence_id,
+            error: project(&failure.error, audience),
+        }),
+        failure.sequence_id,
+    ))
 }
 
 pub(super) fn want(wire: WireWant) -> Want {

@@ -27,7 +27,8 @@ impl SharedFrame {
     }
 
     /// The frame's compressed form: `make` runs for the first caller only, every concurrent caller waits for that
-    /// result, and later callers get it at once, failure included. Every caller must pass a `make` that makes the
+    /// result, and later callers get it at once, failure included: compressing the same frame again fails the same
+    /// way, so retrying would only repeat the work for every viewer. Every caller must pass a `make` that makes the
     /// same bytes, since only one of them runs. Cancelling the caller that runs `make` hands the work to the next.
     pub async fn compressed(
         &self,

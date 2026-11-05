@@ -126,6 +126,8 @@ struct Live<'a, I> {
     notices: VecDeque<Message>,
     /// Whether the owner asked to reopen the connections.
     retry: bool,
+    /// Frames that could not be compressed for the viewer.
+    failures: u32,
 }
 
 /// Tells the viewer about the stream, then serves it.
@@ -164,6 +166,7 @@ pub(super) async fn stream(
         told: None,
         notices: VecDeque::new(),
         retry: false,
+        failures: 0,
     };
     live.send(opened).await?;
     live.ready().await?;
@@ -297,15 +300,23 @@ impl<I: Incoming> Live<'_, I> {
             .await
     }
 
-    /// A frame with what its lane selects.
+    /// A frame with what its lane selects. A frame that cannot be compressed is skipped, as a dropped frame would be.
     async fn show(&mut self, shown: Shown) -> Flow<()> {
         self.ready().await?;
         let Shown { frame, out } = shown;
-        let frame = self
-            .wire
-            .message(&frame, false)
-            .await
-            .map_err(End::Failed)?;
+        let frame = match self.wire.message(&frame, false).await {
+            Ok(message) => message,
+            Err(error) => {
+                // A stream whose every frame fails would flood the log: the first is a warning, the rest are debug.
+                self.failures += 1;
+                if self.failures == 1 {
+                    tracing::warn!("Live frame skipped: {}", error.reason);
+                } else {
+                    tracing::debug!("Live frame skipped: {}", error.reason);
+                }
+                return Ok(());
+            }
+        };
         if let Some(out) = &out {
             for item in &out.items {
                 self.send(Message::Binary(envelope::sample(item))).await?;
