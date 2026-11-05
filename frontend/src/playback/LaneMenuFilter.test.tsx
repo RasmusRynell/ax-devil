@@ -102,6 +102,21 @@ describe("lane menu filter", () => {
     expect(onChange).not.toHaveBeenCalled();
   });
 
+  it("leaves the range fields alone when the stored expression does not compile by itself", () => {
+    const { onChange } = setup({ settings: { ...LANE_SETTINGS, expression: "score >=" } });
+    tab("Filter");
+    expect(screen.getAllByRole("alert")).toHaveLength(1);
+    const min = screen.getByRole("textbox", { name: "Score min" });
+    expect(screen.getAllByRole("textbox", { name: /^(Score|Confidence) (min|max)$/ })).toSatisfy(
+      (fields: HTMLElement[]) =>
+        fields.every((field) => field.getAttribute("aria-invalid") === "false"),
+    );
+    fireEvent.change(min, { target: { value: "0.5" } });
+    expect(onChange).toHaveBeenCalledWith({
+      ranges: { ...OPEN_RANGES, score: { min: 0.5, max: null } },
+    });
+  });
+
   it("has no class section for a lane whose file calls for no classes", () => {
     setup({}, { ...READY, filter: [] });
     tab("Filter");
