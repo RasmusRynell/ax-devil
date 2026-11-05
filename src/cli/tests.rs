@@ -486,6 +486,13 @@ fn list_handlers_prints_every_decoder_and_resolver_without_opening_anything() {
         .find(|line| line.contains("MOT_FILE"))
         .unwrap();
     assert!(line.starts_with("  MOT_FILE"), "{line}");
+    // A decoder with a description shows it after its name; the help of a decoder argument offers the same text.
+    let uvg = "UVG-VCM — UVG-VCM v1.0 detection/tracking JSON";
+    assert!(listing.contains(uvg), "{listing}");
+    let help = parse(&["playlist", "folder_pair", "--help"])
+        .err()
+        .expect("help ends parsing");
+    assert!(help.to_string().contains(uvg), "{help}");
 }
 
 #[tokio::test]
