@@ -93,11 +93,10 @@ async function remote(local, shell) {
     await frames({ js });
     await click(window, "sidebar:add-video");
     await wait("document.querySelector('dialog[open] input')");
-    // With a failure showing, the dialog still fits the smallest window at 200% zoom.
-    await js(
-      "[...document.querySelectorAll('dialog button')].find((b) => b.textContent === 'Add').click()",
+    // With a blank path, Add is disabled and says why; the dialog still fits the smallest window at 200% zoom.
+    await wait(
+      "document.querySelector('dialog[open] [role=alert]') && [...document.querySelectorAll('dialog button')].find((b) => b.textContent === 'Add').disabled",
     );
-    await wait("document.querySelector('dialog[open] [role=alert]')");
     const bounds = window.getBounds();
     for (const [theme, zoom] of [
       ["light", 1],
