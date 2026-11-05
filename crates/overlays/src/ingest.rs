@@ -155,7 +155,7 @@ impl State {
         ready
             .warnings
             .extend(aligned.iter().flat_map(|a| a.warning.clone()));
-        ready.alignment = aligned.as_ref().map(|a| a.alignment);
+        ready.alignment = aligned.as_ref().map(|a| Box::new(a.alignment));
         self.lanes[lane].told = aligned.map(|a| (a.alignment, a.warning));
         let status = LaneStatus::Ready(ready);
         let queued = self.notices.iter_mut().find(|notice| {
@@ -307,9 +307,8 @@ fn undeclared_options(overlay: &OverlayRef, form: &Form) -> Option<Warning> {
 }
 
 /// The warning for samples that do not line up with the video's frames: by time, the last one far from the last
-/// frame, or too few of the [`attainable`](Alignment::attainable) ones selected by a frame ([`Verdict::Weak`]); by
-/// frame, too few of them within the video. A file sampled faster than the video leaves samples unselected however
-/// well it lines up.
+/// frame, or too few of the samples selected by a frame ([`Verdict::Weak`]); by frame, too few of them within the
+/// video.
 fn misalignment(alignment: &Alignment, policy: &MatchPolicy) -> Option<Warning> {
     let mut reasons = Vec::new();
     if alignment.ends_far()

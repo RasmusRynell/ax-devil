@@ -1625,6 +1625,11 @@ export type AlignmentWire = {
  */
 basis: BasisWire, 
 /**
+ * How far back a sample matched a frame under time, in milliseconds; `null` for exact. The tolerance the counts
+ * were computed with, which the lane's own may have moved on from.
+ */
+tolerance_ms: number | null, 
+/**
  * How many samples the file has.
  */
 samples: number, 

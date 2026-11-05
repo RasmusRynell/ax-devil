@@ -22,6 +22,14 @@ const DEFAULT_PREVIOUS_MS = 50;
 type Sync = "exact" | "previous";
 
 const ms = (us: number) => `${Math.round(us / 100) / 10} ms`;
+
+/** The percentage `matched` is of `samples`, whole, rounded half to even as Python's `{:.0f}` does; 100 for none. */
+function percent(matched: number, samples: number): number {
+  if (samples === 0) return 100;
+  const whole = Math.floor((100 * matched) / samples);
+  const twiceRest = 2 * (100 * matched - whole * samples);
+  return whole + (twiceRest > samples || (twiceRest === samples && whole % 2 === 1) ? 1 : 0);
+}
 const seconds = (us: number) => `${(Math.abs(us) / 1e6).toFixed(1)} s`;
 
 /** How loudly an alignment speaks: a file mostly off the frames is wrong, one that ends far from the video needs a look. */
@@ -43,7 +51,7 @@ function Alignment({
   cadence: Cadence | null;
   alignment: AlignmentWire | null;
 }) {
-  const share = alignment && Math.floor((100 * alignment.matched) / Math.max(1, alignment.samples));
+  const share = alignment && percent(alignment.matched, alignment.samples);
   const tone = alignmentTone(alignment);
   const toned = tone ? TONE_TEXT[tone] : "";
   return (
@@ -58,7 +66,7 @@ function Alignment({
         <p className={`m-0 ${toned}`}>
           {alignment === null
             ? "Overlay: reading…"
-            : `Overlay: ${alignment.matched} of ${alignment.samples} on a frame (${share}%)${alignment.basis === "Frame" ? "" : `, ${alignment.exact} exact`}`}
+            : `Overlay: ${alignment.matched} of ${alignment.samples} on a frame (${share}%, ${alignment.basis === "Frame" ? `sequence ${alignment.matched}` : `exact ${alignment.exact}, tol ${alignment.tolerance_ms ?? 0} ms`})`}
         </p>
         {alignment?.ends_far && alignment.end_gap_us !== null && (
           <p className={`m-0 ${toned}`}>

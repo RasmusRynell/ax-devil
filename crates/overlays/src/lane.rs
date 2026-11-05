@@ -41,7 +41,8 @@ pub struct LaneReady {
     pub warnings: Vec<Warning>,
     /// How the samples line up with the video's frames under the lane's basis and tolerance; `None` until the file
     /// is read.
-    pub alignment: Option<Alignment>,
+    // Boxed so the status event stays small.
+    pub alignment: Option<Box<Alignment>>,
     /// How many samples the file has so far.
     pub samples: usize,
     /// The source's revision; its items and the lane's maps carry it. A status that only reports progress of the

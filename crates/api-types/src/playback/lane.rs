@@ -135,6 +135,9 @@ pub enum LaneStatusWire {
 pub struct AlignmentWire {
     /// What the samples were matched by.
     pub basis: BasisWire,
+    /// How far back a sample matched a frame under time, in milliseconds; `null` for exact. The tolerance the counts
+    /// were computed with, which the lane's own may have moved on from.
+    pub tolerance_ms: Option<u32>,
     /// How many samples the file has.
     #[ts(type = "number")]
     pub samples: u64,
@@ -161,7 +164,7 @@ pub enum AlignmentVerdictWire {
     Weak,
     /// The last sample is more than a second and 5% of the video from the last frame.
     EndsFar,
-    /// Some samples are on no frame, as a file at a higher rate than the video always has.
+    /// Some samples are on no frame.
     Partial,
     /// Every sample is on a frame.
     Good,

@@ -3,23 +3,23 @@
 use foundation::{MediaTime, Timeline};
 use scene::Coverage;
 
-use crate::{MatchBasis, MatchKind, MatchPolicy, SampleKeys, Selection, Sticky, select};
+use crate::{MatchBasis, MatchKind, MatchPolicy, SampleKeys, Selection, Sticky, Tolerance, select};
 
 /// The smallest gap between the last sample and the end of the video that counts as far.
 const END_GAP_MIN: MediaTime = MediaTime(1_000_000);
 /// The share of the video's length a gap between the last sample and its end must also exceed to count as far.
 const END_GAP_SHARE: f64 = 0.05;
-/// The share of the attainable samples frames must select for the file to line up with the video.
+/// The share of the samples frames must select for the file to line up with the video.
 const MATCHED_ENOUGH: f64 = 0.8;
 
 /// How well a file lines up with a video, worst first.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Verdict {
-    /// Fewer than 80% of the attainable samples are on a frame.
+    /// Fewer than 80% of the samples are on a frame.
     Weak,
     /// The last sample is far from the last frame; see [`Alignment::ends_far`]. Only a match by time has one.
     EndsFar,
-    /// Some samples are on no frame. A file at a higher rate than the video always has some.
+    /// Some samples are on no frame.
     Partial,
     /// Every sample is on a frame.
     Good,
@@ -30,6 +30,8 @@ pub enum Verdict {
 pub struct Alignment {
     /// What the samples were matched by.
     pub basis: MatchBasis,
+    /// The tolerance the counts were computed with.
+    pub tolerance: Tolerance,
     /// How many samples the file has.
     pub samples: usize,
     /// How many of them some frame selects exactly or, by time, within the tolerance; sticky does not count.
@@ -45,27 +47,14 @@ pub struct Alignment {
 }
 
 impl Alignment {
-    /// How many samples a perfectly aligned file would have selected. By time a frame selects one sample, so a file
-    /// sampled faster than the video cannot have them all selected. By frame every record has a frame of its own, so a
-    /// record past the video's last frame is a miss.
-    pub fn attainable(&self) -> usize {
-        match self.basis {
-            MatchBasis::Time => {
-                let frames = usize::try_from(self.last_frame)
-                    .map_or(usize::MAX, |last| last.saturating_add(1));
-                self.samples.min(frames)
-            }
-            MatchBasis::Frame => self.samples,
-        }
-    }
-
-    /// Whether enough of the attainable samples are selected by a frame for the file to line up with the video.
+    /// Whether enough of the file's samples are selected by a frame for it to line up with the video. The share is of
+    /// all the samples, so a file sampled faster than the video does not line up.
     pub fn lines_up(&self) -> bool {
         #[expect(
             clippy::cast_precision_loss,
             reason = "a share of the samples needs no exactness"
         )]
-        let share = self.matched as f64 / self.attainable().max(1) as f64;
+        let share = self.matched as f64 / self.samples.max(1) as f64;
         self.samples == 0 || share >= MATCHED_ENOUGH
     }
 
@@ -145,6 +134,7 @@ pub fn alignment(
         .flatten();
     Alignment {
         basis,
+        tolerance: policy.tolerance,
         samples: keys.len(),
         matched: selected.iter().filter(|seen| seen.is_some()).count(),
         exact: selected
@@ -282,7 +272,8 @@ mod tests {
     }
 
     #[test]
-    fn a_file_at_twice_the_video_rate_can_match_no_more_than_the_frames() {
+    fn a_file_at_twice_the_video_rate_does_not_line_up() {
+        // Four of eight samples are selected: half of all the samples, though every frame has one.
         let samples = times(&(0..8).map(|k| k * 20).collect::<Vec<_>>());
         let video = timeline(&[0, 40, 80, 120]);
         let aligned = alignment(
@@ -291,8 +282,8 @@ mod tests {
             &video,
             &by(MatchBasis::Time, Tolerance::Exact),
         );
-        assert_eq!((aligned.matched, aligned.attainable()), (4, 4));
-        assert!(aligned.lines_up());
+        assert_eq!(aligned.matched, 4);
+        assert_eq!(aligned.verdict(), Verdict::Weak);
     }
 
     #[test]
@@ -309,7 +300,7 @@ mod tests {
             &video,
             &by(MatchBasis::Frame, Tolerance::Exact),
         );
-        assert_eq!((by_frame.matched, by_frame.attainable()), (300, 1000));
+        assert_eq!(by_frame.matched, 300);
         assert!(!by_frame.lines_up());
     }
 }
