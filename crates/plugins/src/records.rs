@@ -3,7 +3,7 @@
 use std::borrow::Cow;
 
 use foundation::Warning;
-use handler_api::{Header, OnEqualKey, SceneSink};
+use handler_api::{Header, OnEqualKey, SceneSink, shorten};
 use scene::{ClassRule, Coverage, Fields, FilterOption, FilterPolicy, Value, serial};
 use serde::Deserialize;
 use serde_json::value::RawValue;
@@ -121,7 +121,7 @@ impl<'a> Records<'a> {
             (None, None, None, Some(warning), None, None) => {
                 Ok(Parsed::Warning(load_warning(warning)))
             }
-            (None, None, None, None, Some(reason), None) => Ok(Parsed::Skipped(cut(&reason))),
+            (None, None, None, None, Some(reason), None) => Ok(Parsed::Skipped(shorten(&reason))),
             (None, None, None, None, None, Some(error)) => Ok(Parsed::Error(cut(&error.reason))),
             _ => Err(
                 "needs exactly one of header, sample, replace, warning, skipped or error"
