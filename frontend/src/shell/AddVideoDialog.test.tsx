@@ -257,3 +257,36 @@ it("fills the path from the file chooser, keeps it when the chooser is cancelled
     ),
   );
 });
+
+it.each([
+  [
+    "fails",
+    () => Promise.reject(new Error("The file dialog could not open")),
+    "The file dialog could not open",
+  ],
+  [
+    "returns several videos",
+    () => Promise.resolve(["/clips/a.mp4", "/clips/b.mp4"]),
+    "Select one video.",
+  ],
+])(
+  "says why when the file chooser %s, and leaves the path and the session alone",
+  async (_, pick, reason) => {
+    serve([]);
+    window.axDevilWindow = { pickVideos: pick } as unknown as WindowBridge;
+    render(
+      <GrantsContext.Provider value={["preferences"]}>
+        <SessionProvider>
+          <AddVideoDialog onClose={() => {}} />
+        </SessionProvider>
+      </GrantsContext.Provider>,
+    );
+    const video = (await screen.findByLabelText("Video path")) as HTMLInputElement;
+    fireEvent.change(video, { target: { value: "/clips/a.mp4" } });
+
+    fireEvent.click(screen.getByRole("button", { name: "Choose video file" }));
+    await waitFor(() => expect(screen.getByRole("alert").textContent).toBe(reason));
+    expect(video.value).toBe("/clips/a.mp4");
+    expect(FakeSocket.latest.received.filter((message) => message.type === "command")).toEqual([]);
+  },
+);

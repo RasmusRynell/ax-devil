@@ -39,12 +39,18 @@ export function AddVideoDialog({ onClose }: { onClose: () => void }) {
   ]);
   const videoProblem = problems.get(path.trim());
   const browse = () =>
-    void bridge?.pickVideos().then((chosen) => {
-      if (chosen.length) {
-        setPath(chosen[0]);
-        setFailure(null);
-      }
-    });
+    void bridge
+      ?.pickVideos()
+      .then((chosen) => {
+        if (chosen.length > 1) setFailure("Select one video.");
+        else if (chosen.length) {
+          setPath(chosen[0]);
+          setFailure(null);
+        }
+      })
+      .catch((error: unknown) =>
+        setFailure(error instanceof Error ? error.message : String(error)),
+      );
 
   const edit = (entry: OverlayEntry) => {
     setEntries(entries.map((one) => (one.key === entry.key ? entry : one)));
