@@ -27,6 +27,22 @@ const BUILT_IN_REVISION: u32 = 1;
 /// written again never gets a revision a viewer already holds.
 static NEXT_REVISION: AtomicU32 = AtomicU32::new(BUILT_IN_REVISION + 1);
 
+/// `name` as Python's `str.casefold` returns it, the key catalogs are ordered by (Python compares code points, as
+/// `String` does). Full case folding is the uppercase mapping followed by the lowercase one for every character
+/// (`ß` and `ſ` become `ss` and `s`, `ς` becomes `σ`) except three that the Unicode `CaseFolding.txt` treats apart:
+/// dotless `ı` and Cherokee fold to themselves or to uppercase, and capital `ẞ` folds to `ss`.
+fn casefold(name: &str) -> String {
+    name.chars()
+        .flat_map(|c| match c {
+            '\u{131}' => vec![c],
+            '\u{1E9E}' => vec!['s', 's'],
+            // Cherokee folds to uppercase, so that the letters of its two cases meet.
+            '\u{13A0}'..='\u{13FD}' | '\u{AB70}'..='\u{ABBF}' => c.to_uppercase().collect(),
+            _ => c.to_uppercase().flat_map(char::to_lowercase).collect(),
+        })
+        .collect()
+}
+
 /// What the catalog picker shows about a catalog.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct CatalogInfo {
@@ -174,7 +190,7 @@ impl Library {
     }
 
     /// The catalogs the playback socket serves: the built-ins, Standard first; then the user's valid files by name,
-    /// ignoring case, then by file name; then the invalid ones (`problem` set) by file name. A file is named by what
+    /// case-folded as Python's `str.casefold`, then by file name; then the invalid ones (`problem` set) by file name. A file is named by what
     /// its document says, or by its file name when the document does not.
     pub fn documents(&self) -> Vec<CatalogInfo> {
         let user = lock(&self.shared.user);
@@ -183,7 +199,7 @@ impl Library {
         files.sort_by_cached_key(|info| {
             (
                 info.problem.is_some(),
-                info.problem.is_none().then(|| info.name.to_lowercase()),
+                info.problem.is_none().then(|| casefold(&info.name)),
             )
         });
         self.shared
