@@ -89,7 +89,7 @@ Listed in [parity deviations](parity-deviations.md).
 | RC-01 | Catalog language (schema v4) and the six built-ins | M | done | `present/{oracle.test.ts,catalog,layout,text}`, `crates/catalogs` tests | All six match the reference oracle sheets; JSON Schema comes from compiler tables |
 | RC-02 | Per-view selection, Apply to all, Use as default, hot reload | M | done | `frontend/src/playback/{LaneMenu,laneCatalog,catalogs}.test.*`, `crates/catalogs` tests, `tests/playback_catalogs.rs` | Built-in and `user:<file>` catalogs, hot-reloaded; a failing one keeps its last good one. Default: `overlays.default_catalog` |
 | RC-03 | Catalog Copy and Delete | M | done | `src/routes/catalogs.rs`, `playback/LaneCatalogActions.test.tsx` | Viewer window and preview sheets dropped by owner decision |
-| RC-04 | `catalog list/check/render/new/use/reference` | M | in progress | `src/cli/tests.rs`, `tests/catalog_render.rs` | `check` draws the Overview sheet; `reference` left |
+| RC-04 | `catalog` CLI | M | in progress | `cli/catalog_tests.rs`, `tests/catalog_*` | `reference` generated; Overview only |
 
 ## Plugins
 

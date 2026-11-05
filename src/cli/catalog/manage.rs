@@ -153,8 +153,14 @@ fn checked(home: &Home, library: &Library, id: &CatalogId) -> Result<Option<Repo
 /// The check of the user catalog `id`, once the library serves it: a file the app would not serve (a link, a file too
 /// large to read) is refused with the library's reason, however well its content checks.
 pub fn check_listed(home: &Home, library: &Library, id: &CatalogId) -> Result<Report, String> {
+    served(home, library, id)?;
+    check_target(&home.target(id.clone()))
+}
+
+/// Whether the library serves the user catalog `id`, else why not.
+pub fn served(home: &Home, library: &Library, id: &CatalogId) -> Result<(), String> {
     match library.document(id) {
-        Served::Document { .. } => check_target(&home.target(id.clone())),
+        Served::Document { .. } => Ok(()),
         Served::Unreadable { problem, .. } => Err(format!("{id} cannot be used: {problem}")),
         Served::Missing { .. } => Err(format!("{id} is not in {}", home.folder.display())),
     }
