@@ -132,6 +132,31 @@ describe("asking", () => {
     expect(files.view(0)).toMatchObject({ pending: true, page: { matched: 1 } });
   });
 
+  it("carries the object the cursor moved to in the next question, and asks nothing for the move", () => {
+    const { files, lanes, queries, rows, ask, last } = scope();
+    const locate = () => (queries().at(-1) as { locate: string | null }).locate;
+    ask();
+    files.receive(rows(last()));
+    files.locating(0, "7");
+    vi.advanceTimersByTime(1000);
+    expect(queries()).toHaveLength(1);
+    // A refresh the lane's class toggles cause asks about the object the cursor is on now.
+    lanes.set(0, { filter: { show_bus: true } });
+    files.refresh();
+    vi.advanceTimersByTime(150);
+    expect(locate()).toBe("7");
+
+    // A move while a question is out: an answer that holds neither that object nor its row is followed by a new question.
+    files.locating(0, "99");
+    files.receive(rows(last(), { located: { id: "7", row: 3 } }));
+    expect(files.view(0).pending).toBe(true);
+    vi.advanceTimersByTime(150);
+    expect(locate()).toBe("99");
+    files.receive(rows(last(), { located: { id: "99", row: null } }));
+    vi.advanceTimersByTime(1000);
+    expect(queries()).toHaveLength(3);
+  });
+
   it("drops rows made under other revisions than the lane has", () => {
     const { files, lanes, rows, ask, last } = scope();
     ask();

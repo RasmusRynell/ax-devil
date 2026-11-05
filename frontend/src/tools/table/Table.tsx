@@ -16,6 +16,7 @@ import { Icon } from "../../kit/Icon";
 import type { MenuEntry } from "../../kit/Menu";
 import { MiddleElided } from "../../kit/MiddleElided";
 import { useRowWindow } from "../../shell/useRowWindow";
+import { categoryDot } from "../category";
 import { writeClipboard } from "./clipboard";
 import { KINDS, rowText, type Column, type SortOf } from "./columns";
 import { useColumns } from "./useColumns";
@@ -34,16 +35,29 @@ const tipIfCut = (text: string) => (event: MouseEvent<HTMLElement>) => {
   element.title = element.scrollWidth > element.clientWidth ? text : "";
 };
 
-/** One cell: text, an id elided in the middle, or what the column renders; a cut text shows in full as a tooltip. */
+/**
+ * One cell: text, an id elided in the middle, or what the column renders; a cut text shows in full as a tooltip. A
+ * column with a `category` puts a dot in the class's color before the text.
+ */
 function Cell<Row>({ column, row }: { column: Column<Row>; row: Row }) {
   const kind = KINDS[column.kind];
   if (!column.text) return <div className="min-w-0 pr-m">{column.render?.(row)}</div>;
   const text = column.text(row);
-  const look = `pr-m ${kind.mono ? "font-mono text-aside" : ""} ${kind.numeric ? "text-right tabular-nums" : ""}`;
-  if (kind.elide === "middle") return <MiddleElided text={text} className={look} />;
+  const category = column.category?.(row);
+  const look = `${category === undefined ? "pr-m" : ""} ${kind.mono ? "font-mono text-aside" : ""} ${kind.numeric ? "text-right tabular-nums" : ""}`;
+  const body =
+    kind.elide === "middle" ? (
+      <MiddleElided text={text} className={look} />
+    ) : (
+      <div onMouseEnter={tipIfCut(text)} className={`min-w-0 truncate ${look}`}>
+        {text}
+      </div>
+    );
+  if (category === undefined) return body;
   return (
-    <div onMouseEnter={tipIfCut(text)} className={`min-w-0 truncate ${look}`}>
-      {text}
+    <div className="flex min-w-0 items-center gap-s pr-m">
+      <span aria-hidden className={`size-m shrink-0 rounded-full ${categoryDot(category)}`} />
+      {body}
     </div>
   );
 }
@@ -51,8 +65,11 @@ function Cell<Row>({ column, row }: { column: Column<Row>; row: Row }) {
 /** What a table keeps for the next time it is shown: how far it was scrolled and the key of the row its cursor was on. */
 export type TableMemory = { top: number; cursor: string | null };
 
-/** The cursor: the row it follows, or, with no key, the position it was put on (the first row, or a row not loaded). */
-type Cursor = { key: string | null; index: number };
+/**
+ * The cursor: the row it follows, or, with no key, the position it was put on (the first row, or a row not loaded).
+ * It is `waiting` when put on a row that is not loaded yet, and follows that row once it is.
+ */
+type Cursor = { key: string | null; index: number; waiting?: boolean };
 
 type RowProps<Row> = {
   id: string;
@@ -137,6 +154,7 @@ export function Table<Row>({
   onSort,
   onActivate,
   onRange,
+  onCursor,
   cursorId,
   busy,
   message,
@@ -162,6 +180,8 @@ export function Table<Row>({
   onActivate: (row: Row, index: number) => void;
   /** The rows in view changed. */
   onRange?: (start: number, end: number) => void;
+  /** The cursor is on the row with this key. */
+  onCursor?: (key: string) => void;
   /** The shared-pointer id of a row. */
   cursorId: (row: Row) => string;
   busy?: boolean;
@@ -179,17 +199,18 @@ export function Table<Row>({
 
   useEffect(() => onRange?.(start, end), [onRange, start, end]);
 
-  const latest = useRef({ rowAt, keyOf, onActivate, memory });
+  const latest = useRef({ rowAt, keyOf, onActivate, onCursor, memory });
   useLayoutEffect(() => {
-    latest.current = { rowAt, keyOf, onActivate, memory };
+    latest.current = { rowAt, keyOf, onActivate, onCursor, memory };
   });
   /** Puts the cursor on the row at `index`. */
   const place = useCallback((index: number) => {
-    const { rowAt, keyOf, memory } = latest.current;
+    const { rowAt, keyOf, onCursor, memory } = latest.current;
     const row = rowAt(index);
     const key = row === undefined ? null : keyOf(row);
-    setCursor({ key, index });
+    setCursor({ key, index, waiting: row === undefined });
     if (memory) memory.cursor = key;
+    if (key !== null) onCursor?.(key);
     return row;
   }, []);
   const pick = useCallback(
@@ -212,6 +233,17 @@ export function Table<Row>({
     setCursor({ key: memory.cursor, index: 0 });
     if (ref.current) ref.current.scrollTop = memory.top;
     update();
+  });
+
+  // A cursor put on a row that was not loaded follows the row once it arrives.
+  useLayoutEffect(() => {
+    if (!cursor.waiting) return;
+    const row = rowAt(cursor.index);
+    if (row === undefined) return;
+    const key = keyOf(row);
+    setCursor({ key, index: cursor.index });
+    if (memory) memory.cursor = key;
+    onCursor?.(key);
   });
 
   const go = (index: number) => {
@@ -248,7 +280,12 @@ export function Table<Row>({
       PageUp: () => go(at - page),
       Home: () => go(0),
       End: () => go(count - 1),
-      Enter: () => at >= 0 && pick(at),
+      // A row the cursor is on but that is not loaded is brought into view, to be chosen once it is.
+      Enter: () => {
+        if (at < 0) return;
+        if (rowAt(at) === undefined) reveal(at);
+        else pick(at);
+      },
     };
     if (event.key === "c" && (event.ctrlKey || event.metaKey)) {
       const row = at < 0 ? undefined : rowAt(at);
@@ -265,7 +302,7 @@ export function Table<Row>({
         ref={header}
         className={`${GRID} ${LEAD} h-row shrink-0 overflow-hidden border-b border-transparent border-b-line text-small font-semibold tracking-caption text-muted uppercase [scrollbar-gutter:stable]`}
       >
-        {shown.map((i) => {
+        {shown.map((i, k) => {
           const column = columns[i];
           const on = sort.key === column.key;
           return (
@@ -293,14 +330,16 @@ export function Table<Row>({
               ) : (
                 <span className="truncate">{column.title}</span>
               )}
-              <div
-                role="separator"
-                aria-orientation="vertical"
-                aria-label={`Resize ${column.title}`}
-                tabIndex={0}
-                {...divider(i)}
-                className="absolute inset-y-0 right-0 w-s cursor-col-resize after:absolute after:inset-y-s after:right-0 after:w-hairline after:bg-fg/15 hover:after:inset-y-xs hover:after:bg-fg/60 focus-ring"
-              />
+              {k < shown.length - 1 && (
+                <div
+                  role="separator"
+                  aria-orientation="vertical"
+                  aria-label={`Resize ${column.title}`}
+                  tabIndex={0}
+                  {...divider(i)}
+                  className="absolute inset-y-0 right-0 w-s cursor-col-resize after:absolute after:inset-y-s after:right-0 after:w-hairline after:bg-fg/15 hover:after:inset-y-xs hover:after:bg-fg/60 focus-ring"
+                />
+              )}
             </div>
           );
         })}
@@ -321,7 +360,7 @@ export function Table<Row>({
             <div
               role="listbox"
               aria-label={label}
-              aria-activedescendant={at < 0 ? undefined : `${base}-${at}`}
+              aria-activedescendant={at < start || at >= end ? undefined : `${base}-${at}`}
               aria-busy={busy}
               tabIndex={0}
               onKeyDown={onKeyDown}

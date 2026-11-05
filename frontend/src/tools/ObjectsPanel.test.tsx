@@ -1,4 +1,4 @@
-import { act, cleanup, fireEvent, screen, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import type { FileScopeUnavailable } from "../generated/api";
 import { fullSample } from "../present/fixtures";
@@ -132,6 +132,53 @@ describe("File scope", () => {
     expect(says("File scope filters id, class and event only")).toBe(true);
     search("event:motion");
     expect(says("File scope filters id, class and event only")).toBe(false);
+  });
+
+  it("keeps the row the cursor is on when the list is scrolled away, and follows it through a search", () => {
+    vi.spyOn(HTMLElement.prototype, "offsetHeight", "get").mockReturnValue(20);
+    vi.spyOn(HTMLElement.prototype, "clientHeight", "get").mockReturnValue(200);
+    const { selected, queries, answer } = mount();
+    const rows = (from: number, to: number) =>
+      Array.from({ length: to - from }, (_, i) => file(`r${from + i}`, from + i));
+    const big = { total: 1000, matched: 1000 };
+    const last = () => queries().at(-1) as { query: unknown; offset: number; locate: string };
+    showFile();
+    answer(rows(0, 20), big);
+    // The cursor goes onto r5 with a click; the page it opens is left again.
+    fireEvent.click(screen.getAllByRole("option")[5]);
+    fireEvent.keyDown(screen.getByRole("region", { name: "Object page" }), { key: "Escape" });
+
+    const list = screen.getByRole("listbox");
+    const scroller = list.parentElement!.parentElement!;
+    Object.defineProperty(scroller, "scrollTop", { value: 8000, writable: true });
+    fireEvent.scroll(scroller);
+    answer(rows(350, 370), { ...big, offset: 350, located: { id: "r5", row: 5 } });
+    expect(last()).toMatchObject({ offset: 350, locate: "r5" });
+
+    // Row 6 is not loaded: the list goes there, and Enter opens it once it is.
+    fireEvent.keyDown(list, { key: "ArrowDown" });
+    answer(rows(0, 20), big);
+    expect(last().offset).toBe(0);
+    fireEvent.keyDown(list, { key: "Enter" });
+    expect(selected.at(-1)).toBe("r6");
+    fireEvent.keyDown(screen.getByRole("region", { name: "Object page" }), { key: "Escape" });
+
+    // A search that moves the cursor's row far down is followed there.
+    search("class:car");
+    answer(rows(30, 50), { ...big, offset: 30, located: { id: "r6", row: 40 } });
+    expect(last().locate).toBe("r6");
+    fireEvent.keyDown(list, { key: "ArrowDown" });
+    fireEvent.keyDown(list, { key: "Enter" });
+    expect(selected.at(-1)).toBe("r41");
+    fireEvent.keyDown(screen.getByRole("region", { name: "Object page" }), { key: "Escape" });
+
+    // A cursor that moves while a new sort is awaited is what that question locates.
+    fireEvent.click(screen.getByRole("button", { name: /^Sort by ID/ }));
+    fireEvent.keyDown(list, { key: "ArrowDown" });
+    act(() => {
+      vi.advanceTimersByTime(150);
+    });
+    expect(last().locate).toBe("r42");
   });
 
   it("seeks to the frame under a click on the presence strip", () => {

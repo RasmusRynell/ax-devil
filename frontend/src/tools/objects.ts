@@ -30,7 +30,7 @@ export const isFileSort = (sort: Sort): sort is FileSortWire => FILE_KEYS.has(so
 const number = (value: number): number | null => (Number.isNaN(value) ? null : value);
 
 /** What an object with no class is called. */
-const UNKNOWN_CLASS = "unknown";
+export const UNKNOWN_CLASS = "unknown";
 
 /** The id of every object `frame` drew, before the lane's class toggles and filter; none when the lane drew nothing. */
 export function drawnIds(frame: LaneFrame | undefined): Set<string> {
