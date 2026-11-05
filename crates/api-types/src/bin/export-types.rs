@@ -130,6 +130,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         FieldWire,
         InspectionWire,
         VideoPtsWire,
+        CadenceWire,
         ClientMessage,
         ServerMessage,
         LiveProtocol,

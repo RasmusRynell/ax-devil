@@ -42,4 +42,5 @@ export const opened = (
   lane_defaults: LANE_DEFAULTS,
   catalogs: [],
   video_pts: null,
+  cadence: null,
 });
