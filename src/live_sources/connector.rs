@@ -13,6 +13,8 @@ use foundation::{FrameFailure, FrameId, UserError, VideoFrame};
 use tokio::sync::{mpsc, watch};
 use workspace::{Login, ResolvedCamera};
 
+use super::bridge::Waiting;
+
 /// Ends a connection and waits until it is closed; for MQTT that includes giving back what was set up on the camera.
 pub type Closer = Pin<Box<dyn Future<Output = ()> + Send>>;
 
@@ -21,7 +23,22 @@ pub enum Docs {
     /// ONVIF metadata documents of the RTSP stream.
     Metadata(mpsc::Receiver<Feed<MetadataDoc>>),
     /// MQTT messages or DataHub samples.
-    Messages(mpsc::Receiver<Feed<Message>>),
+    Messages {
+        /// The messages or samples.
+        messages: mpsc::Receiver<Feed<Message>>,
+        /// How those waiting for the decoder are kept.
+        waiting: Waiting,
+    },
+}
+
+impl Docs {
+    /// How the documents waiting for the decoder are kept.
+    pub fn waiting(&self) -> Waiting {
+        match self {
+            Docs::Metadata(_) => Waiting::Queue,
+            Docs::Messages { waiting, .. } => *waiting,
+        }
+    }
 }
 
 /// What a connection delivers and how it stands.

@@ -69,7 +69,8 @@ Sources: `.agents/skills/write-plugin/SKILL.md`, `.agents/skills/write-plugin/re
 - Line-record handlers decode each record independently of earlier calls, because records are decoded in seek order
   by one reused instance (`plugin_system/line_decoder_plugin.py`).
 - Payload handlers may be stateful (`scene/decoding/payload_to_scene_decoder.py`; the built-in ones are not). Payload
-  decode is lossless and its queue overflow is a reported lane error ([03](03-runtime.md#real-time-delivery-must)).
+  decode is lossless (except MQTT, which keeps the newest waiting message) and its queue overflow is a reported lane
+  error ([03](03-runtime.md#real-time-delivery-must)).
   The host resets a decoder on transport reconnect and helper restart.
 - Decoders yield per-frame Scenes or records; the host builds the indexed store ([02](02-architecture.md#seams-to-redraw)),
   grouping equal-timestamp records and sorting at the end of ingest.

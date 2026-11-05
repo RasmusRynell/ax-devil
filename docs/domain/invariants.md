@@ -156,7 +156,7 @@ implementing module closes.
 - Opened media has one owner at a time and is handed over explicitly; resources are destroyed on the executor they
   require, and an unclaimed result's resources are released.
 - Callbacks from replaced or cleaned-up live sources cannot affect the viewer. Sources own their workers; quit waits
-  for retiring sources within one deadline, so transport cleanup such as removing temporary device configuration
+  for retiring sources within one deadline, so transport cleanup such as removing temporary device config
   completes.
 - Live sources report failures they retry themselves (reconnecting) and failures needing a manual retry (error), each
   with a reason the viewer shows, never only the logs.
@@ -166,13 +166,14 @@ implementing module closes.
 
 - Live sync pairs data by capture time, not arrival time. While the feed has an overlay, a live frame waits until its
   overlay is settled or a bounded wait ends (D28), and frames leave one per arriving frame; no future sample shows
-  early. Sharing an RTSP connection does not pair frame and overlay arrivals; both keep their capture timestamps.
-- Every live queue is bounded with an overflow policy its owner defines, and every drop is counted in the timing
-  diagnostics. Encoded video is discarded codec-aware and resyncs at the next decodable keyframe. Payload decode is
-  lossless: its queue overflowing is a lane error ("overlay decoder behind") that holds until the queue drains, resets
-  the decoder and leaves a gap marker in Events. Drop-oldest applies only after decode. A burst never stalls delivery.
+  early. Sharing an RTSP connection does not pair arrivals; both keep their capture timestamps.
+- Every live queue is bounded with an owner-defined overflow policy; every drop is counted in timing diagnostics.
+  Encoded video is discarded codec-aware and resyncs at the next keyframe. DataHub and embedded metadata decode
+  losslessly: overflow is a lane error ("overlay decoder behind") that holds until the queue drains, resets the
+  decoder and leaves a gap marker in Events. MQTT keeps only the newest waiting message; a replaced one is only
+  warned about, with its topic. A burst never stalls delivery.
 - Offline lanes pull overlay data from an Overlay Lookup by frame identity; file overlays have no playback lifecycle
-  and their owning runtime closes them explicitly. Live overlays are pushed.
+  and their runtime closes them explicitly. Live overlays are pushed.
 
 ## Plugin System
 
