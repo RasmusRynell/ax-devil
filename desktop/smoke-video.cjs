@@ -140,6 +140,12 @@ async function fullscreen(window) {
       await key("Escape");
       await wait("!document.fullscreenElement");
     }
+    const info = "document.querySelector('[aria-label$=\"frame info\"]')";
+    await key("I");
+    await wait(info);
+    await shoot(`video-info-${theme}.png`);
+    await key("I");
+    await wait(`!${info}`);
     // A right click on the picture offers the lane's commands, each with its key.
     const { x, y } = await js(
       "(() => { const r = document.querySelector('canvas').getBoundingClientRect(); return { x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height / 3) }; })()",

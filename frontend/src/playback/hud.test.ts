@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
 import type { FrameInfo } from "./clock";
-import { hudSections, ptsOf, type HudLane } from "./hud";
+import { hudSections, linesFit, ptsOf, type HudLane } from "./hud";
 import { MATCH_EXACT, MATCH_TOLERATED, type VideoPtsWire } from "./protocol";
 
 const PTS: VideoPtsWire = { time_base: [1, 12800], first_pts: 0 };
@@ -104,5 +104,18 @@ describe("info HUD", () => {
     expect(fine).not.toHaveProperty("PTS");
     expect(fine).not.toHaveProperty("PTS delta");
     expect(rows(hudSections(frame(2), null, lane()))).not.toHaveProperty("Time base");
+  });
+});
+
+describe("info HUD height", () => {
+  const at = (bottoms: number[], headings: number[] = []) =>
+    bottoms.map((bottom, index) => ({ heading: headings.includes(index), bottom }));
+
+  it("keeps the lines above the limit, and no heading without a row under it", () => {
+    const lines = at([10, 20, 30, 40, 50, 60], [0, 3]);
+    expect(linesFit(lines, 100)).toBe(6);
+    expect(linesFit(lines, 55)).toBe(5);
+    expect(linesFit(lines, 45)).toBe(3);
+    expect(linesFit(lines, 5)).toBe(0);
   });
 });
