@@ -3,7 +3,7 @@ import type { LiveFeedStatus } from "../generated/api";
 import { Button } from "../kit/Button";
 import { Chip, ToggleChip } from "../kit/Chips";
 import type { Tone } from "../kit/look";
-import { feedText, feedTone, needsRetry, utcTime } from "./words";
+import { describe, headline, needsRetry, problemLine, toneOf, utcTime } from "./words";
 import type { LiveView } from "./view";
 
 /** The side panels a live viewer opens beside the picture, one at a time. */
@@ -16,7 +16,7 @@ export interface LiveControls {
   retry(): void;
 }
 
-/** One feed's tag: its name and where it stands, in the tone of its state. The full text is the tooltip. */
+/** One feed's tag: its name and where it stands, in the tone of its state. What the state means is the tooltip. */
 function FeedChip({
   name,
   status,
@@ -29,14 +29,14 @@ function FeedChip({
   waiting?: boolean;
 }) {
   // A decoder that is behind is an error whatever the connection says, until its queue drains.
-  const [text, tone]: [string, Tone] =
+  const [text, tone, title]: [string, Tone, string] =
     behind && status.status !== "Failed"
-      ? ["Behind", "danger"]
+      ? ["Behind", "danger", "Behind"]
       : waiting
-        ? ["Waiting for data…", "neutral"]
-        : [feedText(status), feedTone(status)];
+        ? ["Waiting for data…", "neutral", "Waiting for data…"]
+        : [headline(status), toneOf(status), describe(status)];
   return (
-    <Chip tone={tone} title={`${name}: ${text}`}>
+    <Chip tone={tone} title={title}>
       {`${name}: ${text}`}
     </Chip>
   );
@@ -61,73 +61,87 @@ export function LiveBar({
   onPanel: (panel: LivePanel | null) => void;
 }) {
   const { shown, paused, video, overlay, behind, waiting } = view;
-  const time = shown ? `${utcTime(shown.timestampUs)} UTC` : "";
-  return (
-    <div
-      role="toolbar"
-      aria-label="Live"
-      className="flex items-center gap-m border-b border-line bg-panel px-m py-xs text-fg"
+  const time = shown ? utcTime(shown.timestampUs) : "00:00:00";
+  const problems = [problemLine("Video", video), overlay && problemLine("Overlay", overlay)].filter(
+    (line) => line,
+  );
+  const retry = (needsRetry(video) || needsRetry(overlay)) && (
+    <Button
+      icon="refresh-cw"
+      size="small"
+      className="shrink-0"
+      data-cursor-id="transport:retry"
+      disabled={disabled}
+      onClick={() => controls.retry()}
     >
-      {/* The feed tags give way (ending in an ellipsis, the full text on hover) before any control does. */}
-      <div className="flex min-w-0 flex-1 items-center gap-m">
-        <FeedChip name="Video" status={video} />
-        {overlay && <FeedChip name="Overlay" status={overlay} behind={behind} waiting={waiting} />}
-        {paused && <span className="shrink-0 text-small text-danger">PAUSED</span>}
-        {(needsRetry(video) || needsRetry(overlay)) && (
-          <Button
-            icon="refresh-cw"
-            size="small"
-            className="shrink-0"
-            data-cursor-id="transport:retry"
-            disabled={disabled}
-            onClick={() => controls.retry()}
+      Retry
+    </Button>
+  );
+  return (
+    <div role="toolbar" aria-label="Live" className="border-b border-line bg-panel text-fg">
+      <div className="flex items-center gap-m px-m py-xs">
+        {/* The feed tags give way (ending in an ellipsis, the full text on hover) before any control does. */}
+        <div className="flex min-w-0 flex-1 items-center gap-m">
+          <FeedChip name="Video" status={video} />
+          {overlay && (
+            <FeedChip name="Overlay" status={overlay} behind={behind} waiting={waiting} />
+          )}
+          {paused && <span className="shrink-0 text-small text-danger">PAUSED</span>}
+        </div>
+        <div className="flex shrink-0 items-center gap-m">
+          <output
+            aria-label="Time"
+            style={{ "--chars": "15" } as CSSProperties}
+            className="chars-wide text-right text-small text-muted tabular-nums"
           >
-            Retry
+            {time}
+          </output>
+          <output
+            aria-label="Frame"
+            style={{ "--chars": "14" } as CSSProperties}
+            className="chars-wide text-right text-small text-muted tabular-nums"
+          >
+            {`Frame: ${shown?.sequenceId ?? 0}`}
+          </output>
+          <Button
+            icon={paused ? "play" : "pause"}
+            data-cursor-id="transport:pause"
+            disabled={disabled || view.status !== "ready"}
+            onClick={() => (paused ? controls.resume() : controls.pause())}
+          >
+            {paused ? "Resume" : "Pause"}
           </Button>
-        )}
+          <ToggleChip
+            icon="layers"
+            checked={panel === "objects"}
+            onChange={(on) => onPanel(on ? "objects" : null)}
+          >
+            Objects
+          </ToggleChip>
+          <ToggleChip
+            icon="layout-list"
+            checked={panel === "events"}
+            onChange={(on) => onPanel(on ? "events" : null)}
+          >
+            Events
+          </ToggleChip>
+        </div>
       </div>
-      <div className="flex shrink-0 items-center gap-m">
-        {shown && (
-          <>
-            <output
-              aria-label="Time"
-              style={{ "--chars": "19" } as CSSProperties}
-              className="chars-wide text-right text-small text-muted tabular-nums"
-            >
-              {time}
-            </output>
-            <output
-              aria-label="Frame"
-              style={{ "--chars": "12" } as CSSProperties}
-              className="chars-wide text-right text-small text-muted tabular-nums"
-            >
-              {`Frame ${shown.sequenceId}`}
-            </output>
-          </>
-        )}
-        <Button
-          icon={paused ? "play" : "pause"}
-          data-cursor-id="transport:pause"
-          disabled={disabled || view.status !== "ready"}
-          onClick={() => (paused ? controls.resume() : controls.pause())}
-        >
-          {paused ? "Resume" : "Pause"}
-        </Button>
-        <ToggleChip
-          icon="layers"
-          checked={panel === "objects"}
-          onChange={(on) => onPanel(on ? "objects" : null)}
-        >
-          Objects
-        </ToggleChip>
-        <ToggleChip
-          icon="layout-list"
-          checked={panel === "events"}
-          onChange={(on) => onPanel(on ? "events" : null)}
-        >
-          Events
-        </ToggleChip>
-      </div>
+      {problems.length > 0 && (
+        <div className="flex items-start gap-m px-m pb-xs">
+          <div
+            className="min-w-0 flex-1 text-small select-text break-words"
+            title={problems.join("\n")}
+          >
+            {problems.map((line) => (
+              <p key={line} className="m-0">
+                {line}
+              </p>
+            ))}
+          </div>
+          {retry}
+        </div>
+      )}
     </div>
   );
 }
