@@ -1,67 +1,18 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
-import type { ItemState } from "../generated/api";
+import { entry, failed, FakeSocket, playlists, video } from "../session/fakeSession";
+import { SessionProvider } from "../session/session";
 import {
-  entry,
-  failed,
-  FakeSocket,
-  playlist,
-  playlists,
-  video,
-  type Room,
-} from "../session/fakeSession";
-import { SessionProvider, useView } from "../session/session";
+  CLIP,
+  commands,
+  HIDDEN,
+  ITEMS,
+  labels,
+  MOT,
+  renderTree,
+  shown,
+} from "./WorkspaceTree.fixture";
 import { WorkspaceTree } from "./WorkspaceTree";
-
-const MOT = playlist(
-  "mot",
-  [entry("mot/A", "A", ["GT", "DPM"]), entry("mot/B", "B", ["GT"])],
-  false,
-);
-// A video whose entry has no lanes, so its row has no children.
-const CLIP: ItemState = {
-  ...video("v", false),
-  resolution: {
-    status: "Resolved",
-    content: {
-      kind: "SeekableVideo",
-      id: "content-v",
-      generation: 1,
-      display_name: "v.mp4",
-      entry: entry("content-v", "v.mp4", []),
-    },
-  },
-};
-const ITEMS = [MOT, CLIP, failed("bad", "File not found")];
-const HIDDEN = [{ entry: "mot/A", lane: "DPM" }, { entry: "mot/B" }];
-
-/** What the window shows, as the tree changed it. */
-function View() {
-  const [active] = useView("active");
-  const [viewers] = useView("viewers");
-  return <div data-testid="view">{JSON.stringify({ active, viewers })}</div>;
-}
-
-async function renderTree(items: ItemState[] = ITEMS, hidden = HIDDEN) {
-  render(
-    <SessionProvider>
-      <WorkspaceTree />
-      <View />
-    </SessionProvider>,
-  );
-  await act(async () => {});
-  const room = FakeSocket.rooms.get("room-1") as Room;
-  room.hidden = hidden;
-  act(() => room.setItems(items));
-  return room;
-}
-
-const labels = () => screen.queryAllByRole("treeitem").map((item) => item.textContent);
-const shown = () => JSON.parse(screen.getByTestId("view").textContent ?? "{}");
-const commands = () =>
-  FakeSocket.latest.received.flatMap((message) =>
-    message.type === "command" && message.cmd.type === "content" ? [message.cmd.command] : [],
-  );
 
 beforeEach(() => vi.stubGlobal("WebSocket", FakeSocket));
 afterEach(() => {
@@ -75,18 +26,20 @@ afterEach(() => {
 describe("rows", () => {
   it("shows the backend's rows as a tree with levels, hidden ones left out", async () => {
     await renderTree();
-    expect(screen.getByRole("tree", { name: "Workspace" })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "Videos, 2" })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: /^Playlists, 1/ })).toBeTruthy();
     expect(screen.getAllByRole("treeitem").map((item) => item.getAttribute("aria-level"))).toEqual([
+      "1",
+      "1",
       "1",
       "2",
       "3",
-      "1",
-      "1",
     ]);
-    expect(labels()).toEqual(["mot", "A", "GT", "v.mp4", "bad.mp4, unavailable: File not found"]);
-    const [item, entryRow] = screen.getAllByRole("treeitem");
-    expect(item.getAttribute("aria-expanded")).toBe("true");
-    expect(entryRow.getAttribute("aria-setsize")).toBe("1");
+    expect(labels()).toEqual(["v.mp4", "bad.mp4, unavailable: File not found", "mot", "A", "GT"]);
+    expect(screen.getByRole("treeitem", { name: /^mot/ }).getAttribute("aria-expanded")).toBe(
+      "true",
+    );
+    expect(screen.getByRole("treeitem", { name: /^A/ }).getAttribute("aria-setsize")).toBe("1");
   });
 
   it("lists each of several playlists as a row of its own, named by the item, which opens its first entry and cannot be hidden", async () => {
@@ -123,30 +76,39 @@ describe("rows", () => {
 
   it("shows hidden rows dimmed, with their lanes, only with Show hidden", async () => {
     await renderTree();
+    expect(screen.getByRole("heading", { name: "Playlists, 1, 3 filtered out" })).toBeTruthy();
     fireEvent.click(screen.getByRole("switch", { name: "Show hidden" }));
-    expect(labels().slice(0, 6)).toEqual([
-      "mot",
-      "A",
-      "GT",
-      "DPM, hidden",
-      "B, hidden",
-      "GT, hidden",
-    ]);
+    expect(screen.getByRole("heading", { name: "Playlists, 1" })).toBeTruthy();
+    expect(labels().slice(2)).toEqual(["mot", "A", "GT", "DPM, hidden", "B, hidden", "GT, hidden"]);
   });
 
   it("collapses a row with the left arrow and expands it with the right arrow", async () => {
     await renderTree();
-    const tree = screen.getByRole("tree");
+    const tree = screen.getByRole("tree", { name: "Playlists" });
     fireEvent.keyDown(tree, { key: "ArrowLeft" });
-    expect(labels()).toEqual(["mot", "v.mp4", "bad.mp4, unavailable: File not found"]);
+    expect(labels()).toEqual(["v.mp4", "bad.mp4, unavailable: File not found", "mot"]);
     fireEvent.keyDown(tree, { key: "ArrowRight" });
     expect(labels()).toHaveLength(5);
   });
 
   it("draws only the rows in view of a long list", async () => {
-    const heights = { offsetHeight: 20, clientHeight: 100 };
-    for (const [name, value] of Object.entries(heights))
-      vi.spyOn(HTMLElement.prototype, name as "offsetHeight", "get").mockReturnValue(value);
+    // A browser measures the list when its scroller first reports a size.
+    vi.stubGlobal(
+      "ResizeObserver",
+      class {
+        constructor(private readonly measure: () => void) {}
+        observe() {
+          this.measure();
+        }
+        disconnect() {}
+      },
+    );
+    vi.spyOn(HTMLElement.prototype, "clientHeight", "get").mockReturnValue(100);
+    vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function (
+      this: HTMLElement,
+    ) {
+      return { top: 0, height: this.dataset.span ? 20 : 0 } as DOMRect;
+    });
     const many = Array.from({ length: 1000 }, (_, n) => ({
       ...CLIP,
       id: `v${n}`,
@@ -196,13 +158,45 @@ describe("opening", () => {
 
   it("moves with the arrow keys and opens the current row with Enter", async () => {
     await renderTree();
-    const tree = screen.getByRole("tree");
+    const tree = screen.getByRole("tree", { name: "Playlists" });
     fireEvent.keyDown(tree, { key: "ArrowDown" });
-    expect(tree.getAttribute("aria-activedescendant")).toBe(screen.getAllByRole("treeitem")[1].id);
+    expect(tree.getAttribute("aria-activedescendant")).toBe(
+      within(tree).getAllByRole("treeitem")[1].id,
+    );
     fireEvent.keyDown(tree, { key: "ArrowDown" });
     fireEvent.keyDown(tree, { key: "Enter" });
     await act(async () => {});
     expect(shown()).toMatchObject({ active: "mot", viewers: { mot: { entry: "mot/A" } } });
+  });
+
+  it("walks on from one section's last row into the next and back, and Home and End span them all", async () => {
+    const room = await renderTree();
+    const videos = screen.getByRole("tree", { name: "Videos" });
+    const playlists = screen.getByRole("tree", { name: "Playlists" });
+    const ids = (tree: HTMLElement) =>
+      within(tree)
+        .getAllByRole("treeitem")
+        .map((row) => row.id);
+    fireEvent.click(screen.getByRole("treeitem", { name: /^A/ }));
+    expect(playlists.getAttribute("aria-activedescendant")).toBe(ids(playlists)[1]);
+    videos.focus();
+    fireEvent.keyDown(videos, { key: "ArrowDown" });
+    fireEvent.keyDown(videos, { key: "ArrowDown" });
+    expect(document.activeElement).toBe(playlists);
+    expect(playlists.getAttribute("aria-activedescendant")).toBe(ids(playlists)[0]);
+    fireEvent.keyDown(playlists, { key: "ArrowUp" });
+    expect(document.activeElement).toBe(videos);
+    expect(videos.getAttribute("aria-activedescendant")).toBe(ids(videos)[1]);
+    fireEvent.keyDown(videos, { key: "End" });
+    expect(playlists.getAttribute("aria-activedescendant")).toBe(ids(playlists)[2]);
+    fireEvent.keyDown(playlists, { key: "Home" });
+    expect(videos.getAttribute("aria-activedescendant")).toBe(ids(videos)[0]);
+
+    // A control inside another tree keeps the focus it took when the workspace changes.
+    const hide = screen.getByRole("button", { name: "Hide A" });
+    hide.focus();
+    act(() => room.setItems([...ITEMS]));
+    expect(document.activeElement).toBe(hide);
   });
 
   it("opens an item that failed, so the viewer can say why", async () => {
@@ -252,7 +246,7 @@ describe("hiding", () => {
     await renderTree();
     fireEvent.click(screen.getByRole("button", { name: "Hide v.mp4" }));
     await act(async () => {});
-    expect(labels()).toEqual(["mot", "A", "GT", "bad.mp4, unavailable: File not found"]);
+    expect(labels()).toEqual(["bad.mp4, unavailable: File not found", "mot", "A", "GT"]);
   });
 
   it("says why the backend refused", async () => {
@@ -286,172 +280,48 @@ describe("hiding", () => {
     expect(screen.getByRole("menuitem", { name: "Hide" }).hasAttribute("disabled")).toBe(true);
   });
 
+  it("keeps the focus when hiding takes the focused tree's last row away", async () => {
+    // The section keeps a row, so its tree stays, but the keyboard's row is in the next section.
+    await renderTree([CLIP, video("w", false), MOT], []);
+    const first = screen.getByRole("tree", { name: "Videos" });
+    first.focus();
+    fireEvent.keyDown(first, { key: "ArrowDown" });
+    fireEvent.keyDown(first, { key: "F10", shiftKey: true });
+    fireEvent.click(screen.getByRole("menuitem", { name: "Hide" }));
+    await act(async () => {});
+    const next = screen.getByRole("tree", { name: "Playlists" });
+    expect(document.activeElement).toBe(next);
+    fireEvent.keyDown(next, { key: "Enter" });
+    await act(async () => {});
+    expect(shown().active).toBe("mot");
+
+    cleanup();
+    FakeSocket.reset();
+    await renderTree([CLIP, MOT], []);
+    const videos = screen.getByRole("tree", { name: "Videos" });
+    videos.focus();
+    fireEvent.keyDown(videos, { key: "F10", shiftKey: true });
+    fireEvent.click(screen.getByRole("menuitem", { name: "Hide" }));
+    await act(async () => {});
+    expect(screen.queryByRole("tree", { name: "Videos" })).toBeNull();
+    expect(document.activeElement).toBe(screen.getByRole("tree", { name: "Playlists" }));
+
+    cleanup();
+    FakeSocket.reset();
+    await renderTree([CLIP], []);
+    screen.getByRole("tree", { name: "Videos" }).focus();
+    fireEvent.click(screen.getByRole("button", { name: "Hide v.mp4" }));
+    await act(async () => {});
+    expect(document.activeElement).toBe(screen.getByRole("button", { name: "Videos" }));
+  });
+
   it("closes the row menu with Escape", async () => {
     await renderTree();
-    fireEvent.keyDown(screen.getByRole("tree"), { key: "F10", shiftKey: true });
+    const tree = screen.getByRole("tree", { name: "Videos" });
+    fireEvent.keyDown(tree, { key: "F10", shiftKey: true });
     expect(screen.getByRole("menu")).toBeTruthy();
     fireEvent.keyDown(document, { key: "Escape" });
     expect(screen.queryByRole("menu")).toBeNull();
-  });
-});
-
-describe("hover card", () => {
-  const bitmaps: { width: number; height: number; close: ReturnType<typeof vi.fn> }[] = [];
-  const requests: { signal: AbortSignal; tag: string | null }[] = [];
-  const found = () =>
-    Promise.resolve(new Response(new Blob(["jpeg"]), { headers: { ETag: '"t"' } }));
-  let reply: () => Promise<Response> = found;
-  const fetched = vi.fn((_url: string, init: RequestInit) => {
-    const signal = init.signal as AbortSignal;
-    requests.push({ signal, tag: new Headers(init.headers).get("If-None-Match") });
-    return reply();
-  });
-  const card = () => document.querySelector("canvas");
-  const elapse = (ms: number) => act(async () => void vi.advanceTimersByTime(ms));
-
-  beforeEach(() => {
-    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
-    vi.stubGlobal("fetch", fetched);
-    vi.stubGlobal("createImageBitmap", () => {
-      const bitmap = { width: 560, height: 315, close: vi.fn() };
-      bitmaps.push(bitmap);
-      return Promise.resolve(bitmap);
-    });
-    vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue({
-      drawImage: vi.fn(),
-    } as unknown as CanvasRenderingContext2D);
-  });
-  afterEach(() => {
-    vi.useRealTimers();
-    fetched.mockClear();
-    requests.length = 0;
-    bitmaps.length = 0;
-    reply = found;
-  });
-
-  it("shows a video's first frame once the pointer has rested, and drops it on leaving", async () => {
-    const room = await renderTree();
-    const row = screen.getByRole("treeitem", { name: /^v\.mp4/ });
-    fireEvent.pointerEnter(row);
-    expect(fetched.mock.calls[0][0]).toBe(`/api/thumbnail?session=${room.id}&entry=content-v`);
-    await act(async () => {});
-    expect(card()).toBeNull();
-    await elapse(80);
-    expect(card()).not.toBeNull();
-    fireEvent.pointerLeave(row);
-    expect(card()).toBeNull();
-    expect(requests[0].signal.aborted).toBe(true);
-    expect(bitmaps[0].close).toHaveBeenCalled();
-  });
-
-  it("drops the card when its row goes away under a still pointer", async () => {
-    const room = await renderTree();
-    const row = screen.getByRole("treeitem", { name: /^v\.mp4/ });
-    fireEvent.pointerEnter(row);
-    act(() => room.setItems([MOT]));
-    expect(requests[0].signal.aborted).toBe(true);
-    await elapse(80);
-    expect(card()).toBeNull();
-    act(() => room.setItems(ITEMS));
-    fireEvent.pointerEnter(screen.getByRole("treeitem", { name: /^v\.mp4/ }));
-    await elapse(80);
-    expect(card()).not.toBeNull();
-    act(() => room.setItems([MOT]));
-    expect(card()).toBeNull();
-    expect(requests[1].signal.aborted).toBe(true);
-    expect(bitmaps[bitmaps.length - 1].close).toHaveBeenCalled();
-  });
-
-  it("refreshes a resting card without overlapping requests, keeping the picture while it is unchanged", async () => {
-    await renderTree();
-    fireEvent.pointerEnter(screen.getByRole("treeitem", { name: /^v\.mp4/ }));
-    await elapse(80);
-    const [first] = bitmaps;
-
-    reply = () => Promise.resolve(new Response(null, { status: 304 }));
-    await elapse(1000);
-    expect(requests[1].tag).toBe('"t"');
-    expect(bitmaps).toHaveLength(1);
-    expect(first.close).not.toHaveBeenCalled();
-    expect(card()).not.toBeNull();
-
-    reply = found;
-    await elapse(1000);
-    expect(bitmaps).toHaveLength(2);
-    expect(first.close).toHaveBeenCalled();
-    expect(bitmaps[1].close).not.toHaveBeenCalled();
-
-    let finish: (response: Response) => void = () => undefined;
-    reply = () => new Promise((resolve) => void (finish = resolve));
-    await elapse(1000);
-    await elapse(5000);
-    expect(fetched).toHaveBeenCalledTimes(4);
-    await act(async () => finish(new Response(null, { status: 422 })));
-    expect(card()).toBeNull();
-    expect(bitmaps[1].close).toHaveBeenCalled();
-
-    reply = found;
-    await elapse(1000);
-    expect(requests[4].tag).toBeNull();
-    expect(card()).not.toBeNull();
-  });
-
-  it("closes a picture that finishes decoding in the batch that unmounts the tree", async () => {
-    await renderTree();
-    let finish: (bitmap: unknown) => void = () => undefined;
-    vi.stubGlobal("createImageBitmap", () => new Promise((resolve) => void (finish = resolve)));
-    fireEvent.pointerEnter(screen.getByRole("treeitem", { name: /^v\.mp4/ }));
-    await elapse(80);
-    const bitmap = { width: 560, height: 315, close: vi.fn() };
-    await act(async () => {
-      finish(bitmap);
-      await vi.advanceTimersByTimeAsync(0);
-      cleanup();
-    });
-    expect(bitmap.close).toHaveBeenCalledTimes(1);
-  });
-
-  it("closes a picture that a newer one overtakes before it is drawn", async () => {
-    await renderTree();
-    const decoding: ((bitmap: unknown) => void)[] = [];
-    vi.stubGlobal("createImageBitmap", () => new Promise((resolve) => void decoding.push(resolve)));
-    fireEvent.pointerEnter(screen.getByRole("treeitem", { name: /^v\.mp4/ }));
-    await elapse(80);
-    const [older, newer] = [1, 2].map(() => ({ width: 560, height: 315, close: vi.fn() }));
-    await act(async () => {
-      decoding[0](older);
-      await vi.advanceTimersByTimeAsync(1000);
-      decoding[1](newer);
-      await vi.advanceTimersByTimeAsync(0);
-    });
-    expect(card()).not.toBeNull();
-    expect(older.close).toHaveBeenCalledTimes(1);
-    expect(newer.close).not.toHaveBeenCalled();
-  });
-
-  it("asks for no picture of a playlist or a lane, and each entry's own for an entry", async () => {
-    const runs = playlists("runs", [
-      ["Train", [entry("runs/Train/A", "A", ["GT"])]],
-      ["Train (2)", [entry("runs/Train (2)/A", "A", ["GT"])]],
-    ]);
-    const room = await renderTree([runs], []);
-    const rows = screen.getAllByRole("treeitem");
-    expect(labels()).toEqual(["runs / Train", "A", "GT", "runs / Train (2)", "A", "GT"]);
-    for (const index of [0, 2, 3, 5]) {
-      fireEvent.pointerEnter(rows[index]);
-      fireEvent.pointerLeave(rows[index]);
-    }
-    expect(fetched).not.toHaveBeenCalled();
-
-    for (const [index, id] of [
-      [1, "runs/Train/A"],
-      [4, "runs/Train (2)/A"],
-    ] as const) {
-      fireEvent.pointerEnter(rows[index]);
-      fireEvent.pointerLeave(rows[index]);
-      const url = new URLSearchParams({ session: room.id, entry: id });
-      expect(fetched).toHaveBeenLastCalledWith(`/api/thumbnail?${url}`, expect.anything());
-    }
-    expect(fetched).toHaveBeenCalledTimes(2);
+    expect(document.activeElement).toBe(tree);
   });
 });

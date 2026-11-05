@@ -18,7 +18,7 @@ describe("section caption", () => {
         fold={{ open: true, onToggle }}
       />,
     );
-    fireEvent.click(screen.getByRole("heading", { name: "Sources 3 · local" }));
+    fireEvent.click(screen.getByRole("heading", { name: "Sources, 3, local" }));
     expect(onToggle).toHaveBeenCalledTimes(1);
     const fold = screen.getByRole("button", { name: "Sources" });
     expect(fold.getAttribute("aria-expanded")).toBe("true");
@@ -27,5 +27,10 @@ describe("section caption", () => {
     fireEvent.click(screen.getByRole("button", { name: "Add" }));
     expect(onAdd).toHaveBeenCalledTimes(1);
     expect(onToggle).toHaveBeenCalledTimes(2);
+  });
+
+  it("names an empty group by its zero without drawing it", () => {
+    render(<SectionCaption heading="Live" count={0} />);
+    expect(screen.getByRole("heading", { name: "Live, 0" }).textContent).toBe("Live");
   });
 });

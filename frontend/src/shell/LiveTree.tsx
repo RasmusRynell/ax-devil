@@ -168,7 +168,7 @@ export function LiveTree({
             <section key={section.id} aria-label={section.title}>
               <SectionCaption
                 heading={section.title}
-                count={section.rows.length || undefined}
+                count={section.rows.length}
                 note={filteredOut ? `${filteredOut} filtered out` : undefined}
                 mark={section.lit ? "live" : "muted"}
                 fold={
