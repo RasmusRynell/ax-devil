@@ -80,6 +80,8 @@ let startedScan = 1;
 let withhold = false;
 // A snapshot stream that stays open, for a test to push scans' snapshots into.
 let follow: ((snapshot: NetworkSnapshot) => void) | null = null;
+// Ends the open snapshot stream, as a backend going away does.
+let hangUp: () => void = () => {};
 
 beforeEach(() => {
   SNAPSHOT = FOUND;
@@ -105,6 +107,7 @@ beforeEach(() => {
               controller.enqueue(new TextEncoder().encode(`${JSON.stringify(snapshot)}\n`));
             if (!withhold) write(SNAPSHOT);
             follow = write;
+            hangUp = () => controller.close();
           },
         }),
       );
@@ -250,6 +253,30 @@ describe("scanning", () => {
     expect(rescanButton().disabled).toBe(true);
     await emit(idle(3));
     expect(rescanButton().disabled).toBe(false);
+  });
+
+  it("lets a scan start again once the scan pressed has run, also when the backend restarts and counts from zero", async () => {
+    startedScan = 5;
+    SNAPSHOT = { scan: 4, scanning: false, rows: [], failure: null };
+    follow = () => {};
+    await renderView([]);
+    const range = await screen.findByRole("textbox", { name: "IP range" });
+    const rescanButton = () => screen.getByRole("button", { name: "Rescan" }) as HTMLButtonElement;
+    fireEvent.keyDown(range, { key: "Enter" });
+    await emit({ scan: 5, scanning: false, rows: [], failure: null });
+    expect(rescanButton().disabled).toBe(false);
+
+    vi.useFakeTimers({ toFake: ["setTimeout"] });
+    SNAPSHOT = { scan: 1, scanning: false, rows: [], failure: null };
+    await act(async () => {
+      hangUp();
+      await vi.advanceTimersByTimeAsync(5000);
+    });
+    vi.useRealTimers();
+    expect(fetched.mock.calls.filter(([url]) => url === "/api/network")).toHaveLength(2);
+    expect(rescanButton().disabled).toBe(false);
+    fireEvent.keyDown(range, { key: "Enter" });
+    expect(scansStarted()).toHaveLength(2);
   });
 
   it("says a scan failed, with the reason, and keeps the cameras it found", async () => {

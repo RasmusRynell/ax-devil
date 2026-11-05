@@ -30,8 +30,9 @@ export function ScanSettings({ snapshot }: { snapshot: NetworkSnapshot | null })
   const [typed, setTyped] = useState<string | null>(null);
   /** Why the last scan was refused; shown until the next one starts. */
   const [refused, setRefused] = useState<ScanProblem | null>(null);
-  // The latest press: its scan's number, `null` until the backend answers. The scan has begun for this view once a
-  // snapshot of that number or a later one is shown, which an older snapshot cannot be mistaken for.
+  // The latest press, held until its scan has begun for this view: its number, `null` until the backend answers. A
+  // snapshot of that number or a later one ends it, which an older snapshot cannot be mistaken for, and a press
+  // that has ended holds nothing, so a backend that restarts and counts scans from zero again never blocks Rescan.
   const [pressed, setPressed] = useState<{ scan: number | null } | null>(null);
   // The box follows the setting until the user sets it, and again whenever the setting changes.
   const setting = values["scan.sign_in"] !== false;
@@ -42,9 +43,8 @@ export function ScanSettings({ snapshot }: { snapshot: NetworkSnapshot | null })
     setChosen(null);
   }
   const signIn = chosen ?? setting;
-  const waiting =
-    pressed !== null && (pressed.scan === null || (snapshot?.scan ?? -1) < pressed.scan);
-  const scanning = snapshot?.scanning === true || waiting;
+  if (pressed?.scan != null && snapshot && snapshot.scan >= pressed.scan) setPressed(null);
+  const scanning = snapshot?.scanning === true || pressed !== null;
   const logins = values["scan.logins"];
 
   /** Saves one setting; resolves to why the backend refused it, else `null`. */
