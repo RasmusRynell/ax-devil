@@ -16,8 +16,9 @@ use ffmpeg_next::color::Range;
 use ffmpeg_next::error::EAGAIN;
 use ffmpeg_next::format::Pixel;
 use ffmpeg_next::software::scaling::Flags as ScaleFlags;
-use ffmpeg_next::{Error, Packet, Rational, decoder, encoder, ffi, frame};
+use ffmpeg_next::{Dictionary, Error, Packet, Rational, decoder, encoder, ffi, frame};
 use foundation::{CancelToken, ErrorCode, Interrupt, Matrix, UserError};
+use xxhash_rust::xxh3::Xxh3;
 
 /// The JPEG quantiser scale: 4 gives about the size and look of libjpeg quality 85.
 const JPEG_QSCALE: i32 = 4;
@@ -33,11 +34,12 @@ pub struct FirstFrame {
     pub height: u32,
 }
 
-/// A number that is equal while the file the first frame comes from is unchanged: the video file, or for an image
-/// sequence its first image. Like the frame index's cache check, it notices size, times and both ends of the file,
+/// A number that is equal while the first frame's source is unchanged: the video file, or for an image sequence its
+/// first image together with every setting of the sequence (pattern, start number, frame rate and frame count), as
+/// Python's cache key does. Like the frame index's cache check, it notices size, times and both ends of the file,
 /// not an edit in the middle that keeps those.
 pub fn first_frame_identity(input: &VideoInput) -> Result<u64, UserError> {
-    Fingerprint::of_input(input)
+    let fingerprint = Fingerprint::of_input(input)
         .map(|fingerprint| fingerprint.digest())
         .map_err(|reason| {
             source::error(
@@ -45,7 +47,18 @@ pub fn first_frame_identity(input: &VideoInput) -> Result<u64, UserError> {
                 format!("The video cannot be identified: {reason}"),
                 input.location(),
             )
-        })
+        })?;
+    let VideoInput::ImageSequence(sequence) = input else {
+        return Ok(fingerprint);
+    };
+    let mut hash = Xxh3::new();
+    hash.update(&fingerprint.to_le_bytes());
+    hash.update(sequence.pattern.as_os_str().as_encoded_bytes());
+    hash.update(&sequence.start_number.to_le_bytes());
+    hash.update(&sequence.frame_rate.num().to_le_bytes());
+    hash.update(&sequence.frame_rate.den().to_le_bytes());
+    hash.update(&sequence.frame_count.to_le_bytes());
+    Ok(hash.digest())
 }
 
 /// Decodes the first picture of `input`, shrinks it to a long side of at most `edge` pixels (never enlarging it,
@@ -126,10 +139,44 @@ fn decode_first(
     }))
 }
 
-/// Whether `bytes` start with a JPEG's start marker (`FFD8`) and end with its end marker (`FFD9`). It catches a
-/// picture cut short, as a crash or a full disk leaves it, not damage in the middle of the file.
-pub fn whole_jpeg(bytes: &[u8]) -> bool {
-    bytes.starts_with(&[0xFF, 0xD8]) && bytes.ends_with(&[0xFF, 0xD9])
+/// The most bytes a cached thumbnail may have. A JPEG fitted to a few hundred pixels is far smaller; a larger file is
+/// not one this module wrote, and is not read or decoded.
+pub const MAX_JPEG_BYTES: u64 = 4 * 1024 * 1024;
+
+/// Whether `bytes` are a JPEG of a thumbnail at `edge` that decodes without error: at most [`MAX_JPEG_BYTES`], with
+/// its start (`FFD8`) and end (`FFD9`) markers, which a picture cut short by a crash or a full disk lacks, and a
+/// picture no larger than `edge` by `edge` pixels that a decoder reads whole, which damage inside the file stops.
+/// The cache folder is not trusted, so the size limits apply before anything is allocated for the picture.
+pub fn whole_jpeg(bytes: &[u8], edge: u32) -> bool {
+    u64::try_from(bytes.len()).is_ok_and(|len| len <= MAX_JPEG_BYTES)
+        && bytes.starts_with(&[0xFF, 0xD8])
+        && bytes.ends_with(&[0xFF, 0xD9])
+        && decodes_cleanly(bytes, edge).is_ok()
+}
+
+/// Decodes the JPEG `bytes`; an error when the decoder fails, flags damage in the picture, finds it larger than
+/// `edge` by `edge` pixels, or gives none.
+fn decodes_cleanly(bytes: &[u8], edge: u32) -> Result<(), Error> {
+    let codec = decoder::find(codec::Id::MJPEG).ok_or(Error::DecoderNotFound)?;
+    // The decoder hides damage in the picture data by default; `explode` makes it fail instead. `max_pixels` makes
+    // it refuse a larger picture from its header, before it allocates for it.
+    let mut options = Dictionary::new();
+    options.set("err_detect", "explode");
+    options.set(
+        "max_pixels",
+        &(u64::from(edge) * u64::from(edge)).to_string(),
+    );
+    let mut video = codec::context::Context::new_with_codec(codec)
+        .decoder()
+        .open_as_with(codec, options)?
+        .video()?;
+    video.send_packet(&Packet::copy(bytes))?;
+    video.send_eof()?;
+    let picture = receive(&mut video)?.ok_or(Error::InvalidData)?;
+    if picture.is_corrupt() || picture.has_decode_errors() {
+        return Err(Error::InvalidData);
+    }
+    Ok(())
 }
 
 /// The frame the codec has ready, `None` when it needs more packets.
