@@ -6,17 +6,20 @@ use foundation::{Location, UserError};
 use handlers::Handlers;
 use std::path::Path;
 use workspace::{
-    WorkspaceItem,
+    Connection, Environment, LiveOverlay, LiveRecipe, Secret, Source, WorkspaceItem,
     intake::{LiveDefaults, NewOverlay},
+    preview,
 };
 use workspace_files::{Claim, RecoveryFolder};
 
 /// What `command` asks the first window to start from: the workspace file or items it names, or, for a plain launch,
-/// the unsaved work of the last window. `defaults` is read only for `live`. The error says what was refused and why.
+/// the unsaved work of the last window. `defaults` is read only for `live`, and `env` only to check that its hosts are
+/// not references to nothing. The error says what was refused and why.
 pub(super) fn launch(
     command: Option<Command>,
     handlers: &Handlers,
     recovery: &RecoveryFolder,
+    env: &Environment,
     defaults: impl FnOnce() -> Result<LiveDefaults, String>,
 ) -> Result<Option<Launch>, String> {
     match command {
@@ -34,9 +37,45 @@ pub(super) fn launch(
         }
         command => {
             let items = launch_items(command, handlers, defaults)?;
+            for item in &items {
+                if let Source::Live(recipe) = &item.recipe.source {
+                    check_hosts(recipe, env)?;
+                }
+            }
             Ok((!items.is_empty()).then_some(Launch::Items(items)))
         }
     }
+}
+
+/// Refuses a live stream whose camera or MQTT broker host is a `$NAME` reference that expands to nothing, as resolving
+/// would once the app is up. The item keeps the reference as written; the expansion is only looked at here, and a
+/// reference that needs the user's confirmation is left for resolving to ask about.
+fn check_hosts(recipe: &LiveRecipe, env: &Environment) -> Result<(), String> {
+    let none = Secret::default();
+    let host = |host| Connection {
+        host,
+        user: "",
+        password: &none,
+    };
+    let broker = match &recipe.overlay {
+        LiveOverlay::Mqtt { broker_host, .. } => Some(host(broker_host)),
+        _ => None,
+    };
+    let shown = preview(env, host(&recipe.host), broker);
+    if shown.camera.host.as_deref() == Some("") {
+        return Err(format!(
+            "No device host: {} is empty or unset. Use --host or set the camera host in Settings.",
+            recipe.host
+        ));
+    }
+    if let LiveOverlay::Mqtt { broker_host, .. } = &recipe.overlay
+        && shown.broker.host.as_deref() == Some("")
+    {
+        return Err(format!(
+            "No MQTT broker host: {broker_host} is empty or unset. Use --mqtt-host or set the broker host in Settings."
+        ));
+    }
+    Ok(())
 }
 
 /// Refuses a recovery copy the window could not take over: one that is missing, held by another window, or not a
