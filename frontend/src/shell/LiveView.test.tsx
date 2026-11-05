@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { GrantsContext } from "../access";
-import { FakeSettings } from "../fakeSettings";
+import { DEFAULT_SETTINGS, FakeSettings } from "../fakeSettings";
 import type { Grant, ItemState, NetworkRow, NetworkSnapshot, NewLiveWire } from "../generated/api";
 import type { AddSeed } from "../live/cameras";
 import type { SettingsApi } from "../settings";
@@ -72,6 +72,8 @@ const fetched = vi.fn();
 let resolvedFirst = true;
 let refuseScan = false;
 let loginRefused = false;
+// Holds the answer of the next scan request until the test releases it.
+let holdScan: Promise<void> | null = null;
 // A snapshot stream that stays open, for a test to push scans' snapshots into.
 let follow: ((snapshot: NetworkSnapshot) => void) | null = null;
 
@@ -85,6 +87,7 @@ beforeEach(() => {
       // Whether the item was resolved already when the confirmation arrived.
       if (url === "/api/live/confirm")
         resolvedFirst = sent().some(({ type }) => type === "resolve");
+      if (url === "/api/network/scan" && holdScan) await holdScan;
       if (url === "/api/network/scan" && refuseScan) return new Response("{}", { status: 422 });
       if (url === "/api/live/check" && loginRefused)
         return new Response(JSON.stringify(found("10.0.0.2", { state: "Refused" })));
@@ -111,6 +114,7 @@ afterEach(() => {
   refuseScan = false;
   loginRefused = false;
   follow = null;
+  holdScan = null;
   window.sessionStorage.clear();
   FakeSocket.reset();
 });
@@ -214,6 +218,25 @@ describe("scanning", () => {
     expect(screen.queryByText("Scanning…")).toBeNull();
   });
 
+  it("holds the next scan back while the request is pending, whatever older snapshot arrives", async () => {
+    let answer = () => {};
+    holdScan = new Promise((resolve) => (answer = resolve));
+    follow = () => {};
+    SNAPSHOT = { scan: 1, scanning: false, rows: [], failure: null };
+    await renderView([]);
+    const range = await screen.findByRole("textbox", { name: "IP range" });
+    fireEvent.keyDown(range, { key: "Enter" });
+    await emit({ scan: 1, scanning: false, rows: [], failure: null });
+    fireEvent.keyDown(range, { key: "Enter" });
+    expect(scansStarted()).toHaveLength(1);
+    expect((screen.getByRole("button", { name: "Rescan" }) as HTMLButtonElement).disabled).toBe(
+      true,
+    );
+    await act(async () => answer());
+    await emit({ scan: 2, scanning: true, rows: [], failure: null });
+    expect(screen.getByText("Scanning…")).toBeTruthy();
+  });
+
   it("says a scan failed, with the reason, and keeps the cameras it found", async () => {
     SNAPSHOT = { scan: 0, scanning: false, rows: [], failure: null };
     follow = () => {};
@@ -232,6 +255,42 @@ describe("scanning", () => {
     fireEvent.click(screen.getByRole("button", { name: "Rescan" }));
     expect(JSON.parse(scansStarted()[0][1] as string)).toEqual({ sign_in: false });
     expect(save).not.toHaveBeenCalled();
+  });
+
+  it("returns the sign-in box to the saved setting whenever that changes", async () => {
+    const page = (signIn: boolean) => (
+      <GrantsContext value={["files", "configuration"]}>
+        <FakeSettings
+          state={{
+            ...DEFAULT_SETTINGS,
+            values: { ...DEFAULT_SETTINGS.values, "scan.sign_in": signIn },
+          }}
+        >
+          <SessionProvider>
+            <LiveView onAdd={() => {}} />
+          </SessionProvider>
+        </FakeSettings>
+      </GrantsContext>
+    );
+    const { rerender } = render(page(true));
+    const box = async () =>
+      (await screen.findByRole("checkbox", {
+        name: /sign in to found cameras/,
+      })) as HTMLInputElement;
+    expect((await box()).checked).toBe(true);
+    fireEvent.click(await box());
+    expect((await box()).checked).toBe(false);
+    rerender(page(false));
+    expect((await box()).checked).toBe(false);
+    rerender(page(true));
+    expect((await box()).checked).toBe(true);
+
+    rerender(page(false));
+    fireEvent.click(await box());
+    expect((await box()).checked).toBe(true);
+    rerender(page(true));
+    rerender(page(false));
+    expect((await box()).checked).toBe(false);
   });
 });
 

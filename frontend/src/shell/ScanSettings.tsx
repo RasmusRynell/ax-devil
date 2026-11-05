@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useGrants } from "../access";
 import type { NetworkSnapshot } from "../generated/api";
 import { type SettingKey } from "../generated/settings";
@@ -30,13 +30,24 @@ export function ScanSettings({ snapshot }: { snapshot: NetworkSnapshot | null })
   const [typed, setTyped] = useState<string | null>(null);
   /** Why the last scan was refused; shown until the next one starts. */
   const [refused, setRefused] = useState<ScanProblem | null>(null);
-  // The snapshot shown when a scan was asked for: the scan has not begun for this view until another arrives.
-  const [asked, setAsked] = useState<{ before: NetworkSnapshot | null } | null>(null);
-  // The box follows the setting until the user sets it, and again when the setting changes.
+  // The latest scan asked for: `before` is the number of the scan the view showed then (`null` before any snapshot),
+  // and `posted` that the backend has answered. The scan has begun once a snapshot of a later number arrives; with
+  // none shown then, once the backend has answered and a snapshot is shown.
+  const [asked, setAsked] = useState<{ before: number | null; posted: boolean } | null>(null);
+  const attempts = useRef(0);
+  // The box follows the setting until the user sets it, and again whenever the setting changes.
   const setting = values["scan.sign_in"] !== false;
-  const [chosen, setChosen] = useState<{ over: boolean; on: boolean } | null>(null);
-  const signIn = chosen?.over === setting ? chosen.on : setting;
-  const scanning = snapshot?.scanning === true || (asked !== null && asked.before === snapshot);
+  const [chosen, setChosen] = useState<boolean | null>(null);
+  const [seen, setSeen] = useState(setting);
+  if (seen !== setting) {
+    setSeen(setting);
+    setChosen(null);
+  }
+  const signIn = chosen ?? setting;
+  const waiting =
+    asked !== null &&
+    (snapshot === null || (asked.before === null ? !asked.posted : snapshot.scan <= asked.before));
+  const scanning = snapshot?.scanning === true || waiting;
   const logins = values["scan.logins"];
 
   /** Saves one setting; resolves to why the backend refused it, else `null`. */
@@ -48,11 +59,14 @@ export function ScanSettings({ snapshot }: { snapshot: NetworkSnapshot | null })
   const scan = () => {
     if (scanning) return;
     const range = typed?.trim();
-    setAsked({ before: snapshot });
+    const attempt = ++attempts.current;
+    setAsked({ before: snapshot?.scan ?? null, posted: false });
     void rescan(range === undefined || range === stored.trim() ? undefined : range, signIn).then(
       (problem) => {
+        // A newer attempt owns the guard and the header.
+        if (attempt !== attempts.current) return;
         setRefused(problem);
-        if (problem) setAsked(null);
+        setAsked(problem ? null : (now) => now && { ...now, posted: true });
       },
     );
   };
@@ -106,7 +120,7 @@ export function ScanSettings({ snapshot }: { snapshot: NetworkSnapshot | null })
               title={SIGN_IN_HINT}
               className="text-small"
               checked={signIn}
-              onChange={(on) => setChosen({ over: setting, on })}
+              onChange={setChosen}
             />
             {signIn && (
               <LoginsEditor
