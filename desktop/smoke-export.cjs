@@ -73,8 +73,15 @@ module.exports.exportDialog = async (window) => {
   }
   nativeTheme.themeSource = theme;
   await setView(window, [1100, 720], 1);
-  await js(
-    "[...document.querySelectorAll('dialog[open] button')].find((b) => b.textContent === 'Cancel').click()",
+  // Before an export starts there is nothing to cancel, so Cancel is disabled; Escape still closes the dialog.
+  assert.equal(
+    await js(
+      "[...document.querySelectorAll('dialog[open] button')].find((b) => b.textContent === 'Cancel').disabled",
+    ),
+    true,
+    "Cancel must be disabled before an export starts",
   );
+  window.webContents.sendInputEvent({ type: "keyDown", keyCode: "Escape" });
+  window.webContents.sendInputEvent({ type: "keyUp", keyCode: "Escape" });
   await wait("!document.querySelector('dialog')");
 };

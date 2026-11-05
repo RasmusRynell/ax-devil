@@ -1,8 +1,10 @@
-import { useRef, useState, useSyncExternalStore } from "react";
+import { useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import type { ExportFormatWire, ExportQualityWire } from "../generated/api";
-import { Dialog } from "../kit/Dialog";
+import { Button } from "../kit/Button";
+import { DialogFrame } from "../kit/Dialog";
 import { Checkbox, Select, TextField } from "../kit/Fields";
+import { MiddleElided } from "../kit/MiddleElided";
 import type { PlaybackView } from "../playback/view";
 import { useServerKind } from "../shell/windowBridge";
 import { choicesOf } from "./lanes";
@@ -32,6 +34,52 @@ const withExtension = (path: string, kind: Kind): string =>
 /** A whole number from its text; `null` for anything else. */
 const wholeNumber = (text: string): number | null =>
   /^\d+$/.test(text.trim()) ? Number(text) : null;
+
+/**
+ * The dialog's box: the answer button, then Cancel. Escape runs `onEscape`. Cancel is disabled unless `onCancel` is
+ * given, so a dialog with nothing to cancel still shows where it will be.
+ */
+function Frame({
+  okLabel,
+  busy = false,
+  onOk,
+  onCancel,
+  onEscape,
+  children,
+}: {
+  okLabel: string;
+  busy?: boolean;
+  onOk: () => void;
+  onCancel?: () => void;
+  onEscape: () => void;
+  children: ReactNode;
+}) {
+  return (
+    <DialogFrame
+      title={TITLE}
+      onSubmit={(event) => {
+        event.preventDefault();
+        if (!busy) onOk();
+      }}
+      onCancel={(event) => {
+        event.preventDefault();
+        onEscape();
+      }}
+      footer={
+        <div className="ml-auto flex gap-m">
+          <Button type="submit" disabled={busy}>
+            {okLabel}
+          </Button>
+          <Button disabled={!onCancel} onClick={onCancel}>
+            Cancel
+          </Button>
+        </div>
+      }
+    >
+      {children}
+    </DialogFrame>
+  );
+}
 
 /** The text of an export that finished or could not start: shown under the bar in place of the form. */
 function Outcome({ status }: { status: Exclude<ExportStatus, { phase: "idle" | "running" }> }) {
@@ -158,11 +206,11 @@ export function ExportDialog({
   const dialog = (() => {
     if (status.phase === "running")
       return (
-        <Dialog
-          title={TITLE}
+        <Frame
           okLabel="Export"
           onOk={() => undefined}
           onCancel={() => jobs.cancel()}
+          onEscape={() => jobs.cancel()}
           busy
         >
           <div className="flex flex-col gap-m">
@@ -171,32 +219,26 @@ export function ExportDialog({
               {status.done > 0 ? `Frame ${status.done} / ${status.total}` : "Exporting…"}
             </span>
           </div>
-        </Dialog>
+        </Frame>
       );
     if (status.phase !== "idle")
       return (
-        <Dialog title={TITLE} okLabel="Close" onOk={close}>
+        <Frame okLabel="Close" onOk={close} onEscape={close}>
           <div className="flex flex-col gap-m">
             <ProgressBar done={status.done} total={status.total} />
             <Outcome status={status} />
           </div>
-        </Dialog>
+        </Frame>
       );
     return (
-      <Dialog
-        title={TITLE}
-        okLabel="Export"
-        onOk={() => void start()}
-        onCancel={close}
-        busy={!ready || choosing}
-      >
+      <Frame okLabel="Export" onOk={() => void start()} onEscape={close} busy={!ready || choosing}>
         {choices.length > 1 && (
           <fieldset className="m-0 flex min-w-0 flex-col gap-s border-0 p-0">
             <legend className="p-0">Lanes</legend>
             {choices.map(({ lane, label, wire }) => (
               <Checkbox
                 key={lane}
-                label={label}
+                label={<MiddleElided text={label} className="flex-1" />}
                 checked={wire !== null && !unchecked.has(lane)}
                 disabled={wire === null}
                 onChange={(on) =>
@@ -235,7 +277,7 @@ export function ExportDialog({
             {failure}
           </p>
         )}
-      </Dialog>
+      </Frame>
     );
   })();
   // The page's body holds it, so a viewer that is hidden (a narrow window showing the sidebar) does not hide the
