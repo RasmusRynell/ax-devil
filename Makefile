@@ -11,7 +11,7 @@ ROOT_FILES := desktop/*.cjs scripts/*.cjs vite.config.ts package.json pnpm-works
 FFMPEG_LOADER := $(if $(FFMPEG_DIR),LD_LIBRARY_PATH="$(FFMPEG_DIR)/lib$${LD_LIBRARY_PATH:+:$$LD_LIBRARY_PATH}" DYLD_LIBRARY_PATH="$(FFMPEG_DIR)/lib$${DYLD_LIBRARY_PATH:+:$$DYLD_LIBRARY_PATH}" PATH="$$(cygpath -u '$(FFMPEG_DIR)/bin' 2>/dev/null || echo '$(FFMPEG_DIR)/bin'):$$PATH")
 .PHONY: help web desktop build app cli check check-fast format package smoke-packaged verify-release-version test \
 	test-frontend test-backend test-integration test-desktop test-camera bench bench-export bench-present bench-tables bench-browser \
-	bench-browser-smoke _check _types _frontend-build _static _licenses _dev _dev-rust
+	bench-browser-smoke _check _types _frontend-build _static _clippy _clippy-no-default _licenses _dev _dev-rust
 
 help:
 	@printf '%s\n' \
@@ -55,11 +55,20 @@ desktop/node_modules/.electron-ready: node_modules/.installed
 	cd desktop && node -e 'require("electron")' >/dev/null
 	touch $@
 
+# cargo-deny at the pinned version, and any watchexec, are used from PATH when installed; otherwise they are built into .tools/.
+CARGO_DENY_VERSION := 0.20.2
+ifeq ($(shell cargo-deny --version 2>/dev/null),cargo-deny $(CARGO_DENY_VERSION))
+CARGO_DENY :=
+else
+CARGO_DENY := .tools/bin/cargo-deny
+endif
+export WATCHEXEC := $(or $(shell command -v watchexec 2>/dev/null || true),.tools/bin/watchexec)
+
 .tools/bin/watchexec:
 	$(CARGO) install watchexec-cli --version 2.8.0 --locked --root .tools
 
 .tools/bin/cargo-deny:
-	$(CARGO) install cargo-deny --version 0.20.2 --locked --root .tools
+	$(CARGO) install cargo-deny --version $(CARGO_DENY_VERSION) --locked --root .tools
 
 # API types do not depend on the server or the embedded frontend.
 # The export crate links FFmpeg, so a FFmpeg outside the system's is put on the loader path. The binary runs
@@ -96,7 +105,7 @@ web: _dev
 desktop: _dev desktop/node_modules/.electron-ready
 	PORT=$(PORT) UI_PORT=$(UI_PORT) node scripts/dev.cjs desktop
 
-_dev: node_modules/.installed .tools/bin/watchexec _types
+_dev: node_modules/.installed $(WATCHEXEC) _types
 
 _dev-rust: _types
 	$(CARGO) build --locked --no-default-features --bin ax-devil
@@ -105,13 +114,18 @@ _dev-rust: _types
 test-frontend: node_modules/.installed
 	$(ISOLATED) pnpm --dir frontend exec vp test run $(TEST)
 
+# The packages the --no-default-features test and clippy passes cover, after the workspace pass: the embedded frontend
+# is a default feature of the root crate alone (scripts/check-architecture.cjs enforces it). camera joins it because its
+# dev-dependencies enable features of shared crates (tokio-rustls); without it the dependencies build twice.
+NO_DEFAULT_PACKAGES := -p ax-devil -p camera
+
 # The real-Electron export tests and the Python plugin tests skip on a machine without Electron, the render page or
 # python3; here they are all provided, so a skip must fail.
 test-backend: export AX_DEVIL_REQUIRE_ELECTRON = 1
 test-backend: export AX_DEVIL_REQUIRE_PYTHON = 1
 test-backend: _frontend-build desktop/node_modules/.electron-ready
-	$(ISOLATED) $(CARGO) test --workspace --no-default-features --locked $(TEST)
 	$(ISOLATED) $(CARGO) test --workspace --locked $(TEST)
+	$(ISOLATED) $(CARGO) test $(NO_DEFAULT_PACKAGES) --no-default-features --locked $(TEST)
 
 test-integration: _dev _dev-rust
 	$(ISOLATED) node --test scripts/dev.test.cjs desktop/args.test.cjs desktop/window-state.test.cjs desktop/backend.test.cjs desktop/uncaught.test.cjs desktop/workspace-dialogs.test.cjs scripts/check-architecture.test.cjs
@@ -156,7 +170,7 @@ endif
 bench-browser-smoke:
 	BENCH_SMOKE=1 BENCH_DISPLAY=swiftshader $(MAKE) --no-print-directory bench-browser
 
-# File size, architecture, formatting, lint and types. CHANGED=--changed limits the file-size check.
+# File size, architecture, formatting and lint. CHANGED=--changed limits the file-size check.
 _static: node_modules/.installed _types
 	node scripts/check-file-tokens.cjs $(CHANGED)
 	$(CARGO) metadata --locked --format-version 1 | node scripts/check-architecture.cjs
@@ -164,18 +178,22 @@ _static: node_modules/.installed _types
 	pnpm exec vp lint --deny-warnings desktop scripts
 	pnpm --dir frontend exec vp check
 	$(CARGO) fmt --all --check
+
+_clippy: _static
 	$(CARGO) clippy --workspace --all-targets --locked -- -D warnings
 
-_licenses: node_modules/.installed .tools/bin/cargo-deny
-	PATH="$(CURDIR)/.tools/bin:$$PATH" $(CARGO) deny --locked check licenses
+_clippy-no-default:
+	$(CARGO) clippy $(NO_DEFAULT_PACKAGES) --all-targets --no-default-features --locked -- -D warnings
+
+_licenses: node_modules/.installed $(CARGO_DENY)
+	$(if $(CARGO_DENY),PATH="$(CURDIR)/.tools/bin:$$PATH" )$(CARGO) deny --locked check licenses
 	node scripts/check-js-licenses.cjs
 
 check-fast: CHANGED := --changed
-check-fast: _static
+check-fast: _static _clippy
 
-_check: _static _frontend-build _licenses
-	$(CARGO) clippy --workspace --all-targets --no-default-features --locked -- -D warnings
-	$(MAKE) --no-print-directory test
+# The prerequisites run in this order (without -j), so the cheap checks fail before the test suites start.
+_check: _clippy _frontend-build _licenses _clippy-no-default test
 
 # The gate. Regenerating files must not change the tree: a stale generated file fails here, on a developer's machine
 # and in CI alike, by comparing the tree before and after.

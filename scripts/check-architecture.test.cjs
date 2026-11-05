@@ -4,10 +4,11 @@ const assert = require("node:assert/strict");
 const test = require("node:test");
 const { check, checkRoutes, checkProjection } = require("./check-architecture.cjs");
 
-/** A workspace of `{ name, layer, deps }` crates in the shape of `cargo metadata`. */
+/** A workspace of `{ name, layer, deps, features }` crates in the shape of `cargo metadata`. */
 function workspace(crates) {
-  const packages = crates.map(({ name, layer, deps = [] }) => ({
+  const packages = crates.map(({ name, layer, deps = [], features }) => ({
     id: name,
+    features,
     name,
     manifest_path: `${name}/Cargo.toml`,
     metadata: { "ax-devil": { layer } },
@@ -109,6 +110,16 @@ void test("a dev-dependency is exempt and a higher layer is still rejected", () 
     { name: "playback", layer: "services", deps: ["api-types"] },
   ]);
   assert.match(problems[0], /a higher layer/);
+});
+
+void test("only the root crate may have default features", () => {
+  assert.deepEqual(
+    problemsOf([{ name: "ax-devil", layer: "entry", features: { default: ["embed-assets"] } }]),
+    [],
+  );
+  const problems = problemsOf([{ name: "media", layer: "services", features: { default: [] } }]);
+  assert.equal(problems.length, 1);
+  assert.match(problems[0], /media\/Cargo\.toml: declares a default feature/);
 });
 
 void test("a route is mounted only in the route table", () => {
