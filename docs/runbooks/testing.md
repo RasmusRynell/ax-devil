@@ -24,6 +24,9 @@ offline as long as `Cargo.lock`, `pnpm-lock.yaml`, `rust-toolchain.toml` and the
 Makefile are unchanged. Test output and evidence go in `artifacts/`. The system FFmpeg libraries and clang that the
 `media` crate builds against are prerequisites no target installs ([README](../../README.md#build-from-source)).
 
+Debug and test builds carry line tables only (backtraces keep `file:line`; dependencies have none) to keep `target/`
+small. For a debugger, add `--profile dev-full` to a `scripts/cargo` build or test; it builds into `target/dev-full`.
+
 ## Tests never touch the user's files or session
 
 Every suite runs through `scripts/isolated`:

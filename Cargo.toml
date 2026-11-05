@@ -80,6 +80,22 @@ workspace = { path = "crates/workspace" }
 workspace-files = { path = "crates/workspace-files" }
 workspace-store = { path = "crates/workspace-store" }
 
+# Line tables only: panics and backtraces keep file:line, and test binaries shrink to a fraction of full debuginfo.
+[profile.dev]
+debug = "line-tables-only"
+
+# No debuginfo for dependencies: they are not what a local backtrace needs.
+[profile.dev.package."*"]
+debug = false
+
+# Full debuginfo for a debugger: `scripts/cargo build --profile dev-full` (output in target/dev-full).
+[profile.dev-full]
+inherits = "dev"
+debug = true
+
+[profile.dev-full.package."*"]
+debug = true
+
 [workspace.lints.rust]
 missing_docs = "warn"
 
