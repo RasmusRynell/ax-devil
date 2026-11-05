@@ -21,7 +21,7 @@ use std::collections::BTreeMap;
 use ts_rs::TS;
 
 /// Raised when a route changes in a way an older desktop shell or frontend cannot use.
-pub const API_VERSION: u32 = 13;
+pub const API_VERSION: u32 = 14;
 
 /// Raised when the desktop shell's own interface (the preload bridge and its IPC) changes in a way a frontend served
 /// by a remote backend cannot use. The shell loads a remote backend only when its [`AppInfo::shell`] matches.

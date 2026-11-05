@@ -3,6 +3,7 @@
 //! Endpoints and shapes follow the VAPIX documentation: `basicdeviceinfo.cgi`, `param.cgi`, `jpg/image.cgi` and the
 //! `analytics-mqtt` REST API.
 
+use std::collections::BTreeMap;
 use std::fmt;
 use std::time::Duration;
 
@@ -47,12 +48,30 @@ impl fmt::Display for Resolution {
 }
 
 impl Resolution {
-    /// Parses `WIDTHxHEIGHT`; zero sizes and anything else is `None`.
+    /// Parses `WIDTHxHEIGHT`, two positive whole numbers without a sign or leading zero; anything else is `None`.
     fn parse(text: &str) -> Option<Self> {
         let (width, height) = text.split_once('x')?;
-        let (width, height) = (width.parse().ok()?, height.parse().ok()?);
-        (width > 0 && height > 0).then_some(Self { width, height })
+        let number = |digits: &str| {
+            let plain =
+                !digits.starts_with('0') && digits.bytes().all(|byte| byte.is_ascii_digit());
+            plain.then(|| digits.parse().ok()).flatten()
+        };
+        Some(Self {
+            width: number(width)?,
+            height: number(height)?,
+        })
     }
+}
+
+/// The stream sizes a camera lists under `Properties.Image`, for every head at once.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct ImageSizes {
+    /// Whether the answer held any parameter; an error or an empty body held none and is worth asking again.
+    pub listed: bool,
+    /// The camera-wide sizes, which a head without a list of its own offers.
+    pub common: Vec<Resolution>,
+    /// The heads with a list of their own, in head order; a list can come to no valid size.
+    pub heads: Vec<(Head, Vec<Resolution>)>,
 }
 
 /// An analytics data source of the camera, the key MQTT publishers are created for.
@@ -101,8 +120,8 @@ impl Device {
         parse_uptime(&reply["data"]["uptime"])
     }
 
-    /// The stream sizes `head` offers, from `param.cgi`; empty when the camera lists none.
-    pub async fn resolutions(&self, head: Head) -> Result<Vec<Resolution>, CameraError> {
+    /// The stream sizes of every head, from one `param.cgi` list of `Properties.Image`.
+    pub async fn image_sizes(&self) -> Result<ImageSizes, CameraError> {
         let query = [("action", "list"), ("group", "Properties.Image")];
         let body = self
             .call(&Call {
@@ -113,7 +132,7 @@ impl Device {
                 signed: true,
             })
             .await?;
-        Ok(parse_resolutions(&String::from_utf8_lossy(&body), head))
+        Ok(parse_image_sizes(&String::from_utf8_lossy(&body)))
     }
 
     /// A JPEG snapshot of `head`, at most 8 MiB: a longer answer is abandoned as it arrives and is
@@ -245,31 +264,45 @@ fn parse_identity(body: &[u8]) -> Result<Identity, CameraError> {
     })
 }
 
-/// The resolutions `head` offers in a `param.cgi` list of `Properties.Image`.
+/// The sizes in a `param.cgi` list of `Properties.Image`.
 ///
-/// The channel's H.264 list wins over its general list, which wins over the camera-wide one. Lines that are not
-/// `key=value` (comments, an error body) are ignored, so an answer without values gives none.
-fn parse_resolutions(text: &str, head: Head) -> Vec<Resolution> {
-    let channel = head.number() - 1;
-    let wanted = [
-        format!("Properties.Image.I{channel}.H264.Resolution"),
-        format!("Properties.Image.I{channel}.Resolution"),
-        "Properties.Image.Resolution".to_owned(),
-    ];
-    let value_of = |name: &str| {
-        text.lines()
-            .filter(|line| !line.starts_with('#'))
-            .filter_map(|line| line.split_once('='))
-            .find(|(key, _)| key.strip_prefix("root.").unwrap_or(key) == name)
-            .map(|(_, value)| value.trim())
-            .filter(|value| !value.is_empty())
+/// A head's H.264 list wins over its general list, which wins over the camera-wide one; the first list that is not
+/// blank is the one, even when none of its sizes is valid. Lines that are not `key=value` (comments, an error body)
+/// are ignored, so an answer without values lists nothing.
+fn parse_image_sizes(text: &str) -> ImageSizes {
+    let values: BTreeMap<&str, &str> = text
+        .lines()
+        .filter(|line| !line.starts_with('#'))
+        .filter_map(|line| line.split_once('='))
+        .map(|(key, value)| (key.strip_prefix("root.").unwrap_or(key), value))
+        .collect();
+    let first_list = |names: &[String]| {
+        names
+            .iter()
+            .find_map(|name| values.get(name.as_str()).filter(|value| !value.is_empty()))
+            .map(|list| sizes_in(list))
     };
-    let listed = wanted
-        .iter()
-        .find_map(|name| value_of(name))
-        .unwrap_or_default();
+    ImageSizes {
+        listed: !values.is_empty(),
+        common: first_list(&["Properties.Image.Resolution".to_owned()]).unwrap_or_default(),
+        heads: (1..=u8::MAX)
+            .filter_map(Head::new)
+            .filter_map(|head| {
+                let channel = head.number() - 1;
+                let sizes = first_list(&[
+                    format!("Properties.Image.I{channel}.H264.Resolution"),
+                    format!("Properties.Image.I{channel}.Resolution"),
+                ])?;
+                Some((head, sizes))
+            })
+            .collect(),
+    }
+}
+
+/// The valid sizes of a comma-separated list, in order and without repeats.
+fn sizes_in(list: &str) -> Vec<Resolution> {
     let mut found: Vec<Resolution> = Vec::new();
-    for resolution in listed
+    for resolution in list
         .split(',')
         .filter_map(|token| Resolution::parse(token.trim()))
     {
@@ -290,28 +323,35 @@ mod tests {
         # Error: ignored\r\n";
 
     #[test]
-    fn resolutions_follow_the_channel_ladder() {
+    fn every_head_gets_its_sizes_from_one_list() {
         let size = |w, h| Resolution {
             width: w,
             height: h,
         };
-        // I0 has no H264 list: its general list, with bad tokens dropped.
+        let sizes = parse_image_sizes(PARAMS);
+        assert!(sizes.listed);
+        assert_eq!(sizes.common, [size(1920, 1080), size(1280, 720)]);
+        // I0 has no H264 list: its general list, with bad tokens dropped. I1's H264 list wins, duplicates removed.
+        // The third head has none of its own and so takes the camera-wide list.
         assert_eq!(
-            parse_resolutions(PARAMS, Head::FIRST),
-            [size(1920, 1080), size(640, 360)]
+            sizes.heads,
+            [
+                (Head::FIRST, vec![size(1920, 1080), size(640, 360)]),
+                (Head::new(2).unwrap(), vec![size(800, 600), size(320, 240)]),
+            ]
         );
-        // I1's H264 list wins, duplicates removed.
-        assert_eq!(
-            parse_resolutions(PARAMS, Head::new(2).unwrap()),
-            [size(800, 600), size(320, 240)]
-        );
-        // I2 has nothing of its own: the camera-wide list.
-        assert_eq!(
-            parse_resolutions(PARAMS, Head::new(3).unwrap()),
-            [size(1920, 1080), size(1280, 720)]
-        );
-        assert!(parse_resolutions("# Error: no such group\r\n", Head::FIRST).is_empty());
         assert_eq!(size(640, 360).to_string(), "640x360");
+    }
+
+    #[test]
+    fn a_list_of_no_valid_size_is_the_heads_own_and_a_list_of_no_value_is_none() {
+        let sizes = parse_image_sizes(
+            "root.Properties.Image.Resolution=640x360\r\nroot.Properties.Image.I0.Resolution=bogus,+5x3,05x3\r\n",
+        );
+        assert_eq!(sizes.heads, [(Head::FIRST, vec![])]);
+        let unrelated = parse_image_sizes("root.Properties.Image.Format=jpeg\r\n");
+        assert!(unrelated.listed && unrelated.common.is_empty() && unrelated.heads.is_empty());
+        assert!(!parse_image_sizes("# Error: no such group\r\n").listed);
     }
 
     #[test]

@@ -2425,6 +2425,19 @@ uptime_s: number | null,
 sign_in: NetworkSignIn, };
 
 /**
+ * The stream sizes one camera head lists of its own.
+ */
+export type LiveHeadResolutions = { 
+/**
+ * The video channel, from 1.
+ */
+head: number, 
+/**
+ * The sizes, in the camera's order; none when the head's list holds no valid size.
+ */
+resolutions: Array<LiveResolution>, };
+
+/**
  * A stream size a camera offers.
  */
 export type LiveResolution = { 
@@ -2438,13 +2451,22 @@ width: number,
 height: number, };
 
 /**
- * The stream sizes a camera head offers, the answer of the resolutions route.
+ * The stream sizes of every head of a camera, the answer of the resolutions route. A head takes its own list when
+ * `heads` has one and the camera-wide `common` list otherwise.
  */
 export type LiveResolutions = { 
 /**
- * The sizes, in the camera's order.
+ * Whether the camera listed any image parameter. An answer without one is worth asking for again.
  */
-resolutions: Array<LiveResolution>, };
+listed: boolean, 
+/**
+ * The camera-wide sizes, in the camera's order.
+ */
+common: Array<LiveResolution>, 
+/**
+ * The heads with a list of their own.
+ */
+heads: Array<LiveHeadResolutions>, };
 
 /**
  * The analytics data sources a camera publishes, the answer of the sources route.

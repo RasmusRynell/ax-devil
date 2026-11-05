@@ -147,6 +147,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         NetworkIdentity,
         NetworkSignIn,
         NetworkRow,
+        LiveHeadResolutions,
         LiveResolution,
         LiveResolutions,
         LiveSources,

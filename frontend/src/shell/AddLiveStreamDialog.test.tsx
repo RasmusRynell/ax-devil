@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
-import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { GrantsContext } from "../access";
 import { DEFAULT_SETTINGS, FakeSettings } from "../fakeSettings";
 import { FakeSocket } from "../session/fakeSession";
@@ -28,22 +28,42 @@ let asked: { like?: string }[] = [];
 let gate: Promise<void> | null = null;
 /** Called when the form reads the body of a camera's sources answer. */
 let onRead = () => {};
+/** The camera's stream sizes, as one answer for every head, and how often it was asked for them. */
+const SIZES = {
+  listed: true,
+  common: [{ width: 1280, height: 720 }],
+  heads: [
+    { head: 2, resolutions: [{ width: 800, height: 600 }] },
+    { head: 3, resolutions: [] },
+  ],
+};
+let sizes: typeof SIZES = SIZES;
+let sizeAsks = 0;
+/** While set, the stream sizes wait for it. */
+let sizeGate: Promise<void> | null = null;
 
 beforeEach(() => {
   listings = [];
   asked = [];
   gate = null;
   onRead = () => {};
+  sizes = SIZES;
+  sizeAsks = 0;
+  sizeGate = null;
   vi.stubGlobal("WebSocket", FakeSocket);
   vi.stubGlobal("fetch", async (url: string, init?: RequestInit) => {
     if (url === "/api/live/sources") listings.push(JSON.parse(init?.body as string).overlay);
     if (url.startsWith("/api/live/")) asked.push(JSON.parse(init?.body as string).connection);
     if (url === "/api/live/sources") await gate;
+    if (url === "/api/live/resolutions") {
+      sizeAsks++;
+      await sizeGate;
+    }
     const json =
       url === "/api/handlers"
         ? HANDLERS
         : url === "/api/live/resolutions"
-          ? { resolutions: [{ width: 1280, height: 720 }] }
+          ? sizes
           : JSON.parse(init?.body as string).overlay === "mqtt"
             ? { overlay: "mqtt", sources: ["com.axis.scene.frame.v1#1"] }
             : { overlay: "datahub", topics: ["com.axis.scene.frame.v1"] };
@@ -158,6 +178,60 @@ describe("add live stream dialog", () => {
       },
     ]);
     expect(JSON.stringify(commands())).not.toContain("channel");
+  });
+
+  it("lists the sizes of the chosen head from one answer for the connection, and asks again only for an empty answer", async () => {
+    await open();
+    let box = screen.getByLabelText("Resolution");
+    const sizesOf = () => {
+      fireEvent.keyDown(box, { key: "ArrowDown" });
+      const names = within(screen.getByRole("listbox"))
+        .getAllByRole("option")
+        .map((option) => option.textContent);
+      fireEvent.keyDown(box, { key: "Escape" });
+      return names;
+    };
+    await waitFor(() => expect(sizeAsks).toBe(1), { timeout: 2000 });
+    // The list is open while the sizes arrive.
+    fireEvent.keyDown(box, { key: "ArrowDown" });
+    await screen.findByRole("option", { name: "1280x720" }, { timeout: 2000 });
+    fireEvent.keyDown(box, { key: "Escape" });
+    type("Camera Head", "2");
+    expect(sizesOf()).toEqual(["Camera default", "800x600"]);
+    // A head the camera lists no sizes for is not a reason to ask again.
+    type("Camera Head", "3");
+    expect(sizesOf()).toEqual(["Camera default", "Camera lists no resolutions"]);
+    type("Camera Head", "1");
+    expect(sizesOf()).toEqual(["Camera default", "1280x720"]);
+    expect(sizeAsks).toBe(1);
+
+    // An answer without a parameter is worth asking for again when the list opens.
+    cleanup();
+    sizes = { listed: false, common: [], heads: [] };
+    await open();
+    box = screen.getByLabelText("Resolution");
+    await waitFor(() => expect(sizeAsks).toBe(2), { timeout: 2000 });
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    fireEvent.keyDown(box, { key: "ArrowDown" });
+    await waitFor(() => expect(sizeAsks).toBe(3));
+    await screen.findByRole("option", { name: "Camera lists no resolutions" });
+  });
+
+  it("keeps what was typed in the resolution box, and its caret, when the sizes arrive", async () => {
+    let release = () => {};
+    sizeGate = new Promise((resolve) => (release = resolve));
+    await open();
+    await waitFor(() => expect(sizeAsks).toBe(1), { timeout: 2000 });
+    const box = screen.getByLabelText("Resolution") as HTMLInputElement;
+    type("Resolution", "123x456");
+    box.setSelectionRange(2, 4);
+    // The sizes arrive into the open list.
+    fireEvent.keyDown(box, { key: "ArrowDown" });
+    release();
+    await screen.findByRole("option", { name: "1280x720" });
+    expect(screen.getByRole("combobox", { name: "Resolution" })).toBe(box);
+    expect(box.value).toBe("123x456");
+    expect([box.selectionStart, box.selectionEnd]).toEqual([2, 4]);
   });
 
   it("asks the camera as the stream will be added, naming the stream it is another of", async () => {

@@ -4,7 +4,7 @@ import type { HandlersInfo, LiveConnection } from "../generated/api";
 import { useGrants } from "../access";
 import { Dialog, DialogBody } from "../kit/Dialog";
 import { seedOf, type AddSeed } from "../live/cameras";
-import { askResolutions, askSources, DEBOUNCE_MS, useDiscovery } from "../live/discovery";
+import { askResolutions, askSources, DEBOUNCE_MS, sizesOf, useDiscovery } from "../live/discovery";
 import { useExpansions } from "../live/expansions";
 import { fetchHandlers } from "../resolvers/handlers";
 import { useCommand, useDoc } from "../session/session";
@@ -22,6 +22,7 @@ import {
   configuredOverlay,
   connectionOf,
   formFrom,
+  headOf,
   isField,
   newLive,
   problemOf,
@@ -102,14 +103,14 @@ export function AddLiveStreamDialog({
   const hostDefault = textOf(values["camera.host"]);
   const hostKnown = !!(form.host.trim() || hostDefault.trim());
   // Questions are asked as the stream will be added: `like` lets the backend use that stream's saved login.
-  const withHead: LiveConnection = { ...connectionOf(form, true), like: seed.like };
-  const resolutions = useDiscovery(
-    hostKnown ? (signal) => askResolutions(withHead, signal) : null,
-    JSON.stringify(withHead),
-    DEBOUNCE_MS,
-  );
   const connection: LiveConnection = { ...connectionOf(form, false), like: seed.like };
   const connectionKey = JSON.stringify(connection);
+  // The camera lists every head's sizes in one answer, kept for the connection while the head is chosen from it.
+  const resolutions = useDiscovery(
+    hostKnown ? (signal) => askResolutions(connection, signal) : null,
+    connectionKey,
+    DEBOUNCE_MS,
+  );
   const current = useRef(connectionKey);
   useEffect(() => {
     if (current.current === connectionKey) return;
@@ -123,7 +124,7 @@ export function AddLiveStreamDialog({
   };
   const sizes =
     resolutions.state.phase === "ready"
-      ? resolutions.state.value.resolutions.map(({ width, height }) => `${width}x${height}`)
+      ? sizesOf(resolutions.state.value, headOf(form, textOf(values["camera.head"])))
       : [];
 
   // Once the decoders are known, the form starts on the overlay the settings choose when its decoder can read a stream.

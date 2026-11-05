@@ -1,5 +1,10 @@
 import type { ReactNode } from "react";
-import type { HandlersInfo, LiveExpansions, SettingsState } from "../generated/api";
+import type {
+  HandlersInfo,
+  LiveExpansions,
+  LiveResolutions,
+  SettingsState,
+} from "../generated/api";
 import { SETTINGS, type SettingKey } from "../generated/settings";
 import type { Asked } from "../live/discovery";
 import { referenceIn, SET_PASSWORD, viaText } from "../live/expansions";
@@ -144,7 +149,11 @@ function Confirmation({ asked }: { asked: Asked<unknown> }) {
 }
 
 /** What the resolution list says in place of sizes. */
-function resolutionStatus(asked: Asked<unknown>, hostUsable: boolean, sizes: readonly string[]) {
+function resolutionStatus(
+  asked: Asked<LiveResolutions>,
+  hostUsable: boolean,
+  sizes: readonly string[],
+) {
   const { phase } = asked.state;
   if (!hostUsable) return "Enter a device host to list resolutions";
   if (phase === "loading") return "Loading resolutions…";
@@ -160,7 +169,11 @@ export function ConnectionRows({
   sizes,
   hostUsable,
   ...props
-}: PanelProps & { resolutions: Asked<unknown>; sizes: readonly string[]; hostUsable: boolean }) {
+}: PanelProps & {
+  resolutions: Asked<LiveResolutions>;
+  sizes: readonly string[];
+  hostUsable: boolean;
+}) {
   const { form, set, settings } = props;
   const status = resolutionStatus(resolutions, hostUsable, sizes);
   return (
@@ -193,9 +206,11 @@ export function ConnectionRows({
         ]}
         onChange={(value) => set("resolution", value)}
         onOpen={() => {
-          // A list that came to nothing is read again when it is opened.
-          if (sizes.length === 0 && ["idle", "failed", "ready"].includes(resolutions.state.phase))
-            resolutions.reload();
+          // An answer with no parameters, or none at all, is read again when the list is opened; one the camera gave
+          // for the connection is kept, even when the head in it lists no sizes.
+          const { state } = resolutions;
+          const kept = state.phase === "ready" && state.value.listed;
+          if (!kept && ["idle", "failed", "ready"].includes(state.phase)) resolutions.reload();
         }}
         note={<Confirmation asked={resolutions} />}
       />

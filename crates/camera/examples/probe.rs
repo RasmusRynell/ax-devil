@@ -87,9 +87,10 @@ async fn info(device: &Device) -> Result<(), CameraError> {
         Err(error) => return Err(error),
     }
     println!("signed in: {:?}", device.sign_in().await?);
-    let sizes: Vec<String> = device
-        .resolutions(Head::FIRST)
-        .await?
+    let image = device.image_sizes().await?;
+    let first = image.heads.iter().find(|(head, _)| *head == Head::FIRST);
+    let sizes: Vec<String> = first
+        .map_or(&image.common, |(_, own)| own)
         .iter()
         .map(ToString::to_string)
         .collect();
