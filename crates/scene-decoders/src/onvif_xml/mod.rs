@@ -8,7 +8,7 @@ use handler_api::{
     Values,
 };
 use quick_xml::{
-    NsReader,
+    NsReader, XmlVersion,
     escape::unescape,
     events::{BytesStart, Event},
     name::ResolveResult,
@@ -124,9 +124,13 @@ fn decode_record(record: &[u8]) -> Result<Option<Scene>, String> {
         };
         let namespace = namespace.as_deref();
         match event {
-            Event::Start(element) => document.open(&element, namespace)?,
+            Event::Start(element) => {
+                document.open(&element, namespace)?;
+                check_attributes(&reader, &element)?;
+            }
             Event::Empty(element) => {
                 document.open(&element, namespace)?;
+                check_attributes(&reader, &element)?;
                 document.close()?;
             }
             Event::End(_) => document.close()?,
@@ -147,6 +151,35 @@ fn decode_record(record: &[u8]) -> Result<Option<Scene>, String> {
             _ => {}
         }
     }
+}
+
+/// Python rejects an element whose attribute has an unbound prefix or whose namespace declaration has a bad
+/// reference or a character XML 1.0 forbids, even when nothing reads them. Each value is scanned once.
+fn check_attributes(reader: &NsReader<&[u8]>, element: &BytesStart<'_>) -> Result<(), String> {
+    for attribute in element.attributes() {
+        let attribute = attribute.map_err(|error| format!("invalid attribute: {error}"))?;
+        if attribute.key.as_namespace_binding().is_some() {
+            let value = attribute
+                .normalized_value(XmlVersion::Implicit1_0)
+                .map_err(|error| format!("invalid XML: {error}"))?;
+            if let Some(character) = value.chars().find(|c| !is_xml_char(*c)) {
+                return Err(format!(
+                    "invalid XML: character {:#x} is not allowed",
+                    u32::from(character)
+                ));
+            }
+        } else if let (ResolveResult::Unknown(prefix), _) =
+            reader.resolver().resolve_attribute(attribute.key)
+        {
+            return Err(format!("invalid XML: unbound prefix {prefix:?}"));
+        }
+    }
+    Ok(())
+}
+
+/// Whether XML 1.0 allows `character`; Rust's `char` already excludes the surrogates.
+fn is_xml_char(character: char) -> bool {
+    matches!(character, '\t' | '\n' | '\r' | ' '..='\u{FFFD}' | '\u{10000}'..)
 }
 
 /// The class filters of this decoder's content.
