@@ -35,9 +35,9 @@ const editing = (target: EventTarget): boolean =>
  * viewer keeps while the panel is closed, and `onNavigate` hears each change of it with the lane it is about. Esc,
  * Backspace and the mouse's Back button go back one page. A column beside the picture, which the viewer (a size
  * container) keeps `VIDEO_LEAST` wide; in a viewer too narrow for both, the column keeps the width its content needs
- * and covers the picture's right edge, as the content comes before the picture. A divider on its left edge resizes
- * it; `width` is the pixels the user chose, for the viewer to keep while the panel is closed, and `onWidth` hears each
- * choice.
+ * and covers the picture's right edge, as the content comes before the picture, and in one narrower than that it
+ * takes the whole viewer. A divider inside its left edge resizes it; `width` is the pixels the user chose, for the
+ * viewer to keep while the panel is closed, and `onWidth` hears each choice.
  */
 export function ObjectsPanel({
   source,
@@ -172,8 +172,10 @@ export function ObjectsPanel({
       aria-label="Media tools"
       style={
         {
-          // Where the video's least and the content's least do not both fit the viewer, the column slides over the video.
-          marginLeft: `min(0px, calc(100cqw - var(--spacing-sidebar) - ${VIDEO_LEAST}px))`,
+          // What the list's required columns and the page need. Where that and the video's least do not both fit the
+          // viewer, the column slides over the video, and where the viewer is narrower still it takes the viewer.
+          "--panel-least": "min(40ch, 100cqw)",
+          marginLeft: `min(0px, calc(100cqw - var(--panel-least) - ${VIDEO_LEAST}px))`,
           ...(live === null ? {} : { "--panel-width": `${live}px` }),
         } as CSSProperties
       }
@@ -182,9 +184,10 @@ export function ObjectsPanel({
       onMouseDown={onMouse}
       onMouseUp={onMouse}
       onAuxClick={onMouse}
-      className="relative z-10 flex w-[var(--panel-width,min(var(--spacing-panel),50%))] min-w-sidebar flex-col border-l border-line bg-panel text-fg"
+      className="relative z-10 flex w-[var(--panel-width,min(var(--spacing-panel),50%))] min-w-(--panel-least) flex-col border-l border-line bg-panel text-fg"
     >
       <PanelDivider
+        docked
         onResize={(next, final) => {
           setLive(next);
           if (final) onWidth(next);

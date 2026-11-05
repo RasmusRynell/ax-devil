@@ -25,14 +25,18 @@ function measure(panel: HTMLElement | null): Measured {
 /**
  * The divider on the left edge of the media-tools panel that holds it, a separator that drags and takes arrow keys. `onResize` gets
  * every width on the way and `final` once it is chosen; a drag that ends below half the panel's least width calls
- * `onClose` instead. Home and End go to the least and the most.
+ * `onClose` instead. Home and End go to the least and the most. A `docked` panel keeps its divider inside its left
+ * edge at every width; any other is a column only in a container 72ch wide or more, and has the divider beside it
+ * there only.
  */
 export function PanelDivider({
   onResize,
   onClose,
+  docked = false,
 }: {
   onResize: (width: number, final: boolean) => void;
   onClose: () => void;
+  docked?: boolean;
 }) {
   const [room, setRoom] = useState<Measured>({ now: 0, least: 0, most: 0 });
   const drag = useRef<{ x: number; width: number; room: PanelRoom; request: number } | null>(null);
@@ -107,7 +111,9 @@ export function PanelDivider({
       onPointerUp={end}
       onPointerCancel={end}
       onLostPointerCapture={end}
-      className="absolute inset-y-0 right-full w-s cursor-col-resize hover:bg-line-strong focus-ring"
+      className={`absolute inset-y-0 w-s cursor-col-resize hover:bg-line-strong focus-ring ${
+        docked ? "left-0 z-10" : "right-full hidden @min-[72ch]:block"
+      }`}
     />
   );
 }
