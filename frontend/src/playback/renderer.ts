@@ -15,7 +15,7 @@ import { OverlayPainter, type CellRect } from "../overlay/painter";
 import type { Region } from "../present";
 import type { LaneFrame, Picked, Selection, Viewport } from "./contract";
 import { describeRow, LaneLayouts, type FoundRow } from "./laneLayouts";
-import { NameTags } from "./nameTags";
+import { NAME_TAG_SIZE, NameTags } from "./nameTags";
 import type { Matrix, VideoFrame } from "./protocol";
 import { FRAGMENT, VERTEX } from "./shaders";
 import { reaches, strokeWidth, type Outline } from "./outlines";
@@ -49,8 +49,11 @@ const LUMA_WEIGHTS: Record<Matrix, { kr: number; kb: number }> = {
   bt709: { kr: 0.2126, kb: 0.0722 },
 };
 
-/** The canvas token's near-black, `--color-canvas` (#0e0f10), as GL color components. */
-const FIELD = { red: 0x0e / 255, green: 0x0f / 255, blue: 0x10 / 255 };
+/** A color as GL components, 0 to 1. */
+export type Field = { red: number; green: number; blue: number };
+
+/** The viewer's field behind and between the pictures: the canvas token's near-black, `--color-canvas` (#0e0f10). */
+const FIELD: Field = { red: 0x0e / 255, green: 0x0f / 255, blue: 0x10 / 255 };
 
 type Planes = { key: string; textures: WebGLTexture[] };
 
@@ -94,11 +97,15 @@ export class VideoRenderer {
   readonly #tags = new NameTags(this.#text);
   /** The device pixel ratio to draw at; `undefined` follows the window's. */
   readonly #dpr: number | undefined;
+  /** What the canvas is cleared to before the pictures are drawn. */
+  readonly #field: Field;
   /** The name to write on each lane's cell, by lane; `null` writes none. */
   #names: readonly string[] | null = null;
+  #nameSize = NAME_TAG_SIZE;
 
-  constructor(canvas: HTMLCanvasElement, dpr?: number) {
+  constructor(canvas: HTMLCanvasElement, dpr?: number, field: Field = FIELD) {
     this.#dpr = dpr;
+    this.#field = field;
     const gl = canvas.getContext("webgl2", {
       alpha: false,
       antialias: false,
@@ -152,9 +159,13 @@ export class VideoRenderer {
     this.redraw();
   }
 
-  /** Writes `names[lane]` in the corner of each lane's cell, `null` for no names, and draws again. */
-  setNames(names: readonly string[] | null): void {
+  /**
+   * Writes `names[lane]` in the corner of each lane's cell at `size` CSS pixels, `null` for no names, and draws
+   * again.
+   */
+  setNames(names: readonly string[] | null, size = NAME_TAG_SIZE): void {
     this.#names = names;
+    this.#nameSize = size;
     this.redraw();
   }
 
@@ -267,7 +278,8 @@ export class VideoRenderer {
     const gl = this.#gl;
     const { width: canvasWidth, height: canvasHeight } = this.#canvas;
     gl.viewport(0, 0, canvasWidth, canvasHeight);
-    gl.clearColor(FIELD.red, FIELD.green, FIELD.blue, 1);
+    const { red, green, blue } = this.#field;
+    gl.clearColor(red, green, blue, 1);
     gl.clearStencil(0);
     gl.clear(gl.COLOR_BUFFER_BIT | gl.STENCIL_BUFFER_BIT);
     this.#placed = [];
@@ -299,7 +311,14 @@ export class VideoRenderer {
     const tags = placed.map(({ lane, cell }) =>
       names?.[lane] === undefined
         ? undefined
-        : this.#tags.drawing(lane, names[lane], dpr, cell.width / dpr, cell.height / dpr),
+        : this.#tags.drawing(
+            lane,
+            names[lane],
+            dpr,
+            cell.width / dpr,
+            cell.height / dpr,
+            this.#nameSize,
+          ),
     );
     this.#painter.sync(this.#atlas);
     placed.forEach(({ cell, picture }, at) => {
