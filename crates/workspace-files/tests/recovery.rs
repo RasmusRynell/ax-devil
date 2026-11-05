@@ -2,12 +2,13 @@
 
 use std::{collections::HashSet, fs, path::PathBuf, sync::atomic::AtomicU64, thread};
 use workspace::Workspace;
-use workspace_files::{Claim, Recents, RecoveryFolder, SUFFIX};
+use workspace_files::{Claim, Recents, RecoveryFolder, SUFFIX, file_stem};
 
 #[test]
 fn a_copy_belongs_to_one_holder_at_a_time_and_names_never_collide() {
     let dir = tempfile::tempdir().unwrap();
-    let folder = RecoveryFolder::new(dir.path().join("unsaved"));
+    let folder_dir = dir.path().join("unsaved");
+    let folder = RecoveryFolder::new(folder_dir.clone());
     let first = folder.reserve("Untitled").unwrap();
     let second = folder.reserve("Untitled").unwrap();
     assert_ne!(first.path(), second.path());
@@ -34,6 +35,17 @@ fn a_copy_belongs_to_one_holder_at_a_time_and_names_never_collide() {
     let again = folder.reserve("Untitled").unwrap();
     assert_eq!(again.path(), path);
     assert!(matches!(folder.claim(&path), Err(Claim::InUse)));
+
+    // A workspace name never takes its copy out of the folder: no drive prefix, stream, separator or `..`.
+    for name in ["D:x", "../../a/b", "a:b", "a\0b", "C:\\x", "a<b>|?*\"c"] {
+        let stem = file_stem(Some(name));
+        assert!(
+            !stem.contains([':', '/', '\\', '<', '>', '|', '?', '*', '"'])
+                && !stem.contains(char::is_control)
+        );
+        let copy = folder.reserve(&stem).unwrap();
+        assert_eq!(copy.path().parent(), Some(folder_dir.as_path()), "{name:?}");
+    }
 }
 
 #[test]
