@@ -8,7 +8,7 @@ This is a Rust backend, React/TypeScript frontend and Electron desktop app. Repo
 - Security problems, including secrets, unsafe file or network handling, untrusted plugin input, and Electron exposure (IPC, preload, remote-session access, paths from dropped or opened files).
 - Concurrency: blocking calls on async tasks, locks held across `.await`, unbounded channels, deadlocks; React effect cleanup and stale closures.
 - Performance regressions on frame decode, playback, WebSocket and canvas paint hot paths.
-- Contract violations: Rust `api-types` out of step with the generated frontend types, and breaking changes to workspace files, settings, plugin or CLI behavior.
+- Contract violations: breaking changes to the Rust `api-types` wire format, workspace files, settings, plugin or CLI behavior. Generated frontend and desktop types are ignored here because `make check` fails when they are stale.
 - Missing tests only for deep modules or rules with real user consequences; the repo deliberately avoids shallow tests.
 For each finding cite the file and line, say why it matters, and suggest a concrete fix.
 Skip style, naming and formatting (rustfmt, clippy and the Vite+ formatter and linter enforce them), compliments and long summaries.
