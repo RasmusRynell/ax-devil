@@ -16,7 +16,6 @@ use crate::{
     ingest::Tuning,
     io::user_error,
     load::{Request, load},
-    source::SourceWatch,
     track::Track,
 };
 
@@ -246,12 +245,7 @@ impl TrackRegistry {
             pending,
             done: false,
         };
-        // Taken before the file is read, so a write during the decode counts as an edit of what the track describes.
-        let watch = SourceWatch::open(&key.path);
         let result = self.load(key, decoder, options, cancel);
-        if let (Ok(track), Some(watch)) = (&result, watch) {
-            track.watch(watch);
-        }
         let (slot, outcome) = match &result {
             Ok(track) => (
                 Some(Slot::Open(Arc::downgrade(track))),

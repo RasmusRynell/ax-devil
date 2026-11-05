@@ -93,17 +93,14 @@ pub(crate) struct SourceWatch {
 }
 
 impl SourceWatch {
-    /// Watches the file `path` names now, from the stat it has now. `None` when it cannot be opened; the open that
-    /// reads the file reports that.
-    pub(crate) fn open(path: &Path) -> Option<Self> {
-        let file = File::open(path).ok()?;
-        let stat = Stat::of(&file).ok()?;
-        Some(Self {
-            path: path.to_path_buf(),
+    /// `file` is the handle `stat` was taken from, so the watch follows the file that is decoded.
+    pub(crate) fn new(path: PathBuf, file: File, stat: Stat) -> Self {
+        Self {
+            path,
             file,
             stat,
             rewritten: AtomicBool::new(false),
-        })
+        }
     }
 
     /// Whether the file behind the handle has a different size or modification time than when the watch began.

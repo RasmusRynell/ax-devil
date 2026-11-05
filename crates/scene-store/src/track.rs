@@ -457,7 +457,7 @@ impl Track {
         }
         if self.is_rewritten() {
             return Err(UserError::new(
-                ErrorCode::FileUnreadable,
+                ErrorCode::FileChanged,
                 format!(
                     "{} changed while open; no longer serving overlays from it",
                     self.source

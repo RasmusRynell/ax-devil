@@ -5,7 +5,10 @@ use std::sync::{Arc, Weak};
 use foundation::{UserError, Warning};
 use handler_api::Form;
 use overlay_sync::MatchBasis;
-use scene::{Coverage, Fields, FilterPolicy, Scene};
+use scene::{
+    Coverage, Fields, FilterPolicy, Scene, SceneTime, TimeSlice,
+    serial::columns::encode_sample_item,
+};
 
 use crate::{History, HistoryUnavailable, TrackSnapshot};
 
@@ -48,6 +51,18 @@ pub trait TrackRead: Send + Sync {
     /// The encoded Sample Item of sample `index` of `snapshot`, a snapshot of this track, under the track's class
     /// filters and shared by every viewer of the track.
     fn item_in(&self, snapshot: &TrackSnapshot, index: usize) -> Result<Arc<[u8]>, UserError>;
+
+    /// The Sample Item of a Scene with no entities under the source's class filters: what stands in for a sample
+    /// that cannot be read.
+    fn empty_item(&self) -> Arc<[u8]> {
+        let scene = Scene::new(TimeSlice::at(SceneTime::Frame(0)));
+        encode_sample_item(&scene, self.filter())
+            .unwrap_or_else(|error| {
+                tracing::error!("cannot encode an empty Sample Item: {error}");
+                Vec::new()
+            })
+            .into()
+    }
 
     /// Problems the decoder and the store reported so far.
     fn warnings(&self) -> Arc<[Warning]> {

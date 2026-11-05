@@ -4,7 +4,6 @@ use std::{sync::Arc, thread};
 
 use foundation::{ErrorCode, Interrupt, UserError};
 use handler_api::OverlayRef;
-use scene::{Scene, SceneTime, TimeSlice, serial::columns::encode_sample_item};
 use scene_store::{TrackRead, TrackSnapshot};
 
 use crate::{
@@ -103,13 +102,12 @@ fn mean_item_bytes(shared: &Shared, track: &dyn TrackRead) -> u32 {
 /// sample is read by the numbering of the snapshot it was claimed under, so one the track has since renumbered is
 /// read as it was and dropped with its revision.
 fn encode(shared: &Shared, source: usize, track: &dyn TrackRead) {
-    let mut empty: Option<Arc<[u8]>> = None;
     while let Some((sample, data_revision, snapshot)) = next_sample(shared, source) {
         let read = usize::try_from(sample).map(|index| track.item_in(&snapshot, index));
         let (item, problem) = match read {
             Ok(Ok(item)) => (item, None),
-            Ok(Err(error)) => (empty_item(&mut empty, track), Some(describe(&error))),
-            Err(_) => (empty_item(&mut empty, track), None),
+            Ok(Err(error)) => (track.empty_item(), Some(describe(&error))),
+            Err(_) => (track.empty_item(), None),
         };
         shared.update(|state| state.finish_encode(source, data_revision, sample, item, problem));
     }
@@ -133,16 +131,4 @@ fn next_sample(shared: &Shared, source: usize) -> Option<(u64, u32, Arc<TrackSna
             .wait(state)
             .unwrap_or_else(std::sync::PoisonError::into_inner);
     }
-}
-
-/// The item of a Scene with no entities, made once per source.
-fn empty_item(held: &mut Option<Arc<[u8]>>, track: &dyn TrackRead) -> Arc<[u8]> {
-    Arc::clone(held.get_or_insert_with(|| {
-        let scene = Scene::new(TimeSlice::at(SceneTime::Frame(0)));
-        let bytes = encode_sample_item(&scene, track.filter()).unwrap_or_else(|error| {
-            tracing::error!("cannot encode an empty Sample Item: {error}");
-            Vec::new()
-        });
-        bytes.into()
-    }))
 }

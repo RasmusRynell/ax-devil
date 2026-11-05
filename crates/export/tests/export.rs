@@ -481,3 +481,24 @@ fn a_still_is_one_frame_written_as_a_png() {
         );
     }
 }
+
+#[test]
+fn a_sample_of_a_file_edited_in_place_goes_as_an_empty_item_not_an_error() {
+    let dir = tempfile::tempdir().unwrap();
+    let (mot, track) = two_sample_track(dir.path());
+    let frozen = FrozenSource {
+        track: track.clone(),
+        data_revision: 1,
+        snapshot: track.snapshot(),
+        source: 7,
+    };
+    let read = frozen.item(0).expect("a sample read before the edit");
+    fs::write(&mot, b"edited in place\n").unwrap();
+
+    let item = frozen
+        .item(1)
+        .expect("an absent overlay, not a failed export");
+
+    assert_eq!(item, track.empty_item());
+    assert_ne!(item, read);
+}
