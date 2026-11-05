@@ -131,7 +131,7 @@ export function mount(
         classMask: { enabled: new Uint32Array(sample.maskWords), options: 0 },
         filter: null,
       }) as unknown as LaneFrame,
-    frameTime: () => undefined,
+    frameTime: (frame: number) => frame * 500_000,
     seek: vi.fn(),
   };
   const view: PlaybackView = {

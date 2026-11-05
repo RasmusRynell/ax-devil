@@ -147,7 +147,7 @@ export function ObjectsList({
   const count = inFile ? (page?.matched ?? 0) : found.length;
   const seek = canSeek ? (frameNumber: number) => source.seek(frameNumber) : undefined;
   const fileCols = useMemo(
-    () => fileColumns(view.frameCount, seek),
+    () => fileColumns(view.frameCount, (frame) => source.frameTime(frame), seek),
     [view.frameCount, canSeek, source],
   );
   // The rows in view, bucketed so that scrolling asks the backend for a page only now and then.
