@@ -9,12 +9,13 @@
 // The artifact is regenerate-only: never edit it by hand. A Rust test (src/cli/catalog_tests.rs) fails when it differs
 // from what this prints, so a change to the compiler's tables ends in `--write`.
 import { writeFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { createServer } from "vite-plus";
 
 type Json = Record<string, any>; // oxlint-disable-line typescript/no-explicit-any -- a JSON Schema is read, not typed
 
 const ARTIFACT = new URL("../src/cli/catalog_reference.txt", import.meta.url);
-const FRONTEND = new URL("../frontend", import.meta.url).pathname;
+const FRONTEND = fileURLToPath(new URL("../frontend", import.meta.url));
 
 /** What each function takes and gives. The compiler's checks are code, not data, so these are kept here and checked
  * against the compiler's function names below. */
