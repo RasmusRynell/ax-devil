@@ -2,7 +2,7 @@ import { useMemo } from "react";
 import type { SidebarView } from "../generated/api";
 import type { AddSeed } from "../live/cameras";
 import { ViewPanel } from "../kit/ViewPanel";
-import { useDoc } from "../session/session";
+import { useCan, useDoc, useRenameWorkspace } from "../session/session";
 import { PluginsView } from "../plugins/PluginsView";
 import { LiveView } from "./LiveView";
 import { useStreaming } from "../live/cameras";
@@ -54,6 +54,8 @@ export function Sidebar({
     [workspace, view, listing],
   );
   const named = view === "workspace" ? workspace : undefined;
+  const rename = useRenameWorkspace();
+  const canEdit = useCan("content");
   return (
     <aside
       aria-label="Sidebar"
@@ -61,7 +63,14 @@ export function Sidebar({
       className="flex w-sidebar max-w-full min-w-0 shrink-0 flex-col max-sm:min-h-0 max-sm:w-full max-sm:flex-1 sm:max-w-2/5 sm:border-r sm:border-line"
     >
       <ViewPanel
+        key={named?.epoch}
         title={named ? (named.name ?? UNTITLED) : VIEW_TITLES[view]}
+        tooltip={named ? (named.file ?? undefined) : undefined}
+        edit={
+          named && canEdit
+            ? { label: "Workspace name", onEdit: rename.edit, onDone: rename.done }
+            : undefined
+        }
         cursorId="sidebar:title"
         action={
           view === "live" && streaming > 0 ? (
@@ -71,7 +80,8 @@ export function Sidebar({
           ) : named?.modified ? (
             <span
               role="img"
-              aria-label="Modified"
+              aria-label="Unsaved changes"
+              title="Unsaved changes"
               className="size-m shrink-0 rounded-full bg-accent"
             />
           ) : undefined

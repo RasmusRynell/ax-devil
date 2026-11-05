@@ -159,8 +159,9 @@ impl RecoveryCopy {
     }
 }
 
-/// A file name stem for a workspace named `name`: path separators and control characters become `-`, as does a name
-/// of only dots; no name is "Untitled". Cut to 64 bytes.
+/// A file name stem for a workspace named `name`: path separators, control characters and the characters Windows
+/// reserves in names (`:` also starts a drive prefix or an NTFS stream, which would put the copy outside its folder)
+/// become `-`, as does a name of only dots; no name is "Untitled". Cut to 64 bytes.
 pub fn file_stem(name: Option<&str>) -> String {
     let Some(name) = name else {
         return "Untitled".into();
@@ -168,7 +169,7 @@ pub fn file_stem(name: Option<&str>) -> String {
     let mut stem: String = name
         .chars()
         .map(|c| {
-            if matches!(c, '/' | '\\') || c.is_control() {
+            if matches!(c, '/' | '\\' | ':' | '<' | '>' | '"' | '|' | '?' | '*') || c.is_control() {
                 '-'
             } else {
                 c

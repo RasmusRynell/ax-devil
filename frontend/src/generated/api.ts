@@ -337,7 +337,15 @@ slot: string,
 /**
  * How the lane matches.
  */
-policy: LanePolicyWire, };
+policy: LanePolicyWire, } | { "type": "renameWorkspace", 
+/**
+ * The name the user entered.
+ */
+name: string, 
+/**
+ * The `epoch` of the workspace the name was entered for.
+ */
+epoch: number, };
 
 /**
  * The owner's control of sharing.

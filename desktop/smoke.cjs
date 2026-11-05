@@ -103,6 +103,33 @@ module.exports = async (window, shell) => {
   }
   assert.notEqual(backgrounds.light, backgrounds.dark, "The window must follow the theme");
 
+  // The workspace is named from its title: typing is sent as it goes, Escape takes the text back, Enter keeps it.
+  const title = "document.querySelector('[aria-label=Sidebar] h2')";
+  const editTitle = async (text) => {
+    await js(`${title}.querySelector('button').click()`);
+    await wait(`document.activeElement === ${title}.querySelector('input')`);
+    for (const letter of text) window.webContents.insertText(letter);
+    await wait(`${title}.querySelector('input').value === ${JSON.stringify(text)}`);
+  };
+  const press = (keyCode) =>
+    ["keyDown", "keyUp"].forEach((type) => window.webContents.sendInputEvent({ type, keyCode }));
+  await editTitle("Review");
+  await wait("document.title.startsWith('● ')");
+  press("Escape");
+  await wait(`${title}.textContent === 'Untitled' && document.title === 'Untitled — ax-devil'`);
+  assert.equal(await js("document.querySelector('[aria-label=\"Unsaved changes\"]')"), null);
+  await editTitle("Review");
+  press("Enter");
+  await wait("document.title === '● Review — ax-devil'");
+  for (const theme of ["light", "dark"]) {
+    nativeTheme.themeSource = theme;
+    await wait(`matchMedia('(prefers-color-scheme: ${theme})').matches`);
+    await shoot(`workspace-name-${theme}.png`);
+  }
+  await editTitle("Untitled");
+  press("Enter");
+  await wait("document.title === 'Untitled — ax-devil'");
+
   // The title bar has the window controls, and Ctrl+= and Ctrl+0 zoom the page. A window that fills a small screen
   // counts as maximized, and then its second control is Restore.
   for (const selector of [
@@ -111,11 +138,11 @@ module.exports = async (window, shell) => {
     "[aria-label=Close]",
   ])
     assert.ok(await js(`document.querySelector("${selector}") !== null`), selector);
-  const press = (keyCode) =>
+  const zoomKey = (keyCode) =>
     window.webContents.sendInputEvent({ type: "keyDown", keyCode, modifiers: ["control"] });
-  press("=");
+  zoomKey("=");
   await wait("window.devicePixelRatio > 1");
-  press("0");
+  zoomKey("0");
   await wait("window.devicePixelRatio === 1");
 
   // The smallest window, at normal zoom and at 200%: the View menu, then the Settings and Keyboard Shortcuts dialogs, in both themes.

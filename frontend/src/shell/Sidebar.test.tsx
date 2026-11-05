@@ -33,3 +33,25 @@ it("lists only Videos and Playlists in Offline, and counts them in the header", 
   expect(screen.getByText("2")).toBeTruthy();
   expect(screen.getByRole("searchbox", { name: "Search files" })).toBeTruthy();
 });
+
+it("lets a seat that edits content rename the workspace from its title, and no other", async () => {
+  const sidebar = (
+    <SessionProvider>
+      <Sidebar view="workspace" onRun={() => {}} onAddLive={() => {}} />
+    </SessionProvider>
+  );
+  const { unmount } = render(sidebar);
+  await act(async () => {});
+  expect(screen.getByRole("button", { name: "Untitled" })).toBeTruthy();
+  unmount();
+
+  const room = FakeSocket.host("watch");
+  window.sessionStorage.setItem(
+    "ax-devil.credential",
+    JSON.stringify({ kind: "join", session: room.id, secret: room.secret }),
+  );
+  render(sidebar);
+  await act(async () => {});
+  expect(screen.getByRole("heading", { name: "Untitled" })).toBeTruthy();
+  expect(screen.queryByRole("button", { name: "Untitled" })).toBeNull();
+});

@@ -2,7 +2,15 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test"
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import type { SidebarView, View } from "../generated/api";
 import { FakeSocket, type Room } from "./fakeSession";
-import { SessionProvider, useCan, useCursors, useSession, useView } from "./session";
+import {
+  SessionProvider,
+  useCan,
+  useCommand,
+  useCursors,
+  useRenameWorkspace,
+  useSession,
+  useView,
+} from "./session";
 
 let renders = 0;
 let frames: FrameRequestCallback[] = [];
@@ -25,6 +33,19 @@ function Probe() {
   );
 }
 
+function Renamer() {
+  const { edit } = useRenameWorkspace();
+  const command = useCommand();
+  return (
+    <>
+      <button onClick={() => Array.from({ length: 30 }, (_, i) => edit(`Review ${i}`))}>
+        Type
+      </button>
+      <button onClick={() => void command({ type: "follow" })}>Send</button>
+    </>
+  );
+}
+
 function CursorList() {
   return <p>cursors: {[...useCursors().keys()].join(",")}</p>;
 }
@@ -32,6 +53,7 @@ function CursorList() {
 const app = (
   <SessionProvider>
     <Probe />
+    <Renamer />
     <CursorList />
   </SessionProvider>
 );
@@ -220,5 +242,64 @@ describe("session", () => {
     expect(renders).toBe(rendered);
     act(() => FakeSocket.latest.cursor(1, null));
     expect(screen.getByText("cursors:")).toBeTruthy();
+  });
+
+  it("sends a burst of renames as the first and the last, and the last before the next command", async () => {
+    render(app);
+    await screen.findByText("workspace open editable");
+    vi.useFakeTimers();
+    const commands = () =>
+      FakeSocket.latest.received.flatMap((message) =>
+        message.type === "command" ? [message.cmd] : [],
+      );
+
+    click("Type");
+    expect(commands()).toHaveLength(1);
+    act(() => void vi.advanceTimersByTime(1_000));
+    expect(commands().map((cmd) => (cmd.type === "content" ? cmd.command : cmd))).toEqual([
+      { type: "renameWorkspace", name: "Review 0", epoch: 0 },
+      { type: "renameWorkspace", name: "Review 29", epoch: 0 },
+    ]);
+
+    click("Type");
+    click("Send");
+    expect(commands().slice(-2)).toEqual([
+      expect.objectContaining({
+        command: { type: "renameWorkspace", name: "Review 29", epoch: 0 },
+      }),
+      { type: "follow" },
+    ]);
+  });
+
+  it("does not send a name typed for a workspace that was replaced", async () => {
+    render(app);
+    await screen.findByText("workspace open editable");
+    vi.useFakeTimers();
+    const renamed = () =>
+      FakeSocket.latest.received.filter(
+        (message) => message.type === "command" && message.cmd.type === "content",
+      );
+
+    click("Type");
+    expect(renamed()).toHaveLength(1);
+    act(() =>
+      FakeSocket.latest.emit({
+        type: "doc",
+        docRev: 99,
+        doc: {
+          workspace: {
+            name: null,
+            modified: false,
+            recovered: false,
+            epoch: 1,
+            file: null,
+            items: [],
+            rows: [],
+          },
+        },
+      }),
+    );
+    act(() => void vi.advanceTimersByTime(1_000));
+    expect(renamed()).toHaveLength(1);
   });
 });
