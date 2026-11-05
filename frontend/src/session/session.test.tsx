@@ -268,4 +268,36 @@ describe("session", () => {
       { type: "follow" },
     ]);
   });
+
+  it("does not send a name typed for a workspace that was replaced", async () => {
+    render(app);
+    await screen.findByText("workspace open editable");
+    vi.useFakeTimers();
+    const renamed = () =>
+      FakeSocket.latest.received.filter(
+        (message) => message.type === "command" && message.cmd.type === "content",
+      );
+
+    click("Type");
+    expect(renamed()).toHaveLength(1);
+    act(() =>
+      FakeSocket.latest.emit({
+        type: "doc",
+        docRev: 99,
+        doc: {
+          workspace: {
+            name: null,
+            modified: false,
+            recovered: false,
+            epoch: 1,
+            file: null,
+            items: [],
+            rows: [],
+          },
+        },
+      }),
+    );
+    act(() => void vi.advanceTimersByTime(1_000));
+    expect(renamed()).toHaveLength(1);
+  });
 });

@@ -367,6 +367,8 @@ export class SessionStore {
         return this.#welcome(message);
       case "doc":
         if (this.#doc && message.docRev < this.#doc.rev) return;
+        // A name typed for the workspace that was replaced must not rename its replacement.
+        if (this.#doc?.wire.workspace.epoch !== message.doc.workspace.epoch) this.#dropName();
         this.#doc = { rev: message.docRev, wire: message.doc };
         if (this.#waiting && this.#waiting.docRev <= message.docRev) this.#takeSeat(this.#waiting);
         break;

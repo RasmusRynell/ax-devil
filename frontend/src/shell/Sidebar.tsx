@@ -63,6 +63,7 @@ export function Sidebar({
       className="flex w-sidebar max-w-full min-w-0 shrink-0 flex-col max-sm:min-h-0 max-sm:w-full max-sm:flex-1 sm:max-w-2/5 sm:border-r sm:border-line"
     >
       <ViewPanel
+        key={named?.epoch}
         title={named ? (named.name ?? UNTITLED) : VIEW_TITLES[view]}
         tooltip={named ? (named.file ?? undefined) : undefined}
         edit={
