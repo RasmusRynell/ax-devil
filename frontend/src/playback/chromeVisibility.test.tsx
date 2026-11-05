@@ -134,7 +134,15 @@ describe("controls over the video, from the DOM events (VPC-004)", () => {
     fireEvent.pointerOver(video, { relatedTarget: controls });
     vi.advanceTimersByTime(2000);
     expect(pane.dataset.chrome).toBe("hidden");
+
+    // Unmounting mid-wait cancels it and detaches the listeners.
+    fireEvent.pointerMove(video);
+    expect(vi.getTimerCount()).toBe(1);
     unmount();
     expect(vi.getTimerCount()).toBe(0);
+    pane.dataset.chrome = "hidden";
+    fireEvent.pointerMove(video);
+    expect(vi.getTimerCount()).toBe(0);
+    expect(pane.dataset.chrome).toBe("hidden");
   });
 });
