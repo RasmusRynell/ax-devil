@@ -2,7 +2,7 @@ import { ANCHORS } from "../expr/checkCall";
 import type { ExprType } from "../expr/types";
 import { CATALOG_SCHEMA } from "./compile";
 import { FIELD_TYPES, LAYER, LAYER_TARGETS, MARKS, PLACE, ROOT, RULE, RUN } from "./shape";
-import { FEATURES, MARK_TYPES, WEIGHTS } from "./types";
+import { BASELINE_ANCHOR, FEATURES, MARK_TYPES, WEIGHTS } from "./types";
 
 type Json = Record<string, unknown>;
 
@@ -61,10 +61,11 @@ export function catalogSchema(): Json {
   const defs: Json = {
     expression: { ...expression, description: "A literal, or a string holding an expression." },
     anchor: { enum: Object.keys(ANCHORS) },
+    place_anchor: { enum: [...Object.keys(ANCHORS), BASELINE_ANCHOR] },
     place: shape(PLACE.required, {
       when: ref("bool"),
       at: ref("anchor"),
-      anchor: ref("anchor"),
+      anchor: ref("place_anchor"),
       dx: ref("length"),
       dy: ref("length"),
     }),

@@ -1,3 +1,4 @@
+import type { PlacePlan } from "../marks/plan";
 import type { RunCache } from "../text/runCache";
 
 /**
@@ -52,18 +53,17 @@ export interface PrimitiveSink {
     fill: number,
   ): void;
   /**
-   * A text mark's placement is chosen: the anchor point of its box is at (`x`, `y`) with anchor factors (`anchorX`,
-   * `anchorY`: 0, 0.5 or 1 across and down). `record` is the mark's record in the `MarkBuffer`. The glyphs follow as
+   * A text mark's placement is chosen: the anchor point of its box is at (`x`, `y`) as `place` anchors it (factors
+   * 0, 0.5 or 1 across and down, or the first baseline). `record` is the mark's record in the `MarkBuffer`. The glyphs follow as
    * `glyph` calls.
    */
-  text(record: number, x: number, y: number, anchorX: number, anchorY: number, size: number): void;
+  text(record: number, x: number, y: number, place: PlacePlan, size: number): void;
   /** A label's placement is chosen; its background, bars and glyphs follow as `rect` and `glyph` calls. */
   label(
     record: number,
     x: number,
     y: number,
-    anchorX: number,
-    anchorY: number,
+    place: PlacePlan,
     size: number,
     padX: number,
     padY: number,

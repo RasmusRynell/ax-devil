@@ -78,6 +78,20 @@
         "bottom-right"
       ]
     },
+    "place_anchor": {
+      "enum": [
+        "top-left",
+        "top-center",
+        "top-right",
+        "center-left",
+        "center",
+        "center-right",
+        "bottom-left",
+        "bottom-center",
+        "bottom-right",
+        "baseline"
+      ]
+    },
     "place": {
       "type": "object",
       "additionalProperties": false,
@@ -93,7 +107,7 @@
           "$ref": "#/$defs/anchor"
         },
         "anchor": {
-          "$ref": "#/$defs/anchor"
+          "$ref": "#/$defs/place_anchor"
         },
         "dx": {
           "$ref": "#/$defs/length"

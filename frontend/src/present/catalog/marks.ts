@@ -11,6 +11,7 @@ import {
   MARK_TYPES,
   type MarkName,
   type MarkSpec,
+  BASELINE_ANCHOR,
   type PlaceSpec,
   type RunSpec,
   WEIGHTS,
@@ -43,6 +44,7 @@ function anchorAt(
   session: Session,
   value: unknown,
   pointer: string,
+  extraNames: readonly string[] = [],
 ): readonly [number, number] | null {
   const name = stringAt(value, pointer, session.diag);
   if (name === null) return null;
@@ -52,7 +54,7 @@ function anchorAt(
       "value",
       { pointer, spans: false },
       null,
-      `unknown anchor '${name}'${didYouMean(name, Object.keys(ANCHORS))}`,
+      `unknown anchor '${name}'${didYouMean(name, [...Object.keys(ANCHORS), ...extraNames])}`,
     );
     return null;
   }
@@ -121,12 +123,17 @@ function placeAt(
       when: null,
       at: [0, 0],
       anchor: [0, 0],
+      baseline: false,
       dx: constantLength(0),
       dy: constantLength(0),
     } as { -readonly [K in keyof PlaceSpec]: PlaceSpec[K] };
     into[i] = place;
     place.at = anchorAt(session, object.at, pointerTo(at, "at")) ?? place.at;
-    place.anchor = anchorAt(session, object.anchor, pointerTo(at, "anchor")) ?? place.anchor;
+    if (object.anchor === BASELINE_ANCHOR) place.baseline = true;
+    else
+      place.anchor =
+        anchorAt(session, object.anchor, pointerTo(at, "anchor"), [BASELINE_ANCHOR]) ??
+        place.anchor;
     if ("when" in object) {
       session.field(object.when, pointerTo(at, "when"), scope, "bool", (c) => {
         if (c.type === "bool") place.when = c.scalar;

@@ -90,6 +90,8 @@ export interface PlacePlan {
   readonly atY: number;
   readonly anchorX: number;
   readonly anchorY: number;
+  /** The first line's baseline, not a box edge, is on the point. */
+  readonly baseline: boolean;
   readonly dx: LengthPlan;
   readonly dy: LengthPlan;
 }
@@ -244,6 +246,7 @@ function planMark(spec: MarkSpec): MarkPlan {
     atY: entry.at[1],
     anchorX: entry.anchor[0],
     anchorY: entry.anchor[1],
+    baseline: entry.baseline,
     dx: b.length(entry.dx, 0),
     dy: b.length(entry.dy, 0),
   }));

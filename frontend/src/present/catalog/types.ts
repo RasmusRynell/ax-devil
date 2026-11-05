@@ -64,12 +64,18 @@ export type FieldName =
   | "background"
   | "gap";
 
+/** The `place[].anchor` that puts the first line's baseline, rather than a box edge, on the point. */
+export const BASELINE_ANCHOR = "baseline";
+
 /** One placement candidate of a label: the point `at` on the reference rect, plus an offset, takes the label's `anchor`. */
 export interface PlaceSpec {
   /** Null: always a candidate. */
   readonly when: Scalar | null;
   readonly at: readonly [number, number];
+  /** The anchor's horizontal and vertical factors; `[0, 0]` when `baseline`. */
   readonly anchor: readonly [number, number];
+  /** The box's left edge is at the point's x and the first line's baseline at its y. */
+  readonly baseline: boolean;
   readonly dx: CLength;
   readonly dy: CLength;
 }

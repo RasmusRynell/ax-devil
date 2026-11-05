@@ -1,6 +1,7 @@
 import { Flag, type MarkBuffer, RUN_WORDS, Rec } from "../marks/buffer";
-import { WEIGHTS } from "../catalog/types";
+import { BASELINE_ANCHOR, WEIGHTS } from "../catalog/types";
 import type { PrimitiveSink } from "../layout/sink";
+import type { PlacePlan } from "../marks/plan";
 import { codePointString } from "../expr/codePoints";
 
 /** Oracle rows (C5 of `fixtures/oracle/README.md`): plain JSON values keyed as the reference's files are. */
@@ -16,6 +17,10 @@ const ANCHORS = [
   ["center-left", "center", "center-right"],
   ["bottom-left", "bottom-center", "bottom-right"],
 ] as const;
+
+function anchorName(place: PlacePlan): string {
+  return place.baseline ? BASELINE_ANCHOR : ANCHORS[place.anchorY * 2][place.anchorX * 2];
+}
 
 /** What the sink needs to read a label's runs and the font family of its mark. */
 export interface RowSource {
@@ -129,14 +134,14 @@ export class CanonicalSink implements PrimitiveSink {
     });
   }
 
-  text(record: number, x: number, y: number, anchorX: number, anchorY: number, size: number): void {
+  text(record: number, x: number, y: number, place: PlacePlan, size: number): void {
     const { marks } = this.source;
     const run = marks.words[record * 12 + Rec.A] * RUN_WORDS;
     this.rows.texts.push({
       x: this.x(x),
       y: this.y(y),
       text: this.string(marks.runs[run], marks.runs[run + 1]),
-      anchor: ANCHORS[anchorY * 2][anchorX * 2],
+      anchor: anchorName(place),
       color: channels3(marks.runs[run + 2]),
       font_family: this.source.family(record),
       font_size: this.s(size),
@@ -147,8 +152,7 @@ export class CanonicalSink implements PrimitiveSink {
     record: number,
     x: number,
     y: number,
-    anchorX: number,
-    anchorY: number,
+    place: PlacePlan,
     size: number,
     padX: number,
     padY: number,
@@ -175,7 +179,7 @@ export class CanonicalSink implements PrimitiveSink {
     this.rows.labels.push({
       x: this.x(x),
       y: this.y(y),
-      anchor: ANCHORS[anchorY * 2][anchorX * 2],
+      anchor: anchorName(place),
       size: this.s(size),
       family: this.source.family(record),
       background: filled ? channels4(background) : null,

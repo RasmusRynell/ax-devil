@@ -145,6 +145,8 @@ export class Labels {
     const words = marks.words;
     const base = record * 12;
     const plain = plan.kind === Kind.Text;
+    // Without a background the box is the ink and the origin alone; texts have none.
+    const inkOnly = plan.background === null;
     const size = sizes.of(plan, Len.Size);
     const padX = sizes.of(plan, Len.PadX);
     const padY = sizes.of(plan, Len.PadY);
@@ -180,8 +182,8 @@ export class Labels {
           ink[entry * INK + 1] / dpr,
           ink[entry * INK + 2] / dpr,
           ink[entry * INK + 3] / dpr,
-          plain ? 0 : ascent / dpr,
-          plain ? 0 : descent / dpr,
+          ascent / dpr,
+          descent / dpr,
         );
       } else {
         const middle = -capHeight / dpr / 2;
@@ -198,23 +200,11 @@ export class Labels {
         );
       }
     }
-    if (!box.size(padX, padY, gap, dpr, plain)) return true;
+    if (!box.size(padX, padY, gap, dpr, inkOnly)) return true;
     if (!this.choose(plan, marks, base, l, t, r, b, view)) return true;
     const placed = plan.place[this.chosen];
-    if (plain) sink.text(record, this.x, this.y, placed.anchorX, placed.anchorY, size);
-    else
-      sink.label(
-        record,
-        this.x,
-        this.y,
-        placed.anchorX,
-        placed.anchorY,
-        size,
-        padX,
-        padY,
-        radius,
-        gap,
-      );
+    if (plain) sink.text(record, this.x, this.y, placed, size);
+    else sink.label(record, this.x, this.y, placed, size, padX, padY, radius, gap);
     this.emit(marks, base, first, count, size, radius, dpr, plain, sink);
     return true;
   }
@@ -264,7 +254,7 @@ export class Labels {
     this.x = l + entry.atX * (r - l) + dx;
     this.y = t + entry.atY * (b - t) + dy;
     this.chosen = i;
-    return this.box.place(this.x, this.y, entry.anchorX, entry.anchorY, view.dpr);
+    return this.box.place(this.x, this.y, entry.anchorX, entry.anchorY, view.dpr, entry.baseline);
   }
 
   /** Whether candidate `i`, already placed, stays inside the image on the axes where it lies outside its reference rect. */
@@ -274,7 +264,8 @@ export class Labels {
     if (entry.atX === 0 && entry.anchorX === 1 && box.x < -EDGE) return false;
     if (entry.atX === 1 && entry.anchorX === 0 && box.x + box.width > view.width + EDGE)
       return false;
-    if (entry.atY === 0 && entry.anchorY === 1 && box.y < -EDGE) return false;
+    // A baseline candidate puts the box above its point, like an anchor at the bottom.
+    if (entry.atY === 0 && (entry.anchorY === 1 || entry.baseline) && box.y < -EDGE) return false;
     if (entry.atY === 1 && entry.anchorY === 0 && box.y + box.height > view.height + EDGE)
       return false;
     return true;
