@@ -113,18 +113,39 @@ describe("inspections", () => {
     expect(samples()).toEqual([1, 2, 3]);
   });
 
-  it("withholds the fields of the preceding sample while the shown sample's reply is out", () => {
+  it("holds the shown summary and fields together until the next sample's reply, and withholds them from another object", () => {
     const { inspections } = setup();
+    const faster = fullSample([{ id: "7", class: "car", score: 0.5 }]);
     inspections.follow([frame(1)]);
     inspections.select(SELECTION);
     inspections.receive(reply(1, found(CLASS)));
-    inspections.follow([frame(2)]);
-    expect(inspections.view).toMatchObject({ state: "loading", fields: [] });
-    // A late reply for the preceding sample is not sample 2's fields.
-    inspections.receive(reply(1, found({ ...CLASS, value: "bus" })));
-    expect(inspections.view).toMatchObject({ state: "loading", fields: [] });
+    inspections.follow([frame(2, faster)]);
+    expect(inspections.view).toMatchObject({
+      state: "loading",
+      summary: { score: 0.82 },
+      fields: [CLASS],
+    });
+    // A late reply for the preceding sample changes nothing.
+    expect(inspections.receive(reply(1, found({ ...CLASS, value: "bus" })))).toBe(false);
     inspections.receive(reply(2, found({ ...CLASS, value: "truck" })));
-    expect(inspections.view).toMatchObject({ state: "ready", fields: [{ value: "truck" }] });
+    expect(inspections.view).toMatchObject({
+      state: "ready",
+      summary: { score: 0.5 },
+      fields: [{ value: "truck" }],
+    });
+    // A frame without the object shows its own state, and nothing held comes back after it.
+    inspections.follow([frame(3, withoutCar)]);
+    expect(inspections.view.state).toBe("absent");
+    inspections.follow([frame(4)]);
+    expect(inspections.view).toMatchObject({
+      state: "loading",
+      summary: { score: 0.82 },
+      fields: [],
+    });
+    inspections.receive(reply(4, found(CLASS)));
+    inspections.select({ ...SELECTION, entity: "9" });
+    inspections.follow([frame(5)]);
+    expect(inspections.view).toMatchObject({ state: "loading", fields: [] });
   });
 
   it("answers from the last 16 replies without asking", () => {
