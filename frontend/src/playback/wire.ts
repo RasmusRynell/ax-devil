@@ -8,6 +8,7 @@ import {
   type JpegFrame,
   type ServerMessage,
 } from "./protocol";
+import type { Window } from "./FrameBuffer";
 
 export type Incoming =
   | { type: "message"; message: ServerMessage }
@@ -31,14 +32,16 @@ export type Connect = (onIncoming: (incoming: Incoming) => void) => Connection;
 
 /**
  * What the socket's thread received and has not yet handed on, in order, decoding one JPEG frame at a time. A live
- * stream shows only its newest frame, so a frame still waiting is dropped when a newer one arrives; offline frames are
- * all kept, and the backend sends no more than the viewer's window holds. Once the socket closes, waiting frames are
- * dropped: they were for a stream that is over.
+ * stream shows only its newest frame, so a frame still waiting is dropped when a newer one arrives. An offline frame
+ * is kept while it is inside the window of the newest `Want`, the rule the session's `FrameBuffer` applies too, so a
+ * seek never waits behind decoding frames it would throw away. Once the socket closes, waiting frames are dropped:
+ * they were for a stream that is over.
  */
 export class Inbox {
   #waiting: Received[] = [];
   #draining = false;
   #live = false;
+  #window: Window | undefined;
 
   constructor(
     private readonly settle: (received: Received) => Promise<Incoming>,
@@ -50,8 +53,23 @@ export class Inbox {
     if (received.type === "message" && received.message.type === "LiveOpened") this.#live = true;
     if ((received.type === "jpeg" && this.#live) || received.type === "closed")
       this.#waiting = this.#waiting.filter((waiting) => waiting.type !== "jpeg");
+    if (received.type === "jpeg" && !this.#wanted(received.frame)) return;
     this.#waiting.push(received);
     void this.#drain();
+  }
+
+  /** Records the window of a `Want` the viewer sent and drops the waiting frames outside it. */
+  want(window: Window): void {
+    this.#window = window;
+    this.#waiting = this.#waiting.filter(
+      (waiting) => waiting.type !== "jpeg" || this.#wanted(waiting.frame),
+    );
+  }
+
+  #wanted({ sequenceId }: JpegFrame): boolean {
+    if (!this.#window) return true;
+    const { playhead, ahead, behind } = this.#window;
+    return sequenceId >= playhead - behind && sequenceId <= playhead + ahead;
   }
 
   async #drain(): Promise<void> {
