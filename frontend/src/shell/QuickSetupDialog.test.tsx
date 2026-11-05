@@ -61,6 +61,21 @@ describe("quick setup dialog", () => {
     });
   });
 
+  it("offers the camera protocol and shows a stored choice when reopened", async () => {
+    const save = vi.fn(async () => null);
+    const onClose = vi.fn();
+    open(firstRun, save, { onClose });
+    pick("Camera protocol", "HTTP");
+    fireEvent.click(screen.getByRole("button", { name: "Done" }));
+    await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
+    const stored = (save.mock.calls[0] as unknown as [typeof firstRun])[0];
+    expect(stored.values["camera.protocol"]).toBe("http");
+
+    cleanup();
+    open(stored, save);
+    expect(screen.getByRole("radio", { name: "HTTP" })).toHaveProperty("checked", true);
+  });
+
   it("says why a refused write was refused, closes, and takes the preview back", async () => {
     const save = vi.fn(async () => ({ reason: "disk full", location: "" }));
     const onClose = vi.fn();

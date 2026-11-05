@@ -290,7 +290,7 @@ export const SETTINGS = [
     "live": true,
     "env": false,
     "secret": false,
-    "quick_setup": false,
+    "quick_setup": true,
     "scope": "server"
   },
   {
