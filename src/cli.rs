@@ -39,6 +39,8 @@ use services::{Interrupt, Services};
 #[cfg(test)]
 mod catalog_tests;
 #[cfg(test)]
+mod live_tests;
+#[cfg(test)]
 mod startup_tests;
 #[cfg(test)]
 mod tests;
@@ -254,6 +256,7 @@ async fn run_backend(global: Global, command: Option<Command>, plugins: Arc<Plug
                     command,
                     &plugins.handlers(),
                     &RecoveryFolder::new(paths.recovery_dir.clone()),
+                    &workspace::Environment::of_process(),
                     || {
                         settings::Settings::load(&paths.config_file)
                             .map(|settings| ax_devil::session::live::defaults(&settings.state()))

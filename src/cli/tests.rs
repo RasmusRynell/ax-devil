@@ -15,7 +15,7 @@ pub(super) fn parse(args: &[&str]) -> Result<Cli, clap::Error> {
 
 /// The stream settings a `live` command starts from, as the settings give them with the `$AX_DEVIL_*` references
 /// kept as written.
-fn stream_defaults() -> Result<LiveDefaults, String> {
+pub(super) fn stream_defaults() -> Result<LiveDefaults, String> {
     Ok(LiveDefaults {
         host: "$AX_DEVIL_TARGET_ADDR".into(),
         username: "$AX_DEVIL_TARGET_USER".into(),
@@ -280,6 +280,7 @@ fn open_refuses_a_recovery_copy_the_window_could_not_take_over() {
             parse(&["open", path.to_str().unwrap()]).unwrap().command,
             &Handlers::built_in(),
             &recovery,
+            &workspace::Environment::new(|_| None, []),
             stream_defaults,
         )
     };
