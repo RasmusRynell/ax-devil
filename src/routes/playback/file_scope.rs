@@ -111,8 +111,8 @@ pub(super) struct FileScopes {
     audience: Audience,
     /// The token that stops each lane's running query.
     running: HashMap<u16, CancelToken>,
-    /// The lane each running task answers.
-    lanes: HashMap<Id, u16>,
+    /// The lane and request each running task answers.
+    lanes: HashMap<Id, (u16, u32)>,
     /// The newest request of a lane that has to wait for its running query to end.
     waiting: HashMap<u16, Job>,
     tasks: JoinSet<Option<Reply>>,
@@ -253,16 +253,14 @@ impl FileScopes {
                 message,
             })
         });
-        self.lanes.insert(task.id(), lane);
+        self.lanes.insert(task.id(), (lane, request));
         self.running.insert(lane, cancel);
     }
 
-    /// The task `id` ended: its lane is free, so the request that waited runs now. Says whether the task's answer
-    /// still counts, which it does not once a newer request cancelled it.
-    fn ended(&mut self, id: Id) -> bool {
-        let Some(lane) = self.lanes.remove(&id) else {
-            return false;
-        };
+    /// The task `id` ended: its lane is free, so the request that waited runs now. Gives the lane and request the
+    /// task answered when its answer still counts, which it does not once a newer request cancelled it.
+    fn ended(&mut self, id: Id) -> Option<(u16, u32)> {
+        let (lane, request) = self.lanes.remove(&id)?;
         let current = self
             .running
             .remove(&lane)
@@ -270,7 +268,7 @@ impl FileScopes {
         if let Some(job) = self.waiting.remove(&lane) {
             self.start(job);
         }
-        current
+        current.then_some((lane, request))
     }
 
     /// The next answer; waits while there is none. A running query that a newer request replaced is not answered.
@@ -284,7 +282,7 @@ impl FileScopes {
             tokio::select! {
                 Some(joined) = self.tasks.join_next_with_id() => match joined {
                     Ok((id, reply)) => {
-                        if self.ended(id)
+                        if self.ended(id).is_some()
                             && let Some(reply) = reply
                         {
                             return reply;
@@ -292,7 +290,25 @@ impl FileScopes {
                     }
                     Err(error) => {
                         tracing::warn!("A file query failed: {error}");
-                        self.ended(error.id());
+                        // Nothing else answers a crashed query, so the viewer would wait for it forever.
+                        if let Some((lane, request)) = self.ended(error.id()) {
+                            let error = UserError::new(
+                                ErrorCode::Internal,
+                                "The file's objects could not be listed",
+                            );
+                            return Reply {
+                                lane,
+                                request,
+                                message: ServerMessage::FileScope {
+                                    lane,
+                                    request,
+                                    unavailable: FileScopeUnavailable::Failed(project(
+                                        &error,
+                                        self.audience,
+                                    )),
+                                },
+                            };
+                        }
                     }
                 },
                 reply = self.spans.next() => return reply,
