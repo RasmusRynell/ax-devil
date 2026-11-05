@@ -34,13 +34,19 @@ export class ChromeVisibility {
     this.show(true);
   }
 
-  /** The pointer left the pane: from the video the controls hide now, from a held element they wait out the idle time. */
+  /**
+   * The pointer left the pane: from the video the controls hide now and a pending wait is left to run; from a held
+   * element the wait starts over.
+   */
   leave(): void {
-    this.#stop();
     const held = this.#held;
     this.#held = false;
-    if (held) this.#idle();
-    else this.show(false);
+    if (!held) {
+      this.show(false);
+      return;
+    }
+    this.#stop();
+    this.#idle();
   }
 
   /** Cancels what is pending. */

@@ -30,6 +30,19 @@ function setup() {
 }
 
 describe("controls over the video (VPC-004)", () => {
+  it("a wait pending when the pointer leaves the video still ends a later visit", () => {
+    const { visibility, state, advance } = setup();
+    visibility.pointer(false);
+    advance(500);
+    visibility.leave();
+    expect(state.shown).toBe(false);
+    advance(1000);
+    visibility.enter(false);
+    expect(state.shown).toBe(true);
+    advance(500);
+    expect(state.shown).toBe(false);
+  });
+
   it("hide 2 s after the pointer last moved over the video", () => {
     const { visibility, state, advance } = setup();
     visibility.pointer(false);
@@ -110,7 +123,17 @@ describe("controls over the video, from the DOM events (VPC-004)", () => {
     vi.advanceTimersByTime(10_000);
     expect(pane.dataset.chrome).toBe("shown");
 
-    fireEvent.pointerMove(video);
+    // The deadline passing over a control that keeps them hides nothing; crossing onto the video times them again.
+    const controls = screen.getByTestId("controls");
+    fireEvent.pointerOver(controls, { relatedTarget: document.body });
+    fireEvent.pointerLeave(pane);
+    vi.advanceTimersByTime(1500);
+    fireEvent.pointerOver(controls, { relatedTarget: document.body });
+    vi.advanceTimersByTime(1000);
+    expect(pane.dataset.chrome).toBe("shown");
+    fireEvent.pointerOver(video, { relatedTarget: controls });
+    vi.advanceTimersByTime(2000);
+    expect(pane.dataset.chrome).toBe("hidden");
     unmount();
     expect(vi.getTimerCount()).toBe(0);
   });
