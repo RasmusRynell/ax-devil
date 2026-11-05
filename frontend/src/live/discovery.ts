@@ -56,13 +56,20 @@ async function post<T>(url: string, body: unknown, signal?: AbortSignal): Promis
   }
 }
 
-/** The stream sizes the head of the camera in `connection` offers. */
+/** The stream sizes of every head of the camera in `connection`; `connection.head` plays no part. */
 export function askResolutions(
   connection: LiveConnection,
   signal: AbortSignal,
 ): Promise<Reply<LiveResolutions>> {
   const body: ResolutionsRequest = { connection };
   return post("/api/live/resolutions", body, signal);
+}
+
+/** The `WIDTHxHEIGHT` sizes `head` offers: its own list, else the camera-wide one; none for a head below 1. */
+export function sizesOf(answer: LiveResolutions, head: number): string[] {
+  if (head < 1) return [];
+  const own = answer.heads.find((listed) => listed.head === head);
+  return (own ? own.resolutions : answer.common).map(({ width, height }) => `${width}x${height}`);
 }
 
 /** The analytics data sources (MQTT) or the DataHub topics of the camera in `connection`. */

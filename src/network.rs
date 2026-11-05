@@ -14,12 +14,10 @@ use std::{
 };
 
 use api_types::live::{
-    LiveProtocol, LiveReason, LiveResolution, LiveResolutions, LiveSources as SourcesWire,
-    NetworkIdentity, NetworkRow, NetworkSignIn, NetworkSnapshot,
+    LiveHeadResolutions, LiveProtocol, LiveReason, LiveResolution, LiveResolutions,
+    LiveSources as SourcesWire, NetworkIdentity, NetworkRow, NetworkSignIn, NetworkSnapshot,
 };
-use camera::{
-    Device, Found, Head, Login, ScanLoad, ScanPorts, Scheme, Secret, SignIn, Targets, scan,
-};
+use camera::{Device, Found, Login, ScanLoad, ScanPorts, Scheme, Secret, SignIn, Targets, scan};
 use foundation::{ErrorCode, Location, UserError};
 use tokio::{
     sync::{mpsc, watch},
@@ -349,22 +347,33 @@ fn failed(what: &str, error: &camera::CameraError) -> LiveReason {
     reason(error.kind)
 }
 
-/// The stream sizes `camera`'s head offers. Contacts the camera, with its login.
+/// The stream sizes of every head of `camera`. Contacts the camera, with its login.
 pub async fn resolutions(
     camera: &ResolvedCamera,
     timeout: Duration,
 ) -> Result<LiveResolutions, LiveReason> {
-    let head = Head::new(camera.head).ok_or(LiveReason::InvalidTarget)?;
-    let sizes = device(camera, timeout)?
-        .resolutions(head)
+    let found = device(camera, timeout)?
+        .image_sizes()
         .await
         .map_err(|error| failed("its resolutions", &error))?;
-    Ok(LiveResolutions {
-        resolutions: sizes
+    let wire = |sizes: Vec<camera::Resolution>| {
+        sizes
             .into_iter()
             .map(|size| LiveResolution {
                 width: size.width,
                 height: size.height,
+            })
+            .collect()
+    };
+    Ok(LiveResolutions {
+        listed: found.listed,
+        common: wire(found.common),
+        heads: found
+            .heads
+            .into_iter()
+            .map(|(head, sizes)| LiveHeadResolutions {
+                head: head.number(),
+                resolutions: wire(sizes),
             })
             .collect(),
     })

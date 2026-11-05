@@ -4,7 +4,9 @@ import type { LiveResolutions } from "../generated/api";
 import { askResolutions, useDiscovery } from "./discovery";
 
 const sizes = (...widths: number[]): LiveResolutions => ({
-  resolutions: widths.map((width) => ({ width, height: width / 2 })),
+  listed: true,
+  common: widths.map((width) => ({ width, height: width / 2 })),
+  heads: [],
 });
 
 interface Call {

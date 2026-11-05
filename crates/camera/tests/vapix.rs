@@ -210,16 +210,18 @@ async fn resolutions_and_analytics_sources_parse() {
     let fake = FakeVapix::start().await;
     let device = device(&fake.camera());
     let size = |width, height| Resolution { width, height };
+    let sizes = device.image_sizes().await.expect("sizes");
+    assert!(sizes.listed);
+    assert_eq!(sizes.common, [size(1920, 1080), size(1280, 720)]);
     assert_eq!(
-        device.resolutions(Head::FIRST).await.expect("resolutions"),
-        [size(1920, 1080), size(1280, 720), size(640, 360)]
-    );
-    assert_eq!(
-        device
-            .resolutions(Head::new(2).expect("head"))
-            .await
-            .expect("resolutions"),
-        [size(800, 600)]
+        sizes.heads,
+        [
+            (
+                Head::FIRST,
+                vec![size(1920, 1080), size(1280, 720), size(640, 360)]
+            ),
+            (Head::new(2).expect("head"), vec![size(800, 600)]),
+        ]
     );
     let sources = device.analytics_sources().await.expect("sources");
     assert_eq!(

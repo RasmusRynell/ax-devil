@@ -175,6 +175,11 @@ const text = (entered: string) => entered.trim() || undefined;
 /** The whole number a field holds, nothing when blank or when it is something else. */
 const whole = (entered: string) => (/^\d+$/.test(entered.trim()) ? Number(entered) : undefined);
 
+/** The Camera Head the stream will use: the field, else the configured one, else 1. */
+export function headOf(form: LiveForm, configured: string): number {
+  return whole(form.head) ?? whole(configured) ?? 1;
+}
+
 /**
  * Whether `entered` can still become a whole number up to `max`; the fields that take a bounded number accept
  * nothing else, so they are never misread.

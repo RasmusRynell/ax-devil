@@ -26,4 +26,4 @@ pub use rtsp::{StreamRequest, open_stream};
 pub use scan::{Found, MAX_TARGETS, ScanLoad, ScanPorts, SignIn, Targets, check, scan};
 pub use target::{Broker, Camera, Head, Host, Login, Scheme, Secret, Web};
 pub use url::Url;
-pub use vapix::{Identity, Resolution, SourceKey};
+pub use vapix::{Identity, ImageSizes, Resolution, SourceKey};

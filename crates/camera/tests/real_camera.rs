@@ -90,13 +90,7 @@ async fn a_snapshot_is_a_jpeg_and_resolutions_are_listed() {
             .expect("snapshot")
             .is_empty()
     );
-    assert!(
-        !device
-            .resolutions(Head::FIRST)
-            .await
-            .expect("resolutions")
-            .is_empty()
-    );
+    assert!(!device.image_sizes().await.expect("sizes").heads.is_empty());
 }
 
 #[tokio::test]

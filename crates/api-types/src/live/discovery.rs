@@ -68,11 +68,25 @@ pub struct LiveResolution {
     pub height: u32,
 }
 
-/// The stream sizes a camera head offers, the answer of the resolutions route.
+/// The stream sizes one camera head lists of its own.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
+pub struct LiveHeadResolutions {
+    /// The video channel, from 1.
+    pub head: u8,
+    /// The sizes, in the camera's order; none when the head's list holds no valid size.
+    pub resolutions: Vec<LiveResolution>,
+}
+
+/// The stream sizes of every head of a camera, the answer of the resolutions route. A head takes its own list when
+/// `heads` has one and the camera-wide `common` list otherwise.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
 pub struct LiveResolutions {
-    /// The sizes, in the camera's order.
-    pub resolutions: Vec<LiveResolution>,
+    /// Whether the camera listed any image parameter. An answer without one is worth asking for again.
+    pub listed: bool,
+    /// The camera-wide sizes, in the camera's order.
+    pub common: Vec<LiveResolution>,
+    /// The heads with a list of their own.
+    pub heads: Vec<LiveHeadResolutions>,
 }
 
 /// The analytics data sources a camera publishes, the answer of the sources route.
