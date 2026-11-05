@@ -7,7 +7,7 @@
 
 import type { LaneQuads } from "../present";
 import type { TextAtlas } from "./atlas";
-import { QUAD_FLOATS } from "./quads";
+import { FILL_HEADER_FLOATS, FILL_VERTEX_FLOATS, QUAD_FLOATS } from "./quads";
 import { FadeLayer } from "./layer";
 import { FILL_FRAGMENT, FILL_VERTEX, QUAD_FRAGMENT, QUAD_VERTEX, compileProgram } from "./shaders";
 
@@ -45,6 +45,7 @@ export type LaneDrawing = {
 type LaneBuffers = { quads: WebGLBuffer; fills: WebGLBuffer; source: LaneQuads; version: number };
 
 const QUAD_STRIDE = QUAD_FLOATS * 4;
+const FILL_STRIDE = FILL_VERTEX_FLOATS * 4;
 
 /** The overlay painter of one WebGL2 context. */
 export class OverlayPainter {
@@ -54,6 +55,7 @@ export class OverlayPainter {
   readonly #uniforms: {
     atlas: WebGLUniformLocation | null;
     fill: WebGLUniformLocation | null;
+    edge: WebGLUniformLocation | null;
   };
   readonly #quadArray: WebGLVertexArrayObject;
   readonly #fillArray: WebGLVertexArrayObject;
@@ -70,6 +72,7 @@ export class OverlayPainter {
     this.#uniforms = {
       atlas: gl.getUniformLocation(this.#quads.program, "atlas"),
       fill: gl.getUniformLocation(this.#fills.program, "fill"),
+      edge: gl.getUniformLocation(this.#fills.program, "edge"),
     };
     gl.useProgram(this.#quads.program);
     gl.uniform1i(gl.getUniformLocation(this.#quads.program, "page"), ATLAS_UNIT);
@@ -83,6 +86,7 @@ export class OverlayPainter {
     this.#fillArray = gl.createVertexArray();
     gl.bindVertexArray(this.#fillArray);
     gl.enableVertexAttribArray(0);
+    gl.enableVertexAttribArray(1);
     gl.bindVertexArray(null);
   }
 
@@ -155,7 +159,7 @@ export class OverlayPainter {
       const last = layer === quads.layerCount;
       const quadTo = last ? count : quads.layerQuads[layer];
       const fillTo = last ? quads.fills.length : quads.layerFills[layer];
-      this.#drawFills(buffers, quads, fillFrom, fillTo);
+      this.#drawFills(buffers, quads, fillFrom, fillTo, view.width / picture.width);
       this.#drawQuads(buffers, quadFrom, quadTo);
       quadFrom = quadTo;
       fillFrom = fillTo;
@@ -233,8 +237,19 @@ export class OverlayPainter {
     gl.drawArraysInstanced(gl.TRIANGLE_STRIP, 0, 4, to - from);
   }
 
-  /** Odd-even fills: each polygon's fan inverts the stencil, then the fan again paints where it is odd and clears it. */
-  #drawFills(buffers: LaneBuffers, { fills }: LaneQuads, from: number, to: number): void {
+  /**
+   * Odd-even fills: each polygon's fan inverts the stencil, then the fan again paints where it is odd and clears it.
+   * The fan is the polygon pulled in by half a device pixel and the ring around it fades out half a device pixel
+   * beyond the true edge, so the edge is antialiased; a polygon thinner than that band keeps its own edge as the fan.
+   */
+  #drawFills(
+    buffers: LaneBuffers,
+    { fills }: LaneQuads,
+    from: number,
+    to: number,
+    /** The size of one device pixel in the lane's CSS pixels. */
+    pixel: number,
+  ): void {
     if (to <= from) return;
     const gl = this.#gl;
     const blocks = fills.view();
@@ -242,16 +257,19 @@ export class OverlayPainter {
     gl.useProgram(this.#fills.program);
     gl.bindVertexArray(this.#fillArray);
     gl.bindBuffer(gl.ARRAY_BUFFER, buffers.fills);
-    gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 8, 0);
-    gl.enable(gl.STENCIL_TEST);
     for (let at = from; at < to;) {
       const corners = blocks[at];
       const color = words[at + 1];
-      const first = (at + 6) / 2;
+      const fringe = pixel / 2;
+      gl.uniform2f(this.#uniforms.edge, fringe, blocks[at + 2] < fringe ? 0 : fringe);
+      const base = (at + FILL_HEADER_FLOATS) * 4;
+      gl.vertexAttribPointer(0, 2, gl.FLOAT, false, FILL_STRIDE, base);
+      gl.vertexAttribPointer(1, 3, gl.FLOAT, false, FILL_STRIDE, base + 8);
+      gl.enable(gl.STENCIL_TEST);
       gl.colorMask(false, false, false, false);
       gl.stencilFunc(gl.ALWAYS, 0, 0xff);
       gl.stencilOp(gl.KEEP, gl.KEEP, gl.INVERT);
-      gl.drawArrays(gl.TRIANGLE_FAN, first, corners);
+      gl.drawArrays(gl.TRIANGLE_FAN, 0, corners);
       gl.colorMask(true, true, true, true);
       gl.stencilFunc(gl.NOTEQUAL, 0, 0xff);
       gl.stencilOp(gl.ZERO, gl.ZERO, gl.ZERO);
@@ -263,9 +281,10 @@ export class OverlayPainter {
         ((color >>> 16) & 0xff) * scale,
         (color >>> 24) * scale,
       );
-      gl.drawArrays(gl.TRIANGLE_FAN, first, corners);
-      at += 6 + corners * 2;
+      gl.drawArrays(gl.TRIANGLE_FAN, 0, corners);
+      gl.disable(gl.STENCIL_TEST);
+      gl.drawArrays(gl.TRIANGLE_STRIP, corners, 2 * corners + 2);
+      at += FILL_HEADER_FLOATS + (3 * corners + 2) * FILL_VERTEX_FLOATS;
     }
-    gl.disable(gl.STENCIL_TEST);
   }
 }
