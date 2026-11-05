@@ -350,7 +350,6 @@ dependencies = [
 name = "catalogs"
 version = "0.1.0"
 dependencies = [
- "bytes",
  "foundation",
  "libc",
  "scene",

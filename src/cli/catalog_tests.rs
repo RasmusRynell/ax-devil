@@ -27,7 +27,6 @@ fn default_catalog(dir: &std::path::Path) -> Value {
 #[test]
 fn catalog_new_copies_without_overwriting_and_leaves_the_default_alone() {
     assert!(parse(&["catalog"]).is_err());
-    assert!(parse(&["catalog", "render", "night.json"]).is_err());
     let dir = tempfile::tempdir().unwrap();
     let file = |name: &str| dir.path().join("catalogs").join(name);
 
@@ -179,9 +178,8 @@ fn the_reference_artifact_is_what_the_compiler_tables_generate() {
 }
 
 #[test]
-fn render_reads_a_built_in_from_a_scratch_file_and_refuses_a_catalog_the_folder_lacks() {
-    let dir = tempfile::tempdir().unwrap();
-    let rendered = through_file(&Target::BuiltIn("standard"), |path| {
+fn a_built_in_is_checked_from_a_scratch_file_and_a_catalog_the_folder_lacks_is_refused() {
+    let checked = through_file(&Target::BuiltIn("standard"), |path| {
         let text = fs::read_to_string(path).unwrap();
         assert!(text.contains("\"schema\": 4"));
         Ok(Report {
@@ -190,20 +188,13 @@ fn render_reads_a_built_in_from_a_scratch_file_and_refuses_a_catalog_the_folder_
         })
     })
     .unwrap();
-    assert_eq!(rendered.text, "built-in:standard is bad\n");
+    assert_eq!(checked.text, "built-in:standard is bad\n");
 
-    let out = dir.path().join("out");
-    let refused = |args: &[&str]| {
-        catalog(
-            dir.path(),
-            &[&["render", "--out", out.to_str().unwrap()], args].concat(),
-        )
-    };
-    let missing = refused(&["user:gone.json"]);
+    let dir = tempfile::tempdir().unwrap();
+    let missing = catalog(dir.path(), &["check", "user:gone.json"]);
     assert!(
         !missing.ok && missing.text.contains("gone.json"),
         "{}",
         missing.text
     );
-    assert!(!out.exists());
 }
