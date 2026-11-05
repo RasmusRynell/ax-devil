@@ -29,12 +29,12 @@ describe("lane grid math", () => {
     ]);
   });
 
-  it("shares the width of a short last row among its lanes, and keeps lane indices", () => {
+  it("keeps the column widths in a short last row, and keeps lane indices", () => {
     const cells = layoutLanes([4, 7, 9, 2, 5], 300, 200);
     expect(cells.map(({ lane }) => lane)).toEqual([4, 7, 9, 2, 5]);
     expect(cells.slice(3).map(({ rect }) => [rect.x, rect.width])).toEqual([
-      [0, 150],
-      [150, 150],
+      [0, 100],
+      [100, 100],
     ]);
   });
 });
@@ -56,6 +56,7 @@ function mount(
   hiddenLabels: string[],
   views: Record<string, boolean> = {},
   frame = { width: 0, height: 0 },
+  title?: string,
 ) {
   vi.stubGlobal(
     "ResizeObserver",
@@ -91,6 +92,7 @@ function mount(
           session={session as unknown as PlaybackSession}
           view={view}
           name="clip"
+          title={title}
           anchor="frame:i"
           entry="e"
           hidden={hidden}
@@ -122,6 +124,14 @@ describe("lane grid", () => {
     mount(["A"], [], {}, { width: 400, height: 300 });
     const tag = screen.getByText("A").closest(".absolute") as HTMLElement;
     expect([tag.style.left, tag.style.top, tag.style.maxWidth]).toEqual(["200px", "0px", "600px"]);
+  });
+
+  it("leaves out the name of a lane that is the only one shown and is named as the viewer", () => {
+    mount(["A", "B"], ["B"], {}, undefined, "A");
+    expect(screen.queryByText("A")).toBeNull();
+    cleanup();
+    mount(["A", "B"], [], {}, undefined, "A");
+    expect(screen.getByText("A")).toBeTruthy();
   });
 
   it("says so when every lane is hidden", () => {

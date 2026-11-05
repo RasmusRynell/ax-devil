@@ -19,7 +19,7 @@ import { NoticeList } from "../kit/NoticeList";
 import { useChromeVisibility } from "./chromeVisibility";
 import { LaneGrid } from "./LaneGrid";
 import { HIDE_LANE, laneContextEntries } from "./laneContextMenu";
-import { shownLanes } from "./laneCells";
+import { allHidden, shownLanes } from "./laneCells";
 import { savedTiming } from "./lanes";
 import { useLaneFullscreen } from "./laneFullscreen";
 import { Popover } from "../kit/Popover";
@@ -47,6 +47,7 @@ function Playback({
   session,
   item,
   name,
+  title,
   entry,
   hidden,
   canChange,
@@ -59,6 +60,7 @@ function Playback({
   session: PlaybackSession;
   item: string;
   name: string;
+  title: string;
   entry: string;
   hidden: Hidden;
   canChange: boolean;
@@ -200,6 +202,7 @@ function Playback({
                 session={session}
                 view={view}
                 name={name}
+                title={title}
                 anchor={`frame:${item}`}
                 entry={entry}
                 hidden={hidden}
@@ -239,7 +242,10 @@ function Playback({
                 </div>
               </div>
             )}
-            <Transport controls={session} view={view} disabled={!canChange} />
+            {/* With every lane hidden there is nothing to play: no transport, so no pick or press outlives the lanes. */}
+            {!allHidden(view.lanes, shown) && (
+              <Transport controls={session} view={view} disabled={!canChange} />
+            )}
           </div>
           {tools && (
             <ObjectsPanel
@@ -427,6 +433,7 @@ export function VideoViewer({
         session={session}
         item={item}
         name={entry.label}
+        title={content.display_name}
         entry={entry.id}
         hidden={hidden}
         canChange={canChange}

@@ -65,6 +65,7 @@ export function Viewer({
   entryId,
   onHideLane,
   onLaneMatching,
+  hidden,
   settings,
 }: {
   sent: ClientMessage[];
@@ -73,6 +74,7 @@ export function Viewer({
   entryId?: string;
   onHideLane?: (label: string) => void;
   onLaneMatching?: VideoViewerProps["onLaneMatching"];
+  hidden?: VideoViewerProps["hidden"];
   /** The settings the viewer reads; the defaults without. */
   settings?: SettingsState;
 }) {
@@ -90,6 +92,7 @@ export function Viewer({
         connect={connect}
         onHideLane={onHideLane}
         onLaneMatching={onLaneMatching}
+        hidden={hidden}
       />
     </FakeSettings>
   ) : null;
