@@ -75,7 +75,8 @@ static CLASSES: [(ClassType, &str, &str); 13] = [
 ///
 /// Frames are 1-based in the file and 0-based in Scenes. Boxes are pixels, normalized by the required `width` and
 /// `height` options, the image size of the sequence (a playlist resolver reads it from `seqinfo.ini`); the video is
-/// never consulted. A frame without rows is empty ([`Coverage::Dense`]).
+/// never consulted. A frame without rows is missing, not empty ([`Coverage::Sparse`]): a lane that keeps its last
+/// objects (sticky) keeps them across it.
 pub struct MotDecoder {
     spec: Spec,
 }
@@ -100,7 +101,7 @@ impl MotDecoder {
                         size("height", "Image height (pixels)"),
                     ],
                 },
-                version: 1,
+                version: 2,
             },
         }
     }
@@ -179,7 +180,7 @@ impl Decoder for MotDecoder {
             warnings: skipped.warning(total).into_iter().collect(),
             filter: filter_policy(),
             metadata: Fields::new(),
-            coverage: Coverage::Dense,
+            coverage: Coverage::Sparse,
         })
     }
 }

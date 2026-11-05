@@ -4,7 +4,7 @@ use std::ops::ControlFlow;
 
 use foundation::{CancelToken, Interrupt, Warning};
 use handler_api::{DecodeSummary, Header, OnEqualKey, SceneSink, Settings};
-use scene::{Classification, Coverage, Entity, Geometry, Scene, SceneTime, Score, Value};
+use scene::{Classification, Entity, Geometry, Scene, SceneTime, Score, Value};
 
 mod common;
 
@@ -108,7 +108,6 @@ fn boxes_are_normalized_by_the_image_size_options() {
     for width in [640, 1280] {
         let (scenes, summary) = decode_with(text, &options(width, 480));
         assert!(summary.warnings.is_empty());
-        assert_eq!(summary.coverage, Coverage::Dense);
         let observation = &entity(&scenes[0], "2").observations()[0];
         let Geometry::Box(bounds) = &observation.geometry else {
             panic!("MOT boxes are boxes");

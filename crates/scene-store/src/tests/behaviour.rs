@@ -403,7 +403,7 @@ fn the_real_mot_decoder_round_trips_through_an_artifact() {
 
     for track in [&cold, &warm] {
         assert_eq!(track.snapshot().keys, frame_keys(&[0, 1, 3]));
-        assert_eq!(track.coverage(), Coverage::Dense);
+        assert_eq!(track.coverage(), Coverage::Sparse);
         assert_eq!(track.warnings().len(), 1);
         assert_eq!(track.filter().options.len(), 14);
     }

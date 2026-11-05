@@ -47,7 +47,7 @@ impl CvatDecoder {
                 bases: vec![MatchBasis::Frame],
                 default_basis: MatchBasis::Frame,
                 options: Form::default(),
-                version: 1,
+                version: 2,
             },
         }
     }
@@ -142,7 +142,8 @@ enum Slot {
 }
 
 enum Kind {
-    /// The entity every shape of the track belongs to; `None` when the track id is not a whole number.
+    /// The entity every shape of the track belongs to; `None` when the track id is not a whole number, and each
+    /// shape then gets an entity of its own like an image shape.
     Track(Option<EntityId>),
     /// The image's frame, if it names one.
     Image(Option<u64>),
@@ -239,8 +240,9 @@ struct Parser {
     labels: BTreeSet<ClassType>,
     skipped: SkippedRecords,
     shapes: usize,
-    /// Image shapes that reached the box or polygon builder; numbers the shapes' entities.
-    image_shapes: u64,
+    /// Shapes of images and of tracks without a whole-number id that reached the box or polygon builder; numbers
+    /// their entities.
+    synthetic_ids: u64,
 }
 
 impl Default for Parser {
@@ -254,7 +256,7 @@ impl Default for Parser {
             labels: BTreeSet::new(),
             skipped: SkippedRecords::new("shapes", "Those shapes are not drawn."),
             shapes: 0,
-            image_shapes: 0,
+            synthetic_ids: 0,
         }
     }
 }
@@ -343,7 +345,7 @@ impl Parser {
         let size = ["width", "height"].map(|name| {
             attr(context.attributes(), name)
                 .and_then(int)
-                .filter(|&n| n > 0)
+                .filter(|&n| n != 0)
                 .unwrap_or(0)
         });
         let own_frame = match kind {
@@ -366,7 +368,6 @@ impl Parser {
         {
             self.shapes += 1;
             let frame = match (&kind, head.frame) {
-                (Kind::Track(None), _) => Err("the track id is not a whole number".to_owned()),
                 (_, FrameRef::At(frame)) => Ok(frame),
                 (_, FrameRef::Invalid(text)) => {
                     Err(format!("frame {text:?} is not a frame number"))
@@ -395,19 +396,21 @@ impl Parser {
                 ("shape_type".into(), Value::Str(shape_tag)),
                 ("shape".into(), value),
             ]);
-            match head.draw {
-                Draw::Skip => acc.unrendered.push(raw),
-                Draw::Rejected => {
-                    self.image_shapes += u64::from(is_image);
-                    acc.unrendered.push(raw);
+            // A shape without a track entity, rendered or rejected, takes the next number.
+            let number = match (&kind, &head.draw) {
+                (Kind::Track(Some(_)), _) | (_, Draw::Skip) => None,
+                _ => {
+                    self.synthetic_ids += 1;
+                    Some(self.synthetic_ids - 1)
                 }
+            };
+            match head.draw {
+                Draw::Skip | Draw::Rejected => acc.unrendered.push(raw),
                 Draw::Rendered(rendered) => {
-                    let entity = match &kind {
-                        Kind::Track(Some(id)) => id.clone(),
-                        Kind::Track(None) | Kind::Image(_) => {
-                            let number = self.image_shapes;
-                            self.image_shapes += 1;
-                            EntityId::new(format!("cvat_shape_{number}"))
+                    let entity = match (&kind, number) {
+                        (Kind::Track(Some(id)), _) => id.clone(),
+                        (_, number) => {
+                            EntityId::new(format!("cvat_shape_{}", number.unwrap_or_default()))
                                 .map_err(|error| error.to_string())?
                         }
                     };

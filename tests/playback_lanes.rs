@@ -6,8 +6,8 @@
 mod common;
 
 use api_types::playback::{
-    BasisWire, ClientMessage, Direction, FRAME_MAP_EMPTY, FRAME_MAP_NONE, IngestWire, LaneInfo,
-    LanePolicyWire, LaneStatusWire, MATCH_EXACT, ServerMessage, StickyWire,
+    BasisWire, ClientMessage, Direction, FRAME_MAP_NONE, IngestWire, LaneInfo, LanePolicyWire,
+    LaneStatusWire, MATCH_EXACT, ServerMessage, StickyWire,
 };
 use common::{Backend, Event, Viewer, fixture};
 use overlay_sync::{MatchBasis, MatchPolicy, Sticky, Tolerance};
@@ -192,11 +192,10 @@ async fn a_lane_reports_its_load_then_sends_its_maps_and_each_mapped_sample_once
     for frame in 3..=5 {
         assert_eq!(
             seen.maps[&(1, frame)],
-            (FRAME_MAP_EMPTY, MATCH_EXACT, data_revision),
-            "a covered frame with nothing is empty, not missing"
+            (FRAME_MAP_NONE, MATCH_EXACT, data_revision),
+            "a MOT frame without rows is missing, not empty"
         );
     }
-    assert!(seen.maps.values().all(|(cell, ..)| *cell != FRAME_MAP_NONE));
     assert_eq!(
         seen.samples.values().copied().collect::<Vec<_>>(),
         [1, 1, 1]
