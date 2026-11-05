@@ -87,15 +87,25 @@ export function splitLines(pending: string, chunk: string): { lines: string[]; r
 /**
  * The scan as the backend last said; `dropped` while the stream is down and being reopened. `epoch` counts the times
  * the stream has been opened, for what must not outlive a connection: a restarted backend numbers its scans again.
+ * `connected` is whether the stream has opened and not dropped since, so what is shown can be taken as current.
  */
-export type Network = { snapshot: NetworkSnapshot | null; dropped: boolean; epoch: number };
+export type Network = {
+  snapshot: NetworkSnapshot | null;
+  dropped: boolean;
+  epoch: number;
+  connected: boolean;
+};
 
 /**
  * Follows `GET /api/network` while `enabled`, reopening the stream after a drop. A snapshot of an older scan than one
  * already shown is ignored, within one connection.
  */
 export function useNetwork(enabled: boolean): Network {
-  const [state, setState] = useState<Network>({ snapshot: null, dropped: false, epoch: 0 });
+  const [state, setState] = useState<Omit<Network, "connected">>({
+    snapshot: null,
+    dropped: false,
+    epoch: 0,
+  });
   useEffect(() => {
     if (!enabled) return;
     const stop = new AbortController();
@@ -134,7 +144,9 @@ export function useNetwork(enabled: boolean): Network {
       clearTimeout(timer);
     };
   }, [enabled]);
-  return enabled ? state : { snapshot: null, dropped: false, epoch: 0 };
+  return enabled
+    ? { ...state, connected: state.epoch > 0 && !state.dropped }
+    : { snapshot: null, dropped: false, epoch: 0, connected: false };
 }
 
 /** What a refused scan shows in the header: a range the backend cannot scan, or a scan that could not start. */

@@ -10,23 +10,26 @@ import { rescan, type ScanProblem } from "../live/network";
 import { useSettings } from "../settings";
 import { LoginsEditor } from "./LoginsEditor";
 import { type Value } from "./SettingField";
+import { useScanGuard } from "./useScanGuard";
 
 const SIGN_IN_HINT =
   "Tries these logins in order on each Axis device found, to read more about it and add it with the login that worked.\nPasswords go only as HTTP Digest answers. Settings edits the same list.";
 
 /**
- * The foot of the Live view: the settings of the network scan. The IP range with Rescan, which waits from the press
- * until the scan it started has run, and for whoever may configure the server, whether to sign in to found cameras and
- * the logins to try. The sign-in box is this view's own choice for the scans it starts, which the `scan.sign_in`
+ * The foot of the Live view: the settings of the network scan. The IP range with Rescan, which needs the snapshot
+ * stream to be open and waits from the press until the scan it started has run, and for whoever may configure the
+ * server, whether to sign in to found cameras and the logins to try. The sign-in box is this view's own choice for the scans it starts, which the `scan.sign_in`
  * setting only seeds; the logins are the setting's, saved as they are edited. The header says how the last scan went,
  * with the reason on hover, and a thin line over the top edge shows a scan running.
  */
 export function ScanSettings({
   snapshot,
   epoch,
+  connected,
 }: {
   snapshot: NetworkSnapshot | null;
   epoch: number;
+  connected: boolean;
 }) {
   const { values, shortcuts, save } = useSettings();
   const configures = useGrants().includes("configuration");
@@ -36,11 +39,6 @@ export function ScanSettings({
   const [typed, setTyped] = useState<string | null>(null);
   /** Why the last scan was refused; shown until the next one starts. */
   const [refused, setRefused] = useState<ScanProblem | null>(null);
-  // The latest press, held until its scan has begun for this view: its number, `null` until the backend answers, and
-  // the connection it was made on. A snapshot of that number or a later one ends it, which an older snapshot cannot
-  // be mistaken for, and so does a new connection, since a restarted backend numbers its scans again. A press that
-  // has ended holds nothing, so Rescan is never blocked by a scan number that will not come.
-  const [pressed, setPressed] = useState<{ scan: number | null; epoch: number } | null>(null);
   // The box follows the setting until the user sets it, and again whenever the setting changes.
   const setting = values["scan.sign_in"] !== false;
   const [chosen, setChosen] = useState<boolean | null>(null);
@@ -50,12 +48,7 @@ export function ScanSettings({
     setChosen(null);
   }
   const signIn = chosen ?? setting;
-  if (
-    pressed !== null &&
-    (pressed.epoch !== epoch || (pressed.scan !== null && (snapshot?.scan ?? -1) >= pressed.scan))
-  )
-    setPressed(null);
-  const scanning = snapshot?.scanning === true || pressed !== null;
+  const { scanning, press } = useScanGuard(snapshot, epoch);
   const logins = values["scan.logins"];
 
   /** Saves one setting; resolves to why the backend refused it, else `null`. */
@@ -64,19 +57,19 @@ export function ScanSettings({
       (refusal) => refusal?.reason ?? null,
     );
 
+  const ready = connected && !scanning;
   const scan = () => {
-    if (scanning) return;
+    if (!ready) return;
     const range = typed?.trim();
-    setPressed({ scan: null, epoch });
     // Only a caller who configures may turn sign-in on for a scan; the others leave it to the setting.
-    void rescan(
-      range === undefined || range === stored.trim() ? undefined : range,
-      configures ? signIn : undefined,
-    ).then((answer) => {
-      const problem = typeof answer === "number" ? null : answer;
-      setRefused(problem);
-      setPressed(typeof answer === "number" ? { scan: answer, epoch } : null);
-    });
+    press(
+      () =>
+        rescan(
+          range === undefined || range === stored.trim() ? undefined : range,
+          configures ? signIn : undefined,
+        ),
+      setRefused,
+    );
   };
   const reason = snapshot?.failure;
   const failed = scanning
@@ -115,7 +108,7 @@ export function ScanSettings({
             onKeyDown={(event) => event.key === "Enter" && scan()}
             className={`${FIELD} min-w-0 flex-1 text-small`}
           />
-          <Button size="small" icon="wifi" disabled={scanning} onClick={scan}>
+          <Button size="small" icon="wifi" disabled={!ready} onClick={scan}>
             Rescan
           </Button>
         </div>

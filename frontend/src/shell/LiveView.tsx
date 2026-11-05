@@ -40,7 +40,7 @@ export function LiveView({ onAdd }: { onAdd: (seed: AddSeed) => void }) {
   const items = useDoc()?.workspace.items;
   const command = useCommand();
   const show = useShow();
-  const { snapshot, epoch } = useNetwork(scans);
+  const { snapshot, epoch, connected } = useNetwork(scans);
   const reported = useStreamStatuses();
   const [front] = useView("active");
   const [query, setQuery] = useState("");
@@ -170,7 +170,7 @@ export function LiveView({ onAdd }: { onAdd: (seed: AddSeed) => void }) {
         onAct={act}
         onConfirm={confirm}
       />
-      {scans && <ScanSettings snapshot={snapshot} epoch={epoch} />}
+      {scans && <ScanSettings snapshot={snapshot} epoch={epoch} connected={connected} />}
       {informing && <InformationDialog info={informing} onClose={() => setInforming(null)} />}
     </div>
   );
