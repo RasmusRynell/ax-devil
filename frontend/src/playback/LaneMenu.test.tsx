@@ -59,30 +59,36 @@ describe("lane menu", () => {
       expect(onChange).toHaveBeenLastCalledWith({ theme: null });
     });
 
-    it("switches the catalog's features on and off by name, and lists only those it has", () => {
+    it("switches features on and off by name, and resets them only when one is off", () => {
       const { onChange, show } = setup();
-      expect(screen.getAllByRole("checkbox").map((b) => b.closest("label")?.textContent)).toEqual([
-        "Object outlines",
-        "Object IDs",
-        "Class names",
-        "Scores",
-        "Confidence",
-        "Speed arrows",
-        "Movement badges",
-        "Attributes",
-        "Relations",
-      ]);
+      expect(screen.getAllByRole("checkbox")).toHaveLength(9);
+      const reset = screen.getByRole("button", { name: "Reset" }) as HTMLButtonElement;
+      expect(reset.disabled).toBe(true);
       fireEvent.click(box("Class names"));
       expect(onChange).toHaveBeenLastCalledWith({ hidden: 0b100 });
-      show({
-        settings: { ...LANE_SETTINGS, hidden: 0b101 },
-        look: { themes: [], features: 0b111 },
-      });
-      expect(screen.getAllByRole("checkbox")).toHaveLength(3);
+      show({ settings: { ...LANE_SETTINGS, hidden: 0b101 } });
       expect(box("Object outlines").checked).toBe(false);
       expect(box("Object IDs").checked).toBe(true);
-      fireEvent.click(box("Object outlines"));
-      expect(onChange).toHaveBeenLastCalledWith({ hidden: 0b100 });
+      expect(reset.disabled).toBe(false);
+      fireEvent.click(reset);
+      expect(onChange).toHaveBeenLastCalledWith({ hidden: 0 });
+    });
+
+    it("shows a feature the catalog does not draw disabled with why, and keeps its choice across catalogs", () => {
+      const { show } = setup({ settings: { ...LANE_SETTINGS, hidden: 0b100 } });
+      const classNames = () => box("Class names");
+      expect(classNames().closest("label")?.title).toBe("Classification text.");
+      show({ look: { themes: [], features: 0b11 } });
+      expect(classNames().disabled).toBe(true);
+      expect(classNames().checked).toBe(false);
+      expect(classNames().closest("label")?.title).toBe("This catalog does not draw this detail.");
+      expect(box("Object IDs").disabled).toBe(false);
+      expect((screen.getByRole("button", { name: "Reset" }) as HTMLButtonElement).disabled).toBe(
+        false,
+      );
+      show({ look: { themes: [], features: ALL_FEATURES } });
+      expect(classNames().disabled).toBe(false);
+      expect(classNames().checked).toBe(false);
     });
 
     it("saves the lane's catalog as the Personal default, unless it failed or already is", async () => {

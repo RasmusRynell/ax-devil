@@ -1,4 +1,5 @@
 import type { CatalogInfoWire } from "../generated/api";
+import { Button } from "../kit/Button";
 import { Checkbox, Select } from "../kit/Fields";
 import { FEATURES } from "../present";
 import { useSettings } from "../settings";
@@ -6,18 +7,27 @@ import { effectiveDefault, type LaneSettings, type LaneState } from "./lanes";
 import { DEFAULT_CATALOG, LaneCatalogActions, USER_PREFIX } from "./LaneCatalogActions";
 import { Group } from "./LaneMenuFields";
 
-/** What the user reads for each feature. */
-const FEATURE_LABELS: Record<(typeof FEATURES)[number], string> = {
-  outlines: "Object outlines",
-  ids: "Object IDs",
-  class_names: "Class names",
-  score: "Scores",
-  confidence: "Confidence",
-  speed: "Speed arrows",
-  movement: "Movement badges",
-  attributes: "Attributes",
-  relations: "Relations",
+/** What the user reads for each feature, and what it controls. */
+const FEATURE_TEXT: Record<(typeof FEATURES)[number], { label: string; description: string }> = {
+  outlines: {
+    label: "Object outlines",
+    description: "Bounding boxes, polygons and their associated fills.",
+  },
+  ids: { label: "Object IDs", description: "Displayed object identifiers." },
+  class_names: { label: "Class names", description: "Classification text." },
+  score: { label: "Scores", description: "Score numbers and their backgrounds." },
+  confidence: { label: "Confidence", description: "Confidence numbers and their backgrounds." },
+  speed: { label: "Speed arrows", description: "Velocity arrows and their heads." },
+  movement: { label: "Movement badges", description: "Motion-state symbols." },
+  attributes: {
+    label: "Attributes",
+    description: "Attribute badges, color swatches and related indicators.",
+  },
+  relations: { label: "Relations", description: "Relationship lines and endpoint markers." },
 };
+
+/** Why a feature the catalog does not draw cannot be switched. */
+const UNSUPPORTED = "This catalog does not draw this detail.";
 
 /**
  * The catalogs the picker offers as `{id, label}`, in the order the backend sends them. A catalog with a problem is
@@ -51,9 +61,6 @@ export function LaneMenuLook({
   onChange: (change: Partial<LaneSettings>) => void;
 }) {
   const { settings, look } = lane;
-  const features = FEATURES.flatMap((feature, bit) =>
-    look && (look.features & (1 << bit)) !== 0 ? [{ feature, bit }] : [],
-  );
   const { values } = useSettings();
   const defaultId = effectiveDefault(catalogs, values[DEFAULT_CATALOG]);
   const entries = choices(catalogs, settings.catalog);
@@ -87,13 +94,16 @@ export function LaneMenuLook({
           onChange={(theme) => onChange({ theme: theme === "" ? null : theme })}
         />
       )}
-      {features.length > 0 && (
-        <Group label="Features">
-          <div className="grid grid-cols-[repeat(auto-fit,minmax(18ch,1fr))] gap-x-xl gap-y-s">
-            {features.map(({ feature, bit }) => (
+      <Group label="Features">
+        <div className="grid grid-cols-[repeat(auto-fit,minmax(18ch,1fr))] gap-x-xl gap-y-s">
+          {FEATURES.map((feature, bit) => {
+            const supported = look !== undefined && (look.features & (1 << bit)) !== 0;
+            return (
               <Checkbox
                 key={feature}
-                label={FEATURE_LABELS[feature]}
+                label={FEATURE_TEXT[feature].label}
+                title={supported ? FEATURE_TEXT[feature].description : UNSUPPORTED}
+                disabled={!supported}
                 checked={(settings.hidden & (1 << bit)) === 0}
                 onChange={(shown) =>
                   onChange({
@@ -101,10 +111,15 @@ export function LaneMenuLook({
                   })
                 }
               />
-            ))}
-          </div>
-        </Group>
-      )}
+            );
+          })}
+        </div>
+        <div className="flex justify-end">
+          <Button disabled={settings.hidden === 0} onClick={() => onChange({ hidden: 0 })}>
+            Reset
+          </Button>
+        </div>
+      </Group>
     </>
   );
 }
