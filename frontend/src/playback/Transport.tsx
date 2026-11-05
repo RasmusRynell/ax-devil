@@ -3,6 +3,7 @@ import { TextField } from "../kit/Fields";
 import { IconButton } from "../kit/IconButton";
 import { Menu, type MenuEntry } from "../kit/Menu";
 import { Popover } from "../kit/Popover";
+import { seekBand } from "./seekBand";
 import type { PlaybackSession } from "./session";
 import type { PlaybackView } from "./view";
 
@@ -30,7 +31,7 @@ const BUTTON = "size-row rounded-control";
 
 // The controls fade with the pointer's rest (see chromeVisibility) and stay while a control has the keyboard focus ring.
 const CONTROLS =
-  "pointer-events-auto flex flex-col rounded-popup border border-canvas-line bg-canvas-scrim px-l py-xs text-on-canvas shadow-float transition-opacity duration-200 ease-out-cubic motion-reduce:transition-none group-data-[chrome=hidden]:not-has-[:focus-visible]:opacity-0 group-data-[chrome=hidden]:not-has-[:focus-visible]:pointer-events-none group-data-[chrome=hidden]:not-has-[:focus-visible]:delay-200";
+  "pointer-events-auto flex flex-col rounded-t-popup border border-canvas-line bg-canvas-scrim px-l py-xs text-on-canvas shadow-float transition-opacity duration-200 ease-out-cubic motion-reduce:transition-none group-data-[chrome=hidden]:not-has-[:focus-visible]:opacity-0 group-data-[chrome=hidden]:not-has-[:focus-visible]:pointer-events-none group-data-[chrome=hidden]:not-has-[:focus-visible]:delay-200";
 
 const PRESETS = [0.25, 0.5, 1, 1.5, 2, 4];
 const PRESET_ENTRIES: readonly MenuEntry[] = PRESETS.map((speed) => ({
@@ -137,7 +138,7 @@ function FrameField({
         else if (event.key === "Escape") setDraft(null);
       }}
       style={{ "--chars": String(last).length } as CSSProperties}
-      className="chars-wide h-row w-0 rounded-control border border-transparent bg-transparent px-xs text-right text-on-canvas tabular-nums enabled:hover:border-on-canvas-muted focus:border-on-canvas focus:outline-none disabled:text-on-canvas"
+      className="chars-wide h-row w-0 rounded-control border border-transparent bg-transparent px-xs text-right font-mono text-on-canvas tabular-nums enabled:hover:border-on-canvas-muted focus:border-on-canvas focus:outline-none disabled:text-on-canvas"
     />
   );
 }
@@ -158,11 +159,11 @@ export function Transport({ controls, view, disabled = false }: Props) {
   const last = Math.max(0, view.frameCount - 1);
   const { shown, playing, frameError } = view;
   return (
-    <div className="pointer-events-none absolute inset-x-0 bottom-0 flex flex-col items-start gap-s p-m text-on-canvas">
+    <div className="pointer-events-none absolute inset-x-0 bottom-0 flex flex-col items-start gap-s text-on-canvas">
       {frameError && (
         <p
           role="alert"
-          className="pointer-events-auto m-0 w-fit rounded-popup border border-canvas-line bg-canvas-scrim px-m py-xs shadow-float"
+          className="pointer-events-auto m-0 ml-inset w-fit rounded-popup border border-canvas-line bg-canvas-scrim px-m py-xs shadow-float"
         >
           Frame {frameError.sequenceId} cannot be shown: {frameError.reason}
         </p>
@@ -170,18 +171,16 @@ export function Transport({ controls, view, disabled = false }: Props) {
       <div data-keeps-chrome="transport" className={`w-full ${CONTROLS}`}>
         <div className="relative h-l w-full">
           <div className="absolute inset-x-0 top-1/2 h-s -translate-y-1/2 overflow-hidden rounded-pill bg-canvas-hover">
-            {view.cached.map(([first, final]) => (
-              <span
-                key={first}
-                style={
-                  {
-                    "--from": last > 0 ? first / last : 0,
-                    "--to": last > 0 ? final / last : 0,
-                  } as CSSProperties
-                }
-                className="seek-band"
-              />
-            ))}
+            {view.cached.map(([first, final]) => {
+              const { from, span } = seekBand(first, final, view.frameCount);
+              return (
+                <span
+                  key={first}
+                  style={{ "--from": from, "--span": span } as CSSProperties}
+                  className="seek-band"
+                />
+              );
+            })}
           </div>
           <input
             type="range"
@@ -249,11 +248,11 @@ export function Transport({ controls, view, disabled = false }: Props) {
             disabled={disabled}
             onSeek={(frame) => controls.seek(frame)}
           />
-          <span className="text-on-canvas-muted tabular-nums">/ {last}</span>
+          <span className="font-mono text-on-canvas-muted tabular-nums">/ {last}</span>
           <output
             aria-label="Time"
             style={{ "--chars": timecode(view.durationUs).length } as CSSProperties}
-            className="chars-wide border border-transparent px-xs text-right tabular-nums text-on-canvas-muted"
+            className="chars-wide border border-transparent px-xs text-right font-mono tabular-nums text-on-canvas-muted"
           >
             {shown ? timecode(shown.timestampUs) : "…"}
           </output>
