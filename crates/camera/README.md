@@ -52,10 +52,10 @@ depend on it (`scripts/check-architecture.cjs`). Feature `fake` adds `CameraErro
   reconnect, match on error text, hold a login outside a `Secret`, or touch retina, rumqttc, reqwest, http-auth or
   tokio-tungstenite. It decides what to do with an
   `ErrorKind` through `retryable`, and always calls `close().await` on a `LiveMessages`.
-- Tests: in-process fakes on `127.0.0.1` in `tests/support/` (device API with the MQTT endpoints, also used by the scan tests, RTSP, an MQTT broker
+- Tests: in-process fakes on `127.0.0.1` in `tests/it/support/` (device API with the MQTT endpoints, also used by the scan tests, RTSP, an MQTT broker
   on rumqttc's packet codec, DataHub on axum's WebSocket). rumqttd was too heavy to embed: it brings a second axum, a metrics exporter and an older
   TLS stack, and cannot drop a connection on demand.
 - Real camera: `cargo run -p camera --example probe -- info|snapshot FILE|stream [SECONDS]|mqtt [SECONDS] [SOURCE]`
-  reads `AX_DEVIL_TARGET_*` (and `AX_DEVIL_MQTT_BROKER_*` for `mqtt`). `cargo test -p camera --test real_camera -- --ignored --test-threads=1` runs
-  `tests/real_camera.rs`; each test skips itself unless `AX_DEVIL_TARGET_ADDR` is set, and it is never part of
+  reads `AX_DEVIL_TARGET_*` (and `AX_DEVIL_MQTT_BROKER_*` for `mqtt`). `cargo test -p camera --test it real_camera:: -- --ignored --test-threads=1` runs
+  `tests/it/real_camera.rs`; each test skips itself unless `AX_DEVIL_TARGET_ADDR` is set, and it is never part of
   `make check` or CI.

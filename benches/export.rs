@@ -7,7 +7,7 @@
 // A bench reports its numbers on stdout.
 #![allow(clippy::print_stdout)]
 
-#[path = "../tests/common/mod.rs"]
+#[path = "../tests/it/common/mod.rs"]
 mod common;
 
 use api_types::playback::{
