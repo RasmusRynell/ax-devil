@@ -72,6 +72,7 @@ export function LiveBar({
       <div className="flex min-w-0 flex-1 items-center gap-m">
         <FeedChip name="Video" status={video} />
         {overlay && <FeedChip name="Overlay" status={overlay} behind={behind} waiting={waiting} />}
+        {paused && <span className="shrink-0 text-small text-danger">PAUSED</span>}
         {(needsRetry(video) || needsRetry(overlay)) && (
           <Button
             icon="refresh-cw"
