@@ -82,6 +82,10 @@ history stays in memory with the track. While the ingest runs there is no histor
 value, as in the reference app) and `placement.rs` puts runs on a video's frames by asking `overlay_sync::select` once
 per frame.
 
+`events.rs` places the events on a video's frames by the lane's basis alone (matching tolerance and sticky do not move
+them) and lists them in frame order, searched by `kind`, `object` and the label; events the file's keys cannot place
+are left out.
+
 ## Live tracks
 
 `TrackRead` is what a viewer reads of a track; `Track` implements it, and so does `LiveTrack`, which decodes the

@@ -56,10 +56,12 @@ use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
 pub mod envelope;
+mod events;
 mod export;
 mod file_scope;
 mod lane;
 mod want;
+pub use events::*;
 pub use export::*;
 pub use file_scope::*;
 pub use lane::*;
@@ -77,7 +79,7 @@ pub(crate) use constants;
 
 constants! {
     /// Raised when the messages or the envelope change in a way an older frontend cannot read.
-    PLAYBACK_PROTOCOL: u32 = 8;
+    PLAYBACK_PROTOCOL: u32 = 9;
     /// "AXDV" read as a little-endian u32.
     ENVELOPE_MAGIC: u32 = 0x5644_5841;
     /// The envelope format version, byte 4.
@@ -256,6 +258,10 @@ pub enum ClientMessage {
         /// The object's id.
         entity: String,
     },
+    /// Asks for rows of a lane's event list; the answer is `EventRows`.
+    EventQuery(EventQueryWire),
+    /// Asks for one event of a lane's file; the answer is `Event`.
+    Event(EventAskWire),
     /// Ends the session and releases the source.
     Close,
 }
@@ -297,6 +303,8 @@ pub enum ServerMessage {
         catalogs: Vec<CatalogInfoWire>,
         /// The video's PTS time base and first PTS; `null` for an image sequence.
         video_pts: Option<VideoPtsWire>,
+        /// How evenly the video's frames are spaced; `null` for a one-frame video.
+        cadence: Option<CadenceWire>,
     },
     /// A lane's overlay load changed.
     LaneStatus {
@@ -440,6 +448,10 @@ pub enum ServerMessage {
         /// The spans, or why there are none.
         appearances: FileAppearances,
     },
+    /// Rows of a lane's event list. Not held back for a frame.
+    EventRows(EventRowsWire),
+    /// One event of a lane's file. Not held back for a frame.
+    Event(EventWire),
     /// The session cannot go on and ends.
     Error(ErrorWire),
 }

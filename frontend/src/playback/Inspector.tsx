@@ -2,6 +2,8 @@ import { Button } from "../kit/Button";
 import { Chip } from "../kit/Chips";
 import { fixed } from "../present/expr/fixed";
 import { categoryDot } from "../tools/category";
+import { UNKNOWN_CLASS } from "../tools/objects";
+import { PresenceStrip } from "../tools/PresenceStrip";
 import { jumpsFrom, type Jumps } from "./appearanceJumps";
 import type { Appearance } from "./appearances";
 import type { InspectionView, Summary } from "./contract";
@@ -30,6 +32,8 @@ export type Reach = {
   source: AppearanceSource;
   /** The frame on screen. */
   frame: number;
+  /** How many frames the video has. */
+  frames: number;
   /** The time of a frame in microseconds; `undefined` until the video is described. */
   timeOf: (frame: number) => number | undefined;
   /** Goes to a frame; absent for a seat that may not move the viewer. */
@@ -48,6 +52,7 @@ export const reachOf = (
 ): Reach => ({
   source: source.files,
   frame: view.shown?.sequenceId ?? view.playhead,
+  frames: view.frameCount,
   timeOf: (frame) => source.frameTime(frame),
   seek: canSeek ? (frame) => source.seek(frame) : undefined,
 });
@@ -130,6 +135,17 @@ export function Inspector({
               Truncated
             </Chip>
           )}
+        </div>
+      )}
+      {appearance && (
+        <div className="shrink-0 px-m py-s">
+          <PresenceStrip
+            spans={appearance.spans}
+            frames={reach.frames}
+            category={className ?? UNKNOWN_CLASS}
+            current={frame}
+            onSeek={seek}
+          />
         </div>
       )}
       <div aria-busy={inspection.state === "loading"} className="flex min-h-0 flex-1 flex-col">

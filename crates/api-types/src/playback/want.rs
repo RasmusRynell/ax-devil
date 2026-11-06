@@ -33,6 +33,16 @@ pub struct Want {
     pub data_behind: u32,
 }
 
+/// How evenly a video's frames are spaced.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
+pub struct CadenceWire {
+    /// Whether more than one distinct period occurs.
+    pub variable: bool,
+    /// The most common periods in microseconds, most common first; at most five.
+    #[ts(type = "number[]")]
+    pub periods_us: Vec<i64>,
+}
+
 /// How the video's frame times come from its timestamps, when its container has them.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
 pub struct VideoPtsWire {

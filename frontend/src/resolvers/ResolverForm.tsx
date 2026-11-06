@@ -54,6 +54,8 @@ function start(resolver: ResolverInfo, initial?: Settings): State {
     if (field.kind.kind === "Scan") {
       scans[field.key] = idleScan(values[field.key], initial !== undefined);
       delete values[field.key];
+    } else if (field.kind.kind === "Integer" && typeof values[field.key] === "number") {
+      values[field.key] = String(values[field.key]);
     } else if (field.kind.kind === "DecoderOptions") {
       const saved = values[field.key];
       delete values[field.key];
@@ -196,7 +198,7 @@ function failuresAt(
 }
 
 /** Whether two settings hold the same values, whatever order their keys were added in. */
-function sameSettings(a: Settings | null, b: Settings | null): boolean {
+export function sameSettings(a: Settings | null, b: Settings | null): boolean {
   const canonical = (settings: Settings | null) =>
     JSON.stringify(settings, (_key, value: unknown) =>
       value && typeof value === "object" && !Array.isArray(value)

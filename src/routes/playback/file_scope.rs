@@ -9,21 +9,27 @@
 //! kept within a byte budget so paging and typing a search do not read them again; a lane the viewer releases keeps
 //! nothing.
 //!
-//! Where one object is (`Appearances`) is answered beside the list, from the same kept history and placement: it never
-//! cancels or waits for the lane's list query, and its own newer request replaces its older one ([`appearances`]).
+//! Where one object is (`Appearances`) and the lane's recorded events (`EventQuery`, `Event`) are answered beside the
+//! list, from the same kept history and placement: none cancels or waits for the lane's list query, and a newer request
+//! of its kind replaces its older one ([`latest`], [`appearances`], [`events`]).
 
 pub(super) use self::appearances::Ask as AppearancesAsk;
 use self::appearances::Spans;
 use self::cache::{CACHE_BYTES, Cache, Cached};
+pub(super) use self::events::Ask as EventsAsk;
+use self::events::Events;
 use super::{End, Flow, Outgoing, text};
 use api_types::{
     Audience,
-    playback::{FileAppearances, FileScopeUnavailable, Located, ServerMessage},
+    playback::{
+        EventRowsWire, EventWire, FileAppearances, FileEvent, FileEvents, FileScopeUnavailable,
+        Located, ServerMessage,
+    },
     project,
 };
 use foundation::{CancelToken, Cancelled, ErrorCode, UserError};
 use overlays::{FileScopeBlocked, FileScopeInput, ViewerOverlays};
-use scene_store::{HistoryUnavailable, Placement, Query, Search, Sort};
+use scene_store::{EventPlacement, HistoryUnavailable, Placement, Query, Search, Sort};
 use std::{
     collections::{HashMap, VecDeque},
     sync::Arc,
@@ -82,6 +88,28 @@ impl Reply {
                     unavailable: FileScopeUnavailable::Following,
                 },
             },
+            ServerMessage::EventRows(EventRowsWire {
+                rows: FileEvents::Found { .. },
+                ..
+            }) if !own => ServerMessage::EventRows(EventRowsWire {
+                lane,
+                request,
+                rows: FileEvents::Unavailable {
+                    unavailable: FileScopeUnavailable::Following,
+                },
+            }),
+            ServerMessage::Event(EventWire {
+                event,
+                detail: FileEvent::Found { .. },
+                ..
+            }) if !own => ServerMessage::Event(EventWire {
+                lane,
+                request,
+                event,
+                detail: FileEvent::Unavailable {
+                    unavailable: FileScopeUnavailable::Following,
+                },
+            }),
             other => other,
         };
         text(&message).into()
@@ -120,6 +148,7 @@ pub(super) struct FileScopes {
     ready: VecDeque<Reply>,
     cache: Arc<Cache>,
     spans: Spans,
+    events: Events,
 }
 
 impl FileScopes {
@@ -134,6 +163,7 @@ impl FileScopes {
             ready: VecDeque::new(),
             cache: Arc::new(Cache::new(CACHE_BYTES)),
             spans: Spans::new(audience),
+            events: Events::new(audience),
         }
     }
 
@@ -147,6 +177,19 @@ impl FileScopes {
     ) -> Flow<()> {
         check_lane(overlays, ask.lane)?;
         self.spans.ask(overlays, &self.cache, own, ask);
+        Ok(())
+    }
+
+    /// Takes a request about events, replacing the lane's older one of its kind. A lane the video does not have ends
+    /// the session.
+    pub(super) fn ask_events(
+        &mut self,
+        overlays: &ViewerOverlays,
+        own: bool,
+        ask: EventsAsk,
+    ) -> Flow<()> {
+        check_lane(overlays, ask.lane())?;
+        self.events.ask(overlays, &self.cache, own, ask);
         Ok(())
     }
 
@@ -216,6 +259,7 @@ impl FileScopes {
     pub(super) fn release(&mut self, overlays: &ViewerOverlays, lane: u16) -> Flow<()> {
         self.drop_requests(overlays, lane)?;
         self.spans.release(lane);
+        self.events.release(lane);
         self.cache.release(lane);
         Ok(())
     }
@@ -312,6 +356,7 @@ impl FileScopes {
                     }
                 },
                 reply = self.spans.next() => return reply,
+                reply = self.events.next() => return reply,
             }
         }
     }
@@ -346,21 +391,15 @@ fn answer(
     audience: Audience,
 ) -> Result<ServerMessage, Stop> {
     let lane = ask.lane;
-    let mut cached = cache.prepared(lane, input, || read(input, cancel, audience))?;
+    let cached = cache.prepared(lane, input, || read(input, cancel, audience))?;
+    let revisions = (cached.data_revision, cached.policy_revision);
     let query = query(ask);
-    let listed = match &cached.listing {
-        Some((listed, matches)) if *listed == query => Some(Arc::clone(matches)),
-        _ => None,
-    };
-    let matches = match listed {
-        Some(matches) => matches,
-        None => {
-            // What was computed stays for the next query even when this one is cancelled.
-            cached.listing = None;
-            cache.put(lane, cached.clone());
-            let matches = Arc::new(query.run(&cached.history, &cached.placement, cancel)?);
-            cached.listing = Some((query, Arc::clone(&matches)));
-            matches
+    let matches = match &cached.listing {
+        Some((listed, matches)) if *listed == query => Arc::clone(matches),
+        _ => {
+            // The old listing goes while the new one is made.
+            cache.update(lane, revisions, |kept| kept.listing = None);
+            Arc::new(query.run(&cached.history, &cached.placement, cancel)?)
         }
     };
     let rows = matches.rows(
@@ -385,7 +424,9 @@ fn answer(
         rows,
         located,
     };
-    cache.put(lane, cached);
+    cache.update(lane, revisions, |kept| {
+        kept.listing = Some((query, matches))
+    });
     Ok(message)
 }
 
@@ -402,12 +443,21 @@ fn read(input: &FileScopeInput, cancel: &CancelToken, audience: Audience) -> Res
         &input.matching,
         cancel,
     )?;
+    let events = EventPlacement::new(
+        &history,
+        &input.snapshot.keys,
+        &input.timeline,
+        input.matching.basis.unwrap_or_default(),
+        cancel,
+    )?;
     Ok(Cached {
         data_revision: input.data_revision,
         policy_revision: input.policy_revision,
         history,
         placement: Arc::new(placement),
         listing: None,
+        events: Arc::new(events),
+        event_listing: None,
     })
 }
 
@@ -432,5 +482,7 @@ fn query(ask: &Ask) -> Query {
 
 mod appearances;
 mod cache;
+mod events;
+mod latest;
 #[cfg(test)]
 mod tests;

@@ -5,7 +5,6 @@
 #[path = "../it/common/mod.rs"]
 mod common;
 
-mod catalog_render;
-mod catalog_render_default;
+mod catalog_check;
 mod export;
 mod export_compositing;

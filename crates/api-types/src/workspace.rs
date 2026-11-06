@@ -106,6 +106,38 @@ pub struct ItemState {
     pub open: bool,
     /// Whether the item has Content yet.
     pub resolution: ResolutionState,
+    /// What the item was made from, for an audience with host details: what Edit starts from and Information lists.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub recipe: Option<ItemRecipe>,
+}
+
+/// What an item was made from, as stored: a `$NAME` reference stays one and a literal password is left out. The name
+/// is the one the user gave, absent for the default.
+#[derive(Serialize, Deserialize, TS)]
+#[serde(tag = "type")]
+pub enum ItemRecipe {
+    /// A video file with its overlay files.
+    Video {
+        /// The file.
+        path: String,
+        /// The user's name for the item.
+        label: Option<String>,
+        /// The overlay files, each a lane.
+        overlays: Vec<NewOverlayWire>,
+    },
+    /// A playlist from a resolver.
+    Playlist {
+        /// The resolver id.
+        resolver: String,
+        /// The user's name for the item.
+        label: Option<String>,
+        /// The settings the resolver's schema declares.
+        #[ts(type = "Record<string, unknown>")]
+        settings: serde_json::Map<String, serde_json::Value>,
+    },
+    /// A camera's live stream.
+    Live(Box<NewLiveWire>),
 }
 
 /// What an item is, from its recipe.

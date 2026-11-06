@@ -80,7 +80,10 @@ function Viewer({ inspection, reach }: { inspection: Shown; reach: Reach }) {
 /** Frames 40 ms apart, the first at 01:02:03.004 into the day. */
 const timeOf = (frame: number) => 3_723_004_000 + frame * 40_000;
 
-function show(inspection: Shown, reach: Reach = { source: backend().files, frame: 0, timeOf }) {
+function show(
+  inspection: Shown,
+  reach: Reach = { source: backend().files, frame: 0, frames: 100, timeOf },
+) {
   const view = render(<Viewer inspection={inspection} reach={reach} />);
   return {
     next: (other: Shown, over: Partial<Reach> = {}) =>
@@ -383,7 +386,7 @@ describe("inspector", () => {
     const { files, sent } = backend();
     const seek = vi.fn();
     const absent: Shown = { state: "absent", selection: SELECTION, reason: "gone", last: SUMMARY };
-    const t = show(absent, { source: files, frame: 30, timeOf, seek });
+    const t = show(absent, { source: files, frame: 30, frames: 100, timeOf, seek });
     const ask = sent.find((message) => message.type === "Appearances");
     expect(ask).toMatchObject({ lane: 0, entity: "7" });
     const answer = (spans: [number, number][], over = {}) =>
@@ -399,6 +402,8 @@ describe("inspector", () => {
             policy_revision: 1,
             spans,
             truncated: false,
+            events: [],
+            events_truncated: false,
             ...over,
           },
         }),
@@ -406,6 +411,7 @@ describe("inspector", () => {
     // An answer made under another source revision is not the object's.
     answer([[10, 20]], { data_revision: 2 });
     expect(screen.queryByText("Go to last seen")).toBeNull();
+    expect(screen.queryByRole("img", { name: "Presence" })).toBeNull();
 
     answer([
       [10, 20],
@@ -414,6 +420,11 @@ describe("inspector", () => {
     fireEvent.click(screen.getByText("Go to last seen"));
     fireEvent.click(screen.getByText("Next appearance"));
     expect(seek.mock.calls).toEqual([[20], [40]]);
+    // The strip below the header goes to the frame under a click.
+    const strip = screen.getByRole("img", { name: "Presence" });
+    vi.spyOn(strip, "getBoundingClientRect").mockReturnValue({ left: 10, width: 200 } as DOMRect);
+    fireEvent.click(strip, { clientX: 110 });
+    expect(seek.mock.calls.slice(2)).toEqual([[50]]);
     expect(
       screen.getByText(/^Last seen at 01:02:03.804 \(0.4 s ago\)\. Attributes are only/),
     ).toBeTruthy();
@@ -440,7 +451,7 @@ describe("inspector", () => {
       reason: "gone",
       last: SUMMARY,
     });
-    const t = show(absent(SELECTION), { source: files, frame: 0, timeOf });
+    const t = show(absent(SELECTION), { source: files, frame: 0, frames: 100, timeOf });
     t.next(absent({ ...SELECTION, entity: "8" }));
     expect(sent.filter((message) => message.type === "Appearances")).toMatchObject([
       { lane: 0, entity: "7" },

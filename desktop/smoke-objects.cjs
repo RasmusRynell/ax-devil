@@ -139,6 +139,8 @@ module.exports.objects = async (window, { setTheme, shoot }) => {
     (await rows()).some((row) => row.selected),
     "The object is selected",
   );
+  // Where the object appears is drawn under the header, once the backend has answered.
+  await wait(`document.querySelector('${PAGE} [role=img][aria-label=Presence]')`);
   // A pinned field rises into a section of its own.
   await js(`document.querySelector('${PAGE} [data-act=pin][aria-label^=Pin]').click()`);
   await wait(`document.querySelector('${PAGE} section[aria-label=Pinned]')`);

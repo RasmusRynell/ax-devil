@@ -1,8 +1,9 @@
+import { createContext, useContext } from "react";
 import type { FileRowWire } from "../generated/api";
 import { CodePoints, codePointString } from "../present/expr/codePoints";
 import { emitFixed } from "../present/expr/fixed";
-import { categoryDot } from "./category";
 import { UNKNOWN_CLASS, type FrameObject } from "./objects";
+import { PresenceStrip } from "./PresenceStrip";
 import type { Column } from "./table/columns";
 
 const digits = new CodePoints();
@@ -59,46 +60,6 @@ export const FRAME_COLUMNS: readonly Column<FrameObject>[] = [
 /** The class that colors a File row, the first it had. */
 const categoryOf = (row: FileRowWire): string => row.classes[0] ?? UNKNOWN_CLASS;
 
-/** Where an object is across the video: a mark for each span of frames, and a click goes to that frame. */
-function Presence({
-  row,
-  frames,
-  onSeek,
-}: {
-  row: FileRowWire;
-  frames: number;
-  onSeek?: (frame: number) => void;
-}) {
-  return (
-    <span
-      aria-hidden
-      className={`relative block h-icon rounded-control bg-hover ${onSeek ? "cursor-pointer" : ""}`}
-      onClick={(event) => {
-        if (!onSeek) return;
-        event.stopPropagation();
-        const box = event.currentTarget.getBoundingClientRect();
-        onSeek(
-          Math.min(
-            frames - 1,
-            Math.max(0, Math.floor(((event.clientX - box.left) / box.width) * frames)),
-          ),
-        );
-      }}
-    >
-      {row.presence.map(([from, to]) => (
-        <span
-          key={from}
-          className={`absolute inset-y-0 min-w-hairline ${categoryDot(categoryOf(row))}`}
-          style={{
-            left: `${(from / frames) * 100}%`,
-            width: `${((to - from + 1) / frames) * 100}%`,
-          }}
-        />
-      ))}
-    </span>
-  );
-}
-
 /** A frame time in microseconds as `m:ss`, or `h:mm:ss` from one hour, the whole seconds of its UTC day. */
 export function shortTime(us: number): string {
   const seconds = Math.floor(us / 1_000_000);
@@ -108,11 +69,26 @@ export function shortTime(us: number): string {
   return hours > 0 ? `${hours}:${String(minutes).padStart(2, "0")}:${rest}` : `${minutes}:${rest}`;
 }
 
+/** The frame on screen, marked on each File row's strip. A context, so that a new frame draws the strips and not the table. */
+export const ShownFrame = createContext<number | undefined>(undefined);
+
+/** Where an object is across the video, with the frame on screen marked. */
+function Presence({ row, frames }: { row: FileRowWire; frames: number }) {
+  const current = useContext(ShownFrame);
+  return (
+    <PresenceStrip
+      spans={row.presence}
+      frames={frames}
+      category={categoryOf(row)}
+      current={current}
+    />
+  );
+}
+
 /** What File scope lists of an object: where it is across the video, and the times of the frames that spans. */
 export const fileColumns = (
   frames: number,
   timeOf: (frame: number) => number | undefined,
-  seek?: (frame: number) => void,
 ): Column<FileRowWire>[] => [
   {
     key: "id",
@@ -133,7 +109,7 @@ export const fileColumns = (
     key: "presence",
     title: "Presence",
     kind: "presence",
-    render: (row) => <Presence row={row} frames={frames} onSeek={seek} />,
+    render: (row) => <Presence row={row} frames={frames} />,
     stretch: true,
   },
   {

@@ -134,7 +134,7 @@ export function Checkbox({
   );
 }
 
-/** A labelled text box; `masked` hides what is typed, `placeholder` shows what applies while it is empty, `suggestions` are offered to pick from while any text stays allowed, `action` sits after the box, `describedBy` names a note about it, `fill` gives the box its own row at the full width, `wide` makes it wide enough for a `$NAME` reference. */
+/** A labelled text box; `masked` hides what is typed, `placeholder` shows what applies while it is empty, `suggestions` are offered to pick from, each as `[value, name]`, while any text stays allowed, `action` sits after the box, `describedBy` names a note about it, `fill` gives the box its own row at the full width, `wide` makes it wide enough for a `$NAME` reference. */
 export function TextField({
   label,
   value,
@@ -151,7 +151,7 @@ export function TextField({
   value: string;
   placeholder?: string;
   masked?: boolean;
-  suggestions?: readonly string[];
+  suggestions?: readonly (readonly [string, string])[];
   describedBy?: string;
   action?: ReactNode;
   fill?: boolean;
@@ -180,8 +180,8 @@ export function TextField({
         />
         {suggestions?.length ? (
           <datalist id={list}>
-            {suggestions.map((suggestion) => (
-              <option key={suggestion} value={suggestion} />
+            {suggestions.map(([suggestion, name]) => (
+              <option key={suggestion} value={suggestion} label={name} />
             ))}
           </datalist>
         ) : null}
