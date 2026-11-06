@@ -11,11 +11,16 @@ const AHEAD_SHARE = { playing: 0.85, paused: 0.5, backward: 0.15 };
 const BACKWARD_STEPS = 2;
 
 export class WantPlanner {
-  readonly #others: number;
+  #others = 0;
   #backwardSteps = 0;
 
   /** `windowSize` is the frame count the buffer holds: the playhead plus `ahead` plus `behind`. */
   constructor(windowSize: number) {
+    this.resize(windowSize);
+  }
+
+  /** The buffer's frame count changed with its budget. The direction the viewer is travelling stays. */
+  resize(windowSize: number): void {
     this.#others = Math.max(0, windowSize - 1);
   }
 
