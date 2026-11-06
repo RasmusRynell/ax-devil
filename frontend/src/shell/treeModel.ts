@@ -66,7 +66,8 @@ export function treeOf({ rows, items }: WorkspaceState): TreeRow[] {
 
 /**
  * The keys of the rows `allowed` lets through that the search leaves in: all of them without a query, else those whose
- * label contains it (case and surrounding spaces ignored), with what is inside a match and what a match is inside.
+ * label and detail line contain it (case and surrounding spaces ignored), with what is inside a match and what a match
+ * is inside.
  * Folds play no part.
  */
 export function shownKeys(
@@ -77,7 +78,10 @@ export function shownKeys(
   const needle = casefold(query.trim());
   const inMatch = new Set<string>();
   for (const row of rows) {
-    if (casefold(row.info.label).includes(needle) || (row.parent && inMatch.has(row.parent)))
+    if (
+      casefold(`${row.info.label} ${row.info.detail}`).includes(needle) ||
+      (row.parent && inMatch.has(row.parent))
+    )
       inMatch.add(row.info.key);
   }
   const shown = new Set<string>();

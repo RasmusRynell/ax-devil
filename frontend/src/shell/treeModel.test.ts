@@ -100,6 +100,25 @@ describe("search", () => {
     expect(list(dots, "i̇stanbul")).toEqual(["İstanbul"]);
   });
 
+  it("matches the detail line that tells same-named rows apart", () => {
+    const items = [video("a", false), video("b", false)];
+    const tree = treeOf({
+      name: null,
+      modified: false,
+      recovered: false,
+      epoch: 0,
+      file: null,
+      items,
+      rows: rowsOf(items, [])
+        .filter(({ kind }) => kind === "item")
+        .map((row, at) => ({ ...row, label: "clip", detail: `site_${at}` })),
+      bookmarks: [],
+    });
+    expect(visibleRows(tree, new Set(), false, "SITE_1").map(({ row }) => row.info.detail)).toEqual(
+      ["site_1"],
+    );
+  });
+
   it("leaves hidden matches out and counts them", () => {
     const tree = rows(
       [playlist("mot", [entry("mot/A", "A", ["GT"]), entry("mot/B", "B", ["GT"])])],

@@ -1,11 +1,13 @@
-import { useMemo } from "react";
+import { useMemo, type CSSProperties } from "react";
 import { BookmarksView } from "../bookmarks/BookmarksView";
 import { countOf } from "../bookmarks/groups";
 import type { SidebarView } from "../generated/api";
 import type { AddSeed } from "../live/cameras";
 import { ViewPanel } from "../kit/ViewPanel";
-import { useCan, useDoc, useRenameWorkspace } from "../session/session";
+import { useCan, useDoc, useRenameWorkspace, useView } from "../session/session";
 import { PluginsView } from "../plugins/PluginsView";
+import { PanelDivider } from "../tools/PanelDivider";
+import { useKept } from "./keptState";
 import { LiveView } from "./LiveView";
 import { useStreaming } from "../live/cameras";
 import { SessionsView } from "./SessionsView";
@@ -37,7 +39,8 @@ export const LISTED_VIEWS = Object.keys(LISTINGS) as SidebarView[];
 /**
  * The sidebar: a title and the view's content; the Live view has its own toolbar and says in the header how many
  * streams run, the Offline view how many videos and playlists it lists. The Workspace view is titled with the workspace's name,
- * `Untitled` without one, and a dot while it has unsaved changes.
+ * `Untitled` without one, and a dot while it has unsaved changes. Its right edge drags: between what the view needs
+ * and half the space beside the activity bar, remembered while the window lives, and a drag to nothing hides it.
  */
 export function Sidebar({
   view,
@@ -49,6 +52,9 @@ export function Sidebar({
   onAddLive: (seed: AddSeed) => void;
 }) {
   const listing = LISTINGS[view];
+  // The width the user dragged to, kept while the sidebar is hidden and shown again.
+  const [width, setWidth] = useKept<number | null>("sidebar:width", null);
+  const [, setShell] = useView("sidebar");
   const streaming = useStreaming();
   const workspace = useDoc()?.workspace;
   const offline = useMemo(
@@ -69,8 +75,16 @@ export function Sidebar({
     <aside
       aria-label="Sidebar"
       data-cursor-region="sidebar"
-      className="flex w-sidebar max-w-full min-w-0 shrink-0 flex-col max-sm:min-h-0 max-sm:w-full max-sm:flex-1 sm:max-w-2/5 sm:border-r sm:border-line"
+      style={width === null ? undefined : ({ "--sidebar-width": `${width}px` } as CSSProperties)}
+      className="relative flex shrink-0 flex-col max-sm:min-h-0 max-sm:w-full max-sm:flex-1 sm:w-[var(--sidebar-width,var(--spacing-sidebar))] sm:max-w-[calc((100%-var(--spacing-activity))/2)] sm:min-w-sidebar-least sm:border-r sm:border-line"
     >
+      <PanelDivider
+        label="Resize sidebar"
+        dock="left"
+        className="max-sm:hidden"
+        onResize={setWidth}
+        onClose={() => setShell((shown) => ({ ...shown, open: false }))}
+      />
       <ViewPanel
         key={named?.epoch}
         title={named ? (named.name ?? UNTITLED) : VIEW_TITLES[view]}
