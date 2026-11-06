@@ -54,18 +54,17 @@ describe("workspace files", () => {
     await waitFor(() => expect(recents).toHaveBeenCalledTimes(2));
   });
 
-  it("shows no recent workspaces heading when there are none, and Open Workspace is the default button", async () => {
+  it("shows no recent workspaces heading when there are none, and Enter runs Open Workspace, the default", async () => {
     vi.stubGlobal(
       "fetch",
       vi.fn(() => Promise.resolve(Response.json([]))),
     );
     await renderShell();
     expect(screen.queryByText("Recent workspaces")).toBeNull();
-    const open = document.querySelector<HTMLButtonElement>(
-      '[data-cursor-id="sidebar:open-workspace"]',
-    )!;
-    expect(open).toHaveProperty("type", "submit");
-    fireEvent.click(open);
+    // Another button keeps its own Enter; with nothing focused, Enter runs Open Workspace.
+    fireEvent.keyDown(screen.getByRole("button", { name: "Add Video" }), { key: "Enter" });
+    expect(screen.queryByRole("textbox", { name: "Path on the server" })).toBeNull();
+    fireEvent.keyDown(document.body, { key: "Enter" });
     expect(screen.getByRole("textbox", { name: "Path on the server" })).toBeTruthy();
   });
 
