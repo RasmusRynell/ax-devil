@@ -1,5 +1,6 @@
 import { expect, it } from "vite-plus/test";
-import { headline, problemLine, utcTime } from "./words";
+import type { LiveFeedStatus } from "../generated/api";
+import { headline, needsRetry, problemLine, utcTime } from "./words";
 
 it("words a feed as Python's viewer does and a capture time as the UTC time of day", () => {
   const reconnecting = { status: "Reconnecting", attempt: 2, reason: "Unreachable" } as const;
@@ -12,6 +13,15 @@ it("words a feed as Python's viewer does and a capture time as the UTC time of d
     "Video: Stalled — No frames for 5 s",
   );
   expect(problemLine("Video", { status: "Connecting" })).toBeNull();
+  // Retry is offered for a feed only a manual retry recovers, not for one that is connecting or retrying itself.
+  const feeds: LiveFeedStatus[] = [
+    { status: "Connecting" },
+    { status: "Live" },
+    reconnecting,
+    { status: "Stalled", seconds: 5 },
+    { status: "Failed", reason: "Lost" },
+  ];
+  expect(feeds.map(needsRetry)).toEqual([false, false, false, true, true]);
   expect(utcTime(1_700_000_012_345_678)).toBe("22:13:32.345678");
   expect(utcTime(5)).toBe("00:00:00.000005");
 });

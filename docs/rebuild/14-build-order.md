@@ -117,7 +117,7 @@ owner selects them.
 | M2 | Overlay path: Scene model and serialization schema, decoder contract, one built-in decoder, overlay lookup and matching, catalogs with Standard and their presentation (D22), `catalog check/render` | Canonical comparison passes for Standard's sheets ([09](09-testing.md#oracle-policy)) |
 | M3 | Workspace persistence, recovery copy, store, row projection, Workspace view, split view, `open` | Lifecycle tests and recovery-copy crash safety, toolkit-free |
 | M4 | Offline depth: lanes (several overlays on one video; playlist entries switch the video), playlists, both resolvers, hide, cache marks, sticky, diagnostics, media tools, bookmarks, export | OF-02 parity case; alignment TSVs match the oracle; cache-build crash safety |
-| M5 | Live: RTSP, ONVIF metadata, MQTT, DataHub, sync, status, scan, Live view | Fake-transport and burst tests; one manual camera session |
+| M5 | Live: RTSP, ONVIF metadata, MQTT, DataHub, sync, status, scan, Live view | Fake-transport and burst tests; no camera session, owner waived ([deviations](../parity-deviations.md)) |
 | M6 | Catalogs complete: six built-ins, manager, selection scopes, visibility, catalog window | Canonical comparison for all built-ins; catalog conformance suite ([09](09-testing.md#pyramid)) |
 | M7 | Plugin runtime, all built-in decoders, install/update/remove with live reload, Plugins view | The write-plugin example installs and decodes in a fresh process |
 | M8 | Settings dialog, Quick Setup, Shortcuts dialog, accessibility pass, polish | Fit test for every window at the window minimum and at 200% zoom |

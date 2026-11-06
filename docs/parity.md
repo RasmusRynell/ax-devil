@@ -11,7 +11,7 @@ owner's written decision. A new feature gets a row in 01 first.
 | WS-01 | Ordered items (video, live, playlist); Untitled until named | M | in progress | `crates/workspace/src/intake.rs`, `crates/workspace-store` tests, `src/session/project.rs`, `tests/it/{local_video,mot_playlist,workspace_files}.rs`, `kit/EditableLabel.test.tsx` | Rename in the sidebar title |
 | WS-02 | New, Open, Save, Save As, recent workspaces | M | done | `crates/workspace-files` tests, `tests/it/workspace_files.rs`, `desktop/workspace-dialogs.test.cjs`, `shell/WorkspaceFiles.test.tsx` | Version 2 files; Python files are refused, with no importer |
 | WS-03 | No prompts; recovery copy, restore banner, per-instance lock | M | done | `crates/workspace-files` and `crates/workspace-store` tests, `tests/it/workspace_files.rs`, `shell/WorkspaceFiles.test.tsx` | The lock is per window, an OS lock on a sidecar file. Copies are named after the workspace, no timestamp in the XDG state folder |
-| WS-04 | Unreadable items preserved | M | done | `crates/workspace-files` tests | An item with an unknown kind, an unknown key or a malformed body is kept and written back as read |
+| WS-04 | Unreadable items preserved | M | done | `crates/workspace-files` tests | An item with an unknown kind or key, or a malformed body, is kept and written back as read |
 | WS-05 | Background resolution; pending and unavailable rows | M | done | `crates/workspace-store` tests, `crates/playlist-resolvers/tests`, `shell/WorkspaceTree.test.tsx`, `tests/it/local_video.rs` | A pending or failed item has a sidebar row; a failed one keeps its reason; skipped sequences warn. An unavailable row's Open shows the reason only |
 | WS-06 | Re-resolve on file change; reload offered to open viewers | M | done | `crates/sessions` tests, `ViewerHost.test.tsx` |  |
 | WS-07 | Rename, Edit, Remove, item information | M | done | `crates/workspace-store` tests, `src/session` tests, `shell/{WorkspaceTree,Add*Dialog}.test.tsx` | Rename is the Edit form's Name; a new recipe resolves again, keeping place and marks |
@@ -38,14 +38,14 @@ owner's written decision. A new feature gets a row in 01 first.
 
 | ID | Feature | P | Status | Test | Notes |
 |----|---------|---|--------|------|-------|
-| LV-01 | RTSP video with one overlay: embedded ONVIF metadata, MQTT or DataHub | M | in progress | `camera/tests/`, `live_sources` | |
-| LV-02 | Per-feed status: connected, reconnecting, error, stalled; Retry | M | in progress | `live_sources`, `LiveView.test.tsx` | |
-| LV-03 | Pause keeps the connection; stop is terminal | M | in progress | `live_sources`, `LiveView.test.tsx` | |
-| LV-04 | Capture-time synchronization of frames and overlays | M | in progress | `overlay-sync` | |
-| LV-05 | Network scan with optional sign-in; add found camera | M | in progress | `camera/tests/it/scan.rs`, `LiveView.test.tsx` | |
-| LV-06 | Streams start only on explicit action | M | in progress | `live_sources`, `LiveView.test.tsx` | |
-| LV-07 | Live Events list keeps recording while hidden; no seekable history | M | in progress | `live/session.test.ts` | |
-| LV-08 | Temporary device configuration (MQTT analytics publisher) removed on stop and quit | M | in progress | `camera/tests/it/mqtt.rs` | |
+| LV-01 | RTSP video with one overlay: embedded ONVIF metadata, MQTT or DataHub | M | done | `camera/tests/it/{rtsp,mqtt,datahub}.rs`, `live_sources` | |
+| LV-02 | Per-feed status: connected, reconnecting, error, stalled; Retry | M | done | `live_sources`, `live/{words,session}.test.ts` | |
+| LV-03 | Pause keeps the connection; stop is terminal | M | done | `live_sources`, `live/session.test.ts` | |
+| LV-04 | Capture-time synchronization of frames and overlays | M | done | `overlay-sync`, `live_sources` | |
+| LV-05 | Network scan with optional sign-in; add found camera | M | done | `camera/tests/it/scan.rs`, `LiveView.test.tsx` | |
+| LV-06 | Streams start only on explicit action | M | done | `workspace-store` tests, `sessions` streams, `LiveView.test.tsx` | |
+| LV-07 | Live Events list keeps recording while hidden; no seekable history | M | done | `live/session.test.ts` | |
+| LV-08 | Temporary device configuration (MQTT analytics publisher) removed on stop and quit | M | done | `camera/tests/it/mqtt.rs`, `live_sources` | |
 
 ## Offline playback and comparison
 
@@ -72,11 +72,11 @@ Listed in [parity deviations](parity-deviations.md).
 | IN-02 | Object filters by type and score/confidence range; whole-file filtering with declared policies | M | done | `crates/scene/src/filter.rs`, `{present/filter/filter,playback/LaneMenuFilter}.test.*`, `crates/scene-store/src/tests/history.rs`, `tests/it/mot_playlist.rs` | Class toggles apply in both scopes; File judges every recorded class (D30). The expression (`score >= 0.4`) and ranges are frame-only (MTP-010) |
 | IN-03 | Hover chip and click selection; can be turned off | M | done | `present/pick/pick.test.ts`, `playback/{VideoViewer.objects,VideoCanvas,chipPlacement,ObjectLayer}.test.*` | Smallest box in the lane's filtered rows; kept by id across seeks, shown in its source's lanes. `overlays.object_details` turns it off (D36) |
 | IN-04 | Frame info HUD, lane names | M | done | `playback/{hud,VideoViewer.objects}.test.*`, `make test-desktop` | The HUD (I) covers the lane-name tags while it shows. PTS rows need a time base of a microsecond or coarser |
-| IN-05 | Zoom, pan, reset, synced across lanes; lane and app fullscreen | M | done | `playback/{viewport,uiZoom,VideoCanvas,VideoViewer.objects}.test.*`, `desktop/smoke-video.cjs` | One viewport per viewer, shared by its lanes (D31); in Electron, overlay pixel lengths ignore page zoom (D32). Lane fullscreen is the Fullscreen API on the viewer pane; Esc leaves it, app fullscreen (F11) stays. |
+| IN-05 | Zoom, pan, reset, synced across lanes; lane and app fullscreen | M | done | `playback/{viewport,uiZoom,VideoCanvas,VideoViewer.objects}.test.*`, `desktop/smoke-video.cjs` | One viewport per viewer, shared by its lanes (D31); in Electron, overlay pixel lengths ignore page zoom (D32). Lane fullscreen is the Fullscreen API on the viewer pane; Esc leaves it, F11 app fullscreen stays. |
 | IN-06 | Per-view overlay detail visibility | M | done | `{playback/LaneMenu,present/pick/pick}.test.*` | Hidden objects keep hover and inspection |
 | IN-07 | Per-view sticky/sync/filter settings, Apply to all, defaults for new views | S | in progress | `playback/{LaneMenu,lanes,sessionLanes}.test.*`, `crates/settings` | Kept by position; Apply to all copies them; Make default saves `overlays.default_{sticky,sync}`. Left: Apply to all across viewers |
 | IN-08 | Structured query search in Objects and Events lists | M | in progress | `search/query.test.ts`, `crates/scene-store/src/tests/{query,events}.rs` | Frame: id, class, motion.state, score, confidence. File: id, class, event. Events: kind, object |
-| IN-09 | Frame vs File scope for objects | M | done | `{tools/{ObjectsPanel,table/Table},playback/fileScope}.test.*` | File scope follows the lane's class toggles, not its frame filter; not for a followed window. The cursor keeps off-page rows. A pick off the frame seeks its first one |
+| IN-09 | Frame vs File scope for objects | M | done | `{tools/{ObjectsPanel,table/Table},playback/fileScope}.test.*` | File scope follows the lane's class toggles, not its frame filter; not for a followed window. The cursor keeps off-page rows. A pick off the frame seeks to its first |
 | IN-10 | Pinned fields kept across object pages | S | done | `playback/{fields,Inspector}.test.*` | |
 | IN-11 | Copy a field or section value | S | done | `playback/{fields,Inspector}.test.*` |  |
 | IN-12 | Presence strip with seeking; previous/next appearance | M | in progress | `{playback/{appearanceJumps,Inspector},tools/PresenceStrip}.test.*` | Strip in rows and page. Left: event ticks |
@@ -97,7 +97,7 @@ Listed in [parity deviations](parity-deviations.md).
 |----|---------|---|--------|------|-------|
 | PL-01 | Decoder plugins (file, payload) and playlist resolver plugins | M | done | `crates/plugins/tests/`, `tests/it/plugins.rs` | Decoder handlers read a file or, with `input: records`, one record at a time (live sources, lines of a file); resolver handlers ([plugins](plugins.md), D29) |
 | PL-02 | Built-in decoders and resolvers listed by `list-handlers` and `playlist --help` | M | done | `src/cli/tests.rs`, `src/routes/handlers.rs`, `crates/handlers` tests, `crates/scene-decoders/tests/it/adf_*.rs` | MOT, UVG-VCM, ONVIF XML, CVAT, ADF beta/v1 (frame and consolidated), plugin decoders; both resolvers. Descriptions reach `/api/handlers`, `list-handlers`, `--help` |
-| PL-03 | Install, update, remove, list from CLI and Plugins view | M | done | `tests/it/plugins.rs`, `src/cli/tests.rs`, `src/routes/plugins.rs`, `plugins/PluginsView.test.tsx` | `plugins install/update/remove/list/check` from the CLI; the Plugins view lists, installs a folder, updates and removes; applied to the running app; an edited manifest is picked up too |
+| PL-03 | Install, update, remove, list from CLI and Plugins view | M | done | `tests/it/plugins.rs`, `src/cli/tests.rs`, `src/routes/plugins.rs`, `plugins/PluginsView.test.tsx` | `plugins install/update/remove/list/check` from the CLI; the Plugins view lists, installs a folder, updates and removes; applied to the running app, as is an edited manifest |
 | PL-04 | Load failures never stop the app; listed | M | done | `tests/it/plugins.rs`, `PluginsView.test.tsx` | `plugins list` and Plugins view show failures; a failed run marks its lane Incomplete |
 | PL-05 | Unchanged third-party Python plugins run (bridge); not planned by default | S | todo |  |  |
 
@@ -124,7 +124,7 @@ Listed in [parity deviations](parity-deviations.md).
 |----|---------|---|--------|------|-------|
 | SH-01 | Join, reconnect and revoke access | M | done | `crates/sessions/tests/session/`, `tests/it/{session_socket,playback_ws}.rs` | A cut connection (TCP proxy) resumes its seat; a stopped sharing refuses it; silent loss takes 25 s |
 | SH-02 | Follow or explore independently | M | in progress | `viewer/PlaylistFollower.test.tsx`, `desktop/smoke-sharing.cjs`, `src/routes/playback/inspect/tests.rs` | Video and playlist following and exploring. Inspection is gated like data: a follower outside its window gets none. Live policies follow live |
-| SH-03 | Audience privacy and settings scope | M | done | `tests/it/{access,playback_catalogs}.rs`, `src/session/project.rs`, `crates/settings/src/scope_tests.rs` | Host paths and settings scoped; a watcher sees a user catalog only once its Session's host viewer asked for it, until it leaves |
+| SH-03 | Audience privacy and settings scope | M | done | `tests/it/{access,playback_catalogs}.rs`, `src/session/project.rs`, `crates/settings/src/scope_tests.rs` | Host paths and settings scoped; a watcher sees a user catalog once its Session's host viewer asks for it, until it leaves |
 | SH-04 | Browser and remote Electron connection | M | in progress | `desktop/{smoke-remote,links.test,remote.test}.cjs`, `session/Notice.test.tsx` | Server frontend, password recovery, launches and links reaching the running app, packaged link registration, join and hosting failure reasons (`src/share.rs`) |
 
 ## Developer tooling
@@ -132,7 +132,7 @@ Listed in [parity deviations](parity-deviations.md).
 | ID | Feature | P | Status | Test | Notes |
 |----|---------|---|--------|------|-------|
 | DT-01 | Isolated GUI test environment for agents and CI | M | done | `make test-desktop` | `scripts/isolated`: private home and display, user-file guard; Linux |
-| DT-02 | UI screenshot harness | M | done | `make test-desktop`, `desktop/fit-coverage.test.cjs` | `desktop/smoke*.cjs`: main window, menus, dialogs, the fixture playlist's lanes and Objects list in light and dark, at the window minimum and 200% zoom, the video and sharing scenarios |
+| DT-02 | UI screenshot harness | M | done | `make test-desktop`, `desktop/fit-coverage.test.cjs` | `desktop/smoke*.cjs`: main window, menus, dialogs, the fixture playlist's lanes and Objects list in both themes at the window minimum and 200% zoom, the video and sharing scenarios |
 | DT-03 | Rendering benchmarks with A/B against a ref | S | in progress | `make bench` | `overlays` bench of the Sample Item encoder; numbers on stdout, nothing asserted |
 | DT-04 | Timestamp alignment report | S | todo |  |  |
 | DT-05 | Release check in clean environments | S | todo |  |  |
