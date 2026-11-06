@@ -39,4 +39,12 @@ describe("the Add Live Stream form's defaults", () => {
     });
     expect(values["camera.host"]).toBe("$AX_DEVIL_TARGET_ADDR");
   });
+
+  it("start from the default, not the reference, when the backend gives no value for it", () => {
+    const values = formValues({
+      ...DEFAULT_SETTINGS,
+      values: { ...DEFAULT_SETTINGS.values, "camera.head": "$HEAD", "broker.port": "$PORT" },
+    });
+    expect(startForm(values)).toMatchObject({ head: "1", broker_port: "1883" });
+  });
 });

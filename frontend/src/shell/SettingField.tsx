@@ -48,7 +48,7 @@ export interface Row {
 export const textOf = (value: Value) => (typeof value === "object" ? "" : String(value));
 
 /** Whether the whole value is a `$NAME` reference to an environment variable. */
-const isReference = (value: string) => /^\$[A-Za-z_][A-Za-z0-9_]*$/.test(value);
+export const isReference = (value: string) => /^\$[A-Za-z_][A-Za-z0-9_]*$/.test(value);
 
 /** Whether a secret row holds the secret itself, which is then masked and warned about, not a reference to it. */
 export function literalSecret(row: Row, value: Value) {

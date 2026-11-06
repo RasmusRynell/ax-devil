@@ -6,8 +6,8 @@ import type {
   NewLiveOverlayWire,
   NewLiveWire,
 } from "../generated/api";
-import type { SettingKey } from "../generated/settings";
-import { textOf } from "./SettingField";
+import { SETTINGS, type SettingKey } from "../generated/settings";
+import { isReference, textOf } from "./SettingField";
 
 /** The overlay modes, in the order the `camera.overlay` setting lists them. */
 export type OverlayMode = "none" | "rtsp" | "mqtt" | "datahub";
@@ -91,13 +91,20 @@ const VALUED: readonly SettingKey[] = [
   "datahub.handler",
 ];
 
-/** `settings` with the valued ones replaced by what their `$NAME` references give. */
+/**
+ * `settings` with each valued one that holds a `$NAME` reference replaced by what the reference gives, or by the
+ * setting's default for a caller the backend does not tell (a remote password holder), so no reference is ever
+ * prefilled into a typed field.
+ */
 export function formValues(settings: SettingsState): SettingsState["values"] {
   const given = settings.resolved ?? {};
-  return {
-    ...settings.values,
-    ...Object.fromEntries(VALUED.flatMap((key) => (key in given ? [[key, given[key]]] : []))),
-  };
+  const replaced = VALUED.flatMap((key) => {
+    const raw = settings.values[key];
+    if (typeof raw !== "string" || !isReference(raw)) return [];
+    const kind = SETTINGS.find((row) => row.key === key)?.kind;
+    return [[key, given[key] ?? (kind && "default" in kind ? kind.default : "")]];
+  });
+  return { ...settings.values, ...Object.fromEntries(replaced) };
 }
 
 /** The setting that names the decoder of each mode that has one. */
