@@ -46,6 +46,7 @@ async fn ctrl_c_ends_open_viewers_and_the_backend_exits() {
         "content": content["id"],
         "generation": content["generation"],
         "entry": content["entry"]["id"],
+        "viewer": 1,
     });
     session
         .say(json!({"type": "command", "seq": 1, "cmd": {"type": "requestTicket", "key": key}}))

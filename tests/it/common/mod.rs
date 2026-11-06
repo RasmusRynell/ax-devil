@@ -20,7 +20,7 @@ use handlers::Handlers;
 use playback::{CachePool, Registry};
 use sessions::{
     CursorOptions,
-    session::{Command, ContentRef, Handle, Reply},
+    session::{Command, ContentRef, Handle, Reply, ViewerId},
 };
 use std::{
     collections::BTreeSet,
@@ -233,6 +233,7 @@ impl Backend {
                             content: content.id().clone(),
                             generation: *generation,
                             entry,
+                            viewer: ViewerId(1),
                         };
                         break (key, content.clone());
                     }

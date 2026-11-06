@@ -1,10 +1,12 @@
 //! Every command against every kind of seat, on the pure transition: the table of the design, not the code's.
 
+use crate::pane;
 use sessions::{
     OwnerId, SessionId,
     session::{
-        Access, Command, Completion, ContentRef, Control, Fresh, Input, Lease, OWNER_SEAT, Outcome,
-        Refusal, SeatId, SessionState, View, Work, authorize, authorize_stream, can, transition,
+        Access, Axis, Command, Completion, ContentRef, Control, Fresh, Input, Layout, Lease,
+        MAX_PANES, OWNER_SEAT, Outcome, Refusal, SeatId, SessionState, View, Work, authorize,
+        authorize_stream, can, transition,
     },
 };
 use workspace::{ItemId, WorkspaceItem};
@@ -95,6 +97,16 @@ fn world(access: Access) -> World {
     );
     let effects = step(&mut state, Input::Join { secret: None });
     assert!(matches!(effects.outcome, Outcome::Joined { seat, .. } if seat == SeatId(2)));
+    step(
+        &mut state,
+        Input::View {
+            seat: OWNER_SEAT,
+            lease: Lease(0),
+            view: crate::showing(id),
+            seq: 1,
+            now_us: 0,
+        },
+    );
     let key = crate::key(&state, id);
     World {
         state,
@@ -233,7 +245,7 @@ fn a_view_changes_the_presenter_only_for_the_owner_and_starts_exploring_for_a_se
             seat,
             lease: Lease(0),
             view: View::default(),
-            seq: 1,
+            seq: 2,
             now_us: 0,
         };
         transition(&world.state, view)
@@ -247,7 +259,7 @@ fn a_view_changes_the_presenter_only_for_the_owner_and_starts_exploring_for_a_se
     ));
     assert_eq!(
         watching.seats[&SeatId(2)].views_done,
-        1,
+        2,
         "a refused view is settled, so the client stops showing it"
     );
     for row in [Row::ExploreFollowing, Row::ExploreExploring, Row::Edit] {
@@ -258,6 +270,38 @@ fn a_view_changes_the_presenter_only_for_the_owner_and_starts_exploring_for_a_se
             "{row:?}"
         );
     }
+}
+
+#[test]
+fn a_view_with_more_panes_than_a_window_may_have_is_refused() {
+    let (world, _) = seated(Row::Owner);
+    let panes = |count: usize| View {
+        layout: Some(
+            (2..=count as u32).fold(*pane(1), |first, viewer| Layout::Split {
+                axis: Axis::Row,
+                share: 5000,
+                first: Box::new(first),
+                second: pane(viewer),
+            }),
+        ),
+        ..View::default()
+    };
+    let outcome = |view| {
+        let input = Input::View {
+            seat: OWNER_SEAT,
+            lease: Lease(0),
+            view,
+            seq: 2,
+            now_us: 0,
+        };
+        transition(&world.state, input).unwrap().1.outcome
+    };
+
+    assert!(matches!(outcome(panes(MAX_PANES)), Outcome::None));
+    assert!(matches!(
+        outcome(panes(MAX_PANES + 1)),
+        Outcome::ViewRefused(Refusal::Invalid)
+    ));
 }
 
 #[test]

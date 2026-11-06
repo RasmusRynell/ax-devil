@@ -199,7 +199,7 @@ export function Shell({ version }: { version: string }) {
     else setSidebar({ view: item.id as SidebarView, open: true });
   };
   // What each region of this window shows, so a cursor lands by region only where the same thing is shown.
-  const scopes: Scopes = { sidebar: sidebar.view, main: active?.id ?? "welcome" };
+  const scopes: Scopes = { sidebar: sidebar.view, main: active ? String(active.id) : "welcome" };
 
   useEffect(() => {
     /** The command this key press runs, if the shell handles it. */

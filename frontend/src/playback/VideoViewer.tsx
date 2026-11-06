@@ -46,6 +46,7 @@ export { Status };
 function Playback({
   session,
   item,
+  viewer,
   name,
   title,
   entry,
@@ -59,6 +60,7 @@ function Playback({
 }: {
   session: PlaybackSession;
   item: string;
+  viewer: number;
   name: string;
   title: string;
   entry: string;
@@ -201,7 +203,7 @@ function Playback({
                 view={view}
                 name={name}
                 title={title}
-                anchor={`frame:${item}`}
+                anchor={`frame:${viewer}`}
                 entry={entry}
                 hidden={hidden}
                 only={fullscreen.solo}
@@ -281,8 +283,10 @@ function Playback({
 
 /** What the viewer is given besides the item: the Content to stream from and the entry of it to play. */
 export type VideoViewerProps = {
-  /** The workspace item whose viewer this is; the window's view keeps this viewer's clock under it. */
+  /** The workspace item whose viewer this is. */
   item: string;
+  /** This viewer's id; the window's view keeps its clock and entry under it. */
+  viewer: number;
   /** The Content the stream belongs to, a video or a playlist. */
   content: Pick<ContentInfo, "id" | "generation" | "display_name">;
   /** The entry to play. A stream is for one entry, and the viewer starts over when it changes. */
@@ -305,6 +309,7 @@ export type VideoViewerProps = {
  */
 export function VideoViewer({
   item,
+  viewer,
   content,
   entry,
   hidden = NOTHING_HIDDEN,
@@ -313,13 +318,13 @@ export function VideoViewer({
   connect = connectWorker,
 }: VideoViewerProps) {
   const key = useMemo<ContentRef>(
-    () => ({ content: content.id, generation: content.generation, entry: entry.id }),
-    [content.id, content.generation, entry.id],
+    () => ({ content: content.id, generation: content.generation, entry: entry.id, viewer }),
+    [content.id, content.generation, entry.id, viewer],
   );
   const ticket = useStream(key);
   const [viewers, setViewers] = useView("viewers");
   // A clock belongs to the entry the view names beside it; one left from another entry is not this viewer's.
-  const shown = viewers[item];
+  const shown = viewers[viewer];
   const intent = shown?.entry === undefined || shown.entry === entry.id ? shown?.clock : undefined;
   const canChange = useCan("view");
   const following = useFollowing();
@@ -358,9 +363,9 @@ export function VideoViewer({
       const next = { frame, playing, speedCenti: Math.round(speed * 100), atUs };
       // The view may already name another entry, which the viewer was left for: its clock is not this one's.
       setViewers((now) => {
-        const current = now[item];
-        if (current?.entry !== undefined && current.entry !== entry.id) return now;
-        return { ...now, [item]: { ...current, clock: next } };
+        const current = now[viewer];
+        if (!current || (current.entry !== undefined && current.entry !== entry.id)) return now;
+        return { ...now, [viewer]: { ...current, clock: next } };
       });
     };
     const anchor = latest.current.intent;
@@ -418,7 +423,7 @@ export function VideoViewer({
         heldSpeed.current = speed;
       }
     };
-  }, [item, entry.id, ticket, connect, setViewers]);
+  }, [item, viewer, entry.id, ticket, connect, setViewers]);
 
   useFileScopeOwner(session, following);
   useEffect(() => {
@@ -430,6 +435,7 @@ export function VideoViewer({
       <Playback
         session={session}
         item={item}
+        viewer={viewer}
         name={entry.label}
         title={content.display_name}
         entry={entry.id}

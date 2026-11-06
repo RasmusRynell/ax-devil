@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test"
 import { act, cleanup, fireEvent, screen, waitFor } from "@testing-library/react";
 import type { CommandId } from "../generated/settings";
 import { FakeSocket, video } from "../session/fakeSession";
+import { viewing } from "../session/fakeViews";
 import { useViewerActions } from "../viewer/actions";
 import { renderShell, showShell } from "./shellHarness";
 
@@ -238,8 +239,7 @@ describe("a watcher", () => {
     room.setItems([video("a")]);
     room.publish({
       sidebar: { view: "live", open: true },
-      active: "a",
-      viewers: { a: {} },
+      ...viewing("a"),
     });
     window.sessionStorage.setItem(
       "ax-devil.credential",
@@ -275,8 +275,7 @@ describe("a watcher", () => {
     room.setItems([video("a"), video("b")]);
     room.publish({
       sidebar: { view: "workspace", open: true },
-      active: "a",
-      viewers: { a: {}, b: {} },
+      ...viewing("a", "b"),
     });
     window.sessionStorage.setItem(
       "ax-devil.credential",

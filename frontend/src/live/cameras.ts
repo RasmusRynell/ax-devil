@@ -3,7 +3,8 @@
 import { useMemo } from "react";
 import { reasonOf } from "../errors";
 import type { ItemState, LiveConfirmation, LiveOverlayKind, NewLiveWire } from "../generated/api";
-import { useDoc, useView } from "../session/session";
+import { useDoc } from "../session/session";
+import { useFrontItem } from "../viewer/useViewers";
 
 /** What the Add Live Stream dialog starts from: the stream whose connection a new one copies. */
 export type AddSeed = { like?: string };
@@ -155,6 +156,6 @@ export const streamingCount = (cameras: readonly Camera[], front: string | null)
 /** How many live streams are connected: their viewer is open and in front. */
 export function useStreaming(): number {
   const items = useDoc()?.workspace.items;
-  const [front] = useView("active");
-  return useMemo(() => streamingCount(camerasOf(items ?? []), front ?? null), [items, front]);
+  const front = useFrontItem();
+  return useMemo(() => streamingCount(camerasOf(items ?? []), front), [items, front]);
 }

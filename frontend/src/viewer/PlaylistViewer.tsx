@@ -46,7 +46,7 @@ function playlistAt(playlists: readonly PlaylistSpanInfo[], at: number) {
  * following window and survives a reload. An entry chosen starts over, as the view keeps only the clock of the entry
  * on screen.
  */
-export function PlaylistViewer({ item, content }: ViewerProps<"Playlist">) {
+export function PlaylistViewer({ item, viewer, content }: ViewerProps<"Playlist">) {
   const { entries, playlists } = content;
   const hidden = useHidden();
   const [viewers, setViewers] = useView("viewers");
@@ -56,7 +56,7 @@ export function PlaylistViewer({ item, content }: ViewerProps<"Playlist">) {
 
   // The backend keeps the view naming an entry; until it has, the first one that is not hidden is its choice too,
   // else the first one.
-  const chosen = viewers[item]?.entry;
+  const chosen = viewers[viewer]?.entry;
   const found = entries.findIndex((entry) => entry.id === chosen);
   const { label, start, end } = playlistAt(playlists, Math.max(found, 0));
   const within = entries.slice(start, end);
@@ -75,8 +75,12 @@ export function PlaylistViewer({ item, content }: ViewerProps<"Playlist">) {
   // Another entry starts at its own beginning, so the view keeps the entry and no clock.
   const choose = useCallback(
     (id: string) =>
-      setViewers((now) => (now[item]?.entry === id ? now : { ...now, [item]: { entry: id } })),
-    [setViewers, item],
+      setViewers((now) => {
+        const was = now[viewer];
+        if (!was || was.entry === id) return now;
+        return { ...now, [viewer]: { item: was.item, pinned: was.pinned, entry: id } };
+      }),
+    [setViewers, viewer],
   );
   const [previousId, nextId] = [previous?.id, next?.id];
   // An entry hidden while it is on screen is left for a neighbour; one the view named hidden is shown, as when the
@@ -161,7 +165,7 @@ export function PlaylistViewer({ item, content }: ViewerProps<"Playlist">) {
         </div>
       )}
       <ViewerActionsContext.Provider value={setInner}>
-        <EntryViewer item={item} content={content} entry={current} />
+        <EntryViewer item={item} viewer={viewer} content={content} entry={current} />
       </ViewerActionsContext.Provider>
     </div>
   );

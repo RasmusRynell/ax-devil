@@ -6,7 +6,7 @@ import { QUIET } from "../kit/look";
 import { useCan, useCommand, useView } from "../session/session";
 import { viewerFor } from "../viewers";
 import { ReloadOffer } from "./ReloadOffer";
-import { useViewers } from "./useViewers";
+import { useViewers, type Viewer } from "./useViewers";
 
 /** What shows for an item whose viewer is not ready: it is resolving, or it failed with a reason. */
 function ItemStatus({ item }: { item: ItemState }) {
@@ -29,14 +29,15 @@ function ItemStatus({ item }: { item: ItemState }) {
 
 /** `dismissed` is the reload offers the user took down, by item and generation; the host keeps it across tabs. */
 function ItemView({
-  item,
+  viewer,
   dismissed,
   onDismiss,
 }: {
-  item: ItemState;
+  viewer: Viewer;
   dismissed: Readonly<Record<string, number>>;
   onDismiss: (offer: string, count: number) => void;
 }) {
+  const { item } = viewer;
   const { resolution } = item;
   if (resolution.status !== "Resolved") return <ItemStatus item={item} />;
   const { content } = resolution;
@@ -52,14 +53,19 @@ function ItemView({
         dismissed={dismissed[offer] ?? 0}
         onDismiss={(count) => onDismiss(offer, count)}
       />
-      <Viewer key={`${content.id}.${content.generation}`} item={item.id} content={content} />
+      <Viewer
+        key={`${viewer.id}.${content.id}.${content.generation}`}
+        item={item.id}
+        viewer={viewer.id}
+        content={content}
+      />
     </>
   );
 }
 
-/** The central area while viewers are open: a tab for each, and the active item's viewer. */
+/** The central area while viewers are open: a tab for each, and the active viewer. */
 export function ViewerHost() {
-  const { items, active } = useViewers();
+  const { viewers, active } = useViewers();
   const [, setActive] = useView("active");
   const command = useCommand();
   const closable = useCan("content");
@@ -73,18 +79,18 @@ export function ViewerHost() {
         aria-label="Open items"
         className="flex h-row shrink-0 overflow-x-auto border-b border-line bg-panel [scrollbar-width:none]"
       >
-        {items.map((item) => (
+        {viewers.map(({ id, item }) => (
           <div
-            key={item.id}
-            className={`flex min-w-0 shrink-0 items-center ${item.id === active?.id ? "border-b-edge border-accent" : ""}`}
+            key={id}
+            className={`flex min-w-0 shrink-0 items-center ${id === active?.id ? "border-b-edge border-accent" : ""}`}
           >
             <button
               type="button"
               role="tab"
-              id={`tab-${item.id}`}
-              data-cursor-id={`tab:${item.id}`}
-              aria-selected={item.id === active?.id}
-              onClick={() => setActive(item.id)}
+              id={`tab-${id}`}
+              data-cursor-id={`tab:${id}`}
+              aria-selected={id === active?.id}
+              onClick={() => setActive(id)}
               className={`${QUIET} max-w-[24ch] focus-ring-inset aria-selected:font-semibold`}
             >
               <span className="truncate">{item.label}</span>
@@ -92,7 +98,7 @@ export function ViewerHost() {
             <IconButton
               icon="x"
               label={`Close ${item.label}`}
-              data-cursor-id={`tab-close:${item.id}`}
+              data-cursor-id={`tab-close:${id}`}
               disabled={!closable}
               // A refused close leaves the tab open, which says so.
               onClick={() =>
@@ -110,7 +116,7 @@ export function ViewerHost() {
         aria-labelledby={active && `tab-${active.id}`}
         className="flex min-h-0 flex-1 flex-col"
       >
-        {active && <ItemView item={active} dismissed={dismissed} onDismiss={dismiss} />}
+        {active && <ItemView viewer={active} dismissed={dismissed} onDismiss={dismiss} />}
       </div>
     </div>
   );

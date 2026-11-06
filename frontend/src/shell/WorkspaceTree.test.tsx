@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test"
 import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import type { ItemRecipe, ItemState } from "../generated/api";
 import { entry, failed, FakeSocket, playlists, video } from "../session/fakeSession";
+import { viewing } from "../session/fakeViews";
 import { SessionProvider } from "../session/session";
 import {
   CLIP,
@@ -64,8 +65,8 @@ describe("rows", () => {
     fireEvent.click(rows[3]);
     await act(async () => {});
     expect(shown()).toMatchObject({
-      active: "runs",
-      viewers: { runs: { entry: "runs/Train (2)/A" } },
+      active: 1,
+      viewers: { 1: { item: "runs", entry: "runs/Train (2)/A" } },
     });
     fireEvent.contextMenu(rows[3]);
     expect(screen.queryByRole("menuitem", { name: "Hide" })).toBeNull();
@@ -128,17 +129,35 @@ describe("opening", () => {
     fireEvent.click(screen.getByRole("treeitem", { name: /^A/ }));
     await act(async () => {});
     expect(commands()).toEqual([{ type: "openViewer", item: "mot" }]);
-    expect(shown()).toEqual({ active: "mot", viewers: { mot: { entry: "mot/A" } } });
+    expect(shown()).toEqual({
+      active: 1,
+      viewers: { 1: { item: "mot", pinned: false, entry: "mot/A" } },
+    });
   });
 
   it("opens an item without choosing its entry, and a lane's entry", async () => {
     await renderTree();
     fireEvent.click(screen.getByRole("treeitem", { name: /^v\.mp4/ }));
     await act(async () => {});
-    expect(shown()).toEqual({ active: "v", viewers: { v: {} } });
+    expect(shown()).toEqual({ active: 1, viewers: { 1: { item: "v", pinned: false } } });
     fireEvent.click(screen.getByRole("treeitem", { name: /^GT/ }));
     await act(async () => {});
-    expect(shown()).toMatchObject({ active: "mot", viewers: { mot: { entry: "mot/A" } } });
+    expect(shown()).toMatchObject({ active: 2, viewers: { 2: { item: "mot", entry: "mot/A" } } });
+  });
+
+  it("opens at most eight viewers and says so for the ninth, which stays closed", async () => {
+    const ids = Array.from({ length: 9 }, (_, n) => `v${n + 1}`);
+    await renderTree(
+      ids.map((id) => video(id, false)),
+      [],
+    );
+    for (const id of ids) {
+      fireEvent.click(screen.getAllByRole("treeitem", { name: new RegExp(`^${id}\\.mp4`) })[0]);
+      await act(async () => {});
+    }
+    expect(Object.keys(shown().viewers)).toHaveLength(8);
+    expect(commands().filter(({ type }) => type === "openViewer")).toHaveLength(8);
+    expect(screen.getByText("Cap at 8 panes")).toBeTruthy();
   });
 
   it("starts another entry from its beginning, and leaves the one on screen alone", async () => {
@@ -147,15 +166,14 @@ describe("opening", () => {
     act(() =>
       room.publish({
         sidebar: room.presenter.sidebar,
-        active: "mot",
-        viewers: { mot: { entry: "mot/A", clock } },
+        ...viewing(["mot", { entry: "mot/A", clock }]),
       }),
     );
     fireEvent.click(screen.getByRole("treeitem", { name: /^A/ }));
-    expect(shown().viewers.mot).toEqual({ entry: "mot/A", clock });
+    expect(shown().viewers[1]).toEqual({ item: "mot", pinned: false, entry: "mot/A", clock });
     fireEvent.click(screen.getByRole("button", { name: "Show hidden items" }));
     fireEvent.click(screen.getByRole("treeitem", { name: /^B/ }));
-    expect(shown().viewers.mot).toEqual({ entry: "mot/B" });
+    expect(shown().viewers[1]).toEqual({ item: "mot", pinned: false, entry: "mot/B" });
   });
 
   it("moves with the arrow keys and opens the current row with Enter", async () => {
@@ -168,7 +186,7 @@ describe("opening", () => {
     fireEvent.keyDown(tree, { key: "ArrowDown" });
     fireEvent.keyDown(tree, { key: "Enter" });
     await act(async () => {});
-    expect(shown()).toMatchObject({ active: "mot", viewers: { mot: { entry: "mot/A" } } });
+    expect(shown()).toMatchObject({ active: 1, viewers: { 1: { item: "mot", entry: "mot/A" } } });
   });
 
   it("walks on from one section's last row into the next and back, and Home and End span them all", async () => {
@@ -303,7 +321,7 @@ describe("hiding", () => {
     expect(document.activeElement).toBe(next);
     fireEvent.keyDown(next, { key: "Enter" });
     await act(async () => {});
-    expect(shown().active).toBe("mot");
+    expect(shown().active).toBe(1);
 
     cleanup();
     FakeSocket.reset();

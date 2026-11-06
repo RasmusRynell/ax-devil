@@ -110,6 +110,7 @@ async fn a_session_works_alone_then_a_watcher_joins_it_sees_only_what_it_may_and
         "content": content["id"],
         "generation": content["generation"],
         "entry": content["entry"]["id"],
+        "viewer": 1,
     });
 
     // Sharing: a link appears for the owner, and the session is listed.
