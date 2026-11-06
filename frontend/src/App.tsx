@@ -4,6 +4,7 @@ import { apiFetch } from "./api";
 import type { AppInfo } from "./generated/api";
 import { SessionProvider } from "./session/session";
 import { SettingsProvider } from "./settings";
+import { SeekProvider } from "./bookmarks/viewerLink";
 import { Shell } from "./shell/Shell";
 
 type Backend =
@@ -35,7 +36,9 @@ export function App() {
       <GrantsContext value={backend.info.grants}>
         <SettingsProvider>
           <SessionProvider>
-            <Shell version={backend.info.version} />
+            <SeekProvider>
+              <Shell version={backend.info.version} />
+            </SeekProvider>
           </SessionProvider>
         </SettingsProvider>
       </GrantsContext>

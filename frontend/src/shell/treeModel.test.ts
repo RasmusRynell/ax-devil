@@ -22,6 +22,7 @@ describe("sections", () => {
     file: null,
     items: ITEMS,
     rows,
+    bookmarks: [],
   });
   const ALL = ["live", "videos", "playlists", "other"] as const;
   const sections = sectionsOf(tree, new Set(), ALL, "workspace");
@@ -76,6 +77,7 @@ describe("search", () => {
       file: null,
       items,
       rows: rowsOf(items, hidden),
+      bookmarks: [],
     });
   const list = (tree: ReturnType<typeof rows>, query: string, showHidden = false) =>
     visibleRows(tree, new Set(), showHidden, query).map(({ row }) => row.info.label);

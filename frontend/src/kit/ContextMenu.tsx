@@ -8,13 +8,21 @@ interface Props {
   /** The entries, or a function asked for them each time the menu opens, for entries that depend on what was clicked. */
   entries: readonly MenuEntry[] | (() => readonly MenuEntry[]);
   onSelect: (command: MenuCommand) => void;
+  /** The ids of the `check` entries that are checked. */
+  checked?: ReadonlySet<string>;
   /** Classes for the wrapping element, for content that fills a positioned parent. */
   className?: string;
   children: ReactNode;
 }
 
 /** Wraps content so a right click on it opens `entries` at the pointer. */
-export function ContextMenu({ entries, onSelect, className, children }: Props) {
+export function ContextMenu({
+  entries,
+  onSelect,
+  checked = NOTHING_CHECKED,
+  className,
+  children,
+}: Props) {
   const [at, setAt] = useState<{ x: number; y: number; asked: readonly MenuEntry[] | null } | null>(
     null,
   );
@@ -35,7 +43,7 @@ export function ContextMenu({ entries, onSelect, className, children }: Props) {
         <Popup at={at} onClose={() => setAt(null)} className="z-20 min-w-max">
           <Menu
             entries={at.asked ?? (typeof entries === "function" ? [] : entries)}
-            checked={NOTHING_CHECKED}
+            checked={checked}
             onSelect={(command) => {
               setAt(null);
               onSelect(command);

@@ -6,19 +6,21 @@ use crate::routes::playback::policy_from_wire;
 use crate::routes::resolve::Staged;
 use api_types::{
     CURSOR_NAME_MAX, CursorElement, CursorPoint, SessionCommand, WorkspaceCommand,
+    bookmarks::{BookmarkCommand as BookmarkWire, BookmarkKindWire},
     live::LiveProtocol,
     workspace::{HiddenTarget, NewItem},
 };
-use foundation::{ErrorCode, ItemId};
+use foundation::{ErrorCode, ItemId, MediaTime};
 use handlers::Handlers;
 use sessions::session::{Command, Refusal, Scope};
 use std::path::Path;
 use tokio::time::Instant;
 use workspace::{
-    Content, LiveRecipe, Secret, Source, Workspace, WorkspaceItem,
+    BookmarkId, BookmarkKind, BookmarkTarget, Content, LiveRecipe, Secret, Source, Workspace,
+    WorkspaceItem,
     intake::{LiveDefaults, NewLive, NewOverlay},
 };
-use workspace_store::{DocCommand, HiddenRef};
+use workspace_store::{BookmarkCommand, DocCommand, HiddenRef};
 
 /// The scope a wire command needs, known without looking at what it names, so the seat is authorized before the
 /// command's content is checked and a refusal never tells a seat whether a path or resolver exists. `None` for a
@@ -58,7 +60,8 @@ pub(super) fn scope(wire: &SessionCommand) -> Option<Scope> {
             | api_types::DocCommand::RenameItem { .. }
             | api_types::DocCommand::SetHidden { .. }
             | api_types::DocCommand::SetLaneMatching { .. }
-            | api_types::DocCommand::RenameWorkspace { .. } => Scope::Content,
+            | api_types::DocCommand::RenameWorkspace { .. }
+            | api_types::DocCommand::Bookmark { .. } => Scope::Content,
         }),
         SessionCommand::Follow => Some(Scope::Follow),
         SessionCommand::Control { .. } => Some(Scope::Control),
@@ -69,6 +72,7 @@ pub(super) fn scope(wire: &SessionCommand) -> Option<Scope> {
             WorkspaceCommand::New
             | WorkspaceCommand::Open { .. }
             | WorkspaceCommand::Save { .. }
+            | WorkspaceCommand::ExportBookmarks { .. }
             | WorkspaceCommand::Discard => Scope::Host,
         }),
     }
@@ -107,7 +111,9 @@ pub(super) fn command(
 /// Paths are absolute, and Save As names a workspace file.
 fn workspace_command(wire: WorkspaceCommand) -> Result<WorkspaceCommand, Refusal> {
     let valid = match &wire {
-        WorkspaceCommand::Open { path } => Path::new(path).is_absolute(),
+        WorkspaceCommand::Open { path } | WorkspaceCommand::ExportBookmarks { path } => {
+            Path::new(path).is_absolute()
+        }
         WorkspaceCommand::Save {
             path: Some(path), ..
         } => Path::new(path).is_absolute() && path.ends_with(workspace_files::SUFFIX),
@@ -201,6 +207,9 @@ fn doc_command(
         api_types::DocCommand::RenameWorkspace { name, epoch } => {
             DocCommand::RenameWorkspace { name, epoch }
         }
+        api_types::DocCommand::Bookmark { command } => {
+            DocCommand::Bookmarks(bookmark_command(command)?)
+        }
         api_types::DocCommand::SetLaneMatching { item, slot, policy } => {
             DocCommand::SetLaneMatching {
                 item,
@@ -211,6 +220,44 @@ fn doc_command(
                 })?,
             }
         }
+    })
+}
+
+/// The change to the bookmarks a client asked for; a time before the video's first frame is refused.
+fn bookmark_command(wire: BookmarkWire) -> Result<BookmarkCommand, Refusal> {
+    Ok(match wire {
+        BookmarkWire::Add {
+            item,
+            entry,
+            frame,
+            time_us,
+        } if time_us >= 0 => BookmarkCommand::Add {
+            id: BookmarkId::generate(),
+            item,
+            entry,
+            frame,
+            time: MediaTime::from_us(time_us),
+        },
+        BookmarkWire::Add { .. } => return Err(Refusal::Invalid),
+        BookmarkWire::Edit { id, note, kind } => BookmarkCommand::Edit {
+            id,
+            note,
+            kind: kind.map(|kind| match kind {
+                BookmarkKindWire::Note => BookmarkKind::Note,
+                BookmarkKindWire::Issue => BookmarkKind::Issue,
+                BookmarkKindWire::Example => BookmarkKind::Example,
+                BookmarkKindWire::Question => BookmarkKind::Question,
+            }),
+        },
+        BookmarkWire::Remove { id } => BookmarkCommand::Remove(id),
+        BookmarkWire::SetReviewed {
+            item,
+            entry,
+            reviewed,
+        } => BookmarkCommand::SetReviewed {
+            target: BookmarkTarget { item, entry },
+            reviewed,
+        },
     })
 }
 
