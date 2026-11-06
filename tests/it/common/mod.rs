@@ -20,7 +20,7 @@ use handlers::Handlers;
 use playback::{CachePool, Registry};
 use sessions::{
     CursorOptions,
-    session::{Command, ContentRef, Handle, Reply, ViewerId},
+    session::{Command, ContentRef, Handle, Layout, Reply, View, ViewerId, ViewerView},
 };
 use std::{
     collections::BTreeSet,
@@ -244,6 +244,20 @@ impl Backend {
         })
         .await
         .expect("the item resolves");
+        // The owner's window shows the item in viewer 1, which is what a watcher that follows streams.
+        let viewer = ViewerView {
+            item: id,
+            pinned: false,
+            clock: None,
+            entry: None,
+        };
+        let showing = View {
+            active: Some(key.viewer),
+            viewers: [(key.viewer, viewer)].into(),
+            layout: Some(Layout::Pane { viewer: key.viewer }),
+            ..View::default()
+        };
+        owner.view(showing, 1).unwrap();
         Added {
             owner,
             key,

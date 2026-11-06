@@ -1,8 +1,11 @@
 //! How a window lays its viewers out: a binary tree of panes, kept in the [`View`](super::View) so a following window
 //! shows the presenter's split.
 
-use serde::{Deserialize, Serialize};
-use std::collections::BTreeSet;
+use serde::{
+    Deserialize, Deserializer, Serialize,
+    de::{self, Visitor},
+};
+use std::{collections::BTreeSet, fmt};
 use ts_rs::TS;
 
 /// The most panes a window lays out; a [`Layout`] with more leaves is refused. A seat may hold at most as many
@@ -14,8 +17,32 @@ const SHARE_WHOLE: u16 = 10_000;
 
 /// Names one viewer in a window's view. The window chooses it, one above the highest it has, and the backend never
 /// reuses or invents one. Two viewers may show the same item.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize)]
 pub struct ViewerId(pub u32);
+
+/// Reads the number, or the text of one: JSON writes a map key as text, and a message that buffers its content
+/// first (an enum tagged by field) hands the key on as text.
+impl<'de> Deserialize<'de> for ViewerId {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        struct Id;
+        impl Visitor<'_> for Id {
+            type Value = ViewerId;
+
+            fn expecting(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+                f.write_str("a viewer id")
+            }
+
+            fn visit_u64<E: de::Error>(self, id: u64) -> Result<ViewerId, E> {
+                u32::try_from(id).map(ViewerId).map_err(E::custom)
+            }
+
+            fn visit_str<E: de::Error>(self, id: &str) -> Result<ViewerId, E> {
+                id.parse().map(ViewerId).map_err(E::custom)
+            }
+        }
+        deserializer.deserialize_any(Id)
+    }
+}
 
 /// Which way a split divides its space.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]

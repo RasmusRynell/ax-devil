@@ -248,7 +248,7 @@ mod tests {
                 "second": { "type": "pane", "viewer": 2 },
             },
         });
-        let view: View = serde_json::from_value(message.clone()).unwrap();
+        let view: View = serde_json::from_str(&message.to_string()).unwrap();
         assert_eq!(view.sidebar.view, SidebarView::Sessions);
         assert_eq!(view.active, Some(ViewerId(2)));
         assert_eq!(view.viewers[&ViewerId(1)].item, behind);

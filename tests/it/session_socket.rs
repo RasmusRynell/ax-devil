@@ -61,6 +61,14 @@ fn view(seq: u64, open: bool) -> Value {
         "sidebar": {"view": "live", "open": open}, "viewers": {}}})
 }
 
+/// A view with the sidebar `open` and viewer 1 showing `item`.
+fn viewing(seq: u64, open: bool, item: &Value) -> Value {
+    json!({"type": "view", "seq": seq, "view": {
+        "sidebar": {"view": "live", "open": open}, "active": 1,
+        "viewers": {"1": {"item": item}},
+        "layout": {"type": "pane", "viewer": 1}}})
+}
+
 #[tokio::test]
 async fn a_session_works_alone_then_a_watcher_joins_it_sees_only_what_it_may_and_stopping_ends_it()
 {
@@ -112,6 +120,7 @@ async fn a_session_works_alone_then_a_watcher_joins_it_sees_only_what_it_may_and
         "entry": content["entry"]["id"],
         "viewer": 1,
     });
+    owner.say(viewing(2, false, &items[0]["id"])).await;
 
     // Sharing: a link appears for the owner, and the session is listed.
     owner
@@ -202,9 +211,9 @@ async fn a_session_works_alone_then_a_watcher_joins_it_sees_only_what_it_may_and
     assert_eq!(playback.closed().await, 4403);
 
     // The owner and its session go on, solo again, and the old link is dead.
-    owner.say(view(2, true)).await;
+    owner.say(view(3, true)).await;
     owner
-        .until(|m| m["type"] == "seat" && m["viewsDone"] == 2 && m["sharing"].is_null())
+        .until(|m| m["type"] == "seat" && m["viewsDone"] == 3 && m["sharing"].is_null())
         .await;
     assert_eq!(get(&address, "/api/sessions", PASSWORD).await, json!([]));
     let mut late = Socket::connect(&address, "/api/session").await;
