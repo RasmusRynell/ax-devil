@@ -33,3 +33,7 @@ Where [parity](parity.md) rows differ from the reference. The offline decisions 
 | VPC-010 | Panning starts after 3 CSS px; the reference panned from the first pixel, so a zoomed click with any movement did not select. A double click resets the view (new; the reference reset only through the menu or Ctrl+0) | A click that wobbles still selects |
 | DRW-004 | Catalog v4 has no open polyline mark; the reference had one | No built-in catalog or decoder used it |
 | DRW-006 | Overlay text is laid out per glyph, without pair kerning or ligatures (joining scripts rasterize whole lines); the reference shaped it through Qt. Class names differ by about 0 to 1 px, digits not at all | The canvas lays text out itself |
+| WS-09 | A bookmark row opens on click or Enter; the reference opened it on mouse press, with no keyboard | The row is a button, so the keyboard reaches it |
+| WS-09 | The Bookmarks view has no footer line, and with no bookmark it shows no search, filter or Export CSV; the reference showed the line and a disabled button | Terse in-app text |
+| WS-09 | Another workspace replacing the open one selects the Bookmarks view when it has bookmarks; a workspace the window starts with does not | A reload keeps the view the user chose |
+| WS-10 | The save dialog suggests the file name only, in the dialog's own folder; the reference suggested the workspace's folder. A new CSV file is owner-only, like a workspace file | One native save dialog for every export |

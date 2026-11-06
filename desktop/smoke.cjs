@@ -17,6 +17,7 @@ const {
 const { gallery } = require("./smoke-gallery.cjs");
 const { playlist } = require("./smoke-playlist.cjs");
 const { plugins } = require("./smoke-plugins.cjs");
+const { bookmarks } = require("./smoke-bookmarks.cjs");
 const { exportDialog } = require("./smoke-export.cjs");
 const { live } = require("./smoke-live.cjs");
 const { remote } = require("./smoke-remote.cjs");
@@ -292,6 +293,8 @@ module.exports = async (window, shell) => {
   await video(window);
   console.log("smoke: export");
   await exportDialog(window);
+  console.log("smoke: bookmarks");
+  await bookmarks(window);
   console.log("smoke: playlist");
   await playlist(window);
   console.log("smoke: plugins");

@@ -16,9 +16,9 @@ owner's written decision. A new feature gets a row in 01 first.
 | WS-06 | Re-resolve on file change; reload offered to open viewers | M | todo |  |  |
 | WS-07 | Rename, Edit, Remove, item information | M | todo |  |  |
 | WS-08 | Hide/Unhide entries and lanes | M | done | `crates/workspace-store` tests, `crates/sessions/tests/session/matrix.rs`, `src/session/project.rs`, `frontend/src/{shell/WorkspaceTree,viewer/{PlaylistViewer,hidden},playback/{LaneGrid,VideoViewer}}.test.*` | Kept in the Doc, never saved ([CONTEXT](../CONTEXT.md)). "Show hidden" lists hidden rows dimmed; next/previous skip hidden entries; hidden lanes undrawn |
-| WS-09 | Bookmarks and reviewed marks; Bookmarks view; open at frame | M | in progress | `crates/workspace-files` tests | Data model, validation and the file round trip only; no commands, view or CSV |
-| WS-10 | Bookmarks to CSV | S | todo |  |  |
-| WS-11 | Sidebar views Workspace, Live, Offline, Bookmarks, Plugins; search, sort, filter | M | in progress | `shell/{Shell,Sidebar,WorkspaceTree,WorkspaceTree.search}.test.tsx`, `shell/treeModel.test.ts` | Workspace and Offline: search, Sort (Workspace order, Name), Show hidden; Offline lists Videos and Playlists with a count. Live: search, Sort, Filter |
+| WS-09 | Bookmarks and reviewed marks; Bookmarks view; open at frame | M | done | `workspace-store/src/bookmarks.rs`, `tests/it/bookmarks.rs`, `frontend/src/bookmarks` |  |
+| WS-10 | Bookmarks to CSV | S | done | `tests/it/bookmarks.rs`, `make test-desktop` |  |
+| WS-11 | Sidebar views Workspace, Live, Offline, Bookmarks, Plugins; search, sort, filter | M | in progress | `shell/{Shell,Sidebar,WorkspaceTree,WorkspaceTree.search}.test.tsx`, `shell/treeModel.test.ts` | Workspace and Offline: search, Sort (Workspace order, Name), Show hidden; Offline lists Videos and Playlists with a count. Live: search, Sort, Filter. Bookmarks: search, kind |
 | WS-12 | Start panel and welcome area | M | in progress | `shell/Shell.test.tsx`, `shell/WorkspaceFiles.test.tsx` | Add Video, Add Playlist, Open Workspace and recent workspaces work; Live: AC-03 |
 | WS-13 | Split viewer area: drag to split, preview vs pinned panes | M | todo |  |  |
 | WS-14 | Long playlists load collapsed | S | todo |  |  |

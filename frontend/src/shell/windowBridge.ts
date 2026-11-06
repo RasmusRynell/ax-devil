@@ -15,7 +15,7 @@ export interface WindowBridge {
    * Opens the native save dialog for an export, suggesting `name`. Resolves to the absolute path chosen, which ends in
    * `.extension`; null when cancelled.
    */
-  pickExportFile(name: string, extension: "mp4" | "png"): Promise<string | null>;
+  pickExportFile(name: string, extension: "mp4" | "png" | "csv"): Promise<string | null>;
   /** Opens the native file dialog for a saved workspace. Resolves to the absolute path chosen; null when cancelled. */
   pickOpenWorkspace(): Promise<string | null>;
   /**

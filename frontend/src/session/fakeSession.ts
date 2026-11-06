@@ -1,5 +1,6 @@
 import type {
   Access,
+  BookmarkGroupInfo,
   Can,
   CursorPoint,
   EntryInfo,
@@ -138,6 +139,8 @@ export class Room {
   items: ItemState[] = [];
   /** What the owner hid in the workspace tree. */
   hidden: HiddenTarget[] = [];
+  /** The bookmark groups the Bookmarks view lists. */
+  bookmarks: BookmarkGroupInfo[] = [];
   docRev = 0;
   /** Whether changes restored from a recovery copy await Keep or Discard. */
   recovered = false;
@@ -331,6 +334,7 @@ export class FakeSocket {
             file: null,
             items: room.items,
             rows: rowsOf(room.items, room.hidden),
+            bookmarks: room.bookmarks,
           },
         },
       });
@@ -500,7 +504,11 @@ export class FakeSocket {
         ]);
       } else if (doc.type === "setHidden") room.setHidden(doc.target, doc.hidden);
       else if (doc.type === "remove") room.setItems(room.items.filter(({ id }) => id !== doc.item));
-      else if (doc.type !== "setLaneMatching" && doc.type !== "renameWorkspace") {
+      else if (
+        doc.type !== "setLaneMatching" &&
+        doc.type !== "renameWorkspace" &&
+        doc.type !== "bookmark"
+      ) {
         const open = doc.type === "openViewer";
         room.setItems(room.items.map((item) => (item.id === doc.item ? { ...item, open } : item)));
       }

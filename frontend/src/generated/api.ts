@@ -345,7 +345,11 @@ name: string,
 /**
  * The `epoch` of the workspace the name was entered for.
  */
-epoch: number, };
+epoch: number, } | { "type": "bookmark", 
+/**
+ * The change.
+ */
+command: BookmarkCommand, };
 
 /**
  * The owner's control of sharing.
@@ -415,7 +419,136 @@ path?: string,
 /**
  * Whether Save As may replace a file that is already there.
  */
-replace?: boolean, } | { "type": "keep" } | { "type": "discard" };
+replace?: boolean, } | { "type": "keep" } | { "type": "discard" } | { "type": "exportBookmarks", 
+/**
+ * The file, absolute.
+ */
+path: string, };
+
+/**
+ * A change to the bookmarks or reviewed marks.
+ */
+export type BookmarkCommand = { "type": "add", 
+/**
+ * The item.
+ */
+item: string, 
+/**
+ * The entry marked, by its id: the item's own id for a video.
+ */
+entry: string, 
+/**
+ * The frame's index.
+ */
+frame: number, 
+/**
+ * The frame's time in microseconds, not negative.
+ */
+timeUs: number, } | { "type": "edit", 
+/**
+ * The bookmark.
+ */
+id: string, 
+/**
+ * The new text; unchanged when absent.
+ */
+note?: string, 
+/**
+ * The new kind; unchanged when absent.
+ */
+kind?: BookmarkKindWire, } | { "type": "remove", 
+/**
+ * The bookmark.
+ */
+id: string, } | { "type": "setReviewed", 
+/**
+ * The item.
+ */
+item: string, 
+/**
+ * The entry as its group names it; absent for a video.
+ */
+entry?: string, 
+/**
+ * Whether it is reviewed afterwards.
+ */
+reviewed: boolean, };
+
+/**
+ * What a bookmark marks.
+ */
+export type BookmarkKindWire = "note" | "issue" | "example" | "question";
+
+/**
+ * One bookmark.
+ */
+export type BookmarkInfo = { 
+/**
+ * Names the bookmark.
+ */
+id: string, 
+/**
+ * The frame's index.
+ */
+frame: number, 
+/**
+ * The frame's time in microseconds.
+ */
+time_us: number, 
+/**
+ * What it marks.
+ */
+kind: BookmarkKindWire, 
+/**
+ * The user's text; empty when there is none.
+ */
+note: string, };
+
+/**
+ * Whether a group can be opened.
+ */
+export type BookmarkStanding = { "status": "Open", 
+/**
+ * The entry's id.
+ */
+entry: string, } | { "status": "Pending" } | { "status": "Missing" };
+
+/**
+ * A video or playlist entry with bookmarks or a reviewed mark.
+ */
+export type BookmarkGroupInfo = { 
+/**
+ * Names the group.
+ */
+key: string, 
+/**
+ * The item.
+ */
+item: string, 
+/**
+ * The item's name.
+ */
+item_name: string, 
+/**
+ * The entry as shown under the item; empty for a video.
+ */
+entry: string, 
+/**
+ * The entry as `setReviewed` names it; absent for a video.
+ */
+target: string | null, 
+/**
+ * Whether it is marked reviewed.
+ */
+reviewed: boolean, 
+/**
+ * Whether it can be opened.
+ */
+standing: BookmarkStanding, 
+/**
+ * The bookmarks by frame.
+ */
+bookmarks: Array<BookmarkInfo>, };
 
 /**
  * The part of the window a cursor position belongs to.
@@ -801,7 +934,11 @@ items: Array<ItemState>,
  * The sidebar tree flattened: each video or unresolved item, each playlist, their entries and lanes, in tree order. Lists only the items
  * `items` lists.
  */
-rows: Array<RowInfo>, };
+rows: Array<RowInfo>, 
+/**
+ * The bookmarks and reviewed marks of the items `items` lists, a group for each video or entry with any.
+ */
+bookmarks: Array<BookmarkGroupInfo>, };
 
 /**
  * A workspace file opened or saved lately.
