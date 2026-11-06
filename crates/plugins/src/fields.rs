@@ -10,7 +10,7 @@ use serde_json::{Map, Value};
 mod form;
 
 use crate::manifest::{
-    DecoderHandler, Handler, ManifestError, ResolverHandler, SkippedHandler, valid_id,
+    DecoderHandler, DecoderInput, Handler, ManifestError, ResolverHandler, SkippedHandler, valid_id,
 };
 
 /// The flag names (`_` written as `-`) that every `ax-devil` command line already takes, so no resolver setting may
@@ -243,15 +243,15 @@ impl<'a> Fields<'a> {
     fn decoder(&mut self) -> Result<DecoderHandler, ManifestError> {
         let id = self.id("id")?;
         let name = self.non_empty("name")?;
-        match self.string("input")?.as_str() {
-            "path" => {}
+        let input = match self.string("input")?.as_str() {
+            "path" => DecoderInput::Path,
+            "records" => DecoderInput::Records,
             other => {
-                return Err(self.error(
-                    "input",
-                    format!("'{other}' is not supported; only \"path\" is"),
-                ));
+                return Err(
+                    self.error("input", format!("'{other}' is not \"path\" or \"records\""))
+                );
             }
-        }
+        };
         let description = self.optional_non_empty("description")?;
         let scene_version = self.scene_version()?;
         let extensions = self.extensions()?;
@@ -260,6 +260,7 @@ impl<'a> Fields<'a> {
         Ok(DecoderHandler {
             id,
             name,
+            input,
             description,
             scene_version,
             extensions,

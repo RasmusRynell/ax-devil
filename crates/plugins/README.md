@@ -21,6 +21,12 @@ caching.
   validated options, no frame size) is written on a thread so a plugin that never reads stdin cannot block the host. A reader
   thread feeds 64 KiB chunks through a bounded channel to the line reader, so a fast plugin is held back by the
   store, not buffered. A line over 16 MiB is refused before it is buffered.
+- **Records** (`input: records`, `Process` in `run.rs`, the loop in `decoder.rs`). A live session is one `decode` over an
+  input with no path, so a records decoder is the live capability (`reads_live`, when `time` is a basis). The same
+  process is fed one record at a time through a writer thread and the next record goes out only after `done`: the host's
+  bridge queue holds the rest, so there is no buffering of its own. A process that ends after an answer costs the one record
+  it was on and is started again with the next; one that ends before its first answer fails the session, so a broken
+  plugin is not started once per document. The idle timeout runs only while an answer is owed.
 - **Every run ends the same way.** The group is killed whether the plugin finished, failed, was cancelled or went
   idle (no output for `idle_timeout_s`), then the child is waited for and the working folder removed. A grandchild left
   behind never outlives the lane; output already written is still read, for up to 2 s. Windows has no process group here: only the plugin process itself is killed.
