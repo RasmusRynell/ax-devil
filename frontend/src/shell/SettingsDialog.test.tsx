@@ -67,6 +67,11 @@ vi.mock(import("../generated/settings"), async (original) => ({
       },
     ),
     row(
+      "t.decoder",
+      { type: "decoder", default: "A" },
+      { label: "Decoder", page: "Network", section: "Credentials", scope: "server" },
+    ),
+    row(
       "t.token",
       { type: "text", default: "" },
       {
@@ -86,7 +91,10 @@ beforeAll(() => {
     this.setAttribute("open", "");
   };
 });
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  vi.unstubAllGlobals();
+});
 afterAll(() => vi.restoreAllMocks());
 
 describe("settings dialog", () => {
@@ -157,6 +165,51 @@ describe("settings dialog", () => {
       },
       shortcuts: DEFAULT_SETTINGS.shortcuts,
     });
+  });
+
+  it("offers the installed live decoders for a decoder row and saves any text typed there", async () => {
+    const decoder = (handler: string, display_name: string, live: boolean) => ({
+      handler,
+      display_name,
+      extensions: [],
+      options: [],
+      live,
+    });
+    vi.stubGlobal("fetch", async () => ({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        decoders: [decoder("ADF_V1_FRAME", "ADF v1 frame", true), decoder("MOT", "MOT", false)],
+        resolvers: [],
+      }),
+    }));
+    const save = vi.fn(async () => null);
+    render(
+      <GrantsContext.Provider value={["configuration"]}>
+        <FakeSettings
+          state={
+            {
+              ...DEFAULT_SETTINGS,
+              values: { ...DEFAULT_SETTINGS.values, "t.decoder": "A" },
+            } as never
+          }
+          save={save}
+        >
+          <SettingsDialog onClose={() => {}} onRestartNeeded={() => {}} />
+        </FakeSettings>
+      </GrantsContext.Provider>,
+    );
+    fireEvent.click(screen.getByRole("tab", { name: "Network" }));
+    const field = screen.getByLabelText("Decoder") as HTMLInputElement;
+    await waitFor(() => expect(field.list?.options).toHaveLength(1));
+    expect(field.list?.options[0]).toMatchObject({ value: "ADF_V1_FRAME", label: "ADF v1 frame" });
+    fireEvent.change(field, { target: { value: "MY_PLUGIN_DECODER" } });
+    fireEvent.click(screen.getByRole("button", { name: "OK" }));
+    expect(save).toHaveBeenCalledWith(
+      expect.objectContaining({
+        values: expect.objectContaining({ "t.decoder": "MY_PLUGIN_DECODER" }),
+      }),
+    );
   });
 
   it("offers the Server rows only to someone who may configure the server", () => {

@@ -6,6 +6,7 @@ import { Dialog } from "../kit/Dialog";
 import { Icon } from "../kit/Icon";
 import { SectionCaption } from "../kit/SectionCaption";
 import { Tabs } from "../kit/Tabs";
+import { useHandlers } from "../resolvers/useHandlers";
 import { useSettings } from "../settings";
 import { literalSecret, PlainTextNote, Refusal, SettingField, type Row } from "./SettingField";
 import { ShortcutsDialog } from "./ShortcutsDialog";
@@ -37,6 +38,10 @@ export function SettingsDialog({
   const [editingShortcuts, setEditingShortcuts] = useState(false);
   const { saving, refusal, submit } = useSaveDialog(onClose);
   const panel = useId();
+  // Only a decoder of streaming, timestamped records can decode a live stream.
+  const decoders = (useHandlers().handlers?.decoders ?? [])
+    .filter((decoder) => decoder.live)
+    .map((decoder) => [decoder.handler, decoder.display_name] as const);
   const ok = async () => {
     const outcome = await submit({ values: draft, shortcuts });
     if (outcome.kind === "refused") {
@@ -83,6 +88,7 @@ export function SettingsDialog({
                         row={row}
                         value={draft[row.key]}
                         describedBy={warning ? note : undefined}
+                        decoders={decoders}
                         onChange={(value) => setDraft({ ...draft, [row.key]: value })}
                         label={
                           <span className="flex items-center gap-s">

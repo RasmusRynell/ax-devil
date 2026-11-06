@@ -287,25 +287,23 @@ fn configured_logins(state: &settings::State) -> Vec<Login> {
         .collect()
 }
 
-/// The scan the settings describe, over `range` when given and else `scan.range`; blank is the local network. It asks
-/// each host over `camera.protocol` first. Its logins are `scan.logins` unless sign-in is off, which `sign_in` says
-/// for this scan and else `scan.sign_in` does; each field is expanded when it is a `$NAME` reference. A range that
-/// cannot be scanned is refused with the field named.
+/// The scan the settings describe, over `range` when given and else `scan.range`, expanded when it is a `$NAME`
+/// reference; blank is the local network. It asks each host over `camera.protocol` first. Its logins are `scan.logins`
+/// unless sign-in is off, which `sign_in` says for this scan and else `scan.sign_in` does; each field is expanded when
+/// it is a `$NAME` reference. A range that cannot be scanned is refused with the field named.
 pub fn request_from_settings(
     state: &settings::State,
     range: Option<&str>,
     sign_in: Option<bool>,
     load: ScanLoad,
 ) -> Result<ScanRequest, UserError> {
+    // A `$NAME` reference in the setting is expanded here, where the scan starts.
+    let range_setting = state
+        .resolved("scan.range")
+        .and_then(|value| value.as_str().map(str::to_owned));
     let (text, field) = match range {
         Some(text) => (text, "range"),
-        None => (
-            state
-                .stored("scan.range")
-                .and_then(|value| value.as_str())
-                .unwrap_or_default(),
-            "scan.range",
-        ),
+        None => (range_setting.as_deref().unwrap_or_default(), "scan.range"),
     };
     let targets = Targets::parse(text).map_err(|error| {
         UserError::new(ErrorCode::WorkspaceInvalid, error.detail().to_owned())
@@ -382,6 +380,24 @@ mod tests {
         // The footer's choice for one scan wins over the setting, either way, and leaves the setting alone.
         let off = request_from_settings(&state, None, Some(false), ScanLoad::Normal).unwrap();
         assert!(off.logins.is_empty());
+    }
+
+    #[test]
+    fn the_saved_range_is_scanned_as_the_variable_it_names_holds_it() {
+        let folder = tempfile::tempdir().unwrap();
+        let path = folder.path().join("default.json");
+        // `PATH` is set wherever the tests run and is no address, so the refusal shows what the reference expanded to.
+        std::fs::write(
+            &path,
+            r#"{"version": 1, "settings": {"scan.range": "$PATH"}}"#,
+        )
+        .unwrap();
+        let state = settings::Settings::load(&path).unwrap().state();
+        let Err(refused) = request_from_settings(&state, None, None, ScanLoad::Normal) else {
+            panic!("a variable that holds no range is no range to scan");
+        };
+        assert!(!refused.reason.contains("$PATH"), "{}", refused.reason);
+        assert_eq!(refused.location, Some(Location::field("scan.range")));
     }
 
     #[test]

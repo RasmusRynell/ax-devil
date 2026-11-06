@@ -17,6 +17,9 @@ Where [parity](parity.md) rows differ from the reference. The offline decisions 
 | OF-01 | The client ends the session when the protocol version in `Opened` differs from its own | A stale window stops with a message, not misparsed frames |
 | OF-01 | Playback commands sit in a View > Playback submenu; the keys, including Left and Right for 10 frames, are the reference's | There is no Playback menu |
 | ST-01 | `storage.cache_dir` and `storage.catalog_dir` take no `$NAME` reference; [08](rebuild/08-settings-cli.md) asked for references in storage fields | Browse yields an absolute path; a reference would have to resolve before the first window opens |
+| ST-01 | Settings pages carry none of the reference's explanatory notes | Terse copy (write-ui) |
+| ST-01 | The camera head setting is 1 to 255 and the DataHub topic channel 1 to 4294967295; the reference allowed 1 to 9999 for each | The backend holds the head as a byte and the Add Live Stream form refuses a larger one, so a wider setting would prefill a form it cannot add |
+| ST-04 | The camera head, overlay mode, decoders, broker port, data source, DataHub topic and channel take no `$NAME` reference; the reference allowed one in each | The Add Live Stream form reads these as typed values |
 | PL-02 | ADF beta lists the Bags filter before Faces; the reference listed Faces first | Beta and v1 share one filter list, in the v1 order |
 | PL-02 | ADF v1 frame keeps a class it does not know, lowercased, including unknown, bag and face; the reference refused the record | Every ADF decoder reads a class through one function, which is the reference's beta and consolidated rule |
 | PL-02 | ADF `Person` becomes `human` in beta frame and both consolidated formats; the reference kept `person` there (only v1 frame mapped it) | The same function maps the alias for every ADF decoder |

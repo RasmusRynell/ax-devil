@@ -231,16 +231,21 @@ module.exports = async (window, shell) => {
         name: "settings",
         open: () => js("document.querySelector('[aria-label=Settings]').click()"),
       },
-      {
-        name: "settings-storage",
+      ...[
+        ["settings-stream", "Stream defaults"],
+        ["settings-analytics", "Analytics"],
+        ["settings-scan", "Network scan"],
+        ["settings-storage", "Storage"],
+      ].map(([name, tab]) => ({
+        name,
         open: async () => {
           await js("document.querySelector('[aria-label=Settings]').click()");
           await wait("document.querySelector('dialog[open]')");
           await js(
-            "[...document.querySelectorAll('[role=tab]')].find((b) => b.textContent === 'Storage').click()",
+            `[...document.querySelectorAll('[role=tab]')].find((b) => b.textContent === '${tab}').click()`,
           );
         },
-      },
+      })),
       { name: "shortcuts", open: openShortcuts },
       {
         name: "about",
