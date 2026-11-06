@@ -180,12 +180,16 @@ impl NewLive {
     /// so a copy needs that endpoint to be the one `source` already sends its login to; any other is refused, as the
     /// person must then enter the login for that server. A [`LoginUse::Discovery`] login goes only to the web
     /// interface the camera check above compares, so it has no further destination to check.
+    ///
+    /// An MQTT broker password left blank is filled from `source`'s too, when the broker host, port and user are
+    /// the same.
     pub fn copy_login(
         &mut self,
         source: &LiveRecipe,
         defaults: &LiveDefaults,
         usage: LoginUse,
     ) -> Result<(), UserError> {
+        self.copy_broker_password(source, defaults);
         let protocol = self.protocol.unwrap_or(defaults.protocol);
         let port = |protocol: Protocol, port: i64| match port {
             0 => i64::from(protocol.default_port()),
@@ -219,6 +223,37 @@ impl NewLive {
             self.password = Some(source.password.clone());
         }
         Ok(())
+    }
+
+    /// Fills a blank MQTT broker password from `source`'s when this stream's broker is the same one, with the same
+    /// user, once `defaults` fill what is blank: the password goes to the broker it was saved for and no other.
+    fn copy_broker_password(&mut self, source: &LiveRecipe, defaults: &LiveDefaults) {
+        let Some(NewLiveOverlay::Mqtt(mqtt)) = &mut self.overlay else {
+            return;
+        };
+        let LiveOverlay::Mqtt {
+            broker_host,
+            broker_port,
+            broker_user,
+            broker_pass,
+            ..
+        } = &source.overlay
+        else {
+            return;
+        };
+        let broker = &defaults.mqtt;
+        let blank = mqtt
+            .broker_pass
+            .as_ref()
+            .is_none_or(|entered| entered.expose().is_empty());
+        let port = mqtt.broker_port.unwrap_or_else(|| broker.port.into());
+        if blank
+            && same_host(&text(&mqtt.broker_host, &broker.host), broker_host.trim())
+            && port == i64::from(*broker_port)
+            && login(&mqtt.broker_user, &broker.user) == *broker_user
+        {
+            mqtt.broker_pass = Some(broker_pass.clone());
+        }
     }
 
     /// Refuses, with the field `password`, when the host and port this stream's RTSP goes to, once `defaults` fill

@@ -15,7 +15,7 @@ use sessions::session::{Command, Refusal, Scope};
 use std::path::Path;
 use tokio::time::Instant;
 use workspace::{
-    LiveRecipe, Secret, Source, Workspace, WorkspaceItem,
+    Content, LiveRecipe, Secret, Source, Workspace, WorkspaceItem,
     intake::{LiveDefaults, NewLive, NewOverlay},
 };
 use workspace_store::{DocCommand, HiddenRef};
@@ -179,6 +179,11 @@ fn doc_command(
         } => {
             let (staged, content) = staged.take(session, &ticket).ok_or(Refusal::Invalid)?;
             let edited = workspace::intake::with_label(staged, label.as_deref());
+            // Only playlists are staged; their ids came from the ticket and are the edited item's from now on.
+            let content = match content {
+                Content::Playlist(playlist) => Content::Playlist(playlist.rebound(&item)),
+                other => other,
+            };
             DocCommand::EditItem {
                 item: Box::new(WorkspaceItem { id: item, ..edited }),
                 content: Some(Box::new(content)),

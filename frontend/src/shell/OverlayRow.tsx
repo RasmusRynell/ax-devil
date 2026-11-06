@@ -12,8 +12,9 @@ export interface OverlayEntry {
   key: number;
   path: string;
   picked: string;
-  /** The lane's name and the decoder's options of an overlay already in an item, until the file changes. */
+  /** The lane's name of an overlay already in an item, until the file changes. */
   label?: NewOverlayWire["label"];
+  /** Only the initial seed of the form for the decoder the row mounted with; the form owns the options after. */
   options?: NewOverlayWire["options"];
 }
 
