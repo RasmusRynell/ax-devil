@@ -18,7 +18,9 @@ Owns credential handling; [08](08-settings-cli.md) links here.
 
 A workspace file from someone else is untrusted input. A Live Stream Item's `$VARIABLE` references are expanded
 silently while resolving, as in the reference (D18: no prompt, no host binding), so a shared workspace can name an
-attacker host and `$SOME_SECRET` and receive it once the user starts the stream.
+attacker host and `$SOME_SECRET` and receive it once the user starts the stream. That holds only for the person at
+this machine (the `preferences` grant): a Session owned by a holder of the server password, and its questions to a
+camera, keep a reference as literal text.
 
 **MUST** (ST-06). Opening a workspace sends no credentials (snapshots, login checks) to a host the user has not
 started: a viewer was opened for the host in this run. A hover or a poll asks a camera only once per cooldown.

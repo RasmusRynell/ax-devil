@@ -220,10 +220,10 @@ async fn disconnected_sessions_in_their_grace_period_still_count_against_the_ser
     let rig = Rig::new();
     let cursors = CursorOptions::default;
     let mut owners: Vec<_> = (0..MAX_SESSIONS)
-        .map(|_| rig.service.create(true, cursors()).unwrap())
+        .map(|_| rig.service.create(true, true, cursors()).unwrap())
         .collect();
     assert_eq!(
-        rig.service.create(true, cursors()).err(),
+        rig.service.create(true, true, cursors()).err(),
         Some(Refusal::Full)
     );
 
@@ -232,14 +232,14 @@ async fn disconnected_sessions_in_their_grace_period_still_count_against_the_ser
     yield_now().await; // let the grace timers register before time moves
     advance(GRACE / 2).await;
     assert_eq!(
-        rig.service.create(true, cursors()).err(),
+        rig.service.create(true, true, cursors()).err(),
         Some(Refusal::Full)
     );
 
     // Once they have expired, the places are free again.
     advance(GRACE).await;
     yield_now().await;
-    assert!(rig.service.create(true, cursors()).is_ok());
+    assert!(rig.service.create(true, true, cursors()).is_ok());
 }
 
 #[tokio::test(start_paused = true)]

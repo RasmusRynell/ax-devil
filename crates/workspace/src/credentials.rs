@@ -49,10 +49,10 @@ pub(crate) fn reference(text: &str) -> Option<&str> {
 /// Looks up an environment variable by name.
 type Lookup = Arc<dyn Fn(&str) -> Option<String> + Send + Sync>;
 
-/// Where `$NAME` references get their values. Cheap to clone.
+/// Where `$NAME` references get their values, if anywhere. Cheap to clone.
 #[derive(Clone)]
 pub struct Environment {
-    lookup: Lookup,
+    lookup: Option<Lookup>,
 }
 
 impl fmt::Debug for Environment {
@@ -65,7 +65,7 @@ impl Environment {
     /// An environment that gives `lookup(name)` for a variable.
     pub fn new(lookup: impl Fn(&str) -> Option<String> + Send + Sync + 'static) -> Self {
         Self {
-            lookup: Arc::new(lookup),
+            lookup: Some(Arc::new(lookup)),
         }
     }
 
@@ -74,12 +74,18 @@ impl Environment {
         Self::new(|name| std::env::var(name).ok())
     }
 
+    /// An environment with no variables: a reference stays the literal text it was typed as. For a remote viewer,
+    /// whose text must never read this machine's environment.
+    pub fn literal() -> Self {
+        Self { lookup: None }
+    }
+
     /// `text`, or what the variable gives when it is a reference; empty when the variable is unset. Nothing asks
-    /// first, as in the reference app.
+    /// first, as in the reference app. A literal environment gives `text` as it is.
     pub(crate) fn expand(&self, text: &str) -> String {
-        match reference(text) {
-            Some(name) => (self.lookup)(name).unwrap_or_default(),
-            None => text.to_owned(),
+        match (reference(text), &self.lookup) {
+            (Some(name), Some(lookup)) => lookup(name).unwrap_or_default(),
+            _ => text.to_owned(),
         }
     }
 }

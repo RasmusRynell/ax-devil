@@ -82,7 +82,7 @@ async fn adding_a_found_camera_uses_the_scan_login_and_never_shows_it() {
         .unwrap();
     let handle = state
         .sessions
-        .create(true, CursorOptions::default())
+        .create(true, true, CursorOptions::default())
         .unwrap();
 
     // Only the owner has the scan's logins.
@@ -172,7 +172,7 @@ async fn another_stream_of_a_camera_copies_its_saved_login_for_the_owner_only() 
     );
     let owner = state
         .sessions
-        .create(true, CursorOptions::default())
+        .create(true, true, CursorOptions::default())
         .unwrap();
     let ok = |ack: &SessionServerMessage| {
         matches!(
@@ -295,7 +295,7 @@ async fn editing_a_stream_keeps_its_id_and_saved_login_on_the_same_camera_only()
     );
     let owner = state
         .sessions
-        .create(true, CursorOptions::default())
+        .create(true, true, CursorOptions::default())
         .unwrap();
     let mut acks = vec![
         answer(

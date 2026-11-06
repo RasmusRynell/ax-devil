@@ -73,7 +73,11 @@ pub struct OnRuntime {
 impl Runner for OnRuntime {
     fn run(&self, spawn: Spawn, done: Completer) {
         let handlers = self.handlers.current();
-        let env = (self.environment)();
+        let env = if spawn.expands {
+            (self.environment)()
+        } else {
+            Environment::literal()
+        };
         let watcher = done.watcher();
         self.runtime.spawn(async move {
             if spawn.cancel.is_cancelled() {

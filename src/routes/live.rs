@@ -2,7 +2,7 @@
 //! The network scan's routes are in [`super::network`].
 //!
 //! A question connects to the camera with the form's connection, so its `$NAME` references expand as a stream item's
-//! do. The question is the handler's future, so a client that drops the request ends the connection. A question about another stream of a camera (`like`) authenticates with
+//! do for the person at this machine, and stay literal for anyone else. The question is the handler's future, so a client that drops the request ends the connection. A question about another stream of a camera (`like`) authenticates with
 //! that stream's saved login on the backend, for the person at this machine only and under the rule of the intake's
 //! `copy_login`. Nothing here logs or returns a login.
 
@@ -72,11 +72,18 @@ fn camera(
             .map_err(|error| invalid(&error))?;
     }
     let item = intake::live(new, &defaults, &handlers).map_err(|error| invalid(&error))?;
+    // A reference reads this machine's environment only for the person at this machine; a remote viewer's text,
+    // defaults included, stays literal.
+    let env = if owner {
+        Environment::of_process()
+    } else {
+        Environment::literal()
+    };
     match item.recipe.resolve(
         &item.id,
         &item.display_name(),
         &handlers,
-        &Environment::of_process(),
+        &env,
         &CancelToken::new(),
     ) {
         Ok(Content::LiveVideo(content)) => Ok(content.camera),
@@ -247,7 +254,7 @@ mod tests {
         let like = saved.id;
         let session = state
             .sessions
-            .create(true, CursorOptions::default())
+            .create(true, true, CursorOptions::default())
             .unwrap();
         session
             .command(Command::Content(DocCommand::AddItems {
@@ -306,5 +313,30 @@ mod tests {
             .await
             .expect("the connection closed with the request")
             .unwrap();
+    }
+
+    /// `PATH` stands for any variable: the person at this machine's reference reads it, a remote viewer's never does.
+    #[tokio::test]
+    async fn a_reference_reads_the_environment_for_the_local_seat_and_stays_literal_for_a_remote_viewer()
+     {
+        let test = TestApp::new();
+        let connection = || -> LiveConnection {
+            serde_json::from_value(
+                json!({ "host": "$PATH", "username": "$PATH", "password": "$PATH" }),
+            )
+            .unwrap()
+        };
+        let path = std::env::var("PATH").unwrap();
+        let local = resolve(&test.state, Principal::Local, connection()).unwrap();
+        assert_eq!(local.host, path);
+        assert_eq!(local.login.unwrap().password.expose(), path);
+
+        let remote = resolve(&test.state, Principal::Server, connection()).unwrap();
+        assert_eq!(remote.host, "$PATH");
+        let login = remote.login.unwrap();
+        assert_eq!(
+            (login.user.as_str(), login.password.expose()),
+            ("$PATH", "$PATH")
+        );
     }
 }

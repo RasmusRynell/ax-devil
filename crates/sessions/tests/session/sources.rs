@@ -12,7 +12,8 @@ use sessions::{
 };
 use std::{fs, path::Path, sync::Arc, time::Duration};
 use workspace::{
-    Content, ItemId, Watch, WorkspaceItem,
+    Content, ItemId, LiveOverlay, LiveRecipe, Protocol, Recipe, Secret, Source, Watch,
+    WorkspaceItem,
     intake::{NewOverlay, video},
 };
 use workspace_store::{DocCommand, Resolution};
@@ -41,7 +42,10 @@ fn changed(owner: &Handle<u8>, item: ItemId) -> Option<u32> {
 #[tokio::test(start_paused = true)]
 async fn an_open_viewer_keeps_its_stream_when_its_files_change_until_the_item_resolves_again() {
     let rig = Rig::new();
-    let owner = rig.service.create(true, CursorOptions::default()).unwrap();
+    let owner = rig
+        .service
+        .create(true, true, CursorOptions::default())
+        .unwrap();
     let (item, overlay) = with_overlay(rig.dir.path());
     let id = item.id;
     let handlers = Handlers::built_in();
@@ -78,7 +82,10 @@ async fn an_open_viewer_keeps_its_stream_when_its_files_change_until_the_item_re
 #[tokio::test(start_paused = true)]
 async fn what_a_superseded_job_read_is_never_recorded_for_the_item() {
     let rig = Rig::new();
-    let owner = rig.service.create(true, CursorOptions::default()).unwrap();
+    let owner = rig
+        .service
+        .create(true, true, CursorOptions::default())
+        .unwrap();
     let (item, overlay) = with_overlay(rig.dir.path());
     let id = item.id;
     let add = |item: &WorkspaceItem| {
@@ -129,7 +136,9 @@ async fn resolving_records_the_files_and_each_window_with_the_item_is_told() {
     // The same saved workspace open in two windows: one item id in two sessions.
     let owners: Vec<Handle<u8>> = (0..2)
         .map(|_| {
-            let owner = service.create(true, CursorOptions::default()).unwrap();
+            let owner = service
+                .create(true, true, CursorOptions::default())
+                .unwrap();
             owner
                 .command(Command::Content(DocCommand::AddItems {
                     items: vec![item.clone()],
@@ -155,4 +164,62 @@ async fn resolving_records_the_files_and_each_window_with_the_item_is_told() {
     for owner in &owners {
         assert_eq!(changed(owner, id), Some(1));
     }
+}
+
+/// `PATH` stands for any variable: an item resolves it in the session of the person at this machine, and keeps it as
+/// typed in the session of a remote holder of the server password.
+#[tokio::test]
+async fn a_reference_is_read_for_a_local_owner_and_kept_literal_for_a_remote_one() {
+    let service: Service<u8> = Service::new(
+        GRACE,
+        Arc::new(OnRuntime {
+            runtime: tokio::runtime::Handle::current(),
+            handlers: HandlerSet::new(Handlers::built_in()),
+            environment: Arc::new(workspace::Environment::of_process),
+        }),
+    );
+    let host_of = |expands: bool| {
+        let item = WorkspaceItem {
+            id: ItemId::generate(),
+            label: String::new(),
+            recipe: Recipe {
+                source: Source::Live(LiveRecipe {
+                    host: "$PATH".into(),
+                    username: String::new(),
+                    password: Secret::default(),
+                    protocol: Protocol::Https,
+                    port: 0,
+                    head: 1,
+                    rtsp_port: 554,
+                    resolution: None,
+                    url: None,
+                    overlay: LiveOverlay::None,
+                }),
+                lane_matching: Default::default(),
+            },
+        };
+        let id = item.id;
+        let owner = service
+            .create(true, expands, CursorOptions::default())
+            .unwrap();
+        owner
+            .command(Command::Content(DocCommand::AddItems {
+                items: vec![item],
+                open: false,
+            }))
+            .unwrap();
+        async move {
+            loop {
+                if let Some(Resolution::Resolved { content, .. }) =
+                    owner.state().doc.workspace.resolutions.get(&id)
+                    && let Content::LiveVideo(video) = content
+                {
+                    return video.camera.host.clone();
+                }
+                tokio::time::sleep(Duration::from_millis(5)).await;
+            }
+        }
+    };
+    assert_eq!(host_of(true).await, std::env::var("PATH").unwrap());
+    assert_eq!(host_of(false).await, "$PATH");
 }
