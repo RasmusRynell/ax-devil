@@ -123,13 +123,25 @@ impl Handler {
     }
 }
 
-/// A decoder the plugin declares. It is given the overlay file's path.
+/// What a decoder's request carries.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum DecoderInput {
+    /// The overlay file's path; one run reads the whole file.
+    Path,
+    /// Records, one per line on stdin, each answered before the next is sent: the lines of a file, or the documents of
+    /// a live source.
+    Records,
+}
+
+/// A decoder the plugin declares.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct DecoderHandler {
     /// The handler id.
     pub id: String,
     /// What the user reads.
     pub name: String,
+    /// What the request carries.
+    pub input: DecoderInput,
     /// One sentence on what the decoder reads, if the manifest gives one.
     pub description: Option<String>,
     /// The Scene model version the decoder writes.

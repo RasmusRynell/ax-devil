@@ -370,7 +370,7 @@ mod tests {
         let mut collected = Collected::new(op);
         (1..=count + 1).find_map(|number| match collected.line(number, line.as_bytes()) {
             Next::Stop(reason) => Some(reason),
-            Next::Continue | Next::SinkFull => None,
+            Next::Continue | Next::Done | Next::SinkFull => None,
         })
     }
 
@@ -407,7 +407,7 @@ mod tests {
         let stopped =
             (1..=MAX_ENTRIES + 1).find_map(|n| match collected.line(n, entry(n).as_bytes()) {
                 Next::Stop(reason) => Some(reason),
-                Next::Continue | Next::SinkFull => None,
+                Next::Continue | Next::Done | Next::SinkFull => None,
             });
         assert_eq!(
             stopped.as_deref(),

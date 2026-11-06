@@ -7,11 +7,12 @@ use crate::common;
 use std::{
     path::{Path, PathBuf},
     process::{Command, Stdio},
+    time::Duration,
 };
 
-use common::{TestSink, decode};
+use common::{Scripted, TestSink, decode, decode_records};
 use foundation::{CancelToken, Interrupt, Location, UserError};
-use handler_api::{OnEqualKey, PlaylistResolver, Settings, Values, VideoRef};
+use handler_api::{Decoder, OnEqualKey, PlaylistResolver, Settings, Values, VideoRef};
 use plugins::{LoadedPlugin, PluginDecoder, PluginResolver};
 use scene::{Coverage, Geometry, Operation, SceneTime, TimeKind, Value};
 use std::sync::Arc;
@@ -173,6 +174,42 @@ fn the_shell_plugin_emits_times_out_of_order_and_a_replace() {
         5
     );
     assert!(run.sink.warnings.is_empty());
+}
+
+#[test]
+fn the_shell_records_plugin_answers_each_record_of_a_live_source_with_one_sample() {
+    let records = decoder("shell-records");
+    assert!(records.reads_live() && !decoder("shell-times").reads_live());
+    let mut live = Scripted::new(
+        &[
+            b"100000 7 car 0.1 0.2 0.3 0.4",
+            b"not a record",
+            &[0xff, 0xfe],
+            b"200000 7 car 0.15 0.2 0.35 0.4",
+        ],
+        Duration::ZERO,
+    );
+
+    let run = decode_records(&records, &mut live, &CancelToken::new());
+
+    run.summary();
+    let us: Vec<i64> = run
+        .sink
+        .samples
+        .iter()
+        .map(|(scene, _)| match key(scene) {
+            SceneTime::Timestamp(time) => time.0,
+            SceneTime::Frame(_) => panic!("a time-keyed sample"),
+        })
+        .collect();
+    assert_eq!(us, [100_000, 200_000]);
+    let skipped: Vec<u64> = run
+        .sink
+        .skips
+        .iter()
+        .map(|(position, _)| *position)
+        .collect();
+    assert_eq!(skipped, [2, 3]);
 }
 
 #[test]
