@@ -214,7 +214,7 @@ export function Shell({ version }: { version: string }) {
       const match = handled(event);
       if (!match) {
         // The start panel's default button: Enter with nothing focused runs Open Workspace, once no shortcut has taken
-        // the key and no dialog is open (a focused button keeps its own Enter).
+        // the key, no dialog is open and no viewer covers the welcome area (a focused button keeps its own Enter).
         if (
           event.key === "Enter" &&
           !event.ctrlKey &&
@@ -223,6 +223,7 @@ export function Shell({ version }: { version: string }) {
           event.target === document.body &&
           sidebar.open &&
           sidebar.view === "workspace" &&
+          !active &&
           !document.querySelector("dialog[open]")
         ) {
           event.preventDefault();

@@ -218,6 +218,12 @@ describe("viewer shortcuts", () => {
     expect(playback.togglePlay).toHaveBeenCalledTimes(1);
   });
 
+  it("leave Enter alone: it opens Open Workspace only while the welcome area shows", async () => {
+    await openViewer();
+    fireEvent.keyDown(document.body, { key: "Enter" });
+    expect(screen.queryByRole("dialog")).toBeNull();
+  });
+
   it("do nothing, and leave the key alone, while no viewer is open", async () => {
     await renderShell();
     const space = new KeyboardEvent("keydown", { key: " ", cancelable: true, bubbles: true });
