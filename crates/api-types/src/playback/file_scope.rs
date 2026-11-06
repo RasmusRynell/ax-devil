@@ -4,6 +4,7 @@
 //! object is.
 
 use crate::ErrorWire;
+use scene_store::EventRow;
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
@@ -46,8 +47,10 @@ pub enum FileAppearances {
         /// frame between two. Empty when the file has no such object or no frame shows it.
         #[ts(type = "Array<[number, number]>")]
         spans: Vec<[u64; 2]>,
-        /// Whether the object has more spans than are sent: these are its first ones.
+        /// Whether the object has more spans or events than are sent: these are the first ones.
         truncated: bool,
+        /// The events that involve the object, in frame order.
+        events: Vec<EventRow>,
     },
     /// There are no spans, and why.
     Unavailable {

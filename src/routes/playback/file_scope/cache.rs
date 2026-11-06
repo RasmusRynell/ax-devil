@@ -2,14 +2,14 @@
 //! byte budget over all lanes.
 
 use overlays::FileScopeInput;
-use scene_store::{History, Matches, Placement, Query};
+use scene_store::{EventMatches, EventPlacement, History, Matches, Placement, Query, Search};
 use std::{
     collections::HashMap,
     sync::{Arc, Mutex, PoisonError},
 };
 
 /// The most memory the lanes' kept queries may take together: two of the largest histories (256 MiB each). A
-/// placement takes eight bytes per frame and a listing four per object, so the history is nearly all of it. A history
+/// placement takes eight bytes per frame, the events' eight per event and a listing four per object or event, so the history is nearly all of it. A history
 /// two lanes share is counted for each, which only makes the bound safer. One kept query over the budget stays, for
 /// the lane that has just used it.
 pub(super) const CACHE_BYTES: usize = 512 << 20;
@@ -22,6 +22,8 @@ pub(super) struct Cached {
     pub(super) history: Arc<History>,
     pub(super) placement: Arc<Placement>,
     pub(super) listing: Option<(Query, Arc<Matches>)>,
+    pub(super) events: Arc<EventPlacement>,
+    pub(super) event_listing: Option<(Search, Arc<EventMatches>)>,
 }
 
 impl Cached {
@@ -35,7 +37,11 @@ impl Cached {
             .listing
             .as_ref()
             .map_or(0, |(_, matches)| matches.bytes());
-        self.history.bytes() + self.placement.bytes() + listing
+        let events = self
+            .event_listing
+            .as_ref()
+            .map_or(0, |(_, matches)| matches.bytes());
+        self.history.bytes() + self.placement.bytes() + listing + self.events.bytes() + events
     }
 }
 

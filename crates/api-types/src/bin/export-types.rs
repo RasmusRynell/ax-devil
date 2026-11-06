@@ -23,7 +23,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         OperationKind,
         inspection::{FieldGroup, FieldOrigin, Leaf},
     };
-    use scene_store::{Op, Row, Search, Sort, SortKey, Term};
+    use scene_store::{
+        EventDetail, EventObject, EventRow, Involved, Op, Row, Search, Sort, SortKey, Term,
+    };
     use sessions::{
         CursorOptions, EndReason, SeatMode, SeatRole,
         session::{
@@ -183,6 +185,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         FileScopeUnavailable,
         FileAppearances,
         Located,
+        EventObject,
+        EventRow,
+        Involved,
+        EventDetail,
+        EventQueryWire,
+        EventAskWire,
+        EventRowsWire,
+        EventWire,
+        FileEvents,
+        FileEvent,
         FrameSize,
         Output,
         RenderLane,

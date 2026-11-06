@@ -68,19 +68,19 @@ Listed in [parity deviations](parity-deviations.md).
 
 | ID | Feature | P | Status | Test | Notes |
 |----|---------|---|--------|------|-------|
-| IN-01 | Media tools panel per lane: Objects and Events lists, object and event pages | M | in progress | `crates/scene/src/inspection/tests.rs`, `{playback/{inspection,Inspector},tools/**}.test.*`, `tests/it/playback_inspect.rs`, `make test-desktop` | Objects list (ID dots by class), selected object's fields, Debug ones with origin (D36). Left: Events, event pages |
+| IN-01 | Media tools panel per lane: Objects and Events lists, object and event pages | M | in progress | `crates/scene/src/inspection/tests.rs`, `{playback/{inspection,Inspector},tools/**}.test.*`, `tests/it/playback_inspect.rs`, `make test-desktop` | ID dots by class, fields, Debug origin (D36). Left: Events tab, event page |
 | IN-02 | Object filters by type and score/confidence range; whole-file filtering with declared policies | M | in progress | `crates/scene/src/filter.rs`, `{present/filter/filter,playback/LaneMenuFilter}.test.*`, `crates/scene-store/src/tests/history.rs`, `tests/it/mot_playlist.rs` | Class toggles apply in both scopes; File judges every recorded class (D30). The expression (`score >= 0.4`) is frame-only |
 | IN-03 | Hover chip and click selection; can be turned off | M | done | `present/pick/pick.test.ts`, `playback/{VideoViewer.objects,VideoCanvas,chipPlacement,ObjectLayer}.test.*` | Smallest box in the lane's filtered rows; kept by id across seeks, shown in its source's lanes. `overlays.object_details` turns it off (D36) |
 | IN-04 | Frame info HUD, lane names | M | done | `playback/{hud,VideoViewer.objects}.test.*`, `make test-desktop` | Lane names are on the tags; the HUD (I) covers them while it shows. PTS rows need a time base of a microsecond or coarser |
 | IN-05 | Zoom, pan, reset, synced across lanes; lane and app fullscreen | M | done | `playback/{viewport,uiZoom,VideoCanvas,VideoViewer.objects}.test.*`, `desktop/smoke-video.cjs` | One viewport per viewer, shared by its lanes (D31); in Electron, overlay pixel lengths ignore page zoom (D32). Lane fullscreen is the browser Fullscreen API on the viewer pane; Esc leaves it and the app fullscreen (F11) stays. |
 | IN-06 | Per-view overlay detail visibility | M | done | `{playback/LaneMenu,present/pick/pick}.test.*` | Hidden objects keep hover and inspection |
 | IN-07 | Per-view sticky/sync/filter settings, Apply to all, defaults for new views | S | in progress | `playback/{LaneMenu,lanes,sessionLanes}.test.*`, `crates/settings` | Kept by position; Apply to all copies them; Make default saves `overlays.default_{sticky,sync}`. Left: Apply to all across viewers (needs a registry) |
-| IN-08 | Structured query search in Objects and Events lists | M | in progress | `search/query.test.ts`, `crates/scene-store/src/tests/query.rs` | Frame: id, class, motion.state, score, confidence. File: id, class, event. Left: Events |
+| IN-08 | Structured query search in Objects and Events lists | M | in progress | `search/query.test.ts`, `crates/scene-store/src/tests/{query,events}.rs` | Frame: id, class, motion.state, score, confidence. File: id, class, event. Events: kind, object |
 | IN-09 | Frame vs File scope for objects | M | done | `{tools/{ObjectsPanel,table/Table},playback/fileScope}.test.*` | File scope follows the lane's class toggles, not its frame filter; not for a followed window. The cursor keeps off-page rows. A pick off the frame seeks its first one |
 | IN-10 | Pinned fields kept across object pages | S | done | `playback/{fields,Inspector}.test.*` | |
 | IN-11 | Copy a field or section value | S | done | `playback/{fields,Inspector}.test.*` |  |
 | IN-12 | Presence strip with seeking; previous/next appearance | M | in progress | `playback/{appearanceJumps,Inspector}.test.*` | Previous/next appearance. Left: strip |
-| IN-13 | Event to frame (offline; live events have no seekable history); event/object cross-navigation | M | todo |  |  |
+| IN-13 | Event to frame (offline; live events have no seekable history); event/object cross-navigation | M | in progress | `scene-store/src/tests/events.rs` | Backend only. Differs: by index |
 
 ## Render catalogs
 

@@ -2,7 +2,9 @@
 
 use super::cache::Cache;
 use super::*;
-use api_types::playback::ServerMessage;
+use api_types::playback::{
+    EventAskWire, EventQueryWire, EventRowsWire, EventWire, FileEvent, FileEvents, ServerMessage,
+};
 use axum::extract::ws::Message;
 use foundation::{MediaTime, Timeline};
 use overlays::{LaneStatus, OverlayEvent, OverlayService};
@@ -310,6 +312,7 @@ async fn the_spans_of_an_object_come_beside_the_list_and_only_to_the_owner() {
                     policy_revision,
                     spans,
                     truncated,
+                    ..
                 },
             ..
         } = message
@@ -396,4 +399,99 @@ async fn the_spans_of_an_object_come_beside_the_list_and_only_to_the_owner() {
             ..
         }
     ));
+}
+
+#[tokio::test]
+async fn event_answers_carry_their_revisions_a_follower_is_refused_and_a_newer_request_replaces_the_older()
+ {
+    let folder = tempfile::tempdir().unwrap();
+    let (viewer, revision) = viewer(folder.path()).await;
+    let mut scopes = FileScopes::new(Audience::HOST);
+    let list = |request| {
+        EventsAsk::List(EventQueryWire {
+            lane: 0,
+            request,
+            query: Search::default(),
+            offset: 0,
+            limit: 10,
+            locate: None,
+            frame: Some(3),
+        })
+    };
+    let one = |request| {
+        EventsAsk::Detail(EventAskWire {
+            lane: 0,
+            request,
+            event: 0,
+            bins: 4,
+        })
+    };
+
+    // A MOT file has no events: the answers are empty but made under the lane's revisions.
+    scopes.ask_events(&viewer, true, list(1)).ok().unwrap();
+    scopes.ask_events(&viewer, true, one(1)).ok().unwrap();
+    let mut answers = [next(&mut scopes, true).await, next(&mut scopes, true).await];
+    answers.sort_by_key(|message| matches!(message, ServerMessage::Event(_)));
+    let [ServerMessage::EventRows(rows), ServerMessage::Event(event)] = answers else {
+        panic!("rows and an event, got {answers:?}");
+    };
+    assert!(matches!(
+        rows.rows,
+        FileEvents::Found {
+            data_revision,
+            policy_revision: 1,
+            total: 0,
+            matched: 0,
+            frame_row: Some(0),
+            ..
+        } if data_revision == revision
+    ));
+    assert!(matches!(
+        event.detail,
+        FileEvent::Found {
+            data_revision,
+            policy_revision: 1,
+            detail: None,
+        } if data_revision == revision
+    ));
+
+    // Of two requests in a row only the newer is answered.
+    for request in [2, 3] {
+        scopes
+            .ask_events(&viewer, true, list(request))
+            .ok()
+            .unwrap();
+    }
+    assert!(matches!(
+        next(&mut scopes, true).await,
+        ServerMessage::EventRows(EventRowsWire { request: 3, .. })
+    ));
+    assert!(
+        tokio::time::timeout(Duration::from_millis(300), scopes.next())
+            .await
+            .is_err(),
+        "the replaced request is never answered"
+    );
+
+    // A follower is refused when it asks, and when it became one while the request ran.
+    scopes.ask_events(&viewer, false, one(4)).ok().unwrap();
+    scopes.ask_events(&viewer, true, list(5)).ok().unwrap();
+    for _ in 0..2 {
+        let refused = match next(&mut scopes, false).await {
+            ServerMessage::Event(EventWire { detail, .. }) => matches!(
+                detail,
+                FileEvent::Unavailable {
+                    unavailable: FileScopeUnavailable::Following
+                }
+            ),
+            ServerMessage::EventRows(EventRowsWire { rows, .. }) => matches!(
+                rows,
+                FileEvents::Unavailable {
+                    unavailable: FileScopeUnavailable::Following
+                }
+            ),
+            other => panic!("an event answer, got {other:?}"),
+        };
+        assert!(refused);
+    }
 }

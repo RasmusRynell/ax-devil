@@ -399,6 +399,7 @@ describe("inspector", () => {
             policy_revision: 1,
             spans,
             truncated: false,
+            events: [],
             ...over,
           },
         }),

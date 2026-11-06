@@ -301,6 +301,16 @@ impl<I: Incoming> Playing<'_, I> {
                     entity,
                 },
             ),
+            Some(Ok(ClientMessage::EventQuery(wire))) => self.file_scopes.ask_events(
+                self.lanes.overlays(),
+                self.gate.is_own(),
+                file_scope::EventsAsk::List(wire),
+            ),
+            Some(Ok(ClientMessage::Event(wire))) => self.file_scopes.ask_events(
+                self.lanes.overlays(),
+                self.gate.is_own(),
+                file_scope::EventsAsk::Detail(wire),
+            ),
             Some(Ok(ClientMessage::FileRelease { lane })) => {
                 self.file_scopes.release(self.lanes.overlays(), lane)
             }

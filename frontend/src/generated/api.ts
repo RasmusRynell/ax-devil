@@ -1905,7 +1905,7 @@ request: number,
 /**
  * The object's id.
  */
-entity: string, } | { "type": "Close" };
+entity: string, } | { "type": "EventQuery" } & EventQueryWire | { "type": "Event" } & EventAskWire | { "type": "Close" };
 
 /**
  * What the backend sends as text. `Opened` is followed by a Timeline envelope.
@@ -2132,7 +2132,7 @@ entity: string,
 /**
  * The spans, or why there are none.
  */
-appearances: FileAppearances, } | { "type": "Error" } & ErrorWire;
+appearances: FileAppearances, } | { "type": "EventRows" } & EventRowsWire | { "type": "Event" } & EventWire | { "type": "Error" } & ErrorWire;
 
 /**
  * The protocol of a camera's web interface.
@@ -2925,9 +2925,13 @@ policy_revision: number,
  */
 spans: Array<[number, number]>, 
 /**
- * Whether the object has more spans than are sent: these are its first ones.
+ * Whether the object has more spans or events than are sent: these are the first ones.
  */
-truncated: boolean, } | { "state": "Unavailable", 
+truncated: boolean, 
+/**
+ * The events that involve the object, in frame order.
+ */
+events: Array<EventRowWire>, } | { "state": "Unavailable", 
 /**
  * Why the file cannot be asked.
  */
@@ -2945,6 +2949,240 @@ id: string,
  * The index of its row in the whole list, whichever page was asked; `None` when the list does not hold it.
  */
 row: number | null, };
+
+/**
+ * An object an event involves, as a chip of the list shows it.
+ */
+export type EventObjectWire = { 
+/**
+ * The entity id.
+ */
+id: string, 
+/**
+ * The first class the object was recorded with, which colors its chip; `None` when the video shows the object
+ * nowhere, and the chip takes the event's kind.
+ */
+class: string | null, };
+
+/**
+ * An event of the file as a list shows it.
+ */
+export type EventRowWire = { 
+/**
+ * The event's index in the file's events, which names it in a request.
+ */
+event: number, 
+/**
+ * The frame the video shows it on.
+ */
+frame: number, 
+/**
+ * What the event does.
+ */
+kind: OperationKindWire, 
+/**
+ * The event as one line of text.
+ */
+label: string, 
+/**
+ * The objects it involves, in order and with repeats.
+ */
+objects: Array<EventObjectWire>, };
+
+/**
+ * An object an event involves, with where the video shows it.
+ */
+export type InvolvedWire = { 
+/**
+ * The entity id.
+ */
+id: string, 
+/**
+ * The classes it was recorded with, in order of first appearance; none when the video shows it nowhere.
+ */
+classes: Array<string>, 
+/**
+ * The first and last frame the video shows it on; `None` when it shows it nowhere, such as an id only the event
+ * names.
+ */
+seen: [number, number] | null, 
+/**
+ * Where it is on screen as `[first, last]` frames, in order, merged so a strip of `bins` marks can draw it.
+ */
+presence: Array<[number, number]>, };
+
+/**
+ * One event with the objects it involves and the events of its moment.
+ */
+export type EventDetailWire = { 
+/**
+ * The event.
+ */
+row: EventRowWire, 
+/**
+ * The objects it involves, each once, in the order the event names them.
+ */
+objects: Array<InvolvedWire>, 
+/**
+ * The other events on its frame, in index order.
+ */
+same_moment: Array<EventRowWire>, };
+
+/**
+ * Asks for rows of a lane's event list: every event the video shows, in frame order, kept by the search and paged.
+ * The answer is `EventRows`. A `limit` outside 1 to 200 is a `LaneProblem`.
+ */
+export type EventQueryWire = { 
+/**
+ * The lane's position in `Opened.lanes`.
+ */
+lane: number, 
+/**
+ * Names the request in its answer; the client drops answers of older requests.
+ */
+request: number, 
+/**
+ * The search, parsed by the client: fields `kind` and `object`, free text over the label.
+ */
+query: SearchWire, 
+/**
+ * The first row to send.
+ */
+offset: number, 
+/**
+ * How many rows to send at most, from 1 to 200.
+ */
+limit: number, 
+/**
+ * An event whose row in the list is wanted whatever the page: the answer's `located`.
+ */
+locate: number | null, 
+/**
+ * A frame whose place in the list is wanted: the answer's `frame_row`.
+ */
+frame: number | null, };
+
+/**
+ * Asks for one event of a lane's file with its objects and the events of its frame. The answer is `Event`.
+ */
+export type EventAskWire = { 
+/**
+ * The lane's position in `Opened.lanes`.
+ */
+lane: number, 
+/**
+ * Names the request in its answer; the client drops answers of older requests.
+ */
+request: number, 
+/**
+ * The event's index in the file's events: `EventRow::event`.
+ */
+event: number, 
+/**
+ * The most spans of presence per object, from 0 to 256; 0 sends none.
+ */
+bins: number, };
+
+/**
+ * The answer to `EventQuery`.
+ */
+export type EventRowsWire = { 
+/**
+ * The lane's position in `Opened.lanes`.
+ */
+lane: number, 
+/**
+ * The request answered.
+ */
+request: number, 
+/**
+ * The rows, or why there are none.
+ */
+rows: FileEvents, };
+
+/**
+ * The answer to `Event`.
+ */
+export type EventWire = { 
+/**
+ * The lane's position in `Opened.lanes`.
+ */
+lane: number, 
+/**
+ * The request answered.
+ */
+request: number, 
+/**
+ * The event from the request.
+ */
+event: number, 
+/**
+ * The event, or why there is none.
+ */
+detail: FileEvent, };
+
+/**
+ * Rows of a lane's event list, or why there are none.
+ */
+export type FileEvents = { "state": "Found", 
+/**
+ * The source revision it was listed under; the client drops rows of any other.
+ */
+data_revision: number, 
+/**
+ * The lane policy revision the events were placed under; the client drops rows of any other.
+ */
+policy_revision: number, 
+/**
+ * How many events the video shows.
+ */
+total: number, 
+/**
+ * How many of them the search matches, which is how many rows there are.
+ */
+matched: number, 
+/**
+ * The request's `offset`.
+ */
+offset: number, 
+/**
+ * Rows `offset` to `offset + rows.len()` of the list, in frame order.
+ */
+rows: Array<EventRowWire>, 
+/**
+ * The row of the request's `locate` event; `None` when the request named none or the list does not hold it.
+ */
+located: number | null, 
+/**
+ * How many rows are on frames at or before the request's `frame`, which is where the line for that frame
+ * goes; `None` when the request named none.
+ */
+frame_row: number | null, } | { "state": "Unavailable", 
+/**
+ * Why the file cannot be asked.
+ */
+unavailable: FileScopeUnavailable, };
+
+/**
+ * One event of a lane's file, or why there is none.
+ */
+export type FileEvent = { "state": "Found", 
+/**
+ * The source revision it was made under; the client drops an answer of any other.
+ */
+data_revision: number, 
+/**
+ * The lane policy revision the events were placed under; the client drops an answer of any other.
+ */
+policy_revision: number, 
+/**
+ * The event; `None` when the file has no such event or the video does not show it.
+ */
+detail: EventDetailWire | null, } | { "state": "Unavailable", 
+/**
+ * Why the file cannot be asked.
+ */
+unavailable: FileScopeUnavailable, };
 
 /**
  * Width and height of a decoded picture in pixels.
