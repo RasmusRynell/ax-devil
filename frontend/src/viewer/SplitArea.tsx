@@ -7,7 +7,6 @@ import {
   useState,
   type RefObject,
 } from "react";
-import { flushSync } from "react-dom";
 import { reasonOf } from "../errors";
 import type { ItemState } from "../generated/api";
 import { useCan, useSetView, useView } from "../session/session";
@@ -96,8 +95,9 @@ function useSize(): [Size, RefObject<HTMLDivElement | null>] {
     };
     read();
     if (typeof ResizeObserver === "undefined") return;
-    // [AI] Applied before the frame is drawn, so the panes never trail the area for a frame while it is resized.
-    const observer = new ResizeObserver(() => flushSync(read));
+    // [AI] Not flushed inside the observer: that sets off "ResizeObserver loop" errors, and the panes trail the area by
+    // a frame instead, which a script that reads geometry right after a resize waits out (`setView` in the smoke test).
+    const observer = new ResizeObserver(read);
     observer.observe(element);
     return () => observer.disconnect();
   }, []);
