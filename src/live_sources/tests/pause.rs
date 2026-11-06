@@ -1,5 +1,7 @@
 //! What a viewer is shown while it is paused and when it resumes.
 
+use std::sync::atomic::Ordering;
+
 use camera::Status;
 use foundation::MediaTime;
 
@@ -29,6 +31,11 @@ async fn events_go_on_arriving_while_a_viewer_is_paused_and_while_every_viewer_i
             Update::Status(_) | Update::Gap { .. } => {}
         }
     }
+
+    assert!(
+        !video.closed.load(Ordering::Acquire),
+        "pausing keeps the connection"
+    );
 
     // Another window watches: it is shown the picture with its events, and the paused one still gets only the events.
     let mut watching = rig.open(&content("cam", rtsp())).await;
@@ -60,4 +67,17 @@ async fn events_go_on_arriving_while_a_viewer_is_paused_and_while_every_viewer_i
         frame(&mut paused).await.frame.id().timestamp,
         MediaTime(5_000)
     );
+}
+
+#[tokio::test]
+async fn stopping_ends_the_connection_and_starting_again_opens_a_new_one() {
+    let rig = rig();
+    let content = content("cam", rtsp());
+    let viewer = rig.open(&content).await;
+    let first = rig.fake.videos()[0].clone();
+
+    drop(viewer);
+    let _again = rig.open(&content).await;
+    assert!(first.closed.load(Ordering::Acquire), "the stop was final");
+    assert_eq!(rig.fake.videos().len(), 2, "a start makes a new source");
 }
