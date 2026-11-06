@@ -33,13 +33,11 @@ const exportable = (entry: { kind: string; id?: string }) => entry.id !== "expor
 function Live({
   session,
   item,
-  viewer,
   entry,
   name,
 }: {
   session: LiveSession;
   item: string;
-  viewer: number;
   /** The Content's id: a live video's one entry. */
   entry: string;
   name: string;
@@ -158,7 +156,7 @@ function Live({
                 session={session}
                 view={view}
                 name={name}
-                anchor={`frame:${viewer}`}
+                anchor={`frame:${item}`}
                 entry={entry}
                 hidden={NOTHING_HIDDEN}
                 only={fullscreen.solo}
@@ -285,14 +283,6 @@ export function LiveVideoViewer({
   }, [ticket, connect]);
 
   return (
-    session && (
-      <Live
-        session={session}
-        item={item}
-        viewer={viewer}
-        entry={content.id}
-        name={content.display_name}
-      />
-    )
+    session && <Live session={session} item={item} entry={content.id} name={content.display_name} />
   );
 }

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo } from "react";
+import { useCallback, useEffect, useMemo, useRef } from "react";
 import type { ItemState } from "../generated/api";
 import {
   useCan,
@@ -43,24 +43,36 @@ export function useFrontItem(): string | null {
 /**
  * Keeps a viewer in front for a window that decides what it shows: when the front one closed, the last open one
  * takes its place. A window that may also open viewers gives a viewer to every open item that has none and brings
- * the newest to the front. A following or watching window shows whatever the presenter's view says.
+ * the newest to the front; an item that finds the window full is closed again and `onFull` told. A following or
+ * watching window shows whatever the presenter's view says.
  */
-export function useFrontViewer(): void {
+export function useFrontViewer(onFull?: () => void): void {
   const doc = useDoc();
   const open = useMemo(() => doc?.workspace.items.filter((item) => item.open) ?? [], [doc]);
   const [front] = useView("active");
   const [viewers] = useView("viewers");
   const setView = useSetView();
+  const command = useCommand();
   const decides = useCan("view");
   const opens = useCan("content");
   const following = useFollowing();
+  // The items asked to close that the Doc still has open, so a second pass does not ask again.
+  const closing = useRef(new Set<string>());
+  const told = useRef(onFull);
+  told.current = onFull;
   useEffect(() => {
     if (!decides || following) return;
+    const full: string[] = [];
     setView((shown) => {
       let next = shown;
       const placed = new Set(Object.values(shown.viewers).map((viewer) => viewer?.item));
       if (opens)
-        for (const item of open) if (!placed.has(item.id)) next = withViewer(next, item.id) ?? next;
+        for (const item of open) {
+          if (placed.has(item.id)) continue;
+          const added = withViewer(next, item.id);
+          if (added) next = added;
+          else full.push(item.id);
+        }
       const live = Object.entries(next.viewers)
         .filter(([, viewer]) => open.some((item) => item.id === viewer?.item))
         .map(([id]) => Number(id));
@@ -68,7 +80,15 @@ export function useFrontViewer(): void {
       const last = live.at(-1);
       return last === undefined ? next : { ...next, active: last };
     });
-  }, [decides, opens, following, open, front, viewers, setView]);
+    closing.current = new Set([...closing.current].filter((id) => open.some((i) => i.id === id)));
+    for (const item of full.filter((id) => !closing.current.has(id))) {
+      closing.current.add(item);
+      void command({ type: "content", command: { type: "closeViewer", item } }).catch(
+        () => undefined,
+      );
+      told.current?.();
+    }
+  }, [decides, opens, following, open, front, viewers, setView, command]);
 }
 
 /** What the user hid in the workspace tree, as the Doc's rows say. */

@@ -14,6 +14,7 @@ import { useBookmarksOnReplace } from "../bookmarks/viewerLink";
 import { useAllowed, useCommand, useDoc, useView } from "../session/session";
 import { useSettings } from "../settings";
 import { NO_ACTIONS, ViewerActionsContext, type ViewerActions } from "../viewer/actions";
+import { MAX_PANES } from "../session/views";
 import { useFrontViewer, useViewers } from "../viewer/useViewers";
 import { ViewerHost } from "../viewer/ViewerHost";
 import { AboutDialog } from "./AboutDialog";
@@ -71,7 +72,6 @@ type Dialog =
 export function Shell({ version }: { version: string }) {
   const [sidebar, setSidebar] = useView("sidebar");
   const { active } = useViewers();
-  useFrontViewer();
   useBookmarksOnReplace();
   const allowed = useAllowed();
   const command = useCommand();
@@ -80,6 +80,7 @@ export function Shell({ version }: { version: string }) {
   // The file a typed Save As would replace, until the user answers.
   const [replacing, setReplacing] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  useFrontViewer(() => setNotice(`Cap at ${MAX_PANES} panes`));
   // A failed save of a setting: a notice the user acknowledges, as the app's own dialogs do.
   const [refused, setRefused] = useState<{ title: string; message: string } | null>(null);
   const [viewerActions, setViewerActions] = useState<ViewerActions>(NO_ACTIONS);
@@ -199,7 +200,7 @@ export function Shell({ version }: { version: string }) {
     else setSidebar({ view: item.id as SidebarView, open: true });
   };
   // What each region of this window shows, so a cursor lands by region only where the same thing is shown.
-  const scopes: Scopes = { sidebar: sidebar.view, main: active ? String(active.id) : "welcome" };
+  const scopes: Scopes = { sidebar: sidebar.view, main: active?.item.id ?? "welcome" };
 
   useEffect(() => {
     /** The command this key press runs, if the shell handles it. */

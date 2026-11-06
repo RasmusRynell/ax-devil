@@ -66,7 +66,7 @@ A control that handles keys the shortcuts also use (Space, Enter, arrows) wraps 
   the window is dense, enlarge through content sizing when it has room. Scroll only content that grows with the
   user's data; long lists (sidebar trees, Objects, Events) are virtualized.
 - **Pointer sharing.** Give an element that others should see the pointer on a stable `data-cursor-id` inside a
-  `data-cursor-region`, named like its neighbours (`menu:<label>`, `row:<id>`, `tab:<viewer>`, `transport:<control>`,
+  `data-cursor-region`, named like its neighbours (`menu:<label>`, `row:<id>`, `tab:<item>`, `transport:<control>`,
   `share…`, `sessions:…`). Popups and dialogs are regions of their own and share no pointer.
 - **A new user preference** is a row in the settings table
   ([08](../../../docs/rebuild/08-settings-cli.md#settings-model)), applied live when possible.

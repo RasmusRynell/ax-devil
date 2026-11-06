@@ -46,7 +46,6 @@ export { Status };
 function Playback({
   session,
   item,
-  viewer,
   name,
   title,
   entry,
@@ -60,7 +59,6 @@ function Playback({
 }: {
   session: PlaybackSession;
   item: string;
-  viewer: number;
   name: string;
   title: string;
   entry: string;
@@ -203,7 +201,7 @@ function Playback({
                 view={view}
                 name={name}
                 title={title}
-                anchor={`frame:${viewer}`}
+                anchor={`frame:${item}`}
                 entry={entry}
                 hidden={hidden}
                 only={fullscreen.solo}
@@ -435,7 +433,6 @@ export function VideoViewer({
       <Playback
         session={session}
         item={item}
-        viewer={viewer}
         name={entry.label}
         title={content.display_name}
         entry={entry.id}

@@ -88,7 +88,7 @@ export function ViewerHost() {
               type="button"
               role="tab"
               id={`tab-${id}`}
-              data-cursor-id={`tab:${id}`}
+              data-cursor-id={`tab:${item.id}`}
               aria-selected={id === active?.id}
               onClick={() => setActive(id)}
               className={`${QUIET} max-w-[24ch] focus-ring-inset aria-selected:font-semibold`}
@@ -98,7 +98,7 @@ export function ViewerHost() {
             <IconButton
               icon="x"
               label={`Close ${item.label}`}
-              data-cursor-id={`tab-close:${id}`}
+              data-cursor-id={`tab-close:${item.id}`}
               disabled={!closable}
               // A refused close leaves the tab open, which says so.
               onClick={() =>
