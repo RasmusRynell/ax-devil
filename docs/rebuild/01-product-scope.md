@@ -50,10 +50,10 @@ object and frame by frame, and for comparing results side by side. Take the pitc
 | ID | Feature | P | Source |
 |----|---------|---|--------|
 | AC-01 | Add Video with any number of overlays; decoder picked by extension | M | `docs/architecture/overview.md#workspace-items-and-intake` |
-| AC-02 | Drop video files on the window | M | `docs/architecture/ui-framework.md#workspace-shell` |
+| AC-02 | Drop video files on the window (dropped by the owner) | M | [parity deviations](../parity-deviations.md) |
 | AC-03 | Add Live Stream with analytics discovery | M | `workspace/ui/add_content/`, `docs/usage.md#live-cameras` |
 | AC-04 | Add Playlist through a resolver form | M | `docs/architecture/workspace.md#playlist-resolver-contract` |
-| AC-05 | One intake validation for dialogs, CLI and drops | M | `docs/domain/invariants.md#content-model` |
+| AC-05 | One intake validation for dialogs and the CLI | M | `docs/domain/invariants.md#content-model` |
 
 ### Live
 

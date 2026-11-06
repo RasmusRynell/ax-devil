@@ -5,6 +5,7 @@ Where [parity](parity.md) rows differ from the reference. The offline decisions 
 
 | Row | Deviation | Reason |
 |-----|-----------|--------|
+| AC-02 | Dropping video files on the window does nothing; the reference added them. [human] "the file drop (if it means draging in files into the app) can be completally dropped in all ways" | Owner decision |
 | AC-04 | The playlists of one item share one viewer, so two cannot be opened side by side; the reference opened each in its own | A viewer per playlist needs the split viewer area (WS-13) |
 | WS-13 | A window lays out at most 8 panes, and a ninth is refused with a message; the reference has no limit | A seat holds at most 8 streams, and every pane streams |
 | OF-02 | Lanes share one video; the reference let a secondary lane have its own video, length and frame rate, aligned to the primary's frame index | D19: two recordings side by side are two viewers |
