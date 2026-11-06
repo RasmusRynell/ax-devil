@@ -471,32 +471,6 @@ fn replacing_the_workspace_closes_viewers_bumps_the_epoch_and_never_reuses_a_gen
 }
 
 #[test]
-fn removing_an_item_takes_its_viewer_and_resolution_with_it_and_drops_a_result_still_on_its_way() {
-    let folder = tempfile::tempdir().unwrap();
-    let file = folder.path().join("gate.mp4");
-    std::fs::write(&file, "x").unwrap();
-    let (kept, removed) = (item(&file), item(&file));
-    let (kept_id, removed_id) = (kept.id, removed.id);
-    let (state, jobs) = add(&WorkspaceState::default(), vec![kept, removed], true);
-    let resolved = finish(&state, &jobs[0]);
-
-    let (gone, jobs) = apply(&resolved, DocCommand::Remove(removed_id));
-
-    assert!(jobs.is_empty());
-    let ids: Vec<_> = gone.workspace.items.iter().map(|item| item.id).collect();
-    assert_eq!(ids, [kept_id]);
-    assert!(gone.open.contains(&kept_id) && !gone.open.contains(&removed_id));
-    assert!(gone.resolutions.contains_key(&kept_id) && !gone.resolutions.contains_key(&removed_id));
-    assert_eq!(
-        finish(&gone, &jobs_of(&state, removed_id)),
-        gone,
-        "the result of the removed item's attempt is dropped"
-    );
-    let (again, _) = apply(&gone, DocCommand::Remove(removed_id));
-    assert_eq!(again, gone, "removing it twice changes nothing");
-}
-
-#[test]
 fn a_change_to_the_files_of_an_open_item_is_counted_and_any_other_resolves_again() {
     let folder = tempfile::tempdir().unwrap();
     let file = folder.path().join("gate.mp4");
@@ -555,3 +529,4 @@ fn jobs_of(state: &WorkspaceState, id: ItemId) -> ResolveJob {
 }
 
 mod edit;
+mod remove;

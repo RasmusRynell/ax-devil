@@ -307,8 +307,9 @@ fn undeclared_options(overlay: &OverlayRef, form: &Form) -> Option<Warning> {
 }
 
 /// The warning for samples that do not line up with the video's frames: by time, the last one far from the last
-/// frame, or too few of the samples selected by a frame ([`Verdict::Weak`]); by frame, too few of them within the
-/// video.
+/// frame, or any sample on no frame; by frame, any record past the video's last frame. A few such samples
+/// ([`Verdict::Partial`]) warn as the reference's caution icon did; most of them ([`Verdict::Weak`]) say the file
+/// is wrong.
 fn misalignment(alignment: &Alignment, policy: &MatchPolicy) -> Option<Warning> {
     let mut reasons = Vec::new();
     if alignment.ends_far()
@@ -322,7 +323,7 @@ fn misalignment(alignment: &Alignment, policy: &MatchPolicy) -> Option<Warning> 
             seconds(alignment.video_end.0),
         ));
     }
-    if alignment.verdict() == Verdict::Weak {
+    if alignment.unmatched() > 0 {
         reasons.push(match alignment.basis {
             MatchBasis::Time => {
                 let within = match policy.tolerance {
@@ -346,6 +347,9 @@ fn misalignment(alignment: &Alignment, policy: &MatchPolicy) -> Option<Warning> 
         });
     }
     let consequence = match alignment.basis {
+        MatchBasis::Time if alignment.verdict() == Verdict::Partial => {
+            "Samples on no frame are not drawn."
+        }
         MatchBasis::Time => {
             "Boxes may be drawn on the wrong frames. The file may count time differently from the video, \
             for example frame number times a fixed frame period instead of the video's own frame times"
