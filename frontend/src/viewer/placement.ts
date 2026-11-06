@@ -1,6 +1,6 @@
 import type { Layout, View, ViewerView } from "../generated/api";
 import { MAX_PANES } from "../session/views";
-import { largest, leaves, move, prune, split, swap, type Side } from "./layout";
+import { largest, leaves, move, prune, resize, split, swap, type Path, type Side } from "./layout";
 
 /** The viewer in front, if it is one the layout places. */
 const frontPane = (view: View): number | undefined =>
@@ -48,11 +48,15 @@ export function autoPlace(view: View, item: string, entry?: string): View | unde
 
 /**
  * Ordinary Open: with no front pane, as `autoPlace`; a preview in front is replaced in place, and a pinned pane
- * gets the new viewer to its right. `entry` is the entry of the item's Content the viewer starts on.
+ * gets the new viewer to its right. `entry` is the entry of the item's Content the viewer starts on. [AI] Opening
+ * what the front pane already shows (the item, and the entry when given) changes nothing, so the frame and the clock
+ * it has are not lost to a second open of the same row; the reference opens it again.
  */
 export function open(view: View, item: string, entry?: string): View | undefined {
   const front = frontPane(view);
   if (front === undefined) return autoPlace(view, item, entry);
+  const shown = view.viewers[front];
+  if (shown?.item === item && (entry === undefined || shown.entry === entry)) return view;
   const spot = view.viewers[front]?.pinned ? { beside: front } : { replacing: front };
   return put(view, spot, viewerOf(item, entry, false));
 }
@@ -94,6 +98,23 @@ export function close(view: View, gone: readonly number[]): View {
   const active =
     view.active !== undefined && placed.includes(view.active) ? view.active : placed[0];
   return { ...view, active, layout, viewers };
+}
+
+/**
+ * `view` with the split at `path` giving its first child `share`. Panes `keep` rejects (those of items the Doc has
+ * closed) leave first, as `close` has them leave, so a view never holds a viewer its layout does not place.
+ */
+export function resized(
+  view: View,
+  path: Path,
+  share: number,
+  keep: (viewer: number) => boolean,
+): View {
+  const left = close(
+    view,
+    leaves(view.layout).filter((id) => !keep(id)),
+  );
+  return left.layout ? { ...left, layout: resize(left.layout, path, share) } : left;
 }
 
 /** `view` with the pane `viewer` dropped on the `side` of `target`; it keeps its pin and comes to the front. */

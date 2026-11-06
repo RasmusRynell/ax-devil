@@ -12,8 +12,8 @@ import { reasonOf } from "../errors";
 import type { ItemState } from "../generated/api";
 import { useCan, useSetView, useView } from "../session/session";
 import { viewerFor } from "../viewers";
-import { prune, rects, resize, seams, type Path, type Size } from "./layout";
-import { activated, moved, pinned } from "./placement";
+import { extent, prune, rects, resize, seams, type Path, type Size } from "./layout";
+import { activated, moved, pinned, resized } from "./placement";
 import { Pane } from "./Pane";
 import { ReloadOffer } from "./ReloadOffer";
 import { Seam } from "./Seam";
@@ -85,8 +85,12 @@ function useSize(): [Size, RefObject<HTMLDivElement | null>] {
     const element = ref.current;
     if (!element) return;
     const read = () => {
+      // Less the scroll bars, which take room the panes cannot have.
       const box = element.getBoundingClientRect();
-      const [w, h] = [Math.round(box.width), Math.round(box.height)];
+      const [w, h] = [
+        Math.round(box.width - (element.offsetWidth - element.clientWidth)),
+        Math.round(box.height - (element.offsetHeight - element.clientHeight)),
+      ];
       setSize((now) => (now.w === w && now.h === h ? now : { w, h }));
     };
     read();
@@ -103,7 +107,8 @@ function useSize(): [Size, RefObject<HTMLDivElement | null>] {
  * The central area while viewers are open: a pane for each, laid out as the window's view says. The panes are
  * siblings, each placed from the rectangle its place in the layout gives it, never nested like the layout: a pane
  * that moves or is split keeps its place in the document, so its viewer neither remounts nor restarts. A seam
- * shows a share while it is dragged and the view takes it when the drag ends.
+ * shows a share while it is dragged and the view takes it when the drag ends. Panes never get less than their least
+ * size: an area too small for them scrolls.
  */
 export function SplitArea() {
   const { viewers, active } = useViewers();
@@ -132,38 +137,41 @@ export function SplitArea() {
   const onResize = (path: Path, share: number, final: boolean) => {
     if (!final) return setDragging({ path, share });
     setDragging(null);
-    if (placed) setView((now) => ({ ...now, layout: resize(placed, path, share) }));
+    setView((now) => resized(now, path, share, (id) => viewers.some((viewer) => viewer.id === id)));
   };
 
+  const room = extent(shown, size);
   return (
-    <div ref={area} className="relative h-full min-h-0 w-full min-w-0 overflow-hidden">
-      {viewers.map((viewer) => {
-        const box = boxes.get(viewer.id);
-        return (
-          box && (
-            <Pane
-              key={viewer.id}
-              viewer={viewer.id}
-              title={viewer.item.label}
-              pinned={viewer.pinned}
-              active={viewer.id === active?.id}
-              rect={box}
-              canPin={mayArrange}
-              canClose={mayClose}
-              dragged={dragged}
-              onActivate={() => setView((now) => activated(now, viewer.id))}
-              onPin={(pin) => setView((now) => pinned(now, viewer.id, pin))}
-              onClose={() => closePanes([viewer.id])}
-              onDrop={(source, side) => setView((now) => moved(now, source, viewer.id, side))}
-            >
-              <PaneContent viewer={viewer} dismissed={dismissed} onDismiss={dismiss} />
-            </Pane>
-          )
-        );
-      })}
-      {bars.map((seam) => (
-        <Seam key={seam.path.join("")} seam={seam} onResize={onResize} />
-      ))}
+    <div ref={area} className="h-full min-h-0 w-full min-w-0 overflow-auto">
+      <div className="relative" style={{ width: room.w, height: room.h }}>
+        {viewers.map((viewer) => {
+          const box = boxes.get(viewer.id);
+          return (
+            box && (
+              <Pane
+                key={viewer.id}
+                viewer={viewer.id}
+                title={viewer.item.label}
+                pinned={viewer.pinned}
+                active={viewer.id === active?.id}
+                rect={box}
+                canPin={mayArrange}
+                canClose={mayClose}
+                dragged={dragged}
+                onActivate={() => setView((now) => activated(now, viewer.id))}
+                onPin={(pin) => setView((now) => pinned(now, viewer.id, pin))}
+                onClose={() => closePanes([viewer.id])}
+                onDrop={(source, side) => setView((now) => moved(now, source, viewer.id, side))}
+              >
+                <PaneContent viewer={viewer} dismissed={dismissed} onDismiss={dismiss} />
+              </Pane>
+            )
+          );
+        })}
+        {bars.map((seam) => (
+          <Seam key={seam.path.join("")} seam={seam} onResize={onResize} />
+        ))}
+      </div>
     </div>
   );
 }

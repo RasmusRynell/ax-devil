@@ -19,16 +19,16 @@ export function Seam({
 }) {
   const { axis, rect, offset, least, most, path } = seam;
   const row = axis === "row";
-  const drag = useRef<{ from: number; offset: number; last: number } | null>(null);
+  const drag = useRef<{ from: number; offset: number; last: number; moved: boolean } | null>(null);
   const within = (at: number) => Math.max(least, Math.min(most, at));
   const along = (event: PointerEvent<HTMLElement>) => (row ? event.clientX : event.clientY);
 
   const end = () => {
     const started = drag.current;
     drag.current = null;
-    // A click that moved nothing keeps the share; a lost capture after a pointer-up finds nothing to end.
-    if (started && started.last !== started.offset)
-      onResize(path, shareAt(seam, started.last), true);
+    // A click that moved nothing has shown nothing to end; a lost capture after a pointer-up finds nothing either.
+    // A drag that came back to where it began still ends, so the area stops showing its steps.
+    if (started?.moved) onResize(path, shareAt(seam, started.last), true);
   };
   const onKeyDown = (event: KeyboardEvent<HTMLElement>) => {
     const [back, forward] = row ? ["ArrowLeft", "ArrowRight"] : ["ArrowUp", "ArrowDown"];
@@ -56,11 +56,12 @@ export function Seam({
       onKeyDown={onKeyDown}
       onPointerDown={(event) => {
         event.currentTarget.setPointerCapture(event.pointerId);
-        drag.current = { from: along(event), offset, last: offset };
+        drag.current = { from: along(event), offset, last: offset, moved: false };
       }}
       onPointerMove={(event) => {
         const started = drag.current;
         if (!started || event.buttons === 0) return;
+        started.moved = true;
         started.last = within(started.offset + along(event) - started.from);
         onResize(path, shareAt(seam, started.last), false);
       }}

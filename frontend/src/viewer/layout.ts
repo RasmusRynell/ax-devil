@@ -27,11 +27,11 @@ export interface SeamInfo {
 }
 
 /**
- * [AI] The least a pane shrinks to, in CSS pixels: wide enough for its header buttons and a transport bar, and tall
- * enough for the header and a picture, which stays readable at 200% zoom in the window minimum. The Python panes keep
- * their widgets' own minimum sizes instead of one number.
+ * [AI] The least a pane shrinks to, in CSS pixels: wide enough for its header buttons and a title stub, and tall
+ * enough for the header and a strip of picture. Two panes fit the 320 CSS pixels of the smallest window at 200% zoom;
+ * more are reached by scrolling the area. The Python panes keep their widgets' own minimum sizes instead of one number.
  */
-export const LEAST_PANE: Size = { w: 240, h: 160 };
+export const LEAST_PANE: Size = { w: 160, h: 120 };
 
 /** The whole of a split, in shares. */
 export const WHOLE = 10_000;
@@ -134,17 +134,25 @@ function leastAlong(layout: Layout, axis: Axis): number {
 }
 
 /**
- * Where a split puts its seam inside `length`: its share, kept so neither child gets less than its least. When both
- * cannot have theirs, the space divides in proportion to them, so the panes shrink together instead of overflowing.
+ * Where a split puts its seam inside `length`, which holds both children's least sizes (`extent` makes sure of it): its
+ * share, kept so neither child gets less than its least.
  */
 function seamAt(layout: Layout & { type: "split" }, length: number) {
   const [a, b] = [leastAlong(layout.first, layout.axis), leastAlong(layout.second, layout.axis)];
-  if (a + b >= length) {
-    const fixed = Math.round((length * a) / (a + b));
-    return { offset: fixed, least: fixed, most: fixed };
-  }
   const wanted = Math.round((length * layout.share) / WHOLE);
   return { offset: Math.max(a, Math.min(length - b, wanted)), least: a, most: length - b };
+}
+
+/**
+ * The size the panes take in an area of `size`: the area, or larger when the panes' least sizes need more room, which
+ * the area then scrolls instead of squeezing the panes out of reach.
+ */
+export function extent(layout: Layout | undefined, size: Size): Size {
+  if (!layout) return size;
+  return {
+    w: Math.max(size.w, leastAlong(layout, "row")),
+    h: Math.max(size.h, leastAlong(layout, "column")),
+  };
 }
 
 function lay(
@@ -175,7 +183,7 @@ function lay(
 
 function laid(layout: Layout | undefined, size: Size) {
   const into = { rects: new Map<number, Rect>(), seams: [] as SeamInfo[] };
-  if (layout) lay(layout, { x: 0, y: 0, ...size }, [], into);
+  if (layout) lay(layout, { x: 0, y: 0, ...extent(layout, size) }, [], into);
   return into;
 }
 

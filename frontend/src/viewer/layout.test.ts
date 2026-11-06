@@ -2,6 +2,7 @@ import { describe, expect, it } from "vite-plus/test";
 import type { Axis, Layout } from "../generated/api";
 import {
   dropSide,
+  extent,
   largest,
   LEAST_PANE,
   leaves,
@@ -100,10 +101,13 @@ describe("laying out", () => {
     expect(one.w).toBe(size.w - 2 * LEAST_PANE.w);
   });
 
-  it("shrinks panes together when the area cannot hold their least sizes, and still fills it", () => {
+  it("grows past the area when the least sizes need more room, instead of squeezing panes out of reach", () => {
+    const layout = cut("row", pane(1), cut("row", pane(2), pane(3)));
     const narrow = { w: 300, h: 600 };
-    const placed = [...rects(cut("row", pane(1), pane(2)), narrow).values()];
-    expect(placed.map(({ w }) => w)).toEqual([150, 150]);
+    expect(extent(layout, narrow)).toEqual({ w: 3 * LEAST_PANE.w, h: 600 });
+    const placed = [...rects(layout, narrow).values()];
+    expect(placed.map(({ w }) => w)).toEqual([LEAST_PANE.w, LEAST_PANE.w, LEAST_PANE.w]);
+    expect(extent(layout, { w: 1000, h: 50 })).toEqual({ w: 1000, h: LEAST_PANE.h });
   });
 
   it("picks the largest pane, the first among equals", () => {

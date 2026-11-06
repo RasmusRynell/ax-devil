@@ -162,17 +162,28 @@ function panel(selector, ellipsised = false) {
 }
 
 /**
- * The split area with several panes: every pane and seam inside the area, no two panes overlapping, and each header's
- * buttons reachable. What a viewer shows inside a pane is checked with one pane open.
+ * The split area with several panes: every pane inside the area's contents, no two panes overlapping, and each
+ * header's buttons and each seam within reach: on screen and not covered, or off screen in an area that scrolls. What
+ * a viewer shows inside a pane is checked with one pane open.
  */
 function split() {
   const problems = [];
-  const area = document.querySelector("main > div").getBoundingClientRect();
+  const outer = document.querySelector("main > div");
+  const view = outer.getBoundingClientRect();
+  const area = outer.firstElementChild.getBoundingClientRect();
+  const scrolls =
+    outer.scrollWidth > outer.clientWidth + 1 || outer.scrollHeight > outer.clientHeight + 1;
   const inside = (rect, box) =>
     rect.left >= box.left - 1 &&
     rect.right <= box.right + 1 &&
     rect.top >= box.top - 1 &&
     rect.bottom <= box.bottom + 1;
+  const reachable = (control) => {
+    const rect = control.getBoundingClientRect();
+    const [x, y] = [(rect.left + rect.right) / 2, (rect.top + rect.bottom) / 2];
+    if (x < view.left || x > view.right || y < view.top || y > view.bottom) return scrolls;
+    return control.contains(document.elementFromPoint(x, y));
+  };
   const panes = [...document.querySelectorAll('[role=group][data-cursor-id^="pane:"]')];
   const rects = panes.map((pane) => pane.getBoundingClientRect());
   panes.forEach((pane, index) => {
@@ -186,22 +197,13 @@ function split() {
       if (across > 1 && down > 1) problems.push(`panes overlap: ${name}`);
     });
     for (const control of pane.querySelectorAll("[draggable] button")) {
-      const rect = control.getBoundingClientRect();
-      const top = document.elementFromPoint(
-        (rect.left + rect.right) / 2,
-        (rect.top + rect.bottom) / 2,
-      );
-      if (!inside(rect, rects[index]) || !control.contains(top))
+      if (!inside(control.getBoundingClientRect(), rects[index]) || !reachable(control))
         problems.push(`header button unreachable: ${control.ariaLabel}`);
     }
   });
   for (const seam of document.querySelectorAll("[role=separator][aria-label='Resize panes']")) {
-    const rect = seam.getBoundingClientRect();
-    const top = document.elementFromPoint(
-      (rect.left + rect.right) / 2,
-      (rect.top + rect.bottom) / 2,
-    );
-    if (!inside(rect, area) || !seam.contains(top)) problems.push("seam unreachable");
+    if (!inside(seam.getBoundingClientRect(), area) || !reachable(seam))
+      problems.push("seam unreachable");
   }
   return problems;
 }

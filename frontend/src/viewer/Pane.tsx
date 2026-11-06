@@ -90,6 +90,7 @@ export function Pane({
       aria-label={title}
       aria-current={active || undefined}
       data-cursor-id={`pane:${viewer}`}
+      data-cursor-pane={viewer}
       style={{ left: rect.x, top: rect.y, width: rect.w, height: rect.h }}
       className="absolute flex min-h-0 min-w-0 flex-col overflow-hidden bg-surface"
       onPointerDownCapture={() => !active && onActivate()}

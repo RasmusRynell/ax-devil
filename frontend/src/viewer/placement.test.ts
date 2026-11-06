@@ -2,7 +2,16 @@ import { describe, expect, it } from "vite-plus/test";
 import type { Layout, View, ViewerView } from "../generated/api";
 import { EMPTY_VIEW } from "../session/views";
 import { leaves } from "./layout";
-import { autoPlace, close, leftWithout, moved, open, openToSide, reuse } from "./placement";
+import {
+  autoPlace,
+  close,
+  leftWithout,
+  moved,
+  open,
+  openToSide,
+  resized,
+  reuse,
+} from "./placement";
 
 const pane = (viewer: number): Layout => ({ type: "pane", viewer });
 const row = (first: Layout, second: Layout, share = 5000): Layout => ({
@@ -38,6 +47,14 @@ describe("ordinary Open", () => {
     expect(next.viewers[next.active!]).toEqual({ item: "d", pinned: false, entry: "d/1" });
     // The replaced viewer is gone, and its number is not reused.
     expect(Object.keys(next.viewers)).toEqual(["1", "3", "4"]);
+  });
+
+  it("changes nothing when the front pane already shows what is opened, so its clock is kept", () => {
+    const view = viewOf(2, ["a"], ["b", true]);
+    view.viewers[2] = { item: "b", pinned: true, entry: "b/1" };
+    expect(open(view, "b")).toBe(view);
+    expect(open(view, "b", "b/1")).toBe(view);
+    expect(itemsOf(open(view, "b", "b/2")!)).toEqual(["a", "b", "b"]);
   });
 
   it("opens to the right of a pinned pane in front, and never replaces it", () => {
@@ -104,6 +121,16 @@ describe("closing", () => {
     // A replaced preview leaves its item without a viewer too, unless another pane shows it.
     expect(leftWithout(view, open(view, "c")!)).toEqual([]);
     expect(leftWithout(viewOf(1, ["b"]), open(viewOf(1, ["b"]), "c")!)).toEqual(["b"]);
+  });
+});
+
+describe("resizing", () => {
+  it("resizes the view as it is now, and lets the panes of closed items go", () => {
+    const view = viewOf(1, ["a"], ["b"], ["c"]);
+    const next = resized(view, [], 3000, (id) => id !== 2);
+    expect(leaves(next.layout)).toEqual([1, 3]);
+    expect(Object.keys(next.viewers)).toEqual(["1", "3"]);
+    expect(next.layout).toMatchObject({ share: 3000 });
   });
 });
 

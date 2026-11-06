@@ -175,9 +175,32 @@ module.exports.split = async (window) => {
   assert.ok(low > 100 && high > 100, `Neither pane collapses: ${low} and ${high}`);
   await shoot("split-resized.png");
 
-  // Closing the pinned pane leaves the first as the one open viewer, a preview, for the scenarios that follow.
-  await js(`${PANES}[1].querySelector('[aria-label="Close this pane"]').click()`);
-  await wait(`${PANES}.length === 1`);
+  // More panes than the smallest window holds at 200% scroll instead of squeezing: four panes in a row, the area
+  // wider than the window, and the last pane's buttons within reach once it is scrolled to its end.
+  for (const count of [3, 4]) {
+    await js(`${row}.dispatchEvent(new MouseEvent('dblclick', { bubbles: true, ctrlKey: true }))`);
+    await wait(`${PANES}.length === ${count}`);
+  }
+  await sidebar(false);
+  await setView(window, [640, 480], 2);
+  const area = "document.querySelector('main > div')";
+  assert.equal(await js(`${area}.scrollWidth > ${area}.clientWidth`), true, "The area scrolls");
+  await both("split-many-small", async () => {
+    for (const end of [0, 1e6]) {
+      await js(`${area}.scrollTo(${end}, 0)`);
+      await frames({ js });
+      assert.deepEqual(await js(`(${fit.split.toString()})()`), [], "Four panes fit at 200%");
+    }
+    await js(`${area}.scrollTo(0, 0)`);
+  });
+  await setView(window, [1100, 720], 1);
+  await sidebar(true);
+
+  // Closing the panes but the first leaves it as the one open viewer, for the scenarios that follow.
+  for (let open = 4; open > 1; open--) {
+    await js(`${PANES}[${open - 1}].querySelector('[aria-label="Close this pane"]').click()`);
+    await wait(`${PANES}.length === ${open - 1}`);
+  }
   assert.deepEqual(await pins(), ["false"]);
   nativeTheme.themeSource = theme;
 };

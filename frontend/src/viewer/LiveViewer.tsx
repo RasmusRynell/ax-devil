@@ -30,19 +30,21 @@ import { NOTHING_HIDDEN } from "./hidden";
 const exportable = (entry: { kind: string; id?: string }) => entry.id !== "export-video";
 
 function Live({
+  viewer,
   session,
   item,
   entry,
   name,
 }: {
   session: LiveSession;
+  viewer: number;
   item: string;
   /** The Content's id: a live video's one entry. */
   entry: string;
   name: string;
 }) {
   const view = useSyncExternalStore(session.subscribe, session.getSnapshot);
-  useReportStatus(item, view);
+  useReportStatus(viewer, item, view);
   const { values, shortcuts } = useSettings();
   const objectDetails = values["overlays.object_details"] === true;
   const allowed = useAllowed();
@@ -240,6 +242,14 @@ export function LiveVideoViewer({
   }, [ticket, connect]);
 
   return (
-    session && <Live session={session} item={item} entry={content.id} name={content.display_name} />
+    session && (
+      <Live
+        session={session}
+        viewer={viewer}
+        item={item}
+        entry={content.id}
+        name={content.display_name}
+      />
+    )
   );
 }
