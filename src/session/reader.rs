@@ -166,7 +166,7 @@ async fn answer(
         defaults = defaults.without_secrets();
     }
     let session = handle.state();
-    let saved = wire::Saved::new(&session.doc.workspace.workspace, owner);
+    let saved = wire::Saved::new(&session.doc.workspace.workspace, owner, session.expands);
     let (command, watch) = match wire::command(
         cmd,
         &state.plugins.handlers(),

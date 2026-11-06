@@ -241,6 +241,23 @@ async fn another_stream_of_a_camera_copies_its_saved_login_for_the_owner_only() 
         .await,
     );
     assert!(acks.iter().all(ok));
+    // A reference would read this machine's environment for the owner's session, which a watcher may not ask for.
+    let refused = answer(
+        &state,
+        &watcher,
+        5,
+        add_live(json!({"host": "cam.local", "username": "$PATH"})),
+    )
+    .await;
+    assert!(matches!(
+        refused,
+        SessionServerMessage::Ack {
+            outcome: AckOutcome::Refused {
+                code: sessions::session::Refusal::Invalid
+            },
+            ..
+        }
+    ));
 
     let doc = owner.state().doc.clone();
     let logins: Vec<_> = doc
