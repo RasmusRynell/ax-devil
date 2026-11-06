@@ -51,6 +51,7 @@ export function PresenceStrip({
       {ticks.map((frame) => (
         <span
           key={frame}
+          data-tick={frame}
           className="absolute inset-y-0 w-hairline bg-muted"
           style={{ left: `min(${at(frame)}%, calc(100% - var(--spacing-hairline)))` }}
         />

@@ -55,6 +55,15 @@ export class FakeFiles {
   };
   view = (_lane: number): FileScopeView => this.#view;
   appearances = { want: () => {}, view: () => null };
+  events = {
+    view: () => ({ pending: false, page: null, unavailable: null }),
+    request: () => {},
+    flush: () => {},
+    release: () => {},
+    want: () => {},
+    event: () => null,
+    eventUnavailable: () => null,
+  };
   locating = () => {};
   flush = () => {};
   request = (_lane: number, _text: string, _sort: FileSortWire, offset: number, limit: number) => {

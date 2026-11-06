@@ -52,6 +52,8 @@ export interface Column<Row> {
   sortable?: boolean;
   /** 0 keeps the column shown; a higher number is hidden earlier, the highest first, once it does not fit. */
   priority?: number;
+  /** Draws its text in the muted color. */
+  muted?: boolean;
   /** Takes the room the others leave. */
   stretch?: boolean;
   /** Fewest characters the column is shrunk to, instead of its kind's. */

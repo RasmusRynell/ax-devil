@@ -1,4 +1,5 @@
 import type { Sort } from "./objects";
+import type { TableMemory } from "./table/Table";
 
 /** Which objects the list shows: those of the frame on screen or those of the whole file. */
 export type Scope = "frame" | "file";
@@ -27,6 +28,25 @@ export type ListState = {
   /** Where File scope last found the object of the open page, so the rows around it load again once the panel opens. */
   anchor: { entity: string; row: number } | null;
 };
+
+/** What the user set on the Events list: kept by the viewer, so the list is as it was left when the panel opens again. */
+export type EventsState = {
+  text: string;
+  /** Whether the list keeps the line in view: not once the user scrolled it out of view, until they bring it back. */
+  following: boolean;
+  /** Where the list last found the event of the open page, so the rows around it load again once the panel opens. */
+  anchor: { event: number; row: number } | null;
+  /** How far the list was scrolled, written by the list as it scrolls; each viewer has a memory of its own. */
+  memory: TableMemory;
+};
+
+/** An Events list nobody has searched or scrolled. */
+export const freshEvents = (): EventsState => ({
+  text: "",
+  following: true,
+  anchor: null,
+  memory: { top: 0, cursor: null },
+});
 
 /** A list nobody has searched or sorted. */
 export const FRESH_LIST: ListState = {

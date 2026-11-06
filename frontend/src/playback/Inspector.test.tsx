@@ -74,7 +74,15 @@ function backend() {
 /** The inspector with the memory a viewer would hold for it. */
 function Viewer({ inspection, reach }: { inspection: Shown; reach: Reach }) {
   const [memory, onMemory] = useState(FRESH_MEMORY);
-  return <Inspector inspection={inspection} memory={memory} onMemory={onMemory} reach={reach} />;
+  return (
+    <Inspector
+      inspection={inspection}
+      memory={memory}
+      onMemory={onMemory}
+      reach={reach}
+      onEvent={() => {}}
+    />
+  );
 }
 
 /** Frames 40 ms apart, the first at 01:02:03.004 into the day. */

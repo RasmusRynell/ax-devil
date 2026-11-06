@@ -18,8 +18,10 @@ export function MiddleElided({
     <span title={title} className={`flex min-w-0 ${className}`}>
       {text.length > 2 * TAIL ? (
         <>
-          <span className="truncate">{text.slice(0, -TAIL)}</span>
-          <span className="shrink-0">{text.slice(-TAIL)}</span>
+          <span className="overflow-hidden text-ellipsis whitespace-pre">
+            {text.slice(0, -TAIL)}
+          </span>
+          <span className="shrink-0 whitespace-pre">{text.slice(-TAIL)}</span>
         </>
       ) : (
         <span className="truncate">{text}</span>

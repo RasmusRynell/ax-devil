@@ -6,9 +6,6 @@ import type { Tone } from "../kit/look";
 import { describe, headline, needsRetry, problemLine, toneOf, utcTime } from "./words";
 import type { LiveView } from "./view";
 
-/** The side panels a live viewer opens beside the picture, one at a time. */
-export type LivePanel = "objects" | "events";
-
 /** What the bar asks of the session. */
 export interface LiveControls {
   pause(): void;
@@ -44,21 +41,22 @@ function FeedChip({
 
 /**
  * The live viewer's bar over its picture: where the video and the overlay stand and a Retry when one is stuck or
- * failed, the UTC time and number of the frame on screen, Pause or Resume, and the two side panels. With `disabled`
+ * failed, the UTC time and number of the frame on screen, Pause or Resume, and the media tools. With `disabled`
  * (a window that follows a presenter, whose stream the backend does not let it control) the controls only report.
  */
 export function LiveBar({
   view,
   controls,
   disabled,
-  panel,
-  onPanel,
+  tools,
+  onTools,
 }: {
   view: LiveView;
   controls: LiveControls;
   disabled: boolean;
-  panel: LivePanel | null;
-  onPanel: (panel: LivePanel | null) => void;
+  /** Whether the media tools show beside the picture. */
+  tools: boolean;
+  onTools: (open: boolean) => void;
 }) {
   const { shown, paused, video, overlay, behind, waiting } = view;
   const time = shown ? utcTime(shown.timestampUs) : "00:00:00";
@@ -111,19 +109,8 @@ export function LiveBar({
           >
             {paused ? "Resume" : "Pause"}
           </Button>
-          <ToggleChip
-            icon="layers"
-            checked={panel === "objects"}
-            onChange={(on) => onPanel(on ? "objects" : null)}
-          >
-            Objects
-          </ToggleChip>
-          <ToggleChip
-            icon="layout-list"
-            checked={panel === "events"}
-            onChange={(on) => onPanel(on ? "events" : null)}
-          >
-            Events
+          <ToggleChip icon="layers" checked={tools} onChange={onTools}>
+            Media tools
           </ToggleChip>
         </div>
       </div>

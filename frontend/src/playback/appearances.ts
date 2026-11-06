@@ -5,6 +5,7 @@
  * dropped.
  */
 
+import type { EventRowWire } from "../generated/api";
 import type { LaneSet } from "./lanes";
 import { basisOf, FOLLOWING_RETRIES, FOLLOWING_RETRY_MS, readyOf } from "./fileBasis";
 import type { ClientMessage, ServerMessage } from "./protocol";
@@ -18,6 +19,10 @@ export type Appearance = {
   spans: Spans;
   /** More spans exist than were sent: these are the first ones. */
   truncated: boolean;
+  /** The events that involve the object, in frame order. */
+  events: readonly EventRowWire[];
+  /** More events involve the object than were sent: these are the first ones. */
+  eventsTruncated: boolean;
 };
 
 type Slot = {
@@ -119,7 +124,13 @@ export class Appearances {
       )
         return;
       slot.asked = null;
-      this.#set(slot, { entity: slot.entity, spans: answer.spans, truncated: answer.truncated });
+      this.#set(slot, {
+        entity: slot.entity,
+        spans: answer.spans,
+        truncated: answer.truncated,
+        events: answer.events,
+        eventsTruncated: answer.events_truncated,
+      });
       return;
     }
     slot.asked = null;

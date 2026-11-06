@@ -24,9 +24,9 @@ import { allHidden, shownLanes } from "./laneCells";
 import { savedTiming } from "./lanes";
 import { useLaneFullscreen } from "./laneFullscreen";
 import { Popover } from "../kit/Popover";
-import { ObjectsPanel, type Place } from "../tools/ObjectsPanel";
-import { FRESH_LIST, type ListState } from "../tools/listState";
-import { EMPTY, jump, topObject, type PageStack } from "../tools/pageStack";
+import { MediaToolsPanel } from "../tools/MediaToolsPanel";
+import { jump } from "../tools/pageStack";
+import { useMediaTools } from "../tools/useMediaTools";
 import type { LaneSettings, Viewport } from "./contract";
 import { FRESH_MEMORY, type InspectorMemory } from "./fields";
 import { ObjectLayer, type ObjectLayerHandle } from "./ObjectLayer";
@@ -80,14 +80,8 @@ function Playback({
   // Export is open, for every lane or for the one the lane menu was used on.
   const [exporting, setExporting] = useState<{ lane: number | null } | null>(null);
   const [tools, setTools] = useState(false);
-  // The width the user gave the media tools, kept while they are closed.
-  const [toolsWidth, setToolsWidth] = useState<number | null>(null);
-  // The pages open in the media tools, kept while they are closed. The selected object is the one on top.
-  const [pages, setPages] = useState<PageStack>(EMPTY);
-  // The objects list's scope, search and sorts, kept while the panel is closed: the page steps through that list.
-  const [list, setList] = useState<ListState>(FRESH_LIST);
-  // Whether the selected object is outlined on the pictures: clearing the selection there does not close its page.
-  const [outlined, setOutlined] = useState(true);
+  // The media tools' pages, lists and width, kept while they are closed; the selected object is the page on top.
+  const { pages, outlined, setOutlined, navigate, panel } = useMediaTools(session, objectDetails);
   // One switch for every lane; it lives here so it stays across entries.
   const [info, setInfo] = useState(false);
   useChromeVisibility(pane);
@@ -97,23 +91,6 @@ function Playback({
   shownViewport.current = viewport;
   // A viewer that opens takes the keyboard, so its shortcuts work at once.
   useEffect(() => pane.current?.focus({ preventScroll: true }), []);
-  // The selection and the pages move together, and a selection is the object of the page on top.
-  const navigate = useCallback(
-    (next: PageStack, at: Place) => {
-      const object = topObject(next);
-      setPages(next);
-      setOutlined(true);
-      session.select(object && { ...at, entity: object.entity });
-    },
-    [session],
-  );
-  // Another entry's session starts, or pointing at objects is switched off: no page stays open, nothing stays selected.
-  useEffect(() => {
-    setPages(EMPTY);
-    setList(FRESH_LIST);
-    setOutlined(true);
-    if (!objectDetails) session.select(null);
-  }, [session, objectDetails]);
   // The selected object's page is the one the media tools show, so its fields are asked for only while they are open.
   useEffect(() => session.showInspector(tools), [session, tools]);
   const zoom = useCallback(
@@ -246,19 +223,14 @@ function Playback({
             )}
           </div>
           {tools && (
-            <ObjectsPanel
+            <MediaToolsPanel
+              {...panel}
               source={session}
               view={view}
               canSeek={canChange}
               selectable={objectDetails}
-              pages={pages}
-              onNavigate={navigate}
-              list={list}
-              onList={setList}
               memory={inspector}
               onMemory={onInspector}
-              width={toolsWidth}
-              onWidth={setToolsWidth}
               onClose={() => setTools(false)}
             />
           )}
