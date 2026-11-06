@@ -3,15 +3,15 @@
 
 [pr_reviewer]
 extra_instructions = """\
-This is a Python 3.10+ PySide6 desktop app (strict mypy, Ruff). Report only findings a maintainer should act on:
-- Logic bugs and incorrect behavior, including edge cases and unhandled error paths.
-- Security problems, including secrets, unsafe file or network handling, and untrusted plugin input.
-- Races, deadlocks and thread misuse, especially Qt GUI-thread rules and background workers.
-- Performance regressions on frame, decode or paint hot paths.
-- Type-safety and API-contract violations, and breaking changes to config, plugin or CLI behavior.
+This is a Rust backend, React/TypeScript frontend and Electron desktop app. Report only findings a maintainer should act on:
+- Logic bugs and incorrect behavior, including edge cases and unhandled error paths (`unwrap`/`expect` on fallible input).
+- Security problems, including secrets, unsafe file or network handling, untrusted plugin input, and Electron exposure (IPC, preload, remote-session access, paths from dropped or opened files).
+- Concurrency: blocking calls on async tasks, locks held across `.await`, unbounded channels, deadlocks; React effect cleanup and stale closures.
+- Performance regressions on frame decode, playback, WebSocket and canvas paint hot paths.
+- Contract violations: breaking changes to the Rust `api-types` wire format, workspace files, settings, plugin or CLI behavior. Generated frontend and desktop types are ignored here because `make check` fails when they are stale.
 - Missing tests only for deep modules or rules with real user consequences; the repo deliberately avoids shallow tests.
 For each finding cite the file and line, say why it matters, and suggest a concrete fix.
-Skip style, naming and formatting (Ruff and mypy enforce them), compliments and long summaries.
+Skip style, naming and formatting (rustfmt, clippy and the Vite+ formatter and linter enforce them), compliments and long summaries.
 Stay silent when unsure: prefer no finding over a speculative one.
 """
 num_max_findings = 5
@@ -26,4 +26,4 @@ persistent_comment = true
 max_model_tokens = 200000
 
 [ignore]
-glob = ['Cargo.lock']
+glob = ['Cargo.lock', 'pnpm-lock.yaml', 'frontend/src/generated/*', 'desktop/generated/*']
