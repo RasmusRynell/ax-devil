@@ -184,8 +184,10 @@ pub struct EventDetail {
     pub row: EventRow,
     /// The objects it involves, each once, in the order the event names them.
     pub objects: Vec<Involved>,
-    /// The other events on its frame, in index order.
+    /// The first other events on its frame, in index order.
     pub same_moment: Vec<EventRow>,
+    /// Whether its frame has more other events than `same_moment` holds.
+    pub same_moment_truncated: bool,
 }
 
 /// What event rows are made from: the file's history, its events and objects placed on the video.
@@ -222,9 +224,9 @@ impl<'a> EventView<'a> {
         })
     }
 
-    /// Event `event` with its objects and the events of its frame; `bins` is as for [`crate::Query`]'s rows. `None`
-    /// when the video does not show it.
-    pub fn detail(self, event: u32, bins: u16) -> Option<EventDetail> {
+    /// Event `event` with its objects and up to `same_moment_limit` other events of its frame; `bins` is as for
+    /// [`crate::Query`]'s rows. `None` when the video does not show it.
+    pub fn detail(self, event: u32, bins: u16, same_moment_limit: usize) -> Option<EventDetail> {
         let row = self.row(event)?;
         let mut entities: Vec<u32> = Vec::new();
         for &entity in self.history.event_entities(event) {
@@ -245,15 +247,22 @@ impl<'a> EventView<'a> {
                 }
             })
             .collect();
-        let same_moment = self
+        // One more than the limit is found, to tell that there is more; rows are made for the limit only.
+        let mut others: Vec<u32> = self
             .events
             .on_frame(self.events.frame(event)?, event)
-            .filter_map(|other| self.row(other))
+            .take(same_moment_limit.saturating_add(1))
             .collect();
+        let same_moment_truncated = others.len() > same_moment_limit;
+        others.truncate(same_moment_limit);
         Some(EventDetail {
             row,
             objects,
-            same_moment,
+            same_moment: others
+                .into_iter()
+                .filter_map(|other| self.row(other))
+                .collect(),
+            same_moment_truncated,
         })
     }
 

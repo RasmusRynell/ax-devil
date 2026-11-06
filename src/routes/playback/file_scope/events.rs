@@ -206,7 +206,7 @@ fn detail(
         detail: FileEvent::Found {
             data_revision: cached.data_revision,
             policy_revision: cached.policy_revision,
-            detail: view.detail(ask.event, ask.bins),
+            detail: view.detail(ask.event, ask.bins, MAX_LIMIT as usize),
         },
     }))
 }

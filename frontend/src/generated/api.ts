@@ -3028,9 +3028,13 @@ row: EventRowWire,
  */
 objects: Array<InvolvedWire>, 
 /**
- * The other events on its frame, in index order.
+ * The first other events on its frame, in index order.
  */
-same_moment: Array<EventRowWire>, };
+same_moment: Array<EventRowWire>, 
+/**
+ * Whether its frame has more other events than `same_moment` holds.
+ */
+same_moment_truncated: boolean, };
 
 /**
  * Asks for rows of a lane's event list: every event the video shows, in frame order, kept by the search and paged.

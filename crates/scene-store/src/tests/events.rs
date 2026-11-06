@@ -232,7 +232,7 @@ fn an_event_shows_each_object_once_where_it_is_seen_and_the_other_events_of_its_
     let fixture = fixture(MatchBasis::Frame);
     let view = fixture.view();
 
-    let rename = view.detail(1, 4).expect("the video shows it");
+    let rename = view.detail(1, 4, 9).expect("the video shows it");
     assert_eq!(
         (rename.row.kind, rename.row.label.as_str()),
         (OperationKind::Rename, "Rename a → z")
@@ -250,6 +250,13 @@ fn an_event_shows_each_object_once_where_it_is_seen_and_the_other_events_of_its_
     );
     let moment: Vec<u32> = rename.same_moment.iter().map(|row| row.event).collect();
     assert_eq!(moment, [2], "not the event itself");
+    assert!(!rename.same_moment_truncated);
+    // Event 2 shares the frame with 1 only; a limit of 0 still tells that there is one more.
+    let capped = view.detail(1, 4, 0).expect("the video shows it");
+    assert_eq!(
+        (capped.same_moment.len(), capped.same_moment_truncated),
+        (0, true)
+    );
 
     // The chip of an object the video shows takes its class; one it never shows takes the event's kind.
     let chips: Vec<_> = rename
@@ -260,7 +267,7 @@ fn an_event_shows_each_object_once_where_it_is_seen_and_the_other_events_of_its_
         .collect();
     assert_eq!(chips, [Some("car"), None]);
 
-    assert!(view.detail(5, 4).is_none(), "the video does not show it");
+    assert!(view.detail(5, 4, 9).is_none(), "the video does not show it");
     let events_of = |limit| {
         let (rows, more) = view.object_events("b", limit);
         (rows.iter().map(|r| r.event).collect::<Vec<_>>(), more)
