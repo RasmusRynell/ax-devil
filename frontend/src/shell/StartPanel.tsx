@@ -4,7 +4,6 @@ import { Icon } from "../kit/Icon";
 import type { IconName } from "../kit/icons";
 import { KIND, QUIET, type Kind } from "../kit/look";
 import { RowList } from "../kit/RowList";
-import { SectionCaption } from "../kit/SectionCaption";
 import { useAllowed } from "../session/session";
 import { RECENT_ID, recentLabel, usedOn, useRecents } from "./recents";
 
@@ -21,23 +20,30 @@ export function StartPanel({ onRun }: { onRun: (id: string) => void }) {
   const recents = useRecents(true);
   return (
     <div className="flex flex-col gap-l">
-      <div className="grid max-sm:grid-cols-2">
-        {OPEN.map(([id, icon, kind]) => (
+      <form
+        className="grid max-sm:grid-cols-2"
+        onSubmit={(event) => {
+          event.preventDefault();
+          onRun(OPEN[0][0]);
+        }}
+      >
+        {OPEN.map(([id, icon, kind], at) => (
           <button
             key={id}
-            type="button"
+            // The first button is the form's default: Enter runs it, as the others run on their own click.
+            type={at === 0 ? "submit" : "button"}
             data-cursor-id={`sidebar:${id}`}
             className={`${QUIET} py-xs text-left`}
             disabled={!allowed[scopeOf(id)]}
-            onClick={() => onRun(id)}
+            onClick={at === 0 ? undefined : () => onRun(id)}
           >
             <Icon name={icon} className={kind && allowed[scopeOf(id)] ? KIND[kind] : ""} />
             {command(id).label}
           </button>
         ))}
-      </div>
-      <div className="[@media(max-height:20rem)]:hidden">
-        {recents.length > 0 ? (
+      </form>
+      {recents.length > 0 && (
+        <div className="[@media(max-height:20rem)]:hidden">
           <RowList
             heading="Recent workspaces"
             rows={recents.map(({ path, name, usedMs }) => ({
@@ -49,13 +55,8 @@ export function StartPanel({ onRun }: { onRun: (id: string) => void }) {
             }))}
             onSelect={onRun}
           />
-        ) : (
-          <section className="flex flex-col gap-xs">
-            <SectionCaption heading="Recent workspaces" plain />
-            <p className="m-0 px-m text-muted">No recent workspaces</p>
-          </section>
-        )}
-      </div>
+        </div>
+      )}
     </div>
   );
 }

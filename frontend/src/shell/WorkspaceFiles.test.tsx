@@ -54,6 +54,21 @@ describe("workspace files", () => {
     await waitFor(() => expect(recents).toHaveBeenCalledTimes(2));
   });
 
+  it("shows no recent workspaces heading when there are none, and Open Workspace is the default button", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(() => Promise.resolve(Response.json([]))),
+    );
+    await renderShell();
+    expect(screen.queryByText("Recent workspaces")).toBeNull();
+    const open = document.querySelector<HTMLButtonElement>(
+      '[data-cursor-id="sidebar:open-workspace"]',
+    )!;
+    expect(open).toHaveProperty("type", "submit");
+    fireEvent.click(open);
+    expect(screen.getByRole("textbox", { name: "Path on the server" })).toBeTruthy();
+  });
+
   it("opens a workspace by the path typed where the window has no file dialog", async () => {
     await renderShell();
     fireEvent.click(screen.getByRole("menuitem", { name: "File" }));

@@ -19,7 +19,7 @@ owner's written decision. A new feature gets a row in 01 first.
 | WS-09 | Bookmarks and reviewed marks; Bookmarks view; open at frame | M | in progress | `crates/workspace-files` tests | Data model, validation and the file round trip only; no commands, view or CSV |
 | WS-10 | Bookmarks to CSV | S | todo |  |  |
 | WS-11 | Sidebar views Workspace, Live, Offline, Bookmarks, Plugins; search, sort, filter | M | in progress | `shell/{Shell,Sidebar,WorkspaceTree,WorkspaceTree.search}.test.tsx`, `shell/treeModel.test.ts` | Workspace and Offline: search, Sort (Workspace order, Name), Show hidden; Offline lists Videos and Playlists with a count. Live: search, Sort, Filter |
-| WS-12 | Start panel and welcome area | M | in progress | `shell/Shell.test.tsx`, `shell/WorkspaceFiles.test.tsx` | Add Video, Add Playlist, Open Workspace and recent workspaces work; Live: AC-03 |
+| WS-12 | Start panel and welcome area | M | done | `shell/Shell.test.tsx`, `shell/WorkspaceFiles.test.tsx` | Heading only with recents; Open Workspace default; Live: AC-03 |
 | WS-13 | Split viewer area: drag to split, preview vs pinned panes | M | todo |  |  |
 | WS-14 | Long playlists load collapsed | S | todo |  |  |
 | WS-15 | Hover cards with thumbnails | S | in progress | `tests/it/local_video.rs`, `shell/{WorkspaceTree,LiveView}.test.tsx` | Offline and Live |
@@ -131,8 +131,8 @@ Listed in [parity deviations](parity-deviations.md).
 
 | ID | Feature | P | Status | Test | Notes |
 |----|---------|---|--------|------|-------|
-| DT-01 | Isolated GUI test environment for agents and CI | M | in progress | `make test-desktop` | `scripts/isolated`: private home and display, user-file guard; Linux |
-| DT-02 | UI screenshot harness | M | in progress | `make test-desktop` | `desktop/smoke*.cjs`: main window, menus, dialogs, the fixture playlist's lanes and Objects list in light and dark, at the window minimum and 200% zoom, and the video and sharing scenarios |
+| DT-01 | Isolated GUI test environment for agents and CI | M | done | `make test-desktop` | `scripts/isolated`: private home and display, user-file guard; Linux |
+| DT-02 | UI screenshot harness | M | done | `make test-desktop`, `desktop/fit-coverage.test.cjs` | `desktop/smoke*.cjs`: main window, menus, dialogs, the fixture playlist's lanes and Objects list in light and dark, at the window minimum and 200% zoom, and the video and sharing scenarios |
 | DT-03 | Rendering benchmarks with A/B against a ref | S | in progress | `make bench` | `overlays` bench of the Sample Item encoder; numbers on stdout, nothing asserted |
 | DT-04 | Timestamp alignment report | S | todo |  |  |
 | DT-05 | Release check in clean environments | S | todo |  |  |
