@@ -21,15 +21,15 @@ use crate::{
 use api_types::{
     Audience,
     playback::{
-        ClientMessage, Direction as WireDirection, PLAYBACK_PROTOCOL, ServerMessage, VideoPtsWire,
-        Want as WireWant, envelope,
+        CadenceWire, ClientMessage, Direction as WireDirection, PLAYBACK_PROTOCOL, ServerMessage,
+        VideoPtsWire, Want as WireWant, envelope,
     },
     project,
 };
 use axum::extract::ws::Message;
 use catalogs::Library;
 use foundation::{ErrorCode, FrameFailure, FrameSize, HostPath, UserError};
-use media::PtsTiming;
+use media::{Cadence, PtsTiming};
 use overlay_sync::MatchPolicy;
 use overlays::OverlayService;
 use playback::{Delivery, Direction, Priority, Session, Want};
@@ -64,6 +64,8 @@ pub(super) struct Setup<'a> {
     pub(super) warnings: Vec<String>,
     /// How the video's frame times come from its timestamps; `None` for an image sequence.
     pub(super) pts: Option<PtsTiming>,
+    /// How evenly the video's frames are spaced; `None` for a one-frame video.
+    pub(super) cadence: Option<Cadence>,
     /// The catalogs a lane may draw with, which the viewer asks for by id.
     pub(super) library: &'a Library,
     /// Opens the lanes' overlays.
@@ -146,6 +148,10 @@ pub(super) async fn stream(
         video_pts: setup.pts.map(|pts| VideoPtsWire {
             time_base: [pts.time_base.0, pts.time_base.1],
             first_pts: pts.first_pts,
+        }),
+        cadence: setup.cadence.map(|cadence| CadenceWire {
+            variable: cadence.variable,
+            periods_us: cadence.periods_us,
         }),
     });
     // The overlays stop with `Playing`, which goes when the session ends, a revoked one included.

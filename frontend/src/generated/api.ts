@@ -1769,6 +1769,19 @@ time_base: [number, number],
 first_pts: number, };
 
 /**
+ * How evenly a video's frames are spaced.
+ */
+export type CadenceWire = { 
+/**
+ * Whether more than one distinct period occurs.
+ */
+variable: boolean, 
+/**
+ * The most common periods in microseconds, most common first; at most five.
+ */
+periods_us: number[], };
+
+/**
  * What the frontend sends.
  */
 export type ClientMessage = { "type": "Open", 
@@ -1959,7 +1972,11 @@ catalogs: Array<CatalogInfoWire>,
 /**
  * The video's PTS time base and first PTS; `null` for an image sequence.
  */
-video_pts: VideoPtsWire | null, } | { "type": "LaneStatus", 
+video_pts: VideoPtsWire | null, 
+/**
+ * How evenly the video's frames are spaced; `null` for a one-frame video.
+ */
+cadence: CadenceWire | null, } | { "type": "LaneStatus", 
 /**
  * The lane's position in `Opened.lanes`.
  */
@@ -3052,7 +3069,7 @@ kinds: Array<number>, };
 /**
  * Raised when the messages or the envelope change in a way an older frontend cannot read.
  */
-export const PLAYBACK_PROTOCOL = 8;
+export const PLAYBACK_PROTOCOL = 9;
 
 /**
  * "AXDV" read as a little-endian u32.

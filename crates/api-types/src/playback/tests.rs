@@ -257,12 +257,20 @@ fn opened_and_lane_status_carry_the_source_and_data_revision() {
             time_base: [1, 90_000],
             first_pts: 7_200,
         }),
+        cadence: Some(CadenceWire {
+            variable: true,
+            periods_us: vec![33_000, 34_000],
+        }),
     };
     let json = serde_json::to_value(&opened).unwrap();
-    assert_eq!(json["protocol"], 8);
+    assert_eq!(json["protocol"], 9);
     assert_eq!(
         json["video_pts"],
         json!({"time_base": [1, 90_000], "first_pts": 7_200})
+    );
+    assert_eq!(
+        json["cadence"],
+        json!({"variable": true, "periods_us": [33_000, 34_000]})
     );
     assert_eq!(json["catalogs"][0]["id"], "built-in:standard");
     assert_eq!(

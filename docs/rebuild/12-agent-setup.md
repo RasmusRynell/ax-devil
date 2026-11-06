@@ -13,7 +13,7 @@ Owns: the agent-facing files of the new tree and the skills inventory. Docs layo
 | `CONTEXT.md` | Glossary agents use for names | Port |
 | `Makefile` | Command verbs agents run | Same verbs in the new task runner ([10](10-quality-gates.md)) |
 | `ax-devil --help` epilog | Links docs, AGENTS.md and skills | Keep |
-| `scripts/isolated`, `desktop/smoke.cjs`, `ax-devil catalog check/render` | Headless verification | Rebuild (DT-01, DT-02, RC-04) |
+| `scripts/isolated`, `desktop/smoke.cjs`, `ax-devil catalog check` | Headless verification | Rebuild (DT-01, DT-02, RC-04) |
 
 No `CLAUDE.md` and no agent definitions exist in the repo; do not add them (AGENTS.md is the one entry point).
 

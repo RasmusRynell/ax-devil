@@ -1,7 +1,7 @@
 import { Checkbox, Select } from "../kit/Fields";
 import type { AlignmentWire, BasisWire } from "../generated/api";
 import { Switch } from "../kit/Switch";
-import type { Cadence } from "./cadence";
+import type { CadenceWire } from "./protocol";
 import { useSettings } from "../settings";
 import {
   DEFAULT_STICKY,
@@ -21,7 +21,11 @@ const DEFAULT_PREVIOUS_MS = 50;
 
 type Sync = "exact" | "previous";
 
-const ms = (us: number) => `${Math.round(us / 100) / 10} ms`;
+/** Periods shown of those the backend sends. */
+const SHOWN = 3;
+
+/** A period in milliseconds to six significant digits, as Python's `{:g}` does. */
+const ms = (us: number) => `${Number((us / 1000).toPrecision(6))} ms`;
 
 /** The percentage `matched` is of `samples`, whole, rounded half to even as Python's `{:.0f}` does; 100 for none. */
 function percent(matched: number, samples: number): number {
@@ -48,7 +52,7 @@ function Alignment({
   cadence,
   alignment,
 }: {
-  cadence: Cadence | null;
+  cadence: CadenceWire | null;
   alignment: AlignmentWire | null;
 }) {
   const share = alignment && percent(alignment.matched, alignment.samples);
@@ -61,7 +65,7 @@ function Alignment({
         <p className="m-0">
           {cadence === null
             ? "Video: unknown"
-            : `Video: ${cadence.variable ? "variable" : "constant"}, ${cadence.periodsUs.map(ms).join(", ")}`}
+            : `Video: ${cadence.variable ? "variable" : "constant"}, ${cadence.periods_us.slice(0, SHOWN).map(ms).join(", ")}`}
         </p>
         <p className={`m-0 ${toned}`}>
           {alignment === null
@@ -96,7 +100,7 @@ export function LaneMenuTiming({
 }: {
   lane: LaneState;
   /** How evenly the video's frames are spaced. */
-  cadence: Cadence | null;
+  cadence: CadenceWire | null;
   /** The lane is live: there is no recording to align, so alignment is not shown. */
   live?: boolean;
   onChange: (change: Partial<LaneSettings>) => void;

@@ -1,47 +1,23 @@
-//! Example Scenes for showing what a catalog looks like: a fixed picture and one Sample Item to draw on it.
+//! The example Scene a catalog is exercised on: one Sample Item.
 //!
 //! The Overview has one object for each class the built-in decoders name and one relation, so a catalog's look for
 //! every class, a motion arrow, colour swatches and a relation is visible at once. The item is written by the
 //! same encoder the playback socket uses, so a catalog sees what it sees in the viewer.
 
-use bytes::Bytes;
-use foundation::{
-    ColorDesc, FrameId, FrameLayout, Matrix, MediaTime, PixelFormat, Plane, VideoFrame,
-};
 use scene::{
     BoundingBox, ClassType, Classification, Entity, EntityId, EntityRelation, FilterPolicy,
     Geometry, ImageVelocity, Measurements, MotionState, Observation, Scene, SceneError, SceneTime,
     Score, TimeSlice, Value, serial::columns::encode_sample_item,
 };
 
-/// Width of a sheet's picture.
-pub const SHEET_WIDTH: u32 = 1280;
-/// Height of a sheet's picture.
-pub const SHEET_HEIGHT: u32 = 720;
-
-/// Luma of mid grey in limited range; the chroma planes are 128.
-const GREY_LUMA: u8 = 126;
 /// Objects per row of the Overview.
 const COLUMNS: usize = 5;
 /// The relation's kind, which the built-in catalogs route.
 const RELATION: &str = "has_part";
 
-/// What a sheet draws on: the picture and the Sample Item of its one Scene.
-pub struct Sheet {
-    /// A grey frame of [`SHEET_WIDTH`] x [`SHEET_HEIGHT`].
-    pub picture: VideoFrame,
-    /// The Sample Item of the sheet's Scene, with no class filters.
-    pub item: Vec<u8>,
-}
-
-/// The Overview sheet: see the module documentation.
-pub fn overview() -> Result<Sheet, String> {
-    let item = encode_sample_item(&overview_scene().map_err(describe)?, &no_filters())
-        .map_err(describe)?;
-    Ok(Sheet {
-        picture: grey_picture()?,
-        item,
-    })
+/// The Sample Item of the Overview sheet, with no class filters: see the module documentation.
+pub fn overview() -> Result<Vec<u8>, String> {
+    encode_sample_item(&overview_scene().map_err(describe)?, &no_filters()).map_err(describe)
 }
 
 fn describe(error: SceneError) -> String {
@@ -135,37 +111,6 @@ fn overview_scene() -> Result<Scene, SceneError> {
         .with_relations([part]))
 }
 
-fn grey_picture() -> Result<VideoFrame, String> {
-    let (width, height) = (SHEET_WIDTH as usize, SHEET_HEIGHT as usize);
-    let (luma, chroma) = (width * height, width * height / 4);
-    let mut data = vec![GREY_LUMA; luma];
-    data.resize(luma + 2 * chroma, 128);
-    let plane = |stride: usize, len: usize| Plane {
-        stride: stride as u32,
-        len: len as u32,
-    };
-    let layout = FrameLayout {
-        width: SHEET_WIDTH,
-        height: SHEET_HEIGHT,
-        format: PixelFormat::I420,
-        color: ColorDesc {
-            matrix: Matrix::Bt709,
-            full_range: false,
-        },
-        planes: [
-            plane(width, luma),
-            plane(width / 2, chroma),
-            plane(width / 2, chroma),
-        ],
-    };
-    let id = FrameId {
-        sequence_id: 0,
-        timestamp: MediaTime::ZERO,
-    };
-    VideoFrame::new(id, true, layout, Bytes::from(data))
-        .map_err(|error| format!("Cannot build the Overview picture: {}", error.reason))
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -179,18 +124,14 @@ mod tests {
     }
 
     #[test]
-    fn the_overview_is_a_grey_picture_and_an_item_of_every_class_and_one_relation() {
-        let sheet = overview().expect("the sheet builds");
-
-        let layout = sheet.picture.layout();
-        assert_eq!((layout.width, layout.height), (SHEET_WIDTH, SHEET_HEIGHT));
-        assert!(sheet.picture.plane(0).iter().all(|&luma| luma == GREY_LUMA));
+    fn the_overview_is_an_item_of_every_class_and_one_relation() {
+        let item = overview().expect("the sheet builds");
         // The envelope sends an item as whole words, which the receiver views in place.
-        assert_eq!(sheet.item.len() % 8, 0);
-        assert_eq!(&sheet.item[..4], b"AXSI");
-        assert_eq!(word(&sheet.item, 1), scene::serial::columns::VERSION);
+        assert_eq!(item.len() % 8, 0);
+        assert_eq!(&item[..4], b"AXSI");
+        assert_eq!(word(&item, 1), scene::serial::columns::VERSION);
         // The counts of entities and relations.
-        assert_eq!(word(&sheet.item, 2) as usize, classes().len());
-        assert_eq!(word(&sheet.item, 3), 1);
+        assert_eq!(word(&item, 2) as usize, classes().len());
+        assert_eq!(word(&item, 3), 1);
     }
 }
