@@ -25,11 +25,12 @@ describe("lane menu timing", () => {
         verdict: "ends_far" as const,
       },
     };
-    const variable = { variable: true, periodsUs: [40_000, 80_000] };
+    const variable = { variable: true, periods_us: [33_000, 34_000, 33_367, 50_000] };
     setup({}, ended, undefined, variable);
     tab("Timing");
     const group = screen.getByRole("group", { name: "Alignment" });
-    expect(group.textContent).toContain("Video: variable, 40 ms, 80 ms");
+    expect(group.textContent).toContain("Video: variable, 33 ms, 34 ms, 33.367 ms");
+    expect(group.textContent).not.toContain("50 ms");
     expect(group.textContent).toContain(
       "Overlay: 300 of 334 on a frame (90%, exact 173, tol 30 ms)",
     );

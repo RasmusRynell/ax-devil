@@ -4,6 +4,8 @@
 #![allow(clippy::print_stdout, clippy::print_stderr)] // a test runner without a harness reports with prints
 
 mod common;
+#[path = "adversarial/records.rs"]
+mod records;
 
 use std::{
     io::Write,
@@ -42,7 +44,7 @@ fn main() {
         std::env::set_var("FAKE_LISTED", "listed-value");
     }
     let filter = std::env::args().skip(1).find(|arg| !arg.starts_with('-'));
-    let tests: [(&str, fn()); 9] = [
+    let mut tests: Vec<(&str, fn())> = vec![
         ("environment_is_an_allowlist", environment_is_an_allowlist),
         ("wire_lines_reach_the_sink", wire_lines_reach_the_sink),
         (
@@ -74,6 +76,7 @@ fn main() {
             cancelling_kills_the_plugin_and_removes_its_folder,
         ),
     ];
+    tests.extend(records::TESTS);
     let mut failed = 0;
     for (name, test) in tests {
         if filter
@@ -235,6 +238,7 @@ fn plugin(mode: &str) {
                 std::thread::sleep(Duration::from_millis(50));
             }
         }
+        records if records.starts_with("records-") => records::plugin(records),
         other => panic!("unknown plugin mode {other}"),
     }
 }
@@ -264,6 +268,11 @@ fn fake(folder: &Path, mode: &str, extra: &str) -> std::sync::Arc<PluginDecoder>
         &command.to_string(),
         &format!(r#","env":["FAKE_LISTED"]{extra}"#),
     );
+    let text = if mode.starts_with("records-") {
+        text.replace(r#""input":"path""#, r#""input":"records","bases":["time"]"#)
+    } else {
+        text
+    };
     std::fs::write(folder.join("ax-devil-plugin.json"), text).expect("manifest written");
     LoadedPlugin::load(&folder.join("ax-devil-plugin.json"))
         .expect("manifest loads")

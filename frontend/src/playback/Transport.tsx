@@ -15,7 +15,7 @@ export type Controls = Pick<
 >;
 
 /** Microseconds as `m:ss.cc`, or `h:mm:ss.cc` from one hour. */
-function timecode(us: number): string {
+export function timecode(us: number): string {
   const total = Math.max(0, Math.round(us / 10_000));
   const minutes = Math.floor(total / 6000) % 60;
   const hours = Math.floor(total / 360_000);

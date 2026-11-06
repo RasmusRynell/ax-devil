@@ -1,4 +1,6 @@
 import { useMemo } from "react";
+import { BookmarksView } from "../bookmarks/BookmarksView";
+import { countOf } from "../bookmarks/groups";
 import type { SidebarView } from "../generated/api";
 import type { AddSeed } from "../live/cameras";
 import { ViewPanel } from "../kit/ViewPanel";
@@ -53,6 +55,10 @@ export function Sidebar({
         : 0,
     [workspace, view, listing],
   );
+  const marked = useMemo(
+    () => (workspace && view === "bookmarks" ? countOf(workspace.bookmarks) : 0),
+    [workspace, view],
+  );
   const named = view === "workspace" ? workspace : undefined;
   const rename = useRenameWorkspace();
   const canEdit = useCan("content");
@@ -75,8 +81,8 @@ export function Sidebar({
         action={
           view === "live" && streaming > 0 ? (
             <span className="text-small text-muted">{`${streaming} streaming`}</span>
-          ) : offline > 0 ? (
-            <span className="text-small text-muted">{offline}</span>
+          ) : offline + marked > 0 ? (
+            <span className="text-small text-muted">{offline + marked}</span>
           ) : named?.modified ? (
             <span
               role="img"
@@ -90,10 +96,12 @@ export function Sidebar({
         {view === "live" ? (
           <LiveView onAdd={onAddLive} />
         ) : (
-          <div className={`flex flex-col gap-m px-s pb-s ${listing ? "min-h-0 flex-1" : ""}`}>
+          <div
+            className={`flex flex-col gap-m px-s pb-s ${listing || view === "bookmarks" ? "min-h-0 flex-1" : ""}`}
+          >
             {view === "workspace" && <StartPanel onRun={onRun} />}
             {listing && <WorkspaceTree key={view} {...listing} />}
-            {view === "bookmarks" && <p className="m-0 px-m text-muted">No bookmarks</p>}
+            {view === "bookmarks" && <BookmarksView />}
             {view === "sessions" && <SessionsView />}
             {view === "plugins" && <PluginsView />}
           </div>

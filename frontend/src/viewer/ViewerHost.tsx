@@ -1,9 +1,11 @@
+import { useState } from "react";
 import { reasonOf } from "../errors";
 import type { ItemState } from "../generated/api";
 import { IconButton } from "../kit/IconButton";
 import { QUIET } from "../kit/look";
 import { useCan, useCommand, useView } from "../session/session";
 import { viewerFor } from "../viewers";
+import { ReloadOffer } from "./ReloadOffer";
 import { useViewers } from "./useViewers";
 
 /** What shows for an item whose viewer is not ready: it is resolving, or it failed with a reason. */
@@ -25,13 +27,34 @@ function ItemStatus({ item }: { item: ItemState }) {
   );
 }
 
-function ItemView({ item }: { item: ItemState }) {
+/** `dismissed` is the reload offers the user took down, by item and generation; the host keeps it across tabs. */
+function ItemView({
+  item,
+  dismissed,
+  onDismiss,
+}: {
+  item: ItemState;
+  dismissed: Readonly<Record<string, number>>;
+  onDismiss: (offer: string, count: number) => void;
+}) {
   const { resolution } = item;
   if (resolution.status !== "Resolved") return <ItemStatus item={item} />;
   const { content } = resolution;
   const Viewer = viewerFor(content);
+  // A reload is a new generation, whose changes count from none again.
+  const offer = `${item.id}.${content.generation}`;
   // A new generation is a new stream: closing and reopening the item shows a fresh viewer.
-  return <Viewer key={`${content.id}.${content.generation}`} item={item.id} content={content} />;
+  return (
+    <>
+      <ReloadOffer
+        item={item.id}
+        changed={item.changed ?? 0}
+        dismissed={dismissed[offer] ?? 0}
+        onDismiss={(count) => onDismiss(offer, count)}
+      />
+      <Viewer key={`${content.id}.${content.generation}`} item={item.id} content={content} />
+    </>
+  );
 }
 
 /** The central area while viewers are open: a tab for each, and the active item's viewer. */
@@ -40,6 +63,9 @@ export function ViewerHost() {
   const [, setActive] = useView("active");
   const command = useCommand();
   const closable = useCan("content");
+  const [dismissed, setDismissed] = useState<Readonly<Record<string, number>>>({});
+  const dismiss = (offer: string, count: number) =>
+    setDismissed((now) => ({ ...now, [offer]: count }));
   return (
     <div className="flex h-full min-h-0 w-full min-w-0 flex-col">
       <div
@@ -84,7 +110,7 @@ export function ViewerHost() {
         aria-labelledby={active && `tab-${active.id}`}
         className="flex min-h-0 flex-1 flex-col"
       >
-        {active && <ItemView item={active} />}
+        {active && <ItemView item={active} dismissed={dismissed} onDismiss={dismiss} />}
       </div>
     </div>
   );

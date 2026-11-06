@@ -51,7 +51,7 @@ What an ad-hoc check creates outside `artifacts/` and the run's temporary folder
 
 ## Export end to end
 
-`tests/export/export.rs` and `tests/export/catalog_render.rs` run the real Electron render page, forced to SwiftShader so pixels do
+`tests/export/export.rs` and `tests/export/catalog_check.rs` run the real Electron render page, forced to SwiftShader so pixels do
 not depend on the machine's graphics (`AX_DEVIL_RENDER_GRAPHICS=software`), through the routes and the command, and
 read the written MP4 and PNG back with `media`. They skip, saying why on stderr, when Electron or the built render
 page is missing; `make test-backend` builds both and sets `AX_DEVIL_REQUIRE_ELECTRON`, which makes a skip a failure.
@@ -76,7 +76,7 @@ both themes, at the window minimum and at 200% zoom. It also runs a sharing scen
 through a link, and a third window that lists the shared Session) and asserts that no page of the release app
 reports a Content Security Policy violation. In smoke
 mode the desktop's listener for other machines takes a free loopback port through the hidden `--share-address`, so
-nothing leaves the machine. New windows join the harness as they land ([DT-02](../parity.md#developer-tooling)).
+nothing leaves the machine. `desktop/fit-coverage.test.cjs` fails until each new dialog names the scenario that fit-checks it, or a reason ([DT-02](../parity.md#developer-tooling)).
 
 ## Sharing across two machines
 

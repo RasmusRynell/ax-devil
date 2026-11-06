@@ -35,6 +35,9 @@ development work. The contract is in
    `--handler-type HANDLER`). Compare the boxes, labels and the inspector's fields with what the file says. To see it without the
    user's desktop, follow [verify-headless](../verify-headless/SKILL.md).
 
+A decoder for a live source (a camera's metadata documents) declares `"input": "records"` and `time` in `bases`: it
+answers one record at a time, which `fixtures/plugins/shell-records` shows. `check` reads such a decoder's file line by line.
+
 A resolver has no `check`: `ax-devil playlist ID --help` shows its settings, and `ax-devil playlist ID ARGS` opens the
 playlist; a wrong path or name fails with the line it came from.
 

@@ -2,7 +2,7 @@ import { act, cleanup, fireEvent, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import type { FileScopeUnavailable } from "../generated/api";
 import { fullSample } from "../present/fixtures";
-import { file, ids, mount, says, search, showFile } from "./panelRig";
+import { FRAME, file, ids, mount, says, search, showFile } from "./panelRig";
 
 beforeEach(() => vi.stubGlobal("ResizeObserver", undefined));
 afterEach(() => {
@@ -236,15 +236,25 @@ describe("File scope", () => {
     expect(last().locate).toBe("r42");
   });
 
-  it("seeks to the frame under a click on the presence strip", () => {
+  it("shows the strip of a File row without seeking, and a click only opens the row", () => {
     const { source, selected, answer } = mount();
     showFile();
     answer([file("7", 3)]);
     const strip = screen.getByRole("option").children[2].firstElementChild as HTMLElement;
     vi.spyOn(strip, "getBoundingClientRect").mockReturnValue({ left: 10, width: 200 } as DOMRect);
     fireEvent.click(strip, { clientX: 110 });
-    expect(source.seek).toHaveBeenCalledWith(50);
-    expect(selected).toEqual([]);
+    expect(source.seek).not.toHaveBeenCalled();
+    expect(selected).toEqual(["7"]);
+  });
+
+  it("marks the frame on screen on a row's strip as the video plays", () => {
+    const { play, answer } = mount();
+    showFile();
+    answer([file("7", 3)]);
+    const marker = () => screen.getByRole("option").children[2].firstElementChild?.lastElementChild;
+    expect((marker() as HTMLElement).style.left).toContain("min(0%");
+    play(FRAME);
+    expect((marker() as HTMLElement).style.left).toContain("min(1%");
   });
 
   it.each<[FileScopeUnavailable, string]>([

@@ -153,7 +153,10 @@ describe("stream rows", () => {
   it("lists streams that are resolving or failed, and offers what each can do", () => {
     const base = stream("c", { label: "Lobby", host: "10.0.0.2", overlay: { mode: "none" } });
     const items: ItemState[] = [
-      stream("a", { host: "10.0.0.2", overlay: { mode: "none" } }),
+      {
+        ...stream("a", { host: "10.0.0.2", overlay: { mode: "none" } }),
+        recipe: { type: "Live", host: "10.0.0.2", overlay: { mode: "none" } },
+      },
       { ...base, resolution: { status: "Pending" } },
       {
         ...base,
@@ -179,7 +182,7 @@ describe("stream rows", () => {
     });
     const rows = live?.rows.flatMap((camera) => camera.children) ?? [];
     expect(rows.map(({ id, action, menu, thumbnail }) => [id, action, menu, thumbnail])).toEqual([
-      ["a", "start", ["start", "information", "remove"], null],
+      ["a", "start", ["start", "information", "edit", "remove"], null],
       ["c", null, ["remove"], null],
       ["d", null, ["information", "remove"], null],
     ]);

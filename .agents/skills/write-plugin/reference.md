@@ -33,7 +33,7 @@ Decoder handler (`"kind": "decoder"`):
 
 | Field | Required | Meaning |
 |-------|----------|---------|
-| `input` | yes | `"path"`: the request carries the overlay file's path |
+| `input` | yes | `"path"`: the request carries the overlay file's path. `"records"`: the request carries none and the records follow on stdin one at a time ([Records](#records)); a file is read line by line, and with `time` in `bases` the decoder also takes live sources |
 | `scene_version` | yes | The Scene version written, `"4.0"`; a different major or a newer minor does not load |
 | `extensions` | no | File name endings the decoder opens, lowercase with the dot, such as `.acme.jsonl`. Without any, it is picked only by id |
 | `bases` | no | `["frame"]`, `["time"]` or both: what a lane may match your records to video frames by. Frame: record k belongs to frame k (or the frame number you key by); a record is a `skipped` line or the samples in a row with one start key. Time: by the records' timestamps. Default `["frame"]` |
@@ -72,7 +72,8 @@ loads no plugin; a broken entry fails alone. Both are listed by `plugins list`.
 
 The host starts `command` in an empty private working folder (also `TMPDIR`), removed at the end, so rely on the
 absolute paths in the request. The environment holds only `PATH`, `HOME`, `LANG`,
-`LC_ALL`, `LC_CTYPE`, `TZ` (on Windows also `SYSTEMROOT`) and the manifest's `env`. Stdin gets one line, then EOF:
+`LC_ALL`, `LC_CTYPE`, `TZ` (on Windows also `SYSTEMROOT`) and the manifest's `env`. A `path` decoder's stdin gets one
+line, then EOF:
 
 ```json
 {"protocol":3,"op":"decode","handler":"acme_tracks","input":{"path":"/abs/overlay.file"},"options":{"camera":"front"}}
@@ -80,8 +81,33 @@ absolute paths in the request. The environment holds only `PATH`, `HOME`, `LANG`
 
 `handler` is the id of the decoder called, so one program can serve several. `options` holds every declared option
 that has a value. The request says nothing of the video, so a file in pixels needs its image size as options. Read
-stdin, then the file at `input.path`; write to stdout.
+stdin, then the file at `input.path`; write to stdout. (A `records` decoder is read differently, below.)
 Stderr is drained: its last 20 lines (2 KiB) join a failure's reason, and it is logged at DEBUG only.
+
+### Records
+
+A decoder with `"input": "records"` gets a request without a path, then one line per record, and EOF when the records
+end:
+
+```json
+{"protocol":3,"op":"decode","handler":"acme_live","input":"records","options":{"camera":"front"}}
+{"record":{"text":"{\"speed\":42}"}}
+{"record":{"base64":"/wAB"}}
+```
+
+A record is `text` when its bytes are UTF-8 and `base64` otherwise. For a file a record is a line, trimmed, with blank
+lines left out; for a live source it is one document, such as one message. The host sends a record only after the
+plugin has answered the one before: print zero or more output lines for it, then `{"done":{}}`. No sample is "no
+overlay for this record"; `{"skipped": "why"}` drops it (counted, and reported at the record's position, not at the
+output line's number). `done` is not accepted in a `path` decoder's output.
+
+- One process serves a live source for as long as it stays connected (a reconnect starts a new one, so state the plugin
+  keeps starts over), or a file to its end. It is started with the first record and exits 0 at EOF. The `header`, if any, comes once per
+  process, before its first sample; the host keeps the first. Live samples are keyed by time (`{"us": N}`).
+- `idle_timeout_s` counts only while an answer is owed: a plugin may stay silent between records for as long as it likes.
+- A process that ends (exits, prints `error`, goes idle, breaks the protocol) after it answered a record costs the
+  record it was working on, which is skipped, and starts again with the next one. One that ends before its own first answer (a restarted one too)
+  fails the session with the reason, so a plugin that cannot run is not started once per record.
 
 Scan and resolve send the settings the user has entered, checked against the form with defaults filled in, and no
 overlay path:
@@ -104,6 +130,7 @@ exactly one key:
 | `{"warning": {"problem","reasons":[],"consequence"}}` | A problem the user should see; texts cut to 200 characters, three reasons |
 | `{"skipped": "reason"}` | A record you could not convert; counted |
 | `{"error": {"reason","field"?,"path"?}}` | The run cannot go on. Ends it at once as Incomplete with `reason` (`field` and `path` are for other operations and ignored here); later lines are not read |
+| `{"done": {}}` | `records` decoders only: the answer to the record is complete |
 
 A line that is not valid JSON, has none or several of these keys, or holds a Scene that breaks a model rule is skipped
 and counted by line number. At the end one warning gives "Skipped N of M records" with up to three reasons. A header

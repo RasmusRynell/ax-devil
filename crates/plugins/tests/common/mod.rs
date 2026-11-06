@@ -6,6 +6,7 @@ use std::{
     fs,
     ops::ControlFlow,
     path::{Path, PathBuf},
+    time::Duration,
 };
 
 use foundation::{CancelToken, Interrupt, Warning};
@@ -65,6 +66,45 @@ impl Input for FileSource {
     }
 }
 
+/// Records a live source would give: no path, positions from 1, and `gap` of waiting before each record after the
+/// first.
+pub struct Scripted {
+    records: Vec<Vec<u8>>,
+    gap: Duration,
+    next: usize,
+}
+
+impl Scripted {
+    pub fn new(records: &[&[u8]], gap: Duration) -> Self {
+        Self {
+            records: records.iter().map(|record| record.to_vec()).collect(),
+            gap,
+            next: 0,
+        }
+    }
+}
+
+impl Input for Scripted {
+    fn path(&self) -> Option<&Path> {
+        None
+    }
+
+    fn next(&mut self, _: &CancelToken) -> Result<Option<Record<'_>>, Interrupt<DecodeError>> {
+        let Some(bytes) = self.records.get(self.next) else {
+            return Ok(None);
+        };
+        if self.next > 0 {
+            std::thread::sleep(self.gap);
+        }
+        self.next += 1;
+        Ok(Some(Record {
+            bytes,
+            position: self.next as u64,
+            capture_time: None,
+        }))
+    }
+}
+
 /// How a run ended: what the decoder returned and what the sink saw.
 pub struct Run {
     pub result: Result<DecodeSummary, Interrupt<DecodeError>>,
@@ -110,6 +150,18 @@ pub fn decode(
         &mut sink,
         cancel,
     );
+    Run { result, sink }
+}
+
+/// Decodes the records of `input` with `decoder` into a fresh sink.
+pub fn decode_records(decoder: &PluginDecoder, input: &mut Scripted, cancel: &CancelToken) -> Run {
+    let mut sink = TestSink::default();
+    let options = decoder
+        .spec()
+        .options
+        .validate(&Settings::new())
+        .expect("no options");
+    let result = decoder.decode(input, &options, &mut sink, cancel);
     Run { result, sink }
 }
 

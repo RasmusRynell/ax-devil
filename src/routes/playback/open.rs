@@ -66,6 +66,7 @@ pub(super) async fn run(
         size,
         warnings,
         pts,
+        cadence,
     } = opened;
     let setup = Setup {
         entry,
@@ -78,6 +79,7 @@ pub(super) async fn run(
         wire: Wire::of(&state.policy),
         warnings,
         pts,
+        cadence,
         library: &state.catalogs,
         overlays: &state.overlays,
         exports: &state.exports,
@@ -157,6 +159,8 @@ pub(super) async fn open_video<T: Send + 'static>(
                     | ClientMessage::CancelExport { .. }
                     | ClientMessage::FileQuery { .. }
                     | ClientMessage::Appearances { .. }
+                    | ClientMessage::EventQuery(_)
+                    | ClientMessage::Event(_)
                     | ClientMessage::FileRelease { .. }
                     | ClientMessage::Live { .. },
                 )) => {}

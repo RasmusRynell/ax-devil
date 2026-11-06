@@ -1,7 +1,7 @@
 # present
 
 Overlay presentation per lane: catalog and filter compilation, evaluation of a Sample Item into Marks, layout for the
-lane's cell, and picking (`pick/`). Export and `catalog render` run it in the Render Page, so display and
+lane's cell, and picking (`pick/`). Export runs it in the Render Page, so display and
 export share it.
 
 - Pure: no DOM and no GL, so it runs in Node tests and the export page. Painting and the glyph atlas stay in

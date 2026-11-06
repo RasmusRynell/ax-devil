@@ -275,3 +275,79 @@ async fn another_stream_of_a_camera_copies_its_saved_login_for_the_owner_only() 
         assert!(!text.contains(PASSWORD), "{text}");
     }
 }
+
+/// Editing a stream keeps its id and, while it stays on the same camera, its saved login when the form leaves the
+/// login blank; the password is in no answer and nothing the Doc shows.
+#[tokio::test]
+async fn editing_a_stream_keeps_its_id_and_saved_login_on_the_same_camera_only() {
+    let folder = tempfile::tempdir().unwrap();
+    let settings = settings::Settings::load(&folder.path().join("default.json")).unwrap();
+    let cache = folder.path().join("cache");
+    let videos = crate::video_cache::start(&settings, &cache);
+    let (_stop, stopping) = tokio::sync::watch::channel(false);
+    let state = AppState::new(
+        Arc::new(settings),
+        Policy::Local,
+        videos,
+        stopping,
+        Plugins::fixed(handlers::Handlers::built_in()),
+        &cache,
+    );
+    let owner = state
+        .sessions
+        .create(true, CursorOptions::default())
+        .unwrap();
+    let mut acks = vec![
+        answer(
+            &state,
+            &owner,
+            1,
+            add_live(json!({"host": "cam.local", "username": "root", "password": PASSWORD})),
+        )
+        .await,
+    ];
+    let id = owner.state().doc.workspace.parts().workspace.items[0]
+        .id
+        .to_string();
+    let edit = |fields: serde_json::Value| {
+        let mut new = json!({"type": "Live"});
+        new.as_object_mut()
+            .unwrap()
+            .extend(fields.as_object().unwrap().clone());
+        serde_json::from_value(json!({"type": "content", "command": {
+            "type": "editItem", "item": id, "new": new}}))
+        .unwrap()
+    };
+    acks.push(
+        answer(
+            &state,
+            &owner,
+            2,
+            edit(json!({"host": "cam.local", "label": "Gate"})),
+        )
+        .await,
+    );
+    let login = || match &owner.state().doc.workspace.parts().workspace.items[..] {
+        [item] => match &item.recipe.source {
+            Source::Live(recipe) => (
+                item.id.to_string(),
+                item.label.clone(),
+                recipe.password.expose() == PASSWORD,
+            ),
+            _ => panic!("a live stream"),
+        },
+        items => panic!("one item, got {}", items.len()),
+    };
+    assert_eq!(login(), (id.clone(), "Gate".into(), true));
+
+    acks.push(answer(&state, &owner, 3, edit(json!({"host": "other.local"}))).await);
+    assert_eq!(login(), (id, String::new(), false));
+
+    let shown: DocWire = crate::session::project::project(&owner.state().doc, Audience::HOST);
+    for text in [
+        serde_json::to_string(&acks).unwrap(),
+        serde_json::to_string(&shown).unwrap(),
+    ] {
+        assert!(!text.contains(PASSWORD), "{text}");
+    }
+}

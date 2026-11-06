@@ -3,7 +3,7 @@ import { vi } from "vite-plus/test";
 import { DEFAULT_SETTINGS, FakeSettings } from "../fakeSettings";
 import type { CatalogInfoWire, LaneStatusWire } from "../generated/api";
 import type { SettingsApi } from "../settings";
-import type { Cadence } from "./cadence";
+import type { CadenceWire } from "./protocol";
 import { LANE_SETTINGS } from "./fakeOpened";
 import { LaneMenu } from "./LaneMenu";
 import type { LaneState } from "./lanes";
@@ -44,7 +44,7 @@ export function setup(
   lane: Partial<LaneState> = {},
   status: LaneStatusWire = READY,
   save: SettingsApi["save"] = vi.fn(async () => null),
-  cadence: Cadence | null = null,
+  cadence: CadenceWire | null = null,
   { catalogs = CATALOGS, defaultCatalog = "" }: Backend = {},
 ) {
   const onChange = vi.fn();

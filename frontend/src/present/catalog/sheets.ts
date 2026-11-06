@@ -23,7 +23,7 @@ export interface Exercised {
   readonly skipped: readonly Diagnostic[];
 }
 
-/** The size sheets are drawn at: that of the app's sheet pictures. */
+/** The size sheets are laid out at. */
 const SHEET_VIEW: LayoutView = { width: 1280, height: 720, dpr: 1, zoom: 1 };
 
 /**

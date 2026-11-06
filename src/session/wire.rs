@@ -6,19 +6,21 @@ use crate::routes::playback::policy_from_wire;
 use crate::routes::resolve::Staged;
 use api_types::{
     CURSOR_NAME_MAX, CursorElement, CursorPoint, SessionCommand, WorkspaceCommand,
+    bookmarks::{BookmarkCommand as BookmarkWire, BookmarkKindWire},
     live::LiveProtocol,
     workspace::{HiddenTarget, NewItem},
 };
-use foundation::{ErrorCode, ItemId};
+use foundation::{ErrorCode, ItemId, MediaTime};
 use handlers::Handlers;
 use sessions::session::{Command, Refusal, Scope};
 use std::path::Path;
 use tokio::time::Instant;
 use workspace::{
-    LiveRecipe, Secret, Source, Workspace, WorkspaceItem,
+    BookmarkId, BookmarkKind, BookmarkTarget, Content, LiveRecipe, Secret, Source, Watch,
+    Workspace, WorkspaceItem,
     intake::{LiveDefaults, NewLive, NewOverlay},
 };
-use workspace_store::{DocCommand, HiddenRef};
+use workspace_store::{BookmarkCommand, DocCommand, HiddenRef};
 
 /// The scope a wire command needs, known without looking at what it names, so the seat is authorized before the
 /// command's content is checked and a refusal never tells a seat whether a path or resolver exists. `None` for a
@@ -44,14 +46,22 @@ pub(super) fn scope(wire: &SessionCommand) -> Option<Scope> {
                     Scope::Content
                 }
             }
-            api_types::DocCommand::AddResolved { .. } => Scope::Host,
+            api_types::DocCommand::AddResolved { .. }
+            | api_types::DocCommand::EditResolved { .. } => Scope::Host,
+            // Editing a video reads the host's files as adding one does; a live stream is only a recipe.
+            api_types::DocCommand::EditItem { new, .. } => match new {
+                NewItem::Video { .. } => Scope::Host,
+                NewItem::Live(_) => Scope::Content,
+            },
             api_types::DocCommand::OpenViewer { .. }
             | api_types::DocCommand::CloseViewer { .. }
             | api_types::DocCommand::Resolve { .. }
             | api_types::DocCommand::Remove { .. }
+            | api_types::DocCommand::RenameItem { .. }
             | api_types::DocCommand::SetHidden { .. }
             | api_types::DocCommand::SetLaneMatching { .. }
-            | api_types::DocCommand::RenameWorkspace { .. } => Scope::Content,
+            | api_types::DocCommand::RenameWorkspace { .. }
+            | api_types::DocCommand::Bookmark { .. } => Scope::Content,
         }),
         SessionCommand::Follow => Some(Scope::Follow),
         SessionCommand::Control { .. } => Some(Scope::Control),
@@ -62,6 +72,7 @@ pub(super) fn scope(wire: &SessionCommand) -> Option<Scope> {
             WorkspaceCommand::New
             | WorkspaceCommand::Open { .. }
             | WorkspaceCommand::Save { .. }
+            | WorkspaceCommand::ExportBookmarks { .. }
             | WorkspaceCommand::Discard => Scope::Host,
         }),
     }
@@ -69,8 +80,8 @@ pub(super) fn scope(wire: &SessionCommand) -> Option<Scope> {
 
 /// What a valid command asks the backend to do.
 pub(super) enum Request {
-    /// A change to the session.
-    Session(Command),
+    /// A change to the session, and for an added item that was resolved before it existed, what it was read from.
+    Session(Command, Option<Box<(ItemId, Watch)>>),
     /// A workspace file command, which the adapter runs itself.
     Workspace(WorkspaceCommand),
 }
@@ -87,12 +98,54 @@ pub(super) fn command(
     saved: Saved<'_>,
 ) -> Result<Request, Refusal> {
     Ok(match wire {
-        SessionCommand::Content { command } => Request::Session(Command::Content(doc_command(
-            command, handlers, staged, session, live, network, saved,
-        )?)),
-        SessionCommand::Follow => Request::Session(Command::Follow),
-        SessionCommand::Control { control } => Request::Session(Command::Control(control)),
-        SessionCommand::RequestTicket { key } => Request::Session(Command::RequestTicket(key)),
+        // The scope was checked before this lookup, so a seat without the grant cannot use up a staged item.
+        SessionCommand::Content {
+            command: api_types::DocCommand::AddResolved { item, label },
+        } => {
+            let (item, content, watch) = staged.take(session, &item).ok_or(Refusal::Invalid)?;
+            let id = item.id;
+            Request::Session(
+                Command::Content(DocCommand::AddResolved {
+                    item: Box::new(workspace::intake::with_label(item, label.as_deref())),
+                    content: Box::new(content),
+                    open: true,
+                }),
+                watch.map(|watch| Box::new((id, watch))),
+            )
+        }
+        // As for `AddResolved`; the edited item is read from what the staged playlist was, under its own id.
+        SessionCommand::Content {
+            command:
+                api_types::DocCommand::EditResolved {
+                    item,
+                    ticket,
+                    label,
+                },
+        } => {
+            let (staged, content, watch) = staged.take(session, &ticket).ok_or(Refusal::Invalid)?;
+            let edited = workspace::intake::with_label(staged, label.as_deref());
+            // Only playlists are staged; their ids came from the ticket and are the edited item's from now on.
+            let content = match content {
+                Content::Playlist(playlist) => Content::Playlist(playlist.rebound(&item)),
+                other => other,
+            };
+            Request::Session(
+                Command::Content(DocCommand::EditItem {
+                    item: Box::new(WorkspaceItem { id: item, ..edited }),
+                    content: Some(Box::new(content)),
+                }),
+                watch.map(|watch| Box::new((item, watch))),
+            )
+        }
+        SessionCommand::Content { command } => Request::Session(
+            Command::Content(doc_command(command, handlers, live, network, saved)?),
+            None,
+        ),
+        SessionCommand::Follow => Request::Session(Command::Follow, None),
+        SessionCommand::Control { control } => Request::Session(Command::Control(control), None),
+        SessionCommand::RequestTicket { key } => {
+            Request::Session(Command::RequestTicket(key), None)
+        }
         SessionCommand::Workspace { command } => Request::Workspace(workspace_command(command)?),
     })
 }
@@ -100,7 +153,9 @@ pub(super) fn command(
 /// Paths are absolute, and Save As names a workspace file.
 fn workspace_command(wire: WorkspaceCommand) -> Result<WorkspaceCommand, Refusal> {
     let valid = match &wire {
-        WorkspaceCommand::Open { path } => Path::new(path).is_absolute(),
+        WorkspaceCommand::Open { path } | WorkspaceCommand::ExportBookmarks { path } => {
+            Path::new(path).is_absolute()
+        }
         WorkspaceCommand::Save {
             path: Some(path), ..
         } => Path::new(path).is_absolute() && path.ends_with(workspace_files::SUFFIX),
@@ -119,8 +174,6 @@ fn workspace_command(wire: WorkspaceCommand) -> Result<WorkspaceCommand, Refusal
 fn doc_command(
     wire: api_types::DocCommand,
     handlers: &Handlers,
-    staged: &Staged,
-    session: &str,
     live: &LiveDefaults,
     network: &Network,
     saved: Saved<'_>,
@@ -138,25 +191,41 @@ fn doc_command(
                 })?;
             DocCommand::AddItems { items, open }
         }
-        // The scope was checked before this lookup, so a seat without the grant cannot use up a staged item.
-        api_types::DocCommand::AddResolved { item, label } => {
-            let (item, content) = staged.take(session, &item).ok_or(Refusal::Invalid)?;
-            DocCommand::AddResolved {
-                item: Box::new(workspace::intake::with_label(item, label.as_deref())),
-                content: Box::new(content),
-                open: true,
+        // `command` takes the staged item, with what it was read from.
+        api_types::DocCommand::AddResolved { .. } | api_types::DocCommand::EditResolved { .. } => {
+            return Err(Refusal::Invalid);
+        }
+        api_types::DocCommand::EditItem { item, mut new } => {
+            // The stream is its own `like`: a blank login keeps the saved one. A scanned camera's login is for adding.
+            if let NewItem::Live(stream) = &mut new {
+                if stream.found.is_some() {
+                    return Err(Refusal::Invalid);
+                }
+                stream.like = Some(item);
+            }
+            let edited = intake(&new, handlers, live, network, saved).map_err(|error| {
+                tracing::debug!("An edit was refused: {}", error.reason);
+                Refusal::Invalid
+            })?;
+            DocCommand::EditItem {
+                item: Box::new(WorkspaceItem { id: item, ..edited }),
+                content: None,
             }
         }
         api_types::DocCommand::OpenViewer { item } => DocCommand::OpenViewer(item),
         api_types::DocCommand::CloseViewer { item } => DocCommand::CloseViewer(item),
         api_types::DocCommand::Resolve { item } => DocCommand::Resolve(item),
         api_types::DocCommand::Remove { item } => DocCommand::Remove(item),
+        api_types::DocCommand::RenameItem { item, label } => DocCommand::RenameItem { item, label },
         api_types::DocCommand::SetHidden { target, hidden } => DocCommand::SetHidden {
             target: hidden_ref(target),
             hidden,
         },
         api_types::DocCommand::RenameWorkspace { name, epoch } => {
             DocCommand::RenameWorkspace { name, epoch }
+        }
+        api_types::DocCommand::Bookmark { command } => {
+            DocCommand::Bookmarks(bookmark_command(command)?)
         }
         api_types::DocCommand::SetLaneMatching { item, slot, policy } => {
             DocCommand::SetLaneMatching {
@@ -168,6 +237,44 @@ fn doc_command(
                 })?,
             }
         }
+    })
+}
+
+/// The change to the bookmarks a client asked for; a time before the video's first frame is refused.
+fn bookmark_command(wire: BookmarkWire) -> Result<BookmarkCommand, Refusal> {
+    Ok(match wire {
+        BookmarkWire::Add {
+            item,
+            entry,
+            frame,
+            time_us,
+        } if time_us >= 0 => BookmarkCommand::Add {
+            id: BookmarkId::generate(),
+            item,
+            entry,
+            frame,
+            time: MediaTime::from_us(time_us),
+        },
+        BookmarkWire::Add { .. } => return Err(Refusal::Invalid),
+        BookmarkWire::Edit { id, note, kind } => BookmarkCommand::Edit {
+            id,
+            note,
+            kind: kind.map(|kind| match kind {
+                BookmarkKindWire::Note => BookmarkKind::Note,
+                BookmarkKindWire::Issue => BookmarkKind::Issue,
+                BookmarkKindWire::Example => BookmarkKind::Example,
+                BookmarkKindWire::Question => BookmarkKind::Question,
+            }),
+        },
+        BookmarkWire::Remove { id } => BookmarkCommand::Remove(id),
+        BookmarkWire::SetReviewed {
+            item,
+            entry,
+            reviewed,
+        } => BookmarkCommand::SetReviewed {
+            target: BookmarkTarget { item, entry },
+            reviewed,
+        },
     })
 }
 

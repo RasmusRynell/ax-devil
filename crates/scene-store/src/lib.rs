@@ -5,6 +5,7 @@
 //! anyone holds it. A track can be read while its file is still being decoded; [`TrackRead::snapshot`] says how much is
 //! final. The artifact format, the ingest rules and the memory bound are in the crate README.
 
+mod events;
 mod format;
 mod group;
 mod history;
@@ -34,6 +35,10 @@ mod writer;
 #[cfg(test)]
 mod tests;
 
+pub use events::{
+    EventDetail, EventMatches, EventObject, EventPlacement, EventQuery, EventRow, EventView,
+    Involved,
+};
 pub use format::STORE_FORMAT_VERSION;
 pub use history::{EventRef, History, HistoryUnavailable};
 pub use live::{Feed, LiveTrack};
