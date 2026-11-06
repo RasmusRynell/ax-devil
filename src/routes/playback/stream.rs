@@ -6,6 +6,7 @@ use super::{
     End, Flow, Incoming, Outbox, Outgoing,
     cached::CachedFeed,
     catalogs::CatalogFeed,
+    delivery::encode,
     export::{Exports, Request},
     file_scope::{self, FileScopes},
     gate::Gate,
@@ -24,15 +25,15 @@ use api_types::{
         CadenceWire, ClientMessage, Direction as WireDirection, PLAYBACK_PROTOCOL, ServerMessage,
         VideoPtsWire, Want as WireWant, envelope,
     },
-    project,
 };
 use axum::extract::ws::Message;
 use catalogs::Library;
-use foundation::{ErrorCode, FrameFailure, FrameSize, HostPath, UserError};
+use foundation::{ErrorCode, FrameSize, HostPath, UserError};
 use media::{Cadence, PtsTiming};
 use overlay_sync::MatchPolicy;
 use overlays::OverlayService;
 use playback::{Delivery, Direction, Priority, Session, Want};
+use sessions::SessionId;
 use std::{collections::BTreeMap, sync::Arc, time::Duration};
 use tokio::{sync::watch, time::MissedTickBehavior};
 use workspace::Entry;
@@ -56,6 +57,8 @@ pub(super) struct Setup<'a> {
     pub(super) data_bytes: u64,
     /// What the viewer may learn from an error, a warning or a lane problem.
     pub(super) audience: Audience,
+    /// The Session the viewer is in, which scopes the user catalogs a watcher is shown.
+    pub(super) session: SessionId,
     /// The size of the decoded pictures.
     pub(super) size: FrameSize,
     /// The form the viewer is sent frames in.
@@ -129,7 +132,7 @@ pub(super) async fn stream(
     let location = video_location(&setup.entry.video);
     gate.open(timeline.clone());
     let lanes = Lanes::open(&setup, timeline.clone(), location.clone());
-    let catalogs = CatalogFeed::new(setup.library);
+    let catalogs = CatalogFeed::new(setup.library, setup.audience, setup.session);
     let opened = text(&ServerMessage::Opened {
         protocol: PLAYBACK_PROTOCOL,
         frame_count: timeline.len(),
@@ -432,62 +435,6 @@ async fn next(
     }
 }
 
-/// The message for something the session delivers. A source that cannot decode at all ends the session; a frame that
-/// cannot be decoded or compressed for the viewer fails alone, as a local viewer would see it.
-async fn encode(
-    delivery: Delivery,
-    wire: Wire,
-    last: u64,
-    location: &HostPath,
-    audience: Audience,
-    failures: &mut u32,
-) -> Flow<Outgoing> {
-    let failure = match delivery {
-        Delivery::Frame(frame) => {
-            let sequence_id = frame.id().sequence_id;
-            match wire.message(&frame, sequence_id == last).await {
-                Ok(message) => return Ok(Outgoing::frame(message, sequence_id)),
-                Err(error) => FrameFailure {
-                    sequence_id,
-                    error: error.at(location.clone()),
-                },
-            }
-        }
-        Delivery::Failure(failure) => failure,
-        Delivery::Failed(mut error) => {
-            if error.location.is_none() {
-                error.location = Some(location.clone().into());
-            }
-            return Err(End::Failed(error));
-        }
-    };
-    // A video with many bad frames would flood the log: the first is a warning, the rest are for diagnosis.
-    *failures += 1;
-    let error = &failure.error;
-    if *failures == 1 {
-        tracing::warn!(
-            "Frame {} failed: {:?}: {}",
-            failure.sequence_id,
-            error.location,
-            error.reason
-        );
-    } else {
-        tracing::debug!(
-            "Frame {} failed: {:?}: {}",
-            failure.sequence_id,
-            error.location,
-            error.reason
-        );
-    }
-    Ok(Outgoing::frame(
-        text(&ServerMessage::FrameError {
-            sequence_id: failure.sequence_id,
-            error: project(&failure.error, audience),
-        }),
-        failure.sequence_id,
-    ))
-}
-
 pub(super) fn want(wire: WireWant) -> Want {
     Want {
         playhead: wire.playhead,
@@ -498,41 +445,5 @@ pub(super) fn want(wire: WireWant) -> Want {
             WireDirection::Backward => Direction::Backward,
         },
         priority: Priority::default(),
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use foundation::Location;
-
-    async fn ended(error: UserError) -> UserError {
-        let delivery = Delivery::Failed(error);
-        let location = HostPath::new("/clips/a.mp4");
-        match encode(delivery, Wire::Raw, 9, &location, Audience::HOST, &mut 0).await {
-            Err(End::Failed(error)) => error,
-            _ => panic!("a failed source must end the session"),
-        }
-    }
-
-    #[tokio::test]
-    async fn a_source_failure_ends_the_session_naming_the_file_unless_the_failure_already_names_one()
-     {
-        let at = |path| Some(Location::Host(HostPath::new(path)));
-        assert_eq!(
-            ended(UserError::new(ErrorCode::DecodeFailed, "no decoder"))
-                .await
-                .location,
-            at("/clips/a.mp4")
-        );
-        assert_eq!(
-            ended(
-                UserError::new(ErrorCode::DecodeFailed, "no decoder")
-                    .at(HostPath::new("/clips/b.mp4"))
-            )
-            .await
-            .location,
-            at("/clips/b.mp4")
-        );
     }
 }

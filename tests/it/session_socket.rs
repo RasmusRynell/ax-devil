@@ -11,7 +11,7 @@ use ax_devil::{
     share::{Hosting, LinkBase},
 };
 use serde_json::{Value, json};
-use session_client::{Socket, get};
+use session_client::{Proxy, Socket, get};
 use sessions::Secret;
 use std::{net::SocketAddr, path::Path, sync::Arc};
 
@@ -277,4 +277,72 @@ async fn a_seat_without_the_files_grant_is_refused_alike_whatever_it_asks_to_add
             "{doc}"
         );
     }
+}
+
+/// Opens a Session socket through `address` that takes the seat of `resume` back.
+async fn resumed(address: &str, resume: &str) -> Socket {
+    let mut socket = Socket::connect(address, "/api/session").await;
+    let hello = json!({"type": "hello", "auth": {"type": "own", "serverPassword": null},
+                       "resume": resume, "cursors": {"show": true, "share": true}});
+    socket.say(hello).await;
+    socket
+}
+
+#[tokio::test]
+async fn a_watcher_whose_network_is_cut_takes_its_seat_back_but_not_after_the_sharing_stopped() {
+    let folder = tempfile::tempdir().unwrap();
+    let address = serve(folder.path()).await;
+    let mut owner = Socket::own(&address, Some(PASSWORD)).await;
+    owner.until(of_type("seat")).await;
+    let share = json!({"type": "control", "control": {"type": "share", "access": "watch"}});
+    owner.say(command(1, share)).await;
+    let seat = owner
+        .until(|m| m["type"] == "seat" && !m["sharing"].is_null())
+        .await;
+    let link = seat["sharing"]["link"].as_str().unwrap();
+    let link = link.split("join=").nth(1).unwrap();
+
+    // The watcher reaches the backend through a proxy that can be cut.
+    let proxy = Proxy::to(&address).await;
+    let mut watcher = Socket::connect(proxy.address(), "/api/session").await;
+    let hello = json!({"type": "hello", "auth": {"type": "join", "link": link},
+                       "cursors": {"show": true, "share": true}});
+    watcher.say(hello).await;
+    let welcome = watcher.until(of_type("welcome")).await;
+    let (seat_id, token) = (
+        welcome["seat"].clone(),
+        welcome["resume"].as_str().unwrap().to_owned(),
+    );
+
+    // The connection drops while the presenter moves on; the watcher resumes the same seat and catches up.
+    proxy.cut();
+    assert_eq!(watcher.closed().await, 0, "cut, not closed");
+    owner.say(view(1, true)).await;
+    owner
+        .until(|m| m["type"] == "seat" && m["viewsDone"] == 1)
+        .await;
+    let mut watcher = resumed(proxy.address(), &token).await;
+    let welcome = watcher.until(of_type("welcome")).await;
+    assert_eq!(welcome["seat"], seat_id, "the same seat");
+    let again = welcome["resume"].as_str().unwrap().to_owned();
+    assert_ne!(again, token, "each welcome brings a new token");
+    let seat = watcher.until(of_type("seat")).await;
+    assert_eq!(
+        seat["view"]["sidebar"]["open"],
+        json!(true),
+        "the presenter's view"
+    );
+
+    // A token is used once, and a stopped sharing takes the seat with it, cut off or not.
+    let mut stale = resumed(proxy.address(), &token).await;
+    assert_eq!(stale.closed().await, 4404);
+    proxy.cut();
+    assert_eq!(watcher.closed().await, 0);
+    let stop = json!({"type": "control", "control": {"type": "stop"}});
+    owner.say(command(2, stop)).await;
+    owner
+        .until(|m| m["type"] == "seat" && m["sharing"].is_null())
+        .await;
+    let mut late = resumed(proxy.address(), &again).await;
+    assert_eq!(late.closed().await, 4404);
 }

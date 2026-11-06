@@ -122,9 +122,9 @@ Listed in [parity deviations](parity-deviations.md).
 
 | ID | Feature | P | Status | Test | Notes |
 |----|---------|---|--------|------|-------|
-| SH-01 | Join, reconnect and revoke access | M | in progress | `crates/sessions/tests/session/`, `tests/it/{session_socket,playback_ws}.rs` | Lifecycle, leases and tickets built; real-network interruption evidence remains |
+| SH-01 | Join, reconnect and revoke access | M | done | `crates/sessions/tests/session/`, `tests/it/{session_socket,playback_ws}.rs` | A cut connection (TCP proxy) resumes its seat; a stopped sharing refuses it; silent loss takes 25 s |
 | SH-02 | Follow or explore independently | M | in progress | `viewer/PlaylistFollower.test.tsx`, `desktop/smoke-sharing.cjs`, `src/routes/playback/inspect/tests.rs` | Video and playlist following and exploring. Inspection is gated like data: a follower outside its window gets none. Live policies follow live |
-| SH-03 | Audience privacy and settings scope | M | in progress | `tests/it/access.rs`, `src/session/project.rs`, `crates/settings/src/scope_tests.rs` | Host-path projections and personal/server settings built; disclosure of inspection data and user catalogs is open |
+| SH-03 | Audience privacy and settings scope | M | done | `tests/it/{access,playback_catalogs}.rs`, `src/session/project.rs`, `crates/settings/src/scope_tests.rs` | Host paths and settings scoped; a watcher sees a user catalog only once its Session's host viewer asked for it, until it leaves |
 | SH-04 | Browser and remote Electron connection | M | in progress | `desktop/smoke-remote.cjs`, `session/Notice.test.tsx` | Server frontend and password recovery built; LAN failure feedback, launch delivery to a running app and packaged protocol registration remain |
 
 ## Developer tooling

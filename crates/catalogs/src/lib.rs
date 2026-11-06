@@ -15,7 +15,7 @@ mod origin;
 pub mod sheets;
 
 pub use id::CatalogId;
-pub use library::{CatalogInfo, Library, Served};
+pub use library::{CatalogInfo, Lend, Library, Served};
 pub use origin::Origin;
 
 /// The setting that holds the id of the catalog new lanes start with; empty is Standard.

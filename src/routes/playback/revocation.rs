@@ -309,6 +309,7 @@ async fn a_viewer_made_a_follower_gets_no_frame_or_data_outside_the_presenters_w
         start_frame: Some(60),
         data_bytes: SAMPLE_BUDGET,
         audience: Audience::HOST,
+        session: sessions::SessionId::generate(),
         size: FrameSize {
             width: 64,
             height: 48,

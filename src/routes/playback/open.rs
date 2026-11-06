@@ -74,6 +74,7 @@ pub(super) async fn run(
         start_frame: opening.start_frame,
         data_bytes: opening.data_bytes,
         audience,
+        session: lease.session(),
         size,
         wire: Wire::of(&state.policy),
         warnings,
