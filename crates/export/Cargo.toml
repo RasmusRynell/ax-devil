@@ -18,6 +18,7 @@ foundation.workspace = true
 media.workspace = true
 overlay-sync.workspace = true
 overlays.workspace = true
+same-file.workspace = true
 scene-store.workspace = true
 serde.workspace = true
 ts-rs.workspace = true

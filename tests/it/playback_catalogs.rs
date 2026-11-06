@@ -9,6 +9,10 @@ use api_types::playback::{
 };
 use catalogs::Library;
 use common::{Backend, Event, Viewer, fixture};
+use sessions::{
+    CursorOptions,
+    session::{Access, Command, Control, Reply},
+};
 use std::{collections::BTreeMap, fs, path::Path};
 
 /// A catalog document of `name`, padded so that two versions of one file differ in size.
@@ -28,8 +32,13 @@ fn settle(library: &Library) {
 /// A viewer that opened a video, and the ids of the catalogs it was told about.
 async fn viewer_of(backend: &Backend) -> (Viewer, Vec<String>) {
     let added = backend.add(&fixture("cfr_h264_gop10_bf2.mp4")).await;
+    opened_with(backend, &added.ticket()).await
+}
+
+/// A viewer that opened the video of `ticket`, and the ids of the catalogs it was told about.
+async fn opened_with(backend: &Backend, ticket: &str) -> (Viewer, Vec<String>) {
     let mut viewer = backend.viewer().await;
-    viewer.open(&added.ticket(), None).await;
+    viewer.open(ticket, None).await;
     loop {
         match viewer.next().await {
             Event::Message(ServerMessage::Indexing { .. }) => {}
@@ -138,6 +147,90 @@ async fn a_viewer_is_pushed_the_catalogs_it_asked_for_and_every_viewer_the_chang
     assert_eq!(
         catalog_ids(message(&mut bystander).await).last().unwrap(),
         "user:dawn.json"
+    );
+}
+
+/// Shares the session of `added` and opens its video as a watcher of it, with the ids of the catalogs it was told.
+async fn watcher_of(backend: &Backend, added: &common::Added) -> (Viewer, Vec<String>) {
+    added
+        .owner
+        .command(Command::Control(Control::Share {
+            access: Access::Watch,
+        }))
+        .unwrap();
+    let link = added.owner.state().sharing.as_ref().unwrap().link.clone();
+    let seat = backend
+        .state
+        .sessions
+        .join(&link, CursorOptions::default())
+        .unwrap();
+    let Ok(Reply::Ticket(ticket)) = seat.command(Command::RequestTicket(added.key.clone())) else {
+        panic!("a watcher may stream what the owner has open");
+    };
+    opened_with(backend, &ticket.to_string()).await
+}
+
+#[tokio::test]
+async fn a_watcher_is_shown_a_user_catalog_only_while_a_host_lane_uses_it() {
+    let folder = tempfile::tempdir().unwrap();
+    fs::write(folder.path().join("night.json"), document("Night", 0)).unwrap();
+    let library = Library::with_folder(folder.path().to_path_buf());
+    let backend = Backend::start_with_catalogs(library).await;
+    let added = backend.add(&fixture("cfr_h264_gop10_bf2.mp4")).await;
+    let (mut owner, _) = opened_with(&backend, &added.ticket()).await;
+    let (mut watcher, listed) = watcher_of(&backend, &added).await;
+    assert!(
+        listed.iter().all(|id| id.starts_with("built-in:")),
+        "the host's files are not listed"
+    );
+    ask(&mut watcher, "user:night.json").await;
+    let (_, unused, text, problem) = catalog(message(&mut watcher).await);
+    assert_eq!((unused, text, problem), (0, None, None));
+
+    // A host lane draws with it: the watcher is told it exists and given its text.
+    ask(&mut owner, "user:night.json").await;
+    assert!(
+        catalog_ids(message(&mut watcher).await).contains(&"user:night.json".to_owned()),
+        "the list now names it"
+    );
+    let (_, used, text, _) = catalog(message(&mut watcher).await);
+    assert!(used > 0 && text.unwrap().contains("Night"));
+
+    // The host's viewer leaves: nothing uses it, so the watcher loses it again.
+    drop(owner);
+    assert!(
+        !catalog_ids(message(&mut watcher).await).contains(&"user:night.json".to_owned()),
+        "the list drops it"
+    );
+    let (_, gone, text, _) = catalog(message(&mut watcher).await);
+    assert_eq!((gone, text), (0, None));
+}
+
+#[tokio::test]
+async fn a_catalog_a_host_lane_uses_is_not_shown_to_the_watchers_of_another_session() {
+    let folder = tempfile::tempdir().unwrap();
+    fs::write(folder.path().join("night.json"), document("Night", 0)).unwrap();
+    let library = Library::with_folder(folder.path().to_path_buf());
+    let backend = Backend::start_with_catalogs(library).await;
+    let video = fixture("cfr_h264_gop10_bf2.mp4");
+    let first = backend.add(&video).await;
+    let (mut first_host, _) = opened_with(&backend, &first.ticket()).await;
+    let second = backend.add(&video).await;
+    let (mut second_host, _) = opened_with(&backend, &second.ticket()).await;
+    let (mut watcher, _) = watcher_of(&backend, &second).await;
+
+    // A lane of the first session draws with the catalog; the watcher of the second session is not shown it.
+    ask(&mut first_host, "user:night.json").await;
+    catalog(message(&mut first_host).await);
+    ask(&mut watcher, "user:night.json").await;
+    let (_, revision, text, problem) = catalog(message(&mut watcher).await);
+    assert_eq!((revision, text, problem), (0, None, None));
+
+    // A lane of its own session's host makes it visible.
+    ask(&mut second_host, "user:night.json").await;
+    assert!(
+        catalog_ids(message(&mut watcher).await).contains(&"user:night.json".to_owned()),
+        "the list names it"
     );
 }
 

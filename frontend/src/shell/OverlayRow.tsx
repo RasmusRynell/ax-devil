@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useRef } from "react";
-import type { DecoderInfo, ResolverInfo } from "../generated/api";
+import type { DecoderInfo, NewOverlayWire, ResolverInfo } from "../generated/api";
 import { Button } from "../kit/Button";
 import { Select, TextField } from "../kit/Fields";
 import { needsValue, shown } from "../resolvers/fields";
@@ -12,6 +12,10 @@ export interface OverlayEntry {
   key: number;
   path: string;
   picked: string;
+  /** The lane's name of an overlay already in an item, until the file changes. */
+  label?: NewOverlayWire["label"];
+  /** Only the initial seed of the form for the decoder the row mounted with; the form owns the options after. */
+  options?: NewOverlayWire["options"];
 }
 
 /** What a row has to say when OK is pressed: its decoder's options, or `null` while they are incomplete. */
@@ -57,7 +61,7 @@ export function withPath(
       : candidates.some((one) => one.handler === entry.picked)
         ? entry.picked
         : "";
-  return { ...entry, path, picked };
+  return { ...entry, path, picked, label: null };
 }
 
 /** Whether the entry names a file but no handler for it yet. */
@@ -100,7 +104,7 @@ export function OverlayRow({
   register: (key: number, read: (() => OverlayRead) | null) => void;
 }) {
   const decoder = decoders.find((one) => one.handler === entry.picked);
-  const form = useResolverForm(optionsForm(decoder), decoders);
+  const form = useResolverForm(optionsForm(decoder), decoders, entry.options);
   const named = entry.path.trim() !== "";
   const missing = form.resolver.fields.find(
     (field) => needsValue(field) && !shown(field, form.values).trim(),

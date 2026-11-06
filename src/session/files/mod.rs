@@ -206,6 +206,10 @@ impl WorkspaceFiles {
                 .map(drop)
                 .map_err(Failure::from),
             WorkspaceCommand::Discard => self.discard(handle, &mut files).await,
+            WorkspaceCommand::ExportBookmarks { path } => {
+                self.export_bookmarks(handle, &files, PathBuf::from(path))
+                    .await
+            }
         };
         match result {
             Ok(()) => AckOutcome::Ok,

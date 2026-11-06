@@ -78,6 +78,12 @@ fn constant_rate_times_start_at_zero_even_when_the_container_starts_at_ten_secon
             .collect();
         let expected: Vec<i64> = (0..times.len() as u64).map(step).collect();
         assert_eq!(times, expected, "{name}");
+        let cadence = index.cadence().expect("more than one frame");
+        assert_eq!(
+            (cadence.variable, &cadence.periods_us[..]),
+            (false, &[33_333][..]),
+            "{name}"
+        );
     }
 }
 
@@ -93,6 +99,12 @@ fn variable_frame_rate_times_follow_the_container_timestamps() {
         .collect();
     let expected: Vec<i64> = (0..60).map(|n| (33 * n + 17 * (n / 10)) * 1000).collect();
     assert_eq!(times, expected);
+    // Nine gaps of 33 ms to every one of 50 ms.
+    let cadence = index.cadence().expect("more than one frame");
+    assert_eq!(
+        (cadence.variable, &cadence.periods_us[..]),
+        (true, &[33_000, 50_000][..])
+    );
 }
 
 #[test]

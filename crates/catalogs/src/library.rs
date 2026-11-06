@@ -131,6 +131,8 @@ struct Shared {
     /// disk.
     folder: Option<Mutex<Folder>>,
     user: Mutex<User>,
+    /// The user catalogs a host lane draws with, which watchers are shown.
+    lent: lend::Lent,
     /// Counts the changes to what is listed or served.
     generation: watch::Sender<u64>,
 }
@@ -192,6 +194,7 @@ impl Library {
                 built_in,
                 folder: folder.map(Mutex::new),
                 user: Mutex::default(),
+                lent: lend::Lent::default(),
                 generation: watch::channel(0).0,
             }),
         }
@@ -538,5 +541,7 @@ fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
     mutex.lock().unwrap_or_else(PoisonError::into_inner)
 }
 
+mod lend;
+pub use lend::Lend;
 #[cfg(test)]
 mod tests;

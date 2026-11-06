@@ -227,18 +227,43 @@ impl History {
 
     /// The events of the file in sample order.
     pub fn events(&self) -> impl Iterator<Item = EventRef<'_>> {
-        self.events.iter().map(|row| {
-            let [first, count] = row.entities;
-            EventRef {
-                sample: row.sample,
-                kind: KINDS[usize::from(row.kind)],
-                label: self.words.get(row.label),
-                entities: self.event_entities[first as usize..(first + count) as usize]
-                    .iter()
-                    .map(|&entity| self.ids.get(entity))
-                    .collect(),
-            }
-        })
+        self.events.iter().map(|row| self.event_ref(row))
+    }
+
+    /// The event `index` of [`Self::events`].
+    pub fn event(&self, index: u32) -> Option<EventRef<'_>> {
+        self.events
+            .get(index as usize)
+            .map(|row| self.event_ref(row))
+    }
+
+    /// How many events the file has.
+    pub fn event_count(&self) -> usize {
+        self.events.len()
+    }
+
+    /// The sample that carries event `index`, which must be below [`Self::event_count`].
+    pub(crate) fn event_sample(&self, index: u32) -> u32 {
+        self.events[index as usize].sample
+    }
+
+    /// The entities event `index` involves, in order and with repeats; `index` must be below [`Self::event_count`].
+    pub(crate) fn event_entities(&self, index: u32) -> &[u32] {
+        let [first, count] = self.events[index as usize].entities;
+        &self.event_entities[first as usize..(first + count) as usize]
+    }
+
+    fn event_ref(&self, row: &EventRow) -> EventRef<'_> {
+        let [first, count] = row.entities;
+        EventRef {
+            sample: row.sample,
+            kind: KINDS[usize::from(row.kind)],
+            label: self.words.get(row.label),
+            entities: self.event_entities[first as usize..(first + count) as usize]
+                .iter()
+                .map(|&entity| self.ids.get(entity))
+                .collect(),
+        }
     }
 
     fn mask_words(&self) -> usize {

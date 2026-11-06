@@ -18,6 +18,7 @@ type KindTag =
   | "auto_or_whole"
   | "whole"
   | "text"
+  | "decoder"
   | "folder"
   | "records";
 
@@ -60,6 +61,8 @@ interface FieldProps {
   label: ReactNode;
   value: Value;
   describedBy?: string;
+  /** For a decoder: the installed live decoders to offer, as `[id, name]`. */
+  decoders?: readonly (readonly [string, string])[];
   onChange: (value: Value) => void;
 }
 
@@ -115,8 +118,13 @@ const FIELDS: Record<KindTag, (props: FieldProps) => ReactNode> = {
       value={textOf(value)}
       masked={literalSecret(row, value)}
       describedBy={describedBy}
+      wide={row.env}
       onChange={onChange}
     />
+  ),
+  // The id is what is saved; any text stays allowed, so a decoder that is not installed here can still be the default.
+  decoder: ({ label, value, decoders, onChange }) => (
+    <TextField label={label} value={textOf(value)} suggestions={decoders} onChange={onChange} />
   ),
   folder: ({ row, label, value, onChange }) => {
     const bridge = window.axDevilWindow;

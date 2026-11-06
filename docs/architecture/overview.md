@@ -63,7 +63,10 @@ system webview ([D0](../rebuild/14-build-order.md#d0-stack-choice)).
 A window's Workspace is the Doc of its Session: the items (videos, playlists), each item's resolution, the hidden
 refs and which items are open, as one pure `WorkspaceState` (`workspace-store`). It changes only by a `DocCommand`
 the Session applies under its lock (add items, open and close a viewer, hide and unhide); resolving an item runs as
-a job outside the lock and commits through it. A playlist resolves to Content with entries, each with its lanes; a
+a job outside the lock and commits through it. The runner records the files each item was read from (a video's
+overlays, a playlist resolver's folders, the overlays its Content names), and a poll in `sessions` reports a change:
+an item nobody has open resolves again, and an open one only counts the change, which its viewer offers to reload,
+because resolving again would end the stream. A playlist resolves to Content with entries, each with its lanes; a
 video is one entry whose id is the Content's id. Each seat is sent the Doc as `project` builds it for its audience,
 sidebar rows included, so a watcher sees open items only, never a path or a failure's reason. Which entry a viewer
 shows is decided in one place, `restrict`, and a stream is ticketed for one entry of one generation of the Content.
@@ -96,7 +99,7 @@ changed user file is pushed to the sockets that asked for it), filters rows, eva
 them out for the lane's cell, and paints them through one WebGL2 context per viewer. A lane's Lane Style (catalog,
 theme, hidden features, filters, sticky opacity) stays in the client and its Lane Policy in its socket; neither is
 shared with followers; an export carries the style frozen. The viewer's viewport and selection are client state;
-picking runs over the lane's filtered rows. Export and `catalog render` run the same code in the Render Page, a hidden
+picking runs over the lane's filtered rows. Export runs the same code in the Render Page, a hidden
 offscreen Electron page (`desktop/render.cjs`, no display) that Rust talks to over a private loopback socket: Rust
 freezes the job's inputs, sends the page each frame's picture and Sample Items, and encodes the pixels it returns.
 `catalog check` runs the compiler in Electron-as-Node from a bundle `make` builds with the frontend

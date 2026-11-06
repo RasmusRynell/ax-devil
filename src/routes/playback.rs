@@ -33,6 +33,7 @@
 
 mod cached;
 mod catalogs;
+mod delivery;
 mod export;
 mod file_scope;
 mod gate;

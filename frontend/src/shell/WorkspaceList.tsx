@@ -59,6 +59,9 @@ interface Props {
   onLose: (id: SectionId) => void;
   onFold: (key: string, collapse: boolean) => void;
   onHide: (row: TreeRow) => void;
+  /** F2 and Delete on a row: edit or remove its item. */
+  onEdit: (row: TreeRow) => void;
+  onRemove: (row: TreeRow) => void;
   /** The menu of a row at a point, and the tree to give the focus back to when it closes. */
   onMenu: (row: TreeRow, x: number, y: number, tree: HTMLElement | null) => void;
   /** The pointer entered a row at a point (with the entry whose picture it shows), or left it. */
@@ -89,6 +92,8 @@ export function WorkspaceList({
   onLose,
   onFold,
   onHide,
+  onEdit,
+  onRemove,
   onMenu,
   thumbnail,
 }: Props) {
@@ -134,6 +139,8 @@ export function WorkspaceList({
       const parent = rows.findIndex(({ row }) => row.info.key === active.parent);
       if (parent >= 0) onGo(offset + parent);
     } else if (event.key === "Enter" || event.key === " ") onOpen(active);
+    else if (event.key === "F2") onEdit(active);
+    else if (event.key === "Delete") onRemove(active);
     else if (event.key === "ContextMenu" || (event.shiftKey && event.key === "F10")) {
       const box = document.getElementById(idOf(from))?.getBoundingClientRect();
       menuAt(active, box?.left ?? 0, box?.bottom ?? 0);

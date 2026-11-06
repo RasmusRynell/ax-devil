@@ -192,54 +192,6 @@ export const SETTINGS = [
     "scope": "server"
   },
   {
-    "key": "camera.host",
-    "kind": {
-      "type": "text",
-      "default": "$AX_DEVIL_TARGET_ADDR"
-    },
-    "label": "Camera host",
-    "description": null,
-    "page": null,
-    "section": "",
-    "live": true,
-    "env": true,
-    "secret": false,
-    "quick_setup": false,
-    "scope": "server"
-  },
-  {
-    "key": "camera.user",
-    "kind": {
-      "type": "text",
-      "default": "$AX_DEVIL_TARGET_USER"
-    },
-    "label": "Camera username",
-    "description": null,
-    "page": null,
-    "section": "",
-    "live": true,
-    "env": true,
-    "secret": false,
-    "quick_setup": false,
-    "scope": "server"
-  },
-  {
-    "key": "camera.password",
-    "kind": {
-      "type": "text",
-      "default": "$AX_DEVIL_TARGET_PASS"
-    },
-    "label": "Camera password",
-    "description": null,
-    "page": null,
-    "section": "",
-    "live": true,
-    "env": true,
-    "secret": true,
-    "quick_setup": false,
-    "scope": "server"
-  },
-  {
     "key": "camera.protocol",
     "kind": {
       "type": "choice",
@@ -267,20 +219,50 @@ export const SETTINGS = [
     "scope": "server"
   },
   {
-    "key": "camera.head",
+    "key": "camera.host",
     "kind": {
-      "type": "whole",
-      "min": 1,
-      "max": 255,
-      "default": 1
+      "type": "text",
+      "default": "$AX_DEVIL_TARGET_ADDR"
     },
-    "label": "Camera head",
+    "label": "Host",
     "description": null,
-    "page": null,
-    "section": "",
+    "page": "Stream defaults",
+    "section": "Device",
     "live": true,
-    "env": false,
+    "env": true,
     "secret": false,
+    "quick_setup": false,
+    "scope": "server"
+  },
+  {
+    "key": "camera.user",
+    "kind": {
+      "type": "text",
+      "default": "$AX_DEVIL_TARGET_USER"
+    },
+    "label": "Username",
+    "description": null,
+    "page": "Stream defaults",
+    "section": "Device",
+    "live": true,
+    "env": true,
+    "secret": false,
+    "quick_setup": false,
+    "scope": "server"
+  },
+  {
+    "key": "camera.password",
+    "kind": {
+      "type": "text",
+      "default": "$AX_DEVIL_TARGET_PASS"
+    },
+    "label": "Password",
+    "description": null,
+    "page": "Stream defaults",
+    "section": "Device",
+    "live": true,
+    "env": true,
+    "secret": true,
     "quick_setup": false,
     "scope": "server"
   },
@@ -294,10 +276,46 @@ export const SETTINGS = [
     },
     "label": "RTSP port",
     "description": null,
-    "page": null,
-    "section": "",
+    "page": "Stream defaults",
+    "section": "Device",
     "live": true,
     "env": true,
+    "secret": false,
+    "quick_setup": false,
+    "scope": "server"
+  },
+  {
+    "key": "camera.timeout",
+    "kind": {
+      "type": "whole",
+      "min": 1,
+      "max": 600,
+      "default": 10
+    },
+    "label": "Connection timeout (seconds)",
+    "description": null,
+    "page": "Stream defaults",
+    "section": "Device",
+    "live": true,
+    "env": true,
+    "secret": false,
+    "quick_setup": false,
+    "scope": "server"
+  },
+  {
+    "key": "camera.head",
+    "kind": {
+      "type": "whole",
+      "min": 1,
+      "max": 255,
+      "default": 1
+    },
+    "label": "Camera head",
+    "description": null,
+    "page": "Stream defaults",
+    "section": "Video and overlay",
+    "live": true,
+    "env": false,
     "secret": false,
     "quick_setup": false,
     "scope": "server"
@@ -343,10 +361,10 @@ export const SETTINGS = [
       "toggle": false,
       "default": "datahub"
     },
-    "label": "Overlay",
+    "label": "Overlay mode",
     "description": null,
-    "page": null,
-    "section": "",
+    "page": "Stream defaults",
+    "section": "Video and overlay",
     "live": true,
     "env": false,
     "secret": false,
@@ -356,33 +374,15 @@ export const SETTINGS = [
   {
     "key": "camera.rtsp_handler",
     "kind": {
-      "type": "text",
+      "type": "decoder",
       "default": "ONVIF_XML"
     },
-    "label": "RTSP overlay format",
+    "label": "RTSP decoder",
     "description": null,
-    "page": null,
-    "section": "",
+    "page": "Stream defaults",
+    "section": "Video and overlay",
     "live": true,
     "env": false,
-    "secret": false,
-    "quick_setup": false,
-    "scope": "server"
-  },
-  {
-    "key": "camera.timeout",
-    "kind": {
-      "type": "whole",
-      "min": 1,
-      "max": 600,
-      "default": 10
-    },
-    "label": "Connection timeout (seconds)",
-    "description": null,
-    "page": null,
-    "section": "",
-    "live": true,
-    "env": true,
     "secret": false,
     "quick_setup": false,
     "scope": "server"
@@ -413,12 +413,30 @@ export const SETTINGS = [
       "type": "text",
       "default": "$AX_DEVIL_MQTT_BROKER_ADDR"
     },
-    "label": "MQTT host",
+    "label": "Broker host",
     "description": null,
-    "page": null,
-    "section": "",
+    "page": "Analytics",
+    "section": "MQTT analytics",
     "live": true,
     "env": true,
+    "secret": false,
+    "quick_setup": false,
+    "scope": "server"
+  },
+  {
+    "key": "broker.port",
+    "kind": {
+      "type": "whole",
+      "min": 1,
+      "max": 65535,
+      "default": 1883
+    },
+    "label": "Broker port",
+    "description": null,
+    "page": "Analytics",
+    "section": "MQTT analytics",
+    "live": true,
+    "env": false,
     "secret": false,
     "quick_setup": false,
     "scope": "server"
@@ -429,10 +447,10 @@ export const SETTINGS = [
       "type": "text",
       "default": "$AX_DEVIL_MQTT_BROKER_USER"
     },
-    "label": "MQTT username",
+    "label": "Broker username",
     "description": null,
-    "page": null,
-    "section": "",
+    "page": "Analytics",
+    "section": "MQTT analytics",
     "live": true,
     "env": true,
     "secret": false,
@@ -445,31 +463,13 @@ export const SETTINGS = [
       "type": "text",
       "default": "$AX_DEVIL_MQTT_BROKER_PASS"
     },
-    "label": "MQTT password",
+    "label": "Broker password",
     "description": null,
-    "page": null,
-    "section": "",
+    "page": "Analytics",
+    "section": "MQTT analytics",
     "live": true,
     "env": true,
     "secret": true,
-    "quick_setup": false,
-    "scope": "server"
-  },
-  {
-    "key": "broker.port",
-    "kind": {
-      "type": "whole",
-      "min": 1,
-      "max": 65535,
-      "default": 1883
-    },
-    "label": "MQTT port",
-    "description": null,
-    "page": null,
-    "section": "",
-    "live": true,
-    "env": false,
-    "secret": false,
     "quick_setup": false,
     "scope": "server"
   },
@@ -479,10 +479,10 @@ export const SETTINGS = [
       "type": "text",
       "default": "com.axis.scene.frame.v1#1"
     },
-    "label": "MQTT data source",
+    "label": "Data source",
     "description": null,
-    "page": null,
-    "section": "",
+    "page": "Analytics",
+    "section": "MQTT analytics",
     "live": true,
     "env": false,
     "secret": false,
@@ -492,13 +492,13 @@ export const SETTINGS = [
   {
     "key": "broker.handler",
     "kind": {
-      "type": "text",
+      "type": "decoder",
       "default": "ADF_V1_FRAME"
     },
-    "label": "MQTT overlay format",
+    "label": "Decoder",
     "description": null,
-    "page": null,
-    "section": "",
+    "page": "Analytics",
+    "section": "MQTT analytics",
     "live": true,
     "env": false,
     "secret": false,
@@ -511,10 +511,10 @@ export const SETTINGS = [
       "type": "text",
       "default": "com.axis.scene.frame.v1"
     },
-    "label": "DataHub topic",
+    "label": "Topic",
     "description": null,
-    "page": null,
-    "section": "",
+    "page": "Analytics",
+    "section": "DataHub WebSocket analytics",
     "live": true,
     "env": false,
     "secret": false,
@@ -529,10 +529,10 @@ export const SETTINGS = [
       "max": 4294967295,
       "default": 1
     },
-    "label": "DataHub channel",
+    "label": "Topic channel",
     "description": null,
-    "page": null,
-    "section": "",
+    "page": "Analytics",
+    "section": "DataHub WebSocket analytics",
     "live": true,
     "env": false,
     "secret": false,
@@ -542,13 +542,13 @@ export const SETTINGS = [
   {
     "key": "datahub.handler",
     "kind": {
-      "type": "text",
+      "type": "decoder",
       "default": "ADF_V1_FRAME"
     },
-    "label": "DataHub overlay format",
+    "label": "Decoder",
     "description": null,
-    "page": null,
-    "section": "",
+    "page": "Analytics",
+    "section": "DataHub WebSocket analytics",
     "live": true,
     "env": false,
     "secret": false,
@@ -561,10 +561,10 @@ export const SETTINGS = [
       "type": "bool",
       "default": true
     },
-    "label": "Scan on startup",
+    "label": "Scan for cameras on startup",
     "description": null,
-    "page": null,
-    "section": "",
+    "page": "Network scan",
+    "section": "Discovery",
     "live": true,
     "env": false,
     "secret": false,
@@ -577,10 +577,10 @@ export const SETTINGS = [
       "type": "bool",
       "default": true
     },
-    "label": "Sign in to found cameras",
+    "label": "Try to sign in to found cameras by default",
     "description": null,
-    "page": null,
-    "section": "",
+    "page": "Network scan",
+    "section": "Discovery",
     "live": true,
     "env": false,
     "secret": false,
@@ -593,12 +593,12 @@ export const SETTINGS = [
       "type": "text",
       "default": "192.168.1.0/24"
     },
-    "label": "Scan range",
+    "label": "Default IP range",
     "description": null,
-    "page": null,
-    "section": "",
+    "page": "Network scan",
+    "section": "Network scan",
     "live": true,
-    "env": false,
+    "env": true,
     "secret": false,
     "quick_setup": false,
     "scope": "server"

@@ -1,6 +1,6 @@
 //! The index of an image sequence: made from its frame rate alone.
 
-use super::{FrameIndex, Origin};
+use super::{Cadence, FrameIndex, Origin};
 use crate::fingerprint::Fingerprint;
 use crate::input::{ImageSequenceInput, VideoInput};
 use crate::sequence::Numbering;
@@ -82,7 +82,10 @@ impl FrameIndex {
                 last_path.display()
             )]
         };
+        // Every gap is one tick of the frame rate, so rounding each frame's time never makes the rate variable.
+        let cadence = sequence.frame_rate.time_of(1).map(Cadence::constant);
         Ok(FrameIndex {
+            cadence: cadence.filter(|_| timeline.len() > 1),
             origin: Origin::Images {
                 stream: opened.stream,
                 first,

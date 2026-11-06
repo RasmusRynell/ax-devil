@@ -10,7 +10,11 @@ use std::{
     io::{Read, Write},
     time::Duration,
 };
-use tokio::{net::TcpStream, time::timeout};
+use tokio::{
+    net::{TcpListener, TcpStream},
+    task::JoinHandle,
+    time::timeout,
+};
 use tokio_tungstenite::{MaybeTlsStream, WebSocketStream, connect_async, tungstenite::Message};
 
 /// Writes `path` as a settings file with the scan at launch off, so a backend started on it never probes the network
@@ -159,4 +163,60 @@ pub async fn post(address: &str, path: &str, body: &Value) -> Value {
     })
     .await
     .unwrap()
+}
+
+/// A loopback TCP proxy to a backend whose connections the test can cut, as a dropped network does: the peers just
+/// see their connection end, with no WebSocket close frame.
+pub struct Proxy {
+    address: String,
+    connections: std::sync::Arc<std::sync::Mutex<Vec<JoinHandle<()>>>>,
+    accepting: JoinHandle<()>,
+}
+
+impl Proxy {
+    /// A proxy to `target`, listening on a free loopback port.
+    pub async fn to(target: &str) -> Self {
+        let listener = TcpListener::bind(("127.0.0.1", 0)).await.unwrap();
+        let address = listener.local_addr().unwrap().to_string();
+        let connections = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+        let target = target.to_owned();
+        let accepting = tokio::spawn({
+            let connections = connections.clone();
+            async move {
+                while let Ok((mut client, _)) = listener.accept().await {
+                    let target = target.clone();
+                    let relay = tokio::spawn(async move {
+                        if let Ok(mut server) = TcpStream::connect(&target).await {
+                            let _ = tokio::io::copy_bidirectional(&mut client, &mut server).await;
+                        }
+                    });
+                    connections.lock().unwrap().push(relay);
+                }
+            }
+        });
+        Self {
+            address,
+            connections,
+            accepting,
+        }
+    }
+
+    /// Where to connect instead of the backend.
+    pub fn address(&self) -> &str {
+        &self.address
+    }
+
+    /// Ends every connection through the proxy at once; new ones are relayed again.
+    pub fn cut(&self) {
+        for relay in self.connections.lock().unwrap().drain(..) {
+            relay.abort();
+        }
+    }
+}
+
+impl Drop for Proxy {
+    fn drop(&mut self) {
+        self.cut();
+        self.accepting.abort();
+    }
 }

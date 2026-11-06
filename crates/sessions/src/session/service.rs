@@ -5,9 +5,11 @@
 
 use super::{
     Completer, Completion, GrantId, Handle, JobId, Lease, Refusal, Runner, SeatId, SessionState,
-    Spawn, Ticket,
+    Spawn, Ticket, Watcher,
     handle::{Entry, StreamLease},
     roster::{Identity, Presence, RosterEntry, build},
+    runner::Read,
+    sources::Sources,
     state::OWNER_SEAT,
     transition::{Effects, Input, Outcome, transition},
 };
@@ -205,16 +207,17 @@ impl<C: Clone> Live<C> {
     }
 }
 
-struct Inner<C> {
-    sessions: Mutex<HashMap<SessionId, Live<C>>>,
+pub(super) struct Inner<C> {
+    pub(super) sessions: Mutex<HashMap<SessionId, Live<C>>>,
     grace: Duration,
     runner: Arc<dyn Runner>,
     epoch: Instant,
+    pub(super) sources: Sources,
 }
 
 /// Every session of one backend.
 pub struct Service<C: Clone + Send + 'static> {
-    inner: Arc<Inner<C>>,
+    pub(super) inner: Arc<Inner<C>>,
 }
 
 impl<C: Clone + Send + 'static> Clone for Service<C> {
@@ -252,6 +255,7 @@ impl<C: Clone + Send + 'static> Service<C> {
                 grace,
                 runner,
                 epoch: Instant::now(),
+                sources: Sources::default(),
             }),
         }
     }
@@ -274,9 +278,12 @@ impl<C: Clone + Send + 'static> Service<C> {
         for (session, spawn) in deferred.spawn {
             let job = spawn.job;
             let service = self.clone();
-            let done = Completer(Box::new(move |completion| {
-                service.complete(session, job, completion);
-            }));
+            let done = Completer {
+                complete: Box::new(move |completion, read| {
+                    service.finish(session, job, completion, read);
+                }),
+                watcher: Watcher::default(),
+            };
             self.inner.runner.run(spawn, done);
         }
     }
@@ -284,14 +291,26 @@ impl<C: Clone + Send + 'static> Service<C> {
     /// Commits the result of a job. Dropped when the session is gone, the job is no longer registered, or its owner
     /// has moved on.
     pub fn complete(&self, session: SessionId, job: JobId, completion: Completion) {
+        self.finish(session, job, completion, None);
+    }
+
+    /// Commits the result of a job, and with it what the job read: recorded only when the job was still registered,
+    /// so a superseded job never replaces the sources of the one that is current.
+    fn finish(&self, session: SessionId, job: JobId, completion: Completion, read: Read) {
         self.locked(|sessions, deferred| {
+            let wanted = sessions
+                .get(&session)
+                .is_some_and(|live| live.state.jobs.contains_key(&job));
             // A refusal means the session ended: the result is dropped.
-            let _ = apply(
+            let applied = apply(
                 sessions,
                 session,
                 Input::Complete { job, completion },
                 deferred,
             );
+            if let (true, Ok(_), Some((item, watch))) = (wanted, applied, read) {
+                self.inner.sources.record(session, item, watch);
+            }
         });
     }
 
@@ -467,7 +486,7 @@ impl<C: Clone + Send + 'static> Service<C> {
             })?;
         let service = self.clone();
         Ok(StreamLease::new(
-            grant,
+            (session, grant),
             authority,
             content,
             entry.map(|entry| *entry),

@@ -31,6 +31,20 @@ pub fn save(workspace: &Workspace, path: &Path) -> Result<(), UserError> {
     write_file(&backing, &document).map_err(|error| fail(&error))
 }
 
+/// Writes `text` to `path` like [`save`]: replacing the file only when complete, and leaving no temporary file when it
+/// cannot be written. The error names the file.
+pub fn write_text(path: &Path, text: &str) -> Result<(), UserError> {
+    let fail = |error: &dyn std::fmt::Display| {
+        UserError::new(
+            ErrorCode::SaveFailed,
+            format!("Could not write {}: {error}", path.display()),
+        )
+        .at(HostPath::new(path))
+    };
+    let backing = backing(path).map_err(|error| fail(&error))?;
+    write_bytes(&backing, text.as_bytes()).map_err(|error| fail(&error))
+}
+
 /// The file `path` stands for: its target when it is a symlink.
 fn backing(path: &Path) -> io::Result<PathBuf> {
     if fs::symlink_metadata(path).is_ok_and(|meta| meta.is_symlink()) {
@@ -63,9 +77,16 @@ pub(crate) fn read_file(path: &Path) -> Result<(Workspace, Option<PathBuf>), Use
         .map_err(|reason| at(ErrorCode::WorkspaceInvalid, reason))
 }
 
-/// Writes `document` to the file `backing` through a temporary file in its folder, so a failure keeps the old file.
-/// A new file is 0600 on Unix; an existing one keeps its permissions. Creates no folders.
+/// Writes `document` to the file `backing` as pretty JSON, as [`write_bytes`] does.
 pub(crate) fn write_file(backing: &Path, document: &Value) -> io::Result<()> {
+    let mut text = serde_json::to_string_pretty(document)?;
+    text.push('\n');
+    write_bytes(backing, text.as_bytes())
+}
+
+/// Writes `bytes` to the file `backing` through a temporary file in its folder, so a failure keeps the old file.
+/// A new file is 0600 on Unix; an existing one keeps its permissions. Creates no folders.
+fn write_bytes(backing: &Path, bytes: &[u8]) -> io::Result<()> {
     let folder = backing
         .parent()
         .filter(|folder| !folder.as_os_str().is_empty());
@@ -73,9 +94,7 @@ pub(crate) fn write_file(backing: &Path, document: &Value) -> io::Result<()> {
     if let Ok(existing) = fs::metadata(backing) {
         temp.as_file().set_permissions(existing.permissions())?;
     }
-    let mut text = serde_json::to_string_pretty(document)?;
-    text.push('\n');
-    temp.write_all(text.as_bytes())?;
+    temp.write_all(bytes)?;
     temp.as_file().sync_all()?;
     temp.persist(backing).map_err(|error| error.error)?;
     Ok(())

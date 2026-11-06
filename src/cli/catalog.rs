@@ -1,30 +1,18 @@
 //! The commands that only print, `list-handlers` and `catalog`: what they print. They need no server or log file.
 
 use super::args;
-use api_types::{handlers::PluginsInfo, playback::MATCH_EXACT};
-use ax_devil::{
-    desktop,
-    render_host::{Draw, RenderHost},
-};
-use catalogs::{
-    CatalogId, Library, MAX_CATALOG_BYTES, Served,
-    sheets::{self, Sheet},
-};
-use clap::{Subcommand, ValueEnum, ValueHint};
-use export::{LaneStyle, Output, RenderLane, RenderSetup};
-use foundation::{CancelToken, FrameSize};
+use api_types::handlers::PluginsInfo;
+use ax_devil::desktop;
+use catalogs::{CatalogId, Library, Served, sheets};
+use clap::{Subcommand, ValueHint};
 use handlers::Handlers;
-use media::{EncodeFormat, Encoder, Picture};
-use overlays::SampleItem;
 mod manage;
 pub use manage::Home;
 use std::{
     ffi::OsString,
-    fmt::Write,
     fs,
     path::{Path, PathBuf},
     process::{Command as Process, ExitCode},
-    sync::Arc,
 };
 
 /// What `catalog` was asked to do.
@@ -39,21 +27,6 @@ pub enum CatalogCommand {
         /// A catalog file, `built-in:<name>`, or a catalog of the user's folder as `user:<file name>`.
         #[arg(value_name = "CATALOG", value_hint = ValueHint::FilePath)]
         file: Option<PathBuf>,
-    },
-    /// Draw a sheet of example objects with a catalog and write it as a PNG; needs no display.
-    ///
-    /// The catalog is checked first, and a catalog with problems is listed as `check` does. Without a catalog, the
-    /// default for new lanes is drawn, even when it is broken.
-    Render {
-        /// A catalog file, `built-in:<name>`, or a catalog of the user's folder as `user:<file name>`.
-        #[arg(value_name = "CATALOG", value_hint = ValueHint::FilePath)]
-        file: Option<PathBuf>,
-        /// The folder to write the picture to; made when missing. The file is named after the sheet.
-        #[arg(long, value_name = "DIR", value_hint = ValueHint::DirPath)]
-        out: PathBuf,
-        /// The sheet to draw.
-        #[arg(long, value_enum, default_value_t = SheetName::Overview)]
-        sheet: SheetName,
     },
     /// Print the catalog language: document keys, marks, types, functions, fields and limits.
     ///
@@ -79,19 +52,6 @@ pub enum CatalogCommand {
         catalog: PathBuf,
     },
 }
-
-/// The example sheets `catalog render` can draw.
-#[derive(Clone, Copy, ValueEnum)]
-pub enum SheetName {
-    /// One object for every class the built-in decoders name, and a relation.
-    Overview,
-}
-
-/// The largest picture a sheet may be drawn at.
-const MAX_SHEET: FrameSize = FrameSize {
-    width: 3840,
-    height: 2160,
-};
 
 /// What a `catalog` subcommand prints and whether it succeeded.
 #[derive(Debug)]
@@ -131,9 +91,6 @@ pub fn run(command: &CatalogCommand, home: Result<Home, String>) -> Report {
         CatalogCommand::List => home.map(|home| manage::list(&home)),
         CatalogCommand::Check { file } => check_command(file.as_deref(), home),
         CatalogCommand::Reference => Ok(reference()),
-        CatalogCommand::Render { file, out, sheet } => {
-            render_command(file.as_deref(), out, *sheet, home)
-        }
         CatalogCommand::New { name, from } => {
             home.and_then(|home| manage::new(&home, name, from.as_deref()))
         }
@@ -221,11 +178,10 @@ pub fn check_target(target: &Target) -> Result<Report, String> {
 
 /// [`check_target`] with the desktop folder `desktop`.
 pub fn check_target_in(desktop: &Path, target: &Target) -> Result<Report, String> {
-    through_file(target, |path| Ok(check_in(desktop, path)?.report()))
+    through_file(target, |path| check_in(desktop, path))
 }
 
-/// Runs `run` on the catalog file of `target`. A built-in is written to a scratch file, which the checker and the
-/// renderer need, and the report names the catalog by its id instead.
+/// Runs `run` on the catalog file of `target`. A built-in is written to a scratch file, which the checker needs, and the report names the catalog by its id instead.
 pub(super) fn through_file(
     target: &Target,
     run: impl FnOnce(&Path) -> Result<Report, String>,
@@ -251,68 +207,17 @@ pub(super) fn through_file(
     }
 }
 
-/// What the frontend's checker made of a catalog: whether it compiles, and whether the example sheets draw.
-pub enum Checked {
-    /// The catalog compiles and every sheet draws; the checker's report.
-    Good(String),
-    /// The catalog does not compile: the checker's list of its problems.
-    CannotCompile(String),
-    /// The catalog compiles but drawing the sheets with it failed.
-    SheetsFailed {
-        /// The checker's report.
-        text: String,
-        /// The problems drawing the sheets, one per line, with their locations.
-        problems: Vec<String>,
-    },
-}
-
-impl Checked {
-    /// The checker's report; a catalog with either kind of problem failed.
-    fn report(self) -> Report {
-        match self {
-            Self::Good(text) => Report { text, ok: true },
-            Self::CannotCompile(text) | Self::SheetsFailed { text, .. } => {
-                Report { text, ok: false }
-            }
-        }
-    }
-}
-
-/// Checks the catalog `path` in the desktop folder `desktop`: the compiler and every example sheet to draw it on. A
-/// catalog that fails is checked again without the sheets, to tell a catalog that does not compile from one that
-/// does not draw.
-pub fn check_in(desktop: &Path, path: &Path) -> Result<Checked, String> {
+/// Checks the catalog `path` in the desktop folder `desktop`: the compiler, then the example sheet to draw it on. The
+/// report lists the problems of a catalog that does not compile, or of drawing the sheet with one that does.
+pub fn check_in(desktop: &Path, path: &Path) -> Result<Report, String> {
     let scratch = tempfile::tempdir()
-        .map_err(|error| format!("Cannot make a folder for the example sheets: {error}"))?;
-    let mut sheets = Vec::new();
-    for sheet in SheetName::value_variants() {
-        let file = scratch.path().join(sheet.stem());
-        fs::write(&file, sheet.build()?.item)
-            .map_err(|error| format!("Cannot write {}: {error}", file.display()))?;
-        let mut argument = OsString::from(format!("{}=", sheet.stem()));
-        argument.push(file);
-        sheets.push(argument);
-    }
-    let drawn = run_checker(desktop, path, &sheets)?;
-    if drawn.ok {
-        return Ok(Checked::Good(drawn.text));
-    }
-    let compiled = run_checker(desktop, path, &[])?;
-    if !compiled.ok {
-        return Ok(Checked::CannotCompile(compiled.text));
-    }
-    // The first line of the report names the kind of problem; the rest are the problems.
-    let problems = drawn
-        .text
-        .lines()
-        .skip(1)
-        .map(|line| line.trim().to_owned())
-        .filter(|line| !line.is_empty())
-        .collect();
-    Ok(Checked::SheetsFailed {
-        text: drawn.text,
-        problems,
-    })
+        .map_err(|error| format!("Cannot make a folder for the example sheet: {error}"))?;
+    let file = scratch.path().join("overview");
+    fs::write(&file, sheets::overview()?)
+        .map_err(|error| format!("Cannot write {}: {error}", file.display()))?;
+    let mut argument = OsString::from("overview=");
+    argument.push(file);
+    run_checker(desktop, path, &[argument])
 }
 
 /// Runs the frontend's catalog checker on `path` in Electron-as-Node with the `NAME=PATH` sheets. The checker reads
@@ -335,147 +240,4 @@ fn run_checker(desktop: &Path, path: &Path, sheets: &[OsString]) -> Result<Repor
         text,
         ok: output.status.success(),
     })
-}
-
-impl SheetName {
-    /// The name of the sheet's picture file, without the extension.
-    fn stem(self) -> &'static str {
-        match self {
-            Self::Overview => "overview",
-        }
-    }
-
-    fn build(self) -> Result<Sheet, String> {
-        match self {
-            Self::Overview => sheets::overview(),
-        }
-    }
-}
-
-/// `catalog render [CATALOG] --out DIR`: the catalog `file` names, or the default for new lanes. A catalog of the
-/// user's folder is drawn only if the library serves it.
-fn render_command(
-    file: Option<&Path>,
-    out: &Path,
-    sheet: SheetName,
-    home: Result<Home, String>,
-) -> Result<Report, String> {
-    let (id, target) = selected(file, &home)?;
-    if let (Some(id @ CatalogId::User(_)), Ok(home)) = (id, &home) {
-        manage::served(home, &Library::with_folder(home.folder.clone()), &id)?;
-    }
-    render(&target, out, sheet)
-}
-
-/// The catalog's problems as `check` lists them when it does not compile, else the sheet drawn with it and written to
-/// `out`, with the problems of drawing the sheets listed after it. Needs the desktop folder, whose Electron compiles
-/// and draws the catalog.
-pub fn render(target: &Target, out: &Path, sheet: SheetName) -> Result<Report, String> {
-    let desktop = desktop::folder().map_err(|error| error.to_string())?;
-    through_file(target, |path| render_in(&desktop, path, out, sheet))
-}
-
-/// [`render`] with the desktop folder `desktop`.
-pub fn render_in(
-    desktop: &Path,
-    path: &Path,
-    out: &Path,
-    sheet: SheetName,
-) -> Result<Report, String> {
-    let drawing_errors = match check_in(desktop, path)? {
-        Checked::Good(_) => Vec::new(),
-        Checked::SheetsFailed { problems, .. } => problems,
-        failed @ Checked::CannotCompile(_) => return Ok(failed.report()),
-    };
-    let catalog = read_catalog(path)?;
-    let sheet_data = sheet.build()?;
-    let mut host =
-        RenderHost::start(desktop, &CancelToken::new()).map_err(|error| error.to_string())?;
-    let picture = sheet_data.picture.layout();
-    let size = host
-        .setup(RenderSetup {
-            output: Output::Rgba,
-            picture: FrameSize {
-                width: picture.width,
-                height: picture.height,
-            },
-            max_output: MAX_SHEET,
-            lanes: vec![RenderLane {
-                source: Some(0),
-                catalog,
-                style: LaneStyle {
-                    label: sheet.stem().to_owned(),
-                    enabled_classes: Vec::new(),
-                    class_options: 0,
-                    hidden: 0,
-                    theme: None,
-                    retained_opacity: 1.0,
-                    filter: None,
-                },
-            }],
-        })
-        .map_err(|error| error.to_string())?;
-    let item = SampleItem {
-        source: 0,
-        data_revision: 0,
-        sample: 0,
-        time: None,
-        frame_number: None,
-        frame: 0,
-        serial: 0,
-        item: Arc::from(sheet_data.item),
-    };
-    host.submit(&Draw {
-        seq: 0,
-        picture: &sheet_data.picture,
-        items: &[item],
-        cells: &[0],
-        kinds: &[MATCH_EXACT],
-    })
-    .map_err(|error| error.to_string())?;
-    let pixels = host.receive().map_err(|error| error.to_string())?;
-    let written = write_png(
-        out,
-        sheet.stem(),
-        size,
-        &pixels.data,
-        pixels.stride0 as usize,
-    )?;
-    let mut text = format!("Wrote {}\n", written.display());
-    for problem in drawing_errors {
-        let _ = writeln!(text, "  drawing error: {problem}");
-    }
-    Ok(Report { text, ok: true })
-}
-
-/// The catalog text of `path`, refused when it is larger than the viewer would take.
-fn read_catalog(path: &Path) -> Result<String, String> {
-    let cannot = |error: &dyn std::fmt::Display| format!("Cannot read {}: {error}", path.display());
-    let file = fs::File::open(path).map_err(|error| cannot(&error))?;
-    if file.metadata().map_err(|error| cannot(&error))?.len() > MAX_CATALOG_BYTES {
-        return Err(cannot(&format!(
-            "it is larger than {MAX_CATALOG_BYTES} bytes"
-        )));
-    }
-    fs::read_to_string(path).map_err(|error| cannot(&error))
-}
-
-/// Writes the RGBA rows as `<stem>.png` in `out`; the encoder writes it through a new sibling file, so a failure
-/// leaves nothing half written and a link or another run's file at a fixed name is never touched.
-fn write_png(
-    out: &Path,
-    stem: &str,
-    size: FrameSize,
-    rgba: &[u8],
-    stride: usize,
-) -> Result<PathBuf, String> {
-    fs::create_dir_all(out).map_err(|error| format!("Cannot create {}: {error}", out.display()))?;
-    let png = out.join(format!("{stem}.png"));
-    let mut encoder = Encoder::create(&png, EncodeFormat::Png, size.width, size.height)
-        .map_err(|error| error.reason)?;
-    encoder
-        .write(Picture::Rgba { data: rgba, stride }, 0, 1)
-        .and_then(|()| encoder.finish())
-        .map_err(|error| error.reason)?;
-    Ok(png)
 }

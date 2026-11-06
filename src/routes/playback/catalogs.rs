@@ -1,12 +1,15 @@
 //! The catalogs a viewer hears about: it asks for a catalog by id and is answered with its document, and from then on
 //! it is sent the new document whenever that changes, and the new list whenever the list of catalogs changes. The
-//! messages are text and ungated: catalogs are the app's resources and their ids carry no host path.
+//! messages are text. The built-ins go to everyone. A user catalog is the host's file: the host's own viewers ask for
+//! the ones their lanes use, and a watcher is shown a user catalog only while a host viewer of its own Session has
+//! asked for it. The host's choice per lane is client state, so "asked for" stands for "draws with".
 
 use super::{Outgoing, text};
-use api_types::{catalogs::CatalogInfoWire, playback::ServerMessage};
-use catalogs::{CatalogId, Library, Served};
+use api_types::{Audience, catalogs::CatalogInfoWire, playback::ServerMessage};
+use catalogs::{CatalogId, Lend, Library, Served};
+use sessions::SessionId;
 use std::{
-    collections::{BTreeSet, VecDeque},
+    collections::{BTreeMap, BTreeSet, VecDeque},
     sync::Arc,
 };
 use tokio::sync::watch;
@@ -21,6 +24,11 @@ const MAX_KEPT: usize = 16;
 /// What one viewer has been told of the catalogs.
 pub(super) struct CatalogFeed {
     library: Library,
+    /// The Session of a watcher, who is shown only the catalogs that Session's host lanes use; `None` for a host.
+    watcher: Option<String>,
+    /// The Session of a host viewer, whose watchers are shown the user catalogs it asked for while they are held.
+    session: String,
+    lends: BTreeMap<String, Lend>,
     changes: watch::Receiver<u64>,
     /// The list the viewer was last told.
     listing: Vec<CatalogInfoWire>,
@@ -37,12 +45,17 @@ pub(super) struct CatalogFeed {
 
 impl CatalogFeed {
     /// A feed that has told the viewer the list [`listing`](Self::listing) gives.
-    pub(super) fn new(library: &Library) -> Self {
+    pub(super) fn new(library: &Library, audience: Audience, session: SessionId) -> Self {
         // Subscribe before listing, so a change between the two is pushed rather than missed.
         let changes = library.changes();
+        let session = session.to_string();
+        let watcher = (!audience.host_details).then(|| session.clone());
         Self {
-            listing: infos(library),
+            listing: infos(library, watcher.as_deref()),
             library: library.clone(),
+            watcher,
+            session,
+            lends: BTreeMap::new(),
             changes,
             asked: Vec::new(),
             unanswered: BTreeSet::new(),
@@ -74,8 +87,16 @@ impl CatalogFeed {
         };
         if self.asked.len() == MAX_ASKED {
             let (dropped, _) = self.asked.remove(0);
+            self.lends.remove(&dropped);
             self.unanswered.remove(&dropped);
             self.stale.retain(|stale| *stale != dropped);
+        }
+        if self.watcher.is_none()
+            && let Some(parsed) = CatalogId::parse(&id)
+        {
+            self.lends
+                .entry(id.clone())
+                .or_insert_with(|| self.library.lend(&self.session, &parsed));
         }
         self.asked.push((id.clone(), revision));
         self.unanswered.insert(id);
@@ -94,7 +115,7 @@ impl CatalogFeed {
             if self.changes.changed().await.is_err() {
                 return std::future::pending().await;
             }
-            let listing = infos(&self.library);
+            let listing = infos(&self.library, self.watcher.as_deref());
             let listed = (listing != self.listing).then(|| {
                 self.listing = listing.clone();
                 text(&ServerMessage::Catalogs { catalogs: listing }).into()
@@ -102,7 +123,9 @@ impl CatalogFeed {
             self.stale = self
                 .asked
                 .iter()
-                .filter(|(id, revision)| served(&self.library, id).revision() != *revision)
+                .filter(|(id, revision)| {
+                    served(&self.library, id, self.watcher.as_deref()).revision() != *revision
+                })
                 .map(|(id, _)| id.clone())
                 .collect();
             if let Some(listed) = listed {
@@ -136,7 +159,7 @@ impl CatalogFeed {
 
     /// The message about the catalog `id`, which the viewer is then up to date with.
     fn reply(&mut self, id: String) -> Outgoing {
-        let served = served(&self.library, &id);
+        let served = served(&self.library, &id, self.watcher.as_deref());
         if let Some((_, revision)) = self.asked.iter_mut().find(|(asked, _)| *asked == id) {
             *revision = served.revision();
         }
@@ -158,16 +181,20 @@ impl CatalogFeed {
     }
 }
 
-/// What `id` names now; nothing for an id that names no catalog here.
-fn served(library: &Library, id: &str) -> Served {
-    CatalogId::parse(id).map_or(Served::Missing { revision: 0 }, |parsed| {
-        library.document(&parsed)
+/// What `id` names now; nothing for an id that names no catalog here, or, to a watcher, no catalog of the host's lanes.
+fn served(library: &Library, id: &str, watcher: Option<&str>) -> Served {
+    CatalogId::parse(id).map_or(Served::Missing { revision: 0 }, |parsed| match watcher {
+        Some(session) => library.shared_document(session, &parsed),
+        None => library.document(&parsed),
     })
 }
 
-fn infos(library: &Library) -> Vec<CatalogInfoWire> {
-    library
-        .documents()
+fn infos(library: &Library, watcher: Option<&str>) -> Vec<CatalogInfoWire> {
+    let documents = match watcher {
+        Some(session) => library.shared_documents(session),
+        None => library.documents(),
+    };
+    documents
         .into_iter()
         .map(|info| CatalogInfoWire {
             id: info.id.to_string(),
@@ -197,7 +224,8 @@ mod tests {
 
     #[tokio::test]
     async fn asking_for_a_65th_catalog_is_answered_and_drops_the_one_asked_for_longest_ago() {
-        let mut feed = CatalogFeed::new(&Library::built_in());
+        let mut feed =
+            CatalogFeed::new(&Library::built_in(), Audience::HOST, SessionId::generate());
         for number in 0..MAX_ASKED {
             feed.ask(format!("user:{number}.json"));
             answered(&mut feed).await;
@@ -216,7 +244,8 @@ mod tests {
 
     #[test]
     fn reloading_one_catalog_many_times_keeps_the_others_documents_for_export() {
-        let mut feed = CatalogFeed::new(&Library::built_in());
+        let mut feed =
+            CatalogFeed::new(&Library::built_in(), Audience::HOST, SessionId::generate());
         let document: Arc<str> = "{}".into();
         feed.keep("user:a.json", 1, &document);
         for revision in 1..=(2 * MAX_KEPT as u32) {

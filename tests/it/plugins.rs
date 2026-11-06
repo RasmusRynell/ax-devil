@@ -214,6 +214,34 @@ fn a_plugin_that_writes_out_of_order_has_its_samples_sorted_and_the_replaced_one
     assert_eq!(ids(1), ["4"]);
 }
 
+#[test]
+fn a_records_plugin_reads_a_file_line_by_line_and_a_bad_line_costs_one_record() {
+    let home = tempfile::tempdir().unwrap();
+    let registry = install(home.path(), "shell-records");
+    let plugins = Plugins::new(Ok(registry), Handlers::built_in());
+    let overlay = OverlayRef {
+        label: "records".into(),
+        slot: "records".into(),
+        path: plugin("shell-records/sample.records.txt"),
+        handler: "shell-records".into(),
+        options: Default::default(),
+    };
+
+    let track = TrackRegistry::new(plugins.set().decoder_lookup(), None)
+        .open(&overlay, &CancelToken::new())
+        .unwrap();
+    let snapshot = loop {
+        let snapshot = track.snapshot();
+        if snapshot.ingest != scene_store::Ingest::Reading {
+            break snapshot;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(10));
+    };
+
+    assert_eq!(snapshot.ingest, scene_store::Ingest::Complete);
+    assert_eq!(snapshot.keys.len(), 3);
+}
+
 #[tokio::test]
 async fn the_plugins_route_lists_the_plugins_that_loaded_and_the_one_that_did_not() {
     let home = tempfile::tempdir().unwrap();

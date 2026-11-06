@@ -4,6 +4,7 @@
 //! object is.
 
 use crate::ErrorWire;
+use scene_store::EventRow;
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
@@ -48,6 +49,10 @@ pub enum FileAppearances {
         spans: Vec<[u64; 2]>,
         /// Whether the object has more spans than are sent: these are its first ones.
         truncated: bool,
+        /// The events that involve the object, in frame order.
+        events: Vec<EventRow>,
+        /// Whether the object has more events than are sent: these are its first ones.
+        events_truncated: bool,
     },
     /// There are no spans, and why.
     Unavailable {

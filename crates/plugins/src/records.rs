@@ -26,7 +26,13 @@ struct LineIn<'a> {
     warning: Option<WarningIn>,
     skipped: Option<String>,
     error: Option<ErrorIn>,
+    done: Option<DoneIn>,
 }
+
+/// `{"done":{}}`: the answer to a record is complete.
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct DoneIn {}
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -70,6 +76,7 @@ enum Parsed {
     Warning(Warning),
     Skipped(String),
     Error(String),
+    Done,
 }
 
 /// The name of the filter policy of every plugin.
@@ -78,8 +85,15 @@ pub(crate) const POLICY_NAME: &str = "plugin";
 /// Feeds a sink from lines.
 pub(crate) struct Records<'a> {
     sink: &'a mut dyn SceneSink,
+    /// The header the sink was given: the first of the run, and only while no sample had reached it.
     header: Option<Header>,
-    sampled: bool,
+    /// The sink was given a sample.
+    sunk: bool,
+    /// The process has given a header or a sample, so it may not give a header.
+    begun: bool,
+    /// The record being answered; `None` while the plugin reads a whole file. Lines are then reported at the record's
+    /// position instead of their own number, and `done` ends the answer.
+    position: Option<u64>,
 }
 
 impl<'a> Records<'a> {
@@ -87,13 +101,44 @@ impl<'a> Records<'a> {
         Self {
             sink,
             header: None,
-            sampled: false,
+            sunk: false,
+            begun: false,
+            position: None,
         }
     }
 
-    /// The header the file declared.
+    /// The lines that follow answer the record at `position`.
+    pub(crate) fn at(&mut self, position: u64) {
+        self.position = Some(position);
+    }
+
+    /// A new process starts: it may give a header, which the sink gets only if it has none and no sample yet.
+    pub(crate) fn new_process(&mut self) {
+        self.begun = false;
+    }
+
+    /// The record being answered could not be, so it is skipped.
+    pub(crate) fn skip_record(&mut self, reason: String) {
+        self.skip(0, reason);
+    }
+
+    /// Skips at the record's position, or at line `number` of a whole-file run.
+    fn skip(&mut self, number: usize, reason: String) {
+        self.sink
+            .skip(self.position.unwrap_or(number as u64), reason);
+    }
+
+    /// The header the sink was given.
     pub(crate) fn finish(self) -> Option<Header> {
         self.header
+    }
+
+    /// Where a line is: its own number, or the record it answers.
+    fn place(&self, number: usize) -> String {
+        match self.position {
+            Some(position) => format!("record {position}"),
+            None => format!("line {number}"),
+        }
     }
 
     fn parse(&self, bytes: &[u8]) -> Result<Parsed, String> {
@@ -109,24 +154,38 @@ impl<'a> Records<'a> {
             warning,
             skipped,
             error,
+            done,
         } = line;
-        match (header, sample, replace, warning, skipped, error) {
-            (Some(raw), None, None, None, None, None) => self.header_from(raw).map(Parsed::Header),
-            (None, Some(raw), None, None, None, None) => {
+        match (header, sample, replace, warning, skipped, error, done) {
+            (Some(raw), None, None, None, None, None, None) => {
+                self.header_from(raw).map(Parsed::Header)
+            }
+            (None, Some(raw), None, None, None, None, None) => {
                 Ok(Parsed::Sample(scene(raw)?, OnEqualKey::Merge))
             }
-            (None, None, Some(raw), None, None, None) => {
+            (None, None, Some(raw), None, None, None, None) => {
                 Ok(Parsed::Sample(scene(raw)?, OnEqualKey::Replace))
             }
-            (None, None, None, Some(warning), None, None) => {
+            (None, None, None, Some(warning), None, None, None) => {
                 Ok(Parsed::Warning(load_warning(warning)))
             }
-            (None, None, None, None, Some(reason), None) => Ok(Parsed::Skipped(shorten(&reason))),
-            (None, None, None, None, None, Some(error)) => Ok(Parsed::Error(cut(&error.reason))),
-            _ => Err(
-                "needs exactly one of header, sample, replace, warning, skipped or error"
-                    .to_owned(),
-            ),
+            (None, None, None, None, Some(reason), None, None) => {
+                Ok(Parsed::Skipped(shorten(&reason)))
+            }
+            (None, None, None, None, None, Some(error), None) => {
+                Ok(Parsed::Error(cut(&error.reason)))
+            }
+            (None, None, None, None, None, None, Some(DoneIn {})) if self.position.is_some() => {
+                Ok(Parsed::Done)
+            }
+            _ => Err(format!(
+                "needs exactly one of header, sample, replace, warning, skipped{}",
+                if self.position.is_some() {
+                    ", error or done"
+                } else {
+                    " or error"
+                }
+            )),
         }
     }
 
@@ -174,24 +233,31 @@ impl LineHandler for Records<'_> {
         }
         match self.parse(bytes) {
             Ok(Parsed::Header(header)) => {
-                if self.header.is_some() || self.sampled {
+                if self.begun {
                     return Next::Stop(format!(
-                        "line {number}: a header must come once, before the first sample"
+                        "{}: a header must come once, before the first sample",
+                        self.place(number)
                     ));
                 }
-                self.sink.header(header.clone());
-                self.header = Some(header);
+                self.begun = true;
+                // A restarted plugin gives its header again; the sink has the first, or none once samples came.
+                if self.header.is_none() && !self.sunk {
+                    self.sink.header(header.clone());
+                    self.header = Some(header);
+                }
             }
             Ok(Parsed::Warning(warning)) => self.sink.warn(warning),
             Ok(Parsed::Sample(scene, on_equal_key)) => {
-                self.sampled = true;
+                self.begun = true;
+                self.sunk = true;
                 if self.sink.sample(scene, on_equal_key).is_break() {
                     return Next::SinkFull;
                 }
             }
-            Ok(Parsed::Skipped(reason)) => self.sink.skip(number as u64, reason),
+            Ok(Parsed::Skipped(reason)) => self.skip(number, reason),
             Ok(Parsed::Error(reason)) => return Next::Stop(reason),
-            Err(reason) => self.sink.skip(number as u64, reason),
+            Ok(Parsed::Done) => return Next::Done,
+            Err(reason) => self.skip(number, reason),
         }
         Next::Continue
     }

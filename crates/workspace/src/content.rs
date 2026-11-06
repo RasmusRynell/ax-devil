@@ -35,6 +35,12 @@ impl ContentId {
         Self(format!("{item}/{playlist}/{entry}"))
     }
 
+    /// This id with the item it names replaced by `item`; the playlist and entry names stay.
+    fn of_other_item(&self, item: &ItemId) -> Self {
+        let rest = self.0.find('/').map_or("", |slash| &self.0[slash..]);
+        Self(format!("{item}{rest}"))
+    }
+
     /// The id as text, the form that crosses the wire.
     pub fn as_str(&self) -> &str {
         &self.0
@@ -156,6 +162,23 @@ pub struct PlaylistContent {
     pub playlists: Vec<PlaylistSpan>,
     /// What the resolver left out of the playlist.
     pub warnings: Vec<Warning>,
+}
+
+impl PlaylistContent {
+    /// This Content as the item `item` resolves to: every id is `item`'s, with the same playlist and entry names. A
+    /// playlist resolved before the item it is for exists takes the id of the item it replaces this way.
+    #[must_use]
+    pub fn rebound(mut self, item: &ItemId) -> Self {
+        self.id = self.id.of_other_item(item);
+        self.item_id = *item;
+        for entry in &mut self.entries {
+            entry.id = entry.id.of_other_item(item);
+        }
+        for span in &mut self.playlists {
+            span.id = span.id.of_other_item(item);
+        }
+        self
+    }
 }
 
 /// What a viewer opens, by kind. Viewers register by kind.
@@ -374,6 +397,20 @@ mod tests {
             warnings: Vec::new(),
         };
         playlist_content(&ItemId::generate(), "Runs", resolved)
+    }
+
+    #[test]
+    fn a_playlist_rebound_to_another_item_has_the_ids_it_would_have_been_resolved_with() {
+        let resolved = || ResolvedPlaylists {
+            playlists: vec![playlist("run", &["a", "b"]), playlist("x/y", &["z"])],
+            warnings: Vec::new(),
+        };
+        let (first, second) = (ItemId::generate(), ItemId::generate());
+        let content = playlist_content(&first, "Runs", resolved()).unwrap();
+        assert_eq!(
+            content.rebound(&second),
+            playlist_content(&second, "Runs", resolved()).unwrap()
+        );
     }
 
     #[test]

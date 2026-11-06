@@ -1,0 +1,21 @@
+{
+  "manifest": 2,
+  "id": "shell-records",
+  "name": "Shell records",
+  "version": "1.0.0",
+  "protocol": 3,
+  "command": ["sh", "convert.sh"],
+  "code": ["convert.sh"],
+  "idle_timeout_s": 30,
+  "handlers": [
+    {
+      "kind": "decoder",
+      "id": "shell-records",
+      "name": "Shell records (text)",
+      "input": "records",
+      "scene_version": "4.0",
+      "extensions": [".records.txt"],
+      "bases": ["time"]
+    }
+  ]
+}
