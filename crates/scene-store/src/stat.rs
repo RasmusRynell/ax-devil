@@ -30,7 +30,7 @@ impl Stat {
     }
 
     #[cfg(unix)]
-    fn from_metadata(metadata: &std::fs::Metadata) -> Self {
+    pub(crate) fn from_metadata(metadata: &std::fs::Metadata) -> Self {
         use std::os::unix::fs::MetadataExt;
         let nanos = |secs: i64, nsec: i64| secs.saturating_mul(1_000_000_000).saturating_add(nsec);
         Self {
@@ -41,7 +41,7 @@ impl Stat {
     }
 
     #[cfg(not(unix))]
-    fn from_metadata(metadata: &std::fs::Metadata) -> Self {
+    pub(crate) fn from_metadata(metadata: &std::fs::Metadata) -> Self {
         let mtime_ns = metadata
             .modified()
             .ok()

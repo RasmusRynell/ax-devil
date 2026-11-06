@@ -123,22 +123,31 @@ impl SourceWatch {
 
     /// Whether the path now names another file than the one this watch holds, as after a writer replaced it by
     /// renaming a new file over it. A track of the old file is still right for those who hold it, but a new open
-    /// of the path must read what the path holds now.
-    #[cfg(unix)]
+    /// of the path must read what the path holds now. The path is gone, has another size or modification time than
+    /// the held file had when the watch began, or (on Unix) is another device or inode.
     pub(crate) fn replaced(&self) -> bool {
-        use std::os::unix::fs::MetadataExt;
-        match (std::fs::metadata(&self.path), self.file.metadata()) {
-            (Ok(now), Ok(held)) => now.dev() != held.dev() || now.ino() != held.ino(),
-            (Err(_), _) => true,
-            (Ok(_), Err(_)) => false,
+        let Ok(now) = std::fs::metadata(&self.path) else {
+            return true;
+        };
+        if !now.is_file() || is_other(&self.stat, &Stat::from_metadata(&now)) {
+            return true;
         }
-    }
-
-    /// Without file identities, a replaced file is told apart by its size and modification time alone.
-    #[cfg(not(unix))]
-    pub(crate) fn replaced(&self) -> bool {
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::MetadataExt;
+            if let Ok(held) = self.file.metadata() {
+                return now.dev() != held.dev() || now.ino() != held.ino();
+            }
+        }
         false
     }
+}
+
+/// Whether `now` is not the file that had `held`: its size or modification time differs. Taken from the path rather
+/// than the handle, so it holds on platforms with no file identities, where an atomic replacement still brings a
+/// new modification time.
+fn is_other(held: &Stat, now: &Stat) -> bool {
+    held.size != now.size || held.mtime_ns != now.mtime_ns
 }
 
 /// Reads the whole source from its start, hashing it and optionally keeping the bytes; checks for cancellation
@@ -166,5 +175,36 @@ pub(crate) fn read_through(
         if let Some(bytes) = keep.as_deref_mut() {
             bytes.extend_from_slice(&chunk[..read]);
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_file_with_another_size_or_modification_time_is_another_file() {
+        let held = Stat {
+            size: 10,
+            mtime_ns: 5,
+            ctime_ns: Some(7),
+        };
+        assert!(!is_other(&held, &held));
+        // A rename or a metadata change moves the change time and nothing else.
+        assert!(!is_other(
+            &held,
+            &Stat {
+                ctime_ns: Some(9),
+                ..held
+            }
+        ));
+        assert!(is_other(&held, &Stat { size: 11, ..held }));
+        assert!(is_other(
+            &held,
+            &Stat {
+                mtime_ns: 6,
+                ..held
+            }
+        ));
     }
 }
