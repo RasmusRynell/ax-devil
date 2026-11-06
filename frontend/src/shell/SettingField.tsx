@@ -91,7 +91,6 @@ const FIELDS: Record<KindTag, (props: FieldProps) => ReactNode> = {
         label={label}
         value={textOf(value)}
         suggestions={row.kind.options ?? []}
-        wide
         onChange={onChange}
       />
     ) : (
