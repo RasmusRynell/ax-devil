@@ -56,10 +56,12 @@ use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
 pub mod envelope;
+mod events;
 mod export;
 mod file_scope;
 mod lane;
 mod want;
+pub use events::*;
 pub use export::*;
 pub use file_scope::*;
 pub use lane::*;
@@ -256,6 +258,10 @@ pub enum ClientMessage {
         /// The object's id.
         entity: String,
     },
+    /// Asks for rows of a lane's event list; the answer is `EventRows`.
+    EventQuery(EventQueryWire),
+    /// Asks for one event of a lane's file; the answer is `Event`.
+    Event(EventAskWire),
     /// Ends the session and releases the source.
     Close,
 }
@@ -442,6 +448,10 @@ pub enum ServerMessage {
         /// The spans, or why there are none.
         appearances: FileAppearances,
     },
+    /// Rows of a lane's event list. Not held back for a frame.
+    EventRows(EventRowsWire),
+    /// One event of a lane's file. Not held back for a frame.
+    Event(EventWire),
     /// The session cannot go on and ends.
     Error(ErrorWire),
 }
