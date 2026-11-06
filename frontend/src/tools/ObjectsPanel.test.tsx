@@ -236,15 +236,15 @@ describe("File scope", () => {
     expect(last().locate).toBe("r42");
   });
 
-  it("seeks to the frame under a click on the presence strip", () => {
+  it("shows the strip of a File row without seeking, and a click only opens the row", () => {
     const { source, selected, answer } = mount();
     showFile();
     answer([file("7", 3)]);
     const strip = screen.getByRole("option").children[2].firstElementChild as HTMLElement;
     vi.spyOn(strip, "getBoundingClientRect").mockReturnValue({ left: 10, width: 200 } as DOMRect);
     fireEvent.click(strip, { clientX: 110 });
-    expect(source.seek).toHaveBeenCalledWith(50);
-    expect(selected).toEqual([]);
+    expect(source.seek).not.toHaveBeenCalled();
+    expect(selected).toEqual(["7"]);
   });
 
   it.each<[FileScopeUnavailable, string]>([

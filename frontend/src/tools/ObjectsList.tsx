@@ -148,10 +148,10 @@ export function ObjectsList({
   const stale = inFile ? staleOf(files) : null;
   const total = inFile ? (page?.total ?? 0) : objects.length;
   const count = inFile ? (page?.matched ?? 0) : found.length;
-  const seek = canSeek ? (frameNumber: number) => source.seek(frameNumber) : undefined;
+  const shownFrame = view.shown?.sequenceId;
   const fileCols = useMemo(
-    () => fileColumns(view.frameCount, (frame) => source.frameTime(frame), seek),
-    [view.frameCount, canSeek, source],
+    () => fileColumns(view.frameCount, (frame) => source.frameTime(frame), shownFrame),
+    [view.frameCount, shownFrame, source],
   );
   // The rows in view, bucketed so that scrolling asks the backend for a page only now and then.
   const onRange = useCallback((start: number) => setOffset(Math.floor(start / STEP) * STEP), []);
