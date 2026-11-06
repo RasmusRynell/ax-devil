@@ -2925,13 +2925,17 @@ policy_revision: number,
  */
 spans: Array<[number, number]>, 
 /**
- * Whether the object has more spans or events than are sent: these are the first ones.
+ * Whether the object has more spans than are sent: these are its first ones.
  */
 truncated: boolean, 
 /**
  * The events that involve the object, in frame order.
  */
-events: Array<EventRowWire>, } | { "state": "Unavailable", 
+events: Array<EventRowWire>, 
+/**
+ * Whether the object has more events than are sent: these are its first ones.
+ */
+events_truncated: boolean, } | { "state": "Unavailable", 
 /**
  * Why the file cannot be asked.
  */

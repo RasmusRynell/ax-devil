@@ -400,6 +400,7 @@ describe("inspector", () => {
             spans,
             truncated: false,
             events: [],
+            events_truncated: false,
             ...over,
           },
         }),

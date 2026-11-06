@@ -143,19 +143,17 @@ fn list(
     audience: Audience,
 ) -> Result<ServerMessage, Stop> {
     let lane = ask.lane;
-    let mut cached = cache.prepared(lane, input, || read(input, cancel, audience))?;
+    let cached = cache.prepared(lane, input, || read(input, cancel, audience))?;
+    let revisions = (cached.data_revision, cached.policy_revision);
     let matches = match &cached.event_listing {
         Some((search, matches)) if *search == ask.query => Arc::clone(matches),
         _ => {
-            // What was computed stays for the next request even when this one is cancelled.
-            cached.event_listing = None;
-            cache.put(lane, cached.clone());
+            // The old listing goes while the new one is made.
+            cache.update(lane, revisions, |kept| kept.event_listing = None);
             let query = EventQuery {
                 search: ask.query.clone(),
             };
-            let matches = Arc::new(query.run(&cached.history, &cached.events, cancel)?);
-            cached.event_listing = Some((ask.query.clone(), Arc::clone(&matches)));
-            matches
+            Arc::new(query.run(&cached.history, &cached.events, cancel)?)
         }
     };
     let view = EventView {
@@ -179,7 +177,10 @@ fn list(
                 .map(|frame| matches.frame_row(&cached.events, frame)),
         },
     });
-    cache.put(lane, cached);
+    let search = ask.query.clone();
+    cache.update(lane, revisions, |kept| {
+        kept.event_listing = Some((search, matches));
+    });
     Ok(message)
 }
 

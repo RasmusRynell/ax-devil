@@ -261,7 +261,16 @@ fn an_event_shows_each_object_once_where_it_is_seen_and_the_other_events_of_its_
     assert_eq!(chips, [Some("car"), None]);
 
     assert!(view.detail(5, 4).is_none(), "the video does not show it");
-    let on_b: Vec<u32> = view.object_events("b").iter().map(|r| r.event).collect();
-    assert_eq!(on_b, [2, 3, 4]);
-    assert!(view.object_events("nobody").is_empty());
+    let events_of = |limit| {
+        let (rows, more) = view.object_events("b", limit);
+        (rows.iter().map(|r| r.event).collect::<Vec<_>>(), more)
+    };
+    assert_eq!(events_of(9), (vec![2, 3, 4], false));
+    assert_eq!(events_of(3), (vec![2, 3, 4], false));
+    assert_eq!(
+        events_of(2),
+        (vec![2, 3], true),
+        "the first ones, and a sign of more"
+    );
+    assert_eq!(view.object_events("nobody", 9), (Vec::new(), false));
 }

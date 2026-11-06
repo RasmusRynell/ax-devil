@@ -257,17 +257,29 @@ impl<'a> EventView<'a> {
         })
     }
 
-    /// The events that involve the object `id`, in frame order.
-    pub fn object_events(self, id: &str) -> Vec<EventRow> {
+    /// The first `limit` events that involve the object `id`, in frame order, and whether there are more. Rows are
+    /// made for the events returned only.
+    pub fn object_events(self, id: &str, limit: usize) -> (Vec<EventRow>, bool) {
         let Some(entity) = self.history.find(id) else {
-            return Vec::new();
+            return (Vec::new(), false);
         };
-        self.events
+        let mut found: Vec<u32> = self
+            .events
             .order
             .iter()
-            .filter(|&&event| self.history.event_entities(event).contains(&entity))
-            .filter_map(|&event| self.row(event))
-            .collect()
+            .copied()
+            .filter(|&event| self.history.event_entities(event).contains(&entity))
+            .take(limit.saturating_add(1))
+            .collect();
+        let more = found.len() > limit;
+        found.truncate(limit);
+        (
+            found
+                .into_iter()
+                .filter_map(|event| self.row(event))
+                .collect(),
+            more,
+        )
     }
 
     /// The classes of `entity` when the video shows it, else none.

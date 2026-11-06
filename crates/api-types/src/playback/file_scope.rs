@@ -47,10 +47,12 @@ pub enum FileAppearances {
         /// frame between two. Empty when the file has no such object or no frame shows it.
         #[ts(type = "Array<[number, number]>")]
         spans: Vec<[u64; 2]>,
-        /// Whether the object has more spans or events than are sent: these are the first ones.
+        /// Whether the object has more spans than are sent: these are its first ones.
         truncated: bool,
         /// The events that involve the object, in frame order.
         events: Vec<EventRow>,
+        /// Whether the object has more events than are sent: these are its first ones.
+        events_truncated: bool,
     },
     /// There are no spans, and why.
     Unavailable {

@@ -495,3 +495,34 @@ async fn event_answers_carry_their_revisions_a_follower_is_refused_and_a_newer_r
         assert!(refused);
     }
 }
+
+#[tokio::test]
+async fn an_answer_changes_only_its_own_listing_in_the_entry_of_its_revisions() {
+    let folder = tempfile::tempdir().unwrap();
+    let (viewer, revision) = viewer(folder.path()).await;
+    let mut scopes = FileScopes::new(Audience::HOST);
+    scopes.ask(&viewer, true, ask(1, None, 0, 10)).ok().unwrap();
+    rows(next(&mut scopes, true).await);
+    let kept = scopes.cache.held()[0].1;
+
+    scopes
+        .cache
+        .update(0, (revision, 2), |kept| kept.listing = None);
+    assert_eq!(
+        scopes.cache.held()[0].1,
+        kept,
+        "other revisions are not its entry"
+    );
+    scopes
+        .cache
+        .update(0, (revision, 1), |kept| kept.event_listing = None);
+    assert_eq!(
+        scopes.cache.held()[0].1,
+        kept,
+        "the objects listing is not the events'"
+    );
+    scopes
+        .cache
+        .update(0, (revision, 1), |kept| kept.listing = None);
+    assert!(scopes.cache.held()[0].1 < kept);
+}

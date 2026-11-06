@@ -391,21 +391,15 @@ fn answer(
     audience: Audience,
 ) -> Result<ServerMessage, Stop> {
     let lane = ask.lane;
-    let mut cached = cache.prepared(lane, input, || read(input, cancel, audience))?;
+    let cached = cache.prepared(lane, input, || read(input, cancel, audience))?;
+    let revisions = (cached.data_revision, cached.policy_revision);
     let query = query(ask);
-    let listed = match &cached.listing {
-        Some((listed, matches)) if *listed == query => Some(Arc::clone(matches)),
-        _ => None,
-    };
-    let matches = match listed {
-        Some(matches) => matches,
-        None => {
-            // What was computed stays for the next query even when this one is cancelled.
-            cached.listing = None;
-            cache.put(lane, cached.clone());
-            let matches = Arc::new(query.run(&cached.history, &cached.placement, cancel)?);
-            cached.listing = Some((query, Arc::clone(&matches)));
-            matches
+    let matches = match &cached.listing {
+        Some((listed, matches)) if *listed == query => Arc::clone(matches),
+        _ => {
+            // The old listing goes while the new one is made.
+            cache.update(lane, revisions, |kept| kept.listing = None);
+            Arc::new(query.run(&cached.history, &cached.placement, cancel)?)
         }
     };
     let rows = matches.rows(
@@ -430,7 +424,9 @@ fn answer(
         rows,
         located,
     };
-    cache.put(lane, cached);
+    cache.update(lane, revisions, |kept| {
+        kept.listing = Some((query, matches))
+    });
     Ok(message)
 }
 

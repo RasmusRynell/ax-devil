@@ -109,35 +109,60 @@ impl Cache {
             .map(|building| building.lock().unwrap_or_else(PoisonError::into_inner));
         match self.peek(lane).filter(|held| held.is_for(input)) {
             Some(held) => Ok(held),
-            None => Ok(self.insert(lane, build()?, false)),
+            None => Ok(self.insert(lane, build()?)),
         }
     }
 
-    /// Keeps `cached` for the lane unless it was released, then drops the least recently used entries of other lanes
-    /// while the budget is exceeded.
-    pub(super) fn put(&self, lane: u16, cached: Cached) {
-        self.insert(lane, cached, true);
-    }
-
-    /// Keeps `cached` as [`Self::put`] does. Unless `replace`, an entry of the same revisions that the lane already
-    /// keeps stays, with its listing, and is returned; the entry the lane keeps afterwards is returned otherwise.
-    fn insert(&self, lane: u16, cached: Cached, replace: bool) -> Cached {
+    /// Keeps `cached` for the lane unless it was released, and returns the entry the lane keeps: an entry of the same
+    /// revisions that it already keeps stays, with its listings.
+    fn insert(&self, lane: u16, cached: Cached) -> Cached {
         let mut slots = self.slots();
         slots.clock += 1;
         let used = slots.clock;
         let Some(slot) = slots.lanes.get_mut(&lane) else {
             return cached;
         };
-        if !replace
-            && let Some(held) = slot.cached.as_ref().filter(|held| {
-                (held.data_revision, held.policy_revision)
-                    == (cached.data_revision, cached.policy_revision)
-            })
-        {
+        if let Some(held) = slot.cached.as_ref().filter(|held| {
+            (held.data_revision, held.policy_revision)
+                == (cached.data_revision, cached.policy_revision)
+        }) {
             return held.clone();
         }
         slot.cached = Some(cached.clone());
         slot.used = used;
+        self.evict(&mut slots, lane);
+        cached
+    }
+
+    /// Changes what the lane keeps, as one query's answer to it: `change` sees the kept entry and only when it is of
+    /// `revisions`, so an answer made under older revisions or for a released lane changes nothing, and what other
+    /// queries of the lane keep in it stays.
+    pub(super) fn update(
+        &self,
+        lane: u16,
+        revisions: (u32, u32),
+        change: impl FnOnce(&mut Cached),
+    ) {
+        let mut slots = self.slots();
+        slots.clock += 1;
+        let used = slots.clock;
+        let Some(slot) = slots.lanes.get_mut(&lane) else {
+            return;
+        };
+        let Some(held) = slot
+            .cached
+            .as_mut()
+            .filter(|held| (held.data_revision, held.policy_revision) == revisions)
+        else {
+            return;
+        };
+        change(held);
+        slot.used = used;
+        self.evict(&mut slots, lane);
+    }
+
+    /// Drops the least recently used entries of lanes other than `keep` while the budget is exceeded.
+    fn evict(&self, slots: &mut Slots, keep: u16) {
         let mut total: usize = slots
             .lanes
             .values()
@@ -148,14 +173,13 @@ impl Cache {
             let oldest = slots
                 .lanes
                 .iter_mut()
-                .filter(|(other, slot)| **other != lane && slot.cached.is_some())
+                .filter(|(other, slot)| **other != keep && slot.cached.is_some())
                 .min_by_key(|(_, slot)| slot.used);
             let Some(evicted) = oldest.and_then(|(_, slot)| slot.cached.take()) else {
                 break;
             };
             total -= evicted.bytes();
         }
-        cached
     }
 
     /// The lane no longer wants its list: everything kept for it is dropped.

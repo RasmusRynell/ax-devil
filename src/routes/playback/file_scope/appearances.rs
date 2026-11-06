@@ -76,15 +76,14 @@ fn answer(
     let lane = ask.lane;
     let cached = cache.prepared(lane, input, || read(input, cancel, audience))?;
     let mut spans = scene_store::appearances(&cached.history, &cached.placement, &ask.entity);
-    let mut events = EventView {
+    let truncated = spans.len() > MAX_SPANS;
+    spans.truncate(MAX_SPANS);
+    let (events, events_truncated) = EventView {
         history: &cached.history,
         events: &cached.events,
         placement: &cached.placement,
     }
-    .object_events(&ask.entity);
-    let truncated = spans.len() > MAX_SPANS || events.len() > MAX_SPANS;
-    spans.truncate(MAX_SPANS);
-    events.truncate(MAX_SPANS);
+    .object_events(&ask.entity, MAX_SPANS);
     Ok(ServerMessage::Appearances {
         lane,
         request: ask.request,
@@ -95,6 +94,7 @@ fn answer(
             spans,
             truncated,
             events,
+            events_truncated,
         },
     })
 }

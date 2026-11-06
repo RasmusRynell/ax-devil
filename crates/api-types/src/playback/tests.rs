@@ -474,6 +474,7 @@ fn file_scope_messages_use_the_names_the_frontend_parses() {
             spans: vec![[3, 5], [7, 8]],
             truncated: false,
             events: Vec::new(),
+            events_truncated: false,
         },
     };
     assert_eq!(
@@ -482,7 +483,7 @@ fn file_scope_messages_use_the_names_the_frontend_parses() {
             "type": "Appearances", "lane": 1, "request": 8, "entity": "4",
             "appearances": {
                 "state": "Found", "data_revision": 2, "policy_revision": 3,
-                "spans": [[3, 5], [7, 8]], "truncated": false, "events": []
+                "spans": [[3, 5], [7, 8]], "truncated": false, "events": [], "events_truncated": false
             }
         })
     );
