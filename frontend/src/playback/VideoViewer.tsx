@@ -17,6 +17,7 @@ import {
 import { useViewerActions } from "../viewer/actions";
 import { NOTHING_HIDDEN, type Hidden } from "../viewer/hidden";
 import { NoticeList } from "../kit/NoticeList";
+import { usePaneBudget } from "./budget";
 import { useChromeVisibility } from "./chromeVisibility";
 import { LaneGrid } from "./LaneGrid";
 import { HIDE_LANE, laneContextEntries } from "./laneContextMenu";
@@ -394,6 +395,10 @@ export function VideoViewer({
       }
     };
   }, [item, viewer, entry.id, ticket, connect, setViewers]);
+
+  // The share of the window's frame memory follows the panes that are open.
+  const budget = usePaneBudget();
+  useEffect(() => session?.setBudget(budget), [session, budget]);
 
   useFileScopeOwner(session, following);
   useEffect(() => {

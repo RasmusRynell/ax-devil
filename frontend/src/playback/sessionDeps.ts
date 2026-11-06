@@ -5,7 +5,7 @@ import type { Timing } from "./lanes";
 import type { LanePolicyWire } from "./protocol";
 import type { Connect } from "./wire";
 
-/** What one viewer may hold of decoded frames: it divides into the window the backend is asked to fill. */
+/** What one window may hold of decoded frames, shared by its panes (see `budget.ts`); the most one viewer ever holds. */
 export const BUFFER_BUDGET_BYTES = 512 * 1024 * 1024;
 
 export interface SessionDeps {

@@ -57,4 +57,12 @@ describe("frame buffer (B30)", () => {
     expect(buffer.add(1, frame(100))).toBe(true);
     expect(buffer.usedBytes).toBe(200);
   });
+
+  it("holds a frame larger than the budget when it is the only one", () => {
+    const buffer = new FrameBuffer<{ byteLength: number }>(50, 3);
+    buffer.setWindow({ playhead: 1, ahead: 1, behind: 0 });
+    expect(buffer.add(1, frame(100))).toBe(true);
+    expect(buffer.add(2, frame(100))).toBe(false);
+    expect(held(buffer, 3)).toEqual([1]);
+  });
 });
