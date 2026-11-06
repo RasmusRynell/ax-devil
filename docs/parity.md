@@ -95,7 +95,7 @@ Listed in [parity deviations](parity-deviations.md).
 
 | ID | Feature | P | Status | Test | Notes |
 |----|---------|---|--------|------|-------|
-| PL-01 | Decoder plugins (file, payload) and playlist resolver plugins | M | in progress | `crates/plugins/tests/`, `tests/it/plugins.rs` | Plugins with decoder and playlist resolver handlers ([plugins](plugins.md), D29). Left: payload and live decoders (M7) |
+| PL-01 | Decoder plugins (file, payload) and playlist resolver plugins | M | done | `crates/plugins/tests/`, `tests/it/plugins.rs` | Decoder handlers read a file or, with `input: records`, one record at a time (live sources, lines of a file); resolver handlers ([plugins](plugins.md), D29) |
 | PL-02 | Built-in decoders and resolvers listed by `list-handlers` and `playlist --help` | M | in progress | `src/cli/tests.rs`, `src/routes/handlers.rs`, `crates/handlers` tests, `crates/scene-decoders/tests/it/adf_*.rs` | MOT, UVG-VCM, ONVIF XML, CVAT, ADF beta/v1 (frame and consolidated) and plugin decoders; both resolvers. Descriptions reach `/api/handlers`. Left: Add Video and `list-handlers` showing them. CLI help is generated, untested |
 | PL-03 | Install, update, remove, list from CLI and Plugins view | M | done | `tests/it/plugins.rs`, `src/cli/tests.rs`, `src/routes/plugins.rs`, `frontend/src/plugins/PluginsView.test.tsx` | `plugins install/update/remove/list/check` from the CLI; the Plugins view lists, installs a folder, updates (reads the manifest again) and removes; applied to the running app. An edited manifest is also picked up by itself |
 | PL-04 | Load failures never stop the app; listed | M | done | `tests/it/plugins.rs`, `PluginsView.test.tsx` | `plugins list` and Plugins view show failures; a failed run marks its lane Incomplete |
