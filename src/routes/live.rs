@@ -41,7 +41,7 @@ fn camera(
     let handlers = state.plugins.handlers();
     // The configured passwords are the person at this machine's: another principal names its own.
     let owner = principal.grants().contains(&Grant::Preferences);
-    let mut defaults = defaults(&settings);
+    let mut defaults = defaults(&settings, owner);
     if !owner {
         defaults = defaults.without_secrets();
     }
@@ -239,7 +239,7 @@ mod tests {
                 },
             )
             .unwrap();
-        let configured = defaults(&state.settings.state());
+        let configured = defaults(&state.settings.state(), true);
         let saved = intake::live(
             intake::NewLive {
                 host: Some("cam.local".into()),

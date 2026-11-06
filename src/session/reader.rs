@@ -161,7 +161,7 @@ async fn answer(
         Use::Command(Scope::Control),
     )
     .is_ok();
-    let mut defaults = live::defaults(&state.settings.state());
+    let mut defaults = live::defaults(&state.settings.state(), owner && handle.state().expands);
     if !owner {
         defaults = defaults.without_secrets();
     }

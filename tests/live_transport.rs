@@ -177,7 +177,7 @@ async fn camera_accepts(
         .unwrap();
     let item = intake::live(
         new,
-        &defaults(&state.settings.state()),
+        &defaults(&state.settings.state(), true),
         &Handlers::built_in(),
     )
     .unwrap();

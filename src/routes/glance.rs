@@ -166,7 +166,7 @@ pub(super) async fn expansions(
     Json(request): Json<ExpansionsRequest>,
 ) -> Json<LiveExpansions> {
     let settings = state.settings.state();
-    let defaults = defaults(&settings);
+    let defaults = defaults(&settings, true);
     let typed = |text: Option<String>, default: &str| {
         text.map(|text| text.trim().to_owned())
             .filter(|text| !text.is_empty())

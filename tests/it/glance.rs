@@ -118,7 +118,7 @@ impl World {
 
     /// Adds a stream of the camera on `port` with the login root, not started, and waits until it has resolved.
     async fn add_stream(&self, port: u16) -> ItemId {
-        let defaults = defaults(&self.state.settings.state());
+        let defaults = defaults(&self.state.settings.state(), true);
         let new = NewLive {
             host: Some("127.0.0.1".into()),
             username: Some("root".into()),
