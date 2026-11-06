@@ -3,7 +3,7 @@
 use super::{Completion, Spawn, Work};
 use foundation::{ErrorCode, Interrupt, UserError};
 use handlers::HandlerSet;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use tokio::runtime;
 use workspace::{Environment, ItemId, Watch};
 
@@ -20,30 +20,39 @@ impl<F: Fn(Spawn, Completer) + Send + Sync + 'static> Runner for F {
     }
 }
 
-/// Records what an item of the job's session was read from, so a change to it is noticed.
-#[derive(Clone)]
-pub struct Watcher(pub(super) Arc<dyn Fn(ItemId, Watch) + Send + Sync>);
+/// What a job read, held until the job is completed: the session records it only together with an accepted result, so
+/// a job that was superseded meanwhile never replaces the sources of the current one.
+#[derive(Clone, Default)]
+pub struct Watcher(Arc<Mutex<Read>>);
+
+/// What a job noted it read: the item and what it was read from.
+pub(super) type Read = Option<(ItemId, Watch)>;
 
 impl Watcher {
-    /// Records that `item` was read from what `watch` says, replacing what was recorded for it.
+    /// Notes that `item` was read from what `watch` says, to be recorded when the job's result is accepted.
     pub fn record(&self, item: ItemId, watch: Watch) {
-        (self.0)(item, watch);
+        *crate::common::locked(&self.0) = Some((item, watch));
+    }
+
+    fn take(&self) -> Read {
+        crate::common::locked(&self.0).take()
     }
 }
 
 /// Reports a job's result to its session, once.
 pub struct Completer {
-    pub(super) complete: Box<dyn FnOnce(Completion) + Send>,
+    pub(super) complete: Box<dyn FnOnce(Completion, Read) + Send>,
     pub(super) watcher: Watcher,
 }
 
 impl Completer {
-    /// Hands `completion` to the session's lock. Dropped when the session or the job is gone or stale.
+    /// Hands `completion`, with what the job noted it read, to the session's lock. Dropped when the session or the job
+    /// is gone or stale.
     pub fn complete(self, completion: Completion) {
-        (self.complete)(completion);
+        (self.complete)(completion, self.watcher.take());
     }
 
-    /// Where to record what the job read, which may be done from any thread before the job is completed.
+    /// Where to note what the job read, which may be done from any thread before the job is completed.
     pub fn watcher(&self) -> Watcher {
         self.watcher.clone()
     }
