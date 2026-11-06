@@ -25,7 +25,7 @@ caching.
   input with no path, so a records decoder is the live capability (`reads_live`, when `time` is a basis). The same
   process is fed one record at a time through a writer thread and the next record goes out only after `done`: the host's
   bridge queue holds the rest, so there is no buffering of its own. A process that ends after an answer costs the one record
-  it was on and is started again with the next; one that ends before its first answer fails the session, so a broken
+  it was on and is started again with the next; one that ends before its own first answer (a restarted one too) fails the session, so a broken
   plugin is not started once per document. The idle timeout runs only while an answer is owed.
 - **Every run ends the same way.** The group is killed whether the plugin finished, failed, was cancelled or went
   idle (no output for `idle_timeout_s`), then the child is waited for and the working folder removed. A grandchild left

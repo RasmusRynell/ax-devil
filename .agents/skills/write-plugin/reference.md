@@ -106,7 +106,7 @@ output line's number). `done` is not accepted in a `path` decoder's output.
   process, before its first sample; the host keeps the first. Live samples are keyed by time (`{"us": N}`).
 - `idle_timeout_s` counts only while an answer is owed: a plugin may stay silent between records for as long as it likes.
 - A process that ends (exits, prints `error`, goes idle, breaks the protocol) after it answered a record costs the
-  record it was working on, which is skipped, and starts again with the next one. One that ends before its first answer
+  record it was working on, which is skipped, and starts again with the next one. One that ends before its own first answer (a restarted one too)
   fails the session with the reason, so a plugin that cannot run is not started once per record.
 
 Scan and resolve send the settings the user has entered, checked against the form with defaults filled in, and no

@@ -124,6 +124,9 @@ pub(crate) struct Process {
     exited: Option<Instant>,
     /// Stdout reached its end and its last line was handed over.
     ended: bool,
+    /// [`finish`](Self::finish) reaped the child: its pid, and so its group id, may be another process's now, so
+    /// nothing may signal it again.
+    reaped: bool,
 }
 
 impl Process {
@@ -169,6 +172,7 @@ impl Process {
             last_poll: now,
             exited: None,
             ended: false,
+            reaped: false,
         };
         thread::Builder::new()
             .name(format!("plugin-stdin-{}", spec.id))
@@ -312,6 +316,7 @@ impl Process {
         // must not outlive the lane.
         spawn::kill_group(&mut self.child);
         let status = self.child.wait();
+        self.reaped = true;
         // The group is dead, so stderr ends at once unless something outside the group holds it.
         let _ = self.stderr_ended.recv_timeout(GRACE);
         match stop {
@@ -330,10 +335,13 @@ impl Process {
 }
 
 impl Drop for Process {
-    /// A process dropped without [`finish`](Process::finish), such as after a failed start, is still killed.
+    /// A process dropped without [`finish`](Process::finish), such as after a failed start, is still killed. After
+    /// `finish` it is not: the child was reaped, so its group id may belong to someone else.
     fn drop(&mut self) {
-        spawn::kill_group(&mut self.child);
-        let _ = self.child.wait();
+        if !self.reaped {
+            spawn::kill_group(&mut self.child);
+            let _ = self.child.wait();
+        }
     }
 }
 

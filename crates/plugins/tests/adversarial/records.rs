@@ -135,6 +135,18 @@ fn a_plugin_that_dies_after_answering_loses_one_record() {
         reason.contains("starts again with the next record"),
         "{reason}"
     );
+
+    // The restarted process dies before answering anything: it is broken, so the session fails instead of the
+    // plugin being started once per remaining record.
+    let run = run_records(
+        "records-echo",
+        "",
+        &[b"one", b"crash", b"crash", b"four"],
+        Duration::ZERO,
+    );
+    assert!(run.failure().contains("exit code 3"), "{}", run.failure());
+    assert_eq!(run.sink.samples.len(), 1);
+    assert_eq!(run.sink.skips.len(), 1);
 }
 
 fn a_plugin_that_never_answers_fails_the_session() {

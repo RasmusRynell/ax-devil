@@ -92,8 +92,8 @@ impl PluginDecoder {
 
     /// One process per session, started with the first record and fed one record at a time: the next goes out when
     /// the plugin has answered the last. A process that ends after it answered something is started again with the
-    /// next record, and the record it did not answer is skipped; one that ends before its first answer fails the
-    /// session, so a plugin that cannot run is not started once per document.
+    /// next record, and the record it did not answer is skipped; one that ends before its first answer, the
+    /// restarted ones included, fails the session, so a plugin that cannot run is not started once per document.
     fn run_records(
         &self,
         input: &mut dyn Input,
@@ -111,6 +111,7 @@ impl PluginDecoder {
         .to_string();
         let mut records = Records::new(sink);
         let mut process: Option<Process> = None;
+        // Whether the current process has answered a record: each process has to earn its restart.
         let mut answered = false;
         let end = loop {
             let Some(record) = input.next(cancel)? else {
@@ -121,6 +122,7 @@ impl PluginDecoder {
             match self.answer(&mut process, &request, line, &mut records, cancel) {
                 Ok(()) => answered = true,
                 Err(End::Incomplete(reason)) if answered => {
+                    answered = false;
                     let reason = shorten(&reason.replace('\n', " / "));
                     records.skip_record(format!(
                         "the plugin stopped ({reason}); it starts again with the next record"
