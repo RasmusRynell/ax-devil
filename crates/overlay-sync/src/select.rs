@@ -23,7 +23,7 @@ use crate::{
 /// 3. Otherwise the same latest earlier sample is [`MatchKind::Retained`] when sticky keeps it, see below.
 /// 4. Otherwise [`Selection::None`], also when the frame is before the first sample.
 ///
-/// A tolerated sample is drawn fully opaque and is not limited by the sticky timeout. `coverage` is ignored: a
+/// A tolerated sample is drawn fully opaque, but an enabled sticky timeout still bounds it. `coverage` is ignored: a
 /// file matched by time says nothing about frames it has no sample for.
 ///
 /// # By frame ([`MatchBasis::Frame`])
@@ -42,7 +42,7 @@ use crate::{
 /// `frame.timestamp` minus the sample's time: the key itself for a time-keyed file, and the time the video's
 /// `timeline` gives the key's frame for a match by frame, never a frame number read as a time. A key the timeline
 /// does not reach is rejected. The age is measured from the sample, so the result does not depend on which frames
-/// were selected before. Tolerance does not limit sticky.
+/// were selected before. Tolerance does not limit sticky, and the timeout also expires a tolerated sample.
 pub fn select(
     keys: &SampleKeys,
     coverage: Coverage,
@@ -109,10 +109,16 @@ fn by_time(keys: &KeyChunks<MediaTime>, time: MediaTime, policy: &MatchPolicy) -
     }
     if let Tolerance::PreviousWithin(tolerance) = policy.tolerance
         && age <= tolerance.0
+        && (!policy.sticky.enabled || young(policy.sticky, age))
     {
         return sample(index, MatchKind::Tolerated);
     }
     retain(policy.sticky, index, age)
+}
+
+/// Whether a sample `age` microseconds old is within the sticky timeout (inclusive; no limit for `None`).
+fn young(sticky: Sticky, age: i64) -> bool {
+    age >= 0 && sticky.timeout.is_none_or(|timeout| age <= timeout.0)
 }
 
 /// What a frame with no sample of its own shows when the file does not cover it.
@@ -125,8 +131,7 @@ fn missing(coverage: Coverage) -> Selection {
 
 /// The sample at `index`, `age` microseconds old, kept by sticky if it is on and the sample is young enough.
 fn retain(sticky: Sticky, index: usize, age: i64) -> Selection {
-    let young = age >= 0 && sticky.timeout.is_none_or(|timeout| age <= timeout.0);
-    if !sticky.enabled || !young {
+    if !sticky.enabled || !young(sticky, age) {
         return Selection::None;
     }
     sample(index, MatchKind::Retained)

@@ -387,3 +387,42 @@ async fn a_follower_streams_only_the_entry_a_presenter_pane_shows_and_losing_it_
         Some(Refusal::ContentUnavailable)
     );
 }
+
+#[tokio::test(start_paused = true)]
+async fn an_exploring_seat_keeps_its_own_entry_when_the_presenter_changes_entry() {
+    let rig = Rig::new();
+    let (owner, explorer) = rig.shared(Access::Explore);
+    let (item, first) = rig.open(&owner, playlist_in(rig.dir.path(), &["a", "b"]));
+    let second = entry_key(&owner.state(), item, 1);
+    let showing = |entry: &workspace::ContentId| View {
+        active: Some(ViewerId(1)),
+        viewers: [(
+            ViewerId(1),
+            ViewerView {
+                entry: Some(entry.clone()),
+                ..looking(item)
+            },
+        )]
+        .into(),
+        layout: Some(*pane(1)),
+        ..View::default()
+    };
+    owner.view(showing(&first.entry), 1).unwrap();
+    explorer.view(showing(&second.entry), 1).unwrap();
+    let exploring = stream(&rig.service, &explorer, &second).unwrap();
+    let own = Authority::Own {
+        priority: Priority::Low,
+    };
+    assert_eq!(authority(&exploring), own);
+
+    owner.view(showing(&second.entry), 2).unwrap();
+    owner.view(showing(&first.entry), 3).unwrap();
+
+    assert_eq!(authority(&exploring), own, "its stream is not revoked");
+    let state = explorer.state();
+    let view = state.seats[&explorer.seat()].view.as_ref().unwrap();
+    assert_eq!(
+        view.viewers[&ViewerId(1)].entry.as_ref(),
+        Some(&second.entry)
+    );
+}

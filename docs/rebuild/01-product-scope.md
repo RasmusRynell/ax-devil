@@ -73,7 +73,7 @@ object and frame by frame, and for comparing results side by side. Take the pitc
 | ID | Feature | P | Source |
 |----|---------|---|--------|
 | OF-01 | Play/pause, step, speed, seek; clock-following playback | M | `docs/domain/invariants.md#display-rendering` |
-| OF-02 | Comparison lanes: several overlays on one video; a playlist entry switches the video, and two recordings side by side are two viewers with no shared clock (out of scope) | M | `CONTEXT.md` "Entry Lane", `video_viewer/offline_playback.py`, `src/ax_devil/modules/video_viewer/README.md#rules` |
+| OF-02 | Comparison lanes: several overlays on one video; a playlist entry opens at its start, and two recordings side by side are two viewers with no shared clock (out of scope) | M | `CONTEXT.md` "Entry Lane", `video_viewer/offline_playback.py`, `src/ax_devil/modules/video_viewer/README.md#rules` |
 | OF-03 | Playlists of entries and lanes; next/previous entry | M | `docs/architecture/overview.md#synchronization` |
 | OF-04 | Timestamp matching, sequence-keyed files, sticky overlays | M | `docs/domain/invariants.md#frame-identity` |
 | OF-05 | Timing and alignment diagnostics per lane | M | `src/ax_devil/modules/video_viewer/README.md` |

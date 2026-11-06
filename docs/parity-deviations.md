@@ -13,6 +13,7 @@ Where [parity](parity.md) rows differ from the reference. The offline decisions 
 | OF-06 | The frame cache lives in `playback`, not `media` | Eviction follows playback windows; export, thumbnails and live skip it |
 | OF-06 | Eviction takes the frame farthest from the playhead outside the protected windows; the reference used LRU | It suits scrubbing: after a jump, frames around the old position are the least wanted |
 | OF-06 | Auto is never below 256 MiB; the reference had no floor | The setting's smallest value; a low-memory machine still gets a cache |
+| OF-06 | The video-cache setting is Auto or a whole number of MiB; the reference's page had Auto and Manual in GiB `[AI]` | One field replaces the mode choice and the GiB box |
 | OF-01 | The index is built by scanning packets; the reference decoded the whole video. The decode scan is the fallback | Spike: 1.1 s against 36 s for 10 minutes of 1080p30, same results |
 | OF-01 | The index is valid by a stat fingerprint plus a digest of the first and last 64 KiB; the reference used the stat fingerprint alone | Hashing a huge video defeats instant reopen |
 | OF-01 | Walking back through a group longer than the budget decodes a block of half the budget at a time | No keyframe group is decoded twice to keep one more frame |
@@ -45,6 +46,8 @@ Where [parity](parity.md) rows differ from the reference. The offline decisions 
 | DRW-004 | Catalog v4 has no open polyline mark; the reference had one | No built-in catalog or decoder used it |
 | DRW-006 | Overlay text is laid out per glyph, without pair kerning or ligatures (joining scripts rasterize whole lines); the reference shaped it through Qt. Class names differ by about 0 to 1 px, digits not at all | The canvas lays text out itself |
 | LV-01 to LV-08 | Closed on fake-transport evidence. Not verified: a real camera session, a real DataHub, and the order of MQTT cleanup at quit against a real camera. [human] "just do the tests reasonable if we even need them, then just assume it works... we are shutting down anyways" | Owner decision; the fake RTSP, MQTT, DataHub and VAPIX servers and the quit test cover the behavior |
+| WS-01 | Adding an item whose id is already in the workspace replaces it in place; the reference raised "Workspace items must have unique ids." `[AI]` | Ids are generated, so a user cannot reach it |
+| WS-01 | `with_label` (`intake.rs`) trims every item label, whoever sets it; the reference trimmed only in its rename dialog `[AI]` | One rule for naming an item |
 | WS-06 | An item with a viewer open is not resolved again when its files change: its rows keep the old Content until the user reloads; the reference refreshed the rows at once and kept the viewer on its old Content | A stream ends with the generation of its Content |
 | WS-06 | The files are polled once a second, a change reported when it looked the same twice in a row (the reference used file events and a 1 s quiet timer), so changes on network shares are noticed too | Polling needs no dependency (as the catalog folder) |
 | WS-06 | A playlist resolver's watched folders and files are the `Folder` and `File` settings its form declares, not a hook of its own; a MOT sequence's `seqinfo.ini` edited in place is not noticed, a sequence added or removed is | Works for plugin resolvers with no protocol change |

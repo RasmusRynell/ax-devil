@@ -76,10 +76,11 @@ implementing module closes.
   never synthesized from FPS. A decoder declares coverage: in a Dense file a frame without a sample is empty and
   sticky never crosses it; a Sparse one says nothing about it.
 - With sticky overlays enabled, offline playback and export select the latest sample at or before the requested time,
-  regardless of navigation history. Age is measured from the original sample timestamp, never the last matched frame.
-  The timeout includes its boundary; no timeout means unlimited. Matching tolerance separates normal matches
-  from retained samples, drawn at the retained opacity; it does not limit retention. With sticky disabled, unmatched
-  frames have no overlay. Empty scene updates replace previous geometry; missing updates may retain it.
+  regardless of navigation history. Age is measured from the sample's own timestamp.
+  The timeout includes its boundary and also expires a tolerated sample; no timeout means unlimited. Tolerance
+  separates normal matches from retained samples, drawn at the retained opacity, and does not limit retention. With
+  sticky disabled, unmatched frames have no overlay. Empty scene updates replace previous geometry; missing updates
+  may retain it.
 - Live synchronization consumes the newest queued sample at or before the frame within the lane's sync tolerance,
   as files do. Stale samples are discarded before persistence; late older ones cannot replace newer state.
 - File overlay packets keep the matched sample timestamp, and its sequence when known; the requested frame stays in
