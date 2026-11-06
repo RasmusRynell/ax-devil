@@ -53,6 +53,7 @@ export {
   SAMPLE_NO_FRAME,
 } from "../generated/api";
 export type {
+  CadenceWire,
   CatalogInfoWire,
   BasisWire,
   ClientMessage,

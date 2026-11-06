@@ -2,7 +2,8 @@
 
 /**
  * The server the command line opens (`--server URL`) and the `ax-devil://` link it carries, and the arguments left
- * over, which are not the shell's: `{ launch: { server, link }, rest }`. Throws when `--server` has no address.
+ * over, which are not the shell's: `{ launch: { server, link }, rest }`. A link wins over `--server`. Throws when `--server`
+ * has no address.
  */
 function parseLaunch(args) {
   const launch = {};
@@ -16,6 +17,8 @@ function parseLaunch(args) {
     else if (arg.startsWith("ax-devil://")) launch.link = arg;
     else rest.push(arg);
   }
+  // A link launch is the system's, which a stray `--server` among its arguments must not redirect.
+  if (launch.link) delete launch.server;
   return { launch, rest };
 }
 

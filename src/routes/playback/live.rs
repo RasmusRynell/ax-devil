@@ -24,8 +24,9 @@ use api_types::{
     Audience,
     live::{LiveEventWire, LiveEventsWire, LiveGapWire, LiveOpenedWire, LiveSampleEventsWire},
     playback::{
-        ClientMessage, FileAppearances, FileScopeUnavailable, LaneInfo, PLAYBACK_PROTOCOL,
-        ServerMessage, envelope,
+        ClientMessage, EventAskWire, EventQueryWire, EventRowsWire, EventWire, FileAppearances,
+        FileEvent, FileEvents, FileScopeUnavailable, LaneInfo, PLAYBACK_PROTOCOL, ServerMessage,
+        envelope,
     },
 };
 use axum::extract::ws::Message;
@@ -33,7 +34,7 @@ use catalogs::Library;
 use foundation::{ErrorCode, UserError};
 use overlay_sync::MatchPolicy;
 use overlays::{LaneReady, LaneStatus, LiveEvents};
-use sessions::session::StreamLease;
+use sessions::{SessionId, session::StreamLease};
 use std::collections::VecDeque;
 use tokio::sync::watch;
 use workspace::{LIVE_SLOT, LiveOverlay, LiveVideoContent};
@@ -72,6 +73,7 @@ pub(super) async fn run(
             matching,
             library: &state.catalogs,
             audience,
+            session: lease.session(),
             wire: Wire::of(&state.policy),
         },
         incoming,
@@ -92,6 +94,8 @@ pub(super) struct Setup<'a> {
     pub(super) library: &'a Library,
     /// What the viewer may learn of an error.
     pub(super) audience: Audience,
+    /// The Session the viewer is in, which scopes the user catalogs a watcher is shown.
+    pub(super) session: SessionId,
     /// The form the viewer is sent frames in.
     pub(super) wire: Wire,
 }
@@ -139,7 +143,7 @@ pub(super) async fn stream(
     closing: &mut watch::Receiver<bool>,
     gate: Gate,
 ) -> Flow<()> {
-    let catalogs = CatalogFeed::new(setup.library);
+    let catalogs = CatalogFeed::new(setup.library, setup.audience, setup.session);
     let opened = text(&ServerMessage::LiveOpened(LiveOpenedWire {
         protocol: PLAYBACK_PROTOCOL,
         lane: LaneInfo {
@@ -246,6 +250,27 @@ impl<I: Incoming> Live<'_, I> {
                     unavailable: FileScopeUnavailable::PlainLane,
                 },
             }),
+            Some(Ok(ClientMessage::EventQuery(EventQueryWire { lane, request, .. }))) => self
+                .notify(&ServerMessage::EventRows(EventRowsWire {
+                    lane,
+                    request,
+                    rows: FileEvents::Unavailable {
+                        unavailable: FileScopeUnavailable::PlainLane,
+                    },
+                })),
+            Some(Ok(ClientMessage::Event(EventAskWire {
+                lane,
+                request,
+                event,
+                ..
+            }))) => self.notify(&ServerMessage::Event(EventWire {
+                lane,
+                request,
+                event,
+                detail: FileEvent::Unavailable {
+                    unavailable: FileScopeUnavailable::PlainLane,
+                },
+            })),
             Some(Ok(ClientMessage::Open { .. })) => Err(violation("The video is already open")),
             Some(Ok(
                 ClientMessage::Want(_)

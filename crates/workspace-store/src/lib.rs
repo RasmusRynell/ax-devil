@@ -12,6 +12,8 @@
 //! The state also knows which file the workspace belongs to and what it is compared with to tell unsaved edits
 //! ([`Saved`]); reading and writing files is the caller's business.
 
+mod bookmarks;
+mod edit;
 mod rows;
 
 use foundation::{CancelToken, HostPath, Interrupt, UserError};
@@ -23,6 +25,10 @@ use workspace::{
     Content, ContentId, Environment, ItemId, Recipe, Source, Workspace, WorkspaceItem,
 };
 
+pub use bookmarks::{
+    BookmarkCommand, BookmarkGroup, Standing, csv as bookmarks_csv, groups as bookmark_groups,
+    kind_label,
+};
 pub use rows::{Row, RowKind, RowStatus, rows};
 
 /// Names one commit of an item's Content. Later commits have larger values, across all items of a state.
@@ -82,6 +88,9 @@ pub struct WorkspaceState {
     /// Items with a viewer requested: a viewer should open for each once it resolves. Closing a viewer removes the
     /// item, so a frontend that connects late sees what is requested now.
     pub open: HashSet<ItemId>,
+    /// Open items whose files changed since their Content resolved, with how many times. They are not resolved
+    /// again, which would end the stream the viewer shows: the viewer offers to, and `Resolve` does.
+    pub changed: HashMap<ItemId, u32>,
     /// Entries and lanes the user hid. A reference to something no item resolves to is kept but hides nothing.
     pub hidden: HashSet<HiddenRef>,
     next_attempt: u64,
@@ -112,6 +121,8 @@ pub struct WorkspaceParts<'a> {
     pub resolutions: &'a HashMap<ItemId, Resolution>,
     /// Items with a viewer requested.
     pub open: &'a HashSet<ItemId>,
+    /// Open items whose files changed since their Content resolved, with how many times.
+    pub changed: &'a HashMap<ItemId, u32>,
     /// Entries and lanes the user hid.
     pub hidden: &'a HashSet<HiddenRef>,
 }
@@ -127,6 +138,7 @@ impl WorkspaceState {
             epoch,
             resolutions,
             open,
+            changed,
             hidden,
             next_attempt: _,
             next_generation: _,
@@ -138,6 +150,7 @@ impl WorkspaceState {
             epoch: *epoch,
             resolutions,
             open,
+            changed,
             hidden,
         }
     }
@@ -169,6 +182,7 @@ impl WorkspaceState {
     fn start(&mut self, item: &WorkspaceItem) -> ResolveJob {
         self.next_attempt += 1;
         let attempt = self.next_attempt;
+        self.changed.remove(&item.id);
         self.resolutions
             .insert(item.id, Resolution::Pending { attempt });
         ResolveJob {
@@ -210,9 +224,31 @@ pub enum DocCommand {
     /// Resolves the item again under a new generation, whether or not its viewer is open: how an open item that failed
     /// (a live stream waiting for a confirmation) tries again. Does nothing for an unknown item or one resolving.
     Resolve(ItemId),
+    /// The files an item was read from changed. An item whose viewer is open on its Content only counts the change
+    /// (see [`WorkspaceState::changed`]); any other resolves again under a new attempt, even while it resolves, since
+    /// that attempt may have read the old files. Sent by the backend's own watcher, never by a seat.
+    SourceChanged(ItemId),
     /// Removes the item from the workspace with its resolution, its viewer request, its bookmarks and its reviewed
     /// marks. A result still resolving for it is dropped. Does nothing for an unknown item.
     Remove(ItemId),
+    /// Names the item, which resolves nothing and keeps everything else. A blank label, or the item's default name,
+    /// gives it the default name. Does nothing for an unknown item.
+    RenameItem {
+        /// The item.
+        item: ItemId,
+        /// The name the user entered.
+        label: String,
+    },
+    /// Replaces the recipe and name of the item with `item`'s id, keeping its place, bookmarks, reviewed marks and lane
+    /// matching. Does nothing for an unknown item, an item that cannot be edited (an unreadable one), or a recipe of
+    /// another kind. An edit that changes nothing does nothing; a new name alone resolves nothing, and a new recipe
+    /// resolves again, or takes `content` when the caller resolved it first, and forgets what was hidden in the item.
+    EditItem {
+        /// The item as it is to be: the id of the item to edit, its new name and recipe.
+        item: Box<WorkspaceItem>,
+        /// What a new recipe resolved to, when the caller resolved it before the edit.
+        content: Option<Box<Content>>,
+    },
     /// Hides or shows an entry or lane.
     SetHidden {
         /// What to hide or show.
@@ -259,6 +295,8 @@ pub enum DocCommand {
     },
     /// Dismisses the Keep/Discard offer of a restored copy; does nothing otherwise.
     Keep,
+    /// Changes the bookmarks or reviewed marks.
+    Bookmarks(BookmarkCommand),
 }
 
 /// Work a transition asks its caller to run: resolve `recipe`, then hand the result to [`complete`].
@@ -326,7 +364,20 @@ pub fn apply(state: &WorkspaceState, command: DocCommand) -> (WorkspaceState, Ve
                 jobs.push(next.start(&item));
             }
         }
+        DocCommand::SourceChanged(id) => {
+            let known = next.workspace.items.iter().find(|item| item.id == id);
+            if let Some(item) = known.cloned() {
+                let shown = next.open.contains(&id)
+                    && matches!(next.resolutions.get(&id), Some(Resolution::Resolved { .. }));
+                if shown {
+                    *next.changed.entry(id).or_default() += 1;
+                } else {
+                    jobs.push(next.start(&item));
+                }
+            }
+        }
         DocCommand::Remove(id) => {
+            next.changed.remove(&id);
             next.workspace.items.retain(|item| item.id != id);
             next.workspace
                 .bookmarks
@@ -335,6 +386,8 @@ pub fn apply(state: &WorkspaceState, command: DocCommand) -> (WorkspaceState, Ve
             next.resolutions.remove(&id);
             next.open.remove(&id);
         }
+        DocCommand::RenameItem { item, label } => next.rename(item, &label),
+        DocCommand::EditItem { item, content } => jobs.extend(next.edit(*item, content)),
         DocCommand::SetHidden { target, hidden } => {
             if hidden {
                 next.hidden.insert(target);
@@ -352,6 +405,7 @@ pub fn apply(state: &WorkspaceState, command: DocCommand) -> (WorkspaceState, Ve
             next.saved = saved;
             next.epoch += 1;
             next.open.clear();
+            next.changed.clear();
             next.hidden.clear();
             next.resolutions.clear();
             for item in next.workspace.items.clone() {
@@ -397,6 +451,7 @@ pub fn apply(state: &WorkspaceState, command: DocCommand) -> (WorkspaceState, Ve
                 next.workspace.name = name_of(&name);
             }
         }
+        DocCommand::Bookmarks(command) => bookmarks::apply(&mut next, command),
     }
     (next, jobs)
 }

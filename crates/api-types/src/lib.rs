@@ -1,5 +1,6 @@
 //! Types the backend sends to the frontend, exported to TypeScript by `export-types`.
 
+pub mod bookmarks;
 pub mod catalogs;
 pub mod content;
 mod error;
@@ -25,7 +26,7 @@ pub const API_VERSION: u32 = 16;
 
 /// Raised when the desktop shell's own interface (the preload bridge and its IPC) changes in a way a frontend served
 /// by a remote backend cannot use. The shell loads a remote backend only when its [`AppInfo::shell`] matches.
-pub const SHELL_API: u32 = 4;
+pub const SHELL_API: u32 = 5;
 
 /// What a caller may do on a backend. Every request is judged by the grants of whoever sent it; they are not roles.
 #[derive(Serialize, TS, Clone, Copy, Debug, PartialEq, Eq)]

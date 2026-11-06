@@ -7,6 +7,7 @@
 
 use crate::{
     ErrorWire,
+    bookmarks::BookmarkCommand,
     playback::LanePolicyWire,
     workspace::{HiddenTarget, NewItem, WorkspaceState},
 };
@@ -101,6 +102,38 @@ pub enum DocCommand {
         #[ts(type = "string")]
         item: ItemId,
     },
+    /// Name an item without resolving it again; a blank name, or the item's default, gives it the default name.
+    RenameItem {
+        /// The item.
+        #[ts(type = "string")]
+        item: ItemId,
+        /// The name the user entered.
+        label: String,
+    },
+    /// Replace the name and recipe of a video or live item with a new one of the same kind, keeping its id, place,
+    /// bookmarks and reviewed marks. An edit that changes nothing does nothing, a new name alone resolves nothing, and
+    /// a new recipe resolves again. A live stream's blank user and password keep the saved ones while it stays on the
+    /// same camera, as `like` does for another stream.
+    EditItem {
+        /// The item.
+        #[ts(type = "string")]
+        item: ItemId,
+        /// What the item becomes; the intake judges it as it judges an item to add.
+        new: NewItem,
+    },
+    /// Replace a playlist item's name and recipe with the item that `POST /api/resolvers/{id}/resolve` resolved and
+    /// answered with; the ticket is redeemed once.
+    EditResolved {
+        /// The item to edit.
+        #[ts(type = "string")]
+        item: ItemId,
+        /// The item the resolve answered with.
+        #[ts(type = "string")]
+        ticket: ItemId,
+        /// The item's name; the resolver's when absent or blank.
+        #[serde(default)]
+        label: Option<String>,
+    },
     /// Hide or show an entry or lane.
     SetHidden {
         /// What to hide or show.
@@ -128,6 +161,11 @@ pub enum DocCommand {
         /// The `epoch` of the workspace the name was entered for.
         #[ts(type = "number")]
         epoch: u64,
+    },
+    /// Change the bookmarks or reviewed marks.
+    Bookmark {
+        /// The change.
+        command: BookmarkCommand,
     },
 }
 
@@ -193,6 +231,11 @@ pub enum WorkspaceCommand {
     Keep,
     /// Drop the changes restored from a recovery copy: back to the saved file, or an empty Untitled workspace.
     Discard,
+    /// Write every bookmark to the CSV file at `path`, replacing it only when complete.
+    ExportBookmarks {
+        /// The file, absolute.
+        path: String,
+    },
 }
 
 /// The part of the window a cursor position belongs to.
@@ -329,6 +372,10 @@ pub struct SharingInfo {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
     pub link: Option<String>,
+    /// Why there is no link, when other machines cannot reach this backend; the owner's seat only.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub link_problem: Option<String>,
 }
 
 /// The Doc as a watcher or the owner may see it. Built only by the backend's projection.
@@ -489,4 +536,8 @@ pub struct SessionSummary {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
     pub link: Option<String>,
+    /// Why there is no link, when other machines cannot reach this backend.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub link_problem: Option<String>,
 }

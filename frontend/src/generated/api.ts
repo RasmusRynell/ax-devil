@@ -317,7 +317,35 @@ item: string, } | { "type": "remove",
 /**
  * The item.
  */
-item: string, } | { "type": "setHidden", 
+item: string, } | { "type": "renameItem", 
+/**
+ * The item.
+ */
+item: string, 
+/**
+ * The name the user entered.
+ */
+label: string, } | { "type": "editItem", 
+/**
+ * The item.
+ */
+item: string, 
+/**
+ * What the item becomes; the intake judges it as it judges an item to add.
+ */
+new: NewItem, } | { "type": "editResolved", 
+/**
+ * The item to edit.
+ */
+item: string, 
+/**
+ * The item the resolve answered with.
+ */
+ticket: string, 
+/**
+ * The item's name; the resolver's when absent or blank.
+ */
+label: string | null, } | { "type": "setHidden", 
 /**
  * What to hide or show.
  */
@@ -345,7 +373,11 @@ name: string,
 /**
  * The `epoch` of the workspace the name was entered for.
  */
-epoch: number, };
+epoch: number, } | { "type": "bookmark", 
+/**
+ * The change.
+ */
+command: BookmarkCommand, };
 
 /**
  * The owner's control of sharing.
@@ -415,7 +447,136 @@ path?: string,
 /**
  * Whether Save As may replace a file that is already there.
  */
-replace?: boolean, } | { "type": "keep" } | { "type": "discard" };
+replace?: boolean, } | { "type": "keep" } | { "type": "discard" } | { "type": "exportBookmarks", 
+/**
+ * The file, absolute.
+ */
+path: string, };
+
+/**
+ * A change to the bookmarks or reviewed marks.
+ */
+export type BookmarkCommand = { "type": "add", 
+/**
+ * The item.
+ */
+item: string, 
+/**
+ * The entry marked, by its id: the item's own id for a video.
+ */
+entry: string, 
+/**
+ * The frame's index.
+ */
+frame: number, 
+/**
+ * The frame's time in microseconds, not negative.
+ */
+timeUs: number, } | { "type": "edit", 
+/**
+ * The bookmark.
+ */
+id: string, 
+/**
+ * The new text; unchanged when absent.
+ */
+note?: string, 
+/**
+ * The new kind; unchanged when absent.
+ */
+kind?: BookmarkKindWire, } | { "type": "remove", 
+/**
+ * The bookmark.
+ */
+id: string, } | { "type": "setReviewed", 
+/**
+ * The item.
+ */
+item: string, 
+/**
+ * The entry as its group names it; absent for a video.
+ */
+entry?: string, 
+/**
+ * Whether it is reviewed afterwards.
+ */
+reviewed: boolean, };
+
+/**
+ * What a bookmark marks.
+ */
+export type BookmarkKindWire = "note" | "issue" | "example" | "question";
+
+/**
+ * One bookmark.
+ */
+export type BookmarkInfo = { 
+/**
+ * Names the bookmark.
+ */
+id: string, 
+/**
+ * The frame's index.
+ */
+frame: number, 
+/**
+ * The frame's time in microseconds.
+ */
+time_us: number, 
+/**
+ * What it marks.
+ */
+kind: BookmarkKindWire, 
+/**
+ * The user's text; empty when there is none.
+ */
+note: string, };
+
+/**
+ * Whether a group can be opened.
+ */
+export type BookmarkStanding = { "status": "Open", 
+/**
+ * The entry's id.
+ */
+entry: string, } | { "status": "Pending" } | { "status": "Missing" };
+
+/**
+ * A video or playlist entry with bookmarks or a reviewed mark.
+ */
+export type BookmarkGroupInfo = { 
+/**
+ * Names the group.
+ */
+key: string, 
+/**
+ * The item.
+ */
+item: string, 
+/**
+ * The item's name.
+ */
+item_name: string, 
+/**
+ * The entry as shown under the item; empty for a video.
+ */
+entry: string, 
+/**
+ * The entry as `setReviewed` names it; absent for a video.
+ */
+target: string | null, 
+/**
+ * Whether it is marked reviewed.
+ */
+reviewed: boolean, 
+/**
+ * Whether it can be opened.
+ */
+standing: BookmarkStanding, 
+/**
+ * The bookmarks by frame.
+ */
+bookmarks: Array<BookmarkInfo>, };
 
 /**
  * The part of the window a cursor position belongs to.
@@ -593,7 +754,11 @@ access: Access,
 /**
  * The join link URL; the owner's seat only.
  */
-link?: string, };
+link?: string, 
+/**
+ * Why there is no link, when other machines cannot reach this backend; the owner's seat only.
+ */
+linkProblem?: string, };
 
 /**
  * The Doc as a watcher or the owner may see it. Built only by the backend's projection.
@@ -767,7 +932,11 @@ participants: number,
 /**
  * The join link URL; absent when this backend cannot be reached by other machines.
  */
-link?: string, };
+link?: string, 
+/**
+ * Why there is no link, when other machines cannot reach this backend.
+ */
+linkProblem?: string, };
 
 /**
  * The workspace and what is known about each item, as one audience may see it.
@@ -801,7 +970,11 @@ items: Array<ItemState>,
  * The sidebar tree flattened: each video or unresolved item, each playlist, their entries and lanes, in tree order. Lists only the items
  * `items` lists.
  */
-rows: Array<RowInfo>, };
+rows: Array<RowInfo>, 
+/**
+ * The bookmarks and reviewed marks of the items `items` lists, a group for each video or entry with any.
+ */
+bookmarks: Array<BookmarkGroupInfo>, };
 
 /**
  * A workspace file opened or saved lately.
@@ -844,12 +1017,51 @@ open: boolean,
 /**
  * Whether the item has Content yet.
  */
-resolution: ResolutionState, };
+resolution: ResolutionState, 
+/**
+ * How many times the files the open viewer shows changed since it opened, once they have; the viewer offers to
+ * reload.
+ */
+changed?: number, 
+/**
+ * What the item was made from, for an audience with host details: what Edit starts from and Information lists.
+ */
+recipe?: ItemRecipe, };
 
 /**
  * What an item is, from its recipe.
  */
 export type ItemKind = "video" | "playlist" | "live" | "unreadable";
+
+/**
+ * What an item was made from, as stored: a `$NAME` reference stays one and a literal password is left out. The name
+ * is the one the user gave, absent for the default.
+ */
+export type ItemRecipe = { "type": "Video", 
+/**
+ * The file.
+ */
+path: string, 
+/**
+ * The user's name for the item.
+ */
+label: string | null, 
+/**
+ * The overlay files, each a lane.
+ */
+overlays: Array<NewOverlayWire>, } | { "type": "Playlist", 
+/**
+ * The resolver id.
+ */
+resolver: string, 
+/**
+ * The user's name for the item.
+ */
+label: string | null, 
+/**
+ * The settings the resolver's schema declares.
+ */
+settings: Record<string, unknown>, } | { "type": "Live" } & NewLiveWire;
 
 /**
  * How far an item has resolved.
@@ -1769,6 +1981,19 @@ time_base: [number, number],
 first_pts: number, };
 
 /**
+ * How evenly a video's frames are spaced.
+ */
+export type CadenceWire = { 
+/**
+ * Whether more than one distinct period occurs.
+ */
+variable: boolean, 
+/**
+ * The most common periods in microseconds, most common first; at most five.
+ */
+periods_us: number[], };
+
+/**
  * What the frontend sends.
  */
 export type ClientMessage = { "type": "Open", 
@@ -1905,7 +2130,7 @@ request: number,
 /**
  * The object's id.
  */
-entity: string, } | { "type": "Close" };
+entity: string, } | { "type": "EventQuery" } & EventQueryWire | { "type": "Event" } & EventAskWire | { "type": "Close" };
 
 /**
  * What the backend sends as text. `Opened` is followed by a Timeline envelope.
@@ -1959,7 +2184,11 @@ catalogs: Array<CatalogInfoWire>,
 /**
  * The video's PTS time base and first PTS; `null` for an image sequence.
  */
-video_pts: VideoPtsWire | null, } | { "type": "LaneStatus", 
+video_pts: VideoPtsWire | null, 
+/**
+ * How evenly the video's frames are spaced; `null` for a one-frame video.
+ */
+cadence: CadenceWire | null, } | { "type": "LaneStatus", 
 /**
  * The lane's position in `Opened.lanes`.
  */
@@ -2132,7 +2361,7 @@ entity: string,
 /**
  * The spans, or why there are none.
  */
-appearances: FileAppearances, } | { "type": "Error" } & ErrorWire;
+appearances: FileAppearances, } | { "type": "EventRows" } & EventRowsWire | { "type": "Event" } & EventWire | { "type": "Error" } & ErrorWire;
 
 /**
  * The protocol of a camera's web interface.
@@ -2927,7 +3156,15 @@ spans: Array<[number, number]>,
 /**
  * Whether the object has more spans than are sent: these are its first ones.
  */
-truncated: boolean, } | { "state": "Unavailable", 
+truncated: boolean, 
+/**
+ * The events that involve the object, in frame order.
+ */
+events: Array<EventRowWire>, 
+/**
+ * Whether the object has more events than are sent: these are its first ones.
+ */
+events_truncated: boolean, } | { "state": "Unavailable", 
 /**
  * Why the file cannot be asked.
  */
@@ -2945,6 +3182,244 @@ id: string,
  * The index of its row in the whole list, whichever page was asked; `None` when the list does not hold it.
  */
 row: number | null, };
+
+/**
+ * An object an event involves, as a chip of the list shows it.
+ */
+export type EventObjectWire = { 
+/**
+ * The entity id.
+ */
+id: string, 
+/**
+ * The first class the object was recorded with, which colors its chip; `None` when the video shows the object
+ * nowhere, and the chip takes the event's kind.
+ */
+class: string | null, };
+
+/**
+ * An event of the file as a list shows it.
+ */
+export type EventRowWire = { 
+/**
+ * The event's index in the file's events, which names it in a request.
+ */
+event: number, 
+/**
+ * The frame the video shows it on.
+ */
+frame: number, 
+/**
+ * What the event does.
+ */
+kind: OperationKindWire, 
+/**
+ * The event as one line of text.
+ */
+label: string, 
+/**
+ * The objects it involves, in order and with repeats.
+ */
+objects: Array<EventObjectWire>, };
+
+/**
+ * An object an event involves, with where the video shows it.
+ */
+export type InvolvedWire = { 
+/**
+ * The entity id.
+ */
+id: string, 
+/**
+ * The classes it was recorded with, in order of first appearance; none when the video shows it nowhere.
+ */
+classes: Array<string>, 
+/**
+ * The first and last frame the video shows it on; `None` when it shows it nowhere, such as an id only the event
+ * names.
+ */
+seen: [number, number] | null, 
+/**
+ * Where it is on screen as `[first, last]` frames, in order, merged so a strip of `bins` marks can draw it.
+ */
+presence: Array<[number, number]>, };
+
+/**
+ * One event with the objects it involves and the events of its moment.
+ */
+export type EventDetailWire = { 
+/**
+ * The event.
+ */
+row: EventRowWire, 
+/**
+ * The objects it involves, each once, in the order the event names them.
+ */
+objects: Array<InvolvedWire>, 
+/**
+ * The first other events on its frame, in index order.
+ */
+same_moment: Array<EventRowWire>, 
+/**
+ * Whether its frame has more other events than `same_moment` holds.
+ */
+same_moment_truncated: boolean, };
+
+/**
+ * Asks for rows of a lane's event list: every event the video shows, in frame order, kept by the search and paged.
+ * The answer is `EventRows`. A `limit` outside 1 to 200 is a `LaneProblem`.
+ */
+export type EventQueryWire = { 
+/**
+ * The lane's position in `Opened.lanes`.
+ */
+lane: number, 
+/**
+ * Names the request in its answer; the client drops answers of older requests.
+ */
+request: number, 
+/**
+ * The search, parsed by the client: fields `kind` and `object`, free text over the label.
+ */
+query: SearchWire, 
+/**
+ * The first row to send.
+ */
+offset: number, 
+/**
+ * How many rows to send at most, from 1 to 200.
+ */
+limit: number, 
+/**
+ * An event whose row in the list is wanted whatever the page: the answer's `located`.
+ */
+locate: number | null, 
+/**
+ * A frame whose place in the list is wanted: the answer's `frame_row`.
+ */
+frame: number | null, };
+
+/**
+ * Asks for one event of a lane's file with its objects and the events of its frame. The answer is `Event`.
+ */
+export type EventAskWire = { 
+/**
+ * The lane's position in `Opened.lanes`.
+ */
+lane: number, 
+/**
+ * Names the request in its answer; the client drops answers of older requests.
+ */
+request: number, 
+/**
+ * The event's index in the file's events: `EventRow::event`.
+ */
+event: number, 
+/**
+ * The most spans of presence per object, from 0 to 256; 0 sends none.
+ */
+bins: number, };
+
+/**
+ * The answer to `EventQuery`.
+ */
+export type EventRowsWire = { 
+/**
+ * The lane's position in `Opened.lanes`.
+ */
+lane: number, 
+/**
+ * The request answered.
+ */
+request: number, 
+/**
+ * The rows, or why there are none.
+ */
+rows: FileEvents, };
+
+/**
+ * The answer to `Event`.
+ */
+export type EventWire = { 
+/**
+ * The lane's position in `Opened.lanes`.
+ */
+lane: number, 
+/**
+ * The request answered.
+ */
+request: number, 
+/**
+ * The event from the request.
+ */
+event: number, 
+/**
+ * The event, or why there is none.
+ */
+detail: FileEvent, };
+
+/**
+ * Rows of a lane's event list, or why there are none.
+ */
+export type FileEvents = { "state": "Found", 
+/**
+ * The source revision it was listed under; the client drops rows of any other.
+ */
+data_revision: number, 
+/**
+ * The lane policy revision the events were placed under; the client drops rows of any other.
+ */
+policy_revision: number, 
+/**
+ * How many events the video shows.
+ */
+total: number, 
+/**
+ * How many of them the search matches, which is how many rows there are.
+ */
+matched: number, 
+/**
+ * The request's `offset`.
+ */
+offset: number, 
+/**
+ * Rows `offset` to `offset + rows.len()` of the list, in frame order.
+ */
+rows: Array<EventRowWire>, 
+/**
+ * The row of the request's `locate` event; `None` when the request named none or the list does not hold it.
+ */
+located: number | null, 
+/**
+ * How many rows are on frames at or before the request's `frame`, which is where the line for that frame
+ * goes; `None` when the request named none.
+ */
+frame_row: number | null, } | { "state": "Unavailable", 
+/**
+ * Why the file cannot be asked.
+ */
+unavailable: FileScopeUnavailable, };
+
+/**
+ * One event of a lane's file, or why there is none.
+ */
+export type FileEvent = { "state": "Found", 
+/**
+ * The source revision it was made under; the client drops an answer of any other.
+ */
+data_revision: number, 
+/**
+ * The lane policy revision the events were placed under; the client drops an answer of any other.
+ */
+policy_revision: number, 
+/**
+ * The event; `None` when the file has no such event or the video does not show it.
+ */
+detail: EventDetailWire | null, } | { "state": "Unavailable", 
+/**
+ * Why the file cannot be asked.
+ */
+unavailable: FileScopeUnavailable, };
 
 /**
  * Width and height of a decoded picture in pixels.
@@ -3052,7 +3527,7 @@ kinds: Array<number>, };
 /**
  * Raised when the messages or the envelope change in a way an older frontend cannot read.
  */
-export const PLAYBACK_PROTOCOL = 8;
+export const PLAYBACK_PROTOCOL = 9;
 
 /**
  * "AXDV" read as a little-endian u32.

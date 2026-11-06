@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import type { ContentInfo, ContentRef, EntryInfo, LanePolicyWire } from "../generated/api";
+import { useAddBookmark, useSeekRequest } from "../bookmarks/viewerLink";
 import { ExportDialog } from "../export/ExportDialog";
 import { choicesOf } from "../export/lanes";
 import { ContextMenu } from "../kit/ContextMenu";
@@ -140,6 +141,8 @@ function Playback({
     },
     [session],
   );
+  const addBookmark = useAddBookmark(session, item, entry);
+  useSeekRequest(session, view.status, entry);
   const actions = useViewerActions(
     useMemo(
       () => ({
@@ -157,8 +160,9 @@ function Playback({
         "info-overlay": () => setInfo((shown) => !shown),
         "lane-fullscreen": fullscreen.toggle,
         "export-video": () => exportLane(null),
+        "add-bookmark": addBookmark,
       }),
-      [session, zoom, onViewport, fullscreen.toggle, exportLane],
+      [session, zoom, onViewport, fullscreen.toggle, exportLane, addBookmark],
     ),
   );
   return (

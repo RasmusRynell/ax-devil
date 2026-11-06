@@ -4,7 +4,6 @@ import { Icon } from "../kit/Icon";
 import type { IconName } from "../kit/icons";
 import { KIND, QUIET, type Kind } from "../kit/look";
 import { RowList } from "../kit/RowList";
-import { SectionCaption } from "../kit/SectionCaption";
 import { useAllowed } from "../session/session";
 import { RECENT_ID, recentLabel, usedOn, useRecents } from "./recents";
 
@@ -36,8 +35,8 @@ export function StartPanel({ onRun }: { onRun: (id: string) => void }) {
           </button>
         ))}
       </div>
-      <div className="[@media(max-height:20rem)]:hidden">
-        {recents.length > 0 ? (
+      {recents.length > 0 && (
+        <div className="[@media(max-height:20rem)]:hidden">
           <RowList
             heading="Recent workspaces"
             rows={recents.map(({ path, name, usedMs }) => ({
@@ -49,13 +48,8 @@ export function StartPanel({ onRun }: { onRun: (id: string) => void }) {
             }))}
             onSelect={onRun}
           />
-        ) : (
-          <section className="flex flex-col gap-xs">
-            <SectionCaption heading="Recent workspaces" plain />
-            <p className="m-0 px-m text-muted">No recent workspaces</p>
-          </section>
-        )}
-      </div>
+        </div>
+      )}
     </div>
   );
 }

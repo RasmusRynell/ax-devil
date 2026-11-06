@@ -167,7 +167,7 @@ async fn answer(
     }
     let session = handle.state();
     let saved = wire::Saved::new(&session.doc.workspace.workspace, owner);
-    let command = match wire::command(
+    let (command, watch) = match wire::command(
         cmd,
         &state.plugins.handlers(),
         &state.staged,
@@ -176,7 +176,7 @@ async fn answer(
         &state.network,
         saved,
     ) {
-        Ok(Request::Session(command)) => command,
+        Ok(Request::Session(command, watch)) => (command, watch),
         Ok(Request::Workspace(command)) => {
             let outcome = state.files.run(handle, command).await;
             return SessionServerMessage::Ack { seq, outcome };
@@ -196,10 +196,16 @@ async fn answer(
         state.hosting.open().await;
     }
     match handle.command(command) {
-        Ok(Reply::Done) => SessionServerMessage::Ack {
-            seq,
-            outcome: AckOutcome::Ok,
-        },
+        Ok(Reply::Done) => {
+            // The item exists now: its files are watched from what they were when it was resolved.
+            if let Some((item, watch)) = watch.map(|boxed| *boxed) {
+                state.sessions.record_sources(handle.session(), item, watch);
+            }
+            SessionServerMessage::Ack {
+                seq,
+                outcome: AckOutcome::Ok,
+            }
+        }
         Ok(Reply::Ticket(ticket)) => SessionServerMessage::Ticket {
             seq,
             ticket: ticket.to_string(),

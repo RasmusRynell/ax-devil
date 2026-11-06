@@ -6,8 +6,8 @@ const path = require("node:path");
 
 const { backendArgs, parseLaunch, relaunchArgs, userArgs } = require("./args.cjs");
 const { backendExecutable, createBackend } = require("./backend.cjs");
-const { confirmLink, linkTarget, singleInstance } = require("./links.cjs");
-const { askAfterFailure, parseTarget, verifyServer } = require("./remote.cjs");
+const { confirmLink, linkTarget, registerLinks, singleInstance } = require("./links.cjs");
+const { askAfterFailure, explainFailure, parseTarget, verifyServer } = require("./remote.cjs");
 const { installUncaughtHandler } = require("./uncaught.cjs");
 const { installIpc, localWindows, openWindow } = require("./window.cjs");
 const { windowBounds } = require("./window-state.cjs");
@@ -220,7 +220,10 @@ function watchRemote(window, remote) {
     // -3 is a navigation that was cancelled, such as one this window refused.
     if (!isMainFrame || code === -3 || asking || window.isDestroyed()) return;
     asking = true;
-    const choice = await askAfterFailure(window, `Lost ${remote.base}: ${description}`);
+    const choice = await askAfterFailure(
+      window,
+      `Lost ${remote.base}: ${explainFailure(description)}`,
+    );
     asking = false;
     if (window.isDestroyed()) return;
     if (choice === "retry") window.loadURL(remote.url).catch(() => {});
@@ -243,8 +246,10 @@ async function onLaunch(launch) {
   try {
     if (!(await openLaunch(launch)) && !launch.server && !launch.link) {
       const [existing] = BrowserWindow.getAllWindows();
-      if (existing) existing.focus();
-      else await showLocal();
+      if (existing) {
+        if (existing.isMinimized()) existing.restore();
+        existing.focus();
+      } else await showLocal();
     }
   } catch (error) {
     dialog.showErrorBox("ax-devil could not open the server", error.message);
@@ -300,6 +305,7 @@ else
         app.quit();
         return;
       }
+      registerLinks((error) => console.error(error.message));
       if (!(await openLaunch(commandLine.launch)) && !stopping) await showLocal();
     })
     .catch(fail);

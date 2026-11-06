@@ -130,7 +130,7 @@ test-backend: _frontend-build desktop/node_modules/.electron-ready
 	$(ISOLATED) $(CARGO) test $(NO_DEFAULT_PACKAGES) --no-default-features --locked $(TEST)
 
 test-integration: _dev _dev-rust
-	$(ISOLATED) node --test scripts/dev.test.cjs desktop/args.test.cjs desktop/window-state.test.cjs desktop/backend.test.cjs desktop/uncaught.test.cjs desktop/workspace-dialogs.test.cjs scripts/check-architecture.test.cjs
+	$(ISOLATED) node --test scripts/dev.test.cjs desktop/args.test.cjs desktop/links.test.cjs desktop/remote.test.cjs desktop/window-state.test.cjs desktop/backend.test.cjs desktop/uncaught.test.cjs desktop/workspace-dialogs.test.cjs desktop/fit-coverage.test.cjs scripts/check-architecture.test.cjs
 
 test-desktop: build desktop/node_modules/.electron-ready
 	timeout 180s $(ISOLATED) --display pnpm --dir desktop exec electron . --ozone-platform=x11 --smoke-test

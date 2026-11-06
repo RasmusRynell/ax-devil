@@ -1,6 +1,7 @@
 //! Tests of the store through a decoder that counts its runs.
 
 mod behaviour;
+mod events;
 mod framing;
 mod history;
 mod ingest;

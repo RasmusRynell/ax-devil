@@ -44,7 +44,7 @@ type Props = { logins: readonly Login[] } & (
 );
 
 /**
- * The logins the scan tries, in order, a user and a password side by side; five rows show, more scroll. With `onSave`
+ * The logins the scan tries, in order, a user and a password side by side (one over the other where there is no room); five rows show, more scroll. With `onSave`
  * a finished edit (Enter, or leaving the field) or a removal is saved at once, and a refused save puts the logins
  * back as they were, unless the user has edited on since; with `onChange` every edit is handed on and nothing is
  * saved here. A row without a user is not kept. A literal password shows masked, a `$NAME` reference as it is. Why a
@@ -111,7 +111,7 @@ export function LoginsEditor({ logins, onSave, onChange }: Props) {
         {draft.map((login, at) => {
           const masked = literal(text(login, "password"));
           return (
-            <div key={at} className="flex shrink-0 items-center gap-s">
+            <div key={at} className="flex shrink-0 flex-wrap items-center gap-s">
               <input
                 ref={atStart}
                 aria-label="Username"
@@ -123,7 +123,7 @@ export function LoginsEditor({ logins, onSave, onChange }: Props) {
                 onChange={(event) => edit(at, "user", event.target.value)}
                 onBlur={() => commit(draft)}
                 onKeyDown={(event) => event.key === "Enter" && commit(draft)}
-                className={`${FIELD} min-w-0 flex-1 text-small`}
+                className={`${FIELD} min-w-field flex-1 text-small`}
               />
               <input
                 ref={atStart}
@@ -138,7 +138,7 @@ export function LoginsEditor({ logins, onSave, onChange }: Props) {
                 onChange={(event) => edit(at, "password", event.target.value)}
                 onBlur={() => commit(draft)}
                 onKeyDown={(event) => event.key === "Enter" && commit(draft)}
-                className={`${FIELD} min-w-0 flex-1 text-small`}
+                className={`${FIELD} min-w-field flex-1 text-small`}
               />
               <Button size="small" icon="trash-2" label="Remove login" onClick={() => remove(at)} />
             </div>

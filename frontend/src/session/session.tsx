@@ -182,8 +182,8 @@ export interface SessionApi {
   connection: SessionState["connection"];
   /** Why the last session ended for this window, until it is dismissed. */
   ended: SessionState["ended"];
-  /** The Session this window is in, and its join link when it is shared and this backend can be reached. */
-  session: { id: string; you: number; link: string | null } | null;
+  /** The Session this window is in, its join link when it is shared and this backend can be reached, and why not. */
+  session: { id: string; you: number; link: string | null; linkProblem: string | null } | null;
   /** What watchers may do while sharing is on. */
   sharing: Access | null;
   /** Whether the window follows the presenter or explores. */
@@ -210,6 +210,7 @@ export function useSession(): SessionApi {
   const access = useSelect((state) => state.seat?.access ?? null);
   const sharing = useSelect((state) => state.seat?.sharing?.access ?? null);
   const link = useSelect((state) => state.seat?.sharing?.link ?? null);
+  const linkProblem = useSelect((state) => state.seat?.sharing?.linkProblem ?? null);
   const mode = useSelect((state) => state.seat?.mode ?? null);
   const id = useSelect((state) => state.session);
   const you = useSelect((state) => state.you);
@@ -221,7 +222,7 @@ export function useSession(): SessionApi {
       state: access === "owner" ? (sharing ? "owner" : "none") : access ? "watcher" : "none",
       connection,
       ended,
-      session: id !== null && you !== null ? { id, you, link } : null,
+      session: id !== null && you !== null ? { id, you, link, linkProblem } : null,
       sharing,
       mode,
       cursorOptions,
@@ -233,7 +234,7 @@ export function useSession(): SessionApi {
       setCursorOptions: (options) => store.setCursorOptions(options),
       moveCursor: (at) => store.moveCursor(at),
     }),
-    [store, access, sharing, link, mode, id, you, connection, ended, cursorOptions],
+    [store, access, sharing, link, linkProblem, mode, id, you, connection, ended, cursorOptions],
   );
 }
 

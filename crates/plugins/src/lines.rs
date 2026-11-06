@@ -12,6 +12,8 @@ pub(crate) struct TooLong;
 /// the buffer never holds more than `max`.
 pub(crate) struct LineBuffer {
     pending: Vec<u8>,
+    /// What followed the line at which a `push` stopped; the next `push` reads it first.
+    held: Vec<u8>,
     max: usize,
     number: usize,
 }
@@ -20,6 +22,7 @@ impl LineBuffer {
     pub(crate) fn new(max: usize) -> Self {
         Self {
             pending: Vec::new(),
+            held: Vec::new(),
             max,
             number: 0,
         }
@@ -31,12 +34,20 @@ impl LineBuffer {
     }
 
     /// Calls `line(number, bytes)` for each line `chunk` completes (without `\n`, with any `\r` still on), until it
-    /// returns `Break`.
+    /// returns `Break`. The bytes after that line are kept and read first by the next call, which may pass an empty
+    /// chunk.
     pub(crate) fn push<B>(
         &mut self,
-        mut chunk: &[u8],
+        chunk: &[u8],
         mut line: impl FnMut(usize, &[u8]) -> ControlFlow<B>,
     ) -> Result<ControlFlow<B>, TooLong> {
+        let joined;
+        let mut chunk = if self.held.is_empty() {
+            chunk
+        } else {
+            joined = [std::mem::take(&mut self.held).as_slice(), chunk].concat();
+            joined.as_slice()
+        };
         while let Some(end) = memchr(b'\n', chunk) {
             let (head, rest) = (&chunk[..end], &chunk[end + 1..]);
             self.number += 1;
@@ -55,6 +66,7 @@ impl LineBuffer {
                 flow
             };
             if flow.is_break() {
+                self.held = rest.to_vec();
                 return Ok(flow);
             }
             chunk = rest;
@@ -114,6 +126,34 @@ mod tests {
                 (4, "last".to_owned())
             ]
         );
+    }
+
+    #[test]
+    fn lines_behind_a_stop_are_kept_for_the_next_push() {
+        let mut buffer = LineBuffer::new(100);
+        let mut seen = Vec::new();
+        let mut stop_at_a = |_, bytes: &[u8]| {
+            seen.push(String::from_utf8_lossy(bytes).into_owned());
+            if bytes == b"a" {
+                ControlFlow::Break(())
+            } else {
+                ControlFlow::Continue(())
+            }
+        };
+        assert_eq!(
+            buffer.push(b"a\nb\nc", &mut stop_at_a),
+            Ok(ControlFlow::Break(()))
+        );
+        // An empty push reads what the stop left: "b" completes, "c" waits for its newline.
+        assert_eq!(
+            buffer.push(b"", &mut stop_at_a),
+            Ok(ControlFlow::Continue(()))
+        );
+        assert_eq!(
+            buffer.push(b"d\n", &mut stop_at_a),
+            Ok(ControlFlow::Continue(()))
+        );
+        assert_eq!(seen, ["a", "b", "cd"]);
     }
 
     #[test]

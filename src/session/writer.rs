@@ -165,6 +165,7 @@ async fn send_parts<S: Sink<Message> + Unpin>(
             link: owner
                 .then(|| state.hosting.join_url(&sharing.link))
                 .flatten(),
+            link_problem: owner.then(|| state.hosting.link_problem()).flatten(),
         }),
         view: (**seat.view.as_ref().unwrap_or(&session.presenter)).clone(),
         views_done: seat.views_done,

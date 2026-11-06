@@ -3,9 +3,9 @@
 use super::{Completion, Spawn, Work};
 use foundation::{ErrorCode, Interrupt, UserError};
 use handlers::HandlerSet;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use tokio::runtime;
-use workspace::Environment;
+use workspace::{Environment, ItemId, Watch};
 
 /// Runs the jobs a session asks for. The session does not care how: a runner starts the work and reports its
 /// [`Completion`] through the [`Completer`], now or later, on any thread.
@@ -20,13 +20,41 @@ impl<F: Fn(Spawn, Completer) + Send + Sync + 'static> Runner for F {
     }
 }
 
+/// What a job read, held until the job is completed: the session records it only together with an accepted result, so
+/// a job that was superseded meanwhile never replaces the sources of the current one.
+#[derive(Clone, Default)]
+pub struct Watcher(Arc<Mutex<Read>>);
+
+/// What a job noted it read: the item and what it was read from.
+pub(super) type Read = Option<(ItemId, Watch)>;
+
+impl Watcher {
+    /// Notes that `item` was read from what `watch` says, to be recorded when the job's result is accepted.
+    pub fn record(&self, item: ItemId, watch: Watch) {
+        *crate::common::locked(&self.0) = Some((item, watch));
+    }
+
+    fn take(&self) -> Read {
+        crate::common::locked(&self.0).take()
+    }
+}
+
 /// Reports a job's result to its session, once.
-pub struct Completer(pub(super) Box<dyn FnOnce(Completion) + Send>);
+pub struct Completer {
+    pub(super) complete: Box<dyn FnOnce(Completion, Read) + Send>,
+    pub(super) watcher: Watcher,
+}
 
 impl Completer {
-    /// Hands `completion` to the session's lock. Dropped when the session or the job is gone or stale.
+    /// Hands `completion`, with what the job noted it read, to the session's lock. Dropped when the session or the job
+    /// is gone or stale.
     pub fn complete(self, completion: Completion) {
-        (self.0)(completion);
+        (self.complete)(completion, self.watcher.take());
+    }
+
+    /// Where to note what the job read, which may be done from any thread before the job is completed.
+    pub fn watcher(&self) -> Watcher {
+        self.watcher.clone()
     }
 }
 
@@ -46,6 +74,7 @@ impl Runner for OnRuntime {
     fn run(&self, spawn: Spawn, done: Completer) {
         let handlers = self.handlers.current();
         let env = (self.environment)();
+        let watcher = done.watcher();
         self.runtime.spawn(async move {
             if spawn.cancel.is_cancelled() {
                 return;
@@ -54,7 +83,15 @@ impl Runner for OnRuntime {
             let item = job.item;
             let cancel = spawn.cancel;
             // Resolving reads the file system, which must not block the runtime's workers.
-            let resolve = move || workspace_store::resolve(&job, &handlers, &env, &cancel);
+            let resolve = move || {
+                let (result, watch) = Watch::read(&job.recipe, &handlers, &cancel, || {
+                    workspace_store::resolve(&job, &handlers, &env, &cancel)
+                });
+                if let Some(watch) = watch {
+                    watcher.record(job.item, watch);
+                }
+                result
+            };
             let result = match tokio::task::spawn_blocking(resolve).await {
                 Ok(Ok(content)) => Ok(content),
                 Ok(Err(Interrupt::Failed(error))) => Err(error),

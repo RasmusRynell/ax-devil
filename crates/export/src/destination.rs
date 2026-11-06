@@ -49,21 +49,9 @@ fn same(a: &Path, b: &Path) -> bool {
     resolved(a) == resolved(b) || linked(a, b)
 }
 
-/// Whether two existing paths are hard links to one file (the same device and inode).
-#[cfg(unix)]
+/// Whether two existing paths are one file, such as hard links: the same volume and file identity.
 fn linked(a: &Path, b: &Path) -> bool {
-    use std::os::unix::fs::MetadataExt;
-    match (a.metadata(), b.metadata()) {
-        (Ok(a), Ok(b)) => (a.dev(), a.ino()) == (b.dev(), b.ino()),
-        _ => false,
-    }
-}
-
-/// Stable `std` offers no file identity off Unix (Windows' volume serial number and file index are unstable), so a
-/// hard link is not detected here and only the resolved path is compared.
-#[cfg(not(unix))]
-fn linked(_: &Path, _: &Path) -> bool {
-    false
+    same_file::is_same_file(a, b).unwrap_or(false)
 }
 
 /// The path with symlinks resolved as far as it exists: the file itself, else its folder with the name appended.
@@ -150,7 +138,6 @@ mod tests {
         assert!(!in_sequence(&pattern, &original.join("other.png")));
     }
 
-    #[cfg(unix)]
     #[test]
     fn a_file_hard_linked_as_an_image_of_the_sequence_is_not_a_place_to_write() {
         let dir = tempfile::tempdir().unwrap();

@@ -476,10 +476,11 @@ impl Track {
     }
 
     /// Whether a new open may share this track: not once its artifact is damaged, its file was written in place or
-    /// its ingest ended Incomplete. Readers that hold it keep it; the new open decodes again.
+    /// replaced at its path, or its ingest ended Incomplete. Readers that hold it keep it; the new open decodes again.
     pub(crate) fn is_reusable(&self) -> bool {
         !self.is_damaged()
             && !self.is_rewritten()
+            && !self.watch.get().is_some_and(SourceWatch::replaced)
             && !matches!(self.snapshot().ingest, Ingest::Incomplete(_))
     }
 

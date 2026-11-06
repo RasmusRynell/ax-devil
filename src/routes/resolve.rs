@@ -20,7 +20,7 @@ use std::{
     collections::{HashMap, VecDeque},
     sync::{Arc, Mutex, PoisonError},
 };
-use workspace::{Content, Environment, WorkspaceItem};
+use workspace::{Content, Environment, Watch, WorkspaceItem};
 
 /// How many resolved items wait to be added per session. A resolve that finishes as its dialog is cancelled leaves
 /// one that is never added; the oldest of that session makes room. The session id is only a partition, so one
@@ -31,7 +31,11 @@ const MAX_STAGED: usize = 4;
 /// Items resolved by `POST /api/resolvers/{id}/resolve` and not yet added, by the session that asked. The item's id
 /// is the ticket, redeemed only through a seat of that session.
 #[derive(Default)]
-pub struct Staged(Mutex<HashMap<String, VecDeque<(WorkspaceItem, Content)>>>);
+pub struct Staged(Mutex<HashMap<String, VecDeque<Resolved>>>);
+
+/// A staged item: what it resolved to, and what it was read from as it was before, which is watched once the item is
+/// added, so a change made while the dialog was open is noticed.
+pub(crate) type Resolved = (WorkspaceItem, Content, Option<Watch>);
 
 impl Staged {
     /// Holds a resolved item for `session`; with [`MAX_STAGED`] of its items already held, its oldest is dropped.
@@ -42,6 +46,7 @@ impl Staged {
         session: &str,
         item: WorkspaceItem,
         content: Content,
+        watch: Option<Watch>,
         is_live: impl Fn(&str) -> bool,
     ) {
         let mut held = self.0.lock().unwrap_or_else(PoisonError::into_inner);
@@ -50,14 +55,14 @@ impl Staged {
         if queue.len() == MAX_STAGED {
             queue.pop_front();
         }
-        queue.push_back((item, content));
+        queue.push_back((item, content, watch));
     }
 
     /// Hands over the item with this id once, to the session that staged it and no other.
-    pub(crate) fn take(&self, session: &str, id: &ItemId) -> Option<(WorkspaceItem, Content)> {
+    pub(crate) fn take(&self, session: &str, id: &ItemId) -> Option<Resolved> {
         let mut held = self.0.lock().unwrap_or_else(PoisonError::into_inner);
         let queue = held.get_mut(session)?;
-        let at = queue.iter().position(|(item, _)| item.id == *id)?;
+        let at = queue.iter().position(|(item, ..)| item.id == *id)?;
         let taken = queue.remove(at);
         if queue.is_empty() {
             held.remove(session);
@@ -83,18 +88,24 @@ async fn stage(
     let job = {
         let item = item.clone();
         tokio::task::spawn_blocking(move || {
-            item.resolve(&handlers, &Environment::of_process(), &cancel)
+            Watch::read(&item.recipe, &handlers, &cancel, || {
+                item.resolve(&handlers, &Environment::of_process(), &cancel)
+            })
         })
     };
-    let content = job.await.unwrap_or_else(|error| {
+    let (content, watch) = job.await.unwrap_or_else(|error| {
         tracing::error!("Finding the playlists of {resolver} failed: {error}");
-        Err(Interrupt::Failed(UserError::new(
-            ErrorCode::Internal,
-            "Finding the playlists stopped unexpectedly",
-        )))
-    })?;
+        (
+            Err(Interrupt::Failed(UserError::new(
+                ErrorCode::Internal,
+                "Finding the playlists stopped unexpectedly",
+            ))),
+            None,
+        )
+    });
+    let content = content?;
     let id = item.id;
-    staged.put(session, item, content, is_live);
+    staged.put(session, item, content, watch, is_live);
     Ok(id)
 }
 
@@ -320,7 +331,7 @@ mod tests {
                 .ok()
                 .unwrap();
             let id = item.id;
-            staged.put(session, item, content, |key| live.contains(&key));
+            staged.put(session, item, content, None, |key| live.contains(&key));
             id
         };
         let first: Vec<ItemId> = (0..=MAX_STAGED)
