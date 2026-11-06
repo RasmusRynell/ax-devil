@@ -6,6 +6,7 @@ use super::{
     authorize::{Standing, authorize, standing},
     commands::{self, Scope, set_workspace},
     jobs,
+    layout::Layout,
     state::{Seat, SeatKind},
     streams,
     views::{View, restrict},
@@ -315,7 +316,14 @@ fn set_view(
     now_us: i64,
 ) -> Result<(), Refusal> {
     let standing = standing(next, seat, lease)?;
-    let allowed = authorize(next, seat, lease, Use::Command(Scope::View));
+    let allowed = authorize(next, seat, lease, Use::Command(Scope::View)).and_then(|()| {
+        // A layout beyond the pane limit, or one that is not a tree of distinct viewers, is not shown by anyone.
+        if view.layout.as_ref().is_none_or(Layout::is_valid) {
+            Ok(())
+        } else {
+            Err(Refusal::Invalid)
+        }
+    });
     let current = next.seats.get_mut(&seat).ok_or(Refusal::SeatGone)?;
     if seq <= current.views_done {
         // Overwritten by a later view already finished.
@@ -350,8 +358,8 @@ fn set_view(
 /// ago. An intent the presenter already had is kept as it was stored: the window re-sends the current intent with
 /// every other view change, and only a changed one carries a new stamp.
 fn clamp_intents(mut view: View, published: &View, now_us: i64) -> View {
-    for (item, viewer) in &mut view.viewers {
-        let stored = published.viewers.get(item).and_then(|viewer| viewer.clock);
+    for (id, viewer) in &mut view.viewers {
+        let stored = published.viewers.get(id).and_then(|viewer| viewer.clock);
         if let Some(clock) = &mut viewer.clock
             && stored != Some(*clock)
         {
