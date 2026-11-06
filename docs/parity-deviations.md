@@ -9,6 +9,7 @@ Where [parity](parity.md) rows differ from the reference. The offline decisions 
 | AC-04 | The playlists of one item share one viewer, so two cannot be opened side by side; the reference opened each in its own | A viewer per playlist needs the split viewer area (WS-13) |
 | WS-13 | A window lays out at most 8 panes, and a ninth is refused with a message; the reference has no limit | A seat holds at most 8 streams, and every pane streams |
 | OF-02 | Lanes share one video; the reference let a secondary lane have its own video, length and frame rate, aligned to the primary's frame index | D19: two recordings side by side are two viewers |
+| OF-02 | The playlist's entry controls (previous, next, entry list) are in a header above the video; the reference put them in the transport bar. [human] the owner chose to fix only the lane gutters and the inspection lag, and to leave this | Owner decision |
 | RC-01 | Catalog schema v4 replaces v3: rules plus ordered layers (replacing the fixed order), label placement lists, one expression language, no `extends` and no `id` (a user catalog is its file). The reference's catalogs do not load | D25: the frontend evaluates catalogs per lane; D33: location is identity |
 | OF-06 | The frame cache lives in `playback`, not `media` | Eviction follows playback windows; export, thumbnails and live skip it |
 | OF-06 | Eviction takes the frame farthest from the playhead outside the protected windows; the reference used LRU | It suits scrubbing: after a jump, frames around the old position are the least wanted |

@@ -19,22 +19,30 @@ describe("lane grid math", () => {
     expect([0, 1, 2, 3, 4, 5, 9, 10].map(columnsFor)).toEqual([0, 1, 2, 2, 2, 3, 3, 4]);
   });
 
-  it("tiles the whole area with whole pixels that neighbours share", () => {
-    const cells = layoutLanes([0, 1, 2, 3], 101, 51);
-    expect(cells.map(({ rect }) => rect)).toEqual([
-      { x: 0, y: 0, width: 51, height: 26 },
-      { x: 51, y: 0, width: 50, height: 26 },
-      { x: 0, y: 26, width: 51, height: 25 },
-      { x: 51, y: 26, width: 50, height: 25 },
+  it("spans the whole area with whole pixels and a gap of exactly the gutter between neighbours", () => {
+    const [a, b, c, d] = layoutLanes([0, 1, 2, 3], 101, 51, 2).map(({ rect }) => rect);
+    for (const rect of [a, b, c, d])
+      for (const edge of [rect.x, rect.y, rect.width, rect.height])
+        expect(Number.isInteger(edge)).toBe(true);
+    expect([a.x, a.y, c.x, b.y]).toEqual([0, 0, 0, 0]);
+    expect([b.x + b.width, d.x + d.width, c.y + c.height, d.y + d.height]).toEqual([
+      101, 101, 51, 51,
     ]);
+    expect([b.x - (a.x + a.width), d.x - (c.x + c.width)]).toEqual([2, 2]);
+    expect([c.y - (a.y + a.height), d.y - (b.y + b.height)]).toEqual([2, 2]);
+  });
+
+  it("leaves no cell of negative size when the area is smaller than the gutters", () => {
+    for (const rect of layoutLanes([0, 1, 2, 3], 0, 0, 2).map(({ rect }) => rect))
+      expect(Math.min(rect.width, rect.height)).toBeGreaterThanOrEqual(0);
   });
 
   it("keeps the column widths in a short last row, and keeps lane indices", () => {
-    const cells = layoutLanes([4, 7, 9, 2, 5], 300, 200);
+    const cells = layoutLanes([4, 7, 9, 2, 5], 308, 200, 4);
     expect(cells.map(({ lane }) => lane)).toEqual([4, 7, 9, 2, 5]);
     expect(cells.slice(3).map(({ rect }) => [rect.x, rect.width])).toEqual([
       [0, 100],
-      [100, 100],
+      [104, 100],
     ]);
   });
 });

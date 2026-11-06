@@ -101,8 +101,8 @@ export function Inspector({
   const absent = inspection.state === "absent";
   const summarized = absent ? inspection.last : inspection.summary;
   const fields = absent ? NO_FIELDS : inspection.fields;
-  // Before any fields arrive nothing is known, so no pin could say whether its field is missing.
-  const unknown = inspection.state === "loading" && fields.length === 0;
+  // Until the shown sample's fields arrive nothing is known, so no pin could say whether its field is missing.
+  const unknown = inspection.state === "loading";
   const motion = absent ? null : inspection.summary.motion;
   const truncated = !absent && inspection.truncated;
   const { frame, seek } = reach;

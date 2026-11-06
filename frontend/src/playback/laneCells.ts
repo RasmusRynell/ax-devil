@@ -27,27 +27,36 @@ export function columnsFor(count: number): number {
   return count <= 2 ? count : Math.ceil(Math.sqrt(count));
 }
 
+/** The gutter between lanes in CSS pixels (`--spacing-xs`; spacing is fixed pixels), as the reference's lane grid had. */
+export const LANE_GAP = 2;
+
 /**
  * Where each of `lanes` (lane indices) goes in a grid filling `width` by `height` CSS pixels, left to right and top to
- * bottom. Every row has the same column widths, so a last row with fewer lanes leaves the rest of its width empty.
- * Edges are whole pixels that neighbours share.
+ * bottom, `gap` pixels apart. Every row has the same column widths, so a last row with fewer lanes leaves the rest of
+ * its width empty. Edges are whole pixels; the gaps are exactly `gap` wide, or the cells shrink to nothing.
  */
-export function layoutLanes(lanes: readonly number[], width: number, height: number): LaneCell[] {
+export function layoutLanes(
+  lanes: readonly number[],
+  width: number,
+  height: number,
+  gap: number,
+): LaneCell[] {
   const columns = columnsFor(lanes.length);
   if (columns === 0) return [];
   const rows = Math.ceil(lanes.length / columns);
+  const pitch = { x: (width + gap) / columns, y: (height + gap) / rows };
   return lanes.map((lane, at) => {
     const row = Math.floor(at / columns);
     const column = at - row * columns;
-    const x = Math.round((column * width) / columns);
-    const y = Math.round((row * height) / rows);
+    const x = Math.round(column * pitch.x);
+    const y = Math.round(row * pitch.y);
     return {
       lane,
       rect: {
         x,
         y,
-        width: Math.round(((column + 1) * width) / columns) - x,
-        height: Math.round(((row + 1) * height) / rows) - y,
+        width: Math.max(0, Math.round((column + 1) * pitch.x - gap) - x),
+        height: Math.max(0, Math.round((row + 1) * pitch.y - gap) - y),
       },
     };
   });
