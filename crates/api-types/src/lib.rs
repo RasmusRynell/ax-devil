@@ -73,7 +73,8 @@ pub struct SettingsState {
     )]
     pub values: BTreeMap<String, serde_json::Value>,
     /// What each non-secret setting among `values` that holds a `$NAME` reference gives as it is used (a number for a
-    /// whole-number setting), for a form that starts from the value. Absent for a setting without a reference.
+    /// whole-number setting), for a form that starts from the value. Only for the person at this machine, whose
+    /// environment it is; absent for a setting without a reference.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(optional, type = "Partial<Record<SettingKey, string | number>>")]
     pub resolved: Option<BTreeMap<String, serde_json::Value>>,

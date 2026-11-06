@@ -298,7 +298,12 @@ fn snapshot(
     };
     SettingsState {
         values: state.values(&scopes),
-        resolved: Some(state.references(&scopes)).filter(|resolved| !resolved.is_empty()),
+        // What a reference gives is this machine's environment: only the person at this machine is told.
+        resolved: principal
+            .grants()
+            .contains(&Grant::Preferences)
+            .then(|| state.references(&scopes))
+            .filter(|resolved| !resolved.is_empty()),
         file: principal
             .grants()
             .contains(&Grant::Files)

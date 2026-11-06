@@ -189,6 +189,8 @@ async fn a_server_answers_settings_and_sessions_only_to_the_password() {
     assert_eq!(status, StatusCode::OK);
     let server = settings["values"].clone();
     assert_eq!(server["storage.cache_dir"], "");
+    // The default references are set, but what they give is the machine's environment: not for a remote holder.
+    assert!(settings.get("resolved").is_none());
     assert!(server.get("ui.theme").is_none() && server.get("overlays.default_catalog").is_none());
     assert_eq!(&settings["shortcuts"], &json!({}));
     let change = |values: serde_json::Value, shortcuts: serde_json::Value| {

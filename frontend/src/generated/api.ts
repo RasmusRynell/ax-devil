@@ -53,7 +53,8 @@ export type SettingsState = {
 values: Record<SettingKey, string | boolean | number | Array<Record<string, string>> | { enabled: boolean; timeout_ms: number | null; opacity: number } | { tolerance_ms: number | null }>, 
 /**
  * What each non-secret setting among `values` that holds a `$NAME` reference gives as it is used (a number for a
- * whole-number setting), for a form that starts from the value. Absent for a setting without a reference.
+ * whole-number setting), for a form that starts from the value. Only for the person at this machine, whose
+ * environment it is; absent for a setting without a reference.
  */
 resolved?: Partial<Record<SettingKey, string | number>>, 
 /**
