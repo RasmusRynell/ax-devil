@@ -76,6 +76,18 @@ describe("the Bookmarks view", () => {
     expect(screen.queryByRole("button", { name: "Export CSV" })).toBeNull();
   });
 
+  it("ignores the search and kind it had once the last bookmark is gone and the controls are hidden", async () => {
+    const room = await renderView([CLIP, { ...GONE, bookmarks: [] }]);
+    fireEvent.change(screen.getByRole("searchbox", { name: "Search bookmarks" }), {
+      target: { value: "nothing like it" },
+    });
+    expect(screen.getByText("No matches")).toBeTruthy();
+    room.bookmarks = [{ ...GONE, bookmarks: [] }];
+    act(() => room.setItems([video("v", false)]));
+    expect(screen.queryByRole("searchbox")).toBeNull();
+    expect(screen.getByRole("region", { name: "mot › MOT/Z" })).toBeTruthy();
+  });
+
   it("lists the groups by frame, and a missing target says so and cannot open", async () => {
     await renderView([CLIP, GONE]);
     expect(screen.getByText("0:03.00 · frame 75 · Note")).toBeTruthy();
@@ -144,7 +156,7 @@ describe("the Bookmarks view", () => {
     fireEvent.click(screen.getByRole("button", { name: "Export" }));
     expect(screen.getByText("Enter a path on the server.")).toBeTruthy();
     fireEvent.change(screen.getByLabelText("Path on the server"), {
-      target: { value: "/tmp/marks.csv" },
+      target: { value: "/tmp/marks" },
     });
     fireEvent.click(screen.getByRole("button", { name: "Export" }));
     const workspace = FakeSocket.latest.received.flatMap((message) =>
@@ -239,7 +251,7 @@ describe("a viewer and its bookmarks", () => {
     fireEvent.click(screen.getByRole("button", { name: "ask" }));
     expect(mine.calls).toEqual([]);
     fireEvent.click(screen.getByRole("button", { name: "ready" }));
-    expect(mine.calls).toEqual(["seek 99", "pause"]);
+    expect(mine.calls).toEqual(["pause", "seek 99"]);
     expect(other.calls).toEqual([]);
   });
 });

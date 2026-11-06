@@ -6,7 +6,16 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs/promises");
 const path = require("node:path");
 const fit = require("./fit.cjs");
-const { SCREENSHOTS, SHOWN, frames, goToFrame, page, setView, until } = require("./smoke-kit.cjs");
+const {
+  SCREENSHOTS,
+  SHOWN,
+  frames,
+  goToFrame,
+  page,
+  setView,
+  showChrome,
+  until,
+} = require("./smoke-kit.cjs");
 
 module.exports.bookmarks = async (window) => {
   const { js, wait } = page(window);
@@ -73,6 +82,8 @@ module.exports.bookmarks = async (window) => {
     nativeTheme.themeSource = shown;
     await wait(`matchMedia('(prefers-color-scheme: ${shown})').matches`);
     await frames({ js });
+    // The transport fades when the pointer rests and then takes no pointer, which the fit check would call covered.
+    await showChrome(window);
     assert.deepEqual(
       await js(`(${fit.page.toString()})()`),
       [],

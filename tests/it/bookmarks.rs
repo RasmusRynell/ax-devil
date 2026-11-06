@@ -74,6 +74,13 @@ async fn a_marked_frame_is_listed_edited_exported_as_csv_and_saved_with_the_work
         .await;
     assert_eq!(ack(&mut window, 6).await["status"], "failed");
 
+    // Only a CSV file is written, so the export cannot overwrite another kind of file.
+    let other = folder.path().join("authorized_keys");
+    window.say(export(&other)).await;
+    let refused = ack(&mut window, 6).await;
+    assert_eq!(refused["error"]["code"], "InvalidPath");
+    assert!(!other.exists());
+
     // Saved with the workspace, the mark is still there when it opens again.
     let saved = folder.path().join(format!("gate{SUFFIX}"));
     let path = saved.display().to_string();

@@ -35,7 +35,8 @@ export function useExportBookmarks(onFail: (error: unknown) => void): [() => voi
       onOk={() => {
         const chosen = path.trim();
         if (!chosen) return setEmpty(true);
-        void write(chosen);
+        // The backend writes only a .csv file, so a typed name gets the extension as a video export's does.
+        void write(chosen.toLowerCase().endsWith(".csv") ? chosen : `${chosen}.csv`);
         setAsking(false);
       }}
       onCancel={() => setAsking(false)}

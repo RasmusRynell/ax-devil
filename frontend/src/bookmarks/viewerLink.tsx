@@ -63,8 +63,9 @@ export function useSeekRequest(
     done();
     if (!canChange || following) return;
     const last = session.getSnapshot().frameCount - 1;
-    session.seek(Math.min(asked.frame, last));
+    // Pausing first: pausing a playing clock returns it to the frame on screen, which would undo the seek.
     session.pause();
+    session.seek(Math.min(asked.frame, last));
   }, [asked, done, status, session, canChange, following]);
 }
 

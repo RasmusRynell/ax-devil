@@ -42,9 +42,12 @@ export function BookmarksView() {
   const [renaming, setRenaming] = useState<BookmarkInfo | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
   const total = countOf(groups);
+  // Search and kind are on screen only while a bookmark exists; without one they filter nothing, so a reviewed-only
+  // group cannot be hidden by controls that are not there to reset.
+  const filtering = total > 0;
   const shown = useMemo(
-    () => filterGroups(groups, query, filter === "all" ? null : filter),
-    [groups, query, filter],
+    () => (filtering ? filterGroups(groups, query, filter === "all" ? null : filter) : groups),
+    [groups, query, filter, filtering],
   );
 
   const fail = (error: unknown) =>

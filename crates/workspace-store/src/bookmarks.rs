@@ -243,7 +243,8 @@ pub fn kind_label(kind: BookmarkKind) -> &'static str {
 
 /// Every bookmark of `state` as CSV text, in the order of [`groups`]: a header, then a row each of the item's name,
 /// the entry as shown, the frame, the time in seconds to the millisecond, the kind's name and the text. A reviewed
-/// target without bookmarks has no row.
+/// target without bookmarks has no row. A name or text that a spreadsheet would run as a formula starts with `'`
+/// (see [`inert`]).
 pub fn csv(state: &WorkspaceState) -> String {
     let mut text = String::from("target,entry,frame,time,kind,note\r\n");
     for group in groups(state) {
@@ -253,12 +254,12 @@ pub fn csv(state: &WorkspaceState) -> String {
             let millis = (micros + 500) / 1000;
             let time = format!("{}.{:03}", millis / 1000, millis % 1000);
             let fields = [
-                group.item_name.as_str(),
-                group.entry.as_str(),
+                &inert(&group.item_name),
+                &inert(&group.entry),
                 &bookmark.frame.to_string(),
                 &time,
                 kind_label(bookmark.kind),
-                bookmark.note.as_str(),
+                &inert(&bookmark.note),
             ];
             let row: Vec<String> = fields.iter().map(|field| quoted(field)).collect();
             text.push_str(&row.join(","));
@@ -266,6 +267,16 @@ pub fn csv(state: &WorkspaceState) -> String {
         }
     }
     text
+}
+
+/// `text` with a `'` in front when a spreadsheet would run it as a formula (it starts with `=`, `+`, `-`, `@`, a tab or
+/// a carriage return). Notes come from every seat of a shared session, so the file must not carry their formulas.
+fn inert(text: &str) -> String {
+    if text.starts_with(['=', '+', '-', '@', '\t', '\r']) {
+        format!("'{text}")
+    } else {
+        text.to_owned()
+    }
 }
 
 /// A CSV field, quoted when it holds a comma, a quote or a line break.
@@ -424,6 +435,14 @@ mod tests {
             csv(&state),
             "target,entry,frame,time,kind,note\r\ngate.mp4,,41,1.367,Question,\"a, \"\"b\"\"\nc\"\r\n"
         );
+    }
+
+    #[test]
+    fn text_a_spreadsheet_would_run_as_a_formula_starts_with_a_quote() {
+        for formula in ["=1+1", "+1", "-1", "@SUM(A1)", "\tx"] {
+            assert_eq!(inert(formula), format!("'{formula}"));
+        }
+        assert_eq!(inert("blur - here"), "blur - here");
     }
 
     #[test]
