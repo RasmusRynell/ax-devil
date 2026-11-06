@@ -166,8 +166,9 @@ export class FileEvents {
       const { frame: now, ...same } = wanted;
       if (JSON.stringify(rest) === JSON.stringify(same)) {
         held.wanted = wanted;
-        // A frame the page was not asked about is sent after a pause; one already pending is not pushed back.
-        if (now !== before && now !== null && held.cancel === null)
+        // A frame the page was not asked about is sent after a pause; one already pending is not pushed back, and none
+        // is sent while an answer is awaited, which a newer request would make stale: the answer sends it.
+        if (now !== before && now !== null && held.cancel === null && held.asked === null)
           this.#schedule(lane, held, FRAME_MS);
         return;
       }
@@ -302,6 +303,10 @@ export class FileEvents {
         },
         unavailable: null,
       });
+      // The frame moved on while the question was out.
+      const frame = slot.wanted.frame;
+      if (frame !== null && frame !== slot.asking?.frame && slot.cancel === null)
+        this.#schedule(lane, slot, FRAME_MS);
       return;
     }
     const retry = this.#failed(lane, slot, rows.unavailable, () =>

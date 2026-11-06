@@ -111,17 +111,36 @@ describe("the Events list", () => {
   });
 
   it("asks where a frame is at most every quarter second however often the frame moves", () => {
-    const { events, queries } = scope();
+    const { events, files, rows, queries, last } = scope();
     events.request(0, "", 0, 200, null, null);
     vi.advanceTimersByTime(150);
+    files.receive(rows(last()));
     // A frame the rows do not reach, moving as the video plays.
     for (let frame = 300; frame < 310; frame++) {
       events.request(0, "", 0, 200, null, frame);
       vi.advanceTimersByTime(40);
     }
     expect(queries().map(({ frame }) => frame)).toEqual([null, 306]);
+    files.receive(rows(last()));
     vi.advanceTimersByTime(250);
     expect(queries().map(({ frame }) => frame)).toEqual([null, 306, 309]);
+  });
+
+  it("sends no new question about the frame while one is out, so a slow answer is never stale", () => {
+    const { events, files, rows, queries, last } = scope();
+    events.request(0, "", 0, 200, null, 300);
+    vi.advanceTimersByTime(150);
+    // The answer takes 400 ms; the frame moves every 40 ms meanwhile.
+    for (let frame = 301; frame < 311; frame++) {
+      events.request(0, "", 0, 200, null, frame);
+      vi.advanceTimersByTime(40);
+    }
+    expect(queries()).toHaveLength(1);
+    files.receive(rows(last(), { frame_row: 50 }));
+    expect(events.view(0).page).toMatchObject({ frame: 300, frameRow: 50 });
+    // The answer asks again, about the frame now.
+    vi.advanceTimersByTime(250);
+    expect(queries().map(({ frame }) => frame)).toEqual([300, 310]);
   });
 
   it("keeps the page with the frame it was asked about, and the event it located", () => {
