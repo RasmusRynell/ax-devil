@@ -60,7 +60,16 @@ function Viewer({
   ...props
 }: Omit<
   PanelProps,
-  "pages" | "list" | "onList" | "events" | "onEvents" | "memory" | "onMemory" | "onClose"
+  | "pages"
+  | "list"
+  | "onList"
+  | "events"
+  | "onEvents"
+  | "chosen"
+  | "onChosen"
+  | "memory"
+  | "onMemory"
+  | "onClose"
 > & {
   onNavigate: PanelProps["onNavigate"];
   /** The pages already open when the panel mounts, as after it was closed and opened again. */
@@ -69,6 +78,7 @@ function Viewer({
   const [pages, setPages] = useState<PageStack>(first);
   const [list, onList] = useState(FRESH_LIST);
   const [events, onEvents] = useState(freshEvents);
+  const [chosen, onChosen] = useState<number | null>(null);
   const [memory, onMemory] = useState(FRESH_MEMORY);
   const [open, setOpen] = useState(true);
   return open ? (
@@ -83,6 +93,8 @@ function Viewer({
       onList={onList}
       events={events}
       onEvents={onEvents}
+      chosen={chosen}
+      onChosen={onChosen}
       memory={memory}
       onMemory={onMemory}
       onClose={() => setOpen(false)}
@@ -229,15 +241,19 @@ export function mount(
       located: number | null;
       frame_row: number | null;
     }> = {},
+    lane = 0,
   ) => {
     act(() => {
       vi.advanceTimersByTime(250);
     });
-    const request = eventQueries().at(-1)?.request ?? 0;
+    const request =
+      eventQueries()
+        .filter((query) => query.lane === lane)
+        .at(-1)?.request ?? 0;
     act(() =>
       files.receive({
         type: "EventRows",
-        lane: 0,
+        lane,
         request,
         rows: {
           state: "Found",

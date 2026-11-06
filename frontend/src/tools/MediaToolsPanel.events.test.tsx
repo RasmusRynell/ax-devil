@@ -69,6 +69,15 @@ describe("Events list", () => {
     expect(screen.queryByRole("listbox", { name: "Events" })).toBeNull();
   });
 
+  it("counts the events on its tab before the Events list was ever shown", () => {
+    const { answerEvents, eventQueries } = mount();
+    expect(screen.getByRole("tab", { name: "Events" })).toBeTruthy();
+    act(() => void vi.advanceTimersByTime(250));
+    expect(eventQueries().map(({ limit }) => limit)).toEqual([1]);
+    answerEvents(EVENTS, { total: 3, matched: 3 });
+    expect(screen.getByRole("tab", { name: "Events 3" })).toBeTruthy();
+  });
+
   it("searches by kind and object, says how many it kept and which field no event has", () => {
     const { answerEvents, eventQueries } = mount();
     showEvents();
@@ -211,6 +220,49 @@ describe("Event pages", () => {
     expect(eventAsks().at(-1)).toMatchObject({ event: 2 });
     expect(edges()).toEqual([false, true]);
     answerEvent(detail({ row: EVENTS[2] }));
+  });
+
+  it("shows the frame the lane's matching now puts the event on", () => {
+    const { answerEvent, source } = open(0);
+    answerEvent(detail({ row: { ...EVENTS[0], frame: 7 } }));
+    expect(within(page()).getByText("#7")).toBeTruthy();
+    expect(within(page()).getByText("00:00:03.500")).toBeTruthy();
+    fireEvent.click(button("Go to frame"));
+    expect(source.seek).toHaveBeenCalledWith(7);
+  });
+
+  it("opens no object while selecting objects is switched off", () => {
+    const shown = mount({ selectable: false });
+    showEvents();
+    shown.answerEvents(EVENTS);
+    fireEvent.click(screen.getAllByRole("option")[0]);
+    shown.answerEvent(detail());
+    fireEvent.click(
+      within(within(page()).getByRole("listbox", { name: "Objects involved" })).getAllByRole(
+        "option",
+      )[0],
+    );
+    expect(screen.queryByRole("region", { name: "Object page" })).toBeNull();
+    expect(shown.selected.every((entity) => entity === null)).toBe(true);
+  });
+
+  it("keeps the lane of its pages when the panel is closed and opened again", () => {
+    const shown = mount({}, { second: FRAME });
+    fireEvent.change(screen.getByRole("combobox", { name: "Lane" }), { target: { value: "1" } });
+    showEvents();
+    shown.answerEvents(EVENTS, {}, 1);
+    fireEvent.click(
+      within(screen.getByRole("listbox", { name: "Events" })).getAllByRole("option")[0],
+    );
+    expect(shown.eventAsks().at(-1)?.lane).toBe(1);
+    fireEvent.click(screen.getByRole("button", { name: "Back to Events" }));
+    fireEvent.click(
+      within(screen.getByRole("listbox", { name: "Events" })).getAllByRole("option")[0],
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Close media tools" }));
+    fireEvent.click(screen.getByRole("button", { name: "Open media tools" }));
+    expect(page()).toBeTruthy();
+    expect(shown.eventAsks().at(-1)?.lane).toBe(1);
   });
 
   it("closes when the file no longer has the event it was opened for", () => {

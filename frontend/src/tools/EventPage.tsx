@@ -103,7 +103,8 @@ export function EventPage({
   present: ReadonlySet<string> | null;
   /** Goes to the event's frame; absent for a seat that may not seek. */
   onGo?: () => void;
-  onObject: (id: string) => void;
+  /** Opens an object's page; absent where selecting objects is switched off. */
+  onObject?: (id: string) => void;
   onEvent: (item: EventItem) => void;
 }) {
   const [sort, setSort] = useState<SortOf<ObjectSort>>({ key: "id", descending: false });
@@ -210,7 +211,7 @@ export function EventPage({
             copyText={(row) => row.id}
             sort={sort}
             onSort={(key) => setSort(nextSort(sort, key as ObjectSort))}
-            onActivate={(row) => onObject(row.id)}
+            onActivate={(row) => onObject?.(row.id)}
             cursorId={(row) => `row:event-object-${row.id}`}
           />
         </section>

@@ -224,6 +224,26 @@ describe("one event", () => {
     expect(events.event(0)).toMatchObject({ event: 5, detail: null });
   });
 
+  it("says why there is no event, to whoever listens", () => {
+    const { events, files } = scope();
+    const heard = vi.fn();
+    files.subscribe(heard);
+    events.want(0, 4, 0);
+    heard.mockClear();
+    files.receive({
+      type: "Event",
+      lane: 0,
+      request: 1,
+      event: 4,
+      detail: { state: "Unavailable", unavailable: { state: "TooLarge" } },
+    });
+    expect(events.eventUnavailable(0)).toEqual({ state: "TooLarge" });
+    expect(heard).toHaveBeenCalled();
+    // Another event starts with no reason.
+    events.want(0, 5, 0);
+    expect(events.eventUnavailable(0)).toBeNull();
+  });
+
   it("frees the lane only when no list, event or object of it is wanted", () => {
     const { events, files, sent } = scope();
     const releases = () => sent.filter((message) => message.type === "FileRelease");

@@ -150,6 +150,8 @@ class Rig {
       },
       events: this.#events,
       onEvents: () => {},
+      chosen: null,
+      onChosen: () => {},
       memory: FRESH_MEMORY,
       onMemory: () => {},
       width: null,

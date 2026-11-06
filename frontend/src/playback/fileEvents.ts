@@ -272,8 +272,10 @@ export class FileEvents {
           if (this.#details.get(lane) === slot) this.#askEvent(lane, slot);
         }, FOLLOWING_RETRY_MS);
       });
+      // The view may already be null, so the reason is published on its own.
       slot.unavailable = detail.unavailable;
-      this.#setEvent(slot, null);
+      slot.view = null;
+      this.#changed();
       return;
     }
     const slot = this.#lists.get(lane);

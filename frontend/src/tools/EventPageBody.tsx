@@ -35,7 +35,8 @@ export function EventPageBody({
   /** The events are a live stream's. */
   live: EventLog | undefined;
   canSeek: boolean;
-  onObject: (id: string) => void;
+  /** Opens an object's page; absent where selecting objects is switched off. */
+  onObject?: (id: string) => void;
   onEvent: (item: EventItem) => void;
   onGone: () => void;
 }) {
@@ -49,10 +50,13 @@ export function EventPageBody({
   const unavailable = useSyncExternalStore(source.files.subscribe, () =>
     events.eventUnavailable(lane),
   );
+  const timeOf = (at: number) => source.frameTime(at);
   const found = held?.event === item.id ? held : null;
   const row = found?.detail?.row;
   // The file was replaced by one without this event, or with another at its place.
   const gone = found !== null && (!row || row.label !== item.label || row.kind !== item.kind);
+  // The frame the video shows it on follows how the lane matches, which can change while the page is open.
+  const current = row && !gone ? itemOf(row, timeOf) : item;
   useEffect(() => {
     if (gone) onGone();
   }, [gone, onGone]);
@@ -64,8 +68,6 @@ export function EventPageBody({
     () => new Map(frameObjects(frame).map((object) => [object.id, object.className])),
     [frame],
   );
-  const timeOf = (at: number) => source.frameTime(at);
-
   let detail: EventDetail | null = null;
   if (live)
     detail = {
@@ -92,7 +94,7 @@ export function EventPageBody({
     );
   return (
     <EventPage
-      item={item}
+      item={current}
       detail={detail ?? EMPTY}
       message={message}
       live={live !== undefined}
@@ -100,7 +102,7 @@ export function EventPageBody({
       current={view.shown?.sequenceId}
       timeOf={timeOf}
       present={present}
-      onGo={canSeek ? () => source.seek(item.frame) : undefined}
+      onGo={canSeek ? () => source.seek(current.frame) : undefined}
       onObject={onObject}
       onEvent={onEvent}
     />

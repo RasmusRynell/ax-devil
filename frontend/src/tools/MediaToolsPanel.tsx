@@ -81,6 +81,8 @@ export function MediaToolsPanel({
   onList,
   events,
   onEvents,
+  chosen,
+  onChosen,
   memory,
   onMemory,
   width,
@@ -103,6 +105,9 @@ export function MediaToolsPanel({
   /** What the viewer keeps of the events list. */
   events: EventsState;
   onEvents: (events: EventsState) => void;
+  /** The lane the lists and pages are about, which the viewer keeps with them; `null` until one is chosen. */
+  chosen: number | null;
+  onChosen: (lane: number) => void;
   /** What the viewer keeps of the object page: pinned fields and folded groups. */
   memory: InspectorMemory;
   onMemory: (memory: InspectorMemory) => void;
@@ -116,12 +121,10 @@ export function MediaToolsPanel({
   const lanes = view.lanes.flatMap((lane, index) => (lane.source === null ? [] : [index]));
   // An object picked on another lane's picture switches the panel to that lane, as does opening after it.
   const picked = view.selection?.lane;
-  const [chosen, setChosen] = useState<number | null>(picked ?? null);
-  const [seen, setSeen] = useState(picked);
-  if (picked !== seen) {
-    setSeen(picked);
-    if (picked !== undefined && lanes.includes(picked)) setChosen(picked);
-  }
+  const pickable = picked !== undefined && lanes.includes(picked);
+  useEffect(() => {
+    if (picked !== undefined && pickable) onChosen(picked);
+  }, [picked, pickable, onChosen]);
   const lane = chosen !== null && lanes.includes(chosen) ? chosen : lanes[0];
 
   // The Events tab says how many events there are, whichever tab shows.
@@ -132,6 +135,12 @@ export function MediaToolsPanel({
         ? undefined
         : source.files.events.view(lane).page?.total,
   );
+  // The count is asked for when the Events list, which asks for the events itself, is not showing.
+  const counted = held !== undefined;
+  useEffect(() => {
+    if (!log && lane !== undefined && pages.root === "objects" && !counted)
+      source.files.events.request(lane, "", 0, 1, null, null);
+  }, [log, lane, source, pages.root, counted]);
   // What the backend kept of the lane's events goes with the panel, or with the lane.
   useEffect(
     () => () => {
@@ -223,7 +232,7 @@ export function MediaToolsPanel({
                   item={last.key.event}
                   live={log}
                   canSeek={canSeek}
-                  onObject={openObject}
+                  onObject={selectable ? openObject : undefined}
                   onEvent={openEvent}
                   onGone={goBack}
                 />
@@ -258,7 +267,7 @@ export function MediaToolsPanel({
               label={<span className="sr-only">Lane</span>}
               value={String(lane)}
               options={lanes.map((index) => [String(index), view.lanes[index].label] as const)}
-              onChange={(value) => setChosen(Number(value))}
+              onChange={(value) => onChosen(Number(value))}
             />
           )}
           <IconButton icon="x" label="Close media tools" onClick={onClose} />
