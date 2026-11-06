@@ -225,12 +225,13 @@ function Live({
  */
 export function LiveVideoViewer({
   item,
+  viewer,
   content,
   connect = connectWorker,
 }: ViewerProps<"LiveVideo"> & { connect?: Connect }) {
   const key = useMemo<ContentRef>(
-    () => ({ content: content.id, generation: content.generation, entry: content.id }),
-    [content.id, content.generation],
+    () => ({ content: content.id, generation: content.generation, entry: content.id, viewer }),
+    [content.id, content.generation, viewer],
   );
   const ticket = useStream(key);
   const command = useCommand();

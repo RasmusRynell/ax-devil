@@ -14,8 +14,8 @@ use playback::Authority;
 use sessions::{
     CursorOptions,
     session::{
-        Access, Command, Completer, Completion, ContentRef, Control, Handle, Reply, Runner,
-        Service, SessionState, Spawn, StreamLease, Work,
+        Access, Command, Completer, Completion, ContentRef, Control, Handle, Layout, Reply, Runner,
+        Service, SessionState, Spawn, StreamLease, View, ViewerId, ViewerView, Work,
     },
 };
 use std::{
@@ -128,12 +128,13 @@ impl Rig {
         self.service.join(&link, CursorOptions::default()).unwrap()
     }
 
-    /// Adds a video, opens its viewer and finishes resolving it.
+    /// Adds a video, opens its viewer and finishes resolving it, with the owner showing it in viewer 1.
     pub(crate) fn open_video(&self, owner: &Handle<u8>, name: &str) -> (ItemId, ContentRef) {
         self.open(owner, self.video(name))
     }
 
-    /// Adds `item`, opens its viewer and finishes resolving it; the key names its first entry.
+    /// Adds `item`, opens its viewer and finishes resolving it, with the owner showing it in viewer 1 (its view number
+    /// 1); the key names viewer 1 and the first entry.
     pub(crate) fn open(&self, owner: &Handle<u8>, item: WorkspaceItem) -> (ItemId, ContentRef) {
         let id = item.id;
         owner
@@ -143,6 +144,7 @@ impl Rig {
             }))
             .unwrap();
         self.jobs.finish_all();
+        owner.view(showing(id), 1).unwrap();
         (id, key(&owner.state(), id))
     }
 }
@@ -151,12 +153,39 @@ pub(crate) fn link(owner: &Handle<u8>) -> sessions::JoinLink {
     owner.state().sharing.as_ref().unwrap().link.clone()
 }
 
-/// The key of the stream that carries the first entry of `item`'s Content as it is resolved now.
+/// A viewer that shows `item` as it first opens: not pinned, no clock, no chosen entry.
+pub(crate) fn looking(item: ItemId) -> ViewerView {
+    ViewerView {
+        item,
+        pinned: false,
+        clock: None,
+        entry: None,
+    }
+}
+
+/// The layout that is one pane, for `viewer`.
+pub(crate) fn pane(viewer: u32) -> Box<Layout> {
+    Box::new(Layout::Pane {
+        viewer: ViewerId(viewer),
+    })
+}
+
+/// The view of a window whose one pane, viewer 1, shows `item`.
+pub(crate) fn showing(item: ItemId) -> View {
+    View {
+        active: Some(ViewerId(1)),
+        viewers: [(ViewerId(1), looking(item))].into(),
+        layout: Some(*pane(1)),
+        ..View::default()
+    }
+}
+
+/// The key of the stream viewer 1 plays: the first entry of `item`'s Content as it is resolved now.
 pub(crate) fn key(state: &SessionState, item: ItemId) -> ContentRef {
     entry_key(state, item, 0)
 }
 
-/// The key of the stream that carries entry `index` of `item`'s Content as it is resolved now.
+/// The key of the stream viewer 1 plays: entry `index` of `item`'s Content as it is resolved now.
 pub(crate) fn entry_key(state: &SessionState, item: ItemId, index: usize) -> ContentRef {
     let Resolution::Resolved {
         content,
@@ -169,6 +198,7 @@ pub(crate) fn entry_key(state: &SessionState, item: ItemId, index: usize) -> Con
         content: content.id().clone(),
         generation: *generation,
         entry: content.entries()[index].id.clone(),
+        viewer: ViewerId(1),
     }
 }
 
