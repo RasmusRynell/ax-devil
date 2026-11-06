@@ -315,7 +315,7 @@ export const SETTINGS = [
     "page": "Stream defaults",
     "section": "Video and overlay",
     "live": true,
-    "env": false,
+    "env": true,
     "secret": false,
     "quick_setup": false,
     "scope": "server"
@@ -366,7 +366,7 @@ export const SETTINGS = [
     "page": "Stream defaults",
     "section": "Video and overlay",
     "live": true,
-    "env": false,
+    "env": true,
     "secret": false,
     "quick_setup": false,
     "scope": "server"
@@ -382,30 +382,10 @@ export const SETTINGS = [
     "page": "Stream defaults",
     "section": "Video and overlay",
     "live": true,
-    "env": false,
+    "env": true,
     "secret": false,
     "quick_setup": false,
     "scope": "server"
-  },
-  {
-    "key": "camera.confirmed",
-    "kind": {
-      "type": "records",
-      "fields": [
-        "reference",
-        "host"
-      ],
-      "default": []
-    },
-    "label": "Confirmed references",
-    "description": null,
-    "page": null,
-    "section": "",
-    "live": true,
-    "env": false,
-    "secret": false,
-    "quick_setup": false,
-    "scope": "personal"
   },
   {
     "key": "broker.host",
@@ -436,7 +416,7 @@ export const SETTINGS = [
     "page": "Analytics",
     "section": "MQTT analytics",
     "live": true,
-    "env": false,
+    "env": true,
     "secret": false,
     "quick_setup": false,
     "scope": "server"
@@ -484,7 +464,7 @@ export const SETTINGS = [
     "page": "Analytics",
     "section": "MQTT analytics",
     "live": true,
-    "env": false,
+    "env": true,
     "secret": false,
     "quick_setup": false,
     "scope": "server"
@@ -500,7 +480,7 @@ export const SETTINGS = [
     "page": "Analytics",
     "section": "MQTT analytics",
     "live": true,
-    "env": false,
+    "env": true,
     "secret": false,
     "quick_setup": false,
     "scope": "server"
@@ -516,7 +496,7 @@ export const SETTINGS = [
     "page": "Analytics",
     "section": "DataHub WebSocket analytics",
     "live": true,
-    "env": false,
+    "env": true,
     "secret": false,
     "quick_setup": false,
     "scope": "server"
@@ -534,7 +514,7 @@ export const SETTINGS = [
     "page": "Analytics",
     "section": "DataHub WebSocket analytics",
     "live": true,
-    "env": false,
+    "env": true,
     "secret": false,
     "quick_setup": false,
     "scope": "server"
@@ -550,7 +530,7 @@ export const SETTINGS = [
     "page": "Analytics",
     "section": "DataHub WebSocket analytics",
     "live": true,
-    "env": false,
+    "env": true,
     "secret": false,
     "quick_setup": false,
     "scope": "server"

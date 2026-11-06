@@ -54,6 +54,14 @@ async fn settings_are_replaced_whole_and_a_rejected_change_leaves_them_as_they_w
     let (_, body) = test.send(get_settings_request()).await;
     let mut change = json(&body);
     assert_eq!(change["shortcuts"]["save-workspace"], "Ctrl+S");
+    // The default password is a reference, and what it gives is never sent; the owner is told where the file is.
+    assert!(change["resolved"].is_object() && change["resolved"].get("camera.password").is_none());
+    assert!(
+        change["file"]["path"]
+            .as_str()
+            .is_some_and(|path| path.ends_with(".json"))
+    );
+    assert!(change["file"]["version"].is_u64());
     change["values"]["ui.theme"] = "dark".into();
     change["shortcuts"]["save-workspace"] = "Ctrl+Alt+S".into();
     change["shortcuts"]["exit"] = serde_json::Value::Null;

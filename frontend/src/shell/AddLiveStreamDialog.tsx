@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { CommandFailed, reasonOf } from "../errors";
 import type { HandlersInfo, LiveConnection, NewLiveWire } from "../generated/api";
 import { useGrants } from "../access";
@@ -22,6 +22,7 @@ import {
   configuredOverlay,
   connectionOf,
   formFrom,
+  formValues,
   headOf,
   isField,
   newLive,
@@ -97,7 +98,8 @@ export function AddLiveStreamDialog({
   onClose: () => void;
 }) {
   const command = useCommand();
-  const { values } = useSettings();
+  const settings = useSettings();
+  const values = useMemo(() => formValues(settings), [settings]);
   const items = useDoc()?.workspace.items ?? [];
   const [start] = useState(() => initial ?? seedOf(seed, items));
   const like = editing ?? seed.like;

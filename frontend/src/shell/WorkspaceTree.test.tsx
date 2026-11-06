@@ -1,21 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
-import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, screen, within } from "@testing-library/react";
 import type { ItemRecipe, ItemState } from "../generated/api";
 import { entry, failed, FakeSocket, playlists, video } from "../session/fakeSession";
-import { SessionProvider } from "../session/session";
-import {
-  CLIP,
-  commands,
-  HIDDEN,
-  ITEMS,
-  labels,
-  LISTING,
-  MOT,
-  renderTree,
-  shown,
-} from "./WorkspaceTree.fixture";
-import { KeptStateProvider } from "./keptState";
-import { WorkspaceTree } from "./WorkspaceTree";
+import { viewing } from "../session/fakeViews";
+import { CLIP, commands, ITEMS, labels, MOT, renderTree, shown } from "./WorkspaceTree.fixture";
 
 beforeEach(() => vi.stubGlobal("WebSocket", FakeSocket));
 afterEach(() => {
@@ -65,8 +53,8 @@ describe("rows", () => {
     fireEvent.doubleClick(rows[3]);
     await act(async () => {});
     expect(shown()).toMatchObject({
-      active: "runs",
-      viewers: { runs: { entry: "runs/Train (2)/A" } },
+      active: 1,
+      viewers: { 1: { item: "runs", entry: "runs/Train (2)/A" } },
     });
     fireEvent.contextMenu(rows[3]);
     expect(screen.queryByRole("menuitem", { name: "Hide" })).toBeNull();
@@ -129,17 +117,37 @@ describe("opening", () => {
     fireEvent.doubleClick(screen.getByRole("treeitem", { name: /^A/ }));
     await act(async () => {});
     expect(commands()).toEqual([{ type: "openViewer", item: "mot" }]);
-    expect(shown()).toEqual({ active: "mot", viewers: { mot: { entry: "mot/A" } } });
+    expect(shown()).toEqual({
+      active: 1,
+      viewers: { 1: { item: "mot", pinned: false, entry: "mot/A" } },
+    });
   });
 
   it("opens an item without choosing its entry, and a lane's entry", async () => {
     await renderTree();
     fireEvent.doubleClick(screen.getByRole("treeitem", { name: /^v\.mp4/ }));
     await act(async () => {});
-    expect(shown()).toEqual({ active: "v", viewers: { v: {} } });
+    expect(shown()).toEqual({ active: 1, viewers: { 1: { item: "v", pinned: false } } });
     fireEvent.doubleClick(screen.getByRole("treeitem", { name: /^GT/ }));
     await act(async () => {});
-    expect(shown()).toMatchObject({ active: "mot", viewers: { mot: { entry: "mot/A" } } });
+    expect(shown()).toMatchObject({ active: 2, viewers: { 2: { item: "mot", entry: "mot/A" } } });
+  });
+
+  it("opens at most eight viewers and says so for the ninth, which stays closed", async () => {
+    const ids = Array.from({ length: 9 }, (_, n) => `v${n + 1}`);
+    await renderTree(
+      ids.map((id) => video(id, false)),
+      [],
+    );
+    for (const id of ids) {
+      fireEvent.doubleClick(
+        screen.getAllByRole("treeitem", { name: new RegExp(`^${id}\\.mp4`) })[0],
+      );
+      await act(async () => {});
+    }
+    expect(Object.keys(shown().viewers)).toHaveLength(8);
+    expect(commands().filter(({ type }) => type === "openViewer")).toHaveLength(8);
+    expect(screen.getByText("Cap at 8 panes")).toBeTruthy();
   });
 
   it("starts another entry from its beginning, and leaves the one on screen alone", async () => {
@@ -148,15 +156,14 @@ describe("opening", () => {
     act(() =>
       room.publish({
         sidebar: room.presenter.sidebar,
-        active: "mot",
-        viewers: { mot: { entry: "mot/A", clock } },
+        ...viewing(["mot", { entry: "mot/A", clock }]),
       }),
     );
     fireEvent.doubleClick(screen.getByRole("treeitem", { name: /^A/ }));
-    expect(shown().viewers.mot).toEqual({ entry: "mot/A", clock });
+    expect(shown().viewers[1]).toEqual({ item: "mot", pinned: false, entry: "mot/A", clock });
     fireEvent.click(screen.getByRole("button", { name: "Show hidden items" }));
     fireEvent.doubleClick(screen.getByRole("treeitem", { name: /^B/ }));
-    expect(shown().viewers.mot).toEqual({ entry: "mot/B" });
+    expect(shown().viewers[1]).toEqual({ item: "mot", pinned: false, entry: "mot/B" });
   });
 
   it("moves with the arrow keys and opens the current row with Enter", async () => {
@@ -169,7 +176,7 @@ describe("opening", () => {
     fireEvent.keyDown(tree, { key: "ArrowDown" });
     fireEvent.keyDown(tree, { key: "Enter" });
     await act(async () => {});
-    expect(shown()).toMatchObject({ active: "mot", viewers: { mot: { entry: "mot/A" } } });
+    expect(shown()).toMatchObject({ active: 1, viewers: { 1: { item: "mot", entry: "mot/A" } } });
   });
 
   it("selects on a click, ignores Space, and opens on a double click after showing the row's place", async () => {
@@ -187,7 +194,7 @@ describe("opening", () => {
     expect(labels()).toEqual(["v.mp4", "bad.mp4, unavailable: File not found", "mot"]);
     fireEvent.doubleClick(screen.getByRole("treeitem", { name: /^mot/ }));
     await act(async () => {});
-    expect(shown().active).toBe("mot");
+    expect(shown().active).toBe(1);
     expect(labels().slice(2)).toEqual(["mot", "A"]);
   });
 
@@ -242,119 +249,6 @@ describe("opening", () => {
     await act(async () => {});
     expect(screen.getByRole("alert").textContent).toBe("Too many videos are open.");
     expect(shown().active).toBeUndefined();
-  });
-});
-
-describe("hiding", () => {
-  it("asks to hide a lane, an entry and a video, from the row's button or its menu", async () => {
-    await renderTree();
-    fireEvent.click(screen.getByRole("button", { name: "Hide GT" }));
-    await act(async () => {});
-    fireEvent.click(screen.getByRole("button", { name: "Hide v.mp4" }));
-    await act(async () => {});
-    fireEvent.contextMenu(screen.getByRole("treeitem", { name: /^A/ }));
-    fireEvent.click(screen.getByRole("menuitem", { name: "Hide" }));
-    await act(async () => {});
-    expect(commands()).toEqual([
-      { type: "setHidden", target: { entry: "mot/A", lane: "GT" }, hidden: true },
-      { type: "setHidden", target: { entry: "content-v" }, hidden: true },
-      { type: "setHidden", target: { entry: "mot/A" }, hidden: true },
-    ]);
-  });
-
-  it("unhides a hidden row, and offers no hiding for a playlist or a failed item", async () => {
-    await renderTree();
-    expect(screen.queryByRole("button", { name: /^Hide mot/ })).toBeNull();
-    expect(screen.queryByRole("button", { name: /^Hide bad/ })).toBeNull();
-    fireEvent.click(screen.getByRole("button", { name: "Show hidden items" }));
-    fireEvent.click(screen.getByRole("button", { name: "Unhide B" }));
-    await act(async () => {});
-    expect(commands()).toEqual([{ type: "setHidden", target: { entry: "mot/B" }, hidden: false }]);
-  });
-
-  it("follows the Doc: a hidden row leaves the tree once the backend says so", async () => {
-    await renderTree();
-    fireEvent.click(screen.getByRole("button", { name: "Hide v.mp4" }));
-    await act(async () => {});
-    expect(labels()).toEqual(["bad.mp4, unavailable: File not found", "mot", "A", "GT"]);
-  });
-
-  it("says why the backend refused", async () => {
-    await renderTree();
-    FakeSocket.refuseContent = "NotAllowed";
-    fireEvent.click(screen.getByRole("button", { name: "Hide A" }));
-    await act(async () => {});
-    expect(
-      within(screen.getByRole("alert")).getByText("Your role in this session cannot do that."),
-    ).toBeTruthy();
-  });
-
-  it("is disabled for a seat that may not change the workspace", async () => {
-    const room = FakeSocket.host("explore");
-    room.hidden = HIDDEN;
-    room.setItems(ITEMS);
-    window.sessionStorage.setItem(
-      "ax-devil.credential",
-      JSON.stringify({ kind: "join", session: room.id, secret: room.secret }),
-    );
-    render(
-      <SessionProvider>
-        <KeptStateProvider>
-          <WorkspaceTree view="workspace" {...LISTING} />
-        </KeptStateProvider>
-      </SessionProvider>,
-    );
-    await act(async () => {});
-    expect((screen.getByRole("button", { name: "Hide GT" }) as HTMLButtonElement).disabled).toBe(
-      true,
-    );
-    fireEvent.contextMenu(screen.getByRole("treeitem", { name: /^A/ }));
-    expect(screen.getByRole("menuitem", { name: "Hide" }).hasAttribute("disabled")).toBe(true);
-  });
-
-  it("keeps the focus when hiding takes the focused tree's last row away", async () => {
-    // The section keeps a row, so its tree stays, but the keyboard's row is in the next section.
-    await renderTree([CLIP, video("w", false), MOT], []);
-    const first = screen.getByRole("tree", { name: "Videos" });
-    first.focus();
-    fireEvent.keyDown(first, { key: "ArrowDown" });
-    fireEvent.keyDown(first, { key: "F10", shiftKey: true });
-    fireEvent.click(screen.getByRole("menuitem", { name: "Hide" }));
-    await act(async () => {});
-    const next = screen.getByRole("tree", { name: "Playlists" });
-    expect(document.activeElement).toBe(next);
-    fireEvent.keyDown(next, { key: "Enter" });
-    await act(async () => {});
-    expect(shown().active).toBe("mot");
-
-    cleanup();
-    FakeSocket.reset();
-    await renderTree([CLIP, MOT], []);
-    const videos = screen.getByRole("tree", { name: "Videos" });
-    videos.focus();
-    fireEvent.keyDown(videos, { key: "F10", shiftKey: true });
-    fireEvent.click(screen.getByRole("menuitem", { name: "Hide" }));
-    await act(async () => {});
-    expect(screen.queryByRole("tree", { name: "Videos" })).toBeNull();
-    expect(document.activeElement).toBe(screen.getByRole("tree", { name: "Playlists" }));
-
-    cleanup();
-    FakeSocket.reset();
-    await renderTree([CLIP], []);
-    screen.getByRole("tree", { name: "Videos" }).focus();
-    fireEvent.click(screen.getByRole("button", { name: "Hide v.mp4" }));
-    await act(async () => {});
-    expect(document.activeElement).toBe(screen.getByRole("button", { name: "Videos" }));
-  });
-
-  it("closes the row menu with Escape", async () => {
-    await renderTree();
-    const tree = screen.getByRole("tree", { name: "Videos" });
-    fireEvent.keyDown(tree, { key: "F10", shiftKey: true });
-    expect(screen.getByRole("menu")).toBeTruthy();
-    fireEvent.keyDown(document, { key: "Escape" });
-    expect(screen.queryByRole("menu")).toBeNull();
-    expect(document.activeElement).toBe(tree);
   });
 });
 

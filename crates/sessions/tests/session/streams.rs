@@ -1,12 +1,12 @@
 //! Tickets, demand, stale jobs, the View lane and the session of one.
 
-use crate::{Rig, authority, stream};
+use crate::{Rig, authority, entry_key, looking, pane, playlist_in, stream};
 use playback::{Authority, ClockIntent, Priority};
 use sessions::{
     CursorOptions,
     session::{
-        Access, Command, Completion, ContentRef, Control, Refusal, Reply, Sidebar, SidebarView,
-        View, ViewLane, ViewerView,
+        Access, Axis, Command, Completion, ContentRef, Control, Layout, Refusal, Reply, Sidebar,
+        SidebarView, View, ViewLane, ViewerId, ViewerView,
     },
 };
 use std::time::Duration;
@@ -80,7 +80,10 @@ async fn a_ticket_opens_one_stream_once_and_only_for_the_seat_and_key_it_was_iss
 #[tokio::test(start_paused = true)]
 async fn a_seat_holds_eight_streams_and_a_session_sixty_four() {
     let rig = Rig::new();
-    let owner = rig.service.create(true, CursorOptions::default()).unwrap();
+    let owner = rig
+        .service
+        .create(true, true, CursorOptions::default())
+        .unwrap();
     owner
         .command(Command::Control(Control::Share {
             access: Access::Watch,
@@ -113,10 +116,14 @@ async fn a_seat_holds_eight_streams_and_a_session_sixty_four() {
 }
 
 #[tokio::test(start_paused = true)]
-async fn a_following_seat_gets_the_presenters_clock_and_the_owner_its_own_frames() {
+async fn a_following_seat_gets_the_clock_and_entry_of_the_presenter_pane_it_streams() {
     let rig = Rig::new();
     let (owner, watcher) = rig.shared(Access::Watch);
-    let (item, key) = rig.open_video(&owner, "a.mp4");
+    let (item, key) = rig.open(&owner, playlist_in(rig.dir.path(), &["a", "b"]));
+    let second = ContentRef {
+        viewer: ViewerId(2),
+        ..entry_key(&owner.state(), item, 1)
+    };
     let following = stream(&rig.service, &watcher, &key).unwrap();
     let own = stream(&rig.service, &owner, &key).unwrap();
     assert_eq!(
@@ -137,24 +144,72 @@ async fn a_following_seat_gets_the_presenters_clock_and_the_owner_its_own_frames
             priority: Priority::High
         }
     );
+    assert_eq!(
+        stream(&rig.service, &watcher, &second).err(),
+        Some(Refusal::ContentUnavailable),
+        "the presenter has no second pane yet"
+    );
 
-    let intent = ClockIntent {
-        frame: 120,
-        playing: true,
+    // Two panes show the one item: the first its first entry at frame 120, the second its second at frame 7.
+    let at = |frame, playing| ClockIntent {
+        frame,
+        playing,
         speed_centi: 200,
         at_us: 0,
     };
-    let clock = ViewerView {
-        clock: Some(intent),
-        entry: None,
-    };
+    let (first_clock, second_clock) = (at(120, true), at(7, false));
     let view = View {
-        viewers: [(item, clock)].into(),
+        active: Some(ViewerId(1)),
+        viewers: [
+            (
+                ViewerId(1),
+                ViewerView {
+                    clock: Some(first_clock),
+                    ..looking(item)
+                },
+            ),
+            (
+                ViewerId(2),
+                ViewerView {
+                    clock: Some(second_clock),
+                    entry: Some(second.entry.clone()),
+                    ..looking(item)
+                },
+            ),
+        ]
+        .into(),
+        layout: Some(Layout::Split {
+            axis: Axis::Row,
+            share: 5000,
+            first: pane(1),
+            second: pane(2),
+        }),
         ..View::default()
     };
-    owner.view(view, 1).unwrap();
+    owner.view(view, 2).unwrap();
 
-    assert_eq!(authority(&following), Authority::Follow { intent });
+    assert_eq!(
+        authority(&following),
+        Authority::Follow {
+            intent: first_clock
+        }
+    );
+    let beside = stream(&rig.service, &watcher, &second).unwrap();
+    assert_eq!(
+        authority(&beside),
+        Authority::Follow {
+            intent: second_clock
+        }
+    );
+    let crossed = ContentRef {
+        entry: key.entry.clone(),
+        ..second
+    };
+    assert_eq!(
+        stream(&rig.service, &watcher, &crossed).err(),
+        Some(Refusal::ContentUnavailable),
+        "a pane's stream is its own entry, not the item's other pane's"
+    );
 }
 
 #[tokio::test(start_paused = true)]
@@ -176,20 +231,21 @@ async fn a_presenter_view_change_keeps_the_stored_clock_and_a_new_intent_is_stam
             open,
         },
         viewers: [(
-            item,
+            ViewerId(1),
             ViewerView {
                 clock: Some(intent),
-                entry: None,
+                ..looking(item)
             },
         )]
         .into(),
+        layout: Some(*pane(1)),
         ..View::default()
     };
-    owner.view(view(playing, true), 1).unwrap();
+    owner.view(view(playing, true), 2).unwrap();
     advance(Duration::from_secs(10)).await;
 
     // The window re-sends the same intent with every view change: the sidebar toggle must not restamp it.
-    owner.view(view(playing, false), 2).unwrap();
+    owner.view(view(playing, false), 3).unwrap();
     assert_eq!(authority(&following), Authority::Follow { intent: playing });
 
     // A new intent may not claim a time from the future or from long ago.
@@ -206,14 +262,17 @@ async fn a_presenter_view_change_keeps_the_stored_clock_and_a_new_intent_is_stam
         };
         intent.at_us
     };
-    assert_eq!(stamped(3, now + 3_600_000_000), now);
-    assert_eq!(stamped(4, 0), now - 2_000_000);
+    assert_eq!(stamped(4, now + 3_600_000_000), now);
+    assert_eq!(stamped(5, 0), now - 2_000_000);
 }
 
 #[tokio::test(start_paused = true)]
 async fn a_result_that_arrives_late_or_for_a_session_that_is_gone_is_dropped() {
     let rig = Rig::new();
-    let owner = rig.service.create(true, CursorOptions::default()).unwrap();
+    let owner = rig
+        .service
+        .create(true, true, CursorOptions::default())
+        .unwrap();
     let item = rig.video("a.mp4");
     let id = item.id;
     let add = |item: &workspace::WorkspaceItem| {
@@ -290,7 +349,10 @@ fn the_view_lane_keeps_the_latest_view_and_applies_at_most_sixty_a_second() {
 #[tokio::test(start_paused = true)]
 async fn a_session_of_one_works_without_sharing() {
     let rig = Rig::new();
-    let owner = rig.service.create(true, CursorOptions::default()).unwrap();
+    let owner = rig
+        .service
+        .create(true, true, CursorOptions::default())
+        .unwrap();
     assert!(owner.state().sharing.is_none());
     assert!(
         rig.service.list().is_empty(),
@@ -356,6 +418,7 @@ async fn a_live_stream_is_named_by_its_content_and_stops_when_its_viewer_closes(
         content: ContentId::of_item(&id),
         generation,
         entry: ContentId::of_item(&id),
+        viewer: ViewerId(1),
     };
 
     let own = stream(&rig.service, &owner, &key).unwrap();

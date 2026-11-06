@@ -9,7 +9,9 @@ crate doc in `src/lib.rs` and the module docs in `src/session/` say how the part
   only disables the controls.
 - Shared state never carries settings, credentials or host paths. What a Watcher learns of the Doc is decided in one
   place, the projection in `src/session/project.rs`, and content is named by id, never by path.
-- An exploring Watcher's view is limited to what the Doc has open (`restrict`, re-applied after every Doc change).
+- An exploring Watcher's view is limited to what the Doc has open (`restrict`, re-applied after every Doc change): the
+  viewers of a closed item go, and their panes give their space to the sibling. A view of more than `MAX_PANES` panes
+  is refused.
 - Resuming a seat rotates its token and replaces the older connection; anything from the older connection, such as a
   late drop or grace timer, does nothing.
 - The Owner leaving ends the Session at once, and so does the Owner staying away past the 30 s grace. A Watcher
@@ -35,8 +37,9 @@ crate doc in `src/lib.rs` and the module docs in `src/session/` say how the part
 - A job completion goes through the same lock and is dropped when the session is gone, the job is no longer
   registered, or its owner moved on (an item resolving under a newer attempt, a seat that left or lost permission).
   Whatever makes the owner move on cancels the job in the same transition.
-- A Following seat is bound to the presenter's clock for the item and may stream only the entry the presenter shows,
-  so the presenter switching entries revokes it; a seat with its own view chooses its own entry and frames at low
+- A Following seat is bound to the clock of the presenter's viewer its `ContentRef` names, and may stream only the
+  entry that viewer shows of the stream's item, so the presenter switching that viewer's entry revokes it and no other
+  viewer's; a seat with its own view chooses its own entry and frames at low
   priority, the owner at high. `restrict` alone decides which entry a viewer shows: the one asked for while the
   Content has it, else the first not hidden, else the first. The presenter's clock intents are stamped in server time: a changed intent is
   clamped to the last two seconds, an unchanged one keeps the stamp it was stored with.

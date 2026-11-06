@@ -18,7 +18,7 @@ pub use content::{
     Content, ContentId, Entry, ImageSequence, OverlayRef, PlaylistContent, PlaylistSpan,
     SeekableVideoContent, VideoRef, playlist_label,
 };
-pub use credentials::{Confirmation, Environment, Secret};
+pub use credentials::{Environment, Secret};
 pub use foundation::{BookmarkId, ItemId};
 pub use item::{
     OverlayRecipe, PlaylistRecipe, Recipe, Source, Unreadable, VideoRecipe, WorkspaceItem,
@@ -27,6 +27,6 @@ pub use item::{
 pub use live::{
     LIVE_SLOT, LiveOverlay, LiveRecipe, LiveVideoContent, Login, Protocol, ResolvedCamera,
 };
-pub use references::{Connection, Previews, Shown, preview, vouches};
+pub use references::{Connection, Previews, Shown, preview};
 pub use sources::{Snapshot, Watch};
 pub use workspace::Workspace;

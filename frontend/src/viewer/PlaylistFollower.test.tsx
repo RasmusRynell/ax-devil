@@ -4,6 +4,7 @@ import { FakeSettings } from "../fakeSettings";
 import { opened } from "../playback/fakeOpened";
 import type { Incoming } from "../playback/wire";
 import { entry, FakeSocket, playlist } from "../session/fakeSession";
+import { viewing } from "../session/fakeViews";
 import { SessionProvider, useDoc } from "../session/session";
 import { PlaylistViewer } from "./PlaylistViewer";
 
@@ -45,7 +46,7 @@ function Host() {
   return (
     resolution?.status === "Resolved" &&
     resolution.content.kind === "Playlist" && (
-      <PlaylistViewer item="list" content={resolution.content} />
+      <PlaylistViewer item="list" viewer={1} content={resolution.content} />
     )
   );
 }
@@ -55,11 +56,7 @@ async function follow() {
   const room = FakeSocket.host("watch");
   room.setItems([playlist("list", [entry("list/A"), entry("list/B")])]);
   const show = (entryId: string) =>
-    room.publish({
-      sidebar: room.presenter.sidebar,
-      active: "list",
-      viewers: { list: { entry: entryId } },
-    });
+    room.publish({ sidebar: room.presenter.sidebar, ...viewing(["list", { entry: entryId }]) });
   show("list/A");
   window.sessionStorage.setItem(
     "ax-devil.credential",

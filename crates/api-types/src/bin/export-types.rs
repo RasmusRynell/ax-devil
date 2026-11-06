@@ -29,14 +29,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     use sessions::{
         CursorOptions, EndReason, SeatMode, SeatRole,
         session::{
-            Access, Can, ContentRef, Control, Refusal, RosterEntry, Sidebar, SidebarView, View,
-            ViewerView,
+            Access, Axis, Can, ContentRef, Control, Layout, Refusal, RosterEntry, Sidebar,
+            SidebarView, View, ViewerView,
         },
     };
     let mut sections = declarations![
         Grant,
         AppInfo,
         SettingsState,
+        SettingsFile,
         SettingsChange,
         WindowState,
         PageError,
@@ -48,6 +49,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         Access,
         ClockIntent,
         Sidebar,
+        Axis,
+        Layout,
         ViewerView,
         View,
         CursorOptions,
@@ -155,7 +158,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         WireSecret,
         NewLiveOverlayWire,
         NewLiveWire,
-        LiveConfirmation,
         NetworkIdentity,
         NetworkSignIn,
         NetworkRow,

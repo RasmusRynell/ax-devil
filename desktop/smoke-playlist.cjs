@@ -216,6 +216,25 @@ module.exports.playlist = async (window) => {
       [],
       `The playlist viewer must fit the 640x480 window at ${zoom * 100}% zoom`,
     );
+    // The transport and entry controls wrap onto further lines when the width runs out, and none leaves the window.
+    const { missing, outside, lines } = await js(`(() => {
+      const named = ['[aria-label=Play]', '[aria-label="Back 1 frame"]', '[aria-label="Forward 1 frame"]',
+        '[aria-label="Previous entry"]', '[aria-label="Next entry"]', '[aria-label=Time]'];
+      const rects = named.map((selector) => [selector, document.querySelector(selector)?.getBoundingClientRect()]);
+      const tops = new Set(rects.filter(([, rect]) => rect).map(([, rect]) => Math.round(rect.top)));
+      return {
+        missing: rects.filter(([, rect]) => !rect?.width).map(([selector]) => selector),
+        outside: rects.filter(([, rect]) => rect && (rect.left < 0 || rect.right > innerWidth)).map(([selector]) => selector),
+        lines: tops.size,
+      };
+    })()`);
+    assert.deepEqual(
+      [missing, outside],
+      [[], []],
+      "Every transport and entry control is reachable",
+    );
+    if (zoom === 2)
+      assert.ok(lines >= 3, `The transport and entry controls must wrap at 200% zoom: ${lines}`);
   }
   window.webContents.setZoomFactor(1);
   window.setSize(1100, 720);

@@ -260,7 +260,9 @@ async fn run_backend(global: Global, command: Option<Command>, plugins: Arc<Plug
                     &workspace::Environment::of_process(),
                     || {
                         settings::Settings::load(&paths.config_file)
-                            .map(|settings| ax_devil::session::live::defaults(&settings.state()))
+                            .map(|settings| {
+                                ax_devil::session::live::defaults(&settings.state(), true)
+                            })
                             .map_err(|error| error.to_string())
                     },
                 ) {

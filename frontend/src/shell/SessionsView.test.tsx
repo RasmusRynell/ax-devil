@@ -132,4 +132,31 @@ describe("sessions view", () => {
     await act(async () => {});
     expect(screen.queryByRole("button", { name: "Follow presenter" })).toBeNull();
   });
+  it("opens the watcher's join link in the app and closes the menu, with nothing said if no app takes the link", async () => {
+    const room = FakeSocket.host("explore");
+    const secret = `${room.id}.${room.secret}`;
+    window.sessionStorage.setItem(
+      "ax-devil.credential",
+      JSON.stringify({ kind: "join", session: room.id, secret: room.secret }),
+    );
+    const assign = vi.fn();
+    const { origin, pathname } = window.location;
+    vi.stubGlobal("location", { href: window.location.href, origin, pathname, assign });
+    render(
+      <SessionProvider>
+        <ShareControl onStartSharing={() => {}} />
+      </SessionProvider>,
+    );
+    fireEvent.click(await screen.findByRole("button", { name: "Session" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Open in app" }));
+
+    const joinLink = `${origin}${pathname}#join=${encodeURIComponent(secret)}`;
+    expect(assign).toHaveBeenCalledExactlyOnceWith(
+      `ax-devil://open?url=${encodeURIComponent(joinLink)}`,
+    );
+    // A browser says nothing of whether an app took the link, and neither does the page.
+    expect(screen.queryByRole("menu")).toBeNull();
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect(screen.queryByRole("status")).toBeNull();
+  });
 });

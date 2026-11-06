@@ -221,6 +221,19 @@ describe("settings dialog", () => {
     expect(screen.getAllByRole("tab").map((tab) => tab.textContent)).toEqual(["General"]);
   });
 
+  it("names the config file and its version on an Advanced page, for a backend that tells them", () => {
+    render(
+      <FakeSettings
+        state={{ ...DEFAULT_SETTINGS, file: { path: "/home/me/settings.json", version: 3 } }}
+      >
+        <SettingsDialog onClose={() => {}} onRestartNeeded={() => {}} />
+      </FakeSettings>,
+    );
+    fireEvent.click(screen.getByRole("tab", { name: "Advanced" }));
+    expect(screen.getByText("/home/me/settings.json")).toBeTruthy();
+    expect(screen.getByText("Configuration version").lastElementChild?.textContent).toBe("3");
+  });
+
   it("fills a folder field from the native folder dialog", async () => {
     const pickFolder = vi.fn(() => Promise.resolve("/mnt/cache"));
     window.axDevilWindow = { pickFolder } as never;

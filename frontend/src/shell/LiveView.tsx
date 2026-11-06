@@ -1,6 +1,6 @@
 import { useMemo, useRef, useState } from "react";
 import { useGrants } from "../access";
-import type { LiveConfirmation, NewLiveWire } from "../generated/api";
+import type { NewLiveWire } from "../generated/api";
 import { camerasOf, type AddSeed } from "../live/cameras";
 import { useLoginChecks } from "../live/checks";
 import { informationOf } from "../live/information";
@@ -14,11 +14,10 @@ import {
   type Row,
   type RowAction,
 } from "../live/rows";
-import { send } from "../live/send";
 import { useStreamStatuses } from "../live/streamState";
 import { useSettings } from "../settings";
-import { useCan, useCommand, useDoc, useView } from "../session/session";
-import { useShow } from "../viewer/useViewers";
+import { useCan, useCommand, useDoc } from "../session/session";
+import { useFrontItem, useShow } from "../viewer/useViewers";
 import { useItemDialogs } from "./ItemDialogs";
 import { useKept } from "./keptState";
 import { LiveToolbar } from "./LiveToolbar";
@@ -31,13 +30,12 @@ const NO_FACETS: ReadonlySet<string> = new Set();
 /**
  * The sidebar's Live view: a search with Sort and Filter, the workspace's cameras with their streams, and, for whoever
  * may use this machine's network, the cameras a scan found that the workspace does not hold, with the scan's settings
- * under them. Nothing connects until Start, which opens the stream's viewer; Stop closes it. A stream waiting for a
- * confirmation offers it, for whoever may keep one. Add on a found camera adds its stream with the login the scan
- * signed in with, which stays on the backend, and starts it; `onAdd` opens the Add Live Stream dialog from a seed.
+ * under them. Nothing connects until Start, which opens the stream's viewer; Stop closes it. Add on a found camera adds
+ * its stream with the login the scan signed in with, which stays on the backend, and starts it; `onAdd` opens the Add
+ * Live Stream dialog from a seed.
  */
 export function LiveView({ onAdd }: { onAdd: (seed: AddSeed) => void }) {
   const scans = useGrants().includes("files");
-  const mayConfirm = useGrants().includes("preferences");
   const mayAct = useCan("content");
   const { values } = useSettings();
   const items = useDoc()?.workspace.items;
@@ -45,7 +43,7 @@ export function LiveView({ onAdd }: { onAdd: (seed: AddSeed) => void }) {
   const show = useShow();
   const { snapshot, epoch, connected } = useNetwork(scans);
   const reported = useStreamStatuses();
-  const [front] = useView("active");
+  const front = useFrontItem();
   // What the user set up stays while the window shows another view or hides the sidebar.
   const [query, setQuery] = useKept("live:query", "");
   const [order, setOrder] = useKept<Order>("live:order", "address");
@@ -79,7 +77,7 @@ export function LiveView({ onAdd }: { onAdd: (seed: AddSeed) => void }) {
         reported,
         checks,
         thumbnails: scans,
-        front: front ?? null,
+        front,
         order,
       }),
     [cameras, snapshot, reported, checks, scans, front, order],
@@ -129,17 +127,6 @@ export function LiveView({ onAdd }: { onAdd: (seed: AddSeed) => void }) {
   const remove = (row: Row) => {
     if (mayAct && row.menu.includes("remove")) act(row, "remove");
   };
-  /** Keeps the reference for its host, then resolves the item again so it can start. */
-  const confirm = (row: Row, confirmation: LiveConfirmation) => {
-    const { item } = row.subject;
-    if (!item) return;
-    void attempt(
-      send("/api/live/confirm", confirmation).then((refused) => {
-        if (refused !== null) throw new Error(refused);
-        return command({ type: "content", command: { type: "resolve", item } });
-      }),
-    );
-  };
   const toggle = (facet: Facet) =>
     setHidden((now) => {
       const next = new Set(now);
@@ -170,12 +157,10 @@ export function LiveView({ onAdd }: { onAdd: (seed: AddSeed) => void }) {
         views={views}
         searching={query.trim() !== ""}
         mayAct={mayAct}
-        mayConfirm={mayConfirm}
         onAddStream={() => onAdd({})}
         onOpen={open}
         onRemove={remove}
         onAct={act}
-        onConfirm={confirm}
       />
       {scans && <ScanSettings snapshot={snapshot} epoch={epoch} connected={connected} />}
       {dialogs}

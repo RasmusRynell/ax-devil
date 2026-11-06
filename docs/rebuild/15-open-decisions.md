@@ -20,7 +20,7 @@ and D20 belongs to M2. Decisions already taken are in [14](14-build-order.md).
 
 | ID | Question | Recommended answer |
 |----|----------|--------------------|
-| D18 | When may a workspace file use `$VARIABLE` references, which read secrets such as passwords from the environment ([13](13-security-packaging-ops.md#threat-model))? | A credential tied to its camera's host is filled in without asking; any other reference asks once, showing the host it would go to, and remembers the answer. This is stricter than the old app |
+| D18 | When may a workspace file use `$VARIABLE` references, which read secrets such as passwords from the environment ([13](13-security-packaging-ops.md#threat-model))? | Decided: expanded silently for the person at this machine, with no prompt and no host binding, as in the old app; text a remote viewer (a holder of the server password) types or sends stays literal and is never expanded. [human] "Silent like Python"; "Expand for local use only" |
 
 ## By M4
 

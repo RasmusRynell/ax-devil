@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { FakeSocket, type Room } from "../session/fakeSession";
+import { viewing } from "../session/fakeViews";
 import { SessionProvider } from "../session/session";
 import { KeptStateProvider } from "./keptState";
 import { RevealShown } from "./RevealShown";
@@ -15,12 +16,12 @@ afterEach(() => {
   FakeSocket.reset();
 });
 
-const front = (room: Room, active: string) =>
+const front = (room: Room, item: "mot" | "v") =>
   act(() =>
     room.publish({
       sidebar: room.presenter.sidebar,
-      active,
-      viewers: { mot: { entry: "mot/A" }, v: {} },
+      ...viewing(["mot", { entry: "mot/A" }], "v"),
+      active: item === "mot" ? 1 : 2,
     }),
   );
 

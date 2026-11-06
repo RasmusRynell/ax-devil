@@ -1,9 +1,8 @@
-//! What the live settings give a Live Stream Item: the defaults a new one starts from, and the environment its
-//! `$NAME` references expand in when it resolves.
+//! What the live settings give a Live Stream Item: the defaults a new one starts from.
 
 use settings::State;
 use workspace::{
-    Confirmation, Environment, Protocol, Secret,
+    Protocol, Secret,
     intake::{DataHubDefaults, LiveDefaults, LiveMode, MqttDefaults},
 };
 
@@ -15,17 +14,36 @@ fn text(state: &State, key: &str) -> String {
         .to_owned()
 }
 
-fn whole<T: TryFrom<u64> + Default>(state: &State, key: &str) -> T {
-    state
-        .stored(key)
+/// The text of `key` as it is used when `expands`: a `$NAME` reference is its variable's value, copied into the new
+/// item, unlike a connection text, which stays a reference. Without `expands` it is the text as written.
+fn value(state: &State, key: &str, expands: bool) -> String {
+    let value = if expands {
+        state.resolved(key)
+    } else {
+        state.written(key)
+    };
+    value
+        .and_then(|value| value.as_str().map(str::to_owned))
+        .unwrap_or_default()
+}
+
+/// The number of `key`: what a reference gives when `expands`, else the setting's default for a reference.
+fn whole<T: TryFrom<u64> + Default>(state: &State, key: &str, expands: bool) -> T {
+    let value = if expands {
+        state.stored(key).cloned()
+    } else {
+        state.written(key)
+    };
+    value
         .and_then(|value| value.as_u64())
         .and_then(|number| T::try_from(number).ok())
         .unwrap_or_default()
 }
 
-/// The values a new Live Stream Item takes for what the user left empty, as written in the settings: a `$NAME`
-/// reference stays one.
-pub fn defaults(state: &State) -> LiveDefaults {
+/// The values a new Live Stream Item takes for what the user left empty, for a caller whose references `expands`. The
+/// host, login and broker texts are as written
+/// in the settings (a `$NAME` reference stays one); the other values are copied as they are used.
+pub fn defaults(state: &State, expands: bool) -> LiveDefaults {
     LiveDefaults {
         host: text(state, "camera.host"),
         username: text(state, "camera.user"),
@@ -34,94 +52,51 @@ pub fn defaults(state: &State) -> LiveDefaults {
             "http" => Protocol::Http,
             _ => Protocol::Https,
         },
-        head: whole(state, "camera.head"),
-        rtsp_port: whole(state, "camera.rtsp_port"),
+        head: whole(state, "camera.head", expands),
+        rtsp_port: whole(state, "camera.rtsp_port", expands),
         resolution: text(state, "camera.resolution"),
-        overlay: match text(state, "camera.overlay").as_str() {
+        overlay: match value(state, "camera.overlay", expands).as_str() {
             "none" => LiveMode::None,
             "rtsp" => LiveMode::Rtsp,
             "mqtt" => LiveMode::Mqtt,
             _ => LiveMode::DataHub,
         },
-        rtsp_handler: text(state, "camera.rtsp_handler"),
+        rtsp_handler: value(state, "camera.rtsp_handler", expands),
         mqtt: MqttDefaults {
-            handler: text(state, "broker.handler"),
+            handler: value(state, "broker.handler", expands),
             host: text(state, "broker.host"),
             user: text(state, "broker.user"),
             password: Secret::new(text(state, "broker.password")),
-            port: whole(state, "broker.port"),
-            source_key: text(state, "broker.source_key"),
+            port: whole(state, "broker.port", expands),
+            source_key: value(state, "broker.source_key", expands),
         },
         datahub: DataHubDefaults {
-            handler: text(state, "datahub.handler"),
-            topic: text(state, "datahub.topic"),
-            channel: whole(state, "datahub.channel"),
+            handler: value(state, "datahub.handler", expands),
+            topic: value(state, "datahub.topic", expands),
+            channel: whole(state, "datahub.channel", expands),
         },
     }
 }
 
-/// The process's variables, with the references the user confirmed in `camera.confirmed` allowed.
-pub(crate) fn environment(state: &State) -> Environment {
-    let confirmed = state
-        .stored("camera.confirmed")
-        .and_then(|value| value.as_array())
-        .into_iter()
-        .flatten()
-        .filter_map(|record| {
-            let field = |name| record.get(name)?.as_str().map(str::to_owned);
-            Some(Confirmation {
-                reference: field("reference")?,
-                host: field("host")?,
-            })
-        });
-    Environment::new(|name| std::env::var(name).ok(), confirmed)
-}
-
-/// Remembers that the user lets `confirmation.reference` be sent to `confirmation.host`, as `camera.confirmed` keeps it.
-/// Saying it twice changes nothing.
-pub fn confirm(
-    settings: &settings::Settings,
-    confirmation: &Confirmation,
-) -> Result<(), settings::Error> {
-    let record =
-        serde_json::json!({ "reference": confirmation.reference, "host": confirmation.host });
-    // One read and write under the settings' lock, so a concurrent confirmation or save is never overwritten.
-    settings.update("camera.confirmed", |stored| {
-        let mut list = stored.as_array().cloned().unwrap_or_default();
-        if list.contains(&record) {
-            return None;
-        }
-        list.push(record);
-        Some(serde_json::Value::Array(list))
-    })?;
-    Ok(())
-}
-
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use super::defaults;
+    use serde_json::json;
 
+    /// `PATH` stands for any variable: a reference in a default is copied as its value for the person at this machine
+    /// and stays the text it is for a remote viewer, a number reference giving its default.
     #[test]
-    fn confirmations_from_concurrent_windows_are_all_kept_once() {
+    fn a_reference_in_a_default_is_copied_only_for_a_caller_who_expands() {
         let folder = tempfile::tempdir().unwrap();
         let settings = settings::Settings::load(&folder.path().join("default.json")).unwrap();
-        std::thread::scope(|scope| {
-            for window in 0..16 {
-                let settings = &settings;
-                scope.spawn(move || {
-                    let confirmation = Confirmation {
-                        reference: format!("CAM_PASS_{}", window % 8),
-                        host: "10.0.0.7".into(),
-                    };
-                    confirm(settings, &confirmation).unwrap();
-                });
-            }
-        });
-        let reloaded = settings::Settings::load(&folder.path().join("default.json")).unwrap();
-        let state = reloaded.state();
-        let kept = state
-            .stored("camera.confirmed")
-            .and_then(|value| value.as_array());
-        assert_eq!(kept.map(Vec::len), Some(8));
+        settings
+            .update("datahub.topic", |_| Some(json!("$PATH")))
+            .unwrap();
+        let state = settings.state();
+        assert_eq!(
+            defaults(&state, true).datahub.topic,
+            std::env::var("PATH").unwrap()
+        );
+        assert_eq!(defaults(&state, false).datahub.topic, "$PATH");
     }
 }

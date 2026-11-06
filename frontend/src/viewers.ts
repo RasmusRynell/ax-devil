@@ -5,9 +5,10 @@ import { LiveVideoViewer } from "./viewer/LiveViewer";
 import { PlaylistViewer } from "./viewer/PlaylistViewer";
 
 type Kind = ContentInfo["kind"];
-/** What a viewer is given: its item, whose id keys what the window shows of it, and the item's Content. */
+/** What a viewer is given: its item, its own id, which keys what the window's view shows of it, and the item's Content. */
 export type ViewerProps<K extends Kind = Kind> = {
   item: string;
+  viewer: number;
   content: Extract<ContentInfo, { kind: K }>;
 };
 
