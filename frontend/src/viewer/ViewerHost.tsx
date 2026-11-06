@@ -4,7 +4,6 @@ import type { ItemState } from "../generated/api";
 import { IconButton } from "../kit/IconButton";
 import { QUIET } from "../kit/look";
 import { useCan, useCommand, useView } from "../session/session";
-import { PaneBudget } from "../playback/budget";
 import { viewerFor } from "../viewers";
 import { ReloadOffer } from "./ReloadOffer";
 import { useViewers, type Viewer } from "./useViewers";
@@ -74,53 +73,51 @@ export function ViewerHost() {
   const dismiss = (offer: string, count: number) =>
     setDismissed((now) => ({ ...now, [offer]: count }));
   return (
-    <PaneBudget panes={viewers.length}>
-      <div className="flex h-full min-h-0 w-full min-w-0 flex-col">
-        <div
-          role="tablist"
-          aria-label="Open items"
-          className="flex h-row shrink-0 overflow-x-auto border-b border-line bg-panel [scrollbar-width:none]"
-        >
-          {viewers.map(({ id, item }) => (
-            <div
-              key={id}
-              className={`flex min-w-0 shrink-0 items-center ${id === active?.id ? "border-b-edge border-accent" : ""}`}
+    <div className="flex h-full min-h-0 w-full min-w-0 flex-col">
+      <div
+        role="tablist"
+        aria-label="Open items"
+        className="flex h-row shrink-0 overflow-x-auto border-b border-line bg-panel [scrollbar-width:none]"
+      >
+        {viewers.map(({ id, item }) => (
+          <div
+            key={id}
+            className={`flex min-w-0 shrink-0 items-center ${id === active?.id ? "border-b-edge border-accent" : ""}`}
+          >
+            <button
+              type="button"
+              role="tab"
+              id={`tab-${id}`}
+              data-cursor-id={`tab:${item.id}`}
+              aria-selected={id === active?.id}
+              onClick={() => setActive(id)}
+              className={`${QUIET} max-w-[24ch] focus-ring-inset aria-selected:font-semibold`}
             >
-              <button
-                type="button"
-                role="tab"
-                id={`tab-${id}`}
-                data-cursor-id={`tab:${item.id}`}
-                aria-selected={id === active?.id}
-                onClick={() => setActive(id)}
-                className={`${QUIET} max-w-[24ch] focus-ring-inset aria-selected:font-semibold`}
-              >
-                <span className="truncate">{item.label}</span>
-              </button>
-              <IconButton
-                icon="x"
-                label={`Close ${item.label}`}
-                data-cursor-id={`tab-close:${item.id}`}
-                disabled={!closable}
-                // A refused close leaves the tab open, which says so.
-                onClick={() =>
-                  void command({
-                    type: "content",
-                    command: { type: "closeViewer", item: item.id },
-                  }).catch(() => undefined)
-                }
-              />
-            </div>
-          ))}
-        </div>
-        <div
-          role="tabpanel"
-          aria-labelledby={active && `tab-${active.id}`}
-          className="flex min-h-0 flex-1 flex-col"
-        >
-          {active && <ItemView viewer={active} dismissed={dismissed} onDismiss={dismiss} />}
-        </div>
+              <span className="truncate">{item.label}</span>
+            </button>
+            <IconButton
+              icon="x"
+              label={`Close ${item.label}`}
+              data-cursor-id={`tab-close:${item.id}`}
+              disabled={!closable}
+              // A refused close leaves the tab open, which says so.
+              onClick={() =>
+                void command({
+                  type: "content",
+                  command: { type: "closeViewer", item: item.id },
+                }).catch(() => undefined)
+              }
+            />
+          </div>
+        ))}
       </div>
-    </PaneBudget>
+      <div
+        role="tabpanel"
+        aria-labelledby={active && `tab-${active.id}`}
+        className="flex min-h-0 flex-1 flex-col"
+      >
+        {active && <ItemView viewer={active} dismissed={dismissed} onDismiss={dismiss} />}
+      </div>
+    </div>
   );
 }

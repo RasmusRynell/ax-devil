@@ -57,11 +57,14 @@ export class FrameBuffer<F extends { readonly byteLength: number }> {
     }
   }
 
-  /** Keeps a frame that arrives inside the window and fits the budget; reports whether it was kept. */
+  /**
+   * Keeps a frame that arrives inside the window and fits the budget, or is the only one held, so a share smaller
+   * than one frame still shows the frame; reports whether it was kept.
+   */
   add(sequenceId: number, frame: F): boolean {
     if (!this.#inWindow(sequenceId)) return false;
     const used = this.#used - (this.#frames.get(sequenceId)?.byteLength ?? 0) + frame.byteLength;
-    if (used > this.#budgetBytes) return false;
+    if (used > this.#budgetBytes && used > frame.byteLength) return false;
     this.#used = used;
     this.#frames.set(sequenceId, frame);
     return true;
