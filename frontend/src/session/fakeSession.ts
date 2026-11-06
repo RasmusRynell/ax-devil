@@ -500,7 +500,16 @@ export class FakeSocket {
         ]);
       } else if (doc.type === "setHidden") room.setHidden(doc.target, doc.hidden);
       else if (doc.type === "remove") room.setItems(room.items.filter(({ id }) => id !== doc.item));
-      else if (doc.type !== "setLaneMatching" && doc.type !== "renameWorkspace") {
+      else if (doc.type === "renameItem")
+        room.setItems(
+          room.items.map((item) => (item.id === doc.item ? { ...item, label: doc.label } : item)),
+        );
+      else if (
+        doc.type !== "setLaneMatching" &&
+        doc.type !== "renameWorkspace" &&
+        doc.type !== "editItem" &&
+        doc.type !== "editResolved"
+      ) {
         const open = doc.type === "openViewer";
         room.setItems(room.items.map((item) => (item.id === doc.item ? { ...item, open } : item)));
       }

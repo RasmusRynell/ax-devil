@@ -317,7 +317,35 @@ item: string, } | { "type": "remove",
 /**
  * The item.
  */
-item: string, } | { "type": "setHidden", 
+item: string, } | { "type": "renameItem", 
+/**
+ * The item.
+ */
+item: string, 
+/**
+ * The name the user entered.
+ */
+label: string, } | { "type": "editItem", 
+/**
+ * The item.
+ */
+item: string, 
+/**
+ * What the item becomes; the intake judges it as it judges an item to add.
+ */
+new: NewItem, } | { "type": "editResolved", 
+/**
+ * The item to edit.
+ */
+item: string, 
+/**
+ * The item the resolve answered with.
+ */
+ticket: string, 
+/**
+ * The item's name; the resolver's when absent or blank.
+ */
+label: string | null, } | { "type": "setHidden", 
 /**
  * What to hide or show.
  */
@@ -844,12 +872,46 @@ open: boolean,
 /**
  * Whether the item has Content yet.
  */
-resolution: ResolutionState, };
+resolution: ResolutionState, 
+/**
+ * What the item was made from, for an audience with host details: what Edit starts from and Information lists.
+ */
+recipe?: ItemRecipe, };
 
 /**
  * What an item is, from its recipe.
  */
 export type ItemKind = "video" | "playlist" | "live" | "unreadable";
+
+/**
+ * What an item was made from, as stored: a `$NAME` reference stays one and a literal password is left out. The name
+ * is the one the user gave, absent for the default.
+ */
+export type ItemRecipe = { "type": "Video", 
+/**
+ * The file.
+ */
+path: string, 
+/**
+ * The user's name for the item.
+ */
+label: string | null, 
+/**
+ * The overlay files, each a lane.
+ */
+overlays: Array<NewOverlayWire>, } | { "type": "Playlist", 
+/**
+ * The resolver id.
+ */
+resolver: string, 
+/**
+ * The user's name for the item.
+ */
+label: string | null, 
+/**
+ * The settings the resolver's schema declares.
+ */
+settings: Record<string, unknown>, } | { "type": "Live" } & NewLiveWire;
 
 /**
  * How far an item has resolved.

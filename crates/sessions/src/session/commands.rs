@@ -96,11 +96,19 @@ fn content_scope(command: &DocCommand) -> Scope {
                 Scope::Content
             }
         }
+        DocCommand::EditItem { item, .. } => {
+            if reads_host(&item.recipe) {
+                Scope::Host
+            } else {
+                Scope::Content
+            }
+        }
         DocCommand::Replace { .. } | DocCommand::MarkSaved { .. } => Scope::Host,
         DocCommand::OpenViewer(_)
         | DocCommand::CloseViewer(_)
         | DocCommand::Resolve(_)
         | DocCommand::Remove(_)
+        | DocCommand::RenameItem { .. }
         | DocCommand::SetHidden { .. }
         | DocCommand::SetLaneMatching { .. }
         | DocCommand::RenameWorkspace { .. }

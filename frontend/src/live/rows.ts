@@ -16,7 +16,7 @@ import {
 } from "./streamState";
 
 /** What a row can do: its inline button (the first of its menu) and the entries of its menu. */
-export type RowAction = "start" | "stop" | "add" | "addStream" | "information" | "remove";
+export type RowAction = "start" | "stop" | "add" | "addStream" | "information" | "edit" | "remove";
 
 /**
  * The menu text, icon and hover text of each action; the button without text is named by its hover text. `group` is
@@ -36,6 +36,7 @@ export const ACTIONS: Record<
     group: 0,
   },
   information: { menu: "Information", tip: "", group: 1 },
+  edit: { menu: "Edit", tip: "", group: 2 },
   remove: { menu: "Remove", tip: "", group: 2 },
 };
 
@@ -221,10 +222,11 @@ function statusOfStream(
   return running(stream, front) ? (reported.get(stream.id) ?? CONNECTING) : IDLE;
 }
 
-/** What the menu of a stream offers: Start or Stop when it can, then Information and Remove. */
-const menuOf = (action: RowAction | null, informs: boolean): RowAction[] => [
+/** What the menu of a stream offers: Start or Stop when it can, then Information, Edit and Remove. */
+const menuOf = (action: RowAction | null, stream: Stream, informs: boolean): RowAction[] => [
   ...(action ? [action] : []),
   ...(informs ? (["information"] as const) : []),
+  ...(stream.editable ? (["edit"] as const) : []),
   "remove",
 ];
 
@@ -242,7 +244,7 @@ function unreadyRow(stream: Stream, label: string): Row {
       ? { icon: "video", color: "muted" }
       : { icon: "triangle-alert", color: "caution" },
     dim: waiting,
-    menu: menuOf(null, !waiting),
+    menu: menuOf(null, stream, !waiting),
     confirm: stream.confirm,
     search: searchText({ ...BASE, label, detail }, ""),
     subject: { item: stream.id },
@@ -288,7 +290,7 @@ function streamRow(
     dim: !on && !refused,
     active: on,
     action,
-    menu: menuOf(action, true),
+    menu: menuOf(action, stream, true),
     thumbnail: thumbnails && !refused ? `/api/live/snapshot/${stream.id}` : null,
     search: searchText({ tag, label, aside: "", detail: problem }, ""),
     subject: { item: stream.id },
