@@ -85,11 +85,12 @@ function useSize(): [Size, RefObject<HTMLDivElement | null>] {
     const element = ref.current;
     if (!element) return;
     const read = () => {
-      // Less the scroll bars, which take room the panes cannot have.
+      // Less the scroll bars, which take room the panes cannot have, and rounded down: an area a fraction of a pixel
+      // wider than the room it has would scroll for that fraction (a window of odd size at 200% zoom has half pixels).
       const box = element.getBoundingClientRect();
       const [w, h] = [
-        Math.round(box.width - (element.offsetWidth - element.clientWidth)),
-        Math.round(box.height - (element.offsetHeight - element.clientHeight)),
+        Math.floor(box.width - (element.offsetWidth - element.clientWidth)),
+        Math.floor(box.height - (element.offsetHeight - element.clientHeight)),
       ];
       setSize((now) => (now.w === w && now.h === h ? now : { w, h }));
     };

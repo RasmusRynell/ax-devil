@@ -44,14 +44,22 @@ module.exports.split = async (window) => {
   // The panes at the window minimum and 200% zoom, where the sidebar leaves the window to the panes.
   const small = async (name) => {
     await sidebar(false);
-    await setView(window, [640, 480], 2);
-    await both(name, async () =>
+    // An odd size, so the area is a half pixel short of a whole one, which it must not scroll sideways for.
+    await setView(window, [641, 481], 2);
+    await both(name, async () => {
       assert.deepEqual(
         await js(`(${fit.split.toString()})()`),
         [],
         `${name} must fit at 200% zoom`,
-      ),
-    );
+      );
+      assert.equal(
+        await js(
+          "(() => { const area = document.querySelector('main > div'); return area.scrollWidth > area.clientWidth; })()",
+        ),
+        false,
+        `${name} must not scroll sideways`,
+      );
+    });
     await setView(window, [1100, 720], 1);
     await sidebar(true);
   };
