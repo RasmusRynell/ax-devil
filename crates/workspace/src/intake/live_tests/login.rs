@@ -172,3 +172,58 @@ fn an_ipv6_camera_is_the_same_endpoint_however_it_is_spelled() {
         .check_login_destination(&("[2001:db8::1]".into(), 554), &defaults())
         .unwrap();
 }
+
+#[test]
+fn a_blank_broker_password_is_copied_only_for_the_same_broker_and_user() {
+    let saved = LiveRecipe {
+        host: "cam.local".into(),
+        username: "root".into(),
+        password: Secret::new("literal"),
+        protocol: Protocol::Https,
+        port: 0,
+        head: 1,
+        rtsp_port: 554,
+        resolution: None,
+        url: None,
+        overlay: LiveOverlay::Mqtt {
+            handler: "ADF_V1_FRAME".into(),
+            broker_host: "broker.local".into(),
+            broker_port: 1884,
+            broker_user: "mqtt".into(),
+            broker_pass: Secret::new("broker-secret"),
+            source_key: "key".into(),
+        },
+    };
+    let copy = |change: fn(&mut NewMqtt)| {
+        let mut mqtt = NewMqtt {
+            broker_host: Some("BROKER.local".into()),
+            broker_port: Some(1884),
+            broker_user: Some("mqtt".into()),
+            ..NewMqtt::default()
+        };
+        change(&mut mqtt);
+        let mut new = NewLive {
+            overlay: Some(NewLiveOverlay::Mqtt(mqtt)),
+            ..host("other.local")
+        };
+        new.copy_login(&saved, &defaults(), LoginUse::Stream)
+            .unwrap();
+        let Some(NewLiveOverlay::Mqtt(mqtt)) = new.overlay else {
+            panic!("an MQTT overlay");
+        };
+        mqtt.broker_pass.map(|secret| secret.expose().to_owned())
+    };
+
+    assert_eq!(copy(|_| {}).as_deref(), Some("broker-secret"));
+    assert_eq!(
+        copy(|mqtt| mqtt.broker_pass = Some(Secret::new("typed"))).as_deref(),
+        Some("typed")
+    );
+    for change in [
+        (|mqtt: &mut NewMqtt| mqtt.broker_host = Some("other.local".into())) as fn(&mut NewMqtt),
+        |mqtt| mqtt.broker_port = Some(1883),
+        |mqtt| mqtt.broker_user = Some("viewer".into()),
+    ] {
+        assert_eq!(copy(change), None);
+    }
+}

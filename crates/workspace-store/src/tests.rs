@@ -553,3 +553,5 @@ fn jobs_of(state: &WorkspaceState, id: ItemId) -> ResolveJob {
         recipe: item.recipe.clone(),
     }
 }
+
+mod edit;

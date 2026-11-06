@@ -11,22 +11,25 @@
 
 use api_types::{
     Audience, DocWire,
+    bookmarks::{BookmarkGroupInfo, BookmarkInfo, BookmarkKindWire, BookmarkStanding},
     content::{ContentInfo, EntryInfo, PlaylistSpanInfo},
     live::{LiveOverlayKind, NewLiveWire},
     playback::WarningInfo,
     project as project_error,
     workspace::{
-        ItemKind, ItemState, ResolutionState, RowInfo, RowKindWire, RowStatusInfo, WorkspaceState,
+        ItemKind, ItemRecipe, ItemState, NewOverlayWire, ResolutionState, RowInfo, RowKindWire,
+        RowStatusInfo, WorkspaceState,
     },
 };
 use sessions::session::Doc;
 use std::collections::HashMap;
 use workspace::{
-    Content, Entry, LiveVideoContent, SeekableVideoContent, Source, Workspace, WorkspaceItem,
-    playlist_label,
+    BookmarkKind, Content, Entry, LiveVideoContent, SeekableVideoContent, Source, Workspace,
+    WorkspaceItem, playlist_label,
 };
 use workspace_store::{
-    ContentGen, Resolution, Row, RowKind, RowStatus, Saved, WorkspaceParts, rows,
+    BookmarkGroup, ContentGen, Resolution, Row, RowKind, RowStatus, Saved, Standing,
+    WorkspaceParts, bookmark_groups, rows,
 };
 
 /// `doc` as `audience` may see it.
@@ -46,7 +49,7 @@ pub fn project(doc: &Doc, audience: Audience) -> DocWire {
     let Workspace {
         name,
         items,
-        // No view of them yet.
+        // Listed as groups, which also carry the reviewed marks.
         bookmarks: _,
         reviewed: _,
     } = workspace;
@@ -78,6 +81,7 @@ pub fn project(doc: &Doc, audience: Audience) -> DocWire {
                     Source::Unreadable(_) => ItemKind::Unreadable,
                 },
                 open: open.contains(id),
+                recipe: item_recipe(stored_label, &recipe.source, audience),
                 resolution: match resolutions.get(id) {
                     Some(Resolution::Resolved {
                         content,
@@ -105,6 +109,11 @@ pub fn project(doc: &Doc, audience: Audience) -> DocWire {
         .filter(|row| labels.contains_key(&row.item.to_string()))
         .map(|row| row_info(row, audience, &labels))
         .collect();
+    let bookmarks = bookmark_groups(state)
+        .into_iter()
+        .filter(|group| labels.contains_key(&group.target.item.to_string()))
+        .map(group_info)
+        .collect();
     DocWire {
         workspace: WorkspaceState {
             name: name.clone(),
@@ -118,6 +127,7 @@ pub fn project(doc: &Doc, audience: Audience) -> DocWire {
                 .map(|file| file.as_path().to_string_lossy().into_owned()),
             items,
             rows,
+            bookmarks,
         },
     }
 }
@@ -132,6 +142,51 @@ fn item_label(item: &WorkspaceItem, audience: Audience) -> String {
         Source::Video(_) | Source::Playlist(_) | Source::Live(_) | Source::Unreadable(_) => {
             item.display_name()
         }
+    }
+}
+
+fn group_info(group: BookmarkGroup) -> BookmarkGroupInfo {
+    let BookmarkGroup {
+        target,
+        item_name,
+        entry,
+        reviewed,
+        standing,
+        bookmarks,
+    } = group;
+    let item = target.item.to_string();
+    BookmarkGroupInfo {
+        key: match &target.entry {
+            Some(entry) => format!("{item}/{entry}"),
+            None => item.clone(),
+        },
+        item,
+        item_name,
+        entry,
+        target: target.entry,
+        reviewed,
+        standing: match standing {
+            Standing::Open(entry) => BookmarkStanding::Open {
+                entry: entry.to_string(),
+            },
+            Standing::Pending => BookmarkStanding::Pending,
+            Standing::Missing => BookmarkStanding::Missing,
+        },
+        bookmarks: bookmarks
+            .into_iter()
+            .map(|bookmark| BookmarkInfo {
+                id: bookmark.id.to_string(),
+                frame: bookmark.frame,
+                time_us: bookmark.time.as_us(),
+                kind: match bookmark.kind {
+                    BookmarkKind::Note => BookmarkKindWire::Note,
+                    BookmarkKind::Issue => BookmarkKindWire::Issue,
+                    BookmarkKind::Example => BookmarkKindWire::Example,
+                    BookmarkKind::Question => BookmarkKindWire::Question,
+                },
+                note: bookmark.note,
+            })
+            .collect(),
     }
 }
 
@@ -179,6 +234,39 @@ fn row_info(row: Row, audience: Audience, labels: &HashMap<String, String>) -> R
     }
 }
 
+/// What `source` was made from, for an audience with host details; it names the host's files, so nobody else gets it.
+/// A live stream's is [`live_recipe`]'s.
+fn item_recipe(label: &str, source: &Source, audience: Audience) -> Option<ItemRecipe> {
+    if !audience.host_details {
+        return None;
+    }
+    let label = Some(label.to_owned()).filter(|label| !label.is_empty());
+    match source {
+        Source::Video(video) => Some(ItemRecipe::Video {
+            path: video.video.as_path().to_string_lossy().into_owned(),
+            label,
+            overlays: video
+                .overlays
+                .iter()
+                .map(|overlay| NewOverlayWire {
+                    path: overlay.path.as_path().to_string_lossy().into_owned(),
+                    handler: Some(overlay.handler.clone()),
+                    label: Some(overlay.label.clone()),
+                    options: overlay.options.clone(),
+                })
+                .collect(),
+        }),
+        Source::Playlist(playlist) => Some(ItemRecipe::Playlist {
+            resolver: playlist.resolver.clone(),
+            label,
+            settings: playlist.settings.clone(),
+        }),
+        Source::Live(_) => live_recipe(label.as_deref().unwrap_or_default(), source, audience)
+            .map(ItemRecipe::Live),
+        Source::Unreadable(_) => None,
+    }
+}
+
 /// The request that would make a live item again, for an audience with host details. It is made from the stored
 /// recipe, so a `$NAME` reference stays one and a literal password is left out.
 fn live_recipe(label: &str, source: &Source, audience: Audience) -> Option<Box<NewLiveWire>> {
@@ -193,7 +281,7 @@ fn live_recipe(label: &str, source: &Source, audience: Audience) -> Option<Box<N
 }
 
 /// `content` of `item` as a viewer opens it; `label` is what the audience calls the item, which a live video shows
-/// instead of the camera's host, and `recipe` is what the audience may learn of its connection.
+/// instead of the camera's host and a video shows after a rename, and `recipe` is what the audience may learn of its connection.
 fn content_info(
     item: &WorkspaceItem,
     content: &Content,
@@ -207,11 +295,15 @@ fn content_info(
     match content {
         Content::SeekableVideo(video) => {
             let SeekableVideoContent { item_id: _, entry } = video;
+            // The item's name now, which a rename changes without resolving again.
             ContentInfo::SeekableVideo {
                 id,
                 generation,
-                display_name,
-                entry: entry_info(entry),
+                display_name: label.to_owned(),
+                entry: EntryInfo {
+                    label: label.to_owned(),
+                    ..entry_info(entry)
+                },
             }
         }
         Content::Playlist(playlist) => ContentInfo::Playlist {

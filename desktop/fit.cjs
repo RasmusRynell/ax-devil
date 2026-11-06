@@ -28,6 +28,8 @@ function page() {
     if (!rect.width || !rect.height) continue;
     const name = control.ariaLabel || control.textContent;
     if (!inside(rect, viewport)) problems.push(`control outside the window: ${name}`);
+    // A chip's radio or checkbox is visually hidden; its label is what the user reaches.
+    if (control.matches("input.sr-only")) continue;
     const top = document.elementFromPoint(
       (rect.left + rect.right) / 2,
       (rect.top + rect.bottom) / 2,

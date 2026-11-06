@@ -350,7 +350,6 @@ dependencies = [
 name = "catalogs"
 version = "0.1.0"
 dependencies = [
- "bytes",
  "foundation",
  "libc",
  "scene",
@@ -684,6 +683,7 @@ dependencies = [
  "media",
  "overlay-sync",
  "overlays",
+ "same-file",
  "scene-store",
  "serde",
  "serde_json",
@@ -1655,6 +1655,7 @@ dependencies = [
 name = "plugins"
 version = "0.1.0"
 dependencies = [
+ "base64 0.22.1",
  "foundation",
  "handler-api",
  "memchr",

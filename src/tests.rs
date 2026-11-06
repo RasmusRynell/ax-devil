@@ -70,6 +70,11 @@ async fn settings_are_replaced_whole_and_a_rejected_change_leaves_them_as_they_w
     let (status, error) = test.send(put(&bad_theme)).await;
     assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
     assert_eq!(json(&error)["location"], "ui.theme");
+    // A scan range that cannot be scanned is refused here, not at the first scan.
+    let bad_range = body.replace("\"192.168.1.0/24\"", "\"10.0.0\"");
+    let (status, error) = test.send(put(&bad_range)).await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+    assert_eq!(json(&error)["location"], "scan.range");
     let taken = body.replace("\"Ctrl+Alt+S\"", "\"Ctrl+O\"");
     let (status, error) = test.send(put(&taken)).await;
     assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);

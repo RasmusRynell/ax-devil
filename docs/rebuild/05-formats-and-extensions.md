@@ -111,14 +111,14 @@ enters through plugin processes (any language, JSON Lines; the spec is the
   kind the host does not know is skipped and listed; the plugin's other handlers still load. The manifest is the capability declaration; listing a plugin
   never runs it. The registry (version 2) lists manifest paths.
 - One handler call is one process run speaking protocol 3: a request line on stdin, then `decode`, `scan` or `resolve`
-  output as JSON Lines. It runs with an allowlisted environment, its stderr is drained, a line over 16 MiB fails it,
+  output as JSON Lines. A decoder that declares `input: records` also gets one record per line and answers each in
+  turn, which is how a live source reaches a plugin. It runs with an allowlisted environment, its stderr is drained, a line over 16 MiB fails it,
   and a kill takes its whole process group (on Windows only the process).
 - A failure marks the lane incomplete; cache identity includes the hash of its manifest and code files
   (`docs/domain/invariants.md#data-pipeline`).
 - A resolver plugin turns settings into a playlist; its settings are the declared schema (D4).
 - The Plugins view lists built-in and installed plugins and the reason for each failure; a folder installs, updates
   and removes from it.
-- Payload and live decoders wait for live sources (PL-01).
 - There is no sandbox: a plugin runs with the user's rights ([trust](../plugins.md#trust)).
 
 ## Other extension points (keep)

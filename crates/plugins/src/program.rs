@@ -8,7 +8,7 @@ use serde_json::Value;
 use crate::{
     code,
     manifest::{Manifest, ManifestError},
-    run::{self, End, LineHandler},
+    run::{self, End, LineHandler, Process},
 };
 
 /// A plugin's command, environment, idle timeout and code identity. One per plugin, held by each of its handlers.
@@ -61,17 +61,23 @@ impl Program {
         lines: &mut dyn LineHandler,
         cancel: &CancelToken,
     ) -> End {
-        let Some((command, args)) = self.manifest.command.split_first() else {
-            return End::Incomplete("The plugin has no command".to_owned());
+        match self.start(handler) {
+            Ok(process) => run::run(process, request.to_string(), lines, cancel),
+            Err(reason) => End::Incomplete(reason),
+        }
+    }
+
+    /// Starts the plugin's process for the handler `handler`, which the caller feeds and reads.
+    pub(crate) fn start(&self, handler: &str) -> Result<Process, String> {
+        let Some((program, args)) = self.manifest.command.split_first() else {
+            return Err("The plugin has no command".to_owned());
         };
-        let process = run::Spec {
+        Process::start(&run::Spec {
             id: handler,
-            program: command,
+            program,
             args,
             env: &self.manifest.env,
-            request: request.to_string(),
             idle_timeout: self.manifest.idle_timeout,
-        };
-        run::run(&process, lines, cancel)
+        })
     }
 }
