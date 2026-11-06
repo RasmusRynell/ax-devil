@@ -33,6 +33,7 @@ use media::PtsTiming;
 use overlay_sync::MatchPolicy;
 use overlays::OverlayService;
 use playback::{Delivery, Direction, Priority, Session, Want};
+use sessions::SessionId;
 use std::{collections::BTreeMap, sync::Arc, time::Duration};
 use tokio::{sync::watch, time::MissedTickBehavior};
 use workspace::Entry;
@@ -56,6 +57,8 @@ pub(super) struct Setup<'a> {
     pub(super) data_bytes: u64,
     /// What the viewer may learn from an error, a warning or a lane problem.
     pub(super) audience: Audience,
+    /// The Session the viewer is in, which scopes the user catalogs a watcher is shown.
+    pub(super) session: SessionId,
     /// The size of the decoded pictures.
     pub(super) size: FrameSize,
     /// The form the viewer is sent frames in.
@@ -127,7 +130,7 @@ pub(super) async fn stream(
     let location = video_location(&setup.entry.video);
     gate.open(timeline.clone());
     let lanes = Lanes::open(&setup, timeline.clone(), location.clone());
-    let catalogs = CatalogFeed::new(setup.library, setup.audience);
+    let catalogs = CatalogFeed::new(setup.library, setup.audience, setup.session);
     let opened = text(&ServerMessage::Opened {
         protocol: PLAYBACK_PROTOCOL,
         frame_count: timeline.len(),

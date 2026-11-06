@@ -16,6 +16,8 @@ compiler is the only judge of the language, so a file that is not a catalog is s
   revision a viewer holds. A restart restarts the counter; viewers take any revision that differs from theirs.
 - `sheets` builds the example Scene (the Overview) that `catalog render` draws a catalog on: a grey picture and a Sample Item
   from the real item encoder, so a catalog is shown what the viewer would show it.
-- A user catalog is the host's file, so a watcher is listed and served one only while a host lane draws with it
-  (`Library::lend`, held by the host viewer that asked for it, released when it leaves); the built-ins always go to
-  everyone. `shared_documents` and `shared_document` are the watcher's view of `documents` and `document`.
+- A user catalog is the host's file. A watcher is listed and served one only after a host viewer of its own Session
+  asked for it (`Library::lend`, scoped by Session, held by that viewer's feed), and only until that viewer leaves
+  or the id ages out of its 64 asked. Lane Style is client state and the protocol has no "stop following", so a host
+  lane that switched to another catalog keeps the old one shared meanwhile. The built-ins always go to everyone.
+  `shared_documents` and `shared_document` are the watcher's view of `documents` and `document`.

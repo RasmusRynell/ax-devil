@@ -467,7 +467,7 @@ impl<C: Clone + Send + 'static> Service<C> {
             })?;
         let service = self.clone();
         Ok(StreamLease::new(
-            grant,
+            (session, grant),
             authority,
             content,
             entry.map(|entry| *entry),

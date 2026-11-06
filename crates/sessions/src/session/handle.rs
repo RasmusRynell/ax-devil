@@ -278,6 +278,7 @@ impl Feed {
 
 /// One authorized stream. Dropping it releases the grant.
 pub struct StreamLease {
+    session: SessionId,
     grant: GrantId,
     authority: watch::Receiver<Authority>,
     content: Content,
@@ -288,8 +289,9 @@ pub struct StreamLease {
 }
 
 impl StreamLease {
+    /// A stream of the Session's `grant`.
     pub(super) fn new(
-        grant: GrantId,
+        (session, grant): (SessionId, GrantId),
         authority: watch::Receiver<Authority>,
         content: Content,
         entry: Option<ContentEntry>,
@@ -298,6 +300,7 @@ impl StreamLease {
         release: impl FnOnce() + Send + Sync + 'static,
     ) -> Self {
         Self {
+            session,
             grant,
             authority,
             content,
@@ -306,6 +309,11 @@ impl StreamLease {
             host_details,
             release: Some(Box::new(release)),
         }
+    }
+
+    /// The Session the stream belongs to.
+    pub fn session(&self) -> SessionId {
+        self.session
     }
 
     /// Names the grant.
