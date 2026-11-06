@@ -29,7 +29,7 @@ use workspace::{
 };
 use workspace_store::{
     BookmarkGroup, ContentGen, Resolution, Row, RowKind, RowStatus, Saved, Standing,
-    WorkspaceParts, bookmark_groups, rows,
+    WorkspaceParts, bookmark_groups, details, rows,
 };
 
 /// `doc` as `audience` may see it.
@@ -104,10 +104,22 @@ pub fn project(doc: &Doc, audience: Audience) -> DocWire {
             }
         })
         .collect();
-    let rows = rows(state)
+    let mut rows: Vec<Row> = rows(state)
         .into_iter()
         .filter(|row| labels.contains_key(&row.item.to_string()))
-        .map(|row| row_info(row, audience, &labels))
+        .collect();
+    // An item's row is named as its item is; the store names an unnamed live stream by its host.
+    for row in rows.iter_mut().filter(|row| row.kind == RowKind::Item) {
+        if let Some(label) = labels.get(&row.key) {
+            row.label.clone_from(label);
+        }
+    }
+    // The audience's own rows tell each other apart, by locations only if it may see the host's.
+    let details = details(&rows, sees_everything);
+    let rows = rows
+        .into_iter()
+        .zip(details)
+        .map(|(row, detail)| row_info(row, detail, audience))
         .collect();
     let bookmarks = bookmark_groups(state)
         .into_iter()
@@ -190,7 +202,7 @@ fn group_info(group: BookmarkGroup) -> BookmarkGroupInfo {
     }
 }
 
-fn row_info(row: Row, audience: Audience, labels: &HashMap<String, String>) -> RowInfo {
+fn row_info(row: Row, detail: String, audience: Audience) -> RowInfo {
     let Row {
         key,
         item,
@@ -200,12 +212,9 @@ fn row_info(row: Row, audience: Audience, labels: &HashMap<String, String>) -> R
         hidden,
         entry,
         warnings,
+        // Names the host's files and cameras: only `detail` is shared, as the audience may see it.
+        location: _,
     } = row;
-    // An item's row is named as its item is; the store names an unnamed live stream by its host.
-    let label = match kind {
-        RowKind::Item => labels.get(&key).cloned().unwrap_or(label),
-        RowKind::Playlist | RowKind::Entry | RowKind::Lane => label,
-    };
     RowInfo {
         key,
         item: item.to_string(),
@@ -216,6 +225,7 @@ fn row_info(row: Row, audience: Audience, labels: &HashMap<String, String>) -> R
             RowKind::Lane => RowKindWire::Lane,
         },
         label,
+        detail,
         status: match status {
             RowStatus::Pending => RowStatusInfo::Pending,
             RowStatus::Unavailable(error) => {

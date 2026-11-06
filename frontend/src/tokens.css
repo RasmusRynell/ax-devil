@@ -125,7 +125,8 @@
   --spacing-spinner: calc(
     var(--spacing-icon) * 1.8
   ); /* the loading indicator's arc, stroke included */
-  --spacing-sidebar: 34ch;
+  --spacing-sidebar: 34ch; /* the sidebar before the user drags it */
+  --spacing-sidebar-least: 24ch; /* the least a drag leaves it; dragged below half of this, it closes */
   --spacing-list-least: calc(
     4 * var(--spacing-row)
   ); /* the least a scrolling list keeps, so a short window scrolls its view instead */
