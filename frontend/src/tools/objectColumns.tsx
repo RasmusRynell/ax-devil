@@ -1,3 +1,4 @@
+import { createContext, useContext } from "react";
 import type { FileRowWire } from "../generated/api";
 import { CodePoints, codePointString } from "../present/expr/codePoints";
 import { emitFixed } from "../present/expr/fixed";
@@ -68,11 +69,26 @@ export function shortTime(us: number): string {
   return hours > 0 ? `${hours}:${String(minutes).padStart(2, "0")}:${rest}` : `${minutes}:${rest}`;
 }
 
-/** What File scope lists of an object: where it is across the video, and the times of the frames that spans. `current` is the frame on screen, marked on each strip. */
+/** The frame on screen, marked on each File row's strip. A context, so that a new frame draws the strips and not the table. */
+export const ShownFrame = createContext<number | undefined>(undefined);
+
+/** Where an object is across the video, with the frame on screen marked. */
+function Presence({ row, frames }: { row: FileRowWire; frames: number }) {
+  const current = useContext(ShownFrame);
+  return (
+    <PresenceStrip
+      spans={row.presence}
+      frames={frames}
+      category={categoryOf(row)}
+      current={current}
+    />
+  );
+}
+
+/** What File scope lists of an object: where it is across the video, and the times of the frames that spans. */
 export const fileColumns = (
   frames: number,
   timeOf: (frame: number) => number | undefined,
-  current?: number,
 ): Column<FileRowWire>[] => [
   {
     key: "id",
@@ -93,14 +109,7 @@ export const fileColumns = (
     key: "presence",
     title: "Presence",
     kind: "presence",
-    render: (row) => (
-      <PresenceStrip
-        spans={row.presence}
-        frames={frames}
-        category={categoryOf(row)}
-        current={current}
-      />
-    ),
+    render: (row) => <Presence row={row} frames={frames} />,
     stretch: true,
   },
   {
