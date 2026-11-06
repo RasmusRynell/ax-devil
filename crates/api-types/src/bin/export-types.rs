@@ -75,6 +75,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         RecentWorkspace,
         ItemState,
         ItemKind,
+        ItemRecipe,
         ResolutionState,
         RowInfo,
         RowKindWire,

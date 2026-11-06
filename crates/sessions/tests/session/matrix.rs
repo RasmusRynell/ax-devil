@@ -115,6 +115,16 @@ fn samples(world: &World) -> Vec<(Command, Needs)> {
     vec![
         (Command::Content(host), Needs::Host),
         (
+            Command::Content(DocCommand::EditItem {
+                item: Box::new(WorkspaceItem {
+                    id: world.item,
+                    ..world.spare.clone()
+                }),
+                content: None,
+            }),
+            Needs::Host,
+        ),
+        (
             Command::Content(DocCommand::OpenViewer(world.item)),
             Needs::Content,
         ),

@@ -44,11 +44,18 @@ pub(super) fn scope(wire: &SessionCommand) -> Option<Scope> {
                     Scope::Content
                 }
             }
-            api_types::DocCommand::AddResolved { .. } => Scope::Host,
+            api_types::DocCommand::AddResolved { .. }
+            | api_types::DocCommand::EditResolved { .. } => Scope::Host,
+            // Editing a video reads the host's files as adding one does; a live stream is only a recipe.
+            api_types::DocCommand::EditItem { new, .. } => match new {
+                NewItem::Video { .. } => Scope::Host,
+                NewItem::Live(_) => Scope::Content,
+            },
             api_types::DocCommand::OpenViewer { .. }
             | api_types::DocCommand::CloseViewer { .. }
             | api_types::DocCommand::Resolve { .. }
             | api_types::DocCommand::Remove { .. }
+            | api_types::DocCommand::RenameItem { .. }
             | api_types::DocCommand::SetHidden { .. }
             | api_types::DocCommand::SetLaneMatching { .. }
             | api_types::DocCommand::RenameWorkspace { .. } => Scope::Content,
@@ -147,10 +154,41 @@ fn doc_command(
                 open: true,
             }
         }
+        api_types::DocCommand::EditItem { item, mut new } => {
+            // The stream is its own `like`: a blank login keeps the saved one. A scanned camera's login is for adding.
+            if let NewItem::Live(stream) = &mut new {
+                if stream.found.is_some() {
+                    return Err(Refusal::Invalid);
+                }
+                stream.like = Some(item);
+            }
+            let edited = intake(&new, handlers, live, network, saved).map_err(|error| {
+                tracing::debug!("An edit was refused: {}", error.reason);
+                Refusal::Invalid
+            })?;
+            DocCommand::EditItem {
+                item: Box::new(WorkspaceItem { id: item, ..edited }),
+                content: None,
+            }
+        }
+        // The scope was checked before this lookup, as for `AddResolved`.
+        api_types::DocCommand::EditResolved {
+            item,
+            ticket,
+            label,
+        } => {
+            let (staged, content) = staged.take(session, &ticket).ok_or(Refusal::Invalid)?;
+            let edited = workspace::intake::with_label(staged, label.as_deref());
+            DocCommand::EditItem {
+                item: Box::new(WorkspaceItem { id: item, ..edited }),
+                content: Some(Box::new(content)),
+            }
+        }
         api_types::DocCommand::OpenViewer { item } => DocCommand::OpenViewer(item),
         api_types::DocCommand::CloseViewer { item } => DocCommand::CloseViewer(item),
         api_types::DocCommand::Resolve { item } => DocCommand::Resolve(item),
         api_types::DocCommand::Remove { item } => DocCommand::Remove(item),
+        api_types::DocCommand::RenameItem { item, label } => DocCommand::RenameItem { item, label },
         api_types::DocCommand::SetHidden { target, hidden } => DocCommand::SetHidden {
             target: hidden_ref(target),
             hidden,

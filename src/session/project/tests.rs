@@ -197,16 +197,14 @@ fn a_watcher_learns_no_path_credential_or_reason_and_sees_only_what_is_open() {
         "SECRET-CAMERA",
         "closed.mp4",
         "closed playlist",
+        // The stored recipe, which Edit starts from.
+        "SECRET-PATH-A",
+        "SECRET-PATH-D",
+        "SECRET-PATH-E",
     ] {
         assert!(
             owner.contains(host_only),
             "{host_only} missing from {owner}"
-        );
-    }
-    for recipe_or_source in ["SECRET-PATH-A", "SECRET-PATH-D", "SECRET-PATH-E"] {
-        assert!(
-            !owner.contains(recipe_or_source),
-            "{recipe_or_source} reached {owner}"
         );
     }
     // The stored connection reaches the owner as typed, a reference as a reference; no literal password does.
@@ -280,4 +278,31 @@ fn rows_follow_the_items_a_watcher_sees_and_carry_what_was_hidden() {
     assert!(!watcher.iter().any(|(label, _)| label.starts_with("closed")));
     let owner = rows(Audience::HOST);
     assert!(owner.iter().any(|(label, _)| label == "closed playlist"));
+}
+
+#[test]
+fn a_renamed_video_shows_its_new_name_without_resolving_again() {
+    let (mut doc, [shown, ..]) = doc();
+    doc.workspace.workspace.items[0].label = "Gate".into();
+    let wire = project(&doc, Audience::HOST).workspace;
+    let item = wire.items.iter().find(|item| item.id == shown.to_string());
+    let Some(ItemState {
+        resolution:
+            ResolutionState::Resolved {
+                content:
+                    ContentInfo::SeekableVideo {
+                        display_name,
+                        entry,
+                        ..
+                    },
+            },
+        ..
+    }) = item
+    else {
+        panic!("a resolved video");
+    };
+    assert_eq!(
+        (display_name.as_str(), entry.label.as_str()),
+        ("Gate", "Gate")
+    );
 }
