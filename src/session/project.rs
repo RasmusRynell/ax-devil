@@ -42,6 +42,7 @@ pub fn project(doc: &Doc, audience: Audience) -> DocWire {
         epoch,
         resolutions,
         open,
+        changed,
         // The rows carry what the user hid.
         hidden: _,
     } = state.parts();
@@ -99,6 +100,7 @@ pub fn project(doc: &Doc, audience: Audience) -> DocWire {
                     }
                     Some(Resolution::Pending { attempt: _ }) | None => ResolutionState::Pending,
                 },
+                changed: changed.get(id).copied(),
             }
         })
         .collect();

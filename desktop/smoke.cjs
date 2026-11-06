@@ -23,6 +23,7 @@ const { exportDialog } = require("./smoke-export.cjs");
 const { live } = require("./smoke-live.cjs");
 const { remote } = require("./smoke-remote.cjs");
 const { sharing } = require("./smoke-sharing.cjs");
+const { reload: reloadOffer } = require("./smoke-reload.cjs");
 const { video } = require("./smoke-video.cjs");
 
 module.exports = async (window, shell) => {
@@ -318,6 +319,8 @@ module.exports = async (window, shell) => {
   await bookmarks(window);
   console.log("smoke: playlist");
   await playlist(window);
+  console.log("smoke: reload offer");
+  await reloadOffer();
   console.log("smoke: plugins");
   await plugins(window);
   console.log("smoke: items");

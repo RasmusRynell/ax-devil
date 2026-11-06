@@ -13,10 +13,10 @@ owner's written decision. A new feature gets a row in 01 first.
 | WS-03 | No prompts; recovery copy, restore banner, per-instance lock | M | done | `crates/workspace-files` and `crates/workspace-store` tests, `tests/it/workspace_files.rs`, `shell/WorkspaceFiles.test.tsx` | The lock is per window, an OS lock on a sidecar file. Copies are named after the workspace, no timestamp in the XDG state folder |
 | WS-04 | Unreadable items preserved | M | done | `crates/workspace-files` tests | An item with an unknown kind, an unknown key or a malformed body is kept and written back as read |
 | WS-05 | Background resolution; pending and unavailable rows | M | done | `crates/workspace-store` tests, `crates/playlist-resolvers/tests`, `shell/WorkspaceTree.test.tsx`, `tests/it/local_video.rs` | A pending or failed item has a sidebar row; a failed one keeps its reason; skipped sequences warn. An unavailable row's Open shows the reason only |
-| WS-06 | Re-resolve on file change; reload offered to open viewers | M | todo |  |  |
+| WS-06 | Re-resolve on file change; reload offered to open viewers | M | done | `crates/sessions` tests, `ViewerHost.test.tsx` |  |
 | WS-07 | Rename, Edit, Remove, item information | M | done | `crates/workspace-store` tests, `src/session` tests, `shell/{WorkspaceTree,Add*Dialog}.test.tsx` | Rename is the Edit form's Name; a new recipe resolves again, keeping place and marks |
-| WS-08 | Hide/Unhide entries and lanes | M | done | `crates/workspace-store` tests, `crates/sessions/tests/session/matrix.rs`, `src/session/project.rs`, `frontend/src/{shell/WorkspaceTree,viewer/{PlaylistViewer,hidden},playback/{LaneGrid,VideoViewer}}.test.*` | Kept in the Doc, never saved ([CONTEXT](../CONTEXT.md)). "Show hidden" lists hidden rows dimmed; next/previous skip them; hidden lanes undrawn |
-| WS-09 | Bookmarks and reviewed marks; Bookmarks view; open at frame | M | done | `workspace-store/src/bookmarks.rs`, `tests/it/bookmarks.rs`, `frontend/src/bookmarks` |  |
+| WS-08 | Hide/Unhide entries and lanes | M | done | `crates/workspace-store` tests, `crates/sessions/tests/session/matrix.rs`, `src/session/project.rs`, `{shell/WorkspaceTree,viewer/{PlaylistViewer,hidden},playback/{LaneGrid,VideoViewer}}.test.*` | Kept in the Doc, never saved ([CONTEXT](../CONTEXT.md)). "Show hidden" lists hidden rows dimmed; next/previous skip them; hidden lanes undrawn |
+| WS-09 | Bookmarks and reviewed marks; Bookmarks view; open at frame | M | done | `workspace-store/src/bookmarks.rs`, `tests/it/bookmarks.rs`, `bookmarks/` |  |
 | WS-10 | Bookmarks to CSV | S | done | `tests/it/bookmarks.rs`, `make test-desktop` |  |
 | WS-11 | Sidebar views Workspace, Live, Offline, Bookmarks, Plugins; search, sort, filter | M | in progress | `shell/{Shell,Sidebar,WorkspaceTree,WorkspaceTree.search}.test.tsx`, `shell/treeModel.test.ts` | Workspace and Offline: search, Sort (Workspace order, Name), Show hidden; Offline lists Videos and Playlists with a count. Live: search, Sort, Filter. Bookmarks: search, kind |
 | WS-12 | Start panel and welcome area | M | done | `shell/Shell.test.tsx`, `shell/WorkspaceFiles.test.tsx` | Heading only with recents; Open Workspace default; Live: AC-03 |
@@ -58,7 +58,7 @@ owner's written decision. A new feature gets a row in 01 first.
 | OF-05 | Timing and alignment diagnostics per lane | M | done | `crates/media/src/index/cadence.rs`, `crates/media/tests/it/{decode,sequence}.rs`, `crates/overlay-sync/src/alignment.rs`, `crates/overlays/src/tests/statuses.rs`, `playback/LaneMenuTiming.test.tsx`, `make test-desktop` | Timing tab: cadence and lane match; warns when samples end far or under 80% sit on a frame. Cadence comes with `Opened`; image sequences share it |
 | OF-06 | Decoded-frame cache under one memory allowance | M | in progress | `crates/playback/src/tests/`, `tests/it/playback_ws.rs`, `src/video_cache.rs`, `crates/settings` tests | Allowance, equal shares, eviction, live resize and uncached oversized frames work. Cached frames are shaded on the seek bar |
 | OF-07 | Prepare next playlist entry in the background | S | todo |  |  |
-| OF-08 | Export with overlays: lane selection, quality presets, cancellable | M | done | `crates/{export,media}/`, `tests/export/export.rs`, `src/render_host/`, `frontend/src/{export,render}/`, `make test-desktop` | New: PNG of one frame. [Speed](../crates/export/README.md#measured): `make bench-export`. Hard links refused on every platform |
+| OF-08 | Export with overlays: lane selection, quality presets, cancellable | M | done | `crates/{export,media}/`, `tests/export/export.rs`, `src/render_host/`, `{export,render}/`, `make test-desktop` | New: PNG of one frame. [Speed](../crates/export/README.md#measured): `make bench-export`. Hard links refused on every platform |
 
 ### Deviations from the reference
 
@@ -97,7 +97,7 @@ Listed in [parity deviations](parity-deviations.md).
 |----|---------|---|--------|------|-------|
 | PL-01 | Decoder plugins (file, payload) and playlist resolver plugins | M | done | `crates/plugins/tests/`, `tests/it/plugins.rs` | Decoder handlers read a file or, with `input: records`, one record at a time (live sources, lines of a file); resolver handlers ([plugins](plugins.md), D29) |
 | PL-02 | Built-in decoders and resolvers listed by `list-handlers` and `playlist --help` | M | done | `src/cli/tests.rs`, `src/routes/handlers.rs`, `crates/handlers` tests, `crates/scene-decoders/tests/it/adf_*.rs` | MOT, UVG-VCM, ONVIF XML, CVAT, ADF beta/v1 (frame and consolidated), plugin decoders; both resolvers. Descriptions reach `/api/handlers`, `list-handlers`, `--help` |
-| PL-03 | Install, update, remove, list from CLI and Plugins view | M | done | `tests/it/plugins.rs`, `src/cli/tests.rs`, `src/routes/plugins.rs`, `frontend/src/plugins/PluginsView.test.tsx` | `plugins install/update/remove/list/check` from the CLI; the Plugins view lists, installs a folder, updates and removes; applied to the running app; an edited manifest is picked up too |
+| PL-03 | Install, update, remove, list from CLI and Plugins view | M | done | `tests/it/plugins.rs`, `src/cli/tests.rs`, `src/routes/plugins.rs`, `plugins/PluginsView.test.tsx` | `plugins install/update/remove/list/check` from the CLI; the Plugins view lists, installs a folder, updates and removes; applied to the running app; an edited manifest is picked up too |
 | PL-04 | Load failures never stop the app; listed | M | done | `tests/it/plugins.rs`, `PluginsView.test.tsx` | `plugins list` and Plugins view show failures; a failed run marks its lane Incomplete |
 | PL-05 | Unchanged third-party Python plugins run (bridge); not planned by default | S | todo |  |  |
 
@@ -106,13 +106,13 @@ Listed in [parity deviations](parity-deviations.md).
 | ID | Feature | P | Status | Test | Notes |
 |----|---------|---|--------|------|-------|
 | ST-01 | Settings pages; restart marker | M | in progress | `SettingsDialog{,.table}.test.tsx`, `Shell.test.tsx` | Pages but Advanced, restart marker, Browse, staged logins, decoder choice |
-| ST-02 | Quick Setup on first start | M | done | `frontend/src/shell/QuickSetupDialog.test.tsx`, `Shell.test.tsx` | Opens on first run and from Help; any close stores the choices and marks setup done; a refused write does not |
+| ST-02 | Quick Setup on first start | M | done | `shell/QuickSetupDialog.test.tsx`, `Shell.test.tsx` | Opens on first run and from Help; any close stores the choices and marks setup done; a refused write does not |
 | ST-03 | Theme (light, dark, auto) and text size (system, small to larger), applied live | M | done | `crates/settings` tests, `App.test.tsx`, `settings.test.tsx` | Stored through `/api/settings`; applied live; zoom stays the browser's |
 | ST-04 | `$VARIABLE` references | M | in progress | `reference_tests.rs`, `SettingsDialog.test.tsx` | Host, login, RTSP port, timeout, scan range and logins, storage folders (also `~`) keep the raw reference; unresolved: loads, defaults at use, save refused. Left: see deviations |
 | ST-05 | Keyboard shortcuts and overrides | M | done | `crates/settings` tests, `ShortcutsDialog.test.tsx`, `SettingsDialog.test.tsx`, `Shell.test.tsx` | Command table, override storage, conflict checks, live keys; editor from General, OK saves, Cancel ignored while saving |
 | ST-06 | Workspace credential references expand only for their bound host or a confirmed one; warn before saving a literal password (new) | M | done | `shell/{SettingsDialog{,.table},AddLiveStreamDialog}.test.tsx` | Camera and broker passwords mask and warn on a literal, not a `$NAME` |
 | AP-01 | Uncaught errors logged; continue or close | M | done | `UncaughtErrors.test.tsx`, `desktop/uncaught.test.cjs` | The page reports its errors to the backend's log |
-| AP-02 | Restart from inside the app | M | done | `frontend/src/shell/Shell.test.tsx`, `desktop/args.test.cjs` | A setting that needs a restart offers to relaunch the desktop app on its own backend; other windows are only told |
+| AP-02 | Restart from inside the app | M | done | `shell/Shell.test.tsx`, `desktop/args.test.cjs` | A setting that needs a restart offers to relaunch the desktop app on its own backend; other windows are only told |
 | AP-03 | `clear-cache` | S | done | `src/disk_cache.rs` test | Lists, asks, removes, counts what it removed; only ax-devil's own files in its cache subfolders |
 | AP-04 | About dialog | S | done | `shell/Shell.test.tsx` |  |
 | AP-05 | Custom window frame: in-page title bar with window controls | S | done | `shell/WindowControls.test.tsx` | Frameless; dragging and maximize on a real window manager are untested |
@@ -123,9 +123,9 @@ Listed in [parity deviations](parity-deviations.md).
 | ID | Feature | P | Status | Test | Notes |
 |----|---------|---|--------|------|-------|
 | SH-01 | Join, reconnect and revoke access | M | in progress | `crates/sessions/tests/session/`, `tests/it/{session_socket,playback_ws}.rs` | Lifecycle, leases and tickets built; real-network interruption evidence remains |
-| SH-02 | Follow or explore independently | M | in progress | `frontend/src/viewer/PlaylistFollower.test.tsx`, `desktop/smoke-sharing.cjs`, `src/routes/playback/inspect/tests.rs` | Video and playlist following and exploring. Inspection is gated like data: a follower outside its window gets none. Live policies follow live |
+| SH-02 | Follow or explore independently | M | in progress | `viewer/PlaylistFollower.test.tsx`, `desktop/smoke-sharing.cjs`, `src/routes/playback/inspect/tests.rs` | Video and playlist following and exploring. Inspection is gated like data: a follower outside its window gets none. Live policies follow live |
 | SH-03 | Audience privacy and settings scope | M | in progress | `tests/it/access.rs`, `src/session/project.rs`, `crates/settings/src/scope_tests.rs` | Host-path projections and personal/server settings built; disclosure of inspection data and user catalogs is open |
-| SH-04 | Browser and remote Electron connection | M | in progress | `desktop/smoke-remote.cjs`, `frontend/src/session/Notice.test.tsx` | Server frontend and password recovery built; LAN failure feedback, launch delivery to a running app and packaged protocol registration remain |
+| SH-04 | Browser and remote Electron connection | M | in progress | `desktop/smoke-remote.cjs`, `session/Notice.test.tsx` | Server frontend and password recovery built; LAN failure feedback, launch delivery to a running app and packaged protocol registration remain |
 
 ## Developer tooling
 

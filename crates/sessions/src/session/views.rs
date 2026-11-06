@@ -102,8 +102,12 @@ pub fn restrict(view: &View, doc: &Doc) -> View {
             .map(|(item, viewer)| {
                 // Destructured too: a new field of a viewer's view must decide here whether the Doc restricts it.
                 let ViewerView { clock, entry } = viewer;
-                let entry =
-                    shown_entry(workspace, item, entry.as_ref()).map(|shown| shown.id.clone());
+                // While the item resolves again the entry asked for is kept: whether it is gone is for the new Content
+                // to say, so a reload does not send the viewer back to the first entry.
+                let entry = match workspace.resolutions.get(item) {
+                    Some(Resolution::Pending { .. }) => entry.clone(),
+                    _ => shown_entry(workspace, item, entry.as_ref()).map(|shown| shown.id.clone()),
+                };
                 (
                     *item,
                     ViewerView {
@@ -259,9 +263,10 @@ mod tests {
         );
         assert_eq!(
             shown(&state, Some(a.clone())),
-            None,
-            "nothing is shown while resolving"
+            Some(a.clone()),
+            "the entry asked for is kept while resolving"
         );
+        assert_eq!(shown(&state, None), None, "and none is chosen for it");
 
         let content = Content::Playlist(workspace::PlaylistContent {
             id: ContentId::of_item(&item),
@@ -277,6 +282,13 @@ mod tests {
         });
         let resolved = workspace_store::complete(&state, item, jobs[0].attempt, Ok(content));
         assert_eq!(shown(&resolved, Some(b.clone())), Some(b.clone()));
+        let (reloading, _) =
+            workspace_store::apply(&resolved, workspace_store::DocCommand::Resolve(item));
+        assert_eq!(
+            shown(&reloading, Some(b.clone())),
+            Some(b.clone()),
+            "a reload keeps the entry on screen"
+        );
         assert_eq!(shown(&resolved, None), Some(a.clone()));
         let gone = ContentId::of_entry(&item, "P", "GONE");
         assert_eq!(shown(&resolved, Some(gone.clone())), Some(a.clone()));

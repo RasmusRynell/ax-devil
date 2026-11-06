@@ -39,7 +39,7 @@ use overlays::OverlayService;
 use routes::Listener;
 use scene_store::TrackRegistry;
 use session::{GRACE, LaunchQueue, Sessions, WorkspaceFiles, WorkspaceStorage};
-use sessions::session::OnRuntime;
+use sessions::session::{OnRuntime, poll_sources};
 use settings::Scope;
 use share::Hosting;
 use std::{collections::BTreeMap, path::Path, sync::Arc, time::Duration};
@@ -126,6 +126,15 @@ impl AppState {
         let cameras = Arc::clone(&settings);
         let confirmations = Arc::clone(&settings);
         let environment = Arc::new(move || session::live::environment(&confirmations.state()));
+        let sessions = Sessions::new(
+            GRACE,
+            Arc::new(OnRuntime {
+                runtime,
+                handlers: plugins.set(),
+                environment,
+            }),
+        );
+        tokio::spawn(poll_sources(sessions.clone(), stopping.clone()));
         Self {
             settings,
             overlays: Arc::new(OverlayService::new(tracks)),
@@ -134,14 +143,7 @@ impl AppState {
             glances: Arc::default(),
             exports: Arc::new(exports::ExportService::electron()),
             catalogs: Arc::new(catalogs),
-            sessions: Sessions::new(
-                GRACE,
-                Arc::new(OnRuntime {
-                    runtime,
-                    handlers: plugins.set(),
-                    environment,
-                }),
-            ),
+            sessions,
             thumbnails: Arc::new(thumbnails::Thumbnails::new(
                 cache_dir.join(thumbnails::FOLDER),
             )),

@@ -19,12 +19,13 @@ handlers.workspace = true
 overlay-sync.workspace = true
 playback.workspace = true
 serde.workspace = true
-tokio = { version = "1", features = ["rt", "sync", "time"] }
+tokio = { version = "1", features = ["macros", "rt", "sync", "time"] }
 ts-rs.workspace = true
 workspace.workspace = true
 workspace-store.workspace = true
 
 [dev-dependencies]
+handler-api.workspace = true
 serde_json.workspace = true
 tempfile = "3"
 tokio = { version = "1", features = ["macros", "rt", "test-util"] }

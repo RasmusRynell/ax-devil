@@ -1011,6 +1011,11 @@ open: boolean,
  */
 resolution: ResolutionState, 
 /**
+ * How many times the files the open viewer shows changed since it opened, once they have; the viewer offers to
+ * reload.
+ */
+changed?: number, 
+/**
  * What the item was made from, for an audience with host details: what Edit starts from and Information lists.
  */
 recipe?: ItemRecipe, };
