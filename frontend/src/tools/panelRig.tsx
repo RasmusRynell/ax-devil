@@ -151,7 +151,11 @@ export function mount(
       <Viewer
         source={source}
         first={first}
-        view={{ ...view, playhead }}
+        view={{
+          ...view,
+          playhead,
+          shown: { sequenceId: playhead, timestampUs: 0, periodUs: null },
+        }}
         canSeek
         selectable
         width={null}

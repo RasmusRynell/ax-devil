@@ -14,8 +14,8 @@ macro_rules! declarations {
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     use ::playback::ClockIntent;
     use api_types::{
-        catalogs::*, content::*, handlers::*, inspect::*, live::*, playback::*, report::*,
-        window::*, workspace::*, *,
+        bookmarks::*, catalogs::*, content::*, handlers::*, inspect::*, live::*, playback::*,
+        report::*, window::*, workspace::*, *,
     };
     use export::{LaneStyle, Output, RenderLane, RenderSetup};
     use foundation::{ErrorCode, FrameSize};
@@ -23,7 +23,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         OperationKind,
         inspection::{FieldGroup, FieldOrigin, Leaf},
     };
-    use scene_store::{Op, Row, Search, Sort, SortKey, Term};
+    use scene_store::{
+        EventDetail, EventObject, EventRow, Involved, Op, Row, Search, Sort, SortKey, Term,
+    };
     use sessions::{
         CursorOptions, EndReason, SeatMode, SeatRole,
         session::{
@@ -55,6 +57,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         ContentRef,
         SessionCommand,
         WorkspaceCommand,
+        BookmarkCommand,
+        BookmarkKindWire,
+        BookmarkInfo,
+        BookmarkStanding,
+        BookmarkGroupInfo,
         CursorRegion,
         CursorElement,
         CursorPoint,
@@ -75,6 +82,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         RecentWorkspace,
         ItemState,
         ItemKind,
+        ItemRecipe,
         ResolutionState,
         RowInfo,
         RowKindWire,
@@ -130,6 +138,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         FieldWire,
         InspectionWire,
         VideoPtsWire,
+        CadenceWire,
         ClientMessage,
         ServerMessage,
         LiveProtocol,
@@ -183,6 +192,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         FileScopeUnavailable,
         FileAppearances,
         Located,
+        EventObject,
+        EventRow,
+        Involved,
+        EventDetail,
+        EventQueryWire,
+        EventAskWire,
+        EventRowsWire,
+        EventWire,
+        FileEvents,
+        FileEvent,
         FrameSize,
         Output,
         RenderLane,

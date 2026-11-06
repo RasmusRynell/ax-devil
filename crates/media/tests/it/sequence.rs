@@ -72,6 +72,12 @@ fn the_timeline_is_the_frame_rate_times_the_index_and_nothing_is_scanned_or_cach
     // 30000/1001 is not a whole number of microseconds per frame: frame 1 is at 33 367 us.
     let index = index_of_input(&fixture_sequence("30000/1001"));
     assert_eq!(index.timeline().as_slice()[1].as_us(), 33_367);
+    // Rounding each frame's time to 33 367 or 33 366 us does not make the rate variable.
+    let cadence = index.cadence().expect("more than one image");
+    assert_eq!(
+        (cadence.variable, &cadence.periods_us[..]),
+        (false, &[33_367][..])
+    );
 }
 
 #[test]

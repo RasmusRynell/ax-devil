@@ -8,11 +8,13 @@ use super::{Cli, Command, Global, OverlayOption, describe};
 use api_types::handlers::{PluginSource, PluginStatus, PluginsInfo};
 use clap::{
     Arg, ArgAction, ArgMatches, CommandFactory, FromArgMatches, ValueHint,
-    builder::PossibleValuesParser, error::ErrorKind,
+    builder::{PossibleValue, PossibleValuesParser},
+    error::ErrorKind,
 };
 use foundation::UserError;
 use handler_api::{
-    Cli as CliPlacement, Decoder, Field, FieldKind, PlaylistResolver, Settings, invalid_field,
+    Cli as CliPlacement, Decoder, Field, FieldKind, PlaylistResolver, Settings,
+    Spec as DecoderSpec, invalid_field,
 };
 use handlers::Handlers;
 use serde_json::Value;
@@ -148,10 +150,7 @@ pub(super) fn handlers_listing(handlers: &Handlers, installed: &PluginsInfo) -> 
         .iter()
         .map(|decoder| {
             let spec = decoder.spec();
-            (
-                spec.id.as_str(),
-                format!("{} ({})", spec.name, spec.extensions.join(", ")),
-            )
+            (spec.id.as_str(), decoder_line(spec))
         })
         .collect();
     let resolvers: Vec<_> = handlers
@@ -279,13 +278,20 @@ fn field_arg(field: &Field, handlers: &Handlers) -> Arg {
     }
 }
 
+/// A decoder's name, then its description when it has one: `Name — description`.
+fn decoder_line(spec: &DecoderSpec) -> String {
+    match &spec.description {
+        Some(description) => format!("{} — {description}", spec.name),
+        None => spec.name.clone(),
+    }
+}
+
+/// The decoder ids a handler argument accepts, each shown with its `Name — description` in `--help`.
 fn handler_parser(handlers: &Handlers) -> PossibleValuesParser {
-    PossibleValuesParser::new(
-        handlers
-            .decoders()
-            .iter()
-            .map(|decoder| decoder.spec().id.clone()),
-    )
+    PossibleValuesParser::new(handlers.decoders().iter().map(|decoder| {
+        let spec = decoder.spec();
+        PossibleValue::new(spec.id.clone()).help(decoder_line(spec))
+    }))
 }
 
 /// The `playlist` command that `matches`, the matches of the `playlist` subcommand, selected.

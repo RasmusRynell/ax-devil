@@ -7,7 +7,7 @@
 use foundation::{
     CancelToken, ErrorCode, FrameFailure, FrameSize, HostPath, Interrupt, UserError, VideoFrame,
 };
-use media::{Decoder, FrameIndex, ImageSequenceInput, PtsTiming, VideoInput};
+use media::{Cadence, Decoder, FrameIndex, ImageSequenceInput, PtsTiming, VideoInput};
 use playback::{DecoderFactory, Registry, Session, SourceKey, SourceSpec, SpanDecoder};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -73,6 +73,8 @@ pub struct OpenedVideo {
     pub warnings: Vec<String>,
     /// How the frame times come from the container's timestamps; `None` for an image sequence.
     pub pts: Option<PtsTiming>,
+    /// How evenly the frames are spaced; `None` for a one-frame video.
+    pub cadence: Option<Cadence>,
 }
 
 /// The path errors about `video` name: its file, or the pattern of its images.
@@ -184,6 +186,7 @@ impl VideoSources {
                 size: details.size,
                 warnings: details.warnings.clone(),
                 pts: details.index.pts_timing(),
+                cadence: details.index.cadence().cloned(),
             });
         }
         let input = input_of(video);
@@ -236,6 +239,7 @@ impl VideoSources {
             size: details.size,
             warnings: details.warnings.clone(),
             pts: details.index.pts_timing(),
+            cadence: details.index.cadence().cloned(),
         })
     }
 }

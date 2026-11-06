@@ -12,7 +12,7 @@ const { windowBounds } = require("./window-state.cjs");
 const VIDEO_EXTENSIONS = ["mp4", "avi", "mkv", "mov"];
 
 // What an export writes, by file extension; the page names one of these.
-const EXPORT_EXTENSIONS = ["mp4", "png"];
+const EXPORT_EXTENSIONS = ["mp4", "png", "csv"];
 
 // The extension of a saved workspace file.
 const WORKSPACE_SUFFIX = ".ax-devil.workspace";
@@ -161,7 +161,7 @@ function installIpc({ connect, disconnect, restart }) {
     if (typeof name !== "string" || !EXPORT_EXTENSIONS.includes(extension))
       throw new Error("Expected a file name and an export extension");
     const chosen = await dialog.showSaveDialog(window, {
-      title: "Export Video",
+      title: extension === "csv" ? "Export CSV" : "Export Video",
       defaultPath: path.basename(name),
       filters: [{ name: extension.toUpperCase(), extensions: [extension] }],
     });

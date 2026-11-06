@@ -3,10 +3,13 @@
 //! It is read from a cache file when a valid one exists. Otherwise it is built by reading the container's packets
 //! without decoding, and by decoding every frame only when a packet lacks a timestamp or two share one.
 
+mod cadence;
 mod images;
 mod scan;
 #[cfg(test)]
 mod tests;
+
+pub use cadence::Cadence;
 
 use crate::fingerprint::Fingerprint;
 use crate::index_file::{self, Stored};
@@ -76,6 +79,7 @@ enum Origin {
 pub struct FrameIndex {
     origin: Origin,
     timeline: Timeline,
+    cadence: Option<Cadence>,
     keyframes: Keyframes,
     /// How long the container says the last frame lasts, when it does.
     last_duration: Option<MediaTime>,
@@ -186,6 +190,11 @@ impl FrameIndex {
     /// Presentation time of every frame.
     pub fn timeline(&self) -> &Timeline {
         &self.timeline
+    }
+
+    /// How evenly the frames are spaced, from their container timestamps; `None` for a one-frame video.
+    pub fn cadence(&self) -> Option<&Cadence> {
+        self.cadence.as_ref()
     }
 
     /// How long frame `sequence_id` lasts: the time to the next frame, and for the last frame the duration the
@@ -300,6 +309,7 @@ impl FrameIndex {
         )
         .filter(|duration| *duration > MediaTime::ZERO);
         Ok(Self {
+            cadence: Cadence::of_pts(&stored.pts, stored.time_base),
             origin: Origin::Packets(stored),
             timeline,
             keyframes,
