@@ -1,5 +1,6 @@
 import { useLayoutEffect, useMemo } from "react";
 import type { SidebarView } from "../generated/api";
+import { useStreaming } from "../live/cameras";
 import { useDoc } from "../session/session";
 import { useViewers } from "../viewer/useViewers";
 import { useKept } from "./keptState";
@@ -24,5 +25,24 @@ export function RevealShown({ view }: { view: SidebarView }): null {
     const next = revealShown(tree, front, held);
     if (next !== held) setHeld(next);
   }, [tree, front]);
+  return null;
+}
+
+/** The Live view's sections a stream in front is open in, and those it unfolded. */
+type Track = { opened: ReadonlySet<string>; revealed: ReadonlySet<string> };
+const NO_TRACK: Track = { opened: new Set(), revealed: new Set() };
+
+/** What the Live view keeps of its section reveals. */
+export const useLiveTrack = () => useKept("live:track", NO_TRACK);
+
+/** Unfolds the Live section when a stream comes to the front, as `RevealShown` does for the trees. */
+export function RevealLive(): null {
+  const open = useStreaming() > 0;
+  const [track, setTrack] = useLiveTrack();
+  useLayoutEffect(() => {
+    if (open === track.opened.has("live")) return;
+    const opened = new Set(open ? ["live"] : []);
+    setTrack({ opened, revealed: opened });
+  }, [open]);
   return null;
 }

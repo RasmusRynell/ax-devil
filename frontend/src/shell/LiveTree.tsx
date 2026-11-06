@@ -1,4 +1,4 @@
-import { useCallback, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useId, useMemo, useRef, useState } from "react";
 import type { LiveConfirmation } from "../generated/api";
 import { Button } from "../kit/Button";
 import { Menu, type MenuCommand, type MenuEntry } from "../kit/Menu";
@@ -8,6 +8,7 @@ import { ACTIONS, type Row, type RowAction, type SectionView, type Shown } from 
 import { HoverPicture } from "./HoverPicture";
 import { useKept } from "./keptState";
 import { LiveList, type Listed } from "./LiveList";
+import { useLiveTrack } from "./RevealShown";
 import { useHoverPicture } from "./useHoverPicture";
 
 type SectionId = SectionView["section"]["id"];
@@ -15,10 +16,6 @@ type SectionId = SectionView["section"]["id"];
 const NOTHING_CHECKED: ReadonlySet<string> = new Set();
 const NO_FOLDED: ReadonlySet<SectionId> = new Set();
 const NO_COLLAPSED: ReadonlySet<string> = new Set();
-const NO_TRACK: { opened: ReadonlySet<SectionId>; revealed: ReadonlySet<SectionId> } = {
-  opened: new Set(),
-  revealed: new Set(),
-};
 
 /** The menu of a row: its actions in order, with a line between the groups of them. */
 const menuEntries = (row: Row, mayAct: boolean): MenuEntry[] =>
@@ -37,9 +34,6 @@ const menuEntries = (row: Row, mayAct: boolean): MenuEntry[] =>
       },
     ];
   });
-
-const holdsActive = (rows: readonly Row[]): boolean =>
-  rows.some((row) => row.active || holdsActive(row.children));
 
 interface Props {
   views: readonly SectionView[];
@@ -96,23 +90,8 @@ export function LiveTree({
   );
   const picture = useHoverPicture(pictures);
 
-  // The sections that hold a stream open now, and those a stream newly opened in has unfolded.
-  const opened = new Set(
-    views.filter(({ section }) => holdsActive(section.rows)).map(({ section }) => section.id),
-  );
-  const [track, setTrack] = useKept("live:track", NO_TRACK);
-  // Before paint, so a section a stream just opened in never appears folded for a frame.
-  useLayoutEffect(() => {
-    if (opened.size === track.opened.size && [...opened].every((id) => track.opened.has(id)))
-      return;
-    setTrack({
-      opened,
-      revealed: new Set([
-        ...[...track.revealed].filter((id) => opened.has(id)),
-        ...[...opened].filter((id) => !track.opened.has(id)),
-      ]),
-    });
-  });
+  // The sections a stream newly opened in has unfolded, which the window keeps up to date.
+  const [track, setTrack] = useLiveTrack();
 
   const toggle = <T,>(set: ReadonlySet<T>, value: T): Set<T> => {
     const next = new Set(set);
