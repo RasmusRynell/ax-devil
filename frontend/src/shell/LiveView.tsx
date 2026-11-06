@@ -16,8 +16,8 @@ import {
 } from "../live/rows";
 import { useStreamStatuses } from "../live/streamState";
 import { useSettings } from "../settings";
-import { useCan, useCommand, useDoc, useView } from "../session/session";
-import { useShow } from "../viewer/useViewers";
+import { useCan, useCommand, useDoc } from "../session/session";
+import { useFrontItem, useShow } from "../viewer/useViewers";
 import { useItemDialogs } from "./ItemDialogs";
 import { LiveToolbar } from "./LiveToolbar";
 import { LiveTree } from "./LiveTree";
@@ -40,7 +40,7 @@ export function LiveView({ onAdd }: { onAdd: (seed: AddSeed) => void }) {
   const show = useShow();
   const { snapshot, epoch, connected } = useNetwork(scans);
   const reported = useStreamStatuses();
-  const [front] = useView("active");
+  const front = useFrontItem();
   const [query, setQuery] = useState("");
   const [order, setOrder] = useState<Order>("address");
   const [hidden, setHidden] = useState<ReadonlySet<string>>(new Set());
@@ -73,7 +73,7 @@ export function LiveView({ onAdd }: { onAdd: (seed: AddSeed) => void }) {
         reported,
         checks,
         thumbnails: scans,
-        front: front ?? null,
+        front,
         order,
       }),
     [cameras, snapshot, reported, checks, scans, front, order],

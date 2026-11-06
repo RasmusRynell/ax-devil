@@ -29,8 +29,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     use sessions::{
         CursorOptions, EndReason, SeatMode, SeatRole,
         session::{
-            Access, Can, ContentRef, Control, Refusal, RosterEntry, Sidebar, SidebarView, View,
-            ViewerView,
+            Access, Axis, Can, ContentRef, Control, Layout, Refusal, RosterEntry, Sidebar,
+            SidebarView, View, ViewerView,
         },
     };
     let mut sections = declarations![
@@ -49,6 +49,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         Access,
         ClockIntent,
         Sidebar,
+        Axis,
+        Layout,
         ViewerView,
         View,
         CursorOptions,

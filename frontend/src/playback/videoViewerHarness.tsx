@@ -5,6 +5,7 @@ import { FakeSettings } from "../fakeSettings";
 import type { EntryInfo, SettingsState } from "../generated/api";
 import { FakeSocket } from "../session/fakeSession";
 import { useDoc, useView } from "../session/session";
+import { useFrontViewer } from "../viewer/useViewers";
 import { opened } from "./fakeOpened";
 import type { ClientMessage, LaneInfo, ServerMessage } from "./protocol";
 import { VideoViewer, type VideoViewerProps } from "./VideoViewer";
@@ -81,12 +82,14 @@ export function Viewer({
   // One connect for the life of the viewer: a new one would restart playback by itself.
   const connect = useMemo<Connect>(() => open(sent, lanes), [sent, lanes]);
   const [viewers] = useView("viewers");
-  const entry = ENTRIES[entryId ?? viewers.a?.entry ?? "content-a"];
+  useFrontViewer();
+  const entry = ENTRIES[entryId ?? viewers[1]?.entry ?? "content-a"];
   // The viewer opens once the Doc has its item, as the shell does.
   return useDoc()?.workspace.items.length ? (
     <FakeSettings state={settings}>
       <VideoViewer
         item="a"
+        viewer={1}
         content={content}
         entry={entry}
         connect={connect}

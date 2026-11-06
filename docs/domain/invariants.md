@@ -29,7 +29,7 @@ implementing module closes.
   as a typed mode.
 - Every playlist lane references Seekable Video Content. Playlists are offline workflows.
 - One intake validates decoder selections and live connection settings for every video and live stream opened by a
-  dialog, the CLI or a file drop. A resolver's playlists enter as built; it owns their validity.
+  dialog or the CLI. A resolver's playlists enter as built; it owns their validity.
 
 ## Coordinates
 

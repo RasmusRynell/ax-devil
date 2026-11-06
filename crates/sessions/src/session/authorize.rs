@@ -3,7 +3,9 @@
 //! Every `match` here is exhaustive with no wildcard arm, so a new [`Use`], [`Scope`] or content kind does not compile
 //! until its policy is decided.
 
-use super::{Access, Lease, Scope, SeatId, SeatKind, SessionState, state::Doc, views::shown_entry};
+use super::{
+    Access, Lease, Scope, SeatId, SeatKind, SessionState, ViewerId, state::Doc, views::shown_entry,
+};
 use playback::{Authority, ClockIntent, Priority};
 use serde::{Deserialize, Serialize};
 use std::fmt;
@@ -25,6 +27,10 @@ pub struct ContentRef {
     /// The entry the stream plays; for a video or a live video, the Content's own id.
     #[ts(type = "string")]
     pub entry: ContentId,
+    /// The viewer the stream is for. A seat that follows streams what the presenter's viewer shows; any other seat's
+    /// stream does not depend on it.
+    #[ts(type = "number")]
+    pub viewer: ViewerId,
 }
 
 /// What a seat is trying to do.
@@ -207,8 +213,9 @@ pub fn authorize(
 }
 
 /// What `seat` at `lease` may demand of the stream of the entry `key` names, as it is told and as the route enforces
-/// it: its own priority, or the presenter's clock for that item (paused at the start while the presenter has not set
-/// one). A seat that follows may only stream the entry the presenter shows of the item. Refused like [`authorize`]
+/// it: its own priority, or the clock of the presenter's viewer `key` names (paused at the start while the presenter
+/// has not set one). A seat that follows may only stream the entry that viewer shows, and only while it shows the
+/// stream's item. Refused like [`authorize`]
 /// with `Use::Stream`.
 pub fn authorize_stream(
     state: &SessionState,
@@ -219,18 +226,17 @@ pub fn authorize_stream(
     let standing = standing(state, seat, lease)?;
     let (item, content, _) = open_stream(&state.doc, key).ok_or(Refusal::ContentUnavailable)?;
     let follow = || {
-        let presented = state.presenter.viewers.get(&item);
-        let shown = shown_entry(
-            &state.doc.workspace,
-            &item,
-            presented.and_then(|viewer| viewer.entry.as_ref()),
-        );
+        let presented = state
+            .presenter
+            .viewers
+            .get(&key.viewer)
+            .filter(|viewer| viewer.item == item)
+            .ok_or(Refusal::ContentUnavailable)?;
+        let shown = shown_entry(&state.doc.workspace, &item, presented.entry.as_ref());
         if shown.is_none_or(|shown| shown.id != key.entry) {
             return Err(Refusal::ContentUnavailable);
         }
-        let intent = presented
-            .and_then(|viewer| viewer.clock)
-            .unwrap_or(AT_START);
+        let intent = presented.clock.unwrap_or(AT_START);
         Ok(Authority::Follow { intent })
     };
     let own = Authority::Own {

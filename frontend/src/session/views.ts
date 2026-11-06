@@ -1,5 +1,5 @@
 import type { Scope } from "../commands";
-import type { Can, View } from "../generated/api";
+import type { Can, Layout, View } from "../generated/api";
 
 /** What the window shows before anyone has chosen anything. */
 export const EMPTY_VIEW: View = { sidebar: { view: "workspace", open: true }, viewers: {} };
@@ -27,18 +27,49 @@ const same = (a: unknown, b: unknown) => a === b || JSON.stringify(a) === JSON.s
  */
 export function shareView(previous: View, next: View): View {
   const viewers = Object.fromEntries(
-    Object.entries(next.viewers).map(([item, viewer]) => {
-      const before = previous.viewers[item];
-      return [item, same(before, viewer) ? before : viewer];
+    Object.entries(next.viewers).map(([id, viewer]) => {
+      const before = previous.viewers[Number(id)];
+      return [id, same(before, viewer) ? before : viewer];
     }),
   ) as View["viewers"];
   const sameViewers =
     Object.keys(viewers).length === Object.keys(previous.viewers).length &&
-    Object.entries(viewers).every(([item, viewer]) => previous.viewers[item] === viewer);
+    Object.entries(viewers).every(([id, viewer]) => previous.viewers[Number(id)] === viewer);
   return {
     sidebar: same(previous.sidebar, next.sidebar) ? previous.sidebar : next.sidebar,
     active: next.active,
     viewers: sameViewers ? previous.viewers : viewers,
+    layout: same(previous.layout, next.layout) ? previous.layout : next.layout,
+  };
+}
+
+/** The most panes a window lays out; the backend refuses a view with more. */
+export const MAX_PANES = 8;
+
+/**
+ * `view` with a new viewer of `item` in front, beside the others in the layout: each takes an equal part of the
+ * width. Absent when the window holds as many panes as it may.
+ */
+export function withViewer(view: View, item: string, entry?: string): View | undefined {
+  const panes = Object.keys(view.viewers).length;
+  if (panes >= MAX_PANES) return undefined;
+  // One above the highest id, as the backend expects of the window.
+  const viewer = Math.max(0, ...Object.keys(view.viewers).map(Number)) + 1;
+  const pane: Layout = { type: "pane", viewer };
+  const layout: Layout = view.layout
+    ? {
+        type: "split",
+        axis: "row",
+        share: Math.round((10_000 * panes) / (panes + 1)),
+        first: view.layout,
+        second: pane,
+      }
+    : pane;
+  return {
+    ...view,
+    active: viewer,
+    layout,
+    viewers: { ...view.viewers, [viewer]: { item, pinned: false, ...(entry && { entry }) } },
   };
 }
 

@@ -236,9 +236,47 @@ view: SidebarView,
 open: boolean, };
 
 /**
+ * Which way a split divides its space.
+ */
+export type Axis = "row" | "column";
+
+/**
+ * Where each viewer is: a pane, or a split of two layouts.
+ */
+export type Layout = { "type": "pane", 
+/**
+ * The viewer.
+ */
+viewer: number, } | { "type": "split", 
+/**
+ * Which way it divides.
+ */
+axis: Axis, 
+/**
+ * The first child's part, from 1 to 9999 of every 10000.
+ */
+share: number, 
+/**
+ * The left or upper child.
+ */
+first: Layout, 
+/**
+ * The right or lower child.
+ */
+second: Layout, };
+
+/**
  * What one open viewer shows.
  */
 export type ViewerView = { 
+/**
+ * The item the viewer shows. Another viewer may show the same one.
+ */
+item: string, 
+/**
+ * Whether opening other content leaves this viewer where it is.
+ */
+pinned: boolean, 
 /**
  * What this window's clock for the viewer is doing; absent until it has one.
  */
@@ -250,7 +288,7 @@ clock?: ClockIntent,
 entry?: string, };
 
 /**
- * What a window shows of the Doc. Items the Doc does not have open are dropped by the backend.
+ * What a window shows of the Doc. Items the Doc does not have open are dropped by the backend, with their viewers.
  */
 export type View = { 
 /**
@@ -258,13 +296,17 @@ export type View = {
  */
 sidebar: Sidebar, 
 /**
- * The item of the viewer in front; absent shows the welcome page.
+ * The viewer in front; absent shows the welcome page.
  */
-active?: string, 
+active?: number, 
 /**
- * What each open viewer shows, by item id.
+ * What each open viewer shows. A viewer the layout does not place is dropped by the backend.
  */
-viewers: { [key in string]?: ViewerView }, };
+viewers: { [key in number]?: ViewerView }, 
+/**
+ * Where the viewers are; absent while there are none.
+ */
+layout?: Layout, };
 
 /**
  * One seat's two cursor choices; both are on by default.
@@ -427,7 +469,12 @@ generation: number,
 /**
  * The entry the stream plays; for a video or a live video, the Content's own id.
  */
-entry: string, };
+entry: string, 
+/**
+ * The viewer the stream is for. A seat that follows streams what the presenter's viewer shows; any other seat's
+ * stream does not depend on it.
+ */
+viewer: number, };
 
 /**
  * What a seat asks for, settled by its own `Ack`. Changes to a seat's view travel the View lane instead.

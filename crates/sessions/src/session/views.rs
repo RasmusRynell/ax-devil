@@ -3,7 +3,10 @@
 //! The presenter's [`View`] is what the owner published; an exploring seat has its own. Both are cut down to what the
 //! Doc has open by [`restrict`] after every Doc change.
 
-use super::state::Doc;
+use super::{
+    layout::{Layout, ViewerId},
+    state::Doc,
+};
 use playback::ClockIntent;
 use serde::{Deserialize, Serialize};
 use std::{collections::BTreeMap, time::Duration};
@@ -51,9 +54,15 @@ impl Default for Sidebar {
 }
 
 /// What one open viewer shows.
-#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]
 pub struct ViewerView {
+    /// The item the viewer shows. Another viewer may show the same one.
+    #[ts(as = "String")]
+    pub item: ItemId,
+    /// Whether opening other content leaves this viewer where it is.
+    #[serde(default)]
+    pub pinned: bool,
     /// What this window's clock for the viewer is doing; absent until it has one.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
@@ -65,58 +74,80 @@ pub struct ViewerView {
     pub entry: Option<ContentId>,
 }
 
-/// What a window shows of the Doc. Items the Doc does not have open are dropped by the backend.
+/// What a window shows of the Doc. Items the Doc does not have open are dropped by the backend, with their viewers.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]
 pub struct View {
     /// The sidebar.
     pub sidebar: Sidebar,
-    /// The item of the viewer in front; absent shows the welcome page.
+    /// The viewer in front; absent shows the welcome page.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    #[ts(optional, as = "Option<String>")]
-    pub active: Option<ItemId>,
-    /// What each open viewer shows, by item id.
-    #[ts(as = "BTreeMap<String, ViewerView>")]
-    pub viewers: BTreeMap<ItemId, ViewerView>,
+    #[ts(optional, as = "Option<u32>")]
+    pub active: Option<ViewerId>,
+    /// What each open viewer shows. A viewer the layout does not place is dropped by the backend.
+    #[ts(as = "BTreeMap<u32, ViewerView>")]
+    pub viewers: BTreeMap<ViewerId, ViewerView>,
+    /// Where the viewers are; absent while there are none.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub layout: Option<Layout>,
 }
 
-/// `view` cut down to what `doc` has open: no viewer, and no front viewer, for an item that is not open. Each viewer's
-/// entry is made one of its item's Content, as [`shown_entry`] picks it: this is the one place that decides which
-/// entry a viewer shows.
+/// `view` cut down to what `doc` has open: no viewer, and no pane, for an item that is not open, and no viewer outside
+/// the layout. A pane that loses its viewer gives its space to its sibling. Each viewer's entry is made one of its
+/// item's Content, as [`shown_entry`] picks it: this is the one place that decides which entry a viewer shows.
 pub fn restrict(view: &View, doc: &Doc) -> View {
     // Destructured without `..`, so a new field does not compile until its restriction is decided.
     let View {
         sidebar,
         active,
         viewers,
+        layout,
     } = view;
     let Doc { workspace } = doc;
     let open = &workspace.open;
+    let layout = layout.clone().and_then(|layout| {
+        layout.retain(&|id| {
+            viewers
+                .get(&id)
+                .is_some_and(|viewer| open.contains(&viewer.item))
+        })
+    });
+    let viewers: BTreeMap<_, _> = layout
+        .iter()
+        .flat_map(Layout::viewers)
+        .filter_map(|id| Some((id, viewers.get(&id)?)))
+        .map(|(id, viewer)| {
+            // Destructured too: a new field of a viewer's view must decide here whether the Doc restricts it.
+            let ViewerView {
+                item,
+                pinned,
+                clock,
+                entry,
+            } = viewer;
+            // While the item resolves again the entry asked for is kept: whether it is gone is for the new Content
+            // to say, so a reload does not send the viewer back to the first entry.
+            let entry = match workspace.resolutions.get(item) {
+                Some(Resolution::Pending { .. }) => entry.clone(),
+                _ => shown_entry(workspace, item, entry.as_ref()).map(|shown| shown.id.clone()),
+            };
+            (
+                id,
+                ViewerView {
+                    item: *item,
+                    pinned: *pinned,
+                    clock: *clock,
+                    entry,
+                },
+            )
+        })
+        .collect();
     View {
         // Nothing about the sidebar depends on the Doc.
         sidebar: *sidebar,
-        active: active.filter(|item| open.contains(item)),
-        viewers: viewers
-            .iter()
-            .filter(|(item, _)| open.contains(item))
-            .map(|(item, viewer)| {
-                // Destructured too: a new field of a viewer's view must decide here whether the Doc restricts it.
-                let ViewerView { clock, entry } = viewer;
-                // While the item resolves again the entry asked for is kept: whether it is gone is for the new Content
-                // to say, so a reload does not send the viewer back to the first entry.
-                let entry = match workspace.resolutions.get(item) {
-                    Some(Resolution::Pending { .. }) => entry.clone(),
-                    _ => shown_entry(workspace, item, entry.as_ref()).map(|shown| shown.id.clone()),
-                };
-                (
-                    *item,
-                    ViewerView {
-                        clock: *clock,
-                        entry,
-                    },
-                )
-            })
-            .collect(),
+        active: active.filter(|id| viewers.contains_key(id)),
+        viewers,
+        layout,
     }
 }
 
@@ -194,7 +225,7 @@ impl ViewLane {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use super::{super::layout::Axis, *};
     use serde_json::json;
 
     #[test]
@@ -202,24 +233,96 @@ mod tests {
         let (front, behind) = (ItemId::generate(), ItemId::generate());
         let message = json!({
             "sidebar": { "view": "sessions", "open": false },
-            "active": front.to_string(),
+            "active": 2,
             "viewers": {
-                front.to_string(): {},
-                behind.to_string(): {
+                "1": { "item": behind.to_string(), "pinned": false },
+                "2": {
+                    "item": front.to_string(),
+                    "pinned": true,
                     "clock": { "frame": 7, "playing": true, "speedCenti": 150, "atUs": -3 },
                 },
             },
+            "layout": {
+                "type": "split", "axis": "row", "share": 3000,
+                "first": { "type": "pane", "viewer": 1 },
+                "second": { "type": "pane", "viewer": 2 },
+            },
         });
-        let view: View = serde_json::from_value(message.clone()).unwrap();
+        let view: View = serde_json::from_str(&message.to_string()).unwrap();
         assert_eq!(view.sidebar.view, SidebarView::Sessions);
-        assert_eq!(view.active, Some(front));
-        assert_eq!(view.viewers[&front], ViewerView::default());
-        assert_eq!(view.viewers[&behind].clock.unwrap().speed_centi, 150);
+        assert_eq!(view.active, Some(ViewerId(2)));
+        assert_eq!(view.viewers[&ViewerId(1)].item, behind);
+        assert!(view.viewers[&ViewerId(2)].pinned);
+        assert_eq!(view.viewers[&ViewerId(2)].clock.unwrap().speed_centi, 150);
         assert_eq!(serde_json::to_value(&view).unwrap(), message);
 
         let mut bad = message;
-        bad["active"] = json!("not an item");
+        bad["viewers"]["1"]["item"] = json!("not an item");
         assert!(serde_json::from_value::<View>(bad).is_err());
+    }
+
+    fn pane(viewer: u32) -> Box<Layout> {
+        Box::new(Layout::Pane {
+            viewer: ViewerId(viewer),
+        })
+    }
+
+    fn looking(item: ItemId) -> ViewerView {
+        ViewerView {
+            item,
+            pinned: false,
+            clock: None,
+            entry: None,
+        }
+    }
+
+    #[test]
+    fn restricting_drops_the_viewers_of_closed_items_and_unplaced_ones_and_keeps_the_other_shares()
+    {
+        let video = workspace::intake::video(
+            std::path::Path::new("v.mp4"),
+            &[],
+            &handlers::Handlers::built_in(),
+        )
+        .unwrap();
+        let (open, closed) = (video.id, ItemId::generate());
+        let (workspace, _) = workspace_store::apply(
+            &WorkspaceState::default(),
+            workspace_store::DocCommand::AddItems {
+                items: vec![video],
+                open: true,
+            },
+        );
+        let split = |axis, share, first, second| Layout::Split {
+            axis,
+            share,
+            first,
+            second,
+        };
+        // Two panes show the open item, one the closed item, and viewer 4 is in no pane.
+        let view = View {
+            active: Some(ViewerId(2)),
+            viewers: (1..=4)
+                .map(|id| (ViewerId(id), looking(if id == 2 { closed } else { open })))
+                .collect(),
+            layout: Some(split(
+                Axis::Row,
+                3000,
+                pane(1),
+                Box::new(split(Axis::Column, 7000, pane(2), pane(3))),
+            )),
+            ..View::default()
+        };
+        let restricted = restrict(&view, &Doc { workspace });
+        assert_eq!(
+            restricted.viewers.keys().copied().collect::<Vec<_>>(),
+            [ViewerId(1), ViewerId(3)]
+        );
+        assert_eq!(restricted.active, None);
+        assert_eq!(
+            restricted.layout,
+            Some(split(Axis::Row, 3000, pane(1), pane(3)))
+        );
     }
 
     fn entry(item: &ItemId, label: &str) -> Entry {
@@ -248,14 +351,25 @@ mod tests {
             },
         );
         let viewer = |entry: Option<ContentId>| View {
-            viewers: [(item, ViewerView { clock: None, entry })].into(),
+            active: Some(ViewerId(1)),
+            viewers: [(
+                ViewerId(1),
+                ViewerView {
+                    entry,
+                    ..looking(item)
+                },
+            )]
+            .into(),
+            layout: Some(*pane(1)),
             ..View::default()
         };
         let shown = |workspace: &WorkspaceState, asked: Option<ContentId>| {
             let doc = Doc {
                 workspace: workspace.clone(),
             };
-            restrict(&viewer(asked), &doc).viewers[&item].entry.clone()
+            restrict(&viewer(asked), &doc).viewers[&ViewerId(1)]
+                .entry
+                .clone()
         };
         let (a, b) = (
             ContentId::of_entry(&item, "P", "A"),
