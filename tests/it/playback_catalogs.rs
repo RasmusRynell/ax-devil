@@ -9,6 +9,10 @@ use api_types::playback::{
 };
 use catalogs::Library;
 use common::{Backend, Event, Viewer, fixture};
+use sessions::{
+    CursorOptions,
+    session::{Access, Command, Control, Reply},
+};
 use std::{collections::BTreeMap, fs, path::Path};
 
 /// A catalog document of `name`, padded so that two versions of one file differ in size.
@@ -28,8 +32,13 @@ fn settle(library: &Library) {
 /// A viewer that opened a video, and the ids of the catalogs it was told about.
 async fn viewer_of(backend: &Backend) -> (Viewer, Vec<String>) {
     let added = backend.add(&fixture("cfr_h264_gop10_bf2.mp4")).await;
+    opened_with(backend, &added.ticket()).await
+}
+
+/// A viewer that opened the video of `ticket`, and the ids of the catalogs it was told about.
+async fn opened_with(backend: &Backend, ticket: &str) -> (Viewer, Vec<String>) {
     let mut viewer = backend.viewer().await;
-    viewer.open(&added.ticket(), None).await;
+    viewer.open(ticket, None).await;
     loop {
         match viewer.next().await {
             Event::Message(ServerMessage::Indexing { .. }) => {}
@@ -139,6 +148,57 @@ async fn a_viewer_is_pushed_the_catalogs_it_asked_for_and_every_viewer_the_chang
         catalog_ids(message(&mut bystander).await).last().unwrap(),
         "user:dawn.json"
     );
+}
+
+#[tokio::test]
+async fn a_watcher_is_shown_a_user_catalog_only_while_a_host_lane_uses_it() {
+    let folder = tempfile::tempdir().unwrap();
+    fs::write(folder.path().join("night.json"), document("Night", 0)).unwrap();
+    let library = Library::with_folder(folder.path().to_path_buf());
+    let backend = Backend::start_with_catalogs(library).await;
+    let added = backend.add(&fixture("cfr_h264_gop10_bf2.mp4")).await;
+    let (mut owner, _) = opened_with(&backend, &added.ticket()).await;
+    added
+        .owner
+        .command(Command::Control(Control::Share {
+            access: Access::Watch,
+        }))
+        .unwrap();
+    let link = added.owner.state().sharing.as_ref().unwrap().link.clone();
+    let seat = backend
+        .state
+        .sessions
+        .join(&link, CursorOptions::default())
+        .unwrap();
+    let Ok(Reply::Ticket(ticket)) = seat.command(Command::RequestTicket(added.key.clone())) else {
+        panic!("a watcher may stream what the owner has open");
+    };
+    let (mut watcher, listed) = opened_with(&backend, &ticket.to_string()).await;
+    assert!(
+        listed.iter().all(|id| id.starts_with("built-in:")),
+        "the host's files are not listed"
+    );
+    ask(&mut watcher, "user:night.json").await;
+    let (_, unused, text, problem) = catalog(message(&mut watcher).await);
+    assert_eq!((unused, text, problem), (0, None, None));
+
+    // A host lane draws with it: the watcher is told it exists and given its text.
+    ask(&mut owner, "user:night.json").await;
+    assert!(
+        catalog_ids(message(&mut watcher).await).contains(&"user:night.json".to_owned()),
+        "the list now names it"
+    );
+    let (_, used, text, _) = catalog(message(&mut watcher).await);
+    assert!(used > 0 && text.unwrap().contains("Night"));
+
+    // The host's viewer leaves: nothing uses it, so the watcher loses it again.
+    drop(owner);
+    assert!(
+        !catalog_ids(message(&mut watcher).await).contains(&"user:night.json".to_owned()),
+        "the list drops it"
+    );
+    let (_, gone, text, _) = catalog(message(&mut watcher).await);
+    assert_eq!((gone, text), (0, None));
 }
 
 #[tokio::test]

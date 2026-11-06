@@ -139,7 +139,7 @@ pub(super) async fn stream(
     closing: &mut watch::Receiver<bool>,
     gate: Gate,
 ) -> Flow<()> {
-    let catalogs = CatalogFeed::new(setup.library);
+    let catalogs = CatalogFeed::new(setup.library, setup.audience);
     let opened = text(&ServerMessage::LiveOpened(LiveOpenedWire {
         protocol: PLAYBACK_PROTOCOL,
         lane: LaneInfo {

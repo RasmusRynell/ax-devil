@@ -127,7 +127,7 @@ pub(super) async fn stream(
     let location = video_location(&setup.entry.video);
     gate.open(timeline.clone());
     let lanes = Lanes::open(&setup, timeline.clone(), location.clone());
-    let catalogs = CatalogFeed::new(setup.library);
+    let catalogs = CatalogFeed::new(setup.library, setup.audience);
     let opened = text(&ServerMessage::Opened {
         protocol: PLAYBACK_PROTOCOL,
         frame_count: timeline.len(),
