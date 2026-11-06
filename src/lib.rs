@@ -22,7 +22,9 @@ pub mod video_cache;
 pub mod video_sources;
 
 use access::{Admission, Limits, Policy, Principal};
-use api_types::{API_VERSION, ApiError, AppInfo, SHELL_API, SettingsChange, SettingsState};
+use api_types::{
+    API_VERSION, ApiError, AppInfo, Grant, SHELL_API, SettingsChange, SettingsFile, SettingsState,
+};
 use axum::{
     Json, Router,
     extract::{FromRef, State},
@@ -124,8 +126,7 @@ impl AppState {
             Policy::Shared { .. } => Limits::default(),
         };
         let cameras = Arc::clone(&settings);
-        let confirmations = Arc::clone(&settings);
-        let environment = Arc::new(move || session::live::environment(&confirmations.state()));
+        let environment = Arc::new(workspace::Environment::of_process);
         let sessions = Sessions::new(
             GRACE,
             Arc::new(OnRuntime {
@@ -280,7 +281,11 @@ pub fn app(state: AppState) -> Router {
 
 /// What `principal` may read of the settings: its scopes' values, the shortcuts when it holds the `preferences`
 /// grant.
-fn snapshot(state: &settings::State, principal: Principal) -> SettingsState {
+fn snapshot(
+    settings: &settings::Settings,
+    state: &settings::State,
+    principal: Principal,
+) -> SettingsState {
     let scopes = principal.scopes();
     let shortcuts = if scopes.contains(&Scope::Personal) {
         state
@@ -293,6 +298,14 @@ fn snapshot(state: &settings::State, principal: Principal) -> SettingsState {
     };
     SettingsState {
         values: state.values(&scopes),
+        resolved: Some(state.references(&scopes)).filter(|resolved| !resolved.is_empty()),
+        file: principal
+            .grants()
+            .contains(&Grant::Files)
+            .then(|| SettingsFile {
+                path: settings.path().display().to_string(),
+                version: state.version(),
+            }),
         shortcuts,
     }
 }
@@ -301,7 +314,7 @@ pub(crate) async fn get_settings(
     principal: Principal,
     State(AppState { settings, .. }): State<AppState>,
 ) -> Json<SettingsState> {
-    Json(snapshot(&settings.state(), principal))
+    Json(snapshot(&settings, &settings.state(), principal))
 }
 
 /// Replaces every setting and shortcut the caller may change; a rejected or unsaved change leaves the stored state
@@ -356,7 +369,7 @@ pub(crate) async fn put_settings(
     let saved = tokio::task::spawn_blocking(move || {
         settings
             .replace(&scopes, &change)
-            .map(|state| snapshot(&state, principal))
+            .map(|state| snapshot(&settings, &state, principal))
     })
     .await
     .map_err(|error| {

@@ -1,7 +1,7 @@
-//! Credentials of a Live Stream Item: the redacted password type and `$NAME` references, which are expanded only
-//! where the user's confirmation or the reference's binding to its host allows it.
+//! Credentials of a Live Stream Item: the redacted password type and `$NAME` references, which are expanded silently
+//! when the item resolves.
 
-use std::{collections::HashSet, fmt, sync::Arc};
+use std::{fmt, sync::Arc};
 
 /// A password or other secret. `Debug` prints `***`; there is no `Display` and no serialization, so it cannot reach
 /// a log or a message by accident. Only [`expose`](Self::expose) reads it, where it is saved or sent.
@@ -46,16 +46,13 @@ pub(crate) fn reference(text: &str) -> Option<&str> {
     valid.then_some(name)
 }
 
-pub use foundation::Confirmation;
-
 /// Looks up an environment variable by name.
 type Lookup = Arc<dyn Fn(&str) -> Option<String> + Send + Sync>;
 
-/// Where `$NAME` references get their values, and which of them the user confirmed. Cheap to clone.
+/// Where `$NAME` references get their values. Cheap to clone.
 #[derive(Clone)]
 pub struct Environment {
     lookup: Lookup,
-    confirmed: HashSet<(String, String)>,
 }
 
 impl fmt::Debug for Environment {
@@ -65,43 +62,24 @@ impl fmt::Debug for Environment {
 }
 
 impl Environment {
-    /// An environment that gives `lookup(name)` for a variable and has `confirmed` allowed.
-    pub fn new(
-        lookup: impl Fn(&str) -> Option<String> + Send + Sync + 'static,
-        confirmed: impl IntoIterator<Item = Confirmation>,
-    ) -> Self {
+    /// An environment that gives `lookup(name)` for a variable.
+    pub fn new(lookup: impl Fn(&str) -> Option<String> + Send + Sync + 'static) -> Self {
         Self {
             lookup: Arc::new(lookup),
-            confirmed: confirmed
-                .into_iter()
-                .map(|c| (c.reference, c.host.to_ascii_lowercase()))
-                .collect(),
         }
     }
 
-    /// The process's environment variables with nothing confirmed: only references bound to their host expand.
+    /// The process's environment variables.
     pub fn of_process() -> Self {
-        Self::new(|name| std::env::var(name).ok(), [])
+        Self::new(|name| std::env::var(name).ok())
     }
 
-    /// `text`, or what the variable gives when it is a reference; empty when the variable is unset.
+    /// `text`, or what the variable gives when it is a reference; empty when the variable is unset. Nothing asks
+    /// first, as in the reference app.
     pub(crate) fn expand(&self, text: &str) -> String {
         match reference(text) {
             Some(name) => (self.lookup)(name).unwrap_or_default(),
             None => text.to_owned(),
         }
-    }
-
-    /// Whether the user confirmed any reference for `host`.
-    pub(crate) fn confirms_host(&self, host: &str) -> bool {
-        let host = host.to_ascii_lowercase();
-        self.confirmed
-            .iter()
-            .any(|(_, confirmed)| *confirmed == host)
-    }
-
-    pub(crate) fn is_confirmed(&self, reference: &str, host: &str) -> bool {
-        self.confirmed
-            .contains(&(reference.to_owned(), host.to_ascii_lowercase()))
     }
 }

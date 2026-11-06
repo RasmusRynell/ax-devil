@@ -280,7 +280,7 @@ fn open_refuses_a_recovery_copy_the_window_could_not_take_over() {
             parse(&["open", path.to_str().unwrap()]).unwrap().command,
             &Handlers::built_in(),
             &recovery,
-            &workspace::Environment::new(|_| None, []),
+            &workspace::Environment::new(|_| None),
             stream_defaults,
         )
     };

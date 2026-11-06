@@ -16,23 +16,12 @@ Owns credential handling; [08](08-settings-cli.md) links here.
 
 ## Threat model
 
-A workspace file from someone else is untrusted input. *Current:* a Live Stream Item's `$VARIABLE` references are
-expanded while resolving (`docs/architecture/workspace.md#workspace-items`), and camera snapshots on hover and the
-saved-login check contact the item's host without Start (`docs/usage.md#sidebar-views`, `docs/settings.md`). A shared
-workspace can therefore name an attacker host and `$SOME_SECRET` and receive it.
+A workspace file from someone else is untrusted input. A Live Stream Item's `$VARIABLE` references are expanded
+silently while resolving, as in the reference (D18: no prompt, no host binding), so a shared workspace can name an
+attacker host and `$SOME_SECRET` and receive it once the user starts the stream.
 
-**MUST** (ST-06, D18; a behavior change from the reference). An allowlist of names alone fails: a hostile workspace
-can pair its own host with `$AX_DEVIL_TARGET_PASS`. Recommended default:
-
-- A credential reference expands only together with its matching host reference (`$AX_DEVIL_TARGET_USER/PASS` with
-  `$AX_DEVIL_TARGET_ADDR`; the `$AX_DEVIL_MQTT_BROKER_*` set likewise, but the camera relays the broker login, so
-  the camera host needs the user's confirmation too), or for a resolved host the user confirmed for that
-  credential. Any other reference needs the same confirmation.
-- The confirmation is asked once, on Start, showing the resolved host. It is stored in the app's user state (config),
-  keyed by reference name and resolved host, never in the workspace file.
-- Opening a workspace sends no credentials (snapshots, login checks) to a host the user has not started or confirmed.
-  Started: a viewer was opened for the host in this run. Confirmed: the host is the reference bound to the camera host,
-  or the user confirmed a reference for it. A hover or a poll asks a camera only once per cooldown.
+**MUST** (ST-06). Opening a workspace sends no credentials (snapshots, login checks) to a host the user has not
+started: a viewer was opened for the host in this run. A hover or a poll asks a camera only once per cooldown.
 
 ## Network (MUST)
 

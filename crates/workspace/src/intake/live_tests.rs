@@ -1,7 +1,7 @@
 mod login;
 
 use super::*;
-use crate::{Confirmation, Content, Environment, LiveOverlay, LiveRecipe, Protocol, Secret};
+use crate::{Content, Environment, LiveOverlay, LiveRecipe, Protocol, Secret};
 use foundation::{CancelToken, Interrupt, Location};
 use std::collections::HashMap;
 
@@ -259,18 +259,12 @@ fn resolve(item: &WorkspaceItem, env: &Environment) -> Result<Content, UserError
     }
 }
 
-fn env(variables: &[(&str, &str)], confirmed: &[(&str, &str)]) -> Environment {
+fn env(variables: &[(&str, &str)]) -> Environment {
     let variables: HashMap<String, String> = variables
         .iter()
         .map(|(k, v)| ((*k).into(), (*v).into()))
         .collect();
-    Environment::new(
-        move |name| variables.get(name).cloned(),
-        confirmed.iter().map(|(reference, host)| Confirmation {
-            reference: (*reference).into(),
-            host: (*host).into(),
-        }),
-    )
+    Environment::new(move |name| variables.get(name).cloned())
 }
 
 const TARGET: [(&str, &str); 3] = [
@@ -280,11 +274,10 @@ const TARGET: [(&str, &str); 3] = [
 ];
 
 #[test]
-fn a_credential_reference_expands_with_its_own_host_or_a_confirmed_one_and_otherwise_asks() {
+fn references_expand_silently_wherever_they_stand_and_an_unset_one_is_empty() {
     let item = live(NewLive::default(), &defaults(), &Handlers::built_in()).unwrap();
-    // Bound: the target set together expands, with no confirmation.
-    let Ok(Content::LiveVideo(video)) = resolve(&item, &env(&TARGET, &[])) else {
-        panic!("the bound set expands");
+    let Ok(Content::LiveVideo(video)) = resolve(&item, &env(&TARGET)) else {
+        panic!("the references expand");
     };
     let login = video.camera.login.as_ref().unwrap();
     assert_eq!(
@@ -304,80 +297,33 @@ fn a_credential_reference_expands_with_its_own_host_or_a_confirmed_one_and_other
         "the password never prints"
     );
 
-    // Unbound: another host with the target's password. The error names the reference and the host, never the value.
-    let other = NewLive {
+    // Another host, a stream URL on one: the same references expand, with nothing to confirm.
+    let elsewhere = NewLive {
         host: Some("192.0.2.99".into()),
-        ..NewLive::default()
-    };
-    let item = live(other, &defaults(), &Handlers::built_in()).unwrap();
-    let ask = |variables: &[(&str, &str)], confirmed: &[(&str, &str)]| {
-        resolve(&item, &env(variables, confirmed))
-    };
-    let error = ask(&TARGET, &[]).unwrap_err();
-    assert_eq!(error.code, ErrorCode::NeedsConfirmation);
-    assert_eq!(error.location, Some(Location::Item(item.id)));
-    assert!(error.reason.contains("$AX_DEVIL_TARGET_USER") && error.reason.contains("192.0.2.99"));
-    assert!(!error.reason.contains("hunter2"));
-    assert_eq!(
-        error
-            .confirmations
-            .iter()
-            .map(|c| (c.reference.as_str(), c.host.as_str()))
-            .collect::<Vec<_>>(),
-        [
-            ("AX_DEVIL_TARGET_USER", "192.0.2.99"),
-            ("AX_DEVIL_TARGET_PASS", "192.0.2.99")
-        ]
-    );
-    assert!(!format!("{:?}", error.confirmations).contains("hunter2"));
-    let Source::Live(live_recipe) = &item.recipe.source else {
-        unreachable!()
-    };
-    let asked: Vec<_> = live_recipe
-        .needs_confirmation(&env(&TARGET, &[]))
-        .into_iter()
-        .map(|c| c.reference)
-        .collect();
-    assert_eq!(asked, ["AX_DEVIL_TARGET_USER", "AX_DEVIL_TARGET_PASS"]);
-
-    // Confirmed for that host (and only that one, whatever its case): both credentials expand.
-    let both = [
-        ("AX_DEVIL_TARGET_USER", "192.0.2.99"),
-        ("AX_DEVIL_TARGET_PASS", "192.0.2.99"),
-    ];
-    assert!(ask(&TARGET, &both).is_ok());
-    let elsewhere = [
-        ("AX_DEVIL_TARGET_USER", "192.0.2.7"),
-        ("AX_DEVIL_TARGET_PASS", "192.0.2.7"),
-    ];
-    assert_eq!(
-        ask(&TARGET, &elsewhere).unwrap_err().code,
-        ErrorCode::NeedsConfirmation
-    );
-
-    // A stream URL on another host receives the login too, so the binding no longer covers it.
-    let sneaky = NewLive {
         url: Some("rtsp://203.0.113.5/stream".into()),
         ..NewLive::default()
     };
-    let item = live(sneaky, &defaults(), &Handlers::built_in()).unwrap();
-    let error = resolve(&item, &env(&TARGET, &[])).unwrap_err();
-    assert!(error.reason.contains("203.0.113.5"), "{}", error.reason);
-    // An unset variable sends nothing, so it asks nothing.
-    let unset = env(&[("AX_DEVIL_TARGET_ADDR", "192.0.2.7")], &[]);
+    let item = live(elsewhere, &defaults(), &Handlers::built_in()).unwrap();
+    let Ok(Content::LiveVideo(video)) = resolve(&item, &env(&TARGET)) else {
+        panic!("the references expand for any host");
+    };
+    assert_eq!(video.camera.host, "192.0.2.99");
+    assert_eq!(video.camera.login.unwrap().user, "root");
+
+    // An unset variable is an empty text: no login, and an empty host is refused.
     let item = live(NewLive::default(), &defaults(), &Handlers::built_in()).unwrap();
-    let Ok(Content::LiveVideo(video)) = resolve(&item, &unset) else {
+    let Ok(Content::LiveVideo(video)) = resolve(&item, &env(&[TARGET[0]])) else {
         panic!("resolves")
     };
     assert_eq!(video.camera.login, None);
     assert_eq!(
-        resolve(&item, &env(&[], &[])).unwrap_err().reason,
+        resolve(&item, &env(&[])).unwrap_err().reason,
         "Enter the device host."
     );
 }
 
 #[test]
-fn the_broker_set_expands_with_the_broker_host_and_its_login_is_not_the_cameras() {
+fn the_broker_references_expand_with_the_rest() {
     let new = NewLive {
         overlay: Some(NewLiveOverlay::Mqtt(NewMqtt::default())),
         ..host("192.0.2.7")
@@ -388,27 +334,8 @@ fn the_broker_set_expands_with_the_broker_host_and_its_login_is_not_the_cameras(
         ("AX_DEVIL_MQTT_BROKER_USER", "mqtt"),
         ("AX_DEVIL_MQTT_BROKER_PASS", "broker-secret"),
     ];
-    // The camera receives the broker login to pass on, so a camera that is not the broker needs the user's word.
-    let error = resolve(&item, &env(&broker, &[])).unwrap_err();
-    assert_eq!(error.code, ErrorCode::NeedsConfirmation);
-    assert_eq!(
-        error
-            .confirmations
-            .iter()
-            .map(|c| (c.reference.as_str(), c.host.as_str()))
-            .collect::<Vec<_>>(),
-        [
-            ("AX_DEVIL_MQTT_BROKER_USER", "192.0.2.7"),
-            ("AX_DEVIL_MQTT_BROKER_PASS", "192.0.2.7")
-        ]
-    );
-    assert!(!format!("{error:?}").contains("broker-secret"));
-    let to_camera = [
-        ("AX_DEVIL_MQTT_BROKER_USER", "192.0.2.7"),
-        ("AX_DEVIL_MQTT_BROKER_PASS", "192.0.2.7"),
-    ];
-    let Ok(Content::LiveVideo(video)) = resolve(&item, &env(&broker, &to_camera)) else {
-        panic!("the broker set expands once confirmed for the camera");
+    let Ok(Content::LiveVideo(video)) = resolve(&item, &env(&broker)) else {
+        panic!("the broker set expands");
     };
     let LiveOverlay::Mqtt {
         broker_host,
@@ -422,39 +349,6 @@ fn the_broker_set_expands_with_the_broker_host_and_its_login_is_not_the_cameras(
         (broker_host.as_str(), broker_pass.expose()),
         ("198.51.100.2", "broker-secret")
     );
-    // The camera's login is a literal here, so only the broker references are in question; point them at another host.
-    let mut other = recipe(&item).clone();
-    other.overlay = LiveOverlay::Mqtt {
-        handler: "ADF_V1_FRAME".into(),
-        broker_host: "198.51.100.77".into(),
-        broker_port: 1883,
-        broker_user: "$AX_DEVIL_MQTT_BROKER_USER".into(),
-        broker_pass: Secret::new("$AX_DEVIL_MQTT_BROKER_PASS"),
-        source_key: "k".into(),
-    };
-    let asked: Vec<_> = other
-        .needs_confirmation(&env(&broker, &[]))
-        .into_iter()
-        .map(|c| (c.reference, c.host))
-        .collect();
-    assert_eq!(asked.len(), 4, "the other broker host and the camera");
-    assert!(asked.iter().any(|(_, host)| host == "198.51.100.77"));
-    assert!(asked.iter().any(|(_, host)| host == "192.0.2.7"));
-}
-
-#[test]
-fn a_camera_that_is_the_broker_host_needs_no_second_confirmation() {
-    let broker = [
-        ("AX_DEVIL_MQTT_BROKER_ADDR", "192.0.2.7"),
-        ("AX_DEVIL_MQTT_BROKER_USER", "mqtt"),
-        ("AX_DEVIL_MQTT_BROKER_PASS", "broker-secret"),
-    ];
-    let new = NewLive {
-        overlay: Some(NewLiveOverlay::Mqtt(NewMqtt::default())),
-        ..host("192.0.2.7")
-    };
-    let item = live(new, &defaults(), &Handlers::built_in()).unwrap();
-    assert!(resolve(&item, &env(&broker, &[])).is_ok());
 }
 
 #[test]

@@ -254,6 +254,7 @@ module.exports = async (window, shell) => {
         ["settings-analytics", "Analytics"],
         ["settings-scan", "Network scan"],
         ["settings-storage", "Storage"],
+        ["settings-advanced", "Advanced"],
       ].map(([name, tab]) => ({
         name,
         open: async () => {

@@ -85,16 +85,22 @@ fn edit(given: &[(&str, Value)]) -> Change {
 }
 
 #[test]
-fn a_reference_is_stored_as_written_and_checked_when_resolved() {
+fn a_reference_is_stored_as_written_and_a_text_or_choice_is_read_only_when_used() {
     let (_folder, path, settings) = open();
-    let error = settings
+    // A choice is not checked on save; used, what is not an option gives the default.
+    let state = settings
         .replace(&Scope::ALL, &edit(&[("net.mode", json!("$MODE"))]))
-        .unwrap_err();
+        .unwrap();
+    assert_eq!(state.values(&Scope::ALL)["net.mode"], "$MODE");
+    assert_eq!(state.resolved("net.mode"), Some(json!("a")));
+    let state = settings
+        .replace(&Scope::ALL, &edit(&[("net.address", json!("$UNSET"))]))
+        .unwrap();
     assert_eq!(
-        error.location, "net.mode",
-        "the expanded value must fit the setting"
+        state.resolved("net.address"),
+        Some(json!("")),
+        "an unset variable is empty text"
     );
-    assert!(!error.reason.contains("secret-mode"), "{}", error.reason);
 
     let state = settings
         .replace(&Scope::ALL, &edit(&[("net.address", json!("$ADDRESS"))]))
@@ -121,6 +127,11 @@ fn a_number_may_be_a_reference_that_resolves_to_a_whole_number_in_range() {
         "the reference stays as written for the editor and the file"
     );
     assert_eq!(state.resolved("net.port"), Some(json!(8554)));
+    assert_eq!(
+        state.references(&Scope::ALL),
+        BTreeMap::from([("net.port".to_owned(), json!(8554))]),
+        "a form that starts from the value is given it; a secret is never listed"
+    );
     assert_eq!(
         state.stored("net.port"),
         Some(&json!(8554)),

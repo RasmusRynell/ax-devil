@@ -134,7 +134,7 @@ independent viewers (see the OF-02 deviation in the new-tree `docs/parity-deviat
 | ST-03 | Theme (light, dark, auto) and text size (system, small to larger), applied live | M | `docs/settings.md` |
 | ST-04 | `$VARIABLE` references | M | `docs/settings.md` |
 | ST-05 | Keyboard shortcuts, dialog, override persistence | M | `shortcuts/shortcuts.py` (`DEFAULT_SHORTCUTS`) |
-| ST-06 | Workspace credential references expand only for their bound host or a confirmed one; warn before saving a literal password (new) | M | D18, [13](13-security-packaging-ops.md#threat-model) |
+| ST-06 | Warn before saving a literal password (new); workspace references expand silently (D18) | M | D18, [13](13-security-packaging-ops.md#threat-model) |
 | AP-01 | Uncaught errors logged; continue or close | M | `application_shell/exception_handler.py` |
 | AP-02 | Restart from inside the app | M | `application_shell/restart.py` |
 | AP-03 | `clear-cache` | S | `ax-devil clear-cache --help` |

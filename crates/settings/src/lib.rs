@@ -209,6 +209,29 @@ impl State {
             .collect()
     }
 
+    /// The format version of the file this state is written to.
+    pub fn version(&self) -> u64 {
+        self.version
+    }
+
+    /// What each non-secret setting in `scopes` that holds a `$NAME` reference gives as it is used, by dotted key, for
+    /// a form that starts from the value rather than the reference. Not logged: nothing is used yet.
+    pub fn references(&self, scopes: &[Scope]) -> BTreeMap<String, Value> {
+        self.table
+            .iter()
+            .filter(|setting| scopes.contains(&setting.scope) && !setting.secret)
+            .filter_map(|setting| {
+                let value = self.values.get(setting.key)?;
+                setting.holds_reference(value).then(|| {
+                    (
+                        setting.key.to_owned(),
+                        setting.used_quietly(value, &*self.lookup),
+                    )
+                })
+            })
+            .collect()
+    }
+
     /// The key of every command once the user's overrides apply; `None` when unbound. Shortcuts belong to
     /// [`Scope::Personal`].
     pub fn shortcuts(&self) -> BTreeMap<&'static str, Option<String>> {
@@ -312,6 +335,11 @@ impl Settings {
             state: watch::Sender::new(Arc::new(state)),
             writing: Mutex::new(()),
         })
+    }
+
+    /// The config file this service reads and writes.
+    pub fn path(&self) -> &Path {
+        &self.path
     }
 
     /// The current state.

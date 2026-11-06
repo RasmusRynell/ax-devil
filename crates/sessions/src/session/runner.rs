@@ -65,8 +65,8 @@ pub struct OnRuntime {
     pub runtime: runtime::Handle,
     /// The resolvers and decoders recipes name; each job takes the handlers as they are when it starts.
     pub handlers: Arc<HandlerSet>,
-    /// Where a live stream's `$NAME` references get their values and which the user confirmed; each job takes the
-    /// environment as it is when it starts, so a confirmation reaches the next `Resolve`.
+    /// Where a live stream's `$NAME` references get their values; each job takes the environment as it is when it
+    /// starts.
     pub environment: Arc<dyn Fn() -> Environment + Send + Sync>,
 }
 

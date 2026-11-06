@@ -85,6 +85,15 @@ const FIELDS: Record<KindTag, (props: FieldProps) => ReactNode> = {
           onChange={onChange}
         />
       </div>
+    ) : row.env ? (
+      // Any text stays allowed so the mode can be a `$NAME` reference; the options are offered to pick from.
+      <TextField
+        label={label}
+        value={textOf(value)}
+        suggestions={row.kind.options ?? []}
+        wide
+        onChange={onChange}
+      />
     ) : (
       <Select
         label={label}

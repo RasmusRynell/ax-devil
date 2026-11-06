@@ -72,10 +72,29 @@ pub struct SettingsState {
         type = "Record<SettingKey, string | boolean | number | Array<Record<string, string>> | { enabled: boolean; timeout_ms: number | null; opacity: number } | { tolerance_ms: number | null }>"
     )]
     pub values: BTreeMap<String, serde_json::Value>,
+    /// What each non-secret setting among `values` that holds a `$NAME` reference gives as it is used (a number for a
+    /// whole-number setting), for a form that starts from the value. Absent for a setting without a reference.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional, type = "Partial<Record<SettingKey, string | number>>")]
+    pub resolved: Option<BTreeMap<String, serde_json::Value>>,
+    /// The config file, for a caller who may see this machine's files.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub file: Option<SettingsFile>,
     /// The key of every command once the user's changes apply; `null` when unbound. Empty unless the caller holds
     /// the `preferences` grant: shortcuts are Personal.
     #[ts(type = "Record<CommandId, string | null>")]
     pub shortcuts: BTreeMap<String, Option<String>>,
+}
+
+/// Where the settings are kept: the file's path on the backend's machine and its format version.
+#[derive(Serialize, TS)]
+pub struct SettingsFile {
+    /// The config file's path.
+    pub path: String,
+    /// The file format version.
+    #[ts(type = "number")]
+    pub version: u64,
 }
 
 /// The body of `PUT /api/settings`: every setting and shortcut the caller may change, which replace the stored ones.

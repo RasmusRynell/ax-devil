@@ -78,6 +78,28 @@ export const isField = (location: string | undefined): boolean =>
 /** The fields that hold any text. */
 export type TextKey = Exclude<FieldKey, "protocol" | "overlay">;
 
+/** The settings the form starts from as values, unlike the host and logins, which stay `$NAME` references. */
+const VALUED: readonly SettingKey[] = [
+  "camera.head",
+  "camera.overlay",
+  "camera.rtsp_handler",
+  "broker.port",
+  "broker.source_key",
+  "broker.handler",
+  "datahub.topic",
+  "datahub.channel",
+  "datahub.handler",
+];
+
+/** `settings` with the valued ones replaced by what their `$NAME` references give. */
+export function formValues(settings: SettingsState): SettingsState["values"] {
+  const given = settings.resolved ?? {};
+  return {
+    ...settings.values,
+    ...Object.fromEntries(VALUED.flatMap((key) => (key in given ? [[key, given[key]]] : []))),
+  };
+}
+
 /** The setting that names the decoder of each mode that has one. */
 const HANDLER_OF: Partial<Record<OverlayMode, SettingKey>> = {
   rtsp: "camera.rtsp_handler",

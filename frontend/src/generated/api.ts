@@ -52,10 +52,32 @@ export type SettingsState = {
  */
 values: Record<SettingKey, string | boolean | number | Array<Record<string, string>> | { enabled: boolean; timeout_ms: number | null; opacity: number } | { tolerance_ms: number | null }>, 
 /**
+ * What each non-secret setting among `values` that holds a `$NAME` reference gives as it is used (a number for a
+ * whole-number setting), for a form that starts from the value. Absent for a setting without a reference.
+ */
+resolved?: Partial<Record<SettingKey, string | number>>, 
+/**
+ * The config file, for a caller who may see this machine's files.
+ */
+file?: SettingsFile, 
+/**
  * The key of every command once the user's changes apply; `null` when unbound. Empty unless the caller holds
  * the `preferences` grant: shortcuts are Personal.
  */
 shortcuts: Record<CommandId, string | null>, };
+
+/**
+ * Where the settings are kept: the file's path on the backend's machine and its format version.
+ */
+export type SettingsFile = { 
+/**
+ * The config file's path.
+ */
+path: string, 
+/**
+ * The file format version.
+ */
+version: number, };
 
 /**
  * The body of `PUT /api/settings`: every setting and shortcut the caller may change, which replace the stored ones.
@@ -134,7 +156,7 @@ location: string, };
  * The public kind of a failure. A code and the ids in a [`Location::Item`] are all a viewer who may not see the
  * host's files is told; the reason and any path stay with the host.
  */
-export type ErrorCode = "InvalidPath" | "FileNotFound" | "FileUnreadable" | "NotAVideo" | "UnsupportedFormat" | "IndexingFailed" | "FileChanged" | "DecodeFailed" | "ContentNotFound" | "ProtocolViolation" | "VideoClosed" | "UnknownHandler" | "OverlayInvalid" | "PlaylistInvalid" | "PluginInvalid" | "CatalogInvalid" | "WorkspaceInvalid" | "NeedsConfirmation" | "WorkspaceInUse" | "WorkspaceExists" | "SaveFailed" | "Internal";
+export type ErrorCode = "InvalidPath" | "FileNotFound" | "FileUnreadable" | "NotAVideo" | "UnsupportedFormat" | "IndexingFailed" | "FileChanged" | "DecodeFailed" | "ContentNotFound" | "ProtocolViolation" | "VideoClosed" | "UnknownHandler" | "OverlayInvalid" | "PlaylistInvalid" | "PluginInvalid" | "CatalogInvalid" | "WorkspaceInvalid" | "WorkspaceInUse" | "WorkspaceExists" | "SaveFailed" | "Internal";
 
 /**
  * The values a client may fill into the message for a code. Only ids, never text.
@@ -143,12 +165,7 @@ export type ErrorParams = {
 /**
  * The workspace item the failure is about.
  */
-item?: string, 
-/**
- * For `NeedsConfirmation`: every reference and host to confirm, each with `POST /api/live/confirm`. Only for an
- * audience with host details: it names resolved hosts and environment variables.
- */
-confirm?: Array<LiveConfirmation>, };
+item?: string, };
 
 /**
  * A failure as the wire carries it: the code and its parameters for everyone, and for an audience with host
@@ -2614,20 +2631,6 @@ found?: string,
 like?: string, };
 
 /**
- * A `$NAME` reference the user lets a stream send to a host: the body of a confirmation, and what a failed item
- * that needs one is asked for.
- */
-export type LiveConfirmation = { 
-/**
- * The variable's name, without the `$`.
- */
-reference: string, 
-/**
- * The host it would be sent to, as the references in the item expand.
- */
-host: string, };
-
-/**
  * What an Axis camera said about itself without a login.
  */
 export type NetworkIdentity = { 
@@ -2832,11 +2835,7 @@ export type LiveProblem = { "problem": "Invalid",
 /**
  * What to fix.
  */
-error: ErrorWire, } | { "problem": "NeedsConfirmation", 
-/**
- * What to ask the user to confirm.
- */
-confirmation: LiveConfirmation, } | { "problem": "Camera", 
+error: ErrorWire, } | { "problem": "Camera", 
 /**
  * Why, as a code the client words.
  */
@@ -2913,9 +2912,8 @@ host?: string,
 broker_host?: string, };
 
 /**
- * What the references of the default connection texts show. A field is `null` unless its default is a `$NAME` reference
- * that the user's binding or confirmations let expand for the host in the form; a variable that is not set is an
- * empty text, and a password only says whether it is set.
+ * What the references of the default connection texts show. A field is `null` unless its default is a `$NAME`
+ * reference; a variable that is not set is an empty text, and a password only says whether it is set.
  */
 export type LiveExpansions = { 
 /**

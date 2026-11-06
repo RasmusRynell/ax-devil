@@ -10,8 +10,6 @@ import type { Asked } from "../live/discovery";
 import { referenceIn, SET_PASSWORD, viaText } from "../live/expansions";
 import { Button } from "../kit/Button";
 import { Form, FormCombo, FormInput, FormNote, FormSelect, FormStack } from "../kit/Form";
-import { Icon } from "../kit/Icon";
-import { TONE } from "../kit/look";
 import {
   chosen,
   OVERLAY_TEXT,
@@ -132,22 +130,6 @@ const nameOf = (key: SettingKey, value: string) =>
 /** The name of an overlay mode. */
 export const modeName = (mode: OverlayMode) => nameOf("camera.overlay", mode);
 
-/** The question under a field about a `$NAME` reference that would go to a host the user has not allowed. */
-function Confirmation({ asked }: { asked: Asked<unknown> }) {
-  const { state, confirm } = asked;
-  if (state.phase !== "confirm") return null;
-  const { reference, host } = state.confirmation;
-  return (
-    <p role="status" className={`m-0 flex items-center gap-s ${TONE.caution.text}`}>
-      <Icon name="triangle-alert" />
-      <span className="min-w-0 [overflow-wrap:anywhere]">{`Send $${reference} to ${host}?`}</span>
-      <Button size="small" className="shrink-0" onClick={confirm}>
-        Confirm
-      </Button>
-    </p>
-  );
-}
-
 /** What the resolution list says in place of sizes. */
 function resolutionStatus(
   asked: Asked<LiveResolutions>,
@@ -212,7 +194,6 @@ export function ConnectionRows({
           const kept = state.phase === "ready" && state.value.listed;
           if (!kept && ["idle", "failed", "ready"].includes(state.phase)) resolutions.reload();
         }}
-        note={<Confirmation asked={resolutions} />}
       />
       {input(props, "url", "Custom Stream URL", {
         placeholder: "Optional — overrides auto-built URL",
@@ -231,8 +212,6 @@ function choiceStatus(listing: Listing, what: string, hostUsable: boolean) {
     case "failed":
     case "invalid":
       return { text: `Could not load ${what}`, failed: true };
-    case "confirm":
-      return { text: `Confirm to load ${what}`, failed: false };
     case "ready":
       return { text: choices.length ? `Select ${what}` : `No ${what} available`, failed: false };
     default:
@@ -291,7 +270,6 @@ function Choice({
           Refresh
         </Button>
       }
-      note={<Confirmation asked={asked} />}
     />
   );
 }

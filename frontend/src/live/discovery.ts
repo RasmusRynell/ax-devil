@@ -1,14 +1,12 @@
 /**
  * What the Add Live Stream form asks a camera: the stream sizes of a head, and the analytics sources or DataHub topics.
- * A question is the backend's, which expands `$NAME` references under the rule of a stream item; a reference that
- * would go to a host the user has not allowed comes back as a confirmation to ask about.
+ * A question is the backend's, which expands `$NAME` references as a stream item does.
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { apiFetch } from "../api";
 import type {
   ErrorWire,
-  LiveConfirmation,
   LiveConnection,
   LiveProblem,
   LiveResolutions,
@@ -89,8 +87,6 @@ export type Discovery<T> =
   | { phase: "ready"; value: T }
   /** The form holds something the backend refuses; `error.location` names the field. */
   | { phase: "invalid"; error: ErrorWire }
-  /** A `$NAME` reference would go to a host the user has not allowed. */
-  | { phase: "confirm"; confirmation: LiveConfirmation }
   | { phase: "failed"; text: string };
 
 const IDLE = { phase: "idle" } as const;
@@ -101,8 +97,6 @@ function stateOf<T>(reply: Reply<T>): Discovery<T> {
   switch (trouble.problem) {
     case "Invalid":
       return { phase: "invalid", error: trouble.error };
-    case "NeedsConfirmation":
-      return { phase: "confirm", confirmation: trouble.confirmation };
     case "Camera":
       return { phase: "failed", text: reasonText(trouble.reason) };
     case "Backend":
@@ -115,8 +109,6 @@ export interface Asked<T> {
   state: Discovery<T>;
   /** Asks again now. */
   reload: () => void;
-  /** Lets the pending reference go to its host, then asks again. */
-  confirm: () => void;
 }
 
 /**
@@ -132,17 +124,14 @@ export function useDiscovery<T>(
   const [state, setState] = useState<Discovery<T>>(IDLE);
   const [round, setRound] = useState(0);
   const latest = useRef(ask);
-  // A question the user asked for (Refresh, Confirm) waits for nothing.
+  // A question the user asked for (Refresh) waits for nothing.
   const asked = useRef(false);
-  // Counts the questions begun (a change of `key`, a reload); a confirmation answer from an earlier one is stale.
-  const generation = useRef(0);
   useEffect(() => {
     latest.current = ask;
   });
   const asking = ask !== null;
 
   useEffect(() => {
-    generation.current++;
     const run = latest.current;
     if (!asking || !run) {
       setState(IDLE);
@@ -170,15 +159,5 @@ export function useDiscovery<T>(
     asked.current = true;
     setRound((now) => now + 1);
   }, []);
-  const confirm = useCallback(() => {
-    if (state.phase !== "confirm") return;
-    const begun = generation.current;
-    void post("/api/live/confirm", state.confirmation).then((reply) => {
-      // The form moved on while the camera was being confirmed: its answer belongs to a question no longer shown.
-      if (generation.current !== begun) return;
-      if (reply.ok) reload();
-      else setState(stateOf(reply));
-    });
-  }, [state, reload]);
-  return { state, reload, confirm };
+  return { state, reload };
 }

@@ -1,5 +1,4 @@
 import { useCallback, useId, useMemo, useRef, useState } from "react";
-import type { LiveConfirmation } from "../generated/api";
 import { Button } from "../kit/Button";
 import { Menu, type MenuCommand, type MenuEntry } from "../kit/Menu";
 import { Popup } from "../kit/Popup";
@@ -39,13 +38,11 @@ interface Props {
   /** Whether the search is on, which unfolds what it finds. */
   searching: boolean;
   mayAct: boolean;
-  mayConfirm: boolean;
   onAddStream: () => void;
   /** Enter or a double click on a row: start its stream, or bring its viewer to the front. */
   onOpen: (row: Row) => void;
   onRemove: (row: Row) => void;
   onAct: (row: Row, action: RowAction) => void;
-  onConfirm: (row: Row, confirmation: LiveConfirmation) => void;
 }
 
 /**
@@ -59,12 +56,10 @@ export function LiveTree({
   views,
   searching,
   mayAct,
-  mayConfirm,
   onAddStream,
   onOpen,
   onRemove,
   onAct,
-  onConfirm,
 }: Props) {
   const prefix = useId();
   const [folded, setFolded] = useState<ReadonlySet<SectionId>>(new Set());
@@ -202,7 +197,6 @@ export function LiveTree({
                   scroller={scroller}
                   info={info}
                   mayAct={mayAct}
-                  mayConfirm={mayConfirm}
                   onInfo={toggleInfo}
                   onOpen={onOpen}
                   onRemove={onRemove}
@@ -216,7 +210,6 @@ export function LiveTree({
                     at ? picture.enter(row.thumbnail, at.x, at.y) : picture.leave()
                   }
                   onAct={onAct}
-                  onConfirm={onConfirm}
                 />
               )}
             </section>

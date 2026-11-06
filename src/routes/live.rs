@@ -1,31 +1,23 @@
-//! The routes behind the live form: the questions it asks a camera (stream sizes, analytics sources, DataHub topics)
-//! and the confirmation of a `$NAME` reference. The network scan's routes are in [`super::network`].
+//! The routes behind the live form: the questions it asks a camera (stream sizes, analytics sources, DataHub topics).
+//! The network scan's routes are in [`super::network`].
 //!
-//! A question connects to the camera with the form's connection, so its `$NAME` references expand under the rule of a
-//! stream item: bound to their host, or confirmed for it. The question is the handler's future, so a client that
-//! drops the request ends the connection. A question about another stream of a camera (`like`) authenticates with
+//! A question connects to the camera with the form's connection, so its `$NAME` references expand as a stream item's
+//! do. The question is the handler's future, so a client that drops the request ends the connection. A question about another stream of a camera (`like`) authenticates with
 //! that stream's saved login on the backend, for the person at this machine only and under the rule of the intake's
 //! `copy_login`. Nothing here logs or returns a login.
 
-use super::handlers::{Refusal, refuse};
-use crate::{
-    AppState,
-    access::Principal,
-    camera_questions, live_sources,
-    session::live::{confirm as store, defaults, environment},
-};
+use crate::{AppState, access::Principal, camera_questions, live_sources, session::live::defaults};
 use api_types::{
     Audience, Grant,
     live::{
-        LiveConfirmation, LiveConnection, LiveProblem, LiveReason, LiveResolutions, LiveTopics,
-        NewLiveOverlayWire, NewLiveWire, ResolutionsRequest, SourcesAnswer, SourcesOverlay,
-        SourcesRequest,
+        LiveConnection, LiveProblem, LiveReason, LiveResolutions, LiveTopics, NewLiveOverlayWire,
+        NewLiveWire, ResolutionsRequest, SourcesAnswer, SourcesOverlay, SourcesRequest,
     },
     project,
 };
 use axum::{Json, extract::State, http::StatusCode};
-use foundation::{CancelToken, ErrorCode, Interrupt, UserError};
-use workspace::{Confirmation, Content, ResolvedCamera, Source, intake};
+use foundation::{CancelToken, Interrupt, UserError};
+use workspace::{Content, Environment, ResolvedCamera, Source, intake};
 
 type Problem = (StatusCode, Json<LiveProblem>);
 
@@ -80,31 +72,15 @@ fn camera(
             .map_err(|error| invalid(&error))?;
     }
     let item = intake::live(new, &defaults, &handlers).map_err(|error| invalid(&error))?;
-    let env = environment(&settings);
     match item.recipe.resolve(
         &item.id,
         &item.display_name(),
         &handlers,
-        &env,
+        &Environment::of_process(),
         &CancelToken::new(),
     ) {
         Ok(Content::LiveVideo(content)) => Ok(content.camera),
         Ok(_) => unreachable!("a live recipe resolves to live video"),
-        Err(Interrupt::Failed(error)) if error.code == ErrorCode::NeedsConfirmation => {
-            let pending = match &item.recipe.source {
-                Source::Live(recipe) => recipe.needs_confirmation(&env).into_iter().next(),
-                _ => None,
-            };
-            Err(match pending {
-                Some(confirmation) => problem(
-                    StatusCode::CONFLICT,
-                    LiveProblem::NeedsConfirmation {
-                        confirmation: LiveConfirmation::from(confirmation),
-                    },
-                ),
-                None => invalid(&error),
-            })
-        }
         Err(Interrupt::Failed(error)) => Err(invalid(&error)),
         Err(Interrupt::Cancelled) => unreachable!("nothing cancels this token"),
     }
@@ -141,26 +117,6 @@ pub(super) async fn sources(
             .map(|topics| SourcesAnswer::DataHub(LiveTopics { topics })),
     };
     answer.map(Json).map_err(camera_failed)
-}
-
-/// Remembers that the user lets the reference be sent to the host. The client then resolves the item again.
-pub(super) async fn confirm(
-    State(state): State<AppState>,
-    Json(confirmation): Json<LiveConfirmation>,
-) -> Result<StatusCode, Refusal> {
-    let settings = state.settings.clone();
-    let stored =
-        tokio::task::spawn_blocking(move || store(&settings, &Confirmation::from(confirmation)))
-            .await
-            .map_err(|error| error.to_string())
-            .and_then(|stored| stored.map_err(|error| error.to_string()));
-    stored.map(|()| StatusCode::NO_CONTENT).map_err(|error| {
-        tracing::error!("Cannot keep a confirmation: {error}");
-        refuse(
-            StatusCode::INTERNAL_SERVER_ERROR,
-            &UserError::new(ErrorCode::Internal, "The confirmation could not be saved"),
-        )
-    })
 }
 
 #[cfg(test)]
@@ -202,8 +158,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn a_question_names_what_to_fix_asks_for_a_confirmation_and_reports_a_camera_that_does_not_answer()
-     {
+    async fn a_question_names_what_to_fix_and_reports_a_camera_that_does_not_answer() {
         let test = TestApp::new();
         let closed = TcpListener::bind("127.0.0.1:0").await.unwrap();
         let port = closed.local_addr().unwrap().port();
@@ -222,20 +177,10 @@ mod tests {
         assert_eq!(json(&body)["problem"], "Invalid");
         assert_eq!(json(&body)["error"]["location"], "head");
 
-        // The variable is the user's to name: sent to a host it is not bound to, it needs the user's say.
+        // A variable the user names expands silently and goes to the camera, which is not there: the sources
+        // question fails the same way.
         let mut sends_a_variable = camera(port);
         sends_a_variable["username"] = "$PATH".into();
-        let (status, body) = test.send(ask(sends_a_variable.clone())).await;
-        assert_eq!(status, StatusCode::CONFLICT);
-        assert_eq!(
-            json(&body),
-            json!({ "problem": "NeedsConfirmation", "confirmation": { "reference": "PATH", "host": "127.0.0.1" } })
-        );
-        let confirmation = json(&body)["confirmation"].clone();
-        let (status, _) = test.send(post("/api/live/confirm", &confirmation)).await;
-        assert_eq!(status, StatusCode::NO_CONTENT);
-
-        // Confirmed, it goes to the camera, which is not there: the sources question fails the same way.
         for request in [
             ask(sends_a_variable.clone()),
             post(

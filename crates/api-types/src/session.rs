@@ -90,7 +90,7 @@ pub enum DocCommand {
         #[ts(type = "string")]
         item: ItemId,
     },
-    /// Resolve an item again, such as a live stream that needed a confirmation. Ignored while it is resolving.
+    /// Resolve an item again, such as a live stream whose host was unset. Ignored while it is resolving.
     Resolve {
         /// The item.
         #[ts(type = "string")]

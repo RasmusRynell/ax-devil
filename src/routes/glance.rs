@@ -2,17 +2,11 @@
 //! and what the references of the Add Live Stream form show. They are adapters over [`crate::glance`] and the
 //! reference rules of the `workspace` crate.
 //!
-//! A stream's own login goes only to a host the user vouched for: a viewer was opened for it, its host is the
-//! reference bound to the camera host, or a reference was confirmed for it. Anything else is answered as unknown
-//! without a request, so opening a workspace file sends nothing. A found camera's picture uses the scan login the scan
+//! A stream's own login goes only to a host the user started: a viewer was opened for it. Anything else is answered
+//! as unknown without a request, so opening a workspace file sends nothing. A found camera's picture uses the scan login the scan
 //! already signed in with. Nothing here returns or logs a login.
 
-use crate::{
-    AppState,
-    glance::SNAPSHOT_TIMEOUT,
-    live_sources::camera_of,
-    session::live::{defaults, environment},
-};
+use crate::{AppState, glance::SNAPSHOT_TIMEOUT, live_sources::camera_of, session::live::defaults};
 use api_types::live::{
     ExpansionsRequest, LiveCheckRequest, LiveExpansions, LiveProtocol, NetworkSignIn,
 };
@@ -26,7 +20,7 @@ use bytes::Bytes;
 use camera::{Camera, Head, Host, Scheme, Web};
 use sessions::session::HeldItem;
 use std::net::Ipv4Addr;
-use workspace::{Connection, Content, ItemId, LiveVideoContent, ResolvedCamera, Source};
+use workspace::{Connection, Content, Environment, ItemId, LiveVideoContent, ResolvedCamera};
 
 /// The live stream `id` names and what it resolved to, if it is a resolved live stream.
 fn live_item(state: &AppState, id: &str) -> Option<(HeldItem, LiveVideoContent)> {
@@ -37,12 +31,9 @@ fn live_item(state: &AppState, id: &str) -> Option<(HeldItem, LiveVideoContent)>
     }
 }
 
-/// Whether the user vouched for the stream's host, so its own login may be sent there.
-fn vouched(state: &AppState, held: &HeldItem, camera: &ResolvedCamera) -> bool {
-    held.open
-        || state.live.has_started(&camera.host)
-        || matches!(&held.item.recipe.source, Source::Live(recipe)
-            if workspace::vouches(&environment(&state.settings.state()), &recipe.host, &camera.host))
+/// Whether the user started the stream's host, so its own login may be sent there.
+fn started(state: &AppState, held: &HeldItem, camera: &ResolvedCamera) -> bool {
+    held.open || state.live.has_started(&camera.host)
 }
 
 fn jpeg(picture: Option<Bytes>) -> Response {
@@ -60,7 +51,7 @@ fn jpeg(picture: Option<Bytes>) -> Response {
 }
 
 /// A snapshot of the stream's camera, with the stream's own login: 404 when the stream is not a resolved live stream,
-/// the host is not vouched for, or the camera does not give one. At most one request to the camera per 10 s.
+/// the host is not started, or the camera does not give one. At most one request to the camera per 10 s.
 pub(super) async fn snapshot(State(state): State<AppState>, Path(item): Path<String>) -> Response {
     let Some((held, content)) = live_item(&state, &item) else {
         return jpeg(None);
@@ -72,7 +63,7 @@ pub(super) async fn snapshot(State(state): State<AppState>, Path(item): Path<Str
     ) else {
         return jpeg(None);
     };
-    if !vouched(&state, &held, resolved) {
+    if !started(&state, &held, resolved) {
         return jpeg(None);
     }
     jpeg(
@@ -155,7 +146,7 @@ pub(super) async fn check(
     }) else {
         return unknown();
     };
-    if !vouched(&state, &held, resolved) {
+    if !started(&state, &held, resolved) {
         return unknown();
     }
     match state
@@ -168,8 +159,8 @@ pub(super) async fn check(
     }
 }
 
-/// What the references of the form's default connection texts show, for the host the form has now. Only for the
-/// references the binding rule lets expand, and never a password.
+/// What the references of the form's default connection texts show, for the host the form has now: never a password,
+/// only whether it is set.
 pub(super) async fn expansions(
     State(state): State<AppState>,
     Json(request): Json<ExpansionsRequest>,
@@ -184,7 +175,7 @@ pub(super) async fn expansions(
     let host = typed(request.host, &defaults.host);
     let broker_host = typed(request.broker_host, &defaults.mqtt.host);
     let shown = workspace::preview(
-        &environment(&settings),
+        &Environment::of_process(),
         Connection {
             host: &host,
             user: &defaults.username,
