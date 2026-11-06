@@ -12,6 +12,7 @@
 //! The state also knows which file the workspace belongs to and what it is compared with to tell unsaved edits
 //! ([`Saved`]); reading and writing files is the caller's business.
 
+mod bookmarks;
 mod rows;
 
 use foundation::{CancelToken, HostPath, Interrupt, UserError};
@@ -23,6 +24,10 @@ use workspace::{
     Content, ContentId, Environment, ItemId, Recipe, Source, Workspace, WorkspaceItem,
 };
 
+pub use bookmarks::{
+    BookmarkCommand, BookmarkGroup, Standing, csv as bookmarks_csv, groups as bookmark_groups,
+    kind_label,
+};
 pub use rows::{Row, RowKind, RowStatus, rows};
 
 /// Names one commit of an item's Content. Later commits have larger values, across all items of a state.
@@ -259,6 +264,8 @@ pub enum DocCommand {
     },
     /// Dismisses the Keep/Discard offer of a restored copy; does nothing otherwise.
     Keep,
+    /// Changes the bookmarks or reviewed marks.
+    Bookmarks(BookmarkCommand),
 }
 
 /// Work a transition asks its caller to run: resolve `recipe`, then hand the result to [`complete`].
@@ -397,6 +404,7 @@ pub fn apply(state: &WorkspaceState, command: DocCommand) -> (WorkspaceState, Ve
                 next.workspace.name = name_of(&name);
             }
         }
+        DocCommand::Bookmarks(command) => bookmarks::apply(&mut next, command),
     }
     (next, jobs)
 }

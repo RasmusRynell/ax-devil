@@ -188,6 +188,20 @@ impl WorkspaceFiles {
         Ok(())
     }
 
+    /// Writes every bookmark to the CSV file `path`.
+    pub(super) async fn export_bookmarks(
+        &self,
+        handle: &Handle<api_types::CursorPoint>,
+        files: &SessionFiles,
+        path: PathBuf,
+    ) -> Result<(), Failure> {
+        let text = workspace_store::bookmarks_csv(&handle.state().doc.workspace);
+        files
+            .off(move || workspace_files::write_text(&path, &text))
+            .await?;
+        Ok(())
+    }
+
     /// Back to the saved file, or an empty Untitled workspace, dropping the changes and their copy.
     pub(super) async fn discard(
         &self,

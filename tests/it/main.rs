@@ -2,6 +2,7 @@
 //! Tests that set process environment variables (`live_transport`, the export tests) are their own binaries.
 
 mod access;
+mod bookmarks;
 mod common;
 mod glance;
 mod local_video;

@@ -7,6 +7,7 @@
 
 use crate::{
     ErrorWire,
+    bookmarks::BookmarkCommand,
     playback::LanePolicyWire,
     workspace::{HiddenTarget, NewItem, WorkspaceState},
 };
@@ -129,6 +130,11 @@ pub enum DocCommand {
         #[ts(type = "number")]
         epoch: u64,
     },
+    /// Change the bookmarks or reviewed marks.
+    Bookmark {
+        /// The change.
+        command: BookmarkCommand,
+    },
 }
 
 /// What a seat asks for, settled by its own `Ack`. Changes to a seat's view travel the View lane instead.
@@ -193,6 +199,11 @@ pub enum WorkspaceCommand {
     Keep,
     /// Drop the changes restored from a recovery copy: back to the saved file, or an empty Untitled workspace.
     Discard,
+    /// Write every bookmark to the CSV file at `path`, replacing it only when complete.
+    ExportBookmarks {
+        /// The file, absolute.
+        path: String,
+    },
 }
 
 /// The part of the window a cursor position belongs to.

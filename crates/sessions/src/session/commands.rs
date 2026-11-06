@@ -104,6 +104,7 @@ fn content_scope(command: &DocCommand) -> Scope {
         | DocCommand::SetHidden { .. }
         | DocCommand::SetLaneMatching { .. }
         | DocCommand::RenameWorkspace { .. }
+        | DocCommand::Bookmarks(_)
         | DocCommand::Keep => Scope::Content,
     }
 }

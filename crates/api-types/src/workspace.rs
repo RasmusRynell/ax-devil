@@ -5,7 +5,9 @@ use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 use workspace::ContentId;
 
-use crate::{content::ContentInfo, live::NewLiveWire, playback::WarningInfo};
+use crate::{
+    bookmarks::BookmarkGroupInfo, content::ContentInfo, live::NewLiveWire, playback::WarningInfo,
+};
 
 /// The workspace and what is known about each item, as one audience may see it.
 #[derive(Serialize, Deserialize, TS)]
@@ -26,6 +28,8 @@ pub struct WorkspaceState {
     /// The sidebar tree flattened: each video or unresolved item, each playlist, their entries and lanes, in tree order. Lists only the items
     /// `items` lists.
     pub rows: Vec<RowInfo>,
+    /// The bookmarks and reviewed marks of the items `items` lists, a group for each video or entry with any.
+    pub bookmarks: Vec<BookmarkGroupInfo>,
 }
 
 /// A workspace file opened or saved lately.

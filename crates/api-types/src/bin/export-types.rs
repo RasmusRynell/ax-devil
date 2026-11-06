@@ -14,8 +14,8 @@ macro_rules! declarations {
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     use ::playback::ClockIntent;
     use api_types::{
-        catalogs::*, content::*, handlers::*, inspect::*, live::*, playback::*, report::*,
-        window::*, workspace::*, *,
+        bookmarks::*, catalogs::*, content::*, handlers::*, inspect::*, live::*, playback::*,
+        report::*, window::*, workspace::*, *,
     };
     use export::{LaneStyle, Output, RenderLane, RenderSetup};
     use foundation::{ErrorCode, FrameSize};
@@ -55,6 +55,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         ContentRef,
         SessionCommand,
         WorkspaceCommand,
+        BookmarkCommand,
+        BookmarkKindWire,
+        BookmarkInfo,
+        BookmarkStanding,
+        BookmarkGroupInfo,
         CursorRegion,
         CursorElement,
         CursorPoint,
