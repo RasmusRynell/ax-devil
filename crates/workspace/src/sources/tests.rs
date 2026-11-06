@@ -67,3 +67,33 @@ fn a_snapshot_tells_which_watched_paths_were_written_added_or_removed() {
     let appeared = paths.snapshot(&token).unwrap();
     assert!(after.changes(&appeared).contains(&absent));
 }
+
+#[test]
+fn a_file_that_appears_while_the_item_is_read_is_a_change_and_a_recipe_with_no_paths_records_nothing()
+ {
+    let folder = tempfile::tempdir().unwrap();
+    let (video_file, overlay_file) = (folder.path().join("a.mp4"), folder.path().join("gt.txt"));
+    let overlay = NewOverlay {
+        path: overlay_file.clone(),
+        handler: None,
+        label: None,
+        options: Settings::from_iter([("width".into(), 64.into()), ("height".into(), 48.into())]),
+    };
+    let handlers = Handlers::built_in();
+    let item = video(&video_file, &[overlay], &handlers).unwrap();
+    let token = CancelToken::new();
+
+    // The overlay is missing when the item is first looked at and written before it finishes resolving.
+    let (result, watch) = Watch::read(&item.recipe, &handlers, &token, || {
+        fs::write(&overlay_file, "x").unwrap();
+        Err::<Content, ()>(())
+    });
+    assert!(result.is_err());
+    let watch = watch.unwrap();
+    let now = watch.look(&token).unwrap();
+    assert_eq!(watch.changes(&now), BTreeSet::from([overlay_file]));
+
+    let bare = video(&video_file, &[], &handlers).unwrap();
+    let (_, nothing) = Watch::read(&bare.recipe, &handlers, &token, || Err::<Content, ()>(()));
+    assert!(nothing.is_none());
+}

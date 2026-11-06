@@ -80,6 +80,17 @@ describe("viewer host", () => {
     );
   });
 
+  it("keeps a dismissed reload offer dismissed across a switch of tabs", async () => {
+    await setup();
+    const room = FakeSocket.rooms.get("room-1")!;
+    act(() => room.setItems([{ ...video("a"), changed: 1 }, video("b")]));
+    fireEvent.click(screen.getByRole("tab", { name: "a.mp4" }));
+    fireEvent.click(screen.getByRole("button", { name: "Dismiss" }));
+    fireEvent.click(screen.getByRole("tab", { name: "b.mp4" }));
+    fireEvent.click(screen.getByRole("tab", { name: "a.mp4" }));
+    expect(screen.queryByText("Source changed, reload current viewer?")).toBeNull();
+  });
+
   it("switches between open items, and closing one shows the other", async () => {
     const send = await setup();
     send(["a", true, resolved("a")], ["b", true, resolved("b")]);

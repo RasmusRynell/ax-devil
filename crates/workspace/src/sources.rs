@@ -61,12 +61,18 @@ impl SourcePaths {
         paths
     }
 
-    /// Adds the overlay files `content` names, which are read whatever the recipe said.
-    pub fn add_content(&mut self, content: &Content) {
+    /// Adds the overlay files `content` names, which are read whatever the recipe said, and returns the ones that
+    /// were not watched before.
+    fn add_content(&mut self, content: &Content) -> Self {
+        let mut added = Self::default();
         for entry in content.entries() {
-            self.files
-                .extend(entry.overlays.iter().map(|overlay| overlay.path.clone()));
+            for overlay in &entry.overlays {
+                if self.files.insert(overlay.path.clone()) {
+                    added.files.insert(overlay.path.clone());
+                }
+            }
         }
+        added
     }
 
     /// Whether there is nothing to watch.
@@ -109,6 +115,60 @@ impl SourcePaths {
     }
 }
 
+/// What an item was read from, and what the disk looked like at those paths before they were read, so a change made
+/// while the item was being read still counts.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Watch {
+    paths: SourcePaths,
+    baseline: Snapshot,
+}
+
+impl Watch {
+    /// Runs `read`, which resolves the item `recipe` belongs to, between two looks at the disk, and returns its result
+    /// with what it read: the recipe's paths as they were before `read` began (a path that was absent then stays
+    /// absent in the baseline, so its appearance is a change), and the overlay files the Content names that the recipe
+    /// did not. `None` when there is nothing to watch or `cancel` was triggered.
+    pub fn read<E>(
+        recipe: &Recipe,
+        handlers: &Handlers,
+        cancel: &CancelToken,
+        read: impl FnOnce() -> Result<Content, E>,
+    ) -> (Result<Content, E>, Option<Self>) {
+        let mut paths = SourcePaths::of_recipe(recipe, handlers);
+        let before = paths.snapshot(cancel);
+        let result = read();
+        let (Ok(mut baseline), false) = (before, cancel.is_cancelled()) else {
+            return (result, None);
+        };
+        if let Ok(content) = &result {
+            match paths.add_content(content).snapshot(cancel) {
+                Ok(extra) => baseline = baseline.or(extra),
+                Err(Cancelled) => return (result, None),
+            }
+        }
+        let watch = (!paths.is_empty()).then_some(Self { paths, baseline });
+        (result, watch)
+    }
+
+    /// What the disk looks like at the watched paths now.
+    ///
+    /// # Errors
+    /// `token` was cancelled.
+    pub fn look(&self, token: &CancelToken) -> Result<Snapshot, Cancelled> {
+        self.paths.snapshot(token)
+    }
+
+    /// The paths that differ in `now` from what was read.
+    pub fn changes(&self, now: &Snapshot) -> BTreeSet<PathBuf> {
+        self.baseline.changes(now)
+    }
+
+    /// Takes `now` as what was read, so what it shows is no longer a change.
+    pub fn accept(&mut self, now: Snapshot) {
+        self.baseline = now;
+    }
+}
+
 /// A file's or folder's identity, size and modification time: a file's changes when it is written or replaced, a
 /// folder's when an entry in it is added, removed or renamed.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -147,13 +207,10 @@ pub struct Snapshot {
 }
 
 impl Snapshot {
-    /// This snapshot together with `other`'s paths it lacks: for a path in both, this one's fingerprint stays, so a
-    /// change made while the item was being read is still a change.
+    /// This snapshot together with the paths of `other`, which must be paths this one did not look at.
     #[must_use]
-    pub fn or(mut self, other: Self) -> Self {
-        for (path, print) in other.prints {
-            self.prints.entry(path).or_insert(print);
-        }
+    fn or(mut self, other: Self) -> Self {
+        self.prints.extend(other.prints);
         self
     }
 

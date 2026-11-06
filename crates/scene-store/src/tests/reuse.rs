@@ -273,11 +273,28 @@ fn the_file_that_was_decoded_is_the_one_watched_after_the_path_is_replaced() {
         track.scene(1).is_ok(),
         "the replacement is not the file read"
     );
-    assert!(Arc::ptr_eq(&track, &fixture.open()), "still the same track");
     std::io::Write::write_all(&mut &decoded, b"the decoded file is written in place\n")
         .expect("decoded file edited");
     let error = track.scene(2).expect_err("not served");
     assert_eq!(error.code, ErrorCode::FileChanged);
+}
+
+#[test]
+fn a_file_replaced_at_its_path_is_not_shared_with_a_new_open_but_the_holders_keep_theirs() {
+    let fixture = Fixture::new(SHAPE);
+    let track = fixture.open();
+
+    let replacement = fixture.dir.path().join("replacement.txt");
+    fs::write(&replacement, b"rows rows rows rows\n").expect("replacement");
+    fs::rename(&replacement, &fixture.source).expect("replaced");
+
+    assert!(track.scene(1).is_ok(), "the held file is unchanged");
+    let reopened = fixture.open();
+    assert!(
+        !Arc::ptr_eq(&track, &reopened),
+        "the path holds another file now"
+    );
+    assert_eq!(fixture.decoder.runs(), 2);
 }
 
 #[test]

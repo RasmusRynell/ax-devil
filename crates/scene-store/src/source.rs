@@ -120,6 +120,25 @@ impl SourceWatch {
         }
         !same
     }
+
+    /// Whether the path now names another file than the one this watch holds, as after a writer replaced it by
+    /// renaming a new file over it. A track of the old file is still right for those who hold it, but a new open
+    /// of the path must read what the path holds now.
+    #[cfg(unix)]
+    pub(crate) fn replaced(&self) -> bool {
+        use std::os::unix::fs::MetadataExt;
+        match (std::fs::metadata(&self.path), self.file.metadata()) {
+            (Ok(now), Ok(held)) => now.dev() != held.dev() || now.ino() != held.ino(),
+            (Err(_), _) => true,
+            (Ok(_), Err(_)) => false,
+        }
+    }
+
+    /// Without file identities, a replaced file is told apart by its size and modification time alone.
+    #[cfg(not(unix))]
+    pub(crate) fn replaced(&self) -> bool {
+        false
+    }
 }
 
 /// Reads the whole source from its start, hashing it and optionally keeping the bytes; checks for cancellation

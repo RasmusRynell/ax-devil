@@ -268,3 +268,39 @@ async fn an_entry_without_a_ground_truth_file_has_only_its_detection_lane() {
     assert!(warnings.is_empty());
     assert_eq!(lanes.rows(0, 0, 1), 2);
 }
+
+#[tokio::test]
+async fn a_playlist_added_through_the_dialog_is_watched_for_changes_in_its_folder() {
+    let backend = Backend::start().await;
+    let root = tempfile::tempdir().unwrap();
+    let sequence = root.path().join("SEQ-01");
+    std::fs::create_dir(&sequence).unwrap();
+    std::fs::write(
+        sequence.join("seqinfo.ini"),
+        "[Sequence]\nframeRate=25\nseqLength=10\nimWidth=64\nimHeight=48\n",
+    )
+    .unwrap();
+    let mut owner = Socket::own(&backend.address.to_string(), None).await;
+    let welcome = owner.until(|message| message["type"] == "welcome").await;
+    let resolved = session_client::post(
+        &backend.address.to_string(),
+        "/api/resolvers/mot_challenge/resolve",
+        &json!({"session": welcome["session"], "settings": {"root": root.path()}}),
+    )
+    .await;
+    let add = json!({"type": "content", "command": {"type": "addResolved", "item": resolved["item"], "label": null}});
+    owner
+        .say(json!({"type": "command", "seq": 1, "cmd": add}))
+        .await;
+    owner.settled_doc().await;
+
+    // The viewer is open, so a sequence added to the folder is counted, not resolved over its stream.
+    std::fs::create_dir(root.path().join("SEQ-02")).unwrap();
+    let doc = owner
+        .until(|message| message["doc"]["workspace"]["items"][0]["changed"] == 1)
+        .await;
+    assert_eq!(
+        doc["doc"]["workspace"]["items"][0]["resolution"]["status"],
+        "Resolved"
+    );
+}
