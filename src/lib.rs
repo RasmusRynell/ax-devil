@@ -329,6 +329,23 @@ pub(crate) async fn put_settings(
     {
         return Err(not_yours(&format!("shortcuts.{id}")));
     }
+    if let Some(serde_json::Value::String(range)) = body.values.get("scan.range") {
+        // A `$NAME` reference is checked as the variable holds it now, as the scan will read it; blank is the local
+        // network.
+        let expanded = settings::reference(range).map_or_else(
+            || range.clone(),
+            |name| std::env::var(name).unwrap_or_default(),
+        );
+        if !expanded.trim().is_empty()
+            && let Err(error) = camera::Targets::parse(&expanded)
+        {
+            return Err(failure(
+                StatusCode::UNPROCESSABLE_ENTITY,
+                "scan.range",
+                error.detail().to_owned(),
+            ));
+        }
+    }
     let change = settings::Change {
         values: body.values,
         shortcuts: body.shortcuts,

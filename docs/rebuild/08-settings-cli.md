@@ -45,14 +45,14 @@ and `ax-devil <command> --help` run from a worktree at the reference commit.
 | `local`, `live`, `playlist <resolver>` | Build one item into a new Untitled workspace (`local` has no per-overlay options yet) |
 | `open WORKSPACE_FILE` | Open a saved workspace |
 | `list-handlers` | List file overlay handler types |
-| `catalog list/check/render/new/use/reference` | Headless catalog work; `reference` is deferred |
+| `catalog list/check/new/use/reference` | Headless catalog work; `reference` is deferred |
 | `plugins install/update/remove/list/check` | Manage plugins from the base app; a running app follows within a second or two ([plugins](../plugins.md)) |
 | `clear-cache` | Remove caches with confirmation |
 
 - **MUST** keep CLI commands thin item builders using the same intake as dialogs; failures surface in the app
   (`docs/architecture/workspace.md#resolution`).
 - **MUST** let `--help` and non-rendering commands run without initializing the GUI runtime. Rendering commands
-  (`catalog check`, `catalog render`) may initialize the shared renderer on an offscreen or private surface with no
+  (`catalog check`) may initialize the shared renderer on an offscreen or private surface with no
   visible window, and document their display and GPU prerequisites.
 - **MUST** keep `--help` the only documentation of flags; top-level help links docs, AGENTS.md and skills.
 - **MUST** give every agent-editable surface a headless command that exits non-zero with a message naming the location.

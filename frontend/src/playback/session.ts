@@ -4,7 +4,6 @@
  * framework-free; time, the display refresh and the socket are injected, and the UI reads `getSnapshot`.
  */
 
-import { cadence, type Cadence } from "./cadence";
 import { reasonOf } from "../errors";
 import { ExportJobs } from "../export/jobs";
 import {
@@ -76,7 +75,6 @@ export class PlaybackSession implements LaneControl {
   #buffer: FrameBuffer<VideoFrame> | undefined;
   #clock: PlaybackClock | undefined;
   #times: Float64Array | undefined;
-  #cadence: Cadence | null = null;
   /** The presenter's clock last followed, and how to read the backend's time. */
   #followed: { intent: ClockIntent; serverNowUs: () => number } | undefined;
   #planner: WantPlanner | undefined;
@@ -396,7 +394,6 @@ export class PlaybackSession implements LaneControl {
     this.#data.open(times.length, sampleBudgetBytes(this.#budget));
     this.#planner = new WantPlanner(windowSize(this.#budget, opened.frame_bytes));
     this.#times = times;
-    this.#cadence = cadence(times);
     this.#clock = new PlaybackClock(times, this.#deps.now, this.#resumeAt ?? 0);
     this.#clock.setSpeed(this.#speed);
     this.#failures.clear();
@@ -494,7 +491,6 @@ export class PlaybackSession implements LaneControl {
     this.#cancelFrame = undefined;
     this.#clock = undefined;
     this.#times = undefined;
-    this.#cadence = null;
     this.#buffer = undefined;
     this.#data.close();
     this.#wait.stop();
@@ -516,7 +512,6 @@ export class PlaybackSession implements LaneControl {
       catalogs: this.#data.catalogs.listing,
       opened: this.#opened,
       inspection: this.#data.inspections.view,
-      cadence: this.#cadence,
       cached: this.#cached,
     });
     if (sameView(view, this.#view)) return;

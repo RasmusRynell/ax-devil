@@ -27,6 +27,9 @@ const CHECKED = {
 
 /** File under `frontend/src` -> why no smoke scenario checks it. */
 const EXEMPT = {
+  "bookmarks/ExportBookmarks.tsx":
+    "shown only in a browser window, which has no file dialog; one text field, as in the Connect dialog",
+  "bookmarks/RenameBookmark.tsx": "one text field, the shape of the Connect dialog's password page",
   "session/Notice.tsx":
     "the server password dialog is one masked field, the shape of the Connect dialog's password page",
   "shell/InformationDialog.tsx":

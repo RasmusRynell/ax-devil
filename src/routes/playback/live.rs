@@ -24,8 +24,9 @@ use api_types::{
     Audience,
     live::{LiveEventWire, LiveEventsWire, LiveGapWire, LiveOpenedWire, LiveSampleEventsWire},
     playback::{
-        ClientMessage, FileAppearances, FileScopeUnavailable, LaneInfo, PLAYBACK_PROTOCOL,
-        ServerMessage, envelope,
+        ClientMessage, EventAskWire, EventQueryWire, EventRowsWire, EventWire, FileAppearances,
+        FileEvent, FileEvents, FileScopeUnavailable, LaneInfo, PLAYBACK_PROTOCOL, ServerMessage,
+        envelope,
     },
 };
 use axum::extract::ws::Message;
@@ -246,6 +247,27 @@ impl<I: Incoming> Live<'_, I> {
                     unavailable: FileScopeUnavailable::PlainLane,
                 },
             }),
+            Some(Ok(ClientMessage::EventQuery(EventQueryWire { lane, request, .. }))) => self
+                .notify(&ServerMessage::EventRows(EventRowsWire {
+                    lane,
+                    request,
+                    rows: FileEvents::Unavailable {
+                        unavailable: FileScopeUnavailable::PlainLane,
+                    },
+                })),
+            Some(Ok(ClientMessage::Event(EventAskWire {
+                lane,
+                request,
+                event,
+                ..
+            }))) => self.notify(&ServerMessage::Event(EventWire {
+                lane,
+                request,
+                event,
+                detail: FileEvent::Unavailable {
+                    unavailable: FileScopeUnavailable::PlainLane,
+                },
+            })),
             Some(Ok(ClientMessage::Open { .. })) => Err(violation("The video is already open")),
             Some(Ok(
                 ClientMessage::Want(_)

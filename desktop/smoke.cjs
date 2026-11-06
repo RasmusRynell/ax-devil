@@ -15,8 +15,10 @@ const {
   watchCsp,
 } = require("./smoke-kit.cjs");
 const { gallery } = require("./smoke-gallery.cjs");
+const { items } = require("./smoke-items.cjs");
 const { playlist } = require("./smoke-playlist.cjs");
 const { plugins } = require("./smoke-plugins.cjs");
+const { bookmarks } = require("./smoke-bookmarks.cjs");
 const { exportDialog } = require("./smoke-export.cjs");
 const { live } = require("./smoke-live.cjs");
 const { remote } = require("./smoke-remote.cjs");
@@ -246,16 +248,21 @@ module.exports = async (window, shell) => {
         name: "settings",
         open: () => js("document.querySelector('[aria-label=Settings]').click()"),
       },
-      {
-        name: "settings-storage",
+      ...[
+        ["settings-stream", "Stream defaults"],
+        ["settings-analytics", "Analytics"],
+        ["settings-scan", "Network scan"],
+        ["settings-storage", "Storage"],
+      ].map(([name, tab]) => ({
+        name,
         open: async () => {
           await js("document.querySelector('[aria-label=Settings]').click()");
           await wait("document.querySelector('dialog[open]')");
           await js(
-            "[...document.querySelectorAll('[role=tab]')].find((b) => b.textContent === 'Storage').click()",
+            `[...document.querySelectorAll('[role=tab]')].find((b) => b.textContent === '${tab}').click()`,
           );
         },
-      },
+      })),
       { name: "shortcuts", open: openShortcuts },
       {
         name: "about",
@@ -307,10 +314,14 @@ module.exports = async (window, shell) => {
   await video(window);
   console.log("smoke: export");
   await exportDialog(window);
+  console.log("smoke: bookmarks");
+  await bookmarks(window);
   console.log("smoke: playlist");
   await playlist(window);
   console.log("smoke: plugins");
   await plugins(window);
+  console.log("smoke: items");
+  await items(window);
   console.log("smoke: sharing");
   await sharing(window, shell, ownerCsp);
   console.log("smoke: remote");

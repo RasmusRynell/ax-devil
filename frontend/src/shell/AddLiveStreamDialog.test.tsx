@@ -243,6 +243,63 @@ describe("add live stream dialog", () => {
     expect(asked.every((connection) => connection.like === "item-1")).toBe(true);
   });
 
+  it("edits a stream: it starts from the saved recipe, keeps a saved topic the camera does not list until the connection changes, and saves under the same id", async () => {
+    render(
+      <FakeSettings state={DEFAULT_SETTINGS}>
+        <SessionProvider>
+          <AddLiveStreamDialog
+            editing="item-1"
+            initial={{
+              label: "Gate",
+              host: "10.0.0.7",
+              username: "root",
+              overlay: {
+                mode: "datahub",
+                handler: "ADF_V1_FRAME",
+                topic: "saved.topic",
+                channel: 3,
+              },
+            }}
+            onClose={() => {}}
+          />
+        </SessionProvider>
+      </FakeSettings>,
+    );
+    const topic = () => screen.getByLabelText("DataHub Topic") as HTMLSelectElement;
+    await waitFor(() => expect(topic().value).toBe("saved.topic"));
+    expect(screen.getByRole("dialog", { name: "Edit Live Stream" })).toBeTruthy();
+    expect((screen.getByLabelText("Name") as HTMLInputElement).value).toBe("Gate");
+    expect((screen.getByLabelText("Password") as HTMLInputElement).value).toBe("");
+    // The sizes are asked as the stream is saved: by its saved login.
+    await waitFor(() => expect(asked.length).toBeGreaterThan(0));
+    expect(asked.every((connection) => connection.like === "item-1")).toBe(true);
+
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(commands()).toHaveLength(1));
+    expect(commands()[0]).toMatchObject({
+      cmd: {
+        type: "content",
+        command: {
+          type: "editItem",
+          item: "item-1",
+          new: {
+            type: "Live",
+            host: "10.0.0.7",
+            username: "root",
+            overlay: { mode: "datahub", topic: "saved.topic", channel: 3 },
+          },
+        },
+      },
+    });
+
+    // A blank login is the saved one: nothing is sent for it.
+    expect(JSON.stringify(commands()[0])).not.toContain("password");
+
+    type("Host", "10.0.0.8");
+    await waitFor(() => expect(topic().value).toBe(""));
+    expect(screen.queryByRole("option", { name: "saved.topic" })).toBeNull();
+  });
+
   it("needs a handler type for an overlay mode, offering only decoders that can read a live stream", async () => {
     await open();
     expect(screen.getByRole("option", { name: "ADF v1 Frame" })).toBeTruthy();

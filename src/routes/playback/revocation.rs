@@ -316,6 +316,7 @@ async fn a_viewer_made_a_follower_gets_no_frame_or_data_outside_the_presenters_w
         wire: super::wire::Wire::Raw,
         warnings: Vec::new(),
         pts: None,
+        cadence: None,
         library: &library,
         overlays: &service,
         exports: &Arc::new(crate::exports::ExportService::electron()),

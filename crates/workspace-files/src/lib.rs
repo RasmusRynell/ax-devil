@@ -7,7 +7,7 @@ mod live;
 mod recents;
 mod recovery;
 
-pub use disk::{load, save};
+pub use disk::{load, save, write_text};
 pub use recents::{Recent, Recents};
 pub use recovery::{Claim, RecoveryCopy, RecoveryFolder, file_stem, resolved};
 

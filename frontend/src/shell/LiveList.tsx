@@ -42,8 +42,8 @@ interface Props {
 
 /**
  * One section's rows as a tree that draws only the rows in view, however many a scan lists. The arrow keys, Home and
- * End move between the rows, left and right fold and unfold, Enter opens, Space shows the info lines, Delete removes
- * and the menu key or Shift+F10 opens the row's menu. Keys that reach it from a button inside a row are the
+ * End move between the rows, left and right fold and unfold, Enter opens, Space shows the info lines, F2 edits,
+ * Delete removes and the menu key or Shift+F10 opens the row's menu. Keys that reach it from a button inside a row are the
  * button's. Focusing the tree puts the keyboard on its first row.
  */
 export function LiveList({
@@ -99,6 +99,7 @@ export function LiveList({
     else if (event.key === "Enter") onOpen(row);
     else if (event.key === " ") onInfo(row);
     else if (event.key === "Delete") onRemove(row);
+    else if (event.key === "F2" && mayAct && row.menu.includes("edit")) onAct(row, "edit");
     else if (event.key === "ContextMenu" || (event.shiftKey && event.key === "F10")) {
       if (row.menu.length === 0) return;
       const box = document.getElementById(idOf(row))?.getBoundingClientRect();

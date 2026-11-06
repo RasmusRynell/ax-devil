@@ -98,7 +98,10 @@ function stubBackend(
 const open = async (onClose = () => {}, resolverId?: string) => {
   render(
     <SessionProvider>
-      <AddPlaylistDialog resolverId={resolverId} onClose={onClose} />
+      <AddPlaylistDialog
+        initial={resolverId ? { resolver: resolverId } : undefined}
+        onClose={onClose}
+      />
     </SessionProvider>,
   );
   await screen.findByLabelText("Playlist source");
@@ -419,5 +422,68 @@ describe("add playlist dialog", () => {
     await open(() => {}, "gone");
     expect(screen.getByLabelText<HTMLSelectElement>("Playlist source").value).toBe("");
     expect(screen.getByText(/^Build a playlist/)).toBeTruthy();
+  });
+});
+
+describe("edit playlist dialog", () => {
+  const edit = async (resolver: string, settings = {}) => {
+    stubBackend();
+    render(
+      <SessionProvider>
+        <AddPlaylistDialog
+          editing="item-1"
+          initial={{ resolver, label: "Train", settings }}
+          onClose={() => {}}
+        />
+      </SessionProvider>,
+    );
+    await screen.findByRole("dialog", { name: "Edit Playlist" });
+  };
+
+  it("starts from the saved source, settings and name, keeps the source, and saves the resolved playlists over the item", async () => {
+    await edit("mot_challenge", { root: "/data", sequences: ["SEQ-01"] });
+    expect(((await screen.findByLabelText("Dataset folder")) as HTMLInputElement).value).toBe(
+      "/data",
+    );
+    expect((screen.getByLabelText("Name") as HTMLInputElement).value).toBe("Train");
+    expect(locked("Playlist source")).toBe(true);
+
+    await screen.findByRole("checkbox", { name: /SEQ-01/ });
+    fireEvent.click(screen.getByRole("checkbox", { name: /SEQ-02/ }));
+    fireEvent.change(screen.getByLabelText("Name"), { target: { value: "Later" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(commands()).toHaveLength(1));
+    expect(commands()[0]).toMatchObject({
+      cmd: {
+        type: "content",
+        command: { type: "editResolved", item: "item-1", ticket: "p1", label: "Later" },
+      },
+    });
+    expect(bodyOf(resolveCalls()[0][1])).toEqual({
+      session: "room-1",
+      settings: { root: "/data", sequences: ["SEQ-01", "SEQ-02"] },
+    });
+  });
+
+  it("saves a new name alone without finding the playlists again", async () => {
+    await edit("mot_challenge", { root: "/data", sequences: ["SEQ-01"] });
+    await screen.findByRole("checkbox", { name: /SEQ-01/ });
+    fireEvent.change(screen.getByLabelText("Name"), { target: { value: " Later " } });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(commands()).toHaveLength(1));
+    expect(commands()[0]).toMatchObject({
+      cmd: { command: { type: "renameItem", item: "item-1", label: "Later" } },
+    });
+    expect(resolveCalls()).toEqual([]);
+  });
+
+  it("says a source this installation lacks is unavailable and saves nothing", async () => {
+    await edit("gone", { root: "/data" });
+    expect((await screen.findByRole("alert")).textContent).toBe(
+      "Playlist source 'gone' is unavailable.",
+    );
+    expect(screen.queryByRole("button", { name: "Save" })).toBeNull();
+    expect(locked("Playlist source")).toBe(true);
+    expect(screen.getByRole("button", { name: "Cancel" }).matches(":disabled")).toBe(false);
   });
 });

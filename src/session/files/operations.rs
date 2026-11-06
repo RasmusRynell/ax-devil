@@ -188,6 +188,31 @@ impl WorkspaceFiles {
         Ok(())
     }
 
+    /// Writes every bookmark to the CSV file `path`. Any other kind of file is refused, so a seat cannot use the export to
+    /// overwrite a file that is not a CSV.
+    pub(super) async fn export_bookmarks(
+        &self,
+        handle: &Handle<api_types::CursorPoint>,
+        files: &SessionFiles,
+        path: PathBuf,
+    ) -> Result<(), Failure> {
+        if !path
+            .extension()
+            .is_some_and(|found| found.eq_ignore_ascii_case("csv"))
+        {
+            return Err(
+                UserError::new(ErrorCode::InvalidPath, "The file must end in .csv")
+                    .at(HostPath::new(&path))
+                    .into(),
+            );
+        }
+        let text = workspace_store::bookmarks_csv(&handle.state().doc.workspace);
+        files
+            .off(move || workspace_files::write_text(&path, &text))
+            .await?;
+        Ok(())
+    }
+
     /// Back to the saved file, or an empty Untitled workspace, dropping the changes and their copy.
     pub(super) async fn discard(
         &self,

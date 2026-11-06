@@ -113,7 +113,7 @@ independent viewers (see the OF-02 deviation in the new-tree `docs/parity-deviat
 | RC-01 | Catalog language (schema v4) and the six built-ins | M | `.agents/skills/render-catalog/SKILL.md` |
 | RC-02 | Per-view selection, Apply to all, Use as default, hot reload | M | `src/ax_devil/modules/scene/rendering/README.md#catalog-files-and-selection` |
 | RC-03 | Catalog management: Copy and Delete in the lane menu's Look page | M | `docs/architecture/catalog-viewer.md` |
-| RC-04 | `catalog list/check/render/new/use/reference` | M | same |
+| RC-04 | `catalog list/check/new/use/reference` | M | same |
 
 ### Plugins
 
