@@ -79,7 +79,7 @@ Listed in [parity deviations](parity-deviations.md).
 | IN-09 | Frame vs File scope for objects | M | done | `{tools/{ObjectsPanel,table/Table},playback/fileScope}.test.*` | File scope follows the lane's class toggles, not its frame filter; not for a followed window. The cursor keeps off-page rows. A pick off the frame seeks its first one |
 | IN-10 | Pinned fields kept across object pages | S | done | `playback/{fields,Inspector}.test.*` | |
 | IN-11 | Copy a field or section value | S | done | `playback/{fields,Inspector}.test.*` |  |
-| IN-12 | Presence strip with seeking; previous/next appearance | M | in progress | `playback/{appearanceJumps,Inspector}.test.*` | Previous/next appearance. Left: strip |
+| IN-12 | Presence strip with seeking; previous/next appearance | M | in progress | `{playback/{appearanceJumps,Inspector},tools/PresenceStrip}.test.*` | Strip in rows and page. Left: event ticks |
 | IN-13 | Event to frame (offline; live events have no seekable history); event/object cross-navigation | M | todo |  |  |
 
 ## Render catalogs

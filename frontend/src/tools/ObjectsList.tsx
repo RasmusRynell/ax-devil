@@ -27,7 +27,7 @@ import {
   type SortKey,
 } from "./objects";
 import { neighbour, type Steps } from "./pageStack";
-import { FRAME_COLUMNS, fileColumns } from "./objectColumns";
+import { FRAME_COLUMNS, ShownFrame, fileColumns } from "./objectColumns";
 import { openRow } from "./openRow";
 import { SCOPES, type ListState, type Scope } from "./listState";
 import { listMessage, noticeOf, staleOf } from "./listStatus";
@@ -148,10 +148,10 @@ export function ObjectsList({
   const stale = inFile ? staleOf(files) : null;
   const total = inFile ? (page?.total ?? 0) : objects.length;
   const count = inFile ? (page?.matched ?? 0) : found.length;
-  const seek = canSeek ? (frameNumber: number) => source.seek(frameNumber) : undefined;
+  const shownFrame = view.shown?.sequenceId;
   const fileCols = useMemo(
-    () => fileColumns(view.frameCount, (frame) => source.frameTime(frame), seek),
-    [view.frameCount, canSeek, source],
+    () => fileColumns(view.frameCount, (frame) => source.frameTime(frame)),
+    [view.frameCount, source],
   );
   // The rows in view, bucketed so that scrolling asks the backend for a page only now and then.
   const onRange = useCallback((start: number) => setOffset(Math.floor(start / STEP) * STEP), []);
@@ -274,21 +274,23 @@ export function ObjectsList({
           )}
         </div>
         {inFile ? (
-          <Table<FileRowWire>
-            {...shared}
-            key="objects-file"
-            tableKey="objects-file"
-            columns={fileCols}
-            rowAt={(index) => page?.rows[index - page.offset]}
-            keyOf={(row) => row.id}
-            indexOf={(key) => openRow(key, page, null).row ?? -1}
-            memory={tables.current.file}
-            dimmed={(row) => absent(row.id)}
-            onActivate={(row) => choose(row.id, absent(row.id) ? row.first_frame : undefined)}
-            onRange={onRange}
-            onCursor={(key) => from === null && source.files.locating(lane, key)}
-            cursorId={(row) => `row:object-${row.id}`}
-          />
+          <ShownFrame value={shownFrame}>
+            <Table<FileRowWire>
+              {...shared}
+              key="objects-file"
+              tableKey="objects-file"
+              columns={fileCols}
+              rowAt={(index) => page?.rows[index - page.offset]}
+              keyOf={(row) => row.id}
+              indexOf={(key) => openRow(key, page, null).row ?? -1}
+              memory={tables.current.file}
+              dimmed={(row) => absent(row.id)}
+              onActivate={(row) => choose(row.id, absent(row.id) ? row.first_frame : undefined)}
+              onRange={onRange}
+              onCursor={(key) => from === null && source.files.locating(lane, key)}
+              cursorId={(row) => `row:object-${row.id}`}
+            />
+          </ShownFrame>
         ) : (
           <Table<FrameObject>
             {...shared}
