@@ -1,4 +1,3 @@
-import { useEffect } from "react";
 import { command, scopeOf } from "../commands";
 import type { CommandId } from "../generated/settings";
 import { Icon } from "../kit/Icon";
@@ -19,29 +18,6 @@ const OPEN: readonly [id: CommandId, icon: IconName, kind?: Kind][] = [
 export function StartPanel({ onRun }: { onRun: (id: string) => void }) {
   const allowed = useAllowed();
   const recents = useRecents(true);
-  const [open] = OPEN;
-  const canOpen = allowed[scopeOf(open[0])];
-  // Open Workspace is the default button: Enter runs it when nothing else has the focus (a focused button keeps
-  // its own Enter), unless a dialog is open or a shortcut already took the key.
-  useEffect(() => {
-    if (!canOpen) return;
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (
-        event.key !== "Enter" ||
-        event.target !== document.body ||
-        event.defaultPrevented ||
-        event.ctrlKey ||
-        event.altKey ||
-        event.metaKey ||
-        document.querySelector("dialog[open]")
-      )
-        return;
-      event.preventDefault();
-      onRun(open[0]);
-    };
-    document.addEventListener("keydown", onKeyDown);
-    return () => document.removeEventListener("keydown", onKeyDown);
-  }, [canOpen, onRun, open]);
   return (
     <div className="flex flex-col gap-l">
       <div className="grid max-sm:grid-cols-2">

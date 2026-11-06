@@ -17,10 +17,10 @@ afterEach(() => {
 });
 
 /** The shell of the window's own Session, once it is seated; resolves to the Session's room. */
-async function renderShell() {
+async function renderShell(state = DEFAULT_SETTINGS) {
   render(
     <GrantsContext.Provider value={["configuration"]}>
-      <FakeSettings state={DEFAULT_SETTINGS}>
+      <FakeSettings state={state}>
         <SessionProvider>
           <Shell version="1.2.3" />
         </SessionProvider>
@@ -66,6 +66,16 @@ describe("workspace files", () => {
     expect(screen.queryByRole("textbox", { name: "Path on the server" })).toBeNull();
     fireEvent.keyDown(document.body, { key: "Enter" });
     expect(screen.getByRole("textbox", { name: "Path on the server" })).toBeTruthy();
+  });
+
+  it("lets a shortcut bound to Enter take the key from the default Open Workspace", async () => {
+    await renderShell({
+      ...DEFAULT_SETTINGS,
+      shortcuts: { ...DEFAULT_SETTINGS.shortcuts, settings: "Enter" },
+    });
+    fireEvent.keyDown(document.body, { key: "Enter" });
+    expect(screen.getByRole("dialog", { name: "Settings" })).toBeTruthy();
+    expect(screen.queryByRole("textbox", { name: "Path on the server" })).toBeNull();
   });
 
   it("opens a workspace by the path typed where the window has no file dialog", async () => {
