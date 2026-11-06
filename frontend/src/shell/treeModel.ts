@@ -1,4 +1,5 @@
 import type { HiddenTarget, ItemKind, RowInfo, WorkspaceState } from "../generated/api";
+import { casefold, compareNames } from "../casefold";
 import type { CaptionMark } from "../kit/SectionCaption";
 
 /** One row of the workspace tree with what the tree needs to draw and operate it. */
@@ -61,26 +62,6 @@ export function treeOf({ rows, items }: WorkspaceState): TreeRow[] {
     tree.push(row);
   }
   return tree;
-}
-
-/**
- * Text with case folded away as Python's `str.casefold` does (Cherokee aside): each code point alone, so `ς` equals
- * `σ` whatever surrounds it. `ß` and ligatures expand through the upper case; `ẞ` is `ss` and the dotless `ı` stays.
- */
-const casefold = (text: string): string =>
-  Array.from(text, (c) => (c === "ẞ" ? "ss" : c === "ı" ? c : c.toUpperCase().toLowerCase())).join(
-    "",
-  );
-
-/** Orders two texts by code point, which UTF-16 order does not for characters beyond the first 65,536. */
-function compareCodePoints(a: string, b: string): number {
-  const [x, y] = [
-    Array.from(a, (c) => c.codePointAt(0) ?? 0),
-    Array.from(b, (c) => c.codePointAt(0) ?? 0),
-  ];
-  for (let at = 0; at < Math.min(x.length, y.length); at++)
-    if (x[at] !== y[at]) return x[at] < y[at] ? -1 : 1;
-  return x.length - y.length;
 }
 
 /**
@@ -183,7 +164,7 @@ export type Order = (typeof ORDERS)[number][0];
 /** How two top-level rows compare in each order; 0 keeps them in the saved order. */
 const COMPARE: Record<Order, (a: TreeRow, b: TreeRow) => number> = {
   workspace: () => 0,
-  name: (a, b) => compareCodePoints(casefold(a.info.label), casefold(b.info.label)),
+  name: (a, b) => compareNames(a.info.label, b.info.label),
 };
 
 /**

@@ -51,6 +51,8 @@ interface Props {
   /** Whether the seat may hide and unhide rows. */
   hides: boolean;
   onOpen: (row: TreeRow) => void;
+  /** A double click shows the row and the rows above it, before it opens. */
+  onReveal: (row: TreeRow) => void;
   /** Puts the keyboard on a row. */
   onCurrent: (key: string) => void;
   /** Moves the keyboard to the row at a place in the sequence of all sections' rows. */
@@ -72,8 +74,9 @@ interface Props {
 }
 
 /**
- * One section's rows as a tree that draws only the rows in view. Click or Enter opens a row in its viewer; the arrow
- * keys move (on into the next section), expand and collapse; the menu key or Shift+F10 opens the row's menu.
+ * One section's rows as a tree that draws only the rows in view. A click selects a row; a double click or Enter
+ * opens it in its viewer; the arrow keys move (on into the next section), expand and collapse; the menu key or Shift+F10
+ * opens the row's menu.
  * Focusing the tree puts the keyboard on its first row unless it is already on one of its rows.
  */
 export function WorkspaceList({
@@ -87,6 +90,7 @@ export function WorkspaceList({
   scroller,
   hides,
   onOpen,
+  onReveal,
   onCurrent,
   onGo,
   onLose,
@@ -138,7 +142,7 @@ export function WorkspaceList({
     else if (event.key === "ArrowLeft") {
       const parent = rows.findIndex(({ row }) => row.info.key === active.parent);
       if (parent >= 0) onGo(offset + parent);
-    } else if (event.key === "Enter" || event.key === " ") onOpen(active);
+    } else if (event.key === "Enter") onOpen(active);
     else if (event.key === "F2") onEdit(active);
     else if (event.key === "Delete") onRemove(active);
     else if (event.key === "ContextMenu" || (event.shiftKey && event.key === "F10")) {
@@ -188,6 +192,9 @@ export function WorkspaceList({
               // The focus first: a tree that takes it starts on its first row, which the click then overrides.
               ref.current?.focus({ preventScroll: true });
               onCurrent(info.key);
+            }}
+            onDoubleClick={() => {
+              onReveal(row);
               onOpen(row);
             }}
             onPointerEnter={(event) =>
@@ -212,6 +219,7 @@ export function WorkspaceList({
                   event.stopPropagation();
                   onFold(info.key, !folded);
                 }}
+                onDoubleClick={(event) => event.stopPropagation()}
               >
                 <Icon name={folded ? "chevron-right" : "chevron-down"} />
               </span>
@@ -222,7 +230,10 @@ export function WorkspaceList({
             <span className="min-w-0 flex-1 truncate">{info.label}</span>
             {note && <span className="sr-only">{`, ${note}`}</span>}
             {info.warnings.length > 0 && (
-              <span onClick={(event) => event.stopPropagation()}>
+              <span
+                onClick={(event) => event.stopPropagation()}
+                onDoubleClick={(event) => event.stopPropagation()}
+              >
                 <Popover
                   label={`${info.label}: warnings`}
                   trigger={<Icon name="triangle-alert" />}
@@ -242,6 +253,7 @@ export function WorkspaceList({
                   event.stopPropagation();
                   onHide(row);
                 }}
+                onDoubleClick={(event) => event.stopPropagation()}
                 className={`rounded-control ${
                   info.hidden || isCurrent
                     ? ""

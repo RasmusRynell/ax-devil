@@ -14,6 +14,7 @@ import {
   renderTree,
   shown,
 } from "./WorkspaceTree.fixture";
+import { KeptStateProvider } from "./keptState";
 import { WorkspaceTree } from "./WorkspaceTree";
 
 beforeEach(() => vi.stubGlobal("WebSocket", FakeSocket));
@@ -61,7 +62,7 @@ describe("rows", () => {
     ]);
     expect(labels()).toEqual(["runs / Train", "A", "GT", "runs / Train (2)", "A", "GT"]);
 
-    fireEvent.click(rows[3]);
+    fireEvent.doubleClick(rows[3]);
     await act(async () => {});
     expect(shown()).toMatchObject({
       active: "runs",
@@ -123,9 +124,9 @@ describe("rows", () => {
 });
 
 describe("opening", () => {
-  it("opens the item's viewer on the entry whose row is clicked", async () => {
+  it("opens the item's viewer on the entry whose row is double-clicked", async () => {
     await renderTree();
-    fireEvent.click(screen.getByRole("treeitem", { name: /^A/ }));
+    fireEvent.doubleClick(screen.getByRole("treeitem", { name: /^A/ }));
     await act(async () => {});
     expect(commands()).toEqual([{ type: "openViewer", item: "mot" }]);
     expect(shown()).toEqual({ active: "mot", viewers: { mot: { entry: "mot/A" } } });
@@ -133,10 +134,10 @@ describe("opening", () => {
 
   it("opens an item without choosing its entry, and a lane's entry", async () => {
     await renderTree();
-    fireEvent.click(screen.getByRole("treeitem", { name: /^v\.mp4/ }));
+    fireEvent.doubleClick(screen.getByRole("treeitem", { name: /^v\.mp4/ }));
     await act(async () => {});
     expect(shown()).toEqual({ active: "v", viewers: { v: {} } });
-    fireEvent.click(screen.getByRole("treeitem", { name: /^GT/ }));
+    fireEvent.doubleClick(screen.getByRole("treeitem", { name: /^GT/ }));
     await act(async () => {});
     expect(shown()).toMatchObject({ active: "mot", viewers: { mot: { entry: "mot/A" } } });
   });
@@ -151,10 +152,10 @@ describe("opening", () => {
         viewers: { mot: { entry: "mot/A", clock } },
       }),
     );
-    fireEvent.click(screen.getByRole("treeitem", { name: /^A/ }));
+    fireEvent.doubleClick(screen.getByRole("treeitem", { name: /^A/ }));
     expect(shown().viewers.mot).toEqual({ entry: "mot/A", clock });
     fireEvent.click(screen.getByRole("button", { name: "Show hidden items" }));
-    fireEvent.click(screen.getByRole("treeitem", { name: /^B/ }));
+    fireEvent.doubleClick(screen.getByRole("treeitem", { name: /^B/ }));
     expect(shown().viewers.mot).toEqual({ entry: "mot/B" });
   });
 
@@ -169,6 +170,25 @@ describe("opening", () => {
     fireEvent.keyDown(tree, { key: "Enter" });
     await act(async () => {});
     expect(shown()).toMatchObject({ active: "mot", viewers: { mot: { entry: "mot/A" } } });
+  });
+
+  it("selects on a click, ignores Space, and opens on a double click after showing the row's place", async () => {
+    await renderTree();
+    const tree = screen.getByRole("tree", { name: "Playlists" });
+    const row = screen.getByRole("treeitem", { name: /^A/ });
+    fireEvent.click(row);
+    fireEvent.keyDown(tree, { key: " " });
+    await act(async () => {});
+    expect(commands()).toEqual([]);
+    expect(tree.getAttribute("aria-activedescendant")).toBe(row.id);
+
+    // Left collapses the entry, moves to its playlist, and collapses that.
+    for (let press = 0; press < 3; press++) fireEvent.keyDown(tree, { key: "ArrowLeft" });
+    expect(labels()).toEqual(["v.mp4", "bad.mp4, unavailable: File not found", "mot"]);
+    fireEvent.doubleClick(screen.getByRole("treeitem", { name: /^mot/ }));
+    await act(async () => {});
+    expect(shown().active).toBe("mot");
+    expect(labels().slice(2)).toEqual(["mot", "A"]);
   });
 
   it("walks on from one section's last row into the next and back, and Home and End span them all", async () => {
@@ -206,10 +226,10 @@ describe("opening", () => {
       failed("bad", "File not found"),
       video("wait", false, { status: "Pending" }),
     ]);
-    fireEvent.click(screen.getByRole("treeitem", { name: /^bad\.mp4/ }));
+    fireEvent.doubleClick(screen.getByRole("treeitem", { name: /^bad\.mp4/ }));
     await act(async () => {});
     expect(screen.getByRole("alert").textContent).toBe("bad.mp4: File not found");
-    fireEvent.click(screen.getByRole("treeitem", { name: /^wait\.mp4/ }));
+    fireEvent.doubleClick(screen.getByRole("treeitem", { name: /^wait\.mp4/ }));
     await act(async () => {});
     expect(commands()).toEqual([]);
     expect(shown().active).toBeUndefined();
@@ -218,7 +238,7 @@ describe("opening", () => {
   it("says when the backend would not open the viewer", async () => {
     await renderTree();
     FakeSocket.refuseContent = "TooManyStreams";
-    fireEvent.click(screen.getByRole("treeitem", { name: /^A/ }));
+    fireEvent.doubleClick(screen.getByRole("treeitem", { name: /^A/ }));
     await act(async () => {});
     expect(screen.getByRole("alert").textContent).toBe("Too many videos are open.");
     expect(shown().active).toBeUndefined();
@@ -279,7 +299,9 @@ describe("hiding", () => {
     );
     render(
       <SessionProvider>
-        <WorkspaceTree {...LISTING} />
+        <KeptStateProvider>
+          <WorkspaceTree view="workspace" {...LISTING} />
+        </KeptStateProvider>
       </SessionProvider>,
     );
     await act(async () => {});

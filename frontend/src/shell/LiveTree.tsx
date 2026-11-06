@@ -1,4 +1,4 @@
-import { useCallback, useId, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import type { LiveConfirmation } from "../generated/api";
 import { Button } from "../kit/Button";
 import { Menu, type MenuCommand, type MenuEntry } from "../kit/Menu";
@@ -6,12 +6,19 @@ import { Popup } from "../kit/Popup";
 import { SectionCaption } from "../kit/SectionCaption";
 import { ACTIONS, type Row, type RowAction, type SectionView, type Shown } from "../live/rows";
 import { HoverPicture } from "./HoverPicture";
+import { useKept } from "./keptState";
 import { LiveList, type Listed } from "./LiveList";
 import { useHoverPicture } from "./useHoverPicture";
 
 type SectionId = SectionView["section"]["id"];
 
 const NOTHING_CHECKED: ReadonlySet<string> = new Set();
+const NO_FOLDED: ReadonlySet<SectionId> = new Set();
+const NO_COLLAPSED: ReadonlySet<string> = new Set();
+const NO_TRACK: { opened: ReadonlySet<SectionId>; revealed: ReadonlySet<SectionId> } = {
+  opened: new Set(),
+  revealed: new Set(),
+};
 
 /** The menu of a row: its actions in order, with a line between the groups of them. */
 const menuEntries = (row: Row, mayAct: boolean): MenuEntry[] =>
@@ -67,8 +74,8 @@ export function LiveTree({
   onConfirm,
 }: Props) {
   const prefix = useId();
-  const [folded, setFolded] = useState<ReadonlySet<SectionId>>(new Set());
-  const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set());
+  const [folded, setFolded] = useKept("live:folded", NO_FOLDED);
+  const [collapsed, setCollapsed] = useKept("live:collapsed", NO_COLLAPSED);
   const [info, setInfo] = useState<string | null>(null);
   const [menu, setMenu] = useState<{ row: Row; x: number; y: number } | null>(null);
   const scroller = useRef<HTMLDivElement>(null);
@@ -93,14 +100,10 @@ export function LiveTree({
   const opened = new Set(
     views.filter(({ section }) => holdsActive(section.rows)).map(({ section }) => section.id),
   );
-  const [track, setTrack] = useState<{
-    opened: ReadonlySet<SectionId>;
-    revealed: ReadonlySet<SectionId>;
-  }>({
-    opened: new Set(),
-    revealed: new Set(),
-  });
-  if (opened.size !== track.opened.size || [...opened].some((id) => !track.opened.has(id)))
+  const [track, setTrack] = useKept("live:track", NO_TRACK);
+  useEffect(() => {
+    if (opened.size === track.opened.size && [...opened].every((id) => track.opened.has(id)))
+      return;
     setTrack({
       opened,
       revealed: new Set([
@@ -108,6 +111,7 @@ export function LiveTree({
         ...[...opened].filter((id) => !track.opened.has(id)),
       ]),
     });
+  });
 
   const toggle = <T,>(set: ReadonlySet<T>, value: T): Set<T> => {
     const next = new Set(set);

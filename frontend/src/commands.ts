@@ -55,7 +55,6 @@ const SCOPES: Record<CommandId, Scope> = {
   "info-overlay": "view",
   "add-bookmark": "content",
   "export-video": "host",
-  "render-catalogs": "content",
   "debug-metrics": "app",
   plugins: "content",
   "collect-metrics": "app",
@@ -129,8 +128,6 @@ export const MENUS: readonly { label: string; items: readonly Layout[] }[] = [
       SEPARATOR,
       action("add-bookmark"),
       action("export-video"),
-      SEPARATOR,
-      action("render-catalogs"),
     ],
   },
   {

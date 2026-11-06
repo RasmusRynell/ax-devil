@@ -20,10 +20,13 @@ import { useSettings } from "../settings";
 import { useCan, useCommand, useDoc, useView } from "../session/session";
 import { useShow } from "../viewer/useViewers";
 import { useItemDialogs } from "./ItemDialogs";
+import { useKept } from "./keptState";
 import { LiveToolbar } from "./LiveToolbar";
 import { LiveTree } from "./LiveTree";
 import { ScanSettings } from "./ScanSettings";
 import { Refusal } from "./SettingField";
+
+const NO_FACETS: ReadonlySet<string> = new Set();
 
 /**
  * The sidebar's Live view: a search with Sort and Filter, the workspace's cameras with their streams, and, for whoever
@@ -43,11 +46,12 @@ export function LiveView({ onAdd }: { onAdd: (seed: AddSeed) => void }) {
   const { snapshot, epoch, connected } = useNetwork(scans);
   const reported = useStreamStatuses();
   const [front] = useView("active");
-  const [query, setQuery] = useState("");
-  const [order, setOrder] = useState<Order>("address");
-  const [hidden, setHidden] = useState<ReadonlySet<string>>(new Set());
+  // What the user set up stays while the window shows another view or hides the sidebar.
+  const [query, setQuery] = useKept("live:query", "");
+  const [order, setOrder] = useKept<Order>("live:order", "address");
+  const [hidden, setHidden] = useKept("live:facets", NO_FACETS);
   // As in the other views; a stream has no way to be hidden, so for now it changes no row.
-  const [showHidden, setShowHidden] = useState(false);
+  const [showHidden, setShowHidden] = useKept("live:showHidden", false);
   const [problem, setProblem] = useState<string | null>(null);
   const { edit, inform, dialogs } = useItemDialogs();
   // How each stream resolved, which keeps it under its camera while it resolves again or fails.

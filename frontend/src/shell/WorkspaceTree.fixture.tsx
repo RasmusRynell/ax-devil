@@ -2,6 +2,7 @@ import { act, render, screen } from "@testing-library/react";
 import type { ItemState } from "../generated/api";
 import { entry, failed, FakeSocket, playlist, video, type Room } from "../session/fakeSession";
 import { SessionProvider, useView } from "../session/session";
+import { KeptStateProvider } from "./keptState";
 import { WorkspaceTree } from "./WorkspaceTree";
 
 export const MOT = playlist(
@@ -42,7 +43,9 @@ function View() {
 export async function renderTree(items: ItemState[] = ITEMS, hidden = HIDDEN) {
   render(
     <SessionProvider>
-      <WorkspaceTree {...LISTING} />
+      <KeptStateProvider>
+        <WorkspaceTree view="workspace" {...LISTING} />
+      </KeptStateProvider>
       <View />
     </SessionProvider>,
   );

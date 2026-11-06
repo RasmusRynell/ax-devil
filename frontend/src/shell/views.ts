@@ -20,7 +20,6 @@ export const ACTIVITY: { top: readonly ActivityItem[]; bottom: readonly Activity
   bottom: [
     { id: "plugins", label: "Plugins", icon: "plug", opens: "view" },
     { id: "sessions", label: "Sessions", icon: "users", opens: "view" },
-    { id: "render-catalogs", label: "Render Catalogs", icon: "palette", opens: "command" },
     { id: "settings", label: "Settings", icon: "settings", opens: "command" },
   ],
 };

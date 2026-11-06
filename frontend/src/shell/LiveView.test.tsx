@@ -7,6 +7,7 @@ import type { AddSeed } from "../live/cameras";
 import type { SettingsApi } from "../settings";
 import { FakeSocket, type Room } from "../session/fakeSession";
 import { SessionProvider } from "../session/session";
+import { KeptStateProvider } from "./keptState";
 import { LiveView } from "./LiveView";
 
 const found = (address: string, sign_in: NetworkRow["sign_in"]): NetworkRow => ({
@@ -149,7 +150,9 @@ async function renderView(
     <GrantsContext value={grants}>
       <FakeSettings save={save}>
         <SessionProvider>
-          <LiveView onAdd={onAdd} />
+          <KeptStateProvider>
+            <LiveView onAdd={onAdd} />
+          </KeptStateProvider>
         </SessionProvider>
       </FakeSettings>
     </GrantsContext>,
@@ -166,7 +169,7 @@ const sent = () =>
   );
 
 describe("found cameras", () => {
-  it("offers Add only after the scan signed in, and adds and starts the stream by address, with no dialog", async () => {
+  it("offers Add only after the scan signed in, and adds and starts the stream by address", async () => {
     const added = vi.fn();
     await renderView([], added);
     await screen.findByText("10.0.0.3");
@@ -209,7 +212,7 @@ describe("scanning", () => {
       follow?.(snapshot);
     });
 
-  it("starts one scan however often Enter is pressed, and shows the cameras as they arrive", async () => {
+  it("starts one scan however often Enter is pressed, showing the cameras as they arrive", async () => {
     SNAPSHOT = { scan: 0, scanning: false, rows: [], failure: null };
     await renderView([]);
     const range = await screen.findByRole("textbox", { name: "IP range" });
@@ -235,7 +238,7 @@ describe("scanning", () => {
     expect(screen.queryByText("Scanning…")).toBeNull();
   });
 
-  it("holds the next scan back until a snapshot of the scan started is shown, whatever older one arrives", async () => {
+  it("holds the next scan back until a snapshot of the scan started is shown", async () => {
     let answer = () => {};
     holdScan = new Promise((resolve) => (answer = resolve));
     startedScan = 3;
@@ -272,7 +275,7 @@ describe("scanning", () => {
     vi.useRealTimers();
   };
 
-  it("lets a scan start again once the scan pressed has run or the backend restarted and counts from zero", async () => {
+  it("lets a scan start again once the scan has run or the backend restarted, counting from zero", async () => {
     SNAPSHOT = idle(4);
     await renderView([]);
     const range = await screen.findByRole("textbox", { name: "IP range" });
@@ -368,7 +371,9 @@ describe("scanning", () => {
           }}
         >
           <SessionProvider>
-            <LiveView onAdd={() => {}} />
+            <KeptStateProvider>
+              <LiveView onAdd={() => {}} />
+            </KeptStateProvider>
           </SessionProvider>
         </FakeSettings>
       </GrantsContext>

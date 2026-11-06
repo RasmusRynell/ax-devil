@@ -1,6 +1,7 @@
 /** The rows of the Live view: a camera per camera the workspace streams, with a row per stream under it, and a row per
  * camera the scan found that the workspace does not hold. */
 
+import { casefold, compareNames } from "../casefold";
 import type { LiveConfirmation, NetworkRow } from "../generated/api";
 import type { IconName } from "../kit/icons";
 import { running, type Camera, type Stream } from "./cameras";
@@ -380,7 +381,7 @@ function sorted(rows: readonly Row[], order: Order): Row[] {
   return [...rows].sort(
     (a, b) =>
       compareScans(order, a.scan, b.scan) ||
-      (order === "name" ? a.label.localeCompare(b.label, undefined, { sensitivity: "base" }) : 0),
+      (order === "name" ? compareNames(a.label, b.label) : 0),
   );
 }
 
@@ -509,15 +510,15 @@ export type SectionView = {
 
 /**
  * `sections` as the search `query` and the facets the user `hidden` show them. The query matches what a row says of
- * itself, upper or lower case.
+ * itself, case ignored as Python's `casefold` does.
  */
 export function viewsOf(
   sections: readonly Section[],
   query: string,
   hidden: ReadonlySet<string>,
 ): SectionView[] {
-  const text = query.trim().toLowerCase();
-  const matches = text ? (row: Row) => row.search.toLowerCase().includes(text) : null;
+  const text = casefold(query.trim());
+  const matches = text ? (row: Row) => casefold(row.search).includes(text) : null;
   const allowed = (row: Row) => !row.facets.some((facet) => hidden.has(facetKey(facet)));
   return sections.map((section) => {
     const shown = shownRows(section.rows, allowed, matches);
