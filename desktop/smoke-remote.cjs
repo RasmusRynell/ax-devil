@@ -217,7 +217,11 @@ async function remote(local, shell) {
     // A host that is not listening is said to be exactly that.
     const unreachable = stubDialogs(1);
     stubs.push(unreachable);
-    await shell.showRemote("http://127.0.0.1:1");
+    const gone = http.createServer();
+    await new Promise((resolve) => gone.listen(0, "127.0.0.1", resolve));
+    const { port } = gone.address();
+    await new Promise((resolve) => gone.close(resolve));
+    await shell.showRemote(`http://127.0.0.1:${port}`);
     assert.match(unreachable.asked[0].detail, /nothing is listening there.*ECONNREFUSED/);
     unreachable.restore();
 
