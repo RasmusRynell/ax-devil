@@ -161,12 +161,12 @@ async fn answer(
         Use::Command(Scope::Control),
     )
     .is_ok();
-    let mut defaults = live::defaults(&state.settings.state());
+    let mut defaults = live::defaults(&state.settings.state(), owner && handle.state().expands);
     if !owner {
         defaults = defaults.without_secrets();
     }
     let session = handle.state();
-    let saved = wire::Saved::new(&session.doc.workspace.workspace, owner);
+    let saved = wire::Saved::new(&session.doc.workspace.workspace, owner, session.expands);
     let (command, watch) = match wire::command(
         cmd,
         &state.plugins.handlers(),

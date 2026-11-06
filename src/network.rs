@@ -3,7 +3,7 @@
 //!
 //! A scan is the only thing that contacts hosts on its own account, and only when the user (or the setting that
 //! starts one at launch) asks. Opening a viewer is what contacts a camera for a stream; the sidebar's snapshots and
-//! login checks ([`crate::glance`]) go only to hosts a viewer opened for or the user confirmed. Passwords never leave a
+//! login checks ([`crate::glance`]) go only to hosts a viewer opened for. Passwords never leave a
 //! [`camera::Secret`]: a row has no login, only which of the configured logins was accepted.
 
 use std::{

@@ -22,7 +22,7 @@ use scene::{Event, OperationKind};
 use serde::{Deserialize, Serialize};
 use std::fmt;
 use ts_rs::TS;
-use workspace::{Confirmation, LiveOverlay, LiveRecipe, Protocol, Secret, intake};
+use workspace::{LiveOverlay, LiveRecipe, Protocol, Secret, intake};
 
 mod discovery;
 mod glance;
@@ -480,34 +480,6 @@ impl From<NewLiveWire> for intake::NewLive {
             resolution: new.resolution,
             url: new.url,
             overlay: new.overlay.map(Into::into),
-        }
-    }
-}
-
-/// A `$NAME` reference the user lets a stream send to a host: the body of a confirmation, and what a failed item
-/// that needs one is asked for.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
-pub struct LiveConfirmation {
-    /// The variable's name, without the `$`.
-    pub reference: String,
-    /// The host it would be sent to, as the references in the item expand.
-    pub host: String,
-}
-
-impl From<Confirmation> for LiveConfirmation {
-    fn from(confirmation: Confirmation) -> Self {
-        Self {
-            reference: confirmation.reference,
-            host: confirmation.host,
-        }
-    }
-}
-
-impl From<LiveConfirmation> for Confirmation {
-    fn from(confirmation: LiveConfirmation) -> Self {
-        Self {
-            reference: confirmation.reference,
-            host: confirmation.host,
         }
     }
 }

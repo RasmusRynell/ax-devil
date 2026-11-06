@@ -20,7 +20,7 @@ owner's written decision. A new feature gets a row in 01 first.
 | WS-10 | Bookmarks to CSV | S | done | `tests/it/bookmarks.rs`, `make test-desktop` |  |
 | WS-11 | Sidebar views Workspace, Live, Offline, Bookmarks, Plugins; search, sort, filter | M | in progress | `shell/{Shell,Sidebar,WorkspaceTree,WorkspaceTree.search}.test.tsx`, `shell/treeModel.test.ts` | Workspace and Offline: search, Sort (Workspace order, Name), Show hidden. Live: search, Sort, Filter. Bookmarks: search, kind |
 | WS-12 | Start panel and welcome area | M | done | `shell/Shell.test.tsx`, `shell/WorkspaceFiles.test.tsx` | Heading only with recents; Open Workspace default; Live: AC-03 |
-| WS-13 | Split viewer area: drag to split, preview vs pinned panes | M | todo |  |  |
+| WS-13 | Split viewer area: drag to split, preview vs pinned panes | M | in progress | `crates/sessions/tests/session/*.rs` | Viewer ids and a layout tree, 8 panes at most; split area, drag, pins todo |
 | WS-14 | Long playlists load collapsed | S | todo |  |  |
 | WS-15 | Hover cards with thumbnails | S | in progress | `tests/it/local_video.rs`, `shell/{WorkspaceTree,LiveView}.test.tsx` | Offline and Live |
 
@@ -28,11 +28,11 @@ owner's written decision. A new feature gets a row in 01 first.
 
 | ID | Feature | P | Status | Test | Notes |
 |----|---------|---|--------|------|-------|
-| AC-01 | Add Video with any number of overlays; decoder picked by extension | M | done | `crates/workspace/src/intake.rs`, `src/{cli/tests,routes/intake}.rs`, `tests/it/{playback_ws,local_video}.rs`, `desktop/args.test.cjs`, `shell/{Shell.addVideo,AddVideoDialog}.test.tsx`, `crates/handlers` tests | Any number of removable overlays, each with decoder and options. A remote window asks for a path; an unreadable file keeps Add off |
-| AC-02 | Drop video files on the window | M | todo |  |  |
+| AC-01 | Add Video with any number of overlays; decoder picked by extension | M | done | `crates/workspace/src/intake.rs`, `src/{cli/tests,routes/intake}.rs`, `tests/it/{playback_ws,local_video}.rs`, `desktop/args.test.cjs`, `shell/{Shell.addVideo,AddVideoDialog}.test.tsx`, `crates/handlers` tests | A remote window asks for a path; an unreadable file keeps Add off. `initial` prefills |
+| AC-02 | Drop video files on the window | M | dropped |  | See [deviations](parity-deviations.md) |
 | AC-03 | Add Live Stream with analytics discovery | M | done | `shell/AddLiveStreamDialog.test.tsx`, `src/session/reader/tests.rs` | Edit keeps the saved login on the same camera |
 | AC-04 | Add Playlist through a resolver form | M | done | `shell/AddPlaylistDialog.test.tsx`, `resolvers/*.test.*`, `crates/handler-api/tests/form.rs`, `src/routes/{handlers,resolve}.rs`, `src/cli/tests.rs`, `tests/it/{local_video,mot_playlist}.rs`, `make test-desktop` | Resolves before adding, so a failure stays in the dialog; a resolver may return several. The CLI playlist waits for a local window |
-| AC-05 | One intake validation for dialogs, CLI and drops | M | in progress | `crates/workspace/src/intake.rs`, `tests/it/{local_video,mot_playlist}.rs` | The dialogs and CLI use `workspace::intake`; drops are not built |
+| AC-05 | One intake validation for dialogs and the CLI | M | done | `crates/workspace/src/intake.rs`, `src/cli/tests.rs`, `tests/it/{local_video,mot_playlist}.rs` | Dialogs and CLI use `workspace::intake` |
 
 ## Live
 
@@ -51,11 +51,11 @@ owner's written decision. A new feature gets a row in 01 first.
 
 | ID | Feature | P | Status | Test | Notes |
 |----|---------|---|--------|------|-------|
-| OF-01 | Play/pause, step, speed, seek; clock-following playback | M | done | `playback/{chromeVisibility,clock,direction,session,FrameBuffer,protocol,wire,Transport,VideoViewer}.test.*`, `tests/it/playback_ws.rs`, `crates/foundation` time tests, `crates/media/tests/it/decode.rs`, `make test-desktop` | Frame entry, speed presets and floor, timeline drag (seeks on release): `Transport.test.tsx`, `clock.test.ts`. Image sequences (`crates/media/tests/it/sequence.rs`) and variable frame rate share it. An open shows a loading cover (`PlaybackStatus.test.tsx`, `smoke-video.cjs`); a decode failure stops. Real GPU: D0 spike only |
+| OF-01 | Play/pause, step, speed, seek; clock-following playback | M | done | `playback/{chromeVisibility,clock,direction,session,FrameBuffer,protocol,wire,Transport,VideoViewer}.test.*`, `tests/it/playback_ws.rs`, `crates/foundation` time tests, `crates/media/tests/it/decode.rs`, `make test-desktop` | Frame entry, speed presets and floor, timeline drag. Image sequences (`sequence.rs`) and variable frame rate share it. An open shows a loading cover (`PlaybackStatus.test.tsx`, `smoke-video.cjs`); a decode failure stops. Real GPU: D0 spike only |
 | OF-02 | Comparison lanes: several overlays on one video; a playlist entry opens at its start, and two recordings side by side are two viewers with no shared clock (out of scope) | M | in progress | `tests/it/{mot_playlist,playback_lanes}.rs`, `crates/overlays/src/tests/`, `crates/workspace/src/intake.rs`, `playback/{LaneGrid,lanes,session,frameSource}.test.*`, `desktop/smoke-playlist.cjs` | The frontend draws a lane from Sample Items and its Frame Map (D22–D27); one overlay file can be several lanes (D24) |
 | OF-03 | Playlists of entries and lanes; next/previous entry | M | done | `crates/playlist-resolvers/tests/`, `tests/it/mot_playlist.rs`, `viewer/{PlaylistViewer,PlaylistFollower}.test.tsx`, `crates/sessions/tests/session/revocation.rs`, `make test-desktop` | MOT Challenge and folder-pair playlists, a lane per overlay file. A following window follows the presenter's entry |
 | OF-04 | Timestamp matching, sequence-keyed files, sticky overlays | M | in progress | `crates/overlay-sync/src/select/tests.rs`, `crates/overlays/src/tests/{delivery,statuses}.rs`, `tests/it/mot_playlist.rs`, `playback/{LaneMenuTiming,lanes}.test.*` | Per lane, session only ([invariants](domain/invariants.md#frame-identity)); Frame Maps carry the choice to the viewer (D26) |
-| OF-05 | Timing and alignment diagnostics per lane | M | done | `crates/media/src/index/cadence.rs`, `crates/media/tests/it/{decode,sequence}.rs`, `crates/overlay-sync/src/alignment.rs`, `crates/overlays/src/tests/statuses.rs`, `playback/LaneMenuTiming.test.tsx`, `make test-desktop` | Timing tab: cadence and lane match; warns when samples end far or any sit on no frame. Image sequences share it |
+| OF-05 | Timing and alignment diagnostics per lane | M | done | `crates/media/src/index/cadence.rs`, `crates/media/tests/it/{decode,sequence}.rs`, `crates/overlay-sync/src/alignment.rs`, `crates/overlays/src/tests/statuses.rs`, `playback/LaneMenuTiming.test.tsx`, `make test-desktop` | Cadence and lane match; warns when samples end far or any sit on no frame. Image sequences share it |
 | OF-06 | Decoded-frame cache under one memory allowance | M | done | `crates/playback/src/tests/`, `tests/it/playback_ws.rs`, `src/video_cache.rs`, `crates/settings` tests | Allowance, equal shares, eviction, live resize, uncached oversized frames work. Cached frames are shaded on the seek bar |
 | OF-07 | Prepare next playlist entry in the background | S | todo |  |  |
 | OF-08 | Export with overlays: lane selection, quality presets, cancellable | M | done | `crates/{export,media}/`, `tests/export/export.rs`, `src/render_host/`, `{export,render}/`, `make test-desktop` | New: PNG of one frame. [Speed](../crates/export/README.md#measured): `make bench-export`. Hard links refused on every platform |
@@ -87,7 +87,7 @@ Listed in [parity deviations](parity-deviations.md).
 | ID | Feature | P | Status | Test | Notes |
 |----|---------|---|--------|------|-------|
 | RC-01 | Catalog language (schema v4) and the six built-ins | M | done | `present/{oracle.test.ts,catalog,layout,text}`, `crates/catalogs` tests | All six match the reference oracle sheets; JSON Schema comes from compiler tables |
-| RC-02 | Per-view selection, Apply to all, Use as default, hot reload | M | done | `playback/{LaneMenu,laneCatalog,catalogs}.test.*`, `crates/catalogs` tests, `tests/it/playback_catalogs.rs` | Built-in and `user:<file>`, hot-reloaded; a failing one keeps its last good. Default: `overlays.default_catalog` |
+| RC-02 | Per-view selection, Apply to all, Use as default, hot reload | M | done | `playback/{LaneMenu,laneCatalog,catalogs}.test.*`, `crates/catalogs` tests, `tests/it/playback_catalogs.rs` | Built-in and `user:<file>`, hot-reloaded; a failing one keeps its last good. Default: `overlays.default_catalog`; no Other-views line (deviations) |
 | RC-03 | Catalog Copy and Delete | M | done | `src/routes/catalogs.rs`, `playback/LaneCatalogActions.test.tsx` | Viewer window and preview sheets dropped by owner decision |
 | RC-04 | `catalog` CLI | M | done | `cli/catalog_tests.rs`, `tests/export/catalog_check.rs` | `reference` generated; `render` dropped by owner decision |
 
@@ -105,12 +105,12 @@ Listed in [parity deviations](parity-deviations.md).
 
 | ID | Feature | P | Status | Test | Notes |
 |----|---------|---|--------|------|-------|
-| ST-01 | Settings pages; restart marker | M | in progress | `SettingsDialog{,.table}.test.tsx`, `Shell.test.tsx` | Pages but Advanced, restart marker, Browse, staged logins, decoder choice |
+| ST-01 | Settings pages; restart marker | M | done | `SettingsDialog{,.table}.test.tsx`, `Shell.test.tsx`, `src/tests.rs` | All pages; storage folders read once at start |
 | ST-02 | Quick Setup on first start | M | done | `shell/QuickSetupDialog.test.tsx`, `Shell.test.tsx` | Opens on first run and from Help; any close stores the choices and marks setup done; a refused write does not |
 | ST-03 | Theme (light, dark, auto) and text size (system, small to larger), applied live | M | done | `crates/settings` tests, `App.test.tsx`, `settings.test.tsx` | Stored through `/api/settings`; applied live; zoom stays the browser's |
-| ST-04 | `$VARIABLE` references | M | in progress | `reference_tests.rs`, `SettingsDialog.test.tsx` | Host, login, RTSP port, timeout, scan range and logins, storage folders (also `~`) keep the raw reference; unresolved: loads, defaults at use, save refused. Left: see deviations |
+| ST-04 | `$VARIABLE` references | M | done | `reference_tests.rs`, `SettingsDialog.test.tsx`, `AddLiveStreamDialog.test.tsx` | Every field takes one, kept raw; unset gives empty or the default, with a warning; a number or folder that does not resolve is refused on save |
 | ST-05 | Keyboard shortcuts and overrides | M | done | `crates/settings` tests, `ShortcutsDialog.test.tsx`, `SettingsDialog.test.tsx`, `Shell.test.tsx` | Command table, override storage, conflict checks, live keys; editor from General, OK saves, Cancel ignored while saving |
-| ST-06 | Workspace credential references expand only for their bound host or a confirmed one; warn before saving a literal password (new) | M | done | `shell/{SettingsDialog{,.table},AddLiveStreamDialog}.test.tsx` | Camera and broker passwords mask and warn on a literal, not a `$NAME` |
+| ST-06 | Warn before saving a literal password (new); workspace references expand silently (D18) | M | done | `shell/{SettingsDialog{,.table},AddLiveStreamDialog}.test.tsx`, `crates/workspace` live tests | Camera and broker passwords mask and warn on a literal, not a `$NAME`; no prompt |
 | AP-01 | Uncaught errors logged; continue or close | M | done | `UncaughtErrors.test.tsx`, `desktop/uncaught.test.cjs` | The page reports its errors to the backend's log |
 | AP-02 | Restart from inside the app | M | done | `shell/Shell.test.tsx`, `desktop/args.test.cjs` | A setting that needs a restart offers to relaunch the desktop app on its own backend; other windows are told |
 | AP-03 | `clear-cache` | S | done | `src/disk_cache.rs` test | Lists, asks, removes, counts what it removed; only ax-devil's own files in its cache subfolders |

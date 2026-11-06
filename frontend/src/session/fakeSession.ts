@@ -14,6 +14,7 @@ import type {
   SessionServerMessage,
   View,
 } from "../generated/api";
+import { restrict } from "./fakeViews";
 import { hides, rowsOf } from "./fakeRows";
 import { EMPTY_VIEW } from "./views";
 
@@ -99,35 +100,6 @@ interface Seat {
   viewsDone: number;
   resume: string;
   socket: FakeSocket | null;
-}
-
-const entriesOf = ({ resolution }: ItemState): EntryInfo[] => {
-  if (resolution.status !== "Resolved") return [];
-  const { content } = resolution;
-  if (content.kind === "Playlist") return content.entries;
-  return content.kind === "SeekableVideo" ? [content.entry] : [];
-};
-
-/**
- * `view` cut down to the viewers the Doc has open, each naming an entry: the one it asked for, else the first of its
- * item's Content that is not hidden, else the first. The backend also swaps an entry the Content does not have; the
- * fake leaves it, which lets a test name an entry of a Content it has not built.
- */
-function restrict(view: View, items: readonly ItemState[], hidden: readonly HiddenTarget[]): View {
-  const open = new Map(items.filter((item) => item.open).map((item) => [item.id, item]));
-  const viewers: View["viewers"] = {};
-  for (const [id, viewer] of Object.entries(view.viewers)) {
-    const item = open.get(id);
-    if (!item || !viewer) continue;
-    const entries = entriesOf(item);
-    const fallback = entries.find(({ id: entryId }) => !hides(hidden, entryId)) ?? entries[0];
-    viewers[id] = { ...viewer, entry: viewer.entry ?? fallback?.id };
-  }
-  return {
-    sidebar: view.sidebar,
-    active: view.active && open.has(view.active) ? view.active : undefined,
-    viewers,
-  };
 }
 
 /**

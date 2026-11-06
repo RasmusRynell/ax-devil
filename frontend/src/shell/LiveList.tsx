@@ -1,5 +1,4 @@
 import { useState, type KeyboardEvent, type RefObject } from "react";
-import type { LiveConfirmation } from "../generated/api";
 import type { Row, RowAction } from "../live/rows";
 import { LiveRow } from "./LiveRow";
 import { useSpanWindow } from "./useSpanWindow";
@@ -26,7 +25,6 @@ interface Props {
   /** The row whose info lines a click opened. */
   info: string | null;
   mayAct: boolean;
-  mayConfirm: boolean;
   onInfo: (row: Row) => void;
   /** Enter or a double click: start the stream, or bring its viewer to the front. */
   onOpen: (row: Row) => void;
@@ -37,7 +35,6 @@ interface Props {
   /** The pointer entered a row (where), or left it. */
   onHover: (row: Row, at: { x: number; y: number } | null) => void;
   onAct: (row: Row, action: RowAction) => void;
-  onConfirm: (row: Row, confirmation: LiveConfirmation) => void;
 }
 
 /**
@@ -53,7 +50,6 @@ export function LiveList({
   scroller,
   info,
   mayAct,
-  mayConfirm,
   onInfo,
   onOpen,
   onRemove,
@@ -61,7 +57,6 @@ export function LiveList({
   onMenu,
   onHover,
   onAct,
-  onConfirm,
 }: Props) {
   const [current, setCurrent] = useState<string | null>(null);
   const { ref, start, end, before, after, reveal } = useSpanWindow(
@@ -81,7 +76,7 @@ export function LiveList({
   const menuAt = (row: Row, x: number, y: number) => onMenu(row, x, y, ref.current);
 
   const keys = (event: KeyboardEvent<HTMLDivElement>) => {
-    // A key meant for a button inside a row, such as Enter on a confirmation, is the button's.
+    // A key meant for a button inside a row, such as Enter on its action, is the button's.
     if (event.target !== event.currentTarget) return;
     if (event.ctrlKey || event.altKey || event.metaKey) return;
     const here = rows[Math.max(0, at)];
@@ -139,7 +134,6 @@ export function LiveList({
           current={row.id === current}
           infoShown={row.id === info}
           mayAct={mayAct}
-          mayConfirm={mayConfirm}
           onClick={() => {
             setCurrent(row.id);
             ref.current?.focus({ preventScroll: true });
@@ -153,7 +147,6 @@ export function LiveList({
           }}
           onHover={(point) => onHover(row, point)}
           onAct={(action) => onAct(row, action)}
-          onConfirm={(confirmation) => onConfirm(row, confirmation)}
         />
       ))}
     </div>

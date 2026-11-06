@@ -29,17 +29,6 @@ const FOUND: NetworkSnapshot = {
   ],
 };
 
-const confirming: ItemState = {
-  id: "a",
-  label: "Lobby",
-  kind: "live",
-  open: false,
-  resolution: {
-    status: "Failed",
-    code: "NeedsConfirmation",
-    params: { item: "a", confirm: [{ reference: "CAM_PASS", host: "10.0.0.2" }] },
-  },
-};
 const RECIPE: NewLiveWire = {
   host: "10.0.0.2",
   username: "root",
@@ -69,7 +58,6 @@ const ready = (id: string, recipe: NewLiveWire | null = null): ItemState => ({
 });
 
 const fetched = vi.fn();
-let resolvedFirst = true;
 let refuseScan = false;
 let loginRefused = false;
 // Holds the answer of the next scan request until the test releases it.
@@ -94,9 +82,6 @@ beforeEach(() => {
     "fetch",
     vi.fn(async (url: string, init?: RequestInit) => {
       fetched(url, init?.body);
-      // Whether the item was resolved already when the confirmation arrived.
-      if (url === "/api/live/confirm")
-        resolvedFirst = sent().some(({ type }) => type === "resolve");
       if (url === "/api/network/scan" && scanReplies.length > 0)
         return scanReplies.shift() as Promise<Response>;
       if (url === "/api/network/scan" && holdScan) await holdScan;
@@ -403,17 +388,6 @@ describe("workspace streams", () => {
     expect(added).toHaveBeenCalledWith({});
   });
 
-  it("confirms the reference for its host, then resolves the item again", async () => {
-    await renderView([confirming]);
-    fireEvent.click(await screen.findByRole("button", { name: "Confirm $CAM_PASS for 10.0.0.2" }));
-    await waitFor(() => expect(sent()).toContainEqual({ type: "resolve", item: "a" }));
-    expect(fetched).toHaveBeenCalledWith(
-      "/api/live/confirm",
-      JSON.stringify({ reference: "CAM_PASS", host: "10.0.0.2" }),
-    );
-    expect(resolvedFirst).toBe(false);
-  });
-
   it("starts and stops a stream by opening and closing its viewer", async () => {
     await renderView([ready("a")]);
     fireEvent.click(await screen.findByRole("button", { name: "Start stream" }));
@@ -472,12 +446,11 @@ describe("keyboard", () => {
   });
 
   it("leaves Enter on a button inside a row to the button", async () => {
-    await renderView([confirming]);
+    await renderView([ready("a")]);
     const tree = await focusTree("Live");
-    fireEvent.keyDown(
-      await screen.findByRole("button", { name: "Confirm $CAM_PASS for 10.0.0.2" }),
-      { key: "Enter" },
-    );
+    fireEvent.keyDown(await screen.findByRole("button", { name: "Start stream" }), {
+      key: "Enter",
+    });
     expect(sent()).toEqual([]);
     expect(tree.getAttribute("aria-activedescendant")).not.toBeNull();
   });

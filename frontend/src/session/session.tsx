@@ -101,7 +101,7 @@ export function useSetView(): (change: (shown: View) => View) => void {
 }
 
 /**
- * One part of what the window shows (`sidebar`, `active` or `viewers`) and the way to change it. A change shows at
+ * One part of what the window shows (`sidebar`, `active`, `viewers` or `layout`) and the way to change it. A change shows at
  * once and is settled by the backend later; a change the backend refuses stops showing.
  */
 export function useView<K extends keyof View>(
@@ -119,6 +119,11 @@ export function useView<K extends keyof View>(
     [setView, key],
   );
   return [value, set];
+}
+
+/** How many viewers the window shows. */
+export function usePanes(): number {
+  return useSelect((state) => Object.keys(state.view.viewers).length);
 }
 
 /** Whether the window shows the presenter's view and nothing of its own. */

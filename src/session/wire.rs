@@ -16,8 +16,8 @@ use sessions::session::{Command, Refusal, Scope};
 use std::path::Path;
 use tokio::time::Instant;
 use workspace::{
-    BookmarkId, BookmarkKind, BookmarkTarget, Content, LiveRecipe, Secret, Source, Watch,
-    Workspace, WorkspaceItem,
+    BookmarkId, BookmarkKind, BookmarkTarget, Content, LiveOverlay, LiveRecipe, Secret, Source,
+    Watch, Workspace, WorkspaceItem,
     intake::{LiveDefaults, NewLive, NewOverlay},
 };
 use workspace_store::{BookmarkCommand, DocCommand, HiddenRef};
@@ -314,9 +314,48 @@ fn intake(
             } else if let Some(recipe) = like.and_then(|item| saved.live(item)) {
                 new.copy_login(recipe, live, workspace::intake::LoginUse::Stream)?;
             }
-            workspace::intake::live(new, live, handlers)
+            let item = workspace::intake::live(new, live, handlers)?;
+            match &item.recipe.source {
+                Source::Live(recipe) if saved.guest => refuse_references(recipe).map(|()| item),
+                _ => Ok(item),
+            }
         }
     }
+}
+
+/// Refuses a stream whose host or login, or whose broker's, is a `$NAME` reference: it would read the environment of
+/// this machine for a seat that is not its owner.
+fn refuse_references(recipe: &LiveRecipe) -> Result<(), foundation::UserError> {
+    let broker = match &recipe.overlay {
+        LiveOverlay::Mqtt {
+            broker_host,
+            broker_user,
+            broker_pass,
+            ..
+        } => [
+            broker_host.as_str(),
+            broker_user.as_str(),
+            broker_pass.expose(),
+        ],
+        _ => [""; 3],
+    };
+    let texts = [
+        recipe.host.as_str(),
+        recipe.username.as_str(),
+        recipe.password.expose(),
+    ];
+    if texts
+        .into_iter()
+        .chain(broker)
+        .any(|text| settings::reference(text).is_some())
+    {
+        return Err(foundation::UserError::new(
+            foundation::ErrorCode::WorkspaceInvalid,
+            "Only the person at this machine can use a $NAME reference.",
+        )
+        .at(foundation::Location::field("host")));
+    }
+    Ok(())
 }
 
 /// The logins saved with the workspace's streams, for the seat that may copy them.
@@ -325,11 +364,18 @@ pub(super) struct Saved<'a> {
     workspace: &'a Workspace,
     /// Whether the seat is the session's owner; any other copies no login.
     owner: bool,
+    /// Whether the seat is not the owner of a session whose references read this machine's environment: a stream it
+    /// adds may not hold one.
+    guest: bool,
 }
 
 impl<'a> Saved<'a> {
-    pub(super) fn new(workspace: &'a Workspace, owner: bool) -> Self {
-        Self { workspace, owner }
+    pub(super) fn new(workspace: &'a Workspace, owner: bool, expands: bool) -> Self {
+        Self {
+            workspace,
+            owner,
+            guest: expands && !owner,
+        }
     }
 
     /// The recipe of the live stream `item`, when the seat may copy its login.

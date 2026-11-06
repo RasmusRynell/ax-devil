@@ -123,8 +123,14 @@ async fn hello(
         SessionAuth::Own { server_password } => {
             let principal = member(state, server_password.as_deref())?;
             let files = principal.grants().contains(&Grant::Files);
+            // The person at this machine holds `preferences`; a holder of the server password does not, and what
+            // it types never reads this machine's environment.
             let handle = sessions
-                .create(files, cursors)
+                .create(
+                    files,
+                    principal.grants().contains(&Grant::Preferences),
+                    cursors,
+                )
                 .map_err(|error| refuse(error, ENDED))?;
             if files && let Some(rx) = sessions.subscribe(handle.session()) {
                 state.files.attach(handle.session(), rx);

@@ -10,15 +10,12 @@ fn live(variables: &[(&str, &str)], args: &[&str]) -> Result<Option<Launch>, Str
         .iter()
         .map(|(name, value)| ((*name).into(), (*value).into()))
         .collect();
-    let env = Environment::new(
-        move |name| {
-            variables
-                .iter()
-                .find(|(set, _)| set == name)
-                .map(|(_, value)| value.clone())
-        },
-        [],
-    );
+    let env = Environment::new(move |name| {
+        variables
+            .iter()
+            .find(|(set, _)| set == name)
+            .map(|(_, value)| value.clone())
+    });
     let recovery = RecoveryFolder::new(std::path::PathBuf::from("unused"));
     launch::launch(
         parse(&[&["live"], args].concat()).unwrap().command,

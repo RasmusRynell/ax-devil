@@ -18,9 +18,9 @@ implementing module closes.
 - Content ids derive from the owning item's id and never change between resolutions; Content records its item's id.
   Content built outside resolution has empty ids and is never top-level Content.
 - Live Stream Items store connection values as entered; a `$VARIABLE` reference is expanded only during resolution,
-  under the host binding rule of [13](../rebuild/13-security-packaging-ops.md#threat-model). A camera property
-  (protocol, ports) is stored on the item and editable when adding it; changed defaults only prefill new items. An
-  environment preference (connection timeout) is never stored; it is read at connection.
+  silently (D18). A camera property (protocol, ports) is stored on the item and editable when adding it; changed
+  defaults only prefill new items. An environment preference (connection timeout) is never stored; it is read at
+  connection.
 - An item's label is what the user named it, or empty; empty shows a default name derived from the recipe. Derived
   names such as an expanded host are never stored or saved.
 - An item that fails to resolve stays in the Workspace with its error recorded. An item the file format cannot read
@@ -29,7 +29,7 @@ implementing module closes.
   as a typed mode.
 - Every playlist lane references Seekable Video Content. Playlists are offline workflows.
 - One intake validates decoder selections and live connection settings for every video and live stream opened by a
-  dialog, the CLI or a file drop. A resolver's playlists enter as built; it owns their validity.
+  dialog or the CLI. A resolver's playlists enter as built; it owns their validity.
 
 ## Coordinates
 

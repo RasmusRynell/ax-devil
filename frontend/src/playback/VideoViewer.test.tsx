@@ -1,6 +1,7 @@
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vite-plus/test";
 import { FakeSocket, video } from "../session/fakeSession";
+import { viewing } from "../session/fakeViews";
 import { SessionProvider } from "../session/session";
 import { SessionStore } from "../session/store";
 import { NOTHING_HIDDEN, type Hidden } from "../viewer/hidden";
@@ -40,13 +41,13 @@ describe("video viewer", () => {
     expect(sent[0]).toMatchObject({ type: "Open", ticket: expect.any(String) });
     view.rerender(<SessionProvider>{null}</SessionProvider>);
     flushFrames();
-    expect(room.presenter.viewers.a?.clock).toMatchObject({
+    expect(room.presenter.viewers[1]?.clock).toMatchObject({
       frame: 37,
       playing: false,
       speedCenti: 250,
     });
     // The backend reads the stamp as a whole number of microseconds and closes the connection on a fraction.
-    expect(Number.isInteger(room.presenter.viewers.a?.clock?.atUs)).toBe(true);
+    expect(Number.isInteger(room.presenter.viewers[1]?.clock?.atUs)).toBe(true);
 
     sent.length = 0;
     view.rerender(
@@ -82,19 +83,15 @@ describe("video viewer", () => {
     );
     await act(async () => {});
     const room = FakeSocket.rooms.get("room-1")!;
-    room.presenter = {
-      ...room.presenter,
-      viewers: {
-        a: { clock: { frame: 10, playing: true, speedCenti: 100, atUs: serverNow - 400_000 } },
-      },
-    };
+    const clock = { frame: 10, playing: true, speedCenti: 100, atUs: serverNow - 400_000 };
+    room.presenter = { ...room.presenter, ...viewing(["a", { clock }]) };
     act(() => room.setItems([video("a")]));
     expect((await slider()).value).toBe("20");
     expect(screen.getByRole("button", { name: "Pause" })).toBeTruthy();
     // The watchers' clock is right as it stands: nothing to correct.
     flushFrames();
     expect(viewsSent()).toHaveLength(0);
-    expect(room.presenter.viewers.a?.clock).toMatchObject({ playing: true });
+    expect(room.presenter.viewers[1]?.clock).toMatchObject({ playing: true });
   });
 
   describe("when the session resumes", () => {
@@ -145,7 +142,7 @@ describe("video viewer", () => {
       flushFrames();
       act(() => FakeSocket.latest.drop());
       await act(() => vi.advanceTimersByTimeAsync(1_000));
-      const told = room.presenter.viewers.a?.clock;
+      const told = room.presenter.viewers[1]?.clock;
       const thumb = screen.getByRole("slider", { name: "Timeline" }) as HTMLInputElement;
       expect(told).toMatchObject({ playing: false });
       expect(told?.frame).toBeGreaterThan(0);
@@ -198,12 +195,8 @@ describe("video viewer", () => {
     room.setItems([video("a")]);
     FakeSocket.clockOffsetUs = 5_000_000;
     const serverNow = 10_000 * 1000 + FakeSocket.clockOffsetUs;
-    room.presenter = {
-      ...room.presenter,
-      viewers: {
-        a: { clock: { frame: 10, playing: true, speedCenti: 100, atUs: serverNow - 400_000 } },
-      },
-    };
+    const clock = { frame: 10, playing: true, speedCenti: 100, atUs: serverNow - 400_000 };
+    room.presenter = { ...room.presenter, ...viewing(["a", { clock }]) };
     window.sessionStorage.setItem(
       "ax-devil.credential",
       JSON.stringify({ kind: "join", session: room.id, secret: room.secret }),
@@ -241,7 +234,7 @@ describe("video viewer", () => {
     fireEvent.change(await slider(), { target: { value: "70" } });
     flushFrames();
     expect(viewsSent()).toHaveLength(1);
-    expect(room.seats[1]?.view?.viewers.a?.clock).toMatchObject({ frame: 70 });
+    expect(room.seats[1]?.view?.viewers[1]?.clock).toMatchObject({ frame: 70 });
   });
 
   describe("lanes", () => {

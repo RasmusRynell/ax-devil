@@ -115,12 +115,12 @@ describe("the Bookmarks view", () => {
     fireEvent.click(screen.getByText("Frame 75"));
     await act(async () => {});
     expect(sent()).toEqual([{ type: "openViewer", item: "v" }]);
-    expect(JSON.parse(screen.getByTestId("front").textContent ?? "").active).toBe("v");
+    expect(JSON.parse(screen.getByTestId("front").textContent ?? "").active).toBe(1);
 
     fireEvent.click(screen.getByText("Frame 4"));
     await act(async () => {});
     const { viewers } = JSON.parse(screen.getByTestId("front").textContent ?? "");
-    expect(viewers.mot.entry).toBe("mot/MOT/A");
+    expect(viewers[2]).toMatchObject({ item: "mot", entry: "mot/MOT/A" });
   });
 
   it("renames, changes the kind of, removes and reviews through the backend", async () => {

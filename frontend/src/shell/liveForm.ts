@@ -6,8 +6,8 @@ import type {
   NewLiveOverlayWire,
   NewLiveWire,
 } from "../generated/api";
-import type { SettingKey } from "../generated/settings";
-import { textOf } from "./SettingField";
+import { SETTINGS, type SettingKey } from "../generated/settings";
+import { isReference, textOf } from "./SettingField";
 
 /** The overlay modes, in the order the `camera.overlay` setting lists them. */
 export type OverlayMode = "none" | "rtsp" | "mqtt" | "datahub";
@@ -77,6 +77,35 @@ export const isField = (location: string | undefined): boolean =>
   location !== undefined && Object.hasOwn(FIELDS, location);
 /** The fields that hold any text. */
 export type TextKey = Exclude<FieldKey, "protocol" | "overlay">;
+
+/** The settings the form starts from as values, unlike the host and logins, which stay `$NAME` references. */
+const VALUED: readonly SettingKey[] = [
+  "camera.head",
+  "camera.overlay",
+  "camera.rtsp_handler",
+  "broker.port",
+  "broker.source_key",
+  "broker.handler",
+  "datahub.topic",
+  "datahub.channel",
+  "datahub.handler",
+];
+
+/**
+ * `settings` with each valued one that holds a `$NAME` reference replaced by what the reference gives, or by the
+ * setting's default for a caller the backend does not tell (a remote password holder), so no reference is ever
+ * prefilled into a typed field.
+ */
+export function formValues(settings: SettingsState): SettingsState["values"] {
+  const given = settings.resolved ?? {};
+  const replaced = VALUED.flatMap((key) => {
+    const raw = settings.values[key];
+    if (typeof raw !== "string" || !isReference(raw)) return [];
+    const kind = SETTINGS.find((row) => row.key === key)?.kind;
+    return [[key, given[key] ?? (kind && "default" in kind ? kind.default : "")]];
+  });
+  return { ...settings.values, ...Object.fromEntries(replaced) };
+}
 
 /** The setting that names the decoder of each mode that has one. */
 const HANDLER_OF: Partial<Record<OverlayMode, SettingKey>> = {

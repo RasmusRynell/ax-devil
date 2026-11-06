@@ -12,10 +12,12 @@ import { useHidden } from "./useViewers";
  */
 export function EntryViewer({
   item,
+  viewer,
   content,
   entry,
 }: {
   item: string;
+  viewer: number;
   content: Pick<ContentInfo, "id" | "generation" | "display_name">;
   entry: EntryInfo;
 }) {
@@ -42,6 +44,7 @@ export function EntryViewer({
   return (
     <VideoViewer
       item={item}
+      viewer={viewer}
       content={content}
       entry={entry}
       hidden={hidden}
@@ -52,6 +55,6 @@ export function EntryViewer({
 }
 
 /** The viewer of one video: its one entry. */
-export function SeekableVideoViewer({ item, content }: ViewerProps<"SeekableVideo">) {
-  return <EntryViewer item={item} content={content} entry={content.entry} />;
+export function SeekableVideoViewer({ item, viewer, content }: ViewerProps<"SeekableVideo">) {
+  return <EntryViewer item={item} viewer={viewer} content={content} entry={content.entry} />;
 }

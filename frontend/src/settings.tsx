@@ -246,7 +246,9 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
     ? { ...STANDARD_SHORTCUTS, ...mine.shortcuts }
     : (remote?.shortcuts ?? STANDARD_SHORTCUTS);
   return (
-    <SettingsContext.Provider value={{ values, shortcuts, save, reload }}>
+    <SettingsContext.Provider
+      value={{ values, resolved: remote?.resolved, file: remote?.file, shortcuts, save, reload }}
+    >
       {children}
     </SettingsContext.Provider>
   );

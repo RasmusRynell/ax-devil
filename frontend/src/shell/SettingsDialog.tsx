@@ -3,6 +3,7 @@ import { useGrants } from "../access";
 import { SETTINGS } from "../generated/settings";
 import { Button } from "../kit/Button";
 import { Dialog } from "../kit/Dialog";
+import { LABELLED } from "../kit/Fields";
 import { Icon } from "../kit/Icon";
 import { SectionCaption } from "../kit/SectionCaption";
 import { Tabs } from "../kit/Tabs";
@@ -29,10 +30,11 @@ export function SettingsDialog({
   onClose: () => void;
   onRestartNeeded: () => void;
 }) {
-  const { values, shortcuts } = useSettings();
+  const { values, shortcuts, file } = useSettings();
   const configures = useGrants().includes("configuration");
   const shown = PAGED.filter((row) => configures || row.scope === "personal");
-  const pages = [...new Set(shown.flatMap((row) => row.page ?? []))];
+  // Where the settings are kept, for whoever may see this machine's files.
+  const pages = [...new Set(shown.flatMap((row) => row.page ?? [])), ...(file ? ["Advanced"] : [])];
   const [draft, setDraft] = useState(values);
   const [page, setPage] = useState(pages[0] ?? "");
   const [editingShortcuts, setEditingShortcuts] = useState(false);
@@ -108,6 +110,23 @@ export function SettingsDialog({
                 })}
             </section>
           ))}
+          {page === "Advanced" && file && (
+            <>
+              {(
+                [
+                  ["Configuration file", file.path],
+                  ["Configuration version", String(file.version)],
+                ] as const
+              ).map(([name, shownValue]) => (
+                <div key={name} className={LABELLED}>
+                  {name}
+                  <span className="min-w-0 text-muted [overflow-wrap:anywhere] select-text">
+                    {shownValue}
+                  </span>
+                </div>
+              ))}
+            </>
+          )}
           {page === "General" && (
             <Button
               className="self-start"
