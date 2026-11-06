@@ -161,4 +161,49 @@ function panel(selector, ellipsised = false) {
   return problems;
 }
 
-module.exports = { page, dialog, panel };
+/**
+ * The split area with several panes: every pane and seam inside the area, no two panes overlapping, and each header's
+ * buttons reachable. What a viewer shows inside a pane is checked with one pane open.
+ */
+function split() {
+  const problems = [];
+  const area = document.querySelector("main > div").getBoundingClientRect();
+  const inside = (rect, box) =>
+    rect.left >= box.left - 1 &&
+    rect.right <= box.right + 1 &&
+    rect.top >= box.top - 1 &&
+    rect.bottom <= box.bottom + 1;
+  const panes = [...document.querySelectorAll('[role=group][data-cursor-id^="pane:"]')];
+  const rects = panes.map((pane) => pane.getBoundingClientRect());
+  panes.forEach((pane, index) => {
+    const name = pane.ariaLabel;
+    if (!inside(rects[index], area)) problems.push(`pane outside the area: ${name}`);
+    rects.slice(index + 1).forEach((other) => {
+      const across =
+        Math.min(rects[index].right, other.right) - Math.max(rects[index].left, other.left);
+      const down =
+        Math.min(rects[index].bottom, other.bottom) - Math.max(rects[index].top, other.top);
+      if (across > 1 && down > 1) problems.push(`panes overlap: ${name}`);
+    });
+    for (const control of pane.querySelectorAll("[draggable] button")) {
+      const rect = control.getBoundingClientRect();
+      const top = document.elementFromPoint(
+        (rect.left + rect.right) / 2,
+        (rect.top + rect.bottom) / 2,
+      );
+      if (!inside(rect, rects[index]) || !control.contains(top))
+        problems.push(`header button unreachable: ${control.ariaLabel}`);
+    }
+  });
+  for (const seam of document.querySelectorAll("[role=separator][aria-label='Resize panes']")) {
+    const rect = seam.getBoundingClientRect();
+    const top = document.elementFromPoint(
+      (rect.left + rect.right) / 2,
+      (rect.top + rect.bottom) / 2,
+    );
+    if (!inside(rect, area) || !seam.contains(top)) problems.push("seam unreachable");
+  }
+  return problems;
+}
+
+module.exports = { page, dialog, panel, split };

@@ -50,7 +50,8 @@ interface Props {
   scroller: RefObject<HTMLElement | null>;
   /** Whether the seat may hide and unhide rows. */
   hides: boolean;
-  onOpen: (row: TreeRow) => void;
+  /** Open the row, or with `side` (Ctrl) to the side of the front pane. */
+  onOpen: (row: TreeRow, side?: boolean) => void;
   /** A double click shows the row and the rows above it, before it opens. */
   onReveal: (row: TreeRow) => void;
   /** Puts the keyboard on a row. */
@@ -129,6 +130,8 @@ export function WorkspaceList({
 
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
     const active = rows[from]?.row;
+    if (event.key === "Enter" && event.ctrlKey && !event.altKey && !event.metaKey && active)
+      return onOpen(active, true);
     if (event.ctrlKey || event.altKey || event.metaKey || !active) return;
     const hasKids = active.hasChildren;
     const isCollapsed = collapsed.has(active.info.key);
@@ -193,9 +196,9 @@ export function WorkspaceList({
               ref.current?.focus({ preventScroll: true });
               onCurrent(info.key);
             }}
-            onDoubleClick={() => {
+            onDoubleClick={(event) => {
               onReveal(row);
-              onOpen(row);
+              onOpen(row, event.ctrlKey);
             }}
             onPointerEnter={(event) =>
               thumbnail.enter(pictureOf(row), event.clientX, event.clientY)

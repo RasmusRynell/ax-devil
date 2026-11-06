@@ -57,7 +57,7 @@ const sections = (reported: Map<string, StreamStatus>, found: NetworkRow[] = [])
     reported,
     checks: new Map(),
     thumbnails: true,
-    front: "a",
+    viewed: new Set(["a"]),
     order: "address",
   });
 
@@ -111,7 +111,7 @@ describe("stream rows", () => {
       reported: new Map(),
       checks: new Map([["b", refused]]),
       thumbnails: true,
-      front: "a",
+      viewed: new Set(["a"]),
       order: "address",
     });
     const [camera] = live?.rows ?? [];
@@ -131,7 +131,7 @@ describe("stream rows", () => {
     });
   });
 
-  it("shows an open stream behind the front viewer as stopped, with Start to bring it forward", () => {
+  it("shows an open stream without a viewer as stopped, with Start to open it", () => {
     const [live] = sectionsOf({
       cameras: camerasOf(WORKSPACE),
       found: [],
@@ -139,15 +139,15 @@ describe("stream rows", () => {
       reported: new Map(),
       checks: new Map(),
       thumbnails: false,
-      front: "other",
+      viewed: new Set(["other"]),
       order: "address",
     });
     const [first] = live?.rows[0]?.children ?? [];
     expect(first).toMatchObject({ action: "start", active: false, dim: true, detail: "" });
     expect(live?.rows[0]).toMatchObject({ aside: "Stopped", dim: true });
     // The header counts what the rows show as running.
-    expect(streamingCount(camerasOf(WORKSPACE), "other")).toBe(0);
-    expect(streamingCount(camerasOf(WORKSPACE), "a")).toBe(1);
+    expect(streamingCount(camerasOf(WORKSPACE), new Set(["other"]))).toBe(0);
+    expect(streamingCount(camerasOf(WORKSPACE), new Set(["a"]))).toBe(1);
   });
 
   it("lists streams that are resolving or failed, and offers what each can do", () => {
@@ -177,7 +177,7 @@ describe("stream rows", () => {
       reported: new Map(),
       checks: new Map(),
       thumbnails: false,
-      front: null,
+      viewed: new Set<string>(),
       order: "address",
     });
     const rows = live?.rows.flatMap((camera) => camera.children) ?? [];

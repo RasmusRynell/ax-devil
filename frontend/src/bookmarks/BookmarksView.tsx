@@ -61,8 +61,9 @@ export function BookmarksView() {
   const actions: RowActions = {
     open: ({ item, target, standing }, { frame }) => {
       if (standing.status !== "Open") return;
-      // A video's viewer shows its one entry; a playlist's is told which.
-      show(item, target === null ? undefined : standing.entry).then(() => {
+      // A video's viewer shows its one entry; a playlist's is told which. A viewer already showing it is brought
+      // forward, the front one first; else it opens as an ordinary Open does.
+      show(item, target === null ? undefined : standing.entry, { reuse: true }).then(() => {
         setProblem(null);
         ask({ entry: standing.entry, frame });
       }, fail);

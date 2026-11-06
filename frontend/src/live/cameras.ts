@@ -4,7 +4,7 @@ import { useMemo } from "react";
 import { reasonOf } from "../errors";
 import type { ItemState, LiveOverlayKind, NewLiveWire } from "../generated/api";
 import { useDoc } from "../session/session";
-import { useFrontItem } from "../viewer/useViewers";
+import { useShownItems } from "../viewer/useViewers";
 
 /** What the Add Live Stream dialog starts from: the stream whose connection a new one copies. */
 export type AddSeed = { like?: string };
@@ -137,19 +137,19 @@ export function seedOf(seed: AddSeed, items: readonly ItemState[]): Partial<NewL
 }
 
 /**
- * Whether the stream is connected: its viewer is open and in front. Only the front viewer is mounted, so an open one
- * behind it has no connection, and Start brings it to the front.
+ * Whether the stream is connected: its viewer is open and some pane shows it (`viewed` is the items with a pane).
+ * An open stream with no pane has no connection, and Start opens one.
  */
-export const running = (stream: Stream, front: string | null): boolean =>
-  stream.open && stream.id === front;
+export const running = (stream: Stream, viewed: ReadonlySet<string>): boolean =>
+  stream.open && viewed.has(stream.id);
 
 /** How many of `cameras`' streams are connected. */
-export const streamingCount = (cameras: readonly Camera[], front: string | null): number =>
-  cameras.reduce((sum, { streams }) => sum + streams.filter((s) => running(s, front)).length, 0);
+export const streamingCount = (cameras: readonly Camera[], viewed: ReadonlySet<string>): number =>
+  cameras.reduce((sum, { streams }) => sum + streams.filter((s) => running(s, viewed)).length, 0);
 
-/** How many live streams are connected: their viewer is open and in front. */
+/** How many live streams are connected: their viewer is open and in a pane. */
 export function useStreaming(): number {
   const items = useDoc()?.workspace.items;
-  const front = useFrontItem();
-  return useMemo(() => streamingCount(camerasOf(items ?? []), front), [items, front]);
+  const viewed = useShownItems();
+  return useMemo(() => streamingCount(camerasOf(items ?? []), viewed), [items, viewed]);
 }

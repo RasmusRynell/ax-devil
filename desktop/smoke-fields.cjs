@@ -41,7 +41,7 @@ module.exports.fields = () =>
     ],
     async (window) => {
       const { js, wait } = page(window);
-      window.setSize(1500, 720);
+      await setView(window, [1500, 720], 1);
       const settle = () =>
         js("new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done)))");
       const shoot = async (name) => {
@@ -127,8 +127,7 @@ module.exports.fields = () =>
         await settle();
         if (zoom === 2) await inBothThemes("inspector-fields-200");
       }
-      window.webContents.setZoomFactor(1);
-      window.setSize(1500, 720);
+      await setView(window, [1500, 720], 1);
       await js("document.querySelector('[aria-label=Workspace]').click()");
 
       // The second lane's car has a picture, folded until its caption is opened.
