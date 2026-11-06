@@ -3,7 +3,7 @@
 // only starts it, runs the scenarios one at a time and prints and saves what the page reports.
 //   BENCH_DISPLAY=real  use the machine's GPU (default: SwiftShader, Chromium's software renderer, which proves the
 //                       bench works but whose numbers do not count)
-//   BENCH_SUITE=tables  time the objects list (the real ObjectsPanel: first rows, scroll, divider drag, playback with the
+//   BENCH_SUITE=tables  time the objects list (the real MediaToolsPanel: first rows, scroll, divider drag, playback with the
 //                       panel open and closed) instead of the renderer; BENCH_SMOKE, BENCH_SECONDS and BENCH_COUNTS
 //                       (objects in a frame) narrow it
 //   BENCH_SMOKE=1, BENCH_SECONDS, BENCH_RESOLUTIONS, BENCH_CATALOGS, BENCH_LANES, BENCH_COUNTS, BENCH_MODES
@@ -64,7 +64,9 @@ const settings = {
 // The tables suite: the page runs each scenario; this prints and saves what it reports.
 async function runTables(js, environment, machine) {
   const scenarios = await js(`benchApi.tables.plan(${JSON.stringify(settings)})`);
-  console.log("ax-devil browser bench: the objects list, the real ObjectsPanel over made-up data.");
+  console.log(
+    "ax-devil browser bench: the objects list, the real MediaToolsPanel over made-up data.",
+  );
   console.log(`GL renderer: ${environment.glRenderer}${environment.software ? "  SOFTWARE" : ""}`);
   console.log(`${scenarios.length} scenarios; times in ms\n`);
   const results = [];

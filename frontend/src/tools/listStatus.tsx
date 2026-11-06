@@ -1,16 +1,23 @@
 import { reasonOf } from "../errors";
 import type { FileScopeUnavailable, SearchWire } from "../generated/api";
 import type { ReactNode } from "react";
-import type { FileScopeView } from "../playback/fileScope";
 import { SCOPES, type Scope } from "./listState";
 
-/** What File scope says when the backend has no rows, but for a failure, which says why. */
-const UNAVAILABLE: Record<Exclude<FileScopeUnavailable["state"], "Failed">, string> = {
+/** What a list of the file says when the backend has no rows, but for a failure, which says why, and a plain lane. */
+const UNAVAILABLE: Record<
+  Exclude<FileScopeUnavailable["state"], "Failed" | "PlainLane">,
+  string
+> = {
   Reading: "Reading the file…",
   Following: "Not available while following",
   TooLarge: "The file is too large to list",
-  PlainLane: "This lane has no objects",
 };
+
+/** Why the backend has no rows; `plain` is what a lane that draws no file is told it has none of. */
+export function whyUnavailable(unavailable: FileScopeUnavailable, plain: string): string {
+  if (unavailable.state === "Failed") return reasonOf(unavailable);
+  return unavailable.state === "PlainLane" ? plain : UNAVAILABLE[unavailable.state];
+}
 
 /** What File scope says when the query names a field it does not search; it searches these. */
 const FILE_PATHS: ReadonlySet<string> = new Set(["id", "class", "event"]);
@@ -44,7 +51,7 @@ export function listMessage(
   if (inFile && unavailable && !loaded)
     return (
       <p role="status" aria-busy={unavailable.state === "Reading"} className="m-0 p-m text-muted">
-        {unavailable.state === "Failed" ? reasonOf(unavailable) : UNAVAILABLE[unavailable.state]}
+        {whyUnavailable(unavailable, "This lane has no objects")}
       </p>
     );
   if (inFile && !loaded)
@@ -63,7 +70,13 @@ export function listMessage(
 }
 
 /** What to say over rows that are the last ones the backend gave because it could not list them again, or `null`. */
-export function staleOf({ page, unavailable }: FileScopeView): string | null {
+export function staleOf({
+  page,
+  unavailable,
+}: {
+  page: unknown;
+  unavailable: FileScopeUnavailable | null;
+}): string | null {
   return page !== null && unavailable?.state === "Failed"
     ? `Out of date: ${reasonOf(unavailable)}`
     : null;

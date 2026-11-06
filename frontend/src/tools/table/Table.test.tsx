@@ -109,3 +109,62 @@ describe("Table", () => {
     expect(width()).toBe(before);
   });
 });
+
+describe("Table following a line", () => {
+  const props = {
+    tableKey: "followed",
+    label: "Rows",
+    columns: COLUMNS,
+    count: 1000,
+    rowAt,
+    keyOf: (row: Row) => row.id,
+    indexOf: (key: string) => Number(key.slice(4)),
+    selected: null,
+    sort: { key: "id", descending: false },
+    onSort: () => {},
+    onActivate: () => {},
+    cursorId: (row: Row) => `row:${row.id}`,
+  };
+  const scroller = () => screen.getByRole("listbox").closest<HTMLElement>(".overflow-y-auto")!;
+
+  it("keeps the line in view while following, stops when the user scrolls it away and follows again when they bring it back", () => {
+    // jsdom does not scroll: a scroller that remembers where it was put.
+    const tops = new WeakMap<Element, number>();
+    vi.spyOn(HTMLElement.prototype, "scrollTop", "get").mockImplementation(function (
+      this: HTMLElement,
+    ) {
+      return tops.get(this) ?? 0;
+    });
+    vi.spyOn(HTMLElement.prototype, "scrollTop", "set").mockImplementation(function (
+      this: HTMLElement,
+      value: number,
+    ) {
+      tops.set(this, value);
+    });
+    const onFollowing = vi.fn();
+    const at = (line: number, following: boolean) => (
+      <Table<Row> {...props} follow={{ line, keep: "third", following, onFollowing }} />
+    );
+    const { rerender } = render(at(100, true));
+    // The row above the line goes a third of the view (200 tall, rows 20) from the top.
+    expect(scroller().scrollTop).toBe(99 * 20 - 66);
+    fireEvent.scroll(scroller());
+    expect(onFollowing).not.toHaveBeenCalled();
+
+    // The user scrolls to the top: the line is out of view, and following ends.
+    tops.set(scroller(), 0);
+    fireEvent.scroll(scroller());
+    expect(onFollowing).toHaveBeenLastCalledWith(false);
+    rerender(at(120, false));
+    expect(scroller().scrollTop).toBe(0);
+
+    // They scroll back to where it is: following begins again, and the line moving on is followed only once it leaves.
+    tops.set(scroller(), 119 * 20 - 100);
+    fireEvent.scroll(scroller());
+    expect(onFollowing).toHaveBeenLastCalledWith(true);
+    rerender(at(121, true));
+    expect(scroller().scrollTop).toBe(119 * 20 - 100);
+    rerender(at(400, true));
+    expect(scroller().scrollTop).toBe(399 * 20 - 66);
+  });
+});

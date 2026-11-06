@@ -1,5 +1,5 @@
 /**
- * The objects list in a real page: the real `ObjectsPanel` over a made-up viewer, driven the way a user and a playing
+ * The objects list in a real page: the real `MediaToolsPanel` over a made-up viewer, driven the way a user and a playing
  * video drive it. Times how long the first rows take to paint, the frame intervals while scrolling and while a column
  * divider is dragged, and what a new video frame every animation frame costs with the panel open and closed. Run by
  * `BENCH_SUITE=tables make bench-browser`; only a run on the real display counts (`desktop/bench.cjs`).
@@ -15,8 +15,8 @@ import { Inspector } from "../playback/Inspector";
 import { LANE_SETTINGS } from "../playback/fakeOpened";
 import { LaneSet } from "../playback/lanes";
 import { INITIAL_VIEW, type PlaybackView } from "../playback/view";
-import { FRESH_LIST, type ListState } from "../tools/listState";
-import { ObjectsPanel } from "../tools/ObjectsPanel";
+import { freshEvents, FRESH_LIST, type ListState } from "../tools/listState";
+import { MediaToolsPanel } from "../tools/MediaToolsPanel";
 import { EMPTY } from "../tools/pageStack";
 import { rememberedWidths } from "../tools/table/fit";
 import "../style.css";
@@ -104,6 +104,7 @@ class Rig {
   #current = 0;
   #open = false;
   #list: ListState = FRESH_LIST;
+  #events = freshEvents();
   playhead = 0;
 
   constructor(readonly scenario: TableScenario) {
@@ -135,7 +136,7 @@ class Rig {
   /** The list state lives here, as in the viewer: choosing a scope or a sort re-renders the panel with it. */
   #render(): void {
     const view = { ...this.#view, playhead: ++this.playhead };
-    const panel = createElement(ObjectsPanel, {
+    const panel = createElement(MediaToolsPanel, {
       source: this.#source,
       view,
       canSeek: true,
@@ -147,6 +148,8 @@ class Rig {
         this.#list = list;
         this.#render();
       },
+      events: this.#events,
+      onEvents: () => {},
       memory: FRESH_MEMORY,
       onMemory: () => {},
       width: null,
@@ -228,6 +231,7 @@ class InspectorRig {
           truncated: false,
         },
         reach: { source: new FakeFiles(0), frame: 0, frames: 0, timeOf: () => undefined },
+        onEvent: () => {},
         memory: this.#memory,
         onMemory: (memory: InspectorMemory) => {
           this.#memory = memory;

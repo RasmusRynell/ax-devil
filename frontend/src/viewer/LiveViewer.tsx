@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import type { ContentRef, LanePolicyWire } from "../generated/api";
-import { LiveBar, type LivePanel } from "../live/LiveBar";
-import { EventsPanel } from "../live/EventsPanel";
+import { LiveBar } from "../live/LiveBar";
 import { LiveSession } from "../live/session";
 import { useReportStatus } from "../live/streamState";
 import { ContextMenu } from "../kit/ContextMenu";
@@ -20,9 +19,9 @@ import { FIT, ZOOM_STEP } from "../playback/viewport";
 import type { Connect } from "../playback/wire";
 import { useAllowed, useCan, useCommand, useFollowing, useStream } from "../session/session";
 import { useSettings } from "../settings";
-import { ObjectsPanel, type Place } from "../tools/ObjectsPanel";
-import { FRESH_LIST, type ListState } from "../tools/listState";
-import { EMPTY, jump, topObject, type PageStack } from "../tools/pageStack";
+import { MediaToolsPanel } from "../tools/MediaToolsPanel";
+import { jump } from "../tools/pageStack";
+import { useMediaTools } from "../tools/useMediaTools";
 import type { ViewerProps } from "../viewers";
 import { useViewerActions } from "./actions";
 import { NOTHING_HIDDEN } from "./hidden";
@@ -48,23 +47,14 @@ function Live({
   const objectDetails = values["overlays.object_details"] === true;
   const allowed = useAllowed();
   const following = useFollowing();
-  const command = useCommand();
   const pane = useRef<HTMLDivElement>(null);
   const objects = useRef<ObjectLayerHandle>(null);
   const geometry = useRef<Geometry | null>(null);
-  const [panel, setPanel] = useState<LivePanel | null>(null);
-  // The width the user gave each panel, kept while it is closed.
-  const [widths, setWidths] = useState<Record<LivePanel, number | null>>({
-    objects: null,
-    events: null,
-  });
+  const [tools, setTools] = useState(false);
   const [viewport, setViewport] = useState<Viewport>(FIT);
   const [inspector, setInspector] = useState<InspectorMemory>(FRESH_MEMORY);
-  // The pages open in the objects panel and its list, kept while it is closed. The selected object is the one on top.
-  const [pages, setPages] = useState<PageStack>(EMPTY);
-  const [list, setList] = useState<ListState>(FRESH_LIST);
-  // Whether the selected object is outlined on the picture: clearing the selection there does not close its page.
-  const [outlined, setOutlined] = useState(true);
+  // The media tools' pages, lists and width, kept while they are closed; the selected object is the page on top.
+  const { pages, outlined, setOutlined, navigate, panel } = useMediaTools(session, objectDetails);
   const shown = useMemo(() => shownLanes(view.lanes, NOTHING_HIDDEN, entry), [view.lanes, entry]);
   const fullscreen = useLaneFullscreen(pane, shown);
   const shownViewport = useRef(viewport);
@@ -76,26 +66,8 @@ function Live({
   }, [session, following]);
   // A viewer that opens takes the keyboard, so its shortcuts work at once.
   useEffect(() => pane.current?.focus({ preventScroll: true }), []);
-  // The selection and the pages move together, and a selection is the object of the page on top.
-  const navigate = useCallback(
-    (next: PageStack, at: Place) => {
-      const object = topObject(next);
-      setPages(next);
-      setOutlined(true);
-      session.select(object && { ...at, entity: object.entity });
-    },
-    [session],
-  );
-  // Pointing at objects is switched off: no page stays open, nothing stays selected.
-  useEffect(() => {
-    if (!objectDetails) {
-      setPages(EMPTY);
-      setOutlined(true);
-      session.select(null);
-    }
-  }, [session, objectDetails]);
-  // The selected object's page is what the objects panel shows, so its fields are asked for only while it is open.
-  useEffect(() => session.showInspector(panel === "objects"), [session, panel]);
+  // The selected object's page is what the media tools show, so its fields are asked for only while they are open.
+  useEffect(() => session.showInspector(tools), [session, tools]);
   const zoom = useCallback((factor: number) => {
     const next = geometry.current?.zoomAt(shownViewport.current, factor);
     if (!next || next === shownViewport.current) return;
@@ -114,14 +86,12 @@ function Live({
         "zoom-out": () => zoom(1 / ZOOM_STEP),
         "zoom-reset": () => setViewport(FIT),
         "play-pause": togglePause,
-        "media-tools": () => setPanel((now) => (now === "objects" ? null : "objects")),
+        "media-tools": () => setTools((open) => !open),
         "lane-fullscreen": fullscreen.toggle,
       }),
       [zoom, togglePause, fullscreen.toggle],
     ),
   );
-  const setWidth = (which: LivePanel) => (width: number) =>
-    setWidths((now) => ({ ...now, [which]: width }));
   return (
     <div
       ref={pane}
@@ -139,8 +109,8 @@ function Live({
         view={view}
         controls={session}
         disabled={!controllable}
-        panel={panel}
-        onPanel={setPanel}
+        tools={tools}
+        onTools={setTools}
       />
       {view.status === "ready" ? (
         <div className="flex min-h-0 flex-1">
@@ -184,30 +154,17 @@ function Live({
               handle={objects}
             />
           </div>
-          {panel === "objects" && (
-            <ObjectsPanel
+          {tools && (
+            <MediaToolsPanel
+              {...panel}
               source={session}
               view={view}
               canSeek={false}
               selectable={objectDetails}
-              frameOnly
-              pages={pages}
-              onNavigate={navigate}
-              list={list}
-              onList={setList}
+              log={session.events}
               memory={inspector}
               onMemory={setInspector}
-              width={widths.objects}
-              onWidth={setWidth("objects")}
-              onClose={() => setPanel(null)}
-            />
-          )}
-          {panel === "events" && (
-            <EventsPanel
-              log={session.events}
-              width={widths.events}
-              onWidth={setWidth("events")}
-              onClose={() => setPanel(null)}
+              onClose={() => setTools(false)}
             />
           )}
         </div>

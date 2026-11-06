@@ -19,6 +19,7 @@ import { useRowWindow } from "../../shell/useRowWindow";
 import { categoryDot } from "../category";
 import { writeClipboard } from "./clipboard";
 import { KINDS, rowText, type Column, type SortOf } from "./columns";
+import { useLineFollow, type Follow } from "./lineFollow";
 import { useColumns } from "./useColumns";
 
 /** The grid every row and the header share; `--cols` is written by `useColumns`. */
@@ -44,7 +45,7 @@ function Cell<Row>({ column, row }: { column: Column<Row>; row: Row }) {
   if (!column.text) return <div className="min-w-0 pr-m">{column.render?.(row)}</div>;
   const text = column.text(row);
   const category = column.category?.(row);
-  const look = `${category === undefined ? "pr-m" : ""} ${kind.mono ? "font-mono text-aside" : ""} ${kind.numeric ? "text-right tabular-nums" : ""}`;
+  const look = `${category === undefined ? "pr-m" : ""} ${column.muted ? "text-muted" : ""} ${kind.mono ? "font-mono text-aside" : ""} ${kind.numeric ? "text-right tabular-nums" : ""}`;
   const body =
     kind.elide === "middle" ? (
       <MiddleElided text={text} className={look} />
@@ -81,6 +82,8 @@ type RowProps<Row> = {
   selected: boolean;
   active: boolean;
   dimmed: boolean;
+  /** Whether the row is marked as the one the line is on. */
+  tinted: boolean;
   /** Whether the row was just copied. */
   copied: boolean;
   cursor: string | undefined;
@@ -98,6 +101,7 @@ const TableRow = memo(function TableRow<Row>({
   selected,
   active,
   dimmed,
+  tinted,
   copied,
   cursor,
   onPick,
@@ -107,6 +111,7 @@ const TableRow = memo(function TableRow<Row>({
       id={id}
       role="option"
       aria-selected={selected}
+      aria-current={tinted ? "true" : undefined}
       aria-posinset={index + 1}
       aria-setsize={count}
       aria-busy={row === undefined ? true : undefined}
@@ -114,7 +119,7 @@ const TableRow = memo(function TableRow<Row>({
       onClick={() => onPick(index)}
       className={`${GRID} ${LEAD} relative h-row cursor-pointer hover:bg-hover ${
         dimmed ? "text-muted [&>*]:opacity-50" : "text-fg"
-      } ${selected ? "border-accent bg-hover" : "border-transparent"} ${
+      } ${selected ? "border-accent bg-hover" : "border-transparent"} ${tinted ? "bg-accent/15" : ""} ${
         active
           ? "group-focus-visible/list:outline-(length:--stroke-focus) group-focus-visible/list:-outline-offset-(--stroke-focus) group-focus-visible/list:outline-accent"
           : ""
@@ -150,6 +155,9 @@ export function Table<Row>({
   indexOf,
   selected,
   dimmed,
+  tint,
+  follow,
+  copyText,
   sort,
   onSort,
   onActivate,
@@ -174,6 +182,12 @@ export function Table<Row>({
   selected: string | null;
   /** Whether a row is dimmed. */
   dimmed?: (row: Row) => boolean;
+  /** Whether a row is tinted: it is on the frame the line marks. */
+  tint?: (row: Row) => boolean;
+  /** A line before one of the rows, which the list scrolls to keep in view unless the user scrolls away from it. */
+  follow?: Follow;
+  /** What copying a row puts on the clipboard, instead of its columns' texts. */
+  copyText?: (row: Row) => string;
   sort: SortOf<string>;
   onSort: (key: string) => void;
   /** A click, or Enter, on a row. */
@@ -194,6 +208,7 @@ export function Table<Row>({
   // The cursor stays on its row as the order changes; once that row is not in the order the cursor is on no row.
   const [cursor, setCursor] = useState<Cursor>({ key: null, index: 0 });
   const { ref, start, end, update, reveal } = useRowWindow(count, '[role="option"]');
+  const scroll = useLineFollow(ref, count, follow);
   const inView = Array.from({ length: end - start }, (_, i) => rowAt(start + i));
   const { root, header, shown, divider } = useColumns(tableKey, columns, inView, ref);
 
@@ -231,7 +246,7 @@ export function Table<Row>({
     restored.current = true;
     if (!memory) return;
     setCursor({ key: memory.cursor, index: 0 });
-    if (ref.current) ref.current.scrollTop = memory.top;
+    scroll.scrollTo(memory.top);
     update();
   });
 
@@ -269,7 +284,7 @@ export function Table<Row>({
     const index = row ? Number(row.getAttribute("aria-posinset")) - 1 : -1;
     const found = index < 0 ? undefined : rowAt(index);
     if (found === undefined) event.stopPropagation();
-    else setMenuRow({ key: keyOf(found), text: rowText(columns, found) });
+    else setMenuRow({ key: keyOf(found), text: (copyText ?? ((r) => rowText(columns, r)))(found) });
   };
   const onKeyDown = (event: KeyboardEvent) => {
     const page = end - start;
@@ -289,7 +304,7 @@ export function Table<Row>({
     };
     if (event.key === "c" && (event.ctrlKey || event.metaKey)) {
       const row = at < 0 ? undefined : rowAt(at);
-      if (row !== undefined) void copy(keyOf(row), rowText(columns, row));
+      if (row !== undefined) void copy(keyOf(row), (copyText ?? ((r) => rowText(columns, r)))(row));
       return;
     }
     keys[event.key]?.();
@@ -349,6 +364,7 @@ export function Table<Row>({
         onScroll={(event) => {
           if (memory) memory.top = event.currentTarget.scrollTop;
           update();
+          scroll.onScroll();
         }}
         className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto [scrollbar-gutter:stable]"
       >
@@ -365,12 +381,22 @@ export function Table<Row>({
               tabIndex={0}
               onKeyDown={onKeyDown}
               onContextMenu={onContextMenu}
-              className="group/list focus:outline-none"
+              className="group/list relative focus:outline-none"
               style={{
                 paddingTop: `calc(var(--spacing-row) * ${start})`,
                 paddingBottom: `calc(var(--spacing-row) * ${count - end})`,
               }}
             >
+              {follow?.line != null && (
+                <div
+                  aria-hidden
+                  data-now=""
+                  className="pointer-events-none absolute inset-x-0 z-10 h-xs bg-accent"
+                  style={{
+                    top: `calc(var(--spacing-row) * ${follow.line} - var(--spacing-xs) / 2)`,
+                  }}
+                />
+              )}
               {inView.map((row, i) => {
                 const index = start + i;
                 return (
@@ -385,6 +411,7 @@ export function Table<Row>({
                     selected={row !== undefined && keyOf(row) === selected}
                     active={index === at}
                     dimmed={row !== undefined && dimmed?.(row) === true}
+                    tinted={row !== undefined && tint?.(row) === true}
                     copied={row !== undefined && copied === keyOf(row)}
                     cursor={row === undefined ? undefined : cursorId(row)}
                     onPick={pick}

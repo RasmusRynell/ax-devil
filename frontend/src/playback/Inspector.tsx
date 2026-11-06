@@ -1,7 +1,10 @@
 import { Button } from "../kit/Button";
 import { Chip } from "../kit/Chips";
+import type { EventRowWire } from "../generated/api";
 import { fixed } from "../present/expr/fixed";
 import { categoryDot } from "../tools/category";
+import { clockOf } from "../tools/eventItem";
+import { ObjectEvents } from "../tools/ObjectEvents";
 import { UNKNOWN_CLASS } from "../tools/objects";
 import { PresenceStrip } from "../tools/PresenceStrip";
 import { jumpsFrom, type Jumps } from "./appearanceJumps";
@@ -57,15 +60,6 @@ export const reachOf = (
   seek: canSeek ? (frame) => source.seek(frame) : undefined,
 });
 
-/** A frame time as `HH:MM:SS.mmm`, the clock of its UTC day (the video position for a recording). */
-function clockOf(us: number): string {
-  const part = (value: number, width: number): string => String(value).padStart(width, "0");
-  const hours = Math.floor(us / 3_600_000_000) % 24;
-  const minutes = Math.floor(us / 60_000_000) % 60;
-  const seconds = Math.floor(us / 1_000_000) % 60;
-  return `${part(hours, 2)}:${part(minutes, 2)}:${part(seconds, 2)}.${part(Math.floor((us % 1_000_000) / 1000), 3)}`;
-}
-
 /** When the object is next or last seen, from the frame on screen; empty when the spans cannot say. */
 function whenOf(appearance: Appearance | null, jumps: Jumps | null, reach: Reach): string {
   const { frame, timeOf } = reach;
@@ -83,20 +77,24 @@ function whenOf(appearance: Appearance | null, jumps: Jumps | null, reach: Reach
  * The body of an object's page: its class, details and motion from the sample on screen at once, then every field
  * the backend knows of it, in groups, the pinned ones first. While the next sample's fields are on their way, the view
  * repeats the summary and fields shown before, together, and the rows stay mounted; with none to repeat, `Loading…`
- * stands. An object that is not in the frame offers to go to where it was last and will next be. The
- * page's header, which names the object, is the panel's.
+ * stands. An object that is not in the frame offers to go to where it was last and will next be. The strip marks the
+ * object's events, which are listed under its fields; one opens with `onEvent`. The page's header, which names the
+ * object, is the panel's.
  */
 export function Inspector({
   inspection,
   memory,
   onMemory,
   reach,
+  onEvent,
 }: {
   inspection: Exclude<InspectionView, { state: "none" }>;
   /** What the viewer keeps of the inspector: pinned fields and folded groups. */
   memory: InspectorMemory;
   onMemory: (memory: InspectorMemory) => void;
   reach: Reach;
+  /** Opens the page of one of the object's events. */
+  onEvent: (event: EventRowWire) => void;
 }) {
   const { selection } = inspection;
   const appearance = useAppearance(reach.source, selection.lane, selection.entity);
@@ -143,6 +141,7 @@ export function Inspector({
             spans={appearance.spans}
             frames={reach.frames}
             category={className ?? UNKNOWN_CLASS}
+            ticks={[...new Set(appearance.events.map((event) => event.frame))]}
             current={frame}
             onSeek={seek}
           />
@@ -190,6 +189,14 @@ export function Inspector({
           />
         )}
       </div>
+      {appearance && (
+        <ObjectEvents
+          events={appearance.events}
+          truncated={appearance.eventsTruncated}
+          timeOf={reach.timeOf}
+          onOpen={onEvent}
+        />
+      )}
     </div>
   );
 }

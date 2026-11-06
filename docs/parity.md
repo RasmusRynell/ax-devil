@@ -18,7 +18,7 @@ owner's written decision. A new feature gets a row in 01 first.
 | WS-08 | Hide/Unhide entries and lanes | M | done | `crates/workspace-store` tests, `crates/sessions/tests/session/matrix.rs`, `src/session/project.rs`, `{shell/WorkspaceTree,viewer/{PlaylistViewer,hidden},playback/{LaneGrid,VideoViewer}}.test.*` | Kept in the Doc, never saved ([CONTEXT](../CONTEXT.md)). "Show hidden" lists hidden rows dimmed; next/previous skip them; hidden lanes undrawn |
 | WS-09 | Bookmarks and reviewed marks; Bookmarks view; open at frame | M | done | `workspace-store/src/bookmarks.rs`, `tests/it/bookmarks.rs`, `bookmarks/` |  |
 | WS-10 | Bookmarks to CSV | S | done | `tests/it/bookmarks.rs`, `make test-desktop` |  |
-| WS-11 | Sidebar views Workspace, Live, Offline, Bookmarks, Plugins; search, sort, filter | M | in progress | `shell/{Shell,Sidebar,WorkspaceTree,WorkspaceTree.search}.test.tsx`, `shell/treeModel.test.ts` | Workspace and Offline: search, Sort (Workspace order, Name), Show hidden; Offline lists Videos and Playlists with a count. Live: search, Sort, Filter. Bookmarks: search, kind |
+| WS-11 | Sidebar views Workspace, Live, Offline, Bookmarks, Plugins; search, sort, filter | M | in progress | `shell/{Shell,Sidebar,WorkspaceTree,WorkspaceTree.search}.test.tsx`, `shell/treeModel.test.ts` | Workspace and Offline: search, Sort (Workspace order, Name), Show hidden; Offline counts Videos and Playlists. Live: search, Sort, Filter. Bookmarks: search, kind |
 | WS-12 | Start panel and welcome area | M | done | `shell/Shell.test.tsx`, `shell/WorkspaceFiles.test.tsx` | Heading only with recents; Open Workspace default; Live: AC-03 |
 | WS-13 | Split viewer area: drag to split, preview vs pinned panes | M | todo |  |  |
 | WS-14 | Long playlists load collapsed | S | todo |  |  |
@@ -28,7 +28,7 @@ owner's written decision. A new feature gets a row in 01 first.
 
 | ID | Feature | P | Status | Test | Notes |
 |----|---------|---|--------|------|-------|
-| AC-01 | Add Video with any number of overlays; decoder picked by extension | M | done | `crates/workspace/src/intake.rs`, `src/{cli/tests,routes/intake}.rs`, `tests/it/{playback_ws,local_video}.rs`, `desktop/args.test.cjs`, `shell/{Shell.addVideo,AddVideoDialog}.test.tsx`, `crates/handlers` tests | Any number of removable overlays, each with decoder and options. A remote window asks for a path; an unreadable file keeps Add off. `initial` prefills |
+| AC-01 | Add Video with any number of overlays; decoder picked by extension | M | done | `crates/workspace/src/intake.rs`, `src/{cli/tests,routes/intake}.rs`, `tests/it/{playback_ws,local_video}.rs`, `desktop/args.test.cjs`, `shell/{Shell.addVideo,AddVideoDialog}.test.tsx`, `crates/handlers` tests | Removable overlays, each with decoder and options. A remote window asks for a path; an unreadable file keeps Add off. `initial` prefills |
 | AC-02 | Drop video files on the window | M | todo |  |  |
 | AC-03 | Add Live Stream with analytics discovery | M | done | `shell/AddLiveStreamDialog.test.tsx`, `src/session/reader/tests.rs` | Edit keeps the saved login on the same camera |
 | AC-04 | Add Playlist through a resolver form | M | done | `shell/AddPlaylistDialog.test.tsx`, `resolvers/*.test.*`, `crates/handler-api/tests/form.rs`, `src/routes/{handlers,resolve}.rs`, `src/cli/tests.rs`, `tests/it/{local_video,mot_playlist}.rs`, `make test-desktop` | Resolves before adding, so a failure stays in the dialog; a resolver may return several. The CLI playlist waits for a local window, resolving in the background |
@@ -51,7 +51,7 @@ owner's written decision. A new feature gets a row in 01 first.
 
 | ID | Feature | P | Status | Test | Notes |
 |----|---------|---|--------|------|-------|
-| OF-01 | Play/pause, step, speed, seek; clock-following playback | M | done | `playback/{chromeVisibility,clock,direction,session,FrameBuffer,protocol,wire,Transport,VideoViewer}.test.*`, `tests/it/playback_ws.rs`, `crates/foundation` time tests, `crates/media/tests/it/decode.rs`, `make test-desktop` | Frame entry, speed presets and floor, timeline drag (seeks on release): `Transport.test.tsx`, `clock.test.ts`. Image sequences (`crates/media/tests/it/sequence.rs`) and variable frame rate share it. An open shows a loading cover (`PlaybackStatus.test.tsx`, `smoke-video.cjs`); a decode failure stops. Real GPU: D0 spike only |
+| OF-01 | Play/pause, step, speed, seek; clock-following playback | M | done | `playback/{chromeVisibility,clock,direction,session,FrameBuffer,PlaybackStatus,protocol,wire,Transport,VideoViewer}.test.*`, `tests/it/playback_ws.rs`, `crates/foundation` time tests, `crates/media/tests/it/{decode,sequence}.rs`, `make test-desktop` | Frame entry, speed presets and floor, timeline drag (seeks on release). Image sequences and variable frame rate share it. An open shows a loading cover; a decode failure stops. Real GPU: D0 spike only |
 | OF-02 | Comparison lanes: several overlays on one video; a playlist entry starts over, and two recordings side by side are two viewers with no shared clock (out of scope) | M | in progress | `tests/it/{mot_playlist,playback_lanes}.rs`, `crates/overlays/src/tests/`, `crates/workspace/src/intake.rs`, `playback/{LaneGrid,lanes,session,frameSource}.test.*` | The frontend draws a lane from Sample Items and its Frame Map (D22–D27); one overlay file can be several lanes (D24) |
 | OF-03 | Playlists of entries and lanes; next/previous entry | M | done | `crates/playlist-resolvers/tests/`, `tests/it/mot_playlist.rs`, `viewer/{PlaylistViewer,PlaylistFollower}.test.tsx`, `crates/sessions/tests/session/revocation.rs`, `make test-desktop` | MOT Challenge and folder-pair playlists, a lane per overlay file. A following window follows the presenter's entry |
 | OF-04 | Timestamp matching, sequence-keyed files, sticky overlays | M | in progress | `crates/overlay-sync/src/select/tests.rs`, `crates/overlays/src/tests/delivery.rs`, `tests/it/mot_playlist.rs` | Per lane, session only ([invariants](domain/invariants.md#frame-identity)); Frame Maps carry the choice to the viewer (D26) |
@@ -68,19 +68,19 @@ Listed in [parity deviations](parity-deviations.md).
 
 | ID | Feature | P | Status | Test | Notes |
 |----|---------|---|--------|------|-------|
-| IN-01 | Media tools panel per lane: Objects and Events lists, object and event pages | M | in progress | `crates/scene/src/inspection/tests.rs`, `{playback/{inspection,Inspector},tools/**}.test.*`, `tests/it/playback_inspect.rs`, `make test-desktop` | ID dots by class, fields, Debug origin (D36). Left: Events tab, event page |
+| IN-01 | Media tools panel per lane: Objects and Events lists, object and event pages | M | done | `crates/scene/src/inspection/tests.rs`, `{playback/{inspection,Inspector,fileEvents},tools/**}.test.*`, `tests/it/playback_inspect.rs`, `make test-desktop` | ID dots by class, fields, Debug origin (D36). An object and a moment list 200 events at most |
 | IN-02 | Object filters by type and score/confidence range; whole-file filtering with declared policies | M | done | `crates/scene/src/filter.rs`, `{present/filter/filter,playback/LaneMenuFilter}.test.*`, `crates/scene-store/src/tests/history.rs`, `tests/it/mot_playlist.rs` | Class toggles apply in both scopes; File judges every recorded class (D30). The expression (`score >= 0.4`) and ranges are frame-only (MTP-010) |
 | IN-03 | Hover chip and click selection; can be turned off | M | done | `present/pick/pick.test.ts`, `playback/{VideoViewer.objects,VideoCanvas,chipPlacement,ObjectLayer}.test.*` | Smallest box in the lane's filtered rows; kept by id across seeks, shown in its source's lanes. `overlays.object_details` turns it off (D36) |
 | IN-04 | Frame info HUD, lane names | M | done | `playback/{hud,VideoViewer.objects}.test.*`, `make test-desktop` | The HUD (I) covers the lane-name tags while it shows. PTS rows need a time base of a microsecond or coarser |
 | IN-05 | Zoom, pan, reset, synced across lanes; lane and app fullscreen | M | done | `playback/{viewport,uiZoom,VideoCanvas,VideoViewer.objects}.test.*`, `desktop/smoke-video.cjs` | One viewport per viewer, shared by its lanes (D31); in Electron, overlay pixel lengths ignore page zoom (D32). Lane fullscreen is the Fullscreen API on the viewer pane; Esc leaves it, F11 app fullscreen stays. |
 | IN-06 | Per-view overlay detail visibility | M | done | `{playback/LaneMenu,present/pick/pick}.test.*` | Hidden objects keep hover and inspection |
 | IN-07 | Per-view sticky/sync/filter settings, Apply to all, defaults for new views | S | in progress | `playback/{LaneMenu,lanes,sessionLanes}.test.*`, `crates/settings` | Kept by position; Apply to all copies them; Make default saves `overlays.default_{sticky,sync}`. Left: Apply to all across viewers |
-| IN-08 | Structured query search in Objects and Events lists | M | in progress | `search/query.test.ts`, `crates/scene-store/src/tests/{query,events}.rs` | Frame: id, class, motion.state, score, confidence. File: id, class, event. Events: kind, object |
-| IN-09 | Frame vs File scope for objects | M | done | `{tools/{ObjectsPanel,table/Table},playback/fileScope}.test.*` | File scope follows the lane's class toggles, not its frame filter; not for a followed window. The cursor keeps off-page rows. A pick off the frame seeks to its first |
+| IN-08 | Structured query search in Objects and Events lists | M | done | `search/query.test.ts`, `crates/scene-store/src/tests/{query,events}.rs`, `tools/MediaToolsPanel.events.test.tsx` | Frame: id, class, motion.state, score, confidence. File: id, class, event. Events: kind, object |
+| IN-09 | Frame vs File scope for objects | M | done | `{tools/{MediaToolsPanel,table/Table},playback/fileScope}.test.*` | File scope follows the lane's class toggles, not its frame filter; not for a followed window. The cursor keeps off-page rows. A pick off the frame seeks to its first |
 | IN-10 | Pinned fields kept across object pages | S | done | `playback/{fields,Inspector}.test.*` | |
 | IN-11 | Copy a field or section value | S | done | `playback/{fields,Inspector}.test.*` |  |
-| IN-12 | Presence strip with seeking; previous/next appearance | M | in progress | `{playback/{appearanceJumps,Inspector},tools/PresenceStrip}.test.*` | Strip in rows and page. Left: event ticks |
-| IN-13 | Event to frame (offline; live events have no seekable history); event/object cross-navigation | M | in progress | `scene-store/src/tests/events.rs` | Backend only. Differs: by index |
+| IN-12 | Presence strip with seeking; previous/next appearance | M | done | `{playback/{appearanceJumps,Inspector},tools/PresenceStrip}.test.*` | Strip in rows and page, with event ticks |
+| IN-13 | Event to frame (offline; live events have no seekable history); event/object cross-navigation | M | done | `scene-store/src/tests/events.rs`, `tools/MediaToolsPanel.events.test.tsx` | Pages keyed by index ([deviations](parity-deviations.md)) |
 
 ## Render catalogs
 
@@ -132,7 +132,7 @@ Listed in [parity deviations](parity-deviations.md).
 | ID | Feature | P | Status | Test | Notes |
 |----|---------|---|--------|------|-------|
 | DT-01 | Isolated GUI test environment for agents and CI | M | done | `make test-desktop` | `scripts/isolated`: private home and display, user-file guard; Linux |
-| DT-02 | UI screenshot harness | M | done | `make test-desktop`, `desktop/fit-coverage.test.cjs` | `desktop/smoke*.cjs`: main window, menus, dialogs, the fixture playlist's lanes and Objects list in both themes at the window minimum and 200% zoom, the video and sharing scenarios |
+| DT-02 | UI screenshot harness | M | done | `make test-desktop`, `desktop/fit-coverage.test.cjs` | `desktop/smoke*.cjs`: main window, menus, dialogs, the fixture playlist's lanes, Objects and Events lists in both themes at the window minimum and 200% zoom, the video and sharing scenarios |
 | DT-03 | Rendering benchmarks with A/B against a ref | S | in progress | `make bench` | `overlays` bench of the Sample Item encoder; numbers on stdout, nothing asserted |
 | DT-04 | Timestamp alignment report | S | todo |  |  |
 | DT-05 | Release check in clean environments | S | todo |  |  |
