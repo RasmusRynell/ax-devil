@@ -23,7 +23,7 @@ export function windowRange(
 }
 
 export class FrameBuffer<F extends { readonly byteLength: number }> {
-  readonly #budgetBytes: number;
+  #budgetBytes: number;
   readonly #frameCount: number;
   readonly #frames = new Map<number, F>();
   #low = 0;
@@ -33,6 +33,14 @@ export class FrameBuffer<F extends { readonly byteLength: number }> {
   constructor(budgetBytes: number, frameCount: number) {
     this.#budgetBytes = budgetBytes;
     this.#frameCount = frameCount;
+  }
+
+  /**
+   * Changes the byte budget. What is held stays until the next window evicts it, so the owner reports a window that
+   * fits the new budget right after.
+   */
+  setBudget(budgetBytes: number): void {
+    this.#budgetBytes = budgetBytes;
   }
 
   get usedBytes(): number {
