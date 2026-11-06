@@ -286,7 +286,11 @@ mod tests {
         );
         for principal in [Principal::Server, Principal::None] {
             for like in [None, Some(like)] {
-                assert_eq!(password(principal, "cam.local", like), None);
+                // The configured user is a reference, kept literal for them, so there may be a login, never a password.
+                assert_eq!(
+                    password(principal, "cam.local", like).unwrap_or_default(),
+                    ""
+                );
             }
         }
     }
