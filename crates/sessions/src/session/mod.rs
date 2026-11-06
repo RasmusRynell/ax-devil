@@ -10,6 +10,7 @@ mod authorize;
 mod commands;
 mod handle;
 mod jobs;
+mod layout;
 mod roster;
 mod runner;
 mod service;
@@ -23,6 +24,7 @@ pub use authorize::{Can, ContentRef, Refusal, Use, authorize, authorize_stream, 
 pub use commands::{Command, Control, Scope};
 pub use handle::{Change, Feed, Handle, Reply, StreamLease};
 pub use jobs::{Completion, JobOwner, Spawn, Work};
+pub use layout::{Axis, Layout, MAX_PANES, ViewerId};
 pub use roster::RosterEntry;
 pub use runner::{Completer, OnRuntime, Runner, Watcher};
 pub use service::{HeldItem, Listing, Service};

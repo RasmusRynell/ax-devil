@@ -1,11 +1,16 @@
 //! What makes authority end for good: Stop, close and reopen, a replaced seat, lowered access and the end of the
 //! session. Each is checked on the stream a watcher holds, the seat it sits in and the secrets that could revive it.
 
-use crate::{GRACE, Rig, authority, entry_key, key, link, playlist_in, stream};
+use crate::{
+    GRACE, Rig, authority, entry_key, key, link, looking, pane, playlist_in, showing, stream,
+};
 use playback::{Authority, Priority};
 use sessions::{
     CursorOptions, EndReason, MAX_SESSIONS,
-    session::{Access, Change, Command, Control, Refusal, View, ViewerView},
+    session::{
+        Access, Axis, Change, Command, ContentRef, Control, Layout, Refusal, View, ViewerId,
+        ViewerView,
+    },
 };
 use tokio::{task::yield_now, time::advance};
 use workspace_store::DocCommand;
@@ -98,6 +103,7 @@ async fn closing_a_viewer_ends_its_streams_and_reopening_needs_a_key_of_the_new_
         .command(Command::Content(DocCommand::OpenViewer(item)))
         .unwrap();
     rig.jobs.finish_all();
+    owner.view(showing(item), 2).unwrap();
     let new_key = key(&owner.state(), item);
     assert_ne!(new_key, old_key, "the same Content under a new generation");
     assert!(matches!(
@@ -220,10 +226,10 @@ async fn disconnected_sessions_in_their_grace_period_still_count_against_the_ser
     let rig = Rig::new();
     let cursors = CursorOptions::default;
     let mut owners: Vec<_> = (0..MAX_SESSIONS)
-        .map(|_| rig.service.create(true, cursors()).unwrap())
+        .map(|_| rig.service.create(true, true, cursors()).unwrap())
         .collect();
     assert_eq!(
-        rig.service.create(true, cursors()).err(),
+        rig.service.create(true, true, cursors()).err(),
         Some(Refusal::Full)
     );
 
@@ -232,14 +238,14 @@ async fn disconnected_sessions_in_their_grace_period_still_count_against_the_ser
     yield_now().await; // let the grace timers register before time moves
     advance(GRACE / 2).await;
     assert_eq!(
-        rig.service.create(true, cursors()).err(),
+        rig.service.create(true, true, cursors()).err(),
         Some(Refusal::Full)
     );
 
     // Once they have expired, the places are free again.
     advance(GRACE).await;
     yield_now().await;
-    assert!(rig.service.create(true, cursors()).is_ok());
+    assert!(rig.service.create(true, true, cursors()).is_ok());
 }
 
 #[tokio::test(start_paused = true)]
@@ -269,14 +275,9 @@ async fn closing_a_viewer_removes_it_from_every_view() {
     let rig = Rig::new();
     let (owner, watcher) = rig.shared(Access::Explore);
     let (item, _) = rig.open_video(&owner, "a.mp4");
-    let showing = View {
-        active: Some(item),
-        viewers: [(item, ViewerView::default())].into(),
-        ..View::default()
-    };
-    owner.view(showing.clone(), 1).unwrap();
-    watcher.view(showing, 1).unwrap();
-    assert_eq!(owner.state().presenter.active, Some(item));
+    // The owner's view from opening shows the item; the exploring watcher shows it in its own.
+    watcher.view(showing(item), 1).unwrap();
+    assert_eq!(owner.state().presenter.active, Some(ViewerId(1)));
 
     owner
         .command(Command::Content(DocCommand::CloseViewer(item)))
@@ -311,22 +312,42 @@ async fn a_new_link_turns_away_the_old_one_and_keeps_the_seats_already_in() {
 }
 
 #[tokio::test(start_paused = true)]
-async fn a_follower_streams_only_the_entry_the_presenter_shows_and_loses_it_when_the_presenter_switches()
+async fn a_follower_streams_only_the_entry_a_presenter_pane_shows_and_losing_it_leaves_the_other_pane_alone()
  {
     let rig = Rig::new();
     let (owner, watcher) = rig.shared(Access::Watch);
     let (item, first) = rig.open(&owner, playlist_in(rig.dir.path(), &["a", "b"]));
     let second = entry_key(&owner.state(), item, 1);
-    let showing = |entry: &workspace::ContentId| View {
-        active: Some(item),
-        viewers: [(
-            item,
-            ViewerView {
-                clock: None,
-                entry: Some(entry.clone()),
-            },
-        )]
+    let beside = ContentRef {
+        viewer: ViewerId(2),
+        ..second.clone()
+    };
+    // Two panes show the playlist: viewer 1 as `entry` asks, viewer 2 its second entry.
+    let panes = |entry: Option<&workspace::ContentId>| View {
+        active: Some(ViewerId(1)),
+        viewers: [
+            (
+                ViewerId(1),
+                ViewerView {
+                    entry: entry.cloned(),
+                    ..looking(item)
+                },
+            ),
+            (
+                ViewerId(2),
+                ViewerView {
+                    entry: Some(second.entry.clone()),
+                    ..looking(item)
+                },
+            ),
+        ]
         .into(),
+        layout: Some(Layout::Split {
+            axis: Axis::Column,
+            share: 5000,
+            first: pane(1),
+            second: pane(2),
+        }),
         ..View::default()
     };
 
@@ -345,9 +366,18 @@ async fn a_follower_streams_only_the_entry_the_presenter_shows_and_loses_it_when
         "the owner streams any entry"
     );
 
-    owner.view(showing(&second.entry), 1).unwrap();
+    owner.view(panes(None), 2).unwrap();
+    let other = stream(&rig.service, &watcher, &beside).unwrap();
+    assert!(matches!(authority(&following), Authority::Follow { .. }));
+    assert!(matches!(authority(&other), Authority::Follow { .. }));
+
+    owner.view(panes(Some(&second.entry)), 3).unwrap();
 
     assert_eq!(authority(&following), Authority::Revoked);
+    assert!(
+        matches!(authority(&other), Authority::Follow { .. }),
+        "the other pane of the item keeps its stream"
+    );
     assert!(matches!(
         authority(&stream(&rig.service, &watcher, &second).unwrap()),
         Authority::Follow { .. }

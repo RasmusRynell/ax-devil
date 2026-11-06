@@ -1,5 +1,5 @@
 //! The sidebar's questions about a stream's camera against an in-process camera: its own login goes only to a host the
-//! user vouched for, only as a Digest answer, and a hover or a poll asks the camera once per cooldown.
+//! user started, only as a Digest answer, and a hover or a poll asks the camera once per cooldown.
 
 use ax_devil::{AppState, access::Policy, app, plugins::Plugins, session::live::defaults};
 use axum::{
@@ -105,7 +105,7 @@ impl World {
         );
         let handle = state
             .sessions
-            .create(true, CursorOptions::default())
+            .create(true, true, CursorOptions::default())
             .unwrap();
         Self {
             router: app(state.clone()),
@@ -118,7 +118,7 @@ impl World {
 
     /// Adds a stream of the camera on `port` with the login root, not started, and waits until it has resolved.
     async fn add_stream(&self, port: u16) -> ItemId {
-        let defaults = defaults(&self.state.settings.state());
+        let defaults = defaults(&self.state.settings.state(), true);
         let new = NewLive {
             host: Some("127.0.0.1".into()),
             username: Some("root".into()),
@@ -186,7 +186,7 @@ async fn a_stream_the_user_has_not_started_is_sent_nothing_and_a_started_one_is_
     let world = World::new().await;
     let item = world.add_stream(port).await;
 
-    // Resolved from a file or just added without Start: the literal host is not vouched for.
+    // Resolved from a file or just added without Start: the host is not started.
     assert_eq!(world.snapshot(item).await.0, StatusCode::NOT_FOUND);
     assert_eq!(world.check(item).await.0, StatusCode::NO_CONTENT);
     assert!(seen.lock().unwrap().is_empty(), "nothing was sent");

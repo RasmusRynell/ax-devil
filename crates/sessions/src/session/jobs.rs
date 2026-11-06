@@ -44,6 +44,8 @@ pub struct Spawn {
     pub work: Work,
     /// Cancelled when the job's result is no longer wanted.
     pub cancel: CancelToken,
+    /// Whether the references the job resolves may read this machine's environment (see `SessionState::expands`).
+    pub expands: bool,
 }
 
 /// A registered job.
@@ -65,7 +67,12 @@ pub(super) fn spawn(next: &mut SessionState, fx: &mut Effects, owner: JobOwner, 
             cancel: cancel.clone(),
         },
     );
-    fx.spawn.push(Spawn { job, work, cancel });
+    fx.spawn.push(Spawn {
+        job,
+        work,
+        cancel,
+        expands: next.expands,
+    });
 }
 
 /// Takes `job` out of the registry and hands back its owner, or `None` when it is not registered: a completion for

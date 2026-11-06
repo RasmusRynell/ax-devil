@@ -48,8 +48,7 @@ pub(super) fn launch(
 }
 
 /// Refuses a live stream whose camera or MQTT broker host is a `$NAME` reference that expands to nothing, as resolving
-/// would once the app is up. The item keeps the reference as written; the expansion is only looked at here, and a
-/// reference that needs the user's confirmation is left for resolving to ask about.
+/// would once the app is up. The item keeps the reference as written; the expansion is only looked at here.
 fn check_hosts(recipe: &LiveRecipe, env: &Environment) -> Result<(), String> {
     let none = Secret::default();
     let host = |host| Connection {

@@ -91,6 +91,18 @@ describe("viewer host", () => {
     expect(screen.queryByText("Source changed, reload current viewer?")).toBeNull();
   });
 
+  it("gives eight open items a tab and closes the ninth again", async () => {
+    const send = await setup();
+    const ids = Array.from({ length: 9 }, (_, n) => `v${n + 1}`);
+    send(...ids.map((id) => [id, true, resolved(id)] as Parameters<typeof video>));
+    expect(screen.getAllByRole("tab")).toHaveLength(8);
+    expect(FakeSocket.latest.received).toContainEqual(
+      expect.objectContaining({
+        cmd: { type: "content", command: { type: "closeViewer", item: "v9" } },
+      }),
+    );
+  });
+
   it("switches between open items, and closing one shows the other", async () => {
     const send = await setup();
     send(["a", true, resolved("a")], ["b", true, resolved("b")]);

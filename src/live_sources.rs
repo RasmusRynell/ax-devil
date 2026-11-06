@@ -1,7 +1,7 @@
 //! Live camera sources: a viewer opens a camera, and a [`Feed`](feed::Feed) pipeline connects it, holds the video
 //! until its overlay is settled (or 1.5 s), decodes it and hands every viewer the newest frame with what its lane
 //! selects. Connections go through a [`Connector`]; nothing contacts a host until a viewer opens (the sidebar's
-//! snapshots and login checks, in [`crate::glance`], wait for a host a viewer opened for or the user confirmed).
+//! snapshots and login checks, in [`crate::glance`], wait for a host a viewer opened for).
 //!
 //! Rules: a camera has one MQTT client, so two feeds that need it cannot both run; a feed is shared by every viewer of
 //! the same resolved spec and ends with the last one, closing every connection, including the temporary MQTT

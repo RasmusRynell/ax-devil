@@ -198,6 +198,7 @@ mod tests {
             .sessions
             .create(
                 true,
+                true,
                 sessions::CursorOptions {
                     show: true,
                     share: true,

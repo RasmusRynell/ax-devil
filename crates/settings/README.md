@@ -24,7 +24,9 @@ credential. Only shortcuts are read live.
 - Flat dotted keys. The file is sparse: only values that differ from the default are written, reset deletes the key,
   and a missing key is the default. A shortcut of `null` is unbound.
 - A row with `env` accepts a whole-value `$NAME` reference, stored as written and expanded where it is used
-  (`State::resolved`); the expanded value is what is checked on save.
+  (`State::resolved`), silently. A number or folder is checked as expanded on save; text and a choice are read only
+  when used. A reference that gives nothing usable is logged without its value and gives empty text, or the default
+  where empty is not valid. A folder is read once at start; `State::references` gives a form the values.
 - Unknown top-level keys, settings keys and command ids are logged and kept on save, so another version's settings
   survive. A known key with an invalid value, malformed JSON, a missing or non-integer `version`, or a file newer
   than `VERSION` stops loading with an error naming the file and key.

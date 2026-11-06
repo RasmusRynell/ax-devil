@@ -93,6 +93,9 @@ pub struct SessionState {
     pub owner: OwnerId,
     /// The owner holds the grant to read the host's files, so it may run commands that do.
     pub files: bool,
+    /// The owner is the person at this machine, so the references in its items read this machine's environment;
+    /// a remote owner's stay literal text.
+    pub expands: bool,
     /// What the session is about.
     pub doc: Arc<Doc>,
     /// Counts changes to the Doc.
@@ -119,7 +122,7 @@ pub struct SessionState {
 
 impl SessionState {
     /// A session of one: its owner's seat, an empty Doc and an empty presenter view, not shared.
-    pub fn new(id: SessionId, owner: OwnerId, files: bool) -> Self {
+    pub fn new(id: SessionId, owner: OwnerId, files: bool, expands: bool) -> Self {
         let owner_seat = Seat {
             lease: Lease(0),
             kind: SeatKind::Owner,
@@ -132,6 +135,7 @@ impl SessionState {
             id,
             owner,
             files,
+            expands,
             doc: Arc::default(),
             doc_rev: 0,
             presenter: Arc::default(),

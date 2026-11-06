@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test"
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import type { EntryInfo, HiddenTarget, ItemState } from "../generated/api";
 import { entry, FakeSocket, playlist, playlists, type Room } from "../session/fakeSession";
+import { viewing } from "../session/fakeViews";
 import { SessionProvider, useDoc, useView } from "../session/session";
 import type { VideoViewerProps } from "../playback/VideoViewer";
 import { NO_ACTIONS, ViewerActionsContext, useViewerActions, type ViewerActions } from "./actions";
@@ -59,9 +60,9 @@ function Host() {
   return (
     <>
       {resolution?.status === "Resolved" && resolution.content.kind === "Playlist" && (
-        <PlaylistViewer item="list" content={resolution.content} />
+        <PlaylistViewer item="list" viewer={1} content={resolution.content} />
       )}
-      <div data-testid="view">{JSON.stringify(viewers.list ?? null)}</div>
+      <div data-testid="view">{JSON.stringify(viewers[1] ?? null)}</div>
     </>
   );
 }
@@ -91,12 +92,11 @@ async function mount({
   room.hidden = hidden;
   act(() => {
     room.setItems([item ?? playlist("list", entries)]);
-    if (shown)
-      room.publish({
-        sidebar: room.presenter.sidebar,
-        active: "list",
-        viewers: { list: { entry: shown } },
-      });
+    // The window shows the playlist in its viewer 1, on the entry named or the first one shown.
+    room.publish({
+      sidebar: room.presenter.sidebar,
+      ...viewing(["list", shown ? { entry: shown } : {}]),
+    });
   });
   const run = (id: string) => act(() => registry.current[id]?.());
   const view = () => JSON.parse(screen.getByTestId("view").textContent ?? "null");
@@ -126,7 +126,7 @@ describe("playlist viewer", () => {
     expect(screen.getByText("playing C")).toBeTruthy();
     expect(screen.getByLabelText("Entry").textContent).toBe("3 / 4");
     // The view names the entry and no clock: the one that was playing is not the new entry's.
-    expect(view()).toEqual({ entry: "list/C" });
+    expect(view()).toEqual({ item: "list", pinned: false, entry: "list/C" });
     run("next-entry");
     expect(screen.getByText("playing D")).toBeTruthy();
     expect(screen.getByRole("button", { name: "Next entry" })).toHaveProperty("disabled", true);
@@ -188,11 +188,7 @@ describe("playlist viewer", () => {
   it("shows the entry the presenter moves to", async () => {
     const room = FakeSocket.host("watch");
     room.setItems([playlist("list", ENTRIES)]);
-    room.publish({
-      sidebar: room.presenter.sidebar,
-      active: "list",
-      viewers: { list: { entry: "list/A" } },
-    });
+    room.publish({ sidebar: room.presenter.sidebar, ...viewing(["list", { entry: "list/A" }]) });
     window.sessionStorage.setItem(
       "ax-devil.credential",
       JSON.stringify({ kind: "join", session: room.id, secret: room.secret }),
@@ -205,11 +201,7 @@ describe("playlist viewer", () => {
     await act(async () => {});
     expect(screen.getByText("playing A")).toBeTruthy();
     act(() =>
-      room.publish({
-        sidebar: room.presenter.sidebar,
-        active: "list",
-        viewers: { list: { entry: "list/C" } },
-      }),
+      room.publish({ sidebar: room.presenter.sidebar, ...viewing(["list", { entry: "list/C" }]) }),
     );
     expect(screen.getByText("playing C")).toBeTruthy();
     expect(screen.queryByRole("alert")).toBeNull();

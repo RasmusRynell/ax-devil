@@ -222,7 +222,7 @@ pub enum DocCommand {
     /// Withdraws the viewer request. Does nothing for an unknown item.
     CloseViewer(ItemId),
     /// Resolves the item again under a new generation, whether or not its viewer is open: how an open item that failed
-    /// (a live stream waiting for a confirmation) tries again. Does nothing for an unknown item or one resolving.
+    /// (a live stream whose host was unset) tries again. Does nothing for an unknown item or one resolving.
     Resolve(ItemId),
     /// The files an item was read from changed. An item whose viewer is open on its Content only counts the change
     /// (see [`WorkspaceState::changed`]); any other resolves again under a new attempt, even while it resolves, since

@@ -1,4 +1,3 @@
-import type { LiveConfirmation } from "../generated/api";
 import { Button } from "../kit/Button";
 import { Chip } from "../kit/Chips";
 import { Icon } from "../kit/Icon";
@@ -39,7 +38,6 @@ interface Props {
   position: number;
   siblings: number;
   mayAct: boolean;
-  mayConfirm: boolean;
   onClick: () => void;
   /** A double click: the row's own open. */
   onOpen: () => void;
@@ -48,7 +46,6 @@ interface Props {
   /** The pointer entered the row (where), or left it. */
   onHover: (at: { x: number; y: number } | null) => void;
   onAct: (action: RowAction) => void;
-  onConfirm: (confirmation: LiveConfirmation) => void;
 }
 
 /**
@@ -67,14 +64,12 @@ export function LiveRow({
   position,
   siblings,
   mayAct,
-  mayConfirm,
   onClick,
   onOpen,
   onFold,
   onMenu,
   onHover,
   onAct,
-  onConfirm,
 }: Props) {
   const { action } = row;
   const look = action && ACTIONS[action];
@@ -144,21 +139,6 @@ export function LiveRow({
         </div>
         {row.detail && <Line text={row.detail} warning={row.detailWarning} />}
         {infoShown && row.info.map((line) => <Line key={line} text={line} />)}
-        {mayConfirm &&
-          row.confirm.map((confirmation) => (
-            <Button
-              key={`${confirmation.reference}@${confirmation.host}`}
-              size="small"
-              data-cursor-id={`confirm:${row.id}`}
-              className="justify-start text-left whitespace-normal [overflow-wrap:anywhere]"
-              onClick={(event) => {
-                event.stopPropagation();
-                onConfirm(confirmation);
-              }}
-            >
-              {`Confirm $${confirmation.reference} for ${confirmation.host}`}
-            </Button>
-          ))}
       </div>
     </div>
   );

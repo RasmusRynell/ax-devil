@@ -10,7 +10,6 @@ behavior that neither the row nor its source states. Port behavior, not wording 
 | Edit item | WS-07 | Unreadable items cannot be edited | `docs/architecture/workspace.md#workspace-items` |
 | Files change on disk | WS-06 | Files are polled once a second, so network shares are noticed too | `file_watching/README.md` |
 | Add Video | AC-01 | Several matching decoders → the user picks | `docs/architecture/overview.md#workspace-items-and-intake` |
-| Drop files | AC-02 | Pane drags are never treated as file drops | `docs/architecture/ui-framework.md#workspace-shell` |
 | Add Live Stream, Add Playlist | AC-03, AC-04 | The dialog stays open with the reason on failure; form work is cancelled when the form closes | `docs/architecture/workspace.md#resolution` |
 | Live connection trouble | LV-02 | Retry reopens every transport from the same content | `docs/architecture/overview.md#live-source-composition` |
 | Network scan | LV-05 | Settings changes never interrupt a running scan | `docs/settings.md` |
