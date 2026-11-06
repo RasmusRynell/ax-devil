@@ -21,7 +21,7 @@ export function MiddleElided({
           <span className="overflow-hidden text-ellipsis whitespace-pre">
             {text.slice(0, -TAIL)}
           </span>
-          <span className="shrink-0">{text.slice(-TAIL)}</span>
+          <span className="shrink-0 whitespace-pre">{text.slice(-TAIL)}</span>
         </>
       ) : (
         <span className="truncate">{text}</span>
