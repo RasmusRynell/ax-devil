@@ -40,7 +40,10 @@ export type { Surface } from "./contract";
 
 export class PlaybackSession implements LaneControl {
   readonly #deps: SessionDeps;
-  readonly #budget: number;
+  /** What the viewer may ever hold of frames: the stream's ceiling, which `Open.data_bytes` and the samples keep to. */
+  readonly #ceiling: number;
+  /** What it may hold now: its share of the window's budget, which sizes the frame and data windows. */
+  #budget: number;
   readonly #listeners = new Set<() => void>();
   readonly #failures = new FrameFailures();
   #view: PlaybackView = INITIAL_VIEW;
@@ -95,7 +98,7 @@ export class PlaybackSession implements LaneControl {
 
   constructor(deps: SessionDeps) {
     this.#deps = deps;
-    this.#budget = deps.budgetBytes ?? BUFFER_BUDGET_BYTES;
+    this.#ceiling = this.#budget = deps.budgetBytes ?? BUFFER_BUDGET_BYTES;
     this.#resumeAt = deps.resume?.frame;
     this.#autoplay = deps.autoplay === true;
     this.#speed = clampSpeed(deps.resume?.speed ?? 1);
@@ -103,7 +106,7 @@ export class PlaybackSession implements LaneControl {
       open: () => ({
         type: "Open",
         start_frame: this.#resumeAt,
-        data_bytes: sampleBudgetBytes(this.#budget),
+        data_bytes: sampleBudgetBytes(this.#ceiling),
       }),
       incoming: (incoming) => this.#onIncoming(incoming),
       refused: (reason) => this.#fail(reason),
@@ -152,6 +155,15 @@ export class PlaybackSession implements LaneControl {
   /** How `lane` matched a sample to the frame on screen. */
   matched(lane: number): LaneMatch | null {
     return this.#data.matched(lane);
+  }
+
+  /** Changes the bytes of frames held: the window shrinks or regrows to fit, and the backend is asked for it. */
+  setBudget(bytes: number): void {
+    this.#budget = bytes;
+    if (!this.#opened || !this.#buffer) return;
+    this.#buffer.setBudget(bytes);
+    this.#planner?.resize(windowSize(bytes, this.#opened.frame_bytes));
+    this.#sendWant();
   }
 
   /** Sets where frames are drawn; `null` stops drawing. */
@@ -391,7 +403,7 @@ export class PlaybackSession implements LaneControl {
     if (times.length === 0 || times.length !== opened.frame_count || opened.frame_bytes <= 0)
       return this.#fail("The backend described the video inconsistently", "playback");
     this.#buffer = new FrameBuffer<VideoFrame>(this.#budget, times.length);
-    this.#data.open(times.length, sampleBudgetBytes(this.#budget));
+    this.#data.open(times.length, sampleBudgetBytes(this.#ceiling));
     this.#planner = new WantPlanner(windowSize(this.#budget, opened.frame_bytes));
     this.#times = times;
     this.#clock = new PlaybackClock(times, this.#deps.now, this.#resumeAt ?? 0);
