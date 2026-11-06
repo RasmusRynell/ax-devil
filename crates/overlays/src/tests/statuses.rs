@@ -182,9 +182,9 @@ async fn a_lane_matched_by_record_order_gets_no_time_warning() {
 
 #[tokio::test]
 async fn a_lanes_alignment_warning_follows_its_tolerance() {
-    // A sample 10 ms after every 30 fps frame: within the default tolerance of the next frame, never exact.
+    // A sample 10 ms after each 30 fps frame but the last: within the default tolerance of the next frame, never exact.
     let env = Env::new();
-    let times = (0..300).map(|frame| frame * 1_000_000 / 30 + 10_000);
+    let times = (0..299).map(|frame| frame * 1_000_000 / 30 + 10_000);
     let overlay = env.overlay("late.xml", "ONVIF_XML", &onvif_at(times));
     let mut viewer = env.open(vec![Some(overlay)], 300);
     ready_warnings(&mut viewer).await;
@@ -202,6 +202,29 @@ async fn a_lanes_alignment_warning_follows_its_tolerance() {
 
     viewer.set_policy(0, 2, Some(by_time), true);
     assert!(ready_warnings(&mut viewer).await.is_empty());
+}
+
+#[tokio::test]
+async fn a_lane_with_a_few_samples_on_no_frame_is_warned_but_one_that_is_all_on_frames_is_not() {
+    // 300 frames at 30 fps; the last sample comes 100 ms after the last frame, beyond the default 50 ms tolerance.
+    let env = Env::new();
+    let frames = (0..300).map(|frame| frame * 1_000_000 / 30);
+    let aligned = env.overlay("aligned.xml", "ONVIF_XML", &onvif_at(frames.clone()));
+    let stray = env.overlay(
+        "stray.xml",
+        "ONVIF_XML",
+        &onvif_at(frames.chain([299 * 1_000_000 / 30 + 100_000])),
+    );
+    let by_time = overlay_sync::MatchPolicy {
+        basis: Some(overlay_sync::MatchBasis::Time),
+        ..overlay_sync::MatchPolicy::default()
+    };
+    for (overlay, expected) in [(aligned, vec![]), (stray, vec![MISALIGNED])] {
+        let mut viewer = env.open(vec![Some(overlay)], 300);
+        ready_warnings(&mut viewer).await;
+        viewer.set_policy(0, 1, Some(by_time), true);
+        assert_eq!(ready_warnings(&mut viewer).await, expected);
+    }
 }
 
 #[tokio::test]

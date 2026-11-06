@@ -157,6 +157,18 @@ describe("lane menu timing", () => {
     });
   });
 
+  it("switching from Exact back to Previous restores the tolerance the lane had", () => {
+    const exact = { ...LANE_SETTINGS, basis: "Time" as const, tolerance_ms: null };
+    const timed = { ...READY, bases: ["Time"] as BasisWire[], default_basis: "Time" as const };
+    const { onChange } = setup({ settings: { ...exact, kept_tolerance_ms: 80 } }, timed);
+    tab("Timing");
+    expect(screen.queryByRole("spinbutton", { name: "Within (ms)" })).toBeNull();
+    fireEvent.change(screen.getByRole("combobox", { name: "Sync" }), {
+      target: { value: "previous" },
+    });
+    expect(onChange).toHaveBeenLastCalledWith({ tolerance_ms: 80 });
+  });
+
   it("offers a basis only when the file offers two, and sync, savable as the default, only under time", () => {
     setup();
     tab("Timing");
@@ -185,7 +197,10 @@ describe("lane menu timing", () => {
     const previous = screen.getByRole("spinbutton", { name: "Within (ms)" });
     fireEvent.change(previous, { target: { value: "120" } });
     fireEvent.blur(previous);
-    expect(timed.onChange).toHaveBeenLastCalledWith({ tolerance_ms: 120 });
+    expect(timed.onChange).toHaveBeenLastCalledWith({
+      tolerance_ms: 120,
+      kept_tolerance_ms: 120,
+    });
     const sync = screen.getByRole("group", { name: "Sync" });
     fireEvent.click(within(sync).getByRole("button", { name: "Make default" }));
     expect(timed.save).toHaveBeenCalledWith({

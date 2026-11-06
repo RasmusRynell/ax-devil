@@ -21,6 +21,7 @@ export const LANE_SETTINGS: LaneSettings = {
   tolerance_ms: LANE_DEFAULTS.policy.tolerance_ms,
   sticky: { ...LANE_DEFAULTS.policy.sticky, opacity: 1 },
   kept_timeout_ms: 2050,
+  kept_tolerance_ms: 50,
   visible: true,
 };
 

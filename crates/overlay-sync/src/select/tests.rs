@@ -195,14 +195,23 @@ fn sticky_keeps_the_latest_sample_not_an_older_one() {
 }
 
 #[test]
-fn a_tolerated_sample_is_opaque_and_ignores_the_sticky_timeout() {
+fn the_sticky_timeout_expires_a_tolerated_sample_too() {
     let keys = times(&[0]);
     let sticky = policy(within(50), Some(Some(10 * MS)));
+    let cases = [
+        (10, picked(0, MatchKind::Tolerated)),
+        (30, Selection::None),
+        (60, Selection::None),
+    ];
+    for (now, expected) in cases {
+        assert_eq!(pick(&keys, at(1, now * MS), &sticky), expected, "{now}");
+    }
+    // With sticky off the timeout is not in force and the tolerance alone decides.
+    let off = policy(within(50), None);
     assert_eq!(
-        pick(&keys, at(1, 30 * MS), &sticky),
+        pick(&keys, at(1, 30 * MS), &off),
         picked(0, MatchKind::Tolerated)
     );
-    assert_eq!(pick(&keys, at(1, 60 * MS), &sticky), Selection::None);
 }
 
 #[test]

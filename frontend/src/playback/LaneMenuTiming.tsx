@@ -16,8 +16,6 @@ import { Group, MakeDefault, NumberField } from "./LaneMenuFields";
 
 /** The longest a sample may match back or stay kept, which the backend enforces. */
 const MAX_MS = 100_000;
-/** How far back a previous sample may be when the user switches from exact and the lane has not said. */
-const DEFAULT_PREVIOUS_MS = 50;
 
 type Sync = "exact" | "previous";
 
@@ -36,12 +34,12 @@ function percent(matched: number, samples: number): number {
 }
 const seconds = (us: number) => `${(Math.abs(us) / 1e6).toFixed(1)} s`;
 
-/** How loudly an alignment speaks: a file mostly off the frames is wrong, one that ends far from the video needs a look. */
+/** How loudly an alignment speaks: a file mostly off the frames is wrong, one that ends far or misses some frames needs a look. */
 export function alignmentTone(
   alignment: AlignmentWire | null | undefined,
 ): "danger" | "caution" | null {
   if (alignment?.verdict === "weak") return "danger";
-  if (alignment?.verdict === "ends_far") return "caution";
+  if (alignment?.verdict === "ends_far" || alignment?.verdict === "partial") return "caution";
   return null;
 }
 
@@ -56,7 +54,8 @@ function Alignment({
   alignment: AlignmentWire | null;
 }) {
   const share = alignment && percent(alignment.matched, alignment.samples);
-  const tone = alignmentTone(alignment);
+  // Some samples off the frames is told by the lane's warning icon; the line itself, as in the reference, stays plain.
+  const tone = alignment?.verdict === "partial" ? null : alignmentTone(alignment);
   const toned = tone ? TONE_TEXT[tone] : "";
   return (
     <Group label="Alignment">
@@ -137,7 +136,7 @@ export function LaneMenuTiming({
                 ["previous", "Previous"],
               ]}
               onChange={(next) =>
-                onChange({ tolerance_ms: next === "exact" ? null : DEFAULT_PREVIOUS_MS })
+                onChange({ tolerance_ms: next === "exact" ? null : settings.kept_tolerance_ms })
               }
             />
           )}
@@ -148,7 +147,9 @@ export function LaneMenuTiming({
               min={0}
               max={MAX_MS}
               step={10}
-              onCommit={(tolerance_ms) => onChange({ tolerance_ms })}
+              onCommit={(tolerance_ms) =>
+                tolerance_ms !== null && onChange({ tolerance_ms, kept_tolerance_ms: tolerance_ms })
+              }
             />
           )}
           {basis === "Time" && (

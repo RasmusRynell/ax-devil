@@ -100,6 +100,7 @@ export function startWith(
     ...settings,
     ...timing,
     kept_timeout_ms: timing?.sticky.timeout_ms ?? settings.kept_timeout_ms,
+    kept_tolerance_ms: timing?.tolerance_ms ?? settings.kept_tolerance_ms,
     catalog: usableCatalog(catalogs, personal)?.id ?? settings.catalog,
   };
 }
@@ -111,10 +112,13 @@ const withPolicy = (settings: LaneSettings, policy: LanePolicyWire): LaneSetting
   tolerance_ms: policy.tolerance_ms,
   sticky: { ...policy.sticky, opacity: settings.sticky.opacity },
   kept_timeout_ms: policy.sticky.timeout_ms ?? settings.kept_timeout_ms,
+  kept_tolerance_ms: policy.tolerance_ms ?? settings.kept_tolerance_ms,
 });
 
 /** The timeout a lane gets when the user limits a retention that has never had one. */
 const DEFAULT_TIMEOUT_MS = 2050;
+/** The tolerance a lane gets when the user switches from Exact to Previous and it has never had one. */
+const DEFAULT_TOLERANCE_MS = 50;
 
 const settingsOf = ({ catalog, policy }: LaneDefaultsWire): LaneSettings => ({
   catalog,
@@ -127,6 +131,7 @@ const settingsOf = ({ catalog, policy }: LaneDefaultsWire): LaneSettings => ({
   tolerance_ms: policy.tolerance_ms,
   sticky: { ...policy.sticky, opacity: 1 },
   kept_timeout_ms: policy.sticky.timeout_ms ?? DEFAULT_TIMEOUT_MS,
+  kept_tolerance_ms: policy.tolerance_ms ?? DEFAULT_TOLERANCE_MS,
   visible: true,
 });
 
@@ -248,6 +253,7 @@ export class LaneSet {
       !style &&
       settings.sticky.opacity === state.settings.sticky.opacity &&
       settings.kept_timeout_ms === state.settings.kept_timeout_ms &&
+      settings.kept_tolerance_ms === state.settings.kept_tolerance_ms &&
       settings.visible === state.settings.visible
     )
       return undefined;
