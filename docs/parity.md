@@ -28,11 +28,11 @@ owner's written decision. A new feature gets a row in 01 first.
 
 | ID | Feature | P | Status | Test | Notes |
 |----|---------|---|--------|------|-------|
-| AC-01 | Add Video with any number of overlays; decoder picked by extension | M | done | `crates/workspace/src/intake.rs`, `src/{cli/tests,routes/intake}.rs`, `tests/it/{playback_ws,local_video}.rs`, `desktop/args.test.cjs`, `shell/{Shell.addVideo,AddVideoDialog}.test.tsx`, `crates/handlers` tests | Any number of removable overlays, each with decoder and options. A remote window asks for a path; an unreadable file keeps Add off. `initial` prefills |
-| AC-02 | Drop video files on the window | M | todo |  |  |
+| AC-01 | Add Video with any number of overlays; decoder picked by extension | M | done | `crates/workspace/src/intake.rs`, `src/{cli/tests,routes/intake}.rs`, `tests/it/{playback_ws,local_video}.rs`, `desktop/args.test.cjs`, `shell/{Shell.addVideo,AddVideoDialog}.test.tsx`, `crates/handlers` tests | Removable overlays with decoder and options. A remote window asks for a path; an unreadable file keeps Add off. `initial` prefills |
+| AC-02 | Drop video files on the window | M | dropped |  | Owner decision; see [deviations](parity-deviations.md) |
 | AC-03 | Add Live Stream with analytics discovery | M | done | `shell/AddLiveStreamDialog.test.tsx`, `src/session/reader/tests.rs` | Edit keeps the saved login on the same camera |
-| AC-04 | Add Playlist through a resolver form | M | done | `shell/AddPlaylistDialog.test.tsx`, `resolvers/*.test.*`, `crates/handler-api/tests/form.rs`, `src/routes/{handlers,resolve}.rs`, `src/cli/tests.rs`, `tests/it/{local_video,mot_playlist}.rs`, `make test-desktop` | Resolves before adding, so a failure stays in the dialog; a resolver may return several. The CLI playlist waits for a local window, resolving in the background |
-| AC-05 | One intake validation for dialogs, CLI and drops | M | in progress | `crates/workspace/src/intake.rs`, `tests/it/{local_video,mot_playlist}.rs` | The dialogs and CLI use `workspace::intake`; drops are not built |
+| AC-04 | Add Playlist through a resolver form | M | done | `shell/AddPlaylistDialog.test.tsx`, `resolvers/*.test.*`, `crates/handler-api/tests/form.rs`, `src/routes/{handlers,resolve}.rs`, `src/cli/tests.rs`, `tests/it/{local_video,mot_playlist}.rs`, `make test-desktop` | Resolves before adding, so a failure stays in the dialog; a resolver may return several. The CLI playlist waits for a local window |
+| AC-05 | One intake validation for dialogs and the CLI | M | done | `crates/workspace/src/intake.rs`, `src/cli/tests.rs`, `tests/it/{local_video,mot_playlist}.rs` | Dialogs and CLI use `workspace::intake` |
 
 ## Live
 
