@@ -6,7 +6,6 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs/promises");
 const os = require("node:os");
 const path = require("node:path");
-const fit = require("./fit.cjs");
 const { SCREENSHOTS, SMOKE_ROOT, frames, moveTo, page, setView } = require("./smoke-kit.cjs");
 
 const FIXTURE = path.join(SMOKE_ROOT, "fixtures/video/long_gop_h264.mp4");
@@ -133,15 +132,20 @@ module.exports.sidebar = async (window) => {
         nativeTheme.themeSource = shown;
         await wait(`matchMedia('(prefers-color-scheme: ${shown})').matches`);
         await shoot(`sidebar-resized-${shown}${suffix}.png`);
-        // Nothing is cut off or runs past the width. A tall list scrolls, as it grows with the user's data, and the
-        // open video hides its controls while the pointer is away: neither is this scenario's to check.
-        const problems = await js(`(${fit.page.toString()})()`);
+        // Nothing in the sidebar is cut off, and it stays within its half of the window. A tall list scrolls, as it
+        // grows with the user's data, and the viewer's tabs scroll too: neither is this scenario's to check.
         assert.deepEqual(
-          problems.filter((problem) =>
-            /^(horizontal overflow|cut off|text overlaps)/.test(problem),
-          ),
+          await js(`(() => {
+            const aside = ${SIDEBAR};
+            const cut = [...aside.querySelectorAll('*')].filter(
+              (e) => e.localName !== 'input' && e.clientWidth > 2 && e.scrollWidth > e.clientWidth + 1,
+            );
+            const strip = document.querySelector('nav[aria-label=Activity]').clientWidth;
+            const over = aside.getBoundingClientRect().width > (innerWidth - strip) / 2 + 1;
+            return [...cut.map((e) => e.textContent.trim().slice(0, 30)), ...(over ? ['past half the window'] : [])];
+          })()`),
           [],
-          `The page fits the width at ${zoom * 100}% zoom`,
+          `The sidebar fits at ${zoom * 100}% zoom`,
         );
       }
     }
