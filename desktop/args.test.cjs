@@ -35,6 +35,10 @@ void test("a server address or link opens a window and is not taken for the back
   assert.deepEqual(backendArgs(linked.rest), ["local", "--video", "a.mp4"]);
   assert.deepEqual(parseLaunch(["--server=http://nas"]).launch, { server: "http://nas" });
   assert.throws(() => parseLaunch(["--server"]), /needs a server address/);
+  // A link the system delivered is not redirected by an argument that came along with it.
+  assert.deepEqual(parseLaunch(["ax-devil://open", "--server=http://evil"]).launch, {
+    link: "ax-devil://open",
+  });
 });
 
 void test("a restart keeps the global options and switches but not the server, link or intake command", () => {

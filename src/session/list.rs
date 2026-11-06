@@ -13,6 +13,7 @@ pub(crate) async fn list(State(state): State<AppState>) -> Json<Vec<SessionSumma
             .into_iter()
             .map(|listing| SessionSummary {
                 link: state.hosting.join_url(&listing.link),
+                link_problem: state.hosting.link_problem(),
                 id: listing.id.to_string(),
                 owner_present: listing.owner_present,
                 participants: u32::try_from(listing.seats).unwrap_or(u32::MAX),

@@ -214,6 +214,17 @@ async function remote(local, shell) {
     assert.ok(windowAt(localOrigin)(), "Return to local must reach the local backend");
     failures.restore();
 
+    // A host that is not listening is said to be exactly that.
+    const unreachable = stubDialogs(1);
+    stubs.push(unreachable);
+    const gone = http.createServer();
+    await new Promise((resolve) => gone.listen(0, "127.0.0.1", resolve));
+    const { port } = gone.address();
+    await new Promise((resolve) => gone.close(resolve));
+    await shell.showRemote(`http://127.0.0.1:${port}`);
+    assert.match(unreachable.asked[0].detail, /nothing is listening there.*ECONNREFUSED/);
+    unreachable.restore();
+
     // Disconnecting returns to the local backend, which was running all along; only a remote page may ask.
     await js("window.axDevilWindow.disconnect()");
     const back = await until(windowAt(localOrigin), "a window on the local backend");

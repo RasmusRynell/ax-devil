@@ -93,7 +93,7 @@ describe("sessions view", () => {
         access: "owner",
         can: { view: true, content: true, host: true, control: true },
         mode: "following",
-        sharing: { access: "explore" },
+        sharing: { access: "explore", linkProblem: "cannot listen on 0.0.0.0:7340: in use" },
         view: { sidebar: { view: "workspace", open: true }, viewers: {} },
         viewsDone: 0,
       }),
@@ -101,7 +101,7 @@ describe("sessions view", () => {
     expect(session.getByRole("button", { name: "Copy join link" }).hasAttribute("disabled")).toBe(
       true,
     );
-    expect(session.getByText("Join links need the release build (make build)")).toBeTruthy();
+    expect(session.getByText("cannot listen on 0.0.0.0:7340: in use")).toBeTruthy();
 
     fireEvent.click(session.getByRole("button", { name: "Stop sharing" }));
     expect(await own().findByRole("button", { name: "Start sharing" })).toBeTruthy();
