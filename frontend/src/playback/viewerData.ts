@@ -168,7 +168,9 @@ export class ViewerData {
     else if (
       message.type === "FileRows" ||
       message.type === "FileScope" ||
-      message.type === "Appearances"
+      message.type === "Appearances" ||
+      message.type === "EventRows" ||
+      message.type === "Event"
     )
       this.files.receive(message);
     else return false;

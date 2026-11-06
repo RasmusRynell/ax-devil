@@ -11,6 +11,7 @@
 
 import type { FileRowWire, FileScopeUnavailable, FileSortWire, Located } from "../generated/api";
 import { Appearances } from "./appearances";
+import { FileEvents } from "./fileEvents";
 import { basisOf, FOLLOWING_RETRIES, FOLLOWING_RETRY_MS, readyOf } from "./fileBasis";
 import { styleOf } from "./laneStyle";
 import { parseSearch } from "../search/query";
@@ -97,6 +98,8 @@ export class FileScope {
   readonly #listeners = new Set<() => void>();
   /** Where the object a lane's page is about appears. */
   readonly appearances: Appearances;
+  /** The events the lane's file holds. */
+  readonly events: FileEvents;
   #requests = 0;
   #owner = true;
 
@@ -115,9 +118,15 @@ export class FileScope {
       after,
       () => this.#owner,
       () => this.#changed(),
-      (lane) => {
-        if (!this.#slots.has(lane)) this.#send({ type: "FileRelease", lane });
-      },
+      (lane) => this.#freed(lane),
+    );
+    this.events = new FileEvents(
+      lanes,
+      send,
+      after,
+      () => this.#owner,
+      () => this.#changed(),
+      (lane) => this.#freed(lane),
     );
   }
 
@@ -191,8 +200,7 @@ export class FileScope {
     if (!slot) return;
     slot.cancel?.();
     this.#slots.delete(lane);
-    if (slot.basis !== null && !this.appearances.wants(lane))
-      this.#send({ type: "FileRelease", lane });
+    if (slot.basis !== null) this.#freed(lane);
     this.#changed();
   }
 
@@ -206,6 +214,7 @@ export class FileScope {
   /** The lanes changed: ask again for each list whose answer would differ. */
   refresh(): void {
     this.appearances.refresh();
+    this.events.refresh();
     for (const [lane, slot] of this.#slots) {
       if (slot.cancel === null && this.#basisKey(lane) !== slot.basis) {
         slot.retries = 0;
@@ -225,6 +234,7 @@ export class FileScope {
   /** The socket is gone: stop sending and forget what was awaited. The lists wanted stay wanted. */
   suspend(): void {
     this.appearances.suspend();
+    this.events.suspend();
     for (const slot of this.#slots.values()) {
       slot.cancel?.();
       slot.cancel = null;
@@ -235,10 +245,17 @@ export class FileScope {
 
   /** Takes the backend's answer to a request, unless a newer request or other revisions have made it stale. */
   receive(
-    message: Extract<ServerMessage, { type: "FileRows" | "FileScope" | "Appearances" }>,
+    message: Extract<
+      ServerMessage,
+      { type: "FileRows" | "FileScope" | "Appearances" | "EventRows" | "Event" }
+    >,
   ): void {
     if (message.type === "Appearances") {
       this.appearances.receive(message);
+      return;
+    }
+    if (message.type === "EventRows" || message.type === "Event") {
+      this.events.receive(message);
       return;
     }
     const slot = this.#slots.get(message.lane);
@@ -282,6 +299,12 @@ export class FileScope {
       page: keep ? slot.view.page : null,
       unavailable,
     });
+  }
+
+  /** Tells the backend to free what it kept for the lane, when nothing of it is wanted any more. */
+  #freed(lane: number): void {
+    if (!this.#slots.has(lane) && !this.appearances.wants(lane) && !this.events.wants(lane))
+      this.#send({ type: "FileRelease", lane });
   }
 
   #basisKey(lane: number): string {

@@ -9,6 +9,7 @@ const { objects } = require("./smoke-objects.cjs");
 const { multiplaylist } = require("./smoke-multiplaylist.cjs");
 const { overlays } = require("./smoke-overlays.cjs");
 const { panels } = require("./smoke-panels.cjs");
+const { events } = require("./smoke-events.cjs");
 const { fields } = require("./smoke-fields.cjs");
 const { twice } = require("./smoke-twice.cjs");
 const kit = require("./smoke-kit.cjs");
@@ -263,4 +264,6 @@ module.exports.playlist = async (window) => {
   await twice();
   // Two ADF files on a video: the object page of an object with colours, a motion state and a picture.
   await fields();
+  // An ADF file with events on a video: the Events list, an event's page and its objects' pages.
+  await events();
 };

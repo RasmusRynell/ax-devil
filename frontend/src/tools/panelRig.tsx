@@ -1,7 +1,7 @@
 import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import { useState } from "react";
 import { vi } from "vite-plus/test";
-import type { FileRowWire, Located } from "../generated/api";
+import type { EventDetailWire, EventRowWire, FileRowWire, Located } from "../generated/api";
 import type { LaneFrame, Selection } from "../playback/contract";
 import { FRESH_MEMORY } from "../playback/fields";
 import { LANE_SETTINGS } from "../playback/fakeOpened";
@@ -10,8 +10,8 @@ import { LaneSet } from "../playback/lanes";
 import type { ClientMessage, LaneStatusWire } from "../playback/protocol";
 import { INITIAL_VIEW, type PlaybackView } from "../playback/view";
 import { fullSample } from "../present/fixtures";
-import { FRESH_LIST } from "./listState";
-import { ObjectsPanel } from "./ObjectsPanel";
+import { freshEvents, FRESH_LIST } from "./listState";
+import { MediaToolsPanel } from "./MediaToolsPanel";
 import { EMPTY, topObject, type PageStack } from "./pageStack";
 
 /** What the objects panel's tests share: a viewer of a lane or two, the real File scope client over a recording socket, and queries of the list. */
@@ -51,24 +51,38 @@ export const file = (id: string, first: number, classes = ["car"]): FileRowWire 
   presence: [[first, first + 20]],
 });
 
-type PanelProps = Parameters<typeof ObjectsPanel>[0];
+type PanelProps = Parameters<typeof MediaToolsPanel>[0];
 
 /** The panel with the page stack and the object page's memory a viewer would keep for it. */
 function Viewer({
   onNavigate,
   first = EMPTY,
   ...props
-}: Omit<PanelProps, "pages" | "list" | "onList" | "memory" | "onMemory" | "onClose"> & {
+}: Omit<
+  PanelProps,
+  | "pages"
+  | "list"
+  | "onList"
+  | "events"
+  | "onEvents"
+  | "chosen"
+  | "onChosen"
+  | "memory"
+  | "onMemory"
+  | "onClose"
+> & {
   onNavigate: PanelProps["onNavigate"];
   /** The pages already open when the panel mounts, as after it was closed and opened again. */
   first?: PageStack;
 }) {
   const [pages, setPages] = useState<PageStack>(first);
   const [list, onList] = useState(FRESH_LIST);
+  const [events, onEvents] = useState(freshEvents);
+  const [chosen, onChosen] = useState<number | null>(null);
   const [memory, onMemory] = useState(FRESH_MEMORY);
   const [open, setOpen] = useState(true);
   return open ? (
-    <ObjectsPanel
+    <MediaToolsPanel
       {...props}
       pages={pages}
       onNavigate={(next, at) => {
@@ -77,6 +91,10 @@ function Viewer({
       }}
       list={list}
       onList={onList}
+      events={events}
+      onEvents={onEvents}
+      chosen={chosen}
+      onChosen={onChosen}
       memory={memory}
       onMemory={onMemory}
       onClose={() => setOpen(false)}
@@ -203,8 +221,101 @@ export function mount(
       }),
     );
   };
-  return { source, files, queries, answer, selected, outside, play, ...shown };
+  const eventQueries = () =>
+    sent.filter(
+      (message): message is Extract<ClientMessage, { type: "EventQuery" }> =>
+        message.type === "EventQuery",
+    );
+  /** The requests for one event, oldest first. */
+  const eventAsks = () =>
+    sent.filter(
+      (message): message is Extract<ClientMessage, { type: "Event" }> => message.type === "Event",
+    );
+  /** Lets the debounced request for the Events list go and answers it. */
+  const answerEvents = (
+    rows: EventRowWire[],
+    over: Partial<{
+      total: number;
+      matched: number;
+      offset: number;
+      located: number | null;
+      frame_row: number | null;
+    }> = {},
+    lane = 0,
+  ) => {
+    act(() => {
+      vi.advanceTimersByTime(250);
+    });
+    const request =
+      eventQueries()
+        .filter((query) => query.lane === lane)
+        .at(-1)?.request ?? 0;
+    act(() =>
+      files.receive({
+        type: "EventRows",
+        lane,
+        request,
+        rows: {
+          state: "Found",
+          data_revision: 1,
+          policy_revision: 1,
+          total: rows.length,
+          matched: rows.length,
+          offset: 0,
+          rows,
+          located: null,
+          frame_row: null,
+          ...over,
+        },
+      }),
+    );
+  };
+  /** Answers the newest request for an event with `detail`. */
+  const answerEvent = (detail: EventDetailWire | null) => {
+    const { request, event } = eventAsks().at(-1) ?? { request: 0, event: 0 };
+    act(() =>
+      files.receive({
+        type: "Event",
+        lane: 0,
+        request,
+        event,
+        detail: { state: "Found", data_revision: 1, policy_revision: 1, detail },
+      }),
+    );
+  };
+  return {
+    source,
+    files,
+    sent,
+    queries,
+    answer,
+    eventQueries,
+    eventAsks,
+    answerEvents,
+    answerEvent,
+    selected,
+    outside,
+    play,
+    ...shown,
+  };
 }
+
+/** An event of the file on `frame`, involving objects of class car. */
+export const fileEvent = (
+  event: number,
+  frame: number,
+  kind: EventRowWire["kind"] = "merge",
+  objects = ["1", "2"],
+): EventRowWire => ({
+  event,
+  frame,
+  kind,
+  label: `${kind[0].toUpperCase()}${kind.slice(1)} ${objects.join(" → ")}`,
+  objects: objects.map((id) => ({ id, class: "car" })),
+});
+
+/** Opens the Events tab. */
+export const showEvents = () => fireEvent.click(screen.getByRole("tab", { name: /^Events/ }));
 
 export const ids = () =>
   within(screen.getByRole("listbox", { name: "Objects" }))

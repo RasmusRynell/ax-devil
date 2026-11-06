@@ -1,4 +1,4 @@
-import { useRef, type KeyboardEvent } from "react";
+import { useRef, type KeyboardEvent, type ReactNode } from "react";
 import { ownKeys } from "./keys";
 import { QUIET } from "./look";
 
@@ -13,10 +13,22 @@ interface Props<T extends string> {
   onChange: (tab: T) => void;
   /** The `id` of the panel the selected tab shows. */
   panelId: string;
+  /** How many a tab holds, shown after its name. */
+  counts?: Partial<Record<T, number>>;
+  /** Controls at the strip's far end, such as a close button. */
+  trailing?: ReactNode;
 }
 
 /** A strip of tabs over one panel; the left and right arrow keys, Home and End move between them. */
-export function Tabs<T extends string>({ label, tabs, value, onChange, panelId }: Props<T>) {
+export function Tabs<T extends string>({
+  label,
+  tabs,
+  value,
+  onChange,
+  panelId,
+  counts = {},
+  trailing,
+}: Props<T>) {
   const buttons = useRef<(HTMLButtonElement | null)[]>([]);
   const onKeyDown = (event: KeyboardEvent<HTMLButtonElement>, at: number) => {
     if (event.ctrlKey || event.altKey || event.metaKey) return;
@@ -59,8 +71,19 @@ export function Tabs<T extends string>({ label, tabs, value, onChange, panelId }
           className={`${QUIET} [--stroke-focus:var(--spacing-hairline)] -mb-hairline border-b-edge border-transparent aria-selected:border-accent`}
         >
           {name}
+          {counts[name] !== undefined && (
+            <>
+              {" "}
+              <span className="ml-s text-small text-muted tabular-nums">{counts[name]}</span>
+            </>
+          )}
         </button>
       ))}
+      {trailing && (
+        <div role="presentation" className="ml-auto flex min-w-0 items-center gap-s">
+          {trailing}
+        </div>
+      )}
     </div>
   );
 }

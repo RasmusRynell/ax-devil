@@ -11,6 +11,7 @@ import type { FileRowWire } from "../generated/api";
 import { Button } from "../kit/Button";
 import { SegmentedControl } from "../kit/Chips";
 import type { LaneFrame } from "../playback/contract";
+import type { FileEvents } from "../playback/fileEvents";
 import type { FileScope } from "../playback/fileScope";
 import type { AppearanceSource } from "../playback/useAppearance";
 import type { PlaybackView } from "../playback/view";
@@ -27,6 +28,7 @@ import {
   type SortKey,
 } from "./objects";
 import { neighbour, type Steps } from "./pageStack";
+import { NO_STEPS, UnderPage, type Open } from "./UnderPage";
 import { FRAME_COLUMNS, ShownFrame, fileColumns } from "./objectColumns";
 import { openRow } from "./openRow";
 import { SCOPES, type ListState, type Scope } from "./listState";
@@ -43,7 +45,13 @@ export interface ObjectSource {
     FileScope,
     "request" | "flush" | "locating" | "release" | "subscribe" | "view"
   > &
-    AppearanceSource;
+    AppearanceSource & {
+      /** The lane's recorded events, which the Events tab lists. */
+      readonly events: Pick<
+        FileEvents,
+        "view" | "request" | "flush" | "release" | "want" | "event" | "eventUnavailable"
+      >;
+    };
   /** What the lane drew on the frame on screen. */
   shown(lane: number): LaneFrame | undefined;
   frameTime(frame: number): number | undefined;
@@ -56,18 +64,14 @@ const STEP = 50;
 /** How many marks a presence strip can draw. */
 const BINS = 64;
 
-/** The page drawn over a list, and the object of the list it was opened from, if any. */
-export type Open = { from: string | null; render: (steps: Steps) => ReactNode };
-
 const SCOPE_KEYS = Object.keys(SCOPES) as Scope[];
 /** What the scope control says on hover, the scopes together as it has no tooltip per option. */
 const scopeHints = SCOPE_KEYS.map((key) => `${SCOPES[key].title}: ${SCOPES[key].hint}`).join("\n");
 
-const NO_STEPS: Steps = { previous: null, next: null };
-
 /**
  * The list of one lane's objects, in Frame scope or File scope. While a page is `open` the list stays as it is, out of
- * reach under the page, which is drawn with the objects either side of `from` in the list's current order.
+ * reach under the page, which is drawn with the objects either side of `from` in the list's current order. `header` is
+ * what stands above the list: the panel's tabs.
  */
 export function ObjectsList({
   source,
@@ -81,7 +85,7 @@ export function ObjectsList({
   mark,
   open,
   onOpen,
-  trailing,
+  header,
 }: {
   source: ObjectSource;
   view: PlaybackView;
@@ -98,8 +102,8 @@ export function ObjectsList({
   open: Open | null;
   /** A row was chosen: open the page of its object. */
   onOpen: (entity: string) => void;
-  /** What ends the top bar: the lane to list and the button that closes the panel. */
-  trailing: ReactNode;
+  /** What stands above the list: the panel's tabs, the lane to list and the button that closes the panel. */
+  header: ReactNode;
 }) {
   const { scope, text, sorts, anchor } = list;
   const [offset, setOffset] = useState(0);
@@ -172,7 +176,11 @@ export function ObjectsList({
     const rows = inFile
       ? { keys: page?.rows.map(({ id }) => id) ?? [], offset: page?.offset ?? 0, matched: count }
       : { keys: found.map(({ id }) => id), offset: 0, matched: found.length };
-    return { previous: neighbour(rows, from, -1), next: neighbour(rows, from, 1) };
+    const step = (delta: number) => {
+      const entity = neighbour(rows, from, delta);
+      return entity === null ? null : ({ kind: "object", entity } as const);
+    };
+    return { previous: step(-1), next: step(1) };
   }, [from, inFile, page, count, found]);
 
   // File scope asks for the rows in view, and stops when another scope shows or the panel goes away.
@@ -225,88 +233,85 @@ export function ObjectsList({
   };
 
   return (
-    <div className="relative flex min-h-0 flex-1 flex-col">
-      <div inert={open !== null} className="flex min-h-0 flex-1 flex-col">
-        <div className="flex items-center gap-m border-b border-line py-xs pr-xs pl-m">
-          {!frameOnly && (
-            <div className="min-w-0" title={scopeHints}>
-              <SegmentedControl
-                label="Scope"
-                options={SCOPE_KEYS.map((key) => [key, SCOPES[key].title] as const)}
-                value={scope}
-                onChange={(key) => onList({ ...list, scope: key })}
-              />
-            </div>
-          )}
-          <span className="min-w-0 flex-1 truncate text-right text-small text-muted">{`${count} of ${total}`}</span>
-          {trailing}
-        </div>
-        <div className="p-m pb-s">
-          <SearchBar
-            handle={searchBar}
-            label="Search objects"
-            value={text}
-            onChange={(value) => onList({ ...list, text: value })}
-            onCommit={(value) => {
-              apply(value);
-              setCommitted(true);
-            }}
-          />
-          {notice !== null && (
-            <div role="status" className="pt-xs text-small text-muted">
-              <MiddleElided text={notice} />
-            </div>
-          )}
-          {stale !== null && (
-            <div role="status" className="flex items-center gap-s pt-xs text-small text-muted">
-              <span className="min-w-0 flex-1">{stale}</span>
-              <Button
-                size="small"
-                onClick={() => {
-                  source.files.flush(lane);
-                  // The button goes when the rows arrive; focus is not left on it to be lost then.
-                  searchBar.current?.focus();
-                }}
-              >
-                Retry
-              </Button>
-            </div>
-          )}
-        </div>
-        {inFile ? (
-          <ShownFrame value={shownFrame}>
-            <Table<FileRowWire>
-              {...shared}
-              key="objects-file"
-              tableKey="objects-file"
-              columns={fileCols}
-              rowAt={(index) => page?.rows[index - page.offset]}
-              keyOf={(row) => row.id}
-              indexOf={(key) => openRow(key, page, null).row ?? -1}
-              memory={tables.current.file}
-              dimmed={(row) => absent(row.id)}
-              onActivate={(row) => choose(row.id, absent(row.id) ? row.first_frame : undefined)}
-              onRange={onRange}
-              onCursor={(key) => from === null && source.files.locating(lane, key)}
-              cursorId={(row) => `row:object-${row.id}`}
+    <UnderPage open={open} steps={steps}>
+      {header}
+      <div className="flex items-center gap-m border-b border-line py-xs pr-xs pl-m">
+        {!frameOnly && (
+          <div className="min-w-0" title={scopeHints}>
+            <SegmentedControl
+              label="Scope"
+              options={SCOPE_KEYS.map((key) => [key, SCOPES[key].title] as const)}
+              value={scope}
+              onChange={(key) => onList({ ...list, scope: key })}
             />
-          </ShownFrame>
-        ) : (
-          <Table<FrameObject>
-            {...shared}
-            key="objects-frame"
-            tableKey="objects-frame"
-            columns={FRAME_COLUMNS}
-            rowAt={(index) => found[index]}
-            keyOf={(object) => object.id}
-            indexOf={(key) => foundAt.get(key) ?? -1}
-            memory={tables.current.frame}
-            onActivate={(object) => choose(object.id)}
-            cursorId={(object) => `row:object-${object.id}`}
-          />
+          </div>
+        )}
+        <span className="min-w-0 flex-1 truncate text-right text-small text-muted">{`${count} of ${total}`}</span>
+      </div>
+      <div className="p-m pb-s">
+        <SearchBar
+          handle={searchBar}
+          label="Search objects"
+          value={text}
+          onChange={(value) => onList({ ...list, text: value })}
+          onCommit={(value) => {
+            apply(value);
+            setCommitted(true);
+          }}
+        />
+        {notice !== null && (
+          <div role="status" className="pt-xs text-small text-muted">
+            <MiddleElided text={notice} />
+          </div>
+        )}
+        {stale !== null && (
+          <div role="status" className="flex items-center gap-s pt-xs text-small text-muted">
+            <span className="min-w-0 flex-1">{stale}</span>
+            <Button
+              size="small"
+              onClick={() => {
+                source.files.flush(lane);
+                // The button goes when the rows arrive; focus is not left on it to be lost then.
+                searchBar.current?.focus();
+              }}
+            >
+              Retry
+            </Button>
+          </div>
         )}
       </div>
-      {open && <div className="absolute inset-0 flex flex-col bg-panel">{open.render(steps)}</div>}
-    </div>
+      {inFile ? (
+        <ShownFrame value={shownFrame}>
+          <Table<FileRowWire>
+            {...shared}
+            key="objects-file"
+            tableKey="objects-file"
+            columns={fileCols}
+            rowAt={(index) => page?.rows[index - page.offset]}
+            keyOf={(row) => row.id}
+            indexOf={(key) => openRow(key, page, null).row ?? -1}
+            memory={tables.current.file}
+            dimmed={(row) => absent(row.id)}
+            onActivate={(row) => choose(row.id, absent(row.id) ? row.first_frame : undefined)}
+            onRange={onRange}
+            onCursor={(key) => from === null && source.files.locating(lane, key)}
+            cursorId={(row) => `row:object-${row.id}`}
+          />
+        </ShownFrame>
+      ) : (
+        <Table<FrameObject>
+          {...shared}
+          key="objects-frame"
+          tableKey="objects-frame"
+          columns={FRAME_COLUMNS}
+          rowAt={(index) => found[index]}
+          keyOf={(object) => object.id}
+          indexOf={(key) => foundAt.get(key) ?? -1}
+          memory={tables.current.frame}
+          onActivate={(object) => choose(object.id)}
+          cursorId={(object) => `row:object-${object.id}`}
+        />
+      )}
+    </UnderPage>
   );
 }

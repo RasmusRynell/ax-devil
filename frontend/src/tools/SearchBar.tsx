@@ -24,15 +24,28 @@ const LOOK: Record<SearchTokenKind, string> = {
   invalid: "underline decoration-wavy",
 };
 
-/** What to type and what it does, one row each: any path of an object's data can be searched, so no field names. */
-const SYNTAX = [
+/** What to type and what it does, one row each. */
+type Syntax = readonly (readonly [string, string])[];
+
+/** What the Objects search takes: any path of an object's data can be searched, so no field names. */
+const OBJECT_SYNTAX = [
   ["human 17", "text in id, class or state"],
   ["class:human", "field equals value"],
   ["score>0.7", "compare with > < >= <= ="],
   ["-state:parked", "exclude matches"],
   ["a OR b", "either term"],
   ["a b", "both terms (default)"],
-] as const;
+] as const satisfies Syntax;
+
+/** What the Events search takes: the kind, an involved object and the label. */
+export const EVENT_SYNTAX = [
+  ["kind:merge", "kind of event"],
+  ["object:17", "involves object 17"],
+  ["moved", "text in the label"],
+  ["-kind:delete", "exclude matches"],
+  ["a OR b", "either term"],
+  ["a b", "both terms (default)"],
+] as const satisfies Syntax;
 
 /**
  * A search box for the query language of `parseSearch`: field names and operators are muted, and a word the language
@@ -45,6 +58,7 @@ export function SearchBar({
   handle,
   label,
   value,
+  syntax = OBJECT_SYNTAX,
   onChange,
   onCommit,
 }: {
@@ -53,6 +67,8 @@ export function SearchBar({
   /** The accessible name and the placeholder. */
   label: string;
   value: string;
+  /** The examples the help lists; the Objects search's when omitted. */
+  syntax?: Syntax;
   onChange: (value: string) => void;
   /** Return was pressed or the field was cleared: `value` is the text to apply now. */
   onCommit: (value: string) => void;
@@ -130,14 +146,14 @@ export function SearchBar({
         trigger={<Icon name="circle-help" />}
         className="size-row justify-center"
       >
-        <SyntaxSheet />
+        <SyntaxSheet syntax={syntax} />
       </Popover>
     </div>
   );
 }
 
 /** The syntax rows. They hold no control for the popover to focus, so the sheet takes focus itself when it opens. */
-function SyntaxSheet() {
+function SyntaxSheet({ syntax }: { syntax: Syntax }) {
   const sheet = useRef<HTMLDListElement>(null);
   useEffect(() => sheet.current?.focus(), []);
   return (
@@ -146,7 +162,7 @@ function SyntaxSheet() {
       tabIndex={0}
       className="m-0 grid grid-cols-[max-content_max-content] gap-x-l gap-y-s focus-ring-inset"
     >
-      {SYNTAX.map(([example, meaning]) => (
+      {syntax.map(([example, meaning]) => (
         <div key={example} className="contents">
           <dt className="font-mono">{example}</dt>
           <dd className="m-0 text-small text-muted">{meaning}</dd>

@@ -1,7 +1,7 @@
 import { Button } from "../kit/Button";
 import { IconButton } from "../kit/IconButton";
 import { MiddleElided } from "../kit/MiddleElided";
-import type { Steps } from "./pageStack";
+import type { PageKey, Steps } from "./pageStack";
 
 /**
  * The header of a page in the media tools: Back, named after the page below; the page's title; and the objects
@@ -19,7 +19,7 @@ export function PageHeader({
   below: string;
   steps: Steps;
   onBack: () => void;
-  onStep: (entity: string) => void;
+  onStep: (page: PageKey) => void;
 }) {
   const back = `Back (Esc) to ${below}`;
   return (

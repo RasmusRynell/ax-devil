@@ -40,7 +40,7 @@ const FONTS: Fonts = {
 
 const score = (value: number | null): string =>
   value === null ? "" : String(Number(value.toFixed(2)));
-/** The columns of `ObjectsPanel`'s Frame scope; the panel is a `.tsx` that Node cannot load. */
+/** The columns of `MediaToolsPanel`'s Frame scope; the panel is a `.tsx` that Node cannot load. */
 const COLUMNS: readonly Column<FrameObject>[] = [
   { key: "id", title: "ID", kind: "id", text: (o) => o.id, sortable: true },
   { key: "class", title: "Class", kind: "text", text: (o) => o.className, stretch: true },

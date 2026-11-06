@@ -190,8 +190,8 @@ describe("live session", () => {
     const { entries, dropped } = session.events.getSnapshot();
     expect(entries).toHaveLength(EVENT_LOG_CAP);
     expect(dropped).toBe(3);
-    expect(entries.filter((entry) => entry.type === "gap")).toHaveLength(1);
-    expect(entries.at(-1)).toMatchObject({ type: "event", label: "Merge 3 → 4" });
+    expect(entries.filter((entry) => entry.kind === "gap")).toHaveLength(1);
+    expect(entries.at(-1)).toMatchObject({ kind: "rename", label: "Merge 3 → 4" });
   });
 
   it("pauses without dropping events or the connection, and resumes from the next frame", async () => {
