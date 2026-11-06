@@ -6,6 +6,7 @@ import { back, EMPTY, jump, push, showRoot, step, titleOf, topObject } from "./p
 const item = (id: number, label = `Merge ${id}`): EventItem => ({
   id,
   frame: 3,
+  generation: 0,
   timeUs: undefined,
   kind: "merge",
   label,

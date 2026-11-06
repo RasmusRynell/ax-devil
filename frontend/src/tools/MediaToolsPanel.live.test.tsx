@@ -1,7 +1,7 @@
 import { cleanup, fireEvent, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { EVENT_LOG_CAP, EventLog } from "../live/eventLog";
-import { mount, says, showEvents } from "./panelRig";
+import { FRAME, mount, says, showEvents } from "./panelRig";
 
 beforeEach(() => vi.stubGlobal("ResizeObserver", undefined));
 afterEach(() => {
@@ -47,6 +47,25 @@ describe("a live stream's Events list", () => {
     // Both events are of the frame on screen.
     const current = screen.getAllByRole("option").map((row) => row.getAttribute("aria-current"));
     expect(current).toEqual(["true", "true", null]);
+  });
+
+  it("keeps the events of an earlier run of frame numbers apart from a reconnected stream's, which starts again from 1", () => {
+    const log = new EventLog();
+    const at = (frame: number) =>
+      log.addEvents({ frame, samples: [{ time_us: US, events: [event("rename", ["7", "99"])] }] });
+    at(1);
+    at(5);
+    // The feed was reopened: its frames are numbered from the start.
+    at(1);
+    const shown = mount({ log });
+    showEvents();
+    shown.play(FRAME);
+    const current = screen.getAllByRole("option").map((row) => row.getAttribute("aria-current"));
+    expect(current).toEqual([null, null, "true"]);
+    // Retry says so before any frame of the new run has an event.
+    log.newRun();
+    at(1);
+    expect(log.getSnapshot().entries.map((entry) => entry.generation)).toEqual([0, 0, 1, 2]);
   });
 
   it("searches here, and says how many events were dropped past the cap", () => {

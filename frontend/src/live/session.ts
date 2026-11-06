@@ -134,6 +134,8 @@ export class LiveSession implements LaneDisplay {
   /** Asks the backend to reopen every transport of a failed or stalled feed; the backend resumes delivery, so this does too. */
   retry(): void {
     this.#connection?.send({ type: "Live", action: "retry" });
+    // The reopened feed numbers its frames from the start.
+    this.events.newRun();
     if (!this.#parts.paused) return;
     this.#parts.paused = false;
     this.#publish();

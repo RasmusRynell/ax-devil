@@ -43,10 +43,13 @@ export function lineOf(
     : null;
 }
 
-/** The line as the list shows it: from the page, else as the backend told it for this very frame. */
+/**
+ * The line as the list shows it: from the page, else as the backend told it for the frame it was asked about. That
+ * frame is not always the one on screen by the time the answer is in, but it is where the rows to load are: the list
+ * goes there, and the next page tells the line exactly.
+ */
 export function lineFor(page: EventsPage | null, frame: number | undefined): number | null {
-  const local = lineOf(page, frame);
-  return local ?? (page && frame !== undefined && page.frame === frame ? page.frameRow : null);
+  return lineOf(page, frame) ?? (page && frame !== undefined ? page.frameRow : null);
 }
 
 /**

@@ -4,7 +4,7 @@ import type { EventLog } from "../live/eventLog";
 import type { PlaybackView } from "../playback/view";
 import { matches, missingPaths, type SearchRecord } from "../search/match";
 import { parseSearch } from "../search/query";
-import { EVENT_COLUMNS, involved, type EventItem } from "./eventItem";
+import { EVENT_COLUMNS, involved, positionOf, type EventItem } from "./eventItem";
 import { rowsUpTo } from "./eventLine";
 import type { EventsState } from "./listState";
 import { neighbour, type Steps } from "./pageStack";
@@ -47,7 +47,7 @@ export function LiveEventsList({
   header: ReactNode;
 }) {
   const { text, following, memory } = state;
-  const { entries, dropped } = useSyncExternalStore(log.subscribe, log.getSnapshot);
+  const { entries, dropped, generation } = useSyncExternalStore(log.subscribe, log.getSnapshot);
   const [applied, apply] = useApplied(text);
   const { wire } = useMemo(() => parseSearch(applied), [applied]);
   const filtered = wire.groups.length > 0;
@@ -58,16 +58,18 @@ export function LiveEventsList({
   );
   const at = useMemo(() => new Map(rows.map(({ id }, index) => [id, index])), [rows]);
   const missing = useMemo(() => missingPaths(wire, events.map(recordOf)), [wire, events]);
-  const frame = view.shown?.sequenceId;
+  // The frame on screen is of the stream's newest run of frame numbers; the events of earlier runs are past.
+  const shown =
+    view.shown === undefined ? undefined : positionOf(generation, view.shown.sequenceId);
   const line = useMemo(
     () =>
-      frame === undefined
+      shown === undefined
         ? null
         : rowsUpTo(
-            rows.map((row) => row.frame),
-            frame,
+            rows.map((row) => positionOf(row.generation, row.frame)),
+            shown,
           ),
-    [rows, frame],
+    [rows, shown],
   );
 
   const from = open?.from ?? null;
@@ -133,8 +135,13 @@ export function LiveEventsList({
         selected={mark === null ? null : String(mark)}
         sort={{ key: "time", descending: false }}
         onSort={() => undefined}
-        dimmed={(event) => event.kind === "gap" || (frame !== undefined && event.frame > frame)}
-        tint={(event) => event.kind !== "gap" && event.frame === frame}
+        dimmed={(event) =>
+          event.kind === "gap" ||
+          (shown !== undefined && positionOf(event.generation, event.frame) > shown)
+        }
+        tint={(event) =>
+          event.kind !== "gap" && positionOf(event.generation, event.frame) === shown
+        }
         follow={{
           line,
           keep: "end",

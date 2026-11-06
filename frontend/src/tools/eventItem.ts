@@ -9,6 +9,8 @@ export type EventItem = {
   id: number;
   /** The video frame it is on. */
   frame: number;
+  /** Which run of a live stream's frame numbers the frame is of; a recording has one, `0`. */
+  generation: number;
   /** The frame's time in microseconds; `undefined` until the video is described. */
   timeUs: number | undefined;
   /** What the event does; `gap` marks where a live stream lost samples. */
@@ -26,11 +28,21 @@ export const itemOf = (
 ): EventItem => ({
   id: row.event,
   frame: row.frame,
+  generation: 0,
   timeUs: timeOf(row.frame),
   kind: row.kind,
   label: row.label,
   objects: row.objects,
 });
+
+/** More frames than any run of a stream numbers. */
+const RUN = 2 ** 32;
+
+/**
+ * Where a frame of a run of frame numbers lies among all the frames a live list has held: a stream that is opened again
+ * numbers its frames from the start, after the ones before.
+ */
+export const positionOf = (generation: number, frame: number): number => generation * RUN + frame;
 
 /** A time as `HH:MM:SS.mmm`, the clock of its UTC day (the video position for a recording). */
 export function clockOf(us: number): string {

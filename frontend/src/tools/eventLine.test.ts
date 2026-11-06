@@ -45,10 +45,12 @@ describe("the line between what has happened and what is to come", () => {
     expect(lineOf({ ...page(0, 0), rows: [] }, 3)).toBe(0);
   });
 
-  it("is otherwise what the backend said, for that very frame", () => {
+  it("is otherwise what the backend said for the frame it was asked about, even when the video has moved on since", () => {
     const far = { ...page(100, 400), frame: 40, frameRow: 250 };
     expect(lineFor(far, 40)).toBe(250);
-    expect(lineFor(far, 41)).toBeNull();
+    // The answer came after the frame had passed: it still says where the rows to load are.
+    expect(lineFor(far, 41)).toBe(250);
+    expect(lineFor({ ...far, frameRow: null }, 41)).toBeNull();
     expect(lineFor(page(0, 4), 5)).toBe(3);
   });
 
