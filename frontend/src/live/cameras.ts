@@ -2,15 +2,15 @@
 
 import { useMemo } from "react";
 import { reasonOf } from "../errors";
-import type { ItemState, LiveConfirmation, LiveOverlayKind, NewLiveWire } from "../generated/api";
+import type { ItemState, LiveOverlayKind, NewLiveWire } from "../generated/api";
 import { useDoc } from "../session/session";
 import { useFrontItem } from "../viewer/useViewers";
 
 /** What the Add Live Stream dialog starts from: the stream whose connection a new one copies. */
 export type AddSeed = { like?: string };
 
-/** Where a stream stands before its viewer can open: it is resolving, failed to, or waits for a confirmation. */
-export type StreamState = "ready" | "resolving" | "failed" | "confirm";
+/** Where a stream stands before its viewer can open: it is resolving or failed to. */
+export type StreamState = "ready" | "resolving" | "failed";
 
 /** One live stream of a camera. */
 export type Stream = {
@@ -25,8 +25,6 @@ export type Stream = {
   overlay: LiveOverlayKind | null;
   /** The overlay's lane name, which names the stream where its recipe is not known. */
   lane: string | null;
-  /** What the user must confirm before the item can resolve. */
-  confirm: readonly LiveConfirmation[];
   /** How it was added, for the owner; `null` for a watcher and for a stream not resolved yet. */
   recipe: NewLiveWire | null;
   /** Why it did not resolve, when it failed. */
@@ -63,7 +61,6 @@ function streamOf(
     open,
     overlay: null,
     lane: null,
-    confirm: [],
     recipe,
     reason: "",
     editable: stored?.type === "Live",
@@ -84,10 +81,7 @@ function streamOf(
   }
   if (kind !== "live") return null;
   if (resolution.status === "Pending") return { ...base, state: "resolving" };
-  const reason = reasonOf(resolution);
-  return resolution.code === "NeedsConfirmation"
-    ? { ...base, state: "confirm", confirm: resolution.params.confirm ?? [], reason }
-    : { ...base, state: "failed", reason };
+  return { ...base, state: "failed", reason: reasonOf(resolution) };
 }
 
 /**

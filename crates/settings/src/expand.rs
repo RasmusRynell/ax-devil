@@ -46,15 +46,39 @@ impl Setting {
     }
 
     /// `value` as it is used (see [`expand`](Self::expand)); a value the setting cannot hold, such as a reference to
-    /// a missing variable, is logged and the default is used instead. The log never contains the value.
+    /// a missing variable, is logged and the default is used instead, and a reference to text that gives nothing is
+    /// logged and is empty text. The log never contains the value.
     pub(crate) fn used(&self, value: &Value, lookup: &dyn Fn(&str) -> Option<String>) -> Value {
+        self.used_logging(value, lookup, true)
+    }
+
+    /// [`used`](Self::used) without the log, for what is shown or looked at rather than used.
+    pub(crate) fn used_quietly(
+        &self,
+        value: &Value,
+        lookup: &dyn Fn(&str) -> Option<String>,
+    ) -> Value {
+        self.used_logging(value, lookup, false)
+    }
+
+    fn used_logging(
+        &self,
+        value: &Value,
+        lookup: &dyn Fn(&str) -> Option<String>,
+        log: bool,
+    ) -> Value {
         let used = self.expand(value, lookup);
         if self.kind.validate(&used).is_err() {
-            tracing::warn!(
-                "{} does not resolve to a valid value; using the default",
-                self.key
-            );
+            if log {
+                tracing::warn!(
+                    "{} does not resolve to a valid value; using the default",
+                    self.key
+                );
+            }
             return self.kind.default_value();
+        }
+        if log && used.as_str() == Some("") && self.holds_reference(value) {
+            tracing::warn!("{} refers to a variable that is unset or empty", self.key);
         }
         used
     }
@@ -75,6 +99,8 @@ impl Setting {
         let expanded = self.expand(value, lookup);
         let checked = match (&self.kind, reference, expanded.as_str()) {
             (Kind::Folder, Some(_), Some("")) => Err("expected a non-empty folder path".into()),
+            // A choice is read when used, where what is not one of the options gives the default, as in the reference.
+            (Kind::Choice { .. }, Some(_), _) => Ok(()),
             _ => self.kind.validate(&expanded),
         };
         checked.map_err(|reason| match reference {

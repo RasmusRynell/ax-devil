@@ -1,6 +1,6 @@
 //! What the sidebar learns of a camera by asking it: a snapshot for a hover card, and whether the login saved with a
 //! stream gets in. Both are the user's to start (a hover, a start or a rescan), answered from the last answer within a
-//! cooldown so a pointer or a poll cannot hammer a camera, and go to hosts the routes have already vouched for.
+//! cooldown so a pointer or a poll cannot hammer a camera, and go to hosts the routes have already seen a viewer open for.
 
 use crate::{network::row, throttled::Throttled};
 use api_types::live::NetworkRow;

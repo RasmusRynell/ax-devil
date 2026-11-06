@@ -48,7 +48,7 @@ export interface Row {
 export const textOf = (value: Value) => (typeof value === "object" ? "" : String(value));
 
 /** Whether the whole value is a `$NAME` reference to an environment variable. */
-const isReference = (value: string) => /^\$[A-Za-z_][A-Za-z0-9_]*$/.test(value);
+export const isReference = (value: string) => /^\$[A-Za-z_][A-Za-z0-9_]*$/.test(value);
 
 /** Whether a secret row holds the secret itself, which is then masked and warned about, not a reference to it. */
 export function literalSecret(row: Row, value: Value) {
@@ -85,6 +85,14 @@ const FIELDS: Record<KindTag, (props: FieldProps) => ReactNode> = {
           onChange={onChange}
         />
       </div>
+    ) : row.env ? (
+      // Any text stays allowed so the mode can be a `$NAME` reference; the options are offered to pick from.
+      <TextField
+        label={label}
+        value={textOf(value)}
+        suggestions={row.kind.options ?? []}
+        onChange={onChange}
+      />
     ) : (
       <Select
         label={label}

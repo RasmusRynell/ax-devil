@@ -1,7 +1,7 @@
 /** The rows of the Live view: a camera per camera the workspace streams, with a row per stream under it, and a row per
  * camera the scan found that the workspace does not hold. */
 
-import type { LiveConfirmation, NetworkRow } from "../generated/api";
+import type { NetworkRow } from "../generated/api";
 import type { IconName } from "../kit/icons";
 import { running, type Camera, type Stream } from "./cameras";
 import type { Checks } from "./checks";
@@ -76,8 +76,6 @@ export type Row = {
   /** What the scan learned of the camera, which the Sort reads. */
   scan: NetworkRow | null;
   children: readonly Row[];
-  /** For a stream waiting for the user to confirm references. */
-  confirm: readonly LiveConfirmation[];
   /** What the action acts on: the stream's item, the item to copy for another stream, or the found camera. */
   subject: { item?: string; like?: string; found?: NetworkRow };
 };
@@ -178,12 +176,10 @@ const BASE: Omit<Row, "id" | "label" | "mark" | "subject"> = {
   facets: [],
   scan: null,
   children: [],
-  confirm: [],
 };
 
 /** What a stream's row calls it: the topic or data source its overlay draws, else the decoder, else what it is. */
 function streamLabel({ overlay, recipe, lane, label, state }: Stream): string {
-  if (state === "confirm") return "Needs confirmation";
   if (state !== "ready" && !recipe) return label;
   const draws = recipe?.overlay;
   if (overlay === "none" || draws?.mode === "none") return "Video only";
@@ -216,8 +212,7 @@ function statusOfStream(
   front: string | null,
 ): StreamStatus {
   if (refuses(check)) return { state: "failed", text: REFUSED, anyLive: false };
-  if (stream.state === "failed" || stream.state === "confirm")
-    return { state: "failed", text: stream.reason, anyLive: false };
+  if (stream.state === "failed") return { state: "failed", text: stream.reason, anyLive: false };
   if (stream.state === "resolving") return IDLE;
   return running(stream, front) ? (reported.get(stream.id) ?? CONNECTING) : IDLE;
 }
@@ -230,7 +225,7 @@ const menuOf = (action: RowAction | null, stream: Stream, informs: boolean): Row
   "remove",
 ];
 
-/** The row of a stream that is not ready: resolving, failed, or waiting for a confirmation. */
+/** The row of a stream that is not ready: resolving or failed. */
 function unreadyRow(stream: Stream, label: string): Row {
   const waiting = stream.state === "resolving";
   const detail = waiting ? "" : stream.reason;
@@ -245,7 +240,6 @@ function unreadyRow(stream: Stream, label: string): Row {
       : { icon: "triangle-alert", color: "caution" },
     dim: waiting,
     menu: menuOf(null, stream, !waiting),
-    confirm: stream.confirm,
     search: searchText({ ...BASE, label, detail }, ""),
     subject: { item: stream.id },
   };

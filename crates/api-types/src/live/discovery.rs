@@ -1,7 +1,7 @@
 //! What the live form asks a camera and the network scan answers: the connection a question is about, the sizes,
 //! sources and topics a camera offers, why a question failed, and the cameras the scan found.
 
-use super::{LiveConfirmation, LiveProtocol, LiveReason, WireSecret};
+use super::{LiveProtocol, LiveReason, WireSecret};
 use crate::ErrorWire;
 use foundation::ItemId;
 use serde::{Deserialize, Serialize};
@@ -177,11 +177,6 @@ pub enum LiveProblem {
     Invalid {
         /// What to fix.
         error: ErrorWire,
-    },
-    /// A reference would send a login to a host the user has not allowed (status 409): confirm it, then ask again.
-    NeedsConfirmation {
-        /// What to ask the user to confirm.
-        confirmation: LiveConfirmation,
     },
     /// The camera did not answer, or answered no (status 502).
     Camera {

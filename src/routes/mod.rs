@@ -186,13 +186,6 @@ pub(crate) const ROUTES: &[Route] = &[
         handler: |method| on(method, live::sources),
     },
     Route {
-        method: MethodFilter::POST,
-        path: "/api/live/confirm",
-        listeners: LOCAL,
-        who: Who::Preferences,
-        handler: |method| on(method, live::confirm),
-    },
-    Route {
         method: MethodFilter::GET,
         path: "/api/live/snapshot/{item}",
         listeners: MEMBERS,

@@ -82,7 +82,7 @@ async fn adding_a_found_camera_uses_the_scan_login_and_never_shows_it() {
         .unwrap();
     let handle = state
         .sessions
-        .create(true, CursorOptions::default())
+        .create(true, true, CursorOptions::default())
         .unwrap();
 
     // Only the owner has the scan's logins.
@@ -172,7 +172,7 @@ async fn another_stream_of_a_camera_copies_its_saved_login_for_the_owner_only() 
     );
     let owner = state
         .sessions
-        .create(true, CursorOptions::default())
+        .create(true, true, CursorOptions::default())
         .unwrap();
     let ok = |ack: &SessionServerMessage| {
         matches!(
@@ -241,6 +241,23 @@ async fn another_stream_of_a_camera_copies_its_saved_login_for_the_owner_only() 
         .await,
     );
     assert!(acks.iter().all(ok));
+    // A reference would read this machine's environment for the owner's session, which a watcher may not ask for.
+    let refused = answer(
+        &state,
+        &watcher,
+        5,
+        add_live(json!({"host": "cam.local", "username": "$PATH"})),
+    )
+    .await;
+    assert!(matches!(
+        refused,
+        SessionServerMessage::Ack {
+            outcome: AckOutcome::Refused {
+                code: sessions::session::Refusal::Invalid
+            },
+            ..
+        }
+    ));
 
     let doc = owner.state().doc.clone();
     let logins: Vec<_> = doc
@@ -295,7 +312,7 @@ async fn editing_a_stream_keeps_its_id_and_saved_login_on_the_same_camera_only()
     );
     let owner = state
         .sessions
-        .create(true, CursorOptions::default())
+        .create(true, true, CursorOptions::default())
         .unwrap();
     let mut acks = vec![
         answer(

@@ -22,7 +22,6 @@ export const ERRORS: Record<ErrorCode, string> = {
   PluginInvalid: "The plugin cannot be used.",
   CatalogInvalid: "The render catalog is not valid.",
   WorkspaceInvalid: "The workspace file is not valid.",
-  NeedsConfirmation: "Confirm where the sign-in goes before starting.",
   WorkspaceInUse: "The workspace is open in another window.",
   WorkspaceExists: "That file already exists.",
   SaveFailed: "The workspace could not be saved.",

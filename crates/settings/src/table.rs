@@ -302,8 +302,6 @@ pub const TABLE: &[Setting] = &[
     },
     Setting {
         key: "camera.head",
-        // No `$NAME` reference yet: frontend/src/shell/liveForm.ts:116 prefills the Add Live Stream form with the
-        // raw value, which problemOf (liveForm.ts:212) refuses unless it is digits.
         kind: Kind::Whole {
             min: 1,
             max: 255,
@@ -314,7 +312,7 @@ pub const TABLE: &[Setting] = &[
         page: Some("Stream defaults"),
         section: "Video and overlay",
         live: true,
-        env: false,
+        env: true,
         secret: false,
         quick_setup: false,
         scope: Scope::Server,
@@ -350,7 +348,7 @@ pub const TABLE: &[Setting] = &[
         page: Some("Stream defaults"),
         section: "Video and overlay",
         live: true,
-        env: false,
+        env: true,
         secret: false,
         quick_setup: false,
         scope: Scope::Server,
@@ -365,27 +363,10 @@ pub const TABLE: &[Setting] = &[
         page: Some("Stream defaults"),
         section: "Video and overlay",
         live: true,
-        env: false,
+        env: true,
         secret: false,
         quick_setup: false,
         scope: Scope::Server,
-    },
-    Setting {
-        key: "camera.confirmed",
-        // The `$NAME` references the user let a Live Stream send to a host: reference name and resolved host.
-        kind: Kind::Records {
-            fields: &["reference", "host"],
-            default: &[],
-        },
-        label: "Confirmed references",
-        description: None,
-        page: None,
-        section: "",
-        live: true,
-        env: false,
-        secret: false,
-        quick_setup: false,
-        scope: Scope::Personal,
     },
     Setting {
         key: "broker.host",
@@ -404,8 +385,6 @@ pub const TABLE: &[Setting] = &[
     },
     Setting {
         key: "broker.port",
-        // No `$NAME` reference yet: frontend/src/shell/liveForm.ts:125 prefills the Add Live Stream form with the
-        // raw value, which problemOf (liveForm.ts:212) refuses unless it is digits.
         kind: Kind::Whole {
             min: 1,
             max: 65535,
@@ -416,7 +395,7 @@ pub const TABLE: &[Setting] = &[
         page: Some("Analytics"),
         section: "MQTT analytics",
         live: true,
-        env: false,
+        env: true,
         secret: false,
         quick_setup: false,
         scope: Scope::Server,
@@ -461,7 +440,7 @@ pub const TABLE: &[Setting] = &[
         page: Some("Analytics"),
         section: "MQTT analytics",
         live: true,
-        env: false,
+        env: true,
         secret: false,
         quick_setup: false,
         scope: Scope::Server,
@@ -476,7 +455,7 @@ pub const TABLE: &[Setting] = &[
         page: Some("Analytics"),
         section: "MQTT analytics",
         live: true,
-        env: false,
+        env: true,
         secret: false,
         quick_setup: false,
         scope: Scope::Server,
@@ -491,15 +470,13 @@ pub const TABLE: &[Setting] = &[
         page: Some("Analytics"),
         section: "DataHub WebSocket analytics",
         live: true,
-        env: false,
+        env: true,
         secret: false,
         quick_setup: false,
         scope: Scope::Server,
     },
     Setting {
         key: "datahub.channel",
-        // No `$NAME` reference yet: frontend/src/shell/liveForm.ts:128 prefills the Add Live Stream form with the
-        // raw value, which problemOf (liveForm.ts:212) refuses unless it is digits.
         kind: Kind::Whole {
             min: 1,
             max: 4_294_967_295,
@@ -510,7 +487,7 @@ pub const TABLE: &[Setting] = &[
         page: Some("Analytics"),
         section: "DataHub WebSocket analytics",
         live: true,
-        env: false,
+        env: true,
         secret: false,
         quick_setup: false,
         scope: Scope::Server,
@@ -525,7 +502,7 @@ pub const TABLE: &[Setting] = &[
         page: Some("Analytics"),
         section: "DataHub WebSocket analytics",
         live: true,
-        env: false,
+        env: true,
         secret: false,
         quick_setup: false,
         scope: Scope::Server,

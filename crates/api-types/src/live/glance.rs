@@ -25,9 +25,8 @@ pub struct ExpansionsRequest {
     pub broker_host: Option<String>,
 }
 
-/// What the references of the default connection texts show. A field is `null` unless its default is a `$NAME` reference
-/// that the user's binding or confirmations let expand for the host in the form; a variable that is not set is an
-/// empty text, and a password only says whether it is set.
+/// What the references of the default connection texts show. A field is `null` unless its default is a `$NAME`
+/// reference; a variable that is not set is an empty text, and a password only says whether it is set.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize, TS)]
 pub struct LiveExpansions {
     /// The camera host: the typed one when it is a reference, else the default.

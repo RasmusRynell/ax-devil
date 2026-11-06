@@ -74,49 +74,4 @@ describe("live discovery", () => {
 
     expect(view.result.current.state).toEqual({ phase: "ready", value: sizes(1280) });
   });
-
-  it("asks whether to send a $NAME to its host, confirms it, and asks again", async () => {
-    const calls = stubBackend();
-    const view = hostAsked("10.0.0.7");
-    await settle(600);
-    const confirmation = { reference: "CAM_PASS", host: "10.0.0.7" };
-    calls[0]?.answer(409, { problem: "NeedsConfirmation", confirmation });
-    await settle(0);
-    expect(view.result.current.state).toEqual({ phase: "confirm", confirmation });
-
-    act(() => view.result.current.confirm());
-    expect(calls[1]?.url).toBe("/api/live/confirm");
-    expect(calls[1]?.body).toEqual(confirmation);
-    calls[1]?.answer(204, null);
-    await settle(0);
-    await settle(0);
-    expect(calls[2]?.url).toBe("/api/live/resolutions");
-    calls[2]?.answer(200, sizes(1280));
-    await settle(0);
-
-    expect(view.result.current.state.phase).toBe("ready");
-  });
-
-  it("drops the answer to a confirmation the form has moved past", async () => {
-    const calls = stubBackend();
-    const view = hostAsked("a");
-    await settle(600);
-    calls[0]?.answer(409, {
-      problem: "NeedsConfirmation",
-      confirmation: { reference: "CAM_PASS", host: "a" },
-    });
-    await settle(0);
-    act(() => view.result.current.confirm());
-
-    view.rerender({ host: "b" });
-    await settle(600);
-    calls[2]?.answer(200, sizes(1280));
-    await settle(0);
-    expect(view.result.current.state).toEqual({ phase: "ready", value: sizes(1280) });
-
-    calls[1]?.answer(500, null);
-    await settle(0);
-    expect(view.result.current.state).toEqual({ phase: "ready", value: sizes(1280) });
-    expect(calls).toHaveLength(3);
-  });
 });

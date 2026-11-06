@@ -1,7 +1,6 @@
 //! Errors on the wire. [`project`] is the only place a [`UserError`] becomes wire data, so what an audience may
 //! learn from a failure is decided once.
 
-use crate::live::LiveConfirmation;
 use foundation::{ErrorCode, Location, UserError};
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
@@ -25,11 +24,6 @@ pub struct ErrorParams {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
     pub item: Option<String>,
-    /// For `NeedsConfirmation`: every reference and host to confirm, each with `POST /api/live/confirm`. Only for an
-    /// audience with host details: it names resolved hosts and environment variables.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    #[ts(optional)]
-    pub confirm: Option<Vec<LiveConfirmation>>,
 }
 
 /// A failure as the wire carries it: the code and its parameters for everyone, and for an audience with host
@@ -69,17 +63,7 @@ pub fn project(error: &UserError, audience: Audience) -> ErrorWire {
     };
     ErrorWire {
         code: error.code,
-        params: ErrorParams {
-            item,
-            confirm: (audience.host_details && !error.confirmations.is_empty()).then(|| {
-                error
-                    .confirmations
-                    .iter()
-                    .cloned()
-                    .map(LiveConfirmation::from)
-                    .collect()
-            }),
-        },
+        params: ErrorParams { item },
         reason,
         location,
     }
@@ -127,38 +111,5 @@ mod tests {
         let host = project(&at_file, Audience::HOST);
         assert_eq!(host.location.as_deref(), Some("/home/SECRET-PATH/gate.mp4"));
         assert!(host.reason.unwrap().contains("SECRET-REASON"));
-    }
-
-    #[test]
-    fn only_a_host_audience_learns_what_a_confirmation_is_about() {
-        let item = ItemId::generate();
-        let mut error =
-            UserError::new(ErrorCode::NeedsConfirmation, "sign-in goes to 192.0.2.7").at(item);
-        error.confirmations = vec![foundation::Confirmation {
-            reference: "SECRET_VAR".into(),
-            host: "192.0.2.7".into(),
-        }];
-
-        let public = project(
-            &error,
-            Audience {
-                host_details: false,
-            },
-        );
-        let text = serde_json::to_string(&public).unwrap();
-        assert!(
-            !text.contains("SECRET_VAR") && !text.contains("192.0.2.7"),
-            "{text}"
-        );
-        assert_eq!(public.code, ErrorCode::NeedsConfirmation);
-        assert_eq!(public.params.item, Some(item.to_string()));
-        assert_eq!(
-            project(&error, Audience::HOST)
-                .params
-                .confirm
-                .unwrap()
-                .len(),
-            1
-        );
     }
 }

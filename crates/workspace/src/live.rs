@@ -1,12 +1,11 @@
 //! The Live Stream Item: a camera's connection settings, checked the same way when the item is made and when a saved
 //! one resolves, and expanded into the Content a viewer opens.
 //!
-//! Connection text is stored as entered: a `$NAME` reference stays one and is expanded only by resolving, where a
-//! credential reference needs its host binding or the user's confirmation (docs/rebuild/13-security-packaging-ops.md).
+//! Connection text is stored as entered: a `$NAME` reference stays one and is expanded silently by resolving.
 
 use crate::{
     content::{Content, ContentId},
-    credentials::{Confirmation, Environment, Secret, reference},
+    credentials::{Environment, Secret, reference},
 };
 use foundation::{ErrorCode, ItemId, Location, UserError};
 use handlers::Handlers;
@@ -330,29 +329,9 @@ impl LiveRecipe {
         Ok(())
     }
 
-    /// The references this recipe would send to a host that neither their binding nor the user's confirmation allows:
-    /// what to ask the user before starting it. A reference whose variable is unset sends nothing and is not listed.
-    pub fn needs_confirmation(&self, env: &Environment) -> Vec<Confirmation> {
-        let mut pending = Vec::new();
-        self.expand(env, &mut pending);
-        pending
-    }
-
-    /// The recipe with its references expanded, and in `pending` the ones not allowed to be.
-    fn expand(
-        &self,
-        env: &Environment,
-        pending: &mut Vec<Confirmation>,
-    ) -> (Expanded, LiveOverlay) {
-        let url_host = self.url.as_deref().and_then(|url| url_host(url).ok());
-        let camera = Endpoint {
-            host: &self.host,
-            user: &self.username,
-            password: &self.password,
-            names: CAMERA_NAMES,
-            also_to: url_host.as_deref(),
-        };
-        let camera = camera.expand(env, pending);
+    /// The recipe with its references expanded.
+    fn expand(&self, env: &Environment) -> (Expanded, LiveOverlay) {
+        let camera = Expanded::of(env, &self.host, &self.username, &self.password);
         let overlay = match &self.overlay {
             LiveOverlay::Mqtt {
                 handler,
@@ -362,15 +341,7 @@ impl LiveRecipe {
                 broker_pass,
                 source_key,
             } => {
-                let broker = Endpoint {
-                    host: broker_host,
-                    user: broker_user,
-                    password: broker_pass,
-                    names: BROKER_NAMES,
-                    // The MQTT lease hands the broker login to the camera, which connects to the broker itself.
-                    also_to: Some(camera.host.as_str()).filter(|host| !host.is_empty()),
-                }
-                .expand(env, pending);
+                let broker = Expanded::of(env, broker_host, broker_user, broker_pass);
                 LiveOverlay::Mqtt {
                     handler: handler.clone(),
                     broker_host: broker.host,
@@ -385,8 +356,7 @@ impl LiveRecipe {
         (camera, overlay)
     }
 
-    /// The Content of the item `item`. Fails like [`check`](Self::check), when the expanded host is empty, and with
-    /// [`ErrorCode::NeedsConfirmation`] naming the first reference and host that need the user's confirmation.
+    /// The Content of the item `item`. Fails like [`check`](Self::check), and when the expanded host is empty.
     pub(crate) fn resolve(
         &self,
         item: &ItemId,
@@ -398,8 +368,7 @@ impl LiveRecipe {
             ..error
         };
         self.check(handlers).map_err(at_item)?;
-        let mut pending = Vec::new();
-        let (camera, overlay) = self.expand(env, &mut pending);
+        let (camera, overlay) = self.expand(env);
         if camera.host.is_empty() {
             return Err(at_item(invalid("host", "Enter the device host.")));
         }
@@ -410,16 +379,6 @@ impl LiveRecipe {
                 "broker_host",
                 "MQTT Host is required for MQTT overlay mode.",
             )));
-        }
-        if let Some(Confirmation { reference, host }) = pending.first() {
-            return Err(UserError {
-                confirmations: pending.clone(),
-                ..UserError::new(
-                    ErrorCode::NeedsConfirmation,
-                    format!("${reference} would be sent to {host}; confirm it first."),
-                )
-                .at(*item)
-            });
         }
         let login = (!camera.user.is_empty() || !camera.password.is_empty()).then_some(Login {
             user: camera.user,
@@ -448,79 +407,20 @@ impl LiveRecipe {
     }
 }
 
-/// The environment variables that belong together as one endpoint's host, user and password.
-pub(crate) struct Names {
-    pub(crate) host: &'static str,
-    pub(crate) user: &'static str,
-    pub(crate) password: &'static str,
-}
-
-pub(crate) const CAMERA_NAMES: Names = Names {
-    host: "AX_DEVIL_TARGET_ADDR",
-    user: "AX_DEVIL_TARGET_USER",
-    password: "AX_DEVIL_TARGET_PASS",
-};
-
-pub(crate) const BROKER_NAMES: Names = Names {
-    host: "AX_DEVIL_MQTT_BROKER_ADDR",
-    user: "AX_DEVIL_MQTT_BROKER_USER",
-    password: "AX_DEVIL_MQTT_BROKER_PASS",
-};
-
-/// A host with its login as entered, and where the login is sent.
-pub(crate) struct Endpoint<'a> {
-    pub(crate) host: &'a str,
-    pub(crate) user: &'a str,
-    pub(crate) password: &'a Secret,
-    pub(crate) names: Names,
-    /// A second host that gets the login: the host of a custom stream URL, or the camera for a broker login.
-    pub(crate) also_to: Option<&'a str>,
-}
-
+/// A host with its login, references expanded.
 pub(crate) struct Expanded {
     pub(crate) host: String,
     pub(crate) user: String,
     pub(crate) password: Secret,
 }
 
-impl Endpoint<'_> {
-    /// Expands the three texts. A reference expands for free only as the variable bound to its role and only when the
-    /// host is the reference bound to the host role and the login goes nowhere else; any other expands only for a host
-    /// the user confirmed it for. What is not allowed is still expanded, and listed in `pending`.
-    pub(crate) fn expand(&self, env: &Environment, pending: &mut Vec<Confirmation>) -> Expanded {
-        let host = env.expand(self.host);
-        let together = reference(self.host) == Some(self.names.host);
-        let mut ask = |text: &str, value: &str, bound: &str, destinations: &[&str]| {
-            let Some(name) = reference(text).filter(|_| !value.is_empty()) else {
-                return;
-            };
-            for destination in destinations {
-                let free = together && name == bound && destination.eq_ignore_ascii_case(&host);
-                let asked = |c: &Confirmation| c.reference == name && c.host == *destination;
-                if !free && !env.is_confirmed(name, destination) && !pending.iter().any(asked) {
-                    pending.push(Confirmation {
-                        reference: name.to_owned(),
-                        host: (*destination).to_owned(),
-                    });
-                }
-            }
-        };
-        ask(self.host, &host, self.names.host, &[&host]);
-        let mut destinations = vec![host.as_str()];
-        destinations.extend(self.also_to.filter(|to| !to.eq_ignore_ascii_case(&host)));
-        let user = env.expand(self.user);
-        ask(self.user, &user, self.names.user, &destinations);
-        let password = env.expand(self.password.expose());
-        ask(
-            self.password.expose(),
-            &password,
-            self.names.password,
-            &destinations,
-        );
-        Expanded {
-            host,
-            user,
-            password: Secret::new(password),
+impl Expanded {
+    /// The three texts as entered, each replaced by its variable when it is a whole-value `$NAME` reference.
+    pub(crate) fn of(env: &Environment, host: &str, user: &str, password: &Secret) -> Self {
+        Self {
+            host: env.expand(host),
+            user: env.expand(user),
+            password: Secret::new(env.expand(password.expose())),
         }
     }
 }

@@ -137,9 +137,8 @@ impl Recipe {
     /// that the lane names within each entry are unique, since they are the identity of lanes. Resolving twice gives
     /// the same ids. What the resolver or those checks refuse reads `Playlist resolver '<id>' failed: <why>`.
     ///
-    /// A live recipe is checked like one just entered, then its `$NAME` references are expanded from `env`: one fails
-    /// with [`ErrorCode::NeedsConfirmation`] unless it is bound to its host or confirmed for it (see
-    /// [`LiveRecipe::needs_confirmation`]). Nothing is connected to; the viewer does that.
+    /// A live recipe is checked like one just entered, then its `$NAME` references are expanded from `env`.
+    /// Nothing is connected to; the viewer does that.
     pub fn resolve(
         &self,
         item: &ItemId,
