@@ -181,7 +181,8 @@ function split() {
   const reachable = (control) => {
     const rect = control.getBoundingClientRect();
     const [x, y] = [(rect.left + rect.right) / 2, (rect.top + rect.bottom) / 2];
-    if (x < view.left || x > view.right || y < view.top || y > view.bottom) return scrolls;
+    // A control whose middle is on the edge is as good as off screen: the area scrolls to it.
+    if (x <= view.left || x >= view.right || y <= view.top || y >= view.bottom) return scrolls;
     return control.contains(document.elementFromPoint(x, y));
   };
   const panes = [...document.querySelectorAll('[role=group][data-cursor-id^="pane:"]')];
