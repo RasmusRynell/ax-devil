@@ -253,6 +253,22 @@ describe("a watcher", () => {
     ).toBe(true);
   });
 
+  it("cannot open a workspace with Enter, as the greyed-out button cannot", async () => {
+    const room = FakeSocket.host();
+    room.publish({ sidebar: { view: "workspace", open: true }, viewers: {} });
+    window.sessionStorage.setItem(
+      "ax-devil.credential",
+      JSON.stringify({ kind: "join", session: room.id, secret: room.secret }),
+    );
+    await showShell({ grants: ["sessions"] });
+    expect(
+      document.querySelector<HTMLButtonElement>('[data-cursor-id="sidebar:open-workspace"]')
+        ?.disabled,
+    ).toBe(true);
+    fireEvent.keyDown(document.body, { key: "Enter" });
+    expect(screen.queryByRole("dialog")).toBeNull();
+  });
+
   /** A watcher of a session whose Doc has "a" and "b" open and whose presenter shows "a". */
   async function watchAB(access: "watch" | "explore") {
     const room = FakeSocket.host(access);
