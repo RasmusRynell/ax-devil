@@ -1,7 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
-import { act, cleanup, fireEvent, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { FakeSocket, type Room } from "../session/fakeSession";
-import { CLIP, labels, MOT, renderTree } from "./WorkspaceTree.fixture";
+import { SessionProvider } from "../session/session";
+import { KeptStateProvider } from "./keptState";
+import { RevealShown } from "./RevealShown";
+import { CLIP, labels, LISTING, MOT, renderTree } from "./WorkspaceTree.fixture";
+import { WorkspaceTree } from "./WorkspaceTree";
 
 beforeEach(() => vi.stubGlobal("WebSocket", FakeSocket));
 afterEach(() => {
@@ -62,5 +66,31 @@ describe("the item a viewer shows", () => {
     fireEvent.click(screen.getByRole("button", { name: "Playlists" }));
     front(room, "mot");
     expect(screen.queryByRole("tree", { name: "Playlists" })).toBeNull();
+  });
+
+  it("follows the viewer while its view is away", async () => {
+    const items = [
+      { ...MOT, open: true },
+      { ...CLIP, open: true },
+    ];
+    const page = (away: boolean) => (
+      <SessionProvider>
+        <KeptStateProvider>
+          <RevealShown view="workspace" />
+          {!away && <WorkspaceTree view="workspace" {...LISTING} />}
+        </KeptStateProvider>
+      </SessionProvider>
+    );
+    const { rerender } = render(page(false));
+    await act(async () => {});
+    const room = FakeSocket.rooms.get("room-1") as Room;
+    act(() => room.setItems(items));
+    front(room, "mot");
+    fireEvent.keyDown(screen.getByRole("tree", { name: "Playlists" }), { key: "ArrowLeft" });
+    rerender(page(true));
+    front(room, "v");
+    front(room, "mot");
+    rerender(page(false));
+    expect(labels().slice(1, 4)).toEqual(["mot", "A", "GT"]);
   });
 });

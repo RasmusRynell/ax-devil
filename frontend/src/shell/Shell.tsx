@@ -29,7 +29,8 @@ import { RECENT_ID } from "./recents";
 import { SettingsDialog } from "./SettingsDialog";
 import { ShortcutsDialog } from "./ShortcutsDialog";
 import { KeptStateProvider } from "./keptState";
-import { Sidebar } from "./Sidebar";
+import { RevealShown } from "./RevealShown";
+import { LISTED_VIEWS, Sidebar } from "./Sidebar";
 import { Welcome } from "./Welcome";
 import { WorkspaceFileDialog } from "./WorkspaceFileDialog";
 import type { ActivityItem } from "./views";
@@ -251,6 +252,9 @@ export function Shell({ version }: { version: string }) {
 
   return (
     <KeptStateProvider>
+      {LISTED_VIEWS.map((view) => (
+        <RevealShown key={view} view={view} />
+      ))}
       <ViewerActionsContext.Provider value={setViewerActions}>
         <div className="flex min-h-0 flex-1 flex-col">
           <h1 className="sr-only">ax-devil</h1>

@@ -9,12 +9,13 @@ import { SectionCaption } from "../kit/SectionCaption";
 import { reasonOf } from "../errors";
 import { useStreamStatuses } from "../live/streamState";
 import { useCan, useCommand, useDoc } from "../session/session";
-import { useShow, useViewers } from "../viewer/useViewers";
+import { useShow } from "../viewer/useViewers";
 import { HoverPicture } from "./HoverPicture";
 import { useItemDialogs } from "./ItemDialogs";
 import { rowInformation } from "./rowInformation";
 import { useKept } from "./keptState";
-import { NO_FOLDS, revealShown, unfold } from "./reveal";
+import { useFolds } from "./RevealShown";
+import { unfold } from "./reveal";
 import { canEdit, rowMenu } from "./rowMenu";
 import {
   filteredOut,
@@ -76,12 +77,11 @@ export function WorkspaceTree({
   const [showHidden, setShowHidden] = useKept(`${view}:showHidden`, false);
   const [query, setQuery] = useKept(`${view}:query`, "");
   const [order, setOrder] = useKept<Order>(`${view}:order`, "workspace");
-  const [held, setHeld] = useKept(`${view}:folds`, NO_FOLDS);
+  const [held, setHeld] = useFolds(view);
   const { collapsed } = held;
   // What the user closed since the search text last changed; the search ignores the saved folds above.
   const [closed, setClosed] = useKept(`${view}:closed`, NO_CLOSED);
   const [folded, setFolded] = useKept(`${view}:folded`, NO_FOLDED);
-  const front = useViewers().active?.id;
   const [current, setCurrent] = useState<string | null>(null);
   const [menu, setMenu] = useState<{ key: string; x: number; y: number } | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
@@ -171,12 +171,6 @@ export function WorkspaceTree({
         root.current?.querySelector<HTMLElement>('input[type="search"]')
       )?.focus();
   });
-
-  // A viewer coming to show an item reveals its rows, and one moving on closes them.
-  useEffect(() => {
-    const next = revealShown(tree, front, held);
-    if (next !== held) setHeld(next);
-  }, [tree, front]);
 
   const fail = (error: unknown) =>
     setProblem(error instanceof Error ? error.message : String(error));

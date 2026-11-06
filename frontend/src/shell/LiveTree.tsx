@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
+import { useCallback, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { LiveConfirmation } from "../generated/api";
 import { Button } from "../kit/Button";
 import { Menu, type MenuCommand, type MenuEntry } from "../kit/Menu";
@@ -101,7 +101,8 @@ export function LiveTree({
     views.filter(({ section }) => holdsActive(section.rows)).map(({ section }) => section.id),
   );
   const [track, setTrack] = useKept("live:track", NO_TRACK);
-  useEffect(() => {
+  // Before paint, so a section a stream just opened in never appears folded for a frame.
+  useLayoutEffect(() => {
     if (opened.size === track.opened.size && [...opened].every((id) => track.opened.has(id)))
       return;
     setTrack({

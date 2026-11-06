@@ -3,6 +3,7 @@ import type { ItemState } from "../generated/api";
 import { entry, failed, FakeSocket, playlist, video, type Room } from "../session/fakeSession";
 import { SessionProvider, useView } from "../session/session";
 import { KeptStateProvider } from "./keptState";
+import { RevealShown } from "./RevealShown";
 import { WorkspaceTree } from "./WorkspaceTree";
 
 export const MOT = playlist(
@@ -44,6 +45,7 @@ export async function renderTree(items: ItemState[] = ITEMS, hidden = HIDDEN) {
   render(
     <SessionProvider>
       <KeptStateProvider>
+        <RevealShown view="workspace" />
         <WorkspaceTree view="workspace" {...LISTING} />
       </KeptStateProvider>
       <View />
