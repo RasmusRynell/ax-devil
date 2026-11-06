@@ -20,8 +20,8 @@ const REFRESH_MS = 2000;
 const COPIED_MS = 1500;
 /** How much of a Session's id names it in the list, which has no other name to show. */
 const SHORT_ID = 6;
-/** Why a session has no join link: only the release build opens the listener other machines reach. */
-const NO_LINK = "Join links need the release build (make build)";
+/** What a session without a join link says when the backend did not say why. */
+const NO_LINK = "No join link";
 
 /** The shared Sessions of this backend, refreshed while `enabled`; empty when there is none or the list is unavailable. */
 function useSharedSessions(enabled: boolean): SessionSummary[] {
@@ -57,13 +57,13 @@ async function copy(text: string): Promise<boolean> {
 }
 
 /** The right-click menu of a session: its join link, when this backend has one. */
-const copyEntries = (link: string | null): MenuEntry[] => [
+const copyEntries = (link: string | null, problem: string | null): MenuEntry[] => [
   {
     kind: "action",
     id: "copy-link",
     label: "Copy join link",
     disabled: !link,
-    reason: NO_LINK,
+    reason: problem ?? NO_LINK,
   },
 ];
 
@@ -89,7 +89,7 @@ function Action({
 }
 
 /** The join link, selectable, with the button that copies it; the reason there is none when there is none. */
-function JoinLink({ link }: { link: string | null }) {
+function JoinLink({ link, problem }: { link: string | null; problem: string | null }) {
   const [copied, setCopied] = useState(false);
   useEffect(() => {
     if (!copied) return;
@@ -107,8 +107,8 @@ function JoinLink({ link }: { link: string | null }) {
           className={`${FIELD} min-w-0 flex-1`}
         />
       ) : (
-        <span id="no-join-link" className="min-w-0 flex-1 text-muted">
-          {NO_LINK}
+        <span id="no-join-link" className="min-w-0 flex-1 break-words text-muted">
+          {problem ?? NO_LINK}
         </span>
       )}
       <Button
@@ -174,7 +174,7 @@ export function SessionsView() {
           {owner && (
             <>
               <div className={ROW}>
-                <JoinLink link={link} />
+                <JoinLink link={link} problem={session?.linkProblem ?? null} />
                 {link && (
                   <Button
                     icon="rotate-cw"
@@ -249,7 +249,7 @@ export function SessionsView() {
               return (
                 <li key={other.id}>
                   <ContextMenu
-                    entries={copyEntries(other.link ?? null)}
+                    entries={copyEntries(other.link ?? null, other.linkProblem ?? null)}
                     onSelect={() => copyLink(other.link ?? null)}
                   >
                     <div data-cursor-id={`session:${other.id}`} className={ROW}>

@@ -110,10 +110,27 @@ pub enum Hosting {
 impl Hosting {
     /// Makes the backend reachable before a session announces its link; a failure only costs the join link.
     pub(crate) async fn open(&self) {
-        if let Self::Lan(listener) = self
-            && let Err(error) = listener.ensure_open().await
-        {
-            tracing::warn!("Sessions cannot be shared with other machines: {error}");
+        if let Self::Lan(listener) = self {
+            let failure = listener.ensure_open().await.err().map(|error| {
+                tracing::warn!("Sessions cannot be shared with other machines: {error}");
+                error.to_string()
+            });
+            *listener
+                .problem
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner) = failure;
+        }
+    }
+
+    /// Why sessions have no join link, when the listener other machines reach could not be opened.
+    pub(crate) fn link_problem(&self) -> Option<String> {
+        match self {
+            Self::Lan(listener) => listener
+                .problem
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner)
+                .clone(),
+            Self::None | Self::Server(_) => None,
         }
     }
 
@@ -142,6 +159,8 @@ pub struct ShareListener {
     open: Mutex<Option<Open>>,
     /// Held while opening or closing, so the two never overlap.
     changing: AsyncMutex<()>,
+    /// Why the last attempt to open failed; cleared by an attempt that succeeds.
+    problem: Mutex<Option<String>>,
 }
 
 impl ShareListener {
@@ -152,6 +171,7 @@ impl ShareListener {
             state: local.shared_with(Policy::Shared { password: None }),
             open: Mutex::new(None),
             changing: AsyncMutex::new(()),
+            problem: Mutex::new(None),
         })
     }
 
@@ -228,5 +248,30 @@ impl ShareListener {
                 return;
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::test_support::TestApp;
+
+    #[tokio::test]
+    async fn a_listener_that_cannot_open_says_why_there_is_no_link() {
+        let app = TestApp::new();
+        let taken = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let hosting = Hosting::Lan(ShareListener::new(taken.local_addr().unwrap(), &app.state));
+        assert_eq!(hosting.link_problem(), None);
+
+        hosting.open().await;
+
+        // A development build refuses before it binds, with its own reason.
+        let wanted = if cfg!(feature = "embed-assets") {
+            "cannot listen on"
+        } else {
+            "development build"
+        };
+        let problem = hosting.link_problem().unwrap();
+        assert!(problem.contains(wanted), "{problem}");
     }
 }

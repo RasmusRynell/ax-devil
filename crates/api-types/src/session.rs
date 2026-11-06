@@ -329,6 +329,10 @@ pub struct SharingInfo {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
     pub link: Option<String>,
+    /// Why there is no link, when other machines cannot reach this backend; the owner's seat only.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub link_problem: Option<String>,
 }
 
 /// The Doc as a watcher or the owner may see it. Built only by the backend's projection.
@@ -489,4 +493,8 @@ pub struct SessionSummary {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
     pub link: Option<String>,
+    /// Why there is no link, when other machines cannot reach this backend.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub link_problem: Option<String>,
 }

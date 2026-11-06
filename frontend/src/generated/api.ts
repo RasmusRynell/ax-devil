@@ -593,7 +593,11 @@ access: Access,
 /**
  * The join link URL; the owner's seat only.
  */
-link?: string, };
+link?: string, 
+/**
+ * Why there is no link, when other machines cannot reach this backend; the owner's seat only.
+ */
+linkProblem?: string, };
 
 /**
  * The Doc as a watcher or the owner may see it. Built only by the backend's projection.
@@ -767,7 +771,11 @@ participants: number,
 /**
  * The join link URL; absent when this backend cannot be reached by other machines.
  */
-link?: string, };
+link?: string, 
+/**
+ * Why there is no link, when other machines cannot reach this backend.
+ */
+linkProblem?: string, };
 
 /**
  * The workspace and what is known about each item, as one audience may see it.

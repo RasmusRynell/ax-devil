@@ -125,7 +125,7 @@ Listed in [parity deviations](parity-deviations.md).
 | SH-01 | Join, reconnect and revoke access | M | in progress | `crates/sessions/tests/session/`, `tests/it/{session_socket,playback_ws}.rs` | Lifecycle, leases and tickets built; real-network interruption evidence remains |
 | SH-02 | Follow or explore independently | M | in progress | `frontend/src/viewer/PlaylistFollower.test.tsx`, `desktop/smoke-sharing.cjs`, `src/routes/playback/inspect/tests.rs` | Video and playlist following and exploring. Inspection is gated like data: a follower outside its window gets none. Live policies follow live |
 | SH-03 | Audience privacy and settings scope | M | in progress | `tests/it/access.rs`, `src/session/project.rs`, `crates/settings/src/scope_tests.rs` | Host-path projections and personal/server settings built; disclosure of inspection data and user catalogs is open |
-| SH-04 | Browser and remote Electron connection | M | in progress | `desktop/{smoke-remote,links.test,remote.test}.cjs`, `frontend/src/session/Notice.test.tsx` | Server frontend, password recovery, launches and links reaching the running app, packaged link registration, join failure reasons; why hosting failed is not shown |
+| SH-04 | Browser and remote Electron connection | M | in progress | `desktop/{smoke-remote,links.test,remote.test}.cjs`, `frontend/src/session/Notice.test.tsx` | Server frontend, password recovery, launches and links reaching the running app, packaged link registration, join and hosting failure reasons (`src/share.rs`) |
 
 ## Developer tooling
 

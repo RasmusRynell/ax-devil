@@ -95,8 +95,6 @@ Documented, not fixed.
 - **Edit access has no UI.** The backend supports an `Edit` access row for editing together, but nothing exposes it,
   and its projection lists only the Owner's open items. This is not a command-authorization guarantee that a
   retained item id cannot be reopened; settle that policy before exposing editing.
-- **LAN hosting failures lack a distinct UI reason.** A bind failure is logged and sharing may remain local; the
-  missing-link message currently suggests a release build even when the port is occupied.
 - **Snapshot cost is unmeasured** at 32 seats under 30 Hz scrubbing.
 
 ## Plugin trust (MUST)
