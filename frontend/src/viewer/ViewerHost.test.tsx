@@ -55,6 +55,31 @@ describe("viewer host", () => {
     expect(screen.getByRole("alert").textContent).toBe("The file was not found.");
   });
 
+  it("offers to reload a viewer whose files changed, once per change, and reloading resolves the item", async () => {
+    const send = await setup();
+    const offer = () => screen.queryByText("Source changed, reload current viewer?");
+    send(["a", true, resolved("a")]);
+    expect(offer()).toBeNull();
+
+    const room = FakeSocket.rooms.get("room-1")!;
+    const set = (count: number) => act(() => room.setItems([{ ...video("a"), changed: count }]));
+    set(1);
+    expect(offer()).not.toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Dismiss" }));
+    expect(offer()).toBeNull();
+    set(1);
+    expect(offer()).toBeNull();
+    set(2);
+    expect(offer()).not.toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "Reload" }));
+    expect(FakeSocket.latest.received).toContainEqual(
+      expect.objectContaining({
+        cmd: { type: "content", command: { type: "resolve", item: "a" } },
+      }),
+    );
+  });
+
   it("switches between open items, and closing one shows the other", async () => {
     const send = await setup();
     send(["a", true, resolved("a")], ["b", true, resolved("b")]);

@@ -496,6 +496,45 @@ fn removing_an_item_takes_its_viewer_and_resolution_with_it_and_drops_a_result_s
     assert_eq!(again, gone, "removing it twice changes nothing");
 }
 
+#[test]
+fn a_change_to_the_files_of_an_open_item_is_counted_and_any_other_resolves_again() {
+    let folder = tempfile::tempdir().unwrap();
+    let file = folder.path().join("gate.mp4");
+    std::fs::write(&file, "x").unwrap();
+    let (shown, listed) = (item(&file), item(&file));
+    let (shown_id, listed_id) = (shown.id, listed.id);
+    let (state, jobs) = add(&WorkspaceState::default(), vec![shown], true);
+    let (state, more) = add(&state, vec![listed], false);
+    let state = finish(&finish(&state, &jobs[0]), &more[0]);
+    let stream = generation(&state, shown_id);
+
+    // The viewer keeps its Content: resolving again would end its stream. It is told, once per change.
+    let (counted, jobs) = apply(&state, DocCommand::SourceChanged(shown_id));
+    let (counted, again) = apply(&counted, DocCommand::SourceChanged(shown_id));
+    assert!(jobs.is_empty() && again.is_empty());
+    assert_eq!(counted.changed[&shown_id], 2);
+    assert_eq!(generation(&counted, shown_id), stream);
+
+    // An item nobody shows resolves again, and so does the open one when asked to: the count starts over.
+    let (resolving, jobs) = apply(&counted, DocCommand::SourceChanged(listed_id));
+    assert_eq!(jobs.len(), 1);
+    let (reloading, jobs) = apply(&counted, DocCommand::Resolve(shown_id));
+    assert_eq!(jobs.len(), 1);
+    assert!(reloading.changed.is_empty() && reloading.open.contains(&shown_id));
+    assert!(generation(&finish(&reloading, &jobs[0]), shown_id) > stream);
+
+    // A change while an item resolves restarts it: that attempt may have read the old files.
+    let (restarted, jobs) = apply(&resolving, DocCommand::SourceChanged(listed_id));
+    assert_eq!(jobs.len(), 1);
+    assert_eq!(
+        finish(&restarted, &jobs_of(&resolving, listed_id)),
+        restarted
+    );
+
+    let (gone, _) = apply(&counted, DocCommand::Remove(shown_id));
+    assert!(gone.changed.is_empty());
+}
+
 /// The job that was resolving `id` in `state`.
 fn jobs_of(state: &WorkspaceState, id: ItemId) -> ResolveJob {
     let Some(Resolution::Pending { attempt }) = state.resolutions.get(&id) else {

@@ -10,6 +10,7 @@ pub mod intake;
 mod item;
 mod live;
 mod references;
+mod sources;
 mod workspace;
 
 pub use bookmark::{Bookmark, BookmarkKind, BookmarkTarget};
@@ -27,4 +28,5 @@ pub use live::{
     LIVE_SLOT, LiveOverlay, LiveRecipe, LiveVideoContent, Login, Protocol, ResolvedCamera,
 };
 pub use references::{Connection, Previews, Shown, preview, vouches};
+pub use sources::{MAX_FOLDERS, Snapshot, SourcePaths};
 pub use workspace::Workspace;

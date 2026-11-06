@@ -100,6 +100,7 @@ fn content_scope(command: &DocCommand) -> Scope {
         DocCommand::OpenViewer(_)
         | DocCommand::CloseViewer(_)
         | DocCommand::Resolve(_)
+        | DocCommand::SourceChanged(_)
         | DocCommand::Remove(_)
         | DocCommand::SetHidden { .. }
         | DocCommand::SetLaneMatching { .. }
@@ -147,7 +148,7 @@ pub(super) fn set_workspace(next: &mut SessionState, workspace: WorkspaceState) 
     }
 }
 
-fn content(next: &mut SessionState, fx: &mut Effects, command: DocCommand) {
+pub(super) fn content(next: &mut SessionState, fx: &mut Effects, command: DocCommand) {
     let (workspace, jobs) = apply(&next.doc.workspace, command);
     set_workspace(next, workspace);
     for job in jobs {

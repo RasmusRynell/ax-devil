@@ -8,7 +8,7 @@ behavior that neither the row nor its source states. Port behavior, not wording 
 | Open a workspace | WS-02 | Closes all viewers and opens none; only adding items opens a viewer | `docs/domain/invariants.md#workspace-and-viewers` |
 | Remove item | WS-07 | A row older than the workspace (menu open during removal) does nothing | `docs/architecture/ui-framework.md#workspace-controller` |
 | Edit item | WS-07 | Unreadable items cannot be edited | `docs/architecture/workspace.md#workspace-items` |
-| Files change on disk | WS-06 | Changes on network shares are not noticed (known limit) | `file_watching/README.md` |
+| Files change on disk | WS-06 | Files are polled once a second, so network shares are noticed too | `file_watching/README.md` |
 | Add Video | AC-01 | Several matching decoders → the user picks | `docs/architecture/overview.md#workspace-items-and-intake` |
 | Drop files | AC-02 | Pane drags are never treated as file drops | `docs/architecture/ui-framework.md#workspace-shell` |
 | Add Live Stream, Add Playlist | AC-03, AC-04 | The dialog stays open with the reason on failure; form work is cancelled when the form closes | `docs/architecture/workspace.md#resolution` |

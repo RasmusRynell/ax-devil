@@ -4,6 +4,7 @@ import { IconButton } from "../kit/IconButton";
 import { QUIET } from "../kit/look";
 import { useCan, useCommand, useView } from "../session/session";
 import { viewerFor } from "../viewers";
+import { ReloadOffer } from "./ReloadOffer";
 import { useViewers } from "./useViewers";
 
 /** What shows for an item whose viewer is not ready: it is resolving, or it failed with a reason. */
@@ -31,7 +32,12 @@ function ItemView({ item }: { item: ItemState }) {
   const { content } = resolution;
   const Viewer = viewerFor(content);
   // A new generation is a new stream: closing and reopening the item shows a fresh viewer.
-  return <Viewer key={`${content.id}.${content.generation}`} item={item.id} content={content} />;
+  return (
+    <>
+      <ReloadOffer key={content.generation} item={item.id} changed={item.changed ?? 0} />
+      <Viewer key={`${content.id}.${content.generation}`} item={item.id} content={content} />
+    </>
+  );
 }
 
 /** The central area while viewers are open: a tab for each, and the active item's viewer. */

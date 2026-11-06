@@ -5,6 +5,7 @@
 mod matrix;
 mod revocation;
 mod roster;
+mod sources;
 mod streams;
 
 use foundation::{CancelToken, Interrupt, UserError};

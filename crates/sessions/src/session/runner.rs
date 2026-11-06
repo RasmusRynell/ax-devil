@@ -1,11 +1,11 @@
 //! Running the jobs a session asks for.
 
-use super::{Completion, Spawn, Work};
+use super::{Completion, Sources, Spawn, Work};
 use foundation::{ErrorCode, Interrupt, UserError};
 use handlers::HandlerSet;
 use std::sync::Arc;
 use tokio::runtime;
-use workspace::Environment;
+use workspace::{Environment, SourcePaths};
 
 /// Runs the jobs a session asks for. The session does not care how: a runner starts the work and reports its
 /// [`Completion`] through the [`Completer`], now or later, on any thread.
@@ -40,12 +40,15 @@ pub struct OnRuntime {
     /// Where a live stream's `$NAME` references get their values and which the user confirmed; each job takes the
     /// environment as it is when it starts, so a confirmation reaches the next `Resolve`.
     pub environment: Arc<dyn Fn() -> Environment + Send + Sync>,
+    /// Where each item's files are recorded as it resolves, so a change to them is noticed.
+    pub sources: Arc<Sources>,
 }
 
 impl Runner for OnRuntime {
     fn run(&self, spawn: Spawn, done: Completer) {
         let handlers = self.handlers.current();
         let env = (self.environment)();
+        let sources = Arc::clone(&self.sources);
         self.runtime.spawn(async move {
             if spawn.cancel.is_cancelled() {
                 return;
@@ -54,7 +57,21 @@ impl Runner for OnRuntime {
             let item = job.item;
             let cancel = spawn.cancel;
             // Resolving reads the file system, which must not block the runtime's workers.
-            let resolve = move || workspace_store::resolve(&job, &handlers, &env, &cancel);
+            let resolve = move || {
+                // The files are looked at before anything is read, so a change made while resolving is noticed.
+                let mut paths = SourcePaths::of_recipe(&job.recipe, &handlers);
+                let before = paths.snapshot(&cancel).ok();
+                let result = workspace_store::resolve(&job, &handlers, &env, &cancel);
+                if let (Some(before), false) = (before, cancel.is_cancelled()) {
+                    if let Ok(content) = &result {
+                        paths.add_content(content);
+                    }
+                    if let Ok(after) = paths.snapshot(&cancel) {
+                        sources.record(job.item, paths, before.or(after));
+                    }
+                }
+                result
+            };
             let result = match tokio::task::spawn_blocking(resolve).await {
                 Ok(Ok(content)) => Ok(content),
                 Ok(Err(Interrupt::Failed(error))) => Err(error),

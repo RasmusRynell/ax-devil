@@ -63,7 +63,10 @@ system webview ([D0](../rebuild/14-build-order.md#d0-stack-choice)).
 A window's Workspace is the Doc of its Session: the items (videos, playlists), each item's resolution, the hidden
 refs and which items are open, as one pure `WorkspaceState` (`workspace-store`). It changes only by a `DocCommand`
 the Session applies under its lock (add items, open and close a viewer, hide and unhide); resolving an item runs as
-a job outside the lock and commits through it. A playlist resolves to Content with entries, each with its lanes; a
+a job outside the lock and commits through it. The runner records the files each item was read from (a video's
+overlays, a playlist resolver's folders, the overlays its Content names), and a poll in `sessions` reports a change:
+an item nobody has open resolves again, and an open one only counts the change, which its viewer offers to reload,
+because resolving again would end the stream. A playlist resolves to Content with entries, each with its lanes; a
 video is one entry whose id is the Content's id. Each seat is sent the Doc as `project` builds it for its audience,
 sidebar rows included, so a watcher sees open items only, never a path or a failure's reason. Which entry a viewer
 shows is decided in one place, `restrict`, and a stream is ticketed for one entry of one generation of the Content.

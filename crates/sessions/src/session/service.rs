@@ -17,7 +17,7 @@ use crate::{
 };
 use playback::Authority;
 use std::{
-    collections::{BTreeMap, HashMap},
+    collections::{BTreeMap, HashMap, HashSet},
     sync::{Arc, Mutex, atomic::AtomicBool},
     time::Duration,
 };
@@ -329,6 +329,31 @@ impl<C: Clone + Send + 'static> Service<C> {
                 },
             })
         })
+    }
+
+    /// Every item of every session.
+    pub fn item_ids(&self) -> HashSet<ItemId> {
+        let sessions = common::locked(&self.inner.sessions);
+        sessions
+            .values()
+            .flat_map(|live| live.state.doc.workspace.workspace.items.iter())
+            .map(|item| item.id)
+            .collect()
+    }
+
+    /// Tells the session that holds `item` that its files changed (see
+    /// [`DocCommand::SourceChanged`](workspace_store::DocCommand::SourceChanged)). Does nothing for an unknown item.
+    pub fn source_changed(&self, item: ItemId) {
+        self.locked(|sessions, deferred| {
+            let holder = sessions.iter().find_map(|(id, live)| {
+                let items = &live.state.doc.workspace.workspace.items;
+                items.iter().any(|known| known.id == item).then_some(*id)
+            });
+            if let Some(id) = holder {
+                // A refusal means the session ended: nothing to tell.
+                let _ = apply(sessions, id, Input::SourceChanged { item }, deferred);
+            }
+        });
     }
 
     /// The session's state as it changes, or `None` for a session that is gone. The last value stays readable after

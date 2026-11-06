@@ -844,7 +844,12 @@ open: boolean,
 /**
  * Whether the item has Content yet.
  */
-resolution: ResolutionState, };
+resolution: ResolutionState, 
+/**
+ * How many times the files the open viewer shows changed since it opened, once they have; the viewer offers to
+ * reload.
+ */
+changed?: number, };
 
 /**
  * What an item is, from its recipe.

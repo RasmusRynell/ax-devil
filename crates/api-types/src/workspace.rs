@@ -102,6 +102,11 @@ pub struct ItemState {
     pub open: bool,
     /// Whether the item has Content yet.
     pub resolution: ResolutionState,
+    /// How many times the files the open viewer shows changed since it opened, once they have; the viewer offers to
+    /// reload.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub changed: Option<u32>,
 }
 
 /// What an item is, from its recipe.

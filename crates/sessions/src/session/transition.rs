@@ -16,8 +16,8 @@ use overlay_sync::MatchPolicy;
 use playback::Authority;
 use std::{collections::BTreeMap, sync::Arc};
 use tokio::time::Instant;
-use workspace::{Content, Entry};
-use workspace_store::complete;
+use workspace::{Content, Entry, ItemId};
+use workspace_store::{DocCommand, complete};
 
 /// The server's furthest-back time a presenter's clock intent may claim, in microseconds before it is received.
 const INTENT_MAX_AGE_US: i64 = 2_000_000;
@@ -110,6 +110,11 @@ pub enum Input {
     Release {
         /// The grant.
         grant: GrantId,
+    },
+    /// The files an item was read from changed.
+    SourceChanged {
+        /// The item.
+        item: ItemId,
     },
     /// A job finished. Dropped when the job is no longer registered.
     Complete {
@@ -225,6 +230,10 @@ fn apply(next: &mut SessionState, fx: &mut Effects, input: Input) -> Result<(), 
         Input::Redeem { ticket, now } => streams::redeem(next, fx, &ticket, now),
         Input::Release { grant } => {
             next.grants.remove(&grant);
+            Ok(())
+        }
+        Input::SourceChanged { item } => {
+            commands::content(next, fx, DocCommand::SourceChanged(item));
             Ok(())
         }
         Input::Complete { job, completion } => {
