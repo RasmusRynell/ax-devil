@@ -257,13 +257,6 @@ pub const COMMANDS: &[Command] = &[
         false,
     ),
     command(
-        "render-catalogs",
-        "Render Catalogs",
-        Category::View,
-        Some("Ctrl+R"),
-        false,
-    ),
-    command(
         "debug-metrics",
         "Debug Metrics",
         Category::Application,

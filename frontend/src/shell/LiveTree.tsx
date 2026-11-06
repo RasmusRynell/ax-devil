@@ -5,12 +5,16 @@ import { Popup } from "../kit/Popup";
 import { SectionCaption } from "../kit/SectionCaption";
 import { ACTIONS, type Row, type RowAction, type SectionView, type Shown } from "../live/rows";
 import { HoverPicture } from "./HoverPicture";
+import { useKept } from "./keptState";
 import { LiveList, type Listed } from "./LiveList";
+import { useLiveTrack } from "./RevealShown";
 import { useHoverPicture } from "./useHoverPicture";
 
 type SectionId = SectionView["section"]["id"];
 
 const NOTHING_CHECKED: ReadonlySet<string> = new Set();
+const NO_FOLDED: ReadonlySet<SectionId> = new Set();
+const NO_COLLAPSED: ReadonlySet<string> = new Set();
 
 /** The menu of a row: its actions in order, with a line between the groups of them. */
 const menuEntries = (row: Row, mayAct: boolean): MenuEntry[] =>
@@ -29,9 +33,6 @@ const menuEntries = (row: Row, mayAct: boolean): MenuEntry[] =>
       },
     ];
   });
-
-const holdsActive = (rows: readonly Row[]): boolean =>
-  rows.some((row) => row.active || holdsActive(row.children));
 
 interface Props {
   views: readonly SectionView[];
@@ -62,8 +63,8 @@ export function LiveTree({
   onAct,
 }: Props) {
   const prefix = useId();
-  const [folded, setFolded] = useState<ReadonlySet<SectionId>>(new Set());
-  const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set());
+  const [folded, setFolded] = useKept("live:folded", NO_FOLDED);
+  const [collapsed, setCollapsed] = useKept("live:collapsed", NO_COLLAPSED);
   const [info, setInfo] = useState<string | null>(null);
   const [menu, setMenu] = useState<{ row: Row; x: number; y: number } | null>(null);
   const scroller = useRef<HTMLDivElement>(null);
@@ -84,25 +85,8 @@ export function LiveTree({
   );
   const picture = useHoverPicture(pictures);
 
-  // The sections that hold a stream open now, and those a stream newly opened in has unfolded.
-  const opened = new Set(
-    views.filter(({ section }) => holdsActive(section.rows)).map(({ section }) => section.id),
-  );
-  const [track, setTrack] = useState<{
-    opened: ReadonlySet<SectionId>;
-    revealed: ReadonlySet<SectionId>;
-  }>({
-    opened: new Set(),
-    revealed: new Set(),
-  });
-  if (opened.size !== track.opened.size || [...opened].some((id) => !track.opened.has(id)))
-    setTrack({
-      opened,
-      revealed: new Set([
-        ...[...track.revealed].filter((id) => opened.has(id)),
-        ...[...opened].filter((id) => !track.opened.has(id)),
-      ]),
-    });
+  // The sections a stream newly opened in has unfolded, which the window keeps up to date.
+  const [track, setTrack] = useLiveTrack();
 
   const toggle = <T,>(set: ReadonlySet<T>, value: T): Set<T> => {
     const next = new Set(set);

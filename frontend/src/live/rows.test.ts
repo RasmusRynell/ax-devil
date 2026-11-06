@@ -219,6 +219,16 @@ describe("search and filter", () => {
   });
 });
 
+it("matches a search with case folded as the Workspace view does", () => {
+  const found = [
+    scanned("10.0.0.7", {
+      identity: { model: "Straße", serial: "", firmware: "", product_type: "" },
+    }),
+  ];
+  const [, network] = viewsOf(sections(new Map(), found), "STRASSE", new Set());
+  expect(network?.shown.map(({ row }) => row.label)).toEqual(["10.0.0.7"]);
+});
+
 describe("stream status", () => {
   it("is the worst feed, paused only while the feeds are live", () => {
     const live = { status: "Live" } as const;

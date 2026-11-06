@@ -29,7 +29,9 @@ import { QuickSetupDialog } from "./QuickSetupDialog";
 import { RECENT_ID } from "./recents";
 import { SettingsDialog } from "./SettingsDialog";
 import { ShortcutsDialog } from "./ShortcutsDialog";
-import { Sidebar } from "./Sidebar";
+import { KeptStateProvider } from "./keptState";
+import { RevealLive, RevealShown } from "./RevealShown";
+import { LISTED_VIEWS, Sidebar } from "./Sidebar";
 import { Welcome } from "./Welcome";
 import { WorkspaceFileDialog } from "./WorkspaceFileDialog";
 import type { ActivityItem } from "./views";
@@ -250,146 +252,153 @@ export function Shell({ version }: { version: string }) {
   });
 
   return (
-    <ViewerActionsContext.Provider value={setViewerActions}>
-      <div className="flex min-h-0 flex-1 flex-col">
-        <h1 className="sr-only">ax-devil</h1>
-        <TitleBar
-          checked={
-            new Set([
-              ...checked,
-              ...Object.entries(SETTING_CHECKS)
-                .filter(([, key]) => values[key] === true)
-                .map(([id]) => id),
-            ])
-          }
-          wired={new Set([...Object.keys(actions), ...Object.keys(viewerActions)])}
-          onSelect={select}
-          onStartSharing={startSharing}
-        />
-        {notice && (
-          <Banner role="alert" onDismiss={() => setNotice(null)}>
-            {notice}
-          </Banner>
-        )}
-        {workspace?.recovered && (
-          <Banner
-            role="status"
-            actions={
-              <>
-                <Button
-                  size="small"
-                  disabled={!allowed.content}
-                  onClick={() => void ask({ type: "keep" })}
-                >
-                  Keep
-                </Button>
-                {allowed.host && (
-                  <Button size="small" onClick={() => void ask({ type: "discard" })}>
-                    Discard
+    <KeptStateProvider>
+      {LISTED_VIEWS.map((view) => (
+        <RevealShown key={view} view={view} />
+      ))}
+      <RevealLive />
+      <ViewerActionsContext.Provider value={setViewerActions}>
+        <div className="flex min-h-0 flex-1 flex-col">
+          <h1 className="sr-only">ax-devil</h1>
+          <TitleBar
+            checked={
+              new Set([
+                ...checked,
+                ...Object.entries(SETTING_CHECKS)
+                  .filter(([, key]) => values[key] === true)
+                  .map(([id]) => id),
+              ])
+            }
+            wired={new Set([...Object.keys(actions), ...Object.keys(viewerActions)])}
+            onSelect={select}
+            onStartSharing={startSharing}
+          />
+          {notice && (
+            <Banner role="alert" onDismiss={() => setNotice(null)}>
+              {notice}
+            </Banner>
+          )}
+          {workspace?.recovered && (
+            <Banner
+              role="status"
+              actions={
+                <>
+                  <Button
+                    size="small"
+                    disabled={!allowed.content}
+                    onClick={() => void ask({ type: "keep" })}
+                  >
+                    Keep
                   </Button>
-                )}
-              </>
-            }
-          >
-            Restored unsaved changes
-          </Banner>
-        )}
-        <div className="flex min-h-0 flex-1 flex-col sm:flex-row">
-          <ActivityBar active={sidebar.open ? sidebar.view : null} onSelect={activate} />
-          {sidebar.open && <Sidebar view={sidebar.view} onRun={run} onAddLive={addLive} />}
-          <main
-            data-cursor-region="main"
-            className={`flex min-h-0 min-w-0 flex-1 overflow-auto ${sidebar.open ? "max-sm:hidden" : ""}`}
-          >
-            {active ? <ViewerHost /> : <Welcome onRun={run} />}
-          </main>
+                  {allowed.host && (
+                    <Button size="small" onClick={() => void ask({ type: "discard" })}>
+                      Discard
+                    </Button>
+                  )}
+                </>
+              }
+            >
+              Restored unsaved changes
+            </Banner>
+          )}
+          <div className="flex min-h-0 flex-1 flex-col sm:flex-row">
+            <ActivityBar active={sidebar.open ? sidebar.view : null} onSelect={activate} />
+            {sidebar.open && <Sidebar view={sidebar.view} onRun={run} onAddLive={addLive} />}
+            <main
+              data-cursor-region="main"
+              className={`flex min-h-0 min-w-0 flex-1 overflow-auto ${sidebar.open ? "max-sm:hidden" : ""}`}
+            >
+              {active ? <ViewerHost /> : <Welcome onRun={run} />}
+            </main>
+          </div>
+          <Presence scopes={scopes} />
+          {dialog === "settings" && (
+            <SettingsDialog
+              onClose={closer("settings")}
+              onRestartNeeded={() => setDialog("restart")}
+            />
+          )}
+          {dialog === "restart" && (
+            <ChoiceDialog
+              title="Restart ax-devil?"
+              message="Some changes take effect after a restart."
+              // Only a backend the desktop started itself is restarted with it.
+              choices={
+                bridge?.restart
+                  ? [
+                      { id: "now", label: "Restart Now" },
+                      { id: "later", label: "Later" },
+                    ]
+                  : [{ id: "later", label: "OK" }]
+              }
+              defaultId={bridge?.restart ? "now" : "later"}
+              onChoose={(choice) => {
+                closer("restart")();
+                if (choice === "now") bridge?.restart?.();
+              }}
+            />
+          )}
+          {dialog === "quick-setup" && (
+            <QuickSetupDialog
+              onClose={closer("quick-setup")}
+              onNotice={(message) => setRefused({ title: "Quick Setup", message })}
+            />
+          )}
+          {dialog === "about" && <AboutDialog version={version} onClose={closer("about")} />}
+          {dialog === "add-video" && <AddVideoDialog onClose={closer("add-video")} />}
+          {dialog === "add-live-stream" && (
+            <AddLiveStreamDialog
+              seed={addSeed}
+              onClose={() => {
+                setAddSeed({});
+                closer("add-live-stream")();
+              }}
+            />
+          )}
+          {dialog === "add-playlist" && <AddPlaylistDialog onClose={closer("add-playlist")} />}
+          {dialog === "open-workspace" && (
+            <WorkspaceFileDialog
+              mode="open"
+              onSubmit={(path) => void ask({ type: "open", path })}
+              onClose={closer("open-workspace")}
+            />
+          )}
+          {dialog === "save-workspace-as" && (
+            <WorkspaceFileDialog
+              mode="save"
+              path={workspace?.file ?? ""}
+              onSubmit={(path) => void saveTo(path)}
+              onClose={closer("save-workspace-as")}
+            />
+          )}
+          {replacing && (
+            <ChoiceDialog
+              title="Save workspace as"
+              message={`Replace ${replacing.split(/[/\\]/).pop()}?`}
+              choices={[
+                { id: "replace", label: "Replace" },
+                { id: "cancel", label: "Cancel" },
+              ]}
+              defaultId="cancel"
+              onChoose={(choice) => {
+                setReplacing(null);
+                if (choice === "replace")
+                  void ask({ type: "save", path: replacing, replace: true });
+              }}
+            />
+          )}
+          {dialog === "shortcuts" && <ShortcutsDialog onClose={closer("shortcuts")} />}
+          {refused && (
+            <ChoiceDialog
+              title={refused.title}
+              message={refused.message}
+              choices={[{ id: "ok", label: "OK" }]}
+              defaultId="ok"
+              onChoose={() => setRefused(null)}
+            />
+          )}
         </div>
-        <Presence scopes={scopes} />
-        {dialog === "settings" && (
-          <SettingsDialog
-            onClose={closer("settings")}
-            onRestartNeeded={() => setDialog("restart")}
-          />
-        )}
-        {dialog === "restart" && (
-          <ChoiceDialog
-            title="Restart ax-devil?"
-            message="Some changes take effect after a restart."
-            // Only a backend the desktop started itself is restarted with it.
-            choices={
-              bridge?.restart
-                ? [
-                    { id: "now", label: "Restart Now" },
-                    { id: "later", label: "Later" },
-                  ]
-                : [{ id: "later", label: "OK" }]
-            }
-            defaultId={bridge?.restart ? "now" : "later"}
-            onChoose={(choice) => {
-              closer("restart")();
-              if (choice === "now") bridge?.restart?.();
-            }}
-          />
-        )}
-        {dialog === "quick-setup" && (
-          <QuickSetupDialog
-            onClose={closer("quick-setup")}
-            onNotice={(message) => setRefused({ title: "Quick Setup", message })}
-          />
-        )}
-        {dialog === "about" && <AboutDialog version={version} onClose={closer("about")} />}
-        {dialog === "add-video" && <AddVideoDialog onClose={closer("add-video")} />}
-        {dialog === "add-live-stream" && (
-          <AddLiveStreamDialog
-            seed={addSeed}
-            onClose={() => {
-              setAddSeed({});
-              closer("add-live-stream")();
-            }}
-          />
-        )}
-        {dialog === "add-playlist" && <AddPlaylistDialog onClose={closer("add-playlist")} />}
-        {dialog === "open-workspace" && (
-          <WorkspaceFileDialog
-            mode="open"
-            onSubmit={(path) => void ask({ type: "open", path })}
-            onClose={closer("open-workspace")}
-          />
-        )}
-        {dialog === "save-workspace-as" && (
-          <WorkspaceFileDialog
-            mode="save"
-            path={workspace?.file ?? ""}
-            onSubmit={(path) => void saveTo(path)}
-            onClose={closer("save-workspace-as")}
-          />
-        )}
-        {replacing && (
-          <ChoiceDialog
-            title="Save workspace as"
-            message={`Replace ${replacing.split(/[/\\]/).pop()}?`}
-            choices={[
-              { id: "replace", label: "Replace" },
-              { id: "cancel", label: "Cancel" },
-            ]}
-            defaultId="cancel"
-            onChoose={(choice) => {
-              setReplacing(null);
-              if (choice === "replace") void ask({ type: "save", path: replacing, replace: true });
-            }}
-          />
-        )}
-        {dialog === "shortcuts" && <ShortcutsDialog onClose={closer("shortcuts")} />}
-        {refused && (
-          <ChoiceDialog
-            title={refused.title}
-            message={refused.message}
-            choices={[{ id: "ok", label: "OK" }]}
-            defaultId="ok"
-            onChoose={() => setRefused(null)}
-          />
-        )}
-      </div>
-    </ViewerActionsContext.Provider>
+      </ViewerActionsContext.Provider>
+    </KeptStateProvider>
   );
 }

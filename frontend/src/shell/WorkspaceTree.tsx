@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
+import type { SidebarView } from "../generated/api";
 import { MenuButton } from "../kit/Button";
 import { SearchField } from "../kit/Fields";
 import { IconToggle } from "../kit/IconToggle";
@@ -12,6 +13,9 @@ import { useShow } from "../viewer/useViewers";
 import { HoverPicture } from "./HoverPicture";
 import { useItemDialogs } from "./ItemDialogs";
 import { rowInformation } from "./rowInformation";
+import { useKept } from "./keptState";
+import { useFolds } from "./RevealShown";
+import { unfold } from "./reveal";
 import { canEdit, rowMenu } from "./rowMenu";
 import {
   filteredOut,
@@ -27,7 +31,8 @@ import { useRowThumbnail } from "./useRowThumbnail";
 import { WorkspaceList } from "./WorkspaceList";
 
 const NOTHING_CHECKED: ReadonlySet<string> = new Set();
-const NO_FOLDS: ReadonlySet<string> = new Set();
+const NO_CLOSED: ReadonlySet<string> = new Set();
+const NO_FOLDED: ReadonlySet<SectionId> = new Set();
 /** `now` with `key` added or removed. */
 function withKey<T>(now: ReadonlySet<T>, key: T, on: boolean): Set<T> {
   const next = new Set(now);
@@ -40,18 +45,22 @@ const ORDER_ENTRIES: MenuEntry[] = ORDERS.map(([id, label]) => ({ kind: "check",
 
 /**
  * The workspace's items as a tree in the `listed` sections (Live, Videos, Playlists, Other; a click on a caption folds
- * it): each item, then its entries and their lanes, from the backend's rows. Click or Enter opens the row in its
- * viewer; the arrow keys move, expand and collapse; the row menu (right click, Shift+F10 or the Menu key) opens it or
- * hides and unhides it. Above the tree, Search (`search` is its placeholder), Sort and Show hidden items: hidden rows
+ * it): each item, then its entries and their lanes, from the backend's rows. A click selects a row; a double click or
+ * Enter opens it in its viewer; the arrow keys move, expand and collapse; the row menu (right click, Shift+F10 or the
+ * Menu key) opens it or hides and unhides it. The rows of the item the front viewer shows are revealed, and a row the
+ * viewer moves on from closes. Search, Sort, Show hidden and folds are kept per `view` by the window. Above the tree,
+ * Search (`search` is its placeholder), Sort and Show hidden items: hidden rows
  * show, dimmed, only with Show hidden, and a section says how many that and the search leave out. While searching,
  * every row with a match inside is expanded, and clearing the search brings the user's folds back. `empty` is said
  * when the workspace has nothing to list.
  */
 export function WorkspaceTree({
+  view,
   listed,
   search,
   empty,
 }: {
+  view: SidebarView;
   listed: readonly SectionId[];
   search: string;
   empty: string;
@@ -64,13 +73,15 @@ export function WorkspaceTree({
   const powers = { content: hides, host };
   const { edit, inform, dialogs } = useItemDialogs();
   const statuses = useStreamStatuses();
-  const [showHidden, setShowHidden] = useState(false);
-  const [query, setQuery] = useState("");
-  const [order, setOrder] = useState<Order>("workspace");
-  const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set());
+  // What the user set up in this view stays while the window shows another view or hides the sidebar.
+  const [showHidden, setShowHidden] = useKept(`${view}:showHidden`, false);
+  const [query, setQuery] = useKept(`${view}:query`, "");
+  const [order, setOrder] = useKept<Order>(`${view}:order`, "workspace");
+  const [held, setHeld] = useFolds(view);
+  const { collapsed } = held;
   // What the user closed since the search text last changed; the search ignores the saved folds above.
-  const [closed, setClosed] = useState<ReadonlySet<string>>(NO_FOLDS);
-  const [folded, setFolded] = useState<ReadonlySet<SectionId>>(new Set());
+  const [closed, setClosed] = useKept(`${view}:closed`, NO_CLOSED);
+  const [folded, setFolded] = useKept(`${view}:folded`, NO_FOLDED);
   const [current, setCurrent] = useState<string | null>(null);
   const [menu, setMenu] = useState<{ key: string; x: number; y: number } | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
@@ -100,10 +111,10 @@ export function WorkspaceTree({
           out: filteredOut(section.rows, showHidden, query),
           unfolded: searching
             ? shown.length > 0 && !closed.has(`section:${section.id}`)
-            : !folded.has(section.id),
+            : !folded.has(section.id) || held.revealed.has(section.id),
         };
       }),
-    [tree, live, listed, order, folds, showHidden, query, folded, closed, searching],
+    [tree, live, listed, order, folds, showHidden, query, folded, held.revealed, closed, searching],
   );
   const noMatches =
     searching && sections.length > 0 && sections.every(({ shown, out }) => !shown.length && !out);
@@ -178,10 +189,22 @@ export function WorkspaceTree({
   };
   // The search opens every row and section with a match; folding meanwhile lasts until the search text changes.
   const setCollapsedState = (key: string, collapse: boolean) =>
-    (searching ? setClosed : setCollapsed)((now) => withKey(now, key, collapse));
+    searching
+      ? setClosed((now) => withKey(now, key, collapse))
+      : setHeld((now) => ({ ...now, collapsed: withKey(now.collapsed, key, collapse) }));
+  // A double click shows the row and the rows above it before opening it.
+  const reveal = (row: TreeRow) =>
+    searching
+      ? setClosed((now) => unfold(now, tree, row.info.key))
+      : setHeld((now) => ({ ...now, collapsed: unfold(now.collapsed, tree, row.info.key) }));
+  // A section a viewer's row holds open folds when the user says so, and then stays folded after the viewer moves on.
   const toggleFolded = (id: SectionId) => {
     if (searching) setClosed((now) => withKey(now, `section:${id}`, !now.has(`section:${id}`)));
-    else setFolded((now) => withKey(now, id, !now.has(id)));
+    else if (folded.has(id) && !held.revealed.has(id)) setFolded((now) => withKey(now, id, false));
+    else {
+      setFolded((now) => withKey(now, id, true));
+      setHeld((now) => ({ ...now, revealed: withKey(now.revealed, id, false) }));
+    }
   };
   const toggleHidden = (row: TreeRow) => {
     if (!row.target) return;
@@ -234,7 +257,7 @@ export function WorkspaceTree({
             value: query,
             onChange: (text) => {
               setQuery(text);
-              setClosed(NO_FOLDS);
+              setClosed(NO_CLOSED);
             },
           }}
           className="min-w-search-least flex-1"
@@ -287,6 +310,7 @@ export function WorkspaceTree({
                     scroller={scroller}
                     hides={hides}
                     onOpen={(row) => void open(row)}
+                    onReveal={reveal}
                     onCurrent={setCurrent}
                     onGo={go}
                     onLose={onLose}

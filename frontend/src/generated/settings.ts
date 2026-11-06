@@ -891,14 +891,6 @@ export const COMMANDS = [
     "description": null
   },
   {
-    "id": "render-catalogs",
-    "label": "Render Catalogs",
-    "category": "View",
-    "key": "Ctrl+R",
-    "repeats": false,
-    "description": null
-  },
-  {
     "id": "debug-metrics",
     "label": "Debug Metrics",
     "category": "Application",

@@ -31,6 +31,9 @@ const LISTINGS: Partial<
   },
 };
 
+/** The views that list the workspace's items. */
+export const LISTED_VIEWS = Object.keys(LISTINGS) as SidebarView[];
+
 /**
  * The sidebar: a title and the view's content; the Live view has its own toolbar and says in the header how many
  * streams run, the Offline view how many videos and playlists it lists. The Workspace view is titled with the workspace's name,
@@ -100,7 +103,7 @@ export function Sidebar({
             className={`flex flex-col gap-m px-s pb-s ${listing || view === "bookmarks" ? "min-h-0 flex-1" : ""}`}
           >
             {view === "workspace" && <StartPanel onRun={onRun} />}
-            {listing && <WorkspaceTree key={view} {...listing} />}
+            {listing && <WorkspaceTree key={view} view={view} {...listing} />}
             {view === "bookmarks" && <BookmarksView />}
             {view === "sessions" && <SessionsView />}
             {view === "plugins" && <PluginsView />}

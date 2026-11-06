@@ -24,7 +24,6 @@ import layoutList from "../../../assets/icons/layout-list.svg";
 import listVideo from "../../../assets/icons/list-video.svg";
 import minus from "../../../assets/icons/minus.svg";
 import mousePointer2 from "../../../assets/icons/mouse-pointer-2.svg";
-import palette from "../../../assets/icons/palette.svg";
 import pause from "../../../assets/icons/pause.svg";
 import pin from "../../../assets/icons/pin.svg";
 import pinFilled from "../../../assets/icons/pin-filled.svg";
@@ -80,7 +79,6 @@ export const ICONS = {
   "list-video": listVideo,
   minus,
   "mouse-pointer-2": mousePointer2,
-  palette,
   pause,
   pin,
   "pin-filled": pinFilled,
