@@ -1,5 +1,5 @@
 // Desktop smoke test and screenshot harness, run by `make test-desktop` on a private display.
-const { nativeTheme } = require("electron");
+const { dialog, nativeTheme } = require("electron");
 const assert = require("node:assert/strict");
 const fs = require("node:fs/promises");
 const path = require("node:path");
@@ -92,6 +92,21 @@ module.exports = async (window, shell) => {
   );
   await wait("!document.querySelector('dialog')");
   window.setSize(...size);
+
+  // The start panel of a fresh page, with no dialog over it, has Open Workspace as its default: a real Enter asks
+  // the native Open dialog.
+  await reload(window);
+  await wait("document.querySelector('h1')?.textContent === 'ax-devil'");
+  const showOpenDialog = dialog.showOpenDialog.bind(dialog);
+  let asked = false;
+  dialog.showOpenDialog = async () => {
+    asked = true;
+    return { canceled: true, filePaths: [] };
+  };
+  for (const type of ["keyDown", "char", "keyUp"])
+    window.webContents.sendInputEvent({ type, keyCode: type === "char" ? "\r" : "Enter" });
+  await until(() => asked, "Enter to open the Open Workspace dialog");
+  dialog.showOpenDialog = showOpenDialog;
 
   const backgrounds = {};
   for (const theme of ["light", "dark"]) {

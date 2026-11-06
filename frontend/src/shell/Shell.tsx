@@ -214,7 +214,25 @@ export function Shell({ version }: { version: string }) {
     };
     const onKeyDown = (event: KeyboardEvent) => {
       const match = handled(event);
-      if (!match) return;
+      if (!match) {
+        // The start panel's default button: Enter with nothing focused runs Open Workspace, once no shortcut has taken
+        // the key, no dialog is open and no viewer covers the welcome area (a focused button keeps its own Enter).
+        if (
+          event.key === "Enter" &&
+          !event.ctrlKey &&
+          !event.altKey &&
+          !event.metaKey &&
+          event.target === document.body &&
+          sidebar.open &&
+          sidebar.view === "workspace" &&
+          !active &&
+          !document.querySelector("dialog[open]")
+        ) {
+          event.preventDefault();
+          run("open-workspace");
+        }
+        return;
+      }
       event.preventDefault();
       if (!event.repeat || match.repeats) run(match.id);
     };
