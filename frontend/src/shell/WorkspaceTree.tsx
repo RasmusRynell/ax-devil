@@ -5,10 +5,14 @@ import { IconToggle } from "../kit/IconToggle";
 import { Menu, type MenuCommand, type MenuEntry } from "../kit/Menu";
 import { Popup } from "../kit/Popup";
 import { SectionCaption } from "../kit/SectionCaption";
+import { reasonOf } from "../errors";
 import { useStreamStatuses } from "../live/streamState";
 import { useCan, useCommand, useDoc } from "../session/session";
 import { useShow } from "../viewer/useViewers";
 import { HoverPicture } from "./HoverPicture";
+import { useItemDialogs } from "./ItemDialogs";
+import { rowInformation } from "./rowInformation";
+import { canEdit, rowMenu } from "./rowMenu";
 import {
   filteredOut,
   ORDERS,
@@ -56,6 +60,9 @@ export function WorkspaceTree({
   const command = useCommand();
   const show = useShow();
   const hides = useCan("content");
+  const host = useCan("host");
+  const powers = { content: hides, host };
+  const { edit, inform, dialogs } = useItemDialogs();
   const statuses = useStreamStatuses();
   const [showHidden, setShowHidden] = useState(false);
   const [query, setQuery] = useState("");
@@ -156,11 +163,19 @@ export function WorkspaceTree({
 
   const fail = (error: unknown) =>
     setProblem(error instanceof Error ? error.message : String(error));
-  const open = (row: TreeRow) =>
-    show(row.item, row.info.kind === "item" ? undefined : (row.info.entry ?? undefined)).then(
-      () => setProblem(null),
-      fail,
-    );
+  // A row that cannot open says why and sends nothing; one still resolving does nothing.
+  const open = (row: TreeRow) => {
+    const { status } = row.info;
+    if (status.status === "Pending") return Promise.resolve();
+    if (status.status === "Unavailable") {
+      setProblem(`${row.info.label}: ${reasonOf(status)}`);
+      return Promise.resolve();
+    }
+    return show(
+      row.item,
+      row.info.kind === "item" ? undefined : (row.info.entry ?? undefined),
+    ).then(() => setProblem(null), fail);
+  };
   // The search opens every row and section with a match; folding meanwhile lasts until the search text changes.
   const setCollapsedState = (key: string, collapse: boolean) =>
     (searching ? setClosed : setCollapsed)((now) => withKey(now, key, collapse));
@@ -175,30 +190,34 @@ export function WorkspaceTree({
       command: { type: "setHidden", target: row.target, hidden: !row.info.hidden },
     }).then(() => setProblem(null), fail);
   };
+  const itemOf = (row: TreeRow) => workspace?.items.find(({ id }) => id === row.item);
+  /** Edit and Remove act on the row's whole item and only a top-level row has them. */
+  const editRow = (row: TreeRow) => {
+    const item = itemOf(row);
+    if (row.level === 1 && canEdit(item, powers)) edit(item);
+  };
+  const removeRow = (row: TreeRow) => {
+    if (row.level !== 1 || !hides) return;
+    command({ type: "content", command: { type: "remove", item: row.item } }).then(
+      () => setProblem(null),
+      fail,
+    );
+  };
   const closeMenu = useCallback(() => {
     setMenu(null);
     menuFrom.current?.focus({ preventScroll: true });
   }, []);
 
   const menuRow = menu && tree.find((row) => row.info.key === menu.key);
-  const menuEntries: MenuEntry[] = menuRow
-    ? [
-        { kind: "action", id: "open", label: "Open" },
-        ...(menuRow.target
-          ? [
-              {
-                kind: "action" as const,
-                id: "hidden",
-                label: menuRow.info.hidden ? "Unhide" : "Hide",
-                disabled: !hides,
-              },
-            ]
-          : []),
-      ]
-    : [];
+  const menuEntries = menuRow ? rowMenu(menuRow, itemOf(menuRow), powers) : [];
   const choose = (choice: MenuCommand) => {
     if (!menuRow) return;
     if (choice.id === "open") void open(menuRow);
+    else if (choice.id === "information") {
+      const info = rowInformation(menuRow, workspace?.items ?? []);
+      if (info) inform(info);
+    } else if (choice.id === "edit") editRow(menuRow);
+    else if (choice.id === "remove") removeRow(menuRow);
     else toggleHidden(menuRow);
   };
 
@@ -273,6 +292,8 @@ export function WorkspaceTree({
                     onLose={onLose}
                     onFold={setCollapsedState}
                     onHide={toggleHidden}
+                    onEdit={editRow}
+                    onRemove={removeRow}
                     onMenu={(row, x, y, from) => {
                       menuFrom.current = from;
                       setMenu({ key: row.info.key, x, y });
@@ -286,6 +307,7 @@ export function WorkspaceTree({
         </div>
       )}
       {thumbnail.shown && <HoverPicture {...thumbnail.shown} />}
+      {dialogs}
       {menu && (
         <Popup at={menu} onClose={closeMenu} className="z-20 min-w-max">
           <Menu

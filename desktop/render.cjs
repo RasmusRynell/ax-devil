@@ -1,4 +1,4 @@
-// The hidden renderer `ax-devil` starts for export and `catalog render`: Electron with no display, one offscreen
+// The hidden renderer `ax-devil` starts for export: Electron with no display, one offscreen
 // window on the render page, and no way to reach anything but the backend's loopback socket the page opens itself.
 // Start it as `electron <desktop folder> --render-host --ozone-platform=headless <graphics switches>` (start.cjs picks
 // this file); the backend writes one line of

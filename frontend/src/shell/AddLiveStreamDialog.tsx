@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { CommandFailed, reasonOf } from "../errors";
-import type { HandlersInfo, LiveConnection } from "../generated/api";
+import type { HandlersInfo, LiveConnection, NewLiveWire } from "../generated/api";
 import { useGrants } from "../access";
 import { Dialog, DialogBody } from "../kit/Dialog";
 import { seedOf, type AddSeed } from "../live/cameras";
@@ -42,7 +42,8 @@ interface Refused {
 
 /**
  * What the camera lists for `kind` under `connection`: asked for once `askedFor` is the connection as it stands, and
- * kept while it is, whichever mode the form is on.
+ * kept while it is, whichever mode the form is on. `kept` is a choice saved with an edited stream, which the list offers
+ * whether the camera lists it or not.
  */
 function useListing(
   kind: Listed,
@@ -50,6 +51,7 @@ function useListing(
   key: string,
   askedFor: string | null,
   hostKnown: boolean,
+  kept: string,
 ): Listing {
   const fresh = askedFor === key;
   const asked = useDiscovery(
@@ -58,12 +60,13 @@ function useListing(
     0,
   );
   const { state } = asked;
-  const choices =
+  const listed =
     state.phase === "ready"
       ? state.value.overlay === "mqtt"
         ? state.value.sources
         : state.value.topics
       : [];
+  const choices = kept && !listed.includes(kept) ? [kept, ...listed] : listed;
   return { asked, fresh, choices };
 }
 
@@ -72,16 +75,23 @@ function useListing(
  * with the page of the chosen mode, one line saying what is wrong, and OK, which waits for a form with nothing wrong.
  * Blank fields take the configured defaults, so the form shows them as placeholders; the camera is asked for its stream
  * sizes, analytics sources and topics but never connected for the stream itself: the viewer does that. The backend's
- * intake judges the form, and its refusal is the line under the groups.
+ * intake judges the form, and its refusal is the line under the groups. With `editing`, the id of a stream, `initial`
+ * is its recipe and OK replaces that stream, which keeps its id and place; a blank login is the saved one, and a
+ * saved data source or topic stays chosen until the connection changes.
  */
 export function AddLiveStreamDialog({
   seed = {},
-  title = "Add Live Stream",
-  okLabel = "OK",
+  initial,
+  editing,
+  title = editing ? "Edit Live Stream" : "Add Live Stream",
+  okLabel = editing ? "Save" : "OK",
   onClose,
 }: {
   /** What the form starts from, read once when the dialog opens. */
   seed?: AddSeed;
+  /** A stream's recipe to start from instead of `seed`. */
+  initial?: Partial<NewLiveWire>;
+  editing?: string;
   title?: string;
   okLabel?: string;
   onClose: () => void;
@@ -89,7 +99,8 @@ export function AddLiveStreamDialog({
   const command = useCommand();
   const { values } = useSettings();
   const items = useDoc()?.workspace.items ?? [];
-  const [start] = useState(() => seedOf(seed, items));
+  const [start] = useState(() => initial ?? seedOf(seed, items));
+  const like = editing ?? seed.like;
   const [form, setForm] = useState<LiveForm>(() => formFrom(values, start));
   const [handlers, setHandlers] = useState<HandlersInfo | null>(null);
   const [adding, setAdding] = useState(false);
@@ -103,7 +114,7 @@ export function AddLiveStreamDialog({
   const hostDefault = textOf(values["camera.host"]);
   const hostKnown = !!(form.host.trim() || hostDefault.trim());
   // Questions are asked as the stream will be added: `like` lets the backend use that stream's saved login.
-  const connection: LiveConnection = { ...connectionOf(form, false), like: seed.like };
+  const connection: LiveConnection = { ...connectionOf(form, false), like };
   const connectionKey = JSON.stringify(connection);
   // The camera lists every head's sizes in one answer, kept for the connection while the head is chosen from it.
   const resolutions = useDiscovery(
@@ -111,6 +122,9 @@ export function AddLiveStreamDialog({
     connectionKey,
     DEBOUNCE_MS,
   );
+  // The connection the form opened with: the choices saved with an edited stream hold only while it stands.
+  const [opened] = useState(connectionKey);
+  const saved = connectionKey === opened ? start.overlay : undefined;
   const current = useRef(connectionKey);
   useEffect(() => {
     if (current.current === connectionKey) return;
@@ -119,8 +133,22 @@ export function AddLiveStreamDialog({
   }, [connectionKey]);
   const mode = form.overlay;
   const lists = {
-    mqtt: useListing("mqtt", connection, connectionKey, asked.mqtt, hostKnown),
-    datahub: useListing("datahub", connection, connectionKey, asked.datahub, hostKnown),
+    mqtt: useListing(
+      "mqtt",
+      connection,
+      connectionKey,
+      asked.mqtt,
+      hostKnown,
+      (saved?.mode === "mqtt" && saved.source_key) || "",
+    ),
+    datahub: useListing(
+      "datahub",
+      connection,
+      connectionKey,
+      asked.datahub,
+      hostKnown,
+      (saved?.mode === "datahub" && saved.topic) || "",
+    ),
   };
   const sizes =
     resolutions.state.phase === "ready"
@@ -213,11 +241,13 @@ export function AddLiveStreamDialog({
     try {
       await command({
         type: "content",
-        command: {
-          type: "addItems",
-          items: [{ type: "Live", ...newLive(sent), like: seed.like }],
-          open: true,
-        },
+        command: editing
+          ? { type: "editItem", item: editing, new: { type: "Live", ...newLive(sent) } }
+          : {
+              type: "addItems",
+              items: [{ type: "Live", ...newLive(sent), like }],
+              open: true,
+            },
       });
       onClose();
     } catch (error) {

@@ -17,6 +17,9 @@ Where [parity](parity.md) rows differ from the reference. The offline decisions 
 | OF-01 | The client ends the session when the protocol version in `Opened` differs from its own | A stale window stops with a message, not misparsed frames |
 | OF-01 | Playback commands sit in a View > Playback submenu; the keys, including Left and Right for 10 frames, are the reference's | There is no Playback menu |
 | ST-01 | `storage.cache_dir` and `storage.catalog_dir` take no `$NAME` reference; [08](rebuild/08-settings-cli.md) asked for references in storage fields | Browse yields an absolute path; a reference would have to resolve before the first window opens |
+| ST-01 | Settings pages carry none of the reference's explanatory notes | Terse copy (write-ui) |
+| ST-01 | The camera head setting is 1 to 255 and the DataHub topic channel 1 to 4294967295; the reference allowed 1 to 9999 for each | The backend holds the head as a byte and the Add Live Stream form refuses a larger one, so a wider setting would prefill a form it cannot add |
+| ST-04 | The camera head, overlay mode, decoders, broker port, data source, DataHub topic and channel take no `$NAME` reference; the reference allowed one in each | The Add Live Stream form reads these as typed values |
 | PL-02 | ADF beta lists the Bags filter before Faces; the reference listed Faces first | Beta and v1 share one filter list, in the v1 order |
 | PL-02 | ADF v1 frame keeps a class it does not know, lowercased, including unknown, bag and face; the reference refused the record | Every ADF decoder reads a class through one function, which is the reference's beta and consolidated rule |
 | PL-02 | ADF `Person` becomes `human` in beta frame and both consolidated formats; the reference kept `person` there (only v1 frame mapped it) | The same function maps the alias for every ADF decoder |
@@ -26,6 +29,7 @@ Where [parity](parity.md) rows differ from the reference. The offline decisions 
 | RC-03 | A copy records `origin` as a plain string with no base hash, so there is no "modified" note | A copy is the source text under a new name |
 | RC-03 | Copy refuses a source with a duplicate top-level key; the file name is lowercased, not casefolded | The compiler would silently keep the last key |
 | RC-03 | A file name that cannot be an id is listed invalid and cannot be deleted; at most 256 files are listed | A catalog id is the file name as text; the folder poll is bounded |
+| RC-04 | `catalog render` is dropped; `check` still exercises the catalog on the Overview example item without drawing a picture | Owner decision: "remove all of it with the preview render catalog stuff", after RC-03 dropped the preview sheets |
 | RC-04 | `catalog use` writes the settings file. A running app keeps the settings it loaded: the choice applies at its next start, and any settings save in the running app first overwrites it | The default is a Personal setting that only the settings service writes in a running app |
 | RC-02 | The default catalog is a Personal setting, so it does not follow `storage.catalog_dir` | A Personal setting travels with the person, not with a folder |
 | VPC-016, VPC-017, VPC-A003, DRW-A001 | The side panel has no hover grip, double-click toggle or 400 ms width animation: only its command, Close button and divider open, close and resize it. The width follows the reference's rule and the video shrinks beside it | Owner decision: buttons and the divider are discoverable, a grip is a hidden hover target |

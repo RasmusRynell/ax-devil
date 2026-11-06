@@ -30,6 +30,8 @@ export type Stream = {
   recipe: NewLiveWire | null;
   /** Why it did not resolve, when it failed. */
   reason: string;
+  /** Whether the window may edit it: it is told the stream's recipe. */
+  editable: boolean;
   /** The generation of its Content, which a new login check is made for; 0 until it has resolved. */
   generation: number;
 };
@@ -51,7 +53,7 @@ export type Camera = {
  * before, which an item resolving again or failing keeps its camera by.
  */
 function streamOf(
-  { id, label, kind, open, resolution }: ItemState,
+  { id, label, kind, open, resolution, recipe: stored }: ItemState,
   recipe: NewLiveWire | null,
 ): Stream | null {
   const base = {
@@ -63,6 +65,7 @@ function streamOf(
     confirm: [],
     recipe,
     reason: "",
+    editable: stored?.type === "Live",
     generation: 0,
   };
   if (resolution.status === "Resolved") {

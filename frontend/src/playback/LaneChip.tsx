@@ -1,4 +1,4 @@
-import type { Cadence } from "./cadence";
+import type { CadenceWire } from "./protocol";
 import { reasonOf } from "../errors";
 import { Icon } from "../kit/Icon";
 import { NoticeList, noticeOf, type Notice } from "../kit/NoticeList";
@@ -67,7 +67,7 @@ export function LaneChip({
   lane: LaneState;
   catalogs: readonly CatalogInfoWire[];
   /** How evenly the video's frames are spaced, for the lane's timing. */
-  cadence: Cadence | null;
+  cadence: CadenceWire | null;
   onChange: (change: Partial<LaneSettings>) => void;
   onHide?: () => void;
   onApplyAll?: () => void;

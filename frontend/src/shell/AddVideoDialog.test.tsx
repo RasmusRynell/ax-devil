@@ -297,3 +297,54 @@ it.each([
     expect(FakeSocket.latest.received.filter((message) => message.type === "command")).toEqual([]);
   },
 );
+
+it("edits a video: the form starts from the item, and Save replaces that item with the changed form", async () => {
+  serve([decoder("MOT", ".txt")]);
+  render(
+    <SessionProvider>
+      <AddVideoDialog
+        editing="item-1"
+        initial={{
+          path: "/a.mp4",
+          label: "Gate",
+          overlays: [{ path: "/gt.txt", handler: "MOT", label: "gt", options: {} }],
+        }}
+        onClose={() => {}}
+      />
+    </SessionProvider>,
+  );
+  expect(await screen.findByRole("dialog", { name: "Edit video" })).toBeTruthy();
+  expect(((await screen.findByLabelText("Overlay path")) as HTMLInputElement).value).toBe(
+    "/gt.txt",
+  );
+  expect(handlerAt().value).toBe("MOT");
+  expect((screen.getByLabelText("Name") as HTMLInputElement).value).toBe("Gate");
+
+  fireEvent.change(screen.getByLabelText("Name"), { target: { value: "Door" } });
+  fireEvent.click(screen.getByRole("button", { name: "Add overlay" }));
+  await waitFor(() =>
+    expect(screen.getByRole("button", { name: "Save" })).toHaveProperty("disabled", false),
+  );
+  fireEvent.click(screen.getByRole("button", { name: "Save" }));
+  await waitFor(() =>
+    expect(
+      FakeSocket.latest.received.flatMap((message) =>
+        message.type === "command" ? [message.cmd] : [],
+      ),
+    ).toMatchObject([
+      {
+        type: "content",
+        command: {
+          type: "editItem",
+          item: "item-1",
+          new: {
+            type: "Video",
+            path: "/a.mp4",
+            label: "Door",
+            overlays: [{ path: "/gt.txt", handler: "MOT", label: "gt" }],
+          },
+        },
+      },
+    ]),
+  );
+});

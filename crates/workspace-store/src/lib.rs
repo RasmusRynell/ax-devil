@@ -12,6 +12,7 @@
 //! The state also knows which file the workspace belongs to and what it is compared with to tell unsaved edits
 //! ([`Saved`]); reading and writing files is the caller's business.
 
+mod edit;
 mod rows;
 
 use foundation::{CancelToken, HostPath, Interrupt, UserError};
@@ -213,6 +214,24 @@ pub enum DocCommand {
     /// Removes the item from the workspace with its resolution, its viewer request, its bookmarks and its reviewed
     /// marks. A result still resolving for it is dropped. Does nothing for an unknown item.
     Remove(ItemId),
+    /// Names the item, which resolves nothing and keeps everything else. A blank label, or the item's default name,
+    /// gives it the default name. Does nothing for an unknown item.
+    RenameItem {
+        /// The item.
+        item: ItemId,
+        /// The name the user entered.
+        label: String,
+    },
+    /// Replaces the recipe and name of the item with `item`'s id, keeping its place, bookmarks, reviewed marks and lane
+    /// matching. Does nothing for an unknown item, an item that cannot be edited (an unreadable one), or a recipe of
+    /// another kind. An edit that changes nothing does nothing; a new name alone resolves nothing, and a new recipe
+    /// resolves again, or takes `content` when the caller resolved it first, and forgets what was hidden in the item.
+    EditItem {
+        /// The item as it is to be: the id of the item to edit, its new name and recipe.
+        item: Box<WorkspaceItem>,
+        /// What a new recipe resolved to, when the caller resolved it before the edit.
+        content: Option<Box<Content>>,
+    },
     /// Hides or shows an entry or lane.
     SetHidden {
         /// What to hide or show.
@@ -335,6 +354,8 @@ pub fn apply(state: &WorkspaceState, command: DocCommand) -> (WorkspaceState, Ve
             next.resolutions.remove(&id);
             next.open.remove(&id);
         }
+        DocCommand::RenameItem { item, label } => next.rename(item, &label),
+        DocCommand::EditItem { item, content } => jobs.extend(next.edit(*item, content)),
         DocCommand::SetHidden { target, hidden } => {
             if hidden {
                 next.hidden.insert(target);

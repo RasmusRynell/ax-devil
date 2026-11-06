@@ -227,7 +227,7 @@ class InspectorRig {
           fields: this.#fields,
           truncated: false,
         },
-        reach: { source: new FakeFiles(0), frame: 0, timeOf: () => undefined },
+        reach: { source: new FakeFiles(0), frame: 0, frames: 0, timeOf: () => undefined },
         memory: this.#memory,
         onMemory: (memory: InspectorMemory) => {
           this.#memory = memory;

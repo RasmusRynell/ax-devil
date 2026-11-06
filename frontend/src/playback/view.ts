@@ -1,11 +1,10 @@
 /** What a playback session shows the UI: one immutable snapshot that is replaced only when something in it changed. */
 
-import type { Cadence } from "./cadence";
 import type { FrameInfo, PlaybackClock } from "./clock";
 import type { InspectionView, Selection } from "./contract";
 import type { FrameFailures } from "./failures";
 import type { LaneState } from "./lanes";
-import type { CatalogInfoWire, ServerMessage, VideoPtsWire } from "./protocol";
+import type { CadenceWire, CatalogInfoWire, ServerMessage, VideoPtsWire } from "./protocol";
 
 export type PlaybackView = {
   status: "connecting" | "indexing" | "ready" | "reconnecting" | "failed";
@@ -36,7 +35,7 @@ export type PlaybackView = {
   /** Problems with the video itself, such as overlay sizes that do not match it. Empty for a watcher. */
   warnings: readonly string[];
   /** How evenly the video's frames are spaced; `null` until it is ready or for a one-frame video. */
-  cadence: Cadence | null;
+  cadence: CadenceWire | null;
   /** The frames the backend holds decoded, as sorted inclusive `[first, last]` runs, which the seek bar shades. */
   cached: readonly (readonly [number, number])[];
   /** How the video's frame times come from its timestamps; `null` for an image sequence or until it is described. */
@@ -84,7 +83,6 @@ export const sameView = (a: PlaybackView, b: PlaybackView): boolean =>
   a.width === b.width &&
   a.height === b.height &&
   a.warnings === b.warnings &&
-  a.cadence === b.cadence &&
   a.cached === b.cached &&
   a.videoPts === b.videoPts;
 
@@ -100,7 +98,6 @@ export type ViewParts = {
   catalogs: readonly CatalogInfoWire[];
   opened: Extract<ServerMessage, { type: "Opened" }> | undefined;
   inspection: InspectionView;
-  cadence: Cadence | null;
   cached: PlaybackView["cached"];
 };
 
@@ -132,7 +129,7 @@ export function buildView(parts: ViewParts): PlaybackView {
     width: opened?.width ?? 0,
     height: opened?.height ?? 0,
     warnings: opened?.warnings ?? INITIAL_VIEW.warnings,
-    cadence: parts.cadence,
+    cadence: opened?.cadence ?? null,
     cached: parts.cached,
     videoPts: opened?.video_pts ?? null,
   };

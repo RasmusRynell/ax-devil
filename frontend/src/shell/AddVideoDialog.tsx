@@ -1,4 +1,5 @@
 import { useRef, useState } from "react";
+import type { NewOverlayWire } from "../generated/api";
 import { BrowseButton, Button } from "../kit/Button";
 import { Dialog, DialogBody } from "../kit/Dialog";
 import { TextField } from "../kit/Fields";
@@ -11,24 +12,51 @@ import { useServerKind } from "./windowBridge";
 
 const blankEntry = (key: number): OverlayEntry => ({ key, path: "", picked: "" });
 
+/** What the form starts with: a video and its overlays, as an item holds them. */
+export interface VideoDraft {
+  path: string;
+  label?: string | null;
+  overlays: readonly NewOverlayWire[];
+}
+
 /**
  * Asks for a video on the machine that runs the backend, by its path, with a name that is the file's when left blank,
  * and any number of overlay files, each with the handler that reads it and the options that handler declares. The
  * desktop's own window can choose the video in a file dialog; a remote server's window or a browser types the path. A
  * blank overlay is left out. OK waits for a video that the backend finds readable, as it does each overlay, and a
- * handler for every overlay; the backend's intake judges the options, and its refusal stays here.
+ * handler for every overlay; the backend's intake judges the options, and its refusal stays here. `initial` fills the
+ * form in, read once; with `editing`, the id of an item, OK replaces that item (it keeps its id and place) instead of
+ * adding one.
  */
-export function AddVideoDialog({ onClose }: { onClose: () => void }) {
+export function AddVideoDialog({
+  initial,
+  editing,
+  onClose,
+}: {
+  initial?: VideoDraft;
+  editing?: string;
+  onClose: () => void;
+}) {
   const command = useCommand();
   const { handlers, failure: unavailable, retry } = useHandlers();
-  const [path, setPath] = useState("");
-  const [name, setName] = useState("");
-  const [entries, setEntries] = useState<readonly OverlayEntry[]>([blankEntry(0)]);
+  const [path, setPath] = useState(initial?.path ?? "");
+  const [name, setName] = useState(initial?.label ?? "");
+  const [entries, setEntries] = useState<readonly OverlayEntry[]>(() =>
+    initial?.overlays.length
+      ? initial.overlays.map(({ path, handler, label, options }, key) => ({
+          key,
+          path,
+          picked: handler ?? "",
+          label,
+          options,
+        }))
+      : [blankEntry(0)],
+  );
   const [added, setAdded] = useState<number | null>(null);
   const [tried, setTried] = useState(false);
   const [failure, setFailure] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const nextKey = useRef(1);
+  const nextKey = useRef(entries.length);
   const readers = useRef(new Map<number, () => OverlayRead>());
   const decoders = handlers?.decoders ?? [];
   // Only the local backend's window may browse this machine's files.
@@ -64,25 +92,22 @@ export function AddVideoDialog({ onClose }: { onClose: () => void }) {
     }
     setBusy(true);
     try {
+      const video = {
+        type: "Video" as const,
+        path: path.trim(),
+        label: name.trim() || undefined,
+        overlays: overlays.map((entry, at) => ({
+          path: entry.path.trim(),
+          handler: entry.picked,
+          label: entry.label ?? null,
+          options: settings[at] ?? {},
+        })),
+      };
       await command({
         type: "content",
-        command: {
-          type: "addItems",
-          items: [
-            {
-              type: "Video",
-              path: path.trim(),
-              label: name.trim() || undefined,
-              overlays: overlays.map((entry, at) => ({
-                path: entry.path.trim(),
-                handler: entry.picked,
-                label: null,
-                options: settings[at] ?? {},
-              })),
-            },
-          ],
-          open: true,
-        },
+        command: editing
+          ? { type: "editItem", item: editing, new: video }
+          : { type: "addItems", items: [video], open: true },
       });
       onClose();
     } catch (error) {
@@ -92,8 +117,8 @@ export function AddVideoDialog({ onClose }: { onClose: () => void }) {
   };
   return (
     <Dialog
-      title="Add video"
-      okLabel="Add"
+      title={editing ? "Edit video" : "Add video"}
+      okLabel={editing ? "Save" : "Add"}
       onOk={() => void ok()}
       onCancel={onClose}
       busy={

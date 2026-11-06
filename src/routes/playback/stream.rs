@@ -21,15 +21,15 @@ use crate::{
 use api_types::{
     Audience,
     playback::{
-        ClientMessage, Direction as WireDirection, PLAYBACK_PROTOCOL, ServerMessage, VideoPtsWire,
-        Want as WireWant, envelope,
+        CadenceWire, ClientMessage, Direction as WireDirection, PLAYBACK_PROTOCOL, ServerMessage,
+        VideoPtsWire, Want as WireWant, envelope,
     },
     project,
 };
 use axum::extract::ws::Message;
 use catalogs::Library;
 use foundation::{ErrorCode, FrameFailure, FrameSize, HostPath, UserError};
-use media::PtsTiming;
+use media::{Cadence, PtsTiming};
 use overlay_sync::MatchPolicy;
 use overlays::OverlayService;
 use playback::{Delivery, Direction, Priority, Session, Want};
@@ -64,11 +64,13 @@ pub(super) struct Setup<'a> {
     pub(super) warnings: Vec<String>,
     /// How the video's frame times come from its timestamps; `None` for an image sequence.
     pub(super) pts: Option<PtsTiming>,
+    /// How evenly the video's frames are spaced; `None` for a one-frame video.
+    pub(super) cadence: Option<Cadence>,
     /// The catalogs a lane may draw with, which the viewer asks for by id.
     pub(super) library: &'a Library,
     /// Opens the lanes' overlays.
     pub(super) overlays: &'a OverlayService,
-    /// Runs the viewer's export, if the owner asks for one.
+    /// Runs the viewer's export.
     pub(super) exports: &'a Arc<ExportService>,
     /// The open videos, which an export reads from.
     pub(super) videos: &'a Arc<VideoSources>,
@@ -146,6 +148,10 @@ pub(super) async fn stream(
         video_pts: setup.pts.map(|pts| VideoPtsWire {
             time_base: [pts.time_base.0, pts.time_base.1],
             first_pts: pts.first_pts,
+        }),
+        cadence: setup.cadence.map(|cadence| CadenceWire {
+            variable: cadence.variable,
+            periods_us: cadence.periods_us,
         }),
     });
     // The overlays stop with `Playing`, which goes when the session ends, a revoked one included.
@@ -338,7 +344,7 @@ impl<I: Incoming> Playing<'_, I> {
     async fn pump(&mut self) -> Flow<()> {
         let outbox = self.outbox;
         let mut room = None;
-        // A presenter's clock moves without a message, so what the viewer may have is judged again as it does.
+        // A presenter's clock moves without a message, so what the viewer may have is judged again.
         let mut clock = tokio::time::interval(REJUDGE);
         clock.set_missed_tick_behavior(MissedTickBehavior::Skip);
         loop {
@@ -402,9 +408,8 @@ impl<I: Incoming> Playing<'_, I> {
 
 /// The next thing to send: the catalogs', inspections', exports' and file queries' messages and the lanes' notices, then
 /// the cache when it is due, then their data or the next frame, whichever ranks first, the data first on a tie. The
-/// cache comes before the frames so that a continuous flow of them cannot starve it. The lanes hold an item back while
-/// a frame ranks before it; the rank is read again whenever this is called, which is after every message sent and
-/// every message of the viewer.
+/// cache comes before the frames so a continuous flow of them cannot starve it. The lanes hold an item back while
+/// a frame ranks before it; the rank is read again on every call.
 async fn next(
     session: &mut Session,
     catalogs: &mut CatalogFeed,

@@ -16,7 +16,8 @@ use api_types::{
     playback::WarningInfo,
     project as project_error,
     workspace::{
-        ItemKind, ItemState, ResolutionState, RowInfo, RowKindWire, RowStatusInfo, WorkspaceState,
+        ItemKind, ItemRecipe, ItemState, NewOverlayWire, ResolutionState, RowInfo, RowKindWire,
+        RowStatusInfo, WorkspaceState,
     },
 };
 use sessions::session::Doc;
@@ -77,6 +78,7 @@ pub fn project(doc: &Doc, audience: Audience) -> DocWire {
                     Source::Unreadable(_) => ItemKind::Unreadable,
                 },
                 open: open.contains(id),
+                recipe: item_recipe(stored_label, &recipe.source, audience),
                 resolution: match resolutions.get(id) {
                     Some(Resolution::Resolved {
                         content,
@@ -177,6 +179,39 @@ fn row_info(row: Row, audience: Audience, labels: &HashMap<String, String>) -> R
     }
 }
 
+/// What `source` was made from, for an audience with host details; it names the host's files, so nobody else gets it.
+/// A live stream's is [`live_recipe`]'s.
+fn item_recipe(label: &str, source: &Source, audience: Audience) -> Option<ItemRecipe> {
+    if !audience.host_details {
+        return None;
+    }
+    let label = Some(label.to_owned()).filter(|label| !label.is_empty());
+    match source {
+        Source::Video(video) => Some(ItemRecipe::Video {
+            path: video.video.as_path().to_string_lossy().into_owned(),
+            label,
+            overlays: video
+                .overlays
+                .iter()
+                .map(|overlay| NewOverlayWire {
+                    path: overlay.path.as_path().to_string_lossy().into_owned(),
+                    handler: Some(overlay.handler.clone()),
+                    label: Some(overlay.label.clone()),
+                    options: overlay.options.clone(),
+                })
+                .collect(),
+        }),
+        Source::Playlist(playlist) => Some(ItemRecipe::Playlist {
+            resolver: playlist.resolver.clone(),
+            label,
+            settings: playlist.settings.clone(),
+        }),
+        Source::Live(_) => live_recipe(label.as_deref().unwrap_or_default(), source, audience)
+            .map(ItemRecipe::Live),
+        Source::Unreadable(_) => None,
+    }
+}
+
 /// The request that would make a live item again, for an audience with host details. It is made from the stored
 /// recipe, so a `$NAME` reference stays one and a literal password is left out.
 fn live_recipe(label: &str, source: &Source, audience: Audience) -> Option<Box<NewLiveWire>> {
@@ -191,7 +226,7 @@ fn live_recipe(label: &str, source: &Source, audience: Audience) -> Option<Box<N
 }
 
 /// `content` of `item` as a viewer opens it; `label` is what the audience calls the item, which a live video shows
-/// instead of the camera's host, and `recipe` is what the audience may learn of its connection.
+/// instead of the camera's host and a video shows after a rename, and `recipe` is what the audience may learn of its connection.
 fn content_info(
     item: &WorkspaceItem,
     content: &Content,
@@ -205,11 +240,15 @@ fn content_info(
     match content {
         Content::SeekableVideo(video) => {
             let SeekableVideoContent { item_id: _, entry } = video;
+            // The item's name now, which a rename changes without resolving again.
             ContentInfo::SeekableVideo {
                 id,
                 generation,
-                display_name,
-                entry: entry_info(entry),
+                display_name: label.to_owned(),
+                entry: EntryInfo {
+                    label: label.to_owned(),
+                    ..entry_info(entry)
+                },
             }
         }
         Content::Playlist(playlist) => ContentInfo::Playlist {

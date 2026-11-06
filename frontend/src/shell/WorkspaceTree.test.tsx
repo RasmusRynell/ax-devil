@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import type { ItemRecipe, ItemState } from "../generated/api";
 import { entry, failed, FakeSocket, playlists, video } from "../session/fakeSession";
 import { SessionProvider } from "../session/session";
 import {
@@ -200,10 +201,18 @@ describe("opening", () => {
     expect(document.activeElement).toBe(hide);
   });
 
-  it("opens an item that failed, so the viewer can say why", async () => {
-    await renderTree([{ ...failed("bad"), open: true }]);
+  it("says why an unavailable row cannot open and sends nothing; a row still resolving does nothing", async () => {
+    await renderTree([
+      failed("bad", "File not found"),
+      video("wait", false, { status: "Pending" }),
+    ]);
     fireEvent.click(screen.getByRole("treeitem", { name: /^bad\.mp4/ }));
-    expect(shown().active).toBe("bad");
+    await act(async () => {});
+    expect(screen.getByRole("alert").textContent).toBe("bad.mp4: File not found");
+    fireEvent.click(screen.getByRole("treeitem", { name: /^wait\.mp4/ }));
+    await act(async () => {});
+    expect(commands()).toEqual([]);
+    expect(shown().active).toBeUndefined();
   });
 
   it("says when the backend would not open the viewer", async () => {
@@ -324,5 +333,104 @@ describe("hiding", () => {
     fireEvent.keyDown(document, { key: "Escape" });
     expect(screen.queryByRole("menu")).toBeNull();
     expect(document.activeElement).toBe(tree);
+  });
+});
+
+describe("items", () => {
+  const recipe: ItemRecipe = { type: "Video", path: "/v.mp4", label: null, overlays: [] };
+  const stored = (item: ItemState): ItemState => ({ ...item, recipe });
+  const unreadable: ItemState = {
+    ...failed("odd"),
+    kind: "unreadable",
+    label: "Unreadable item",
+    resolution: { status: "Failed", code: "WorkspaceInvalid", params: {}, reason: "Unknown kind" },
+  };
+  const menuOf = (name: RegExp) => {
+    fireEvent.contextMenu(screen.getByRole("treeitem", { name }));
+    const names = screen.getAllByRole("menuitem").map((entry) => entry.textContent);
+    fireEvent.keyDown(document, { key: "Escape" });
+    return names;
+  };
+
+  it("offers each row what its item can do: Open says why when it cannot, Edit needs a readable item, nested rows leave the item alone", async () => {
+    await renderTree(
+      [
+        stored(CLIP),
+        stored(failed("bad", "File not found")),
+        stored(video("wait", false, { status: "Pending" })),
+        unreadable,
+        MOT,
+      ],
+      [],
+    );
+    expect(menuOf(/^v\.mp4/)).toEqual(["Open", "Information", "Hide", "Edit", "Remove"]);
+    expect(menuOf(/^bad\.mp4/)).toEqual(["Open", "Information", "Edit", "Remove"]);
+    expect(menuOf(/^wait\.mp4/)).toEqual(["Edit", "Remove"]);
+    expect(menuOf(/^Unreadable item/)).toEqual(["Open", "Information", "Remove"]);
+    expect(menuOf(/^A/)).toEqual(["Open", "Information", "Hide"]);
+  });
+
+  it("removes the whole item at once from the menu or with Delete, and edits it with F2", async () => {
+    await renderTree([stored(CLIP), MOT], []);
+    fireEvent.contextMenu(screen.getByRole("treeitem", { name: /^v\.mp4/ }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Remove" }));
+    await act(async () => {});
+    const tree = screen.getByRole("tree", { name: "Playlists" });
+    tree.focus();
+    fireEvent.keyDown(tree, { key: "ArrowDown" });
+    fireEvent.keyDown(tree, { key: "Delete" });
+    await act(async () => {});
+    // A nested row has no Remove of its own, so only the first Delete reached the item.
+    expect(commands()).toEqual([{ type: "remove", item: "v" }]);
+    expect(screen.queryByRole("dialog")).toBeNull();
+
+    cleanup();
+    FakeSocket.reset();
+    vi.stubGlobal(
+      "fetch",
+      async () => new Response(JSON.stringify({ decoders: [], resolvers: [] })),
+    );
+    await renderTree([stored(CLIP)], []);
+    fireEvent.keyDown(screen.getByRole("tree", { name: "Videos" }), { key: "F2" });
+    expect(await screen.findByRole("dialog", { name: "Edit video" })).toBeTruthy();
+    expect((screen.getByLabelText("Video path") as HTMLInputElement).value).toBe("/v.mp4");
+  });
+
+  it("lists what a row stands for: a video and its overlays, a playlist's entries numbered inside it, why an item is unavailable", async () => {
+    const withLane: ItemState = {
+      ...stored(video("v", false)),
+      recipe: {
+        ...recipe,
+        overlays: [{ path: "/gt.txt", handler: "MOT_FILE", label: "v.mp4", options: {} }],
+      },
+    };
+    const runs = playlists("runs", [
+      ["Train", [entry("runs/Train/A", "A", ["GT"])]],
+      ["Test", [entry("runs/Test/B", "B", ["GT", "DPM"])]],
+    ]);
+    await renderTree([withLane, runs, failed("bad", "File not found")], []);
+    const info = (name: RegExp) => {
+      fireEvent.contextMenu(screen.getAllByRole("treeitem", { name })[0]);
+      fireEvent.click(screen.getByRole("menuitem", { name: "Information" }));
+      const dialog = screen.getByRole("dialog");
+      const text = within(dialog)
+        .getAllByRole("row")
+        .map((row) => row.textContent);
+      fireEvent.keyDown(dialog, { key: "Escape" });
+      fireEvent.click(within(dialog).getByRole("button", { name: "Close" }));
+      return text;
+    };
+    expect(info(/^v\.mp4/)).toEqual(
+      expect.arrayContaining([
+        "typeseekable video",
+        "overlays1",
+        "path/v.mp4",
+        "handler typeMOT_FILE",
+      ]),
+    );
+    expect(info(/^B/)).toEqual(
+      expect.arrayContaining(["runs / Test / Entry 1", "typeplaylist entry", "lanes2"]),
+    );
+    expect(info(/^bad\.mp4/)).toContain("UnavailableFile not found");
   });
 });

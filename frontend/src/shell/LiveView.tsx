@@ -3,7 +3,7 @@ import { useGrants } from "../access";
 import type { LiveConfirmation, NewLiveWire } from "../generated/api";
 import { camerasOf, type AddSeed } from "../live/cameras";
 import { useLoginChecks } from "../live/checks";
-import { informationOf, type Information } from "../live/information";
+import { informationOf } from "../live/information";
 import { useNetwork, type Order } from "../live/network";
 import {
   facetKey,
@@ -19,7 +19,7 @@ import { useStreamStatuses } from "../live/streamState";
 import { useSettings } from "../settings";
 import { useCan, useCommand, useDoc, useView } from "../session/session";
 import { useShow } from "../viewer/useViewers";
-import { InformationDialog } from "./InformationDialog";
+import { useItemDialogs } from "./ItemDialogs";
 import { LiveToolbar } from "./LiveToolbar";
 import { LiveTree } from "./LiveTree";
 import { ScanSettings } from "./ScanSettings";
@@ -49,7 +49,7 @@ export function LiveView({ onAdd }: { onAdd: (seed: AddSeed) => void }) {
   // As in the other views; a stream has no way to be hidden, so for now it changes no row.
   const [showHidden, setShowHidden] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
-  const [informing, setInforming] = useState<Information | null>(null);
+  const { edit, inform, dialogs } = useItemDialogs();
   // How each stream resolved, which keeps it under its camera while it resolves again or fails.
   const known = useRef(new Map<string, NewLiveWire>());
 
@@ -112,7 +112,10 @@ export function LiveView({ onAdd }: { onAdd: (seed: AddSeed) => void }) {
       void attempt(command({ type: "content", command: { type: "remove", item } }));
     else if (action === "information" && item) {
       const stream = cameras.flatMap((camera) => camera.streams).find(({ id }) => id === item);
-      if (stream) setInforming(informationOf(stream));
+      if (stream) inform(informationOf(stream));
+    } else if (action === "edit" && item) {
+      const stored = items?.find(({ id }) => id === item);
+      if (stored) edit(stored);
     }
   };
   /** Enter or a double click: a stream that can start or stop starts, else comes to the front. */
@@ -171,7 +174,7 @@ export function LiveView({ onAdd }: { onAdd: (seed: AddSeed) => void }) {
         onConfirm={confirm}
       />
       {scans && <ScanSettings snapshot={snapshot} epoch={epoch} connected={connected} />}
-      {informing && <InformationDialog info={informing} onClose={() => setInforming(null)} />}
+      {dialogs}
     </div>
   );
 }

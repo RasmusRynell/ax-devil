@@ -7,7 +7,7 @@ import { HIDE_LANE_TIP } from "./laneContextMenu";
 import { changedControls, LaneMenuFilter } from "./LaneMenuFilter";
 import { LaneMenuLook } from "./LaneMenuLook";
 import { LaneMenuTiming } from "./LaneMenuTiming";
-import type { Cadence } from "./cadence";
+import type { CadenceWire } from "./protocol";
 
 const TABS = ["Look", "Filter", "Timing"] as const;
 
@@ -30,7 +30,7 @@ export function LaneMenu({
   /** The catalogs the backend offers for the lane to draw with. */
   catalogs: readonly CatalogInfoWire[];
   /** How evenly the video's frames are spaced, shown with the lane's timing. */
-  cadence: Cadence | null;
+  cadence: CadenceWire | null;
   /** A live lane has no recording to align, so its timing has no alignment. */
   live?: boolean;
   onChange: (change: Partial<LaneSettings>) => void;
