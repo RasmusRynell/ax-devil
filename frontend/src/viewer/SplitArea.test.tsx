@@ -10,14 +10,22 @@ import { useFrontViewer } from "./useViewers";
 
 const mounted = vi.hoisted(() => [] as string[]);
 
-vi.mock("../playback/VideoViewer", () => ({
-  VideoViewer: ({ content }: ViewerProps<"SeekableVideo">) => {
-    useEffect(() => {
-      mounted.push(content.id);
-    }, [content.id]);
-    return <p>playing {content.id}</p>;
-  },
-}));
+vi.mock("../playback/VideoViewer", async () => {
+  const { usePaneBudget } = await import("../playback/budget");
+  return {
+    VideoViewer: ({ content }: ViewerProps<"SeekableVideo">) => {
+      const budget = usePaneBudget();
+      useEffect(() => {
+        mounted.push(content.id);
+      }, [content.id]);
+      return (
+        <p>
+          playing {content.id} <output aria-label={`budget ${content.id}`}>{budget}</output>
+        </p>
+      );
+    },
+  };
+});
 
 beforeEach(() => {
   vi.stubGlobal("WebSocket", FakeSocket);
@@ -114,6 +122,17 @@ describe("split area", () => {
         cmd: { type: "content", command: { type: "closeViewer", item: "v9" } },
       }),
     );
+  });
+
+  it("gives each pane an equal share of the window's 512 MiB of frames, redivided as panes come and go", async () => {
+    const { send } = await setup();
+    const budget = (id: string) => screen.getByLabelText(`budget content-${id}`).textContent;
+    send(["a", true, resolved("a")]);
+    expect(budget("a")).toBe(String(512 * 1024 * 1024));
+    send(["a", true, resolved("a")], ["b", true, resolved("b")], ["c", true, resolved("c")]);
+    expect(budget("a")).toBe(String(Math.floor((512 * 1024 * 1024) / 3)));
+    fireEvent.click(within(pane("c.mp4")).getByRole("button", { name: "Close this pane" }));
+    expect(budget("a")).toBe(String(256 * 1024 * 1024));
   });
 
   it("moves a dragged pane to the side it is dropped on without restarting its viewer or unpinning it", async () => {

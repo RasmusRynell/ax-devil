@@ -162,6 +162,16 @@ describe("what the window asks for and keeps", () => {
     expect(presented.at(-1)).toBe(6);
   });
 
+  it("shrinks its window when its budget shrinks and regrows it, asking the backend each time", async () => {
+    const { session, server, wants } = await setup();
+    server.open();
+    expect(wants().at(-1)).toMatchObject({ ahead: 4, behind: 5 });
+    session.setBudget(500);
+    expect(wants().at(-1)).toMatchObject({ playhead: 0, ahead: 2, behind: 2 });
+    session.setBudget(1000);
+    expect(wants().at(-1)).toMatchObject({ playhead: 0, ahead: 4, behind: 5 });
+  });
+
   it("asks for no display refreshes while paused and idle, and again when something changes", async () => {
     const { session, server, refresh, refreshes } = await setup();
     server.open();

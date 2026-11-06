@@ -20,7 +20,7 @@ owner's written decision. A new feature gets a row in 01 first.
 | WS-10 | Bookmarks to CSV | S | done | `tests/it/bookmarks.rs`, `make test-desktop` |  |
 | WS-11 | Sidebar views Workspace, Live, Offline, Bookmarks, Plugins; search, sort, filter | M | in progress | `shell/{Shell,Sidebar,WorkspaceTree*,reveal,treeModel}.test.*` | Workspace and Offline: search, Sort, Show hidden; Live: search, Sort, Filter; Bookmarks: search, kind. A click selects; a double click or Enter opens. Search, Sort and folds outlive a view switch; a viewer's item is revealed. Left: drag-resize, row-detail search (LOB-014), Offline Add, found-camera dedup, activity-bar badges |
 | WS-12 | Start panel and welcome area | M | done | `shell/Shell.test.tsx`, `shell/WorkspaceFiles.test.tsx` | Heading only with recents; Open Workspace default; Live: AC-03 |
-| WS-13 | Split viewer area: drag to split, preview vs pinned panes | M | done | `viewer/{layout,placement,SplitArea,Pane}.test.*`, `crates/sessions/tests/session/*.rs`, `make test-desktop` | Left: header menu (SPL-010), details |
+| WS-13 | Split viewer area: drag to split, preview vs pinned panes | M | done | `viewer/{layout,placement,SplitArea,Pane}.test.*`, `playback/budget.test.ts`, `make test-desktop` | Left: header menu (SPL-010), details |
 | WS-14 | Long playlists load collapsed | S | todo |  |  |
 | WS-15 | Hover cards with thumbnails | S | in progress | `tests/it/local_video.rs`, `shell/{WorkspaceTree,LiveView}.test.tsx` | Offline and Live |
 
