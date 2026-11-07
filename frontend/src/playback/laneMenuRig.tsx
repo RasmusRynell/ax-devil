@@ -59,6 +59,7 @@ export function setup(
     policyRevision: 1,
     pending: false,
     look: { themes: ["night"], features: ALL_FEATURES },
+    catalogRevision: 1,
     ...lane,
   };
   const menu = (shown: LaneState) => (

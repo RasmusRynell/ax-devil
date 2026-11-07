@@ -3,7 +3,7 @@ import { Button } from "../kit/Button";
 import { Checkbox, Select } from "../kit/Fields";
 import { FEATURES } from "../present";
 import { useSettings } from "../settings";
-import { effectiveDefault, type LaneSettings, type LaneState } from "./lanes";
+import { effectiveDefault, judgedRevision, type LaneSettings, type LaneState } from "./lanes";
 import { DEFAULT_CATALOG, LaneCatalogActions, USER_PREFIX } from "./LaneCatalogActions";
 import { Group } from "./LaneMenuFields";
 
@@ -55,10 +55,12 @@ export function LaneMenuLook({
   lane,
   catalogs,
   onChange,
+  onReload,
 }: {
   lane: LaneState;
   catalogs: readonly CatalogInfoWire[];
   onChange: (change: Partial<LaneSettings>) => void;
+  onReload?: () => void;
 }) {
   const { settings, look } = lane;
   const { values } = useSettings();
@@ -80,8 +82,9 @@ export function LaneMenuLook({
         label={entries.find(({ id }) => id === settings.catalog)?.label ?? settings.catalog}
         catalogs={catalogs}
         defaultId={defaultId}
-        usable={look !== undefined && lane.catalogProblem === undefined}
+        revision={judgedRevision(lane, catalogs)}
         onChange={onChange}
+        onReload={onReload}
       />
       {look && look.themes.length > 0 && (
         <Select

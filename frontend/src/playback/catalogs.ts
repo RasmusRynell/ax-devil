@@ -60,6 +60,13 @@ export class Catalogs {
     return held.entry;
   }
 
+  /** Asks the backend for the catalog `id` again and takes its answer even when it is the one held. */
+  reload(id: string): void {
+    const held = this.#held.get(id);
+    if (held) held.reply = undefined;
+    this.#request(id);
+  }
+
   /**
    * A connection opened: takes its listing and asks for every catalog held again, as the new connection pushes
    * changes only of those it was asked for. The compiles stay until the new answers differ.

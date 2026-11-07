@@ -1734,6 +1734,10 @@ export type CopyCatalogRequest = {
  */
 source: string, 
 /**
+ * The revision of the source the viewer compiled; a source that changed since is refused.
+ */
+revision: number, 
+/**
  * What the user named the copy.
  */
 name: string, };
@@ -1753,6 +1757,15 @@ id: string, };
 export type DeleteCatalogRequest = { 
 /**
  * The id of the user catalog to delete, `user:<file>`.
+ */
+id: string, };
+
+/**
+ * A request to read a catalog file again.
+ */
+export type ReloadCatalogRequest = { 
+/**
+ * The id of the catalog to read again: `built-in:<name>` or `user:<file>`.
  */
 id: string, };
 

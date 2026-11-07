@@ -326,7 +326,11 @@ pub(crate) async fn get_settings(
 /// as it was.
 pub(crate) async fn put_settings(
     principal: Principal,
-    State(AppState { settings, .. }): State<AppState>,
+    State(AppState {
+        settings,
+        catalogs: library,
+        ..
+    }): State<AppState>,
     Json(body): Json<SettingsChange>,
 ) -> Result<Json<SettingsState>, (StatusCode, Json<ApiError>)> {
     let scopes = principal.scopes();
@@ -372,8 +376,20 @@ pub(crate) async fn put_settings(
     };
     // The file write blocks, so it stays off the async workers.
     let saved = tokio::task::spawn_blocking(move || {
+        // The default catalog is checked under the lock that writes it, against the value stored by then, so a
+        // catalog deleted meanwhile (which resets the default under the same lock) is not stored again.
         settings
-            .replace(&scopes, &change)
+            .replace_if(&scopes, &change, |current| {
+                let stored = current.resolved(catalogs::DEFAULT_SETTING);
+                match routes::catalogs::default_refusal(&library, stored.as_ref(), &change.values) {
+                    Some(reason) => Err(settings::Error {
+                        location: catalogs::DEFAULT_SETTING.to_owned(),
+                        reason,
+                        invalid: true,
+                    }),
+                    None => Ok(()),
+                }
+            })
             .map(|state| snapshot(&settings, &state, principal))
     })
     .await

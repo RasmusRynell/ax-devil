@@ -23,6 +23,8 @@ pub struct CatalogInfoWire {
 pub struct CopyCatalogRequest {
     /// The id of the catalog to copy: `built-in:<name>` or `user:<file>`.
     pub source: String,
+    /// The revision of the source the viewer compiled; a source that changed since is refused.
+    pub revision: u32,
     /// What the user named the copy.
     pub name: String,
 }
@@ -38,5 +40,12 @@ pub struct CopiedCatalog {
 #[derive(Serialize, Deserialize, TS)]
 pub struct DeleteCatalogRequest {
     /// The id of the user catalog to delete, `user:<file>`.
+    pub id: String,
+}
+
+/// A request to read a catalog file again.
+#[derive(Serialize, Deserialize, TS)]
+pub struct ReloadCatalogRequest {
+    /// The id of the catalog to read again: `built-in:<name>` or `user:<file>`.
     pub id: String,
 }

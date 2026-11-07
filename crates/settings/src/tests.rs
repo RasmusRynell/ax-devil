@@ -414,6 +414,29 @@ fn a_rejected_replace_changes_neither_state_nor_file() {
 }
 
 #[test]
+fn a_replace_is_checked_against_the_stored_state_and_a_refusal_changes_nothing() {
+    let folder = tempfile::tempdir().unwrap();
+    let path = folder.path().join("settings.json");
+    let settings = Settings::load(&path).unwrap();
+    settings.replace(&Scope::ALL, &change("dark")).unwrap();
+
+    let refused = settings
+        .replace_if(&Scope::ALL, &change("light"), |stored| {
+            assert_eq!(stored.values(&Scope::ALL)["ui.theme"], "dark");
+            Err(Error {
+                location: "ui.theme".into(),
+                reason: "no".into(),
+                invalid: true,
+            })
+        })
+        .unwrap_err();
+
+    assert_eq!(refused.reason, "no");
+    assert_eq!(settings.state().values(&Scope::ALL)["ui.theme"], "dark");
+    assert_eq!(read(&path)["settings"]["ui.theme"], "dark");
+}
+
+#[test]
 fn the_video_cache_is_auto_or_whole_mib_in_range_and_a_saved_number_survives_a_restart() {
     let folder = tempfile::tempdir().unwrap();
     let path = folder.path().join("settings.json");

@@ -3,10 +3,35 @@
 
 use super::handlers::{Refusal, refuse};
 use crate::AppState;
-use api_types::catalogs::{CopiedCatalog, CopyCatalogRequest, DeleteCatalogRequest};
+use api_types::catalogs::{
+    CopiedCatalog, CopyCatalogRequest, DeleteCatalogRequest, ReloadCatalogRequest,
+};
 use axum::{Json, extract::State, http::StatusCode};
-use catalogs::{CatalogId, DEFAULT_SETTING};
+use catalogs::{CatalogId, DEFAULT_SETTING, Library};
 use foundation::{ErrorCode, UserError};
+
+/// Why a settings change may not make its default catalog the one it names: the change names a catalog other than the
+/// stored default, and the library does not list that one without a problem. Saving other settings with a stale
+/// default stays possible.
+pub(crate) fn default_refusal(
+    library: &Library,
+    stored: Option<&serde_json::Value>,
+    values: &std::collections::BTreeMap<String, serde_json::Value>,
+) -> Option<String> {
+    let named = values
+        .get(DEFAULT_SETTING)?
+        .as_str()
+        .filter(|id| !id.is_empty())?;
+    if stored.and_then(|stored| stored.as_str()) == Some(named) {
+        return None;
+    }
+    let id = CatalogId::parse(named);
+    let usable = library
+        .documents()
+        .iter()
+        .any(|info| Some(&info.id) == id.as_ref() && info.problem.is_none());
+    (!usable).then(|| format!("{named} is not a catalog that can be used"))
+}
 
 /// The id a request names, or a refusal that says it names no catalog.
 fn parse(id: &str) -> Result<CatalogId, Refusal> {
@@ -48,8 +73,23 @@ pub(crate) async fn copy(
 ) -> Result<Json<CopiedCatalog>, Refusal> {
     let source = parse(&request.source)?;
     let library = state.catalogs;
-    let id = blocking(move || library.copy(&source, &request.name)).await?;
+    let id = blocking(move || library.copy_at(&source, request.revision, &request.name)).await?;
     Ok(Json(CopiedCatalog { id: id.to_string() }))
+}
+
+/// Reads a user's catalog file again now. A changed document reaches the viewers on the playback socket.
+pub(crate) async fn reload(
+    State(state): State<AppState>,
+    Json(request): Json<ReloadCatalogRequest>,
+) -> Result<StatusCode, Refusal> {
+    let id = parse(&request.id)?;
+    let library = state.catalogs;
+    blocking(move || {
+        library.reread(&id);
+        Ok(())
+    })
+    .await?;
+    Ok(StatusCode::NO_CONTENT)
 }
 
 /// Deletes a user's catalog. When it is the stored default for new lanes, the default goes back to Standard.
@@ -120,12 +160,35 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn a_default_that_names_no_listed_catalog_is_refused_and_nothing_is_stored() {
+        let test = TestApp::with_catalog_folder();
+        let (_, body) = test
+            .send(
+                Request::builder()
+                    .uri("/api/settings")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await;
+        let mut settings = json(&body);
+        settings["values"]["overlays.default_catalog"] = "user:gone.json".into();
+        let put = Request::builder()
+            .method("PUT")
+            .uri("/api/settings")
+            .header("content-type", "application/json")
+            .body(Body::from(settings.to_string()))
+            .unwrap();
+        assert_eq!(test.send(put).await.0, StatusCode::UNPROCESSABLE_ENTITY);
+        assert_eq!(default_catalog(&test, None).await, "");
+    }
+
+    #[tokio::test]
     async fn a_catalog_is_copied_and_deleted_and_a_refusal_says_why() {
         let test = TestApp::with_catalog_folder();
         let (status, body) = test
             .send(post(
                 "/api/catalogs/copy",
-                json!({ "source": "built-in:standard", "name": "Night" }),
+                json!({ "source": "built-in:standard", "revision": 1, "name": "Night" }),
             ))
             .await;
         assert_eq!(status, StatusCode::OK);
@@ -142,7 +205,7 @@ mod tests {
         let (_, body) = test
             .send(post(
                 "/api/catalogs/copy",
-                json!({ "source": "built-in:standard", "name": "Day" }),
+                json!({ "source": "built-in:standard", "revision": 1, "name": "Day" }),
             ))
             .await;
         let other = json(&body)["id"].as_str().unwrap().to_owned();

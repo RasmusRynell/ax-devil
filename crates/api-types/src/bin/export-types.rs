@@ -122,6 +122,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         CopyCatalogRequest,
         CopiedCatalog,
         DeleteCatalogRequest,
+        ReloadCatalogRequest,
         Direction,
         Want,
         LanePolicyWire,

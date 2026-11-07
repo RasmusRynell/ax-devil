@@ -307,8 +307,20 @@ impl Settings {
     /// Validates all, writes the file atomically with only what differs from the defaults (and keeps what this
     /// version does not know and the settings of other scopes), then swaps the state; on any failure nothing changes.
     pub fn replace(&self, scopes: &[Scope], change: &Change) -> Result<Arc<State>, Error> {
+        self.replace_if(scopes, change, |_| Ok(()))
+    }
+
+    /// As [`replace`](Self::replace), but `allow` first sees the stored state under the lock that orders every
+    /// change, so a check that depends on the stored values and on what other writers do holds when the write happens.
+    pub fn replace_if(
+        &self,
+        scopes: &[Scope],
+        change: &Change,
+        allow: impl FnOnce(&State) -> Result<(), Error>,
+    ) -> Result<Arc<State>, Error> {
         let _writing = self.writing.lock().unwrap_or_else(PoisonError::into_inner);
         let current = self.state();
+        allow(&current)?;
         let invalid = |location: &str, reason: &str| Error {
             location: location.to_owned(),
             reason: reason.to_owned(),

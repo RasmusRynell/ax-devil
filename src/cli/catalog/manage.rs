@@ -60,10 +60,20 @@ impl Home {
 /// `catalog list`: the catalogs, one per line; `*` marks the default for new lanes.
 pub fn list(home: &Home) -> Report {
     let library = Library::with_folder(home.folder.clone());
-    let default = home.default_id(&library).ok();
+    let listed = library.documents();
+    // New lanes start from Standard when the stored default is not a catalog that loads, as the app does.
+    let default = home
+        .default_id(&library)
+        .ok()
+        .filter(|id| {
+            listed
+                .iter()
+                .any(|info| info.id == *id && info.problem.is_none())
+        })
+        .unwrap_or_else(|| library.default_id());
     let mut text = String::new();
-    for info in library.documents() {
-        let mark = if default.as_ref() == Some(&info.id) {
+    for info in listed {
+        let mark = if default == info.id {
             '*'
         } else if info.problem.is_some() {
             '!'

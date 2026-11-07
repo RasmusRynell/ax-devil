@@ -130,6 +130,20 @@ impl Folder {
     /// One poll. With `first`, every file is read now: nothing is being served yet that a half-written file could
     /// replace.
     pub(crate) fn poll(&mut self, first: bool) -> Vec<Change> {
+        self.poll_with(|_| first)
+    }
+
+    /// A poll that reads `name` now even if it looks as it did when last read: the user asked for it, and an edit that
+    /// kept the size, modification time and identity is invisible to the polls. Other files are polled as usual.
+    pub(crate) fn reread(&mut self, name: &str) -> Vec<Change> {
+        if let Some(tracked) = self.tracked.get_mut(name) {
+            tracked.read = None;
+        }
+        self.poll_with(|file| file == name)
+    }
+
+    /// A poll that reads at once the files `now` accepts, and the others once they looked the same twice.
+    fn poll_with(&mut self, now: impl Fn(&str) -> bool) -> Vec<Change> {
         let Some(listed) = self.list() else {
             return Vec::new();
         };
@@ -142,7 +156,7 @@ impl Folder {
                 missing: false,
             });
             tracked.missing = false;
-            let stable = first || tracked.seen == Some(*fingerprint);
+            let stable = now(name) || tracked.seen == Some(*fingerprint);
             tracked.seen = Some(*fingerprint);
             if tracked.read != Some(*fingerprint) && stable {
                 let content = match found.refusal {

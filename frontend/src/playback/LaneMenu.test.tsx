@@ -103,7 +103,8 @@ describe("lane menu", () => {
       show({ catalogProblem: "/layers: unknown" });
       const use = screen.getByRole("button", { name: "Use as default" }) as HTMLButtonElement;
       expect(use.disabled).toBe(true);
-      show({ look: undefined });
+      // Still loading: the lane draws a fallback, which is not what would be saved.
+      show({ catalogRevision: undefined });
       expect(use.disabled).toBe(true);
       show({ settings: LANE_SETTINGS });
       expect(use.disabled).toBe(true);
@@ -157,5 +158,29 @@ describe("lane menu", () => {
     fireEvent.click(screen.getByRole("button", { name: "Apply to all lanes" }));
     expect(onHide).toHaveBeenCalledTimes(1);
     expect(onApplyAll).toHaveBeenCalledTimes(1);
+  });
+
+  it("applies nothing while the lane's catalog is loading or failed", () => {
+    const { onApplyAll, show } = setup();
+    const apply = screen.getByRole("button", { name: "Apply to all lanes" }) as HTMLButtonElement;
+    expect(apply.disabled).toBe(false);
+    show({ catalogRevision: undefined });
+    expect(apply.disabled).toBe(true);
+    show({ catalogProblem: "/layers: unknown" });
+    expect(apply.disabled).toBe(true);
+    fireEvent.click(apply);
+    expect(onApplyAll).not.toHaveBeenCalled();
+  });
+
+  it("offers neither Apply to all nor Use as default once the listing says the catalog is gone or failing, though the lane still has its compiled revision", () => {
+    const lane = { settings: { ...LANE_SETTINGS, catalog: "built-in:tracking" } };
+    const others = CATALOGS.filter((entry) => entry.id !== "built-in:tracking");
+    const failing = { id: "built-in:tracking", name: "Tracking", description: "", problem: "x" };
+    for (const catalogs of [others, [...others, failing]]) {
+      setup(lane, READY, undefined, null, { catalogs });
+      for (const name of ["Apply to all lanes", "Use as default"])
+        expect((screen.getByRole("button", { name }) as HTMLButtonElement).disabled).toBe(true);
+      cleanup();
+    }
   });
 });

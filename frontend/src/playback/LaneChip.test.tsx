@@ -16,6 +16,7 @@ const lane = (change: Partial<LaneState>): LaneState => ({
   settings: LANE_SETTINGS,
   policyRevision: 1,
   pending: false,
+  catalogRevision: 1,
   ...change,
 });
 
@@ -84,7 +85,7 @@ describe("lane chip", () => {
       <FakeSettings>
         <LaneChip
           lane={lane({ status: READY })}
-          catalogs={[]}
+          catalogs={[{ id: LANE_SETTINGS.catalog, name: "Standard", description: "" }]}
           cadence={null}
           onChange={() => {}}
           onApplyAll={onApplyAll}

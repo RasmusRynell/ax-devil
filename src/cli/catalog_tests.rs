@@ -97,6 +97,31 @@ fn catalog_use_stores_one_setting_and_standard_clears_it() {
 }
 
 #[test]
+fn catalog_list_marks_standard_when_the_stored_default_is_missing_or_does_not_load() {
+    let dir = tempfile::tempdir().unwrap();
+    let folder = dir.path().join("catalogs");
+    std::fs::create_dir(&folder).unwrap();
+    std::fs::write(folder.join("broken.json"), "not json").unwrap();
+    let settings = ::settings::Settings::load(&dir.path().join("settings.json")).unwrap();
+    for stored in ["user:gone.json", "user:broken.json", "not an id"] {
+        settings
+            .update("overlays.default_catalog", |_| Some(stored.into()))
+            .unwrap();
+        let listing = catalog(dir.path(), &["list"]).text;
+        let marks: Vec<char> = listing
+            .lines()
+            .filter_map(|line| line.chars().next())
+            .collect();
+        assert_eq!(
+            marks.iter().filter(|mark| **mark == '*').count(),
+            1,
+            "{listing}"
+        );
+        assert!(listing.starts_with("* Standard"), "{stored}: {listing}");
+    }
+}
+
+#[test]
 fn catalog_use_refuses_a_file_outside_the_catalog_folder() {
     let dir = tempfile::tempdir().unwrap();
     let outside = dir.path().join("outside.json");

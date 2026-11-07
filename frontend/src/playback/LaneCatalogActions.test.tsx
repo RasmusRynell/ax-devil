@@ -46,6 +46,7 @@ function setup(
   const onChange = vi.fn();
   const save = vi.fn(async () => null);
   const reload = vi.fn(async () => {});
+  const onReload = vi.fn();
   const view = (current: string, listing: CatalogInfoWire[] = CATALOGS) => (
     <GrantsContext value={grants}>
       <FakeSettings
@@ -61,7 +62,8 @@ function setup(
           label={current === "user:night.json" ? "Standard (night.json)" : "Standard"}
           catalogs={listing}
           defaultId={defaultId}
-          usable
+          revision={7}
+          onReload={onReload}
           onChange={onChange}
         />
       </FakeSettings>
@@ -72,6 +74,7 @@ function setup(
     onChange,
     save,
     reload,
+    onReload,
     moveTo: (next: string) => rerender(view(next)),
     list: (listing: CatalogInfoWire[]) => rerender(view(catalog, listing)),
   };
@@ -108,7 +111,9 @@ describe("catalog copy and delete", () => {
     expect(create.disabled).toBe(true);
     await waitFor(() => expect(calls).toHaveLength(1));
     await act(async () => {});
-    expect(calls).toEqual([["/api/catalogs/copy", { source: "built-in:standard", name: "Mine" }]]);
+    expect(calls).toEqual([
+      ["/api/catalogs/copy", { source: "built-in:standard", revision: 7, name: "Mine" }],
+    ]);
     expect(onChange).not.toHaveBeenCalled();
     expect(create.disabled).toBe(true);
     list([...CATALOGS, { id: "user:mine.json", name: "Mine", description: "" }]);
@@ -116,6 +121,14 @@ describe("catalog copy and delete", () => {
       expect(onChange).toHaveBeenCalledExactlyOnceWith({ catalog: "user:mine.json", theme: null }),
     );
     expect(screen.queryByRole("textbox", { name: "Name" })).toBeNull();
+  });
+
+  it("makes the backend read the file again, then asks for the document anew", async () => {
+    const calls = routes({ ok: true });
+    const { onReload } = setup("user:night.json", "built-in:standard");
+    fireEvent.click(screen.getByRole("button", { name: "Reload" }));
+    await waitFor(() => expect(onReload).toHaveBeenCalledOnce());
+    expect(calls).toEqual([["/api/catalogs/reload", { id: "user:night.json" }]]);
   });
 
   it("says why a copy was refused and keeps the name for another try", async () => {

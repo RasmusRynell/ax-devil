@@ -78,6 +78,19 @@ describe("catalogs", () => {
     });
   });
 
+  it("keeps the revision it draws and exports from when the listing says the catalog is gone or failing", () => {
+    const { catalogs } = held();
+    const listed = { id: "user:a.json", name: "A", description: "" };
+    catalogs.open([listed]);
+    catalogs.get(listed.id);
+    catalogs.receive(listed.id, 3, catalogDocument(), null);
+    expect(catalogs.compiledRevision(listed.id)).toBe(3);
+    catalogs.list([{ ...listed, problem: "not JSON" }]);
+    expect(catalogs.compiledRevision(listed.id)).toBe(3);
+    catalogs.list([]);
+    expect(catalogs.compiledRevision(listed.id)).toBe(3);
+  });
+
   it("asks again for every catalog it holds when a connection opens, and lists what the backend offers", () => {
     const { asked, catalogs } = held();
     catalogs.get("built-in:standard");

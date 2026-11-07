@@ -11,7 +11,8 @@ compiler is the only judge of the language, so a file that is not a catalog is s
 - Listing order: the built-ins, then readable user files by name ignoring case (file name breaks ties), then invalid
   ones (`CatalogInfo::problem` set) by file name.
 - A file is read only after it looked the same on two polls in a row, and counts as deleted only after it was missing
-  on two: an editor's half-written or swapped save never reaches a lane.
+  on two: an editor's half-written or swapped save never reaches a lane. `Library::reread` (the lane's Reload) reads
+  one file at once, which also catches an edit that kept the file's size, time and identity.
 - Revisions come from one counter for the process (built-ins are 1), so a replaced or re-created file never gets a
   revision a viewer holds. A restart restarts the counter; viewers take any revision that differs from theirs.
 - `sheets` builds the example Scene (the Overview) that `catalog check` exercises a catalog on: a Sample Item from the

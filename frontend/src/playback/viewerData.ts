@@ -246,6 +246,11 @@ export class ViewerData {
     });
   }
 
+  /** Asks the backend for the catalog `lane` chose again; what it answers is compiled anew. */
+  reloadCatalog(lane: number): void {
+    this.catalogs.reload(this.#lanes.states[lane].settings.catalog);
+  }
+
   /** Why each lane's catalog is not the chosen one and what the catalog it draws with offers, asking for catalogs not yet asked for. */
   catalogProblems(): void {
     this.#lanes.states.forEach((state, lane) => {

@@ -2,6 +2,8 @@
 // selected object in the media tools and a lane's settings menu in each of its tabs. Each must fit without anything clipped or sticking
 // out, and a screenshot of each lands in the screenshots folder.
 const assert = require("node:assert/strict");
+const fs = require("node:fs");
+const path = require("node:path");
 const fit = require("./fit.cjs");
 const { delay, frames, moveTo, page, setView } = require("./smoke-kit.cjs");
 
@@ -86,6 +88,12 @@ module.exports.panels = async (window, { setTheme, shoot, showEntry, point }) =>
   await js("document.querySelector('[aria-label=\"GT: settings\"]').click()");
   const menu = '[role=dialog][aria-label="GT: settings"]';
   await wait(`document.querySelector(${JSON.stringify(menu)})`);
+  // Every tab's shot starts at the top of the menu, whatever the tab before it scrolled to.
+  const toStart = () =>
+    js(`(() => {
+      const menu = document.querySelector(${JSON.stringify(menu)});
+      for (const element of [menu, ...menu.querySelectorAll('*')]) element.scrollTop = 0;
+    })()`);
   for (const theme of THEMES) {
     await setTheme(theme);
     for (const tab of ["Look", "Filter", "Timing"]) {
@@ -95,6 +103,7 @@ module.exports.panels = async (window, { setTheme, shoot, showEntry, point }) =>
       await wait(
         `document.querySelector(${JSON.stringify(`${menu} [role=tabpanel][aria-label=${tab}]`)})`,
       );
+      await toStart();
       await frames({ js });
       await fits(
         menu,
@@ -182,6 +191,31 @@ module.exports.panels = async (window, { setTheme, shoot, showEntry, point }) =>
   await wait(
     `[...document.querySelectorAll(${JSON.stringify(`${menu} button`)})].some((b) => b.textContent === 'Delete')`,
   );
+  // The copy breaks on disk: the lane keeps drawing its last good catalog, but nothing may be saved, copied or applied
+  // from it until it works again.
+  const file = path.join(
+    process.env.XDG_DATA_HOME,
+    "ax-devil",
+    "catalogs",
+    (await js(catalog)).slice("user:".length),
+  );
+  const good = fs.readFileSync(file, "utf8");
+  fs.writeFileSync(file, "not json");
+  const disabled = (name) =>
+    `[...document.querySelectorAll(${JSON.stringify(`${menu} button`)})].find((b) => b.textContent === ${JSON.stringify(name)}).disabled`;
+  await wait(
+    `document.querySelector(${JSON.stringify(`${menu} select`)}).selectedOptions[0].textContent.includes('(invalid)')`,
+  );
+  for (const name of ["Use as default", "Copy", "Apply to all lanes"])
+    assert.ok(await js(disabled(name)), `${name} is disabled while the lane's catalog is invalid`);
+  for (const theme of THEMES) {
+    await setTheme(theme);
+    await toStart();
+    await frames({ js });
+    await shoot(`lane-menu-invalid-${theme}-200.png`);
+  }
+  fs.writeFileSync(file, good);
+  await wait(`!${disabled("Copy")}`);
   await press(menu, "Delete");
   await wait("document.querySelector('dialog[open]')");
   for (const theme of THEMES) {
