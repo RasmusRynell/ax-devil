@@ -270,7 +270,9 @@ describe("opening", () => {
     fireEvent.doubleClick(screen.getByRole("treeitem", { name: /^A/ }));
     await act(async () => {});
     expect(screen.getByRole("alert").textContent).toBe("Too many videos are open.");
-    expect(shown()).toEqual(before);
+    // The backend may settle the entry of the first viewer meanwhile; no pane was added or replaced.
+    expect(shown().active).toBe(before.active);
+    expect(Object.keys(shown().viewers)).toEqual(Object.keys(before.viewers));
   });
 });
 
