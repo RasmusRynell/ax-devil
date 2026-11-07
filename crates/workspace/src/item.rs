@@ -43,6 +43,9 @@ pub struct PlaylistRecipe {
 }
 
 /// What an item was made from.
+// A live recipe is a few strings larger than the others. Items are few and read through `&Source`, so boxing it would
+// add an indirection to every match and construction for a handful of bytes.
+#[allow(clippy::large_enum_variant)]
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Source {
     /// A video file with overlays.

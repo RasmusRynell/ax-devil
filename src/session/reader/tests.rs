@@ -326,6 +326,15 @@ async fn editing_a_stream_keeps_its_id_and_saved_login_on_the_same_camera_only()
     let id = owner.state().doc.workspace.parts().workspace.items[0]
         .id
         .to_string();
+    // The configured overlay (DataHub), with its handler, which an edit that names none keeps.
+    let overlay = || match &owner.state().doc.workspace.parts().workspace.items[0]
+        .recipe
+        .source
+    {
+        Source::Live(recipe) => recipe.overlay.clone(),
+        _ => panic!("a live stream"),
+    };
+    let saved_overlay = overlay();
     let edit = |fields: serde_json::Value| {
         let mut new = json!({"type": "Live"});
         new.as_object_mut()
@@ -356,6 +365,7 @@ async fn editing_a_stream_keeps_its_id_and_saved_login_on_the_same_camera_only()
         items => panic!("one item, got {}", items.len()),
     };
     assert_eq!(login(), (id.clone(), "Gate".into(), true));
+    assert_eq!(overlay(), saved_overlay);
 
     acks.push(answer(&state, &owner, 3, edit(json!({"host": "other.local"}))).await);
     assert_eq!(login(), (id, String::new(), false));
@@ -367,4 +377,202 @@ async fn editing_a_stream_keeps_its_id_and_saved_login_on_the_same_camera_only()
     ] {
         assert!(!text.contains(PASSWORD), "{text}");
     }
+}
+
+/// An edit that names no overlay keeps the saved one with its hidden broker password for the owner; a guest who may
+/// edit is refused rather than left to clear a password only the owner can restore.
+#[tokio::test]
+async fn an_edit_without_an_overlay_never_clears_a_saved_broker_password() {
+    let folder = tempfile::tempdir().unwrap();
+    let settings = settings::Settings::load(&folder.path().join("default.json")).unwrap();
+    let cache = folder.path().join("cache");
+    let videos = crate::video_cache::start(&settings, &cache);
+    let (_stop, stopping) = tokio::sync::watch::channel(false);
+    let state = AppState::new(
+        Arc::new(settings),
+        Policy::Local,
+        videos,
+        stopping,
+        Plugins::fixed(handlers::Handlers::built_in()),
+        &cache,
+    );
+    let owner = state
+        .sessions
+        .create(true, true, CursorOptions::default())
+        .unwrap();
+    let mqtt = json!({"mode": "mqtt", "handler": "ADF_V1_FRAME", "broker_host": "b.local", "broker_user": "mqtt",
+        "broker_pass": PASSWORD, "source_key": "k"});
+    answer(
+        &state,
+        &owner,
+        1,
+        add_live(json!({"host": "cam.local", "overlay": mqtt})),
+    )
+    .await;
+    let id = owner.state().doc.workspace.parts().workspace.items[0]
+        .id
+        .to_string();
+    let broker_pass = || match &owner.state().doc.workspace.parts().workspace.items[0]
+        .recipe
+        .source
+    {
+        Source::Live(recipe) => recipe.mqtt_settings().map(|mqtt| mqtt.broker_pass),
+        _ => panic!("a live stream"),
+    };
+    let edit = |fields: serde_json::Value| {
+        let mut new = json!({"type": "Live", "host": "cam.local"});
+        new.as_object_mut()
+            .unwrap()
+            .extend(fields.as_object().unwrap().clone());
+        serde_json::from_value(json!({"type": "content", "command": {
+            "type": "editItem", "item": id, "new": new}}))
+        .unwrap()
+    };
+    let relabel = |label: &str| edit(json!({"label": label}));
+    owner
+        .command(sessions::session::Command::Control(Control::Share {
+            access: sessions::session::Access::Edit,
+        }))
+        .unwrap();
+    let link = owner.state().sharing.as_ref().unwrap().link.clone();
+    let guest = state
+        .sessions
+        .join(&link, CursorOptions::default())
+        .unwrap();
+
+    let refused = answer(&state, &guest, 2, relabel("Guest")).await;
+    assert!(matches!(
+        refused,
+        SessionServerMessage::Ack {
+            outcome: AckOutcome::Refused { .. },
+            ..
+        }
+    ));
+    let kept = answer(&state, &owner, 3, relabel("Gate")).await;
+    assert!(matches!(
+        kept,
+        SessionServerMessage::Ack {
+            outcome: AckOutcome::Ok,
+            ..
+        }
+    ));
+    assert_eq!(
+        broker_pass().map(|secret| secret.expose().to_owned()),
+        Some(PASSWORD.to_owned())
+    );
+
+    // The same with the overlay named and its password left blank, and with the broker kept for another mode: the
+    // guest is refused each time, the owner's blank password is the saved one.
+    let broker = json!({"broker_host": "b.local", "broker_user": "mqtt", "source_key": "k"});
+    let mut explicit = broker.clone();
+    explicit["mode"] = json!("mqtt");
+    explicit["handler"] = json!("ADF_V1_FRAME");
+    let rtsp = json!({"mode": "rtsp", "handler": "ONVIF_XML"});
+    let hub = json!({"topic": "t", "channel": 7});
+    let mut seq = 3;
+    for fields in [
+        json!({"overlay": explicit}),
+        json!({"overlay": rtsp, "kept_mqtt": broker, "kept_datahub": hub}),
+        // The password now saved only as kept.
+        json!({"overlay": rtsp, "kept_mqtt": broker, "kept_datahub": hub, "label": "Again"}),
+    ] {
+        seq += 1;
+        let reply = answer(&state, &guest, seq, edit(fields.clone())).await;
+        assert!(matches!(
+            reply,
+            SessionServerMessage::Ack {
+                outcome: AckOutcome::Refused { .. },
+                ..
+            }
+        ));
+        seq += 1;
+        let reply = answer(&state, &owner, seq, edit(fields)).await;
+        assert!(matches!(
+            reply,
+            SessionServerMessage::Ack {
+                outcome: AckOutcome::Ok,
+                ..
+            }
+        ));
+        assert_eq!(
+            broker_pass().map(|secret| secret.expose().to_owned()),
+            Some(PASSWORD.to_owned())
+        );
+    }
+
+    // A guest may not keep a `$NAME` reference for a mode the owner could later choose, though it types a password,
+    // and not behind padding that the stored host loses.
+    for kept_mqtt in [
+        json!({"broker_pass": "$SOME_SECRET", "broker_host": "b.local", "broker_user": "mqtt"}),
+        json!({"broker_pass": "literal", "broker_host": " $MQTT_HOST ", "broker_user": "guest"}),
+    ] {
+        seq += 1;
+        let reply = answer(
+            &state,
+            &guest,
+            seq,
+            edit(json!({"overlay": rtsp, "kept_mqtt": kept_mqtt})),
+        )
+        .await;
+        assert!(matches!(
+            reply,
+            SessionServerMessage::Ack {
+                outcome: AckOutcome::Refused { .. },
+                ..
+            }
+        ));
+    }
+
+    // A relabel that sends no overlay or kept settings, of a stream whose MQTT is kept, changes none of them.
+    let kept = || match &owner.state().doc.workspace.parts().workspace.items[0]
+        .recipe
+        .source
+    {
+        Source::Live(recipe) => recipe.kept.clone(),
+        _ => panic!("a live stream"),
+    };
+    let before = kept();
+    assert_eq!(before.datahub.as_ref().map(|hub| hub.channel), Some(7));
+    seq += 1;
+    let reply = answer(&state, &guest, seq, relabel("Guest")).await;
+    assert!(matches!(
+        reply,
+        SessionServerMessage::Ack {
+            outcome: AckOutcome::Refused { .. },
+            ..
+        }
+    ));
+    seq += 1;
+    let reply = answer(&state, &owner, seq, relabel("Owner")).await;
+    assert!(matches!(
+        reply,
+        SessionServerMessage::Ack {
+            outcome: AckOutcome::Ok,
+            ..
+        }
+    ));
+    assert_eq!(kept(), before);
+
+    // A guest's stream keeps nothing the owner configured for a mode it does not use: with the broker user set to
+    // a reference, the kept user stays blank.
+    let mut values = state.settings.state().values(&settings::Scope::ALL);
+    values.insert("broker.user".into(), "$SOME_SECRET".into());
+    let change = settings::Change {
+        values,
+        shortcuts: Default::default(),
+    };
+    state
+        .settings
+        .replace(&settings::Scope::ALL, &change)
+        .unwrap();
+    let added = json!({"host": "cam.local", "username": "guest", "overlay": {"mode": "none"},
+        "kept_mqtt": {"broker_host": "attacker.example", "broker_pass": "literal"}});
+    seq += 1;
+    answer(&state, &guest, seq, add_live(added)).await;
+    let items = owner.state().doc.workspace.parts().workspace.items.clone();
+    let Source::Live(second) = &items[1].recipe.source else {
+        panic!("the guest's stream was added");
+    };
+    let mqtt = second.kept.mqtt.as_ref().expect("MQTT is kept");
+    assert_eq!(mqtt.broker_user, "");
 }

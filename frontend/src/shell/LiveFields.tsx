@@ -43,6 +43,8 @@ export interface PanelProps {
   settings: SettingsState["values"];
   /** What the references of the configured defaults show; `null` until the backend has said, or where it may not. */
   expansions: LiveExpansions | null;
+  /** In an edit, the password fields whose saved literal is kept while they are blank; `null` when adding. */
+  hidden: readonly FieldKey[] | null;
 }
 
 /** What the backend said a default reference expands to, per field: `null` when it did not say. */
@@ -60,9 +62,11 @@ const EXPANDED: Partial<Record<FieldKey, (shown: LiveExpansions) => string | nul
 /**
  * What a blank `field` takes, as the placeholder shows it: a literal default as it is (a secret as dots), and a
  * `$NAME` reference as its value followed by `(via $NAME)` where the backend says it may be expanded (a password as
- * dots, its length not told), else as the reference.
+ * dots, its length not told), else as the reference. An edit takes no default: a blank field is blank, except a saved
+ * password, which dots show is kept.
  */
 function hint(props: PanelProps, field: FieldKey) {
+  if (props.hidden) return props.hidden.includes(field) ? SET_PASSWORD : undefined;
   const key = DEFAULTS[field];
   const row = key && rowOf(key);
   if (!key || !row) return undefined;

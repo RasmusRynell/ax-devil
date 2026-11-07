@@ -304,7 +304,7 @@ pub const TABLE: &[Setting] = &[
         key: "camera.head",
         kind: Kind::Whole {
             min: 1,
-            max: 255,
+            max: 9999,
             default: 1,
         },
         label: "Camera head",

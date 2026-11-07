@@ -16,8 +16,8 @@ use sessions::session::{Command, Refusal, Scope};
 use std::path::Path;
 use tokio::time::Instant;
 use workspace::{
-    BookmarkId, BookmarkKind, BookmarkTarget, Content, LiveOverlay, LiveRecipe, Secret, Source,
-    Watch, Workspace, WorkspaceItem,
+    BookmarkId, BookmarkKind, BookmarkTarget, Content, LiveRecipe, Secret, Source, Watch,
+    Workspace, WorkspaceItem,
     intake::{LiveDefaults, NewLive, NewOverlay},
 };
 use workspace_store::{BookmarkCommand, DocCommand, HiddenRef};
@@ -202,11 +202,23 @@ fn doc_command(
                     return Err(Refusal::Invalid);
                 }
                 stream.like = Some(item);
+                if let Some(recipe) = saved.recipe(item) {
+                    stream.keep_unsent(recipe);
+                }
             }
-            let edited = intake(&new, handlers, live, network, saved).map_err(|error| {
-                tracing::debug!("An edit was refused: {}", error.reason);
-                Refusal::Invalid
-            })?;
+            // An edited stream has every value of its own: empty text is not the configured one.
+            let edited =
+                intake(&new, handlers, &live.for_edit(), network, saved).map_err(|error| {
+                    tracing::debug!("An edit was refused: {}", error.reason);
+                    Refusal::Invalid
+                })?;
+            // Only the owner can restore a hidden password, so no one else may erase it.
+            if let (Source::Live(new), Some(old), None) =
+                (&edited.recipe.source, saved.recipe(item), saved.live(item))
+                && old.loses_broker_password(new)
+            {
+                return Err(Refusal::Invalid);
+            }
             DocCommand::EditItem {
                 item: Box::new(WorkspaceItem { id: item, ..edited }),
                 content: None,
@@ -314,6 +326,7 @@ fn intake(
             } else if let Some(recipe) = like.and_then(|item| saved.live(item)) {
                 new.copy_login(recipe, live, workspace::intake::LoginUse::Stream)?;
             }
+            new.bare_kept = saved.guest;
             let item = workspace::intake::live(new, live, handlers)?;
             match &item.recipe.source {
                 Source::Live(recipe) if saved.guest => refuse_references(recipe).map(|()| item),
@@ -323,21 +336,17 @@ fn intake(
     }
 }
 
-/// Refuses a stream whose host or login, or whose broker's, is a `$NAME` reference: it would read the environment of
-/// this machine for a seat that is not its owner.
+/// Refuses a stream whose host, login or broker, in the overlay or kept for another mode, is a `$NAME` reference as
+/// it will be stored: it would read the owner's environment for a seat that is not the owner.
 fn refuse_references(recipe: &LiveRecipe) -> Result<(), foundation::UserError> {
-    let broker = match &recipe.overlay {
-        LiveOverlay::Mqtt {
-            broker_host,
-            broker_user,
-            broker_pass,
-            ..
-        } => [
-            broker_host.as_str(),
-            broker_user.as_str(),
-            broker_pass.expose(),
+    let mqtt = recipe.mqtt_settings();
+    let broker = match &mqtt {
+        Some(mqtt) => [
+            mqtt.broker_host.as_str(),
+            mqtt.broker_user.as_str(),
+            mqtt.broker_pass.expose(),
         ],
-        _ => [""; 3],
+        None => [""; 3],
     };
     let texts = [
         recipe.host.as_str(),
@@ -380,9 +389,11 @@ impl<'a> Saved<'a> {
 
     /// The recipe of the live stream `item`, when the seat may copy its login.
     fn live(self, item: ItemId) -> Option<&'a LiveRecipe> {
-        if !self.owner {
-            return None;
-        }
+        self.owner.then(|| self.recipe(item)).flatten()
+    }
+
+    /// The recipe of live stream `item`.
+    fn recipe(self, item: ItemId) -> Option<&'a LiveRecipe> {
         self.workspace
             .items
             .iter()

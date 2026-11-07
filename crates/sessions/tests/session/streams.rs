@@ -397,6 +397,7 @@ async fn a_live_stream_is_named_by_its_content_and_stops_when_its_viewer_closes(
         resolution: None,
         url: None,
         overlay: LiveOverlay::None,
+        kept: Default::default(),
     };
     let item = workspace::WorkspaceItem {
         id,

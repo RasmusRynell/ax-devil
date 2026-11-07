@@ -152,15 +152,18 @@ impl Broker {
 
 /// A video channel (camera head) of the device, counted from 1.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct Head(u8);
+pub struct Head(u16);
 
 impl Head {
     /// The first channel, which every camera has.
     pub const FIRST: Self = Self(1);
 
-    /// Channel `number` (from 1); `None` for 0.
-    pub const fn new(number: u8) -> Option<Self> {
-        if number == 0 {
+    /// The last channel a camera is asked for.
+    pub const MAX: u16 = 9999;
+
+    /// Channel `number` (from 1 to [`MAX`](Self::MAX)); `None` for any other.
+    pub const fn new(number: u16) -> Option<Self> {
+        if number == 0 || number > Self::MAX {
             None
         } else {
             Some(Self(number))
@@ -168,7 +171,7 @@ impl Head {
     }
 
     /// The channel number, from 1.
-    pub const fn number(self) -> u8 {
+    pub const fn number(self) -> u16 {
         self.0
     }
 }
