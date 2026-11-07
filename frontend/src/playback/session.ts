@@ -41,7 +41,7 @@ export type { Surface } from "./contract";
 
 export class PlaybackSession implements LaneControl {
   readonly #deps: SessionDeps;
-  /** What the viewer may ever hold of frames: the stream's ceiling, which `Open.data_bytes` and the samples keep to. */
+  /** The most frame bytes the viewer may hold: the stream's ceiling, which `Open.data_bytes` and samples keep to. */
   readonly #ceiling: number;
   /** What it may hold now: its share of the window's budget, which sizes the frame and data windows. */
   #budget: number;
@@ -81,6 +81,7 @@ export class PlaybackSession implements LaneControl {
   #times: Float64Array | undefined;
   /** The presenter's clock last followed, and how to read the backend's time. */
   #followed: { intent: ClockIntent; serverNowUs: () => number } | undefined;
+  #restored: { intent: ClockIntent; serverNowUs: () => number } | undefined;
   #planner: WantPlanner | undefined;
   #lastWant: Want | undefined;
   #speed = 1;
@@ -120,7 +121,7 @@ export class PlaybackSession implements LaneControl {
     return { frame: this.#clock?.playhead ?? this.#resumeAt ?? 0, speed: this.#speed };
   }
 
-  /** Whether an ordinary open still owes its autoplay: nothing was shown and the viewer has done nothing. */
+  /** Whether an ordinary open still owes its autoplay: nothing shown, the viewer idle. */
   get autoplayPending(): boolean {
     return this.#autoplay;
   }
@@ -163,7 +164,7 @@ export class PlaybackSession implements LaneControl {
     return this.#data.matched(lane);
   }
 
-  /** Changes the bytes of frames held: the window shrinks or regrows to fit, and the backend is asked for it. */
+  /** Changes the frame bytes held: the window resizes to fit, and the backend is asked for it. */
   setBudget(bytes: number): void {
     this.#budget = bytes;
     if (!this.#opened || !this.#buffer) return;
@@ -287,7 +288,7 @@ export class PlaybackSession implements LaneControl {
   /**
    * Follows a presenter: puts the clock where the presenter's is by now (`serverNowUs` reads the backend's time) and
    * runs it at the presenter's speed. Call it again whenever the presenter's intent changes; between two intents both
-   * clocks run alike. A reconnection puts the clock back in step the same way.
+   * clocks run alike. A reconnection puts it back in step.
    */
   follow(intent: ClockIntent, serverNowUs: () => number): void {
     this.#autoplay = false;
@@ -296,11 +297,20 @@ export class PlaybackSession implements LaneControl {
     this.#applyFollowed();
   }
 
+  /** Like `follow` once, from an owner's clock, and stays the owner. */
+  restore(intent: ClockIntent, serverNowUs: () => number): void {
+    this.#autoplay = false;
+    this.#restored = { intent, serverNowUs };
+    this.#applyFollowed();
+  }
+
   #applyFollowed(): void {
     const clock = this.#clock;
     const times = this.#times;
-    if (!this.#followed || !clock || !times) return;
-    const { intent, serverNowUs } = this.#followed;
+    const taken = this.#followed ?? this.#restored;
+    if (!taken || !clock || !times) return;
+    this.#restored = undefined;
+    const { intent, serverNowUs } = taken;
     const { speed, started } = followClock(clock, times, intent, serverNowUs());
     this.#speed = speed;
     if (started) this.#planner?.played();
@@ -499,6 +509,12 @@ export class PlaybackSession implements LaneControl {
   }
 
   #fail(reason: string, location?: string): void {
+    // A running clock stops with the viewer, unless a presenter's.
+    const frame = this.#clock?.playhead ?? this.#resumeAt;
+    const running = this.#clock?.playing || this.#restored;
+    if (!this.#followed && running && frame !== undefined)
+      this.#deps.onIntent?.({ frame, playing: false, speed: this.#speed });
+    this.#restored = undefined;
     this.#failure = { reason, location };
     this.#status = "failed";
     this.#link.drop();

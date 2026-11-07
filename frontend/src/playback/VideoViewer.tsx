@@ -123,7 +123,7 @@ export function VideoViewer({
       });
     };
     // Read from the view as it is now, not as the last render saw it: a viewer this one replaces on a reload has just
-    // published its pause, and the render's intent would still be running.
+    // published its clock as it was, and the render's intent is from before that.
     const named = readView().viewers[viewer];
     const anchor =
       named?.entry === undefined || named.entry === entry.id ? named?.clock : undefined;
@@ -140,7 +140,7 @@ export function VideoViewer({
       speed: heldSpeed.current ?? carried?.speed ?? (anchor && anchor.speedCenti / 100),
     };
     // A window that reloads and takes its seat back finds its clock still running in the accepted intent, which
-    // the watchers keep following: it picks the clock up where it is by now, as a following window does.
+    // the watchers keep following: it picks the clock up where it is by now, and stays the one that publishes it.
     const running = !carried && !latest.current.following && anchor?.playing ? anchor : undefined;
     const created = new PlaybackSession({
       ticket,
@@ -165,7 +165,7 @@ export function VideoViewer({
       },
     });
     created.start();
-    if (running) created.follow(running, () => latest.current.clock.nowUs() ?? running.atUs);
+    if (running) created.restore(running, () => latest.current.clock.nowUs() ?? running.atUs);
     setSession(created);
     return () => {
       // A session that replaces this one on the same entry opens where it was left, paused. A viewer that goes away

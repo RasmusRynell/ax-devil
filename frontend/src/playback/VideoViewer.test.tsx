@@ -124,6 +124,26 @@ describe("video viewer", () => {
     expect(shown).toBeGreaterThan(told?.frame ?? Infinity);
   });
 
+  it("leaves no clock behind when its pane is closed while it plays", async () => {
+    const store = new SessionStore();
+    const view = render(
+      <SessionProvider store={store}>
+        <Viewer sent={[]} />
+      </SessionProvider>,
+    );
+    await act(async () => {});
+    act(() => FakeSocket.rooms.get("room-1")!.setItems([video("a")]));
+    await slider();
+    fireEvent.click(screen.getByRole("button", { name: "Play" }));
+    expect(store.readView().viewers[1]?.clock).toMatchObject({ playing: true });
+    // Closing a pane takes its viewer out of the view as the viewer unmounts.
+    act(() => {
+      store.setView((shown) => ({ ...shown, viewers: {} }));
+      view.unmount();
+    });
+    expect(store.readView().viewers[1]).toBeUndefined();
+  });
+
   describe("when the session resumes", () => {
     /** Opens the viewer, then drops the session's socket and lets it reconnect, with tickets refused or not. */
     async function resume(refused = false) {

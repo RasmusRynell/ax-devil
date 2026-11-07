@@ -458,3 +458,41 @@ describe("following a presenter", () => {
     expect(session.getSnapshot()).toMatchObject({ playing: true, playhead: 8 });
   });
 });
+
+describe("taking over an owner's clock", () => {
+  const left = { frame: 0, playing: true, speedCenti: 100, atUs: 0 };
+
+  it("plays on from it, and stays the owner: it stops on its own at the end and after a reconnection", async () => {
+    const { session, server, intents, retries, refresh } = await setup();
+    server.open(3);
+    server.frames(0, 1, 2);
+    refresh();
+    session.restore(left, () => 0);
+    expect(session.getSnapshot()).toMatchObject({ playing: true, playhead: 0 });
+    refresh(200);
+    expect(session.getSnapshot().playing).toBe(false);
+    expect(intents.at(-1)).toMatchObject({ frame: 2, playing: false });
+
+    session.restore(left, () => 0);
+    intents.length = 0;
+    server.drop();
+    retries[0].run();
+    await flush();
+    server.open(3);
+    expect(session.getSnapshot().playing).toBe(false);
+    expect(intents.at(-1)).toMatchObject({ playing: false });
+  });
+
+  it("stops it when the video does not open, unless the clock is a presenter's", async () => {
+    const error = { type: "Error", code: "NotAVideo", params: {}, reason: "no" } as const;
+    const owner = await setup({ frame: 4, speed: 1 });
+    owner.session.restore({ ...left, frame: 4 }, () => 0);
+    owner.server.say(error);
+    expect(owner.intents).toEqual([{ frame: 4, playing: false, speed: 1 }]);
+
+    const follower = await setup({ frame: 4, speed: 1 });
+    follower.session.follow({ ...left, frame: 4 }, () => 0);
+    follower.server.say(error);
+    expect(follower.intents).toEqual([]);
+  });
+});
