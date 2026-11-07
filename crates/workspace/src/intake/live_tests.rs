@@ -142,6 +142,16 @@ fn what_cannot_be_streamed_is_refused_naming_the_field_and_the_python_message() 
             "Camera Head must be a positive integer.",
         ),
         (
+            with(&|n| n.head = Some(10_000)),
+            "head",
+            "Camera Head must be at most 9999.",
+        ),
+        (
+            with(&|n| n.head = Some(70_000)),
+            "head",
+            "Camera Head must be at most 9999.",
+        ),
+        (
             with(&|n| n.port = Some(70_000)),
             "port",
             "Port must be between 0 and 65535.",
@@ -242,6 +252,109 @@ fn what_cannot_be_streamed_is_refused_naming_the_field_and_the_python_message() 
     assert_eq!(
         error.reason,
         "Select a handler type for RTSP Embedded overlays."
+    );
+}
+
+#[test]
+fn editing_keeps_a_cleared_user_and_what_the_other_overlay_modes_hold() {
+    let saved = LiveRecipe {
+        host: "cam.local".into(),
+        username: "root".into(),
+        password: Secret::new("literal"),
+        protocol: Protocol::Https,
+        port: 0,
+        head: 1,
+        rtsp_port: 554,
+        resolution: None,
+        url: None,
+        overlay: LiveOverlay::None,
+        kept: crate::KeptTransports {
+            mqtt: Some(crate::MqttSettings {
+                broker_host: "b.local".into(),
+                broker_port: 1884,
+                broker_user: "mqtt".into(),
+                broker_pass: Secret::new("broker-secret"),
+                source_key: "key".into(),
+            }),
+            datahub: None,
+        },
+    };
+    let editing = defaults().for_edit();
+    let mut new = NewLive {
+        username: Some(String::new()),
+        head: Some(9999),
+        overlay: Some(NewLiveOverlay::Rtsp {
+            handler: Some("ONVIF_XML".into()),
+        }),
+        kept_mqtt: Some(NewMqtt {
+            broker_host: Some("b.local".into()),
+            broker_port: Some(1884),
+            broker_user: Some("mqtt".into()),
+            source_key: Some("key".into()),
+            ..NewMqtt::default()
+        }),
+        kept_datahub: Some(NewDataHub {
+            topic: Some("t".into()),
+            channel: Some(4),
+            ..NewDataHub::default()
+        }),
+        ..host("cam.local")
+    };
+    new.copy_login(&saved, &editing, LoginUse::Stream).unwrap();
+    let item = live(new, &editing, &Handlers::built_in()).unwrap();
+    let edited = recipe(&item);
+    assert_eq!(edited.head, 9999);
+    assert_eq!(
+        (edited.username.as_str(), edited.password.expose()),
+        ("", "literal"),
+        "a cleared user stays cleared; a blank password is the saved one"
+    );
+    assert_eq!(edited.kept.mqtt, saved.kept.mqtt);
+    assert_eq!(
+        edited.kept.datahub,
+        Some(crate::DataHubSettings {
+            topic: "t".into(),
+            channel: 4
+        })
+    );
+
+    // A mode not chosen keeps any number as entered; choosing it checks the number.
+    let out_of_range = |overlay| NewLive {
+        overlay: Some(overlay),
+        kept_mqtt: Some(NewMqtt {
+            broker_port: Some(65_536),
+            ..NewMqtt::default()
+        }),
+        kept_datahub: Some(NewDataHub {
+            channel: Some(1 << 40),
+            ..NewDataHub::default()
+        }),
+        ..host("cam.local")
+    };
+    let item = live(
+        out_of_range(NewLiveOverlay::None),
+        &editing,
+        &Handlers::built_in(),
+    )
+    .unwrap();
+    let kept = &recipe(&item).kept;
+    assert_eq!(kept.mqtt.as_ref().map(|m| m.broker_port), Some(65_536));
+    assert_eq!(kept.datahub.as_ref().map(|d| d.channel), Some(1 << 40));
+
+    // Nothing entered takes no configured text, only the numbers.
+    let none = NewLive {
+        overlay: Some(NewLiveOverlay::None),
+        ..host("cam.local")
+    };
+    let item = live(none, &editing, &Handlers::built_in()).unwrap();
+    let bare = recipe(&item);
+    assert_eq!((bare.username.as_str(), bare.password.expose()), ("", ""));
+    assert_eq!(
+        bare.kept
+            .mqtt
+            .as_ref()
+            .map(|mqtt| (mqtt.broker_host.as_str(), mqtt.broker_port)),
+        Some(("", 1883))
     );
 }
 

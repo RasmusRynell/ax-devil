@@ -137,7 +137,7 @@ describe("add live stream dialog", () => {
     expect(screen.queryByRole("alert")).toBeNull();
   });
 
-  it("keeps what was typed for each overlay while another is chosen, and adds only the chosen one", async () => {
+  it("keeps what was typed for each overlay while another is chosen, and adds the chosen one as the overlay", async () => {
     const onClose = vi.fn();
     await open(onClose);
     await listed();
@@ -170,6 +170,8 @@ describe("add live stream dialog", () => {
                   broker_host: "broker",
                   source_key: "com.axis.scene.frame.v1#1",
                 },
+                // The mode not chosen goes along as kept, not as the overlay.
+                kept_datahub: { channel: 3 },
               },
             ],
             open: true,
@@ -177,7 +179,6 @@ describe("add live stream dialog", () => {
         },
       },
     ]);
-    expect(JSON.stringify(commands())).not.toContain("channel");
   });
 
   it("lists the sizes of the chosen head from one answer for the connection, and asks again only for an empty answer", async () => {
@@ -259,6 +260,7 @@ describe("add live stream dialog", () => {
                 topic: "saved.topic",
                 channel: 3,
               },
+              kept_mqtt: { source_key: "custom" },
             }}
             onClose={() => {}}
           />
@@ -286,14 +288,19 @@ describe("add live stream dialog", () => {
             type: "Live",
             host: "10.0.0.7",
             username: "root",
+            // A blank password is sent empty: the backend reads it as the saved one.
+            password: "",
             overlay: { mode: "datahub", topic: "saved.topic", channel: 3 },
+            kept_mqtt: { source_key: "custom" },
           },
         },
       },
     });
 
-    // A blank login is the saved one: nothing is sent for it.
-    expect(JSON.stringify(commands()[0])).not.toContain("password");
+    // A source saved for the mode not in use is offered, listed by the camera or not, when that mode is chosen.
+    type("Overlay Mode", "mqtt");
+    expect((screen.getByLabelText("Data Source") as HTMLSelectElement).value).toBe("custom");
+    type("Overlay Mode", "datahub");
 
     type("Host", "10.0.0.8");
     await waitFor(() => expect(topic().value).toBe(""));

@@ -178,7 +178,7 @@ mod tests {
         };
 
         let (status, body) = test
-            .send(ask(json!({ "host": "127.0.0.1", "head": 300 })))
+            .send(ask(json!({ "host": "127.0.0.1", "head": 10000 })))
             .await;
         assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
         assert_eq!(json(&body)["problem"], "Invalid");

@@ -203,10 +203,12 @@ fn doc_command(
                 }
                 stream.like = Some(item);
             }
-            let edited = intake(&new, handlers, live, network, saved).map_err(|error| {
-                tracing::debug!("An edit was refused: {}", error.reason);
-                Refusal::Invalid
-            })?;
+            // The edited stream has every value of its own, so a text left empty is not the configured one.
+            let edited =
+                intake(&new, handlers, &live.for_edit(), network, saved).map_err(|error| {
+                    tracing::debug!("An edit was refused: {}", error.reason);
+                    Refusal::Invalid
+                })?;
             DocCommand::EditItem {
                 item: Box::new(WorkspaceItem { id: item, ..edited }),
                 content: None,
@@ -326,6 +328,7 @@ fn intake(
 /// Refuses a stream whose host or login, or whose broker's, is a `$NAME` reference: it would read the environment of
 /// this machine for a seat that is not its owner.
 fn refuse_references(recipe: &LiveRecipe) -> Result<(), foundation::UserError> {
+    // The settings kept for another mode are not read until that mode is chosen, so they are not checked.
     let broker = match &recipe.overlay {
         LiveOverlay::Mqtt {
             broker_host,

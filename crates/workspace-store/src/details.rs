@@ -19,7 +19,7 @@ pub enum Location {
         /// The host as entered.
         host: String,
         /// The video channel, from 1.
-        head: u8,
+        head: u16,
     },
 }
 
@@ -207,7 +207,7 @@ mod tests {
         Some(Location::File(path.into()))
     }
 
-    fn camera(host: &str, head: u8) -> Option<Location> {
+    fn camera(host: &str, head: u16) -> Option<Location> {
         Some(Location::Camera {
             host: host.into(),
             head,

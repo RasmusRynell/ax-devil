@@ -340,7 +340,7 @@ async fn editing_a_stream_keeps_its_id_and_saved_login_on_the_same_camera_only()
             &state,
             &owner,
             2,
-            edit(json!({"host": "cam.local", "label": "Gate"})),
+            edit(json!({"host": "cam.local", "label": "Gate", "overlay": {"mode": "none"}})),
         )
         .await,
     );
@@ -357,7 +357,15 @@ async fn editing_a_stream_keeps_its_id_and_saved_login_on_the_same_camera_only()
     };
     assert_eq!(login(), (id.clone(), "Gate".into(), true));
 
-    acks.push(answer(&state, &owner, 3, edit(json!({"host": "other.local"}))).await);
+    acks.push(
+        answer(
+            &state,
+            &owner,
+            3,
+            edit(json!({"host": "other.local", "overlay": {"mode": "none"}})),
+        )
+        .await,
+    );
     assert_eq!(login(), (id, String::new(), false));
 
     let shown: DocWire = crate::session::project::project(&owner.state().doc, Audience::HOST);

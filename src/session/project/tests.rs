@@ -56,6 +56,7 @@ fn live_stream(item: ItemId) -> (WorkspaceItem, Content) {
             broker_pass: Secret::new("$SECRET_BROKER_REF"),
             source_key: "SECRET-SOURCE".into(),
         },
+        kept: Default::default(),
     };
     let recipe = Recipe::new(Source::Live(recipe));
     let content = recipe
@@ -248,6 +249,13 @@ fn a_watcher_learns_no_path_credential_or_reason_and_sees_only_what_is_open() {
     let recipe = recipes(Audience::HOST).pop().flatten();
     let recipe = recipe.expect("an owner gets the live stream's recipe");
     assert_eq!(recipe.password, None);
+    // A hidden password is a missing key, which is how the form tells it from an empty one.
+    assert!(
+        serde_json::to_value(&recipe)
+            .unwrap()
+            .get("password")
+            .is_none()
+    );
     assert_eq!(recipe.label, None);
 }
 

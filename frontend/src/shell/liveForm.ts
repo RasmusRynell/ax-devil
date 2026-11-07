@@ -1,5 +1,7 @@
 import type {
   HandlersInfo,
+  KeptDataHubWire,
+  KeptMqttWire,
   LiveConnection,
   LiveProtocol,
   SettingsState,
@@ -161,10 +163,17 @@ export function startForm(values: SettingsState["values"]): LiveForm {
 /** The text of a wire value; blank when absent or 0, which is the default for every number here. */
 const shown = (value: string | number | undefined) => (value ? String(value) : "");
 
+/** The text of a wire value that is there, empty or 0 included, else `fallback`. */
+const held = (value: string | number | undefined, fallback: string) =>
+  value === undefined ? fallback : String(value);
+
 /** The empty form with the fields of `wire` filled in, as the form would read back to `wire`. */
 export function formFrom(values: SettingsState["values"], wire: Partial<NewLiveWire>): LiveForm {
   const form = startForm(values);
   const overlay = wire.overlay;
+  // A mode not chosen shows what the stream kept for it.
+  const mqtt = overlay?.mode === "mqtt" ? overlay : wire.kept_mqtt;
+  const datahub = overlay?.mode === "datahub" ? overlay : wire.kept_datahub;
   return {
     ...form,
     label: shown(wire.label),
@@ -179,18 +188,40 @@ export function formFrom(values: SettingsState["values"], wire: Partial<NewLiveW
     url: shown(wire.url),
     overlay: overlay?.mode ?? form.overlay,
     handler: overlay && overlay.mode !== "none" ? shown(overlay.handler) : "",
-    ...(overlay?.mode === "mqtt" && {
-      broker_host: shown(overlay.broker_host),
-      broker_user: shown(overlay.broker_user),
-      broker_pass: shown(overlay.broker_pass),
-      broker_port: shown(overlay.broker_port) || form.broker_port,
-      source_key: shown(overlay.source_key) || form.source_key,
+    // A value the stream holds is shown as it is, empty or 0 included; only one it lacks takes the default.
+    ...(mqtt && {
+      broker_host: shown(mqtt.broker_host),
+      broker_user: shown(mqtt.broker_user),
+      broker_pass: shown(mqtt.broker_pass),
+      broker_port: held(mqtt.broker_port, form.broker_port),
+      source_key: held(mqtt.source_key, form.source_key),
     }),
-    ...(overlay?.mode === "datahub" && {
-      topic: shown(overlay.topic) || form.topic,
-      channel: shown(overlay.channel) || form.channel,
+    ...(datahub && {
+      topic: held(datahub.topic, form.topic),
+      channel: held(datahub.channel, form.channel),
     }),
   };
+}
+
+/** The data source and topic `wire` saved, whether their mode is the overlay or kept. */
+export function savedChoices(wire: Partial<NewLiveWire>): Record<"mqtt" | "datahub", string> {
+  const { overlay } = wire;
+  return {
+    mqtt: (overlay?.mode === "mqtt" ? overlay : wire.kept_mqtt)?.source_key ?? "",
+    datahub: (overlay?.mode === "datahub" ? overlay : wire.kept_datahub)?.topic ?? "",
+  };
+}
+
+/**
+ * The password fields of an edited stream whose saved password is a literal, which the client is never sent: a blank
+ * one keeps it. A reference or an empty password comes in `wire` and shows as it is.
+ */
+export function hiddenSecrets(wire: Partial<NewLiveWire>): FieldKey[] {
+  const mqtt = wire.overlay?.mode === "mqtt" ? wire.overlay : wire.kept_mqtt;
+  return [
+    ...(wire.host !== undefined && wire.password === undefined ? ["password" as const] : []),
+    ...(mqtt && mqtt.broker_pass === undefined ? ["broker_pass" as const] : []),
+  ];
 }
 
 /** The numbers that are plain text, with what to say when one is not a whole number. */
@@ -249,7 +280,10 @@ export function problemOf(form: LiveForm, values: SettingsState["values"], modeN
   if (misread) return NUMBERS[misread];
   const head = whole(form.head);
   if (head !== undefined && head < 1) return "Camera Head must be a positive integer.";
-  if (head !== undefined && head > 255) return "Camera Head must be at most 255.";
+  if (head !== undefined && head > 9999) return "Camera Head must be at most 9999.";
+  const rtsp = whole(form.rtsp_port);
+  if (rtsp !== undefined && (rtsp < 1 || rtsp > 65535))
+    return "RTSP Port must be between 1 and 65535.";
   // The standard port of the other protocol cannot be addressed.
   const protocol = form.protocol || textOf(values["camera.protocol"]);
   if (whole(form.port) === (protocol === "http" ? 443 : protocol === "https" ? 80 : undefined))
@@ -287,41 +321,56 @@ export function connectionOf(form: LiveForm, head: boolean): LiveConnection {
   };
 }
 
-function overlayOf(form: LiveForm): NewLiveOverlayWire {
-  const handler = text(form.handler);
+/** How a text is read from the form: an addition trims it and drops a blank; an edit sends it as typed, empty included. */
+type Read = (entered: string) => string | undefined;
+
+const mqttOf = (form: LiveForm, read: Read): KeptMqttWire => ({
+  broker_host: read(form.broker_host),
+  broker_port: whole(form.broker_port),
+  broker_user: read(form.broker_user),
+  broker_pass: read(form.broker_pass),
+  source_key: read(form.source_key),
+});
+
+const datahubOf = (form: LiveForm, read: Read): KeptDataHubWire => ({
+  topic: read(form.topic),
+  channel: whole(form.channel),
+});
+
+function overlayOf(form: LiveForm, read: Read): NewLiveOverlayWire {
+  const handler = read(form.handler);
   switch (form.overlay) {
     case "none":
       return { mode: "none" };
     case "rtsp":
       return { mode: "rtsp", handler };
     case "mqtt":
-      return {
-        mode: "mqtt",
-        handler,
-        broker_host: text(form.broker_host),
-        broker_port: whole(form.broker_port),
-        broker_user: text(form.broker_user),
-        broker_pass: text(form.broker_pass),
-        source_key: text(form.source_key),
-      };
+      return { mode: "mqtt", handler, ...mqttOf(form, read) };
     case "datahub":
-      return { mode: "datahub", handler, topic: text(form.topic), channel: whole(form.channel) };
+      return { mode: "datahub", handler, ...datahubOf(form, read) };
   }
 }
 
-/** What the form adds: only the fields of the chosen mode, and nothing for a blank text, which the backend defaults. */
-export function newLive(form: LiveForm): NewLiveWire {
+/**
+ * What the form adds, or with `editing` what replaces the stream. The fields of the chosen mode are the overlay and
+ * those of the others are kept with the stream. An addition sends nothing for a blank text, which the backend
+ * defaults; an edit sends every text as typed, empty included, so a cleared field stays cleared.
+ */
+export function newLive(form: LiveForm, editing = false): NewLiveWire {
+  const read: Read = editing ? (entered) => entered : text;
   return {
-    label: text(form.label),
-    host: text(form.host),
-    username: text(form.username),
-    password: text(form.password),
+    label: read(form.label),
+    host: read(form.host),
+    username: read(form.username),
+    password: read(form.password),
     protocol: form.protocol || undefined,
     port: whole(form.port),
     head: whole(form.head),
-    rtsp_port: whole(form.rtsp_port) || undefined,
-    resolution: text(form.resolution),
-    url: text(form.url),
-    overlay: overlayOf(form),
+    rtsp_port: whole(form.rtsp_port),
+    resolution: read(form.resolution),
+    url: read(form.url),
+    overlay: overlayOf(form, read),
+    kept_mqtt: form.overlay === "mqtt" ? undefined : mqttOf(form, read),
+    kept_datahub: form.overlay === "datahub" ? undefined : datahubOf(form, read),
   };
 }

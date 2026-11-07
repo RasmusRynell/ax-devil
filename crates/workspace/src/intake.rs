@@ -11,12 +11,11 @@ use handlers::Handlers;
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
+mod live_defaults;
 mod live_stream;
 
-pub use live_stream::{
-    DataHubDefaults, LiveDefaults, LiveMode, LoginUse, MqttDefaults, NewDataHub, NewLive,
-    NewLiveOverlay, NewMqtt, live,
-};
+pub use live_defaults::{DataHubDefaults, LiveDefaults, LiveMode, MqttDefaults};
+pub use live_stream::{LoginUse, NewDataHub, NewLive, NewLiveOverlay, NewMqtt, live};
 
 /// An overlay file the user chose to add to a video.
 #[derive(Clone, Debug, PartialEq, Eq)]

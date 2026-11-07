@@ -1,93 +1,16 @@
 //! Intake of a Live Stream Item: what the user entered, with the configured defaults for what they left empty.
 
+use super::live_defaults::{DataHubDefaults, LiveDefaults, LiveMode, MqttDefaults};
 use crate::{
     credentials::{Secret, reference},
     item::{Recipe, Source, WorkspaceItem},
-    live::{LiveOverlay, LiveRecipe, Protocol, url_endpoint},
+    live::{
+        DataHubSettings, KeptTransports, LiveOverlay, LiveRecipe, MqttSettings, Protocol,
+        url_endpoint,
+    },
 };
 use foundation::{ErrorCode, ItemId, Location, UserError};
 use handlers::Handlers;
-
-/// What overlay a new stream gets when the user did not choose.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum LiveMode {
-    /// Video only.
-    None,
-    /// Metadata inside the RTSP stream.
-    Rtsp,
-    /// An MQTT broker.
-    Mqtt,
-    /// A DataHub topic.
-    DataHub,
-}
-
-/// The MQTT overlay a new stream starts from.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct MqttDefaults {
-    /// The decoder.
-    pub handler: String,
-    /// The broker host, as written (a `$NAME` reference stays one).
-    pub host: String,
-    /// The broker user, as written.
-    pub user: String,
-    /// The broker password, as written.
-    pub password: Secret,
-    /// The broker's TCP port.
-    pub port: u16,
-    /// The camera's analytics data source.
-    pub source_key: String,
-}
-
-/// The DataHub overlay a new stream starts from.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct DataHubDefaults {
-    /// The decoder.
-    pub handler: String,
-    /// The topic.
-    pub topic: String,
-    /// The topic's instance.
-    pub channel: u32,
-}
-
-/// The configured values a new Live Stream Item takes for what the user left empty. Connection text is as written in
-/// the settings, so a `$NAME` reference stays one in the item; the values are copied in and the item never refers back.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct LiveDefaults {
-    /// The camera host, as written.
-    pub host: String,
-    /// The camera user, as written.
-    pub username: String,
-    /// The camera password, as written.
-    pub password: Secret,
-    /// The web interface's protocol.
-    pub protocol: Protocol,
-    /// The video channel.
-    pub head: u8,
-    /// The RTSP port.
-    pub rtsp_port: u16,
-    /// The resolution; empty is the camera's own.
-    pub resolution: String,
-    /// The overlay a stream gets unless the user chose one.
-    pub overlay: LiveMode,
-    /// The decoder of the RTSP overlay.
-    pub rtsp_handler: String,
-    /// The MQTT overlay.
-    pub mqtt: MqttDefaults,
-    /// The DataHub overlay.
-    pub datahub: DataHubDefaults,
-}
-
-impl LiveDefaults {
-    /// The defaults without the passwords. A stream someone other than the settings' owner adds takes these, so a
-    /// password the owner configured is never filled into a login for a host that person names.
-    #[must_use]
-    pub fn without_secrets(&self) -> Self {
-        let mut open = self.clone();
-        open.password = Secret::new("");
-        open.mqtt.password = Secret::new("");
-        open
-    }
-}
 
 /// The MQTT overlay the user chose; empty parts take the defaults.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -159,6 +82,11 @@ pub struct NewLive {
     pub url: Option<String>,
     /// The overlay; `None` is the configured one.
     pub overlay: Option<NewLiveOverlay>,
+    /// What the form holds for MQTT while another mode is chosen; its handler is not used. Absent parts, and all of it
+    /// when absent, take the defaults.
+    pub kept_mqtt: Option<NewMqtt>,
+    /// What the form holds for DataHub while another mode is chosen; its handler is not used.
+    pub kept_datahub: Option<NewDataHub>,
 }
 
 /// What a copied login is for, which decides where the copy may send it.
@@ -216,7 +144,8 @@ impl NewLive {
         if usage == LoginUse::Stream {
             self.check_login_destination(&source.rtsp_endpoint(), defaults)?;
         }
-        if user_blank {
+        // A user entered as empty (an edit that cleared it) stays empty; only one not given is the saved one.
+        if self.username.is_none() {
             self.username = Some(source.username.clone());
         }
         if password_blank {
@@ -225,34 +154,36 @@ impl NewLive {
         Ok(())
     }
 
-    /// Fills a blank MQTT broker password from `source`'s when this stream's broker is the same one, with the same
-    /// user, once `defaults` fill what is blank: the password goes to the broker it was saved for and no other.
+    /// Fills a blank MQTT broker password, in the overlay and in the kept settings, from `source`'s MQTT settings when
+    /// this stream's broker is the same one, with the same user, once `defaults` fill what is blank: the password goes
+    /// to the broker it was saved for and no other.
     fn copy_broker_password(&mut self, source: &LiveRecipe, defaults: &LiveDefaults) {
-        let Some(NewLiveOverlay::Mqtt(mqtt)) = &mut self.overlay else {
-            return;
-        };
-        let LiveOverlay::Mqtt {
-            broker_host,
-            broker_port,
-            broker_user,
-            broker_pass,
-            ..
-        } = &source.overlay
-        else {
+        let Some(saved) = source.mqtt_settings() else {
             return;
         };
         let broker = &defaults.mqtt;
-        let blank = mqtt
-            .broker_pass
-            .as_ref()
-            .is_none_or(|entered| entered.expose().is_empty());
-        let port = mqtt.broker_port.unwrap_or_else(|| broker.port.into());
-        if blank
-            && same_host(&text(&mqtt.broker_host, &broker.host), broker_host.trim())
-            && port == i64::from(*broker_port)
-            && login(&mqtt.broker_user, &broker.user) == *broker_user
-        {
-            mqtt.broker_pass = Some(broker_pass.clone());
+        let fill = |mqtt: &mut NewMqtt| {
+            let blank = mqtt
+                .broker_pass
+                .as_ref()
+                .is_none_or(|entered| entered.expose().is_empty());
+            let port = mqtt.broker_port.unwrap_or_else(|| broker.port.into());
+            if blank
+                && same_host(
+                    &text(&mqtt.broker_host, &broker.host),
+                    saved.broker_host.trim(),
+                )
+                && port == saved.broker_port
+                && login(&mqtt.broker_user, &broker.user) == saved.broker_user
+            {
+                mqtt.broker_pass = Some(saved.broker_pass.clone());
+            }
+        };
+        if let Some(NewLiveOverlay::Mqtt(mqtt)) = &mut self.overlay {
+            fill(mqtt);
+        }
+        if let Some(mqtt) = &mut self.kept_mqtt {
+            fill(mqtt);
         }
     }
 
@@ -347,6 +278,26 @@ fn narrow<T: TryFrom<i64> + Default>(
     T::try_from(number).map_err(|_| invalid(field, too_big))
 }
 
+/// The MQTT settings `entered` gives, empty parts taking `defaults`. The port is as entered: a mode not chosen is
+/// not range-checked, and choosing it later checks it.
+fn mqtt_settings(entered: &NewMqtt, defaults: &MqttDefaults) -> MqttSettings {
+    MqttSettings {
+        broker_host: text(&entered.broker_host, &defaults.host),
+        broker_port: entered.broker_port.unwrap_or_else(|| defaults.port.into()),
+        broker_user: login(&entered.broker_user, &defaults.user),
+        broker_pass: secret(&entered.broker_pass, &defaults.password),
+        source_key: text(&entered.source_key, &defaults.source_key),
+    }
+}
+
+/// The DataHub settings `entered` gives, empty parts taking `defaults`. The channel is as entered, like the port above.
+fn datahub_settings(entered: &NewDataHub, defaults: &DataHubDefaults) -> DataHubSettings {
+    DataHubSettings {
+        topic: text(&entered.topic, &defaults.topic),
+        channel: entered.channel.unwrap_or_else(|| defaults.channel.into()),
+    }
+}
+
 /// Builds the item for the live stream `new`, with `defaults` for what it leaves empty. The item stores the values
 /// as entered, `$NAME` references included; whether the host answers, or a reference expands, is for resolving.
 ///
@@ -365,10 +316,10 @@ pub fn live(
             u16::try_from(port).map_err(|_| invalid("port", "Port must be between 0 and 65535."))?
         }
     };
-    let head = narrow::<u8>(
+    let head = narrow::<u16>(
         new.head.unwrap_or_else(|| defaults.head.into()),
         "head",
-        "Camera Head must be at most 255.",
+        "Camera Head must be at most 9999.",
     )?;
     let rtsp_port = narrow::<u16>(
         new.rtsp_port.unwrap_or_else(|| defaults.rtsp_port.into()),
@@ -386,32 +337,49 @@ pub fn live(
             handler: text(&entered, &defaults.rtsp_handler),
         },
         NewLiveOverlay::Mqtt(mqtt) => {
-            let broker = &defaults.mqtt;
+            let broker = mqtt_settings(&mqtt, &defaults.mqtt);
             LiveOverlay::Mqtt {
-                handler: text(&mqtt.handler, &broker.handler),
-                broker_host: text(&mqtt.broker_host, &broker.host),
+                handler: text(&mqtt.handler, &defaults.mqtt.handler),
+                broker_host: broker.broker_host,
                 broker_port: narrow(
-                    mqtt.broker_port.unwrap_or_else(|| broker.port.into()),
+                    broker.broker_port,
                     "broker_port",
                     "MQTT Port must be between 1 and 65535.",
                 )?,
-                broker_user: login(&mqtt.broker_user, &broker.user),
-                broker_pass: secret(&mqtt.broker_pass, &broker.password),
-                source_key: text(&mqtt.source_key, &broker.source_key),
+                broker_user: broker.broker_user,
+                broker_pass: broker.broker_pass,
+                source_key: broker.source_key,
             }
         }
         NewLiveOverlay::DataHub(hub) => {
-            let datahub = &defaults.datahub;
+            let datahub = datahub_settings(&hub, &defaults.datahub);
             LiveOverlay::DataHub {
-                handler: text(&hub.handler, &datahub.handler),
-                topic: text(&hub.topic, &datahub.topic),
+                handler: text(&hub.handler, &defaults.datahub.handler),
+                topic: datahub.topic,
                 channel: narrow(
-                    hub.channel.unwrap_or_else(|| datahub.channel.into()),
+                    datahub.channel,
                     "channel",
                     "Channel ID must be at most 4294967295.",
                 )?,
             }
         }
+    };
+    // The modes not chosen keep what was entered for them, or else the defaults as written.
+    let kept = KeptTransports {
+        mqtt: match overlay {
+            LiveOverlay::Mqtt { .. } => None,
+            _ => Some(mqtt_settings(
+                &new.kept_mqtt.clone().unwrap_or_default(),
+                &defaults.mqtt,
+            )),
+        },
+        datahub: match overlay {
+            LiveOverlay::DataHub { .. } => None,
+            _ => Some(datahub_settings(
+                &new.kept_datahub.clone().unwrap_or_default(),
+                &defaults.datahub,
+            )),
+        },
     };
     let recipe = LiveRecipe {
         host: text(&new.host, &defaults.host),
@@ -424,6 +392,7 @@ pub fn live(
         resolution: Some(text(&new.resolution, "")).filter(|r| !r.is_empty()),
         url: Some(text(&new.url, "")).filter(|url| !url.is_empty()),
         overlay,
+        kept,
     };
     recipe.check(handlers)?;
     Ok(WorkspaceItem {

@@ -5,7 +5,10 @@ use foundation::ItemId;
 use overlay_sync::MatchPolicy;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
-use workspace::{LiveOverlay, LiveRecipe, Protocol, Secret, Source};
+use workspace::{
+    DataHubSettings, KeptTransports, LiveOverlay, LiveRecipe, MqttSettings, Protocol, Secret,
+    Source,
+};
 
 /// A live stream, with passwords and references as entered.
 #[derive(Serialize, Deserialize)]
@@ -22,15 +25,88 @@ pub(crate) struct LiveItem {
     protocol: ProtocolDto,
     #[serde(default)]
     port: u16,
-    head: u8,
+    head: u16,
     rtsp_port: u16,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     resolution: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     url: Option<String>,
     overlay: LiveOverlayDto,
+    /// What the overlay modes not chosen hold; absent in files from before it was kept.
+    #[serde(default, skip_serializing_if = "KeptDto::is_empty")]
+    kept: KeptDto,
     #[serde(default)]
     lane_matching: BTreeMap<String, MatchPolicy>,
+}
+
+#[derive(Serialize, Deserialize, Default)]
+#[serde(deny_unknown_fields)]
+struct KeptDto {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    mqtt: Option<MqttDto>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    datahub: Option<DataHubDto>,
+}
+
+impl KeptDto {
+    fn is_empty(&self) -> bool {
+        self.mqtt.is_none() && self.datahub.is_none()
+    }
+}
+
+#[derive(Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct MqttDto {
+    broker_host: String,
+    broker_port: i64,
+    #[serde(default)]
+    broker_user: String,
+    #[serde(default)]
+    broker_pass: String,
+    source_key: String,
+}
+
+#[derive(Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct DataHubDto {
+    topic: String,
+    channel: i64,
+}
+
+impl From<&KeptTransports> for KeptDto {
+    fn from(kept: &KeptTransports) -> Self {
+        Self {
+            mqtt: kept.mqtt.as_ref().map(|mqtt| MqttDto {
+                broker_host: mqtt.broker_host.clone(),
+                broker_port: mqtt.broker_port,
+                broker_user: mqtt.broker_user.clone(),
+                broker_pass: mqtt.broker_pass.expose().to_owned(),
+                source_key: mqtt.source_key.clone(),
+            }),
+            datahub: kept.datahub.as_ref().map(|hub| DataHubDto {
+                topic: hub.topic.clone(),
+                channel: hub.channel,
+            }),
+        }
+    }
+}
+
+impl From<KeptDto> for KeptTransports {
+    fn from(kept: KeptDto) -> Self {
+        Self {
+            mqtt: kept.mqtt.map(|mqtt| MqttSettings {
+                broker_host: mqtt.broker_host,
+                broker_port: mqtt.broker_port,
+                broker_user: mqtt.broker_user,
+                broker_pass: Secret::new(mqtt.broker_pass),
+                source_key: mqtt.source_key,
+            }),
+            datahub: kept.datahub.map(|hub| DataHubSettings {
+                topic: hub.topic,
+                channel: hub.channel,
+            }),
+        }
+    }
 }
 
 #[derive(Serialize, Deserialize, Clone, Copy)]
@@ -157,6 +233,7 @@ impl LiveItem {
             resolution: recipe.resolution.clone(),
             url: recipe.url.clone(),
             overlay: (&recipe.overlay).into(),
+            kept: (&recipe.kept).into(),
             lane_matching,
         }
     }
@@ -177,6 +254,7 @@ impl LiveItem {
             resolution: self.resolution,
             url: self.url,
             overlay: self.overlay.into(),
+            kept: self.kept.into(),
         });
         (self.id, self.label, source, self.lane_matching)
     }

@@ -13,6 +13,9 @@ use handlers::Handlers;
 /// The lane slot of the one overlay a live video has.
 pub const LIVE_SLOT: &str = "live";
 
+/// The last camera head a stream can name.
+const HEAD_MAX: u16 = 9999;
+
 /// The protocol of the camera's web interface and DataHub.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Protocol {
@@ -99,6 +102,40 @@ impl LiveOverlay {
     }
 }
 
+/// The MQTT settings of a stream, as the form holds them while another overlay mode is chosen.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct MqttSettings {
+    /// The broker's host.
+    pub broker_host: String,
+    /// The broker's TCP port.
+    pub broker_port: i64,
+    /// The broker login's user; empty for none.
+    pub broker_user: String,
+    /// The broker login's password; empty for none.
+    pub broker_pass: Secret,
+    /// The camera's analytics data source.
+    pub source_key: String,
+}
+
+/// The DataHub settings of a stream, as the form holds them while another overlay mode is chosen.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct DataHubSettings {
+    /// The topic.
+    pub topic: String,
+    /// The topic's instance.
+    pub channel: i64,
+}
+
+/// What the overlay modes not chosen hold, so editing a stream keeps what the person had entered for them. The chosen
+/// mode's slot is always `None`; the settings are not checked, since nothing reads them until their mode is chosen.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct KeptTransports {
+    /// The MQTT settings, unless MQTT is the overlay.
+    pub mqtt: Option<MqttSettings>,
+    /// The DataHub settings, unless DataHub is the overlay.
+    pub datahub: Option<DataHubSettings>,
+}
+
 /// A camera to stream from and the overlay to draw on it, with every text as entered.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct LiveRecipe {
@@ -113,7 +150,7 @@ pub struct LiveRecipe {
     /// The web interface's port; 0 is the protocol's standard one.
     pub port: u16,
     /// The video channel, from 1.
-    pub head: u8,
+    pub head: u16,
     /// The RTSP port.
     pub rtsp_port: u16,
     /// The resolution such as `1280x720`; `None` is the camera's own.
@@ -122,6 +159,8 @@ pub struct LiveRecipe {
     pub url: Option<String>,
     /// The overlay.
     pub overlay: LiveOverlay,
+    /// What the other overlay modes hold.
+    pub kept: KeptTransports,
 }
 
 /// A user name and password.
@@ -145,7 +184,7 @@ pub struct ResolvedCamera {
     /// The RTSP port.
     pub rtsp_port: u16,
     /// The video channel, from 1.
-    pub head: u8,
+    pub head: u16,
     /// The resolution; `None` is the camera's own.
     pub resolution: Option<String>,
     /// A stream URL to use instead of the generated one; it holds no login.
@@ -221,6 +260,27 @@ impl LiveRecipe {
             .unwrap_or_else(|| (self.host.trim().to_ascii_lowercase(), self.rtsp_port))
     }
 
+    /// The MQTT settings the stream holds: the overlay's, or else the ones kept while another mode is chosen.
+    pub fn mqtt_settings(&self) -> Option<MqttSettings> {
+        match &self.overlay {
+            LiveOverlay::Mqtt {
+                broker_host,
+                broker_port,
+                broker_user,
+                broker_pass,
+                source_key,
+                ..
+            } => Some(MqttSettings {
+                broker_host: broker_host.clone(),
+                broker_port: i64::from(*broker_port),
+                broker_user: broker_user.clone(),
+                broker_pass: broker_pass.clone(),
+                source_key: source_key.clone(),
+            }),
+            _ => self.kept.mqtt.clone(),
+        }
+    }
+
     /// The name shown when the item has none: the host as entered, or `Live stream` when it is a reference.
     pub fn default_name(&self) -> String {
         match reference(&self.host) {
@@ -237,6 +297,9 @@ impl LiveRecipe {
         }
         if self.head < 1 {
             return Err(invalid("head", "Camera Head must be a positive integer."));
+        }
+        if self.head > HEAD_MAX {
+            return Err(invalid("head", "Camera Head must be at most 9999."));
         }
         if self.rtsp_port < 1 {
             return Err(invalid(

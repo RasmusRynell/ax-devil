@@ -194,6 +194,7 @@ async fn a_reference_is_read_for_a_local_owner_and_kept_literal_for_a_remote_one
                     resolution: None,
                     url: None,
                     overlay: LiveOverlay::None,
+                    kept: Default::default(),
                 }),
                 lane_matching: Default::default(),
             },

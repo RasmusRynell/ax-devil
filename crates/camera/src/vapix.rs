@@ -285,7 +285,7 @@ fn parse_image_sizes(text: &str) -> ImageSizes {
     ImageSizes {
         listed: !values.is_empty(),
         common: first_list(&["Properties.Image.Resolution".to_owned()]).unwrap_or_default(),
-        heads: (1..=u8::MAX)
+        heads: (1..=Head::MAX)
             .filter_map(Head::new)
             .filter_map(|head| {
                 let channel = head.number() - 1;
@@ -320,6 +320,7 @@ mod tests {
     const PARAMS: &str = "root.Properties.Image.Resolution=1920x1080,1280x720\r\n\
         root.Properties.Image.I0.Resolution=1920x1080,640x360,bogus,0x5\r\n\
         root.Properties.Image.I1.H264.Resolution=800x600,800x600,320x240\r\n\
+        root.Properties.Image.I299.Resolution=320x180\r\n\
         # Error: ignored\r\n";
 
     #[test]
@@ -338,6 +339,7 @@ mod tests {
             [
                 (Head::FIRST, vec![size(1920, 1080), size(640, 360)]),
                 (Head::new(2).unwrap(), vec![size(800, 600), size(320, 240)]),
+                (Head::new(300).unwrap(), vec![size(320, 180)]),
             ]
         );
         assert_eq!(size(640, 360).to_string(), "640x360");

@@ -26,8 +26,10 @@ use workspace::{LiveOverlay, LiveRecipe, Protocol, Secret, intake};
 
 mod discovery;
 mod glance;
+mod kept;
 pub use discovery::*;
 pub use glance::*;
+pub use kept::*;
 
 /// The protocol of a camera's web interface.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
@@ -294,6 +296,7 @@ pub enum NewLiveOverlayWire {
         broker_user: Option<String>,
         /// The broker password.
         #[serde(default)]
+        #[serde(skip_serializing_if = "Option::is_none")]
         broker_pass: Option<WireSecret>,
         /// The camera's analytics data source.
         #[serde(default)]
@@ -327,6 +330,7 @@ pub struct NewLiveWire {
     /// The camera user or a reference.
     pub username: Option<String>,
     /// The camera password or a reference.
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub password: Option<WireSecret>,
     /// The web interface's protocol.
     pub protocol: Option<LiveProtocol>,
@@ -345,6 +349,10 @@ pub struct NewLiveWire {
     pub url: Option<String>,
     /// The overlay; absent is the configured one.
     pub overlay: Option<NewLiveOverlayWire>,
+    /// What the form holds for MQTT while another overlay mode is chosen, kept with the stream.
+    pub kept_mqtt: Option<KeptMqttWire>,
+    /// What the form holds for DataHub while another overlay mode is chosen, kept with the stream.
+    pub kept_datahub: Option<KeptDataHubWire>,
     /// The address of a camera the network scan signed in to. The backend then takes the host, protocol, port and
     /// login from the scan, so the login never reaches the client, and the fields above fill in the rest. Only the
     /// session's owner may add such a stream. Never part of a stored recipe.
@@ -389,9 +397,12 @@ impl From<NewLiveOverlayWire> for intake::NewLiveOverlay {
     }
 }
 
-/// A stored password as a request may carry it: a `$NAME` reference as it is, and nothing for a literal secret, which
-/// never leaves the host.
+/// A stored password as a request may carry it: a `$NAME` reference as it is, an empty one as empty (so a form can tell
+/// it from a literal), and nothing for a literal secret, which never leaves the host.
 fn reference_only(secret: &Secret) -> Option<WireSecret> {
+    if secret.expose().is_empty() {
+        return Some(WireSecret::default());
+    }
     secret
         .as_reference()
         .map(|reference| WireSecret(reference.to_owned()))
@@ -447,6 +458,7 @@ impl From<&LiveRecipe> for NewLiveWire {
             resolution,
             url,
             overlay,
+            kept,
         } = recipe;
         Self {
             label: None,
@@ -460,6 +472,8 @@ impl From<&LiveRecipe> for NewLiveWire {
             resolution: resolution.clone(),
             url: url.clone(),
             overlay: Some(overlay.into()),
+            kept_mqtt: kept.mqtt.as_ref().map(Into::into),
+            kept_datahub: kept.datahub.as_ref().map(Into::into),
             found: None,
             like: None,
         }
@@ -480,6 +494,8 @@ impl From<NewLiveWire> for intake::NewLive {
             resolution: new.resolution,
             url: new.url,
             overlay: new.overlay.map(Into::into),
+            kept_mqtt: new.kept_mqtt.map(Into::into),
+            kept_datahub: new.kept_datahub.map(Into::into),
         }
     }
 }
