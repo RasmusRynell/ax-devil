@@ -67,6 +67,14 @@ export function usableCatalog(
   return chosen && chosen.problem === undefined ? chosen : undefined;
 }
 
+/**
+ * The revision of the lane's chosen catalog that compiled and is still the newest the backend sent, else nothing
+ * (loading, failed, deleted): the one rule for what may be copied, made the default or applied to the other lanes.
+ */
+export function judgedRevision({ catalogRevision, catalogProblem }: LaneState): number | undefined {
+  return catalogProblem === undefined ? catalogRevision : undefined;
+}
+
 /** The catalog new views start with: the Personal setting when it is usable, else the first listed (Standard). */
 export function effectiveDefault(catalogs: readonly CatalogInfoWire[], setting: unknown): string {
   return usableCatalog(catalogs, setting)?.id ?? catalogs[0]?.id ?? "";

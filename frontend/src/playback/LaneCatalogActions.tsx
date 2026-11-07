@@ -40,23 +40,28 @@ const keepKeys = { onKeyDown: (event: { stopPropagation: () => void }) => event.
 /**
  * What the Look page does with the lane's catalog: remember it as the default for new views, copy it under a new name
  * and switch to the copy, delete it when it is a user catalog. Copy and Delete change this machine's files, so only
- * the person at it sees them. `usable` is whether the lane compiled the catalog; `label` is how the picker names it.
+ * the person at it sees them. `revision` is the revision of the catalog the lane compiled, absent while it has none
+ * that is current (loading, failed, deleted): then nothing is saved, copied or made the default. `label` is how the
+ * picker names it.
  */
 export function LaneCatalogActions({
   catalog,
   label,
   catalogs,
   defaultId,
-  usable,
+  revision,
   onChange,
+  onReload,
 }: {
   catalog: string;
   label: string;
   catalogs: readonly CatalogInfoWire[];
   /** The catalog new views start with, which is also the one Delete sends the lane back to unless it is deleted. */
   defaultId: string;
-  usable: boolean;
+  revision: number | undefined;
   onChange: (change: Partial<LaneSettings>) => void;
+  /** Asks the backend for the catalog again; without it there is no Reload. */
+  onReload?: () => void;
 }) {
   const { values, shortcuts, save, reload } = useSettings();
   const mayChange = useGrants().includes("preferences");
@@ -136,17 +141,19 @@ export function LaneCatalogActions({
 
   const copy = (event: FormEvent) => {
     event.preventDefault();
-    if (naming === null) return;
+    if (naming === null || revision === undefined) return;
     setBusy(true);
     setRefusal(null);
     const asked = selection.current;
-    void post<CopiedCatalog>("/api/catalogs/copy", { source: catalog, name: naming.trim() }).then(
-      (answer) => {
-        if (asked !== selection.current) return;
-        if (!answer.ok) return finish(reasonOf(answer.refusal), "create");
-        setArriving(answer.value.id);
-      },
-    );
+    void post<CopiedCatalog>("/api/catalogs/copy", {
+      source: catalog,
+      revision,
+      name: naming.trim(),
+    }).then((answer) => {
+      if (asked !== selection.current) return;
+      if (!answer.ok) return finish(reasonOf(answer.refusal), "create");
+      setArriving(answer.value.id);
+    });
   };
 
   const remove = () => {
@@ -176,12 +183,16 @@ export function LaneCatalogActions({
     <>
       {naming === null && (
         <div ref={row} className="flex flex-wrap items-start gap-s">
-          <Button disabled={!usable || savedAsDefault} onClick={() => void setDefault(catalog)}>
+          <Button
+            disabled={revision === undefined || savedAsDefault}
+            onClick={() => void setDefault(catalog)}
+          >
             Use as default
           </Button>
+          {onReload && <Button onClick={onReload}>Reload</Button>}
           {mayChange && (
             <Button
-              disabled={!usable || busy}
+              disabled={revision === undefined || busy}
               onClick={() => setNaming(`${listed?.name ?? label} copy`)}
             >
               Copy

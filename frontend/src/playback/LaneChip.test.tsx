@@ -16,6 +16,7 @@ const lane = (change: Partial<LaneState>): LaneState => ({
   settings: LANE_SETTINGS,
   policyRevision: 1,
   pending: false,
+  catalogRevision: 1,
   ...change,
 });
 

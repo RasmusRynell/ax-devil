@@ -48,7 +48,7 @@ pub(crate) async fn copy(
 ) -> Result<Json<CopiedCatalog>, Refusal> {
     let source = parse(&request.source)?;
     let library = state.catalogs;
-    let id = blocking(move || library.copy(&source, &request.name)).await?;
+    let id = blocking(move || library.copy_at(&source, request.revision, &request.name)).await?;
     Ok(Json(CopiedCatalog { id: id.to_string() }))
 }
 
@@ -125,7 +125,7 @@ mod tests {
         let (status, body) = test
             .send(post(
                 "/api/catalogs/copy",
-                json!({ "source": "built-in:standard", "name": "Night" }),
+                json!({ "source": "built-in:standard", "revision": 1, "name": "Night" }),
             ))
             .await;
         assert_eq!(status, StatusCode::OK);
@@ -142,7 +142,7 @@ mod tests {
         let (_, body) = test
             .send(post(
                 "/api/catalogs/copy",
-                json!({ "source": "built-in:standard", "name": "Day" }),
+                json!({ "source": "built-in:standard", "revision": 1, "name": "Day" }),
             ))
             .await;
         let other = json(&body)["id"].as_str().unwrap().to_owned();

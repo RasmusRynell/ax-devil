@@ -197,6 +197,11 @@ export class PlaybackSession implements LaneControl {
     this.#changed();
   }
 
+  /** Asks the backend for the catalog `lane` chose again; the answer is compiled when it arrives. */
+  reloadCatalog(lane: number): void {
+    this.#data.reloadCatalog(lane);
+  }
+
   /** The settings of every lane by position, which the next entry's lanes start from. */
   laneSettings(): readonly LaneSettings[] {
     return this.#lanes.states.map((lane) => lane.settings);

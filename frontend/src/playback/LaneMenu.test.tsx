@@ -103,7 +103,8 @@ describe("lane menu", () => {
       show({ catalogProblem: "/layers: unknown" });
       const use = screen.getByRole("button", { name: "Use as default" }) as HTMLButtonElement;
       expect(use.disabled).toBe(true);
-      show({ look: undefined });
+      // Still loading: the lane draws a fallback, which is not what would be saved.
+      show({ catalogRevision: undefined });
       expect(use.disabled).toBe(true);
       show({ settings: LANE_SETTINGS });
       expect(use.disabled).toBe(true);
@@ -157,5 +158,19 @@ describe("lane menu", () => {
     fireEvent.click(screen.getByRole("button", { name: "Apply to all lanes" }));
     expect(onHide).toHaveBeenCalledTimes(1);
     expect(onApplyAll).toHaveBeenCalledTimes(1);
+  });
+
+  it("applies nothing while the lane's catalog is loading or failed, and reloads it either way", () => {
+    const { onApplyAll, onReload, show } = setup();
+    const apply = screen.getByRole("button", { name: "Apply to all lanes" }) as HTMLButtonElement;
+    expect(apply.disabled).toBe(false);
+    show({ catalogRevision: undefined });
+    expect(apply.disabled).toBe(true);
+    show({ catalogProblem: "/layers: unknown" });
+    expect(apply.disabled).toBe(true);
+    fireEvent.click(apply);
+    expect(onApplyAll).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "Reload" }));
+    expect(onReload).toHaveBeenCalledTimes(1);
   });
 });

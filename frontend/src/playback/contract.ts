@@ -109,6 +109,8 @@ export interface LaneControl {
 export interface LaneDisplay extends LaneControl {
   /** Gives every other lane of the viewer the settings of `lane`, but its visibility. */
   applyToAll(lane: number): void;
+  /** Asks the backend for the catalog `lane` chose again and compiles what it answers. */
+  reloadCatalog(lane: number): void;
   /** How `lane` matched a sample to the frame on screen. */
   matched(lane: number): LaneMatch | null;
   /** Sets where frames are drawn; `null` stops drawing. */

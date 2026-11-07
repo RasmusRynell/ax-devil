@@ -23,6 +23,8 @@ pub struct CatalogInfoWire {
 pub struct CopyCatalogRequest {
     /// The id of the catalog to copy: `built-in:<name>` or `user:<file>`.
     pub source: String,
+    /// The revision of the source the viewer compiled; a source that changed since is refused.
+    pub revision: u32,
     /// What the user named the copy.
     pub name: String,
 }

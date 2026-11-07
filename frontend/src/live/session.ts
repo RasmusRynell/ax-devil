@@ -202,6 +202,11 @@ export class LiveSession implements LaneDisplay {
     this.#publish();
   }
 
+  /** Asks the backend for the catalog `lane` chose again; the answer is compiled when it arrives. */
+  reloadCatalog(lane: number): void {
+    this.#data.reloadCatalog(lane);
+  }
+
   /** The settings of every lane by position, which the next stream's lanes start from. */
   laneSettings(): readonly LaneSettings[] {
     return this.#lanes.states.map((lane) => lane.settings);

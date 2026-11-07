@@ -50,6 +50,7 @@ export function setup(
   const onChange = vi.fn();
   const onHide = vi.fn();
   const onApplyAll = vi.fn();
+  const onReload = vi.fn();
   const state: LaneState = {
     label: "DPM",
     slot: "DPM",
@@ -59,6 +60,7 @@ export function setup(
     policyRevision: 1,
     pending: false,
     look: { themes: ["night"], features: ALL_FEATURES },
+    catalogRevision: 1,
     ...lane,
   };
   const menu = (shown: LaneState) => (
@@ -76,12 +78,13 @@ export function setup(
         onChange={onChange}
         onHide={onHide}
         onApplyAll={onApplyAll}
+        onReload={onReload}
       />
     </FakeSettings>
   );
   const rendered = render(menu(state));
   const show = (change: Partial<LaneState>) => rendered.rerender(menu({ ...state, ...change }));
-  return { onChange, onHide, onApplyAll, save, state, show, ...rendered };
+  return { onChange, onHide, onApplyAll, onReload, save, state, show, ...rendered };
 }
 
 /** Opens a tab by name; the Filter tab's name carries its count of changed controls. */

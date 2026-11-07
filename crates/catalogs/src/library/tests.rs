@@ -285,7 +285,7 @@ fn slugs_are_file_name_stems() {
             "a".repeat(99).as_str(),
         ),
     ] {
-        assert_eq!(super::slug(name), slug, "{name:?}");
+        assert_eq!(crate::copy::slug(name), slug, "{name:?}");
     }
 }
 
@@ -367,6 +367,25 @@ fn a_copy_keeps_the_text_of_the_source_is_listed_at_once_and_never_replaces_a_fi
             .is_err()
     );
     assert!(Library::built_in().copy(&standard, "x").is_err());
+}
+
+#[test]
+fn a_copy_judged_at_one_revision_is_refused_once_the_source_has_another() {
+    let parent = tempfile::tempdir().unwrap();
+    let root = parent.path().join("catalogs");
+    let library = Library::with_folder(root.clone());
+    let standard = CatalogId::BuiltIn("standard");
+    let first = library.copy_at(&standard, 1, "Mine").unwrap();
+    let revision = library.document(&first).revision();
+
+    assert!(library.copy_at(&standard, 2, "Late").is_err());
+    assert!(library.copy_at(&first, revision + 1, "Late").is_err());
+    assert_eq!(
+        fs::read_dir(&root).unwrap().count(),
+        1,
+        "nothing was written"
+    );
+    assert!(library.copy_at(&first, revision, "Fresh").is_ok());
 }
 
 #[test]

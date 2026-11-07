@@ -2,7 +2,7 @@ import { useId, useState } from "react";
 import type { CatalogInfoWire } from "../generated/api";
 import { Button } from "../kit/Button";
 import { Tabs } from "../kit/Tabs";
-import type { LaneSettings, LaneState } from "./lanes";
+import { judgedRevision, type LaneSettings, type LaneState } from "./lanes";
 import { EXPORT_TIP, EXPORT_WAITS, HIDE_LANE_TIP } from "./laneContextMenu";
 import { changedControls, LaneMenuFilter } from "./LaneMenuFilter";
 import { LaneMenuLook } from "./LaneMenuLook";
@@ -25,6 +25,7 @@ export function LaneMenu({
   onChange,
   onHide,
   onApplyAll,
+  onReload,
   onExport,
 }: {
   lane: LaneState;
@@ -38,6 +39,8 @@ export function LaneMenu({
   onHide?: () => void;
   /** Gives the viewer's other lanes this lane's settings, but not its visibility. */
   onApplyAll?: () => void;
+  /** Asks the backend for the lane's catalog again and compiles what it answers. */
+  onReload?: () => void;
   /** Exports this lane's video; `waits` while its render catalog has not loaded. Absent where nothing is exported. */
   onExport?: { run: () => void; waits: boolean };
 }) {
@@ -56,7 +59,9 @@ export function LaneMenu({
         panelId={panel}
       />
       <div id={panel} role="tabpanel" aria-label={tab} className="flex flex-col gap-m">
-        {tab === "Look" && <LaneMenuLook lane={lane} catalogs={catalogs} onChange={onChange} />}
+        {tab === "Look" && (
+          <LaneMenuLook lane={lane} catalogs={catalogs} onChange={onChange} onReload={onReload} />
+        )}
         {tab === "Filter" && <LaneMenuFilter lane={lane} onChange={onChange} />}
         {tab === "Timing" && (
           <LaneMenuTiming lane={lane} cadence={cadence} live={live} onChange={onChange} />
@@ -64,7 +69,11 @@ export function LaneMenu({
       </div>
       {(onApplyAll || onHide || onExport) && (
         <div className="flex flex-wrap gap-s border-t border-line pt-m">
-          {onApplyAll && <Button onClick={onApplyAll}>Apply to all lanes</Button>}
+          {onApplyAll && (
+            <Button disabled={judgedRevision(lane) === undefined} onClick={onApplyAll}>
+              Apply to all lanes
+            </Button>
+          )}
           {onExport && (
             <Button
               disabled={onExport.waits}

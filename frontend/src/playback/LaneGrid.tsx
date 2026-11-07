@@ -164,6 +164,7 @@ export function LaneGrid({
                     ? () => session.applyToAll(index)
                     : undefined
                 }
+                onReload={() => session.reloadCatalog(index)}
                 onHide={onHide && (() => onHide(lanes[index].label))}
                 onExport={
                   onExport && {

@@ -1734,6 +1734,10 @@ export type CopyCatalogRequest = {
  */
 source: string, 
 /**
+ * The revision of the source the viewer compiled; a source that changed since is refused.
+ */
+revision: number, 
+/**
  * What the user named the copy.
  */
 name: string, };

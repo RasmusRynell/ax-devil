@@ -61,7 +61,7 @@ function setup(
           label={current === "user:night.json" ? "Standard (night.json)" : "Standard"}
           catalogs={listing}
           defaultId={defaultId}
-          usable
+          revision={7}
           onChange={onChange}
         />
       </FakeSettings>
@@ -108,7 +108,9 @@ describe("catalog copy and delete", () => {
     expect(create.disabled).toBe(true);
     await waitFor(() => expect(calls).toHaveLength(1));
     await act(async () => {});
-    expect(calls).toEqual([["/api/catalogs/copy", { source: "built-in:standard", name: "Mine" }]]);
+    expect(calls).toEqual([
+      ["/api/catalogs/copy", { source: "built-in:standard", revision: 7, name: "Mine" }],
+    ]);
     expect(onChange).not.toHaveBeenCalled();
     expect(create.disabled).toBe(true);
     list([...CATALOGS, { id: "user:mine.json", name: "Mine", description: "" }]);
