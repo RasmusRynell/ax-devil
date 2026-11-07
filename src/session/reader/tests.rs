@@ -500,6 +500,23 @@ async fn an_edit_without_an_overlay_never_clears_a_saved_broker_password() {
         );
     }
 
+    // A guest may not keep a `$NAME` reference for a mode the owner could later choose, though it types a password.
+    let reply = answer(
+        &state,
+        &guest,
+        seq + 3,
+        edit(json!({"overlay": rtsp, "kept_mqtt": {"broker_pass": "$SOME_SECRET", "broker_host": "b.local",
+            "broker_user": "mqtt"}})),
+    )
+    .await;
+    assert!(matches!(
+        reply,
+        SessionServerMessage::Ack {
+            outcome: AckOutcome::Refused { .. },
+            ..
+        }
+    ));
+
     // A relabel that sends no overlay or kept settings, of a stream whose MQTT is kept, changes none of them.
     let kept = || match &owner.state().doc.workspace.parts().workspace.items[0]
         .recipe

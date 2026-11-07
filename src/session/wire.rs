@@ -326,19 +326,21 @@ fn intake(
             } else if let Some(recipe) = like.and_then(|item| saved.live(item)) {
                 new.copy_login(recipe, live, workspace::intake::LoginUse::Stream)?;
             }
+            let kept = new.names_kept_reference();
             let item = workspace::intake::live(new, live, handlers)?;
             match &item.recipe.source {
-                Source::Live(recipe) if saved.guest => refuse_references(recipe).map(|()| item),
+                Source::Live(recipe) if saved.guest => {
+                    refuse_references(recipe, kept).map(|()| item)
+                }
                 _ => Ok(item),
             }
         }
     }
 }
 
-/// Refuses a stream whose host or login, or whose broker's, is a `$NAME` reference: it would read the environment of
-/// this machine for a seat that is not its owner.
-fn refuse_references(recipe: &LiveRecipe) -> Result<(), foundation::UserError> {
-    // The settings kept for another mode are not read until that mode is chosen, so they are not checked.
+/// Refuses a stream whose host, login or broker, or the broker its request keeps for another mode (`kept`), is a
+/// `$NAME` reference: it would read the owner's environment for a seat that is not the owner.
+fn refuse_references(recipe: &LiveRecipe, kept: bool) -> Result<(), foundation::UserError> {
     let broker = match &recipe.overlay {
         LiveOverlay::Mqtt {
             broker_host,
@@ -357,10 +359,11 @@ fn refuse_references(recipe: &LiveRecipe) -> Result<(), foundation::UserError> {
         recipe.username.as_str(),
         recipe.password.expose(),
     ];
-    if texts
-        .into_iter()
-        .chain(broker)
-        .any(|text| settings::reference(text).is_some())
+    if kept
+        || texts
+            .into_iter()
+            .chain(broker)
+            .any(|text| settings::reference(text).is_some())
     {
         return Err(foundation::UserError::new(
             foundation::ErrorCode::WorkspaceInvalid,

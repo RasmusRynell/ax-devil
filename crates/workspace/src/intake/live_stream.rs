@@ -161,6 +161,21 @@ impl NewLive {
         Ok(())
     }
 
+    /// Whether the MQTT settings the request keeps for another mode name a `$NAME` reference.
+    pub fn names_kept_reference(&self) -> bool {
+        self.kept_mqtt.iter().any(|mqtt| {
+            let pass = mqtt.broker_pass.as_ref().map(Secret::expose);
+            [
+                mqtt.broker_host.as_deref(),
+                mqtt.broker_user.as_deref(),
+                pass,
+            ]
+            .into_iter()
+            .flatten()
+            .any(|text| reference(text).is_some())
+        })
+    }
+
     /// Fills a blank MQTT broker password, in the overlay and in the kept settings, from `source`'s MQTT settings when
     /// this stream's broker is the same one, with the same user, once `defaults` fill what is blank: the password goes
     /// to the broker it was saved for and no other.
