@@ -92,6 +92,6 @@ describe("the item a viewer shows", () => {
     front(room, "v");
     front(room, "mot");
     rerender(page(false));
-    expect(labels().slice(1, 4)).toEqual(["mot", "A", "GT"]);
+    expect(labels().slice(1, 3)).toEqual(["mot", "A"]);
   });
 });

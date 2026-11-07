@@ -31,7 +31,8 @@ export type VisibleRow = { row: TreeRow; position: number; siblings: number };
 /**
  * Adds to the backend's rows what follows from their order: each one's level and parent. A video item's lanes sit
  * directly under the item, since its one entry would only repeat it. A playlist item has no row of its own: each of
- * its playlists is a row at level 1, with its entries inside. A playlist row cannot be hidden, only entries and lanes.
+ * its playlists is a row at level 1, with its entries inside. Only a playlist's entries and the lanes of a recording
+ * can be hidden, not the rows of a video, playlist or live stream.
  * A live stream's detail ends with the state of its stream (`streams`, by item) while its viewer reports one.
  */
 export function treeOf(
@@ -51,17 +52,20 @@ export function treeOf(
     const parent = topLevel ? undefined : info.kind === "entry" ? top : (entry ?? top);
     const { entry: opens } = info;
     const playlist = info.kind === "playlist";
+    const itemKind = kinds.get(info.item) ?? "unreadable";
+    // Only a playlist's entries and the lanes of a recording can be hidden: a live stream has no switches.
+    const hideable = info.kind === "entry" || (info.kind === "lane" && itemKind !== "live");
     const row: TreeRow = {
       info,
       item: info.item,
-      itemKind: kinds.get(info.item) ?? "unreadable",
+      itemKind,
       level: (parent?.level ?? 0) + 1,
       parent: parent?.info.key ?? null,
       hasChildren: false,
       playlist,
       dimmed: info.hidden || (parent?.dimmed ?? false),
       target:
-        opens !== null && info.status.status === "Ready" && !playlist
+        opens !== null && info.status.status === "Ready" && hideable
           ? { entry: opens, lane: info.kind === "lane" ? info.label : undefined }
           : null,
     };

@@ -300,7 +300,6 @@ describe("items", () => {
       "Open",
       "Open to the Side",
       "Information",
-      "Hide",
       "Edit",
       "Remove",
     ]);

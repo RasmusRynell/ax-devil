@@ -67,6 +67,30 @@ describe("sections", () => {
   });
 });
 
+describe("hide targets", () => {
+  it("lets only a playlist's entries and the lanes of a recording be hidden", () => {
+    const items = [
+      video("v", false),
+      { ...video("cam", false), kind: "live" as const },
+      playlist("mot", [entry("mot/A", "A", ["GT"])], false),
+    ];
+    const tree = treeOf({
+      name: null,
+      modified: false,
+      recovered: false,
+      epoch: 0,
+      file: null,
+      items,
+      rows: rowsOf(items, []),
+      bookmarks: [],
+    });
+    const hideable = tree
+      .filter(({ target }) => target)
+      .map(({ info }) => `${info.item}:${info.kind}`);
+    expect(hideable).toEqual(["v:lane", "mot:entry", "mot:lane"]);
+  });
+});
+
 describe("search", () => {
   const rows = (items: ItemState[], hidden: { entry: string }[] = []) =>
     treeOf({
