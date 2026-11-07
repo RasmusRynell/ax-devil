@@ -16,8 +16,8 @@ use sessions::session::{Command, Refusal, Scope};
 use std::path::Path;
 use tokio::time::Instant;
 use workspace::{
-    BookmarkId, BookmarkKind, BookmarkTarget, Content, LiveOverlay, LiveRecipe, Secret, Source,
-    Watch, Workspace, WorkspaceItem,
+    BookmarkId, BookmarkKind, BookmarkTarget, Content, LiveRecipe, Secret, Source, Watch,
+    Workspace, WorkspaceItem,
     intake::{LiveDefaults, NewLive, NewOverlay},
 };
 use workspace_store::{BookmarkCommand, DocCommand, HiddenRef};
@@ -326,44 +326,37 @@ fn intake(
             } else if let Some(recipe) = like.and_then(|item| saved.live(item)) {
                 new.copy_login(recipe, live, workspace::intake::LoginUse::Stream)?;
             }
-            let kept = new.names_kept_reference();
+            new.bare_kept = saved.guest;
             let item = workspace::intake::live(new, live, handlers)?;
             match &item.recipe.source {
-                Source::Live(recipe) if saved.guest => {
-                    refuse_references(recipe, kept).map(|()| item)
-                }
+                Source::Live(recipe) if saved.guest => refuse_references(recipe).map(|()| item),
                 _ => Ok(item),
             }
         }
     }
 }
 
-/// Refuses a stream whose host, login or broker, or the broker its request keeps for another mode (`kept`), is a
-/// `$NAME` reference: it would read the owner's environment for a seat that is not the owner.
-fn refuse_references(recipe: &LiveRecipe, kept: bool) -> Result<(), foundation::UserError> {
-    let broker = match &recipe.overlay {
-        LiveOverlay::Mqtt {
-            broker_host,
-            broker_user,
-            broker_pass,
-            ..
-        } => [
-            broker_host.as_str(),
-            broker_user.as_str(),
-            broker_pass.expose(),
+/// Refuses a stream whose host, login or broker, in the overlay or kept for another mode, is a `$NAME` reference as
+/// it will be stored: it would read the owner's environment for a seat that is not the owner.
+fn refuse_references(recipe: &LiveRecipe) -> Result<(), foundation::UserError> {
+    let mqtt = recipe.mqtt_settings();
+    let broker = match &mqtt {
+        Some(mqtt) => [
+            mqtt.broker_host.as_str(),
+            mqtt.broker_user.as_str(),
+            mqtt.broker_pass.expose(),
         ],
-        _ => [""; 3],
+        None => [""; 3],
     };
     let texts = [
         recipe.host.as_str(),
         recipe.username.as_str(),
         recipe.password.expose(),
     ];
-    if kept
-        || texts
-            .into_iter()
-            .chain(broker)
-            .any(|text| settings::reference(text).is_some())
+    if texts
+        .into_iter()
+        .chain(broker)
+        .any(|text| settings::reference(text).is_some())
     {
         return Err(foundation::UserError::new(
             foundation::ErrorCode::WorkspaceInvalid,

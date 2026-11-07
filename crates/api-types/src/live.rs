@@ -496,6 +496,7 @@ impl From<NewLiveWire> for intake::NewLive {
             overlay: new.overlay.map(Into::into),
             kept_mqtt: new.kept_mqtt.map(Into::into),
             kept_datahub: new.kept_datahub.map(Into::into),
+            bare_kept: false,
         }
     }
 }

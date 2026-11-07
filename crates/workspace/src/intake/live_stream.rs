@@ -87,6 +87,9 @@ pub struct NewLive {
     pub kept_mqtt: Option<NewMqtt>,
     /// What the form holds for DataHub while another mode is chosen; its handler is not used.
     pub kept_datahub: Option<NewDataHub>,
+    /// Set for a seat that is not the owner: the MQTT host and user kept for a mode not chosen are what it entered,
+    /// never the configured ones, which are the owner's.
+    pub bare_kept: bool,
 }
 
 /// What a copied login is for, which decides where the copy may send it.
@@ -159,21 +162,6 @@ impl NewLive {
             self.password = Some(source.password.clone());
         }
         Ok(())
-    }
-
-    /// Whether the MQTT settings the request keeps for another mode name a `$NAME` reference.
-    pub fn names_kept_reference(&self) -> bool {
-        self.kept_mqtt.iter().any(|mqtt| {
-            let pass = mqtt.broker_pass.as_ref().map(Secret::expose);
-            [
-                mqtt.broker_host.as_deref(),
-                mqtt.broker_user.as_deref(),
-                pass,
-            ]
-            .into_iter()
-            .flatten()
-            .any(|text| reference(text).is_some())
-        })
     }
 
     /// Fills a blank MQTT broker password, in the overlay and in the kept settings, from `source`'s MQTT settings when
@@ -389,10 +377,14 @@ pub fn live(
     };
     // The modes not chosen keep what was entered for them, or else the defaults as written, except the default
     // broker password: it is never copied into a stream that does not use the broker.
-    let no_secret = MqttDefaults {
+    let mut no_secret = MqttDefaults {
         password: Secret::new(""),
         ..defaults.mqtt.clone()
     };
+    if new.bare_kept {
+        no_secret.host.clear();
+        no_secret.user.clear();
+    }
     let kept = KeptTransports {
         mqtt: match overlay {
             LiveOverlay::Mqtt { .. } => None,
