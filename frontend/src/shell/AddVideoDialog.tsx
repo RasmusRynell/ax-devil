@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { NewOverlayWire } from "../generated/api";
 import { BrowseButton, Button } from "../kit/Button";
 import { Dialog, DialogBody } from "../kit/Dialog";
@@ -65,6 +65,9 @@ export function AddVideoDialog({
   const [tried, setTried] = useState(false);
   const [failure, setFailure] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  // The OK in flight: closing the dialog, however it happens, cancels it, so it delivers nothing.
+  const submission = useRef<AbortController | null>(null);
+  useEffect(() => () => submission.current?.abort(), []);
   const nextKey = useRef(entries.length);
   const readers = useRef(new Map<number, () => OverlayRead>());
   const decoders = handlers?.decoders ?? [];
@@ -103,9 +106,14 @@ export function AddVideoDialog({
       return;
     }
     setBusy(true);
+    submission.current?.abort();
+    const mine = new AbortController();
+    submission.current = mine;
     try {
-      // The files may have gone since the last check, which OK was waiting for.
-      const gone = await checkFiles(files);
+      // The files may have gone since the last check, which OK was waiting for. A dialog that closed meanwhile
+      // sends nothing.
+      const gone = await checkFiles(files, mine.signal);
+      if (mine.signal.aborted) return;
       if (gone.size) {
         setFailure([...gone].map(([file, why]) => `${fileName(file)}: ${why}`).join("; "));
         setBusy(false);
@@ -139,7 +147,10 @@ export function AddVideoDialog({
       title={editing ? "Edit video" : "Add video"}
       okLabel={editing ? "Save" : "Add"}
       onOk={() => void ok()}
-      onCancel={onClose}
+      onCancel={() => {
+        submission.current?.abort();
+        onClose();
+      }}
       busy={
         busy ||
         !path.trim() ||

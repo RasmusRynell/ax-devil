@@ -317,6 +317,28 @@ it("checks the files again on Add: one gone since the last check keeps the dialo
   await waitFor(() => expect(sentOverlays()).toEqual([[]]));
 });
 
+it("sends nothing when the dialog is cancelled while Add is rechecking the files", async () => {
+  let checks = 0;
+  let answer = () => {};
+  vi.stubGlobal("fetch", async (url: string, init?: RequestInit) => {
+    if (url !== "/api/files/check") return reply(200, { decoders: [], resolvers: [] });
+    const paths = (JSON.parse(init?.body as string) as { paths: string[] }).paths;
+    // The first check is the one Add waits for; the recheck on Add is held until after Cancel.
+    if (++checks > 1) await new Promise<void>((done) => (answer = done));
+    return reply(
+      200,
+      paths.map((path) => ({ path })),
+    );
+  });
+  await open();
+  await answered();
+  fireEvent.click(add());
+  await waitFor(() => expect(checks).toBe(2));
+  fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+  await act(async () => answer());
+  expect(FakeSocket.latest.received.filter((message) => message.type === "command")).toEqual([]);
+});
+
 it.each([
   [
     "fails",

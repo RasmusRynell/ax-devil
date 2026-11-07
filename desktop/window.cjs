@@ -11,14 +11,25 @@ const { windowBounds } = require("./window-state.cjs");
 // Video files the Add Video dialog offers; the backend's intake takes any path, the viewer judges the media.
 const VIDEO_EXTENSIONS = [".mp4", ".avi", ".mkv", ".mov"];
 
-// A file extension as a decoder declares it: one or more dotted suffixes (`.json`, `.tar.gz`).
-const FILE_EXTENSION = /^(\.[a-z0-9_+-]+)+$/i;
+// Whether `one` is a file extension as a plugin manifest may declare it (crates/plugins/src/fields.rs): lowercase,
+// a dot and something after it, no path separator or whitespace.
+const isDeclaredExtension = (one) =>
+  typeof one === "string" &&
+  one.length >= 2 &&
+  one.startsWith(".") &&
+  one === one.toLowerCase() &&
+  !/[/\\\s]/u.test(one);
 
-/** The open dialog's filters: `extensions` (with their dots) under `label` when there are any, then every file. */
+// The extensions a native dialog filter can state: dotted suffixes of plain characters. Others (`.json~`, `.データ`)
+// are valid for a decoder but left out of the filter, which All Files always backs up.
+const FILTERABLE_EXTENSION = /^(\.[a-z0-9_+-]+)+$/;
+
+/** The open dialog's filters: the `extensions` (with their dots) a filter can state under `label`, then every file. */
 function fileFilters(label, extensions) {
-  const name = `${label} Files (${extensions.map((one) => `*${one}`).join(" ")})`;
+  const stated = extensions.filter((one) => FILTERABLE_EXTENSION.test(one));
+  const name = `${label} Files (${stated.map((one) => `*${one}`).join(" ")})`;
   return [
-    ...(extensions.length ? [{ name, extensions: extensions.map((one) => one.slice(1)) }] : []),
+    ...(stated.length ? [{ name, extensions: stated.map((one) => one.slice(1)) }] : []),
     { name: "All Files (*)", extensions: ["*"] },
   ];
 }
@@ -185,14 +196,8 @@ function installIpc({ connect, disconnect, restart }) {
     if (remote) throw new Error("Not allowed");
     if (kind !== "video" && kind !== "overlay")
       throw new Error("Expected a kind of file: video or overlay");
-    if (
-      kind === "overlay" &&
-      !(
-        Array.isArray(extensions) &&
-        extensions.every((one) => typeof one === "string" && FILE_EXTENSION.test(one))
-      )
-    )
-      throw new Error("Expected file extensions with their dots");
+    if (kind === "overlay" && !(Array.isArray(extensions) && extensions.every(isDeclaredExtension)))
+      throw new Error("Expected file extensions, each lowercase with its dot");
     const chosen = await dialog.showOpenDialog(window, {
       title: kind === "video" ? "Select Video File" : "Select Overlay File",
       properties: ["openFile"],
