@@ -6,7 +6,7 @@ export type Folds = {
   collapsed: ReadonlySet<string>;
   /** The sections held unfolded by a viewer's row, until that viewer moves on or the user folds the section. */
   revealed: ReadonlySet<SectionId>;
-  /** The top-level rows the viewer showed when last looked at, and the sections they are in. */
+  /** The top-level rows and the entry the viewer showed when last looked at, and the sections they are in. */
   shown: { rows: ReadonlySet<string>; sections: ReadonlySet<SectionId> };
   /** The rows with children already seen, which got their first fold then and have only the user's since. */
   known: ReadonlySet<string>;
@@ -62,7 +62,7 @@ export function unfold(
 }
 
 /**
- * Folds after the tree changed or the viewer came to show `item` (or none). A row with children seen for the first
+ * Folds after the tree changed or the viewer came to show `item` (or none), at `entry` when it is a playlist's. A row with children seen for the first
  * time starts closed, except a playlist of at most `OPEN_AT_FIRST_LIMIT` entries. A row that turned open is revealed
  * with the rows above it, and its section unfolds until the viewer moves on; a row the viewer moved on from closes. A
  * row that stays open keeps the fold the user gave it. The same `folds` come back when nothing changed.
@@ -71,8 +71,12 @@ export function revealShown(
   tree: readonly TreeRow[],
   item: string | undefined,
   folds: Folds,
+  entry?: string,
 ): Folds {
-  const rows = tree.filter(({ level, item: of }) => level === 1 && of === item);
+  const rows = tree.filter(
+    ({ level, item: of, info }) =>
+      of === item && (level === 1 || (info.kind === "entry" && info.entry === entry)),
+  );
   const now = {
     rows: new Set(rows.map(({ info }) => info.key)),
     sections: new Set(rows.map(({ itemKind }) => SECTION_OF[itemKind])),

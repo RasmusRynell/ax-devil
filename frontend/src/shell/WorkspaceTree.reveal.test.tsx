@@ -92,6 +92,28 @@ describe("the item a viewer shows", () => {
     front(room, "v");
     front(room, "mot");
     rerender(page(false));
-    expect(labels().slice(1, 3)).toEqual(["mot", "A"]);
+    expect(labels().slice(1, 4)).toEqual(["mot", "A", "GT"]);
+  });
+
+  it("shows the lanes of the entry an Enter opens, and keeps the fold the user then gives it", async () => {
+    render(
+      <SessionProvider>
+        <KeptStateProvider>
+          <RevealShown view="workspace" />
+          <WorkspaceTree view="workspace" {...LISTING} />
+        </KeptStateProvider>
+      </SessionProvider>,
+    );
+    await act(async () => {});
+    const room = FakeSocket.rooms.get("room-1") as Room;
+    act(() => room.setItems([MOT]));
+    const tree = screen.getByRole("tree", { name: "Playlists" });
+    expect(labels()).toEqual(["mot", "A", "B"]);
+    fireEvent.keyDown(tree, { key: "ArrowDown" });
+    fireEvent.keyDown(tree, { key: "Enter" });
+    await act(async () => {});
+    expect(labels()).toEqual(["mot", "A", "GT", "DPM", "B"]);
+    fireEvent.keyDown(tree, { key: "ArrowLeft" });
+    expect(labels()).toEqual(["mot", "A", "B"]);
   });
 });

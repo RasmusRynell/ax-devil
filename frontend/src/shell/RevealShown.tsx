@@ -1,7 +1,7 @@
 import { useLayoutEffect, useMemo } from "react";
 import type { SidebarView } from "../generated/api";
 import { useStreaming } from "../live/cameras";
-import { useDoc } from "../session/session";
+import { useDoc, useView } from "../session/session";
 import { useFrontItem } from "../viewer/useViewers";
 import { useKept } from "./keptState";
 import { NO_FOLDS, revealShown } from "./reveal";
@@ -19,12 +19,15 @@ export function RevealShown({ view }: { view: SidebarView }): null {
   const workspace = useDoc()?.workspace;
   const tree = useMemo(() => (workspace ? treeOf(workspace) : []), [workspace]);
   const front = useFrontItem() ?? undefined;
+  const [viewers] = useView("viewers");
+  const [active] = useView("active");
+  const entry = active === undefined ? undefined : viewers[active]?.entry;
   const [held, setHeld] = useFolds(view);
   // Before paint, so a row shown never appears folded for a frame.
   useLayoutEffect(() => {
-    const next = revealShown(tree, front, held);
+    const next = revealShown(tree, front, held, entry);
     if (next !== held) setHeld(next);
-  }, [tree, front]);
+  }, [tree, front, entry]);
   return null;
 }
 
