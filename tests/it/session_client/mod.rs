@@ -158,8 +158,14 @@ pub async fn post(address: &str, path: &str, body: &Value) -> Value {
         .unwrap();
         let mut response = String::new();
         stream.read_to_string(&mut response).unwrap();
-        assert!(response.starts_with("HTTP/1.1 200"), "{response}");
-        serde_json::from_str(response.split_once("\r\n\r\n").unwrap().1).unwrap()
+        assert!(response.starts_with("HTTP/1.1 2"), "{response}");
+        let body = response.split_once("\r\n\r\n").unwrap().1;
+        // An answer with no content (204) has no body.
+        if body.is_empty() {
+            Value::Null
+        } else {
+            serde_json::from_str(body).unwrap()
+        }
     })
     .await
     .unwrap()

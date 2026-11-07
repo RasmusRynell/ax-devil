@@ -17,7 +17,7 @@ mod wire;
 mod writer;
 
 pub use files::{WorkspaceFiles, WorkspaceStorage};
-pub use launch::{Launch, LaunchQueue};
+pub use launch::{HandOff, Launch, LaunchQueue};
 pub(crate) use list::list;
 pub(crate) use socket::socket;
 

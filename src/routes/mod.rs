@@ -10,6 +10,7 @@ mod client_errors;
 mod glance;
 mod handlers;
 mod intake;
+mod launch;
 mod live;
 mod network;
 pub mod playback;
@@ -114,6 +115,13 @@ pub(crate) const ROUTES: &[Route] = &[
         listeners: LOCAL,
         who: Who::Preferences,
         handler: |method| on(method, window::put),
+    },
+    Route {
+        method: MethodFilter::POST,
+        path: "/api/launch",
+        listeners: LOCAL,
+        who: Who::Files,
+        handler: |method| on(method, launch::post),
     },
     Route {
         method: MethodFilter::GET,

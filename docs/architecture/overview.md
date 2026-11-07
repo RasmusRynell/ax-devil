@@ -52,8 +52,10 @@ The shell starts the local backend on first use, or reuses a compatible one on i
 server's own frontend, so client and server always run the same version. Before loading, it checks the server's
 `/api/info` for this app and its shell interface version; a failure opens a native dialog (retry, return to local,
 quit). A window trusts one origin: IPC answers only that origin's main frame, and navigation elsewhere is blocked. It
-opens `ax-devil://` links (as an argument or a macOS `open-url`) after asking, and keeps one instance running; the
-operating system's link registration waits for packaging.
+opens `ax-devil://` links (as an argument or a macOS `open-url`) after asking, and keeps one instance running: a later
+launch's server, link or command (`local --video`, `playlist`, `open`) reaches it, and a command opens in a new window
+of the running app, read in the folder it was typed in (`--hand-off`, `/api/launch`). A packaged app registers the
+`ax-devil://` scheme with the system.
 
 Electron supplies Chromium, so rendering and media behave the same on every desktop instead of depending on the
 system webview ([D0](../rebuild/14-build-order.md#d0-stack-choice)).

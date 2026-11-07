@@ -38,20 +38,33 @@ void test("a later launch reaches the running instance, and one that cannot be r
     true,
   );
 
-  app.emit("second-instance", {}, ["ax-devil", LINK]);
-  app.emit("second-instance", {}, ["ax-devil", "--server=http://nas:7340"]);
-  app.emit("second-instance", {}, ["ax-devil"]);
-  assert.deepEqual(launches, [{ link: LINK }, { server: "http://nas:7340" }, {}]);
+  // The later launch's own arguments, and the folder it was typed in, which relative paths in a command mean.
+  const later = (args, cwd = "/") => app.emit("second-instance", {}, [], cwd, { args });
+  later([LINK]);
+  later(["--server=http://nas:7340"]);
+  later([]);
+  // A global option alone is no command, and a server wins over one.
+  later(["--log-level=DEBUG", "local", "--video", "a.mp4"], "/rec");
+  later(["--log-level=DEBUG"], "/rec");
+  later(["--server=http://nas:7340", "local", "--video", "a.mp4"], "/rec");
+  assert.deepEqual(launches, [
+    { link: LINK },
+    { server: "http://nas:7340" },
+    {},
+    { command: ["--log-level=DEBUG", "local", "--video", "a.mp4"], cwd: "/rec" },
+    {},
+    { server: "http://nas:7340" },
+  ]);
 
-  app.emit("second-instance", {}, ["ax-devil", "--server"]);
-  assert.equal(launches.length, 3);
+  later(["--server"]);
+  assert.equal(launches.length, 6);
   assert.equal(errors.length, 1);
 
   let prevented = 0;
   const event = { preventDefault: () => prevented++ };
   app.emit("open-url", event, LINK);
   app.emit("open-url", event, "https://example.com/");
-  assert.deepEqual(launches.slice(3), [{ link: LINK }]);
+  assert.deepEqual(launches.slice(6), [{ link: LINK }]);
   assert.equal(prevented, 2);
 });
 

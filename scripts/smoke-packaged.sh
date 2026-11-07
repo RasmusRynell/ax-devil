@@ -65,6 +65,24 @@ fi
 echo "launching $exe"
 ls -l "$exe"
 
+# The package declares the ax-devil:// scheme, which is how the system learns to hand it links: the AppImage's desktop
+# entry on Linux, the bundle's Info.plist on macOS. A Windows zip declares nothing; the app registers at run time.
+scheme_declared() {
+  case "$os" in
+  linux)
+    local extracted
+    extracted="$(mktemp -d)"
+    (cd "$extracted" && "$exe" --appimage-extract '*.desktop' >/dev/null)
+    grep -q 'x-scheme-handler/ax-devil' "$extracted"/squashfs-root/*.desktop
+    ;;
+  mac) grep -A3 CFBundleURLSchemes "$dist/mac-arm64/ax-devil.app/Contents/Info.plist" | grep -q '<string>ax-devil</string>' ;;
+  esac
+}
+if ! scheme_declared; then
+  echo "FAIL: the package does not declare the ax-devil:// scheme" | tee "$result"
+  exit 1
+fi
+
 # Kills the app and everything it started.
 kill_tree() {
   if [[ $os == win ]]; then
