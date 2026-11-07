@@ -6,9 +6,9 @@ use overlay_sync::{MatchPolicy, Sticky};
 use serde_json::{Value, json};
 use std::{fs, path::Path};
 use workspace::{
-    Bookmark, BookmarkKind, BookmarkTarget, LIVE_SLOT, LiveOverlay, LiveRecipe, OverlayRecipe,
-    PlaylistRecipe, Protocol, Recipe, Secret, Source, Unreadable, VideoRecipe, Workspace,
-    WorkspaceItem,
+    Bookmark, BookmarkKind, BookmarkTarget, DataHubSettings, KeptTransports, LIVE_SLOT,
+    LiveOverlay, LiveRecipe, OverlayRecipe, PlaylistRecipe, Protocol, Recipe, Secret, Source,
+    Unreadable, VideoRecipe, Workspace, WorkspaceItem,
 };
 use workspace_files::{SUFFIX, load, save};
 
@@ -143,6 +143,13 @@ fn a_workspace_round_trips_with_paths_inside_its_folder_relative() {
                 broker_pass: Secret::new("literal-secret"),
                 source_key: "com.axis.scene.frame.v1#1".into(),
             },
+            kept: KeptTransports {
+                mqtt: None,
+                datahub: Some(DataHubSettings {
+                    topic: "kept.topic".into(),
+                    channel: 3,
+                }),
+            },
         }),
     );
     live.recipe.lane_matching.insert(
@@ -156,6 +163,23 @@ fn a_workspace_round_trips_with_paths_inside_its_folder_relative() {
         },
     );
     original.items.push(live);
+    // A stream with nothing kept writes no `kept`, as a file from before it was kept has none.
+    original.items.push(item(
+        "",
+        Source::Live(LiveRecipe {
+            host: "cam.local".into(),
+            username: String::new(),
+            password: Secret::new(""),
+            protocol: Protocol::Https,
+            port: 0,
+            head: 9999,
+            rtsp_port: 554,
+            resolution: None,
+            url: None,
+            overlay: LiveOverlay::None,
+            kept: KeptTransports::default(),
+        }),
+    ));
     let file = dir.join(format!("ws{SUFFIX}"));
     save(&original, &file).unwrap();
 
@@ -178,6 +202,8 @@ fn a_workspace_round_trips_with_paths_inside_its_folder_relative() {
         live["overlay"]["broker_pass"], "literal-secret",
         "credentials are stored as entered"
     );
+    assert_eq!(live["kept"]["datahub"]["topic"], "kept.topic");
+    assert!(json["items"][6].get("kept").is_none());
     assert_eq!(json["version"], 2);
     assert_eq!(json["items"][0]["video"], "clips/a.mp4");
     assert_eq!(json["items"][0]["overlays"][0]["path"], "clips/a.xml");

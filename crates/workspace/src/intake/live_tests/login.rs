@@ -15,6 +15,7 @@ fn another_stream_copies_the_saved_login_only_for_the_same_camera() {
         resolution: None,
         url: None,
         overlay: LiveOverlay::None,
+        kept: Default::default(),
     };
     let copy = |change: fn(&mut NewLive)| {
         let mut new = host("CAM.local");
@@ -63,6 +64,7 @@ fn a_saved_login_for_an_environment_reference_is_not_copied_to_another_variable_
         resolution: None,
         url: None,
         overlay: LiveOverlay::None,
+        kept: Default::default(),
     };
     let copied = |host_text: &str| {
         let mut new = host(host_text);
@@ -87,6 +89,7 @@ fn an_rtsp_endpoint_elsewhere_gets_no_saved_login() {
         resolution: None,
         url: None,
         overlay: LiveOverlay::None,
+        kept: Default::default(),
     };
     let other_rtsp = || LiveRecipe {
         rtsp_port: 8554,
@@ -160,6 +163,7 @@ fn an_ipv6_camera_is_the_same_endpoint_however_it_is_spelled() {
         resolution: None,
         url: Some("rtsp://[2001:db8::1]/s".into()),
         overlay: LiveOverlay::None,
+        kept: Default::default(),
     };
     // The saved URL brackets the address and the new stream's host does not.
     let mut new = host("2001:db8::1");
@@ -193,6 +197,7 @@ fn a_blank_broker_password_is_copied_only_for_the_same_broker_and_user() {
             broker_pass: Secret::new("broker-secret"),
             source_key: "key".into(),
         },
+        kept: Default::default(),
     };
     let copy = |change: fn(&mut NewMqtt)| {
         let mut mqtt = NewMqtt {

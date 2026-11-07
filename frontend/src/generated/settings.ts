@@ -307,7 +307,7 @@ export const SETTINGS = [
     "kind": {
       "type": "whole",
       "min": 1,
-      "max": 255,
+      "max": 9999,
       "default": 1
     },
     "label": "Camera head",

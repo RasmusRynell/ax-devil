@@ -1,3 +1,4 @@
+mod editing;
 mod login;
 
 use super::*;
@@ -140,6 +141,16 @@ fn what_cannot_be_streamed_is_refused_naming_the_field_and_the_python_message() 
             with(&|n| n.head = Some(-3)),
             "head",
             "Camera Head must be a positive integer.",
+        ),
+        (
+            with(&|n| n.head = Some(10_000)),
+            "head",
+            "Camera Head must be at most 9999.",
+        ),
+        (
+            with(&|n| n.head = Some(70_000)),
+            "head",
+            "Camera Head must be at most 9999.",
         ),
         (
             with(&|n| n.port = Some(70_000)),

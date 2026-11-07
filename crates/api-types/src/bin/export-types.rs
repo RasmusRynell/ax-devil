@@ -157,6 +157,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         LiveGapWire,
         WireSecret,
         NewLiveOverlayWire,
+        KeptMqttWire,
+        KeptDataHubWire,
         NewLiveWire,
         NetworkIdentity,
         NetworkSignIn,

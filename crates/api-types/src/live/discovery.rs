@@ -72,7 +72,7 @@ pub struct LiveResolution {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
 pub struct LiveHeadResolutions {
     /// The video channel, from 1.
-    pub head: u8,
+    pub head: u16,
     /// The sizes, in the camera's order; none when the head's list holds no valid size.
     pub resolutions: Vec<LiveResolution>,
 }

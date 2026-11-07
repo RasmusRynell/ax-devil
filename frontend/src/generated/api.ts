@@ -2627,6 +2627,45 @@ topic?: string,
 channel?: number, };
 
 /**
+ * The MQTT settings of a stream whose overlay is another mode. Mirrors `workspace::MqttSettings`; what is absent takes
+ * the configured default.
+ */
+export type KeptMqttWire = { 
+/**
+ * The broker host.
+ */
+broker_host?: string, 
+/**
+ * The broker port.
+ */
+broker_port?: number, 
+/**
+ * The broker user.
+ */
+broker_user?: string, 
+/**
+ * The broker password.
+ */
+broker_pass?: WireSecret, 
+/**
+ * The camera's analytics data source.
+ */
+source_key?: string, };
+
+/**
+ * The DataHub settings of a stream whose overlay is another mode. Mirrors `workspace::DataHubSettings`.
+ */
+export type KeptDataHubWire = { 
+/**
+ * The topic.
+ */
+topic?: string, 
+/**
+ * The topic's instance.
+ */
+channel?: number, };
+
+/**
  * What the user entered to add a live stream. Text that is absent or blank takes its configured default; numbers are
  * checked against their range by the intake, so its message names the field. Mirrors `workspace::intake::NewLive`.
  */
@@ -2672,9 +2711,17 @@ resolution?: string,
  */
 url?: string, 
 /**
- * The overlay; absent is the configured one.
+ * The overlay; absent is the configured one for a new stream and the saved one for an edit.
  */
 overlay?: NewLiveOverlayWire, 
+/**
+ * What the form holds for MQTT while another overlay mode is chosen, kept with the stream.
+ */
+kept_mqtt?: KeptMqttWire, 
+/**
+ * What the form holds for DataHub while another overlay mode is chosen, kept with the stream.
+ */
+kept_datahub?: KeptDataHubWire, 
 /**
  * The address of a camera the network scan signed in to. The backend then takes the host, protocol, port and
  * login from the scan, so the login never reaches the client, and the fields above fill in the rest. Only the

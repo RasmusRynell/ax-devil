@@ -1,6 +1,15 @@
 import { describe, expect, it } from "vite-plus/test";
 import { DEFAULT_SETTINGS } from "../fakeSettings";
-import { configuredOverlay, formValues, startForm } from "./liveForm";
+import {
+  configuredOverlay,
+  formFrom,
+  formValues,
+  hiddenSecrets,
+  newLive,
+  problemOf,
+  startForm,
+  type LiveForm,
+} from "./liveForm";
 
 const DECODERS = [
   {
@@ -46,5 +55,61 @@ describe("the Add Live Stream form's defaults", () => {
       values: { ...DEFAULT_SETTINGS.values, "camera.head": "$HEAD", "broker.port": "$PORT" },
     });
     expect(startForm(values)).toMatchObject({ head: "1", broker_port: "1883" });
+  });
+});
+
+describe("the live form of an edited stream", () => {
+  const values = formValues(DEFAULT_SETTINGS);
+  const saved = formFrom(values, {
+    host: "10.0.0.7",
+    username: "",
+    password: "",
+    overlay: { mode: "rtsp", handler: "ADF_V1_FRAME" },
+    kept_mqtt: { broker_host: "b.local", broker_port: 1884, broker_user: "mqtt", source_key: "k" },
+    kept_datahub: { topic: "t", channel: 3 },
+  });
+
+  it("sends a cleared login as empty and the other modes' fields as kept, where an addition trims and drops blanks", () => {
+    expect(newLive({ ...saved, username: " root " }, true)).toMatchObject({
+      username: " root ",
+      password: "",
+      kept_mqtt: {
+        broker_host: "b.local",
+        broker_port: 1884,
+        broker_user: "mqtt",
+        source_key: "k",
+      },
+      kept_datahub: { topic: "t", channel: 3 },
+    });
+    expect(newLive({ ...saved, username: " root " })).toMatchObject({
+      username: "root",
+      password: undefined,
+    });
+  });
+
+  it("shows what the stream saved as it is, empty and 0 included, and marks a hidden literal password", () => {
+    // As the backend serializes a literal password: the key is missing.
+    const wire = JSON.parse(
+      `{"host":"10.0.0.7","username":"root","overlay":{"mode":"none"},
+        "kept_mqtt":{"broker_host":"","broker_port":0,"broker_user":"","source_key":""},
+        "kept_datahub":{"topic":"","channel":0}}`,
+    );
+    expect(formFrom(values, wire)).toMatchObject({
+      broker_port: "0",
+      source_key: "",
+      topic: "",
+      channel: "0",
+    });
+    expect(hiddenSecrets(wire)).toEqual(["password", "broker_pass"]);
+    expect(hiddenSecrets({ ...wire, password: "" })).toEqual(["broker_pass"]);
+  });
+
+  it("refuses RTSP Port 0 and a Camera Head above 9999", () => {
+    const problem = (change: Partial<LiveForm>) =>
+      problemOf({ ...saved, ...change }, values, "RTSP Embedded");
+    expect(problem({ rtsp_port: "0" })).toBe("RTSP Port must be between 1 and 65535.");
+    expect(newLive({ ...saved, rtsp_port: "0" }).rtsp_port).toBe(0);
+    expect(problem({ head: "9999" })).toBeUndefined();
+    expect(problem({ head: "10000" })).toBe("Camera Head must be at most 9999.");
   });
 });

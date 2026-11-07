@@ -24,6 +24,8 @@ import {
   formFrom,
   formValues,
   headOf,
+  hiddenSecrets,
+  savedChoices,
   isField,
   newLive,
   problemOf,
@@ -77,8 +79,8 @@ function useListing(
  * Blank fields take the configured defaults, so the form shows them as placeholders; the camera is asked for its stream
  * sizes, analytics sources and topics but never connected for the stream itself: the viewer does that. The backend's
  * intake judges the form, and its refusal is the line under the groups. With `editing`, the id of a stream, `initial`
- * is its recipe and OK replaces that stream, which keeps its id and place; a blank login is the saved one, and a
- * saved data source or topic stays chosen until the connection changes.
+ * is its recipe and OK replaces that stream, which keeps its id and place; the form takes no defaults, a blank
+ * password is the saved one, and a saved data source or topic stays chosen until the connection changes.
  */
 export function AddLiveStreamDialog({
   seed = {},
@@ -116,7 +118,7 @@ export function AddLiveStreamDialog({
   const hostDefault = textOf(values["camera.host"]);
   const hostKnown = !!(form.host.trim() || hostDefault.trim());
   // Questions are asked as the stream will be added: `like` lets the backend use that stream's saved login.
-  const connection: LiveConnection = { ...connectionOf(form, false), like };
+  const connection: LiveConnection = { ...connectionOf(form, false, !!editing), like };
   const connectionKey = JSON.stringify(connection);
   // The camera lists every head's sizes in one answer, kept for the connection while the head is chosen from it.
   const resolutions = useDiscovery(
@@ -126,7 +128,7 @@ export function AddLiveStreamDialog({
   );
   // The connection the form opened with: the choices saved with an edited stream hold only while it stands.
   const [opened] = useState(connectionKey);
-  const saved = connectionKey === opened ? start.overlay : undefined;
+  const saved = connectionKey === opened ? savedChoices(start) : undefined;
   const current = useRef(connectionKey);
   useEffect(() => {
     if (current.current === connectionKey) return;
@@ -135,21 +137,14 @@ export function AddLiveStreamDialog({
   }, [connectionKey]);
   const mode = form.overlay;
   const lists = {
-    mqtt: useListing(
-      "mqtt",
-      connection,
-      connectionKey,
-      asked.mqtt,
-      hostKnown,
-      (saved?.mode === "mqtt" && saved.source_key) || "",
-    ),
+    mqtt: useListing("mqtt", connection, connectionKey, asked.mqtt, hostKnown, saved?.mqtt ?? ""),
     datahub: useListing(
       "datahub",
       connection,
       connectionKey,
       asked.datahub,
       hostKnown,
-      (saved?.mode === "datahub" && saved.topic) || "",
+      saved?.datahub ?? "",
     ),
   };
   const sizes =
@@ -197,11 +192,11 @@ export function AddLiveStreamDialog({
     else setAsked((now) => ({ ...now, [kind]: connectionKey }));
   };
 
-  // What is added: the data source and topic are those the camera lists.
+  // What is added: the chosen mode's data source or topic is one the camera lists; the other mode's is kept as it was.
   const sent: LiveForm = {
     ...form,
-    source_key: chosen(form.source_key, lists.mqtt.choices),
-    topic: chosen(form.topic, lists.datahub.choices),
+    ...(mode === "mqtt" && { source_key: chosen(form.source_key, lists.mqtt.choices) }),
+    ...(mode === "datahub" && { topic: chosen(form.topic, lists.datahub.choices) }),
   };
   const stamp = JSON.stringify(sent);
   const refusal = refused?.stamp === stamp ? refused : null;
@@ -235,6 +230,7 @@ export function AddLiveStreamDialog({
     },
     settings: values,
     expansions,
+    hidden: editing ? hiddenSecrets(start) : null,
   };
 
   const add = async () => {
@@ -244,7 +240,7 @@ export function AddLiveStreamDialog({
       await command({
         type: "content",
         command: editing
-          ? { type: "editItem", item: editing, new: { type: "Live", ...newLive(sent) } }
+          ? { type: "editItem", item: editing, new: { type: "Live", ...newLive(sent, true) } }
           : {
               type: "addItems",
               items: [{ type: "Live", ...newLive(sent), like }],

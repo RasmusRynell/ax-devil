@@ -25,7 +25,8 @@ pub use item::{
     absolute_paths, check_readable_file,
 };
 pub use live::{
-    LIVE_SLOT, LiveOverlay, LiveRecipe, LiveVideoContent, Login, Protocol, ResolvedCamera,
+    DataHubSettings, KeptTransports, LIVE_SLOT, LiveOverlay, LiveRecipe, LiveVideoContent, Login,
+    MqttSettings, Protocol, ResolvedCamera,
 };
 pub use references::{Connection, Previews, Shown, preview};
 pub use sources::{Snapshot, Watch};
