@@ -108,9 +108,9 @@ caches; nothing is shared between tests through the filesystem.
 app. `.github/workflows/ci.yml` runs on pull requests to and pushes on `main` and `rewrite`, and on `v*` tags, with
 every job starting at once:
 
-- `check` (Ubuntu 24.04) runs `make check` once: no other job runs a check or a test. It installs the FFmpeg
-  development libraries and clang that the `media` crate builds against (`pkg-config` finds FFmpeg), and uploads the
-  screenshots. The make target fails when its checks leave generated files changed.
+- `check` (Ubuntu 24.04) runs `make check` once: no other job runs a check or a test. It builds
+  and tests against the same pinned FFmpeg the Linux package ships (`FFMPEG_DIR`, shared cache entry), installs clang
+  for the `media` crate's bindings, and uploads the screenshots. The make target fails when its checks leave generated files changed.
 - `package` (Linux, Windows, macOS) runs `make package` and `make smoke-packaged` against a pinned shared FFmpeg
   (downloaded for Linux and Windows, built from source on macOS, both cached). Windows runs make from Git Bash.
 - `version` and `release` run on tags only. `version` runs `make verify-release-version`; `release` waits for all
