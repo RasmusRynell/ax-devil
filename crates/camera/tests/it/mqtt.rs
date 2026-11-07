@@ -414,7 +414,7 @@ async fn a_data_source_the_camera_does_not_offer_is_refused_before_anything_chan
     let mut messages = open_mqtt(
         &vapix.camera(),
         &broker_for(&broker, "unused"),
-        SourceKey("com.axis.nothing#1".into()),
+        SourceKey("com.axis.nothing\n2026 ERROR forged#1".into()),
         FAST,
     );
     let Status::Failed(error) =
@@ -423,6 +423,9 @@ async fn a_data_source_the_camera_does_not_offer_is_refused_before_anything_chan
         unreachable!()
     };
     assert_eq!(error.kind, ErrorKind::NotFound);
+    // The key is the app's, but whatever reaches an error is printed on a line of its own.
+    assert!(error.to_string().contains("nothing\\n2026"), "{error}");
+    assert!(!error.to_string().contains('\n'), "{error}");
     assert_eq!(camera_state(&vapix), before);
     assert_eq!(broker.connects(), 0);
 }

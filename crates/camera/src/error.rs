@@ -128,11 +128,12 @@ pub struct CameraError {
 }
 
 impl CameraError {
-    /// An error of `kind`; `detail` must not contain a secret.
+    /// An error of `kind`; `detail` must not contain a secret. Anything unprintable in it is escaped, as it may hold
+    /// text the camera supplied and reaches logs and terminals.
     pub(crate) fn new(kind: ErrorKind, detail: impl Into<String>) -> Self {
         Self {
             kind,
-            detail: detail.into(),
+            detail: crate::logtext::escaped(&detail.into()),
         }
     }
 
