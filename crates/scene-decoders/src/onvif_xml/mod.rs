@@ -1,18 +1,17 @@
 //! Axis ONVIF analytics metadata: one XML document per line, one frame per document.
 
+mod namespaces;
 mod shape;
-
-use std::{borrow::Cow, collections::HashSet};
 
 use foundation::{CancelToken, Interrupt, MediaTime};
 use handler_api::{
     DecodeError, DecodeSummary, Decoder, Form, Framing, Header, Input, OnEqualKey, SceneSink, Spec,
     Values,
 };
+use namespaces::{Namespaces, is_xml_char};
 use quick_xml::{
-    NsReader, XmlVersion,
-    events::{BytesStart, Event, attributes::Attribute},
-    name::{PrefixDeclaration, QName, ResolveResult},
+    Reader,
+    events::{BytesStart, Event},
 };
 use scene::{
     ClassRule, Coverage, Entity, EntityId, Fields, FilterOption, FilterPolicy, MatchBasis, Name,
@@ -57,7 +56,7 @@ impl OnvifXmlDecoder {
                 bases: vec![MatchBasis::Frame, MatchBasis::Time],
                 default_basis: MatchBasis::Frame,
                 options: Form::default(),
-                version: 3,
+                version: 4,
             },
         }
     }
@@ -108,30 +107,27 @@ impl Decoder for OnvifXmlDecoder {
 /// One trimmed, non-empty record. `Ok(None)` means the record has no overlay; `Err` carries the reason it is skipped.
 fn decode_record(record: &[u8]) -> Result<Option<Scene>, String> {
     let mut document = Document::default();
-    let mut reader = NsReader::from_reader(record);
+    let mut namespaces = Namespaces::new();
+    let mut reader = Reader::from_reader(record);
     loop {
-        let (namespace, event) = reader
-            .read_resolved_event()
+        let event = reader
+            .read_event()
             .map_err(|error| format!("invalid XML: {error}"))?;
-        if let ResolveResult::Unknown(prefix) = &namespace {
-            return Err(format!("invalid XML: unbound prefix {prefix:?}"));
-        }
-        let namespace = match &namespace {
-            ResolveResult::Bound(namespace) => Some(normalized_value(namespace.0)?),
-            _ => None,
-        };
-        let namespace = namespace.as_deref();
         match event {
             Event::Start(element) => {
-                document.open(&element, namespace)?;
-                check_attributes(&reader, &element)?;
+                let namespace = namespaces.enter(&element)?;
+                document.open(&element, namespace.as_deref())?;
             }
             Event::Empty(element) => {
-                document.open(&element, namespace)?;
-                check_attributes(&reader, &element)?;
+                let namespace = namespaces.enter(&element)?;
+                document.open(&element, namespace.as_deref())?;
                 document.close()?;
+                namespaces.leave();
             }
-            Event::End(_) => document.close()?,
+            Event::End(_) => {
+                document.close()?;
+                namespaces.leave();
+            }
             Event::Text(text) => document.text(&text.xml10_content()),
             Event::CData(text) => document.text(&text.xml10_content()),
             Event::GeneralRef(reference) => match reference.resolve_char_ref() {
@@ -152,68 +148,6 @@ fn decode_record(record: &[u8]) -> Result<Option<Scene>, String> {
             _ => {}
         }
     }
-}
-
-/// The namespaces XML reserves: only the `xml` prefix may name the first, and none may name the second.
-const XML_NAMESPACE: &str = "http://www.w3.org/XML/1998/namespace";
-const XMLNS_NAMESPACE: &str = "http://www.w3.org/2000/xmlns/";
-
-/// Python rejects an element with an attribute value that has a bad reference or a character XML 1.0 forbids, an
-/// unbound attribute prefix, two attributes of one namespace and name, or a namespace declaration that is empty
-/// (for a prefix) or reserved, even when nothing reads them. Each value is scanned once.
-fn check_attributes(reader: &NsReader<&[u8]>, element: &BytesStart<'_>) -> Result<(), String> {
-    let mut seen = HashSet::new();
-    for attribute in element.attributes() {
-        let attribute = attribute.map_err(|error| format!("invalid attribute: {error}"))?;
-        let value = normalized_value(&attribute.value)?;
-        if let Some(declaration) = attribute.key.as_namespace_binding() {
-            let named = matches!(declaration, PrefixDeclaration::Named(_));
-            let is_xml = matches!(declaration, PrefixDeclaration::Named("xml"));
-            if named && value.is_empty() {
-                return Err("invalid XML: a prefix cannot be unbound".to_string());
-            }
-            if value == XMLNS_NAMESPACE || (value == XML_NAMESPACE && !is_xml) {
-                return Err(format!("invalid XML: {value:?} is a reserved namespace"));
-            }
-        } else {
-            match reader.resolver().resolve_attribute(attribute.key) {
-                (ResolveResult::Unknown(prefix), _) => {
-                    return Err(format!("invalid XML: unbound prefix {prefix:?}"));
-                }
-                (ResolveResult::Bound(namespace), local) => {
-                    let local = local.into_inner();
-                    if !seen.insert((normalized_value(namespace.0)?, local)) {
-                        return Err(format!("invalid XML: duplicate attribute {local:?}"));
-                    }
-                }
-                _ => {}
-            }
-        }
-    }
-    Ok(())
-}
-
-/// `raw` as an attribute value reads: references expanded, tab and newline as spaces, and only XML 1.0 characters.
-fn normalized_value(raw: &str) -> Result<Cow<'_, str>, String> {
-    let attribute = Attribute {
-        key: QName("value"),
-        value: Cow::Borrowed(raw),
-    };
-    let value = attribute
-        .normalized_value(XmlVersion::Implicit1_0)
-        .map_err(|error| format!("invalid XML: {error}"))?;
-    match value.chars().find(|c| !is_xml_char(*c)) {
-        Some(character) => Err(format!(
-            "invalid XML: character {:#x} is not allowed",
-            u32::from(character)
-        )),
-        None => Ok(value),
-    }
-}
-
-/// Whether XML 1.0 allows `character`; Rust's `char` already excludes the surrogates.
-fn is_xml_char(character: char) -> bool {
-    matches!(character, '\t' | '\n' | '\r' | ' '..='\u{FFFD}' | '\u{10000}'..)
 }
 
 /// The class filters of this decoder's content.

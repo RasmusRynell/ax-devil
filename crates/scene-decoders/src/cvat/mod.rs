@@ -48,7 +48,7 @@ impl CvatDecoder {
                 bases: vec![MatchBasis::Frame],
                 default_basis: MatchBasis::Frame,
                 options: Form::default(),
-                version: 2,
+                version: 3,
             },
         }
     }
