@@ -291,6 +291,7 @@ export function MediaToolsPanel({
       className={PANEL_CLASS}
     >
       <PanelDivider
+        label="Resize media tools"
         onResize={(next, final) => {
           setLive(next);
           if (final) onWidth(next);

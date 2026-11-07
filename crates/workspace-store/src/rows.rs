@@ -3,10 +3,10 @@
 use foundation::{UserError, Warning};
 use workspace::{Content, ContentId, Entry, ItemId, playlist_label};
 
-use crate::{HiddenRef, Resolution, WorkspaceState};
+use crate::{HiddenRef, Location, Resolution, WorkspaceState};
 
 /// What a row stands for.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum RowKind {
     /// A video or live item, or an item with no Content yet.
     Item,
@@ -48,6 +48,8 @@ pub struct Row {
     pub entry: Option<ContentId>,
     /// What resolving left out of an item's Content; empty for entries and lanes.
     pub warnings: Vec<Warning>,
+    /// Where it is read from, which tells same-named rows apart; none for a playlist and for a row not resolved.
+    pub location: Option<Location>,
 }
 
 /// The rows of `state` in tree order. A playlist item has no row of its own: each of its playlists is a top-level
@@ -71,25 +73,32 @@ pub fn rows(state: &WorkspaceState) -> Vec<Row> {
             hidden,
             entry: entry.map(|entry| entry.id.clone()),
             warnings: Vec::new(),
+            location: None,
         };
         let entry_rows = |rows: &mut Vec<Row>, entry: &Entry, own_row: bool| {
             if own_row {
-                rows.push(row(
-                    entry.id.to_string(),
-                    RowKind::Entry,
-                    entry.label.clone(),
-                    Some(entry),
-                    state.is_hidden(&HiddenRef::Entry(entry.id.clone())),
-                ));
+                rows.push(Row {
+                    location: Some(Location::of_video(&entry.video)),
+                    ..row(
+                        entry.id.to_string(),
+                        RowKind::Entry,
+                        entry.label.clone(),
+                        Some(entry),
+                        state.is_hidden(&HiddenRef::Entry(entry.id.clone())),
+                    )
+                });
             }
             for overlay in &entry.overlays {
-                rows.push(row(
-                    format!("{}{KEY_SEPARATOR}{}", entry.id, overlay.label),
-                    RowKind::Lane,
-                    overlay.label.clone(),
-                    Some(entry),
-                    state.is_hidden(&HiddenRef::Lane(entry.id.clone(), overlay.label.clone())),
-                ));
+                rows.push(Row {
+                    location: Some(Location::File(overlay.path.clone())),
+                    ..row(
+                        format!("{}{KEY_SEPARATOR}{}", entry.id, overlay.label),
+                        RowKind::Lane,
+                        overlay.label.clone(),
+                        Some(entry),
+                        state.is_hidden(&HiddenRef::Lane(entry.id.clone(), overlay.label.clone())),
+                    )
+                });
             }
         };
         match state.resolutions.get(&item.id) {
@@ -97,6 +106,7 @@ pub fn rows(state: &WorkspaceState) -> Vec<Row> {
                 Content::SeekableVideo(video) => {
                     rows.push(Row {
                         hidden: state.is_hidden(&HiddenRef::Entry(video.entry.id.clone())),
+                        location: Some(Location::of_video(&video.entry.video)),
                         ..row(
                             item.id.to_string(),
                             RowKind::Item,
@@ -110,6 +120,10 @@ pub fn rows(state: &WorkspaceState) -> Vec<Row> {
                 // A live video has no entry; its one stream is named by its own id.
                 Content::LiveVideo(live) => rows.push(Row {
                     entry: Some(live.id.clone()),
+                    location: Some(Location::Camera {
+                        host: live.camera.host.clone(),
+                        head: live.camera.head,
+                    }),
                     hidden: state.is_hidden(&HiddenRef::Entry(live.id.clone())),
                     ..row(
                         item.id.to_string(),

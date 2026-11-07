@@ -211,58 +211,68 @@ export function WorkspaceList({
             style={{
               paddingLeft: `calc(var(--spacing-m) + var(--spacing-xl) * ${row.level - 1})`,
             }}
-            className={`group/row flex h-row shrink-0 cursor-pointer items-center gap-s rounded-control pr-s hover:bg-hover ${
+            className={`group/row flex min-h-row shrink-0 cursor-pointer flex-col justify-center rounded-control pr-s hover:bg-hover ${
               row.dimmed || info.status.status !== "Ready" ? "text-muted" : "text-fg"
             } ${isCurrent ? "bg-hover group-focus-visible/tree:outline-(length:--stroke-focus) group-focus-visible/tree:-outline-offset-(--stroke-focus) group-focus-visible/tree:outline-accent" : ""}`}
           >
-            {row.hasChildren ? (
-              <span
-                aria-hidden
-                onClick={(event) => {
-                  event.stopPropagation();
-                  onFold(info.key, !folded);
-                }}
-                onDoubleClick={(event) => event.stopPropagation()}
-              >
-                <Icon name={folded ? "chevron-right" : "chevron-down"} />
-              </span>
-            ) : (
-              <span aria-hidden className="size-icon shrink-0" />
-            )}
-            <Icon {...iconOf(row)} />
-            <span className="min-w-0 flex-1 truncate">{info.label}</span>
-            {note && <span className="sr-only">{`, ${note}`}</span>}
-            {info.warnings.length > 0 && (
-              <span
-                onClick={(event) => event.stopPropagation()}
-                onDoubleClick={(event) => event.stopPropagation()}
-              >
-                <Popover
-                  label={`${info.label}: warnings`}
-                  trigger={<Icon name="triangle-alert" />}
-                  className="size-row justify-center"
+            <div className="flex h-row items-center gap-s">
+              {row.hasChildren ? (
+                <span
+                  aria-hidden
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    onFold(info.key, !folded);
+                  }}
+                  onDoubleClick={(event) => event.stopPropagation()}
                 >
-                  <NoticeList notices={info.warnings.map(noticeOf)} />
-                </Popover>
-              </span>
-            )}
-            {row.target && (
-              <IconButton
-                icon={info.hidden ? "eye" : "eye-off"}
-                label={`${info.hidden ? "Unhide" : "Hide"} ${info.label}`}
-                tabIndex={-1}
-                disabled={!hides}
-                onClick={(event) => {
-                  event.stopPropagation();
-                  onHide(row);
-                }}
-                onDoubleClick={(event) => event.stopPropagation()}
-                className={`rounded-control ${
-                  info.hidden || isCurrent
-                    ? ""
-                    : "opacity-0 group-hover/row:opacity-100 focus-visible:opacity-100"
-                }`}
-              />
+                  <Icon name={folded ? "chevron-right" : "chevron-down"} />
+                </span>
+              ) : (
+                <span aria-hidden className="size-icon shrink-0" />
+              )}
+              <Icon {...iconOf(row)} />
+              <span className="min-w-0 flex-1 truncate">{info.label}</span>
+              {note && <span className="sr-only">{`, ${note}`}</span>}
+              {info.warnings.length > 0 && (
+                <span
+                  onClick={(event) => event.stopPropagation()}
+                  onDoubleClick={(event) => event.stopPropagation()}
+                >
+                  <Popover
+                    label={`${info.label}: warnings`}
+                    trigger={<Icon name="triangle-alert" />}
+                    className="size-row justify-center"
+                  >
+                    <NoticeList notices={info.warnings.map(noticeOf)} />
+                  </Popover>
+                </span>
+              )}
+              {row.target && (
+                <IconButton
+                  icon={info.hidden ? "eye" : "eye-off"}
+                  label={`${info.hidden ? "Unhide" : "Hide"} ${info.label}`}
+                  tabIndex={-1}
+                  disabled={!hides}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    onHide(row);
+                  }}
+                  onDoubleClick={(event) => event.stopPropagation()}
+                  className={`rounded-control ${
+                    info.hidden || isCurrent
+                      ? ""
+                      : "opacity-0 group-hover/row:opacity-100 focus-visible:opacity-100"
+                  }`}
+                />
+              )}
+            </div>
+            {info.detail && (
+              <div className="flex gap-s">
+                <span aria-hidden className="size-icon shrink-0" />
+                <span aria-hidden className="size-icon shrink-0" />
+                <span className="sr-only">, </span>
+                <span className="min-w-0 truncate text-small text-muted">{info.detail}</span>
+              </div>
             )}
           </div>
         );
