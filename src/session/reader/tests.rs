@@ -468,12 +468,13 @@ async fn an_edit_without_an_overlay_never_clears_a_saved_broker_password() {
     explicit["mode"] = json!("mqtt");
     explicit["handler"] = json!("ADF_V1_FRAME");
     let rtsp = json!({"mode": "rtsp", "handler": "ONVIF_XML"});
+    let hub = json!({"topic": "t", "channel": 7});
     let mut seq = 3;
     for fields in [
         json!({"overlay": explicit}),
-        json!({"overlay": rtsp, "kept_mqtt": broker}),
+        json!({"overlay": rtsp, "kept_mqtt": broker, "kept_datahub": hub}),
         // The password now saved only as kept.
-        json!({"overlay": rtsp, "kept_mqtt": broker, "label": "Again"}),
+        json!({"overlay": rtsp, "kept_mqtt": broker, "kept_datahub": hub, "label": "Again"}),
     ] {
         seq += 1;
         let reply = answer(&state, &guest, seq, edit(fields.clone())).await;
@@ -498,4 +499,32 @@ async fn an_edit_without_an_overlay_never_clears_a_saved_broker_password() {
             Some(PASSWORD.to_owned())
         );
     }
+
+    // A relabel that sends no overlay or kept settings, of a stream whose MQTT is kept, changes none of them.
+    let kept = || match &owner.state().doc.workspace.parts().workspace.items[0]
+        .recipe
+        .source
+    {
+        Source::Live(recipe) => recipe.kept.clone(),
+        _ => panic!("a live stream"),
+    };
+    let before = kept();
+    assert_eq!(before.datahub.as_ref().map(|hub| hub.channel), Some(7));
+    let reply = answer(&state, &guest, seq + 1, relabel("Guest")).await;
+    assert!(matches!(
+        reply,
+        SessionServerMessage::Ack {
+            outcome: AckOutcome::Refused { .. },
+            ..
+        }
+    ));
+    let reply = answer(&state, &owner, seq + 2, relabel("Owner")).await;
+    assert!(matches!(
+        reply,
+        SessionServerMessage::Ack {
+            outcome: AckOutcome::Ok,
+            ..
+        }
+    ));
+    assert_eq!(kept(), before);
 }

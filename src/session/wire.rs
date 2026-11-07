@@ -202,10 +202,8 @@ fn doc_command(
                     return Err(Refusal::Invalid);
                 }
                 stream.like = Some(item);
-                if stream.overlay.is_none()
-                    && let Some(recipe) = saved.recipe(item)
-                {
-                    stream.overlay = Some((&recipe.overlay).into());
+                if let Some(recipe) = saved.recipe(item) {
+                    stream.keep_unsent(recipe);
                 }
             }
             // An edited stream has every value of its own: empty text is not the configured one.

@@ -1,10 +1,10 @@
 //! What the overlay modes not chosen hold, as a request carries it: no decoder, since nothing reads it until its mode
 //! is chosen.
 
-use super::{WireSecret, reference_only};
+use super::{NewLiveWire, WireSecret, reference_only};
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
-use workspace::{DataHubSettings, MqttSettings, Secret, intake};
+use workspace::{DataHubSettings, LiveRecipe, MqttSettings, Secret, intake};
 
 /// The MQTT settings of a stream whose overlay is another mode. Mirrors `workspace::MqttSettings`; what is absent takes
 /// the configured default.
@@ -68,6 +68,22 @@ impl From<KeptMqttWire> for intake::NewMqtt {
             broker_user: mqtt.broker_user,
             broker_pass: mqtt.broker_pass.map(Secret::from),
             source_key: mqtt.source_key,
+        }
+    }
+}
+
+impl NewLiveWire {
+    /// For an edit of the stream `saved`: what the request leaves out (the overlay, the settings of the modes not
+    /// chosen) is what `saved` holds. A literal password is not sent, as in any recipe request; the intake restores it.
+    pub fn keep_unsent(&mut self, saved: &LiveRecipe) {
+        if self.overlay.is_none() {
+            self.overlay = Some((&saved.overlay).into());
+        }
+        if self.kept_mqtt.is_none() {
+            self.kept_mqtt = saved.kept.mqtt.as_ref().map(Into::into);
+        }
+        if self.kept_datahub.is_none() {
+            self.kept_datahub = saved.kept.datahub.as_ref().map(Into::into);
         }
     }
 }
