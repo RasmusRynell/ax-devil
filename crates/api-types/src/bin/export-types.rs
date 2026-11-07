@@ -86,6 +86,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         ItemState,
         ItemKind,
         ItemRecipe,
+        ReloadFailure,
         ResolutionState,
         RowInfo,
         RowKindWire,

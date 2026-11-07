@@ -16,14 +16,14 @@ mod bookmarks;
 mod details;
 mod edit;
 mod hidden;
+mod resolving;
 mod rows;
 
-use foundation::{CancelToken, HostPath, Interrupt, UserError};
-use handlers::Handlers;
+use foundation::{HostPath, UserError};
 use overlay_sync::MatchPolicy;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
-use workspace::{Content, Environment, ItemId, Recipe, Source, Workspace, WorkspaceItem};
+use workspace::{Content, ItemId, Source, Workspace, WorkspaceItem};
 
 pub use bookmarks::{
     BookmarkCommand, BookmarkGroup, Standing, csv as bookmarks_csv, groups as bookmark_groups,
@@ -31,6 +31,7 @@ pub use bookmarks::{
 };
 pub use details::{Location, details};
 pub use hidden::HiddenRef;
+pub use resolving::{Reload, ResolveJob, complete, resolve};
 pub use rows::{Row, RowKind, RowStatus, rows};
 
 /// Names one commit of an item's Content. Later commits have larger values, across all items of a state.
@@ -93,6 +94,9 @@ pub struct WorkspaceState {
     /// Open items whose files changed since their Content resolved, with how many times. They are not resolved
     /// again, which would end the stream the viewer shows: the viewer offers to, and `Resolve` does.
     pub changed: HashMap<ItemId, u32>,
+    /// Open items whose Content is read again, or whose last reload failed. Their old Content stays in
+    /// `resolutions` and on screen meanwhile.
+    pub reloads: HashMap<ItemId, Reload>,
     /// What the user chose to hide (`true`) or show (`false`) of entries and lanes, over what the resolver started
     /// them as. A choice for something an item no longer resolves to is dropped when it resolves again; one for
     /// something no item has is kept but changes nothing.
@@ -118,6 +122,8 @@ pub struct WorkspaceParts<'a> {
     pub open: &'a HashSet<ItemId>,
     /// Open items whose files changed since their Content resolved, with how many times.
     pub changed: &'a HashMap<ItemId, u32>,
+    /// Open items being read again, or whose last reload failed.
+    pub reloads: &'a HashMap<ItemId, Reload>,
     /// What the user chose to hide or show.
     pub hidden: &'a HashMap<HiddenRef, bool>,
 }
@@ -134,6 +140,7 @@ impl WorkspaceState {
             resolutions,
             open,
             changed,
+            reloads,
             hidden,
             next_attempt: _,
             next_generation: _,
@@ -146,6 +153,7 @@ impl WorkspaceState {
             resolutions,
             open,
             changed,
+            reloads,
             hidden,
         }
     }
@@ -165,22 +173,6 @@ impl WorkspaceState {
         {
             Some(existing) => *existing = item,
             None => self.workspace.items.push(item),
-        }
-    }
-
-    /// Marks the item pending under a new attempt and returns the job for it.
-    fn start(&mut self, item: &WorkspaceItem) -> ResolveJob {
-        self.pin_hidden(&item.id);
-        self.next_attempt += 1;
-        let attempt = self.next_attempt;
-        self.changed.remove(&item.id);
-        self.resolutions
-            .insert(item.id, Resolution::Pending { attempt });
-        ResolveJob {
-            item: item.id,
-            attempt,
-            name: item.display_name(),
-            recipe: item.recipe.clone(),
         }
     }
 }
@@ -290,19 +282,6 @@ pub enum DocCommand {
     Bookmarks(BookmarkCommand),
 }
 
-/// Work a transition asks its caller to run: resolve `recipe`, then hand the result to [`complete`].
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct ResolveJob {
-    /// The item being resolved.
-    pub item: ItemId,
-    /// The attempt the item waits on; pass it back to [`complete`].
-    pub attempt: u64,
-    /// The item's name at the time, for a failure that speaks of it.
-    pub name: String,
-    /// What to resolve.
-    pub recipe: Recipe,
-}
-
 /// Applies `command`, returning the next state and the jobs to run for it.
 pub fn apply(state: &WorkspaceState, command: DocCommand) -> (WorkspaceState, Vec<ResolveJob>) {
     let mut next = state.clone();
@@ -326,6 +305,7 @@ pub fn apply(state: &WorkspaceState, command: DocCommand) -> (WorkspaceState, Ve
                 next.open.insert(item.id);
             }
             next.next_generation += 1;
+            next.reloads.remove(&item.id);
             next.resolutions.insert(
                 item.id,
                 Resolution::Resolved {
@@ -346,13 +326,21 @@ pub fn apply(state: &WorkspaceState, command: DocCommand) -> (WorkspaceState, Ve
         }
         DocCommand::CloseViewer(id) => {
             next.open.remove(&id);
+            next.reloads.remove(&id);
         }
         DocCommand::Resolve(id) => {
             let known = next.workspace.items.iter().find(|item| item.id == id);
             if let Some(item) = known.cloned()
-                && !matches!(next.resolutions.get(&id), Some(Resolution::Pending { .. }))
+                && !next.resolving(&id)
             {
-                jobs.push(next.start(&item));
+                // A viewer on its Content keeps it while the new one is read, and when that fails.
+                let shown = next.open.contains(&id)
+                    && matches!(next.resolutions.get(&id), Some(Resolution::Resolved { .. }));
+                jobs.push(if shown {
+                    next.start_reload(&item)
+                } else {
+                    next.start(&item)
+                });
             }
         }
         DocCommand::SourceChanged(id) => {
@@ -362,6 +350,10 @@ pub fn apply(state: &WorkspaceState, command: DocCommand) -> (WorkspaceState, Ve
                     && matches!(next.resolutions.get(&id), Some(Resolution::Resolved { .. }));
                 if shown {
                     *next.changed.entry(id).or_default() += 1;
+                    // The offer to reload replaces the news that the last reload failed: that was about older files.
+                    if matches!(next.reloads.get(&id), Some(Reload::Failed { .. })) {
+                        next.reloads.remove(&id);
+                    }
                 } else {
                     jobs.push(next.start(&item));
                 }
@@ -369,6 +361,7 @@ pub fn apply(state: &WorkspaceState, command: DocCommand) -> (WorkspaceState, Ve
         }
         DocCommand::Remove(id) => {
             next.changed.remove(&id);
+            next.reloads.remove(&id);
             next.workspace.items.retain(|item| item.id != id);
             next.workspace
                 .bookmarks
@@ -396,6 +389,7 @@ pub fn apply(state: &WorkspaceState, command: DocCommand) -> (WorkspaceState, Ve
             next.epoch += 1;
             next.open.clear();
             next.changed.clear();
+            next.reloads.clear();
             next.hidden.clear();
             next.resolutions.clear();
             for item in next.workspace.items.clone() {
@@ -455,46 +449,6 @@ fn name_of(entered: &str) -> Option<String> {
 
 /// What a workspace without a name is called.
 const UNTITLED: &str = "Untitled";
-
-/// Commits the result of resolving `item` under `attempt`. A result whose item no longer waits on that attempt is
-/// dropped: the returned state equals `state`.
-pub fn complete(
-    state: &WorkspaceState,
-    item: ItemId,
-    attempt: u64,
-    result: Result<Content, UserError>,
-) -> WorkspaceState {
-    let mut next = state.clone();
-    if next.resolutions.get(&item) != Some(&Resolution::Pending { attempt }) {
-        return next;
-    }
-    let resolution = match result {
-        Ok(content) => {
-            next.settle_hidden(&item, &content);
-            next.next_generation += 1;
-            Resolution::Resolved {
-                content,
-                generation: ContentGen(next.next_generation),
-            }
-        }
-        Err(error) => Resolution::Failed(error),
-    };
-    next.resolutions.insert(item, resolution);
-    next
-}
-
-/// Runs a job with the installed `handlers`, expanding `$NAME` references from `env`. Reads the file system, so callers
-/// keep it off an async executor's workers. A cancelled job gives [`Interrupt::Cancelled`], which the caller reports
-/// to no one.
-pub fn resolve(
-    job: &ResolveJob,
-    handlers: &Handlers,
-    env: &Environment,
-    cancel: &CancelToken,
-) -> Result<Content, Interrupt<UserError>> {
-    job.recipe
-        .resolve(&job.item, &job.name, handlers, env, cancel)
-}
 
 #[cfg(test)]
 mod tests;

@@ -112,6 +112,29 @@ describe("split area", () => {
     );
   });
 
+  it("says why a reload failed above the viewer it left in place, until dismissed, and again for the next failure", async () => {
+    const { room, send } = await setup();
+    send(["a", true, resolved("a")]);
+    const fail = (attempt: number, reason: string) =>
+      act(() =>
+        room.setItems([
+          {
+            ...video("a"),
+            reload_failure: { attempt, error: { code: "FileNotFound", params: {}, reason } },
+          },
+        ]),
+      );
+    fail(3, "gate.mp4 is gone");
+    expect(screen.getByRole("alert").textContent).toBe("Could not reload: gate.mp4 is gone");
+    expect(screen.getByText("playing content-a")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Dismiss" }));
+    expect(screen.queryByRole("alert")).toBeNull();
+    fail(3, "gate.mp4 is gone");
+    expect(screen.queryByRole("alert")).toBeNull();
+    fail(5, "gate.mp4 is gone");
+    expect(screen.getByRole("alert")).toBeTruthy();
+  });
+
   it("gives eight open items a pane and closes the ninth again", async () => {
     const { send } = await setup();
     const ids = Array.from({ length: 9 }, (_, n) => `v${n + 1}`);

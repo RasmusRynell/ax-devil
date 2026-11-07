@@ -39,6 +39,7 @@ impl WorkspaceState {
             match content {
                 Some(content) => {
                     self.next_generation += 1;
+                    self.reloads.remove(&item.id);
                     self.resolutions.insert(
                         item.id,
                         Resolution::Resolved {

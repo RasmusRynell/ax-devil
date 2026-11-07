@@ -260,13 +260,19 @@ describe("opening", () => {
     expect(shown().active).toBeUndefined();
   });
 
-  it("says when the backend would not open the viewer", async () => {
+  it("says when the backend would not open the viewer, and leaves the preview it would have replaced", async () => {
     await renderTree();
+    fireEvent.doubleClick(screen.getByRole("treeitem", { name: /^v\.mp4/ }));
+    await act(async () => {});
+    const before = shown();
+    expect(before.active).toBeDefined();
     FakeSocket.refuseContent = "TooManyStreams";
     fireEvent.doubleClick(screen.getByRole("treeitem", { name: /^A/ }));
     await act(async () => {});
     expect(screen.getByRole("alert").textContent).toBe("Too many videos are open.");
-    expect(shown().active).toBeUndefined();
+    // The backend may settle the entry of the first viewer meanwhile; no pane was added or replaced.
+    expect(shown().active).toBe(before.active);
+    expect(Object.keys(shown().viewers)).toEqual(Object.keys(before.viewers));
   });
 });
 

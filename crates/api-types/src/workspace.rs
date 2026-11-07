@@ -117,10 +117,24 @@ pub struct ItemState {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
     pub changed: Option<u32>,
+    /// Why the last reload of the open viewer failed, until the next. The viewer keeps its old Content.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub reload_failure: Option<ReloadFailure>,
     /// What the item was made from, for an audience with host details: what Edit starts from and Information lists.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
     pub recipe: Option<ItemRecipe>,
+}
+
+/// A reload that failed.
+#[derive(Serialize, Deserialize, TS)]
+pub struct ReloadFailure {
+    /// Which attempt failed, so a dismissed failure does not hide the next one.
+    #[ts(type = "number")]
+    pub attempt: u64,
+    /// Why.
+    pub error: ErrorWire,
 }
 
 /// What an item was made from, as stored: a `$NAME` reference stays one and a literal password is left out. The name

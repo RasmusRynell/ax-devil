@@ -1,3 +1,5 @@
+import { reasonOf } from "../errors";
+import type { ReloadFailure } from "../generated/api";
 import { Button } from "../kit/Button";
 import { useCan, useCommand } from "../session/session";
 import { Banner } from "../shell/Banner";
@@ -40,6 +42,27 @@ export function ReloadOffer({
       }
     >
       Source changed, reload current viewer?
+    </Banner>
+  );
+}
+
+/**
+ * Says why the last reload of an open item failed. The viewer keeps its old content, so this is a warning above it
+ * that the user can dismiss; `dismissed` is the attempt dismissed, so the next failure shows again.
+ */
+export function ReloadFailed({
+  failure,
+  dismissed,
+  onDismiss,
+}: {
+  failure: ReloadFailure | undefined;
+  dismissed: number;
+  onDismiss: (attempt: number) => void;
+}) {
+  if (!failure || failure.attempt <= dismissed) return null;
+  return (
+    <Banner role="alert" onDismiss={() => onDismiss(failure.attempt)}>
+      Could not reload: {reasonOf(failure.error)}
     </Banner>
   );
 }

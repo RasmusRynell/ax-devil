@@ -162,6 +162,21 @@ async fn a_wrong_password_fails_at_once_without_a_retry_and_is_never_shown() {
 }
 
 #[tokio::test]
+async fn a_login_the_camera_stops_accepting_ends_a_live_stream_at_its_reconnect() {
+    let fake = FakeRtsp::with(Behaviour {
+        refuse_later: true,
+        first_connection: Fault::Drop { after: 30 },
+        ..Behaviour::default()
+    })
+    .await;
+    let mut stream = open_stream(&fake.camera(), request(true, false));
+    status_where(&mut stream, |s| *s == Status::Live { epoch: 0 }).await;
+    let status = status_where(&mut stream, |s| matches!(s, Status::Failed(_))).await;
+    assert!(matches!(&status, Status::Failed(e) if e.kind == ErrorKind::LoginRejected));
+    assert_eq!(fake.connections(), 2, "one reconnect, then no more");
+}
+
+#[tokio::test]
 async fn a_stream_without_the_wanted_media_fails_for_good() {
     let fake = FakeRtsp::with(Behaviour {
         video: false,
