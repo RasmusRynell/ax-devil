@@ -19,12 +19,14 @@ async function fetchInfo(base, timeoutMs) {
   return response.json();
 }
 
-/** The backend executable: the sidecar in the app's resources when packaged, else the release build in the checkout. */
+/**
+ * The backend executable: the sidecar in the app's resources when packaged, else `AX_DEVIL_BACKEND` (the smoke test
+ * runs the debug build the Rust tests already compiled), else the release build in the checkout.
+ */
 function backendExecutable(app) {
   const name = process.platform === "win32" ? "ax-devil.exe" : "ax-devil";
-  return app.isPackaged
-    ? path.join(process.resourcesPath, "bin", name)
-    : path.resolve(__dirname, "../target/release", name);
+  if (app.isPackaged) return path.join(process.resourcesPath, "bin", name);
+  return process.env.AX_DEVIL_BACKEND ?? path.resolve(__dirname, "../target/release", name);
 }
 
 /**

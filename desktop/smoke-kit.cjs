@@ -1,5 +1,6 @@
 // What the desktop smoke test and its remote-server scenario share: driving a window's page, finding controls by
 // their cursor ids, and a few checks on the page itself.
+const fs = require("node:fs/promises");
 const path = require("node:path");
 
 // Fixtures and screenshots live under the repository, or under `AX_DEVIL_SMOKE_ROOT` when the app is packaged.
@@ -16,10 +17,32 @@ const page = (window) => {
       if (await js(`Boolean(${expression})`)) return;
       await delay(100);
     }
-    throw new Error(`Timed out: ${expression}\n${await js("document.body.innerText")}`);
+    throw new Error(
+      `Timed out: ${expression}\n${await js("document.body.innerText")}\n${await saveFailure(window)}`,
+    );
   };
   return { js, wait };
 };
+
+// Saves the window as drawn when a wait times out, for CI to upload with the screenshots; returns the line to add to the
+// failure. The page text alone does not show where a click landed or what was still moving.
+async function saveFailure(window) {
+  try {
+    await fs.mkdir(SCREENSHOTS, { recursive: true });
+    const file = path.join(SCREENSHOTS, `failure-${Date.now()}.png`);
+    // A window the system is not drawing may never answer.
+    const image = await Promise.race([
+      window.webContents.capturePage(),
+      delay(5000).then(() => {
+        throw new Error("no picture in 5 seconds");
+      }),
+    ]);
+    await fs.writeFile(file, image.toPNG());
+    return `Window saved to ${file}`;
+  } catch (error) {
+    return `Window not saved: ${error.message}`;
+  }
+}
 
 // Waits until the window has drawn the state it is in.
 const frames = (driver) =>
@@ -250,9 +273,24 @@ async function reload(window) {
   await loaded;
 }
 
+// Reads what `expression` returns until two reads a frame apart agree, so an input event goes where the element is
+// staying, not where it was passing: a layout that follows a resize, a sidebar or a pane a frame late has moved
+// by the time a point read before it is clicked.
+async function settled(window, expression) {
+  const { js } = page(window);
+  let last = JSON.stringify(await js(expression));
+  for (let i = 0; i < 100; i++) {
+    await frames({ js });
+    const now = JSON.stringify(await js(expression));
+    if (now === last) return JSON.parse(now);
+    last = now;
+  }
+  throw new Error(`Timed out: ${expression} kept moving`);
+}
+
 // A real left click at the center of the element with this cursor id.
 async function click(window, id) {
-  const { x, y } = await page(window).js(center(id));
+  const { x, y } = await settled(window, center(id));
   for (const type of ["mouseMove", "mouseDown", "mouseUp"])
     window.webContents.sendInputEvent({ type, x, y, button: "left", clickCount: 1 });
 }
@@ -283,6 +321,7 @@ module.exports = {
   moveTo,
   page,
   reload,
+  settled,
   SHOWN,
   setView,
   showChrome,

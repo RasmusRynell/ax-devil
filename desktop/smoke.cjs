@@ -24,6 +24,7 @@ const { bookmarks } = require("./smoke-bookmarks.cjs");
 const { exportDialog } = require("./smoke-export.cjs");
 const { live } = require("./smoke-live.cjs");
 const { remote } = require("./smoke-remote.cjs");
+const { handedOff } = require("./smoke-handoff.cjs");
 const { sharing } = require("./smoke-sharing.cjs");
 const { reload: reloadOffer } = require("./smoke-reload.cjs");
 const { video } = require("./smoke-video.cjs");
@@ -33,7 +34,7 @@ module.exports = async (window, shell) => {
   await wait("document.querySelector('h1')?.textContent === 'ax-devil'");
   assert.equal(await js("document.querySelector('[role=alert]')"), null);
 
-  // No page of the release app may break its Content Security Policy. A reload covers the load itself; a request the
+  // No page of the app may break its Content Security Policy. A reload covers the load itself; a request the
   // policy forbids shows the collector sees violations at all.
   const ownerCsp = watchCsp(window);
   await reload(window);
@@ -336,5 +337,7 @@ module.exports = async (window, shell) => {
   await sharing(window, shell, ownerCsp);
   console.log("smoke: remote");
   await remote(window, shell);
+  console.log("smoke: second launch");
+  await handedOff(shell);
   console.log(`PASS: app shell loaded; screenshots in ${path.relative(SMOKE_ROOT, SCREENSHOTS)}`);
 };

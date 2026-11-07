@@ -6,6 +6,7 @@ const path = require("node:path");
 
 const { backendArgs, parseLaunch, relaunchArgs, userArgs } = require("./args.cjs");
 const { backendExecutable, createBackend } = require("./backend.cjs");
+const { handOff } = require("./hand-off.cjs");
 const { confirmLink, linkTarget, registerLinks, singleInstance } = require("./links.cjs");
 const { askAfterFailure, explainFailure, parseTarget, verifyServer } = require("./remote.cjs");
 const { installUncaughtHandler } = require("./uncaught.cjs");
@@ -13,7 +14,7 @@ const { installIpc, localWindows, openWindow } = require("./window.cjs");
 const { windowBounds } = require("./window-state.cjs");
 
 const smoke = process.argv.includes("--smoke-test");
-// The smoke test always starts its own release backend and never attaches to a running session.
+// The smoke test always starts its own backend and never attaches to a running session.
 const port = smoke ? "0" : process.env.PORT || "7330";
 const devUrl = smoke ? undefined : process.env.DESKTOP_DEV_URL;
 // The backend starts the hidden renderer with this executable and folder; in a packaged app it cannot find them itself.
@@ -43,6 +44,17 @@ if (smoke) {
   // AX_DEVIL_SMOKE_DPR=2 runs the smoke test on a high-density screen.
   if (process.env.AX_DEVIL_SMOKE_DPR)
     app.commandLine.appendSwitch("force-device-scale-factor", process.env.AX_DEVIL_SMOKE_DPR);
+  // AX_DEVIL_SMOKE_SLOWDOWN=4 runs every page's scripts four times slower, as on a loaded CI runner, to find a smoke
+  // check that clicks or measures before the layout has settled.
+  const slowdown = Number(process.env.AX_DEVIL_SMOKE_SLOWDOWN);
+  if (slowdown > 1)
+    app.on("web-contents-created", (_event, contents) => {
+      contents.debugger.attach("1.3");
+      // A window that closes first has nothing left to slow.
+      contents.debugger
+        .sendCommand("Emulation.setCPUThrottlingRate", { rate: slowdown })
+        .catch(() => undefined);
+    });
 }
 // Electron's own data (Chromium profile, crash dumps) is browser state, not ax-devil data: the backend owns the
 // app's folders, so keep Electron out of them.
@@ -240,11 +252,15 @@ async function openLaunch({ server, link }) {
   return (await confirmLink(target)) ? showRemote(target) : undefined;
 }
 
-// A launch that reaches the running app: it opens a window, or raises one when it asks for nothing.
+// A launch that reaches the running app: it opens a window (a command's, a server's), or raises one when it asks for
+// nothing. A command's items go to the local backend first, which the new local window then starts from.
 async function onLaunch(launch) {
   await app.whenReady();
   try {
-    if (!(await openLaunch(launch)) && !launch.server && !launch.link) {
+    if (launch.command) {
+      await handOff(backendExecutable(app), await backend.ensure(), launch.command, launch.cwd);
+      await showLocal();
+    } else if (!(await openLaunch(launch)) && !launch.server && !launch.link) {
       const [existing] = BrowserWindow.getAllWindows();
       if (existing) {
         if (existing.isMinimized()) existing.restore();
@@ -252,7 +268,10 @@ async function onLaunch(launch) {
       } else await showLocal();
     }
   } catch (error) {
-    dialog.showErrorBox("ax-devil could not open the server", error.message);
+    dialog.showErrorBox(
+      launch.command ? "ax-devil could not open that" : "ax-devil could not open the server",
+      error.message,
+    );
   }
 }
 
@@ -299,7 +318,7 @@ else
       if (smoke) {
         const window = await showLocal();
         const timer = setTimeout(() => fail(new Error("Desktop smoke test timed out")), 120000);
-        await require("./smoke.cjs")(window, { openLaunch, showLocal, showRemote });
+        await require("./smoke.cjs")(window, { onLaunch, openLaunch, showLocal, showRemote });
         clearTimeout(timer);
         report("PASS");
         app.quit();

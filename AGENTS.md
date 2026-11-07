@@ -97,7 +97,12 @@ entry points, and keep reusable build and test steps in the Makefile.
 
 ### Done
 
-- Before every commit and push of code, test, dependency or build-configuration changes, `make check` must pass. CI runs exactly `make check`, once, on Linux; the per-OS `package` jobs only build and smoke-test the packaged app. If `make check` passes locally, CI's `check` job passes. Use `make check-fast` while working. Never push on a failing `make check`.
+- For code, test, dependency or build-configuration changes, `make check` must pass before every push; never push on
+  a failing one. It includes every test suite, so do not also run `make test`. While working, run the checks and tests
+  that fit the change, as you go: the narrowest one that would catch the problem (`make check-fast`, one suite), and
+  never a slow check again when nothing it covers has changed. CI runs exactly `make check`, once, on Linux; the
+  per-OS `package` jobs only build and smoke-test the packaged app. If `make check` passes locally, CI's `check` job
+  passes.
 - For prose-only documentation or agent-instruction changes, validate affected links, examples, and consistency,
   instead of running the application checks.
 - Tests: delete the tests of code you remove, merge or change before writing new ones. Add a test only for a deep

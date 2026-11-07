@@ -16,6 +16,7 @@ const {
   laneCells,
   page,
   setView,
+  settled,
   until,
 } = require("./smoke-kit.cjs");
 const { VIDEO, inBackendWindow } = require("./smoke-twice.cjs");
@@ -60,7 +61,7 @@ module.exports.fields = () =>
       };
       // A real left click on the middle of a lane's picture, where both cars are. Opening or closing the media tools
       // resizes the canvas at once, but the lane cells follow a moment later; until the last cell ends where the canvas
-      // does, a click lands where the lanes used to be.
+      // does, and the click point has stopped moving, a click lands where the lanes used to be.
       const select = async (lane) => {
         // The pane follows the area a frame behind, and the lanes follow the pane: wait for the pane to fill the area.
         await wait(`(() => {
@@ -73,10 +74,13 @@ module.exports.fields = () =>
           const end = document.querySelector('canvas[role=img]').getBoundingClientRect().right;
           return Math.abs(cells[cells.length - 1].getBoundingClientRect().right - end) <= 1;
         })()`);
-        const { x, y } = await js(`(() => {
+        const { x, y } = await settled(
+          window,
+          `(() => {
           const r = document.querySelectorAll('[data-cursor-id^="frame:"]')[${lane}].getBoundingClientRect();
           return { x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height / 2) };
-        })()`);
+        })()`,
+        );
         for (const type of ["mouseMove", "mouseDown", "mouseUp"])
           window.webContents.sendInputEvent({ type, x, y, button: "left", clickCount: 1 });
         await wait(`document.querySelector('${INSPECTOR} [aria-busy=false]')`);

@@ -235,6 +235,6 @@ module.exports.sharing = async (window, shell, ownerCsp) => {
   await shootBoth("session-ended", [["", other, second]]);
   await wait(button("Start sharing"));
   assert.deepEqual(await sessions(), []);
-  assert.deepEqual([ownerCsp, watcherCsp], [[], []], "The release app must break no CSP rule");
+  assert.deepEqual([ownerCsp, watcherCsp], [[], []], "The app must break no CSP rule");
   other.close();
 };

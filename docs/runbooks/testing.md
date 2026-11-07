@@ -64,7 +64,7 @@ set, which makes the skip a failure.
 
 ## Desktop suite and screenshots
 
-`make test-desktop` builds the release app, starts Electron with `--smoke-test` and runs `desktop/smoke.cjs` in the
+`make test-desktop` builds the debug backend, starts Electron with `--smoke-test` and runs `desktop/smoke.cjs` in the
 window: it waits for the app shell, then switches the theme to light and dark and saves
 `artifacts/screenshots/main-<theme>.png`. Screenshots are captured only after the compositor has drawn a frame for
 the current state; capturing earlier fails. It also captures the View menu and Settings dialog at the window
@@ -73,7 +73,7 @@ shows a picture and that stepping changes it. On that video it opens the export 
 that the dialog fits the window minimum at 200% zoom in both themes. It adds the fixture MOT Challenge playlist through the Add Playlist
 dialog and asserts, on the real canvas, that every lane draws its boxes on frame 0 and none on the empty frame 5, in
 both themes, at the window minimum and at 200% zoom. It also runs a sharing scenario (an owner, a watcher that joins
-through a link, and a third window that lists the shared Session) and asserts that no page of the release app
+through a link, and a third window that lists the shared Session) and asserts that no page of the app
 reports a Content Security Policy violation. In smoke
 mode the desktop's listener for other machines takes a free loopback port through the hidden `--share-address`, so
 nothing leaves the machine. `desktop/fit-coverage.test.cjs` fails until each new dialog names the scenario that fit-checks it, or a reason ([DT-02](../parity.md#developer-tooling)).
@@ -108,9 +108,10 @@ caches; nothing is shared between tests through the filesystem.
 app. `.github/workflows/ci.yml` runs on pull requests to and pushes on `main` and `rewrite`, and on `v*` tags, with
 every job starting at once:
 
-- `check` (Ubuntu 24.04) runs `make check` once: no other job runs a check or a test. It installs the FFmpeg
-  development libraries and clang that the `media` crate builds against (`pkg-config` finds FFmpeg), and uploads the
-  screenshots. The make target fails when its checks leave generated files changed.
+- `check` (Ubuntu 24.04) runs `make check` once: no other job runs a check or a test. It builds
+  and tests against the same pinned FFmpeg the Linux package ships (`FFMPEG_DIR`, shared cache entry), installs clang
+  for the `media` crate's bindings, and uploads the screenshots. The make target fails when its checks leave generated files changed. Only pushes save the Cargo cache;
+  pull requests restore it (a copy per pull request ref would pass the repository's 10 GB cache cap).
 - `package` (Linux, Windows, macOS) runs `make package` and `make smoke-packaged` against a pinned shared FFmpeg
   (downloaded for Linux and Windows, built from source on macOS, both cached). Windows runs make from Git Bash.
 - `version` and `release` run on tags only. `version` runs `make verify-release-version`; `release` waits for all
