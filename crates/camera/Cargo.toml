@@ -32,6 +32,9 @@ tokio = { workspace = true, features = ["macros", "net", "rt", "sync", "time"] }
 # The DataHub WebSocket. `__rustls-tls` is the crate's own switch for a caller-supplied rustls config (tls.rs); no roots or provider come with it.
 tokio-tungstenite = { version = "0.29", default-features = false, features = ["connect", "__rustls-tls"] }
 tracing.workspace = true
+# The `log` bridge that `tracing_subscriber`'s `init` installs delivers retina's records to rtsp/keepalive.rs; both are in the app already.
+tracing-log = "0.2"
+tracing-subscriber.workspace = true
 url = "2"
 
 [dev-dependencies]

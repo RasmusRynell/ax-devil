@@ -10,7 +10,7 @@ use std::time::{Duration, SystemTime};
 use bytes::Bytes;
 use tokio::sync::{mpsc, oneshot, watch};
 use tokio::time::sleep;
-use tracing::info;
+use tracing::{info, warn};
 
 use crate::device::Device;
 use crate::error::CameraError;
@@ -21,6 +21,8 @@ use socket::{Early, Socket};
 
 /// How many samples may wait for the app.
 const QUEUE: usize = 256;
+/// How long a connection may go without a first sample before that is logged.
+const FIRST_SAMPLE: Duration = Duration::from_secs(10);
 
 impl Device {
     /// The topics the camera's DataHub offers, in the order it lists them.
@@ -135,14 +137,16 @@ impl Link {
         self.epoch = Some(epoch);
         self.attempt = 0;
         self.status.send_replace(Status::Live { epoch });
+        let mut first = early.samples.is_empty();
         let result = loop {
             let sample = match early.samples.pop_front() {
                 Some(sample) => Ok(sample),
                 None => tokio::select! {
-                    sample = socket.next_sample() => sample,
+                    sample = next_sample(&mut socket, &self.topic, self.channel, first) => sample,
                     _ = &mut *stop => break Ok(()),
                 },
             };
+            first = false;
             match sample {
                 Ok(sample) => {
                     if self
@@ -179,6 +183,28 @@ impl Link {
             }
             Ok(_) => Err(protocol("the DataHub subscription has no id")),
             Err(error) => Err(error),
+        }
+    }
+}
+
+/// The next sample. While the connection has had none (`first`), a wait of [`FIRST_SAMPLE`] is logged once and the
+/// wait goes on: a quiet topic is not an error, but a wrong topic or channel looks the same.
+async fn next_sample(
+    socket: &mut Socket,
+    topic: &str,
+    channel: u32,
+    first: bool,
+) -> Result<Sample, CameraError> {
+    let next = socket.next_sample();
+    if !first {
+        return next.await;
+    }
+    tokio::pin!(next);
+    tokio::select! {
+        sample = &mut next => sample,
+        () = sleep(FIRST_SAMPLE) => {
+            warn!("No DataHub samples received for topic '{topic}' on channel {channel}.");
+            next.await
         }
     }
 }

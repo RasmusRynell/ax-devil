@@ -248,7 +248,11 @@ async fn run_backend(global: Global, command: Option<Command>, plugins: Arc<Plug
         global.cache_dir,
     );
     let log_file = paths.as_ref().ok().map(|paths| paths.log_file.as_path());
-    logging::init(global.log_level, log_file.filter(|_| !launcher));
+    logging::init(
+        global.log_level,
+        log_file.filter(|_| !launcher),
+        camera::retina_log_layer(),
+    );
     ax_devil::runtime::raise_open_files();
     ax_devil::plugins::log_problems(&plugins.info());
     let (prefix, result) = match command {

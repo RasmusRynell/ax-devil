@@ -5,6 +5,7 @@
 //! here, because retina's depacketizers lose the RTP header extension that carries the capture time.
 
 mod assemble;
+mod keepalive;
 mod metadata;
 mod output;
 mod packet;
@@ -22,6 +23,8 @@ use crate::live::{Counters, FeedOut, LiveStream, Reconnect, Status, Task};
 use crate::target::{Camera, Head};
 use crate::vapix::Resolution;
 use output::VideoOut;
+
+pub use keepalive::retina_log_layer;
 
 /// How many video frames may wait for the app: about a second at 30 frames per second.
 const VIDEO_QUEUE: usize = 32;

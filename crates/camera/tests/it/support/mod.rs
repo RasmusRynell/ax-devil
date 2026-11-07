@@ -7,4 +7,5 @@ pub mod fake_broker;
 pub mod fake_datahub;
 pub mod fake_rtsp;
 pub mod fake_vapix;
+pub mod log;
 pub mod tls_server;

@@ -13,7 +13,8 @@ use rotating::RotatingFile;
 use std::{path::Path, str::FromStr, sync::Mutex};
 use tracing::level_filters::LevelFilter;
 use tracing_subscriber::{
-    Layer, filter::Targets, layer::SubscriberExt, registry::LookupSpan, util::SubscriberInitExt,
+    Layer, Registry, filter::Targets, layer::SubscriberExt, registry::LookupSpan,
+    util::SubscriberInitExt,
 };
 
 /// The verbosity chosen with the global `--log-level` flag.
@@ -100,8 +101,12 @@ where
         .with_line_number(true)
 }
 
-/// Starts logging to the console and, when it can be opened, to `file` (its folder is created). Call once at startup.
-pub fn init(level: Level, file: Option<&Path>) {
+/// Starts logging to the console and, when it can be opened, to `file` (its folder is created). `extra` sees every
+/// event unfiltered, for a crate that must react to a dependency's record. Call once at startup.
+pub fn init<L>(level: Level, file: Option<&Path>, extra: L)
+where
+    L: Layer<Registry> + Send + Sync + 'static,
+{
     let console = lines()
         .with_writer(std::io::stderr)
         .with_filter(level.targets());
@@ -124,6 +129,7 @@ pub fn init(level: Level, file: Option<&Path>) {
         Some(Err(error)) => (None, Some(error)),
     };
     tracing_subscriber::registry()
+        .with(extra)
         .with(console)
         .with(file_layer)
         .init();
