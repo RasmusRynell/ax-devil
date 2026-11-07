@@ -171,9 +171,21 @@ module.exports.split = async (window) => {
     await delay(300);
     await frames({ js });
   };
-  const before = (await js(BOXES))[1].height;
+  // The panes follow the area a frame behind a resize, and slower where frames are slow: read them once two reads
+  // 100 ms apart agree.
+  const settled = async () => {
+    let was = JSON.stringify(await js(BOXES));
+    for (let attempt = 0; attempt < 30; attempt++) {
+      await delay(100);
+      const now = JSON.stringify(await js(BOXES));
+      if (now === was) return JSON.parse(now);
+      was = now;
+    }
+    throw new Error("The panes did not settle");
+  };
+  const before = (await settled())[1].height;
   await drag(60);
-  const grown = (await js(BOXES))[1].height;
+  const grown = (await settled())[1].height;
   assert.ok(
     Math.abs(grown - before - 60) <= 3,
     `The seam moves with the mouse: ${before} to ${grown}`,
