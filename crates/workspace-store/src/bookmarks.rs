@@ -417,7 +417,8 @@ mod tests {
         let file = folder.path().join("gate.mp4");
         std::fs::write(&file, "x").unwrap();
         let (state, item) = resolved(&file);
-        let state = mark(&state, item, 41, 1_366_700);
+        // Exactly half a millisecond, which rounds up.
+        let state = mark(&state, item, 41, 1_366_500);
         let id = state.workspace.bookmarks[0].id;
         let command = BookmarkCommand::Edit {
             id,

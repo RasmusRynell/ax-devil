@@ -4,9 +4,10 @@ How a workspace lives on disk. `workspace` is the domain model; this crate owns 
 recovery copies with their locks, and the recent workspaces list.
 
 - **Format (`version: 2`).** Private DTOs in `document.rs`; the domain types carry no serde. Anything but integer
-  `version` 2, invalid JSON, duplicate ids or a bookmark or reviewed mark naming no item fails the whole load. An item
-  the build cannot read (unknown kind, malformed, unknown key) loads as `Source::Unreadable` and is written back as it
-  was read. Item and bookmark DTOs deny unknown keys, so a newer file's extra data is kept, not dropped.
+  `version` 2, invalid JSON, a missing `name` (text or null) or `items` list, duplicate ids or a bookmark or reviewed
+  mark naming no item fails the whole load. An item the build cannot read (unknown kind, malformed, unknown key)
+  loads as `Source::Unreadable` and is written back as it was read; its `id` may be any text, which bookmarks and
+  reviewed marks naming it are written back with. Item and bookmark DTOs deny unknown keys, so a newer file's extra data is kept, not dropped.
 - **Paths.** Only `video` and overlay `path` are rebased: a path inside the file's folder is written relative with
   `/`, any other absolute, both folded lexically (`.`, `..`); "inside" compares where the path's folder and the file's folder really are, through symlinks; a link as the last part stays the link. Playlist settings, overlay
   options and unreadable items are opaque. A symlinked workspace file is read and written at its target and anchors to

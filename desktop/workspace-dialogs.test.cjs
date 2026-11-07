@@ -120,6 +120,9 @@ void test("the chosen name gets the workspace suffix unless it already has it; a
   const page = await pageContents();
   picked = { canceled: false, filePath: path.join(root, "clip") };
   assert.equal(await save(page, "Untitled"), path.join(root, "clip.ax-devil.workspace"));
+  assert.deepEqual(calls.saves.at(-1).filters, [
+    { name: "Workspaces (*.ax-devil.workspace)", extensions: ["ax-devil.workspace"] },
+  ]);
   picked = { canceled: false, filePath: path.join(root, "kept.ax-devil.workspace") };
   assert.equal(await save(page, "Untitled"), path.join(root, "kept.ax-devil.workspace"));
   picked = { canceled: true, filePaths: [] };

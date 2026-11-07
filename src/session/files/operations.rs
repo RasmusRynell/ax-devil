@@ -213,30 +213,24 @@ impl WorkspaceFiles {
         Ok(())
     }
 
-    /// Back to the saved file, or an empty Untitled workspace, dropping the changes and their copy.
+    /// Back to the saved file, or an empty Untitled workspace, dropping the changes and their copy. A saved file that
+    /// cannot be reopened fails the Discard and keeps both the edits and their copy.
     pub(super) async fn discard(
         &self,
         handle: &Handle<api_types::CursorPoint>,
         files: &mut SessionFiles,
     ) -> Result<(), Failure> {
-        let mut file = handle
+        let file = handle
             .state()
             .doc
             .workspace
             .file
             .as_ref()
             .map(|file| file.as_path().to_owned());
-        let mut workspace = Workspace::default();
-        if let Some(path) = file.clone() {
-            // A file that is gone or unreadable cannot be gone back to, but the changes are still dropped.
-            match files.off(move || workspace_files::load(&path)).await {
-                Ok(loaded) => workspace = loaded,
-                Err(error) => {
-                    tracing::warn!("Discard starts empty: {}", error.reason);
-                    file = None;
-                }
-            }
-        }
+        let workspace = match file.clone() {
+            Some(path) => files.off(move || workspace_files::load(&path)).await?,
+            None => Workspace::default(),
+        };
         let saved = DocCommand::Replace {
             workspace: workspace.clone(),
             file: file.clone().map(HostPath::new),
