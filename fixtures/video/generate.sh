@@ -67,3 +67,13 @@ rm -f seq/*.jpg
 ffmpeg "${GLOBAL[@]}" -f lavfi \
   -i "$(luma 64x48 30),setparams=range=pc,format=yuvj420p" "${PLAIN[@]}" -frames:v 12 \
   -c:v mjpeg -pix_fmt yuvj420p -q:v 1 -start_number 1 seq/%06d.jpg
+
+# Raw Annex B streams, 25 fps, a keyframe every 5 frames and no B-frames, with parameter sets in every keyframe: the
+# access units of a live stream (read back as packets by crates/media/src/stream.rs).
+ffmpeg "${GLOBAL[@]}" -f lavfi -i "$(luma 64x48 25)" "${PLAIN[@]}" -frames:v 12 "${H264[@]}" \
+  -x264-params keyint=5:min-keyint=5:scenecut=0:bframes=0 -f h264 stream_h264_gop5.h264
+ffmpeg "${GLOBAL[@]}" -f lavfi -i "$(luma 96x64 25)" "${PLAIN[@]}" -frames:v 1 "${H264[@]}" \
+  -x264-params keyint=5:min-keyint=5:scenecut=0:bframes=0 -f h264 stream_h264_96x64.h264
+ffmpeg "${GLOBAL[@]}" -f lavfi -i "$(luma 64x48 25)" "${PLAIN[@]}" -frames:v 12 -c:v libx265 -qp 1 -pix_fmt yuv420p \
+  -x265-params keyint=5:min-keyint=5:scenecut=0:bframes=0:open-gop=0:repeat-headers=1:info=0:log-level=error \
+  -f hevc stream_hevc_gop5.hevc
