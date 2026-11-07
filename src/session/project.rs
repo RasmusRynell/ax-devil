@@ -331,6 +331,8 @@ fn content_info(
                     id: span.id.to_string(),
                     label: playlist_label(item, span, playlist.playlists.len() > 1),
                     entries: u32::try_from(span.entries).unwrap_or(u32::MAX),
+                    matches: span.matches,
+                    sequence_groups: span.sequence_groups,
                 })
                 .collect(),
         },
@@ -370,12 +372,19 @@ fn entry_info(entry: &Entry) -> EntryInfo {
         label,
         // Where the frames and overlays are on the host: the playback socket opens them, no audience reads them.
         video: _,
-        overlays: _,
+        overlays,
+        // Hidden is the rows'.
+        starts_hidden: _,
+        lanes_starting_hidden: _,
     } = entry;
     EntryInfo {
         id: id.to_string(),
         label: label.clone(),
         lanes: entry.lane_labels().into_iter().map(str::to_owned).collect(),
+        handlers: overlays
+            .iter()
+            .map(|overlay| overlay.handler.clone())
+            .collect(),
     }
 }
 

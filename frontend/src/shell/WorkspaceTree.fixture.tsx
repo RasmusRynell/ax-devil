@@ -1,9 +1,10 @@
 import { act, render, screen } from "@testing-library/react";
+import { useLayoutEffect } from "react";
 import type { ItemState } from "../generated/api";
 import { entry, failed, FakeSocket, playlist, video, type Room } from "../session/fakeSession";
 import { SessionProvider, useView } from "../session/session";
 import { KeptStateProvider } from "./keptState";
-import { RevealShown } from "./RevealShown";
+import { RevealShown, useFolds } from "./RevealShown";
 import { WorkspaceTree } from "./WorkspaceTree";
 
 export const MOT = playlist(
@@ -42,11 +43,19 @@ function View() {
   return <div data-testid="view">{JSON.stringify({ active, viewers })}</div>;
 }
 
+/** Opens every row the window has just given its first fold, so a test sees the whole tree. */
+export function OpenAll() {
+  const [{ known }, setHeld] = useFolds("workspace");
+  useLayoutEffect(() => setHeld((now) => ({ ...now, collapsed: new Set() })), [known]);
+  return null;
+}
+
 export async function renderTree(items: ItemState[] = ITEMS, hidden = HIDDEN) {
   render(
     <SessionProvider>
       <KeptStateProvider>
         <RevealShown view="workspace" />
+        <OpenAll />
         <WorkspaceTree view="workspace" {...LISTING} />
       </KeptStateProvider>
       <View />

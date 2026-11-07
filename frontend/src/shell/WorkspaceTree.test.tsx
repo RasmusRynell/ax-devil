@@ -213,7 +213,7 @@ describe("opening", () => {
     fireEvent.doubleClick(screen.getByRole("treeitem", { name: /^mot/ }));
     await act(async () => {});
     expect(shown().active).toBe(1);
-    expect(labels().slice(2)).toEqual(["mot", "A"]);
+    expect(labels().slice(2)).toEqual(["mot", "A", "GT"]);
   });
 
   it("walks on from one section's last row into the next and back, and Home and End span them all", async () => {
@@ -302,7 +302,6 @@ describe("items", () => {
       "Open to the Side",
       "Information",
       "Export video",
-      "Hide",
       "Edit",
       "Remove",
     ]);

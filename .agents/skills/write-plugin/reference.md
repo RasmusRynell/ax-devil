@@ -150,8 +150,8 @@ which a form shows at that setting.
 | Line | Op | Meaning |
 |------|----|---------|
 | `{"choice": {"value","label"?,"detail"?}}` | scan | One value of the `field`; `label` defaults to `value` |
-| `{"playlist": {"name"}}` | resolve | Starts a playlist; the entries after it belong to it. May come any number of times, with the same names in the same order on every run. Entries before the first one form a playlist named like the resolver. A shared playlist name, and a shared entry name within a playlist, gets ` (2)`, ` (3)` |
-| `{"entry": {"name","video","overlays"?}}` | resolve | One video. `video` is `{"file": "/abs/v.mp4"}` or `{"image_sequence": {"pattern": "/abs/img1/%06d.jpg","start_number","frame_rate": {"num","den"},"width","height","frame_count"}}`. An overlay is `{"label","slot","path","handler","options"?}`: `slot` is the lane's identity, the same in every entry that has that lane; `handler` is a decoder id |
+| `{"playlist": {"name","matches"?,"sequence_groups"?}}` | resolve | Starts a playlist; the entries after it belong to it. May come any number of times, with the same names in the same order on every run. Entries before the first one form a playlist named like the resolver. A shared playlist name, and a shared entry name within a playlist, gets ` (2)`, ` (3)`. `matches` and `sequence_groups` are whole numbers up to 2^53-1 shown in Information |
+| `{"entry": {"name","video","overlays"?,"considered"?}}` | resolve | One video. `video` is `{"file": "/abs/v.mp4"}` or `{"image_sequence": {"pattern": "/abs/img1/%06d.jpg","start_number","frame_rate": {"num","den"},"width","height","frame_count"}}`. An overlay is `{"label","slot","path","handler","options"?,"considered"?}`: `slot` is the lane's identity, the same in every entry that has that lane; `handler` is a decoder id. `considered` (default `true`) `false` starts the entry or overlay hidden until the user shows it |
 
 The host fails the operation, naming the line, when a line is not valid JSON or has the wrong keys, a path is not
 absolute, a playlist name is empty, or a slot or label repeats within an entry. A playlist with no entry, or no

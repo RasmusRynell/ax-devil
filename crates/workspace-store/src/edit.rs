@@ -2,7 +2,7 @@
 
 use workspace::{Content, ItemId, Source, WorkspaceItem};
 
-use crate::{ContentGen, HiddenRef, Resolution, ResolveJob, WorkspaceState};
+use crate::{ContentGen, Resolution, ResolveJob, WorkspaceState};
 
 impl WorkspaceState {
     /// Names `item` `label` (see [`crate::DocCommand::RenameItem`]).
@@ -36,16 +36,6 @@ impl WorkspaceState {
         item.recipe.lane_matching = existing.recipe.lane_matching.clone();
         let mut job = None;
         if item.recipe != existing.recipe {
-            // Content ids are the item's id, then `/` and the names inside it.
-            let own = item.id.to_string();
-            self.hidden.retain(|hidden| {
-                let (HiddenRef::Entry(id) | HiddenRef::Lane(id, _)) = hidden;
-                let id = id.as_str();
-                id != own
-                    && id
-                        .strip_prefix(&own)
-                        .is_none_or(|rest| !rest.starts_with('/'))
-            });
             match content {
                 Some(content) => {
                     self.next_generation += 1;
@@ -59,6 +49,8 @@ impl WorkspaceState {
                 }
                 None => job = Some(self.start(&item)),
             }
+            // A new recipe starts the item's entries and lanes over, as its resolver says; after `start`, which pins.
+            self.forget_hidden(&item.id);
         }
         self.workspace.items[at] = item;
         job

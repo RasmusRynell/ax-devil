@@ -10,8 +10,7 @@ use open::open_video;
 use overlays::{MapRun, OverlayEvent, OverlayService};
 use playback::{Authority, CachePool, ClockIntent, Registry};
 use std::{
-    collections::BTreeMap,
-    collections::BTreeSet,
+    collections::{BTreeMap, BTreeSet},
     path::Path,
     sync::{
         Arc, Mutex,
@@ -259,6 +258,8 @@ fn entry_with_a_lane(folder: &Path) -> Entry {
                 ("height".to_owned(), 48.into()),
             ]),
         }],
+        starts_hidden: false,
+        lanes_starting_hidden: Vec::new(),
     }
 }
 

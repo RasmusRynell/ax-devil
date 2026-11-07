@@ -87,6 +87,7 @@ fn pairs_files_by_stripped_name_in_name_order() {
     assert_eq!(found.unwrap().len(), playlist.entries.len());
 
     assert_eq!(playlist.name, "Folder Pair");
+    assert_eq!(playlist.matches, Some(3));
     let names: Vec<_> = playlist
         .entries
         .iter()

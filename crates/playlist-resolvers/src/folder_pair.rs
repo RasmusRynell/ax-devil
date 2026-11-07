@@ -123,6 +123,8 @@ impl PlaylistResolver for FolderPairResolver {
                 }],
                 name: pair.name,
                 video: VideoRef::File(pair.video),
+                starts_hidden: false,
+                lanes_starting_hidden: Vec::new(),
             })
             .collect();
         if entries.is_empty() {
@@ -141,6 +143,8 @@ impl PlaylistResolver for FolderPairResolver {
         Ok(ResolvedPlaylists {
             playlists: vec![ResolvedPlaylist {
                 name: self.spec.name.clone(),
+                matches: Some(entries.len() as u64),
+                sequence_groups: None,
                 entries,
             }],
             warnings: Vec::new(),

@@ -4,8 +4,10 @@ import { useHoverPicture } from "./useHoverPicture";
 import type { TreeRow, VisibleRow } from "./treeModel";
 
 /** The entry whose first frame a row's hover card shows; none for lanes, playlists and rows that are not Ready. */
-export const pictureOf = (row: TreeRow) =>
-  row.target && row.info.kind !== "lane" ? row.target.entry : null;
+export const pictureOf = ({ info }: TreeRow) =>
+  info.status.status === "Ready" && (info.kind === "item" || info.kind === "entry")
+    ? info.entry
+    : null;
 
 const urlOf = (session: string, entry: string) =>
   `/api/thumbnail?${new URLSearchParams({ session, entry })}`;

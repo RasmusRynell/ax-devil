@@ -41,6 +41,15 @@ impl ContentId {
         Self(format!("{item}{rest}"))
     }
 
+    /// Whether this id names the item `item` or something inside it: ids are the item's id, then `/` and the names
+    /// inside it.
+    pub fn names_item(&self, item: &ItemId) -> bool {
+        let own = item.to_string();
+        self.0
+            .strip_prefix(&own)
+            .is_some_and(|rest| rest.is_empty() || rest.starts_with('/'))
+    }
+
     /// The id as text, the form that crosses the wire.
     pub fn as_str(&self) -> &str {
         &self.0
@@ -89,9 +98,21 @@ pub struct Entry {
     pub video: VideoRef,
     /// The overlays, each shown as its own lane; labels and slots are unique within the entry.
     pub overlays: Vec<OverlayRef>,
+    /// Whether the entry is hidden until the user shows it.
+    pub starts_hidden: bool,
+    /// The labels of the lanes that are hidden until the user shows them.
+    pub lanes_starting_hidden: Vec<String>,
 }
 
 impl Entry {
+    /// The labels of the lanes that start hidden, as a set to test a long entry's lanes against in constant time.
+    pub fn lanes_hidden_at_first(&self) -> HashSet<&str> {
+        self.lanes_starting_hidden
+            .iter()
+            .map(String::as_str)
+            .collect()
+    }
+
     /// The lane names: the overlay labels, or the entry's own label for the one plain lane of an entry without
     /// overlays.
     pub fn lane_labels(&self) -> Vec<&str> {
@@ -135,6 +156,10 @@ pub struct PlaylistSpan {
     pub name: String,
     /// How many entries it holds; the spans cover the entries in order, so the first span starts at entry 0.
     pub entries: usize,
+    /// How many matches the resolver found, when it says.
+    pub matches: Option<u64>,
+    /// How many sequence groups the resolver found, when it says.
+    pub sequence_groups: Option<u64>,
 }
 
 /// What a playlist of `item` is called: the playlist's own name when the item is unlabelled; else the label, followed
@@ -276,6 +301,8 @@ pub(crate) fn playlist_content(
             id,
             name: name.clone(),
             entries: playlist.entries.len(),
+            matches: playlist.matches,
+            sequence_groups: playlist.sequence_groups,
         });
         let entry_names = numbered(playlist.entries.iter().map(|entry| entry.name.as_str()));
         for (entry, entry_name) in playlist.entries.into_iter().zip(entry_names) {
@@ -292,6 +319,8 @@ pub(crate) fn playlist_content(
                 label: entry_name,
                 video: entry.video,
                 overlays: entry.overlays,
+                starts_hidden: entry.starts_hidden,
+                lanes_starting_hidden: entry.lanes_starting_hidden,
             };
             check_unique_lanes(item, &entry)?;
             entries.push(entry);
@@ -386,8 +415,12 @@ mod tests {
                     name: (*entry).into(),
                     video: VideoRef::File(format!("/{entry}.mp4").into()),
                     overlays: Vec::new(),
+                    starts_hidden: false,
+                    lanes_starting_hidden: Vec::new(),
                 })
                 .collect(),
+            matches: None,
+            sequence_groups: None,
         }
     }
 

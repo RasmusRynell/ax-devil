@@ -84,10 +84,11 @@ pub fn rows(state: &WorkspaceState) -> Vec<Row> {
                         RowKind::Entry,
                         entry.label.clone(),
                         Some(entry),
-                        state.is_hidden(&HiddenRef::Entry(entry.id.clone())),
+                        state.entry_hidden(entry),
                     )
                 });
             }
+            let hidden_lanes = entry.lanes_hidden_at_first();
             for overlay in &entry.overlays {
                 rows.push(Row {
                     location: Some(Location::File(overlay.path.clone())),
@@ -96,7 +97,10 @@ pub fn rows(state: &WorkspaceState) -> Vec<Row> {
                         RowKind::Lane,
                         overlay.label.clone(),
                         Some(entry),
-                        state.is_hidden(&HiddenRef::Lane(entry.id.clone(), overlay.label.clone())),
+                        state.is_hidden(
+                            &HiddenRef::Lane(entry.id.clone(), overlay.label.clone()),
+                            hidden_lanes.contains(overlay.label.as_str()),
+                        ),
                     )
                 });
             }
@@ -105,7 +109,6 @@ pub fn rows(state: &WorkspaceState) -> Vec<Row> {
             Some(Resolution::Resolved { content, .. }) => match content {
                 Content::SeekableVideo(video) => {
                     rows.push(Row {
-                        hidden: state.is_hidden(&HiddenRef::Entry(video.entry.id.clone())),
                         location: Some(Location::of_video(&video.entry.video)),
                         ..row(
                             item.id.to_string(),
@@ -124,7 +127,6 @@ pub fn rows(state: &WorkspaceState) -> Vec<Row> {
                         host: live.camera.host.clone(),
                         head: live.camera.head,
                     }),
-                    hidden: state.is_hidden(&HiddenRef::Entry(live.id.clone())),
                     ..row(
                         item.id.to_string(),
                         RowKind::Item,
@@ -143,7 +145,7 @@ pub fn rows(state: &WorkspaceState) -> Vec<Row> {
                             RowKind::Playlist,
                             playlist_label(item, span, several),
                             own.iter()
-                                .find(|entry| !state.is_hidden(&HiddenRef::Entry(entry.id.clone())))
+                                .find(|entry| !state.entry_hidden(entry))
                                 .or(own.first())
                                 .copied(),
                             false,
@@ -351,17 +353,15 @@ mod tests {
 
         state
             .hidden
-            .insert(HiddenRef::Lane(first.clone(), "GT".into()));
-        state.hidden.insert(HiddenRef::Entry(ContentId::of_entry(
-            &playlist.id,
-            "MOT Challenge",
-            "SEQ-02",
-        )));
-        state.hidden.insert(HiddenRef::Entry(ContentId::of_entry(
-            &playlist.id,
-            "MOT Challenge",
-            "SEQ-99",
-        )));
+            .insert(HiddenRef::Lane(first.clone(), "GT".into()), true);
+        state.hidden.insert(
+            HiddenRef::Entry(ContentId::of_entry(&playlist.id, "MOT Challenge", "SEQ-02")),
+            true,
+        );
+        state.hidden.insert(
+            HiddenRef::Entry(ContentId::of_entry(&playlist.id, "MOT Challenge", "SEQ-99")),
+            true,
+        );
         let hidden: Vec<_> = rows(&state).iter().map(|row| row.hidden).collect();
         assert_eq!(
             hidden,
@@ -380,12 +380,16 @@ mod tests {
                     label: (*label).to_owned(),
                     video: workspace::VideoRef::File("/v.mp4".into()),
                     overlays: Vec::new(),
+                    starts_hidden: *label == "z",
+                    lanes_starting_hidden: Vec::new(),
                 })
                 .collect();
             let span = workspace::PlaylistSpan {
                 id: ContentId::of_playlist(&item.id, name),
                 name: name.to_owned(),
                 entries: entries.len(),
+                matches: None,
+                sequence_groups: None,
             };
             (span, entries)
         };
@@ -447,6 +451,9 @@ mod tests {
                 (RowKind::Entry, "v"),
             ]
         );
+        let hidden: Vec<_> = listed.iter().filter(|row| row.hidden).collect();
+        assert_eq!(hidden.len(), 1, "an entry its resolver hides starts hidden");
+        assert_eq!(hidden[0].label, "z");
         assert_eq!(
             listed[2].key,
             ContentId::of_playlist(&several.id, "A (2)").to_string()

@@ -24,6 +24,9 @@ const MAX_CHOICES: usize = 50_000;
 /// The most entries and playlist lines a resolve may print.
 const MAX_ENTRIES: usize = 50_000;
 
+/// The largest count a playlist may state: what the frontend reads without losing digits (JavaScript's 2^53 - 1).
+const MAX_COUNT: u64 = (1 << 53) - 1;
+
 /// Which operation the lines answer, and so which of them are allowed.
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Op {
@@ -55,6 +58,10 @@ struct ChoiceIn {
 #[serde(deny_unknown_fields)]
 struct PlaylistIn {
     name: String,
+    #[serde(default)]
+    matches: Option<u64>,
+    #[serde(default)]
+    sequence_groups: Option<u64>,
 }
 
 #[derive(Deserialize)]
@@ -64,6 +71,12 @@ struct EntryIn {
     video: VideoIn,
     #[serde(default)]
     overlays: Vec<OverlayIn>,
+    #[serde(default = "yes")]
+    considered: bool,
+}
+
+fn yes() -> bool {
+    true
 }
 
 #[derive(Deserialize)]
@@ -100,6 +113,8 @@ struct OverlayIn {
     handler: String,
     #[serde(default)]
     options: Settings,
+    #[serde(default = "yes")]
+    considered: bool,
 }
 
 /// An `error` line: what the plugin says went wrong, and the setting or path it is about.
@@ -107,6 +122,25 @@ pub(crate) struct Reported {
     pub reason: String,
     pub field: Option<String>,
     pub path: Option<String>,
+}
+
+/// A playlist as printed so far.
+struct Printed {
+    name: Option<String>,
+    matches: Option<u64>,
+    sequence_groups: Option<u64>,
+    entries: Vec<ResolvedEntry>,
+}
+
+impl Printed {
+    fn named(name: Option<String>) -> Self {
+        Self {
+            name,
+            matches: None,
+            sequence_groups: None,
+            entries: Vec::new(),
+        }
+    }
 }
 
 /// What a scan or resolve printed so far.
@@ -117,7 +151,7 @@ pub(crate) struct Collected {
     choices: Vec<Choice>,
     /// The playlists so far, the last one still taking entries; entries before any `playlist` line fill one with no
     /// name yet.
-    playlists: Vec<(Option<String>, Vec<ResolvedEntry>)>,
+    playlists: Vec<Printed>,
     /// Entries and playlist lines so far.
     printed: usize,
     warnings: Vec<Warning>,
@@ -157,9 +191,11 @@ impl Collected {
             playlists: self
                 .playlists
                 .into_iter()
-                .map(|(name, entries)| ResolvedPlaylist {
-                    name: name.unwrap_or_else(|| fallback.to_owned()),
-                    entries,
+                .map(|printed| ResolvedPlaylist {
+                    name: printed.name.unwrap_or_else(|| fallback.to_owned()),
+                    entries: printed.entries,
+                    matches: printed.matches,
+                    sequence_groups: printed.sequence_groups,
                 })
                 .collect(),
             warnings: self.warnings,
@@ -232,8 +268,20 @@ impl Collected {
                 if playlist.name.is_empty() {
                     return Err("the playlist name is empty".to_owned());
                 }
+                for (key, count) in [
+                    ("matches", playlist.matches),
+                    ("sequence_groups", playlist.sequence_groups),
+                ] {
+                    if count.is_some_and(|count| count > MAX_COUNT) {
+                        return Err(format!("'{key}' is more than {MAX_COUNT}"));
+                    }
+                }
                 self.printed += 1;
-                self.playlists.push((Some(cut(&playlist.name)), Vec::new()));
+                self.playlists.push(Printed {
+                    matches: playlist.matches,
+                    sequence_groups: playlist.sequence_groups,
+                    ..Printed::named(Some(cut(&playlist.name)))
+                });
             }
             (
                 LineIn {
@@ -291,6 +339,7 @@ impl Collected {
         let mut slots = HashSet::new();
         let mut labels = HashSet::new();
         let mut overlays = Vec::with_capacity(entry.overlays.len());
+        let mut lanes_starting_hidden = Vec::new();
         for overlay in entry.overlays {
             if !slots.insert(overlay.slot.clone()) {
                 return Err(format!(
@@ -304,6 +353,9 @@ impl Collected {
                     entry.name, overlay.label
                 ));
             }
+            if !overlay.considered {
+                lanes_starting_hidden.push(overlay.label.clone());
+            }
             overlays.push(OverlayRef {
                 label: overlay.label,
                 slot: overlay.slot,
@@ -314,13 +366,15 @@ impl Collected {
         }
         self.printed += 1;
         if self.playlists.is_empty() {
-            self.playlists.push((None, Vec::new()));
+            self.playlists.push(Printed::named(None));
         }
-        if let Some((_, entries)) = self.playlists.last_mut() {
-            entries.push(ResolvedEntry {
+        if let Some(playlist) = self.playlists.last_mut() {
+            playlist.entries.push(ResolvedEntry {
                 name: entry.name,
                 video,
                 overlays,
+                starts_hidden: !entry.considered,
+                lanes_starting_hidden,
             });
         }
         Ok(())
@@ -459,6 +513,52 @@ mod tests {
         assert_eq!(
             run(&[playlist("")]).err().as_deref(),
             Some("line 1: the playlist name is empty")
+        );
+    }
+
+    #[test]
+    fn optional_counts_and_considered_flags_read_into_the_playlist_and_default_to_shown() {
+        let overlay = |label: &str, extra: &str| {
+            format!(
+                r#"{{"label": "{label}", "slot": "{label}", "path": "/o.txt", "handler": "MOT_FILE"{extra}}}"#
+            )
+        };
+        let lines = [
+            r#"{"playlist": {"name": "p", "matches": 3, "sequence_groups": 2}}"#.to_owned(),
+            format!(
+                r#"{{"entry": {{"name": "a", "video": {{"file": "/a.mp4"}}, "considered": false, "overlays": [{}, {}]}}}}"#,
+                overlay("L1", r#", "considered": false"#),
+                overlay("L2", ""),
+            ),
+            r#"{"playlist": {"name": "old"}}"#.to_owned(),
+            r#"{"entry": {"name": "b", "video": {"file": "/b.mp4"}}}"#.to_owned(),
+        ];
+        let mut collected = Collected::new(Op::Resolve);
+        for (number, line) in lines.iter().enumerate() {
+            assert!(matches!(
+                collected.line(number + 1, line.as_bytes()),
+                Next::Continue
+            ));
+        }
+        let [p, old] = &collected.into_playlists("resolver").playlists[..] else {
+            panic!("two playlists");
+        };
+        assert_eq!((p.matches, p.sequence_groups), (Some(3), Some(2)));
+        assert_eq!((old.matches, old.sequence_groups), (None, None));
+        let ([a], [b]) = (&p.entries[..], &old.entries[..]) else {
+            panic!("one entry each");
+        };
+        assert!(a.starts_hidden && !b.starts_hidden);
+        assert_eq!(a.lanes_starting_hidden, ["L1"]);
+        assert!(b.lanes_starting_hidden.is_empty());
+
+        let too_many = format!(
+            r#"{{"playlist": {{"name": "p", "matches": {}}}}}"#,
+            MAX_COUNT + 1
+        );
+        assert_eq!(
+            feed(Op::Resolve, &too_many, 0).as_deref(),
+            Some("line 1: 'matches' is more than 9007199254740991")
         );
     }
 }

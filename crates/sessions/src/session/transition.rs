@@ -147,9 +147,9 @@ pub enum Outcome {
         grant: GrantId,
         /// What the holder may demand.
         authority: Authority,
-        /// The Content the stream carries, as it is resolved now.
-        content: Content,
-        /// The entry of `content` the stream plays, boxed as it is far larger than the other outcomes; `None` for a
+        /// The Content the stream carries, as it is resolved now (boxed, as it is far larger than the other outcomes).
+        content: Box<Content>,
+        /// The entry of `content` the stream plays, boxed for the same reason; `None` for a
         /// live video, which has none.
         entry: Option<Box<Entry>>,
         /// How the workspace says each lane of `entry` matches its records to frames; `None` for the default.

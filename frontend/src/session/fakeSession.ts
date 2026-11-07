@@ -25,7 +25,7 @@ export const resolved = (id: string): ResolutionState => ({
     id: `content-${id}`,
     generation: 1,
     display_name: `${id}.mp4`,
-    entry: { id: `content-${id}`, label: `${id}.mp4`, lanes: [`${id}.mp4`] },
+    entry: { id: `content-${id}`, label: `${id}.mp4`, lanes: [`${id}.mp4`], handlers: [] },
   },
 });
 
@@ -34,6 +34,7 @@ export const entry = (id: string, label = id, lanes: string[] = [label]): EntryI
   id,
   label,
   lanes,
+  handlers: [],
 });
 
 /** A playlist item that resolved to these entries. */
@@ -157,8 +158,15 @@ export class Room {
     this.share();
   }
 
-  /** The owner hides or shows an entry or one lane of it. */
+  /** The owner hides or shows an entry or one lane of it; a video's own entry and a live stream stay shown. */
   setHidden({ entry, lane }: HiddenTarget, hidden: boolean) {
+    const standalone = this.items.some(({ resolution }) => {
+      if (resolution.status !== "Resolved") return false;
+      const { content } = resolution;
+      if (content.kind === "LiveVideo") return content.id === entry;
+      return content.kind === "SeekableVideo" && !lane && content.entry.id === entry;
+    });
+    if (standalone) return;
     this.hidden = this.hidden.filter((target) => !hides([target], entry, lane));
     if (hidden) this.hidden.push({ entry, lane });
     this.setItems(this.items);

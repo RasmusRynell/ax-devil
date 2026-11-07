@@ -31,6 +31,8 @@ fn entry(id: ContentId, label: &str, folder: &str) -> Entry {
             handler: "MOT_FILE".into(),
             options: Default::default(),
         }],
+        starts_hidden: false,
+        lanes_starting_hidden: Vec::new(),
     }
 }
 
@@ -99,6 +101,8 @@ fn doc() -> (Doc, [ItemId; 6]) {
                 id: ContentId::of_playlist(&item, name),
                 name: name.into(),
                 entries: 2,
+                matches: None,
+                sequence_groups: None,
             }],
             warnings: vec![Warning {
                 problem: "Skipped 1 of 3 sequences".into(),
@@ -149,11 +153,10 @@ fn doc() -> (Doc, [ItemId; 6]) {
         .insert(closed, Resolution::Failed(failure("SECRET-PATH-C")));
     state.file = Some(HostPath::new("/data/SECRET-FILE.ax-devil.workspace"));
     state.open.extend([shown, playlist, failed, live]);
-    state.hidden.insert(HiddenRef::Entry(ContentId::of_entry(
-        &playlist,
-        "MOT sequences",
-        "SEQ-02",
-    )));
+    state.hidden.insert(
+        HiddenRef::Entry(ContentId::of_entry(&playlist, "MOT sequences", "SEQ-02")),
+        true,
+    );
     (Doc { workspace: state }, ids)
 }
 

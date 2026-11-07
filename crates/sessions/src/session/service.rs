@@ -494,7 +494,7 @@ impl<C: Clone + Send + 'static> Service<C> {
         Ok(StreamLease::new(
             (session, grant),
             authority,
-            content,
+            *content,
             entry.map(|entry| *entry),
             matching,
             host_details,

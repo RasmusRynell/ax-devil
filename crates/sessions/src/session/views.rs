@@ -13,7 +13,7 @@ use std::{collections::BTreeMap, time::Duration};
 use tokio::time::Instant;
 use ts_rs::TS;
 use workspace::{Content, ContentId, Entry, ItemId};
-use workspace_store::{HiddenRef, Resolution, WorkspaceState};
+use workspace_store::{Resolution, WorkspaceState};
 
 /// What the sidebar shows; part of the view a session shares.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize, TS)]
@@ -165,11 +165,7 @@ pub(super) fn shown_entry<'a>(
     let entries = content.entries();
     requested
         .and_then(|id| content.entry(id))
-        .or_else(|| {
-            entries
-                .iter()
-                .find(|entry| !workspace.is_hidden(&HiddenRef::Entry(entry.id.clone())))
-        })
+        .or_else(|| entries.iter().find(|entry| !workspace.entry_hidden(entry)))
         .or_else(|| entries.first())
 }
 
@@ -227,6 +223,7 @@ impl ViewLane {
 mod tests {
     use super::{super::layout::Axis, *};
     use serde_json::json;
+    use workspace_store::HiddenRef;
 
     #[test]
     fn a_view_reads_as_the_wire_writes_it_and_an_id_that_names_no_item_is_refused() {
@@ -331,6 +328,8 @@ mod tests {
             label: label.into(),
             video: workspace::VideoRef::File(format!("{label}.mp4").into()),
             overlays: Vec::new(),
+            starts_hidden: false,
+            lanes_starting_hidden: Vec::new(),
         }
     }
 
@@ -391,6 +390,8 @@ mod tests {
                 id: ContentId::of_playlist(&item, "P"),
                 name: "P".into(),
                 entries: 2,
+                matches: None,
+                sequence_groups: None,
             }],
             warnings: Vec::new(),
         });

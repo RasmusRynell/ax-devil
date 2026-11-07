@@ -1,8 +1,7 @@
 import { useLayoutEffect, useMemo } from "react";
 import type { SidebarView } from "../generated/api";
 import { useStreaming } from "../live/cameras";
-import { useDoc } from "../session/session";
-import { useFrontItem } from "../viewer/useViewers";
+import { useDoc, useView } from "../session/session";
 import { useKept } from "./keptState";
 import { NO_FOLDS, revealShown } from "./reveal";
 import { treeOf } from "./treeModel";
@@ -11,20 +10,21 @@ import { treeOf } from "./treeModel";
 export const useFolds = (view: SidebarView) => useKept(`${view}:folds`, NO_FOLDS);
 
 /**
- * Brings a tree view's folds to what the front viewer shows: the rows of a newly shown item are revealed and those
- * of an item the viewer moved on from close. The window keeps this mounted, so a view that is away (another view, or
+ * Brings a tree view's folds to what the hosted viewers show: the rows of a newly shown item or entry are revealed and
+ * those the last viewer left close. The window keeps this mounted, so a view that is away (another view, or
  * no sidebar) still sees every change as the reference's trees do.
  */
 export function RevealShown({ view }: { view: SidebarView }): null {
   const workspace = useDoc()?.workspace;
   const tree = useMemo(() => (workspace ? treeOf(workspace) : []), [workspace]);
-  const front = useFrontItem() ?? undefined;
+  const [views] = useView("viewers");
+  const viewers = useMemo(() => Object.values(views).flatMap((viewer) => viewer ?? []), [views]);
   const [held, setHeld] = useFolds(view);
   // Before paint, so a row shown never appears folded for a frame.
   useLayoutEffect(() => {
-    const next = revealShown(tree, front, held);
+    const next = revealShown(tree, viewers, held);
     if (next !== held) setHeld(next);
-  }, [tree, front]);
+  }, [tree, viewers]);
   return null;
 }
 
