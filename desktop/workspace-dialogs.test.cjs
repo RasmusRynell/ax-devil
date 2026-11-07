@@ -228,8 +228,8 @@ void test("the file dialog takes one video or overlay file, filtered as asked, a
       },
     ],
   );
-  // A suffix a manifest may declare but a native filter cannot state is left out; it never fails the request.
-  assert.equal(await pick(event, "overlay", [".json~", ".データ", ".json"]), null);
+  // A suffix a native filter cannot state is left out, whatever it holds; it never fails the request.
+  assert.equal(await pick(event, "overlay", [".json~", ".データ", ".﻿json", ".json"]), null);
   assert.deepEqual(calls.opens.at(-1).filters, [
     { name: "Data Files (*.json)", extensions: ["json"] },
     { name: "All Files (*)", extensions: ["*"] },
@@ -239,8 +239,7 @@ void test("the file dialog takes one video or overlay file, filtered as asked, a
   opened = { canceled: false, filePaths: ["/data/a.json"] };
   assert.equal(await pick(event, "overlay", [".json"]), "/data/a.json");
   await assert.rejects(async () => pick(event, "audio"), /video or overlay/);
-  await assert.rejects(async () => pick(event, "overlay", ["json"]), /extensions/);
-  await assert.rejects(async () => pick(event, "overlay", [".JSON"]), /extensions/);
+  await assert.rejects(async () => pick(event, "overlay", [".json", 7]), /extensions/);
   await assert.rejects(async () => pick(event, "overlay"), /extensions/);
 });
 

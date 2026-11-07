@@ -11,17 +11,12 @@ const { windowBounds } = require("./window-state.cjs");
 // Video files the Add Video dialog offers; the backend's intake takes any path, the viewer judges the media.
 const VIDEO_EXTENSIONS = [".mp4", ".avi", ".mkv", ".mov"];
 
-// Whether `one` is a file extension as a plugin manifest may declare it (crates/plugins/src/fields.rs): lowercase,
-// a dot and something after it, no path separator or whitespace.
-const isDeclaredExtension = (one) =>
-  typeof one === "string" &&
-  one.length >= 2 &&
-  one.startsWith(".") &&
-  one === one.toLowerCase() &&
-  !/[/\\\s]/u.test(one);
+// The most extensions, and the longest one, an overlay dialog request may carry.
+const MAX_EXTENSIONS = 1000;
+const MAX_EXTENSION_LENGTH = 256;
 
-// The extensions a native dialog filter can state: dotted suffixes of plain characters. Others (`.json~`, `.データ`)
-// are valid for a decoder but left out of the filter, which All Files always backs up.
+// The extensions a native dialog filter can state: dotted suffixes of plain characters. The backend decides what a
+// decoder may declare; any other suffix is left out of the filter, which All Files always backs up.
 const FILTERABLE_EXTENSION = /^(\.[a-z0-9_+-]+)+$/;
 
 /** The open dialog's filters: the `extensions` (with their dots) a filter can state under `label`, then every file. */
@@ -189,15 +184,22 @@ function installIpc({ connect, disconnect, restart }) {
   handle("window:is-maximized", ({ window }) => window.isMaximized());
   handle("app:version", () => app.getVersion());
   // Only the native dialog: the page sends the chosen path to the backend itself. Resolves to the absolute path of one
-  // file, null when the dialog is cancelled. `kind` is `video` or `overlay`; an overlay's `extensions` (lowercase, with
-  // their dots, compound ones like `.tar.gz` included) filter the dialog, ahead of All Files. Only the local
+  // file, null when the dialog is cancelled. `kind` is `video` or `overlay`; an overlay's `extensions` (with their
+  // dots, compound ones like `.tar.gz` included) filter the dialog, ahead of All Files, where a filter can state them. Only the local
   // backend's page may browse this machine's files.
   handle("workspace:pick-file", async ({ remote, window }, kind, extensions) => {
     if (remote) throw new Error("Not allowed");
     if (kind !== "video" && kind !== "overlay")
       throw new Error("Expected a kind of file: video or overlay");
-    if (kind === "overlay" && !(Array.isArray(extensions) && extensions.every(isDeclaredExtension)))
-      throw new Error("Expected file extensions, each lowercase with its dot");
+    if (
+      kind === "overlay" &&
+      !(
+        Array.isArray(extensions) &&
+        extensions.length <= MAX_EXTENSIONS &&
+        extensions.every((one) => typeof one === "string" && one.length <= MAX_EXTENSION_LENGTH)
+      )
+    )
+      throw new Error("Expected a list of file extensions");
     const chosen = await dialog.showOpenDialog(window, {
       title: kind === "video" ? "Select Video File" : "Select Overlay File",
       properties: ["openFile"],
