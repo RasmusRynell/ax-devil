@@ -120,7 +120,7 @@ describe("found cameras the workspace holds", () => {
       reported: new Map(),
       checks: new Map(),
       thumbnails: true,
-      front: null,
+      viewed: new Set<string>(),
       order: "address",
     });
     expect(live?.rows).toHaveLength(3);
