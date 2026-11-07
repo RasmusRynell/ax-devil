@@ -72,6 +72,32 @@ fn editing_keeps_a_cleared_user_and_what_the_other_overlay_modes_hold() {
         ("root", "literal"),
         "the saved user keeps the saved password"
     );
+    // A login cleared on purpose sends nothing, so a changed RTSP port is no reason to refuse; one that would be
+    // copied to the changed port is refused.
+    let moved = |login: Option<String>| NewLive {
+        username: login.clone(),
+        password: login.map(Secret::new),
+        rtsp_port: Some(8554),
+        overlay: Some(NewLiveOverlay::None),
+        ..host("cam.local")
+    };
+    let mut cleared = moved(Some(String::new()));
+    cleared
+        .copy_login(&saved, &editing, LoginUse::Stream)
+        .unwrap();
+    let item = live(cleared, &editing, &Handlers::built_in()).unwrap();
+    assert_eq!(
+        (
+            recipe(&item).username.as_str(),
+            recipe(&item).password.expose()
+        ),
+        ("", "")
+    );
+    assert!(
+        moved(None)
+            .copy_login(&saved, &editing, LoginUse::Stream)
+            .is_err()
+    );
     assert_eq!(edited.kept.mqtt, saved.kept.mqtt);
     assert_eq!(
         edited.kept.datahub,

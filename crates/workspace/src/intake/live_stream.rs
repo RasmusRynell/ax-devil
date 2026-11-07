@@ -130,32 +130,32 @@ impl NewLive {
         if !same_camera {
             return Ok(());
         }
-        let user_blank = match self.username.as_deref() {
-            Some(user) if !user.is_empty() && user != source.username => return Ok(()),
-            Some(user) => user.is_empty(),
-            None => true,
-        };
-        let password_blank = self
+        if matches!(self.username.as_deref(), Some(user) if !user.is_empty() && user != source.username)
+        {
+            return Ok(());
+        }
+        // A user entered as empty (an edit that cleared it) stays empty; only one not given is the saved one.
+        let fill_user = self.username.is_none();
+        // The password goes only to the user it was saved for. One not given (adding) is the saved one, reference or
+        // literal; one given as empty (an edit) was cleared on purpose when the client was sent the reference as
+        // text, so only a literal it was never sent comes back.
+        let restore = self
             .password
             .as_ref()
-            .is_none_or(|entered| entered.expose().is_empty());
-        if !user_blank && !password_blank {
+            .is_none_or(|entered| entered.expose().is_empty())
+            && self.username.as_deref().unwrap_or(&source.username) == source.username
+            && (self.password.is_none() || source.password.as_reference().is_none());
+        // Nothing copied sends nothing anywhere, so the destination needs no check.
+        if !fill_user && !restore {
             return Ok(());
         }
         if usage == LoginUse::Stream {
             self.check_login_destination(&source.rtsp_endpoint(), defaults)?;
         }
-        // A user entered as empty (an edit that cleared it) stays empty; only one not given is the saved one.
-        if self.username.is_none() {
+        if fill_user {
             self.username = Some(source.username.clone());
         }
-        // Only to the user it was saved for. A password not given (adding) is the saved one, reference or literal;
-        // one given as empty (an edit) was cleared on purpose when the client was sent the reference as text, so
-        // only a literal it was never sent comes back.
-        if password_blank
-            && self.username.as_deref() == Some(source.username.as_str())
-            && (self.password.is_none() || source.password.as_reference().is_none())
-        {
+        if restore {
             self.password = Some(source.password.clone());
         }
         Ok(())
