@@ -95,6 +95,33 @@ describe("video viewer", () => {
     expect(room.presenter.viewers[1]?.clock).toMatchObject({ playing: true });
   });
 
+  it("reopens a reloaded video paused at the playhead, which is what the watchers were told", async () => {
+    const tree = (generation: number) => (
+      <SessionProvider>
+        <Viewer sent={[]} generation={generation} />
+      </SessionProvider>
+    );
+    const view = render(tree(1));
+    await act(async () => {});
+    const room = FakeSocket.rooms.get("room-1")!;
+    act(() => room.setItems([video("a")]));
+    await slider();
+    vi.useFakeTimers();
+    fireEvent.click(screen.getByRole("button", { name: "Play" }));
+    await act(() => vi.advanceTimersByTimeAsync(1_000));
+    flushFrames();
+    // The replacement mounts as the first viewer leaves, and must not take the running clock the render still saw.
+    view.rerender(tree(2));
+    await act(() => vi.advanceTimersByTimeAsync(1_000));
+    const told = room.presenter.viewers[1]?.clock;
+    expect(told).toMatchObject({ playing: false });
+    expect(told?.frame).toBeGreaterThan(0);
+    expect(screen.getByRole("button", { name: "Play" })).toBeTruthy();
+    expect((screen.getByRole("slider", { name: "Timeline" }) as HTMLInputElement).value).toBe(
+      String(told?.frame),
+    );
+  });
+
   describe("when the session resumes", () => {
     /** Opens the viewer, then drops the session's socket and lets it reconnect, with tickets refused or not. */
     async function resume(refused = false) {

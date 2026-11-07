@@ -68,7 +68,10 @@ export function Viewer({
   onLaneMatching,
   hidden,
   settings,
+  generation = 1,
 }: {
+  /** The commit of the Content; a reload is a new one. */
+  generation?: number;
   sent: ClientMessage[];
   lanes?: LaneInfo[];
   /** Shows this entry whatever the view names. */
@@ -88,9 +91,11 @@ export function Viewer({
   return useDoc()?.workspace.items.length ? (
     <FakeSettings state={settings}>
       <VideoViewer
+        // A reload is a new stream, which the shell mounts a new viewer for.
+        key={generation}
         item="a"
         viewer={1}
-        content={content}
+        content={{ ...content, generation }}
         entry={entry}
         connect={connect}
         onHideLane={onHideLane}

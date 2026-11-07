@@ -18,6 +18,7 @@ import {
   useAllowed,
   useCan,
   useFollowing,
+  useReadView,
   useServerClock,
   useStream,
   useView,
@@ -323,7 +324,7 @@ export function VideoViewer({
   );
   const ticket = useStream(key);
   const [viewers, setViewers] = useView("viewers");
-  // A clock belongs to the entry the view names beside it; one left from another entry is not this viewer's.
+  const readView = useReadView(); // A clock belongs to the entry the view names beside it; one left from another entry is not this viewer's.
   const shown = viewers[viewer];
   const intent = shown?.entry === undefined || shown.entry === entry.id ? shown?.clock : undefined;
   const canChange = useCan("view");
@@ -340,8 +341,8 @@ export function VideoViewer({
   // The lane settings of the entry that closed, which the next entry's lanes start from.
   const priorLanes = useRef<readonly LaneSettings[]>([]);
   // The effect that creates the session reads these as they are then, and must not restart when they change.
-  const latest = useRef({ intent, canChange, following, clock, onLaneMatching });
-  latest.current = { intent, canChange, following, clock, onLaneMatching };
+  const latest = useRef({ canChange, following, clock, onLaneMatching });
+  latest.current = { canChange, following, clock, onLaneMatching };
   const defaultCatalog = useRef(values["overlays.default_catalog"] as string);
   defaultCatalog.current = values["overlays.default_catalog"] as string;
   const defaultTiming = useRef(savedTiming(values));
@@ -368,7 +369,11 @@ export function VideoViewer({
         return { ...now, [viewer]: { ...current, clock: next } };
       });
     };
-    const anchor = latest.current.intent;
+    // Read from the view as it is now, not as the last render saw it: a viewer this one replaces on a reload has just
+    // published its pause, and the render's intent would still be running.
+    const named = readView().viewers[viewer];
+    const anchor =
+      named?.entry === undefined || named.entry === entry.id ? named?.clock : undefined;
     // A window that follows takes the presenter's clock, never a position of its own, and forgets any it had.
     const kept = left.current;
     left.current = undefined;
@@ -423,7 +428,7 @@ export function VideoViewer({
         heldSpeed.current = speed;
       }
     };
-  }, [item, viewer, entry.id, ticket, connect, setViewers]);
+  }, [item, viewer, entry.id, ticket, connect, setViewers, readView]);
 
   // The share of the window's frame memory follows the panes that are open.
   const budget = usePaneBudget();

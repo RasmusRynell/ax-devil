@@ -14,6 +14,8 @@ pub enum Reload {
     Running {
         /// The attempt that is running.
         attempt: u64,
+        /// The changes to the files counted when it started: it read at least those.
+        seen: u32,
     },
     /// The last reload failed; the viewer keeps the old Content and says why until the next attempt.
     Failed {
@@ -53,16 +55,17 @@ impl WorkspaceState {
         job
     }
 
-    /// Starts reading the item again under a new attempt while its Content stays what the viewer shows. A change to
-    /// its files that arrives meanwhile is counted, since the attempt may have read the old ones.
+    /// Starts reading the item again under a new attempt while its Content stays what the viewer shows. The count of
+    /// changes to its files only grows until a reload succeeds, so what the user dismissed stays dismissed; a change
+    /// that arrives meanwhile counts beyond `seen`, since the attempt may have read the old files.
     pub(crate) fn start_reload(&mut self, item: &WorkspaceItem) -> ResolveJob {
         self.pin_hidden(&item.id);
-        self.changed.remove(&item.id);
         let job = self.job(item);
         self.reloads.insert(
             item.id,
             Reload::Running {
                 attempt: job.attempt,
+                seen: self.changed.get(&item.id).copied().unwrap_or(0),
             },
         );
         job
@@ -81,7 +84,7 @@ impl WorkspaceState {
     /// Whether `item` is resolving under `attempt`: only that attempt's result is accepted.
     pub fn waits_on(&self, item: &ItemId, attempt: u64) -> bool {
         self.resolutions.get(item) == Some(&Resolution::Pending { attempt })
-            || self.reloads.get(item) == Some(&Reload::Running { attempt })
+            || matches!(self.reloads.get(item), Some(Reload::Running { attempt: a, .. }) if *a == attempt)
     }
 
     /// Whether the item is resolving, as a first resolution or a reload.
@@ -104,18 +107,27 @@ pub fn complete(
     if !next.waits_on(&item, attempt) {
         return next;
     }
-    let reloading = next.reloads.remove(&item).is_some();
+    let reloading = match next.reloads.remove(&item) {
+        Some(Reload::Running { seen, .. }) => Some(seen),
+        _ => None,
+    };
+    let counted = next.changed.get(&item).copied().unwrap_or(0);
     let resolution = match result {
         Ok(content) => {
             next.settle_hidden(&item, &content);
             next.next_generation += 1;
+            // The new Content has read the changes counted before the reload, not those that came during it.
+            match counted.saturating_sub(reloading.unwrap_or(counted)) {
+                0 => next.changed.remove(&item),
+                later => next.changed.insert(item, later),
+            };
             Resolution::Resolved {
                 content,
                 generation: ContentGen(next.next_generation),
             }
         }
-        Err(error) if reloading => {
-            if !next.changed.contains_key(&item) {
+        Err(error) if reloading.is_some() => {
+            if Some(counted) == reloading {
                 next.reloads.insert(item, Reload::Failed { attempt, error });
             }
             return next;

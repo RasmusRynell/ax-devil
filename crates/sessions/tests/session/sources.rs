@@ -75,13 +75,13 @@ async fn an_open_viewer_keeps_its_stream_when_its_files_change_until_the_item_re
     owner
         .command(Command::Content(DocCommand::Resolve(id)))
         .unwrap();
-    assert_eq!(changed(&owner, id), None);
     assert!(
         matches!(authority(&lease), Authority::Own { .. }),
         "the stream plays on while the files are read again"
     );
     rig.jobs.finish_all();
     assert_eq!(authority(&lease), Authority::Revoked);
+    assert_eq!(changed(&owner, id), None);
 }
 
 #[tokio::test(start_paused = true)]

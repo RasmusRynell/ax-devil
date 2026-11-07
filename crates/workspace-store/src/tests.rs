@@ -457,8 +457,9 @@ fn a_change_to_the_files_of_an_open_item_is_counted_and_any_other_resolves_again
     assert_eq!(jobs.len(), 1);
     let (reloading, jobs) = apply(&counted, DocCommand::Resolve(shown_id));
     assert_eq!(jobs.len(), 1);
-    assert!(reloading.changed.is_empty() && reloading.open.contains(&shown_id));
-    assert!(generation(&finish(&reloading, &jobs[0]), shown_id) > stream);
+    assert!(reloading.changed.len() == 1 && reloading.open.contains(&shown_id));
+    let reloaded = finish(&reloading, &jobs[0]);
+    assert!(generation(&reloaded, shown_id) > stream && reloaded.changed.is_empty());
 
     // A change while an item resolves restarts it: that attempt may have read the old files.
     let (restarted, jobs) = apply(&resolving, DocCommand::SourceChanged(listed_id));
