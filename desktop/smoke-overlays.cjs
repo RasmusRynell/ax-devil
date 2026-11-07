@@ -95,15 +95,16 @@ module.exports.overlays = async (window, { setTheme }) => {
   await setTheme("light");
 
   // (b) A label keeps its size on screen when the page is zoomed: the id label above object 3 is as many device pixels
-  // tall at 100% as at 200%. It is the run of coloured pixels above the box's top-left corner, taken a few pixels
-  // inside it where neither the box's side nor the label's text is.
+  // tall at 100% as at 200%. It is the tallest run of coloured pixels, in the first columns from the box's top-left
+  // corner, that ends at the corner: the box's side below it is left out, and the columns are several because where the
+  // label's text starts shifts by a pixel with the picture's size, so some column is always free of it.
   const labelHeight = ({ scale, picture, ...shot }) => {
     const { left, top } = boxOf(picture);
     const [x, y] = [Math.round(left * scale), Math.round(top * scale)];
     let tallest = 0;
-    for (const dx of [2, 3]) {
+    for (const dx of [0, 1, 2, 3, 4, 5]) {
       let run = 0;
-      for (let at = y - 60; at < y + 30; at++) {
+      for (let at = y - 60; at <= y; at++) {
         run = colourful({ scale, ...shot }, x + dx, at) ? run + 1 : 0;
         tallest = Math.max(tallest, run);
       }
@@ -111,27 +112,9 @@ module.exports.overlays = async (window, { setTheme }) => {
     return tallest;
   };
   const heights = [];
-  const debug = [];
   for (const zoom of [1, 2]) {
     await setView(window, [1100, 720], zoom);
-    const shot = await drawn();
-    heights.push(labelHeight(shot));
-    {
-      const { left, top } = boxOf(shot.picture);
-      const [px, py] = [Math.round(left * shot.scale), Math.round(top * shot.scale)];
-      const rows = [];
-      for (let at = py - 24; at < py + 4; at++) {
-        let line = "";
-        for (let dx = -2; dx < 12; dx++) line += colourful(shot, px + dx, at) ? "#" : ".";
-        rows.push(line);
-      }
-      debug.push(`pixels at ${px},${py}\n${rows.join("\n")}`);
-    }
-    debug.push(
-      await js(
-        `JSON.stringify({ zoom: ${zoom}, inner: [innerWidth, innerHeight], dpr: devicePixelRatio, scale: ${shot.scale}, picture: ${JSON.stringify(shot.picture)}, box: ${JSON.stringify(boxOf(shot.picture))}, panes: [...document.querySelectorAll('[role=group][data-cursor-id^="pane:"]')].map((p) => { const r = p.getBoundingClientRect(); return [r.left, r.top, r.width, r.height]; }), main: (() => { const m = document.querySelector('main'); return [m.clientWidth, m.clientHeight, m.scrollWidth, m.scrollHeight]; })(), area: (() => { const a = document.querySelector('main > div'); return [a.clientWidth, a.clientHeight, a.scrollWidth, a.scrollHeight]; })() })`,
-      ),
-    );
+    heights.push(labelHeight(await drawn()));
   }
   assert.ok(
     heights[0] >= 10 && heights[0] <= 30,
@@ -139,7 +122,7 @@ module.exports.overlays = async (window, { setTheme }) => {
   );
   assert.ok(
     Math.abs(heights[0] - heights[1]) <= 1,
-    `A label must be as tall at 200% zoom as at 100%: ${heights[1]} against ${heights[0]} device pixels ${debug.join(" | ")}`,
+    `A label must be as tall at 200% zoom as at 100%: ${heights[1]} against ${heights[0]} device pixels`,
   );
   await setView(window, [1100, 720], 1);
 
