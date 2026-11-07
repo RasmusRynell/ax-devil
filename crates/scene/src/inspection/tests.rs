@@ -387,6 +387,23 @@ fn a_path_with_a_sigma_is_refused_for_a_key_too_long_to_lowercase_whole() {
 }
 
 #[test]
+fn a_refusal_stays_when_the_leaf_that_caused_it_is_also_a_text_beyond_the_budget() {
+    let key = Name::Owned("p".repeat(query::MAX_SIGMA_KEY_BYTES + 1));
+    let text = vec![pair("t", Value::Str("x".repeat(5_000).into()))];
+    let observation = observation(SceneTime::Frame(0))
+        .with_details(Vec::new(), vec![(key, Value::Map(text))])
+        .expect("ok");
+    let budget = &mut Budget {
+        leaves: 100,
+        bytes: 1_000,
+    };
+
+    let refused = query_leaves(&entity(observation), &["σ".to_owned()], budget);
+
+    assert_eq!(refused.map(|found| found.len()), Err(OverBudget));
+}
+
+#[test]
 fn a_final_sigma_lowercases_with_its_neighbours_as_the_key_does() {
     let debug = vec![pair("AΣ", Value::Int(7))];
     let observation = observation(SceneTime::Frame(0))

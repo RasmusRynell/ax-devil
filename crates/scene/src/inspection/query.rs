@@ -111,7 +111,7 @@ impl Sink for Search<'_> {
             || (color && CHANNELS.iter().any(|c| self.names(place, path, Some(c))));
         // A text that cannot be kept is not copied.
         if bytes > self.budget.bytes {
-            self.over = named;
+            self.over |= named;
         }
         named && !self.over
     }
