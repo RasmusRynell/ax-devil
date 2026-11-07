@@ -206,4 +206,28 @@ describe("search", () => {
       "😀",
     ]);
   });
+
+  it("sorts top-level rows by location, ignoring case, with rows that have none last in the saved order", () => {
+    const where: Record<string, string> = {
+      a: "/Videos/b.mp4",
+      b: "/videos/A.mp4",
+      c: "/videos/c.mp4",
+    };
+    const items = ["none", "a", "b", "also-none", "c"].map((id) => video(id, false));
+    const infos = rowsOf(items, []).map((row) => ({ ...row, location: where[row.item] ?? null }));
+    const tree = treeOf({
+      name: null,
+      modified: false,
+      recovered: false,
+      epoch: 0,
+      file: null,
+      bookmarks: [],
+      items,
+      rows: infos,
+    });
+    const order = sectionsOf(tree, new Set(), ["videos"], "location")[0].rows.flatMap(({ info }) =>
+      info.kind === "item" ? [info.item] : [],
+    );
+    expect(order).toEqual(["b", "a", "c", "none", "also-none"]);
+  });
 });

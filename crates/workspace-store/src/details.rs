@@ -32,7 +32,8 @@ impl Location {
         }
     }
 
-    fn text(&self) -> String {
+    /// The location as text: a file's path, or a camera's host and head.
+    pub fn text(&self) -> String {
         match self {
             Self::File(path) => path.to_string_lossy().into_owned(),
             Self::Camera { host, head: 1 } => host.clone(),

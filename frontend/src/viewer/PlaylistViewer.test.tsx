@@ -40,6 +40,7 @@ describe("adjacent entry", () => {
         item: "list",
         kind: "entry" as const,
         detail: "",
+        location: null,
         label: target.entry,
         status: { status: "Ready" as const },
         hidden: true,

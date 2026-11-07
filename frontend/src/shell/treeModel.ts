@@ -169,10 +169,11 @@ export type TreeSection = {
   count: number;
 };
 
-/** The orders the Workspace view's items can be listed in. */
+/** The orders the items can be listed in; each view offers some of them. */
 export const ORDERS = [
   ["workspace", "Workspace order"],
   ["name", "Name"],
+  ["location", "Location"],
 ] as const;
 export type Order = (typeof ORDERS)[number][0];
 
@@ -180,6 +181,9 @@ export type Order = (typeof ORDERS)[number][0];
 const COMPARE: Record<Order, (a: TreeRow, b: TreeRow) => number> = {
   workspace: () => 0,
   name: (a, b) => compareNames(a.info.label, b.info.label),
+  // Rows with no location come last.
+  location: ({ info: { location: a } }, { info: { location: b } }) =>
+    a === null || b === null ? Number(a === null) - Number(b === null) : compareNames(a, b),
 };
 
 /**

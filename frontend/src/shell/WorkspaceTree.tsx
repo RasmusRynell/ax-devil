@@ -40,8 +40,6 @@ function withKey<T>(now: ReadonlySet<T>, key: T, on: boolean): Set<T> {
   else next.delete(key);
   return next;
 }
-const ORDER_IDS: ReadonlySet<string> = new Set(ORDERS.map(([id]) => id));
-const ORDER_ENTRIES: MenuEntry[] = ORDERS.map(([id, label]) => ({ kind: "check", id, label }));
 
 /**
  * The workspace's items as a tree in the `listed` sections (Live, Videos, Playlists, Other; a click on a caption folds
@@ -50,7 +48,7 @@ const ORDER_ENTRIES: MenuEntry[] = ORDERS.map(([id, label]) => ({ kind: "check",
  * the row menu (right click, Shift+F10 or the Menu key) opens it (to the side too) or hides and unhides it. The rows of
  * the item the front viewer shows are revealed, and a row the
  * viewer moves on from closes. Search, Sort, Show hidden and folds are kept per `view` by the window. Above the tree,
- * Search (`search` is its placeholder), Sort and Show hidden items: hidden rows
+ * Search (`search` is its placeholder), Sort (by the `orders`) and Show hidden items: hidden rows
  * show, dimmed, only with Show hidden, and a section says how many that and the search leave out. While searching,
  * every row with a match inside is expanded, and clearing the search brings the user's folds back. `empty` is said
  * when the workspace has nothing to list.
@@ -58,11 +56,13 @@ const ORDER_ENTRIES: MenuEntry[] = ORDERS.map(([id, label]) => ({ kind: "check",
 export function WorkspaceTree({
   view,
   listed,
+  orders,
   search,
   empty,
 }: {
   view: SidebarView;
   listed: readonly SectionId[];
+  orders: readonly Order[];
   search: string;
   empty: string;
 }) {
@@ -269,9 +269,13 @@ export function WorkspaceTree({
           label="Sort"
           alignEnd
           title="The order of the rows"
-          entries={ORDER_ENTRIES}
+          entries={ORDERS.filter(([id]) => orders.includes(id)).map(([id, label]): MenuEntry => ({
+            kind: "check",
+            id,
+            label,
+          }))}
           checked={new Set([order])}
-          onSelect={({ id }: MenuCommand) => ORDER_IDS.has(id) && setOrder(id as Order)}
+          onSelect={({ id }: MenuCommand) => setOrder(id as Order)}
         />
         <IconToggle
           icon="eye"

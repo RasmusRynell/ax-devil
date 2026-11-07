@@ -37,6 +37,25 @@ it("lists only Videos and Playlists in Offline, and counts them in the header", 
   expect(screen.getByRole("searchbox", { name: "Search files" })).toBeTruthy();
 });
 
+it("offers the Location order in Offline and not in Workspace", async () => {
+  const sorts = async (view: "offline" | "workspace") => {
+    render(
+      <SessionProvider>
+        <KeptStateProvider>
+          <Sidebar view={view} onRun={() => {}} onAddLive={() => {}} />
+        </KeptStateProvider>
+      </SessionProvider>,
+    );
+    await act(async () => {});
+    fireEvent.click(screen.getByRole("button", { name: "Sort" }));
+    const names = screen.getAllByRole("menuitemcheckbox").map((item) => item.textContent);
+    cleanup();
+    return names;
+  };
+  expect(await sorts("offline")).toEqual(["Workspace order", "Name", "Location"]);
+  expect(await sorts("workspace")).toEqual(["Workspace order", "Name"]);
+});
+
 it("keeps a view's search, sort and folds while another view or no view is shown", async () => {
   const page = (view: "workspace" | "offline" | null) => (
     <SessionProvider>

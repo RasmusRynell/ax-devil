@@ -1163,6 +1163,11 @@ label: string,
  */
 detail: string, 
 /**
+ * The file or camera it is read from, which the Offline view's Location order sorts by; none for a playlist, a row
+ * not resolved, and an audience without host details.
+ */
+location: string | null, 
+/**
  * Whether it can be opened.
  */
 status: RowStatusInfo, 

@@ -169,7 +169,8 @@ fn a_watcher_learns_no_path_credential_or_reason_and_sees_only_what_is_open() {
         "rtsp",
         "closed.mp4",
         "closed playlist",
-        "location",
+        // A row's `location` is null for a watcher.
+        "\"location\":\"",
     ] {
         assert!(!watcher.contains(secret), "{secret} reached {watcher}");
     }
@@ -278,6 +279,12 @@ fn rows_follow_the_items_a_watcher_sees_and_carry_what_was_hidden() {
     assert!(!watcher.iter().any(|(label, _)| label.starts_with("closed")));
     let owner = rows(Audience::HOST);
     assert!(owner.iter().any(|(label, _)| label == "closed playlist"));
+    let located = project(&doc, Audience::HOST).workspace.rows;
+    let video = located.iter().find(|row| row.label == "gate.mp4").unwrap();
+    assert_eq!(
+        video.location.as_deref(),
+        Some("/home/SECRET-PATH-A/gate.mp4")
+    );
 }
 
 #[test]

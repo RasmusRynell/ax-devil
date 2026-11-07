@@ -152,7 +152,8 @@ async fn a_session_works_alone_then_a_watcher_joins_it_sees_only_what_it_may_and
     for host_only in [
         "SECRET-DIR",
         "reason",
-        "location",
+        // A row's `location` is null for a watcher.
+        "\"location\":\"",
         folder.path().to_str().unwrap(),
     ] {
         assert!(
