@@ -120,7 +120,7 @@ describe("inspections", () => {
     expect(samples()).toEqual([1, 2, 3]);
   });
 
-  it("holds the shown summary and fields together until the next sample's reply, and withholds them from another object", () => {
+  it("never shows another sample's summary or fields while the shown sample's reply is out", () => {
     const { inspections } = setup();
     const faster = fullSample([{ id: "7", class: "car", score: 0.5 }]);
     inspections.follow([frame(1)]);
@@ -129,8 +129,8 @@ describe("inspections", () => {
     inspections.follow([frame(2, faster)]);
     expect(inspections.view).toMatchObject({
       state: "loading",
-      summary: { score: 0.82 },
-      fields: [CLASS],
+      summary: { score: 0.5 },
+      fields: [],
     });
     // A late reply for the preceding sample changes nothing.
     expect(

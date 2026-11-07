@@ -48,7 +48,10 @@ jobs:
 
       # The media crate links the system FFmpeg (6.1 on this image) and generates its bindings with clang.
       - name: Install the private display and the FFmpeg libraries
+        timeout-minutes: 5
         run: |
+          # The Azure mirror stalls; retries and timeouts make update and install fail fast or recover.
+          printf 'Acquire::Retries "5";\nAcquire::http::Timeout "20";\nAcquire::https::Timeout "20";\n' | sudo tee /etc/apt/apt.conf.d/99ci-retries
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends xauth xvfb pkg-config clang libclang-dev \
             libavcodec-dev libavformat-dev libavutil-dev libswscale-dev
@@ -117,7 +120,10 @@ jobs:
 
       - name: Install the build tools (Linux)
         if: matrix.name == 'linux'
+        timeout-minutes: 5
         run: |
+          # The Azure mirror stalls; retries and timeouts make update and install fail fast or recover.
+          printf 'Acquire::Retries "5";\nAcquire::http::Timeout "20";\nAcquire::https::Timeout "20";\n' | sudo tee /etc/apt/apt.conf.d/99ci-retries
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends patchelf xauth xvfb clang libclang-dev
           # Ubuntu 22.04 has no such restriction; the setting exists from 23.10 on, as on the CI image.

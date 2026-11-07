@@ -100,6 +100,35 @@ describe("camera rows", () => {
   });
 });
 
+describe("found cameras the workspace holds", () => {
+  it("are told by the host as entered and as a reference expands, whether or not the stream has resolved", () => {
+    const pending: ItemState = {
+      id: "p",
+      label: "10.0.0.8",
+      kind: "live",
+      open: false,
+      resolution: { status: "Pending" },
+      recipe: { type: "Live", host: "10.0.0.8" },
+    };
+    const items = [stream("r", { host: "$CAM_HOST" }), stream("e", { host: "10.0.0.5" }), pending];
+    const found = ["10.0.0.5", "10.0.0.6", "10.0.0.7", "10.0.0.8"].map((host) => scanned(host));
+    const expanded = new Map([["$CAM_HOST", "10.0.0.6"]]);
+    const [live, network] = sectionsOf({
+      cameras: camerasOf(items, new Map(), expanded),
+      found,
+      scanned: true,
+      reported: new Map(),
+      checks: new Map(),
+      thumbnails: true,
+      front: null,
+      order: "address",
+    });
+    expect(live?.rows).toHaveLength(3);
+    expect(live?.rows.map(({ aside }) => aside)).toEqual(["Q1656", "Q1656", "Q1656"]);
+    expect(network?.rows.map(({ label }) => label)).toEqual(["10.0.0.7"]);
+  });
+});
+
 describe("stream rows", () => {
   const refused = scanned("10.0.0.2", { sign_in: { state: "Refused" } });
 

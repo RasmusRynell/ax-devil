@@ -17,6 +17,7 @@ import { TextField } from "../kit/Fields";
 import { SectionCaption, type CaptionMark } from "../kit/SectionCaption";
 import { ask, type Answer } from "../resolvers/handlers";
 import { Refusal } from "../shell/SettingField";
+import { failedIn, reportFailedPlugins } from "./failed";
 
 /** What the handlers of each kind are called in a plugin's row; a new kind is a new entry. */
 const KINDS: Record<HandlerKind, string> = {
@@ -183,6 +184,9 @@ function Row({
 /** The sidebar's Plugins view: the plugins that failed, are installed and ship with the app, and installing, updating and removing. */
 export function PluginsView() {
   const { info, apply, failure, reload } = usePlugins();
+  useEffect(() => {
+    if (info) reportFailedPlugins(failedIn(info));
+  }, [info]);
   // Installing and removing change this machine's files: only the person at it may.
   const mayChange = useGrants().includes("preferences");
   const [path, setPath] = useState("");
