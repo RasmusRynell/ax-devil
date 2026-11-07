@@ -296,72 +296,32 @@ fn failure(id: FrameId, error: UserError) -> FrameFailure {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ffmpeg_next::format::Pixel;
-    use ffmpeg_next::{Dictionary, Rational, encoder, frame};
+    use ffmpeg_next::format;
     use foundation::MediaTime;
+    use std::path::Path;
 
     const GOP: usize = 5;
 
-    /// Annex B units of `count` flat frames of `width` x `height`, a keyframe every [`GOP`], no reordering. Frame
-    /// `n` has luma `40 + 30 * (n % 6)`. Needs libx264 and libx265, as the fixture script does.
-    fn encode(codec: StreamCodec, (width, height): (u32, u32), count: usize) -> Vec<Vec<u8>> {
-        let (name, options) = match codec {
-            StreamCodec::H264 => (
-                "libx264",
-                [("preset", "ultrafast"), ("tune", "zerolatency")],
-            ),
-            StreamCodec::H265 => (
-                "libx265",
-                [("preset", "ultrafast"), ("tune", "zerolatency")],
-            ),
-        };
+    /// The access units of a fixture in `fixtures/video`, as the raw demuxers split them: Annex B, in-band parameter
+    /// sets in each keyframe's unit. The `stream_*` fixtures are flat, frame `n` with luma `7 * n`.
+    fn units(name: &str) -> Vec<Vec<u8>> {
         log::set_level(Level::Quiet);
-        let found = encoder::find_by_name(name).unwrap_or_else(|| panic!("{name} is needed"));
-        let mut video = codec::context::Context::new_with_codec(found)
-            .encoder()
-            .video()
-            .unwrap();
-        video.set_width(width);
-        video.set_height(height);
-        video.set_format(Pixel::YUV420P);
-        video.set_time_base(Rational(1, 25));
-        video.set_gop(GOP as u32);
-        video.set_max_b_frames(0);
-        let mut dictionary = Dictionary::new();
-        for (key, value) in options {
-            dictionary.set(key, value);
-        }
-        if codec == StreamCodec::H265 {
-            dictionary.set("x265-params", "log-level=error:scenecut=0");
-        } else {
-            dictionary.set("x264-params", "scenecut=0");
-        }
-        let mut video = video.open_as_with(found, dictionary).unwrap();
-        let mut units = Vec::new();
-        let mut collect = |video: &mut encoder::Video| {
-            let mut packet = Packet::empty();
-            while video.receive_packet(&mut packet).is_ok() {
-                units.push(packet.data().unwrap().to_vec());
-            }
-        };
-        for n in 0..count {
-            let mut picture = frame::Video::new(Pixel::YUV420P, width, height);
-            for plane in 0..3 {
-                let value = if plane == 0 {
-                    40 + 30 * (n % 6) as u8
-                } else {
-                    128
-                };
-                picture.data_mut(plane).fill(value);
-            }
-            picture.set_pts(Some(n as i64));
-            video.send_frame(&picture).unwrap();
-            collect(&mut video);
-        }
-        video.send_eof().unwrap();
-        collect(&mut video);
-        assert_eq!(units.len(), count, "{name} must emit one unit per frame");
-        units
+        let path = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../fixtures/video")
+            .join(name);
+        let mut input = format::input(&path).unwrap();
+        input
+            .packets()
+            .map(|(_, packet)| packet.data().unwrap().to_vec())
+            .collect()
+    }
+
+    /// The 64x48 stream of `codec`: 12 units, a keyframe every [`GOP`], no reordering.
+    fn gop5(codec: StreamCodec) -> Vec<Vec<u8>> {
+        units(match codec {
+            StreamCodec::H264 => "stream_h264_gop5.h264",
+            StreamCodec::H265 => "stream_hevc_gop5.hevc",
+        })
     }
 
     fn id(n: usize) -> FrameId {
@@ -372,7 +332,7 @@ mod tests {
     }
 
     fn assert_luma(frame: &VideoFrame, n: usize) {
-        let expected = 40 + 30 * (n % 6) as i32;
+        let expected = (7 * n % 256) as i32;
         let luma = i32::from(frame.plane(0)[0]);
         assert!(
             (luma - expected).abs() <= 4,
@@ -383,7 +343,8 @@ mod tests {
     #[test]
     fn units_come_back_at_once_as_frames_with_the_ids_they_were_given() {
         for codec in [StreamCodec::H264, StreamCodec::H265] {
-            let units = encode(codec, (64, 48), 12);
+            let units = gop5(codec);
+            assert_eq!(units.len(), 12, "{codec:?}");
             let mut decoder = StreamDecoder::open(codec, &units[0]).expect("a decoder");
             for (n, unit) in units.iter().enumerate() {
                 let frame = decoder
@@ -400,7 +361,7 @@ mod tests {
     #[test]
     fn parameter_sets_without_a_picture_start_a_stream_whose_keyframes_carry_none() {
         for codec in [StreamCodec::H264, StreamCodec::H265] {
-            let units = encode(codec, (64, 48), 6);
+            let units = gop5(codec);
             let nals = nal_units(&units[0]);
             let (sets, pictures): (Vec<&[u8]>, Vec<&[u8]>) = nals
                 .into_iter()
@@ -421,7 +382,7 @@ mod tests {
 
     #[test]
     fn damage_skips_units_until_the_next_keyframe() {
-        let units = encode(StreamCodec::H264, (64, 48), 12);
+        let units = gop5(StreamCodec::H264);
         let mut decoder = StreamDecoder::open(StreamCodec::H264, &units[0]).expect("a decoder");
         for (n, unit) in units.iter().take(2).enumerate() {
             assert!(decoder.decode(unit, id(n)).unwrap().is_some());
@@ -453,8 +414,8 @@ mod tests {
 
     #[test]
     fn a_keyframe_with_new_parameter_sets_reopens_the_decoder() {
-        let small = encode(StreamCodec::H264, (64, 48), 6);
-        let large = encode(StreamCodec::H264, (96, 64), 6);
+        let small = gop5(StreamCodec::H264);
+        let large = units("stream_h264_96x64.h264");
         let mut decoder = StreamDecoder::open(StreamCodec::H264, &small[0]).expect("a decoder");
         let first = decoder.decode(&small[0], id(0)).unwrap().expect("a frame");
         assert_eq!(first.layout().width, 64);
