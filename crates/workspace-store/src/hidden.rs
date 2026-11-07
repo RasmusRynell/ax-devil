@@ -68,9 +68,10 @@ impl WorkspaceState {
         let mut pinned = Vec::new();
         for entry in &playlist.entries {
             pinned.push((HiddenRef::Entry(entry.id.clone()), self.entry_hidden(entry)));
+            let hidden_lanes = entry.lanes_hidden_at_first();
             for overlay in &entry.overlays {
                 let lane = HiddenRef::Lane(entry.id.clone(), overlay.label.clone());
-                let starts_hidden = entry.lanes_starting_hidden.contains(&overlay.label);
+                let starts_hidden = hidden_lanes.contains(overlay.label.as_str());
                 pinned.push((lane.clone(), self.is_hidden(&lane, starts_hidden)));
             }
         }
@@ -79,15 +80,16 @@ impl WorkspaceState {
 
     /// Settles the choices of `item` against `content`, its new Content: one for an entry or lane it no longer has is
     /// forgotten, so it comes back as its resolver starts it, and one that equals what the resolver now starts it as
-    /// is dropped, since [`Self::pin_hidden`] pins it again before the next resolution. One pass over `content`, then
-    /// constant work per choice.
+    /// is dropped, since [`Self::pin_hidden`] pins it again before the next resolution. Work grows with the entries,
+    /// lanes and choices, with no scan of one for each of another.
     pub(crate) fn settle_hidden(&mut self, item: &ItemId, content: &Content) {
         let mut starts: HashMap<HiddenRef, bool> = HashMap::new();
         for entry in content.entries() {
             starts.insert(HiddenRef::Entry(entry.id.clone()), entry.starts_hidden);
+            let hidden_lanes = entry.lanes_hidden_at_first();
             for overlay in &entry.overlays {
                 let lane = HiddenRef::Lane(entry.id.clone(), overlay.label.clone());
-                starts.insert(lane, entry.lanes_starting_hidden.contains(&overlay.label));
+                starts.insert(lane, hidden_lanes.contains(overlay.label.as_str()));
             }
         }
         self.hidden.retain(|target, &mut chosen| {

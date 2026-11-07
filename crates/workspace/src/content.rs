@@ -105,6 +105,14 @@ pub struct Entry {
 }
 
 impl Entry {
+    /// The labels of the lanes that start hidden, as a set to test a long entry's lanes against in constant time.
+    pub fn lanes_hidden_at_first(&self) -> HashSet<&str> {
+        self.lanes_starting_hidden
+            .iter()
+            .map(String::as_str)
+            .collect()
+    }
+
     /// The lane names: the overlay labels, or the entry's own label for the one plain lane of an entry without
     /// overlays.
     pub fn lane_labels(&self) -> Vec<&str> {

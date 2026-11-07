@@ -88,6 +88,7 @@ pub fn rows(state: &WorkspaceState) -> Vec<Row> {
                     )
                 });
             }
+            let hidden_lanes = entry.lanes_hidden_at_first();
             for overlay in &entry.overlays {
                 rows.push(Row {
                     location: Some(Location::File(overlay.path.clone())),
@@ -98,7 +99,7 @@ pub fn rows(state: &WorkspaceState) -> Vec<Row> {
                         Some(entry),
                         state.is_hidden(
                             &HiddenRef::Lane(entry.id.clone(), overlay.label.clone()),
-                            entry.lanes_starting_hidden.contains(&overlay.label),
+                            hidden_lanes.contains(overlay.label.as_str()),
                         ),
                     )
                 });
