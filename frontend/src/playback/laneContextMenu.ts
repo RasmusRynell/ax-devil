@@ -2,12 +2,19 @@ import { command, scopeOf, type Scope, type Shortcuts } from "../commands";
 import type { CommandId } from "../generated/settings";
 import type { MenuEntry } from "../kit/Menu";
 
-/** What a right click on a lane's picture offers, in order; each is a command, so labels and keys match the menus. */
-const LANE_COMMANDS: readonly CommandId[] = [
+/** What a right click on a recording's lane offers, in order; each is a command, so labels and keys match the menus. */
+export const OFFLINE_LANE_COMMANDS: readonly CommandId[] = [
   "export-video",
   "media-tools",
   "lane-fullscreen",
   "add-bookmark",
+  "zoom-reset",
+];
+
+/** What a live stream's lane offers: a stream has nothing to export and no frame to bookmark. */
+export const LIVE_LANE_COMMANDS: readonly CommandId[] = [
+  "media-tools",
+  "lane-fullscreen",
   "zoom-reset",
 ];
 
@@ -25,16 +32,17 @@ export const EXPORT_TIP = "Export video with overlays";
 export const EXPORT_WAITS = "Export is available once the render catalog has loaded";
 
 /**
- * The lane menu's entries, disabled outside the `allowed` scopes; Hide only when the seat may hide lanes. Export
+ * The lane menu's entries for the `commands` the viewer handles, disabled outside the `allowed` scopes; Hide only when the seat may hide lanes. Export
  * video also waits while the clicked lane is `cold`.
  */
 export function laneContextEntries(
+  commands: readonly CommandId[],
   allowed: Record<Scope, boolean>,
   shortcuts: Partial<Shortcuts>,
   canHide: boolean,
   cold: boolean,
 ): MenuEntry[] {
-  const entries: MenuEntry[] = LANE_COMMANDS.map((id) => {
+  const entries: MenuEntry[] = commands.map((id) => {
     const waits = id === "export-video" && cold;
     return {
       kind: "action",

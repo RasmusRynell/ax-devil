@@ -27,7 +27,7 @@ import type { Viewport } from "./contract";
 import type { InspectorMemory } from "./fields";
 import { allHidden, shownLanes } from "./laneCells";
 import { LaneGrid } from "./LaneGrid";
-import { HIDE_LANE, laneContextEntries } from "./laneContextMenu";
+import { HIDE_LANE, laneContextEntries, OFFLINE_LANE_COMMANDS } from "./laneContextMenu";
 import { useLaneFullscreen } from "./laneFullscreen";
 import { ObjectLayer, type ObjectLayerHandle } from "./ObjectLayer";
 import { Opening } from "./PlaybackStatus";
@@ -176,7 +176,13 @@ export function Playback({
               entries={() => {
                 const lane = fullscreen.target();
                 const cold = choicesOf(view.lanes).find((choice) => choice.lane === lane)?.cold;
-                return laneContextEntries(allowed, shortcuts, onHideLane !== undefined, !!cold);
+                return laneContextEntries(
+                  OFFLINE_LANE_COMMANDS,
+                  allowed,
+                  shortcuts,
+                  onHideLane !== undefined,
+                  !!cold,
+                );
               }}
               onSelect={({ id }) => {
                 const lane = fullscreen.target();
