@@ -32,15 +32,32 @@ const GLOBAL_OPTIONS = new Set(["--config", "--cache-dir", "--log-level"]);
  * `--ozone-platform=x11`, are Chromium's or the shell's own and stay out; put them before the command.
  */
 function backendArgs(args) {
+  return commandArgs(args) ?? globalArgs(args);
+}
+
+/** The backend's global options among `args`. */
+function globalArgs(args) {
   const forwarded = [];
   for (let i = 0; i < args.length; i++) {
     const arg = args[i];
-    if (!arg.startsWith("-")) return [...forwarded, ...args.slice(i)];
+    if (!arg.startsWith("-")) break;
     if (!GLOBAL_OPTIONS.has(arg.split("=")[0])) continue;
     forwarded.push(arg);
     if (!arg.includes("=") && i + 1 < args.length) forwarded.push(args[++i]);
   }
   return forwarded;
+}
+
+/** [backendArgs] when `args` name a command to open something (`local --video PATH`); otherwise undefined. */
+function commandArgs(args) {
+  const first = args.findIndex((arg, i) => !arg.startsWith("-") && !isGlobalValue(args, i));
+  return first < 0 ? undefined : [...globalArgs(args.slice(0, first)), ...args.slice(first)];
+}
+
+// Whether `args[i]` is the value of the global option before it, as in `--config a.json`.
+function isGlobalValue(args, i) {
+  const before = args[i - 1];
+  return i > 0 && GLOBAL_OPTIONS.has(before) && !before.includes("=");
 }
 
 /** The arguments after the app: `electron . ARGS` in development, `ax-devil ARGS` when packaged. */
@@ -73,4 +90,4 @@ function relaunchArgs(argv, defaultApp) {
   return [...app, ...kept];
 }
 
-module.exports = { backendArgs, parseLaunch, relaunchArgs, userArgs };
+module.exports = { backendArgs, commandArgs, parseLaunch, relaunchArgs, userArgs };

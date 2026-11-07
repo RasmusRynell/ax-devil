@@ -16,6 +16,17 @@ pub fn load(path: &Path) -> Result<Workspace, UserError> {
     read_file(path).map(|(workspace, _)| workspace)
 }
 
+/// `workspace` as the document a file holds, with every path absolute, for handing it to another process.
+pub fn to_json(workspace: &Workspace) -> Value {
+    to_document(workspace, None, None)
+}
+
+/// The workspace in a document [`to_json`] made.
+pub fn from_json(document: &Value) -> Result<Workspace, String> {
+    let bytes = serde_json::to_vec(document).map_err(|error| error.to_string())?;
+    from_document(&bytes, "the hand-off", Path::new("")).map(|(workspace, _)| workspace)
+}
+
 /// Writes `workspace` to `path`, replacing it only when complete. A symlink at `path` stays a link and its target is
 /// written; an existing file keeps its permissions.
 pub fn save(workspace: &Workspace, path: &Path) -> Result<(), UserError> {
