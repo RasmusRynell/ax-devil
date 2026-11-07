@@ -170,6 +170,7 @@ impl WorkspaceState {
 
     /// Marks the item pending under a new attempt and returns the job for it.
     fn start(&mut self, item: &WorkspaceItem) -> ResolveJob {
+        self.pin_hidden(&item.id);
         self.next_attempt += 1;
         let attempt = self.next_attempt;
         self.changed.remove(&item.id);

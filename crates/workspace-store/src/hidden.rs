@@ -63,6 +63,29 @@ impl WorkspaceState {
         }
     }
 
+    /// Pins the visibility every entry and lane of `item`'s resolved playlist has now as the user's choice, so that
+    /// resolving again changes only what is new: an entry or lane that survives keeps its visibility, whatever the
+    /// resolver now starts it as.
+    pub(crate) fn pin_hidden(&mut self, item: &ItemId) {
+        let Some(Resolution::Resolved {
+            content: Content::Playlist(playlist),
+            ..
+        }) = self.resolutions.get(item)
+        else {
+            return;
+        };
+        let mut pinned = Vec::new();
+        for entry in &playlist.entries {
+            pinned.push((HiddenRef::Entry(entry.id.clone()), self.entry_hidden(entry)));
+            for overlay in &entry.overlays {
+                let lane = HiddenRef::Lane(entry.id.clone(), overlay.label.clone());
+                let starts_hidden = entry.lanes_starting_hidden.contains(&overlay.label);
+                pinned.push((lane.clone(), self.is_hidden(&lane, starts_hidden)));
+            }
+        }
+        self.hidden.extend(pinned);
+    }
+
     /// Forgets what the user chose for entries and lanes `content`, the new Content of `item`, no longer has, so
     /// they come back as their resolver starts them.
     pub(crate) fn forget_hidden_outside(&mut self, item: &ItemId, content: &Content) {

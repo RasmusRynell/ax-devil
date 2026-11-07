@@ -39,18 +39,28 @@ function spansOf(content: Playlist) {
   });
 }
 
-/** An overlay lane of a playlist's entry; its file is the `location` of the lane's row, when the seat may read it. */
+/** The file of each lane the seat may read, by entry id and lane label: the `location` of the lane's row. */
+type Paths = ReadonlyMap<string, string>;
+
+const laneKey = (entry: string, lane: string) => `${entry}\u001f${lane}`;
+
+function pathsOf(rows: readonly RowInfo[]): Paths {
+  const paths = new Map<string, string>();
+  for (const { kind, entry, label, location } of rows)
+    if (kind === "lane" && entry && location) paths.set(laneKey(entry, label), location);
+  return paths;
+}
+
+/** An overlay lane of a playlist's entry. */
 function playlistLane(
   playlist: string,
   number: number,
   entry: EntryInfo,
   at: number,
-  rows: readonly RowInfo[],
+  paths: Paths,
 ): Information {
   const lane = entry.lanes[at];
-  const path = rows.find(
-    (row) => row.kind === "lane" && row.entry === entry.id && row.label === lane,
-  )?.location;
+  const path = paths.get(laneKey(entry.id, lane));
   return info(lane, [
     ["type", "overlay"],
     ["playlist", playlist],
@@ -68,7 +78,7 @@ function playlistEntry(
   playlist: string,
   number: number,
   entry: EntryInfo,
-  rows: readonly RowInfo[],
+  paths: Paths,
 ): Information {
   return info(
     `${playlist} / Entry ${number}`,
@@ -79,12 +89,12 @@ function playlistEntry(
       ["lanes", String(entry.lanes.length)],
       ["videos", entry.label],
     ],
-    entry.handlers.map((_, at) => playlistLane(playlist, number, entry, at, rows)),
+    entry.handlers.map((_, at) => playlistLane(playlist, number, entry, at, paths)),
   );
 }
 
 /** The information of a row of a playlist item: one of its playlists, an entry, or a lane. */
-function playlistRow(row: TreeRow, content: Playlist, rows: readonly RowInfo[]) {
+function playlistRow(row: TreeRow, content: Playlist, paths: Paths) {
   for (const { span, entries } of spansOf(content)) {
     if (row.info.kind === "playlist" && row.info.key === span.id)
       return info(
@@ -102,14 +112,14 @@ function playlistRow(row: TreeRow, content: Playlist, rows: readonly RowInfo[]) 
             ? []
             : [["sequence_groups", String(span.sequence_groups)] as [string, string]]),
         ],
-        entries.map((entry, at) => playlistEntry(span.label, at + 1, entry, rows)),
+        entries.map((entry, at) => playlistEntry(span.label, at + 1, entry, paths)),
       );
     const at = entries.findIndex(({ id }) => id === row.info.entry);
     if (at < 0 || row.info.kind === "playlist") continue;
     const lane = entries[at].lanes.indexOf(row.info.label);
     return row.info.kind === "lane" && lane >= 0
-      ? playlistLane(span.label, at + 1, entries[at], lane, rows)
-      : playlistEntry(span.label, at + 1, entries[at], rows);
+      ? playlistLane(span.label, at + 1, entries[at], lane, paths)
+      : playlistEntry(span.label, at + 1, entries[at], paths);
   }
   return null;
 }
@@ -159,6 +169,6 @@ export function rowInformation(
       );
     }
     case "Playlist":
-      return playlistRow(row, content, rows);
+      return playlistRow(row, content, pathsOf(rows));
   }
 }

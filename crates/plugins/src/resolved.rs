@@ -24,6 +24,9 @@ const MAX_CHOICES: usize = 50_000;
 /// The most entries and playlist lines a resolve may print.
 const MAX_ENTRIES: usize = 50_000;
 
+/// The largest count a playlist may state: what the frontend reads without losing digits (JavaScript's 2^53 - 1).
+const MAX_COUNT: u64 = (1 << 53) - 1;
+
 /// Which operation the lines answer, and so which of them are allowed.
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Op {
@@ -264,6 +267,14 @@ impl Collected {
                 check_room(self.printed, MAX_ENTRIES, "entries and playlists")?;
                 if playlist.name.is_empty() {
                     return Err("the playlist name is empty".to_owned());
+                }
+                for (key, count) in [
+                    ("matches", playlist.matches),
+                    ("sequence_groups", playlist.sequence_groups),
+                ] {
+                    if count.is_some_and(|count| count > MAX_COUNT) {
+                        return Err(format!("'{key}' is more than {MAX_COUNT}"));
+                    }
                 }
                 self.printed += 1;
                 self.playlists.push(Printed {
@@ -540,5 +551,14 @@ mod tests {
         assert!(a.starts_hidden && !b.starts_hidden);
         assert_eq!(a.lanes_starting_hidden, ["L1"]);
         assert!(b.lanes_starting_hidden.is_empty());
+
+        let too_many = format!(
+            r#"{{"playlist": {{"name": "p", "matches": {}}}}}"#,
+            MAX_COUNT + 1
+        );
+        assert_eq!(
+            feed(Op::Resolve, &too_many, 0).as_deref(),
+            Some("line 1: 'matches' is more than 9007199254740991")
+        );
     }
 }

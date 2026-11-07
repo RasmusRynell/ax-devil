@@ -36,8 +36,6 @@ impl WorkspaceState {
         item.recipe.lane_matching = existing.recipe.lane_matching.clone();
         let mut job = None;
         if item.recipe != existing.recipe {
-            self.hidden
-                .retain(|target, _| !target.content().names_item(&item.id));
             match content {
                 Some(content) => {
                     self.next_generation += 1;
@@ -51,6 +49,9 @@ impl WorkspaceState {
                 }
                 None => job = Some(self.start(&item)),
             }
+            // A new recipe starts the item's entries and lanes over, as its resolver says; after `start`, which pins.
+            self.hidden
+                .retain(|target, _| !target.content().names_item(&item.id));
         }
         self.workspace.items[at] = item;
         job

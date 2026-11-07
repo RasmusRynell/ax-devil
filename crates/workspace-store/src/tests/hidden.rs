@@ -1,6 +1,7 @@
 use super::*;
 
-/// The Content of a playlist item with one playlist of these entries, each with whether it starts hidden.
+/// The Content of a playlist item with one playlist of these entries, each with one lane `L`; whether an entry starts
+/// hidden is also whether its lane does.
 fn playlist_of(item: &WorkspaceItem, entries: &[(&str, bool)]) -> workspace::Content {
     let entries: Vec<_> = entries
         .iter()
@@ -8,9 +9,19 @@ fn playlist_of(item: &WorkspaceItem, entries: &[(&str, bool)]) -> workspace::Con
             id: workspace::ContentId::of_entry(&item.id, "P", label),
             label: label.to_owned(),
             video: workspace::VideoRef::File(format!("/{label}.mp4").into()),
-            overlays: Vec::new(),
+            overlays: vec![workspace::OverlayRef {
+                label: "L".into(),
+                slot: "L".into(),
+                path: "/o.txt".into(),
+                handler: "MOT_FILE".into(),
+                options: Default::default(),
+            }],
             starts_hidden,
-            lanes_starting_hidden: Vec::new(),
+            lanes_starting_hidden: if starts_hidden {
+                vec!["L".into()]
+            } else {
+                Vec::new()
+            },
         })
         .collect();
     workspace::Content::Playlist(workspace::PlaylistContent {
@@ -86,4 +97,39 @@ fn the_users_choice_beats_how_the_resolver_started_an_entry_until_the_entry_is_g
         state,
         "a video's own entry cannot be hidden"
     );
+}
+
+#[test]
+fn an_entry_and_lane_that_survive_resolving_again_keep_their_visibility_whatever_the_resolver_now_starts_them_as()
+ {
+    let folder = tempfile::tempdir().unwrap();
+    let file = folder.path().join("gate.mp4");
+    std::fs::write(&file, "x").unwrap();
+    let runs = item(&file);
+    let (state, jobs) = add(&WorkspaceState::default(), vec![runs.clone()], false);
+    let first = Ok(playlist_of(&runs, &[("a", true), ("b", false)]));
+    let state = complete(&state, runs.id, jobs[0].attempt, first);
+    let (state, jobs) = apply(&state, DocCommand::Resolve(runs.id));
+    let changed = Ok(playlist_of(
+        &runs,
+        &[("a", false), ("b", true), ("c", true)],
+    ));
+    let state = complete(&state, runs.id, jobs[0].attempt, changed);
+
+    let Resolution::Resolved { content, .. } = &state.resolutions[&runs.id] else {
+        panic!("the playlist resolved");
+    };
+    // Entry and lane hidden, as for entries a, b, c.
+    let hidden: Vec<_> = content
+        .entries()
+        .iter()
+        .map(|entry| {
+            let lane = HiddenRef::Lane(entry.id.clone(), "L".into());
+            (
+                state.entry_hidden(entry),
+                state.is_hidden(&lane, entry.lanes_starting_hidden.contains(&"L".to_owned())),
+            )
+        })
+        .collect();
+    assert_eq!(hidden, [(true, true), (false, false), (true, true)]);
 }
