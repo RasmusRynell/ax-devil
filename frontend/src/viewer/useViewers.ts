@@ -44,11 +44,6 @@ export function useViewers(): { viewers: readonly Viewer[]; active: Viewer | und
   return { viewers, active: viewers.find((viewer) => viewer.id === front) };
 }
 
-/** The item of the viewer in front, if any. */
-export function useFrontItem(): string | null {
-  return useViewers().active?.item.id ?? null;
-}
-
 /** The items that have a viewer, in front or not. */
 export function useShownItems(): ReadonlySet<string> {
   const { viewers } = useViewers();

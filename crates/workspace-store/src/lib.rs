@@ -376,6 +376,7 @@ pub fn apply(state: &WorkspaceState, command: DocCommand) -> (WorkspaceState, Ve
             next.workspace.reviewed.retain(|target| target.item != id);
             next.resolutions.remove(&id);
             next.open.remove(&id);
+            next.forget_hidden(&id);
         }
         DocCommand::RenameItem { item, label } => next.rename(item, &label),
         DocCommand::EditItem { item, content } => jobs.extend(next.edit(*item, content)),
@@ -469,7 +470,7 @@ pub fn complete(
     }
     let resolution = match result {
         Ok(content) => {
-            next.forget_hidden_outside(&item, &content);
+            next.settle_hidden(&item, &content);
             next.next_generation += 1;
             Resolution::Resolved {
                 content,

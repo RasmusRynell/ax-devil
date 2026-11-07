@@ -14,7 +14,7 @@ export type Folds = {
 };
 
 /** The most entries a playlist can have and still start open; a longer one starts closed like any row with children. */
-export const OPEN_AT_FIRST_LIMIT = 200;
+const OPEN_AT_FIRST_LIMIT = 200;
 
 /** Folds before anything was shown. */
 export const NO_FOLDS: Folds = {

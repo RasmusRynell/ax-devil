@@ -1,5 +1,6 @@
 //! What the user chose to hide or show, over how a resolver started the entries and lanes.
 
+use std::collections::HashMap;
 use workspace::{Content, ContentId, Entry, ItemId};
 
 use crate::{Resolution, WorkspaceState};
@@ -18,16 +19,6 @@ impl HiddenRef {
     pub(crate) fn content(&self) -> &ContentId {
         let (Self::Entry(id) | Self::Lane(id, _)) = self;
         id
-    }
-
-    /// Whether `content` still has what the reference names.
-    fn is_in(&self, content: &Content) -> bool {
-        match self {
-            Self::Entry(id) => content.entry(id).is_some(),
-            Self::Lane(id, label) => content
-                .entry(id)
-                .is_some_and(|entry| entry.overlays.iter().any(|overlay| overlay.label == *label)),
-        }
     }
 }
 
@@ -86,10 +77,28 @@ impl WorkspaceState {
         self.hidden.extend(pinned);
     }
 
-    /// Forgets what the user chose for entries and lanes `content`, the new Content of `item`, no longer has, so
-    /// they come back as their resolver starts them.
-    pub(crate) fn forget_hidden_outside(&mut self, item: &ItemId, content: &Content) {
+    /// Settles the choices of `item` against `content`, its new Content: one for an entry or lane it no longer has is
+    /// forgotten, so it comes back as its resolver starts it, and one that equals what the resolver now starts it as
+    /// is dropped, since [`Self::pin_hidden`] pins it again before the next resolution. One pass over `content`, then
+    /// constant work per choice.
+    pub(crate) fn settle_hidden(&mut self, item: &ItemId, content: &Content) {
+        let mut starts: HashMap<HiddenRef, bool> = HashMap::new();
+        for entry in content.entries() {
+            starts.insert(HiddenRef::Entry(entry.id.clone()), entry.starts_hidden);
+            for overlay in &entry.overlays {
+                let lane = HiddenRef::Lane(entry.id.clone(), overlay.label.clone());
+                starts.insert(lane, entry.lanes_starting_hidden.contains(&overlay.label));
+            }
+        }
+        self.hidden.retain(|target, &mut chosen| {
+            !target.content().names_item(item)
+                || starts.get(target).is_some_and(|&start| start != chosen)
+        });
+    }
+
+    /// Forgets every choice about the entries and lanes of `item`.
+    pub(crate) fn forget_hidden(&mut self, item: &ItemId) {
         self.hidden
-            .retain(|target, _| !target.content().names_item(item) || target.is_in(content));
+            .retain(|target, _| !target.content().names_item(item));
     }
 }

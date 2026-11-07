@@ -132,4 +132,10 @@ fn an_entry_and_lane_that_survive_resolving_again_keep_their_visibility_whatever
         })
         .collect();
     assert_eq!(hidden, [(true, true), (false, false), (true, true)]);
+
+    let (removed, _) = apply(&state, DocCommand::Remove(runs.id));
+    assert!(
+        removed.hidden.is_empty(),
+        "removing the item forgets its choices"
+    );
 }

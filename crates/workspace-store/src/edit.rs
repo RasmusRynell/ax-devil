@@ -50,8 +50,7 @@ impl WorkspaceState {
                 None => job = Some(self.start(&item)),
             }
             // A new recipe starts the item's entries and lanes over, as its resolver says; after `start`, which pins.
-            self.hidden
-                .retain(|target, _| !target.content().names_item(&item.id));
+            self.forget_hidden(&item.id);
         }
         self.workspace.items[at] = item;
         job

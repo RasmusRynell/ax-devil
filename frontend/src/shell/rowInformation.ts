@@ -39,15 +39,16 @@ function spansOf(content: Playlist) {
   });
 }
 
-/** The file of each lane the seat may read, by entry id and lane label: the `location` of the lane's row. */
-type Paths = ReadonlyMap<string, string>;
-
-const laneKey = (entry: string, lane: string) => `${entry}\u001f${lane}`;
+/** The file of each lane the seat may read, by entry id, then lane label: the `location` of the lane's row. */
+type Paths = ReadonlyMap<string, ReadonlyMap<string, string>>;
 
 function pathsOf(rows: readonly RowInfo[]): Paths {
-  const paths = new Map<string, string>();
-  for (const { kind, entry, label, location } of rows)
-    if (kind === "lane" && entry && location) paths.set(laneKey(entry, label), location);
+  const paths = new Map<string, Map<string, string>>();
+  for (const { kind, entry, label, location } of rows) {
+    if (kind !== "lane" || !entry || !location) continue;
+    const lanes = paths.get(entry) ?? new Map<string, string>();
+    paths.set(entry, lanes.set(label, location));
+  }
   return paths;
 }
 
@@ -60,7 +61,7 @@ function playlistLane(
   paths: Paths,
 ): Information {
   const lane = entry.lanes[at];
-  const path = paths.get(laneKey(entry.id, lane));
+  const path = paths.get(entry.id)?.get(lane);
   return info(lane, [
     ["type", "overlay"],
     ["playlist", playlist],
