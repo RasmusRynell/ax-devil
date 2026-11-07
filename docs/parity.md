@@ -97,7 +97,7 @@ Listed in [parity deviations](parity-deviations.md).
 |----|---------|---|--------|------|-------|
 | PL-01 | Decoder plugins (file, payload) and playlist resolver plugins | M | done | `crates/plugins/tests/`, `tests/it/plugins.rs` | Decoder handlers read a file or, with `input: records`, one record at a time (live sources, lines of a file); resolver handlers ([plugins](plugins.md), D29) |
 | PL-02 | Built-in decoders and resolvers listed by `list-handlers` and `playlist --help` | M | done | `src/cli/tests.rs`, `src/routes/handlers.rs`, `crates/handlers` tests, `crates/scene-decoders/tests/it/adf_*.rs` | MOT, UVG-VCM, ONVIF XML, CVAT, ADF beta/v1 (frame and consolidated), plugin decoders; both resolvers |
-| PL-03 | Install, update, remove, list from CLI and Plugins view | M | done | `tests/it/plugins.rs`, `src/cli/tests.rs`, `src/routes/plugins.rs`, `plugins/PluginsView.test.tsx` | `plugins install/update/remove/list/check` from the CLI and the Plugins view; applied to the running app, as is an edited manifest |
+| PL-03 | Install, update, remove, list from CLI and Plugins view | M | done | `tests/it/plugins.rs`, `src/cli/tests.rs`, `src/routes/plugins.rs`, `plugins/PluginsView.test.tsx` | `plugins install/update/remove/list/check` from the CLI and the Plugins view; applied to the running app |
 | PL-04 | Load failures never stop the app; listed | M | done | `tests/it/plugins.rs`, `PluginsView.test.tsx` | `plugins list` and Plugins view show failures; a failed run marks its lane Incomplete |
 | PL-05 | Unchanged third-party Python plugins run (bridge); not planned by default | S | todo |  |  |
 
@@ -106,7 +106,7 @@ Listed in [parity deviations](parity-deviations.md).
 | ID | Feature | P | Status | Test | Notes |
 |----|---------|---|--------|------|-------|
 | ST-01 | Settings pages; restart marker | M | done | `SettingsDialog{,.table}.test.tsx`, `Shell.test.tsx`, `src/tests.rs` | All pages; storage folders read once at start |
-| ST-02 | Quick Setup on first start | M | done | `shell/QuickSetupDialog.test.tsx`, `Shell.test.tsx` | Opens on first run and from Help; any close stores the choices; a refused write does not |
+| ST-02 | Quick Setup on first start | M | done | `shell/QuickSetupDialog.test.tsx`, `Shell.test.tsx` | Opens on first run and from Help; any close stores the choices |
 | ST-03 | Theme (light, dark, auto) and text size (system, small to larger), applied live | M | done | `crates/settings` tests, `App.test.tsx`, `settings.test.tsx` | Stored through `/api/settings`; applied live; zoom stays the browser's |
 | ST-04 | `$VARIABLE` references | M | done | `reference_tests.rs`, `SettingsDialog.test.tsx`, `AddLiveStreamDialog.test.tsx` | Every field takes one, kept raw; unset gives empty or the default, with a warning; a number or folder that does not resolve is refused on save |
 | ST-05 | Keyboard shortcuts and overrides | M | done | `crates/settings` tests, `ShortcutsDialog.test.tsx`, `SettingsDialog.test.tsx`, `Shell.test.tsx` | Command table, override storage, conflict checks, live keys; editor from General, OK saves, Cancel ignored while saving |
@@ -125,7 +125,7 @@ Listed in [parity deviations](parity-deviations.md).
 | SH-01 | Join, reconnect and revoke access | M | done | `crates/sessions/tests/session/`, `tests/it/{session_socket,playback_ws}.rs` | A cut connection (TCP proxy) resumes its seat; a stopped sharing refuses it; silent loss takes 25 s |
 | SH-02 | Follow or explore independently | M | done | `crates/sessions/tests/session/{revocation,matrix}.rs`, `viewer/PlaylistFollower.test.tsx`, `desktop/smoke-sharing.cjs`, `src/routes/playback/inspect/tests.rs` | Video and playlist. Inspection is gated like data: a follower outside its window gets none. Live policies follow live |
 | SH-03 | Audience privacy and settings scope | M | done | `tests/it/{access,playback_catalogs}.rs`, `src/session/project.rs`, `crates/settings/src/scope_tests.rs` | Host paths and settings scoped; a watcher sees a user catalog once its Session's host viewer asks for it, until it leaves |
-| SH-04 | Browser and remote Electron connection | M | in progress | `desktop/{smoke-remote,smoke-handoff,links.test,remote.test}.cjs`, `tests/it/workspace_files.rs`, `session/Notice.test.tsx` | Server frontend, password recovery, join and hosting failure reasons (`src/share.rs`); a second launch's link, server or command reaches the running app. Not run in isolation: two machines (runbook), the system's `ax-devil://` registration (`smoke-packaged` checks the declaration) |
+| SH-04 | Browser and remote Electron connection | M | in progress | `desktop/{smoke-remote,smoke-handoff,links.test,remote.test}.cjs`, `tests/it/workspace_files.rs`, `session/Notice.test.tsx` | Server frontend, password recovery, join and hosting failure reasons (`src/share.rs`); a second launch's link, server or command reaches the running app. Not run in isolation: two machines (runbook), the system registering `ax-devil://` (`smoke-packaged` checks the declaration) |
 
 ## Developer tooling
 
