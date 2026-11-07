@@ -1,7 +1,7 @@
 /**
  * One viewer's playback of one entry: the socket, the frames and lane data held, the clock and what to ask the
- * backend for. Playing never holds a frame for lane data; after a seek or step it waits briefly. The session is
- * framework-free; time, the display refresh and the socket are injected, and the UI reads `getSnapshot`.
+ * backend for. Playing never holds a frame for lane data; after a seek or step it waits briefly. Framework-free:
+ * time, the display refresh and the socket are injected, and the UI reads `getSnapshot`.
  */
 
 import { reasonOf } from "../errors";
@@ -18,7 +18,7 @@ import { dataWindow, sampleBudgetBytes } from "./data/dataWindow";
 import { FrameFailures } from "./failures";
 import type { FileScope } from "./fileScope";
 import type { FrameFields } from "./frameFields";
-import { ClockHandoff } from "./follow";
+import { followClock } from "./follow";
 import { FrameBuffer, windowSize } from "./FrameBuffer";
 import { DataWait, displaySource } from "./frameSource";
 import { WantPlanner, sameWant } from "./direction";
@@ -32,13 +32,7 @@ import {
   type VideoFrame,
   type Want,
 } from "./protocol";
-import {
-  BUFFER_BUDGET_BYTES,
-  ENDED,
-  REVOKED,
-  type ResumeState,
-  type SessionDeps,
-} from "./sessionDeps";
+import { BUFFER_BUDGET_BYTES, ENDED, type ResumeState, type SessionDeps } from "./sessionDeps";
 import { INITIAL_VIEW, buildView, sameView, type PlaybackView } from "./view";
 import { ViewerData } from "./viewerData";
 import type { Incoming } from "./wire";
@@ -47,7 +41,7 @@ export type { Surface } from "./contract";
 
 export class PlaybackSession implements LaneControl {
   readonly #deps: SessionDeps;
-  /** The most frame bytes the viewer may hold: the ceiling `Open.data_bytes` and samples keep to. */
+  /** The most frame bytes the viewer may hold: what `Open.data_bytes` and samples keep to. */
   readonly #ceiling: number;
   /** What it may hold now: its share of the window's budget, which sizes the windows. */
   #budget: number;
@@ -85,7 +79,8 @@ export class PlaybackSession implements LaneControl {
   #buffer: FrameBuffer<VideoFrame> | undefined;
   #clock: PlaybackClock | undefined;
   #times: Float64Array | undefined;
-  readonly #hand = new ClockHandoff();
+  /** The presenter's clock last followed, and how to read the backend's time. */
+  #followed: { intent: ClockIntent; serverNowUs: () => number } | undefined;
   #planner: WantPlanner | undefined;
   #lastWant: Want | undefined;
   #speed = 1;
@@ -93,7 +88,8 @@ export class PlaybackSession implements LaneControl {
   #resumeAt: number | undefined;
   /** An ordinary open plays from its first frame once shown, unless the viewer acts first. */
   #autoplay: boolean;
-  /** A lost connection took a running clock: the reopened one is paused, so the intent is stale. */
+  #wasPlaying = false;
+  /** A lost connection took a running clock: the reopened one is paused. */
   #stoppedByLoss = false;
   #cancelFrame: (() => void) | undefined;
   #frameCount = 0;
@@ -120,12 +116,13 @@ export class PlaybackSession implements LaneControl {
     });
   }
 
-  /** Where the next session should open: position and speed, kept after the video is released. */
-  resumeState(): ResumeState {
-    return { frame: this.#clock?.playhead ?? this.#resumeAt ?? 0, speed: this.#speed };
+  /** Where the next session should open, and whether it played; kept after the video is released. */
+  resumeState(): ResumeState & { playing: boolean } {
+    const playing = (this.#clock?.playing ?? this.#wasPlaying) || this.#autoplay;
+    return { frame: this.#clock?.playhead ?? this.#resumeAt ?? 0, speed: this.#speed, playing };
   }
 
-  /** Whether an ordinary open still owes its autoplay: nothing shown, the viewer idle. */
+  /** Whether an ordinary open still owes its autoplay. */
   get autoplayPending(): boolean {
     return this.#autoplay;
   }
@@ -135,7 +132,7 @@ export class PlaybackSession implements LaneControl {
     this.#link.connect();
   }
 
-  /** Ends the session: tells the backend, stops the display loop and drops every frame. */
+  /** Ends the session: tells the backend, stops the display and drops every frame. */
   close(): void {
     this.#link.close();
     this.#releaseVideo();
@@ -182,7 +179,7 @@ export class PlaybackSession implements LaneControl {
     this.#surface = surface;
   }
 
-  /** Draws the shown frame again for a surface that lost its picture, if it is still held. */
+  /** Draws the shown frame again for a surface that lost its picture, if still held. */
   represent(): void {
     const shown = this.#clock?.info();
     if (shown) this.#draw(shown.sequenceId);
@@ -218,7 +215,7 @@ export class PlaybackSession implements LaneControl {
     return this.#lanes.states.map((lane) => lane.settings);
   }
 
-  /** Selects an object (`null`: none) for the inspector; it never reaches the backend. */
+  /** Selects an object (`null`: none) for the inspector, not for the backend. */
   select(selection: Selection): void {
     if (this.#data.inspections.select(selection)) this.#publish();
   }
@@ -276,7 +273,7 @@ export class PlaybackSession implements LaneControl {
     this.#intend();
   }
 
-  /** Sets the speed, rounded to hundredths within 0.01 to 10; it stays across a reconnection. */
+  /** Sets the speed, in hundredths within 0.01 to 10; kept across a reconnection. */
   setSpeed(speed: number): void {
     this.#speed = clampSpeed(speed);
     this.#clock?.setSpeed(this.#speed);
@@ -296,23 +293,19 @@ export class PlaybackSession implements LaneControl {
    */
   follow(intent: ClockIntent, serverNowUs: () => number): void {
     this.#autoplay = false;
-    this.#hand.follow(intent, serverNowUs);
+    this.#followed = { intent, serverNowUs };
     this.#data.files.setOwner(false);
     this.#applyFollowed();
   }
 
-  /** `follow` once, from an owner's clock, staying the owner. */
-  restore(intent: ClockIntent, serverNowUs: () => number): void {
-    this.#autoplay = false;
-    this.#hand.restore(intent, serverNowUs);
-    this.#applyFollowed();
-  }
-
   #applyFollowed(): void {
-    const applied = this.#clock && this.#times && this.#hand.apply(this.#clock, this.#times);
-    if (!applied) return;
-    this.#speed = applied.speed;
-    if (applied.started) this.#planner?.played();
+    const clock = this.#clock;
+    const times = this.#times;
+    if (!this.#followed || !clock || !times) return;
+    const { intent, serverNowUs } = this.#followed;
+    const { speed, started } = followClock(clock, times, intent, serverNowUs());
+    this.#speed = speed;
+    if (started) this.#planner?.played();
     this.#wait.restart();
     this.#changed();
   }
@@ -320,7 +313,7 @@ export class PlaybackSession implements LaneControl {
   /** Tells the viewer what the clock is doing now, after the viewer changed it. */
   #intend(): void {
     // The viewer's own action ends following the presenter, even after a reconnection.
-    this.#hand.unfollow();
+    this.#followed = undefined;
     this.#data.files.setOwner(true);
     const clock = this.#clock;
     if (clock)
@@ -333,7 +326,7 @@ export class PlaybackSession implements LaneControl {
     else if (incoming.type === "malformed") this.#unreadable(incoming.reason);
     else if (this.#status !== "failed") {
       const ended = ENDED[incoming.code];
-      if (ended) this.#fail(ended, undefined, incoming.code === REVOKED);
+      if (ended) this.#fail(ended);
       else this.#lose();
     }
   }
@@ -435,7 +428,7 @@ export class PlaybackSession implements LaneControl {
     this.#applyFollowed();
     this.#wait.restart();
     // The reopened clock is paused: tell the presenter's followers where this viewer is.
-    if (this.#stoppedByLoss && !this.#hand.following) this.#intend();
+    if (this.#stoppedByLoss && !this.#followed) this.#intend();
     this.#stoppedByLoss = false;
     this.#sendWant();
     this.#publish();
@@ -452,10 +445,13 @@ export class PlaybackSession implements LaneControl {
     const wasPlaying = clock.playing;
     const presented = clock.tick(this.#source);
     // Playing ended by itself at the last frame: a pause is the intent, unless it follows a presenter.
-    if (wasPlaying && !clock.playing && !this.#hand.following) this.#intend();
+    if (wasPlaying && !clock.playing && !this.#followed) this.#intend();
     if (presented !== undefined) {
       this.#draw(presented);
-      if (this.#autoplay) this.play();
+      // At the last frame there is nothing to play: it stays and says so.
+      const spent = this.#resumeAt !== undefined && clock.playhead >= this.#frameCount - 1;
+      if (this.#autoplay && spent) this.pause();
+      else if (this.#autoplay) this.play();
     }
     this.#sendWant();
     this.#holdForData(clock, presented !== undefined);
@@ -473,7 +469,7 @@ export class PlaybackSession implements LaneControl {
     if (this.#clock && !this.#cancelFrame) this.#cancelFrame = this.#deps.frame(this.#tick);
   }
 
-  /** The user moved something: show it, and report the window on the next refresh. */
+  /** The user moved something: show it, and report the window at the next refresh. */
   #changed(): void {
     this.#arm();
     this.#publish();
@@ -507,13 +503,10 @@ export class PlaybackSession implements LaneControl {
     this.#publish();
   }
 
-  #fail(reason: string, location?: string, revoked = false): void {
-    // A running clock stops with the viewer, unless a presenter's or the stream was revoked (see `REVOKED`).
-    const frame = this.#clock?.playhead ?? this.#resumeAt;
-    const running = this.#clock?.playing || this.#hand.pending;
-    if (!revoked && !this.#hand.following && running && frame !== undefined)
-      this.#deps.onIntent?.({ frame, playing: false, speed: this.#speed });
-    this.#hand.forget();
+  #fail(reason: string, location?: string): void {
+    // A running clock stops with the viewer, unless a presenter's.
+    if (this.#clock?.playing && !this.#followed)
+      this.#deps.onIntent?.({ frame: this.#clock.playhead, playing: false, speed: this.#speed });
     this.#failure = { reason, location };
     this.#status = "failed";
     this.#link.drop();
@@ -523,6 +516,7 @@ export class PlaybackSession implements LaneControl {
 
   /** Stops the display loop and drops the clock and held frames, keeping the position. */
   #releaseVideo(): void {
+    this.#wasPlaying = this.resumeState().playing;
     this.#resumeAt = this.#clock?.playhead ?? this.#resumeAt;
     this.exports.lost();
     this.#cancelFrame?.();

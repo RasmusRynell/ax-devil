@@ -50,5 +50,3 @@ export const ENDED: Record<number, string> = {
   4401: "The backend refused this video stream.",
   4403: "This video stream was ended: access to it was withdrawn.",
 };
-/** The close code of a stream whose authority the backend withdrew, as a reload does to the generation it replaces. */
-export const REVOKED = 4403;

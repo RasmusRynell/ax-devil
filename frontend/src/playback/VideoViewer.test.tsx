@@ -95,57 +95,6 @@ describe("video viewer", () => {
     expect(room.presenter.viewers[1]?.clock).toMatchObject({ playing: true });
   });
 
-  it("carries on playing from the playhead when a reload replaces the viewer, as the watchers were told", async () => {
-    const tree = (generation: number) => (
-      <SessionProvider>
-        <Viewer sent={[]} generation={generation} />
-      </SessionProvider>
-    );
-    const view = render(tree(1));
-    await act(async () => {});
-    const room = FakeSocket.rooms.get("room-1")!;
-    act(() => room.setItems([video("a")]));
-    await slider();
-    vi.useFakeTimers();
-    fireEvent.click(screen.getByRole("button", { name: "Play" }));
-    await act(() => vi.advanceTimersByTimeAsync(1_000));
-    flushFrames();
-    // The backend revokes the outgoing stream before the new generation reaches the window: that is no stop.
-    act(() => sockets.at(-1)?.({ type: "closed", code: 4403 }));
-    view.rerender(tree(2));
-    await act(() => vi.advanceTimersByTimeAsync(1_000));
-    flushFrames();
-    // The outgoing viewer left its clock running at the playhead, and the replacement plays on from it.
-    const told = room.presenter.viewers[1]?.clock;
-    expect(told).toMatchObject({ playing: true });
-    expect(told?.frame).toBeGreaterThan(0);
-    expect(screen.getByRole("button", { name: "Pause" })).toBeTruthy();
-    const shown = Number(
-      (screen.getByRole("slider", { name: "Timeline" }) as HTMLInputElement).value,
-    );
-    expect(shown).toBeGreaterThan(told?.frame ?? Infinity);
-  });
-
-  it("leaves no clock behind when its pane is closed while it plays", async () => {
-    const store = new SessionStore();
-    const view = render(
-      <SessionProvider store={store}>
-        <Viewer sent={[]} />
-      </SessionProvider>,
-    );
-    await act(async () => {});
-    act(() => FakeSocket.rooms.get("room-1")!.setItems([video("a")]));
-    await slider();
-    fireEvent.click(screen.getByRole("button", { name: "Play" }));
-    expect(store.readView().viewers[1]?.clock).toMatchObject({ playing: true });
-    // Closing a pane takes its viewer out of the view as the viewer unmounts.
-    act(() => {
-      store.setView((shown) => ({ ...shown, viewers: {} }));
-      view.unmount();
-    });
-    expect(store.readView().viewers[1]).toBeUndefined();
-  });
-
   describe("when the session resumes", () => {
     /** Opens the viewer, then drops the session's socket and lets it reconnect, with tickets refused or not. */
     async function resume(refused = false) {

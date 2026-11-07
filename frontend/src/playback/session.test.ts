@@ -120,7 +120,7 @@ describe("resuming", () => {
     expect(session.getSnapshot()).toMatchObject({ playhead: 7, speed: 2, playing: false });
     session.seek(3);
     session.setSpeed(0.5);
-    expect(session.resumeState()).toEqual({ frame: 3, speed: 0.5 });
+    expect(session.resumeState()).toEqual({ frame: 3, speed: 0.5, playing: false });
   });
 
   it("keeps the position when the stream is revoked, for the replacement a seat restart opens", async () => {
@@ -129,7 +129,33 @@ describe("resuming", () => {
     session.seek(6);
     server.drop(4403);
     expect(session.getSnapshot().status).toBe("failed");
-    expect(session.resumeState()).toEqual({ frame: 6, speed: 1 });
+    expect(session.resumeState()).toEqual({ frame: 6, speed: 1, playing: false });
+  });
+
+  it("tells the others a playing owner stopped when its stream is revoked, and remembers that it played", async () => {
+    const { session, server, intents, refresh } = await setup();
+    server.open();
+    server.frames(0, 1, 2, 3);
+    refresh();
+    session.play();
+    refresh(80);
+    const { playhead } = session.getSnapshot();
+    intents.length = 0;
+    server.drop(4403);
+    expect(intents).toEqual([{ frame: playhead, playing: false, speed: 1 }]);
+    expect(session.resumeState()).toEqual({ frame: playhead, speed: 1, playing: true });
+  });
+
+  it("opens a handed-over position at or past the last frame there, paused, and says so", async () => {
+    const { session, server, intents, refresh } = await setup(
+      { frame: 15, speed: 1 },
+      { autoplay: true },
+    );
+    server.open(10);
+    server.frames(9);
+    refresh();
+    expect(session.getSnapshot()).toMatchObject({ playing: false, playhead: 9 });
+    expect(intents).toEqual([{ frame: 9, playing: false, speed: 1 }]);
   });
 });
 
@@ -456,49 +482,5 @@ describe("following a presenter", () => {
     await flush();
     server.open();
     expect(session.getSnapshot()).toMatchObject({ playing: true, playhead: 8 });
-  });
-});
-
-describe("taking over an owner's clock", () => {
-  const left = { frame: 0, playing: true, speedCenti: 100, atUs: 0 };
-
-  it("plays on from it, and stays the owner: it stops on its own at the end and after a reconnection", async () => {
-    const { session, server, intents, retries, refresh } = await setup();
-    server.open(3);
-    server.frames(0, 1, 2);
-    refresh();
-    session.restore(left, () => 0);
-    expect(session.getSnapshot()).toMatchObject({ playing: true, playhead: 0 });
-    refresh(200);
-    expect(session.getSnapshot().playing).toBe(false);
-    expect(intents.at(-1)).toMatchObject({ frame: 2, playing: false });
-
-    session.restore(left, () => 0);
-    intents.length = 0;
-    server.drop();
-    retries[0].run();
-    await flush();
-    server.open(3);
-    expect(session.getSnapshot().playing).toBe(false);
-    expect(intents.at(-1)).toMatchObject({ playing: false });
-  });
-
-  it("stops it when the video does not open, unless the clock is a presenter's", async () => {
-    const error = { type: "Error", code: "NotAVideo", params: {}, reason: "no" } as const;
-    const owner = await setup({ frame: 4, speed: 1 });
-    owner.session.restore({ ...left, frame: 4 }, () => 0);
-    owner.server.say(error);
-    expect(owner.intents).toEqual([{ frame: 4, playing: false, speed: 1 }]);
-
-    // A revoked stream stops nothing the backend has not decided: it says nothing.
-    const revoked = await setup({ frame: 4, speed: 1 });
-    revoked.session.restore({ ...left, frame: 4 }, () => 0);
-    revoked.server.drop(4403);
-    expect(revoked.intents).toEqual([]);
-
-    const follower = await setup({ frame: 4, speed: 1 });
-    follower.session.follow({ ...left, frame: 4 }, () => 0);
-    follower.server.say(error);
-    expect(follower.intents).toEqual([]);
   });
 });

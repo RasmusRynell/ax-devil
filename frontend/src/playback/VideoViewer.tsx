@@ -1,13 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { ContentInfo, ContentRef, EntryInfo, LanePolicyWire } from "../generated/api";
-import {
-  useCan,
-  useFollowing,
-  useReadView,
-  useServerClock,
-  useStream,
-  useView,
-} from "../session/session";
+import { useCan, useFollowing, useServerClock, useStream, useView } from "../session/session";
 import { useSettings } from "../settings";
 import { NOTHING_HIDDEN, type Hidden } from "../viewer/hidden";
 import { usePaneBudget } from "./budget";
@@ -17,6 +10,7 @@ import { FRESH_MEMORY, type InspectorMemory } from "./fields";
 import { savedTiming } from "./lanes";
 import { Playback } from "./PlaybackPane";
 import { Status } from "./PlaybackStatus";
+import { leave, take } from "./reloadHandoff";
 import { PlaybackSession } from "./session";
 import type { PlaybackIntent, ResumeState } from "./sessionDeps";
 import { useFileScopeOwner } from "./useFileScopeOwner";
@@ -67,7 +61,7 @@ export function VideoViewer({
   );
   const ticket = useStream(key);
   const [viewers, setViewers] = useView("viewers");
-  const readView = useReadView(); // A clock belongs to the entry the view names beside it; one left from another entry is not this viewer's.
+  // A clock belongs to the entry the view names beside it; one left from another entry is not this viewer's.
   const shown = viewers[viewer];
   const intent = shown?.entry === undefined || shown.entry === entry.id ? shown?.clock : undefined;
   const canChange = useCan("view");
@@ -84,8 +78,8 @@ export function VideoViewer({
   // The lane settings of the entry that closed, which the next entry's lanes start from.
   const priorLanes = useRef<readonly LaneSettings[]>([]);
   // The effect that creates the session reads these as they are then, and must not restart when they change.
-  const latest = useRef({ canChange, following, clock, onLaneMatching });
-  latest.current = { canChange, following, clock, onLaneMatching };
+  const latest = useRef({ intent, canChange, following, clock, onLaneMatching });
+  latest.current = { intent, canChange, following, clock, onLaneMatching };
   const defaultCatalog = useRef(values["overlays.default_catalog"] as string);
   defaultCatalog.current = values["overlays.default_catalog"] as string;
   const defaultTiming = useRef(savedTiming(values));
@@ -122,11 +116,7 @@ export function VideoViewer({
         return { ...now, [viewer]: { ...current, clock: next } };
       });
     };
-    // Read from the view as it is now, not as the last render saw it: a viewer this one replaces on a reload has just
-    // published its clock as it was, and the render's intent is from before that.
-    const named = readView().viewers[viewer];
-    const anchor =
-      named?.entry === undefined || named.entry === entry.id ? named?.clock : undefined;
+    const anchor = latest.current.intent;
     // A window that follows takes the presenter's clock, never a position of its own, and forgets any it had.
     const kept = left.current;
     left.current = undefined;
@@ -134,21 +124,28 @@ export function VideoViewer({
     const streamKey = `${item}/${entry.id}`;
     const retried = interrupted.current === streamKey;
     interrupted.current = undefined;
-    const start = {
+    // The viewer a reload replaced hands over where it was and whether it played: the reloaded one plays on.
+    const handed = latest.current.following
+      ? undefined
+      : take(viewer, content.id, content.generation, entry.id);
+    const start = handed ?? {
       // Frame 0 of a replaced session that showed nothing is no position to come back to.
       frame: retried ? undefined : (carried?.frame ?? anchor?.frame),
       speed: heldSpeed.current ?? carried?.speed ?? (anchor && anchor.speedCenti / 100),
     };
     // A window that reloads and takes its seat back finds its clock still running in the accepted intent, which
-    // the watchers keep following: it picks the clock up where it is by now, and stays the one that publishes it.
-    const running = !carried && !latest.current.following && anchor?.playing ? anchor : undefined;
+    // the watchers keep following: it picks the clock up where it is by now, as a following window does.
+    const running =
+      !handed && !carried && !latest.current.following && anchor?.playing ? anchor : undefined;
     const created = new PlaybackSession({
       ticket,
       connect,
       resume: start,
       // An open with no position to come back to plays; a resumed tab or a followed clock stays as it is. A seat that
       // cannot publish its clock would play again on every return, as nothing remembers it was left.
-      autoplay: start.frame === undefined && !latest.current.following && latest.current.canChange,
+      autoplay: handed
+        ? handed.playing
+        : start.frame === undefined && !latest.current.following && latest.current.canChange,
       lanes: priorLanes.current,
       defaultCatalog: () => defaultCatalog.current || null,
       defaultTiming: () => defaultTiming.current,
@@ -165,28 +162,33 @@ export function VideoViewer({
       },
     });
     created.start();
-    if (running) created.restore(running, () => latest.current.clock.nowUs() ?? running.atUs);
+    if (running) created.follow(running, () => latest.current.clock.nowUs() ?? running.atUs);
     setSession(created);
     return () => {
-      // A session that replaces this one on the same entry opens where it was left, paused. A viewer that goes away
-      // leaves its clock as it is: a reload mounts the next viewer, which carries on from that playhead.
-      const { frame, speed } = created.resumeState();
-      // A failed session already published what it meant to (nothing, when the backend revoked its stream): keep that.
-      const { status, playing: running } = created.getSnapshot();
-      const kept = readView().viewers[viewer]?.clock?.playing === true;
-      const playing = going.current && (status === "failed" ? kept : running);
+      // A session that replaces this one on the same entry opens where it was left, paused.
+      const { frame, speed, playing } = created.resumeState();
       if (created.autoplayPending) interrupted.current = streamKey;
       const lanes = created.laneSettings();
       if (lanes.length > 0) priorLanes.current = lanes;
       created.close();
       // A window that follows has not chosen anything, so leaving does not make it explore.
       if (!latest.current.following) {
-        publish({ frame, playing, speed });
+        publish({ frame, playing: false, speed });
+        // A viewer that goes away may be replaced by a reload of its Content, which plays on if it was playing.
+        if (going.current)
+          leave(viewer, {
+            content: content.id,
+            generation: content.generation,
+            entry: entry.id,
+            frame,
+            speed,
+            playing,
+          });
         left.current = { entry: entry.id, state: { frame, speed } };
         heldSpeed.current = speed;
       }
     };
-  }, [item, viewer, entry.id, ticket, connect, setViewers, readView]);
+  }, [item, viewer, content.id, content.generation, entry.id, ticket, connect, setViewers]);
 
   // The share of the window's frame memory follows the panes that are open.
   const budget = usePaneBudget();
