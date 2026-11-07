@@ -202,22 +202,25 @@ fn doc_command(
                     return Err(Refusal::Invalid);
                 }
                 stream.like = Some(item);
-                // No overlay keeps the saved one, refused if a literal broker password could not come back.
                 if stream.overlay.is_none()
                     && let Some(recipe) = saved.recipe(item)
                 {
-                    if recipe.overlay.has_literal_password() && saved.live(item).is_none() {
-                        return Err(Refusal::Invalid);
-                    }
                     stream.overlay = Some((&recipe.overlay).into());
                 }
             }
-            // An edited stream has every value of its own: an empty text is not the configured one.
+            // An edited stream has every value of its own: empty text is not the configured one.
             let edited =
                 intake(&new, handlers, &live.for_edit(), network, saved).map_err(|error| {
                     tracing::debug!("An edit was refused: {}", error.reason);
                     Refusal::Invalid
                 })?;
+            // Only the owner can restore a hidden password, so no one else may erase it.
+            if let (Source::Live(new), Some(old), None) =
+                (&edited.recipe.source, saved.recipe(item), saved.live(item))
+                && old.loses_broker_password(new)
+            {
+                return Err(Refusal::Invalid);
+            }
             DocCommand::EditItem {
                 item: Box::new(WorkspaceItem { id: item, ..edited }),
                 content: None,
@@ -395,7 +398,7 @@ impl<'a> Saved<'a> {
         self.owner.then(|| self.recipe(item)).flatten()
     }
 
-    /// The recipe of live stream `item`, for any seat.
+    /// The recipe of live stream `item`.
     fn recipe(self, item: ItemId) -> Option<&'a LiveRecipe> {
         self.workspace
             .items

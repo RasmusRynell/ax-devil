@@ -419,11 +419,16 @@ async fn an_edit_without_an_overlay_never_clears_a_saved_broker_password() {
         Source::Live(recipe) => recipe.mqtt_settings().map(|mqtt| mqtt.broker_pass),
         _ => panic!("a live stream"),
     };
-    let relabel = |label: &str| {
-        serde_json::from_value(json!({"type": "content", "command": {"type": "editItem",
-            "item": id, "new": {"type": "Live", "host": "cam.local", "label": label}}}))
+    let edit = |fields: serde_json::Value| {
+        let mut new = json!({"type": "Live", "host": "cam.local"});
+        new.as_object_mut()
+            .unwrap()
+            .extend(fields.as_object().unwrap().clone());
+        serde_json::from_value(json!({"type": "content", "command": {
+            "type": "editItem", "item": id, "new": new}}))
         .unwrap()
     };
+    let relabel = |label: &str| edit(json!({"label": label}));
     owner
         .command(sessions::session::Command::Control(Control::Share {
             access: sessions::session::Access::Edit,
@@ -455,4 +460,42 @@ async fn an_edit_without_an_overlay_never_clears_a_saved_broker_password() {
         broker_pass().map(|secret| secret.expose().to_owned()),
         Some(PASSWORD.to_owned())
     );
+
+    // The same with the overlay named and its password left blank, and with the broker kept for another mode: the
+    // guest is refused each time, the owner's blank password is the saved one.
+    let broker = json!({"broker_host": "b.local", "broker_user": "mqtt", "source_key": "k"});
+    let mut explicit = broker.clone();
+    explicit["mode"] = json!("mqtt");
+    explicit["handler"] = json!("ADF_V1_FRAME");
+    let rtsp = json!({"mode": "rtsp", "handler": "ONVIF_XML"});
+    let mut seq = 3;
+    for fields in [
+        json!({"overlay": explicit}),
+        json!({"overlay": rtsp, "kept_mqtt": broker}),
+        // The password now saved only as kept.
+        json!({"overlay": rtsp, "kept_mqtt": broker, "label": "Again"}),
+    ] {
+        seq += 1;
+        let reply = answer(&state, &guest, seq, edit(fields.clone())).await;
+        assert!(matches!(
+            reply,
+            SessionServerMessage::Ack {
+                outcome: AckOutcome::Refused { .. },
+                ..
+            }
+        ));
+        seq += 1;
+        let reply = answer(&state, &owner, seq, edit(fields)).await;
+        assert!(matches!(
+            reply,
+            SessionServerMessage::Ack {
+                outcome: AckOutcome::Ok,
+                ..
+            }
+        ));
+        assert_eq!(
+            broker_pass().map(|secret| secret.expose().to_owned()),
+            Some(PASSWORD.to_owned())
+        );
+    }
 }

@@ -91,12 +91,6 @@ impl LiveOverlay {
         }
     }
 
-    /// Whether the overlay holds a literal password, which a client is never sent.
-    pub fn has_literal_password(&self) -> bool {
-        matches!(self, Self::Mqtt { broker_pass, .. }
-            if !broker_pass.expose().is_empty() && broker_pass.as_reference().is_none())
-    }
-
     /// The decoder id, when there is an overlay.
     pub fn handler(&self) -> Option<&str> {
         match self {
@@ -264,6 +258,17 @@ impl LiveRecipe {
             .as_deref()
             .and_then(|url| url_endpoint(url).ok())
             .unwrap_or_else(|| (self.host.trim().to_ascii_lowercase(), self.rtsp_port))
+    }
+
+    /// Whether replacing this recipe by `edited` would erase a literal broker password, which a client is never sent
+    /// and so cannot send back: the MQTT settings, in the overlay or kept, had one and the edited ones have none.
+    pub fn loses_broker_password(&self, edited: &LiveRecipe) -> bool {
+        let literal = |pass: &Secret| !pass.expose().is_empty() && pass.as_reference().is_none();
+        self.mqtt_settings()
+            .is_some_and(|saved| literal(&saved.broker_pass))
+            && edited
+                .mqtt_settings()
+                .is_some_and(|new| new.broker_pass.expose().is_empty())
     }
 
     /// The MQTT settings the stream holds: the overlay's, or else the ones kept while another mode is chosen.
