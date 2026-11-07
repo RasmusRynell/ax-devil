@@ -116,8 +116,21 @@ module.exports.overlays = async (window, { setTheme }) => {
     await setView(window, [1100, 720], zoom);
     const shot = await drawn();
     heights.push(labelHeight(shot));
+    {
+      const { left, top } = boxOf(shot.picture);
+      const [px, py] = [Math.round(left * shot.scale), Math.round(top * shot.scale)];
+      const rows = [];
+      for (let at = py - 24; at < py + 4; at++) {
+        let line = "";
+        for (let dx = -2; dx < 12; dx++) line += colourful(shot, px + dx, at) ? "#" : ".";
+        rows.push(line);
+      }
+      debug.push(`pixels at ${px},${py}\n${rows.join("\n")}`);
+    }
     debug.push(
-      await js(`JSON.stringify({ zoom: ${zoom}, inner: [innerWidth, innerHeight], dpr: devicePixelRatio, scale: ${shot.scale}, picture: ${JSON.stringify(shot.picture)}, box: ${JSON.stringify(boxOf(shot.picture))}, panes: [...document.querySelectorAll('[role=group][data-cursor-id^="pane:"]')].map((p) => { const r = p.getBoundingClientRect(); return [r.left, r.top, r.width, r.height]; }), main: (() => { const m = document.querySelector('main'); return [m.clientWidth, m.clientHeight, m.scrollWidth, m.scrollHeight]; })(), area: (() => { const a = document.querySelector('main > div'); return [a.clientWidth, a.clientHeight, a.scrollWidth, a.scrollHeight]; })() })`),
+      await js(
+        `JSON.stringify({ zoom: ${zoom}, inner: [innerWidth, innerHeight], dpr: devicePixelRatio, scale: ${shot.scale}, picture: ${JSON.stringify(shot.picture)}, box: ${JSON.stringify(boxOf(shot.picture))}, panes: [...document.querySelectorAll('[role=group][data-cursor-id^="pane:"]')].map((p) => { const r = p.getBoundingClientRect(); return [r.left, r.top, r.width, r.height]; }), main: (() => { const m = document.querySelector('main'); return [m.clientWidth, m.clientHeight, m.scrollWidth, m.scrollHeight]; })(), area: (() => { const a = document.querySelector('main > div'); return [a.clientWidth, a.clientHeight, a.scrollWidth, a.scrollHeight]; })() })`,
+      ),
     );
   }
   assert.ok(
