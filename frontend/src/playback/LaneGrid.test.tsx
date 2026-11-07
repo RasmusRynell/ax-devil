@@ -87,6 +87,7 @@ function mount(
       item: "e",
       kind: "lane" as const,
       label,
+      detail: "",
       status: { status: "Ready" as const },
       hidden: true,
       entry: "e",

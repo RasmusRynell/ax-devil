@@ -13,6 +13,7 @@
 //! ([`Saved`]); reading and writing files is the caller's business.
 
 mod bookmarks;
+mod details;
 mod edit;
 mod rows;
 
@@ -29,6 +30,7 @@ pub use bookmarks::{
     BookmarkCommand, BookmarkGroup, Standing, csv as bookmarks_csv, groups as bookmark_groups,
     kind_label,
 };
+pub use details::{Location, details};
 pub use rows::{Row, RowKind, RowStatus, rows};
 
 /// Names one commit of an item's Content. Later commits have larger values, across all items of a state.

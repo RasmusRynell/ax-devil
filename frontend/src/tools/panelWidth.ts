@@ -35,6 +35,11 @@ export function roomOf(width: number, video: number, least: number): PanelRoom {
   return { least, most: Math.max(least, width + video - VIDEO_LEAST) };
 }
 
+/** The room of a panel docked left, whose content needs `least`, beside `space`: at most half of it, the centre keeps the rest. */
+export function halfOf(space: number, least: number): PanelRoom {
+  return { least, most: Math.max(least, Math.floor(space / 2)) };
+}
+
 /** `request` pixels for the panel after a drag or key press: the width it takes, and whether it asks to close. */
 export function settle(
   request: number,

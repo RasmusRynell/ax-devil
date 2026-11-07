@@ -16,6 +16,7 @@ const {
 } = require("./smoke-kit.cjs");
 const { gallery } = require("./smoke-gallery.cjs");
 const { items } = require("./smoke-items.cjs");
+const { sidebar } = require("./smoke-sidebar.cjs");
 const { playlist } = require("./smoke-playlist.cjs");
 const { plugins } = require("./smoke-plugins.cjs");
 const { bookmarks } = require("./smoke-bookmarks.cjs");
@@ -326,6 +327,8 @@ module.exports = async (window, shell) => {
   await plugins(window);
   console.log("smoke: items");
   await items(window);
+  console.log("smoke: sidebar");
+  await sidebar(window);
   console.log("smoke: sharing");
   await sharing(window, shell, ownerCsp);
   console.log("smoke: remote");

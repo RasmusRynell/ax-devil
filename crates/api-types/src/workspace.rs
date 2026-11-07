@@ -56,6 +56,9 @@ pub struct RowInfo {
     pub kind: RowKindWire,
     /// What the user reads.
     pub label: String,
+    /// What tells it from a sibling with the same label: where it comes from, or its number; empty for most rows. The
+    /// sidebar shows it under the label, and the search matches it.
+    pub detail: String,
     /// Whether it can be opened.
     pub status: RowStatusInfo,
     /// Whether the user hid it.
