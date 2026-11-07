@@ -1089,6 +1089,10 @@ resolution: ResolutionState,
  */
 changed?: number, 
 /**
+ * Why the last reload of the open viewer failed, until the next. The viewer keeps its old Content.
+ */
+reload_failure?: ReloadFailure, 
+/**
  * What the item was made from, for an audience with host details: what Edit starts from and Information lists.
  */
 recipe?: ItemRecipe, };
@@ -1127,6 +1131,19 @@ label: string | null,
  * The settings the resolver's schema declares.
  */
 settings: Record<string, unknown>, } | { "type": "Live" } & NewLiveWire;
+
+/**
+ * A reload that failed.
+ */
+export type ReloadFailure = { 
+/**
+ * Which attempt failed, so a dismissed failure does not hide the next one.
+ */
+attempt: number, 
+/**
+ * Why.
+ */
+error: ErrorWire, };
 
 /**
  * How far an item has resolved.

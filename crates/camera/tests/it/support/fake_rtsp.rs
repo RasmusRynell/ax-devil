@@ -60,6 +60,8 @@ pub struct Behaviour {
     pub login: bool,
     /// Offer a video stream (when the URL asks for one).
     pub video: bool,
+    /// Answer every connection after the first with 401, as a camera whose login was revoked.
+    pub refuse_later: bool,
     pub first_connection: Fault,
     /// Pause between frames.
     pub interval: Duration,
@@ -72,6 +74,7 @@ impl Default for Behaviour {
         Self {
             login: true,
             video: true,
+            refuse_later: false,
             first_connection: Fault::None,
             interval: Duration::from_millis(5),
             burst: 0,
@@ -234,15 +237,16 @@ async fn serve(socket: TcpStream, shared: Arc<Shared>, index: usize, addr: Socke
             format!("RTSP/1.0 {status}\r\nCSeq: {cseq}\r\n{headers}{length}\r\n{body}").into_bytes()
         };
         let authorised = !shared.behaviour.login
-            || authorization.as_deref().is_some_and(|header| {
-                digest::verify(
-                    header,
-                    Algorithm::Md5,
-                    (REALM, NONCE),
-                    (USER, PASSWORD),
-                    (&request.method, &request.uri),
-                )
-            });
+            || (!shared.behaviour.refuse_later || index == 0)
+                && authorization.as_deref().is_some_and(|header| {
+                    digest::verify(
+                        header,
+                        Algorithm::Md5,
+                        (REALM, NONCE),
+                        (USER, PASSWORD),
+                        (&request.method, &request.uri),
+                    )
+                });
         let answer = if !authorised {
             reply(
                 "401 Unauthorized",

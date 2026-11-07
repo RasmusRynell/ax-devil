@@ -15,7 +15,7 @@ import { viewerFor } from "../viewers";
 import { extent, prune, rects, resize, seams, type Path, type Size } from "./layout";
 import { activated, moved, pinned, resized } from "./placement";
 import { Pane } from "./Pane";
-import { ReloadOffer } from "./ReloadOffer";
+import { ReloadFailed, ReloadOffer } from "./ReloadOffer";
 import { Seam } from "./Seam";
 import { useClosePanes, useViewers, type Viewer } from "./useViewers";
 
@@ -66,6 +66,11 @@ const PaneContent = memo(function PaneContent({
         changed={item.changed ?? 0}
         dismissed={dismissed[offer] ?? 0}
         onDismiss={(count) => onDismiss(offer, count)}
+      />
+      <ReloadFailed
+        failure={item.reload_failure}
+        dismissed={dismissed[`${offer}.failed`] ?? 0}
+        onDismiss={(attempt) => onDismiss(`${offer}.failed`, attempt)}
       />
       <Viewer
         key={`${viewer.id}.${content.id}.${content.generation}`}

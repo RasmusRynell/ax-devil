@@ -7,7 +7,7 @@
 use super::{JobId, SessionState, state::Doc, transition::Effects};
 use foundation::{CancelToken, UserError};
 use workspace::{Content, ItemId};
-use workspace_store::{Resolution, ResolveJob};
+use workspace_store::ResolveJob;
 
 /// Who a job works for. Its result is dropped when the owner no longer wants it.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -92,8 +92,7 @@ fn wanted(state: &SessionState, owner: &JobOwner) -> bool {
                     .items
                     .iter()
                     .any(|known| known.id == *item)
-                && workspace.resolutions.get(item)
-                    == Some(&Resolution::Pending { attempt: *attempt })
+                && workspace.waits_on(item, *attempt)
         }
     }
 }

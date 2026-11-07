@@ -1,8 +1,10 @@
 //! The transitions of a workspace state.
 
 use super::*;
-use foundation::ErrorCode;
+use foundation::{CancelToken, ErrorCode, Interrupt};
+use handlers::Handlers;
 use std::path::Path;
+use workspace::Environment;
 
 fn item(path: &Path) -> WorkspaceItem {
     workspace::intake::video(path, &[], &Handlers::built_in()).unwrap()
@@ -491,4 +493,5 @@ fn jobs_of(state: &WorkspaceState, id: ItemId) -> ResolveJob {
 
 mod edit;
 mod hidden;
+mod reload;
 mod remove;

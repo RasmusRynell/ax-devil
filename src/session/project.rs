@@ -17,8 +17,8 @@ use api_types::{
     playback::WarningInfo,
     project as project_error,
     workspace::{
-        ItemKind, ItemRecipe, ItemState, NewOverlayWire, ResolutionState, RowInfo, RowKindWire,
-        RowStatusInfo, WorkspaceState,
+        ItemKind, ItemRecipe, ItemState, NewOverlayWire, ReloadFailure, ResolutionState, RowInfo,
+        RowKindWire, RowStatusInfo, WorkspaceState,
     },
 };
 use sessions::session::Doc;
@@ -28,7 +28,7 @@ use workspace::{
     WorkspaceItem, playlist_label,
 };
 use workspace_store::{
-    BookmarkGroup, ContentGen, Resolution, Row, RowKind, RowStatus, Saved, Standing,
+    BookmarkGroup, ContentGen, Reload, Resolution, Row, RowKind, RowStatus, Saved, Standing,
     WorkspaceParts, bookmark_groups, details, rows,
 };
 
@@ -43,6 +43,7 @@ pub fn project(doc: &Doc, audience: Audience) -> DocWire {
         resolutions,
         open,
         changed,
+        reloads,
         // The rows carry what the user hid.
         hidden: _,
     } = state.parts();
@@ -101,6 +102,13 @@ pub fn project(doc: &Doc, audience: Audience) -> DocWire {
                     Some(Resolution::Pending { attempt: _ }) | None => ResolutionState::Pending,
                 },
                 changed: changed.get(id).copied(),
+                reload_failure: match reloads.get(id) {
+                    Some(Reload::Failed { attempt, error }) => Some(ReloadFailure {
+                        attempt: *attempt,
+                        error: project_error(error, audience),
+                    }),
+                    _ => None,
+                },
             }
         })
         .collect();
