@@ -116,4 +116,46 @@ describe("the item a viewer shows", () => {
     fireEvent.keyDown(tree, { key: "ArrowLeft" });
     expect(labels()).toEqual(["mot", "A", "B"]);
   });
+
+  describe("with several entries shown", () => {
+    const setup = async () => {
+      render(
+        <SessionProvider>
+          <KeptStateProvider>
+            <RevealShown view="workspace" />
+            <WorkspaceTree view="workspace" {...LISTING} />
+          </KeptStateProvider>
+        </SessionProvider>,
+      );
+      await act(async () => {});
+      const room = FakeSocket.rooms.get("room-1") as Room;
+      act(() => room.setItems([{ ...MOT, open: true }]));
+      return (...entries: string[]) =>
+        act(() =>
+          room.publish({
+            sidebar: room.presenter.sidebar,
+            ...viewing(...entries.map((entry) => ["mot", { entry }] as const)),
+          }),
+        );
+    };
+
+    it("leaves a playlist the user closed closed when another entry is shown", async () => {
+      const show = await setup();
+      show("mot/A");
+      expect(labels()).toEqual(["mot", "A", "GT", "DPM", "B"]);
+      fireEvent.keyDown(screen.getByRole("tree", { name: "Playlists" }), { key: "ArrowLeft" });
+      show("mot/B");
+      expect(labels()).toEqual(["mot"]);
+    });
+
+    it("keeps every entry a viewer shows open, and closes one when its last viewer leaves it", async () => {
+      const show = await setup();
+      show("mot/A", "mot/B");
+      expect(labels()).toEqual(["mot", "A", "GT", "DPM", "B", "GT"]);
+      show("mot/B", "mot/A");
+      expect(labels()).toEqual(["mot", "A", "GT", "DPM", "B", "GT"]);
+      show("mot/B");
+      expect(labels()).toEqual(["mot", "A", "B", "GT"]);
+    });
+  });
 });

@@ -20,14 +20,16 @@ export function RevealShown({ view }: { view: SidebarView }): null {
   const tree = useMemo(() => (workspace ? treeOf(workspace) : []), [workspace]);
   const front = useFrontItem() ?? undefined;
   const [viewers] = useView("viewers");
-  const [active] = useView("active");
-  const entry = active === undefined ? undefined : viewers[active]?.entry;
+  const entries = useMemo(
+    () => new Set(Object.values(viewers).flatMap((viewer) => viewer?.entry ?? [])),
+    [viewers],
+  );
   const [held, setHeld] = useFolds(view);
   // Before paint, so a row shown never appears folded for a frame.
   useLayoutEffect(() => {
-    const next = revealShown(tree, front, held, entry);
+    const next = revealShown(tree, front, held, entries);
     if (next !== held) setHeld(next);
-  }, [tree, front, entry]);
+  }, [tree, front, entries]);
   return null;
 }
 
