@@ -14,7 +14,7 @@ export const canEdit = (item: ItemState | undefined, powers: Powers): item is It
   editable(item) && powers.content && (item.kind === "live" || powers.host);
 
 /**
- * The menu of a row, in groups: Open (a row that cannot open says why), Information, Hide, then Edit and Remove for
+ * The menu of a row, in groups: Open and Open to the Side (a row that cannot open says why), Information, Hide, then Edit and Remove for
  * the whole item, which only a top-level row offers. A row still resolving opens and informs nothing, and an item
  * that was unreadable cannot be edited.
  */
@@ -28,7 +28,13 @@ export function rowMenu(row: TreeRow, item: ItemState | undefined, powers: Power
   const { status } = row.info.status;
   const owns = row.level === 1 && item !== undefined;
   const groups: MenuEntry[][] = [
-    status === "Pending" ? [] : [action("open", "Open"), action("information", "Information")],
+    status === "Pending"
+      ? []
+      : [
+          action("open", "Open"),
+          action("open-side", "Open to the Side"),
+          action("information", "Information"),
+        ],
     row.target ? [action("hidden", row.info.hidden ? "Unhide" : "Hide", !powers.content)] : [],
     owns
       ? [

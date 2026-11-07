@@ -17,7 +17,7 @@ import {
 import { useStreamStatuses } from "../live/streamState";
 import { useSettings } from "../settings";
 import { useCan, useCommand, useDoc } from "../session/session";
-import { useFrontItem, useShow } from "../viewer/useViewers";
+import { useShow, useShownItems } from "../viewer/useViewers";
 import { useItemDialogs } from "./ItemDialogs";
 import { useKept } from "./keptState";
 import { LiveToolbar } from "./LiveToolbar";
@@ -43,7 +43,7 @@ export function LiveView({ onAdd }: { onAdd: (seed: AddSeed) => void }) {
   const show = useShow();
   const { snapshot, epoch, connected } = useNetwork(scans);
   const reported = useStreamStatuses();
-  const front = useFrontItem();
+  const viewed = useShownItems();
   // What the user set up stays while the window shows another view or hides the sidebar.
   const [query, setQuery] = useKept("live:query", "");
   const [order, setOrder] = useKept<Order>("live:order", "address");
@@ -77,10 +77,10 @@ export function LiveView({ onAdd }: { onAdd: (seed: AddSeed) => void }) {
         reported,
         checks,
         thumbnails: scans,
-        front,
+        viewed,
         order,
       }),
-    [cameras, snapshot, reported, checks, scans, front, order],
+    [cameras, snapshot, reported, checks, scans, viewed, order],
   );
   const views = useMemo(() => viewsOf(sections, query, hidden), [sections, query, hidden]);
   const facets = useMemo(() => offeredFacets(sections, hidden), [sections, hidden]);
@@ -95,7 +95,9 @@ export function LiveView({ onAdd }: { onAdd: (seed: AddSeed) => void }) {
     );
   const act = (row: Row, action: RowAction) => {
     const { item, like, found } = row.subject;
-    if (action === "start" && item) void attempt(show(item));
+    // Start opens beside the open viewers, never in place of one; a stream already in a pane is brought forward.
+    if (action === "start" && item)
+      void attempt(show(item, undefined, { side: true, reuse: true }));
     else if (action === "stop" && item)
       void attempt(command({ type: "content", command: { type: "closeViewer", item } }));
     else if (action === "addStream") onAdd({ like });

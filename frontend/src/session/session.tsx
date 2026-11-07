@@ -100,6 +100,12 @@ export function useSetView(): (change: (shown: View) => View) => void {
   return useCallback((change) => store.setView(change), [store]);
 }
 
+/** The way to read what the window shows right now, for a command that must decide before it asks the backend. */
+export function useReadView(): () => View {
+  const store = useStore();
+  return useCallback(() => store.readView(), [store]);
+}
+
 /**
  * One part of what the window shows (`sidebar`, `active`, `viewers` or `layout`) and the way to change it. A change shows at
  * once and is settled by the backend later; a change the backend refuses stops showing.

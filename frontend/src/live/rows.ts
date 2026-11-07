@@ -210,12 +210,12 @@ function statusOfStream(
   stream: Stream,
   reported: ReadonlyMap<string, StreamStatus>,
   check: NetworkRow | undefined,
-  front: string | null,
+  viewed: ReadonlySet<string>,
 ): StreamStatus {
   if (refuses(check)) return { state: "failed", text: REFUSED, anyLive: false };
   if (stream.state === "failed") return { state: "failed", text: stream.reason, anyLive: false };
   if (stream.state === "resolving") return IDLE;
-  return running(stream, front) ? (reported.get(stream.id) ?? CONNECTING) : IDLE;
+  return running(stream, viewed) ? (reported.get(stream.id) ?? CONNECTING) : IDLE;
 }
 
 /** What the menu of a stream offers: Start or Stop when it can, then Information, Edit and Remove. */
@@ -251,10 +251,10 @@ function streamRow(
   status: StreamStatus,
   check: NetworkRow | undefined,
   thumbnails: boolean,
-  front: string | null,
+  viewed: ReadonlySet<string>,
 ): Row {
   const label = streamLabel(stream);
-  const on = running(stream, front);
+  const on = running(stream, viewed);
   if (stream.state !== "ready") return unreadyRow(stream, label);
   const refused = refuses(check);
   const tag = TAGS[stream.overlay ?? "none"];
@@ -299,19 +299,19 @@ function cameraRow(
   reported: ReadonlyMap<string, StreamStatus>,
   checks: Checks,
   thumbnails: boolean,
-  front: string | null,
+  viewed: ReadonlySet<string>,
 ): { row: Row; status: StreamStatus } {
   const statuses = camera.streams.map((stream) =>
-    statusOfStream(stream, reported, checks.get(stream.id), front),
+    statusOfStream(stream, reported, checks.get(stream.id), viewed),
   );
   const status = mostUrgent(statuses);
-  const idle = status.state === "idle" && !camera.streams.some((stream) => running(stream, front));
+  const idle = status.state === "idle" && !camera.streams.some((stream) => running(stream, viewed));
   // What signing in with a stream's own login found tells more than a scan that did not sign in with it.
   const learned = camera.streams.map(({ id }) => checks.get(id)).find((check) => check) ?? scan;
   const aside = learned?.identity.model || status.text || "Stopped";
   const host = camera.address;
   const children = camera.streams.map((stream, at) =>
-    streamRow(stream, statuses[at] ?? IDLE, checks.get(stream.id), thumbnails, front),
+    streamRow(stream, statuses[at] ?? IDLE, checks.get(stream.id), thumbnails, viewed),
   );
   const row: Row = {
     ...BASE,
@@ -390,7 +390,7 @@ export function sectionsOf({
   reported,
   checks,
   thumbnails,
-  front,
+  viewed,
   order,
 }: {
   cameras: readonly Camera[];
@@ -402,8 +402,8 @@ export function sectionsOf({
   checks: Checks;
   /** Whether rows offer a hover card with a picture of their camera. */
   thumbnails: boolean;
-  /** The item whose viewer is in front. */
-  front: string | null;
+  /** The items that have a viewer open. */
+  viewed: ReadonlySet<string>;
   order: Order;
 }): Section[] {
   const byHost = new Map(found.map((row) => [row.address.toLowerCase(), row]));
@@ -414,7 +414,7 @@ export function sectionsOf({
       reported,
       checks,
       thumbnails,
-      front,
+      viewed,
     ),
   );
   const live: Section = {

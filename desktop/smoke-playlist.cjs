@@ -120,6 +120,13 @@ module.exports.playlist = async (window) => {
   await openAddPlaylist();
   await clickButton("Load Playlist");
   await wait("!document.querySelector('dialog')");
+  // The video's pane makes room: these scenarios read the one viewer on screen.
+  const panes = "[...document.querySelectorAll('[role=group][data-cursor-id^=\"pane:\"]')]";
+  await wait(`${panes}.length === 2`);
+  await js(
+    `${panes}.find((pane) => pane.ariaLabel.endsWith('.mp4')).querySelector('[aria-label="Close this pane"]').click()`,
+  );
+  await wait(`${panes}.length === 1`);
 
   const laneCells = () => kit.laneCells(window);
   const goToFrame = (target) => kit.goToFrame(window, target);
@@ -235,10 +242,12 @@ module.exports.playlist = async (window) => {
       "Every transport and entry control is reachable",
     );
     if (zoom === 2)
-      assert.ok(lines >= 3, `The transport and entry controls must wrap at 200% zoom: ${lines}`);
+      assert.ok(
+        lines >= 2,
+        `The entry controls and the transport must be on lines of their own: ${lines}`,
+      );
   }
-  window.webContents.setZoomFactor(1);
-  window.setSize(1100, 720);
+  await setView(window, [1100, 720], 1);
   await js("document.querySelector('[aria-label=Workspace]').click()");
 
   // The pointer, theme and zoom scenarios run on MINI-02's one lane, on frame 0.
@@ -249,13 +258,14 @@ module.exports.playlist = async (window) => {
   await panels(window, { setTheme, shoot, showEntry, point });
   await objects(window, { setTheme, shoot });
 
-  // The playlist's tab closes, which leaves the video as the one open item for the scenarios that follow.
-  await js(
-    "[...document.querySelectorAll('[aria-label^=\"Close \"]')].find((b) => !b.ariaLabel.endsWith('.mp4')).click()",
-  );
-  await wait(
-    "[...document.querySelectorAll('[role=tab]')].map((tab) => tab.textContent).join() === 'long_gop_h264.mp4'",
-  );
+  // The playlist's pane closes and the video opens again, as the one open item for the scenarios that follow.
+  await js(`${panes}[0].querySelector('[aria-label="Close this pane"]').click()`);
+  await wait(`${panes}.length === 0`);
+  const videoRow =
+    "[...document.querySelectorAll('[role=treeitem]')].find((row) => row.textContent.startsWith('long_gop_h264.mp4'))";
+  await wait(videoRow);
+  await js(`${videoRow}.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }))`);
+  await wait(`${panes}.map((pane) => pane.ariaLabel).join() === 'long_gop_h264.mp4'`);
 
   // A resolver that returns two playlists: the dialog's states and the tree they make.
   await multiplaylist(window);

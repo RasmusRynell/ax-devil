@@ -18,6 +18,7 @@ const { gallery } = require("./smoke-gallery.cjs");
 const { items } = require("./smoke-items.cjs");
 const { sidebar } = require("./smoke-sidebar.cjs");
 const { playlist } = require("./smoke-playlist.cjs");
+const { split } = require("./smoke-split.cjs");
 const { plugins } = require("./smoke-plugins.cjs");
 const { bookmarks } = require("./smoke-bookmarks.cjs");
 const { exportDialog } = require("./smoke-export.cjs");
@@ -321,6 +322,8 @@ module.exports = async (window, shell) => {
   await bookmarks(window);
   console.log("smoke: playlist");
   await playlist(window);
+  console.log("smoke: split");
+  await split(window);
   console.log("smoke: reload offer");
   await reloadOffer();
   console.log("smoke: plugins");

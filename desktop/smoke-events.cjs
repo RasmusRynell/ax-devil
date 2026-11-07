@@ -30,7 +30,7 @@ module.exports.events = () =>
     ],
     async (window) => {
       const { js, wait } = page(window);
-      window.setSize(1500, 720);
+      await setView(window, [1500, 720], 1);
       const settle = () =>
         js("new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done)))");
       const inBothThemes = async (name) => {

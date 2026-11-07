@@ -96,7 +96,7 @@ module.exports.multiplaylist = async (window) => {
     assert.deepEqual(levels, ["1", "1"], "Each playlist is a top-level row");
 
     await js(
-      "[...document.querySelectorAll('[aria-label^=\"Close \"]')].find((b) => b.ariaLabel === 'Close two-runs')?.click()",
+      "[...document.querySelectorAll('[role=group]')].find((pane) => pane.ariaLabel === 'two-runs')?.querySelector('[aria-label=\"Close this pane\"]').click()",
     );
     await post("/api/plugins/remove", { target: "two-runs" });
   } finally {

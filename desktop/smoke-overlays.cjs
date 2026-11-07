@@ -95,15 +95,16 @@ module.exports.overlays = async (window, { setTheme }) => {
   await setTheme("light");
 
   // (b) A label keeps its size on screen when the page is zoomed: the id label above object 3 is as many device pixels
-  // tall at 100% as at 200%. It is the run of coloured pixels above the box's top-left corner, taken a few pixels
-  // inside it where neither the box's side nor the label's text is.
+  // tall at 100% as at 200%. It is the tallest run of coloured pixels, in the first columns from the box's top-left
+  // corner, that ends at the corner: the box's side below it is left out, and the columns are several because where the
+  // label's text starts shifts by a pixel with the picture's size, so some column is always free of it.
   const labelHeight = ({ scale, picture, ...shot }) => {
     const { left, top } = boxOf(picture);
     const [x, y] = [Math.round(left * scale), Math.round(top * scale)];
     let tallest = 0;
-    for (const dx of [2, 3]) {
+    for (const dx of [0, 1, 2, 3, 4, 5]) {
       let run = 0;
-      for (let at = y - 60; at < y + 30; at++) {
+      for (let at = y - 60; at <= y; at++) {
         run = colourful({ scale, ...shot }, x + dx, at) ? run + 1 : 0;
         tallest = Math.max(tallest, run);
       }

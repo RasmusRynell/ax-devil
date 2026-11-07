@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { act, cleanup, fireEvent, screen, within } from "@testing-library/react";
-import type { ItemRecipe, ItemState } from "../generated/api";
+import type { ItemRecipe, ItemState, ViewerView } from "../generated/api";
 import { entry, failed, FakeSocket, playlists, video } from "../session/fakeSession";
 import { viewing } from "../session/fakeViews";
 import { CLIP, commands, ITEMS, labels, MOT, renderTree, shown } from "./WorkspaceTree.fixture";
@@ -55,6 +55,16 @@ describe("rows", () => {
     expect(shown()).toMatchObject({
       active: 1,
       viewers: { 1: { item: "runs", entry: "runs/Train (2)/A" } },
+    });
+    // Another playlist of the item opens in a pane of its own, beside the first.
+    fireEvent.doubleClick(rows[0], { ctrlKey: true });
+    await act(async () => {});
+    expect(shown()).toMatchObject({
+      active: 2,
+      viewers: {
+        1: { item: "runs", entry: "runs/Train (2)/A" },
+        2: { item: "runs", entry: "runs/Train/A", pinned: true },
+      },
     });
     fireEvent.contextMenu(rows[3]);
     expect(screen.queryByRole("menuitem", { name: "Hide" })).toBeNull();
@@ -133,7 +143,7 @@ describe("opening", () => {
     expect(shown()).toMatchObject({ active: 2, viewers: { 2: { item: "mot", entry: "mot/A" } } });
   });
 
-  it("opens at most eight viewers and says so for the ninth, which stays closed", async () => {
+  it("opens to the side with Ctrl, at most eight panes, and says so for the ninth, which stays closed", async () => {
     const ids = Array.from({ length: 9 }, (_, n) => `v${n + 1}`);
     await renderTree(
       ids.map((id) => video(id, false)),
@@ -142,15 +152,19 @@ describe("opening", () => {
     for (const id of ids) {
       fireEvent.doubleClick(
         screen.getAllByRole("treeitem", { name: new RegExp(`^${id}\\.mp4`) })[0],
+        { ctrlKey: true },
       );
       await act(async () => {});
     }
     expect(Object.keys(shown().viewers)).toHaveLength(8);
+    expect(Object.values(shown().viewers).every((viewer) => (viewer as ViewerView).pinned)).toBe(
+      true,
+    );
     expect(commands().filter(({ type }) => type === "openViewer")).toHaveLength(8);
     expect(screen.getByText("Cap at 8 panes")).toBeTruthy();
   });
 
-  it("starts another entry from its beginning, and leaves the one on screen alone", async () => {
+  it("replaces the preview in front with another entry, which starts from its beginning, and leaves the one on screen alone", async () => {
     const room = await renderTree([{ ...MOT, open: true }, CLIP]);
     const clock = { frame: 7, playing: false, speedCenti: 100, atUs: 0 };
     act(() =>
@@ -163,7 +177,10 @@ describe("opening", () => {
     expect(shown().viewers[1]).toEqual({ item: "mot", pinned: false, entry: "mot/A", clock });
     fireEvent.click(screen.getByRole("button", { name: "Show hidden items" }));
     fireEvent.doubleClick(screen.getByRole("treeitem", { name: /^B/ }));
-    expect(shown().viewers[1]).toEqual({ item: "mot", pinned: false, entry: "mot/B" });
+    expect(shown()).toEqual({
+      active: 2,
+      viewers: { 2: { item: "mot", pinned: false, entry: "mot/B" } },
+    });
   });
 
   it("moves with the arrow keys and opens the current row with Enter", async () => {
@@ -279,11 +296,29 @@ describe("items", () => {
       ],
       [],
     );
-    expect(menuOf(/^v\.mp4/)).toEqual(["Open", "Information", "Hide", "Edit", "Remove"]);
-    expect(menuOf(/^bad\.mp4/)).toEqual(["Open", "Information", "Edit", "Remove"]);
+    expect(menuOf(/^v\.mp4/)).toEqual([
+      "Open",
+      "Open to the Side",
+      "Information",
+      "Hide",
+      "Edit",
+      "Remove",
+    ]);
+    expect(menuOf(/^bad\.mp4/)).toEqual([
+      "Open",
+      "Open to the Side",
+      "Information",
+      "Edit",
+      "Remove",
+    ]);
     expect(menuOf(/^wait\.mp4/)).toEqual(["Edit", "Remove"]);
-    expect(menuOf(/^Unreadable item/)).toEqual(["Open", "Information", "Remove"]);
-    expect(menuOf(/^A/)).toEqual(["Open", "Information", "Hide"]);
+    expect(menuOf(/^Unreadable item/)).toEqual([
+      "Open",
+      "Open to the Side",
+      "Information",
+      "Remove",
+    ]);
+    expect(menuOf(/^A/)).toEqual(["Open", "Open to the Side", "Information", "Hide"]);
   });
 
   it("removes the whole item at once from the menu or with Delete, and edits it with F2", async () => {

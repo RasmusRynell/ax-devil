@@ -11,6 +11,7 @@ import type { ReactNode } from "react";
 import type { PlaybackSession } from "../playback/session";
 import type { PlaybackView } from "../playback/view";
 import { useCan, useCommand, useDoc, useFollowing, useSetView, useView } from "../session/session";
+import { PaneActiveContext } from "../viewer/actions";
 
 /** A frame to show, paused, once the viewer of an entry is ready. */
 interface Request {
@@ -56,17 +57,19 @@ export function useSeekRequest(
   const seeking = useContext(SeekContext);
   const canChange = useCan("view");
   const following = useFollowing();
+  // The pane the bookmark opened or brought forward is the active one; another showing the same entry leaves it be.
+  const front = useContext(PaneActiveContext);
   const asked = seeking?.request?.entry === entry ? seeking.request : null;
   const done = seeking?.done;
   useEffect(() => {
-    if (!asked || !done || status !== "ready") return;
+    if (!asked || !done || status !== "ready" || !front) return;
     done();
     if (!canChange || following) return;
     const last = session.getSnapshot().frameCount - 1;
     // Pausing first: pausing a playing clock returns it to the frame on screen, which would undo the seek.
     session.pause();
     session.seek(Math.min(asked.frame, last));
-  }, [asked, done, status, session, canChange, following]);
+  }, [asked, done, status, session, canChange, following, front]);
 }
 
 /**

@@ -46,8 +46,9 @@ const ORDER_ENTRIES: MenuEntry[] = ORDERS.map(([id, label]) => ({ kind: "check",
 /**
  * The workspace's items as a tree in the `listed` sections (Live, Videos, Playlists, Other; a click on a caption folds
  * it): each item, then its entries and their lanes, from the backend's rows. A click selects a row; a double click or
- * Enter opens it in its viewer; the arrow keys move, expand and collapse; the row menu (right click, Shift+F10 or the
- * Menu key) opens it or hides and unhides it. The rows of the item the front viewer shows are revealed, and a row the
+ * Enter opens it in its viewer, and with Ctrl to the side of the front pane; the arrow keys move, expand and collapse;
+ * the row menu (right click, Shift+F10 or the Menu key) opens it (to the side too) or hides and unhides it. The rows of
+ * the item the front viewer shows are revealed, and a row the
  * viewer moves on from closes. Search, Sort, Show hidden and folds are kept per `view` by the window. Above the tree,
  * Search (`search` is its placeholder), Sort and Show hidden items: hidden rows
  * show, dimmed, only with Show hidden, and a section says how many that and the search leave out. While searching,
@@ -174,18 +175,19 @@ export function WorkspaceTree({
 
   const fail = (error: unknown) =>
     setProblem(error instanceof Error ? error.message : String(error));
-  // A row that cannot open says why and sends nothing; one still resolving does nothing.
-  const open = (row: TreeRow) => {
+  // A row that cannot open says why and sends nothing; one still resolving does nothing. A lane's row brings forward a
+  // viewer already showing its entry; `side` opens a pinned viewer to the right of the front pane.
+  const open = (row: TreeRow, side = false) => {
     const { status } = row.info;
     if (status.status === "Pending") return Promise.resolve();
     if (status.status === "Unavailable") {
       setProblem(`${row.info.label}: ${reasonOf(status)}`);
       return Promise.resolve();
     }
-    return show(
-      row.item,
-      row.info.kind === "item" ? undefined : (row.info.entry ?? undefined),
-    ).then(() => setProblem(null), fail);
+    return show(row.item, row.info.kind === "item" ? undefined : (row.info.entry ?? undefined), {
+      side,
+      reuse: !side && row.info.kind === "lane",
+    }).then(() => setProblem(null), fail);
   };
   // The search opens every row and section with a match; folding meanwhile lasts until the search text changes.
   const setCollapsedState = (key: string, collapse: boolean) =>
@@ -235,7 +237,8 @@ export function WorkspaceTree({
   const menuEntries = menuRow ? rowMenu(menuRow, itemOf(menuRow), powers) : [];
   const choose = (choice: MenuCommand) => {
     if (!menuRow) return;
-    if (choice.id === "open") void open(menuRow);
+    if (choice.id === "open" || choice.id === "open-side")
+      void open(menuRow, choice.id === "open-side");
     else if (choice.id === "information") {
       const info = rowInformation(menuRow, workspace?.items ?? []);
       if (info) inform(info);
@@ -309,7 +312,7 @@ export function WorkspaceTree({
                     collapsed={folds}
                     scroller={scroller}
                     hides={hides}
-                    onOpen={(row) => void open(row)}
+                    onOpen={(row, side) => void open(row, side)}
                     onReveal={reveal}
                     onCurrent={setCurrent}
                     onGo={go}

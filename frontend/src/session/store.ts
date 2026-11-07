@@ -186,6 +186,11 @@ export class SessionStore {
     if (this.#state.ended) this.#begin({ kind: "own" }, undefined, true);
   }
 
+  /** What the window shows right now. */
+  readView(): View {
+    return this.#state.view;
+  }
+
   /** Changes what the window shows. It shows at once; the backend settles it later or refuses it. */
   setView(change: (shown: View) => View): void {
     const shown = this.#state.view;
