@@ -4,7 +4,7 @@
 use crate::session_client;
 use crate::workspace_session;
 
-use ax_devil::session::Launch;
+use ax_devil::session::{HandOff, Launch};
 use serde_json::json;
 use session_client::Socket;
 use std::path::Path;
@@ -223,4 +223,49 @@ async fn save_as_replaces_another_file_only_when_allowed() {
     // It is the workspace's own file now, which never asks.
     owner.say(save(4, false)).await;
     assert_eq!(ack(&mut owner, 4).await, json!({"status": "ok"}));
+}
+
+#[tokio::test]
+async fn a_launch_handed_to_the_running_backend_starts_the_next_window() {
+    let folder = tempfile::tempdir().unwrap();
+    let video = Path::new(env!("CARGO_MANIFEST_DIR")).join("fixtures/video/cfr_h264_gop10_bf2.mp4");
+    let item = workspace::intake::video(&video, &[], &handlers::Handlers::built_in()).unwrap();
+    let handed = HandOff::of(&Launch::Items(vec![item])).unwrap();
+    let address = backend(folder.path(), Some(Launch::Restore)).await;
+
+    session_client::post(
+        &address,
+        "/api/launch",
+        &serde_json::to_value(handed).unwrap(),
+    )
+    .await;
+    let mut window = Socket::own(&address, None).await;
+    let started = doc(&mut window, |ws| {
+        ws["items"].as_array().is_some_and(|i| i.len() == 1)
+    })
+    .await;
+    assert_eq!(started["modified"], true);
+
+    // A workspace file is opened by the window that takes it.
+    let saved = folder.path().join(format!("handed{SUFFIX}"));
+    let save = json!({"type": "save", "path": saved.display().to_string()});
+    window.say(workspace(1, save)).await;
+    assert_eq!(ack(&mut window, 1).await, json!({"status": "ok"}));
+    let open = HandOff::of(&Launch::Open {
+        path: saved,
+        workspace: None,
+    })
+    .unwrap();
+    session_client::post(
+        &address,
+        "/api/launch",
+        &serde_json::to_value(open).unwrap(),
+    )
+    .await;
+    let mut next = Socket::own(&address, None).await;
+    let opened = doc(&mut next, |ws| {
+        ws["items"].as_array().is_some_and(|i| i.len() == 1)
+    })
+    .await;
+    assert_eq!(opened["modified"], false);
 }

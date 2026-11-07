@@ -9,7 +9,7 @@ use ax_devil::{
     access::{Limits, Policy},
     app, desktop,
     plugins::Plugins,
-    session::Launch,
+    session::{HandOff, Launch},
     share::{self, Hosting, LinkBase, ShareListener},
 };
 use clap::{Args, Parser, Subcommand, ValueHint};
@@ -98,6 +98,10 @@ struct Global {
         default_value = "0.0.0.0:7340"
     )]
     share_address: SocketAddr,
+    /// For the desktop shell: instead of starting, print what the command asks the running app to open, as the
+    /// shell delivers it. A refusal is printed too, with a failing exit status.
+    #[arg(long, hide = true)]
+    hand_off: bool,
 }
 
 #[derive(Subcommand)]
@@ -190,6 +194,9 @@ pub async fn run() -> ExitCode {
     let registry = paths::plugins_file(&|name| std::env::var_os(name));
     let plugins = Plugins::new(registry, Handlers::built_in());
     let Cli { global, command } = args::parse(&plugins.handlers());
+    if global.hand_off {
+        return hand_off(global, command, &plugins);
+    }
     // These commands only print: no logging, settings file or port.
     match command {
         Some(Command::ListHandlers) => {
@@ -253,19 +260,7 @@ async fn run_backend(global: Global, command: Option<Command>, plugins: Arc<Plug
                     "Application failed to start: ",
                     serve(&paths, args, plugins, &interrupt).await,
                 ),
-                command => match launch(
-                    command,
-                    &plugins.handlers(),
-                    &RecoveryFolder::new(paths.recovery_dir.clone()),
-                    &workspace::Environment::of_process(),
-                    || {
-                        settings::Settings::load(&paths.config_file)
-                            .map(|settings| {
-                                ax_devil::session::live::defaults(&settings.state(), true)
-                            })
-                            .map_err(|error| error.to_string())
-                    },
-                ) {
+                command => match build_launch(&paths, command, &plugins) {
                     Ok(launch) => (
                         "Application failed to start: ",
                         host_desktop(&paths, global.share_address, plugins, launch, &interrupt)
@@ -277,6 +272,53 @@ async fn run_backend(global: Global, command: Option<Command>, plugins: Arc<Plug
         },
     };
     finish(&interrupt, prefix, result).await
+}
+
+/// What `command` asks the first window to start from; see [`launch`].
+fn build_launch(
+    paths: &Paths,
+    command: Option<Command>,
+    plugins: &Plugins,
+) -> Result<Option<Launch>, String> {
+    launch(
+        command,
+        &plugins.handlers(),
+        &RecoveryFolder::new(paths.recovery_dir.clone()),
+        &workspace::Environment::of_process(),
+        || {
+            settings::Settings::load(&paths.config_file)
+                .map(|settings| ax_devil::session::live::defaults(&settings.state(), true))
+                .map_err(|error| error.to_string())
+        },
+    )
+}
+
+/// Prints what `command` asks the running app to open, in this process's working folder, for the desktop shell to
+/// deliver to it. Prints the reason instead, with a failing status, when the command is refused or opens nothing.
+fn hand_off(global: Global, command: Option<Command>, plugins: &Plugins) -> ExitCode {
+    let handed = Paths::resolve(
+        &|name| std::env::var_os(name),
+        global.config,
+        global.cache_dir,
+    )
+    .and_then(|paths| build_launch(&paths, command, plugins))
+    .and_then(|launch| {
+        launch
+            .as_ref()
+            .and_then(HandOff::of)
+            .ok_or_else(|| "This command does not open anything in the running app.".to_owned())
+    })
+    .and_then(|handed| serde_json::to_string(&handed).map_err(|error| error.to_string()));
+    match handed {
+        Ok(text) => {
+            announce(&[text]);
+            ExitCode::SUCCESS
+        }
+        Err(reason) => {
+            announce(&[reason]);
+            ExitCode::FAILURE
+        }
+    }
 }
 
 /// The exit status of the run. Ctrl+C decides it, and an error that came with or after it is only detail; otherwise

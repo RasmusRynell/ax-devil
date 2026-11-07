@@ -80,7 +80,7 @@ Documented, not fixed.
   the local owner: it can drive the owner's Sessions and read the files the app can. The Host and Origin checks defend
   against browsers and DNS rebinding; they do not authenticate a person. A per-launch credential is the known fix and
   is not implemented. Startup content is consumed by the first new Local owner Session, not bound to a
-  requesting window. Video/playlist arguments are not forwarded when reusing an existing shell or backend.
+  requesting window. A shell that reuses a backend already on its port ignores its own command line.
 - **Remote video is one JPEG per frame.** About 40 to 65 Mbit/s per 1080p30 watcher, depending on the scene, and
   compressed once whatever the number of watchers, so 1 Gbit/s carries 15 to 25 at full rate and more see fewer
   frames. Inter-frame (H.264) delivery is future work.
