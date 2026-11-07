@@ -16,14 +16,9 @@ async function handedOff(shell) {
   await shell.onLaunch({ command: ["local", "--video", "long_gop_h264.mp4"], cwd: TYPED_IN });
   const opened = BrowserWindow.getAllWindows().find((window) => !before.has(window));
   assert.ok(opened, "a second launch with a video opens a window");
-  let origin;
-  try {
-    await page(opened).wait("document.body.innerText.includes('long_gop_h264.mp4')");
-    origin = new URL(opened.webContents.getURL()).origin;
-  } finally {
-    opened.destroy();
-  }
-
+  await page(opened).wait("document.body.innerText.includes('long_gop_h264.mp4')");
+  // The window stays: it may be the last one, whose closing would quit the app before the smoke test reports.
+  const origin = new URL(opened.webContents.getURL()).origin;
   await assert.rejects(
     handOff(backendExecutable(app), origin, ["open", "missing.ax-devil.workspace"], TYPED_IN),
     /missing\.ax-devil\.workspace/,
