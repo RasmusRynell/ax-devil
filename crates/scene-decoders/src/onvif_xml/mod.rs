@@ -2,6 +2,8 @@
 
 mod shape;
 
+use std::{borrow::Cow, collections::HashSet};
+
 use foundation::{CancelToken, Interrupt, MediaTime};
 use handler_api::{
     DecodeError, DecodeSummary, Decoder, Form, Framing, Header, Input, OnEqualKey, SceneSink, Spec,
@@ -9,9 +11,8 @@ use handler_api::{
 };
 use quick_xml::{
     NsReader, XmlVersion,
-    escape::unescape,
-    events::{BytesStart, Event},
-    name::ResolveResult,
+    events::{BytesStart, Event, attributes::Attribute},
+    name::{PrefixDeclaration, QName, ResolveResult},
 };
 use scene::{
     ClassRule, Coverage, Entity, EntityId, Fields, FilterOption, FilterPolicy, MatchBasis, Name,
@@ -115,11 +116,8 @@ fn decode_record(record: &[u8]) -> Result<Option<Scene>, String> {
         if let ResolveResult::Unknown(prefix) = &namespace {
             return Err(format!("invalid XML: unbound prefix {prefix:?}"));
         }
-        // Python expands character and entity references in a namespace declaration.
         let namespace = match &namespace {
-            ResolveResult::Bound(namespace) => {
-                Some(unescape(namespace.0).map_err(|error| format!("invalid XML: {error}"))?)
-            }
+            ResolveResult::Bound(namespace) => Some(normalized_value(namespace.0)?),
             _ => None,
         };
         let namespace = namespace.as_deref();
@@ -137,15 +135,18 @@ fn decode_record(record: &[u8]) -> Result<Option<Scene>, String> {
             Event::Text(text) => document.text(&text.xml10_content()),
             Event::CData(text) => document.text(&text.xml10_content()),
             Event::GeneralRef(reference) => match reference.resolve_char_ref() {
-                Ok(Some(character)) => document.text(character.encode_utf8(&mut [0; 4])),
-                _ => document.text(match &*reference {
+                Ok(Some(character)) if is_xml_char(character) => {
+                    document.text(character.encode_utf8(&mut [0; 4]));
+                }
+                Ok(None) => document.text(match &*reference {
                     "lt" => "<",
                     "gt" => ">",
                     "amp" => "&",
                     "quot" => "\"",
                     "apos" => "'",
-                    _ => "",
+                    other => return Err(format!("invalid XML: undefined entity {other:?}")),
                 }),
+                _ => return Err(format!("invalid XML: bad reference &{};", &*reference)),
             },
             Event::Eof => return document.finish(),
             _ => {}
@@ -153,28 +154,61 @@ fn decode_record(record: &[u8]) -> Result<Option<Scene>, String> {
     }
 }
 
-/// Python rejects an element whose attribute has an unbound prefix or whose namespace declaration has a bad
-/// reference or a character XML 1.0 forbids, even when nothing reads them. Each value is scanned once.
+/// The namespaces XML reserves: only the `xml` prefix may name the first, and none may name the second.
+const XML_NAMESPACE: &str = "http://www.w3.org/XML/1998/namespace";
+const XMLNS_NAMESPACE: &str = "http://www.w3.org/2000/xmlns/";
+
+/// Python rejects an element with an attribute value that has a bad reference or a character XML 1.0 forbids, an
+/// unbound attribute prefix, two attributes of one namespace and name, or a namespace declaration that is empty
+/// (for a prefix) or reserved, even when nothing reads them. Each value is scanned once.
 fn check_attributes(reader: &NsReader<&[u8]>, element: &BytesStart<'_>) -> Result<(), String> {
+    let mut seen = HashSet::new();
     for attribute in element.attributes() {
         let attribute = attribute.map_err(|error| format!("invalid attribute: {error}"))?;
-        if attribute.key.as_namespace_binding().is_some() {
-            let value = attribute
-                .normalized_value(XmlVersion::Implicit1_0)
-                .map_err(|error| format!("invalid XML: {error}"))?;
-            if let Some(character) = value.chars().find(|c| !is_xml_char(*c)) {
-                return Err(format!(
-                    "invalid XML: character {:#x} is not allowed",
-                    u32::from(character)
-                ));
+        let value = normalized_value(&attribute.value)?;
+        if let Some(declaration) = attribute.key.as_namespace_binding() {
+            let named = matches!(declaration, PrefixDeclaration::Named(_));
+            let is_xml = matches!(declaration, PrefixDeclaration::Named("xml"));
+            if named && value.is_empty() {
+                return Err("invalid XML: a prefix cannot be unbound".to_string());
             }
-        } else if let (ResolveResult::Unknown(prefix), _) =
-            reader.resolver().resolve_attribute(attribute.key)
-        {
-            return Err(format!("invalid XML: unbound prefix {prefix:?}"));
+            if value == XMLNS_NAMESPACE || (value == XML_NAMESPACE && !is_xml) {
+                return Err(format!("invalid XML: {value:?} is a reserved namespace"));
+            }
+        } else {
+            match reader.resolver().resolve_attribute(attribute.key) {
+                (ResolveResult::Unknown(prefix), _) => {
+                    return Err(format!("invalid XML: unbound prefix {prefix:?}"));
+                }
+                (ResolveResult::Bound(namespace), local) => {
+                    let local = local.into_inner();
+                    if !seen.insert((normalized_value(namespace.0)?, local)) {
+                        return Err(format!("invalid XML: duplicate attribute {local:?}"));
+                    }
+                }
+                _ => {}
+            }
         }
     }
     Ok(())
+}
+
+/// `raw` as an attribute value reads: references expanded, tab and newline as spaces, and only XML 1.0 characters.
+fn normalized_value(raw: &str) -> Result<Cow<'_, str>, String> {
+    let attribute = Attribute {
+        key: QName("value"),
+        value: Cow::Borrowed(raw),
+    };
+    let value = attribute
+        .normalized_value(XmlVersion::Implicit1_0)
+        .map_err(|error| format!("invalid XML: {error}"))?;
+    match value.chars().find(|c| !is_xml_char(*c)) {
+        Some(character) => Err(format!(
+            "invalid XML: character {:#x} is not allowed",
+            u32::from(character)
+        )),
+        None => Ok(value),
+    }
 }
 
 /// Whether XML 1.0 allows `character`; Rust's `char` already excludes the surrogates.

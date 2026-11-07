@@ -477,7 +477,7 @@ impl Parser {
             warnings: self.skipped.warning(self.shapes).into_iter().collect(),
             filter: filter_policy(&self.labels),
             metadata: essentials.into_metadata(&self.labels, all_metadata),
-            coverage: Coverage::Dense,
+            coverage: Coverage::Sparse,
         })
     }
 }

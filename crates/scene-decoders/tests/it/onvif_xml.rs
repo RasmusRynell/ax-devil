@@ -171,12 +171,30 @@ fn unusable_documents_are_errors_and_frameless_streams_are_not() {
         assert!(error.contains(message), "{xml:?}: {error}");
     }
 
+    // ElementTree refuses each of these: a bad reference in text or in any attribute, two attributes of one
+    // namespace and name once values are normalised, an unbound prefix, and the reserved XML namespace.
+    for tail in [
+        ">&bogus;</tt:MetadataStream>",
+        ">&#1;</tt:MetadataStream>",
+        r#" x="&bogus;"/>"#,
+        r#" x="&#1;"/>"#,
+        r#" xmlns:p="u" xmlns:q="u" p:x="1" q:x="2"/>"#,
+        "  xmlns:p=\"u\t\" xmlns:q=\"u&#32;\" p:x=\"1\" q:x=\"2\"/>",
+        r#" xmlns:p=""/>"#,
+        r#" xmlns:p="http://www.w3.org/XML/1998/namesp&#97;ce"/>"#,
+        r#" xmlns="http://www.w3.org/XML/1998/namespace"/>"#,
+    ] {
+        let xml = format!("<tt:MetadataStream {namespace}{tail}");
+        let error = decode(xml.as_bytes()).expect_err(&xml);
+        assert!(error.contains("invalid XML"), "{xml:?}: {error}");
+    }
+
     let event = format!("<tt:MetadataStream {namespace}><tt:Event/></tt:MetadataStream>");
     assert_eq!(decode(event.as_bytes()), Ok(None));
     let encoded = r#"<MetadataStream xmlns="http://www.onvif.org/ver10/sch&#101;ma"/>"#;
     assert_eq!(decode(encoded.as_bytes()), Ok(None));
     let bound = format!(
-        r#"<tt:MetadataStream {namespace} xml:lang="en" xmlns:p="x:y" xmlns:q="&#9;&#x10FFFF;" p:b="q:z"/>"#
+        r#"<tt:MetadataStream {namespace} xml:lang="en" xmlns:p="x:y" xmlns:q="&#9;&#x10FFFF;" p:b="q:z" xmlns:r="v" xmlns:s="w" r:b="1" s:b="2"/>"#
     );
     assert_eq!(decode(bound.as_bytes()), Ok(None));
 }

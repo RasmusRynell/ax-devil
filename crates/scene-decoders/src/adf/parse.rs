@@ -77,10 +77,11 @@ pub(super) fn list<'a>(parent: &'a Object, key: &str) -> Result<&'a [Json], Stri
     }
 }
 
-/// A finite number written as a JSON number or as text.
+/// A finite number written as a JSON number, as text, or as a boolean (Python's `float()` reads `true` as 1).
 pub(super) fn finite(value: &Json, what: &str) -> Result<f64, String> {
     let number = match value {
         Json::Number(number) => number.as_f64(),
+        Json::Bool(flag) => Some(f64::from(u8::from(*flag))),
         Json::String(text) => text.trim().parse().ok(),
         _ => None,
     };
