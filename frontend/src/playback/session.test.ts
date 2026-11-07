@@ -490,6 +490,12 @@ describe("taking over an owner's clock", () => {
     owner.server.say(error);
     expect(owner.intents).toEqual([{ frame: 4, playing: false, speed: 1 }]);
 
+    // A revoked stream stops nothing the backend has not decided: it says nothing.
+    const revoked = await setup({ frame: 4, speed: 1 });
+    revoked.session.restore({ ...left, frame: 4 }, () => 0);
+    revoked.server.drop(4403);
+    expect(revoked.intents).toEqual([]);
+
     const follower = await setup({ frame: 4, speed: 1 });
     follower.session.follow({ ...left, frame: 4 }, () => 0);
     follower.server.say(error);

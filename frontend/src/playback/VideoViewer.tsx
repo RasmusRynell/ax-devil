@@ -171,7 +171,10 @@ export function VideoViewer({
       // A session that replaces this one on the same entry opens where it was left, paused. A viewer that goes away
       // leaves its clock as it is: a reload mounts the next viewer, which carries on from that playhead.
       const { frame, speed } = created.resumeState();
-      const playing = going.current && created.getSnapshot().playing;
+      // A failed session already published what it meant to (nothing, when the backend revoked its stream): keep that.
+      const { status, playing: running } = created.getSnapshot();
+      const kept = readView().viewers[viewer]?.clock?.playing === true;
+      const playing = going.current && (status === "failed" ? kept : running);
       if (created.autoplayPending) interrupted.current = streamKey;
       const lanes = created.laneSettings();
       if (lanes.length > 0) priorLanes.current = lanes;

@@ -110,6 +110,8 @@ describe("video viewer", () => {
     fireEvent.click(screen.getByRole("button", { name: "Play" }));
     await act(() => vi.advanceTimersByTimeAsync(1_000));
     flushFrames();
+    // The backend revokes the outgoing stream before the new generation reaches the window: that is no stop.
+    act(() => sockets.at(-1)?.({ type: "closed", code: 4403 }));
     view.rerender(tree(2));
     await act(() => vi.advanceTimersByTimeAsync(1_000));
     flushFrames();
