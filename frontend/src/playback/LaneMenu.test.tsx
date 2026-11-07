@@ -171,4 +171,16 @@ describe("lane menu", () => {
     fireEvent.click(apply);
     expect(onApplyAll).not.toHaveBeenCalled();
   });
+
+  it("offers neither Apply to all nor Use as default once the listing says the catalog is gone or failing, though the lane still has its compiled revision", () => {
+    const lane = { settings: { ...LANE_SETTINGS, catalog: "built-in:tracking" } };
+    const others = CATALOGS.filter((entry) => entry.id !== "built-in:tracking");
+    const failing = { id: "built-in:tracking", name: "Tracking", description: "", problem: "x" };
+    for (const catalogs of [others, [...others, failing]]) {
+      setup(lane, READY, undefined, null, { catalogs });
+      for (const name of ["Apply to all lanes", "Use as default"])
+        expect((screen.getByRole("button", { name }) as HTMLButtonElement).disabled).toBe(true);
+      cleanup();
+    }
+  });
 });

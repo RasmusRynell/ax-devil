@@ -85,7 +85,7 @@ describe("lane chip", () => {
       <FakeSettings>
         <LaneChip
           lane={lane({ status: READY })}
-          catalogs={[]}
+          catalogs={[{ id: LANE_SETTINGS.catalog, name: "Standard", description: "" }]}
           cadence={null}
           onChange={() => {}}
           onApplyAll={onApplyAll}

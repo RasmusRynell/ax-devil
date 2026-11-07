@@ -78,7 +78,7 @@ describe("catalogs", () => {
     });
   });
 
-  it("has no judged revision for a catalog the listing says is gone or has a problem, before its own update arrives", () => {
+  it("keeps the revision it draws and exports from when the listing says the catalog is gone or failing", () => {
     const { catalogs } = held();
     const listed = { id: "user:a.json", name: "A", description: "" };
     catalogs.open([listed]);
@@ -86,10 +86,8 @@ describe("catalogs", () => {
     catalogs.receive(listed.id, 3, catalogDocument(), null);
     expect(catalogs.compiledRevision(listed.id)).toBe(3);
     catalogs.list([{ ...listed, problem: "not JSON" }]);
-    expect(catalogs.compiledRevision(listed.id)).toBeUndefined();
+    expect(catalogs.compiledRevision(listed.id)).toBe(3);
     catalogs.list([]);
-    expect(catalogs.compiledRevision(listed.id)).toBeUndefined();
-    catalogs.list([listed]);
     expect(catalogs.compiledRevision(listed.id)).toBe(3);
   });
 

@@ -68,11 +68,17 @@ export function usableCatalog(
 }
 
 /**
- * The revision of the lane's chosen catalog that compiled and is still the newest the backend sent, else nothing
- * (loading, failed, deleted): the one rule for what may be copied, made the default or applied to the other lanes.
+ * The revision of the lane's chosen catalog that compiled, is still the newest the backend sent and is still listed
+ * without a problem, else nothing (loading, failed, deleted): the one rule for what may be copied, made the default or
+ * applied to the other lanes. The lane keeps drawing and exporting its last good catalog by `catalogRevision` alone.
  */
-export function judgedRevision({ catalogRevision, catalogProblem }: LaneState): number | undefined {
-  return catalogProblem === undefined ? catalogRevision : undefined;
+export function judgedRevision(
+  { catalogRevision, catalogProblem, settings }: LaneState,
+  catalogs: readonly CatalogInfoWire[],
+): number | undefined {
+  return catalogProblem === undefined && usableCatalog(catalogs, settings.catalog)
+    ? catalogRevision
+    : undefined;
 }
 
 /** The catalog new views start with: the Personal setting when it is usable, else the first listed (Standard). */

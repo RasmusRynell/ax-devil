@@ -82,7 +82,7 @@ export function LaneMenuLook({
         label={entries.find(({ id }) => id === settings.catalog)?.label ?? settings.catalog}
         catalogs={catalogs}
         defaultId={defaultId}
-        revision={judgedRevision(lane)}
+        revision={judgedRevision(lane, catalogs)}
         onChange={onChange}
         onReload={onReload}
       />

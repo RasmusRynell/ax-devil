@@ -70,7 +70,7 @@ export function LaneMenu({
       {(onApplyAll || onHide || onExport) && (
         <div className="flex flex-wrap gap-s border-t border-line pt-m">
           {onApplyAll && (
-            <Button disabled={judgedRevision(lane) === undefined} onClick={onApplyAll}>
+            <Button disabled={judgedRevision(lane, catalogs) === undefined} onClick={onApplyAll}>
               Apply to all lanes
             </Button>
           )}
