@@ -39,7 +39,9 @@ export function Seam({
       ["End", most],
     ]).get(event.key);
     if (request === undefined) return;
+    // The arrow keys are the seam's own here, not the video's ten-frame steps the shell would take them for.
     event.preventDefault();
+    event.stopPropagation();
     onResize(path, shareAt(seam, within(request)), true);
   };
 

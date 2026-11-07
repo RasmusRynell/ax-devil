@@ -1,4 +1,12 @@
-import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import {
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from "react";
 import type { ContentInfo, ContentRef, EntryInfo, LanePolicyWire } from "../generated/api";
 import { useAddBookmark, useSeekRequest } from "../bookmarks/viewerLink";
 import { ExportDialog } from "../export/ExportDialog";
@@ -14,7 +22,7 @@ import {
   useStream,
   useView,
 } from "../session/session";
-import { useViewerActions } from "../viewer/actions";
+import { PaneActiveContext, useViewerActions } from "../viewer/actions";
 import { NOTHING_HIDDEN, type Hidden } from "../viewer/hidden";
 import { NoticeList } from "../kit/NoticeList";
 import { usePaneBudget } from "./budget";
@@ -90,8 +98,12 @@ function Playback({
   const fullscreen = useLaneFullscreen(pane, shown);
   const shownViewport = useRef(viewport);
   shownViewport.current = viewport;
-  // A viewer that opens takes the keyboard, so its shortcuts work at once.
-  useEffect(() => pane.current?.focus({ preventScroll: true }), []);
+  // A viewer that opens in the active pane takes the keyboard, so its shortcuts work at once; one that opens behind it
+  // leaves the keyboard and the active pane alone.
+  const opensInFront = useRef(useContext(PaneActiveContext));
+  useEffect(() => {
+    if (opensInFront.current) pane.current?.focus({ preventScroll: true });
+  }, []);
   // The selected object's page is the one the media tools show, so its fields are asked for only while they are open.
   useEffect(() => session.showInspector(tools), [session, tools]);
   const zoom = useCallback(

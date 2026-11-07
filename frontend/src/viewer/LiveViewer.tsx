@@ -1,4 +1,12 @@
-import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import {
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from "react";
 import type { ContentRef, LanePolicyWire } from "../generated/api";
 import { LiveBar } from "../live/LiveBar";
 import { LiveSession } from "../live/session";
@@ -23,7 +31,7 @@ import { MediaToolsPanel } from "../tools/MediaToolsPanel";
 import { jump } from "../tools/pageStack";
 import { useMediaTools } from "../tools/useMediaTools";
 import type { ViewerProps } from "../viewers";
-import { useViewerActions } from "./actions";
+import { PaneActiveContext, useViewerActions } from "./actions";
 import { NOTHING_HIDDEN } from "./hidden";
 
 /** The lane menu of a live viewer: what a recording's has, without exporting, which a stream cannot do, or hiding. */
@@ -66,8 +74,12 @@ function Live({
   useEffect(() => {
     if (following) session.follow();
   }, [session, following]);
-  // A viewer that opens takes the keyboard, so its shortcuts work at once.
-  useEffect(() => pane.current?.focus({ preventScroll: true }), []);
+  // A viewer that opens in the active pane takes the keyboard, so its shortcuts work at once; one that opens behind it
+  // leaves the keyboard and the active pane alone.
+  const opensInFront = useRef(useContext(PaneActiveContext));
+  useEffect(() => {
+    if (opensInFront.current) pane.current?.focus({ preventScroll: true });
+  }, []);
   // The selected object's page is what the media tools show, so its fields are asked for only while they are open.
   useEffect(() => session.showInspector(tools), [session, tools]);
   const zoom = useCallback((factor: number) => {
