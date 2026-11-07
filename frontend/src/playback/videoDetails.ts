@@ -21,7 +21,7 @@ function roundsUp(digits: string, rest: string): boolean {
 function formatG(x: number): string {
   if (x === 0) return "0";
   const [whole, fraction] = x.toFixed(100).split(".");
-  const digits = (whole + fraction).replace(/^0+/, "");
+  const digits = `${whole}${fraction}`.replace(/^0+/, "");
   let exponent =
     whole === "0" ? -(fraction.length - fraction.replace(/^0+/, "").length + 1) : whole.length - 1;
   let sig = digits.slice(0, 6).padEnd(6, "0");
