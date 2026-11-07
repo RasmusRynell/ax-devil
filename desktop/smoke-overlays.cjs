@@ -111,9 +111,14 @@ module.exports.overlays = async (window, { setTheme }) => {
     return tallest;
   };
   const heights = [];
+  const debug = [];
   for (const zoom of [1, 2]) {
     await setView(window, [1100, 720], zoom);
-    heights.push(labelHeight(await drawn()));
+    const shot = await drawn();
+    heights.push(labelHeight(shot));
+    debug.push(
+      await js(`JSON.stringify({ zoom: ${zoom}, inner: [innerWidth, innerHeight], dpr: devicePixelRatio, scale: ${shot.scale}, picture: ${JSON.stringify(shot.picture)}, box: ${JSON.stringify(boxOf(shot.picture))}, panes: [...document.querySelectorAll('[role=group][data-cursor-id^="pane:"]')].map((p) => { const r = p.getBoundingClientRect(); return [r.left, r.top, r.width, r.height]; }), main: (() => { const m = document.querySelector('main'); return [m.clientWidth, m.clientHeight, m.scrollWidth, m.scrollHeight]; })(), area: (() => { const a = document.querySelector('main > div'); return [a.clientWidth, a.clientHeight, a.scrollWidth, a.scrollHeight]; })() })`),
+    );
   }
   assert.ok(
     heights[0] >= 10 && heights[0] <= 30,
@@ -121,7 +126,7 @@ module.exports.overlays = async (window, { setTheme }) => {
   );
   assert.ok(
     Math.abs(heights[0] - heights[1]) <= 1,
-    `A label must be as tall at 200% zoom as at 100%: ${heights[1]} against ${heights[0]} device pixels`,
+    `A label must be as tall at 200% zoom as at 100%: ${heights[1]} against ${heights[0]} device pixels ${debug.join(" | ")}`,
   );
   await setView(window, [1100, 720], 1);
 
