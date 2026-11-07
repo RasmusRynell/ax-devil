@@ -394,8 +394,8 @@ impl<'a> Saved<'a> {
     }
 }
 
-/// Points `new` at the camera the scan signed in to at `address`, with the login that worked, unless `new` names a
-/// stream URL on another server. The password is written into the recipe here and nowhere else: it is neither logged
+/// Points `new` at the camera the scan signed in to at `address`, with the login that worked as it was written (a
+/// `$NAME` reference stays one), unless `new` names a stream URL on another server. The password is written into the recipe here and nowhere else: it is neither logged
 /// nor named in the refusal.
 fn scanned(
     new: &mut NewLive,

@@ -120,7 +120,10 @@ impl Link {
             };
             let error = match outcome {
                 Ok(()) => return Status::Closed,
-                Err(error) if !error.kind.retryable() => return Status::Failed(error),
+                // A stream the camera does not have yet (404) is retried too: it may be starting up.
+                Err(error) if !(error.kind.retryable() || error.kind == ErrorKind::NotFound) => {
+                    return Status::Failed(error);
+                }
                 Err(error) => error,
             };
             let next_in = self.request.reconnect.delay(attempt);

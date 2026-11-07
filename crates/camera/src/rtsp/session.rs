@@ -84,11 +84,16 @@ impl Link {
     }
 
     /// The kind of a retina error: from the response status when it has one (a 401 is a rejected login when one was
-    /// sent), else `otherwise`. The detail is retina's first line, which names no URL and no login.
+    /// sent), else `otherwise`. A redirect or a 4xx that no rule below names is a fault of the camera: a stream that
+    /// is not there yet or a camera still starting answers so, and RTSP retries it. The detail is retina's first
+    /// line, which names no URL and no login.
     fn classify(&self, error: &retina::Error, otherwise: ErrorKind) -> CameraError {
         let kind = match error.status_code() {
             Some(401) if self.camera.login.is_some() => ErrorKind::LoginRejected,
             Some(401) => ErrorKind::LoginRequired,
+            Some(status @ 300..=499) if !matches!(status, 403 | 404 | 408 | 410 | 429) => {
+                ErrorKind::DeviceFault
+            }
             Some(status) => ErrorKind::of_status(status),
             None => otherwise,
         };
