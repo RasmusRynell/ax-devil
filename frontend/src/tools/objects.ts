@@ -69,14 +69,15 @@ export function frameObjects(frame: LaneFrame | undefined): FrameObject[] {
 const LIGHT_PATHS: ReadonlySet<string> = new Set(["id", "class"]);
 
 /**
- * The field paths `search` names that need the object's inspected leaves (`debug.vendor.id`, `score`, `rgb.r`), in
- * lower case without repeats; none when it names only `id` and `class`.
+ * The field paths `search` names, in lower case without repeats, when any of them needs the object's inspected leaves
+ * (`debug.vendor.id`, `score`, `rgb.r`); none when it names only `id` and `class`. Once the leaves are read every
+ * path is searched in them, `id` and `class` too: `id` also names `debug.vendor.id`.
  */
 export function inspectedPaths(search: SearchWire): string[] {
   const paths = search.groups
     .flat()
     .flatMap(({ path }) => (path === null ? [] : [path.toLowerCase()]));
-  return [...new Set(paths)].filter((path) => !LIGHT_PATHS.has(path));
+  return paths.every((path) => LIGHT_PATHS.has(path)) ? [] : [...new Set(paths)];
 }
 
 /**

@@ -20,7 +20,7 @@ const answer = (
 });
 
 describe("the leaves of a frame's objects", () => {
-  it("are asked once per sample, kept while the next is out, and read with integers exact", () => {
+  it("are asked once per sample and read for exactly that sample, with integers exact", () => {
     const sent: ClientMessage[] = [];
     const fields = new FrameFields((message) => sent.push(message));
     const paths = ["id"];
@@ -28,7 +28,7 @@ describe("the leaves of a frame's objects", () => {
     fields.ask(frame(1), paths);
     fields.ask(frame(1), paths);
     expect(sent).toHaveLength(1);
-    expect(fields.view(frame(1), paths)).toBeNull();
+    expect(fields.view(frame(1), paths).state).toBe("pending");
 
     fields.receive(
       answer(1, [
@@ -42,28 +42,42 @@ describe("the leaves of a frame's objects", () => {
         },
       ]),
     );
-    expect(fields.view(frame(1), paths)?.get("7")).toEqual({
+    const view = fields.view(frame(1), paths);
+    expect(view.state === "ready" && view.leaves.get("7")).toEqual({
       "debug.id": [9007199254740993n, "true"],
       "debug.note": ["null"],
     });
 
-    fields.ask(frame(1), paths);
-    expect(sent).toHaveLength(1);
+    // The next sample is awaited, not given the last one's leaves, and a late answer of the last one is not its.
     fields.ask(frame(2), paths);
     expect(sent).toHaveLength(2);
-    expect(fields.view(frame(2), paths)?.has("7")).toBe(true);
+    expect(fields.view(frame(2), paths).state).toBe("pending");
+    fields.receive(answer(1, []));
+    expect(fields.view(frame(2), paths).state).toBe("pending");
   });
 
-  it("are not asked again for a sample the backend does not hold until the viewer holds it anew", () => {
+  it("are not asked again for a sample the backend does not answer for until the viewer holds it anew", () => {
     const sent: ClientMessage[] = [];
     const fields = new FrameFields((message) => sent.push(message));
     const held = {};
 
     fields.ask(frame(1, held), ["id"]);
     fields.receive(answer(1, null));
+    expect(fields.view(frame(1, held), ["id"]).state).toBe("unavailable");
     fields.ask(frame(1, held), ["id"]);
     expect(sent).toHaveLength(1);
     fields.ask(frame(1, {}), ["id"]);
+    expect(sent).toHaveLength(2);
+  });
+
+  it("are asked again when the answer never came", () => {
+    const sent: ClientMessage[] = [];
+    const fields = new FrameFields((message) => sent.push(message));
+    const held = frame(1);
+
+    for (let asks = 0; asks < 100; asks++) fields.ask(held, ["id"]);
+    expect(sent).toHaveLength(1);
+    for (let asks = 0; asks < 100; asks++) fields.ask(held, ["id"]);
     expect(sent).toHaveLength(2);
   });
 });

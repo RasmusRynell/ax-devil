@@ -222,26 +222,27 @@ fn queries_address_fields_by_group_and_path_and_colours_add_their_channels() {
     let debug = vec![pair("vendor", Value::Map(vec![pair("id", Value::Int(7))]))];
     let observation = observation.with_details(Vec::new(), debug).expect("ok");
 
-    let (fields, _) = entity_fields(&entity(observation), MAX_FIELDS);
-    let items: Vec<_> = fields
-        .iter()
-        .flat_map(InspectionField::query_items)
-        .map(|item| {
-            let value = match item.value {
-                Leaf::Int(whole) => whole.to_string(),
-                Leaf::Float(number) => number.to_string(),
-                other => format!("{other:?}"),
-            };
-            format!("{}.{} = {value}", item.group.name(), item.path.join("."))
-        })
-        .filter(|item| {
-            [
-                "classification.score",
-                "classification.attributes",
-                "debug.",
-            ]
-            .iter()
-            .any(|wanted| item.starts_with(wanted))
+    // A path names a key by its trailing parts, in any case; `colors.red` does not name the channels below it.
+    let paths = [
+        "Classification.Score",
+        "colors.red",
+        "r",
+        "g",
+        "b",
+        "vendor.id",
+    ]
+    .map(str::to_lowercase);
+    let budget = &mut Budget {
+        leaves: 1000,
+        bytes: 10_000,
+    };
+    let items: Vec<_> = query_leaves(&entity(observation), &paths, budget)
+        .expect("within budget")
+        .into_iter()
+        .map(|(key, value)| match value {
+            Leaf::Int(whole) => format!("{key} = {whole}"),
+            Leaf::Float(number) => format!("{key} = {number}"),
+            other => format!("{key} = {other:?}"),
         })
         .collect();
 
@@ -285,6 +286,32 @@ fn a_polygon_lists_its_bounds_and_point_count_and_a_timestamp_is_a_datetime() {
         shown[0].starts_with("Geometry x = "),
         "no class, so geometry is first"
     );
+}
+
+#[test]
+fn a_search_collects_only_what_it_names_and_refuses_to_spend_more_than_its_budget() {
+    // One long parent key above many scalar children: every leaf's key would repeat the parent's.
+    let parent = "p".repeat(65_536);
+    let children = (0..5_000).map(|n| Value::Map(vec![pair("id", Value::Int(n))]));
+    let debug = vec![(Name::Owned(parent), Value::List(children.collect()))];
+    let observation = observation(SceneTime::Frame(0))
+        .with_details(Vec::new(), debug)
+        .expect("ok");
+    let entity = entity(observation);
+    let search = |path: &str, leaves, bytes| {
+        query_leaves(&entity, &[path.to_owned()], &mut Budget { leaves, bytes })
+    };
+
+    // Nothing is collected for a path no leaf has, so no byte is spent.
+    assert_eq!(search("nothing", 1_000_000, 0), Ok(Vec::new()));
+    // Each match costs its whole key, and the search is refused rather than cut.
+    assert_eq!(
+        search("7.id", 1_000_000, 1_000_000).map(|found| found.len()),
+        Ok(1)
+    );
+    assert_eq!(search("id", 1_000_000, 1_000_000), Err(OverBudget));
+    // Walking unwanted leaves is bounded too.
+    assert_eq!(search("nothing", 100, 0), Err(OverBudget));
 }
 
 #[test]

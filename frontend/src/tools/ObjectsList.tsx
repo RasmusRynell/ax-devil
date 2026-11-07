@@ -7,7 +7,7 @@ import {
   useSyncExternalStore,
   type ReactNode,
 } from "react";
-import type { FileRowWire } from "../generated/api";
+import type { FileRowWire, SearchWire } from "../generated/api";
 import { Button } from "../kit/Button";
 import { SegmentedControl } from "../kit/Chips";
 import type { LaneFrame } from "../playback/contract";
@@ -33,7 +33,7 @@ import { NO_STEPS, UnderPage, type Open } from "./UnderPage";
 import { FRAME_COLUMNS, ShownFrame, fileColumns } from "./objectColumns";
 import { openRow } from "./openRow";
 import { SCOPES, type ListState, type Scope } from "./listState";
-import { listMessage, noticeOf, staleOf } from "./listStatus";
+import { leavesMessage, listMessage, noticeOf, staleOf } from "./listStatus";
 import { MiddleElided } from "../kit/MiddleElided";
 import { SearchBar } from "./SearchBar";
 import { nextSort } from "./table/columns";
@@ -65,6 +65,7 @@ export interface ObjectSource {
 const PAGE = 200;
 const STEP = 50;
 const NO_PATHS: readonly string[] = [];
+const NO_OBJECTS: readonly FrameObject[] = [];
 /** How many marks a presence strip can draw. */
 const BINS = 64;
 
@@ -142,25 +143,37 @@ export function ObjectsList({
   useEffect(() => {
     source.fields.ask(frame, paths);
   }, [source, frame, paths, leaves]);
-  // Until the leaves arrive nothing is known of them: no object matches a field of them, and no field is called missing.
-  const found = useMemo(
+  const ready = leaves.state === "ready" ? leaves.leaves : null;
+  const matched = useMemo(
     () =>
-      sortObjects(
-        objects.filter((object) => matches(wire, recordOf(object, leaves))),
-        sorts.frame,
-      ),
-    [objects, wire, leaves, sorts.frame],
+      ready === null
+        ? []
+        : sortObjects(
+            objects.filter((object) => matches(wire, recordOf(object, ready))),
+            sorts.frame,
+          ),
+    [objects, wire, ready, sorts.frame],
   );
+  // While the leaves of the sample on screen are awaited, the last completed result of the same search stays, marked
+  // busy; no leaves are lent to the sample. Another search, or one that is unavailable, keeps no rows.
+  const [kept, keep] = useState<{ wire: SearchWire; found: readonly FrameObject[] } | null>(null);
+  if (ready !== null && kept?.found !== matched) keep({ wire, found: matched });
+  const found =
+    ready !== null
+      ? matched
+      : leaves.state === "pending" && kept?.wire === wire
+        ? kept.found
+        : NO_OBJECTS;
   const foundAt = useMemo(() => new Map(found.map(({ id }, index) => [id, index])), [found]);
   const missing = useMemo(
     () =>
-      paths.length > 0 && leaves === null
+      ready === null
         ? []
         : missingPaths(
             wire,
-            objects.map((object) => recordOf(object, leaves)),
+            objects.map((object) => recordOf(object, ready)),
           ),
-    [objects, wire, paths, leaves],
+    [objects, wire, ready],
   );
   const notice = useMemo(() => noticeOf(inFile, wire, missing), [inFile, wire, missing]);
   const files = useSyncExternalStore(source.files.subscribe, () => source.files.view(lane));
@@ -229,7 +242,10 @@ export function ObjectsList({
     if (goTo !== undefined && canSeek) source.seek(goTo);
   };
 
-  const message = listMessage(scope, inFile, files.unavailable, page !== null, count, total);
+  const message =
+    leaves.state === "ready" || (leaves.state === "pending" && found !== NO_OBJECTS)
+      ? listMessage(scope, inFile, files.unavailable, page !== null, count, total)
+      : leavesMessage(leaves.state);
   const shared = {
     label: "Objects",
     count,
@@ -244,7 +260,7 @@ export function ObjectsList({
           [scope]: nextSort(sort, key as SortKey),
         },
       }),
-    busy: inFile && files.pending,
+    busy: inFile ? files.pending : leaves.state === "pending",
     message,
   };
 

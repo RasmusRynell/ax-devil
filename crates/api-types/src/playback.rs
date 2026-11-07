@@ -302,7 +302,7 @@ pub enum ServerMessage {
         /// The requested paths.
         paths: Vec<String>,
         /// The objects that have a leaf at the paths; `null` when the viewer does not hold this sample under this
-        /// revision, or its authority no longer reaches it.
+        /// revision, its authority no longer reaches it, or the search is more than the backend will do over it.
         objects: Option<Vec<ObjectItemsWire>>,
     },
     /// One frame could not be decoded; the others are fine. The viewer names the frame itself, so the error is only

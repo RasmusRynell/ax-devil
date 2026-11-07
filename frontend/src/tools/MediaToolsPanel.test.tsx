@@ -86,6 +86,15 @@ describe("Frame scope", () => {
     );
   });
 
+  it("says it is loading while the leaves a search needs are awaited, not that nothing matches", () => {
+    mount({}, { unanswered: true });
+    search("score>0.5");
+    expect(says("Loading…")).toBe(true);
+    expect(screen.queryByText("No matching objects")).toBeNull();
+    search("class:car");
+    expect(ids()).toEqual(["7", "9"]);
+  });
+
   it("searches the objects' inspected fields, whole numbers exactly, and names a field no object has", () => {
     mount(
       {},
@@ -98,6 +107,9 @@ describe("Frame scope", () => {
       },
     );
     search("vendor.id>9007199254740992");
+    expect(ids()).toEqual(["7"]);
+    // Once leaves are read, `id` names `debug.vendor.id` too.
+    search("id:9007199254740993 score>0");
     expect(ids()).toEqual(["7"]);
     search("debug.vendor.id:9007199254740992");
     expect(screen.getByText("No matching objects")).toBeTruthy();

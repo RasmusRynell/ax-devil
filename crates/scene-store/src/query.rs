@@ -437,7 +437,7 @@ impl Needle {
             Some(path) => record
                 .fields
                 .iter()
-                .filter(|(key, _)| path_names(path, key))
+                .filter(|(key, _)| path_names(path, std::iter::once(*key)))
                 .flat_map(|(_, values)| values)
                 .any(|value| self.compares(value)),
         };

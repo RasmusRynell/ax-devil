@@ -297,7 +297,7 @@ fn opened_and_lane_status_carry_the_source_and_data_revision() {
         }),
     };
     let json = serde_json::to_value(&opened).unwrap();
-    assert_eq!(json["protocol"], 9);
+    assert_eq!(json["protocol"], PLAYBACK_PROTOCOL);
     assert_eq!(
         json["video_pts"],
         json!({"time_base": [1, 90_000], "first_pts": 7_200})

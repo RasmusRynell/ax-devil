@@ -119,6 +119,7 @@ export function mount(
     first,
     frame = FRAME,
     leaves = {},
+    unanswered = false,
   }: Partial<{
     second: typeof FRAME;
     selection: Selection;
@@ -126,6 +127,8 @@ export function mount(
     frame: typeof FRAME;
     /** Leaves the backend finds in objects beyond their score, confidence and motion, by object id and `group.path`. */
     leaves: { [id: string]: [string, LeafWire][] };
+    /** The backend never answers a request for leaves. */
+    unanswered: boolean;
   }> = {},
 ) {
   vi.useFakeTimers();
@@ -150,19 +153,27 @@ export function mount(
   );
   let sample = frame;
   let sampleNumber = 0;
-  const laneFrame = (lane: number) =>
-    ({
+  // A frame is the same object for as long as the sample is, as the viewer's is.
+  const drawn = new Map<string, LaneFrame>();
+  const laneFrame = (lane: number): LaneFrame => {
+    const key = `${lane}:${sampleNumber}`;
+    const held = drawn.get(key);
+    if (held) return held;
+    const made = {
       source: 0,
       dataRevision: 1,
       sample: sampleNumber,
       columns: lane === 1 && second ? second : sample,
       classMask: { enabled: new Uint32Array(sample.maskWords), options: 0 },
       filter: null,
-    }) as unknown as LaneFrame;
+    } as unknown as LaneFrame;
+    drawn.set(key, made);
+    return made;
+  };
   // The backend reads the leaves of the frame's objects: their score, confidence and motion, and what the test adds.
   const fields: FrameFields = new FrameFields((message) => {
     sent.push(message);
-    if (message.type !== "InspectFields") return;
+    if (message.type !== "InspectFields" || unanswered) return;
     const objects = frameObjects(laneFrame(0)).flatMap((object) => {
       const own: [string, LeafWire | null][] = [
         ["classification.score", object.score === null ? null : float(object.score)],

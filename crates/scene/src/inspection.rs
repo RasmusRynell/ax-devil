@@ -7,9 +7,11 @@ use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
 mod leaf;
+mod query;
 
 pub use leaf::Leaf;
 use leaf::{datetime_leaf, number_leaf};
+pub use query::{Budget, OverBudget, query_leaves};
 
 use crate::{
     Classification, ColorEntry, Entity, Geometry, MotionState, Name, Observation, Rgb, SceneTime,
@@ -82,65 +84,16 @@ pub struct InspectionField {
     pub fraction: Option<f64>,
 }
 
-/// A value a query compares, at the path a query names it by.
-#[derive(Clone, Debug, PartialEq)]
-pub struct QueryItem<'a> {
-    /// The field's group; a query writes it as [`FieldGroup::name`], then the dotted `path`.
-    pub group: FieldGroup,
-    /// The segments below the group; for a colour, those of its field, then `rgb` and a channel.
-    pub path: Vec<&'a str>,
-    /// The field's leaf, or a colour channel.
-    pub value: Leaf,
-}
-
-impl QueryItem<'_> {
-    /// The key a query names the item by: the group's name and the path, dotted (`debug.vendor.id`).
-    pub fn key(&self) -> String {
-        std::iter::once(self.group.name())
-            .chain(self.path.iter().copied())
-            .collect::<Vec<_>>()
-            .join(".")
-    }
-}
-
-/// Whether a query's `path` (lower case) names `key`: it equals the key or a trailing run of its dotted parts,
-/// ignoring the key's case.
-pub fn path_names(path: &str, key: &str) -> bool {
-    let lowered;
-    let key = if key.chars().any(char::is_uppercase) {
-        lowered = key.to_lowercase();
-        lowered.as_str()
-    } else {
-        key
-    };
-    key == path
-        || key
-            .strip_suffix(path)
-            .is_some_and(|front| front.ends_with('.'))
-}
-
-impl InspectionField {
-    /// What a query searches in this field: the field itself and, for a colour, its `rgb.r`, `rgb.g` and `rgb.b`.
-    /// Fields that share a path give an item each, so repeated values stay.
-    pub fn query_items(&self) -> impl Iterator<Item = QueryItem<'_>> {
-        let own = QueryItem {
-            group: self.group,
-            path: self.path.iter().map(String::as_str).collect(),
-            value: self.value.clone(),
-        };
-        let channels = self.color.into_iter().flat_map(|color| {
-            [("r", color.r), ("g", color.g), ("b", color.b)].map(|(channel, value)| {
-                let mut path: Vec<_> = self.path.iter().map(String::as_str).collect();
-                path.extend(["rgb", channel]);
-                QueryItem {
-                    group: self.group,
-                    path,
-                    value: Leaf::Int(i64::from(value)),
-                }
-            })
-        });
-        std::iter::once(own).chain(channels)
-    }
+/// Whether a query's `path` (lower case) names the key made of `pieces` joined by dots: it equals the key or a
+/// trailing run of its dotted parts, ignoring the key's case. The key is read from its end, only as far as the path
+/// reaches, and is never built.
+pub fn path_names<'a>(path: &str, pieces: impl DoubleEndedIterator<Item = &'a str>) -> bool {
+    // A dot after every piece: after the first, it stands for the front of the key.
+    let mut key = pieces.rev().flat_map(|piece| {
+        let reversed = piece.chars().rev().flat_map(|c| c.to_lowercase().rev());
+        reversed.chain(std::iter::once('.'))
+    });
+    path.chars().rev().all(|wanted| key.next() == Some(wanted)) && key.next() == Some('.')
 }
 
 /// What a leaf is besides its value.
@@ -160,10 +113,64 @@ fn fraction(value: f64) -> Option<f64> {
 /// left out. Empty values are not listed, except in Debug, where an empty text, list or map is shown as the source
 /// reported it.
 pub fn entity_fields(entity: &Entity, limit: usize) -> (Vec<InspectionField>, bool) {
-    let mut walk = Walk {
+    let mut listing = Listing {
         limit,
         fields: Vec::new(),
         cut: false,
+    };
+    walk_entity(entity, &mut listing);
+    (listing.fields, listing.cut)
+}
+
+/// Where the leaves of a walk go, one at a time with the path they are at, borrowed.
+trait Sink {
+    /// Whether the walk should stop: asked with a value still to list. A sink that cuts the walk short says so.
+    fn full(&mut self) -> bool;
+    /// Whether the leaf at `path` is wanted, asked before it is made so that an unwanted one costs nothing; `color`
+    /// says the leaf is a colour's score, whose `rgb` channels are leaves of their own.
+    fn wants(&mut self, place: Place, path: &[String], color: bool) -> bool;
+    /// Takes a leaf that is wanted.
+    fn push(&mut self, place: Place, path: &[String], value: Leaf, marks: Marks);
+}
+
+/// The sink of an inspection: every leaf, up to `limit`.
+struct Listing {
+    limit: usize,
+    fields: Vec<InspectionField>,
+    cut: bool,
+}
+
+impl Sink for Listing {
+    fn full(&mut self) -> bool {
+        let full = self.fields.len() >= self.limit;
+        self.cut |= full;
+        full
+    }
+
+    fn wants(&mut self, _place: Place, _path: &[String], _color: bool) -> bool {
+        true
+    }
+
+    fn push(&mut self, place: Place, path: &[String], value: Leaf, marks: Marks) {
+        if self.full() {
+            return;
+        }
+        self.fields.push(InspectionField {
+            group: place.group,
+            origin: place.origin,
+            path: path.to_vec(),
+            value,
+            color: marks.color,
+            text: marks.text,
+            fraction: marks.fraction,
+        });
+    }
+}
+
+/// Walks the entity's leaves into `sink`, in display order.
+fn walk_entity<S: Sink>(entity: &Entity, sink: &mut S) {
+    let mut walk = Walk {
+        sink,
         path: Vec::new(),
     };
     let observation = entity.latest_observation();
@@ -177,7 +184,6 @@ pub fn entity_fields(entity: &Entity, limit: usize) -> (Vec<InspectionField>, bo
     }
     walk.raw(entity, observation);
     walk.images(entity);
-    (walk.fields, walk.cut)
 }
 
 #[derive(Clone, Copy)]
@@ -193,50 +199,36 @@ const fn place(group: FieldGroup) -> Place {
     }
 }
 
-struct Walk {
-    limit: usize,
-    fields: Vec<InspectionField>,
-    cut: bool,
+struct Walk<'a, S> {
+    sink: &'a mut S,
     /// The path of the value being walked.
     path: Vec<String>,
 }
 
-impl Walk {
-    /// Lists a leaf at the current path unless the limit is reached, which stops the walk.
-    fn leaf(&mut self, place: Place, value: Leaf) {
-        self.push(place, value, Marks::default());
+impl<S: Sink> Walk<'_, S> {
+    /// Gives the sink a leaf at the current path, made only if the sink wants it.
+    fn emit(&mut self, place: Place, value: impl FnOnce() -> Leaf, marks: Marks) {
+        if self.sink.wants(place, &self.path, marks.color.is_some()) {
+            self.sink.push(place, &self.path, value(), marks);
+        }
     }
 
-    fn push(&mut self, place: Place, value: Leaf, marks: Marks) {
-        if self.fields.len() >= self.limit {
-            self.cut = true;
-            return;
-        }
-        self.fields.push(InspectionField {
-            group: place.group,
-            origin: place.origin,
-            path: self.path.clone(),
-            value,
-            color: marks.color,
-            text: marks.text,
-            fraction: marks.fraction,
-        });
+    fn leaf(&mut self, place: Place, value: Leaf) {
+        self.emit(place, || value, Marks::default());
     }
 
     fn text(&mut self, place: Place, text: &str) {
-        self.leaf(place, Leaf::Text(text.to_owned()));
+        self.emit(place, || Leaf::Text(text.to_owned()), Marks::default());
     }
 
     /// A number, or its name when the source's float is not finite.
     fn number(&mut self, place: Place, number: f64) {
-        self.leaf(place, number_leaf(number));
+        self.emit(place, || number_leaf(number), Marks::default());
     }
 
-    /// Whether the limit is reached, which is also when something is left out: called with a value still to list.
+    /// Whether the sink is full, which is also when something is left out: called with a value still to list.
     fn stop(&mut self) -> bool {
-        let full = self.fields.len() >= self.limit;
-        self.cut |= full;
-        full
+        self.sink.full()
     }
 
     /// Walks `inside` with `segment` added to the path.
@@ -295,7 +287,9 @@ impl Walk {
                 fraction: fraction(measure),
                 ..Marks::default()
             };
-            self.under(name, |walk| walk.push(place, number_leaf(measure), marks));
+            self.under(name, |walk| {
+                walk.emit(place, || number_leaf(measure), marks)
+            });
         }
     }
 
@@ -456,7 +450,7 @@ impl Walk {
                 fraction: color.score.and_then(fraction),
                 ..Marks::default()
             };
-            self.under(&segment, |walk| walk.push(place, score, marks));
+            self.under(&segment, |walk| walk.emit(place, || score, marks));
         }
     }
 

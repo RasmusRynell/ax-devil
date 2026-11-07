@@ -15,7 +15,7 @@ use api_types::{
 use overlays::ViewerOverlays;
 use scene::{
     Scene,
-    inspection::{InspectionField, MAX_FIELDS, entity_fields, path_names},
+    inspection::{Budget, InspectionField, MAX_FIELDS, entity_fields, query_leaves},
 };
 use scene_store::{TrackRead, TrackSnapshot};
 use std::sync::Arc;
@@ -27,6 +27,12 @@ const MAX_ENTITY_BYTES: usize = 1024;
 /// The most paths an `InspectFields` may name, and the longest one in bytes.
 const MAX_PATHS: usize = 64;
 const MAX_PATH_BYTES: usize = 1024;
+
+/// What one search may walk and collect over all the objects of a sample: leaves, and bytes of keys and texts.
+const SEARCH_BUDGET: Budget = Budget {
+    leaves: 4_000_000,
+    bytes: 8 * 1024 * 1024,
+};
 
 /// What was asked of the sample.
 #[derive(Clone)]
@@ -240,7 +246,7 @@ fn reply(request: &Request, scene: Option<&Scene>) -> ServerMessage {
             data_revision,
             sample,
             paths: paths.clone(),
-            objects: scene.map(|scene| leaves(scene, paths)),
+            objects: scene.and_then(|scene| leaves(scene, paths)),
         },
     }
 }
@@ -258,30 +264,25 @@ fn inspection(scene: &Scene, entity: &str) -> InspectionWire {
     }
 }
 
-/// Every object's leaves whose key one of `paths` names; objects with none are left out.
-fn leaves(scene: &Scene, paths: &[String]) -> Vec<ObjectItemsWire> {
+/// Every object's leaves whose key one of `paths` names; objects with none are left out. `None` when the search would
+/// walk or collect more than [`SEARCH_BUDGET`] over the scene, which is refused rather than answered in part.
+fn leaves(scene: &Scene, paths: &[String]) -> Option<Vec<ObjectItemsWire>> {
     let paths: Vec<String> = paths.iter().map(|path| path.to_lowercase()).collect();
+    let mut budget = SEARCH_BUDGET;
     let mut objects = Vec::new();
     for entity in scene.entities() {
-        let (fields, _) = entity_fields(entity, usize::MAX);
-        let mut items = Vec::new();
-        for item in fields.iter().flat_map(InspectionField::query_items) {
-            let key = item.key();
-            if paths.iter().any(|path| path_names(path, &key)) {
-                items.push(ItemWire {
-                    key,
-                    value: item.value,
-                });
-            }
-        }
-        if !items.is_empty() {
+        let found = query_leaves(entity, &paths, &mut budget).ok()?;
+        if !found.is_empty() {
             objects.push(ObjectItemsWire {
                 entity: entity.id().to_string(),
-                items,
+                items: found
+                    .into_iter()
+                    .map(|(key, value)| ItemWire { key, value })
+                    .collect(),
             });
         }
     }
-    objects
+    Some(objects)
 }
 
 fn field(field: InspectionField) -> FieldWire {

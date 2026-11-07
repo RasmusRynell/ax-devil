@@ -1,8 +1,9 @@
 /**
  * The leaves of the objects of the frame a lane shows, at the field paths a search names, as the backend reads them from
- * the sample. A search of Frame scope asks per sample (`ask`) and reads the latest answer (`view`); the backend keeps
- * only the newest request, so asking for another sample supersedes one still out. While a newer sample's answer is
- * out `view` keeps the last one for the same paths, whose objects are mostly the same ones.
+ * the sample. A search of Frame scope asks per sample (`ask`) and reads the answer for exactly that sample (`view`):
+ * leaves of another sample are never lent to it, for the same object may hold other values there. The backend keeps
+ * only the newest request, so asking for another sample supersedes one still out, and a request whose answer never
+ * comes (the authority gate may drop it) is asked again.
  */
 
 import type { LaneFrame } from "./contract";
@@ -16,8 +17,24 @@ export type ObjectLeaves = { readonly [key: string]: readonly (string | number |
 /** The objects of a sample that have a leaf at the paths asked, by id. */
 export type FrameLeaves = ReadonlyMap<string, ObjectLeaves>;
 
-/** How many (source, revision, paths) sets are kept. */
-const KEPT = 8;
+/**
+ * What is known of the leaves of one sample: the answer, that it is awaited, or that the backend will not give it (it
+ * does not hold the sample, or the search is more than it will do).
+ */
+export type LeavesView =
+  | { readonly state: "ready"; readonly leaves: FrameLeaves }
+  | { readonly state: "pending" }
+  | { readonly state: "unavailable" };
+
+const PENDING: LeavesView = { state: "pending" };
+const UNAVAILABLE: LeavesView = { state: "unavailable" };
+/** What a search that names nothing the backend reads, or a lane that draws nothing, has. */
+const NONE: LeavesView = { state: "ready", leaves: new Map() };
+
+/** How many answers are kept, so that stepping back and forth asks the backend once per sample. */
+const KEPT = 16;
+/** How many asks an unanswered request stands for before it is made again. */
+const RESEND_AFTER = 120;
 
 /** What a search compares: an integer exactly, `null` and a truth value as the text the reference makes of them. */
 function valueOf(leaf: LeafWire): string | number | bigint {
@@ -34,18 +51,24 @@ function valueOf(leaf: LeafWire): string | number | bigint {
   }
 }
 
-const setOf = (source: number, revision: number, paths: readonly string[]): string =>
-  `${source}:${revision}:${paths.join("\n")}`;
+const keyOf = (
+  source: number,
+  revision: number,
+  sample: number,
+  paths: readonly string[],
+): string => `${source}:${revision}:${sample}:${paths.join("\n")}`;
 
 export class FrameFields {
   readonly #send: (message: ClientMessage) => void;
   readonly #listeners = new Set<() => void>();
-  /** The newest answer for each set of paths of a source revision, with the sample it is of. */
-  readonly #answers = new Map<string, { sample: number; leaves: FrameLeaves }>();
-  /** The request out, or the last one answered, with the columns of the sample it was made for. */
-  #asked: { set: string; sample: number; columns: unknown } | null = null;
-  /** A sample the backend said it does not hold: it is asked again only when the viewer holds it anew. */
-  #refused: { set: string; sample: number; columns: unknown } | null = null;
+  /** The answers, oldest first. */
+  readonly #answers = new Map<string, LeavesView>();
+  /** The request out, with the columns of the sample it was made for and the ask it was made at. */
+  #asked: { key: string; columns: unknown; at: number } | null = null;
+  /** A sample the backend does not answer for: asked again only when the viewer holds it anew. */
+  #refused: { key: string; columns: unknown } | null = null;
+  /** Asks so far, which time how long a request has been out. */
+  #asks = 0;
 
   /** `send` asks the backend. */
   constructor(send: (message: ClientMessage) => void) {
@@ -58,22 +81,29 @@ export class FrameFields {
     return () => this.#listeners.delete(listener);
   };
 
-  /** The leaves last answered for `paths` of the frame's source, whichever sample; `null` until one is. */
-  view(frame: LaneFrame | undefined, paths: readonly string[]): FrameLeaves | null {
-    if (!frame || paths.length === 0) return null;
-    return this.#answers.get(setOf(frame.source, frame.dataRevision, paths))?.leaves ?? null;
+  /** What is known of the leaves of the frame's sample at `paths`; the same object until that changes. */
+  view(frame: LaneFrame | undefined, paths: readonly string[]): LeavesView {
+    if (!frame || paths.length === 0) return NONE;
+    const key = keyOf(frame.source, frame.dataRevision, frame.sample, paths);
+    const refused = this.#refused;
+    if (refused?.key === key && refused.columns === frame.columns) return UNAVAILABLE;
+    return this.#answers.get(key) ?? PENDING;
   }
 
-  /** Wants the leaves of the frame's sample at `paths`; asks the backend unless it has answered or been asked. */
+  /** Wants the leaves of the frame's sample at `paths`; asks the backend unless it has answered or is being awaited. */
   ask(frame: LaneFrame | undefined, paths: readonly string[]): void {
-    if (!frame || paths.length === 0) return;
+    this.#asks++;
+    if (!frame || paths.length === 0) {
+      this.#asked = null;
+      return;
+    }
     const { source, dataRevision, sample, columns } = frame;
-    const set = setOf(source, dataRevision, paths);
-    const same = (held: { set: string; sample: number; columns: unknown } | null) =>
-      held?.set === set && held.sample === sample;
-    if (this.#answers.get(set)?.sample === sample || same(this.#asked)) return;
-    if (same(this.#refused) && this.#refused?.columns === columns) return;
-    this.#asked = { set, sample, columns };
+    const key = keyOf(source, dataRevision, sample, paths);
+    if (this.#answers.has(key)) return;
+    if (this.#refused?.key === key && this.#refused.columns === columns) return;
+    const asked = this.#asked;
+    if (asked?.key === key && this.#asks - asked.at <= RESEND_AFTER) return;
+    this.#asked = { key, columns, at: this.#asks };
     this.#send({
       type: "InspectFields",
       source,
@@ -85,23 +115,22 @@ export class FrameFields {
 
   /** The backend's answer. */
   receive(reply: Reply): void {
-    const set = setOf(reply.source, reply.data_revision, reply.paths);
-    const { objects, sample } = reply;
+    const key = keyOf(reply.source, reply.data_revision, reply.sample, reply.paths);
+    const asked = this.#asked?.key === key ? this.#asked : null;
+    if (asked) this.#asked = null;
+    const { objects } = reply;
     if (objects === null) {
-      if (this.#asked?.set === set && this.#asked.sample === sample) {
-        this.#refused = this.#asked;
-        this.#asked = null;
-      }
+      if (asked) this.#refused = { key, columns: asked.columns };
+      this.#listeners.forEach((listener) => listener());
       return;
     }
     const leaves = new Map<string, ObjectLeaves>();
     for (const { entity, items } of objects) {
       const keyed: { [key: string]: (string | number | bigint)[] } = {};
-      for (const { key, value } of items) (keyed[key] ??= []).push(valueOf(value));
+      for (const { key: name, value } of items) (keyed[name] ??= []).push(valueOf(value));
       leaves.set(entity, keyed);
     }
-    this.#answers.delete(set);
-    this.#answers.set(set, { sample, leaves });
+    this.#answers.set(key, { state: "ready", leaves });
     if (this.#answers.size > KEPT)
       this.#answers.delete(this.#answers.keys().next().value as string);
     this.#listeners.forEach((listener) => listener());

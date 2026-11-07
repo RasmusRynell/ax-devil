@@ -2392,7 +2392,7 @@ sample: number,
 paths: Array<string>, 
 /**
  * The objects that have a leaf at the paths; `null` when the viewer does not hold this sample under this
- * revision, or its authority no longer reaches it.
+ * revision, its authority no longer reaches it, or the search is more than the backend will do over it.
  */
 objects: Array<ObjectItemsWire> | null, } | { "type": "FrameError", 
 /**
@@ -3705,7 +3705,7 @@ kinds: Array<number>, };
 /**
  * Raised when the messages or the envelope change in a way an older frontend cannot read.
  */
-export const PLAYBACK_PROTOCOL = 9;
+export const PLAYBACK_PROTOCOL = 10;
 
 /**
  * "AXDV" read as a little-endian u32.
