@@ -21,6 +21,8 @@ use super::tls_server;
 const REALM: &str = "AXIS_DATAHUB";
 const NONCE: &str = "dcd98b7102dd2f0e8b11d0f600bfb0c093";
 const TOKEN: &str = "session-token-4711";
+/// The `Authorization` header Basic sends for `USER` and `PASSWORD`.
+const BASIC_LOGIN: &str = "Basic cm9vdDpwYXNzLTQ3MTE=";
 
 /// Where a request is answered with a redirect.
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -47,6 +49,8 @@ pub struct Behaviour {
     pub redirect: Option<Redirect>,
     /// Also offer Basic in the 401 (first, so a client that takes the first scheme would be caught).
     pub offer_basic: bool,
+    /// Offer and accept Basic only, no Digest.
+    pub basic_only: bool,
     /// What the first connection does after the subscription, and what every later one does.
     pub first: After,
     pub later: After,
@@ -59,6 +63,7 @@ impl Default for Behaviour {
         Self {
             redirect: None,
             offer_basic: false,
+            basic_only: false,
             first: After::Idle,
             later: After::Idle,
             early_samples: 0,
@@ -187,6 +192,9 @@ async fn token(State(shared): State<Arc<Shared>>, request: Request) -> Response 
         return redirect();
     }
     let allowed = authorization.as_deref().is_some_and(|header| {
+        if shared.behaviour.basic_only {
+            return header == BASIC_LOGIN;
+        }
         digest::verify(
             header,
             Algorithm::Md5,
@@ -199,17 +207,20 @@ async fn token(State(shared): State<Arc<Shared>>, request: Request) -> Response 
         return TOKEN.into_response();
     }
     let mut headers = HeaderMap::new();
-    if shared.behaviour.offer_basic {
+    if shared.behaviour.offer_basic || shared.behaviour.basic_only {
         headers.append(
             header::WWW_AUTHENTICATE,
             HeaderValue::from_static(r#"Basic realm="datahub""#),
         );
     }
-    let digest = format!(r#"Digest realm="{REALM}", qop="auth", algorithm=MD5, nonce="{NONCE}""#);
-    headers.append(
-        header::WWW_AUTHENTICATE,
-        HeaderValue::from_str(&digest).expect("header"),
-    );
+    if !shared.behaviour.basic_only {
+        let digest =
+            format!(r#"Digest realm="{REALM}", qop="auth", algorithm=MD5, nonce="{NONCE}""#);
+        headers.append(
+            header::WWW_AUTHENTICATE,
+            HeaderValue::from_str(&digest).expect("header"),
+        );
+    }
     (StatusCode::UNAUTHORIZED, headers).into_response()
 }
 

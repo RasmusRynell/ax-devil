@@ -175,6 +175,19 @@ async fn a_stream_without_the_wanted_media_fails_for_good() {
 }
 
 #[tokio::test]
+async fn a_stream_the_camera_does_not_have_yet_is_retried() {
+    let fake = FakeRtsp::with(Behaviour {
+        first_connection: Fault::Describe { status: 404 },
+        ..Behaviour::default()
+    })
+    .await;
+    let mut stream = open_stream(&fake.camera(), request(true, false));
+    status_where(&mut stream, |s| matches!(s, Status::Reconnecting { .. })).await;
+    status_where(&mut stream, |s| matches!(s, Status::Live { .. })).await;
+    stream.close().await;
+}
+
+#[tokio::test]
 async fn a_dropped_connection_comes_back_as_the_next_epoch() {
     let fake = FakeRtsp::with(Behaviour {
         first_connection: Fault::Drop { after: 30 },

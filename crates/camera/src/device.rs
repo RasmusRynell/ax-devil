@@ -74,6 +74,23 @@ impl Device {
         call: &Call<'_>,
         limit: usize,
     ) -> Result<Bytes, CameraError> {
+        self.exchange(call, limit, false).await
+    }
+
+    /// Like [`call`](Self::call), but a camera that offers only Basic is answered with it over plain HTTP too, as the
+    /// DataHub session token has always been. Ignored on a [digest-only](Self::digest_only) device.
+    pub(crate) async fn call_basic_anywhere(&self, call: &Call<'_>) -> Result<Bytes, CameraError> {
+        self.exchange(call, LARGEST_ANSWER, true).await
+    }
+
+    async fn exchange(
+        &self,
+        call: &Call<'_>,
+        limit: usize,
+        basic_anywhere: bool,
+    ) -> Result<Bytes, CameraError> {
+        let basic_allowed =
+            !self.digest_only && (basic_anywhere || self.camera.web.scheme == Scheme::Https);
         let url = self.url(call)?;
         let body = call.json.map(|json| Bytes::from(json.to_string()));
         let mut response = self.send(call, &url, body.as_ref(), None).await?;
@@ -98,18 +115,14 @@ impl Device {
                 uri: &uri,
                 body: body.as_deref().unwrap_or_default(),
             };
-            let mut header = HeaderValue::from_str(&authorization(
-                &challenges,
-                login,
-                !self.digest_only && self.camera.web.scheme == Scheme::Https,
-                &signed,
-            )?)
-            .map_err(|_| {
-                CameraError::new(
-                    ErrorKind::Malformed,
-                    "the authentication challenge cannot be answered",
-                )
-            })?;
+            let mut header =
+                HeaderValue::from_str(&authorization(&challenges, login, basic_allowed, &signed)?)
+                    .map_err(|_| {
+                        CameraError::new(
+                            ErrorKind::Malformed,
+                            "the authentication challenge cannot be answered",
+                        )
+                    })?;
             header.set_sensitive(true);
             response = self.send(call, &url, body.as_ref(), Some(header)).await?;
             login_sent = true;
