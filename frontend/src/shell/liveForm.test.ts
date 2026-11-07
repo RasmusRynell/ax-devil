@@ -90,9 +90,9 @@ describe("the live form of an edited stream", () => {
   it("shows what the stream saved as it is, empty and 0 included, and marks a hidden literal password", () => {
     // As the backend serializes a literal password: the key is missing.
     const wire = JSON.parse(
-      `{"host":"10.0.0.7","username":"root","overlay":{"mode":"none"},` +
-        `"kept_mqtt":{"broker_host":"","broker_port":0,"broker_user":"","source_key":""},` +
-        `"kept_datahub":{"topic":"","channel":0}}`,
+      `{"host":"10.0.0.7","username":"root","overlay":{"mode":"none"},
+        "kept_mqtt":{"broker_host":"","broker_port":0,"broker_user":"","source_key":""},
+        "kept_datahub":{"topic":"","channel":0}}`,
     );
     expect(formFrom(values, wire)).toMatchObject({
       broker_port: "0",
