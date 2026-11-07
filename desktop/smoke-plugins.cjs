@@ -57,7 +57,7 @@ module.exports.plugins = async (window) => {
 
   // Opens the Plugins view, which a second click on its button would close.
   const show = async () => {
-    await js("document.querySelector('[aria-label=Plugins][aria-pressed=false]')?.click()");
+    await js("document.querySelector('[aria-label^=Plugins][aria-pressed=false]')?.click()");
     await wait("document.querySelector('aside section[aria-label=\"Built-in\"]')");
   };
 
@@ -107,6 +107,10 @@ module.exports.plugins = async (window) => {
       await new Promise((resolve) => setTimeout(resolve, 200));
     }
     await wait("document.querySelector('aside section[aria-label=Failed] [role=alert]')");
+    // The failed plugin flags Plugins on the activity bar, where the tooltip says how many.
+    await wait(
+      "document.querySelector('nav[aria-label=Activity] [aria-label=\"Plugins: 1 failed to load\"]')",
+    );
     await eachTheme(async (theme) => {
       await keepsWidth(`${theme}, 640x480 at 200%`);
       await shoot(`plugins-${theme}-200.png`);
@@ -132,6 +136,7 @@ module.exports.plugins = async (window) => {
       await js("!document.querySelector('aside section[aria-label=Installed]')"),
       "Removing both plugins leaves only the built-ins",
     );
+    await wait("!document.querySelector('nav[aria-label=Activity] [aria-label^=\"Plugins: \"]')");
   } finally {
     await fs.rm(folder, { recursive: true, force: true });
   }

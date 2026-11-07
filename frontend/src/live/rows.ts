@@ -410,7 +410,7 @@ export function sectionsOf({
   const held = cameras.map((camera) =>
     cameraRow(
       camera,
-      (camera.host && byHost.get(camera.host)) || null,
+      camera.hosts.map((host) => byHost.get(host)).find((row) => row) ?? null,
       reported,
       checks,
       thumbnails,
@@ -429,7 +429,7 @@ export function sectionsOf({
     empty: "",
   };
   if (!scanned) return [live];
-  const hosts = new Set(cameras.flatMap(({ host }) => (host ? [host] : [])));
+  const hosts = new Set(cameras.flatMap((camera) => camera.hosts));
   const network: Section = {
     id: "network",
     title: "On the network",

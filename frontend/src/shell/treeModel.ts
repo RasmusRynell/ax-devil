@@ -1,6 +1,9 @@
 import type { HiddenTarget, ItemKind, RowInfo, WorkspaceState } from "../generated/api";
 import { casefold, compareNames } from "../casefold";
 import type { CaptionMark } from "../kit/SectionCaption";
+import type { StreamStatus } from "../live/streamState";
+
+const NO_STREAMS: ReadonlyMap<string, StreamStatus> = new Map();
 
 /** One row of the workspace tree with what the tree needs to draw and operate it. */
 export type TreeRow = {
@@ -29,13 +32,21 @@ export type VisibleRow = { row: TreeRow; position: number; siblings: number };
  * Adds to the backend's rows what follows from their order: each one's level and parent. A video item's lanes sit
  * directly under the item, since its one entry would only repeat it. A playlist item has no row of its own: each of
  * its playlists is a row at level 1, with its entries inside. A playlist row cannot be hidden, only entries and lanes.
+ * A live stream's detail ends with the state of its stream (`streams`, by item) while its viewer reports one.
  */
-export function treeOf({ rows, items }: WorkspaceState): TreeRow[] {
+export function treeOf(
+  { rows, items }: WorkspaceState,
+  streams: ReadonlyMap<string, StreamStatus> = NO_STREAMS,
+): TreeRow[] {
   const kinds = new Map(items.map(({ id, kind }) => [id, kind]));
   const tree: TreeRow[] = [];
   let top: TreeRow | undefined;
   let entry: TreeRow | undefined;
-  for (const info of rows) {
+  for (const listed of rows) {
+    const state = listed.kind === "item" ? streams.get(listed.item)?.text : undefined;
+    const info = state
+      ? { ...listed, detail: listed.detail ? `${listed.detail} · ${state}` : state }
+      : listed;
     const topLevel = info.kind === "item" || info.kind === "playlist";
     const parent = topLevel ? undefined : info.kind === "entry" ? top : (entry ?? top);
     const { entry: opens } = info;

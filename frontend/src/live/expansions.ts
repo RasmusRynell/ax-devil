@@ -70,3 +70,39 @@ export function useExpansions(
   }, [host, brokerHost, enabled]);
   return enabled ? shown : null;
 }
+
+const NO_VALUES: ReadonlyMap<string, string> = new Map();
+
+/**
+ * What the `$NAME` hosts of the workspace's streams (`references`) expand to, by reference, once the backend has said,
+ * which the Live view groups and matches cameras by. A reference whose variable is not set has no entry. Nothing is
+ * asked when `enabled` is false (only the person at this machine may ask).
+ */
+export function useExpandedHosts(
+  references: readonly string[],
+  enabled: boolean,
+): ReadonlyMap<string, string> {
+  const [values, setValues] = useState<ReadonlyMap<string, string>>(NO_VALUES);
+  const wanted = references.join("\n");
+  useEffect(() => {
+    if (!enabled || wanted === "") return;
+    const request = new AbortController();
+    void Promise.all(
+      wanted.split("\n").map((host) =>
+        apiFetch("/api/live/expansions", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ host } satisfies ExpansionsRequest),
+          signal: request.signal,
+        })
+          .then((response) => (response.ok ? response.json() : null))
+          .then((answer: LiveExpansions | null) => [host, answer?.host ?? ""] as const)
+          .catch(() => [host, ""] as const),
+      ),
+    ).then((pairs) => {
+      if (!request.signal.aborted) setValues(new Map(pairs.filter(([, value]) => value)));
+    });
+    return () => request.abort();
+  }, [wanted, enabled]);
+  return enabled && wanted !== "" ? values : NO_VALUES;
+}

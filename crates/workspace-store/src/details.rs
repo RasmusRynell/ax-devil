@@ -1,4 +1,4 @@
-//! The detail line of sibling rows that share a label: where each comes from, or else its number.
+//! The detail line of rows: where a camera is, and what tells sibling rows that share a label apart.
 
 use std::{
     collections::HashMap,
@@ -41,11 +41,12 @@ impl Location {
     }
 }
 
-/// The detail line of each of `rows`, empty for most. Among siblings that can be opened and share a label, a row
-/// gets the shortest trailing folders that tell its file apart (or else the file names), a camera its host, and rows
-/// with the same location are numbered in order, after the location. Rows still resolving or failed get nothing, and
-/// neither do rows in different sections, which do not compete. Without `locations`, which only an audience that may
-/// know the host's files and cameras has, rows are numbered alone.
+/// The detail line of each of `rows`, empty for most. A camera that can be opened has its host (and head, when it is
+/// not the first) unless that is its label. Among siblings that can be opened and share a label, a row gets the
+/// shortest trailing folders that tell its file apart (or else the file names), a camera its host, and rows with the
+/// same location are numbered in order, after the location. Rows still resolving or failed get nothing, and neither
+/// do rows in different sections, which do not compete. Without `locations`, which only an audience that may know
+/// the host's files and cameras has, rows are numbered alone and a camera has no line.
 pub fn details(rows: &[Row], locations: bool) -> Vec<String> {
     // The row each one is inside, as the tree nests them: playlist entries in their playlist, lanes in their entry or
     // else the video.
@@ -75,7 +76,16 @@ pub fn details(rows: &[Row], locations: bool) -> Vec<String> {
         }
     }
     let mut details = vec![String::new(); rows.len()];
-    for group in same.values().filter(|group| group.len() > 1) {
+    for group in same.values() {
+        if let [at] = group[..] {
+            if let Some(place @ Location::Camera { .. }) =
+                rows[at].location.as_ref().filter(|_| locations)
+                && place.text() != rows[at].label
+            {
+                details[at] = place.text();
+            }
+            continue;
+        }
         let places: Vec<_> = group
             .iter()
             .map(|&at| rows[at].location.as_ref().filter(|_| locations))
@@ -258,6 +268,21 @@ mod tests {
         assert_eq!(details(&rows, true), ["cam", "cam · head 2", ""]);
         rows.push(row(RowKind::Item, "clip.mp4", file("/b/clip.mp4")));
         assert_eq!(details(&rows, true), ["cam", "cam · head 2", "a", "b"]);
+    }
+
+    #[test]
+    fn a_camera_shows_its_host_unless_that_is_its_label_and_only_to_an_audience_that_may_know_it() {
+        let rows = vec![
+            row(RowKind::Item, "Lobby", camera("10.0.0.5", 1)),
+            row(RowKind::Item, "10.0.0.6", camera("10.0.0.6", 1)),
+            row(RowKind::Item, "10.0.0.7", camera("10.0.0.7", 2)),
+            row(RowKind::Item, "clip.mp4", file("/a/clip.mp4")),
+        ];
+        assert_eq!(
+            details(&rows, true),
+            ["10.0.0.5", "", "10.0.0.7 · head 2", ""]
+        );
+        assert!(details(&rows, false).iter().all(String::is_empty));
     }
 
     #[test]

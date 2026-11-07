@@ -119,6 +119,29 @@ describe("search", () => {
     );
   });
 
+  it("ends a live stream's detail with its stream's state, which the search matches", () => {
+    const items = [{ ...video("cam", false), kind: "live" as const }, video("clip", false)];
+    const infos = rowsOf(items, []).map((row) =>
+      row.item === "cam" && row.kind === "item" ? { ...row, detail: "10.0.0.5" } : row,
+    );
+    const workspace = {
+      name: null,
+      modified: false,
+      recovered: false,
+      epoch: 0,
+      file: null,
+      bookmarks: [],
+      items,
+      rows: infos,
+    };
+    const states = new Map([["cam", { state: "live", text: "Live", anyLive: true } as const]]);
+    const details = (tree: ReturnType<typeof treeOf>) => tree.map(({ info }) => info.detail);
+    expect(details(treeOf(workspace, states))).toEqual(["10.0.0.5 · Live", "", "", ""]);
+    expect(details(treeOf(workspace))).toEqual(["10.0.0.5", "", "", ""]);
+    const found = visibleRows(treeOf(workspace, states), new Set(), false, "· live");
+    expect(new Set(found.map(({ row }) => row.item))).toEqual(new Set(["cam"]));
+  });
+
   it("leaves hidden matches out and counts them", () => {
     const tree = rows(
       [playlist("mot", [entry("mot/A", "A", ["GT"]), entry("mot/B", "B", ["GT"])])],

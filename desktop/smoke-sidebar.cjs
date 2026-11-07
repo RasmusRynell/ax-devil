@@ -149,6 +149,51 @@ module.exports.sidebar = async (window) => {
         );
       }
     }
+    // Offline lists what to add under its sections: a video, then a row per playlist source, which opens its dialog.
+    await setView(window, [1200, 800], 1);
+    await js("document.querySelector('[aria-label=Offline]').click()");
+    const add = "[...document.querySelectorAll('[aria-label=Sidebar] [data-cursor-id^=\"row:\"]')]";
+    await wait(
+      `${add}.map((b) => b.textContent).join() === 'Single video,Folder Pair,MOT Challenge'`,
+    );
+    await js(`${add}[0].click()`);
+    await wait("document.querySelector('dialog[open] input')");
+    await js(`${dialogButton("Cancel")}.click()`);
+    await wait("!document.querySelector('dialog')");
+    await js(`${add}[2].click()`);
+    await wait(
+      "document.querySelector('dialog[open] select')?.selectedOptions[0]?.textContent === 'MOT Challenge'",
+    );
+    await js(`${dialogButton("Cancel")}.click()`);
+    await wait("!document.querySelector('dialog')");
+    for (const { zoom, view, suffix } of [
+      { zoom: 1, view: [1200, 800], suffix: "" },
+      { zoom: 2, view: [640, 480], suffix: "-200" },
+    ]) {
+      await setView(window, view, zoom);
+      for (const shown of ["light", "dark"]) {
+        nativeTheme.themeSource = shown;
+        await wait(`matchMedia('(prefers-color-scheme: ${shown})').matches`);
+        await shoot(`sidebar-offline-${shown}${suffix}.png`);
+        // Nothing is cut off sideways, and the first Add row is whole inside the window.
+        assert.deepEqual(
+          await js(`(() => {
+            const aside = ${SIDEBAR};
+            const cut = [...aside.querySelectorAll('*')].filter(
+              (e) => e.localName !== 'input' && e.clientWidth > 2 && e.scrollWidth > e.clientWidth + 1,
+            );
+            const row = ${add}[0].getBoundingClientRect();
+            const out = row.top < 0 || row.bottom > innerHeight || row.right > innerWidth;
+            return [...cut.map((e) => e.textContent.trim().slice(0, 30)), ...(out ? ['Single video out of the window'] : [])];
+          })()`),
+          [],
+          `The Offline view fits the ${view.join("x")} window at ${zoom * 100}% zoom`,
+        );
+      }
+    }
+    await setView(window, [1200, 800], 1);
+    await js("document.querySelector('[aria-label=Workspace]').click()");
+    await wait("document.querySelector('[aria-label=\"Workspace items\"]')");
     // The items go, leaving the workspace as it was.
     await setView(window, [1200, 800], 1);
     for (let left = 2; left > 0; left--) {
