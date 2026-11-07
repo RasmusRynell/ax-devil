@@ -61,6 +61,7 @@ export function LaneChip({
   onChange,
   onHide,
   onApplyAll,
+  onExport,
   hideName = false,
   live = false,
 }: {
@@ -71,6 +72,8 @@ export function LaneChip({
   onChange: (change: Partial<LaneSettings>) => void;
   onHide?: () => void;
   onApplyAll?: () => void;
+  /** Adds Export video to the menu; see `LaneMenu`. */
+  onExport?: { run: () => void; waits: boolean };
   hideName?: boolean;
   /** The lane is live: its menu shows no alignment. */
   live?: boolean;
@@ -120,6 +123,15 @@ export function LaneChip({
                   close();
                   onApplyAll();
                 })
+              }
+              onExport={
+                onExport && {
+                  waits: onExport.waits,
+                  run: () => {
+                    close();
+                    onExport.run();
+                  },
+                }
               }
               onHide={
                 onHide &&

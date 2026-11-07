@@ -124,7 +124,8 @@ impl Renderer for Fake {
 fn source(dir: &Path) -> (PathBuf, Arc<FrameIndex>) {
     let path = dir.join("source.mp4");
     let quality = Quality::Balanced;
-    let mut encoder = Encoder::create(&path, EncodeFormat::Mp4 { quality }, WIDTH, HEIGHT).unwrap();
+    let mut encoder =
+        Encoder::create(&path, EncodeFormat::Mp4 { quality }, WIDTH, HEIGHT, None).unwrap();
     let (y, u, v) = (
         vec![100; (WIDTH * HEIGHT) as usize],
         vec![128; (WIDTH * HEIGHT / 4) as usize],

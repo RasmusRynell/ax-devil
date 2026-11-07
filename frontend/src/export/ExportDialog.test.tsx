@@ -178,16 +178,20 @@ describe("export dialog", () => {
   it("takes a single lane whatever was unchecked, and says why a single lane failed", () => {
     const ready = { ...VIEW, lanes: [lane("DPM", { source: 0, status: READY })] };
     const jobs = new ExportJobs(() => {});
-    const { rerender } = render(
-      <ExportDialog jobs={jobs} view={VIEW} name="clip.mp4" only={0} onClose={() => {}} />,
-    );
-    // GT, unchecked by `only`, is now the only visible lane.
-    const one = {
+    const both = {
       ...VIEW,
-      lanes: [VIEW.lanes[0], lane("GT", { ...VIEW.lanes[2], status: READY })],
+      lanes: [lane("DPM", { source: 0, status: READY }), lane("GT", { source: 1, status: READY })],
     };
-    one.lanes[0] = { ...one.lanes[0], settings: { ...LANE_SETTINGS, visible: false } };
-    rerender(<ExportDialog jobs={jobs} view={one} name="clip.mp4" only={0} onClose={() => {}} />);
+    const { rerender } = render(
+      <ExportDialog jobs={jobs} view={both} name="clip.mp4" onClose={() => {}} />,
+    );
+    fireEvent.click(screen.getByLabelText("GT"));
+    // GT, unchecked, is now the only visible lane.
+    const one = {
+      ...both,
+      lanes: [{ ...both.lanes[0], settings: { ...LANE_SETTINGS, visible: false } }, both.lanes[1]],
+    };
+    rerender(<ExportDialog jobs={jobs} view={one} name="clip.mp4" onClose={() => {}} />);
     type("Path on the server", "/out/clip.mp4");
     expect((screen.getByRole("button", { name: "Export" }) as HTMLButtonElement).disabled).toBe(
       false,
@@ -209,15 +213,18 @@ describe("export dialog", () => {
     expect(screen.getByRole("alert").textContent).toBe("Catalog broke.");
   });
 
-  it("starts with just the lane a lane menu was used on checked", () => {
+  it("a lane menu's export offers only that lane, with no checkboxes", () => {
     const both = {
       ...VIEW,
       lanes: [lane("DPM", { source: 0, status: READY }), lane("GT", { source: 1, status: READY })],
     };
-    const jobs = new ExportJobs(() => {});
+    const sent: ClientMessage[] = [];
+    const jobs = new ExportJobs((message) => sent.push(message));
     render(<ExportDialog jobs={jobs} view={both} name="clip.mp4" only={1} onClose={() => {}} />);
-    const checked = (name: string) => (screen.getByLabelText(name) as HTMLInputElement).checked;
-    expect([checked("DPM"), checked("GT")]).toEqual([false, true]);
+    expect(screen.queryByRole("checkbox")).toBeNull();
+    type("Path on the server", "/out/clip.mp4");
+    press("Export");
+    expect(sent).toMatchObject([{ type: "Export", lanes: [{ lane: 1 }] }]);
   });
 
   it("has no Cancel to press before the export starts, and Escape still closes", () => {

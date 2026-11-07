@@ -3,7 +3,7 @@ import type { CatalogInfoWire } from "../generated/api";
 import { Button } from "../kit/Button";
 import { Tabs } from "../kit/Tabs";
 import type { LaneSettings, LaneState } from "./lanes";
-import { HIDE_LANE_TIP } from "./laneContextMenu";
+import { EXPORT_TIP, EXPORT_WAITS, HIDE_LANE_TIP } from "./laneContextMenu";
 import { changedControls, LaneMenuFilter } from "./LaneMenuFilter";
 import { LaneMenuLook } from "./LaneMenuLook";
 import { LaneMenuTiming } from "./LaneMenuTiming";
@@ -25,6 +25,7 @@ export function LaneMenu({
   onChange,
   onHide,
   onApplyAll,
+  onExport,
 }: {
   lane: LaneState;
   /** The catalogs the backend offers for the lane to draw with. */
@@ -37,6 +38,8 @@ export function LaneMenu({
   onHide?: () => void;
   /** Gives the viewer's other lanes this lane's settings, but not its visibility. */
   onApplyAll?: () => void;
+  /** Exports this lane's video; `waits` while its render catalog has not loaded. Absent where nothing is exported. */
+  onExport?: { run: () => void; waits: boolean };
 }) {
   const [tab, setTab] = useState<(typeof TABS)[number]>("Look");
   const panel = useId();
@@ -59,9 +62,18 @@ export function LaneMenu({
           <LaneMenuTiming lane={lane} cadence={cadence} live={live} onChange={onChange} />
         )}
       </div>
-      {(onApplyAll || onHide) && (
+      {(onApplyAll || onHide || onExport) && (
         <div className="flex flex-wrap gap-s border-t border-line pt-m">
           {onApplyAll && <Button onClick={onApplyAll}>Apply to all lanes</Button>}
+          {onExport && (
+            <Button
+              disabled={onExport.waits}
+              title={onExport.waits ? EXPORT_WAITS : EXPORT_TIP}
+              onClick={onExport.run}
+            >
+              Export video
+            </Button>
+          )}
           {onHide && (
             <Button icon="eye-off" title={HIDE_LANE_TIP} onClick={onHide}>
               Hide lane

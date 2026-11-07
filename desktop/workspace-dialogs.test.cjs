@@ -96,6 +96,11 @@ function save(contents, name, currentPath) {
   return handlers.get("workspace:pick-save")(event, name, currentPath);
 }
 
+function exportTo(contents, name, extension) {
+  const event = { sender: contents, senderFrame: contents.mainFrame };
+  return handlers.get("export:pick-file")(event, name, extension);
+}
+
 function open(contents) {
   const event = { sender: contents, senderFrame: contents.mainFrame };
   return handlers.get("workspace:pick-open")(event);
@@ -120,6 +125,13 @@ void test("the chosen name gets the workspace suffix unless it already has it; a
   picked = { canceled: true, filePaths: [] };
   assert.equal(await save(page, "Untitled"), null);
   assert.deepEqual(calls.messages, []);
+  picked = { canceled: false, filePath: path.join(root, "clip") };
+  assert.equal(await exportTo(page, "v.mp4", "mp4"), path.join(root, "clip.mp4"));
+  picked = { canceled: false, filePath: path.join(root, "kept.PNG") };
+  assert.equal(await exportTo(page, "v.png", "png"), path.join(root, "kept.PNG"));
+  assert.deepEqual(calls.saves.at(-1).filters, [{ name: "PNG Image", extensions: ["png"] }]);
+  picked = { canceled: true, filePaths: [] };
+  assert.equal(await exportTo(page, "v.mp4", "mp4"), null);
   assert.equal(await open(page), null);
   assert.deepEqual(
     calls.opens.map((options) => options.filters[0].extensions),
@@ -140,6 +152,7 @@ void test("the suggested name becomes one file name in the home folder, unless t
       path.join(root, "current.ax-devil.workspace"),
     ],
   );
+  await exportTo(page, "v.mp4", "mp4");
   assert.ok(
     calls.saves.every((options) => options.properties.includes("showOverwriteConfirmation")),
   );
@@ -157,6 +170,11 @@ void test("an appended name that exists asks before it is replaced; Cancel retur
   answer = 0;
   assert.equal(await save(page, "taken"), path.join(root, "taken.ax-devil.workspace"));
   assert.equal(calls.messages.length, 2);
+  fs.writeFileSync(path.join(root, "taken.mp4"), "");
+  picked = { canceled: false, filePath: path.join(root, "taken") };
+  answer = 1;
+  assert.equal(await exportTo(page, "taken.mp4", "mp4"), null);
+  assert.equal(calls.messages.at(-1).message, "Replace taken.mp4?");
 });
 
 void test("a chosen name that already has the suffix is not asked about, and a free name is not either", async () => {

@@ -4,6 +4,7 @@ import { FakeSocket, video } from "../session/fakeSession";
 import { viewing } from "../session/fakeViews";
 import { SessionProvider } from "../session/session";
 import { SessionStore } from "../session/store";
+import { exportOf } from "../viewer/exportTargets";
 import { NOTHING_HIDDEN, type Hidden } from "../viewer/hidden";
 import { videoFrame } from "./fakePlayback";
 import type { ClientMessage, LaneInfo, ServerMessage } from "./protocol";
@@ -346,6 +347,18 @@ describe("video viewer", () => {
       expect(screen.queryByRole("slider", { name: "Timeline" })).toBeNull();
       mounted.rerender(view(hide("DPM")));
       expect(screen.getByRole("slider", { name: "Timeline" })).toBeTruthy();
+    });
+
+    it("tells the render catalogs are still loading instead of exporting, and keeps playing", async () => {
+      await mountLanes();
+      const play = screen.queryByRole("button", { name: "Play" });
+      if (play) fireEvent.click(play);
+      expect(screen.getByRole("button", { name: "Pause" })).toBeTruthy();
+      act(() => exportOf("a")?.());
+      expect(screen.getByRole("heading", { name: "Export video" })).toBeTruthy();
+      expect(screen.getByText(/Render catalogs are still loading/)).toBeTruthy();
+      expect(screen.queryByRole("heading", { name: "Export Video with Overlays" })).toBeNull();
+      expect(screen.getByRole("button", { name: "Pause" })).toBeTruthy();
     });
 
     it("lists a lane's warnings on its tag", async () => {

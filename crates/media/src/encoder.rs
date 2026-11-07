@@ -11,7 +11,7 @@ use ffmpeg_next::format::context::Output;
 use ffmpeg_next::format::{self, Pixel};
 use ffmpeg_next::util::log::{self, Level};
 use ffmpeg_next::{Dictionary, Error, Packet, Rational, encoder, frame};
-use foundation::{ErrorCode, UserError};
+use foundation::{ErrorCode, FrameRate, UserError};
 use std::collections::VecDeque;
 use std::path::{Path, PathBuf};
 
@@ -19,8 +19,8 @@ use crate::part::PartFile;
 
 /// Ticks of the encoder's and the file's clock: one microsecond.
 const TIME_BASE: Rational = Rational(1, 1_000_000);
-/// What rate control is told when the real rate is unknown (it varies), and the key frame interval in frames.
-const NOMINAL_FRAME_RATE: i32 = 30;
+/// What rate control is told when the source declares no rate, and the key frame interval in frames.
+const NOMINAL_FRAME_RATE: Rational = Rational(30, 1);
 const KEYFRAME_INTERVAL: u32 = 60;
 /// H.264 levels cannot signal a bit rate past this, and `bit_rate` is a 32-bit count in some encoders.
 const MAX_BIT_RATE: u64 = 1 << 30;
@@ -60,7 +60,7 @@ impl Quality {
         }
     }
 
-    /// Bits per pixel per frame at the nominal frame rate, for an encoder that is only given a bit rate.
+    /// Bits per pixel per frame, for an encoder that is only given a bit rate.
     /// OpenH264 has no lossless mode; `Lossless` gets the most it is given here.
     fn bits_per_pixel(self) -> f64 {
         match self {
@@ -128,12 +128,14 @@ enum Sink {
 
 impl Encoder {
     /// Starts a `width` x `height` file of `format` that will replace `destination`. An MP4 needs an even width and
-    /// height.
+    /// height. `rate` is the source's frame rate, which sizes the bit rate of encoders that are only given one
+    /// (30 fps when `None`); frame times come from [`write`](Self::write), not from it.
     pub fn create(
         destination: &Path,
         format: EncodeFormat,
         width: u32,
         height: u32,
+        rate: Option<FrameRate>,
     ) -> Result<Self, UserError> {
         log::set_level(Level::Quiet);
         check_size(format, width, height)?;
@@ -142,8 +144,8 @@ impl Encoder {
             EncodeFormat::Mp4 { quality } => Sink::Mp4(Box::new(Mp4::open(
                 &part.writable_path()?,
                 quality,
-                width,
-                height,
+                (width, height),
+                rate.and_then(rational_of).unwrap_or(NOMINAL_FRAME_RATE),
             )?)),
             EncodeFormat::Png => Sink::Png(Box::new(Png::open(width, height)?)),
         };
@@ -210,6 +212,14 @@ impl Encoder {
         }
         part.persist(&destination)
     }
+}
+
+/// `rate` as FFmpeg's ratio; `None` when a part does not fit.
+fn rational_of(rate: FrameRate) -> Option<Rational> {
+    Some(Rational(
+        i32::try_from(rate.num()).ok()?,
+        i32::try_from(rate.den()).ok()?,
+    ))
 }
 
 /// Refuses a size `format` cannot be encoded at.
@@ -279,7 +289,12 @@ struct Mp4 {
 }
 
 impl Mp4 {
-    fn open(tmp: &Path, quality: Quality, width: u32, height: u32) -> Result<Self, UserError> {
+    fn open(
+        tmp: &Path,
+        quality: Quality,
+        (width, height): (u32, u32),
+        rate: Rational,
+    ) -> Result<Self, UserError> {
         let (codec, name) = ["libx264", "libopenh264", "h264_videotoolbox"]
             .into_iter()
             .find_map(|name| encoder::find_by_name(name).map(|codec| (codec, name)))
@@ -294,7 +309,7 @@ impl Mp4 {
         video.set_height(height);
         video.set_format(Pixel::YUV420P);
         video.set_time_base(TIME_BASE);
-        video.set_frame_rate(Some(Rational(NOMINAL_FRAME_RATE, 1)));
+        video.set_frame_rate(Some(rate));
         video.set_gop(KEYFRAME_INTERVAL);
         video.set_max_b_frames(0);
         video.set_colorspace(Space::BT709);
@@ -308,8 +323,8 @@ impl Mp4 {
             options.set("crf", quality.crf());
         } else {
             let pixels_per_second =
-                u64::from(width) * u64::from(height) * NOMINAL_FRAME_RATE as u64;
-            let bits = (pixels_per_second as f64 * quality.bits_per_pixel()) as u64;
+                f64::from(width) * f64::from(height) * f64::from(rate.0) / f64::from(rate.1);
+            let bits = (pixels_per_second * quality.bits_per_pixel()) as u64;
             video.set_bit_rate(bits.min(MAX_BIT_RATE) as usize);
         }
         let opened = video

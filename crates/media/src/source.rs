@@ -10,7 +10,7 @@ use ffmpeg_next::format::context::Input;
 use ffmpeg_next::format::{self};
 use ffmpeg_next::media::Type;
 use ffmpeg_next::util::log::{self, Level};
-use foundation::{CancelToken, ErrorCode, HostPath, Interrupt, UserError};
+use foundation::{CancelToken, ErrorCode, FrameRate, HostPath, Interrupt, UserError};
 use std::path::Path;
 use std::sync::Once;
 
@@ -152,7 +152,7 @@ pub(crate) fn open_decoder(
     })
 }
 
-/// Size, delivered pixel layout and colour of the video stream.
+/// Size, delivered pixel layout, colour and declared frame rate of the video stream.
 pub(crate) fn probe(opened: &Opened, path: &Path) -> Result<VideoInfo, UserError> {
     let decoder = open_decoder(opened, 1, path)?;
     let (width, height) = (decoder.width(), decoder.height());
@@ -164,9 +164,20 @@ pub(crate) fn probe(opened: &Opened, path: &Path) -> Result<VideoInfo, UserError
         ));
     }
     let source = decoder.format();
+    let frame_rate = opened.input.stream(opened.stream).and_then(|stream| {
+        [stream.avg_frame_rate(), stream.rate()]
+            .into_iter()
+            .find_map(|rate| {
+                FrameRate::new(
+                    u32::try_from(rate.numerator()).ok()?,
+                    u32::try_from(rate.denominator()).ok()?,
+                )
+            })
+    });
     Ok(VideoInfo {
         width,
         height,
+        frame_rate,
         format: delivered_format(source),
         color: color_desc(decoder.color_space(), decoder.color_range(), source, height),
     })

@@ -44,8 +44,8 @@ fn an_mp4_of_every_quality_keeps_the_times_the_frames_were_given_and_their_pictu
 fn an_mp4_keeps_times_and_pictures(quality: Quality) {
     let folder = tempfile::tempdir().expect("a temporary folder");
     let path = folder.path().join("out.mp4");
-    let mut encoder =
-        Encoder::create(&path, EncodeFormat::Mp4 { quality }, WIDTH, HEIGHT).expect("an encoder");
+    let mut encoder = Encoder::create(&path, EncodeFormat::Mp4 { quality }, WIDTH, HEIGHT, None)
+        .expect("an encoder");
     for (n, (start, duration)) in TIMES.into_iter().enumerate() {
         let (y, u, v) = flat(n as u8);
         let picture = Picture::I420 {
@@ -104,8 +104,8 @@ fn a_png_still_has_the_pixels_it_was_given() {
             rows[y * stride + x * 4..][..4].copy_from_slice(&pixel);
         }
     }
-    let mut encoder =
-        Encoder::create(&path, EncodeFormat::Png, width as u32, height as u32).expect("an encoder");
+    let mut encoder = Encoder::create(&path, EncodeFormat::Png, width as u32, height as u32, None)
+        .expect("an encoder");
     encoder
         .write(
             Picture::Rgba {
