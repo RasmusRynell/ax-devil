@@ -181,7 +181,7 @@ impl AdfDecoder {
                 bases,
                 default_basis,
                 options: Form::default(),
-                version: 3,
+                version: 4,
             },
             read,
             lines,

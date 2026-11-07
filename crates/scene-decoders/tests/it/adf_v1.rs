@@ -173,6 +173,8 @@ fn a_frame_reads_numbers_written_as_text_and_names_classes_by_its_own_table() {
         class("VehicleOther", json!({})).to_string(),
         class("licensePlate", json!({"plate_number": "ABC"})).to_string(),
         class("license_plate", json!({})).to_string(),
+        class("Person", json!({"score": true})).to_string(),
+        class("Person", json!({"score": false})).to_string(),
     ];
     let (scenes, skipped) = decode("ADF_V1_FRAME", &lines);
 
@@ -188,12 +190,15 @@ fn a_frame_reads_numbers_written_as_text_and_names_classes_by_its_own_table() {
             .top(),
         0.2
     );
-    let names: Vec<_> = classes[1..]
+    let names: Vec<_> = classes[1..4]
         .iter()
         .map(|c| c[0].class_type.as_str())
         .collect();
     assert_eq!(names, ["human", "vehicle_other", "license_plate"]);
     assert_eq!(classes[1][0].score.map(scene::Score::value), Some(0.5));
+    // Python's float() reads booleans as 1 and 0.
+    assert_eq!(classes[4][0].score.map(scene::Score::value), Some(1.0));
+    assert_eq!(classes[5][0].score.map(scene::Score::value), Some(0.0));
 }
 
 #[test]
