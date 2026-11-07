@@ -144,7 +144,10 @@ pub(super) fn redeem(
         .find(|known| known.id == item)
         .map(|known| known.recipe.lane_matching.clone())
         .unwrap_or_default();
-    let (content, entry) = (content.clone(), entry.map(|entry| Box::new(entry.clone())));
+    let (content, entry) = (
+        Box::new(content.clone()),
+        entry.map(|entry| Box::new(entry.clone())),
+    );
     let host_details = next.files
         && next
             .seats

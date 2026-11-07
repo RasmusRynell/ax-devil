@@ -78,6 +78,10 @@ pub struct ResolvedPlaylist {
     pub name: String,
     /// The entries in playlist order.
     pub entries: Vec<ResolvedEntry>,
+    /// How many matches the playlist found, when the resolver says (shown in Information).
+    pub matches: Option<u64>,
+    /// How many sequence groups the playlist holds, when the resolver says (shown in Information).
+    pub sequence_groups: Option<u64>,
 }
 
 /// One video and the overlays drawn on it.
@@ -89,4 +93,8 @@ pub struct ResolvedEntry {
     pub video: VideoRef,
     /// The overlays, each shown as its own lane.
     pub overlays: Vec<OverlayRef>,
+    /// Whether the entry is hidden until the user shows it.
+    pub starts_hidden: bool,
+    /// The labels of the overlays that are hidden until the user shows them.
+    pub lanes_starting_hidden: Vec<String>,
 }

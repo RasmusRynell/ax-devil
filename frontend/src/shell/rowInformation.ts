@@ -1,5 +1,5 @@
 import { reasonOf } from "../errors";
-import type { ContentInfo, EntryInfo, ItemRecipe, ItemState } from "../generated/api";
+import type { ContentInfo, EntryInfo, ItemRecipe, ItemState, RowInfo } from "../generated/api";
 import { camerasOf } from "../live/cameras";
 import { informationOf as streamInformation, type Information } from "../live/information";
 import type { TreeRow } from "./treeModel";
@@ -39,17 +39,37 @@ function spansOf(content: Playlist) {
   });
 }
 
-/** An overlay lane of a playlist's entry. */
-const playlistLane = (playlist: string, number: number, entry: EntryInfo, at: number) =>
-  info(entry.lanes[at], [
+/** An overlay lane of a playlist's entry; its file is the `location` of the lane's row, when the seat may read it. */
+function playlistLane(
+  playlist: string,
+  number: number,
+  entry: EntryInfo,
+  at: number,
+  rows: readonly RowInfo[],
+): Information {
+  const lane = entry.lanes[at];
+  const path = rows.find(
+    (row) => row.kind === "lane" && row.entry === entry.id && row.label === lane,
+  )?.location;
+  return info(lane, [
     ["type", "overlay"],
     ["playlist", playlist],
     ["entry", String(number)],
     ["lane", `${at + 1} of ${entry.lanes.length}`],
+    ["video", entry.label],
+    ["overlay source", "file"],
+    ...(path ? [["path", path] as [string, string]] : []),
+    ["handler type", entry.handlers[at]],
   ]);
+}
 
-/** An entry of a playlist, with its lanes under it when it has several. */
-function playlistEntry(playlist: string, number: number, entry: EntryInfo): Information {
+/** An entry of a playlist, with its lanes under it when it has overlays. */
+function playlistEntry(
+  playlist: string,
+  number: number,
+  entry: EntryInfo,
+  rows: readonly RowInfo[],
+): Information {
   return info(
     `${playlist} / Entry ${number}`,
     [
@@ -57,39 +77,52 @@ function playlistEntry(playlist: string, number: number, entry: EntryInfo): Info
       ["playlist", playlist],
       ["entry", String(number)],
       ["lanes", String(entry.lanes.length)],
+      ["videos", entry.label],
     ],
-    entry.lanes.length > 1
-      ? entry.lanes.map((_, at) => playlistLane(playlist, number, entry, at))
-      : [],
+    entry.handlers.map((_, at) => playlistLane(playlist, number, entry, at, rows)),
   );
 }
 
 /** The information of a row of a playlist item: one of its playlists, an entry, or a lane. */
-function playlistRow(row: TreeRow, content: Playlist, recipe: ItemRecipe | undefined) {
+function playlistRow(row: TreeRow, content: Playlist, rows: readonly RowInfo[]) {
   for (const { span, entries } of spansOf(content)) {
     if (row.info.kind === "playlist" && row.info.key === span.id)
       return info(
         span.label,
         [
           ["type", "playlist"],
-          ...(recipe?.type === "Playlist" ? [["source", recipe.resolver] as [string, string]] : []),
           ["entries", String(entries.length)],
           ["lanes", String(entries.reduce((sum, { lanes }) => sum + lanes.length, 0))],
+          // What the resolver says about the playlist, by name.
+          ...(span.matches === undefined
+            ? []
+            : [["matches", String(span.matches)] as [string, string]]),
+          ["resolver", content.display_name],
+          ...(span.sequence_groups === undefined
+            ? []
+            : [["sequence_groups", String(span.sequence_groups)] as [string, string]]),
         ],
-        entries.map((entry, at) => playlistEntry(span.label, at + 1, entry)),
+        entries.map((entry, at) => playlistEntry(span.label, at + 1, entry, rows)),
       );
     const at = entries.findIndex(({ id }) => id === row.info.entry);
     if (at < 0 || row.info.kind === "playlist") continue;
     const lane = entries[at].lanes.indexOf(row.info.label);
     return row.info.kind === "lane" && lane >= 0
-      ? playlistLane(span.label, at + 1, entries[at], lane)
-      : playlistEntry(span.label, at + 1, entries[at]);
+      ? playlistLane(span.label, at + 1, entries[at], lane, rows)
+      : playlistEntry(span.label, at + 1, entries[at], rows);
   }
   return null;
 }
 
-/** The information of what `row` stands for, as the Information dialog lists it; `null` for a row still resolving. */
-export function rowInformation(row: TreeRow, items: readonly ItemState[]): Information | null {
+/**
+ * The information of what `row` stands for, as the Information dialog lists it; `null` for a row still resolving.
+ * `rows` are the workspace's, which name the file of each lane.
+ */
+export function rowInformation(
+  row: TreeRow,
+  items: readonly ItemState[],
+  rows: readonly RowInfo[],
+): Information | null {
   const item = items.find(({ id }) => id === row.item);
   const { label, status } = row.info;
   if (!item || status.status === "Pending") return null;
@@ -126,6 +159,6 @@ export function rowInformation(row: TreeRow, items: readonly ItemState[]): Infor
       );
     }
     case "Playlist":
-      return playlistRow(row, content, item.recipe);
+      return playlistRow(row, content, rows);
   }
 }

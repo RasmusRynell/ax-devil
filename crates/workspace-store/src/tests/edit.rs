@@ -12,7 +12,7 @@ fn an_edit_keeps_the_item_and_resolves_again_only_when_the_recipe_changed() {
     let state = jobs.iter().fold(state, |state, job| finish(&state, job));
     let before = generation(&state, edited_id);
     let hide = DocCommand::SetHidden {
-        target: HiddenRef::Entry(content_id(&state, edited_id)),
+        target: HiddenRef::Lane(content_id(&state, edited_id), "lane".into()),
         hidden: true,
     };
     let (state, _) = apply(&state, hide);

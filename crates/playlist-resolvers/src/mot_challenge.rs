@@ -124,6 +124,8 @@ impl PlaylistResolver for MotChallengeResolver {
         Ok(ResolvedPlaylists {
             playlists: vec![ResolvedPlaylist {
                 name: self.spec.name.clone(),
+                matches: None,
+                sequence_groups: Some(entries.len() as u64),
                 entries,
             }],
             warnings,
@@ -336,6 +338,8 @@ fn build_entries(
             name,
             video,
             overlays,
+            starts_hidden: false,
+            lanes_starting_hidden: Vec::new(),
         });
     }
     Ok(entries)

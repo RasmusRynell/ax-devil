@@ -240,7 +240,7 @@ export function WorkspaceTree({
     if (choice.id === "open" || choice.id === "open-side")
       void open(menuRow, choice.id === "open-side");
     else if (choice.id === "information") {
-      const info = rowInformation(menuRow, workspace?.items ?? []);
+      const info = rowInformation(menuRow, workspace?.items ?? [], workspace?.rows ?? []);
       if (info) inform(info);
     } else if (choice.id === "edit") editRow(menuRow);
     else if (choice.id === "remove") removeRow(menuRow);

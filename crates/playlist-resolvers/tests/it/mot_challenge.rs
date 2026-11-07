@@ -113,6 +113,7 @@ fn a_sequence_with_a_bad_seqinfo_is_a_warning_and_the_rest_resolve() {
     let resolved = resolve(&root_settings(root)).unwrap();
 
     assert_eq!(names(&resolved.playlists[0].entries), ["SEQ-01"]);
+    assert_eq!(resolved.playlists[0].sequence_groups, Some(1));
     let [warning] = resolved.warnings.as_slice() else {
         panic!("expected one warning, got {:?}", resolved.warnings);
     };

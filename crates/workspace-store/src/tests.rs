@@ -181,45 +181,6 @@ fn closing_and_reopening_a_viewer_resolves_again_under_a_new_generation_with_the
 }
 
 #[test]
-fn hiding_twice_changes_nothing_and_a_reference_to_nothing_is_kept_but_hides_nothing() {
-    let folder = tempfile::tempdir().unwrap();
-    let file = folder.path().join("gate.mp4");
-    std::fs::write(&file, "x").unwrap();
-    let added = item(&file);
-    let entry = ContentId::of_item(&added.id);
-    let (state, jobs) = add(&WorkspaceState::default(), vec![added], false);
-    let state = finish(&state, &jobs[0]);
-    let set = |state: &WorkspaceState, target: &HiddenRef, hidden: bool| {
-        let (next, jobs) = apply(
-            state,
-            DocCommand::SetHidden {
-                target: target.clone(),
-                hidden,
-            },
-        );
-        assert!(jobs.is_empty(), "hiding resolves nothing");
-        next
-    };
-    let target = HiddenRef::Entry(entry.clone());
-    let orphan = HiddenRef::Lane(entry, "gone".into());
-
-    let hidden = set(&state, &target, true);
-    assert!(hidden.is_hidden(&target));
-    assert_eq!(
-        set(&hidden, &target, true),
-        hidden,
-        "hiding again changes nothing"
-    );
-    let with_orphan = set(&hidden, &orphan, true);
-    assert_eq!(
-        rows(&with_orphan).iter().filter(|row| row.hidden).count(),
-        1
-    );
-    let shown = set(&set(&with_orphan, &target, false), &orphan, false);
-    assert_eq!(shown, state, "showing undoes hiding");
-}
-
-#[test]
 fn a_lane_matching_lands_in_the_recipe_by_slot_and_resolves_nothing() {
     let folder = tempfile::tempdir().unwrap();
     let (video, overlay) = (folder.path().join("gate.mp4"), folder.path().join("gt.txt"));
@@ -448,7 +409,7 @@ fn replacing_the_workspace_closes_viewers_bumps_the_epoch_and_never_reuses_a_gen
     let (state, _) = apply(
         &state,
         DocCommand::SetHidden {
-            target: HiddenRef::Entry(ContentId::of_item(&added.id)),
+            target: HiddenRef::Entry(workspace::ContentId::of_item(&added.id)),
             hidden: true,
         },
     );
@@ -529,4 +490,5 @@ fn jobs_of(state: &WorkspaceState, id: ItemId) -> ResolveJob {
 }
 
 mod edit;
+mod hidden;
 mod remove;

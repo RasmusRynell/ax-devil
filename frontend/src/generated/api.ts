@@ -1280,7 +1280,11 @@ label: string,
 /**
  * The lane names, in order.
  */
-lanes: Array<string>, };
+lanes: Array<string>, 
+/**
+ * The decoder id of each overlay lane, in order; empty for an entry without overlays.
+ */
+handlers: Array<string>, };
 
 /**
  * One playlist of a playlist item: a run of its entries a viewer steps within.
@@ -1297,7 +1301,15 @@ label: string,
 /**
  * How many entries it holds; the first playlist starts at the first entry.
  */
-entries: number, };
+entries: number, 
+/**
+ * How many matches the resolver found, when it says.
+ */
+matches?: number, 
+/**
+ * How many sequence groups the resolver found, when it says.
+ */
+sequence_groups?: number, };
 
 /**
  * What the user asked to add; the intake turns each into an item.

@@ -15,6 +15,7 @@
 mod bookmarks;
 mod details;
 mod edit;
+mod hidden;
 mod rows;
 
 use foundation::{CancelToken, HostPath, Interrupt, UserError};
@@ -22,15 +23,14 @@ use handlers::Handlers;
 use overlay_sync::MatchPolicy;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
-use workspace::{
-    Content, ContentId, Environment, ItemId, Recipe, Source, Workspace, WorkspaceItem,
-};
+use workspace::{Content, Environment, ItemId, Recipe, Source, Workspace, WorkspaceItem};
 
 pub use bookmarks::{
     BookmarkCommand, BookmarkGroup, Standing, csv as bookmarks_csv, groups as bookmark_groups,
     kind_label,
 };
 pub use details::{Location, details};
+pub use hidden::HiddenRef;
 pub use rows::{Row, RowKind, RowStatus, rows};
 
 /// Names one commit of an item's Content. Later commits have larger values, across all items of a state.
@@ -93,19 +93,12 @@ pub struct WorkspaceState {
     /// Open items whose files changed since their Content resolved, with how many times. They are not resolved
     /// again, which would end the stream the viewer shows: the viewer offers to, and `Resolve` does.
     pub changed: HashMap<ItemId, u32>,
-    /// Entries and lanes the user hid. A reference to something no item resolves to is kept but hides nothing.
-    pub hidden: HashSet<HiddenRef>,
+    /// What the user chose to hide (`true`) or show (`false`) of entries and lanes, over what the resolver started
+    /// them as. A choice for something an item no longer resolves to is dropped when it resolves again; one for
+    /// something no item has is kept but changes nothing.
+    pub hidden: HashMap<HiddenRef, bool>,
     next_attempt: u64,
     next_generation: u64,
-}
-
-/// What the user hid.
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
-pub enum HiddenRef {
-    /// An entry, by its content id.
-    Entry(ContentId),
-    /// A lane of an entry, by the entry's content id and the lane's label.
-    Lane(ContentId, String),
 }
 
 /// The parts of a [`WorkspaceState`] a reader may see, each by name.
@@ -125,8 +118,8 @@ pub struct WorkspaceParts<'a> {
     pub open: &'a HashSet<ItemId>,
     /// Open items whose files changed since their Content resolved, with how many times.
     pub changed: &'a HashMap<ItemId, u32>,
-    /// Entries and lanes the user hid.
-    pub hidden: &'a HashSet<HiddenRef>,
+    /// What the user chose to hide or show.
+    pub hidden: &'a HashMap<HiddenRef, bool>,
 }
 
 impl WorkspaceState {
@@ -160,11 +153,6 @@ impl WorkspaceState {
     /// Whether the workspace differs from what was last opened or saved.
     pub fn modified(&self) -> bool {
         !matches!(&self.saved, Saved::As(saved) if *saved == self.workspace)
-    }
-
-    /// Whether the user hid this entry or lane.
-    pub fn is_hidden(&self, target: &HiddenRef) -> bool {
-        self.hidden.contains(target)
     }
 
     /// Appends the item, or replaces the one with its id in place.
@@ -251,7 +239,7 @@ pub enum DocCommand {
         /// What a new recipe resolved to, when the caller resolved it before the edit.
         content: Option<Box<Content>>,
     },
-    /// Hides or shows an entry or lane.
+    /// Hides or shows an entry or lane. Does nothing for a video's own entry or for a live stream.
     SetHidden {
         /// What to hide or show.
         target: HiddenRef,
@@ -391,10 +379,8 @@ pub fn apply(state: &WorkspaceState, command: DocCommand) -> (WorkspaceState, Ve
         DocCommand::RenameItem { item, label } => next.rename(item, &label),
         DocCommand::EditItem { item, content } => jobs.extend(next.edit(*item, content)),
         DocCommand::SetHidden { target, hidden } => {
-            if hidden {
-                next.hidden.insert(target);
-            } else {
-                next.hidden.remove(&target);
+            if next.may_hide(&target) {
+                next.hidden.insert(target, hidden);
             }
         }
         DocCommand::Replace {
@@ -482,6 +468,7 @@ pub fn complete(
     }
     let resolution = match result {
         Ok(content) => {
+            next.forget_hidden_outside(&item, &content);
             next.next_generation += 1;
             Resolution::Resolved {
                 content,

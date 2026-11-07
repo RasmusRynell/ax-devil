@@ -251,6 +251,8 @@ fn resolve_video(
         label: file_name(recipe.video.as_path()),
         video: VideoRef::File(recipe.video.as_path().to_path_buf()),
         overlays,
+        starts_hidden: false,
+        lanes_starting_hidden: Vec::new(),
     };
     check_unique_lanes(item, &entry).map_err(Interrupt::Failed)?;
     Ok(Content::SeekableVideo(SeekableVideoContent {

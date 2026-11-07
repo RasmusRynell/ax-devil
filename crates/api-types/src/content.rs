@@ -67,6 +67,14 @@ pub struct PlaylistSpanInfo {
     pub label: String,
     /// How many entries it holds; the first playlist starts at the first entry.
     pub entries: u32,
+    /// How many matches the resolver found, when it says.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(type = "number", optional)]
+    pub matches: Option<u64>,
+    /// How many sequence groups the resolver found, when it says.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(type = "number", optional)]
+    pub sequence_groups: Option<u64>,
 }
 
 /// One video and its lanes: what a viewer opens.
@@ -78,4 +86,6 @@ pub struct EntryInfo {
     pub label: String,
     /// The lane names, in order.
     pub lanes: Vec<String>,
+    /// The decoder id of each overlay lane, in order; empty for an entry without overlays.
+    pub handlers: Vec<String>,
 }

@@ -1,8 +1,11 @@
+import { useState } from "react";
 import { Dialog } from "../kit/Dialog";
+import { Icon } from "../kit/Icon";
 import type { Information } from "../live/information";
 
-/** One titled list of values; the lists under it are indented. */
+/** One titled list of values, which its title folds away with the lists under it; those are indented. */
 function Block({ info, level }: { info: Information; level: number }) {
+  const [open, setOpen] = useState(true);
   return (
     <>
       <tr>
@@ -12,24 +15,32 @@ function Block({ info, level }: { info: Information; level: number }) {
           style={{ paddingLeft: `calc(var(--spacing-m) * ${level * 2})` }}
           className="px-m py-xs text-left font-semibold break-words"
         >
-          {info.title}
+          <button
+            type="button"
+            aria-expanded={open}
+            onClick={() => setOpen(!open)}
+            className="flex w-full items-center gap-s bg-transparent text-left font-semibold text-fg focus-ring"
+          >
+            <Icon name={open ? "chevron-down" : "chevron-right"} />
+            {info.title}
+          </button>
         </th>
       </tr>
-      {info.fields.map(([label, value]) => (
-        <tr key={label}>
-          <th
-            scope="row"
-            style={{ paddingLeft: `calc(var(--spacing-m) * ${level * 2 + 2})` }}
-            className="px-m py-xs text-left font-normal text-muted whitespace-nowrap"
-          >
-            {label}
-          </th>
-          <td className="px-m py-xs break-words select-text">{value}</td>
-        </tr>
-      ))}
-      {info.children.map((child) => (
-        <Block key={child.title} info={child} level={level + 1} />
-      ))}
+      {open &&
+        info.fields.map(([label, value]) => (
+          <tr key={label}>
+            <th
+              scope="row"
+              style={{ paddingLeft: `calc(var(--spacing-m) * ${level * 2 + 2})` }}
+              className="px-m py-xs text-left font-normal text-muted whitespace-nowrap"
+            >
+              {label}
+            </th>
+            <td className="px-m py-xs break-words select-text">{value}</td>
+          </tr>
+        ))}
+      {open &&
+        info.children.map((child) => <Block key={child.title} info={child} level={level + 1} />)}
     </>
   );
 }

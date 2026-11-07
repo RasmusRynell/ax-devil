@@ -25,7 +25,7 @@ export const resolved = (id: string): ResolutionState => ({
     id: `content-${id}`,
     generation: 1,
     display_name: `${id}.mp4`,
-    entry: { id: `content-${id}`, label: `${id}.mp4`, lanes: [`${id}.mp4`] },
+    entry: { id: `content-${id}`, label: `${id}.mp4`, lanes: [`${id}.mp4`], handlers: [] },
   },
 });
 
@@ -34,6 +34,7 @@ export const entry = (id: string, label = id, lanes: string[] = [label]): EntryI
   id,
   label,
   lanes,
+  handlers: [],
 });
 
 /** A playlist item that resolved to these entries. */
