@@ -11,7 +11,7 @@ use workspace_files::{RecoveryFolder, SUFFIX};
 use workspace_session::*;
 
 #[tokio::test]
-async fn discarding_changes_whose_saved_file_is_gone_starts_empty() {
+async fn discarding_changes_whose_saved_file_is_gone_keeps_them_until_it_can_be_reopened() {
     let folder = tempfile::tempdir().unwrap();
     let saved = folder.path().join(format!("gate{SUFFIX}"));
     let address = backend(folder.path(), None).await;
@@ -30,16 +30,23 @@ async fn discarding_changes_whose_saved_file_is_gone_starts_empty() {
             && copy.is_some_and(|copy| unsaved.claim(&copy).is_ok())
     })
     .await;
-    std::fs::remove_file(&saved).unwrap();
+    let away = folder.path().join("away");
+    std::fs::rename(&saved, &away).unwrap();
 
     let address = backend(folder.path(), Some(Launch::Restore)).await;
     let mut window = Socket::own(&address, None).await;
     doc(&mut window, |ws| ws["recovered"] == true).await;
     window.say(workspace(1, json!({"type": "discard"}))).await;
-    let (outcome, empty) = settle(&mut window, 1, |ws| ws["recovered"] == false).await;
+    assert_eq!(ack(&mut window, 1).await["status"], "failed");
+    assert_eq!(copies(folder.path()).len(), 1);
+
+    // The edits are still there, and the copy goes only once the saved file reopens.
+    std::fs::rename(&away, &saved).unwrap();
+    window.say(workspace(2, json!({"type": "discard"}))).await;
+    let (outcome, reopened) = settle(&mut window, 2, |ws| ws["recovered"] == false).await;
     assert_eq!(outcome, json!({"status": "ok"}));
-    assert_eq!(empty["items"], json!([]));
-    assert_eq!(empty["modified"], false);
+    assert_eq!(reopened["items"].as_array().map(Vec::len), Some(1));
+    assert_eq!(reopened["modified"], false);
     assert!(copies(folder.path()).is_empty());
 }
 

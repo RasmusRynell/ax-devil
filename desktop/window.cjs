@@ -215,6 +215,9 @@ function installIpc({ connect, disconnect, restart }) {
     const file = /^\.*$/.test(stem) ? "-" : stem;
     const chosen = await dialog.showSaveDialog(window, {
       title: "Save Workspace As",
+      filters: [
+        { name: "Workspaces (*.ax-devil.workspace)", extensions: [WORKSPACE_SUFFIX.slice(1)] },
+      ],
       defaultPath: currentPath || path.join(app.getPath("home"), `${file}${WORKSPACE_SUFFIX}`),
       properties: ["showOverwriteConfirmation"],
     });

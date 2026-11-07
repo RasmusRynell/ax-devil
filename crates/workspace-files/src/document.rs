@@ -9,7 +9,7 @@ use serde_json::{Value, json};
 
 use crate::live::LiveItem;
 use std::{
-    collections::{BTreeMap, BTreeSet, HashSet},
+    collections::{BTreeMap, BTreeSet, HashMap, HashSet},
     path::{Component, Path, PathBuf},
 };
 use workspace::{
@@ -24,9 +24,7 @@ const VERSION: u64 = 2;
 struct Top {
     #[serde(rename = "version")]
     _version: IgnoredAny,
-    #[serde(default)]
     name: Option<String>,
-    #[serde(default)]
     items: Vec<Value>,
     #[serde(default)]
     bookmarks: Vec<Value>,
@@ -86,7 +84,7 @@ enum KindDto {
 #[serde(deny_unknown_fields)]
 struct BookmarkDto {
     id: BookmarkId,
-    item: ItemId,
+    item: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     entry: Option<String>,
     frame: u64,
@@ -100,7 +98,7 @@ struct BookmarkDto {
 #[derive(Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct TargetDto {
-    item: ItemId,
+    item: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     entry: Option<String>,
 }
@@ -176,6 +174,16 @@ fn covered(raw: &Value, kept: &Value) -> bool {
     }
 }
 
+/// How the file names an item. An unreadable item keeps the id text it was read with, which need not be an item id, so
+/// the bookmarks and reviewed marks naming it still find it.
+fn item_name(item: &WorkspaceItem) -> String {
+    match &item.recipe.source {
+        Source::Unreadable(unreadable) => unreadable.raw.get("id").and_then(Value::as_str),
+        _ => None,
+    }
+    .map_or_else(|| item.id.to_string(), str::to_owned)
+}
+
 fn value(dto: &impl Serialize) -> Value {
     serde_json::to_value(dto).expect("document types serialize to JSON")
 }
@@ -230,13 +238,19 @@ pub(crate) fn to_document(
         BookmarkKind::Example => KindDto::Example,
         BookmarkKind::Question => KindDto::Question,
     };
+    let names: HashMap<ItemId, String> = workspace
+        .items
+        .iter()
+        .map(|item| (item.id, item_name(item)))
+        .collect();
+    let name = |id: ItemId| names.get(&id).cloned().unwrap_or_else(|| id.to_string());
     let mut document = json!({
         "version": VERSION,
         "name": workspace.name,
         "items": workspace.items.iter().map(|item| write_item(item, base)).collect::<Vec<_>>(),
         "bookmarks": workspace.bookmarks.iter().map(|bookmark| value(&BookmarkDto {
             id: bookmark.id,
-            item: bookmark.target.item,
+            item: name(bookmark.target.item),
             entry: bookmark.target.entry.clone(),
             frame: bookmark.frame,
             time_us: bookmark.time.as_us(),
@@ -244,7 +258,7 @@ pub(crate) fn to_document(
             note: bookmark.note.clone(),
         })).collect::<Vec<_>>(),
         "reviewed": workspace.reviewed.iter().map(|target| value(&TargetDto {
-            item: target.item,
+            item: name(target.item),
             entry: target.entry.clone(),
         })).collect::<Vec<_>>(),
     });
@@ -349,6 +363,13 @@ pub(crate) fn from_document(
             "{name} has workspace file version {version}; this app reads {VERSION}."
         ));
     }
+    // Like Python, a file must say what it holds; a missing name or list is a damaged file, not an empty workspace.
+    if !matches!(document.get("name"), Some(Value::String(_) | Value::Null)) {
+        return Err(format!("{name} has no name."));
+    }
+    if !document.get("items").is_some_and(Value::is_array) {
+        return Err(format!("{name} has no list of items."));
+    }
     let top: Top = serde_json::from_value(document).map_err(|error| format!("{name}: {error}"))?;
     let recovers = match top.recovers {
         None => None,
@@ -362,9 +383,19 @@ pub(crate) fn from_document(
         .map(|raw| read_item(raw, base))
         .collect();
     let mut ids = HashSet::new();
-    if let Some(item) = items.iter().find(|item| !ids.insert(item.id)) {
-        return Err(format!("{name}: two items have the id {}", item.id));
+    let mut named = HashMap::new();
+    for item in &items {
+        let text = item_name(item);
+        if !ids.insert(item.id) || named.insert(text.clone(), item.id).is_some() {
+            return Err(format!("{name}: two items have the id {text}"));
+        }
     }
+    let find = |text: &str| {
+        named
+            .get(text)
+            .copied()
+            .or_else(|| ItemId::parse(text).filter(|id| ids.contains(id)))
+    };
 
     let mut bookmarks = Vec::with_capacity(top.bookmarks.len());
     let mut bookmark_ids = HashSet::new();
@@ -379,15 +410,15 @@ pub(crate) fn from_document(
         if !bookmark_ids.insert(dto.id) {
             return Err(format!("{name}: two bookmarks have the id {}", dto.id));
         }
-        if !ids.contains(&dto.item) {
+        let Some(item) = find(&dto.item) else {
             return Err(format!(
                 "{name}: bookmark {n} names no item of the workspace"
             ));
-        }
+        };
         bookmarks.push(Bookmark {
             id: dto.id,
             target: BookmarkTarget {
-                item: dto.item,
+                item,
                 entry: dto.entry,
             },
             frame: dto.frame,
@@ -406,13 +437,13 @@ pub(crate) fn from_document(
     for (index, raw) in top.reviewed.into_iter().enumerate() {
         let n = index + 1;
         let dto: TargetDto = parse(raw, name, "reviewed target", n)?;
-        if !ids.contains(&dto.item) {
+        let Some(item) = find(&dto.item) else {
             return Err(format!(
                 "{name}: reviewed target {n} names no item of the workspace"
             ));
-        }
+        };
         reviewed.insert(BookmarkTarget {
-            item: dto.item,
+            item,
             entry: dto.entry,
         });
     }

@@ -321,7 +321,11 @@ fn an_item_with_a_setting_the_format_does_not_know_is_kept_as_it_was() {
         item("sticky", newer_sticky),
     ];
     let file = dir.path().join(format!("ws{SUFFIX}"));
-    fs::write(&file, json!({"version": 2, "items": items}).to_string()).unwrap();
+    fs::write(
+        &file,
+        json!({"version": 2, "name": null, "items": items}).to_string(),
+    )
+    .unwrap();
 
     let loaded = load(&file).unwrap();
     let readable = |i: usize| !matches!(loaded.items[i].recipe.source, Source::Unreadable(_));
@@ -344,6 +348,36 @@ fn an_item_with_a_setting_the_format_does_not_know_is_kept_as_it_was() {
     assert_eq!(read_json(&file)["items"][2], items[2]);
 }
 
+#[test]
+fn an_unreadable_item_with_any_text_id_keeps_its_bookmarks_and_reviewed_marks() {
+    let dir = tempfile::tempdir().unwrap();
+    let file = dir.path().join(format!("legacy{SUFFIX}"));
+    let old = json!({"kind": "video", "id": "legacy-1", "label": "Old", "video": 7});
+    let video = json!({"kind": "video", "id": "legacy-1", "label": "dup", "video": "a.mp4"});
+    let document = |items: Value| {
+        json!({
+            "version": 2, "name": "Legacy", "items": items,
+            "bookmarks": [bookmark_json("legacy-1", json!({}))],
+            "reviewed": [{"item": "legacy-1", "entry": "e"}],
+        })
+        .to_string()
+    };
+    fs::write(&file, document(json!([old]))).unwrap();
+
+    let loaded = load(&file).unwrap();
+    assert_eq!(loaded.bookmarks[0].target.item, loaded.items[0].id);
+    assert_eq!(loaded.reviewed.len(), 1);
+    save(&loaded, &file).unwrap();
+    let saved = read_json(&file);
+    assert_eq!(saved["items"][0], old);
+    assert_eq!(saved["bookmarks"][0]["item"], "legacy-1");
+    assert_eq!(saved["reviewed"][0]["item"], "legacy-1");
+    load(&file).unwrap();
+
+    fs::write(&file, document(json!([old, video]))).unwrap();
+    assert!(load(&file).is_err(), "two items with one id text");
+}
+
 fn bookmark_json(item: &str, extra: Value) -> Value {
     let mut value = json!({
         "id": BookmarkId::generate().to_string(), "item": item, "frame": 1, "time_us": 0,
@@ -362,7 +396,7 @@ fn a_file_the_format_forbids_fails_the_whole_load_naming_the_file() {
     let item = ItemId::generate().to_string();
     let playlist = json!({"kind": "playlist", "id": item, "label": "p", "resolver": "r"});
     let document = |extra: Value| {
-        let mut document = json!({"version": 2, "items": [playlist]});
+        let mut document = json!({"version": 2, "name": null, "items": [playlist]});
         document
             .as_object_mut()
             .unwrap()
@@ -371,12 +405,16 @@ fn a_file_the_format_forbids_fails_the_whole_load_naming_the_file() {
     };
     let other = ItemId::generate().to_string();
     let texts = [
-        r#"{"version": 1, "items": []}"#.to_owned(),
-        r#"{"version": "2", "items": []}"#.to_owned(),
-        r#"{"version": 2.0, "items": []}"#.to_owned(),
-        r#"{"version": true, "items": []}"#.to_owned(),
+        r#"{"version": 1, "name": null, "items": []}"#.to_owned(),
+        r#"{"version": "2", "name": null, "items": []}"#.to_owned(),
+        r#"{"version": 2.0, "name": null, "items": []}"#.to_owned(),
+        r#"{"version": true, "name": null, "items": []}"#.to_owned(),
         r#"{"items": []}"#.to_owned(),
-        r#"{"version": 2, "items": [], "x": NaN}"#.to_owned(),
+        r#"{"version": 2, "items": []}"#.to_owned(),
+        r#"{"version": 2, "name": 7, "items": []}"#.to_owned(),
+        r#"{"version": 2, "name": null}"#.to_owned(),
+        r#"{"version": 2, "name": null, "items": {}}"#.to_owned(),
+        r#"{"version": 2, "name": null, "items": [], "x": NaN}"#.to_owned(),
         document(json!({"items": [playlist, playlist]})),
         document(json!({"bookmarks": [
             bookmark_json(&item, json!({"id": item})),
