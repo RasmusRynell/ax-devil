@@ -111,11 +111,17 @@ describe("the leaves of a frame's objects", () => {
     vi.advanceTimersByTime(60_000);
     expect(sent).toHaveLength(5);
 
-    // A list that stops listening stops the asking.
+    // Wanting a sample already answered drops the request out for another, which is not sent again.
     fields.ask(frame(3), ["id"]);
-    close();
+    fields.ask(frame(2), ["id"]);
     vi.advanceTimersByTime(60_000);
     expect(sent).toHaveLength(6);
+
+    // A list that stops listening stops the asking.
+    fields.ask(frame(4), ["id"]);
+    close();
+    vi.advanceTimersByTime(60_000);
+    expect(sent).toHaveLength(7);
     vi.useRealTimers();
   });
 });

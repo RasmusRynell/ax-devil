@@ -112,6 +112,8 @@ export class FrameFields {
     }
     const { source, dataRevision, sample, columns } = frame;
     const key = keyOf(source, dataRevision, sample, paths);
+    // Another sample is wanted: the request out for this one is no longer worth sending again.
+    if (this.#asked && this.#asked.key !== key) this.#forget();
     if (this.#answers.has(key)) return;
     if (this.#refused?.key === key && this.#refused.columns === columns) return;
     if (this.#asked?.key === key) return;
