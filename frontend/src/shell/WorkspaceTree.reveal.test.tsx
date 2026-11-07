@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { FakeSocket, type Room } from "../session/fakeSession";
+import type { ItemState } from "../generated/api";
+import { entry, FakeSocket, playlist, type Room } from "../session/fakeSession";
 import { viewing } from "../session/fakeViews";
 import { SessionProvider } from "../session/session";
 import { KeptStateProvider } from "./keptState";
@@ -20,8 +21,7 @@ const front = (room: Room, item: "mot" | "v") =>
   act(() =>
     room.publish({
       sidebar: room.presenter.sidebar,
-      ...viewing(["mot", { entry: "mot/A" }], "v"),
-      active: item === "mot" ? 1 : 2,
+      ...viewing(item === "mot" ? ["mot", { entry: "mot/A" }] : "v"),
     }),
   );
 
@@ -117,8 +117,8 @@ describe("the item a viewer shows", () => {
     expect(labels()).toEqual(["mot", "A", "B"]);
   });
 
-  describe("with several entries shown", () => {
-    const setup = async () => {
+  describe("with several viewers", () => {
+    const setup = async (items: ItemState[] = [MOT]) => {
       render(
         <SessionProvider>
           <KeptStateProvider>
@@ -129,33 +129,52 @@ describe("the item a viewer shows", () => {
       );
       await act(async () => {});
       const room = FakeSocket.rooms.get("room-1") as Room;
-      act(() => room.setItems([{ ...MOT, open: true }]));
-      return (...entries: string[]) =>
-        act(() =>
-          room.publish({
-            sidebar: room.presenter.sidebar,
-            ...viewing(...entries.map((entry) => ["mot", { entry }] as const)),
-          }),
-        );
+      act(() => room.setItems(items.map((item) => ({ ...item, open: true }))));
+      return (active: number, ...shown: Parameters<typeof viewing>) =>
+        act(() => room.publish({ sidebar: room.presenter.sidebar, ...viewing(...shown), active }));
     };
+    const of = (...entries: string[]) => entries.map((entry) => ["mot", { entry }] as const);
 
     it("leaves a playlist the user closed closed when another entry is shown", async () => {
       const show = await setup();
-      show("mot/A");
+      show(1, ...of("mot/A"));
       expect(labels()).toEqual(["mot", "A", "GT", "DPM", "B"]);
       fireEvent.keyDown(screen.getByRole("tree", { name: "Playlists" }), { key: "ArrowLeft" });
-      show("mot/B");
+      show(1, ...of("mot/B"));
       expect(labels()).toEqual(["mot"]);
     });
 
     it("keeps every entry a viewer shows open, and closes one when its last viewer leaves it", async () => {
       const show = await setup();
-      show("mot/A", "mot/B");
+      show(1, ...of("mot/A", "mot/B"));
       expect(labels()).toEqual(["mot", "A", "GT", "DPM", "B", "GT"]);
-      show("mot/B", "mot/A");
+      show(2, ...of("mot/B", "mot/A"));
       expect(labels()).toEqual(["mot", "A", "GT", "DPM", "B", "GT"]);
-      show("mot/B");
+      show(1, ...of("mot/B"));
       expect(labels()).toEqual(["mot", "A", "B", "GT"]);
+    });
+
+    it("keeps every item a viewer shows open when the focus moves, and the section a playlist's viewer reveals", async () => {
+      const other = playlist("other", [entry("other/X", "X", ["GT"])], false);
+      const show = await setup([MOT, other, CLIP]);
+      const both = [
+        ["mot", { entry: "mot/A" }],
+        ["other", { entry: "other/X" }],
+      ] as const;
+      const all = ["mot", "A", "GT", "DPM", "B", "other", "X", "GT"];
+      show(1, ...both);
+      expect(labels()).toEqual(["v.mp4", ...all]);
+      show(2, ...both);
+      expect(labels()).toEqual(["v.mp4", ...all]);
+
+      // Folding Playlists and showing a playlist beside a video reveals it for as long as that viewer stays.
+      show(1, "v");
+      fireEvent.click(screen.getByRole("button", { name: "Playlists" }));
+      expect(labels()).toEqual(["v.mp4"]);
+      show(1, ["mot", { entry: "mot/A" }]);
+      expect(labels().slice(1, 4)).toEqual(["mot", "A", "GT"]);
+      show(2, ["mot", { entry: "mot/A" }], "v");
+      expect(labels().slice(1, 4)).toEqual(["mot", "A", "GT"]);
     });
   });
 });

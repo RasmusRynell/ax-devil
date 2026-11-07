@@ -1,3 +1,4 @@
+import type { ViewerView } from "../generated/api";
 import { SECTION_OF, type SectionId, type TreeRow } from "./treeModel";
 
 /** What a view keeps of its folds: those the user made, those a viewer asked for, and what it last saw a viewer show. */
@@ -6,10 +7,7 @@ export type Folds = {
   collapsed: ReadonlySet<string>;
   /** The sections held unfolded by a viewer's row, until that viewer moves on or the user folds the section. */
   revealed: ReadonlySet<SectionId>;
-  /**
-   * The rows the viewers showed when last looked at (the front item's top-level rows and the entries every hosted
-   * viewer shows), and the sections the front item's are in.
-   */
+  /** The rows the hosted viewers showed when last looked at, and the sections of their items. */
   shown: { rows: ReadonlySet<string>; sections: ReadonlySet<SectionId> };
   /** The rows with children already seen, which got their first fold then and have only the user's since. */
   known: ReadonlySet<string>;
@@ -69,19 +67,20 @@ export function unfold(
 }
 
 /**
- * Folds after the tree changed or the viewers changed: the front one shows `item` (or none), and the viewers hosted
- * show the playlist entries `entries`. A row with children seen for the first time starts closed, except a playlist of
- * at most `OPEN_AT_FIRST_LIMIT` entries. A row that turned open is revealed with the rows above it that were not
- * open already, and the front item's section unfolds until the viewer moves on; a row no viewer shows any more closes.
- * A row that stays open keeps the fold the user gave it. The same `folds` come back when nothing changed.
+ * Folds after the tree or the hosted `viewers` changed. A row with children seen for the first time starts closed,
+ * except a playlist of at most `OPEN_AT_FIRST_LIMIT` entries. A row a viewer came to show (its item's top-level rows,
+ * and the playlist entry it shows) is revealed with the rows above it that were not shown already, and its section
+ * unfolds while a viewer shows something in it; a row or section the last viewer left closes. What stays shown keeps
+ * the fold the user gave it. The same `folds` come back when nothing changed.
  */
 export function revealShown(
   tree: readonly TreeRow[],
-  item: string | undefined,
+  viewers: readonly Pick<ViewerView, "item" | "entry">[],
   folds: Folds,
-  entries: ReadonlySet<string> = new Set(),
 ): Folds {
-  const top = tree.filter(({ level, item: of }) => level === 1 && of === item);
+  const items = new Set(viewers.map(({ item }) => item));
+  const entries = new Set(viewers.flatMap(({ entry }) => entry ?? []));
+  const top = tree.filter(({ level, item }) => level === 1 && items.has(item));
   const entered = tree.filter(({ info }) => info.kind === "entry" && entries.has(info.entry ?? ""));
   const now = {
     rows: new Set([...top, ...entered].map(({ info }) => info.key)),

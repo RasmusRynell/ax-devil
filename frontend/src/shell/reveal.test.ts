@@ -29,24 +29,25 @@ const settled: Folds = {
   ...NO_FOLDS,
   known: new Set(tree.filter(({ hasChildren }) => hasChildren).map(({ info }) => info.key)),
 };
+const show = (...items: string[]) => items.map((item) => ({ item }));
 const closed = (...items: string[]): Folds => ({ ...settled, collapsed: new Set(items.map(key)) });
 
 describe("what a viewer shows", () => {
   it("reveals the shown item's row and its section, and closes the row once the viewer moves on", () => {
-    const shown = revealShown(tree, "mot", closed("mot", "other"));
+    const shown = revealShown(tree, show("mot"), closed("mot", "other"));
     expect([...shown.collapsed]).toEqual([key("other")]);
     expect([...shown.revealed]).toEqual(["playlists"]);
 
-    const moved = revealShown(tree, "v", shown);
+    const moved = revealShown(tree, show("v"), shown);
     expect([...moved.collapsed].sort()).toEqual([key("mot"), key("other")].sort());
     expect([...moved.revealed]).toEqual(["videos"]);
   });
 
   it("leaves a row the user closed while its viewer stays, and does nothing when nothing changed", () => {
-    const shown = revealShown(tree, "mot", settled);
+    const shown = revealShown(tree, show("mot"), settled);
     const folded = { ...shown, collapsed: new Set([key("mot")]) };
-    expect(revealShown(tree, "mot", folded)).toBe(folded);
-    expect(revealShown(tree, undefined, settled)).toBe(settled);
+    expect(revealShown(tree, show("mot"), folded)).toBe(folded);
+    expect(revealShown(tree, [], settled)).toBe(settled);
   });
 
   it("starts rows with children closed, but a playlist of at most 200 entries open, and leaves what the user opened", () => {
@@ -56,17 +57,17 @@ describe("what a viewer shows", () => {
         Array.from({ length: count }, (_, at) => entry(`p/${at}`, `${at}`, [])),
         false,
       );
-    expect([...revealShown(tree, undefined, NO_FOLDS).collapsed].sort()).toEqual(
+    expect([...revealShown(tree, [], NO_FOLDS).collapsed].sort()).toEqual(
       ["mot/A", "other/A", "v"].sort(),
     );
-    expect(revealShown(treeFor([playlistOf(200)]), undefined, NO_FOLDS).collapsed.size).toBe(0);
+    expect(revealShown(treeFor([playlistOf(200)]), [], NO_FOLDS).collapsed.size).toBe(0);
 
     const long = treeFor([playlistOf(201)]);
-    const first = revealShown(long, undefined, NO_FOLDS);
+    const first = revealShown(long, [], NO_FOLDS);
     expect([...first.collapsed]).toEqual(["p/p"]);
     const opened = { ...first, collapsed: new Set<string>() };
     const updated = treeFor([playlistOf(201), video("v", false)]);
-    expect(revealShown(updated, undefined, opened).collapsed.has("p/p")).toBe(false);
+    expect(revealShown(updated, [], opened).collapsed.has("p/p")).toBe(false);
   });
 
   it("unfolds a row with the rows above it", () => {
