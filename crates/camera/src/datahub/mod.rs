@@ -15,6 +15,7 @@ use tracing::{info, warn};
 use crate::device::Device;
 use crate::error::CameraError;
 use crate::live::{Counters, FeedOut, LiveMessages, Message, Reconnect, Status, Task};
+use crate::logtext::escaped;
 use crate::target::{Camera, Scheme};
 use protocol::{LIST_TOPICS, SUBSCRIBE, Sample, protocol};
 use socket::{Early, Socket};
@@ -203,6 +204,7 @@ async fn next_sample(
     tokio::select! {
         sample = &mut next => sample,
         () = sleep(FIRST_SAMPLE) => {
+            let topic = escaped(topic);
             warn!("No DataHub samples received for topic '{topic}' on channel {channel}.");
             next.await
         }

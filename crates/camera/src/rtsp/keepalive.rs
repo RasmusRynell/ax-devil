@@ -24,10 +24,11 @@ thread_local! {
     static REFUSED: Cell<Option<bool>> = const { Cell::new(None) };
 }
 
-/// A layer for the app's subscriber that notices retina refusing a keepalive with 401 or 403 (a revoked login), so a
-/// stream that is playing ends as `LoginRejected` instead of waiting for the silence watchdog. Needs the `log` bridge
-/// that `tracing_subscriber`'s `init` installs, as retina logs through the `log` crate. A refusal with another status
-/// (405 for a camera that does not know the method, a 5xx) does not end the stream.
+/// A layer that notices retina refusing a keepalive with 401 or 403 (a revoked login), so a stream that is playing
+/// ends as `LoginRejected` instead of waiting for the silence watchdog. **The process must install it** in its
+/// `tracing` subscriber, and that subscriber's `init` must install the `log` bridge, as retina logs through the `log`
+/// crate; without both, `open_stream` still works but a refused keepalive goes unnoticed. A
+/// refusal with another status (405 for a camera that does not know the method, a 5xx) does not end the stream.
 pub fn retina_log_layer<S: Subscriber>() -> impl Layer<S> {
     KeepaliveLayer
 }

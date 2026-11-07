@@ -17,9 +17,17 @@ use camera::{
     Scheme, Secret, SourceKey, Status, StreamRequest, Web, open_mqtt, open_stream,
 };
 use tokio::time::{interval, sleep};
+use tracing_subscriber::layer::SubscriberExt;
+use tracing_subscriber::util::SubscriberInitExt;
 
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> ExitCode {
+    // The log bridge and the layer that lets a refused keepalive end `stream`, as the app's logging installs them;
+    // warnings go to stderr.
+    tracing_subscriber::registry()
+        .with(camera::retina_log_layer())
+        .with(tracing_subscriber::fmt::layer().with_writer(std::io::stderr))
+        .init();
     let args: Vec<String> = env::args().skip(1).collect();
     match run(&args).await {
         Ok(()) => ExitCode::SUCCESS,

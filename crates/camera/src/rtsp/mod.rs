@@ -53,6 +53,9 @@ pub struct StreamRequest {
 ///
 /// The login answers the camera's challenge as retina does: a camera that offers only Basic on plain `rtsp://` gets
 /// the password in cleartext (see the crate README).
+///
+/// A keepalive the camera refuses with 401 or 403 ends the stream only if the process installed [`retina_log_layer`]
+/// in its `tracing` subscriber.
 pub fn open_stream(camera: &Camera, request: StreamRequest) -> LiveStream {
     let (video_tx, video) = mpsc::channel(VIDEO_QUEUE);
     let (metadata_tx, metadata) = mpsc::channel(METADATA_QUEUE);

@@ -7,6 +7,7 @@ mod datahub;
 mod device;
 mod error;
 mod live;
+mod logtext;
 mod mqtt;
 mod rtsp;
 mod scan;

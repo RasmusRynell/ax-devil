@@ -13,8 +13,10 @@ depend on it (`scripts/check-architecture.cjs`). Feature `fake` adds `CameraErro
   **Known limitation:** retina 0.4.21 answers whatever challenge the camera sends, so a camera (or anything in the
   path) that offers only Basic on plain `rtsp://` gets the password in cleartext. Retina has no hook to refuse a
   scheme, unlike `Device`; Axis cameras offer Digest by default.
-  Retina only logs a refused keepalive, so `retina_log_layer` (installed by the app's logging) catches that record: a
-  401 or 403 ends the stream as `LoginRejected`, without a reconnect; any other refusal is ignored. It reaches the
+  Retina only logs a refused keepalive, so `retina_log_layer` catches that record: a 401 or 403 ends the stream as
+  `LoginRejected`, without a reconnect; any other refusal is ignored. **A process that opens streams must install the
+  layer in its `tracing` subscriber** (the app's logging and the `probe` example do; the subscriber's `init` must
+  also install the `log` bridge), or a refused keepalive goes unnoticed. It reaches the
   stream through a thread-local set around the one poll of the session that can send a keepalive, so streams cannot
   affect each other.
   Retina types only a response status (`Error::status_code`), so a failure without one is `Unreachable` before the

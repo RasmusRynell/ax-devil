@@ -14,6 +14,7 @@ use tracing::warn;
 
 use crate::device::Device;
 use crate::error::{CameraError, ErrorKind};
+use crate::logtext::escaped;
 use crate::mqtt::{CLIENT_PREFIX, LEGACY_CLIENT_PREFIX, Publisher};
 use crate::target::Broker;
 use crate::vapix::SourceKey;
@@ -255,8 +256,13 @@ fn unavailable_source(wanted: &str, host: &str, available: &[SourceKey]) -> Stri
     };
     let mut listed = match relevant.len() {
         0 => "none".to_owned(),
-        count => relevant[..count.min(SUGGESTED)].join(", "),
+        count => relevant[..count.min(SUGGESTED)]
+            .iter()
+            .map(|key| escaped(key))
+            .collect::<Vec<_>>()
+            .join(", "),
     };
+    let (wanted, host) = (escaped(wanted), escaped(host));
     if relevant.len() > SUGGESTED {
         listed = format!("{listed} (+{} more)", relevant.len() - SUGGESTED);
     }
@@ -290,6 +296,11 @@ mod tests {
             ("a#2", &["a#1", "b#2", "c#3"][..], "b#2".to_owned()),
             ("a#9", &["a#1", "b#2"][..], "a#1, b#2".to_owned()),
             ("a#2", &[][..], "none".to_owned()),
+            (
+                "a#2",
+                &["x\n2026 ERROR forged#2"][..],
+                "x\\n2026 ERROR forged#2".to_owned(),
+            ),
             ("a#2", &many[..], format!("{eight} (+3 more)")),
             ("a#2", &many[..8], eight.to_owned()),
         ] {
