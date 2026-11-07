@@ -96,6 +96,19 @@ describe("what a viewer shows", () => {
     expect(revealShown(tree, viewers, during).collapsed.has("mot/A")).toBe(true);
   });
 
+  it("treats an entry that comes back after another resolution as newly shown, and keeps no row the tree lacks", () => {
+    const mot = (name: string) => [playlist("mot", [entry(`mot/${name}`, name, ["GT"])], false)];
+    const at = (name: string) => [{ item: "mot", entry: `mot/${name}` }];
+    const shown = revealShown(treeFor(mot("A")), at("A"), NO_FOLDS);
+    const collapsed = { ...shown, collapsed: new Set([...shown.collapsed, "mot/A"]) };
+    const other = treeFor(mot("B"));
+    const toB = revealShown(other, at("B"), collapsed);
+    expect([...toB.shown.rows].every((row) => other.some(({ info }) => info.key === row))).toBe(
+      true,
+    );
+    expect(revealShown(treeFor(mot("A")), at("A"), toB).collapsed.has("mot/A")).toBe(false);
+  });
+
   it("unfolds a row with the rows above it", () => {
     const entryRow = tree.find(({ level }) => level === 2)?.info.key ?? "";
     const all = new Set(tree.map(({ info }) => info.key));

@@ -91,10 +91,17 @@ export function revealShown(
   const top = tree.filter(({ level, item }) => level === 1 && items.has(item));
   const entered = tree.filter(({ info }) => info.kind === "entry" && entries.has(info.entry ?? ""));
   const { shown } = folds;
-  // Rows of an item a viewer still shows that are gone while the item resolves again are still shown, not new when
-  // they return.
+  // Rows of an item a viewer still shows that are gone while the item has no content (resolving, or failed) are still
+  // shown, not new when they return; once it resolves, the rows it lacks are gone for good.
   const present = new Set(tree.map(({ info }) => info.key));
-  const held = [...shown.rows].filter((key) => !present.has(key) && items.has(itemOf(key)));
+  const unresolved = new Set(
+    tree
+      .filter(({ info }) => info.kind === "item" && info.status.status !== "Ready")
+      .map(({ item }) => item),
+  );
+  const held = [...shown.rows].filter(
+    (key) => !present.has(key) && items.has(itemOf(key)) && unresolved.has(itemOf(key)),
+  );
   const now = {
     rows: new Set([...top, ...entered].map(({ info }) => info.key).concat(held)),
     sections: new Set(top.map(({ itemKind }) => SECTION_OF[itemKind])),
