@@ -44,9 +44,13 @@ export class Catalogs {
     return this.#listing;
   }
 
-  /** The revision of the document the catalog `id` is drawn from; absent until one compiled. */
+  /**
+   * The revision of the document the catalog `id` is drawn from; absent until one compiled, and while the backend
+   * lists the catalog as gone or with a problem, which it does before it sends the catalog's own update.
+   */
   compiledRevision(id: string): number | undefined {
-    return this.#compiled.get(id);
+    const listed = this.#listing.find((catalog) => catalog.id === id);
+    return listed && listed.problem === undefined ? this.#compiled.get(id) : undefined;
   }
 
   /** The catalog `id`, asking for it first when this session has not. */

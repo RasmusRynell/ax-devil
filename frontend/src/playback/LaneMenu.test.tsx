@@ -160,8 +160,8 @@ describe("lane menu", () => {
     expect(onApplyAll).toHaveBeenCalledTimes(1);
   });
 
-  it("applies nothing while the lane's catalog is loading or failed, and reloads it either way", () => {
-    const { onApplyAll, onReload, show } = setup();
+  it("applies nothing while the lane's catalog is loading or failed", () => {
+    const { onApplyAll, show } = setup();
     const apply = screen.getByRole("button", { name: "Apply to all lanes" }) as HTMLButtonElement;
     expect(apply.disabled).toBe(false);
     show({ catalogRevision: undefined });
@@ -170,7 +170,5 @@ describe("lane menu", () => {
     expect(apply.disabled).toBe(true);
     fireEvent.click(apply);
     expect(onApplyAll).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByRole("button", { name: "Reload" }));
-    expect(onReload).toHaveBeenCalledTimes(1);
   });
 });

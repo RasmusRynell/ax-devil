@@ -369,6 +369,39 @@ fn a_copy_keeps_the_text_of_the_source_is_listed_at_once_and_never_replaces_a_fi
     assert!(Library::built_in().copy(&standard, "x").is_err());
 }
 
+/// Writes `text` over `path` in place and gives it back the modification time it had, as a save that no poll can tell
+/// from the old file (same name, size, time and inode).
+fn overwrite_unnoticed(path: &Path, text: &str) {
+    let modified = fs::metadata(path).unwrap().modified().unwrap();
+    let file = fs::OpenOptions::new().write(true).open(path).unwrap();
+    std::io::Write::write_all(&mut &file, text.as_bytes()).unwrap();
+    file.set_modified(modified).unwrap();
+}
+
+#[test]
+fn a_reread_reads_a_file_the_polls_cannot_tell_has_changed() {
+    let parent = tempfile::tempdir().unwrap();
+    let root = parent.path().join("catalogs");
+    fs::create_dir(&root).unwrap();
+    let before = document("Alpha", 0);
+    fs::write(root.join("a.json"), &before).unwrap();
+    let library = Library::with_folder(root.clone());
+    let id = CatalogId::User("a.json".into());
+    let first = revision(&served(&library, "a.json"));
+
+    overwrite_unnoticed(&root.join("a.json"), &document("Omega", 0));
+
+    assert!(!library.rescan());
+    assert!(!library.rescan());
+    assert_eq!(revision(&served(&library, "a.json")), first);
+    assert!(library.reread(&id));
+    let Served::Document { revision, text } = served(&library, "a.json") else {
+        panic!("served");
+    };
+    assert!(revision > first && text.contains("Omega"));
+    assert!(!library.reread(&id), "nothing changed since");
+}
+
 #[test]
 fn a_copy_judged_at_one_revision_is_refused_once_the_source_has_another() {
     let parent = tempfile::tempdir().unwrap();
@@ -379,7 +412,14 @@ fn a_copy_judged_at_one_revision_is_refused_once_the_source_has_another() {
     let revision = library.document(&first).revision();
 
     assert!(library.copy_at(&standard, 2, "Late").is_err());
-    assert!(library.copy_at(&first, revision + 1, "Late").is_err());
+    // The source is replaced on disk: the copy judged at the old revision is refused, one judged at the new is made.
+    let edited = fs::read_to_string(root.join("mine.json"))
+        .unwrap()
+        .replacen("Mine", "Mind", 1);
+    fs::write(root.join("mine.json"), edited).unwrap();
+    assert!(library.reread(&first));
+    assert!(library.copy_at(&first, revision, "Late").is_err());
+    let revision = library.document(&first).revision();
     assert_eq!(
         fs::read_dir(&root).unwrap().count(),
         1,

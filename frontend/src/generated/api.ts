@@ -1761,6 +1761,15 @@ export type DeleteCatalogRequest = {
 id: string, };
 
 /**
+ * A request to read a catalog file again.
+ */
+export type ReloadCatalogRequest = { 
+/**
+ * The id of the catalog to read again: `built-in:<name>` or `user:<file>`.
+ */
+id: string, };
+
+/**
  * How a viewer steps through the video.
  */
 export type Direction = "forward" | "backward";

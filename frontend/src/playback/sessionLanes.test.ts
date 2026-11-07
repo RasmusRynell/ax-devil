@@ -64,7 +64,11 @@ describe("lanes", () => {
 
   it("holds the revision each lane's catalog compiled from, plain lanes included, and carries the export socket's word to the export", async () => {
     const { session, server, sent } = await setup();
-    server.open(10, [DPM, { label: "v", slot: "v", source: null }]);
+    // The backend lists the catalogs it serves, the built-ins at least.
+    const standard = { id: "built-in:standard", name: "Standard", description: "" };
+    const lanes = [DPM, { label: "v", slot: "v", source: null }];
+    server.say({ ...(opened(10, lanes) as OpenedMessage), catalogs: [standard] });
+    server.timeline();
     expect(session.getSnapshot().lanes.map((lane) => lane.catalogRevision)).toEqual([
       undefined,
       undefined,

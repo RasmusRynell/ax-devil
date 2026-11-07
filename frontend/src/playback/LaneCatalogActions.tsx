@@ -6,6 +6,7 @@ import type {
   CopiedCatalog,
   CopyCatalogRequest,
   DeleteCatalogRequest,
+  ReloadCatalogRequest,
 } from "../generated/api";
 import { Button } from "../kit/Button";
 import { ChoiceDialog } from "../kit/ChoiceDialog";
@@ -21,7 +22,10 @@ export const DEFAULT_CATALOG = "overlays.default_catalog";
 /** What a user catalog's id starts with. */
 export const USER_PREFIX = "user:";
 
-const post = <T,>(url: string, body: CopyCatalogRequest | DeleteCatalogRequest) =>
+const post = <T,>(
+  url: string,
+  body: CopyCatalogRequest | DeleteCatalogRequest | ReloadCatalogRequest,
+) =>
   ask<T>(url, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -139,6 +143,17 @@ export function LaneCatalogActions({
     setRefusal(failed === undefined ? null : `Could not ${what} the catalog: ${failed}`);
   };
 
+  // The backend reads the file again first (an edit the folder polls cannot see is read now), then the lane asks for
+  // the document anew.
+  const reread = (ask: () => void) => {
+    setRefusal(null);
+    void post<undefined>("/api/catalogs/reload", { id: catalog }).then((answer) => {
+      ask();
+      if (!answer.ok && mayChange)
+        setRefusal(`Could not reload the catalog: ${reasonOf(answer.refusal)}`);
+    });
+  };
+
   const copy = (event: FormEvent) => {
     event.preventDefault();
     if (naming === null || revision === undefined) return;
@@ -189,7 +204,7 @@ export function LaneCatalogActions({
           >
             Use as default
           </Button>
-          {onReload && <Button onClick={onReload}>Reload</Button>}
+          {onReload && <Button onClick={() => reread(onReload)}>Reload</Button>}
           {mayChange && (
             <Button
               disabled={revision === undefined || busy}

@@ -279,13 +279,26 @@ impl Library {
         self.poll(false)
     }
 
+    /// Reads the user's file `id` again now, whatever its size, modification time and identity say, and lists what it
+    /// holds; true when that changed what is served. A built-in has nothing to read. Blocks on the disk.
+    pub fn reread(&self, id: &CatalogId) -> bool {
+        let CatalogId::User(file) = id else {
+            return false;
+        };
+        self.poll_by(|folder| folder.reread(file))
+    }
+
     fn poll(&self, first: bool) -> bool {
+        self.poll_by(|folder| folder.poll(first))
+    }
+
+    fn poll_by(&self, poll: impl FnOnce(&mut Folder) -> Vec<Change>) -> bool {
         let Some(folder) = &self.shared.folder else {
             return false;
         };
         // Held until the changes are listed, so two polls never list theirs out of order.
         let mut folder = lock(folder);
-        let changes = folder.poll(first);
+        let changes = poll(&mut folder);
         let mut user = lock(&self.shared.user);
         let mut changed = false;
         for change in changes {

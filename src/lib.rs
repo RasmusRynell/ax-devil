@@ -326,7 +326,11 @@ pub(crate) async fn get_settings(
 /// as it was.
 pub(crate) async fn put_settings(
     principal: Principal,
-    State(AppState { settings, .. }): State<AppState>,
+    State(AppState {
+        settings,
+        catalogs: library,
+        ..
+    }): State<AppState>,
     Json(body): Json<SettingsChange>,
 ) -> Result<Json<SettingsState>, (StatusCode, Json<ApiError>)> {
     let scopes = principal.scopes();
@@ -365,6 +369,15 @@ pub(crate) async fn put_settings(
                 error.detail().to_owned(),
             ));
         }
+    }
+    let stored = settings.state().resolved(catalogs::DEFAULT_SETTING);
+    if let Some(reason) = routes::catalogs::default_refusal(&library, stored.as_ref(), &body.values)
+    {
+        return Err(failure(
+            StatusCode::UNPROCESSABLE_ENTITY,
+            catalogs::DEFAULT_SETTING,
+            reason,
+        ));
     }
     let change = settings::Change {
         values: body.values,

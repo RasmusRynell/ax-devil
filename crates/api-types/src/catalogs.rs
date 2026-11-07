@@ -42,3 +42,10 @@ pub struct DeleteCatalogRequest {
     /// The id of the user catalog to delete, `user:<file>`.
     pub id: String,
 }
+
+/// A request to read a catalog file again.
+#[derive(Serialize, Deserialize, TS)]
+pub struct ReloadCatalogRequest {
+    /// The id of the catalog to read again: `built-in:<name>` or `user:<file>`.
+    pub id: String,
+}
