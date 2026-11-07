@@ -69,6 +69,23 @@ module.exports.objects = async (window, { setTheme, shoot }) => {
   await clearSearch();
   await wait(`!(${noted("No object has state in this frame")})`);
 
+  // A field only the inspection has is searched through the backend, which reads it from the sample. Together with an id,
+  // the result is one object of the frame, which the unfiltered list is not.
+  const last = inFrame.at(-1).id;
+  await js(`document.querySelector('${PANEL} input:not([type=radio])').focus()`);
+  window.webContents.insertText(`visibility_ratio>0 id:${last}`);
+  await shows(1, inFrame.length);
+  assert.deepEqual(
+    (await rows()).map((row) => row.id),
+    [last],
+  );
+  for (const theme of THEMES) {
+    await setTheme(theme);
+    await shoot(`objects-search-${theme}.png`);
+  }
+  await clearSearch();
+  await shows(inFrame.length, inFrame.length);
+
   // Dragging the divider on the panel's left edge left widens it, and it keeps that width through a close.
   const width = () => js(`document.querySelector('${PANEL}').getBoundingClientRect().width`);
   const grip = await js(`(() => {

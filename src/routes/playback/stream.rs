@@ -239,6 +239,21 @@ impl<I: Incoming> Playing<'_, I> {
                     .ask(self.lanes.overlays(), source, data_revision, sample, entity);
                 Ok(())
             }
+            Some(Ok(ClientMessage::InspectFields {
+                source,
+                data_revision,
+                sample,
+                paths,
+            })) => {
+                self.inspections.ask_fields(
+                    self.lanes.overlays(),
+                    source,
+                    data_revision,
+                    sample,
+                    paths,
+                );
+                Ok(())
+            }
             Some(Ok(ClientMessage::Open { .. })) => Err(End::Failed(UserError::new(
                 ErrorCode::ProtocolViolation,
                 "The video is already open",

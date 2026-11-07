@@ -6,7 +6,7 @@
 use std::{borrow::Cow, cmp::Ordering};
 
 use foundation::{CancelToken, Cancelled};
-use scene::OperationKind;
+use scene::{OperationKind, inspection::path_names};
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
@@ -437,7 +437,7 @@ impl Needle {
             Some(path) => record
                 .fields
                 .iter()
-                .filter(|(key, _)| path_names(path, key))
+                .filter(|(key, _)| matches!(path_names(path, std::iter::once(*key)), Ok(true)))
                 .flat_map(|(_, values)| values)
                 .any(|value| self.compares(value)),
         };
@@ -449,15 +449,6 @@ impl Needle {
     fn compares(&self, value: &str) -> bool {
         self.op == Op::Eq && lower(value) == self.value
     }
-}
-
-/// Whether `path` (lowercase) names `key`: it equals the key or a trailing run of its dotted parts, ignoring case.
-fn path_names(path: &str, key: &str) -> bool {
-    let key = lower(key);
-    key == path
-        || key
-            .strip_suffix(path)
-            .is_some_and(|front| front.ends_with('.'))
 }
 
 fn lower(text: &str) -> Cow<'_, str> {

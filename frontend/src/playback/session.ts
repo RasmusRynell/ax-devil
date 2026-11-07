@@ -17,6 +17,7 @@ import type { LaneControl, LaneFrame, LaneSettings, Selection, Surface } from ".
 import { dataWindow, sampleBudgetBytes } from "./data/dataWindow";
 import { FrameFailures } from "./failures";
 import type { FileScope } from "./fileScope";
+import type { FrameFields } from "./frameFields";
 import { followClock } from "./follow";
 import { FrameBuffer, windowSize } from "./FrameBuffer";
 import { DataWait, displaySource } from "./frameSource";
@@ -145,6 +146,11 @@ export class PlaybackSession implements LaneControl {
   /** The lists of the lanes' whole files. */
   get files(): FileScope {
     return this.#data.files;
+  }
+
+  /** The leaves of the shown frames' objects at the paths a search names. */
+  get fields(): FrameFields {
+    return this.#data.fields;
   }
 
   /** What `lane` drew on the frame on screen, which Frame scope lists. */

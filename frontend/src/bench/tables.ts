@@ -94,6 +94,8 @@ export function plan(settings: Settings): TableScenario[] {
   ];
 }
 
+const NO_LEAVES = { state: "ready", leaves: new Map() } as const;
+
 /** A viewer 1280 x 720 with the panel in a column beside the picture, as it is in a wide window. */
 class Rig {
   readonly host = document.createElement("div");
@@ -120,6 +122,8 @@ class Rig {
     this.#ring = ringOf(objects);
     this.#source = {
       files: new FakeFiles(scenario.scope === "File" ? scenario.rows : 0),
+      // The scenarios search nothing the backend reads.
+      fields: { ask: () => {}, subscribe: () => () => {}, view: () => NO_LEAVES },
       shown: () => this.#ring[this.#current],
       frameTime: () => undefined,
       seek: () => {},

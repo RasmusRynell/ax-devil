@@ -6,15 +6,20 @@ import type { LaneFrame, Selection } from "../playback/contract";
 import { FRESH_MEMORY } from "../playback/fields";
 import { LANE_SETTINGS } from "../playback/fakeOpened";
 import { FileScope } from "../playback/fileScope";
+import { FrameFields } from "../playback/frameFields";
 import { LaneSet } from "../playback/lanes";
-import type { ClientMessage, LaneStatusWire } from "../playback/protocol";
+import type { ClientMessage, LaneStatusWire, LeafWire } from "../playback/protocol";
 import { INITIAL_VIEW, type PlaybackView } from "../playback/view";
 import { fullSample } from "../present/fixtures";
+import { names } from "../search/match";
 import { freshEvents, FRESH_LIST } from "./listState";
 import { MediaToolsPanel } from "./MediaToolsPanel";
 import { EMPTY, topObject, type PageStack } from "./pageStack";
+import { frameObjects } from "./objects";
 
 /** What the objects panel's tests share: a viewer of a lane or two, the real File scope client over a recording socket, and queries of the list. */
+
+const float = (value: number): LeafWire => ({ kind: "float", value });
 
 const READY: Extract<LaneStatusWire, { status: "Ready" }> = {
   status: "Ready",
@@ -113,11 +118,17 @@ export function mount(
     selection = null,
     first,
     frame = FRAME,
+    leaves = {},
+    unanswered: held = false,
   }: Partial<{
     second: typeof FRAME;
     selection: Selection;
     first: PageStack;
     frame: typeof FRAME;
+    /** Leaves the backend finds in objects beyond their score, confidence and motion, by object id and `group.path`. */
+    leaves: { [id: string]: [string, LeafWire][] };
+    /** The backend never answers a request for leaves. */
+    unanswered: boolean;
   }> = {},
 ) {
   vi.useFakeTimers();
@@ -132,23 +143,55 @@ export function mount(
   lanes.setStatus(0, READY);
   if (second) lanes.setStatus(1, READY);
   const sent: ClientMessage[] = [];
-  const files = new FileScope(
-    lanes,
-    (message) => sent.push(message),
-    (run, ms) => {
-      const timer = setTimeout(run, ms);
-      return () => clearTimeout(timer);
-    },
-  );
+  const after = (run: () => void, ms: number) => {
+    const timer = setTimeout(run, ms);
+    return () => clearTimeout(timer);
+  };
+  const files = new FileScope(lanes, (message) => sent.push(message), after);
   let sample = frame;
+  let sampleNumber = 0;
+  // A frame is the same object for as long as the sample is, as the viewer's is.
+  let unanswered = held;
+  const drawn = new Map<string, LaneFrame>();
+  const laneFrame = (lane: number): LaneFrame => {
+    const key = `${lane}:${sampleNumber}`;
+    const held = drawn.get(key);
+    if (held) return held;
+    const made = {
+      source: 0,
+      dataRevision: 1,
+      sample: sampleNumber,
+      columns: lane === 1 && second ? second : sample,
+      classMask: { enabled: new Uint32Array(sample.maskWords), options: 0 },
+      filter: null,
+    } as unknown as LaneFrame;
+    drawn.set(key, made);
+    return made;
+  };
+  // The backend reads the leaves of the frame's objects: their score, confidence and motion, and what the test adds.
+  const fields: FrameFields = new FrameFields((message) => {
+    sent.push(message);
+    if (message.type !== "InspectFields" || unanswered) return;
+    const objects = frameObjects(laneFrame(0)).flatMap((object) => {
+      const own: [string, LeafWire | null][] = [
+        ["classification.score", object.score === null ? null : float(object.score)],
+        ["classification.confidence", object.confidence === null ? null : float(object.confidence)],
+        ["motion.state", object.motion === "" ? null : { kind: "text", value: object.motion }],
+        ...(leaves[object.id] ?? []),
+      ];
+      const items = own.flatMap(([key, value]) =>
+        value !== null && message.paths.some((path) => names(path.toLowerCase(), key))
+          ? [{ key, value }]
+          : [],
+      );
+      return items.length > 0 ? [{ entity: object.id, items }] : [];
+    });
+    fields.receive({ ...message, type: "InspectedFields", objects });
+  }, after);
   const source = {
     files,
-    shown: (lane: number) =>
-      ({
-        columns: lane === 1 && second ? second : sample,
-        classMask: { enabled: new Uint32Array(sample.maskWords), options: 0 },
-        filter: null,
-      }) as unknown as LaneFrame,
+    fields,
+    shown: laneFrame,
     frameTime: (frame: number) => frame * 500_000,
     seek: vi.fn(),
   };
@@ -188,6 +231,7 @@ export function mount(
   /** The frame on screen changes, as when the video plays. */
   const play = (next: typeof FRAME) => {
     sample = next;
+    sampleNumber++;
     shown.rerender(panel(++playhead));
   };
   const queries = () => sent.filter((message) => message.type === "FileQuery");
@@ -296,6 +340,10 @@ export function mount(
     selected,
     outside,
     play,
+    /** Stops or resumes the backend's answers to requests for leaves. */
+    hold: (on: boolean) => {
+      unanswered = on;
+    },
     ...shown,
   };
 }

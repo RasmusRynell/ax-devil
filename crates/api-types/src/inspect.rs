@@ -32,15 +32,33 @@ pub struct FieldWire {
     pub fraction: Option<f64>,
 }
 
+/// One leaf of an object a search compares, at the key a search names it by.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, TS)]
+pub struct ItemWire {
+    /// The lower-case group and the path, dotted: `debug.vendor.id`; a colour adds `rgb.r`, `rgb.g` and `rgb.b`.
+    pub key: String,
+    /// The leaf.
+    pub value: Leaf,
+}
+
+/// The leaves of one object a search asked for.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, TS)]
+pub struct ObjectItemsWire {
+    /// The object's id.
+    pub entity: String,
+    /// Its leaves at the paths asked for; repeated keys keep every value.
+    pub items: Vec<ItemWire>,
+}
+
 /// What the backend knows of one object of one sample.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, TS)]
 #[serde(tag = "state")]
 pub enum InspectionWire {
     /// The object's fields, in display order.
     Found {
-        /// At most 4096; a text is cut at 4096 characters.
+        /// At most 4096, and 8 MiB of paths and texts, with every text whole.
         fields: Vec<FieldWire>,
-        /// Whether fields were left out or a text was cut.
+        /// Whether fields were left out.
         truncated: bool,
     },
     /// The sample has no object with this id.

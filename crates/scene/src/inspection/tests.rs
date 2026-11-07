@@ -222,26 +222,27 @@ fn queries_address_fields_by_group_and_path_and_colours_add_their_channels() {
     let debug = vec![pair("vendor", Value::Map(vec![pair("id", Value::Int(7))]))];
     let observation = observation.with_details(Vec::new(), debug).expect("ok");
 
-    let (fields, _) = entity_fields(&entity(observation), MAX_FIELDS);
-    let items: Vec<_> = fields
-        .iter()
-        .flat_map(InspectionField::query_items)
-        .map(|item| {
-            let value = match item.value {
-                Leaf::Int(whole) => whole.to_string(),
-                Leaf::Float(number) => number.to_string(),
-                other => format!("{other:?}"),
-            };
-            format!("{}.{} = {value}", item.group.name(), item.path.join("."))
-        })
-        .filter(|item| {
-            [
-                "classification.score",
-                "classification.attributes",
-                "debug.",
-            ]
-            .iter()
-            .any(|wanted| item.starts_with(wanted))
+    // A path names a key by its trailing parts, in any case; `colors.red` does not name the channels below it.
+    let paths = [
+        "Classification.Score",
+        "colors.red",
+        "r",
+        "g",
+        "b",
+        "vendor.id",
+    ]
+    .map(str::to_lowercase);
+    let budget = &mut Budget {
+        leaves: 1000,
+        bytes: 10_000,
+    };
+    let items: Vec<_> = query_leaves(&entity(observation), &paths, budget)
+        .expect("within budget")
+        .into_iter()
+        .map(|(key, value)| match value {
+            Leaf::Int(whole) => format!("{key} = {whole}"),
+            Leaf::Float(number) => format!("{key} = {number}"),
+            other => format!("{key} = {other:?}"),
         })
         .collect();
 
@@ -288,6 +289,140 @@ fn a_polygon_lists_its_bounds_and_point_count_and_a_timestamp_is_a_datetime() {
 }
 
 #[test]
+fn a_search_collects_only_what_it_names_and_refuses_to_spend_more_than_its_budget() {
+    // One long parent key above many scalar children: every leaf's key would repeat the parent's.
+    let parent = "p".repeat(65_536);
+    let children = (0..5_000).map(|n| Value::Map(vec![pair("id", Value::Int(n))]));
+    let debug = vec![(Name::Owned(parent), Value::List(children.collect()))];
+    let observation = observation(SceneTime::Frame(0))
+        .with_details(Vec::new(), debug)
+        .expect("ok");
+    let entity = entity(observation);
+    let search = |path: &str, leaves, bytes| {
+        query_leaves(&entity, &[path.to_owned()], &mut Budget { leaves, bytes })
+    };
+
+    // Nothing is collected for a path no leaf has, so no byte is spent.
+    assert_eq!(search("nothing", 1_000_000, 0), Ok(Vec::new()));
+    // Each match costs its whole key, and the search is refused rather than cut.
+    assert_eq!(
+        search("7.id", 1_000_000, 1_000_000).map(|found| found.len()),
+        Ok(1)
+    );
+    assert_eq!(search("id", 1_000_000, 1_000_000), Err(OverBudget));
+    // Walking unwanted leaves is bounded too.
+    assert_eq!(search("nothing", 100, 0), Err(OverBudget));
+}
+
+#[test]
+fn an_inspection_lists_no_more_bytes_of_paths_than_its_budget_however_long_a_key_over_many_leaves()
+{
+    let parent = "p".repeat(3 * 1024 * 1024);
+    let children = (0..4_096).map(Value::Int).collect();
+    let debug = vec![(Name::Owned(parent), Value::List(children))];
+    let observation = observation(SceneTime::Frame(0))
+        .with_details(Vec::new(), debug)
+        .expect("ok");
+
+    let (fields, cut) = entity_fields(&entity(observation), MAX_FIELDS);
+
+    let listed = fields
+        .iter()
+        .filter(|f| f.group == FieldGroup::Debug)
+        .count();
+    assert_eq!(
+        (listed, cut),
+        (2, true),
+        "two copies of the key fit, the rest are left out"
+    );
+}
+
+#[test]
+fn a_scalar_text_beyond_the_budget_is_left_out_and_a_search_for_it_is_refused() {
+    let long = "x".repeat(MAX_INSPECTION_BYTES + 1);
+    let debug = vec![
+        pair("long", Value::Str(long.into())),
+        pair("short", Value::Int(1)),
+    ];
+    let observation = observation(SceneTime::Frame(0))
+        .with_details(Vec::new(), debug)
+        .expect("ok");
+    let entity = entity(observation);
+
+    let (fields, cut) = entity_fields(&entity, MAX_FIELDS);
+    let debug: Vec<_> = fields
+        .iter()
+        .filter(|f| f.group == FieldGroup::Debug)
+        .collect();
+    assert!(cut && debug.len() == 1 && debug[0].path == ["short"]);
+
+    let search = |path: &str| {
+        let budget = &mut Budget {
+            leaves: 100,
+            bytes: 1_000,
+        };
+        query_leaves(&entity, &[path.to_owned()], budget).map(|found| found.len())
+    };
+    assert_eq!(search("long"), Err(OverBudget));
+    assert_eq!(search("short"), Ok(1));
+}
+
+#[test]
+fn a_path_with_a_sigma_is_refused_for_a_key_too_long_to_lowercase_whole() {
+    let debug = vec![(
+        Name::Owned("p".repeat(3 * 1024 * 1024)),
+        Value::List((0..4_096).map(Value::Int).collect()),
+    )];
+    let observation = observation(SceneTime::Frame(0))
+        .with_details(Vec::new(), debug)
+        .expect("ok");
+    let budget = &mut Budget {
+        leaves: 100_000,
+        bytes: 1_000_000,
+    };
+
+    let refused = query_leaves(&entity(observation), &["σ".to_owned()], budget);
+
+    assert_eq!(refused.map(|found| found.len()), Err(OverBudget));
+}
+
+#[test]
+fn a_refusal_stays_when_the_leaf_that_caused_it_is_also_a_text_beyond_the_budget() {
+    let key = Name::Owned("p".repeat(query::MAX_SIGMA_KEY_BYTES + 1));
+    let text = vec![pair("t", Value::Str("x".repeat(5_000).into()))];
+    let observation = observation(SceneTime::Frame(0))
+        .with_details(Vec::new(), vec![(key, Value::Map(text))])
+        .expect("ok");
+    let budget = &mut Budget {
+        leaves: 100,
+        bytes: 1_000,
+    };
+
+    let refused = query_leaves(&entity(observation), &["σ".to_owned()], budget);
+
+    assert_eq!(refused.map(|found| found.len()), Err(OverBudget));
+}
+
+#[test]
+fn a_final_sigma_lowercases_with_its_neighbours_as_the_key_does() {
+    let debug = vec![pair("AΣ", Value::Int(7))];
+    let observation = observation(SceneTime::Frame(0))
+        .with_details(Vec::new(), debug)
+        .expect("ok");
+    let entity = entity(observation);
+    let found = |path: &str| {
+        let budget = &mut Budget {
+            leaves: 100,
+            bytes: 1000,
+        };
+        query_leaves(&entity, &[path.to_owned()], budget).map(|found| found.len())
+    };
+
+    assert_eq!(found("debug.aς"), Ok(1));
+    assert_eq!(found("debug.aσ"), Ok(0));
+}
+
+#[test]
 fn an_integer_reaches_the_wire_exactly_and_is_not_a_float() {
     let source: Fields = vec![
         pair("big", Value::Int(i64::MAX)),
@@ -318,11 +453,11 @@ fn an_integer_reaches_the_wire_exactly_and_is_not_a_float() {
 }
 
 #[test]
-fn the_field_limit_and_the_text_limit_say_they_cut() {
-    let long = "é".repeat(MAX_TEXT_CHARS + 1);
+fn a_text_is_kept_whole_and_only_the_field_limit_says_it_cut() {
+    let long = "é".repeat(10_000);
     let source: Fields = vec![
         pair("a", Value::Float(f64::NAN)),
-        (Name::Owned("b".repeat(MAX_TEXT_CHARS + 1)), Value::Int(1)),
+        (Name::Owned("b".repeat(10_000)), Value::Int(1)),
         pair("long", Value::Str(long.clone().into())),
     ];
     let entity = entity(
@@ -337,17 +472,14 @@ fn the_field_limit_and_the_text_limit_say_they_cut() {
         .filter(|f| f.group == FieldGroup::Debug)
         .collect();
 
-    assert!(cut, "texts were cut");
+    assert!(!cut, "nothing was left out");
     assert_eq!(
         debug[0].value,
         Leaf::Text("NaN".into()),
         "a number the wire cannot carry"
     );
-    assert_eq!(debug[1].path[0].chars().count(), MAX_TEXT_CHARS);
-    assert_eq!(
-        debug[2].value,
-        Leaf::Text(long.chars().take(MAX_TEXT_CHARS).collect())
-    );
+    assert_eq!(debug[1].path[0].chars().count(), 10_000);
+    assert_eq!(debug[2].value, Leaf::Text(long));
 
     let (few, cut) = entity_fields(&entity, 2);
     assert!(cut && few.len() == 2 && few[0].group == FieldGroup::Geometry);

@@ -22,7 +22,7 @@ pub enum Leaf {
     ),
     /// A finite number.
     Float(f64),
-    /// Text, at most [`MAX_TEXT_CHARS`](super::MAX_TEXT_CHARS) characters.
+    /// Text, whole.
     Text(String),
 }
 

@@ -8,6 +8,7 @@
 import { reasonOf } from "../errors";
 import type { LiveOpenedWire } from "../generated/api";
 import type { FileScope } from "../playback/fileScope";
+import type { FrameFields } from "../playback/frameFields";
 import type {
   LaneDisplay,
   LaneFrame,
@@ -151,6 +152,11 @@ export class LiveSession implements LaneDisplay {
   /** The lists of the lanes' whole files; a live stream has none, but the objects panel reads it. */
   get files(): FileScope {
     return this.#data.files;
+  }
+
+  /** The leaves of the shown frames' objects at the paths a search names. */
+  get fields(): FrameFields {
+    return this.#data.fields;
   }
 
   /** What `lane` drew on the frame on screen. */

@@ -155,6 +155,7 @@ pub(super) async fn open_video<T: Send + 'static>(
                     | ClientMessage::LanePolicy { .. }
                     | ClientMessage::Catalog { .. }
                     | ClientMessage::Inspect { .. }
+                    | ClientMessage::InspectFields { .. }
                     | ClientMessage::Export { .. }
                     | ClientMessage::CancelExport { .. }
                     | ClientMessage::FileQuery { .. }

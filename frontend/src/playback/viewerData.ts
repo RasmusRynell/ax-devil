@@ -4,6 +4,7 @@ import { Catalogs } from "./catalogs";
 import { FileScope } from "./fileScope";
 import { FrameMaps } from "./data/FrameMaps";
 import { SampleStore } from "./data/SampleStore";
+import { FrameFields } from "./frameFields";
 import { Inspections } from "./inspection";
 import { LaneCatalogs } from "./laneCatalog";
 import { LaneData, type LaneMatch } from "./laneData";
@@ -29,6 +30,8 @@ export class ViewerData {
   samples = new SampleStore(0);
   readonly catalogs: Catalogs;
   readonly inspections: Inspections;
+  /** The leaves of the shown frames' objects that a search names. */
+  readonly fields: FrameFields;
   /** The lists of the lanes' whole files. */
   readonly files: FileScope;
   readonly #laneCatalogs: LaneCatalogs;
@@ -56,6 +59,7 @@ export class ViewerData {
     this.catalogs = new Catalogs((id) => send({ type: "Catalog", id }));
     this.#laneCatalogs = new LaneCatalogs(this.catalogs, () => this.#fallback);
     this.inspections = new Inspections(send);
+    this.fields = new FrameFields(send, after);
   }
 
   get draw(): LaneData | undefined {
@@ -137,6 +141,7 @@ export class ViewerData {
     this.#fallback = opened.lane_defaults.catalog;
     this.catalogs.open(opened.catalogs);
     this.inspections.reconnect();
+    this.fields.reconnect();
     this.files.reopen();
     opened.lanes.forEach((lane: LaneInfo, index) => {
       if (before[index]?.label !== lane.label || before[index]?.source !== lane.source)
@@ -162,6 +167,7 @@ export class ViewerData {
   /** Takes a message that only changes the data held (an inspector answer, the data window, evictions, a lane's problem, file lists); false for any other. */
   receive(message: ServerMessage): boolean {
     if (message.type === "Inspected") this.inspections.receive(message);
+    else if (message.type === "InspectedFields") this.fields.receive(message);
     else if (message.type === "DataWindow") this.window(message.first, message.last);
     else if (message.type === "Evict") this.evict(message);
     else if (message.type === "LaneProblem") this.#lanes.setProblem(message.lane, message.reason);

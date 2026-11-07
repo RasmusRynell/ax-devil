@@ -1,10 +1,11 @@
 /** The objects of the frame on screen as Frame scope lists them: found in the lane's drawn sample, searched and sorted here. */
 
-import type { FileSortKey, FileSortWire } from "../generated/api";
+import type { FileSortKey, FileSortWire, SearchWire } from "../generated/api";
 import type { LaneFrame } from "../playback/contract";
+import type { FrameLeaves } from "../playback/frameFields";
 import { filterRows } from "../present";
 import { MOTION_STATES } from "../present/columns";
-import { names, type SearchRecord } from "../search/match";
+import type { SearchRecord } from "../search/match";
 
 /** One object of the frame on screen. */
 export type FrameObject = {
@@ -64,30 +65,31 @@ export function frameObjects(frame: LaneFrame | undefined): FrameObject[] {
   }));
 }
 
-/** The keys a Frame object's search record can have, as the inspection names them. */
-const KEY = {
-  id: "id",
-  class: "class",
-  motion: "motion.state",
-  score: "classification.score",
-  confidence: "classification.confidence",
-} as const;
+/** The paths every Frame object has whatever the search, so that a search naming only these asks the backend nothing. */
+const LIGHT_PATHS: ReadonlySet<string> = new Set(["id", "class"]);
 
-/** Whether `path` names a field a Frame object's search record can carry; for any other, its absence is unknown. */
-export const inRecord = (path: string): boolean =>
-  Object.values(KEY).some((key) => names(path.toLowerCase(), key));
+/**
+ * The field paths `search` names, in lower case without repeats, when any of them needs the object's inspected leaves
+ * (`debug.vendor.id`, `score`, `rgb.r`); none when it names only `id` and `class`. Once the leaves are read every
+ * path is searched in them, `id` and `class` too: `id` also names `debug.vendor.id`.
+ */
+export function inspectedPaths(search: SearchWire): string[] {
+  const paths = search.groups
+    .flat()
+    .flatMap(({ path }) => (path === null ? [] : [path.toLowerCase()]));
+  return paths.every((path) => LIGHT_PATHS.has(path)) ? [] : [...new Set(paths)];
+}
 
-/** What a search looks at in an object: fields keyed as the inspection keys them, and its id, class and motion state as text. */
-export function recordOf(object: FrameObject): SearchRecord {
-  const { id, className, motion, score, confidence } = object;
-  const fields: { [path: string]: (string | number)[] } = {
-    [KEY.id]: [id],
-    [KEY.class]: [className],
+/**
+ * What a search looks at in an object: its id and class, then the leaves the backend read at the paths the search
+ * names (`leaves`, keyed by `group.path`); and its id, class and motion state as text.
+ */
+export function recordOf(object: FrameObject, leaves?: FrameLeaves | null): SearchRecord {
+  const { id, className, motion } = object;
+  return {
+    fields: { ...leaves?.get(id), id: [id], class: [className] },
+    text: motion === "" ? [id, className] : [id, className, motion],
   };
-  if (motion !== "") fields[KEY.motion] = [motion];
-  if (score !== null) fields[KEY.score] = [score];
-  if (confidence !== null) fields[KEY.confidence] = [confidence];
-  return { fields, text: motion === "" ? [id, className] : [id, className, motion] };
 }
 
 /** Ids order with digit runs by value, so `id9` comes before `id10`. */

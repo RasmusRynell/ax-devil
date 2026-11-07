@@ -1,5 +1,5 @@
 use super::*;
-use crate::inspect::FieldWire;
+use crate::inspect::{FieldWire, ItemWire};
 use scene::{
     OperationKind,
     inspection::{FieldGroup, FieldOrigin, Leaf},
@@ -189,6 +189,40 @@ fn inspection_and_catalog_listing_use_the_names_the_frontend_parses() {
             ]}
         })
     );
+    let search = json!({
+        "type": "InspectFields", "source": 1, "data_revision": 2, "sample": 3, "paths": ["debug.id"]
+    });
+    assert_eq!(
+        serde_json::from_value::<ClientMessage>(search).unwrap(),
+        ClientMessage::InspectFields {
+            source: 1,
+            data_revision: 2,
+            sample: 3,
+            paths: vec!["debug.id".into()]
+        }
+    );
+    let leaves = ServerMessage::InspectedFields {
+        source: 1,
+        data_revision: 2,
+        sample: 3,
+        paths: vec!["debug.id".into()],
+        objects: Some(vec![ObjectItemsWire {
+            entity: "7".into(),
+            items: vec![ItemWire {
+                key: "debug.id".into(),
+                value: Leaf::Int(i64::MAX),
+            }],
+        }]),
+    };
+    assert_eq!(
+        serde_json::to_value(&leaves).unwrap(),
+        json!({
+            "type": "InspectedFields", "source": 1, "data_revision": 2, "sample": 3, "paths": ["debug.id"],
+            "objects": [{"entity": "7", "items": [
+                {"key": "debug.id", "value": {"kind": "int", "value": "9223372036854775807"}}
+            ]}]
+        })
+    );
     for (inspection, state) in [
         (InspectionWire::Absent, "Absent"),
         (InspectionWire::Unavailable, "Unavailable"),
@@ -263,7 +297,7 @@ fn opened_and_lane_status_carry_the_source_and_data_revision() {
         }),
     };
     let json = serde_json::to_value(&opened).unwrap();
-    assert_eq!(json["protocol"], 9);
+    assert_eq!(json["protocol"], PLAYBACK_PROTOCOL);
     assert_eq!(
         json["video_pts"],
         json!({"time_base": [1, 90_000], "first_pts": 7_200})

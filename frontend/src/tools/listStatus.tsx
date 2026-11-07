@@ -38,6 +38,15 @@ export function noticeOf(
   return missing.length > 0 ? `No object has ${missing.join(", ")} in this frame` : null;
 }
 
+/** What replaces the rows of Frame scope while the leaves a search needs are awaited, or will not come. */
+export function leavesMessage(state: "pending" | "unavailable"): ReactNode {
+  return (
+    <p role="status" aria-busy={state === "pending"} className="m-0 p-m text-muted">
+      {state === "pending" ? "Loading…" : "Details are not available"}
+    </p>
+  );
+}
+
 /** What replaces the rows while the list has none to show, or `null` when it has. */
 export function listMessage(
   scope: Scope,
