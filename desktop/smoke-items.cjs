@@ -5,6 +5,7 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs/promises");
 const os = require("node:os");
 const path = require("node:path");
+const fit = require("./fit.cjs");
 const { SCREENSHOTS, SMOKE_ROOT, frames, page, setView } = require("./smoke-kit.cjs");
 
 const FIXTURE = path.join(SMOKE_ROOT, "fixtures/video/long_gop_h264.mp4");
@@ -49,6 +50,30 @@ module.exports.items = async (window) => {
       await wait("document.querySelector('[data-cursor-id=\"sidebar:add-video\"]')");
       await js("document.querySelector('[data-cursor-id=\"sidebar:add-video\"]').click()");
       await wait("document.querySelector('dialog[open] input')");
+      // The local window may browse for the video and for the blank overlay row's file. With a blank path the dialog
+      // shows its failure and still fits the smallest window at 200% zoom.
+      await wait(
+        "document.querySelector('dialog[open] [aria-label=\"Choose overlay file\"]') && document.querySelector('dialog[open] [aria-label=\"Choose video file\"]')",
+      );
+      for (const [shown, zoom] of [
+        ["light", 1],
+        ["dark", 2],
+      ]) {
+        nativeTheme.themeSource = shown;
+        await wait(`matchMedia('(prefers-color-scheme: ${shown})').matches`);
+        await setView(window, [640, 480], zoom);
+        assert.deepEqual(
+          await js(`(${fit.dialog.toString()})()`),
+          [],
+          `The local Add video dialog must fit the 640x480 window at ${zoom * 100}% zoom`,
+        );
+      }
+      await setView(window, [1100, 720], 1);
+      for (const shown of ["light", "dark"]) {
+        nativeTheme.themeSource = shown;
+        await wait(`matchMedia('(prefers-color-scheme: ${shown})').matches`);
+        await shoot(`add-video-local-${shown}.png`);
+      }
       await js(`(() => {
         const input = document.querySelector('dialog[open] input');
         Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(input, ${JSON.stringify(path.join(folder, name))});

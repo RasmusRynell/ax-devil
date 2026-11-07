@@ -8,6 +8,25 @@ export const FILE_CHECK_DELAY_MS = 300;
 const NONE: ReadonlyMap<string, string> = new Map();
 
 /**
+ * What the backend host finds wrong with each of `paths` now, by path; a path without an entry is readable. A backend
+ * that cannot be asked, or an aborted `signal`, leaves every path without a problem: the add judges the files itself.
+ */
+export async function checkFiles(
+  paths: readonly string[],
+  signal?: AbortSignal,
+): Promise<ReadonlyMap<string, string>> {
+  const checks = await apiFetch("/api/files/check", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ paths }),
+    signal,
+  })
+    .then((response) => (response.ok ? (response.json() as Promise<FileCheck[]>) : []))
+    .catch((): FileCheck[] => []);
+  return new Map(checks.flatMap((check) => (check.problem ? [[check.path, check.problem]] : [])));
+}
+
+/**
  * What the backend host finds wrong with each of `paths` (blank ones left out by the caller), asked once typing
  * pauses. A change drops the question in flight and the last answer, so an answer is never used for paths that have
  * moved on, nor for ones that moved back. `checking` holds from a change until its answer; a backend that cannot be asked leaves every path without a problem, and the
@@ -30,21 +49,9 @@ export function useFileProblems(paths: readonly string[]): {
     if (asked.length === 0) return;
     const request = new AbortController();
     const timer = setTimeout(() => {
-      void apiFetch("/api/files/check", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ paths: asked }),
-        signal: request.signal,
-      })
-        .then((response) => (response.ok ? (response.json() as Promise<FileCheck[]>) : []))
-        .catch((): FileCheck[] => [])
-        .then((checks) => {
-          if (request.signal.aborted) return;
-          const problems = checks.flatMap((check) =>
-            check.problem ? [[check.path, check.problem] as const] : [],
-          );
-          setAnswer({ key, problems: new Map(problems) });
-        });
+      void checkFiles(asked, request.signal).then((problems) => {
+        if (!request.signal.aborted) setAnswer({ key, problems });
+      });
     }, FILE_CHECK_DELAY_MS);
     return () => {
       clearTimeout(timer);

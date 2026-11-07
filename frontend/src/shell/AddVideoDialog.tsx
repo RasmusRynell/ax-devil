@@ -5,9 +5,16 @@ import { Dialog, DialogBody } from "../kit/Dialog";
 import { TextField } from "../kit/Fields";
 import { HandlersFailure, useHandlers } from "../resolvers/useHandlers";
 import { useCommand } from "../session/session";
-import { OverlayRow, fileName, undecided, type OverlayEntry, type OverlayRead } from "./OverlayRow";
+import {
+  OverlayRow,
+  fileName,
+  undecided,
+  withPath,
+  type OverlayEntry,
+  type OverlayRead,
+} from "./OverlayRow";
 import { Refusal } from "./SettingField";
-import { useFileProblems } from "./useFileProblems";
+import { checkFiles, useFileProblems } from "./useFileProblems";
 import { useServerKind } from "./windowBridge";
 
 const blankEntry = (key: number): OverlayEntry => ({ key, path: "", picked: "" });
@@ -22,9 +29,10 @@ export interface VideoDraft {
 /**
  * Asks for a video on the machine that runs the backend, by its path, with a name that is the file's when left blank,
  * and any number of overlay files, each with the handler that reads it and the options that handler declares. The
- * desktop's own window can choose the video in a file dialog; a remote server's window or a browser types the path. A
- * blank overlay is left out. OK waits for a video that the backend finds readable, as it does each overlay, and a
- * handler for every overlay; the backend's intake judges the options, and its refusal stays here. `initial` fills the
+ * desktop's own window can choose the video and each overlay in a file dialog; a remote server's window or a browser
+ * types the path. A blank overlay is left out. OK waits for a video that the backend finds readable, as it does each
+ * overlay, and a handler for every overlay; it asks the backend about the files once more before it sends, and a file
+ * gone meanwhile stays here as the reason. The backend's intake judges the options, and its refusal stays here. `initial` fills the
  * form in, read once; with `editing`, the id of an item, OK replaces that item (it keeps its id and place) instead of
  * adding one.
  */
@@ -41,8 +49,9 @@ export function AddVideoDialog({
   const { handlers, failure: unavailable, retry } = useHandlers();
   const [path, setPath] = useState(initial?.path ?? "");
   const [name, setName] = useState(initial?.label ?? "");
+  // An edited video keeps the overlays it has, even none; a new form starts with one blank row.
   const [entries, setEntries] = useState<readonly OverlayEntry[]>(() =>
-    initial?.overlays.length
+    initial
       ? initial.overlays.map(({ path, handler, label, options }, key) => ({
           key,
           path,
@@ -62,22 +71,25 @@ export function AddVideoDialog({
   // Only the local backend's window may browse this machine's files.
   const bridge = useServerKind() === "local" ? window.axDevilWindow : undefined;
   const named = entries.map((entry) => entry.path.trim());
-  const { problems, checking } = useFileProblems([
-    ...new Set([path.trim(), ...named].filter(Boolean)),
-  ]);
+  const files = [...new Set([path.trim(), ...named].filter(Boolean))];
+  const { problems, checking } = useFileProblems(files);
   const videoProblem = problems.get(path.trim());
-  const browse = async () => {
+  // A cancelled chooser leaves the field as it is; a chooser that fails says why.
+  const choose = async (
+    pick: () => Promise<string | null> | undefined,
+    taken: (chosen: string) => void,
+  ) => {
     try {
-      const chosen = (await bridge?.pickVideos()) ?? [];
-      if (chosen.length > 1) setFailure("Select one video.");
-      else if (chosen.length) {
-        setPath(chosen[0]);
+      const chosen = await pick();
+      if (chosen) {
+        taken(chosen);
         setFailure(null);
       }
     } catch (error) {
       setFailure(error instanceof Error ? error.message : String(error));
     }
   };
+  const extensions = [...new Set(decoders.flatMap((one) => one.extensions))].sort();
 
   const edit = (entry: OverlayEntry) => {
     setEntries(entries.map((one) => (one.key === entry.key ? entry : one)));
@@ -92,6 +104,13 @@ export function AddVideoDialog({
     }
     setBusy(true);
     try {
+      // The files may have gone since the last check, which OK was waiting for.
+      const gone = await checkFiles(files);
+      if (gone.size) {
+        setFailure([...gone].map(([file, why]) => `${fileName(file)}: ${why}`).join("; "));
+        setBusy(false);
+        return;
+      }
       const video = {
         type: "Video" as const,
         path: path.trim(),
@@ -137,7 +156,20 @@ export function AddVideoDialog({
             setPath(text);
             setFailure(null);
           }}
-          action={bridge && <BrowseButton what="video file" onBrowse={() => void browse()} />}
+          placeholder="Required"
+          action={
+            bridge && (
+              <BrowseButton
+                what="video file"
+                onBrowse={() =>
+                  void choose(
+                    () => bridge.pickVideo(),
+                    (chosen) => setPath(chosen),
+                  )
+                }
+              />
+            )
+          }
         />
         {handlers && (
           <>
@@ -150,6 +182,14 @@ export function AddVideoDialog({
                 focus={entry.key === added}
                 problem={problems.get(entry.path.trim())}
                 tried={tried}
+                onBrowse={
+                  bridge &&
+                  (() =>
+                    void choose(
+                      () => bridge.pickOverlay(extensions),
+                      (chosen) => edit(withPath(entry, chosen, decoders)),
+                    ))
+                }
                 onChange={edit}
                 onRemove={() => setEntries(entries.filter((one) => one.key !== entry.key))}
                 register={(key, read) =>

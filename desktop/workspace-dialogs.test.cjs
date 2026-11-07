@@ -14,6 +14,7 @@ const origin = "http://127.0.0.1:7331";
 const handlers = new Map();
 const calls = { opens: [], saves: [], messages: [] };
 let picked;
+let opened;
 let answer;
 
 class FakeWebContents extends EventEmitter {
@@ -55,7 +56,7 @@ const electron = {
   dialog: {
     showOpenDialog: async (_window, options) => {
       calls.opens.push(options);
-      return { canceled: true, filePaths: [] };
+      return opened;
     },
     showSaveDialog: async (_window, options) => {
       calls.saves.push(options);
@@ -111,6 +112,7 @@ beforeEach(() => {
   calls.saves = [];
   calls.messages = [];
   picked = { canceled: true, filePaths: [] };
+  opened = { canceled: true, filePaths: [] };
   answer = 1;
 });
 
@@ -188,6 +190,49 @@ void test("a chosen name that already has the suffix is not asked about, and a f
   picked = { canceled: false, filePath: path.join(root, "free") };
   assert.equal(await save(page, "free"), path.join(root, "free.ax-devil.workspace"));
   assert.deepEqual(calls.messages, []);
+});
+
+void test("the file dialog takes one video or overlay file, filtered as asked, and gives null when cancelled", async () => {
+  const page = await pageContents();
+  const event = { sender: page, senderFrame: page.mainFrame };
+  const pick = handlers.get("workspace:pick-file");
+  assert.equal(await pick(event, "video"), null);
+  assert.equal(await pick(event, "overlay", [".json", ".tar.gz"]), null);
+  assert.equal(await pick(event, "overlay", []), null);
+  assert.deepEqual(
+    calls.opens.map(({ title, properties, filters }) => ({ title, properties, filters })),
+    [
+      {
+        title: "Select Video File",
+        properties: ["openFile"],
+        filters: [
+          {
+            name: "Video Files (*.mp4 *.avi *.mkv *.mov)",
+            extensions: ["mp4", "avi", "mkv", "mov"],
+          },
+          { name: "All Files (*)", extensions: ["*"] },
+        ],
+      },
+      {
+        title: "Select Overlay File",
+        properties: ["openFile"],
+        filters: [
+          { name: "Data Files (*.json *.tar.gz)", extensions: ["json", "tar.gz"] },
+          { name: "All Files (*)", extensions: ["*"] },
+        ],
+      },
+      {
+        title: "Select Overlay File",
+        properties: ["openFile"],
+        filters: [{ name: "All Files (*)", extensions: ["*"] }],
+      },
+    ],
+  );
+  opened = { canceled: false, filePaths: ["/data/a.json"] };
+  assert.equal(await pick(event, "overlay", [".json"]), "/data/a.json");
+  await assert.rejects(async () => pick(event, "audio"), /video or overlay/);
+  await assert.rejects(async () => pick(event, "overlay", ["json"]), /extensions/);
+  await assert.rejects(async () => pick(event, "overlay"), /extensions/);
 });
 
 void test("the folder dialog is titled with what is chosen, and only a text title is taken", async () => {

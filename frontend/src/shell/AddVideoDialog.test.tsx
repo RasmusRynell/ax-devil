@@ -29,6 +29,7 @@ it("picks the decoders that may read the file: no extensions, or an extension en
   const decoders = [
     decoder("JSONL", ".jsonl"),
     decoder("ACME", ".acme.jsonl"),
+    decoder("TAR", ".tar.gz"),
     decoder("MOT", ".txt"),
     decoder("ANY"),
   ];
@@ -38,7 +39,10 @@ it("picks the decoders that may read the file: no extensions, or an extension en
   expect(handlers("C:\\data\\gt.txt")).toEqual(["MOT", "ANY"]);
   expect(handlers("/data/notes.mp3")).toEqual(["ANY"]);
   expect(handlers("/data/.txt")).toEqual(["ANY"]);
-  expect(decodersFor(decoders.slice(0, 3), "/data/notes.mp3")).toEqual([]);
+  // A compound extension may be the whole name, as in the backend; a single one needs a name before it.
+  expect(handlers("/data/.tar.gz")).toEqual(["TAR", "ANY"]);
+  expect(handlers("/data/A.TAR.GZ")).toEqual(["TAR", "ANY"]);
+  expect(decodersFor(decoders.slice(0, 4), "/data/notes.mp3")).toEqual([]);
 });
 
 const reply = (status: number, json: unknown) => ({
@@ -220,9 +224,9 @@ it("asks again when a path comes back after an edit: the files may have changed,
 
 it("fills the path from the file chooser, keeps it when the chooser is cancelled, and names the video as typed or by its file", async () => {
   serve([]);
-  const picks = [["/clips/b.mp4"], []];
+  const picks = ["/clips/b.mp4", null];
   window.axDevilWindow = {
-    pickVideos: () => Promise.resolve(picks.shift() ?? []),
+    pickVideo: () => Promise.resolve(picks.shift() ?? null),
   } as unknown as WindowBridge;
   render(
     <GrantsContext.Provider value={["preferences"]}>
@@ -258,6 +262,61 @@ it("fills the path from the file chooser, keeps it when the chooser is cancelled
   );
 });
 
+it("fills an overlay from its file chooser, which offers the decoders' extensions, and keeps the path when cancelled", async () => {
+  serve([decoder("JSONL", ".jsonl", ".tar.gz"), decoder("MOT", ".txt")]);
+  const picks = ["/data/gt.txt", null];
+  const pickOverlay = vi.fn(() => Promise.resolve(picks.shift() ?? null));
+  window.axDevilWindow = { pickOverlay } as unknown as WindowBridge;
+  render(
+    <GrantsContext.Provider value={["preferences"]}>
+      <SessionProvider>
+        <AddVideoDialog onClose={() => {}} />
+      </SessionProvider>
+    </GrantsContext.Provider>,
+  );
+  const [path] = (await overlays()) as HTMLInputElement[];
+  const choose = () => fireEvent.click(screen.getByRole("button", { name: "Choose overlay file" }));
+
+  choose();
+  await waitFor(() => expect(path.value).toBe("/data/gt.txt"));
+  expect(pickOverlay).toHaveBeenCalledWith([".jsonl", ".tar.gz", ".txt"]);
+  expect(handlerAt().value).toBe("MOT");
+  choose();
+  await act(async () => {});
+  expect(path.value).toBe("/data/gt.txt");
+});
+
+it("starts an edited video with no overlay rows when it has none", async () => {
+  serve([decoder("MOT", ".txt")]);
+  render(
+    <SessionProvider>
+      <AddVideoDialog
+        editing="item-1"
+        initial={{ path: "/a.mp4", overlays: [] }}
+        onClose={() => {}}
+      />
+    </SessionProvider>,
+  );
+  expect(await screen.findByRole("button", { name: "Add overlay" })).toBeTruthy();
+  expect(screen.queryByLabelText("Overlay path")).toBeNull();
+});
+
+it("checks the files again on Add: one gone since the last check keeps the dialog open, with the reason, and sends nothing", async () => {
+  const missing: string[] = [];
+  serve([], missing);
+  await open();
+  await answered();
+
+  missing.push("/a.mp4");
+  fireEvent.click(add());
+  await waitFor(() => expect(screen.getByRole("alert").textContent).toBe("a.mp4: File not found"));
+  expect(FakeSocket.latest.received.filter((message) => message.type === "command")).toEqual([]);
+
+  missing.length = 0;
+  fireEvent.click(add());
+  await waitFor(() => expect(sentOverlays()).toEqual([[]]));
+});
+
 it.each([
   [
     "fails",
@@ -271,16 +330,11 @@ it.each([
     },
     "The file dialog is unavailable",
   ],
-  [
-    "returns several videos",
-    () => Promise.resolve(["/clips/a.mp4", "/clips/b.mp4"]),
-    "Select one video.",
-  ],
 ])(
   "says why when the file chooser %s, and leaves the path and the session alone",
   async (_, pick, reason) => {
     serve([]);
-    window.axDevilWindow = { pickVideos: pick } as unknown as WindowBridge;
+    window.axDevilWindow = { pickVideo: pick } as unknown as WindowBridge;
     render(
       <GrantsContext.Provider value={["preferences"]}>
         <SessionProvider>

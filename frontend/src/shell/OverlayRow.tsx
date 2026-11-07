@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef } from "react";
 import type { DecoderInfo, NewOverlayWire, ResolverInfo } from "../generated/api";
-import { Button } from "../kit/Button";
+import { BrowseButton, Button } from "../kit/Button";
 import { Select, TextField } from "../kit/Fields";
 import { needsValue, shown } from "../resolvers/fields";
 import { ResolverForm, useResolverForm } from "../resolvers/ResolverForm";
@@ -28,7 +28,8 @@ export const fileName = (path: string) => path.trim().split(/[\\/]/).pop() ?? ""
 
 /**
  * The decoders that may read a file named `path`: those with no declared extension, and those whose lowercase
- * extension ends the file name, which may hold several dots (`.acme.dat`). A file nothing reads has none, and the
+ * extension ends the file name. An extension with several dots (`.acme.dat`) may be the whole name; one with a single
+ * dot needs a name before it, as the backend's `matches_extension` has it. A file nothing reads has none, and the
  * user picks any decoder by hand.
  */
 export function decodersFor(
@@ -36,12 +37,10 @@ export function decodersFor(
   path: string,
 ): readonly DecoderInfo[] {
   const name = fileName(path).toLowerCase();
+  const reads = (extension: string) =>
+    name.endsWith(extension) && (extension.split(".").length > 2 || name.length > extension.length);
   return decoders.filter(
-    (decoder) =>
-      decoder.extensions.length === 0 ||
-      decoder.extensions.some(
-        (extension) => name.length > extension.length && name.endsWith(extension),
-      ),
+    (decoder) => decoder.extensions.length === 0 || decoder.extensions.some(reads),
   );
 }
 
@@ -86,6 +85,7 @@ export function OverlayRow({
   focus,
   problem,
   tried,
+  onBrowse,
   onChange,
   onRemove,
   register,
@@ -99,6 +99,8 @@ export function OverlayRow({
   /** Why the backend cannot read the file, once it has said. */
   problem?: string;
   tried: boolean;
+  /** Opens the file chooser for the overlay; absent where the page may not browse the machine's files. */
+  onBrowse?: () => void;
   onChange: (entry: OverlayEntry) => void;
   onRemove: () => void;
   register: (key: number, read: (() => OverlayRead) | null) => void;
@@ -124,12 +126,15 @@ export function OverlayRow({
         value={entry.path}
         onChange={(path) => onChange(withPath(entry, path, decoders))}
         action={
-          <Button
-            size="small"
-            icon="trash-2"
-            label={`Remove overlay ${number}`}
-            onClick={onRemove}
-          />
+          <>
+            {onBrowse && <BrowseButton what="overlay file" onBrowse={onBrowse} />}
+            <Button
+              size="small"
+              icon="trash-2"
+              label={`Remove overlay ${number}`}
+              onClick={onRemove}
+            />
+          </>
         }
       />
       <Select
