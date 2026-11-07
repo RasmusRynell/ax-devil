@@ -172,7 +172,7 @@ export type InspectionView =
       last: Summary | null;
     }
   | {
-      /** `loading`: no reply for the shown sample yet; `fields` is the last reply's. */
+      /** `loading`: no reply for the shown sample yet; `fields` is empty. */
       state: "loading" | "ready" | "unavailable";
       selection: NonNullable<Selection>;
       summary: Summary;
