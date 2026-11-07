@@ -6,6 +6,7 @@ const path = require("node:path");
 
 const { backendArgs, parseLaunch, relaunchArgs, userArgs } = require("./args.cjs");
 const { backendExecutable, createBackend } = require("./backend.cjs");
+const { handOff } = require("./hand-off.cjs");
 const { confirmLink, linkTarget, registerLinks, singleInstance } = require("./links.cjs");
 const { askAfterFailure, explainFailure, parseTarget, verifyServer } = require("./remote.cjs");
 const { installUncaughtHandler } = require("./uncaught.cjs");
@@ -240,11 +241,15 @@ async function openLaunch({ server, link }) {
   return (await confirmLink(target)) ? showRemote(target) : undefined;
 }
 
-// A launch that reaches the running app: it opens a window, or raises one when it asks for nothing.
+// A launch that reaches the running app: it opens a window (a command's, a server's), or raises one when it asks for
+// nothing. A command's items go to the local backend first, which the new local window then starts from.
 async function onLaunch(launch) {
   await app.whenReady();
   try {
-    if (!(await openLaunch(launch)) && !launch.server && !launch.link) {
+    if (launch.command) {
+      await handOff(backendExecutable(app), await backend.ensure(), launch.command, launch.cwd);
+      await showLocal();
+    } else if (!(await openLaunch(launch)) && !launch.server && !launch.link) {
       const [existing] = BrowserWindow.getAllWindows();
       if (existing) {
         if (existing.isMinimized()) existing.restore();
@@ -252,7 +257,10 @@ async function onLaunch(launch) {
       } else await showLocal();
     }
   } catch (error) {
-    dialog.showErrorBox("ax-devil could not open the server", error.message);
+    dialog.showErrorBox(
+      launch.command ? "ax-devil could not open that" : "ax-devil could not open the server",
+      error.message,
+    );
   }
 }
 
@@ -299,7 +307,7 @@ else
       if (smoke) {
         const window = await showLocal();
         const timer = setTimeout(() => fail(new Error("Desktop smoke test timed out")), 120000);
-        await require("./smoke.cjs")(window, { openLaunch, showLocal, showRemote });
+        await require("./smoke.cjs")(window, { onLaunch, openLaunch, showLocal, showRemote });
         clearTimeout(timer);
         report("PASS");
         app.quit();

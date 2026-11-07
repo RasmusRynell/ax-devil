@@ -3,7 +3,7 @@
 // Electron is loaded where it is used, so a test that passes its own `app` and `dialog` needs no Electron.
 const electron = () => require("electron");
 
-const { parseLaunch } = require("./args.cjs");
+const { commandArgs, parseLaunch, userArgs } = require("./args.cjs");
 
 const SCHEME = "ax-devil";
 
@@ -40,14 +40,22 @@ async function confirmLink(target) {
 
 /**
  * Keeps one app instance and routes every launch to `onLaunch(launch)`, with `launch.link` or `launch.server` set
- * when it carries one: later launches (`second-instance`) and macOS `open-url` events. Returns false when another
- * instance runs, which receives this launch instead. Call before the app is ready. `app` and `dialog` are a test seam.
+ * when it carries one, or `launch.command` (the backend's arguments, with a command that opens something) and the
+ * `launch.cwd` it was typed in: later launches (`second-instance`) and macOS `open-url` events. Returns false when
+ * another instance runs, which receives this launch instead. Call before the app is ready. `app` and `dialog` are a
+ * test seam.
  */
 function singleInstance(onLaunch, { app, dialog } = electron()) {
-  if (!app.requestSingleInstanceLock()) return false;
-  app.on("second-instance", (_event, argv) => {
+  // The later launch sends its own arguments: the `argv` the running instance is given has Chromium's switches moved
+  // ahead of the rest, which parts `--video` from its value.
+  if (!app.requestSingleInstanceLock({ args: userArgs(process.argv, process.defaultApp) }))
+    return false;
+  app.on("second-instance", (_event, _argv, cwd, { args }) => {
     try {
-      onLaunch(parseLaunch(argv).launch);
+      const { launch, rest } = parseLaunch(args);
+      // A server or link opens another machine's window; the command would only have started the local backend.
+      const command = launch.link || launch.server ? undefined : commandArgs(rest);
+      onLaunch(command ? { command, cwd } : launch);
     } catch (error) {
       dialog.showErrorBox("ax-devil could not use its arguments", error.message);
     }

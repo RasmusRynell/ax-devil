@@ -23,6 +23,7 @@ const { bookmarks } = require("./smoke-bookmarks.cjs");
 const { exportDialog } = require("./smoke-export.cjs");
 const { live } = require("./smoke-live.cjs");
 const { remote } = require("./smoke-remote.cjs");
+const { handedOff } = require("./smoke-handoff.cjs");
 const { sharing } = require("./smoke-sharing.cjs");
 const { reload: reloadOffer } = require("./smoke-reload.cjs");
 const { video } = require("./smoke-video.cjs");
@@ -333,5 +334,7 @@ module.exports = async (window, shell) => {
   await sharing(window, shell, ownerCsp);
   console.log("smoke: remote");
   await remote(window, shell);
+  console.log("smoke: second launch");
+  await handedOff(shell);
   console.log(`PASS: app shell loaded; screenshots in ${path.relative(SMOKE_ROOT, SCREENSHOTS)}`);
 };

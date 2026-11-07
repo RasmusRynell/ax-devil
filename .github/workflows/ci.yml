@@ -46,18 +46,36 @@ jobs:
             ~/.cargo/git
             .tools
             target
-          key: cargo-${{ runner.os }}-${{ hashFiles('rust-toolchain.toml', 'Cargo.lock', 'Makefile') }}
-          restore-keys: cargo-${{ runner.os }}-
+          # target holds outputs linked against one FFmpeg, so the restore prefix names it.
+          key: cargo-${{ runner.os }}-${{ hashFiles('scripts/ffmpeg-fetch.sh') }}-${{ hashFiles('rust-toolchain.toml', 'Cargo.lock', 'Makefile') }}
+          restore-keys: cargo-${{ runner.os }}-${{ hashFiles('scripts/ffmpeg-fetch.sh') }}-
 
-      # The media crate links the system FFmpeg (6.1 on this image) and generates its bindings with clang.
-      - name: Install the private display and the FFmpeg libraries
+      # The media crate generates its FFmpeg bindings with clang.
+      - name: Install the private display and clang
         timeout-minutes: 5
         run: |
           # The Azure mirror stalls; retries and timeouts make update and install fail fast or recover.
           printf 'Acquire::Retries "5";\nAcquire::http::Timeout "20";\nAcquire::https::Timeout "20";\n' | sudo tee /etc/apt/apt.conf.d/99ci-retries
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends xauth xvfb pkg-config clang libclang-dev \
-            libavcodec-dev libavformat-dev libavutil-dev libswscale-dev
+          sudo apt-get install -y --no-install-recommends xauth xvfb clang libclang-dev
+
+      # The pinned FFmpeg the Linux package ships; the loader path is for the test binaries and the app.
+      - name: Choose the FFmpeg folder
+        run: |
+          echo "FFMPEG_DIR=$RUNNER_TEMP/ffmpeg" >> "$GITHUB_ENV"
+          echo "LD_LIBRARY_PATH=$RUNNER_TEMP/ffmpeg/lib" >> "$GITHUB_ENV"
+
+      # The same key as the Linux package job, so the two share one entry.
+      - name: Restore FFmpeg
+        id: ffmpeg
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: ${{ env.FFMPEG_DIR }}
+          key: ffmpeg-linux--${{ hashFiles('scripts/ffmpeg-fetch.sh') }}
+
+      - name: Get FFmpeg
+        if: steps.ffmpeg.outputs.cache-hit != 'true'
+        run: scripts/ffmpeg-fetch.sh linux "$FFMPEG_DIR"
 
       # Ubuntu 24.04 blocks the unprivileged user namespaces Electron's sandbox needs.
       - name: Allow Electron's sandbox
@@ -74,7 +92,7 @@ jobs:
             ~/.cargo/git
             .tools
             target
-          key: cargo-${{ runner.os }}-${{ hashFiles('rust-toolchain.toml', 'Cargo.lock', 'Makefile') }}
+          key: cargo-${{ runner.os }}-${{ hashFiles('scripts/ffmpeg-fetch.sh') }}-${{ hashFiles('rust-toolchain.toml', 'Cargo.lock', 'Makefile') }}
 
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()

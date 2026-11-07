@@ -108,9 +108,9 @@ caches; nothing is shared between tests through the filesystem.
 app. `.github/workflows/ci.yml` runs on pull requests to and pushes on `main` and `rewrite`, and on `v*` tags, with
 every job starting at once:
 
-- `check` (Ubuntu 24.04) runs `make check` once: no other job runs a check or a test. It installs the FFmpeg
-  development libraries and clang that the `media` crate builds against (`pkg-config` finds FFmpeg), and uploads the
-  screenshots. The make target fails when its checks leave generated files changed. Only pushes save the Cargo cache;
+- `check` (Ubuntu 24.04) runs `make check` once: no other job runs a check or a test. It builds
+  and tests against the same pinned FFmpeg the Linux package ships (`FFMPEG_DIR`, shared cache entry), installs clang
+  for the `media` crate's bindings, and uploads the screenshots. The make target fails when its checks leave generated files changed. Only pushes save the Cargo cache;
   pull requests restore it (a copy per pull request ref would pass the repository's 10 GB cache cap).
 - `package` (Linux, Windows, macOS) runs `make package` and `make smoke-packaged` against a pinned shared FFmpeg
   (downloaded for Linux and Windows, built from source on macOS, both cached). Windows runs make from Git Bash.

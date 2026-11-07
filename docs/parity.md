@@ -18,7 +18,7 @@ owner's written decision. A new feature gets a row in 01 first.
 | WS-08 | Hide/Unhide entries and lanes | M | done | `crates/workspace-store` tests, `crates/sessions/tests/session/matrix.rs`, `src/session/project.rs`, `{shell/WorkspaceTree,viewer/{PlaylistViewer,hidden},playback/{LaneGrid,VideoViewer}}.test.*` | Kept in the Doc, never saved ([CONTEXT](../CONTEXT.md)). Show hidden lists them dimmed; next/previous skip them; hidden lanes undrawn |
 | WS-09 | Bookmarks and reviewed marks; Bookmarks view; open at frame | M | done | `workspace-store/src/bookmarks.rs`, `tests/it/bookmarks.rs`, `bookmarks/` |  |
 | WS-10 | Bookmarks to CSV | S | done | `tests/it/bookmarks.rs`, `make test-desktop` |  |
-| WS-11 | Sidebar views Workspace, Live, Offline, Bookmarks, Plugins; search, sort, filter | M | in progress | `shell/{Shell,Sidebar*,WorkspaceTree*,reveal,treeModel}.test.*`, `workspace-store` details | Search, Sort, folds and the dragged sidebar width outlive a view switch; a viewer's item is revealed. Same-named rows get a detail line that search matches (LOB-014). Left: live rows' host and stream state, Offline Add, found-camera dedup, activity-bar badges |
+| WS-11 | Sidebar views Workspace, Live, Offline, Bookmarks, Plugins; search, sort, filter | M | in progress | `shell/{Sidebar*,WorkspaceTree*,OfflineAdd,ActivityBar,treeModel}.test.*`, `live/rows.test.ts` | Search, Sort, folds and width outlive a view switch; viewers reveal their item. Same-named rows (LOB-014) and cameras get a detail line: place, stream state. Offline has Add; found cameras match held hosts, expanded; Plugins flags failures. Left: Offline Location sort, Bookmarks attention |
 | WS-12 | Start panel and welcome area | M | done | `shell/Shell.test.tsx`, `shell/WorkspaceFiles.test.tsx` | Heading only with recents; Open Workspace default; Live: AC-03 |
 | WS-13 | Split viewer area: drag to split, preview vs pinned panes | M | in progress | `crates/sessions/tests/session/*.rs`, `playback/budget.test.ts` | Viewer ids, layout tree, 8 panes max; panes share 512 MiB of frames; split area, drag, pins todo |
 | WS-14 | Long playlists load collapsed | S | todo |  |  |
@@ -97,7 +97,7 @@ Listed in [parity deviations](parity-deviations.md).
 |----|---------|---|--------|------|-------|
 | PL-01 | Decoder plugins (file, payload) and playlist resolver plugins | M | done | `crates/plugins/tests/`, `tests/it/plugins.rs` | Decoder handlers read a file or, with `input: records`, one record at a time (live sources, lines of a file); resolver handlers ([plugins](plugins.md), D29) |
 | PL-02 | Built-in decoders and resolvers listed by `list-handlers` and `playlist --help` | M | done | `src/cli/tests.rs`, `src/routes/handlers.rs`, `crates/handlers` tests, `crates/scene-decoders/tests/it/adf_*.rs` | MOT, UVG-VCM, ONVIF XML, CVAT, ADF beta/v1 (frame and consolidated), plugin decoders; both resolvers |
-| PL-03 | Install, update, remove, list from CLI and Plugins view | M | done | `tests/it/plugins.rs`, `src/cli/tests.rs`, `src/routes/plugins.rs`, `plugins/PluginsView.test.tsx` | `plugins install/update/remove/list/check` from the CLI; the Plugins view lists, installs a folder, updates and removes; applied to the running app, as is an edited manifest |
+| PL-03 | Install, update, remove, list from CLI and Plugins view | M | done | `tests/it/plugins.rs`, `src/cli/tests.rs`, `src/routes/plugins.rs`, `plugins/PluginsView.test.tsx` | `plugins install/update/remove/list/check` from the CLI and the Plugins view; applied to the running app |
 | PL-04 | Load failures never stop the app; listed | M | done | `tests/it/plugins.rs`, `PluginsView.test.tsx` | `plugins list` and Plugins view show failures; a failed run marks its lane Incomplete |
 | PL-05 | Unchanged third-party Python plugins run (bridge); not planned by default | S | todo |  |  |
 
@@ -106,11 +106,11 @@ Listed in [parity deviations](parity-deviations.md).
 | ID | Feature | P | Status | Test | Notes |
 |----|---------|---|--------|------|-------|
 | ST-01 | Settings pages; restart marker | M | done | `SettingsDialog{,.table}.test.tsx`, `Shell.test.tsx`, `src/tests.rs` | All pages; storage folders read once at start |
-| ST-02 | Quick Setup on first start | M | done | `shell/QuickSetupDialog.test.tsx`, `Shell.test.tsx` | Opens on first run and from Help; any close stores the choices and marks setup done; a refused write does not |
+| ST-02 | Quick Setup on first start | M | done | `shell/QuickSetupDialog.test.tsx`, `Shell.test.tsx` | Opens on first run and from Help; any close stores the choices |
 | ST-03 | Theme (light, dark, auto) and text size (system, small to larger), applied live | M | done | `crates/settings` tests, `App.test.tsx`, `settings.test.tsx` | Stored through `/api/settings`; applied live; zoom stays the browser's |
 | ST-04 | `$VARIABLE` references | M | done | `reference_tests.rs`, `SettingsDialog.test.tsx`, `AddLiveStreamDialog.test.tsx` | Every field takes one, kept raw; unset gives empty or the default, with a warning; a number or folder that does not resolve is refused on save |
 | ST-05 | Keyboard shortcuts and overrides | M | done | `crates/settings` tests, `ShortcutsDialog.test.tsx`, `SettingsDialog.test.tsx`, `Shell.test.tsx` | Command table, override storage, conflict checks, live keys; editor from General, OK saves, Cancel ignored while saving |
-| ST-06 | Warn before saving a literal password (new); workspace references expand silently (D18) | M | done | `shell/{SettingsDialog{,.table},AddLiveStreamDialog}.test.tsx`, `crates/workspace` live tests | Camera and broker passwords mask and warn on a literal, not a `$NAME`; no prompt |
+| ST-06 | Warn before saving a literal password (new); workspace references expand silently (D18) | M | done | `shell/{SettingsDialog{,.table},AddLiveStreamDialog}.test.tsx`, `crates/workspace` live tests | Camera and broker passwords mask and warn on a literal, not a `$NAME` |
 | AP-01 | Uncaught errors logged; continue or close | M | done | `UncaughtErrors.test.tsx`, `desktop/uncaught.test.cjs` | The page reports its errors to the backend's log |
 | AP-02 | Restart from inside the app | M | done | `shell/Shell.test.tsx`, `desktop/args.test.cjs` | A setting that needs a restart offers to relaunch the desktop app on its own backend; other windows are told |
 | AP-03 | `clear-cache` | S | done | `src/disk_cache.rs` test | Lists, asks, removes, counts what it removed; only ax-devil's own files in its cache subfolders |
@@ -123,16 +123,16 @@ Listed in [parity deviations](parity-deviations.md).
 | ID | Feature | P | Status | Test | Notes |
 |----|---------|---|--------|------|-------|
 | SH-01 | Join, reconnect and revoke access | M | done | `crates/sessions/tests/session/`, `tests/it/{session_socket,playback_ws}.rs` | A cut connection (TCP proxy) resumes its seat; a stopped sharing refuses it; silent loss takes 25 s |
-| SH-02 | Follow or explore independently | M | done | `crates/sessions/tests/session/{revocation,matrix}.rs`, `viewer/PlaylistFollower.test.tsx`, `desktop/smoke-sharing.cjs`, `src/routes/playback/inspect/tests.rs` | Video and playlist following and exploring. Inspection is gated like data: a follower outside its window gets none. Live policies follow live |
+| SH-02 | Follow or explore independently | M | done | `crates/sessions/tests/session/{revocation,matrix}.rs`, `viewer/PlaylistFollower.test.tsx`, `desktop/smoke-sharing.cjs`, `src/routes/playback/inspect/tests.rs` | Video and playlist. Inspection is gated like data: a follower outside its window gets none. Live policies follow live |
 | SH-03 | Audience privacy and settings scope | M | done | `tests/it/{access,playback_catalogs}.rs`, `src/session/project.rs`, `crates/settings/src/scope_tests.rs` | Host paths and settings scoped; a watcher sees a user catalog once its Session's host viewer asks for it, until it leaves |
-| SH-04 | Browser and remote Electron connection | M | in progress | `desktop/{smoke-remote,links.test,remote.test}.cjs`, `session/Notice.test.tsx` | Server frontend, password recovery, launches and links reaching the running app, packaged link registration, join and hosting failure reasons (`src/share.rs`) |
+| SH-04 | Browser and remote Electron connection | M | in progress | `desktop/{smoke-remote,smoke-handoff,links.test,remote.test}.cjs`, `tests/it/workspace_files.rs`, `session/Notice.test.tsx` | Server frontend, password recovery, join and hosting failure reasons (`src/share.rs`); a second launch's link, server or command reaches the running app. Not run in isolation: two machines (runbook), the system registering `ax-devil://` (`smoke-packaged` checks the declaration) |
 
 ## Developer tooling
 
 | ID | Feature | P | Status | Test | Notes |
 |----|---------|---|--------|------|-------|
 | DT-01 | Isolated GUI test environment for agents and CI | M | done | `make test-desktop` | `scripts/isolated`: private home and display, user-file guard; Linux |
-| DT-02 | UI screenshot harness | M | done | `make test-desktop`, `desktop/fit-coverage.test.cjs` | `desktop/smoke*.cjs`: main window, menus, dialogs, the fixture playlist's lanes and Objects list in both themes at the window minimum and 200% zoom, the video and sharing scenarios |
+| DT-02 | UI screenshot harness | M | done | `make test-desktop`, `desktop/fit-coverage.test.cjs` | `desktop/smoke*.cjs`: windows, menus, dialogs, lanes and Objects in both themes at the window minimum and 200% zoom, the video and sharing scenarios |
 | DT-03 | Rendering benchmarks with A/B against a ref | S | in progress | `make bench` | `overlays` bench of the Sample Item encoder; numbers on stdout, nothing asserted |
 | DT-04 | Timestamp alignment report | S | todo |  |  |
 | DT-05 | Release check in clean environments | S | todo |  |  |
