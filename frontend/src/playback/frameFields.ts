@@ -3,7 +3,7 @@
  * the sample. A search of Frame scope asks per sample (`ask`) and reads the answer for exactly that sample (`view`):
  * leaves of another sample are never lent to it, for the same object may hold other values there. The backend keeps
  * only the newest request, so asking for another sample supersedes one still out. A request whose answer never comes
- * (the authority gate may drop it) is asked again when a list starts to listen.
+ * (the authority gate may drop it) is sent again while a list listens, a few times, and when a list starts to listen.
  */
 
 import type { LaneFrame } from "./contract";
@@ -33,6 +33,9 @@ const NONE: LeavesView = { state: "ready", leaves: new Map() };
 
 /** How many answers are kept, so that stepping back and forth asks the backend once per sample. */
 const KEPT = 16;
+/** How long a request may stay unanswered while a list listens before it is sent again, and how often it is. */
+const RETRY_MS = 2000;
+const MAX_RETRIES = 3;
 
 /** What a search compares: an integer exactly, `null` and a truth value as the text the reference makes of them. */
 function valueOf(leaf: LeafWire): string | number | bigint {
@@ -61,14 +64,22 @@ export class FrameFields {
   readonly #listeners = new Set<() => void>();
   /** The answers, oldest first. */
   readonly #answers = new Map<string, LeavesView>();
+  readonly #after: (callback: () => void, ms: number) => () => void;
   /** The request out, with the columns of the sample it was made for. */
-  #asked: { key: string; columns: unknown } | null = null;
+  #asked: { key: string; columns: unknown; message: ClientMessage } | null = null;
+  /** Cancels the timer that sends the request out again. */
+  #cancel: (() => void) | null = null;
+  #retries = 0;
   /** A sample the backend does not answer for: asked again only when the viewer holds it anew. */
   #refused: { key: string; columns: unknown } | null = null;
 
-  /** `send` asks the backend. */
-  constructor(send: (message: ClientMessage) => void) {
+  /** `send` asks the backend; `after` times the asking again. */
+  constructor(
+    send: (message: ClientMessage) => void,
+    after: (callback: () => void, ms: number) => () => void,
+  ) {
     this.#send = send;
+    this.#after = after;
   }
 
   /**
@@ -76,9 +87,12 @@ export class FrameFields {
    * left unanswered while none did may have been dropped.
    */
   subscribe = (listener: () => void): (() => void) => {
-    this.#asked = null;
+    this.#forget();
     this.#listeners.add(listener);
-    return () => this.#listeners.delete(listener);
+    return () => {
+      this.#listeners.delete(listener);
+      if (this.#listeners.size === 0) this.#unwatch();
+    };
   };
 
   /** What is known of the leaves of the frame's sample at `paths`; the same object until that changes. */
@@ -93,7 +107,7 @@ export class FrameFields {
   /** Wants the leaves of the frame's sample at `paths`; asks the backend unless it has answered or is being awaited. */
   ask(frame: LaneFrame | undefined, paths: readonly string[]): void {
     if (!frame || paths.length === 0) {
-      this.#asked = null;
+      this.#forget();
       return;
     }
     const { source, dataRevision, sample, columns } = frame;
@@ -101,21 +115,48 @@ export class FrameFields {
     if (this.#answers.has(key)) return;
     if (this.#refused?.key === key && this.#refused.columns === columns) return;
     if (this.#asked?.key === key) return;
-    this.#asked = { key, columns };
-    this.#send({
+    const message: ClientMessage = {
       type: "InspectFields",
       source,
       data_revision: dataRevision,
       sample,
       paths: [...paths],
-    });
+    };
+    this.#asked = { key, columns, message };
+    this.#retries = 0;
+    this.#send(message);
+    this.#watch();
+  }
+
+  /** Forgets the request out, and its timer. */
+  #forget(): void {
+    this.#asked = null;
+    this.#unwatch();
+  }
+
+  #unwatch(): void {
+    this.#cancel?.();
+    this.#cancel = null;
+  }
+
+  /** While a list listens, sends the request out again if it stays unanswered: the authority gate may have dropped it. */
+  #watch(): void {
+    this.#unwatch();
+    if (!this.#asked || this.#listeners.size === 0 || this.#retries >= MAX_RETRIES) return;
+    this.#cancel = this.#after(() => {
+      this.#cancel = null;
+      if (!this.#asked) return;
+      this.#retries++;
+      this.#send(this.#asked.message);
+      this.#watch();
+    }, RETRY_MS);
   }
 
   /** The backend's answer. */
   receive(reply: Reply): void {
     const key = keyOf(reply.source, reply.data_revision, reply.sample, reply.paths);
     const asked = this.#asked?.key === key ? this.#asked : null;
-    if (asked) this.#asked = null;
+    if (asked) this.#forget();
     const { objects } = reply;
     if (objects === null) {
       if (asked) this.#refused = { key, columns: asked.columns };
@@ -137,7 +178,7 @@ export class FrameFields {
   /** A new connection: nothing of the old one holds. */
   reconnect(): void {
     this.#answers.clear();
-    this.#asked = null;
+    this.#forget();
     this.#refused = null;
     this.#listeners.forEach((listener) => listener());
   }

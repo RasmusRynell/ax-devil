@@ -59,7 +59,7 @@ export class ViewerData {
     this.catalogs = new Catalogs((id) => send({ type: "Catalog", id }));
     this.#laneCatalogs = new LaneCatalogs(this.catalogs, () => this.#fallback);
     this.inspections = new Inspections(send);
-    this.fields = new FrameFields(send);
+    this.fields = new FrameFields(send, after);
   }
 
   get draw(): LaneData | undefined {

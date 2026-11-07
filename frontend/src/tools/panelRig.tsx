@@ -143,14 +143,11 @@ export function mount(
   lanes.setStatus(0, READY);
   if (second) lanes.setStatus(1, READY);
   const sent: ClientMessage[] = [];
-  const files = new FileScope(
-    lanes,
-    (message) => sent.push(message),
-    (run, ms) => {
-      const timer = setTimeout(run, ms);
-      return () => clearTimeout(timer);
-    },
-  );
+  const after = (run: () => void, ms: number) => {
+    const timer = setTimeout(run, ms);
+    return () => clearTimeout(timer);
+  };
+  const files = new FileScope(lanes, (message) => sent.push(message), after);
   let sample = frame;
   let sampleNumber = 0;
   // A frame is the same object for as long as the sample is, as the viewer's is.
@@ -190,7 +187,7 @@ export function mount(
       return items.length > 0 ? [{ entity: object.id, items }] : [];
     });
     fields.receive({ ...message, type: "InspectedFields", objects });
-  });
+  }, after);
   const source = {
     files,
     fields,

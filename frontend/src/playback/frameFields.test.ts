@@ -1,8 +1,13 @@
 // @vitest-environment node
-import { describe, expect, it } from "vite-plus/test";
+import { describe, expect, it, vi } from "vite-plus/test";
 import type { LaneFrame } from "./contract";
 import { FrameFields } from "./frameFields";
 import type { ClientMessage, ServerMessage } from "./protocol";
+
+const after = (run: () => void, ms: number) => {
+  const timer = setTimeout(run, ms);
+  return () => clearTimeout(timer);
+};
 
 const frame = (sample: number, columns: unknown = {}) =>
   ({ source: 0, dataRevision: 1, sample, columns }) as unknown as LaneFrame;
@@ -22,7 +27,7 @@ const answer = (
 describe("the leaves of a frame's objects", () => {
   it("are asked once per sample and read for exactly that sample, with integers exact", () => {
     const sent: ClientMessage[] = [];
-    const fields = new FrameFields((message) => sent.push(message));
+    const fields = new FrameFields((message) => sent.push(message), after);
     const paths = ["id"];
 
     fields.ask(frame(1), paths);
@@ -58,7 +63,7 @@ describe("the leaves of a frame's objects", () => {
 
   it("are not asked again for a sample the backend does not answer for until the viewer holds it anew", () => {
     const sent: ClientMessage[] = [];
-    const fields = new FrameFields((message) => sent.push(message));
+    const fields = new FrameFields((message) => sent.push(message), after);
     const held = {};
 
     fields.ask(frame(1, held), ["id"]);
@@ -72,7 +77,7 @@ describe("the leaves of a frame's objects", () => {
 
   it("are asked again when a list opens after an answer was dropped", () => {
     const sent: ClientMessage[] = [];
-    const fields = new FrameFields((message) => sent.push(message));
+    const fields = new FrameFields((message) => sent.push(message), after);
     const held = frame(1);
 
     const close = fields.subscribe(() => {});
@@ -85,5 +90,32 @@ describe("the leaves of a frame's objects", () => {
     fields.subscribe(() => {});
     fields.ask(held, ["id"]);
     expect(sent).toHaveLength(2);
+  });
+
+  it("are sent again while a list listens and the answer is dropped, a few times, and not once answered", () => {
+    vi.useFakeTimers();
+    const sent: ClientMessage[] = [];
+    const fields = new FrameFields((message) => sent.push(message), after);
+    const held = frame(1);
+
+    // Mounted, one sample, nothing else asks: the gate dropped the answer.
+    const close = fields.subscribe(() => {});
+    fields.ask(held, ["id"]);
+    vi.advanceTimersByTime(2000);
+    expect(sent).toHaveLength(2);
+    vi.advanceTimersByTime(60_000);
+    expect(sent).toHaveLength(4);
+
+    fields.ask(frame(2), ["id"]);
+    fields.receive(answer(2, []));
+    vi.advanceTimersByTime(60_000);
+    expect(sent).toHaveLength(5);
+
+    // A list that stops listening stops the asking.
+    fields.ask(frame(3), ["id"]);
+    close();
+    vi.advanceTimersByTime(60_000);
+    expect(sent).toHaveLength(6);
+    vi.useRealTimers();
   });
 });
