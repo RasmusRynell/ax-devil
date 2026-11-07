@@ -9,10 +9,11 @@ use std::task::Poll;
 use futures_util::StreamExt;
 use retina::client::{PacketItem, Playing, Session};
 use tracing::field::{Field, Visit};
+use tracing::level_filters::LevelFilter;
 use tracing::{Event, Level, Subscriber};
-use tracing_log::NormalizeEvent;
-use tracing_subscriber::Layer;
-use tracing_subscriber::layer::Context;
+use tracing_subscriber::filter::filter_fn;
+use tracing_subscriber::layer::{Context, Layer};
+use tracing_subscriber::registry::LookupSpan;
 
 use crate::error::{CameraError, ErrorKind};
 
@@ -29,19 +30,26 @@ thread_local! {
 /// `tracing` subscriber, and that subscriber's `init` must install the `log` bridge, as retina logs through the `log`
 /// crate; without both, `open_stream` still works but a refused keepalive goes unnoticed. A
 /// refusal with another status (405 for a camera that does not know the method, a 5xx) does not end the stream.
-pub fn retina_log_layer<S: Subscriber>() -> impl Layer<S> {
-    KeepaliveLayer
+///
+/// It is scoped by a per-layer filter to warnings from retina's client (the `log` bridge asks the subscriber with the
+/// record's real target, so bridged records match), so it enables no other callsite and caps the `log` bridge's max
+/// level at warnings, whatever else is installed.
+pub fn retina_log_layer<S>() -> impl Layer<S>
+where
+    S: Subscriber + for<'a> LookupSpan<'a>,
+{
+    KeepaliveLayer.with_filter(
+        filter_fn(|metadata| {
+            *metadata.level() == Level::WARN && metadata.target().starts_with(RETINA_CLIENT)
+        })
+        .with_max_level_hint(LevelFilter::WARN),
+    )
 }
 
 struct KeepaliveLayer;
 
 impl<S: Subscriber> Layer<S> for KeepaliveLayer {
     fn on_event(&self, event: &Event<'_>, _: Context<'_, S>) {
-        let metadata = event.normalized_metadata();
-        let metadata = metadata.as_ref().unwrap_or_else(|| event.metadata());
-        if *metadata.level() != Level::WARN || !metadata.target().starts_with(RETINA_CLIENT) {
-            return;
-        }
         let mut message = Message(String::new());
         event.record(&mut message);
         if refuses_login(&message.0) {
@@ -94,7 +102,24 @@ pub(super) async fn next(
 
 #[cfg(test)]
 mod tests {
-    use super::refuses_login;
+    use super::{refuses_login, retina_log_layer};
+    use tracing::level_filters::LevelFilter;
+    use tracing::{Level, Subscriber};
+    use tracing_subscriber::layer::SubscriberExt;
+
+    /// A layer in every process must not make other code's debug and trace callsites enabled, nor raise the level the
+    /// `log` bridge takes from the subscriber (the app has many of those in its decode and paint paths).
+    #[test]
+    fn the_layer_enables_nothing_but_retinas_warnings() {
+        let subscriber = tracing_subscriber::registry().with(retina_log_layer());
+        assert_eq!(subscriber.max_level_hint(), Some(LevelFilter::WARN));
+        tracing::subscriber::with_default(subscriber, || {
+            assert!(!tracing::enabled!(Level::DEBUG));
+            assert!(!tracing::enabled!(Level::WARN));
+            assert!(!tracing::enabled!(target: "retina::client", Level::DEBUG));
+            assert!(tracing::enabled!(target: "retina::client", Level::WARN));
+        });
+    }
 
     #[test]
     fn only_a_refused_login_is_one() {

@@ -343,7 +343,6 @@ dependencies = [
  "tokio-rustls",
  "tokio-tungstenite",
  "tracing",
- "tracing-log",
  "tracing-subscriber",
  "url",
 ]
