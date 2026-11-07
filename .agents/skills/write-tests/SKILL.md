@@ -55,7 +55,10 @@ tolerance merely to turn a failure green.
 Follow the runbook's isolation and cleanup rules and reuse its fixtures. Wait for the observable state the assertion
 needs, not arbitrary sleeps or an intermediate animation value, with bounded waits so broken behavior still fails.
 Inject time and scheduling: policy tests use a virtual clock (Vitest fake timers, a controllable clock in Rust)
-rather than real delays.
+rather than real delays. A desktop smoke check sends a real click only at a point read through `settled` in
+`desktop/smoke-kit.cjs`, which waits until the element has stopped moving; a layout that trails a resize passes on a
+fast Linux runner and fails on macOS and Windows. `AX_DEVIL_SMOKE_SLOWDOWN=4 make test-desktop` runs the smoke four
+times slower to show such a race locally.
 
 For a flaky test, first decide whether its assertion protects a real requirement. If it does, tell a product defect
 from a synchronization problem before repairing it; if not, delete it. Never just raise the timeout, relax the

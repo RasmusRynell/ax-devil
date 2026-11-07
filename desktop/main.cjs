@@ -44,6 +44,17 @@ if (smoke) {
   // AX_DEVIL_SMOKE_DPR=2 runs the smoke test on a high-density screen.
   if (process.env.AX_DEVIL_SMOKE_DPR)
     app.commandLine.appendSwitch("force-device-scale-factor", process.env.AX_DEVIL_SMOKE_DPR);
+  // AX_DEVIL_SMOKE_SLOWDOWN=4 runs every page's scripts four times slower, as on a loaded CI runner, to find a smoke
+  // check that clicks or measures before the layout has settled.
+  const slowdown = Number(process.env.AX_DEVIL_SMOKE_SLOWDOWN);
+  if (slowdown > 1)
+    app.on("web-contents-created", (_event, contents) => {
+      contents.debugger.attach("1.3");
+      // A window that closes first has nothing left to slow.
+      contents.debugger
+        .sendCommand("Emulation.setCPUThrottlingRate", { rate: slowdown })
+        .catch(() => undefined);
+    });
 }
 // Electron's own data (Chromium profile, crash dumps) is browser state, not ax-devil data: the backend owns the
 // app's folders, so keep Electron out of them.
