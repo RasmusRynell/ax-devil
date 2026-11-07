@@ -33,7 +33,7 @@ module.exports = async (window, shell) => {
   await wait("document.querySelector('h1')?.textContent === 'ax-devil'");
   assert.equal(await js("document.querySelector('[role=alert]')"), null);
 
-  // No page of the release app may break its Content Security Policy. A reload covers the load itself; a request the
+  // No page of the app may break its Content Security Policy. A reload covers the load itself; a request the
   // policy forbids shows the collector sees violations at all.
   const ownerCsp = watchCsp(window);
   await reload(window);

@@ -132,7 +132,10 @@ test-backend: _frontend-build desktop/node_modules/.electron-ready
 test-integration: _dev _dev-rust
 	$(ISOLATED) node --test scripts/dev.test.cjs desktop/args.test.cjs desktop/links.test.cjs desktop/remote.test.cjs desktop/window-state.test.cjs desktop/backend.test.cjs desktop/uncaught.test.cjs desktop/workspace-dialogs.test.cjs desktop/fit-coverage.test.cjs scripts/check-architecture.test.cjs
 
-test-desktop: build desktop/node_modules/.electron-ready
+# The debug backend, which test-backend has already compiled: a release build here would only repeat the package jobs'.
+test-desktop: export AX_DEVIL_BACKEND = $(CURDIR)/target/debug/ax-devil$(if $(filter Windows_NT,$(OS)),.exe)
+test-desktop: _frontend-build desktop/node_modules/.electron-ready
+	$(CARGO) build --locked --bin ax-devil
 	timeout 180s $(ISOLATED) --display pnpm --dir desktop exec electron . --ozone-platform=x11 --smoke-test
 
 # Needs a real camera, so it is not part of `test` or `check`; each test skips itself when AX_DEVIL_TARGET_ADDR is unset.
