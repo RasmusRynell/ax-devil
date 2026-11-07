@@ -247,9 +247,9 @@ describe("a watcher", () => {
     );
     await showShell({ grants: ["sessions"] });
     expect(screen.getAllByRole("heading", { name: "Live" })[0]).toBeTruthy();
-    expect(screen.getByRole("tab", { name: "a.mp4" }).getAttribute("aria-selected")).toBe("true");
+    expect(screen.getByRole("group", { name: "a.mp4", current: true })).toBeTruthy();
     expect(
-      (screen.getByRole("button", { name: "Close a.mp4" }) as HTMLButtonElement).disabled,
+      (screen.getByRole("button", { name: "Close this pane" }) as HTMLButtonElement).disabled,
     ).toBe(true);
   });
 
@@ -285,12 +285,14 @@ describe("a watcher", () => {
     return room;
   }
   const selected = () =>
-    screen.queryAllByRole("tab", { selected: true }).map((tab) => tab.textContent);
+    screen
+      .queryAllByRole("group", { current: true })
+      .map((pane) => pane.getAttribute("aria-label"));
 
   it("that explores keeps a video in view when the owner closes the one it was on", async () => {
     const room = await watchAB("explore");
-    fireEvent.click(screen.getByRole("tab", { name: "b.mp4" }));
-    fireEvent.click(screen.getByRole("tab", { name: "a.mp4" }));
+    fireEvent.pointerDown(screen.getByRole("group", { name: "b.mp4" }));
+    fireEvent.pointerDown(screen.getByRole("group", { name: "a.mp4" }));
     expect(selected()).toEqual(["a.mp4"]);
     act(() => room.setItems([video("a", false), video("b")]));
     expect(selected()).toEqual(["b.mp4"]);

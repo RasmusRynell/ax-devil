@@ -77,7 +77,7 @@ export function LiveBar({
   );
   return (
     <div role="toolbar" aria-label="Live" className="border-b border-line bg-panel text-fg">
-      <div className="flex items-center gap-m px-m py-xs">
+      <div className="flex flex-wrap items-center gap-x-m px-m py-xs">
         {/* The feed tags give way (ending in an ellipsis, the full text on hover) before any control does. */}
         <div className="flex min-w-0 flex-1 items-center gap-m">
           <FeedChip name="Video" status={video} />
@@ -86,7 +86,7 @@ export function LiveBar({
           )}
           {paused && <span className="shrink-0 text-small text-danger">PAUSED</span>}
         </div>
-        <div className="flex shrink-0 items-center gap-m">
+        <div className="flex flex-wrap items-center justify-end gap-x-m">
           <output
             aria-label="Time"
             style={{ "--chars": "15" } as CSSProperties}

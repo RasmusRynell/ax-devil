@@ -92,25 +92,38 @@ export function statusOf({
     : worst;
 }
 
+/** What each open live viewer (by its id) reported, with its item. */
+let reports: ReadonlyMap<number, { item: string; status: StreamStatus }> = new Map();
+/** `reports` by item: the most urgent of the viewers showing it. */
 let held: ReadonlyMap<string, StreamStatus> = new Map();
 const listeners = new Set<() => void>();
 
-function report(item: string, status: StreamStatus | null) {
-  const next = new Map(held);
-  if (status) next.set(item, status);
-  else next.delete(item);
-  held = next;
+function report(viewer: number, item: string, status: StreamStatus | null) {
+  const next = new Map(reports);
+  if (status) next.set(viewer, { item, status });
+  else next.delete(viewer);
+  reports = next;
+  const byItem = new Map<string, StreamStatus[]>();
+  for (const { item: shown, status: reported } of next.values())
+    byItem.set(shown, [...(byItem.get(shown) ?? []), reported]);
+  held = new Map([...byItem].map(([shown, all]) => [shown, mostUrgent(all)]));
   listeners.forEach((listener) => listener());
 }
 
-/** Reports the status of an open live viewer's stream, by item, for as long as the viewer shows. */
-export function useReportStatus(item: string, view: LiveView): void {
+/**
+ * Reports the status of an open live viewer's stream, by viewer, for as long as the viewer shows. Panes showing one
+ * item report separately, and closing one leaves the others' reports.
+ */
+export function useReportStatus(viewer: number, item: string, view: LiveView): void {
   const { state, text, anyLive } = statusOf(view);
-  useEffect(() => report(item, { state, text, anyLive }), [item, state, text, anyLive]);
-  useEffect(() => () => report(item, null), [item]);
+  useEffect(
+    () => report(viewer, item, { state, text, anyLive }),
+    [viewer, item, state, text, anyLive],
+  );
+  useEffect(() => () => report(viewer, item, null), [viewer, item]);
 }
 
-/** The statuses the open live viewers reported, by item; a stream without a viewer showing has none. */
+/** The statuses the open live viewers reported, by item (the most urgent of its viewers'); a stream without a viewer showing has none. */
 export function useStreamStatuses(): ReadonlyMap<string, StreamStatus> {
   return useSyncExternalStore(
     (listener) => {

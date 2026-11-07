@@ -12,6 +12,15 @@ const sized = (rect: DOMRect) => rect.width > 0 && rect.height > 0;
 const scopeOf = (scopes: Scopes, region: CursorRegion) => (scopes[region] ?? "").slice(0, NAME_MAX);
 
 /**
+ * The name an anchor goes by on the wire: its `data-cursor-id`, with the pane's number before it inside a pane
+ * (`data-cursor-pane`), so two panes showing the same thing keep distinct anchors and a cursor lands in the right one.
+ */
+function nameOf(anchor: HTMLElement): string {
+  const pane = anchor.parentElement?.closest<HTMLElement>("[data-cursor-pane]")?.dataset.cursorPane;
+  return `${pane ? `${pane}/` : ""}${anchor.dataset.cursorId ?? ""}`;
+}
+
+/**
  * Where a pointer at the client position is: the offset inside the nearest `[data-cursor-id]` element, within the
  * nearest `[data-cursor-region]`, plus what that region shows. Null outside every region. An element without a size
  * or with an id over the wire limit is left out, so the receiver falls back to the region. A popup marks itself
@@ -36,7 +45,7 @@ export function cursorPointAt(
   };
   const anchor = target.closest<HTMLElement>("[data-cursor-id]");
   const rect = anchor?.getBoundingClientRect();
-  const id = anchor?.dataset.cursorId ?? "";
+  const id = anchor ? nameOf(anchor) : "";
   if (rect && sized(rect) && id.length <= NAME_MAX)
     point.element = {
       id,
@@ -64,7 +73,7 @@ export function placeCursor(
   let target: Element | undefined;
   if (element)
     target = [...root.querySelectorAll("[data-cursor-id]")].find(
-      (candidate) => (candidate as HTMLElement).dataset.cursorId === element.id,
+      (candidate) => nameOf(candidate as HTMLElement) === element.id,
     );
   else if (point.scope === scopeOf(scopes, point.region))
     target = root.querySelector(`[data-cursor-region="${point.region}"]`) ?? undefined;

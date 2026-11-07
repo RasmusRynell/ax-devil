@@ -42,7 +42,7 @@ module.exports.fields = () =>
     ],
     async (window) => {
       const { js, wait } = page(window);
-      window.setSize(1500, 720);
+      await setView(window, [1500, 720], 1);
       const settle = () =>
         js("new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done)))");
       const shoot = async (name) => {
@@ -63,6 +63,12 @@ module.exports.fields = () =>
       // resizes the canvas at once, but the lane cells follow a moment later; until the last cell ends where the canvas
       // does, and the click point has stopped moving, a click lands where the lanes used to be.
       const select = async (lane) => {
+        // The pane follows the area a frame behind, and the lanes follow the pane: wait for the pane to fill the area.
+        await wait(`(() => {
+          const area = document.querySelector('main > div');
+          const pane = document.querySelector('[role=group][data-cursor-id^="pane:"]');
+          return Math.abs(pane.getBoundingClientRect().width - area.clientWidth) <= 1;
+        })()`);
         await wait(`(() => {
           const cells = document.querySelectorAll('[data-cursor-id^="frame:"]');
           const end = document.querySelector('canvas[role=img]').getBoundingClientRect().right;
@@ -131,8 +137,7 @@ module.exports.fields = () =>
         await settle();
         if (zoom === 2) await inBothThemes("inspector-fields-200");
       }
-      window.webContents.setZoomFactor(1);
-      window.setSize(1500, 720);
+      await setView(window, [1500, 720], 1);
       await js("document.querySelector('[aria-label=Workspace]').click()");
 
       // The second lane's car has a picture, folded until its caption is opened.

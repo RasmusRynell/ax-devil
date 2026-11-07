@@ -87,10 +87,11 @@ module.exports.sharing = async (window, shell, ownerCsp) => {
   await second.wait(sidebarTitle("Sessions"));
   await second.wait(`${participants} === 2`);
   await wait(`${participants} === 2`);
-  const tabs = "[...document.querySelectorAll('[role=tab]')].map((tab) => tab.textContent)";
-  await second.wait(`${tabs}.join() === 'long_gop_h264.mp4'`);
+  const panes =
+    "[...document.querySelectorAll('[role=group][data-cursor-id^=\"pane:\"]')].map((pane) => pane.getAttribute('aria-label'))";
+  await second.wait(`${panes}.join() === 'long_gop_h264.mp4'`);
   await second.wait("document.querySelector('input[aria-label=Frame]')");
-  assert.equal(await second.js(`${tabs}.join()`), await js(`${tabs}.join()`));
+  assert.equal(await second.js(`${panes}.join()`), await js(`${panes}.join()`));
 
   // Reloading the watcher takes its seat back: same Guest N, and the owner still sees two participants.
   const watcherCsp = watchCsp(other);
@@ -115,18 +116,18 @@ module.exports.sharing = async (window, shell, ownerCsp) => {
   await js("document.querySelector('header [aria-label=Session]').click()");
   await wait("!document.querySelector('[role=menu]')");
 
-  // A following watcher's clicks change nothing: its controls are disabled, it cannot close the owner's tab, and
+  // A following watcher's clicks change nothing: its controls are disabled, it cannot close the owner's pane, and
   // the owner's window is as it was.
   const ownerView = () =>
     js(`JSON.stringify({
       title: document.querySelector('aside h2')?.textContent,
       pressed: [...document.querySelectorAll('nav[aria-label=Activity] [aria-pressed=true]')].map((b) => b.ariaLabel),
       explore: document.querySelector('aside input[type=checkbox]').checked,
-      tabs: document.querySelectorAll('[role=tab]').length,
+      panes: document.querySelectorAll('[role=group][data-cursor-id^="pane:"]').length,
     })`);
   const ownerBefore = await ownerView();
   assert.equal(await second.js("document.querySelector('[aria-label=Bookmarks]').disabled"), true);
-  const close = "document.querySelector('[data-cursor-id^=\"tab-close:\"]')";
+  const close = "document.querySelector('[data-cursor-id^=\"pane-close:\"]')";
   assert.equal(await second.js(`${close}.disabled`), true);
   const closeId = await second.js(`${close}.dataset.cursorId`);
   for (const id of ["activity:bookmarks", "activity:live", "activity:workspace", closeId])
@@ -199,7 +200,9 @@ module.exports.sharing = async (window, shell, ownerCsp) => {
     if (id === "menu:View") await shootBoth("session-cursor-menu", both);
   }
   // Every video draws through the lane grid, which names the picture of its lane 0 `:0`.
-  const picture = `frame:${closeId.slice("tab-close:".length)}:0`;
+  const picture = await js(
+    'document.querySelector(\'[data-cursor-id^="frame:"][data-cursor-id$=":0"]\').dataset.cursorId',
+  );
   await cursorAt(picture, { ...(await js(within(picture, 0.25, 0.3))), fx: 0.25, fy: 0.3 });
   await shootBoth("session-cursor-video", both);
 

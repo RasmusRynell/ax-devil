@@ -66,7 +66,7 @@ module.exports.items = async (window) => {
         await js(
           "[...[...document.querySelectorAll('[role=menu]')].at(-1).querySelectorAll('[role=menuitem]')].map((m) => m.textContent)",
         ),
-        ["Open", "Information", "Hide", "Edit", "Remove"],
+        ["Open", "Open to the Side", "Information", "Hide", "Edit", "Remove"],
       );
       await shoot(`items-menu-${shown}.png`);
       await choose("Information");

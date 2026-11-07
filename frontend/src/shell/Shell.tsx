@@ -16,7 +16,7 @@ import { useSettings } from "../settings";
 import { NO_ACTIONS, ViewerActionsContext, type ViewerActions } from "../viewer/actions";
 import { MAX_PANES } from "../session/views";
 import { useFrontViewer, useViewers } from "../viewer/useViewers";
-import { ViewerHost } from "../viewer/ViewerHost";
+import { SplitArea } from "../viewer/SplitArea";
 import { AboutDialog } from "./AboutDialog";
 import { ActivityBar } from "./ActivityBar";
 import type { AddSeed } from "../live/cameras";
@@ -73,7 +73,7 @@ type Dialog =
  */
 export function Shell({ version }: { version: string }) {
   const [sidebar, setSidebar] = useView("sidebar");
-  const { active } = useViewers();
+  const { viewers, active } = useViewers();
   useBookmarksOnReplace();
   const allowed = useAllowed();
   const command = useCommand();
@@ -228,7 +228,7 @@ export function Shell({ version }: { version: string }) {
           event.target === document.body &&
           sidebar.open &&
           sidebar.view === "workspace" &&
-          !active &&
+          viewers.length === 0 &&
           !document.querySelector("dialog[open]")
         ) {
           event.preventDefault();
@@ -308,7 +308,7 @@ export function Shell({ version }: { version: string }) {
               data-cursor-region="main"
               className={`flex min-h-0 min-w-0 flex-1 overflow-auto ${sidebar.open ? "max-sm:hidden" : ""}`}
             >
-              {active ? <ViewerHost /> : <Welcome onRun={run} />}
+              {viewers.length > 0 ? <SplitArea /> : <Welcome onRun={run} />}
             </main>
           </div>
           <Presence scopes={scopes} />
