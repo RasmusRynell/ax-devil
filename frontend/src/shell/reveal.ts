@@ -90,11 +90,15 @@ export function revealShown(
   const entries = new Set(viewers.flatMap(({ entry }) => entry ?? []));
   const top = tree.filter(({ level, item }) => level === 1 && items.has(item));
   const entered = tree.filter(({ info }) => info.kind === "entry" && entries.has(info.entry ?? ""));
+  const { shown } = folds;
+  // Rows of an item a viewer still shows that are gone while the item resolves again are still shown, not new when
+  // they return.
+  const present = new Set(tree.map(({ info }) => info.key));
+  const held = [...shown.rows].filter((key) => !present.has(key) && items.has(itemOf(key)));
   const now = {
-    rows: new Set([...top, ...entered].map(({ info }) => info.key)),
+    rows: new Set([...top, ...entered].map(({ info }) => info.key).concat(held)),
     sections: new Set(top.map(({ itemKind }) => SECTION_OF[itemKind])),
   };
-  const { shown } = folds;
   const first = firstFolds(tree, folds.collapsed, folds.known);
   let collapsed = first.collapsed;
   for (const key of now.rows)

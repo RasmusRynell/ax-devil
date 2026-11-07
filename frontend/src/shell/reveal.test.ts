@@ -84,6 +84,18 @@ describe("what a viewer shows", () => {
     expect(revealShown(tree, [], during).collapsed.has("mot/A")).toBe(false);
   });
 
+  it("keeps a shown entry collapsed while its item resolves again and the entry's rows are gone for a moment", () => {
+    const viewers = [{ item: "mot", entry: "mot/A" }];
+    const shown = revealShown(tree, viewers, NO_FOLDS);
+    const collapsed = { ...shown, collapsed: new Set([...shown.collapsed, "mot/A"]) };
+    const resolving = treeFor([
+      { ...ITEMS[0], resolution: { status: "Pending" } },
+      ...ITEMS.slice(1),
+    ]);
+    const during = revealShown(resolving, viewers, collapsed);
+    expect(revealShown(tree, viewers, during).collapsed.has("mot/A")).toBe(true);
+  });
+
   it("unfolds a row with the rows above it", () => {
     const entryRow = tree.find(({ level }) => level === 2)?.info.key ?? "";
     const all = new Set(tree.map(({ info }) => info.key));
