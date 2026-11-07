@@ -16,8 +16,8 @@ use crate::index_file::{self, Stored};
 use crate::input::VideoInput;
 use crate::source::{self, Opened};
 use foundation::{
-    CancelToken, ColorDesc, ErrorCode, Interrupt, Keyframes, MediaTime, PixelFormat, Timeline,
-    UserError,
+    CancelToken, ColorDesc, ErrorCode, FrameRate, Interrupt, Keyframes, MediaTime, PixelFormat,
+    Timeline, UserError,
 };
 use std::fs::File;
 use std::path::Path;
@@ -43,6 +43,9 @@ pub struct VideoInfo {
     pub format: PixelFormat,
     /// How to convert the delivered samples to RGB.
     pub color: ColorDesc,
+    /// The rate the stream declares (its average, else its base rate); `None` when it declares none. It is probed on
+    /// every load, not cached.
+    pub frame_rate: Option<FrameRate>,
 }
 
 impl VideoInfo {
@@ -198,11 +201,12 @@ impl FrameIndex {
     }
 
     /// How long frame `sequence_id` lasts: the time to the next frame, and for the last frame the duration the
-    /// container gives it, else the previous gap. `None` past the end, and for a last frame with no duration and no
-    /// earlier frame.
+    /// container gives it, else one period of the declared frame rate, else the previous gap. `None` past the end,
+    /// and for a last frame with none of these.
     pub fn duration_of(&self, sequence_id: u64) -> Option<MediaTime> {
         if sequence_id + 1 == self.timeline.len() {
             self.last_duration
+                .or_else(|| self.info.frame_rate.and_then(|rate| rate.time_of(1)))
                 .or_else(|| self.timeline.period_after(sequence_id))
         } else {
             self.timeline.period_after(sequence_id)

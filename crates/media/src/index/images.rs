@@ -92,7 +92,7 @@ impl FrameIndex {
             },
             timeline,
             keyframes,
-            last_duration: None,
+            last_duration: sequence.frame_rate.time_of(1),
             info,
             warnings,
         })

@@ -45,7 +45,7 @@ fn source(dir: &Path, width: u32, height: u32, frames: u64) -> PathBuf {
     let format = EncodeFormat::Mp4 {
         quality: Quality::Small,
     };
-    let mut encoder = Encoder::create(&path, format, width, height).expect("an encoder");
+    let mut encoder = Encoder::create(&path, format, width, height, None).expect("an encoder");
     let (w, h) = (width as usize, height as usize);
     for frame in 0..frames {
         let luma: Vec<u8> = (0..w * h)
