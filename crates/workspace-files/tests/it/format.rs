@@ -405,16 +405,16 @@ fn a_file_the_format_forbids_fails_the_whole_load_naming_the_file() {
     };
     let other = ItemId::generate().to_string();
     let texts = [
-        r#"{"version": 1, "items": []}"#.to_owned(),
-        r#"{"version": "2", "items": []}"#.to_owned(),
-        r#"{"version": 2.0, "items": []}"#.to_owned(),
-        r#"{"version": true, "items": []}"#.to_owned(),
+        r#"{"version": 1, "name": null, "items": []}"#.to_owned(),
+        r#"{"version": "2", "name": null, "items": []}"#.to_owned(),
+        r#"{"version": 2.0, "name": null, "items": []}"#.to_owned(),
+        r#"{"version": true, "name": null, "items": []}"#.to_owned(),
         r#"{"items": []}"#.to_owned(),
         r#"{"version": 2, "items": []}"#.to_owned(),
         r#"{"version": 2, "name": 7, "items": []}"#.to_owned(),
         r#"{"version": 2, "name": null}"#.to_owned(),
         r#"{"version": 2, "name": null, "items": {}}"#.to_owned(),
-        r#"{"version": 2, "items": [], "x": NaN}"#.to_owned(),
+        r#"{"version": 2, "name": null, "items": [], "x": NaN}"#.to_owned(),
         document(json!({"items": [playlist, playlist]})),
         document(json!({"bookmarks": [
             bookmark_json(&item, json!({"id": item})),
