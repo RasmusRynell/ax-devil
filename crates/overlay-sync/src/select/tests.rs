@@ -244,6 +244,35 @@ fn frame_keyed_exact_and_sticky_age_follow_the_video_timeline() {
 }
 
 #[test]
+fn two_lanes_of_different_coverage_follow_one_variable_rate_video_whichever_way_it_is_walked() {
+    let timeline = timeline(&[
+        0, 1_000_000, 1_900_000, 3_000_000, 4_000_000, 6_000_000, 9_000_000,
+    ]);
+    let policy = by_frame(policy(within(50), Some(None)));
+    let sparse = frames(&[0, 3]);
+    let dense = frames(&[1, 3, 4]);
+    let both = |frame: u64| {
+        let id = at(frame, timeline.time(frame).unwrap().0);
+        (
+            select(&sparse, Coverage::Sparse, id, &timeline, &policy),
+            select(&dense, Coverage::Dense, id, &timeline, &policy),
+        )
+    };
+    let expected = [
+        (picked(0, MatchKind::Exact), Selection::Empty),
+        (picked(0, MatchKind::Retained), picked(0, MatchKind::Exact)),
+        (picked(0, MatchKind::Retained), Selection::Empty),
+        (picked(1, MatchKind::Exact), picked(1, MatchKind::Exact)),
+        (picked(1, MatchKind::Retained), picked(2, MatchKind::Exact)),
+        (picked(1, MatchKind::Retained), Selection::Empty),
+    ];
+    // Playing, stepping back and seeking give every frame the same selection in both lanes.
+    for frame in [0, 1, 2, 3, 4, 5, 4, 3, 5, 0, 3] {
+        assert_eq!(both(frame), expected[frame as usize], "frame {frame}");
+    }
+}
+
+#[test]
 fn frame_keyed_sparse_before_the_first_sample_selects_nothing() {
     let sticky = by_frame(policy(Tolerance::Exact, Some(None)));
     let selected = select(

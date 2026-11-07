@@ -3,7 +3,7 @@ import type { Hidden } from "../viewer/hidden";
 import type { LaneDisplay, Picked, Selection, Viewport } from "./contract";
 import { InfoHud } from "./InfoHud";
 import { LaneChip } from "./LaneChip";
-import { allHidden, laneAt, layoutLanes, shownLanes } from "./laneCells";
+import { allHidden, LANE_GAP, laneAt, layoutLanes, shownLanes } from "./laneCells";
 import type { Geometry } from "./renderer";
 import type { PlaybackView } from "./view";
 import { VideoCanvas } from "./VideoCanvas";
@@ -86,7 +86,12 @@ export function LaneGrid({
   const shown = useMemo(() => shownLanes(lanes, hidden, entry), [lanes, hidden, entry]);
   const cells = useMemo(
     () =>
-      layoutLanes(only !== null && shown.includes(only) ? [only] : shown, size.width, size.height),
+      layoutLanes(
+        only !== null && shown.includes(only) ? [only] : shown,
+        size.width,
+        size.height,
+        LANE_GAP,
+      ),
     [shown, only, size],
   );
   const laneOf = (event: { clientX: number; clientY: number }) => {
