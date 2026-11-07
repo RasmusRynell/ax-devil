@@ -263,13 +263,25 @@ mod tests {
         )
         .unwrap();
         let like = saved.id;
+        let by_reference = intake::live(
+            intake::NewLive {
+                host: Some("ref.local".into()),
+                username: Some("root".into()),
+                password: Some(Secret::new("$PATH")),
+                ..intake::NewLive::default()
+            },
+            &configured,
+            &Handlers::built_in(),
+        )
+        .unwrap();
+        let like_reference = by_reference.id;
         let session = state
             .sessions
             .create(true, true, CursorOptions::default())
             .unwrap();
         session
             .command(Command::Content(DocCommand::AddItems {
-                items: vec![saved],
+                items: vec![saved, by_reference],
                 open: false,
             }))
             .unwrap();
@@ -314,6 +326,25 @@ mod tests {
             Some("SAVED-PASSWORD")
         );
         assert_eq!(cleared("other.local", Some(like)).unwrap_or_default(), "");
+        // A saved reference comes back for another stream of that camera (no password given), but not over a
+        // password an edit cleared.
+        let reference = |given: Option<WireSecret>| {
+            let connection = LiveConnection {
+                host: Some("ref.local".into()),
+                password: given,
+                like: Some(like_reference),
+                ..LiveConnection::default()
+            };
+            resolve(&state, Principal::Local, connection)
+                .unwrap()
+                .login
+                .map(|login| login.password.expose().to_owned())
+        };
+        assert_eq!(reference(None), Some(std::env::var("PATH").unwrap()));
+        assert_eq!(
+            reference(Some(WireSecret::default())).unwrap_or_default(),
+            ""
+        );
         for principal in [Principal::Server, Principal::None] {
             for like in [None, Some(like)] {
                 // The configured user is a reference, kept literal for them, so there may be a login, never a password.

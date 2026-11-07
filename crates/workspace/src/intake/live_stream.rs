@@ -149,11 +149,12 @@ impl NewLive {
         if self.username.is_none() {
             self.username = Some(source.username.clone());
         }
-        // Only a literal is copied, and only to the user it was saved for: the client was sent a reference, and a
-        // blank one came back cleared on purpose.
+        // Only to the user it was saved for. A password not given (adding) is the saved one, reference or literal;
+        // one given as empty (an edit) was cleared on purpose when the client was sent the reference as text, so
+        // only a literal it was never sent comes back.
         if password_blank
             && self.username.as_deref() == Some(source.username.as_str())
-            && source.password.as_reference().is_none()
+            && (self.password.is_none() || source.password.as_reference().is_none())
         {
             self.password = Some(source.password.clone());
         }
@@ -175,7 +176,7 @@ impl NewLive {
                 .is_none_or(|entered| entered.expose().is_empty());
             let port = mqtt.broker_port.unwrap_or_else(|| broker.port.into());
             if blank
-                && saved.broker_pass.as_reference().is_none()
+                && (mqtt.broker_pass.is_none() || saved.broker_pass.as_reference().is_none())
                 && same_host(
                     &text(&mqtt.broker_host, &broker.host),
                     saved.broker_host.trim(),

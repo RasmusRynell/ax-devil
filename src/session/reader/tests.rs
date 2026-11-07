@@ -326,6 +326,15 @@ async fn editing_a_stream_keeps_its_id_and_saved_login_on_the_same_camera_only()
     let id = owner.state().doc.workspace.parts().workspace.items[0]
         .id
         .to_string();
+    // The configured overlay (DataHub), with its handler, which an edit that names none keeps.
+    let overlay = || match &owner.state().doc.workspace.parts().workspace.items[0]
+        .recipe
+        .source
+    {
+        Source::Live(recipe) => recipe.overlay.clone(),
+        _ => panic!("a live stream"),
+    };
+    let saved_overlay = overlay();
     let edit = |fields: serde_json::Value| {
         let mut new = json!({"type": "Live"});
         new.as_object_mut()
@@ -340,7 +349,7 @@ async fn editing_a_stream_keeps_its_id_and_saved_login_on_the_same_camera_only()
             &state,
             &owner,
             2,
-            edit(json!({"host": "cam.local", "label": "Gate", "overlay": {"mode": "none"}})),
+            edit(json!({"host": "cam.local", "label": "Gate"})),
         )
         .await,
     );
@@ -356,16 +365,9 @@ async fn editing_a_stream_keeps_its_id_and_saved_login_on_the_same_camera_only()
         items => panic!("one item, got {}", items.len()),
     };
     assert_eq!(login(), (id.clone(), "Gate".into(), true));
+    assert_eq!(overlay(), saved_overlay);
 
-    acks.push(
-        answer(
-            &state,
-            &owner,
-            3,
-            edit(json!({"host": "other.local", "overlay": {"mode": "none"}})),
-        )
-        .await,
-    );
+    acks.push(answer(&state, &owner, 3, edit(json!({"host": "other.local"}))).await);
     assert_eq!(login(), (id, String::new(), false));
 
     let shown: DocWire = crate::session::project::project(&owner.state().doc, Audience::HOST);

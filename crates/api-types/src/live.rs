@@ -347,7 +347,7 @@ pub struct NewLiveWire {
     pub resolution: Option<String>,
     /// A stream URL to use instead of the one made from the host.
     pub url: Option<String>,
-    /// The overlay; absent is the configured one.
+    /// The overlay; absent is the configured one for a new stream and the saved one for an edit.
     pub overlay: Option<NewLiveOverlayWire>,
     /// What the form holds for MQTT while another overlay mode is chosen, kept with the stream.
     pub kept_mqtt: Option<KeptMqttWire>,

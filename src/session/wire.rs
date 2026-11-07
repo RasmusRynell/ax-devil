@@ -202,6 +202,13 @@ fn doc_command(
                     return Err(Refusal::Invalid);
                 }
                 stream.like = Some(item);
+                // An edit that names no overlay keeps the saved one, with its handler; the configured one is for
+                // new streams.
+                if stream.overlay.is_none()
+                    && let Some(recipe) = saved.recipe(item)
+                {
+                    stream.overlay = Some((&recipe.overlay).into());
+                }
             }
             // The edited stream has every value of its own, so a text left empty is not the configured one.
             let edited =
@@ -383,9 +390,11 @@ impl<'a> Saved<'a> {
 
     /// The recipe of the live stream `item`, when the seat may copy its login.
     fn live(self, item: ItemId) -> Option<&'a LiveRecipe> {
-        if !self.owner {
-            return None;
-        }
+        self.owner.then(|| self.recipe(item)).flatten()
+    }
+
+    /// The recipe of the live stream `item`, for any seat that edits it.
+    fn recipe(self, item: ItemId) -> Option<&'a LiveRecipe> {
         self.workspace
             .items
             .iter()

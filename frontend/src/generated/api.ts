@@ -2711,7 +2711,7 @@ resolution?: string,
  */
 url?: string, 
 /**
- * The overlay; absent is the configured one.
+ * The overlay; absent is the configured one for a new stream and the saved one for an edit.
  */
 overlay?: NewLiveOverlayWire, 
 /**
