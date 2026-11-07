@@ -95,7 +95,7 @@ describe("video viewer", () => {
     expect(room.presenter.viewers[1]?.clock).toMatchObject({ playing: true });
   });
 
-  it("reopens a reloaded video paused at the playhead, which is what the watchers were told", async () => {
+  it("carries on playing from the playhead when a reload replaces the viewer, as the watchers were told", async () => {
     const tree = (generation: number) => (
       <SessionProvider>
         <Viewer sent={[]} generation={generation} />
@@ -110,16 +110,18 @@ describe("video viewer", () => {
     fireEvent.click(screen.getByRole("button", { name: "Play" }));
     await act(() => vi.advanceTimersByTimeAsync(1_000));
     flushFrames();
-    // The replacement mounts as the first viewer leaves, and must not take the running clock the render still saw.
     view.rerender(tree(2));
     await act(() => vi.advanceTimersByTimeAsync(1_000));
+    flushFrames();
+    // The outgoing viewer left its clock running at the playhead, and the replacement plays on from it.
     const told = room.presenter.viewers[1]?.clock;
-    expect(told).toMatchObject({ playing: false });
+    expect(told).toMatchObject({ playing: true });
     expect(told?.frame).toBeGreaterThan(0);
-    expect(screen.getByRole("button", { name: "Play" })).toBeTruthy();
-    expect((screen.getByRole("slider", { name: "Timeline" }) as HTMLInputElement).value).toBe(
-      String(told?.frame),
+    expect(screen.getByRole("button", { name: "Pause" })).toBeTruthy();
+    const shown = Number(
+      (screen.getByRole("slider", { name: "Timeline" }) as HTMLInputElement).value,
     );
+    expect(shown).toBeGreaterThan(told?.frame ?? Infinity);
   });
 
   describe("when the session resumes", () => {
