@@ -14,3 +14,16 @@ it("tells size, frame rate and length, leaving out what the video does not decla
   );
   expect(videoDetails({ ...described, fps: null })).toBe("640×480");
 });
+
+it("rounds the frame rate as Python's round(x, 2) with :g does, a tie to the even digit", () => {
+  const shown = (fps: number) => videoDetails({ ...described, fps }).split(" · ")[1];
+  // 25.125 and 0.125 are exact ties; 2.675 is a double just below its tie.
+  expect([25.125, 30, 29.97, 23.976023976, 2.675, 0.125].map(shown)).toEqual([
+    "25.12 fps",
+    "30 fps",
+    "29.97 fps",
+    "23.98 fps",
+    "2.67 fps",
+    "0.12 fps",
+  ]);
+});
