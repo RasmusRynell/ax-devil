@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { choicesOf } from "../export/lanes";
 import type { Hidden } from "../viewer/hidden";
 import type { LaneDisplay, Picked, Selection, Viewport } from "./contract";
 import { InfoHud } from "./InfoHud";
@@ -41,6 +42,7 @@ export function LaneGrid({
   info = false,
   live = false,
   onHide,
+  onExport,
   onPoint,
   onPick,
   viewport,
@@ -68,6 +70,8 @@ export function LaneGrid({
   live?: boolean;
   /** Hides a lane by its label; absent for a seat that may not change the workspace. */
   onHide?: (label: string) => void;
+  /** Exports one lane, which each lane's menu then offers; absent where nothing is exported (a live viewer). */
+  onExport?: (lane: number) => void;
   /** Told which lane the pointer is over (null: none) and which lane a press landed on. */
   onPoint?: (lane: number | null) => void;
   onPick?: (lane: number) => void;
@@ -161,6 +165,12 @@ export function LaneGrid({
                     : undefined
                 }
                 onHide={onHide && (() => onHide(lanes[index].label))}
+                onExport={
+                  onExport && {
+                    run: () => onExport(index),
+                    waits: !!choicesOf(lanes).find((choice) => choice.lane === index)?.cold,
+                  }
+                }
               />
             </div>
             {info && <InfoHud session={session} view={view} lane={index} />}

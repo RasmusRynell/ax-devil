@@ -2,7 +2,7 @@ import { useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import type { ExportFormatWire, ExportQualityWire } from "../generated/api";
 import { Button } from "../kit/Button";
-import { DialogFrame } from "../kit/Dialog";
+import { Dialog, DialogFrame } from "../kit/Dialog";
 import { Checkbox, Select, TextField } from "../kit/Fields";
 import { MiddleElided } from "../kit/MiddleElided";
 import type { PlaybackView } from "../playback/view";
@@ -119,6 +119,18 @@ function ProgressBar({ done, total }: { done: number; total: number }) {
   );
 }
 
+/** What an export asked for while a render catalog is still loading says; the export does not start. */
+export function ExportNotice({ onClose }: { onClose: () => void }) {
+  return createPortal(
+    <div className="contents" onKeyDown={(event) => event.stopPropagation()}>
+      <Dialog title="Export video" onOk={onClose} focusOk>
+        <p className="m-0">Render catalogs are still loading. Try again in a moment.</p>
+      </Dialog>
+    </div>,
+    document.body,
+  );
+}
+
 /**
  * The modal export of the viewer's video: which lanes, a video or this frame, the frames and the quality, then the
  * running job with Cancel. The backend writes the file; a local window picks it with the native save dialog and any
@@ -134,7 +146,7 @@ export function ExportDialog({
   jobs: ExportJobs;
   view: PlaybackView;
   name: string;
-  /** Starts with just this lane checked, the one a lane menu was used on; every lane otherwise. */
+  /** Offers just this lane, the one a lane menu was used on; every lane otherwise. */
   only?: number;
   onClose: () => void;
 }) {
@@ -142,11 +154,10 @@ export function ExportDialog({
   const latest = useRef(view);
   latest.current = view;
   const bridge = useServerKind() === "local" ? window.axDevilWindow : undefined;
-  const choices = choicesOf(view.lanes);
-  const [unchecked, setUnchecked] = useState<ReadonlySet<number>>(
-    () =>
-      new Set(only === undefined ? [] : choices.filter((c) => c.lane !== only).map((c) => c.lane)),
-  );
+  const offered = (lanes: PlaybackView["lanes"]) =>
+    choicesOf(lanes).filter((choice) => only === undefined || choice.lane === only);
+  const choices = offered(view.lanes);
+  const [unchecked, setUnchecked] = useState<ReadonlySet<number>>(new Set());
   const [kind, setKind] = useState<Kind>("mp4");
   const [quality, setQuality] = useState<ExportQualityWire>("balanced");
   const [from, setFrom] = useState("0");
@@ -187,7 +198,7 @@ export function ExportDialog({
       if (!chosen) return;
       const target = withExtension(chosen, kind);
       // The lanes are read now: the picker may have been open while they changed.
-      const now = choicesOf(latest.current.lanes);
+      const now = offered(latest.current.lanes);
       const lanes = now.flatMap((choice) =>
         choice.wire && !skipped(now, choice.lane) ? [choice.wire] : [],
       );

@@ -45,7 +45,7 @@ module.exports.exportDialog = async (window) => {
   }
   assert.equal(asked.length, 1, "Export must ask the native save dialog once");
   assert.equal(asked[0].defaultPath, "long_gop_h264.mp4");
-  assert.deepEqual(asked[0].filters, [{ name: "MP4", extensions: ["mp4"] }]);
+  assert.deepEqual(asked[0].filters, [{ name: "MP4 Video", extensions: ["mp4"] }]);
   await wait(`!${submit}.disabled`);
   assert.equal(await js("document.querySelector('[role=progressbar]')"), null);
 

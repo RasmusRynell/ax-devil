@@ -14,26 +14,45 @@ export const canEdit = (item: ItemState | undefined, powers: Powers): item is It
   editable(item) && powers.content && (item.kind === "live" || powers.host);
 
 /**
- * The menu of a row, in groups: Open and Open to the Side (a row that cannot open says why), Information, Hide, then Edit and Remove for
- * the whole item, which only a top-level row offers. A row still resolving opens and informs nothing, and an item
- * that was unreadable cannot be edited.
+ * The menu of a row, in groups: Open and Open to the Side (a row that cannot open says why), Information and Export
+ * video, Hide, then Edit and Remove for the whole item, which only a top-level row offers. A row still resolving
+ * opens and informs nothing, and an item that was unreadable cannot be edited. A video and an entry export what a
+ * viewer shows, so Export video waits for `exportable`: a viewer showing it.
  */
-export function rowMenu(row: TreeRow, item: ItemState | undefined, powers: Powers): MenuEntry[] {
-  const action = (id: string, label: string, disabled = false): MenuEntry => ({
+export function rowMenu(
+  row: TreeRow,
+  item: ItemState | undefined,
+  powers: Powers,
+  exportable: boolean,
+): MenuEntry[] {
+  const action = (id: string, label: string, disabled = false, reason?: string): MenuEntry => ({
     kind: "action",
     id,
     label,
     disabled,
+    reason: disabled ? reason : undefined,
   });
   const { status } = row.info.status;
   const owns = row.level === 1 && item !== undefined;
+  const exports =
+    status === "Ready" &&
+    (row.info.kind === "entry" || (row.info.kind === "item" && row.itemKind === "video"));
   const groups: MenuEntry[][] = [
+    status === "Pending" ? [] : [action("open", "Open"), action("open-side", "Open to the Side")],
     status === "Pending"
       ? []
       : [
-          action("open", "Open"),
-          action("open-side", "Open to the Side"),
           action("information", "Information"),
+          ...(exports
+            ? [
+                action(
+                  "export-video",
+                  "Export video",
+                  !exportable || !powers.host,
+                  exportable ? undefined : "Open it first",
+                ),
+              ]
+            : []),
         ],
     row.target ? [action("hidden", row.info.hidden ? "Unhide" : "Hide", !powers.content)] : [],
     owns
