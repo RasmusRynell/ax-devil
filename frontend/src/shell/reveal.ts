@@ -39,15 +39,23 @@ function firstFolds(
     ({ info, playlist }) =>
       !known.has(info.key) && !(playlist && (entries.get(info.key) ?? 0) <= OPEN_AT_FIRST_LIMIT),
   );
-  const next = parents.map(({ info }) => info.key);
+  // A row that loses its children while its item resolves again is still known; one whose item left is not.
+  const items = new Set(tree.map(({ item }) => item));
+  const now = new Set([
+    ...parents.map(({ info }) => info.key),
+    ...[...known].filter((key) => items.has(itemOf(key))),
+  ]);
   return {
     collapsed:
       added.length === 0
         ? collapsed
         : new Set([...collapsed, ...added.map(({ info }) => info.key)]),
-    known: same(known, new Set(next)) ? known : new Set(next),
+    known: same(known, now) ? known : now,
   };
 }
+
+/** The item a row key belongs to: keys start with the item's id, then `/` and names, or the lane separator. */
+const itemOf = (key: string) => key.split(/[/\u001f]/, 1)[0];
 
 /**
  * `collapsed` without `key` and every row above it, so the row is drawn; the same set when it already is. The rows

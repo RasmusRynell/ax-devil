@@ -70,6 +70,20 @@ describe("what a viewer shows", () => {
     expect(revealShown(updated, [], opened).collapsed.has("p/p")).toBe(false);
   });
 
+  it("keeps what the user opened while the item resolves again and its rows are gone for a moment", () => {
+    const first = revealShown(tree, [], NO_FOLDS);
+    const opened = {
+      ...first,
+      collapsed: new Set([...first.collapsed].filter((k) => k !== "mot/A")),
+    };
+    const resolving = treeFor([
+      { ...ITEMS[0], resolution: { status: "Pending" } },
+      ...ITEMS.slice(1),
+    ]);
+    const during = revealShown(resolving, [], opened);
+    expect(revealShown(tree, [], during).collapsed.has("mot/A")).toBe(false);
+  });
+
   it("unfolds a row with the rows above it", () => {
     const entryRow = tree.find(({ level }) => level === 2)?.info.key ?? "";
     const all = new Set(tree.map(({ info }) => info.key));
