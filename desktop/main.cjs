@@ -13,7 +13,7 @@ const { installIpc, localWindows, openWindow } = require("./window.cjs");
 const { windowBounds } = require("./window-state.cjs");
 
 const smoke = process.argv.includes("--smoke-test");
-// The smoke test always starts its own release backend and never attaches to a running session.
+// The smoke test always starts its own backend and never attaches to a running session.
 const port = smoke ? "0" : process.env.PORT || "7330";
 const devUrl = smoke ? undefined : process.env.DESKTOP_DEV_URL;
 // The backend starts the hidden renderer with this executable and folder; in a packaged app it cannot find them itself.
