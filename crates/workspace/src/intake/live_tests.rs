@@ -306,8 +306,24 @@ fn editing_keeps_a_cleared_user_and_what_the_other_overlay_modes_hold() {
     assert_eq!(edited.head, 9999);
     assert_eq!(
         (edited.username.as_str(), edited.password.expose()),
-        ("", "literal"),
-        "a cleared user stays cleared; a blank password is the saved one"
+        ("", ""),
+        "a cleared user stays cleared and gets none of the saved user's password"
+    );
+    let mut same_user = NewLive {
+        overlay: Some(NewLiveOverlay::None),
+        ..host("cam.local")
+    };
+    same_user
+        .copy_login(&saved, &editing, LoginUse::Stream)
+        .unwrap();
+    let item = live(same_user, &editing, &Handlers::built_in()).unwrap();
+    assert_eq!(
+        (
+            recipe(&item).username.as_str(),
+            recipe(&item).password.expose()
+        ),
+        ("root", "literal"),
+        "the saved user keeps the saved password"
     );
     assert_eq!(edited.kept.mqtt, saved.kept.mqtt);
     assert_eq!(

@@ -102,7 +102,8 @@ impl NewLive {
     /// Fills a blank user and password from the login saved with `source`, when this stream is for the same camera:
     /// the same host text, protocol and port once `defaults` fill what is blank. Another host gets nothing, so a saved
     /// password is never sent where the person who adds the stream did not first see it go. A user entered and not
-    /// `source`'s keeps its own password too, which `source`'s does not belong to.
+    /// `source`'s keeps its own password too, which `source`'s does not belong to, and a user cleared to empty gets
+    /// none of `source`'s.
     ///
     /// A [`LoginUse::Stream`] login also goes to the stream URL's host and port, or the camera's with its RTSP port,
     /// so a copy needs that endpoint to be the one `source` already sends its login to; any other is refused, as the
@@ -148,8 +149,12 @@ impl NewLive {
         if self.username.is_none() {
             self.username = Some(source.username.clone());
         }
-        // Only a literal is copied: the client was sent a reference and a blank one came back cleared on purpose.
-        if password_blank && source.password.as_reference().is_none() {
+        // Only a literal is copied, and only to the user it was saved for: the client was sent a reference, and a
+        // blank one came back cleared on purpose.
+        if password_blank
+            && self.username.as_deref() == Some(source.username.as_str())
+            && source.password.as_reference().is_none()
+        {
             self.password = Some(source.password.clone());
         }
         Ok(())
