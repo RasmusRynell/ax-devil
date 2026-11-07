@@ -1,0 +1,10 @@
+{
+  "apiVersion": 16,
+  "reserved": [
+    "Ctrl+=",
+    "Ctrl++",
+    "Ctrl+-",
+    "Ctrl+0"
+  ],
+  "shellApi": 5
+}

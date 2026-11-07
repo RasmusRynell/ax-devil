@@ -6,7 +6,7 @@ description: Decide whether and where an ax-devil test is worth having, delete t
 # Write Tests
 
 Follow [AGENTS.md](../../../AGENTS.md) and the [testing runbook](../../../docs/runbooks/testing.md), which owns
-fixtures, isolation, Qt lifecycle rules and commands. Read the relevant
+fixtures, isolation and commands. Read the relevant
 [domain invariants](../../../docs/domain/invariants.md) when establishing a requirement.
 
 ## Delete First, Then Decide
@@ -30,13 +30,14 @@ it broke, what observation separates that failure from acceptable behavior, and 
 assertion?
 
 Ground expectations in the request, an established contract, or a confirmed bug, not the current implementation;
-clarify unclear intended behavior first. Strengthen an existing relevant test before adding another.
+clarify unclear intended behavior first. When porting, an old test is a requirement candidate: keep the behavior it
+protects, never its assertions copied from old output, and never freeze a known old bug into a fixture. Strengthen an existing relevant test before adding another.
 
 ## Choose And Assert
 
 Exercise the behavior through a stable interface at the lowest level that can expose the real failure: a pure
-function, controller, component, or integrated workflow. Use widget interactions only for layout, focus, input or
-rendering. Keep owned behavior real; fake external devices, transports and processes at their boundaries. Use small,
+function, Rust module, backend route, React component, or the desktop app. Use rendered-UI interactions only for
+layout, focus, input or rendering. Keep owned behavior real; fake external devices, transports and processes at their boundaries. Use small,
 realistic inputs and relevant boundary cases.
 
 Assert outcomes: correct frames and overlays, usable controls, preserved settings, valid output, released resources.
@@ -53,6 +54,8 @@ tolerance merely to turn a failure green.
 
 Follow the runbook's isolation and cleanup rules and reuse its fixtures. Wait for the observable state the assertion
 needs, not arbitrary sleeps or an intermediate animation value, with bounded waits so broken behavior still fails.
+Inject time and scheduling: policy tests use a virtual clock (Vitest fake timers, a controllable clock in Rust)
+rather than real delays.
 
 For a flaky test, first decide whether its assertion protects a real requirement. If it does, tell a product defect
 from a synchronization problem before repairing it; if not, delete it. Never just raise the timeout, relax the

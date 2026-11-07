@@ -1,0 +1,30 @@
+[package]
+name = "export"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[package.metadata.ax-devil]
+layer = "services"
+
+[lints]
+workspace = true
+
+[dependencies]
+bytes.workspace = true
+foundation.workspace = true
+media.workspace = true
+overlay-sync.workspace = true
+overlays.workspace = true
+same-file.workspace = true
+scene-store.workspace = true
+serde.workspace = true
+ts-rs.workspace = true
+
+[dev-dependencies]
+handlers.workspace = true
+handler-api.workspace = true
+serde_json.workspace = true
+tempfile = "3"

@@ -1,0 +1,245 @@
+{
+  "scene_version": "4.0",
+  "scenes": [
+    {
+      "time": {
+        "start": {
+          "us": 1000000
+        },
+        "end": {
+          "us": 1040000
+        }
+      },
+      "entities": [
+        {
+          "id": "car-1",
+          "observations": [
+            {
+              "time": {
+                "us": 1000000
+              },
+              "geometry": {
+                "box": [
+                  -0.1,
+                  0.2,
+                  1.2,
+                  0.3
+                ]
+              },
+              "classifications": [
+                {
+                  "type": "car",
+                  "score": 0.9,
+                  "confidence": 0.8,
+                  "attributes": {
+                    "colors": [
+                      {
+                        "name": "red",
+                        "rgb": [
+                          200,
+                          30,
+                          30
+                        ],
+                        "score": 0.5,
+                        "none": null
+                      }
+                    ]
+                  }
+                },
+                {
+                  "type": "?99",
+                  "score": null,
+                  "confidence": null,
+                  "attributes": {}
+                }
+              ],
+              "measurements": {
+                "image_velocity": {
+                  "vx": 0.04,
+                  "vy": -0.01
+                },
+                "world_velocity": {
+                  "pitch": 1.0,
+                  "speed": 2.5,
+                  "yaw": -3.0
+                },
+                "geographic": {
+                  "latitude": 55.7,
+                  "longitude": 13.2,
+                  "elevation": 20.0
+                },
+                "world": {
+                  "distance": 12.0,
+                  "azimuth": 0.5,
+                  "elevation": 0.25
+                }
+              },
+              "source_data": {
+                "zeta": [
+                  {
+                    "name": "red",
+                    "rgb": [
+                      200,
+                      30,
+                      30
+                    ],
+                    "score": 0.5,
+                    "none": null
+                  },
+                  false
+                ],
+                "alpha": -9223372036854775808,
+                "big": 9223372036854775807
+              },
+              "debug": {
+                "note": "é→🚗"
+              }
+            },
+            {
+              "time": {
+                "us": 1040000
+              },
+              "geometry": {
+                "polygon": [
+                  [
+                    0.1,
+                    0.1
+                  ],
+                  [
+                    0.5,
+                    0.1
+                  ],
+                  [
+                    0.3,
+                    0.6
+                  ]
+                ]
+              },
+              "classifications": [],
+              "measurements": {
+                "geographic": {
+                  "latitude": 1.0,
+                  "longitude": 2.0,
+                  "elevation": null
+                }
+              }
+            }
+          ],
+          "end_reason": "left the scene",
+          "motion_state": "moving",
+          "images": [
+            {
+              "timestamp_us": 1000000,
+              "box": [
+                0.0,
+                0.0,
+                0.5,
+                0.5
+              ],
+              "data": "AAEC/f7/"
+            }
+          ]
+        },
+        {
+          "id": "bare",
+          "observations": [],
+          "end_reason": null,
+          "motion_state": "stationary"
+        },
+        {
+          "id": "unknown",
+          "observations": [],
+          "end_reason": null,
+          "motion_state": "unknown"
+        }
+      ],
+      "events": [
+        {
+          "time": {
+            "start": {
+              "us": 1000000
+            },
+            "end": {
+              "us": 1040000
+            }
+          },
+          "operation": {
+            "delete": {
+              "entity": "bare"
+            }
+          }
+        },
+        {
+          "time": {
+            "start": {
+              "us": 1000000
+            },
+            "end": {
+              "us": 1040000
+            }
+          },
+          "operation": {
+            "rename": {
+              "from": "a",
+              "to": "b"
+            }
+          }
+        },
+        {
+          "time": {
+            "start": {
+              "us": 1000000
+            },
+            "end": {
+              "us": 1000000
+            }
+          },
+          "operation": {
+            "merge": {
+              "sources": [
+                "1",
+                "2"
+              ],
+              "target": "3"
+            }
+          }
+        },
+        {
+          "time": {
+            "start": {
+              "us": 1000000
+            },
+            "end": {
+              "us": 1040000
+            }
+          },
+          "operation": {
+            "split": {
+              "source": "3",
+              "targets": [
+                "4",
+                "5"
+              ]
+            }
+          }
+        }
+      ],
+      "relations": [
+        {
+          "type": "has_part",
+          "source": "car-1",
+          "target": "bare"
+        },
+        {
+          "type": "near",
+          "source": "bare",
+          "target": "car-1"
+        }
+      ],
+      "debug": {
+        "decoder": "test",
+        "alpha": []
+      }
+    }
+  ]
+}

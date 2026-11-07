@@ -17,7 +17,9 @@ Inspection requests are review-only; apply fixes when requested or already autho
 
 Read [the module map](../../../docs/architecture/module-map.md) when assessing ownership, relevant sections of
 [domain invariants](../../../docs/domain/invariants.md) for affected behavior, and
-[the testing runbook](../../../docs/runbooks/testing.md) when assessing or running tests.
+[the testing runbook](../../../docs/runbooks/testing.md) when assessing or running tests. For a parity row, compare
+with the behavior its source defines at the reference commit (`docs/rebuild/README.md`) and check that
+`docs/parity.md` names the test that proves it.
 
 ## Review priorities
 
@@ -28,14 +30,14 @@ or class count. Follow actual callers: do they have to coordinate internal steps
 state that the module should own? Prefer an interface that hides that complexity and keeps related changes local.
 Pass-through layers, exposed internals, and abstractions for hypothetical variants need a concrete benefit.
 
-In ax-devil, widgets project state and emit intent; controllers and concept-owned modules own behavior. Shared
+In ax-devil, frontend components project backend state and send intent; concept-owned backend modules own behavior. Shared
 labels and decisions belong on their domain owner. Flag violations with the caller burden or duplicated knowledge
 they create, rather than demanding abstractions merely to satisfy a design preference.
 
 ### 2. Fix the architectural cause
 
 When a change adds a workaround, trace the problem to its owner. Prefer correcting that boundary or data model over
-another conditional, duplicated state record, fallback, or widget-specific patch. Existing bad structure is not a
+another conditional, duplicated state record, fallback, or component-specific patch. Existing bad structure is not a
 reason to extend it. Recommend the smallest complete correction, including affected callers, even if it touches
 more files than a symptom fix.
 
@@ -86,6 +88,6 @@ consequence, and proposed fix at the right owner. For a weak test, name the beha
 deleting it. Avoid filler findings and generic design advice; a clean review is a valid result.
 
 Validate the result against the current review target, and state which revisions and checks support your conclusion,
-including their limits and remaining uncertainty. Use the testing runbook's isolated verification workflow. After
-applying fixes, run the checks required by `AGENTS.md`. Review-only findings may describe the fix directly; provide a
+including their limits and remaining uncertainty. Use the testing runbook's isolated verification workflow
+(`verify-headless` skill). After applying fixes, run the checks required by `AGENTS.md`. Review-only findings may describe the fix directly; provide a
 patch when useful or requested.

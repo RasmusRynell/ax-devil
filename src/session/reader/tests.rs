@@ -1,0 +1,370 @@
+use super::*;
+use crate::{access::Policy, network::ScanRequest, plugins::Plugins};
+use api_types::{Audience, DocWire};
+use camera::{Found, Identity, Login, ScanLoad, ScanPorts, Scheme, Secret, SignIn, Targets, Web};
+use serde_json::json;
+use sessions::CursorOptions;
+use std::{net::Ipv4Addr, sync::Arc};
+use workspace::Source;
+
+const PASSWORD: &str = "SECRET-SCAN-PASSWORD";
+
+fn found(last: u8, sign_in: SignIn) -> Found {
+    Found {
+        addr: Ipv4Addr::new(10, 9, 9, last),
+        web: Web {
+            scheme: Scheme::Https,
+            port: 8443,
+        },
+        identity: Identity {
+            model: "Q1656".into(),
+            serial: String::new(),
+            firmware: String::new(),
+            product_type: String::new(),
+            architecture: String::new(),
+            soc: String::new(),
+        },
+        uptime: None,
+        sign_in,
+    }
+}
+
+fn add(address: &str) -> api_types::SessionCommand {
+    serde_json::from_value(json!({"type": "content", "command": {
+        "type": "addItems", "open": true, "items": [{"type": "Live", "found": address}]}}))
+    .unwrap()
+}
+
+/// A camera the scan signed in to becomes an opened stream with the login that worked, and one it did not is refused;
+/// neither the answer nor what the Doc shows holds the password.
+#[tokio::test]
+async fn adding_a_found_camera_uses_the_scan_login_and_never_shows_it() {
+    let folder = tempfile::tempdir().unwrap();
+    let settings = settings::Settings::load(&folder.path().join("default.json")).unwrap();
+    let cache = folder.path().join("cache");
+    let videos = crate::video_cache::start(&settings, &cache);
+    let (_stop, stopping) = tokio::sync::watch::channel(false);
+    let network = crate::network::Network::with_scanner(|_| {
+        let (tx, rx) = mpsc::channel(4);
+        tx.try_send(found(
+            2,
+            SignIn::SignedIn {
+                login_index: 0,
+                architecture: String::new(),
+                soc: String::new(),
+            },
+        ))
+        .unwrap();
+        tx.try_send(found(3, SignIn::Refused)).unwrap();
+        rx
+    });
+    let state = AppState::new(
+        Arc::new(settings),
+        Policy::Local,
+        videos,
+        stopping,
+        Plugins::fixed(handlers::Handlers::built_in()),
+        &cache,
+    )
+    .with_network(Arc::clone(&network));
+    network.rescan(ScanRequest {
+        targets: Targets::parse("10.9.9.0/30").unwrap(),
+        logins: vec![Login {
+            user: "root".into(),
+            password: Secret::new(PASSWORD),
+        }],
+        load: ScanLoad::Normal,
+        ports: ScanPorts::preferring(Scheme::Https),
+    });
+    let mut rows = network.subscribe();
+    rows.wait_for(|snapshot| snapshot.rows.len() == 2)
+        .await
+        .unwrap();
+    let handle = state
+        .sessions
+        .create(true, true, CursorOptions::default())
+        .unwrap();
+
+    // Only the owner has the scan's logins.
+    assert!(matches!(
+        wire::scope(&add("10.9.9.2")),
+        Some(Scope::Control)
+    ));
+    let refused = answer(&state, &handle, 1, add("10.9.9.3")).await;
+    assert!(matches!(
+        refused,
+        SessionServerMessage::Ack {
+            outcome: AckOutcome::Refused {
+                code: sessions::session::Refusal::Invalid
+            },
+            ..
+        }
+    ));
+    assert!(
+        handle
+            .state()
+            .doc
+            .workspace
+            .parts()
+            .workspace
+            .items
+            .is_empty()
+    );
+
+    let ack = answer(&state, &handle, 2, add("10.9.9.2")).await;
+    assert!(matches!(
+        ack,
+        SessionServerMessage::Ack {
+            outcome: AckOutcome::Ok,
+            ..
+        }
+    ));
+    let doc = handle.state().doc.clone();
+    let parts = doc.workspace.parts();
+    let [item] = parts.workspace.items.as_slice() else {
+        panic!("one stream was added");
+    };
+    assert!(parts.open.contains(&item.id), "its viewer is open");
+    let Source::Live(recipe) = &item.recipe.source else {
+        panic!("a live stream");
+    };
+    assert_eq!(
+        (recipe.host.as_str(), recipe.username.as_str(), recipe.port),
+        ("10.9.9.2", "root", 8443)
+    );
+    assert_eq!(recipe.password.expose(), PASSWORD);
+
+    let shown: DocWire = crate::session::project::project(&doc, Audience::HOST);
+    for text in [
+        serde_json::to_string(&ack).unwrap(),
+        serde_json::to_string(&shown).unwrap(),
+    ] {
+        assert!(!text.contains(PASSWORD), "{text}");
+    }
+}
+
+fn add_live(fields: serde_json::Value) -> api_types::SessionCommand {
+    let mut item = json!({"type": "Live"});
+    item.as_object_mut()
+        .unwrap()
+        .extend(fields.as_object().unwrap().clone());
+    serde_json::from_value(json!({"type": "content", "command": {
+        "type": "addItems", "open": false, "items": [item]}}))
+    .unwrap()
+}
+
+/// Another stream of a camera whose saved login is a literal password takes that login on the server, only for the
+/// owner and only for the same camera; the password is in no answer and nothing the Doc shows.
+#[tokio::test]
+async fn another_stream_of_a_camera_copies_its_saved_login_for_the_owner_only() {
+    let folder = tempfile::tempdir().unwrap();
+    let settings = settings::Settings::load(&folder.path().join("default.json")).unwrap();
+    let cache = folder.path().join("cache");
+    let videos = crate::video_cache::start(&settings, &cache);
+    let (_stop, stopping) = tokio::sync::watch::channel(false);
+    let state = AppState::new(
+        Arc::new(settings),
+        Policy::Local,
+        videos,
+        stopping,
+        Plugins::fixed(handlers::Handlers::built_in()),
+        &cache,
+    );
+    let owner = state
+        .sessions
+        .create(true, true, CursorOptions::default())
+        .unwrap();
+    let ok = |ack: &SessionServerMessage| {
+        matches!(
+            ack,
+            SessionServerMessage::Ack {
+                outcome: AckOutcome::Ok,
+                ..
+            }
+        )
+    };
+    let mut acks = Vec::new();
+    acks.push(
+        answer(
+            &state,
+            &owner,
+            1,
+            add_live(json!({"host": "cam.local", "username": "root", "password": PASSWORD})),
+        )
+        .await,
+    );
+    let source = owner.state().doc.workspace.parts().workspace.items[0]
+        .id
+        .to_string();
+
+    // The login of each stream added after the first, in the order added.
+    let like = |fields: serde_json::Value| {
+        let mut fields = fields;
+        fields["like"] = json!(source);
+        add_live(fields)
+    };
+    acks.push(
+        answer(
+            &state,
+            &owner,
+            2,
+            like(json!({"host": "cam.local", "username": "root"})),
+        )
+        .await,
+    );
+    acks.push(
+        answer(
+            &state,
+            &owner,
+            3,
+            like(json!({"host": "other.local", "username": "root"})),
+        )
+        .await,
+    );
+    owner
+        .command(sessions::session::Command::Control(Control::Share {
+            access: sessions::session::Access::Edit,
+        }))
+        .unwrap();
+    let link = owner.state().sharing.as_ref().unwrap().link.clone();
+    let watcher = state
+        .sessions
+        .join(&link, CursorOptions::default())
+        .unwrap();
+    acks.push(
+        answer(
+            &state,
+            &watcher,
+            4,
+            like(json!({"host": "cam.local", "username": "root"})),
+        )
+        .await,
+    );
+    assert!(acks.iter().all(ok));
+    // A reference would read this machine's environment for the owner's session, which a watcher may not ask for.
+    let refused = answer(
+        &state,
+        &watcher,
+        5,
+        add_live(json!({"host": "cam.local", "username": "$PATH"})),
+    )
+    .await;
+    assert!(matches!(
+        refused,
+        SessionServerMessage::Ack {
+            outcome: AckOutcome::Refused {
+                code: sessions::session::Refusal::Invalid
+            },
+            ..
+        }
+    ));
+
+    let doc = owner.state().doc.clone();
+    let logins: Vec<_> = doc
+        .workspace
+        .parts()
+        .workspace
+        .items
+        .iter()
+        .map(|item| match &item.recipe.source {
+            Source::Live(recipe) => (
+                recipe.host.clone(),
+                recipe.username.clone(),
+                recipe.password.expose() == PASSWORD,
+            ),
+            _ => panic!("a live stream"),
+        })
+        .collect();
+    assert_eq!(
+        logins,
+        [
+            ("cam.local".into(), "root".into(), true),
+            ("cam.local".into(), "root".into(), true),
+            ("other.local".into(), "root".into(), false),
+            ("cam.local".into(), "root".into(), false),
+        ]
+    );
+    let shown: DocWire = crate::session::project::project(&doc, Audience::HOST);
+    for text in [
+        serde_json::to_string(&acks).unwrap(),
+        serde_json::to_string(&shown).unwrap(),
+    ] {
+        assert!(!text.contains(PASSWORD), "{text}");
+    }
+}
+
+/// Editing a stream keeps its id and, while it stays on the same camera, its saved login when the form leaves the
+/// login blank; the password is in no answer and nothing the Doc shows.
+#[tokio::test]
+async fn editing_a_stream_keeps_its_id_and_saved_login_on_the_same_camera_only() {
+    let folder = tempfile::tempdir().unwrap();
+    let settings = settings::Settings::load(&folder.path().join("default.json")).unwrap();
+    let cache = folder.path().join("cache");
+    let videos = crate::video_cache::start(&settings, &cache);
+    let (_stop, stopping) = tokio::sync::watch::channel(false);
+    let state = AppState::new(
+        Arc::new(settings),
+        Policy::Local,
+        videos,
+        stopping,
+        Plugins::fixed(handlers::Handlers::built_in()),
+        &cache,
+    );
+    let owner = state
+        .sessions
+        .create(true, true, CursorOptions::default())
+        .unwrap();
+    let mut acks = vec![
+        answer(
+            &state,
+            &owner,
+            1,
+            add_live(json!({"host": "cam.local", "username": "root", "password": PASSWORD})),
+        )
+        .await,
+    ];
+    let id = owner.state().doc.workspace.parts().workspace.items[0]
+        .id
+        .to_string();
+    let edit = |fields: serde_json::Value| {
+        let mut new = json!({"type": "Live"});
+        new.as_object_mut()
+            .unwrap()
+            .extend(fields.as_object().unwrap().clone());
+        serde_json::from_value(json!({"type": "content", "command": {
+            "type": "editItem", "item": id, "new": new}}))
+        .unwrap()
+    };
+    acks.push(
+        answer(
+            &state,
+            &owner,
+            2,
+            edit(json!({"host": "cam.local", "label": "Gate"})),
+        )
+        .await,
+    );
+    let login = || match &owner.state().doc.workspace.parts().workspace.items[..] {
+        [item] => match &item.recipe.source {
+            Source::Live(recipe) => (
+                item.id.to_string(),
+                item.label.clone(),
+                recipe.password.expose() == PASSWORD,
+            ),
+            _ => panic!("a live stream"),
+        },
+        items => panic!("one item, got {}", items.len()),
+    };
+    assert_eq!(login(), (id.clone(), "Gate".into(), true));
+
+    acks.push(answer(&state, &owner, 3, edit(json!({"host": "other.local"}))).await);
+    assert_eq!(login(), (id, String::new(), false));
+
+    let shown: DocWire = crate::session::project::project(&owner.state().doc, Audience::HOST);
+    for text in [
+        serde_json::to_string(&acks).unwrap(),
+        serde_json::to_string(&shown).unwrap(),
+    ] {
+        assert!(!text.contains(PASSWORD), "{text}");
+    }
+}

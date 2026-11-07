@@ -1,172 +1,133 @@
 # Architecture Overview
 
-The code is organized around concept-owned modules. Workspace content describes what can be opened; viewer workflows create runtime sources and presentation objects only when content is opened.
+ax-devil is a Rust backend and a React frontend. The desktop app is an Electron window that starts the backend and
+loads the frontend from it; the same frontend also runs in a browser, locally or against a shared server. Where code goes is in the
+[module map](module-map.md); the rules it must keep are in the [invariants](../domain/invariants.md).
+
+Until parity, the layer contents, seams and runtime guarantees are specified in
+[02](../rebuild/02-architecture.md) and [03](../rebuild/03-runtime.md); each moves here as it is built.
+
+## Processes
+
+| Process | Owns |
+|---------|------|
+| Backend (`ax-devil`, Rust) | Application state and work: domain, sources, decoding, overlay data, files, settings, [sessions](../../crates/sessions/README.md) |
+| Frontend (React, in Chromium) | The UI: a projection of backend state that sends user intent back, the owner of its own view state, and overlay presentation per lane |
+| Desktop shell (Electron) | Windows, one trusted origin each, and the local backend's lifetime; no application features |
+
+The frontend talks to the backend that served it over HTTP and WebSockets: on `127.0.0.1` for a local backend, on
+the server's own address for another machine's. Types that cross that boundary are Rust types exported to TypeScript;
+the frontend never declares its own copy. Plain data is defined once, in the crate that owns it, with `serde` and
+`ts-rs` derives (layers 1-3 may use both); `crates/api-types` holds the socket protocols and the projections that
+decide what an audience sees. The hand-parsed formats are the binary playback
+envelope (its constants are exported and its layout is in `api_types::playback`) and the Sample Item
+columns, written by `scene::serial::columns` and read by `frontend/src/present/columns.ts`.
+
+How offline playback divides its work between them is in the [invariants](../domain/invariants.md#offline-delivery).
+
+### Listeners and principals
+
+| Listener | Reached by | Admits |
+|----------|------------|--------|
+| Local: `127.0.0.1`, for the desktop and development | The person at this machine | Everything; a Host guard and an Origin guard (scheme, host and port in full) keep other websites off |
+| `serve`: another machine's server | Anyone who can reach it | The server password, join links and resume secrets |
+| Desktop LAN: opened when a session starts sharing, closed once none is shared | Anyone who can reach it | Join links, resume secrets and playback tickets only; serves the frontend, `/api/info`, `/api/client-errors` (a page reports an uncaught error to the log), the session socket and the playback socket, nothing else |
+
+Each request resolves to a principal with grants: Local has `preferences`, `configuration`, `sessions` and `files`;
+Server (the password) has `configuration`, `sessions` and `files`; anyone else has none. A join link or resume
+secret admits one seat of one Session and is checked by the Session socket, not by a grant, and a playback ticket
+admits one stream and is checked by the playback socket. Only a principal with `files` can add videos from this
+machine's files or list its handlers and scan its folders (`Who::Files`), and a watcher never learns a host path. The table in `src/routes/mod.rs` is the only place a
+route is mounted: method, path, the listeners that serve it and who may call it. A method it does not list answers
+405, and a conformance test calls every row as every kind of caller. The rules are in
+[13](../rebuild/13-security-packaging-ops.md#sharing-must).
+
+The listener also decides how frames travel (`src/routes/playback/wire.rs`): decoded planes on the Local listener,
+compressed frames on the others, which the playback socket's worker decodes before the session sees them. However
+many viewers are sent a frame, it is compressed once, on the `playback::SharedFrame` they all hold.
+
+### Desktop shell
+
+The shell starts the local backend on first use, or reuses a compatible one on its port. It can instead load another
+server's own frontend, so client and server always run the same version. Before loading, it checks the server's
+`/api/info` for this app and its shell interface version; a failure opens a native dialog (retry, return to local,
+quit). A window trusts one origin: IPC answers only that origin's main frame, and navigation elsewhere is blocked. It
+opens `ax-devil://` links (as an argument or a macOS `open-url`) after asking, and keeps one instance running; the
+operating system's link registration waits for packaging.
+
+Electron supplies Chromium, so rendering and media behave the same on every desktop instead of depending on the
+system webview ([D0](../rebuild/14-build-order.md#d0-stack-choice)).
+
+## Workspace
+
+A window's Workspace is the Doc of its Session: the items (videos, playlists), each item's resolution, the hidden
+refs and which items are open, as one pure `WorkspaceState` (`workspace-store`). It changes only by a `DocCommand`
+the Session applies under its lock (add items, open and close a viewer, hide and unhide); resolving an item runs as
+a job outside the lock and commits through it. The runner records the files each item was read from (a video's
+overlays, a playlist resolver's folders, the overlays its Content names), and a poll in `sessions` reports a change:
+an item nobody has open resolves again, and an open one only counts the change, which its viewer offers to reload,
+because resolving again would end the stream. A playlist resolves to Content with entries, each with its lanes; a
+video is one entry whose id is the Content's id. Each seat is sent the Doc as `project` builds it for its audience,
+sidebar rows included, so a watcher sees open items only, never a path or a failure's reason. Which entry a viewer
+shows is decided in one place, `restrict`, and a stream is ticketed for one entry of one generation of the Content.
+Opening, saving and recovering a workspace is `src/session/files/` over `workspace-files`: it reads and writes
+files, then tells the Session what happened through `Replace` and `MarkSaved`, and the store only compares the
+workspace with what was last saved.
+
+## Overlays
+
+The backend supplies data and does the work every lane and session shares; the frontend does all presentation. An
+overlay file is decoded once into an on-disk artifact that every viewer opening it shares (`scene-store`); memory holds
+the sample keys and a bounded cache of Scenes. On the playback socket `overlays` sends two kinds of items. A Sample Item
+is the immutable, per-source encoding of one sample: its latest observations as typed columns and a class mask from the
+decoder's filter policy; the rest of an entity's fields (history, source data, debug data) come from one `Inspect` request, answered only for a sample the viewer holds and gated like data. A Frame Map is per lane: which
+sample belongs to each frame, as `overlay-sync` selects it under the lane's Lane Policy (match basis, tolerance, sticky, whether the
+lane is shown). Items and maps rank with the video frames by the same playhead rule and pass the same authority gate.
+They travel inside the sample window: per source, the samples that subscribed lanes' Frame Maps assign to the frames of
+the data window, never wider than the frame window and sized from a share of the viewer's frame budget. The backend
+tells the viewer its data window and every sample it stops holding, within a byte budget the viewer sets when it
+opens; the viewer evicts only on that word. Revisions drop stale items, so there are no acknowledgements or per-seek
+epochs.
+
+File scope lists a lane's whole file, which no window holds: `scene-store` builds a history at ingest, and the socket
+answers one query per lane (a newer one cancels the older) with one page of rows, placed on the video under the lane's
+Lane Policy. Replies name their revisions and no frame, so the gate never holds them; only a viewer with its own
+authority is answered, and it needs the ingest ended.
+
+Per lane, `frontend/src/present/` compiles the lane's catalog document (served over the socket, built-in or user; a
+changed user file is pushed to the sockets that asked for it), filters rows, evaluates Marks from the Sample Item, lays
+them out for the lane's cell, and paints them through one WebGL2 context per viewer. A lane's Lane Style (catalog,
+theme, hidden features, filters, sticky opacity) stays in the client and its Lane Policy in its socket; neither is
+shared with followers; an export carries the style frozen. The viewer's viewport and selection are client state;
+picking runs over the lane's filtered rows. Export runs the same code in the Render Page, a hidden
+offscreen Electron page (`desktop/render.cjs`, no display) that Rust talks to over a private loopback socket: Rust
+freezes the job's inputs, sends the page each frame's picture and Sample Items, and encodes the pixels it returns.
+`catalog check` runs the compiler in Electron-as-Node from a bundle `make` builds with the frontend
+(`desktop/generated/catalog-check.cjs`).
 
 ## Layers
 
-```
-CLI (`cli.py`)                 -> Click commands that build Workspace Items
-Application (`app.py`)         -> logging, config, settings, plugins, Qt event loop
-Application Shell              -> MainWindow, menus, app-wide dialogs including Settings
-Workspace                      -> core: Workspace, items, content, intake (Qt-free); ui: store, browser rows, panes, viewers
-Video Viewer                   -> live/offline workflows, media tools, Scene presentation, catalog viewer
-Object Inspection              -> fields tree and title row of an object, used by media tools and the catalog viewer
-Video Player                   -> reusable frame display, viewport, drawing preparation
-Runtime Modules                -> Scene, filtering, data sources, synchronization, cache, plugins
-Supporting Modules             -> shortcuts, chrome, background jobs
-Settings                       -> config, settings state, preference values, logging, paths
-Core                           -> small foundational data types and pure policies
-```
+Dependencies point down only. Numbers are the layers of [02](../rebuild/02-architecture.md#layers-and-dependency-direction).
 
-Modules import downward. Settings imports nothing above it, so every module may log and read configuration. These
-upward imports are deliberate, and none forms an import-time cycle:
+| # | Layer | Lives in | Check |
+|---|-------|----------|-------|
+| 1 | Foundation | Rust crates, `layer = "foundation"` | Workspace crates only; no server crates |
+| 2 | Domain and contracts | Rust crates, `layer = "domain"` | same |
+| 3 | Runtime services | Rust crates, `layer = "services"` | same |
+| 3a | Event-loop adapters: routes, sockets, wire types | `crates/api-types` (`layer = "adapters"`) and the routes in `src/lib.rs` and `src/routes/` | May use the server crates |
+| 4–7 | UI support, generic display, workflows, shell | `frontend/src/` | — |
+| 8 | Entry and bootstrap | `src/main.rs` (backend), `desktop/` (window and backend lifetime) | The root crate holds the routes and `main.rs`, so it declares `layer = "entry"` |
 
-- `scene.rendering` imports the drawing contract from `video_player.engine`; see the rendering README.
-- Viewers are `ViewerWidget`s, and the Workspace viewer factory constructs them, so `video_viewer` and `workspace`
-  depend on each other.
-- Plugins speak the host's types: playlist resolvers return Workspace content and decoders return data-source
-  factories.
-- `core.data_types` names the Scene type that `OverlayData` carries, as a type-only import.
+Every crate declares its layer in `[package.metadata.ax-devil]`; `scripts/check-architecture.cjs` (part of
+`make check`) rejects a crate that depends on a higher layer, a layer 1–3 crate that depends on the HTTP server, and the
+pairs it lists (for example `playback` on `media`).
+The frontend's layers 4–7 get their import rules when the first of those modules land.
 
-For code placement, see [Module Map](module-map.md). For UI framework boundaries, see [UI Framework Structure](ui-framework.md).
+## Runtime
 
-## Workspace Content
-
-Content (`ax_devil.modules.workspace.core.content`) is an immutable description of what the user added, never a running
-source: seekable video, live video, and playlists of entries and lanes. Typed source specifications are the source of
-truth for standard source details such as paths, handler types, stream settings and MQTT settings; content and lane
-metadata is reserved for plugin-defined or workflow-specific information that no typed field holds.
-`OverlaySourceKind` owns the display names of the lane source kinds.
-
-Content declares what takes part in consideration (exclusions): playlist entries, visible playlist lanes and standalone
-seekable overlay lanes. Live overlays do not, because live viewers cannot change their lane layout. Playlists are
-offline workflows, so `PlaylistEntry` rejects live video lanes.
-
-## Workspace Items And Intake
-
-Everything that adds content, from the CLI to the Add dialogs and file drops, creates Workspace Items; the store
-resolves them into Content. The item model, Content identity, lifecycle and the playlist resolver contract are in
-[Workspace](workspace.md).
-
-`WorkspaceIntake` validates decoder selections and constructs video Content for items; it also validates the device
-host, camera head, and MQTT and WebSocket settings, so dialog, CLI and saved items share the same requirements.
-`workspace/ui/plugin_intake.py` supplies the production intake and resolution context by adapting plugin definitions.
-File decoders may declare `file_extensions`, and the Add Video dialog and file drops pick the handler when exactly one
-matches. Live entry points convert persisted overlay strings into `LiveOverlayMode` at their boundaries.
-
-## Opening Content
-
-`WorkspaceViewerFactory` routes by concrete content type to the offline or live viewer widget. Offline viewers receive
-the read-only `ConsiderationQuery` contract, while `WorkspaceStore` remains the mutable state owner.
-`OpenViewers` places the widget in `SplitView`, tracks which item its Content came from, and closes it when that
-item is removed.
-
-## Workspace State
-
-`WorkspaceStore` (`workspace/ui/workspace_store.py`) owns the mutable workspace facts and their Qt signals: the current
-and last saved Workspace (file format in [Workspace](workspace.md#file-format)), what each item resolved to
-([resolution](workspace.md#resolution)), and consideration refs. `workspace_replaced` fires when another Workspace is
-opened or created, and `state_changed` when the modified flag, name or path changes.
-
-`build_browser_sections` (`workspace/ui/browser_projection.py`) projects the contents, the consideration query and the
-open items into the rows every sidebar view renders (see [UI Framework](ui-framework.md#sidebar-views)). The views do
-not decide playlist expansion, lane expansion, open-row identity or information payloads.
-
-## Data Sources
-
-The pipeline has three delivery capabilities: `FrameSource` emits `FrameData`, `OverlaySource` emits `OverlayData`, and
-`OverlayLookup` returns `OverlayData` by `FrameIdentifier` with no playback lifecycle. Implementations and transport
-rules are in the [data_sources README](../../src/ax_devil/modules/data_sources/README.md). File overlays do not produce
-data or maintain playback position: `FileOverlaySource` owns its decoder-backed provider, serves synchronous lookups,
-and closes the provider explicitly and idempotently. Push-based live overlay sources keep the `OverlaySource`
-lifecycle.
-
-Offline sources join the process-wide `FrameCachePool`; its rules are in the
-[data_sources README](../../src/ax_devil/modules/data_sources/README.md#offline-frame-cache) and the user-facing setting
-in [Settings](../settings.md#video-cache-memory).
-
-Data-source timing and alignment report models live with the data sources that produce them. `core.data_types` is
-reserved for shared frame identity and timestamped frame/overlay packets.
-
-### Live source composition
-
-`StreamMediaController` builds sources from `LiveVideoContent`: RTSP always supplies frames, an embedded RTSP overlay
-shares that source, and MQTT or DataHub overlays add a second source. Source selection follows the content
-specification; implementing `OverlaySource` does not mean embedded overlays are enabled. The controller keeps
-frame/overlay inputs separate from its collection of owned sources, so it manages each transport once per lifecycle
-operation even when one object supplies both inputs.
-
-Each owned transport is one feed of a `LiveConnectionStatus` (`video_viewer/live_connection.py`): the RTSP source is
-the video feed and a separate MQTT or DataHub source is the overlay feed. Sources report `sourceConnected`,
-`sourceReconnecting(reason)` for retries they handle themselves, and `sourceError(reason)` for failures that need the
-user's Retry, which reopens every transport from the same content. A video feed without frames while playing is
-stalled and also needs Retry.
-
-`data_sources/live/datahub_client.py` and `data_sources/live/mqtt_discovery.py` own the DataHub and MQTT protocol
-clients shared by Workspace discovery and the runtime sources.
-
-## Synchronization
-
-Live viewing uses `StreamSync`, a pure Python engine wrapped by `QtStreamSync`. It buffers frames by arrival delay and
-pairs each with the newest overlay at or before it within a fixed tolerance; it is event-driven, with no wall-clock
-timer. The matching and persistence rules are in [Frame Identity](../domain/invariants.md#frame-identity).
-`StreamMediaController` wires the frame and overlay signals into the sync adapter and forwards synchronized results to
-`SceneFramePresenter`. Sharing an RTSP connection does not imply that frame and overlay arrivals are paired; both
-inputs retain their capture timestamps. Timestamp matching policy also lives in synchronization; file overlay
-providers consume it but own their own lookup behavior, such as sequence fallback and lookup metadata.
-
-Opening an offline entry happens in two phases. `open_entry_media` opens the entry's video and overlay sources on a
-worker thread (frame index, overlay parsing, the scene history and alignment the lanes show first) while the viewer
-shows a loading indicator, then delivers `EntryMedia` on the GUI thread, and `OfflineSession.build` creates the
-displays over it without touching files. Navigating while an entry opens abandons it and opens the newer one;
-openings run one at a time, so rapid navigation never indexes many files at once.
-
-Offline lanes pull overlay data through `OverlayLookup` and apply sticky selection through `OverlayPersistencePolicy`;
-offline selection is independent of what was shown before, and only the live path keeps a last-sample cache. Live
-viewers have no Scene history. Changing the timestamp fallback policy or sticky overlays places the history and
-alignment report again on the `overlay-analysis` background pool from an immutable `OverlaySamples` and a copy of the
-video's timeline; the lane keeps showing the previous ones until the newest request finishes.
-
-## Scene Model And Rendering
-
-`Scene` is the universal decoded world-model format: entities with time-sorted observations, events, and directed
-relations, in normalized `[0,1]` image space (`ax_devil.modules.scene.model`). Payload-to-Scene decoder contracts live
-under `ax_devil.modules.scene.decoding`; plugin discovery and handler registration under
-`ax_devil.modules.plugin_system`.
-
-Rendering turns a filtered `Scene` into prepared drawings through the active Scene Render Catalog, and the video
-player binds the result to a Qt Quick surface used for both display and export. The boundary between the two is
-[Draw System Architecture](draw-system.md).
-
-## Plugin System
-
-Plugins are discovered by `ApplicationPluginLoader` and stored in `RuntimePluginRegistry`. A decoder plugin
-contributes file-to-Scene and/or payload-to-Scene decoders; a playlist resolver plugin resolves user-selected datasets
-into `PlaylistContent`, and requires a settings widget. `ax-devil list-handlers` lists what is loaded.
-
-Built-in plugins are imported from ax-devil's package. External plugin distributions are discovered only through the
-`ax_devil.decoder_plugins` and `ax_devil.playlist_resolver_plugins` entry-point groups visible to the current Python
-environment. Plugin API version, class contract, plugin IDs, and decoder handler collisions are validated before
-registration. One invalid external entry point does not prevent other plugins or the application from loading.
-
-`launcher.py` selects the prepared plugin interpreter before Qt imports; management commands stay in the base
-interpreter. `modules/plugin_installation/` owns the separate locked uv project that holds installed plugins; its rules
-are in [Plugin System invariants](../domain/invariants.md#plugin-system).
-See [Installing and managing plugins](../plugins.md) for commands, upgrades, storage, and recovery, and the
-[write-plugin skill](../../.agents/skills/write-plugin/SKILL.md) for writing plugins. The UVG-VCM and MOT decoders are
-described with their datasets: [UVG-VCM](../datasets/uvg-vcm.md#decoder-behavior),
-[MOT Challenge](../datasets/mot-challenge.md#decoder-behavior).
-
-## UI Structure
-
-The main UI is a workspace shell: an activity bar and sidebar on the left, a drag-to-split viewer area in the center,
-and application actions in `MainWindow`. Its owners are in [UI Framework Structure](ui-framework.md).
-
-Application appearance is owned by `modules/chrome/theme.py` and `tokens.py`; see the
-[chrome README](../../src/ax_devil/modules/chrome/README.md).
-
-## Infrastructure
-
-Config, settings, shortcuts, cache and exception handling are mapped in [Module Map](module-map.md). The
-scene stores (`SourceIndexedSceneStore`, `IndexedFrameSceneStore`) invalidate by the rule in
-[Data Pipeline](../domain/invariants.md#data-pipeline).
+- **Development** (`make web`, `make desktop`): Vite serves the frontend with live reload and proxies `/api` to a
+  debug backend that `scripts/dev.cjs` rebuilds and restarts on Rust changes. The command that starts a service owns
+  it; a second command reuses running services that report a compatible API version.
+- **Release** (`make build`): the backend embeds the built frontend and serves it. The desktop shell starts the
+  release binary when it needs one, waits for its readiness line, and stops it on quit. A development build serves no
+  frontend, so it refuses to open a listener other machines would use.

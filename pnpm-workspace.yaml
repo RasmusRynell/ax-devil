@@ -1,0 +1,16 @@
+packages:
+  - frontend
+  - desktop
+catalog:
+  vite: npm:@voidzero-dev/vite-plus-core@1.4.0
+  vite-plus: 1.4.0
+overrides:
+  vite@*: "catalog:"
+peerDependencyRules:
+  allowAny:
+    - vite
+  allowedVersions:
+    vite: "*"
+# electron-builder pulls in electron-winstaller for Squirrel installers, which the Windows zip target does not use.
+allowBuilds:
+  electron-winstaller: false

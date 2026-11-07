@@ -1,0 +1,8 @@
+{"scene_version":"4.0","scenes":[
+{"time":{"start":{"frame":0},"end":{"frame":0}},"entities":[
+{"id":"human-poly","observations":[{"time":{"frame":0},"geometry":{"polygon":[[0.1,0.2],[0.18,0.22],[0.2,0.6],[0.12,0.65],[0.08,0.4]]},"classifications":[{"type":"human","score":0.9,"confidence":null,"attributes":{}}]}],"end_reason":null,"motion_state":null},
+{"id":"car-poly","observations":[{"time":{"frame":0},"geometry":{"polygon":[[0.4,0.5],[0.7,0.52],[0.72,0.75],[0.38,0.72]]},"classifications":[{"type":"car","score":0.8,"confidence":null,"attributes":{}}],"measurements":{"image_velocity":{"vx":0.1,"vy":0.0}}}],"end_reason":null,"motion_state":null},
+{"id":"plain-poly","observations":[{"time":{"frame":0},"geometry":{"polygon":[[0.8,0.1],[0.95,0.1],[0.88,0.3]]},"classifications":[]}],"end_reason":null,"motion_state":null},
+{"id":"edge-poly","observations":[{"time":{"frame":0},"geometry":{"polygon":[[0.9,0.8],[1.1,0.85],[0.95,1.05]]},"classifications":[{"type":"head","score":0.6,"confidence":null,"attributes":{}}]}],"end_reason":null,"motion_state":null}
+],"events":[],"relations":[],"debug":{}}
+]}
