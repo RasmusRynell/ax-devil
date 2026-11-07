@@ -21,6 +21,10 @@ use crate::{
 /// The most fields an inspection lists.
 pub const MAX_FIELDS: usize = 4096;
 
+/// The most bytes of paths and texts an inspection lists. Every field repeats the keys above it, so a long key over many
+/// leaves would otherwise multiply; what does not fit is left out and the inspection says so.
+pub const MAX_INSPECTION_BYTES: usize = 8 * 1024 * 1024;
+
 /// Sections of the inspection, in display order.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, TS)]
 #[serde(rename_all = "lowercase")]
@@ -86,8 +90,16 @@ pub struct InspectionField {
 
 /// Whether a query's `path` (lower case) names the key made of `pieces` joined by dots: it equals the key or a
 /// trailing run of its dotted parts, ignoring the key's case. The key is read from its end, only as far as the path
-/// reaches, and is never built.
+/// reaches, and is not built; unless the path has a sigma, whose lower case depends on its neighbours (`AΣ` is `aς`
+/// as a key, `aσ` letter by letter), when the key is lowercased whole, as a string.
 pub fn path_names<'a>(path: &str, pieces: impl DoubleEndedIterator<Item = &'a str>) -> bool {
+    if path.contains(['σ', 'ς']) {
+        let key = pieces.collect::<Vec<_>>().join(".").to_lowercase();
+        return key == path
+            || key
+                .strip_suffix(path)
+                .is_some_and(|front| front.ends_with('.'));
+    }
     // A dot after every piece: after the first, it stands for the front of the key.
     let mut key = pieces.rev().flat_map(|piece| {
         let reversed = piece.chars().rev().flat_map(|c| c.to_lowercase().rev());
@@ -115,6 +127,7 @@ fn fraction(value: f64) -> Option<f64> {
 pub fn entity_fields(entity: &Entity, limit: usize) -> (Vec<InspectionField>, bool) {
     let mut listing = Listing {
         limit,
+        bytes: 0,
         fields: Vec::new(),
         cut: false,
     };
@@ -136,6 +149,8 @@ trait Sink {
 /// The sink of an inspection: every leaf, up to `limit`.
 struct Listing {
     limit: usize,
+    /// The bytes of paths and texts listed so far.
+    bytes: usize,
     fields: Vec<InspectionField>,
     cut: bool,
 }
@@ -147,14 +162,28 @@ impl Sink for Listing {
         full
     }
 
-    fn wants(&mut self, _place: Place, _path: &[String], _color: bool) -> bool {
-        true
+    fn wants(&mut self, _place: Place, path: &[String], _color: bool) -> bool {
+        // Judged before the leaf is made, and before its path is copied.
+        let fits = self.bytes + path.iter().map(String::len).sum::<usize>() <= MAX_INSPECTION_BYTES;
+        self.cut |= !fits;
+        fits
     }
 
     fn push(&mut self, place: Place, path: &[String], value: Leaf, marks: Marks) {
+        let text = if let Leaf::Text(text) = &value {
+            text.len()
+        } else {
+            0
+        };
+        let size = path.iter().map(String::len).sum::<usize>() + text;
         if self.full() {
             return;
         }
+        if self.bytes + size > MAX_INSPECTION_BYTES {
+            self.cut = true;
+            return;
+        }
+        self.bytes += size;
         self.fields.push(InspectionField {
             group: place.group,
             origin: place.origin,

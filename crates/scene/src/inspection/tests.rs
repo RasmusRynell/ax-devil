@@ -315,6 +315,48 @@ fn a_search_collects_only_what_it_names_and_refuses_to_spend_more_than_its_budge
 }
 
 #[test]
+fn an_inspection_lists_no_more_bytes_of_paths_than_its_budget_however_long_a_key_over_many_leaves()
+{
+    let parent = "p".repeat(3 * 1024 * 1024);
+    let children = (0..4_096).map(Value::Int).collect();
+    let debug = vec![(Name::Owned(parent), Value::List(children))];
+    let observation = observation(SceneTime::Frame(0))
+        .with_details(Vec::new(), debug)
+        .expect("ok");
+
+    let (fields, cut) = entity_fields(&entity(observation), MAX_FIELDS);
+
+    let listed = fields
+        .iter()
+        .filter(|f| f.group == FieldGroup::Debug)
+        .count();
+    assert_eq!(
+        (listed, cut),
+        (2, true),
+        "two copies of the key fit, the rest are left out"
+    );
+}
+
+#[test]
+fn a_final_sigma_lowercases_with_its_neighbours_as_the_key_does() {
+    let debug = vec![pair("AΣ", Value::Int(7))];
+    let observation = observation(SceneTime::Frame(0))
+        .with_details(Vec::new(), debug)
+        .expect("ok");
+    let entity = entity(observation);
+    let found = |path: &str| {
+        let budget = &mut Budget {
+            leaves: 100,
+            bytes: 1000,
+        };
+        query_leaves(&entity, &[path.to_owned()], budget).map(|found| found.len())
+    };
+
+    assert_eq!(found("debug.aς"), Ok(1));
+    assert_eq!(found("debug.aσ"), Ok(0));
+}
+
+#[test]
 fn an_integer_reaches_the_wire_exactly_and_is_not_a_float() {
     let source: Fields = vec![
         pair("big", Value::Int(i64::MAX)),

@@ -2072,7 +2072,7 @@ items: Array<ItemWire>, };
  */
 export type InspectionWire = { "state": "Found", 
 /**
- * At most 4096, with every text whole.
+ * At most 4096, and 8 MiB of paths and texts, with every text whole.
  */
 fields: Array<FieldWire>, 
 /**

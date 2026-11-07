@@ -66,19 +66,19 @@ impl Search<'_> {
 
     /// Keeps a leaf if the budget has room for it.
     fn keep(&mut self, place: Place, path: &[String], channel: Option<&str>, value: Leaf) {
-        let key = Self::pieces(place, path, channel)
-            .collect::<Vec<_>>()
-            .join(".");
-        let size = key.len()
-            + if let Leaf::Text(text) = &value {
-                text.len()
-            } else {
-                16
-            };
-        match self.budget.bytes.checked_sub(size) {
+        // The key is measured before it is built, so that one that does not fit is never allocated.
+        let pieces = || Self::pieces(place, path, channel);
+        let key_bytes = pieces().map(str::len).sum::<usize>() + pieces().count() - 1;
+        let text = if let Leaf::Text(text) = &value {
+            text.len()
+        } else {
+            16
+        };
+        match self.budget.bytes.checked_sub(key_bytes + text) {
             Some(left) => {
                 self.budget.bytes = left;
-                self.found.push((key, value));
+                self.found
+                    .push((pieces().collect::<Vec<_>>().join("."), value));
             }
             None => self.over = true,
         }

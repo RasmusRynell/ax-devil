@@ -95,6 +95,25 @@ describe("Frame scope", () => {
     expect(ids()).toEqual(["7", "9"]);
   });
 
+  it("does not call a search done when the next sample's leaves are awaited", () => {
+    const { hold, play } = mount();
+    search("score>2");
+    expect(screen.getByText("No matching objects")).toBeTruthy();
+    hold(true);
+    play(FRAME);
+    expect(says("Loading…")).toBe(true);
+    expect(screen.queryByText("No matching objects")).toBeNull();
+    // Rows kept from the last answer are marked as not final.
+    hold(false);
+    play(FRAME);
+    search("score>0.7");
+    expect(ids()).toEqual(["12", "7"]);
+    hold(true);
+    play(FRAME);
+    expect(ids()).toEqual(["12", "7"]);
+    expect(screen.getByText("2… of 3")).toBeTruthy();
+  });
+
   it("searches the objects' inspected fields, whole numbers exactly, and names a field no object has", () => {
     mount(
       {},

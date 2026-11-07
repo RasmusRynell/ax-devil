@@ -56,7 +56,7 @@ pub struct ObjectItemsWire {
 pub enum InspectionWire {
     /// The object's fields, in display order.
     Found {
-        /// At most 4096, with every text whole.
+        /// At most 4096, and 8 MiB of paths and texts, with every text whole.
         fields: Vec<FieldWire>,
         /// Whether fields were left out.
         truncated: bool,

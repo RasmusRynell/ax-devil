@@ -155,13 +155,13 @@ export function ObjectsList({
     [objects, wire, ready, sorts.frame],
   );
   // While the leaves of the sample on screen are awaited, the last completed result of the same search stays, marked
-  // busy; no leaves are lent to the sample. Another search, or one that is unavailable, keeps no rows.
+  // busy; no leaves are lent to the sample. Another search, an empty result and an unavailable search keep no rows.
   const [kept, keep] = useState<{ wire: SearchWire; found: readonly FrameObject[] } | null>(null);
   if (ready !== null && kept?.found !== matched) keep({ wire, found: matched });
   const found =
     ready !== null
       ? matched
-      : leaves.state === "pending" && kept?.wire === wire
+      : leaves.state === "pending" && kept?.wire === wire && kept.found.length > 0
         ? kept.found
         : NO_OBJECTS;
   const foundAt = useMemo(() => new Map(found.map(({ id }, index) => [id, index])), [found]);
@@ -242,10 +242,13 @@ export function ObjectsList({
     if (goTo !== undefined && canSeek) source.seek(goTo);
   };
 
-  const message =
-    leaves.state === "ready" || (leaves.state === "pending" && found !== NO_OBJECTS)
-      ? listMessage(scope, inFile, files.unavailable, page !== null, count, total)
-      : leavesMessage(leaves.state);
+  // Rows kept while the leaves are awaited are not a completed search; with none to keep, the wait is said.
+  const awaiting = leaves.state !== "ready";
+  const message = !awaiting
+    ? listMessage(scope, inFile, files.unavailable, page !== null, count, total)
+    : found === NO_OBJECTS
+      ? leavesMessage(leaves.state)
+      : null;
   const shared = {
     label: "Objects",
     count,
@@ -278,7 +281,7 @@ export function ObjectsList({
             />
           </div>
         )}
-        <span className="min-w-0 flex-1 truncate text-right text-small text-muted">{`${count} of ${total}`}</span>
+        <span className="min-w-0 flex-1 truncate text-right text-small text-muted">{`${awaiting && found !== NO_OBJECTS ? `${count}…` : count} of ${total}`}</span>
       </div>
       <div className="p-m pb-s">
         <SearchBar

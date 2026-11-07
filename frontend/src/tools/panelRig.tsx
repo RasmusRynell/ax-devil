@@ -119,7 +119,7 @@ export function mount(
     first,
     frame = FRAME,
     leaves = {},
-    unanswered = false,
+    unanswered: held = false,
   }: Partial<{
     second: typeof FRAME;
     selection: Selection;
@@ -154,6 +154,7 @@ export function mount(
   let sample = frame;
   let sampleNumber = 0;
   // A frame is the same object for as long as the sample is, as the viewer's is.
+  let unanswered = held;
   const drawn = new Map<string, LaneFrame>();
   const laneFrame = (lane: number): LaneFrame => {
     const key = `${lane}:${sampleNumber}`;
@@ -342,6 +343,10 @@ export function mount(
     selected,
     outside,
     play,
+    /** Stops or resumes the backend's answers to requests for leaves. */
+    hold: (on: boolean) => {
+      unanswered = on;
+    },
     ...shown,
   };
 }
