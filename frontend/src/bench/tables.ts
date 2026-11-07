@@ -120,6 +120,8 @@ class Rig {
     this.#ring = ringOf(objects);
     this.#source = {
       files: new FakeFiles(scenario.scope === "File" ? scenario.rows : 0),
+      // The scenarios search nothing the backend reads.
+      fields: { ask: () => {}, subscribe: () => () => {}, view: () => null },
       shown: () => this.#ring[this.#current],
       frameTime: () => undefined,
       seek: () => {},

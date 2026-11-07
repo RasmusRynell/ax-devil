@@ -2042,15 +2042,41 @@ text?: string,
 fraction?: number, };
 
 /**
+ * One leaf of an object a search compares, at the key a search names it by.
+ */
+export type ItemWire = { 
+/**
+ * The lower-case group and the path, dotted: `debug.vendor.id`; a colour adds `rgb.r`, `rgb.g` and `rgb.b`.
+ */
+key: string, 
+/**
+ * The leaf.
+ */
+value: LeafWire, };
+
+/**
+ * The leaves of one object a search asked for.
+ */
+export type ObjectItemsWire = { 
+/**
+ * The object's id.
+ */
+entity: string, 
+/**
+ * Its leaves at the paths asked for; repeated keys keep every value.
+ */
+items: Array<ItemWire>, };
+
+/**
  * What the backend knows of one object of one sample.
  */
 export type InspectionWire = { "state": "Found", 
 /**
- * At most 4096; a text is cut at 4096 characters.
+ * At most 4096, with every text whole.
  */
 fields: Array<FieldWire>, 
 /**
- * Whether fields were left out or a text was cut.
+ * Whether fields were left out.
  */
 truncated: boolean, } | { "state": "Absent" } | { "state": "Unavailable" };
 
@@ -2132,7 +2158,23 @@ sample: number,
 /**
  * The object's id; at most 1024 bytes.
  */
-entity: string, } | { "type": "Export", 
+entity: string, } | { "type": "InspectFields", 
+/**
+ * The viewer's source id, `LaneInfo::source`.
+ */
+source: number, 
+/**
+ * The source revision the sample belongs to.
+ */
+data_revision: number, 
+/**
+ * The sample's index in its source.
+ */
+sample: number, 
+/**
+ * The paths a search names, in its spelling; at most 64, each at most 1024 bytes.
+ */
+paths: Array<string>, } | { "type": "Export", 
 /**
  * Names the job in its `Export` messages.
  */
@@ -2331,7 +2373,28 @@ entity: string,
 /**
  * What the backend knows of it.
  */
-inspection: InspectionWire, } | { "type": "FrameError", 
+inspection: InspectionWire, } | { "type": "InspectedFields", 
+/**
+ * The requested source.
+ */
+source: number, 
+/**
+ * The requested revision.
+ */
+data_revision: number, 
+/**
+ * The requested sample.
+ */
+sample: number, 
+/**
+ * The requested paths.
+ */
+paths: Array<string>, 
+/**
+ * The objects that have a leaf at the paths; `null` when the viewer does not hold this sample under this
+ * revision, or its authority no longer reaches it.
+ */
+objects: Array<ObjectItemsWire> | null, } | { "type": "FrameError", 
 /**
  * The frame that failed.
  */

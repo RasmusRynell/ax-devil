@@ -172,6 +172,73 @@ async fn a_held_sample_is_found_or_absent_and_anything_else_is_unavailable_witho
 }
 
 #[tokio::test]
+async fn a_search_of_the_fields_is_answered_for_every_object_and_only_for_a_held_sample() {
+    let folder = tempfile::tempdir().unwrap();
+    let (mut viewer, revision) = viewer(folder.path()).await;
+    let held = hold(&mut viewer, 10).await;
+    let item = held.iter().find(|item| item.sample == 10).unwrap();
+    let mut inspections = Inspections::default();
+    let objects = |message| {
+        let ServerMessage::InspectedFields { objects, .. } = message else {
+            panic!("an InspectedFields message");
+        };
+        objects
+    };
+
+    // A path names a key by its trailing parts, in any case.
+    inspections.ask_fields(&viewer, 0, revision, 10, vec!["Frame_Number".into()]);
+    let (message, frames) = answer(&mut inspections).await;
+    assert_eq!(frames, Some(item.frame..=item.frame));
+    let found = objects(message).expect("a held sample");
+    let leaves: Vec<_> = found
+        .iter()
+        .map(|object| {
+            let items = object
+                .items
+                .iter()
+                .map(|item| (item.key.as_str(), &item.value));
+            (object.entity.as_str(), items.collect::<Vec<_>>())
+        })
+        .collect();
+    assert_eq!(
+        leaves,
+        [
+            ("1", vec![("raw.frame_number", &Leaf::Int(10))]),
+            ("2", vec![("raw.frame_number", &Leaf::Int(10))]),
+        ]
+    );
+
+    // Asking for an object's fields does not replace a search of them: both are answered.
+    inspections.ask_fields(&viewer, 0, revision, 10, vec!["no_such_field".into()]);
+    inspections.ask(&viewer, 0, revision, 10, "1".into());
+    let mut kinds = Vec::new();
+    for _ in 0..2 {
+        match answer(&mut inspections).await.0 {
+            ServerMessage::InspectedFields { objects, .. } => {
+                assert_eq!(objects, Some(Vec::new()));
+                kinds.push("fields");
+            }
+            ServerMessage::Inspected { .. } => kinds.push("object"),
+            other => panic!("unexpected {other:?}"),
+        }
+    }
+    kinds.sort_unstable();
+    assert_eq!(kinds, ["fields", "object"]);
+
+    let unanswerable = [
+        (0, revision, 80, vec!["x".to_owned()]),
+        (0, revision, 10, vec!["x".to_owned(); MAX_PATHS + 1]),
+        (0, revision, 10, vec!["x".repeat(MAX_PATH_BYTES + 1)]),
+    ];
+    for (source, data_revision, sample, paths) in unanswerable {
+        inspections.ask_fields(&viewer, source, data_revision, sample, paths);
+        let (message, frames) = answer(&mut inspections).await;
+        assert_eq!(objects(message), None);
+        assert_eq!(frames, None, "it says nothing about a sample");
+    }
+}
+
+#[tokio::test]
 async fn the_newest_request_replaces_one_that_has_not_started_and_only_one_runs_at_a_time() {
     let folder = tempfile::tempdir().unwrap();
     let (mut viewer, revision) = viewer(folder.path()).await;

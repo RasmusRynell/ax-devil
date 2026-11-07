@@ -13,6 +13,7 @@ import { SegmentedControl } from "../kit/Chips";
 import type { LaneFrame } from "../playback/contract";
 import type { FileEvents } from "../playback/fileEvents";
 import type { FileScope } from "../playback/fileScope";
+import type { FrameFields } from "../playback/frameFields";
 import type { AppearanceSource } from "../playback/useAppearance";
 import type { PlaybackView } from "../playback/view";
 import { matches, missingPaths } from "../search/match";
@@ -20,7 +21,7 @@ import { parseSearch } from "../search/query";
 import {
   drawnIds,
   frameObjects,
-  inRecord,
+  inspectedPaths,
   isFileSort,
   recordOf,
   sortObjects,
@@ -52,6 +53,8 @@ export interface ObjectSource {
         "view" | "request" | "flush" | "release" | "want" | "event" | "eventUnavailable"
       >;
     };
+  /** The leaves of the frame's objects that a Frame scope search names. */
+  readonly fields: Pick<FrameFields, "ask" | "subscribe" | "view">;
   /** What the lane drew on the frame on screen. */
   shown(lane: number): LaneFrame | undefined;
   frameTime(frame: number): number | undefined;
@@ -61,6 +64,7 @@ export interface ObjectSource {
 /** Rows asked of the backend at once, and how many rows the window moves before another page is asked for. */
 const PAGE = 200;
 const STEP = 50;
+const NO_PATHS: readonly string[] = [];
 /** How many marks a presence strip can draw. */
 const BINS = 64;
 
@@ -129,22 +133,34 @@ export function ObjectsList({
     [inFile, onScreen, frame],
   );
   const absent = (id: string) => drawn !== null && !drawn.has(id);
+  // Frame scope searches the leaves the backend reads at the paths the search names, for the sample on screen.
+  const paths = useMemo(() => (inFile ? NO_PATHS : inspectedPaths(wire)), [inFile, wire]);
+  const leaves = useSyncExternalStore(source.fields.subscribe, () =>
+    source.fields.view(frame, paths),
+  );
+  // `leaves` is a dependency so that a connection that forgot them is asked again.
+  useEffect(() => {
+    source.fields.ask(frame, paths);
+  }, [source, frame, paths, leaves]);
+  // Until the leaves arrive nothing is known of them: no object matches a field of them, and no field is called missing.
   const found = useMemo(
     () =>
       sortObjects(
-        objects.filter((object) => matches(wire, recordOf(object))),
+        objects.filter((object) => matches(wire, recordOf(object, leaves))),
         sorts.frame,
       ),
-    [objects, wire, sorts.frame],
+    [objects, wire, leaves, sorts.frame],
   );
   const foundAt = useMemo(() => new Map(found.map(({ id }, index) => [id, index])), [found]);
   const missing = useMemo(
     () =>
-      missingPaths(
-        wire,
-        objects.map((object) => recordOf(object)),
-      ).filter(inRecord),
-    [objects, wire],
+      paths.length > 0 && leaves === null
+        ? []
+        : missingPaths(
+            wire,
+            objects.map((object) => recordOf(object, leaves)),
+          ),
+    [objects, wire, paths, leaves],
   );
   const notice = useMemo(() => noticeOf(inFile, wire, missing), [inFile, wire, missing]);
   const files = useSyncExternalStore(source.files.subscribe, () => source.files.view(lane));

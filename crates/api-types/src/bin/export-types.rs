@@ -139,6 +139,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         FieldOrigin,
         Leaf,
         FieldWire,
+        ItemWire,
+        ObjectItemsWire,
         InspectionWire,
         VideoPtsWire,
         CadenceWire,

@@ -86,21 +86,28 @@ describe("Frame scope", () => {
     );
   });
 
-  it("names a searched field no object has, only where it can tell", () => {
+  it("searches the objects' inspected fields, whole numbers exactly, and names a field no object has", () => {
     mount(
       {},
-      { frame: fullSample([{ id: "7", class: "car", score: 0.8, box: [0.1, 0.1, 0.3, 0.3] }]) },
+      {
+        frame: fullSample([
+          { id: "7", class: "car", score: 0.8, box: [0.1, 0.1, 0.3, 0.3] },
+          { id: "9", class: "car", score: 0.7, box: [0.5, 0.1, 0.7, 0.3] },
+        ]),
+        leaves: { "7": [["debug.vendor.id", { kind: "int", value: "9007199254740993" }]] },
+      },
     );
-    // Motion state and confidence are in what is searched here, and the object has neither.
-    search("state:moving confidence>0.5");
+    search("vendor.id>9007199254740992");
+    expect(ids()).toEqual(["7"]);
+    search("debug.vendor.id:9007199254740992");
+    expect(screen.getByText("No matching objects")).toBeTruthy();
+    expect(says("No object has debug.vendor.id in this frame")).toBe(false);
+
+    // The score is among the leaves, and neither object has a confidence or a motion state.
+    search("score>0.75 state:moving confidence>0.5");
     expect(says("No object has state, confidence in this frame")).toBe(true);
-    // Any other field may be in the inspection data, so its absence is not claimed.
     search("speed>3");
-    expect(
-      screen
-        .queryAllByRole("status")
-        .some((status) => status.textContent?.startsWith("No object has")),
-    ).toBe(false);
+    expect(says("No object has speed in this frame")).toBe(true);
   });
 
   it("is where it was left, cursor and scroll, when the scope is shown again", () => {

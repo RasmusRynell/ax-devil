@@ -318,11 +318,11 @@ fn an_integer_reaches_the_wire_exactly_and_is_not_a_float() {
 }
 
 #[test]
-fn the_field_limit_and_the_text_limit_say_they_cut() {
-    let long = "é".repeat(MAX_TEXT_CHARS + 1);
+fn a_text_is_kept_whole_and_only_the_field_limit_says_it_cut() {
+    let long = "é".repeat(10_000);
     let source: Fields = vec![
         pair("a", Value::Float(f64::NAN)),
-        (Name::Owned("b".repeat(MAX_TEXT_CHARS + 1)), Value::Int(1)),
+        (Name::Owned("b".repeat(10_000)), Value::Int(1)),
         pair("long", Value::Str(long.clone().into())),
     ];
     let entity = entity(
@@ -337,17 +337,14 @@ fn the_field_limit_and_the_text_limit_say_they_cut() {
         .filter(|f| f.group == FieldGroup::Debug)
         .collect();
 
-    assert!(cut, "texts were cut");
+    assert!(!cut, "nothing was left out");
     assert_eq!(
         debug[0].value,
         Leaf::Text("NaN".into()),
         "a number the wire cannot carry"
     );
-    assert_eq!(debug[1].path[0].chars().count(), MAX_TEXT_CHARS);
-    assert_eq!(
-        debug[2].value,
-        Leaf::Text(long.chars().take(MAX_TEXT_CHARS).collect())
-    );
+    assert_eq!(debug[1].path[0].chars().count(), 10_000);
+    assert_eq!(debug[2].value, Leaf::Text(long));
 
     let (few, cut) = entity_fields(&entity, 2);
     assert!(cut && few.len() == 2 && few[0].group == FieldGroup::Geometry);

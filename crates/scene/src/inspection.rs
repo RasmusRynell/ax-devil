@@ -19,9 +19,6 @@ use crate::{
 /// The most fields an inspection lists.
 pub const MAX_FIELDS: usize = 4096;
 
-/// The most characters of a text, and of one segment of a path, an inspection keeps.
-pub const MAX_TEXT_CHARS: usize = 4096;
-
 /// Sections of the inspection, in display order.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, TS)]
 #[serde(rename_all = "lowercase")]
@@ -96,6 +93,32 @@ pub struct QueryItem<'a> {
     pub value: Leaf,
 }
 
+impl QueryItem<'_> {
+    /// The key a query names the item by: the group's name and the path, dotted (`debug.vendor.id`).
+    pub fn key(&self) -> String {
+        std::iter::once(self.group.name())
+            .chain(self.path.iter().copied())
+            .collect::<Vec<_>>()
+            .join(".")
+    }
+}
+
+/// Whether a query's `path` (lower case) names `key`: it equals the key or a trailing run of its dotted parts,
+/// ignoring the key's case.
+pub fn path_names(path: &str, key: &str) -> bool {
+    let lowered;
+    let key = if key.chars().any(char::is_uppercase) {
+        lowered = key.to_lowercase();
+        lowered.as_str()
+    } else {
+        key
+    };
+    key == path
+        || key
+            .strip_suffix(path)
+            .is_some_and(|front| front.ends_with('.'))
+}
+
 impl InspectionField {
     /// What a query searches in this field: the field itself and, for a colour, its `rgb.r`, `rgb.g` and `rgb.b`.
     /// Fields that share a path give an item each, so repeated values stay.
@@ -134,8 +157,8 @@ fn fraction(value: f64) -> Option<f64> {
 }
 
 /// The entity's fields from its latest observation, in display order: at most `limit`, and the flag says some were
-/// left out or a text was cut. Empty values are not listed, except in Debug, where an empty text, list or map is
-/// shown as the source reported it.
+/// left out. Empty values are not listed, except in Debug, where an empty text, list or map is shown as the source
+/// reported it.
 pub fn entity_fields(entity: &Entity, limit: usize) -> (Vec<InspectionField>, bool) {
     let mut walk = Walk {
         limit,
@@ -201,8 +224,7 @@ impl Walk {
     }
 
     fn text(&mut self, place: Place, text: &str) {
-        let value = self.shorten(text);
-        self.leaf(place, Leaf::Text(value));
+        self.leaf(place, Leaf::Text(text.to_owned()));
     }
 
     /// A number, or its name when the source's float is not finite.
@@ -217,20 +239,9 @@ impl Walk {
         full
     }
 
-    fn shorten(&mut self, text: &str) -> String {
-        match text.char_indices().nth(MAX_TEXT_CHARS) {
-            Some((end, _)) => {
-                self.cut = true;
-                text[..end].to_owned()
-            }
-            None => text.to_owned(),
-        }
-    }
-
     /// Walks `inside` with `segment` added to the path.
     fn under(&mut self, segment: &str, inside: impl FnOnce(&mut Self)) {
-        let segment = self.shorten(segment);
-        self.path.push(segment);
+        self.path.push(segment.to_owned());
         inside(self);
         self.path.pop();
     }

@@ -30,9 +30,12 @@ const OPS: Record<string, SearchOp> = {
   "<=": "le",
 };
 
-/** The number `value` reads as, as the reference decides (digit-group underscores allowed); null when it is none. */
-export function numberOf(value: string): number | null {
-  if (INTEGER.test(value)) return Number(value);
+/**
+ * The number `value` reads as, as the reference decides (digit-group underscores allowed); null when it is none. A whole
+ * number is a `bigint` so that it stays exact beyond 2^53; JavaScript compares a `bigint` with a number by value.
+ */
+export function numberOf(value: string): number | bigint | null {
+  if (INTEGER.test(value)) return BigInt(value);
   const trimmed = value.trim();
   if (!FLOAT.test(trimmed)) return null;
   const number = Number(trimmed.replaceAll("_", ""));

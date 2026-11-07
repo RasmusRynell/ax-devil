@@ -231,6 +231,17 @@ impl<I: Incoming> Live<'_, I> {
                     .ask_target(source, data_revision, sample, entity, target);
                 Ok(())
             }
+            Some(Ok(ClientMessage::InspectFields {
+                source,
+                data_revision,
+                sample,
+                paths,
+            })) => {
+                let target = self.viewer.inspect_target(source, data_revision, sample);
+                self.inspections
+                    .ask_fields_target(source, data_revision, sample, paths, target);
+                Ok(())
+            }
             Some(Ok(ClientMessage::FileQuery { lane, request, .. })) => {
                 self.notify(&ServerMessage::FileScope {
                     lane,

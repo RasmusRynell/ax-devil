@@ -9,7 +9,7 @@ import { numberOf } from "./query";
 
 /** What a search looks at in one object: values by dotted field path, and the strings free text searches. */
 export type SearchRecord = {
-  fields: { readonly [path: string]: readonly (string | number)[] };
+  fields: { readonly [path: string]: readonly (string | number | bigint)[] };
   text: readonly string[];
 };
 
@@ -19,15 +19,17 @@ export const names = (path: string, key: string): boolean => {
   return name === path || name.endsWith(`.${path}`);
 };
 
-/** Text equals ignoring case and is never greater or less than anything; a number compares by value. */
-function compares(term: TermWire, value: string | number): boolean {
+/**
+ * Text equals ignoring case and is never greater or less than anything; a number compares by value, a whole number
+ * exactly even beside a float. `wanted` is the term's value as a number, if it reads as one.
+ */
+function compares(term: TermWire, wanted: number | bigint | null, value: string | number | bigint) {
   if (typeof value === "string")
     return term.op === "eq" && value.toLowerCase() === term.value.toLowerCase();
-  const wanted = numberOf(term.value);
   if (wanted === null) return false;
   switch (term.op) {
     case "eq":
-      return value === wanted;
+      return !(value < wanted) && !(value > wanted);
     case "gt":
       return value > wanted;
     case "lt":
@@ -41,12 +43,13 @@ function compares(term: TermWire, value: string | number): boolean {
 
 function holds(term: TermWire, record: SearchRecord): boolean {
   const needle = term.value.toLowerCase();
+  const path = term.path?.toLowerCase();
+  const wanted = path === undefined ? null : numberOf(term.value);
   const hit =
-    term.path === null
+    path === undefined
       ? record.text.some((text) => text.toLowerCase().includes(needle))
       : Object.entries(record.fields).some(
-          ([key, values]) =>
-            names(term.path!.toLowerCase(), key) && values.some((v) => compares(term, v)),
+          ([key, values]) => names(path, key) && values.some((v) => compares(term, wanted, v)),
         );
   return hit !== term.negated;
 }

@@ -37,6 +37,22 @@ describe("numbers with digit-group underscores", () => {
   });
 });
 
+describe("whole numbers beyond 2^53", () => {
+  const record: SearchRecord = { fields: { id: [9007199254740993n], seen: [0.5] }, text: [] };
+  it.each([
+    ["id:9007199254740993", true],
+    ["id:9007199254740992", false],
+    ["id>9007199254740992", true],
+    ["id<9007199254740994", true],
+    ["id<=9007199254740992", false],
+    ["id>=9007199254740994", false],
+    ["seen<1", true],
+    ["id>0.5", true],
+  ])("%s keeps the record: %s", (text, kept) => {
+    expect(matches(parseSearch(text).wire, record)).toBe(kept);
+  });
+});
+
 describe("missingPaths", () => {
   const record = (...keys: string[]): SearchRecord => ({
     fields: Object.fromEntries(keys.map((key) => [key, [1]])),
