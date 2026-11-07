@@ -13,22 +13,27 @@ import { useStreaming } from "../live/cameras";
 import { OfflineAdd } from "./OfflineAdd";
 import { SessionsView } from "./SessionsView";
 import { StartPanel } from "./StartPanel";
-import { listedCount, treeOf, type SectionId } from "./treeModel";
+import { listedCount, treeOf, type Order, type SectionId } from "./treeModel";
 import { WorkspaceTree } from "./WorkspaceTree";
 import { UNTITLED } from "./useWindowTitle";
 import { VIEW_TITLES } from "./views";
 
-/** The views that list the workspace's items: the sections each lists, its search placeholder and its empty message. */
+/** The views that list the workspace's items: the sections each lists, the orders it offers, its search placeholder and its empty message. */
 const LISTINGS: Partial<
-  Record<SidebarView, { listed: readonly SectionId[]; search: string; empty: string }>
+  Record<
+    SidebarView,
+    { listed: readonly SectionId[]; orders: readonly Order[]; search: string; empty: string }
+  >
 > = {
   workspace: {
     listed: ["live", "videos", "playlists", "other"],
+    orders: ["workspace", "name"],
     search: "Search items",
     empty: "No items",
   },
   offline: {
     listed: ["videos", "playlists"],
+    orders: ["workspace", "name", "location"],
     search: "Search files",
     empty: "No videos or playlists",
   },

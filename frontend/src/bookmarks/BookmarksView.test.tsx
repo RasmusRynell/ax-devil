@@ -5,7 +5,13 @@ import type { BookmarkGroupInfo } from "../generated/api";
 import { entry, FakeSocket, playlist, video, type Room } from "../session/fakeSession";
 import { SessionProvider, useView } from "../session/session";
 import { BookmarksView } from "./BookmarksView";
-import { SeekProvider, useAddBookmark, useAskSeek, useSeekRequest } from "./viewerLink";
+import {
+  SeekProvider,
+  useAddBookmark,
+  useAskSeek,
+  useBookmarksOnReplace,
+  useSeekRequest,
+} from "./viewerLink";
 
 beforeEach(() => vi.stubGlobal("WebSocket", FakeSocket));
 afterEach(() => {
@@ -185,6 +191,27 @@ function stub(status: Status) {
 }
 
 describe("a viewer and its bookmarks", () => {
+  it("shows the Bookmarks view for a workspace that replaces the open one and has bookmarks, not for the first", async () => {
+    function Sidebar() {
+      useBookmarksOnReplace();
+      const [sidebar] = useView("sidebar");
+      return <div data-testid="view">{sidebar.view}</div>;
+    }
+    render(
+      <SessionProvider>
+        <Sidebar />
+      </SessionProvider>,
+    );
+    await act(async () => {});
+    const room = FakeSocket.rooms.get("room-1") as Room;
+    room.bookmarks = [CLIP];
+    act(() => room.setItems([video("v", false)]));
+    expect(screen.getByTestId("view").textContent).toBe("workspace");
+    room.epoch = 1;
+    act(() => room.setItems([video("v", false)]));
+    expect(screen.getByTestId("view").textContent).toBe("bookmarks");
+  });
+
   it("bookmarks the frame on screen and brings the Bookmarks view up", async () => {
     const { session } = stub("ready");
     function Add() {

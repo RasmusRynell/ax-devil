@@ -88,6 +88,7 @@ function mount(
       kind: "lane" as const,
       label,
       detail: "",
+      location: null,
       status: { status: "Ready" as const },
       hidden: true,
       entry: "e",

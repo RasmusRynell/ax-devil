@@ -59,6 +59,9 @@ pub struct RowInfo {
     /// What tells it from a sibling with the same label: where it comes from, or its number; empty for most rows. The
     /// sidebar shows it under the label, and the search matches it.
     pub detail: String,
+    /// The file or camera it is read from, which the Offline view's Location order sorts by; none for a playlist, a row
+    /// not resolved, and an audience without host details.
+    pub location: Option<String>,
     /// Whether it can be opened.
     pub status: RowStatusInfo,
     /// Whether the user hid it.

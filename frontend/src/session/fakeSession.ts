@@ -114,6 +114,8 @@ export class Room {
   /** The bookmark groups the Bookmarks view lists. */
   bookmarks: BookmarkGroupInfo[] = [];
   docRev = 0;
+  /** Counts the workspaces that replaced the open one. */
+  epoch = 0;
   /** Whether changes restored from a recovery copy await Keep or Discard. */
   recovered = false;
   presenter: View = EMPTY_VIEW;
@@ -302,7 +304,7 @@ export class FakeSocket {
             name: null,
             modified: room.recovered,
             recovered: room.recovered,
-            epoch: 0,
+            epoch: room.epoch,
             file: null,
             items: room.items,
             rows: rowsOf(room.items, room.hidden),

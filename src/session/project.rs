@@ -212,8 +212,7 @@ fn row_info(row: Row, detail: String, audience: Audience) -> RowInfo {
         hidden,
         entry,
         warnings,
-        // Names the host's files and cameras: only `detail` is shared, as the audience may see it.
-        location: _,
+        location,
     } = row;
     RowInfo {
         key,
@@ -226,6 +225,10 @@ fn row_info(row: Row, detail: String, audience: Audience) -> RowInfo {
         },
         label,
         detail,
+        // Names the host's files and cameras, so only an audience with host details learns it.
+        location: location
+            .filter(|_| audience.host_details)
+            .map(|location| location.text()),
         status: match status {
             RowStatus::Pending => RowStatusInfo::Pending,
             RowStatus::Unavailable(error) => {

@@ -28,6 +28,7 @@ export const CLIP: ItemState = {
 /** What the Workspace view lists. */
 export const LISTING = {
   listed: ["live", "videos", "playlists", "other"],
+  orders: ["workspace", "name"],
   search: "Search items",
   empty: "No items",
 } as const;
