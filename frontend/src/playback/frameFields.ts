@@ -2,8 +2,8 @@
  * The leaves of the objects of the frame a lane shows, at the field paths a search names, as the backend reads them from
  * the sample. A search of Frame scope asks per sample (`ask`) and reads the answer for exactly that sample (`view`):
  * leaves of another sample are never lent to it, for the same object may hold other values there. The backend keeps
- * only the newest request, so asking for another sample supersedes one still out, and a request whose answer never
- * comes (the authority gate may drop it) is asked again.
+ * only the newest request, so asking for another sample supersedes one still out. A request whose answer never comes
+ * (the authority gate may drop it) is asked again when a list starts to listen.
  */
 
 import type { LaneFrame } from "./contract";
@@ -33,8 +33,6 @@ const NONE: LeavesView = { state: "ready", leaves: new Map() };
 
 /** How many answers are kept, so that stepping back and forth asks the backend once per sample. */
 const KEPT = 16;
-/** How many asks an unanswered request stands for before it is made again. */
-const RESEND_AFTER = 120;
 
 /** What a search compares: an integer exactly, `null` and a truth value as the text the reference makes of them. */
 function valueOf(leaf: LeafWire): string | number | bigint {
@@ -63,20 +61,22 @@ export class FrameFields {
   readonly #listeners = new Set<() => void>();
   /** The answers, oldest first. */
   readonly #answers = new Map<string, LeavesView>();
-  /** The request out, with the columns of the sample it was made for and the ask it was made at. */
-  #asked: { key: string; columns: unknown; at: number } | null = null;
+  /** The request out, with the columns of the sample it was made for. */
+  #asked: { key: string; columns: unknown } | null = null;
   /** A sample the backend does not answer for: asked again only when the viewer holds it anew. */
   #refused: { key: string; columns: unknown } | null = null;
-  /** Asks so far, which time how long a request has been out. */
-  #asks = 0;
 
   /** `send` asks the backend. */
   constructor(send: (message: ClientMessage) => void) {
     this.#send = send;
   }
 
-  /** Calls `listener` when a view may have changed. */
+  /**
+   * Calls `listener` when a view may have changed. A list that starts to listen asks again for what it wants: a request
+   * left unanswered while none did may have been dropped.
+   */
   subscribe = (listener: () => void): (() => void) => {
+    this.#asked = null;
     this.#listeners.add(listener);
     return () => this.#listeners.delete(listener);
   };
@@ -92,7 +92,6 @@ export class FrameFields {
 
   /** Wants the leaves of the frame's sample at `paths`; asks the backend unless it has answered or is being awaited. */
   ask(frame: LaneFrame | undefined, paths: readonly string[]): void {
-    this.#asks++;
     if (!frame || paths.length === 0) {
       this.#asked = null;
       return;
@@ -101,9 +100,8 @@ export class FrameFields {
     const key = keyOf(source, dataRevision, sample, paths);
     if (this.#answers.has(key)) return;
     if (this.#refused?.key === key && this.#refused.columns === columns) return;
-    const asked = this.#asked;
-    if (asked?.key === key && this.#asks - asked.at <= RESEND_AFTER) return;
-    this.#asked = { key, columns, at: this.#asks };
+    if (this.#asked?.key === key) return;
+    this.#asked = { key, columns };
     this.#send({
       type: "InspectFields",
       source,

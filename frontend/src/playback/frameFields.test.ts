@@ -70,14 +70,20 @@ describe("the leaves of a frame's objects", () => {
     expect(sent).toHaveLength(2);
   });
 
-  it("are asked again when the answer never came", () => {
+  it("are asked again when a list opens after an answer was dropped", () => {
     const sent: ClientMessage[] = [];
     const fields = new FrameFields((message) => sent.push(message));
     const held = frame(1);
 
-    for (let asks = 0; asks < 100; asks++) fields.ask(held, ["id"]);
+    const close = fields.subscribe(() => {});
+    fields.ask(held, ["id"]);
+    fields.ask(held, ["id"]);
     expect(sent).toHaveLength(1);
-    for (let asks = 0; asks < 100; asks++) fields.ask(held, ["id"]);
+    close();
+
+    // The list opens again on the same sample, and nothing else asks.
+    fields.subscribe(() => {});
+    fields.ask(held, ["id"]);
     expect(sent).toHaveLength(2);
   });
 });

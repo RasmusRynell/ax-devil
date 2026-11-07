@@ -69,6 +69,19 @@ module.exports.objects = async (window, { setTheme, shoot }) => {
   await clearSearch();
   await wait(`!(${noted("No object has state in this frame")})`);
 
+  // A field only the inspection has is searched through the backend, which reads it from the sample.
+  await js(`document.querySelector('${PANEL} input:not([type=radio])').focus()`);
+  window.webContents.insertText("visibility_ratio>0");
+  await wait(
+    `document.querySelector('${PANEL}').innerText.match(/(\\d+) of (\\d+)/)?.[1] > 0 && !document.querySelector('${PANEL} [aria-busy=true]')`,
+  );
+  for (const theme of THEMES) {
+    await setTheme(theme);
+    await shoot(`objects-search-${theme}.png`);
+  }
+  await clearSearch();
+  await shows(inFrame.length, inFrame.length);
+
   // Dragging the divider on the panel's left edge left widens it, and it keeps that width through a close.
   const width = () => js(`document.querySelector('${PANEL}').getBoundingClientRect().width`);
   const grip = await js(`(() => {

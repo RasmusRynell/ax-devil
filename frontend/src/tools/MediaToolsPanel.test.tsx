@@ -95,6 +95,17 @@ describe("Frame scope", () => {
     expect(ids()).toEqual(["7", "9"]);
   });
 
+  it("asks again for the leaves of the sample on screen when the panel is opened again", () => {
+    const { hold } = mount();
+    hold(true);
+    search("score>0.7");
+    expect(says("Loading…")).toBe(true);
+    hold(false);
+    fireEvent.click(screen.getByRole("button", { name: "Close media tools" }));
+    fireEvent.click(screen.getByRole("button", { name: "Open media tools" }));
+    expect(ids()).toEqual(["12", "7"]);
+  });
+
   it("does not call a search done when the next sample's leaves are awaited", () => {
     const { hold, play } = mount();
     search("score>2");

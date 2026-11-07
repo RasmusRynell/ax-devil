@@ -338,6 +338,55 @@ fn an_inspection_lists_no_more_bytes_of_paths_than_its_budget_however_long_a_key
 }
 
 #[test]
+fn a_scalar_text_beyond_the_budget_is_left_out_and_a_search_for_it_is_refused() {
+    let long = "x".repeat(MAX_INSPECTION_BYTES + 1);
+    let debug = vec![
+        pair("long", Value::Str(long.into())),
+        pair("short", Value::Int(1)),
+    ];
+    let observation = observation(SceneTime::Frame(0))
+        .with_details(Vec::new(), debug)
+        .expect("ok");
+    let entity = entity(observation);
+
+    let (fields, cut) = entity_fields(&entity, MAX_FIELDS);
+    let debug: Vec<_> = fields
+        .iter()
+        .filter(|f| f.group == FieldGroup::Debug)
+        .collect();
+    assert!(cut && debug.len() == 1 && debug[0].path == ["short"]);
+
+    let search = |path: &str| {
+        let budget = &mut Budget {
+            leaves: 100,
+            bytes: 1_000,
+        };
+        query_leaves(&entity, &[path.to_owned()], budget).map(|found| found.len())
+    };
+    assert_eq!(search("long"), Err(OverBudget));
+    assert_eq!(search("short"), Ok(1));
+}
+
+#[test]
+fn a_path_with_a_sigma_is_refused_for_a_key_too_long_to_lowercase_whole() {
+    let debug = vec![(
+        Name::Owned("p".repeat(3 * 1024 * 1024)),
+        Value::List((0..4_096).map(Value::Int).collect()),
+    )];
+    let observation = observation(SceneTime::Frame(0))
+        .with_details(Vec::new(), debug)
+        .expect("ok");
+    let budget = &mut Budget {
+        leaves: 100_000,
+        bytes: 1_000_000,
+    };
+
+    let refused = query_leaves(&entity(observation), &["σ".to_owned()], budget);
+
+    assert_eq!(refused.map(|found| found.len()), Err(OverBudget));
+}
+
+#[test]
 fn a_final_sigma_lowercases_with_its_neighbours_as_the_key_does() {
     let debug = vec![pair("AΣ", Value::Int(7))];
     let observation = observation(SceneTime::Frame(0))

@@ -11,7 +11,7 @@ mod query;
 
 pub use leaf::Leaf;
 use leaf::{datetime_leaf, number_leaf};
-pub use query::{Budget, OverBudget, query_leaves};
+pub use query::{Budget, KeyTooLong, OverBudget, path_names, query_leaves};
 
 use crate::{
     Classification, ColorEntry, Entity, Geometry, MotionState, Name, Observation, Rgb, SceneTime,
@@ -88,26 +88,6 @@ pub struct InspectionField {
     pub fraction: Option<f64>,
 }
 
-/// Whether a query's `path` (lower case) names the key made of `pieces` joined by dots: it equals the key or a
-/// trailing run of its dotted parts, ignoring the key's case. The key is read from its end, only as far as the path
-/// reaches, and is not built; unless the path has a sigma, whose lower case depends on its neighbours (`AΣ` is `aς`
-/// as a key, `aσ` letter by letter), when the key is lowercased whole, as a string.
-pub fn path_names<'a>(path: &str, pieces: impl DoubleEndedIterator<Item = &'a str>) -> bool {
-    if path.contains(['σ', 'ς']) {
-        let key = pieces.collect::<Vec<_>>().join(".").to_lowercase();
-        return key == path
-            || key
-                .strip_suffix(path)
-                .is_some_and(|front| front.ends_with('.'));
-    }
-    // A dot after every piece: after the first, it stands for the front of the key.
-    let mut key = pieces.rev().flat_map(|piece| {
-        let reversed = piece.chars().rev().flat_map(|c| c.to_lowercase().rev());
-        reversed.chain(std::iter::once('.'))
-    });
-    path.chars().rev().all(|wanted| key.next() == Some(wanted)) && key.next() == Some('.')
-}
-
 /// What a leaf is besides its value.
 #[derive(Default)]
 struct Marks {
@@ -140,8 +120,9 @@ trait Sink {
     /// Whether the walk should stop: asked with a value still to list. A sink that cuts the walk short says so.
     fn full(&mut self) -> bool;
     /// Whether the leaf at `path` is wanted, asked before it is made so that an unwanted one costs nothing; `color`
-    /// says the leaf is a colour's score, whose `rgb` channels are leaves of their own.
-    fn wants(&mut self, place: Place, path: &[String], color: bool) -> bool;
+    /// says the leaf is a colour's score, whose `rgb` channels are leaves of their own, and `bytes` how long its text
+    /// is, so that one too long to keep is never copied.
+    fn wants(&mut self, place: Place, path: &[String], color: bool, bytes: usize) -> bool;
     /// Takes a leaf that is wanted.
     fn push(&mut self, place: Place, path: &[String], value: Leaf, marks: Marks);
 }
@@ -162,9 +143,10 @@ impl Sink for Listing {
         full
     }
 
-    fn wants(&mut self, _place: Place, path: &[String], _color: bool) -> bool {
+    fn wants(&mut self, _place: Place, path: &[String], _color: bool, bytes: usize) -> bool {
         // Judged before the leaf is made, and before its path is copied.
-        let fits = self.bytes + path.iter().map(String::len).sum::<usize>() <= MAX_INSPECTION_BYTES;
+        let size = path.iter().map(String::len).sum::<usize>() + bytes;
+        let fits = self.bytes + size <= MAX_INSPECTION_BYTES;
         self.cut |= !fits;
         fits
     }
@@ -237,7 +219,21 @@ struct Walk<'a, S> {
 impl<S: Sink> Walk<'_, S> {
     /// Gives the sink a leaf at the current path, made only if the sink wants it.
     fn emit(&mut self, place: Place, value: impl FnOnce() -> Leaf, marks: Marks) {
-        if self.sink.wants(place, &self.path, marks.color.is_some()) {
+        self.emit_sized(place, 0, value, marks);
+    }
+
+    /// Like `emit`, for a leaf with `bytes` of text.
+    fn emit_sized(
+        &mut self,
+        place: Place,
+        bytes: usize,
+        value: impl FnOnce() -> Leaf,
+        marks: Marks,
+    ) {
+        if self
+            .sink
+            .wants(place, &self.path, marks.color.is_some(), bytes)
+        {
             self.sink.push(place, &self.path, value(), marks);
         }
     }
@@ -247,7 +243,8 @@ impl<S: Sink> Walk<'_, S> {
     }
 
     fn text(&mut self, place: Place, text: &str) {
-        self.emit(place, || Leaf::Text(text.to_owned()), Marks::default());
+        let value = || Leaf::Text(text.to_owned());
+        self.emit_sized(place, text.len(), value, Marks::default());
     }
 
     /// A number, or its name when the source's float is not finite.
