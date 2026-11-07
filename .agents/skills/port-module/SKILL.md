@@ -31,8 +31,8 @@ Port behavior, not code: the reference docs hold the rules, the Python holds Pyt
 6. **Place the rules.** Move each rule the module now enforces from `docs/rebuild/` to its new home
    ([11](../../../docs/rebuild/11-docs-structure.md#retiring-docsrebuild)): a module README for rules only it keeps,
    the invariants for rules other modules must keep, nothing when a type or test enforces it.
-7. **Verify.** Run the focused suite as you work, then `make check` before you push. For UI, run the
-   [verify-headless](../verify-headless/SKILL.md) loop and look at the screenshots.
+7. **Verify.** Run the focused suite. For UI, run the [verify-headless](../verify-headless/SKILL.md) loop and look
+   at the screenshots.
 8. **Record.** Update each row's line in `docs/parity.md`: status, the test that proves it, and any intentional
    deviation from the reference with its reason.
 
