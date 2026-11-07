@@ -309,12 +309,15 @@ export function problemOf(form: LiveForm, values: SettingsState["values"], modeN
   }
 }
 
-/** The camera a question is about. Blank fields are the configured ones. */
-export function connectionOf(form: LiveForm, head: boolean): LiveConnection {
+/**
+ * The camera a question is about. Blank fields are the configured ones, except in an edit, where the login is sent as
+ * typed so a cleared one is asked with, as the stream is saved with it.
+ */
+export function connectionOf(form: LiveForm, head: boolean, editing = false): LiveConnection {
   return {
     host: text(form.host),
-    username: text(form.username),
-    password: text(form.password),
+    username: editing ? form.username : text(form.username),
+    password: editing ? form.password : text(form.password),
     protocol: form.protocol || undefined,
     port: whole(form.port),
     head: head ? whole(form.head) : undefined,

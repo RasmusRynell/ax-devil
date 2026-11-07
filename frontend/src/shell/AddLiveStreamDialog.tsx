@@ -118,7 +118,7 @@ export function AddLiveStreamDialog({
   const hostDefault = textOf(values["camera.host"]);
   const hostKnown = !!(form.host.trim() || hostDefault.trim());
   // Questions are asked as the stream will be added: `like` lets the backend use that stream's saved login.
-  const connection: LiveConnection = { ...connectionOf(form, false), like };
+  const connection: LiveConnection = { ...connectionOf(form, false, !!editing), like };
   const connectionKey = JSON.stringify(connection);
   // The camera lists every head's sizes in one answer, kept for the connection while the head is chosen from it.
   const resolutions = useDiscovery(

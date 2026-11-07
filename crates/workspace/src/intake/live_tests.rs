@@ -318,6 +318,65 @@ fn editing_keeps_a_cleared_user_and_what_the_other_overlay_modes_hold() {
         })
     );
 
+    // A blank password restores only a literal the client was never sent; a reference it was sent stays cleared.
+    let broker = NewMqtt {
+        handler: Some("ADF_V1_FRAME".into()),
+        broker_host: Some("b.local".into()),
+        broker_port: Some(1884),
+        broker_user: Some("mqtt".into()),
+        source_key: Some("key".into()),
+        ..NewMqtt::default()
+    };
+    let mut by_reference = saved.clone();
+    by_reference.password = Secret::new("$CAM_PW");
+    by_reference.overlay = LiveOverlay::Mqtt {
+        handler: "ADF_V1_FRAME".into(),
+        broker_host: "b.local".into(),
+        broker_port: 1884,
+        broker_user: "mqtt".into(),
+        broker_pass: Secret::new("$BROKER_PW"),
+        source_key: "key".into(),
+    };
+    by_reference.kept.mqtt = None;
+    let mut new = NewLive {
+        overlay: Some(NewLiveOverlay::Mqtt(broker.clone())),
+        kept_mqtt: Some(broker),
+        ..host("cam.local")
+    };
+    new.copy_login(&by_reference, &editing, LoginUse::Stream)
+        .unwrap();
+    let item = live(new, &editing, &Handlers::built_in()).unwrap();
+    let LiveOverlay::Mqtt { broker_pass, .. } = &recipe(&item).overlay else {
+        panic!("an MQTT overlay");
+    };
+    assert_eq!(recipe(&item).password.expose(), "");
+    assert_eq!(broker_pass.expose(), "");
+
+    // The same for the broker password kept for a mode not chosen.
+    by_reference.overlay = LiveOverlay::None;
+    by_reference.kept.mqtt = Some(crate::MqttSettings {
+        broker_host: "b.local".into(),
+        broker_port: 1884,
+        broker_user: "mqtt".into(),
+        broker_pass: Secret::new("$BROKER_PW"),
+        source_key: "key".into(),
+    });
+    let mut new = NewLive {
+        overlay: Some(NewLiveOverlay::None),
+        kept_mqtt: Some(NewMqtt {
+            broker_host: Some("b.local".into()),
+            broker_port: Some(1884),
+            broker_user: Some("mqtt".into()),
+            ..NewMqtt::default()
+        }),
+        ..host("cam.local")
+    };
+    new.copy_login(&by_reference, &editing, LoginUse::Stream)
+        .unwrap();
+    let item = live(new, &editing, &Handlers::built_in()).unwrap();
+    let kept = recipe(&item).kept.mqtt.as_ref().expect("MQTT is kept");
+    assert_eq!(kept.broker_pass.expose(), "");
+
     // A mode not chosen keeps any number as entered; choosing it checks the number.
     let out_of_range = |overlay| NewLive {
         overlay: Some(overlay),

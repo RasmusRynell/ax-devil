@@ -17,7 +17,7 @@ use api_types::{
 };
 use axum::{Json, extract::State, http::StatusCode};
 use foundation::{CancelToken, Interrupt, UserError};
-use workspace::{Content, Environment, ResolvedCamera, Source, intake};
+use workspace::{Content, Environment, ResolvedCamera, Secret, Source, intake};
 
 type Problem = (StatusCode, Json<LiveProblem>);
 
@@ -70,6 +70,17 @@ fn camera(
     {
         new.copy_login(saved, &defaults, intake::LoginUse::Discovery)
             .map_err(|error| invalid(&error))?;
+    }
+    // A login sent as empty was cleared on purpose, as when an edited stream is saved: no configured one replaces it.
+    if new.username.as_deref() == Some("") {
+        defaults.username.clear();
+    }
+    if new
+        .password
+        .as_ref()
+        .is_some_and(|entered| entered.expose().is_empty())
+    {
+        defaults.password = Secret::new("");
     }
     let item = intake::live(new, &defaults, &handlers).map_err(|error| invalid(&error))?;
     // A reference reads this machine's environment only for the person at this machine; a remote viewer's text,
@@ -134,7 +145,7 @@ mod tests {
         plugins::Plugins,
         test_support::{TestApp, json},
     };
-    use api_types::live::LiveConnection;
+    use api_types::live::{LiveConnection, WireSecret};
     use axum::{
         body::Body,
         http::{Request, StatusCode},
@@ -284,6 +295,25 @@ mod tests {
             password(Principal::Local, "other.local", Some(like)),
             default
         );
+        // An edit sends a cleared password as empty: the saved literal it was never sent comes back, but the
+        // configured one never replaces it.
+        let cleared = |host: &str, like| {
+            let connection = LiveConnection {
+                host: Some(host.into()),
+                password: Some(WireSecret::default()),
+                like,
+                ..LiveConnection::default()
+            };
+            resolve(&state, Principal::Local, connection)
+                .unwrap()
+                .login
+                .map(|login| login.password.expose().to_owned())
+        };
+        assert_eq!(
+            cleared("cam.local", Some(like)).as_deref(),
+            Some("SAVED-PASSWORD")
+        );
+        assert_eq!(cleared("other.local", Some(like)).unwrap_or_default(), "");
         for principal in [Principal::Server, Principal::None] {
             for like in [None, Some(like)] {
                 // The configured user is a reference, kept literal for them, so there may be a login, never a password.
