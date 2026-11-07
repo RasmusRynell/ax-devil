@@ -6,7 +6,7 @@ const fs = require("node:fs/promises");
 const os = require("node:os");
 const path = require("node:path");
 const fit = require("./fit.cjs");
-const { SCREENSHOTS, SMOKE_ROOT, frames, page, setView } = require("./smoke-kit.cjs");
+const { SCREENSHOTS, SMOKE_ROOT, delay, frames, page, setView } = require("./smoke-kit.cjs");
 
 const FIXTURE = path.join(SMOKE_ROOT, "fixtures/video/long_gop_h264.mp4");
 
@@ -69,10 +69,31 @@ module.exports.items = async (window) => {
         );
       }
       await setView(window, [1100, 720], 1);
+      // A capture right after a theme change can still be the previous frame: wait until the dialog is painted in the
+      // theme's colours, and capture again until the picture differs from the other theme's.
+      let before = null;
       for (const shown of ["light", "dark"]) {
         nativeTheme.themeSource = shown;
         await wait(`matchMedia('(prefers-color-scheme: ${shown})').matches`);
-        await shoot(`add-video-local-${shown}.png`);
+        await wait(
+          `(() => {
+            const [r, g, b] = getComputedStyle(document.querySelector('dialog[open]')).backgroundColor.match(/[\\d.]+/g).map(Number);
+            return (r + g + b) / 3 > 128 === (${JSON.stringify(shown)} === 'light');
+          })()`,
+        );
+        let png;
+        for (let attempt = 0; attempt < 20; attempt++) {
+          await frames({ js });
+          png = (await window.webContents.capturePage()).toPNG();
+          if (!before || !png.equals(before)) break;
+          await delay(100);
+        }
+        assert.ok(
+          !before || !png.equals(before),
+          "The light and dark Add video screenshots must differ",
+        );
+        await fs.writeFile(path.join(SCREENSHOTS, `add-video-local-${shown}.png`), png);
+        before = png;
       }
       await js(`(() => {
         const input = document.querySelector('dialog[open] input');

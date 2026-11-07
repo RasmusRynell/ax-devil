@@ -169,17 +169,21 @@ export function AddVideoDialog({
           }}
           placeholder="Required"
           action={
-            bridge && (
-              <BrowseButton
-                what="video file"
-                onBrowse={() =>
-                  void choose(
-                    () => bridge.pickVideo(),
-                    (chosen) => setPath(chosen),
-                  )
-                }
-              />
-            )
+            <>
+              {bridge && (
+                <BrowseButton
+                  what="video file"
+                  onBrowse={() =>
+                    void choose(
+                      () => bridge.pickVideo(),
+                      (chosen) => setPath(chosen),
+                    )
+                  }
+                />
+              )}
+              {/* The room of an overlay row's Remove button, so every path box shares its edges. */}
+              {handlers && entries.length > 0 && <span aria-hidden className="square-row" />}
+            </>
           }
         />
         {handlers && (
