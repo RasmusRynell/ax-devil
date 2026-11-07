@@ -4,6 +4,7 @@ import { useMemo } from "react";
 import { reasonOf } from "../errors";
 import type { ItemState, LiveOverlayKind, NewLiveWire } from "../generated/api";
 import { useDoc } from "../session/session";
+import { referenceIn } from "./expansions";
 import { useFrontItem } from "../viewer/useViewers";
 
 /** What the Add Live Stream dialog starts from: the stream whose connection a new one copies. */
@@ -42,8 +43,9 @@ export type Camera = {
   name: string;
   /** Where it is: the host as entered, or the label of a stream whose recipe is not known. */
   address: string;
-  /** The recipes' host text, lower-cased; `null` where the camera is known by its label only. */
-  host: string | null;
+  /** The names of its host, lower-cased: as entered and as a `$NAME` reference expands; none where the camera is known
+   * by its label only. A scan's finds are matched to the camera by any of them. */
+  hosts: readonly string[];
   streams: Stream[];
 };
 
@@ -84,34 +86,50 @@ function streamOf(
   return { ...base, state: "failed", reason: reasonOf(resolution) };
 }
 
+const NOT_EXPANDED: ReadonlyMap<string, string> = new Map();
+
+/** The recipe a live item is grouped by: how it resolved, else, for a seat that may see it, as it is stored. */
+const groupedBy = (item: ItemState, recipe: NewLiveWire | null): NewLiveWire | null =>
+  recipe ?? (item.recipe?.type === "Live" ? item.recipe : null);
+
+/** The `$NAME` hosts of the live items, whose values `camerasOf` takes as `expanded`. */
+export function referencedHosts(items: readonly ItemState[]): string[] {
+  const hosts = items.flatMap((item) => {
+    const host = groupedBy(item, null)?.host?.trim() ?? "";
+    return referenceIn(host) ? [host] : [];
+  });
+  return [...new Set(hosts)].sort();
+}
+
 /**
  * The cameras of `items` in the order their first stream appears. A camera is the streams whose recipes name the same
- * host (whatever the case) and device port, named by the first label one of them was given, else by the host. Streams
- * without a recipe (a watcher's, or one that never resolved) are grouped by their label. `known` holds the recipes
- * items resolved with before, by item.
+ * host (whatever the case, and a `$NAME` reference as its value in `expanded`, by reference) and device port, named
+ * by the first label one of them was given, else by the host. Streams without a recipe (a watcher's) are grouped by
+ * their label. `known` holds the recipes items resolved with before, by item.
  */
 export function camerasOf(
   items: readonly ItemState[],
   known: ReadonlyMap<string, NewLiveWire> = new Map(),
+  expanded: ReadonlyMap<string, string> = NOT_EXPANDED,
 ): Camera[] {
   const cameras = new Map<string, Camera>();
   const labelled = new Set<string>();
   for (const item of items) {
     const stream = streamOf(item, known.get(item.id) ?? null);
     if (!stream) continue;
-    const host = stream.recipe?.host?.trim() ?? "";
+    const recipe = groupedBy(item, stream.recipe);
+    const host = recipe?.host?.trim() ?? "";
     const address = host || item.label.trim();
-    const key = host
-      ? `host:${host.toLowerCase()}:${stream.recipe?.port ?? 0}`
-      : `label:${address.toLowerCase()}`;
+    const value = (expanded.get(host) ?? host).toLowerCase();
+    const key = host ? `host:${value}:${recipe?.port ?? 0}` : `label:${address.toLowerCase()}`;
     const camera = cameras.get(key) ?? {
       key,
       name: address,
       address,
-      host: host ? host.toLowerCase() : null,
+      hosts: host ? [...new Set([host.toLowerCase(), value])] : [],
       streams: [],
     };
-    const label = stream.recipe?.label?.trim();
+    const label = recipe?.label?.trim();
     if (label && !labelled.has(key)) {
       labelled.add(key);
       camera.name = label;

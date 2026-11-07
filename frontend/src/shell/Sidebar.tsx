@@ -10,6 +10,7 @@ import { PanelDivider } from "../tools/PanelDivider";
 import { useKept } from "./keptState";
 import { LiveView } from "./LiveView";
 import { useStreaming } from "../live/cameras";
+import { OfflineAdd } from "./OfflineAdd";
 import { SessionsView } from "./SessionsView";
 import { StartPanel } from "./StartPanel";
 import { listedCount, treeOf, type SectionId } from "./treeModel";
@@ -118,6 +119,7 @@ export function Sidebar({
           >
             {view === "workspace" && <StartPanel onRun={onRun} />}
             {listing && <WorkspaceTree key={view} view={view} {...listing} />}
+            {view === "offline" && <OfflineAdd onRun={onRun} />}
             {view === "bookmarks" && <BookmarksView />}
             {view === "sessions" && <SessionsView />}
             {view === "plugins" && <PluginsView />}
