@@ -378,3 +378,81 @@ async fn editing_a_stream_keeps_its_id_and_saved_login_on_the_same_camera_only()
         assert!(!text.contains(PASSWORD), "{text}");
     }
 }
+
+/// An edit that names no overlay keeps the saved one with its hidden broker password for the owner; a guest who may
+/// edit is refused rather than left to clear a password only the owner can restore.
+#[tokio::test]
+async fn an_edit_without_an_overlay_never_clears_a_saved_broker_password() {
+    let folder = tempfile::tempdir().unwrap();
+    let settings = settings::Settings::load(&folder.path().join("default.json")).unwrap();
+    let cache = folder.path().join("cache");
+    let videos = crate::video_cache::start(&settings, &cache);
+    let (_stop, stopping) = tokio::sync::watch::channel(false);
+    let state = AppState::new(
+        Arc::new(settings),
+        Policy::Local,
+        videos,
+        stopping,
+        Plugins::fixed(handlers::Handlers::built_in()),
+        &cache,
+    );
+    let owner = state
+        .sessions
+        .create(true, true, CursorOptions::default())
+        .unwrap();
+    let mqtt = json!({"mode": "mqtt", "handler": "ADF_V1_FRAME", "broker_host": "b.local", "broker_user": "mqtt",
+        "broker_pass": PASSWORD, "source_key": "k"});
+    answer(
+        &state,
+        &owner,
+        1,
+        add_live(json!({"host": "cam.local", "overlay": mqtt})),
+    )
+    .await;
+    let id = owner.state().doc.workspace.parts().workspace.items[0]
+        .id
+        .to_string();
+    let broker_pass = || match &owner.state().doc.workspace.parts().workspace.items[0]
+        .recipe
+        .source
+    {
+        Source::Live(recipe) => recipe.mqtt_settings().map(|mqtt| mqtt.broker_pass),
+        _ => panic!("a live stream"),
+    };
+    let relabel = |label: &str| {
+        serde_json::from_value(json!({"type": "content", "command": {"type": "editItem",
+            "item": id, "new": {"type": "Live", "host": "cam.local", "label": label}}}))
+        .unwrap()
+    };
+    owner
+        .command(sessions::session::Command::Control(Control::Share {
+            access: sessions::session::Access::Edit,
+        }))
+        .unwrap();
+    let link = owner.state().sharing.as_ref().unwrap().link.clone();
+    let guest = state
+        .sessions
+        .join(&link, CursorOptions::default())
+        .unwrap();
+
+    let refused = answer(&state, &guest, 2, relabel("Guest")).await;
+    assert!(matches!(
+        refused,
+        SessionServerMessage::Ack {
+            outcome: AckOutcome::Refused { .. },
+            ..
+        }
+    ));
+    let kept = answer(&state, &owner, 3, relabel("Gate")).await;
+    assert!(matches!(
+        kept,
+        SessionServerMessage::Ack {
+            outcome: AckOutcome::Ok,
+            ..
+        }
+    ));
+    assert_eq!(
+        broker_pass().map(|secret| secret.expose().to_owned()),
+        Some(PASSWORD.to_owned())
+    );
+}

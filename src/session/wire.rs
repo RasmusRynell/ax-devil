@@ -202,15 +202,17 @@ fn doc_command(
                     return Err(Refusal::Invalid);
                 }
                 stream.like = Some(item);
-                // An edit that names no overlay keeps the saved one, with its handler; the configured one is for
-                // new streams.
+                // No overlay keeps the saved one, refused if a literal broker password could not come back.
                 if stream.overlay.is_none()
                     && let Some(recipe) = saved.recipe(item)
                 {
+                    if recipe.overlay.has_literal_password() && saved.live(item).is_none() {
+                        return Err(Refusal::Invalid);
+                    }
                     stream.overlay = Some((&recipe.overlay).into());
                 }
             }
-            // The edited stream has every value of its own, so a text left empty is not the configured one.
+            // An edited stream has every value of its own: an empty text is not the configured one.
             let edited =
                 intake(&new, handlers, &live.for_edit(), network, saved).map_err(|error| {
                     tracing::debug!("An edit was refused: {}", error.reason);
@@ -393,7 +395,7 @@ impl<'a> Saved<'a> {
         self.owner.then(|| self.recipe(item)).flatten()
     }
 
-    /// The recipe of the live stream `item`, for any seat that edits it.
+    /// The recipe of live stream `item`, for any seat.
     fn recipe(self, item: ItemId) -> Option<&'a LiveRecipe> {
         self.workspace
             .items

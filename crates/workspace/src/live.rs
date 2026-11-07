@@ -91,6 +91,12 @@ impl LiveOverlay {
         }
     }
 
+    /// Whether the overlay holds a literal password, which a client is never sent.
+    pub fn has_literal_password(&self) -> bool {
+        matches!(self, Self::Mqtt { broker_pass, .. }
+            if !broker_pass.expose().is_empty() && broker_pass.as_reference().is_none())
+    }
+
     /// The decoder id, when there is an overlay.
     pub fn handler(&self) -> Option<&str> {
         match self {
