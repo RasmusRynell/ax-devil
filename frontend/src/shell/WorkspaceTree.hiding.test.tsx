@@ -2,7 +2,15 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test"
 import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { FakeSocket } from "../session/fakeSession";
 import { SessionProvider } from "../session/session";
-import { commands, HIDDEN, ITEMS, labels, LISTING, renderTree } from "./WorkspaceTree.fixture";
+import {
+  commands,
+  HIDDEN,
+  ITEMS,
+  labels,
+  LISTING,
+  renderTree,
+  shown,
+} from "./WorkspaceTree.fixture";
 import { KeptStateProvider } from "./keptState";
 import { WorkspaceTree } from "./WorkspaceTree";
 
@@ -38,6 +46,29 @@ describe("hiding", () => {
     fireEvent.click(screen.getByRole("button", { name: "Unhide B" }));
     await act(async () => {});
     expect(commands()).toEqual([{ type: "setHidden", target: { entry: "mot/B" }, hidden: false }]);
+  });
+
+  it("opens a hidden lane only through Unhide and open", async () => {
+    await renderTree();
+    fireEvent.click(screen.getByRole("button", { name: "Show hidden items" }));
+    const lane = () => screen.getByRole("treeitem", { name: /^DPM/ });
+    fireEvent.doubleClick(lane());
+    await act(async () => {});
+    expect(commands()).toEqual([]);
+    expect(shown().viewers).toEqual({});
+
+    fireEvent.contextMenu(lane());
+    expect(screen.getByRole("menuitem", { name: "Open" }).hasAttribute("disabled")).toBe(true);
+    expect(
+      screen.getByRole("menuitem", { name: "Open to the Side" }).hasAttribute("disabled"),
+    ).toBe(true);
+    fireEvent.click(screen.getByRole("menuitem", { name: "Unhide and open" }));
+    await act(async () => {});
+    expect(commands()).toEqual([
+      { type: "setHidden", target: { entry: "mot/A", lane: "DPM" }, hidden: false },
+      { type: "openViewer", item: "mot" },
+    ]);
+    expect(shown().viewers).toMatchObject({ 1: { item: "mot", entry: "mot/A" } });
   });
 
   it("follows the Doc: a hidden row leaves the tree once the backend says so", async () => {

@@ -70,3 +70,4 @@ Where [parity](parity.md) rows differ from the reference. The offline decisions 
 | WS-11 | Every view's sidebar keeps one least width, and a drag ends below half of it closes the sidebar; the reference used the shown view's own minimum | The views' content fits one least width |
 | WS-11 | An audience without host details gets same-named rows numbered, with no folder or camera hint | The hint names the host's files and cameras |
 | WS-11 | Search and Name sort fold case one code point at a time; Cherokee folds to small letters, not capitals, so it sorts differently among other scripts. Accepted | JavaScript has no `casefold`; the text matches either way |
+| LOB-012, WSU-017 | [AI] Unhide and open unhides a lane and opens it, but leaves the lane's pane without the focus on that lane; the reference focused the lane | The window has no way to focus a lane yet |

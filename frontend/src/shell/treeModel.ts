@@ -1,7 +1,7 @@
 import type { HiddenTarget, ItemKind, RowInfo, WorkspaceState } from "../generated/api";
 import { casefold, compareNames } from "../casefold";
 import type { CaptionMark } from "../kit/SectionCaption";
-import type { StreamStatus } from "../live/streamState";
+import type { StreamState, StreamStatus } from "../live/streamState";
 
 const NO_STREAMS: ReadonlyMap<string, StreamStatus> = new Map();
 
@@ -19,6 +19,8 @@ export type TreeRow = {
   hasChildren: boolean;
   /** Whether the row is a playlist, as opposed to one video. */
   playlist: boolean;
+  /** The state of a live item's stream while a viewer reports one; `null` for every other row. */
+  stream: StreamState | null;
   /** Hidden itself or inside a hidden entry. */
   dimmed: boolean;
   /** What Hide and Unhide act on; `null` when the row cannot be hidden. */
@@ -44,7 +46,8 @@ export function treeOf(
   let top: TreeRow | undefined;
   let entry: TreeRow | undefined;
   for (const listed of rows) {
-    const state = listed.kind === "item" ? streams.get(listed.item)?.text : undefined;
+    const stream = listed.kind === "item" ? streams.get(listed.item) : undefined;
+    const state = stream?.text;
     const info = state
       ? { ...listed, detail: listed.detail ? `${listed.detail} · ${state}` : state }
       : listed;
@@ -63,6 +66,7 @@ export function treeOf(
       parent: parent?.info.key ?? null,
       hasChildren: false,
       playlist,
+      stream: stream?.state ?? null,
       dimmed: info.hidden || (parent?.dimmed ?? false),
       target:
         opens !== null && info.status.status === "Ready" && hideable

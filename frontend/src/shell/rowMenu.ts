@@ -14,7 +14,8 @@ export const canEdit = (item: ItemState | undefined, powers: Powers): item is It
   editable(item) && powers.content && (item.kind === "live" || powers.host);
 
 /**
- * The menu of a row, in groups: Open and Open to the Side (a row that cannot open says why), Information and Export
+ * The menu of a row, in groups: Open and Open to the Side (a row that cannot open says why; a hidden lane offers Unhide
+ * and open instead), Information and Export
  * video, Hide, then Edit and Remove for the whole item, which only a top-level row offers. A row still resolving
  * opens and informs nothing, and an item that was unreadable cannot be edited. A video and an entry export what a
  * viewer shows, so Export video waits for `exportable`: a viewer showing it.
@@ -37,8 +38,17 @@ export function rowMenu(
   const exports =
     status === "Ready" &&
     (row.info.kind === "entry" || (row.info.kind === "item" && row.itemKind === "video"));
+  // A lane hidden itself (not one inside a hidden entry) opens only through Unhide and open.
+  const hiddenLane = row.info.kind === "lane" && row.info.hidden && row.target !== null;
+  const why = hiddenLane ? "Hidden lane: choose Unhide and open" : undefined;
   const groups: MenuEntry[][] = [
-    status === "Pending" ? [] : [action("open", "Open"), action("open-side", "Open to the Side")],
+    status === "Pending"
+      ? []
+      : [
+          action("open", "Open", hiddenLane, why),
+          action("open-side", "Open to the Side", hiddenLane, why),
+          ...(hiddenLane ? [action("unhide-open", "Unhide and open", !powers.content)] : []),
+        ],
     status === "Pending"
       ? []
       : [

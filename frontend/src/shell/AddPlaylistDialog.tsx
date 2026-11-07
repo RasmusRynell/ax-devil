@@ -174,6 +174,7 @@ function PlaylistForm({
           label="Name"
           value={name}
           placeholder="Optional"
+          selectOnOpen={editing !== undefined}
           onChange={(value) => {
             latestName.current = value;
             setName(value);

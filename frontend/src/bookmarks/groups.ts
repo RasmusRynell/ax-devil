@@ -1,4 +1,5 @@
 import type { BookmarkGroupInfo, BookmarkInfo, BookmarkKindWire } from "../generated/api";
+import { casefold } from "../casefold";
 import { timecode } from "../playback/Transport";
 
 /** The kinds in the order the filter and the kind menu list them, with their names. */
@@ -39,13 +40,13 @@ export function filterGroups(
   query: string,
   kind: BookmarkKindWire | null,
 ): BookmarkGroupInfo[] {
-  const needle = query.trim().toLowerCase();
+  const needle = casefold(query.trim());
   return groups.flatMap((group) => {
-    const titled = titleOf(group).toLowerCase().includes(needle);
+    const titled = casefold(titleOf(group)).includes(needle);
     const bookmarks = group.bookmarks.filter(
       (bookmark) =>
         (kind === null || bookmark.kind === kind) &&
-        (titled || labelOf(bookmark).toLowerCase().includes(needle)),
+        (titled || casefold(labelOf(bookmark)).includes(needle)),
     );
     const kept = bookmarks.length > 0 || (group.bookmarks.length === 0 && kind === null && titled);
     return kept ? [{ ...group, bookmarks }] : [];

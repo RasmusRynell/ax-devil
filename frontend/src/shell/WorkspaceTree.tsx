@@ -178,19 +178,24 @@ export function WorkspaceTree({
 
   const fail = (error: unknown) =>
     setProblem(error instanceof Error ? error.message : String(error));
-  // A row that cannot open says why and sends nothing; one still resolving does nothing. A lane's row brings forward a
-  // viewer already showing its entry; `side` opens a pinned viewer to the right of the front pane.
+  // A lane's row brings forward a viewer already showing its entry; `side` opens a pinned viewer to the right of the
+  // front pane.
+  const present = (row: TreeRow, side = false) =>
+    show(row.item, row.info.kind === "item" ? undefined : (row.info.entry ?? undefined), {
+      side,
+      reuse: !side && row.info.kind === "lane",
+    }).then(() => setProblem(null), fail);
+  // A row that cannot open says why and sends nothing; one still resolving, or a lane hidden itself (Unhide and open
+  // opens that), does nothing.
   const open = (row: TreeRow, side = false) => {
     const { status } = row.info;
-    if (status.status === "Pending") return Promise.resolve();
+    if (status.status === "Pending" || (row.info.kind === "lane" && row.info.hidden))
+      return Promise.resolve();
     if (status.status === "Unavailable") {
       setProblem(`${row.info.label}: ${reasonOf(status)}`);
       return Promise.resolve();
     }
-    return show(row.item, row.info.kind === "item" ? undefined : (row.info.entry ?? undefined), {
-      side,
-      reuse: !side && row.info.kind === "lane",
-    }).then(() => setProblem(null), fail);
+    return present(row, side);
   };
   // The search opens every row and section with a match; folding meanwhile lasts until the search text changes.
   const setCollapsedState = (key: string, collapse: boolean) =>
@@ -211,13 +216,13 @@ export function WorkspaceTree({
       setHeld((now) => ({ ...now, revealed: withKey(now.revealed, id, false) }));
     }
   };
-  const toggleHidden = (row: TreeRow) => {
-    if (!row.target) return;
-    command({
-      type: "content",
-      command: { type: "setHidden", target: row.target, hidden: !row.info.hidden },
-    }).then(() => setProblem(null), fail);
-  };
+  const setHidden = (row: TreeRow, hidden: boolean) =>
+    row.target
+      ? command({ type: "content", command: { type: "setHidden", target: row.target, hidden } })
+      : Promise.resolve();
+  const toggleHidden = (row: TreeRow) =>
+    void setHidden(row, !row.info.hidden).then(() => setProblem(null), fail);
+  const unhideOpen = (row: TreeRow) => void setHidden(row, false).then(() => present(row), fail);
   const itemOf = (row: TreeRow) => workspace?.items.find(({ id }) => id === row.item);
   /** Edit and Remove act on the row's whole item and only a top-level row has them. */
   const editRow = (row: TreeRow) => {
@@ -247,6 +252,7 @@ export function WorkspaceTree({
     if (!menuRow) return;
     if (choice.id === "open" || choice.id === "open-side")
       void open(menuRow, choice.id === "open-side");
+    else if (choice.id === "unhide-open") unhideOpen(menuRow);
     else if (choice.id === "export-video") exportOfRow(menuRow)?.();
     else if (choice.id === "information") {
       const info = rowInformation(menuRow, workspace?.items ?? [], workspace?.rows ?? []);

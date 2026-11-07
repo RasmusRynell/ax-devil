@@ -57,3 +57,8 @@ it("filters by kind and text, a matching title keeps all its bookmarks, and a re
   expect(names("done", null)).toEqual([["done.mp4", []]]);
   expect(names("done", "issue")).toEqual([]);
 });
+
+it("folds case as Python does, so STRASSE finds Straße", () => {
+  const found = filterGroups([group("Straße.mp4", [mark("a", 1, "note")])], " STRASSE ", null);
+  expect(found.map((one) => one.item_name)).toEqual(["Straße.mp4"]);
+});
