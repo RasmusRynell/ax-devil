@@ -50,12 +50,12 @@ pub(super) struct Socket {
 }
 
 impl Socket {
-    /// Asks the device for a session token (Digest on the 401, like every device call), then upgrades to the data-hub
-    /// API on the same host and port. Neither step follows a redirect.
+    /// Asks the device for a session token (Digest on the 401, Basic when that is all it offers, even over plain
+    /// HTTP), then upgrades to the data-hub API on the same host and port. Neither step follows a redirect.
     pub(super) async fn open(device: &Device) -> Result<Self, CameraError> {
         let camera = &device.camera;
         let token = device
-            .call(&Call {
+            .call_basic_anywhere(&Call {
                 method: Method::GET,
                 path: "/axis-cgi/wssession.cgi",
                 query: &[],

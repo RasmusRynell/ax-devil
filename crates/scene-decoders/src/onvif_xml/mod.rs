@@ -1,5 +1,6 @@
 //! Axis ONVIF analytics metadata: one XML document per line, one frame per document.
 
+mod namespaces;
 mod shape;
 
 use foundation::{CancelToken, Interrupt, MediaTime};
@@ -7,11 +8,10 @@ use handler_api::{
     DecodeError, DecodeSummary, Decoder, Form, Framing, Header, Input, OnEqualKey, SceneSink, Spec,
     Values,
 };
+use namespaces::{Namespaces, is_xml_char};
 use quick_xml::{
-    NsReader, XmlVersion,
-    escape::unescape,
+    Reader,
     events::{BytesStart, Event},
-    name::ResolveResult,
 };
 use scene::{
     ClassRule, Coverage, Entity, EntityId, Fields, FilterOption, FilterPolicy, MatchBasis, Name,
@@ -56,7 +56,7 @@ impl OnvifXmlDecoder {
                 bases: vec![MatchBasis::Frame, MatchBasis::Time],
                 default_basis: MatchBasis::Frame,
                 options: Form::default(),
-                version: 3,
+                version: 4,
             },
         }
     }
@@ -107,79 +107,47 @@ impl Decoder for OnvifXmlDecoder {
 /// One trimmed, non-empty record. `Ok(None)` means the record has no overlay; `Err` carries the reason it is skipped.
 fn decode_record(record: &[u8]) -> Result<Option<Scene>, String> {
     let mut document = Document::default();
-    let mut reader = NsReader::from_reader(record);
+    let mut namespaces = Namespaces::new();
+    let mut reader = Reader::from_reader(record);
     loop {
-        let (namespace, event) = reader
-            .read_resolved_event()
+        let event = reader
+            .read_event()
             .map_err(|error| format!("invalid XML: {error}"))?;
-        if let ResolveResult::Unknown(prefix) = &namespace {
-            return Err(format!("invalid XML: unbound prefix {prefix:?}"));
-        }
-        // Python expands character and entity references in a namespace declaration.
-        let namespace = match &namespace {
-            ResolveResult::Bound(namespace) => {
-                Some(unescape(namespace.0).map_err(|error| format!("invalid XML: {error}"))?)
-            }
-            _ => None,
-        };
-        let namespace = namespace.as_deref();
         match event {
             Event::Start(element) => {
-                document.open(&element, namespace)?;
-                check_attributes(&reader, &element)?;
+                let namespace = namespaces.enter(&element)?;
+                document.open(&element, namespace.as_deref())?;
             }
             Event::Empty(element) => {
-                document.open(&element, namespace)?;
-                check_attributes(&reader, &element)?;
+                let namespace = namespaces.enter(&element)?;
+                document.open(&element, namespace.as_deref())?;
                 document.close()?;
+                namespaces.leave();
             }
-            Event::End(_) => document.close()?,
+            Event::End(_) => {
+                document.close()?;
+                namespaces.leave();
+            }
             Event::Text(text) => document.text(&text.xml10_content()),
             Event::CData(text) => document.text(&text.xml10_content()),
             Event::GeneralRef(reference) => match reference.resolve_char_ref() {
-                Ok(Some(character)) => document.text(character.encode_utf8(&mut [0; 4])),
-                _ => document.text(match &*reference {
+                Ok(Some(character)) if is_xml_char(character) => {
+                    document.text(character.encode_utf8(&mut [0; 4]));
+                }
+                Ok(None) => document.text(match &*reference {
                     "lt" => "<",
                     "gt" => ">",
                     "amp" => "&",
                     "quot" => "\"",
                     "apos" => "'",
-                    _ => "",
+                    other => return Err(format!("invalid XML: undefined entity {other:?}")),
                 }),
+                _ => return Err(format!("invalid XML: bad reference &{};", &*reference)),
             },
             Event::Eof => return document.finish(),
             _ => {}
         }
     }
-}
-
-/// Python rejects an element whose attribute has an unbound prefix or whose namespace declaration has a bad
-/// reference or a character XML 1.0 forbids, even when nothing reads them. Each value is scanned once.
-fn check_attributes(reader: &NsReader<&[u8]>, element: &BytesStart<'_>) -> Result<(), String> {
-    for attribute in element.attributes() {
-        let attribute = attribute.map_err(|error| format!("invalid attribute: {error}"))?;
-        if attribute.key.as_namespace_binding().is_some() {
-            let value = attribute
-                .normalized_value(XmlVersion::Implicit1_0)
-                .map_err(|error| format!("invalid XML: {error}"))?;
-            if let Some(character) = value.chars().find(|c| !is_xml_char(*c)) {
-                return Err(format!(
-                    "invalid XML: character {:#x} is not allowed",
-                    u32::from(character)
-                ));
-            }
-        } else if let (ResolveResult::Unknown(prefix), _) =
-            reader.resolver().resolve_attribute(attribute.key)
-        {
-            return Err(format!("invalid XML: unbound prefix {prefix:?}"));
-        }
-    }
-    Ok(())
-}
-
-/// Whether XML 1.0 allows `character`; Rust's `char` already excludes the surrogates.
-fn is_xml_char(character: char) -> bool {
-    matches!(character, '\t' | '\n' | '\r' | ' '..='\u{FFFD}' | '\u{10000}'..)
 }
 
 /// The class filters of this decoder's content.

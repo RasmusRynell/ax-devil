@@ -11,8 +11,8 @@ const { windowBounds } = require("./window-state.cjs");
 // Video files the Add Video dialog offers; the backend's intake takes any path, the viewer judges the media.
 const VIDEO_EXTENSIONS = ["mp4", "avi", "mkv", "mov"];
 
-// What an export writes, by file extension; the page names one of these.
-const EXPORT_EXTENSIONS = ["mp4", "png", "csv"];
+// What an export writes: the file dialog's filter name by file extension; the page names one of these.
+const EXPORT_FILTERS = { mp4: "MP4 Video", png: "PNG Image", csv: "CSV" };
 
 // The extension of a saved workspace file.
 const WORKSPACE_SUFFIX = ".ax-devil.workspace";
@@ -117,6 +117,28 @@ function sender(event) {
 }
 
 /**
+ * The path a save dialog's `chosen` result names, null when it was cancelled. `suffix` is appended unless the name
+ * has it (any case); only an appended name that already exists asks before it is replaced, since the dialog
+ * could not know it. Cancel returns null.
+ */
+async function suffixed(window, chosen, suffix) {
+  if (chosen.canceled) return null;
+  if (chosen.filePath.toLowerCase().endsWith(suffix.toLowerCase())) return chosen.filePath;
+  const target = `${chosen.filePath}${suffix}`;
+  if (fs.existsSync(target)) {
+    const answer = await dialog.showMessageBox(window, {
+      type: "warning",
+      message: `Replace ${path.basename(target)}?`,
+      buttons: ["Replace", "Cancel"],
+      defaultId: 1,
+      cancelId: 1,
+    });
+    if (answer.response !== 0) return null;
+  }
+  return target;
+}
+
+/**
  * Registers every IPC handler, each answering only its own window's trusted page. `connect` is honoured from a
  * local window and `disconnect` from a remote one, and `restart` from a local one, by the callbacks given here.
  */
@@ -158,17 +180,15 @@ function installIpc({ connect, disconnect, restart }) {
   // backend, which writes the file, checks the path again. Only the local backend's page may browse this machine.
   handle("export:pick-file", async ({ remote, window }, name, extension) => {
     if (remote) throw new Error("Not allowed");
-    if (typeof name !== "string" || !EXPORT_EXTENSIONS.includes(extension))
+    if (typeof name !== "string" || !Object.hasOwn(EXPORT_FILTERS, extension))
       throw new Error("Expected a file name and an export extension");
     const chosen = await dialog.showSaveDialog(window, {
       title: extension === "csv" ? "Export CSV" : "Export Video",
       defaultPath: path.basename(name),
-      filters: [{ name: extension.toUpperCase(), extensions: [extension] }],
+      filters: [{ name: EXPORT_FILTERS[extension], extensions: [extension] }],
+      properties: ["showOverwriteConfirmation"],
     });
-    if (chosen.canceled) return null;
-    return chosen.filePath.toLowerCase().endsWith(`.${extension}`)
-      ? chosen.filePath
-      : `${chosen.filePath}.${extension}`;
+    return suffixed(window, chosen, `.${extension}`);
   });
   // The absolute path of a workspace file to open, null when the dialog is cancelled. Only the local backend's page
   // may browse this machine's files.
@@ -198,20 +218,7 @@ function installIpc({ connect, disconnect, restart }) {
       defaultPath: currentPath || path.join(app.getPath("home"), `${file}${WORKSPACE_SUFFIX}`),
       properties: ["showOverwriteConfirmation"],
     });
-    if (chosen.canceled) return null;
-    if (chosen.filePath.endsWith(WORKSPACE_SUFFIX)) return chosen.filePath;
-    const target = `${chosen.filePath}${WORKSPACE_SUFFIX}`;
-    if (fs.existsSync(target)) {
-      const answer = await dialog.showMessageBox(window, {
-        type: "warning",
-        message: `Replace ${path.basename(target)}?`,
-        buttons: ["Replace", "Cancel"],
-        defaultId: 1,
-        cancelId: 1,
-      });
-      if (answer.response !== 0) return null;
-    }
-    return target;
+    return suffixed(window, chosen, WORKSPACE_SUFFIX);
   });
   // The chosen absolute path, null when the dialog is cancelled; the page saves it through the settings. `title`
   // names what is chosen. Only the local backend's page may browse this machine's folders.

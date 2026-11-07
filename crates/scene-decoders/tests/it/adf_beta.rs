@@ -165,6 +165,9 @@ fn beta_names_classes_by_exact_spelling_and_gives_them_only_its_own_details() {
         assert!(classes(json!({"type": kind, "score": 0.5})).is_empty());
     }
     assert!(seen(json!({"score": 0.5})).0.is_none());
+    // Python's float() reads a boolean as a number.
+    let flagged = &classes(json!({"type": "Human", "score": true}))[0];
+    assert_eq!(flagged.score.map(scene::Score::value), Some(1.0));
 }
 
 /// A file on disk, as opposed to the live source `common::Memory` stands for.

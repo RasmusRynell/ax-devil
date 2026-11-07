@@ -9,6 +9,7 @@ import { SectionCaption } from "../kit/SectionCaption";
 import { reasonOf } from "../errors";
 import { useStreamStatuses } from "../live/streamState";
 import { useCan, useCommand, useDoc } from "../session/session";
+import { exportOf, useExportTargets } from "../viewer/exportTargets";
 import { useShow } from "../viewer/useViewers";
 import { HoverPicture } from "./HoverPicture";
 import { useItemDialogs } from "./ItemDialogs";
@@ -45,7 +46,7 @@ function withKey<T>(now: ReadonlySet<T>, key: T, on: boolean): Set<T> {
  * The workspace's items as a tree in the `listed` sections (Live, Videos, Playlists, Other; a click on a caption folds
  * it): each item, then its entries and their lanes, from the backend's rows. A click selects a row; a double click or
  * Enter opens it in its viewer, and with Ctrl to the side of the front pane; the arrow keys move, expand and collapse;
- * the row menu (right click, Shift+F10 or the Menu key) opens it (to the side too) or hides and unhides it. The rows of
+ * the row menu (right click, Shift+F10 or the Menu key) opens it (to the side too), exports it from the viewer that shows it, or hides and unhides it. The rows of
  * the item the front viewer shows are revealed, and a row the
  * viewer moves on from closes. Search, Sort, Show hidden and folds are kept per `view` by the window. Above the tree,
  * Search (`search` is its placeholder), Sort (by the `orders`) and Show hidden items: hidden rows
@@ -74,6 +75,8 @@ export function WorkspaceTree({
   const powers = { content: hides, host };
   const { edit, inform, dialogs } = useItemDialogs();
   const statuses = useStreamStatuses();
+  // An open menu follows viewers that open or close under it.
+  useExportTargets();
   // What the user set up in this view stays while the window shows another view or hides the sidebar.
   const [showHidden, setShowHidden] = useKept(`${view}:showHidden`, false);
   const [query, setQuery] = useKept(`${view}:query`, "");
@@ -234,11 +237,17 @@ export function WorkspaceTree({
   }, []);
 
   const menuRow = menu && tree.find((row) => row.info.key === menu.key);
-  const menuEntries = menuRow ? rowMenu(menuRow, itemOf(menuRow), powers) : [];
+  // The export of the viewer showing the row: an entry's own, or any entry of a video item.
+  const exportOfRow = (row: TreeRow) =>
+    exportOf(row.item, row.info.kind === "entry" ? (row.info.entry ?? undefined) : undefined);
+  const menuEntries = menuRow
+    ? rowMenu(menuRow, itemOf(menuRow), powers, exportOfRow(menuRow) !== undefined)
+    : [];
   const choose = (choice: MenuCommand) => {
     if (!menuRow) return;
     if (choice.id === "open" || choice.id === "open-side")
       void open(menuRow, choice.id === "open-side");
+    else if (choice.id === "export-video") exportOfRow(menuRow)?.();
     else if (choice.id === "information") {
       const info = rowInformation(menuRow, workspace?.items ?? [], workspace?.rows ?? []);
       if (info) inform(info);

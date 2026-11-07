@@ -56,7 +56,9 @@ export function NumberField({
         step={step}
         placeholder={placeholder}
         disabled={disabled}
-        value={draft ?? (value === null ? "" : String(value))}
+        value={
+          draft ?? (value === null ? "" : decimals > 0 ? value.toFixed(decimals) : String(value))
+        }
         onChange={(event) => setDraft(event.target.value)}
         onBlur={commit}
         onKeyDown={(event) => event.key === "Enter" && commit()}

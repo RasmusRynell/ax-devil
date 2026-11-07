@@ -106,6 +106,18 @@ async fn digest_is_used_when_basic_is_offered_too_and_a_rejected_login_stops_the
 }
 
 #[tokio::test]
+async fn a_camera_that_offers_only_basic_is_signed_in_to_over_plain_http() {
+    let fake = FakeDataHub::with(Behaviour {
+        basic_only: true,
+        ..Behaviour::default()
+    })
+    .await;
+    let mut live = open_datahub(&fake.camera(), TOPIC, 1);
+    status_where(&mut live, |s| matches!(s, Status::Live { .. })).await;
+    live.close().await;
+}
+
+#[tokio::test]
 async fn a_self_signed_https_camera_gives_the_token_and_the_subscription_over_tls() {
     let fake = FakeDataHub::start_tls().await;
     let mut live = open_datahub(&fake.camera(), TOPIC, 1);

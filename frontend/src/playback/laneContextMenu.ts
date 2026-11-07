@@ -18,10 +18,10 @@ export const HIDE_LANE_TIP =
 export const HIDE_LANE = "hide-lane";
 
 /** What Export video tells in its tooltip once the clicked lane can be drawn. */
-const EXPORT_TIP = "Export video with overlays";
+export const EXPORT_TIP = "Export video with overlays";
 
 /** Why Export video is disabled while the clicked lane's render catalog has not loaded. */
-const EXPORT_WAITS = "Export is available once the render catalog has loaded";
+export const EXPORT_WAITS = "Export is available once the render catalog has loaded";
 
 /**
  * The lane menu's entries, disabled outside the `allowed` scopes; Hide only when the seat may hide lanes. Export

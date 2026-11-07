@@ -9,7 +9,7 @@ import {
 } from "react";
 import type { ContentInfo, ContentRef, EntryInfo, LanePolicyWire } from "../generated/api";
 import { useAddBookmark, useSeekRequest } from "../bookmarks/viewerLink";
-import { ExportDialog } from "../export/ExportDialog";
+import { ExportDialog, ExportNotice } from "../export/ExportDialog";
 import { choicesOf } from "../export/lanes";
 import { ContextMenu } from "../kit/ContextMenu";
 import { Icon } from "../kit/Icon";
@@ -23,6 +23,7 @@ import {
   useView,
 } from "../session/session";
 import { PaneActiveContext, useViewerActions } from "../viewer/actions";
+import { registerExport } from "../viewer/exportTargets";
 import { NOTHING_HIDDEN, type Hidden } from "../viewer/hidden";
 import { NoticeList } from "../kit/NoticeList";
 import { usePaneBudget } from "./budget";
@@ -88,6 +89,7 @@ function Playback({
   const geometry = useRef<Geometry | null>(null);
   // Export is open, for every lane or for the one the lane menu was used on.
   const [exporting, setExporting] = useState<{ lane: number | null } | null>(null);
+  const [waiting, setWaiting] = useState(false);
   const [tools, setTools] = useState(false);
   // The media tools' pages, lists and width, kept while they are closed; the selected object is the page on top.
   const { pages, outlined, setOutlined, navigate, panel } = useMediaTools(session, objectDetails);
@@ -123,13 +125,26 @@ function Playback({
     geometry.current = next;
     objects.current?.drawn(next);
   }, []);
+  // An export covers the lanes the action is for; while a catalog of one is loading it only says so and starts nothing.
   const exportLane = useCallback(
     (lane: number | null) => {
-      if (session.getSnapshot().status !== "ready") return;
+      const current = session.getSnapshot();
+      if (current.status !== "ready") return;
+      const covered = choicesOf(current.lanes).filter((c) => lane === null || c.lane === lane);
+      if (covered.length === 0) return;
+      if (covered.some((choice) => choice.cold === "loading")) {
+        setWaiting(true);
+        return;
+      }
       session.pause();
       setExporting({ lane });
     },
     [session],
+  );
+  const ready = view.status === "ready";
+  useEffect(
+    () => (ready ? registerExport(item, entry, () => exportLane(null)) : undefined),
+    [ready, item, entry, exportLane],
   );
   const addBookmark = useAddBookmark(session, item, entry);
   useSeekRequest(session, view.status, entry);
@@ -197,6 +212,7 @@ function Playback({
                 only={fullscreen.solo}
                 info={info}
                 onHide={onHideLane}
+                onExport={allowed.host ? exportLane : undefined}
                 onPoint={fullscreen.point}
                 onPick={fullscreen.pick}
                 viewport={viewport}
@@ -251,6 +267,7 @@ function Playback({
       ) : (
         <Opening view={view} name={name} />
       )}
+      {waiting && <ExportNotice onClose={() => setWaiting(false)} />}
       {exporting && (
         <ExportDialog
           only={exporting.lane ?? undefined}

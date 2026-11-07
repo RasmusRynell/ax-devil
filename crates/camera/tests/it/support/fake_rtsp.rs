@@ -48,6 +48,10 @@ pub enum Fault {
     Damage {
         at: u32,
     },
+    /// Answers DESCRIBE with this status instead of the stream.
+    Describe {
+        status: u16,
+    },
 }
 
 #[derive(Clone)]
@@ -250,6 +254,17 @@ async fn serve(socket: TcpStream, shared: Arc<Shared>, index: usize, addr: Socke
         } else {
             match request.method.as_str() {
                 "DESCRIBE" => {
+                    if let (0, Fault::Describe { status }) =
+                        (index, shared.behaviour.first_connection)
+                    {
+                        writer
+                            .lock()
+                            .await
+                            .write_all(&reply(&format!("{status} Refused"), "", ""))
+                            .await
+                            .ok();
+                        continue;
+                    }
                     let wants_video = shared.behaviour.video && !request.uri.contains("video=0");
                     let wants_metadata = request.uri.contains("analytics=polygon");
                     let sdp = sdp(&base, wants_video, wants_metadata);

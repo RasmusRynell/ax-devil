@@ -103,3 +103,25 @@ fn two_frames_sharing_a_timestamp_make_the_index_unusable_with_a_reason() {
     let reason = times_of(&stored(vec![5, 15, 15, 25])).expect_err("a duplicate");
     assert!(reason.contains("frames 1 and 2"), "{reason}");
 }
+
+#[test]
+fn a_last_frame_without_a_container_duration_lasts_one_declared_frame_period() {
+    let mut index = FrameIndex::load_or_build(
+        &VideoInput::File(fixture("cfr_h264_gop10_bf2.mp4")),
+        None,
+        &CancelToken::new(),
+        &mut |_| {},
+    )
+    .expect("indexes");
+    let last = index.timeline().len() - 1;
+    let gap = index.timeline().period_after(last - 1).expect("a gap");
+    index.last_duration = None;
+
+    index.info.frame_rate = FrameRate::new(1, 1);
+    let declared = index.duration_of(last).expect("a duration");
+    assert_eq!(declared.as_us(), 1_000_000);
+    assert_ne!(declared, gap);
+
+    index.info.frame_rate = None;
+    assert_eq!(index.duration_of(last), Some(gap));
+}

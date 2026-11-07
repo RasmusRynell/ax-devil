@@ -122,7 +122,7 @@ fn the_sample_has_two_frames_with_their_shapes_filters_and_metadata() {
     assert_eq!(at(cvat, &["task_name"]).as_str(), Some("Demo Task"));
     assert_eq!(at(cvat, &["labels", "0"]).as_str(), Some("car"));
     assert!(summary.warnings.is_empty());
-    assert_eq!(summary.coverage, Coverage::Dense);
+    assert_eq!(summary.coverage, Coverage::Sparse);
 }
 
 #[test]

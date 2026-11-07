@@ -3,6 +3,7 @@ import { act, cleanup, fireEvent, screen, within } from "@testing-library/react"
 import type { ItemRecipe, ItemState, ViewerView } from "../generated/api";
 import { entry, failed, FakeSocket, playlists, video } from "../session/fakeSession";
 import { viewing } from "../session/fakeViews";
+import { registerExport } from "../viewer/exportTargets";
 import { CLIP, commands, ITEMS, labels, MOT, renderTree, shown } from "./WorkspaceTree.fixture";
 
 beforeEach(() => vi.stubGlobal("WebSocket", FakeSocket));
@@ -300,6 +301,7 @@ describe("items", () => {
       "Open",
       "Open to the Side",
       "Information",
+      "Export video",
       "Edit",
       "Remove",
     ]);
@@ -317,7 +319,31 @@ describe("items", () => {
       "Information",
       "Remove",
     ]);
-    expect(menuOf(/^A/)).toEqual(["Open", "Open to the Side", "Information", "Hide"]);
+    expect(menuOf(/^A/)).toEqual([
+      "Open",
+      "Open to the Side",
+      "Information",
+      "Export video",
+      "Hide",
+    ]);
+  });
+
+  it("exports a video from its row once a viewer shows it, and says to open it first until then", async () => {
+    await renderTree([stored(CLIP)], []);
+    const exportItem = () => {
+      fireEvent.contextMenu(screen.getByRole("treeitem", { name: /^v\.mp4/ }));
+      return screen.getByRole("menuitem", { name: "Export video" }) as HTMLButtonElement;
+    };
+    const first = exportItem();
+    expect(first.disabled).toBe(true);
+    expect(first.title).toBe("Open it first");
+    fireEvent.keyDown(document, { key: "Escape" });
+
+    const run = vi.fn();
+    const leave = registerExport("v", "v", run);
+    fireEvent.click(exportItem());
+    expect(run).toHaveBeenCalledTimes(1);
+    leave();
   });
 
   it("removes the whole item at once from the menu or with Delete, and edits it with F2", async () => {

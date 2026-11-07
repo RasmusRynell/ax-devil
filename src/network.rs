@@ -30,7 +30,8 @@ pub const SNAPSHOT_EVERY: Duration = Duration::from_millis(100);
 pub struct ScanRequest {
     /// The addresses.
     pub targets: Targets,
-    /// The logins to try, in order, on a device that answered as an Axis camera.
+    /// The logins to try, in order, on a device that answered as an Axis camera, as written: a `$NAME` reference is
+    /// expanded when the scan starts.
     pub logins: Vec<Login>,
     /// How hard to work the network.
     pub load: ScanLoad,
@@ -41,13 +42,34 @@ pub struct ScanRequest {
 /// Starts a scan: the real one, or one a test supplies.
 type Scanner = Box<dyn Fn(ScanRequest) -> mpsc::Receiver<Found> + Send + Sync>;
 
+/// A login a scan tried: the text the user wrote, and what it was when the scan started.
+struct ScanLogin {
+    /// Kept in a Live Stream Item made from a found camera, so `$NAME` stays a reference there.
+    written: Login,
+    /// What the scan, and the sidebar's snapshot of a found camera, send.
+    used: Login,
+}
+
+impl ScanLogin {
+    fn new(written: &Login) -> Self {
+        let lookup = |name: &str| std::env::var(name).ok();
+        Self {
+            used: Login {
+                user: expand(&written.user, lookup),
+                password: Secret::new(expand(written.password.expose(), lookup)),
+            },
+            written: written.clone(),
+        }
+    }
+}
+
 struct Running {
     scan: u64,
     /// The running scan's task; `None` once it is cancelled or before the first scan, when nothing may publish.
     task: Option<JoinHandle<()>>,
     /// The logins this scan tried, which the `login_index` of its rows counts in. Settings may change meanwhile, so
     /// the index is never read against them. They stay on the server.
-    logins: Vec<Login>,
+    logins: Vec<ScanLogin>,
 }
 
 /// The network scan of the app: one scan at a time, whose snapshots reach any number of readers.
@@ -130,13 +152,18 @@ impl Network {
     }
 
     /// Starts a scan, ending the one that is running: the rows start empty. Returns the scan's number.
-    pub fn rescan(self: &Arc<Self>, request: ScanRequest) -> u64 {
+    pub fn rescan(self: &Arc<Self>, mut request: ScanRequest) -> u64 {
         let mut running = self.running.lock().unwrap_or_else(PoisonError::into_inner);
         if let Some(task) = running.task.take() {
             task.abort();
         }
         running.scan += 1;
-        running.logins.clone_from(&request.logins);
+        running.logins = request.logins.iter().map(ScanLogin::new).collect();
+        request.logins = running
+            .logins
+            .iter()
+            .map(|login| login.used.clone())
+            .collect();
         let number = running.scan;
         self.snapshots.send_replace(Arc::new(NetworkSnapshot {
             scan: number,
@@ -166,26 +193,39 @@ impl Network {
         }
     }
 
-    /// The login that scan `scan` signed in with as its `index`th: `None` when a newer scan has begun, which has its own
-    /// logins, or the scan tried no such login.
+    /// The login that scan `scan` signed in with as its `index`th, `$NAME` references expanded as the scan sent it:
+    /// `None` when a newer scan has begun, which has its own logins, or the scan tried no such login.
     pub fn accepted_login(&self, scan: u64, index: u32) -> Option<Login> {
-        let running = self.running.lock().unwrap_or_else(PoisonError::into_inner);
-        if running.scan != scan {
-            return None;
-        }
-        running.logins.get(usize::try_from(index).ok()?).cloned()
+        self.scan_login(scan, index, |login| &login.used)
     }
 
-    /// The camera the current scan found at `address` and the login that signed in to it: `None` when there is no such
-    /// row, the scan did not sign in to it, or a newer scan has begun. The login stays on the server.
+    /// The camera the current scan found at `address` and the login that signed in to it, as written (a `$NAME`
+    /// reference stays one): `None` when there is no such row, the scan did not sign in to it, or a newer scan has
+    /// begun. The login stays on the server.
     pub fn signed_in(&self, address: &str) -> Option<(NetworkRow, Login)> {
         let scan = self.snapshot();
         let row = scan.rows.iter().find(|row| row.address == address)?;
         let NetworkSignIn::SignedIn { login_index, .. } = &row.sign_in else {
             return None;
         };
-        let login = self.accepted_login(scan.scan, *login_index)?;
+        let login = self.scan_login(scan.scan, *login_index, |login| &login.written)?;
         Some((row.clone(), login))
+    }
+
+    fn scan_login(
+        &self,
+        scan: u64,
+        index: u32,
+        form: impl Fn(&ScanLogin) -> &Login,
+    ) -> Option<Login> {
+        let running = self.running.lock().unwrap_or_else(PoisonError::into_inner);
+        if running.scan != scan {
+            return None;
+        }
+        running
+            .logins
+            .get(usize::try_from(index).ok()?)
+            .map(|login| form(login).clone())
     }
 
     /// Publishes scan `number`'s state unless a newer scan began or it was cancelled, which keeps a scan that no
@@ -263,8 +303,7 @@ fn expand(text: &str, lookup: impl Fn(&str) -> Option<String>) -> String {
     }
 }
 
-/// The logins of `scan.logins`, in order, each field expanded when it is a `$NAME` reference. A scan's
-/// `login_index` counts in the list it was started with.
+/// The logins of `scan.logins`, in order, as written. A scan's `login_index` counts in the list it was started with.
 fn configured_logins(state: &settings::State) -> Vec<Login> {
     state
         .stored("scan.logins")
@@ -276,7 +315,7 @@ fn configured_logins(state: &settings::State) -> Vec<Login> {
                 record
                     .get(name)
                     .and_then(|value| value.as_str())
-                    .map(|text| expand(text, |name| std::env::var(name).ok()))
+                    .map(str::to_owned)
                     .unwrap_or_default()
             };
             Login {
@@ -289,8 +328,8 @@ fn configured_logins(state: &settings::State) -> Vec<Login> {
 
 /// The scan the settings describe, over `range` when given and else `scan.range`, expanded when it is a `$NAME`
 /// reference; blank is the local network. It asks each host over `camera.protocol` first. Its logins are `scan.logins`
-/// unless sign-in is off, which `sign_in` says for this scan and else `scan.sign_in` does; each field is expanded when
-/// it is a `$NAME` reference. A range that cannot be scanned is refused with the field named.
+/// unless sign-in is off, which `sign_in` says for this scan and else `scan.sign_in` does; each field is as written,
+/// a `$NAME` reference expanded when the scan starts. A range that cannot be scanned is refused with the field named.
 pub fn request_from_settings(
     state: &settings::State,
     range: Option<&str>,
@@ -358,149 +397,4 @@ pub fn scan_on_startup(network: &Arc<Network>, state: &settings::State) {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[tokio::test]
-    async fn the_scan_at_launch_sends_no_login_but_a_pressed_scan_does() {
-        let folder = tempfile::tempdir().unwrap();
-        let settings = settings::Settings::load(&folder.path().join("default.json")).unwrap();
-        let state = settings.state();
-        let (asked, mut requests) = mpsc::unbounded_channel();
-        let network = Network::with_scanner(move |request| {
-            asked.send(request.logins.len()).unwrap();
-            mpsc::channel(1).1
-        });
-
-        scan_on_startup(&network, &state);
-        assert_eq!(requests.recv().await, Some(0));
-        let pressed = request_from_settings(&state, None, None, ScanLoad::Normal).unwrap();
-        network.rescan(pressed);
-        assert_eq!(requests.recv().await, Some(1));
-        // The footer's choice for one scan wins over the setting, either way, and leaves the setting alone.
-        let off = request_from_settings(&state, None, Some(false), ScanLoad::Normal).unwrap();
-        assert!(off.logins.is_empty());
-    }
-
-    #[test]
-    fn the_saved_range_is_scanned_as_the_variable_it_names_holds_it() {
-        let folder = tempfile::tempdir().unwrap();
-        let path = folder.path().join("default.json");
-        // `PATH` is set wherever the tests run and is no address, so the refusal shows what the reference expanded to.
-        std::fs::write(
-            &path,
-            r#"{"version": 1, "settings": {"scan.range": "$PATH"}}"#,
-        )
-        .unwrap();
-        let state = settings::Settings::load(&path).unwrap().state();
-        let Err(refused) = request_from_settings(&state, None, None, ScanLoad::Normal) else {
-            panic!("a variable that holds no range is no range to scan");
-        };
-        assert!(!refused.reason.contains("$PATH"), "{}", refused.reason);
-        assert_eq!(refused.location, Some(Location::field("scan.range")));
-    }
-
-    #[test]
-    fn only_a_whole_name_reference_in_a_scan_login_expands() {
-        let lookup = |name: &str| (name == "AX_DEVIL_TARGET_PASS").then(|| "pw".to_owned());
-        assert_eq!(expand("$AX_DEVIL_TARGET_PASS", lookup), "pw");
-        assert_eq!(expand("$UNSET", lookup), "");
-        for literal in ["$1A", "$A-B", "$ecret!", "$"] {
-            assert_eq!(expand(literal, lookup), literal);
-        }
-    }
-
-    fn found_signed_in(index: usize) -> Found {
-        Found {
-            addr: Ipv4Addr::new(10, 9, 9, 2),
-            web: camera::Web {
-                scheme: Scheme::Http,
-                port: 80,
-            },
-            identity: camera::Identity {
-                model: String::new(),
-                serial: String::new(),
-                firmware: String::new(),
-                product_type: String::new(),
-                architecture: String::new(),
-                soc: String::new(),
-            },
-            uptime: None,
-            sign_in: SignIn::SignedIn {
-                login_index: index,
-                architecture: String::new(),
-                soc: String::new(),
-            },
-        }
-    }
-
-    fn request(users: &[&str]) -> ScanRequest {
-        ScanRequest {
-            targets: Targets::parse("10.9.9.0/30").unwrap(),
-            logins: users
-                .iter()
-                .map(|user| Login {
-                    user: (*user).to_owned(),
-                    password: Secret::new("pw".to_owned()),
-                })
-                .collect(),
-            load: ScanLoad::Normal,
-            ports: ScanPorts::preferring(Scheme::Http),
-        }
-    }
-
-    #[tokio::test]
-    async fn a_login_index_means_the_login_its_scan_tried_and_nothing_once_another_scan_began() {
-        let network = Network::with_scanner(|_| mpsc::channel(1).1);
-        let first = network.rescan(request(&["a", "b"]));
-        let user = |login: Option<Login>| login.map(|login| login.user);
-        assert_eq!(user(network.accepted_login(first, 1)), Some("b".to_owned()));
-        assert_eq!(user(network.accepted_login(first, 2)), None);
-
-        let second = network.rescan(request(&["c"]));
-        assert_eq!(user(network.accepted_login(first, 0)), None);
-        assert_eq!(
-            user(network.accepted_login(second, 0)),
-            Some("c".to_owned())
-        );
-    }
-
-    #[tokio::test]
-    async fn a_cancel_that_wins_the_race_with_a_publish_leaves_the_scan_not_scanning() {
-        let network = Network::with_scanner(|_| mpsc::channel(1).1);
-        let number = network.rescan(request(&[]));
-        network.cancel();
-        // The scan's timer was waiting for the lock cancel held, and publishes once it has it.
-        let rows = [(Ipv4Addr::new(10, 9, 9, 2), row(&found_signed_in(0)))];
-        network.publish(number, &rows, true, None);
-        assert!(!network.snapshot().scanning);
-        network.publish(number, &rows, false, Some("failed".to_owned()));
-        assert!(!network.snapshot().scanning);
-        assert_eq!(network.snapshot().failure, None);
-    }
-
-    #[tokio::test]
-    async fn a_scan_that_panics_ends_as_a_failure_the_next_scan_clears() {
-        let calls = std::sync::atomic::AtomicUsize::new(0);
-        let network = Network::with_scanner(move |_| {
-            let earlier = calls.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-            assert!(earlier > 0, "the first scan breaks");
-            mpsc::channel(1).1
-        });
-        let mut snapshots = network.subscribe();
-        let first = network.rescan(request(&[]));
-        let ended = snapshots
-            .wait_for(|now| now.scan == first && !now.scanning)
-            .await
-            .unwrap()
-            .clone();
-        assert!(ended.failure.is_some());
-
-        let second = network.rescan(request(&[]));
-        let now = network.snapshot();
-        assert_eq!(
-            (now.scan, now.scanning, now.failure.as_deref()),
-            (second, true, None)
-        );
-    }
-}
+mod tests;

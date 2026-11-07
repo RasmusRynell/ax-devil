@@ -3,7 +3,7 @@
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 
 use foundation::{CancelToken, ErrorCode, FrameSize, Interrupt, UserError, VideoFrame};
-use media::{Decoder, EncodeFormat, Encoder, VideoInput};
+use media::{Decoder, EncodeFormat, Encoder};
 use overlays::{FIRST_NON_SAMPLE, cell};
 
 use crate::{
@@ -20,8 +20,7 @@ const MAX_OUTPUT: FrameSize = FrameSize {
 };
 /// FFmpeg threads of the export's decoder.
 const DECODE_THREADS: usize = 2;
-/// How long a frame lasts, in microseconds, when the timeline has no neighbour to tell and the video declares no
-/// rate: a video file's index keeps only presentation times.
+/// How long the only frame of a one-frame video lasts, in microseconds, when the video declares no frame rate.
 const LONE_FRAME_US: i64 = 33_333;
 
 /// Runs `spec`: writes the destination, or returns why it did not, leaving the destination as it was.
@@ -104,7 +103,13 @@ fn encode(
         .into());
     }
     let mut sink = Sink {
-        encoder: Encoder::create(&spec.destination, spec.format, width, height)?,
+        encoder: Encoder::create(
+            &spec.destination,
+            spec.format,
+            width,
+            height,
+            spec.index.info().frame_rate,
+        )?,
         output,
         size: (width, height),
         waiting: VecDeque::new(),
@@ -223,19 +228,8 @@ impl Pending {
             dur_us: spec
                 .index
                 .duration_of(job.frame.id().sequence_id)
-                .map_or_else(|| lone_frame_us(&spec.video), |period| period.as_us()),
+                .map_or(LONE_FRAME_US, |period| period.as_us()),
         }
-    }
-}
-
-/// How long the only frame of a video lasts: the period an image sequence declares, else [`LONE_FRAME_US`].
-fn lone_frame_us(video: &VideoInput) -> i64 {
-    match video {
-        VideoInput::ImageSequence(sequence) => sequence
-            .frame_rate
-            .time_of(1)
-            .map_or(LONE_FRAME_US, |period| period.as_us()),
-        VideoInput::File(_) => LONE_FRAME_US,
     }
 }
 
