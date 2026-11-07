@@ -358,6 +358,35 @@ fn editing_keeps_a_cleared_user_and_what_the_other_overlay_modes_hold() {
     );
 }
 
+#[test]
+fn the_default_broker_password_is_kept_only_by_a_stream_that_uses_the_broker() {
+    let mut configured = defaults();
+    configured.mqtt.password = Secret::new("literal-broker-secret");
+    let with = |overlay| NewLive {
+        overlay: Some(overlay),
+        ..host("cam.local")
+    };
+    let item = live(
+        with(NewLiveOverlay::None),
+        &configured,
+        &Handlers::built_in(),
+    )
+    .unwrap();
+    let kept = recipe(&item).kept.mqtt.as_ref().expect("MQTT is kept");
+    assert_eq!(kept.broker_pass.expose(), "");
+
+    let item = live(
+        with(NewLiveOverlay::Mqtt(NewMqtt::default())),
+        &configured,
+        &Handlers::built_in(),
+    )
+    .unwrap();
+    let LiveOverlay::Mqtt { broker_pass, .. } = &recipe(&item).overlay else {
+        panic!("an MQTT overlay");
+    };
+    assert_eq!(broker_pass.expose(), "literal-broker-secret");
+}
+
 fn resolve(item: &WorkspaceItem, env: &Environment) -> Result<Content, UserError> {
     match item.recipe.resolve(
         &item.id,

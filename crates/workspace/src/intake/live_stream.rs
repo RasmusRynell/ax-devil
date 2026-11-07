@@ -364,13 +364,18 @@ pub fn live(
             }
         }
     };
-    // The modes not chosen keep what was entered for them, or else the defaults as written.
+    // The modes not chosen keep what was entered for them, or else the defaults as written, except the default
+    // broker password: it is never copied into a stream that does not use the broker.
+    let no_secret = MqttDefaults {
+        password: Secret::new(""),
+        ..defaults.mqtt.clone()
+    };
     let kept = KeptTransports {
         mqtt: match overlay {
             LiveOverlay::Mqtt { .. } => None,
             _ => Some(mqtt_settings(
                 &new.kept_mqtt.clone().unwrap_or_default(),
-                &defaults.mqtt,
+                &no_secret,
             )),
         },
         datahub: match overlay {
