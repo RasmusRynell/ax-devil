@@ -7,10 +7,11 @@ const LANE_COMMANDS: readonly CommandId[] = [
   "export-video",
   "media-tools",
   "lane-fullscreen",
+  "add-bookmark",
   "zoom-reset",
 ];
 
-/** What Hide lane tells in its tooltip, wherever it is offered. */
+/** What Hide tells in its tooltip, wherever it is offered. */
 export const HIDE_LANE_TIP =
   "Skip this lane in playback. Bring it back with Unhide in the sidebar.";
 
@@ -38,7 +39,7 @@ export function laneContextEntries(
     return {
       kind: "action",
       id,
-      label: command(id).label,
+      label: id === "export-video" ? "Export video" : command(id).label,
       shortcut: shortcuts[id] ?? undefined,
       disabled: waits || !allowed[scopeOf(id)],
       reason: waits ? EXPORT_WAITS : undefined,
@@ -49,7 +50,7 @@ export function laneContextEntries(
     ? [
         ...entries,
         { kind: "separator" },
-        { kind: "action", id: HIDE_LANE, label: "Hide lane", tip: HIDE_LANE_TIP },
+        { kind: "action", id: HIDE_LANE, label: "Hide", tip: HIDE_LANE_TIP },
       ]
     : entries;
 }

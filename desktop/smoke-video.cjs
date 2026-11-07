@@ -83,6 +83,22 @@ function infoHud() {
 }
 
 /**
+ * Runs in the page: what the pane header says beside the title, and whether the whole title is still there. The details
+ * are in sight only while they sit on the title's row; a header too narrow for both gives the room to the title.
+ */
+function headerDetails() {
+  const details = document.querySelector("[data-header-details]");
+  const row = details?.parentElement;
+  if (!row) return null;
+  const title = row.firstElementChild.firstElementChild;
+  return {
+    text: details.textContent,
+    beside: details.getBoundingClientRect().top < row.getBoundingClientRect().bottom - 1,
+    titleWhole: title.scrollWidth <= title.clientWidth,
+  };
+}
+
+/**
  * Waits for the frame info to settle after a change of view (a missed measurement stays missed, so the last check is
  * the answer), then asserts it fits. Returns whether it is cut.
  */
@@ -295,6 +311,17 @@ async function fullscreen(window) {
     await wait(info);
     await shoot(`video-info-${theme}.png`);
     assert.equal(await expectInfoHud(window, `the 1100x720 window in the ${theme} theme`), false);
+    const wide = await page(window).js(`(${headerDetails.toString()})()`);
+    assert.match(
+      wide?.text ?? "",
+      /^\d+×\d+ · [\d.]+ fps · \d+:\d\d$/,
+      "The header tells the video",
+    );
+    assert.deepEqual(
+      [wide.beside, wide.titleWhole],
+      [true, true],
+      "The details sit beside the title",
+    );
     // The frame info stays open while the window shrinks to its minimum and zooms to 200%, with the sidebar closed.
     await js("document.querySelector('[aria-label=Workspace]').click()");
     for (const zoom of [1, 2]) {
@@ -307,6 +334,15 @@ async function fullscreen(window) {
       if (zoom === 2)
         assert.equal(cut, true, "The frame info is cut at 200% zoom in the smallest window");
       await shoot(`video-info-min-${theme}${zoom === 1 ? "" : "-200"}.png`);
+      // Too narrow for both, the header keeps the whole title and gives the details up.
+      if (zoom === 2) {
+        const narrow = await page(window).js(`(${headerDetails.toString()})()`);
+        assert.deepEqual(
+          [narrow.beside, narrow.titleWhole],
+          [false, true],
+          "The title wins the header",
+        );
+      }
     }
     await setView(window, [1100, 720], 1);
     await js("document.querySelector('[aria-label=Workspace]').click()");
@@ -327,12 +363,13 @@ async function fullscreen(window) {
       "[...document.querySelectorAll('[role=menu] [role=menuitem]')].map((item) => item.textContent)",
     );
     const expected = [
-      "Export VideoCtrl+E",
+      "Export videoCtrl+E",
       "Toggle Media Tools PanelCtrl+B",
       "Toggle Lane FullscreenF",
+      "Add BookmarkM",
       "Reset Zoom0",
     ];
-    assert.deepEqual(items.slice(0, 4), expected, "The lane menu lists the lane's commands");
+    assert.deepEqual(items.slice(0, 5), expected, "The lane menu lists the lane's commands");
     await shoot(`video-lane-menu-${theme}.png`);
     await key("Escape");
     await wait("!document.querySelector('[role=menu]')");

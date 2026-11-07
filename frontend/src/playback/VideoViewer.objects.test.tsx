@@ -141,7 +141,7 @@ describe("video viewer objects", () => {
     act(() => props().onDrawn?.(shown));
     act(() => props().onSelect?.(SELECTION));
     fireEvent.contextMenu(screen.getByText("DPM"));
-    fireEvent.keyDown(screen.getByRole("menuitem", { name: /Export Video/ }), { key: "Escape" });
+    fireEvent.keyDown(screen.getByRole("menuitem", { name: /Export video/ }), { key: "Escape" });
     expect(screen.queryByRole("menu")).toBeNull();
     expect(shown.boxes).toHaveBeenLastCalledWith(SELECTION, null);
   });

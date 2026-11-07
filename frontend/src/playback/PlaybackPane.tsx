@@ -19,7 +19,7 @@ import { useSettings } from "../settings";
 import { MediaToolsPanel } from "../tools/MediaToolsPanel";
 import { jump } from "../tools/pageStack";
 import { useMediaTools } from "../tools/useMediaTools";
-import { PaneActiveContext, useViewerActions } from "../viewer/actions";
+import { PaneActiveContext, useHeaderDetails, useViewerActions } from "../viewer/actions";
 import { registerExport } from "../viewer/exportTargets";
 import type { Hidden } from "../viewer/hidden";
 import { useChromeVisibility } from "./chromeVisibility";
@@ -130,6 +130,7 @@ export function Playback({
     () => (ready ? registerExport(item, entry, () => exportLane(null)) : undefined),
     [ready, item, entry, exportLane],
   );
+  useHeaderDetails(view.details);
   const addBookmark = useAddBookmark(session, item, entry);
   useSeekRequest(session, view.status, entry);
   const actions = useViewerActions(

@@ -5,6 +5,7 @@ import type { InspectionView, Selection } from "./contract";
 import type { FrameFailures } from "./failures";
 import type { LaneState } from "./lanes";
 import type { CadenceWire, CatalogInfoWire, ServerMessage, VideoPtsWire } from "./protocol";
+import { videoDetails } from "./videoDetails";
 
 export type PlaybackView = {
   status: "connecting" | "indexing" | "ready" | "reconnecting" | "failed";
@@ -32,6 +33,8 @@ export type PlaybackView = {
   /** The video's frame size in pixels; 0 until it is described. */
   width: number;
   height: number;
+  /** The size, frame rate and length for the pane header, such as `640×480 · 25 fps · 0:04`; empty until described. */
+  details: string;
   /** Problems with the video itself, such as overlay sizes that do not match it. Empty for a watcher. */
   warnings: readonly string[];
   /** How evenly the video's frames are spaced; `null` until it is ready or for a one-frame video. */
@@ -56,6 +59,7 @@ export const INITIAL_VIEW: PlaybackView = {
   inspection: { state: "none" },
   width: 0,
   height: 0,
+  details: "",
   warnings: [],
   cadence: null,
   cached: [],
@@ -82,6 +86,7 @@ export const sameView = (a: PlaybackView, b: PlaybackView): boolean =>
   a.inspection === b.inspection &&
   a.width === b.width &&
   a.height === b.height &&
+  a.details === b.details &&
   a.warnings === b.warnings &&
   a.cached === b.cached &&
   a.videoPts === b.videoPts;
@@ -128,6 +133,7 @@ export function buildView(parts: ViewParts): PlaybackView {
     inspection,
     width: opened?.width ?? 0,
     height: opened?.height ?? 0,
+    details: opened ? videoDetails(opened) : "",
     warnings: opened?.warnings ?? INITIAL_VIEW.warnings,
     cadence: opened?.cadence ?? null,
     cached: parts.cached,

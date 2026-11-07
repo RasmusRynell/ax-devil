@@ -1,6 +1,6 @@
 import type { BookmarkGroupInfo, BookmarkInfo, BookmarkKindWire } from "../generated/api";
 import { casefold } from "../casefold";
-import { timecode } from "../playback/Transport";
+import { timecode } from "../playback/timecode";
 
 /** The kinds in the order the filter and the kind menu list them, with their names. */
 export const KINDS: readonly (readonly [BookmarkKindWire, string])[] = [

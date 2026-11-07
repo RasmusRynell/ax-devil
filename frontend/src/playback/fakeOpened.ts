@@ -38,6 +38,7 @@ export const opened = (
   frame_bytes: frameBytes,
   width: 64,
   height: 48,
+  fps: 25,
   warnings: [],
   lanes,
   lane_defaults: LANE_DEFAULTS,

@@ -255,6 +255,7 @@ fn opened_and_lane_status_carry_the_source_and_data_revision() {
         frame_bytes: 4608,
         width: 64,
         height: 48,
+        fps: Some(30.0),
         warnings: Vec::new(),
         lanes: vec![
             LaneInfo {

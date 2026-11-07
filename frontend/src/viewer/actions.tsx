@@ -51,3 +51,15 @@ export function PaneActions({ active, children }: { active: boolean; children: R
     </PaneActiveContext.Provider>
   );
 }
+
+/** Where a viewer sets the muted text its pane's header shows beside the title; a viewer outside any pane has none. */
+export const HeaderDetailsContext = createContext<((text: string) => void) | null>(null);
+
+/** Shows `text` in the header of the pane around the viewer while it is mounted. */
+export function useHeaderDetails(text: string): void {
+  const show = useContext(HeaderDetailsContext);
+  useEffect(() => {
+    show?.(text);
+    return () => show?.("");
+  }, [show, text]);
+}
