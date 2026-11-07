@@ -1,8 +1,9 @@
 import { useMemo, useRef, useState } from "react";
 import { useGrants } from "../access";
 import type { NewLiveWire } from "../generated/api";
-import { camerasOf, type AddSeed } from "../live/cameras";
+import { camerasOf, referencedHosts, type AddSeed } from "../live/cameras";
 import { useLoginChecks } from "../live/checks";
+import { useExpandedHosts } from "../live/expansions";
 import { informationOf } from "../live/information";
 import { useNetwork, type Order } from "../live/network";
 import {
@@ -55,14 +56,17 @@ export function LiveView({ onAdd }: { onAdd: (seed: AddSeed) => void }) {
   // How each stream resolved, which keeps it under its camera while it resolves again or fails.
   const known = useRef(new Map<string, NewLiveWire>());
 
+  // The values of the `$NAME` hosts, which the person at this machine may ask for.
+  const references = useMemo(() => referencedHosts(items ?? []), [items]);
+  const expanded = useExpandedHosts(references, useGrants().includes("preferences"));
   const cameras = useMemo(() => {
     for (const item of items ?? [])
       if (item.resolution.status === "Resolved" && item.resolution.content.kind === "LiveVideo") {
         const { recipe } = item.resolution.content;
         if (recipe) known.current.set(item.id, recipe);
       }
-    return camerasOf(items ?? [], known.current);
-  }, [items]);
+    return camerasOf(items ?? [], known.current, expanded);
+  }, [items, expanded]);
   const checks = useLoginChecks(
     cameras,
     scans && values["scan.sign_in"] !== false,
