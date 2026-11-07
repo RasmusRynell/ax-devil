@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import type { RowInfo } from "../generated/api";
 import { FakeSocket } from "../session/fakeSession";
 import { SessionProvider } from "../session/session";
 import {
@@ -69,6 +70,33 @@ describe("hiding", () => {
       { type: "openViewer", item: "mot" },
     ]);
     expect(shown().viewers).toMatchObject({ 1: { item: "mot", entry: "mot/A" } });
+  });
+
+  it("says why a hidden lane that is not ready cannot open, as the menu offers Open for it", async () => {
+    const room = await renderTree();
+    // The fake backend lists every lane ready, so this row comes from the rows it sends.
+    room.tweakRows = (rows) =>
+      rows.map((row): RowInfo =>
+        row.kind === "lane" && row.label === "DPM"
+          ? {
+              ...row,
+              status: {
+                status: "Unavailable",
+                code: "WorkspaceInvalid",
+                params: {},
+                reason: "File not found",
+              },
+            }
+          : row,
+      );
+    act(() => room.setItems(ITEMS));
+    fireEvent.click(screen.getByRole("button", { name: "Show hidden items" }));
+    const lane = () => screen.getByRole("treeitem", { name: /^DPM/ });
+    fireEvent.doubleClick(lane());
+    expect(screen.getByRole("alert").textContent).toBe("DPM: File not found");
+    fireEvent.contextMenu(lane());
+    expect(screen.getByRole("menuitem", { name: "Open" }).hasAttribute("disabled")).toBe(false);
+    expect(screen.queryByRole("menuitem", { name: "Unhide and open" })).toBeNull();
   });
 
   it("follows the Doc: a hidden row leaves the tree once the backend says so", async () => {

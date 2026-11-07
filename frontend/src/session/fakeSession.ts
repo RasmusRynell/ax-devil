@@ -9,6 +9,7 @@ import type {
   ItemState,
   RefusalCode,
   ResolutionState,
+  RowInfo,
   SeatAccess,
   SessionClientMessage,
   SessionServerMessage,
@@ -112,6 +113,8 @@ export class Room {
   items: ItemState[] = [];
   /** What the owner hid in the workspace tree. */
   hidden: HiddenTarget[] = [];
+  /** Changes the rows the backend would list, for a state the items cannot make, such as an unavailable lane. */
+  tweakRows: (rows: RowInfo[]) => RowInfo[] = (rows) => rows;
   /** The bookmark groups the Bookmarks view lists. */
   bookmarks: BookmarkGroupInfo[] = [];
   docRev = 0;
@@ -315,7 +318,7 @@ export class FakeSocket {
             epoch: room.epoch,
             file: null,
             items: room.items,
-            rows: rowsOf(room.items, room.hidden),
+            rows: room.tweakRows(rowsOf(room.items, room.hidden)),
             bookmarks: room.bookmarks,
           },
         },

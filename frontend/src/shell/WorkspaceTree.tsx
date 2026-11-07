@@ -17,7 +17,7 @@ import { rowInformation } from "./rowInformation";
 import { useKept } from "./keptState";
 import { useFolds } from "./RevealShown";
 import { unfold } from "./reveal";
-import { canEdit, rowMenu } from "./rowMenu";
+import { canEdit, isHiddenLane, rowMenu } from "./rowMenu";
 import {
   filteredOut,
   ORDERS,
@@ -189,8 +189,7 @@ export function WorkspaceTree({
   // opens that), does nothing.
   const open = (row: TreeRow, side = false) => {
     const { status } = row.info;
-    if (status.status === "Pending" || (row.info.kind === "lane" && row.info.hidden))
-      return Promise.resolve();
+    if (status.status === "Pending" || isHiddenLane(row)) return Promise.resolve();
     if (status.status === "Unavailable") {
       setProblem(`${row.info.label}: ${reasonOf(status)}`);
       return Promise.resolve();
