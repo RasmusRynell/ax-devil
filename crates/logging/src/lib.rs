@@ -101,38 +101,57 @@ where
         .with_line_number(true)
 }
 
-/// Starts logging to the console and, when it can be opened, to `file` (its folder is created). `extra` sees every
-/// event unfiltered, for a crate that must react to a dependency's record. Call once at startup.
-pub fn init<L>(level: Level, file: Option<&Path>, extra: L)
+type BoxedLayer = Box<dyn Layer<Registry> + Send + Sync>;
+
+/// The layers of the app's logging, each carrying its own filter and none unfiltered, so that no combination (a file
+/// that is absent or cannot be opened, say) leaves a callsite enabled that every layer would refuse. The error is the
+/// failure to open `file`, if any.
+fn layers<L>(
+    level: Level,
+    file: Option<&Path>,
+    extra: L,
+) -> (Vec<BoxedLayer>, Option<std::io::Error>)
 where
     L: Layer<Registry> + Send + Sync + 'static,
 {
-    let console = lines()
-        .with_writer(std::io::stderr)
-        .with_filter(level.targets());
+    let mut layers: Vec<BoxedLayer> = vec![
+        Box::new(extra),
+        Box::new(
+            lines()
+                .with_writer(std::io::stderr)
+                .with_filter(level.targets()),
+        ),
+    ];
     let opened = file.map(|file| {
         file.parent()
             .map_or(Ok(()), std::fs::create_dir_all)
             .and_then(|()| RotatingFile::open(file, ROTATE_BYTES, BACKUPS))
     });
-    let (file_layer, failure) = match opened {
-        None => (None, None),
-        Some(Ok(handle)) => (
-            Some(
+    let failure = match opened {
+        None => None,
+        Some(Ok(handle)) => {
+            layers.push(Box::new(
                 lines()
                     .with_ansi(false)
                     .with_writer(Mutex::new(handle))
                     .with_filter(level.targets()),
-            ),
-            None,
-        ),
-        Some(Err(error)) => (None, Some(error)),
+            ));
+            None
+        }
+        Some(Err(error)) => Some(error),
     };
-    tracing_subscriber::registry()
-        .with(extra)
-        .with(console)
-        .with(file_layer)
-        .init();
+    (layers, failure)
+}
+
+/// Starts logging to the console and, when it can be opened, to `file` (its folder is created). `extra` is the caller's
+/// own layer, for a crate that must react to a dependency's record; it must carry a filter of its own, as it adds to
+/// what is enabled. Call once at startup.
+pub fn init<L>(level: Level, file: Option<&Path>, extra: L)
+where
+    L: Layer<Registry> + Send + Sync + 'static,
+{
+    let (layers, failure) = layers(level, file, extra);
+    tracing_subscriber::registry().with(layers).init();
     if let (Some(file), Some(error)) = (file, failure) {
         tracing::warn!(
             "Logging to the console only; cannot open {}: {error}",
@@ -193,5 +212,53 @@ mod tests {
         assert!(out.contains("dependency-warning"), "{out}");
         assert!(!out.contains("dependency-debug"), "{out}");
         assert!(!out.contains("dependency-info"), "{out}");
+    }
+
+    /// The caller's layer, which counts the warnings of one target and, being filtered, enables nothing else.
+    struct Counting(Arc<std::sync::atomic::AtomicUsize>);
+
+    impl<S: tracing::Subscriber> Layer<S> for Counting {
+        fn on_event(&self, _: &tracing::Event<'_>, _: tracing_subscriber::layer::Context<'_, S>) {
+            self.0.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        }
+    }
+
+    /// With the console only, with a log file, and with a log file that cannot be opened, a caller's layer that
+    /// wants one target's warnings must not make any other warning or debug callsite enabled at the error level.
+    #[test]
+    fn an_extra_layer_enables_only_its_own_callsites_whatever_the_files() {
+        use tracing::Level as L;
+        let dir = tempfile::tempdir().unwrap();
+        let blocker = dir.path().join("a file");
+        std::fs::write(&blocker, "").unwrap();
+        let cases = [
+            (None, false),
+            (Some(dir.path().join("log.txt")), false),
+            (Some(blocker.join("log.txt")), true),
+        ];
+        for (file, fails) in cases {
+            let seen = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+            let extra = Counting(Arc::clone(&seen)).with_filter(
+                tracing_subscriber::filter::filter_fn(|meta| {
+                    meta.target() == "retina::client" && *meta.level() == L::WARN
+                })
+                .with_max_level_hint(LevelFilter::WARN),
+            );
+            let (layers, failure) = layers(Level::Error, file.as_deref(), extra);
+            assert_eq!(failure.is_some(), fails, "{file:?}");
+            tracing::subscriber::with_default(tracing_subscriber::registry().with(layers), || {
+                assert!(!tracing::enabled!(L::WARN), "{file:?}");
+                assert!(!tracing::enabled!(L::DEBUG), "{file:?}");
+                assert!(!tracing::enabled!(target: "reqwest", L::WARN), "{file:?}");
+                assert!(tracing::enabled!(L::ERROR), "{file:?}");
+                tracing::warn!(target: "retina::client", "kept");
+                tracing::warn!("unrelated");
+            });
+            assert_eq!(
+                seen.load(std::sync::atomic::Ordering::SeqCst),
+                1,
+                "{file:?}"
+            );
+        }
     }
 }

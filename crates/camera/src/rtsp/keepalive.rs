@@ -32,8 +32,10 @@ thread_local! {
 /// refusal with another status (405 for a camera that does not know the method, a 5xx) does not end the stream.
 ///
 /// It is scoped by a per-layer filter to warnings from retina's client (the `log` bridge asks the subscriber with the
-/// record's real target, so bridged records match), so it enables no other callsite and caps the `log` bridge's max
-/// level at warnings, whatever else is installed.
+/// record's real target, so bridged records match), so it enables no other callsite. It contributes a maximum level of
+/// warnings to the process's; the process's maximum must be at least that, as the `log` bridge takes its own from it,
+/// including when its output is set to errors only. The subscriber must not hold an unfiltered layer, which would
+/// enable everything.
 pub fn retina_log_layer<S>() -> impl Layer<S>
 where
     S: Subscriber + for<'a> LookupSpan<'a>,
