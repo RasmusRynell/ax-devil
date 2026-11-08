@@ -383,6 +383,7 @@ mod tests {
                     overlays: Vec::new(),
                     starts_hidden: *label == "z",
                     lanes_starting_hidden: Vec::new(),
+                    metadata: Default::default(),
                 })
                 .collect();
             let span = workspace::PlaylistSpan {
@@ -391,6 +392,7 @@ mod tests {
                 entries: entries.len(),
                 matches: None,
                 sequence_groups: None,
+                metadata: Default::default(),
             };
             (span, entries)
         };

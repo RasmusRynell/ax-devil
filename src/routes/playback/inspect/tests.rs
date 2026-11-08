@@ -36,6 +36,7 @@ async fn viewer(folder: &Path) -> (ViewerOverlays, u32) {
             ("width".to_owned(), 64.into()),
             ("height".to_owned(), 48.into()),
         ]),
+        metadata: Default::default(),
     };
     let service = OverlayService::new(scene_store::TrackRegistry::new(
         handlers::Handlers::built_in().decoder_lookup(),

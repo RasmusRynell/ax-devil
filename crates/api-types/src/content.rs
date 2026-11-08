@@ -75,6 +75,8 @@ pub struct PlaylistSpanInfo {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(type = "number", optional)]
     pub sequence_groups: Option<u64>,
+    /// What the resolver states about the playlist: key and text rows, keys sorted.
+    pub metadata: Vec<(String, String)>,
 }
 
 /// One video and its lanes: what a viewer opens.
@@ -88,4 +90,8 @@ pub struct EntryInfo {
     pub lanes: Vec<String>,
     /// The decoder id of each overlay lane, in order; empty for an entry without overlays.
     pub handlers: Vec<String>,
+    /// What the resolver states about the entry: key and text rows, keys sorted.
+    pub metadata: Vec<(String, String)>,
+    /// What the resolver states about each overlay lane, as `metadata`, in the order of `handlers`.
+    pub lane_metadata: Vec<Vec<(String, String)>>,
 }

@@ -7,7 +7,14 @@ import { treeOf } from "./treeModel";
 
 /** A playlist the resolver "Folder Pair" found one match in, whose one entry has one overlay file. */
 function pairs(): ItemState {
-  const item = playlist("runs", [{ ...entry("runs/e", "SEQ-01", ["GT"]), handlers: ["MOT_FILE"] }]);
+  const item = playlist("runs", [
+    {
+      ...entry("runs/e", "SEQ-01", ["GT"]),
+      handlers: ["MOT_FILE"],
+      metadata: [["split", "train"]],
+      lane_metadata: [[["detector", "Yes"]]],
+    },
+  ]);
   if (item.resolution.status !== "Resolved" || item.resolution.content.kind !== "Playlist")
     throw new Error("a playlist");
   const { content } = item.resolution;
@@ -18,7 +25,11 @@ function pairs(): ItemState {
       content: {
         ...content,
         display_name: "Folder Pair",
-        playlists: content.playlists.map((span) => ({ ...span, matches: 1 })),
+        playlists: content.playlists.map((span) => ({
+          ...span,
+          matches: 1,
+          metadata: [["owner", "lab"]],
+        })),
       },
     },
   };
@@ -53,8 +64,10 @@ it("lists a playlist's own fields in order and an entry's overlay with its file 
     "lanes",
     "matches",
     "resolver",
+    "owner",
   ]);
-  expect(list.fields.at(-1)).toEqual(["resolver", "Folder Pair"]);
+  expect(list.fields.at(-1)).toEqual(["owner", "lab"]);
+  expect(information("entry").fields.at(-1)).toEqual(["split", "train"]);
 
   const [lane] = information("entry").children;
   expect(lane.fields).toEqual(
@@ -62,6 +75,7 @@ it("lists a playlist's own fields in order and an entry's overlay with its file 
       ["video", "SEQ-01"],
       ["path", "/data/gt.txt"],
       ["handler type", "MOT_FILE"],
+      ["detector", "Yes"],
     ]),
   );
 });

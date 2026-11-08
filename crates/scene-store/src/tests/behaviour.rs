@@ -377,6 +377,7 @@ fn the_real_mot_decoder_round_trips_through_an_artifact() {
             ("width".to_owned(), width.into()),
             ("height".to_owned(), 480.into()),
         ]),
+        metadata: Default::default(),
     };
     let token = CancelToken::new();
     let open = |overlay: &OverlayRef| {

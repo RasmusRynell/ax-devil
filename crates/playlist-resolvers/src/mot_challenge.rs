@@ -126,6 +126,7 @@ impl PlaylistResolver for MotChallengeResolver {
                 name: self.spec.name.clone(),
                 matches: None,
                 sequence_groups: Some(entries.len() as u64),
+                metadata: Default::default(),
                 entries,
             }],
             warnings,
@@ -341,6 +342,7 @@ fn build_entries(
             overlays,
             starts_hidden: false,
             lanes_starting_hidden: Vec::new(),
+            metadata: Default::default(),
         });
     }
     Ok(entries)
@@ -357,6 +359,7 @@ fn mot_overlay(label: String, path: PathBuf, info: &SeqInfo) -> OverlayRef {
             ("width".to_owned(), info.width.into()),
             ("height".to_owned(), info.height.into()),
         ]),
+        metadata: Default::default(),
     }
 }
 

@@ -10,6 +10,7 @@ mod host;
 pub mod intake;
 mod item;
 mod live;
+mod metadata;
 mod references;
 mod sources;
 mod workspace;
@@ -30,6 +31,7 @@ pub use live::{
     DataHubSettings, KeptTransports, LIVE_SLOT, LiveOverlay, LiveRecipe, LiveVideoContent, Login,
     MqttSettings, Protocol, ResolvedCamera, RtspRoute, url_password_dropped, url_without_password,
 };
+pub use metadata::metadata_fields;
 pub use references::{Connection, Previews, Shown, preview};
 pub use sources::{Snapshot, Watch};
 pub use workspace::Workspace;

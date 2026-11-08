@@ -180,6 +180,7 @@ fn a_plugin_that_writes_out_of_order_has_its_samples_sorted_and_the_replaced_one
         path: plugin("shell-times/sample.times.txt"),
         handler: "shell-times".into(),
         options: Default::default(),
+        metadata: Default::default(),
     };
 
     let track = TrackRegistry::new(plugins.set().decoder_lookup(), None)
@@ -225,6 +226,7 @@ fn a_records_plugin_reads_a_file_line_by_line_and_a_bad_line_costs_one_record() 
         path: plugin("shell-records/sample.records.txt"),
         handler: "shell-records".into(),
         options: Default::default(),
+        metadata: Default::default(),
     };
 
     let track = TrackRegistry::new(plugins.set().decoder_lookup(), None)

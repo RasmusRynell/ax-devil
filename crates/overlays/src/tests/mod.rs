@@ -148,6 +148,7 @@ pub(super) fn overlay_at(label: &str, handler: &str, path: PathBuf) -> OverlayRe
         path,
         handler: handler.into(),
         options: ["width", "height"].into_iter().filter_map(size).collect(),
+        metadata: Default::default(),
     }
 }
 

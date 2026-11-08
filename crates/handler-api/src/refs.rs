@@ -45,4 +45,6 @@ pub struct OverlayRef {
     pub handler: String,
     /// Options handed to the decoder, checked against its [`Spec::options`](crate::Spec::options) when it opens.
     pub options: Settings,
+    /// Facts the resolver states about the lane, shown in Information; no other behavior depends on them.
+    pub metadata: Settings,
 }

@@ -49,8 +49,22 @@ export function installViewerHarness() {
 
 const content = { id: "content-a", generation: 1, display_name: "a.mp4" };
 const ENTRIES: Record<string, EntryInfo> = {
-  "content-a": { id: "content-a", label: "a.mp4", lanes: ["a.mp4"], handlers: [] },
-  "content-b": { id: "content-b", label: "b.mp4", lanes: ["b.mp4"], handlers: [] },
+  "content-a": {
+    id: "content-a",
+    label: "a.mp4",
+    lanes: ["a.mp4"],
+    handlers: [],
+    metadata: [],
+    lane_metadata: [],
+  },
+  "content-b": {
+    id: "content-b",
+    label: "b.mp4",
+    lanes: ["b.mp4"],
+    handlers: [],
+    metadata: [],
+    lane_metadata: [],
+  },
 };
 
 /** What the playback sockets the viewer opened can be told, newest last. */

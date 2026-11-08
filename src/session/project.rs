@@ -25,7 +25,7 @@ use sessions::session::{Doc, SessionState, can};
 use std::collections::HashMap;
 use workspace::{
     BookmarkKind, Content, Entry, Environment, LiveVideoContent, SeekableVideoContent, Source,
-    Workspace, WorkspaceItem, playlist_label,
+    Workspace, WorkspaceItem, metadata_fields, playlist_label,
 };
 use workspace_store::{
     BookmarkGroup, ContentGen, Reload, Resolution, Row, RowKind, RowStatus, Saved, Standing,
@@ -376,6 +376,7 @@ fn content_info(
                     entries: u32::try_from(span.entries).unwrap_or(u32::MAX),
                     matches: span.matches,
                     sequence_groups: span.sequence_groups,
+                    metadata: metadata_fields(&span.metadata),
                 })
                 .collect(),
         },
@@ -419,6 +420,7 @@ fn entry_info(entry: &Entry) -> EntryInfo {
         // Hidden is the rows'.
         starts_hidden: _,
         lanes_starting_hidden: _,
+        metadata,
     } = entry;
     EntryInfo {
         id: id.to_string(),
@@ -427,6 +429,11 @@ fn entry_info(entry: &Entry) -> EntryInfo {
         handlers: overlays
             .iter()
             .map(|overlay| overlay.handler.clone())
+            .collect(),
+        metadata: metadata_fields(metadata),
+        lane_metadata: overlays
+            .iter()
+            .map(|overlay| metadata_fields(&overlay.metadata))
             .collect(),
     }
 }

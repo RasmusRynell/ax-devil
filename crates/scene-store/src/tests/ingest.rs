@@ -179,6 +179,7 @@ impl Rig {
             path: self.dir.path().join("overlay.txt"),
             handler: "TEST".into(),
             options: Settings::new(),
+            metadata: Default::default(),
         }
     }
 

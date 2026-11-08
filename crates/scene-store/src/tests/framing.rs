@@ -51,6 +51,7 @@ fn open(decoder: impl Decoder + 'static, text: &[u8]) -> Arc<Track> {
         path: source,
         handler: "TEST".into(),
         options: Settings::new(),
+        metadata: Default::default(),
     };
     registry.open(&overlay, &CancelToken::new()).expect("opens")
 }

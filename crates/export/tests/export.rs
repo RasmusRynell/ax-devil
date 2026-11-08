@@ -377,6 +377,7 @@ fn two_sample_track(dir: &Path) -> (PathBuf, Arc<Track>) {
         path: mot.clone(),
         handler: "ONVIF_XML".into(),
         options: serde_json::Map::new(),
+        metadata: Default::default(),
     };
     let track = TrackRegistry::new(Handlers::built_in().decoder_lookup(), None)
         .open(&overlay, &CancelToken::new())

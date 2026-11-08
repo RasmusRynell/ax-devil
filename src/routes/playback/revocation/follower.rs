@@ -36,9 +36,11 @@ fn entry_with_a_lane(folder: &Path) -> Entry {
                 ("width".to_owned(), 64.into()),
                 ("height".to_owned(), 48.into()),
             ]),
+            metadata: Default::default(),
         }],
         starts_hidden: false,
         lanes_starting_hidden: Vec::new(),
+        metadata: Default::default(),
     }
 }
 

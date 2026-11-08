@@ -26,7 +26,14 @@ export const resolved = (id: string): ResolutionState => ({
     id: `content-${id}`,
     generation: 1,
     display_name: `${id}.mp4`,
-    entry: { id: `content-${id}`, label: `${id}.mp4`, lanes: [`${id}.mp4`], handlers: [] },
+    entry: {
+      id: `content-${id}`,
+      label: `${id}.mp4`,
+      lanes: [`${id}.mp4`],
+      handlers: [],
+      metadata: [],
+      lane_metadata: [],
+    },
   },
 });
 
@@ -36,6 +43,8 @@ export const entry = (id: string, label = id, lanes: string[] = [label]): EntryI
   label,
   lanes,
   handlers: [],
+  metadata: [],
+  lane_metadata: [],
 });
 
 /** A playlist item that resolved to these entries. */
@@ -64,6 +73,7 @@ export const playlists = (
         id: `${id}/${name}`,
         label: groups.length > 1 ? `${id} / ${name}` : id,
         entries: entries.length,
+        metadata: [],
       })),
     },
   },

@@ -48,6 +48,7 @@ fn main() {
                 ("width".to_owned(), 1920.into()),
                 ("height".to_owned(), 1080.into()),
             ]),
+            metadata: Default::default(),
         };
         let track = registry
             .open(&overlay, &CancelToken::new())

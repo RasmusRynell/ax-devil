@@ -15,6 +15,7 @@ fn playlist_of(item: &WorkspaceItem, entries: &[(&str, bool)]) -> workspace::Con
                 path: "/o.txt".into(),
                 handler: "MOT_FILE".into(),
                 options: Default::default(),
+                metadata: Default::default(),
             }],
             starts_hidden,
             lanes_starting_hidden: if starts_hidden {
@@ -22,6 +23,7 @@ fn playlist_of(item: &WorkspaceItem, entries: &[(&str, bool)]) -> workspace::Con
             } else {
                 Vec::new()
             },
+            metadata: Default::default(),
         })
         .collect();
     workspace::Content::Playlist(workspace::PlaylistContent {
@@ -34,6 +36,7 @@ fn playlist_of(item: &WorkspaceItem, entries: &[(&str, bool)]) -> workspace::Con
             entries: entries.len(),
             matches: None,
             sequence_groups: None,
+            metadata: Default::default(),
         }],
         entries,
         warnings: Vec::new(),

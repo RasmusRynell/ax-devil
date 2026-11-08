@@ -30,9 +30,11 @@ fn entry(id: ContentId, label: &str, folder: &str) -> Entry {
             path: PathBuf::from(format!("/home/{folder}/tracks.txt")),
             handler: "MOT_FILE".into(),
             options: Default::default(),
+            metadata: Default::default(),
         }],
         starts_hidden: false,
         lanes_starting_hidden: Vec::new(),
+        metadata: Default::default(),
     }
 }
 
@@ -106,6 +108,7 @@ fn doc() -> (Doc, [ItemId; 6]) {
                 entries: 2,
                 matches: None,
                 sequence_groups: None,
+                metadata: Default::default(),
             }],
             warnings: vec![Warning {
                 problem: "Skipped 1 of 3 sequences".into(),

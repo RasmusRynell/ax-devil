@@ -120,11 +120,13 @@ impl PlaylistResolver for FolderPairResolver {
                     path: pair.overlay,
                     handler: handler.to_string(),
                     options: options.clone(),
+                    metadata: Default::default(),
                 }],
                 name: pair.name,
                 video: VideoRef::File(pair.video),
                 starts_hidden: false,
                 lanes_starting_hidden: Vec::new(),
+                metadata: Default::default(),
             })
             .collect();
         if entries.is_empty() {
@@ -145,6 +147,7 @@ impl PlaylistResolver for FolderPairResolver {
                 name: self.spec.name.clone(),
                 matches: Some(entries.len() as u64),
                 sequence_groups: None,
+                metadata: Default::default(),
                 entries,
             }],
             warnings: Vec::new(),

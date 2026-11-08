@@ -257,6 +257,7 @@ impl Fixture {
             path: self.source.clone(),
             handler: "TEST".into(),
             options: Settings::new(),
+            metadata: Default::default(),
         }
     }
 

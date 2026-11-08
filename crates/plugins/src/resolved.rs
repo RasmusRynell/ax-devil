@@ -62,6 +62,8 @@ struct PlaylistIn {
     matches: Option<u64>,
     #[serde(default)]
     sequence_groups: Option<u64>,
+    #[serde(default)]
+    metadata: Settings,
 }
 
 #[derive(Deserialize)]
@@ -73,6 +75,8 @@ struct EntryIn {
     overlays: Vec<OverlayIn>,
     #[serde(default = "yes")]
     considered: bool,
+    #[serde(default)]
+    metadata: Settings,
 }
 
 fn yes() -> bool {
@@ -115,6 +119,8 @@ struct OverlayIn {
     options: Settings,
     #[serde(default = "yes")]
     considered: bool,
+    #[serde(default)]
+    metadata: Settings,
 }
 
 /// An `error` line: what the plugin says went wrong, and the setting or path it is about.
@@ -129,6 +135,7 @@ struct Printed {
     name: Option<String>,
     matches: Option<u64>,
     sequence_groups: Option<u64>,
+    metadata: Settings,
     entries: Vec<ResolvedEntry>,
 }
 
@@ -138,6 +145,7 @@ impl Printed {
             name,
             matches: None,
             sequence_groups: None,
+            metadata: Settings::new(),
             entries: Vec::new(),
         }
     }
@@ -196,6 +204,7 @@ impl Collected {
                     entries: printed.entries,
                     matches: printed.matches,
                     sequence_groups: printed.sequence_groups,
+                    metadata: printed.metadata,
                 })
                 .collect(),
             warnings: self.warnings,
@@ -280,6 +289,7 @@ impl Collected {
                 self.playlists.push(Printed {
                     matches: playlist.matches,
                     sequence_groups: playlist.sequence_groups,
+                    metadata: playlist.metadata,
                     ..Printed::named(Some(cut(&playlist.name)))
                 });
             }
@@ -362,6 +372,7 @@ impl Collected {
                 path: absolute("the overlay path", overlay.path)?,
                 handler: overlay.handler,
                 options: overlay.options,
+                metadata: overlay.metadata,
             });
         }
         self.printed += 1;
@@ -375,6 +386,7 @@ impl Collected {
                 overlays,
                 starts_hidden: !entry.considered,
                 lanes_starting_hidden,
+                metadata: entry.metadata,
             });
         }
         Ok(())
@@ -467,6 +479,29 @@ mod tests {
             stopped.as_deref(),
             Some("line 50001: more than 50000 entries and playlists")
         );
+    }
+
+    #[test]
+    fn metadata_of_a_playlist_an_entry_and_an_overlay_is_carried() {
+        let lines = [
+            r#"{"playlist": {"name": "p", "metadata": {"owner": "lab"}}}"#,
+            r#"{"entry": {"name": "e", "video": {"file": "/v.mp4"}, "metadata": {"split": "train"},
+                "overlays": [{"label": "GT", "slot": "gt", "path": "/gt.txt", "handler": "MOT_FILE",
+                "metadata": {"detector": true}}]}}"#,
+        ];
+        let mut collected = Collected::new(Op::Resolve);
+        for (number, line) in lines.iter().enumerate() {
+            let line = line.split_whitespace().collect::<Vec<_>>().join(" ");
+            assert!(matches!(
+                collected.line(number + 1, line.as_bytes()),
+                Next::Continue
+            ));
+        }
+        let playlist = collected.into_playlists("resolver").playlists.remove(0);
+        let entry = &playlist.entries[0];
+        assert_eq!(playlist.metadata["owner"], "lab");
+        assert_eq!(entry.metadata["split"], "train");
+        assert_eq!(entry.overlays[0].metadata["detector"], true);
     }
 
     #[test]
