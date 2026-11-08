@@ -90,13 +90,10 @@ fn camera(
     } else {
         Environment::literal()
     };
-    match item.recipe.resolve(
-        &item.id,
-        &item.display_name(),
-        &handlers,
-        &env,
-        &CancelToken::new(),
-    ) {
+    match item
+        .recipe
+        .resolve(&item.id, &item.label, &handlers, &env, &CancelToken::new())
+    {
         Ok(Content::LiveVideo(content)) => Ok(content.camera),
         Ok(_) => unreachable!("a live recipe resolves to live video"),
         Err(Interrupt::Failed(error)) => Err(invalid(&error)),

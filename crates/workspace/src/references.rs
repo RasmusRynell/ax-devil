@@ -3,6 +3,7 @@
 
 use crate::{
     credentials::{Environment, Secret, reference},
+    host::{HostReading, read_host},
     live::Expanded,
 };
 
@@ -21,8 +22,8 @@ pub struct Connection<'a> {
 /// that is not set expands to an empty text. A password is never shown, only whether it is set.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Shown {
-    /// The host's value.
-    pub host: Option<String>,
+    /// What the host's variable reads as.
+    pub host: Option<HostReading>,
     /// The user's value.
     pub user: Option<String>,
     /// Whether the password's variable is set.
@@ -41,7 +42,8 @@ pub struct Previews {
 fn shown(env: &Environment, connection: Connection<'_>) -> Shown {
     let expanded = Expanded::of(env, connection.host, connection.user, connection.password);
     Shown {
-        host: reference(connection.host).map(|_| expanded.host),
+        // A value that is no plain host may carry a login: it is `Rejected`, and never kept.
+        host: reference(connection.host).map(|_| read_host(connection.host, env)),
         user: reference(connection.user).map(|_| expanded.user),
         password_set: connection
             .password
@@ -91,12 +93,42 @@ mod tests {
                 password: &Secret::new("literal"),
             }),
         );
-        assert_eq!(shown.camera.host.as_deref(), Some("10.0.0.7"));
+        assert_eq!(
+            shown.camera.host,
+            Some(HostReading::Host("10.0.0.7".into()))
+        );
         assert_eq!(shown.camera.user.as_deref(), Some("root"));
         assert_eq!(shown.camera.password_set, Some(true));
         assert!(!format!("{shown:?}").contains("s3cret"));
         assert_eq!(shown.broker.host, None);
         assert_eq!(shown.broker.user.as_deref(), Some(""), "unset is empty");
         assert_eq!(shown.broker.password_set, None);
+    }
+
+    #[test]
+    fn a_host_that_is_no_plain_host_previews_as_nothing_and_never_as_its_login() {
+        let nothing = Secret::new("");
+        let host = |text| Connection {
+            host: text,
+            user: "",
+            password: &nothing,
+        };
+        for value in [
+            "user:SECRETPW@cam.local",
+            "cam.local/path?key=SECRETPW",
+            "rtsp://cam.local",
+        ] {
+            let env = Environment::new(move |_| Some(value.into()));
+            let shown = preview(&env, host("$CAM"), Some(host("$BROKER")));
+            assert_eq!(shown.camera.host, Some(HostReading::Rejected), "{value}");
+            assert_eq!(shown.broker.host, Some(HostReading::Rejected), "{value}");
+            assert!(!format!("{shown:?}").contains("SECRETPW"));
+        }
+        let env = Environment::new(|_| Some("cam.local".into()));
+        let shown = preview(&env, host("$CAM"), None);
+        assert_eq!(
+            shown.camera.host,
+            Some(HostReading::Host("cam.local".into()))
+        );
     }
 }

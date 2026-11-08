@@ -6,6 +6,7 @@
 use crate::{
     content::{Content, ContentId},
     credentials::{Environment, Secret, reference},
+    host::shown_host,
 };
 use foundation::{ErrorCode, ItemId, Location, UserError};
 use handlers::Handlers;
@@ -200,7 +201,7 @@ pub struct LiveVideoContent {
     pub item_id: ItemId,
     /// Names this Content; the item's id.
     pub id: ContentId,
-    /// The name rows and viewers show: the expanded host, or `Live stream`.
+    /// The item's label, or the expanded host when it has none.
     pub label: String,
     /// The camera to connect to.
     pub camera: ResolvedCamera,
@@ -298,6 +299,26 @@ impl LiveRecipe {
             Some(_) => "Live stream".to_owned(),
             None => self.host.clone(),
         }
+    }
+
+    /// The name shown when the item has none: the host as [`expanded_hosts`](Self::expanded_hosts) reads it, or
+    /// `Live stream` when there is none.
+    pub fn expanded_name(&self, env: &Environment) -> String {
+        match shown_host(&self.host, env) {
+            host if host.is_empty() => "Live stream".to_owned(),
+            host => host,
+        }
+    }
+
+    /// The camera host and, for an MQTT overlay, the broker host, as they may be shown: text as typed, and a `$NAME`
+    /// reference as its value from `env` only when that is a plain host, else empty (an unset variable too); see
+    /// [`DisplayHost`].
+    pub fn expanded_hosts(&self, env: &Environment) -> (String, Option<String>) {
+        let broker = match &self.overlay {
+            LiveOverlay::Mqtt { broker_host, .. } => Some(shown_host(broker_host, env)),
+            _ => None,
+        };
+        (shown_host(&self.host, env), broker)
     }
 
     /// Fails with the field and the reason when the recipe could not be streamed whatever the environment: the same
@@ -430,10 +451,12 @@ impl LiveRecipe {
         (camera, overlay)
     }
 
-    /// The Content of the item `item`. Fails like [`check`](Self::check), and when the expanded host is empty.
+    /// The Content of the item `item`, labelled `label`, or by the expanded host when the item has none (empty).
+    /// Fails like [`check`](Self::check), and when the expanded host is empty.
     pub(crate) fn resolve(
         &self,
         item: &ItemId,
+        label: &str,
         handlers: &Handlers,
         env: &Environment,
     ) -> Result<Content, UserError> {
@@ -461,7 +484,11 @@ impl LiveRecipe {
         Ok(Content::LiveVideo(Box::new(LiveVideoContent {
             item_id: *item,
             id: ContentId::of_item(item),
-            label: camera.host.clone(),
+            label: if label.is_empty() {
+                camera.host.clone()
+            } else {
+                label.to_owned()
+            },
             camera: ResolvedCamera {
                 protocol: self.protocol,
                 port: match self.port {

@@ -256,7 +256,7 @@ describe("add live stream dialog", () => {
               username: "root",
               overlay: {
                 mode: "datahub",
-                handler: "ADF_V1_FRAME",
+                handler: "GONE_V1",
                 topic: "saved.topic",
                 channel: 3,
               },
@@ -270,6 +270,7 @@ describe("add live stream dialog", () => {
     const topic = () => screen.getByLabelText("DataHub Topic") as HTMLSelectElement;
     await waitFor(() => expect(topic().value).toBe("saved.topic"));
     expect(screen.getByRole("dialog", { name: "Edit Live Stream" })).toBeTruthy();
+    expect((screen.getByLabelText("Handler Type") as HTMLSelectElement).value).toBe("GONE_V1");
     expect((screen.getByLabelText("Name") as HTMLInputElement).value).toBe("Gate");
     expect((screen.getByLabelText("Password") as HTMLInputElement).value).toBe("");
     // The sizes are asked as the stream is saved: by its saved login.

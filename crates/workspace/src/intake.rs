@@ -1,6 +1,7 @@
 //! The one place that turns what the user chose into workspace items. Dialogs, the command line and drops all
 //! come through here, so they accept and refuse the same input.
 
+use crate::credentials::Environment;
 use crate::item::{
     OverlayRecipe, PlaylistRecipe, Recipe, Source, VideoRecipe, WorkspaceItem, absolute_paths,
     check_settings, decoder_options, file_name, not_installed,
@@ -212,15 +213,29 @@ pub fn playlist(
     })
 }
 
-/// `item` labelled `label`: the one rule for naming an item the user named. A label that is empty once trimmed, or
-/// that is the item's default name, clears the label so the default shows.
-pub fn with_label(item: WorkspaceItem, label: Option<&str>) -> WorkspaceItem {
+/// `item` labelled `label`: the one rule for naming an item the user named (WSC-003). A label that is empty once
+/// trimmed, or exactly the item's current default name, clears the label so the default shows. The default is read
+/// in `env`, the environment of whoever names the item: a live stream on a `$NAME` host has the variable's value for
+/// its default (the host as typed under a literal environment), or `Live stream` while that is unset or no plain host.
+/// Only this clears a label; everywhere else an empty label is the one sign of an unnamed item.
+pub fn with_label(item: WorkspaceItem, label: Option<&str>, env: &Environment) -> WorkspaceItem {
+    let default = WorkspaceItem {
+        label: String::new(),
+        ..item.clone()
+    }
+    .display_name_in(env);
+    with_label_as(item, label, &default)
+}
+
+/// [`with_label`] against the default name `default` the namer is allowed to know: what its own view of the unnamed
+/// item is called, so that clearing a label tells it nothing it could not read.
+pub fn with_label_as(item: WorkspaceItem, label: Option<&str>, default: &str) -> WorkspaceItem {
     let unnamed = WorkspaceItem {
         label: String::new(),
         ..item
     };
     match label.map(str::trim) {
-        Some(label) if label != unnamed.display_name() => WorkspaceItem {
+        Some(label) if label != default => WorkspaceItem {
             label: label.to_owned(),
             ..unnamed
         },

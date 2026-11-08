@@ -1,11 +1,12 @@
 import { describe, expect, it } from "vite-plus/test";
-import type { ItemState, NetworkRow, NewLiveWire } from "../generated/api";
+import type { ItemState, LiveShown, NetworkRow, NewLiveWire } from "../generated/api";
 import { camerasOf, streamingCount } from "./cameras";
 import { facetKey, offeredFacets, sectionsOf, viewsOf, type Section } from "./rows";
 import { statusOf, type StreamStatus } from "./streamState";
 
-const stream = (id: string, recipe: NewLiveWire, open = false): ItemState => ({
+const stream = (id: string, recipe: NewLiveWire, open = false, shown?: LiveShown): ItemState => ({
   id,
+  shown,
   label: recipe.label ?? "",
   kind: "live",
   open,
@@ -87,16 +88,48 @@ describe("camera rows", () => {
     expect(second).toMatchObject({ label: "Video only", tag: "", detail: "", action: "start" });
   });
 
-  it("says what a scan learned of a camera it holds, and lists found cameras the workspace lacks", () => {
-    const found = [scanned("10.0.0.2"), scanned("10.0.0.7", { sign_in: { state: "Refused" } })];
-    const [live, network] = sections(new Map(), found);
-    expect(live?.rows[0]).toMatchObject({
-      aside: "Q1656",
-      info: ["10.0.0.2 · Box Camera · Firmware 11.8.1", "Serial S1 · Up 1d 1h"],
+  it("opens a stream on its broker as the reference expands, else on its host and a head other than 1", () => {
+    const mqtt = (broker_host: string): NewLiveWire["overlay"] => ({
+      mode: "mqtt",
+      broker_host,
+      broker_port: 1883,
+      source_key: "scene",
     });
-    expect(network?.rows.map(({ label, aside, action }) => [label, aside, action])).toEqual([
-      ["10.0.0.7", "Q1656", null],
+    // What the Session reads each host as: a reference's value where it may expand, the text as typed where not.
+    const infoWhen = (read: (text: string) => string) => {
+      const item = (id: string, host: string, head: number, overlay: NewLiveWire["overlay"]) => {
+        const broker = overlay?.mode === "mqtt" ? overlay.broker_host : undefined;
+        const shown = { host: read(host), broker_host: broker === undefined ? null : read(broker) };
+        return stream(id, { host, head, overlay }, false, shown);
+      };
+      const items = [
+        item("a", "10.0.0.5", 2, mqtt("$BROKER")),
+        item("b", "10.0.0.5", 2, mqtt("$UNSET")),
+        item("c", "$CAM_HOST", 1, { mode: "none" }),
+      ];
+      const [live] = sectionsOf({
+        cameras: camerasOf(items),
+        found: [],
+        scanned: false,
+        reported: new Map(),
+        checks: new Map(),
+        thumbnails: true,
+        viewed: new Set<string>(),
+        order: "address",
+      });
+      return live?.rows.flatMap((row) => row.children).map((row) => row.info);
+    };
+    const values = new Map([
+      ["$BROKER", "198.51.100.2"],
+      ["$CAM_HOST", "10.0.0.6"],
     ]);
+    // A variable that is not set reads as nothing, so the stream falls back to its host.
+    expect(infoWhen((text) => (text.startsWith("$") ? (values.get(text) ?? "") : text))).toEqual([
+      ["198.51.100.2:1883"],
+      ["10.0.0.5 · head 2"],
+      ["10.0.0.6"],
+    ]);
+    expect(infoWhen((text) => text)).toEqual([["$BROKER:1883"], ["$UNSET:1883"], ["$CAM_HOST"]]);
   });
 });
 
@@ -110,11 +143,14 @@ describe("found cameras the workspace holds", () => {
       resolution: { status: "Pending" },
       recipe: { type: "Live", host: "10.0.0.8" },
     };
-    const items = [stream("r", { host: "$CAM_HOST" }), stream("e", { host: "10.0.0.5" }), pending];
+    const items = [
+      stream("r", { host: "$CAM_HOST" }, false, { host: "10.0.0.6", broker_host: null }),
+      stream("e", { host: "10.0.0.5" }),
+      pending,
+    ];
     const found = ["10.0.0.5", "10.0.0.6", "10.0.0.7", "10.0.0.8"].map((host) => scanned(host));
-    const expanded = new Map([["$CAM_HOST", "10.0.0.6"]]);
     const [live, network] = sectionsOf({
-      cameras: camerasOf(items, new Map(), expanded),
+      cameras: camerasOf(items),
       found,
       scanned: true,
       reported: new Map(),

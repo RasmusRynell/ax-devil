@@ -5,7 +5,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use workspace::VideoRef;
+use workspace::{DisplayHost, VideoRef};
 
 use crate::{Row, RowKind, RowStatus};
 
@@ -16,8 +16,8 @@ pub enum Location {
     File(PathBuf),
     /// A live stream's camera: the host, and the head when it is not the first.
     Camera {
-        /// The host as entered.
-        host: String,
+        /// The host, a plain one: a resolved host that is not never becomes a location.
+        host: DisplayHost,
         /// The video channel, from 1.
         head: u16,
     },
@@ -36,7 +36,7 @@ impl Location {
     pub fn text(&self) -> String {
         match self {
             Self::File(path) => path.to_string_lossy().into_owned(),
-            Self::Camera { host, head: 1 } => host.clone(),
+            Self::Camera { host, head: 1 } => host.to_string(),
             Self::Camera { host, head } => format!("{host} · head {head}"),
         }
     }
@@ -209,7 +209,7 @@ mod tests {
 
     fn camera(host: &str, head: u16) -> Option<Location> {
         Some(Location::Camera {
-            host: host.into(),
+            host: DisplayHost::of(host).expect("a plain host"),
             head,
         })
     }

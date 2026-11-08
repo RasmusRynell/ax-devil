@@ -2,10 +2,9 @@
 
 import { useMemo } from "react";
 import { reasonOf } from "../errors";
-import type { ItemState, LiveOverlayKind, NewLiveWire } from "../generated/api";
+import type { ItemState, LiveOverlayKind, LiveShown, NewLiveWire } from "../generated/api";
 import { useDoc } from "../session/session";
 import { useShownItems } from "../viewer/useViewers";
-import { referenceIn } from "./expansions";
 
 /** What the Add Live Stream dialog starts from: the stream whose connection a new one copies. */
 export type AddSeed = { like?: string };
@@ -30,6 +29,9 @@ export type Stream = {
   recipe: NewLiveWire | null;
   /** Why it did not resolve, when it failed. */
   reason: string;
+  /** The lines its row opens: the MQTT broker and port, else where the stream is (its host, and its head when not 1),
+   * with `$NAME` references as they expand. */
+  info: string[];
   /** Whether the window may edit it: it is told the stream's recipe. */
   editable: boolean;
   /** The generation of its Content, which a new login check is made for; 0 until it has resolved. */
@@ -49,12 +51,24 @@ export type Camera = {
   streams: Stream[];
 };
 
+/** The text of a stream's row: the MQTT broker and port, else the host and, when not 1, the camera head. */
+function infoOf(recipe: NewLiveWire | null, shown: LiveShown | undefined): string[] {
+  const overlay = recipe?.overlay;
+  const entered = overlay?.mode === "mqtt" ? overlay.broker_host : undefined;
+  const broker = (shown ? shown.broker_host : entered)?.trim();
+  if (overlay?.mode === "mqtt" && broker)
+    return [overlay.broker_port ? `${broker}:${overlay.broker_port}` : broker];
+  const host = (shown ? shown.host : recipe?.host)?.trim();
+  if (!host) return [];
+  return [recipe?.head && recipe.head !== 1 ? `${host} · head ${recipe.head}` : host];
+}
+
 /**
  * The live stream an item is, if it is one, whatever it has resolved to so far. `recipe` is how the stream resolved
  * before, which an item resolving again or failing keeps its camera by.
  */
 function streamOf(
-  { id, label, kind, open, resolution, recipe: stored }: ItemState,
+  { id, label, kind, open, resolution, recipe: stored, shown }: ItemState,
   recipe: NewLiveWire | null,
 ): Stream | null {
   const base = {
@@ -64,6 +78,7 @@ function streamOf(
     overlay: null,
     lane: null,
     recipe,
+    info: infoOf(recipe, shown),
     reason: "",
     editable: stored?.type === "Live",
     generation: 0,
@@ -77,6 +92,7 @@ function streamOf(
           overlay: content.overlay,
           lane: content.lanes[0] ?? null,
           recipe: content.recipe,
+          info: infoOf(content.recipe, shown),
           generation: content.generation,
         }
       : null;
@@ -86,31 +102,19 @@ function streamOf(
   return { ...base, state: "failed", reason: reasonOf(resolution) };
 }
 
-const NOT_EXPANDED: ReadonlyMap<string, string> = new Map();
-
 /** The recipe a live item is grouped by: how it resolved, else, for a seat that may see it, as it is stored. */
 const groupedBy = (item: ItemState, recipe: NewLiveWire | null): NewLiveWire | null =>
   recipe ?? (item.recipe?.type === "Live" ? item.recipe : null);
 
-/** The `$NAME` hosts of the live items, whose values `camerasOf` takes as `expanded`. */
-export function referencedHosts(items: readonly ItemState[]): string[] {
-  const hosts = items.flatMap((item) => {
-    const host = groupedBy(item, null)?.host?.trim() ?? "";
-    return referenceIn(host) ? [host] : [];
-  });
-  return [...new Set(hosts)].sort();
-}
-
 /**
  * The cameras of `items` in the order their first stream appears. A camera is the streams whose recipes name the same
- * host (whatever the case, and a `$NAME` reference as its value in `expanded`, by reference) and device port, named
+ * host (whatever the case, and as the Session reads a `$NAME` reference: `shown`) and device port, named
  * by the first label one of them was given, else by the host. Streams without a recipe (a watcher's) are grouped by
  * their label. `known` holds the recipes items resolved with before, by item.
  */
 export function camerasOf(
   items: readonly ItemState[],
   known: ReadonlyMap<string, NewLiveWire> = new Map(),
-  expanded: ReadonlyMap<string, string> = NOT_EXPANDED,
 ): Camera[] {
   const cameras = new Map<string, Camera>();
   const labelled = new Set<string>();
@@ -120,7 +124,7 @@ export function camerasOf(
     const recipe = groupedBy(item, stream.recipe);
     const host = recipe?.host?.trim() ?? "";
     const address = host || item.label.trim();
-    const value = (expanded.get(host) ?? host).toLowerCase();
+    const value = (item.shown?.host || host).toLowerCase();
     const key = host ? `host:${value}:${recipe?.port ?? 0}` : `label:${address.toLowerCase()}`;
     const camera = cameras.get(key) ?? {
       key,

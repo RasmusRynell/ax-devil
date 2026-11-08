@@ -298,6 +298,11 @@ export function OverlayGroup({
   // Only a decoder of streaming, timestamped records can decode a live stream.
   const decoders = (handlers?.decoders ?? []).filter((decoder) => decoder.live);
   const modes = optionsOf("camera.overlay") as readonly (readonly [OverlayMode, string])[];
+  // A saved handler that is no longer installed stays visible instead of a blank select.
+  const missing =
+    handlers !== null &&
+    form.handler !== "" &&
+    !decoders.some((decoder) => decoder.handler === form.handler);
   const choice = (listed: Listed, field: "source_key" | "topic", label: string, what: string) => (
     <Choice
       props={props}
@@ -353,6 +358,7 @@ export function OverlayGroup({
           options={[
             ["", "(None)"],
             ...decoders.map((decoder) => [decoder.handler, decoder.display_name] as const),
+            ...(missing ? [[form.handler, `${form.handler} (unavailable)`] as const] : []),
           ]}
           onChange={(value) => set("handler", value)}
         />

@@ -259,7 +259,7 @@ fn what_cannot_be_streamed_is_refused_naming_the_field_and_the_python_message() 
 fn resolve(item: &WorkspaceItem, env: &Environment) -> Result<Content, UserError> {
     match item.recipe.resolve(
         &item.id,
-        "item",
+        &item.label,
         &Handlers::built_in(),
         env,
         &CancelToken::new(),
@@ -331,6 +331,72 @@ fn references_expand_silently_wherever_they_stand_and_an_unset_one_is_empty() {
         resolve(&item, &env(&[])).unwrap_err().reason,
         "Enter the device host."
     );
+}
+
+#[test]
+fn a_custom_label_names_the_content_and_an_unnamed_stream_is_named_by_its_expanded_host() {
+    let mut item = live(NewLive::default(), &defaults(), &Handlers::built_in()).unwrap();
+    let label_of = |item: &WorkspaceItem| match resolve(item, &env(&TARGET)) {
+        Ok(Content::LiveVideo(video)) => video.label,
+        _ => panic!("the references expand"),
+    };
+    assert_eq!(label_of(&item), "192.0.2.7");
+    assert_eq!(item.display_name_in(&env(&TARGET)), "192.0.2.7");
+    assert_eq!(item.display_name_in(&env(&[])), "Live stream");
+    // A label the user set is theirs, even when it reads like a default: the placeholder of an unnamed stream on a
+    // reference, or the host it expands to. The Content and the row agree.
+    for own in ["Gate", "Live stream", "192.0.2.7"] {
+        item.label = own.into();
+        assert_eq!(label_of(&item), own);
+        assert_eq!(item.display_name_in(&env(&TARGET)), own);
+    }
+}
+
+#[test]
+fn a_label_that_is_the_current_default_clears_whatever_that_default_is_in_the_namers_environment() {
+    let named = |new: NewLive, label, env: &Environment| {
+        let item = live(new, &defaults(), &Handlers::built_in()).unwrap();
+        with_label(item, Some(label), env).label
+    };
+    let none = env(&[]);
+    // A literal host is its own default, so naming the stream by it names nothing.
+    assert_eq!(named(host("192.0.2.7"), "192.0.2.7", &none), "");
+    assert_eq!(
+        named(host("192.0.2.7"), "Live stream", &none),
+        "Live stream"
+    );
+    // The default of a stream on a reference is the variable's value, else `Live stream`.
+    assert_eq!(named(NewLive::default(), "Live stream", &none), "");
+    assert_eq!(named(NewLive::default(), "192.0.2.7", &none), "192.0.2.7");
+    assert_eq!(named(NewLive::default(), "192.0.2.7", &env(&TARGET)), "");
+    assert_eq!(
+        named(NewLive::default(), "Live stream", &env(&TARGET)),
+        "Live stream"
+    );
+    assert_eq!(named(NewLive::default(), "Gate", &env(&TARGET)), "Gate");
+    // A namer whose references are not expanded compares with the text as typed.
+    let literal = Environment::literal();
+    assert_eq!(
+        named(NewLive::default(), "$AX_DEVIL_TARGET_ADDR", &literal),
+        ""
+    );
+    assert_eq!(
+        named(NewLive::default(), "Live stream", &literal),
+        "Live stream"
+    );
+}
+
+#[test]
+fn a_stored_label_that_repeats_the_default_still_names_the_content_and_the_row_alike() {
+    // A file written before labels were cleared at set time: at run time only an empty label is unset.
+    let mut item = live(NewLive::default(), &defaults(), &Handlers::built_in()).unwrap();
+    item.label = "Live stream".into();
+    let Ok(Content::LiveVideo(video)) = resolve(&item, &env(&TARGET)) else {
+        panic!("the references expand");
+    };
+    assert_eq!(video.label, "Live stream");
+    assert_eq!(item.display_name_in(&env(&TARGET)), "Live stream");
+    assert_eq!(item.display_name(), "Live stream");
 }
 
 #[test]

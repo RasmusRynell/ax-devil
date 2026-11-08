@@ -24,6 +24,7 @@ const { plugins } = require("./smoke-plugins.cjs");
 const { bookmarks } = require("./smoke-bookmarks.cjs");
 const { exportDialog } = require("./smoke-export.cjs");
 const { live } = require("./smoke-live.cjs");
+const { liveStreams } = require("./smoke-livestreams.cjs");
 const { remote } = require("./smoke-remote.cjs");
 const { handedOff } = require("./smoke-handoff.cjs");
 const { sharing } = require("./smoke-sharing.cjs");
@@ -328,6 +329,8 @@ module.exports = async (window, shell) => {
   await split(window);
   console.log("smoke: reload offer");
   await reloadOffer();
+  console.log("smoke: live streams");
+  await liveStreams();
   console.log("smoke: plugins");
   await plugins(window);
   console.log("smoke: items");

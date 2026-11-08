@@ -1,6 +1,7 @@
 //! Between the Session socket's wire types and the sessions crate: what a received command asks for, and the cursor
 //! and token-bucket limits on what a seat may send.
 
+use super::saved::Saved;
 use crate::network::Network;
 use crate::routes::playback::policy_from_wire;
 use crate::routes::resolve::Staged;
@@ -17,7 +18,7 @@ use std::path::Path;
 use tokio::time::Instant;
 use workspace::{
     BookmarkId, BookmarkKind, BookmarkTarget, Content, LiveRecipe, Secret, Source, Watch,
-    Workspace, WorkspaceItem,
+    WorkspaceItem,
     intake::{LiveDefaults, NewLive, NewOverlay},
 };
 use workspace_store::{BookmarkCommand, DocCommand, HiddenRef};
@@ -106,7 +107,7 @@ pub(super) fn command(
             let id = item.id;
             Request::Session(
                 Command::Content(DocCommand::AddResolved {
-                    item: Box::new(workspace::intake::with_label(item, label.as_deref())),
+                    item: Box::new(saved.labelled(item, label.as_deref())),
                     content: Box::new(content),
                     open: true,
                 }),
@@ -123,7 +124,7 @@ pub(super) fn command(
                 },
         } => {
             let (staged, content, watch) = staged.take(session, &ticket).ok_or(Refusal::Invalid)?;
-            let edited = workspace::intake::with_label(staged, label.as_deref());
+            let edited = saved.labelled(staged, label.as_deref());
             // Only playlists are staged; their ids came from the ticket and are the edited item's from now on.
             let content = match content {
                 Content::Playlist(playlist) => Content::Playlist(playlist.rebound(&item)),
@@ -228,7 +229,11 @@ fn doc_command(
         api_types::DocCommand::CloseViewer { item } => DocCommand::CloseViewer(item),
         api_types::DocCommand::Resolve { item } => DocCommand::Resolve(item),
         api_types::DocCommand::Remove { item } => DocCommand::Remove(item),
-        api_types::DocCommand::RenameItem { item, label } => DocCommand::RenameItem { item, label },
+        // Named in the session's own environment: what its rows show as the default is what a label may not repeat.
+        api_types::DocCommand::RenameItem { item, label } => DocCommand::RenameItem {
+            item,
+            label: saved.normalized_label(item, &label),
+        },
         api_types::DocCommand::SetHidden { target, hidden } => DocCommand::SetHidden {
             target: hidden_ref(target),
             hidden,
@@ -314,12 +319,13 @@ fn intake(
                 })
                 .collect();
             workspace::intake::video(Path::new(path), &overlays, handlers)
-                .map(|item| workspace::intake::with_label(item, label.as_deref()))
+                .map(|item| saved.labelled(item, label.as_deref()))
         }
         NewItem::Live(new) => {
             let mut new = new.clone();
             let found = new.found.take();
             let like = new.like.take();
+            let label = new.label.clone();
             let mut new = NewLive::from(*new);
             if let Some(address) = found {
                 scanned(&mut new, &address, network, live)?;
@@ -328,6 +334,7 @@ fn intake(
             }
             new.bare_kept = saved.guest;
             let item = workspace::intake::live(new, live, handlers)?;
+            let item = saved.labelled(item, label.as_deref());
             match &item.recipe.source {
                 Source::Live(recipe) if saved.guest => refuse_references(recipe).map(|()| item),
                 _ => Ok(item),
@@ -365,44 +372,6 @@ fn refuse_references(recipe: &LiveRecipe) -> Result<(), foundation::UserError> {
         .at(foundation::Location::field("host")));
     }
     Ok(())
-}
-
-/// The logins saved with the workspace's streams, for the seat that may copy them.
-#[derive(Clone, Copy)]
-pub(super) struct Saved<'a> {
-    workspace: &'a Workspace,
-    /// Whether the seat is the session's owner; any other copies no login.
-    owner: bool,
-    /// Whether the seat is not the owner of a session whose references read this machine's environment: a stream it
-    /// adds may not hold one.
-    guest: bool,
-}
-
-impl<'a> Saved<'a> {
-    pub(super) fn new(workspace: &'a Workspace, owner: bool, expands: bool) -> Self {
-        Self {
-            workspace,
-            owner,
-            guest: expands && !owner,
-        }
-    }
-
-    /// The recipe of the live stream `item`, when the seat may copy its login.
-    fn live(self, item: ItemId) -> Option<&'a LiveRecipe> {
-        self.owner.then(|| self.recipe(item)).flatten()
-    }
-
-    /// The recipe of live stream `item`.
-    fn recipe(self, item: ItemId) -> Option<&'a LiveRecipe> {
-        self.workspace
-            .items
-            .iter()
-            .find(|candidate| candidate.id == item)
-            .and_then(|found| match &found.recipe.source {
-                Source::Live(recipe) => Some(recipe),
-                _ => None,
-            })
-    }
 }
 
 /// Points `new` at the camera the scan signed in to at `address`, with the login that worked as it was written (a

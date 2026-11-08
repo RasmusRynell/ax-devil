@@ -1095,7 +1095,12 @@ reload_failure?: ReloadFailure,
 /**
  * What the item was made from, for an audience with host details: what Edit starts from and Information lists.
  */
-recipe?: ItemRecipe, };
+recipe?: ItemRecipe, 
+/**
+ * For a live stream, for an audience with host details: what its hosts read as under the Session's right to
+ * expand `$NAME` references, the one rule resolving and labels follow.
+ */
+shown?: LiveShown, };
 
 /**
  * What an item is, from its recipe.
@@ -1131,6 +1136,20 @@ label: string | null,
  * The settings the resolver's schema declares.
  */
 settings: Record<string, unknown>, } | { "type": "Live" } & NewLiveWire;
+
+/**
+ * The hosts of a live stream as the Session reads them: a `$NAME` reference is its value (empty when the variable
+ * is not set) where the Session may expand references, and the text as typed where it may not.
+ */
+export type LiveShown = { 
+/**
+ * The camera host.
+ */
+host: string, 
+/**
+ * The MQTT broker host; `null` for another overlay.
+ */
+broker_host: string | null, };
 
 /**
  * A reload that failed.

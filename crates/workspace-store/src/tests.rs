@@ -487,7 +487,7 @@ fn jobs_of(state: &WorkspaceState, id: ItemId) -> ResolveJob {
     ResolveJob {
         item: id,
         attempt: *attempt,
-        name: item.display_name(),
+        label: item.label.clone(),
         recipe: item.recipe.clone(),
     }
 }

@@ -413,11 +413,11 @@ fn a_playlist_the_schema_or_resolver_refuses_is_refused_naming_the_setting() {
     )
     .unwrap();
     assert_eq!(gone.label, "");
-    let gone = with_label(gone, Some(" Mine "));
+    let gone = with_label(gone, Some(" Mine "), &Environment::literal());
     assert_eq!(gone.label, "Mine");
     for default in ["  ", "mot_challenge"] {
         assert_eq!(
-            with_label(gone.clone(), Some(default)).label,
+            with_label(gone.clone(), Some(default), &Environment::literal()).label,
             "",
             "{default:?} clears the label"
         );

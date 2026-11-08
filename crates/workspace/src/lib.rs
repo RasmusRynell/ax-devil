@@ -6,6 +6,7 @@
 mod bookmark;
 mod content;
 mod credentials;
+mod host;
 pub mod intake;
 mod item;
 mod live;
@@ -20,6 +21,7 @@ pub use content::{
 };
 pub use credentials::{Environment, Secret};
 pub use foundation::{BookmarkId, ItemId};
+pub use host::{DisplayHost, HostReading};
 pub use item::{
     OverlayRecipe, PlaylistRecipe, Recipe, Source, Unreadable, VideoRecipe, WorkspaceItem,
     absolute_paths, check_readable_file,

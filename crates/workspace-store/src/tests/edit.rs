@@ -56,17 +56,6 @@ fn an_edit_keeps_the_item_and_resolves_again_only_when_the_recipe_changed() {
         jobs.is_empty() && again == named,
         "renaming is an edit of the name alone"
     );
-    let (cleared, _) = apply(
-        &named,
-        DocCommand::RenameItem {
-            item: edited_id,
-            label: "a.mp4".into(),
-        },
-    );
-    assert_eq!(
-        cleared.workspace.items[1].label, "",
-        "the default name is not stored"
-    );
 
     let moved = WorkspaceItem {
         recipe: item(&second).recipe,

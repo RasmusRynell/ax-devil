@@ -1,7 +1,7 @@
 //! The sidebar's rows: one projection of a workspace state.
 
 use foundation::{UserError, Warning};
-use workspace::{Content, ContentId, Entry, ItemId, playlist_label};
+use workspace::{Content, ContentId, DisplayHost, Entry, ItemId, playlist_label};
 
 use crate::{HiddenRef, Location, Resolution, WorkspaceState};
 
@@ -123,8 +123,9 @@ pub fn rows(state: &WorkspaceState) -> Vec<Row> {
                 // A live video has no entry; its one stream is named by its own id.
                 Content::LiveVideo(live) => rows.push(Row {
                     entry: Some(live.id.clone()),
-                    location: Some(Location::Camera {
-                        host: live.camera.host.clone(),
+                    // The resolved host is what a variable held, which may carry a login: only a plain one is a place.
+                    location: DisplayHost::of(&live.camera.host).map(|host| Location::Camera {
+                        host,
                         head: live.camera.head,
                     }),
                     ..row(
@@ -214,7 +215,7 @@ mod tests {
                 Some(Ok(())) => {
                     match recipe.resolve(
                         &id,
-                        "item",
+                        "",
                         &Handlers::built_in(),
                         &Environment::of_process(),
                         &CancelToken::new(),
