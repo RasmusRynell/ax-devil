@@ -177,6 +177,22 @@ async fn a_login_the_camera_stops_accepting_ends_a_live_stream_at_its_reconnect(
 }
 
 #[tokio::test]
+async fn a_keepalive_the_camera_refuses_with_401_ends_a_live_stream_without_a_reconnect() {
+    support::log::install();
+    let fake = FakeRtsp::with(Behaviour {
+        refuse_keepalive: true,
+        ..Behaviour::default()
+    })
+    .await;
+    let mut stream = open_stream(&fake.camera(), request(true, false));
+    status_where(&mut stream, |s| *s == Status::Live { epoch: 0 }).await;
+    // The camera's 2 s session is kept alive every second; the refusal ends the stream, not the 5 s silence limit.
+    let status = status_where(&mut stream, |s| matches!(s, Status::Failed(_))).await;
+    assert!(matches!(&status, Status::Failed(e) if e.kind == ErrorKind::LoginRejected));
+    assert_eq!(fake.connections(), 1, "no reconnect");
+}
+
+#[tokio::test]
 async fn a_stream_without_the_wanted_media_fails_for_good() {
     let fake = FakeRtsp::with(Behaviour {
         video: false,

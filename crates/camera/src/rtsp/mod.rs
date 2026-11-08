@@ -5,6 +5,7 @@
 //! here, because retina's depacketizers lose the RTP header extension that carries the capture time.
 
 mod assemble;
+mod keepalive;
 mod metadata;
 mod output;
 mod packet;
@@ -22,6 +23,8 @@ use crate::live::{Counters, FeedOut, LiveStream, Reconnect, Status, Task};
 use crate::target::{Camera, Head};
 use crate::vapix::Resolution;
 use output::VideoOut;
+
+pub use keepalive::retina_log_layer;
 
 /// How many video frames may wait for the app: about a second at 30 frames per second.
 const VIDEO_QUEUE: usize = 32;
@@ -50,6 +53,9 @@ pub struct StreamRequest {
 ///
 /// The login answers the camera's challenge as retina does: a camera that offers only Basic on plain `rtsp://` gets
 /// the password in cleartext (see the crate README).
+///
+/// A keepalive the camera refuses with 401 or 403 ends the stream only if the process installed [`retina_log_layer`]
+/// in its `tracing` subscriber.
 pub fn open_stream(camera: &Camera, request: StreamRequest) -> LiveStream {
     let (video_tx, video) = mpsc::channel(VIDEO_QUEUE);
     let (metadata_tx, metadata) = mpsc::channel(METADATA_QUEUE);

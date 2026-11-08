@@ -5,7 +5,6 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use bytes::{BufMut, Bytes, BytesMut};
-use futures_util::StreamExt;
 use retina::client::{
     Credentials, PacketItem, PlayOptions, Playing, Session, SessionOptions, SetupOptions, Stream,
 };
@@ -14,6 +13,7 @@ use tokio::time::{Instant, sleep_until, timeout};
 
 use super::Link;
 use super::assemble::{Frame, VideoAssembler};
+use super::keepalive;
 use super::media_url;
 use super::metadata::{MetadataAssembler, Piece};
 use super::packet::Packet;
@@ -114,7 +114,7 @@ impl Link {
         let mut pieces = Vec::new();
         loop {
             let item = tokio::select! {
-                item = opened.session.next() => item,
+                item = keepalive::next(&mut opened.session) => item?,
                 () = lapse(deadline) => {
                     return Err(CameraError::new(
                         ErrorKind::Silent,

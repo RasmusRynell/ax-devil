@@ -34,8 +34,10 @@ pub enum Redirect {
 /// What a connection does once it has confirmed the subscription and sent one sample.
 #[derive(Clone, Copy)]
 pub enum After {
-    /// Nothing more: a quiet topic.
+    /// Nothing more.
     Idle,
+    /// Sends no sample at all: a quiet topic.
+    Quiet,
     /// Closes the WebSocket.
     Close,
     /// Sends text that is not JSON instead of the sample.
@@ -290,6 +292,7 @@ async fn conversation(mut socket: WebSocket, shared: Arc<Shared>, after: After, 
                         let big = "x".repeat(5 << 20);
                         socket.send(Message::Text(big.into())).await.ok();
                     }
+                    After::Quiet => {}
                     After::Idle | After::Close => send(&mut socket, &sample).await,
                 }
                 if matches!(after, After::Close) {

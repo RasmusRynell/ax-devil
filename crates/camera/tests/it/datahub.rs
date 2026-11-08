@@ -3,6 +3,7 @@
 
 use crate::support;
 
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use camera::{
@@ -66,6 +67,60 @@ async fn exactly_the_chosen_topic_and_channel_is_subscribed_and_a_quiet_topic_is
         })]
     );
     live.close().await;
+}
+
+/// How often the first-sample warning is logged by a live connection that behaves `first` and then goes quiet for
+/// 20 s (on a paused clock, once the connection is up).
+async fn first_sample_warnings(first: After) -> usize {
+    let logged = Arc::new(Mutex::new(Vec::new()));
+    let writer = Arc::clone(&logged);
+    let _logging = tracing::subscriber::set_default(
+        tracing_subscriber::fmt()
+            .with_ansi(false)
+            .with_writer(move || Captured(Arc::clone(&writer)))
+            .finish(),
+    );
+    let fake = FakeDataHub::with(Behaviour {
+        first,
+        ..Behaviour::default()
+    })
+    .await;
+    let mut live = open_datahub(&fake.camera(), "chosen", 7);
+    status_where(&mut live, |s| matches!(s, Status::Live { .. })).await;
+    if matches!(first, After::Idle) {
+        next_item(&mut live).await;
+    }
+    tokio::time::pause();
+    tokio::time::sleep(Duration::from_secs(20)).await;
+    assert_eq!(*live.status.borrow(), Status::Live { epoch: 0 });
+    live.close().await;
+    let text = String::from_utf8(logged.lock().expect("lock").clone()).expect("UTF-8");
+    text.matches("No DataHub samples received for topic 'chosen' on channel 7.")
+        .count()
+}
+
+#[tokio::test]
+async fn a_topic_without_a_sample_for_ten_seconds_is_logged_once() {
+    assert_eq!(first_sample_warnings(After::Quiet).await, 1);
+}
+
+#[tokio::test]
+async fn a_topic_with_a_sample_in_time_is_not_logged() {
+    assert_eq!(first_sample_warnings(After::Idle).await, 0);
+}
+
+/// Where the log of a test goes.
+struct Captured(Arc<Mutex<Vec<u8>>>);
+
+impl std::io::Write for Captured {
+    fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+        self.0.lock().expect("lock").extend_from_slice(bytes);
+        Ok(bytes.len())
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        Ok(())
+    }
 }
 
 #[tokio::test]

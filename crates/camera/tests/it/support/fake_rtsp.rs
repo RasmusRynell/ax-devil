@@ -62,6 +62,8 @@ pub struct Behaviour {
     pub video: bool,
     /// Answer every connection after the first with 401, as a camera whose login was revoked.
     pub refuse_later: bool,
+    /// Offer a 2 s session and answer the keepalive that follows PLAY with 401, as a camera whose login was revoked.
+    pub refuse_keepalive: bool,
     pub first_connection: Fault,
     /// Pause between frames.
     pub interval: Duration,
@@ -75,6 +77,7 @@ impl Default for Behaviour {
             login: true,
             video: true,
             refuse_later: false,
+            refuse_keepalive: false,
             first_connection: Fault::None,
             interval: Duration::from_millis(5),
             burst: 0,
@@ -296,10 +299,15 @@ async fn serve(socket: TcpStream, shared: Arc<Shared>, index: usize, addr: Socke
                         .and_then(|n| n.parse().ok())
                         .unwrap_or(0);
                     channels.insert(track, first);
+                    let timeout = if shared.behaviour.refuse_keepalive {
+                        2
+                    } else {
+                        60
+                    };
                     reply(
                         "200 OK",
                         &format!(
-                            "Transport: RTP/AVP/TCP;unicast;interleaved={first}-{};ssrc=0000000A\r\nSession: 12345678;timeout=60\r\n",
+                            "Transport: RTP/AVP/TCP;unicast;interleaved={first}-{};ssrc=0000000A\r\nSession: 12345678;timeout={timeout}\r\n",
                             first + 1
                         ),
                         "",
@@ -323,6 +331,9 @@ async fn serve(socket: TcpStream, shared: Arc<Shared>, index: usize, addr: Socke
                         fault,
                     )));
                     continue;
+                }
+                _ if streaming.is_some() && shared.behaviour.refuse_keepalive => {
+                    reply("401 Unauthorized", "", "")
                 }
                 _ => reply("200 OK", "Session: 12345678\r\n", ""),
             }

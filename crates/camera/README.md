@@ -13,6 +13,12 @@ depend on it (`scripts/check-architecture.cjs`). Feature `fake` adds `CameraErro
   **Known limitation:** retina 0.4.21 answers whatever challenge the camera sends, so a camera (or anything in the
   path) that offers only Basic on plain `rtsp://` gets the password in cleartext. Retina has no hook to refuse a
   scheme, unlike `Device`; Axis cameras offer Digest by default.
+  Retina only logs a refused keepalive, so `retina_log_layer` catches that record: a 401 or 403 ends the stream as
+  `LoginRejected`, without a reconnect; any other refusal is ignored. **A process that opens streams must install the
+  layer in its `tracing` subscriber** (the app's logging and the `probe` example do; the subscriber's `init` must
+  also install the `log` bridge), or a refused keepalive goes unnoticed. It reaches the
+  stream through a thread-local set around the one poll of the session that can send a keepalive, so streams cannot
+  affect each other.
   Retina types only a response status (`Error::status_code`), so a failure without one is `Unreachable` before the
   connection is up and `Lost` after. Retina's depacketizers drop the RTP header extension that carries the capture
   time, so `rtsp/assemble.rs` and `rtsp/metadata.rs` rebuild frames and documents from raw packets: whatever lost
@@ -23,7 +29,8 @@ depend on it (`scripts/check-architecture.cjs`). Feature `fake` adds `CameraErro
   and reuses or creates a publisher; `close` (or a terminal failure) removes only a publisher it created and restores
   the saved state, and the status changes after that. The lease is held across broker reconnects. A record is kept
   until its undo succeeded; if the camera cannot be restored the status is `Failed` and says what may remain.
-  Acquisition is never cut short by a close, so `close` may take a few camera timeouts. A camera has one MQTT client,
+  A data source the camera does not offer fails the lease as `NotFound` before the camera is touched, and the log says
+  which sources it offers instead. Acquisition is never cut short by a close, so `close` may take a few camera timeouts. A camera has one MQTT client,
   so a second `open_mqtt` for it in the same process fails with `ErrorKind::Busy`. A dropped `LiveMessages` logs a
   warning, as it cannot clean up. A camera whose MQTT client already has a password is refused untouched
   (`ErrorKind::Unrestorable`): the camera reports it masked, so it could not be put back. A config with this crate's
@@ -35,7 +42,7 @@ depend on it (`scripts/check-architecture.cjs`). Feature `fake` adds `CameraErro
   rules (Digest first, Basic only when alone, over plain HTTP too, as in the Python app), then a WebSocket upgrade to the same host and port with
   the token in the URL. Unlike the Python app it reconnects with backoff, `epoch` growing like the others. A rejected
   login, a redirect and a protocol failure (invalid JSON, a damaged sample, an RPC error) are `Unsupported` or
-  `InvalidTarget`, so they end in `Failed`. A quiet topic is not an error; a dead connection is found by a ping every
+  `InvalidTarget`, so they end in `Failed`. A quiet topic is not an error (a connection with no sample after 10 s logs one warning and keeps waiting); a dead connection is found by a ping every
   30 s. Not covered by tests: the `wss://` path.
 - Scan (`scan`): a TCP probe of the web ports, then `Device::identify` on each open one; a login goes only to a host
   that answered as an Axis camera, and only as Digest (`Device::digest_only`), never Basic. A 429, or a 403 after a

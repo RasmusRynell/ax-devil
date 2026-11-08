@@ -14,8 +14,10 @@ use tracing::warn;
 
 use crate::device::Device;
 use crate::error::{CameraError, ErrorKind};
+use crate::logtext::escaped;
 use crate::mqtt::{CLIENT_PREFIX, LEGACY_CLIENT_PREFIX, Publisher};
 use crate::target::Broker;
+use crate::vapix::SourceKey;
 
 /// What a lease points the camera at.
 pub(crate) struct Plan {
@@ -72,12 +74,16 @@ impl Lease {
 
     async fn configure(&mut self) -> Result<(), CameraError> {
         // A data source the camera does not offer is refused before the camera is touched.
-        if !self
-            .device
-            .analytics_sources()
-            .await?
-            .contains(&self.plan.publisher.source)
-        {
+        let sources = self.device.analytics_sources().await?;
+        if !sources.contains(&self.plan.publisher.source) {
+            warn!(
+                "{}",
+                unavailable_source(
+                    &self.plan.publisher.source.0,
+                    &self.device.camera.host.to_string(),
+                    &sources
+                )
+            );
             return Err(CameraError::new(
                 ErrorKind::NotFound,
                 format!(
@@ -226,4 +232,83 @@ fn client_config(plan: &Plan) -> Value {
         config["password"] = login.password.expose().into();
     }
     config
+}
+
+/// How many sources the log line for a missing one names.
+const SUGGESTED: usize = 8;
+
+/// The log line for a data source the camera does not offer: the sources on the same `#channel` when there are any,
+/// else all of them, at most [`SUGGESTED`] with the rest counted, or `none`. It names the host and sources, no login.
+fn unavailable_source(wanted: &str, host: &str, available: &[SourceKey]) -> String {
+    let channel = wanted
+        .rsplit_once('#')
+        .map_or(wanted, |(_, channel)| channel);
+    let all: Vec<&str> = available.iter().map(|source| source.0.as_str()).collect();
+    let same_channel: Vec<&str> = all
+        .iter()
+        .copied()
+        .filter(|key| !channel.is_empty() && key.ends_with(&format!("#{channel}")))
+        .collect();
+    let relevant = if same_channel.is_empty() {
+        all
+    } else {
+        same_channel
+    };
+    let mut listed = match relevant.len() {
+        0 => "none".to_owned(),
+        count => relevant[..count.min(SUGGESTED)]
+            .iter()
+            .map(|key| escaped(key))
+            .collect::<Vec<_>>()
+            .join(", "),
+    };
+    let (wanted, host) = (escaped(wanted), escaped(host));
+    if relevant.len() > SUGGESTED {
+        listed = format!("{listed} (+{} more)", relevant.len() - SUGGESTED);
+    }
+    format!(
+        "Analytics data source '{wanted}' is not available on device {host}. Available sources: {listed}. \
+         Choose a source in Add Live Stream, or pass --data-source with a matching --handler-type."
+    )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn listed(wanted: &str, available: &[&str]) -> String {
+        let available: Vec<SourceKey> = available
+            .iter()
+            .map(|key| SourceKey((*key).into()))
+            .collect();
+        let message = unavailable_source(wanted, "cam.local", &available);
+        let (_, rest) = message.split_once("Available sources: ").expect("the list");
+        rest.split_once(". Choose").expect("its end").0.to_owned()
+    }
+
+    #[test]
+    fn the_sources_named_are_those_of_the_same_channel_at_most_eight() {
+        let many: Vec<String> = (0..11).map(|n| format!("topic{n}#2")).collect();
+        let many: Vec<&str> = many.iter().map(String::as_str).collect();
+        let eight =
+            "topic0#2, topic1#2, topic2#2, topic3#2, topic4#2, topic5#2, topic6#2, topic7#2";
+        for (wanted, available, expected) in [
+            ("a#2", &["a#1", "b#2", "c#3"][..], "b#2".to_owned()),
+            ("a#9", &["a#1", "b#2"][..], "a#1, b#2".to_owned()),
+            ("a#2", &[][..], "none".to_owned()),
+            (
+                "a#2",
+                &["x\n2026 ERROR forged#2"][..],
+                "x\\n2026 ERROR forged#2".to_owned(),
+            ),
+            ("a#2", &many[..], format!("{eight} (+3 more)")),
+            ("a#2", &many[..8], eight.to_owned()),
+        ] {
+            assert_eq!(
+                listed(wanted, available),
+                expected,
+                "{wanted} in {available:?}"
+            );
+        }
+    }
 }
