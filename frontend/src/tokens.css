@@ -24,7 +24,7 @@
   --color-accent: light-dark(var(--color-accent-light), var(--color-accent-dark));
   --color-hover: light-dark(#26344514, #cccccc14);
   --color-scrim: light-dark(#f6f8fb99, #12131499);
-  --color-cover: light-dark(
+  --color-loading-cover: light-dark(
     #f6f8fbc8,
     #121314c8
   ); /* the loading cover: the window colour at alpha 200 */
