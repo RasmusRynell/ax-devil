@@ -105,10 +105,10 @@ impl FilterPolicy {
 
     /// Whether the entity stays.
     ///
-    /// The entity is judged by the class names of its latest observation (none when it has no observation). It stays
-    /// when an enabled option selects it; it goes when only disabled options select it, or when every option is
-    /// disabled; it stays when no option selects it, so a class the policy does not know is never hidden by a
-    /// toggle. A policy without options keeps everything.
+    /// The entity is judged by the class names of its latest observation; an entity with no observation is selected
+    /// by no option. It stays when an enabled option selects it; it goes when only disabled options select it, or
+    /// when every option is disabled; it stays when no option selects it, so a class the policy does not know is
+    /// never hidden by a toggle. A policy without options keeps everything.
     pub fn keeps(&self, choice: &FilterChoice, entity: &Entity) -> bool {
         self.verdict(|_, option| self.is_enabled(choice, &option.id), entity)
     }
@@ -140,19 +140,22 @@ impl FilterPolicy {
         if self.options.is_empty() {
             return true;
         }
-        let names = || {
-            entity
-                .latest_observation()
-                .into_iter()
-                .flat_map(|observation| &observation.classifications)
-                .map(|classification| classification.class_type.as_str())
-        };
+        let latest = entity.latest_observation();
         let mut selected_by_disabled = false;
         let mut any_enabled = false;
         for (index, option) in self.options.iter().enumerate() {
             let on = is_on(index, option);
             any_enabled |= on;
-            if option.rule.matches(names()) {
+            // An entity with no observation is matched by no option, `include_empty` included.
+            let selects = latest.is_some_and(|observation| {
+                option.rule.matches(
+                    observation
+                        .classifications
+                        .iter()
+                        .map(|classification| classification.class_type.as_str()),
+                )
+            });
+            if selects {
                 if on {
                     return true;
                 }
@@ -377,13 +380,16 @@ mod tests {
     }
 
     #[test]
-    fn an_entity_without_observations_is_judged_with_no_classes() {
+    fn an_entity_without_observations_is_selected_by_no_option_even_include_empty() {
         let mut unknown = option("show_unknown", "unknown", true);
         unknown.rule.include_empty = true;
-        let policy = policy(vec![unknown]);
+        let policy = policy(vec![unknown, option("show_car", "car", true)]);
         let bare = Entity::new(EntityId::new("bare").unwrap());
         assert!(policy.keeps(&FilterChoice::default(), &bare));
-        assert!(!policy.keeps(&off(&["show_unknown"]), &bare));
+        // Unknown off does not hide it: it has no observation for Unknown to select.
+        assert!(policy.keeps(&off(&["show_unknown"]), &bare));
+        // Every option off shows nothing, as for any entity.
+        assert!(!policy.keeps(&off(&["show_unknown", "show_car"]), &bare));
     }
 
     #[test]

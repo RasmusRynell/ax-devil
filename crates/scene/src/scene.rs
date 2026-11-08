@@ -435,6 +435,8 @@ mod tests {
             entity.time_span(),
             Some((SceneTime::Frame(2), SceneTime::Frame(9)))
         );
+        // No observation, no span: Python's sentinel start and end are this `None`.
+        assert_eq!(Entity::new(id("bare")).time_span(), None);
     }
 
     #[test]
