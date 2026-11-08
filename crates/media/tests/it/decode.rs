@@ -166,40 +166,98 @@ fn a_seek_to_a_non_keyframe_or_past_the_end_is_rejected_and_reading_goes_on() {
 }
 
 #[test]
-fn a_file_with_several_video_streams_is_read_from_its_first() {
-    // Both streams have 20 frames; the first is 64x48, the second 128x96, so the size says which was read
-    // (`fixtures/media/README.md`).
-    let path =
-        Path::new(env!("CARGO_MANIFEST_DIR")).join("../../fixtures/media/two_video_streams.mkv");
-    let index = index_of(&path);
-    assert_eq!((index.info().width, index.info().height), (64, 48));
-    assert_eq!(index.timeline().len(), 20);
-    let frames: Vec<_> = read_all(&mut open(&path, &index, 2))
-        .into_iter()
-        .map(|result| result.expect("decodes"))
-        .collect();
-    assert_eq!(frames.len(), 20);
-    for (position, frame) in frames.iter().enumerate() {
+fn a_file_with_several_video_streams_is_read_from_its_first_that_is_not_cover_art() {
+    // The real video is 64x48 with 20 frames, so the size says which stream was read: in the first file a second
+    // stream is 128x96, in the second a 16x16 cover picture is listed before the video (`fixtures/media/README.md`).
+    for name in ["two_video_streams.mkv", "cover_art_first.mp4"] {
+        let path = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../fixtures/media")
+            .join(name);
+        let index = index_of(&path);
         assert_eq!(
-            flat_luma(frame),
-            expected_luma(position as u64),
-            "frame {position}"
+            (index.info().width, index.info().height),
+            (64, 48),
+            "{name}"
         );
+        assert_eq!(index.timeline().len(), 20, "{name}");
+        let frames: Vec<_> = read_all(&mut open(&path, &index, 2))
+            .into_iter()
+            .map(|result| result.expect("decodes"))
+            .collect();
+        assert_eq!(frames.len(), 20, "{name}");
+        for (position, frame) in frames.iter().enumerate() {
+            assert_eq!(
+                flat_luma(frame),
+                expected_luma(position as u64),
+                "{name} frame {position}"
+            );
+        }
     }
 }
 
 #[test]
-fn a_missing_file_and_a_file_that_is_not_a_video_fail_at_open_with_a_reason_and_location() {
-    let missing = fixture("no_such_file.mp4");
-    let not_video = fixture("not_video.mp4");
-    for path in [&missing, &not_video] {
+fn a_file_that_cannot_be_indexed_fails_with_a_reason_and_location() {
+    let folder = tempfile::tempdir().expect("a temporary folder");
+    let header_only = folder.path().join("header_only.avi");
+    std::fs::write(&header_only, header_only_avi()).expect("write");
+    // A raw H.264 stream carries no timestamps, so its decoded frames have none: indexing refuses it, where skipping
+    // them would leave the frames read in order out of step with the index.
+    for (path, reason) in [
+        (fixture("no_such_file.mp4"), ""),
+        (fixture("not_video.mp4"), ""),
+        (header_only, "no frames"),
+        (fixture("stream_h264_gop5.h264"), "no timestamp"),
+    ] {
         let Err(Interrupt::Failed(error)) =
-            FrameIndex::load_or_build(&file(path), None, &CancelToken::new(), &mut |_| {})
+            FrameIndex::load_or_build(&file(&path), None, &CancelToken::new(), &mut |_| {})
         else {
             panic!("{} should fail to index", path.display());
         };
-        assert_explained(&error, path);
+        assert_explained(&error, &path);
+        assert!(error.reason.contains(reason), "{error:?}");
     }
+}
+
+/// An AVI with the headers of a 2x2 uncompressed video stream and no frame packets.
+fn header_only_avi() -> Vec<u8> {
+    let words = |values: &[u32]| {
+        values
+            .iter()
+            .flat_map(|v| v.to_le_bytes())
+            .collect::<Vec<u8>>()
+    };
+    let chunk = |id: &[u8; 4], body: &[u8]| {
+        [id.as_slice(), &(body.len() as u32).to_le_bytes(), body].concat()
+    };
+    let list = |kind: &[u8; 4], children: &[Vec<u8>]| {
+        chunk(b"LIST", &[kind.as_slice(), &children.concat()].concat())
+    };
+    let main_header = words(&[33_333, 0, 0, 0, 0, 0, 1, 0, 2, 2, 0, 0, 0, 0]);
+    let stream_header = [
+        b"vids".as_slice(),
+        b"DIB ",
+        &words(&[0, 0, 0, 1, 30, 0, 0, 0, 0, 0, 0, 0]),
+    ]
+    .concat();
+    let format = words(&[40, 2, 2, 0x0018_0001, 0, 12, 0, 0, 0, 0]);
+    let header = list(
+        b"hdrl",
+        &[
+            chunk(b"avih", &main_header),
+            list(
+                b"strl",
+                &[chunk(b"strh", &stream_header), chunk(b"strf", &format)],
+            ),
+        ],
+    );
+    let body = [
+        b"AVI ".as_slice(),
+        &header,
+        &list(b"movi", &[]),
+        &chunk(b"idx1", &[]),
+    ]
+    .concat();
+    chunk(b"RIFF", &body)
 }
 
 #[test]

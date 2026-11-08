@@ -159,6 +159,13 @@ impl FrameIndex {
 
         cancel.check()?;
         let (scan, scanned) = scan::build(&mut opened, path, fingerprint.size, cancel, progress)?;
+        if scanned.pts.is_empty() {
+            return Err(Interrupt::Failed(source::error(
+                ErrorCode::IndexingFailed,
+                "The video has no frames",
+                path,
+            )));
+        }
         let stored = Stored {
             scan,
             fingerprint,
