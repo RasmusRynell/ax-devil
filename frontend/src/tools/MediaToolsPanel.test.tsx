@@ -2,7 +2,7 @@ import { act, cleanup, fireEvent, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import type { FileScopeUnavailable } from "../generated/api";
 import { fullSample } from "../present/fixtures";
-import { FRAME, READY, file, ids, mount, says, search, showFile } from "./panelRig";
+import { FRAME, file, ids, mount, says, search, showFile } from "./panelRig";
 
 beforeEach(() => vi.stubGlobal("ResizeObserver", undefined));
 afterEach(() => {
