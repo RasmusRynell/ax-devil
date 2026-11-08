@@ -47,7 +47,7 @@ export function DialogFrame({
       data-cursor-region="popup"
       onCancel={onCancel}
       onClose={onClose}
-      className="m-auto max-h-full max-w-full overflow-auto rounded-popup border border-line-strong bg-popup p-0 text-fg backdrop:bg-scrim"
+      className="m-auto max-h-full min-h-[min(12.5rem,100%)] min-w-[min(20rem,100%)] max-w-full overflow-auto rounded-popup border border-line-strong bg-popup p-0 text-fg backdrop:bg-scrim"
     >
       <form
         onSubmit={onSubmit}

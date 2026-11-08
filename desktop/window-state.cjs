@@ -39,8 +39,8 @@ function clampInto(bounds, area) {
 }
 
 /**
- * The window options for a saved state: its bounds when the title bar is wholly on one of the `areas` (the displays'
- * work areas), else the bounds moved into the display they overlap most, else the default size, which Electron
+ * The window options for a saved state: its bounds when the title bar is wholly on one of the `areas` (the displays' work
+ * areas) and they fit it, else the bounds moved into the display they overlap most, else the default size, which Electron
  * centers. Anything that is not a state with whole-number bounds counts as nothing saved.
  */
 function windowBounds(saved, areas) {
@@ -53,7 +53,11 @@ function windowBounds(saved, areas) {
   )
     return { ...DEFAULT_SIZE };
   const bounds = { x: saved.x, y: saved.y, width: saved.width, height: saved.height };
-  if (areas.some((area) => titleBarInside(bounds, area))) return bounds;
+  const holding = areas.find((area) => titleBarInside(bounds, area));
+  if (holding)
+    return bounds.width <= holding.width && bounds.height <= holding.height
+      ? bounds
+      : clampInto(bounds, holding);
   const best = areas.reduce(
     (most, area) => (overlap(bounds, area) > overlap(bounds, most) ? area : most),
     areas[0],

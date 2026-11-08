@@ -10,7 +10,7 @@ export const EDGE = "border-line-strong text-fg enabled:hover:bg-hover";
 
 /** `CONTROL` for a label that wraps a hidden checkbox or radio, so state comes from `:has()` instead of the element. */
 export const CONTROL_IN =
-  "inline-flex min-h-row items-center gap-s rounded-control border border-line-strong bg-transparent px-m text-fg focus-ring-within has-enabled:not-has-checked:hover:bg-hover has-disabled:border-line-strong/50 has-disabled:text-disabled";
+  "inline-flex min-h-row cursor-pointer items-center gap-s rounded-control border border-line-strong bg-transparent px-m text-fg focus-ring-within has-enabled:not-has-checked:hover:bg-hover has-disabled:cursor-default has-disabled:border-line-strong/50 has-disabled:text-disabled";
 
 /** Chrome without a border: menu-bar triggers, list rows, tabs, headers, dismiss and on-canvas icon buttons. */
 export const QUIET =
