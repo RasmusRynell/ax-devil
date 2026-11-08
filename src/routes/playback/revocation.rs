@@ -285,7 +285,6 @@ async fn a_viewer_made_a_follower_gets_no_frame_or_data_outside_the_presenters_w
     let (holder, authority) = watch::channel(Authority::default());
     let gate = Gate::new(authority, || 0);
     let (_stop, mut closing) = watch::channel(false);
-    // A socket that takes each message only when it is let through, as one whose peer reads slowly does.
     let delivered = Arc::new(Mutex::new(Vec::<Message>::new()));
     let permits = Arc::new(Semaphore::new(0));
     let socket = Box::pin(sink::unfold((), {
@@ -319,6 +318,7 @@ async fn a_viewer_made_a_follower_gets_no_frame_or_data_outside_the_presenters_w
         warnings: Vec::new(),
         pts: None,
         cadence: None,
+        frame_rate: None,
         library: &library,
         overlays: &service,
         exports: &Arc::new(crate::exports::ExportService::electron()),

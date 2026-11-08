@@ -2325,6 +2325,10 @@ width: number,
  */
 height: number, 
 /**
+ * Frames per second the video's stream declares; `null` when it declares none.
+ */
+fps: number | null, 
+/**
  * Problems with the video that did not stop it from opening. Only for an audience with host details.
  */
 warnings: Array<string>, 

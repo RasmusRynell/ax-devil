@@ -83,6 +83,59 @@ function infoHud() {
 }
 
 /**
+ * Runs in the page: what the pane header says beside the title, and whether the whole title is still there, in a pane
+ * made as wide as the measured title and details need plus a margin (the details must sit beside the title) and in one
+ * as wide as the title and half the details need (they cannot, so the header keeps the whole title and gives the
+ * details up). Measured, not fixed, so it holds whatever the font. The pane's own width is put back after every reading.
+ */
+function headerDetails() {
+  const details = document.querySelector("[data-header-details]");
+  const row = details?.parentElement;
+  if (!row) return null;
+  const header = row.parentElement;
+  const pane = header.parentElement;
+  const titleBox = row.firstElementChild;
+  const title = titleBox.firstElementChild;
+  const chrome = header.clientWidth - row.clientWidth;
+  // The title's own width, even where the pane now cuts it.
+  const titleWidth = title.scrollWidth + titleBox.offsetWidth - title.offsetWidth;
+  const MARGIN = 4;
+  const width = pane.style.width;
+  const read = (room) => {
+    pane.style.width = `${chrome + room}px`;
+    return {
+      beside: details.getBoundingClientRect().top < row.getBoundingClientRect().bottom - 1,
+      titleWhole: title.scrollWidth <= title.clientWidth,
+    };
+  };
+  try {
+    return {
+      text: details.textContent,
+      wide: read(titleWidth + details.offsetWidth + MARGIN),
+      narrow: read(titleWidth + details.offsetWidth / 2),
+    };
+  } finally {
+    pane.style.width = width;
+  }
+}
+
+/** Asserts the pane header gives the title the room first, and the details only the room that is left. */
+async function expectHeaderPriority(window, what) {
+  const found = await page(window).js(`(${headerDetails.toString()})()`);
+  assert.deepEqual(
+    [found?.wide.beside, found?.wide.titleWhole],
+    [true, true],
+    `The details sit beside the title ${what}`,
+  );
+  assert.deepEqual(
+    [found.narrow.beside, found.narrow.titleWhole],
+    [false, true],
+    `The title wins the header ${what}`,
+  );
+  return found.text;
+}
+
+/**
  * Waits for the frame info to settle after a change of view (a missed measurement stays missed, so the last check is
  * the answer), then asserts it fits. Returns whether it is cut.
  */
@@ -295,6 +348,11 @@ async function fullscreen(window) {
     await wait(info);
     await shoot(`video-info-${theme}.png`);
     assert.equal(await expectInfoHud(window, `the 1100x720 window in the ${theme} theme`), false);
+    assert.match(
+      await expectHeaderPriority(window, `in the 1100x720 window in the ${theme} theme`),
+      /^\d+×\d+ · [\d.]+ fps · \d+:\d\d$/,
+      "The header tells the video",
+    );
     // The frame info stays open while the window shrinks to its minimum and zooms to 200%, with the sidebar closed.
     await js("document.querySelector('[aria-label=Workspace]').click()");
     for (const zoom of [1, 2]) {
@@ -307,6 +365,10 @@ async function fullscreen(window) {
       if (zoom === 2)
         assert.equal(cut, true, "The frame info is cut at 200% zoom in the smallest window");
       await shoot(`video-info-min-${theme}${zoom === 1 ? "" : "-200"}.png`);
+      await expectHeaderPriority(
+        window,
+        `in the 640x480 window at ${zoom * 100}% zoom in the ${theme} theme`,
+      );
     }
     await setView(window, [1100, 720], 1);
     await js("document.querySelector('[aria-label=Workspace]').click()");
@@ -327,12 +389,13 @@ async function fullscreen(window) {
       "[...document.querySelectorAll('[role=menu] [role=menuitem]')].map((item) => item.textContent)",
     );
     const expected = [
-      "Export VideoCtrl+E",
+      "Export videoCtrl+E",
       "Toggle Media Tools PanelCtrl+B",
       "Toggle Lane FullscreenF",
+      "Add BookmarkM",
       "Reset Zoom0",
     ];
-    assert.deepEqual(items.slice(0, 4), expected, "The lane menu lists the lane's commands");
+    assert.deepEqual(items.slice(0, 5), expected, "The lane menu lists the lane's commands");
     await shoot(`video-lane-menu-${theme}.png`);
     await key("Escape");
     await wait("!document.querySelector('[role=menu]')");

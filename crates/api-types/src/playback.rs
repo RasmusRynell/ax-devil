@@ -234,6 +234,8 @@ pub enum ServerMessage {
         width: u32,
         /// Height of the decoded frames in pixels.
         height: u32,
+        /// Frames per second the video's stream declares; `null` when it declares none.
+        fps: Option<f64>,
         /// Problems with the video that did not stop it from opening. Only for an audience with host details.
         warnings: Vec<String>,
         /// The lanes of the entry, in order.

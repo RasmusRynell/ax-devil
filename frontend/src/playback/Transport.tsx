@@ -6,6 +6,7 @@ import { Popover } from "../kit/Popover";
 import { useScrub } from "./scrub";
 import { seekBand } from "./seekBand";
 import type { PlaybackSession } from "./session";
+import { timecode } from "./timecode";
 import type { PlaybackView } from "./view";
 
 /** What the transport asks of the session. */
@@ -13,17 +14,6 @@ export type Controls = Pick<
   PlaybackSession,
   "togglePlay" | "step" | "seek" | "setSpeed" | "frameTime"
 >;
-
-/** Microseconds as `m:ss.cc`, or `h:mm:ss.cc` from one hour. */
-export function timecode(us: number): string {
-  const total = Math.max(0, Math.round(us / 10_000));
-  const minutes = Math.floor(total / 6000) % 60;
-  const hours = Math.floor(total / 360_000);
-  const seconds = `${String(Math.floor(total / 100) % 60).padStart(2, "0")}.${String(total % 100).padStart(2, "0")}`;
-  return hours > 0
-    ? `${hours}:${String(minutes).padStart(2, "0")}:${seconds}`
-    : `${minutes}:${seconds}`;
-}
 
 /* Dimmed to 40% while disabled, as Python draws the white icons over the scrim. */
 const BUTTON = "size-row rounded-control disabled:opacity-40";

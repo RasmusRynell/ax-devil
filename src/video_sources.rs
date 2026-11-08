@@ -5,7 +5,8 @@
 //! this module is where they meet.
 
 use foundation::{
-    CancelToken, ErrorCode, FrameFailure, FrameSize, HostPath, Interrupt, UserError, VideoFrame,
+    CancelToken, ErrorCode, FrameFailure, FrameRate, FrameSize, HostPath, Interrupt, UserError,
+    VideoFrame,
 };
 use media::{Cadence, Decoder, FrameIndex, ImageSequenceInput, PtsTiming, VideoInput};
 use playback::{DecoderFactory, Registry, Session, SourceKey, SourceSpec, SpanDecoder};
@@ -75,6 +76,8 @@ pub struct OpenedVideo {
     pub pts: Option<PtsTiming>,
     /// How evenly the frames are spaced; `None` for a one-frame video.
     pub cadence: Option<Cadence>,
+    /// The rate the stream declares; `None` when it declares none.
+    pub frame_rate: Option<FrameRate>,
 }
 
 /// The path errors about `video` name: its file, or the pattern of its images.
@@ -187,6 +190,7 @@ impl VideoSources {
                 warnings: details.warnings.clone(),
                 pts: details.index.pts_timing(),
                 cadence: details.index.cadence().cloned(),
+                frame_rate: details.index.info().frame_rate,
             });
         }
         let input = input_of(video);
@@ -197,6 +201,7 @@ impl VideoSources {
             progress,
         )?);
         let info = index.info();
+        let frame_rate = info.frame_rate;
         let size = FrameSize {
             width: info.width,
             height: info.height,
@@ -240,6 +245,7 @@ impl VideoSources {
             warnings: details.warnings.clone(),
             pts: details.index.pts_timing(),
             cadence: details.index.cadence().cloned(),
+            frame_rate,
         })
     }
 }

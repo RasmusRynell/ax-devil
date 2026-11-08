@@ -67,6 +67,7 @@ pub(super) async fn run(
         warnings,
         pts,
         cadence,
+        frame_rate,
     } = opened;
     let setup = Setup {
         entry,
@@ -80,6 +81,7 @@ pub(super) async fn run(
         warnings,
         pts,
         cadence,
+        frame_rate,
         library: &state.catalogs,
         overlays: &state.overlays,
         exports: &state.exports,

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type DragEvent, type ReactNode, type RefObject } from "react";
 import { IconButton } from "../kit/IconButton";
-import { PaneActions } from "./actions";
+import { HeaderDetailsContext, PaneActions } from "./actions";
 import { dropSide, type Rect, type Side } from "./layout";
 
 /** What a header drag carries: the id of the pane. Nothing else is accepted by a pane. */
@@ -61,6 +61,8 @@ export function Pane({
   children: ReactNode;
 }) {
   const [hint, setHint] = useState<Side | null>(null);
+  // What the viewer in the pane says about its content, beside the title.
+  const [details, setDetails] = useState("");
   // Enters minus leaves: a drag moving between this pane's children leaves and enters them without leaving the pane.
   const over = useRef(0);
   const onButton = useRef(false);
@@ -140,9 +142,20 @@ export function Pane({
           active ? "border-accent" : "border-line"
         }`}
       >
-        <span className={`min-w-0 flex-1 truncate px-m ${pinned ? "font-semibold" : "italic"}`}>
-          {title}
-        </span>
+        {/* The details wrap below the title, out of the clipped row, when they do not fit beside it: the title wins. */}
+        <div className="flex h-row min-w-0 flex-1 flex-wrap content-start overflow-hidden">
+          <span className="flex h-row max-w-full items-center px-m">
+            <span className={`truncate ${pinned ? "font-semibold" : "italic"}`}>{title}</span>
+          </span>
+          {details && (
+            <span
+              data-header-details=""
+              className="flex h-row shrink-0 items-center whitespace-nowrap pr-m text-muted"
+            >
+              {details}
+            </span>
+          )}
+        </div>
         <IconButton
           icon={pinned ? "pin-filled" : "pin"}
           label={pinned ? UNPIN : PIN}
@@ -160,7 +173,9 @@ export function Pane({
         />
       </div>
       <div className="relative flex min-h-0 min-w-0 flex-1 flex-col">
-        <PaneActions active={active}>{children}</PaneActions>
+        <HeaderDetailsContext.Provider value={setDetails}>
+          <PaneActions active={active}>{children}</PaneActions>
+        </HeaderDetailsContext.Provider>
       </div>
       {hint && (
         <div

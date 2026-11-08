@@ -28,7 +28,7 @@ use api_types::{
 };
 use axum::extract::ws::Message;
 use catalogs::Library;
-use foundation::{ErrorCode, FrameSize, HostPath, UserError};
+use foundation::{ErrorCode, FrameRate, FrameSize, HostPath, UserError};
 use media::{Cadence, PtsTiming};
 use overlay_sync::MatchPolicy;
 use overlays::OverlayService;
@@ -69,6 +69,8 @@ pub(super) struct Setup<'a> {
     pub(super) pts: Option<PtsTiming>,
     /// How evenly the video's frames are spaced; `None` for a one-frame video.
     pub(super) cadence: Option<Cadence>,
+    /// The rate the video's stream declares; `None` when it declares none.
+    pub(super) frame_rate: Option<FrameRate>,
     /// The catalogs a lane may draw with, which the viewer asks for by id.
     pub(super) library: &'a Library,
     /// Opens the lanes' overlays.
@@ -140,6 +142,9 @@ pub(super) async fn stream(
         frame_bytes,
         width: setup.size.width,
         height: setup.size.height,
+        fps: setup
+            .frame_rate
+            .map(|rate| f64::from(rate.num()) / f64::from(rate.den())),
         warnings: if setup.audience.host_details {
             setup.warnings
         } else {

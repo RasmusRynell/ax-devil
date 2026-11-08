@@ -17,7 +17,7 @@ import { connectWorker } from "../playback/connect";
 import { FRESH_MEMORY, type InspectorMemory } from "../playback/fields";
 import { shownLanes } from "../playback/laneCells";
 import { savedTiming } from "../playback/lanes";
-import { laneContextEntries } from "../playback/laneContextMenu";
+import { LIVE_LANE_COMMANDS, laneContextEntries } from "../playback/laneContextMenu";
 import { useLaneFullscreen } from "../playback/laneFullscreen";
 import { LaneGrid } from "../playback/LaneGrid";
 import { ObjectLayer, type ObjectLayerHandle } from "../playback/ObjectLayer";
@@ -33,9 +33,6 @@ import { useMediaTools } from "../tools/useMediaTools";
 import type { ViewerProps } from "../viewers";
 import { PaneActiveContext, useViewerActions } from "./actions";
 import { NOTHING_HIDDEN } from "./hidden";
-
-/** The lane menu of a live viewer: what a recording's has, without exporting, which a stream cannot do, or hiding. */
-const exportable = (entry: { kind: string; id?: string }) => entry.id !== "export-video";
 
 function Live({
   viewer,
@@ -131,7 +128,7 @@ function Live({
           <div className="relative min-h-0 min-w-0 flex-1">
             <ContextMenu
               className="absolute inset-0"
-              entries={laneContextEntries(allowed, shortcuts, false, false).filter(exportable)}
+              entries={laneContextEntries(LIVE_LANE_COMMANDS, allowed, shortcuts, false, false)}
               onSelect={({ id }) => {
                 actions[id]?.();
               }}
