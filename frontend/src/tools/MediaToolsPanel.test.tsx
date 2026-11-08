@@ -350,6 +350,19 @@ describe("File scope", () => {
     expect(screen.queryByRole("listbox")).toBeNull();
   });
 
+  it("drops an Enter awaiting an unloaded row when the file's list is replaced, rather than open what lands there", () => {
+    const { answer, reread, selected } = mount();
+    showFile();
+    const rows = Array.from({ length: 40 }, (_, i) => file(`o${i}`, i));
+    answer(rows.slice(0, 5), { total: 40, matched: 40 });
+    const list = screen.getByRole("listbox", { name: "Objects" });
+    fireEvent.keyDown(list, { key: "End" });
+    fireEvent.keyDown(list, { key: "Enter" });
+    reread(2);
+    answer(rows, { total: 40, matched: 40, data_revision: 2 });
+    expect(selected).toEqual([]);
+  });
+
   it("keeps the rows of a list that could not be refreshed, says so, and asks again on Retry", () => {
     const { files, queries, answer } = mount();
     showFile();

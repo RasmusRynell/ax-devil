@@ -7,7 +7,8 @@
  * Nothing is asked while no inspector page shows; the selection is kept and asked about when one does. A view only ever holds
  * the shown sample's data: while its reply is out the summary is the shown sample's and there are no fields. While a
  * video plays the view follows the draws at most every PLAYING_INTERVAL_MS; the newest draw replaces those skipped, and
- * `catchUp`, a selection, showing the inspector or an answer brings the view up to it at once.
+ * `catchUp`, a selection or showing the inspector brings the view up to it at once. A reply completes only the sample
+ * the view is of, and never advances it to a draw skipped.
  */
 
 import { MOTION_STATES } from "../present/columns";

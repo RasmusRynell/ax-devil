@@ -100,7 +100,10 @@ describe("Table", () => {
     fireEvent.keyDown(screen.getByRole("listbox"), { key: "End" });
     fireEvent.keyDown(screen.getByRole("listbox"), { key: "Enter" });
     // The order changes before the page arrives, and the row at that position is another.
-    rerender(table("replaced", 40, [...rows].reverse(), onActivate, "b"));
+    rerender(table("replaced", 40, rows.slice(0, 5), onActivate, "b"));
+    // Back to the first list, whose rows then arrive: the dropped Enter does not come back.
+    rerender(table("replaced", 40, rows.slice(0, 5), onActivate, "a"));
+    rerender(table("replaced", 40, [...rows].reverse(), onActivate, "a"));
     expect(onActivate).not.toHaveBeenCalled();
   });
 

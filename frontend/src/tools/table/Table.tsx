@@ -290,6 +290,9 @@ export function Table<Row>({
 
   // A cursor put on a row that was not loaded follows the row once it arrives.
   useLayoutEffect(() => {
+    // An Enter from another generation is dropped for good, even if the list comes back to that one.
+    if (cursor.open !== undefined && cursor.open !== generation)
+      return setCursor({ ...cursor, open: undefined });
     if (!cursor.waiting) return;
     const row = rowAt(cursor.index);
     if (row === undefined) return;

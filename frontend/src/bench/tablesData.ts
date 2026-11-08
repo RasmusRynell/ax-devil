@@ -65,6 +65,7 @@ export class FakeFiles {
     eventUnavailable: () => null,
   };
   locating = () => {};
+  basis = () => "";
   flush = () => {};
   request = (_lane: number, _text: string, _sort: FileSortWire, offset: number, limit: number) => {
     const rows = Array.from({ length: Math.min(limit, this.#total - offset) }, (_, k) =>

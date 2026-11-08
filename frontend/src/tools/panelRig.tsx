@@ -251,6 +251,7 @@ export function mount(
       matched: number;
       offset: number;
       located: Located | null;
+      data_revision: number;
     }> = {},
   ) => {
     act(() => {
@@ -338,6 +339,11 @@ export function mount(
   return {
     source,
     files,
+    /** Describes the lane's file again, as the backend does when it changes. */
+    reread: (data_revision: number) => {
+      lanes.setStatus(0, { ...READY, data_revision });
+      files.refresh();
+    },
     sent,
     queries,
     answer,

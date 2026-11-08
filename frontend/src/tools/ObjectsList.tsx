@@ -45,7 +45,7 @@ import { useApplied } from "./useApplied";
 export interface ObjectSource {
   readonly files: Pick<
     FileScope,
-    "request" | "flush" | "locating" | "release" | "subscribe" | "view"
+    "request" | "flush" | "locating" | "release" | "subscribe" | "view" | "basis"
   > &
     AppearanceSource & {
       /** The lane's recorded events, which the Events tab lists. */
@@ -263,7 +263,7 @@ export function ObjectsList({
     count,
     selected: mark,
     sort,
-    generation: `${text}\n${sort.key} ${sort.descending}`,
+    generation: `${text}\n${sort.key} ${sort.descending}\n${inFile ? source.files.basis(lane) : ""}`,
     onSort: (key: string) =>
       // Only the columns that sort have a header to click.
       onList({
