@@ -340,7 +340,12 @@ export function Gallery() {
           <RowList
             heading="Recent"
             rows={[
-              { id: "a", label: "Front door.mp4", icon: "folder" },
+              {
+                id: "a",
+                label: "Front door.mp4",
+                icon: "folder",
+                subtitle: "/home/anna/recordings/front-door",
+              },
               { id: "b", label: "Garage", disabled: true },
             ]}
             onSelect={() => undefined}

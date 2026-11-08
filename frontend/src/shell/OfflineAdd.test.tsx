@@ -14,7 +14,13 @@ const HANDLERS: HandlersInfo = {
       description: "Pairs videos\n  with overlays.",
       fields: [],
     },
-    { id: "mot_challenge", display_name: "MOT Challenge", description: "", fields: [] },
+    {
+      id: "mot_challenge",
+      display_name: "MOT Challenge",
+      description: "Reads sequences.",
+      plugin: "Acme Tracks",
+      fields: [],
+    },
   ],
 };
 
@@ -47,6 +53,9 @@ it("offers a single video, then the resolvers in order; a resolver opens Add Pla
   ]);
   expect(screen.getByRole("button", { name: "Folder Pair" }).title).toBe(
     "Pairs videos with overlays.",
+  );
+  expect(screen.getByRole("button", { name: "MOT Challenge" }).title).toBe(
+    "Reads sequences.\nFrom Acme Tracks.",
   );
 
   fireEvent.click(screen.getByRole("button", { name: "Single video" }));

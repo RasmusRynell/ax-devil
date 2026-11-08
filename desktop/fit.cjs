@@ -1,10 +1,13 @@
 // Fit checks run inside the page by the smoke test: each returns what does not fit the window, as readable strings.
 
-/** The page with nothing open. */
-function page() {
+/** The page with nothing open, or only the element `only`, which the checker's own test gives it. */
+function page(only) {
   const problems = [];
   const root = document.documentElement;
-  if (root.scrollWidth > root.clientWidth || document.body.scrollWidth > root.clientWidth)
+  if (
+    !only &&
+    (root.scrollWidth > root.clientWidth || document.body.scrollWidth > root.clientWidth)
+  )
     problems.push(`horizontal overflow: ${root.scrollWidth} > ${root.clientWidth}`);
   const inside = (rect, box) =>
     rect.left >= box.left - 1 &&
@@ -15,12 +18,18 @@ function page() {
 
   // While a dialog is open the page behind it is inert, so the dialog alone is checked.
   const dialog = document.querySelector("dialog[open]");
-  const controls = dialog
-    ? dialog.querySelectorAll("button, input, select")
-    : document.querySelectorAll(
-        "header button, nav[aria-label=Activity] button, aside button, aside input, main button",
-      );
-  const containers = dialog ? [dialog] : document.querySelectorAll("header, aside, main");
+  const controls = only
+    ? []
+    : dialog
+      ? dialog.querySelectorAll("button, input, select")
+      : document.querySelectorAll(
+          "header button, nav[aria-label=Activity] button, aside button, aside input, main button",
+        );
+  const containers = only
+    ? [only]
+    : dialog
+      ? [dialog]
+      : document.querySelectorAll("header, aside, main");
 
   // Every visible shell action fits without scrolling, and nothing covers it.
   for (const control of controls) {
@@ -37,16 +46,90 @@ function page() {
     if (!control.contains(top)) problems.push(`control covered: ${name}`);
   }
 
-  // Text in one container never overlaps other text, and no label is cut off.
+  // Text in one container never overlaps other text, no label is cut off, and no text is clipped by a box around it.
+  // A label may end in an ellipsis only if it is a leaf with `text-overflow: ellipsis`, `overflow: hidden` and no
+  // wrapping, has the whole text in a tooltip, and, after every box around it has clipped it, still shows its first
+  // three characters and the ellipsis, as measured in its own font.
+  const clippers = (start, container) => {
+    const boxes = [];
+    for (let up = start; up && up !== container; up = up.parentElement) {
+      const style = getComputedStyle(up);
+      if (style.overflowX === "hidden" || style.overflowX === "clip")
+        boxes.push(up.getBoundingClientRect());
+    }
+    return boxes;
+  };
+  // A box of a pixel or two both ways hides text on purpose (a screen-reader-only label); a collapsed one does not.
+  const hidesOnPurpose = (box) => box.width <= 2 && box.height <= 2;
+  const ellipsisWidth = (style) => {
+    const probe = document.createElement("span");
+    probe.style.cssText = "position:absolute;visibility:hidden;white-space:pre";
+    probe.style.fontFamily = style.fontFamily;
+    probe.style.fontSize = style.fontSize;
+    probe.style.fontWeight = style.fontWeight;
+    probe.style.fontStyle = style.fontStyle;
+    probe.style.letterSpacing = style.letterSpacing;
+    probe.textContent = "…";
+    document.body.append(probe);
+    const { width } = probe.getBoundingClientRect();
+    probe.remove();
+    return width;
+  };
   for (const container of containers) {
+    const elided = new Set();
+    for (const element of container.querySelectorAll("*")) {
+      const style = getComputedStyle(element);
+      const text = element.textContent.trim();
+      if (
+        element.childElementCount > 0 ||
+        !text ||
+        style.textOverflow !== "ellipsis" ||
+        style.overflowX !== "hidden" ||
+        !["nowrap", "pre"].includes(style.whiteSpace)
+      )
+        continue;
+      const hides = element.scrollWidth > element.clientWidth + 1;
+      // Where the text shows: the label's own content box, then every box around it.
+      const own = element.getBoundingClientRect();
+      const inset = element.clientLeft + parseFloat(style.paddingLeft);
+      let left = own.left + inset;
+      let right =
+        own.left + element.clientLeft + element.clientWidth - parseFloat(style.paddingRight);
+      for (const clip of clippers(element.parentElement, container)) {
+        left = Math.max(left, clip.left);
+        right = Math.min(right, clip.right);
+      }
+      const node = [...element.childNodes].find((child) => child.nodeType === Node.TEXT_NODE);
+      const lead = document.createRange();
+      lead.setStart(node, 0);
+      lead.setEnd(node, Math.min(3, node.length));
+      // What must show: the first characters, and the ellipsis where the end is cut off. A pixel of rounding is allowed.
+      const needed = lead.getBoundingClientRect().width + (hides ? ellipsisWidth(style) : 0) - 1;
+      const tip = element.closest("[title]")?.getAttribute("title") ?? element.ariaLabel ?? "";
+      if (right - left < needed) problems.push(`label shows too little of: "${text.slice(0, 30)}"`);
+      else if (hides && !tip.includes(text))
+        problems.push(`elided label without its text: "${text.slice(0, 30)}"`);
+      else if (hides) elided.add(element);
+    }
     const boxes = [];
     const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT);
     for (let node = walker.nextNode(); node; node = walker.nextNode()) {
-      if (!node.textContent.trim()) continue;
+      const text = node.textContent.trim();
+      if (!text) continue;
       const range = document.createRange();
       range.selectNodeContents(node);
-      const rect = range.getBoundingClientRect();
-      if (rect.width > 2 && rect.height > 2) boxes.push({ text: node.textContent.trim(), rect });
+      let { left, right, top, bottom } = range.getBoundingClientRect();
+      const clips = clippers(node.parentElement, container);
+      for (const clip of clips) {
+        if (elided.has(node.parentElement)) {
+          // An elided label counts where it shows; Range measures the text that the clip hides.
+          left = Math.max(left, clip.left);
+          right = Math.min(right, clip.right);
+        } else if (!hidesOnPurpose(clip) && (left < clip.left - 1 || right > clip.right + 1))
+          problems.push(`text clipped: "${text.slice(0, 30)}"`);
+      }
+      const rect = { left, right, top, bottom, width: right - left, height: bottom - top };
+      if (rect.width > 2 && rect.height > 2) boxes.push({ text, rect });
     }
     boxes.forEach((a, index) =>
       boxes.slice(index + 1).forEach((b) => {
@@ -57,7 +140,7 @@ function page() {
     );
     for (const element of container.querySelectorAll("*")) {
       // An input scrolls a value longer than its field, such as a join link; that is not a cut-off label.
-      if (element.localName === "input") continue;
+      if (element.localName === "input" || elided.has(element)) continue;
       if (element.clientWidth > 2 && element.scrollWidth > element.clientWidth + 1)
         problems.push(`cut off: "${element.textContent.trim().slice(0, 30)}"`);
     }

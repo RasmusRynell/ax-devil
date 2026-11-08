@@ -6,7 +6,7 @@ const path = require("node:path");
 const {
   SCREENSHOTS,
   SMOKE_ROOT,
-  click,
+  openAddVideo,
   delay,
   frames,
   goToFrame,
@@ -233,11 +233,10 @@ module.exports.video = async (window) => {
   const opening = holdPlayback(window);
   try {
     await js(
-      "!document.querySelector('[aria-label=\"Workspace items\"]') && document.querySelector('[aria-label=Workspace]').click()",
+      "!document.querySelector('[aria-label=\"Workspace items\"], [data-cursor-id=\"sidebar:add-video\"]') && document.querySelector('[aria-label=Workspace]').click()",
     );
-    await wait("document.querySelector('[data-cursor-id=\"sidebar:add-video\"]')");
     await frames({ js });
-    await click(window, "sidebar:add-video");
+    await openAddVideo(window);
     await wait("document.querySelector('dialog[open] [aria-label=\"Choose video file\"]')");
     await js("document.querySelector('dialog[open] [aria-label=\"Choose video file\"]').click()");
     const add =

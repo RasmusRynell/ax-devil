@@ -134,6 +134,22 @@ export function Checkbox({
   );
 }
 
+/**
+ * The ref of a text box that takes the focus with its text selected once it is on screen, while `on`. A microtask: a
+ * dialog opens (and focuses its first field) in an effect that runs after the field's.
+ */
+export function useSelectOnOpen(on: boolean) {
+  const input = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    if (!on) return;
+    queueMicrotask(() => {
+      input.current?.focus();
+      input.current?.select();
+    });
+  }, [on]);
+  return input;
+}
+
 /** A labelled text box; `masked` hides what is typed, `placeholder` shows what applies while it is empty, `suggestions` are offered to pick from, each as `[value, name]`, while any text stays allowed, `action` sits after the box, `describedBy` names a note about it, `fill` gives the box its own row at the full width, `wide` makes it wide enough for a `$NAME` reference, `selectOnOpen` focuses it with its text selected once it is on screen (after a dialog around it took the focus). */
 export function TextField({
   label,
@@ -162,15 +178,7 @@ export function TextField({
 }) {
   const id = useId();
   const list = `${id}-suggestions`;
-  const input = useRef<HTMLInputElement>(null);
-  // A microtask: a dialog opens (and focuses its first field) in an effect that runs after this one.
-  useEffect(() => {
-    if (!selectOnOpen) return;
-    queueMicrotask(() => {
-      input.current?.focus();
-      input.current?.select();
-    });
-  }, [selectOnOpen]);
+  const input = useSelectOnOpen(selectOnOpen);
   return (
     <div className={LABELLED}>
       <label htmlFor={id} className="contents">

@@ -6,7 +6,15 @@ const fs = require("node:fs/promises");
 const os = require("node:os");
 const path = require("node:path");
 const fit = require("./fit.cjs");
-const { SCREENSHOTS, SMOKE_ROOT, delay, frames, page, setView } = require("./smoke-kit.cjs");
+const {
+  SCREENSHOTS,
+  SMOKE_ROOT,
+  delay,
+  frames,
+  openAddVideo,
+  page,
+  setView,
+} = require("./smoke-kit.cjs");
 
 const FIXTURE = path.join(SMOKE_ROOT, "fixtures/video/long_gop_h264.mp4");
 
@@ -41,14 +49,13 @@ module.exports.items = async (window) => {
     await fs.mkdir(SCREENSHOTS, { recursive: true });
     await setView(window, [1100, 720], 1);
     await js(
-      "!document.querySelector('[aria-label=\"Workspace items\"]') && document.querySelector('[aria-label=Workspace]').click()",
+      "!document.querySelector('[aria-label=\"Workspace items\"], [data-cursor-id=\"sidebar:add-video\"]') && document.querySelector('[aria-label=Workspace]').click()",
     );
     // A copy of the fixture is added by typing its path.
     {
       const name = "clip.mp4";
       await fs.copyFile(FIXTURE, path.join(folder, name));
-      await wait("document.querySelector('[data-cursor-id=\"sidebar:add-video\"]')");
-      await js("document.querySelector('[data-cursor-id=\"sidebar:add-video\"]').click()");
+      await openAddVideo(window);
       await wait("document.querySelector('dialog[open] input')");
       // The local window may browse for the video and for the blank overlay row's file. With a blank path the dialog
       // shows its failure and still fits the smallest window at 200% zoom.

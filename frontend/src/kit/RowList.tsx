@@ -2,11 +2,14 @@ import type { ReactNode } from "react";
 import { Icon } from "./Icon";
 import type { IconName } from "./icons";
 import { QUIET } from "./look";
+import { MiddleElided } from "./MiddleElided";
 import { SectionCaption } from "./SectionCaption";
 
 export interface Row {
   id: string;
   label: string;
+  /** Muted under the label; it loses its middle before it wraps. */
+  subtitle?: string;
   /** Drawn right-aligned, such as key chips. */
   trailing?: ReactNode;
   icon?: IconName;
@@ -39,7 +42,12 @@ export function RowList({ heading, rows, onSelect }: Props) {
               className={`${QUIET} w-full py-xs text-left`}
             >
               {row.icon && <Icon name={row.icon} />}
-              <span className="min-w-0 flex-1">{row.label}</span>
+              <span className="flex min-w-0 flex-1 flex-col">
+                <span className="truncate">{row.label}</span>
+                {row.subtitle && (
+                  <MiddleElided text={row.subtitle} className="text-small text-muted" />
+                )}
+              </span>
               {row.trailing}
             </button>
           </li>

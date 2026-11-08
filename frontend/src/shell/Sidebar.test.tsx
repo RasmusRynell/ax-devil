@@ -37,6 +37,22 @@ it("lists only Videos and Playlists in Offline, and counts them in the header", 
   expect(screen.getByRole("searchbox", { name: "Search files" })).toBeTruthy();
 });
 
+it("shows the start panel alone while the workspace is empty, and the list once it has an item", async () => {
+  render(
+    <SessionProvider>
+      <KeptStateProvider>
+        <Sidebar view="workspace" onRun={() => {}} onAddLive={() => {}} />
+      </KeptStateProvider>
+    </SessionProvider>,
+  );
+  await act(async () => {});
+  expect(screen.getByRole("button", { name: "Open Workspace" })).toBeTruthy();
+  expect(screen.queryByRole("searchbox")).toBeNull();
+  act(() => (FakeSocket.rooms.get("room-1") as Room).setItems([video("v", false)]));
+  expect(screen.getByRole("searchbox", { name: "Search items" })).toBeTruthy();
+  expect(screen.queryByRole("button", { name: "Open Workspace" })).toBeNull();
+});
+
 it("offers the Location order in Offline and not in Workspace", async () => {
   const sorts = async (view: "offline" | "workspace") => {
     render(
@@ -47,6 +63,7 @@ it("offers the Location order in Offline and not in Workspace", async () => {
       </SessionProvider>,
     );
     await act(async () => {});
+    act(() => (FakeSocket.rooms.get("room-1") as Room).setItems([video("v", false)]));
     fireEvent.click(screen.getByRole("button", { name: "Sort" }));
     const names = screen.getAllByRole("menuitemcheckbox").map((item) => item.textContent);
     cleanup();

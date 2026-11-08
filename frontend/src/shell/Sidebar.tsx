@@ -45,7 +45,8 @@ export const LISTED_VIEWS = Object.keys(LISTINGS) as SidebarView[];
 /**
  * The sidebar: a title and the view's content; the Live view has its own toolbar and says in the header how many
  * streams run, the Offline view how many videos and playlists it lists. The Workspace view is titled with the workspace's name,
- * `Untitled` without one, and a dot while it has unsaved changes. Its right edge drags: between what the view needs
+ * `Untitled` without one, and a dot while it has unsaved changes; while it has no items it shows the start panel
+ * instead of the list. Its right edge drags: between what the view needs
  * and half the space beside the activity bar, remembered while the window lives, and a drag to nothing hides it.
  */
 export function Sidebar({
@@ -75,6 +76,8 @@ export function Sidebar({
     [workspace, view],
   );
   const named = view === "workspace" ? workspace : undefined;
+  // An empty workspace shows the start panel alone, which scrolls with the recent workspaces; items replace it.
+  const starting = view === "workspace" && (workspace?.items.length ?? 0) === 0;
   const rename = useRenameWorkspace();
   const canEdit = useCan("content");
   return (
@@ -122,8 +125,12 @@ export function Sidebar({
           <div
             className={`flex flex-col gap-m px-s pb-s ${listing || view === "bookmarks" ? "min-h-0 flex-1" : ""}`}
           >
-            {view === "workspace" && <StartPanel onRun={onRun} />}
-            {listing && <WorkspaceTree key={view} view={view} {...listing} />}
+            {starting && (
+              <div className="min-h-0 flex-1 overflow-y-auto">
+                <StartPanel onRun={onRun} />
+              </div>
+            )}
+            {listing && !starting && <WorkspaceTree key={view} view={view} {...listing} />}
             {view === "offline" && <OfflineAdd onRun={onRun} />}
             {view === "bookmarks" && <BookmarksView />}
             {view === "sessions" && <SessionsView />}

@@ -2,7 +2,7 @@ import { describe, expect, it } from "vite-plus/test";
 import type { ItemState } from "../generated/api";
 import { rowsOf } from "../session/fakeRows";
 import { entry, failed, playlist, video } from "../session/fakeSession";
-import { filteredOut, sectionsOf, treeOf, visibleRows, type Order } from "./treeModel";
+import { filteredOut, sectionsOf, tipOf, treeOf, visibleRows, type Order } from "./treeModel";
 
 const ITEMS: ItemState[] = [
   playlist("mot", [entry("mot/A", "A", ["GT"])], false),
@@ -88,6 +88,50 @@ describe("hide targets", () => {
       .filter(({ target }) => target)
       .map(({ info }) => `${info.item}:${info.kind}`);
     expect(hideable).toEqual(["v:lane", "mot:entry", "mot:lane"]);
+  });
+});
+
+describe("hover text", () => {
+  const items = [
+    playlist("mot", [entry("mot/A", "A", ["GT", "DPM"]), entry("mot/B", "B", ["GT"])], false),
+    video("v", false),
+    failed("bad", "File not found"),
+  ];
+  const tree = treeOf({
+    name: null,
+    modified: false,
+    recovered: false,
+    epoch: 0,
+    file: null,
+    items,
+    rows: rowsOf(items, [{ entry: "mot/B" }]).map((row) =>
+      row.item === "v" ? { ...row, location: "/data/v.mp4" } : row,
+    ),
+    bookmarks: [],
+  });
+  const tip = (item: string, kind: string, open = false) =>
+    tipOf(
+      tree.find(({ info }) => info.item === item && info.kind === kind)!,
+      open,
+    ).split("\n");
+
+  it("says what a row is, counting the playlist's hidden entries and numbering the entries", () => {
+    expect(tip("mot", "playlist")).toContain("Playlist · 2 entries, 1 hidden");
+    expect(tree.filter(({ info }) => info.kind === "entry").map(({ facts }) => facts)).toEqual([
+      "Entry 1 of 2",
+      "Entry 2 of 2",
+    ]);
+    expect(tip("v", "item")).toEqual(["v.mp4", "Video · 1 overlay", "/data/v.mp4"]);
+    expect(tip("v", "lane")).toContain("Overlay");
+  });
+
+  it("adds why a row cannot open, that it is hidden, and that a viewer shows it", () => {
+    expect(tip("bad", "item")).toEqual(["bad.mp4", "File not found"]);
+    const hidden = tree.find(({ info }) => info.hidden)!;
+    expect(tipOf(hidden, true).split("\n").slice(-2)).toEqual([
+      "Hidden: skipped in playback",
+      "Open in a viewer",
+    ]);
   });
 });
 

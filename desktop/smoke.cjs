@@ -2,18 +2,21 @@
 const { dialog, nativeTheme } = require("electron");
 const assert = require("node:assert/strict");
 const fs = require("node:fs/promises");
+const os = require("node:os");
 const path = require("node:path");
 const fit = require("./fit.cjs");
 const {
   SCREENSHOTS,
   SMOKE_ROOT,
   button,
+  isolatedState,
   page,
   reload,
   setView,
   until,
   watchCsp,
 } = require("./smoke-kit.cjs");
+const { fitChecker } = require("./smoke-fit.cjs");
 const { gallery } = require("./smoke-gallery.cjs");
 const { items } = require("./smoke-items.cjs");
 const { rows } = require("./smoke-rows.cjs");
@@ -182,6 +185,48 @@ module.exports = async (window, shell) => {
       "[...document.querySelectorAll('[role=menuitem]')].find((b) => b.textContent.startsWith('Keyboard Shortcuts')).click()",
     );
   };
+  // A recent workspace in a deep folder, as a long state folder gives: the start panel still has to fit.
+  const state = isolatedState();
+  const deep = path.join(
+    os.tmpdir(),
+    "ax-devil-smoke-recents",
+    "a-folder-whose-name-is-far-too-long-for-the-narrow-sidebar",
+    "and-another-one-below-it",
+    "Quarterly review.ax-devil.workspace",
+  );
+  await fs.mkdir(path.join(state, "ax-devil"), { recursive: true });
+  await fs.writeFile(
+    path.join(state, "ax-devil", "recent-workspaces.json"),
+    JSON.stringify([{ path: deep, used_ms: Date.now() }]),
+  );
+  await reload(window);
+  await wait("document.querySelector('h1')?.textContent === 'ax-devil'");
+  await wait("document.querySelector('[data-cursor-id^=\"row:recent:\"]')");
+  await fitChecker(window);
+  // At 640x480 the name, the end of the folder and the date each stay whole and inside the row, and the folder's
+  // tooltip holds all of it.
+  await setView(window, [640, 480], 1);
+  const recent = await js(`(() => {
+    const row = document.querySelector('[data-cursor-id^="row:recent:"]');
+    const box = row.getBoundingClientRect();
+    const inside = (element) => {
+      const rect = element.getBoundingClientRect();
+      return rect.width > 0 && rect.left >= box.left - 1 && rect.right <= box.right + 1;
+    };
+    const folder = row.querySelector("span[title]");
+    return {
+      name: inside(row.querySelector(".truncate")),
+      suffix: inside(folder.lastElementChild) && folder.lastElementChild.scrollWidth <= folder.lastElementChild.clientWidth + 1,
+      date: inside(row.lastElementChild) && row.lastElementChild.textContent === "today",
+      folder: folder.title,
+    };
+  })()`);
+  assert.deepEqual(
+    [recent.name, recent.suffix, recent.date],
+    [true, true, true],
+    "name, folder suffix and date stay whole in the row",
+  );
+  assert.equal(recent.folder.replaceAll("\\", "/"), path.dirname(deep).replaceAll("\\", "/"));
   for (const [theme, zoom] of [
     ["light", 1],
     ["dark", 1],
@@ -204,7 +249,7 @@ module.exports = async (window, shell) => {
         [],
         `The page must fit the 640x480 window at ${zoom * 100}% zoom, sidebar ${sidebar}`,
       );
-      if (zoom === 2) await shoot(`layout-${sidebar}-${theme}${suffix}.png`);
+      if (zoom === 2 || sidebar === "open") await shoot(`layout-${sidebar}-${theme}${suffix}.png`);
       await js("document.querySelector('[aria-label=Workspace]').click()");
       await frame();
     }

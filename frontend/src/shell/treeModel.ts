@@ -1,4 +1,4 @@
-import type { HiddenTarget, ItemKind, RowInfo, WorkspaceState } from "../generated/api";
+import type { HiddenTarget, ItemKind, RowInfo, ViewerView, WorkspaceState } from "../generated/api";
 import { casefold, compareNames } from "../casefold";
 import type { CaptionMark } from "../kit/SectionCaption";
 import type { StreamState, StreamStatus } from "../live/streamState";
@@ -25,7 +25,86 @@ export type TreeRow = {
   dimmed: boolean;
   /** What Hide and Unhide act on; `null` when the row cannot be hidden. */
   target: HiddenTarget | null;
+  /** What the row is, which opens its hover text: `Video · 2 overlays`, `Entry 2 of 3`; empty while it has no content. */
+  facts: string;
 };
+
+const counted = (count: number, one: string, many: string) =>
+  `${count} ${count === 1 ? one : many}`;
+
+/**
+ * What `row` is: a video or live stream with its overlays, a playlist with its entries and how many are hidden, an
+ * entry with its place among its playlist's, an overlay. `at` is the row's place among its siblings, `of` their
+ * number, `inside` the rows directly under it, `overlays` how many a live stream draws.
+ */
+function factsOf(
+  row: TreeRow,
+  at: number,
+  of: number,
+  inside: readonly TreeRow[],
+  overlays: number,
+) {
+  const { info, itemKind } = row;
+  if (info.status.status !== "Ready") return "";
+  switch (info.kind) {
+    case "lane":
+      return "Overlay";
+    case "entry":
+      return `Entry ${at + 1} of ${of}`;
+    case "playlist": {
+      const hidden = inside.filter((entry) => entry.info.hidden).length;
+      return `Playlist · ${counted(inside.length, "entry", "entries")}${hidden ? `, ${hidden} hidden` : ""}`;
+    }
+    case "item": {
+      if (itemKind !== "video" && itemKind !== "live") return "";
+      const count = itemKind === "live" ? overlays : inside.length;
+      return `${itemKind === "live" ? "Live stream" : "Video"}${count ? ` · ${counted(count, "overlay", "overlays")}` : ""}`;
+    }
+  }
+}
+
+/**
+ * The keys of the rows the hosted `viewers` show: a video or live stream's row while a viewer shows its item, an entry's
+ * row while one shows that entry, and the playlist row of such an entry. Another playlist of the same item is not open.
+ */
+export function openRows(
+  tree: readonly TreeRow[],
+  viewers: readonly Pick<ViewerView, "item" | "entry">[],
+): Set<string> {
+  const items = new Set(viewers.map(({ item }) => item));
+  const entries = new Set(viewers.flatMap(({ entry }) => entry ?? []));
+  const open = new Set<string>();
+  for (const { info, parent, item } of tree) {
+    if (
+      info.kind === "item"
+        ? items.has(item)
+        : info.kind === "entry" && entries.has(info.entry ?? "")
+    ) {
+      open.add(info.key);
+      if (info.kind === "entry" && parent !== null) open.add(parent);
+    }
+  }
+  return open;
+}
+
+/**
+ * The hover text of `row`: its whole name, what it is, why it cannot open, what resolving left out, where it is read from, and
+ * whether it is hidden from playback or `open` in a viewer.
+ */
+export function tipOf(row: TreeRow, open: boolean): string {
+  const { status, warnings, location, hidden } = row.info;
+  return [
+    row.info.label,
+    row.facts,
+    status.status === "Unavailable" ? status.reason || "Unavailable" : "",
+    ...warnings.map(({ problem }) => problem),
+    location ?? "",
+    hidden ? "Hidden: skipped in playback" : "",
+    open ? "Open in a viewer" : "",
+  ]
+    .filter(Boolean)
+    .join("\n");
+}
 
 /** Which rows are drawn, and each one's place among its siblings for assistive technology. */
 export type VisibleRow = { row: TreeRow; position: number; siblings: number };
@@ -72,6 +151,7 @@ export function treeOf(
         opens !== null && info.status.status === "Ready" && hideable
           ? { entry: opens, lane: info.kind === "lane" ? info.label : undefined }
           : null,
+      facts: "",
     };
     if (parent) parent.hasChildren = true;
     if (topLevel) {
@@ -80,6 +160,33 @@ export function treeOf(
     } else if (info.kind === "entry") entry = row;
     tree.push(row);
   }
+  // A row's facts need the rows around it, which are all known only now.
+  const inside = new Map<string | null, TreeRow[]>();
+  for (const row of tree) {
+    const siblings = inside.get(row.parent);
+    if (siblings) siblings.push(row);
+    else inside.set(row.parent, [row]);
+  }
+  const overlays = new Map(
+    items.map(({ id, resolution }) => [
+      id,
+      resolution.status === "Resolved" &&
+      resolution.content.kind === "LiveVideo" &&
+      resolution.content.overlay !== "none"
+        ? 1
+        : 0,
+    ]),
+  );
+  for (const siblings of inside.values())
+    siblings.forEach((row, at) => {
+      row.facts = factsOf(
+        row,
+        at,
+        siblings.length,
+        inside.get(row.info.key) ?? [],
+        overlays.get(row.item) ?? 0,
+      );
+    });
   return tree;
 }
 
