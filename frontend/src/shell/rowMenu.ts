@@ -21,8 +21,16 @@ export const isHiddenLane = ({ info, target }: TreeRow): boolean =>
   info.kind === "lane" && info.hidden && target !== null;
 
 /**
+ * Whether the row is a live stream that can start or stop: it is not opened in place like a recording but started
+ * beside the open viewers, and stopped by closing its viewer. The menu, the row's button and every gesture that opens
+ * a row decide by this.
+ */
+export const isStream = ({ info, itemKind }: TreeRow): boolean =>
+  info.kind === "item" && itemKind === "live" && info.status.status === "Ready";
+
+/**
  * The menu of a row, in groups: Open and Open to the Side (a row that cannot open says why; a hidden lane offers Unhide
- * and open instead), Information and Export
+ * and open instead; a live stream offers Start stream, or Stop stream while a viewer shows it, in their place), Information and Export
  * video, Hide, then Edit and Remove for the whole item, which only a top-level row offers. A row still resolving
  * opens and informs nothing, and an item that was unreadable cannot be edited. A video and an entry export what a
  * viewer shows, so Export video waits for `exportable`: a viewer showing it. A viewer's header offers the same menu
@@ -33,6 +41,7 @@ export function rowMenu(
   item: ItemState | undefined,
   powers: Powers,
   exportable: boolean,
+  running: boolean,
   withEdit = true,
 ): MenuEntry[] {
   const action = (id: string, label: string, disabled = false, reason?: string): MenuEntry => ({
@@ -50,13 +59,21 @@ export function rowMenu(
   const hiddenLane = isHiddenLane(row);
   const why = hiddenLane ? "Hidden lane: choose Unhide and open" : undefined;
   const groups: MenuEntry[][] = [
-    status === "Pending"
-      ? []
-      : [
-          action("open", "Open", hiddenLane, why),
-          action("open-side", "Open to the Side", hiddenLane, why),
-          ...(hiddenLane ? [action("unhide-open", "Unhide and open", !powers.content)] : []),
-        ],
+    isStream(row)
+      ? [
+          action(
+            running ? "stop" : "start",
+            running ? "Stop stream" : "Start stream",
+            !powers.content,
+          ),
+        ]
+      : status === "Pending"
+        ? []
+        : [
+            action("open", "Open", hiddenLane, why),
+            action("open-side", "Open to the Side", hiddenLane, why),
+            ...(hiddenLane ? [action("unhide-open", "Unhide and open", !powers.content)] : []),
+          ],
     status === "Pending"
       ? []
       : [

@@ -1,11 +1,13 @@
 import { useEffect, useLayoutEffect, type KeyboardEvent, type RefObject } from "react";
 import { Icon } from "../kit/Icon";
 import type { IconName } from "../kit/icons";
+import { Button } from "../kit/Button";
 import { IconButton } from "../kit/IconButton";
 import { KIND, type Kind } from "../kit/look";
 import { NoticeList, noticeOf } from "../kit/NoticeList";
 import { Popover } from "../kit/Popover";
 import { MARKS, type MarkColor } from "../live/streamState";
+import { isStream } from "./rowMenu";
 import { tipOf, type SectionId, type TreeRow, type VisibleRow } from "./treeModel";
 import { pictureOf } from "./useRowThumbnail";
 import { useSpanWindow } from "./useSpanWindow";
@@ -52,6 +54,38 @@ function noteOf({ info, dimmed }: TreeRow): string {
   return [dimmed ? "hidden" : "", warned].filter(Boolean).join(", ");
 }
 
+/** A live stream's Start or, while a viewer shows it, Stop. */
+function StreamButton({
+  row,
+  running,
+  disabled,
+  onStart,
+  onStop,
+}: {
+  row: TreeRow;
+  running: boolean;
+  disabled: boolean;
+  onStart: () => void;
+  onStop: () => void;
+}) {
+  return (
+    <Button
+      size="small"
+      icon={running ? "square-filled" : "play"}
+      label={`${running ? "Stop" : "Start"} ${row.info.label}`}
+      tabIndex={-1}
+      data-cursor-id={`action:${row.info.key}`}
+      disabled={disabled}
+      onClick={(event) => {
+        event.stopPropagation();
+        if (running) onStop();
+        else onStart();
+      }}
+      onDoubleClick={(event) => event.stopPropagation()}
+    />
+  );
+}
+
 interface Props {
   id: SectionId;
   label: string;
@@ -67,10 +101,12 @@ interface Props {
   open: ReadonlySet<string>;
   /** The scrolling element that holds the tree, which draws only the rows in view. */
   scroller: RefObject<HTMLElement | null>;
-  /** Whether the seat may hide and unhide rows. */
+  /** Whether the seat may hide and unhide rows, and start and stop streams. */
   hides: boolean;
-  /** Open the row, or with `side` (Ctrl) to the side of the front pane. */
+  /** Open the row, or with `side` (Ctrl) to the side of the front pane. A live stream starts. */
   onOpen: (row: TreeRow, side?: boolean) => void;
+  /** Stop a live stream: close its viewer. */
+  onStop: (row: TreeRow) => void;
   /** A double click shows the row and the rows above it, before it opens. */
   onReveal: (row: TreeRow) => void;
   /** Puts the keyboard on a row. */
@@ -86,8 +122,12 @@ interface Props {
   onRemove: (row: TreeRow) => void;
   /** The menu of a row at a point, and the tree to give the focus back to when it closes. */
   onMenu: (row: TreeRow, x: number, y: number, tree: HTMLElement | null) => void;
-  /** The pointer entered a row at a point (with the entry whose picture it shows), or left it. */
+  /**
+   * The pointer entered a row at a point (with the entry whose picture it shows), or left it. A row with a picture
+   * `has` no text tip, which would show beside the card.
+   */
   thumbnail: {
+    has: (row: TreeRow) => boolean;
     enter: (entry: string | null, x: number, y: number) => void;
     leave: () => void;
   };
@@ -111,6 +151,7 @@ export function WorkspaceList({
   scroller,
   hides,
   onOpen,
+  onStop,
   onReveal,
   onCurrent,
   onGo,
@@ -211,7 +252,7 @@ export function WorkspaceList({
             aria-expanded={row.hasChildren ? !folded : undefined}
             aria-current={open.has(info.key) || undefined}
             aria-busy={info.status.status === "Pending" || undefined}
-            title={tipOf(row, open.has(info.key)) || undefined}
+            title={(!thumbnail.has(row) && tipOf(row, open.has(info.key))) || undefined}
             onClick={() => {
               // The focus first: a tree that takes it starts on its first row, which the click then overrides.
               ref.current?.focus({ preventScroll: true });
@@ -267,6 +308,15 @@ export function WorkspaceList({
                     <NoticeList notices={info.warnings.map(noticeOf)} />
                   </Popover>
                 </span>
+              )}
+              {isStream(row) && (
+                <StreamButton
+                  row={row}
+                  running={open.has(info.key)}
+                  disabled={!hides}
+                  onStart={() => onOpen(row)}
+                  onStop={() => onStop(row)}
+                />
               )}
               {row.target && (
                 <IconButton

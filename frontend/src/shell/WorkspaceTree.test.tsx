@@ -140,14 +140,17 @@ describe("opening", () => {
     });
   });
 
-  it("marks the rows a viewer shows as current, and says so in their hover text", async () => {
+  it("marks the rows a viewer shows as current, and says so in the hover text of a row with no picture", async () => {
     await renderTree();
     const row = () => screen.getByRole("treeitem", { name: /^A/ });
-    expect(row().title).toBe("A\nEntry 1 of 2");
+    const playlist = () => screen.getByRole("treeitem", { name: /^mot/ });
     expect(row().getAttribute("aria-current")).toBeNull();
+    expect(playlist().title).not.toContain("Open in a viewer");
     fireEvent.doubleClick(row());
     await act(async () => {});
-    expect(row().title).toBe("A\nEntry 1 of 2\nOpen in a viewer");
+    expect(playlist().title).toContain("Open in a viewer");
+    // A picture shows in place of a text tip.
+    expect(row().title).toBe("");
     expect(row().getAttribute("aria-current")).toBe("true");
     // The lane of the entry is shown inside it, not by a viewer of its own.
     expect(screen.getByRole("treeitem", { name: /^GT/ }).getAttribute("aria-current")).toBeNull();
@@ -328,6 +331,42 @@ describe("items", () => {
     fireEvent.keyDown(document, { key: "Escape" });
     return names;
   };
+
+  it("starts a live stream beside the open viewers from its row and stops it by closing its viewer", async () => {
+    const lobby: ItemState = {
+      id: "cam",
+      label: "Lobby",
+      kind: "live",
+      open: false,
+      resolution: {
+        status: "Resolved",
+        content: {
+          kind: "LiveVideo",
+          id: "cam",
+          generation: 1,
+          display_name: "Lobby",
+          slot: "live",
+          overlay: "none",
+          lanes: ["Lobby"],
+          recipe: null,
+        },
+      },
+    };
+    await renderTree([stored(CLIP), stored(lobby)], []);
+    const live = () => screen.getByRole("treeitem", { name: /^Lobby/ });
+    expect(menuOf(/^Lobby/)).toEqual(["Start stream", "Information", "Edit", "Remove"]);
+
+    fireEvent.click(screen.getByRole("button", { name: "Start Lobby" }));
+    await act(async () => {});
+    expect(commands()).toEqual([{ type: "openViewer", item: "cam" }]);
+    expect(shown().viewers).toMatchObject({ 1: { item: "cam" } });
+    expect(live().getAttribute("aria-current")).toBe("true");
+    expect(menuOf(/^Lobby/)[0]).toBe("Stop stream");
+
+    fireEvent.click(screen.getByRole("button", { name: "Stop Lobby" }));
+    await act(async () => {});
+    expect(commands().at(-1)).toEqual({ type: "closeViewer", item: "cam" });
+  });
 
   it("offers each row what its item can do: Open says why when it cannot, Edit needs a readable item, nested rows leave the item alone", async () => {
     await renderTree(
