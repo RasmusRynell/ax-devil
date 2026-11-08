@@ -60,6 +60,30 @@ describe("logins editor", () => {
     expect((screen.getAllByLabelText("Password")[0] as HTMLInputElement).value).toBe("secret");
   });
 
+  it("keeps an empty row added while a save is in flight", async () => {
+    let acknowledge = () => {};
+    function Host() {
+      const [logins, setLogins] = useState<readonly Login[]>([]);
+      const onSave = (next: Login[]) =>
+        new Promise<string | null>((resolve) => {
+          acknowledge = () => {
+            setLogins(next);
+            resolve(null);
+          };
+        });
+      return <LoginsEditor logins={logins} onSave={onSave} />;
+    }
+    render(<Host />);
+    fireEvent.click(screen.getByText("Add login"));
+    fireEvent.change(screen.getByLabelText("Username"), { target: { value: "root" } });
+    fireEvent.blur(screen.getByLabelText("Username"));
+    fireEvent.click(screen.getByText("Add login"));
+
+    await act(async () => acknowledge());
+
+    expect(screen.getAllByLabelText("Username")).toHaveLength(2);
+  });
+
   it("saves a finished edit on Enter, once with the blur that follows", () => {
     const saved: Login[][] = [];
     const onSave = (next: Login[]) => {
@@ -151,6 +175,36 @@ describe("logins editor", () => {
     await act(async () => answers[1]!("Could not reach the backend"));
 
     expect(user.value).toBe("ops");
+  });
+
+  it("keeps a row added and not yet filled in when the backend sends the same logins again", () => {
+    const onSave = () => Promise.resolve(null);
+    // The backend writes the password first; the editor's own order is user first.
+    const held = () => [{ password: "$PASS", user: "root" }];
+    const { rerender } = render(<LoginsEditor logins={held()} onSave={onSave} />);
+    fireEvent.click(screen.getByText("Add login"));
+    rerender(<LoginsEditor logins={held()} onSave={onSave} />);
+    expect(screen.getAllByLabelText("Username")).toHaveLength(2);
+  });
+
+  it("saves a user added again after it was removed", async () => {
+    const saved: Login[][] = [];
+    function Host() {
+      const [logins, setLogins] = useState<readonly Login[]>([{ user: "root", password: "$PASS" }]);
+      const onSave = (next: Login[]) => {
+        saved.push(next);
+        setLogins(next);
+        return Promise.resolve(null);
+      };
+      return <LoginsEditor logins={logins} onSave={onSave} />;
+    }
+    render(<Host />);
+    await act(async () => fireEvent.click(screen.getByLabelText("Remove login")));
+    fireEvent.click(screen.getByText("Add login"));
+    fireEvent.change(screen.getByLabelText("Username"), { target: { value: "root" } });
+    fireEvent.change(screen.getByLabelText("Password"), { target: { value: "$PASS" } });
+    await act(async () => fireEvent.blur(screen.getByLabelText("Password")));
+    expect(saved).toEqual([[], [{ user: "root", password: "$PASS" }]]);
   });
 
   it("shows a long value from its start", () => {

@@ -17,7 +17,15 @@ const kept = (logins: readonly Login[]): Login[] =>
     .filter((login) => text(login, "user").trim() !== "")
     .map((login) => ({ user: text(login, "user").trim(), password: text(login, "password") }));
 
-const same = (a: readonly Login[], b: readonly Login[]) => JSON.stringify(a) === JSON.stringify(b);
+/** Whether two lists keep the same logins, whatever order the fields of a login are written in. */
+const same = (a: readonly Login[], b: readonly Login[]) =>
+  JSON.stringify(kept(a)) === JSON.stringify(kept(b));
+
+/** The rows as `held` says the backend has them, with the rows that are not kept (no user yet) where they are. */
+const settled = (rows: readonly Login[], held: readonly Login[]): Login[] => {
+  let next = 0;
+  return rows.map((row) => (text(row, "user").trim() === "" ? row : (held[next++] ?? row)));
+};
 
 const literal = (password: string) => ROW !== undefined && literalSecret(ROW, password);
 
@@ -66,13 +74,14 @@ export function LoginsEditor({ logins, onSave, onChange }: Props) {
     const at = pending.current.findIndex((save) => save.key === shape(logins));
     if (at < 0) {
       pending.current = [];
-      setDraft((now) => (same(kept(now), logins) ? now : logins));
+      // The same logins again, however the backend writes them, keep the rows as they are, empty ones too.
+      setDraft((now) => (shape(now) === shape(logins) ? now : logins));
       return;
     }
     // Accepted, and with it the saves before it. Unchanged since: show what the backend holds, which masks passwords.
     const saved = pending.current[at]!.wanted;
     pending.current = pending.current.slice(at + 1);
-    setDraft((now) => (same(kept(now), saved) ? logins : now));
+    setDraft((now) => (same(now, saved) ? settled(now, logins) : now));
   }, [logins]);
 
   const commit = (next: readonly Login[]) => {
