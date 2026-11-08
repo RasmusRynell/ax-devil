@@ -83,12 +83,12 @@ function infoHud() {
 }
 
 /**
- * Runs in the page: what the pane header says beside the title, and whether the whole title is still there. The details
- * are in sight only while they sit on the title's row; a header too narrow for both gives the room to the title.
- * With `narrow`, the pane is first made as wide as the measured title and half the measured details need, whatever the
- * font, so the two cannot fit side by side; its width is put back after the reading.
+ * Runs in the page: what the pane header says beside the title, and whether the whole title is still there, in a pane
+ * made as wide as the measured title and details need plus a margin (the details must sit beside the title) and in one
+ * as wide as the title and half the details need (they cannot, so the header keeps the whole title and gives the
+ * details up). Measured, not fixed, so it holds whatever the font. The pane's own width is put back after every reading.
  */
-function headerDetails(narrow) {
+function headerDetails() {
   const details = document.querySelector("[data-header-details]");
   const row = details?.parentElement;
   if (!row) return null;
@@ -96,18 +96,43 @@ function headerDetails(narrow) {
   const pane = header.parentElement;
   const titleBox = row.firstElementChild;
   const title = titleBox.firstElementChild;
+  const chrome = header.clientWidth - row.clientWidth;
+  // The title's own width, even where the pane now cuts it.
+  const titleWidth = title.scrollWidth + titleBox.offsetWidth - title.offsetWidth;
+  const MARGIN = 4;
   const width = pane.style.width;
-  if (narrow) {
-    const chrome = header.clientWidth - row.clientWidth;
-    pane.style.width = `${chrome + titleBox.offsetWidth + details.offsetWidth / 2}px`;
-  }
-  const found = {
-    text: details.textContent,
-    beside: details.getBoundingClientRect().top < row.getBoundingClientRect().bottom - 1,
-    titleWhole: title.scrollWidth <= title.clientWidth,
+  const read = (room) => {
+    pane.style.width = `${chrome + room}px`;
+    return {
+      beside: details.getBoundingClientRect().top < row.getBoundingClientRect().bottom - 1,
+      titleWhole: title.scrollWidth <= title.clientWidth,
+    };
   };
-  pane.style.width = width;
-  return found;
+  try {
+    return {
+      text: details.textContent,
+      wide: read(titleWidth + details.offsetWidth + MARGIN),
+      narrow: read(titleWidth + details.offsetWidth / 2),
+    };
+  } finally {
+    pane.style.width = width;
+  }
+}
+
+/** Asserts the pane header gives the title the room first, and the details only the room that is left. */
+async function expectHeaderPriority(window, what) {
+  const found = await page(window).js(`(${headerDetails.toString()})()`);
+  assert.deepEqual(
+    [found?.wide.beside, found?.wide.titleWhole],
+    [true, true],
+    `The details sit beside the title ${what}`,
+  );
+  assert.deepEqual(
+    [found.narrow.beside, found.narrow.titleWhole],
+    [false, true],
+    `The title wins the header ${what}`,
+  );
+  return found.text;
 }
 
 /**
@@ -323,23 +348,10 @@ async function fullscreen(window) {
     await wait(info);
     await shoot(`video-info-${theme}.png`);
     assert.equal(await expectInfoHud(window, `the 1100x720 window in the ${theme} theme`), false);
-    const wide = await page(window).js(`(${headerDetails.toString()})()`);
     assert.match(
-      wide?.text ?? "",
+      await expectHeaderPriority(window, `in the 1100x720 window in the ${theme} theme`),
       /^\d+×\d+ · [\d.]+ fps · \d+:\d\d$/,
       "The header tells the video",
-    );
-    assert.deepEqual(
-      [wide.beside, wide.titleWhole],
-      [true, true],
-      "The details sit beside the title",
-    );
-    // Too narrow for both, whatever the font, the header keeps the whole title and gives the details up.
-    const narrow = await page(window).js(`(${headerDetails.toString()})(true)`);
-    assert.deepEqual(
-      [narrow.beside, narrow.titleWhole],
-      [false, true],
-      "The title wins the header",
     );
     // The frame info stays open while the window shrinks to its minimum and zooms to 200%, with the sidebar closed.
     await js("document.querySelector('[aria-label=Workspace]').click()");
@@ -353,6 +365,10 @@ async function fullscreen(window) {
       if (zoom === 2)
         assert.equal(cut, true, "The frame info is cut at 200% zoom in the smallest window");
       await shoot(`video-info-min-${theme}${zoom === 1 ? "" : "-200"}.png`);
+      await expectHeaderPriority(
+        window,
+        `in the 640x480 window at ${zoom * 100}% zoom in the ${theme} theme`,
+      );
     }
     await setView(window, [1100, 720], 1);
     await js("document.querySelector('[aria-label=Workspace]').click()");
