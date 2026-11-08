@@ -13,15 +13,21 @@ import { FIELD_IN } from "../kit/look";
 import { Popover } from "../kit/Popover";
 import { parseSearch, type SearchTokenKind } from "../search/query";
 
-/** How each kind of word is drawn. Same glyph widths as the text, so the colored copy lines up under the caret. */
+/**
+ * How each kind of word is drawn: terms on a tint of the accent, free text on a lighter one, operators and OR dimmed,
+ * and a word the language cannot use dimmed and underlined (the underline, not the colour, says it is invalid). The
+ * tints and `text-fg/70` are chosen together: every word keeps at least 4.5:1 against its background in both themes
+ * (free text 11.3 light and 8.5 dark, terms 10.7 and 8.1, operators 4.55 and 4.8, OR and invalid words 5.0 and 5.4).
+ * Same glyph widths as the text, so the colored copy lines up under the caret.
+ */
 const LOOK: Record<SearchTokenKind, string> = {
-  text: "",
-  field: "text-muted",
-  operator: "text-muted",
-  value: "",
-  or: "text-muted",
-  not: "text-muted",
-  invalid: "underline decoration-wavy",
+  text: "bg-accent/8",
+  field: "bg-accent/12",
+  operator: "bg-accent/12 text-fg/70",
+  value: "bg-accent/12",
+  or: "text-fg/70",
+  not: "bg-accent/12",
+  invalid: "text-fg/70 underline",
 };
 
 /** What to type and what it does, one row each. */
@@ -48,8 +54,7 @@ export const EVENT_SYNTAX = [
 ] as const satisfies Syntax;
 
 /**
- * A search box for the query language of `parseSearch`: field names and operators are muted, and a word the language
- * cannot use (an incomplete term, a stray OR) is underlined. The text is typed in a transparent input over a colored
+ * A search box for the query language of `parseSearch`, its words drawn as `LOOK` says. The text is typed in a transparent input over a colored
  * copy of itself. `onChange` follows every keystroke; Return and Clear also say `onCommit`, for the owner to apply the
  * text at once instead of when typing stops. Clear shows only with text and leaves the field focused; `handle` lets
  * the owner focus the field too.

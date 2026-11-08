@@ -31,8 +31,29 @@ const encoder = new TextEncoder();
 /** The class of an object that has no classification. */
 const UNKNOWN_CLASS = "unknown";
 
-/** How many colours the hover chip's dot picks from. */
-export const CATEGORY_COLORS = 8;
+/** How many colours a category dot picks from. */
+const CATEGORY_COLORS = 8;
+
+/**
+ * One character as Unicode full case folding (the reference's `casefold`) has it. JavaScript has no `casefold`, but a
+ * character's upper case, then its lower case, folds it as the standard does but for three families, which are
+ * written out: `ẞ` is `ss` (it would stay `ß`), the dotless `ı` stays (it would become `i`), and Cherokee folds to
+ * its capitals (it would fold to small letters).
+ */
+function foldChar(char: string): string {
+  const code = char.codePointAt(0) ?? 0;
+  if (code === 0x1e9e) return "ss";
+  if (code === 0x131 || (code >= 0x13a0 && code <= 0x13f5)) return char;
+  if (code >= 0xab70 && code <= 0xabbf) return String.fromCodePoint(code - 0xab70 + 0x13a0);
+  if (code >= 0x13f8 && code <= 0x13fd) return String.fromCodePoint(code - 8);
+  return char.toUpperCase().toLowerCase();
+}
+
+/** The colour index of category `name`, from its case-folded name, which is the same in every session. */
+export function categoryIndex(name: string): number {
+  const folded = Array.from(name, foldChar).join("");
+  return crc32(encoder.encode(folded)) % CATEGORY_COLORS;
+}
 
 /**
  * What the hover chip says of a row: `"<id> <class>"`, `"score S · confidence C · speed V"` leaving out what is
@@ -56,7 +77,7 @@ export function describeRow(
     entity,
     label: `${entity} ${className}`,
     detail: detail.join(" · "),
-    category: crc32(encoder.encode(className.toLowerCase())) % CATEGORY_COLORS,
+    category: categoryIndex(className),
   };
 }
 

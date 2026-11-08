@@ -31,6 +31,19 @@ const EVENTS = [
 ];
 
 describe("Events list", () => {
+  it("drops an Enter awaiting an unloaded row when the file's events are listed again, rather than open what lands there", () => {
+    const { answerEvents, reread } = mount();
+    showEvents();
+    const events = Array.from({ length: 40 }, (_, i) => fileEvent(i, i));
+    answerEvents(events.slice(0, 5), { total: 40, matched: 40 });
+    const list = screen.getByRole("listbox", { name: "Events" });
+    fireEvent.keyDown(list, { key: "End" });
+    fireEvent.keyDown(list, { key: "Enter" });
+    reread(2);
+    answerEvents(events, { total: 40, matched: 40, data_revision: 2 });
+    expect(screen.queryByRole("region", { name: "Event page" })).toBeNull();
+  });
+
   it("lists the file's events in frame order, with the line after those of the frame on screen", () => {
     const { answerEvents, play } = mount();
     showEvents();

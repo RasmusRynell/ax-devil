@@ -61,6 +61,15 @@
   --color-category-5: #b18cf0;
   --color-category-6: #d6c25a;
   --color-category-7: #e5806b;
+  /* The same hues on the panel, deeper on a light theme to keep their contrast. */
+  --color-dot-0: light-dark(#2a62c4, #6ea8f7);
+  --color-dot-1: light-dark(#a35f12, #e0a35c);
+  --color-dot-2: light-dark(#3a7a2c, #8bc47c);
+  --color-dot-3: light-dark(#b02f5c, #e07f9d);
+  --color-dot-4: light-dark(#117a7a, #4fc3c3);
+  --color-dot-5: light-dark(#6f45c2, #b18cf0);
+  --color-dot-6: light-dark(#7d6a00, #d6c25a);
+  --color-dot-7: light-dark(#b04125, #e5806b);
 
   /* Participant colors, indexed by the backend's color number modulo the count; text on them is --presence-fg. */
   --presence-0: light-dark(#b42318, #f87171);

@@ -1,21 +1,18 @@
-import { CATEGORY_COLORS } from "../playback/laneLayouts";
-import { crc32 } from "../present";
-
-const encoder = new TextEncoder();
+import { categoryIndex } from "../playback/laneLayouts";
 
 /** The dot's color by category index, written out so the stylesheet generates them. */
 const DOTS = [
-  "bg-category-0",
-  "bg-category-1",
-  "bg-category-2",
-  "bg-category-3",
-  "bg-category-4",
-  "bg-category-5",
-  "bg-category-6",
-  "bg-category-7",
+  "bg-dot-0",
+  "bg-dot-1",
+  "bg-dot-2",
+  "bg-dot-3",
+  "bg-dot-4",
+  "bg-dot-5",
+  "bg-dot-6",
+  "bg-dot-7",
 ];
 
-/** The background class of the dot for class `name`: the color the hover chip gives it, whatever its case. */
+/** The background class of the dot for class `name` on the panel: the hover chip's hue, deepened on a light theme. */
 export function categoryDot(name: string): string {
-  return DOTS[crc32(encoder.encode(name.toLowerCase())) % CATEGORY_COLORS];
+  return DOTS[categoryIndex(name)];
 }

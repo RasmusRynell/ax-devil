@@ -10,6 +10,7 @@ import { FrameFields } from "../playback/frameFields";
 import { LaneSet } from "../playback/lanes";
 import type { ClientMessage, LaneStatusWire, LeafWire } from "../playback/protocol";
 import { INITIAL_VIEW, type PlaybackView } from "../playback/view";
+import { compileFilter } from "../present";
 import { fullSample } from "../present/fixtures";
 import { names } from "../search/match";
 import { freshEvents, FRESH_LIST } from "./listState";
@@ -21,7 +22,7 @@ import { frameObjects } from "./objects";
 
 const float = (value: number): LeafWire => ({ kind: "float", value });
 
-const READY: Extract<LaneStatusWire, { status: "Ready" }> = {
+export const READY: Extract<LaneStatusWire, { status: "Ready" }> = {
   status: "Ready",
   bases: ["Frame"],
   default_basis: "Frame",
@@ -120,6 +121,7 @@ export function mount(
     frame = FRAME,
     leaves = {},
     unanswered: held = false,
+    keep = "",
   }: Partial<{
     second: typeof FRAME;
     selection: Selection;
@@ -129,6 +131,8 @@ export function mount(
     leaves: { [id: string]: [string, LeafWire][] };
     /** The backend never answers a request for leaves. */
     unanswered: boolean;
+    /** The lane's frame filter: the expression an object must satisfy to be kept. */
+    keep: string;
   }> = {},
 ) {
   vi.useFakeTimers();
@@ -152,6 +156,7 @@ export function mount(
   let sampleNumber = 0;
   // A frame is the same object for as long as the sample is, as the viewer's is.
   let unanswered = held;
+  const filtered = compileFilter(keep);
   const drawn = new Map<string, LaneFrame>();
   const laneFrame = (lane: number): LaneFrame => {
     const key = `${lane}:${sampleNumber}`;
@@ -163,7 +168,7 @@ export function mount(
       sample: sampleNumber,
       columns: lane === 1 && second ? second : sample,
       classMask: { enabled: new Uint32Array(sample.maskWords), options: 0 },
-      filter: null,
+      filter: filtered.ok ? filtered.filter : null,
     } as unknown as LaneFrame;
     drawn.set(key, made);
     return made;
@@ -214,6 +219,7 @@ export function mount(
         first={first}
         view={{
           ...view,
+          lanes: lanes.states,
           playhead,
           shown: { sequenceId: playhead, timestampUs: 0, periodUs: null },
         }}
@@ -243,6 +249,7 @@ export function mount(
       matched: number;
       offset: number;
       located: Located | null;
+      data_revision: number;
     }> = {},
   ) => {
     act(() => {
@@ -284,6 +291,7 @@ export function mount(
       offset: number;
       located: number | null;
       frame_row: number | null;
+      data_revision: number;
     }> = {},
     lane = 0,
   ) => {
@@ -330,6 +338,17 @@ export function mount(
   return {
     source,
     files,
+    /** Describes the lane's file again, as the backend does when it changes. */
+    reread: (data_revision: number) => {
+      lanes.setStatus(0, { ...READY, data_revision });
+      files.refresh();
+    },
+    /** The backend's word on the lane's load changes, as when the socket is opened again; the panel is drawn again. */
+    status: (status: LaneStatusWire) => {
+      lanes.setStatus(0, status);
+      files.refresh();
+      shown.rerender(panel(playhead));
+    },
     sent,
     queries,
     answer,

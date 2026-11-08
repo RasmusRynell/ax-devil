@@ -11,6 +11,7 @@ import type { FileRowWire, SearchWire } from "../generated/api";
 import { Button } from "../kit/Button";
 import { SegmentedControl } from "../kit/Chips";
 import type { LaneFrame } from "../playback/contract";
+import { readyOf } from "../playback/fileBasis";
 import type { FileEvents } from "../playback/fileEvents";
 import type { FileScope } from "../playback/fileScope";
 import type { FrameFields } from "../playback/frameFields";
@@ -44,13 +45,13 @@ import { useApplied } from "./useApplied";
 export interface ObjectSource {
   readonly files: Pick<
     FileScope,
-    "request" | "flush" | "locating" | "release" | "subscribe" | "view"
+    "request" | "flush" | "locating" | "release" | "subscribe" | "view" | "basis"
   > &
     AppearanceSource & {
       /** The lane's recorded events, which the Events tab lists. */
       readonly events: Pick<
         FileEvents,
-        "view" | "request" | "flush" | "release" | "want" | "event" | "eventUnavailable"
+        "view" | "request" | "flush" | "release" | "want" | "event" | "eventUnavailable" | "basis"
       >;
     };
   /** The leaves of the frame's objects that a Frame scope search names. */
@@ -110,7 +111,12 @@ export function ObjectsList({
   /** What stands above the list: the panel's tabs, the lane to list and the button that closes the panel. */
   header: ReactNode;
 }) {
-  const { scope, text, sorts, anchor } = list;
+  const { text, sorts, anchor } = list;
+  // File scope needs the lane's file read: while it is not (loading, failed, described again after a reconnect) Frame
+  // shows and the switch is not offered, and the scope the user chose comes back with the file. A lane with no file at
+  // all (`source === null`) is never listed here.
+  const hasFile = !frameOnly && readyOf(view.lanes[lane]) !== undefined;
+  const scope = hasFile ? list.scope : "frame";
   const [offset, setOffset] = useState(0);
   // Where each scope's table was scrolled and where its cursor was, for when the scope is shown again.
   const tables = useRef<Record<Scope, TableMemory>>({
@@ -180,6 +186,8 @@ export function ObjectsList({
   const { page } = files;
   const stale = inFile ? staleOf(files) : null;
   const total = inFile ? (page?.total ?? 0) : objects.length;
+  // The header counts Frame scope against what the frame holds before the lane's toggles and filter hide any.
+  const whole = inFile ? total : (frame?.columns.rows ?? 0);
   const count = inFile ? (page?.matched ?? 0) : found.length;
   const shownFrame = view.shown?.sequenceId;
   const fileCols = useMemo(
@@ -254,6 +262,7 @@ export function ObjectsList({
     count,
     selected: mark,
     sort,
+    generation: `${text}\n${sort.key} ${sort.descending}\n${inFile ? source.files.basis(lane) : ""}`,
     onSort: (key: string) =>
       // Only the columns that sort have a header to click.
       onList({
@@ -271,7 +280,7 @@ export function ObjectsList({
     <UnderPage open={open} steps={steps}>
       {header}
       <div className="flex items-center gap-m border-b border-line py-xs pr-xs pl-m">
-        {!frameOnly && (
+        {hasFile && (
           <div className="min-w-0" title={scopeHints}>
             <SegmentedControl
               label="Scope"
@@ -281,7 +290,7 @@ export function ObjectsList({
             />
           </div>
         )}
-        <span className="min-w-0 flex-1 truncate text-right text-small text-muted">{`${awaiting && found !== NO_OBJECTS ? `${count}…` : count} of ${total}`}</span>
+        <span className="min-w-0 flex-1 truncate text-right text-small text-muted">{`${awaiting && found !== NO_OBJECTS ? `${count}…` : count} of ${whole}`}</span>
       </div>
       <div className="p-m pb-s">
         <SearchBar

@@ -194,6 +194,11 @@ export class FileScope {
     if (slot) slot.wanted.locate = locate;
   }
 
+  /** What the lane's list membership depends on (class toggles, data and policy revision); a list asked under another differs. */
+  basis(lane: number): string {
+    return this.#basisKey(lane);
+  }
+
   /** Stops wanting the lane's list, as when it is not shown, and tells the backend if it was ever asked on this socket. */
   release(lane: number): void {
     const slot = this.#slots.get(lane);

@@ -28,6 +28,8 @@ const NOT_READY = -1;
 export class ViewerData {
   readonly #lanes: LaneSet;
   readonly #send: (message: ClientMessage) => void;
+  readonly #after: (callback: () => void, ms: number) => () => void;
+  readonly #changed: () => void;
   samples = new SampleStore(0);
   readonly catalogs: Catalogs;
   readonly inspections: Inspections;
@@ -50,14 +52,17 @@ export class ViewerData {
   /** How each lane's sample was matched to the frame last composed. */
   #matched: readonly (LaneMatch | null)[] = [];
 
-  /** `send` asks the backend for a catalog document, an object's fields or a file's list; `after` times the asking. */
+  /** `send` asks the backend for a catalog document, an object's fields or a file's list; `after` times the asking; `changed` hears when the inspector catches up with the playing frames later. */
   constructor(
     lanes: LaneSet,
     send: (message: ClientMessage) => void,
     after: (callback: () => void, ms: number) => () => void,
+    changed: () => void = () => {},
   ) {
     this.#lanes = lanes;
     this.#send = send;
+    this.#after = after;
+    this.#changed = changed;
     this.files = new FileScope(lanes, send, after);
     this.catalogs = new Catalogs((id) => send({ type: "Catalog", id }));
     this.#laneCatalogs = new LaneCatalogs(this.catalogs, () => this.#fallback);
@@ -74,7 +79,7 @@ export class ViewerData {
    * Draws `video` with what each lane draws on `frame` (nothing for a lane that waits for its data), and records
    * which lanes wait. Reports whether that changed what the lanes show of themselves.
    */
-  present(video: VideoFrame, frame: number, surface: Surface | null): boolean {
+  present(video: VideoFrame, frame: number, surface: Surface | null, playing = false): boolean {
     const draw = this.#draw;
     if (!draw) return false;
     const waiting: number[] = [];
@@ -87,7 +92,8 @@ export class ViewerData {
     this.#shown = frames;
     this.#matched = this.#lanes.states.map((_, lane) => draw.match(lane, frame));
     surface?.present(video, frames);
-    let changed = this.inspections.follow(frames);
+    let changed = this.inspections.follow(frames, playing);
+    this.inspections.trail(this.#after, this.#changed);
     this.#lanes.states.forEach((_, lane) => {
       changed = this.#lanes.setPending(lane, waiting.includes(lane)) || changed;
     });
@@ -126,6 +132,7 @@ export class ViewerData {
     this.#shown = [];
     this.#matched = [];
     this.samples.clear();
+    this.inspections.suspend();
     this.files.suspend();
     this.next.close();
   }
