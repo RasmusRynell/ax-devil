@@ -68,6 +68,12 @@ pub(super) fn present(value: Option<&Json>) -> Option<&Json> {
     value.filter(|value| !value.is_null())
 }
 
+/// `value` unless it is absent or false in Python's eyes (null, `{}`, `[]`, `0`, `""`): the beta format reads a vector
+/// or position under such a value as absent.
+pub(super) fn filled(value: Option<&Json>) -> Option<&Json> {
+    value.filter(|value| truthy(value))
+}
+
 /// The items under `key`; a missing or null key is an empty list.
 pub(super) fn list<'a>(parent: &'a Object, key: &str) -> Result<&'a [Json], String> {
     match parent.get(key) {
@@ -165,9 +171,9 @@ fn numbers<const N: usize>(
     Ok(found)
 }
 
-/// Velocity in the image, `vx` and `vy`.
+/// Velocity in the image, `vx` and `vy`; an empty object is no velocity.
 pub(super) fn image_velocity(value: Option<&Json>) -> Result<Option<ImageVelocity>, String> {
-    present(value)
+    filled(value)
         .map(|value| {
             numbers(value, "velocity", [&["vx"], &["vy"]]).map(|[vx, vy]| ImageVelocity { vx, vy })
         })
@@ -243,19 +249,25 @@ pub(super) fn image(value: &Json, crop_box: bool) -> Result<Image, String> {
     })
 }
 
-/// A class of a consolidated track, named by any non-empty type as beta names them. `v1` says whether the class has the
-/// details of v1.
-pub(super) fn track_classification(payload: &Object, v1: bool) -> Result<Classification, String> {
+/// A class of a consolidated track, named by any type as beta names them, or `None` when the type is empty: a class has
+/// no empty name, and the observation is still shown. `v1` says whether the class has the details of v1.
+pub(super) fn track_classification(
+    payload: &Object,
+    v1: bool,
+) -> Result<Option<Classification>, String> {
     let spelling = payload
         .get("type")
         .and_then(Json::as_str)
-        .filter(|spelling| !spelling.is_empty())
         .ok_or("a class lacks its type")?;
+    if spelling.is_empty() {
+        return Ok(None);
+    }
     classified(
         ClassType::new(class_name(spelling)).map_err(|error| error.to_string())?,
         payload,
         v1,
     )
+    .map(Some)
 }
 
 /// The class a beta spelling names.
@@ -302,7 +314,7 @@ pub(super) fn beta_classification(payload: &Object) -> Result<Option<Classificat
         }
         "LicensePlate" => {
             for key in ["country_code", "plate_number"] {
-                push(&mut fields, key, text(payload, key));
+                push(&mut fields, key, code(payload, key, false));
             }
         }
         _ => {}
@@ -368,7 +380,7 @@ fn attributes(class_type: &ClassType, payload: &Object, v1: bool) -> Result<Fiel
                 &["country_code", "plate_number"]
             };
             for &key in keys {
-                push(&mut fields, key, text(payload, key));
+                push(&mut fields, key, code(payload, key, v1));
             }
         }
         _ => {}
@@ -376,12 +388,21 @@ fn attributes(class_type: &ClassType, payload: &Object, v1: bool) -> Result<Fiel
     Ok(fields)
 }
 
-fn text(payload: &Object, key: &str) -> Option<Value> {
-    match payload.get(key) {
-        Some(Json::String(text)) if !text.is_empty() => Some(Value::Str(text.clone().into())),
-        Some(Json::Number(number)) => Some(Value::Str(number.to_string().into())),
-        _ => None,
+/// A country, state or plate code as text, as Python's `str()` writes it. `keep_empty` (v1) keeps a code that is
+/// there even when Python counts it false, such as an empty text; beta keeps only a true one. A null, list or object
+/// gives none.
+fn code(payload: &Object, key: &str, keep_empty: bool) -> Option<Value> {
+    let value = payload.get(key)?;
+    if !keep_empty && !truthy(value) {
+        return None;
     }
+    let text = match value {
+        Json::String(text) => text.clone(),
+        Json::Number(number) => number.to_string(),
+        Json::Bool(flag) => if *flag { "True" } else { "False" }.to_owned(),
+        _ => return None,
+    };
+    Some(Value::Str(text.into()))
 }
 
 /// A flag of any JSON value, true as [`truthy`] says; `None` when the key is absent.

@@ -171,7 +171,11 @@ fn a_frame_reads_numbers_written_as_text_and_names_classes_by_its_own_table() {
         frame(vec![not_finite], vec![]).to_string(),
         class("Person", json!({})).to_string(),
         class("VehicleOther", json!({})).to_string(),
-        class("licensePlate", json!({"plate_number": "ABC"})).to_string(),
+        class(
+            "licensePlate",
+            json!({"plate_number": "ABC", "country_code": "", "state_code": null}),
+        )
+        .to_string(),
         class("license_plate", json!({})).to_string(),
         class("Person", json!({"score": true})).to_string(),
         class("Person", json!({"score": false})).to_string(),
@@ -196,6 +200,17 @@ fn a_frame_reads_numbers_written_as_text_and_names_classes_by_its_own_table() {
         .collect();
     assert_eq!(names, ["human", "vehicle_other", "license_plate"]);
     assert_eq!(classes[1][0].score.map(scene::Score::value), Some(0.5));
+    // The plate number is kept though Python's frame ignores it; an empty code is kept, a null one is not.
+    let plate = &classes[3][0];
+    assert_eq!(
+        plate.attribute("plate_number"),
+        Some(&Value::Str("ABC".into()))
+    );
+    assert_eq!(
+        plate.attribute("country_code"),
+        Some(&Value::Str("".into()))
+    );
+    assert!(plate.attribute("state_code").is_none());
     // Python's float() reads booleans as 1 and 0.
     assert_eq!(classes[4][0].score.map(scene::Score::value), Some(1.0));
     assert_eq!(classes[5][0].score.map(scene::Score::value), Some(0.0));

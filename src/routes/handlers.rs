@@ -170,7 +170,7 @@ mod tests {
         let mot = &resolvers[1];
         assert_eq!(
             mot["fields"][0],
-            json!({ "key": "root", "label": "Dataset folder", "kind": { "kind": "Folder" }, "required": true })
+            json!({ "key": "root", "label": "MOT Root", "kind": { "kind": "Folder" }, "required": true })
         );
         assert_eq!(
             mot["fields"][1]["kind"],

@@ -88,7 +88,7 @@ module.exports.playlist = async (window) => {
       );
       return;
     }
-    await fill("Dataset folder", DATASET);
+    await fill("MOT Root", DATASET);
     await clickButton("Scan");
     await wait("/MINI-01/.test(document.querySelector('dialog[open]').innerText)");
     await wait("/MINI-02/.test(document.querySelector('dialog[open]').innerText)");

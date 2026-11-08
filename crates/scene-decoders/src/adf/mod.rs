@@ -18,8 +18,12 @@ use memchr::memchr;
 use parse::{Object, object};
 use scene::{ClassRule, Coverage, Fields, FilterOption, FilterPolicy, MatchBasis, Name, Scene};
 
-/// Filter id, label and the class it shows; `show_other` is added after them.
-const FILTERS: [(&str, &str, &str); 14] = [
+/// The `Spec::version` of all four ADF decoders, which share their reading code: raise it whenever any of them gives
+/// other output for the same file.
+const VERSION: u32 = 5;
+
+/// Filter id, label and the class it shows, as every ADF decoder lists them first.
+const FILTERS: [(&str, &str, &str); 12] = [
     ("show_unknown", "Unknown", "unknown"),
     ("show_humans", "Humans", "human"),
     ("show_heads", "Heads", "head"),
@@ -32,9 +36,36 @@ const FILTERS: [(&str, &str, &str); 14] = [
     ("show_bicycles", "Bicycles", "bicycle"),
     ("show_animals", "Animals", "animal"),
     ("show_license_plates", "License Plates", "license_plate"),
-    ("show_bags", "Bags", "bag"),
-    ("show_faces", "Faces", "face"),
 ];
+const BAGS: (&str, &str, &str) = ("show_bags", "Bags", "bag");
+const FACES: (&str, &str, &str) = ("show_faces", "Faces", "face");
+
+/// Which ADF format a decoder reads, which decides the order of its last two class filters and its filter policy's name.
+#[derive(Clone, Copy)]
+enum Format {
+    /// Bags, then Faces.
+    V1,
+    /// Faces, then Bags.
+    Beta,
+}
+
+impl Format {
+    fn filter_name(self) -> &'static str {
+        match self {
+            Self::V1 => "adf_v1_frame",
+            Self::Beta => "adf_beta",
+        }
+    }
+
+    /// Every filter in the order the format lists them; `show_other` is added after them.
+    fn filters(self) -> Vec<(&'static str, &'static str, &'static str)> {
+        let last = match self {
+            Self::V1 => [BAGS, FACES],
+            Self::Beta => [FACES, BAGS],
+        };
+        FILTERS.into_iter().chain(last).collect()
+    }
+}
 
 /// What a line of a file is.
 #[derive(Clone, Copy)]
@@ -105,15 +136,15 @@ struct AdfDecoder {
     lines: Lines,
     /// Whether a line may start with a timestamp column and a tab.
     tsv_prefix: bool,
-    /// The name of the decoder's filter policy.
-    filters: &'static str,
+    /// The format the decoder reads.
+    format: Format,
 }
 
 /// Every ADF decoder: beta, then v1, each as frames and as consolidated tracks.
 pub(crate) fn decoders() -> Vec<Arc<dyn Decoder>> {
-    let adf = |id, plugin, name, filters, lines, read, tsv_prefix| -> Arc<dyn Decoder> {
+    let adf = |id, plugin, name, format, lines, read, tsv_prefix| -> Arc<dyn Decoder> {
         Arc::new(AdfDecoder::new(
-            id, plugin, name, filters, lines, read, tsv_prefix,
+            id, plugin, name, format, lines, read, tsv_prefix,
         ))
     };
     vec![
@@ -121,7 +152,7 @@ pub(crate) fn decoders() -> Vec<Arc<dyn Decoder>> {
             "ADF_BETA_FRAME",
             "adf-v1-beta",
             "ADF v1 Beta Frame",
-            "adf_beta",
+            Format::Beta,
             Lines::Frames,
             frame::read_beta,
             false,
@@ -130,16 +161,16 @@ pub(crate) fn decoders() -> Vec<Arc<dyn Decoder>> {
             "ADF_BETA_CONSOLIDATED",
             "adf-v1-beta",
             "ADF v1 Beta Consolidated",
-            "adf_beta",
+            Format::Beta,
             Lines::Tracks,
-            |record, _| consolidated::read(record, false),
+            |record, notes| consolidated::read(record, false, notes),
             false,
         ),
         adf(
             "ADF_V1_FRAME",
             "adf-v1",
             "ADF v1 Frame",
-            "adf_v1_frame",
+            Format::V1,
             Lines::Frames,
             frame::read_v1,
             true,
@@ -148,9 +179,9 @@ pub(crate) fn decoders() -> Vec<Arc<dyn Decoder>> {
             "ADF_V1_CONSOLIDATED",
             "adf-v1",
             "ADF v1 Consolidated Tracks",
-            "adf_v1_frame",
+            Format::V1,
             Lines::Tracks,
-            |record, _| consolidated::read(record, true),
+            |record, notes| consolidated::read(record, true, notes),
             true,
         ),
     ]
@@ -161,7 +192,7 @@ impl AdfDecoder {
         id: &str,
         plugin: &str,
         name: &str,
-        filters: &'static str,
+        format: Format,
         lines: Lines,
         read: Read,
         tsv_prefix: bool,
@@ -181,12 +212,12 @@ impl AdfDecoder {
                 bases,
                 default_basis,
                 options: Form::default(),
-                version: 4,
+                version: VERSION,
             },
             read,
             lines,
             tsv_prefix,
-            filters,
+            format,
         }
     }
 }
@@ -208,7 +239,7 @@ impl Decoder for AdfDecoder {
         sink: &mut dyn SceneSink,
         cancel: &CancelToken,
     ) -> Result<DecodeSummary, Interrupt<DecodeError>> {
-        let filter = filter_policy(self.filters);
+        let filter = filter_policy(self.format);
         // A live source never ends, so it has its class filters from the start. A file is published once decoded, and
         // a header would publish it while it is still being read.
         let live = self.reads_live() && input.path().is_none();
@@ -280,8 +311,9 @@ fn parse_line(line: &[u8], tsv_prefix: bool) -> Result<serde_json::Value, String
 }
 
 /// The class filters of this decoder's content.
-fn filter_policy(name: &'static str) -> FilterPolicy {
-    let mut options: Vec<FilterOption> = FILTERS
+fn filter_policy(format: Format) -> FilterPolicy {
+    let filters = format.filters();
+    let mut options: Vec<FilterOption> = filters
         .iter()
         .map(|&(id, label, class)| FilterOption {
             id: id.into(),
@@ -299,7 +331,7 @@ fn filter_policy(name: &'static str) -> FilterPolicy {
         label: "Other".into(),
         default_enabled: true,
         rule: ClassRule {
-            types: FILTERS
+            types: filters
                 .iter()
                 .map(|&(_, _, class)| Name::from(class))
                 .collect(),
@@ -307,5 +339,8 @@ fn filter_policy(name: &'static str) -> FilterPolicy {
             exclude: true,
         },
     });
-    FilterPolicy { name, options }
+    FilterPolicy {
+        name: format.filter_name(),
+        options,
+    }
 }

@@ -43,7 +43,7 @@ impl MotChallengeResolver {
                     .to_owned(),
                 form: Form {
                     fields: vec![
-                        Field::new("root", "Dataset folder", FieldKind::Folder)
+                        Field::new("root", "MOT Root", FieldKind::Folder)
                             .required()
                             .positional(),
                         Field::new(
@@ -141,12 +141,13 @@ struct Sequence {
 }
 
 impl Sequence {
-    /// The scan's offer for this sequence: its name, with the size, rate and length as the second line.
+    /// The scan's offer for this sequence: its name, with the size, rate and length as the second line, worded as the
+    /// reference's list row after its name (the rate as a decimal: `25.0`).
     fn into_choice(self) -> Choice {
         let info = &self.info;
         Choice {
             detail: format!(
-                "{}×{} · {} fps · {} frames",
+                "{}x{} @ {:?} fps, {} frames",
                 info.width, info.height, info.fps, info.frame_count
             ),
             label: self.name.clone(),
