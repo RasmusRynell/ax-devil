@@ -360,6 +360,7 @@ module.exports = {
   delay,
   frames,
   goToFrame,
+  hideChrome,
   isolatedState,
   laneCells,
   moveTo,
