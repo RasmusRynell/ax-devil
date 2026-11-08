@@ -129,6 +129,29 @@ describe("the Bookmarks view", () => {
     expect(viewers[2]).toMatchObject({ item: "mot", entry: "mot/MOT/A" });
   });
 
+  it("marks the bookmark opened last until a bookmark changes", async () => {
+    const room = await renderView([CLIP]);
+    const marked = () =>
+      screen.queryAllByRole("button", { current: true }).map((row) => row.textContent?.slice(0, 4));
+    expect(marked()).toEqual([]);
+    fireEvent.click(screen.getByText("Frame 75"));
+    await act(async () => {});
+    expect(marked()).toEqual(["Fram"]);
+    fireEvent.click(screen.getByText("Blur"));
+    await act(async () => {});
+    expect(marked()).toEqual(["Blur"]);
+
+    // The same bookmarks with their item renamed: the mark stays.
+    room.bookmarks = [{ ...CLIP, item_name: "w.mp4" }];
+    act(() => room.setItems([video("v", false)]));
+    expect(marked()).toEqual(["Blur"]);
+
+    const [first, second] = CLIP.bookmarks;
+    room.bookmarks = [{ ...CLIP, bookmarks: [first, { ...second, note: "Sharp" }] }];
+    act(() => room.setItems([video("v", false)]));
+    expect(marked()).toEqual([]);
+  });
+
   it("renames, changes the kind of, removes and reviews through the backend", async () => {
     await renderView([CLIP]);
     const bookmark = (command: object) => ({ type: "bookmark", command });

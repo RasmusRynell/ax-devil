@@ -41,6 +41,14 @@ export function BookmarksView() {
   const [filter, setFilter] = useState<Filter>("all");
   const [renaming, setRenaming] = useState<BookmarkInfo | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
+  // The bookmark opened last is marked until a bookmark or a review mark changes; a target that resolves again, or a
+  // name that changes, leaves the mark alone.
+  const facts = useMemo(
+    () => JSON.stringify(groups.map(({ key, reviewed, bookmarks }) => [key, reviewed, bookmarks])),
+    [groups],
+  );
+  const [opened, setOpened] = useState<{ id: string; facts: string } | null>(null);
+  if (opened && opened.facts !== facts) setOpened(null);
   const total = countOf(groups);
   // Search and kind are on screen only while a bookmark exists; without one they filter nothing, so a reviewed-only
   // group cannot be hidden by controls that are not there to reset.
@@ -59,12 +67,13 @@ export function BookmarksView() {
       fail,
     );
   const actions: RowActions = {
-    open: ({ item, target, standing }, { frame }) => {
+    open: ({ item, target, standing }, { id, frame }) => {
       if (standing.status !== "Open") return;
       // A video's viewer shows its one entry; a playlist's is told which. A viewer already showing it is brought
       // forward, the front one first; else it opens as an ordinary Open does.
       show(item, target === null ? undefined : standing.entry, { reuse: true }).then(() => {
         setProblem(null);
+        setOpened({ id, facts });
         ask({ entry: standing.entry, frame });
       }, fail);
     },
@@ -102,7 +111,13 @@ export function BookmarksView() {
       ) : (
         <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
           {shown.map((group) => (
-            <BookmarkGroup key={group.key} group={group} mayEdit={mayEdit} actions={actions} />
+            <BookmarkGroup
+              key={group.key}
+              group={group}
+              active={opened?.id ?? null}
+              mayEdit={mayEdit}
+              actions={actions}
+            />
           ))}
         </div>
       )}

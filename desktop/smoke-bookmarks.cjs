@@ -41,6 +41,8 @@ module.exports.bookmarks = async (window) => {
   await goToFrame(window, 3);
   await js(`document.querySelector('${BOOKMARKS} button[data-cursor-id^="bookmark:"]').click()`);
   await wait(`${SHOWN} === 12`);
+  // The bookmark opened last is marked; the screenshots below show it.
+  await wait(`document.querySelector('${BOOKMARKS} button[aria-current="true"]')`);
 
   // Export CSV asks the native save dialog for a .csv and writes what it answers.
   const target = path.join(SCREENSHOTS, "..", "bookmarks.csv");

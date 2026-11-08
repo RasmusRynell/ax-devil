@@ -442,3 +442,59 @@ async fn a_live_stream_is_named_by_its_content_and_stops_when_its_viewer_closes(
     assert_eq!(authority(&own), Authority::Revoked);
     assert_eq!(authority(&watching), Authority::Revoked);
 }
+
+#[tokio::test(start_paused = true)]
+async fn editing_an_item_keeps_its_pane_pinned_and_on_the_entry_it_shows() {
+    let rig = Rig::new();
+    let owner = rig
+        .service
+        .create(true, true, CursorOptions::default())
+        .unwrap();
+    let (item, before) = rig.open(&owner, playlist_in(rig.dir.path(), &["a", "b"]));
+    let second = entry_key(&owner.state(), item, 1).entry;
+    owner
+        .view(
+            View {
+                active: Some(ViewerId(1)),
+                viewers: [(
+                    ViewerId(1),
+                    ViewerView {
+                        pinned: true,
+                        entry: Some(second.clone()),
+                        ..looking(item)
+                    },
+                )]
+                .into(),
+                layout: Some(*pane(1)),
+                ..View::default()
+            },
+            2,
+        )
+        .unwrap();
+
+    let mut edited = owner.state().doc.workspace.workspace.items[0].clone();
+    let Source::Playlist(recipe) = &mut edited.recipe.source else {
+        panic!("a playlist");
+    };
+    recipe.settings.insert(
+        "options".into(),
+        serde_json::json!({"width": 32, "height": 24}),
+    );
+    owner
+        .command(Command::Content(DocCommand::EditItem {
+            item: Box::new(edited),
+            content: None,
+        }))
+        .unwrap();
+    rig.jobs.finish_all();
+
+    let state = owner.state();
+    assert_ne!(
+        entry_key(&state, item, 1).generation,
+        before.generation,
+        "the edit resolved the item again"
+    );
+    let shown = &state.presenter.viewers[&ViewerId(1)];
+    assert!(shown.pinned, "the pane stays pinned");
+    assert_eq!(shown.entry.as_ref(), Some(&second), "on the same entry");
+}

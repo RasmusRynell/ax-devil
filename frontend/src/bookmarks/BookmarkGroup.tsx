@@ -54,10 +54,13 @@ export interface RowActions {
  */
 export function BookmarkGroup({
   group,
+  active,
   mayEdit,
   actions,
 }: {
   group: BookmarkGroupInfo;
+  /** The id of the bookmark opened last, marked with the accent edge. */
+  active: string | null;
   mayEdit: boolean;
   actions: RowActions;
 }) {
@@ -101,8 +104,9 @@ export function BookmarkGroup({
             data-cursor-id={`bookmark:${bookmark.id}`}
             // Not `disabled`: a row that cannot open still has its menu.
             aria-disabled={!openable}
+            aria-current={bookmark.id === active || undefined}
             onClick={() => openable && actions.open(group, bookmark)}
-            className="flex w-full min-w-0 items-center gap-m rounded-control bg-transparent py-xs pr-m pl-l text-left text-fg not-aria-disabled:hover:bg-hover focus-ring-inset aria-disabled:cursor-default"
+            className="flex w-full min-w-0 items-center gap-m rounded-control border-l-edge border-transparent bg-transparent py-xs pr-m pl-l text-left text-fg not-aria-disabled:hover:bg-hover focus-ring-inset aria-[current=true]:border-accent aria-[current=true]:bg-hover aria-disabled:cursor-default"
           >
             <Icon name="bookmark" className={MARKS[bookmark.kind]} />
             <span className="flex min-w-0 flex-1 flex-col">

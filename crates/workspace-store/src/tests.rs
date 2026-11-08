@@ -494,5 +494,6 @@ fn jobs_of(state: &WorkspaceState, id: ItemId) -> ResolveJob {
 
 mod edit;
 mod hidden;
+mod marks;
 mod reload;
 mod remove;

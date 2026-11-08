@@ -315,6 +315,16 @@ describe("viewer shortcuts", () => {
   });
 });
 
+describe("welcome area", () => {
+  it("comes back when the last viewer closes", async () => {
+    const room = await renderShell();
+    act(() => room.setItems([video("a")]));
+    expect(screen.queryByText("Configure")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Close this pane" }));
+    expect(screen.getByText("Configure")).toBeTruthy();
+  });
+});
+
 describe("a watcher", () => {
   it("shows the presenter's window and cannot add to it", async () => {
     const room = FakeSocket.host();
