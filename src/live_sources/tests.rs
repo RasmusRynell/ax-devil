@@ -13,6 +13,7 @@ use workspace::{LiveOverlay, LiveVideoContent};
 mod gate;
 mod latest;
 mod pause;
+mod picture;
 mod retry;
 
 use super::{

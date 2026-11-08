@@ -25,13 +25,15 @@ export const isHiddenLane = ({ info, target }: TreeRow): boolean =>
  * and open instead), Information and Export
  * video, Hide, then Edit and Remove for the whole item, which only a top-level row offers. A row still resolving
  * opens and informs nothing, and an item that was unreadable cannot be edited. A video and an entry export what a
- * viewer shows, so Export video waits for `exportable`: a viewer showing it.
+ * viewer shows, so Export video waits for `exportable`: a viewer showing it. A viewer's header offers the same menu
+ * without Edit (`withEdit` false): editing stays in the sidebar.
  */
 export function rowMenu(
   row: TreeRow,
   item: ItemState | undefined,
   powers: Powers,
   exportable: boolean,
+  withEdit = true,
 ): MenuEntry[] {
   const action = (id: string, label: string, disabled = false, reason?: string): MenuEntry => ({
     kind: "action",
@@ -73,7 +75,7 @@ export function rowMenu(
     row.target ? [action("hidden", row.info.hidden ? "Unhide" : "Hide", !powers.content)] : [],
     owns
       ? [
-          ...(editable(item) ? [action("edit", "Edit", !canEdit(item, powers))] : []),
+          ...(withEdit && editable(item) ? [action("edit", "Edit", !canEdit(item, powers))] : []),
           action("remove", "Remove", !powers.content),
         ]
       : [],

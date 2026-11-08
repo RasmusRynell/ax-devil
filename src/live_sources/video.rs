@@ -192,7 +192,10 @@ impl VideoTask {
     /// Publishes the unit's place in time with the picture it decodes to, if any. Every unit is published, so the
     /// Events list does not depend on pictures: not on a viewer being unpaused, nor on the unit being decodable.
     async fn show(&mut self, id: FrameId, unit: AccessUnit) {
-        let frame = self.decode(id, unit).await;
+        let frame = self.decode(id, unit).await.map(SharedFrame::new);
+        if let Some(picture) = &frame {
+            self.shared.picture.send_replace(Some(picture.clone()));
+        }
         let now = self.shared.clock.now();
         if frame.is_some() || self.shared.watching.load(Ordering::Acquire) == 0 {
             self.shared.board.video_data(now);
@@ -209,7 +212,7 @@ impl VideoTask {
         });
         self.shared.frames.send_replace(Some(Arc::new(Released {
             id,
-            frame: frame.map(SharedFrame::new),
+            frame,
             snapshot,
             attempt: self.attempt,
         })));

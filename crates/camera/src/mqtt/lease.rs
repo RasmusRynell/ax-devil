@@ -85,7 +85,7 @@ impl Lease {
                 )
             );
             return Err(CameraError::new(
-                ErrorKind::NotFound,
+                ErrorKind::SourceUnavailable,
                 format!(
                     "the camera offers no analytics data source {}",
                     self.plan.publisher.source.0

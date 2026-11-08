@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { act, cleanup, fireEvent, screen } from "@testing-library/react";
+import type { ItemState } from "../generated/api";
 import { entry, FakeSocket, playlists } from "../session/fakeSession";
 import { ITEMS, labels, MOT, renderTree } from "./WorkspaceTree.fixture";
 
@@ -59,6 +60,31 @@ describe("hover card", () => {
     expect(card()).toBeNull();
     expect(requests[0].signal.aborted).toBe(true);
     expect(bitmaps[0].close).toHaveBeenCalled();
+  });
+
+  it("asks for a live stream's picture by its item, which has no entry", async () => {
+    const live: ItemState = {
+      id: "cam",
+      label: "Lobby",
+      kind: "live",
+      open: false,
+      resolution: {
+        status: "Resolved",
+        content: {
+          kind: "LiveVideo",
+          id: "cam",
+          generation: 1,
+          display_name: "Lobby",
+          slot: "live",
+          overlay: "none",
+          lanes: ["Lobby"],
+          recipe: null,
+        },
+      },
+    };
+    const room = await renderTree([live], []);
+    fireEvent.pointerEnter(screen.getByRole("treeitem", { name: /^Lobby/ }));
+    expect(fetched.mock.calls[0][0]).toBe(`/api/thumbnail?session=${room.id}&entry=cam`);
   });
 
   it("drops the card when its row goes away under a still pointer", async () => {

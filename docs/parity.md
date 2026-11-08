@@ -20,9 +20,9 @@ owner's written decision. A new feature gets a row in 01 first.
 | WS-10 | Bookmarks to CSV | S | done | `tests/it/bookmarks.rs`, `make test-desktop` |  |
 | WS-11 | Sidebar views Workspace, Live, Offline, Bookmarks, Plugins; search, sort, filter | M | done | `shell/{Sidebar*,WorkspaceTree*,OfflineAdd,ActivityBar,treeModel}.test.*`, `live/rows.test.ts` | Search, Sort, folds and width outlive a view switch; viewers reveal their item. Same-named rows (LOB-014) and cameras get a detail line: place, stream state. Offline has Add; found cameras match held hosts, expanded; Plugins flags failures. Offline sorts by Location |
 | WS-12 | Start panel and welcome area | M | done | `shell/{Shell,WorkspaceFiles,Sidebar}.test.tsx` | Only while empty; heading only with recents; Open Workspace default; Live: AC-03 |
-| WS-13 | Split viewer area: drag to split, preview vs pinned panes | M | done | `viewer/*.test.*`, `playback/{budget,videoDetails}.test.ts`, `desktop/smoke-video.cjs` header details | Left: header menu (SPL-010) |
+| WS-13 | Split viewer area: drag to split, preview vs pinned panes | M | done | `viewer/*.test.*`, `playback/{budget,videoDetails}.test.ts`, `desktop/smoke-video.cjs` header details | Header menu: the row's, without Edit |
 | WS-14 | Long playlists load collapsed | S | done | `shell/reveal.test.ts` |  |
-| WS-15 | Hover cards with thumbnails | S | in progress | `tests/it/local_video.rs`, `shell/{WorkspaceTree,LiveView}.test.tsx` | Offline and Live |
+| WS-15 | Hover cards with thumbnails | S | in progress | `tests/it/{local_video,glance}.rs`, `shell/{WorkspaceTree*,LiveView}.test.tsx` | Offline, Live |
 
 ## Adding content
 

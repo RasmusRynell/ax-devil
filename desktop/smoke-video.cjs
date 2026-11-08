@@ -15,6 +15,8 @@ const {
   until,
 } = require("./smoke-kit.cjs");
 
+const { headerMenu } = require("./smoke-header-menu.cjs");
+
 const FIXTURE = path.join(SMOKE_ROOT, "fixtures/video/long_gop_h264.mp4");
 const SHOWN = `Number.parseInt(document.querySelector("input[aria-label=Frame]")?.value ?? "")`;
 /** A pixel this bright is the picture: the field around it is near-black. */
@@ -398,6 +400,7 @@ async function fullscreen(window) {
     await shoot(`video-lane-menu-${theme}.png`);
     await key("Escape");
     await wait("!document.querySelector('[role=menu]')");
+    await headerMenu(window, { js, wait, key, theme });
   }
   if (native)
     assert.equal(

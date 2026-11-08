@@ -111,6 +111,8 @@ pub struct Shared {
     pub(super) clock: Clock,
     pub(super) board: Board,
     pub(super) frames: watch::Sender<Option<Arc<Released>>>,
+    /// The newest decoded picture, kept when later units give none (nobody watching, a unit that does not decode).
+    pub(super) picture: watch::Sender<Option<SharedFrame>>,
     pub(super) gaps: watch::Sender<GapLog>,
     pub(super) connector: Arc<dyn Connector>,
     pub(super) camera: workspace::ResolvedCamera,
@@ -221,6 +223,7 @@ impl Feed {
             clock,
             board: Board::new(link, clock.now()),
             frames: watch::channel(None).0,
+            picture: watch::channel(None).0,
             gaps: watch::channel(GapLog::default()).0,
             connector,
             camera: spec.camera.clone(),

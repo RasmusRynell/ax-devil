@@ -295,27 +295,21 @@ it("matches a search with case folded as the Workspace view does", () => {
 });
 
 describe("stream status", () => {
-  it("is the worst feed, paused only while the feeds are live", () => {
+  it("is the video's state, whatever the overlay does, and paused over any state while paused", () => {
     const live = { status: "Live" } as const;
-    expect(
-      statusOf({
-        status: "ready",
-        video: live,
-        overlay: { status: "Reconnecting", attempt: 2, reason: "Lost" },
-        paused: false,
-      }),
-    ).toMatchObject({ state: "reconnecting", text: "Reconnecting (2)" });
-    expect(statusOf({ status: "ready", video: live, overlay: null, paused: true })).toMatchObject({
+    const failedOverlay = { overlay: { status: "Failed", reason: "SourceUnavailable" } } as const;
+    const ready = { status: "ready", paused: false, ...failedOverlay } as const;
+    expect(statusOf({ ...ready, video: live })).toMatchObject({ state: "live", anyLive: true });
+    expect(statusOf({ ...ready, video: live, paused: true })).toMatchObject({
       state: "paused",
+      anyLive: false,
     });
-    expect(
-      statusOf({
-        status: "ready",
-        video: { status: "Failed", reason: "LoginRejected" },
-        overlay: live,
-        paused: true,
-      }),
-    ).toMatchObject({ state: "failed", text: "Login rejected" });
+    const failed = { status: "Failed", reason: "LoginRejected" } as const;
+    expect(statusOf({ ...ready, video: failed })).toMatchObject({
+      state: "failed",
+      text: "Login rejected",
+    });
+    expect(statusOf({ ...ready, video: failed, paused: true })).toMatchObject({ state: "paused" });
   });
 
   it("is the session's failure or reconnecting, not the Connecting its feeds fall back to", () => {

@@ -367,7 +367,7 @@ describe("items", () => {
     fireEvent.keyDown(document, { key: "Escape" });
 
     const run = vi.fn();
-    const leave = registerExport("v", "v", run);
+    const leave = registerExport(1, "v", "v", run);
     fireEvent.click(exportItem());
     expect(run).toHaveBeenCalledTimes(1);
     leave();

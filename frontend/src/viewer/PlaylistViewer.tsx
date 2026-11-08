@@ -10,6 +10,7 @@ import type { ViewerProps } from "../viewers";
 import { NO_ACTIONS, ViewerActionsContext, useViewerActions, type ViewerActions } from "./actions";
 import { EntryViewer } from "./EntryViewer";
 import type { Hidden } from "./hidden";
+import { shownEntry } from "./shownEntry";
 import { useHidden } from "./useViewers";
 
 /**
@@ -55,19 +56,13 @@ export function PlaylistViewer({ item, viewer, content }: ViewerProps<"Playlist"
   // What the entry's own viewer offers (play, step, speed) stays reachable next to the playlist's commands.
   const [inner, setInner] = useState<ViewerActions>(NO_ACTIONS);
 
-  // The backend keeps the view naming an entry; until it has, the first one that is not hidden is its choice too,
-  // else the first one.
-  const chosen = viewers[viewer]?.entry;
-  const found = entries.findIndex((entry) => entry.id === chosen);
+  // The backend keeps the view naming an entry; until it has, `shownEntry` makes the same choice, so the header menu
+  // acts on this entry too.
+  const shown = shownEntry(entries, hidden, viewers[viewer]?.entry);
+  const found = shown ? entries.indexOf(shown) : -1;
   const { label, start, end } = playlistAt(playlists, Math.max(found, 0));
   const within = entries.slice(start, end);
-  const index =
-    found >= 0
-      ? found - start
-      : Math.max(
-          0,
-          within.findIndex((entry) => !hidden.entry(entry.id)),
-        );
+  const index = Math.max(found - start, 0);
   const current = within[index] as EntryInfo | undefined;
   const currentHidden = current !== undefined && hidden.entry(current.id);
   const previous = adjacentEntry(within, hidden, index, -1);

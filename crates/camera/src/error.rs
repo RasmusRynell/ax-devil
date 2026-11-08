@@ -30,6 +30,8 @@ pub enum ErrorKind {
     NotFound,
     /// The device cannot do this (an authentication scheme, an API, a request).
     Unsupported,
+    /// The camera does not offer the analytics data source asked for.
+    SourceUnavailable,
     /// The MQTT broker refused the connection.
     BrokerRefused(Refusal),
     /// Something in this process already holds what this needs: a camera has one MQTT client, and another
@@ -73,6 +75,7 @@ impl ErrorKind {
             | Self::NotAxis
             | Self::NotFound
             | Self::Unsupported
+            | Self::SourceUnavailable
             | Self::BrokerRefused(_)
             | Self::Busy
             | Self::Unrestorable
@@ -102,6 +105,7 @@ impl ErrorKind {
             Self::NotAxis => "the device is not an Axis camera",
             Self::NotFound => "the camera does not have this",
             Self::Unsupported => "the camera does not support this",
+            Self::SourceUnavailable => "the camera does not offer this analytics data source",
             Self::BrokerRefused(_) => "the MQTT broker refused the connection",
             Self::Busy => "the camera's MQTT client is in use",
             Self::Unrestorable => "the camera's MQTT client settings cannot be restored afterwards",
@@ -175,6 +179,7 @@ mod tests {
             (ErrorKind::NotAxis, false),
             (ErrorKind::NotFound, false),
             (ErrorKind::Unsupported, false),
+            (ErrorKind::SourceUnavailable, false),
             (ErrorKind::BrokerRefused(Refusal::BadCredentials), false),
             (ErrorKind::Busy, false),
             (ErrorKind::Unrestorable, false),

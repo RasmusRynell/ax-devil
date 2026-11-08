@@ -2596,7 +2596,7 @@ export type LiveOverlayKind = "none" | "rtsp" | "mqtt" | "datahub";
  * Why a feed is not live: the kind of the camera error, as a stable code the client words. Never the device's own
  * text, which can name the host.
  */
-export type LiveReason = "LoginRequired" | "LoginRejected" | "Forbidden" | "NotAxis" | "NotFound" | "Unsupported" | "BrokerUnsupportedProtocol" | "BrokerClientIdRejected" | "BrokerBadCredentials" | "BrokerNotAuthorized" | "Busy" | "Unrestorable" | "InvalidTarget" | "Unreachable" | "TimedOut" | "Lost" | "Silent" | "Malformed" | "Throttled" | "DeviceFault";
+export type LiveReason = "LoginRequired" | "LoginRejected" | "Forbidden" | "NotAxis" | "NotFound" | "Unsupported" | "SourceUnavailable" | "BrokerUnsupportedProtocol" | "BrokerClientIdRejected" | "BrokerBadCredentials" | "BrokerNotAuthorized" | "Busy" | "Unrestorable" | "InvalidTarget" | "Unreachable" | "TimedOut" | "Lost" | "Silent" | "Malformed" | "Throttled" | "DeviceFault";
 
 /**
  * Where one feed (the video, or the overlay) stands.

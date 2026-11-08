@@ -422,7 +422,7 @@ async fn a_data_source_the_camera_does_not_offer_is_refused_before_anything_chan
     else {
         unreachable!()
     };
-    assert_eq!(error.kind, ErrorKind::NotFound);
+    assert_eq!(error.kind, ErrorKind::SourceUnavailable);
     // The key is the app's, but whatever reaches an error is printed on a line of its own.
     assert!(error.to_string().contains("nothing\\n2026"), "{error}");
     assert!(!error.to_string().contains('\n'), "{error}");

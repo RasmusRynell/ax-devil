@@ -15,6 +15,7 @@ import { viewerFor } from "../viewers";
 import { extent, prune, rects, resize, seams, type Path, type Size } from "./layout";
 import { activated, moved, pinned, resized } from "./placement";
 import { Pane } from "./Pane";
+import { PaneMenu, type PaneMenuAt } from "./PaneMenu";
 import { ReloadFailed, ReloadOffer } from "./ReloadOffer";
 import { Seam } from "./Seam";
 import { useClosePanes, useViewers, type Viewer } from "./useViewers";
@@ -132,6 +133,7 @@ export function SplitArea() {
   const [size, area] = useSize();
   const [dragging, setDragging] = useState<{ path: Path; share: number } | null>(null);
   const dragged = useRef<number | null>(null);
+  const [menu, setMenu] = useState<PaneMenuAt | null>(null);
 
   const placed = useMemo(
     () => prune(layout, (id) => viewers.some((viewer) => viewer.id === id)),
@@ -170,6 +172,7 @@ export function SplitArea() {
                   onPin={(pin) => setView((now) => pinned(now, viewer.id, pin))}
                   onClose={() => closePanes([viewer.id])}
                   onDrop={(source, side) => setView((now) => moved(now, source, viewer.id, side))}
+                  onMenu={(x, y) => setMenu({ viewer: viewer.id, item: viewer.item.id, x, y })}
                 >
                   <PaneContent viewer={viewer} dismissed={dismissed} onDismiss={dismiss} />
                 </Pane>
@@ -179,6 +182,7 @@ export function SplitArea() {
           {bars.map((seam) => (
             <Seam key={seam.path.join("")} seam={seam} onResize={onResize} />
           ))}
+          <PaneMenu at={menu} onClose={() => setMenu(null)} />
         </div>
       </PaneBudget>
     </div>

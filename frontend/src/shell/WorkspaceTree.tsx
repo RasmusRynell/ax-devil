@@ -6,29 +6,23 @@ import { IconToggle } from "../kit/IconToggle";
 import { Menu, type MenuCommand, type MenuEntry } from "../kit/Menu";
 import { Popup } from "../kit/Popup";
 import { SectionCaption } from "../kit/SectionCaption";
-import { reasonOf } from "../errors";
-import { useStreamStatuses } from "../live/streamState";
-import { useCan, useCommand, useDoc, useView } from "../session/session";
+import { useView } from "../session/session";
 import { exportOf, useExportTargets } from "../viewer/exportTargets";
-import { useShow } from "../viewer/useViewers";
 import { HoverPicture } from "./HoverPicture";
-import { useItemDialogs } from "./ItemDialogs";
-import { rowInformation } from "./rowInformation";
 import { useKept } from "./keptState";
 import { useFolds } from "./RevealShown";
 import { unfold } from "./reveal";
-import { canEdit, isHiddenLane, rowMenu } from "./rowMenu";
 import {
   filteredOut,
   openRows,
   ORDERS,
   sectionsOf,
-  treeOf,
   visibleRows,
   type Order,
   type SectionId,
   type TreeRow,
 } from "./treeModel";
+import { useRowActions } from "./useRowActions";
 import { useRowThumbnail } from "./useRowThumbnail";
 import { WorkspaceList } from "./WorkspaceList";
 
@@ -68,14 +62,9 @@ export function WorkspaceTree({
   search: string;
   empty: string;
 }) {
-  const workspace = useDoc()?.workspace;
-  const command = useCommand();
-  const show = useShow();
-  const hides = useCan("content");
-  const host = useCan("host");
-  const powers = { content: hides, host };
-  const { edit, inform, dialogs } = useItemDialogs();
-  const statuses = useStreamStatuses();
+  const actions = useRowActions();
+  const { tree, statuses, powers, problem, dialogs, open, toggleHidden, editRow, removeRow } =
+    actions;
   // An open menu follows viewers that open or close under it.
   useExportTargets();
   // What the user set up in this view stays while the window shows another view or hides the sidebar.
@@ -89,7 +78,6 @@ export function WorkspaceTree({
   const [folded, setFolded] = useKept(`${view}:folded`, NO_FOLDED);
   const [current, setCurrent] = useState<string | null>(null);
   const [menu, setMenu] = useState<{ key: string; x: number; y: number } | null>(null);
-  const [problem, setProblem] = useState<string | null>(null);
   const prefix = useId();
   const root = useRef<HTMLElement>(null);
   const scroller = useRef<HTMLDivElement>(null);
@@ -99,7 +87,6 @@ export function WorkspaceTree({
   // The tree a menu came from, which takes the focus back.
   const menuFrom = useRef<HTMLElement | null>(null);
 
-  const tree = useMemo(() => (workspace ? treeOf(workspace, statuses) : []), [workspace, statuses]);
   const [views] = useView("viewers");
   const openKeys = useMemo(
     () =>
@@ -186,26 +173,6 @@ export function WorkspaceTree({
       )?.focus();
   });
 
-  const fail = (error: unknown) =>
-    setProblem(error instanceof Error ? error.message : String(error));
-  // A lane's row brings forward a viewer already showing its entry; `side` opens a pinned viewer to the right of the
-  // front pane.
-  const present = (row: TreeRow, side = false) =>
-    show(row.item, row.info.kind === "item" ? undefined : (row.info.entry ?? undefined), {
-      side,
-      reuse: !side && row.info.kind === "lane",
-    }).then(() => setProblem(null), fail);
-  // A row that cannot open says why and sends nothing; one still resolving, or a lane hidden itself (Unhide and open
-  // opens that), does nothing.
-  const open = (row: TreeRow, side = false) => {
-    const { status } = row.info;
-    if (status.status === "Pending" || isHiddenLane(row)) return Promise.resolve();
-    if (status.status === "Unavailable") {
-      setProblem(`${row.info.label}: ${reasonOf(status)}`);
-      return Promise.resolve();
-    }
-    return present(row, side);
-  };
   // The search opens every row and section with a match; folding meanwhile lasts until the search text changes.
   const setCollapsedState = (key: string, collapse: boolean) =>
     searching
@@ -225,26 +192,6 @@ export function WorkspaceTree({
       setHeld((now) => ({ ...now, revealed: withKey(now.revealed, id, false) }));
     }
   };
-  const setHidden = (row: TreeRow, hidden: boolean) =>
-    row.target
-      ? command({ type: "content", command: { type: "setHidden", target: row.target, hidden } })
-      : Promise.resolve();
-  const toggleHidden = (row: TreeRow) =>
-    void setHidden(row, !row.info.hidden).then(() => setProblem(null), fail);
-  const unhideOpen = (row: TreeRow) => void setHidden(row, false).then(() => present(row), fail);
-  const itemOf = (row: TreeRow) => workspace?.items.find(({ id }) => id === row.item);
-  /** Edit and Remove act on the row's whole item and only a top-level row has them. */
-  const editRow = (row: TreeRow) => {
-    const item = itemOf(row);
-    if (row.level === 1 && canEdit(item, powers)) edit(item);
-  };
-  const removeRow = (row: TreeRow) => {
-    if (row.level !== 1 || !hides) return;
-    command({ type: "content", command: { type: "remove", item: row.item } }).then(
-      () => setProblem(null),
-      fail,
-    );
-  };
   const closeMenu = useCallback(() => {
     setMenu(null);
     menuFrom.current?.focus({ preventScroll: true });
@@ -254,22 +201,9 @@ export function WorkspaceTree({
   // The export of the viewer showing the row: an entry's own, or any entry of a video item.
   const exportOfRow = (row: TreeRow) =>
     exportOf(row.item, row.info.kind === "entry" ? (row.info.entry ?? undefined) : undefined);
-  const menuEntries = menuRow
-    ? rowMenu(menuRow, itemOf(menuRow), powers, exportOfRow(menuRow) !== undefined)
-    : [];
-  const choose = (choice: MenuCommand) => {
-    if (!menuRow) return;
-    if (choice.id === "open" || choice.id === "open-side")
-      void open(menuRow, choice.id === "open-side");
-    else if (choice.id === "unhide-open") unhideOpen(menuRow);
-    else if (choice.id === "export-video") exportOfRow(menuRow)?.();
-    else if (choice.id === "information") {
-      const info = rowInformation(menuRow, workspace?.items ?? [], workspace?.rows ?? []);
-      if (info) inform(info);
-    } else if (choice.id === "edit") editRow(menuRow);
-    else if (choice.id === "remove") removeRow(menuRow);
-    else toggleHidden(menuRow);
-  };
+  const menuEntries = menuRow ? actions.menuOf(menuRow, exportOfRow(menuRow)) : [];
+  const choose = (choice: MenuCommand) =>
+    menuRow && actions.choose(menuRow, choice.id, exportOfRow(menuRow));
 
   return (
     <section
@@ -340,7 +274,7 @@ export function WorkspaceTree({
                     collapsed={folds}
                     open={openKeys}
                     scroller={scroller}
-                    hides={hides}
+                    hides={powers.content}
                     onOpen={(row, side) => void open(row, side)}
                     onReveal={reveal}
                     onCurrent={setCurrent}

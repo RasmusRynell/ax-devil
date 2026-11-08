@@ -44,6 +44,7 @@ export function Pane({
   onPin,
   onClose,
   onDrop,
+  onMenu,
   children,
 }: {
   viewer: number;
@@ -58,6 +59,8 @@ export function Pane({
   onPin: (pin: boolean) => void;
   onClose: () => void;
   onDrop: (source: number, side: Side) => void;
+  /** A right click on the header, at the pointer; the lanes below have menus of their own. */
+  onMenu?: (x: number, y: number) => void;
   children: ReactNode;
 }) {
   const [hint, setHint] = useState<Side | null>(null);
@@ -137,6 +140,10 @@ export function Pane({
         }}
         onDragEnd={() => {
           dragged.current = null;
+        }}
+        onContextMenu={(event) => {
+          event.preventDefault();
+          onMenu?.(event.clientX, event.clientY);
         }}
         className={`flex h-row shrink-0 items-center border-b-edge bg-panel ${
           active ? "border-accent" : "border-line"

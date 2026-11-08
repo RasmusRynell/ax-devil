@@ -100,6 +100,8 @@ pub enum LiveReason {
     NotFound,
     /// The device cannot do this.
     Unsupported,
+    /// The camera does not offer the analytics data source the stream asks for.
+    SourceUnavailable,
     /// The MQTT broker does not speak the protocol version offered.
     BrokerUnsupportedProtocol,
     /// The MQTT broker rejected the client identifier.

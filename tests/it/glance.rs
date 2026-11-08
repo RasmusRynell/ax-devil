@@ -149,6 +149,25 @@ impl World {
         panic!("the stream did not resolve");
     }
 
+    /// Opens the viewer of `item` and waits until it is open.
+    async fn start(&self, item: ItemId) {
+        self.handle
+            .command(Command::Content(DocCommand::OpenViewer(item)))
+            .unwrap();
+        for _ in 0..200 {
+            if self
+                .state
+                .sessions
+                .find_item(item)
+                .is_some_and(|held| held.open && held.content.is_some())
+            {
+                return;
+            }
+            tokio::time::sleep(Duration::from_millis(25)).await;
+        }
+        panic!("the viewer did not open");
+    }
+
     async fn call(&self, request: Request<Body>) -> (StatusCode, Vec<u8>) {
         let mut request = request;
         request
@@ -192,21 +211,7 @@ async fn a_stream_the_user_has_not_started_is_sent_nothing_and_a_started_one_is_
     assert!(seen.lock().unwrap().is_empty(), "nothing was sent");
 
     // Started: the picture comes with the stream's own login, as a Digest answer.
-    world
-        .handle
-        .command(Command::Content(DocCommand::OpenViewer(item)))
-        .unwrap();
-    for _ in 0..200 {
-        if world
-            .state
-            .sessions
-            .find_item(item)
-            .is_some_and(|held| held.open && held.content.is_some())
-        {
-            break;
-        }
-        tokio::time::sleep(Duration::from_millis(25)).await;
-    }
+    world.start(item).await;
     let (status, picture) = world.snapshot(item).await;
     assert_eq!((status, picture.as_slice()), (StatusCode::OK, JPEG));
     let asked = seen.lock().unwrap().len();
@@ -214,6 +219,22 @@ async fn a_stream_the_user_has_not_started_is_sent_nothing_and_a_started_one_is_
     assert!(seen.lock().unwrap()[1].1);
     assert_eq!(world.snapshot(item).await.0, StatusCode::OK);
     assert_eq!(seen.lock().unwrap().len(), asked, "the cooldown answered");
+
+    // Another stream of the same camera, login and head is the same read.
+    let other = world.add_stream(port).await;
+    world.start(other).await;
+    assert_eq!(world.snapshot(other).await.0, StatusCode::OK);
+    assert_eq!(seen.lock().unwrap().len(), asked, "one cooldown for both");
+
+    // The Workspace view asks by the session and the item's content id, and gets the same picture.
+    let request = Request::get(format!(
+        "/api/thumbnail?session={}&entry={item}",
+        world.handle.session()
+    ))
+    .body(Body::empty());
+    let (status, picture) = world.call(request.unwrap()).await;
+    assert_eq!((status, picture.as_slice()), (StatusCode::OK, JPEG));
+    assert_eq!(seen.lock().unwrap().len(), asked, "the same cooldown");
 
     // The check tells what signing in with that login found, as a scan row.
     let (status, row) = world.check(item).await;
