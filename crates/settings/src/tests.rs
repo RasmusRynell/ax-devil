@@ -46,7 +46,7 @@ fn every_default_is_valid_for_its_own_setting() {
 }
 
 #[test]
-fn the_timing_defaults_take_a_whole_object_in_range_and_sticky_is_not_written_while_it_is_the_default()
+fn the_view_defaults_take_a_whole_object_in_range_and_sticky_is_not_written_while_it_is_the_default()
  {
     let sticky = TABLE
         .iter()
@@ -81,9 +81,31 @@ fn the_timing_defaults_take_a_whole_object_in_range_and_sticky_is_not_written_wh
         json!({"tolerance_ms": 50, "extra": 0}),
         json!(50),
     ];
+    let filter = TABLE
+        .iter()
+        .find(|row| row.key == "overlays.default_object_filter")
+        .unwrap();
+    let open = json!({"min": null, "max": null});
+    let ranges = json!({"score": open, "confidence": {"min": 0.2, "max": 1}});
+    let huge = json!({"score": {"min": 10_000_000_000_000_000_000_u64, "max": -1.5e300}, "confidence": open});
+    let filter_ok = [
+        json!({"filter": {}, "ranges": huge, "expression": ""}),
+        json!({"filter": {"car": false, "": true}, "ranges": ranges, "expression": "score > 0.4"}),
+        filter.kind.default_value(),
+    ];
+    let filter_bad = [
+        json!({"filter": {}, "ranges": ranges}),
+        json!({"filter": {"car": 0}, "ranges": ranges, "expression": ""}),
+        json!({"filter": {}, "ranges": {"score": open}, "expression": ""}),
+        json!({"filter": {}, "ranges": {"score": open, "confidence": {"min": "0"}}, "expression": ""}),
+        json!({"filter": {}, "ranges": ranges, "expression": "x".repeat(4097)}),
+        json!({"filter": {}, "ranges": ranges, "expression": "", "extra": 0}),
+        json!("none"),
+    ];
     for (row, ok, bad) in [
         (sticky, &sticky_ok[..], &sticky_bad[..]),
         (sync, &sync_ok, &sync_bad),
+        (filter, &filter_ok, &filter_bad),
     ] {
         for ok in ok {
             assert_eq!(row.kind.validate(ok), Ok(()), "{ok}");

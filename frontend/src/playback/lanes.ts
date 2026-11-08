@@ -1,7 +1,7 @@
 /** The lanes of a viewer's entry: what each shows, how the user has set it, and what the backend says about it. */
 
 import type { SettingsState } from "../generated/api";
-import { MEASURES, OPEN_RANGES } from "../present";
+import { compileFilter, MEASURES, OPEN_RANGES, withRanges } from "../present";
 import type { CatalogLook, LaneSettings, LaneState, Sticky } from "./contract";
 import type {
   BasisWire,
@@ -43,18 +43,8 @@ const sameSent = (a: LaneSettings, b: LaneSettings): boolean =>
 
 /** What changes the marks the lane draws from a sample, not which sample it is. */
 function sameStyle(a: LaneSettings, b: LaneSettings): boolean {
-  const keys = new Set([...Object.keys(a.filter), ...Object.keys(b.filter)]);
   return (
-    a.catalog === b.catalog &&
-    a.theme === b.theme &&
-    a.hidden === b.hidden &&
-    a.expression === b.expression &&
-    MEASURES.every(
-      (measure) =>
-        a.ranges[measure].min === b.ranges[measure].min &&
-        a.ranges[measure].max === b.ranges[measure].max,
-    ) &&
-    [...keys].every((key) => a.filter[key] === b.filter[key])
+    a.catalog === b.catalog && a.theme === b.theme && a.hidden === b.hidden && sameFilter(a, b)
   );
 }
 
@@ -99,22 +89,63 @@ export const savedTiming = (values: SettingsState["values"]): Timing => ({
   sticky: values[DEFAULT_STICKY] as Sticky,
 });
 
+/** Which objects a lane shows: its class overrides, score and confidence ranges and expression. */
+export type ObjectFilter = Pick<LaneSettings, "filter" | "ranges" | "expression">;
+
+/** The Personal setting that holds the default object filter. */
+export const DEFAULT_OBJECT_FILTER = "overlays.default_object_filter";
+
+/** The Personal default object filter new lanes start with, offline and live alike. */
+export const savedFilter = (values: SettingsState["values"]): ObjectFilter =>
+  values[DEFAULT_OBJECT_FILTER] as ObjectFilter;
+
+/** Whether two object filters are the same: the same class overrides, ranges and expression. */
+export function sameFilter(a: ObjectFilter, b: ObjectFilter): boolean {
+  const keys = new Set([...Object.keys(a.filter), ...Object.keys(b.filter)]);
+  return (
+    a.expression === b.expression &&
+    MEASURES.every(
+      (measure) =>
+        a.ranges[measure].min === b.ranges[measure].min &&
+        a.ranges[measure].max === b.ranges[measure].max,
+    ) &&
+    [...keys].every((key) => a.filter[key] === b.filter[key])
+  );
+}
+
+/** What new lanes start with besides their catalog: the Personal default timing and object filter. */
+export type Saved = Timing & ObjectFilter;
+
+/** The Personal defaults new lanes start with, offline and live alike. */
+export const savedDefaults = (values: SettingsState["values"]): Saved => ({
+  ...savedTiming(values),
+  ...savedFilter(values),
+});
+
+/** The saved filter as a lane may hold it: whole, or open when its expression and ranges no longer compile together. */
+function usableFilter({ filter, ranges, expression }: ObjectFilter): ObjectFilter {
+  return compileFilter(withRanges(expression, ranges)).ok
+    ? { filter, ranges, expression }
+    : { filter, ranges: OPEN_RANGES, expression: "" };
+}
+
 /**
  * What new lanes start with: the backend's defaults, but the Personal default catalog when it is usable and the
- * Personal default timing when there is one.
+ * Personal default timing and object filter when there are any.
  */
 export function startWith(
   defaults: LaneDefaultsWire,
   catalogs: readonly CatalogInfoWire[],
   personal: string | null | undefined,
-  timing?: Timing,
+  saved?: Saved,
 ): LaneSettings {
   const settings = settingsOf(defaults);
   return {
     ...settings,
-    ...timing,
-    kept_timeout_ms: timing?.sticky.timeout_ms ?? settings.kept_timeout_ms,
-    kept_tolerance_ms: timing?.tolerance_ms ?? settings.kept_tolerance_ms,
+    ...saved,
+    ...(saved && usableFilter(saved)),
+    kept_timeout_ms: saved?.sticky.timeout_ms ?? settings.kept_timeout_ms,
+    kept_tolerance_ms: saved?.tolerance_ms ?? settings.kept_tolerance_ms,
     catalog: usableCatalog(catalogs, personal)?.id ?? settings.catalog,
   };
 }

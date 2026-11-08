@@ -1,8 +1,10 @@
 import { scopeOf } from "../commands";
+import type { CommandId } from "../generated/settings";
 import { Icon } from "../kit/Icon";
 import { IconButton } from "../kit/IconButton";
 import { useFailedPlugins } from "../plugins/failed";
 import { useAllowed } from "../session/session";
+import { useSettings } from "../settings";
 import { ACTIVITY, type ActivityItem } from "./views";
 
 interface Props {
@@ -18,6 +20,7 @@ interface Props {
 export function ActivityBar({ active, onSelect }: Props) {
   const allowed = useAllowed();
   const failed = useFailedPlugins();
+  const { shortcuts } = useSettings();
   const warnings: Record<string, string> =
     failed > 0 ? { plugins: `${failed} failed to load` } : {};
   const button = (item: ActivityItem) => {
@@ -28,6 +31,7 @@ export function ActivityBar({ active, onSelect }: Props) {
           icon={item.icon}
           data-cursor-id={`activity:${item.id}`}
           label={warning ? `${item.label}: ${warning}` : item.label}
+          shortcut={item.opens === "command" ? shortcuts[item.id as CommandId] : null}
           disabled={!allowed[item.opens === "view" ? "view" : scopeOf(item.id)]}
           className="size-activity border-transparent aria-pressed:border-accent max-sm:border-b-edge sm:border-l-edge"
           aria-pressed={item.opens === "view" ? active === item.id : undefined}

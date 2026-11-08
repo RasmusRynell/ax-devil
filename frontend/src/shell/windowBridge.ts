@@ -39,6 +39,8 @@ export interface WindowBridge {
   disconnect(): Promise<void>;
   /** The desktop app's own version. */
   appVersion(): Promise<string>;
+  /** Opens the folder of the log file at this absolute path in the file manager; only the local page may ask. */
+  openLogs(file: string): Promise<void>;
   /** Closes the app and starts it again; only the local page may ask. Absent when the app did not start its backend. */
   restart?(): void;
   /** The page zoom factor (1 is 100%), read when asked. */

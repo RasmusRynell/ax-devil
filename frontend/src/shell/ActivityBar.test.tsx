@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, expect, it, vi } from "vite-plus/test";
 import { cleanup, render, screen } from "@testing-library/react";
+import { FakeSettings } from "../fakeSettings";
 import type { PluginsInfo } from "../generated/api";
 import { reportFailedPlugins } from "../plugins/failed";
 import { FakeSocket } from "../session/fakeSession";
@@ -25,9 +26,11 @@ it("flags Plugins with how many plugins failed to load, from the window opening 
     vi.fn(async () => ({ ok: true, status: 200, json: async () => info })),
   );
   render(
-    <SessionProvider>
-      <ActivityBar active={null} onSelect={() => {}} />
-    </SessionProvider>,
+    <FakeSettings>
+      <SessionProvider>
+        <ActivityBar active={null} onSelect={() => {}} />
+      </SessionProvider>
+    </FakeSettings>,
   );
   await screen.findByRole("button", { name: "Plugins: 2 failed to load" });
   expect(screen.getByRole("button", { name: "Live" })).toBeTruthy();

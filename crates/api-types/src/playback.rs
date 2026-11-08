@@ -99,6 +99,16 @@ pub enum ClientMessage {
         /// Whether the lane is shown; an unsubscribed lane gets no Frame Maps and its samples are not sent for it.
         subscribed: bool,
     },
+    /// Names the entry of the Content that the viewer is likely to open next, and the labels of the lanes it would
+    /// show, so the backend can ready the entry's caches in the background while this one plays. A newer message
+    /// replaces the older; `entry` of `None`, an entry the Content does not have or the setting being off prepares
+    /// nothing. Nothing is sent back.
+    Prepare {
+        /// The entry's id, `EntryInfo::id`.
+        entry: Option<String>,
+        /// The labels of the lanes to prepare, `EntryInfo::lanes`.
+        lanes: Vec<String>,
+    },
     /// Asks for a catalog document by id; the answer is a `Catalog` message.
     Catalog {
         /// The catalog id, such as `built-in:standard`.

@@ -21,8 +21,9 @@ use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use ts_rs::TS;
 
-/// Raised when a route changes in a way an older desktop shell or frontend cannot use.
-pub const API_VERSION: u32 = 19;
+/// Raised when a route changes in a way an older desktop shell or frontend cannot use, or a client message is added
+/// that an older backend would reject (a development backend of this version is reused, an older one is not).
+pub const API_VERSION: u32 = 20;
 
 /// Raised when the desktop shell's own interface (the preload bridge and its IPC) changes in a way a frontend served
 /// by a remote backend cannot use. The shell loads a remote backend only when its [`AppInfo::shell`] matches.
@@ -69,7 +70,7 @@ pub struct SettingsState {
     /// The settings the caller may read by dotted key, such as `"ui.theme"`, with the default when unset: those of
     /// its scopes, a `$NAME` reference as written and a literal secret masked.
     #[ts(
-        type = "Record<SettingKey, string | boolean | number | Array<Record<string, string>> | { enabled: boolean; timeout_ms: number | null; opacity: number } | { tolerance_ms: number | null }>"
+        type = "Record<SettingKey, string | boolean | number | Array<Record<string, string>> | { enabled: boolean; timeout_ms: number | null; opacity: number } | { tolerance_ms: number | null } | { filter: Record<string, boolean>; ranges: Record<\"score\" | \"confidence\", { min: number | null; max: number | null }>; expression: string }>"
     )]
     pub values: BTreeMap<String, serde_json::Value>,
     /// What each non-secret setting among `values` that holds a `$NAME` reference gives as it is used (a number for a
@@ -96,6 +97,10 @@ pub struct SettingsFile {
     /// The file format version.
     #[ts(type = "number")]
     pub version: u64,
+    /// The log file's path, when this backend writes one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub log: Option<String>,
 }
 
 /// The body of `PUT /api/settings`: every setting and shortcut the caller may change, which replace the stored ones.
@@ -104,7 +109,7 @@ pub struct SettingsFile {
 pub struct SettingsChange {
     /// Every setting of the caller's scopes by dotted key.
     #[ts(
-        type = "Record<SettingKey, string | boolean | number | Array<Record<string, string>> | { enabled: boolean; timeout_ms: number | null; opacity: number } | { tolerance_ms: number | null }>"
+        type = "Record<SettingKey, string | boolean | number | Array<Record<string, string>> | { enabled: boolean; timeout_ms: number | null; opacity: number } | { tolerance_ms: number | null } | { filter: Record<string, boolean>; ranges: Record<\"score\" | \"confidence\", { min: number | null; max: number | null }>; expression: string }>"
     )]
     pub values: BTreeMap<String, serde_json::Value>,
     /// The key of every command; `null` when unbound. Empty unless the caller holds the `preferences` grant.

@@ -45,6 +45,18 @@ describe("menu bar", () => {
     );
   });
 
+  it("shows the Plugins view from the View menu, and the Settings button's tooltip names its key", async () => {
+    await renderShell();
+    expect(screen.getByRole("button", { name: "Settings" }).getAttribute("title")).toBe(
+      "Settings (Ctrl+,)",
+    );
+    const plugins = screen.getByRole("button", { name: "Plugins" });
+    expect(plugins.getAttribute("aria-pressed")).toBe("false");
+    fireEvent.click(screen.getByRole("menuitem", { name: "View" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Plugins" }));
+    expect(plugins.getAttribute("aria-pressed")).toBe("true");
+  });
+
   it("opens with the keyboard and closes with Escape", async () => {
     await renderShell();
     const view = screen.getByRole("menuitem", { name: "View" });
@@ -145,6 +157,76 @@ describe("about on the desktop", () => {
       expect(dialog.textContent?.includes("1.2.3")).toBe(remote);
       cleanup();
     }
+  });
+});
+
+describe("diagnostics", () => {
+  afterEach(() => {
+    delete window.axDevilWindow;
+    Reflect.deleteProperty(navigator, "clipboard");
+  });
+
+  it("copies what a bug report needs and opens the logs folder, for a caller who sees this machine's files", async () => {
+    const writeText = vi.fn(async () => undefined);
+    Object.defineProperty(navigator, "clipboard", { value: { writeText }, configurable: true });
+    const openLogs = vi.fn(async () => undefined);
+    window.axDevilWindow = {
+      appVersion: async () => "0.9.0",
+      onMaximizedChange: () => () => undefined,
+      openLogs,
+    } as unknown as Window["axDevilWindow"];
+    const file = { path: "/cfg/settings.json", version: 1, log: "/state/logs/ax-devil.log" };
+    const about = () => {
+      fireEvent.click(screen.getByRole("menuitem", { name: "Help" }));
+      fireEvent.click(screen.getByRole("menuitem", { name: "About" }));
+    };
+    await renderShell({ grants: ["preferences", "sessions"], file });
+    about();
+    await screen.findByText("Version 0.9.0");
+    fireEvent.click(screen.getByRole("button", { name: "Open logs folder" }));
+    expect(openLogs).toHaveBeenCalledWith("/state/logs/ax-devil.log");
+    fireEvent.click(screen.getByRole("button", { name: "Copy diagnostics" }));
+    const copied = (writeText.mock.calls as unknown as string[][])[0][0];
+    expect(copied.split("\n")).toEqual([
+      "ax-devil 0.9.0",
+      "Backend 1.2.3",
+      navigator.userAgent,
+      "Settings /cfg/settings.json (version 1)",
+      "Log /state/logs/ax-devil.log",
+    ]);
+
+    // Without the files grant the backend sends no paths, and the dialog offers nothing to copy.
+    cleanup();
+    await renderShell({ grants: ["preferences", "sessions"] });
+    about();
+    await screen.findByRole("dialog", { name: "About ax-devil" });
+    expect(screen.queryByRole("button", { name: "Copy diagnostics" })).toBeNull();
+  });
+});
+
+describe("diagnostics without a working clipboard", () => {
+  afterEach(() => void Reflect.deleteProperty(navigator, "clipboard"));
+  const file = { path: "/cfg/settings.json", version: 1, log: "/state/logs/ax-devil.log" };
+  const about = () => {
+    fireEvent.click(screen.getByRole("menuitem", { name: "Help" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "About" }));
+  };
+
+  it("offers nothing to copy where the page has no clipboard", async () => {
+    await renderShell({ file });
+    about();
+    await screen.findByRole("dialog", { name: "About ax-devil" });
+    expect(navigator.clipboard).toBeUndefined();
+    expect(screen.queryByRole("button", { name: "Copy diagnostics" })).toBeNull();
+  });
+
+  it("says why when the clipboard refuses", async () => {
+    const writeText = vi.fn(async () => Promise.reject(new Error("Not allowed")));
+    Object.defineProperty(navigator, "clipboard", { value: { writeText }, configurable: true });
+    await renderShell({ file });
+    about();
+    fireEvent.click(await screen.findByRole("button", { name: "Copy diagnostics" }));
+    expect((await screen.findByRole("alert")).textContent).toBe("Not allowed");
   });
 });
 

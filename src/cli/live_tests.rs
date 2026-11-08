@@ -56,3 +56,24 @@ fn an_expanded_host_launches_and_the_item_keeps_the_references_as_written() {
     assert_eq!(recipe.host, "$AX_DEVIL_TARGET_ADDR");
     assert_eq!(recipe.password.expose(), "$AX_DEVIL_TARGET_PASS");
 }
+
+#[test]
+fn a_datahub_channel_past_32_bits_is_refused_and_the_largest_one_opens() {
+    let websocket = |channel: &'static str| {
+        let flags = [
+            "--overlay",
+            "websocket",
+            "--topic",
+            "t",
+            "--channel-id",
+            channel,
+        ];
+        live(&[("AX_DEVIL_TARGET_ADDR", "192.0.2.7")], &flags)
+    };
+    let error = websocket("4294967296").err().unwrap();
+    assert!(
+        error.contains("Channel ID must be at most 4294967295."),
+        "{error}"
+    );
+    assert!(websocket("4294967295").is_ok());
+}

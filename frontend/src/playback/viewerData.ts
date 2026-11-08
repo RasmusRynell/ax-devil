@@ -8,8 +8,9 @@ import { FrameFields } from "./frameFields";
 import { Inspections } from "./inspection";
 import { LaneCatalogs } from "./laneCatalog";
 import { LaneData, type LaneMatch } from "./laneData";
+import { NextEntry } from "./nextEntry";
 import type { LaneFrame, LaneSettings, Surface } from "./contract";
-import { startWith, type LaneSet, type Timing } from "./lanes";
+import { startWith, type LaneSet, type Saved } from "./lanes";
 import type {
   ClientMessage,
   FrameMapEnvelope,
@@ -34,6 +35,8 @@ export class ViewerData {
   readonly fields: FrameFields;
   /** The lists of the lanes' whole files. */
   readonly files: FileScope;
+  /** The entry the backend is asked to prepare next. */
+  readonly next: NextEntry;
   readonly #laneCatalogs: LaneCatalogs;
   /** The built-in default catalog, which a lane draws with when its own has failed and it has no other. */
   #fallback = "";
@@ -60,6 +63,7 @@ export class ViewerData {
     this.#laneCatalogs = new LaneCatalogs(this.catalogs, () => this.#fallback);
     this.inspections = new Inspections(send);
     this.fields = new FrameFields(send, after);
+    this.next = new NextEntry(send);
   }
 
   get draw(): LaneData | undefined {
@@ -123,26 +127,28 @@ export class ViewerData {
     this.#matched = [];
     this.samples.clear();
     this.files.suspend();
+    this.next.close();
   }
 
   /**
    * The backend opened the entry: its lanes open, starting from `prior` settings, else the `personal` default catalog
-   * and `timing`; what the old connection was asked is asked again, and lanes that changed forget their catalog.
+   * and `saved`; what the old connection was asked is asked again, and lanes that changed forget their catalog.
    */
   reopen(
     opened: Pick<Opened, "lanes" | "lane_defaults" | "catalogs">,
     personal: string | null | undefined,
     prior: readonly LaneSettings[] | undefined,
-    timing?: Timing,
+    saved?: Saved,
   ): void {
     const before = this.#lanes.states;
-    const defaults = startWith(opened.lane_defaults, opened.catalogs, personal, timing);
+    const defaults = startWith(opened.lane_defaults, opened.catalogs, personal, saved);
     this.#lanes.open(opened.lanes, defaults, prior).forEach(this.#send);
     this.#fallback = opened.lane_defaults.catalog;
     this.catalogs.open(opened.catalogs);
     this.inspections.reconnect();
     this.fields.reconnect();
     this.files.reopen();
+    this.next.reopen();
     opened.lanes.forEach((lane: LaneInfo, index) => {
       if (before[index]?.label !== lane.label || before[index]?.source !== lane.source)
         this.#laneCatalogs.forget(index);

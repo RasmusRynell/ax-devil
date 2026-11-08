@@ -1,7 +1,7 @@
 import { render, screen } from "@testing-library/react";
 import { GrantsContext } from "../access";
 import { DEFAULT_SETTINGS, FakeSettings } from "../fakeSettings";
-import type { Grant } from "../generated/api";
+import type { Grant, SettingsState } from "../generated/api";
 import type { CommandId } from "../generated/settings";
 import { FakeSocket } from "../session/fakeSession";
 import { SessionProvider } from "../session/session";
@@ -13,15 +13,19 @@ export async function showShell({
   shortcuts = {},
   values = {},
   grants = ["configuration"],
+  file,
   save,
 }: {
   shortcuts?: Partial<Record<CommandId, string | null>>;
   values?: Partial<typeof DEFAULT_SETTINGS.values>;
   grants?: Grant[];
+  /** Where the backend says its settings and log are, as it tells a caller who may see this machine's files. */
+  file?: SettingsState["file"];
   save?: SettingsApi["save"];
 } = {}) {
   const state = {
     ...DEFAULT_SETTINGS,
+    file,
     values: { ...DEFAULT_SETTINGS.values, ...values },
     shortcuts: { ...DEFAULT_SETTINGS.shortcuts, ...shortcuts },
   };

@@ -16,7 +16,7 @@ import type { LaneSettings, Viewport } from "../playback/contract";
 import { connectWorker } from "../playback/connect";
 import { FRESH_MEMORY, type InspectorMemory } from "../playback/fields";
 import { shownLanes } from "../playback/laneCells";
-import { savedTiming } from "../playback/lanes";
+import { savedDefaults } from "../playback/lanes";
 import { LIVE_LANE_COMMANDS, laneContextEntries } from "../playback/laneContextMenu";
 import { useLaneFullscreen } from "../playback/laneFullscreen";
 import { LaneGrid } from "../playback/LaneGrid";
@@ -210,8 +210,8 @@ export function LiveVideoViewer({
   const priorLanes = useRef<readonly LaneSettings[]>([]);
   const defaultCatalog = useRef(values["overlays.default_catalog"]);
   defaultCatalog.current = values["overlays.default_catalog"];
-  const defaultTiming = useRef(savedTiming(values));
-  defaultTiming.current = savedTiming(values);
+  const saved = useRef(savedDefaults(values));
+  saved.current = savedDefaults(values);
   const keepMatching = useCallback(
     (slot: string, policy: LanePolicyWire) =>
       void command({
@@ -230,7 +230,7 @@ export function LiveVideoViewer({
       connect,
       lanes: priorLanes.current,
       defaultCatalog: () => (defaultCatalog.current as string) || null,
-      defaultTiming: () => defaultTiming.current,
+      savedDefaults: () => saved.current,
       onPolicy: (slot, policy) => onPolicy.current?.(slot, policy),
       frame: (callback) => {
         const handle = requestAnimationFrame(callback);

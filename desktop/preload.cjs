@@ -40,6 +40,9 @@ contextBridge.exposeInMainWorld("axDevilWindow", {
   connect: (target, password) => ipcRenderer.invoke("window:connect", target, password),
   // Replaces this window with one on the local backend; only a remote page may ask.
   disconnect: () => ipcRenderer.invoke("window:disconnect"),
+  // Opens the folder of the log file at `file` (the absolute path the backend reports) in the file manager; only the
+  // local page may, and rejects for any other file name.
+  openLogs: (file) => ipcRenderer.invoke("logs:open", file),
   // The desktop app's own version, which a remote server's page cannot learn from its backend.
   appVersion: () => ipcRenderer.invoke("app:version"),
   // Closes the app, which stops its backend, and starts it again; only the local page may ask. Absent when the app

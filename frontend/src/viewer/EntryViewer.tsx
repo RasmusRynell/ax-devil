@@ -1,6 +1,7 @@
 import { useCallback } from "react";
 import type { ContentInfo, EntryInfo, LanePolicyWire } from "../generated/api";
 import { useCan, useCommand } from "../session/session";
+import type { PreparedEntry } from "../playback/nextEntry";
 import { VideoViewer } from "../playback/VideoViewer";
 import type { ViewerProps } from "../viewers";
 import { useHidden } from "./useViewers";
@@ -15,11 +16,14 @@ export function EntryViewer({
   viewer,
   content,
   entry,
+  next,
 }: {
   item: string;
   viewer: number;
   content: Pick<ContentInfo, "id" | "generation" | "display_name">;
   entry: EntryInfo;
+  /** The entry a playlist steps to from this one, for the backend to prepare. */
+  next?: PreparedEntry | null;
 }) {
   const hidden = useHidden();
   const command = useCommand();
@@ -47,6 +51,7 @@ export function EntryViewer({
       viewer={viewer}
       content={content}
       entry={entry}
+      next={next}
       hidden={hidden}
       onHideLane={changes ? hideLane : undefined}
       onLaneMatching={changes ? keepMatching : undefined}

@@ -14,6 +14,7 @@ type KindTag =
   | "bool"
   | "sticky"
   | "sync"
+  | "object_filter"
   | "choice"
   | "auto_or_whole"
   | "whole"
@@ -74,6 +75,7 @@ const FIELDS: Record<KindTag, (props: FieldProps) => ReactNode> = {
   // Set from a lane's menu, so no settings page lists them.
   sticky: () => null,
   sync: () => null,
+  object_filter: () => null,
   choice: ({ row, label, value, onChange }) =>
     row.kind.toggle ? (
       <div className={LABELLED}>

@@ -170,6 +170,25 @@ impl VideoSources {
         Some((details.input.clone(), Arc::clone(&details.index)))
     }
 
+    /// Makes sure the frame index of `video` is cached, so that opening it later reads the index instead of building
+    /// it. Opens no source and holds nothing. An image sequence has no index file and a failure is left for the
+    /// viewer that opens the video to report. Blocks: call it on a blocking thread. Cancelling `cancel` ends a
+    /// build early.
+    pub fn warm_index(&self, video: &VideoRef, cancel: &CancelToken) -> Result<(), UserError> {
+        if matches!(video, VideoRef::ImageSequence(_)) {
+            return Ok(());
+        }
+        match FrameIndex::load_or_build(
+            &input_of(video),
+            Some(&self.cache_dir),
+            cancel,
+            &mut |_| {},
+        ) {
+            Ok(_) | Err(Interrupt::Cancelled) => Ok(()),
+            Err(Interrupt::Failed(error)) => Err(error),
+        }
+    }
+
     /// A viewer of `video`: one on the source that is already open, or else a new source once the frame index is
     /// read, which for a file is built (reporting `progress`, 0 to 1) when it is not cached; an image sequence has
     /// nothing to build. What the viewer is told about the video comes from the source it joined. Blocks: call it

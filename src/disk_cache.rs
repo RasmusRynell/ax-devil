@@ -1,5 +1,6 @@
 //! The files ax-devil keeps in the cache folder (frame indexes, decoded overlay artifacts and thumbnails), found and
-//! removed for `clear-cache`.
+//! removed for `clear-cache`. The command's `main` and `all` scopes remove the same files; they differ in how the
+//! command lists them (see `src/cli/clear_cache.rs`).
 //!
 //! Only files of the extensions ax-devil writes, directly in its own subfolders, count: a `--cache-dir` shared with
 //! other files loses nothing else, and symbolic links are never followed: not a file's, and not a subfolder's, so a
@@ -59,7 +60,7 @@ pub struct Cleared {
 /// What [`scan`] found.
 #[derive(Debug, Default)]
 pub struct Scan {
-    /// The locations that hold cache files.
+    /// The locations whose folders exist, with or without cache files.
     pub locations: Vec<Location>,
     /// Cache subfolders that are not plain folders (a symbolic link, say) and were left alone.
     pub skipped: Vec<PathBuf>,
@@ -70,7 +71,19 @@ fn is_plain_folder(path: &Path) -> bool {
     fs::symlink_metadata(path).is_ok_and(|metadata| metadata.is_dir())
 }
 
-/// The locations under `cache_dir` that hold cache files. A folder that does not exist holds none.
+impl Scan {
+    /// How many cache files there are in all the locations.
+    pub fn file_count(&self) -> usize {
+        self.locations.iter().map(Location::file_count).sum()
+    }
+
+    /// Their size together, in bytes.
+    pub fn bytes(&self) -> u64 {
+        self.locations.iter().map(Location::bytes).sum()
+    }
+}
+
+/// The locations under `cache_dir` whose folders exist, empty ones included. A folder that does not exist is left out.
 pub fn scan(cache_dir: &Path) -> Result<Scan, String> {
     let mut found = Scan::default();
     for (label, subfolder, extension) in KINDS {
@@ -84,13 +97,11 @@ pub fn scan(cache_dir: &Path) -> Result<Scan, String> {
             Err(error) if error.kind() == io::ErrorKind::NotFound => continue,
             Err(error) => return Err(format!("Cannot read {}: {error}", folder.display())),
         };
-        if !files.is_empty() {
-            found.locations.push(Location {
-                label,
-                folder,
-                files,
-            });
-        }
+        found.locations.push(Location {
+            label,
+            folder,
+            files,
+        });
     }
     Ok(found)
 }
@@ -168,7 +179,8 @@ mod tests {
         let cleared = clear(&found);
         assert_eq!((cleared.files, cleared.bytes), (4, 1138));
         assert!(cleared.failures.is_empty());
-        assert!(scan(cache.path()).unwrap().locations.is_empty());
+        let after = scan(cache.path()).unwrap();
+        assert_eq!((after.locations.len(), after.file_count()), (3, 0));
         for kept in [
             "frame-index/notes.txt",
             "settings.json",

@@ -1,6 +1,6 @@
 //! The one declaration of every setting. Defaults, parsing and validation are generated from it.
 
-use crate::kind::{Kind, StickyValue, SyncValue};
+use crate::kind::{Kind, NoFilter, StickyValue, SyncValue};
 use serde::Serialize;
 
 /// Who a setting belongs to, which decides who may read and change it on a backend that several people use.
@@ -186,6 +186,20 @@ pub const TABLE: &[Setting] = &[
         scope: Scope::Personal,
     },
     Setting {
+        key: "overlays.default_object_filter",
+        // What a new viewer or lane starts with; set from a lane's menu.
+        kind: Kind::ObjectFilter { default: NoFilter },
+        label: "Default object filter",
+        description: None,
+        page: None,
+        section: "",
+        live: true,
+        env: false,
+        secret: false,
+        quick_setup: false,
+        scope: Scope::Personal,
+    },
+    Setting {
         key: "playback.video_cache",
         // Auto, or MiB shared by every open video. The upper bound is 1 TiB.
         kind: Kind::AutoOrWhole {
@@ -196,6 +210,20 @@ pub const TABLE: &[Setting] = &[
         description: None,
         page: Some("Playback"),
         section: "Memory",
+        live: true,
+        env: false,
+        secret: false,
+        quick_setup: false,
+        scope: Scope::Server,
+    },
+    Setting {
+        key: "playback.prepare_next_video",
+        // Read by every open playlist stream as it ticks, so a change applies at once.
+        kind: Kind::Bool { default: false },
+        label: "Prepare the next video in the background",
+        description: None,
+        page: Some("Playback"),
+        section: "Playlists",
         live: true,
         env: false,
         secret: false,

@@ -285,6 +285,7 @@ impl<I: Incoming> Live<'_, I> {
             Some(Ok(ClientMessage::Open { .. })) => Err(violation("The video is already open")),
             Some(Ok(
                 ClientMessage::Want(_)
+                | ClientMessage::Prepare { .. }
                 | ClientMessage::Export { .. }
                 | ClientMessage::CancelExport { .. }
                 | ClientMessage::FileRelease { .. },

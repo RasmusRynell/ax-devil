@@ -71,6 +71,23 @@ describe("cached frames", () => {
   });
 });
 
+describe("preparing the next entry", () => {
+  it("names the entry to the backend once the video is open, and again as the choice changes or is withdrawn", async () => {
+    const { session, server, sent } = await setup();
+    const prepares = () => sent.filter((message) => message.type === "Prepare");
+    session.next.ask({ entry: "list/B", lanes: ["B"] });
+    expect(prepares()).toEqual([]);
+    server.open();
+    expect(prepares()).toEqual([{ type: "Prepare", entry: "list/B", lanes: ["B"] }]);
+    session.next.ask({ entry: "list/C", lanes: ["C", "D"] });
+    session.next.ask(null);
+    expect(prepares().slice(1)).toEqual([
+      { type: "Prepare", entry: "list/C", lanes: ["C", "D"] },
+      { type: "Prepare", entry: null, lanes: [] },
+    ]);
+  });
+});
+
 describe("autoplay", () => {
   it("plays from the first frame once it is shown", async () => {
     const { session, server, presented, intents, refresh } = await setup(undefined, {

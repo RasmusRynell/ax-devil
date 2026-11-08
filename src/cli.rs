@@ -150,6 +150,10 @@ enum Command {
         /// Remove them without asking.
         #[arg(long)]
         force: bool,
+        /// How they are listed before they are removed: `main` as the cache folder, `all` per kind with a total.
+        /// Either removes the same files.
+        #[arg(long = "type", value_enum, default_value_t)]
+        scope: clear_cache::Scope,
     },
     /// List the render catalogs, check a catalog file or draw one, then exit.
     #[command(subcommand)]
@@ -202,11 +206,11 @@ pub async fn run() -> ExitCode {
         Some(Command::ListHandlers) => {
             catalog::Report::listing(&plugins.handlers(), &plugins.info()).print()
         }
-        Some(Command::ClearCache { force }) => {
+        Some(Command::ClearCache { force, scope }) => {
             let folder = settings_folder(global, |paths, settings| {
                 paths.cache_dir(settings.state().folder("storage.cache_dir"))
             });
-            clear_cache::run(folder, force)
+            clear_cache::run(folder, scope, force)
         }
         Some(Command::Plugins(command)) => plugins::run(command, plugins).await.print(),
         Some(Command::Catalog(catalog)) => catalog::run(
@@ -388,7 +392,8 @@ async fn host_desktop(
     announce(&[format!("ax-devil: http://{}", listener.local_addr()?)]);
     let state = services
         .state(Policy::Local)
-        .with_windows(paths.window_file.clone());
+        .with_windows(paths.window_file.clone())
+        .with_log_file(paths.log_file.clone());
     // The listener for other machines serves the sessions of this state and opens when one starts sharing.
     let hosting = Hosting::Lan(ShareListener::new(share_address, &state));
     services

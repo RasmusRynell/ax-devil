@@ -59,6 +59,14 @@ fn messages_use_the_names_the_frontend_parses() {
             id: "built-in:standard".into()
         }
     );
+    let prepare = json!({"type": "Prepare", "entry": "item/a", "lanes": ["GT"]});
+    assert_eq!(
+        serde_json::from_value::<ClientMessage>(prepare).unwrap(),
+        ClientMessage::Prepare {
+            entry: Some("item/a".into()),
+            lanes: vec!["GT".into()]
+        }
+    );
     assert_eq!(
         serde_json::to_value(ServerMessage::DataWindow { first: 3, last: 9 }).unwrap(),
         json!({"type": "DataWindow", "first": 3, "last": 9})

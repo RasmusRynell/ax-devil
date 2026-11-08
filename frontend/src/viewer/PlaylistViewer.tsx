@@ -4,12 +4,16 @@ import { Icon } from "../kit/Icon";
 import { IconButton } from "../kit/IconButton";
 import { Menu } from "../kit/Menu";
 import { Popover } from "../kit/Popover";
+import type { PreparedEntry } from "../playback/nextEntry";
 import { useFollowing, useView } from "../session/session";
 import type { ViewerProps } from "../viewers";
 import { NO_ACTIONS, ViewerActionsContext, useViewerActions, type ViewerActions } from "./actions";
 import { EntryViewer } from "./EntryViewer";
 import type { Hidden } from "./hidden";
 import { useHidden } from "./useViewers";
+
+/** Joins lane labels into one comparable value; a label holds no control character. */
+const LANE_SEPARATOR = "\u001f";
 
 /**
  * The entry `step` places from `from` (negative is back) that the user has not hidden, or `undefined` when there is
@@ -83,6 +87,12 @@ export function PlaylistViewer({ item, viewer, content }: ViewerProps<"Playlist"
     [setViewers, viewer],
   );
   const [previousId, nextId] = [previous?.id, next?.id];
+  // What the backend is asked to prepare: the next entry's lanes the user has not hidden, none when all are.
+  const nextLanes = next?.lanes.filter((lane) => !hidden.lane(next.id, lane)).join(LANE_SEPARATOR);
+  const upNext = useMemo<PreparedEntry | null>(
+    () => (nextId && nextLanes ? { entry: nextId, lanes: nextLanes.split(LANE_SEPARATOR) } : null),
+    [nextId, nextLanes],
+  );
   // An entry hidden while it is on screen is left for a neighbour; one the view named hidden is shown, as when the
   // tree opened it. A window that follows takes the presenter's choice.
   const seen = useRef<{ id: string; hidden: boolean }>(undefined);
@@ -165,7 +175,7 @@ export function PlaylistViewer({ item, viewer, content }: ViewerProps<"Playlist"
         </div>
       )}
       <ViewerActionsContext.Provider value={setInner}>
-        <EntryViewer item={item} viewer={viewer} content={content} entry={current} />
+        <EntryViewer item={item} viewer={viewer} content={content} entry={current} next={upNext} />
       </ViewerActionsContext.Provider>
     </div>
   );

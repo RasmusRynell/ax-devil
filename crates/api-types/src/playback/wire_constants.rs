@@ -13,8 +13,9 @@ macro_rules! constants {
 pub(crate) use constants;
 
 constants! {
-    /// Raised when the messages or the envelope change in a way an older frontend cannot read.
-    PLAYBACK_PROTOCOL: u32 = 10;
+    /// Raised when the messages or the envelope change in a way an older frontend cannot read, or a message is added
+    /// that an older backend would reject.
+    PLAYBACK_PROTOCOL: u32 = 11;
     /// "AXDV" read as a little-endian u32.
     ENVELOPE_MAGIC: u32 = 0x5644_5841;
     /// The envelope format version, byte 4.

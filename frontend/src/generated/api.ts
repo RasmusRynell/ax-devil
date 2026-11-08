@@ -50,7 +50,7 @@ export type SettingsState = {
  * The settings the caller may read by dotted key, such as `"ui.theme"`, with the default when unset: those of
  * its scopes, a `$NAME` reference as written and a literal secret masked.
  */
-values: Record<SettingKey, string | boolean | number | Array<Record<string, string>> | { enabled: boolean; timeout_ms: number | null; opacity: number } | { tolerance_ms: number | null }>, 
+values: Record<SettingKey, string | boolean | number | Array<Record<string, string>> | { enabled: boolean; timeout_ms: number | null; opacity: number } | { tolerance_ms: number | null } | { filter: Record<string, boolean>; ranges: Record<"score" | "confidence", { min: number | null; max: number | null }>; expression: string }>, 
 /**
  * What each non-secret setting among `values` that holds a `$NAME` reference gives as it is used (a number for a
  * whole-number setting), for a form that starts from the value. Only for the person at this machine, whose
@@ -78,7 +78,11 @@ path: string,
 /**
  * The file format version.
  */
-version: number, };
+version: number, 
+/**
+ * The log file's path, when this backend writes one.
+ */
+log?: string, };
 
 /**
  * The body of `PUT /api/settings`: every setting and shortcut the caller may change, which replace the stored ones.
@@ -88,7 +92,7 @@ export type SettingsChange = {
 /**
  * Every setting of the caller's scopes by dotted key.
  */
-values: Record<SettingKey, string | boolean | number | Array<Record<string, string>> | { enabled: boolean; timeout_ms: number | null; opacity: number } | { tolerance_ms: number | null }>, 
+values: Record<SettingKey, string | boolean | number | Array<Record<string, string>> | { enabled: boolean; timeout_ms: number | null; opacity: number } | { tolerance_ms: number | null } | { filter: Record<string, boolean>; ranges: Record<"score" | "confidence", { min: number | null; max: number | null }>; expression: string }>, 
 /**
  * The key of every command; `null` when unbound. Empty unless the caller holds the `preferences` grant.
  */
@@ -2187,7 +2191,15 @@ policy: LanePolicyWire,
 /**
  * Whether the lane is shown; an unsubscribed lane gets no Frame Maps and its samples are not sent for it.
  */
-subscribed: boolean, } | { "type": "Catalog", 
+subscribed: boolean, } | { "type": "Prepare", 
+/**
+ * The entry's id, `EntryInfo::id`.
+ */
+entry: string | null, 
+/**
+ * The labels of the lanes to prepare, `EntryInfo::lanes`.
+ */
+lanes: Array<string>, } | { "type": "Catalog", 
 /**
  * The catalog id, such as `built-in:standard`.
  */
@@ -3756,9 +3768,10 @@ cells: Array<number>,
 kinds: Array<number>, };
 
 /**
- * Raised when the messages or the envelope change in a way an older frontend cannot read.
+ * Raised when the messages or the envelope change in a way an older frontend cannot read, or a message is added
+ * that an older backend would reject.
  */
-export const PLAYBACK_PROTOCOL = 10;
+export const PLAYBACK_PROTOCOL = 11;
 
 /**
  * "AXDV" read as a little-endian u32.

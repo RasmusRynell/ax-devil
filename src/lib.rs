@@ -9,6 +9,7 @@ pub mod glance;
 pub mod live_sources;
 pub mod network;
 pub mod plugins;
+mod prepare;
 pub mod render_host;
 mod routes;
 pub mod runtime;
@@ -67,6 +68,8 @@ pub struct AppState {
     pub settings: Arc<settings::Settings>,
     /// Where the saved window positions are, when this backend keeps any; see [`AppState::with_windows`].
     windows: Option<Arc<Windows>>,
+    /// The log file this backend writes, when it writes one; see [`AppState::with_log_file`].
+    log_file: Option<std::path::PathBuf>,
     /// The decoders and playlist resolvers the app knows, and the plugins that provide them.
     pub plugins: Arc<plugins::Plugins>,
     /// The open videos, which the playback socket draws its viewers from.
@@ -75,6 +78,8 @@ pub struct AppState {
     pub(crate) thumbnails: Arc<thumbnails::Thumbnails>,
     /// Opens the overlays of viewers.
     pub overlays: Arc<OverlayService>,
+    /// Readies the next playlist entry's caches while a viewer plays the one before it.
+    pub(crate) preparer: Arc<prepare::Preparer>,
     /// The live camera pipelines, which the playback socket serves live streams from.
     pub live: Arc<live_sources::LiveSources>,
     /// The network scan and what it found.
@@ -136,9 +141,15 @@ impl AppState {
             }),
         );
         tokio::spawn(poll_sources(sessions.clone(), stopping.clone()));
+        let overlays = Arc::new(OverlayService::new(tracks));
         Self {
             settings,
-            overlays: Arc::new(OverlayService::new(tracks)),
+            preparer: Arc::new(prepare::Preparer::new(
+                Arc::clone(&videos),
+                Arc::clone(&overlays),
+                stopping.clone(),
+            )),
+            overlays,
             live: Arc::new(live_sources::LiveSources::cameras(cameras)),
             network: network::Network::new(),
             glances: Arc::default(),
@@ -152,6 +163,7 @@ impl AppState {
             videos,
             stopping,
             windows: None,
+            log_file: None,
             policy: Arc::new(policy),
             admission: Arc::new(Admission::new(limits)),
             staged: Arc::default(),
@@ -207,6 +219,13 @@ impl AppState {
     #[must_use]
     pub fn with_windows(mut self, file: std::path::PathBuf) -> Self {
         self.windows = Some(Arc::new(Windows::new(file)));
+        self
+    }
+
+    /// The same state telling a caller who may see this machine's files that its log is written to `file`.
+    #[must_use]
+    pub fn with_log_file(mut self, file: std::path::PathBuf) -> Self {
+        self.log_file = Some(file);
         self
     }
 
@@ -283,6 +302,7 @@ pub fn app(state: AppState) -> Router {
 /// grant.
 fn snapshot(
     settings: &settings::Settings,
+    log_file: Option<&Path>,
     state: &settings::State,
     principal: Principal,
 ) -> SettingsState {
@@ -310,6 +330,7 @@ fn snapshot(
             .then(|| SettingsFile {
                 path: settings.path().display().to_string(),
                 version: state.version(),
+                log: log_file.map(|file| file.display().to_string()),
             }),
         shortcuts,
     }
@@ -317,9 +338,16 @@ fn snapshot(
 
 pub(crate) async fn get_settings(
     principal: Principal,
-    State(AppState { settings, .. }): State<AppState>,
+    State(AppState {
+        settings, log_file, ..
+    }): State<AppState>,
 ) -> Json<SettingsState> {
-    Json(snapshot(&settings, &settings.state(), principal))
+    Json(snapshot(
+        &settings,
+        log_file.as_deref(),
+        &settings.state(),
+        principal,
+    ))
 }
 
 /// Replaces every setting and shortcut the caller may change; a rejected or unsaved change leaves the stored state
@@ -329,6 +357,7 @@ pub(crate) async fn put_settings(
     State(AppState {
         settings,
         catalogs: library,
+        log_file,
         ..
     }): State<AppState>,
     Json(body): Json<SettingsChange>,
@@ -390,7 +419,7 @@ pub(crate) async fn put_settings(
                     None => Ok(()),
                 }
             })
-            .map(|state| snapshot(&settings, &state, principal))
+            .map(|state| snapshot(&settings, log_file.as_deref(), &state, principal))
     })
     .await
     .map_err(|error| {
