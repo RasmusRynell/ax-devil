@@ -3,8 +3,9 @@ import { useCallback, useEffect, useRef, useState, type RefObject } from "react"
 /**
  * Lane fullscreen of a viewer pane: the pane goes fullscreen showing one lane (`solo`), so the transport, tools and
  * inspector come along, and the other lanes keep playing. `point` and `pick` are told which lane the pointer is over
- * and which was last pressed; `toggle` takes the lane under the pointer, else the last pressed, else the first of
- * `shown`. Leaving fullscreen by any route clears `solo` and puts the keyboard back on the pane; unmounting leaves it.
+ * and which was last pressed; `focus` names one by keyboard and then outranks where the pointer was, until it moves or
+ * presses again. `toggle` takes the lane under the pointer, else the last pressed, else the first of `shown`. Leaving
+ * fullscreen by any route clears `solo` and puts the keyboard back on the pane; unmounting leaves it.
  */
 export function useLaneFullscreen(pane: RefObject<HTMLElement | null>, shown: readonly number[]) {
   const [solo, setSolo] = useState<number | null>(null);
@@ -19,6 +20,11 @@ export function useLaneFullscreen(pane: RefObject<HTMLElement | null>, shown: re
 
   const point = useCallback((lane: number | null) => void (aim.current.pointer = lane), []);
   const pick = useCallback((lane: number) => void (aim.current.clicked = lane), []);
+  /** Puts the keyboard on `lane` ahead of where the pointer last was, until the pointer moves or presses again. */
+  const focus = useCallback((lane: number) => {
+    aim.current.pointer = null;
+    aim.current.clicked = lane;
+  }, []);
   /** The lane the keyboard and the lane menu act on, or null while no lane is shown. */
   const target = useCallback((): number | null => {
     const { pointer, clicked, shown: lanes } = aim.current;
@@ -59,5 +65,5 @@ export function useLaneFullscreen(pane: RefObject<HTMLElement | null>, shown: re
     };
   }, [pane]);
 
-  return { solo, point, pick, target, toggle, leave };
+  return { solo, point, pick, focus, target, toggle, leave };
 }

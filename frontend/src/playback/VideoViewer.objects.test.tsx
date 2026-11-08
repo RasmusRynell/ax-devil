@@ -6,6 +6,7 @@ import { DEFAULT_SETTINGS } from "../fakeSettings";
 import { FakeSocket, video } from "../session/fakeSession";
 import { SessionProvider } from "../session/session";
 import { NO_ACTIONS, ViewerActionsContext, type ViewerActions } from "../viewer/actions";
+import { focusLane } from "../viewer/laneFocus";
 import type { Picked } from "./contract";
 import type { ClientMessage, LaneInfo } from "./protocol";
 import type { Geometry } from "./renderer";
@@ -129,6 +130,38 @@ describe("video viewer objects", () => {
     fireEvent.keyDown(tools(), { key: "Escape" });
     expect(fullscreen.exit).toHaveBeenCalledOnce();
     expect(props().cells?.map(({ lane }) => lane)).toEqual([0, 1]);
+  });
+
+  it("takes the keyboard to the lane the tree opened, ahead of the lane the pointer was left over", async () => {
+    // The grid is 400 by 200, so the two lanes are its left and right halves.
+    vi.stubGlobal(
+      "ResizeObserver",
+      class {
+        constructor(private readonly told: ResizeObserverCallback) {}
+        observe() {
+          this.told(
+            [{ contentRect: { width: 400, height: 200 } } as ResizeObserverEntry],
+            {} as ResizeObserver,
+          );
+        }
+        disconnect() {}
+      },
+    );
+    const lanes: LaneInfo[] = [
+      { label: "DPM", slot: "DPM", source: 0 },
+      { label: "GT", slot: "GT", source: 1 },
+    ];
+    const { props, run } = await mount(undefined, lanes);
+    const grid = document.querySelector("[data-chrome-idle] .inset-0.flex") as HTMLElement;
+    fireEvent.pointerMove(grid, { clientX: 50, clientY: 50 });
+    act(() => focusLane(1, "content-a", "GT"));
+    run("lane-fullscreen");
+    expect(props().cells?.map(({ lane }) => lane)).toEqual([1]);
+    // Leaving fullscreen, the next pointer move over a lane is the target again.
+    run("lane-fullscreen");
+    fireEvent.pointerMove(grid, { clientX: 50, clientY: 50 });
+    run("lane-fullscreen");
+    expect(props().cells?.map(({ lane }) => lane)).toEqual([0]);
   });
 
   it("keeps the selection when Escape closes a lane menu", async () => {

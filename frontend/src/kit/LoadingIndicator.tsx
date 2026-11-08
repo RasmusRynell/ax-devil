@@ -5,14 +5,14 @@ const RADIUS = 14;
 const ARC = 0.75 * 2 * Math.PI * RADIUS;
 
 /**
- * A translucent cover over the positioned element it sits in, with a turning arc and, when there is one, a message
+ * A cover in the window colour at alpha 200 over the positioned element it sits in, with a turning arc and, when there is one, a message
  * under it that loses its middle where it does not fit. It stands still for those who ask for less motion.
  */
 export function LoadingIndicator({ message = "" }: { message?: string }) {
   return (
     <div
       data-loading=""
-      className="absolute inset-0 flex flex-col items-center justify-center gap-s bg-canvas-scrim px-m text-on-canvas-muted"
+      className="absolute inset-0 flex flex-col items-center justify-center gap-s bg-loading-cover px-m text-fg"
     >
       <svg viewBox="0 0 31 31" aria-hidden="true" className="size-spinner motion-safe:animate-arc">
         <circle
