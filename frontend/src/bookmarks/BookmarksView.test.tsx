@@ -3,7 +3,7 @@ import { useState } from "react";
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import type { BookmarkGroupInfo } from "../generated/api";
 import { entry, FakeSocket, playlist, video, type Room } from "../session/fakeSession";
-import { SessionProvider, useView } from "../session/session";
+import { SessionProvider, useFollowing, useSession, useView } from "../session/session";
 import { KeptStateProvider } from "../shell/keptState";
 import { BookmarksView } from "./BookmarksView";
 import {
@@ -314,6 +314,37 @@ describe("a viewer and its bookmarks", () => {
     fireEvent.click(screen.getByRole("button", { name: "reload" }));
     await act(async () => {});
     expect(screen.getByTestId("view").textContent).toBe("workspace");
+  });
+
+  it("leaves a watcher following the presenter when a workspace with bookmarks replaces the one it joined", async () => {
+    const host = FakeSocket.host("explore");
+    host.epoch = 1;
+    host.bookmarks = [CLIP];
+    function Watcher() {
+      useSidebarOnReplace();
+      const { watch } = useSession();
+      const [sidebar] = useView("sidebar");
+      const following = useFollowing();
+      return (
+        <button type="button" onClick={() => watch(host.id)}>
+          {`${sidebar.view} ${following ? "following" : "exploring"}`}
+        </button>
+      );
+    }
+    render(
+      <SessionProvider>
+        <Watcher />
+      </SessionProvider>,
+    );
+    await act(async () => {});
+    fireEvent.click(screen.getByRole("button"));
+    await act(async () => {});
+    expect(screen.getByRole("button").textContent).toBe("workspace following");
+
+    act(() => host.publish({ ...host.presenter, sidebar: { view: "plugins", open: true } }));
+    expect(screen.getByRole("button").textContent).toBe("plugins following");
+    const seen = FakeSocket.latest.received.filter((message) => message.type === "view");
+    expect(seen).toEqual([]);
   });
 
   it("bookmarks the frame on screen and brings the Bookmarks view up", async () => {

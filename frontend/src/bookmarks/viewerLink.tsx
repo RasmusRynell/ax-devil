@@ -118,24 +118,30 @@ function seenEpoch(session: string): number {
  * after a recovery, else Bookmarks when it has bookmarks. Epochs count per session, so a window that connects to
  * another session (a backend restart, Watch, a join link) sees its workspace as new at epoch 0. The workspace the
  * app opens at launch counts as a replacement; reloading the page does not, so it keeps the view the user chose.
+ * A window that follows the presenter keeps the presenter's view.
  */
 export function useSidebarOnReplace() {
   const workspace = useDoc()?.workspace;
-  const session = useSession().session?.id;
+  const { session, mode } = useSession();
+  const sessionId = session?.id;
   const [, setSidebar] = useView("sidebar");
+  const following = useFollowing();
   const epoch = workspace?.epoch;
   const recovered = workspace?.recovered ?? false;
   const marked = (workspace?.bookmarks.length ?? 0) > 0;
   useEffect(() => {
-    if (epoch === undefined || session === undefined) return;
-    const before = seenEpoch(session);
+    // The seat says whether the window follows, so nothing is chosen before it arrives.
+    if (epoch === undefined || sessionId === undefined || mode === null) return;
+    const before = seenEpoch(sessionId);
     try {
-      window.sessionStorage.setItem(SEEN, JSON.stringify({ session, epoch }));
+      window.sessionStorage.setItem(SEEN, JSON.stringify({ session: sessionId, epoch }));
     } catch {
       // Without storage a reload shows the view again, which is harmless.
     }
-    if (epoch === before) return;
-    if (recovered) setSidebar({ view: "workspace", open: true });
-    else if (marked) setSidebar({ view: "bookmarks", open: true });
-  }, [session, epoch, recovered, marked, setSidebar]);
+    // A window that follows the presenter shows the presenter's sidebar; choosing one would make it explore.
+    if (epoch === before || following) return;
+    const view = recovered ? "workspace" : marked ? "bookmarks" : null;
+    if (view)
+      setSidebar((shown) => (shown.view === view && shown.open ? shown : { view, open: true }));
+  }, [sessionId, mode, epoch, recovered, marked, following, setSidebar]);
 }
