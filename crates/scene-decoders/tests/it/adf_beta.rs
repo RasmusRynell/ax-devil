@@ -236,6 +236,81 @@ fn frames_at_different_times_and_world_velocity_are_warned_about_once_a_file_and
     assert!(summarized.is_empty());
 }
 
+#[test]
+fn beta_lists_faces_before_bags_where_v1_lists_bags_before_faces() {
+    let ids = |decoder: &str| -> Vec<String> {
+        let (_, result) = common::run_input(
+            &*common::decoder(decoder),
+            &mut common::Memory(Vec::new()),
+            &Settings::new(),
+            &CancelToken::new(),
+        );
+        let filters = result.expect("an empty input decodes").filter.options;
+        let last = &filters[filters.len() - 3..];
+        last.iter().map(|option| option.id.to_string()).collect()
+    };
+    for decoder in ["ADF_BETA_FRAME", "ADF_BETA_CONSOLIDATED"] {
+        assert_eq!(ids(decoder), ["show_faces", "show_bags", "show_other"]);
+    }
+    for decoder in ["ADF_V1_FRAME", "ADF_V1_CONSOLIDATED"] {
+        assert_eq!(ids(decoder), ["show_bags", "show_faces", "show_other"]);
+    }
+}
+
+#[test]
+fn an_empty_velocity_position_or_geoposition_is_none_and_a_blank_class_type_is_no_class() {
+    let at = "2024-05-12T10:00:00Z";
+    let mut empty = observation("a", at, json!({"type": "Car"}));
+    for key in [
+        "velocity",
+        "world_position",
+        "geoposition",
+        "world_velocity",
+    ] {
+        empty[key] = json!({});
+    }
+    let frame = json!({"timestamp": at, "observations": [empty.clone()]});
+    let (scenes, skipped) = decode("ADF_BETA_FRAME", &[frame.to_string()]);
+    assert!(skipped.is_empty(), "{skipped:?}");
+    assert!(
+        scenes[0].entities()[0].observations()[0]
+            .measurements
+            .is_none()
+    );
+
+    let mut tracked = track("a", at, "");
+    tracked["observations"][0]["world_position"] = json!({});
+    tracked["observations"][0]["geoposition"] = json!({});
+    let (scenes, _) = decode("ADF_BETA_CONSOLIDATED", &[tracked.to_string()]);
+    let seen = &scenes[0].entities()[0].observations()[0];
+    assert!(seen.classifications.is_empty() && seen.measurements.is_none());
+}
+
+#[test]
+fn beta_tracks_read_observations_not_a_path_and_warn_of_each_world_velocity() {
+    let at = "2024-05-12T10:00:00Z";
+    let mut moving = track("a", at, "Car");
+    moving["observations"][0]["world_velocity"] = json!({"x": 1.0});
+    let mut pathed = moving.clone();
+    pathed["path"] = pathed["observations"].take();
+    let decoder = common::decoder("ADF_BETA_CONSOLIDATED");
+    let text = format!("{moving}\n{moving}");
+    let (_, result) = common::run_input(
+        &*decoder,
+        &mut common::lines(text.as_bytes()),
+        &Settings::new(),
+        &CancelToken::new(),
+    );
+    let problems: Vec<_> = result
+        .expect("decoded")
+        .warnings
+        .into_iter()
+        .map(|warning| warning.problem)
+        .collect();
+    assert_eq!(problems, ["Observations with a world velocity: 2"]);
+    assert!(failure("ADF_BETA_CONSOLIDATED", &[pathed.to_string()]).contains("no observations"));
+}
+
 fn track(id: &str, at: &str, class: &str) -> Json {
     json!({
         "id": id,

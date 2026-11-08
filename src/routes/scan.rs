@@ -169,8 +169,8 @@ mod tests {
         assert_eq!(
             json(&body),
             json!([
-                { "value": "SEQ-01", "label": "SEQ-01", "detail": "64×48 · 25 fps · 10 frames" },
-                { "value": "SEQ-02", "label": "SEQ-02", "detail": "64×48 · 25 fps · 10 frames" },
+                { "value": "SEQ-01", "label": "SEQ-01", "detail": "64x48 @ 25.0 fps, 10 frames" },
+                { "value": "SEQ-02", "label": "SEQ-02", "detail": "64x48 @ 25.0 fps, 10 frames" },
             ])
         );
 

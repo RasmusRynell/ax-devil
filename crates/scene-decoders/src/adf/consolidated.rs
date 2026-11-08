@@ -11,9 +11,10 @@ use scene::{
 use serde_json::Value as Json;
 
 use super::{
+    Notes,
     frame::entity_of,
     parse::{
-        Object, bounding_box, entity_id, finite, geographic, image, image_velocity, list,
+        Object, bounding_box, entity_id, filled, finite, geographic, image, image_velocity, list,
         measurements, object, present, timestamp, track_classification, truthy, world_position,
         world_velocity,
     },
@@ -30,16 +31,21 @@ struct Track {
     last: MediaTime,
     picture: Option<Image>,
     end_reason: Option<Name>,
+    /// How many observations had a world velocity that beta does not read.
+    unread_world_velocities: usize,
 }
 
 /// The Scenes of a record, oldest first. `v1` says whether the format is v1, which also reads the world velocity,
-/// lets an image's `crop_box` stand in for its `bounding_box`, takes any `version` and a missing `duration`, and does
-/// not unwrap `{"object": ...}`. Of tracks with one id the last replaces the others.
-pub(super) fn read(record: &Object, v1: bool) -> Result<Vec<Scene>, String> {
+/// lets an image's `crop_box` stand in for its `bounding_box`, takes any `version` and a missing `duration`, reads
+/// `path` before `observations` and does not unwrap `{"object": ...}`. Beta notes the world velocities it leaves out.
+/// Of tracks with one id the last replaces the others.
+pub(super) fn read(record: &Object, v1: bool, notes: &mut Notes) -> Result<Vec<Scene>, String> {
     let mut tracks: Vec<Track> = Vec::new();
     let mut places: HashMap<EntityId, usize> = HashMap::new();
+    let mut unread_world_velocities = 0;
     for payload in payloads(record, v1)? {
         let track = read_track(payload, v1)?;
+        unread_world_velocities += track.unread_world_velocities;
         match places.entry(track.id.clone()) {
             Entry::Occupied(place) => tracks[*place.get()] = track,
             Entry::Vacant(place) => {
@@ -61,14 +67,17 @@ pub(super) fn read(record: &Object, v1: bool) -> Result<Vec<Scene>, String> {
             }
         }
     }
-    moments
+    let scenes = moments
         .into_iter()
         .map(|(time, entities)| {
             Scene::new(TimeSlice::at(SceneTime::Timestamp(time)))
                 .with_entities(entities)
                 .map_err(|error| error.to_string())
         })
-        .collect()
+        .collect::<Result<_, _>>()?;
+    // Only a record that is shown counts.
+    notes.world_velocity += unread_world_velocities;
+    Ok(scenes)
 }
 
 /// The tracks of a record: all of a document with a `version`, else the record itself.
@@ -111,13 +120,25 @@ fn read_track(track: &Object, v1: bool) -> Result<Track, String> {
     let classes = list(track, "classes")?
         .iter()
         .map(|class| track_classification(object(class, "a class")?, v1))
-        .collect::<Result<Vec<_>, _>>()?;
+        .collect::<Result<Vec<_>, _>>()?
+        .into_iter()
+        .flatten()
+        .collect::<Vec<_>>();
 
-    let path = list(track, "path")?;
+    // Beta has no `path`.
+    let path = if v1 { list(track, "path")? } else { &[] };
     let sightings = if path.is_empty() {
         list(track, "observations")?
     } else {
         path
+    };
+    let unread_world_velocities = if v1 {
+        0
+    } else {
+        sightings
+            .iter()
+            .filter(|sighting| sighting.get("world_velocity").is_some_and(truthy))
+            .count()
     };
     let observations = sightings
         .iter()
@@ -147,9 +168,14 @@ fn read_track(track: &Object, v1: bool) -> Result<Track, String> {
         _ => {}
     }
 
-    let picture = present(track.get("image"))
-        .map(|picture| image(picture, v1))
-        .transpose()?;
+    // v1 reads an empty image as none; beta refuses it.
+    let picture = if v1 {
+        filled(track.get("image"))
+    } else {
+        present(track.get("image"))
+    }
+    .map(|picture| image(picture, v1))
+    .transpose()?;
     let end_reason = present(track.get("end_reason"))
         .and_then(Json::as_str)
         .filter(|reason| !reason.is_empty())
@@ -160,6 +186,7 @@ fn read_track(track: &Object, v1: bool) -> Result<Track, String> {
         last,
         picture,
         end_reason,
+        unread_world_velocities,
     })
 }
 
@@ -174,6 +201,14 @@ fn observation(
         Geometry::Box(bounding_box(payload.get("bounding_box"))?),
     );
     observation.classifications = classes.to_vec();
+    // v1 refuses an empty position; beta reads it as none.
+    let place = |key: &str| {
+        if v1 {
+            present(payload.get(key))
+        } else {
+            filled(payload.get(key))
+        }
+    };
     observation.measurements = measurements(Measurements {
         image_velocity: image_velocity(payload.get("velocity"))?,
         world_velocity: if v1 {
@@ -181,8 +216,8 @@ fn observation(
         } else {
             None
         },
-        geographic: geographic(payload.get("geoposition"))?,
-        world: world_position(payload.get("world_position"))?,
+        geographic: geographic(place("geoposition"))?,
+        world: world_position(place("world_position"))?,
     });
     Ok((time, observation))
 }

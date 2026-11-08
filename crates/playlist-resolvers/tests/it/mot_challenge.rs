@@ -296,12 +296,12 @@ fn a_scan_offers_each_sequence_by_name_with_its_size_rate_and_length() {
             (
                 "MOT17-01-DPM",
                 "MOT17-01-DPM",
-                "640×480 · 14.5 fps · 7 frames"
+                "640x480 @ 14.5 fps, 7 frames"
             ),
             (
                 "MOT17-02-DPM",
                 "MOT17-02-DPM",
-                "1920×1080 · 30 fps · 100 frames"
+                "1920x1080 @ 30.0 fps, 100 frames"
             ),
         ]
     );

@@ -11,9 +11,9 @@ use serde_json::Value as Json;
 use super::{
     Notes,
     parse::{
-        Object, beta_classification, bounding_box, entity_id, geographic, image, image_velocity,
-        list, measurements, object, present, timestamp, truthy, v1_classification, world_position,
-        world_velocity,
+        Object, beta_classification, bounding_box, entity_id, filled, geographic, image,
+        image_velocity, list, measurements, object, present, timestamp, truthy, v1_classification,
+        world_position, world_velocity,
     },
 };
 
@@ -170,17 +170,20 @@ fn beta_observation(payload: &Object, entities: &mut Vec<Entity>) -> Result<(), 
     );
     let class = match present(payload.get("class")) {
         Some(class) => Some(class),
-        None => list(payload, "classes")?.first(),
+        None => list(payload, "classes")?
+            .first()
+            .and_then(|class| present(Some(class))),
     };
     if let Some(class) = class {
         observation
             .classifications
             .extend(beta_classification(object(class, "a class")?)?);
     }
+    // An empty position or geoposition is none, as an empty velocity is.
     observation.measurements = measurements(Measurements {
         image_velocity: image_velocity(payload.get("velocity"))?,
-        geographic: geographic(payload.get("geoposition"))?,
-        world: world_position(payload.get("world_position"))?,
+        geographic: geographic(filled(payload.get("geoposition")))?,
+        world: world_position(filled(payload.get("world_position")))?,
         // The beta format's world velocity has no known shape, so it is not read; `read_beta` counts it.
         ..Measurements::default()
     });
