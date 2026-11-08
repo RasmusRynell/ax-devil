@@ -89,7 +89,7 @@ function input(
   props: PanelProps,
   field: TextKey,
   label: string,
-  more: { placeholder?: string; masked?: boolean; title?: string } = {},
+  more: { placeholder?: string; masked?: boolean; title?: string; selectOnOpen?: boolean } = {},
 ) {
   return (
     <FormInput
@@ -97,6 +97,7 @@ function input(
       value={props.form[field]}
       placeholder={more.placeholder ?? hint(props, field)}
       masked={more.masked}
+      selectOnOpen={more.selectOnOpen}
       title={more.title}
       onChange={(value) => props.set(field, value)}
     />
@@ -164,7 +165,10 @@ export function ConnectionRows({
   const status = resolutionStatus(resolutions, hostUsable, sizes);
   return (
     <Form>
-      {input(props, "label", "Name", { placeholder: nameHint(props) })}
+      {input(props, "label", "Name", {
+        placeholder: nameHint(props),
+        selectOnOpen: props.hidden !== null,
+      })}
       {input(props, "host", "Host", { placeholder: hint(props, "host") ?? "e.g. 192.168.1.100" })}
       {input(props, "username", "Username")}
       {input(props, "password", "Password", { masked: true })}

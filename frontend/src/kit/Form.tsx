@@ -7,6 +7,7 @@ import {
   type KeyboardEvent,
   type ReactNode,
 } from "react";
+import { useSelectOnOpen } from "./Fields";
 import { Icon } from "./Icon";
 import { FIELD, FIELD_IN } from "./look";
 import { ownKeys } from "./keys";
@@ -98,6 +99,7 @@ export function FormInput({
   onChange,
   placeholder,
   masked = false,
+  selectOnOpen = false,
   extra,
   note,
   disabled,
@@ -107,11 +109,15 @@ export function FormInput({
   onChange: (value: string) => void;
   placeholder?: string;
   masked?: boolean;
+  /** Takes the focus with its text selected once it is on screen, as an edit of this value starts. */
+  selectOnOpen?: boolean;
 }) {
   const id = useId();
+  const input = useSelectOnOpen(selectOnOpen);
   return (
     <Row label={label} id={id} note={note}>
       <input
+        ref={input}
         id={id}
         type={masked ? "password" : "text"}
         value={value}

@@ -95,6 +95,7 @@ export function LiveRow({
         aria-expanded={expanded ?? undefined}
         aria-selected={current}
         data-cursor-id={`row:${row.id}`}
+        title={[row.label, row.title].filter(Boolean).join("\n")}
         onClick={onClick}
         onDoubleClick={(event) => {
           if (!(event.target as Element).closest("button")) onOpen();

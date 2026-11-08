@@ -1,12 +1,39 @@
 // What the desktop smoke test and its remote-server scenario share: driving a window's page, finding controls by
 // their cursor ids, and a few checks on the page itself.
+const fsSync = require("node:fs");
 const fs = require("node:fs/promises");
+const os = require("node:os");
 const path = require("node:path");
 
 // Fixtures and screenshots live under the repository, or under `AX_DEVIL_SMOKE_ROOT` when the app is packaged.
 const SMOKE_ROOT = process.env.AX_DEVIL_SMOKE_ROOT || path.resolve(__dirname, "..");
 const SCREENSHOTS = path.join(SMOKE_ROOT, "artifacts/screenshots");
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+/**
+ * The folder the app under test keeps its state in, from the environment the app got (`scripts/isolated` and
+ * `scripts/smoke-packaged.sh` both set `XDG_STATE_HOME` to a private folder in the temporary one). A scenario that
+ * writes a fixture there refuses any other folder, so a run outside them never touches a user's own files.
+ */
+function isolatedState() {
+  const given = process.env.XDG_STATE_HOME;
+  const refuse = (why) =>
+    new Error(
+      `The smoke test writes state only in a private folder: ${why}; run it through scripts/isolated`,
+    );
+  if (!given || !path.isAbsolute(given)) throw refuse("XDG_STATE_HOME is not an absolute path");
+  let state, temporary;
+  try {
+    state = fsSync.realpathSync.native(given);
+    temporary = fsSync.realpathSync.native(os.tmpdir());
+  } catch {
+    throw refuse(`${given} does not exist`);
+  }
+  const inside = path.relative(temporary, state);
+  if (inside === "" || inside.startsWith("..") || path.isAbsolute(inside))
+    throw refuse(`${given} is not inside ${os.tmpdir()}`);
+  return state;
+}
 
 // Runs expressions in a window's page; `wait` polls one until it is truthy. Results are copied out of the page, so
 // an expression must not evaluate to a DOM node.
@@ -23,6 +50,22 @@ const page = (window) => {
   };
   return { js, wait };
 };
+
+// Opens the Add Video dialog from the File menu: the sidebar's start panel, with its own Add Video, is there only while
+// the workspace has no items.
+async function openAddVideo(window) {
+  const { js, wait } = page(window);
+  await js(
+    "document.querySelector('[role=menu]') && document.querySelector('[aria-expanded=true]').click()",
+  );
+  await js(
+    "[...document.querySelectorAll('[data-top]')].find((b) => b.textContent === 'File').click()",
+  );
+  const item =
+    "[...document.querySelectorAll('[role=menuitem]')].find((b) => b.textContent.startsWith('Add Video'))";
+  await wait(item);
+  await js(`${item}.click()`);
+}
 
 // Saves the window as drawn when a wait times out, for CI to upload with the screenshots; returns the line to add to the
 // failure. The page text alone does not show where a click landed or what was still moving.
@@ -317,8 +360,10 @@ module.exports = {
   delay,
   frames,
   goToFrame,
+  isolatedState,
   laneCells,
   moveTo,
+  openAddVideo,
   page,
   reload,
   settled,

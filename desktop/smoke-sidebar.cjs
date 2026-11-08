@@ -6,7 +6,15 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs/promises");
 const os = require("node:os");
 const path = require("node:path");
-const { SCREENSHOTS, SMOKE_ROOT, frames, moveTo, page, setView } = require("./smoke-kit.cjs");
+const {
+  SCREENSHOTS,
+  SMOKE_ROOT,
+  frames,
+  moveTo,
+  openAddVideo,
+  page,
+  setView,
+} = require("./smoke-kit.cjs");
 
 const FIXTURE = path.join(SMOKE_ROOT, "fixtures/video/long_gop_h264.mp4");
 const DIVIDER = "document.querySelector('[role=separator][aria-label=\"Resize sidebar\"]')";
@@ -67,13 +75,12 @@ module.exports.sidebar = async (window) => {
     await fs.mkdir(SCREENSHOTS, { recursive: true });
     await setView(window, [1200, 800], 1);
     await js(
-      "!document.querySelector('[aria-label=\"Workspace items\"]') && document.querySelector('[aria-label=Workspace]').click()",
+      "!document.querySelector('[aria-label=\"Workspace items\"], [data-cursor-id=\"sidebar:add-video\"]') && document.querySelector('[aria-label=Workspace]').click()",
     );
     for (const site of ["north", "south"]) {
       await fs.mkdir(path.join(folder, site));
       await fs.copyFile(FIXTURE, path.join(folder, site, "clip.mp4"));
-      await wait("document.querySelector('[data-cursor-id=\"sidebar:add-video\"]')");
-      await js("document.querySelector('[data-cursor-id=\"sidebar:add-video\"]').click()");
+      await openAddVideo(window);
       await wait("document.querySelector('dialog[open] input')");
       await setValue(
         "document.querySelector('dialog[open] input')",

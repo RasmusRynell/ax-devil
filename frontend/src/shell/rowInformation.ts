@@ -1,7 +1,7 @@
 import { reasonOf } from "../errors";
 import type { ContentInfo, EntryInfo, ItemRecipe, ItemState, RowInfo } from "../generated/api";
 import { camerasOf } from "../live/cameras";
-import { informationOf as streamInformation, type Information } from "../live/information";
+import { informationOf as streamInformation, SOURCES, type Information } from "../live/information";
 import type { TreeRow } from "./treeModel";
 
 type Playlist = Extract<ContentInfo, { kind: "Playlist" }>;
@@ -24,7 +24,7 @@ function videoLane(video: string, lane: string, recipe: ItemRecipe | undefined):
     ["type", "overlay"],
     ["video", video],
     ["lane", lane],
-    ["overlay source", "file"],
+    ["overlay source", SOURCES.file],
     ...source,
   ]);
 }
@@ -65,10 +65,10 @@ function playlistLane(
   return info(lane, [
     ["type", "overlay"],
     ["playlist", playlist],
-    ["entry", String(number)],
+    ["entry", number],
     ["lane", `${at + 1} of ${entry.lanes.length}`],
     ["video", entry.label],
-    ["overlay source", "file"],
+    ["overlay source", SOURCES.file],
     ...(path ? [["path", path] as [string, string]] : []),
     ["handler type", entry.handlers[at]],
   ]);
@@ -86,8 +86,8 @@ function playlistEntry(
     [
       ["type", "playlist entry"],
       ["playlist", playlist],
-      ["entry", String(number)],
-      ["lanes", String(entry.lanes.length)],
+      ["entry", number],
+      ["lanes", entry.lanes.length],
       ["videos", entry.label],
     ],
     entry.handlers.map((_, at) => playlistLane(playlist, number, entry, at, paths)),
@@ -102,16 +102,14 @@ function playlistRow(row: TreeRow, content: Playlist, paths: Paths) {
         span.label,
         [
           ["type", "playlist"],
-          ["entries", String(entries.length)],
-          ["lanes", String(entries.reduce((sum, { lanes }) => sum + lanes.length, 0))],
+          ["entries", entries.length],
+          ["lanes", entries.reduce((sum, { lanes }) => sum + lanes.length, 0)],
           // What the resolver says about the playlist, by name.
-          ...(span.matches === undefined
-            ? []
-            : [["matches", String(span.matches)] as [string, string]]),
+          ...(span.matches === undefined ? [] : [["matches", span.matches] as [string, number]]),
           ["resolver", content.display_name],
           ...(span.sequence_groups === undefined
             ? []
-            : [["sequence_groups", String(span.sequence_groups)] as [string, string]]),
+            : [["sequence_groups", span.sequence_groups] as [string, number]]),
         ],
         entries.map((entry, at) => playlistEntry(span.label, at + 1, entry, paths)),
       );
@@ -161,7 +159,7 @@ export function rowInformation(
         label,
         [
           ["type", "seekable video"],
-          ["overlays", String(lanes.length)],
+          ["overlays", lanes.length],
           ...(item.recipe?.type === "Video"
             ? [["path", item.recipe.path] as [string, string]]
             : []),

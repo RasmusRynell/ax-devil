@@ -6,7 +6,7 @@ import { KIND, type Kind } from "../kit/look";
 import { NoticeList, noticeOf } from "../kit/NoticeList";
 import { Popover } from "../kit/Popover";
 import { MARKS, type MarkColor } from "../live/streamState";
-import type { SectionId, TreeRow, VisibleRow } from "./treeModel";
+import { tipOf, type SectionId, type TreeRow, type VisibleRow } from "./treeModel";
 import { pictureOf } from "./useRowThumbnail";
 import { useSpanWindow } from "./useSpanWindow";
 
@@ -63,6 +63,8 @@ interface Props {
   /** The key of the row the keyboard is on, which may be in another section's tree. */
   current: string | null;
   collapsed: ReadonlySet<string>;
+  /** The keys of the rows a viewer shows, which have the accent edge. */
+  open: ReadonlySet<string>;
   /** The scrolling element that holds the tree, which draws only the rows in view. */
   scroller: RefObject<HTMLElement | null>;
   /** Whether the seat may hide and unhide rows. */
@@ -105,6 +107,7 @@ export function WorkspaceList({
   offset,
   current,
   collapsed,
+  open,
   scroller,
   hides,
   onOpen,
@@ -206,8 +209,9 @@ export function WorkspaceList({
             aria-posinset={position}
             aria-setsize={siblings}
             aria-expanded={row.hasChildren ? !folded : undefined}
+            aria-current={open.has(info.key) || undefined}
             aria-busy={info.status.status === "Pending" || undefined}
-            title={note || undefined}
+            title={tipOf(row, open.has(info.key)) || undefined}
             onClick={() => {
               // The focus first: a tree that takes it starts on its first row, which the click then overrides.
               ref.current?.focus({ preventScroll: true });
@@ -228,9 +232,9 @@ export function WorkspaceList({
             style={{
               paddingLeft: `calc(var(--spacing-m) + var(--spacing-xl) * ${row.level - 1})`,
             }}
-            className={`group/row flex min-h-row shrink-0 cursor-pointer flex-col justify-center rounded-control pr-s hover:bg-hover ${
+            className={`group/row flex min-h-row shrink-0 cursor-pointer flex-col justify-center border-l-edge border-transparent pr-s hover:bg-hover ${
               row.dimmed || info.status.status !== "Ready" ? "text-muted" : "text-fg"
-            } ${isCurrent ? "bg-hover group-focus-visible/tree:outline-(length:--stroke-focus) group-focus-visible/tree:-outline-offset-(--stroke-focus) group-focus-visible/tree:outline-accent" : ""}`}
+            } aria-[current=true]:border-accent aria-[current=true]:bg-hover ${isCurrent ? "bg-hover group-focus-visible/tree:outline-(length:--stroke-focus) group-focus-visible/tree:-outline-offset-(--stroke-focus) group-focus-visible/tree:outline-accent" : ""}`}
           >
             <div className="flex h-row items-center gap-s">
               {row.hasChildren ? (

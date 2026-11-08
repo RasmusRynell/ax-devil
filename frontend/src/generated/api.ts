@@ -1594,6 +1594,10 @@ display_name: string,
  */
 description: string, 
 /**
+ * The name of the installed plugin that provides it; absent for a built-in.
+ */
+plugin?: string, 
+/**
  * The settings, in the order they are shown.
  */
 fields: Array<FieldInfo>, };

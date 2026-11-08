@@ -7,7 +7,15 @@ const path = require("node:path");
 const { backendExecutable, startProcess } = require("./backend.cjs");
 const { apiVersion, shellApi } = require("./generated/api.json");
 const fit = require("./fit.cjs");
-const { SCREENSHOTS, SMOKE_ROOT, click, frames, page, setView, until } = require("./smoke-kit.cjs");
+const {
+  SCREENSHOTS,
+  SMOKE_ROOT,
+  frames,
+  openAddVideo,
+  page,
+  setView,
+  until,
+} = require("./smoke-kit.cjs");
 
 const PASSWORD = "smoke-password";
 const FIXTURE = path.join(SMOKE_ROOT, "fixtures/video/long_gop_h264.mp4");
@@ -87,11 +95,10 @@ async function remote(local, shell) {
     );
     await wait("!document.querySelector('dialog')");
     await js(
-      "!document.querySelector('[aria-label=\"Workspace items\"]') && document.querySelector('[aria-label=Workspace]').click()",
+      "!document.querySelector('[aria-label=\"Workspace items\"], [data-cursor-id=\"sidebar:add-video\"]') && document.querySelector('[aria-label=Workspace]').click()",
     );
-    await wait("document.querySelector('[data-cursor-id=\"sidebar:add-video\"]')");
     await frames({ js });
-    await click(window, "sidebar:add-video");
+    await openAddVideo(window);
     await wait("document.querySelector('dialog[open] input')");
     // With a blank path, Add is disabled and says why; the dialog still fits the smallest window at 200% zoom.
     await wait(

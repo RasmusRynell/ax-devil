@@ -57,9 +57,14 @@ describe("rows", () => {
       active: 1,
       viewers: { 1: { item: "runs", entry: "runs/Train (2)/A" } },
     });
+    // Only the playlist whose entry a viewer shows is open, not its sibling of the same item.
+    const current = () =>
+      screen.getAllByRole("treeitem").map((row) => row.getAttribute("aria-current"));
+    expect(current()).toEqual([null, null, null, "true", "true", null]);
     // Another playlist of the item opens in a pane of its own, beside the first.
     fireEvent.doubleClick(rows[0], { ctrlKey: true });
     await act(async () => {});
+    expect(current()).toEqual(["true", "true", null, "true", "true", null]);
     expect(shown()).toMatchObject({
       active: 2,
       viewers: {
@@ -132,6 +137,19 @@ describe("opening", () => {
       active: 1,
       viewers: { 1: { item: "mot", pinned: false, entry: "mot/A" } },
     });
+  });
+
+  it("marks the rows a viewer shows as current, and says so in their hover text", async () => {
+    await renderTree();
+    const row = () => screen.getByRole("treeitem", { name: /^A/ });
+    expect(row().title).toBe("A\nEntry 1 of 2");
+    expect(row().getAttribute("aria-current")).toBeNull();
+    fireEvent.doubleClick(row());
+    await act(async () => {});
+    expect(row().title).toBe("A\nEntry 1 of 2\nOpen in a viewer");
+    expect(row().getAttribute("aria-current")).toBe("true");
+    // The lane of the entry is shown inside it, not by a viewer of its own.
+    expect(screen.getByRole("treeitem", { name: /^GT/ }).getAttribute("aria-current")).toBeNull();
   });
 
   it("opens an item without choosing its entry, and a lane's entry", async () => {

@@ -16,6 +16,7 @@ mod network;
 pub mod playback;
 mod plugins;
 pub(crate) mod resolve;
+mod scan;
 mod thumbnails;
 pub mod window;
 mod workspaces;
@@ -184,7 +185,7 @@ pub(crate) const ROUTES: &[Route] = &[
         path: "/api/resolvers/{id}/scan",
         listeners: MEMBERS,
         who: Who::Files,
-        handler: |method| on(method, handlers::scan),
+        handler: |method| on(method, scan::scan),
     },
     Route {
         method: MethodFilter::POST,

@@ -157,6 +157,10 @@ pub struct ResolverInfo {
     pub display_name: String,
     /// One sentence on what the resolver does.
     pub description: String,
+    /// The name of the installed plugin that provides it; absent for a built-in.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub plugin: Option<String>,
     /// The settings, in the order they are shown.
     pub fields: Vec<FieldInfo>,
 }

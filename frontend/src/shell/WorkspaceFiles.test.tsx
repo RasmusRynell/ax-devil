@@ -4,7 +4,7 @@ import { GrantsContext } from "../access";
 import { DEFAULT_SETTINGS, FakeSettings } from "../fakeSettings";
 import { FakeSocket } from "../session/fakeSession";
 import { SessionProvider } from "../session/session";
-import { usedOn } from "./recents";
+import { folderOf, usedOn } from "./recents";
 import { Shell } from "./Shell";
 
 beforeEach(() => vi.stubGlobal("WebSocket", FakeSocket));
@@ -48,6 +48,7 @@ describe("workspace files", () => {
     await renderShell();
     const row = await screen.findByRole("button", { name: /Gate review/ });
     expect(row.title).toBe(path);
+    expect(row.textContent).toContain("/state/unsaved");
     fireEvent.click(row);
     expect(sent()).toEqual([{ type: "open", path }]);
     // The list is asked again once the command is answered, as the opened file's entry may have changed.
@@ -129,13 +130,26 @@ describe("workspace files", () => {
   });
 });
 
+it("names the folder of a recent workspace, keeping a filesystem root whole", () => {
+  expect(folderOf("/state/unsaved/a.ax-devil.workspace")).toBe("/state/unsaved");
+  expect(folderOf("/a.ax-devil.workspace")).toBe("/");
+  expect(folderOf("C:\\a.ax-devil.workspace")).toBe("C:\\");
+  expect(folderOf("C:/work/a.ax-devil.workspace")).toBe("C:/work");
+  expect(folderOf("C:/a.ax-devil.workspace")).toBe("C:/");
+  expect(folderOf("\\\\server\\share\\a.ax-devil.workspace")).toBe("\\\\server\\share");
+});
+
 describe("when a recent workspace was used", () => {
-  it("counts local calendar days, not 24-hour spans", () => {
+  it("counts local calendar days: today (a clock ahead too), a weekday for a week, then the date with its year only when it is not this year's", () => {
     const now = new Date(2026, 5, 15, 0, 30).getTime();
-    expect(usedOn(new Date(2026, 5, 15, 0, 5).getTime(), now)).toBe("today");
-    expect(usedOn(new Date(2026, 5, 14, 23, 30).getTime(), now)).toBe("yesterday");
-    expect(usedOn(new Date(2026, 5, 8, 12).getTime(), now)).toBe(
-      new Date(2026, 5, 8, 12).toLocaleDateString(),
-    );
+    const at = (...date: [number, number, number, number?]) =>
+      usedOn(new Date(...date).getTime(), now);
+    expect(at(2026, 5, 15, 0)).toBe("today");
+    expect(at(2026, 5, 15, 9)).toBe("today");
+    expect(at(2026, 5, 14, 23)).not.toMatch(/\d|today/);
+    expect(at(2026, 5, 9, 12)).not.toMatch(/\d/);
+    expect(at(2026, 5, 8, 12)).toMatch(/8/);
+    expect(at(2026, 5, 8, 12)).not.toMatch(/2026/);
+    expect(at(2025, 11, 31, 12)).toMatch(/2025/);
   });
 });

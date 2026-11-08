@@ -8,7 +8,7 @@ import { Popup } from "../kit/Popup";
 import { SectionCaption } from "../kit/SectionCaption";
 import { reasonOf } from "../errors";
 import { useStreamStatuses } from "../live/streamState";
-import { useCan, useCommand, useDoc } from "../session/session";
+import { useCan, useCommand, useDoc, useView } from "../session/session";
 import { exportOf, useExportTargets } from "../viewer/exportTargets";
 import { useShow } from "../viewer/useViewers";
 import { HoverPicture } from "./HoverPicture";
@@ -20,6 +20,7 @@ import { unfold } from "./reveal";
 import { canEdit, isHiddenLane, rowMenu } from "./rowMenu";
 import {
   filteredOut,
+  openRows,
   ORDERS,
   sectionsOf,
   treeOf,
@@ -99,6 +100,15 @@ export function WorkspaceTree({
   const menuFrom = useRef<HTMLElement | null>(null);
 
   const tree = useMemo(() => (workspace ? treeOf(workspace, statuses) : []), [workspace, statuses]);
+  const [views] = useView("viewers");
+  const openKeys = useMemo(
+    () =>
+      openRows(
+        tree,
+        Object.values(views).flatMap((viewer) => viewer ?? []),
+      ),
+    [tree, views],
+  );
   const live = useMemo(
     () => new Set([...statuses].flatMap(([item, { anyLive }]) => (anyLive ? [item] : []))),
     [statuses],
@@ -328,6 +338,7 @@ export function WorkspaceTree({
                     offset={walk.starts.get(section.id) ?? 0}
                     current={onRow}
                     collapsed={folds}
+                    open={openKeys}
                     scroller={scroller}
                     hides={hides}
                     onOpen={(row, side) => void open(row, side)}

@@ -49,7 +49,7 @@ module.exports.rows = async (window) => {
     await fs.mkdir(SCREENSHOTS, { recursive: true });
     await setView(window, [1100, 720], 1);
     await js(
-      "!document.querySelector('[aria-label=\"Workspace items\"]') && document.querySelector('[aria-label=Workspace]').click()",
+      "!document.querySelector('[aria-label=\"Workspace items\"], [data-cursor-id=\"sidebar:add-video\"]') && document.querySelector('[aria-label=Workspace]').click()",
     );
 
     // The MOT Challenge playlist, opened down to its lanes.

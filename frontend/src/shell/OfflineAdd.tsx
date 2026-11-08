@@ -10,7 +10,8 @@ const RESOLVER = "resolver:";
 
 /**
  * The Offline view's Add list under its sections: a single video, then a row for each playlist resolver the backend
- * offers, in its order, whose hover is the resolver's description. The video row asks the window (`onRun`) for the Add
+ * offers, in its order, whose hover is the resolver's description and, for an installed plugin's, `From <plugin name>.`.
+ * The video row asks the window (`onRun`) for the Add
  * Video dialog; a resolver's row opens Add Playlist with that resolver chosen. The resolvers are fetched whenever the
  * view is shown. The list takes its height, shrinks to one row when the window is short, and then scrolls.
  */
@@ -32,11 +33,16 @@ export function OfflineAdd({ onRun }: { onRun: (id: string) => void }) {
               title: "Add a video file",
               disabled: !allowed[scopeOf(VIDEO)],
             },
-            ...(handlers?.resolvers ?? []).map(({ id, display_name, description }) => ({
+            ...(handlers?.resolvers ?? []).map(({ id, display_name, description, plugin }) => ({
               id: `${RESOLVER}${id}`,
               label: display_name,
               icon: "list-video" as const,
-              title: description.split(/\s+/).filter(Boolean).join(" "),
+              title: [
+                description.split(/\s+/).filter(Boolean).join(" "),
+                plugin && `From ${plugin}.`,
+              ]
+                .filter(Boolean)
+                .join("\n"),
               disabled: !may,
             })),
           ]}

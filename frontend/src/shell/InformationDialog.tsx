@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Dialog } from "../kit/Dialog";
 import { Icon } from "../kit/Icon";
+import { MiddleElided } from "../kit/MiddleElided";
 import type { Information } from "../live/information";
 
 /** One titled list of values, which its title folds away with the lists under it; those are indented. */
@@ -32,11 +33,13 @@ function Block({ info, level }: { info: Information; level: number }) {
             <th
               scope="row"
               style={{ paddingLeft: `calc(var(--spacing-m) * ${level * 2 + 2})` }}
-              className="px-m py-xs text-left font-normal text-muted whitespace-nowrap"
+              className="px-m py-xs text-left font-normal text-muted"
             >
-              {label}
+              <MiddleElided text={label} className="max-w-[24ch]" />
             </th>
-            <td className="px-m py-xs break-words select-text">{value}</td>
+            <td className="px-m py-xs select-text">
+              <div className="max-w-[80ch] break-words">{value}</div>
+            </td>
           </tr>
         ))}
       {open &&
@@ -45,11 +48,14 @@ function Block({ info, level }: { info: Information; level: number }) {
   );
 }
 
-/** The information of a workspace item: its settings as a list of labelled values, with the lists of its lanes under it. */
+/**
+ * The information of a workspace item: its settings as a list of labelled values, with the lists of its lanes under it.
+ * It opens as wide as its values (up to 80 characters each, then they wrap) and the user drags its corner to resize it.
+ */
 export function InformationDialog({ info, onClose }: { info: Information; onClose: () => void }) {
   return (
     <Dialog title={info.title} onOk={onClose} okLabel="Close" focusOk>
-      <div className="max-h-[60vh] min-w-[40ch] overflow-auto">
+      <div className="max-h-[80vh] max-w-[90vw] min-w-[40ch] resize overflow-auto">
         <table className="w-full border-collapse text-body">
           <thead>
             <tr className="border-b border-line text-left text-muted">

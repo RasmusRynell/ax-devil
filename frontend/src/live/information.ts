@@ -3,14 +3,19 @@
 import type { NewLiveOverlayWire, NewLiveWire } from "../generated/api";
 import type { Stream } from "./cameras";
 
+/** What a field of the Information dialog holds: text or a count. */
+export type InfoValue = string | number;
+
 /** A titled list of labelled values, with lists under it. */
 export type Information = {
   title: string;
-  fields: readonly (readonly [string, string])[];
+  fields: readonly (readonly [string, InfoValue])[];
   children: readonly Information[];
 };
 
-const SOURCES: Record<NewLiveOverlayWire["mode"], string> = {
+/** What an overlay source is called, by its transport: the lane of a file, or the overlay of a live stream. */
+export const SOURCES: Record<"file" | NewLiveOverlayWire["mode"], string> = {
+  file: "File",
   none: "None",
   rtsp: "RTSP",
   mqtt: "MQTT",
@@ -18,8 +23,8 @@ const SOURCES: Record<NewLiveOverlayWire["mode"], string> = {
 };
 
 /** The settings of the overlay's transport. */
-function overlayFields(overlay: NewLiveOverlayWire): [string, string][] {
-  const handler: [string, string] = [
+function overlayFields(overlay: NewLiveOverlayWire): [string, InfoValue][] {
+  const handler: [string, InfoValue] = [
     "handler type",
     overlay.mode === "none" ? "" : (overlay.handler ?? ""),
   ];
@@ -32,30 +37,26 @@ function overlayFields(overlay: NewLiveOverlayWire): [string, string][] {
       return [
         handler,
         ["broker host", overlay.broker_host ?? ""],
-        ["broker port", String(overlay.broker_port ?? "")],
+        ["broker port", overlay.broker_port ?? ""],
         ["broker username", overlay.broker_user || "(none)"],
         ["data source", overlay.source_key ?? ""],
       ];
     case "datahub":
-      return [
-        handler,
-        ["topic", overlay.topic ?? ""],
-        ["channel ID", String(overlay.channel ?? "")],
-      ];
+      return [handler, ["topic", overlay.topic ?? ""], ["channel ID", overlay.channel ?? ""]];
   }
 }
 
 /** The camera and stream settings of a recipe, as the stream was saved. */
-function connectionFields(recipe: NewLiveWire): [string, string][] {
+function connectionFields(recipe: NewLiveWire): [string, InfoValue][] {
   return [
     ["host", recipe.host ?? ""],
     ["username", recipe.username ?? ""],
-    ["camera head", String(recipe.head ?? "")],
+    ["camera head", recipe.head ?? ""],
     ["resolution", recipe.resolution ?? ""],
     ["stream URL", recipe.url || "(default)"],
     ["device API protocol", (recipe.protocol ?? "").toUpperCase()],
-    ["device port", recipe.port ? String(recipe.port) : "(standard)"],
-    ["RTSP port", String(recipe.rtsp_port ?? "")],
+    ["device port", recipe.port || "(standard)"],
+    ["RTSP port", recipe.rtsp_port ?? ""],
   ];
 }
 
@@ -70,7 +71,7 @@ export function informationOf(stream: Stream): Information {
     title: label,
     fields: [
       ["type", "live video"],
-      ["overlays", draws ? "1" : "0"],
+      ["overlays", draws ? 1 : 0],
       ...(recipe ? connectionFields(recipe) : []),
     ],
     children: draws

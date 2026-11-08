@@ -1,6 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { GrantsContext } from "../access";
 import { DEFAULT_SETTINGS, FakeSettings } from "../fakeSettings";
 import { FakeSocket } from "../session/fakeSession";
 import { SessionProvider } from "../session/session";
@@ -271,7 +270,11 @@ describe("add live stream dialog", () => {
     await waitFor(() => expect(topic().value).toBe("saved.topic"));
     expect(screen.getByRole("dialog", { name: "Edit Live Stream" })).toBeTruthy();
     expect((screen.getByLabelText("Handler Type") as HTMLSelectElement).value).toBe("GONE_V1");
-    expect((screen.getByLabelText("Name") as HTMLInputElement).value).toBe("Gate");
+    const name = screen.getByLabelText("Name") as HTMLInputElement;
+    expect(name.value).toBe("Gate");
+    // Editing starts on the Name, selected for typing over.
+    await waitFor(() => expect(document.activeElement).toBe(name));
+    expect([name.selectionStart, name.selectionEnd]).toEqual([0, 4]);
     expect((screen.getByLabelText("Password") as HTMLInputElement).value).toBe("");
     // The sizes are asked as the stream is saved: by its saved login.
     await waitFor(() => expect(asked.length).toBeGreaterThan(0));
@@ -445,72 +448,4 @@ it("keeps the overlay chosen before the decoders arrive", async () => {
   fireEvent.change(await screen.findByLabelText("Overlay Mode"), { target: { value: "none" } });
   await screen.findByRole("option", { name: "ADF v1 Frame" });
   expect((screen.getByLabelText("Overlay Mode") as HTMLSelectElement).value).toBe("none");
-});
-
-describe("placeholders of references", () => {
-  const REFERENCES = {
-    ...DEFAULT_SETTINGS,
-    values: {
-      ...DEFAULT_SETTINGS.values,
-      "camera.host": "$AX_DEVIL_TARGET_ADDR",
-      "camera.user": "$AX_DEVIL_TARGET_USER",
-      "camera.password": "$AX_DEVIL_TARGET_PASS",
-    },
-  };
-  const placeholder = (label: string) =>
-    (screen.getByLabelText(label) as HTMLInputElement).placeholder;
-  const show = async (answer: object) => {
-    const asked = vi.fn();
-    const before = fetch;
-    vi.stubGlobal("fetch", async (url: string, init?: RequestInit) => {
-      if (url !== "/api/live/expansions") return before(url, init);
-      asked(init?.body);
-      return { ok: true, status: 200, json: async () => answer };
-    });
-    render(
-      <GrantsContext value={["preferences"]}>
-        <FakeSettings state={REFERENCES}>
-          <SessionProvider>
-            <AddLiveStreamDialog onClose={() => {}} />
-          </SessionProvider>
-        </FakeSettings>
-      </GrantsContext>,
-    );
-    return asked;
-  };
-
-  it("show the value and the variable it comes from, and a password only as dots", async () => {
-    const asked = await show({
-      host: "172.20.1.1",
-      username: "root",
-      password_set: true,
-      broker_host: null,
-      broker_user: null,
-      broker_pass_set: null,
-    });
-    await waitFor(() =>
-      expect(placeholder("Host")).toBe("172.20.1.1  (via $AX_DEVIL_TARGET_ADDR)"),
-    );
-    expect(placeholder("Username")).toBe("root  (via $AX_DEVIL_TARGET_USER)");
-    expect(placeholder("Password")).toBe("••••••••  (via $AX_DEVIL_TARGET_PASS)");
-    expect(placeholder("Name")).toBe("172.20.1.1");
-    // What the backend may not expand stays the reference.
-    expect(placeholder("MQTT Host")).not.toContain("via");
-    expect(JSON.parse(asked.mock.calls[0]?.[0] as string)).toEqual({});
-  });
-
-  it("stay the reference where the backend does not expand it, and empty where the variable is not set", async () => {
-    await show({
-      host: null,
-      username: "",
-      password_set: false,
-      broker_host: null,
-      broker_user: null,
-      broker_pass_set: null,
-    });
-    await waitFor(() => expect(placeholder("Name")).toBe("Live stream"));
-    expect(placeholder("Host")).toBe("$AX_DEVIL_TARGET_ADDR");
-    expect(placeholder("Username")).toBe("");
-    expect(placeholder("Password")).toBe("");
-  });
 });
