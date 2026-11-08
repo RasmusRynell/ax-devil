@@ -26,6 +26,19 @@ export const subtitleOf = ({ time_us, frame, kind }: BookmarkInfo): string =>
 export const titleOf = ({ item_name, entry }: BookmarkGroupInfo): string =>
   entry ? `${item_name} › ${entry}` : item_name;
 
+/**
+ * The bookmarks and review marks as data, whatever order the groups come in and whatever their targets resolve to:
+ * equal text means no bookmark or review mark changed.
+ */
+export const marksOf = (groups: readonly BookmarkGroupInfo[]): string =>
+  JSON.stringify([
+    groups.flatMap(({ bookmarks }) => bookmarks).sort((a, b) => (a.id < b.id ? -1 : 1)),
+    groups
+      .filter(({ reviewed }) => reviewed)
+      .map(({ key }) => key)
+      .sort(),
+  ]);
+
 /** How many bookmarks the groups hold. */
 export const countOf = (groups: readonly BookmarkGroupInfo[]): number =>
   groups.reduce((total, group) => total + group.bookmarks.length, 0);

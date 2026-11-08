@@ -184,7 +184,7 @@ describe("opening", () => {
     });
   });
 
-  it("moves with the arrow keys and opens the current row with Enter", async () => {
+  it("moves with the arrow keys and opens the current row with Enter, to the side with Ctrl+Enter", async () => {
     await renderTree();
     const tree = screen.getByRole("tree", { name: "Playlists" });
     fireEvent.keyDown(tree, { key: "ArrowDown" });
@@ -195,19 +195,9 @@ describe("opening", () => {
     fireEvent.keyDown(tree, { key: "Enter" });
     await act(async () => {});
     expect(shown()).toMatchObject({ active: 1, viewers: { 1: { item: "mot", entry: "mot/A" } } });
-  });
-
-  it("opens the current row to the side with Ctrl+Enter", async () => {
-    await renderTree();
-    const tree = screen.getByRole("tree", { name: "Playlists" });
-    fireEvent.keyDown(tree, { key: "ArrowDown" });
-    fireEvent.keyDown(tree, { key: "ArrowDown" });
     fireEvent.keyDown(tree, { key: "Enter", ctrlKey: true });
     await act(async () => {});
-    expect(shown()).toMatchObject({
-      active: 1,
-      viewers: { 1: { item: "mot", entry: "mot/A", pinned: true } },
-    });
+    expect(shown().viewers[2]).toMatchObject({ item: "mot", entry: "mot/A", pinned: true });
   });
 
   it("selects on a click, ignores Space, and opens on a double click after showing the row's place", async () => {

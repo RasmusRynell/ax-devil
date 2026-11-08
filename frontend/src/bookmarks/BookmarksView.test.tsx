@@ -4,6 +4,7 @@ import { act, cleanup, fireEvent, render, screen } from "@testing-library/react"
 import type { BookmarkGroupInfo } from "../generated/api";
 import { entry, FakeSocket, playlist, video, type Room } from "../session/fakeSession";
 import { SessionProvider, useView } from "../session/session";
+import { KeptStateProvider } from "../shell/keptState";
 import { BookmarksView } from "./BookmarksView";
 import {
   SeekProvider,
@@ -51,13 +52,28 @@ function Front() {
   return <div data-testid="front">{JSON.stringify({ active, viewers })}</div>;
 }
 
+/** The view as the sidebar shows it: gone and back again when another view is chosen. */
+function Switch() {
+  const [shown, setShown] = useState(true);
+  return (
+    <>
+      <button type="button" onClick={() => setShown((now) => !now)}>
+        Switch
+      </button>
+      {shown && <BookmarksView />}
+    </>
+  );
+}
+
 async function renderView(groups: BookmarkGroupInfo[]) {
   render(
     <SessionProvider>
-      <SeekProvider>
-        <BookmarksView />
-        <Front />
-      </SeekProvider>
+      <KeptStateProvider>
+        <SeekProvider>
+          <Switch />
+          <Front />
+        </SeekProvider>
+      </KeptStateProvider>
     </SessionProvider>,
   );
   await act(async () => {});
@@ -129,26 +145,45 @@ describe("the Bookmarks view", () => {
     expect(viewers[2]).toMatchObject({ item: "mot", entry: "mot/MOT/A" });
   });
 
-  it("marks the bookmark opened last until a bookmark changes", async () => {
-    const room = await renderView([CLIP]);
+  it("marks the bookmark opened last, through a switch of view and a reorder, until a bookmark changes or the workspace is replaced", async () => {
+    const mot = { ...GONE, standing: { status: "Open", entry: "mot/MOT/A" } } as const;
+    const room = await renderView([CLIP, mot]);
+    const items = () =>
+      act(() =>
+        room.setItems([
+          video("v", false),
+          playlist("mot", [entry("mot/MOT/A", "A", ["GT"])], false),
+        ]),
+      );
     const marked = () =>
-      screen.queryAllByRole("button", { current: true }).map((row) => row.textContent?.slice(0, 4));
+      screen
+        .queryAllByRole("button", { current: true })
+        .map((row) => row.querySelector("span span")?.textContent);
     expect(marked()).toEqual([]);
-    fireEvent.click(screen.getByText("Frame 75"));
-    await act(async () => {});
-    expect(marked()).toEqual(["Fram"]);
     fireEvent.click(screen.getByText("Blur"));
     await act(async () => {});
     expect(marked()).toEqual(["Blur"]);
 
-    // The same bookmarks with their item renamed: the mark stays.
-    room.bookmarks = [{ ...CLIP, item_name: "w.mp4" }];
-    act(() => room.setItems([video("v", false)]));
+    fireEvent.click(screen.getByRole("button", { name: "Switch" }));
+    fireEvent.click(screen.getByRole("button", { name: "Switch" }));
     expect(marked()).toEqual(["Blur"]);
 
+    // The groups in another order, one item renamed: the mark stays.
+    room.bookmarks = [mot, { ...CLIP, item_name: "w.mp4" }];
+    items();
+    expect(marked()).toEqual(["Blur"]);
+
+    // The same bookmarks in a workspace that replaced the open one: the mark goes.
+    room.epoch += 1;
+    items();
+    expect(marked()).toEqual([]);
+
+    fireEvent.click(screen.getByText("Blur"));
+    await act(async () => {});
+    expect(marked()).toEqual(["Blur"]);
     const [first, second] = CLIP.bookmarks;
-    room.bookmarks = [{ ...CLIP, bookmarks: [first, { ...second, note: "Sharp" }] }];
-    act(() => room.setItems([video("v", false)]));
+    room.bookmarks = [mot, { ...CLIP, bookmarks: [first, { ...second, note: "Sharp" }] }];
+    items();
     expect(marked()).toEqual([]);
   });
 

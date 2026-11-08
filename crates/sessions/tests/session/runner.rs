@@ -62,12 +62,18 @@ async fn a_resolver_that_panics_fails_its_item_instead_of_leaving_it_resolving()
             open: false,
         }))
         .unwrap();
-    let failure = loop {
-        if let Some(Resolution::Failed(error)) = owner.state().doc.workspace.resolutions.get(&id) {
-            break error.clone();
+    let failure = tokio::time::timeout(Duration::from_secs(10), async {
+        loop {
+            if let Some(Resolution::Failed(error)) =
+                owner.state().doc.workspace.resolutions.get(&id)
+            {
+                return error.clone();
+            }
+            tokio::time::sleep(Duration::from_millis(5)).await;
         }
-        tokio::time::sleep(Duration::from_millis(5)).await;
-    };
+    })
+    .await
+    .expect("a resolver that panicked left its item resolving instead of failed");
     assert!(
         failure.reason.contains("Resolving stopped unexpectedly"),
         "{}",
