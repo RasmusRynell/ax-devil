@@ -1,16 +1,17 @@
-import {
-  createContext,
-  useCallback,
-  useContext,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import type { PlaybackSession } from "../playback/session";
 import type { PlaybackView } from "../playback/view";
-import { useCan, useCommand, useDoc, useFollowing, useSetView, useView } from "../session/session";
+import {
+  useCan,
+  useCommand,
+  useDoc,
+  useFollowing,
+  useSession,
+  useSettled,
+  useSetView,
+  useView,
+} from "../session/session";
 import { PaneActiveContext } from "../viewer/actions";
 
 /** A frame to show, paused, once the viewer of an entry is ready. */
@@ -98,20 +99,52 @@ export function useAddBookmark(session: PlaybackSession, item: string, entry: st
   }, [session, item, entry, command, setView]);
 }
 
+const SEEN = "ax-devil.sidebarEpoch";
+
+/** The last workspace epoch this window chose a sidebar view for, in `session`; a session it has not seen starts at 0. */
+function seenEpoch(session: string): number {
+  try {
+    const seen = JSON.parse(window.sessionStorage.getItem(SEEN) ?? "null") as {
+      session?: string;
+      epoch?: number;
+    } | null;
+    return seen?.session === session ? (seen.epoch ?? 0) : 0;
+  } catch {
+    return 0;
+  }
+}
+
 /**
- * Shows the Bookmarks view when another workspace replaces this one and has bookmarks. The workspace the window
- * starts with changes nothing, so reloading the page keeps the view the user chose.
+ * Chooses the sidebar view when a workspace replaces the one this window last saw in the same session: Workspace
+ * after a recovery, else Bookmarks when it has bookmarks. Epochs count per session, so a window that connects to
+ * another session (a backend restart, Watch, a join link) sees its workspace as new at epoch 0. The workspace the
+ * app opens at launch counts as a replacement; reloading the page does not, so it keeps the view the user chose.
+ * It decides once the seat that goes with the new workspace has arrived, and a window that follows the presenter
+ * keeps the presenter's view.
  */
-export function useBookmarksOnReplace() {
+export function useSidebarOnReplace() {
   const workspace = useDoc()?.workspace;
+  const session = useSession().session;
+  const settled = useSettled();
+  const sessionId = session?.id;
   const [, setSidebar] = useView("sidebar");
-  const seen = useRef<number | undefined>(undefined);
+  const following = useFollowing();
   const epoch = workspace?.epoch;
+  const recovered = workspace?.recovered ?? false;
   const marked = (workspace?.bookmarks.length ?? 0) > 0;
   useEffect(() => {
-    const before = seen.current;
-    seen.current = epoch;
-    if (before !== undefined && epoch !== before && marked)
-      setSidebar({ view: "bookmarks", open: true });
-  }, [epoch, marked, setSidebar]);
+    // A new Doc arrives before the seat that says whether the window follows it: wait for that seat.
+    if (epoch === undefined || sessionId === undefined || !settled) return;
+    const before = seenEpoch(sessionId);
+    try {
+      window.sessionStorage.setItem(SEEN, JSON.stringify({ session: sessionId, epoch }));
+    } catch {
+      // Without storage a reload shows the view again, which is harmless.
+    }
+    // A window that follows the presenter shows the presenter's sidebar; choosing one would make it explore.
+    if (epoch === before || following) return;
+    const view = recovered ? "workspace" : marked ? "bookmarks" : null;
+    if (view)
+      setSidebar((shown) => (shown.view === view && shown.open ? shown : { view, open: true }));
+  }, [sessionId, settled, epoch, recovered, marked, following, setSidebar]);
 }

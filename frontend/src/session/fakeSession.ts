@@ -116,10 +116,10 @@ export class Room {
   /** Changes the rows the backend would list, for a state the items cannot make, such as an unavailable lane. */
   tweakRows: (rows: RowInfo[]) => RowInfo[] = (rows) => rows;
   /** The bookmark groups the Bookmarks view lists. */
-  bookmarks: BookmarkGroupInfo[] = [];
+  bookmarks: BookmarkGroupInfo[] = FakeSocket.launch.bookmarks;
   docRev = 0;
   /** Counts the workspaces that replaced the open one. */
-  epoch = 0;
+  epoch = FakeSocket.launch.epoch;
   /** Whether changes restored from a recovery copy await Keep or Discard. */
   recovered = false;
   presenter: View = EMPTY_VIEW;
@@ -198,6 +198,8 @@ export class FakeSocket {
   static sockets: FakeSocket[] = [];
   static rooms = new Map<string, Room>();
   static tokens = 0;
+  /** The epoch and bookmarks of the workspace a new session starts with, as when the app opens a file at launch. */
+  static launch: { epoch: number; bookmarks: BookmarkGroupInfo[] } = { epoch: 0, bookmarks: [] };
   /** The backend's clock minus the client's, in microseconds. */
   static clockOffsetUs = 5_000_000;
   /** While set, the backend refuses every change to the workspace with this code. */
@@ -219,6 +221,7 @@ export class FakeSocket {
     FakeSocket.serverPassword = null;
     FakeSocket.sockets = [];
     FakeSocket.rooms.clear();
+    FakeSocket.launch = { epoch: 0, bookmarks: [] };
     FakeSocket.clockOffsetUs = 5_000_000;
   }
 
@@ -461,18 +464,22 @@ export class FakeSocket {
         });
       const doc = cmd.command;
       if (doc.type === "addItems") {
+        // Adding with `open` opens a viewer for the first item that resolved only, as the backend does once the
+        // whole batch has a result: a stream still resolving has none yet.
+        let opens = doc.open;
         const added = doc.items.map((item, at): ItemState => {
           const id = String.fromCharCode(97 + room.items.length + at);
-          // A live stream is added now and resolves later, as the backend does it.
-          return item.type === "Video"
-            ? video(id, doc.open)
-            : {
-                id,
-                label: item.label ?? "Live stream",
-                kind: "live",
-                open: doc.open,
-                resolution: { status: "Pending" },
-              };
+          if (item.type !== "Video")
+            return {
+              id,
+              label: item.label ?? "Live stream",
+              kind: "live",
+              open: false,
+              resolution: { status: "Pending" },
+            };
+          const ready = video(id, opens);
+          opens = false;
+          return ready;
         });
         room.setItems([...room.items, ...added]);
       } else if (doc.type === "addResolved") {

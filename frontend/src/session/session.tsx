@@ -137,6 +137,11 @@ export function useFollowing(): boolean {
   return useSelect((state) => state.following);
 }
 
+/** Whether the seat is the one that goes with the Doc shown: a new Doc arrives before its seat. */
+export function useSettled(): boolean {
+  return useSelect((state) => state.settled);
+}
+
 /** Whether this seat may change things of this scope; the backend decides again when it is asked. */
 export function useCan(scope: Scope): boolean {
   return useSelect((state) => canDo(state.seat?.can ?? null, scope));

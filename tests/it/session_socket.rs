@@ -121,6 +121,23 @@ async fn a_session_works_alone_then_a_watcher_joins_it_sees_only_what_it_may_and
         "viewer": 1,
     });
     owner.say(viewing(2, false, &items[0]["id"])).await;
+    // A failed add opens nothing; the viewer of the missing video is asked for, so watchers see how it failed.
+    let lost = items[1]["id"].clone();
+    let open_lost = json!({"type": "content", "command": {"type": "openViewer", "item": lost}});
+    owner.say(command(2, open_lost)).await;
+    owner
+        .until(|m| {
+            m["doc"]["workspace"]["items"]
+                .as_array()
+                .is_some_and(|items| {
+                    items.iter().any(|item| {
+                        item["id"] == lost
+                            && item["open"] == true
+                            && item["resolution"]["status"] == "Failed"
+                    })
+                })
+        })
+        .await;
 
     // Sharing: a link appears for the owner, and the session is listed.
     owner

@@ -287,9 +287,11 @@ mod tests {
             &WorkspaceState::default(),
             workspace_store::DocCommand::AddItems {
                 items: vec![video],
-                open: true,
+                open: false,
             },
         );
+        let (workspace, _) =
+            workspace_store::apply(&workspace, workspace_store::DocCommand::OpenViewer(open));
         let split = |axis, share, first, second| Layout::Split {
             axis,
             share,
@@ -346,9 +348,11 @@ mod tests {
             &WorkspaceState::default(),
             workspace_store::DocCommand::AddItems {
                 items: vec![playlist],
-                open: true,
+                open: false,
             },
         );
+        let (state, _) =
+            workspace_store::apply(&state, workspace_store::DocCommand::OpenViewer(item));
         let viewer = |entry: Option<ContentId>| View {
             active: Some(ViewerId(1)),
             viewers: [(

@@ -43,6 +43,11 @@ export interface SessionState {
   view: View;
   /** Whether the window shows the presenter's view and nothing of its own. */
   following: boolean;
+  /**
+   * Whether the seat is the one the backend derived from this Doc. A Doc is published as it arrives, before the seat
+   * that goes with it, so until then `seat` (and `following`) still describe the Doc before.
+   */
+  settled: boolean;
   /** Whether the backend's clock is known well enough to follow the presenter's. */
   synced: boolean;
   /**
@@ -97,6 +102,7 @@ export class SessionStore {
     cursorOptions: { show: true, share: true },
     view: EMPTY_VIEW,
     following: false,
+    settled: false,
     synced: false,
     seatings: 0,
     workspaceAnswers: 0,
@@ -494,6 +500,7 @@ export class SessionStore {
       doc: this.#doc?.wire ?? null,
       view,
       following: !!seat && seat.access !== "owner" && seat.mode === "following" && !this.#pending,
+      settled: !!seat && seat.docRev === this.#doc?.rev,
       synced: this.serverNowUs() !== undefined,
     };
     this.#notify();
