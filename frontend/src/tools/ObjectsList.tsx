@@ -112,12 +112,11 @@ export function ObjectsList({
   header: ReactNode;
 }) {
   const { text, sorts, anchor } = list;
-  // File scope needs the lane's file read; without it the list falls back to Frame and the switch is not offered.
+  // File scope needs the lane's file read: while it is not (loading, failed, described again after a reconnect) Frame
+  // shows and the switch is not offered, and the scope the user chose comes back with the file. A lane with no file at
+  // all (`source === null`) is never listed here.
   const hasFile = !frameOnly && readyOf(view.lanes[lane]) !== undefined;
   const scope = hasFile ? list.scope : "frame";
-  useEffect(() => {
-    if (list.scope !== scope) onList({ ...list, scope });
-  }, [list, scope, onList]);
   const [offset, setOffset] = useState(0);
   // Where each scope's table was scrolled and where its cursor was, for when the scope is shown again.
   const tables = useRef<Record<Scope, TableMemory>>({

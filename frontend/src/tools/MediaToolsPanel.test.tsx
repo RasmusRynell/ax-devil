@@ -2,7 +2,7 @@ import { act, cleanup, fireEvent, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import type { FileScopeUnavailable } from "../generated/api";
 import { fullSample } from "../present/fixtures";
-import { FRAME, file, ids, mount, says, search, showFile } from "./panelRig";
+import { FRAME, READY, file, ids, mount, says, search, showFile } from "./panelRig";
 
 beforeEach(() => vi.stubGlobal("ResizeObserver", undefined));
 afterEach(() => {
@@ -54,7 +54,7 @@ describe("Frame scope", () => {
     expect(screen.getByText("1 of 3")).toBeTruthy();
   });
 
-  it("describes both scopes on hover, and offers File only for a lane whose file is read", () => {
+  it("describes both scopes on hover", () => {
     mount();
     const hint = screen
       .getByRole("radio", { name: "File" })
@@ -64,11 +64,21 @@ describe("Frame scope", () => {
     expect(hint).toContain(
       "Every object in the file; objects not in the displayed frame are dimmed",
     );
+  });
 
-    cleanup();
-    mount({}, { plain: true });
-    expect(ids()).toEqual(["12", "7", "9"]);
+  it("keeps File scope while the lane's file is not read, such as after a reconnect, and returns to it", () => {
+    const { status, answer } = mount();
+    showFile();
+    answer([file("7", 3)]);
+    const filed = () => (screen.getByRole("radio", { name: "File" }) as HTMLInputElement).checked;
+    expect(filed()).toBe(true);
+
+    status({ status: "Loading" });
     expect(screen.queryByRole("radio", { name: "File" })).toBeNull();
+    expect(ids()).toEqual(["12", "7", "9"]);
+
+    status(READY);
+    expect(filed()).toBe(true);
   });
 
   it("filters 150 ms after typing stops, at once on Return or Clear, and Clear shows only with text", () => {

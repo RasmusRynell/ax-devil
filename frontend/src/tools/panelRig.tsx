@@ -22,7 +22,7 @@ import { frameObjects } from "./objects";
 
 const float = (value: number): LeafWire => ({ kind: "float", value });
 
-const READY: Extract<LaneStatusWire, { status: "Ready" }> = {
+export const READY: Extract<LaneStatusWire, { status: "Ready" }> = {
   status: "Ready",
   bases: ["Frame"],
   default_basis: "Frame",
@@ -122,7 +122,6 @@ export function mount(
     leaves = {},
     unanswered: held = false,
     keep = "",
-    plain = false,
   }: Partial<{
     second: typeof FRAME;
     selection: Selection;
@@ -134,8 +133,6 @@ export function mount(
     unanswered: boolean;
     /** The lane's frame filter: the expression an object must satisfy to be kept. */
     keep: string;
-    /** The lane's file is not read: it is described but has no status. */
-    plain: boolean;
   }> = {},
 ) {
   vi.useFakeTimers();
@@ -147,7 +144,7 @@ export function mount(
     ],
     LANE_SETTINGS,
   );
-  if (!plain) lanes.setStatus(0, READY);
+  lanes.setStatus(0, READY);
   if (second) lanes.setStatus(1, READY);
   const sent: ClientMessage[] = [];
   const after = (run: () => void, ms: number) => {
@@ -222,6 +219,7 @@ export function mount(
         first={first}
         view={{
           ...view,
+          lanes: lanes.states,
           playhead,
           shown: { sequenceId: playhead, timestampUs: 0, periodUs: null },
         }}
@@ -344,6 +342,12 @@ export function mount(
     reread: (data_revision: number) => {
       lanes.setStatus(0, { ...READY, data_revision });
       files.refresh();
+    },
+    /** The backend's word on the lane's load changes, as when the socket is opened again; the panel is drawn again. */
+    status: (status: LaneStatusWire) => {
+      lanes.setStatus(0, status);
+      files.refresh();
+      shown.rerender(panel(playhead));
     },
     sent,
     queries,
