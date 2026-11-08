@@ -229,6 +229,7 @@ export function AddVideoDialog({
           label="Name"
           value={name}
           placeholder={path.trim() ? fileName(path) : "Optional"}
+          selectOnOpen={editing !== undefined}
           onChange={setName}
         />
         {!path.trim() && <Refusal reason="Choose a video file to continue." />}

@@ -162,6 +162,12 @@ describe("search", () => {
     const details = (tree: ReturnType<typeof treeOf>) => tree.map(({ info }) => info.detail);
     expect(details(treeOf(workspace, states))).toEqual(["10.0.0.5 · Live", "", "", ""]);
     expect(details(treeOf(workspace))).toEqual(["10.0.0.5", "", "", ""]);
+    expect(treeOf(workspace, states).map(({ stream }) => stream)).toEqual([
+      "live",
+      null,
+      null,
+      null,
+    ]);
     const found = visibleRows(treeOf(workspace, states), new Set(), false, "· live");
     expect(new Set(found.map(({ row }) => row.item))).toEqual(new Set(["cam"]));
   });

@@ -1,4 +1,4 @@
-import { useId, type LabelHTMLAttributes, type ReactNode } from "react";
+import { useEffect, useId, useRef, type LabelHTMLAttributes, type ReactNode } from "react";
 import { Icon } from "./Icon";
 import { IconButton } from "./IconButton";
 import { FIELD, FIELD_IN } from "./look";
@@ -134,7 +134,7 @@ export function Checkbox({
   );
 }
 
-/** A labelled text box; `masked` hides what is typed, `placeholder` shows what applies while it is empty, `suggestions` are offered to pick from, each as `[value, name]`, while any text stays allowed, `action` sits after the box, `describedBy` names a note about it, `fill` gives the box its own row at the full width, `wide` makes it wide enough for a `$NAME` reference. */
+/** A labelled text box; `masked` hides what is typed, `placeholder` shows what applies while it is empty, `suggestions` are offered to pick from, each as `[value, name]`, while any text stays allowed, `action` sits after the box, `describedBy` names a note about it, `fill` gives the box its own row at the full width, `wide` makes it wide enough for a `$NAME` reference, `selectOnOpen` focuses it with its text selected once it is on screen (after a dialog around it took the focus). */
 export function TextField({
   label,
   value,
@@ -145,6 +145,7 @@ export function TextField({
   action,
   fill = false,
   wide = false,
+  selectOnOpen = false,
   onChange,
 }: {
   label: ReactNode;
@@ -156,10 +157,20 @@ export function TextField({
   action?: ReactNode;
   fill?: boolean;
   wide?: boolean;
+  selectOnOpen?: boolean;
   onChange: (value: string) => void;
 }) {
   const id = useId();
   const list = `${id}-suggestions`;
+  const input = useRef<HTMLInputElement>(null);
+  // A microtask: a dialog opens (and focuses its first field) in an effect that runs after this one.
+  useEffect(() => {
+    if (!selectOnOpen) return;
+    queueMicrotask(() => {
+      input.current?.focus();
+      input.current?.select();
+    });
+  }, [selectOnOpen]);
   return (
     <div className={LABELLED}>
       <label htmlFor={id} className="contents">
@@ -167,6 +178,7 @@ export function TextField({
       </label>
       <span className={`flex min-w-0 items-center gap-s ${fill ? "w-full" : ""}`}>
         <input
+          ref={input}
           id={id}
           type={masked ? "password" : "text"}
           value={value}

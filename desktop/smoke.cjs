@@ -16,6 +16,7 @@ const {
 } = require("./smoke-kit.cjs");
 const { gallery } = require("./smoke-gallery.cjs");
 const { items } = require("./smoke-items.cjs");
+const { rows } = require("./smoke-rows.cjs");
 const { sidebar } = require("./smoke-sidebar.cjs");
 const { playlist } = require("./smoke-playlist.cjs");
 const { split } = require("./smoke-split.cjs");
@@ -331,6 +332,8 @@ module.exports = async (window, shell) => {
   await plugins(window);
   console.log("smoke: items");
   await items(window);
+  console.log("smoke: tree rows");
+  await rows(window);
   console.log("smoke: sidebar");
   await sidebar(window);
   console.log("smoke: sharing");

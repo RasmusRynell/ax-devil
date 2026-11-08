@@ -394,7 +394,11 @@ it("edits a video: the form starts from the item, and Save replaces that item wi
     "/gt.txt",
   );
   expect(handlerAt().value).toBe("MOT");
-  expect((screen.getByLabelText("Name") as HTMLInputElement).value).toBe("Gate");
+  const name = screen.getByLabelText("Name") as HTMLInputElement;
+  expect(name.value).toBe("Gate");
+  // Editing starts on the Name, selected for typing over.
+  await waitFor(() => expect(document.activeElement).toBe(name));
+  expect([name.selectionStart, name.selectionEnd]).toEqual([0, 4]);
 
   fireEvent.change(screen.getByLabelText("Name"), { target: { value: "Door" } });
   fireEvent.click(screen.getByRole("button", { name: "Add overlay" }));

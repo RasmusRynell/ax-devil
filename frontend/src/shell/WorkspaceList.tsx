@@ -5,6 +5,7 @@ import { IconButton } from "../kit/IconButton";
 import { KIND, type Kind } from "../kit/look";
 import { NoticeList, noticeOf } from "../kit/NoticeList";
 import { Popover } from "../kit/Popover";
+import { MARKS, type MarkColor } from "../live/streamState";
 import type { SectionId, TreeRow, VisibleRow } from "./treeModel";
 import { pictureOf } from "./useRowThumbnail";
 import { useSpanWindow } from "./useSpanWindow";
@@ -16,10 +17,26 @@ const KIND_ICONS: Record<Kind, IconName> = {
   lane: "layers",
 };
 
-/** The icon in front of a row and its colour: its kind's, a warning when unavailable, muted when hidden or pending. */
-function iconOf({ info, playlist, dimmed }: TreeRow): { name: IconName; className: string } {
+const MARK_COLOR: Record<MarkColor, string> = {
+  live: KIND.live,
+  caution: "text-caution",
+  muted: "text-muted",
+};
+
+/**
+ * The icon in front of a row and its colour: its kind's, a warning when unavailable, muted when hidden or pending; a
+ * live item's is its stream's state, idle while no viewer reports one.
+ */
+function iconOf({ info, itemKind, stream, playlist, dimmed }: TreeRow): {
+  name: IconName;
+  className: string;
+} {
   const { status } = info.status;
   if (status === "Unavailable") return { name: "triangle-alert", className: "text-caution" };
+  if (info.kind === "item" && itemKind === "live" && status === "Ready") {
+    const mark = MARKS[stream ?? "idle"];
+    return { name: mark.icon, className: MARK_COLOR[mark.color] };
+  }
   const kind: Kind = info.kind === "lane" ? "lane" : playlist ? "playlist" : "video";
   return { name: KIND_ICONS[kind], className: dimmed || status !== "Ready" ? "" : KIND[kind] };
 }
