@@ -110,6 +110,11 @@ async fn a_frame_is_paired_with_the_overlay_sample_of_its_capture_time() {
     assert_eq!((luma(&shown), out.map.samples.clone()), (20, vec![0]));
     assert_eq!(out.items.len(), 1);
     assert_eq!(shown.frame.id().timestamp, MediaTime(1_000));
+    assert_eq!(
+        shown.frame.id().sequence_id,
+        1,
+        "the first picture shown is frame 1"
+    );
     assert_eq!(out.map.first, shown.frame.id().sequence_id);
 
     // Only the sample the viewer was sent can be inspected, not another one of the same snapshot.
@@ -421,4 +426,37 @@ async fn a_frame_released_at_the_deadline_draws_the_sample_still_open_for_it() {
     let out = shown.out.as_ref().unwrap();
     assert_eq!((luma(&shown), out.map.samples.clone()), (20, vec![0]));
     assert_eq!(out.items.len(), 1);
+}
+
+#[tokio::test]
+async fn the_overlay_choice_decides_what_is_requested_and_an_unknown_handler_is_refused() {
+    let rig = rig();
+    let none = rig.open(&content("cam", LiveOverlay::None)).await;
+    let video = rig.fake.videos()[0].clone();
+    assert!(!none.has_overlay());
+    assert!(
+        video.docs.is_none(),
+        "no metadata is asked for without an overlay"
+    );
+    assert!(rig.fake.messages().is_empty());
+
+    let embedded = rig.open(&content("cam2", rtsp())).await;
+    assert!(embedded.has_overlay());
+    assert!(
+        rig.fake.videos()[1].docs.is_some(),
+        "the embedded overlay asks for metadata"
+    );
+
+    let unknown = LiveOverlay::Rtsp {
+        handler: "NO_SUCH_DECODER".into(),
+    };
+    let refused = rig
+        .sources
+        .open(&content("cam3", unknown), &rig.handlers, matching())
+        .await;
+    assert!(
+        refused.is_err(),
+        "no feed starts on a decoder that is not installed"
+    );
+    assert_eq!(rig.fake.videos().len(), 2);
 }

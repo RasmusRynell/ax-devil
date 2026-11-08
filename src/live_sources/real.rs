@@ -256,8 +256,22 @@ mod tests {
             login: None,
         };
 
-        let waits = timeout(&settings.state());
+        let settings = Arc::new(settings);
+        let connector = CameraConnector::new(settings.clone());
+        let waits = connector.timeout();
         assert_eq!(waits, Duration::from_secs(10));
+        assert_eq!(camera_of(&resolved, waits).unwrap().timeout, waits);
+
+        // A changed setting reaches the next connection of a connector that already exists.
+        let mut values = settings.state().values(&settings::Scope::ALL);
+        values.insert("camera.timeout".into(), 25.into());
+        let change = settings::Change {
+            values,
+            shortcuts: Default::default(),
+        };
+        settings.replace(&settings::Scope::ALL, &change).unwrap();
+        let waits = connector.timeout();
+        assert_eq!(waits, Duration::from_secs(25));
         assert_eq!(camera_of(&resolved, waits).unwrap().timeout, waits);
     }
 }
