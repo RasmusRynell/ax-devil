@@ -37,7 +37,7 @@ export function Chip({ tone = "neutral", onClick, title, children }: ChipProps) 
       onClick={onClick}
       onKeyDown={chipKeys}
       onKeyUp={chipKeys}
-      className={`${TAG} ${look.text} ${look.fill} ${look.press} focus-ring`}
+      className={`${TAG} ${look.text} ${look.fill} ${look.press} cursor-pointer focus-ring`}
     >
       {text}
     </button>
@@ -173,7 +173,7 @@ export function ChoiceChips<T extends string>(props: ChoiceProps<T>) {
 }
 
 const SEGMENT =
-  "inline-flex h-segment min-w-0 items-center rounded-control px-m text-small text-fg focus-ring-within not-has-checked:hover:bg-hover has-checked:bg-hover has-checked:text-accent";
+  "inline-flex h-segment min-w-0 cursor-pointer items-center has-disabled:cursor-default rounded-control px-m text-small text-fg focus-ring-within not-has-checked:hover:bg-hover has-checked:bg-hover has-checked:text-accent";
 
 /** Two or three joined segments of which exactly one is chosen: a setting that switches between modes; `wide` fills the width. */
 export function SegmentedControl<T extends string>({

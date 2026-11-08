@@ -9,6 +9,13 @@ void test("saved bounds are used only when they overlap a display", () => {
   assert.deepEqual(windowBounds({ ...saved, x: 2500 }, areas), { width: 1280, height: 800 });
   assert.deepEqual(windowBounds({ ...saved, width: 0 }, areas), { width: 1280, height: 800 });
   assert.deepEqual(windowBounds(undefined, areas), { width: 1280, height: 800 });
+  // The title bar is visible, but the window is larger than the display: it is shrunk and moved onto it.
+  assert.deepEqual(windowBounds({ x: 100, y: 50, width: 4000, height: 3000 }, areas), {
+    x: 0,
+    y: 0,
+    width: 1920,
+    height: 1080,
+  });
 });
 
 void test("bounds with the title bar off screen are moved into the display they overlap most", () => {
