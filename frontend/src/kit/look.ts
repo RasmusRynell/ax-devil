@@ -14,7 +14,7 @@ export const CONTROL_IN =
 
 /** Chrome without a border: menu-bar triggers, list rows, tabs, headers, dismiss and on-canvas icon buttons. */
 export const QUIET =
-  "inline-flex min-h-row items-center gap-m rounded-control bg-transparent px-m text-fg enabled:hover:bg-hover focus-ring disabled:text-disabled";
+  "inline-flex min-h-row cursor-pointer items-center gap-m rounded-control bg-transparent px-m text-fg enabled:hover:bg-hover focus-ring disabled:cursor-default disabled:text-disabled";
 
 /** Selected look for one-of-many (radio) controls inside `CONTROL_IN`: solid accent; disabled keeps the muted edge. */
 export const CHOSEN =
