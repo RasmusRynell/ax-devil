@@ -8,6 +8,7 @@ import {
   useDoc,
   useFollowing,
   useSession,
+  useSettled,
   useSetView,
   useView,
 } from "../session/session";
@@ -118,11 +119,13 @@ function seenEpoch(session: string): number {
  * after a recovery, else Bookmarks when it has bookmarks. Epochs count per session, so a window that connects to
  * another session (a backend restart, Watch, a join link) sees its workspace as new at epoch 0. The workspace the
  * app opens at launch counts as a replacement; reloading the page does not, so it keeps the view the user chose.
- * A window that follows the presenter keeps the presenter's view.
+ * It decides once the seat that goes with the new workspace has arrived, and a window that follows the presenter
+ * keeps the presenter's view.
  */
 export function useSidebarOnReplace() {
   const workspace = useDoc()?.workspace;
-  const { session, mode } = useSession();
+  const session = useSession().session;
+  const settled = useSettled();
   const sessionId = session?.id;
   const [, setSidebar] = useView("sidebar");
   const following = useFollowing();
@@ -130,8 +133,8 @@ export function useSidebarOnReplace() {
   const recovered = workspace?.recovered ?? false;
   const marked = (workspace?.bookmarks.length ?? 0) > 0;
   useEffect(() => {
-    // The seat says whether the window follows, so nothing is chosen before it arrives.
-    if (epoch === undefined || sessionId === undefined || mode === null) return;
+    // A new Doc arrives before the seat that says whether the window follows it: wait for that seat.
+    if (epoch === undefined || sessionId === undefined || !settled) return;
     const before = seenEpoch(sessionId);
     try {
       window.sessionStorage.setItem(SEEN, JSON.stringify({ session: sessionId, epoch }));
@@ -143,5 +146,5 @@ export function useSidebarOnReplace() {
     const view = recovered ? "workspace" : marked ? "bookmarks" : null;
     if (view)
       setSidebar((shown) => (shown.view === view && shown.open ? shown : { view, open: true }));
-  }, [sessionId, mode, epoch, recovered, marked, following, setSidebar]);
+  }, [sessionId, settled, epoch, recovered, marked, following, setSidebar]);
 }

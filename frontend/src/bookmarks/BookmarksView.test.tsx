@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { useState } from "react";
-import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { BookmarkGroupInfo } from "../generated/api";
 import { entry, FakeSocket, playlist, video, type Room } from "../session/fakeSession";
 import { SessionProvider, useFollowing, useSession, useView } from "../session/session";
@@ -345,6 +345,62 @@ describe("a viewer and its bookmarks", () => {
     expect(screen.getByRole("button").textContent).toBe("plugins following");
     const seen = FakeSocket.latest.received.filter((message) => message.type === "view");
     expect(seen).toEqual([]);
+  });
+
+  it("keeps a watcher that chose Follow presenter following when the replacement's Doc arrives before its seat", async () => {
+    const host = FakeSocket.host("explore");
+    function Watcher() {
+      useSidebarOnReplace();
+      const { watch, follow } = useSession();
+      const [sidebar, setSidebar] = useView("sidebar");
+      const following = useFollowing();
+      return (
+        <>
+          <button type="button" onClick={() => watch(host.id)}>
+            watch
+          </button>
+          <button type="button" onClick={() => setSidebar({ view: "plugins", open: true })}>
+            explore
+          </button>
+          <button type="button" onClick={() => void follow()}>
+            follow
+          </button>
+          <div data-testid="state">{`${sidebar.view} ${following ? "following" : "exploring"}`}</div>
+        </>
+      );
+    }
+    render(
+      <SessionProvider>
+        <Watcher />
+      </SessionProvider>,
+    );
+    await act(async () => {});
+    fireEvent.click(screen.getByRole("button", { name: "watch" }));
+    await act(async () => {});
+    fireEvent.click(screen.getByRole("button", { name: "explore" }));
+    await waitFor(() => expect(host.seats[1].view).not.toBeNull());
+    expect(screen.getByTestId("state").textContent).toBe("plugins exploring");
+
+    // The backend coalesces: the replacement's Doc goes out, and only the latest seat follows it.
+    const seats: Parameters<FakeSocket["emit"]>[0][] = [];
+    const emit = FakeSocket.prototype.emit;
+    const hold = vi.spyOn(FakeSocket.prototype, "emit").mockImplementation(function (
+      this: FakeSocket,
+      message,
+    ) {
+      if (message.type === "seat") seats.push(message);
+      else emit.call(this, message);
+    });
+    fireEvent.click(screen.getByRole("button", { name: "follow" }));
+    await act(async () => {});
+    host.epoch = 1;
+    host.bookmarks = [CLIP];
+    act(() => host.setItems([video("v", false)]));
+    await act(async () => {});
+    hold.mockRestore();
+    act(() => FakeSocket.latest.emit(seats[seats.length - 1]));
+    await act(async () => {});
+    expect(screen.getByTestId("state").textContent).toBe("workspace following");
   });
 
   it("bookmarks the frame on screen and brings the Bookmarks view up", async () => {
