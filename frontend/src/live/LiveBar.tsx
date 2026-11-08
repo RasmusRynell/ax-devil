@@ -3,7 +3,15 @@ import type { LiveFeedStatus } from "../generated/api";
 import { Button } from "../kit/Button";
 import { Chip, ToggleChip } from "../kit/Chips";
 import type { Tone } from "../kit/look";
-import { describe, headline, needsRetry, problemLine, toneOf, utcTime } from "./words";
+import {
+  describe,
+  headline,
+  needsRetry,
+  placeholderLines,
+  problemLine,
+  toneOf,
+  utcTime,
+} from "./words";
 import type { LiveView } from "./view";
 
 /** What the bar asks of the session. */
@@ -129,6 +137,17 @@ export function LiveBar({
           {retry}
         </div>
       )}
+    </div>
+  );
+}
+
+/** What fills the pane until the first picture: the video's state and why, centred and out of the way of the pointer. */
+export function NoPicture({ video }: { video: LiveFeedStatus }) {
+  const [state, why] = placeholderLines(video);
+  return (
+    <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center gap-m p-xl text-center text-on-canvas-muted">
+      <p className="m-0">{state}</p>
+      <p className="m-0">{why}</p>
     </div>
   );
 }

@@ -15,6 +15,7 @@ use foundation::{ErrorCode, UserError};
 use futures_util::future::{join, join_all};
 use handlers::Handlers;
 use overlay_sync::MatchPolicy;
+use playback::SharedFrame;
 use tokio::{runtime::Handle, sync::watch};
 use workspace::{LiveOverlay, LiveVideoContent, ResolvedCamera};
 
@@ -187,6 +188,16 @@ impl LiveSources {
             // A feed of the same camera is being closed: its MQTT client is free only after that.
             let mut closing = closing;
             let _ = closing.wait_for(|closed| *closed).await;
+        }
+    }
+
+    /// What the open viewers of `content` have on screen: `None` when none is open, `Some(None)` while the stream has
+    /// shown no picture yet, else the newest one. Asking connects to nothing.
+    pub fn open_picture(&self, content: &LiveVideoContent) -> Option<Option<SharedFrame>> {
+        let slots = self.0.slots.lock().unwrap_or_else(PoisonError::into_inner);
+        match slots.get(&Spec::of(content)) {
+            Some(Slot::Open(feed)) => Some(feed.shared.picture.borrow().clone()),
+            Some(Slot::Closing(_)) | None => None,
         }
     }
 

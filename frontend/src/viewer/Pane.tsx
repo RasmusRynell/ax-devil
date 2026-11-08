@@ -44,6 +44,8 @@ export function Pane({
   onPin,
   onClose,
   onDrop,
+  onMenu,
+  notice,
   children,
 }: {
   viewer: number;
@@ -58,6 +60,10 @@ export function Pane({
   onPin: (pin: boolean) => void;
   onClose: () => void;
   onDrop: (source: number, side: Side) => void;
+  /** A right click on the header, at the pointer; the lanes below have menus of their own. */
+  onMenu?: (x: number, y: number) => void;
+  /** What to tell about the pane, above its viewer (a failed header action). */
+  notice?: ReactNode;
   children: ReactNode;
 }) {
   const [hint, setHint] = useState<Side | null>(null);
@@ -138,6 +144,10 @@ export function Pane({
         onDragEnd={() => {
           dragged.current = null;
         }}
+        onContextMenu={(event) => {
+          event.preventDefault();
+          onMenu?.(event.clientX, event.clientY);
+        }}
         className={`flex h-row shrink-0 items-center border-b-edge bg-panel ${
           active ? "border-accent" : "border-line"
         }`}
@@ -173,6 +183,7 @@ export function Pane({
         />
       </div>
       <div className="relative flex min-h-0 min-w-0 flex-1 flex-col">
+        {notice}
         <HeaderDetailsContext.Provider value={setDetails}>
           <PaneActions active={active}>{children}</PaneActions>
         </HeaderDetailsContext.Provider>

@@ -33,12 +33,14 @@ fn live_item(state: &AppState, id: &str) -> Option<(HeldItem, LiveVideoContent)>
     }
 }
 
-/// Whether the user started the stream's host, so its own login may be sent there.
-fn started(state: &AppState, held: &HeldItem, camera: &ResolvedCamera) -> bool {
-    held.open || state.live.has_started(&camera.host)
+/// Whether the user started the stream's host (its viewer is `open`, or one was opened for the host), so its own login
+/// may be sent there.
+fn started(state: &AppState, open: bool, camera: &ResolvedCamera) -> bool {
+    open || state.live.has_started(&camera.host)
 }
 
-fn jpeg(picture: Option<Bytes>) -> Response {
+/// A JPEG, uncached, or a 404 when there is none.
+pub(super) fn jpeg(picture: Option<Bytes>) -> Response {
     match picture {
         Some(picture) => (
             [
@@ -52,28 +54,37 @@ fn jpeg(picture: Option<Bytes>) -> Response {
     }
 }
 
-/// A snapshot of the stream's camera, with the stream's own login: 404 when the stream is not a resolved live stream,
-/// the host is not started, or the camera does not give one. At most one request to the camera per 10 s.
-pub(super) async fn snapshot(State(state): State<AppState>, Path(item): Path<String>) -> Response {
-    let Some((held, content)) = live_item(&state, &item) else {
-        return jpeg(None);
-    };
+/// The picture of a stream for a hover card, whichever sidebar view asks: the newest one an open viewer has on screen
+/// (none until its first), else a snapshot of the stream's camera with the stream's own login. `open` is whether the
+/// stream's viewer was requested. `None` when the host is not started or the camera does not give one. A camera is asked
+/// at most once per 10 s for a login and head.
+pub(super) async fn stream_picture(
+    state: &AppState,
+    content: &LiveVideoContent,
+    open: bool,
+) -> Option<Bytes> {
+    if let Some(shown) = state.live.open_picture(content) {
+        return state.glances.picture(&shown?).await;
+    }
     let resolved = &content.camera;
     let (Some(head), Ok(camera)) = (
         Head::new(resolved.head),
         camera_of(resolved, SNAPSHOT_TIMEOUT),
     ) else {
+        return None;
+    };
+    if !started(state, open, resolved) {
+        return None;
+    }
+    state.glances.snapshot(camera, head).await
+}
+
+/// The picture of the stream `item` names, 404 when it is not a resolved live stream or has none.
+pub(super) async fn snapshot(State(state): State<AppState>, Path(item): Path<String>) -> Response {
+    let Some((held, content)) = live_item(&state, &item) else {
         return jpeg(None);
     };
-    if !started(&state, &held, resolved) {
-        return jpeg(None);
-    }
-    jpeg(
-        state
-            .glances
-            .snapshot(&format!("item/{item}"), camera, head)
-            .await,
-    )
+    jpeg(stream_picture(&state, &content, held.open).await)
 }
 
 /// A snapshot of the first head of a camera the scan found, with the scan login that signed in to it.
@@ -106,16 +117,7 @@ pub(super) async fn found_snapshot(
     if camera.login.is_none() {
         return jpeg(None);
     }
-    jpeg(
-        state
-            .glances
-            .snapshot(
-                &format!("network/{address}/{}/{login_index}", scan.scan),
-                camera,
-                Head::FIRST,
-            )
-            .await,
-    )
+    jpeg(state.glances.snapshot(camera, Head::FIRST).await)
 }
 
 /// What signing in with the stream's own login finds, as a scan row; 204 when nothing is known (see the module).
@@ -148,7 +150,7 @@ pub(super) async fn check(
     }) else {
         return unknown();
     };
-    if !started(&state, &held, resolved) {
+    if !started(&state, held.open, resolved) {
         return unknown();
     }
     match state

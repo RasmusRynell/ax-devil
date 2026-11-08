@@ -128,6 +128,7 @@ pub fn reason(kind: ErrorKind) -> LiveReason {
         ErrorKind::NotAxis => LiveReason::NotAxis,
         ErrorKind::NotFound => LiveReason::NotFound,
         ErrorKind::Unsupported => LiveReason::Unsupported,
+        ErrorKind::SourceUnavailable => LiveReason::SourceUnavailable,
         ErrorKind::BrokerRefused(Refusal::UnsupportedProtocol) => {
             LiveReason::BrokerUnsupportedProtocol
         }

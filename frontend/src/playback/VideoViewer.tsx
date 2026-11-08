@@ -210,6 +210,7 @@ export function VideoViewer({
     session && (
       <Playback
         session={session}
+        viewer={viewer}
         item={item}
         name={entry.label}
         title={content.display_name}

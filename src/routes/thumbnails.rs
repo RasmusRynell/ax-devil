@@ -1,6 +1,10 @@
-//! The thumbnail of an entry: its first picture as a JPEG, for the hover cards of the sidebar.
+//! The thumbnail of an entry: its first picture as a JPEG, for the hover cards of the sidebar; of a live stream, its
+//! picture as [`glance`](super::glance) decides it.
 
-use super::handlers::{Refusal, refuse};
+use super::{
+    glance::{jpeg, stream_picture},
+    handlers::{Refusal, refuse},
+};
 use crate::{AppState, thumbnails::Answer, video_sources::input_of};
 use axum::{
     extract::{Query, State},
@@ -10,7 +14,7 @@ use axum::{
 use foundation::{ErrorCode, UserError};
 use serde::Deserialize;
 use sessions::SessionId;
-use workspace::ContentId;
+use workspace::{Content, ContentId};
 use workspace_store::Resolution;
 
 /// The entry to show and the session whose workspace holds it.
@@ -41,9 +45,24 @@ pub(super) async fn get(
         .and_then(|id| state.sessions.subscribe(id))
         .map(|watcher| watcher.borrow().clone())
         .ok_or_else(not_found)?;
-    let video = session
-        .doc
-        .workspace
+    let workspace = &session.doc.workspace;
+    // A live stream has no entry; its row is asked for by the item's own content id and shows the stream's picture.
+    let live = workspace
+        .resolutions
+        .iter()
+        .find_map(|(item, resolution)| match resolution {
+            Resolution::Resolved { content, .. } if ContentId::of_item(item) == params.entry => {
+                match content {
+                    Content::LiveVideo(live) => Some((workspace.open.contains(item), live)),
+                    Content::SeekableVideo(_) | Content::Playlist(_) => None,
+                }
+            }
+            _ => None,
+        });
+    if let Some((open, live)) = live {
+        return Ok(jpeg(stream_picture(&state, live, open).await));
+    }
+    let video = workspace
         .resolutions
         .values()
         .find_map(|resolution| match resolution {

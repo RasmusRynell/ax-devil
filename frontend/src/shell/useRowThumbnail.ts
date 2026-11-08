@@ -3,10 +3,15 @@ import { useCan, useSession } from "../session/session";
 import { useHoverPicture } from "./useHoverPicture";
 import type { TreeRow, VisibleRow } from "./treeModel";
 
-/** The entry whose first frame a row's hover card shows; none for lanes, playlists and rows that are not Ready. */
-export const pictureOf = ({ info }: TreeRow) =>
+/**
+ * The entry whose first frame a row's hover card shows, or a live stream's item (the backend answers with the
+ * stream's picture); none for lanes, playlists and rows that are not Ready.
+ */
+export const pictureOf = ({ info, item, itemKind }: TreeRow) =>
   info.status.status === "Ready" && (info.kind === "item" || info.kind === "entry")
-    ? info.entry
+    ? itemKind === "live"
+      ? item
+      : info.entry
     : null;
 
 const urlOf = (session: string, entry: string) =>

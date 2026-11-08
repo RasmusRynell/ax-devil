@@ -39,6 +39,7 @@ import { FIT, ZOOM_STEP } from "./viewport";
 /** One entry's pane once its session exists: the lanes, transport and tools while it is ready, else why not. */
 export function Playback({
   session,
+  viewer,
   item,
   name,
   title,
@@ -52,6 +53,8 @@ export function Playback({
   onInspector,
 }: {
   session: PlaybackSession;
+  /** The id of the pane's viewer, which its export is offered under. */
+  viewer: number;
   item: string;
   name: string;
   title: string;
@@ -127,8 +130,8 @@ export function Playback({
   );
   const ready = view.status === "ready";
   useEffect(
-    () => (ready ? registerExport(item, entry, () => exportLane(null)) : undefined),
-    [ready, item, entry, exportLane],
+    () => (ready ? registerExport(viewer, item, entry, () => exportLane(null)) : undefined),
+    [ready, viewer, item, entry, exportLane],
   );
   useHeaderDetails(view.details);
   const addBookmark = useAddBookmark(session, item, entry);

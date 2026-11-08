@@ -11,6 +11,7 @@ const REASONS: Record<LiveReason, string> = {
   NotAxis: "Not an Axis camera",
   NotFound: "Not found",
   Unsupported: "Unsupported",
+  SourceUnavailable: "Data source not available",
   BrokerUnsupportedProtocol: "Broker protocol unsupported",
   BrokerClientIdRejected: "Broker rejected the client ID",
   BrokerBadCredentials: "Broker login rejected",
@@ -29,6 +30,14 @@ const REASONS: Record<LiveReason, string> = {
 
 /** The reason a feed is not live, in words. */
 export const reasonText = (reason: LiveReason): string => REASONS[reason];
+
+/**
+ * What the user can do about a reason, where only they can: the stream's own Edit lists the sources the camera offers,
+ * which the status does not carry (it reaches every viewer of the stream, and the list is the camera's).
+ */
+const ADVICE: Partial<Record<LiveReason, string>> = {
+  SourceUnavailable: "Choose another in Edit.",
+};
 
 type FeedState = LiveFeedStatus["status"];
 
@@ -81,18 +90,23 @@ export function headline(status: LiveFeedStatus): string {
   return status.status === "Reconnecting" ? `${label} (${status.attempt})` : label;
 }
 
+/** Why a feed stands as it does: its reason, with what to do about it, else what its state means. */
+function because(status: LiveFeedStatus): string {
+  if (status.status === "Stalled") return `No frames for ${status.seconds} s`;
+  if (!("reason" in status)) return STATES[status.status].description;
+  return [reasonText(status.reason), ADVICE[status.reason]].filter(Boolean).join(". ");
+}
+
 /** The line a problem gets under the bar, `Video: Failed — Login rejected`; `null` for a feed that is not in trouble. */
 export function problemLine(feed: string, status: LiveFeedStatus): string | null {
-  const { description, problem } = STATES[status.status];
-  if (!problem) return null;
-  const reason =
-    status.status === "Stalled"
-      ? `No frames for ${status.seconds} s`
-      : "reason" in status
-        ? reasonText(status.reason)
-        : description;
-  return `${feed}: ${headline(status)} — ${reason}`;
+  return STATES[status.status].problem ? `${feed}: ${headline(status)} — ${because(status)}` : null;
 }
+
+/** What the pane says until the first picture: the video's state, then why, such as `Connecting…`, `Waiting for the device to answer.`. */
+export const placeholderLines = (status: LiveFeedStatus): [string, string] => [
+  headline(status),
+  because(status),
+];
 
 /** Whether a feed wants the user: it is stuck, or failed, and Retry reopens it. */
 export const needsRetry = (status: LiveFeedStatus | null): boolean =>

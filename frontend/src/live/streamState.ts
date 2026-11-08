@@ -73,23 +73,21 @@ export function mostUrgent(statuses: Iterable<StreamStatus>): StreamStatus {
 
 /**
  * What a live viewer says of its stream: the session's own failure or reconnecting first (it holds the feeds at
- * Connecting meanwhile), else its worst feed, or paused when the feeds are live but newer frames are held.
+ * Connecting meanwhile), else paused while newer frames are held, else the video's state. The overlay has its own
+ * problem line in the viewer and does not declare the stream failed.
  */
 export function statusOf({
   status,
   failure,
   video,
-  overlay,
   paused,
-}: Pick<LiveView, "status" | "failure" | "video" | "overlay" | "paused">): StreamStatus {
+}: Pick<LiveView, "status" | "failure" | "video" | "paused">): StreamStatus {
   if (status === "failed")
     return { state: "failed", text: failure?.reason ?? "Failed", anyLive: false };
   if (status === "reconnecting")
     return { state: "reconnecting", text: "Reconnecting", anyLive: false };
-  const worst = mostUrgent([video, ...(overlay ? [overlay] : [])].map(feedStatus));
-  return paused && worst.state === "live"
-    ? { state: "paused", text: "Paused", anyLive: true }
-    : worst;
+  const shown = feedStatus(video);
+  return paused ? { state: "paused", text: "Paused", anyLive: false } : shown;
 }
 
 /** What each open live viewer (by its id) reported, with its item. */

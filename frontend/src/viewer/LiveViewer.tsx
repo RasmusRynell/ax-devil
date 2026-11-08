@@ -8,7 +8,7 @@ import {
   useSyncExternalStore,
 } from "react";
 import type { ContentRef, LanePolicyWire } from "../generated/api";
-import { LiveBar } from "../live/LiveBar";
+import { LiveBar, NoPicture } from "../live/LiveBar";
 import { LiveSession } from "../live/session";
 import { useReportStatus } from "../live/streamState";
 import { ContextMenu } from "../kit/ContextMenu";
@@ -164,6 +164,7 @@ function Live({
               objectDetails={objectDetails}
               handle={objects}
             />
+            {!view.shown && <NoPicture video={view.video} />}
           </div>
           {tools && (
             <MediaToolsPanel

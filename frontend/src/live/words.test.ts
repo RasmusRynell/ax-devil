@@ -1,6 +1,6 @@
 import { expect, it } from "vite-plus/test";
 import type { LiveFeedStatus } from "../generated/api";
-import { headline, needsRetry, problemLine, utcTime } from "./words";
+import { headline, needsRetry, placeholderLines, problemLine, utcTime } from "./words";
 
 it("words a feed as Python's viewer does and a capture time as the UTC time of day", () => {
   const reconnecting = { status: "Reconnecting", attempt: 2, reason: "Unreachable" } as const;
@@ -9,10 +9,19 @@ it("words a feed as Python's viewer does and a capture time as the UTC time of d
   expect(problemLine("Overlay", { status: "Failed", reason: "LoginRejected" })).toBe(
     "Overlay: ✕ Failed — Login rejected",
   );
+  expect(problemLine("Overlay", { status: "Failed", reason: "SourceUnavailable" })).toBe(
+    "Overlay: ✕ Failed — Data source not available. Choose another in Edit.",
+  );
   expect(problemLine("Video", { status: "Stalled", seconds: 5 })).toBe(
     "Video: Stalled — No frames for 5 s",
   );
   expect(problemLine("Video", { status: "Connecting" })).toBeNull();
+  // The empty pane says the same of the video, whether or not it is a problem.
+  expect(placeholderLines({ status: "Connecting" })).toEqual([
+    "Connecting…",
+    "Waiting for the device to answer.",
+  ]);
+  expect(placeholderLines(reconnecting)).toEqual(["Reconnecting (2)", "Unreachable"]);
   // Retry is offered for a feed only a manual retry recovers, not for one that is connecting or retrying itself.
   const feeds: LiveFeedStatus[] = [
     { status: "Connecting" },

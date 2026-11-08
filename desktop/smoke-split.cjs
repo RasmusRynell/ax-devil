@@ -8,6 +8,7 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs/promises");
 const path = require("node:path");
 const fit = require("./fit.cjs");
+const { headerFailure } = require("./smoke-header-failure.cjs");
 const { SCREENSHOTS, delay, frames, moveTo, page, setView } = require("./smoke-kit.cjs");
 
 const PANES = "[...document.querySelectorAll('[role=group][data-cursor-id^=\"pane:\"]')]";
@@ -216,8 +217,16 @@ module.exports.split = async (window) => {
   await setView(window, [1100, 720], 1);
   await sidebar(true);
 
+  // A window holds eight panes: Open to the Side from a header with all taken fails, and the header says so in its own
+  // pane, above the viewer, until dismissed.
+  for (let count = 5; count <= 8; count++) {
+    await js(`${row}.dispatchEvent(new MouseEvent('dblclick', { bubbles: true, ctrlKey: true }))`);
+    await wait(`${PANES}.length === ${count}`);
+  }
+  await headerFailure(window, { js, wait, both, sidebar, panes: PANES });
+
   // Closing the panes but the first leaves it as the one open viewer, for the scenarios that follow.
-  for (let open = 4; open > 1; open--) {
+  for (let open = 8; open > 1; open--) {
     await js(`${PANES}[${open - 1}].querySelector('[aria-label="Close this pane"]').click()`);
     await wait(`${PANES}.length === ${open - 1}`);
   }

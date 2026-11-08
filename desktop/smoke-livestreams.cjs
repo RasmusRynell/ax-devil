@@ -2,7 +2,7 @@
 // an MQTT one whose broker is a `$NAME` reference and whose camera head is 2, which the Live view's row opens on the
 // broker as it expands; and a DataHub one whose decoder is not installed, which Edit offers as unavailable instead of a
 // blank choice. Both are saved in each theme; the Edit dialog and the stream's info line are fit-checked at the smallest
-// window and at 200% zoom. Nothing is connected to a camera.
+// window and at 200% zoom. The MQTT stream is then opened, on documentation addresses where no camera answers.
 const { nativeTheme } = require("electron");
 const assert = require("node:assert/strict");
 const fs = require("node:fs/promises");
@@ -129,6 +129,20 @@ module.exports.liveStreams = async () => {
           "[...document.querySelectorAll('dialog[open] button')].find((b) => b.textContent === 'Cancel').click()",
         );
         await wait("!document.querySelector('dialog')");
+
+        // Opening a stream shows what it waits for until its first picture; the address answers nothing.
+        await js(
+          `${row("scene")}.dispatchEvent(new MouseEvent('dblclick', { bubbles: true, cancelable: true }))`,
+        );
+        await wait(
+          "[...document.querySelectorAll('[role=toolbar][aria-label=Live] ~ div p')].some((p) => p.textContent.startsWith('Connecting') || p.textContent.startsWith('Reconnecting'))",
+        );
+        for (const theme of ["light", "dark"]) {
+          nativeTheme.themeSource = theme;
+          await wait(`matchMedia('(prefers-color-scheme: ${theme})').matches`);
+          await frames({ js });
+          await shoot(`live-viewer-waiting-${theme}.png`);
+        }
       },
       { command: "open", env: { AX_DEVIL_SMOKE_BROKER: BROKER } },
     );

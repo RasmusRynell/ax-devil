@@ -15,6 +15,7 @@ pub struct SharedFrame(Arc<Inner>);
 struct Inner {
     frame: VideoFrame,
     compressed: OnceCell<Result<Bytes, UserError>>,
+    preview: OnceCell<Option<Bytes>>,
 }
 
 impl SharedFrame {
@@ -23,7 +24,24 @@ impl SharedFrame {
         Self(Arc::new(Inner {
             frame,
             compressed: OnceCell::new(),
+            preview: OnceCell::new(),
         }))
+    }
+
+    /// The frame's small picture for a hover card, made at most once like [`compressed`](Self::compressed): `make`
+    /// runs for the first caller only, concurrent callers wait for it, later ones get the answer at once. `make`
+    /// answers `Some(picture)`, or `Some(None)` when the frame cannot be made into one (the same every time, so kept);
+    /// `None` means it did not try (no capacity), which is not kept, and the next caller makes it.
+    pub async fn preview(
+        &self,
+        make: impl Future<Output = Option<Option<Bytes>>>,
+    ) -> Option<Bytes> {
+        let made = self
+            .0
+            .preview
+            .get_or_try_init(|| async { make.await.ok_or(()) })
+            .await;
+        made.ok()?.clone()
     }
 
     /// The frame's compressed form: `make` runs for the first caller only, every concurrent caller waits for that
