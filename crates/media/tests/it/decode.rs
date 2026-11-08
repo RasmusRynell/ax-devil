@@ -5,7 +5,7 @@
 use crate::common;
 
 use common::{assert_explained, expected_luma, file, fixture, flat_luma, index_of, open, read_all};
-use foundation::{CancelToken, Interrupt, PixelFormat, VideoFrame};
+use foundation::{CancelToken, Interrupt, MediaTime, PixelFormat, VideoFrame};
 use media::{FrameIndex, ScanKind};
 use std::path::Path;
 
@@ -104,6 +104,17 @@ fn variable_frame_rate_times_follow_the_container_timestamps() {
     assert_eq!(
         (cadence.variable, &cadence.periods_us[..]),
         (true, &[33_000, 50_000][..])
+    );
+}
+
+#[test]
+fn a_frame_carries_the_duration_the_container_gave_it_apart_from_the_indexs_delay_to_the_next() {
+    // The container's sample duration, one frame of 30 fps; the index's delays come from timestamps instead.
+    let frames = frames_of("cfr_h264_gop10_bf2.mp4", 1);
+    assert!(
+        frames
+            .iter()
+            .all(|frame| frame.duration() == Some(MediaTime::from_us(33_333)))
     );
 }
 

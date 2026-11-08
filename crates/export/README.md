@@ -9,7 +9,7 @@ into an `ExportSpec`.
   agree on what a frame shows.
 - The renderer page holds the items named by the previous job, so each job carries only the samples the one before did
   not name. At most `IN_FLIGHT` jobs wait for pixels.
-- Frame times and durations are the source's (`FrameIndex`), so a variable frame rate survives.
+- Frame times are the source's (`FrameIndex`) and a frame lasts what the decoder reported for it, else the index's delay to the next frame, so a variable frame rate survives.
 - A failure or cancel removes the temporary file and leaves the destination alone.
 
 ## Measured

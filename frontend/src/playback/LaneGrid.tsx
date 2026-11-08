@@ -158,6 +158,7 @@ export function LaneGrid({
                 cadence={view.cadence}
                 hideName={info || (shown.length === 1 && lanes[index].label === title)}
                 live={live}
+                stage={{ position: shown.indexOf(index) + 1, count: shown.length }}
                 onChange={(change) => session.setLane(index, change)}
                 onApplyAll={
                   lanes.filter((lane) => lane.source !== null).length > 1

@@ -36,6 +36,16 @@ export function laneNotices(lane: LaneState): Notice[] {
   return notices;
 }
 
+/** What the lane's chip says while the backend parses its overlay file: the lane's place among the lanes when there are several. */
+export function parsingMessage(
+  label: string,
+  { position, count }: { position: number; count: number },
+): string {
+  return count > 1
+    ? `Parsing overlay data (${position}/${count}): ${label}`
+    : `Parsing overlay data: ${label}`;
+}
+
 const TONE_ON_CANVAS = {
   danger: "text-on-canvas-danger",
   caution: "text-on-canvas-caution",
@@ -65,6 +75,7 @@ export function LaneChip({
   onExport,
   hideName = false,
   live = false,
+  stage,
 }: {
   lane: LaneState;
   catalogs: readonly CatalogInfoWire[];
@@ -79,74 +90,96 @@ export function LaneChip({
   hideName?: boolean;
   /** The lane is live: its menu shows no alignment. */
   live?: boolean;
+  /** Where the lane is among the lanes shown; while the backend reads its file the chip names that stage. */
+  stage?: { position: number; count: number };
 }) {
   const showName = useSettings().values["overlays.lane_names"] === true && !hideName;
   const notices = laneNotices(lane);
-  const loading = lane.pending || (lane.status !== "plain" && lane.status.status === "Loading");
+  const loadingStatus = lane.status !== "plain" && lane.status.status === "Loading";
+  // A file that is still being read has a Ready lane, but parsing goes on.
+  const parsing =
+    loadingStatus ||
+    (lane.status !== "plain" &&
+      lane.status.status === "Ready" &&
+      lane.status.ingest.state === "Reading");
+  // The lane's file is being parsed: the chip says which, in place of the lane's name, which the message holds.
+  const named = parsing && !live && stage !== undefined;
+  const status = named
+    ? parsingMessage(lane.label, stage)
+    : lane.pending || loadingStatus
+      ? "Loading…"
+      : null;
   return (
     <div className="flex w-fit max-w-full items-center rounded-control bg-canvas-scrim text-on-canvas">
-      {showName && <span className="min-w-0 truncate px-m">{lane.label}</span>}
-      {loading && (
-        <span role="status" className={`${showName ? "" : "pl-m "}pr-m text-on-canvas-muted`}>
-          Loading…
+      {showName && !named && <span className="min-w-0 truncate px-m">{lane.label}</span>}
+      {status && (
+        <span
+          role="status"
+          title={status}
+          className={`${showName && !named ? "" : "pl-m "}min-w-0 truncate pr-m text-on-canvas-muted`}
+        >
+          {status}
         </span>
       )}
-      {notices.length > 0 && (
-        <Popover
-          onCanvas
-          label={`${lane.label}: warnings`}
-          trigger={
-            <span className={`inline-flex ${chipTone(lane)}`}>
-              <Icon name="triangle-alert" />
-            </span>
-          }
-          className="size-row justify-center"
-        >
-          <NoticeList notices={notices} />
-        </Popover>
-      )}
-      {lane.source !== null && (
-        <Popover
-          onCanvas
-          label={`${lane.label}: settings`}
-          trigger={<Icon name="sliders-horizontal" />}
-          className="size-row justify-center"
-        >
-          {(close) => (
-            <LaneMenu
-              lane={lane}
-              catalogs={catalogs}
-              cadence={cadence}
-              live={live}
-              onChange={onChange}
-              onApplyAll={
-                onApplyAll &&
-                (() => {
-                  close();
-                  onApplyAll();
-                })
-              }
-              onReload={onReload}
-              onExport={
-                onExport && {
-                  waits: onExport.waits,
-                  run: () => {
+      {/* The buttons keep their size while a long name or message truncates. */}
+      <div className="flex shrink-0">
+        {notices.length > 0 && (
+          <Popover
+            onCanvas
+            label={`${lane.label}: warnings`}
+            trigger={
+              <span className={`inline-flex ${chipTone(lane)}`}>
+                <Icon name="triangle-alert" />
+              </span>
+            }
+            className="size-row justify-center"
+          >
+            <NoticeList notices={notices} />
+          </Popover>
+        )}
+        {lane.source !== null && (
+          <Popover
+            onCanvas
+            label={`${lane.label}: settings`}
+            trigger={<Icon name="sliders-horizontal" />}
+            className="size-row justify-center"
+          >
+            {(close) => (
+              <LaneMenu
+                lane={lane}
+                catalogs={catalogs}
+                cadence={cadence}
+                live={live}
+                onChange={onChange}
+                onApplyAll={
+                  onApplyAll &&
+                  (() => {
                     close();
-                    onExport.run();
-                  },
+                    onApplyAll();
+                  })
                 }
-              }
-              onHide={
-                onHide &&
-                (() => {
-                  close();
-                  onHide();
-                })
-              }
-            />
-          )}
-        </Popover>
-      )}
+                onReload={onReload}
+                onExport={
+                  onExport && {
+                    waits: onExport.waits,
+                    run: () => {
+                      close();
+                      onExport.run();
+                    },
+                  }
+                }
+                onHide={
+                  onHide &&
+                  (() => {
+                    close();
+                    onHide();
+                  })
+                }
+              />
+            )}
+          </Popover>
+        )}
+      </div>
     </div>
   );
 }

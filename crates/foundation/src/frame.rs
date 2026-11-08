@@ -1,4 +1,4 @@
-use crate::{ErrorCode, FrameId, UserError};
+use crate::{ErrorCode, FrameId, MediaTime, UserError};
 use bytes::Bytes;
 
 /// How the samples of a frame are laid out in its planes.
@@ -61,6 +61,7 @@ pub struct VideoFrame {
     keyframe: bool,
     layout: FrameLayout,
     data: Bytes,
+    duration: Option<MediaTime>,
 }
 
 impl VideoFrame {
@@ -96,7 +97,20 @@ impl VideoFrame {
             keyframe,
             layout,
             data,
+            duration: None,
         })
+    }
+
+    /// Sets the duration the decoder reported for this frame.
+    pub fn with_duration(mut self, duration: Option<MediaTime>) -> Self {
+        self.duration = duration;
+        self
+    }
+
+    /// The duration the decoder reported for this frame, when it did. This is the source's own word for the frame,
+    /// distinct from the index's delay to the next frame.
+    pub fn duration(&self) -> Option<MediaTime> {
+        self.duration
     }
 
     /// Which frame of the video this is.
@@ -183,6 +197,9 @@ mod tests {
         assert_eq!(frame.plane(2), [3, 3]);
         assert!(frame.plane(3).is_empty());
         assert_eq!(frame.reserved_bytes(), 8);
+        assert_eq!(frame.duration(), None);
+        let lasting = frame.with_duration(Some(MediaTime::from_us(40_000)));
+        assert_eq!(lasting.duration(), Some(MediaTime::from_us(40_000)));
 
         assert!(VideoFrame::new(id(), false, layout([4, 2, 4]), data.clone()).is_err());
         assert!(VideoFrame::new(id(), false, layout([4, 2, 0]), data.clone()).is_err());
