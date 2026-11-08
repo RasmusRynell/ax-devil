@@ -188,7 +188,7 @@ export function EventsList({
       <Table<EventItem>
         key="events"
         tableKey="events"
-        generation={text}
+        generation={`${text}\n${events.basis(lane)}`}
         label="Events"
         columns={EVENT_COLUMNS}
         count={matched}

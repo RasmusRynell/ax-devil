@@ -51,7 +51,7 @@ export interface ObjectSource {
       /** The lane's recorded events, which the Events tab lists. */
       readonly events: Pick<
         FileEvents,
-        "view" | "request" | "flush" | "release" | "want" | "event" | "eventUnavailable"
+        "view" | "request" | "flush" | "release" | "want" | "event" | "eventUnavailable" | "basis"
       >;
     };
   /** The leaves of the frame's objects that a Frame scope search names. */

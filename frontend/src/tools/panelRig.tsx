@@ -293,6 +293,7 @@ export function mount(
       offset: number;
       located: number | null;
       frame_row: number | null;
+      data_revision: number;
     }> = {},
     lane = 0,
   ) => {

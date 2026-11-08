@@ -335,6 +335,11 @@ export class FileEvents {
   }
 
   /** Tells the backend to free the lane when nothing of it is wanted, if it was asked at all. */
+  /** What the lane's event list membership depends on (matching basis, data and policy revision); a list asked under another differs. */
+  basis(lane: number): string {
+    return this.#key(lane);
+  }
+
   #freed(lane: number, asked: boolean): void {
     if (asked && !this.wants(lane)) this.#released(lane);
   }
