@@ -1,7 +1,7 @@
 import { Menu } from "../kit/Menu";
 import { Popup } from "../kit/Popup";
 import { useDoc, useView } from "../session/session";
-import { useRowActions } from "../shell/useRowActions";
+import { useRowActions, type Say } from "../shell/useRowActions";
 import { shownBy, useExportTargets } from "./exportTargets";
 import { entriesOf, shownEntry } from "./shownEntry";
 import { useHidden } from "./useViewers";
@@ -11,13 +11,25 @@ const NOTHING_CHECKED: ReadonlySet<string> = new Set();
 /** Where a pane's header was right-clicked: the pane's viewer and its item, and the pointer. */
 export type PaneMenuAt = { viewer: number; item: string; x: number; y: number };
 
+/** What a header action acts on, as it was when the action started: the pane, its item and the entry it shows. */
+export type PaneTarget = { viewer: number; item: string; entry: string | null };
+
 /**
  * The menu of a pane's header: the actions of the row of what the pane shows, without Edit (editing stays in the
  * sidebar), run by the same rules and handlers as the sidebar's row menu. Export video is this pane's own, whatever else
  * shows the item. A pane whose item has no such row has no menu. Render it once for the area: the
  * dialogs Information opens outlive the menu.
  */
-export function PaneMenu({ at, onClose }: { at: PaneMenuAt | null; onClose: () => void }) {
+export function PaneMenu({
+  at,
+  onClose,
+  onAction,
+}: {
+  at: PaneMenuAt | null;
+  onClose: () => void;
+  /** Called as an action starts, with what it acts on; the answer is told how the action ends. */
+  onAction: (target: PaneTarget) => Say;
+}) {
   const actions = useRowActions();
   // The menu follows the viewer's export as it becomes ready or leaves.
   useExportTargets();
@@ -42,14 +54,6 @@ export function PaneMenu({ at, onClose }: { at: PaneMenuAt | null; onClose: () =
   return (
     <>
       {actions.dialogs}
-      {actions.problem && (
-        <p
-          role="alert"
-          className="absolute inset-x-0 bottom-0 z-10 m-0 bg-panel px-m py-xs break-words"
-        >
-          {actions.problem}
-        </p>
-      )}
       {at && row && (
         <Popup at={at} onClose={onClose} className="z-20 min-w-max">
           <Menu
@@ -57,7 +61,8 @@ export function PaneMenu({ at, onClose }: { at: PaneMenuAt | null; onClose: () =
             checked={NOTHING_CHECKED}
             onSelect={(choice) => {
               onClose();
-              actions.choose(row, choice.id, exporter);
+              const target = { viewer: at.viewer, item: at.item, entry: entry?.id ?? null };
+              actions.choose(row, choice.id, exporter, onAction(target));
             }}
           />
         </Popup>

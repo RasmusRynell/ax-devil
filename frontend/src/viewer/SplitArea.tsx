@@ -11,14 +11,16 @@ import { reasonOf } from "../errors";
 import type { ItemState } from "../generated/api";
 import { useCan, useSetView, useView } from "../session/session";
 import { PaneBudget } from "../playback/budget";
+import { Banner } from "../shell/Banner";
 import { viewerFor } from "../viewers";
 import { extent, prune, rects, resize, seams, type Path, type Size } from "./layout";
 import { activated, moved, pinned, resized } from "./placement";
 import { Pane } from "./Pane";
+import { useHeaderFailure } from "./headerFailure";
 import { PaneMenu, type PaneMenuAt } from "./PaneMenu";
 import { ReloadFailed, ReloadOffer } from "./ReloadOffer";
 import { Seam } from "./Seam";
-import { useClosePanes, useViewers, type Viewer } from "./useViewers";
+import { useClosePanes, useHidden, useViewers, type Viewer } from "./useViewers";
 
 /** What shows for an item whose viewer is not ready: it is resolving, or it failed with a reason. */
 function ItemStatus({ item }: { item: ItemState }) {
@@ -134,6 +136,8 @@ export function SplitArea() {
   const [dragging, setDragging] = useState<{ path: Path; share: number } | null>(null);
   const dragged = useRef<number | null>(null);
   const [menu, setMenu] = useState<PaneMenuAt | null>(null);
+  const [shownViews] = useView("viewers");
+  const { failure, begin, clear } = useHeaderFailure(viewers, shownViews, useHidden());
 
   const placed = useMemo(
     () => prune(layout, (id) => viewers.some((viewer) => viewer.id === id)),
@@ -172,7 +176,25 @@ export function SplitArea() {
                   onPin={(pin) => setView((now) => pinned(now, viewer.id, pin))}
                   onClose={() => closePanes([viewer.id])}
                   onDrop={(source, side) => setView((now) => moved(now, source, viewer.id, side))}
-                  onMenu={(x, y) => setMenu({ viewer: viewer.id, item: viewer.item.id, x, y })}
+                  onMenu={(x, y) => {
+                    clear();
+                    setMenu({ viewer: viewer.id, item: viewer.item.id, x, y });
+                  }}
+                  notice={
+                    failure?.viewer === viewer.id && (
+                      // One line, the whole text its tooltip, within the area's visible width (so Dismiss is reachable in a
+                      // pane wider than the window) and above the viewer's own controls.
+                      <div
+                        className="relative z-10 min-w-0 shrink-0"
+                        style={{ maxWidth: size.w }}
+                        title={failure.message}
+                      >
+                        <Banner role="alert" onDismiss={clear}>
+                          <span className="block truncate">{failure.message}</span>
+                        </Banner>
+                      </div>
+                    )
+                  }
                 >
                   <PaneContent viewer={viewer} dismissed={dismissed} onDismiss={dismiss} />
                 </Pane>
@@ -182,7 +204,7 @@ export function SplitArea() {
           {bars.map((seam) => (
             <Seam key={seam.path.join("")} seam={seam} onResize={onResize} />
           ))}
-          <PaneMenu at={menu} onClose={() => setMenu(null)} />
+          <PaneMenu at={menu} onClose={() => setMenu(null)} onAction={begin} />
         </div>
       </PaneBudget>
     </div>

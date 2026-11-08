@@ -199,6 +199,36 @@ describe("split area", () => {
     leave.forEach((release) => release());
   });
 
+  it("says in its pane why a header action failed, until dismissed, Escape or the next menu", async () => {
+    const { room } = await setup();
+    const recipe: ItemRecipe = { type: "Video", path: "/a.mp4", label: null, overlays: [] };
+    act(() => room.setItems([{ ...video("a"), recipe }]));
+    const header = () => pane("a.mp4").querySelector("[draggable]") as HTMLElement;
+    const alert = () => within(pane("a.mp4")).queryByRole("alert");
+    FakeSocket.refuseContent = "NotAllowed";
+    const fail = async () => {
+      fireEvent.contextMenu(header());
+      fireEvent.click(screen.getByRole("menuitem", { name: "Remove" }));
+      await within(pane("a.mp4")).findByRole("alert");
+    };
+    await fail();
+    // Inside the pane, above its viewer, with the reason and a way to dismiss it.
+    expect(alert()?.textContent).toContain("Your role in this session cannot do that.");
+    fireEvent.click(within(alert() as HTMLElement).getByRole("button", { name: "Dismiss" }));
+    expect(alert()).toBeNull();
+
+    await fail();
+    expect(alert()).not.toBeNull();
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(alert()).toBeNull();
+
+    await fail();
+    fireEvent.contextMenu(header());
+    expect(alert()).toBeNull();
+    fireEvent.keyDown(document, { key: "Escape" });
+    FakeSocket.refuseContent = null;
+  });
+
   it("acts from a header on the entry the pane shows: with a whole first playlist hidden, one of the second", async () => {
     const { room } = await setup();
     act(() =>
