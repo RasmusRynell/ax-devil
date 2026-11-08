@@ -78,7 +78,7 @@ fn sample(dir: &Path, outside: &Path) -> Workspace {
     let id = ItemId::generate();
     let unknown = WorkspaceItem {
         id,
-        label: "live_stream".into(),
+        label: String::new(),
         recipe: Recipe::new(Source::Unreadable(Unreadable {
             raw: json!({"kind": "live_stream", "id": id.to_string(), "extra": [1, {"z": null}]}),
             reason: "Unknown item kind: \"live_stream\". A newer version or a missing plugin?"
@@ -117,7 +117,7 @@ fn a_workspace_round_trips_with_paths_inside_its_folder_relative() {
     fs::create_dir(&dir).unwrap();
     let mut original = sample(&dir, &outside);
     original.items.push(item(
-        "Unreadable item",
+        "",
         Source::Unreadable(Unreadable {
             raw: json!("not an item"),
             reason: "This item is not a JSON object.".into(),
