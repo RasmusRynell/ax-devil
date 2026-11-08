@@ -33,8 +33,8 @@ pub struct ResolveJob {
     pub item: ItemId,
     /// The attempt the item waits on; pass it back to [`complete`].
     pub attempt: u64,
-    /// The item's name at the time, for a failure that speaks of it.
-    pub name: String,
+    /// The item's own label at the time, empty when it has none.
+    pub label: String,
     /// What to resolve.
     pub recipe: Recipe,
 }
@@ -76,7 +76,7 @@ impl WorkspaceState {
         ResolveJob {
             item: item.id,
             attempt: self.next_attempt,
-            name: item.display_name(),
+            label: item.label.clone(),
             recipe: item.recipe.clone(),
         }
     }
@@ -148,5 +148,5 @@ pub fn resolve(
     cancel: &CancelToken,
 ) -> Result<Content, Interrupt<UserError>> {
     job.recipe
-        .resolve(&job.item, &job.name, handlers, env, cancel)
+        .resolve(&job.item, &job.label, handlers, env, cancel)
 }

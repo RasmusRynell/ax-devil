@@ -6,7 +6,7 @@ use foundation::{Location, UserError};
 use handlers::Handlers;
 use std::path::Path;
 use workspace::{
-    Connection, Environment, LiveOverlay, LiveRecipe, Secret, Source, WorkspaceItem,
+    Connection, Environment, HostReading, LiveOverlay, LiveRecipe, Secret, Source, WorkspaceItem,
     intake::{LiveDefaults, NewOverlay},
     preview,
 };
@@ -47,8 +47,9 @@ pub(super) fn launch(
     }
 }
 
-/// Refuses a live stream whose camera or MQTT broker host is a `$NAME` reference that expands to nothing, as resolving
-/// would once the app is up. The item keeps the reference as written; the expansion is only looked at here.
+/// Refuses a live stream whose camera or MQTT broker host is a `$NAME` reference that expands to nothing, or to
+/// something that is no plain host name, as resolving would once the app is up. The item keeps the reference as
+/// written; the expansion is only looked at here, and the messages never echo what it was.
 fn check_hosts(recipe: &LiveRecipe, env: &Environment) -> Result<(), String> {
     let none = Secret::default();
     let host = |host| Connection {
@@ -61,18 +62,27 @@ fn check_hosts(recipe: &LiveRecipe, env: &Environment) -> Result<(), String> {
         _ => None,
     };
     let shown = preview(env, host(&recipe.host), broker);
-    if shown.camera.host.as_deref() == Some("") {
-        return Err(format!(
-            "No device host: {} is empty or unset. Use --host or set the camera host in Settings.",
-            recipe.host
-        ));
-    }
-    if let LiveOverlay::Mqtt { broker_host, .. } = &recipe.overlay
-        && shown.broker.host.as_deref() == Some("")
-    {
-        return Err(format!(
-            "No MQTT broker host: {broker_host} is empty or unset. Use --mqtt-host or set the broker host in Settings."
-        ));
+    let refusal = |reading: Option<HostReading>, what: &str, reference: &str, fix: &str| {
+        let problem = match reading {
+            Some(HostReading::Unset) => "is empty or unset",
+            Some(HostReading::Rejected) => "is set but is not a plain host name",
+            Some(HostReading::Host(_)) | None => return Ok(()),
+        };
+        Err(format!("No {what}: {reference} {problem}. {fix}"))
+    };
+    refusal(
+        shown.camera.host,
+        "device host",
+        &recipe.host,
+        "Use --host or set the camera host in Settings.",
+    )?;
+    if let LiveOverlay::Mqtt { broker_host, .. } = &recipe.overlay {
+        refusal(
+            shown.broker.host,
+            "MQTT broker host",
+            broker_host,
+            "Use --mqtt-host or set the broker host in Settings.",
+        )?;
     }
     Ok(())
 }

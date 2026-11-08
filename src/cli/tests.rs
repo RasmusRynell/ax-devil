@@ -360,6 +360,53 @@ fn an_overlay_option_belongs_to_the_nearest_preceding_overlay_and_is_typed_by_it
 }
 
 #[test]
+fn a_live_host_reference_that_is_unset_or_rejected_is_refused_without_echoing_its_value() {
+    let folder = tempfile::tempdir().unwrap();
+    let recovery = RecoveryFolder::new(folder.path().to_path_buf());
+    let refusal = |args: &[&str], value: Option<&'static str>| {
+        let env = workspace::Environment::new(move |_| value.map(str::to_owned));
+        launch::launch(
+            parse(args).unwrap().command,
+            &Handlers::built_in(),
+            &recovery,
+            &env,
+            stream_defaults,
+        )
+        .err()
+        .expect("the stream is refused")
+    };
+    let camera = ["live", "--host", "$CAM"];
+    let broker = [
+        "live",
+        "--host",
+        "cam.local",
+        "--overlay",
+        "mqtt",
+        "--mqtt-host",
+        "$CAM",
+    ];
+    let rejected = Some("user:SECRETPW@cam.local:554");
+    for (args, what, name) in [
+        (&camera[..], "No device host", "$CAM"),
+        (&broker[..], "No MQTT broker host", "$CAM"),
+    ] {
+        let unset = refusal(args, None);
+        assert!(
+            unset.starts_with(&format!("{what}: {name} is empty or unset.")),
+            "{unset}"
+        );
+        let bad = refusal(args, rejected);
+        assert!(
+            bad.starts_with(&format!(
+                "{what}: {name} is set but is not a plain host name."
+            )),
+            "{bad}"
+        );
+        assert!(!bad.contains("SECRETPW"), "{bad}");
+    }
+}
+
+#[test]
 fn a_live_stream_refuses_camera_head_zero() {
     let command = parse(&["live", "--camera-head", "0"]).unwrap().command;
     let error = launch_items(command, &Handlers::built_in(), stream_defaults).unwrap_err();

@@ -64,7 +64,7 @@ fn live_stream(item: ItemId) -> (WorkspaceItem, Content) {
     let content = recipe
         .resolve(
             &item,
-            "Live stream",
+            "",
             &Handlers::built_in(),
             &Environment::of_process(),
             &CancelToken::new(),
@@ -166,7 +166,7 @@ fn a_watcher_learns_no_path_credential_or_reason_and_sees_only_what_is_open() {
     let public = Audience {
         host_details: false,
     };
-    let watcher = serde_json::to_string(&project(&doc, public)).unwrap();
+    let watcher = serde_json::to_string(&project(&doc, public, false)).unwrap();
     for secret in [
         "SECRET",
         "/home",
@@ -193,7 +193,7 @@ fn a_watcher_learns_no_path_credential_or_reason_and_sees_only_what_is_open() {
         assert!(watcher.contains(shared), "{shared} missing from {watcher}");
     }
 
-    let owner = serde_json::to_string(&project(&doc, Audience::HOST)).unwrap();
+    let owner = serde_json::to_string(&project(&doc, Audience::HOST, false)).unwrap();
     for host_only in [
         "SECRET-REASON",
         "SECRET-PATH-B",
@@ -227,7 +227,7 @@ fn a_watcher_learns_no_path_credential_or_reason_and_sees_only_what_is_open() {
         "a literal password reached {owner}"
     );
     let recipes = |audience| {
-        project(&doc, audience)
+        project(&doc, audience, false)
             .workspace
             .items
             .into_iter()
@@ -269,7 +269,7 @@ fn rows_follow_the_items_a_watcher_sees_and_carry_what_was_hidden() {
         host_details: false,
     };
     let rows = |audience| -> Vec<(String, bool)> {
-        project(&doc, audience)
+        project(&doc, audience, false)
             .workspace
             .rows
             .into_iter()
@@ -281,7 +281,7 @@ fn rows_follow_the_items_a_watcher_sees_and_carry_what_was_hidden() {
     assert!(watcher.contains(&("SEQ-02".into(), true)), "{watcher:?}");
     assert!(watcher.contains(&("SEQ-01".into(), false)), "{watcher:?}");
     let live = ids[5];
-    let wire_rows = project(&doc, public).workspace.rows;
+    let wire_rows = project(&doc, public, false).workspace.rows;
     let row = wire_rows
         .iter()
         .find(|row| row.label == "Live stream")
@@ -290,7 +290,7 @@ fn rows_follow_the_items_a_watcher_sees_and_carry_what_was_hidden() {
     assert!(!watcher.iter().any(|(label, _)| label.starts_with("closed")));
     let owner = rows(Audience::HOST);
     assert!(owner.iter().any(|(label, _)| label == "closed playlist"));
-    let located = project(&doc, Audience::HOST).workspace.rows;
+    let located = project(&doc, Audience::HOST, false).workspace.rows;
     let video = located.iter().find(|row| row.label == "gate.mp4").unwrap();
     assert_eq!(
         video.location.as_deref(),
@@ -298,11 +298,211 @@ fn rows_follow_the_items_a_watcher_sees_and_carry_what_was_hidden() {
     );
 }
 
+/// A Doc of one open, unnamed live stream, pending or resolved in `env`, whose camera host and MQTT broker are both
+/// `$CAM`.
+fn referenced_stream(resolved: bool, env: &Environment) -> Doc {
+    let id = ItemId::generate();
+    let (mut item, _) = live_stream(id);
+    let Source::Live(recipe) = &mut item.recipe.source else {
+        panic!("a live recipe");
+    };
+    recipe.host = "$CAM".into();
+    if let LiveOverlay::Mqtt { broker_host, .. } = &mut recipe.overlay {
+        *broker_host = "$CAM".into();
+    }
+    let mut state = State::default();
+    if resolved {
+        let content = item
+            .recipe
+            .resolve(&id, "", &Handlers::built_in(), env, &CancelToken::new())
+            .unwrap_or_else(|_| panic!("the live recipe resolves"));
+        let generation = ContentGen(1);
+        let resolution = Resolution::Resolved {
+            content,
+            generation,
+        };
+        state.resolutions.insert(id, resolution);
+    }
+    state.open.insert(id);
+    state.workspace.items = vec![item];
+    Doc { workspace: state }
+}
+
+/// What `audience` is shown of `doc`: its item label, row label, row detail and location, and camera and broker host.
+/// Whatever it is shown, `SECRETPW` is not in any of the wire.
+fn shown_of(doc: &Doc, audience: Audience, env: &Environment) -> Vec<String> {
+    let wire = project_in(doc, audience, env);
+    let json = serde_json::to_string(&wire).unwrap();
+    assert!(!json.contains("SECRETPW"), "a login reached {json}");
+    let item = &wire.workspace.items[0];
+    let row = &wire.workspace.rows[0];
+    let (host, broker) = item
+        .shown
+        .as_ref()
+        .map(|shown| {
+            (
+                shown.host.clone(),
+                shown.broker_host.clone().unwrap_or_default(),
+            )
+        })
+        .unwrap_or_default();
+    let location = row.location.clone().unwrap_or_default();
+    vec![
+        item.label.clone(),
+        row.label.clone(),
+        row.detail.clone(),
+        location,
+        host,
+        broker,
+    ]
+}
+
+fn env_of(value: &'static str) -> Environment {
+    Environment::new(move |name| (name == "CAM").then(|| value.to_owned()))
+}
+
+const WATCHER: Audience = Audience {
+    host_details: false,
+};
+
+#[test]
+fn an_unnamed_stream_with_a_host_reference_is_named_by_its_value_only_for_a_session_that_expands() {
+    for resolved in [false, true] {
+        let owner =
+            |env: &Environment| shown_of(&referenced_stream(resolved, env), Audience::HOST, env);
+        // The row is named by the value; once resolved it also says where the camera is (nothing more, as the name
+        // is that already).
+        let location = if resolved { "192.0.2.9" } else { "" };
+        let read: Vec<String> = [
+            "192.0.2.9",
+            "192.0.2.9",
+            "",
+            location,
+            "192.0.2.9",
+            "192.0.2.9",
+        ]
+        .map(String::from)
+        .into();
+        assert_eq!(owner(&env_of("192.0.2.9")), read, "resolved: {resolved}");
+        // A session that does not expand shows the labels and hosts as typed, and no place: a reference is none.
+        let typed: Vec<String> = ["$CAM", "$CAM", "", "", "$CAM", "$CAM"]
+            .map(String::from)
+            .into();
+        assert_eq!(
+            owner(&Environment::literal()),
+            typed,
+            "resolved: {resolved}"
+        );
+        // (An unset variable leaves a stream nothing to resolve, so only a pending one is shown.)
+        if !resolved {
+            let unset: Vec<String> = ["Live stream", "Live stream", "", "", "", ""]
+                .map(String::from)
+                .into();
+            assert_eq!(owner(&Environment::new(|_| None)), unset);
+        }
+    }
+}
+
+#[test]
+fn what_may_be_shown_as_a_host_is_what_the_camera_connection_takes_as_one() {
+    let name = |length: usize| "a".repeat(length);
+    let mut corpus: Vec<String> = [
+        // Names and addresses, in any case, with or without white space around.
+        "cam.local",
+        "Cam_1.LOCAL",
+        "cam-1",
+        " cam.local ",
+        "\tcam.local\n",
+        "cam.local.",
+        "192.0.2.7",
+        "999.0.2.7",
+        "192.0.2",
+        // IPv6, bracketed or not, and what is not one.
+        "::1",
+        "[::1]",
+        "2001:db8::1",
+        "[2001:db8::1]",
+        "fe80::1%eth0",
+        "[fe80::1%eth0]",
+        "[::1",
+        "::1]",
+        "[]",
+        "[cam]",
+        "[[::1]]",
+        // Unicode.
+        "caf\u{e9}.local",
+        "\u{65e5}\u{672c}.local",
+        "cam\u{ff0e}local",
+        // Nothing, and the characters of a URL.
+        "",
+        " ",
+        "user:SECRETPW@cam.local",
+        "cam.local:554",
+        "cam.local/path",
+        "cam.local?key=1",
+        "cam.local#top",
+        "cam%2elocal",
+        "rtsp://cam.local",
+        "@",
+        ":",
+        "/",
+        "?",
+        "#",
+        "%",
+        "cam local",
+        "$CAM",
+    ]
+    .map(String::from)
+    .into();
+    // Control and separator characters, inside and at the edges of a name.
+    for control in [
+        '\n', '\r', '\t', '\0', '\u{7f}', '\u{85}', '\u{2028}', '\u{a0}',
+    ] {
+        corpus.push(format!("cam{control}local"));
+        corpus.push(format!("{control}cam.local{control}"));
+    }
+    // The length limit of a name, and far beyond it.
+    for length in [1, 252, 253, 254, 255, 10_000] {
+        corpus.push(name(length));
+    }
+    for text in corpus {
+        assert_eq!(
+            foundation::is_plain_host(&text),
+            camera::Host::parse(&text).is_ok(),
+            "{text:?}"
+        );
+    }
+}
+
+#[test]
+fn an_expanded_host_that_is_no_plain_host_is_never_shown_to_anyone() {
+    // A value that carries a login, a scheme, a path or a port could leak a password; none is a host. The
+    // projections are checked whole for the password, and no label, detail, location or host is made from the value.
+    for hostile in [
+        "user:SECRETPW@cam.local",
+        "cam.local/path?key=SECRETPW",
+        "rtsp://cam.local",
+        "cam.local:8554",
+        "cam local",
+    ] {
+        for resolved in [false, true] {
+            let env = env_of(hostile);
+            let doc = referenced_stream(resolved, &env);
+            let hidden: Vec<String> = ["Live stream", "Live stream", "", "", "", ""]
+                .map(String::from)
+                .into();
+            assert_eq!(shown_of(&doc, Audience::HOST, &env), hidden, "{hostile}");
+            // The watcher is told no host at all, and the same label.
+            assert_eq!(shown_of(&doc, WATCHER, &env)[..2], hidden[..2], "{hostile}");
+        }
+    }
+}
+
 #[test]
 fn a_renamed_video_shows_its_new_name_without_resolving_again() {
     let (mut doc, [shown, ..]) = doc();
     doc.workspace.workspace.items[0].label = "Gate".into();
-    let wire = project(&doc, Audience::HOST).workspace;
+    let wire = project(&doc, Audience::HOST, false).workspace;
     let item = wire.items.iter().find(|item| item.id == shown.to_string());
     let Some(ItemState {
         resolution:

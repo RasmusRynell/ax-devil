@@ -36,7 +36,10 @@ export function useLoginChecks(cameras: readonly Camera[], enabled: boolean, sca
   const asked = useRef(new Map<string, string>());
   useEffect(() => {
     if (!enabled) return;
-    const streams = cameras.flatMap(({ streams }) => streams);
+    // A stream resolving anew or without a recipe has no check: an answer still on its way is out of date.
+    const streams = cameras
+      .flatMap(({ streams }) => streams)
+      .filter((stream) => stream.state === "ready" && stream.recipe);
     const ids = new Set(streams.map(({ id }) => id));
     for (const id of asked.current.keys()) if (!ids.has(id)) asked.current.delete(id);
     setChecks((now) =>
@@ -45,7 +48,6 @@ export function useLoginChecks(cameras: readonly Camera[], enabled: boolean, sca
         : new Map([...now].filter(([id]) => ids.has(id))),
     );
     for (const stream of streams) {
-      if (stream.state !== "ready" || !stream.recipe) continue;
       const key = `${stream.generation}:${stream.open}:${scan}`;
       if (asked.current.get(stream.id) === key) continue;
       asked.current.set(stream.id, key);

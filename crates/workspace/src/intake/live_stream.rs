@@ -60,7 +60,7 @@ pub enum NewLiveOverlay {
 /// against their range here, so the message names the field.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct NewLive {
-    /// The name; empty shows the host.
+    /// The name the caller gives the item with [`with_label`](super::with_label); the intake leaves it unnamed.
     pub label: Option<String>,
     /// The camera host or a `$NAME` reference.
     pub host: Option<String>,
@@ -417,12 +417,8 @@ pub fn live(
     recipe.check(handlers)?;
     Ok(WorkspaceItem {
         id: ItemId::generate(),
-        label: new
-            .label
-            .as_deref()
-            .map(str::trim)
-            .unwrap_or_default()
-            .to_owned(),
+        // Named afterwards by `with_label`, the one rule for what a label is.
+        label: String::new(),
         recipe: Recipe::new(Source::Live(recipe)),
     })
 }

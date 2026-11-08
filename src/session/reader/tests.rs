@@ -40,7 +40,15 @@ fn add(address: &str) -> api_types::SessionCommand {
 #[tokio::test]
 async fn adding_a_found_camera_uses_the_scan_login_and_never_shows_it() {
     let folder = tempfile::tempdir().unwrap();
-    let settings = settings::Settings::load(&folder.path().join("default.json")).unwrap();
+    // Stream defaults that are not the built-in ones: a found camera must get these, not constants.
+    let path = folder.path().join("default.json");
+    std::fs::write(
+        &path,
+        r#"{"version": 1, "settings": {"camera.head": 3, "camera.rtsp_port": 8554,
+            "datahub.topic": "custom.topic", "datahub.channel": 4}}"#,
+    )
+    .unwrap();
+    let settings = settings::Settings::load(&path).unwrap();
     let cache = folder.path().join("cache");
     let videos = crate::video_cache::start(&settings, &cache);
     let (_stop, stopping) = tokio::sync::watch::channel(false);
@@ -133,8 +141,18 @@ async fn adding_a_found_camera_uses_the_scan_login_and_never_shows_it() {
         ("10.9.9.2", "root", 8443)
     );
     assert_eq!(recipe.password.expose(), PASSWORD);
+    // Everything the scan does not know is the configured default.
+    assert_eq!((recipe.head, recipe.rtsp_port), (3, 8554));
+    assert_eq!(
+        recipe.overlay,
+        workspace::LiveOverlay::DataHub {
+            handler: "ADF_V1_FRAME".into(),
+            topic: "custom.topic".into(),
+            channel: 4
+        }
+    );
 
-    let shown: DocWire = crate::session::project::project(&doc, Audience::HOST);
+    let shown: DocWire = crate::session::project::project(&doc, Audience::HOST, false);
     for text in [
         serde_json::to_string(&ack).unwrap(),
         serde_json::to_string(&shown).unwrap(),
@@ -284,7 +302,7 @@ async fn another_stream_of_a_camera_copies_its_saved_login_for_the_owner_only() 
             ("cam.local".into(), "root".into(), false),
         ]
     );
-    let shown: DocWire = crate::session::project::project(&doc, Audience::HOST);
+    let shown: DocWire = crate::session::project::project(&doc, Audience::HOST, false);
     for text in [
         serde_json::to_string(&acks).unwrap(),
         serde_json::to_string(&shown).unwrap(),
@@ -370,7 +388,8 @@ async fn editing_a_stream_keeps_its_id_and_saved_login_on_the_same_camera_only()
     acks.push(answer(&state, &owner, 3, edit(json!({"host": "other.local"}))).await);
     assert_eq!(login(), (id, String::new(), false));
 
-    let shown: DocWire = crate::session::project::project(&owner.state().doc, Audience::HOST);
+    let shown: DocWire =
+        crate::session::project::project(&owner.state().doc, Audience::HOST, false);
     for text in [
         serde_json::to_string(&acks).unwrap(),
         serde_json::to_string(&shown).unwrap(),

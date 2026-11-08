@@ -5,10 +5,11 @@ use workspace::{Content, ItemId, Source, WorkspaceItem};
 use crate::{ContentGen, Resolution, ResolveJob, WorkspaceState};
 
 impl WorkspaceState {
-    /// Names `item` `label` (see [`crate::DocCommand::RenameItem`]).
+    /// Names `item` `label` (see [`crate::DocCommand::RenameItem`]), which the sender has already normalized with
+    /// `workspace::intake::with_label` in its own environment: the store knows none.
     pub(crate) fn rename(&mut self, item: ItemId, label: &str) {
         if let Some(existing) = self.workspace.items.iter_mut().find(|i| i.id == item) {
-            existing.label = workspace::intake::with_label(existing.clone(), Some(label)).label;
+            existing.label = label.trim().to_owned();
         }
     }
 

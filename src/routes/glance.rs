@@ -20,7 +20,9 @@ use bytes::Bytes;
 use camera::{Camera, Head, Host, Scheme, Web};
 use sessions::session::HeldItem;
 use std::net::Ipv4Addr;
-use workspace::{Connection, Content, Environment, ItemId, LiveVideoContent, ResolvedCamera};
+use workspace::{
+    Connection, Content, Environment, HostReading, ItemId, LiveVideoContent, ResolvedCamera,
+};
 
 /// The live stream `id` names and what it resolved to, if it is a resolved live stream.
 fn live_item(state: &AppState, id: &str) -> Option<(HeldItem, LiveVideoContent)> {
@@ -174,6 +176,11 @@ pub(super) async fn expansions(
     };
     let host = typed(request.host, &defaults.host);
     let broker_host = typed(request.broker_host, &defaults.mqtt.host);
+    // The form shows a host that is unset or was rejected as nothing; which of the two is for the command line to say.
+    let text = |reading: HostReading| match reading {
+        HostReading::Host(host) => host,
+        HostReading::Unset | HostReading::Rejected => String::new(),
+    };
     let shown = workspace::preview(
         &Environment::of_process(),
         Connection {
@@ -188,10 +195,10 @@ pub(super) async fn expansions(
         }),
     );
     Json(LiveExpansions {
-        host: shown.camera.host,
+        host: shown.camera.host.map(text),
         username: shown.camera.user,
         password_set: shown.camera.password_set,
-        broker_host: shown.broker.host,
+        broker_host: shown.broker.host.map(text),
         broker_user: shown.broker.user,
         broker_pass_set: shown.broker.password_set,
     })

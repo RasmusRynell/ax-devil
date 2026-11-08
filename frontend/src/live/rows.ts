@@ -189,16 +189,6 @@ function streamLabel({ overlay, recipe, lane, label, state }: Stream): string {
   return source || draws?.handler || lane || "Video only";
 }
 
-/** The lines a stream's row opens: the MQTT broker, else where the stream comes from. */
-function streamInfo({ recipe }: Stream): string[] {
-  const draws = recipe?.overlay;
-  const broker = draws?.mode === "mqtt" ? draws.broker_host?.trim() : "";
-  const where = broker
-    ? `${broker}${draws?.mode === "mqtt" && draws.broker_port ? `:${draws.broker_port}` : ""}`
-    : recipe?.host?.trim();
-  return where ? [where] : [];
-}
-
 /** Whether the camera refused the login saved with the stream, as its own check found. */
 const refuses = (check: NetworkRow | undefined): boolean => check?.sign_in.state === "Refused";
 
@@ -268,7 +258,7 @@ function streamRow(
     tag,
     detail: problem,
     detailWarning: problem !== "",
-    info: streamInfo(stream),
+    info: stream.info,
     title: [
       `Live stream${stream.overlay === "none" ? "" : " · 1 overlay"}`,
       refused ? REFUSED : status.text,

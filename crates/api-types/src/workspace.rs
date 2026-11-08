@@ -125,6 +125,21 @@ pub struct ItemState {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
     pub recipe: Option<ItemRecipe>,
+    /// For a live stream, for an audience with host details: what its hosts read as under the Session's right to
+    /// expand `$NAME` references, the one rule resolving and labels follow.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub shown: Option<LiveShown>,
+}
+
+/// The hosts of a live stream as the Session reads them: a `$NAME` reference is its value (empty when the variable
+/// is not set) where the Session may expand references, and the text as typed where it may not.
+#[derive(Serialize, Deserialize, TS)]
+pub struct LiveShown {
+    /// The camera host.
+    pub host: String,
+    /// The MQTT broker host; `null` for another overlay.
+    pub broker_host: Option<String>,
 }
 
 /// A reload that failed.

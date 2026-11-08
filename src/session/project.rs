@@ -17,23 +17,34 @@ use api_types::{
     playback::WarningInfo,
     project as project_error,
     workspace::{
-        ItemKind, ItemRecipe, ItemState, NewOverlayWire, ReloadFailure, ResolutionState, RowInfo,
-        RowKindWire, RowStatusInfo, WorkspaceState,
+        ItemKind, ItemRecipe, ItemState, LiveShown, NewOverlayWire, ReloadFailure, ResolutionState,
+        RowInfo, RowKindWire, RowStatusInfo, WorkspaceState,
     },
 };
 use sessions::session::Doc;
 use std::collections::HashMap;
 use workspace::{
-    BookmarkKind, Content, Entry, LiveVideoContent, SeekableVideoContent, Source, Workspace,
-    WorkspaceItem, playlist_label,
+    BookmarkKind, Content, Entry, Environment, LiveVideoContent, SeekableVideoContent, Source,
+    Workspace, WorkspaceItem, playlist_label,
 };
 use workspace_store::{
     BookmarkGroup, ContentGen, Reload, Resolution, Row, RowKind, RowStatus, Saved, Standing,
     WorkspaceParts, bookmark_groups, details, rows,
 };
 
-/// `doc` as `audience` may see it.
-pub fn project(doc: &Doc, audience: Audience) -> DocWire {
+/// `doc` as `audience` may see it. `expands` is the Session's right to read this machine's environment, which
+/// resolving its items has too: without it a live stream's `$NAME` host is named as typed, never by its value.
+pub fn project(doc: &Doc, audience: Audience, expands: bool) -> DocWire {
+    let env = if expands {
+        Environment::of_process()
+    } else {
+        Environment::literal()
+    };
+    project_in(doc, audience, &env)
+}
+
+/// [`project`] with the environment `env` reads references from.
+fn project_in(doc: &Doc, audience: Audience, env: &Environment) -> DocWire {
     let Doc { workspace: state } = doc;
     let WorkspaceParts {
         workspace,
@@ -61,7 +72,7 @@ pub fn project(doc: &Doc, audience: Audience) -> DocWire {
         .collect();
     let labels: HashMap<String, String> = listed
         .iter()
-        .map(|item| (item.id.to_string(), item_label(item, audience)))
+        .map(|item| (item.id.to_string(), item_label(item, audience, env)))
         .collect();
     let items = listed
         .into_iter()
@@ -83,6 +94,7 @@ pub fn project(doc: &Doc, audience: Audience) -> DocWire {
                 },
                 open: open.contains(id),
                 recipe: item_recipe(stored_label, &recipe.source, audience),
+                shown: shown_hosts(&recipe.source, audience, env),
                 resolution: match resolutions.get(id) {
                     Some(Resolution::Resolved {
                         content,
@@ -153,14 +165,14 @@ pub fn project(doc: &Doc, audience: Audience) -> DocWire {
 }
 
 /// The name an item's row and viewer show to `audience`: its label, or when it has none (a live stream may) the host as
-/// entered to an audience with host details and `Live stream` to everyone else.
-fn item_label(item: &WorkspaceItem, audience: Audience) -> String {
+/// expanded to an audience with host details and `Live stream` to everyone else.
+fn item_label(item: &WorkspaceItem, audience: Audience, env: &Environment) -> String {
     match &item.recipe.source {
         Source::Live(_) if item.label.is_empty() && !audience.host_details => {
             "Live stream".to_owned()
         }
         Source::Video(_) | Source::Playlist(_) | Source::Live(_) | Source::Unreadable(_) => {
-            item.display_name()
+            item.display_name_in(env)
         }
     }
 }
@@ -252,6 +264,17 @@ fn row_info(row: Row, detail: String, audience: Audience) -> RowInfo {
             .filter(|_| audience.host_details)
             .map(WarningInfo::from)
             .collect(),
+    }
+}
+
+/// What a live stream's hosts read as in `env`, the Session's own environment, for an audience with host details.
+fn shown_hosts(source: &Source, audience: Audience, env: &Environment) -> Option<LiveShown> {
+    match source {
+        Source::Live(recipe) if audience.host_details => {
+            let (host, broker_host) = recipe.expanded_hosts(env);
+            Some(LiveShown { host, broker_host })
+        }
+        _ => None,
     }
 }
 

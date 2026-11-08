@@ -138,7 +138,7 @@ async fn send_parts<S: Sink<Message> + Unpin>(
         return Err(Exit::Ended(EndReason::Stopped));
     };
     if sent.doc_rev != Some(session.doc_rev) {
-        let doc = super::project::project(&session.doc, audience);
+        let doc = super::project::project(&session.doc, audience, session.expands);
         let message = SessionServerMessage::Doc {
             doc_rev: session.doc_rev,
             doc,

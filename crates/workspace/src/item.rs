@@ -97,15 +97,19 @@ impl WorkspaceItem {
         if !self.label.is_empty() {
             return self.label.clone();
         }
-        match &self.recipe.source {
-            Source::Live(recipe) => recipe.default_name(),
-            Source::Video(video) => file_name(video.video.as_path()),
-            Source::Playlist(playlist) => playlist.resolver.clone(),
-            Source::Unreadable(_) => "Unreadable item".to_owned(),
+        self.recipe.default_name()
+    }
+
+    /// The name shown to someone who may see the host: [`display_name`](Self::display_name), with an unnamed live
+    /// stream's host reference expanded from `env`, as [`LiveRecipe::expanded_hosts`] allows.
+    pub fn display_name_in(&self, env: &Environment) -> String {
+        match (&self.recipe.source, self.label.is_empty()) {
+            (Source::Live(recipe), true) => recipe.expanded_name(env),
+            _ => self.display_name(),
         }
     }
 
-    /// Builds the item's Content: [`Recipe::resolve`] with the item's own id and name.
+    /// Builds the item's Content: [`Recipe::resolve`] with the item's own id and label.
     pub fn resolve(
         &self,
         handlers: &Handlers,
@@ -113,11 +117,22 @@ impl WorkspaceItem {
         cancel: &CancelToken,
     ) -> Result<Content, Interrupt<UserError>> {
         self.recipe
-            .resolve(&self.id, &self.display_name(), handlers, env, cancel)
+            .resolve(&self.id, &self.label, handlers, env, cancel)
     }
 }
 
 impl Recipe {
+    /// The name an item of this recipe has when the user gave it none: the resolver id of a playlist, the file name of
+    /// a video and the host of a live stream.
+    pub fn default_name(&self) -> String {
+        match &self.source {
+            Source::Live(recipe) => recipe.default_name(),
+            Source::Video(video) => file_name(video.video.as_path()),
+            Source::Playlist(playlist) => playlist.resolver.clone(),
+            Source::Unreadable(_) => "Unreadable item".to_owned(),
+        }
+    }
+
     /// A recipe for `source` with every lane at its defaults.
     pub fn new(source: Source) -> Self {
         Self {
@@ -126,7 +141,8 @@ impl Recipe {
         }
     }
 
-    /// Builds the Content of the item `item`, named `name` where a failure speaks of it. Reads the file system, so callers keep it off the UI's executor.
+    /// Builds the Content of the item `item` that the user labelled `label` (empty for no label, the one sign of an
+    /// unnamed item), named so where a failure speaks of it. Reads the file system, so callers keep it off the UI's executor.
     ///
     /// A video recipe checks that its path and every overlay's path are readable regular files, then that each
     /// overlay's decoder is known and its options valid, so a missing file is reported before a missing decoder;
@@ -145,13 +161,13 @@ impl Recipe {
     pub fn resolve(
         &self,
         item: &ItemId,
-        name: &str,
+        label: &str,
         handlers: &Handlers,
         env: &Environment,
         cancel: &CancelToken,
     ) -> Result<Content, Interrupt<UserError>> {
         cancel.check()?;
-        let content = self.build(item, name, handlers, env, cancel)?;
+        let content = self.build(item, label, handlers, env, cancel)?;
         // The attempt may have been replaced while it worked: nothing is published for it.
         cancel.check()?;
         Ok(content)
@@ -160,11 +176,16 @@ impl Recipe {
     fn build(
         &self,
         item: &ItemId,
-        name: &str,
+        label: &str,
         handlers: &Handlers,
         env: &Environment,
         cancel: &CancelToken,
     ) -> Result<Content, Interrupt<UserError>> {
+        let name = &if label.is_empty() {
+            self.default_name()
+        } else {
+            label.to_owned()
+        };
         match &self.source {
             Source::Video(recipe) => resolve_video(recipe, item, handlers, cancel),
             Source::Playlist(recipe) => {
@@ -205,7 +226,7 @@ impl Recipe {
                     .map_err(|error| Interrupt::Failed(failed(error)))
             }
             Source::Live(recipe) => recipe
-                .resolve(item, handlers, env)
+                .resolve(item, label, handlers, env)
                 .map_err(Interrupt::Failed),
             Source::Unreadable(unreadable) => Err(Interrupt::Failed(
                 UserError::new(ErrorCode::WorkspaceInvalid, unreadable.reason.clone()).at(*item),

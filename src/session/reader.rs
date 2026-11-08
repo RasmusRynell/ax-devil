@@ -10,7 +10,7 @@
 
 use super::{
     exit::{Exit, INVALID_DATA, NOT_ALLOWED, TOO_BIG, TOO_MANY_COMMANDS},
-    live,
+    live, saved,
     wire::{self, Bucket, Request},
 };
 use crate::AppState;
@@ -166,7 +166,7 @@ async fn answer(
         defaults = defaults.without_secrets();
     }
     let session = handle.state();
-    let saved = wire::Saved::new(&session.doc.workspace.workspace, owner, session.expands);
+    let saved = saved::Saved::new(&session.doc.workspace.workspace, owner, session.expands);
     let (command, watch) = match wire::command(
         cmd,
         &state.plugins.handlers(),
@@ -217,3 +217,6 @@ async fn answer(
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+mod label_tests;

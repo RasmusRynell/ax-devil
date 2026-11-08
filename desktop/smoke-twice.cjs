@@ -22,13 +22,13 @@ const VIDEO = path.join(SMOKE_ROOT, "fixtures/video/long_gop_h264.mp4");
 // ONVIF XML needs no options (a bare MOT file needs its image size), and several handlers read .xml, so it is named.
 const OVERLAY = path.join(SMOKE_ROOT, "fixtures/decoders/onvif_xml/frames.xml");
 
-// Runs `scenario(window)` in a window of its own, on a second backend started like `ax-devil local ...args`, and stops
-// that backend afterwards.
-async function inBackendWindow(args, scenario) {
+// Runs `scenario(window)` in a window of its own, on a second backend started like `ax-devil <command> ...args`
+// (`local`, or `open` for a workspace file) with the environment `env` added, and stops that backend afterwards.
+async function inBackendWindow(args, scenario, { command = "local", env = {} } = {}) {
   const served = await startProcess(
     backendExecutable(app),
-    ["local", ...args],
-    { PORT: "0" },
+    [command, ...args],
+    { PORT: "0", ...env },
     () => {},
   );
   const window = new BrowserWindow({
