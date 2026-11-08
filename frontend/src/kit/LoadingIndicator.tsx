@@ -12,7 +12,7 @@ export function LoadingIndicator({ message = "" }: { message?: string }) {
   return (
     <div
       data-loading=""
-      className="absolute inset-0 flex flex-col items-center justify-center gap-s bg-cover px-m text-muted"
+      className="absolute inset-0 flex flex-col items-center justify-center gap-s bg-cover px-m text-fg"
     >
       <svg viewBox="0 0 31 31" aria-hidden="true" className="size-spinner motion-safe:animate-arc">
         <circle

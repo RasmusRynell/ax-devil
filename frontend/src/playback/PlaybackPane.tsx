@@ -97,7 +97,7 @@ export function Playback({
   }, []);
   // A lane opened from the tree takes the keyboard: it is the lane the shortcuts and the lane menu act on.
   const labels = useMemo(() => view.lanes.map((lane) => lane.label), [view.lanes]);
-  const { pick } = fullscreen;
+  const { focus } = fullscreen;
   useLaneFocus(
     viewer,
     entry,
@@ -106,10 +106,10 @@ export function Playback({
     active,
     useCallback(
       (lane: number) => {
-        pick(lane);
+        focus(lane);
         pane.current?.focus({ preventScroll: true });
       },
-      [pick],
+      [focus],
     ),
   );
   // The selected object's page is the one the media tools show, so its fields are asked for only while they are open.
