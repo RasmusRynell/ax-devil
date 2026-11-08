@@ -41,6 +41,8 @@ mod catalog_tests;
 #[cfg(test)]
 mod live_tests;
 #[cfg(test)]
+mod playlist_tests;
+#[cfg(test)]
 mod startup_tests;
 #[cfg(test)]
 mod tests;

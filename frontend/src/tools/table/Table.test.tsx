@@ -138,6 +138,9 @@ describe("Table dividers", () => {
     const divider = screen.getByRole("separator", { name: "Resize ID" });
     const fitted = width();
     fireEvent.pointerDown(divider, { pointerId: 1, clientX: 100 });
+    // A move with no button down is not a drag.
+    fireEvent.pointerMove(divider, { pointerId: 1, clientX: 120, buttons: 0 });
+    expect(width()).toBe(fitted);
     fireEvent.pointerMove(divider, { pointerId: 1, clientX: 140, buttons: 1 });
     fireEvent.pointerUp(divider, { pointerId: 1 });
     expect(width()).toBe(fitted + 40);

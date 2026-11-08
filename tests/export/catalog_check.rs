@@ -64,6 +64,27 @@ fn catalog_check_reports_a_catalog_or_every_problem_in_it_located() {
     let missing = run(&["check"], &folder.path().join("missing.json"));
     assert!(!missing.status.success());
     assert!(text(&missing.stderr).contains("missing.json"));
+
+    // A catalog file named on the command line does not depend on the settings file; listing does.
+    let broken = write("broken.json", "{ not json");
+    let with_config = |args: &[&str]| {
+        Command::new(env!("CARGO_BIN_EXE_ax-devil"))
+            .arg("catalog")
+            .args(args)
+            .arg("--config")
+            .arg(&broken)
+            .output()
+            .unwrap()
+    };
+    let checked = with_config(&["check", good.to_str().unwrap()]);
+    assert!(checked.status.success(), "{}", text(&checked.stderr));
+    let listed = with_config(&["list"]);
+    assert!(!listed.status.success());
+    assert!(
+        text(&listed.stderr).contains("broken.json"),
+        "{}",
+        text(&listed.stderr)
+    );
 }
 
 #[test]
