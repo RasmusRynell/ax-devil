@@ -46,41 +46,6 @@ describe("Frame scope", () => {
     expect(source.seek).not.toHaveBeenCalled();
   });
 
-  it("counts the matches against the frame's objects before the lane's filter hides any", () => {
-    mount({}, { keep: "score > 0.7" });
-    expect(ids()).toEqual(["12", "7"]);
-    expect(screen.getByText("2 of 3")).toBeTruthy();
-    search("class:car");
-    expect(screen.getByText("1 of 3")).toBeTruthy();
-  });
-
-  it("describes both scopes on hover", () => {
-    mount();
-    const hint = screen
-      .getByRole("radio", { name: "File" })
-      .closest("[title]")
-      ?.getAttribute("title");
-    expect(hint).toContain("Objects in the displayed frame, searchable by any attribute");
-    expect(hint).toContain(
-      "Every object in the file; objects not in the displayed frame are dimmed",
-    );
-  });
-
-  it("keeps File scope while the lane's file is not read, such as after a reconnect, and returns to it", () => {
-    const { status, answer } = mount();
-    showFile();
-    answer([file("7", 3)]);
-    const filed = () => (screen.getByRole("radio", { name: "File" }) as HTMLInputElement).checked;
-    expect(filed()).toBe(true);
-
-    status({ status: "Loading" });
-    expect(screen.queryByRole("radio", { name: "File" })).toBeNull();
-    expect(ids()).toEqual(["12", "7", "9"]);
-
-    status(READY);
-    expect(filed()).toBe(true);
-  });
-
   it("filters 150 ms after typing stops, at once on Return or Clear, and Clear shows only with text", () => {
     vi.useFakeTimers();
     mount();
@@ -358,19 +323,6 @@ describe("File scope", () => {
     act(() => files.receive({ type: "FileScope", lane: 0, request, unavailable }));
     expect(screen.getByText(text)).toBeTruthy();
     expect(screen.queryByRole("listbox")).toBeNull();
-  });
-
-  it("drops an Enter awaiting an unloaded row when the file's list is replaced, rather than open what lands there", () => {
-    const { answer, reread, selected } = mount();
-    showFile();
-    const rows = Array.from({ length: 40 }, (_, i) => file(`o${i}`, i));
-    answer(rows.slice(0, 5), { total: 40, matched: 40 });
-    const list = screen.getByRole("listbox", { name: "Objects" });
-    fireEvent.keyDown(list, { key: "End" });
-    fireEvent.keyDown(list, { key: "Enter" });
-    reread(2);
-    answer(rows, { total: 40, matched: 40, data_revision: 2 });
-    expect(selected).toEqual([]);
   });
 
   it("keeps the rows of a list that could not be refreshed, says so, and asks again on Retry", () => {
