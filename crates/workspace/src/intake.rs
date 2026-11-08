@@ -219,12 +219,23 @@ pub fn playlist(
 /// its default (the host as typed under a literal environment), or `Live stream` while that is unset or no plain host.
 /// Only this clears a label; everywhere else an empty label is the one sign of an unnamed item.
 pub fn with_label(item: WorkspaceItem, label: Option<&str>, env: &Environment) -> WorkspaceItem {
+    let default = WorkspaceItem {
+        label: String::new(),
+        ..item.clone()
+    }
+    .display_name_in(env);
+    with_label_as(item, label, &default)
+}
+
+/// [`with_label`] against the default name `default` the namer is allowed to know: what its own view of the unnamed
+/// item is called, so that clearing a label tells it nothing it could not read.
+pub fn with_label_as(item: WorkspaceItem, label: Option<&str>, default: &str) -> WorkspaceItem {
     let unnamed = WorkspaceItem {
         label: String::new(),
         ..item
     };
     match label.map(str::trim) {
-        Some(label) if label != unnamed.display_name_in(env) => WorkspaceItem {
+        Some(label) if label != default => WorkspaceItem {
             label: label.to_owned(),
             ..unnamed
         },

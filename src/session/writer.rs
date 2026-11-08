@@ -61,9 +61,7 @@ pub(super) async fn run<S: Sink<Message> + Unpin>(
         Change::Ended(reason) => return Err(Exit::Ended(reason)),
     };
     let seat = first.seats.get(&handle.seat());
-    let audience = Audience {
-        host_details: can(&first, handle.seat(), handle.lease()).is_ok_and(|can| can.host),
-    };
+    let audience = super::project::audience_of(&first, handle.seat(), handle.lease());
     let welcome = SessionServerMessage::Welcome {
         session: handle.session().to_string(),
         seat: handle.seat().0,

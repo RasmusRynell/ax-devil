@@ -1,7 +1,9 @@
 //! What a seat may use of the workspace's saved streams, and the environment its session reads references in.
 
+use super::project::item_label;
+use api_types::Audience;
 use foundation::ItemId;
-use workspace::{Environment, LiveRecipe, Source, Workspace, intake::with_label};
+use workspace::{Environment, LiveRecipe, Source, Workspace, WorkspaceItem, intake::with_label_as};
 
 /// The logins saved with the workspace's streams, for the seat that may copy them.
 #[derive(Clone, Copy)]
@@ -14,15 +16,23 @@ pub(super) struct Saved<'a> {
     pub(super) guest: bool,
     /// Whether the session's references read this machine's environment.
     expands: bool,
+    /// What the seat is shown of hosts.
+    audience: Audience,
 }
 
 impl<'a> Saved<'a> {
-    pub(super) fn new(workspace: &'a Workspace, owner: bool, expands: bool) -> Self {
+    pub(super) fn new(
+        workspace: &'a Workspace,
+        owner: bool,
+        expands: bool,
+        audience: Audience,
+    ) -> Self {
         Self {
             workspace,
             owner,
             guest: expands && !owner,
             expands,
+            audience,
         }
     }
 
@@ -35,7 +45,19 @@ impl<'a> Saved<'a> {
         }
     }
 
-    /// `label` for item `item` as it is stored: empty when it is empty or the item's current default name.
+    /// `item` named `label` by this seat: the label is empty when it is empty or the item's current default name as
+    /// this seat's own view shows it (`item_label`, the rule projection follows), so a seat that is not shown a host
+    /// learns nothing of it by what clears.
+    pub(super) fn labelled(self, item: WorkspaceItem, label: Option<&str>) -> WorkspaceItem {
+        let unnamed = WorkspaceItem {
+            label: String::new(),
+            ..item.clone()
+        };
+        let default = item_label(&unnamed, self.audience, &self.environment());
+        with_label_as(item, label, &default)
+    }
+
+    /// `label` for item `item` as it is stored, by [`labelled`](Self::labelled).
     pub(super) fn normalized_label(self, item: ItemId, label: &str) -> String {
         match self
             .workspace
@@ -43,7 +65,7 @@ impl<'a> Saved<'a> {
             .iter()
             .find(|candidate| candidate.id == item)
         {
-            Some(found) => with_label(found.clone(), Some(label), &self.environment()).label,
+            Some(found) => self.labelled(found.clone(), Some(label)).label,
             None => label.trim().to_owned(),
         }
     }

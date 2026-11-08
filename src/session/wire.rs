@@ -107,11 +107,7 @@ pub(super) fn command(
             let id = item.id;
             Request::Session(
                 Command::Content(DocCommand::AddResolved {
-                    item: Box::new(workspace::intake::with_label(
-                        item,
-                        label.as_deref(),
-                        &saved.environment(),
-                    )),
+                    item: Box::new(saved.labelled(item, label.as_deref())),
                     content: Box::new(content),
                     open: true,
                 }),
@@ -128,8 +124,7 @@ pub(super) fn command(
                 },
         } => {
             let (staged, content, watch) = staged.take(session, &ticket).ok_or(Refusal::Invalid)?;
-            let edited =
-                workspace::intake::with_label(staged, label.as_deref(), &saved.environment());
+            let edited = saved.labelled(staged, label.as_deref());
             // Only playlists are staged; their ids came from the ticket and are the edited item's from now on.
             let content = match content {
                 Content::Playlist(playlist) => Content::Playlist(playlist.rebound(&item)),
@@ -323,9 +318,8 @@ fn intake(
                     options: overlay.options.clone(),
                 })
                 .collect();
-            workspace::intake::video(Path::new(path), &overlays, handlers).map(|item| {
-                workspace::intake::with_label(item, label.as_deref(), &saved.environment())
-            })
+            workspace::intake::video(Path::new(path), &overlays, handlers)
+                .map(|item| saved.labelled(item, label.as_deref()))
         }
         NewItem::Live(new) => {
             let mut new = new.clone();
@@ -340,7 +334,7 @@ fn intake(
             }
             new.bare_kept = saved.guest;
             let item = workspace::intake::live(new, live, handlers)?;
-            let item = workspace::intake::with_label(item, label.as_deref(), &saved.environment());
+            let item = saved.labelled(item, label.as_deref());
             match &item.recipe.source {
                 Source::Live(recipe) if saved.guest => refuse_references(recipe).map(|()| item),
                 _ => Ok(item),

@@ -21,7 +21,7 @@ use api_types::{
         RowInfo, RowKindWire, RowStatusInfo, WorkspaceState,
     },
 };
-use sessions::session::Doc;
+use sessions::session::{Doc, SessionState, can};
 use std::collections::HashMap;
 use workspace::{
     BookmarkKind, Content, Entry, Environment, LiveVideoContent, SeekableVideoContent, Source,
@@ -31,6 +31,18 @@ use workspace_store::{
     BookmarkGroup, ContentGen, Reload, Resolution, Row, RowKind, RowStatus, Saved, Standing,
     WorkspaceParts, bookmark_groups, details, rows,
 };
+
+/// The audience of a seat: it learns the host's details when its standing may. The one rule for what a seat is shown
+/// of hosts, and so for what it may be told by being answered.
+pub fn audience_of(
+    state: &SessionState,
+    seat: sessions::session::SeatId,
+    lease: sessions::session::Lease,
+) -> Audience {
+    Audience {
+        host_details: can(state, seat, lease).is_ok_and(|can| can.host),
+    }
+}
 
 /// `doc` as `audience` may see it. `expands` is the Session's right to read this machine's environment, which
 /// resolving its items has too: without it a live stream's `$NAME` host is named as typed, never by its value.
@@ -166,7 +178,7 @@ fn project_in(doc: &Doc, audience: Audience, env: &Environment) -> DocWire {
 
 /// The name an item's row and viewer show to `audience`: its label, or when it has none (a live stream may) the host as
 /// expanded to an audience with host details and `Live stream` to everyone else.
-fn item_label(item: &WorkspaceItem, audience: Audience, env: &Environment) -> String {
+pub fn item_label(item: &WorkspaceItem, audience: Audience, env: &Environment) -> String {
     match &item.recipe.source {
         Source::Live(_) if item.label.is_empty() && !audience.host_details => {
             "Live stream".to_owned()
