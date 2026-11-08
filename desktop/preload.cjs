@@ -11,8 +11,11 @@ contextBridge.exposeInMainWorld("axDevilWindow", {
   toggleMaximize: () => ipcRenderer.send("window:toggle-maximize"),
   close: () => ipcRenderer.send("window:close"),
   toggleFullScreen: () => ipcRenderer.send("window:toggle-fullscreen"),
-  // Opens the native file dialog; resolves to the chosen absolute paths, none when it is cancelled.
-  pickVideos: () => ipcRenderer.invoke("workspace:pick-videos"),
+  // Opens the native file dialog for a video; resolves to the chosen absolute path, null when it is cancelled.
+  pickVideo: () => ipcRenderer.invoke("workspace:pick-file", "video"),
+  // Opens the native file dialog for an overlay file, filtered to `extensions` (lowercase, with their dots); resolves
+  // to the chosen absolute path, null when it is cancelled.
+  pickOverlay: (extensions) => ipcRenderer.invoke("workspace:pick-file", "overlay", extensions),
   // Opens the native save dialog for an export (a suggested file name and `mp4` or `png`); resolves to the chosen
   // absolute path, null when it is cancelled.
   pickExportFile: (name, extension) => ipcRenderer.invoke("export:pick-file", name, extension),

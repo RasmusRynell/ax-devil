@@ -9,7 +9,25 @@ const { reserved } = require("./generated/api.json");
 const { windowBounds } = require("./window-state.cjs");
 
 // Video files the Add Video dialog offers; the backend's intake takes any path, the viewer judges the media.
-const VIDEO_EXTENSIONS = ["mp4", "avi", "mkv", "mov"];
+const VIDEO_EXTENSIONS = [".mp4", ".avi", ".mkv", ".mov"];
+
+// The most extensions, and the longest one, an overlay dialog request may carry.
+const MAX_EXTENSIONS = 1000;
+const MAX_EXTENSION_LENGTH = 256;
+
+// The extensions a native dialog filter can state: dotted suffixes of plain characters. The backend decides what a
+// decoder may declare; any other suffix is left out of the filter, which All Files always backs up.
+const FILTERABLE_EXTENSION = /^(\.[a-z0-9_+-]+)+$/;
+
+/** The open dialog's filters: the `extensions` (with their dots) a filter can state under `label`, then every file. */
+function fileFilters(label, extensions) {
+  const stated = extensions.filter((one) => FILTERABLE_EXTENSION.test(one));
+  const name = `${label} Files (${stated.map((one) => `*${one}`).join(" ")})`;
+  return [
+    ...(stated.length ? [{ name, extensions: stated.map((one) => one.slice(1)) }] : []),
+    { name: "All Files (*)", extensions: ["*"] },
+  ];
+}
 
 // What an export writes: the file dialog's filter name by file extension; the page names one of these.
 const EXPORT_FILTERS = { mp4: "MP4 Video", png: "PNG Image", csv: "CSV" };
@@ -165,16 +183,30 @@ function installIpc({ connect, disconnect, restart }) {
   });
   handle("window:is-maximized", ({ window }) => window.isMaximized());
   handle("app:version", () => app.getVersion());
-  // Only the native dialog: the page sends the chosen paths to the backend itself. Resolves to the absolute paths,
-  // none when the dialog is cancelled. Only the local backend's page may browse this machine's files.
-  handle("workspace:pick-videos", async ({ remote, window }) => {
+  // Only the native dialog: the page sends the chosen path to the backend itself. Resolves to the absolute path of one
+  // file, null when the dialog is cancelled. `kind` is `video` or `overlay`; an overlay's `extensions` (with their
+  // dots, compound ones like `.tar.gz` included) filter the dialog, ahead of All Files, where a filter can state them. Only the local
+  // backend's page may browse this machine's files.
+  handle("workspace:pick-file", async ({ remote, window }, kind, extensions) => {
     if (remote) throw new Error("Not allowed");
+    if (kind !== "video" && kind !== "overlay")
+      throw new Error("Expected a kind of file: video or overlay");
+    if (
+      kind === "overlay" &&
+      !(
+        Array.isArray(extensions) &&
+        extensions.length <= MAX_EXTENSIONS &&
+        extensions.every((one) => typeof one === "string" && one.length <= MAX_EXTENSION_LENGTH)
+      )
+    )
+      throw new Error("Expected a list of file extensions");
     const chosen = await dialog.showOpenDialog(window, {
-      title: "Add Video",
-      properties: ["openFile", "multiSelections"],
-      filters: [{ name: "Video files", extensions: VIDEO_EXTENSIONS }],
+      title: kind === "video" ? "Select Video File" : "Select Overlay File",
+      properties: ["openFile"],
+      filters:
+        kind === "video" ? fileFilters("Video", VIDEO_EXTENSIONS) : fileFilters("Data", extensions),
     });
-    return chosen.canceled ? [] : chosen.filePaths;
+    return chosen.canceled ? null : chosen.filePaths[0];
   });
   // The absolute path an export is saved to, with the extension the export writes; null when cancelled. The
   // backend, which writes the file, checks the path again. Only the local backend's page may browse this machine.

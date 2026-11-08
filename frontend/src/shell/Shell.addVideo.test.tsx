@@ -28,13 +28,14 @@ const enabled = () =>
 describe("add video", () => {
   // The desktop's own backend grants preferences, which is how a window knows it may browse this machine's files.
   const local: Grant[] = ["configuration", "preferences"];
-  const chooses = (paths: string[]) => {
+  const chooses = (video: string | null) => {
     window.axDevilWindow = {
       minimize() {},
       toggleMaximize() {},
       close() {},
       toggleFullScreen() {},
-      pickVideos: () => Promise.resolve(paths),
+      pickVideo: () => Promise.resolve(video),
+      pickOverlay: () => Promise.resolve(null),
       connect: () => Promise.resolve(),
       disconnect: () => Promise.resolve(),
       restart() {},
@@ -58,7 +59,7 @@ describe("add video", () => {
     );
   it("opens the dialog, sends nothing until Add, and adds the file the chooser gave", async () => {
     serve();
-    chooses(["/clips/a.mp4"]);
+    chooses("/clips/a.mp4");
     await renderShell({ grants: local });
     fireEvent.click(screen.getByRole("menuitem", { name: "File" }));
     fireEvent.click(screen.getByRole("menuitem", { name: /Add Video/ }));
@@ -90,10 +91,10 @@ describe("add video", () => {
     "asks %s for a path on the server, and says why the backend refused it",
     async (_, desktop) => {
       serve();
-      const pick = vi.fn(() => Promise.resolve(["/clients/own.mp4"]));
+      const pick = vi.fn(() => Promise.resolve("/clients/own.mp4"));
       if (desktop) {
-        chooses([]);
-        window.axDevilWindow!.pickVideos = pick;
+        chooses(null);
+        window.axDevilWindow!.pickVideo = pick;
       }
       await renderShell({ grants: ["files"] });
       FakeSocket.latest.defer = true;

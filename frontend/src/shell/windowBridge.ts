@@ -7,8 +7,13 @@ export interface WindowBridge {
   close(): void;
   /** Puts the whole window into or out of fullscreen. */
   toggleFullScreen(): void;
-  /** Opens the native file dialog for video files. Resolves to the absolute paths chosen; none when cancelled. */
-  pickVideos(): Promise<string[]>;
+  /** Opens the native file dialog for one video file. Resolves to the absolute path chosen; null when cancelled. */
+  pickVideo(): Promise<string | null>;
+  /**
+   * Opens the native file dialog for one overlay file, filtered to `extensions` (each lowercase with its dot, as a
+   * decoder declares it; none leaves every file). Resolves to the absolute path chosen; null when cancelled.
+   */
+  pickOverlay(extensions: readonly string[]): Promise<string | null>;
   /** Opens the native folder dialog titled `title`, which names what is chosen. Resolves to the absolute path chosen; null when cancelled. */
   pickFolder(title?: string): Promise<string | null>;
   /**

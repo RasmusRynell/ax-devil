@@ -5,7 +5,8 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs/promises");
 const os = require("node:os");
 const path = require("node:path");
-const { SCREENSHOTS, SMOKE_ROOT, frames, page, setView } = require("./smoke-kit.cjs");
+const fit = require("./fit.cjs");
+const { SCREENSHOTS, SMOKE_ROOT, delay, frames, page, setView } = require("./smoke-kit.cjs");
 
 const FIXTURE = path.join(SMOKE_ROOT, "fixtures/video/long_gop_h264.mp4");
 
@@ -49,6 +50,51 @@ module.exports.items = async (window) => {
       await wait("document.querySelector('[data-cursor-id=\"sidebar:add-video\"]')");
       await js("document.querySelector('[data-cursor-id=\"sidebar:add-video\"]').click()");
       await wait("document.querySelector('dialog[open] input')");
+      // The local window may browse for the video and for the blank overlay row's file. With a blank path the dialog
+      // shows its failure and still fits the smallest window at 200% zoom.
+      await wait(
+        "document.querySelector('dialog[open] [aria-label=\"Choose overlay file\"]') && document.querySelector('dialog[open] [aria-label=\"Choose video file\"]')",
+      );
+      for (const [shown, zoom] of [
+        ["light", 1],
+        ["dark", 2],
+      ]) {
+        nativeTheme.themeSource = shown;
+        await wait(`matchMedia('(prefers-color-scheme: ${shown})').matches`);
+        await setView(window, [640, 480], zoom);
+        assert.deepEqual(
+          await js(`(${fit.dialog.toString()})()`),
+          [],
+          `The local Add video dialog must fit the 640x480 window at ${zoom * 100}% zoom`,
+        );
+      }
+      await setView(window, [1100, 720], 1);
+      // A capture right after a theme change can still be the previous frame: wait until the dialog is painted in the
+      // theme's colours, and capture again until the picture differs from the other theme's.
+      let before = null;
+      for (const shown of ["light", "dark"]) {
+        nativeTheme.themeSource = shown;
+        await wait(`matchMedia('(prefers-color-scheme: ${shown})').matches`);
+        await wait(
+          `(() => {
+            const [r, g, b] = getComputedStyle(document.querySelector('dialog[open]')).backgroundColor.match(/[\\d.]+/g).map(Number);
+            return (r + g + b) / 3 > 128 === (${JSON.stringify(shown)} === 'light');
+          })()`,
+        );
+        let png;
+        for (let attempt = 0; attempt < 20; attempt++) {
+          await frames({ js });
+          png = (await window.webContents.capturePage()).toPNG();
+          if (!before || !png.equals(before)) break;
+          await delay(100);
+        }
+        assert.ok(
+          !before || !png.equals(before),
+          "The light and dark Add video screenshots must differ",
+        );
+        await fs.writeFile(path.join(SCREENSHOTS, `add-video-local-${shown}.png`), png);
+        before = png;
+      }
       await js(`(() => {
         const input = document.querySelector('dialog[open] input');
         Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(input, ${JSON.stringify(path.join(folder, name))});
