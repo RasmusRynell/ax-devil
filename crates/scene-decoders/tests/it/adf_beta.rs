@@ -147,10 +147,16 @@ fn beta_names_classes_by_exact_spelling_and_gives_them_only_its_own_details() {
     let human = &classes(json!({"type": "Human", "upper_clothing_colors": blue}))[0];
     assert_eq!(human.class_type, "human");
     assert!(human.attribute("upper_clothing_colors").is_some());
-    let plate =
-        &classes(json!({"type": "LicensePlate", "state_code": "CA", "plate_number": "ABC"}))[0];
+    let plate = &classes(json!({
+        "type": "LicensePlate", "state_code": "CA", "plate_number": "ABC", "country_code": ["SE", "NO"],
+    }))[0];
     assert_eq!(plate.class_type, "license_plate");
     assert!(plate.attribute("state_code").is_none() && plate.attribute("plate_number").is_some());
+    // A list or object code is shown as JSON text, not dropped.
+    assert_eq!(
+        plate.attribute("country_code"),
+        Some(&Value::Str(r#"["SE","NO"]"#.into()))
+    );
     assert_eq!(
         classes(json!({"type": "Licenseplate"}))[0].class_type,
         "licenseplate"

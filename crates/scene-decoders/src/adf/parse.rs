@@ -388,9 +388,10 @@ fn attributes(class_type: &ClassType, payload: &Object, v1: bool) -> Result<Fiel
     Ok(fields)
 }
 
-/// A country, state or plate code as text, as Python's `str()` writes it. `keep_empty` (v1) keeps a code that is
-/// there even when Python counts it false, such as an empty text; beta keeps only a true one. A null, list or object
-/// gives none.
+/// A country, state or plate code as text, as Python's `str()` writes it, except that a list or object is written
+/// as compact JSON (Python's would be a `repr` with single quotes), so the value is shown instead of dropped.
+/// `keep_empty` (v1) keeps a code that is there even when Python counts it false, such as an empty text; beta keeps
+/// only a true one. A null gives none.
 fn code(payload: &Object, key: &str, keep_empty: bool) -> Option<Value> {
     let value = payload.get(key)?;
     if !keep_empty && !truthy(value) {
@@ -400,7 +401,8 @@ fn code(payload: &Object, key: &str, keep_empty: bool) -> Option<Value> {
         Json::String(text) => text.clone(),
         Json::Number(number) => number.to_string(),
         Json::Bool(flag) => if *flag { "True" } else { "False" }.to_owned(),
-        _ => return None,
+        Json::Array(_) | Json::Object(_) => value.to_string(),
+        Json::Null => return None,
     };
     Some(Value::Str(text.into()))
 }
