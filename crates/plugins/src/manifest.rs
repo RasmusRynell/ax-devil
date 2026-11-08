@@ -53,6 +53,18 @@ impl ManifestError {
     }
 }
 
+impl ManifestError {
+    /// The message with its first character capitalized, as the Plugins view, the CLI and the log say why a plugin
+    /// did not load.
+    pub fn capitalised(&self) -> String {
+        let text = self.to_string();
+        let mut chars = text.chars();
+        chars.next().map_or_else(String::new, |first| {
+            first.to_uppercase().chain(chars).collect()
+        })
+    }
+}
+
 impl fmt::Display for ManifestError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match &self.field {

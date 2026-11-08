@@ -455,7 +455,7 @@ fn installed_info(loaded: &Loaded) -> Vec<PluginInfo> {
                     }
                 }
                 Err(error) => PluginStatus::Failed {
-                    reason: error.to_string(),
+                    reason: error.capitalised(),
                 },
             },
         })

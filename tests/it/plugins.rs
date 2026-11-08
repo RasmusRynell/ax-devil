@@ -266,12 +266,9 @@ async fn the_plugins_route_lists_the_plugins_that_loaded_and_the_one_that_did_no
     assert_eq!(loaded["status"]["id"], "python-runs");
     assert_eq!(loaded["status"]["handlers"][0]["kind"], "playlist_resolver");
     assert_eq!(failed["status"]["state"], "failed");
-    assert!(
-        failed["status"]["reason"]
-            .as_str()
-            .unwrap()
-            .contains("gone")
-    );
+    let reason = failed["status"]["reason"].as_str().unwrap();
+    assert!(reason.starts_with("Cannot read"), "{reason}");
+    assert!(reason.contains("gone"), "{reason}");
 }
 
 /// Not a test: the process `an_install_while_another_process...` starts, this binary run again, to hold the lock.
