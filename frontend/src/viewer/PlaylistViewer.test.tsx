@@ -177,6 +177,14 @@ describe("playlist viewer", () => {
     expect(screen.getByLabelText("Next").textContent).toBe("none");
   });
 
+  it("names a next entry that has no overlays by its one plain lane, and a lane whose label is empty", async () => {
+    const entries = [entry("list/A", "A"), entry("list/B", "B", ["B"]), entry("list/C", "C", [""])];
+    const { run } = await mount({ entries });
+    expect(screen.getByLabelText("Next").textContent).toBe("list/B: B");
+    run("next-entry");
+    expect(screen.getByLabelText("Next").textContent).toBe("list/C: ");
+  });
+
   it("picks an entry from its menu, which lists the entries that are not hidden", async () => {
     await mount({ hidden: hiding("C") });
     fireEvent.click(screen.getByRole("button", { name: "Entry: A" }));

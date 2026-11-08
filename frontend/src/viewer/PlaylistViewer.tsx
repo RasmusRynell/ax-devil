@@ -12,9 +12,6 @@ import { EntryViewer } from "./EntryViewer";
 import type { Hidden } from "./hidden";
 import { useHidden } from "./useViewers";
 
-/** Joins lane labels into one comparable value; a label holds no control character. */
-const LANE_SEPARATOR = "\u001f";
-
 /**
  * The entry `step` places from `from` (negative is back) that the user has not hidden, or `undefined` when there is
  * none that way. Entries do not wrap around.
@@ -87,10 +84,16 @@ export function PlaylistViewer({ item, viewer, content }: ViewerProps<"Playlist"
     [setViewers, viewer],
   );
   const [previousId, nextId] = [previous?.id, next?.id];
-  // What the backend is asked to prepare: the next entry's lanes the user has not hidden, none when all are.
-  const nextLanes = next?.lanes.filter((lane) => !hidden.lane(next.id, lane)).join(LANE_SEPARATOR);
+  // What the backend is asked to prepare: the next entry's lanes the user has not hidden, and nothing when it has
+  // none left to show, as the reference withdraws then. An entry without overlays has its one plain lane. The lanes
+  // are kept as one text so that the same lanes are the same value, whatever their labels hold.
+  const shownLanes = next?.lanes.filter((lane) => !hidden.lane(next.id, lane));
+  const nextLanes = shownLanes?.length ? JSON.stringify(shownLanes) : undefined;
   const upNext = useMemo<PreparedEntry | null>(
-    () => (nextId && nextLanes ? { entry: nextId, lanes: nextLanes.split(LANE_SEPARATOR) } : null),
+    () =>
+      nextId !== undefined && nextLanes !== undefined
+        ? { entry: nextId, lanes: JSON.parse(nextLanes) as string[] }
+        : null,
     [nextId, nextLanes],
   );
   // An entry hidden while it is on screen is left for a neighbour; one the view named hidden is shown, as when the

@@ -35,7 +35,7 @@ export function AboutDialog({ version, onClose }: { version: string; onClose: ()
       `Backend ${version}`,
       navigator.userAgent,
       `Settings ${file.path} (version ${file.version})`,
-      ...(log ? [`Log ${log}`] : []),
+      ...(log === undefined ? [] : [`Log ${log}`]),
     ].join("\n");
     setProblem(null);
     navigator.clipboard.writeText(text).catch(failed);
@@ -59,9 +59,9 @@ export function AboutDialog({ version, onClose }: { version: string; onClose: ()
       >
         github.com/rasmusrynell/ax-devil
       </a>
-      {file && (canCopy || (bridge && log)) && (
+      {file && (canCopy || (bridge && log !== undefined)) && (
         <div className="flex flex-wrap gap-s">
-          {bridge && log && (
+          {bridge && log !== undefined && (
             <Button onClick={() => bridge.openLogs(log).catch(failed)}>Open logs folder</Button>
           )}
           {canCopy && <Button onClick={copy}>Copy diagnostics</Button>}
