@@ -225,10 +225,11 @@ impl Pending {
         Self {
             seq: job.seq,
             pts_us: job.frame.id().timestamp.as_us(),
-            dur_us: spec
-                .index
-                .duration_of(job.frame.id().sequence_id)
-                .map_or(LONE_FRAME_US, |period| period.as_us()),
+            dur_us: job
+                .frame
+                .duration()
+                .or_else(|| spec.index.duration_of(job.frame.id().sequence_id))
+                .map_or(LONE_FRAME_US, |duration| duration.as_us()),
         }
     }
 }

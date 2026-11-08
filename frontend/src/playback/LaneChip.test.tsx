@@ -53,6 +53,28 @@ describe("lane chip", () => {
     expect(show({ status: reading, pending: true })?.textContent).toBe("Loading…");
   });
 
+  it("names the overlay it parses, with the lane's place when several lanes are shown", () => {
+    const show = (stage: { position: number; count: number }, live = false) => {
+      cleanup();
+      render(
+        <FakeSettings>
+          <LaneChip
+            lane={lane({})}
+            catalogs={[]}
+            cadence={null}
+            live={live}
+            stage={stage}
+            onChange={() => {}}
+          />
+        </FakeSettings>,
+      );
+      return screen.getByRole("status").textContent;
+    };
+    expect(show({ position: 1, count: 1 })).toBe("Parsing overlay data: DET");
+    expect(show({ position: 2, count: 3 })).toBe("Parsing overlay data (2/3): DET");
+    expect(show({ position: 2, count: 3 }, true)).toBe("Loading…");
+  });
+
   it("lists why a file stopped being read among the lane's notices", () => {
     const stopped: LaneStatusWire = {
       ...READY,

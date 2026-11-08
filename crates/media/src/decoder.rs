@@ -9,7 +9,9 @@ use crate::source;
 use ffmpeg_next::decoder;
 use ffmpeg_next::error::EAGAIN;
 use ffmpeg_next::frame::Video;
-use foundation::{CancelToken, ErrorCode, FrameFailure, Interrupt, UserError, VideoFrame};
+use foundation::{
+    CancelToken, ErrorCode, FrameFailure, Interrupt, MediaTime, UserError, VideoFrame,
+};
 use std::path::PathBuf;
 use std::sync::Arc;
 use tracing::{debug, warn};
@@ -259,12 +261,23 @@ impl Decoder {
             return Err(self.failure(next, "it is not in the index"));
         };
         match self.converter.convert(frame, id, keyframe) {
-            Ok(frame) => {
+            Ok(delivered) => {
                 self.last_error = None;
-                Ok(frame)
+                Ok(delivered.with_duration(self.duration_of(frame)))
             }
             Err(reason) => Err(self.failure(next, &reason)),
         }
+    }
+
+    /// The duration the decoder reported for `frame`, in the stream's time base; none when it gave none, and for an
+    /// image sequence, whose images have no stream time.
+    fn duration_of(&self, frame: &Video) -> Option<MediaTime> {
+        let (numerator, denominator) = self.index.pts_timing()?.time_base;
+        let ticks = frame.packet().duration;
+        if ticks <= 0 {
+            return None;
+        }
+        MediaTime::from_ticks(ticks, i64::from(numerator), i64::from(denominator))
     }
 
     /// Moves past frame `next` and describes why it could not be delivered. The reason is only the cause, for

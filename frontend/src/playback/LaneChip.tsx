@@ -36,6 +36,16 @@ export function laneNotices(lane: LaneState): Notice[] {
   return notices;
 }
 
+/** What the lane's chip says while the backend parses its overlay file: the lane's place among the lanes when there are several. */
+export function parsingMessage(
+  label: string,
+  { position, count }: { position: number; count: number },
+): string {
+  return count > 1
+    ? `Parsing overlay data (${position}/${count}): ${label}`
+    : `Parsing overlay data: ${label}`;
+}
+
 const TONE_ON_CANVAS = {
   danger: "text-on-canvas-danger",
   caution: "text-on-canvas-caution",
@@ -65,6 +75,7 @@ export function LaneChip({
   onExport,
   hideName = false,
   live = false,
+  stage,
 }: {
   lane: LaneState;
   catalogs: readonly CatalogInfoWire[];
@@ -79,16 +90,28 @@ export function LaneChip({
   hideName?: boolean;
   /** The lane is live: its menu shows no alignment. */
   live?: boolean;
+  /** Where the lane is among the lanes shown; while the backend reads its file the chip names that stage. */
+  stage?: { position: number; count: number };
 }) {
   const showName = useSettings().values["overlays.lane_names"] === true && !hideName;
   const notices = laneNotices(lane);
-  const loading = lane.pending || (lane.status !== "plain" && lane.status.status === "Loading");
+  const reading = lane.status !== "plain" && lane.status.status === "Loading";
+  // The lane's file is being parsed: the chip says which, in place of the lane's name, which the message holds.
+  const named = reading && !live && stage !== undefined;
+  const status = named
+    ? parsingMessage(lane.label, stage)
+    : lane.pending || reading
+      ? "Loading…"
+      : null;
   return (
     <div className="flex w-fit max-w-full items-center rounded-control bg-canvas-scrim text-on-canvas">
-      {showName && <span className="min-w-0 truncate px-m">{lane.label}</span>}
-      {loading && (
-        <span role="status" className={`${showName ? "" : "pl-m "}pr-m text-on-canvas-muted`}>
-          Loading…
+      {showName && !named && <span className="min-w-0 truncate px-m">{lane.label}</span>}
+      {status && (
+        <span
+          role="status"
+          className={`${showName && !named ? "" : "pl-m "}min-w-0 truncate pr-m text-on-canvas-muted`}
+        >
+          {status}
         </span>
       )}
       {notices.length > 0 && (
