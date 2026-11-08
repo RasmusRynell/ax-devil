@@ -97,3 +97,75 @@ fn a_file_that_appears_while_the_item_is_read_is_a_change_and_a_recipe_with_no_p
     let (_, nothing) = Watch::read(&bare.recipe, &handlers, &token, || Err::<Content, ()>(()));
     assert!(nothing.is_none());
 }
+
+/// Sets the modification time of `folder` far in the past, so a later entry added to it shows as a change however
+/// coarse the clock of the file system is.
+fn age(folder: &Path) {
+    let mut options = fs::File::options();
+    // Windows opens a folder only with backup semantics, and sets its times only from a handle that can write.
+    #[cfg(windows)]
+    std::os::windows::fs::OpenOptionsExt::custom_flags(options.write(true), 0x0200_0000);
+    #[cfg(not(windows))]
+    options.read(true);
+    let old = SystemTime::UNIX_EPOCH + Duration::from_secs(1_000);
+    options.open(folder).unwrap().set_modified(old).unwrap();
+}
+
+#[cfg(unix)]
+#[test]
+fn a_symbolic_link_to_a_folder_outside_is_not_followed_but_a_real_subfolder_is() {
+    let (watched, outside) = (tempfile::tempdir().unwrap(), tempfile::tempdir().unwrap());
+    let real = watched.path().join("real");
+    fs::create_dir(&real).unwrap();
+    std::os::unix::fs::symlink(outside.path(), watched.path().join("link")).unwrap();
+    for folder in [watched.path(), real.as_path(), outside.path()] {
+        age(folder);
+    }
+    let paths = SourcePaths {
+        files: BTreeSet::new(),
+        folders: BTreeSet::from([watched.path().to_owned()]),
+    };
+    let token = CancelToken::new();
+    let before = paths.snapshot(&token).unwrap();
+
+    fs::write(outside.path().join("elsewhere.txt"), "x").unwrap();
+    assert!(before.changes(&paths.snapshot(&token).unwrap()).is_empty());
+
+    fs::write(real.join("here.txt"), "x").unwrap();
+    assert_eq!(
+        before.changes(&paths.snapshot(&token).unwrap()),
+        BTreeSet::from([real])
+    );
+}
+
+#[test]
+fn a_tree_past_the_folder_limit_still_gives_a_snapshot_of_the_folders_before_the_limit() {
+    let root = tempfile::tempdir().unwrap();
+    let [first, limit, past] = ["a", "b", "c"].map(|name| root.path().join(name));
+    // Folders are walked in order: `first` and its subfolders, then `limit`, which is the last one the budget covers,
+    // then `past`, which is one beyond it.
+    fs::create_dir_all(&limit).unwrap();
+    fs::create_dir_all(&past).unwrap();
+    for number in 0..MAX_FOLDERS - 2 {
+        fs::create_dir_all(first.join(format!("sub{number}"))).unwrap();
+    }
+    for folder in [&first, &limit, &past] {
+        age(folder);
+    }
+    let paths = SourcePaths {
+        files: BTreeSet::new(),
+        folders: BTreeSet::from([first.clone(), limit.clone(), past.clone()]),
+    };
+    let token = CancelToken::new();
+    let before = paths.snapshot(&token).unwrap();
+
+    fs::write(past.join("late.txt"), "x").unwrap();
+    assert!(before.changes(&paths.snapshot(&token).unwrap()).is_empty());
+
+    fs::write(first.join("early.txt"), "x").unwrap();
+    fs::write(limit.join("last.txt"), "x").unwrap();
+    assert_eq!(
+        before.changes(&paths.snapshot(&token).unwrap()),
+        BTreeSet::from([first, limit])
+    );
+}
