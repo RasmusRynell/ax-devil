@@ -18,6 +18,10 @@ use memchr::memchr;
 use parse::{Object, object};
 use scene::{ClassRule, Coverage, Fields, FilterOption, FilterPolicy, MatchBasis, Name, Scene};
 
+/// The `Spec::version` of all four ADF decoders, which share their reading code: raise it whenever any of them gives
+/// other output for the same file.
+const VERSION: u32 = 5;
+
 /// Filter id, label and the class it shows, as every ADF decoder lists them first.
 const FILTERS: [(&str, &str, &str); 12] = [
     ("show_unknown", "Unknown", "unknown"),
@@ -208,7 +212,7 @@ impl AdfDecoder {
                 bases,
                 default_basis,
                 options: Form::default(),
-                version: 4,
+                version: VERSION,
             },
             read,
             lines,
