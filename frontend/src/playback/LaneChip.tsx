@@ -95,12 +95,18 @@ export function LaneChip({
 }) {
   const showName = useSettings().values["overlays.lane_names"] === true && !hideName;
   const notices = laneNotices(lane);
-  const reading = lane.status !== "plain" && lane.status.status === "Loading";
+  const loadingStatus = lane.status !== "plain" && lane.status.status === "Loading";
+  // A file that is still being read has a Ready lane, but parsing goes on.
+  const parsing =
+    loadingStatus ||
+    (lane.status !== "plain" &&
+      lane.status.status === "Ready" &&
+      lane.status.ingest.state === "Reading");
   // The lane's file is being parsed: the chip says which, in place of the lane's name, which the message holds.
-  const named = reading && !live && stage !== undefined;
+  const named = parsing && !live && stage !== undefined;
   const status = named
     ? parsingMessage(lane.label, stage)
-    : lane.pending || reading
+    : lane.pending || loadingStatus
       ? "Loading…"
       : null;
   return (
@@ -109,67 +115,71 @@ export function LaneChip({
       {status && (
         <span
           role="status"
+          title={status}
           className={`${showName && !named ? "" : "pl-m "}min-w-0 truncate pr-m text-on-canvas-muted`}
         >
           {status}
         </span>
       )}
-      {notices.length > 0 && (
-        <Popover
-          onCanvas
-          label={`${lane.label}: warnings`}
-          trigger={
-            <span className={`inline-flex ${chipTone(lane)}`}>
-              <Icon name="triangle-alert" />
-            </span>
-          }
-          className="size-row justify-center"
-        >
-          <NoticeList notices={notices} />
-        </Popover>
-      )}
-      {lane.source !== null && (
-        <Popover
-          onCanvas
-          label={`${lane.label}: settings`}
-          trigger={<Icon name="sliders-horizontal" />}
-          className="size-row justify-center"
-        >
-          {(close) => (
-            <LaneMenu
-              lane={lane}
-              catalogs={catalogs}
-              cadence={cadence}
-              live={live}
-              onChange={onChange}
-              onApplyAll={
-                onApplyAll &&
-                (() => {
-                  close();
-                  onApplyAll();
-                })
-              }
-              onReload={onReload}
-              onExport={
-                onExport && {
-                  waits: onExport.waits,
-                  run: () => {
+      {/* The buttons keep their size while a long name or message truncates. */}
+      <div className="flex shrink-0">
+        {notices.length > 0 && (
+          <Popover
+            onCanvas
+            label={`${lane.label}: warnings`}
+            trigger={
+              <span className={`inline-flex ${chipTone(lane)}`}>
+                <Icon name="triangle-alert" />
+              </span>
+            }
+            className="size-row justify-center"
+          >
+            <NoticeList notices={notices} />
+          </Popover>
+        )}
+        {lane.source !== null && (
+          <Popover
+            onCanvas
+            label={`${lane.label}: settings`}
+            trigger={<Icon name="sliders-horizontal" />}
+            className="size-row justify-center"
+          >
+            {(close) => (
+              <LaneMenu
+                lane={lane}
+                catalogs={catalogs}
+                cadence={cadence}
+                live={live}
+                onChange={onChange}
+                onApplyAll={
+                  onApplyAll &&
+                  (() => {
                     close();
-                    onExport.run();
-                  },
+                    onApplyAll();
+                  })
                 }
-              }
-              onHide={
-                onHide &&
-                (() => {
-                  close();
-                  onHide();
-                })
-              }
-            />
-          )}
-        </Popover>
-      )}
+                onReload={onReload}
+                onExport={
+                  onExport && {
+                    waits: onExport.waits,
+                    run: () => {
+                      close();
+                      onExport.run();
+                    },
+                  }
+                }
+                onHide={
+                  onHide &&
+                  (() => {
+                    close();
+                    onHide();
+                  })
+                }
+              />
+            )}
+          </Popover>
+        )}
+      </div>
     </div>
   );
 }

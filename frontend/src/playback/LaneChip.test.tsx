@@ -53,13 +53,13 @@ describe("lane chip", () => {
     expect(show({ status: reading, pending: true })?.textContent).toBe("Loading…");
   });
 
-  it("names the overlay it parses, with the lane's place when several lanes are shown", () => {
-    const show = (stage: { position: number; count: number }, live = false) => {
+  it("names the overlay it parses until the file is read, with the lane's place when several lanes are shown", () => {
+    const show = (change: Partial<LaneState>, stage = { position: 1, count: 1 }, live = false) => {
       cleanup();
       render(
         <FakeSettings>
           <LaneChip
-            lane={lane({})}
+            lane={lane(change)}
             catalogs={[]}
             cadence={null}
             live={live}
@@ -68,11 +68,34 @@ describe("lane chip", () => {
           />
         </FakeSettings>,
       );
-      return screen.getByRole("status").textContent;
+      return screen.queryByRole("status");
     };
-    expect(show({ position: 1, count: 1 })).toBe("Parsing overlay data: DET");
-    expect(show({ position: 2, count: 3 })).toBe("Parsing overlay data (2/3): DET");
-    expect(show({ position: 2, count: 3 }, true)).toBe("Loading…");
+    expect(show({})?.textContent).toBe("Parsing overlay data: DET");
+    expect(show({}, { position: 2, count: 3 })?.textContent).toBe(
+      "Parsing overlay data (2/3): DET",
+    );
+    expect(show({}, { position: 2, count: 3 })?.getAttribute("title")).toBe(
+      "Parsing overlay data (2/3): DET",
+    );
+    expect(show({}, { position: 2, count: 3 }, true)?.textContent).toBe("Loading…");
+    // The first publication makes the lane Ready while the file is still being read.
+    const reading: LaneStatusWire = { ...READY, ingest: { state: "Reading" } };
+    expect(show({ status: reading })?.textContent).toBe("Parsing overlay data: DET");
+    expect(show({ status: reading, pending: true })?.textContent).toBe("Parsing overlay data: DET");
+    // Complete, Incomplete and Failed end it.
+    expect(show({ status: READY })).toBeNull();
+    const incomplete: LaneStatusWire = {
+      ...READY,
+      ingest: { state: "Incomplete", code: "OverlayInvalid", params: {}, reason: "Stopped" },
+    };
+    expect(show({ status: incomplete })).toBeNull();
+    const failed: LaneStatusWire = {
+      status: "Failed",
+      code: "OverlayInvalid",
+      params: {},
+      reason: "Unreadable",
+    };
+    expect(show({ status: failed })).toBeNull();
   });
 
   it("lists why a file stopped being read among the lane's notices", () => {
