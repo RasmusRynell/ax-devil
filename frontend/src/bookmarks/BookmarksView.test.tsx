@@ -10,7 +10,7 @@ import {
   SeekProvider,
   useAddBookmark,
   useAskSeek,
-  useBookmarksOnReplace,
+  useSidebarOnReplace,
   useSeekRequest,
 } from "./viewerLink";
 
@@ -249,9 +249,9 @@ function stub(status: Status) {
 }
 
 describe("a viewer and its bookmarks", () => {
-  it("shows the Bookmarks view for a workspace that replaces the open one and has bookmarks, not for the first", async () => {
+  it("shows the Bookmarks view for a workspace that replaces the open one and has bookmarks, Workspace for a recovered one, not for the first", async () => {
     function Sidebar() {
-      useBookmarksOnReplace();
+      useSidebarOnReplace();
       const [sidebar] = useView("sidebar");
       return <div data-testid="view">{sidebar.view}</div>;
     }
@@ -268,6 +268,10 @@ describe("a viewer and its bookmarks", () => {
     room.epoch = 1;
     act(() => room.setItems([video("v", false)]));
     expect(screen.getByTestId("view").textContent).toBe("bookmarks");
+    room.epoch = 2;
+    room.recovered = true;
+    act(() => room.setItems([video("v", false)]));
+    expect(screen.getByTestId("view").textContent).toBe("workspace");
   });
 
   it("bookmarks the frame on screen and brings the Bookmarks view up", async () => {

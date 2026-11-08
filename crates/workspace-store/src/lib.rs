@@ -12,6 +12,7 @@
 //! The state also knows which file the workspace belongs to and what it is compared with to tell unsaved edits
 //! ([`Saved`]); reading and writing files is the caller's business.
 
+mod batch;
 mod bookmarks;
 mod details;
 mod edit;
@@ -19,6 +20,7 @@ mod hidden;
 mod resolving;
 mod rows;
 
+use batch::Batch;
 use foundation::{HostPath, UserError};
 use overlay_sync::MatchPolicy;
 use serde::{Deserialize, Serialize};
@@ -101,6 +103,7 @@ pub struct WorkspaceState {
     /// them as. A choice for something an item no longer resolves to is dropped when it resolves again; one for
     /// something no item has is kept but changes nothing.
     pub hidden: HashMap<HiddenRef, bool>,
+    batches: Vec<Batch>,
     next_attempt: u64,
     next_generation: u64,
 }
@@ -142,6 +145,7 @@ impl WorkspaceState {
             changed,
             reloads,
             hidden,
+            batches: _,
             next_attempt: _,
             next_generation: _,
         } = self;
@@ -181,7 +185,8 @@ impl WorkspaceState {
 #[derive(Clone, Debug)]
 pub enum DocCommand {
     /// Appends the items, all pending. An item whose id is already in the workspace is replaced in place and
-    /// resolves again. With `open`, a viewer should open for each item once it resolves.
+    /// resolves again. With `open`, the results are held until every item has one (or stopped waiting for it), then
+    /// committed in the order added, and a viewer should open for the first item that resolved.
     AddItems {
         /// The items to add.
         items: Vec<WorkspaceItem>,
@@ -289,11 +294,11 @@ pub fn apply(state: &WorkspaceState, command: DocCommand) -> (WorkspaceState, Ve
     match command {
         DocCommand::AddItems { items, open } => {
             for item in items {
-                if open {
-                    next.open.insert(item.id);
-                }
                 jobs.push(next.start(&item));
                 next.put(item);
+            }
+            if open {
+                next.batches.extend(Batch::of(&jobs));
             }
         }
         DocCommand::AddResolved {
@@ -437,6 +442,7 @@ pub fn apply(state: &WorkspaceState, command: DocCommand) -> (WorkspaceState, Ve
         }
         DocCommand::Bookmarks(command) => bookmarks::apply(&mut next, command),
     }
+    next.publish_ready();
     (next, jobs)
 }
 
@@ -450,5 +456,7 @@ fn name_of(entered: &str) -> Option<String> {
 /// What a workspace without a name is called.
 const UNTITLED: &str = "Untitled";
 
+#[cfg(test)]
+mod batch_tests;
 #[cfg(test)]
 mod tests;

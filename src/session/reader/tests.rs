@@ -132,7 +132,6 @@ async fn adding_a_found_camera_uses_the_scan_login_and_never_shows_it() {
     let [item] = parts.workspace.items.as_slice() else {
         panic!("one stream was added");
     };
-    assert!(parts.open.contains(&item.id), "its viewer is open");
     let Source::Live(recipe) = &item.recipe.source else {
         panic!("a live stream");
     };

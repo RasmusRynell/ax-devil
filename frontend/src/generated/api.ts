@@ -355,7 +355,7 @@ export type DocCommand = { "type": "addItems",
  */
 items: Array<NewItem>, 
 /**
- * Whether a viewer should open for each item once it resolves.
+ * Whether to publish the results together and open a viewer for the first that resolved.
  */
 open: boolean, } | { "type": "addResolved", 
 /**

@@ -461,18 +461,22 @@ export class FakeSocket {
         });
       const doc = cmd.command;
       if (doc.type === "addItems") {
+        // Adding with `open` opens a viewer for the first item that resolved only, as the backend does once the
+        // whole batch has a result: a stream still resolving has none yet.
+        let opens = doc.open;
         const added = doc.items.map((item, at): ItemState => {
           const id = String.fromCharCode(97 + room.items.length + at);
-          // A live stream is added now and resolves later, as the backend does it.
-          return item.type === "Video"
-            ? video(id, doc.open)
-            : {
-                id,
-                label: item.label ?? "Live stream",
-                kind: "live",
-                open: doc.open,
-                resolution: { status: "Pending" },
-              };
+          if (item.type !== "Video")
+            return {
+              id,
+              label: item.label ?? "Live stream",
+              kind: "live",
+              open: false,
+              resolution: { status: "Pending" },
+            };
+          const ready = video(id, opens);
+          opens = false;
+          return ready;
         });
         room.setItems([...room.items, ...added]);
       } else if (doc.type === "addResolved") {

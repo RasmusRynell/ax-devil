@@ -6,11 +6,11 @@ use handlers::Handlers;
 use std::path::Path;
 use workspace::Environment;
 
-fn item(path: &Path) -> WorkspaceItem {
+pub(super) fn item(path: &Path) -> WorkspaceItem {
     workspace::intake::video(path, &[], &Handlers::built_in()).unwrap()
 }
 
-fn add(
+pub(super) fn add(
     state: &WorkspaceState,
     items: Vec<WorkspaceItem>,
     open: bool,
@@ -19,7 +19,7 @@ fn add(
 }
 
 /// Resolves the job as a session would and commits it.
-fn finish(state: &WorkspaceState, job: &ResolveJob) -> WorkspaceState {
+pub(super) fn finish(state: &WorkspaceState, job: &ResolveJob) -> WorkspaceState {
     let result = match resolve(
         job,
         &Handlers::built_in(),
@@ -40,7 +40,7 @@ fn content_id(state: &WorkspaceState, id: ItemId) -> workspace::ContentId {
     }
 }
 
-fn generation(state: &WorkspaceState, id: ItemId) -> ContentGen {
+pub(super) fn generation(state: &WorkspaceState, id: ItemId) -> ContentGen {
     match &state.resolutions[&id] {
         Resolution::Resolved { generation, .. } => *generation,
         other => panic!("expected a resolved item, got {other:?}"),

@@ -61,11 +61,12 @@ pub enum SessionAuth {
     rename_all_fields = "camelCase"
 )]
 pub enum DocCommand {
-    /// Append items, all pending; with `open`, open a viewer for each once it resolves.
+    /// Append items, all pending; with `open`, wait until every item has resolved or failed, then publish them in
+    /// order and open a viewer for the first one that resolved.
     AddItems {
         /// What to add, in order.
         items: Vec<NewItem>,
-        /// Whether a viewer should open for each item once it resolves.
+        /// Whether to publish the results together and open a viewer for the first that resolved.
         open: bool,
     },
     /// Add the item that `POST /api/resolvers/{id}/resolve` resolved and answered with, open. The ticket is redeemed

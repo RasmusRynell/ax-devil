@@ -10,7 +10,7 @@ import type { MenuCommand } from "../kit/Menu";
 import { shortcutOf } from "../kit/shortcut";
 import type { Scopes } from "../session/cursor";
 import { Presence } from "../session/Presence";
-import { useBookmarksOnReplace } from "../bookmarks/viewerLink";
+import { useSidebarOnReplace } from "../bookmarks/viewerLink";
 import { useAllowed, useCommand, useDoc, useView } from "../session/session";
 import { useSettings } from "../settings";
 import { NO_ACTIONS, ViewerActionsContext, type ViewerActions } from "../viewer/actions";
@@ -74,7 +74,7 @@ type Dialog =
 export function Shell({ version }: { version: string }) {
   const [sidebar, setSidebar] = useView("sidebar");
   const { viewers, active } = useViewers();
-  useBookmarksOnReplace();
+  useSidebarOnReplace();
   const allowed = useAllowed();
   const command = useCommand();
   const workspace = useDoc()?.workspace;

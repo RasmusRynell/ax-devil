@@ -97,6 +97,7 @@ impl WorkspaceState {
 /// Commits the result of resolving `item` under `attempt`. A result whose item no longer waits on that attempt is
 /// dropped: the returned state equals `state`. A reload that fails leaves the old Content, with the reason in
 /// [`WorkspaceState::reloads`], unless the files changed again meanwhile: the viewer's offer to reload them stands.
+/// An item added with a viewer requested holds its result until its whole batch has one.
 pub fn complete(
     state: &WorkspaceState,
     item: ItemId,
@@ -107,35 +108,52 @@ pub fn complete(
     if !next.waits_on(&item, attempt) {
         return next;
     }
-    let reloading = match next.reloads.remove(&item) {
-        Some(Reload::Running { seen, .. }) => Some(seen),
-        _ => None,
-    };
-    let counted = next.changed.get(&item).copied().unwrap_or(0);
-    let resolution = match result {
-        Ok(content) => {
-            next.settle_hidden(&item, &content);
-            next.next_generation += 1;
-            // The new Content has read the changes counted before the reload, not those that came during it.
-            match counted.saturating_sub(reloading.unwrap_or(counted)) {
-                0 => next.changed.remove(&item),
-                later => next.changed.insert(item, later),
-            };
-            Resolution::Resolved {
-                content,
-                generation: ContentGen(next.next_generation),
-            }
-        }
-        Err(error) if reloading.is_some() => {
-            if Some(counted) == reloading {
-                next.reloads.insert(item, Reload::Failed { attempt, error });
-            }
-            return next;
-        }
-        Err(error) => Resolution::Failed(error),
-    };
-    next.resolutions.insert(item, resolution);
+    if next.batched(&item, attempt) {
+        next.hold(item, attempt, result);
+        next.publish_ready();
+    } else {
+        next.commit(item, attempt, result);
+    }
     next
+}
+
+impl WorkspaceState {
+    /// Records the result of an item that waits on `attempt`.
+    pub(crate) fn commit(
+        &mut self,
+        item: ItemId,
+        attempt: u64,
+        result: Result<Content, UserError>,
+    ) {
+        let reloading = match self.reloads.remove(&item) {
+            Some(Reload::Running { seen, .. }) => Some(seen),
+            _ => None,
+        };
+        let counted = self.changed.get(&item).copied().unwrap_or(0);
+        let resolution = match result {
+            Ok(content) => {
+                self.settle_hidden(&item, &content);
+                self.next_generation += 1;
+                // The new Content has read the changes counted before the reload, not those that came during it.
+                match counted.saturating_sub(reloading.unwrap_or(counted)) {
+                    0 => self.changed.remove(&item),
+                    later => self.changed.insert(item, later),
+                };
+                Resolution::Resolved {
+                    content,
+                    generation: ContentGen(self.next_generation),
+                }
+            }
+            Err(error) if reloading.is_some() => {
+                if Some(counted) == reloading {
+                    self.reloads.insert(item, Reload::Failed { attempt, error });
+                }
+                return;
+            }
+            Err(error) => Resolution::Failed(error),
+        };
+        self.resolutions.insert(item, resolution);
+    }
 }
 
 /// Runs a job with the installed `handlers`, expanding `$NAME` references from `env`. Reads the file system, so callers

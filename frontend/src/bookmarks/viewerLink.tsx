@@ -1,12 +1,4 @@
-import {
-  createContext,
-  useCallback,
-  useContext,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import type { PlaybackSession } from "../playback/session";
 import type { PlaybackView } from "../playback/view";
@@ -98,20 +90,36 @@ export function useAddBookmark(session: PlaybackSession, item: string, entry: st
   }, [session, item, entry, command, setView]);
 }
 
+const SEEN_EPOCH = "ax-devil.sidebarEpoch";
+
+/** The last workspace epoch this window chose a sidebar view for; a window that has not seen one starts at 0. */
+function seenEpoch(): number {
+  try {
+    return Number(window.sessionStorage.getItem(SEEN_EPOCH)) || 0;
+  } catch {
+    return 0;
+  }
+}
+
 /**
- * Shows the Bookmarks view when another workspace replaces this one and has bookmarks. The workspace the window
- * starts with changes nothing, so reloading the page keeps the view the user chose.
+ * Chooses the sidebar view when a workspace replaces the one this window last saw: Workspace after a recovery,
+ * else Bookmarks when it has bookmarks. The workspace the app opens at launch counts as a replacement; reloading the
+ * page does not, so it keeps the view the user chose.
  */
-export function useBookmarksOnReplace() {
+export function useSidebarOnReplace() {
   const workspace = useDoc()?.workspace;
   const [, setSidebar] = useView("sidebar");
-  const seen = useRef<number | undefined>(undefined);
   const epoch = workspace?.epoch;
+  const recovered = workspace?.recovered ?? false;
   const marked = (workspace?.bookmarks.length ?? 0) > 0;
   useEffect(() => {
-    const before = seen.current;
-    seen.current = epoch;
-    if (before !== undefined && epoch !== before && marked)
-      setSidebar({ view: "bookmarks", open: true });
-  }, [epoch, marked, setSidebar]);
+    if (epoch === undefined || epoch === seenEpoch()) return;
+    try {
+      window.sessionStorage.setItem(SEEN_EPOCH, String(epoch));
+    } catch {
+      // Without storage a reload shows the view again, which is harmless.
+    }
+    if (recovered) setSidebar({ view: "workspace", open: true });
+    else if (marked) setSidebar({ view: "bookmarks", open: true });
+  }, [epoch, recovered, marked, setSidebar]);
 }

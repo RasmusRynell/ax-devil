@@ -8,8 +8,13 @@ fn an_edit_keeps_the_item_and_resolves_again_only_when_the_recipe_changed() {
     std::fs::write(&second, "x").unwrap();
     let (kept, edited) = (item(&first), item(&first));
     let (kept_id, edited_id) = (kept.id, edited.id);
-    let (state, jobs) = add(&WorkspaceState::default(), vec![kept, edited.clone()], true);
-    let state = jobs.iter().fold(state, |state, job| finish(&state, job));
+    let (state, jobs) = add(
+        &WorkspaceState::default(),
+        vec![kept, edited.clone()],
+        false,
+    );
+    let mut state = jobs.iter().fold(state, |state, job| finish(&state, job));
+    state.open.insert(edited_id);
     let before = generation(&state, edited_id);
     let hide = DocCommand::SetHidden {
         target: HiddenRef::Lane(content_id(&state, edited_id), "lane".into()),
