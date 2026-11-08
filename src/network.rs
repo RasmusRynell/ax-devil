@@ -14,7 +14,9 @@ use std::{
 };
 
 use api_types::live::{LiveProtocol, NetworkIdentity, NetworkRow, NetworkSignIn, NetworkSnapshot};
-use camera::{Found, Login, ScanLoad, ScanPorts, Scheme, Secret, SignIn, Targets, scan};
+use camera::{
+    Found, Login, ScanFailed, ScanLoad, ScanPorts, Scheme, Secret, SignIn, Targets, scan,
+};
 use foundation::{ErrorCode, Location, UserError};
 use futures_util::FutureExt;
 use tokio::{
@@ -40,7 +42,7 @@ pub struct ScanRequest {
 }
 
 /// Starts a scan: the real one, or one a test supplies.
-type Scanner = Box<dyn Fn(ScanRequest) -> mpsc::Receiver<Found> + Send + Sync>;
+type Scanner = Box<dyn Fn(ScanRequest) -> mpsc::Receiver<Result<Found, ScanFailed>> + Send + Sync>;
 
 /// A login a scan tried: the text the user wrote, and what it was when the scan started.
 struct ScanLogin {
@@ -122,7 +124,10 @@ impl Network {
 
     /// A service whose scans find what `scanner` sends instead of probing the network.
     pub fn with_scanner(
-        scanner: impl Fn(ScanRequest) -> mpsc::Receiver<Found> + Send + Sync + 'static,
+        scanner: impl Fn(ScanRequest) -> mpsc::Receiver<Result<Found, ScanFailed>>
+        + Send
+        + Sync
+        + 'static,
     ) -> Arc<Self> {
         Arc::new(Self {
             scanner: Box::new(scanner),
@@ -251,26 +256,28 @@ impl Network {
         }));
     }
 
-    /// Runs scan `number` to its end. A scan that panics ends as a failure, with the cameras found until then.
+    /// Runs scan `number` to its end. A scan that breaks, in the scanner or while it is collected, ends as a failure,
+    /// with the cameras found until then.
     async fn run(&self, number: u64, request: ScanRequest) {
         let mut rows = Vec::new();
         let ended = AssertUnwindSafe(self.collect(number, request, &mut rows))
             .catch_unwind()
             .await;
-        let failure = ended.is_err().then(|| {
+        let failure = (!matches!(ended, Ok(true))).then(|| {
             tracing::warn!("Scan {number} stopped unexpectedly");
             "The scan stopped unexpectedly.".to_owned()
         });
         self.publish(number, &rows, false, failure);
     }
 
-    /// Gathers what the scanner finds into `rows`, publishing them every [`SNAPSHOT_EVERY`] as they grow.
+    /// Gathers what the scanner finds into `rows`, publishing them every [`SNAPSHOT_EVERY`] as they grow. `false` when
+    /// the scanner reported that it broke, `true` when it ran out of cameras to find.
     async fn collect(
         &self,
         number: u64,
         request: ScanRequest,
         rows: &mut Vec<(Ipv4Addr, NetworkRow)>,
-    ) {
+    ) -> bool {
         let mut found = (self.scanner)(request);
         let mut changed = false;
         let mut tick = interval(SNAPSHOT_EVERY);
@@ -278,10 +285,11 @@ impl Network {
         loop {
             tokio::select! {
                 next = found.recv() => match next {
-                    Some(camera) => {
+                    Some(Ok(camera)) => {
                         rows.push((camera.addr, row(&camera)));
                         changed = true;
                     }
+                    Some(Err(ScanFailed)) => return false,
                     None => break,
                 },
                 _ = tick.tick() => {
@@ -292,6 +300,7 @@ impl Network {
                 }
             }
         }
+        true
     }
 }
 

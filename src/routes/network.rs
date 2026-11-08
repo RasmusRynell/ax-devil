@@ -165,7 +165,7 @@ mod tests {
         let test = TestApp::scanning(Network::with_scanner(move |request| {
             seen.lock().unwrap().push(request.targets.addresses().len());
             let (found_tx, found_rx) = mpsc::channel(4);
-            found_tx.try_send(found()).unwrap();
+            found_tx.try_send(Ok(found())).unwrap();
             found_rx
         }));
 

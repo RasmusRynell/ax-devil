@@ -24,7 +24,7 @@ pub use live::{
 };
 pub use mqtt::{Publisher, open_mqtt};
 pub use rtsp::{RtspRoute, StreamRequest, open_stream, retina_log_layer};
-pub use scan::{Found, MAX_TARGETS, ScanLoad, ScanPorts, SignIn, Targets, check, scan};
+pub use scan::{Found, MAX_TARGETS, ScanFailed, ScanLoad, ScanPorts, SignIn, Targets, check, scan};
 pub use target::{Broker, Camera, Head, Host, Login, Scheme, Secret, Web};
 pub use url::Url;
 pub use vapix::{Identity, ImageSizes, Resolution, SourceKey};

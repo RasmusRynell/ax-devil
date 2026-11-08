@@ -8,7 +8,7 @@ use tokio::sync::{OwnedSemaphorePermit, Semaphore, mpsc};
 use tokio::time::{sleep, timeout};
 use tracing::debug;
 
-use super::{Found, ScanPorts, SignIn};
+use super::{Found, ScanFailed, ScanPorts, SignIn};
 use crate::device::Device;
 use crate::error::{CameraError, ErrorKind};
 use crate::target::{Camera, Host, Login, Web};
@@ -30,7 +30,7 @@ pub(super) async fn visit(
     addr: Ipv4Addr,
     shared: std::sync::Arc<Shared>,
     probe: OwnedSemaphorePermit,
-    found: mpsc::Sender<Found>,
+    found: mpsc::Sender<Result<Found, ScanFailed>>,
 ) {
     let open = open_ports(addr, &shared.ports).await;
     drop(probe);
@@ -42,7 +42,7 @@ pub(super) async fn visit(
     };
     if let Some(camera) = identify(addr, &open, &shared.logins).await {
         // A closed receiver ends the whole scan; there is nobody to tell.
-        let _ = found.send(camera).await;
+        let _ = found.send(Ok(camera)).await;
     }
 }
 
