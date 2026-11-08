@@ -354,6 +354,31 @@ fn an_item_with_a_setting_the_format_does_not_know_is_kept_as_it_was() {
 }
 
 #[test]
+fn an_unreadable_item_without_a_label_is_named_by_its_kind_else_generically() {
+    let dir = tempfile::tempdir().unwrap();
+    let file = dir.path().join(format!("ws{SUFFIX}"));
+    let items = json!([
+        {"kind": "hologram", "id": ItemId::generate().to_string(), "label": ""},
+        {"kind": "hologram", "id": ItemId::generate().to_string()},
+        {"kind": "hologram", "id": ItemId::generate().to_string(), "label": "Mine"},
+        {"id": ItemId::generate().to_string(), "label": ""},
+    ]);
+    fs::write(
+        &file,
+        json!({"version": 2, "name": null, "items": items}).to_string(),
+    )
+    .unwrap();
+
+    let names: Vec<_> = load(&file)
+        .unwrap()
+        .items
+        .iter()
+        .map(WorkspaceItem::display_name)
+        .collect();
+    assert_eq!(names, ["hologram", "hologram", "Mine", "Unreadable item"]);
+}
+
+#[test]
 fn an_unreadable_item_with_any_text_id_keeps_its_bookmarks_and_reviewed_marks() {
     let dir = tempfile::tempdir().unwrap();
     let file = dir.path().join(format!("legacy{SUFFIX}"));
