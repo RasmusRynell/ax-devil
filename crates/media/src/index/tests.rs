@@ -105,14 +105,29 @@ fn two_frames_sharing_a_timestamp_make_the_index_unusable_with_a_reason() {
 }
 
 #[test]
-fn a_last_frame_without_a_container_duration_lasts_one_declared_frame_period() {
-    let mut index = FrameIndex::load_or_build(
-        &VideoInput::File(fixture("cfr_h264_gop10_bf2.mp4")),
-        None,
-        &CancelToken::new(),
-        &mut |_| {},
-    )
-    .expect("indexes");
+fn a_last_frame_lasts_the_containers_duration_else_one_declared_frame_period_else_the_previous_gap()
+{
+    let index_of = |name: &str| {
+        FrameIndex::load_or_build(
+            &VideoInput::File(fixture(name)),
+            None,
+            &CancelToken::new(),
+            &mut |_| {},
+        )
+        .expect("indexes")
+    };
+    // A one-frame video has no gap to fall back on, so it can have no duration at all.
+    let mut single = index_of("rgb24_63x47.nut");
+    assert_eq!(single.timeline().len(), 1);
+    single.last_duration = Some(MediaTime::from_us(2_000_000));
+    single.info.frame_rate = FrameRate::new(1, 1);
+    assert_eq!(single.duration_of(0), Some(MediaTime::from_us(2_000_000)));
+    single.last_duration = None;
+    assert_eq!(single.duration_of(0), Some(MediaTime::from_us(1_000_000)));
+    single.info.frame_rate = None;
+    assert_eq!(single.duration_of(0), None);
+
+    let mut index = index_of("cfr_h264_gop10_bf2.mp4");
     let last = index.timeline().len() - 1;
     let gap = index.timeline().period_after(last - 1).expect("a gap");
     index.last_duration = None;
