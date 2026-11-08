@@ -22,6 +22,7 @@ import { useMediaTools } from "../tools/useMediaTools";
 import { PaneActiveContext, useHeaderDetails, useViewerActions } from "../viewer/actions";
 import { registerExport } from "../viewer/exportTargets";
 import type { Hidden } from "../viewer/hidden";
+import { useLaneFocus } from "../viewer/laneFocus";
 import { useChromeVisibility } from "./chromeVisibility";
 import type { Viewport } from "./contract";
 import type { InspectorMemory } from "./fields";
@@ -89,10 +90,28 @@ export function Playback({
   shownViewport.current = viewport;
   // A viewer that opens in the active pane takes the keyboard, so its shortcuts work at once; one that opens behind it
   // leaves the keyboard and the active pane alone.
-  const opensInFront = useRef(useContext(PaneActiveContext));
+  const active = useContext(PaneActiveContext);
+  const opensInFront = useRef(active);
   useEffect(() => {
     if (opensInFront.current) pane.current?.focus({ preventScroll: true });
   }, []);
+  // A lane opened from the tree takes the keyboard: it is the lane the shortcuts and the lane menu act on.
+  const labels = useMemo(() => view.lanes.map((lane) => lane.label), [view.lanes]);
+  const { pick } = fullscreen;
+  useLaneFocus(
+    viewer,
+    entry,
+    labels,
+    shown,
+    active,
+    useCallback(
+      (lane: number) => {
+        pick(lane);
+        pane.current?.focus({ preventScroll: true });
+      },
+      [pick],
+    ),
+  );
   // The selected object's page is the one the media tools show, so its fields are asked for only while they are open.
   useEffect(() => session.showInspector(tools), [session, tools]);
   const zoom = useCallback(

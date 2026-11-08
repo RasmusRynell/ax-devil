@@ -6,6 +6,7 @@ import { DEFAULT_SETTINGS } from "../fakeSettings";
 import { FakeSocket, video } from "../session/fakeSession";
 import { SessionProvider } from "../session/session";
 import { NO_ACTIONS, ViewerActionsContext, type ViewerActions } from "../viewer/actions";
+import { focusLane } from "../viewer/laneFocus";
 import type { Picked } from "./contract";
 import type { ClientMessage, LaneInfo } from "./protocol";
 import type { Geometry } from "./renderer";
@@ -129,6 +130,17 @@ describe("video viewer objects", () => {
     fireEvent.keyDown(tools(), { key: "Escape" });
     expect(fullscreen.exit).toHaveBeenCalledOnce();
     expect(props().cells?.map(({ lane }) => lane)).toEqual([0, 1]);
+  });
+
+  it("takes the keyboard to the lane the tree opened, which then is the one fullscreen shows", async () => {
+    const lanes: LaneInfo[] = [
+      { label: "DPM", slot: "DPM", source: 0 },
+      { label: "GT", slot: "GT", source: 1 },
+    ];
+    const { props, run } = await mount(undefined, lanes);
+    act(() => focusLane(1, "content-a", "GT"));
+    run("lane-fullscreen");
+    expect(props().cells?.map(({ lane }) => lane)).toEqual([1]);
   });
 
   it("keeps the selection when Escape closes a lane menu", async () => {

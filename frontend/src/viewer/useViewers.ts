@@ -13,6 +13,7 @@ import { MAX_PANES } from "../session/views";
 import { hiddenOf, NOTHING_HIDDEN, type Hidden } from "./hidden";
 import { leaves } from "./layout";
 import { autoPlace, close, leftWithout, open as openIn, openToSide, reuse } from "./placement";
+import { focusLane } from "./laneFocus";
 import { hold, isHeld } from "./placing";
 
 /** An open viewer: its id in the window's view, the item it shows and whether it is pinned. */
@@ -125,6 +126,8 @@ export interface Show {
   side?: boolean;
   /** Bring forward a viewer already showing the item and entry instead of opening another. */
   reuse?: boolean;
+  /** The label of the lane of the entry that takes the keyboard once the viewer shows it. */
+  lane?: string;
 }
 
 /**
@@ -159,9 +162,11 @@ export function useShow(): (item: string, entry?: string, how?: Show) => Promise
         }
         let refused = false;
         let left: string[] = [];
+        let placed: number | undefined;
         setView((shown) => {
           const next = place(shown);
           refused = !next;
+          placed = next?.active;
           left = next ? leftWithout(shown, next) : [];
           return next ?? shown;
         });
@@ -170,6 +175,8 @@ export function useShow(): (item: string, entry?: string, how?: Show) => Promise
           if (!state.open) await closeItems(command, [item]);
           throw full();
         }
+        // The viewer the view just placed is in front; its pane hands the keyboard to the lane when it can.
+        if (placed !== undefined) focusLane(placed, entry, how.lane);
         if (opens && left.length > 0) await closeItems(command, left);
       } finally {
         release();

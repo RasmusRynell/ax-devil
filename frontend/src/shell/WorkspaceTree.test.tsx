@@ -1,9 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
-import { act, cleanup, fireEvent, screen, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, renderHook, screen, within } from "@testing-library/react";
 import type { ItemRecipe, ItemState, ViewerView } from "../generated/api";
 import { entry, failed, FakeSocket, playlists, video } from "../session/fakeSession";
 import { viewing } from "../session/fakeViews";
 import { registerExport } from "../viewer/exportTargets";
+import { useLaneFocus } from "../viewer/laneFocus";
 import { CLIP, commands, ITEMS, labels, MOT, renderTree, shown } from "./WorkspaceTree.fixture";
 
 beforeEach(() => vi.stubGlobal("WebSocket", FakeSocket));
@@ -160,6 +161,21 @@ describe("opening", () => {
     fireEvent.doubleClick(screen.getByRole("treeitem", { name: /^GT/ }));
     await act(async () => {});
     expect(shown()).toMatchObject({ active: 2, viewers: { 2: { item: "mot", entry: "mot/A" } } });
+  });
+
+  it("asks the viewer a lane opens to give that lane the keyboard, and a row that is not a lane asks nothing", async () => {
+    await renderTree();
+    const apply = vi.fn();
+    const pane = (viewer: number, entry: string) =>
+      renderHook(() => useLaneFocus(viewer, entry, ["GT"], [0], true, apply));
+    fireEvent.doubleClick(screen.getByRole("treeitem", { name: /^v\.mp4/ }));
+    await act(async () => {});
+    pane(1, "");
+    expect(apply).not.toHaveBeenCalled();
+    fireEvent.doubleClick(screen.getByRole("treeitem", { name: /^GT/ }));
+    await act(async () => {});
+    pane(2, "mot/A");
+    expect(apply).toHaveBeenCalledExactlyOnceWith(0);
   });
 
   it("opens to the side with Ctrl, at most eight panes, and says so for the ninth, which stays closed", async () => {

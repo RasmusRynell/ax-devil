@@ -58,6 +58,7 @@ export function useRowActions(): RowActions {
     show(row.item, row.info.kind === "item" ? undefined : (row.info.entry ?? undefined), {
       side,
       reuse: !side && row.info.kind === "lane",
+      lane: row.info.kind === "lane" ? row.info.label : undefined,
     }).then(() => say(null), fail(say));
   // A row that cannot open says why and sends nothing; one still resolving, or a lane hidden itself (Unhide and open
   // opens that), does nothing.

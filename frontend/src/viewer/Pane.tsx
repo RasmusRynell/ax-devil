@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type DragEvent, type ReactNode, type RefObject } from "react";
 import { IconButton } from "../kit/IconButton";
 import { HeaderDetailsContext, PaneActions } from "./actions";
+import { dropLaneFocus } from "./laneFocus";
 import { dropSide, type Rect, type Side } from "./layout";
 
 /** What a header drag carries: the id of the pane. Nothing else is accepted by a pane. */
@@ -76,6 +77,10 @@ export function Pane({
     over.current = 0;
     setHint(null);
   };
+  // A lane asked for the keyboard waits for a pane that is not ready; a pane that stops being active loses the request.
+  useEffect(() => {
+    if (!active) dropLaneFocus(viewer);
+  }, [active, viewer]);
   // However the drag ends (a drop elsewhere, Escape), the hint goes.
   useEffect(() => {
     if (hint === null) return;
