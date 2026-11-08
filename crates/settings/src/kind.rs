@@ -95,6 +95,75 @@ impl StickyValue {
     }
 }
 
+/// The most class overrides a saved filter may hold, and the longest class id and expression, as the lane menu offers.
+const MAX_FILTER_CLASSES: usize = 1024;
+const MAX_CLASS_ID: usize = 256;
+const MAX_EXPRESSION: usize = 4096;
+
+/// The object filter a new lane starts with when nothing was saved: no class switched, open ranges, no expression.
+/// The default of a [`Kind::ObjectFilter`] setting, whose value has the same shape: `filter` maps class ids to
+/// whether they are shown, `ranges` holds the `min` and `max` of `score` and `confidence` (null is open) and
+/// `expression` is the filter expression, as a lane holds them.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct NoFilter;
+
+impl NoFilter {
+    /// The setting as JSON, which is also how the config file stores it.
+    fn to_json(self) -> Value {
+        let open = json!({"min": null, "max": null});
+        json!({"filter": {}, "ranges": {"score": open, "confidence": open}, "expression": ""})
+    }
+
+    /// Accepts `value` if it is an object filter within the limits above.
+    fn read(value: &Value) -> Result<(), String> {
+        let fields = value
+            .as_object()
+            .filter(|fields| fields.len() == 3)
+            .ok_or("expected filter, ranges and expression")?;
+        let classes = fields
+            .get("filter")
+            .and_then(Value::as_object)
+            .filter(|classes| {
+                classes.len() <= MAX_FILTER_CLASSES
+                    && classes
+                        .iter()
+                        .all(|(id, on)| id.len() <= MAX_CLASS_ID && on.is_boolean())
+            });
+        classes.ok_or("expected filter to map class ids to true or false")?;
+        let ranges = fields.get("ranges").and_then(Value::as_object);
+        let bounded = |ends: Option<&Value>| {
+            ends.and_then(Value::as_object).is_some_and(|ends| {
+                ends.len() == 2
+                    && ["min", "max"].iter().all(|end| {
+                        // Any JSON number: a whole one past i64 is as good a bound as a fraction.
+                        ends.get(*end)
+                            .is_some_and(|bound| bound.is_null() || bound.is_number())
+                    })
+            })
+        };
+        if !ranges.is_some_and(|ranges| {
+            ranges.len() == 2
+                && ["score", "confidence"]
+                    .iter()
+                    .all(|m| bounded(ranges.get(*m)))
+        }) {
+            return Err("expected ranges of score and confidence, each with min and max".into());
+        }
+        match fields.get("expression").and_then(Value::as_str) {
+            Some(text) if text.chars().count() <= MAX_EXPRESSION => Ok(()),
+            _ => Err(format!(
+                "expected expression to be text of at most {MAX_EXPRESSION} characters"
+            )),
+        }
+    }
+}
+
+impl Serialize for NoFilter {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        self.to_json().serialize(serializer)
+    }
+}
+
 /// What a setting holds, and its default.
 #[derive(Debug, Serialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
@@ -115,6 +184,11 @@ pub enum Kind {
         /// The value when the config has none. Must equal `overlay_sync::Sticky::default()`, which a lane the
         /// backend opens starts with, plus full opacity.
         default: StickyValue,
+    },
+    /// Which objects a new lane shows: the class overrides, score and confidence ranges and expression of its filter.
+    ObjectFilter {
+        /// The value when the config has none.
+        default: NoFilter,
     },
     /// One of a closed set of names.
     Choice {
@@ -171,6 +245,7 @@ impl Kind {
             Self::Bool { default } => Value::Bool(*default),
             Self::Sync { default } => default.to_json(),
             Self::Sticky { default } => default.to_json(),
+            Self::ObjectFilter { default } => default.to_json(),
             Self::Choice { default, .. } | Self::Text { default } | Self::Decoder { default } => {
                 Value::String((*default).into())
             }
@@ -210,6 +285,7 @@ impl Kind {
             (Self::Bool { .. }, _) => Err("expected true or false".into()),
             (Self::Sync { .. }, value) => SyncValue::read(value).map(|_| ()),
             (Self::Sticky { .. }, value) => StickyValue::read(value).map(|_| ()),
+            (Self::ObjectFilter { .. }, value) => NoFilter::read(value),
             (Self::Text { .. } | Self::Decoder { .. }, _) => Err("expected text".into()),
             (Self::Choice { options, .. }, Value::String(name))
                 if options.iter().any(|(option, _)| option == name) =>

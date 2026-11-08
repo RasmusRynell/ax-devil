@@ -225,6 +225,15 @@ fn what_cannot_be_streamed_is_refused_naming_the_field_and_the_python_message() 
             "Channel ID must be a positive integer.",
         ),
         (
+            datahub(NewDataHub {
+                topic: Some("t".into()),
+                channel: Some(i64::from(u32::MAX) + 1),
+                ..NewDataHub::default()
+            }),
+            "channel",
+            "Channel ID must be at most 4294967295.",
+        ),
+        (
             with(&|n| {
                 n.overlay = Some(NewLiveOverlay::Rtsp {
                     handler: Some("NOPE".into()),

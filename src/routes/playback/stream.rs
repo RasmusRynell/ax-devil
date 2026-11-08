@@ -12,11 +12,14 @@ use super::{
     gate::Gate,
     inspect::Inspections,
     lanes::{self, LaneEvent, Lanes},
-    next_client, stopped, text,
+    next_client,
+    prepare::Preparing,
+    stopped, text,
     wire::Wire,
 };
 use crate::{
     exports::ExportService,
+    prepare::Preparer,
     video_sources::{VideoSources, video_location},
 };
 use api_types::{
@@ -34,9 +37,10 @@ use overlay_sync::MatchPolicy;
 use overlays::OverlayService;
 use playback::{Delivery, Direction, Priority, Session, Want};
 use sessions::SessionId;
+use settings::Settings;
 use std::{collections::BTreeMap, sync::Arc, time::Duration};
 use tokio::{sync::watch, time::MissedTickBehavior};
-use workspace::Entry;
+use workspace::{Content, Entry};
 
 /// Before the viewer's first `Want`, which follows its Timeline within a round trip, it gets this many frames around
 /// the one it opened on.
@@ -79,6 +83,12 @@ pub(super) struct Setup<'a> {
     pub(super) exports: &'a Arc<ExportService>,
     /// The open videos, which an export reads from.
     pub(super) videos: &'a Arc<VideoSources>,
+    /// The Content the entry belongs to, whose other entries the viewer may ask to have prepared.
+    pub(super) content: &'a Content,
+    /// Readies the entry the viewer asks for.
+    pub(super) preparer: &'a Preparer,
+    /// Says whether it is allowed.
+    pub(super) settings: &'a Settings,
 }
 
 /// What the session sends next: notices first, then whichever of a lane's data and the next frame ranks first.
@@ -104,6 +114,7 @@ struct Playing<'a, I> {
     exports: Exports,
     file_scopes: FileScopes,
     cached: CachedFeed,
+    preparing: Preparing<'a>,
     incoming: &'a mut I,
     outbox: &'a Outbox,
     closing: &'a mut watch::Receiver<bool>,
@@ -172,6 +183,7 @@ pub(super) async fn stream(
         exports: Exports::new(setup.entry, setup.audience, setup.exports, setup.videos),
         file_scopes: FileScopes::new(setup.audience),
         cached: CachedFeed::new(),
+        preparing: Preparing::new(setup.content, setup.preparer, setup.settings),
         incoming,
         outbox,
         closing,
@@ -230,6 +242,10 @@ impl<I: Incoming> Playing<'_, I> {
                 policy,
                 subscribed,
             })) => self.lanes.policy(lane, revision, policy, subscribed),
+            Some(Ok(ClientMessage::Prepare { entry, lanes })) => {
+                self.preparing.ask(entry.as_deref(), &lanes);
+                Ok(())
+            }
             Some(Ok(ClientMessage::Catalog { id })) => {
                 self.catalogs.ask(id);
                 Ok(())
@@ -399,6 +415,8 @@ impl<I: Incoming> Playing<'_, I> {
                 () = stopped(self.closing) => return Err(End::Closed),
                 () = self.gate.changed() => self.refresh()?,
                 _ = clock.tick() => self.refresh()?,
+                // The setting may have changed since the viewer asked.
+                () = self.preparing.settings_changed() => self.preparing.follow(),
             }
         }
     }

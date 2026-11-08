@@ -11,6 +11,7 @@ import { useGrants } from "./access";
 import { apiFetch } from "./api";
 import type { ApiError, SettingsChange, SettingsState } from "./generated/api";
 import { COMMANDS, SETTINGS, type SettingKey } from "./generated/settings";
+import { MEASURES } from "./present";
 
 export interface SettingsApi extends SettingsState {
   /**
@@ -87,6 +88,25 @@ const isSync = (value: unknown) =>
   Object.keys(value).join() === "tolerance_ms" &&
   isMsOrNull((value as { tolerance_ms: unknown }).tolerance_ms);
 
+/** Whether *value* is an object filter: class switches, the ranges of score and confidence, and an expression. */
+function isObjectFilter(value: unknown) {
+  const { filter, ranges, expression } = (value ?? {}) as Record<string, unknown>;
+  const isBound = (bound: unknown) => bound === null || typeof bound === "number";
+  return (
+    typeof filter === "object" &&
+    filter !== null &&
+    Object.values(filter).every((on) => typeof on === "boolean") &&
+    MEASURES.every((measure) => {
+      const { min, max } = ((ranges as Record<string, unknown> | null)?.[measure] ?? {}) as Record<
+        string,
+        unknown
+      >;
+      return isBound(min) && isBound(max);
+    }) &&
+    typeof expression === "string"
+  );
+}
+
 /** Whether *value* is something this Personal row can hold; a stored value that is not is ignored. */
 const holds = (row: Row, value: unknown) =>
   row.kind.type === "bool"
@@ -95,11 +115,13 @@ const holds = (row: Row, value: unknown) =>
       ? isSticky(value)
       : row.kind.type === "sync"
         ? isSync(value)
-        : row.kind.type === "text"
-          ? typeof value === "string"
-          : row.kind.type === "records"
-            ? Array.isArray(value)
-            : row.kind.type === "choice" && row.kind.options.some(([name]) => name === value);
+        : row.kind.type === "object_filter"
+          ? isObjectFilter(value)
+          : row.kind.type === "text"
+            ? typeof value === "string"
+            : row.kind.type === "records"
+              ? Array.isArray(value)
+              : row.kind.type === "choice" && row.kind.options.some(([name]) => name === value);
 
 /** What this browser kept: only what the Personal rows and commands still accept, ignoring anything unreadable. */
 function readLocal(): Local {

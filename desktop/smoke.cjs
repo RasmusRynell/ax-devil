@@ -255,6 +255,7 @@ module.exports = async (window, shell) => {
         open: () => js("document.querySelector('[aria-label=Settings]').click()"),
       },
       ...[
+        ["settings-playback", "Playback"],
         ["settings-stream", "Stream defaults"],
         ["settings-analytics", "Analytics"],
         ["settings-scan", "Network scan"],

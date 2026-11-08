@@ -41,7 +41,7 @@ export type LiveDeps = Pick<
   | "frame"
   | "after"
   | "defaultCatalog"
-  | "defaultTiming"
+  | "savedDefaults"
   | "lanes"
   | "onPolicy"
 >;
@@ -304,7 +304,7 @@ export class LiveSession implements LaneDisplay {
       { lanes: [lane], lane_defaults, catalogs },
       this.#deps.defaultCatalog?.(),
       this.#deps.lanes,
-      this.#deps.defaultTiming?.(),
+      this.#deps.savedDefaults?.(),
     );
     this.#data.open(NEVER, this.#budget());
     this.#data.window(0, NEVER);

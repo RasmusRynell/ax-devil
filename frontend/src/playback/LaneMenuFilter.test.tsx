@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import { cleanup, fireEvent, screen } from "@testing-library/react";
+import { DEFAULT_SETTINGS } from "../fakeSettings";
 import { OPEN_RANGES } from "../present";
 import { LANE_SETTINGS } from "./fakeOpened";
 import { READY, box, setup, tab } from "./laneMenuRig";
@@ -10,6 +11,26 @@ afterEach(() => {
 });
 
 describe("lane menu filter", () => {
+  it("saves the lane's filter as the Personal default, and says so when it already is", () => {
+    const filtered = {
+      filter: { pedestrian: false },
+      ranges: { ...OPEN_RANGES, score: { min: 0.5, max: null } },
+      expression: "score > 0.6",
+    };
+    const { save } = setup({ settings: { ...LANE_SETTINGS, ...filtered } });
+    tab("Filter");
+    fireEvent.click(screen.getByRole("button", { name: "Make default" }));
+    expect(save).toHaveBeenCalledWith({
+      values: { ...DEFAULT_SETTINGS.values, "overlays.default_object_filter": filtered },
+      shortcuts: DEFAULT_SETTINGS.shortcuts,
+    });
+    cleanup();
+    setup();
+    tab("Filter");
+    expect(screen.getByText("Default for new views")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Make default" })).toBeNull();
+  });
+
   it("toggles one class against its default, shows all and none", () => {
     const { onChange } = setup();
     tab("Filter");

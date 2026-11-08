@@ -13,9 +13,16 @@ const ownActions: ViewerActions = { "play-pause": () => undefined };
 
 // An entry's video viewer that says which entry it was given.
 vi.mock("../playback/VideoViewer", () => ({
-  VideoViewer: ({ entry: shown }: VideoViewerProps) => {
+  VideoViewer: ({ entry: shown, next }: VideoViewerProps) => {
     useViewerActions(ownActions);
-    return <p>playing {shown.label}</p>;
+    return (
+      <>
+        <p>playing {shown.label}</p>
+        <output aria-label="Next">
+          {next ? `${next.entry}: ${next.lanes.join(",")}` : "none"}
+        </output>
+      </>
+    );
   },
 }));
 
@@ -156,6 +163,26 @@ describe("playlist viewer", () => {
     expect(registry.current["previous-entry"]).toBeUndefined();
     expect(registry.current["next-entry"]).toBeTypeOf("function");
     expect(registry.current["play-pause"]).toBe(ownActions["play-pause"]);
+  });
+
+  it("names the entry it steps to, with its lanes that are not hidden, for the backend to prepare", async () => {
+    const { room, run } = await mount({ hidden: hiding("B") });
+    expect(screen.getByLabelText("Next").textContent).toBe("list/C: C");
+    // Hiding the only lane leaves nothing to prepare.
+    act(() => room.setHidden({ entry: "list/C", lane: "C" }, true));
+    expect(screen.getByLabelText("Next").textContent).toBe("none");
+    run("next-entry");
+    expect(screen.getByLabelText("Next").textContent).toBe("list/D: D");
+    run("next-entry");
+    expect(screen.getByLabelText("Next").textContent).toBe("none");
+  });
+
+  it("names a next entry that has no overlays by its one plain lane, and a lane whose label is empty", async () => {
+    const entries = [entry("list/A", "A"), entry("list/B", "B", ["B"]), entry("list/C", "C", [""])];
+    const { run } = await mount({ entries });
+    expect(screen.getByLabelText("Next").textContent).toBe("list/B: B");
+    run("next-entry");
+    expect(screen.getByLabelText("Next").textContent).toBe("list/C: ");
   });
 
   it("picks an entry from its menu, which lists the entries that are not hidden", async () => {

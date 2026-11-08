@@ -16,8 +16,6 @@ import {
 import type { LaneControl, LaneFrame, LaneSettings, Selection, Surface } from "./contract";
 import { dataWindow, sampleBudgetBytes } from "./data/dataWindow";
 import { FrameFailures } from "./failures";
-import type { FileScope } from "./fileScope";
-import type { FrameFields } from "./frameFields";
 import { followClock } from "./follow";
 import { FrameBuffer, windowSize } from "./FrameBuffer";
 import { DataWait, displaySource } from "./frameSource";
@@ -146,14 +144,13 @@ export class PlaybackSession implements LaneControl {
   getSnapshot = (): PlaybackView => this.#view;
 
   /** The lists of the lanes' whole files. */
-  get files(): FileScope {
-    return this.#data.files;
-  }
+  readonly files = this.#data.files;
 
   /** The leaves of the shown frames' objects at the paths a search names. */
-  get fields(): FrameFields {
-    return this.#data.fields;
-  }
+  readonly fields = this.#data.fields;
+
+  /** The entry the backend is asked to prepare in the background. */
+  readonly next = this.#data.next;
 
   /** What `lane` drew on the frame on screen, which Frame scope lists. */
   shown(lane: number): LaneFrame | undefined {
@@ -345,7 +342,7 @@ export class PlaybackSession implements LaneControl {
         message,
         this.#deps.defaultCatalog?.(),
         this.#deps.lanes,
-        this.#deps.defaultTiming?.(),
+        this.#deps.savedDefaults?.(),
       );
     } else if (message.type === "LaneStatus") {
       if (this.#lanes.setStatus(message.lane, message.status)) {

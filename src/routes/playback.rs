@@ -41,6 +41,7 @@ mod inspect;
 mod lanes;
 mod live;
 mod open;
+mod prepare;
 #[cfg(test)]
 mod revocation;
 mod stream;

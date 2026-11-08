@@ -12,8 +12,15 @@ import type { FilterOptionInfo } from "../generated/api";
 import { Button } from "../kit/Button";
 import { Checkbox } from "../kit/Fields";
 import { FIELD } from "../kit/look";
-import type { LaneSettings, LaneState } from "./lanes";
-import { Group } from "./LaneMenuFields";
+import { useSettings } from "../settings";
+import {
+  DEFAULT_OBJECT_FILTER,
+  sameFilter,
+  savedFilter,
+  type LaneSettings,
+  type LaneState,
+} from "./lanes";
+import { Group, MakeDefault } from "./LaneMenuFields";
 
 type Change = (change: Partial<LaneSettings>) => void;
 
@@ -255,6 +262,7 @@ export function LaneMenuFilter({ lane, onChange }: { lane: LaneState; onChange: 
     !!expression;
   // Resetting remounts the fields, which drops what was typed and not applied.
   const [round, setRound] = useState(0);
+  const { values } = useSettings();
   return (
     <>
       <Classes options={classOptions(lane)} filter={filter} onChange={onChange} />
@@ -265,7 +273,12 @@ export function LaneMenuFilter({ lane, onChange }: { lane: LaneState; onChange: 
         ranges={ranges}
         onChange={onChange}
       />
-      <div className="flex justify-end">
+      <div className="flex items-start justify-between gap-s">
+        <MakeDefault
+          setting={DEFAULT_OBJECT_FILTER}
+          value={{ filter, ranges, expression }}
+          isDefault={sameFilter(lane.settings, savedFilter(values))}
+        />
         <Button
           disabled={!stored}
           onClick={() => {

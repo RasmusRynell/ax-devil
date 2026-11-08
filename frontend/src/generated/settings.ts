@@ -175,6 +175,35 @@ export const SETTINGS = [
     "scope": "personal"
   },
   {
+    "key": "overlays.default_object_filter",
+    "kind": {
+      "type": "object_filter",
+      "default": {
+        "expression": "",
+        "filter": {},
+        "ranges": {
+          "confidence": {
+            "max": null,
+            "min": null
+          },
+          "score": {
+            "max": null,
+            "min": null
+          }
+        }
+      }
+    },
+    "label": "Default object filter",
+    "description": null,
+    "page": null,
+    "section": "",
+    "live": true,
+    "env": false,
+    "secret": false,
+    "quick_setup": false,
+    "scope": "personal"
+  },
+  {
     "key": "playback.video_cache",
     "kind": {
       "type": "auto_or_whole",
@@ -185,6 +214,22 @@ export const SETTINGS = [
     "description": null,
     "page": "Playback",
     "section": "Memory",
+    "live": true,
+    "env": false,
+    "secret": false,
+    "quick_setup": false,
+    "scope": "server"
+  },
+  {
+    "key": "playback.prepare_next_video",
+    "kind": {
+      "type": "bool",
+      "default": false
+    },
+    "label": "Prepare the next video in the background",
+    "description": null,
+    "page": "Playback",
+    "section": "Playlists",
     "live": true,
     "env": false,
     "secret": false,

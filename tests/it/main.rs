@@ -13,6 +13,7 @@ mod playback_inspect;
 mod playback_lanes;
 mod playback_ws;
 mod plugins;
+mod prepare_next;
 mod session_client;
 mod session_socket;
 mod shutdown;

@@ -86,6 +86,9 @@ pub(super) async fn run(
         overlays: &state.overlays,
         exports: &state.exports,
         videos: &state.videos,
+        content: lease.content(),
+        preparer: &state.preparer,
+        settings: &state.settings,
     };
     let outcome = stream::stream(&mut session, setup, incoming, outbox, &mut closing, gate).await;
     release(session);
@@ -155,6 +158,7 @@ pub(super) async fn open_video<T: Send + 'static>(
                 Some(Ok(
                     ClientMessage::Want(_)
                     | ClientMessage::LanePolicy { .. }
+                    | ClientMessage::Prepare { .. }
                     | ClientMessage::Catalog { .. }
                     | ClientMessage::Inspect { .. }
                     | ClientMessage::InspectFields { .. }

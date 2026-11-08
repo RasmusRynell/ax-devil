@@ -1,10 +1,10 @@
 //! The service that opens a viewer's overlays.
 
-use std::{sync::Arc, thread};
+use std::{sync::Arc, thread, time::Duration};
 
-use foundation::Timeline;
+use foundation::{CancelToken, Interrupt, Timeline, UserError};
 use handler_api::OverlayRef;
-use scene_store::TrackRegistry;
+use scene_store::{Ingest, TrackRegistry};
 
 use crate::{
     ViewerOverlays,
@@ -12,6 +12,9 @@ use crate::{
     state::{Shared, State, lane_id},
     worker,
 };
+
+/// How often [`OverlayService::warm`] looks at whether the file is read.
+const WARM_POLL: Duration = Duration::from_millis(50);
 
 /// Opens the overlays of viewers. Cheap to clone.
 #[derive(Clone)]
@@ -27,6 +30,26 @@ impl OverlayService {
 
     pub(crate) fn from_sources(tracks: Arc<dyn TrackSource>) -> Self {
         Self { tracks }
+    }
+
+    /// Reads the overlay file into the cache folder's artifact, so that a viewer opened on it later finds the artifact
+    /// instead of decoding the file. Blocks until the file is read; give up early by cancelling `cancel`, which
+    /// stops the read when no viewer shares it. A file that cannot be read is an error, which a viewer opened on it
+    /// reports itself.
+    pub fn warm(&self, overlay: &OverlayRef, cancel: &CancelToken) -> Result<(), UserError> {
+        let track = match self.tracks.open(overlay, cancel) {
+            Ok(track) => track,
+            Err(Interrupt::Cancelled) => return Ok(()),
+            Err(Interrupt::Failed(error)) => return Err(error),
+        };
+        // The track is open once it can be read; the artifact is complete when its ingest ends.
+        while matches!(track.snapshot().ingest, Ingest::Reading) {
+            if cancel.is_cancelled() {
+                break;
+            }
+            thread::sleep(WARM_POLL);
+        }
+        Ok(())
     }
 
     /// Starts loading every source in the background; a lane without an overlay never gets a status. Lanes on the

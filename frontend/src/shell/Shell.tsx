@@ -146,6 +146,7 @@ export function Shell({ version }: { version: string }) {
     // A browser tab cannot close itself.
     ...(window.axDevilWindow && { exit: () => window.axDevilWindow?.close() }),
     settings: () => setDialog("settings"),
+    plugins: () => setSidebar({ view: "plugins", open: true }),
     "keyboard-shortcuts": () => setDialog("shortcuts"),
     ...(configures && { "quick-setup": () => setDialog("quick-setup") }),
     about: () => setDialog("about"),

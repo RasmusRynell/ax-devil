@@ -12,7 +12,7 @@ const root = fs.mkdtempSync(path.join(os.tmpdir(), "ax-devil-workspace-dialogs-"
 const home = path.join(root, "home");
 const origin = "http://127.0.0.1:7331";
 const handlers = new Map();
-const calls = { opens: [], saves: [], messages: [] };
+const calls = { opens: [], saves: [], messages: [], folders: [] };
 let picked;
 let opened;
 let answer;
@@ -68,7 +68,12 @@ const electron = {
     },
   },
   ipcMain: { on: () => {}, handle: (channel, listener) => handlers.set(channel, listener) },
-  shell: {},
+  shell: {
+    openPath: async (folder) => {
+      calls.folders.push(folder);
+      return "";
+    },
+  },
 };
 
 function withFakeElectron(load) {
@@ -111,6 +116,7 @@ beforeEach(() => {
   calls.opens = [];
   calls.saves = [];
   calls.messages = [];
+  calls.folders = [];
   picked = { canceled: true, filePaths: [] };
   opened = { canceled: true, filePaths: [] };
   answer = 1;
@@ -251,4 +257,16 @@ void test("the folder dialog is titled with what is chosen, and only a text titl
   assert.equal(calls.opens[0].title, "Cache folder");
   assert.deepEqual(calls.opens[0].properties, ["openDirectory"]);
   await assert.rejects(async () => pick(event, 7), /Expected a title/);
+});
+
+void test("the logs folder opens for the backend's one log file name, and nothing else", async () => {
+  const page = await pageContents();
+  const event = { sender: page, senderFrame: page.mainFrame };
+  const openLogs = handlers.get("logs:open");
+  await openLogs(event, path.join(root, "state", "logs", "ax-devil.log"));
+  assert.deepEqual(calls.folders, [path.join(root, "state", "logs")]);
+  for (const other of [path.join(root, "notes.txt"), "ax-devil.log", 7]) {
+    await assert.rejects(async () => openLogs(event, other), /log file/);
+  }
+  assert.equal(calls.folders.length, 1);
 });

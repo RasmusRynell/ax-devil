@@ -1,7 +1,7 @@
 # Parity
 
-One line per parity row of [01](rebuild/01-product-scope.md), which defines each row and its priority (M needed for parity,
-S may follow with owner consent). Status: todo, in progress, done, dropped; dropping an M row needs the
+One line per parity row of [01](rebuild/01-product-scope.md), which defines each row and its priority. Status: todo,
+in progress, done, dropped; dropping an M row needs the
 owner's written decision. A new feature gets a row in 01 first.
 
 ## Workspace
@@ -57,7 +57,7 @@ owner's written decision. A new feature gets a row in 01 first.
 | OF-04 | Timestamp matching, sequence-keyed files, sticky overlays | M | done | `crates/overlay-sync/src/select/tests.rs`, `crates/overlays/src/tests/{delivery,statuses}.rs`, `tests/it/mot_playlist.rs`, `playback/{LaneMenuTiming,lanes}.test.*` | Per lane, session only ([invariants](domain/invariants.md#frame-identity)); Frame Maps carry the choice to the viewer (D26) |
 | OF-05 | Timing and alignment diagnostics per lane | M | done | `crates/media/src/index/cadence.rs`, `crates/media/tests/it/{decode,sequence}.rs`, `crates/overlay-sync/src/alignment.rs`, `crates/overlays/src/tests/statuses.rs`, `playback/LaneMenuTiming.test.tsx`, `make test-desktop` | Cadence and lane match; warns when samples end far or any sit on no frame. Image sequences share it |
 | OF-06 | Decoded-frame cache under one memory allowance | M | done | `crates/playback/src/tests/`, `tests/it/playback_ws.rs`, `src/video_cache.rs`, `crates/settings` tests | Allowance, equal shares, eviction, live resize, uncached oversized frames work. Cached frames are shaded on the seek bar |
-| OF-07 | Prepare next playlist entry in the background | S | todo |  |  |
+| OF-07 | Prepare next playlist entry in the background | S | done | `tests/it/prepare_next.rs` | `playback.prepare_next_video` |
 | OF-08 | Export with overlays: lane selection, quality presets, cancellable | M | done | `crates/{export,media}/`, `tests/export/export.rs`, `src/render_host/`, `{export,render}/`, `make test-desktop` | New: PNG of one frame. [Speed](../crates/export/README.md#measured): `make bench-export`. Hard links refused on every platform |
 
 ### Deviations from the reference
@@ -74,7 +74,7 @@ Listed in [parity deviations](parity-deviations.md).
 | IN-04 | Frame info HUD, lane names | M | done | `playback/{hud,VideoViewer.objects}.test.*`, `make test-desktop` | The HUD (I) covers the lane-name tags. PTS rows need a microsecond or coarser time base |
 | IN-05 | Zoom, pan, reset, synced across lanes; lane and app fullscreen | M | done | `playback/{viewport,uiZoom,VideoCanvas,VideoViewer.objects}.test.*`, `desktop/smoke-video.cjs` | One viewport per viewer, shared by its lanes (D31); in Electron, overlay pixel lengths ignore page zoom (D32). Lane fullscreen is the Fullscreen API on the viewer; Esc leaves it, F11 stays |
 | IN-06 | Per-view overlay detail visibility | M | done | `{playback/LaneMenu,present/pick/pick}.test.*` | Hidden objects keep hover and inspection |
-| IN-07 | Per-view sticky/sync/filter settings, Apply to all, defaults for new views | S | in progress | `playback/{LaneMenu,lanes,sessionLanes}.test.*`, `crates/settings` | Kept by position; Apply to all copies them; Make default saves `overlays.default_{sticky,sync}`. Left: Apply to all across viewers |
+| IN-07 | Per-view sticky/sync/filter settings, Apply to all, defaults for new views | S | done | `playback/{LaneMenu,lanes,sessionLanes}.test.*`, `crates/settings` | Kept by position; Apply to all copies them; Make default saves `overlays.default_{sticky,sync,object_filter}`. |
 | IN-08 | Structured query search in Objects and Events lists | M | done | `search/query.test.ts`, `playback/frameFields.test.ts`, `src/routes/playback/inspect/tests.rs`, `crates/scene-store/src/tests/{query,events}.rs`, `tools/MediaToolsPanel*.test.tsx` | Frame: id, class, inspected leaves. File: id, class, event. Events: kind, object |
 | IN-09 | Frame vs File scope for objects | M | done | `{tools/{MediaToolsPanel,table/Table},playback/fileScope}.test.*` | File scope follows the lane's class toggles, not its frame filter; not for a followed window. The cursor keeps off-page rows. A pick off the frame seeks to its first |
 | IN-10 | Pinned fields kept across object pages | S | done | `playback/{fields,Inspector}.test.*` | |
@@ -113,10 +113,10 @@ Listed in [parity deviations](parity-deviations.md).
 | ST-06 | Warn before saving a literal password (new); workspace references expand silently (D18) | M | done | `shell/{SettingsDialog{,.table},AddLiveStreamDialog}.test.tsx`, `crates/workspace` live tests | Camera and broker passwords mask and warn on a literal, not a `$NAME` |
 | AP-01 | Uncaught errors logged; continue or close | M | done | `UncaughtErrors.test.tsx`, `desktop/uncaught.test.cjs` | The page reports its errors to the backend's log |
 | AP-02 | Restart from inside the app | M | done | `shell/Shell.test.tsx`, `desktop/args.test.cjs` | A setting that needs a restart offers to relaunch the desktop app on its own backend; other windows are told |
-| AP-03 | `clear-cache` | S | done | `src/disk_cache.rs` test | Lists, asks, removes, counts what it removed; only ax-devil's own files in its cache subfolders |
+| AP-03 | `clear-cache` | S | done | `src/disk_cache.rs`, `cli/clear_cache.rs` | `--type main/all`; lists, asks, removes; only ax-devil's own cache files |
 | AP-04 | About dialog | S | done | `shell/Shell.test.tsx` |  |
 | AP-05 | Custom window frame: in-page title bar with window controls | S | done | `shell/WindowControls.test.tsx` | Frameless; dragging and maximize on a real window manager are untested |
-| AP-06 | Open logs folder / copy diagnostics (new) | S | todo |  |  |
+| AP-06 | Open logs folder / copy diagnostics (new) | S | done | `shell/Shell.test.tsx` | In About |
 
 ## Sharing and remote use (new)
 

@@ -20,7 +20,7 @@ mod table;
 pub mod window;
 
 pub use env::reference;
-pub use kind::{Kind, StickyValue, SyncValue};
+pub use kind::{Kind, NoFilter, StickyValue, SyncValue};
 pub use migrate::VERSION;
 pub use secret::MASK;
 use serde_json::{Map, Value};

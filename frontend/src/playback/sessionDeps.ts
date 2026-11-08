@@ -1,7 +1,7 @@
 /** What a playback session is given, and what it reports of the clock. */
 
 import type { LaneSettings } from "./contract";
-import type { Timing } from "./lanes";
+import type { Saved } from "./lanes";
 import type { LanePolicyWire } from "./protocol";
 import type { Connect } from "./wire";
 
@@ -22,7 +22,7 @@ export interface SessionDeps {
   /** The Personal default catalog id, or `null` for the built-in default; read when the lanes open. */
   defaultCatalog?: () => string | null;
   /** The Personal default timing new lanes start with; read when the lanes open. */
-  defaultTiming?: () => Timing;
+  savedDefaults?: () => Saved;
   /** The lane settings of the entry before this one, by lane position: this entry's lanes start from them. */
   lanes?: readonly LaneSettings[];
   /** Plays from the first frame once it is shown. For an ordinary open only: a resumed or followed one stays as it was. */

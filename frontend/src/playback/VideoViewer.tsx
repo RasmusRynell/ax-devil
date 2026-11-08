@@ -7,10 +7,11 @@ import { usePaneBudget } from "./budget";
 import { connectWorker } from "./connect";
 import type { LaneSettings, Viewport } from "./contract";
 import { FRESH_MEMORY, type InspectorMemory } from "./fields";
-import { savedTiming } from "./lanes";
+import { savedDefaults } from "./lanes";
 import { Playback } from "./PlaybackPane";
 import { Status } from "./PlaybackStatus";
 import { leave, take } from "./reloadHandoff";
+import type { PreparedEntry } from "./nextEntry";
 import { PlaybackSession } from "./session";
 import type { PlaybackIntent, ResumeState } from "./sessionDeps";
 import { useFileScopeOwner } from "./useFileScopeOwner";
@@ -31,6 +32,8 @@ export type VideoViewerProps = {
   entry: EntryInfo;
   /** What the user hid in the workspace: lanes left out of the grid. */
   hidden?: Hidden;
+  /** The entry the playlist steps to from this one, with the lanes it would show; absent when there is none. */
+  next?: PreparedEntry | null;
   /** Hides one of the entry's lanes by its label; absent when this seat may not change the workspace. */
   onHideLane?: (label: string) => void;
   /** Keeps the matching of one of the entry's lanes, by its slot, in the workspace; absent when this seat may not. */
@@ -51,6 +54,7 @@ export function VideoViewer({
   content,
   entry,
   hidden = NOTHING_HIDDEN,
+  next,
   onHideLane,
   onLaneMatching,
   connect = connectWorker,
@@ -82,8 +86,8 @@ export function VideoViewer({
   latest.current = { intent, canChange, following, clock, onLaneMatching };
   const defaultCatalog = useRef(values["overlays.default_catalog"] as string);
   defaultCatalog.current = values["overlays.default_catalog"] as string;
-  const defaultTiming = useRef(savedTiming(values));
-  defaultTiming.current = savedTiming(values);
+  const saved = useRef(savedDefaults(values));
+  saved.current = savedDefaults(values);
   // Where the entry was left, for the session that replaces the one that closed on the same entry. The published intent
   // still names the last anchor when the replacement starts, so reading it there would reopen at the frame playback
   // began from. Another entry starts over: only the speed goes with the viewer.
@@ -148,7 +152,7 @@ export function VideoViewer({
         : start.frame === undefined && !latest.current.following && latest.current.canChange,
       lanes: priorLanes.current,
       defaultCatalog: () => defaultCatalog.current || null,
-      defaultTiming: () => defaultTiming.current,
+      savedDefaults: () => saved.current,
       onIntent: publish,
       onPolicy: (slot, policy) => latest.current.onLaneMatching?.(slot, policy),
       now: () => performance.now(),
@@ -193,6 +197,9 @@ export function VideoViewer({
   // The share of the window's frame memory follows the panes that are open.
   const budget = usePaneBudget();
   useEffect(() => session?.setBudget(budget), [session, budget]);
+
+  // The backend readies the entry that comes next while this one plays, when its settings allow.
+  useEffect(() => session?.next.ask(next ?? null), [session, next]);
 
   useFileScopeOwner(session, following);
   useEffect(() => {

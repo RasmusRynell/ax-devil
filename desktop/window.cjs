@@ -38,6 +38,9 @@ const WORKSPACE_SUFFIX = ".ax-devil.workspace";
 // Zoom keys the shell handles itself (the backend refuses them as shortcuts), by the key that triggers them.
 const ZOOM_STEPS = { "=": 0.5, "+": 0.5, "-": -0.5, 0: null };
 
+// The name of the file the backend logs to, in a folder of its own.
+const LOG_FILE_NAME = "ax-devil.log";
+
 // The project link the About dialog offers (the page and this constant must agree).
 const PROJECT_LINK = "https://github.com/rasmusrynell/ax-devil";
 
@@ -262,6 +265,15 @@ function installIpc({ connect, disconnect, restart }) {
     if (title !== undefined && typeof title !== "string") throw new Error("Expected a title");
     const chosen = await dialog.showOpenDialog(window, { title, properties: ["openDirectory"] });
     return chosen.canceled ? null : chosen.filePaths[0];
+  });
+  // Opens the folder of the log file the backend told the page, in the system's file manager. Only the local
+  // backend's page may, and only for the one file name the backend writes its log to.
+  handle("logs:open", async ({ remote }, file) => {
+    if (remote) throw new Error("Not allowed");
+    if (typeof file !== "string" || !path.isAbsolute(file) || path.basename(file) !== LOG_FILE_NAME)
+      throw new Error("Expected the path of the log file");
+    const failure = await shell.openPath(path.dirname(file));
+    if (failure) throw new Error(failure);
   });
   handle("window:connect", ({ remote, window }, target, password) => {
     if (remote) throw new Error("Not allowed");

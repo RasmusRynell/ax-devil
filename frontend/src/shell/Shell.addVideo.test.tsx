@@ -44,6 +44,7 @@ describe("add video", () => {
       pickOpenWorkspace: () => Promise.resolve(null),
       pickSaveWorkspace: () => Promise.resolve(null),
       appVersion: async () => "0.0.0",
+      openLogs: () => Promise.resolve(),
       onMaximizedChange: () => () => {},
     } satisfies WindowBridge;
   };

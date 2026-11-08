@@ -180,19 +180,45 @@ describe("lanes", () => {
   });
 
   it("starts new lanes from the saved sync and sticky defaults, opacity included, below the seeds and the workspace's matching", () => {
-    const saved = { tolerance_ms: null, sticky: { enabled: true, timeout_ms: null, opacity: 0.4 } };
+    const timing = {
+      tolerance_ms: null,
+      sticky: { enabled: true, timeout_ms: null, opacity: 0.4 },
+    };
+    const saved = { ...timing, filter: {}, ranges: OPEN_RANGES, expression: "" };
     const defaults = startWith(LANE_DEFAULTS, [], null, saved);
     const kept = { basis: null, tolerance_ms: 50, sticky: { enabled: false, timeout_ms: 500 } };
     const lanes = new LaneSet();
     lanes.open([LANES[0], { ...LANES[0], policy: kept }, LANES[0]], defaults, [LANE_SETTINGS]);
-    const timing = ({ tolerance_ms, sticky }: LaneSettings) => ({ tolerance_ms, sticky });
-    const [seeded, workspace, fresh] = lanes.states.map(({ settings }) => timing(settings));
-    expect(seeded).toEqual(timing(LANE_SETTINGS));
+    const timed = ({ tolerance_ms, sticky }: LaneSettings) => ({ tolerance_ms, sticky });
+    const [seeded, workspace, fresh] = lanes.states.map(({ settings }) => timed(settings));
+    expect(seeded).toEqual(timed(LANE_SETTINGS));
     expect(workspace).toEqual({
       tolerance_ms: 50,
       sticky: { enabled: false, timeout_ms: 500, opacity: 0.4 },
     });
-    expect(fresh).toEqual(saved);
+    expect(fresh).toEqual(timing);
+  });
+
+  it("starts new lanes from the saved object filter, below the seeds, and drops an expression that no longer compiles", () => {
+    const filtering = {
+      filter: { pedestrian: false },
+      ranges: { ...OPEN_RANGES, score: { min: 0.5, max: null } },
+      expression: "score > 0.6",
+    };
+    const saved = { tolerance_ms: null, sticky: LANE_SETTINGS.sticky, ...filtering };
+    const lanes = new LaneSet();
+    lanes.open(LANES.slice(0, 1), startWith(LANE_DEFAULTS, [], null, saved));
+    expect(lanes.states[0].settings).toMatchObject(filtering);
+    const seeded = new LaneSet();
+    seeded.open(LANES.slice(0, 1), startWith(LANE_DEFAULTS, [], null, saved), [LANE_SETTINGS]);
+    expect(seeded.states[0].settings).toMatchObject({ filter: {}, expression: "" });
+
+    const broken = startWith(LANE_DEFAULTS, [], null, { ...saved, expression: "score >" });
+    expect(broken).toMatchObject({
+      filter: { pedestrian: false },
+      ranges: OPEN_RANGES,
+      expression: "",
+    });
   });
 
   it("treats a default with a problem as unusable for new lanes and for the menu alike", () => {

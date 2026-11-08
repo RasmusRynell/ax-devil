@@ -56,7 +56,8 @@ const SCOPES: Record<CommandId, Scope> = {
   "add-bookmark": "content",
   "export-video": "host",
   "debug-metrics": "app",
-  plugins: "content",
+  // The Plugins button of the activity bar is a view like any other, so the command asks the same of the seat.
+  plugins: "view",
   "collect-metrics": "app",
   "quick-setup": "app",
   about: "app",
@@ -128,11 +129,13 @@ export const MENUS: readonly { label: string; items: readonly Layout[] }[] = [
       SEPARATOR,
       action("add-bookmark"),
       action("export-video"),
+      SEPARATOR,
+      action("plugins"),
     ],
   },
   {
     label: "Debug",
-    items: [action("debug-metrics"), action("plugins"), SEPARATOR, check("collect-metrics")],
+    items: [action("debug-metrics"), SEPARATOR, check("collect-metrics")],
   },
   { label: "Help", items: [action("quick-setup"), action("about")] },
 ];
