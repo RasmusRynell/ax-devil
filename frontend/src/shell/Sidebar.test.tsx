@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, expect, it, vi } from "vite-plus/test";
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { entry, failed, FakeSocket, playlist, video, type Room } from "../session/fakeSession";
+import { FakeSettings } from "../fakeSettings";
 import { SessionProvider } from "../session/session";
 import { KeptStateProvider } from "./keptState";
 import { Sidebar } from "./Sidebar";
@@ -39,14 +40,18 @@ it("lists only Videos and Playlists in Offline, and counts them in the header", 
 
 it("shows the start panel alone while the workspace is empty, and the list once it has an item", async () => {
   render(
-    <SessionProvider>
-      <KeptStateProvider>
-        <Sidebar view="workspace" onRun={() => {}} onAddLive={() => {}} />
-      </KeptStateProvider>
-    </SessionProvider>,
+    <FakeSettings>
+      <SessionProvider>
+        <KeptStateProvider>
+          <Sidebar view="workspace" onRun={() => {}} onAddLive={() => {}} />
+        </KeptStateProvider>
+      </SessionProvider>
+    </FakeSettings>,
   );
   await act(async () => {});
-  expect(screen.getByRole("button", { name: "Open Workspace" })).toBeTruthy();
+  expect(screen.getByRole("button", { name: "Open Workspace" }).title).toBe(
+    "Open Workspace (Ctrl+O)",
+  );
   expect(screen.queryByRole("searchbox")).toBeNull();
   act(() => (FakeSocket.rooms.get("room-1") as Room).setItems([video("v", false)]));
   expect(screen.getByRole("searchbox", { name: "Search items" })).toBeTruthy();
@@ -108,11 +113,13 @@ it("keeps a view's search, sort and folds while another view or no view is shown
 
 it("lets a seat that edits content rename the workspace from its title, and no other", async () => {
   const sidebar = (
-    <SessionProvider>
-      <KeptStateProvider>
-        <Sidebar view="workspace" onRun={() => {}} onAddLive={() => {}} />
-      </KeptStateProvider>
-    </SessionProvider>
+    <FakeSettings>
+      <SessionProvider>
+        <KeptStateProvider>
+          <Sidebar view="workspace" onRun={() => {}} onAddLive={() => {}} />
+        </KeptStateProvider>
+      </SessionProvider>
+    </FakeSettings>
   );
   const { unmount } = render(sidebar);
   await act(async () => {});

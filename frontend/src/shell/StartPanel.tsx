@@ -5,6 +5,7 @@ import type { IconName } from "../kit/icons";
 import { KIND, QUIET, type Kind } from "../kit/look";
 import { RowList } from "../kit/RowList";
 import { useAllowed } from "../session/session";
+import { useSettings } from "../settings";
 import { folderOf, RECENT_ID, recentLabel, usedOn, useRecents } from "./recents";
 
 const OPEN: readonly [id: CommandId, icon: IconName, kind?: Kind][] = [
@@ -18,6 +19,7 @@ const OPEN: readonly [id: CommandId, icon: IconName, kind?: Kind][] = [
 export function StartPanel({ onRun }: { onRun: (id: string) => void }) {
   const allowed = useAllowed();
   const recents = useRecents(true);
+  const { shortcuts } = useSettings();
   return (
     <div className="flex flex-col gap-l">
       <div className="grid max-sm:grid-cols-2">
@@ -26,6 +28,7 @@ export function StartPanel({ onRun }: { onRun: (id: string) => void }) {
             key={id}
             type="button"
             data-cursor-id={`sidebar:${id}`}
+            title={shortcuts[id] ? `${command(id).label} (${shortcuts[id]})` : undefined}
             className={`${QUIET} py-xs text-left`}
             disabled={!allowed[scopeOf(id)]}
             onClick={() => onRun(id)}
@@ -41,6 +44,7 @@ export function StartPanel({ onRun }: { onRun: (id: string) => void }) {
             heading="Recent workspaces"
             rows={recents.map(({ path, name, usedMs }) => ({
               id: `${RECENT_ID}${path}`,
+              icon: "folder",
               label: recentLabel(name),
               subtitle: folderOf(path),
               title: path,
