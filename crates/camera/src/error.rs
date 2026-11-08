@@ -141,6 +141,12 @@ impl CameraError {
         }
     }
 
+    /// An error of `kind` for a failed socket operation, told by the error's kind (`connection refused`, `broken
+    /// pipe`: constant words) and never by its text, which can quote what was being connected to.
+    pub(crate) fn io(kind: ErrorKind, error: &std::io::Error) -> Self {
+        Self::new(kind, error.kind().to_string())
+    }
+
     /// An error of `kind`, for the app's tests to stand in for a camera's (feature `fake`). `detail` must not contain a
     /// secret.
     #[cfg(feature = "fake")]

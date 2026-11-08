@@ -23,6 +23,7 @@ pub(super) fn stream_defaults() -> Result<LiveDefaults, String> {
         protocol: workspace::Protocol::Https,
         head: 1,
         rtsp_port: 554,
+        rtsp_route: workspace::RtspRoute::Direct,
         resolution: String::new(),
         overlay: LiveMode::DataHub,
         rtsp_handler: "ONVIF_XML".into(),

@@ -11,6 +11,12 @@ use crate::{
 use foundation::{ErrorCode, ItemId, Location, UserError};
 use handlers::Handlers;
 
+mod endpoint;
+mod redact;
+
+pub(crate) use endpoint::{camera_endpoint, url_endpoint, url_has_login};
+pub use endpoint::{url_password_dropped, url_without_password};
+
 /// The lane slot of the one overlay a live video has.
 pub const LIVE_SLOT: &str = "live";
 
@@ -40,6 +46,26 @@ impl Protocol {
         match self {
             Self::Http => "HTTP",
             Self::Https => "HTTPS",
+        }
+    }
+}
+
+/// Which door of the camera a stream comes through, when it has no stream URL of its own (the URL's scheme decides).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum RtspRoute {
+    /// The camera's RTSP port.
+    #[default]
+    Direct,
+    /// The camera's web interface, for a network that blocks the RTSP port.
+    WebApi,
+}
+
+impl RtspRoute {
+    /// The name users read: `Direct` or `Via web API`.
+    pub const fn name(self) -> &'static str {
+        match self {
+            Self::Direct => "Direct",
+            Self::WebApi => "Via web API",
         }
     }
 }
@@ -137,8 +163,9 @@ pub struct KeptTransports {
     pub datahub: Option<DataHubSettings>,
 }
 
-/// A camera to stream from and the overlay to draw on it, with every text as entered.
-#[derive(Clone, Debug, PartialEq, Eq)]
+/// A camera to stream from and the overlay to draw on it, with every text as entered. `Debug` leaves out the password of
+/// a login in the stream URL (`live/redact.rs`).
+#[derive(Clone, PartialEq, Eq)]
 pub struct LiveRecipe {
     /// The camera's host.
     pub host: String,
@@ -154,9 +181,12 @@ pub struct LiveRecipe {
     pub head: u16,
     /// The RTSP port.
     pub rtsp_port: u16,
+    /// Which door of the camera the stream comes through; a stream URL overrides it.
+    pub rtsp_route: RtspRoute,
     /// The resolution such as `1280x720`; `None` is the camera's own.
     pub resolution: Option<String>,
-    /// A stream URL to use instead of the one made from the host; it holds no login.
+    /// A stream URL to use instead of the one made from the host, as typed: `rtsp://`, `http://` or `https://`, with
+    /// a login if it has one. Whether it can be streamed is for the camera to say when it connects.
     pub url: Option<String>,
     /// The overlay.
     pub overlay: LiveOverlay,
@@ -173,8 +203,8 @@ pub struct Login {
     pub password: Secret,
 }
 
-/// A camera with every reference expanded, ready to connect to.
-#[derive(Clone, Debug, PartialEq, Eq)]
+/// A camera with every reference expanded, ready to connect to. `Debug` leaves out the passwords, the stream URL's too.
+#[derive(Clone, PartialEq, Eq)]
 pub struct ResolvedCamera {
     /// The host.
     pub host: String,
@@ -184,11 +214,13 @@ pub struct ResolvedCamera {
     pub port: u16,
     /// The RTSP port.
     pub rtsp_port: u16,
+    /// Which door of the camera the stream comes through; a stream URL overrides it.
+    pub rtsp_route: RtspRoute,
     /// The video channel, from 1.
     pub head: u16,
     /// The resolution; `None` is the camera's own.
     pub resolution: Option<String>,
-    /// A stream URL to use instead of the generated one; it holds no login.
+    /// A stream URL to use instead of the generated one, as typed, with its login if it has one.
     pub url: Option<String>,
     /// The login, when there is a user or a password.
     pub login: Option<Login>,
@@ -215,52 +247,7 @@ fn invalid(field: &str, reason: impl Into<String>) -> UserError {
     UserError::new(ErrorCode::WorkspaceInvalid, reason).at(Location::field(field))
 }
 
-/// The host and port of a stream URL, the host lowercase, or why the URL cannot be used. No port is RTSP's 554.
-pub(crate) fn url_endpoint(url: &str) -> Result<(String, u16), UserError> {
-    let field = "url";
-    let lower = url.to_ascii_lowercase();
-    // The camera crate speaks plain RTSP only; an rtsps:// URL would retry forever.
-    let Some(rest) = lower.strip_prefix("rtsp://") else {
-        return Err(invalid(field, "The stream URL must start with rtsp://."));
-    };
-    let authority = rest.split(['/', '?', '#']).next().unwrap_or_default();
-    if authority.contains('@') {
-        return Err(invalid(field, "The stream URL must not contain a login."));
-    }
-    let (host, port) = match authority.strip_prefix('[') {
-        Some(inside) => inside
-            .split_once(']')
-            .map(|(ip, after)| (format!("[{ip}]"), after.strip_prefix(':'))),
-        None => Some(match authority.split_once(':') {
-            Some((host, port)) => (host.to_owned(), Some(port)),
-            None => (authority.to_owned(), None),
-        }),
-    }
-    .filter(|(host, _)| !host.is_empty())
-    .ok_or_else(|| invalid(field, "The stream URL has no host."))?;
-    let port = match port {
-        None => 554,
-        Some(port) => port
-            .parse()
-            .map_err(|_| invalid(field, "The stream URL has no valid port."))?,
-    };
-    Ok((host, port))
-}
-
-/// The host of a stream URL, lowercase, or why the URL cannot be used.
-fn url_host(url: &str) -> Result<String, UserError> {
-    url_endpoint(url).map(|(host, _)| host)
-}
-
 impl LiveRecipe {
-    /// The host and port the stream's RTSP requests, and so its login, go to: the stream URL's, or the camera's.
-    pub(crate) fn rtsp_endpoint(&self) -> (String, u16) {
-        self.url
-            .as_deref()
-            .and_then(|url| url_endpoint(url).ok())
-            .unwrap_or_else(|| (self.host.trim().to_ascii_lowercase(), self.rtsp_port))
-    }
-
     /// Whether replacing this recipe by `edited` would erase a literal broker password, which a client is never sent
     /// and so cannot send back: the MQTT settings, in the overlay or kept, had one and the edited ones have none.
     pub fn loses_broker_password(&self, edited: &LiveRecipe) -> bool {
@@ -270,6 +257,16 @@ impl LiveRecipe {
             && edited
                 .mqtt_settings()
                 .is_some_and(|new| new.broker_pass.expose().is_empty())
+    }
+
+    /// Whether replacing this recipe by `edited` would erase the password of the stream URL's login, which a client is
+    /// never sent: `edited` has the URL as the client was shown it. Like `loses_broker_password`, it is for an edit
+    /// by someone who cannot restore the password.
+    pub fn loses_url_password(&self, edited: &LiveRecipe) -> bool {
+        match (&self.url, &edited.url) {
+            (Some(saved), Some(sent)) => url_password_dropped(saved, sent),
+            _ => false,
+        }
     }
 
     /// The MQTT settings the stream holds: the overlay's, or else the ones kept while another mode is chosen.
@@ -353,9 +350,6 @@ impl LiveRecipe {
                     self.port
                 ),
             ));
-        }
-        if let Some(url) = &self.url {
-            url_host(url)?;
         }
         let mode = self.overlay.mode_name();
         if let Some(handler) = self.overlay.handler() {
@@ -496,6 +490,7 @@ impl LiveRecipe {
                     port => port,
                 },
                 rtsp_port: self.rtsp_port,
+                rtsp_route: self.rtsp_route,
                 head: self.head,
                 resolution: self.resolution.clone(),
                 url: self.url.clone(),

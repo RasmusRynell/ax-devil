@@ -216,7 +216,7 @@ fn doc_command(
             // Only the owner can restore a hidden password, so no one else may erase it.
             if let (Source::Live(new), Some(old), None) =
                 (&edited.recipe.source, saved.recipe(item), saved.live(item))
-                && old.loses_broker_password(new)
+                && (old.loses_broker_password(new) || old.loses_url_password(new))
             {
                 return Err(Refusal::Invalid);
             }

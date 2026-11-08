@@ -111,12 +111,14 @@ function number(
   label: string,
   limit: number,
   placeholder?: string,
+  disabled?: boolean,
 ) {
   return (
     <FormInput
       label={label}
       value={props.form[field]}
       placeholder={placeholder ?? hint(props, field)}
+      disabled={disabled}
       onChange={(value) => {
         if (typable(value, limit)) props.set(field, value);
       }}
@@ -163,6 +165,8 @@ export function ConnectionRows({
 }) {
   const { form, set, settings } = props;
   const status = resolutionStatus(resolutions, hostUsable, sizes);
+  // The web API carries the stream, so the RTSP port is not used.
+  const viaWebApi = (form.rtsp_route || textOf(settings["camera.rtsp_route"])) === "web_api";
   return (
     <Form>
       {input(props, "label", "Name", {
@@ -183,7 +187,19 @@ export function ConnectionRows({
       />
       {number(props, "port", "Port", 65535, "Standard")}
       {number(props, "head", "Camera Head", 9999)}
-      {number(props, "rtsp_port", "RTSP Port", 65535)}
+      <FormSelect
+        label="RTSP Route"
+        value={form.rtsp_route}
+        options={[
+          ["", `Default (${nameOf("camera.rtsp_route", textOf(settings["camera.rtsp_route"]))})`],
+          ...(optionsOf("camera.rtsp_route") as readonly (readonly [
+            LiveForm["rtsp_route"],
+            string,
+          ])[]),
+        ]}
+        onChange={(value) => set("rtsp_route", value)}
+      />
+      {number(props, "rtsp_port", "RTSP Port", 65535, undefined, viaWebApi)}
       <FormCombo
         label="Resolution"
         value={form.resolution}

@@ -5,12 +5,14 @@ use http_auth::{PasswordClient, PasswordParams};
 use crate::error::{CameraError, ErrorKind};
 use crate::target::Login;
 
-/// What a request must say so the camera can check the login: the request line and its body.
+/// What a request must say so the camera can check the login: the request line and, when it has one, its body.
 pub(crate) struct Signed<'a> {
     pub(crate) method: &'a str,
     /// The request target, path and query.
     pub(crate) uri: &'a str,
-    pub(crate) body: &'a [u8],
+    /// The body the signature covers (Digest `auth-int`), or `None` when it is not available to sign, as a request
+    /// whose body streams: only `auth` can then be answered.
+    pub(crate) body: Option<&'a [u8]>,
 }
 
 /// The header value answering `challenges` (the `WWW-Authenticate` values of a 401) for `login`.
@@ -23,36 +25,64 @@ pub(crate) fn authorization(
     basic_allowed: bool,
     request: &Signed<'_>,
 ) -> Result<String, CameraError> {
-    let mut builder = PasswordClient::builder();
-    for challenge in challenges {
-        builder = builder.challenges(challenge);
-    }
-    let mut client = builder.build().map_err(|_| {
-        CameraError::new(
-            ErrorKind::Unsupported,
-            "the camera offers no authentication scheme we support",
-        )
-    })?;
-    if matches!(client, PasswordClient::Basic(_)) && !basic_allowed {
-        return Err(CameraError::new(
-            ErrorKind::Unsupported,
-            "the camera offers only Basic authentication, which is not sent here",
-        ));
-    }
-    client
-        .respond(&PasswordParams {
-            username: &login.user,
-            password: login.password.expose(),
-            uri: request.uri,
-            method: request.method,
-            body: Some(request.body),
-        })
-        .map_err(|_| {
+    Responder::new(challenges, login, basic_allowed)?.answer(request)
+}
+
+/// One challenge answered more than once: a Digest answer carries the next nonce count each time, so the requests of
+/// one connection sequence (the tunnel's GET, then its POST) can all be signed from the one challenge.
+pub(crate) struct Responder<'a> {
+    client: PasswordClient,
+    login: &'a Login,
+}
+
+impl<'a> Responder<'a> {
+    /// Chooses the scheme as [`authorization`] does.
+    pub(crate) fn new(
+        challenges: &[&str],
+        login: &'a Login,
+        basic_allowed: bool,
+    ) -> Result<Self, CameraError> {
+        let mut builder = PasswordClient::builder();
+        for challenge in challenges {
+            builder = builder.challenges(challenge);
+        }
+        let client = builder.build().map_err(|_| {
             CameraError::new(
-                ErrorKind::Malformed,
-                "the authentication challenge cannot be answered",
+                ErrorKind::Unsupported,
+                "the camera offers no authentication scheme we support",
             )
-        })
+        })?;
+        if matches!(client, PasswordClient::Basic(_)) && !basic_allowed {
+            return Err(CameraError::new(
+                ErrorKind::Unsupported,
+                "the camera offers only Basic authentication, which is not sent here",
+            ));
+        }
+        Ok(Self { client, login })
+    }
+
+    /// The header value for `request`.
+    pub(crate) fn answer(&mut self, request: &Signed<'_>) -> Result<String, CameraError> {
+        self.client
+            .respond(&PasswordParams {
+                username: &self.login.user,
+                password: self.login.password.expose(),
+                uri: request.uri,
+                method: request.method,
+                body: request.body,
+            })
+            .map_err(|_| match request.body {
+                // Nothing was missing but the body: the camera insists on signing it (`auth-int` alone).
+                None => CameraError::new(
+                    ErrorKind::Unsupported,
+                    "the camera wants the request body signed, which a stream cannot be",
+                ),
+                Some(_) => CameraError::new(
+                    ErrorKind::Malformed,
+                    "the authentication challenge cannot be answered",
+                ),
+            })
+    }
 }
 
 #[cfg(test)]
@@ -71,7 +101,7 @@ mod tests {
         Signed {
             method: "GET",
             uri: "/dir/index.html",
-            body: b"",
+            body: Some(b""),
         }
     }
 
@@ -107,6 +137,37 @@ mod tests {
         // Digest wins when both are offered, so plain HTTP still signs in.
         let both = authorization(&[basic, RFC7616], &login(), false, &request()).unwrap();
         assert!(both.starts_with("Digest "));
+    }
+
+    #[test]
+    fn a_responder_counts_nonces_across_answers() {
+        let login = login();
+        let mut responder = Responder::new(&[RFC7616], &login, false).unwrap();
+        let first = responder.answer(&request()).unwrap();
+        let second = responder.answer(&request()).unwrap();
+        assert!(first.contains("nc=00000001"), "{first}");
+        assert!(second.contains("nc=00000002"), "{second}");
+    }
+
+    #[test]
+    fn a_body_that_cannot_be_signed_is_answered_with_auth_or_not_at_all() {
+        let streaming = Signed {
+            body: None,
+            ..request()
+        };
+        let login = login();
+        let mixed = r#"Digest realm="r", qop="auth,auth-int", nonce="n", algorithm=MD5"#;
+        let header = authorization(&[mixed], &login, false, &streaming).unwrap();
+        assert!(
+            header.contains("qop=auth") && !header.contains("auth-int"),
+            "{header}"
+        );
+        let only = r#"Digest realm="r", qop="auth-int", nonce="n", algorithm=MD5"#;
+        let error = authorization(&[only], &login, false, &streaming).unwrap_err();
+        assert_eq!(error.kind, ErrorKind::Unsupported);
+        // With a body to sign, auth-int is the one used.
+        let header = authorization(&[mixed], &login, false, &request()).unwrap();
+        assert!(header.contains("auth-int"), "{header}");
     }
 
     #[test]

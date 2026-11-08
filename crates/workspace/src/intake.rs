@@ -12,6 +12,7 @@ use handlers::Handlers;
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
+mod live_debug;
 mod live_defaults;
 mod live_stream;
 

@@ -31,6 +31,7 @@ describe("cameras of live streams", () => {
       host: "10.0.0.2",
       username: "root",
       password: "$CAM_PASS",
+      rtsp_route: "web_api",
       overlay: { mode: "mqtt", broker_host: "10.0.0.9", source_key: "scene" },
     };
     const items = [
@@ -51,6 +52,7 @@ describe("cameras of live streams", () => {
     expect(copy).toMatchObject({
       host: "10.0.0.2",
       username: "root",
+      rtsp_route: "web_api",
     });
     expect(copy.password).toBeUndefined();
     expect(copy.label).toBeUndefined();

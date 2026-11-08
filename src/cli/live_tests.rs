@@ -77,3 +77,21 @@ fn a_datahub_channel_past_32_bits_is_refused_and_the_largest_one_opens() {
     );
     assert!(websocket("4294967295").is_ok());
 }
+
+#[test]
+fn the_rtsp_route_is_spelled_as_the_python_app_does_in_any_case() {
+    let route = |flag: &'static str| {
+        let flags = ["--rtsp-route", flag];
+        let Ok(Some(Launch::Items(items))) = live(&[("AX_DEVIL_TARGET_ADDR", "192.0.2.7")], &flags)
+        else {
+            return None;
+        };
+        let Source::Live(recipe) = &items[0].recipe.source else {
+            return None;
+        };
+        Some(recipe.rtsp_route)
+    };
+    assert_eq!(route("web_api"), Some(workspace::RtspRoute::WebApi));
+    assert_eq!(route("WEB_API"), Some(workspace::RtspRoute::WebApi));
+    assert_eq!(route("direct"), Some(workspace::RtspRoute::Direct));
+}

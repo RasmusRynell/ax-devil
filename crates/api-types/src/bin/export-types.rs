@@ -150,6 +150,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         ClientMessage,
         ServerMessage,
         LiveProtocol,
+        LiveRtspRoute,
         LiveOverlayKind,
         LiveReason,
         LiveFeedStatus,

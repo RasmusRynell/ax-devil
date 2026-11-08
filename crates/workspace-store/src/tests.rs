@@ -253,6 +253,7 @@ fn a_live_streams_matching_is_kept_under_its_one_slot() {
         protocol: workspace::Protocol::Http,
         head: 1,
         rtsp_port: 554,
+        rtsp_route: workspace::RtspRoute::Direct,
         resolution: String::new(),
         overlay: workspace::intake::LiveMode::None,
         rtsp_handler: String::new(),

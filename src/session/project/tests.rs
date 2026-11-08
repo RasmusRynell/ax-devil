@@ -4,7 +4,7 @@ use handlers::Handlers;
 use std::path::PathBuf;
 use workspace::{
     ContentId, Environment, LiveOverlay, LiveRecipe, OverlayRef, PlaylistContent, PlaylistSpan,
-    Protocol, Recipe, Secret, VideoRecipe, VideoRef,
+    Protocol, Recipe, RtspRoute, Secret, VideoRecipe, VideoRef,
 };
 use workspace_store::{HiddenRef, WorkspaceState as State};
 
@@ -47,8 +47,11 @@ fn live_stream(item: ItemId) -> (WorkspaceItem, Content) {
         port: 0,
         head: 1,
         rtsp_port: 554,
+        rtsp_route: RtspRoute::Direct,
         resolution: None,
-        url: Some("rtsp://SECRET-STREAM/axis-media/media.amp".into()),
+        url: Some(
+            "rtsp://SECRET-URL-USER:SECRET-URL-PASSWORD@SECRET-STREAM/axis-media/media.amp".into(),
+        ),
         overlay: LiveOverlay::Mqtt {
             handler: "ADF_V1_FRAME".into(),
             broker_host: "SECRET-BROKER".into(),
@@ -223,9 +226,10 @@ fn a_watcher_learns_no_path_credential_or_reason_and_sees_only_what_is_open() {
         assert!(owner.contains(recipe), "{recipe} missing from {owner}");
     }
     assert!(
-        !owner.contains("SECRET-LIVE-PASSWORD"),
+        !owner.contains("SECRET-LIVE-PASSWORD") && !owner.contains("SECRET-URL-PASSWORD"),
         "a literal password reached {owner}"
     );
+    assert!(owner.contains("SECRET-URL-USER@SECRET-STREAM"));
     let recipes = |audience| {
         project(&doc, audience, false)
             .workspace

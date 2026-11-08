@@ -64,11 +64,17 @@ pub struct Behaviour {
     pub refuse_later: bool,
     /// Offer a 2 s session and answer the keepalive that follows PLAY with 401, as a camera whose login was revoked.
     pub refuse_keepalive: bool,
+    /// The session timeout offered in seconds; the client sends a keepalive every half of it (ignored with
+    /// `refuse_keepalive`).
+    pub session_secs: u32,
     pub first_connection: Fault,
     /// Pause between frames.
     pub interval: Duration,
     /// Frames sent back to back before the first pause.
     pub burst: u32,
+    /// The `Content-Type` of the answer to DESCRIBE: none when empty, and the request's own path and query when
+    /// `{target}`, as a camera that echoes what it was asked does.
+    pub describe_type: &'static str,
 }
 
 impl Default for Behaviour {
@@ -78,9 +84,11 @@ impl Default for Behaviour {
             video: true,
             refuse_later: false,
             refuse_keepalive: false,
+            session_secs: 60,
             first_connection: Fault::None,
             interval: Duration::from_millis(5),
             burst: 0,
+            describe_type: "application/sdp",
         }
     }
 }
@@ -277,7 +285,19 @@ async fn serve(socket: TcpStream, shared: Arc<Shared>, index: usize, addr: Socke
                     let sdp = sdp(&base, wants_video, wants_metadata);
                     reply(
                         "200 OK",
-                        &format!("Content-Base: {base}/\r\nContent-Type: application/sdp\r\n"),
+                        &format!(
+                            "Content-Base: {base}/\r\n{}",
+                            match shared.behaviour.describe_type {
+                                "" => String::new(),
+                                "{target}" => format!(
+                                    "Content-Type: {}\r\n",
+                                    request.uri.split_once("://").map_or("", |(_, rest)| {
+                                        rest.find('/').map_or("", |at| &rest[at..])
+                                    })
+                                ),
+                                other => format!("Content-Type: {other}\r\n"),
+                            }
+                        ),
                         &sdp,
                     )
                 }
@@ -302,7 +322,7 @@ async fn serve(socket: TcpStream, shared: Arc<Shared>, index: usize, addr: Socke
                     let timeout = if shared.behaviour.refuse_keepalive {
                         2
                     } else {
-                        60
+                        shared.behaviour.session_secs
                     };
                     reply(
                         "200 OK",

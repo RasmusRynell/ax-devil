@@ -12,6 +12,7 @@ fn another_stream_copies_the_saved_login_only_for_the_same_camera() {
         port: 0,
         head: 1,
         rtsp_port: 554,
+        rtsp_route: RtspRoute::Direct,
         resolution: None,
         url: None,
         overlay: LiveOverlay::None,
@@ -61,6 +62,7 @@ fn a_saved_login_for_an_environment_reference_is_not_copied_to_another_variable_
         port: 0,
         head: 1,
         rtsp_port: 554,
+        rtsp_route: RtspRoute::Direct,
         resolution: None,
         url: None,
         overlay: LiveOverlay::None,
@@ -86,6 +88,7 @@ fn an_rtsp_endpoint_elsewhere_gets_no_saved_login() {
         port: 0,
         head: 1,
         rtsp_port: 554,
+        rtsp_route: RtspRoute::Direct,
         resolution: None,
         url: None,
         overlay: LiveOverlay::None,
@@ -151,6 +154,226 @@ fn an_rtsp_endpoint_elsewhere_gets_no_saved_login() {
 }
 
 #[test]
+fn through_the_web_api_the_login_goes_to_the_web_port_so_changing_route_asks_again() {
+    let saved = |route, port| LiveRecipe {
+        host: "cam.local".into(),
+        username: "root".into(),
+        password: Secret::new("literal"),
+        protocol: Protocol::Https,
+        port,
+        head: 1,
+        rtsp_port: 554,
+        rtsp_route: route,
+        resolution: None,
+        url: None,
+        overlay: LiveOverlay::None,
+        kept: Default::default(),
+    };
+    let copy = |saved: &LiveRecipe, route, port| {
+        let mut new = NewLive {
+            rtsp_route: Some(route),
+            port: Some(port),
+            ..host("cam.local")
+        };
+        new.copy_login(saved, &defaults(), LoginUse::Stream)
+            .map(|()| new.password.is_some())
+    };
+    let direct = saved(RtspRoute::Direct, 0);
+    let web = saved(RtspRoute::WebApi, 0);
+    assert_eq!(web.rtsp_endpoint(), ("cam.local".to_owned(), 443));
+    assert!(
+        copy(&web, RtspRoute::WebApi, 0).unwrap(),
+        "the same route and port"
+    );
+    assert!(
+        copy(&web, RtspRoute::WebApi, 443).unwrap(),
+        "443 is the standard port"
+    );
+    for (saved, route, port) in [
+        (&direct, RtspRoute::WebApi, 0),
+        (&web, RtspRoute::Direct, 0),
+    ] {
+        let error = copy(saved, route, port).unwrap_err();
+        assert_eq!(
+            error.location,
+            Some(Location::field("password")),
+            "{route:?} {port}"
+        );
+    }
+    // Another web port is another camera connection: nothing is copied.
+    assert!(!copy(&web, RtspRoute::WebApi, 8443).unwrap());
+}
+
+/// The login is copied to the URL's destination as the connection reads the URL, not as it looks to a hand-written
+/// parser: a backslash, a second `@`, a path that holds `@cam:554` and the like must not pass for the camera.
+#[test]
+fn a_saved_login_is_copied_only_where_the_connection_would_send_it() {
+    let saved = LiveRecipe {
+        host: "cam".into(),
+        username: "root".into(),
+        password: Secret::new("literal"),
+        protocol: Protocol::Https,
+        port: 0,
+        head: 1,
+        rtsp_port: 554,
+        rtsp_route: RtspRoute::Direct,
+        resolution: None,
+        url: None,
+        overlay: LiveOverlay::None,
+        kept: Default::default(),
+    };
+    let copy = |url: &str| {
+        let mut new = NewLive {
+            url: Some(url.into()),
+            ..host("cam")
+        };
+        new.copy_login(&saved, &defaults(), LoginUse::Stream)
+            .map(|()| new.password.is_some())
+    };
+    for url in [
+        "http://cam:554/s",
+        "HTTP://CAM:554/s",
+        "http:root:secret@cam:554/s",
+        "http:////root:secret@cam:554/s",
+        "http://root:p%40ss:word@cam:554/s",
+        "http://a@b:c@cam:554/s",
+        "rtsp://cam/s",
+        // The login is the URL's own (user `cam`), so the camera's goes nowhere, whatever the host.
+        "http://cam:554@attacker:8080/s",
+    ] {
+        assert_eq!(copy(url).ok(), Some(true), "{url}");
+    }
+    for url in [
+        r"http://attacker:8080\@cam:554/s",
+        "http://attacker:8080/@cam:554/s",
+        "http://attacker:8080#@cam:554/s",
+        "http://attacker:8080?@cam:554/s",
+        "http://ca\tm:554/s",
+        "rtsps://cam:554/s",
+        "not a url @cam:554",
+    ] {
+        let error = copy(url).unwrap_err();
+        assert_eq!(error.location, Some(Location::field("password")), "{url}");
+    }
+    // A saved stream whose own URL cannot be read sent the camera's login nowhere, so it approves only the camera's own
+    // address, and keeps its unreadable URL as it is without asking for the login again.
+    let broken_url = r"http://attacker:8080\@cam:554/s";
+    let broken = LiveRecipe {
+        url: Some(broken_url.into()),
+        ..saved.clone()
+    };
+    let moves = |url: Option<&str>| {
+        let mut new = NewLive {
+            url: url.map(Into::into),
+            ..host("cam")
+        };
+        new.copy_login(&broken, &defaults(), LoginUse::Stream)
+    };
+    assert!(moves(None).is_ok());
+    assert!(moves(Some(broken_url)).is_ok());
+    assert!(moves(Some("rtsp://cam/s")).is_ok());
+    assert!(moves(Some("http://attacker:8080/s")).is_err());
+}
+
+/// A stream whose URL has a login of its own never sent the camera's login to that URL's host, so editing the URL to
+/// drop its login must not hand the camera's password to that host: the camera login is trusted where it was entered.
+#[test]
+fn a_url_with_its_own_login_does_not_make_its_host_a_destination_for_the_camera_login() {
+    let saved = |route, url: &str| LiveRecipe {
+        host: "cam".into(),
+        username: "cam-user".into(),
+        password: Secret::new("CAMERA-PASSWORD"),
+        protocol: Protocol::Https,
+        port: 0,
+        head: 1,
+        rtsp_port: 554,
+        rtsp_route: route,
+        resolution: None,
+        url: Some(url.into()),
+        overlay: LiveOverlay::None,
+        kept: Default::default(),
+    };
+    let edit = |saved: &LiveRecipe, url: &str| {
+        let mut new = NewLive {
+            url: Some(url.into()),
+            ..host("cam")
+        };
+        new.copy_login(saved, &defaults(), LoginUse::Stream)
+            .map(|()| new.password.is_some())
+    };
+    // Directly and through the web API.
+    for (route, with_login, without, on_camera, camera_without) in [
+        (
+            RtspRoute::Direct,
+            "rtsp://url-user:URL-PASSWORD@other:8554/s",
+            "rtsp://other:8554/s",
+            "rtsp://url-user:URL-PASSWORD@cam:554/s",
+            "rtsp://cam/s",
+        ),
+        (
+            RtspRoute::WebApi,
+            "https://url-user:URL-PASSWORD@other/s",
+            "https://other/s",
+            "https://url-user:URL-PASSWORD@cam/s",
+            "https://cam/s",
+        ),
+    ] {
+        let elsewhere = saved(route, with_login);
+        let error = edit(&elsewhere, without).unwrap_err();
+        assert_eq!(
+            error.location,
+            Some(Location::field("password")),
+            "{without}"
+        );
+        // Keeping the URL's login is not a copy of the camera's, and the camera's own address still takes it.
+        assert!(edit(&elsewhere, with_login).is_ok());
+        let at_camera = saved(route, on_camera);
+        assert!(
+            edit(&at_camera, camera_without).unwrap(),
+            "{camera_without}"
+        );
+        // Without a login of its own the URL's host is where the camera login went, so it stays trusted there.
+        assert!(edit(&saved(route, without), without).unwrap(), "{without}");
+    }
+}
+
+/// A stream with no login has none to protect: moving it to another route or address copies two empty texts.
+#[test]
+fn an_anonymous_stream_may_change_route_or_address_and_one_with_a_login_may_not() {
+    let saved = |username: &str, password: &str| LiveRecipe {
+        host: "cam".into(),
+        username: username.into(),
+        password: Secret::new(password),
+        protocol: Protocol::Https,
+        port: 0,
+        head: 1,
+        rtsp_port: 554,
+        rtsp_route: RtspRoute::Direct,
+        resolution: None,
+        url: None,
+        overlay: LiveOverlay::None,
+        kept: Default::default(),
+    };
+    let moved = |saved: &LiveRecipe| {
+        let mut new = NewLive {
+            rtsp_route: Some(RtspRoute::WebApi),
+            url: Some("rtsp://other/s".into()),
+            ..host("cam")
+        };
+        new.copy_login(saved, &defaults(), LoginUse::Stream)
+    };
+    assert!(moved(&saved("", "")).is_ok());
+    for (user, password) in [("root", "literal"), ("", "literal"), ("root", "")] {
+        let error = moved(&saved(user, password)).unwrap_err();
+        assert_eq!(
+            error.location,
+            Some(Location::field("password")),
+            "{user:?}"
+        );
+    }
+}
+
+#[test]
 fn an_ipv6_camera_is_the_same_endpoint_however_it_is_spelled() {
     let saved = LiveRecipe {
         host: "2001:db8::1".into(),
@@ -160,6 +383,7 @@ fn an_ipv6_camera_is_the_same_endpoint_however_it_is_spelled() {
         port: 0,
         head: 1,
         rtsp_port: 554,
+        rtsp_route: RtspRoute::Direct,
         resolution: None,
         url: Some("rtsp://[2001:db8::1]/s".into()),
         overlay: LiveOverlay::None,
@@ -187,6 +411,7 @@ fn a_blank_broker_password_is_copied_only_for_the_same_broker_and_user() {
         port: 0,
         head: 1,
         rtsp_port: 554,
+        rtsp_route: RtspRoute::Direct,
         resolution: None,
         url: None,
         overlay: LiveOverlay::Mqtt {

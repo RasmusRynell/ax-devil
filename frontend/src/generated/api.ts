@@ -2588,6 +2588,11 @@ appearances: FileAppearances, } | { "type": "EventRows" } & EventRowsWire | { "t
 export type LiveProtocol = "http" | "https";
 
 /**
+ * Which door of the camera a stream comes through.
+ */
+export type LiveRtspRoute = "direct" | "web_api";
+
+/**
  * Where a live video's overlay comes from. At most one per video.
  */
 export type LiveOverlayKind = "none" | "rtsp" | "mqtt" | "datahub";
@@ -2812,6 +2817,7 @@ channel?: number, };
 /**
  * What the user entered to add a live stream. Text that is absent or blank takes its configured default; numbers are
  * checked against their range by the intake, so its message names the field. Mirrors `workspace::intake::NewLive`.
+ * `Debug` leaves out the password of a login in `url` (`live/redact.rs`).
  */
 export type NewLiveWire = { 
 /**
@@ -2847,11 +2853,16 @@ head?: number,
  */
 rtsp_port?: number, 
 /**
+ * Which door of the camera the stream comes through; absent is the configured one.
+ */
+rtsp_route?: LiveRtspRoute, 
+/**
  * The resolution such as `1280x720`; blank is the camera's own.
  */
 resolution?: string, 
 /**
- * A stream URL to use instead of the one made from the host.
+ * A stream URL to use instead of the one made from the host, as typed. A saved URL is sent without its login's
+ * password, and one sent back that way keeps the saved password.
  */
 url?: string, 
 /**

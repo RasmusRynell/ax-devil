@@ -4,6 +4,9 @@
 //! logs folder receives it too when it can be opened. The file is rotated at 25 MiB, keeping 10 backups.
 //! Every line carries the source file and line of the event. Dependencies are quieted to warnings, whatever the level.
 //!
+//! Retina's records never reach the console or the file: its messages quote the request URL and what the camera
+//! answered, and the camera crate words its failures itself. The caller's own layer (`init`'s `extra`) still sees them.
+//!
 //! TODO: redact credentials and URL userinfo before they are logged
 //! ([03](../../../docs/rebuild/03-runtime.md#logging-must)).
 
@@ -60,12 +63,15 @@ impl Level {
     /// The chosen level for the app's own events; dependencies are never more verbose than warnings.
     fn targets(self) -> Targets {
         let dependency = self.filter().min(LevelFilter::WARN);
-        NOISY_TARGETS
+        let quiet = NOISY_TARGETS.iter().fold(
+            Targets::new().with_default(self.filter()),
+            |targets, target| targets.with_target(*target, dependency),
+        );
+        SILENT_TARGETS
             .iter()
-            .fold(
-                Targets::new().with_default(self.filter()),
-                |targets, target| targets.with_target(*target, dependency),
-            )
+            .fold(quiet, |targets, target| {
+                targets.with_target(*target, LevelFilter::OFF)
+            })
             // Targets match by prefix, so `log` would also match this crate; the longer name wins.
             .with_target(module_path!(), self.filter())
     }
@@ -85,6 +91,11 @@ const NOISY_TARGETS: &[&str] = &[
     "tower",
     "tungstenite",
 ];
+
+/// Targets that are never logged. Retina's messages quote the request URL (its query, a path parameter, a login) and
+/// the camera's answer, free text that cannot be redacted by recognising it, so none of it is written. The camera
+/// crate words a failed stream in a closed vocabulary, and a layer of the caller's own may still read retina's records.
+const SILENT_TARGETS: &[&str] = &["retina"];
 
 /// The size at which the log file is rotated.
 const ROTATE_BYTES: u64 = 25 << 20;
@@ -277,5 +288,81 @@ mod tests {
             assert!(enabled!(subscriber, "logging", L::ERROR), "{file:?}");
             assert!(enabled!(subscriber, "retina::client", L::WARN), "{file:?}");
         }
+    }
+
+    /// A record of retina, whether it arrives through the `log` bridge (as retina's own do) or from `tracing`, reaches
+    /// the caller's layer and neither sink, at every level, and records of anything else still arrive.
+    #[test]
+    fn retinas_records_reach_the_callers_layer_and_no_sink() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        use tracing_log::log;
+        use tracing_subscriber::filter::filter_fn;
+
+        struct Count(Arc<AtomicUsize>);
+        impl<S: tracing::Subscriber> Layer<S> for Count {
+            fn on_event(
+                &self,
+                _: &tracing::Event<'_>,
+                _: tracing_subscriber::layer::Context<'_, S>,
+            ) {
+                self.0.fetch_add(1, Ordering::SeqCst);
+            }
+        }
+        const SECRET: &str =
+            "DESCRIBE response at rtsp://root:URLPASS@cam/s;a=PATHSECRET?token=QUERYSECRET";
+        for level in [Level::Debug, Level::Info, Level::Warning, Level::Error] {
+            for sink in [level.targets()] {
+                for target in ["retina::client", "retina::codec::h264", "retina"] {
+                    for tracing_level in [
+                        tracing::Level::WARN,
+                        tracing::Level::ERROR,
+                        tracing::Level::INFO,
+                    ] {
+                        assert!(
+                            !sink.would_enable(target, &tracing_level),
+                            "{level:?} {target} {tracing_level}"
+                        );
+                    }
+                }
+                assert!(sink.would_enable("logging", &tracing::Level::ERROR));
+            }
+        }
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("log.txt");
+        let seen = Arc::new(AtomicUsize::new(0));
+        let extra = Count(seen.clone()).with_filter(
+            filter_fn(|meta| {
+                *meta.level() == tracing::Level::WARN && meta.target().starts_with("retina::client")
+            })
+            .with_max_level_hint(LevelFilter::WARN),
+        );
+        let (layers, failure) = layers(Level::Debug, Some(&file), extra);
+        assert!(failure.is_none());
+        let subscriber = tracing_subscriber::registry().with(layers);
+        tracing::subscriber::with_default(subscriber, || {
+            // The `log` bridge's own logger, called directly: it needs no global logger.
+            let bridged = |level, target: &str, text: &str| {
+                log::Log::log(
+                    &tracing_log::LogTracer::new(),
+                    &log::Record::builder()
+                        .level(level)
+                        .target(target)
+                        .args(format_args!("{text}"))
+                        .build(),
+                );
+            };
+            bridged(log::Level::Warn, "retina::client", SECRET);
+            bridged(log::Level::Error, "retina::client", SECRET);
+            bridged(log::Level::Debug, "retina::codec", SECRET);
+            tracing::warn!(target: "retina::client", "{SECRET}");
+            tracing::warn!("an app warning");
+        });
+        let written = std::fs::read_to_string(&file).unwrap();
+        assert!(written.contains("an app warning"), "{written}");
+        for hidden in ["URLPASS", "PATHSECRET", "QUERYSECRET", "retina"] {
+            assert!(!written.contains(hidden), "{hidden} in {written}");
+        }
+        // The caller's layer still sees what it asked for: the two warnings of retina's client.
+        assert_eq!(seen.load(Ordering::SeqCst), 2);
     }
 }

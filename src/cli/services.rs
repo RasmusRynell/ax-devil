@@ -340,6 +340,7 @@ mod tests {
                 protocol: Protocol::Http,
                 port: 80,
                 rtsp_port: 554,
+                rtsp_route: workspace::RtspRoute::Direct,
                 head: 1,
                 resolution: None,
                 url: None,

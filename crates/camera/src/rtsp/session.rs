@@ -10,13 +10,14 @@ use retina::client::{
 };
 use retina::codec::{ParametersRef, VideoParametersCodec};
 use tokio::time::{Instant, sleep_until, timeout};
+use url::Url;
 
-use super::Link;
 use super::assemble::{Frame, VideoAssembler};
-use super::keepalive;
-use super::media_url;
+use super::endpoint::{Target, Transport, target};
+use super::failure::{self, Step};
 use super::metadata::{MetadataAssembler, Piece};
 use super::packet::Packet;
+use super::{Link, keepalive, relay, tunnel};
 use crate::error::{CameraError, ErrorKind};
 use crate::live::{AccessUnit, CodecParams, Counters, MetadataDoc, VideoCodec};
 
@@ -32,10 +33,19 @@ pub(super) struct Opened {
 impl Link {
     /// Describes, sets up and plays the streams the request asks for.
     pub(super) async fn open(&self) -> Result<Opened, CameraError> {
-        let url = media_url(&self.camera, &self.request)?;
+        let target = target(&self.camera, &self.request)?;
+        let url = match target.transport {
+            Transport::Rtsp => target.url.clone(),
+            // A new tunnel and relay for every attempt, so a reconnect starts from nothing, as a direct one does.
+            Transport::Http | Transport::Https => {
+                let tunnel = tunnel::connect(&target, self.camera.timeout).await?;
+                let port = relay::serve(tunnel, self.camera.timeout).await?;
+                loopback(&target, port)?
+            }
+        };
         // The password goes to the RTSP client here and nowhere else; retina's types print it, so none is formatted.
         // Retina answers any challenge with it, Basic included, even over plain RTSP; it has no hook to refuse (README).
-        let creds = self.camera.login.as_ref().map(|login| Credentials {
+        let creds = target.login.as_ref().map(|login| Credentials {
             username: login.user.clone(),
             password: login.password.expose().to_owned(),
         });
@@ -43,7 +53,7 @@ impl Link {
             .creds(creds)
             .session_group(Arc::clone(&self.sessions));
         let mut session = self
-            .step(Session::describe(url, options), ErrorKind::Unreachable)
+            .step(Session::describe(url, options), Step::Describe)
             .await?;
         let video = match self.request.video {
             Some(_) => Some(find_video(session.streams())?),
@@ -54,11 +64,11 @@ impl Link {
             false => None,
         };
         for id in video.iter().map(|v| v.0).chain(metadata) {
-            self.step(session.setup(id, SetupOptions::default()), ErrorKind::Lost)
+            self.step(session.setup(id, SetupOptions::default()), Step::Setup)
                 .await?;
         }
         let session = self
-            .step(session.play(PlayOptions::default()), ErrorKind::Lost)
+            .step(session.play(PlayOptions::default()), Step::Play)
             .await?;
         Ok(Opened {
             session,
@@ -68,14 +78,14 @@ impl Link {
     }
 
     /// Runs one RTSP step within the camera's timeout. Retina reports only a response status in a typed way, so a
-    /// failure without one is `otherwise`: what the step being at this point of the connection means.
+    /// failure without one is what `step` failing means at this point of the connection.
     async fn step<T>(
         &self,
         future: impl Future<Output = Result<T, retina::Error>>,
-        otherwise: ErrorKind,
+        step: Step,
     ) -> Result<T, CameraError> {
         match timeout(self.camera.timeout, future).await {
-            Ok(result) => result.map_err(|error| self.classify(&error, otherwise)),
+            Ok(result) => result.map_err(|error| self.classify(&error, step)),
             Err(_) => Err(CameraError::new(
                 ErrorKind::TimedOut,
                 format!("no answer within {} s", self.camera.timeout.as_secs_f32()),
@@ -84,21 +94,22 @@ impl Link {
     }
 
     /// The kind of a retina error: from the response status when it has one (a 401 is a rejected login when one was
-    /// sent), else `otherwise`. A redirect or a 4xx that no rule below names is a fault of the camera: a stream that
-    /// is not there yet or a camera still starting answers so, and RTSP retries it. The detail is retina's first
-    /// line, which names no URL and no login.
-    fn classify(&self, error: &retina::Error, otherwise: ErrorKind) -> CameraError {
+    /// sent), else what `step` failing means. A redirect or a 4xx that no rule below names is a fault of the camera: a
+    /// stream that is not there yet or a camera still starting answers so, and RTSP retries it. The detail is in the
+    /// closed vocabulary of [`failure`]: nothing of retina's text, which quotes the URL and the camera's answer, is kept.
+    fn classify(&self, error: &retina::Error, step: Step) -> CameraError {
+        // Whether a login was sent: the URL's or the camera's.
+        let login = target(&self.camera, &self.request).is_ok_and(|target| target.login.is_some());
         let kind = match error.status_code() {
-            Some(401) if self.camera.login.is_some() => ErrorKind::LoginRejected,
+            Some(401) if login => ErrorKind::LoginRejected,
             Some(401) => ErrorKind::LoginRequired,
             Some(status @ 300..=499) if !matches!(status, 403 | 404 | 408 | 410 | 429) => {
                 ErrorKind::DeviceFault
             }
             Some(status) => ErrorKind::of_status(status),
-            None => otherwise,
+            None => step.otherwise(),
         };
-        let text = error.to_string();
-        CameraError::new(kind, text.lines().next().unwrap_or_default())
+        CameraError::new(kind, failure::words(step, error))
     }
 
     /// Reads packets until the connection fails, which is the `Err`; `Ok` means the app stopped listening.
@@ -125,7 +136,7 @@ impl Link {
             let received = match item {
                 Some(Ok(PacketItem::Rtp(received))) => received,
                 Some(Ok(_)) => continue,
-                Some(Err(error)) => return Err(self.classify(&error, ErrorKind::Lost)),
+                Some(Err(error)) => return Err(self.classify(&error, Step::Stream)),
                 None => {
                     return Err(CameraError::new(
                         ErrorKind::Lost,
@@ -180,6 +191,21 @@ impl Link {
             }
         }
     }
+}
+
+/// The URL retina plays through the relay: the target's path and query on the loopback port the relay listens on. It
+/// is a stand-in for the camera's RTSP address, so the camera sees the same stream request as on its RTSP port.
+fn loopback(target: &Target, port: u16) -> Result<Url, CameraError> {
+    Url::parse(&format!(
+        "rtsp://127.0.0.1:{port}{}",
+        target.request_target()
+    ))
+    .map_err(|_| {
+        CameraError::new(
+            ErrorKind::InvalidTarget,
+            "the stream URL cannot be played through the tunnel",
+        )
+    })
 }
 
 fn access_unit(epoch: u32, codec: &Arc<CodecParams>, frame: Frame) -> AccessUnit {

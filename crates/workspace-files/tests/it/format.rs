@@ -7,8 +7,8 @@ use serde_json::{Value, json};
 use std::{fs, path::Path};
 use workspace::{
     Bookmark, BookmarkKind, BookmarkTarget, DataHubSettings, KeptTransports, LIVE_SLOT,
-    LiveOverlay, LiveRecipe, OverlayRecipe, PlaylistRecipe, Protocol, Recipe, Secret, Source,
-    Unreadable, VideoRecipe, Workspace, WorkspaceItem,
+    LiveOverlay, LiveRecipe, OverlayRecipe, PlaylistRecipe, Protocol, Recipe, RtspRoute, Secret,
+    Source, Unreadable, VideoRecipe, Workspace, WorkspaceItem,
 };
 use workspace_files::{SUFFIX, load, save};
 
@@ -133,6 +133,7 @@ fn a_workspace_round_trips_with_paths_inside_its_folder_relative() {
             port: 8080,
             head: 2,
             rtsp_port: 8554,
+            rtsp_route: RtspRoute::WebApi,
             resolution: Some("1280x720".into()),
             url: None,
             overlay: LiveOverlay::Mqtt {
@@ -174,6 +175,7 @@ fn a_workspace_round_trips_with_paths_inside_its_folder_relative() {
             port: 0,
             head: 9999,
             rtsp_port: 554,
+            rtsp_route: RtspRoute::Direct,
             resolution: None,
             url: None,
             overlay: LiveOverlay::None,
@@ -204,6 +206,9 @@ fn a_workspace_round_trips_with_paths_inside_its_folder_relative() {
     );
     assert_eq!(live["kept"]["datahub"]["topic"], "kept.topic");
     assert!(json["items"][6].get("kept").is_none());
+    // The route is written only when it is not the default, so a file from before it loads as Direct.
+    assert_eq!(live["rtsp_route"], "web_api");
+    assert!(json["items"][6].get("rtsp_route").is_none());
     assert_eq!(json["version"], 2);
     assert_eq!(json["items"][0]["video"], "clips/a.mp4");
     assert_eq!(json["items"][0]["overlays"][0]["path"], "clips/a.xml");

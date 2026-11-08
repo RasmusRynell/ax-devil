@@ -311,6 +311,23 @@ pub const TABLE: &[Setting] = &[
         scope: Scope::Server,
     },
     Setting {
+        key: "camera.rtsp_route",
+        kind: Kind::Choice {
+            options: &[("direct", "Direct"), ("web_api", "Via web API")],
+            toggle: true,
+            default: "direct",
+        },
+        label: "RTSP route",
+        description: None,
+        page: Some("Stream defaults"),
+        section: "Device",
+        live: true,
+        env: false,
+        secret: false,
+        quick_setup: false,
+        scope: Scope::Server,
+    },
+    Setting {
         key: "camera.timeout",
         // Seconds one request or connection attempt may take; read when connecting, never stored on an item.
         kind: Kind::Whole {

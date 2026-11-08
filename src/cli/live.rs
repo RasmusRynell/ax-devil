@@ -3,7 +3,7 @@
 
 use clap::{Args, ValueEnum};
 use workspace::{
-    Protocol, Secret,
+    Protocol, RtspRoute, Secret,
     intake::{LiveDefaults, LiveMode, NewDataHub, NewLive, NewLiveOverlay, NewMqtt},
 };
 
@@ -21,6 +21,14 @@ pub(super) enum LiveOverlayArg {
 pub(super) enum LiveProtocolArg {
     Https,
     Http,
+}
+
+/// Which door of the camera the stream comes through, spelled as the Python app does.
+#[derive(Clone, Copy, ValueEnum)]
+pub(super) enum LiveRouteArg {
+    Direct,
+    #[value(name = "web_api")]
+    WebApi,
 }
 
 /// The flags of `live`.
@@ -65,6 +73,9 @@ pub(super) struct LiveArgs {
     /// The protocol of the device API.
     #[arg(long, value_name = "PROTOCOL", ignore_case = true)]
     device_api_protocol: Option<LiveProtocolArg>,
+    /// Whether the stream comes through the camera's RTSP port or its web API (for a network that blocks the port).
+    #[arg(long, value_name = "ROUTE", ignore_case = true)]
+    rtsp_route: Option<LiveRouteArg>,
     /// The DataHub WebSocket topic.
     #[arg(long, value_name = "TOPIC")]
     topic: Option<String>,
@@ -106,6 +117,10 @@ impl LiveArgs {
                 LiveProtocolArg::Http => Protocol::Http,
             }),
             head: self.camera_head,
+            rtsp_route: self.rtsp_route.map(|route| match route {
+                LiveRouteArg::Direct => RtspRoute::Direct,
+                LiveRouteArg::WebApi => RtspRoute::WebApi,
+            }),
             resolution: self.resolution,
             overlay: Some(overlay),
             ..NewLive::default()

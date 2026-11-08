@@ -55,6 +55,7 @@ describe("settings dialog, real table", () => {
         "camera.user",
         "camera.password",
         "camera.rtsp_port",
+        "camera.rtsp_route",
         "camera.timeout",
         "camera.head",
         "camera.overlay",

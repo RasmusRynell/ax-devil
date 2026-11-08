@@ -394,6 +394,7 @@ async fn a_live_stream_is_named_by_its_content_and_stops_when_its_viewer_closes(
         port: 0,
         head: 1,
         rtsp_port: 554,
+        rtsp_route: workspace::RtspRoute::Direct,
         resolution: None,
         url: None,
         overlay: LiveOverlay::None,

@@ -19,3 +19,5 @@ tracing-subscriber.workspace = true
 [dev-dependencies]
 tempfile = "3"
 tracing-core = "0.1"
+# `dispatch_record` sends a `log` record to the current subscriber as the bridge does, without a global logger.
+tracing-log = "0.2"

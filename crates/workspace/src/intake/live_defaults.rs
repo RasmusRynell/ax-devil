@@ -1,6 +1,9 @@
 //! The configured values a new Live Stream Item takes for what the user left empty.
 
-use crate::{credentials::Secret, live::Protocol};
+use crate::{
+    credentials::Secret,
+    live::{Protocol, RtspRoute},
+};
 
 /// What overlay a new stream gets when the user did not choose.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -59,6 +62,8 @@ pub struct LiveDefaults {
     pub head: u16,
     /// The RTSP port.
     pub rtsp_port: u16,
+    /// Which door of the camera a stream comes through.
+    pub rtsp_route: RtspRoute,
     /// The resolution; empty is the camera's own.
     pub resolution: String,
     /// The overlay a stream gets unless the user chose one.

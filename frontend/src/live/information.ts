@@ -56,6 +56,7 @@ function connectionFields(recipe: NewLiveWire): [string, InfoValue][] {
     ["stream URL", recipe.url || "(default)"],
     ["device API protocol", (recipe.protocol ?? "").toUpperCase()],
     ["device port", recipe.port || "(standard)"],
+    ["RTSP route", recipe.rtsp_route === "web_api" ? "Via web API" : "Direct"],
     ["RTSP port", recipe.rtsp_port ?? ""],
   ];
 }

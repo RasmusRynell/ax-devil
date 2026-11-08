@@ -225,3 +225,5 @@ mod tests;
 
 #[cfg(test)]
 mod label_tests;
+#[cfg(test)]
+mod url_tests;

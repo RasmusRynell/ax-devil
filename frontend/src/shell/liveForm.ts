@@ -4,6 +4,7 @@ import type {
   KeptMqttWire,
   LiveConnection,
   LiveProtocol,
+  LiveRtspRoute,
   SettingsState,
   NewLiveOverlayWire,
   NewLiveWire,
@@ -36,6 +37,8 @@ export interface LiveForm {
   port: string;
   head: string;
   rtsp_port: string;
+  /** Blank is the configured route. */
+  rtsp_route: "" | LiveRtspRoute;
   resolution: string;
   url: string;
   overlay: OverlayMode;
@@ -61,6 +64,7 @@ const FIELDS: Record<FieldKey, true> = {
   port: true,
   head: true,
   rtsp_port: true,
+  rtsp_route: true,
   resolution: true,
   url: true,
   overlay: true,
@@ -78,7 +82,7 @@ const FIELDS: Record<FieldKey, true> = {
 export const isField = (location: string | undefined): boolean =>
   location !== undefined && Object.hasOwn(FIELDS, location);
 /** The fields that hold any text. */
-export type TextKey = Exclude<FieldKey, "protocol" | "overlay">;
+export type TextKey = Exclude<FieldKey, "protocol" | "rtsp_route" | "overlay">;
 
 /** The settings the form starts from as values, unlike the host and logins, which stay `$NAME` references. */
 const VALUED: readonly SettingKey[] = [
@@ -146,6 +150,7 @@ export function startForm(values: SettingsState["values"]): LiveForm {
     port: "",
     head: textOf(values["camera.head"]),
     rtsp_port: "",
+    rtsp_route: "",
     resolution: "",
     url: "",
     overlay: "none",
@@ -184,6 +189,7 @@ export function formFrom(values: SettingsState["values"], wire: Partial<NewLiveW
     port: shown(wire.port),
     head: shown(wire.head) || form.head,
     rtsp_port: shown(wire.rtsp_port),
+    rtsp_route: wire.rtsp_route ?? "",
     resolution: shown(wire.resolution),
     url: shown(wire.url),
     overlay: overlay?.mode ?? form.overlay,
@@ -251,19 +257,6 @@ export const typable = (entered: string, max: number) =>
 export const chosen = (value: string, choices: readonly string[]) =>
   choices.includes(value) ? value : "";
 
-/** What is wrong with a stream URL, as the backend's recipe check says it, or nothing. */
-function urlProblem(entered: string) {
-  const lower = entered.trim().toLowerCase();
-  if (!lower) return undefined;
-  if (!lower.startsWith("rtsp://")) return "The stream URL must start with rtsp://.";
-  const authority = lower.slice("rtsp://".length).split(/[/?#]/)[0] ?? "";
-  if (authority.includes("@")) return "The stream URL must not contain a login.";
-  const host = authority.startsWith("[")
-    ? /^\[[^\]]*\]/.exec(authority)?.[0]
-    : authority.split(":")[0];
-  return host ? undefined : "The stream URL has no host.";
-}
-
 /**
  * What stops the form from being added, in the order the form is read, or nothing: the rules the backend's recipe
  * check applies, so OK waits for a form the backend accepts. Every number is read whatever the overlay, so a saved
@@ -288,8 +281,6 @@ export function problemOf(form: LiveForm, values: SettingsState["values"], modeN
   const protocol = form.protocol || textOf(values["camera.protocol"]);
   if (whole(form.port) === (protocol === "http" ? 443 : protocol === "https" ? 80 : undefined))
     return `${protocol.toUpperCase()} cannot use port ${form.port.trim()}; use the standard port.`;
-  const url = urlProblem(form.url);
-  if (url) return url;
   const broker = Number(form.broker_port);
   const channel = Number(form.channel);
   switch (form.overlay) {
@@ -370,6 +361,7 @@ export function newLive(form: LiveForm, editing = false): NewLiveWire {
     port: whole(form.port),
     head: whole(form.head),
     rtsp_port: whole(form.rtsp_port),
+    rtsp_route: form.rtsp_route || undefined,
     resolution: read(form.resolution),
     url: read(form.url),
     overlay: overlayOf(form, read),
