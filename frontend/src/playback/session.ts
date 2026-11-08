@@ -51,6 +51,7 @@ export class PlaybackSession implements LaneControl {
     this.#lanes,
     (message) => this.#link.send(message),
     (callback, ms) => this.#deps.after(callback, ms),
+    () => this.#publish(),
   );
   /** A paused clock waits briefly for lane data after a seek or step. */
   readonly #wait = new DataWait(
@@ -87,7 +88,7 @@ export class PlaybackSession implements LaneControl {
   /** An ordinary open plays from its first frame once shown, unless the viewer acts first. */
   #autoplay: boolean;
   #wasPlaying = false;
-  /** A lost connection took a running clock: the reopened one is paused. */
+  /** A lost connection took a running clock; the reopened one is paused. */
   #stoppedByLoss = false;
   #cancelFrame: (() => void) | undefined;
   #frameCount = 0;
@@ -114,13 +115,13 @@ export class PlaybackSession implements LaneControl {
     });
   }
 
-  /** Where the next session should open, and whether it played; kept after the video is released. */
+  /** Where the next session should open, and whether it played; kept after the video goes. */
   resumeState(): ResumeState & { playing: boolean } {
     const playing = (this.#clock?.playing ?? this.#wasPlaying) || this.#autoplay;
     return { frame: this.#clock?.playhead ?? this.#resumeAt ?? 0, speed: this.#speed, playing };
   }
 
-  /** Whether an ordinary open still owes its autoplay. */
+  /** Whether an open still owes its autoplay. */
   get autoplayPending(): boolean {
     return this.#autoplay;
   }
@@ -176,7 +177,7 @@ export class PlaybackSession implements LaneControl {
     this.#surface = surface;
   }
 
-  /** Draws the shown frame again for a surface that lost its picture, if still held. */
+  /** Draws the shown frame again, for a surface that lost its picture or a pause. */
   represent(): void {
     const shown = this.#clock?.info();
     if (shown) this.#draw(shown.sequenceId);
@@ -235,6 +236,7 @@ export class PlaybackSession implements LaneControl {
   pause(): void {
     this.#autoplay = false;
     this.#clock?.pause();
+    this.represent();
     this.#changed();
     this.#intend();
   }
@@ -406,7 +408,8 @@ export class PlaybackSession implements LaneControl {
   /** Draws a held frame with what the lanes draw on it. */
   #draw(sequenceId: number): void {
     const held = this.#buffer?.get(sequenceId);
-    if (held && this.#data.present(held, sequenceId, this.#surface)) this.#publish();
+    if (held && this.#data.present(held, sequenceId, this.#surface, this.#clock?.playing))
+      this.#publish();
   }
 
   #ready(opened: Extract<ServerMessage, { type: "Opened" }>, times: Float64Array): void {
@@ -432,8 +435,8 @@ export class PlaybackSession implements LaneControl {
   }
 
   /**
-   * One display refresh: present the newest due frame, if any, then report the window. Asked for only while playing
-   * or when something changed or an awaited frame arrived.
+   * One display refresh: present the newest due frame, if any, then report the window. Asked for only while playing,
+   * after a change or an awaited frame.
    */
   #tick = (): void => {
     this.#cancelFrame = undefined;

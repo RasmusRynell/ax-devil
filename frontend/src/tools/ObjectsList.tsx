@@ -11,6 +11,7 @@ import type { FileRowWire, SearchWire } from "../generated/api";
 import { Button } from "../kit/Button";
 import { SegmentedControl } from "../kit/Chips";
 import type { LaneFrame } from "../playback/contract";
+import { readyOf } from "../playback/fileBasis";
 import type { FileEvents } from "../playback/fileEvents";
 import type { FileScope } from "../playback/fileScope";
 import type { FrameFields } from "../playback/frameFields";
@@ -110,7 +111,13 @@ export function ObjectsList({
   /** What stands above the list: the panel's tabs, the lane to list and the button that closes the panel. */
   header: ReactNode;
 }) {
-  const { scope, text, sorts, anchor } = list;
+  const { text, sorts, anchor } = list;
+  // File scope needs the lane's file read; without it the list falls back to Frame and the switch is not offered.
+  const hasFile = !frameOnly && readyOf(view.lanes[lane]) !== undefined;
+  const scope = hasFile ? list.scope : "frame";
+  useEffect(() => {
+    if (list.scope !== scope) onList({ ...list, scope });
+  }, [list, scope, onList]);
   const [offset, setOffset] = useState(0);
   // Where each scope's table was scrolled and where its cursor was, for when the scope is shown again.
   const tables = useRef<Record<Scope, TableMemory>>({
@@ -180,6 +187,8 @@ export function ObjectsList({
   const { page } = files;
   const stale = inFile ? staleOf(files) : null;
   const total = inFile ? (page?.total ?? 0) : objects.length;
+  // The header counts Frame scope against what the frame holds before the lane's toggles and filter hide any.
+  const whole = inFile ? total : (frame?.columns.rows ?? 0);
   const count = inFile ? (page?.matched ?? 0) : found.length;
   const shownFrame = view.shown?.sequenceId;
   const fileCols = useMemo(
@@ -271,7 +280,7 @@ export function ObjectsList({
     <UnderPage open={open} steps={steps}>
       {header}
       <div className="flex items-center gap-m border-b border-line py-xs pr-xs pl-m">
-        {!frameOnly && (
+        {hasFile && (
           <div className="min-w-0" title={scopeHints}>
             <SegmentedControl
               label="Scope"
@@ -281,7 +290,7 @@ export function ObjectsList({
             />
           </div>
         )}
-        <span className="min-w-0 flex-1 truncate text-right text-small text-muted">{`${awaiting && found !== NO_OBJECTS ? `${count}…` : count} of ${total}`}</span>
+        <span className="min-w-0 flex-1 truncate text-right text-small text-muted">{`${awaiting && found !== NO_OBJECTS ? `${count}…` : count} of ${whole}`}</span>
       </div>
       <div className="p-m pb-s">
         <SearchBar

@@ -42,7 +42,8 @@ const tipIfCut = (text: string) => (event: MouseEvent<HTMLElement>) => {
  */
 function Cell<Row>({ column, row }: { column: Column<Row>; row: Row }) {
   const kind = KINDS[column.kind];
-  if (!column.text) return <div className="min-w-0 pr-m">{column.render?.(row)}</div>;
+  if (column.render || !column.text)
+    return <div className="min-w-0 pr-m">{column.render?.(row)}</div>;
   const text = column.text(row);
   const category = column.category?.(row);
   const look = `${category === undefined ? "pr-m" : ""} ${column.muted ? "text-muted" : ""} ${kind.mono ? "font-mono text-aside" : ""} ${kind.numeric ? "text-right tabular-nums" : ""}`;
@@ -63,14 +64,24 @@ function Cell<Row>({ column, row }: { column: Column<Row>; row: Row }) {
   );
 }
 
+/** What copying `row` puts on the clipboard: `copyText` where the table has one, else its columns' texts. */
+function copyOf<Row>(
+  columns: readonly Column<Row>[],
+  copyText: ((row: Row) => string) | undefined,
+  row: Row,
+): string {
+  return copyText ? copyText(row) : rowText(columns, row);
+}
+
 /** What a table keeps for the next time it is shown: how far it was scrolled and the key of the row its cursor was on. */
 export type TableMemory = { top: number; cursor: string | null };
 
 /**
  * The cursor: the row it follows, or, with no key, the position it was put on (the first row, or a row not loaded).
- * It is `waiting` when put on a row that is not loaded yet, and follows that row once it is.
+ * It is `waiting` when put on a row that is not loaded yet, and follows that row once it is; `open` when Enter was
+ * pressed there, so the row is activated as it arrives.
  */
-type Cursor = { key: string | null; index: number; waiting?: boolean };
+type Cursor = { key: string | null; index: number; waiting?: boolean; open?: boolean };
 
 type RowProps<Row> = {
   id: string;
@@ -88,6 +99,7 @@ type RowProps<Row> = {
   copied: boolean;
   cursor: string | undefined;
   onPick: (index: number) => void;
+  onCopy: (index: number) => void;
 };
 
 /** One row. It holds no state and no hooks, and is drawn again only when its own props change. */
@@ -105,6 +117,7 @@ const TableRow = memo(function TableRow<Row>({
   copied,
   cursor,
   onPick,
+  onCopy,
 }: RowProps<Row>) {
   return (
     <div
@@ -117,8 +130,8 @@ const TableRow = memo(function TableRow<Row>({
       aria-busy={row === undefined ? true : undefined}
       data-cursor-id={cursor}
       onClick={() => onPick(index)}
-      className={`${GRID} ${LEAD} relative h-row cursor-pointer hover:bg-hover ${
-        dimmed ? "text-muted [&>*]:opacity-50" : "text-fg"
+      className={`${GRID} ${LEAD} group/row relative h-row cursor-pointer hover:bg-hover ${
+        dimmed ? "text-muted [&>:not(button)]:opacity-50" : "text-fg"
       } ${selected ? "border-accent bg-hover" : "border-transparent"} ${tinted ? "bg-accent/15" : ""} ${
         active
           ? "group-focus-visible/list:outline-(length:--stroke-focus) group-focus-visible/list:-outline-offset-(--stroke-focus) group-focus-visible/list:outline-accent"
@@ -127,13 +140,29 @@ const TableRow = memo(function TableRow<Row>({
     >
       {row !== undefined &&
         shown.map((i) => <Cell key={columns[i].key} column={columns[i]} row={row} />)}
-      {copied && (
-        <span
-          role="status"
-          className="absolute inset-y-0 right-0 flex items-center bg-hover px-m text-accent"
+      {row !== undefined && (
+        // The pointer's way to the copy that Ctrl+C and the context menu also do, which assistive technology uses.
+        <button
+          type="button"
+          tabIndex={-1}
+          aria-hidden
+          title="Copy row"
+          onClick={(event) => {
+            event.stopPropagation();
+            onCopy(index);
+          }}
+          className={`absolute inset-y-0 right-0 flex cursor-pointer items-center border-0 bg-hover px-m ${
+            copied
+              ? "text-accent"
+              : "text-muted opacity-0 group-hover/row:opacity-100 hover:text-fg"
+          }`}
         >
-          <Icon name="check" />
-          <span className="sr-only">Copied</span>
+          <Icon name={copied ? "check" : "copy"} />
+        </button>
+      )}
+      {copied && (
+        <span role="status" className="sr-only">
+          Copied
         </span>
       )}
     </div>
@@ -214,9 +243,9 @@ export function Table<Row>({
 
   useEffect(() => onRange?.(start, end), [onRange, start, end]);
 
-  const latest = useRef({ rowAt, keyOf, onActivate, onCursor, memory });
+  const latest = useRef({ rowAt, keyOf, onActivate, onCursor, memory, columns, copyText });
   useLayoutEffect(() => {
-    latest.current = { rowAt, keyOf, onActivate, onCursor, memory };
+    latest.current = { rowAt, keyOf, onActivate, onCursor, memory, columns, copyText };
   });
   /** Puts the cursor on the row at `index`. */
   const place = useCallback((index: number) => {
@@ -259,6 +288,7 @@ export function Table<Row>({
     setCursor({ key, index: cursor.index });
     if (memory) memory.cursor = key;
     onCursor?.(key);
+    if (cursor.open) onActivate(row, cursor.index);
   });
 
   const go = (index: number) => {
@@ -273,9 +303,17 @@ export function Table<Row>({
     return () => clearTimeout(timer);
   }, [copied]);
   /** Copies the text of the row with `key`; the check shows once the clipboard has it. */
-  const copy = async (key: string, text: string) => {
+  const copy = useCallback(async (key: string, text: string) => {
     if (await writeClipboard(text)) setCopied(key);
-  };
+  }, []);
+  const copyRow = useCallback(
+    (index: number) => {
+      const { rowAt, keyOf, columns, copyText } = latest.current;
+      const row = rowAt(index);
+      if (row !== undefined) void copy(keyOf(row), copyOf(columns, copyText, row));
+    },
+    [copy],
+  );
   // The row a context menu was opened on, as it was then: rows move while a video plays. A right click off the rows
   // leaves the browser's own menu.
   const [menuRow, setMenuRow] = useState<{ key: string; text: string } | null>(null);
@@ -284,7 +322,7 @@ export function Table<Row>({
     const index = row ? Number(row.getAttribute("aria-posinset")) - 1 : -1;
     const found = index < 0 ? undefined : rowAt(index);
     if (found === undefined) event.stopPropagation();
-    else setMenuRow({ key: keyOf(found), text: (copyText ?? ((r) => rowText(columns, r)))(found) });
+    else setMenuRow({ key: keyOf(found), text: copyOf(columns, copyText, found) });
   };
   const onKeyDown = (event: KeyboardEvent) => {
     const page = end - start;
@@ -295,16 +333,17 @@ export function Table<Row>({
       PageUp: () => go(at - page),
       Home: () => go(0),
       End: () => go(count - 1),
-      // A row the cursor is on but that is not loaded is brought into view, to be chosen once it is.
+      // A row the cursor is on but that is not loaded is brought into view, to be chosen as it arrives.
       Enter: () => {
         if (at < 0) return;
-        if (rowAt(at) === undefined) reveal(at);
-        else pick(at);
+        if (rowAt(at) !== undefined) return pick(at);
+        setCursor({ key: null, index: at, waiting: true, open: true });
+        reveal(at);
       },
     };
     if (event.key === "c" && (event.ctrlKey || event.metaKey)) {
       const row = at < 0 ? undefined : rowAt(at);
-      if (row !== undefined) void copy(keyOf(row), (copyText ?? ((r) => rowText(columns, r)))(row));
+      if (row !== undefined) void copy(keyOf(row), copyOf(columns, copyText, row));
       return;
     }
     keys[event.key]?.();
@@ -415,6 +454,7 @@ export function Table<Row>({
                     copied={row !== undefined && copied === keyOf(row)}
                     cursor={row === undefined ? undefined : cursorId(row)}
                     onPick={pick}
+                    onCopy={copyRow}
                   />
                 );
               })}

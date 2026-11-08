@@ -10,6 +10,7 @@ import { FrameFields } from "../playback/frameFields";
 import { LaneSet } from "../playback/lanes";
 import type { ClientMessage, LaneStatusWire, LeafWire } from "../playback/protocol";
 import { INITIAL_VIEW, type PlaybackView } from "../playback/view";
+import { compileFilter } from "../present";
 import { fullSample } from "../present/fixtures";
 import { names } from "../search/match";
 import { freshEvents, FRESH_LIST } from "./listState";
@@ -120,6 +121,8 @@ export function mount(
     frame = FRAME,
     leaves = {},
     unanswered: held = false,
+    keep = "",
+    plain = false,
   }: Partial<{
     second: typeof FRAME;
     selection: Selection;
@@ -129,6 +132,10 @@ export function mount(
     leaves: { [id: string]: [string, LeafWire][] };
     /** The backend never answers a request for leaves. */
     unanswered: boolean;
+    /** The lane's frame filter: the expression an object must satisfy to be kept. */
+    keep: string;
+    /** The lane's file is not read: it is described but has no status. */
+    plain: boolean;
   }> = {},
 ) {
   vi.useFakeTimers();
@@ -140,7 +147,7 @@ export function mount(
     ],
     LANE_SETTINGS,
   );
-  lanes.setStatus(0, READY);
+  if (!plain) lanes.setStatus(0, READY);
   if (second) lanes.setStatus(1, READY);
   const sent: ClientMessage[] = [];
   const after = (run: () => void, ms: number) => {
@@ -152,6 +159,7 @@ export function mount(
   let sampleNumber = 0;
   // A frame is the same object for as long as the sample is, as the viewer's is.
   let unanswered = held;
+  const filtered = compileFilter(keep);
   const drawn = new Map<string, LaneFrame>();
   const laneFrame = (lane: number): LaneFrame => {
     const key = `${lane}:${sampleNumber}`;
@@ -163,7 +171,7 @@ export function mount(
       sample: sampleNumber,
       columns: lane === 1 && second ? second : sample,
       classMask: { enabled: new Uint32Array(sample.maskWords), options: 0 },
-      filter: null,
+      filter: filtered.ok ? filtered.filter : null,
     } as unknown as LaneFrame;
     drawn.set(key, made);
     return made;

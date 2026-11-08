@@ -1,6 +1,7 @@
 /** An event as the media tools show it, whether the file lists it or a live stream reported it. */
 
 import type { EventObjectWire, EventRowWire, OperationKindWire } from "../generated/api";
+import { RelatedIds } from "./RelatedIds";
 import type { Column } from "./table/columns";
 
 /** One line of an Events list. */
@@ -79,9 +80,9 @@ export const EVENT_COLUMNS: readonly Column<EventItem>[] = [
   {
     key: "objects",
     title: "Objects",
-    kind: "text",
+    kind: "mono",
     text: (item) => item.objects.map(({ id }) => id).join(", "),
-    muted: true,
+    render: (item) => <RelatedIds ids={item.objects.map(({ id }) => id)} />,
     stretch: true,
   },
 ];

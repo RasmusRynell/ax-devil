@@ -58,7 +58,8 @@ const px = (value: string, fallback: number): number => {
   return Number.isFinite(parsed) ? parsed : fallback;
 };
 
-function fontOf(element: Element): Font {
+/** The face `element` is drawn in. */
+export function fontOf(element: Element): Font {
   const style = getComputedStyle(element);
   const size = px(style.fontSize, 14);
   const css = `${style.fontStyle} ${style.fontWeight} ${size}px ${style.fontFamily}`;

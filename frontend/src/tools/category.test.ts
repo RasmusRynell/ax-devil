@@ -10,8 +10,11 @@ describe("categoryDot", () => {
       names.map((name, i) => ({ id: String(i), class: name, box: [0, 0, 1, 1] })),
     );
     names.forEach((name, row) => {
-      expect(categoryDot(name)).toBe(`bg-category-${describeRow(sample, row).category}`);
+      expect(categoryDot(name)).toBe(`bg-dot-${describeRow(sample, row).category}`);
     });
     expect(categoryDot("TRUCK")).toBe(categoryDot("truck"));
+    // Case folding, not lower-casing: `ß` is `ss`, and a final `ς` is `σ`.
+    expect(categoryDot("Straße")).toBe(categoryDot("STRASSE"));
+    expect(categoryDot("ΣΑΣ")).toBe(categoryDot("σας"));
   });
 });

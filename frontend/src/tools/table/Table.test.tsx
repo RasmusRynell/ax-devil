@@ -75,7 +75,7 @@ describe("Table", () => {
     expect(onActivate).toHaveBeenCalledTimes(1);
   });
 
-  it("goes to a row that is not loaded and stays on it once it is, wherever the rows then go", () => {
+  it("goes to a row that is not loaded, opens it with that one Enter once it is, and stays on it wherever the rows then go", () => {
     const rows = Array.from({ length: 40 }, (_, i) => rowAt(i));
     const onActivate = vi.fn();
     const { rerender } = render(table("unloaded", 40, rows.slice(0, 5), onActivate));
@@ -84,9 +84,11 @@ describe("Table", () => {
     expect(onActivate).not.toHaveBeenCalled();
 
     rerender(table("unloaded", 40, rows, onActivate));
+    expect(onActivate).toHaveBeenCalledOnce();
+    expect(onActivate).toHaveBeenLastCalledWith(rows[39], 39);
     rerender(table("unloaded", 40, [...rows].reverse(), onActivate));
     fireEvent.keyDown(screen.getByRole("listbox"), { key: "Enter" });
-    expect(onActivate).toHaveBeenCalledWith(rows[39], 0);
+    expect(onActivate).toHaveBeenLastCalledWith(rows[39], 0);
   });
 
   it("keeps the width the user gave a column when the table is drawn again", () => {
@@ -107,6 +109,25 @@ describe("Table", () => {
     cleanup();
     render(table("another"));
     expect(width()).toBe(before);
+  });
+});
+
+describe("Table dividers", () => {
+  const width = () =>
+    Number(screen.getByRole("separator", { name: "Resize ID" }).getAttribute("aria-valuenow"));
+
+  it("sizes a column by dragging its divider and returns it to its content's width on a double click", () => {
+    HTMLElement.prototype.setPointerCapture = vi.fn();
+    render(table("dragged"));
+    const divider = screen.getByRole("separator", { name: "Resize ID" });
+    const fitted = width();
+    fireEvent.pointerDown(divider, { pointerId: 1, clientX: 100 });
+    fireEvent.pointerMove(divider, { pointerId: 1, clientX: 140, buttons: 1 });
+    fireEvent.pointerUp(divider, { pointerId: 1 });
+    expect(width()).toBe(fitted + 40);
+
+    fireEvent.doubleClick(divider);
+    expect(width()).toBe(fitted);
   });
 });
 

@@ -31,8 +31,14 @@ const encoder = new TextEncoder();
 /** The class of an object that has no classification. */
 const UNKNOWN_CLASS = "unknown";
 
-/** How many colours the hover chip's dot picks from. */
-export const CATEGORY_COLORS = 8;
+/** How many colours a category dot picks from. */
+const CATEGORY_COLORS = 8;
+
+/** The colour index of category `name`, from its case-folded name (as the reference's `casefold`: `ß` is `ss`, `ς` is `σ`). */
+export function categoryIndex(name: string): number {
+  const folded = name.toUpperCase().toLowerCase().replaceAll("ς", "σ");
+  return crc32(encoder.encode(folded)) % CATEGORY_COLORS;
+}
 
 /**
  * What the hover chip says of a row: `"<id> <class>"`, `"score S · confidence C · speed V"` leaving out what is
@@ -56,7 +62,7 @@ export function describeRow(
     entity,
     label: `${entity} ${className}`,
     detail: detail.join(" · "),
-    category: crc32(encoder.encode(className.toLowerCase())) % CATEGORY_COLORS,
+    category: categoryIndex(className),
   };
 }
 

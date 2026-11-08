@@ -5,7 +5,9 @@
  * still out (the backend keeps only the newest), and the last 16 replies are kept. A request whose reply never
  * comes (the backend may drop one) is asked again when its sample is wanted again, or after RESEND_AFTER draws.
  * Nothing is asked while no inspector page shows; the selection is kept and asked about when one does. A view only ever holds
- * the shown sample's data: while its reply is out the summary is the shown sample's and there are no fields.
+ * the shown sample's data: while its reply is out the summary is the shown sample's and there are no fields. While a
+ * video plays the view follows the draws at most every PLAYING_INTERVAL_MS; the newest draw replaces those skipped, and
+ * `catchUp`, a selection, showing the inspector or an answer brings the view up to it at once.
  */
 
 import { MOTION_STATES } from "../present/columns";
@@ -15,6 +17,9 @@ import type { ClientMessage, FieldWire, InspectionWire, ServerMessage } from "./
 
 /** How many replies are kept, so that stepping back and forth asks the backend once per frame. */
 const CACHE_SIZE = 16;
+
+/** The least time between two updates of what the inspector shows while a video plays: 10 Hz, in milliseconds. */
+export const PLAYING_INTERVAL_MS = 100;
 
 /** How many draws a request may stay unanswered while its sample is shown before it is asked again. */
 const RESEND_AFTER = 120;
@@ -98,10 +103,39 @@ export class Inspections {
     style: number | null;
   } | null = null;
   #view: InspectionView = { state: "none" };
+  readonly #now: () => number;
+  /** When the view last followed a draw, and whether a draw has been skipped since. */
+  #followedAt = Number.NEGATIVE_INFINITY;
+  #behind = false;
+  #cancel: (() => void) | undefined;
 
-  /** `send` asks the backend for an object's fields. */
-  constructor(send: (message: ClientMessage) => void) {
+  /** `send` asks the backend for an object's fields; `now` reads the time in milliseconds. */
+  constructor(send: (message: ClientMessage) => void, now: () => number = () => performance.now()) {
     this.#send = send;
+    this.#now = now;
+  }
+
+  /**
+   * After a draw: if the view skipped it, brings the view up to date with `changed` once PLAYING_INTERVAL_MS pass
+   * without another draw, as when the source stalls. Each draw restarts the wait.
+   */
+  trail(after: (callback: () => void, ms: number) => () => void, changed: () => void): void {
+    this.#cancel?.();
+    this.#cancel = this.#behind
+      ? after(() => {
+          if (this.catchUp()) changed();
+        }, PLAYING_INTERVAL_MS)
+      : undefined;
+  }
+
+  /** Brings the view up to the newest draw after skipped ones. Reports whether the view changed. */
+  catchUp(): boolean {
+    this.#cancel?.();
+    this.#cancel = undefined;
+    if (!this.#behind) return false;
+    this.#behind = false;
+    this.#followedAt = this.#now();
+    return this.#update();
   }
 
   /** What the inspector shows; the same object until something in it changed. */
@@ -129,13 +163,23 @@ export class Inspections {
     return visible && this.#update();
   }
 
-  /** The lanes drew these frames: follows the selection to the shown samples. Reports whether the view changed. */
-  follow(frames: readonly (LaneFrame | undefined)[]): boolean {
+  /**
+   * The lanes drew these frames: follows the selection to the shown samples. Reports whether the view changed. While
+   * `playing` the view follows only if it has not within PLAYING_INTERVAL_MS.
+   */
+  follow(frames: readonly (LaneFrame | undefined)[], playing = false): boolean {
     this.#frames = frames;
     const resumed = this.#awaiting;
     this.#awaiting = false;
     this.#draws++;
     for (const frame of frames) if (frame) this.#revisions.set(frame.source, frame.dataRevision);
+    const now = this.#now();
+    if (playing && !resumed && now - this.#followedAt < PLAYING_INTERVAL_MS) {
+      this.#behind = true;
+      return false;
+    }
+    this.#behind = false;
+    this.#followedAt = now;
     const at = this.#sampleAt();
     const held = this.#at;
     if (
@@ -233,6 +277,7 @@ export class Inspections {
   }
 
   #update(): boolean {
+    this.#behind = false;
     const selection = this.#selection;
     this.#wanted = null;
     const next = selection ? this.#viewOf(selection) : ({ state: "none" } as const);

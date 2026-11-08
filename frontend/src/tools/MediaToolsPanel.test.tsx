@@ -46,6 +46,31 @@ describe("Frame scope", () => {
     expect(source.seek).not.toHaveBeenCalled();
   });
 
+  it("counts the matches against the frame's objects before the lane's filter hides any", () => {
+    mount({}, { keep: "score > 0.7" });
+    expect(ids()).toEqual(["12", "7"]);
+    expect(screen.getByText("2 of 3")).toBeTruthy();
+    search("class:car");
+    expect(screen.getByText("1 of 3")).toBeTruthy();
+  });
+
+  it("describes both scopes on hover, and offers File only for a lane whose file is read", () => {
+    mount();
+    const hint = screen
+      .getByRole("radio", { name: "File" })
+      .closest("[title]")
+      ?.getAttribute("title");
+    expect(hint).toContain("Objects in the displayed frame, searchable by any attribute");
+    expect(hint).toContain(
+      "Every object in the file; objects not in the displayed frame are dimmed",
+    );
+
+    cleanup();
+    mount({}, { plain: true });
+    expect(ids()).toEqual(["12", "7", "9"]);
+    expect(screen.queryByRole("radio", { name: "File" })).toBeNull();
+  });
+
   it("filters 150 ms after typing stops, at once on Return or Clear, and Clear shows only with text", () => {
     vi.useFakeTimers();
     mount();

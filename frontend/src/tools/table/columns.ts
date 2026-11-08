@@ -46,7 +46,7 @@ export interface Column<Row> {
   text?: (row: Row) => string;
   /** The class a cell's dot takes its color from; the cell draws the dot before its text. */
   category?: (row: Row) => string;
-  /** The cell's content for a kind that is not text. */
+  /** The cell's content, instead of drawing its text. */
   render?: (row: Row) => ReactNode;
   /** Whether the header sorts by this column. */
   sortable?: boolean;
