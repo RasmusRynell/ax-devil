@@ -113,7 +113,7 @@ impl Device {
             let signed = Signed {
                 method: call.method.as_str(),
                 uri: &uri,
-                body: body.as_deref().unwrap_or_default(),
+                body: Some(body.as_deref().unwrap_or_default()),
             };
             let mut header =
                 HeaderValue::from_str(&authorization(&challenges, login, basic_allowed, &signed)?)
@@ -204,9 +204,10 @@ async fn read_up_to(mut response: reqwest::Response, limit: usize) -> Result<Byt
     Ok(body.into())
 }
 
-/// The kind of a transport failure, from what the client reports (never from its text), with its causes as detail.
+/// The kind of a transport failure, from what the client reports (never from its text), with the kind of the socket
+/// error under it as detail.
 ///
-/// The URL is dropped from the detail; it holds no credentials but the detail is shown to people.
+/// None of the client's own text is kept: it can quote the URL, and the detail is shown to people.
 fn transport(error: &reqwest::Error) -> CameraError {
     let kind = if error.is_timeout() {
         ErrorKind::TimedOut
@@ -217,10 +218,15 @@ fn transport(error: &reqwest::Error) -> CameraError {
     } else {
         ErrorKind::Lost
     };
-    let causes: Vec<String> =
-        std::iter::successors(std::error::Error::source(error), |cause| cause.source())
-            .map(ToString::to_string)
-            .collect();
-    let detail = causes.join(": ");
+    // The socket error under it, by its kind; nothing of the client's own text, which can quote the URL.
+    let io = std::iter::successors(std::error::Error::source(error), |cause| cause.source())
+        .find_map(|cause| cause.downcast_ref::<std::io::Error>());
+    let detail = match (io, kind) {
+        (Some(io), _) => io.kind().to_string(),
+        (None, ErrorKind::TimedOut) => "no answer in time".to_owned(),
+        (None, ErrorKind::Unreachable) => "no connection could be made".to_owned(),
+        (None, ErrorKind::InvalidTarget) => "the request cannot be made".to_owned(),
+        (None, _) => "the connection broke".to_owned(),
+    };
     CameraError::new(kind, detail)
 }

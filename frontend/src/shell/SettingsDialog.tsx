@@ -71,7 +71,12 @@ export function SettingsDialog({
             panelId={panel}
           />
         </div>
-        <div id={panel} role="tabpanel" className="flex min-h-0 flex-col gap-l overflow-y-auto">
+        <div
+          id={panel}
+          role="tabpanel"
+          // Positioned, so the hidden radios of a toggle further down scroll with it instead of stretching the dialog.
+          className="relative flex min-h-0 flex-col gap-l overflow-y-auto"
+        >
           {[...new Set(rows.map((row) => row.section))].map((section) => (
             <section key={section} className="flex flex-col gap-m">
               <SectionCaption heading={section} plain />

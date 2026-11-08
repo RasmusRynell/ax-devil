@@ -2,7 +2,7 @@
 
 use settings::State;
 use workspace::{
-    Protocol, Secret,
+    Protocol, RtspRoute, Secret,
     intake::{DataHubDefaults, LiveDefaults, LiveMode, MqttDefaults},
 };
 
@@ -54,6 +54,10 @@ pub fn defaults(state: &State, expands: bool) -> LiveDefaults {
         },
         head: whole(state, "camera.head", expands),
         rtsp_port: whole(state, "camera.rtsp_port", expands),
+        rtsp_route: match text(state, "camera.rtsp_route").as_str() {
+            "web_api" => RtspRoute::WebApi,
+            _ => RtspRoute::Direct,
+        },
         resolution: text(state, "camera.resolution"),
         overlay: match value(state, "camera.overlay", expands).as_str() {
             "none" => LiveMode::None,

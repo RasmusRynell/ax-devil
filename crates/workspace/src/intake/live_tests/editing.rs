@@ -12,6 +12,7 @@ fn editing_keeps_a_cleared_user_and_what_the_other_overlay_modes_hold() {
         port: 0,
         head: 1,
         rtsp_port: 554,
+        rtsp_route: RtspRoute::Direct,
         resolution: None,
         url: None,
         overlay: LiveOverlay::None,
@@ -244,4 +245,50 @@ fn the_default_broker_password_is_kept_only_by_a_stream_that_uses_the_broker() {
         panic!("an MQTT overlay");
     };
     assert_eq!(broker_pass.expose(), "literal-broker-secret");
+}
+
+#[test]
+fn a_stream_url_sent_back_without_its_password_keeps_the_saved_one_but_a_changed_url_does_not() {
+    let saved = LiveRecipe {
+        host: "cam.local".into(),
+        username: "root".into(),
+        password: Secret::new("literal"),
+        protocol: Protocol::Https,
+        port: 0,
+        head: 1,
+        rtsp_port: 554,
+        rtsp_route: RtspRoute::Direct,
+        resolution: None,
+        url: Some("http://root:s3cret@cam.local/axis-media/media.amp".into()),
+        overlay: LiveOverlay::None,
+        kept: Default::default(),
+    };
+    let copy = |url: &str| {
+        let mut new = NewLive {
+            url: Some(url.into()),
+            ..host("cam.local")
+        };
+        new.copy_login(&saved, &defaults(), LoginUse::Stream)
+            .map(|()| new.url)
+    };
+    assert_eq!(
+        copy("http://root@cam.local/axis-media/media.amp")
+            .unwrap()
+            .as_deref(),
+        saved.url.as_deref()
+    );
+    // Another URL keeps what was typed, and the camera's login goes to its server only if the URL has none of its own.
+    assert_eq!(
+        copy("http://root@other.local/axis-media/media.amp")
+            .unwrap()
+            .as_deref(),
+        Some("http://root@other.local/axis-media/media.amp")
+    );
+    assert!(copy("http://other.local/axis-media/media.amp").is_err());
+    // Someone who cannot restore it must not erase it by sending the URL back as shown.
+    let mut guest_edit = saved.clone();
+    guest_edit.url = Some("http://root@cam.local/axis-media/media.amp".into());
+    assert!(saved.loses_url_password(&guest_edit));
+    guest_edit.url = Some("http://root@other.local/s".into());
+    assert!(!saved.loses_url_password(&guest_edit));
 }

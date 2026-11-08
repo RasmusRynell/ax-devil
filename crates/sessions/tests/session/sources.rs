@@ -196,6 +196,7 @@ async fn a_reference_is_read_for_a_local_owner_and_kept_literal_for_a_remote_one
                     port: 0,
                     head: 1,
                     rtsp_port: 554,
+                    rtsp_route: workspace::RtspRoute::Direct,
                     resolution: None,
                     url: None,
                     overlay: LiveOverlay::None,

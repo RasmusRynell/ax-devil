@@ -67,6 +67,7 @@ object and frame by frame, and for comparing results side by side. Take the pitc
 | LV-06 | Streams start only on explicit action | M | same |
 | LV-07 | Live Events list keeps recording while hidden; no seekable history | M | `src/ax_devil/modules/video_viewer/README.md#rules` |
 | LV-08 | Temporary device configuration (MQTT analytics publisher) removed on stop and quit | M | `data_sources/live/mqtt_overlay_source.py`, `DataSource.wait_for_retired` in `data_sources/base.py` |
+| LV-09 | RTSP through the camera's web API (HTTP tunnel); a custom stream URL as typed | S | `ax_devil_rtsp/_transport.py` of rtsp #29 (unreleased); LIV-006 |
 
 ### Offline playback and comparison
 

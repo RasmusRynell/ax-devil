@@ -9,7 +9,7 @@ use std::env;
 use std::time::Duration;
 
 use camera::{
-    Broker, Camera, Device, Feed, Head, Host, Login, Reconnect, Scheme, Secret, Status,
+    Broker, Camera, Device, Feed, Head, Host, Login, Reconnect, RtspRoute, Scheme, Secret, Status,
     StreamRequest, Web, open_mqtt, open_stream,
 };
 use tokio::time::{Instant, timeout, timeout_at};
@@ -60,6 +60,7 @@ fn stream(video: bool, metadata: bool) -> StreamRequest {
         head: Head::FIRST,
         video: video.then_some(None),
         metadata,
+        route: RtspRoute::Direct,
         url: None,
         reconnect: Reconnect::RTSP,
     }
@@ -105,7 +106,27 @@ async fn a_snapshot_is_a_jpeg_and_resolutions_are_listed() {
 #[ignore = "needs a real camera"]
 async fn three_seconds_of_video_has_a_keyframe_and_capture_times_that_do_not_go_back() {
     let Some(camera) = target() else { return };
-    let mut live = open_stream(&camera, stream(true, false));
+    three_seconds_of_video(&camera, RtspRoute::Direct).await;
+}
+
+/// For a camera whose RTSP port is blocked (or any camera): the same video through its web server. The tunnel has
+/// not been tried against hardware, so its first run is the real test of how the camera treats the loopback request
+/// authority and the 32767-byte POST.
+#[tokio::test]
+#[ignore = "needs a real camera"]
+async fn three_seconds_of_video_through_the_web_api() {
+    let Some(camera) = target() else { return };
+    three_seconds_of_video(&camera, RtspRoute::WebApi).await;
+}
+
+async fn three_seconds_of_video(camera: &Camera, route: RtspRoute) {
+    let mut live = open_stream(
+        camera,
+        StreamRequest {
+            route,
+            ..stream(true, false)
+        },
+    );
     let (mut keyframes, mut last, mut frames) = (0, None, 0);
     let end = Instant::now() + Duration::from_secs(3);
     while let Ok(Some(unit)) = timeout_at(end, live.video.recv()).await {

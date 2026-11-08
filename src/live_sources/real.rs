@@ -6,8 +6,8 @@ use std::{future::Future, mem, pin::Pin, sync::Arc, time::Duration};
 use bytes::Bytes;
 use camera::{
     Broker as CameraBroker, Camera, CameraError, Head, Host, LiveMessages, LiveStream,
-    Login as CameraLogin, Reconnect, Resolution, Scheme, Secret, SourceKey, Status, StreamRequest,
-    Url, VideoCodec, Web, open_datahub, open_mqtt, open_stream,
+    Login as CameraLogin, Reconnect, Resolution, RtspRoute, Scheme, Secret, SourceKey, Status,
+    StreamRequest, Url, VideoCodec, Web, open_datahub, open_mqtt, open_stream,
 };
 use foundation::{FrameId, UserError};
 use media::{StreamCodec, StreamDecoder};
@@ -142,6 +142,10 @@ impl Connector for CameraConnector {
                 head,
                 video: Some(size),
                 metadata,
+                route: match resolved.rtsp_route {
+                    workspace::RtspRoute::Direct => RtspRoute::Direct,
+                    workspace::RtspRoute::WebApi => RtspRoute::WebApi,
+                },
                 url,
                 reconnect: Reconnect::RTSP,
             };
@@ -245,6 +249,7 @@ mod tests {
             protocol: Protocol::Http,
             port: 80,
             rtsp_port: 554,
+            rtsp_route: workspace::RtspRoute::Direct,
             head: 1,
             resolution: None,
             url: None,

@@ -146,7 +146,7 @@ export function camerasOf(
 
 /**
  * The fields the Add Live Stream dialog starts from. `like` copies the connection of that stream's recipe (host,
- * user, protocol and ports) and nothing else, so the copy gets its own name, sizes and overlay. The password is not
+ * user, protocol, ports and RTSP route) and nothing else, so the copy gets its own name, sizes and overlay. The password is not
  * copied: a recipe never holds a literal one, so the dialog sends `like` and the backend fills the blank password in.
  */
 export function seedOf(seed: AddSeed, items: readonly ItemState[]): Partial<NewLiveWire> {
@@ -154,8 +154,8 @@ export function seedOf(seed: AddSeed, items: readonly ItemState[]): Partial<NewL
     .flatMap((camera) => camera.streams)
     .find((stream) => stream.id === seed.like)?.recipe;
   if (!recipe) return {};
-  const { host, username, protocol, port, rtsp_port } = recipe;
-  return { host, username, protocol, port, rtsp_port };
+  const { host, username, protocol, port, rtsp_port, rtsp_route } = recipe;
+  return { host, username, protocol, port, rtsp_port, rtsp_route };
 }
 
 /**

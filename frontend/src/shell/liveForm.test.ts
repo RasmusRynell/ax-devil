@@ -112,6 +112,14 @@ describe("the live form of an edited stream", () => {
     expect(hiddenSecrets({ ...wire, password: "" })).toEqual(["broker_pass"]);
   });
 
+  it("sends the route only when chosen and accepts any stream URL, which the camera checks when it connects", () => {
+    expect(newLive(saved).rtsp_route).toBeUndefined();
+    expect(newLive({ ...saved, rtsp_route: "web_api" }).rtsp_route).toBe("web_api");
+    expect(formFrom(values, { rtsp_route: "web_api" }).rtsp_route).toBe("web_api");
+    for (const url of ["http://u:p@cam/s", "rtsps://cam/s", "not a url"])
+      expect(problemOf({ ...saved, url }, values, "RTSP Embedded")).toBeUndefined();
+  });
+
   it("refuses RTSP Port 0 and a Camera Head above 9999", () => {
     const problem = (change: Partial<LiveForm>) =>
       problemOf({ ...saved, ...change }, values, "RTSP Embedded");

@@ -330,6 +330,33 @@ export const SETTINGS = [
     "scope": "server"
   },
   {
+    "key": "camera.rtsp_route",
+    "kind": {
+      "type": "choice",
+      "options": [
+        [
+          "direct",
+          "Direct"
+        ],
+        [
+          "web_api",
+          "Via web API"
+        ]
+      ],
+      "toggle": true,
+      "default": "direct"
+    },
+    "label": "RTSP route",
+    "description": null,
+    "page": "Stream defaults",
+    "section": "Device",
+    "live": true,
+    "env": false,
+    "secret": false,
+    "quick_setup": false,
+    "scope": "server"
+  },
+  {
     "key": "camera.timeout",
     "kind": {
       "type": "whole",

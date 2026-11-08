@@ -328,10 +328,13 @@ name = "camera"
 version = "0.1.0"
 dependencies = [
  "axum",
+ "base64 0.22.1",
  "bytes",
  "futures-util",
+ "getrandom 0.4.3",
  "http-auth",
  "md-5",
+ "percent-encoding",
  "rcgen",
  "reqwest",
  "retina",
@@ -343,6 +346,7 @@ dependencies = [
  "tokio-rustls",
  "tokio-tungstenite",
  "tracing",
+ "tracing-log",
  "tracing-subscriber",
  "url",
 ]
@@ -1391,6 +1395,7 @@ dependencies = [
  "tempfile",
  "tracing",
  "tracing-core",
+ "tracing-log",
  "tracing-subscriber",
 ]
 
@@ -3152,9 +3157,11 @@ dependencies = [
  "handler-api",
  "handlers",
  "overlay-sync",
+ "percent-encoding",
  "serde",
  "serde_json",
  "tempfile",
+ "url",
 ]
 
 [[package]]

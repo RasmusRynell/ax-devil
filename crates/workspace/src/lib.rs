@@ -28,7 +28,7 @@ pub use item::{
 };
 pub use live::{
     DataHubSettings, KeptTransports, LIVE_SLOT, LiveOverlay, LiveRecipe, LiveVideoContent, Login,
-    MqttSettings, Protocol, ResolvedCamera,
+    MqttSettings, Protocol, ResolvedCamera, RtspRoute, url_password_dropped, url_without_password,
 };
 pub use references::{Connection, Previews, Shown, preview};
 pub use sources::{Snapshot, Watch};

@@ -411,6 +411,7 @@ pub fn content(host: &str, overlay: LiveOverlay) -> LiveVideoContent {
             protocol: workspace::Protocol::Https,
             port: 443,
             rtsp_port: 554,
+            rtsp_route: workspace::RtspRoute::Direct,
             head: 1,
             resolution: None,
             url: None,

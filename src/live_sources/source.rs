@@ -17,7 +17,7 @@ use handlers::Handlers;
 use overlay_sync::MatchPolicy;
 use playback::SharedFrame;
 use tokio::{runtime::Handle, sync::watch};
-use workspace::{LiveOverlay, LiveVideoContent, ResolvedCamera};
+use workspace::{LiveOverlay, LiveVideoContent, ResolvedCamera, url_without_password};
 
 use super::{connector::Connector, feed::Feed, real::CameraConnector, viewer::LiveViewer};
 
@@ -49,9 +49,11 @@ impl Hash for Spec {
             &camera.host,
             camera.port,
             camera.rtsp_port,
+            camera.rtsp_route.name(),
             camera.head,
             &camera.resolution,
-            &camera.url,
+            // The URL's login is a credential; equality still tells two URLs apart.
+            camera.url.as_deref().map(url_without_password),
             self.overlay.mode_name(),
         )
             .hash(state);
@@ -257,5 +259,62 @@ impl LiveSources {
                 deadline.as_secs()
             );
         }
+    }
+}
+
+#[cfg(test)]
+mod spec_tests {
+    use super::*;
+    use workspace::{Protocol, RtspRoute};
+
+    /// A hasher that keeps what it is fed, so the test can look for a credential in it.
+    #[derive(Default)]
+    struct Recorder(Vec<u8>);
+
+    impl Hasher for Recorder {
+        fn finish(&self) -> u64 {
+            0
+        }
+        fn write(&mut self, bytes: &[u8]) {
+            self.0.extend_from_slice(bytes);
+        }
+    }
+
+    fn spec(url: &str) -> Spec {
+        Spec {
+            camera: ResolvedCamera {
+                host: "cam".into(),
+                protocol: Protocol::Https,
+                port: 443,
+                rtsp_port: 554,
+                rtsp_route: RtspRoute::Direct,
+                head: 1,
+                resolution: None,
+                url: Some(url.into()),
+                login: None,
+            },
+            overlay: LiveOverlay::None,
+        }
+    }
+
+    #[test]
+    fn a_spec_hashes_and_prints_without_its_url_password_in_any_spelling_but_still_tells_urls_apart()
+     {
+        for url in [
+            "http://root:SECRET@cam/s",
+            "http:root:SECRET@cam/s",
+            "http:////root:SECRET@cam/s",
+            "rtsp://root:SE%43RET@cam/s",
+            "mailto:root:SECRET@cam",
+        ] {
+            let spec = spec(url);
+            let mut recorder = Recorder::default();
+            spec.hash(&mut recorder);
+            let hashed = String::from_utf8_lossy(&recorder.0).into_owned();
+            for text in [hashed, format!("{spec:?}"), format!("{spec:#?}")] {
+                assert!(!text.contains("SECRET"), "{url}: {text}");
+            }
+        }
+        assert_ne!(spec("http://root:one@cam/s"), spec("http://root:two@cam/s"));
     }
 }

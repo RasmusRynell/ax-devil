@@ -6,7 +6,7 @@ use crate::{
     item::{Recipe, Source, WorkspaceItem},
     live::{
         DataHubSettings, KeptTransports, LiveOverlay, LiveRecipe, MqttSettings, Protocol,
-        url_endpoint,
+        RtspRoute, camera_endpoint, url_endpoint, url_has_login, url_password_dropped,
     },
 };
 use foundation::{ErrorCode, ItemId, Location, UserError};
@@ -57,8 +57,9 @@ pub enum NewLiveOverlay {
 }
 
 /// What the user entered to add a live stream. Text that is `None` or blank takes its default; numbers are checked
-/// against their range here, so the message names the field.
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
+/// against their range here, so the message names the field. `Debug` leaves out the password of a login in `url`
+/// (`live_debug.rs`).
+#[derive(Clone, Default, PartialEq, Eq)]
 pub struct NewLive {
     /// The name the caller gives the item with [`with_label`](super::with_label); the intake leaves it unnamed.
     pub label: Option<String>,
@@ -76,9 +77,11 @@ pub struct NewLive {
     pub head: Option<i64>,
     /// The RTSP port, 1 to 65535.
     pub rtsp_port: Option<i64>,
+    /// Which door of the camera the stream comes through; `None` is the configured one.
+    pub rtsp_route: Option<RtspRoute>,
     /// The resolution, such as `1280x720`; blank is the camera's own.
     pub resolution: Option<String>,
-    /// A stream URL to use instead of the one made from the host.
+    /// A stream URL to use instead of the one made from the host, as typed (a login in it included).
     pub url: Option<String>,
     /// The overlay; `None` is the configured one.
     pub overlay: Option<NewLiveOverlay>,
@@ -108,8 +111,8 @@ impl NewLive {
     /// `source`'s keeps its own password too, which `source`'s does not belong to, and a user cleared to empty gets
     /// none of `source`'s.
     ///
-    /// A [`LoginUse::Stream`] login also goes to the stream URL's host and port, or the camera's with its RTSP port,
-    /// so a copy needs that endpoint to be the one `source` already sends its login to; any other is refused, as the
+    /// A [`LoginUse::Stream`] login also goes to the stream URL's host and port, or the camera's with its RTSP port
+    /// (its web port when the stream comes through the web API), so a copy needs that endpoint to be the one `source` already sends its login to; any other is refused, as the
     /// person must then enter the login for that server. A [`LoginUse::Discovery`] login goes only to the web
     /// interface the camera check above compares, so it has no further destination to check.
     ///
@@ -122,6 +125,13 @@ impl NewLive {
         usage: LoginUse,
     ) -> Result<(), UserError> {
         self.copy_broker_password(source, defaults);
+        // A client is shown the stream URL without its password, so a URL sent back that way keeps the saved one. The
+        // password stays with the URL's own host.
+        if let (Some(saved), Some(sent)) = (source.url.as_deref(), self.url.as_deref())
+            && url_password_dropped(saved, sent)
+        {
+            self.url = Some(saved.to_owned());
+        }
         let protocol = self.protocol.unwrap_or(defaults.protocol);
         let port = |protocol: Protocol, port: i64| match port {
             0 => i64::from(protocol.default_port()),
@@ -152,7 +162,16 @@ impl NewLive {
         if !fill_user && !restore {
             return Ok(());
         }
-        if usage == LoginUse::Stream {
+        // Copying empty texts, as an anonymous stream does, sends no login, so only a real one has a destination.
+        let sends = (fill_user && !source.username.is_empty())
+            || (restore && !source.password.expose().is_empty());
+        // A URL kept as it was, though no connection can be made to it, moves nothing: a rename must not need the
+        // password again (the client was shown a placeholder for it and sends that back).
+        let kept_unusable = match (self.url.as_deref(), source.url.as_deref()) {
+            (Some(new), Some(old)) => new.trim() == old.trim() && url_endpoint(new).is_err(),
+            _ => false,
+        };
+        if usage == LoginUse::Stream && sends && !kept_unusable {
             self.check_login_destination(&source.rtsp_endpoint(), defaults)?;
         }
         if fill_user {
@@ -206,23 +225,26 @@ impl NewLive {
         defaults: &LiveDefaults,
     ) -> Result<(), UserError> {
         let endpoint = match self.url.as_deref().map(str::trim) {
+            // A login in the URL is the one the stream sends there, so the camera's goes nowhere.
+            Some(url) if url_has_login(url) => return Ok(()),
             Some(url) if !url.is_empty() => url_endpoint(url).ok(),
             _ => Some(self.camera_endpoint(defaults)),
         };
         if endpoint.as_ref().map(canonical_endpoint) == Some(canonical_endpoint(trusted)) {
             return Ok(());
         }
-        Err(invalid(
-            "password",
-            "A saved login is not sent to another RTSP address; enter the user and password for it.",
-        ))
+        Err(unsent())
     }
 
-    /// The host and port the camera itself takes RTSP on: the endpoint a scan's login may be sent to.
+    /// The host and port the camera itself takes the stream on, by RTSP or by the web API: the endpoint a scan's login
+    /// may be sent to.
     pub fn camera_endpoint(&self, defaults: &LiveDefaults) -> (String, u16) {
         let rtsp_port = self.rtsp_port.unwrap_or_else(|| defaults.rtsp_port.into());
-        (
-            text(&self.host, &defaults.host).to_ascii_lowercase(),
+        camera_endpoint(
+            &text(&self.host, &defaults.host),
+            self.rtsp_route.unwrap_or(defaults.rtsp_route),
+            self.protocol.unwrap_or(defaults.protocol),
+            u16::try_from(self.port.unwrap_or(0)).unwrap_or(0),
             u16::try_from(rtsp_port).unwrap_or(0),
         )
     }
@@ -246,6 +268,14 @@ fn canonical_endpoint((host, port): &(String, u16)) -> (String, u16) {
         Err(_) => bare.to_ascii_lowercase(),
     };
     (host, *port)
+}
+
+/// The refusal to send a saved login to an address it was not saved for.
+fn unsent() -> UserError {
+    invalid(
+        "password",
+        "A saved login is not sent to another RTSP address; enter the user and password for it.",
+    )
 }
 
 fn invalid(field: &str, reason: &str) -> UserError {
@@ -313,7 +343,7 @@ fn datahub_settings(entered: &NewDataHub, defaults: &DataHubDefaults) -> DataHub
 /// as entered, `$NAME` references included; whether the host answers, or a reference expands, is for resolving.
 ///
 /// Refuses, with the field as the error's location, what resolving would refuse: no host, a head below 1, ports out
-/// of range, the other protocol's standard port, a stream URL that is not RTSP or holds a login, and an overlay
+/// of range, the other protocol's standard port, and an overlay
 /// without a known decoder or without what its transport needs. A name left empty stays empty, and shows the host.
 pub fn live(
     new: NewLive,
@@ -409,6 +439,7 @@ pub fn live(
         port,
         head,
         rtsp_port,
+        rtsp_route: new.rtsp_route.unwrap_or(defaults.rtsp_route),
         resolution: Some(text(&new.resolution, "")).filter(|r| !r.is_empty()),
         url: Some(text(&new.url, "")).filter(|url| !url.is_empty()),
         overlay,

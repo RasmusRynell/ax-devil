@@ -7,8 +7,16 @@ depend on it (`scripts/check-architecture.cjs`). Feature `fake` adds `CameraErro
 - Errors are typed where they arise (`ErrorKind`, from statuses and transport errors; never from text), and
   `ErrorKind::retryable` decides whether a retry can help (RTSP also retries `NotFound`: the stream may be starting).
 - A login (`Secret` password) is sent only in answer to the camera's 401 challenge: Digest, or Basic when it is the
-  only scheme offered, over HTTPS (the DataHub token call also over HTTP). It is never in a URL, a log, a `Debug` or an error detail. `Device::identify`
-  sends no login, so it is safe on an unknown address.
+  only scheme offered, over HTTPS (the DataHub token call and the RTSP tunnel also over plain HTTP). The one place a
+  login arrives inside a URL is a custom `StreamRequest::url`, accepted as typed (the app approves a login's
+  destination from the same `url`-crate parse, `workspace/src/live/endpoint.rs`); it is taken out into a `Login` at
+  once, so every URL this crate builds or connects to has none, and no `Debug` shows a password. The detail
+  of a failed RTSP step or a transport error holds nothing the request or the camera said: a socket error is told by
+  its kind, a failed RTSP step by a closed set of phrases (`rtsp/failure.rs`) with at most a status code, because
+  retina's text quotes the URL, its query and the camera's answer. Other details may name what the caller itself gave
+  (a scan target that is not an address, the MQTT data source asked for). For the same reason the app's logging never writes retina's own records (`logging`'s
+  `SILENT_TARGETS`); `retina_log_layer` still reads them. `Device::identify` sends no login, so it is safe on an
+  unknown address.
 - RTSP (`open_stream`): a task owns connect, read and reconnect. The login goes to retina apart from the URL.
   **Known limitation:** retina 0.4.21 answers whatever challenge the camera sends, so a camera (or anything in the
   path) that offers only Basic on plain `rtsp://` gets the password in cleartext. Retina has no hook to refuse a
@@ -52,8 +60,20 @@ depend on it (`scripts/check-architecture.cjs`). Feature `fake` adds `CameraErro
   `Device::digest_only` is public for a request that must be refused at once on a wrong login, such as a snapshot.
 - Redirects are not followed. HTTPS certificates are not verified (decision D12); handshake signatures are checked.
 - Raw bytes only: no pixel decoding and no XML parsing here.
-- `StreamRequest::url` replaces the generated stream URL and is refused when it holds a login: the login always comes
-  from the `Camera`.
+- `StreamRequest::url` replaces the generated stream URL and is used as typed: `rtsp://`, `http://` or `https://`. A
+  login in it (percent-decoded) wins over the `Camera`'s and is taken out of the URL; any other scheme, or none with a
+  host, fails the stream for good (`rtsps://` as `Unsupported`, the rest `InvalidTarget`), because the intake accepts
+  any text.
+- RTSP through the web server (`RtspRoute::WebApi`, or an `http(s)://` URL), for a network that blocks the RTSP port:
+  `rtsp/tunnel.rs` opens the `x-rtsp-tunnelled` GET (the camera's side) and POST (base64, one run per RTSP message)
+  itself, `rtsp/relay.rs` accepts retina's one connection on a loopback port and joins the two, and retina plays
+  `rtsp://127.0.0.1:<port>/…` unchanged (Digest, keepalive, TEARDOWN, reconnect). Every attempt builds a new tunnel.
+  The 401 of the GET is answered once, with Digest, or Basic when it is the only scheme offered (over plain HTTP too:
+  the web interface has no other); the POST reuses that challenge with the next nonce count. Chunked responses and
+  redirects are refused. The POST announces 32767 bytes and is never renewed, so a camera that closes at that length
+  ends the session as `Lost` and the stream reconnects. Not verified on hardware: that the camera accepts the
+  loopback address as the RTSP request authority. The relay's listener takes the first connection to its loopback port
+  within the timeout, so a local process that is quicker than retina could take the stream.
 - The seam: the app calls `Device`, `open_stream`, `open_mqtt` and `open_datahub` with plain values (`Camera`,
   `Broker`, `Login`) and reads `LiveStream` and `LiveMessages`, their `Status` and `Stats`. It does not retry or
   reconnect, match on error text, hold a login outside a `Secret`, or touch retina, rumqttc, reqwest, http-auth or

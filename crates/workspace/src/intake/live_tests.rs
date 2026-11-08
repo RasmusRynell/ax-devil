@@ -2,7 +2,7 @@ mod editing;
 mod login;
 
 use super::*;
-use crate::{Content, Environment, LiveOverlay, LiveRecipe, Protocol, Secret};
+use crate::{Content, Environment, LiveOverlay, LiveRecipe, Protocol, RtspRoute, Secret};
 use foundation::{CancelToken, Interrupt, Location};
 use std::collections::HashMap;
 
@@ -14,6 +14,7 @@ fn defaults() -> LiveDefaults {
         protocol: Protocol::Https,
         head: 1,
         rtsp_port: 554,
+        rtsp_route: RtspRoute::Direct,
         resolution: String::new(),
         overlay: LiveMode::DataHub,
         rtsp_handler: "ONVIF_XML".into(),
@@ -116,6 +117,30 @@ fn entered_credentials_are_kept_exactly_and_the_resolution_is_the_one_given_or_t
 }
 
 #[test]
+fn the_route_is_the_configured_one_unless_entered_and_a_stream_url_is_kept_as_typed() {
+    let mut configured = defaults();
+    configured.rtsp_route = RtspRoute::WebApi;
+    let item = live(host("h"), &configured, &Handlers::built_in()).unwrap();
+    assert_eq!(recipe(&item).rtsp_route, RtspRoute::WebApi);
+    let mut new = host("h");
+    new.rtsp_route = Some(RtspRoute::Direct);
+    let item = live(new, &configured, &Handlers::built_in()).unwrap();
+    assert_eq!(recipe(&item).rtsp_route, RtspRoute::Direct);
+    // Whether a URL can be streamed is for the camera to say when it connects (owner decision LIV-006).
+    for url in [
+        "rtsp://root:pw@cam/stream",
+        "https://cam/stream",
+        "rtsps://cam/stream",
+        "not a url",
+    ] {
+        let mut new = host("h");
+        new.url = Some(url.into());
+        let item = live(new, &defaults(), &Handlers::built_in()).unwrap();
+        assert_eq!(recipe(&item).url.as_deref(), Some(url));
+    }
+}
+
+#[test]
 fn what_cannot_be_streamed_is_refused_naming_the_field_and_the_python_message() {
     let with = |change: &dyn Fn(&mut NewLive)| {
         let mut new = host("192.0.2.7");
@@ -181,21 +206,6 @@ fn what_cannot_be_streamed_is_refused_naming_the_field_and_the_python_message() 
             with(&|n| (n.protocol, n.port) = (Some(Protocol::Http), Some(443))),
             "port",
             "HTTP cannot use port 443; use the standard port.",
-        ),
-        (
-            with(&|n| n.url = Some("http://cam/stream".into())),
-            "url",
-            "The stream URL must start with rtsp://.",
-        ),
-        (
-            with(&|n| n.url = Some("rtsps://cam/stream".into())),
-            "url",
-            "The stream URL must start with rtsp://.",
-        ),
-        (
-            with(&|n| n.url = Some("rtsp://root:pw@cam/stream".into())),
-            "url",
-            "The stream URL must not contain a login.",
         ),
         (
             mqtt(&|m| m.broker_host = Some("  ".into())),

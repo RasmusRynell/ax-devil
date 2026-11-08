@@ -6,8 +6,8 @@ use crate::support;
 use std::time::Duration;
 
 use camera::{
-    AccessUnit, CaptureTime, ErrorKind, Feed, Head, LiveStream, Reconnect, Secret, Status,
-    StreamRequest, open_stream,
+    AccessUnit, CaptureTime, ErrorKind, Feed, Head, LiveStream, Reconnect, RtspRoute, Secret,
+    Status, StreamRequest, open_stream,
 };
 use support::fake_rtsp::{
     Behaviour, FIRST_CAPTURE, FRAME_NANOS, FakeRtsp, Fault, GOP, PPS, SPS, frame_index,
@@ -16,7 +16,7 @@ use support::fake_rtsp::{
 use support::fake_vapix::PASSWORD;
 use tokio::time::timeout;
 
-const WAIT: Duration = Duration::from_secs(10);
+pub(crate) const WAIT: Duration = Duration::from_secs(10);
 /// Quick retries, so the tests do not wait for backoff.
 const QUICK: Reconnect = Reconnect {
     first: Duration::from_millis(20),
@@ -24,18 +24,22 @@ const QUICK: Reconnect = Reconnect {
     silence: Some(Duration::from_secs(5)),
 };
 
-fn request(video: bool, metadata: bool) -> StreamRequest {
+pub(crate) fn request(video: bool, metadata: bool) -> StreamRequest {
     StreamRequest {
         head: Head::FIRST,
         video: video.then_some(None),
         metadata,
+        route: RtspRoute::Direct,
         url: None,
         reconnect: QUICK,
     }
 }
 
 /// Waits for a status `matches` and returns it.
-async fn status_where(stream: &mut LiveStream, matches: impl Fn(&Status) -> bool) -> Status {
+pub(crate) async fn status_where(
+    stream: &mut LiveStream,
+    matches: impl Fn(&Status) -> bool,
+) -> Status {
     let wait = stream.status.wait_for(|status| matches(status));
     timeout(WAIT, wait)
         .await
@@ -44,14 +48,14 @@ async fn status_where(stream: &mut LiveStream, matches: impl Fn(&Status) -> bool
         .clone()
 }
 
-async fn next_unit(stream: &mut LiveStream) -> AccessUnit {
+pub(crate) async fn next_unit(stream: &mut LiveStream) -> AccessUnit {
     timeout(WAIT, stream.video.recv())
         .await
         .expect("a frame in time")
         .expect("the stream is alive")
 }
 
-async fn next_feed<T>(feed: &mut tokio::sync::mpsc::Receiver<Feed<T>>) -> Feed<T> {
+pub(crate) async fn next_feed<T>(feed: &mut tokio::sync::mpsc::Receiver<Feed<T>>) -> Feed<T> {
     timeout(WAIT, feed.recv())
         .await
         .expect("an item in time")

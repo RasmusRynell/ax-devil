@@ -115,7 +115,7 @@ describe("add live stream dialog", () => {
   it("is one page in the Python app's order, with OK waiting for a host and saying why", async () => {
     await open(() => {}, NO_HOST);
     const labels = [...document.querySelectorAll("form label")].map((label) => label.textContent);
-    expect(labels.slice(0, 10)).toEqual([
+    expect(labels.slice(0, 11)).toEqual([
       "Name",
       "Host",
       "Username",
@@ -123,6 +123,7 @@ describe("add live stream dialog", () => {
       "Protocol",
       "Port",
       "Camera Head",
+      "RTSP Route",
       "RTSP Port",
       "Resolution",
       "Custom Stream URL",

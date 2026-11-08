@@ -6,8 +6,8 @@ use overlay_sync::MatchPolicy;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use workspace::{
-    DataHubSettings, KeptTransports, LiveOverlay, LiveRecipe, MqttSettings, Protocol, Secret,
-    Source,
+    DataHubSettings, KeptTransports, LiveOverlay, LiveRecipe, MqttSettings, Protocol, RtspRoute,
+    Secret, Source,
 };
 
 /// A live stream, with passwords and references as entered.
@@ -27,6 +27,9 @@ pub(crate) struct LiveItem {
     port: u16,
     head: u16,
     rtsp_port: u16,
+    /// Absent in files from before the web API route, and when the route is the RTSP port.
+    #[serde(default, skip_serializing_if = "RtspRouteDto::is_direct")]
+    rtsp_route: RtspRouteDto,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     resolution: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -114,6 +117,20 @@ impl From<KeptDto> for KeptTransports {
 enum ProtocolDto {
     Http,
     Https,
+}
+
+#[derive(Serialize, Deserialize, Clone, Copy, Default)]
+#[serde(rename_all = "snake_case")]
+enum RtspRouteDto {
+    #[default]
+    Direct,
+    WebApi,
+}
+
+impl RtspRouteDto {
+    fn is_direct(&self) -> bool {
+        matches!(self, Self::Direct)
+    }
 }
 
 #[derive(Serialize, Deserialize)]
@@ -230,6 +247,10 @@ impl LiveItem {
             port: recipe.port,
             head: recipe.head,
             rtsp_port: recipe.rtsp_port,
+            rtsp_route: match recipe.rtsp_route {
+                RtspRoute::Direct => RtspRouteDto::Direct,
+                RtspRoute::WebApi => RtspRouteDto::WebApi,
+            },
             resolution: recipe.resolution.clone(),
             url: recipe.url.clone(),
             overlay: (&recipe.overlay).into(),
@@ -251,6 +272,10 @@ impl LiveItem {
             port: self.port,
             head: self.head,
             rtsp_port: self.rtsp_port,
+            rtsp_route: match self.rtsp_route {
+                RtspRouteDto::Direct => RtspRoute::Direct,
+                RtspRouteDto::WebApi => RtspRoute::WebApi,
+            },
             resolution: self.resolution,
             url: self.url,
             overlay: self.overlay.into(),

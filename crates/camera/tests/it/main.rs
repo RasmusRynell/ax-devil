@@ -6,4 +6,5 @@ mod real_camera;
 mod rtsp;
 mod scan;
 mod support;
+mod tunnel;
 mod vapix;

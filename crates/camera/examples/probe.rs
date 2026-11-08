@@ -14,7 +14,7 @@ use std::time::Duration;
 
 use camera::{
     AccessUnit, Broker, Camera, CameraError, Device, ErrorKind, Feed, Head, Host, Login, Reconnect,
-    Scheme, Secret, SourceKey, Status, StreamRequest, Web, open_mqtt, open_stream,
+    RtspRoute, Scheme, Secret, SourceKey, Status, StreamRequest, Web, open_mqtt, open_stream,
 };
 use tokio::time::{interval, sleep};
 use tracing_subscriber::Layer;
@@ -171,6 +171,7 @@ async fn stream(camera: &Camera, duration: Duration) -> Result<(), String> {
             head: Head::FIRST,
             video: Some(None),
             metadata: true,
+            route: RtspRoute::Direct,
             url: None,
             reconnect: Reconnect::RTSP,
         },

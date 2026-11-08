@@ -22,11 +22,14 @@ use scene::{Event, OperationKind};
 use serde::{Deserialize, Serialize};
 use std::fmt;
 use ts_rs::TS;
-use workspace::{LiveOverlay, LiveRecipe, Protocol, Secret, intake};
+use workspace::{
+    LiveOverlay, LiveRecipe, Protocol, RtspRoute, Secret, intake, url_without_password,
+};
 
 mod discovery;
 mod glance;
 mod kept;
+mod redact;
 pub use discovery::*;
 pub use glance::*;
 pub use kept::*;
@@ -55,6 +58,34 @@ impl From<Protocol> for LiveProtocol {
         match protocol {
             Protocol::Http => Self::Http,
             Protocol::Https => Self::Https,
+        }
+    }
+}
+
+/// Which door of the camera a stream comes through.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "snake_case")]
+pub enum LiveRtspRoute {
+    /// The camera's RTSP port.
+    Direct,
+    /// The camera's web interface.
+    WebApi,
+}
+
+impl From<LiveRtspRoute> for RtspRoute {
+    fn from(route: LiveRtspRoute) -> Self {
+        match route {
+            LiveRtspRoute::Direct => Self::Direct,
+            LiveRtspRoute::WebApi => Self::WebApi,
+        }
+    }
+}
+
+impl From<RtspRoute> for LiveRtspRoute {
+    fn from(route: RtspRoute) -> Self {
+        match route {
+            RtspRoute::Direct => Self::Direct,
+            RtspRoute::WebApi => Self::WebApi,
         }
     }
 }
@@ -321,7 +352,8 @@ pub enum NewLiveOverlayWire {
 
 /// What the user entered to add a live stream. Text that is absent or blank takes its configured default; numbers are
 /// checked against their range by the intake, so its message names the field. Mirrors `workspace::intake::NewLive`.
-#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize, TS)]
+/// `Debug` leaves out the password of a login in `url` (`live/redact.rs`).
+#[derive(Clone, Default, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[serde(default)]
 #[ts(optional_fields)]
 pub struct NewLiveWire {
@@ -345,9 +377,12 @@ pub struct NewLiveWire {
     /// The RTSP port, 1 to 65535.
     #[ts(type = "number", optional)]
     pub rtsp_port: Option<i64>,
+    /// Which door of the camera the stream comes through; absent is the configured one.
+    pub rtsp_route: Option<LiveRtspRoute>,
     /// The resolution such as `1280x720`; blank is the camera's own.
     pub resolution: Option<String>,
-    /// A stream URL to use instead of the one made from the host.
+    /// A stream URL to use instead of the one made from the host, as typed. A saved URL is sent without its login's
+    /// password, and one sent back that way keeps the saved password.
     pub url: Option<String>,
     /// The overlay; absent is the configured one for a new stream and the saved one for an edit.
     pub overlay: Option<NewLiveOverlayWire>,
@@ -457,6 +492,7 @@ impl From<&LiveRecipe> for NewLiveWire {
             port,
             head,
             rtsp_port,
+            rtsp_route,
             resolution,
             url,
             overlay,
@@ -471,8 +507,9 @@ impl From<&LiveRecipe> for NewLiveWire {
             port: Some(i64::from(*port)),
             head: Some(i64::from(*head)),
             rtsp_port: Some(i64::from(*rtsp_port)),
+            rtsp_route: Some((*rtsp_route).into()),
             resolution: resolution.clone(),
-            url: url.clone(),
+            url: url.as_deref().map(url_without_password),
             overlay: Some(overlay.into()),
             kept_mqtt: kept.mqtt.as_ref().map(Into::into),
             kept_datahub: kept.datahub.as_ref().map(Into::into),
@@ -493,6 +530,7 @@ impl From<NewLiveWire> for intake::NewLive {
             port: new.port,
             head: new.head,
             rtsp_port: new.rtsp_port,
+            rtsp_route: new.rtsp_route.map(RtspRoute::from),
             resolution: new.resolution,
             url: new.url,
             overlay: new.overlay.map(Into::into),
