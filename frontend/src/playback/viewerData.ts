@@ -132,6 +132,7 @@ export class ViewerData {
     this.#shown = [];
     this.#matched = [];
     this.samples.clear();
+    this.inspections.suspend();
     this.files.suspend();
     this.next.close();
   }

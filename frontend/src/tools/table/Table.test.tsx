@@ -18,6 +18,7 @@ function table(
   count = 100_000,
   order: readonly Row[] | null = null,
   onActivate: (row: Row) => void = () => {},
+  generation = "",
 ) {
   return (
     <Table<Row>
@@ -32,6 +33,7 @@ function table(
       sort={{ key: "id", descending: false }}
       onSort={() => {}}
       onActivate={onActivate}
+      generation={generation}
       cursorId={(row) => `row:${row.id}`}
     />
   );
@@ -89,6 +91,17 @@ describe("Table", () => {
     rerender(table("unloaded", 40, [...rows].reverse(), onActivate));
     fireEvent.keyDown(screen.getByRole("listbox"), { key: "Enter" });
     expect(onActivate).toHaveBeenLastCalledWith(rows[39], 0);
+  });
+
+  it("drops an Enter still waiting for its row when the list is replaced, instead of opening what lands there", () => {
+    const rows = Array.from({ length: 40 }, (_, i) => rowAt(i));
+    const onActivate = vi.fn();
+    const { rerender } = render(table("replaced", 40, rows.slice(0, 5), onActivate, "a"));
+    fireEvent.keyDown(screen.getByRole("listbox"), { key: "End" });
+    fireEvent.keyDown(screen.getByRole("listbox"), { key: "Enter" });
+    // The order changes before the page arrives, and the row at that position is another.
+    rerender(table("replaced", 40, [...rows].reverse(), onActivate, "b"));
+    expect(onActivate).not.toHaveBeenCalled();
   });
 
   it("keeps the width the user gave a column when the table is drawn again", () => {

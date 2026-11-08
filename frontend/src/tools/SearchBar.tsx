@@ -14,18 +14,20 @@ import { Popover } from "../kit/Popover";
 import { parseSearch, type SearchTokenKind } from "../search/query";
 
 /**
- * How each kind of word is drawn: terms on a tint of the accent, free text on a lighter one, operators and OR muted,
- * and a word the language cannot use muted and underlined. Same glyph widths as the text, so the colored copy lines up
- * under the caret.
+ * How each kind of word is drawn: terms on a tint of the accent, free text on a lighter one, operators and OR dimmed,
+ * and a word the language cannot use dimmed and underlined (the underline, not the colour, says it is invalid). The
+ * tints and `text-fg/70` are chosen together: every word keeps at least 4.5:1 against its background in both themes
+ * (free text 11.3 light and 8.5 dark, terms 10.7 and 8.1, operators 4.55 and 4.8, OR and invalid words 5.0 and 5.4).
+ * Same glyph widths as the text, so the colored copy lines up under the caret.
  */
 const LOOK: Record<SearchTokenKind, string> = {
-  text: "bg-accent/20",
-  field: "bg-accent/40",
-  operator: "bg-accent/40 text-muted",
-  value: "bg-accent/40",
-  or: "text-muted",
-  not: "bg-accent/40",
-  invalid: "text-muted underline",
+  text: "bg-accent/8",
+  field: "bg-accent/12",
+  operator: "bg-accent/12 text-fg/70",
+  value: "bg-accent/12",
+  or: "text-fg/70",
+  not: "bg-accent/12",
+  invalid: "text-fg/70 underline",
 };
 
 /** What to type and what it does, one row each. */

@@ -263,6 +263,7 @@ export function ObjectsList({
     count,
     selected: mark,
     sort,
+    generation: `${text}\n${sort.key} ${sort.descending}`,
     onSort: (key: string) =>
       // Only the columns that sort have a header to click.
       onList({

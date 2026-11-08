@@ -104,6 +104,53 @@ describe("inspections", () => {
     expect(samples().at(-1)).toBe(6);
   });
 
+  it("does not let a reply advance the view to a draw skipped while playing", () => {
+    const { inspections, samples, time } = setup();
+    inspections.follow([frame(1)]);
+    inspections.select(SELECTION);
+    time.now = 1000;
+    inspections.follow([frame(2)], true);
+    time.now = 1033;
+    inspections.follow([frame(3)], true);
+    // The reply for the displayed sample completes it at once; the skipped draw is not asked for.
+    inspections.receive(reply(2, found(CLASS)));
+    expect(inspections.view).toMatchObject({ state: "ready" });
+    time.now = 1066;
+    inspections.follow([frame(4)], true);
+    inspections.receive(reply(1, found(CLASS)));
+    expect(samples()).toEqual([1, 2]);
+    time.now = 1100;
+    inspections.follow([frame(5)], true);
+    expect(samples()).toEqual([1, 2, 5]);
+  });
+
+  it("stops waiting to catch up when hidden or suspended, and catches up when shown", () => {
+    const { inspections, samples, time } = setup();
+    const waiting: (() => void)[] = [];
+    const after = (callback: () => void) => {
+      waiting.push(callback);
+      return () => void waiting.splice(waiting.indexOf(callback) >>> 0, 1);
+    };
+    inspections.follow([frame(1)]);
+    inspections.select(SELECTION);
+    time.now = 1000;
+    inspections.follow([frame(2)], true);
+    time.now = 1010;
+    inspections.follow([frame(3)], true);
+    inspections.trail(after, () => {});
+    expect(waiting).toHaveLength(1);
+    inspections.setVisible(false);
+    expect(waiting).toHaveLength(0);
+    inspections.setVisible(true);
+    expect(samples().at(-1)).toBe(3);
+
+    time.now = 1020;
+    inspections.follow([frame(4)], true);
+    inspections.trail(after, () => {});
+    inspections.suspend();
+    expect(waiting).toHaveLength(0);
+  });
+
   it("shows the summary of the shown sample at once and the fields when the reply comes", () => {
     const { inspections, sent } = setup();
     inspections.follow([frame(3)]);

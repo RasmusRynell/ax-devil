@@ -79,9 +79,15 @@ export type TableMemory = { top: number; cursor: string | null };
 /**
  * The cursor: the row it follows, or, with no key, the position it was put on (the first row, or a row not loaded).
  * It is `waiting` when put on a row that is not loaded yet, and follows that row once it is; `open` when Enter was
- * pressed there, so the row is activated as it arrives.
+ * pressed there, so the row is activated as it arrives, unless the list was replaced meanwhile.
  */
-type Cursor = { key: string | null; index: number; waiting?: boolean; open?: boolean };
+type Cursor = {
+  key: string | null;
+  index: number;
+  waiting?: boolean;
+  /** The `generation` Enter was pressed in. */
+  open?: string;
+};
 
 type RowProps<Row> = {
   id: string;
@@ -187,6 +193,7 @@ export function Table<Row>({
   tint,
   follow,
   copyText,
+  generation = "",
   sort,
   onSort,
   onActivate,
@@ -217,6 +224,8 @@ export function Table<Row>({
   follow?: Follow;
   /** What copying a row puts on the clipboard, instead of its columns' texts. */
   copyText?: (row: Row) => string;
+  /** Names the list the rows are of (its query and order); an Enter still waiting for its row is dropped when it changes. */
+  generation?: string;
   sort: SortOf<string>;
   onSort: (key: string) => void;
   /** A click, or Enter, on a row. */
@@ -288,7 +297,7 @@ export function Table<Row>({
     setCursor({ key, index: cursor.index });
     if (memory) memory.cursor = key;
     onCursor?.(key);
-    if (cursor.open) onActivate(row, cursor.index);
+    if (cursor.open === generation) onActivate(row, cursor.index);
   });
 
   const go = (index: number) => {
@@ -337,7 +346,7 @@ export function Table<Row>({
       Enter: () => {
         if (at < 0) return;
         if (rowAt(at) !== undefined) return pick(at);
-        setCursor({ key: null, index: at, waiting: true, open: true });
+        setCursor({ key: null, index: at, waiting: true, open: generation });
         reveal(at);
       },
     };

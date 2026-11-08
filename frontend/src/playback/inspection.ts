@@ -75,6 +75,8 @@ export class Inspections {
   readonly #send: (message: ClientMessage) => void;
   #selection: Selection = null;
   #frames: readonly (LaneFrame | undefined)[] = [];
+  /** The newest draw; `#frames`, which the view is made from, is it only once the view has followed it. */
+  #newest: readonly (LaneFrame | undefined)[] = [];
   /** The newest data revision each source was drawn with: a reply of an older one is dropped. */
   readonly #revisions = new Map<number, number>();
   /** The replies kept, oldest first. Unavailable is not kept: it says nothing about the sample. */
@@ -121,11 +123,12 @@ export class Inspections {
    */
   trail(after: (callback: () => void, ms: number) => () => void, changed: () => void): void {
     this.#cancel?.();
-    this.#cancel = this.#behind
-      ? after(() => {
-          if (this.catchUp()) changed();
-        }, PLAYING_INTERVAL_MS)
-      : undefined;
+    this.#cancel =
+      this.#behind && this.#visible
+        ? after(() => {
+            if (this.catchUp()) changed();
+          }, PLAYING_INTERVAL_MS)
+        : undefined;
   }
 
   /** Brings the view up to the newest draw after skipped ones. Reports whether the view changed. */
@@ -133,8 +136,20 @@ export class Inspections {
     this.#cancel?.();
     this.#cancel = undefined;
     if (!this.#behind) return false;
-    this.#behind = false;
     this.#followedAt = this.#now();
+    return this.#sync();
+  }
+
+  /** Stops the wait to catch up, for an inspector that is hidden or closed; showing one catches up. */
+  suspend(): void {
+    this.#cancel?.();
+    this.#cancel = undefined;
+  }
+
+  /** Makes the view follow the newest draw. Reports whether the view changed. */
+  #sync(): boolean {
+    this.#frames = this.#newest;
+    this.#behind = false;
     return this.#update();
   }
 
@@ -153,14 +168,15 @@ export class Inspections {
     }
     this.#selection = selection;
     this.#at = null;
-    return this.#update();
+    return this.#sync();
   }
 
   /** Tells whether an inspector page shows. Showing one asks for the selection's fields at once. Reports whether the view changed. */
   setVisible(visible: boolean): boolean {
     if (visible === this.#visible) return false;
     this.#visible = visible;
-    return visible && this.#update();
+    if (!visible) this.suspend();
+    return visible && this.#sync();
   }
 
   /**
@@ -168,7 +184,7 @@ export class Inspections {
    * `playing` the view follows only if it has not within PLAYING_INTERVAL_MS.
    */
   follow(frames: readonly (LaneFrame | undefined)[], playing = false): boolean {
-    this.#frames = frames;
+    this.#newest = frames;
     const resumed = this.#awaiting;
     this.#awaiting = false;
     this.#draws++;
@@ -178,6 +194,7 @@ export class Inspections {
       this.#behind = true;
       return false;
     }
+    this.#frames = frames;
     this.#behind = false;
     this.#followedAt = now;
     const at = this.#sampleAt();
@@ -277,7 +294,6 @@ export class Inspections {
   }
 
   #update(): boolean {
-    this.#behind = false;
     const selection = this.#selection;
     this.#wanted = null;
     const next = selection ? this.#viewOf(selection) : ({ state: "none" } as const);

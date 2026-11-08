@@ -16,5 +16,9 @@ describe("categoryDot", () => {
     // Case folding, not lower-casing: `ß` is `ss`, and a final `ς` is `σ`.
     expect(categoryDot("Straße")).toBe(categoryDot("STRASSE"));
     expect(categoryDot("ΣΑΣ")).toBe(categoryDot("σας"));
+    expect(categoryDot("ẞperson")).toBe(categoryDot("SSPERSON"));
+    // The dotless `ı` is its own letter, and Cherokee folds to capitals, as the reference's `casefold` has it.
+    expect(categoryDot("ı")).not.toBe(categoryDot("i"));
+    expect(categoryDot("ꭰ")).toBe(categoryDot("Ꭰ"));
   });
 });
